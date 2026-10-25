@@ -12,10 +12,10 @@ func identity(id harness.ID) harness.Identity {
 }
 
 // TestBRD4_ClaudeEntriesStandDownUnderCursor: a Claude-installed entry must
-// stand down on any detected identity outside the Claude family -- Cursor,
-// Codex, and Unknown alike (6.2.3: "stand down on foreign or unknown
-// harnesses") -- and must NOT stand down on either Claude identity,
-// confirmed or presumed.
+// stand down on a positively detected foreign family (Cursor, Codex) and
+// must NOT stand down on either Claude identity, confirmed or presumed, nor
+// on Unknown, which is recorded instead. BRD-4 ruling, 2026-10-24: stand
+// down on positive foreign evidence only; Unknown is recorded and counted.
 func TestBRD4_ClaudeEntriesStandDownUnderCursor(t *testing.T) {
 	cases := []struct {
 		name string
@@ -26,7 +26,7 @@ func TestBRD4_ClaudeEntriesStandDownUnderCursor(t *testing.T) {
 		{"claude code presumed matches installed-for", harness.ClaudeCodePresumed, false},
 		{"cursor is foreign", harness.Cursor, true},
 		{"codex is foreign", harness.Codex, true},
-		{"unknown is neither claude nor confirmed foreign, still stands down", harness.Unknown, true},
+		{"unknown is no positive evidence of a foreign harness: recorded, not stood down (BRD-4 ruling, 2026-10-24)", harness.Unknown, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -41,7 +41,8 @@ func TestBRD4_ClaudeEntriesStandDownUnderCursor(t *testing.T) {
 // TestStandsDown_EveryFamilyMatchesItsOwnDetected pins the general rule
 // StandsDown implements, not just the claude-specific BRD-4 row: an entry
 // never stands down against its own family, and always stands down against
-// every other one -- including Unknown, which belongs to none.
+// every other detected family; Unknown belongs to none and is never a
+// reason to stand down (BRD-4 ruling, 2026-10-24).
 func TestStandsDown_EveryFamilyMatchesItsOwnDetected(t *testing.T) {
 	families := map[Family]harness.ID{
 		FamilyClaude: harness.ClaudeCode,
@@ -60,8 +61,8 @@ func TestStandsDown_EveryFamilyMatchesItsOwnDetected(t *testing.T) {
 				t.Errorf("StandsDown(%s, %s) = false, want true (foreign family)", installedFor, otherID)
 			}
 		}
-		if !StandsDown(installedFor, identity(harness.Unknown)) {
-			t.Errorf("StandsDown(%s, unknown) = false, want true", installedFor)
+		if StandsDown(installedFor, identity(harness.Unknown)) {
+			t.Errorf("StandsDown(%s, unknown) = true, want false", installedFor)
 		}
 	}
 	// claude_code_presumed is the claude family's second member; every other
@@ -164,5 +165,20 @@ func TestFamilyString(t *testing.T) {
 	}
 	if FamilyClaude != "claude" || FamilyCursor != "cursor" || FamilyCodex != "codex" {
 		t.Fatalf("family constants drifted: %q %q %q", FamilyClaude, FamilyCursor, FamilyCodex)
+	}
+}
+
+// TestEvaluate_UnknownPayloadIsRecorded: a Claude-shaped payload with no
+// entrypoint and a transcript outside the config dir detects as Unknown and
+// is not stood down; Evaluate still returns the Unknown identity so the
+// caller can count it and stamp harness_id.
+func TestEvaluate_UnknownPayloadIsRecorded(t *testing.T) {
+	raw := `{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","transcript_path":"/tmp/elsewhere/s1.jsonl"}`
+	id, down := Evaluate([]byte(raw), nil, harness.Env{ConfigDir: claudeConfigDir}, FamilyClaude)
+	if id.ID != harness.Unknown {
+		t.Fatalf("id.ID = %s, want %s", id.ID, harness.Unknown)
+	}
+	if down {
+		t.Error("Evaluate stood down on an Unknown detection; Unknown is recorded, not stood down (BRD-4 ruling, 2026-10-24)")
 	}
 }

@@ -1,0 +1,19 @@
+{
+  "detector": "coverage_unverified",
+  "label": "true_negative",
+  "reason": "Start probe recorded and the call executed: verified coverage, no line.",
+  "labelled_by": "seed",
+  "provenance": "constructed: watched() of harness_test.go and one successful call",
+  "final_message": "Done.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": " M README.md"
+    }
+  ]
+}

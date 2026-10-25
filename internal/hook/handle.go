@@ -73,6 +73,13 @@ type Handler struct {
 	// store a record that skipped the caps, the one way to reach its degrade.
 	capDecl func(*store.Declaration) bool
 
+	// HarnessID, when non-empty, is stamped on the declaration as harness_id.
+	// The caller sets it to "unknown" for an Unknown detection, which this
+	// build records rather than stands down on (BRD-4 ruling, 2026-10-24: stand
+	// down on positive foreign evidence only; Unknown is recorded and counted);
+	// it stays null otherwise.
+	HarnessID string
+
 	sessionID string
 	toolUseID string
 	cwd       string
@@ -172,6 +179,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	}
 	decl.Shape, decl.CWDDigest = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)
 	decl.Writer = Writer
+	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
 	// lists them and forget --host matches them by the name as written.
 	// Nothing else from tool_input is persisted, and shape is still the only

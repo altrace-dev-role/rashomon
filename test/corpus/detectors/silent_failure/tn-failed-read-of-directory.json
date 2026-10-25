@@ -1,0 +1,18 @@
+{
+  "detector": "silent_failure",
+  "label": "true_negative",
+  "reason": "A Read of a directory fails, but a failed lookup alone never fires the line.",
+  "labelled_by": "seed",
+  "provenance": "reuses the failed-lookup acceptance test: a Read of a directory (EISDIR) under a true report",
+  "final_message": "All 9 tests pass.",
+  "calls": [
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/tmp/project/src"
+      },
+      "outcome": "failed",
+      "output": "EISDIR: illegal operation on a directory, read"
+    }
+  ]
+}

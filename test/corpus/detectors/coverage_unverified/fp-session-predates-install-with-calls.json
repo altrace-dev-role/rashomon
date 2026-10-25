@@ -1,0 +1,21 @@
+{
+  "detector": "coverage_unverified",
+  "label": "false_positive",
+  "reason": "Calls were recorded for the turn but the session's start was not (it began before install). The record of the turn is complete; the line would repeat on every turn of the session.",
+  "labelled_by": "seed",
+  "fp_class": "session_predates_install",
+  "provenance": "constructed: a successful call after watch with no start probe",
+  "probe_start": false,
+  "final_message": "Done.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": " M README.md"
+    }
+  ]
+}

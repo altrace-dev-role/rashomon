@@ -32,7 +32,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/digest"
-	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // mark opens every line this package renders. Bytes, not a claim: a reader
@@ -87,15 +87,15 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	var sentences []string
 
 	switch {
-	case d.Unknown:
+	case d.Fired(report.DetectorDigestUnknown):
 		sentences = append(sentences, fmt.Sprintf("digest unknown (%s)", reasonList(d.Coverage.Reasons)))
-	case d.Coverage.State != store.StateVerified:
+	case d.Fired(report.DetectorCoverageUnverified):
 		sentences = append(sentences, fmt.Sprintf("coverage unverified (%s)", reasonList(d.Coverage.Reasons)))
 	}
-	if d.Truncated {
+	if d.Fired(report.DetectorDigestTruncated) {
 		sentences = append(sentences, "digest truncated (some fields were cut to stay under the size ceiling)")
 	}
-	if sf := d.SilentFailures; sf.Fires {
+	if sf := d.SilentFailures; d.Fired(report.DetectorSilentFailure) {
 		// The count is the failures that fired the line, in this turn only.
 		// When lookups were set aside the line says how many, so its numbers
 		// add up to the turn's failed calls. The report's "failed calls"
@@ -107,7 +107,7 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		}
 		sentences = append(sentences, s)
 	}
-	if m := d.MaskedRuns; m.Fires {
+	if m := d.MaskedRuns; d.Fired(report.DetectorMaskedRun) {
 		sentences = append(sentences, maskedSentence(m.Runs))
 	}
 	tb := d.TestBending
@@ -117,7 +117,7 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		first = fmt.Sprintf("#%d → #%d", p[0], p[1])
 	}
 	if s, ok := pairSentence("test command failed, then the only recorded edits were to files named like tests, then it passed",
-		first, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok {
+		first, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok && d.Fired(report.DetectorTestsOnlyThenGreen) {
 		sentences = append(sentences, s)
 	}
 	// The flaky pair names each run's outcome by its seq: the pair may have
@@ -129,10 +129,10 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		first = fmt.Sprintf("#%d %s, #%d %s", p.Seqs[0], a, p.Seqs[1], b)
 	}
 	if s, ok := pairSentence("same test command had both outcomes with no recorded file edit between",
-		first, len(tb.Flaky)+tb.FlakyOmitted); ok {
+		first, len(tb.Flaky)+tb.FlakyOmitted); ok && d.Fired(report.DetectorFlakyPair) {
 		sentences = append(sentences, s)
 	}
-	if n := len(d.Declarations.WithoutExecution); n > 0 {
+	if n := len(d.Declarations.WithoutExecution); d.Fired(report.DetectorDeclarationWithoutExecution) {
 		sentences = append(sentences, fmt.Sprintf("%d declaration%s without recorded execution", n, plural(n)))
 	}
 

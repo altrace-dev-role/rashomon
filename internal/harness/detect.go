@@ -42,8 +42,17 @@ import (
 //  3. Claude Code, positive: Env.Entrypoint is in the 2.1.280 allowlist.
 //     Surface comes from the entrypoint.
 //  4. Claude Code, presumed: no foreign marker (step 1 or 2 would otherwise
-//     have fired) and transcript_path resolves under
-//     Env.ConfigDir/projects/.
+//     have fired) and at least one of three signals, each of which is
+//     evidence by itself and each of which is named in Evidence:
+//     transcript_path resolves under Env.ConfigDir/projects/;
+//     transcript_path has Claude Code's own layout,
+//     projects/<dir>/<uuid>.jsonl, wherever the config directory is (the
+//     case the config-dir check misses when the hook runs with a
+//     different CLAUDE_CONFIG_DIR than the session wrote under); or
+//     Env.ProjectDir (CLAUDE_PROJECT_DIR, which Claude Code sets on every
+//     hook command) is non-empty. BRD-4 ruling, 2026-10-24: the detector
+//     gap is a bug, so these are admitted here. None of them takes part in
+//     the step-3 override: a foreign marker beats all three.
 //  5. Otherwise: unknown.
 //
 // A payload hookio.Intake could not scan, or whose hook_event_name,
@@ -108,8 +117,18 @@ func Detect(p *hookio.Payload, env Env) Identity {
 	}
 
 	// Step 4: Claude Code, presumed. No foreign marker fired above.
+	var presumed []Evidence
 	if transcriptUnderClaude {
-		return finish(ClaudeCodePresumed, SurfaceUnknown, versionPtr, []Evidence{EvClaudeTranscript})
+		presumed = append(presumed, EvClaudeTranscript)
+	}
+	if hasClaudeTranscriptShape(transcriptPath) {
+		presumed = append(presumed, EvClaudeTranscriptShape)
+	}
+	if env.ProjectDir != "" {
+		presumed = append(presumed, EvClaudeProjectDirEnv)
+	}
+	if len(presumed) > 0 {
+		return finish(ClaudeCodePresumed, SurfaceUnknown, versionPtr, presumed)
 	}
 
 	// Step 5: unknown.
@@ -176,6 +195,50 @@ func underProjects(transcriptPath, configDir string) bool {
 		return false // the transcript path names the directory itself, not a file in it
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// hasClaudeTranscriptShape reports whether transcriptPath ends
+// projects/<dir>/<uuid>.jsonl: the layout Claude Code writes a session's
+// transcript in (test/fixtures/claude-code/2.1.280: every payload, every
+// event). It looks at the last three path elements only, so it holds under
+// any config directory, and it splits on both separators because a Windows
+// transcript path is read on the machine that runs the hook, wherever the
+// tests run. Cursor's agent-transcripts layout puts one more directory
+// between projects/<dir> and the file, and Codex names its files
+// rollout-*.jsonl, so neither matches.
+func hasClaudeTranscriptShape(transcriptPath string) bool {
+	if transcriptPath == "" {
+		return false
+	}
+	parts := strings.Split(strings.ReplaceAll(transcriptPath, `\`, "/"), "/")
+	n := len(parts)
+	if n < 3 || parts[n-3] != "projects" || parts[n-2] == "" {
+		return false
+	}
+	id, ok := strings.CutSuffix(parts[n-1], ".jsonl")
+	return ok && isUUID(id)
+}
+
+// isUUID reports whether s is the 8-4-4-4-12 hexadecimal form every Claude
+// Code session id has, checked byte by byte for the reason versionCharset is.
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // versionCharset is cursor_version's charset, checked byte by byte: no

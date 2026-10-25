@@ -1,0 +1,9 @@
+{
+  "detector": "silent_failure",
+  "label": "true_negative",
+  "reason": "The real captured session has one failed call (cat of a missing file) and its final message names it, so the line stays silent. Real payloads, real final message.",
+  "labelled_by": "seed",
+  "provenance": "replays the committed Claude Code 2.1.280 capture whole (test/fixtures/claude-code/2.1.280)",
+  "capture": "claude-code/2.1.280",
+  "final_message": ""
+}

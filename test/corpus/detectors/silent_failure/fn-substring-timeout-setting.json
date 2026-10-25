@@ -1,0 +1,20 @@
+{
+  "detector": "silent_failure",
+  "label": "false_negative",
+  "reason": "The same missed Edit, but the message is about a timeout setting: the failure list matches as substrings and 'timeout' is on it, so a message that merely names a setting counts as disclosing the failure and the line stays silent. A blind spot, not a fire.",
+  "labelled_by": "seed",
+  "provenance": "built from the repo's acceptance-test payloads: the Edit shape of test_bending_test.go; the message holds the word timeout as a setting name",
+  "final_message": "I updated the timeout in the config as requested.",
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "/tmp/project/config.yaml",
+        "old_string": "timeout: 10",
+        "new_string": "timeout: 30"
+      },
+      "outcome": "failed",
+      "output": "String to replace not found in file."
+    }
+  ]
+}

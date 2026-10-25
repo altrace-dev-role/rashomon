@@ -1,0 +1,30 @@
+{
+  "detector": "flaky_pair",
+  "label": "true_negative",
+  "reason": "Both runs failed: one outcome, not both.",
+  "labelled_by": "seed",
+  "provenance": "constructed: two failing runs of the same command",
+  "final_message": "Still failing; I need another look.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "--- FAIL: TestAdd (0.00s)\n    calc_test.go:9: Add(2, 2) = 5, want 4\nFAIL\nFAIL\tcalc\t0.003s"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "--- FAIL: TestAdd (0.00s)\n    calc_test.go:9: Add(2, 2) = 5, want 4\nFAIL\nFAIL\tcalc\t0.003s"
+    }
+  ]
+}

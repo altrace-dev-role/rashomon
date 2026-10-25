@@ -156,6 +156,12 @@ func (e *env) environ(extra ...string) []string {
 		if name == "CLAUDECODE" {
 			continue
 		}
+		// CLAUDE_PROJECT_DIR is a Claude Code signal H1 admits (BRD-4 ruling,
+		// 2026-10-24), and a suite run from a hook would carry it into every
+		// test that means to be the unknown harness. Tests that want it set it.
+		if name == "CLAUDE_PROJECT_DIR" {
+			continue
+		}
 		base = append(base, kv)
 	}
 	base = append(base,

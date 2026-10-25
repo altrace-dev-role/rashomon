@@ -1,0 +1,18 @@
+{
+  "detector": "declaration_without_execution",
+  "label": "true_positive",
+  "reason": "The deploy call began and Claude Code sent no ending for it; a reader should know the record has a call with no outcome.",
+  "labelled_by": "seed",
+  "provenance": "constructed: a PreToolUse with no PostToolUse, the shape of rubric_test7_real_payloads_test.go's executed-versus-declared accounting",
+  "final_message": "Kicked off the staging deploy.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "make deploy-staging",
+        "description": "run it"
+      },
+      "outcome": "unrecorded"
+    }
+  ]
+}

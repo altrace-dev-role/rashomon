@@ -1,0 +1,19 @@
+{
+  "detector": "declaration_without_execution",
+  "label": "false_positive",
+  "reason": "The user refused the permission prompt, so the call never ran; the digest reads no transcript and cannot tell a refusal from a lost record.",
+  "labelled_by": "seed",
+  "fp_class": "denied_call",
+  "provenance": "constructed from the refused rm of the 2.1.280 capture (--disallowedTools), as one call",
+  "final_message": "I did not remove build/ because the permission prompt was refused.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "rm -rf build/",
+        "description": "run it"
+      },
+      "outcome": "denied"
+    }
+  ]
+}

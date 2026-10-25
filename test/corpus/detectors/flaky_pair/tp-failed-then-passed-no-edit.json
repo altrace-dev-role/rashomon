@@ -1,0 +1,29 @@
+{
+  "detector": "flaky_pair",
+  "label": "true_positive",
+  "reason": "The same go test failed on a timing assertion and passed on the rerun with nothing edited between: a flaky test.",
+  "labelled_by": "seed",
+  "provenance": "built from the repo's acceptance-test payloads: the go test pair of test_bending_test.go with no edit between",
+  "final_message": "The test run failed once and passed on the rerun.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "--- FAIL: TestExpiry (0.51s)\n    expiry_test.go:31: token still valid after 500ms"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": "ok  \tcalc\t0.004s"
+    }
+  ]
+}

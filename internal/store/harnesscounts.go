@@ -124,6 +124,34 @@ func readHarnessCounts(path string) harnessCounts {
 	return hc
 }
 
+// HarnessSeenCount is how many sessions harness_counts.json has counted as
+// seen under key across the daily slots it still holds (at most
+// maxHarnessCountDays of them): the read half of RecordHarnessSeen, for the
+// report's "harness unknown" line. A file that was never written is zero, a
+// real zero, because nothing has been counted here; a file that exists and
+// cannot be read or parsed is an error and never zero, so a reader cannot
+// print "none" over a counter it could not open.
+func HarnessSeenCount(root, key string) (int, error) {
+	b, err := os.ReadFile(filepath.Join(root, FileHarnessCounts))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var hc harnessCounts
+	if err := json.Unmarshal(b, &hc); err != nil {
+		return 0, err
+	}
+	n := 0
+	if entry := hc.Counts[key]; entry != nil {
+		for _, d := range entry.Days {
+			n += d.Seen
+		}
+	}
+	return n, nil
+}
+
 // HarnessKey loads or creates the per-root HMAC key harness_counts.json
 // digests session ids with -- the SAME key HostDigest signs with -- without
 // creating install.json, Store.Open's other file. A hook entry that is
@@ -239,6 +267,22 @@ var errHarnessCountsTooLarge = errors.New("store: harness_counts.json would exce
 // values entirely -- RecordHarnessMismatch never has to run for "no
 // record, no run directory, no output" to hold.
 func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now time.Time) (counted bool, err error) {
+	return recordHarness(root, key, sessionID, evidence, now, true)
+}
+
+// RecordHarnessSeen is RecordHarnessMismatch for a detection that did not
+// stand down (an Unknown harness, which is recorded and counted: BRD-4 ruling,
+// 2026-10-24): the
+// same locked, deduplicated update, moving seen only -- stood_down and
+// last_stood_down are untouched, so the counter still says how often each
+// outcome happened.
+func RecordHarnessSeen(root, key, sessionID string, now time.Time) (counted bool, err error) {
+	return recordHarness(root, key, sessionID, nil, now, false)
+}
+
+// recordHarness is the body both share; standDown says whether the call
+// also counts as a stand-down.
+func recordHarness(root, key, sessionID string, evidence []string, now time.Time, standDown bool) (counted bool, err error) {
 	hkey, err := HarnessKey(root)
 	if err != nil {
 		return false, err
@@ -309,11 +353,13 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 	}
 	c := entry.Days[day]
 	c.Seen++
-	c.StoodDown++
+	if standDown {
+		c.StoodDown++
+		entry.LastStoodDown = day
+		entry.LastEvidence = evidence
+	}
 	entry.Days[day] = c
 	evictOldestDays(entry)
-	entry.LastStoodDown = day
-	entry.LastEvidence = evidence
 
 	if dedup {
 		hc.Sessions = append(evictOldestSessions(hc.Sessions), digest)

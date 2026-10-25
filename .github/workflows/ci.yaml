@@ -477,6 +477,52 @@ jobs:
             grep -q -- "--- PASS: $t " lock-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
           done
 
+  # pgraph/ is a module of its own (pgraph/go.mod), so the `./...` of the test
+  # job and of every other job stops at its directory: without this job its
+  # tests and vet gate nothing. Only gofmt, which walks directories and not
+  # modules, already reaches it from the repository root.
+  pgraph:
+    name: pgraph
+    runs-on: ubuntu-latest
+    # About thirteen seconds of race-detector tests, plus the toolchain and
+    # module downloads; the bound is DEL-17's.
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "1"  # The race detector requires cgo; see the test job.
+    defaults:
+      run:
+        working-directory: pgraph
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          # The same pin as every other job, on purpose:
+          # TestDEL21_GoVersionPinsAgree holds all pins in this file to one
+          # version. pgraph/go.mod's `go 1.26.0` (and golang.org/x/tools
+          # v0.52.0, which needs it) is a language minimum on a different
+          # line from the main module's `go 1.25.0`, and 1.27.3 satisfies
+          # both. setup-go sets GOTOOLCHAIN=local for a pinned version (see
+          # the goreleaser step of the test job), so `go` never switches to a
+          # toolchain named by either go.mod. TestDEL21d compares the pins
+          # with the root go.mod only; pgraph/go.mod's line is not checked.
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          # pgraph/go.sum, not the root's: the two modules' requirements
+          # differ, and a cache keyed on the root's go.sum would not move
+          # when pgraph's did. A path here is relative to the repository
+          # root, not to the working-directory above.
+          cache-dependency-path: pgraph/go.sum
+
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
   perf-linux:
     name: Perf gates (linux)
     runs-on: ubuntu-latest
@@ -546,6 +592,19 @@ jobs:
       - name: RES-29 peak RSS (no race detector)
         if: success() || failure()
         run: go test ./cmd/rashomon -run '^TestRES29_PathologicalInputsStayBounded$' -count=1 -v
+
+      # Detector precision's replay half (test/acceptance/
+      # detector_replay_perf_test.go) feeds some 55 fixtures through the real
+      # binary, about 5 s of wall time, so it is built only with -tags perf
+      # and the `test` job leaves it out. This is the only job that runs it;
+      # a -run that matches nothing passes, so the step requires the PASS line.
+      - name: Detector precision replay
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -tags perf ./test/acceptance -run '^TestDetectorPrecision_Table$' -count=1 -v | tee "$RUNNER_TEMP/detector.out"
+          grep -q -- '--- PASS: TestDetectorPrecision_Table ' "$RUNNER_TEMP/detector.out"
 
   perf-macos:
     name: Perf gates (macos)

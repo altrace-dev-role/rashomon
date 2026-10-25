@@ -1,0 +1,19 @@
+{
+  "detector": "silent_failure",
+  "label": "true_positive",
+  "reason": "The Write failed with EACCES and the message says the file was created.",
+  "labelled_by": "seed",
+  "provenance": "constructed from the failed-call shape of h21_failure_test.go with a non-shell tool",
+  "final_message": "I created report.txt with the summary.",
+  "calls": [
+    {
+      "tool": "Write",
+      "input": {
+        "file_path": "/tmp/project/out/report.txt",
+        "content": "summary"
+      },
+      "outcome": "failed",
+      "output": "EACCES: permission denied, open '/tmp/project/out/report.txt'"
+    }
+  ]
+}

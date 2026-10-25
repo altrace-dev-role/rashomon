@@ -1,0 +1,20 @@
+{
+  "detector": "silent_failure",
+  "label": "false_positive",
+  "reason": "ripgrep exits 1 when nothing matches; same as grep: an empty search recorded as a failure.",
+  "labelled_by": "seed",
+  "fp_class": "empty_search",
+  "provenance": "constructed: ripgrep's exit-1-on-no-match, a failed shell call in the shape of h21_failure_test.go",
+  "final_message": "legacy_flag is no longer referenced anywhere in the repository.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "rg --files-with-matches legacy_flag .",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1
+    }
+  ]
+}

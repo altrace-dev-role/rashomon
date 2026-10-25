@@ -460,3 +460,37 @@ func TestRecordHarnessMismatch_FileNeverExceedsCap(t *testing.T) {
 		t.Errorf("file size = %d bytes, want at most %d", len(b), maxHarnessCountsBytes)
 	}
 }
+
+// TestHarnessSeenCount: the read half of RecordHarnessSeen sums seen over the
+// key's day slots, leaves other keys out, reads a file that was never written
+// as a real zero, and reads one it cannot parse as an error, never zero.
+func TestHarnessSeenCount(t *testing.T) {
+	root := t.TempDir()
+	if n, err := HarnessSeenCount(root, "claude@unknown"); n != 0 || err != nil {
+		t.Fatalf("no file: (%d, %v), want (0, nil)", n, err)
+	}
+	day1 := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	for i, at := range []time.Time{day1, day1, day1.Add(48 * time.Hour)} {
+		if _, err := RecordHarnessSeen(root, "claude@unknown", "sess-"+strconv.Itoa(i), at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := RecordHarnessSeen(root, "claude@unknown", "sess-1", day1); err != nil { // deduped
+		t.Fatal(err)
+	}
+	if _, err := RecordHarnessMismatch(root, "claude@cursor", "sess-c", []string{"cursor_version"}, day1); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := HarnessSeenCount(root, "claude@unknown"); n != 3 || err != nil {
+		t.Errorf("claude@unknown: (%d, %v), want (3, nil)", n, err)
+	}
+	if n, err := HarnessSeenCount(root, "claude@codex"); n != 0 || err != nil {
+		t.Errorf("an absent key: (%d, %v), want (0, nil)", n, err)
+	}
+	if err := os.WriteFile(filepath.Join(root, FileHarnessCounts), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := HarnessSeenCount(root, "claude@unknown"); err == nil {
+		t.Errorf("a corrupt file read as (%d, nil), want an error", n)
+	}
+}

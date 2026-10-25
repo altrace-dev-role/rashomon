@@ -1,0 +1,19 @@
+{
+  "detector": "declaration_without_execution",
+  "label": "true_negative",
+  "reason": "Every declared call has its execution.",
+  "labelled_by": "seed",
+  "provenance": "constructed: defaultPost of payload_test.go",
+  "final_message": "Done.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": " M README.md"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "detector": "silent_failure",
+  "label": "false_positive",
+  "reason": "test -f exits 1 when the file is absent; the absence is the answer the message reports.",
+  "labelled_by": "seed",
+  "fp_class": "status_query",
+  "provenance": "constructed: a shell call whose exit status is its answer, in the shape of h21_failure_test.go",
+  "final_message": "There is no local env file, so the defaults apply.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "test -f .env.local",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1
+    }
+  ]
+}

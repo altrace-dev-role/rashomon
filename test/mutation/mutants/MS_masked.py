@@ -201,9 +201,9 @@ m("MS the digest builds no masked runs", "internal/digest/digest.go",
 m("MS the digest counts the session's masked runs", "internal/digest/digest.go",
   "\td.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)\n", "\td.MaskedRuns = report.BuildMaskedRuns(run, acct)\n", "TestBuild_MaskedRuns|TestMasked_")
 m("MS the end-of-turn line never says masked", "internal/recap/recap.go",
-  "\tif m := d.MaskedRuns; m.Fires {", "\tif m := d.MaskedRuns; false && m.Fires {", "TestLineMaskedRuns|TestMasked_")
+  "\tif m := d.MaskedRuns; d.Fired(report.DetectorMaskedRun) {", "\tif m := d.MaskedRuns; false && d.Fired(report.DetectorMaskedRun) {", "TestLineMaskedRuns|TestMasked_")
 m("MS the end-of-turn line says masked on the count alone", "internal/recap/recap.go",
-  "\tif m := d.MaskedRuns; m.Fires {", "\tif m := d.MaskedRuns; m.Runs > 0 {", "TestLineMaskedRuns|TestMasked_")
+  "\tif m := d.MaskedRuns; d.Fired(report.DetectorMaskedRun) {", "\tif m := d.MaskedRuns; m.Runs > 0 {", "TestLineMaskedRuns|TestMasked_")
 m("MS the masked sentence has no singular", "internal/recap/recap.go",
   "\tif n == 1 {\n\t\treturn \"pass claimed; exit status of 1 build", "\tif false {\n\t\treturn \"pass claimed; exit status of 1 build", "TestLineMaskedRuns")
 m("MS a pass word is matched inside another word", "internal/report/account.go",

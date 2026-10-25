@@ -1,0 +1,29 @@
+{
+  "detector": "flaky_pair",
+  "label": "true_positive",
+  "reason": "The same go test passed and then failed with nothing edited between: nondeterminism, in the other order.",
+  "labelled_by": "seed",
+  "provenance": "built from the repo's acceptance-test payloads: the go test pair of test_bending_test.go with no edit between, in the other order",
+  "final_message": "The first run passed and the second one failed with no change in between.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": "ok  \tcalc\t0.004s"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "--- FAIL: TestExpiry (0.51s)\n    expiry_test.go:31: token still valid after 500ms"
+    }
+  ]
+}

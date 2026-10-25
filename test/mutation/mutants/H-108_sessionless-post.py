@@ -21,11 +21,11 @@ m("H-108 a run with lines that did not parse is counted as if it were whole", "i
   "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil",
   "\tif err != nil {\n\t\treturn nil",
   "TestCallsWithoutSessionID_IsUnknownOverLines")
-m("H-108 the count's healthy twin vanishes", "internal/report/text.go",
+m("H-108 the count's healthy twin vanishes", "internal/report/text_storewide.go",
   "\tcase *n == 0:\n\t\tfmt.Fprintf(b, \"calls without a session id: %s\\n\", none)", "\tcase *n == 0:",
   "TestH108_ACodexShaped|TestText_CallsWithoutSessionID")
-m("H-108 the count is built and never rendered", "internal/report/text.go",
-  "\twriteSessionless(&b, rep.CallsWithoutSessionID)\n", "",
+m("H-108 the count is built and never rendered", "internal/report/text_storewide.go",
+  "\twriteSessionless(b, rep.CallsWithoutSessionID)\n", "",
   "TestH108_ASessionlessCall")
 m("H-108 the without-execution line joins every id again", "internal/report/text.go",
   "\t\tout[i] = u.ToolUseID + \" (\" + orUnknown(u.PermissionMode) + \")\"\n\t}\n\treturn list(out)",

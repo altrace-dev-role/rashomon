@@ -30,6 +30,10 @@ type Input struct {
 	// unattributed run (Report.CallsWithoutSessionID); nil when it could not
 	// be read whole.
 	CallsWithoutSessionID *int
+	// HarnessUnknownSessions is the store-wide count the read step took of
+	// harness_counts.json's claude@unknown key (Report.HarnessUnknownSessions);
+	// nil when that file could not be read.
+	HarnessUnknownSessions *int
 }
 
 // SessionInput is one session as the read step gathered it.
@@ -81,10 +85,11 @@ func Assemble(in Input, now time.Time) *Report {
 	// Sessions starts as an empty slice rather than nil, so a store with no runs
 	// marshals the same array a store with runs does. See the field comment.
 	rep := &Report{
-		ReportVersion:         CurrentReportVersion,
-		GeneratedAtUnixMS:     now.UnixMilli(),
-		CallsWithoutSessionID: in.CallsWithoutSessionID,
-		Sessions:              make([]Session, 0, len(in.Sessions)),
+		ReportVersion:          CurrentReportVersion,
+		GeneratedAtUnixMS:      now.UnixMilli(),
+		CallsWithoutSessionID:  in.CallsWithoutSessionID,
+		HarnessUnknownSessions: in.HarnessUnknownSessions,
+		Sessions:               make([]Session, 0, len(in.Sessions)),
 	}
 	for _, si := range in.Sessions {
 		rep.Sessions = append(rep.Sessions, AssembleSession(si, in.NonoConfigured, in.Forgotten, in.ForgottenBefore))
