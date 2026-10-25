@@ -1,6 +1,7 @@
 package pgraph
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -140,5 +141,35 @@ func TestPL1_ConfigCanonical(t *testing.T) {
 	b := Config{GOOS: "linux", GOARCH: "amd64", Tags: []string{"a", "b"}}.String()
 	if a != b || a != "linux/amd64/cgo=0/tags=a,b" {
 		t.Errorf("canonical = %q, %q", a, b)
+	}
+}
+
+// A dependency that does not type-check fails Load: a body that is missing
+// would read as a dependency that calls nothing. The scan-root load, which
+// reads dependencies from export data and does not look at their bodies, does
+// not see it.
+func TestPL3_LoadFailsClosedOnADependencyError(t *testing.T) {
+	base := t.TempDir()
+	write := func(path, src string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(base, path)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(base, path), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("dep/go.mod", "module example.test/dep\n\ngo 1.25.0\n")
+	write("dep/dep.go", "package dep\n\nfunc F() int { return undefinedThing }\n\nfunc G() int { return 1 }\n")
+	write("main/go.mod", "module example.test/main\n\ngo 1.25.0\n\nrequire example.test/dep v0.0.0\n\nreplace example.test/dep => "+filepath.Join(base, "dep")+"\n")
+	write("main/main.go", "package main\n\nimport \"example.test/dep\"\n\nfunc main() { _ = dep.G() }\n")
+	root := filepath.Join(base, "main")
+	if _, err := LoadScanRoot(t.Context(), root, Config{}); err != nil {
+		t.Fatalf("the scan-root load refused it: %v", err)
+	}
+	_, err := Load(t.Context(), root, Config{})
+	var le *LoadError
+	if !errors.As(err, &le) || !strings.Contains(err.Error(), "dependency example.test/dep") || !strings.Contains(err.Error(), "undefinedThing") {
+		t.Fatalf("Load = %v, want a LoadError naming the dependency and its error", err)
 	}
 }

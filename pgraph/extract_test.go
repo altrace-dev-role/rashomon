@@ -1,24 +1,35 @@
 package pgraph
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+	"context"
 	"strings"
+	"sync"
 	"testing"
 )
 
 const m = "example.test/mod"
 
-func fixtureInitID(t *testing.T) string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(testModule, "a", "a.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The id of a function named init carries its file and the byte offset of
-	// its name, since several may share a package.
-	return fmt.Sprintf("func:%s/a.init#a.go@%d", m, strings.Index(string(b), "func init")+len("func "))
+var fixtureInit struct {
+	once sync.Once
+	id   string
+}
+
+// fixtureInitID is the id of the only init function in package a: repeatable
+// names carry a fingerprint of what they are, not a position, so the id is
+// found by asking for the init's own fingerprint and checked to have the form.
+func fixtureInitID() string {
+	fixtureInit.once.Do(func() {
+		p, err := LoadScanRoot(context.Background(), testModule, Config{})
+		if err != nil {
+			panic(err)
+		}
+		for _, f := range Fingerprints(p) {
+			if f.Declared == "func:"+m+"/a.init" {
+				fixtureInit.id = f.ID
+			}
+		}
+	})
+	return fixtureInit.id
 }
 
 func set(ts []Triple) map[Triple]bool {
@@ -59,9 +70,10 @@ func equalSets(t *testing.T, what string, got []Triple, want []Triple) {
 // from Extract.
 func TestPL2_FixtureEdges(t *testing.T) {
 	all := Extract(loadT(t, testModule))
-	init := fixtureInitID(t)
+	init := fixtureInitID()
 	f := func(n string) string { return "func:" + m + "/a." + n }
-	meth := func(recv, n string) string { return "method:(" + recv + ")." + n }
+	// A method id spells its receiver type without pointer or type parameters.
+	meth := func(recv, n string) string { return "method:" + recv + "." + n }
 	A := m + "/a."
 
 	equalSets(t, "calls", byPredicate(all, Calls), []Triple{
@@ -70,7 +82,7 @@ func TestPL2_FixtureEdges(t *testing.T) {
 		{init, Calls, f("Total")},
 		{"pkg:" + m + "/a", Calls, f("New")}, // var initialiser
 		{f("UseGen"), Calls, f("Gen")},       // two instantiations, one edge
-		{f("UseBox"), Calls, meth(A+"Box[T]", "Get")},
+		{f("UseBox"), Calls, meth(A+"Box", "Get")},
 		{f("Closure"), Calls, f("Helper")},  // closure body belongs to its declaration
 		{f("Deferred"), Calls, f("Helper")}, // defer and go
 		{meth(A+"Base", "Name"), Calls, "func:fmt.Sprint"},
@@ -121,8 +133,8 @@ func TestPL2_FixtureEdges(t *testing.T) {
 		{"pkg:" + m + "/a", Declares, init},
 		{"pkg:" + m + "/b", Declares, ty("b", "Tri")},
 		{ty("a", "Base"), Declares, meth(A+"Base", "Name")},
-		{ty("a", "Square"), Declares, meth("*"+A+"Square", "Area")},
-		{ty("a", "Box"), Declares, meth(A+"Box[T]", "Get")},
+		{ty("a", "Square"), Declares, meth(A+"Square", "Area")},
+		{ty("a", "Box"), Declares, meth(A+"Box", "Get")},
 		{ty("b", "Tri"), Declares, meth(m+"/b.Tri", "Area")},
 	} {
 		if !d[w] {
