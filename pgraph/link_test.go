@@ -12,7 +12,12 @@ import (
 )
 
 func fp(id, body string, nodes int) Fingerprint {
-	return Fingerprint{ID: id, Repeatable: strings.Contains(id, "#"), Shape: "func () -> ()", Body: body, Nodes: nodes}
+	rep := strings.Contains(id, "#")
+	declared, _, _ := strings.Cut(id, "#")
+	if !rep {
+		declared = id
+	}
+	return Fingerprint{ID: id, Repeatable: rep, Declared: declared, Shape: "func () -> ()", Body: body, Nodes: nodes}
 }
 
 func linkMap(t *testing.T, old, cur []Fingerprint) map[string]string {
@@ -75,7 +80,7 @@ func TestPL10_LinkRules(t *testing.T) {
 		{"a repeatable id kept with another body is not the same symbol",
 			[]Fingerprint{fp("f:p.init#1", "x", big)}, []Fingerprint{fp("f:p.init#1", "y", big)},
 			map[string]string{}},
-		{"ordinals swapped: bodies, not ordinals, decide",
+		{"two repeatable ids exchanged: bodies, not ids, decide",
 			[]Fingerprint{fp("f:p.init#1", "a", big), fp("f:p.init#2", "b", big)}, []Fingerprint{fp("f:p.init#1", "b", big), fp("f:p.init#2", "a", big)},
 			map[string]string{"f:p.init#1": "f:p.init#2", "f:p.init#2": "f:p.init#1"}},
 		{"nothing in common",
@@ -101,7 +106,8 @@ func TestPL10_LinkRefusesDuplicateIDs(t *testing.T) {
 
 // Properties of Link over random inputs: a partial injection from old to new,
 // the same for any input order, and a link between different ids always has
-// equal bodies and shapes at or above the floor.
+// the same shape and bodies at or above the floor, equal or (rule 4) alike
+// enough within one declared name.
 func TestPL10_LinkProperties(t *testing.T) {
 	rng := rand.New(rand.NewSource(10))
 	gen := func(prefix string, n int) []Fingerprint {
@@ -114,7 +120,19 @@ func TestPL10_LinkProperties(t *testing.T) {
 			}
 			used[id] = true
 			nodes := rng.Intn(2 * MinLinkNodes)
-			out = append(out, Fingerprint{ID: id, Repeatable: strings.Contains(id, "#"), Shape: fmt.Sprint("s", rng.Intn(2)), Body: fmt.Sprint("b", rng.Intn(6), "n", nodes%3), Nodes: nodes})
+			var toks []uint32
+			if strings.Contains(id, "#") {
+				// One of three bodies, with up to four tokens replaced.
+				base := uint32(100 * rng.Intn(3))
+				for i := 0; i < 20; i++ {
+					toks = append(toks, base+uint32(i))
+				}
+				for k := rng.Intn(5); k > 0; k-- {
+					toks[rng.Intn(20)] = uint32(1000 + rng.Intn(1000))
+				}
+				sort.Slice(toks, func(a, b int) bool { return toks[a] < toks[b] })
+			}
+			out = append(out, Fingerprint{Tokens: toks, ID: id, Repeatable: strings.Contains(id, "#"), Declared: strings.SplitN(id, "#", 2)[0], Shape: fmt.Sprint("s", rng.Intn(2)), Body: fmt.Sprint("b", rng.Intn(6), "n", nodes%3), Nodes: nodes})
 		}
 		return out
 	}
@@ -125,6 +143,12 @@ func TestPL10_LinkProperties(t *testing.T) {
 		}
 		return m
 	}
+	rule4 := 0
+	defer func() {
+		if rule4 == 0 {
+			t.Error("no input reached rule 4: the property is vacuous for it")
+		}
+	}()
 	for i := 0; i < 400; i++ {
 		old, cur := gen("o", 1+rng.Intn(10)), gen("n", 1+rng.Intn(10))
 		a, err := Link(old, cur)
@@ -142,11 +166,21 @@ func TestPL10_LinkProperties(t *testing.T) {
 			if o.ID == "" || c.ID == "" {
 				t.Fatalf("link %v names an id that is not in its snapshot", p)
 			}
-			if p.From != p.To && (o.Body != c.Body || o.Shape != c.Shape || o.Nodes < MinLinkNodes || c.Nodes < MinLinkNodes) {
-				t.Fatalf("rename %v below the rules: %+v %+v", p, o, c)
+			if p.From != p.To && o.Nodes < MinLinkNodes || p.From != p.To && c.Nodes < MinLinkNodes {
+				t.Fatalf("link %v under the floor: %+v %+v", p, o, c)
 			}
-			if p.From == p.To && o.Repeatable && o.Body != c.Body {
-				t.Fatalf("repeatable id linked to itself with another body: %v", p)
+			if p.From != p.To && o.Shape != c.Shape {
+				t.Fatalf("link %v across shapes: %+v %+v", p, o, c)
+			}
+			if o.Body != c.Body && !(p.From == p.To && !o.Repeatable) {
+				// Only rule 4 links two different bodies (rule 1 links a name
+				// that kept its id): the same declared name, both repeatable,
+				// and alike enough.
+				num, den := similarity(o.Tokens, c.Tokens)
+				rule4++
+				if !o.Repeatable || !c.Repeatable || o.Declared != c.Declared || den == 0 || num*100 < LinkSimilarityPercent*den {
+					t.Fatalf("link %v of different bodies below rule 4: %+v %+v", p, o, c)
+				}
 			}
 		}
 		for id, o := range oi {
@@ -208,6 +242,17 @@ func TestPL10_FloorOnRealBodies(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
+	// The floor is the parameter of the measurement and nothing else: one node
+	// lower and the body of 19 links too, one node higher and neither does.
+	for floor, n := range map[int]int{19: 2, 22: 1, 23: 0} {
+		ps, err := link(before, after, floor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ps) != n {
+			t.Errorf("floor %d: %d links, want %d: %v", floor, len(ps), n, ps)
+		}
+	}
 }
 
 // A pure rename is linked on real source, and what is not a pure rename is
@@ -226,7 +271,21 @@ func TestPL10_LinkAcrossCommits(t *testing.T) {
 	for _, f := range append(append([]Fingerprint{}, f1...), f2...) {
 		by[f.ID] = f
 	}
-	for _, id := range []string{fn("Normalize"), fn("Canonicalize"), "func:" + util + "Checksum", me("Stack", "Pop"), me("Pile", "Pop"), fn("init#1"), fn("init#2"), fn("Left"), fn("LeftSquares")} {
+	declaredIDs := func(fps []Fingerprint, declared string) []string {
+		var out []string
+		for _, f := range fps {
+			if f.Declared == declared {
+				out = append(out, f.ID)
+			}
+		}
+		return out
+	}
+	inits1, inits2 := declaredIDs(f1, fn("init")), declaredIDs(f2, fn("init"))
+	blanks1, blanks2 := declaredIDs(f1, fn("_")), declaredIDs(f2, fn("_"))
+	if len(inits1) != 2 || len(inits2) != 3 || len(blanks1) != 1 || len(blanks2) != 2 {
+		t.Fatalf("fixture: inits %v then %v, blank functions %v then %v", inits1, inits2, blanks1, blanks2)
+	}
+	for _, id := range append([]string{fn("Normalize"), fn("Canonicalize"), "func:" + util + "Checksum", me("Stack", "Pop"), me("Pile", "Pop"), fn("Left"), fn("LeftSquares")}, inits1...) {
 		if by[id].Nodes < MinLinkNodes {
 			t.Fatalf("%s has %d nodes; the fixture needs it over the floor", id, by[id].Nodes)
 		}
@@ -243,15 +302,18 @@ func TestPL10_LinkAcrossCommits(t *testing.T) {
 		fn("Compute"): fn("Compute"), fn("New"): fn("New"), fn("Pairs"): fn("Pairs"), fn("Triples"): fn("Triples"),
 		fn("Both"): fn("Both"), fn("Double"): fn("Double"), fn("CloseIt"): fn("CloseIt"), fn("Measure"): fn("Measure"),
 		me("Queue", "Reset"): me("Queue", "Reset"), me("Small", "Size"): me("Small", "Size"),
-		fn("_#1"): fn("_#1"),
 		// Pure renames and a move.
 		fn("Normalize"):             fn("Canonicalize"),
 		"func:" + core + "Checksum": "func:" + util + "Checksum",
 		// A type renamed: its method with a real body follows by its body.
 		me("Stack", "Pop"): me("Pile", "Pop"),
-		// The two inits swapped places between files (b_init.go became
-		// 0_init.go, ahead of a_init.go, and a third init follows): bodies decide.
-		fn("init#1"): fn("init#2"), fn("init#2"): fn("init#1"),
+	}
+	// The two inits swapped places between files (b_init.go became 0_init.go,
+	// ahead of a_init.go, and a third init follows) and the blank function
+	// stayed: each keeps its id, by rule 1, and the new init and blank function
+	// are new.
+	for _, id := range append(append([]string{}, inits1...), blanks1...) {
+		want[id] = id
 	}
 	if !reflect.DeepEqual(got, want) {
 		for k, v := range want {
@@ -309,6 +371,121 @@ func TestPL10_FingerprintIgnoresLayoutAndOwnName(t *testing.T) {
 	} {
 		if o := mk(src); o.Body == base.Body && o.Shape == base.Shape {
 			t.Errorf("%s: fingerprint unchanged", name)
+		}
+	}
+}
+
+// Similarity measured on real bodies: the numbers LinkSimilarityPercent's
+// comment quotes, and the margins on either side of the threshold.
+func TestPL10_SimilarityOnRealBodies(t *testing.T) {
+	tok := func(src string) Fingerprint {
+		fps := fingerprintsOfModule(t, map[string]string{"p.go": mergeBase + src})
+		for _, f := range fps {
+			if f.Repeatable {
+				return f
+			}
+		}
+		t.Fatal("no init")
+		return Fingerprint{}
+	}
+	pct := func(a, b Fingerprint) int {
+		num, den := similarity(a.Tokens, b.Tokens)
+		return 100 * num / den
+	}
+	a, a2, b, c, x := tok(initA), tok(initA2), tok(initB), tok(initC), tok(initX)
+	t.Logf("A: %d nodes, A2: %d, B: %d, C: %d, X: %d", a.Nodes, a2.Nodes, b.Nodes, c.Nodes, x.Nodes)
+	t.Logf("similarity percent: A~A %d, A~A2 (one literal) %d, A~C (every literal) %d, A~B %d, B~X %d, A~X %d", pct(a, a), pct(a, a2), pct(a, c), pct(a, b), pct(b, x), pct(a, x))
+	if pct(a, a) != 100 {
+		t.Errorf("a body is not 100 percent like itself: %d", pct(a, a))
+	}
+	if got := pct(a, a2); got < LinkSimilarityPercent {
+		t.Errorf("one literal edited: %d percent, under the threshold %d", got, LinkSimilarityPercent)
+	}
+	for name, got := range map[string]int{"A~C": pct(a, c), "A~B": pct(a, b), "B~X": pct(b, x), "A~X": pct(a, x)} {
+		if got >= LinkSimilarityPercent {
+			t.Errorf("%s: %d percent, at or over the threshold %d", name, got, LinkSimilarityPercent)
+		}
+	}
+}
+
+// Rule 4 on both sides of its threshold, and each of its conditions on its
+// own. Bodies are synthetic token multisets of 20 tokens, so the Dice
+// coefficient of two that share k tokens is 2k over 40: 18 shared is 90
+// percent, 17 is 85.
+func TestPL10_LinkBestMatch(t *testing.T) {
+	if LinkSimilarityPercent != 90 {
+		t.Fatalf("LinkSimilarityPercent = %d; this test's arithmetic assumes 90", LinkSimilarityPercent)
+	}
+	// tokens returns n distinct tokens, the first k shared with every body
+	// built by tokens(_, k) and the rest private to seed.
+	tokens := func(seed uint32, k int) []uint32 {
+		out := make([]uint32, 0, 20)
+		for i := 0; i < 20; i++ {
+			if i < k {
+				out = append(out, uint32(i))
+			} else {
+				out = append(out, 1000*seed+uint32(i))
+			}
+		}
+		return out
+	}
+	rep := func(id, declared, shape, body string, nodes int, toks []uint32) Fingerprint {
+		return Fingerprint{ID: id, Repeatable: true, Declared: declared, Shape: shape, Body: body, Nodes: nodes, Tokens: toks}
+	}
+	const sh = "func () -> ()"
+	big := MinLinkNodes
+	for _, c := range []struct {
+		name     string
+		old, cur []Fingerprint
+		want     map[string]string
+	}{
+		{"at the threshold links",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20))}, []Fingerprint{rep("f:p.init#b", "f:p.init", sh, "b", big, tokens(2, 18))},
+			map[string]string{"f:p.init#a": "f:p.init#b"}},
+		{"just under the threshold does not",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20))}, []Fingerprint{rep("f:p.init#b", "f:p.init", sh, "b", big, tokens(2, 17))},
+			map[string]string{}},
+		{"nothing in common does not",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 0))}, []Fingerprint{rep("f:p.init#b", "f:p.init", sh, "b", big, tokens(2, 0))},
+			map[string]string{}},
+		{"another declared name does not",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20))}, []Fingerprint{rep("f:p._#b", "f:p._", sh, "b", big, tokens(2, 18))},
+			map[string]string{}},
+		{"another shape does not",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20))}, []Fingerprint{rep("f:p.init#b", "f:p.init", "func (int) -> ()", "b", big, tokens(2, 18))},
+			map[string]string{}},
+		{"a stub under the floor does not",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big-1, tokens(1, 20))}, []Fingerprint{rep("f:p.init#b", "f:p.init", sh, "b", big, tokens(2, 18))},
+			map[string]string{}},
+		{"two olds equally near one new: a tie, not guessed",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20)), rep("f:p.init#c", "f:p.init", sh, "c", big, tokens(3, 20))},
+			[]Fingerprint{rep("f:p.init#b", "f:p.init", sh, "b", big, tokens(2, 19))},
+			map[string]string{}},
+		{"each is the other's best: both link, whatever the order",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 0)), rep("f:p.init#c", "f:p.init", sh, "c", big, append(tokens(3, 0)[:10:10], 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))},
+			[]Fingerprint{rep("f:p.init#d", "f:p.init", sh, "d", big, tokens(1, 0)[:19:19]), rep("f:p.init#b", "f:p.init", sh, "b", big, append(tokens(3, 0)[:10:10], 7, 8, 9, 10, 11, 12, 13, 14, 15, 17))},
+			map[string]string{"f:p.init#a": "f:p.init#d", "f:p.init#c": "f:p.init#b"}},
+		{"a repeatable symbol that kept its id is not a candidate",
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20)), rep("f:p.init#c", "f:p.init", sh, "c", big, tokens(3, 20))},
+			[]Fingerprint{rep("f:p.init#a", "f:p.init", sh, "a", big, tokens(1, 20)), rep("f:p.init#b", "f:p.init", sh, "b", big, tokens(2, 18))},
+			map[string]string{"f:p.init#a": "f:p.init#a", "f:p.init#c": "f:p.init#b"}},
+		{"a name that is not repeatable is never matched by similarity",
+			[]Fingerprint{{ID: "f:p.A", Declared: "f:p.A", Shape: sh, Body: "a", Nodes: big, Tokens: tokens(1, 20)}}, []Fingerprint{{ID: "f:p.B", Declared: "f:p.B", Shape: sh, Body: "b", Nodes: big, Tokens: tokens(2, 18)}},
+			map[string]string{}},
+	} {
+		if got := linkMap(t, c.old, c.cur); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s:\n got  %v\n want %v", c.name, got, c.want)
+		}
+		// The same answer for any input order.
+		rev := func(fs []Fingerprint) []Fingerprint {
+			out := append([]Fingerprint(nil), fs...)
+			for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+				out[i], out[j] = out[j], out[i]
+			}
+			return out
+		}
+		if got := linkMap(t, rev(c.old), rev(c.cur)); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s, inputs reversed:\n got  %v\n want %v", c.name, got, c.want)
 		}
 	}
 }

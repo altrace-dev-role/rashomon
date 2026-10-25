@@ -15,8 +15,9 @@
 // alone. Sync reads a Program and reconciles the log to it.
 //
 // Symbols are named by identity.go's scheme: names only, never a position, with
-// an ordinal for the few names Go lets repeat in a package. Link carries
-// identity across a commit when a name changed. Dispatch writes class
+// a fingerprint of what the symbol is for the few names Go lets repeat in a
+// package. Link carries identity across a commit when a name changed or a
+// repeatable symbol's body was edited. Dispatch writes class
 // hierarchy analysis as ALGORITHMIC may-call facts through SyncCHA, beside the
 // PROVEN facts of Sync; Score and ParseLabels measure it against a labelled
 // corpus.

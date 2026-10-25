@@ -94,7 +94,7 @@ func TestPL5_SyncRecordsProvenance(t *testing.T) {
 		t.Fatalf("%+v %v", d, err)
 	}
 	for _, f := range l.Live() {
-		if f.Tier() != Proven || f.Commit() != "abc123" || f.Extractor() != "gotypes@v1" || f.Config() != prog.Config().String() {
+		if f.Tier() != Proven || f.Commit() != "abc123" || f.Extractor() != "gotypes@v2" || f.Config() != prog.Config().String() {
 			t.Fatalf("provenance: %+v", f)
 		}
 	}
@@ -198,41 +198,54 @@ func TestPL5_TwoTiersIncrementalViewByteIdenticalToFull(t *testing.T) {
 	}
 }
 
-// A log written by the previous extractor (its ids spelled the old way, its
-// label gotypes@v0) migrates on the next Sync: the old facts are tombstoned
-// and the new ones asserted, with the rest of the log untouched.
+// A log written by a previous extractor (its ids spelled the old way, its
+// label gotypes@v0 with positions in the spelling or gotypes@v1 with ordinals)
+// migrates on the next Sync: the old facts are tombstoned and the new ones
+// asserted, with the rest of the log untouched.
 func TestPL5_OldExtractorFactsAreTombstonedOnSync(t *testing.T) {
 	prog := loadT(t, testModule)
-	var l Log
-	v0, err := newProducer("gotypes", "v0", Proven)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldFact := Triple{"method:(*example.test/mod/a.Square).Area", Calls, "func:fmt.Sprint"}
-	if _, err := l.Reconcile(v0, prog.Config().String(), "c0", []Triple{oldFact}); err != nil {
-		t.Fatal(err)
-	}
-	other := mustProposed(t, "model")
-	if _, err := l.Reconcile(other, prog.Config().String(), "c0", []Triple{tri("a", Calls, "b")}); err != nil {
-		t.Fatal(err)
-	}
-	d, err := Sync(&l, prog, "c1")
-	if err != nil || d.Retracted != 1 || d.Asserted == 0 {
-		t.Fatalf("%+v %v", d, err)
-	}
-	for _, f := range l.Live() {
-		if f.Triple() == oldFact {
-			t.Error("old-spelling fact still live")
-		}
-	}
-	var mine int
-	for _, f := range l.Live() {
-		if f.Tier() == Proposed && f.Triple() == tri("a", Calls, "b") {
-			mine++
-		}
-	}
-	if mine != 1 {
-		t.Error("another producer's fact was disturbed")
+	for _, c := range []struct {
+		version string
+		fact    Triple
+	}{
+		{"v0", Triple{"method:(*example.test/mod/a.Square).Area", Calls, "func:fmt.Sprint"}},
+		{"v1", Triple{"pkg:" + m + "/a", Declares, "func:" + m + "/a.init#1"}},
+	} {
+		t.Run(c.version, func(t *testing.T) {
+			var l Log
+			old, err := newProducer("gotypes", c.version, Proven)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.Reconcile(old, prog.Config().String(), "c0", []Triple{c.fact}); err != nil {
+				t.Fatal(err)
+			}
+			other := mustProposed(t, "model")
+			if _, err := l.Reconcile(other, prog.Config().String(), "c0", []Triple{tri("a", Calls, "b")}); err != nil {
+				t.Fatal(err)
+			}
+			d, err := Sync(&l, prog, "c1")
+			if err != nil || d.Retracted != 1 || d.Asserted == 0 {
+				t.Fatalf("%+v %v", d, err)
+			}
+			for _, f := range l.Live() {
+				if f.Triple() == c.fact {
+					t.Error("old-spelling fact still live")
+				}
+				if f.Tier() == Proven && f.Extractor() != "gotypes@"+ExtractorVersion {
+					t.Errorf("live PROVEN fact from %s", f.Extractor())
+				}
+			}
+			var mine int
+			for _, f := range l.Live() {
+				if f.Tier() == Proposed && f.Triple() == tri("a", Calls, "b") {
+					mine++
+				}
+			}
+			if mine != 1 {
+				t.Error("another producer's fact was disturbed")
+			}
+		})
 	}
 }
 

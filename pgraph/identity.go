@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"sort"
 	"strconv"
@@ -22,28 +23,53 @@ import (
 // pointer or type parameters (Go allows one method of a name per type, so the
 // receiver's pointer-ness is not part of who the method is); a method of an
 // anonymous interface spells the package and the interface's own text. No
-// position, file name or offset is ever part of an id, so moving text or
-// editing a body changes no id.
+// position, file name, offset or ordinal is ever part of an id, so moving
+// text, inserting a declaration above another, or editing a body elsewhere
+// changes no id.
 //
 // Names that Go lets repeat inside one package, init and the blank
 // identifier (as a function or a method) and types declared inside function
-// bodies, carry an ordinal: "#k", k counting from 1 in source order among the
-// objects with the same spelling (a local type's spelling includes its
-// enclosing declaration, as "Outer$name"). The ordinal is always present for
-// these, even for a lone init, so that adding a second one renames nothing.
+// bodies, are told apart by what they are, not where they are: the id is the
+// declared identity (func:PKG.init, type:PKG.Outer$name, where a local type's
+// spelling includes its enclosing declaration) and "#" and a fingerprint of the
+// normalized declaration. The fingerprint is the first 12 hex digits of the
+// SHA-256 of the signature and the body's syntax tree with names, literals and
+// operators and without positions, comments, layout or the symbol's own name
+// where it refers to itself (the same normalization Link compares), so a
+// function's fingerprint covers its signature and body, and a local type's the
+// type expression and type parameters. A lone init carries one too, so that
+// adding a second renames nothing. An enclosing declaration that is itself
+// repeatable is spelled with its own fingerprint (init#9f2c4a7e1b3d$T#...),
+// so the same local type in two different inits is two different symbols.
+//
+// Exact duplicates (the same declared identity and the same fingerprint:
+// identical bodies) are numbered: the first keeps the bare "#fp" and the rest
+// are "#fp~2", "#fp~3". The numbering is a rank among the duplicates only,
+// never among siblings, and the duplicates are ordered by what the text can
+// say (the full hash, which separates the rare fingerprints that agree in 12
+// digits) and, for duplicates that nothing but their place tells apart, by
+// source order. Adding, removing or moving any declaration that is not an
+// exact duplicate of another changes no id; adding or removing a copy of a
+// body changes which text holds which of "#fp", "#fp~2" and not the set of
+// ids, and two such copies are interchangeable by construction (the same
+// signature and body in the same declared scope, so the facts about one are
+// the facts about the other) except for a local type that the code uses
+// asymmetrically, which is the one place the rank is observable.
 //
 // Invariant: within one Program, two distinct declared symbols have two
-// distinct ids. Names without an ordinal are unique by Go's scoping rules
-// (one object per name per package scope, one method per name per type); names
-// with one are made unique by the ordinal. The exception is by design:
-// methods of identical anonymous interface types are one symbol.
+// distinct ids. Names without a fingerprint are unique by Go's scoping rules
+// (one object per name per package scope, one method per name per type);
+// names with one are made unique by the fingerprint and the numbering of
+// duplicates, which are assigned over the groups of objects whose spelling
+// including the fingerprint is the same. The exception is by design: methods
+// of identical anonymous interface types are one symbol.
 //
-// An ordinal says where a symbol is, not which one it is. It is stable while
-// the order of its siblings is, and Link carries identity across a commit when
-// the order changed.
+// A fingerprint says what a symbol is, so editing its body changes its id.
+// That is what Link is for: it carries a repeatable symbol across an edit by
+// the best match within its declared name.
 type namer struct {
-	ordinal map[types.Object]int    // repeatable objects declared in the scan, 1-based
-	owner   map[types.Object]string // local types: the declaration they sit in
+	suffix map[types.Object]string // "#fp" or "#fp~k" of repeatable objects declared in the scan
+	owner  map[types.Object]string // local types: the declaration they sit in, spelled
 }
 
 // maxAnonReceiverBytes bounds the spelled text of an anonymous interface
@@ -51,44 +77,101 @@ type namer struct {
 // under MaxFieldBytes.
 const maxAnonReceiverBytes = 200
 
+// fingerprintDigits is the length, in hex digits, of a fingerprint in an id.
+const fingerprintDigits = 12
+
+// repeated is one object whose id carries a fingerprint, with what orders the
+// objects that share one.
+type repeated struct {
+	obj  types.Object
+	base string // the declared identity
+	full string // the full hex SHA-256 the fingerprint is cut from
+	pos  token.Position
+}
+
 // newNamer scans the Program's syntax once. Time is O(source size) plus
 // sorting each group of repeatable objects.
 func newNamer(p *Program) *namer {
-	n := &namer{ordinal: map[types.Object]int{}, owner: map[types.Object]string{}}
-	groups := map[string][]types.Object{}
+	n := &namer{suffix: map[types.Object]string{}, owner: map[types.Object]string{}}
+	var funcs []repeated
 	for _, pkg := range p.pkgs {
-		n.findOwners(pkg)
-	}
-	for _, pkg := range p.pkgs {
-		for _, obj := range pkg.TypesInfo.Defs {
-			if base, ok := n.repeatableBase(pkg, obj); ok {
-				groups[base] = append(groups[base], obj)
+		for _, f := range pkg.Syntax {
+			for _, d := range f.Decls {
+				fd, ok := d.(*ast.FuncDecl)
+				if !ok {
+					continue
+				}
+				fn, ok := pkg.TypesInfo.Defs[fd.Name].(*types.Func)
+				if !ok {
+					continue
+				}
+				if base, ok := n.repeatableBase(fn); ok {
+					funcs = append(funcs, repeated{fn, base, bodyDigest(pkg, fd, fn), p.fset.Position(fn.Pos())})
+				}
 			}
 		}
 	}
-	for _, objs := range groups {
-		sort.Slice(objs, func(i, j int) bool {
-			a, b := p.fset.Position(objs[i].Pos()), p.fset.Position(objs[j].Pos())
+	n.number(funcs)
+	var types_ []repeated
+	for _, pkg := range p.pkgs {
+		for _, o := range n.findLocalTypes(pkg) {
+			base := o.tn.Pkg().Path() + "." + o.owner + "$" + o.tn.Name()
+			n.owner[o.tn] = o.owner
+			types_ = append(types_, repeated{o.tn, "type:" + base, typeDigest(pkg, o.spec, o.tn), p.fset.Position(o.tn.Pos())})
+		}
+	}
+	n.number(types_)
+	return n
+}
+
+// number gives each object of rs its suffix: the fingerprint, and a rank among
+// the objects that share declared identity and fingerprint.
+func (n *namer) number(rs []repeated) {
+	groups := map[string][]repeated{}
+	for _, r := range rs {
+		k := r.base + "#" + r.full[:fingerprintDigits]
+		groups[k] = append(groups[k], r)
+	}
+	for _, g := range groups {
+		sort.Slice(g, func(i, j int) bool {
+			if g[i].full != g[j].full {
+				return g[i].full < g[j].full
+			}
+			a, b := g[i].pos, g[j].pos
 			if a.Filename != b.Filename {
 				return a.Filename < b.Filename
 			}
 			return a.Offset < b.Offset
 		})
-		for i, o := range objs {
-			n.ordinal[o] = i + 1
+		for i, r := range g {
+			s := "#" + r.full[:fingerprintDigits]
+			if i > 0 {
+				s += "~" + strconv.Itoa(i+1)
+			}
+			n.suffix[r.obj] = s
 		}
 	}
-	return n
 }
 
-// findOwners records, for every type declared inside a function body or a
-// package-level variable's initialiser, the name of that declaration.
-func (n *namer) findOwners(pkg *packages.Package) {
+// localType is a type declared inside a function body or a package-level
+// variable's initialiser, with the spelling of the declaration it sits in.
+type localType struct {
+	tn    *types.TypeName
+	spec  *ast.TypeSpec
+	owner string
+}
+
+// findLocalTypes returns every type declared inside a function body or a
+// package-level variable's initialiser. The enclosing declaration is spelled
+// by its name, and by its own fingerprint when that name repeats (an init, a
+// blank function, a blank variable), so that two inits do not share a spelling.
+func (n *namer) findLocalTypes(pkg *packages.Package) []localType {
+	var out []localType
 	collect := func(owner string, root ast.Node) {
 		ast.Inspect(root, func(x ast.Node) bool {
 			if ts, ok := x.(*ast.TypeSpec); ok {
-				if o := pkg.TypesInfo.Defs[ts.Name]; o != nil {
-					n.owner[o] = owner
+				if o, ok := pkg.TypesInfo.Defs[ts.Name].(*types.TypeName); ok {
+					out = append(out, localType{o, ts, owner})
 				}
 			}
 			return true
@@ -99,19 +182,61 @@ func (n *namer) findOwners(pkg *packages.Package) {
 			switch d := d.(type) {
 			case *ast.FuncDecl:
 				if d.Body != nil {
-					collect(declName(d), d.Body)
+					name := declName(d)
+					if fn, ok := pkg.TypesInfo.Defs[d.Name].(*types.Func); ok {
+						name += n.suffix[fn]
+					}
+					collect(name, d.Body)
 				}
 			case *ast.GenDecl:
 				for _, s := range d.Specs {
 					if vs, ok := s.(*ast.ValueSpec); ok {
+						name := vs.Names[0].Name
+						if name == "_" {
+							h, _, _ := normalize(pkg.TypesInfo, nil, false, valueNodes(vs)...)
+							name += "#" + h[:fingerprintDigits]
+						}
 						for _, v := range vs.Values {
-							collect(vs.Names[0].Name, v)
+							collect(name, v)
 						}
 					}
 				}
 			}
 		}
 	}
+	return out
+}
+
+func valueNodes(vs *ast.ValueSpec) []ast.Node {
+	out := make([]ast.Node, len(vs.Values))
+	for i, v := range vs.Values {
+		out[i] = v
+	}
+	return out
+}
+
+// bodyDigest is the full hash a function's fingerprint is cut from: its shape
+// (kind and signature without name or receiver) and its normalized body.
+func bodyDigest(pkg *packages.Package, fd *ast.FuncDecl, fn *types.Func) string {
+	body := ""
+	if fd.Body != nil {
+		body, _, _ = normalize(pkg.TypesInfo, fn, false, fd.Body)
+	}
+	sum := sha256.Sum256([]byte(shapeOf(fn) + "\x00" + body))
+	return hex.EncodeToString(sum[:])
+}
+
+// typeDigest is the full hash a local type's fingerprint is cut from: its type
+// parameters and type expression, normalized, and whether it is an alias.
+func typeDigest(pkg *packages.Package, ts *ast.TypeSpec, tn *types.TypeName) string {
+	var nodes []ast.Node
+	if ts.TypeParams != nil {
+		nodes = append(nodes, ts.TypeParams)
+	}
+	nodes = append(nodes, ts.Type)
+	h, _, _ := normalize(pkg.TypesInfo, tn, false, nodes...)
+	sum := sha256.Sum256([]byte(strconv.FormatBool(ts.Assign.IsValid()) + "\x00" + h))
+	return hex.EncodeToString(sum[:])
 }
 
 // declName is the name a function declaration goes by in an owner spelling:
@@ -139,27 +264,21 @@ func declName(d *ast.FuncDecl) string {
 	}
 }
 
-// repeatableBase returns the spelling, before its ordinal, of an object whose
-// name may repeat in its package.
-func (n *namer) repeatableBase(pkg *packages.Package, obj types.Object) (string, bool) {
-	switch o := obj.(type) {
-	case *types.Func:
-		sig := o.Type().(*types.Signature)
-		switch {
-		case sig.Recv() == nil && (o.Name() == "init" || o.Name() == "_"):
-			return "func:" + qualified(o), true
-		case sig.Recv() != nil && o.Name() == "_":
-			return "method:" + n.methodSpelling(o), true
-		}
-	case *types.TypeName:
-		if _, tp := o.Type().(*types.TypeParam); !tp && o.Parent() != nil && o.Parent() != pkg.Types.Scope() {
-			return "type:" + n.typeBase(o), true
-		}
+// repeatableBase returns the declared identity, before its fingerprint, of a
+// function or method whose name may repeat in its package (init, and the blank
+// identifier).
+func (n *namer) repeatableBase(fn *types.Func) (string, bool) {
+	sig := fn.Type().(*types.Signature)
+	switch {
+	case sig.Recv() == nil && (fn.Name() == "init" || fn.Name() == "_"):
+		return "func:" + qualified(fn), true
+	case sig.Recv() != nil && fn.Name() == "_":
+		return "method:" + n.methodSpelling(fn), true
 	}
 	return "", false
 }
 
-// typeBase is a type's spelling without its ordinal.
+// typeBase is a type's spelling without its fingerprint.
 func (n *namer) typeBase(o *types.TypeName) string {
 	if owner, ok := n.owner[o]; ok && o.Pkg() != nil {
 		return o.Pkg().Path() + "." + owner + "$" + o.Name()
@@ -167,19 +286,16 @@ func (n *namer) typeBase(o *types.TypeName) string {
 	return qualified(o)
 }
 
-// typeSpelling is a type's spelling with its ordinal, if it has one.
+// typeSpelling is a type's spelling with its fingerprint, if it has one.
 func (n *namer) typeSpelling(o *types.TypeName) string {
-	return n.withOrdinal(o, n.typeBase(o))
+	return n.withSuffix(o, n.typeBase(o))
 }
 
-func (n *namer) withOrdinal(o types.Object, s string) string {
-	if k := n.ordinal[o]; k > 0 {
-		return s + "#" + strconv.Itoa(k)
-	}
-	return s
+func (n *namer) withSuffix(o types.Object, s string) string {
+	return s + n.suffix[o]
 }
 
-// methodSpelling is PKG.Type.Name for a method, without its ordinal.
+// methodSpelling is PKG.Type.Name for a method, without its own fingerprint.
 func (n *namer) methodSpelling(f *types.Func) string {
 	t := types.Unalias(f.Type().(*types.Signature).Recv().Type())
 	if ptr, ok := t.(*types.Pointer); ok {
@@ -207,9 +323,9 @@ func (n *namer) id(obj types.Object) string {
 	case *types.Func:
 		o = o.Origin()
 		if o.Type().(*types.Signature).Recv() != nil {
-			return n.withOrdinal(o, "method:"+n.methodSpelling(o))
+			return n.withSuffix(o, "method:"+n.methodSpelling(o))
 		}
-		return n.withOrdinal(o, "func:"+qualified(o))
+		return n.withSuffix(o, "func:"+qualified(o))
 	case *types.TypeName:
 		return "type:" + n.typeSpelling(o)
 	case *types.Var:

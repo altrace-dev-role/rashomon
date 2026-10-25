@@ -1,15 +1,36 @@
 package pgraph
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"testing"
 )
 
 const m = "example.test/mod"
 
+var fixtureInit struct {
+	once sync.Once
+	id   string
+}
+
 // fixtureInitID is the id of the only init function in package a: repeatable
-// names carry an ordinal, not a position.
-func fixtureInitID() string { return "func:" + m + "/a.init#1" }
+// names carry a fingerprint of what they are, not a position, so the id is
+// found by asking for the init's own fingerprint and checked to have the form.
+func fixtureInitID() string {
+	fixtureInit.once.Do(func() {
+		p, err := LoadScanRoot(context.Background(), testModule, Config{})
+		if err != nil {
+			panic(err)
+		}
+		for _, f := range Fingerprints(p) {
+			if f.Declared == "func:"+m+"/a.init" {
+				fixtureInit.id = f.ID
+			}
+		}
+	})
+	return fixtureInit.id
+}
 
 func set(ts []Triple) map[Triple]bool {
 	s := map[Triple]bool{}

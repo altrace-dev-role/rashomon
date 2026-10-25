@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -117,9 +119,10 @@ func methodOf(t *testing.T, p *Program, path, typ, name string) *types.Func {
 
 // Ids are written from the scheme: kind, a colon, the package path, a dot,
 // the name; a method spells its receiver type (no pointer, no type
-// parameters); names that may repeat in a package carry an ordinal in source
-// order. The second column of each row is a spelling the replaced scheme
-// produced and this one must not.
+// parameters); names that may repeat in a package carry "#" and a 12-digit hex
+// fingerprint of what they are ({fp} below), never an ordinal or a position.
+// The second column of each row is a spelling the replaced schemes produced and
+// this one must not.
 func TestPL10_Spelling(t *testing.T) {
 	p := loadT(t, filepath.Join("testdata", "idrepo", "commit1"))
 	nm := newNamer(p)
@@ -143,17 +146,22 @@ func TestPL10_Spelling(t *testing.T) {
 		{"type", one("Stack", 0), "type:" + core + ".Stack", ""},
 		{"variable", one("registry", 0), "var:" + core + ".registry", ""},
 		{"constant", one("MaxSize", 0), "const:" + core + ".MaxSize", ""},
-		{"first init, by file order", one("init", 0), "func:" + core + ".init#1", "func:" + core + ".init#a_init.go@"},
-		{"second init", one("init", 1), "func:" + core + ".init#2", "func:" + core + ".init#b_init.go@"},
-		{"blank function", one("_", 0), "func:" + core + "._#1", ""},
-		{"local type", one("shower", 0), "type:" + core + ".Pairs$shower#1", ""},
-		{"same local name, other function", one("shower", 1), "type:" + core + ".Triples$shower#1", ""},
-		{"shadowing local, outer", one("pair", 0), "type:" + core + ".Both$pair#1", ""},
-		{"shadowing local, inner", one("pair", 1), "type:" + core + ".Both$pair#2", ""},
-		{"method of a local interface", methodOf(t, p, core, "shower", "Show"), "method:" + core + ".Pairs$shower#1.Show", ""},
+		{"first init", one("init", 0), "func:" + core + ".init{fp}", "func:" + core + ".init#a_init.go@"},
+		{"second init", one("init", 1), "func:" + core + ".init{fp}", "func:" + core + ".init#b_init.go@"},
+		{"blank function", one("_", 0), "func:" + core + "._{fp}", ""},
+		{"local type", one("shower", 0), "type:" + core + ".Pairs$shower{fp}", ""},
+		{"same local name, other function", one("shower", 1), "type:" + core + ".Triples$shower{fp}", ""},
+		{"shadowing local, outer", one("pair", 0), "type:" + core + ".Both$pair{fp}", ""},
+		{"shadowing local, inner", one("pair", 1), "type:" + core + ".Both$pair{fp}", ""},
+		{"method of a local interface", methodOf(t, p, core, "shower", "Show"), "method:" + core + ".Pairs$shower{fp}.Show", ""},
 	} {
 		got := nm.id(c.obj)
-		if got != c.want {
+		if strings.Contains(c.want, "{fp}") {
+			re := regexp.MustCompile("^" + strings.ReplaceAll(regexp.QuoteMeta(c.want), regexp.QuoteMeta("{fp}"), "#[0-9a-f]{12}") + "$")
+			if !re.MatchString(got) {
+				t.Errorf("%s: id = %q, want the form %q", c.what, got, c.want)
+			}
+		} else if got != c.want {
 			t.Errorf("%s: id = %q, want %q", c.what, got, c.want)
 		}
 		if c.old != "" && strings.HasPrefix(got, c.old) {
@@ -346,20 +354,21 @@ func TestPL10_InjectiveWithinBuild(t *testing.T) {
 	})
 }
 
-// The checker must be able to fail: with the ordinals stripped from the namer,
-// the fixture's repeated names collide and are reported: two init functions
-// and two nested types spelled pair. (The two local interfaces spelled shower
-// are told apart by their enclosing function, with or without an ordinal.)
+// The checker must be able to fail: with the fingerprints stripped from the
+// namer, the fixture's repeated names collide and are reported: two init
+// functions and two nested types spelled pair. (The two local interfaces
+// spelled shower are told apart by their enclosing function, with or without a
+// fingerprint.)
 func TestPL10_InjectivityCheckerCatchesCollisions(t *testing.T) {
 	p := loadT(t, filepath.Join("testdata", "idrepo", "commit1"))
 	nm := newNamer(p)
 	if found, _ := collisions(p, nm); len(found) != 0 {
 		t.Fatalf("collisions with the real namer: %v", found)
 	}
-	nm.ordinal = map[types.Object]int{}
+	nm.suffix = map[types.Object]string{}
 	found, _ := collisions(p, nm)
 	if len(found) != 2 {
-		t.Errorf("%d collisions reported without ordinals, want 2 (init, Both$pair): %v", len(found), found)
+		t.Errorf("%d collisions reported without fingerprints, want 2 (init, Both$pair): %v", len(found), found)
 	}
 }
 
@@ -408,14 +417,27 @@ func TestPL10_StableAcrossCommits(t *testing.T) {
 	}
 
 	// The facts about untouched symbols are the same bytes at both commits.
+	// The local interfaces' ids carry a fingerprint; the same type in another
+	// function is another symbol, and the id is the same at both commits.
+	show := func(p *Program, nm *namer, i int) string {
+		return nm.id(declared(p, core, "shower")[i].Type().(*types.Named).Underlying().(*types.Interface).ExplicitMethod(0))
+	}
+	for i := 0; i < 2; i++ {
+		if a, b := show(p1, n1, i), show(p2, n2, i); a != b {
+			t.Errorf("local interface %d: %q became %q", i, a, b)
+		}
+	}
+	if show(p1, n1, 0) == show(p1, n1, 1) {
+		t.Error("the shower of Pairs and the shower of Triples share an id")
+	}
 	f1, f2 := set(Extract(p1)), set(Extract(p2))
 	for _, w := range []Triple{
 		{"pkg:" + core, Declares, "func:" + core + ".Compute"},
 		{"pkg:" + core, Declares, "type:" + core + ".Queue"},
 		{"type:" + core + ".Queue", Declares, "method:" + core + ".Queue.Reset"},
 		{"func:" + core + ".Measure", Calls, "method:" + core + ".Sizer.Size"},
-		{"func:" + core + ".Pairs", Calls, "method:" + core + ".Pairs$shower#1.Show"},
-		{"func:" + core + ".Triples", Calls, "method:" + core + ".Triples$shower#1.Show"},
+		{"func:" + core + ".Pairs", Calls, show(p1, n1, 0)},
+		{"func:" + core + ".Triples", Calls, show(p1, n1, 1)},
 		{"func:" + core + ".CloseIt", Calls, "method:" + core + ".interface{Close() error}.Close"},
 	} {
 		if !f1[w] {
@@ -426,13 +448,32 @@ func TestPL10_StableAcrossCommits(t *testing.T) {
 		}
 	}
 
-	// ACCEPTED GAP: an ordinal says where a symbol is, not which one it is.
-	// init#1 is the init of a_init.go at commit 1 and of 0_init.go at commit
-	// 2; the id alone cannot tell, and Link (below) is what carries the
-	// identity across.
+	// The inits are told apart by what they are: the two of commit 1 keep
+	// their ids at commit 2, where a third has been added and one of them has
+	// moved ahead of the other, and so does the blank function.
 	fp1, fp2 := fingerprintsByID(p1), fingerprintsByID(p2)
-	if a, b := fp1["func:"+core+".init#1"], fp2["func:"+core+".init#1"]; a.Body == b.Body {
-		t.Error("init#1 kept its body; the fixture does not show the ordinal moving")
+	ids := func(fps map[string]Fingerprint, declared string) []string {
+		var out []string
+		for id, f := range fps {
+			if f.Declared == declared {
+				out = append(out, id)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	i1, i2 := ids(fp1, "func:"+core+".init"), ids(fp2, "func:"+core+".init")
+	if len(i1) != 2 || len(i2) != 3 {
+		t.Fatalf("inits: %d at commit 1, %d at commit 2", len(i1), len(i2))
+	}
+	for _, id := range i1 {
+		if _, ok := fp2[id]; !ok {
+			t.Errorf("init %s of commit 1 has no such id at commit 2: %v", id, i2)
+		}
+	}
+	b1, b2 := ids(fp1, "func:"+core+"._"), ids(fp2, "func:"+core+"._")
+	if len(b1) != 1 || len(b2) != 2 || b1[0] != b2[0] && b1[0] != b2[1] {
+		t.Errorf("blank functions: %v then %v", b1, b2)
 	}
 }
 
@@ -442,4 +483,255 @@ func fingerprintsByID(p *Program) map[string]Fingerprint {
 		m[f.ID] = f
 	}
 	return m
+}
+
+// writeModule writes a module example.test/merge with the given files.
+func writeModule(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	files["go.mod"] = "module example.test/merge\n\ngo 1.25.0\n"
+	for name, src := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// The bodies of the merge test. initA and initB are two inits that are what
+// they are; initC is the declaration inserted above them; initA2 is initA with
+// one literal edited; initX is a different init written where initB was, with
+// nothing of initB's body left.
+const (
+	mergeBase = `package p
+
+var registry = map[string]int{}
+
+func compute(xs []int) int { return len(xs) }
+`
+	initA = `func init() {
+	registry["a"] = compute([]int{1, 2, 3})
+	registry["a2"] = compute([]int{4, 5, 6})
+	registry["a3"] = compute(nil)
+}
+`
+	initA2 = `func init() {
+	registry["a"] = compute([]int{1, 2, 3})
+	registry["a2"] = compute([]int{4, 5, 7})
+	registry["a3"] = compute(nil)
+}
+`
+	initB = `func init() {
+	for i := 0; i < 3; i++ {
+		registry[string(rune('a'+i))] += i * i
+	}
+}
+`
+	initC = `func init() {
+	registry["c"] = compute([]int{9, 8, 7})
+	registry["c2"] = compute([]int{6, 5, 4})
+	registry["c3"] = compute([]int{3, 2, 1})
+}
+`
+	initX = `func init() {
+	if len(registry) > 0 {
+		delete(registry, "a")
+	} else {
+		registry["z"] = -1
+	}
+}
+`
+)
+
+// initLinks keeps the links whose source is an init function.
+func initLinks(m map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range m {
+		if strings.HasPrefix(k, "func:example.test/merge.init") {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func fingerprintsOfModule(t *testing.T, files map[string]string) []Fingerprint {
+	t.Helper()
+	return Fingerprints(loadT(t, writeModule(t, files)))
+}
+
+// idOf returns the id, among fps, of the init function whose body is the
+// text of src (found by fingerprinting src alone in a reference module).
+func idOf(t *testing.T, fps []Fingerprint, src string) string {
+	t.Helper()
+	want := fingerprintsOfModule(t, map[string]string{"p.go": mergeBase + src})
+	var body string
+	for _, f := range want {
+		if strings.HasPrefix(f.ID, "func:"+"example.test/merge.init") {
+			body = f.Body
+		}
+	}
+	if body == "" {
+		t.Fatal("no init in the reference module")
+	}
+	for _, f := range fps {
+		if f.Body == body && strings.HasPrefix(f.ID, "func:example.test/merge.init") {
+			return f.ID
+		}
+	}
+	t.Fatalf("no init with the body of %q among the fingerprints", src)
+	return ""
+}
+
+// THE MERGE TEST (PL10, ruling 2026-10-24 item 2), stated before the scheme
+// that has to pass it.
+//
+// Must stay the same symbol: two inits, A and B, in two files; a third init, C,
+// is inserted above them (once in A's own file, ahead of it, once in a file
+// that sorts before both). A and B are the same symbols after the insertion,
+// so each keeps its id: identity carries no position. Under the ordinal
+// scheme A was init#1 and became init#2, and every fact naming it was
+// retracted and asserted again.
+//
+// Must not: B is replaced by X, an init with nothing of B's body left, and A
+// is edited by one literal. Link carries A across the edit (the same declared
+// name, a body 96 percent the same) and must not carry B to X, though X is
+// B's only possible partner by name, and though no other init competes for
+// it.
+func TestPL10_MergeTest(t *testing.T) {
+	v1 := fingerprintsOfModule(t, map[string]string{"base.go": mergeBase, "a.go": "package p\n\n" + initA, "b.go": "package p\n\n" + initB})
+	idA, idB := idOf(t, v1, initA), idOf(t, v1, initB)
+	if idA == idB {
+		t.Fatalf("two different bodies share the id %q", idA)
+	}
+
+	for name, files := range map[string]map[string]string{
+		"C inserted above A in A's file":    {"base.go": mergeBase, "a.go": "package p\n\n" + initC + "\n" + initA, "b.go": "package p\n\n" + initB},
+		"C inserted in a file sorted first": {"base.go": mergeBase, "0.go": "package p\n\n" + initC, "a.go": "package p\n\n" + initA, "b.go": "package p\n\n" + initB},
+		"C inserted and A, B swap files":    {"base.go": mergeBase, "a.go": "package p\n\n" + initB, "b.go": "package p\n\n" + initC + "\n" + initA},
+	} {
+		t.Run("same/"+name, func(t *testing.T) {
+			v2 := fingerprintsOfModule(t, files)
+			if got := idOf(t, v2, initA); got != idA {
+				t.Errorf("A: id %q became %q", idA, got)
+			}
+			if got := idOf(t, v2, initB); got != idB {
+				t.Errorf("B: id %q became %q", idB, got)
+			}
+			idC := idOf(t, v2, initC)
+			if idC == idA || idC == idB {
+				t.Errorf("C shares an id with A or B: %q", idC)
+			}
+			got := initLinks(linkMap(t, v1, v2))
+			if want := map[string]string{idA: idA, idB: idB}; !reflect.DeepEqual(got, want) {
+				t.Errorf("links %v, want %v", got, want)
+			}
+		})
+	}
+
+	t.Run("not/edited beyond recognition", func(t *testing.T) {
+		v3 := fingerprintsOfModule(t, map[string]string{"base.go": mergeBase, "a.go": "package p\n\n" + initA2, "b.go": "package p\n\n" + initX})
+		idA2, idX := idOf(t, v3, initA2), idOf(t, v3, initX)
+		if idA2 == idA || idX == idB {
+			t.Errorf("an edited body kept its id: A %q -> %q, B %q -> %q", idA, idA2, idB, idX)
+		}
+		got := initLinks(linkMap(t, v1, v3))
+		if want := map[string]string{idA: idA2}; !reflect.DeepEqual(got, want) {
+			t.Errorf("links %v, want only the edit of A: %v", got, want)
+		}
+	})
+}
+
+// Exact duplicates: the same declared identity and the same body. The ids are
+// the fingerprint and a rank among the copies, the bare "#fp" for the first
+// and "#fp~2" for the next, so the set of ids depends on the text and the
+// count of copies only: inserting another declaration above them, or putting
+// them in other files in another order, leaves the set as it was, and adding a
+// copy adds exactly one id.
+func TestPL10_ExactDuplicates(t *testing.T) {
+	twin := "func init() { registry[\"t\"] = compute([]int{1, 1, 1}) }\n"
+	idsOfInit := func(files map[string]string) []string {
+		var out []string
+		for _, f := range fingerprintsOfModule(t, files) {
+			if f.Declared == "func:example.test/merge.init" {
+				out = append(out, f.ID)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	two := idsOfInit(map[string]string{"base.go": mergeBase, "a.go": "package p\n\n" + twin, "b.go": "package p\n\n" + twin})
+	if len(two) != 2 || two[0] == two[1] {
+		t.Fatalf("two copies of a body: ids %v, want two distinct", two)
+	}
+	bare, ranked := two[0], two[1]
+	if !strings.HasSuffix(ranked, "~2") || strings.Contains(bare, "~") || !strings.HasPrefix(ranked, bare) {
+		t.Errorf("ids %v: want the bare fingerprint and the same with ~2", two)
+	}
+	// Other files, another order: the same set. Another init above them in
+	// the same file: the same two ids, and one more for the other init.
+	if got := idsOfInit(map[string]string{"base.go": mergeBase, "z.go": "package p\n\n" + twin, "0.go": "package p\n\n" + twin}); !reflect.DeepEqual(got, two) {
+		t.Errorf("files renamed and swapped: ids %v, want %v", got, two)
+	}
+	above := idsOfInit(map[string]string{"base.go": mergeBase, "a.go": "package p\n\n" + initC + twin + twin})
+	has := func(ids []string, id string) bool {
+		for _, x := range ids {
+			if x == id {
+				return true
+			}
+		}
+		return false
+	}
+	if len(above) != 3 || !has(above, bare) || !has(above, ranked) {
+		t.Errorf("another init above the copies: ids %v do not hold %v and one more", above, two)
+	}
+	// A third copy adds one id and renames neither.
+	three := idsOfInit(map[string]string{"base.go": mergeBase, "a.go": "package p\n\n" + twin + twin + twin})
+	if len(three) != 3 || three[0] != bare || three[1] != ranked || !strings.HasSuffix(three[2], "~3") {
+		t.Errorf("three copies: %v, want %s, %s and a ~3", three, bare, ranked)
+	}
+	// Deterministic: the same text, loaded twice, names the same.
+	files := map[string]string{"base.go": mergeBase, "a.go": "package p\n\n" + twin + twin}
+	if a, b := idsOfInit(files), idsOfInit(files); !reflect.DeepEqual(a, b) {
+		t.Errorf("two loads: %v and %v", a, b)
+	}
+}
+
+// A local type is told apart from the same type in another function by its
+// enclosing declaration, and an enclosing init by its own fingerprint: the
+// same local type in two different inits is two symbols, and an edit to
+// the type's own definition is a new id.
+func TestPL10_LocalTypesCarryTheirOwnerAndDefinition(t *testing.T) {
+	src := func(a, b, tdef string) string {
+		return mergeBase + "\nfunc init() {\n\ttype T " + tdef + "\n\tregistry[\"" + a + "\"] = len([]T{})\n}\n" +
+			"\nfunc init() {\n\ttype T " + tdef + "\n\tregistry[\"" + b + "\"] = len([]T{})\n}\n"
+	}
+	idsOfT := func(source string) []string {
+		p := loadT(t, writeModule(t, map[string]string{"p.go": source}))
+		nm := newNamer(p)
+		var out []string
+		for _, o := range declared(p, "example.test/merge", "T") {
+			out = append(out, nm.id(o))
+		}
+		sort.Strings(out)
+		return out
+	}
+	one := idsOfT(src("x", "y", "struct{ a int }"))
+	if len(one) != 2 || one[0] == one[1] {
+		t.Fatalf("the same local type in two different inits: ids %v, want two", one)
+	}
+	for _, id := range one {
+		if !strings.Contains(id, "merge.init#") || !strings.Contains(id, "$T#") {
+			t.Errorf("id %q does not spell its enclosing init and its own fingerprint", id)
+		}
+	}
+	// Swapping the two inits' places changes nothing.
+	swapped := mergeBase + "\nfunc init() {\n\ttype T struct{ a int }\n\tregistry[\"y\"] = len([]T{})\n}\n" +
+		"\nfunc init() {\n\ttype T struct{ a int }\n\tregistry[\"x\"] = len([]T{})\n}\n"
+	if got := idsOfT(swapped); !reflect.DeepEqual(got, one) {
+		t.Errorf("swapped inits: %v, want %v", got, one)
+	}
+	// Editing the type's definition is a new id.
+	if got := idsOfT(src("x", "y", "struct{ a, b int }")); reflect.DeepEqual(got, one) || got[0] == one[0] || got[1] == one[1] {
+		t.Errorf("an edited local type kept an id: %v then %v", one, got)
+	}
 }

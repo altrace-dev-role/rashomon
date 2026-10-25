@@ -10,9 +10,11 @@ import (
 
 // ExtractorVersion names the rules below. A change to what Extract emits for
 // the same source takes a new version: v1 replaced the position-bearing symbol
-// spelling with the ids of identity.go, so the next Sync of a v0 log tombstones
-// its facts and asserts the v1 ones.
-const ExtractorVersion = "v1"
+// spelling with the ids of identity.go; v2 replaced the ordinals of those ids
+// (init#1, Outer$name#2) with a fingerprint of what the symbol is, so the next
+// Sync of a v0 or v1 log tombstones the facts that name an ordinal id and
+// asserts the v2 ones.
+const ExtractorVersion = "v2"
 
 func gotypesProducer() Producer {
 	p, err := newProducer("gotypes", ExtractorVersion, Proven)
