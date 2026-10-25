@@ -4,14 +4,14 @@
 # declared: gather.Build, which assembles one session at a time without
 # Assemble, Assemble itself, and Empty.
 m("Build renders a report with no version", "internal/report/gather/gather.go",
-  "\trep := &report.Report{\n\t\tReportVersion:         report.CurrentReportVersion,\n",
+  "\trep := &report.Report{\n\t\tReportVersion:          report.CurrentReportVersion,\n",
   "\trep := &report.Report{\n",
   "TestReport_JSONFormIsUnchanged")
 m("Assemble renders a report with no version", "internal/report/assemble.go",
-  "\trep := &Report{\n\t\tReportVersion:         CurrentReportVersion,\n",
+  "\trep := &Report{\n\t\tReportVersion:          CurrentReportVersion,\n",
   "\trep := &Report{\n",
   "TestReportVersion_IsCarriedOnEveryReport")
 m("Empty renders a report with no version", "internal/report/report.go",
-  "return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}",
-  "return &Report{GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}",
+  "return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &noCalls, HarnessUnknownSessions: &noUnknown, Sessions: []Session{}}",
+  "return &Report{GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &noCalls, HarnessUnknownSessions: &noUnknown, Sessions: []Session{}}",
   "TestReportVersion_IsCarriedOnEveryReport")

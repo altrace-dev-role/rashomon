@@ -395,6 +395,19 @@ type Report struct {
 	// Null when that run could not be read, or held a line that did not
 	// parse: an unknown count, never zero, and never a floor printed as one.
 	CallsWithoutSessionID *int `json:"calls_without_session_id"`
+	// HarnessUnknownSessions is how many sessions the hooks counted as seen
+	// under the unknown harness (harness_counts.json, key claude@unknown) in
+	// the last 30 days: a session whose payload and environment matched no
+	// Claude Code signal and no foreign marker. Such a session is still
+	// recorded (harness_id "unknown" on its declarations). BRD-4 ruling,
+	// 2026-10-24: the count appears here so that a non-zero number is a
+	// detector bug to chase, not a state to live with.
+	//
+	// STORE-WIDE, as CallsWithoutSessionID is, and counted per session the way
+	// the counter dedups (a call with no session id always counts). Null when
+	// harness_counts.json exists and could not be read: an unknown count,
+	// never zero.
+	HarnessUnknownSessions *int `json:"harness_unknown_sessions"`
 	// Sessions always marshals as an array, never null.
 	//
 	// null and [] are the same absence to a reader and different values to a
@@ -407,11 +420,12 @@ type Report struct {
 // Empty is the report for a location that has recorded nothing, built without a
 // store so that asking the question cannot create one. It is the same shape
 // Assemble returns for a store with no runs -- including a count of zero
-// calls without a session id, which is a real zero: nothing was ever recorded
-// at this location, so no such call was either.
+// calls without a session id and of unknown-harness sessions, which are real
+// zeros: nothing was ever recorded at this location, so no such call or
+// session was either.
 func Empty(now time.Time) *Report {
-	none := 0
-	return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}
+	noCalls, noUnknown := 0, 0
+	return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &noCalls, HarnessUnknownSessions: &noUnknown, Sessions: []Session{}}
 }
 
 // build is one session's report from its run and what the read step read of

@@ -47,8 +47,7 @@ const (
 // one family (a positive detection and a presumed one are both "this is
 // Claude Code", just with different confidence), and Unknown belongs to no
 // family that was ever installed-for, so it can never equal an
-// installedFor value -- an Unknown detection always mismatches, which is
-// exactly BRD-4's "foreign OR UNKNOWN harnesses" rule.
+// installedFor value. StandsDown, not this mapping, decides what that means.
 func familyOf(id harness.ID) string {
 	switch id {
 	case harness.ClaudeCode, harness.ClaudeCodePresumed:
@@ -64,11 +63,18 @@ func familyOf(id harness.ID) string {
 
 // StandsDown reports whether an entry installed for installedFor must stand
 // down given what Detect decided about this invocation (6.2.3, BRD-4): true
-// on any mismatch, Unknown included. It never reads id.Evidence or
+// on a positively detected foreign family (Cursor, Codex) and false on
+// Unknown, so the caller records it and counts it as seen (a session that
+// shows no Claude Code signal and no foreign marker detects as Unknown). BRD-4 ruling, 2026-10-24:
+// stand down on positive foreign evidence only; Unknown is recorded and
+// counted, and the report shows the count. It never reads id.Evidence or
 // id.Surface -- only id.ID, the one field a family is defined over -- so a
 // caller cannot accidentally widen or narrow the comparison by passing a
 // differently-shaped Identity than Detect itself produces.
 func StandsDown(installedFor Family, id harness.Identity) bool {
+	if id.ID == harness.Unknown {
+		return false
+	}
 	return string(installedFor) != familyOf(id.ID)
 }
 

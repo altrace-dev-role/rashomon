@@ -2,8 +2,8 @@
 # and is byte-compared with a committed golden, and the digest and spend
 # documents' key paths are snapshots. A renamed key is a diff, not a pass.
 m("RUBRIC naming-3 an empty report carries no report_version", "internal/report/report.go",
-  "\treturn &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}",
-  "\treturn &Report{GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}",
+  "\treturn &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &noCalls, HarnessUnknownSessions: &noUnknown, Sessions: []Session{}}",
+  "\treturn &Report{GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &noCalls, HarnessUnknownSessions: &noUnknown, Sessions: []Session{}}",
   "TestRubricNAMING3_TheReportCarriesItsReportVersion")
 m("RUBRIC naming-3 report's redacted key is renamed", "internal/report/report.go",
   "\tRedacted bool `json:\"redacted\"`", "\tRedacted bool `json:\"redact\"`",

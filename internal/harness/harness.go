@@ -19,8 +19,12 @@ const (
 	// ClaudeCode is positive evidence: CLAUDE_CODE_ENTRYPOINT named a value
 	// in the 2.1.280 allowlist.
 	ClaudeCode ID = "claude_code"
-	// ClaudeCodePresumed is no foreign marker plus a transcript path under
-	// the Claude Code config directory's projects/ tree.
+	// ClaudeCodePresumed is no foreign marker plus at least one Claude Code
+	// signal short of an allowlisted entrypoint: a transcript path under the
+	// config directory's projects/ tree, a transcript path with Claude Code's
+	// own projects/<dir>/<session-uuid>.jsonl shape wherever the config
+	// directory is, or the CLAUDE_PROJECT_DIR the hook process is started
+	// with (BRD-4 ruling, 2026-10-24: the detector gap is a bug).
 	ClaudeCodePresumed ID = "claude_code_presumed"
 	Cursor             ID = "cursor"
 	Codex              ID = "codex"
@@ -52,6 +56,13 @@ const (
 	EvModelOffSessionStart Evidence = "model_on_non_session_start_event"
 	EvEntrypointEnv        Evidence = "claude_code_entrypoint_env"
 	EvClaudeTranscript     Evidence = "transcript_under_claude_projects"
+	// EvClaudeProjectDirEnv: CLAUDE_PROJECT_DIR is set and non-empty. Claude
+	// Code starts every hook command with it (2.1.42 and 2.1.310 both build
+	// the hook environment as the process environment plus this key).
+	EvClaudeProjectDirEnv Evidence = "claude_project_dir_env"
+	// EvClaudeTranscriptShape: transcript_path ends projects/<dir>/<uuid>.jsonl,
+	// the layout Claude Code writes under whatever its config directory is.
+	EvClaudeTranscriptShape Evidence = "transcript_projects_session_shape"
 )
 
 // Capability is one thing a harness lets rashomon see or do. Closed set
@@ -114,4 +125,5 @@ type Identity struct {
 type Env struct {
 	Entrypoint string // CLAUDE_CODE_ENTRYPOINT, or "" when unset
 	ConfigDir  string // settings.ConfigDir()
+	ProjectDir string // CLAUDE_PROJECT_DIR, or "" when unset
 }

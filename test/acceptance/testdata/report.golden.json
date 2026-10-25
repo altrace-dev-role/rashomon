@@ -3,6 +3,7 @@
   "generated_at_unix_ms": 0,
   "redacted": false,
   "calls_without_session_id": 0,
+  "harness_unknown_sessions": 0,
   "sessions": [
     {
       "session_id": "sess-1",

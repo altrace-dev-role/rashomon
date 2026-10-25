@@ -89,7 +89,7 @@ func TestRES4_TheHostGuardKeepsAnOverCapPayloadsSession(t *testing.T) {
 	head := `{"session_id":"s-big","cwd":"/p","tool_name":"Write","tool_input":{"content":"`
 	tail := `"}}`
 	raw := head + strings.Repeat("x", hookio.MaxPayloadBytes+1-len(head)-len(tail)) + tail
-	payload, replay, down := claudeHostGuard(strings.NewReader(raw))
+	payload, replay, down, _ := claudeHostGuard(strings.NewReader(raw))
 	if down || payload != nil {
 		t.Fatalf("guard: down %v payload %v, want a refusal handed on", down, payload)
 	}

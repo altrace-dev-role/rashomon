@@ -108,12 +108,31 @@ func readHarnessCountsFile(t *testing.T, e *env) harnessCountsFile {
 	return hc
 }
 
-// TestBRD4_HookStandsDownOnUnknownHarness: an entrypoint outside the
-// 2.1.280 allowlist, with the fixture's own transcript_path (never under
-// e.configDir), satisfies none of Detect's five steps but the last --
-// Unknown -- and BRD-4's own text says to stand down on it, same as a
-// named foreign harness: "stand down on foreign OR UNKNOWN harnesses".
-func TestBRD4_HookStandsDownOnUnknownHarness(t *testing.T) {
+// seenNotStoodDown reads claude@unknown back: the Unknown detection moved
+// the counter as seen and never as stood down.
+func seenNotStoodDown(t *testing.T, e *env) {
+	t.Helper()
+	entry, ok := readHarnessCountsFile(t, e).Counts["claude@unknown"]
+	if !ok {
+		t.Fatalf("harness_counts.json has no claude@unknown entry")
+	}
+	var seen, down int
+	for _, d := range entry.Days {
+		seen += d.Seen
+		down += d.StoodDown
+	}
+	if seen != 1 || down != 0 {
+		t.Errorf("claude@unknown seen=%d stood_down=%d, want seen=1 stood_down=0", seen, down)
+	}
+}
+
+// TestBRD4_HookRecordsUnknownHarness: a Claude-shaped payload with no
+// CLAUDE_CODE_ENTRYPOINT and a transcript outside the config dir satisfies
+// none of Detect's steps but the last -- Unknown. The call stands down only
+// on a positive foreign marker (BRD-4 ruling, 2026-10-24: stand down on
+// positive foreign evidence only; Unknown is recorded and counted), so the
+// call is recorded with harness_id "unknown" and the counter moves as seen.
+func TestBRD4_HookRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 
@@ -121,25 +140,14 @@ func TestBRD4_HookStandsDownOnUnknownHarness(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("hook: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	if res.stdout != "" {
-		t.Errorf("stood-down hook wrote stdout %q, want none", res.stdout)
+	decls := e.declarations(testSession)
+	if len(decls) != 1 {
+		t.Fatalf("got %d declarations, want 1: an Unknown harness is recorded (BRD-4 ruling, 2026-10-24)", len(decls))
 	}
-	if len(e.declarations(testSession)) != 0 {
-		t.Errorf("stood-down hook recorded a declaration")
+	if got := decls[0].str("harness_id"); got != "unknown" {
+		t.Errorf("declaration harness_id = %q, want %q", got, "unknown")
 	}
-
-	hc := readHarnessCountsFile(t, e)
-	entry, ok := hc.Counts["claude@unknown"]
-	if !ok {
-		t.Fatalf("harness_counts.json has no claude@unknown entry: %+v", hc.Counts)
-	}
-	var total int
-	for _, d := range entry.Days {
-		total += d.StoodDown
-	}
-	if total != 1 {
-		t.Errorf("claude@unknown stood_down total = %d, want 1", total)
-	}
+	seenNotStoodDown(t, e)
 }
 
 // TestBRD4_HookStandsDownOnCursorMarker: Detect's step 1 fires on
@@ -242,29 +250,28 @@ func TestBRD4_SessionlessCursorStandDownsDedupeBySameConversation(t *testing.T) 
 	}
 }
 
-// TestBRD4_PostStandsDownOnUnknownHarness mirrors the hook case for
-// PostToolUse: no execution recorded, same counter key.
-func TestBRD4_PostStandsDownOnUnknownHarness(t *testing.T) {
+// TestBRD4_PostRecordsUnknownHarness mirrors the hook case for
+// PostToolUse: the execution is recorded and the counter moves as seen
+// (BRD-4 ruling, 2026-10-24: Unknown is recorded and counted).
+func TestBRD4_PostRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
 
 	res := e.post(defaultPost().build(t), "CLAUDE_CODE_ENTRYPOINT=")
 	if res.exitCode != 0 {
 		t.Fatalf("post: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	if len(e.executions(testSession)) != 0 {
-		t.Errorf("stood-down post recorded an execution")
+	if len(e.executions(testSession)) != 1 {
+		t.Errorf("post under an Unknown harness recorded %d executions, want 1 (BRD-4 ruling, 2026-10-24: Unknown is recorded)", len(e.executions(testSession)))
 	}
-	if _, ok := readHarnessCountsFile(t, e).Counts["claude@unknown"]; !ok {
-		t.Errorf("post's stand-down did not move claude@unknown")
-	}
+	seenNotStoodDown(t, e)
 }
 
-// TestBRD4_ProbeStandsDownOnUnknownHarness: probe's SessionStart/SessionEnd
-// phases are the one entry point whose payload never carries a tool call,
-// so the only observable is coverage.ndjson staying empty and the exit
-// code -- there is no declaration or execution to check.
-func TestBRD4_ProbeStandsDownOnUnknownHarness(t *testing.T) {
+// TestBRD4_ProbeRecordsUnknownHarness: probe's start phase under an Unknown
+// harness proceeds and creates its run directory (BRD-4 ruling, 2026-10-24:
+// Unknown is recorded and counted).
+func TestBRD4_ProbeRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
@@ -275,12 +282,10 @@ func TestBRD4_ProbeStandsDownOnUnknownHarness(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("probe: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	if runDirExists(e, sessionID) {
-		t.Errorf("stood-down probe created a run directory for %s", sessionID)
+	if !runDirExists(e, sessionID) {
+		t.Errorf("probe under an Unknown harness created no run directory for %s (BRD-4 ruling, 2026-10-24: Unknown is recorded)", sessionID)
 	}
-	if _, ok := readHarnessCountsFile(t, e).Counts["claude@unknown"]; !ok {
-		t.Errorf("probe's stand-down did not move claude@unknown")
-	}
+	seenNotStoodDown(t, e)
 }
 
 // TestBRD4_RecapStandsDownOnCursorMarker: recap reads its harness signal
@@ -314,6 +319,27 @@ func TestBRD4_RecapStandsDownOnCursorMarker(t *testing.T) {
 	if _, ok := hc.Counts["claude@cursor"]; !ok {
 		t.Errorf("recap's stand-down did not move claude@cursor: %+v", hc.Counts)
 	}
+}
+
+// TestBRD4_RecapRecordsUnknownHarness: recap under an Unknown harness still
+// runs and counts it as seen (BRD-4 ruling, 2026-10-24: Unknown is recorded
+// and counted).
+func TestBRD4_RecapRecordsUnknownHarness(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+
+	b, err := json.Marshal(map[string]any{
+		"hook_event_name":        "Stop",
+		"session_id":             testSession,
+		"transcript_path":        "/tmp/transcripts/" + testSession + ".jsonl",
+		"last_assistant_message": "done",
+	})
+	if err != nil {
+		t.Fatalf("building recap payload: %v", err)
+	}
+	e.recapLine(string(b), "CLAUDE_CODE_ENTRYPOINT=")
+	seenNotStoodDown(t, e)
 }
 
 // TestBRD4_HarnessCountsFileIsPrivate: 6.2.1's own "0600" and "at most 64
@@ -351,8 +377,12 @@ func TestBRD4_ClaudeEntryNeverStandsDown(t *testing.T) {
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
 
-	if len(e.declarations(testSession)) != 1 {
-		t.Fatalf("got %d declarations, want 1 (hook must not have stood down)", len(e.declarations(testSession)))
+	decls := e.declarations(testSession)
+	if len(decls) != 1 {
+		t.Fatalf("got %d declarations, want 1 (hook must not have stood down)", len(decls))
+	}
+	if got := decls[0].str("harness_id"); got != "" {
+		t.Errorf("a Claude Code detection stamped harness_id %q, want null", got)
 	}
 	if _, err := os.Stat(harnessCountsPath(e)); !os.IsNotExist(err) {
 		t.Errorf("harness_counts.json exists for an install that never stood down: %v", err)

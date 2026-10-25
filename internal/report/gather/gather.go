@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/harness"
+	"github.com/altrace-dev-role/rashomon/internal/hostguard"
 	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -64,10 +66,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*r
 	}
 	nonoConfigured := cfg.nonoTrail != ""
 	rep := &report.Report{
-		ReportVersion:         report.CurrentReportVersion,
-		GeneratedAtUnixMS:     now.UnixMilli(),
-		CallsWithoutSessionID: callsWithoutSessionID(st),
-		Sessions:              make([]report.Session, 0, len(names)),
+		ReportVersion:          report.CurrentReportVersion,
+		GeneratedAtUnixMS:      now.UnixMilli(),
+		CallsWithoutSessionID:  callsWithoutSessionID(st),
+		HarnessUnknownSessions: harnessUnknownSessions(st),
+		Sessions:               make([]report.Session, 0, len(names)),
 	}
 	for _, name := range names {
 		si, err := readSession(st, name, byDir, gapsSkipped, cfg, forgottenBefore)
@@ -90,10 +93,11 @@ func Read(st *store.Store, sessionID string, opts ...Option) (report.Input, erro
 		return report.Input{}, err
 	}
 	in := report.Input{
-		NonoConfigured:        cfg.nonoTrail != "",
-		Forgotten:             forgotten,
-		ForgottenBefore:       forgottenBefore,
-		CallsWithoutSessionID: callsWithoutSessionID(st),
+		NonoConfigured:         cfg.nonoTrail != "",
+		Forgotten:              forgotten,
+		ForgottenBefore:        forgottenBefore,
+		CallsWithoutSessionID:  callsWithoutSessionID(st),
+		HarnessUnknownSessions: harnessUnknownSessions(st),
 	}
 	for _, name := range names {
 		si, err := readSession(st, name, byDir, gapsSkipped, cfg, forgottenBefore)
@@ -236,6 +240,18 @@ func callsWithoutSessionID(st *store.Store) *int {
 		return nil
 	}
 	n := len(run.Declarations)
+	return &n
+}
+
+// harnessUnknownSessions reads how many sessions the hooks counted under the
+// unknown harness; see report.Report.HarnessUnknownSessions. A counter that
+// exists and cannot be read yields nil: unknown, never zero.
+func harnessUnknownSessions(st *store.Store) *int {
+	key := hostguard.CounterKey(hostguard.FamilyClaude, harness.Identity{ID: harness.Unknown})
+	n, err := store.HarnessSeenCount(st.Root(), key)
+	if err != nil {
+		return nil
+	}
 	return &n
 }
 

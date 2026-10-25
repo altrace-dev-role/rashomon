@@ -41,8 +41,7 @@ var overLimit = map[string]int{
 // main when this ratchet landed there: main.go, store.go and watch.go grew on
 // main while it waited on its branch.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    1300,
-	"internal/report/text.go": 505,
+	"cmd/rashomon/main.go":    1299,
 	"internal/store/store.go": 563,
 	"cmd/rashomon/watch.go":   545,
 }
