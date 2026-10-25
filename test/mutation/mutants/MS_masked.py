@@ -121,9 +121,9 @@ m("MS the runner digest runs to the end of the line", "internal/shape/masked_sim
   "\tkey := p.runnerWords(ri, e)\n", "\tkey := p.runnerWords(ri, len(toks))\n", SH)
 m("MS the runner digest is not keyed", "internal/shape/masked_eval.go",
   "\td := digest(key, \"\\x00runner\",", "\td := digest(nil, \"\\x00runner\",", SH)
-m("MS a runner whose failure reaches the line carries no runner digest", "internal/shape/masked.go",
+m("MS a runner whose failure reaches the line carries no runner digest or kind", "internal/shape/masked.go",
   "\t\td, rk := p.runnerOf(reach, key)\n\t\treturn &none, d, rk\n", "\t\treturn &none, nil, nil\n", SH)
-m("MS two hidden runners carry one's digest", "internal/shape/masked.go",
+m("MS two hidden runners carry one's digest and kind", "internal/shape/masked.go",
   "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil, nil\n\t\t}\n", "", SH)
 m("MS a runner after a cd keeps its digest", "internal/shape/masked_eval.go",
   "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH + "|TestFoldKeepsRunnerIdentity")
@@ -183,7 +183,7 @@ m("MS masked runs fire with no pass claimed", "internal/report/account.go",
 
 # Masking judged on the command that ran: the execution carries it, and the
 # report and the digest take it over the declaration's (MaskingAsRan).
-m("MS the post hook keeps no masking", "internal/hook/post.go",
+m("MS the post hook keeps no masking, runner digest or kind", "internal/hook/post.go",
   "\t\trec.StatusMasked, rec.RunnerDigest, rec.RunnerKind = s.StatusMasked, s.RunnerDigest, s.RunnerKind\n", "", RP)
 m("MS the report judges the declared line", "internal/report/assemble.go",
   "\tMaskingAsRan(run)\n", "", RP)

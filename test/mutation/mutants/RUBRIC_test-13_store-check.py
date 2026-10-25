@@ -29,3 +29,11 @@ m("test-13  declared damage that did not happen passes", "test/acceptance/storec
 m("test-13  the store check reads a line over the store's bound as one that is not JSON", "test/acceptance/storecheck_test.go",
   "\t\tif sc.TooLong() {\n\t\t\tout = append(out, fmt.Sprintf(\"%s: a line over store.MaxLine\", where))\n\t\t\tcontinue\n\t\t}\n",
   "", "TestRubricTEST13_")
+m("test-13  a runner_kind null beside a set runner_digest passes", "test/acceptance/storecheck_test.go",
+  "\t\t\tout = append(out, fmt.Sprintf(\"%s: runner_kind %v beside runner_digest %v, one null and one not\", where, kind, digest))\n",
+  "", "TestRubricTEST13_")
+m("test-13  the runner pair is held to differ, not to agree", "test/acceptance/storecheck_test.go",
+  "\t\tif (kind == nil) != (digest == nil) {\n", "\t\tif (kind == nil) == (digest == nil) {\n", "TestRubricTEST13_")
+m("test-13  a runner_kind outside shape.RunnerKinds() passes", "test/acceptance/storecheck_test.go",
+  "\t\t\tout = append(out, fmt.Sprintf(\"%s: runner_kind %q is outside shape.RunnerKinds()\", where, kind))\n",
+  "", "TestRubricTEST13_")

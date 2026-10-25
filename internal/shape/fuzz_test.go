@@ -81,6 +81,13 @@ func checkDerive(t *testing.T, cmd string) {
 	if s.RunnerDigest != nil && !isDigest(*s.RunnerDigest) {
 		t.Fatalf("runner digest %q for %q is not 64 hex characters", *s.RunnerDigest, cmd)
 	}
+	if (s.RunnerDigest == nil) != (s.RunnerKind == nil) {
+		t.Fatalf("runner digest %s beside runner kind %s for %q: one null and one not",
+			orNil(s.RunnerDigest), orNil(s.RunnerKind), cmd)
+	}
+	if s.RunnerKind != nil && !slices.Contains(RunnerKinds(), *s.RunnerKind) {
+		t.Fatalf("runner kind %q for %q is outside RunnerKinds()", *s.RunnerKind, cmd)
+	}
 	if again := Derive("Bash", raw, []byte("fuzz-key")); !reflect.DeepEqual(s, again) {
 		t.Fatalf("Derive(%q) is not deterministic: %+v then %+v", cmd, s, again)
 	}
