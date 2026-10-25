@@ -38,6 +38,16 @@ const (
 	// row sees 20 consecutive lengths, so a boundary can still move it by one
 	// copy in 20, never by every one.
 	benchSpread = 256
+
+	// benchIDSpread is how many consecutive lengths the terminal, the
+	// execution and the coverage records cycle through: copy i's tool_use_id
+	// is i mod benchIDSpread bytes wider than a real one, and its coverage cwd
+	// as many bytes longer. That is one whole size-class width at the
+	// execution's length, about 1 KB, where the classes are 128 B apart
+	// (1,024, 1,152), and several at the terminal's and the coverage record's,
+	// where they are 16 to 32 B apart. The widest id, 30 bytes and 127 more,
+	// stays under MaxIDBytes.
+	benchIDSpread = 128
 )
 
 // benchCall is what one Bash tool call writes, as the hook path builds it: a
@@ -48,6 +58,13 @@ type benchCall struct {
 	term Terminal
 	exec Execution
 	cov  Coverage
+
+	// idPad is the zeros this copy puts after toolu_01 in every tool_use_id a
+	// benchmark writes for it (benchCalls). It is an any, boxed once here,
+	// because a string boxed in the loop allocates, and so does fmt for a
+	// zero-padded width past its own scratch buffer: either would count an
+	// allocation of the fixture's in the row.
+	idPad any
 }
 
 // newBenchCall builds bash_short's records, its shape derived under st's key.
@@ -76,15 +93,23 @@ func newBenchCall(st *Store) benchCall {
 	}
 }
 
-// benchCalls is n copies of newBenchCall(st) whose declarations are n
-// consecutive lengths: copy i's transcript path is benchTranscript with "-"
-// and i x's after it. Every one stays under MaxPathBytes for n up to
-// benchSpread.
+// benchCalls is n copies of newBenchCall(st) whose records step through
+// consecutive lengths. Copy i pads by i mod benchIDSpread bytes (its pad):
+// its tool_use_ids carry that many more zeros (idPad) and its coverage cwd is
+// benchCWD with "-" and pad x's after it, which spreads the terminal, the
+// execution and the coverage record. Its transcript path is benchTranscript
+// with "-" and the other i-pad x's after it, so the declaration, which
+// carries both the id and the path, is still i bytes longer than copy 0's: n
+// consecutive lengths. Every path stays under MaxPathBytes and every id under
+// MaxIDBytes for n up to benchSpread.
 func benchCalls(st *Store, n int) []benchCall {
 	calls := make([]benchCall, n)
 	for i := range calls {
+		pad := i % benchIDSpread
 		calls[i] = newBenchCall(st)
-		calls[i].decl.TranscriptPath = benchTranscript + "-" + strings.Repeat("x", i)
+		calls[i].idPad = strings.Repeat("0", pad)
+		calls[i].decl.TranscriptPath = benchTranscript + "-" + strings.Repeat("x", i-pad)
+		calls[i].cov.CWD = benchCWD + "-" + strings.Repeat("x", pad)
 	}
 	return calls
 }
@@ -126,7 +151,9 @@ func benchLines(b *testing.B, path string) (int, int) {
 // BenchmarkRecordBytesPerCall appends what one tool call writes and reports
 // what that leaves on disk per call, records plus coverage, the basis of
 // v1.1.0's 1,850 B and of RES-31's 6,000 B budget; records-B/call is
-// records.ndjson alone. SetBytes is the same per-call figure.
+// records.ndjson alone. SetBytes is the same per-call figure. B/call includes
+// the bytes benchCalls pads the records by to spread their lengths: 50.5 B a
+// call over the gate's 20 calls, 384.5 B over a whole cycle of benchSpread.
 func BenchmarkRecordBytesPerCall(b *testing.B) {
 	st, err := Open(b.TempDir())
 	if err != nil {
@@ -135,7 +162,7 @@ func BenchmarkRecordBytesPerCall(b *testing.B) {
 	calls := benchCalls(st, benchSpread)
 	ids := make([]string, b.N)
 	for i := range ids {
-		ids[i] = fmt.Sprintf("toolu_01%022d", i)
+		ids[i] = fmt.Sprintf("toolu_01%s%022d", calls[i%benchSpread].idPad, i)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
