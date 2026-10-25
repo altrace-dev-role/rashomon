@@ -234,22 +234,23 @@ func TestDetectorPrecision_Table(t *testing.T) {
 	// fixtures that show it: what a fix would have to cover.
 	reproduced := map[string][]string{}
 	for _, spec := range detectorInventory {
-		tallies[spec.id] = &fireTally{}
-		names, fixtures := loadDetectorFixtures(t, spec.id)
-		hasFixtures[spec.id] = len(fixtures) > 0
-		if len(fixtures) > 0 && spec.fired == nil {
-			t.Fatalf("%s has fixtures but no fire condition", spec.id)
+		id := spec.name()
+		tallies[id] = &fireTally{}
+		names, fixtures := loadDetectorFixtures(t, id)
+		hasFixtures[id] = len(fixtures) > 0
+		if len(fixtures) > 0 && spec.reportOnly {
+			t.Fatalf("%s is report-only: its fire condition is not in the digest the replay reads", id)
 		}
 		for i, f := range fixtures {
-			t.Run(spec.id+"/"+names[i], func(t *testing.T) {
+			t.Run(id+"/"+names[i], func(t *testing.T) {
 				fired, problems := fixtureProblems(spec, f, runFixture(t, f))
 				for _, p := range problems {
 					t.Error(p)
 				}
 				if fired && len(problems) == 0 {
-					tallies[spec.id].add(f.Label, f.LabelledBy)
+					tallies[id].add(f.Label, f.LabelledBy)
 					if f.Label == labelFalsePositive {
-						reproduced[f.FPClass] = append(reproduced[f.FPClass], spec.id+"/"+names[i])
+						reproduced[f.FPClass] = append(reproduced[f.FPClass], id+"/"+names[i])
 					}
 				}
 			})
@@ -262,7 +263,7 @@ func TestDetectorPrecision_Table(t *testing.T) {
 
 	var lines []string
 	for _, spec := range detectorInventory {
-		lines = append(lines, precisionRow{spec.id, *tallies[spec.id], hasFixtures[spec.id]}.String())
+		lines = append(lines, precisionRow{spec.name(), *tallies[spec.name()], hasFixtures[spec.name()]}.String())
 	}
 	var classes []string
 	for _, c := range fpClasses {

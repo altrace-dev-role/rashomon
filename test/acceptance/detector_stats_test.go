@@ -4,6 +4,10 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The pure half of detector precision, tested without the binary: the Wilson
@@ -209,16 +213,13 @@ func TestDetectorPrecision_ParseSheet(t *testing.T) {
 }
 
 // TestDetectorPrecision_LabelIsHeldToTheDetector: a label that presupposes a
-// fire the detector did not make, a silence it did not keep, and a line that
-// disagrees with the digest each fail; the matching cases do not. Two values
-// per rule, run on a synthetic replay.
+// fire the detector did not make, and a silence it did not keep, each fail;
+// the matching cases do not. Two values per rule, run on a synthetic replay.
 func TestDetectorPrecision_LabelIsHeldToTheDetector(t *testing.T) {
 	spec, _ := detectorSpecByID("silent_failure")
 	fires := fixtureReplay{spoke: true, line: "※ rashomon: 1 recorded failure."}
 	fires.digest.SilentFailures.Fires = true
 	silent := fixtureReplay{}
-	liar := fixtureReplay{spoke: true, line: "※ rashomon: coverage unverified (gap)."}
-	liar.digest.SilentFailures.Fires = true // digest says fired, the line has no such sentence
 
 	for name, tc := range map[string]struct {
 		label    string
@@ -226,19 +227,79 @@ func TestDetectorPrecision_LabelIsHeldToTheDetector(t *testing.T) {
 		wantFire bool
 		problems int
 	}{
-		"tp that fired":             {labelTruePositive, fires, true, 0},
-		"fp that fired":             {labelFalsePositive, fires, true, 0},
-		"tn that stayed silent":     {labelTrueNegative, silent, false, 0},
-		"fn that stayed silent":     {labelFalseNegative, silent, false, 0},
-		"tp that did not fire":      {labelTruePositive, silent, false, 1},
-		"fp that did not fire":      {labelFalsePositive, silent, false, 1},
-		"tn that fired":             {labelTrueNegative, fires, true, 1},
-		"fn that fired":             {labelFalseNegative, fires, true, 1},
-		"line disagrees the digest": {labelTruePositive, liar, true, 1},
+		"tp that fired":         {labelTruePositive, fires, true, 0},
+		"fp that fired":         {labelFalsePositive, fires, true, 0},
+		"tn that stayed silent": {labelTrueNegative, silent, false, 0},
+		"fn that stayed silent": {labelFalseNegative, silent, false, 0},
+		"tp that did not fire":  {labelTruePositive, silent, false, 1},
+		"fp that did not fire":  {labelFalsePositive, silent, false, 1},
+		"tn that fired":         {labelTrueNegative, fires, true, 1},
+		"fn that fired":         {labelFalseNegative, fires, true, 1},
 	} {
 		fired, problems := fixtureProblems(spec, detectorFixture{Label: tc.label}, tc.r)
 		if fired != tc.wantFire || len(problems) != tc.problems {
 			t.Errorf("%s: fired=%v with %d problems %q, want fired=%v with %d", name, fired, len(problems), problems, tc.wantFire, tc.problems)
+		}
+	}
+}
+
+// TestDetectorPrecision_WordingChangesNothing: the harness result for a replay
+// is the same whatever the end-of-turn line said, so Task 2.4's rewrite of the
+// sentences cannot turn the suite red. Every digest-level detector is made to
+// fire in turn, through its structured field, and its replay is judged under
+// the real sentence, a reworded one, a different detector's sentence, an
+// empty line with the Stop path silent, and gibberish: fired and the problem
+// count never move. A reworded line cannot make a silent detector fire either.
+func TestDetectorPrecision_WordingChangesNothing(t *testing.T) {
+	setters := map[report.DetectorID]func(*digest.Digest){
+		report.DetectorDigestUnknown:      func(d *digest.Digest) { d.Unknown = true },
+		report.DetectorCoverageUnverified: func(d *digest.Digest) { d.Coverage.State = "unverified" },
+		report.DetectorDigestTruncated:    func(d *digest.Digest) { d.Truncated = true },
+		report.DetectorSilentFailure:      func(d *digest.Digest) { d.SilentFailures.Fires = true },
+		report.DetectorMaskedRun:          func(d *digest.Digest) { d.MaskedRuns.Fires = true },
+		report.DetectorTestsOnlyThenGreen: func(d *digest.Digest) { d.TestBending.TestsOnlyThenGreenOmitted = 1 },
+		report.DetectorFlakyPair:          func(d *digest.Digest) { d.TestBending.FlakyOmitted = 1 },
+		report.DetectorDeclarationWithoutExecution: func(d *digest.Digest) {
+			d.Declarations.WithoutExecution = []digest.Unexecuted{{}}
+		},
+	}
+	lines := []struct {
+		spoke bool
+		text  string
+	}{
+		{true, "※ rashomon: digest unknown (no_store)."},
+		{true, "※ rashomon: 2 failed calls went unmentioned. → rashomon report"},
+		{true, "※ rashomon: 1 recorded failure."},
+		{false, ""},
+		{true, "\x00 not a rashomon sentence at all \xff"},
+	}
+	for _, spec := range detectorInventory {
+		set, ok := setters[spec.id]
+		if spec.reportOnly {
+			if ok {
+				t.Errorf("%s is report-only and has no digest condition to set", spec.name())
+			}
+			continue
+		}
+		if !ok {
+			t.Errorf("%s has no setter in this test: add one", spec.name())
+			continue
+		}
+		var fires, silent fixtureReplay
+		silent.digest.Coverage.State = store.StateVerified // an empty state is itself unverified
+		fires.digest.Coverage.State = store.StateVerified
+		set(&fires.digest)
+		if !fires.digest.Fired(spec.id) || silent.digest.Fired(spec.id) {
+			t.Fatalf("%s: setter does not make exactly this detector's condition true", spec.name())
+		}
+		for _, l := range lines {
+			fires.line, fires.spoke, silent.line, silent.spoke = l.text, l.spoke, l.text, l.spoke
+			if fired, problems := fixtureProblems(spec, detectorFixture{Label: labelTruePositive}, fires); !fired || len(problems) != 0 {
+				t.Errorf("%s fired under line %q: fired=%v problems=%q, want a clean fire", spec.name(), l.text, fired, problems)
+			}
+			if fired, problems := fixtureProblems(spec, detectorFixture{Label: labelTrueNegative}, silent); fired || len(problems) != 0 {
+				t.Errorf("%s silent under line %q: fired=%v problems=%q, want a clean silence", spec.name(), l.text, fired, problems)
+			}
 		}
 	}
 }

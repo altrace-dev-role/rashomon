@@ -13,17 +13,20 @@ package acceptance
 // The table itself is in detector_replay_perf_test.go, built with -tags perf.
 //
 // This file measures and never changes a detector: no detector's behaviour is
-// read from anywhere but the binary, and nothing here demotes a line.
+// read from anywhere but the binary, and nothing here demotes a line. Which
+// detector fired is read from the digest's structured fields through the code
+// identifier (report.DetectorID), never from the printed wording.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // realCaptureName is the one committed capture a fixture may replay whole:
@@ -34,77 +37,45 @@ const realCaptureName = "claude-code/2.1.280"
 // package.
 const detectorCorpus = "../corpus/detectors"
 
-// detectorDigest is the part of `rashomon digest` the detectors' fire
-// conditions are read from.
-type detectorDigest struct {
-	Coverage struct {
-		State string `json:"state"`
-	} `json:"coverage"`
-	Declarations struct {
-		WithoutExecution []json.RawMessage `json:"without_execution"`
-	} `json:"declarations"`
-	Unknown        bool `json:"unknown"`
-	SilentFailures struct {
-		Fires bool `json:"fires"`
-	} `json:"silent_failures"`
-	MaskedRuns struct {
-		Fires bool `json:"fires"`
-	} `json:"masked_runs"`
-	TestBending struct {
-		TestsOnlyThenGreen        []json.RawMessage `json:"tests_only_then_green"`
-		TestsOnlyThenGreenOmitted int               `json:"tests_only_then_green_omitted"`
-		Flaky                     []json.RawMessage `json:"flaky"`
-		FlakyOmitted              int               `json:"flaky_omitted"`
-	} `json:"test_bending"`
-	Truncated bool `json:"truncated"`
-}
-
-// detectorSpec is one entry of the inventory. fired reads the structured
-// digest, which is what a rewording of the line leaves alone; sentence reads
-// the line itself, and a disagreement between the two fails the fixture, so a
-// change to either surfaces here. A detector with no sentence is report-only.
+// detectorSpec is one entry of the inventory. The id is the detector's code
+// identifier (report.DetectorID), and it is the only thing a detector is told
+// apart by here: whether it fired is asked of digest.Digest.Fired, the same
+// condition the end-of-turn line is rendered from, never read out of the
+// printed sentence. Task 2.4 rewrites the sentences; nothing in this harness
+// may notice. A report-only detector has no digest condition and no fixtures
+// yet.
 type detectorSpec struct {
-	id       string
-	fired    func(detectorDigest) bool
-	sentence func(line string) bool
+	id         report.DetectorID
+	reportOnly bool
 }
 
-func lineHas(s string) func(string) bool {
-	return func(line string) bool { return strings.Contains(line, s) }
-}
+// name is the id as the corpus spells it: fixture directory, rule row, sheet
+// column.
+func (s detectorSpec) name() string { return string(s.id) }
 
-func lineMatches(re string) func(string) bool {
-	r := regexp.MustCompile(re)
-	return func(line string) bool { return r.MatchString(line) }
-}
+// fired reports whether the detector fired on a replayed turn's digest.
+func (s detectorSpec) fired(d *digest.Digest) bool { return d.Fired(s.id) }
 
 // detectorInventory is every detector that puts a judgement in front of a
-// user, in the order the end-of-turn line states them, then the report-only
-// ones. Its ids are the directory names under the corpus, the rows of
-// label-rules.tsv and the sheet's detector column.
-var detectorInventory = []detectorSpec{
-	{"digest_unknown", func(d detectorDigest) bool { return d.Unknown }, lineHas("digest unknown (")},
-	{"coverage_unverified", func(d detectorDigest) bool { return !d.Unknown && d.Coverage.State != "verified" }, lineHas("coverage unverified (")},
-	{"digest_truncated", func(d detectorDigest) bool { return d.Truncated }, lineHas("digest truncated (")},
-	{"silent_failure", func(d detectorDigest) bool { return d.SilentFailures.Fires }, lineMatches(`\d+ recorded failures?`)},
-	{"masked_run", func(d detectorDigest) bool { return d.MaskedRuns.Fires }, lineHas("pass claimed; exit status of ")},
-	{"tests_only_then_green", func(d detectorDigest) bool {
-		return len(d.TestBending.TestsOnlyThenGreen)+d.TestBending.TestsOnlyThenGreenOmitted > 0
-	}, lineHas("test command failed, then the only recorded edits were to files named like tests, then it passed")},
-	{"flaky_pair", func(d detectorDigest) bool { return len(d.TestBending.Flaky)+d.TestBending.FlakyOmitted > 0 },
-		lineHas("same test command had both outcomes with no recorded file edit between")},
-	{"declaration_without_execution", func(d detectorDigest) bool { return len(d.Declarations.WithoutExecution) > 0 },
-		lineMatches(`\d+ declarations? without recorded execution`)},
-	// Report-only: sections of `rashomon report` that state a finding and have
-	// no sentence on the end-of-turn line. No fixtures yet; each row of the
-	// table says so.
-	{"novel_destination", nil, nil},
-	{"executed_differently_from_declared", nil, nil},
-}
+// user, in the order report.DetectorIDs states them: the digest-level ones in
+// the order the end-of-turn line gives them, then the two that exist only in
+// `rashomon report`. Its ids are the directory names under the corpus, the
+// rows of label-rules.tsv and the sheet's detector column; the catalogue's
+// steer pattern ids are not part of it, because five of the ten have none yet.
+var detectorInventory = func() []detectorSpec {
+	var out []detectorSpec
+	for _, id := range report.DetectorIDs() {
+		out = append(out, detectorSpec{
+			id:         id,
+			reportOnly: id == report.DetectorNovelDestination || id == report.DetectorExecutedDifferentlyFromDeclared,
+		})
+	}
+	return out
+}()
 
 func detectorSpecByID(id string) (detectorSpec, bool) {
 	for _, d := range detectorInventory {
-		if d.id == id {
+		if d.name() == id {
 			return d, true
 		}
 	}
@@ -115,27 +86,27 @@ func knownDetector(id string) bool { _, ok := detectorSpecByID(id); return ok }
 
 // fixtureReplay is what one fixture produced.
 type fixtureReplay struct {
+	// line and spoke are what the Stop path printed. They are kept to show a
+	// person what the fire looked like in a failure message, as data; no
+	// verdict is drawn from them.
 	line    string
 	spoke   bool
-	digest  detectorDigest
+	digest  digest.Digest
 	rawJSON string
 }
 
 // fixtureProblems holds a replay to its fixture: the label must match what
-// the detector did, and the structured digest and the printed line must agree
-// that it did it. It returns whether the detector fired and what is wrong.
+// the detector did. It returns whether the detector fired and what is wrong.
+// The printed line is quoted in a problem for the reader and decides nothing:
+// a reworded sentence changes no result here.
 func fixtureProblems(spec detectorSpec, f detectorFixture, r fixtureReplay) (fired bool, problems []string) {
-	fired = spec.fired(r.digest)
+	fired = spec.fired(&r.digest)
 	switch {
 	case isFireLabel(f.Label) && !fired:
 		problems = append(problems, fmt.Sprintf("labelled %s but %s did not fire: the label presupposes a fire. Either the detector's behaviour changed or the fixture is wrong.\nline: %q\ndigest: %s",
-			f.Label, spec.id, r.line, r.rawJSON))
+			f.Label, spec.name(), r.line, r.rawJSON))
 	case !isFireLabel(f.Label) && fired:
-		problems = append(problems, fmt.Sprintf("labelled %s but %s fired.\nline: %q\ndigest: %s", f.Label, spec.id, r.line, r.rawJSON))
-	}
-	if spec.sentence != nil && fired != (r.spoke && spec.sentence(r.line)) {
-		problems = append(problems, fmt.Sprintf("the digest says fired=%v for %s but the printed line (%q, printed %v) disagrees: the line's wording changed, or the digest's fire condition did. Update detectorInventory with the new wording only after reading what the line now says.",
-			fired, spec.id, r.line, r.spoke))
+		problems = append(problems, fmt.Sprintf("labelled %s but %s fired.\nline: %q\ndigest: %s", f.Label, spec.name(), r.line, r.rawJSON))
 	}
 	return fired, problems
 }
@@ -180,12 +151,34 @@ func TestDetectorPrecision_InventoryMatchesCorpus(t *testing.T) {
 	}
 	var missing []string
 	for _, d := range detectorInventory {
-		if !ruled[d.id] {
-			missing = append(missing, d.id)
+		if !ruled[d.name()] {
+			missing = append(missing, d.name())
 		}
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Errorf("no label rule for %v: a person cannot label what no rule defines", missing)
+	}
+}
+
+// TestDetectorPrecision_InventoryIsTheTenIds: the inventory is exactly the ten
+// detectors, spelled as the corpus spells them, in code's order. The strings
+// are written out here on purpose: they are fixture directory names, so a
+// constant renamed in code must fail this test rather than quietly orphan the
+// corpus. No steer pattern id appears: the harness runs without the detector
+// to pattern mapping, and a detector with no catalogue id is reported by its
+// own.
+func TestDetectorPrecision_InventoryIsTheTenIds(t *testing.T) {
+	want := []string{
+		"digest_unknown", "coverage_unverified", "digest_truncated", "silent_failure",
+		"masked_run", "tests_only_then_green", "flaky_pair", "declaration_without_execution",
+		"novel_destination", "executed_differently_from_declared",
+	}
+	var got []string
+	for _, d := range detectorInventory {
+		got = append(got, d.name())
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("inventory ids = %v, want %v", got, want)
 	}
 }

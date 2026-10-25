@@ -141,12 +141,12 @@ m("TB a cut pair is not counted as omitted", "internal/digest/truncate.go",
   "TestTruncate_TestBending")
 
 m("TB the end-of-turn line drops the tests-only sentence", "internal/recap/recap.go",
-  "\t\tfirst, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok {\n\t\tsentences = append(sentences, s)",
-  "\t\tfirst, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok {\n\t\t_ = s",
+  "\t\tfirst, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok && d.Fired(report.DetectorTestsOnlyThenGreen) {\n\t\tsentences = append(sentences, s)",
+  "\t\tfirst, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok && d.Fired(report.DetectorTestsOnlyThenGreen) {\n\t\t_ = s",
   "TestLineTestBending|TestTestBending_")
 m("TB the end-of-turn line drops the flaky sentence", "internal/recap/recap.go",
-  "\t\tfirst, len(tb.Flaky)+tb.FlakyOmitted); ok {\n\t\tsentences = append(sentences, s)",
-  "\t\tfirst, len(tb.Flaky)+tb.FlakyOmitted); ok {\n\t\t_ = s",
+  "\t\tfirst, len(tb.Flaky)+tb.FlakyOmitted); ok && d.Fired(report.DetectorFlakyPair) {\n\t\tsentences = append(sentences, s)",
+  "\t\tfirst, len(tb.Flaky)+tb.FlakyOmitted); ok && d.Fired(report.DetectorFlakyPair) {\n\t\t_ = s",
   "TestLineTestBending|TestTestBending_")
 m("TB the end-of-turn line forgets what truncate cut", "internal/recap/recap.go",
   "len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted)",
