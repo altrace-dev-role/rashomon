@@ -231,7 +231,7 @@ func (w *writer) call(c call, id, prompt string, at int64) {
 		Type: store.TypeExecution, SchemaVersion: store.SchemaVersion, Seq: &execSeq, RecordedAtMS: at + duration,
 		ToolUseID: id, SessionID: Session, ToolName: c.tool, Outcome: store.ExecOK, DurationMS: &duration,
 		ExecutedDigest: d.Shape.Digest, StatusMasked: d.Shape.StatusMasked, RunnerDigest: d.Shape.RunnerDigest,
-		RulesVersion: d.RulesVersion,
+		RunnerKind: d.Shape.RunnerKind, RulesVersion: d.RulesVersion,
 	}
 	if c.failed {
 		code, interrupt := 1, false

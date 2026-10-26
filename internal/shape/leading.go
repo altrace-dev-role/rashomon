@@ -12,16 +12,21 @@ import (
 // succeeded, so the runner starts where the last one leads.
 //
 // Only a word the shell takes as it stands: nothing it expands or unquotes
-// (`$`, backticks, a glob, `~`, quotes or an escape), not `-`, which is the
-// previous directory, and not a comment. `cd DIR;` is left out, since what
-// follows a `;` runs whether the cd succeeded or not. A step in the leading
-// run whose command, past any assignments, redirections or an opening ( or {
-// in front of it, is cd, pushd or popd and is not such a cd spoils the run,
-// since the directory it leads to is not on the line. So a `cd -` is refused
-// anywhere in the leading run, even when an earlier step names its target:
-// `cd /a && cd b && cd - && go test` loses a pair that way, but it never
-// forms a false one. Anything else reports false, and the call keeps the
-// payload's cwd.
+// (`$`, backticks, a glob, quotes or an escape), not `-`, which is the
+// previous directory, and not a comment. The one expansion read is the home:
+// `~` alone or before a slash, as written, which the hook expands with its
+// own home (startDirectory); a named home (`~user`) and the directory stack's
+// `~+` and `~-` are refused. `cd DIR;` is left out, since what follows a `;`
+// runs whether the cd succeeded or not. A step in the leading run whose
+// command, past any assignments, redirections or an opening ( or { in front
+// of it, is cd, pushd or popd and is not such a cd spoils the run, since the
+// directory it leads to is not on the line. So a `cd -` is refused anywhere
+// in the leading run, even when an earlier step names its target: `cd /a &&
+// cd b && cd - && go test` loses a pair that way, but it never forms a false
+// one. Anything else reports false. Where the program search steps over cd
+// steps this does not read, the hook records their location in a domain of
+// its own (unreadFold, UnreadCWDDigest); where there are none, the call
+// keeps the payload's cwd.
 func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, bool) {
 	if verbForTool(toolName) != VerbExecute {
 		return nil, false
@@ -46,18 +51,6 @@ const MaxLeadingCd = 64
 // three tokens, lies inside the token bound: this fails to compile otherwise,
 // since a run the bound cut short is not where the line ran.
 const _ = uint(maxTokens - 3*(MaxLeadingCd+1))
-
-// leadingSteps is how many leading `cd DIR &&` steps LeadingDirectory folds
-// onto a call's cwd for a line whose leading directories are dirs: the cds
-// on it that the call's cwd digest already holds. None past MaxLeadingCd,
-// where the hook records the directory as unknown and the digest holds none
-// of them.
-func leadingSteps(dirs []string) int {
-	if len(dirs) > MaxLeadingCd {
-		return 0
-	}
-	return len(dirs)
-}
 
 // leadingDirectories is LeadingDirectory over the line cmd.
 //
@@ -118,7 +111,8 @@ func leadingCd(toks []token) (string, bool) {
 		return "", false
 	}
 	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore || isComment(dir) ||
-		dir.text == "" || strings.HasPrefix(dir.text, "-") || strings.HasPrefix(dir.text, "~") ||
+		dir.text == "" || strings.HasPrefix(dir.text, "-") ||
+		strings.HasPrefix(dir.text, "~") && dir.text != "~" && !strings.HasPrefix(dir.text, "~/") ||
 		strings.ContainsAny(dir.text, "$`*?[{\\") {
 		return "", false
 	}
@@ -126,4 +120,48 @@ func leadingCd(toks []token) (string, bool) {
 		return "", false
 	}
 	return dir.text, true
+}
+
+// unreadFold is the tokenizer's view of the leading cd steps the program
+// search steps over in toks, for a line whose leading run leadingRun does not
+// read: each token from the first to the last folded separator, its text, a
+// NUL, q where the token is quoted and p where it is not, and a NUL. "" when
+// the search steps over none. The hook records the call's location from it
+// and the payload's cwd (UnreadCWDDigest), a location of its own that no read
+// directory's digest equals.
+//
+// Two folds are one location exactly when the shell reads them alike word for
+// word: spacing merges, since the tokenizer drops it, and quoting splits,
+// since it changes how an expansion is split and globbed, which a token's
+// text, quotes removed, does not show. `${REPO}` and `$REPO` split too, the
+// fail-safe side. The steps are counted as the program search counts them,
+// without MaxLeadingCd's bound, so a fold of more unread steps than that is
+// still unread, and not the payload's cwd, a read location. The walk
+// allocates nothing; the view is built only for an unread fold.
+func unreadFold(toks []token, uncertain bool) string {
+	i, ok := programToken(toks, uncertain)
+	if !ok {
+		return ""
+	}
+	after, _, _, _ := directoryChanges(toks, i, uncertain)
+	if after == 0 {
+		return ""
+	}
+	n := 0
+	for _, t := range toks[:after] {
+		n += len(t.text) + 4
+	}
+	var b strings.Builder
+	b.Grow(n)
+	for _, t := range toks[:after] {
+		q := byte('p')
+		if t.quotedAt >= 0 {
+			q = 'q'
+		}
+		b.WriteString(t.text)
+		b.WriteByte(0)
+		b.WriteByte(q)
+		b.WriteByte(0)
+	}
+	return b.String()
 }

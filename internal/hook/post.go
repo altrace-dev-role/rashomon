@@ -244,7 +244,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if len(pl.ToolInput) > 0 {
 		s := shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key())
 		rec.ExecutedDigest = s.Digest
-		rec.StatusMasked, rec.RunnerDigest = s.StatusMasked, s.RunnerDigest
+		rec.StatusMasked, rec.RunnerDigest, rec.RunnerKind = s.StatusMasked, s.RunnerDigest, s.RunnerKind
 	}
 	if pl.HookEventName == FailureEvent {
 		rec.Outcome = store.ExecFailed

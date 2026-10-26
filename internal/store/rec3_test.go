@@ -2,6 +2,7 @@ package store
 
 import (
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -20,9 +21,11 @@ func TestREC3_UnknownNonCriticalKindIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(st.RunDir("sess-ign"), FileRecords)
+	// One above CallSchemaVersion: a declaration version this reader does not know.
+	future := strconv.Itoa(CallSchemaVersion + 1)
 	for _, line := range []string{
 		`{"type":"future_kind","schema_version":9,"critical":false,"seq":null}`,
-		`{"type":"declaration","schema_version":6,"critical":false}`,
+		`{"type":"declaration","schema_version":` + future + `,"critical":false}`,
 		`{"type":"turn_end","schema_version":5,"critical":false,"seq":null,"recorded_at_unix_ms":1,"session_id":"sess-ign"}`,
 	} {
 		appendRaw(t, path, []byte(line+"\n"))
@@ -52,10 +55,12 @@ func TestREC3_UnknownCriticalKindUnverifies(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(st.RunDir("sess-crit"), FileRecords)
+	// One above CallSchemaVersion: a declaration version this reader does not know.
+	future := strconv.Itoa(CallSchemaVersion + 1)
 	for _, line := range []string{
 		`{"type":"future_kind","schema_version":9,"critical":true}`,
 		`{"type":"future_kind","schema_version":9}`,
-		`{"type":"declaration","schema_version":6}`,
+		`{"type":"declaration","schema_version":` + future + `}`,
 		`{"type":"coverage","schema_version":4,"critical":false}`,
 		`{"type":"future_kind","schema_version":9,"critical":"no"}`,
 		`{"type":"turn_end","schema_version":4,"critical":true}`,

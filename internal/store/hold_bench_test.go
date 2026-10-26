@@ -78,7 +78,7 @@ func BenchmarkOrderedAppendHold(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			call := newBenchCall(st)
+			calls := benchCalls(st, benchSpread)
 			var (
 				mu       sync.Mutex
 				holds    []time.Duration
@@ -101,8 +101,9 @@ func BenchmarkOrderedAppendHold(b *testing.B) {
 						if c.deferred {
 							one.DeferDurability()
 						}
+						call := calls[(i*c.ways+w)%benchSpread]
 						d := call.decl
-						d.ToolUseID, d.RecordedAtMS = fmt.Sprintf("toolu_01%016d%06d", i, w), benchStartMS+int64(i)
+						d.ToolUseID, d.RecordedAtMS = fmt.Sprintf("toolu_01%s%016d%06d", call.idPad, i, w), benchStartMS+int64(i)
 						held, err := heldAppend(one, d)
 						if err == nil {
 							err = one.Flush()

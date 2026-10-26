@@ -17,21 +17,63 @@ const (
 	MaskedBuild = "build"
 )
 
-// RulesVersion names the lists this build decides a shape with: the test
-// runners (testCommands) and the build runners (buildCommands), which set
-// verb_class and status_masked, and the pass words (the report's
-// passVocabulary), which decide when the masked-runs line fires. Written on
-// every declaration and execution as rules_version, so records written before
-// and after a list changed can be told apart.
+// RulesVersion names every table this build decides a recorded shape field
+// with (verb_class, status_masked, runner_kind, may_write), and the matchers
+// that read them, and the rule that decides a declaration's cwd_digest, and
+// moves whenever one of them changes. The tables are the test runners
+// (testCommands) and the build runners (buildCommands), with the arguments
+// that refuse one (notARun, notARunAny) and the flags that may stand before
+// its words (leadingFlags), which set verb_class, status_masked and
+// runner_kind; the in-place tables (inPlaceEditors, checkOnly, shortClusters),
+// which set may_write; and the pass words (the report's passVocabulary), which
+// decide when the masked-runs line fires. cwd_digest's producers are which
+// leading cd steps are read (leadingCd), how the hook folds them onto the
+// payload's cwd (its startDirectory, `~` expanded with its own home), and the
+// domain of a fold that is not read (UnreadCWDDigest). Written on every
+// declaration and execution as rules_version, so records written before and
+// after a change can be told apart.
 //
-// Bump it whenever one of those lists changes, and add the new lists' pin to
-// the tests that hold one (rules_version_test.go here and in report): each
-// fails when its list changes without a bump.
-const RulesVersion = 1
+// Bump it whenever a table, or a matcher or rule that decides a recorded
+// field, changes -- version 4 is the first bump for a matcher, runnerOn
+// passing over leadingFlags before a runner's words; version 5 passes the
+// masked parser over the leading cd steps the program search steps over
+// where its reading agrees (agreedFold), reads `~`, and gives an unread fold
+// a location of its own; version 6 drops -l from checkOnly (gofmt -l -w and
+// sed -l N -i write), reads make's -j as digits only, and puts the flag tables
+// under a pin --
+// and add the new pins to the tests that hold one (rules_version_test.go here,
+// in report and in hook): a table's pin fails when the table changes without
+// a bump, the matcher pin when a field moves on one of its corpus lines
+// without one, and the hook's location pin when a cwd digest moves on one of
+// its pairs without one. notARun, notARunAny, leadingFlags and mayWrite's
+// inline writer words (inlineWriters, findWriteWords, and curl's output flags
+// with curlArgumentOptions) are held by the flag-table pin (flagTablePins) from
+// version 6 on; a change in how a table is read is the matcher pin's. The old
+// pins stay as history of what each version decided, and a version that
+// changed no table repeats the digest above it, as versions 3 to 5 do for the
+// runner lists.
+const RulesVersion = 6
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
 	return []string{MaskedNone, MaskedTest, MaskedBuild}
+}
+
+// Runner kinds: what shape.runner_kind says of the runner runner_digest
+// digests, which is the list it is on. A closed set that shares two words
+// with the masked kinds and is a different fact: status_masked is none on a
+// line that returns its runner's status, and runner_kind still names the
+// runner.
+const (
+	// RunnerTest: the runner is on testCommands.
+	RunnerTest = "test"
+	// RunnerBuild: the runner is on buildCommands and not on testCommands.
+	RunnerBuild = "build"
+)
+
+// RunnerKinds is the vocabulary of runner_kind, for the schema enum test.
+func RunnerKinds() []string {
+	return []string{RunnerTest, RunnerBuild}
 }
 
 // buildCommands are the build and check runners status_masked recognises
@@ -49,7 +91,7 @@ var buildCommands = [][]string{
 	{"go", "build"}, {"go", "vet"}, {"cargo", "build"}, {"cargo", "check"}, {"cargo", "clippy"},
 	{"npm", "run"}, {"yarn", "run"}, {"yarn", "build"}, {"pnpm", "run"}, {"pnpm", "build"},
 	{"tsc"}, {"npx", "tsc"}, {"mvn"}, {"mvnw"}, {"gradle"}, {"gradlew"},
-	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"}, {"bazel", "test"},
+	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"},
 }
 
 // maxRunnerGroups bounds how many distinctly-worded runners statusMasked
@@ -61,7 +103,8 @@ const maxRunnerGroups = 64
 // statusMasked reports, for a shell line, whether a recognised build or test
 // runner on it has an exit status the line does not return, and the keyed
 // digest of that runner's own words -- or, when none does, of a runner whose
-// status the line does return (runnerDigest).
+// status the line does return (runnerDigest) -- with the kind of the runner
+// digested (runnerOf).
 //
 // The question is the one a failing runner asks of the line: when it fails,
 // does the line? The line is parsed (lists, && and ||, pipelines, `!`, ( ),
@@ -99,21 +142,24 @@ const maxRunnerGroups = 64
 // it says nothing: null, never a kind and never "none". So does a line that
 // cannot be read to its end (tokenizeList, parseLine).
 //
-// held is how many of the line's leading cd steps the call's cwd digest
-// holds (leadingSteps), which Derive counts from the program search's
-// reading of the line rather than this function reading it again.
-func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
+// The leading cd steps the program search steps over, fold, its own reading
+// of them, are passed over here too, read or not, where this reading's steps
+// are the same tokens (agreedFold): the runner after them keeps its digest,
+// which is its words, and where it ran is the cwd digest's to say. A cd,
+// pushd or popd past them, past MaxLeadingCd steps, or in a line the two
+// readings fold apart, displaces the runners after it (displace).
+func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKind *string) {
 	if controlByte(cmd) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	toks, err := tokenizeList(cmd)
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	p := &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
 	body, ok := p.parseLine()
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if len(p.runners) > maxRunnerGroups {
 		// Not sure: null. runShells below re-runs the whole parsed line for
@@ -124,9 +170,9 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 		// square of the payload: 16,000 `make tN;` groups took 4.5s and
 		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
 		// already past what a build or test script looks like.
-		return nil, nil
+		return nil, nil, nil
 	}
-	p.displace(held)
+	p.displace(agreedFold(toks, fold))
 
 	var (
 		hidden []int
@@ -136,7 +182,7 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 		f, pass, ran := p.runShells(body, g)
 		if f < 0 || pass < 0 || !ran {
 			// Not sure: null.
-			return nil, nil
+			return nil, nil, nil
 		}
 		if f == 0 || f == pass {
 			hidden = append(hidden, g)
@@ -157,13 +203,30 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 		}
 		if len(hidden) > 1 {
 			// No one later run follows up two runners.
-			return &k, nil
+			return &k, nil, nil
 		}
-		return &k, p.runnerDigest(hidden[0], key)
+		d, rk := p.runnerOf(hidden[0], key)
+		return &k, d, rk
 	case reach >= 0:
-		return &none, p.runnerDigest(reach, key)
+		d, rk := p.runnerOf(reach, key)
+		return &none, d, rk
 	}
-	return &none, nil
+	return &none, nil, nil
+}
+
+// runnerOf is runner group g's digest and kind, the one place either is
+// decided: the kind is set exactly when the digest is, and names the list
+// of the runner the digest is of (D9), so the two never disagree.
+func (p *lineParser) runnerOf(g int, key []byte) (digest, kind *string) {
+	d := p.runnerDigest(g, key)
+	if d == nil {
+		return nil, nil
+	}
+	k := RunnerBuild
+	if p.runners[g].kind == MaskedTest {
+		k = RunnerTest
+	}
+	return d, &k
 }
 
 // The parsed line. A list is and-or lists separated by `;`, `&` or a
@@ -254,7 +317,7 @@ type runnerGroup struct {
 	kind      string
 	starts    []int // the first token of each command that runs it
 	last      int
-	displaced bool // a cd the start directory does not hold ran before it
+	displaced bool // a cd, pushd or popd past the leading fold ran before it
 }
 
 type lineParser struct {

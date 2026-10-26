@@ -74,7 +74,7 @@ m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked_
 m("MS a shell's -c line is read as a word", "internal/shape/masked_simple.go",
   "w[1] != '-' && strings.ContainsRune(w, 'c') {", "w[1] != '-' && strings.ContainsRune(w, 'c') && false {", SH)
 m("MS a line the run is not sure of is none", "internal/shape/masked.go",
-  "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil\n", "\t\t\tcontinue\n", SH)
+  "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil, nil\n", "\t\t\tcontinue\n", SH)
 m("MS a runner the run never reaches is judged", "internal/shape/masked.go",
   "\t\tif f < 0 || pass < 0 || !ran {", "\t\tif f < 0 || pass < 0 || !ran && false {", SH)
 m("MS an exit 0 after || keeps the failure", "internal/shape/masked_eval.go",
@@ -109,8 +109,8 @@ m("MS make is no build runner", "internal/shape/masked.go",
   "\t{\"make\"}, {\"gmake\"},\n", "\t{\"gmake\"},\n", SH)
 m("MS a build masked before a test wins", "internal/shape/masked.go",
   "\t\t\tif p.runners[g].kind == MaskedTest {\n\t\t\t\tk = MaskedTest\n", "\t\t\tif p.runners[g].kind == MaskedTest && false {\n\t\t\t\tk = MaskedTest\n", SH)
-m("MS the runner's arguments run to the end of the line", "internal/shape/verb.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):])", SH)
+m("MS the runner's arguments run to the end of the line", "internal/shape/runner.go",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:])", SH)
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
   "\t\tl.pending = append(l.pending, j)\n", "\t\t_ = j\n", SH)
 m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",
@@ -121,21 +121,24 @@ m("MS the runner digest runs to the end of the line", "internal/shape/masked_sim
   "\tkey := p.runnerWords(ri, e)\n", "\tkey := p.runnerWords(ri, len(toks))\n", SH)
 m("MS the runner digest is not keyed", "internal/shape/masked_eval.go",
   "\td := digest(key, \"\\x00runner\",", "\td := digest(nil, \"\\x00runner\",", SH)
-m("MS a runner whose failure reaches the line carries no runner digest", "internal/shape/masked.go",
-  "\t\treturn &none, p.runnerDigest(reach, key)", "\t\treturn &none, nil", SH)
-m("MS two hidden runners carry one's digest", "internal/shape/masked.go",
-  "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil\n\t\t}\n", "", SH)
+m("MS a runner whose failure reaches the line carries no runner digest or kind", "internal/shape/masked.go",
+  "\t\td, rk := p.runnerOf(reach, key)\n\t\treturn &none, d, rk\n", "\t\treturn &none, nil, nil\n", SH)
+m("MS two hidden runners carry one's digest and kind", "internal/shape/masked.go",
+  "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil, nil\n\t\t}\n", "", SH)
 m("MS a runner after a cd keeps its digest", "internal/shape/masked_eval.go",
-  "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH)
+  "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH + "|TestFoldKeepsRunnerIdentity")
 m("MS a folded leading cd displaces the runner", "internal/shape/masked_eval.go",
-  "\t\tif s.op != opCd || s.start < 3*folded && s.start%3 == 0 {", "\t\tif s.op != opCd {", SH)
+  "\t\tif s.op != opCd || s.start < after {", "\t\tif s.op != opCd {", SH)
+m("MS a fold the two readings step over apart is passed over", "internal/shape/program.go",
+  "\tif !slices.Equal(toks[:after], fold) {\n", "\tif false && !slices.Equal(toks[:after], fold) {\n",
+  "TestFoldKeepsRunnerIdentity|TestRubricTEST1_LeadingFoldSeeds")
 m("MS an expansion in the runner's words loses its digest", "internal/shape/masked_eval.go",
   "\t\tif t.opaque {\n\t\t\tw = \"\\x02\" + w\n\t\t}\n", "\t\tif t.opaque {\n\t\t\treturn \"\"\n\t\t}\n", SH)
 m("MS a backslash at a comment's end joins the next line", "internal/shape/join.go",
   "\t\tcase comments && c == '#' && !inSingle && !inDouble && wordStart(b.String()):", "\t\tcase false:", SH)
 m("MS mvn's build row refuses -DskipTests", "internal/shape/verb.go",
   "\t\tif len(c) == 1 {\n\t\t\t// The build row: a flag that skips the tests still builds.\n\t\t\treturn \"mvn build\"\n\t\t}\n", "", SH)
-m("MS python -m unittest is not a test runner", "internal/shape/verb.go",
+m("MS python -m unittest is not a test runner", "internal/shape/runner.go",
   "\t{\"python\", \"-m\", \"unittest\"}, {\"python3\", \"-m\", \"unittest\"},\n", "", "TestUnittestIsATestRunner")
 
 RP = "TestMasked_"
@@ -182,14 +185,14 @@ m("MS masked runs fire with no pass claimed", "internal/report/account.go",
 
 # Masking judged on the command that ran: the execution carries it, and the
 # report and the digest take it over the declaration's (MaskingAsRan).
-m("MS the post hook keeps no masking", "internal/hook/post.go",
-  "\t\trec.StatusMasked, rec.RunnerDigest = s.StatusMasked, s.RunnerDigest\n", "", RP)
+m("MS the post hook keeps no masking, runner digest or kind", "internal/hook/post.go",
+  "\t\trec.StatusMasked, rec.RunnerDigest, rec.RunnerKind = s.StatusMasked, s.RunnerDigest, s.RunnerKind\n", "", RP)
 m("MS the report judges the declared line", "internal/report/assemble.go",
   "\tMaskingAsRan(run)\n", "", RP)
 m("MS the digest judges the declared line", "internal/digest/digest.go",
   "\treport.MaskingAsRan(run)\n", "", RP)
 m("MS the timeline judges the declared line", "internal/report/timeline.go",
-  "\t\td.Shape.StatusMasked, d.Shape.RunnerDigest = rec.StatusMasked, rec.RunnerDigest\n", "\t\td.Shape.RunnerDigest = rec.RunnerDigest\n", RP)
+  "\t\td.Shape.StatusMasked, d.Shape.RunnerDigest, d.Shape.RunnerKind = rec.StatusMasked, rec.RunnerDigest, rec.RunnerKind\n", "\t\td.Shape.RunnerDigest, d.Shape.RunnerKind = rec.RunnerDigest, rec.RunnerKind\n", RP)
 m("MS masking is taken from an execution before schema 4", "internal/report/timeline.go",
   "\t\tif rec == nil || rec.SchemaVersion < 4 || rec.ExecutedDigest == \"\" {", "\t\tif rec == nil || rec.ExecutedDigest == \"\" {", RP)
 m("MS masking is taken from an execution that saw no input", "internal/report/timeline.go",

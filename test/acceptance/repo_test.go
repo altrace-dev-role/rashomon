@@ -2,9 +2,11 @@ package acceptance
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -580,36 +582,20 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, gated map[s
 // TestStoreSchemaLabelsAreTheCodeLabels: file_label is a closed vocabulary
 // like the reason codes, and it needs a check of its own.
 //
-// collectReasonEnums is scoped to keys named reason, reasons or *_reason --
-// deliberately, so that a bidirectional check does not compare reasons
-// against vocabularies that were never reasons. The cost of that scoping is
-// that every OTHER closed vocabulary needs its own walk, or it drifts from
-// the schema in silence and the drift surfaces as a record in the field that
-// the published contract refuses.
+// The reason tripwire (collectReasonPaths) finds vocabularies by keys named
+// reason, reasons or *_reason -- deliberately, so that the reason comparison
+// is not run against vocabularies that were never reasons. The cost of that
+// scoping is that every OTHER closed vocabulary needs its own check, or it
+// drifts from the schema in silence and the drift surfaces as a record in
+// the field that the published contract refuses.
 //
-// This one is bidirectional, which the reason check is not: a label the code
-// can emit and the schema forbids is a record that fails validation, and a
-// label the schema offers and the code cannot emit is a promise to a reader
-// that nothing will ever keep.
+// This one is bidirectional, as the reason check is: a label the code can
+// emit and the schema forbids is a record that fails validation, and a label
+// the schema offers and the code cannot emit is a promise to a reader that
+// nothing will ever keep.
 func TestStoreSchemaLabelsAreTheCodeLabels(t *testing.T) {
-	inSchema := map[string]bool{}
-	collectNamedEnum(readSchema(t), "", "file_label", inSchema)
-	if len(inSchema) == 0 {
-		t.Fatalf("no file_label enum found in %s; the walk is not finding it", schemaPath)
-	}
-
-	inCode := map[string]bool{}
-	for _, l := range shape.Labels() {
-		inCode[l] = true
-		if !inSchema[l] {
-			t.Errorf("shape.Labels() carries %q, which appears in no file_label enum in %s", l, schemaPath)
-		}
-	}
-	for l := range inSchema {
-		if !inCode[l] {
-			t.Errorf("%s offers the label %q, which shape.Labels() cannot emit", schemaPath, l)
-		}
-	}
+	assertNamedEnums(t, "file_label", []string{"/$defs/declaration/properties/file_label"},
+		"shape.Labels()", shape.Labels())
 }
 
 // TestStoreSchemaVerbClassesAreTheCodeVerbClasses: verb_class is the third
@@ -619,66 +605,104 @@ func TestStoreSchemaLabelsAreTheCodeLabels(t *testing.T) {
 // forbids is a record that fails validation, and a class the schema offers
 // that the code cannot emit is a promise nothing keeps.
 func TestStoreSchemaVerbClassesAreTheCodeVerbClasses(t *testing.T) {
-	inSchema := map[string]bool{}
-	collectNamedEnum(readSchema(t), "", "verb_class", inSchema)
-	if len(inSchema) == 0 {
-		t.Fatalf("no verb_class enum found in %s; the walk is not finding it", schemaPath)
-	}
-	inCode := map[string]bool{}
-	for _, v := range shape.VerbClasses() {
-		inCode[v] = true
-		if !inSchema[v] {
-			t.Errorf("shape.VerbClasses() carries %q, which appears in no verb_class enum in %s", v, schemaPath)
-		}
-	}
-	for v := range inSchema {
-		if !inCode[v] {
-			t.Errorf("%s offers the verb class %q, which shape.VerbClasses() cannot emit", schemaPath, v)
-		}
-	}
+	assertNamedEnums(t, "verb_class", []string{"/$defs/declaration/properties/shape/properties/verb_class"},
+		"shape.VerbClasses()", shape.VerbClasses())
 }
 
 // TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds: status_masked is a closed
-// vocabulary too, checked both ways for the reason verb_class is.
+// vocabulary too, checked both ways for the reason verb_class is, and per
+// enum: the declaration's shape and the execution each publish one, and a
+// pooled set would let one of them lose a word the other still has.
 func TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds(t *testing.T) {
-	inSchema := map[string]bool{}
-	collectNamedEnum(readSchema(t), "", "status_masked", inSchema)
-	if len(inSchema) == 0 {
-		t.Fatalf("no status_masked enum found in %s; the walk is not finding it", schemaPath)
+	assertNamedEnums(t, "status_masked", []string{
+		"/$defs/declaration/properties/shape/properties/status_masked",
+		"/$defs/execution/properties/status_masked",
+	}, "shape.MaskedKinds()", shape.MaskedKinds())
+}
+
+// TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds: runner_kind is a closed
+// vocabulary too, checked both ways for the reason verb_class is, and per
+// enum, for the reason status_masked is.
+func TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds(t *testing.T) {
+	assertNamedEnums(t, "runner_kind", []string{
+		"/$defs/declaration/properties/shape/properties/runner_kind",
+		"/$defs/execution/properties/runner_kind",
+	}, "shape.RunnerKinds()", shape.RunnerKinds())
+}
+
+// assertNamedEnums checks every property of the schema named name against
+// the code's vocabulary (from names where code comes from), each enum on its
+// own and both ways, and checks that the properties are exactly the ones at
+// paths. Pooling the enums of one name into one set lets one of them lose a
+// word another still has, and the pooled set stays whole; and a property
+// added under the name fails here until its path is listed, so it is
+// compared on its own rather than pooled or missed. Break: drop a word from
+// one of status_masked's two enums, and the row names that enum's path.
+func assertNamedEnums(t *testing.T, name string, paths []string, from string, code []string) {
+	t.Helper()
+	enums := namedEnums(readSchema(t), name)
+	var at []string
+	for _, e := range enums {
+		at = append(at, e.path)
+	}
+	if !slices.Equal(at, paths) {
+		t.Fatalf("%s publishes %s at %q, want %q: list a new one here, so that it is compared on its own",
+			schemaPath, name, at, paths)
 	}
 	inCode := map[string]bool{}
-	for _, v := range shape.MaskedKinds() {
+	for _, v := range code {
 		inCode[v] = true
-		if !inSchema[v] {
-			t.Errorf("shape.MaskedKinds() carries %q, which appears in no status_masked enum in %s", v, schemaPath)
-		}
 	}
-	for v := range inSchema {
-		if !inCode[v] {
-			t.Errorf("%s offers the status_masked kind %q, which shape.MaskedKinds() cannot emit", schemaPath, v)
+	for _, e := range enums {
+		for _, v := range code {
+			if !e.words[v] {
+				t.Errorf("%s carries %q, which the %s enum at %s in %s does not", from, v, name, e.path, schemaPath)
+			}
+		}
+		for _, v := range slices.Sorted(maps.Keys(e.words)) {
+			if !inCode[v] {
+				t.Errorf("the %s enum at %s in %s offers %q, which %s cannot emit", name, e.path, schemaPath, v, from)
+			}
 		}
 	}
 }
 
-// collectNamedEnum gathers the string members of the enum on every property
-// with the given name. Null members are skipped: the nullability is carried
-// by the type, and Labels() is a list of labels rather than of states.
-func collectNamedEnum(node any, key, want string, into map[string]bool) {
-	switch v := node.(type) {
-	case map[string]any:
-		if key == want {
-			for _, e := range toAnySlice(v["enum"]) {
-				if s, ok := e.(string); ok {
-					into[s] = true
+// namedEnum is one property the schema publishes under a vocabulary's name:
+// its JSON pointer (RFC 6901) and the string members of its enum. Null
+// members are skipped: the nullability is carried by the type.
+type namedEnum struct {
+	path  string
+	words map[string]bool
+}
+
+// namedEnums is every property under node named name, with an enum or
+// without one, sorted by path.
+func namedEnums(node any, name string) []namedEnum {
+	var out []namedEnum
+	var walk func(node any, path string)
+	walk = func(node any, path string) {
+		switch v := node.(type) {
+		case map[string]any:
+			for k, child := range v {
+				p := path + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(k)
+				if prop, ok := child.(map[string]any); ok && k == name {
+					e := namedEnum{path: p, words: map[string]bool{}}
+					for _, w := range toAnySlice(prop["enum"]) {
+						if s, ok := w.(string); ok {
+							e.words[s] = true
+						}
+					}
+					out = append(out, e)
 				}
+				walk(child, p)
+			}
+		case []any:
+			for i, child := range v {
+				walk(child, path+"/"+strconv.Itoa(i))
 			}
 		}
-		for k, child := range v {
-			collectNamedEnum(child, k, want, into)
-		}
-	case []any:
-		for _, child := range v {
-			collectNamedEnum(child, key, want, into)
-		}
 	}
+	walk(node, "")
+	slices.SortFunc(out, func(a, b namedEnum) int { return strings.Compare(a.path, b.path) })
+	return out
 }

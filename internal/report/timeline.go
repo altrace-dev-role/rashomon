@@ -484,12 +484,12 @@ func maskedOutcome(d store.Declaration, outcome string) string {
 
 // MaskingAsRan judges each call's masking on the command that ran: where the
 // call's outcome record is at schema 4 or later and saw a tool_input
-// (executed_digest is set), its status_masked and runner_digest replace the
-// declaration's. The declaration holds the line before any other PreToolUse
-// hook rewrote it -- to pipe the test output into `grep | head`, say -- and
-// the outcome is the line that ran's. A record before v4, or one that saw no
-// input, leaves the declaration's as it is. Applied once to a run as it is
-// read, before anything reads masking (Assemble, digest's build).
+// (executed_digest is set), its status_masked, runner_digest and runner_kind
+// replace the declaration's. The declaration holds the line before any other
+// PreToolUse hook rewrote it -- to pipe the test output into `grep | head`,
+// say -- and the outcome is the line that ran's. A record before v4, or one
+// that saw no input, leaves the declaration's as it is. Applied once to a run
+// as it is read, before anything reads masking (Assemble, digest's build).
 func MaskingAsRan(run *store.Run) {
 	if run == nil {
 		return
@@ -501,7 +501,9 @@ func MaskingAsRan(run *store.Run) {
 		if rec == nil || rec.SchemaVersion < 4 || rec.ExecutedDigest == "" {
 			continue
 		}
-		d.Shape.StatusMasked, d.Shape.RunnerDigest = rec.StatusMasked, rec.RunnerDigest
+		// The kind travels with the digest it names (D9); a nil kind beside a
+		// digest is a record before schema 6.
+		d.Shape.StatusMasked, d.Shape.RunnerDigest, d.Shape.RunnerKind = rec.StatusMasked, rec.RunnerDigest, rec.RunnerKind
 	}
 }
 

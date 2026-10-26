@@ -258,11 +258,13 @@ func TestRunnerDigest(t *testing.T) {
 	if digestOf("go test $(go list ./...)") == digestOf("go test $(go list ./cmd/...)") {
 		t.Error("two runners whose expansions differ digest equal")
 	}
-	// After a cd the start directory does not hold, where the runner ran is
-	// not known: no digest, hidden or not.
+	// A leading cd the program search folds leaves the runner its digest,
+	// hidden or not, whether or not the hook reads where the cd leads: the
+	// digest is the runner's words, and where it ran is the cwd digest's to
+	// say (an unread fold's is a location no read one equals).
 	for _, cmd := range []string{"cd sub; make test | tail", "cd sub; make test", "cd $D && make test"} {
-		if _, d := maskedOf(t, cmd); d != nil {
-			t.Errorf("%q carries a runner digest after a cd its cwd does not hold", cmd)
+		if _, d := maskedOf(t, cmd); d == nil || *d != plain {
+			t.Errorf("%q: runner digest set %v; want make test's after a folded cd", cmd, d != nil)
 		}
 	}
 	if got := digestOf("cd /repo && make test"); got != plain {

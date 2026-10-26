@@ -24,6 +24,9 @@ var (
 		// recognised runner's exit status is not the line's, and a keyed
 		// digest of that runner's words: 64 hex characters, never the words.
 		"shape.status_masked", "shape.runner_digest",
+		// v6. A closed word -- test or build -- naming the list the digested
+		// runner is on.
+		"shape.runner_kind",
 		// v2. Hostnames only: the extractor returns a canonical hostname or
 		// nothing, so neither list can carry a path, a query or a credential.
 		// They are here rather than under shape because the report joins on
@@ -80,6 +83,8 @@ var (
 		// v4. The shape's status_masked and runner_digest for the line as it
 		// ran: a closed word and a keyed digest, never the words.
 		"status_masked", "runner_digest",
+		// v6. The shape's runner_kind for the line as it ran: a closed word.
+		"runner_kind",
 		// v4. An integer: which runner lists decided them.
 		"rules_version",
 		// v5. The writing binary's version, then the execution's v5 keys

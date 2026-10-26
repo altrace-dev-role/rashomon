@@ -27,16 +27,16 @@ import (
 // reader already carries a comment about: acceptance used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
-// This build writes v4 for its ordinary call records and v5 for the one
+// This build writes v6 for its ordinary call records and v5 for the one
 // flush_failed marker (store.FlushFailedSchemaVersion). AcceptsKind must keep
-// admitting the call records at 1 to 5 and the session records at 1 to 3, so
+// admitting the call records at 1 to 6 and the session records at 1 to 3, so
 // older stores still read; neither may admit a version that does not exist yet.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
 	for _, c := range []struct {
 		kind  string
 		newer int
 	}{
-		{store.TypeDeclaration, 5}, {store.TypeExecution, 5}, {store.TypeTerminal, 5},
+		{store.TypeDeclaration, 6}, {store.TypeExecution, 6}, {store.TypeTerminal, 6},
 		{store.TypeCoverage, 3}, {store.TypeGap, 3},
 	} {
 		for v := 1; v <= c.newer; v++ {
@@ -221,9 +221,9 @@ func toAnySlice(v any) []any {
 	return nil
 }
 
-// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 5,
-// additive over 3 and 4, and every record it writes carries each key the published
-// v3 gate requires, and the v4 and v5 gates' as well.
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 6,
+// additive over 3 to 5, and every record it writes carries each key the published
+// v3 gate requires, and the v4, v5 and v6 gates' as well.
 // The version is compared against the literal, not against
 // store.SchemaVersion, which would compare the writer with itself. Break:
 // write 2 while the vocabulary is 3's (the test class, the test-file label),
@@ -255,18 +255,23 @@ func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
 		if len(v5) <= len(v4) {
 			t.Fatalf("$defs.%s's schema 5 gate requires %d keys, no more than schema 4's %d: v5 adds keys", c.def, len(v5), len(v4))
 		}
+		v6 := versionGate(defs[c.def].(map[string]any), 6)
+		if len(v6) <= len(v5) {
+			t.Fatalf("$defs.%s's schema 6 gate requires %d keys, no more than schema 5's %d: v6 adds runner_kind", c.def, len(v6), len(v5))
+		}
 		gated = append(gated, v4...)
 		gated = append(gated, v5...)
+		gated = append(gated, v6...)
 		if len(c.recs) == 0 {
 			t.Fatalf("no %s record written", c.def)
 		}
 		for _, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(5) {
-				t.Errorf("%s written at schema_version %v, want 5", c.def, got)
+			if got := r.fields["schema_version"]; got != float64(6) {
+				t.Errorf("%s written at schema_version %v, want 6", c.def, got)
 			}
 			for _, k := range gated {
 				if _, ok := nested(r, k); !ok {
-					t.Errorf("%s lacks %q, which the schema 3, 4 or 5 gate requires", c.def, k)
+					t.Errorf("%s lacks %q, which the schema 3, 4, 5 or 6 gate requires", c.def, k)
 				}
 			}
 		}

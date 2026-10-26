@@ -35,6 +35,14 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // measured" as it does for every earlier step. v5 also has one record that
 // is not additive, the flush_failed marker: see FlushFailedSchemaVersion.
 //
+// v6 is additive over v5: the declaration's shape and the execution gained
+// runner_kind, the list the runner runner_digest digests is on (D9), set
+// exactly when runner_digest is. It is a version of its own rather than a
+// v5 key because v5 records are already on disk without it (D11): a v5
+// record's runner digest has no recorded kind, which a reader must not take
+// for either list. The terminal gained nothing and is written at 6 with its
+// declaration.
+//
 // SchemaVersion is the version of a call's ordinary records: its
 // declaration, the terminal that actually closes it, and its execution,
 // KindVersion's entry for each. Coverage and gap records are written at
@@ -66,8 +74,9 @@ const SchemaVersion = CallSchemaVersion
 // none of whose keys it carries -- and would have cost every 1.1.x reader
 // every call record in a run the moment one flush failed. With DeclarationV5,
 // ExecutionV5 and TerminalV5 embedded, every call record carries the v5 keys
-// and is written at 5 too; a 1.1.x reader skips the calls and reads the
-// session unverified, as it did for v4, and coverage and gaps stay at 3 so
+// and was written at 5 too, and at 6 once runner_kind landed (D11); the
+// marker stays at 5. A 1.1.x reader skips the calls and reads the session
+// unverified, as it did for v4, and coverage and gaps stay at 3 so
 // it still lists every session.
 //
 // A new record type instead of a version was rejected: Terminal is the type
@@ -174,20 +183,26 @@ type Declaration struct {
 	SSHHosts []string `json:"ssh_hosts"`
 
 	// CWDDigest is the keyed digest of the directory its command starts in
-	// (v3): the reported cwd, or where its leading plain `cd DIR &&` steps
-	// lead (shape.LeadingDirectory, folded onto the PreToolUse payload's cwd).
-	// shape.CWDDigest, under the per-install key, so two calls' directories
-	// compare equal or not and nothing else. Measured on Claude Code 2.1.280,
-	// the payload's cwd follows the shell: after `cd sub && pwd` the next
-	// call's reads .../sub, so the cwd is where the shell was before the line
-	// ran, and where its leading cds lead is where the rest of the line ran. Two
-	// runs of one command line in two directories are two different runs,
-	// and the test-bending pairs compare this as well as the shape digest.
+	// (v3), from hook.Locate, its one producer, under the per-install key, so
+	// two calls' directories compare equal or not and nothing else. One of
+	// three: the leading cd steps shape.LeadingDirectory reads folded onto the
+	// PreToolUse payload's cwd, `~` expanded with the hook's own home
+	// (shape.CWDDigest; the payload's cwd itself where there are none); for
+	// leading steps the program search steps over and LeadingDirectory does not
+	// read, shape.UnreadCWDDigest of the payload's cwd and those steps, which
+	// equals no read directory's digest; or "", below. Measured on Claude Code
+	// 2.1.280, the payload's cwd follows the shell: after `cd sub && pwd` the
+	// next call's reads .../sub, so the cwd is where the shell was before the
+	// line ran, and where its leading cds lead is where the rest of the line
+	// ran. Two runs of one command line in two directories are two different
+	// runs, and the test-bending pairs compare this as well as the shape
+	// digest.
 	//
 	// A digest and never the path. The coverage records carry the plain cwd
 	// already, as the novelty baseline's project key; the declarations do
 	// not gain it. Empty string when that directory is not known: no payload
-	// cwd and no absolute leading cd.
+	// cwd to resolve a relative step against or to key unread steps on, no
+	// home to expand `~` with, or a read fold past shape.MaxLeadingCd steps.
 	CWDDigest string `json:"cwd_digest"`
 
 	// FileLabel is what the file this call named looks like (v3), from the
@@ -342,6 +357,9 @@ type Execution struct {
 	// a shell.
 	StatusMasked *string `json:"status_masked"`
 	RunnerDigest *string `json:"runner_digest"`
+	// RunnerKind is the shape's runner_kind for the line as it ran (v6), from
+	// the same Derive, so it is set exactly when RunnerDigest is.
+	RunnerKind *string `json:"runner_kind"`
 
 	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
 	// which runner and build lists decided StatusMasked. See Declaration's.

@@ -3,7 +3,9 @@ package hook
 import (
 	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
@@ -175,14 +177,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 		ToolName:       p.ToolName,
 		RulesVersion:   shape.RulesVersion,
 	}
-	// DeriveWithDirs, not Derive: it returns the same shape and the same cut
-	// decision, plus the leading-cd directories (shape.LeadingDirectory's own
-	// answer) it already read the command to compute. startDirectory folds
-	// those directly instead of decoding and tokenizing the command a second
-	// time to get them again.
-	var dirs []string
-	decl.Shape, _, dirs = shape.DeriveWithDirs(p.ToolName, p.ToolInput, h.st.Key())
-	decl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))
+	decl.Shape, decl.CWDDigest = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
@@ -298,6 +293,34 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	_ = h.st.AppendCoverage(cov)
 }
 
+// Locate is a call's shape and its location, the cwd digest the hook
+// records: Capture's, and what a test that builds records the way the hook
+// does calls. One reading of the command, shape.DeriveWithDirs, gives the
+// shape and the leading cd steps, so the line is not decoded and tokenized a
+// second time for them. The location is one of three:
+//
+//   - the leading steps LeadingDirectory reads, folded onto the payload's cwd
+//     (startDirectory), `~` expanded with the hook's own home;
+//   - for steps the program search steps over and LeadingDirectory does not
+//     read, shape.UnreadCWDDigest of the payload's cwd and the steps, a
+//     location no read directory's digest equals;
+//   - "", unknown, where there is no payload cwd to resolve a relative step
+//     against or to key unread steps on (keyed on the steps alone, one line
+//     run in two projects would be one location), or past maxLeadingCd read
+//     steps.
+//
+// With no steps it is the payload's cwd.
+func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string) {
+	s, _, dirs, unread := shape.DeriveWithDirs(toolName, toolInput, key)
+	if unread != "" {
+		if cwd == "" {
+			return s, ""
+		}
+		return s, shape.UnreadCWDDigest(key, cwd, unread)
+	}
+	return s, shape.CWDDigest(key, startDirectory(cwd, dirs))
+}
+
 // startDirectory is the directory a call's command starts in: the payload's
 // cwd, which is the shell's directory before the line runs, with the targets
 // of the line's leading plain `cd DIR &&` steps (shape.LeadingDirectory's
@@ -307,6 +330,30 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 // /repo/web, although all of them ran in web. A relative target with no
 // directory to resolve it against is not known, and the directory stays
 // empty until an absolute target names one.
+//
+// `~` and `~/...` are the home, an absolute target: the hook's own home
+// (os.UserHomeDir), never the line's environment, which the hook does not
+// see. Claude Code's Bash tool keeps only the working directory from one call
+// to the next, not the environment, so no earlier call's export reaches a
+// later `cd ~`; on the same line, `HOME=x cd ~` is a step LeadingDirectory
+// refuses, and an export before the cd ends the leading run. A sandboxed tool
+// whose environment differs from the hook process's is the case this does
+// not see. The home is only an input to CWDDigest: no path is written. With
+// no home to expand it with, the directory is not known.
+//
+// CDPATH is not seen either, and for the same reason: a relative target
+// `cd web` is looked for under each CDPATH entry before the working
+// directory, and the shell's environment is not the hook's, so the fold
+// joins it to the cwd as if CDPATH were unset. The fold is lexical:
+// filepath.Join cleans `..` without looking at the disk, which is how the
+// shell's default `cd -L` reads it. A physical cwd (`cd -P`, or a payload cwd
+// already resolved through a symlink) names another directory for `cd
+// link/..` than the one the fold reaches, and the hook cannot tell the two
+// apart; the digest is still one value per spelling, never a path.
+//
+// rules_version, written on every declaration and execution (shape.RulesVersion,
+// set where each is built), is written and not consulted: no reader branches on it,
+// which holds while the stores are dev stores with nothing older to read.
 //
 // dirs, not toolName and toolInput: the caller already has
 // shape.DeriveWithDirs's dirs, from the SAME read of the program search
@@ -325,6 +372,12 @@ func startDirectory(cwd string, dirs []string) string {
 	}
 	for _, dir := range dirs {
 		switch {
+		case dir == "~" || strings.HasPrefix(dir, "~/"):
+			home, err := os.UserHomeDir()
+			if err != nil || !filepath.IsAbs(home) {
+				return ""
+			}
+			cwd = filepath.Join(home, dir[1:])
 		case filepath.IsAbs(dir):
 			cwd = filepath.Clean(dir)
 		case cwd != "":

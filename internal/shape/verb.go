@@ -72,48 +72,6 @@ var programVerb = map[string]string{
 	"apt-get": VerbPackage, "uv": VerbPackage, "poetry": VerbPackage,
 }
 
-// testCommands are the test runners the test verb class recognises: the
-// program, as path.Base names it, and then the plain words that must follow
-// it exactly. A runner that is its own program is a list of one.
-//
-// A fixed list, compared and discarded. Nothing from the line is kept but the
-// class; an argument is looked at only to be told equal to one of these.
-// Anything this list does not name -- `make -C dir test`, `npx --yes jest`,
-// `go test` behind `nice` -- stays what it was before: execute, or package
-// for go and cargo. That is an under-claim, and the detections built on this
-// class are worth only as much as their refusal to over-claim.
-//
-// The wrappers on the list are the ones whose exit status is the runner's:
-// a project's own gradlew and mvnw, npm's `t` alias, `npx jest` and `npx
-// vitest`, `uv run pytest`, `poetry run pytest` and `bundle exec rspec`. So
-// are the `timeout N` and `time` prefixes (runnerPrefix), except for
-// timeout's own 124, which the report reads as no result. A pipe or a list
-// after the runner is still refused (wholeCommand): without pipefail its
-// status is the last stage's.
-//
-// The rule applied: a runner is on the list when it is a known test tool, a
-// build tool or launcher given its test command (`go test`, `npm t`,
-// `npm run test`, `python -m pytest`, `python -m unittest`), or a listed
-// wrapper that passes its runner's exit status through. `make check` is not,
-// since check is not make's test command. That rule does not keep lint out:
-// go test runs vet first, an npm `pretest` script runs before `npm test`,
-// tox's default envlist and a make `test` target can each include lint, and
-// a lint failure fixed only in a file named like a test then reads as the
-// tests-only pattern.
-var testCommands = [][]string{
-	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
-	{"ctest"}, {"tox"}, {"nox"},
-
-	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "t"}, {"npm", "run", "test"},
-	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
-	{"mvn", "test"}, {"mvnw", "test"}, {"gradle", "test"}, {"gradlew", "test"}, {"make", "test"},
-	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
-	{"python", "-m", "unittest"}, {"python3", "-m", "unittest"},
-
-	{"npx", "jest"}, {"npx", "vitest"}, {"uv", "run", "pytest"}, {"poetry", "run", "pytest"},
-	{"bundle", "exec", "rspec"},
-}
-
 // refusalsOf names the notARun entry a testCommands row is checked against:
 // its own program's, or for a wrapper the runner it wraps, since `npx jest
 // --listTests` lists as `jest --listTests` does. gradlew and mvnw take
@@ -139,14 +97,21 @@ func refusalsOf(c []string) string {
 // --no-run`), list them (`-list`, `--collect-only`, `--listTests`), print or
 // check what it would do (`make -n`, `make -q`, `--dry-run`), skip them
 // (`-DskipTests`, `tox --notest`, `nox --install-only`), set up an
-// environment instead (`tox devenv`), watch for changes (`gradle -t`), or
-// show its version (`-v` where that is what -v means). Each of those ends ok
-// or failed on something no test decided, and as a test run it would
-// complete a pattern on that outcome. A word ending in * is a prefix:
-// `-list=Foo`, `-elint`, matched whatever follows it. A flag is matched in
-// its `flag=value` form too (`-c=true`, `--watch=true`), unless the value is
-// false (onList). Maven's skip properties are refused by a rule of their own
-// (mavenSkip): `-DskipTests=false` runs the tests.
+// environment instead (`tox devenv`), watch for changes (`gradle -t`), show
+// its version (`-v` where that is what -v means), or end ok whatever the
+// tests did (`make -i`, `mvn --fail-never`, `npm --if-present` where there is
+// no test script). Each of those ends ok or failed on something no test
+// decided, and as a test run it would complete a pattern on that outcome. A
+// word ending in * is a prefix: `-list=Foo`, `-elint`, matched whatever
+// follows it. A flag is matched in its `flag=value` form too (`-c=true`,
+// `--watch=true`), unless the value is false (onList). Maven's skip
+// properties are refused by a rule of their own (mavenSkip):
+// `-DskipTests=false` runs the tests. One set in MAVEN_OPTS or
+// .mvn/maven.config is not on the line and is not seen.
+//
+// The arguments read are the ones after the row's words. Before them only
+// leadingFlags may stand (runnerOn), none of which is on these lists, so
+// `make -n test` matches no row at all.
 //
 // The lists are the spellings named here, not every spelling a runner
 // accepts: a combined short flag (`make -nk`), an option set in a config file
@@ -165,6 +130,7 @@ func refusalsOf(c []string) string {
 var notARun = map[string][]string{
 	"go":      {"-c", "--c", "-n", "--n", "-list*", "--list*"},
 	"cargo":   {"--no-run", "--list", "-V"},
+	"npm":     {"--if-present"},
 	"pytest":  pytestNotARun,
 	"python":  pytestNotARun,
 	"python3": pytestNotARun,
@@ -175,9 +141,10 @@ var notARun = map[string][]string{
 	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
 	"ctest":   {"-N", "--show-only*"},
 	"dotnet":  {"--list-tests", "-t"},
-	"mvn":     {"-v"},
+	"mvn":     {"-v", "-fn", "--fail-never"},
 	"gradle":  {"--dry-run", "-m", "-v", "-t", "--continuous"},
-	"make":    {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v"},
+	"make": {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v",
+		"-i", "--ignore-errors"},
 	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini", "--notest",
 		"--devenv*", "list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e", "devenv", "d"},
 	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*", "--install-only"},
@@ -229,6 +196,12 @@ func refusesRun(runner string, before, args []token) bool {
 // --show-only, pytest --cache-show) or is a no-value switch whose parser
 // rejects any =value (pytest --fixtures, nox --list, tox --listenvs, phpunit
 // --list-*), so the line runs no test either way.
+//
+// A combined short flag is not split (notARun's lists name spellings, not
+// clusters): that is safe for notARun, where a missed refusal still counts as
+// a test run, and for the in-place editors shortClusters closes the
+// letter-clustering case only; a new caller re-justifies it against its
+// own safe direction.
 func onList(word string, list []string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
@@ -256,18 +229,20 @@ func isFalse(v string) bool {
 	return false
 }
 
-// mavenSkip reports a Maven property that skips the tests: -DskipTests,
-// -Dmaven.test.skip or -Dmaven.test.skip.exec, with no `=value` or with a
+// mavenSkipProperties are the Maven properties mavenSkip reads: the ones
+// that skip the tests, -DskipTests, -Dmaven.test.skip and
+// -Dmaven.test.skip.exec, and the one that ignores their failures,
+// -Dmaven.test.failure.ignore (Surefire's testFailureIgnore). A list, so
+// that TestLeadingFlagsAreNotRefusals tries each against leadingFlags.
+var mavenSkipProperties = []string{"-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec", "-Dmaven.test.failure.ignore"}
+
+// mavenSkip reports one of mavenSkipProperties with no `=value` or with a
 // value equal to true ignoring case. Maven reads them with Java's
 // Boolean.valueOf, where nothing else is true, so `-DskipTests=false`, `=1`
 // and `=no` all run the tests.
 func mavenSkip(word string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
-	switch name {
-	case "-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec":
-		return !hasValue || strings.EqualFold(value, "true")
-	}
-	return false
+	return slices.Contains(mavenSkipProperties, name) && (!hasValue || strings.EqualFold(value, "true"))
 }
 
 // runsTests reports whether the command whose program is the token at i,
@@ -298,33 +273,6 @@ func runsTests(toks []token, i int, prog string, whole bool) bool {
 		return false
 	}
 	return runnerOn(toks, i, prog, len(toks), testCommands) && wholeCommand(toks, i)
-}
-
-// runnerOn reports whether the command whose program, past runnerPrefix, is
-// the token at i, named prog, and which ends before toks[end], is a row of
-// list -- testCommands, or buildCommands -- and is not refused by notARun:
-// the comparison runsTests makes, over one command's words rather than the
-// whole line's, so that a `-v` given to the grep after a pipe is not read as
-// make's.
-func runnerOn(toks []token, i int, prog string, end int, list [][]string) bool {
-next:
-	for _, c := range list {
-		if c[0] != prog {
-			continue
-		}
-		for n, want := range c[1:] {
-			k := i + 1 + n
-			if k >= end {
-				continue next
-			}
-			t := toks[k]
-			if t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
-				continue next
-			}
-		}
-		return !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])
-	}
-	return false
 }
 
 // runnerPrefix steps past the prefixes that pass a runner's exit status
@@ -467,6 +415,9 @@ var runInBackgroundKey = jsonscan.NewFoldKeySet("run_in_background")
 // and a directory change is told apart by the declarations' directory
 // digests, not as a write.
 func mayWrite(toks []token, i int) bool {
+	if inPlaceEdit(toks) {
+		return true
+	}
 	curl, curlOut := false, false
 	for j, t := range toks {
 		if opensSubstitution(toks, j) {
@@ -481,15 +432,11 @@ func mayWrite(toks []token, i int) bool {
 		if t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {
 			return true
 		}
-		switch path.Base(t.text) {
-		case "xargs", "tee", "wget", "rsync", "scp":
+		if slices.Contains(inlineWriters, path.Base(t.text)) || slices.Contains(findWriteWords, t.text) {
 			return true
-		case "curl":
-			curl = true
 		}
-		switch t.text {
-		case "-delete", "-exec", "-execdir", "-ok", "-okdir":
-			return true
+		if path.Base(t.text) == "curl" {
+			curl = true
 		}
 		curlOut = curlOut || curlOutputFlag(t.text)
 	}
@@ -515,6 +462,15 @@ func mayWrite(toks []token, i int) bool {
 	}
 	return false
 }
+
+// inlineWriters are the programs whose word anywhere in a stage sets may_write
+// (mayWrite): they take a file or a command to run as an argument, and the
+// words that name which are not read.
+var inlineWriters = []string{"xargs", "tee", "wget", "rsync", "scp"}
+
+// findWriteWords are find's actions that delete or run a command, and set
+// may_write wherever they stand.
+var findWriteWords = []string{"-delete", "-exec", "-execdir", "-ok", "-okdir"}
 
 // outputRedirect reports an output redirection whose operator starts at j and
 // whose target is a file: `>`, `>>`, `>|`, `&>`, `<>`, and `>&` onto a word
@@ -658,7 +614,7 @@ func stageSeparator(toks []token, j int) bool {
 // `-o./calc.go`, `-#O` and `-sSLotestdata/x.json` name files.
 func curlOutputFlag(w string) bool {
 	switch {
-	case w == "--output", w == "--remote-name", w == "--remote-name-all", w == "--output-dir",
+	case slices.Contains(curlLongOutputs, w),
 		strings.HasPrefix(w, "--output="), strings.HasPrefix(w, "--output-dir="):
 		return true
 	case len(w) > 1 && w[0] == '-' && w[1] != '-':
@@ -677,6 +633,10 @@ func curlOutputFlag(w string) bool {
 	return false
 }
 
+// curlLongOutputs are curl's long options that name where a download is
+// written, with no =value; --output= and --output-dir= are read by prefix.
+var curlLongOutputs = []string{"--output", "--remote-name", "--remote-name-all", "--output-dir"}
+
 // curlArgumentOptions are curl's short options that take an argument, per
 // `curl --help all`.
 const curlArgumentOptions = "AbcCdDeEFhHKmPQrtTuUwxXyYz"
@@ -686,4 +646,126 @@ func verbForProgram(prog string) string {
 		return v
 	}
 	return VerbExecute
+}
+
+// inPlaceEditors are programs that rewrite files in place, with the words
+// that make them do so: a flag (`sed -i`, `perl -pi`, `gofmt -w`,
+// `prettier --write`, `clang-format -i`, `eslint --fix`), a subcommand
+// (`go fmt`, `cargo fmt`, `ruff format`), or nothing, for a formatter that
+// writes unless told to check (black, isort, rustfmt). A trailing `*` matches
+// a prefix, as onList reads it, so `-i.bak` and `-pie` count. BSD sed's -I
+// edits in place as -i does (its man page's SYNOPSIS: `[-I extension] [-i
+// extension]`); GNU sed has no -I, so the prefix reads nothing else.
+var inPlaceEditors = map[string][]string{
+	"sed":          {"-i*", "-I*", "--in-place*"},
+	"perl":         {"-i*", "-pi*", "-ni*", "-0pi*"},
+	"gofmt":        {"-w"},
+	"go":           {"fmt"},
+	"cargo":        {"fmt"},
+	"ruff":         {"format"},
+	"prettier":     {"--write", "-w"},
+	"clang-format": {"-i"},
+	"eslint":       {"--fix"},
+	"black":        {},
+	"isort":        {},
+	"rustfmt":      {},
+}
+
+// shortClusters are the in-place editors whose option grammar bundles
+// single-letter options into one word, with the letters that edit in place:
+// i for both, and BSD sed's I. sed's grammar (GNU sed's Command-Line
+// Options, and the BSD sed man page) and perl's (perlrun) both bundle, and
+// both let the in-place letter take an attached suffix, so it is found by
+// scanning the cluster's letters in order (clusterHas): `sed -ni`, `sed
+// -nI.bak`, `sed -li` and `perl -lpi` edit in place. A letter
+// in consumes takes the rest of the word as its value (`-escript`,
+// `-Mmodule`) and ends the scan, so `sed -ne` and `perl -Mstrict` do not.
+// sed's -l is not a consumer: BSD sed, the sed macOS ships, reads it as
+// line-buffered output with no argument. GNU sed's -l N does take one, and
+// the word where the two collide, `-l5i`, reads as a write: the over-claim.
+// perl's -l[octnum] takes digits only and is not a consumer either;
+// -x[directory] is, since whatever follows x in the word is its directory.
+// gofmt and clang-format are not clustered (Go's flag package and LLVM read
+// -w and -i whole) and are not here.
+var shortClusters = map[string]shortCluster{
+	"sed":  {letters: "iI", consumes: "ef"},
+	"perl": {letters: "i", consumes: "eEMmIFx"},
+}
+
+type shortCluster struct {
+	letters  string
+	consumes string
+}
+
+// checkOnly are the words under which a formatter reads and reports instead
+// of writing, or prints its help or version; one of them anywhere in the
+// stage clears the editor. -l is not one: gofmt's -l only lists the files
+// that differ and writes with -w beside it (`gofmt -l -w .`), black's and
+// isort's is a line length, sed's a line length or line-buffered output, and
+// perl's a line-ending switch, so none of them reads instead of writing.
+// `gofmt -l .` reads because no writing word armed the stage.
+var checkOnly = []string{"--check", "--check-only", "--diff", "--list-different", "--dry-run",
+	"--help", "--version", "-h"}
+
+// inPlaceEdit reports a line with a stage on which an in-place editor stands
+// with a word that makes it write (inPlaceEditors) and no word that makes it
+// only check (checkOnly). Words are compared wherever they stand in the
+// stage, as mayWrite compares its own: the direction to be wrong in. A
+// clustered editor's word is also scanned as a cluster (shortClusters). A
+// stage separator starts the search over, so `sed -n p a | grep -i x` is a
+// read.
+func inPlaceEdit(toks []token) bool {
+	var flags []string
+	var cluster shortCluster
+	armed, checking, clustered := false, false, false
+	for j, t := range toks {
+		if stageSeparator(toks, j) {
+			if armed && !checking {
+				return true
+			}
+			flags, armed, checking, clustered = nil, false, false, false
+			continue
+		}
+		if t.meta {
+			continue
+		}
+		if f, ok := inPlaceEditors[path.Base(t.text)]; ok {
+			flags = f
+			armed = len(f) == 0
+			cluster, clustered = shortClusters[path.Base(t.text)]
+			continue
+		}
+		if flags == nil {
+			continue
+		}
+		switch {
+		case onList(t.text, checkOnly):
+			checking = true
+		case onList(t.text, flags):
+			armed = true
+		case clustered && clusterHas(t.text, cluster):
+			armed = true
+		}
+	}
+	return armed && !checking
+}
+
+// clusterHas reports a word that is a cluster of short options (one dash,
+// then a letter, and no =) in which one of c.letters stands before any
+// letter of c.consumes: the walk stops at the first of either, since a
+// consuming letter takes the rest of the word as its value.
+func clusterHas(tok string, c shortCluster) bool {
+	if len(tok) < 2 || tok[0] != '-' || !('a' <= tok[1] && tok[1] <= 'z' || 'A' <= tok[1] && tok[1] <= 'Z') ||
+		strings.Contains(tok, "=") {
+		return false
+	}
+	for i := 1; i < len(tok); i++ {
+		switch {
+		case strings.IndexByte(c.letters, tok[i]) >= 0:
+			return true
+		case strings.IndexByte(c.consumes, tok[i]) >= 0:
+			return false
+		}
+	}
+	return false
 }

@@ -1,6 +1,11 @@
 package acceptance
 
-import "testing"
+import (
+	"slices"
+	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
+)
 
 // REC-34 -- schema 5 is the flush_failed marker's own version
 // (store.FlushFailedSchemaVersion), not the call records' (SchemaVersion).
@@ -66,10 +71,11 @@ func TestSchema5PhaseIsRequiredOnlyAtVersion5(t *testing.T) {
 }
 
 // TestSchemaVersionEnumAdmits5OnEveryCallRecord: the declaration, the
-// execution and the terminal are all written at 5 since their v5 keys landed
-// (P-11), and the flush_failed marker before them, so each must be allowed to
-// say so; none may admit 6, a version nothing writes, which would be a
-// contract nobody can rely on (the same reasoning
+// execution and the terminal were written at 5 from their v5 keys (P-11)
+// until runner_kind moved them to 6 (D11), and the flush_failed marker is
+// still written at 5, so each must be allowed to say both; none may admit
+// the version one above CallSchemaVersion, which nothing writes and would be
+// a contract nobody can rely on (the same reasoning
 // TestSchema3_WrittenRecordsMeetTheVersion3Gate's comment gives for comparing
 // against a literal rather than the writer's own constant).
 func TestSchemaVersionEnumAdmits5OnEveryCallRecord(t *testing.T) {
@@ -98,21 +104,26 @@ func TestSchemaVersionEnumAdmits5OnEveryCallRecord(t *testing.T) {
 			t.Errorf("$defs.%s.schema_version does not admit 5; a record this build writes "+
 				"fails the contract even though the reader accepts it", name)
 		}
-		if admits(name, 6) {
-			t.Errorf("$defs.%s.schema_version admits 6, but nothing writes one at that "+
-				"version; the contract should not claim a shape nothing produces", name)
+		if !admits(name, 6) {
+			t.Errorf("$defs.%s.schema_version does not admit 6; a record this build writes "+
+				"fails the contract even though the reader accepts it", name)
+		}
+		// One above CallSchemaVersion: a version nothing writes yet.
+		if next := store.CallSchemaVersion + 1; admits(name, next) {
+			t.Errorf("$defs.%s.schema_version admits %d, but nothing writes one at that "+
+				"version; the contract should not claim a shape nothing produces", name, next)
 		}
 	}
 }
 
-// TestSchema5_OrdinaryCallRecordsAreWrittenAtFive: an ordinary call, with no
-// flush failure anywhere near it, writes its declaration, execution and
-// terminal at schema 5, each naming the binary that wrote it. Compared
+// TestSchema5_OrdinaryCallRecordsAreWrittenAtTheCallVersion: an ordinary
+// call, with no flush failure anywhere near it, writes its declaration,
+// execution and terminal at schema 6, each naming the binary that wrote it. Compared
 // against the literal, not store.SchemaVersion, for the reason
 // TestSchema3_WrittenRecordsMeetTheVersion3Gate's comment gives: comparing
 // the writer with itself cannot catch the writer moving. Break: leave
-// SchemaVersion at 4, or drop writer from any of the three.
-func TestSchema5_OrdinaryCallRecordsAreWrittenAtFive(t *testing.T) {
+// SchemaVersion at 5, or drop writer from any of the three.
+func TestSchema5_OrdinaryCallRecordsAreWrittenAtTheCallVersion(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
@@ -130,12 +141,53 @@ func TestSchema5_OrdinaryCallRecordsAreWrittenAtFive(t *testing.T) {
 			t.Fatalf("no %s record was written", c.kind)
 		}
 		for i, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(5) {
-				t.Errorf("%s %d written at schema_version %v, want 5", c.kind, i, got)
+			if got := r.fields["schema_version"]; got != float64(6) {
+				t.Errorf("%s %d written at schema_version %v, want 6", c.kind, i, got)
 			}
 			if w, _ := r.fields["writer"].(string); w == "" {
 				t.Errorf("%s %d names no writer: %v", c.kind, i, r.fields["writer"])
 			}
+		}
+	}
+}
+
+// TestSchema6_EveryCallGateHoldsTheGateBeforeIt: a record at 6 carries every
+// key a record at 5 does, and runner_kind on the declaration's shape and the
+// execution (D11): each call kind's v6 gate is its v5 gate and those keys.
+// The terminal gains nothing, so its v6 gate is its v5 gate: without it a v6
+// terminal that names no phase or writer would pass the contract. Break:
+// drop a key from a v6 gate, or runner_kind from either.
+func TestSchema6_EveryCallGateHoldsTheGateBeforeIt(t *testing.T) {
+	defs := schemaDefs(t)
+	for _, c := range []struct {
+		def   string
+		added []string
+	}{
+		{"declaration", []string{"shape.runner_kind"}},
+		{"execution", []string{"runner_kind"}},
+		{"terminal", nil},
+	} {
+		def, ok := defs[c.def].(map[string]any)
+		if !ok {
+			t.Fatalf("$defs.%s is missing", c.def)
+		}
+		v5, v6 := versionGate(def, 5), versionGate(def, 6)
+		if len(v5) == 0 || len(v6) == 0 {
+			t.Fatalf("$defs.%s: %d keys gated at 5 and %d at 6; want both gates", c.def, len(v5), len(v6))
+		}
+		var added []string
+		for _, k := range v6 {
+			if !slices.Contains(v5, k) {
+				added = append(added, k)
+			}
+		}
+		for _, k := range v5 {
+			if !slices.Contains(v6, k) {
+				t.Errorf("$defs.%s: %q is required at 5 and not at 6", c.def, k)
+			}
+		}
+		if slices.Sort(added); !slices.Equal(added, c.added) {
+			t.Errorf("$defs.%s: the v6 gate adds %q to the v5 gate, want %q", c.def, added, c.added)
 		}
 	}
 }

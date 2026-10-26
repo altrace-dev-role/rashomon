@@ -33,6 +33,7 @@ func shapeSeeds() []string {
 		"echo "+strings.Repeat("`", 2*(maxNest+1)),
 		"cd /srv/app && cd sub && go test ./...",
 		"cd ~/proj && make",
+		"cd ~user/proj && make",
 		"cd -x && ls",
 		"cd a && pushd b && make test 2>&1 | tail -40",
 		"curl -sS https://pypi.org/simple/ && git push git@github.com:o/r.git",
@@ -79,6 +80,13 @@ func checkDerive(t *testing.T, cmd string) {
 	}
 	if s.RunnerDigest != nil && !isDigest(*s.RunnerDigest) {
 		t.Fatalf("runner digest %q for %q is not 64 hex characters", *s.RunnerDigest, cmd)
+	}
+	if (s.RunnerDigest == nil) != (s.RunnerKind == nil) {
+		t.Fatalf("runner digest %s beside runner kind %s for %q: one null and one not",
+			orNil(s.RunnerDigest), orNil(s.RunnerKind), cmd)
+	}
+	if s.RunnerKind != nil && !slices.Contains(RunnerKinds(), *s.RunnerKind) {
+		t.Fatalf("runner kind %q for %q is outside RunnerKinds()", *s.RunnerKind, cmd)
 	}
 	if again := Derive("Bash", raw, []byte("fuzz-key")); !reflect.DeepEqual(s, again) {
 		t.Fatalf("Derive(%q) is not deterministic: %+v then %+v", cmd, s, again)
@@ -197,8 +205,10 @@ func FuzzLeadingDirectory(f *testing.F) {
 }
 
 // checkLeadingDirectory: ok says whether there are directories, each is a word
-// the shell takes as it stands, and the run is read one step past
-// MaxLeadingCd and no further, the step that says the line is past it.
+// the shell takes as it stands or the home the hook expands (`~` alone or
+// before a slash, never a named home or the directory stack's `~+` and `~-`),
+// and the run is read one step past MaxLeadingCd and no further, the step that
+// says the line is past it.
 func checkLeadingDirectory(t *testing.T, cmd string) {
 	t.Helper()
 	dirs, ok := LeadingDirectory("Bash", bashInput(t, cmd))
@@ -206,9 +216,9 @@ func checkLeadingDirectory(t *testing.T, cmd string) {
 		t.Fatalf("LeadingDirectory(%q) = %q, %v", cmd, dirs, ok)
 	}
 	for _, d := range dirs {
-		if d == "" || strings.HasPrefix(d, "-") || strings.HasPrefix(d, "~") ||
+		if d == "" || strings.HasPrefix(d, "-") || strings.HasPrefix(d, "~") && d != "~" && !strings.HasPrefix(d, "~/") ||
 			strings.ContainsAny(d, "$`*?[{\\'\"") || strings.ContainsFunc(d, isControl) {
-			t.Fatalf("LeadingDirectory(%q) names %q, which the shell does not take as it stands", cmd, d)
+			t.Fatalf("LeadingDirectory(%q) names %q, which the shell does not take as it stands and is not the home", cmd, d)
 		}
 	}
 	if len(dirs) > MaxLeadingCd+1 {

@@ -8,10 +8,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/linescan"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -27,7 +30,10 @@ import (
 //   - in records.ndjson, the ordered stream, every record carries a seq, and
 //     the seqs are strictly increasing in file order, which is the order the
 //     run's lock gave them. spill.ndjson is exempt: a spilled record is
-//     written without the lock and carries no seq, by design.
+//     written without the lock and carries no seq, by design;
+//   - a declaration's shape or an execution that carries runner_kind has it
+//     null exactly when runner_digest is null, and a kind that is set is one
+//     of shape.RunnerKinds().
 //
 // A test that damages the store on purpose says so with expectDamagedStore,
 // naming why and the problems the damage causes. The check then holds that
@@ -192,6 +198,27 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 			out = append(out, fmt.Sprintf("%s: a %s carries key %q, which is not on its allowlist", where, typ, k))
 		}
 	}
+	// A declaration carries runner_kind and runner_digest on its shape, an
+	// execution on itself, and a terminal neither. Where the record carries
+	// the kind (a record before schema 6 has a digest and no kind, by design),
+	// the two are null together, and a kind that is set is one of
+	// shape.RunnerKinds().
+	var pair map[string]any
+	switch typ {
+	case "declaration":
+		pair, _ = fields["shape"].(map[string]any)
+	case "execution":
+		pair = fields
+	}
+	if kind, carried := pair["runner_kind"]; carried {
+		digest := pair["runner_digest"]
+		if (kind == nil) != (digest == nil) {
+			out = append(out, fmt.Sprintf("%s: runner_kind %v beside runner_digest %v, one null and one not", where, kind, digest))
+		}
+		if k, ok := kind.(string); kind != nil && (!ok || !slices.Contains(shape.RunnerKinds(), k)) {
+			out = append(out, fmt.Sprintf("%s: runner_kind %q is outside shape.RunnerKinds()", where, kind))
+		}
+	}
 	return out
 }
 
@@ -211,8 +238,13 @@ func readable(kind string, version int) bool {
 func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	e.mustHook(defaultPayload().build(t))
-	e.mustPost(defaultPost().build(t))
+	// A line that runs a test runner, so that the call's declaration and
+	// execution each carry a runner_kind and a runner_digest, both set.
+	const runner = "make test && echo ok"
+	hook, post := defaultPayload(), defaultPost()
+	hook.ToolInput, post.ToolInput = map[string]any{"command": runner}, map[string]any{"command": runner}
+	e.mustHook(hook.build(t))
+	e.mustPost(post.build(t))
 	e.probe("end", testSession)
 	if p := storeProblems(e.home); len(p) != 0 {
 		t.Fatalf("a healthy store reads as broken: %v", p)
@@ -226,6 +258,7 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	if len(lines) < 2 {
 		t.Fatalf("premise: %d ordered records", len(lines))
 	}
+	pairs := runnerPairs(t, lines, runner)
 
 	for _, tc := range []struct {
 		name, want string
@@ -255,6 +288,18 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 		{"a coverage record among the calls", `a "coverage" record`, func(l []string) []string {
 			return append(l, `{"type":"coverage","schema_version":3}`)
 		}},
+		{"a declaration's runner_kind null beside its runner_digest", "beside runner_digest", func(l []string) []string {
+			return pairs["declaration"].set(l, "runner_kind", "null")
+		}},
+		{"an execution's runner_digest null beside its runner_kind", "beside runner_digest", func(l []string) []string {
+			return pairs["execution"].set(l, "runner_digest", "null")
+		}},
+		{"a declaration's runner_kind outside the list", "outside shape.RunnerKinds()", func(l []string) []string {
+			return pairs["declaration"].set(l, "runner_kind", `"fuzz"`)
+		}},
+		{"an execution's empty runner_kind", "outside shape.RunnerKinds()", func(l []string) []string {
+			return pairs["execution"].set(l, "runner_kind", `""`)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home := t.TempDir()
@@ -280,7 +325,8 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	for _, tc := range []struct{ file, line, want string }{
 		{"coverage.ndjson", `{"type":"coverage","schema_version":4}`, "schema_version 4"},
 		{"gaps.ndjson", `{"type":"gap","schema_version":4}`, "schema_version 4"},
-		{"spill.ndjson", `{"type":"declaration","schema_version":6}`, "schema_version 6"},
+		// One above CallSchemaVersion: a declaration version this build does not read.
+		{"spill.ndjson", `{"type":"declaration","schema_version":` + strconv.Itoa(store.CallSchemaVersion+1) + `}`, "schema_version " + strconv.Itoa(store.CallSchemaVersion+1)},
 		{"spill.ndjson", `{"type":"declaration","schema_version":2.5}`, "schema_version 2.5"},
 	} {
 		home := t.TempDir()
@@ -317,6 +363,76 @@ func seqOf(t *testing.T, line string) string {
 		t.Fatal(err)
 	}
 	return r.Seq.String()
+}
+
+// runnerPair is where one call record's runner_kind and runner_digest sit
+// among the break table's lines: the record's line and the two values as
+// written.
+type runnerPair struct {
+	line         int
+	kind, digest string
+}
+
+// set is lines with key, runner_kind or runner_digest, of the pair's record
+// set to the JSON value to. runnerPairs holds that each is in the line once,
+// so the edit is that one value.
+func (p runnerPair) set(lines []string, key, to string) []string {
+	from := p.kind
+	if key == "runner_digest" {
+		from = p.digest
+	}
+	lines[p.line] = strings.Replace(lines[p.line], `"`+key+`":"`+from+`"`, `"`+key+`":`+to, 1)
+	return lines
+}
+
+// runnerPairs finds the declaration and the execution among lines, and holds
+// the premise the pair rows edit: each carries a runner_kind and a
+// runner_digest, both set, each written once in its line.
+func runnerPairs(t *testing.T, lines []string, cmd string) map[string]runnerPair {
+	t.Helper()
+	text := func(p *string) any {
+		if p == nil {
+			return nil
+		}
+		return *p
+	}
+	out := map[string]runnerPair{}
+	for i, l := range lines {
+		var r struct {
+			Type         string  `json:"type"`
+			RunnerKind   *string `json:"runner_kind"`
+			RunnerDigest *string `json:"runner_digest"`
+			Shape        struct {
+				RunnerKind   *string `json:"runner_kind"`
+				RunnerDigest *string `json:"runner_digest"`
+			} `json:"shape"`
+		}
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatal(err)
+		}
+		kind, digest := r.RunnerKind, r.RunnerDigest
+		switch r.Type {
+		case "declaration":
+			kind, digest = r.Shape.RunnerKind, r.Shape.RunnerDigest
+		case "execution":
+		default:
+			continue
+		}
+		if kind == nil || digest == nil {
+			t.Fatalf("premise: the %s for %q has runner_kind %v and runner_digest %v, not both set",
+				r.Type, cmd, text(kind), text(digest))
+		}
+		for _, kv := range []string{`"runner_kind":"` + *kind + `"`, `"runner_digest":"` + *digest + `"`} {
+			if n := strings.Count(l, kv); n != 1 {
+				t.Fatalf("premise: the %s holds %s %d times, not once", r.Type, kv, n)
+			}
+		}
+		out[r.Type] = runnerPair{i, *kind, *digest}
+	}
+	if len(out) != 2 {
+		t.Fatalf("premise: %d of the declaration and the execution among %d records", len(out), len(lines))
+	}
+	return out
 }
 
 // TestRubricTEST13_EveryEnvIsCheckedWhenItsTestEnds holds newEnv to

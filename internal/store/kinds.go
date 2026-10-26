@@ -9,9 +9,12 @@ package store
 const EventSchemaVersion = 5
 
 // CallSchemaVersion is the version the call records (declaration, execution,
-// terminal) are written at, now that they carry the v5 keys (record_v5.go).
-// SchemaVersion is the same number under the name the writers use.
-const CallSchemaVersion = 5
+// terminal) are written at: the v5 keys (record_v5.go), and at 6 runner_kind
+// on the declaration's shape and the execution. A new key gets a version of
+// its own and never joins an existing one, whose records are already on disk
+// without it (D11). SchemaVersion is the same number under the name the
+// writers use.
+const CallSchemaVersion = 6
 
 // The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
 // STEER's lines live in their own side file, runs/<dir>/steer.ndjson.
@@ -33,7 +36,7 @@ const (
 )
 
 // kindVersion is the version each writer stamps on its kind (REC-1): call
-// kinds at 5, coverage and gaps unchanged at 3, every new kind at 5. It is
+// kinds at 6, coverage and gaps unchanged at 3, every new kind at 5. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{
@@ -77,12 +80,13 @@ func KindVersion(kind string) (int, bool) {
 // on disk would have been skipped, and a store that had recorded for weeks
 // would have rendered an empty report with nothing saying why.
 //
-// Call kinds are accepted from 1 to 5, so a store that recorded before the
-// upgrade still reads whole. Coverage and gaps are accepted from 1 to 3,
-// their own history. A new kind is accepted at 5 only: it has no older
-// version to read. An unknown kind is never accepted here; whether it is
-// ignored or unverifies the session is the reader's decision from the
-// record's `critical` key (1.2.2, classifyRunLine), not this function's.
+// Call kinds are accepted from 1 to CallSchemaVersion, so a store that
+// recorded before the upgrade still reads whole. Coverage and gaps are
+// accepted from 1 to 3, their own history. A new kind is accepted at 5 only:
+// it has no older version to read. An unknown kind is never accepted here;
+// whether it is ignored or unverifies the session is the reader's decision
+// from the record's `critical` key (1.2.2, classifyRunLine), not this
+// function's.
 func AcceptsKind(kind string, version int) bool {
 	switch kind {
 	case TypeDeclaration, TypeExecution, TypeTerminal:

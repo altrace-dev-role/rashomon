@@ -12,10 +12,13 @@ import (
 )
 
 // startDirectory folds a line's leading cd targets onto the payload's cwd:
-// an absolute target replaces the directory and a relative one joins it.
-// Break: keep the cwd for a relative target, and `cd ../web && go test` is
-// keyed on wherever the shell was, not on web.
+// an absolute target replaces the directory and a relative one joins it, and
+// `~` or `~/...` is the hook's own home, an absolute target. Break: keep the
+// cwd for a relative target, and `cd ../web && go test` is keyed on wherever
+// the shell was, not on web; join `~/x` under the cwd, and it is keyed on a
+// directory named ~ inside it.
 func TestStartDirectory(t *testing.T) {
+	t.Setenv("HOME", "/home/sd")
 	for _, tc := range []struct {
 		cwd, cmd, want string
 	}{
@@ -28,6 +31,10 @@ func TestStartDirectory(t *testing.T) {
 		{"", "cd /b && cd c && go test", "/b/c"},
 		{"/a/b", "go test ./...", "/a/b"},
 		{"/a/b", "cd /x && cd - && go test ./...", "/a/b"},
+		{"/a/b", "cd ~/x && go test ./...", "/home/sd/x"},
+		{"/a/b", "cd ~ && go test ./...", "/home/sd"},
+		{"", "cd ~/x && cd sub && go test", "/home/sd/x/sub"},
+		{"/a/b", "cd sub && cd ~/ && go test", "/home/sd"},
 	} {
 		in, err := json.Marshal(map[string]string{"command": tc.cmd})
 		if err != nil {
@@ -75,6 +82,28 @@ func TestCaptureKeepsTheCWDOfAControlByteLine(t *testing.T) {
 		}
 		if got, want := run.Declarations[i].CWDDigest, shape.CWDDigest(st.Key(), tc.dir); got != want {
 			t.Errorf("%q: cwd digest is not %s's", tc.cmd, tc.dir)
+		}
+	}
+}
+
+// TestStartDirectoryWithoutAHome: with no home to expand `~` with, the
+// directory is not known, and is returned empty, as past the fold's bound;
+// a line without `~` is unaffected. Break: join `~` under the cwd when the
+// home is missing, and the run is keyed on a directory the line never named.
+func TestStartDirectoryWithoutAHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	for _, tc := range []struct{ cwd, cmd, want string }{
+		{"/a/b", "cd ~/x && go test ./...", ""},
+		{"/a/b", "cd /x && cd ~ && go test ./...", ""},
+		{"/a/b", "cd sub && go test ./...", "/a/b/sub"},
+	} {
+		in, err := json.Marshal(map[string]string{"command": tc.cmd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs, _ := shape.LeadingDirectory("Bash", in)
+		if got := startDirectory(tc.cwd, dirs); got != tc.want {
+			t.Errorf("startDirectory(%q, %q) = %q, want %q", tc.cwd, tc.cmd, got, tc.want)
 		}
 	}
 }

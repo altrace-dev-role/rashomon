@@ -4,19 +4,20 @@ m("TB a test runner is never recognised", "internal/shape/shape.go",
   "TestTestRunnerIsRecognised|TestTestClassCarriesNoContent|TestTestBending_")
 m("TB a line the lexer could not finish is vouched for", "internal/shape/verb.go",
   "\tif !whole {\n\t\treturn false\n\t}", "\t_ = whole", "TestTestRunnerIsRecognised")
-m("TB a quoted argument is compared as plain", "internal/shape/verb.go",
-  "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
-  "\t\t\tif t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
-m("TB an argument running into a process substitution is plain", "internal/shape/verb.go",
-  "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
-  "\t\t\tif t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
-m("TB every word of a runner is compared against the first argument", "internal/shape/verb.go",
-  "\t\t\tk := i + 1 + n\n", "\t\t\tk := i + 1 + n*0\n", "TestTestRunnerIsRecognised")
+m("TB a quoted argument is compared as plain", "internal/shape/runner.go",
+  "\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\tif t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
+m("TB an argument running into a process substitution is plain", "internal/shape/runner.go",
+  "\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\tif t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
+m("TB every word of a runner is compared against the first argument", "internal/shape/runner.go",
+  "\t\tk := from + n\n", "\t\tk := from + n*0\n", "TestTestRunnerIsRecognised")
 # Re-anchored after the masked-status refactor: the row match moved into
-# runnerOn, which compares one command's words up to its end.
-m("TB a runner missing its argument still matches", "internal/shape/verb.go",
-  "\t\t\tif k >= end {\n\t\t\t\tcontinue next\n", "\t\t\tif k >= end {\n\t\t\t\tbreak\n", "TestTestRunnerIsRecognised")
-m("TB go test is not on the list", "internal/shape/verb.go",
+# runnerOn, which compares one command's words up to its end; and again when
+# the comparison at one position moved into rowAt.
+m("TB a runner missing its argument still matches", "internal/shape/runner.go",
+  "\t\tif k >= end {\n\t\t\treturn false\n", "\t\tif k >= end {\n\t\t\tbreak\n", "TestTestRunnerIsRecognised")
+m("TB go test is not on the list", "internal/shape/runner.go",
   "{\"go\", \"test\"}, {\"cargo\", \"test\"}", "{\"go\", \"tset\"}, {\"cargo\", \"test\"}",
   "TestTestRunnerIsRecognised|TestTestBending_OnlyTestFiles")
 m("TB the test class is missing from the vocabulary", "internal/shape/shape.go",
@@ -209,19 +210,19 @@ m("TB a run is between itself and the run it pairs with", "internal/report/testb
   "testEdits: testEdits, otherEdits: otherEdits - 1, anyEdits: anyEdits - 1,\n",
   "TestTestBending")
 
-m("TB make check is a test run", "internal/shape/verb.go",
+m("TB make check is a test run", "internal/shape/runner.go",
   "{\"gradlew\", \"test\"}, {\"make\", \"test\"},\n",
   "{\"gradlew\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 # Re-anchored after the masked-status refactor: the refusal moved into runnerOn,
 # over the runner's own command (toks up to end); the next two as well.
-m("TB an argument that does not run the tests is ignored", "internal/shape/verb.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
-  "\t\treturn !(false && refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end]))",
+m("TB an argument that does not run the tests is ignored", "internal/shape/runner.go",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])",
+  "\t\treturn !(false && refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end]))",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB the refusal reads only the first argument", "internal/shape/verb.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, end)])",
+m("TB the refusal reads only the first argument", "internal/shape/runner.go",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:min(from+len(c), end)])",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/verb.go",
   "\t\t\tif strings.HasPrefix(word, p) {\n",
@@ -330,20 +331,20 @@ m("TB a flag set =false is refused", "internal/shape/verb.go",
   "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && (!isFalse(value) || true) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB make test -n is a test run", "internal/shape/verb.go",
-  "\"make\":    {\"-n\", \"--just-print\", \"--dry-run\", \"--recon\", \"-q\", \"--question\", ",
-  "\"make\":    {\"--recon\", ",
+  "\"make\": {\"-n\", \"--just-print\", \"--dry-run\", \"--recon\", \"-q\", \"--question\", ",
+  "\"make\": {\"--recon\", ",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB make test -v is a test run", "internal/shape/verb.go",
-  "\"-t\", \"--touch\", \"-v\"},",
-  "\"-t\", \"--touch\"},",
+  "\"-t\", \"--touch\", \"-v\",\n",
+  "\"-t\", \"--touch\",\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB gradle continuous mode is a test run", "internal/shape/verb.go",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\", \"-t\", \"--continuous\"},",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\"},",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB mvn test -v is a test run", "internal/shape/verb.go",
-  "\t\"mvn\":     {\"-v\"},\n",
-  "\t\"mvn\":     {},\n",
+  "\t\"mvn\":     {\"-v\", \"-fn\", \"--fail-never\"},\n",
+  "\t\"mvn\":     {\"-fn\", \"--fail-never\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB tox --notest is a test run", "internal/shape/verb.go",
   "\"--help-ini\", \"--notest\",",
@@ -362,9 +363,9 @@ m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/verb.go",
   "\t\t\tif false && strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 # Re-anchored after the masked-status refactor: the refusal is in runnerOn.
-m("TB the words before the runner are not read", "internal/shape/verb.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[i:i], toks[i+len(c):end])",
+m("TB the words before the runner are not read", "internal/shape/runner.go",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[i:i], toks[from+len(c)-1:end])",
   "TestTestClassRefusesWhatDoesNotRunTests")
 
 m("TB *Test.cs and *Tests.kt are not test files", "internal/shape/label.go",
@@ -456,8 +457,8 @@ m("TB runs pair across directories", "internal/report/testbending.go",
   "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
   "TestTestBending")
 m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
-  "\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))\n",
-  "\t_ = dirs\n",
+  "\tdecl.Shape, decl.CWDDigest = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)\n",
+  "\tdecl.Shape, _ = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)\n",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd\", cwd)\n",
@@ -479,12 +480,12 @@ m("TB a line whose program cannot be named may not write", "internal/shape/shape
   "\ts.MayWrite = false\n\tif i, ok := programToken",
   "TestMayWrite")
 m("TB find -delete and -exec do not write", "internal/shape/verb.go",
-  "\t\tcase \"-delete\", \"-exec\", \"-execdir\", \"-ok\", \"-okdir\":\n",
-  "\t\tcase \"-okdir\":\n",
+  "var findWriteWords = []string{\"-delete\", \"-exec\", \"-execdir\", \"-ok\", \"-okdir\"}\n",
+  "var findWriteWords = []string{\"-okdir\"}\n",
   "TestMayWrite|TestTestBending_WriteCapable")
 m("TB xargs, tee, rsync and scp do not write", "internal/shape/verb.go",
-  "\t\tcase \"xargs\", \"tee\", \"wget\", \"rsync\", \"scp\":\n",
-  "\t\tcase \"wget\":\n",
+  "var inlineWriters = []string{\"xargs\", \"tee\", \"wget\", \"rsync\", \"scp\"}\n",
+  "var inlineWriters = []string{\"wget\"}\n",
   "TestMayWrite|TestTestBending_WriteCapable")
 m("TB curl with an output flag does not write", "internal/shape/verb.go",
   "\tif curl && curlOut {\n",
@@ -527,15 +528,15 @@ m("TB a wrapped runner is refused on the wrapper's list", "internal/shape/verb.g
   "\tswitch c[0] {\n\tcase \"npx\", \"uv\", \"poetry\", \"bundle\":\n",
   "\tswitch \"\" {\n\tcase \"npx\", \"uv\", \"poetry\", \"bundle\":\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB the npx, uv, poetry and bundle forms are off the list", "internal/shape/verb.go",
+m("TB the npx, uv, poetry and bundle forms are off the list", "internal/shape/runner.go",
   "\t{\"npx\", \"jest\"}, {\"npx\", \"vitest\"}, {\"uv\", \"run\", \"pytest\"}, {\"poetry\", \"run\", \"pytest\"},\n\t{\"bundle\", \"exec\", \"rspec\"},\n",
   "",
   "TestTestRunnerIsRecognised")
-m("TB gradlew and mvnw are off the list", "internal/shape/verb.go",
+m("TB gradlew and mvnw are off the list", "internal/shape/runner.go",
   "{\"mvnw\", \"test\"}, {\"gradle\", \"test\"}, {\"gradlew\", \"test\"}, ",
   "{\"gradle\", \"test\"}, ",
   "TestTestRunnerIsRecognised")
-m("TB npm t is off the list", "internal/shape/verb.go",
+m("TB npm t is off the list", "internal/shape/runner.go",
   "{\"npm\", \"t\"}, ",
   "",
   "TestTestRunnerIsRecognised")
@@ -603,8 +604,8 @@ m("TB a backgrounded call is not counted as unobserved", "internal/report/accoun
   "TestSilentFailures_")
 
 m("TB a leading cd's target is not the run's directory", "internal/hook/handle.go",
-  "\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))\n",
-  "\t_ = dirs\n\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), p.CWD)\n",
+  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
+  "\t_ = dirs\n\treturn s, shape.CWDDigest(key, cwd)\n",
   "TestTestBending_ALeadingAbsoluteCd")
 m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.go",
   "\t\t\tcwd = filepath.Join(cwd, dir)\n",
@@ -637,12 +638,12 @@ m("TB Maven's skip properties are not refused", "internal/shape/verb.go",
   " {\n",
   "TestTestClassRefusesWhatDoesNotRunTests|TestTestRunnerIsRecognised")
 m("TB a Maven skip property refuses its =false form", "internal/shape/verb.go",
-  "\t\treturn !hasValue || strings.EqualFold(value, \"true\")\n",
-  "\t\treturn !hasValue || len(value) >= 0\n",
+  "(!hasValue || strings.EqualFold(value, \"true\"))\n",
+  "(!hasValue || len(value) >= 0)\n",
   "TestTestRunnerIsRecognised")
 m("TB a Maven skip property is read as true only in lower case", "internal/shape/verb.go",
-  "\t\treturn !hasValue || strings.EqualFold(value, \"true\")\n",
-  "\t\treturn !hasValue || value == \"true\"\n",
+  "(!hasValue || strings.EqualFold(value, \"true\"))\n",
+  "(!hasValue || value == \"true\")\n",
   "TestTestRunnerIsRecognised")
 m("TB a prefix entry takes isFalse's exception", "internal/shape/verb.go",
   "\t\t\tif strings.HasPrefix(word, p) {\n",
@@ -673,8 +674,8 @@ m("TB curl's : takes an argument", "internal/shape/verb.go",
   "'0' <= c && c <= '9', c == '#':\n",
   "TestMayWrite")
 m("TB -Dmaven.test.skip runs the tests", "internal/shape/verb.go",
-  "\tcase \"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\":\n",
-  "\tcase \"-DskipTests\", \"-Dmaven.test.skip.exec\":\n",
+  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\", \"-Dmaven.test.failure.ignore\"}\n",
+  "{\"-DskipTests\", \"-Dmaven.test.skip.exec\", \"-Dmaven.test.failure.ignore\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB an empty session id pastes as nothing", "internal/report/text.go",
   "\tif s == \"\" {\n\t\treturn \"''\"\n\t}\n",
@@ -724,3 +725,160 @@ m("TB LeadingDirectory reads the cds of a control-byte line", "internal/shape/le
   "\tif !ok || controlByte(cmd) {\n\t\treturn nil, false\n\t}\n\treturn leadingDirectories(cmd)\n",
   "\tif !ok {\n\t\treturn nil, false\n\t}\n\treturn leadingDirectories(cmd)\n",
   "TestLeadingDirectory")
+
+# The in-place letter inside a cluster of short options, and the words that
+# clear a formatter. Each table mutant runs TestRC3b_ alone, so the row it is
+# written for kills it; TestRulesVersion_WriteTables would also kill each,
+# by the digest, and is the RulesVersion mutant's own killer. The emptied
+# table and the scan never called are equivalent for these rows (both leave
+# every cluster unread); both stay, one per line they break.
+m("TB no editor's short options are scanned as a cluster", "internal/shape/verb.go",
+  "var shortClusters = map[string]shortCluster{\n\t\"sed\":  {letters: \"iI\", consumes: \"ef\"},\n\t\"perl\": {letters: \"i\", consumes: \"eEMmIFx\"},\n}\n",
+  "var shortClusters = map[string]shortCluster{}\n", "TestRC3b_")
+m("TB sed's -l takes the rest of the word again", "internal/shape/verb.go",
+  "\t\"sed\":  {letters: \"iI\", consumes: \"ef\"},\n", "\t\"sed\":  {letters: \"iI\", consumes: \"efl\"},\n", "TestRC3b_")
+m("TB BSD sed's I is not an in-place letter in a cluster", "internal/shape/verb.go",
+  "\t\"sed\":  {letters: \"iI\", consumes: \"ef\"},\n", "\t\"sed\":  {letters: \"i\", consumes: \"ef\"},\n", "TestRC3b_")
+m("TB BSD sed's -I is not an in-place word", "internal/shape/verb.go",
+  "\t\"sed\":          {\"-i*\", \"-I*\", \"--in-place*\"},\n", "\t\"sed\":          {\"-i*\", \"--in-place*\"},\n", "TestRC3b_")
+m("TB a consuming letter does not end the cluster scan", "internal/shape/verb.go",
+  "\t\tcase strings.IndexByte(c.consumes, tok[i]) >= 0:\n\t\t\treturn false\n", "", "TestRC3b_")
+m("TB a clustered editor's words are never scanned", "internal/shape/verb.go",
+  "\t\tcase clustered && clusterHas(t.text, cluster):\n",
+  "\t\tcase false && clustered && clusterHas(t.text, cluster):\n", "TestRC3b_")
+m("TB --version does not clear an editor", "internal/shape/verb.go",
+  "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"-h\"}", "TestRC3b_")
+m("TB --help does not clear an editor", "internal/shape/verb.go",
+  "\"--help\", \"--version\", \"-h\"}", "\"--version\", \"-h\"}", "TestRC3b_")
+m("TB -h does not clear an editor", "internal/shape/verb.go",
+  "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
+m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
+  "const RulesVersion = 6\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+
+# The flags that may stand before a runner's row words (leadingFlags), and the
+# spellings that make a failed run end 0 (notARun). The RulesVersion mutant
+# is the matcher pin's own: no table the three table pins digest moved, so
+# each of them still finds its version-3 digest under key 3.
+m("TB every dash word may stand before the row's words", "internal/shape/runner.go",
+  "\tfor _, f := range leadingFlags[prog] {\n",
+  "\tif strings.HasPrefix(t.text, \"-\") {\n\t\treturn true\n\t}\n\tfor _, f := range leadingFlags[prog] {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB no flag may stand before the row's words", "internal/shape/runner.go",
+  "var leadingFlags = map[string][]string{\n",
+  "var leadingFlags = map[string][]string{}\n\nvar _ = map[string][]string{\n",
+  "TestTestRunnerIsRecognised|TestLeadingOptionsOneMatcher")
+m("TB make's -i may stand before the row's words", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-i\"},\n",
+  "TestLeadingFlagsAreNotRefusals|TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a Maven property prefix may stand before the row's words", "internal/shape/runner.go",
+  "\tmavenLeadingFlags  = []string{\"-B\", \"-q\"}\n", "\tmavenLeadingFlags  = []string{\"-B\", \"-q\", \"-D*\"}\n",
+  "TestLeadingFlagsAreNotRefusals")
+m("TB python3 has no leading flags of its own", "internal/shape/runner.go",
+  "\t\"python3\": pythonLeadingFlags,\n", "",
+  "TestTestRunnerIsRecognised|TestLeadingOptionsOneMatcher")
+m("TB a toolchain word may stand before any program's row", "internal/shape/runner.go",
+  "\tfor _, f := range leadingFlags[prog] {\n",
+  "\tfor _, f := range append(leadingFlags[prog], \"+*\") {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a quoted word is read as a listed flag", "internal/shape/runner.go",
+  "\treturn !(t.meta || t.quotedAt >= 0 || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
+  "\treturn !(t.meta || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB an expansion is read as a listed flag", "internal/shape/runner.go",
+  "\t\tstrings.ContainsAny(t.text, \"$`*?[{\\\\\"))\n}\n",
+  "\t\tfalse)\n}\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make test -i is a test run", "internal/shape/verb.go",
+  "\t\t\"-i\", \"--ignore-errors\"},\n", "\t\t\"--ignore-errors\"},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB npm test --if-present is a test run", "internal/shape/verb.go",
+  "\t\"npm\":     {\"--if-present\"},\n", "\t\"npm\":     {},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB mvn test -fn is a test run", "internal/shape/verb.go",
+  "\t\"mvn\":     {\"-v\", \"-fn\", \"--fail-never\"},\n", "\t\"mvn\":     {\"-v\", \"--fail-never\"},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB ignoring the tests' failures is a test run", "internal/shape/verb.go",
+  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\", \"-Dmaven.test.failure.ignore\"}\n",
+  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\"}\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
+  "const RulesVersion = 6\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+
+# Version 5: the masked parser passes over the leading cd steps the program
+# search steps over, `~` is read, and a fold that is not read has a location
+# of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
+# or giving an unread fold a read location, is the regression.
+m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
+  "const RulesVersion = 6\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
+  "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
+  "TestLocation|TestUnreadLocationDomain")
+m("TB an unread fold's location drops its quoting", "internal/shape/leading.go",
+  "\t\tif t.quotedAt >= 0 {\n\t\t\tq = 'q'\n\t\t}\n", "",
+  "TestUnreadLocationDomain|TestDeriveWithDirsUnread")
+m("TB an unread fold is counted to the fold's bound", "internal/shape/leading.go",
+  "\tafter, _, _, _ := directoryChanges(toks, i, uncertain)\n\tif after == 0 {\n",
+  "\t_ = i\n\tafter := leadingFold(toks, uncertain)\n\tif after == 0 {\n",
+  "TestLocation|TestDeriveWithDirsUnread")
+m("TB a leading cd before ; is read as a location", "internal/shape/leading.go",
+  "\tif !and.meta || and.text != \"&&\" || and.nlBefore {\n",
+  "\tif !and.meta || and.text != \"&&\" && and.text != \";\" || and.nlBefore {\n",
+  "TestLocation|TestLeadingDirectory")
+m("TB an unread fold with no payload cwd is keyed on the fold alone", "internal/hook/handle.go",
+  "\t\tif cwd == \"\" {\n\t\t\treturn s, \"\"\n\t\t}\n\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread)\n",
+  "\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread)\n", "TestLocation")
+m("TB ~ is not expanded with the hook's home", "internal/hook/handle.go",
+  "\t\tcase dir == \"~\" || strings.HasPrefix(dir, \"~/\"):\n", "\t\tcase false:\n",
+  "TestLocation|TestStartDirectory")
+
+# Version 6: -l leaves checkOnly (gofmt's -l lists files and does not stop a
+# -w beside it; for sed, perl, black and isort it is not a check at all),
+# make's -j admits digits only, and the flag tables are under a pin. Each
+# comment names the test that kills the mutant and the assertion that fails.
+#
+# -l put back: TestRC3b_InPlaceEditorsSetMayWrite, `"gofmt -l -w .": may_write
+# false, want true` (and the sed, perl, black and isort rows beside it).
+# `gofmt -l .` stays a read in the same test: no word arms the stage.
+m("TB -l clears an editor again", "internal/shape/verb.go",
+  "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
+  "TestRC3b_")
+m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
+  "const RulesVersion = 6\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+
+# The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
+# -j4x test` and `make -j=4 test` read verb_class test where execute is
+# wanted (the glob restored), `make -j test` and `make -j 4 test` read execute
+# where test is wanted (a count required; the separate count not passed over).
+m("TB make's -j admits whatever follows it", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j*\"},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make's -j needs a count", "internal/shape/runner.go",
+  "ok && allDigits(n) {", "ok && n != \"\" && allDigits(n) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a digits entry admits a letter after the digits", "internal/shape/runner.go",
+  "\t\tif s[i] < '0' || '9' < s[i] {\n", "\t\tif s[i] < '0' || 'z' < s[i] {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make's separate job count stops the match", "internal/shape/runner.go",
+  "\t\t\tif from < end && countFollows(toks, from-1, prog) {\n",
+  "\t\t\tif false && from < end && countFollows(toks, from-1, prog) {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB any word after make's -j is its count", "internal/shape/runner.go",
+  "\treturn literalWord(toks, k+1) && n != \"\" && allDigits(n)\n", "\treturn literalWord(toks, k+1) && n != \"\"\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+
+# A flag table edited with RulesVersion left at 6: TestRulesVersion_FlagTables,
+# `the flag tables digest to ..., and RulesVersion 6 pins ...: a table changed
+# without a bump`. No behaviour row reads the words these drop, so the pin
+# alone kills each.
+m("TB the flag tables stay at the same pin when notARunAny drops --watchAll", "internal/shape/verb.go",
+  "\"--version\", \"--watch\", \"--watchAll\"}", "\"--version\", \"--watch\"}",
+  "TestRulesVersion_FlagTables")
+m("TB the flag tables stay at the same pin when make leaves --just-print out", "internal/shape/verb.go",
+  "\"-n\", \"--just-print\", \"--dry-run\", \"--recon\"", "\"-n\", \"--dry-run\", \"--recon\"",
+  "TestRulesVersion_FlagTables")
+m("TB the flag tables stay at the same pin when curl's argument options change", "internal/shape/verb.go",
+  "const curlArgumentOptions = \"AbcCdDeEFhHKmPQrtTuUwxXyYz\"", "const curlArgumentOptions = \"AbcCdDeEFhHKmPQrtTuUwxXyY\"",
+  "TestRulesVersion_FlagTables")
+m("TB the flag tables stay at the same pin when make's -j entry changes", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-s\"},\n",
+  "TestRulesVersion_FlagTables")
