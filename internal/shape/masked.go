@@ -38,18 +38,21 @@ const (
 // passing over leadingFlags before a runner's words; version 5 passes the
 // masked parser over the leading cd steps the program search steps over
 // where its reading agrees (agreedFold), reads `~`, and gives an unread fold
-// a location of its own --
+// a location of its own; version 6 drops -l from checkOnly (gofmt -l -w and
+// sed -l N -i write), reads make's -j as digits only, and puts the flag tables
+// under a pin --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
 // without one, and the hook's location pin when a cwd digest moves on one of
-// its pairs without one. The exceptions: notARun, notARunAny and leadingFlags
-// have no table pin, and are held only as far as the matcher pin's lines read
-// them; and mayWrite's inline writer-word checks (xargs, tee, wget, rsync,
-// scp, find's -delete and -exec words, curl's output flags with
-// curlArgumentOptions) also decide may_write and are not yet under a pin. The
-// first change to any of them brings it under one.
-const RulesVersion = 5
+// its pairs without one. notARun, notARunAny, leadingFlags and mayWrite's
+// inline writer words (inlineWriters, findWriteWords, and curl's output flags
+// with curlArgumentOptions) are held by the flag-table pin (flagTablePins) from
+// version 6 on; a change in how a table is read is the matcher pin's. The old
+// pins stay as history of what each version decided, and a version that
+// changed no table repeats the digest above it, as versions 3 to 5 do for the
+// runner lists.
+const RulesVersion = 6
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {

@@ -22,6 +22,7 @@ import (
 var locationPins = map[int]string{
 	4: "c0f954e27713c24c174615b33ecffbd571aa3fcc7c61a4594d7682b5670e3740",
 	5: "e22b69da181e207739b0bbb3615684f1e2a02d397d9ce71c37584277dc252c50", // `~` read with the hook's home; an unread fold's location in its own domain, keyed on the payload's cwd and the fold (2026-10-24)
+	6: "e22b69da181e207739b0bbb3615684f1e2a02d397d9ce71c37584277dc252c50", // RulesVersion 6 changed checkOnly, make's -j and the flag-table pins; the cwd rule is unchanged
 }
 
 // locationCorpus is the (line, payload cwd) pairs locationPins digests, a

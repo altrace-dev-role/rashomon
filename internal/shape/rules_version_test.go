@@ -12,13 +12,16 @@ import (
 
 // runnerListPins is, per RulesVersion, the sha256 of the runner lists that
 // version decides verb_class and status_masked with (runnerListsDigest). A
-// bump adds a pin; a pin is never edited.
+// bump adds a pin; a pin is never edited. The old pins stay by design, as
+// history of what each version decided, though only RulesVersion's own is
+// consulted: a version that changed nothing here repeats the digest above it.
 var runnerListPins = map[int]string{
 	1: "522cdda1bbddd626a4bb17c200854d3b31ab80bfb1c87d356bf638c9ee2d2aea",
 	2: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // rake, composer, mix, bazel test as test runners (2026-10-23)
 	3: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 3 changed the in-place tables only; the runner lists are unchanged
 	4: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 4 changed how the lists are matched (matcherPins); the lists are unchanged
 	5: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 5 changed the leading-cd fold and the location rule; the lists are unchanged
+	6: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 6 dropped -l from checkOnly, made make's -j a digits entry and put the flag tables under a pin (flagTablePins); the lists are unchanged
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
@@ -60,6 +63,7 @@ var writeTablePins = map[int]string{
 	3: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // short-option clusters for sed and perl, BSD sed's -I; help and version words clear an editor (2026-10-24)
 	4: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 4 changed how the runner lists are matched; the in-place tables are unchanged
 	5: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 5 changed the leading-cd fold and the location rule; the in-place tables are unchanged
+	6: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // -l no longer clears an editor: gofmt -l -w, sed -l N -i, perl -l -pi, black -l N and isort -l N write (2026-10-25)
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -111,6 +115,7 @@ var matcherPins = map[int]string{
 	3: "3b37daf2498f1bfed509f7f0bcc4b9b44381e6a56ab537abfb3b553d4b90ea9a",
 	4: "d8ce2f1af01d7dbec051b928d5ac03ccf16830cb432ab1f36c972466f6ccebb0", // a listed flag may stand before a runner's row words (leadingFlags); a flag that hides the runner's failure refuses it (2026-10-24)
 	5: "a6b4f738864bca26e64502c754ade947cef3f0d4eca78ab34c5a3f4fff89fb38", // the masked parser passes over every leading cd step the program search does where both readings fold alike (agreedFold): `(cd /tmp && go test ./...)` gains its runner (2026-10-24)
+	6: "8c69e44656ed2328c904397bcb2182e6937a22205c22fc0508167d4a5b554d35", // make\'s -j takes digits only (a `-j*` prefix admitted `make -j=4 test` and `make -j4x test`, which make rejects): their lines lose the runner (2026-10-25)
 }
 
 // matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
@@ -141,6 +146,8 @@ var matcherCorpus = []string{
 	"echo hi && go test ./...", "true && go test ./...", "go build ./... && go test ./...", "make lint; go test ./...",
 	"if [[ -d x ]]; then go test ./...; fi", "cd /tmp && echo hi && go test ./...",
 	strings.Repeat("cd a && ", 64) + "go test ./...", strings.Repeat("cd a && ", 65) + "go test ./...",
+
+	"make -j test", "make -j16 test", "make -j=4 test", "make -jx test", "make -j 4x test", "make -j $N test",
 }
 
 // matcherDigest digests, for each line of matcherCorpus in order, the line,
@@ -179,5 +186,58 @@ func TestRulesVersion_Matchers(t *testing.T) {
 	if !ok || want != got {
 		t.Fatalf("the matcher corpus digests to %s, and RulesVersion %d pins %q: a matcher changed without a bump. "+
 			"Bump RulesVersion and add its pin here (and the runner-list, write-table, pass-list and location pins).", got, RulesVersion, want)
+	}
+}
+
+// flagTablePins is, per RulesVersion, the sha256 of the matcher flag tables
+// and the inline writer words (flagTablesDigest): the arguments that refuse a
+// runner (notARun, notARunAny, mavenSkipProperties), the flags that may stand
+// before its words (leadingFlags), and the words mayWrite reads wherever they
+// stand (inlineWriters, findWriteWords, curlLongOutputs, curlArgumentOptions).
+// Versions 1 to 5 held these under the matcher pin's corpus lines alone and
+// have no entry here; version 6's pin was computed from its tables when this
+// test was added. A bump adds a pin; a pin is never edited.
+var flagTablePins = map[int]string{
+	6: "c03726242fe0dd64c144087e62bc5dfdcbf229fae18f0b9a1b5fb69d2f13063f",
+}
+
+// flagTablesDigest digests notARun (each runner in sorted order, then its
+// words), notARunAny, mavenSkipProperties, leadingFlags (each program in
+// sorted order, then its words), and the writer words, with
+// runnerListsDigest's separators.
+func flagTablesDigest() string {
+	var b strings.Builder
+	sorted := func(m map[string][]string) {
+		for _, k := range slices.Sorted(maps.Keys(m)) {
+			b.WriteString(strings.Join(append([]string{k}, m[k]...), "\x1f"))
+			b.WriteByte('\x1e')
+		}
+		b.WriteByte('\x1d')
+	}
+	sorted(notARun)
+	b.WriteString(strings.Join(notARunAny, "\x1f"))
+	b.WriteByte('\x1d')
+	b.WriteString(strings.Join(mavenSkipProperties, "\x1f"))
+	b.WriteByte('\x1d')
+	sorted(leadingFlags)
+	for _, list := range [][]string{inlineWriters, findWriteWords, curlLongOutputs, {curlArgumentOptions}} {
+		b.WriteString(strings.Join(list, "\x1f"))
+		b.WriteByte('\x1d')
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// TestRulesVersion_FlagTables: the matcher flag tables and the inline writer
+// words cannot change without a RulesVersion bump, or records written before
+// and after the change carry the same rules_version and read as decided by
+// the same tables. Break: add or drop a word of notARun, notARunAny,
+// leadingFlags or mayWrite's inline writers and leave RulesVersion as it was.
+func TestRulesVersion_FlagTables(t *testing.T) {
+	got := flagTablesDigest()
+	want, ok := flagTablePins[RulesVersion]
+	if !ok || want != got {
+		t.Fatalf("the flag tables digest to %s, and RulesVersion %d pins %q: a table changed without a bump. "+
+			"Bump RulesVersion and add its pin here (and the runner-list, write-table, matcher, pass-list and location pins).", got, RulesVersion, want)
 	}
 }

@@ -107,7 +107,7 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 
 		// A flag leadingFlags lists may stand before the row's words
 		// (runnerOn); each row names the entry that admits it.
-		{"make -j4 test", VerbTest, "make -j*: the job count, attached"},
+		{"make -j4 test", VerbTest, "make -j#: the job count, attached"},
 		{"mvn -B -q test", VerbTest, "mvn -B, -q: batch mode, quiet output"},
 		{"bazel --output_base=/tmp test //...", VerbTest, "bazel --output_base=*: the output location"},
 		{"cargo +nightly test", VerbTest, "cargo +*: rustup's toolchain word"},
@@ -344,16 +344,27 @@ func TestTestClassRefusesWhatDoesNotRunTests(t *testing.T) {
 		{"mvn -B=true test", VerbExecute, MaskedNone, RunnerBuild}, // a listed word with =value is unlisted
 		{"make -j$N test", VerbExecute, MaskedNone, RunnerBuild},   // an expansion may be more words than one
 		{`make "-j4" test`, VerbExecute, MaskedNone, RunnerBuild},  // a quoted word is not read as a listed flag
-		// ACCEPTED GAP: make reads a separate job count, which stops the
-		// match at the 4.
-		{"make -j 4 test", VerbExecute, MaskedNone, RunnerBuild},
-		// ACCEPTED GAP: a prefix entry admits whatever follows it, and make
-		// exits 2 before any recipe, so a line that ran no test records a
-		// failed test run, a false red that never greens, the class of `go
-		// test ./nonexistent`. A digits-only form would need an entry shape
-		// the table does not have. Before leadingFlags it read execute and
-		// build.
-		{"make -j4x test", VerbTest, MaskedNone, RunnerTest},
+		// An expansion under a prefix entry may be more words than one, or none
+		// (make's digits entry rejects it on its own).
+		{"cargo +$TC test", VerbPackage, MaskedNone, ""},
+		{"bazel --output_base=$D test //...", VerbExecute, MaskedNone, ""},
+		// make reads a separate job count as -j's (`-j [N]`), so the 4 is
+		// passed over with the flag; a word that is not digits is not a
+		// count, and stops the match as any unlisted word does.
+		{"make -j 4 test", VerbTest, MaskedNone, RunnerTest},
+		{"make -j 4x test", VerbExecute, MaskedNone, RunnerBuild},
+		{"make -j $N test", VerbExecute, MaskedNone, RunnerBuild},
+		{`make -j "4" test`, VerbExecute, MaskedNone, RunnerBuild},
+		// make exits 2 before any recipe on these, so a line that ran no
+		// test would record a failed test run if -j admitted whatever
+		// follows it (version 5's `-j*`). The digits entry stops the match
+		// at them, as before leadingFlags.
+		{"make -j4x test", VerbExecute, MaskedNone, RunnerBuild},
+		{"make -j=4 test", VerbExecute, MaskedNone, RunnerBuild},
+		{"make -jx test", VerbExecute, MaskedNone, RunnerBuild},
+		// The count may be left out (GNU make's `-j [N]`).
+		{"make -j test", VerbTest, MaskedNone, RunnerTest},
+		{"make -j16 test", VerbTest, MaskedNone, RunnerTest},
 		// ACCEPTED GAP: the same false red where cargo cannot run the
 		// toolchain: rustup's proxy on one it does not have, and a cargo
 		// installed without rustup on any toolchain word, which it reads as
@@ -449,7 +460,10 @@ func TestLeadingFlagsAreNotRefusals(t *testing.T) {
 					continue
 				}
 				for _, w := range words {
-					tok := []token{{text: strings.TrimSuffix(w, "*"), quotedAt: -1}}
+					tok := []token{{text: strings.TrimSuffix(strings.TrimSuffix(w, "*"), "#"), quotedAt: -1}}
+					if strings.HasSuffix(w, "#") {
+						tok[0].text += "4"
+					}
 					if leadingFlag(tok, 0, prog) && refusesRun(refusalsOf(c), nil, tok) {
 						t.Errorf("%s's leadingFlags %q admit %q, which refuses the row %q", prog, leadingFlags[prog], tok[0].text, c)
 					}

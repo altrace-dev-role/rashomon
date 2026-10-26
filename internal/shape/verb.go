@@ -432,15 +432,11 @@ func mayWrite(toks []token, i int) bool {
 		if t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {
 			return true
 		}
-		switch path.Base(t.text) {
-		case "xargs", "tee", "wget", "rsync", "scp":
+		if slices.Contains(inlineWriters, path.Base(t.text)) || slices.Contains(findWriteWords, t.text) {
 			return true
-		case "curl":
-			curl = true
 		}
-		switch t.text {
-		case "-delete", "-exec", "-execdir", "-ok", "-okdir":
-			return true
+		if path.Base(t.text) == "curl" {
+			curl = true
 		}
 		curlOut = curlOut || curlOutputFlag(t.text)
 	}
@@ -466,6 +462,15 @@ func mayWrite(toks []token, i int) bool {
 	}
 	return false
 }
+
+// inlineWriters are the programs whose word anywhere in a stage sets may_write
+// (mayWrite): they take a file or a command to run as an argument, and the
+// words that name which are not read.
+var inlineWriters = []string{"xargs", "tee", "wget", "rsync", "scp"}
+
+// findWriteWords are find's actions that delete or run a command, and set
+// may_write wherever they stand.
+var findWriteWords = []string{"-delete", "-exec", "-execdir", "-ok", "-okdir"}
 
 // outputRedirect reports an output redirection whose operator starts at j and
 // whose target is a file: `>`, `>>`, `>|`, `&>`, `<>`, and `>&` onto a word
@@ -609,7 +614,7 @@ func stageSeparator(toks []token, j int) bool {
 // `-o./calc.go`, `-#O` and `-sSLotestdata/x.json` name files.
 func curlOutputFlag(w string) bool {
 	switch {
-	case w == "--output", w == "--remote-name", w == "--remote-name-all", w == "--output-dir",
+	case slices.Contains(curlLongOutputs, w),
 		strings.HasPrefix(w, "--output="), strings.HasPrefix(w, "--output-dir="):
 		return true
 	case len(w) > 1 && w[0] == '-' && w[1] != '-':
@@ -627,6 +632,10 @@ func curlOutputFlag(w string) bool {
 	}
 	return false
 }
+
+// curlLongOutputs are curl's long options that name where a download is
+// written, with no =value; --output= and --output-dir= are read by prefix.
+var curlLongOutputs = []string{"--output", "--remote-name", "--remote-name-all", "--output-dir"}
 
 // curlArgumentOptions are curl's short options that take an argument, per
 // `curl --help all`.
@@ -690,8 +699,12 @@ type shortCluster struct {
 
 // checkOnly are the words under which a formatter reads and reports instead
 // of writing, or prints its help or version; one of them anywhere in the
-// stage clears the editor.
-var checkOnly = []string{"--check", "--check-only", "--diff", "-l", "--list-different", "--dry-run",
+// stage clears the editor. -l is not one: gofmt's -l only lists the files
+// that differ and writes with -w beside it (`gofmt -l -w .`), black's and
+// isort's is a line length, sed's a line length or line-buffered output, and
+// perl's a line-ending switch, so none of them reads instead of writing.
+// `gofmt -l .` reads because no writing word armed the stage.
+var checkOnly = []string{"--check", "--check-only", "--diff", "--list-different", "--dry-run",
 	"--help", "--version", "-h"}
 
 // inPlaceEdit reports a line with a stage on which an in-place editor stands

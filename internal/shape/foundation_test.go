@@ -39,6 +39,11 @@ func TestRC3b_InPlaceEditorsSetMayWrite(t *testing.T) {
 		// 5i as -l's number); the scan does not know -l's number and arms on
 		// the i, an over-claim on a spelling not in use.
 		"sed -l5i p a.go",
+		// -l clears nothing: gofmt's only lists the files, and the -w beside
+		// it writes them; the others' -l is a line length, a line-ending
+		// switch, or sed's line wrap.
+		"gofmt -l -w .", "gofmt -s -w -l .", "perl -l -pi -e s/a/b/ f", "sed -l 5 -i s/a/b/ f",
+		"black -l 100 x.py", "isort -l 100 x.py",
 	} {
 		if sh := verbOf(t, cmd); !sh.MayWrite {
 			t.Errorf("%q: may_write false, want true", cmd)
