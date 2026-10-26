@@ -14,8 +14,14 @@
 // retract); its View is the sorted set of live facts, a function of that set
 // alone. Sync reads a Program and reconciles the log to it.
 //
-// This first slice carries ingest, PROVEN facts, trust tiers, the log and the
-// offline loader. Class hierarchy analysis, per-package invalidation, blast
-// radius, the Impact and Obligations interface and cross-commit identity are
-// later slices.
+// Symbols are named by identity.go's scheme: names only, never a position, with
+// a fingerprint of what the symbol is for the few names Go lets repeat in a
+// package. Link carries identity across a commit when a name changed or a
+// repeatable symbol's body was edited. Dispatch writes class
+// hierarchy analysis as ALGORITHMIC may-call facts through SyncCHA, beside the
+// PROVEN facts of Sync; Score and ParseLabels measure it against a labelled
+// corpus.
+//
+// Per-package invalidation, blast radius, the Impact and Obligations interface,
+// unknown fan-in and the untracked-configuration warning are later slices.
 package pgraph

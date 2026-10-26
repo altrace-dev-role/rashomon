@@ -127,6 +127,9 @@ type Program struct {
 	files []File
 	pkgs  []*packages.Package // sorted by PkgPath
 	fset  *token.FileSet
+	// deps says the dependencies of pkgs were type-checked from source and
+	// carry syntax, so SSA can be built for their bodies (Dispatch needs it).
+	deps bool
 }
 
 func (p *Program) Config() Config { return p.cfg }
@@ -169,7 +172,28 @@ func (e *LoadError) Error() string {
 // configuration cfg, type-checks every package from source and hashes the
 // files. The go tool runs in LoaderEnv. Test files are not part of a
 // Program. Time is dominated by go list and type checking.
+//
+// Dependencies are type-checked from source as well, not read from export
+// data, so that Dispatch sees the interface calls their bodies make (PF-PL3).
+// They are not scanned: Extract and Fingerprints read the scan root only,
+// Files and Digest cover the scan root only (the dependencies' versions are
+// pinned by go.sum and the toolchain, which the go tool resolves offline), and
+// a load fails if any dependency has an error, since a dependency with a
+// missing body would read as a dependency that calls nothing. LoadScanRoot is
+// the cheaper load for callers that need only the scan root's own facts.
 func Load(ctx context.Context, root string, cfg Config) (*Program, error) {
+	return load(ctx, root, cfg, true)
+}
+
+// LoadScanRoot is Load without dependency bodies: dependencies are read from
+// export data. The Program serves Extract, Fingerprints and Link, and Dispatch
+// refuses it, because on it every call made inside a dependency would be
+// silently absent.
+func LoadScanRoot(ctx context.Context, root string, cfg Config) (*Program, error) {
+	return load(ctx, root, cfg, false)
+}
+
+func load(ctx context.Context, root string, cfg Config, deps bool) (*Program, error) {
 	cfg = cfg.canon()
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -190,6 +214,9 @@ func Load(ctx context.Context, root string, cfg Config) (*Program, error) {
 		Context: ctx,
 		Dir:     abs,
 		Env:     LoaderEnv(os.Environ(), cfg),
+	}
+	if deps {
+		pc.Mode |= packages.NeedDeps
 	}
 	if len(cfg.Tags) > 0 {
 		pc.BuildFlags = []string{"-tags=" + strings.Join(cfg.Tags, ",")}
@@ -212,12 +239,26 @@ func Load(ctx context.Context, root string, cfg Config) (*Program, error) {
 			msgs = append(msgs, pk.PkgPath+": "+e.Error())
 		}
 	}
+	if deps {
+		isRoot := map[*packages.Package]bool{}
+		for _, pk := range loaded {
+			isRoot[pk] = true
+		}
+		packages.Visit(loaded, nil, func(pk *packages.Package) {
+			if isRoot[pk] {
+				return
+			}
+			for _, e := range pk.Errors {
+				msgs = append(msgs, "dependency "+pk.PkgPath+": "+e.Error())
+			}
+		})
+	}
 	if len(msgs) > 0 {
 		sort.Strings(msgs)
 		return nil, &LoadError{msgs}
 	}
 	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].PkgPath < pkgs[j].PkgPath })
-	prog := &Program{cfg: cfg, pkgs: pkgs, fset: token.NewFileSet()}
+	prog := &Program{cfg: cfg, pkgs: pkgs, fset: token.NewFileSet(), deps: deps}
 	if len(pkgs) > 0 {
 		prog.fset = pkgs[0].Fset
 	}

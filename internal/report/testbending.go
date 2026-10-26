@@ -154,7 +154,10 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 	}
 	var testEdits, otherEdits, anyEdits int
 	// The same command in the same directory: the shape digest and the cwd
-	// digest, compared together.
+	// digest, compared together. A run at no known directory (cwd digest
+	// "") is marked in none of them, so none pairs with it: two such runs
+	// may be in two directories, and "" is not one place. The command's
+	// digest is kept all the same.
 	type runKey struct{ command, cwd string }
 	last := map[runKey]mark{}
 
@@ -190,7 +193,7 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 		}
 		// And the mark AFTER it counts, so the next run of this command
 		// does not see this run as between.
-		if isRun {
+		if isRun && d.CWDDigest != "" {
 			last[key] = mark{
 				seq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,
 			}

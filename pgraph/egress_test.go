@@ -86,7 +86,7 @@ func TestPL9_LoaderRunsInNetworklessNamespace(t *testing.T) {
 	if err != nil || exec.Command(unshare, "-n", "true").Run() != nil {
 		t.Skip("unshare -n unavailable here; the forced-environment tests above are the fallback")
 	}
-	cmd := exec.Command(unshare, "-n", os.Args[0], "-test.count=1", "-test.run", "^(TestPL1_ResolvedSetEqualsGoList|TestPL2_)")
+	cmd := exec.Command(unshare, "-n", os.Args[0], "-test.count=1", "-test.run", "^(TestPL1_ResolvedSetEqualsGoList|TestPL2_|TestPL3_|TestPL10_)")
 	cmd.Env = append(os.Environ(), "PGRAPH_NETNS=1")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

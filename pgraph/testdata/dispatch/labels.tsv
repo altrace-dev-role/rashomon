@@ -1,0 +1,21 @@
+pgraph-labels v0
+corpus dispatch-v1
+# Truth, read by hand from the source: the concrete methods some execution of
+# app.RunAll can dispatch to at each interface call, by the enclosing declared
+# function (a closure belongs to its declaration, a package variable
+# initialiser to the package). Ghost, extra.Rect and extra.Dog are never
+# constructed, so no call can reach them.
+func:example.test/dispatch/app.Total	method:example.test/dispatch/shape.Circle.Area
+func:example.test/dispatch/app.Total	method:example.test/dispatch/shape.Square.Area
+func:example.test/dispatch/app.Total	method:example.test/dispatch/shape.Tri.Area
+func:example.test/dispatch/app.Label	method:example.test/dispatch/shape.Circle.Name
+func:example.test/dispatch/app.Label	method:example.test/dispatch/shape.Base.Name
+func:example.test/dispatch/app.Closure	method:example.test/dispatch/shape.Circle.Area
+func:example.test/dispatch/app.UseHolder	method:example.test/dispatch/shape.Circle.Area
+func:example.test/dispatch/app.Vol	method:example.test/dispatch/shape.Cube.Area
+func:example.test/dispatch/app.Vol	method:example.test/dispatch/shape.Circle.Area
+func:example.test/dispatch/app.Vol	method:example.test/dispatch/shape.Cube.Volume
+func:example.test/dispatch/app.Vol	method:example.test/dispatch/app.Holder.Volume
+func:example.test/dispatch/shape.Seal	method:example.test/dispatch/shape.Circle.seal
+func:example.test/dispatch/app.Fail	method:example.test/dispatch/shape.Bad.Error
+pkg:example.test/dispatch/app	method:example.test/dispatch/shape.Circle.Area

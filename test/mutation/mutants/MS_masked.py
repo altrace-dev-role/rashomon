@@ -173,7 +173,9 @@ m("MS an earlier plain run counts as a follow-up", "internal/report/account.go",
 m("MS a backgrounded call counts as ended", "internal/report/account.go",
   "\t\treturn rec != nil && !rec.Backgrounded && rec.Outcome == result", "\t\treturn rec != nil && rec.Outcome == result", RP)
 m("MS a later masked run is a follow-up", "internal/report/account.go",
-  "\t\tif m == nil || *m != shape.MaskedNone || r == nil {", "\t\tif m == nil || *m != shape.MaskedNone && *m == \"\" || r == nil {", RP)
+  "\t\tif m == nil || *m != shape.MaskedNone || r == nil || d.CWDDigest == \"\" {", "\t\tif m == nil || *m != shape.MaskedNone && *m == \"\" || r == nil || d.CWDDigest == \"\" {", RP)
+m("MS a plain run at an unknown location is a follow-up", "internal/report/account.go",
+  "\t\tif m == nil || *m != shape.MaskedNone || r == nil || d.CWDDigest == \"\" {", "\t\tif m == nil || *m != shape.MaskedNone || r == nil {", RP)
 m("MS a plain follow-up that failed is no follow-up", "internal/report/account.go",
   "\t\tif !ended(d, store.ExecOK) && !ended(d, store.ExecFailed) {", "\t\tif !ended(d, store.ExecOK) {", RP)
 m("MS masked runs fire over a failure word", "internal/report/account.go",

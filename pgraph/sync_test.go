@@ -94,7 +94,7 @@ func TestPL5_SyncRecordsProvenance(t *testing.T) {
 		t.Fatalf("%+v %v", d, err)
 	}
 	for _, f := range l.Live() {
-		if f.Tier() != Proven || f.Commit() != "abc123" || f.Extractor() != "gotypes@v0" || f.Config() != prog.Config().String() {
+		if f.Tier() != Proven || f.Commit() != "abc123" || f.Extractor() != "gotypes@v2" || f.Config() != prog.Config().String() {
 			t.Fatalf("provenance: %+v", f)
 		}
 	}
@@ -107,4 +107,188 @@ func mustRead(t *testing.T, p string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// PL5 with the second tier and the new ids, on two real commits: the stored
+// log, decoded and reconciled forward by both producers, has the view a full
+// rebuild has. Commit 2 swaps one implementer of Sizer for another, so the
+// ALGORITHMIC tier changes by one assertion and one tombstone, and the
+// PROVEN tier changes around it.
+func TestPL5_TwoTiersIncrementalViewByteIdenticalToFull(t *testing.T) {
+	dir, commits := idRepo(t)
+	both := func(l *Log, commit string) (Delta, Delta) {
+		git(t, dir, "checkout", "-q", commit)
+		prog := loadDepsT(t, dir)
+		dp, err := Sync(l, prog, commit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dc, err := SyncCHA(l, prog, commit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dp, dc
+	}
+	full := func(commit string) *Log {
+		var l Log
+		both(&l, commit)
+		return &l
+	}
+	step := func(prev *Log, commit string) (*Log, Delta, Delta) {
+		l, err := DecodeLog(prev.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		dp, dc := both(l, commit)
+		return l, dp, dc
+	}
+
+	l1 := full(commits[0])
+	v1 := l1.View()
+	large := Triple{"func:" + idm + "/core.Measure", MayCall, "method:" + idm + "/core.Large.Size"}
+	medium := Triple{"func:" + idm + "/core.Measure", MayCall, "method:" + idm + "/core.Medium.Size"}
+	small := Triple{"func:" + idm + "/core.Measure", MayCall, "method:" + idm + "/core.Small.Size"}
+	live := map[Triple]Tier{}
+	for _, f := range l1.Live() {
+		live[f.Triple()] = f.Tier()
+	}
+	if live[large] != Algorithmic || live[small] != Algorithmic || live[medium] != 0 {
+		t.Fatalf("commit 1 may-call facts wrong: %v %v %v", live[large], live[small], live[medium])
+	}
+
+	l2, dp, dc := step(l1, commits[1])
+	if !bytes.Equal(l2.View(), full(commits[1]).View()) {
+		t.Fatal("commit 2: incremental view differs from full rebuild")
+	}
+	if dc != (Delta{Asserted: 1, Retracted: 1}) {
+		t.Errorf("CHA delta = %+v, want one assertion (Medium) and one tombstone (Large)", dc)
+	}
+	if dp.Asserted == 0 || dp.Retracted == 0 {
+		t.Errorf("PROVEN delta = %+v", dp)
+	}
+	live = map[Triple]Tier{}
+	for _, f := range l2.Live() {
+		live[f.Triple()] = f.Tier()
+	}
+	if live[large] != 0 || live[medium] != Algorithmic || live[small] != Algorithmic {
+		t.Errorf("commit 2 may-call facts: %v %v %v", live[large], live[medium], live[small])
+	}
+	if !bytes.HasPrefix(l2.Encode(), l1.Encode()) {
+		t.Error("commit 2: history rewritten")
+	}
+	tomb := false
+	for _, r := range l2.Records() {
+		if r.Op() == Retract && r.Fact().Triple() == large && r.Fact().Tier() == Algorithmic && r.Fact().Commit() == commits[1] {
+			tomb = true
+		}
+	}
+	if !tomb {
+		t.Error("the withdrawn dispatch edge left no ALGORITHMIC tombstone")
+	}
+
+	// Back to commit 1: both tiers return to the first view.
+	l3, _, _ := step(l2, commits[0])
+	if !bytes.Equal(l3.View(), v1) || !bytes.Equal(l3.View(), full(commits[0]).View()) {
+		t.Fatal("commit 1 again: view did not return")
+	}
+	// An unchanged tree appends nothing in either tier.
+	l4, dp, dc := step(l3, commits[0])
+	if l4.Len() != l3.Len() || dp != (Delta{}) || dc != (Delta{}) {
+		t.Fatalf("no-op sync appended: %+v %+v", dp, dc)
+	}
+}
+
+// A log written by a previous extractor (its ids spelled the old way, its
+// label gotypes@v0 with positions in the spelling or gotypes@v1 with ordinals)
+// migrates on the next Sync: the old facts are tombstoned and the new ones
+// asserted, with the rest of the log untouched.
+func TestPL5_OldExtractorFactsAreTombstonedOnSync(t *testing.T) {
+	prog := loadT(t, testModule)
+	for _, c := range []struct {
+		version string
+		fact    Triple
+	}{
+		{"v0", Triple{"method:(*example.test/mod/a.Square).Area", Calls, "func:fmt.Sprint"}},
+		{"v1", Triple{"pkg:" + m + "/a", Declares, "func:" + m + "/a.init#1"}},
+	} {
+		t.Run(c.version, func(t *testing.T) {
+			var l Log
+			old, err := newProducer("gotypes", c.version, Proven)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.Reconcile(old, prog.Config().String(), "c0", []Triple{c.fact}); err != nil {
+				t.Fatal(err)
+			}
+			other := mustProposed(t, "model")
+			if _, err := l.Reconcile(other, prog.Config().String(), "c0", []Triple{tri("a", Calls, "b")}); err != nil {
+				t.Fatal(err)
+			}
+			d, err := Sync(&l, prog, "c1")
+			if err != nil || d.Retracted != 1 || d.Asserted == 0 {
+				t.Fatalf("%+v %v", d, err)
+			}
+			for _, f := range l.Live() {
+				if f.Triple() == c.fact {
+					t.Error("old-spelling fact still live")
+				}
+				if f.Tier() == Proven && f.Extractor() != "gotypes@"+ExtractorVersion {
+					t.Errorf("live PROVEN fact from %s", f.Extractor())
+				}
+			}
+			var mine int
+			for _, f := range l.Live() {
+				if f.Tier() == Proposed && f.Triple() == tri("a", Calls, "b") {
+					mine++
+				}
+			}
+			if mine != 1 {
+				t.Error("another producer's fact was disturbed")
+			}
+		})
+	}
+}
+
+// The same migration for the second tier: the facts of cha@v0, which could not
+// see a call made inside a dependency, are tombstoned by the next SyncCHA and
+// the cha@v1 ones asserted, and no PROVEN fact is touched.
+func TestPL5_OldDispatchFactsAreTombstonedOnSyncCHA(t *testing.T) {
+	prog := loadDepsT(t, dispatchRoot)
+	var l Log
+	v0, err := newProducer("cha", "v0", Algorithmic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A fact v1 does not derive (Total calls Area, not Name), so it must go.
+	old := Triple{"func:" + dm + "/app.Total", MayCall, "method:" + dm + "/extra.Dog.Name"}
+	if _, err := l.Reconcile(v0, prog.Config().String(), "c0", []Triple{old}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(&l, prog, "c0"); err != nil {
+		t.Fatal(err)
+	}
+	proven := 0
+	for _, f := range l.Live() {
+		if f.Tier() == Proven {
+			proven++
+		}
+	}
+	d, err := SyncCHA(&l, prog, "c1")
+	if err != nil || d.Retracted != 1 || d.Asserted != 38 {
+		t.Fatalf("%+v %v", d, err)
+	}
+	after := 0
+	for _, f := range l.Live() {
+		switch f.Tier() {
+		case Algorithmic:
+			if f.Extractor() != "cha@v1" {
+				t.Errorf("live ALGORITHMIC fact from %s", f.Extractor())
+			}
+		case Proven:
+			after++
+		}
+	}
+	if after != proven || proven == 0 {
+		t.Errorf("PROVEN facts went from %d to %d", proven, after)
+	}
 }
