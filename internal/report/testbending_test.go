@@ -25,7 +25,8 @@ type tbCall struct {
 	agent   string
 	prog    string // for Bash: the program, go when empty
 	bg      bool   // the execution record says backgrounded
-	cwd     string // the declaration's cwd digest
+	cwd     string // the declaration's cwd digest, "w" when empty
+	unknown bool   // the location is not known: the digest is "", whatever cwd says
 	exit    int    // the execution's exit code, none when 0
 	masked  string // the shape's status_masked, null when empty
 	runner  string // the shape's runner_digest, null when empty
@@ -34,6 +35,14 @@ type tbCall struct {
 func tbRun(calls ...tbCall) *store.Run {
 	run := &store.Run{}
 	for _, c := range calls {
+		// A call is in one known directory unless it says otherwise: "" is a
+		// location the readers refuse to compare.
+		switch {
+		case c.unknown:
+			c.cwd = ""
+		case c.cwd == "":
+			c.cwd = "w"
+		}
 		id := "t" + string(rune('a'+c.seq))
 		verb := c.verb
 		if verb == "" {
@@ -411,7 +420,7 @@ func TestTestBending_ShapesFromDerive(t *testing.T) {
 	bash := func(seq int64, input, outcome string, exit int) (store.Declaration, *store.Execution) {
 		id := "d" + string(rune('a'+seq))
 		d := store.Declaration{Seq: seq, ToolUseID: id, ToolName: "Bash", SessionID: "s1",
-			Shape: shape.Derive("Bash", json.RawMessage(input), key)}
+			Shape: shape.Derive("Bash", json.RawMessage(input), key), CWDDigest: shape.CWDDigest(key, "/r")}
 		x := &store.Execution{ToolUseID: id, ToolName: "Bash", Outcome: outcome}
 		if exit != 0 {
 			x.ExitCode = &exit
@@ -475,6 +484,37 @@ func seqsOf(f []FlakyPair) []SeqPair {
 		out = append(out, p.Seqs)
 	}
 	return out
+}
+
+// TestTestBending_UnknownLocationPairsNothing: two runs of one command pair
+// only at a location both are known to share. A "" location is not known, so
+// `cd a && go test` failing and `cd b && go test` passing, two directories
+// the hook could not place, are not one command's before and after. The
+// digest is kept, since the words ran; it is the location that is unknown.
+func TestTestBending_UnknownLocationPairsNothing(t *testing.T) {
+	const ok, failed = store.ExecOK, store.ExecFailed
+	at := func(c tbCall, cwd string) tbCall { c.cwd, c.unknown = cwd, cwd == ""; return c }
+	for _, tc := range []struct {
+		name string
+		run  *store.Run
+		want int
+	}{
+		{"flaky, location unknown", tbRun(at(test(1, "d", failed), ""), at(test(2, "d", ok), "")), 0},
+		{"flaky, same known location", tbRun(at(test(1, "d", failed), "w"), at(test(2, "d", ok), "w")), 1},
+	} {
+		if tb := DetectTestBending(tc.run, nil); len(tb.Flaky) != tc.want {
+			t.Errorf("%s: %d flaky pairs, want %d: %+v", tc.name, len(tb.Flaky), tc.want, tb.Flaky)
+		}
+	}
+	// The tests-only edit between: the same, at an unknown location.
+	unknown := tbRun(at(test(1, "d", failed), ""), edit(2, shape.LabelTestFile, ok), at(test(3, "d", ok), ""))
+	if tb := DetectTestBending(unknown, nil); len(tb.TestsOnlyThenGreen) != 0 {
+		t.Errorf("a tests-only pair at an unknown location: %+v", tb.TestsOnlyThenGreen)
+	}
+	known := tbRun(at(test(1, "d", failed), "w"), edit(2, shape.LabelTestFile, ok), at(test(3, "d", ok), "w"))
+	if tb := DetectTestBending(known, nil); len(tb.TestsOnlyThenGreen) != 1 {
+		t.Errorf("the control found no tests-only pair at a known location: %+v", tb.TestsOnlyThenGreen)
+	}
 }
 
 // TestTestBending_FlakyKeepsTheOrder: a flaky pair says which of its runs
@@ -751,7 +791,7 @@ func TestTestBending_WriteCapableShellCallsAreEdits(t *testing.T) {
 			seq := int64(i + 1)
 			id := "w" + string(rune('a'+seq))
 			d := store.Declaration{SchemaVersion: store.SchemaVersion, Seq: seq, ToolUseID: id, ToolName: c.tool, SessionID: "s1",
-				Shape: shape.Derive(c.tool, json.RawMessage(c.input), key)}
+				Shape: shape.Derive(c.tool, json.RawMessage(c.input), key), CWDDigest: shape.CWDDigest(key, "/r")}
 			if c.label != "" {
 				l := c.label
 				d.FileLabel = &l

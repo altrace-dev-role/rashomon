@@ -10,6 +10,9 @@ func decl(seq int64, id, tool, promptID, transcript string, ms int64) store.Decl
 	d := store.Declaration{
 		Seq: seq, ToolUseID: id, ToolName: tool, SessionID: "s1",
 		TranscriptPath: transcript, RecordedAtMS: ms,
+		// One known directory: the readers pair runs only where the location
+		// is known, and an empty one is not.
+		CWDDigest: "w",
 	}
 	if promptID != "" {
 		p := promptID
