@@ -1,7 +1,8 @@
 // Package spec holds the repository spec's contract: the compiled form VERIFY
 // evaluates against (tech spec 2.2.7). P-07 freezes the names and the limits
-// the spec text states; schema parsing, the digest, discovery and the trust
-// binding land in the SPEC PRs.
+// the spec text states. Parse reads one spec.json strictly into a File and
+// returns its digest; discovery, the managed spec and the trust binding land
+// in the later SPEC PRs.
 package spec
 
 // Trust is how far a spec's text may travel (2.2.7, Trust).
@@ -34,7 +35,10 @@ const (
 // RuleKinds is the closed list in the table's order.
 var RuleKinds = []RuleKind{ForbidCode, ForbidCommand, ProtectPath, RequireEvidence, Order}
 
-// Limits of one spec file (2.2.7): strict JSON, integers only.
+// Limits of one spec file (2.2.7; archive 20.2.8, Schema): strict JSON, integers
+// only. MaxBytes is the file; MaxGates counts ci_commands entries too; the
+// Pattern, Spec and Repeat limits bound every regular expression (the
+// instruction counts are len(prog.Inst) of regexp/syntax).
 const (
 	MaxBytes               = 256 << 10
 	MaxGates               = 32 // including ci_commands
@@ -44,6 +48,19 @@ const (
 	MaxPatternInstructions = 2000
 	MaxSpecInstructions    = 20000
 	MaxRepeat              = 100
+	// MaxWhyRunes caps a rule's why and hard_control and a fact's why, in runes
+	// (archive 20.2.8, Schema).
+	MaxWhyRunes = 300
+	// MaxAlternativeRunes caps a rule's alternative, in runes (archive 20.2.8,
+	// Schema).
+	MaxAlternativeRunes = 160
+	// MaxIDBytes is the longest id the id pattern allows: one leading character
+	// and 47 more (archive 20.2.8, Schema).
+	MaxIDBytes = 48
+	// MaxDepth caps JSON nesting. The schema nests six deep at most, so this is
+	// slack, not a schema rule: it bounds the recursion that reads an untrusted
+	// file and the length of an error's pointer.
+	MaxDepth = 32
 	// DigestPrefix opens every spec digest: "sha256:" + hex(sha256(JCS(file))).
 	DigestPrefix = "sha256:"
 )
