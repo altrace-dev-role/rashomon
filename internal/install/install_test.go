@@ -72,6 +72,27 @@ func TestOwner(t *testing.T) {
 			string(mustEntry(t, Spec{Executable: `C:\x\rashomon.exe`, InstallID: oneID}, EventPreToolUse)),
 			oneID,
 		},
+		// The three below are the entry watch writes on Windows, where the
+		// executable is double-quoted for cmd.exe: an install under
+		// Program Files has a space in every path it can live at.
+		{
+			"cmd.exe-quoted executable with a space",
+			EventPreToolUse,
+			windowsEntry(t, `C:\Program Files\rashomon\rashomon.exe`, oneID, EventPreToolUse),
+			oneID,
+		},
+		{
+			"cmd.exe-quoted executable with an embedded quote",
+			EventPreToolUse,
+			windowsEntry(t, `C:\we"ird dir\rashomon.exe`, oneID, EventPreToolUse),
+			oneID,
+		},
+		{
+			"an unterminated double quote never resolves to an owner",
+			EventPreToolUse,
+			`{"hooks":[{"type":"command","command":"\"C:\\no closing quote post --install ` + oneID + `"}]}`,
+			"",
+		},
 		{
 			// shellQuote never writes this shape -- it always closes the
 			// quote it opens -- but afterFirstWord has to resolve any
@@ -322,17 +343,30 @@ func entriesOf(t *testing.T, doc *settings.Document, event string) []json.RawMes
 }
 
 func TestShellQuote(t *testing.T) {
-	for _, tc := range []struct{ name, in, want string }{
-		{"a path of safe characters is left bare",
-			"/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
-		{"a space is quoted",
-			"/Users/sam/Application Support/rashomon", "'/Users/sam/Application Support/rashomon'"},
-		{"a single quote is closed, escaped and reopened",
-			"/home/o'brien/bin/rashomon", `'/home/o'\''brien/bin/rashomon'`},
+	for _, tc := range []struct {
+		name, goos, in, want string
+	}{
+		// POSIX (darwin / linux)
+		{"posix: safe path left bare",
+			"linux", "/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
+		{"posix: space is single-quoted",
+			"linux", "/Users/sam/Application Support/rashomon", "'/Users/sam/Application Support/rashomon'"},
+		{"posix: single quote is closed, escaped and reopened",
+			"linux", "/home/o'brien/bin/rashomon", `'/home/o'\''brien/bin/rashomon'`},
+		{"posix: darwin safe path left bare",
+			"darwin", "/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
+
+		// Windows (cmd.exe double-quote syntax)
+		{"windows: safe path left bare",
+			"windows", `C:\Users\sam\go\bin\rashomon.exe`, `C:\Users\sam\go\bin\rashomon.exe`},
+		{"windows: space is double-quoted",
+			"windows", `C:\Users\sam\My Go Bin\rashomon.exe`, `"C:\Users\sam\My Go Bin\rashomon.exe"`},
+		{"windows: double quote inside path is doubled",
+			"windows", `C:\weird"path\rashomon.exe`, `"C:\weird""path\rashomon.exe"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shellQuote(tc.in); got != tc.want {
-				t.Errorf("shellQuote(%q) is %s, want %s", tc.in, got, tc.want)
+			if got := shellQuoteForOS(tc.in, tc.goos); got != tc.want {
+				t.Errorf("shellQuoteForOS(%q, %q) = %s, want %s", tc.in, tc.goos, got, tc.want)
 			}
 		})
 	}
@@ -340,6 +374,17 @@ func TestShellQuote(t *testing.T) {
 
 // mustEntry renders an entry and fails the test rather than ignoring the error,
 // which is what the old panicking signature let callers do implicitly.
+// windowsEntry is the entry watch writes on Windows for exe, whatever OS the
+// test runs on: Spec.Command's line with the executable quoted for cmd.exe.
+func windowsEntry(t *testing.T, exe, id, event string) string {
+	t.Helper()
+	cmd, err := json.Marshal(shellQuoteForOS(exe, "windows") + " " + subcommand(event) + " " + Marker + " " + id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return `{"hooks":[{"type":"command","command":` + string(cmd) + `,"timeout":5}]}`
+}
+
 func mustEntry(t *testing.T, s Spec, event string) json.RawMessage {
 	t.Helper()
 	raw, err := s.Entry(event)

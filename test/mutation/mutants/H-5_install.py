@@ -23,3 +23,16 @@ m("afterFirstWord resumes inside the escaped-quote sequence instead of past it",
   "\t\t\tcontinue\n"
   "\t\t}",
   "TestOwner/quoted_executable_with_an_embedded_single_quote")
+
+# afterFirstWord's double-quoted branch: the entry watch writes on Windows,
+# where the executable is quoted for cmd.exe. Read as a bare word, a path
+# with a space ends at its first space and no Windows entry is ours; a
+# doubled quote taken for the terminator ends the word inside the path.
+m("afterFirstWord reads a cmd.exe-quoted executable as a bare word",
+  "internal/install/install.go",
+  "\tif cmd[0] == '\"' {\n\t\treturn afterDoubleQuoted(cmd)\n\t}\n", "",
+  "TestOwner/cmd.exe-quoted_executable_with_a_space")
+m("afterDoubleQuoted resumes inside a doubled quote instead of past it",
+  "internal/install/install.go",
+  "\t\t\ti = end + 2\n", "\t\t\ti = end + 1\n",
+  "TestOwner/cmd.exe-quoted_executable_with_an_embedded_quote")

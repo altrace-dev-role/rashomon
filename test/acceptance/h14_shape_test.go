@@ -1,9 +1,11 @@
 package acceptance
 
 import (
-	"github.com/altrace-dev-role/rashomon/internal/store"
 	"regexp"
+	"runtime"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 var hex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -176,6 +178,9 @@ func digestOf(t *testing.T, r record) string {
 }
 
 func TestH14_KeyFileIsOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX permission bits")
+	}
 	e := newEnv(t)
 	e.declarationsAfter("ls")
 	if entry, ok := walkStore(t, e.home)["install.key"]; !ok {
