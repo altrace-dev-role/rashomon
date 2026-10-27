@@ -1,12 +1,15 @@
 # VER-1.5: Evaluate, the fold (internal/verify/evaluate.go). One break per
 # predicate: the cut, the silence of an incomplete record, every list's
-# non-nil form, RecordGreen and its seq, ProjectRoot and the spec's identity.
+# non-nil form, RecordGreen and its seq, Required and the index bootstrap,
+# TurnSummary's advisory row (D38), ProjectRoot and the spec's identity.
 # The kill row is the named test's. No fuzz target: the input is the
 # builder's records, not untrusted bytes.
 E = "internal/verify/evaluate.go"
 
 # The cut.
 m("VER-1.5 the cut is off by one", E, '\tat := pt.Seq\n', '\tat := pt.Seq + 1\n', "TestRES14b_")
+m("VER-1.5 the gates' cut alone is off by one", E,
+  '\tsnap.Gates = gateStates(runs, writes, unnamed, at)\n', '\tsnap.Gates = gateStates(runs, writes, unnamed, at+1)\n', "TestRES14b_")
 m("VER-1.5 Seq 0 counts the first call", E, '\tat := pt.Seq\n', '\tat := max(pt.Seq, 2)\n', "TestVER42_")
 m("VER-1.5 a nil run is not an empty one", E, '\tif run == nil {\n\t\trun = &store.Run{}\n\t}\n', '', "TestVER18b_")
 
@@ -39,6 +42,41 @@ m("VER-1.5 a green gate with no green run is a green record", E,
   '\t\tif g.State != Green || g.LastGreen == nil {\n', '\t\tif g.State != Green {\n', "TestVER40_")
 m("VER-1.5 RecordGreenAtSeq is the smallest", E,
   '\t\tif n == 0 || g.LastGreen.Seq > at {\n', '\t\tif n == 0 || g.LastGreen.Seq < at {\n', "TestVER40_")
+
+# Required: the index's word on a learned project, every gate otherwise (D38).
+m("VER-1.5 a gate not required blocks", E, '\t\tif !g.Required {\n\t\t\tcontinue\n\t\t}\n', '', "TestVER46_")
+m("VER-1.5 no index requires nothing", E,
+  '\tif idx == nil {\n\t\treturn false\n\t}\n', '\tif idx == nil {\n\t\treturn true\n\t}\n', "TestVER46_")
+m("VER-1.5 the clock in seconds", E, '\tnowMS := now.UnixMilli()\n', '\tnowMS := now.Unix()\n', "TestVER46_")
+m("VER-1.5 the index is never read as learned", E,
+  '\tlearned := indexLearned(idx, nowMS)\n', '\tlearned := false\n', "TestVER46_")
+m("VER-1.5 the bootstrap reads the snapshot's gates", E,
+  '\tlearned := indexLearned(idx, nowMS)\n',
+  '\tlearned := idx != nil && slices.ContainsFunc(snap.Gates, func(g GateState) bool { return idx.Required(g.Family, nowMS) })\n',
+  "TestVER46_")
+m("VER-1.5 an index that requires nothing reads as learned", E,
+  '\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n', '\t\t\treturn true\n\t\t}\n\t}\n\treturn true\n}\n', "TestVER46_")
+
+# The row with advisory gates only (D38): capped green, red kept, learned gates alone.
+m("VER-1.5 every row is advisory", E,
+  '\tadvisory := !slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required })\n',
+  '\tadvisory := true\n', "TestVER65c_|TestVER46_")
+m("VER-1.5 advisory gates never reach the row", E,
+  '\tadvisory := !slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required })\n',
+  '\tadvisory := false\n', "TestVER46_")
+# The advisory line is evaluate.go's one use of slices.
+for name in ("VER-1.5 every row is advisory", "VER-1.5 advisory gates never reach the row"):
+    IMPORTS[name] = (E, '\t"slices"\n\t"time"\n', '\t"time"\n')
+m("VER-1.5 the advisory set takes every non-required gate", E,
+  ' && !(advisory && g.Source == sourceLearned) {\n', ' && !advisory {\n', "TestVER65c_")
+m("VER-1.5 an advisory green reads verified", E,
+  '\t\trow = RowUnverified // the cap', '\t\trow = RowVerified // the cap', "TestVER46_")
+m("VER-1.5 an advisory green with no write is unverified", E,
+  '\tcase turn.Writes == 0:\n\t\trow = RowRanOnly\n', '\tcase turn.Writes == 0 && !advisory:\n\t\trow = RowRanOnly\n', "TestVER46_")
+m("VER-1.5 an advisory red is hidden as unverified", E,
+  '\tcase ok && worst != Green:\n', '\tcase ok && worst != Green && !advisory:\n', "TestVER46_")
+m("VER-1.5 the advisory sentence is dropped", E,
+  '\tif advisory {\n\t\ts.Sentence = sentenceAdvisoryOnly\n\t}\n', '', "TestVER46_")
 
 # ProjectRoot: the nearest named project at or before the point, in no slice order.
 m("VER-1.5 ProjectRoot by slice order", E, ' && (root == nil || d.Seq > seq) {\n', ' && (root == nil || d.Seq != seq) {\n', "TestVER44_")

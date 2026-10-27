@@ -231,6 +231,114 @@ func TestVER45_EmptyListsMarshalAsEmptyNotNull(t *testing.T) {
 	}
 }
 
+// The families gateCall's runners give at the builder's location.
+const (
+	testFamily = "r:go-test@d:repo"
+	vetFamily  = "r:go-vet@d:repo"
+)
+
+// TestVER46_RequiredFollowsTheIndex: with an index that has learned a family,
+// a gate is required when the index requires its family at now (Required);
+// with no index, or one that requires nothing yet, every gate is (D38). A
+// gate not required keeps its state, never blocks the record green, and its
+// LastGreen is not the record's (D36). With only advisory gates, the row
+// reads them capped: green is never verified, red is never hidden.
+func TestVER46_RequiredFollowsTheIndex(t *testing.T) {
+	now := time.UnixMilli(1_800_000_000_000)
+	nowMS := now.UnixMilli()
+	// index holds go-test, last seen at testSeen in two sessions, and go-vet,
+	// seen now in vetSessions.
+	index := func(testSeen int64, vetSessions int) *ProjectIndex {
+		return &ProjectIndex{ProjectKey: "k", Entries: []IndexEntry{
+			{Family: testFamily, Kind: "test", Sessions: 2, LastSession: "s0", FirstSeen: testSeen, LastSeen: testSeen},
+			{Family: vetFamily, Kind: "test", Sessions: vetSessions, LastSession: "s0", FirstSeen: nowMS, LastSeen: nowMS},
+		}}
+	}
+	aged := nowMS - RequiredWindowMS - 1
+	// Call i declares at 2i-1: a gate's LastGreen is its call's 2i-1.
+	green := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), gateCall(3, "go-vet", store.ExecOK))
+	vetStale := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-vet", store.ExecOK), edit(3, "pkg/a.go"), gateCall(4, "go-test", store.ExecOK))
+	testStale := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), edit(3, "pkg/a.go"), gateCall(4, "go-vet", store.ExecOK))
+	eval := func(r *store.Run, idx *ProjectIndex) Snapshot {
+		return Evaluate(r, idx, nil, Point{Kind: PointStop, Seq: 2 * int64(len(r.Declarations)), SessionID: "s1"}, now)
+	}
+	wantRequired := func(t *testing.T, snap Snapshot, test, vet bool) {
+		t.Helper()
+		got := map[string]bool{}
+		for _, g := range snap.Gates {
+			got[g.Family] = g.Required
+		}
+		if len(snap.Gates) != 2 || len(got) != 2 || got[testFamily] != test || got[vetFamily] != vet {
+			t.Fatalf("required %v over %+v, want %s %t and %s %t", got, snap.Gates, testFamily, test, vetFamily, vet)
+		}
+	}
+	wantRow := func(t *testing.T, snap Snapshot, turn TurnCounts, row Row, sentence string) {
+		t.Helper()
+		if s := TurnSummary(snap, turn); s.Row != row || s.Sentence != sentence {
+			t.Fatalf("row %q sentence %q, want %q and %q", s.Row, s.Sentence, row, sentence)
+		}
+	}
+
+	t.Run("a: the index requires go-test alone", func(t *testing.T) {
+		snap := eval(green, index(nowMS, 1))
+		wantRequired(t, snap, true, false)
+		wantGreenAt(t, snap, 3) // go-test's run; go-vet's at 5 is not the record's
+	})
+	t.Run("b: a stale gate not required does not block", func(t *testing.T) {
+		snap := eval(vetStale, index(nowMS, 1))
+		wantRequired(t, snap, true, false)
+		wantGreenAt(t, snap, 7)
+	})
+	t.Run("c: a stale required gate blocks", func(t *testing.T) {
+		snap := eval(testStale, index(nowMS, 1))
+		wantNoGreen(t, snap)
+		// The required set is not empty, so the row is the required path's,
+		// not advisory: go-vet's green beside it changes nothing.
+		wantRow(t, snap, TurnCounts{Writes: 1, GateRuns: 2}, RowUnverified, "")
+	})
+	t.Run("d: a family past the window no longer blocks", func(t *testing.T) {
+		// go-vet is still required, so the index has learned: without it the
+		// index would read as none (e1) and go-test would block again.
+		snap := eval(testStale, index(aged, 2))
+		wantRequired(t, snap, false, true)
+		wantGreenAt(t, snap, 7)
+	})
+	t.Run("e1: an index that requires nothing reads as none", func(t *testing.T) {
+		snap := eval(green, index(aged, 1))
+		wantRequired(t, snap, true, true)
+		wantGreenAt(t, snap, 5)
+		wantRow(t, snap, TurnCounts{Writes: 1, GateRuns: 2}, RowVerified, "")
+	})
+	// go-test is established but did not run this turn: go-vet is advisory.
+	t.Run("e2: an advisory green is unverified, never verified", func(t *testing.T) {
+		snap := eval(runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-vet", store.ExecOK)), index(nowMS, 1))
+		if len(snap.Gates) != 1 || snap.Gates[0].Required || snap.Gates[0].State != Green {
+			t.Fatalf("gates %+v, want go-vet alone, green and not required", snap.Gates)
+		}
+		wantNoGreen(t, snap)
+		wantRow(t, snap, TurnCounts{Writes: 1, GateRuns: 1}, RowUnverified, sentenceAdvisoryOnly)
+	})
+	t.Run("e3: an advisory red is never hidden", func(t *testing.T) {
+		snap := eval(runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-vet", store.ExecFailed)), index(nowMS, 1))
+		wantNoGreen(t, snap)
+		wantRow(t, snap, TurnCounts{Writes: 1, GateRuns: 1}, RowRed, sentenceAdvisoryOnly)
+	})
+	t.Run("g: an advisory green with no write ran only", func(t *testing.T) {
+		snap := eval(runOf(t, gateCall(1, "go-vet", store.ExecOK)), index(nowMS, 1))
+		if len(snap.Gates) != 1 || snap.Gates[0].Required || snap.Gates[0].State != Green {
+			t.Fatalf("gates %+v, want go-vet alone, green and not required", snap.Gates)
+		}
+		wantRow(t, snap, TurnCounts{GateRuns: 1}, RowRanOnly, sentenceAdvisoryOnly)
+	})
+	t.Run("f: no index, every gate is required", func(t *testing.T) {
+		snap := eval(green, nil)
+		wantRequired(t, snap, true, true)
+		wantGreenAt(t, snap, 5)
+		wantNoGreen(t, eval(vetStale, nil))
+		wantNoGreen(t, eval(testStale, nil))
+	})
+}
+
 func TestVER47_ProjectRootIsTheLastCountedDeclarations(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), edit(2, "pkg/b.go"))
 	if got := evalAt(r, 4).ProjectRoot; got != "" {
