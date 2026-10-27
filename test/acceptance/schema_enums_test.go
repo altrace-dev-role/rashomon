@@ -65,63 +65,63 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 	const callRange, sessionRange = "store.AcceptsKind's 1..CallSchemaVersion", "store.AcceptsKind's 1..SessionSchemaVersion"
 	return []vocabulary{
 		{"reason", []enumRow{
-			{"/$defs/coverage/properties/reason", "store.Reasons() less terminalOnlyReasons", coverage},
+			{"/$defs/coverage/properties/reason", "store.Reasons() less terminalOnlyReasons", coverage, true},
 			// Every gap reason the store can write. GapForgetHost was once
 			// missing from this exact list, which is why it is spelled out
 			// rather than folded into a helper that could omit one again.
 			{"/$defs/gap/properties/reason", "the store's gap reasons (store.Gap*)",
-				[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap, store.GapPaused}},
-			{"/$defs/terminal/properties/reason", "terminalReasons (the terminal writers)", terminal},
+				[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap, store.GapPaused}, false},
+			{"/$defs/terminal/properties/reason", "terminalReasons (the terminal writers)", terminal, true},
 		}},
 		{"report_reason", []enumRow{
-			{"/$defs/report_reason", "report.Reasons()", report.Reasons()},
+			{"/$defs/report_reason", "report.Reasons()", report.Reasons(), false},
 		}},
 		{"type", []enumRow{
-			{"/$defs/coverage/properties/type", "store.TypeCoverage", []string{store.TypeCoverage}},
-			{"/$defs/declaration/properties/type", "store.TypeDeclaration", []string{store.TypeDeclaration}},
-			{"/$defs/execution/properties/type", "store.TypeExecution", []string{store.TypeExecution}},
-			{"/$defs/forgotten_host/properties/type", "store.TypeForgottenHost", []string{store.TypeForgottenHost}},
-			{"/$defs/gap/properties/type", "store.TypeGap", []string{store.TypeGap}},
-			{"/$defs/terminal/properties/type", "store.TypeTerminal", []string{store.TypeTerminal}},
+			{"/$defs/coverage/properties/type", "store.TypeCoverage", []string{store.TypeCoverage}, false},
+			{"/$defs/declaration/properties/type", "store.TypeDeclaration", []string{store.TypeDeclaration}, false},
+			{"/$defs/execution/properties/type", "store.TypeExecution", []string{store.TypeExecution}, false},
+			{"/$defs/forgotten_host/properties/type", "store.TypeForgottenHost", []string{store.TypeForgottenHost}, false},
+			{"/$defs/gap/properties/type", "store.TypeGap", []string{store.TypeGap}, false},
+			{"/$defs/terminal/properties/type", "store.TypeTerminal", []string{store.TypeTerminal}, false},
 		}},
 		{"outcome", []enumRow{
 			{"/$defs/execution/properties/outcome", "store.Exec*",
-				[]string{store.ExecOK, store.ExecFailed, store.ExecInterrupted}},
+				[]string{store.ExecOK, store.ExecFailed, store.ExecInterrupted}, false},
 			{"/$defs/terminal/properties/outcome", "store.Outcome*",
-				[]string{store.OutcomeOK, store.OutcomeError, store.OutcomeSignal}},
+				[]string{store.OutcomeOK, store.OutcomeError, store.OutcomeSignal}, false},
 		}},
 		{"phase", []enumRow{
 			{"/$defs/coverage/properties/phase", "store.Phase*",
-				[]string{store.PhaseStart, store.PhaseCall, store.PhasePost, store.PhaseEnd}},
+				[]string{store.PhaseStart, store.PhaseCall, store.PhasePost, store.PhaseEnd}, false},
 			// flushOrMark's two callers (internal/hook/flush.go:14 and :19);
 			// Close's terminal leaves phase null.
 			{"/$defs/terminal/properties/phase", "the terminal writers' phases",
-				[]string{store.PhaseCall, store.PhasePost}},
+				[]string{store.PhaseCall, store.PhasePost}, true},
 		}},
 		{"schema_version", []enumRow{
-			{"/$defs/coverage/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeCoverage)},
-			{"/$defs/declaration/properties/schema_version", callRange, acceptedVersions(t, store.TypeDeclaration)},
-			{"/$defs/execution/properties/schema_version", callRange, acceptedVersions(t, store.TypeExecution)},
+			{"/$defs/coverage/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeCoverage), false},
+			{"/$defs/declaration/properties/schema_version", callRange, acceptedVersions(t, store.TypeDeclaration), false},
+			{"/$defs/execution/properties/schema_version", callRange, acceptedVersions(t, store.TypeExecution), false},
 			// Not read through AcceptsKind: its readers take any version
 			// (internal/store/gaps.go:536 and :764), so its one writer's stamp
 			// bounds it (gaps.go:507).
 			{"/$defs/forgotten_host/properties/schema_version", "the forgotten_host writer's SessionSchemaVersion",
-				[]string{strconv.Itoa(store.SessionSchemaVersion)}},
-			{"/$defs/gap/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeGap)},
-			{"/$defs/terminal/properties/schema_version", callRange, acceptedVersions(t, store.TypeTerminal)},
+				[]string{strconv.Itoa(store.SessionSchemaVersion)}, false},
+			{"/$defs/gap/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeGap), false},
+			{"/$defs/terminal/properties/schema_version", callRange, acceptedVersions(t, store.TypeTerminal), false},
 		}},
 		{"hook_entry", []enumRow{
 			// EntryPresent has no live writer and stays for the version 2
 			// records that carry it (record.go's comment on the block).
 			{"/$defs/coverage/properties/hook_entry", "store.Entry*", []string{store.EntryPresentSettings,
-				store.EntryPresentPlugin, store.EntryPresent, store.EntryAbsent, store.EntryUnknown}},
+				store.EntryPresentPlugin, store.EntryPresent, store.EntryAbsent, store.EntryUnknown}, false},
 		}},
 		{"probe", []enumRow{
 			{"/$defs/coverage/properties/probe", "store.Probe*",
-				[]string{store.ProbeFresh, store.ProbeAbsent, store.ProbeUnknown}},
+				[]string{store.ProbeFresh, store.ProbeAbsent, store.ProbeUnknown}, false},
 		}},
 		{"state", []enumRow{
-			{"/$defs/coverage/properties/state", "store.State*", []string{store.StateVerified, store.StateUnverified}},
+			{"/$defs/coverage/properties/state", "store.State*", []string{store.StateVerified, store.StateUnverified}, false},
 		}},
 	}
 }
@@ -154,7 +154,8 @@ func acceptedVersions(t *testing.T, kind string) []string {
 
 // TestStoreSchemaEnumsAreTheirCodeLists: every record vocabulary, one
 // subtest per name and one row per enum, each compared both ways against its
-// own code list (assertEnumsPerPath). Break: drop lock_timeout from
+// own code list, and its null against the row and the store field behind it
+// (assertEnumsPerPath). Break: drop lock_timeout from
 // coverage.reason alone, and the reason row for coverage names its path
 // while terminal's stays green.
 func TestStoreSchemaEnumsAreTheirCodeLists(t *testing.T) {
