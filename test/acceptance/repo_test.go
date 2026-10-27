@@ -12,9 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
-	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestNoSourceFileIsGitIgnored exists because a `coverage.*` pattern once
@@ -96,121 +94,43 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 	}
 }
 
-// TestStoreSchemaReasonsAreTheCodeReasons: the reason codes are a closed
-// vocabulary, and the schema and the code have to agree in BOTH directions --
-// per vocabulary, not pooled into one set.
-//
-// There are two deliberately separate vocabularies. store.Reasons() names
-// reasons a RECORD carries: a hook writes them into a coverage or terminal
-// record at the moment it runs, so they belong in those records' own
-// `reason` enums. report.Reasons() names reasons the REPORT derives by
-// looking at the whole run after the fact -- no record a hook writes ever
-// carries one, which is exactly why they live in their own report_reason
-// def rather than in a record's enum.
-//
-// It used to check one union: every code reason (from both vocabularies,
-// pooled) appears somewhere in the schema (any enum named reason/reasons or
-// *_reason), and vice versa. That passes a reason placed in the WRONG
-// vocabulary -- present in store.Reasons() and present somewhere in the
-// schema, just not in the record enum it claims to describe -- which is
-// exactly the shape of the store.GapForgetHost gap this test's history
-// already names once. Comparing each vocabulary against its own part of the
-// schema is what catches that.
-func TestStoreSchemaReasonsAreTheCodeReasons(t *testing.T) {
-	defs := schemaDefs(t)
-
-	// A record's reason lives on coverage.reason or terminal.reason.
-	// terminal.reason is a deliberate subset -- a Terminal only ever closes
-	// with signal/lock_timeout/internal_error -- so the two enums are pooled
-	// before comparing against store.Reasons() in full; checking terminal's
-	// enum alone against the whole list would fail on a subset that is
-	// correct by design.
-	recordReasons := map[string]bool{}
-	for _, def := range []string{"coverage", "terminal"} {
-		for r := range reasonEnum(t, defs, def) {
-			recordReasons[r] = true
-		}
-	}
-	assertReasonVocabulary(t, "store.Reasons() vs. the record reason enums (coverage.reason, terminal.reason)",
-		store.Reasons(), recordReasons)
-
-	assertReasonVocabulary(t, "report.Reasons() vs. report_reason",
-		report.Reasons(), reasonEnum(t, defs, "report_reason"))
-
-	// Every gap reason the store can write. GapForgetHost was once missing
-	// from this exact list, which is why it is spelled out rather than
-	// folded into a helper that could omit one again silently.
-	assertReasonVocabulary(t, "gap reasons vs. gap.reason",
-		[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap, store.GapPaused}, reasonEnum(t, defs, "gap"))
-}
-
-// reasonEnum reads the string enum values naming one reason vocabulary in
-// the schema: the `reason` property's enum for a record def (coverage,
-// terminal, gap), or the def's own enum for report_reason, which is declared
-// at the top level rather than nested under a record because no record
-// carries it. null is never a member of either shape, so it is dropped by
-// construction -- a JSON null fails the string type assertion below.
-func reasonEnum(t *testing.T, defs map[string]any, def string) map[string]bool {
-	t.Helper()
-	d, ok := defs[def].(map[string]any)
-	if !ok {
-		t.Fatalf("$defs.%s is missing", def)
-	}
-	enum := toAnySlice(d["enum"])
-	if props, ok := d["properties"].(map[string]any); ok {
-		if r, ok := props["reason"].(map[string]any); ok {
-			enum = toAnySlice(r["enum"])
-		}
-	}
-	out := map[string]bool{}
-	for _, e := range enum {
-		if s, ok := e.(string); ok {
-			out[s] = true
-		}
-	}
-	if len(out) == 0 {
-		t.Fatalf("$defs.%s names no reason enum values; the lookup is not finding them", def)
-	}
-	return out
-}
-
 // TestStoreSchemaHasNoUncheckedReasonVocabulary: every reason vocabulary the
 // schema declares, anywhere in the document, sits at a location
-// TestStoreSchemaReasonsAreTheCodeReasons actually reads -- and every location
-// it reads is one the schema declares.
+// TestStoreSchemaEnumsAreTheirCodeLists compares -- and every location it
+// compares is one the schema declares.
 //
-// That test looks its vocabularies up at fixed places: reasonEnum reads
-// properties.reason.enum on coverage, terminal and gap, and the def's own enum
-// on report_reason, and nothing else -- not a second *_reason property beside
-// reason, not a reasons array's items.enum, not anything outside $defs. The
-// walk it replaced found vocabularies by what they were called, so one added
-// later was checked without anyone remembering to check it; a fixed lookup
-// checks only what it was told about. This test restores the discovery and
-// compares at the granularity the lookup has: it records the JSON-pointer
-// path of every key named reason or reasons or ending in _reason across the
-// whole schema, and requires that set to equal the four paths above exactly,
-// less a reserved path that declares no enum (reservedReasonPaths). A new
-// reason key fails here until the comparison reads it and its path is added
-// to reasonVocabularyPaths.
+// That test compares at fixed places: one row per reason enum (coverage,
+// terminal and gap's properties.reason, and report_reason's own enum), and
+// nothing else -- not a second *_reason property beside reason, not a
+// reasons array's items.enum, not anything outside $defs. A fixed lookup
+// checks only what it was told about. This test restores the discovery: it
+// records the JSON-pointer path of every key named reason or reasons or
+// ending in _reason across the whole schema, and requires that set to equal
+// the four paths below exactly, less a reserved path that declares no enum
+// (reservedReasonPaths). A new reason key fails here until a row compares it
+// and its path is added to reasonVocabularyPaths; a row deleted there fails
+// TestStoreSchemaReasonEnumsAreTheirCodeLists, which requires the reason
+// rows' paths to be these four.
 //
 // Its only signal is the key's name: a vocabulary published under a key that
 // is not reason-named is invisible to it, as it was to the walk it replaced.
 func TestStoreSchemaHasNoUncheckedReasonVocabulary(t *testing.T) {
 	unchecked, missing := reasonVocabularyMismatches(readSchema(t))
 	for _, p := range unchecked {
-		t.Errorf("%s declares a reason vocabulary that TestStoreSchemaReasonsAreTheCodeReasons "+
-			"does not read, so it is published without being compared against the code; "+
-			"add the comparison, then add the path to reasonVocabularyPaths", p)
+		t.Errorf("%s declares a reason vocabulary that TestStoreSchemaEnumsAreTheirCodeLists "+
+			"does not compare, so it is published without being compared against the code; "+
+			"add the row, then add the path to reasonVocabularyPaths", p)
 	}
 	for _, p := range missing {
-		t.Errorf("%s is read by TestStoreSchemaReasonsAreTheCodeReasons as a reason vocabulary, "+
+		t.Errorf("%s is compared by TestStoreSchemaEnumsAreTheirCodeLists as a reason vocabulary, "+
 			"but the schema has no reason-named key there", p)
 	}
 }
 
-// reasonVocabularyPaths is the set of JSON-pointer paths reasonEnum reads, one
-// per vocabulary TestStoreSchemaReasonsAreTheCodeReasons compares. It has to
-// change together with reasonEnum and with that test's calls to it.
+// reasonVocabularyPaths is the set of JSON-pointer paths
+// TestStoreSchemaEnumsAreTheirCodeLists compares, one per reason vocabulary.
+// TestStoreSchemaReasonEnumsAreTheirCodeLists requires the reason rows'
+// paths to equal this set, so the two change together.
 var reasonVocabularyPaths = map[string]bool{
 	"/$defs/coverage/properties/reason": true,
 	"/$defs/terminal/properties/reason": true,
@@ -308,7 +228,7 @@ func declaresEnum(node any) bool {
 
 // TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips mutates a copy of
 // the real schema -- never the file -- in each of the ways a reason vocabulary
-// can be added where TestStoreSchemaReasonsAreTheCodeReasons does not look, and
+// can be added where TestStoreSchemaEnumsAreTheirCodeLists does not look, and
 // requires the tripwire to name the new location. The last case goes the other
 // way: a vocabulary the comparison reads disappears.
 func TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
@@ -440,31 +360,6 @@ func schemaObject(t *testing.T, node map[string]any, keys ...string) map[string]
 		node = next
 	}
 	return node
-}
-
-// assertReasonVocabulary checks that a code-side reason list and the schema
-// enum meant to publish it name exactly the same set. Kept as one helper
-// used three times, rather than three inline loops, so a fix to the
-// direction or the wording lands in every caller at once.
-func assertReasonVocabulary(t *testing.T, label string, code []string, schemaEnum map[string]bool) {
-	t.Helper()
-	want := map[string]bool{}
-	for _, r := range code {
-		want[r] = true
-	}
-	for r := range want {
-		if !schemaEnum[r] {
-			t.Errorf("%s: %q is in the code's list but not in the schema's enum, so a value "+
-				"the code emits fails the published contract", label, r)
-		}
-	}
-	for r := range schemaEnum {
-		if !want[r] {
-			t.Errorf("%s: %q is in the schema's enum but the code never emits it there. A "+
-				"contract that names a value the program never produces tells a consumer "+
-				"to wait for something that will not arrive.", label, r)
-		}
-	}
 }
 
 func readSchema(t *testing.T) map[string]any {
@@ -638,41 +533,102 @@ func TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds(t *testing.T) {
 // added under the name fails here until its path is listed, so it is
 // compared on its own rather than pooled or missed. Break: drop a word from
 // one of status_masked's two enums, and the row names that enum's path.
+//
+// It is assertEnumsPerPath with the one code list at every path.
 func assertNamedEnums(t *testing.T, name string, paths []string, from string, code []string) {
 	t.Helper()
-	enums := namedEnums(readSchema(t), name)
+	rows := make([]enumRow, len(paths))
+	for i, p := range paths {
+		rows[i] = enumRow{path: p, from: from, code: code}
+	}
+	assertEnumsPerPath(t, name, rows)
+}
+
+// enumRow is one enum the schema publishes and the code list it must equal:
+// the property at path, compared both ways against code, which from names.
+type enumRow struct {
+	path string
+	from string
+	code []string
+}
+
+// assertEnumsPerPath is assertNamedEnums for a name whose enums each publish
+// a vocabulary of their own -- type, outcome, phase, reason, schema_version
+// -- so each path is compared against its own code list. The properties
+// named name outside every allOf must be exactly the rows' paths. One inside
+// an allOf is a condition on a row's value, not a vocabulary: a const there
+// must be a word of the row for the same def's property, and an enum there
+// would be a second vocabulary nothing compares, so it fails until it has a
+// row.
+func assertEnumsPerPath(t *testing.T, name string, rows []enumRow) {
+	t.Helper()
+	byPath := map[string]enumRow{}
+	var paths []string
+	for _, r := range rows {
+		byPath[r.path] = r
+		paths = append(paths, r.path)
+	}
+	slices.Sort(paths)
+	enums := map[string]namedEnum{}
 	var at []string
-	for _, e := range enums {
+	var conditions []namedEnum
+	for _, e := range namedEnums(readSchema(t), name) {
+		if strings.Contains(e.path, "/allOf/") {
+			conditions = append(conditions, e)
+			continue
+		}
+		enums[e.path] = e
 		at = append(at, e.path)
 	}
 	if !slices.Equal(at, paths) {
 		t.Fatalf("%s publishes %s at %q, want %q: list a new one here, so that it is compared on its own",
 			schemaPath, name, at, paths)
 	}
-	inCode := map[string]bool{}
-	for _, v := range code {
-		inCode[v] = true
-	}
-	for _, e := range enums {
-		for _, v := range code {
+	for _, r := range rows {
+		e := enums[r.path]
+		inCode := map[string]bool{}
+		for _, v := range r.code {
+			inCode[v] = true
 			if !e.words[v] {
-				t.Errorf("%s carries %q, which the %s enum at %s in %s does not", from, v, name, e.path, schemaPath)
+				t.Errorf("%s carries %q, which the %s enum at %s in %s does not", r.from, v, name, e.path, schemaPath)
 			}
 		}
 		for _, v := range slices.Sorted(maps.Keys(e.words)) {
 			if !inCode[v] {
-				t.Errorf("the %s enum at %s in %s offers %q, which %s cannot emit", name, e.path, schemaPath, v, from)
+				t.Errorf("the %s enum at %s in %s offers %q, which %s cannot emit", name, e.path, schemaPath, v, r.from)
 			}
+		}
+	}
+	for _, c := range conditions {
+		if c.enum {
+			t.Errorf("%s publishes an enum for %s at %s, inside an allOf; give it a row, so that it is compared",
+				schemaPath, name, c.path)
+		}
+		if c.konst == "" {
+			continue
+		}
+		def, _, _ := strings.Cut(c.path, "/allOf/")
+		r, ok := byPath[def+"/properties/"+name]
+		switch {
+		case !ok:
+			t.Errorf("%s pins %s to %q at %s, and no row compares %s on that def", schemaPath, name, c.konst, c.path, name)
+		case !slices.Contains(r.code, c.konst):
+			t.Errorf("%s pins %s to %q at %s, which %s cannot emit", schemaPath, name, c.konst, c.path, r.from)
 		}
 	}
 }
 
 // namedEnum is one property the schema publishes under a vocabulary's name:
-// its JSON pointer (RFC 6901) and the string members of its enum. Null
-// members are skipped: the nullability is carried by the type.
+// its JSON pointer (RFC 6901), whether it has an enum, that enum's members,
+// and the const it pins, if any. Strings are taken as they are and numbers
+// in decimal, so schema_version's members compare as strconv.Itoa spells
+// them. A null member or a null const is skipped: the nullability is
+// carried by the type.
 type namedEnum struct {
 	path  string
+	enum  bool
 	words map[string]bool
+	konst string
 }
 
 // namedEnums is every property under node named name, with an enum or
@@ -686,12 +642,14 @@ func namedEnums(node any, name string) []namedEnum {
 			for k, child := range v {
 				p := path + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(k)
 				if prop, ok := child.(map[string]any); ok && k == name {
-					e := namedEnum{path: p, words: map[string]bool{}}
-					for _, w := range toAnySlice(prop["enum"]) {
-						if s, ok := w.(string); ok {
+					raw, enum := prop["enum"]
+					e := namedEnum{path: p, enum: enum, words: map[string]bool{}}
+					for _, w := range toAnySlice(raw) {
+						if s, ok := enumWord(w); ok {
 							e.words[s] = true
 						}
 					}
+					e.konst, _ = enumWord(prop["const"])
 					out = append(out, e)
 				}
 				walk(child, p)
@@ -705,4 +663,16 @@ func namedEnums(node any, name string) []namedEnum {
 	walk(node, "")
 	slices.SortFunc(out, func(a, b namedEnum) int { return strings.Compare(a.path, b.path) })
 	return out
+}
+
+// enumWord is an enum member or a const as namedEnum keeps it: a string as
+// it is, a number in decimal, and false for null or anything else.
+func enumWord(v any) (string, bool) {
+	switch w := v.(type) {
+	case string:
+		return w, true
+	case float64:
+		return strconv.FormatFloat(w, 'f', -1, 64), true
+	}
+	return "", false
 }
