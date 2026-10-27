@@ -242,11 +242,12 @@ func TestVER52c_SnapshotMarshalsAsTheGolden(t *testing.T) {
 	}
 }
 
-// TestVER18b_EvaluateStubFailsClosed: until P-41 builds the evaluator, a snapshot
-// reports incomplete recording, no record-green point and no gate, so the
-// comparator is silent and the value line reads unknown; the spec's identity
-// still travels, the path being the repository spec's.
-func TestVER18b_EvaluateStubFailsClosed(t *testing.T) {
+// TestVER18b_AnEmptyRecordFailsClosed: a record with no coverage record reads
+// incomplete (coverage_absent), so the snapshot has no record-green point and
+// no gate, the comparator is silent and the value line reads unknown; the
+// spec's identity still travels, the path being the repository spec's. A nil
+// run is an empty one.
+func TestVER18b_AnEmptyRecordFailsClosed(t *testing.T) {
 	sp := &spec.Compiled{
 		Sources: []spec.Source{{Path: "/etc/rashomon/spec.json", Digest: spec.DigestPrefix + "11", Trust: spec.Managed}, {Path: ".claude/rashomon/spec.json", Digest: spec.DigestPrefix + "22", Trust: spec.Trusted}},
 		Digest:  spec.DigestPrefix + strings.Repeat("ab", 32),
@@ -254,24 +255,24 @@ func TestVER18b_EvaluateStubFailsClosed(t *testing.T) {
 	}
 	snap := Evaluate(&store.Run{Dir: "s1"}, &ProjectIndex{ProjectKey: "k"}, sp, Point{Kind: PointStop, Seq: 42, SessionID: "s1"}, time.Unix(0, 0))
 	if snap.Recording != Incomplete {
-		t.Errorf("stub recording %q, want %q", snap.Recording, Incomplete)
+		t.Errorf("empty record: recording %q, want %q", snap.Recording, Incomplete)
 	}
 	if snap.RecordGreen || snap.RecordGreenAtSeq != nil || len(snap.Gates) != 0 {
-		t.Errorf("stub reported gates or a record-green point: %+v", snap)
+		t.Errorf("empty record: gates or a record-green point: %+v", snap)
 	}
 	if snap.Point.Seq != 42 || snap.VerifyVersion != Version || snap.RulesVersion != RulesVersion {
-		t.Errorf("stub lost the point or versions: %+v", snap)
+		t.Errorf("empty record: the point or versions lost: %+v", snap)
 	}
 	if snap.Spec == nil || snap.Spec.Digest != sp.Digest || snap.Spec.Trust != spec.Trusted || snap.Spec.Path != ".claude/rashomon/spec.json" {
-		t.Errorf("stub lost the spec identity: %+v", snap.Spec)
+		t.Errorf("empty record: the spec identity lost: %+v", snap.Spec)
 	}
-	if len(snap.Notes) == 0 {
-		t.Errorf("stub gave no note saying the evaluator is not built")
+	if !slices.Equal(snap.Notes, []string{"coverage_absent"}) {
+		t.Errorf("empty record: notes %q, want coverage_absent alone", snap.Notes)
 	}
 	if row := TurnSummary(snap, TurnCounts{Writes: 3, GateRuns: 1}).Row; row != RowUnknown {
-		t.Errorf("value line over the stub: row %q, want %q", row, RowUnknown)
+		t.Errorf("value line over an empty record: row %q, want %q", row, RowUnknown)
 	}
-	if got := Evaluate(nil, nil, nil, Point{}, time.Time{}); got.Spec != nil || got.Recording != Incomplete {
+	if got := Evaluate(nil, nil, nil, Point{}, time.Time{}); got.Spec != nil || got.Recording != Incomplete || !slices.Equal(got.Notes, []string{"coverage_absent"}) {
 		t.Errorf("nil inputs: %+v", got)
 	}
 	if spec.Lowest(spec.Managed, spec.Untrusted) != spec.Untrusted || spec.Lowest(spec.Trusted, spec.Managed) != spec.Trusted || spec.Lowest("x", spec.Managed) != spec.Untrusted {
