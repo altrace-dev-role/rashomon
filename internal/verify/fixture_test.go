@@ -49,6 +49,24 @@ type call struct {
 	// unread one (shape.UnreadCWDDigest), the two domains no digest of one
 	// equals in the other; "" is a location not known.
 	loc string
+	// agent is the subagent the call ran in: AgentID, with AgentType beside it,
+	// both present only inside a subagent call (record.go, Declaration); ""
+	// is the main agent, both nil.
+	agent string
+	// spilled marks a call whose execution and terminal the store could not
+	// order under its lock and wrote to the spill file (Store.SpillExecution,
+	// Store.SpillTerminal): both carry a nil Seq, take no Seq from the
+	// counter and read back after every ordered record, as ReadRun reads the
+	// spill file last. The declaration keeps its Seq: no SpillDeclaration
+	// exists.
+	spilled bool
+	// lostDeclaration marks a call whose declaration was never written for
+	// want of the lock while its terminal and execution were: no Declaration
+	// and no Seq taken for one. Handler.Close then writes the terminal as the
+	// only trace of the tool_use_id, straight to the spill file, with outcome
+	// error and reason lock_timeout, so term must be store.OutcomeError and
+	// the terminal reads back as spilled.
+	lostDeclaration bool
 }
 
 func gateCall(seq int64, runner, outcome string) call {
@@ -78,8 +96,9 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 // a gate_output, are marked below. A fixture that breaks one makes every
 // evaluator test built on it prove nothing. It enforces these invariants and
 // no others, each where it comes from:
-//   - Declarations and executions pair by index and by ToolUseID, and a terminal pairs by ToolUseID.
-//   - Seq strictly increases, so it is at least 1 (store.appendOrdered allocates it).
+//   - Declarations and executions pair by ToolUseID, and by index too in a run with no spilled call and no lost declaration; a terminal pairs by ToolUseID.
+//   - Seq strictly increases, so it is at least 1 (store.appendOrdered allocates it). A spilled record has none and is read after every ordered one, as ReadRun reads the spill file last.
+//   - A spilled call, or one whose declaration was lost, has a terminal: without one it is the uncontrolled exit's signature instead. A lost declaration's terminal is the one Handler.Close writes for it: error, lock_timeout, spilled.
 //   - An Edit or Write names its path (the payload's file_path, which the hook records).
 //   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite (deriveCut derives the runner and mayWrite only for a tool whose class is execute and whose input carries a command field, shape.go:158-163; of the three execute tools, verb.go:39, only Bash carries one; post.go reads Backgrounded for Bash alone).
 //   - A call that is not Bash, Edit or Write names no paths. The builder models those three: the hook records a file_path for MultiEdit and NotebookEdit too, which no evaluator test builds yet.
@@ -117,6 +136,8 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 	// before its PostToolUse record (the execution). Records of other calls
 	// interleaving in a real run are not modelled.
 	next := int64(1)
+	var spillE []store.Execution
+	var spillT []store.Terminal
 	for i, c := range calls {
 		if c.seq <= last {
 			t.Fatalf("runOf: call %d seq %d does not increase past %d (store: Seq strictly increases)", i, c.seq, last)
@@ -209,16 +230,30 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if c.incomplete && (c.tool != "Bash" || len(c.paths) == 0) {
 			t.Fatalf("runOf: call %d is incomplete but is not a named Bash write (written_paths_complete describes a Bash write's named targets; the unnamed write carries MayWrite alone)", i)
 		}
+		if (c.spilled || c.lostDeclaration) && c.term == "" {
+			t.Fatalf("runOf: call %d is spilled or lost its declaration and has no terminal: a missing terminal is the uncontrolled exit's signature, a different one", i)
+		}
+		if c.lostDeclaration && c.term != store.OutcomeError {
+			t.Fatalf("runOf: call %d lost its declaration with terminal outcome %q (Handler.Close writes that terminal as %q with reason %q only)", i, c.term, store.OutcomeError, store.ReasonLockTimeout)
+		}
 		id := "t" + strconv.FormatInt(c.seq, 10)
 		dseq, tseq := next, int64(0)
-		next++
-		if c.term != "" {
+		if !c.lostDeclaration {
+			next++
+		}
+		if c.term != "" && !c.spilled && !c.lostDeclaration {
 			tseq = next
 			next++
 		}
 		eseq := next
-		next++
+		if !c.spilled {
+			next++
+		}
 		d := store.Declaration{Type: store.TypeDeclaration, SchemaVersion: schema, Seq: dseq, ToolUseID: id, SessionID: sessionID, ToolName: c.tool, CWDDigest: c.loc}
+		if c.agent != "" {
+			a, at := c.agent, "fixture"
+			d.AgentID, d.AgentType = &a, &at
+		}
 		d.Shape.VerbClass = c.class
 		if c.prog != "" {
 			p := c.prog
@@ -284,13 +319,33 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if store.CapExecution(&probeE) {
 			t.Fatalf("runOf: call %d: the hook would withhold a field over its cap (store.CapExecution): %+v", i, c)
 		}
-		r.Declarations = append(r.Declarations, d)
-		r.Executions = append(r.Executions, e)
+		if !c.lostDeclaration {
+			r.Declarations = append(r.Declarations, d)
+		}
+		if c.spilled {
+			e.Seq = nil
+			spillE = append(spillE, e)
+		} else {
+			r.Executions = append(r.Executions, e)
+		}
 		if c.term != "" {
-			r.Terminals = append(r.Terminals, store.Terminal{Type: store.TypeTerminal, SchemaVersion: schema, Seq: &tseq,
-				ToolUseID: id, SessionID: sessionID, Outcome: c.term, TerminalV5: store.TerminalV5{Writer: "fixture"}})
+			term := store.Terminal{Type: store.TypeTerminal, SchemaVersion: schema, Seq: &tseq,
+				ToolUseID: id, SessionID: sessionID, Outcome: c.term, TerminalV5: store.TerminalV5{Writer: "fixture"}}
+			if c.lostDeclaration {
+				reason := store.ReasonLockTimeout
+				term.Reason = &reason
+			}
+			if c.spilled || c.lostDeclaration {
+				term.Seq = nil
+				spillT = append(spillT, term)
+			} else {
+				r.Terminals = append(r.Terminals, term)
+			}
 		}
 	}
+	// ReadRun reads records.ndjson before the spill file.
+	r.Executions = append(r.Executions, spillE...)
+	r.Terminals = append(r.Terminals, spillT...)
 	return r
 }
 
@@ -558,6 +613,16 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 	gate := func(class, masked, kind, outcome string, exit int, bg bool) call {
 		return call{seq: 1, tool: "Bash", prog: "go", class: class, runner: "go-test", kind: kind, masked: masked, outcome: outcome, exit: exit, bg: bg}
 	}
+	spilledGate := func(term string) call {
+		c := gateCall(1, "go-test", store.ExecOK)
+		c.spilled, c.term = true, term
+		return c
+	}
+	lostEdit := func(term string) call {
+		c := edit(1, "a.go")
+		c.lostDeclaration, c.term = true, term
+		return c
+	}
 	cases := []struct {
 		name    string
 		session string
@@ -630,6 +695,13 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"read location", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, loc: "d:repo"}}, ""},
 		{"unread location", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, loc: "u:repo"}}, ""},
 		{"location in neither domain", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, loc: "/repo"}}, "neither"},
+		// A spilled call, and a lost declaration with the terminal Handler.Close
+		// writes for it.
+		{"spilled with a terminal", "s1", []call{spilledGate(store.OutcomeOK)}, ""},
+		{"spilled without a terminal", "s1", []call{spilledGate("")}, "uncontrolled exit"},
+		{"lost declaration with an error terminal", "s1", []call{lostEdit(store.OutcomeError)}, ""},
+		{"lost declaration without a terminal", "s1", []call{lostEdit("")}, "uncontrolled exit"},
+		{"lost declaration with an ok terminal", "s1", []call{lostEdit(store.OutcomeOK)}, "lock_timeout"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -847,5 +919,118 @@ func TestFixture_TerminalIsBuiltOnlyWhenAsked(t *testing.T) {
 	}
 	if term := r.Terminals[0]; term.ToolUseID != r.Declarations[0].ToolUseID || term.Outcome != store.OutcomeOK {
 		t.Fatalf("terminal %s %q, want %s %q", term.ToolUseID, term.Outcome, r.Declarations[0].ToolUseID, store.OutcomeOK)
+	}
+}
+
+// TestFixture_SpilledAndLostCallsReadBackAsBuilt writes a run the way the hook
+// would under lock load and reads it back through the store: a spilled call's
+// execution and terminal go to the spill file (Store.SpillExecution,
+// Store.SpillTerminal), and a lost declaration leaves only its spilled
+// lock_timeout terminal and an ordered execution (Handler.Close). The run an
+// evaluator test is given for either flag is the run ReadRun returns, order,
+// Seqs and reasons included.
+func TestFixture_SpilledAndLostCallsReadBackAsBuilt(t *testing.T) {
+	spilled := gateCall(2, "go-test", store.ExecOK)
+	spilled.spilled, spilled.term = true, store.OutcomeOK
+	lost := edit(3, "a.go")
+	lost.lostDeclaration, lost.term = true, store.OutcomeError
+	sub := edit(4, "b.go")
+	sub.agent = "a1"
+	calls := []call{gateCall(1, "go-test", store.ExecOK), spilled, lost, sub}
+	r := runOfSession(t, "s3", calls...)
+
+	// Written out: t1's records are 1 and 2; t2's declaration is 3 and its
+	// other two records are spilled; t3 has no declaration and its execution
+	// is 4; t4's records are 5 and 6. The spill file reads last.
+	type rec struct {
+		id  string
+		seq int64 // 0 is a nil Seq
+	}
+	seqOf := func(p *int64) int64 { return intOr0(p) }
+	var decl, exec, term []rec
+	for _, d := range r.Declarations {
+		decl = append(decl, rec{d.ToolUseID, d.Seq})
+	}
+	for _, e := range r.Executions {
+		exec = append(exec, rec{e.ToolUseID, seqOf(e.Seq)})
+	}
+	for _, x := range r.Terminals {
+		term = append(term, rec{x.ToolUseID, seqOf(x.Seq)})
+	}
+	wantDecl := []rec{{"t1", 1}, {"t2", 3}, {"t4", 5}}
+	wantExec := []rec{{"t1", 2}, {"t3", 4}, {"t4", 6}, {"t2", 0}}
+	wantTerm := []rec{{"t2", 0}, {"t3", 0}}
+	if !slices.Equal(decl, wantDecl) || !slices.Equal(exec, wantExec) || !slices.Equal(term, wantTerm) {
+		t.Fatalf("built declarations %v, executions %v, terminals %v; want %v, %v, %v", decl, exec, term, wantDecl, wantExec, wantTerm)
+	}
+	if x := r.Terminals[1]; x.Outcome != store.OutcomeError || x.Reason == nil || *x.Reason != store.ReasonLockTimeout {
+		t.Fatalf("lost declaration's terminal %q reason %v, want %q with %q", x.Outcome, x.Reason, store.OutcomeError, store.ReasonLockTimeout)
+	}
+	if d := r.Declarations[2]; d.AgentID == nil || *d.AgentID != "a1" || d.AgentType == nil || r.Declarations[0].AgentID != nil || r.Declarations[0].AgentType != nil {
+		t.Fatalf("subagent call AgentID %v AgentType %v, main call %v %v: want both set inside the subagent and both nil outside", d.AgentID, d.AgentType, r.Declarations[0].AgentID, r.Declarations[0].AgentType)
+	}
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	decls := make(map[string]store.Declaration)
+	for _, d := range r.Declarations {
+		decls[d.ToolUseID] = d
+	}
+	execs := make(map[string]store.Execution)
+	for _, e := range r.Executions {
+		execs[e.ToolUseID] = e
+	}
+	terms := make(map[string]store.Terminal)
+	for _, x := range r.Terminals {
+		terms[x.ToolUseID] = x
+	}
+	for _, c := range calls {
+		id := "t" + strconv.FormatInt(c.seq, 10)
+		if d, ok := decls[id]; ok {
+			if err := st.AppendDeclaration(d); err != nil {
+				t.Fatalf("%s: AppendDeclaration: %v", id, err)
+			}
+		}
+		if x, ok := terms[id]; ok {
+			write := st.AppendTerminal
+			if x.Seq == nil {
+				write = st.SpillTerminal
+			}
+			if err := write(x); err != nil {
+				t.Fatalf("%s: terminal: %v", id, err)
+			}
+		}
+		write := st.AppendExecution
+		if execs[id].Seq == nil {
+			write = st.SpillExecution
+		}
+		if err := write(execs[id]); err != nil {
+			t.Fatalf("%s: execution: %v", id, err)
+		}
+	}
+	got, err := st.ReadRun("s3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Skipped != 0 || got.Ignored != 0 {
+		t.Fatalf("read back with Skipped %d and Ignored %d, want 0 and 0", got.Skipped, got.Ignored)
+	}
+	var gdecl, gexec, gterm []rec
+	for _, d := range got.Declarations {
+		gdecl = append(gdecl, rec{d.ToolUseID, d.Seq})
+	}
+	for _, e := range got.Executions {
+		gexec = append(gexec, rec{e.ToolUseID, seqOf(e.Seq)})
+	}
+	for _, x := range got.Terminals {
+		gterm = append(gterm, rec{x.ToolUseID, seqOf(x.Seq)})
+	}
+	if !slices.Equal(gdecl, decl) || !slices.Equal(gexec, exec) || !slices.Equal(gterm, term) {
+		t.Fatalf("read back declarations %v, executions %v, terminals %v; built %v, %v, %v", gdecl, gexec, gterm, decl, exec, term)
+	}
+	if !samePtr(got.Terminals[1].Reason, r.Terminals[1].Reason) || !samePtr(got.Declarations[2].AgentID, r.Declarations[2].AgentID) || !samePtr(got.Declarations[2].AgentType, r.Declarations[2].AgentType) {
+		t.Fatal("the terminal's reason or the subagent's id or type differs after the round trip")
 	}
 }
