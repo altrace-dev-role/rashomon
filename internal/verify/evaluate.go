@@ -43,13 +43,17 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 // TurnCounts is what the Stop hook counted for the turn (2.2.11).
 // UnnamedWriteSeq is the turn's last call that may have written files the
 // record cannot name (a Bash write with no known target, or an MCP call);
-// zero means none.
+// zero means none. RewrittenGateSeq is the turn's last gate run whose line a
+// hook rewrote after its declaration, so that where it ran is not known and
+// it credits no gate (classify's rewritten); zero means none. Nothing reads
+// it yet: it counts how often a rewrite costs a gate its run.
 type TurnCounts struct {
-	Writes          int
-	PathsWritten    int
-	GateRuns        int
-	LastWriteSeq    int64
-	UnnamedWriteSeq int64
+	Writes           int
+	PathsWritten     int
+	GateRuns         int
+	LastWriteSeq     int64
+	UnnamedWriteSeq  int64
+	RewrittenGateSeq int64
 }
 
 // Row is the end-of-turn value line's state row (2.2.11, first match wins).

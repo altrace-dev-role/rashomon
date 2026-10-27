@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -181,10 +182,25 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
-	// lists them and forget --host matches them by the name as written.
-	// Nothing else from tool_input is persisted, and shape is still the only
-	// package that reads inside it.
+	// lists them and forget --host matches them by the name as written. The
+	// one other value from tool_input the record keeps is the path a
+	// file-changing tool names (DeclaredPath, below), and shape is still the
+	// only package that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
+	// Where the call ran and what file it changes, as the harness said them:
+	// the cwd as written, its project key (the one every layer shares:
+	// symlinks resolved, then the nearest .git, else the directory itself),
+	// and the path an Edit, Write, MultiEdit or NotebookEdit input names.
+	// None is normalised here; resolving is the reader's. Key answers "" for
+	// an empty cwd, so a payload without one leaves both null. The record-scope
+	// gate below withholds all three unless the consent on file says v5, and
+	// the caps bound them.
+	decl.CWD = nilIfEmpty(p.CWD)
+	decl.Project = nilIfEmpty(baseline.Key(p.CWD))
+	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
+	// WrittenPaths and WrittenPathsComplete are left null here: a Bash call's
+	// write targets are a derivation of their own, and that derivation fills
+	// them.
 
 	// The label is computed on every declaration, and attached only to a
 	// record whose schema carries the field.
@@ -203,10 +219,13 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 		decl.FileLabel = &label
 	}
 	h.labelRecovered = recovered
-	// The caps, after every field is filled: a value over its cap is left
-	// out of the record rather than cut, and said so on the coverage record
-	// (REC-52), so no payload inside the intake limit can make a record the
-	// store would refuse.
+	// The record-scope gate, after every field is filled and before the
+	// caps: a content field the consent on file does not cover is left out
+	// and reads no_consent (store.GateDeclaration), never oversize.
+	store.GateDeclaration(&decl, recordScope(h.st))
+	// The caps: a value over its cap is left out of the record rather than
+	// cut, and said so on the coverage record (REC-52), so no payload inside
+	// the intake limit can make a record the store would refuse.
 	if h.capDecl(&decl) {
 		h.withheld = true
 	}
@@ -220,6 +239,15 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 
 	fault.Inject(fault.PointHookAfterDeclaration)
 	return nil
+}
+
+// recordScope is the record scope st's root marker names
+// (store.RecordScopeMarker), read on every call, which is one small file and
+// never consent.json. Its error is dropped: it only says why the scope is
+// v4, and v4 is the scope that withholds.
+func recordScope(st *store.Store) string {
+	scope, _ := store.RecordScopeMarker(st.Root())
+	return scope
 }
 
 // Close writes the terminal record for a captured declaration and the coverage

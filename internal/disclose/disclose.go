@@ -191,7 +191,7 @@ func Default() (Inventory, error) {
 // without the plaintext to compare.
 func defaultFiles() []FileRule {
 	const runSegment = store.DirRuns + "/<session>"
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       "",
 			Pattern:    store.FileInstallKey,
@@ -229,8 +229,8 @@ func defaultFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, rule match, outcome, exit code and timing, all in the clear, plus keyed digests of its working directory and its shape",
-			NeverHolds: "a tool call's arguments in the clear, or any part of a tool response",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, rule match, outcome, exit code and timing, its working directory, its project root and the file path an edit names, all in the clear, plus keyed digests of its working directory and its shape",
+			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
 		},
@@ -240,7 +240,7 @@ func defaultFiles() []FileRule {
 			Mode:       "0600",
 			Purpose:    "an execution or terminal record the ordered append lock could not place in time",
 			Holds:      "the same fields records.ndjson holds, unordered",
-			NeverHolds: "a tool call's arguments in the clear, or any part of a tool response",
+			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
 		},
@@ -472,6 +472,38 @@ func defaultFiles() []FileRule {
 			NeverHolds: "a session id in the clear, a path, or anything about a call",
 			RemovedBy:  "the write that made it (renamed over harness_counts.json); purge",
 			Owner:      "store",
+		},
+	}, recordScopeFiles()...)
+}
+
+// recordScopeFiles is the inventory's rows for the record_scope marker and
+// its replacement, which internal/consent writes beside consent.json for
+// the hook to read. They sit apart from defaultFiles, whose length Law 10
+// holds where it is (test/acceptance's ratchet).
+func recordScopeFiles() []FileRule {
+	return []FileRule{
+		{
+			// Every consent write removes it, appends to consent.json and
+			// writes it again from consent.json's answer (internal/consent);
+			// the hook reads it on every call (internal/store).
+			Base:       "",
+			Pattern:    store.FileRecordScope,
+			Mode:       "0600",
+			Purpose:    "the record scope consent.json names, kept beside it so a hook call reads one word instead of parsing consent.json; no marker means the v4 shape, without paths or command text",
+			Holds:      "v4 or v5",
+			NeverHolds: "anything else",
+			RemovedBy:  "every consent write, which writes it again after; purge",
+			Owner:      "consent",
+		},
+		{
+			Base:       "",
+			Pattern:    "." + store.FileRecordScope + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "record_scope's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "v4 or v5",
+			NeverHolds: "anything else",
+			RemovedBy:  "the write that made it (renamed over record_scope); purge",
+			Owner:      "consent",
 		},
 	}
 }

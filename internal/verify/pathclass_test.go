@@ -34,11 +34,11 @@ func TestRC3c_PathClassTable(t *testing.T) {
 		{"vendor/x_test.go", ClassGenerated, "generated beats test"},
 		{"vendor/go.work", ClassGenerated, "generated beats config"},
 		{"dist/app.min.js", ClassGenerated, "generated root segment and suffix together (web/app.min.js tests the suffix alone)"},
-		{"build/report.md", ClassDocs, "build is not generated (D10); docs ext"},
-		{"image.png", ClassSource, "fallback is source (D7)"},
+		{"build/report.md", ClassDocs, "build is not generated: it is in no generated list; docs ext"},
+		{"image.png", ClassSource, "fallback is source: an unknown write stales the gates"},
 		{"", ClassSource, "empty path falls back"},
 		{"src/", ClassSource, "trailing slash, a directory no rule names (dist/ tests the directory rule)"},
-		{"cmd/Main.GO", ClassSource, "upper-case ext, source either way under D7 (LICENSE and Jenkinsfile test lower-casing)"},
+		{"cmd/Main.GO", ClassSource, "upper-case ext, source either way, since no rule matches .go and the fallback is source (LICENSE and Jenkinsfile test lower-casing)"},
 		{`src\pkg\a_test.go`, ClassTest, "backslashes and a test name, which matches either way (vendor\\a\\b.go tests the split)"},
 		// Rows the mutation sweep found missing: each one kills a mutant every
 		// row above lets live.
@@ -53,9 +53,9 @@ func TestRC3c_PathClassTable(t *testing.T) {
 		{`vendor\a\b.go`, ClassGenerated, "backslashes split segments"},
 		{"dist/", ClassGenerated, "trailing slash: the last element is a directory"},
 		{"docs", ClassSource, "no trailing slash: a basename, not a segment"},
-		// D10 (B28): words that name hand-written source deeper in a tree
-		// match at the root only, build matches nowhere, and .txt is no
-		// longer docs.
+		// The words that name hand-written source deeper in a tree classify
+		// only as the first path segment, build matches nowhere, and .txt is
+		// no longer docs.
 		{"cmd/dist/build.go", ClassSource, "dist below the root is source (Go's cmd/dist)"},
 		{"go/doc/comment.go", ClassSource, "doc below the root is source (Go's go/doc)"},
 		{"dist/app.js", ClassGenerated, "dist at the root is generated"},
@@ -66,10 +66,11 @@ func TestRC3c_PathClassTable(t *testing.T) {
 		{"requirements-dev.txt", ClassConfig, "requirements*.txt with a suffix"},
 		{"constraints.txt", ClassConfig, "constraints*.txt is config"},
 		{"CMakeLists.txt", ClassConfig, "CMakeLists.txt is config"},
-		{"notes.txt", ClassSource, ".txt is not docs: fallback (D7)"},
+		{"notes.txt", ClassSource, ".txt is not docs: the fallback, source"},
 		{"docs/README.md", ClassDocs, "docs root segment and docs ext"},
 		{"pkg/docs/x.go", ClassSource, "docs below the root is source"},
-		// B29: the Java test names match the basename as written.
+		// The CamelCase test names match the basename as written, a suffix
+		// of the stem, so Latest and Contest are not tests.
 		{"Latest.java", ClassSource, "Latest is not *Test"},
 		{"Contest.java", ClassSource, "Contest is not *Test"},
 		{"FooTest.java", ClassTest, "*Test.java"},
@@ -125,15 +126,16 @@ func goroot(t *testing.T) string {
 }
 
 // TestRC3e_GOROOTNonTestGoIsRelevant checks the tables against a tree they
-// were not written from: the Go source every go test run has (D10, B28). It
-// walks every non-test .go file under GOROOT/src outside vendor and testdata,
-// generated files included -- the zerrors_* and ztypes_* families and every
-// file with a "Code generated ... DO NOT EDIT." header -- and requires all but
-// one in a thousand to read as relevant: a source file classed not relevant
-// is an edit that hides behind a green gate, the miss D7 exists to prevent.
-// It does not show that generated files are recognised: a path classifier
-// cannot tell a generated file from a hand-written one when its name carries
-// no marker the tables know.
+// were not written from: the Go source every go test run has, where dist and
+// doc below the root are hand-written source. It walks every non-test .go
+// file under GOROOT/src outside vendor and testdata, generated files included
+// -- the zerrors_* and ztypes_* families and every file with a "Code
+// generated ... DO NOT EDIT." header -- and requires all but one in a
+// thousand to read as relevant: a source file classed not relevant is an edit
+// that hides behind a green gate, the miss the source fallback exists to
+// prevent. It does not show that generated files are recognised: a path
+// classifier cannot tell a generated file from a hand-written one when its
+// name carries no marker the tables know.
 func TestRC3e_GOROOTNonTestGoIsRelevant(t *testing.T) {
 	root := filepath.Join(goroot(t), "src")
 	var total int

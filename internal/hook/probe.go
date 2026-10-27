@@ -11,8 +11,9 @@ import (
 
 // RunProbe handles a SessionStart or SessionEnd invocation.
 //
-// At start it marks the session as probed and records the resolved config
-// state. At end it records it again, this time having read the run's records
+// At start it marks the session as probed, sets the record-scope marker
+// from consent.json (syncRecordScope: the one read of consent.json by any
+// hook, at SessionStart only) and records the resolved config state. At end it records it again, this time having read the run's records
 // to see whether every declaration was closed -- so that a handler killed
 // mid-flight is written into the run's own coverage while the run is still
 // live, rather than inferred later by a report that has to guess.
@@ -72,7 +73,16 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 
 		switch phase {
 		case store.PhaseStart:
-			return st.MarkProbe(sessionID, now())
+			if err := st.MarkProbe(sessionID, now()); err != nil {
+				return err
+			}
+			// The record scope the session's calls apply, set from
+			// consent.json once here so that no call has to read it
+			// (syncRecordScope).
+			if !syncRecordScope(st.Root()) {
+				reason = store.ReasonRecordScopeUnresolved
+			}
+			return nil
 		case store.PhaseEnd:
 			run, err := st.ReadRun(sessionID)
 			if err != nil {
