@@ -107,6 +107,32 @@ func TestIDX3_ThirtyDaysExpire(t *testing.T) {
 	}
 }
 
+// TestIDX3b_AnOlderSessionRecappedLateMovesNothingBack (PF-PG1): sessions
+// recapped out of order, each at its own time. An older session observed
+// after a newer one widens FirstSeen but leaves LastSeen and Kind at the
+// newer session's, so the window still runs from the newer one; as the
+// session counted last, its retry counts once. Two sessions at one time
+// take the later call's kind.
+func TestIDX3b_AnOlderSessionRecappedLateMovesNothingBack(t *testing.T) {
+	newer, older := idxNow-RequiredWindowMS, idxNow-RequiredWindowMS-5*dayMS
+	idx := &ProjectIndex{ProjectKey: "/p"}
+	idx.Observe([]gateRun{idxRun(1, "r1", "l1", kindTest, true)}, "n", newer)
+	late := []gateRun{idxRun(1, "r1", "l1", kindBuild, true)}
+	idx.Observe(late, "o", older)
+	idx.Observe(late, "o", older)
+	want := IndexEntry{Family: "r1@l1", Kind: kindTest, Sessions: 2, LastSession: "o", FirstSeen: older, LastSeen: newer}
+	if es := entriesOf(idx, "r1@l1"); len(es) != 1 || es[0] != want {
+		t.Fatalf("entries %+v, want %+v", es, want)
+	}
+	if !idx.Required("r1@l1", idxNow) {
+		t.Error("the newer session was RequiredWindowMS ago, and the family is not required")
+	}
+	idx.Observe([]gateRun{idxRun(1, "r1", "l1", kindCustom, true)}, "tie", newer)
+	if es := entriesOf(idx, "r1@l1"); len(es) != 1 || es[0].Kind != kindCustom || es[0].LastSeen != newer {
+		t.Errorf("a session at the held LastSeen: entries %+v, want the later call's kind %s", es, kindCustom)
+	}
+}
+
 // TestIDX4_IndexWriteIsAtomicAnd0600AndCapped (PF-PG1): WriteIndex leaves one
 // file, at 0600, in a directory it made at 0700, and no temporary file; a
 // write that cannot finish leaves the old content; over the cap it evicts the
