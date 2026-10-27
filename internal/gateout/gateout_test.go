@@ -171,6 +171,8 @@ func BenchmarkClassify(b *testing.B) {
 	b.Run("go_pass", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(pass)))
+		_ = Classify("test", "go", pass) // Initialize regexp match state before measurement.
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			_ = Classify("test", "go", pass)
 		}
@@ -178,6 +180,8 @@ func BenchmarkClassify(b *testing.B) {
 	b.Run("go_fail_at_cap", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(fail)))
+		_ = Classify("test", "go", fail) // Initialize regexp match state before measurement.
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			_ = Classify("test", "go", fail)
 		}

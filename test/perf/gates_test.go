@@ -137,9 +137,9 @@ func round4(x float64) float64 { return float64(int64(x*10000+0.5)) / 10000 }
 func TestRES36d_RowsCarryNoHiddenMargin(t *testing.T) {
 	b := loadBudgets(t)
 	for _, r := range b.Benchmarks {
-		// Zero allocations is a measured result for allocation-free hot paths;
-		// B/op records the allocator accounting even when allocs/op is zero.
-		if r.MeasuredBytesPerOp <= 0 || r.MeasuredAllocsPerOp < 0 {
+		// Zero bytes and zero allocations are measured results for allocation-
+		// free hot paths; negative figures indicate a missing measurement.
+		if r.MeasuredBytesPerOp < 0 || r.MeasuredAllocsPerOp < 0 {
 			t.Errorf("%s: no measurement recorded", r.Name)
 		}
 		if r.BytesPerOpMax != r.MeasuredBytesPerOp || r.AllocsPerOpMax != r.MeasuredAllocsPerOp {
