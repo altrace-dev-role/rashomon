@@ -74,7 +74,7 @@ func WriteRecordScopeMarker(root, scope string) error {
 	if scope != RecordScopeV4 && scope != RecordScopeV5 {
 		return fmt.Errorf("store: refusing to write record scope %q, which is neither v4 nor v5", scope)
 	}
-	return replaceFile(filepath.Join(root, FileRecordScope), []byte(scope+"\n"))
+	return ReplaceFile(filepath.Join(root, FileRecordScope), []byte(scope+"\n"))
 }
 
 // RemoveRecordScopeMarker removes root's marker, so the hook reads v4 until

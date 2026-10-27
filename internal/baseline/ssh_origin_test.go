@@ -78,5 +78,5 @@ func TestUpdateOrigin_WireHostStillFolds(t *testing.T) {
 // root, for a test that wants to load() the file directly afterwards.
 func fileNameFor(t *testing.T, root, key string) string {
 	t.Helper()
-	return root + "/baseline/" + fileName(key)
+	return root + "/baseline/" + FileName(key)
 }

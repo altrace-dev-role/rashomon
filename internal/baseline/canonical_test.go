@@ -23,7 +23,7 @@ func writeLegacyBaseline(t *testing.T, root, key string, hosts map[string]entry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, fileName(key))
+	path := filepath.Join(dir, FileName(key))
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}

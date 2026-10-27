@@ -28,7 +28,7 @@ func both(t *testing.T, a, b func()) {
 // onDisk is the host set of the project file under root, as saved.
 func onDisk(t *testing.T, root, key string) map[string]entry {
 	t.Helper()
-	f, err := parse(filepath.Join(root, "baseline", fileName(key)))
+	f, err := parse(filepath.Join(root, "baseline", FileName(key)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestRubricHLD2_ForgetAndRenderLoseNoChange(t *testing.T) {
 		var ferr error
 		both(t,
 			func() { r = Update(root, key, "s1", t0.Add(time.Hour), []string{"new.example"}) },
-			func() { n, ferr = ForgetFile(filepath.Join(root, "baseline", fileName(key)), "gone.example") })
+			func() { n, ferr = ForgetFile(filepath.Join(root, "baseline", FileName(key)), "gone.example") })
 		if r.Err != nil || ferr != nil || n != 1 {
 			t.Fatalf("round %d: render %v, forget %d, %v", round, r.Err, n, ferr)
 		}
@@ -171,7 +171,7 @@ func TestRES11_EveryCapAtNAndNPlusOne(t *testing.T) {
 	if r := Update(root, "/p", "s9", t0, many); !errors.Is(r.Err, ErrTooManyHosts) {
 		t.Fatalf("a session naming %d hosts: %v, want ErrTooManyHosts", len(many), r.Err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "baseline", fileName("/p"))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(root, "baseline", FileName("/p"))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a baseline was written for a session past the cap: %v", err)
 	}
 	if r := Update(root, "/p", "s9", t0, many[:maxBaselineHosts]); r.Err != nil || r.Known != maxBaselineHosts {
@@ -190,7 +190,7 @@ func TestRubricLLD10_AnUnchangedRenderWritesNothing(t *testing.T) {
 	if r := Update(root, key, "s1", t0.Add(time.Hour), []string{"a.example", "b.example"}); r.Err != nil {
 		t.Fatal(r.Err)
 	}
-	path := filepath.Join(root, "baseline", fileName(key))
+	path := filepath.Join(root, "baseline", FileName(key))
 	before, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestRubricLLD10_AnOversizedFileIsUnknown(t *testing.T) {
 		if len(body) != tc.size {
 			t.Fatalf("built %d bytes, want %d", len(body), tc.size)
 		}
-		if err := os.WriteFile(filepath.Join(dir, fileName(key)), body, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, FileName(key)), body, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		r := Update(root, key, "s1", t0, []string{"a.example"})

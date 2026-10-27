@@ -18,17 +18,22 @@ var res5Dirs = []string{
 	"internal/harness", "internal/learn", "cmd/rashomon",
 }
 
-// res5Allowed is the one decode a hook path may still make: canonical's
-// `var v any` over tool_input, kept for digest compatibility until a
-// streaming canonicaliser passes RES-48. Named by package and function.
-var res5Allowed = map[string]bool{"internal/shape.canonical": true}
+// res5Allowed are the decodes a hook path may still make, named by package
+// and function. canonical's `var v any` over tool_input is kept for digest
+// compatibility until a streaming canonicaliser passes RES-48.
+// verify.ReadIndex decodes no payload and no tool_input span but rashomon's
+// own project index under the store root, capped at MaxIndexBytes with a
+// closed shape, the trust boundary of the record-scope marker (D32 item 7).
+// Its per-call cost (218156 B/op at the cap, 58 percent the decoder's read
+// buffer) is ruled where it is called, and no hook path calls it on 1.6.
+var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding
 // them. No hook-path package calls
 // json.Unmarshal or builds a json.Decoder, so neither the raw payload nor a
 // tool_input span is decoded again into any, map[string]json.RawMessage or
-// another map; the one exception is named in res5Allowed. Break: restore the
+// another map; the exceptions are named in res5Allowed. Break: restore the
 // second decode of the payload for backgroundTaskId, and this names it.
 func TestRES5_PayloadScannedOnce(t *testing.T) {
 	root, err := filepath.Abs("../..")
