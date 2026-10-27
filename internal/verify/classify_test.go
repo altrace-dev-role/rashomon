@@ -395,3 +395,28 @@ func benchRun(b *testing.B, n int) *store.Run {
 	}
 	return r
 }
+
+// TestVER9b_ExecSeqIsThePickedExecutions: a gate run carries the Seq of the
+// execution classify picked, which places its outcome in time (gateStates),
+// and nil where that execution was spilled.
+func TestVER9b_ExecSeqIsThePickedExecutions(t *testing.T) {
+	spilled := gateCall(2, "go-test", store.ExecOK)
+	spilled.spilled, spilled.term = true, store.OutcomeOK
+	r := runOf(t, gateCall(1, "go-test", store.ExecOK), spilled, gateCall(3, "go-test", store.ExecOK))
+	// A second record for the first call, failed: the pick's winner.
+	failed := r.Executions[0]
+	failed.Outcome, failed.Seq = store.ExecFailed, ptr(int64(9))
+	r.Executions = append(r.Executions, failed)
+	runs, _, _, _ := classify(r)
+	var got []string
+	for _, g := range runs {
+		s := "nil"
+		if g.ExecSeq != nil {
+			s = strconv.FormatInt(*g.ExecSeq, 10)
+		}
+		got = append(got, s)
+	}
+	if want := []string{"9", "nil", "5"}; !slices.Equal(got, want) {
+		t.Fatalf("ExecSeq %v, want %v: the picked execution's, nil when spilled", got, want)
+	}
+}

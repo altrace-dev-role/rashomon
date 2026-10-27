@@ -19,7 +19,10 @@ const (
 
 // gateRun is one call that ran a gate, as the state table reads it.
 type gateRun struct {
-	Seq       int64
+	Seq int64 // the declaration's
+	// ExecSeq is the picked execution's Seq, where the run's outcome enters
+	// the record; nil when the execution was spilled and carries none.
+	ExecSeq   *int64
 	ToolUseID string
 	AgentID   *string
 	// Runner is the runner digest of the line as it ran, nil where the line
@@ -94,10 +97,12 @@ type write struct {
 // A write is a file tool's FilePath (class write: Write, Edit, MultiEdit,
 // NotebookEdit) or each of a shell line's WrittenPaths, stored relativised
 // and classed by ClassOf. A call that may have written what the record cannot
-// name is in unnamed and stales every family, fail-closed: a shell line that
-// may write and names no target, or names an incomplete or withheld list; a
-// file tool whose path is absent or withheld; an MCP call, which the record
-// cannot see into (TurnCounts.UnnamedWriteSeq). A declaration without an
+// name is in unnamed: a shell line that may write and names no target, or
+// names an incomplete or withheld list; a file tool whose path is absent or
+// withheld; an MCP call, which the record cannot see into. Every family
+// counts it as an unknown-target write and changes no state for it
+// (gateStates); the turn's row is where it fails closed
+// (TurnCounts.UnnamedWriteSeq). A declaration without an
 // execution is still a write, since nothing says it did not write, and never
 // a gate run, which has no outcome without one.
 //
@@ -133,7 +138,7 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 			continue
 		}
 		g := gateRun{
-			Seq: d.Seq, ToolUseID: d.ToolUseID, AgentID: d.AgentID,
+			Seq: d.Seq, ExecSeq: e.Seq, ToolUseID: d.ToolUseID, AgentID: d.AgentID,
 			Runner: runner, Location: d.CWDDigest, Masked: masked,
 			Outcome: e.Outcome, ExitCode: e.ExitCode, Output: e.GateOutput, Backgrounded: e.Backgrounded,
 		}
