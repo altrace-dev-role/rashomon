@@ -68,7 +68,8 @@
     {"name": "BenchmarkRead/1MiB_opaque", "measured_bytes_per_op": 2163605, "measured_allocs_per_op": 49, "bytes_per_op_max": 2163605, "allocs_per_op_max": 49},
     {"name": "BenchmarkRead/4MiB_opaque", "measured_bytes_per_op": 8459152, "measured_allocs_per_op": 98, "bytes_per_op_max": 8459152, "allocs_per_op_max": 98},
     {"name": "BenchmarkRead/8MiB_opaque", "measured_bytes_per_op": 16823184, "measured_allocs_per_op": 162, "bytes_per_op_max": 16823184, "allocs_per_op_max": 162},
-    {"name": "BenchmarkDetect", "measured_bytes_per_op": 1600, "measured_allocs_per_op": 14, "bytes_per_op_max": 1600, "allocs_per_op_max": 14}
+    {"name": "BenchmarkDetect", "measured_bytes_per_op": 1600, "measured_allocs_per_op": 14, "bytes_per_op_max": 1600, "allocs_per_op_max": 14},
+    {"name": "BenchmarkClassify/run_100", "measured_bytes_per_op": 22400, "measured_allocs_per_op": 87, "bytes_per_op_max": 22400, "allocs_per_op_max": 87, "basis": "first measured 2026-10-27 on the foundation branch at 1.2 phase 2 (fcf15f4f plus classify), best of three under go1.27.3, -benchtime 20x, by benchgate -measure; no linux/amd64 row yet"}
   ],
   "growth": [],
   "disk": {"bytes_per_call_max": 6000}
