@@ -65,7 +65,9 @@ type DeclarationV5 struct {
 	// ("Over cap: null plus `<field>_withheld: "oversize"`"), or
 	// "switched_off" under a record.* switch of config.json (archive
 	// 10.2.17: "withheld fields carry `..._withheld: "switched_off"`, so
-	// 'not recorded by choice' never reads as 'nothing happened'"). Null
+	// 'not recorded by choice' never reads as 'nothing happened'"), or
+	// "no_consent" on a content field below record_scope v5
+	// (GateDeclaration, GateExecution). Null
 	// when the field is present or simply not applicable. P-07 proposal
 	// (owner K, RECORD), spelled as 1.2.11 spells it, beside the
 	// command_withheld 1.2.3 already lists: one key per field a cap or a
@@ -78,11 +80,11 @@ type DeclarationV5 struct {
 	// (tool_use_id, transcript_path, permission_mode, tool_name,
 	// shape.program), whose null half needs the v4 structs retyped,
 	// and outcome_join's tool_use_id, BREADTH's join key.
-	WrittenPathsWithheld    *string `json:"written_paths_withheld"`     // oversize | switched_off (paths)
-	FilePathWithheld        *string `json:"file_path_withheld"`         // oversize | switched_off (paths)
-	CWDWithheld             *string `json:"cwd_withheld"`               // oversize | switched_off (paths)
-	ProjectWithheld         *string `json:"project_withheld"`           // oversize
-	TargetWithheld          *string `json:"target_withheld"`            // switched_off (targets)
+	WrittenPathsWithheld    *string `json:"written_paths_withheld"`     // no_consent | oversize | switched_off (paths)
+	FilePathWithheld        *string `json:"file_path_withheld"`         // no_consent | oversize | switched_off (paths)
+	CWDWithheld             *string `json:"cwd_withheld"`               // no_consent | oversize | switched_off (paths)
+	ProjectWithheld         *string `json:"project_withheld"`           // no_consent | oversize
+	TargetWithheld          *string `json:"target_withheld"`            // no_consent | switched_off (targets)
 	EditMarksBeforeWithheld *string `json:"edit_marks_before_withheld"` // switched_off (edit_marks)
 	PromptIDWithheld        *string `json:"prompt_id_withheld"`         // oversize
 	AgentIDWithheld         *string `json:"agent_id_withheld"`          // oversize
@@ -130,7 +132,8 @@ type ExecutionV5 struct {
 	// ExecutedCommandWithheld takes command_withheld's values (no_consent |
 	// switched_off | masker_error | oversize | forgotten), the rest
 	// switched_off under failure_classes, output_evidence, edit_marks and
-	// git.
+	// git, and HeadAfterWithheld no_consent as well, below record_scope v5
+	// (store.GateExecution).
 	ExecutedCommandWithheld *string `json:"executed_command_withheld"`
 	FailureWithheld         *string `json:"failure_withheld"`
 	OutputEvidenceWithheld  *string `json:"output_evidence_withheld"`
@@ -381,7 +384,9 @@ type Human struct {
 // RecordScopes is the consent scope and the switches in force when the
 // session started (archive 10.2.12, 10.2.17): the spec addresses
 // scopes.record_scope; P-07 proposal: the record.* switches of config.json
-// beside it, keyed by their config name.
+// beside it, keyed by their config name. Nothing constructs it yet; whoever
+// wires it reads the record scope from the marker (RecordScopeMarker), the
+// scope the hook applies, not from consent.json.
 type RecordScopes struct {
 	RecordScope string          `json:"record_scope"` // v4 | v5
 	Switches    map[string]bool `json:"switches"`

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/consent"
+	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -251,9 +253,11 @@ func benchSetenv(b testing.TB, root, cfg string) {
 }
 
 // benchInstall opens the store, with payload's fixed identity, and writes the
-// settings entries watch writes, so coverage resolves the entry as present:
-// the healthy path. watch itself cannot run here, because install.Executable
-// refuses a go-build binary.
+// settings entries watch writes, so coverage resolves the entry as present,
+// and a consent naming record_scope v5, so the hook records the content
+// fields: the healthy path. watch itself cannot run here, because
+// install.Executable refuses a go-build binary. The consent's
+// steer_disclosure is 0, as a --yes watch writes it, so no note is added.
 func benchInstall(b testing.TB, root, cfg string) string {
 	b.Helper()
 	if err := payload.Pin(root); err != nil {
@@ -261,6 +265,12 @@ func benchInstall(b testing.TB, root, cfg string) string {
 	}
 	st, err := store.Open(root)
 	if err != nil {
+		b.Fatal(err)
+	}
+	if err := consent.Append(root, consent.Record{
+		V: consent.RecordVersion, ScopeVersion: disclose.ScopeVersion, RecordScope: consent.RecordScopeV5,
+		Steer: consent.SteerOn, Via: consent.ViaWatchYes, At: 1760000000000,
+	}); err != nil {
 		b.Fatal(err)
 	}
 	doc, err := settings.Parse(nil)

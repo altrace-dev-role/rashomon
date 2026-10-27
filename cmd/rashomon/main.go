@@ -1214,6 +1214,7 @@ func cmdStatus(stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "store: %s\n", root)
 	statusRecording(stdout, root)
+	statusRecordScope(stdout, root)
 
 	installID := ""
 	var st *store.Store
@@ -1286,43 +1287,6 @@ func statusRecap(stdout io.Writer, root string) error {
 		fmt.Fprintf(stdout, "recap: evaluated, last at %s\n", lastAt.UTC().Format(time.RFC3339))
 	}
 	return nil
-}
-
-// statusRecording says whether hooks will record, which is the one thing pause
-// changes and the first thing a user who ran it will ask. "Active" is only a
-// useful answer once a store exists: on a fresh machine no hooks are installed
-// to record anything. A pause marker that exists and cannot be read is
-// reported as RecordingPausedUnreadable, not as unknown: since checkPaused
-// treats that marker as a pause, hooks do not record, and status has an
-// answer rather than nothing to report. "unknown" is reserved for a
-// RecordingState error, which means a fault unrelated to the marker itself.
-func statusRecording(stdout io.Writer, root string) {
-	state, since, err := RecordingState()
-	// An enabled plugin records from its first hook call, which is also what
-	// creates the store, so a missing store alone is not "not installed".
-	installed := storeExistsAt(root)
-	if err == nil && !installed {
-		installed, err = pluginEnabled()
-	}
-	switch {
-	case err != nil:
-		fmt.Fprintf(stdout, "  recording: %s\n", statusUnknown)
-	case state == RecordingActive && !installed:
-		fmt.Fprintln(stdout, "  recording: not installed")
-	case state == RecordingActive:
-		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
-	case state == RecordingPausedUnreadable:
-		fmt.Fprintf(stdout, "  recording: %s\n", RecordingPausedUnreadable)
-	default:
-		line := RecordingPaused
-		if !since.IsZero() {
-			line += " since " + since.UTC().Format(time.RFC3339)
-		}
-		if state == RecordingPausedNoStore {
-			line += " (no store recorded here yet)"
-		}
-		fmt.Fprintf(stdout, "  recording: %s\n", line)
-	}
 }
 
 // pluginEnabled reports whether the rashomon plugin is enabled and declares

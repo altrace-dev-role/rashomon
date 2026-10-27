@@ -35,7 +35,7 @@ m("pause-9 RecordingState renders an unreadable marker as unknown", "cmd/rashomo
 # on RecordingPausedUnreadable -- dropping the case sends it through the
 # default branch, which prints bare "paused" with no mention of why status
 # cannot say more than that.
-m("pause-9 statusRecording has no case for an unreadable marker", "cmd/rashomon/main.go",
+m("pause-9 statusRecording has no case for an unreadable marker", "cmd/rashomon/status_recording.go",
   "\tcase state == RecordingPausedUnreadable:\n\t\tfmt.Fprintf(stdout, \"  recording: %s\\n\", RecordingPausedUnreadable)\n",
   "",
   "TestRubricPAUSE9_StatusPrintsMarkerUnreadable")

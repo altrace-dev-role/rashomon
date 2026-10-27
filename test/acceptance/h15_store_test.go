@@ -26,6 +26,7 @@ func TestH15_Permissions(t *testing.T) {
 		"runs":                             0o700,
 		"install.key":                      0o600,
 		"install.json":                     0o600,
+		"record_scope":                     0o600,
 		filepath.Join("runs", testSession): 0o700,
 		filepath.Join("runs", testSession, "records.ndjson"):  0o600,
 		filepath.Join("runs", testSession, "coverage.ndjson"): 0o600,
