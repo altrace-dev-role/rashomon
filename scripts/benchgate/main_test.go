@@ -81,6 +81,20 @@ func TestRES36c_CompareFailsClosed(t *testing.T) {
 	}
 }
 
+func TestRES36r_ZeroAllocationsAreGateable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "budgets.json")
+	doc := `{"budgets_version": 1, "go_version": "go1.27.2", "benchmark_platform": "linux/amd64", "benchmarks": [` +
+		`{"name": "BenchmarkZeroAlloc", "measured_bytes_per_op": 26, "measured_allocs_per_op": 0, "bytes_per_op_max": 26, "allocs_per_op_max": 0}]}`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	line := "BenchmarkZeroAlloc-8 20 100 ns/op 26 B/op 0 allocs/op\n"
+	var stdout, stderr bytes.Buffer
+	if code := run(path, strings.NewReader(line), &stdout, &stderr, "go1.27.2", "linux/amd64"); code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout %s\nstderr %s", code, stdout.String(), stderr.String())
+	}
+}
+
 // TestRES36e_GateToleranceIsTenPercent: RES-36's "fail at > 10% over" is the
 // gate's one margin, so the constant is pinned to it, not merely used.
 func TestRES36e_GateToleranceIsTenPercent(t *testing.T) {

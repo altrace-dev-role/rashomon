@@ -234,7 +234,10 @@ func Compare(results map[string]Result, budgets []budget.Benchmark, tol float64)
 			problems = append(problems, fmt.Sprintf("%s: budgeted but did not run", b.Name))
 			continue
 		}
-		if b.BytesPerOpMax <= 0 || b.AllocsPerOpMax <= 0 {
+		// B/op must be positive to distinguish a measured row from an empty
+		// budget. Zero allocs/op is a valid measured result for allocation-free
+		// benchmarks and is still enforced by over below.
+		if b.BytesPerOpMax <= 0 || b.AllocsPerOpMax < 0 {
 			problems = append(problems, fmt.Sprintf("%s: budget row has no figures", b.Name))
 			continue
 		}

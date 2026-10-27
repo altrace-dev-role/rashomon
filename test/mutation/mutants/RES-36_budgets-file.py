@@ -9,6 +9,9 @@ m("RES-36 the bench gate ignores a budgeted benchmark that did not run", "script
 m("RES-36 the bench gate parses a benchmark without allocation figures as gateable", "scripts/benchgate/main.go",
   '\t\tif m == nil {\n\t\t\treturn nil, fmt.Errorf("benchmark line without allocation figures: %q", ln)\n\t\t}\n',
   '\t\tif m == nil {\n\t\t\tcontinue\n\t\t}\n', "TestRES36b_")
+m("RES-36 a zero-allocation benchmark is treated as an empty row", "scripts/benchgate/main.go",
+  "if b.BytesPerOpMax <= 0 || b.AllocsPerOpMax < 0 {",
+  "if b.BytesPerOpMax <= 0 || b.AllocsPerOpMax <= 0 {", "TestRES36r_")
 m("RES-36 a benchmark loses its budget row", "test/perf/budgets.json",
   '    {"name": "BenchmarkDerive/edit_50k", "measured_bytes_per_op": 63464, "measured_allocs_per_op": 28, "bytes_per_op_max": 63464, "allocs_per_op_max": 28},\n',
   '', "TestRES36_")
