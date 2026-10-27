@@ -1220,8 +1220,7 @@
           "enum": [
             1,
             2,
-            3,
-            4
+            3
           ]
         },
         "recorded_at_unix_ms": {
@@ -1350,8 +1349,7 @@
           "enum": [
             1,
             2,
-            3,
-            4
+            3
           ]
         },
         "recorded_at_unix_ms": {
