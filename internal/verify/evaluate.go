@@ -14,30 +14,112 @@ type ProjectIndex struct {
 	ProjectKey string `json:"project_key"`
 }
 
-// Evaluate is the evaluator of 2.2.4: it opens no file and has no clock or
-// map-order dependence. Until P-41 builds it, it reports the recording as
-// incomplete, which silences the comparator (2.2.5, Silence) and gives
-// TurnSummary its unknown row, so no caller can read a pass out of an
-// evaluator that does not exist yet.
+// Evaluate is the evaluator of 2.2.4: a pure fold from the record, the index,
+// the spec and the point to a Snapshot. It opens no file, reads no clock but
+// the now it is given, which only the index reads, and depends on no map
+// order.
+//
+// The point is the only cut: each reader takes pt.Seq, and Seq 0 counts no
+// call. None needs a sort here, since each is independent of the order of
+// the records (VER44). What the turn is, its ProjectRoot and its Spec, is set
+// first. Then recording decides whether anything may speak: an incomplete
+// record says nothing, no gate and no record green, and its notes say why
+// (2.2.5, Silence; VER 11). Otherwise the gates are classify then gateStates
+// at the point. The record is green when at least one gate is required and
+// every required gate is Green (D36), as of the latest LastGreen among them.
+// Every list is non-nil, so a consumer never reads null as unknown.
+//
+// Evaluate at a point equals Evaluate over the record's prefix by declaration
+// at that point (INV-11, D37; RES14b), with one stated exception. A gate's
+// kind, and so the kind token of its name, is read over the whole family
+// record (kindOf, D33 item 3). So a runner whose recorded kind lands only
+// after the point names its gate by that kind at the point, and by its
+// inferred kind in the prefix (RES14c). A nil run is an empty one.
 func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) Snapshot {
+	if run == nil {
+		run = &store.Run{}
+	}
+	at := pt.Seq
 	snap := Snapshot{
 		VerifyVersion:   Version,
 		RulesVersion:    RulesVersion,
 		PracticeVersion: PracticeVersion,
 		Point:           pt,
-		Recording:       Incomplete,
-		Notes:           []string{"evaluator not built (P-41): recording reported incomplete"},
+		ProjectRoot:     projectRoot(run.Declarations, at),
+		Spec:            specInfo(sp),
+		Gates:           []GateState{},
+		Claims:          []ClaimVerdict{},
+		SpecVerdicts:    []RuleVerdict{},
+		Integrity:       Integrity{Unresolved: []IntegrityEntry{}},
 	}
-	if sp != nil {
-		// The golden names one path: the repository spec's, which is the last
-		// source in precedence order (managed first), or the only one.
-		info := &SpecInfo{Digest: sp.Digest, Trust: sp.Trust, Errors: []string{}}
-		if n := len(sp.Sources); n > 0 {
-			info.Path = sp.Sources[n-1].Path
-		}
-		snap.Spec = info
+	snap.Recording, snap.Notes = recording(run, at)
+	if snap.Notes == nil {
+		snap.Notes = []string{}
 	}
+	if snap.Recording != Complete {
+		return snap
+	}
+	runs, writes, unnamed, _ := classify(run)
+	snap.Gates = gateStates(runs, writes, unnamed, at)
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates)
 	return snap
+}
+
+// specInfo is the spec's identity as a snapshot carries it, nil with no spec.
+// The golden names one path: the repository spec's, which is the last source
+// in precedence order (managed first), or the only one.
+func specInfo(sp *spec.Compiled) *SpecInfo {
+	if sp == nil {
+		return nil
+	}
+	info := &SpecInfo{Digest: sp.Digest, Trust: sp.Trust, Errors: []string{}}
+	if n := len(sp.Sources); n > 0 {
+		info.Path = sp.Sources[n-1].Path
+	}
+	return info
+}
+
+// projectRoot is where the turn ran: the Project of the declaration with the
+// largest Seq at or before at that names one, else "". One pass, and no slice
+// order, since Evaluate does not sort.
+func projectRoot(decls []store.Declaration, at int64) string {
+	var root *string
+	var seq int64
+	for _, d := range decls {
+		if d.Seq <= at && d.Project != nil && (root == nil || d.Seq > seq) {
+			root, seq = d.Project, d.Seq
+		}
+	}
+	if root == nil {
+		return ""
+	}
+	return *root
+}
+
+// recordGreen is whether the record backs a "done" at the point (D36): at
+// least one required gate, and every required gate Green; and then the
+// latest LastGreen among them, else nil. A gate that is not required is
+// reported with its state and never blocks. Green with no LastGreen is a gate
+// gateStates never builds, and it fails closed, as TurnSummary reads it.
+func recordGreen(gates []GateState) (bool, *int64) {
+	var at int64
+	n := 0
+	for _, g := range gates {
+		if !g.Required {
+			continue
+		}
+		if g.State != Green || g.LastGreen == nil {
+			return false, nil
+		}
+		if n == 0 || g.LastGreen.Seq > at {
+			at = g.LastGreen.Seq
+		}
+		n++
+	}
+	if n == 0 {
+		return false, nil
+	}
+	return true, &at
 }
 
 // TurnCounts is what the Stop hook counted for the turn (2.2.11).
