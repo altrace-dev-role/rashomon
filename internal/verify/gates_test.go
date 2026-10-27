@@ -105,7 +105,7 @@ func TestVER11_SourceWriteAfterGreenIsStale(t *testing.T) {
 	wantState(t, one(t, statesAt(t, 4, gateCall(1, "go-test", store.ExecOK), edit(2, "README.md"))), Green, OK)
 }
 
-func TestVER11b_RelevanceFollowsPathClass(t *testing.T) {
+func TestVER11c_RelevanceFollowsPathClass(t *testing.T) {
 	for _, tc := range []struct {
 		path  string
 		stale bool
@@ -311,7 +311,7 @@ func TestVER18_SortedAndOrderIndependent(t *testing.T) {
 	}
 }
 
-func TestVER18b_OneRunnerInTwoLocationsIsTwoGates(t *testing.T) {
+func TestVER18c_OneRunnerInTwoLocationsIsTwoGates(t *testing.T) {
 	other := gateCall(2, "go-test", store.ExecOK)
 	other.loc = "d:other"
 	got := statesAt(t, 4, gateCall(1, "go-test", store.ExecOK), other)

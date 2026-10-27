@@ -52,7 +52,7 @@ m("VER-1.3 an unread run can be the reference green", G,
   '!failed(r) && !outcomeNotKnown(r)', '!failed(r)', "TestVER15c_")
 
 # What counts as a write against the family.
-m("VER-1.3 relevance is ignored", G, 'w.Path != nil && Relevant(w.Class) && ', 'w.Path != nil && ', "TestVER11b_")
+m("VER-1.3 relevance is ignored", G, 'w.Path != nil && Relevant(w.Class) && ', 'w.Path != nil && ', "TestVER11c_")
 m("VER-1.3 an unnamed write counts as a named one", G, 'w.Path != nil && Relevant(w.Class) && ', 'Relevant(w.Class) && ', "TestVER25_")
 m("VER-1.3 unnamed writes are not counted", G, '\t\t\tg.UnknownTarget++\n', '', "TestVER17_")
 m("VER-1.3 the writers cap is off by one", G, '\t\tif i == MaxWriters {\n', '\t\tif i == MaxWriters+1 {\n', "TestVER17_")
@@ -75,14 +75,14 @@ m("VER-1.3 ExecSeq is the declaration's", C, 'Seq: d.Seq, ExecSeq: e.Seq, ', 'Se
 # Families and their order.
 m("VER-1.3 no-family runs are admitted", G, '\t\tif k, ok := r.family(); ok {\n', '\t\tif k, ok := r.family(); ok || true {\n', "TestVER21_")
 m("VER-1.3 the family key has no location", C,
-  'familyKey{location: g.Location, runner: *g.Runner}', 'familyKey{runner: *g.Runner}', "TestVER18b_")
+  'familyKey{location: g.Location, runner: *g.Runner}', 'familyKey{runner: *g.Runner}', "TestVER18c_")
 m("VER-1.3 a family's runs are left in read order", G,
   '\t\tslices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })\n', '', "TestVER18_")
 m("VER-1.3 the rows are left in map order", G,
   '\tslices.SortFunc(out, func(a, b GateState) int {\n\t\treturn cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))\n\t})\n',
   '', "TestVER18_")
 m("VER-1.3 rows sharing a Gate name are not ordered by Family", G,
-  'cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))', 'cmp.Compare(a.Gate, b.Gate)', "TestVER18b_")
+  'cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))', 'cmp.Compare(a.Gate, b.Gate)', "TestVER18c_")
 
 # The v0 constants.
 m("VER-1.3 a run's scope is not unknown", G, 'GateOutput: r.Output, Scope: scopeUnknown}', 'GateOutput: r.Output}', "TestVER10_")
