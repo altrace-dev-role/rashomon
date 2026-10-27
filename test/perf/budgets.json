@@ -32,6 +32,8 @@
     {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 2656, "measured_allocs_per_op": 33, "bytes_per_op_max": 2656, "allocs_per_op_max": 33},
     {"name": "BenchmarkDerive/bash_long_4k", "measured_bytes_per_op": 268944, "measured_allocs_per_op": 229, "bytes_per_op_max": 268944, "allocs_per_op_max": 229},
     {"name": "BenchmarkDerive/edit_50k", "measured_bytes_per_op": 63464, "measured_allocs_per_op": 28, "bytes_per_op_max": 63464, "allocs_per_op_max": 28},
+    {"name": "BenchmarkDerive/cd_sub_go_test_tail", "measured_bytes_per_op": 4536, "measured_allocs_per_op": 69, "bytes_per_op_max": 4536, "allocs_per_op_max": 69},
+    {"name": "BenchmarkDerive/cd_var_go_test", "measured_bytes_per_op": 3712, "measured_allocs_per_op": 55, "bytes_per_op_max": 3712, "allocs_per_op_max": 55},
     {"name": "BenchmarkLexTokens", "measured_bytes_per_op": 99184, "measured_allocs_per_op": 90, "bytes_per_op_max": 99184, "allocs_per_op_max": 90},
     {"name": "BenchmarkRecordBytesPerCall", "measured_bytes_per_op": 20026, "measured_allocs_per_op": 94, "bytes_per_op_max": 20026, "allocs_per_op_max": 94},
     {"name": "BenchmarkBuild/188", "measured_bytes_per_op": 2226346, "measured_allocs_per_op": 6799, "bytes_per_op_max": 2226346, "allocs_per_op_max": 6799},
