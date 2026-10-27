@@ -2,6 +2,7 @@ package verify
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -89,10 +90,10 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 	return runOfSession(t, "s1", calls...)
 }
 
-// runOfSession writes one Declaration and one Execution per call and a
-// Terminal for each call with a term, and fails the test on a run the store
-// could not read back as built, or whose records break an invariant the hook
-// and shape keep; the two shapes no writer produces yet, a named Bash write and
+// runOfSession writes one Declaration and one Execution per call, a
+// Terminal for each call with a term and one Coverage record, and fails the
+// test on a run the store could not read back as built, or whose records
+// break an invariant the hook and shape keep; the two shapes no writer produces yet, a named Bash write and
 // a gate_output, are marked below. A fixture that breaks one makes every
 // evaluator test built on it prove nothing. It enforces these invariants and
 // no others, each where it comes from:
@@ -114,6 +115,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - A terminal's outcome is one of the Terminal outcomes (record.go).
 //   - The session id is its own run directory name (the store's DirName method, over segment): the builder does not digest. DirName reads no Store field (store.go:453, segment), which is what lets a zero Store answer; no test pins that.
 //   - A location is "", or "d:" or "u:" and a name: the two digest domains hook.Locate writes, on any tool, since it locates every call.
+//   - The run carries one coverage record, PhasePost and verified, as a hook writes one when its entry and its probe both resolve (hook.BuildCoverage); every real run has one. A test that needs others sets r.Coverage.
 //
 // The cap functions guarantee caps and nothing else. The derived fields
 // (VerbClass, RunnerDigest, RunnerKind, StatusMasked, MayWrite) are what the
@@ -346,7 +348,18 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 	// ReadRun reads records.ndjson before the spill file.
 	r.Executions = append(r.Executions, spillE...)
 	r.Terminals = append(r.Terminals, spillT...)
+	cov := postCoverage(store.StateVerified, nil, store.EntryPresentSettings, store.ProbeFresh)
+	cov.SessionID = sessionID
+	r.Coverage = []store.Coverage{cov}
 	return r
+}
+
+// postCoverage is a PhasePost coverage record of runOf's session, as
+// hook.BuildCoverage writes one, with the four fields recording reads given by
+// hand: no default, so no row reads verified by accident.
+func postCoverage(state string, reason *string, entry, probe string) store.Coverage {
+	return store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SessionSchemaVersion, SessionID: "s1",
+		Phase: store.PhasePost, State: state, Reason: reason, HookEntry: entry, Probe: probe}
 }
 
 func intOr0[T int | int64](p *T) T {
@@ -928,7 +941,7 @@ func TestFixture_TerminalIsBuiltOnlyWhenAsked(t *testing.T) {
 // Store.SpillTerminal), and a lost declaration leaves only its spilled
 // lock_timeout terminal and an ordered execution (Handler.Close). The run an
 // evaluator test is given for either flag is the run ReadRun returns, order,
-// Seqs and reasons included.
+// Seqs and reasons included, and so is the coverage record every run carries.
 func TestFixture_SpilledAndLostCallsReadBackAsBuilt(t *testing.T) {
 	spilled := gateCall(2, "go-test", store.ExecOK)
 	spilled.spilled, spilled.term = true, store.OutcomeOK
@@ -1010,6 +1023,11 @@ func TestFixture_SpilledAndLostCallsReadBackAsBuilt(t *testing.T) {
 			t.Fatalf("%s: execution: %v", id, err)
 		}
 	}
+	for _, c := range r.Coverage {
+		if err := st.AppendCoverage(c); err != nil {
+			t.Fatalf("coverage: %v", err)
+		}
+	}
 	got, err := st.ReadRun("s3")
 	if err != nil {
 		t.Fatal(err)
@@ -1032,5 +1050,8 @@ func TestFixture_SpilledAndLostCallsReadBackAsBuilt(t *testing.T) {
 	}
 	if !samePtr(got.Terminals[1].Reason, r.Terminals[1].Reason) || !samePtr(got.Declarations[2].AgentID, r.Declarations[2].AgentID) || !samePtr(got.Declarations[2].AgentType, r.Declarations[2].AgentType) {
 		t.Fatal("the terminal's reason or the subagent's id or type differs after the round trip")
+	}
+	if len(r.Coverage) != 1 || !reflect.DeepEqual(got.Coverage, r.Coverage) {
+		t.Fatalf("read back coverage %+v, built %+v: want the one verified post record, as built", got.Coverage, r.Coverage)
 	}
 }
