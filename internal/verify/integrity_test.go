@@ -306,6 +306,34 @@ func TestINT9_CountsAreNetPerPathAndMarker(t *testing.T) {
 		IntegrityEntry{Check: SuppressionAdded, Marker: "go.nolint", Seq: 7})
 }
 
+func TestINT10_UnresolvedBlocksRecordGreenAndRowsFindings(t *testing.T) {
+	const p = "pkg/calc_test.go"
+	turn := TurnCounts{Writes: 2, PathsWritten: 1, GateRuns: 1}
+	t.Run("unresolved", func(t *testing.T) {
+		// A skip and a suppression added, then the gate green after the edit:
+		// every gate green, and no record-green point.
+		snap := evalAt(runOf(t, edit(1, p).marks(ids{"go.t_skip": 1, "go.nolint": 1}, nil), gateCall(2, "go-test", store.ExecOK)), 4)
+		if len(snap.Gates) != 1 || snap.Gates[0].State != Green || len(snap.Integrity.Unresolved) != 2 {
+			t.Fatalf("gates %+v and integrity %+v, want one green gate and two unresolved", snap.Gates, snap.Integrity)
+		}
+		wantNoGreen(t, snap)
+		// The sentence is a count, never a check or a marker (Gate B F1).
+		if s := TurnSummary(snap, turn); s.Row != RowFindings || s.Sentence != "2 record finding(s) in this turn" {
+			t.Errorf("row %q sentence %q, want %q and %q", s.Row, s.Sentence, RowFindings, "2 record finding(s) in this turn")
+		}
+	})
+	t.Run("resolved", func(t *testing.T) {
+		snap := evalAt(runOf(t, edit(1, p).marks(ids{"go.t_skip": 1}, nil), edit(2, p).marks(nil, ids{"go.t_skip": 1}), gateCall(3, "go-test", store.ExecOK)), 6)
+		if len(snap.Integrity.Unresolved) != 0 {
+			t.Fatalf("integrity %+v, want none unresolved", snap.Integrity)
+		}
+		wantGreenAt(t, snap, 5)
+		if s := TurnSummary(snap, turn); s.Row != RowVerified || s.Sentence != "" {
+			t.Errorf("row %q sentence %q, want %q and none", s.Row, s.Sentence, RowVerified)
+		}
+	})
+}
+
 func TestINT11_AssertionsRemovedOnlyWhileTestsStay(t *testing.T) {
 	const zero, fell, rose = "pkg/zero_test.go", "pkg/fell_test.go", "pkg/rose_test.go"
 	r := runOf(t,

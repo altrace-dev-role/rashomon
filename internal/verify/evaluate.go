@@ -2,6 +2,7 @@ package verify
 
 import (
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -29,9 +30,13 @@ type ProjectIndex struct {
 // (2.2.5, Silence; VER 11). Otherwise the gates are classify then gateStates
 // at the point. A gate is required when the index requires its family at now;
 // with no index, or one that requires no family yet, every gate is (D38,
-// indexLearned). The record is green when at least one gate is required and
-// every required gate is Green (D36), as of the latest LastGreen among them.
-// Every list is non-nil, so a consumer never reads null as unknown.
+// indexLearned). Integrity is the window's integrity view (integrity.go),
+// from 0, the run: v0 deviation (D40), window = the run until 1.8w; a skip
+// added and never removed holds RecordGreen false for the session. The record
+// is green when at least one gate is required, every required gate is Green
+// (D36) and no integrity check is unresolved (PF-IV3, D39), as of the latest
+// LastGreen among the gates. Every list is non-nil, so a consumer never reads
+// null as unknown.
 //
 // Evaluate at a point equals Evaluate over the record's prefix by declaration
 // at that point (INV-11, D37; RES14b), with one stated exception. A gate's
@@ -70,7 +75,8 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
-	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates)
+	snap.Integrity = integrity(run, writes, 0, at)
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
 	return snap
 }
 
@@ -124,12 +130,17 @@ func projectRoot(decls []store.Declaration, at int64) string {
 	return *root
 }
 
-// recordGreen is whether the record backs a "done" at the point (D36): at
-// least one required gate, and every required gate Green; and then the
-// latest LastGreen among them, else nil. A gate that is not required is
-// reported with its state and never blocks. Green with no LastGreen is a gate
+// recordGreen is whether the record backs a "done" at the point (D36): no
+// integrity check unresolved (unresolved is their count; archive 20.2.4's
+// record-green point needs the integrity component at 1, PF-IV3), at least
+// one required gate, and every required gate Green; and then the latest
+// LastGreen among them, else nil. A gate that is not required is reported
+// with its state and never blocks. Green with no LastGreen is a gate
 // gateStates never builds, and it fails closed, as TurnSummary reads it.
-func recordGreen(gates []GateState) (bool, *int64) {
+func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
+	if unresolved > 0 {
+		return false, nil
+	}
 	var at int64
 	n := 0
 	for _, g := range gates {
@@ -206,6 +217,16 @@ const sentenceRecordingIncomplete = "recording incomplete for this turn; verific
 // P-45 renders it.
 const sentenceAdvisoryOnly = "advisory only"
 
+// findingsSentence is the findings row's count clause (2.2.11's row table:
+// "<n> files edited; <gates> passed after the last edit; <k> record
+// finding(s) in this turn"), the one part of the sentence only the snapshot
+// decides; P-45 renders the rest before it, as it renders every row's. k is a
+// count and never names a check or a marker (1.8 Gate B F1): the names are
+// 2.2's PostToolUse facts.
+func findingsSentence(k int) string {
+	return strconv.Itoa(k) + " record finding(s) in this turn"
+}
+
 // rowFor is the row of a non-green dominant state (2.2.11): stale and absent
 // share `unverified`.
 func rowFor(s State) Row {
@@ -237,6 +258,12 @@ func rowFor(s State) Row {
 // never hidden, but a green is unverified, or ran_only with no write, never
 // verified, since no established gate ran; and the row says so in its
 // sentence. A gate that is neither required nor learned is not a turn gate.
+//
+// The findings row is every turn gate green without the record-green point:
+// today an unresolved integrity check, so its sentence counts them,
+// k = len(Integrity.Unresolved) (findingsSentence); executed spec violations
+// join k when they are evaluated. While the window is the run (D40), k counts
+// the session's unresolved checks, not only this turn's, until 1.8w.
 func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if turn.Writes == 0 && turn.GateRuns == 0 {
 		return Summary{Row: RowNone}
@@ -298,8 +325,11 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		row = RowFindings
 	}
 	s := Summary{Row: row}
-	if advisory {
+	switch {
+	case advisory:
 		s.Sentence = sentenceAdvisoryOnly
+	case row == RowFindings:
+		s.Sentence = findingsSentence(len(snap.Integrity.Unresolved))
 	}
 	return s
 }

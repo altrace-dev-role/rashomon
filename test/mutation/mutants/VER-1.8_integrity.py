@@ -93,3 +93,15 @@ m("VER-1.8 the check is not a sort key", I,
   "cmp.Compare(slices.Index(IntegrityKinds, a.Check), slices.Index(IntegrityKinds, b.Check)),\n", "0,\n", "TestINT8_")
 m("VER-1.8 the marker is not a sort key", I,
   "\t\t\tcmp.Compare(a.Marker, b.Marker))\n", "\t\t\t0)\n", "TestINT8_")
+
+# Part two: Evaluate's wiring (PF-IV3, D39, D40) and the findings row (Gate B F1).
+E = "internal/verify/evaluate.go"
+m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, writes, 0, at)\n", "", "TestINT10_")
+m("VER-1.8 Evaluate's window starts at the point", E,
+  "integrity(run, writes, 0, at)", "integrity(run, writes, at, at)", "TestINT10_")
+m("VER-1.8 RecordGreen ignores integrity", E, "\tif unresolved > 0 {\n\t\treturn false, nil\n\t}\n", "", "TestINT10_")
+m("VER-1.8 the findings row is not taken", E,
+  "\tdefault:\n\t\trow = RowFindings\n", "\tdefault:\n\t\trow = RowVerified\n", "TestINT10_")
+m("VER-1.8 the count sentence is off by one", E,
+  "\treturn strconv.Itoa(k) + \" record", "\treturn strconv.Itoa(k+1) + \" record", "TestINT10_")
+m("VER-1.8 the count sentence is on every row", E, "\tcase row == RowFindings:\n", "\tdefault:\n", "TestINT10_")

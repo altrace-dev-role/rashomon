@@ -123,7 +123,7 @@ func TestVER40_EvaluateFillsGatesAndRecordGreen(t *testing.T) {
 	})
 	t.Run("a green gate with no green run", func(t *testing.T) {
 		// A gate Evaluate never builds; it fails closed, as TurnSummary reads it.
-		if green, seq := recordGreen([]GateState{{State: Green, Required: true}}); green || seq != nil {
+		if green, seq := recordGreen([]GateState{{State: Green, Required: true}}, 0); green || seq != nil {
 			t.Fatalf("recordGreen %t at %v, want false and nil", green, seq)
 		}
 	})
