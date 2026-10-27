@@ -1,0 +1,1 @@
+ok	github.com/example/project	0.003s

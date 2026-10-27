@@ -1,0 +1,3 @@
+ok	github.com/example/a	0.01s
+FAIL	github.com/example/b	0.02s
+ok	github.com/example/c	0.01s

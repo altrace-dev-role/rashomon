@@ -68,7 +68,9 @@
     {"name": "BenchmarkRead/1MiB_opaque", "measured_bytes_per_op": 2163605, "measured_allocs_per_op": 49, "bytes_per_op_max": 2163605, "allocs_per_op_max": 49},
     {"name": "BenchmarkRead/4MiB_opaque", "measured_bytes_per_op": 8459152, "measured_allocs_per_op": 98, "bytes_per_op_max": 8459152, "allocs_per_op_max": 98},
     {"name": "BenchmarkRead/8MiB_opaque", "measured_bytes_per_op": 16823184, "measured_allocs_per_op": 162, "bytes_per_op_max": 16823184, "allocs_per_op_max": 162},
-    {"name": "BenchmarkDetect", "measured_bytes_per_op": 1600, "measured_allocs_per_op": 14, "bytes_per_op_max": 1600, "allocs_per_op_max": 14}
+    {"name": "BenchmarkDetect", "measured_bytes_per_op": 1600, "measured_allocs_per_op": 14, "bytes_per_op_max": 1600, "allocs_per_op_max": 14},
+    {"name": "BenchmarkClassify/go_pass", "measured_bytes_per_op": 70, "measured_allocs_per_op": 0, "bytes_per_op_max": 70, "allocs_per_op_max": 0, "basis": "best of three on Apple M1 Pro, darwin/arm64, go1.27.2 (-benchtime 20x)"},
+    {"name": "BenchmarkClassify/go_fail_at_cap", "measured_bytes_per_op": 214, "measured_allocs_per_op": 0, "bytes_per_op_max": 214, "allocs_per_op_max": 0, "basis": "best of three on Apple M1 Pro, darwin/arm64, go1.27.2 (-benchtime 20x)"}
   ],
   "growth": [],
   "disk": {"bytes_per_call_max": 6000}

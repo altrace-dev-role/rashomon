@@ -1,0 +1,2 @@
+ok	github.com/example/a	0.01s
+?	github.com/example/z	[no test files]

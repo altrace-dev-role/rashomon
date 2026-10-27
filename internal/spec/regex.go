@@ -43,6 +43,13 @@ func checkRegex(src string) (insts int, reason Reason, limit int) {
 	return len(prog.Inst), "", 0
 }
 
+// CheckRegex applies the archive 20.2.8 regular-expression bounds to one
+// pattern. It returns the compiled instruction count, or the closed reason
+// and limit that refused it. The pattern is not retained.
+func CheckRegex(src string) (insts int, reason Reason, limit int) {
+	return checkRegex(src)
+}
+
 // repeatRule walks a parsed expression for the two repeat rules. A counted
 // repeat is {n}, {n,} or {n,m}; * + and ? are not counted. inside says the
 // walk is below a counted repeat.
