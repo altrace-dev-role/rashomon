@@ -29,12 +29,21 @@ m("VER-1.6 the same session is counted twice", I,
 m("VER-1.6 a new family's first session is not counted", I,
   "Kind: kind, Sessions: 1,\n", "Kind: kind, Sessions: 0,\n", "TestIDX1_|TestIDX2_")
 m("VER-1.6 LastSeen is not moved", I,
-  "\t\te.Kind, e.LastSeen = kind, nowMS\n", "\t\te.Kind = kind\n", "TestIDX3_")
-m("VER-1.6 FirstSeen is overwritten", I,
-  "\t\te.Kind, e.LastSeen = kind, nowMS\n", "\t\te.Kind, e.LastSeen, e.FirstSeen = kind, nowMS, nowMS\n",
-  "TestIDX3_|TestIDX4_")
-m("VER-1.6 a known family keeps its old kind", I,
-  "\t\te.Kind, e.LastSeen = kind, nowMS\n", "\t\te.LastSeen = nowMS\n", "TestIDX7_")
+  "e.LastSeen, e.FirstSeen = max(held, nowMS), min(e.FirstSeen, nowMS)", "e.FirstSeen = min(e.FirstSeen, nowMS)",
+  "TestIDX3_")
+m("VER-1.6 FirstSeen is overwritten", I, ", min(e.FirstSeen, nowMS)\n", ", nowMS\n", "TestIDX3_|TestIDX4_")
+m("VER-1.6 a known family keeps its old kind", I, "\t\t\te.Kind = kind\n", "", "TestIDX7_")
+# 1.6b: sessions recapped out of order, each at its own time.
+m("VER-1.6 LastSeen moves back to an older session", I,
+  "e.LastSeen, e.FirstSeen = max(held, nowMS), ", "e.LastSeen, e.FirstSeen = nowMS, ", "TestIDX3b_")
+m("VER-1.6 FirstSeen does not move to an older session", I,
+  ", min(e.FirstSeen, nowMS)\n", ", e.FirstSeen\n", "TestIDX3b_")
+m("VER-1.6 an older session's kind replaces the newer's", I,
+  "\t\tif nowMS >= held {\n\t\t\te.Kind = kind\n\t\t}\n", "\t\te.Kind = kind\n", "TestIDX3b_")
+m("VER-1.6 a tie keeps the held kind", I, "\t\tif nowMS >= held {\n", "\t\tif nowMS > held {\n", "TestIDX3b_")
+m("VER-1.6 LastSession kept at the newer session", I,
+  "\t\t\te.LastSession = sessionID\n", "\t\t\tif nowMS >= held {\n\t\t\t\te.LastSession = sessionID\n\t\t\t}\n",
+  "TestIDX3b_")
 m("VER-1.6 the runs are not in Seq order for kindOf", I,
   "\t\tslices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })\n", "",
   "TestIDX6_|TestIDX7_")

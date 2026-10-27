@@ -81,14 +81,22 @@ func entryOrder(a, b IndexEntry) int { return cmp.Compare(a.Family, b.Family) }
 // atFamily is entryOrder as a binary search target.
 func atFamily(e IndexEntry, family string) int { return cmp.Compare(e.Family, family) }
 
-// Observe adds one session's gate runs to the index at nowMS. Each family
-// among runs (a run with no family adds nothing) gets an entry, created with
-// FirstSeen nowMS where it has none. Its LastSeen becomes nowMS, its Kind the
-// family's over its runs in Seq order (kindOf: a later schema may reclassify
-// a family, D33), and its Sessions moves only when its LastSession is another
-// session, which sessionID then becomes. So a recap re-run for one session
-// counts it once; the limit is that an older session recapped after a newer
-// one counts again, since only the last is kept.
+// Observe adds one session's gate runs to the index, nowMS being that
+// session's own time (its end, as recap passes it). Each family among runs
+// (a run with no family adds nothing) gets an entry, created where it has
+// none. Its times only widen, LastSeen to the later of the two and FirstSeen
+// to the earlier, so sessions recapped out of order never move LastSeen
+// backward. Its Kind becomes the family's over its runs in Seq order
+// (kindOf) only when this session is not older than LastSeen, a tie going to
+// the later call, so the later session's classification wins (D33), not the
+// later recap's. Its Sessions moves only when LastSession is another
+// session, which sessionID then becomes on every call. LastSession is the
+// dedup key, the session counted last, and Kind is the time question, so the
+// one is unconditional and the other follows the later session: a recap run
+// again for the session just counted counts it once. The limit is that a
+// session recapped again after another session's recap (A, B, A, in either
+// order of time) counts again, since only the last id is kept, so a family
+// can be required early, never late; it no longer moves LastSeen or Kind.
 //
 // The entries stay sorted by Family and the result does not depend on the
 // order of runs. idx must not be nil: a caller with no index starts from
@@ -113,7 +121,11 @@ func (idx *ProjectIndex) Observe(runs []gateRun, sessionID string, nowMS int64) 
 			continue
 		}
 		e := &idx.Entries[i]
-		e.Kind, e.LastSeen = kind, nowMS
+		held := e.LastSeen
+		e.LastSeen, e.FirstSeen = max(held, nowMS), min(e.FirstSeen, nowMS)
+		if nowMS >= held {
+			e.Kind = kind
+		}
 		if e.LastSession != sessionID {
 			e.Sessions++
 			e.LastSession = sessionID
