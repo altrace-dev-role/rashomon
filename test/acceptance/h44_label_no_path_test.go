@@ -2,8 +2,11 @@ package acceptance
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 )
 
 // TestH44_NoPathEverReachesTheStore is H-44.
@@ -14,6 +17,17 @@ import (
 // keeps nothing of it, so the canary here is a path SEGMENT, placed in
 // file_path and in notebook_path, the two fields shape.Label is allowed to
 // read.
+//
+// One channel is sanctioned beside it: a declaration carries the path a
+// file-changing tool names, in its own file_path (shape.DeclaredPath), so that
+// a reader can tell which file a call touched. A path is less than content, the
+// store is local and nothing in this program sends it anywhere. For those tools
+// the record's file_path is checked against the path as written and then
+// blanked, by parsing each line and writing it again, before the sweep;
+// anything else that carries the canary -- the label, a second copy, any other
+// file -- still fails. A string replacement of the canary would erase a second
+// copy too and pass blind, which is why the blank is structural. Read is not
+// among those tools, so its row sweeps the store whole.
 //
 // This half is NOT gated and always runs, because it covers every route a
 // path could take into the store or the output. Under schema 2 the label
@@ -45,6 +59,13 @@ func TestH44_NoPathEverReachesTheStore(t *testing.T) {
 			e.watched(testSession)
 
 			p := defaultPayload()
+			// cwd and project are sanctioned channels too, and this test
+			// does not blank them: the canary must never be moved into the
+			// directory, where it would reach the store by a route this
+			// test cannot tell from a leak.
+			if strings.Contains(p.CWD, canary) {
+				t.Fatalf("premise: the payload's cwd %q carries the canary", p.CWD)
+			}
 			p.ToolName = tc.tool
 			p.ToolInput = map[string]any{tc.field: tc.path, "description": "irrelevant prose"}
 			res := e.hook(p.build(t))
@@ -53,11 +74,31 @@ func TestH44_NoPathEverReachesTheStore(t *testing.T) {
 			}
 			e.probe("end", testSession)
 
+			sanctioned := declaresPath(tc.tool)
+			if sanctioned {
+				decls := e.declarations(testSession)
+				if len(decls) != 1 {
+					t.Fatalf("read %d declarations, want 1", len(decls))
+				}
+				if got := decls[0].str("file_path"); got != tc.path {
+					t.Errorf("file_path = %q, want the path as written, %q", got, tc.path)
+				}
+				for _, key := range []string{"file_label", "cwd", "project"} {
+					if strings.Contains(decls[0].str(key), canary) {
+						t.Errorf("%s = %q carries the canary path segment", key, decls[0].str(key))
+					}
+				}
+			}
+
 			repJSON := e.run("", nil, "report", "--json", "--session", testSession)
 			repText := e.run("", nil, "report", "--session", testSession)
 
 			for rel, f := range walkStore(t, e.home) {
-				if bytes.Contains(f.body, []byte(canary)) {
+				body := f.body
+				if sanctioned {
+					body = blankDeclaredPaths(t, body)
+				}
+				if bytes.Contains(body, []byte(canary)) {
 					t.Errorf("%s contains the canary path segment", rel)
 				}
 			}
@@ -74,6 +115,37 @@ func TestH44_NoPathEverReachesTheStore(t *testing.T) {
 
 		})
 	}
+}
+
+// declaresPath reports whether a tool's declaration carries the path its
+// input names, asked of shape.DeclaredPath itself with an input that names a
+// path in both of its table's fields.
+func declaresPath(tool string) bool {
+	return shape.DeclaredPath(tool, json.RawMessage(`{"file_path":"/x","notebook_path":"/x"}`)) != nil
+}
+
+// blankDeclaredPaths is body with the top-level file_path of every
+// declaration whose tool declares a path set to null, each such line parsed
+// and written again; every other line is kept byte for byte.
+func blankDeclaredPaths(t *testing.T, body []byte) []byte {
+	t.Helper()
+	lines := bytes.Split(body, []byte("\n"))
+	for i, ln := range lines {
+		var rec map[string]any
+		if json.Unmarshal(ln, &rec) != nil || rec["type"] != "declaration" {
+			continue
+		}
+		if tool, _ := rec["tool_name"].(string); !declaresPath(tool) {
+			continue
+		}
+		rec["file_path"] = nil
+		out, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines[i] = out
+	}
+	return bytes.Join(lines, []byte("\n"))
 }
 
 // TestH44_PositiveTwin is the other half of H-44: the same call that leaks no
