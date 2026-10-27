@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"slices"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -26,7 +27,9 @@ type ProjectIndex struct {
 // first. Then recording decides whether anything may speak: an incomplete
 // record says nothing, no gate and no record green, and its notes say why
 // (2.2.5, Silence; VER 11). Otherwise the gates are classify then gateStates
-// at the point. The record is green when at least one gate is required and
+// at the point. A gate is required when the index requires its family at now;
+// with no index, or one that requires no family yet, every gate is (D38,
+// indexLearned). The record is green when at least one gate is required and
 // every required gate is Green (D36), as of the latest LastGreen among them.
 // Every list is non-nil, so a consumer never reads null as unknown.
 //
@@ -62,8 +65,32 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	}
 	runs, writes, unnamed, _ := classify(run)
 	snap.Gates = gateStates(runs, writes, unnamed, at)
+	nowMS := now.UnixMilli()
+	learned := indexLearned(idx, nowMS)
+	for i := range snap.Gates {
+		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
+	}
 	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates)
 	return snap
+}
+
+// indexLearned reports whether idx requires any family at nowMS (D38). An
+// index that requires none has learned nothing yet, and Evaluate reads it as
+// no index, every gate required: the fail-closed prior holds until a family
+// is established. The test is over the index, not the snapshot's gates: a
+// learned project whose established gates did not run this turn keeps its
+// gates advisory. A project whose families have all aged out returns to the
+// prior. Cost: one Required per entry, O(E log E), E capped by MaxIndexBytes.
+func indexLearned(idx *ProjectIndex, nowMS int64) bool {
+	if idx == nil {
+		return false
+	}
+	for _, e := range idx.Entries {
+		if idx.Required(e.Family, nowMS) {
+			return true
+		}
+	}
+	return false
 }
 
 // specInfo is the spec's identity as a snapshot carries it, nil with no spec.
@@ -175,6 +202,10 @@ type Summary struct {
 
 const sentenceRecordingIncomplete = "recording incomplete for this turn; verification state unknown"
 
+// sentenceAdvisoryOnly marks a row read from advisory gates alone (D38);
+// P-45 renders it.
+const sentenceAdvisoryOnly = "advisory only"
+
 // rowFor is the row of a non-green dominant state (2.2.11): stale and absent
 // share `unverified`.
 func rowFor(s State) Row {
@@ -200,6 +231,12 @@ func rowFor(s State) Row {
 // reads as a pass, and it never hides a red: the valid states decide the row
 // as usual, and the defect shows as unknown only when no valid non-green
 // state outranks it.
+//
+// With no required gate, the learned gates are advisory, and the row reads
+// them with one cap (D38): a non-green keeps its row, so an advisory red is
+// never hidden, but a green is unverified, or ran_only with no write, never
+// verified, since no established gate ran; and the row says so in its
+// sentence. A gate that is neither required nor learned is not a turn gate.
 func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if turn.Writes == 0 && turn.GateRuns == 0 {
 		return Summary{Row: RowNone}
@@ -207,6 +244,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if snap.Recording != Complete {
 		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete}
 	}
+	advisory := !slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required })
 	var states []State
 	defect := false
 	// The unnamed-write rule reads "after a turn gate's last green run": with
@@ -214,7 +252,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	// can invalidate, and a gate with no green run counts as seq 0.
 	earliestGreen := int64(-1)
 	for _, g := range snap.Gates {
-		if !g.Required {
+		if !g.Required && !(advisory && g.Source == sourceLearned) {
 			continue
 		}
 		if Rank(g.State) < 0 {
@@ -238,21 +276,30 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		}
 	}
 	worst, ok := Worst(states)
+	var row Row
 	switch {
 	case !ok && !defect && turn.Writes == 0:
 		return Summary{Row: RowNone}
 	case !ok && !defect:
 		return Summary{Row: RowNoGate}
 	case ok && worst != Green:
-		return Summary{Row: rowFor(worst)}
+		row = rowFor(worst)
 	case defect:
-		return Summary{Row: RowUnknown}
+		row = RowUnknown
 	case turn.Writes == 0:
-		return Summary{Row: RowRanOnly}
+		row = RowRanOnly
+	case advisory:
+		row = RowUnverified // the cap: an advisory green never verifies
 	case turn.UnnamedWriteSeq > earliestGreen:
-		return Summary{Row: RowUnnamedWrite}
+		row = RowUnnamedWrite
 	case snap.RecordGreen:
-		return Summary{Row: RowVerified}
+		row = RowVerified
+	default:
+		row = RowFindings
 	}
-	return Summary{Row: RowFindings}
+	s := Summary{Row: row}
+	if advisory {
+		s.Sentence = sentenceAdvisoryOnly
+	}
+	return s
 }
