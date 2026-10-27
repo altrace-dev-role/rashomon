@@ -331,13 +331,13 @@ func TestVER18b_OneRunnerInTwoLocationsIsTwoGates(t *testing.T) {
 	}
 }
 
-func TestVER19_SpilledExecutionStillCredits(t *testing.T) {
-	spilled := gateCall(2, "go-test", store.ExecOK)
-	spilled.spilled, spilled.term = true, store.OutcomeOK
-	g := one(t, statesAt(t, 3, edit(1, "pkg/a.go"), spilled))
-	wantState(t, g, Green, OK)
-	if seqOr0(g.LastGreen) != 3 {
-		t.Fatalf("LastGreen %d, want 3, the declaration's Seq", seqOr0(g.LastGreen))
+// A spilled run is cited by its declaration's Seq, and credits nothing: when
+// its outcome landed is not known (D33, which replaced D31's fallback here).
+func TestVER19_SpilledRunIsCitedAtItsDeclaration(t *testing.T) {
+	g := one(t, statesAt(t, 3, edit(1, "pkg/a.go"), spilledGate(2, store.ExecOK)))
+	wantState(t, g, Unknown, OrderUnknown)
+	if seqOr0(g.LastRun) != 3 || g.LastGreen != nil {
+		t.Fatalf("LastRun %d LastGreen %v, want 3, the declaration's Seq, and nil", seqOr0(g.LastRun), g.LastGreen)
 	}
 }
 
@@ -390,9 +390,9 @@ func TestVER24_ARunExistsAtItsExecution(t *testing.T) {
 		t.Fatalf("at the declaration: %+v, want no row: the run is in flight", got)
 	}
 	wantState(t, one(t, statesAt(t, 2, gateCall(1, "go-test", store.ExecOK))), Green, OK)
-	spilled := gateCall(1, "go-test", store.ExecOK)
-	spilled.spilled, spilled.term = true, store.OutcomeOK
-	wantState(t, one(t, statesAt(t, 1, spilled)), Green, OK)
+	// A spilled run exists from its declaration, the earliest its outcome can
+	// have landed, and is Unknown there (D33).
+	wantState(t, one(t, statesAt(t, 1, spilledGate(1, store.ExecOK))), Unknown, OrderUnknown)
 }
 
 // A write declared while a gate run is in flight counts against it (D31):
@@ -422,6 +422,82 @@ func TestVER25_UnnamedWriteAfterGreenIsCounted(t *testing.T) {
 		t.Fatalf("UnknownTarget %d WritesSinceGreen %d LastWrite %v, want 1, 0, nil", g.UnknownTarget, g.WritesSinceGreen, g.LastWrite)
 	}
 	wantState(t, one(t, statesAt(t, 6, gateCall(1, "go-test", store.ExecOK), unnamedWrite(2), edit(3, "pkg/a.go"))), Stale, WritesAfterGreen)
+}
+
+// spilledGate is a gate run whose execution and terminal went to the spill
+// file: its outcome is recorded, its order is not.
+func spilledGate(seq int64, outcome string) call {
+	c := gateCall(seq, "go-test", outcome)
+	c.spilled, c.term = true, store.OutcomeOK
+	return c
+}
+
+// A spilled last run is Unknown, OrderUnknown, from its declaration on, and
+// never the reference green (D33): its outcome is known, when it landed is not.
+func TestVER26_SpilledLastRunIsOrderUnknown(t *testing.T) {
+	calls := []call{gateCall(1, "go-test", store.ExecOK), spilledGate(2, store.ExecOK)}
+	for _, at := range []int64{3, 10} {
+		g := one(t, statesAt(t, at, calls...))
+		wantState(t, g, Unknown, OrderUnknown)
+		if seqOr0(g.LastRun) != 3 || seqOr0(g.LastGreen) != 1 {
+			t.Fatalf("at %d: LastRun %d LastGreen %d, want 3 and 1", at, seqOr0(g.LastRun), seqOr0(g.LastGreen))
+		}
+	}
+	// Before its declaration the run does not exist, and the green stands.
+	wantState(t, one(t, statesAt(t, 2, calls...)), Green, OK)
+	// The green before it stays the reference: an edit between them counts.
+	g := one(t, statesAt(t, 10, gateCall(1, "go-test", store.ExecOK), edit(2, "pkg/a.go"), spilledGate(3, store.ExecOK)))
+	wantState(t, g, Unknown, OrderUnknown)
+	if g.WritesSinceGreen != 1 || seqOr0(g.LastGreen) != 1 {
+		t.Fatalf("WritesSinceGreen %d LastGreen %d, want 1 and 1: the spilled run is not the reference", g.WritesSinceGreen, seqOr0(g.LastGreen))
+	}
+	// A write after it is counted and the state stays Unknown.
+	g = one(t, statesAt(t, 10, gateCall(1, "go-test", store.ExecOK), spilledGate(2, store.ExecOK), edit(3, "pkg/a.go")))
+	wantState(t, g, Unknown, OrderUnknown)
+	if g.WritesSinceGreen != 1 {
+		t.Fatalf("WritesSinceGreen %d, want 1", g.WritesSinceGreen)
+	}
+	// A spilled red is Red: an unknown order never hides a red (state.go, Order).
+	wantState(t, one(t, statesAt(t, 10, gateCall(1, "go-test", store.ExecOK), spilledGate(2, store.ExecFailed))), Red, FailedExit)
+}
+
+// A spilled run that is not the last changes nothing.
+func TestVER26b_SpilledEarlierRunLeavesTheLastRunsState(t *testing.T) {
+	g := one(t, statesAt(t, 3, spilledGate(1, store.ExecOK), gateCall(2, "go-test", store.ExecOK)))
+	wantState(t, g, Green, OK)
+	if seqOr0(g.LastRun) != 2 || seqOr0(g.LastGreen) != 2 {
+		t.Fatalf("LastRun %d LastGreen %d, want 2 and 2", seqOr0(g.LastRun), seqOr0(g.LastGreen))
+	}
+}
+
+// The Gate's kind is the family's recorded kind wherever in the record a run
+// records one, so the name is the same at every point (D33).
+func TestVER27_GateKindIsTheFamilysRecordedKind(t *testing.T) {
+	// Both class package, so no run is evidence for the inference: the
+	// schema 5 run infers custom (classify, inferKinds).
+	old := call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbPackage, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecOK, loc: "d:repo", schema: 5}
+	recorded := call{seq: 2, tool: "Bash", prog: "go", class: shape.VerbPackage, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, loc: "d:repo"}
+	r := runOf(t, old, recorded)
+	for _, at := range []int64{2, 4} {
+		if g := one(t, statesOf(t, r, at)); g.Gate != "learned:test:r:go-test@d:repo" || g.Kind != "test" {
+			t.Fatalf("at %d: Gate %q Kind %q, want learned:test:r:go-test@d:repo and test", at, g.Gate, g.Kind)
+		}
+	}
+	// With no recorded kind in the record, the last run's inferred one.
+	if g := one(t, statesAt(t, 2, old)); g.Gate != "learned:custom:r:go-test@d:repo" {
+		t.Fatalf("Gate %q, want learned:custom:r:go-test@d:repo", g.Gate)
+	}
+}
+
+// Two recorded kinds (a runner reclassified between versions): the last
+// recorded names the gate.
+func TestVER27b_TheLastRecordedKindWins(t *testing.T) {
+	asBuild := call{seq: 2, tool: "Bash", prog: "go", class: shape.VerbPackage, runner: "go-test", kind: shape.RunnerBuild, masked: shape.MaskedNone, outcome: store.ExecOK, loc: "d:repo"}
+	old := call{seq: 3, tool: "Bash", prog: "go", class: shape.VerbPackage, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecOK, loc: "d:repo", schema: 5}
+	g := one(t, statesAt(t, 6, gateCall(1, "go-test", store.ExecOK), asBuild, old))
+	if g.Gate != "learned:build:r:go-test@d:repo" {
+		t.Fatalf("Gate %q, want learned:build:r:go-test@d:repo: test recorded first, build last, the last run inferred", g.Gate)
+	}
 }
 
 // BenchmarkGateStates is the gate state at one point of a run with two

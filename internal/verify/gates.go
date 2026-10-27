@@ -34,14 +34,16 @@ const (
 // A family is a runner at a location (gateRun.family); a run with no family
 // credits none and is counted elsewhere (TurnCounts). A run is at the point
 // when its outcome is: its execution's Seq at or before at, so a run in
-// flight at the point is not yet a run there. A spilled execution has no Seq,
-// and its declaration's stands in for it, which can place it a little early
-// (the spill limit, #104).
+// flight at the point is not yet a run there. A spilled execution has no Seq
+// (#104): the run stands from its declaration, since its execution follows
+// it, and as the last run it is Unknown, OrderUnknown, at every point, never
+// a pass, since when its outcome landed is not known (D33).
 //
 // Per family, the last run (by declaration Seq) decides the state by the
 // table below, first match wins. The reference run is the last green run, or
 // the last run where none is green; a run is green when no row before Stale
-// matches it, so a backgrounded, masked, failed or unread run is never one.
+// matches it, so a backgrounded, masked, failed, unread or spilled run is
+// never one.
 // Writes count strictly after the reference run's declaration, not its
 // execution: a write declared while the run was in flight may be one the run
 // never saw, and counting it stales the gate rather than crediting it (D31).
@@ -50,24 +52,29 @@ const (
 // counts in UnknownTarget alone and changes no state (D30): the turn's row is
 // where it fails closed (TurnCounts.UnnamedWriteSeq).
 //
-// AgentCount.AgentType is nil for v0: classify's write carries no agent type,
-// though the declaration has one.
+// The Gate's kind is the family's (kindOf), read over the whole record, so a
+// gate keeps one name at every point; Family is the full key. AgentCount's
+// AgentType is nil for v0: classify's write carries no agent type, though the
+// declaration has one.
 //
 // Cost: one pass to bucket the runs, a sort per family, and one pass over the
 // writes and the unnamed per family: O(R log R + F(W + U)).
 func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64) []GateState {
 	byFamily := make(map[familyKey][]gateRun)
 	for _, r := range runs {
-		k, ok := r.family()
-		if !ok || landed(r) > at {
-			continue
+		if k, ok := r.family(); ok {
+			byFamily[k] = append(byFamily[k], r)
 		}
-		byFamily[k] = append(byFamily[k], r)
 	}
 	out := make([]GateState, 0, len(byFamily))
 	for k, fr := range byFamily {
 		slices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })
-		out = append(out, stateOf(k, fr, writes, unnamed, at))
+		kind := kindOf(fr)
+		fr = slices.DeleteFunc(fr, func(r gateRun) bool { s, _ := landed(r); return s > at })
+		if len(fr) == 0 {
+			continue
+		}
+		out = append(out, stateOf(k, kind, fr, writes, unnamed, at))
 	}
 	slices.SortFunc(out, func(a, b GateState) int {
 		return cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))
@@ -75,13 +82,27 @@ func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64) []Gat
 	return out
 }
 
-// landed is the Seq at which a run's outcome entered the record: its
-// execution's, or its declaration's where the execution was spilled.
-func landed(r gateRun) int64 {
+// landed is the Seq at which a run's outcome entered the record, and whether
+// it is known: its execution's, or, where the execution was spilled, its
+// declaration's, the earliest it can have been.
+func landed(r gateRun) (seq int64, known bool) {
 	if r.ExecSeq != nil {
-		return *r.ExecSeq
+		return *r.ExecSeq, true
 	}
-	return r.Seq
+	return r.Seq, false
+}
+
+// kindOf is a family's kind, which names its gate: the last runner kind any
+// of its runs records, in Seq order over the whole record, else the last
+// run's inferred one. A runner whose recorded kind changed between versions
+// takes the latest; the earlier one is not a second gate.
+func kindOf(fr []gateRun) string {
+	for i := len(fr) - 1; i >= 0; i-- {
+		if fr[i].KindRecorded {
+			return fr[i].Kind
+		}
+	}
+	return fr[len(fr)-1].Kind
 }
 
 // fam is one family at the point, as the table reads it.
@@ -107,6 +128,7 @@ var gateTable = []gateRow{
 	{lastMasked, MaskedInconclusive, maskedReason},
 	{lastFailed, Red, redReason},
 	{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},
+	{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},
 	{writtenSince, Stale, func(*fam) Reason { return WritesAfterGreen }},
 	{func(*fam) bool { return true }, Green, func(*fam) Reason { return OK }},
 }
@@ -115,6 +137,7 @@ func lastBackgrounded(f *fam) bool    { return f.last.Backgrounded }
 func lastMasked(f *fam) bool          { return masked(f.last) }
 func lastFailed(f *fam) bool          { return failed(f.last) }
 func lastOutcomeNotKnown(f *fam) bool { return outcomeNotKnown(f.last) }
+func lastOrderNotKnown(f *fam) bool   { return orderNotKnown(f.last) }
 func writtenSince(f *fam) bool        { return len(f.counted) > 0 }
 
 // masked: the line hid a runner's status, so its outcome is not the gate's.
@@ -139,9 +162,17 @@ func outcomeNotKnown(r *gateRun) bool {
 	return r.Outcome != store.ExecOK || r.Output != nil && r.Output.Kind == outUnread
 }
 
+// orderNotKnown: the run's execution was spilled, so when its outcome
+// landed is not known. Below the rows of a known bad outcome, so it never
+// hides a red.
+func orderNotKnown(r *gateRun) bool {
+	_, known := landed(*r)
+	return !known
+}
+
 // green: no row before Stale matches the run.
 func green(r *gateRun) bool {
-	return !r.Backgrounded && !masked(r) && !failed(r) && !outcomeNotKnown(r)
+	return !r.Backgrounded && !masked(r) && !failed(r) && !outcomeNotKnown(r) && !orderNotKnown(r)
 }
 
 // maskedReason is what the output said beside a hidden status.
@@ -172,8 +203,8 @@ func redReason(f *fam) Reason {
 }
 
 // stateOf is one family's GateState; fr is its runs at the point, in Seq
-// order, at least one.
-func stateOf(k familyKey, fr []gateRun, writes []write, unnamed []int64, at int64) GateState {
+// order, at least one, and kind is the family's.
+func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, at int64) GateState {
 	f := fam{last: &fr[len(fr)-1]}
 	for i := len(fr) - 1; i >= 0; i-- {
 		if green(&fr[i]) {
@@ -188,8 +219,8 @@ func stateOf(k familyKey, fr []gateRun, writes []write, unnamed []int64, at int6
 		}
 	}
 	g := GateState{
-		Gate:             sourceLearned + ":" + f.last.Kind + ":" + prefix12(k.runner) + "@" + prefix12(k.location),
-		Kind:             f.last.Kind,
+		Gate:             sourceLearned + ":" + kind + ":" + prefix12(k.runner) + "@" + prefix12(k.location),
+		Kind:             kind,
 		Family:           k.runner + "@" + k.location,
 		Source:           sourceLearned,
 		Trust:            trustBuiltin,

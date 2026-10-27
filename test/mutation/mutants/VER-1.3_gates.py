@@ -64,15 +64,16 @@ m("VER-1.3 the last write ignores the path among one call's paths", G,
   ' || w.Seq == last.Seq && *w.Path > *last.Path', '', "TestVER18_")
 
 # Time: the point, a run's execution, a write's declaration.
-m("VER-1.3 the point does not cut the future", G, '\t\tif !ok || landed(r) > at {\n', '\t\tif !ok {\n', "TestVER15_")
+m("VER-1.3 the point does not cut the future", G,
+  '\t\tfr = slices.DeleteFunc(fr, func(r gateRun) bool { s, _ := landed(r); return s > at })\n', '', "TestVER15_")
 m("VER-1.3 a run exists at its declaration", G,
-  '\tif r.ExecSeq != nil {\n\t\treturn *r.ExecSeq\n\t}\n\treturn r.Seq\n', '\treturn r.Seq\n', "TestVER24_")
+  '\tif r.ExecSeq != nil {\n\t\treturn *r.ExecSeq, true\n\t}\n\treturn r.Seq, false\n', '\treturn r.Seq, r.ExecSeq != nil\n', "TestVER24_")
 m("VER-1.3 writes count after the reference's execution", G,
-  'w.Seq > f.ref.Seq && w.Seq <= at', 'w.Seq > landed(*f.ref) && w.Seq <= at', "TestVER24b_")
+  'w.Seq > f.ref.Seq && w.Seq <= at', 'w.Seq > func() int64 { s, _ := landed(*f.ref); return s }() && w.Seq <= at', "TestVER24b_")
 m("VER-1.3 ExecSeq is the declaration's", C, 'Seq: d.Seq, ExecSeq: e.Seq, ', 'Seq: d.Seq, ExecSeq: &d.Seq, ', "TestVER9b_")
 
 # Families and their order.
-m("VER-1.3 no-family runs are admitted", G, '\t\tif !ok || landed(r) > at {\n', '\t\tif !ok && false || landed(r) > at {\n', "TestVER21_")
+m("VER-1.3 no-family runs are admitted", G, '\t\tif k, ok := r.family(); ok {\n', '\t\tif k, ok := r.family(); ok || true {\n', "TestVER21_")
 m("VER-1.3 the family key has no location", C,
   'familyKey{location: g.Location, runner: *g.Runner}', 'familyKey{runner: *g.Runner}', "TestVER18b_")
 m("VER-1.3 a family's runs are left in read order", G,
@@ -85,3 +86,21 @@ m("VER-1.3 rows sharing a Gate name are not ordered by Family", G,
 
 # The v0 constants.
 m("VER-1.3 a run's scope is not unknown", G, 'GateOutput: r.Output, Scope: scopeUnknown}', 'GateOutput: r.Output}', "TestVER10_")
+
+# VER-1.3b (D33): a spilled last run's order, and the Gate's kind.
+m("VER-1.3b a spilled run's order is known", G, '\treturn r.Seq, false\n', '\treturn r.Seq, true\n', "TestVER26_")
+m("VER-1.3b the order row is dropped", G,
+  '\t{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},\n', '', "TestVER26_")
+m("VER-1.3b the order row ranks above red", G,
+  '\t{lastFailed, Red, redReason},\n\t{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},\n\t{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},\n',
+  '\t{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},\n\t{lastFailed, Red, redReason},\n\t{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},\n',
+  "TestVER26_")
+m("VER-1.3b a spilled run can be the reference green", G, ' && !orderNotKnown(r)', '', "TestVER26_")
+m("VER-1.3b the kind is the last run's", G, '\t\tkind := kindOf(fr)\n', '\t\tkind := fr[len(fr)-1].Kind\n', "TestVER27b_")
+m("VER-1.3b the kind is read at the point", G,
+  '\t\tkind := kindOf(fr)\n\t\tfr = slices.DeleteFunc(fr, func(r gateRun) bool { s, _ := landed(r); return s > at })\n\t\tif len(fr) == 0 {\n\t\t\tcontinue\n\t\t}\n',
+  '\t\tfr = slices.DeleteFunc(fr, func(r gateRun) bool { s, _ := landed(r); return s > at })\n\t\tif len(fr) == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tkind := kindOf(fr)\n',
+  "TestVER27_")
+m("VER-1.3b the kind is the first recorded", G,
+  '\tfor i := len(fr) - 1; i >= 0; i-- {\n\t\tif fr[i].KindRecorded {\n', '\tfor i := 0; i < len(fr); i++ {\n\t\tif fr[i].KindRecorded {\n', "TestVER27b_")
+m("VER-1.3b a recorded kind is not marked", C, 'g.Kind, g.KindRecorded = *kind, true', 'g.Kind = *kind', "TestVER27b_")

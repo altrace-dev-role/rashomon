@@ -38,6 +38,9 @@ type gateRun struct {
 	Masked       *string
 	Output       *store.GateOutput
 	Backgrounded bool
+	// KindRecorded: Kind is the record's runner_kind, not inferred. Beside
+	// Backgrounded, so the two bools share one word of padding.
+	KindRecorded bool
 }
 
 // familyKey is a gate's identity: the same runner at the same location.
@@ -151,7 +154,7 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 		}
 		switch {
 		case kind != nil:
-			g.Kind = *kind
+			g.Kind, g.KindRecorded = *kind, true
 		case runner != nil && schema < 6:
 			pending = append(pending, len(runs))
 		default:
