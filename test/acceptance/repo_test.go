@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestNoSourceFileIsGitIgnored exists because a `coverage.*` pattern once
@@ -490,7 +492,7 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, gated map[s
 // nothing will ever keep.
 func TestStoreSchemaLabelsAreTheCodeLabels(t *testing.T) {
 	assertNamedEnums(t, "file_label", []string{"/$defs/declaration/properties/file_label"},
-		"shape.Labels()", shape.Labels())
+		"shape.Labels()", shape.Labels(), true)
 }
 
 // TestStoreSchemaVerbClassesAreTheCodeVerbClasses: verb_class is the third
@@ -501,7 +503,7 @@ func TestStoreSchemaLabelsAreTheCodeLabels(t *testing.T) {
 // that the code cannot emit is a promise nothing keeps.
 func TestStoreSchemaVerbClassesAreTheCodeVerbClasses(t *testing.T) {
 	assertNamedEnums(t, "verb_class", []string{"/$defs/declaration/properties/shape/properties/verb_class"},
-		"shape.VerbClasses()", shape.VerbClasses())
+		"shape.VerbClasses()", shape.VerbClasses(), false)
 }
 
 // TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds: status_masked is a closed
@@ -512,7 +514,7 @@ func TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds(t *testing.T) {
 	assertNamedEnums(t, "status_masked", []string{
 		"/$defs/declaration/properties/shape/properties/status_masked",
 		"/$defs/execution/properties/status_masked",
-	}, "shape.MaskedKinds()", shape.MaskedKinds())
+	}, "shape.MaskedKinds()", shape.MaskedKinds(), true)
 }
 
 // TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds: runner_kind is a closed
@@ -522,7 +524,7 @@ func TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds(t *testing.T) {
 	assertNamedEnums(t, "runner_kind", []string{
 		"/$defs/declaration/properties/shape/properties/runner_kind",
 		"/$defs/execution/properties/runner_kind",
-	}, "shape.RunnerKinds()", shape.RunnerKinds())
+	}, "shape.RunnerKinds()", shape.RunnerKinds(), true)
 }
 
 // assertNamedEnums checks every property of the schema named name against
@@ -534,22 +536,25 @@ func TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds(t *testing.T) {
 // compared on its own rather than pooled or missed. Break: drop a word from
 // one of status_masked's two enums, and the row names that enum's path.
 //
-// It is assertEnumsPerPath with the one code list at every path.
-func assertNamedEnums(t *testing.T, name string, paths []string, from string, code []string) {
+// It is assertEnumsPerPath with the one code list, and the one nullability,
+// at every path.
+func assertNamedEnums(t *testing.T, name string, paths []string, from string, code []string, nullable bool) {
 	t.Helper()
 	rows := make([]enumRow, len(paths))
 	for i, p := range paths {
-		rows[i] = enumRow{path: p, from: from, code: code}
+		rows[i] = enumRow{path: p, from: from, code: code, nullable: nullable}
 	}
 	assertEnumsPerPath(t, name, rows)
 }
 
 // enumRow is one enum the schema publishes and the code list it must equal:
-// the property at path, compared both ways against code, which from names.
+// the property at path, compared both ways against code, which from names,
+// and whether a record may carry null there.
 type enumRow struct {
-	path string
-	from string
-	code []string
+	path     string
+	from     string
+	code     []string
+	nullable bool
 }
 
 // assertEnumsPerPath is assertNamedEnums for a name whose enums each publish
@@ -598,6 +603,7 @@ func assertEnumsPerPath(t *testing.T, name string, rows []enumRow) {
 				t.Errorf("the %s enum at %s in %s offers %q, which %s cannot emit", name, e.path, schemaPath, v, r.from)
 			}
 		}
+		assertNullability(t, name, r, e)
 	}
 	for _, c := range conditions {
 		if c.enum {
@@ -620,15 +626,18 @@ func assertEnumsPerPath(t *testing.T, name string, rows []enumRow) {
 
 // namedEnum is one property the schema publishes under a vocabulary's name:
 // its JSON pointer (RFC 6901), whether it has an enum, that enum's members,
-// and the const it pins, if any. Strings are taken as they are and numbers
-// in decimal, so schema_version's members compare as strconv.Itoa spells
-// them. A null member or a null const is skipped: the nullability is
-// carried by the type.
+// the const it pins, if any, and what it says about null. Strings are taken
+// as they are and numbers in decimal, so schema_version's members compare as
+// strconv.Itoa spells them. A null member is not a word: null says whether
+// the field may be absent of a value, which assertNullability compares on
+// its own, and a null const pins nothing.
 type namedEnum struct {
-	path  string
-	enum  bool
-	words map[string]bool
-	konst string
+	path     string
+	enum     bool
+	words    map[string]bool
+	konst    string
+	null     bool // the enum has a null member
+	typeNull bool // the type admits null: no type, "null", or a list naming it
 }
 
 // namedEnums is every property under node named name, with an enum or
@@ -648,8 +657,17 @@ func namedEnums(node any, name string) []namedEnum {
 						if s, ok := enumWord(w); ok {
 							e.words[s] = true
 						}
+						e.null = e.null || w == nil
 					}
 					e.konst, _ = enumWord(prop["const"])
+					switch typ := prop["type"].(type) {
+					case nil:
+						e.typeNull = true
+					case string:
+						e.typeNull = typ == "null"
+					case []any:
+						e.typeNull = slices.Contains(typ, any("null"))
+					}
 					out = append(out, e)
 				}
 				walk(child, p)
@@ -675,4 +693,91 @@ func enumWord(v any) (string, bool) {
 		return strconv.FormatFloat(w, 'f', -1, 64), true
 	}
 	return "", false
+}
+
+// assertNullability holds a row's nullable to the schema and, where the row's
+// path is a field of a record the store writes, to the Go type of that
+// field: a pointer is the only field the writer can leave null. A nullable
+// row needs a null member in its enum and a type that admits null, or a
+// record the store writes with null there fails the contract; a row that is
+// not nullable must offer no null, which the writer can never produce.
+func assertNullability(t *testing.T, name string, r enumRow, e namedEnum) {
+	t.Helper()
+	switch {
+	case r.nullable && !e.null:
+		t.Errorf("%s may be null at %s, and the %s enum there in %s has no null member, so a record "+
+			"carrying null fails the contract", r.from, e.path, name, schemaPath)
+	case r.nullable && !e.typeNull:
+		t.Errorf("%s may be null at %s, and the type there in %s does not admit null", r.from, e.path, schemaPath)
+	case !r.nullable && e.null:
+		t.Errorf("the %s enum at %s in %s offers null, which %s never writes", name, e.path, schemaPath, r.from)
+	}
+	f, record, ok := recordField(e.path)
+	switch {
+	case record && !ok:
+		t.Errorf("%s is under a record def, and no field of the struct the store writes it from carries "+
+			"that json name, so its nullability is compared against nothing", e.path)
+	case ok && (f.Type.Kind() == reflect.Pointer) != r.nullable:
+		t.Errorf("the row for %s says nullable %v, and the store writes it from %s.%s, a %s",
+			e.path, r.nullable, f.owner, f.Name, f.Type)
+	}
+}
+
+// recordTypes is the struct the store writes each record def from.
+var recordTypes = map[string]reflect.Type{
+	"coverage":       reflect.TypeFor[store.Coverage](),
+	"declaration":    reflect.TypeFor[store.Declaration](),
+	"execution":      reflect.TypeFor[store.Execution](),
+	"forgotten_host": reflect.TypeFor[store.ForgottenHostRecord](),
+	"gap":            reflect.TypeFor[store.Gap](),
+	"terminal":       reflect.TypeFor[store.Terminal](),
+}
+
+// namedField is a struct field and the type that declares it.
+type namedField struct {
+	reflect.StructField
+	owner string
+}
+
+// recordField is the Go field behind a schema path of the form
+// /$defs/<def>/properties/<key>[/properties/<key>...], found by json tag and
+// through embedded structs, as encoding/json finds it. record says the path
+// is under a def in recordTypes, so a field should be there; report_reason,
+// a def no record carries, is not.
+func recordField(path string) (f namedField, record, ok bool) {
+	rest, _ := strings.CutPrefix(path, "/$defs/")
+	parts := strings.Split(rest, "/properties/")
+	typ, record := recordTypes[parts[0]]
+	if !record || len(parts) < 2 {
+		return namedField{}, record, false
+	}
+	for _, key := range parts[1:] {
+		if typ.Kind() != reflect.Struct {
+			return namedField{}, true, false
+		}
+		if f, ok = jsonField(typ, key); !ok {
+			return namedField{}, true, false
+		}
+		typ = f.Type
+	}
+	return f, true, true
+}
+
+// jsonField is the field of typ whose json name is key, looking through
+// untagged embedded structs.
+func jsonField(typ reflect.Type, key string) (namedField, bool) {
+	for i := range typ.NumField() {
+		f := typ.Field(i)
+		tag, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if f.Anonymous && tag == "" && f.Type.Kind() == reflect.Struct {
+			if nf, ok := jsonField(f.Type, key); ok {
+				return nf, true
+			}
+			continue
+		}
+		if tag == key {
+			return namedField{f, typ.Name()}, true
+		}
+	}
+	return namedField{}, false
 }
