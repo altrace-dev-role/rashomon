@@ -11,13 +11,12 @@ m("VER-1.4 an ignored record is a skipped line", R, 'run.Skipped > 0', 'run.Skip
 
 # declaration_without_outcome.
 m("VER-1.4 a terminal is not an outcome", R,
-  '\t\tif !answer(ids, t.ToolUseID, t.Seq) && byPoint(t.Seq, at) {\n',
-  '\t\tif _, ok := ids[t.ToolUseID]; !ok && byPoint(t.Seq, at) {\n', "TestVER32_")
+  '\t\tdeclared := answer(ids, t.ToolUseID, t.Seq)\n', '\t\t_, declared := ids[t.ToolUseID]\n', "TestVER32_")
 # answer marks the declaration answered as a side effect, so skipping the call
 # for an execution after the point leaves its declaration unanswered (B145).
 m("VER-1.4 an outcome after the point is missing", R,
-  '\t\tif !answer(ids, e.ToolUseID, e.Seq) && byPoint(e.Seq, at) {\n',
-  '\t\tif e.Seq != nil && *e.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tif !answer(ids, e.ToolUseID, e.Seq) && byPoint(e.Seq, at) {\n',
+  '\t\tdeclared := answer(ids, e.ToolUseID, e.Seq)\n',
+  '\t\tif e.Seq != nil && *e.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tdeclared := answer(ids, e.ToolUseID, e.Seq)\n',
   "TestVER32b_")
 m("VER-1.4 a declaration is due at every point", R, 's.due = s.due || d.Seq <= at', 's.due = true', "TestVER32_")
 m("VER-1.4 an outcome is due before its declaration", R, 's.due && !s.answered', '!s.answered', "TestVER32_")
@@ -25,19 +24,15 @@ m("VER-1.4 an outcome is due before its declaration", R, 's.due && !s.answered',
 # outcome_without_declaration (D35).
 m("VER-1.4 the declaration map is ignored", R, '\t\tids[id] = s\n\t}\n\treturn ok\n', '\t\tids[id] = s\n\t}\n\treturn true\n', "TestVER32c_")
 m("VER-1.4 an orphan execution is not a gap", R,
-  '\t\tif !answer(ids, e.ToolUseID, e.Seq) && byPoint(e.Seq, at) {\n',
-  '\t\tif !answer(ids, e.ToolUseID, e.Seq) && false {\n', "TestVER32c_")
+  '\t\tif !declared && byPoint(e.Seq, at) {\n', '\t\tif !declared && false {\n', "TestVER32c_")
 m("VER-1.4 an orphan terminal is not a gap", R,
-  '\t\tif !answer(ids, t.ToolUseID, t.Seq) && byPoint(t.Seq, at) {\n',
-  '\t\tif !answer(ids, t.ToolUseID, t.Seq) && false {\n', "TestVER32c_")
+  '\t\tif !declared && byPoint(t.Seq, at) {\n', '\t\tif !declared && false {\n', "TestVER32c_")
 m("VER-1.4 the point does not cut an orphan", R, 'return seq == nil || *seq <= at }', 'return true }', "TestVER32c_")
 m("VER-1.4 a spilled orphan is placed", R, 'return seq == nil || *seq <= at }', 'return seq != nil && *seq <= at }', "TestVER32c_")
 m("VER-1.4 the point does not cut an orphan execution", R,
-  '\t\tif !answer(ids, e.ToolUseID, e.Seq) && byPoint(e.Seq, at) {\n',
-  '\t\tif !answer(ids, e.ToolUseID, e.Seq) {\n', "TestVER32c_")
+  '\t\tif !declared && byPoint(e.Seq, at) {\n', '\t\tif !declared {\n', "TestVER32c_")
 m("VER-1.4 the point does not cut an orphan terminal", R,
-  '\t\tif !answer(ids, t.ToolUseID, t.Seq) && byPoint(t.Seq, at) {\n',
-  '\t\tif !answer(ids, t.ToolUseID, t.Seq) {\n', "TestVER32c_")
+  '\t\tif !declared && byPoint(t.Seq, at) {\n', '\t\tif !declared {\n', "TestVER32c_")
 
 # spilled_outcome (D33 item 4).
 m("VER-1.4 a nil Seq is not a gap", R,
