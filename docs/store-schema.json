@@ -1249,7 +1249,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error.",
+          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error. record_scope_unresolved: a session start could not set the record_scope marker from consent.json, so the marker is absent and the session's calls withhold every content field with no_consent whatever the consent on file says.",
           "type": [
             "string",
             "null"
@@ -1268,6 +1268,7 @@
             "probe_absent",
             "recording_paused",
             "pause_state_unreadable",
+            "record_scope_unresolved",
             "probe_unresolved"
           ]
         },
