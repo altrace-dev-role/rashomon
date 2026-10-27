@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/budget"
+	"github.com/altrace-dev-role/rashomon/internal/consent"
+	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -332,6 +334,17 @@ func newRig(t *testing.T) rig {
 	}
 	st, err := store.Open(home)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// A consent naming record_scope v5, as watch writes it, with its marker:
+	// the hook then records the content fields and the probe finds the
+	// marker matching, the path every watched install runs. Without it the
+	// hook would withhold them (1.2q) and these rows would read a lighter
+	// path than the one they budget.
+	if err := consent.Append(home, consent.Record{
+		V: consent.RecordVersion, ScopeVersion: disclose.ScopeVersion, RecordScope: consent.RecordScopeV5,
+		Steer: consent.SteerOn, Via: consent.ViaWatchYes, At: 1760000000000,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	doc, err := settings.Parse(nil)

@@ -491,6 +491,14 @@ const (
 	// a reader needs the two distinguishable rather than folded into one.
 	// checkPaused is the only writer.
 	ReasonPauseStateUnreadable = "pause_state_unreadable"
+	// ReasonRecordScopeUnresolved marks a session start that could not set
+	// the record-scope marker from consent.json: consent.json could not be
+	// read, or the marker could not be written. The marker is then absent,
+	// so the session's calls record the v4 shape and withhold every content
+	// field with no_consent, whatever the consent on file says; what the
+	// records hold may be less than the user agreed to. The SessionStart
+	// probe is the only writer.
+	ReasonRecordScopeUnresolved = "record_scope_unresolved"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -512,6 +520,7 @@ func Reasons() []string {
 		ReasonRecordingPaused,
 		ReasonRecordOversize,
 		ReasonPauseStateUnreadable,
+		ReasonRecordScopeUnresolved,
 	}
 }
 

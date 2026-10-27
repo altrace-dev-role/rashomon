@@ -37,14 +37,15 @@ const (
 
 // topFiles are the files rashomon writes directly under the store root, other
 // than the two anchors: the gap log, the forgotten-host digests, the pause
-// marker, the size cap the last hook resolved, the consent log and the
-// harness switches watch writes, the harness mismatch counts and their lock,
-// and recap's state and the one temporary file builds through v1.1.0 wrote it
-// to.
+// marker, the size cap the last hook resolved, the consent log and its
+// record-scope marker, the harness switches watch writes, the harness
+// mismatch counts and their lock, and recap's state and the one temporary
+// file builds through v1.1.0 wrote it to.
 // Each name is the writing package's own constant, so a rename there cannot
 // strand the file here.
 var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, store.FileResolvedCap,
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
+	store.FileRecordScope,
 	recap.StateFileName, recap.StateTempName}
 
 // topDirs are the directories under the store root that rashomon writes
@@ -61,11 +62,11 @@ var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, 
 
 var runTempPrefixes = []string{fold.TempPrefix}
 
-// tempPrefixes are the names of an anchor's, consent.json's,
+// tempPrefixes are the names of an anchor's, consent.json's, record_scope's,
 // harnesses.json's, harness_counts.json's and recap.json's temporary file,
 // left by a process that died between writing and renaming it.
 var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tmp-",
-	"." + store.FileConsent + ".tmp-", "." + store.FileHarnesses + ".tmp-",
+	"." + store.FileConsent + ".tmp-", "." + store.FileRecordScope + ".tmp-", "." + store.FileHarnesses + ".tmp-",
 	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix}
 
 // ownName reports whether a name directly under the store root is one

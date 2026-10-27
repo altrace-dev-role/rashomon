@@ -356,35 +356,35 @@
           }
         },
         "written_paths_withheld": {
-          "description": "Schema 5. Why written_paths is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when written_paths is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "description": "Schema 5. Why written_paths is null when it is null by rule: no_consent, when the consent on file does not name record_scope v5; oversize, over its cap (1.2.11); or switched_off, under the paths switch of config.json. Null when written_paths is present or simply not applicable. One of: no_consent, oversize, switched_off; or null.",
           "type": [
             "string",
             "null"
           ]
         },
         "file_path_withheld": {
-          "description": "Schema 5. Why file_path is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when file_path is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "description": "Schema 5. Why file_path is null when it is null by rule: no_consent, when the consent on file does not name record_scope v5; oversize, over its cap (1.2.11); or switched_off, under the paths switch of config.json. Null when file_path is present or simply not applicable. One of: no_consent, oversize, switched_off; or null.",
           "type": [
             "string",
             "null"
           ]
         },
         "cwd_withheld": {
-          "description": "Schema 5. Why cwd is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when cwd is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "description": "Schema 5. Why cwd is null when it is null by rule: no_consent, when the consent on file does not name record_scope v5; oversize, over its cap (1.2.11); or switched_off, under the paths switch of config.json. Null when cwd is present or simply not applicable. One of: no_consent, oversize, switched_off; or null.",
           "type": [
             "string",
             "null"
           ]
         },
         "project_withheld": {
-          "description": "Schema 5. Why project is null when it is null by rule: oversize, over its cap (1.2.11). Null when project is present or simply not applicable. One of: oversize; or null.",
+          "description": "Schema 5. Why project is null when it is null by rule: no_consent, when the consent on file does not name record_scope v5; or oversize, over its cap (1.2.11). Null when project is present or simply not applicable. One of: no_consent, oversize; or null.",
           "type": [
             "string",
             "null"
           ]
         },
         "target_withheld": {
-          "description": "Schema 5. Why target is null when it is null by rule: switched_off, under the targets switch of config.json. Null when target is present or simply not applicable. One of: switched_off; or null.",
+          "description": "Schema 5. Why target is null when it is null by rule: no_consent, when the consent on file does not name record_scope v5; or switched_off, under the targets switch of config.json. Null when target is present or simply not applicable. One of: no_consent, switched_off; or null.",
           "type": [
             "string",
             "null"
@@ -885,7 +885,7 @@
           ]
         },
         "head_after_withheld": {
-          "description": "Schema 5. Why head_after is null when it is null by rule: switched_off, under the git switch of config.json. Null when head_after is present or simply not applicable. One of: switched_off; or null.",
+          "description": "Schema 5. Why head_after is null when it is null by rule: no_consent, when the consent on file does not name record_scope v5; or switched_off, under the git switch of config.json. Null when head_after is present or simply not applicable. One of: no_consent, switched_off; or null.",
           "type": [
             "string",
             "null"
@@ -1249,7 +1249,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error.",
+          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error. record_scope_unresolved: a session start could not set the record_scope marker from consent.json, so the marker is absent and the session's calls withhold every content field with no_consent whatever the consent on file says.",
           "type": [
             "string",
             "null"
@@ -1268,6 +1268,7 @@
             "probe_absent",
             "recording_paused",
             "pause_state_unreadable",
+            "record_scope_unresolved",
             "probe_unresolved"
           ]
         },

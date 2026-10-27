@@ -266,6 +266,9 @@ var reasonText = map[string]string{
 	"unterminated_entry":     "a declaration was never closed, so the call's end was not observed",
 	"hook_entry_absent":      "the settings file did not hold the recorder's entry for this event as watch installs it, and this hook was not running as a rashomon plugin that declares one",
 	"hook_entry_unresolved":  "the settings file or the plugin could not be read, so whether the recorder was installed is unknown",
+
+	// The record scope (1.2q): a fault that left content withheld, not a gap.
+	"record_scope_unresolved": "the session start could not set the record scope from consent.json, so this session recorded without paths or command text whatever the consent on file says; `rashomon status` shows the record scope",
 }
 
 // writeReasons renders the coverage reasons, one per line with its meaning.
