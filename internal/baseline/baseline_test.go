@@ -223,11 +223,11 @@ func TestUpdate_TwoProjectsDoNotShareABaseline(t *testing.T) {
 // Sanitising alone maps /a/b and /a-b to the same name, which would merge two
 // projects' baselines.
 func TestFileName_DistinctKeysNeverCollide(t *testing.T) {
-	if fileName("/a/b") == fileName("/a-b") {
+	if FileName("/a/b") == FileName("/a-b") {
 		t.Error("/a/b and /a-b share a baseline filename; sanitising alone is not enough")
 	}
-	if fileName("/proj") != fileName("/proj") {
-		t.Error("fileName is not deterministic")
+	if FileName("/proj") != FileName("/proj") {
+		t.Error("FileName is not deterministic")
 	}
 }
 
@@ -497,21 +497,21 @@ func TestRubricLLD11_FoldSessionIDIsBoundedBeforeStorage(t *testing.T) {
 	}
 }
 
-// TestIsFileNameAcceptsEveryNameFileNameWrites: IsFileName and fileName share
+// TestIsFileNameAcceptsEveryNameFileNameWrites: IsFileName and FileName share
 // one alphabet, so purge recognises every baseline file a save can leave:
-// keys with characters fileName replaces (which put '_' in the name), keys
+// keys with characters FileName replaces (which put '_' in the name), keys
 // long enough to be cut, and the empty key.
 func TestIsFileNameAcceptsEveryNameFileNameWrites(t *testing.T) {
 	keys := []string{"", "/a/b", "/a-b", "/home/me/my project", "/tmp/x.y/z", "C:\\work\\p", "/h\u00e9llo/\u4e16\u754c",
 		"/" + strings.Repeat("deep/", 40), "plain"}
 	for _, k := range keys {
-		name := fileName(k)
+		name := FileName(k)
 		if !IsFileName(name) {
-			t.Errorf("IsFileName(fileName(%q)) = false for %q", k, name)
+			t.Errorf("IsFileName(FileName(%q)) = false for %q", k, name)
 		}
 	}
-	if !strings.Contains(fileName("/a/b"), "_") {
-		t.Errorf("fileName(%q) = %q: a separator is no longer written as '_'", "/a/b", fileName("/a/b"))
+	if !strings.Contains(FileName("/a/b"), "_") {
+		t.Errorf("FileName(%q) = %q: a separator is no longer written as '_'", "/a/b", FileName("/a/b"))
 	}
 	for _, name := range []string{"", ".json", "proj-0123456789ab", "proj-0123456789AB.json",
 		"proj-0123456789a.json", "proj0123456789ab.json", "pro j-0123456789ab.json", "proj-0123456789ab.json.bak", "mine.txt"} {

@@ -7,11 +7,12 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// ProjectIndex is the per-project learned-gate index
-// (`verify/projects/<project_key>.json`, 2.2.10). P-07 carries its identity
-// only; its entries land with the evaluator (P-41).
+// ProjectIndex is the per-project learned-gate index (2.2.10): its file is
+// IndexPath's, and index.go reads, observes and writes it. Entries is sorted
+// by Family, and never null in the encoding.
 type ProjectIndex struct {
-	ProjectKey string `json:"project_key"`
+	ProjectKey string       `json:"project_key"`
+	Entries    []IndexEntry `json:"entries"`
 }
 
 // Evaluate is the evaluator of 2.2.4: a pure fold from the record, the index,

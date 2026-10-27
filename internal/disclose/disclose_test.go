@@ -232,13 +232,14 @@ func matchesAFileRule(rel string, rules []FileRule) bool {
 
 // writeCallSite matches a line that can create or overwrite a file: the four
 // stdlib calls that put new bytes on disk, and store's own writeSmall and
-// replaceFile, which wrap them. It deliberately does not match the line defining
+// ReplaceFile, which wrap them (ReplaceFile also where another package calls
+// it, as store.ReplaceFile). It deliberately does not match the line defining
 // writeSmall itself (TestTRU23_WriteCallSitesArePinned excludes lines that
 // start the way a top-level function declaration does), so the primitive's
 // one real OpenFile call is counted once, at writeSmall's definition, and
 // every caller that reaches a NEW path through it is counted again at the
 // call site -- which is what lets a new call site change the count at all.
-var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|replaceFile\(`)
+var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|ReplaceFile\(`)
 
 // countWriteCallSites counts writeCallSite matches in dir's non-test .go
 // files, one count per line so a multi-call line is not undercounted.
@@ -281,7 +282,7 @@ func countWriteCallSites(t *testing.T, dir string) int {
 //
 // It is deliberately a blunt instrument, not a semantic one: it counts
 // textual call sites of the four file-creating stdlib functions plus
-// writeSmall and replaceFile across store's, recap's, baseline's and consent's own non-test source, and
+// writeSmall and ReplaceFile across store's, recap's, baseline's, consent's and verify's own non-test source, and
 // fails the moment that count moves, in either direction. It cannot tell a
 // new call site that writes an already-covered path from one that writes an
 // uncovered one -- that distinction needs a human, which is the point. A
@@ -328,6 +329,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Pinned 2026-10: internal/consent/record.go's Append, one
 		// os.OpenFile, and replace, one os.CreateTemp.
 		{"consent", 2},
+		// Pinned 2026-10-27 (1.6): internal/verify/index.go's WriteIndex, one
+		// store.ReplaceFile, verify/projects/<name>.json. Not yet in
+		// defaultFiles nor purge's plan: nothing calls WriteIndex until recap
+		// does (2.4), whose card adds both. store's 22 is unchanged by the
+		// export, since the pattern follows replaceFile to ReplaceFile.
+		{"verify", 1},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))
