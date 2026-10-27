@@ -198,11 +198,15 @@ type Declaration struct {
 	// runs, and the test-bending pairs compare this as well as the shape
 	// digest.
 	//
-	// A digest and never the path. The coverage records carry the plain cwd
-	// already, as the novelty baseline's project key; the declarations do
-	// not gain it. Empty string when that directory is not known: no payload
-	// cwd to resolve a relative step against or to key unread steps on, no
-	// home to expand `~` with, or a read fold past shape.MaxLeadingCd steps.
+	// A digest, for the readers keyed on one: the test-bending pairs compare
+	// it, and it names where a line's leading cds lead, which no path field
+	// does. The declaration carries the payload's cwd itself as well (CWD,
+	// with Project and FilePath beside it): a path is less than content, the
+	// store is local and nothing in this program sends it anywhere, and forget
+	// and purge remove what it holds. Empty string when that directory is not
+	// known: no payload cwd to resolve a relative step against or to key
+	// unread steps on, no home to expand `~` with, or a read fold past
+	// shape.MaxLeadingCd steps.
 	CWDDigest string `json:"cwd_digest"`
 
 	// FileLabel is what the file this call named looks like (v3), from the

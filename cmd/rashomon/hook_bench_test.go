@@ -90,10 +90,38 @@ func benchFiller(n int) string {
 // response leaves tool_response out.
 func benchToolCall(tb testing.TB, event, tool string, input, response []byte) []byte {
 	tb.Helper()
+	return benchToolCallIn(tb, benchCWD, event, tool, input, response)
+}
+
+// benchToolCallIn is benchToolCall with the payload's cwd given.
+func benchToolCallIn(tb testing.TB, cwd, event, tool string, input, response []byte) []byte {
+	tb.Helper()
+	head := newBenchHead(event)
+	head.CWD = cwd
 	return benchJSON(tb, benchToolPayload{
-		benchHead: newBenchHead(event), PromptID: payload.PromptID(0), ToolName: tool,
+		benchHead: head, PromptID: payload.PromptID(0), ToolName: tool,
 		ToolInput: input, ToolUseID: benchToolUseID, ToolResponse: response,
 	})
+}
+
+// benchProjectCWD is a PreToolUse payload's cwd: a real directory two levels
+// below a .git marker, made fresh under tb's temporary directory. The hook
+// resolves a declaration's cwd to its project key on every call (baseline.Key:
+// symlinks resolved, then a walk up to the nearest .git), so a cwd that does
+// not exist would measure a failed resolve and a walk to the filesystem root,
+// which no session in the field takes. Only the PreToolUse payloads carry it:
+// the post and the probes record their cwd as written and resolve nothing.
+func benchProjectCWD(tb testing.TB) string {
+	tb.Helper()
+	project := filepath.Join(tb.TempDir(), "project")
+	cwd := filepath.Join(project, "internal", "batch")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		tb.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(project, ".git"), 0o755); err != nil {
+		tb.Fatal(err)
+	}
+	return cwd
 }
 
 // benchBashInput is bash_short's tool_input.
@@ -119,7 +147,7 @@ func benchEditInput(tb testing.TB, newString string) []byte {
 // benchBashShortPre and benchBashShortPost are the two hooks' payloads for
 // bash_short; the post carries the command's short tool_response.
 func benchBashShortPre(tb testing.TB) []byte {
-	return benchToolCall(tb, "PreToolUse", "Bash", benchBashInput(tb), nil)
+	return benchToolCallIn(tb, benchProjectCWD(tb), "PreToolUse", "Bash", benchBashInput(tb), nil)
 }
 
 func benchBashShortPost(tb testing.TB) []byte {
@@ -133,7 +161,7 @@ func benchBashShortPost(tb testing.TB) []byte {
 
 // benchEdit50kPre is an Edit whose new_string is exactly benchEditBytes.
 func benchEdit50kPre(tb testing.TB) []byte {
-	return benchToolCall(tb, "PreToolUse", "Edit", benchEditInput(tb, benchFiller(benchEditBytes)), nil)
+	return benchToolCallIn(tb, benchProjectCWD(tb), "PreToolUse", "Edit", benchEditInput(tb, benchFiller(benchEditBytes)), nil)
 }
 
 // benchEdit314kPost is edit_50k's PostToolUse, as v1.1.0's 314 KB payload

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -181,10 +182,24 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
-	// lists them and forget --host matches them by the name as written.
-	// Nothing else from tool_input is persisted, and shape is still the only
-	// package that reads inside it.
+	// lists them and forget --host matches them by the name as written. The
+	// one other value from tool_input the record keeps is the path a
+	// file-changing tool names (DeclaredPath, below), and shape is still the
+	// only package that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
+	// Where the call ran and what file it changes, as the harness said them:
+	// the cwd as written, its project key (the one every layer shares:
+	// symlinks resolved, then the nearest .git, else the directory itself),
+	// and the path an Edit, Write, MultiEdit or NotebookEdit input names.
+	// None is normalised here; resolving is the reader's. Key answers "" for
+	// an empty cwd, so a payload without one leaves both null. The caps below
+	// bound all three.
+	decl.CWD = nilIfEmpty(p.CWD)
+	decl.Project = nilIfEmpty(baseline.Key(p.CWD))
+	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
+	// WrittenPaths and WrittenPathsComplete are left null here: a Bash call's
+	// write targets are a derivation of their own, and that derivation fills
+	// them.
 
 	// The label is computed on every declaration, and attached only to a
 	// record whose schema carries the field.
