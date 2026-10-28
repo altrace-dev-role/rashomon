@@ -82,3 +82,33 @@ func TestPG9_UnbackedDoneFlagFiresOnAClaimWithoutAGreen(t *testing.T) {
 		}
 	}
 }
+
+// TestDONE_RedBeforeTheLastEditSaysSo: p1's go test exits 1 at call 3; p2
+// edits at call 5, its first, and claims the tests pass. The red ran before
+// the edit and not since, and the done flag says so (card 2.4r R1a).
+func TestDONE_RedBeforeTheLastEditSaysSo(t *testing.T) {
+	red := gateAt("go:test", "test", verify.Red, verify.FailedExit, 3, exitCode(1))
+	v := viewOf(verify.RowRed, verify.TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 5, FirstSeq: 5}, red)
+	v.Scan = scanOf("All 42 tests pass.", "", red)
+	want := prefix + "done was claimed; the record shows 1 file edited; go exited 1 before the last edit (call 3) and has not run since.\n" +
+		indent + "→ rashomon report --session sess-1"
+	if got, ok := DoneFlag(v, "sess-1", false); !ok || got != want {
+		t.Errorf("DoneFlag = %q, %v\nwant %q, true", got, ok, want)
+	}
+}
+
+// TestDONE_RedFromAnEarlierTurnSaysSo: p1's go test exits 1 at call 2; p2
+// writes nothing, runs npm test green at call 5, its first, and claims the
+// tests pass. The npm run is what lets the turn speak (TurnSummary's RowNone
+// return); the red is named as an earlier turn's (card 2.4r R1b).
+func TestDONE_RedFromAnEarlierTurnSaysSo(t *testing.T) {
+	red := gateAt("go:test", "test", verify.Red, verify.FailedExit, 2, exitCode(1))
+	green := gateAt("npm:test", "test", verify.Green, verify.OK, 5, nil)
+	v := viewOf(verify.RowRed, verify.TurnCounts{GateRuns: 1, FirstSeq: 5}, green, red)
+	v.Scan = scanOf("All 42 tests pass.", "", green, red)
+	want := prefix + "done was claimed; the record shows go exited 1 in an earlier turn (call 2) and has not run since.\n" +
+		indent + "→ rashomon report --session sess-1"
+	if got, ok := DoneFlag(v, "sess-1", false); !ok || got != want {
+		t.Errorf("DoneFlag = %q, %v\nwant %q, true", got, ok, want)
+	}
+}

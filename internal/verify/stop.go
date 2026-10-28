@@ -106,12 +106,15 @@ func countTurn(run *store.Run, c classified, promptID string, at int64) TurnCoun
 		promptID = latestPrompt(run.Declarations)
 	}
 	window := map[int64]bool{}
+	var t TurnCounts
 	for _, d := range run.Declarations {
 		if d.PromptID != nil && *d.PromptID != "" && *d.PromptID == promptID && d.Seq <= at {
 			window[d.Seq] = true
+			if t.FirstSeq == 0 || d.Seq < t.FirstSeq {
+				t.FirstSeq = d.Seq
+			}
 		}
 	}
-	var t TurnCounts
 	if len(window) == 0 {
 		return t
 	}

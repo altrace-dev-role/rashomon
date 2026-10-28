@@ -185,7 +185,10 @@ func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
 // zero means none. RewrittenGateSeq is the turn's last gate run whose line a
 // hook rewrote after its declaration, so that where it ran is not known and
 // it credits no gate (classify's rewritten); zero means none. Nothing reads
-// it yet: it counts how often a rewrite costs a gate its run.
+// it yet: it counts how often a rewrite costs a gate its run. FirstSeq is the
+// lowest seq in the turn's window, zero for none: a run before it is an earlier
+// turn's. Sound one way only: a window need not be contiguous (a subagent's late
+// call), so another prompt's run inside its span reads as this turn's (2.4r).
 type TurnCounts struct {
 	Writes           int
 	PathsWritten     int
@@ -193,6 +196,7 @@ type TurnCounts struct {
 	LastWriteSeq     int64
 	UnnamedWriteSeq  int64
 	RewrittenGateSeq int64
+	FirstSeq         int64
 }
 
 // Row is the end-of-turn value line's state row (2.2.11, first match wins).

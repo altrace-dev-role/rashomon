@@ -113,8 +113,8 @@ func TestVER65_ValueLineRowsAreOneFunctionOverTheSnapshot(t *testing.T) {
 		if len(v.Snap.Gates) != 1 {
 			t.Fatalf("gates %+v, want the earlier prompt's one gate in the snapshot", v.Snap.Gates)
 		}
-		if v.Summary.Row != RowNone || v.Turn != (TurnCounts{}) {
-			t.Errorf("row %q turn %+v, want none and nothing counted: the prompt wrote nothing and ran no gate", v.Summary.Row, v.Turn)
+		if v.Summary.Row != RowNone || v.Turn != (TurnCounts{FirstSeq: 5}) {
+			t.Errorf("row %q turn %+v, want none and nothing counted but the Read's seq: the prompt wrote nothing and ran no gate", v.Summary.Row, v.Turn)
 		}
 	})
 }
@@ -214,17 +214,17 @@ func TestVER67_CountTurnMatchesDigestsWindow(t *testing.T) {
 
 	c := classifiedOf(read)
 	at := lastSeqOf(read)
-	want := TurnCounts{Writes: 2, PathsWritten: 2, LastWriteSeq: 9}
+	want := TurnCounts{Writes: 2, PathsWritten: 2, LastWriteSeq: 9, FirstSeq: 7}
 	if got := countTurn(read, c, "", at); got != want {
 		t.Errorf("countTurn with no prompt named = %+v, want prompt-c's %+v", got, want)
 	}
 	if got, named := countTurn(read, c, "", at), countTurn(read, c, d.PromptID, at); got != named {
 		t.Errorf("countTurn with no prompt named = %+v, with digest's choice named = %+v: the two windows differ", got, named)
 	}
-	if got, want := countTurn(read, c, "prompt-b", at), (TurnCounts{Writes: 2, PathsWritten: 2, GateRuns: 1, LastWriteSeq: 11}); got != want {
+	if got, want := countTurn(read, c, "prompt-b", at), (TurnCounts{Writes: 2, PathsWritten: 2, GateRuns: 1, LastWriteSeq: 11, FirstSeq: 3}); got != want {
 		t.Errorf("countTurn for prompt-b = %+v, want %+v: its late declaration is in its window", got, want)
 	}
-	if got, want := countTurn(read, c, "", 8), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7}); got != want {
+	if got, want := countTurn(read, c, "", 8), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7, FirstSeq: 7}); got != want {
 		t.Errorf("countTurn at seq 8 = %+v, want %+v: nothing after the point counts", got, want)
 	}
 }
@@ -238,7 +238,7 @@ func TestVER67b_NoPromptIdsIsAnEmptyWindow(t *testing.T) {
 	r.Declarations[3].PromptID = ptr("p1")
 	c := classifiedOf(r)
 	at := lastSeqOf(r)
-	if got, want := countTurn(r, c, "", at), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7}); got != want {
+	if got, want := countTurn(r, c, "", at), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7, FirstSeq: 7}); got != want {
 		t.Errorf("countTurn = %+v, want only p1's write %+v: a nil or empty prompt id is in no window", got, want)
 	}
 

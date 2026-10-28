@@ -130,6 +130,20 @@ func TestVER65_ValueLineRowsRender(t *testing.T) {
 			"the record does not order every go run and edit in this turn; verification state unknown"},
 		{"unknown, outcome", viewOf(verify.RowUnknown, wrote, gateAt("go:test", "test", verify.Unknown, verify.OutcomeUnknown, 7, nil)),
 			"go ran after the last edit (call 7); its result is not in the record"},
+		// The clause from the order of events (card 2.4r R1c-R1e): a tie with
+		// the last write is after it; the turn's first call is in it; a run
+		// before the last write, or before the turn, says so at every site.
+		{"red, the call that wrote also ran", viewOf(verify.RowRed, verify.TurnCounts{Writes: 1, PathsWritten: 1, GateRuns: 1, LastWriteSeq: 7, FirstSeq: 7}, goRed),
+			"1 file edited; go exited 1 after the last edit (call 7)"},
+		{"red, no write, the turn's first call", viewOf(verify.RowRed, verify.TurnCounts{GateRuns: 1, FirstSeq: 7}, goRed), "go exited 1 in this turn (call 7)"},
+		{"masked before the last edit", viewOf(verify.RowMasked, oneFile, gateAt("go:test", "test", verify.MaskedInconclusive, verify.MaskedNoSuccessLine, 3, nil)),
+			"go ran before the last edit; its exit status was hidden by its line (call 3)"},
+		{"backgrounded before the last edit", viewOf(verify.RowBackgrounded, oneFile, gateAt("go:test", "test", verify.Backgrounded, verify.BackgroundLaunch, 3, nil)),
+			"go moved to the background before the last edit; its result is not in the record"},
+		{"unknown outcome before the last edit", viewOf(verify.RowUnknown, oneFile, gateAt("go:test", "test", verify.Unknown, verify.OutcomeUnknown, 3, nil)),
+			"go ran before the last edit (call 3); its result is not in the record"},
+		{"empty run in an earlier turn", viewOf(verify.RowUnverified, verify.TurnCounts{GateRuns: 1, FirstSeq: 5}, gateAt("go:test", "test", verify.Absent, verify.EmptyRun, 2, nil)),
+			"go ran in an earlier turn and ran no checks (call 2)"},
 		{"no gate, none known", viewOf(verify.RowNoGate, wrote), "2 files edited; no test or build is known for this project yet"},
 		{"no gate, learned elsewhere", learned, "2 files edited; no known test or build applies to these files"},
 		{"unnamed write", viewOf(verify.RowUnnamedWrite, unnamed, goGreen), "2 files edited; go passed (call 3); call 9 may have written files after that"},
