@@ -13,8 +13,9 @@ SORT = ("\tslices.SortFunc(out.Unresolved, func(a, b IntegrityEntry) int {\n"
 m("VER-1.8 a write after the point counts", I, " || w.Seq > at {\n", " || w.Seq > at+1 {\n", "TestINT5_")
 m("VER-1.8 a write at the point is cut", I, " || w.Seq > at {\n", " || w.Seq >= at {\n", "TestINT1_")
 m("VER-1.8 a write at the window start counts", I, " || w.Seq <= from || ", " || w.Seq < from || ", "TestINT13_")
-m("VER-1.8 a pair at the window start counts", I, "\t\tif from < p[1] && ", "\t\tif from <= p[1] && ", "TestINT13_")
-m("VER-1.8 a pair after the point counts", I, " && p[1] <= at {\n", " && p[1] <= at+1 {\n", "TestINT4_")
+P = "internal/verify/pairs.go"
+m("VER-1.8 a pair at the window start counts", P, " && from < d.Seq && ", " && from <= d.Seq && ", "TestINT13_|TestINT17_")
+m("VER-1.8 a pair after the point counts", P, " && d.Seq <= at {\n", " && d.Seq <= at+1 {\n", "TestINT4_|TestINT17_")
 
 # The marks: which calls carry them, and on which basis (D42).
 m("VER-1.8 nil marks are read", I, "\t\tif em == nil || w.Path == nil || ", "\t\tif w.Path == nil || ", "TestINT6_")
@@ -73,7 +74,9 @@ m("VER-1.8 assertions fire only while the test count is unchanged", I,
 
 # The pairs.
 m("VER-1.8 tests_only_then_green is resolved by a later write", I,
-  " && p[1] <= at {\n", " && p[1] <= at && !slices.ContainsFunc(writes, func(w write) bool { return w.Seq > p[1] && w.Seq <= at }) {\n",
+  "\t\tout.Unresolved = append(out.Unresolved, IntegrityEntry{Check: TestsOnlyThenGreen, Seq: p[1]})\n",
+  "\t\tif !slices.ContainsFunc(writes, func(w write) bool { return w.Seq > p[1] && w.Seq <= at }) {\n"
+  "\t\t\tout.Unresolved = append(out.Unresolved, IntegrityEntry{Check: TestsOnlyThenGreen, Seq: p[1]})\n\t\t}\n",
   "TestINT4_")
 
 # Counts.
@@ -96,12 +99,67 @@ m("VER-1.8 the marker is not a sort key", I,
 
 # Part two: Evaluate's wiring (PF-IV3, D39, D40) and the findings row (Gate B F1).
 E = "internal/verify/evaluate.go"
-m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, writes, 0, at)\n", "", "TestINT10_")
+m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, picked, writes, 0, at)\n", "", "TestINT10_")
 m("VER-1.8 Evaluate's window starts at the point", E,
-  "integrity(run, writes, 0, at)", "integrity(run, writes, at, at)", "TestINT10_")
+  "integrity(run, picked, writes, 0, at)", "integrity(run, picked, writes, at, at)", "TestINT10_")
 m("VER-1.8 RecordGreen ignores integrity", E, "\tif unresolved > 0 {\n\t\treturn false, nil\n\t}\n", "", "TestINT10_")
 m("VER-1.8 the findings row is not taken", E,
   "\tdefault:\n\t\trow = RowFindings\n", "\tdefault:\n\t\trow = RowVerified\n", "TestINT10_")
 m("VER-1.8 the count sentence is off by one", E,
   "\treturn strconv.Itoa(k) + \" record", "\treturn strconv.Itoa(k+1) + \" record", "TestINT10_")
 m("VER-1.8 the count sentence is on every row", E, "\tcase row == RowFindings:\n", "\tdefault:\n", "TestINT10_")
+
+# 1.8r: the pair read in verify over classify's pick (pairs.go), report's
+# definition (Gate A R1-R5, D44), and the import pin. INT14 holds the pairs
+# equal to report.DetectTestBending's on any record; its rows are each built
+# where a break would part the two.
+m("VER-1.8r Evaluate hands integrity no pick", E,
+  "integrity(run, picked, writes, 0, at)", "integrity(run, nil, writes, 0, at)", "TestINT15_")
+m("VER-1.8r verify imports report again", I,
+  '\t"github.com/altrace-dev-role/rashomon/internal/store"\n',
+  '\t_ "github.com/altrace-dev-role/rashomon/internal/report"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n', "TestRES2d_")
+m("VER-1.8r an other edit between still pairs", P, " && others == prev.others && ", " && ", "TestINT14_|TestINT15_")
+m("VER-1.8r the test count need not rise", P, " && tests > prev.tests && ", " && ", "TestINT14_")
+m("VER-1.8r the order of the pair is not read", P, " && prev.failed && ok && ", " && prev.failed != failed && ", "TestINT14_")
+m("VER-1.8r another command closes the pair", P,
+  "\t\tkey := command{d.Shape.Digest, d.CWDDigest}\n", "\t\tkey := command{\"\", d.CWDDigest}\n", "TestINT14_")
+m("VER-1.8r the same command elsewhere closes the pair", P,
+  "\t\tkey := command{d.Shape.Digest, d.CWDDigest}\n", "\t\tkey := command{d.Shape.Digest, \"\"}\n", "TestINT14_")
+m("VER-1.8r the pair is cut on the red", P,
+  " && from < d.Seq && d.Seq <= at {\n", " && from < prev.seq && prev.seq <= at {\n", "TestINT17_")
+m("VER-1.8r a masked line read as a run", P, " && !hidden && (ok || failed)\n", " && (ok || failed)\n", "TestINT14_")
+m("VER-1.8r masking is the declaration's (D44)", P, "\tif e != nil {\n\t\tm, _, _, _ = asRan(d, e)\n\t}\n", "", "TestINT14_")
+m("VER-1.8r two reds pair the first", P,
+  '\t\tif isRun && d.CWDDigest != "" {\n', '\t\tif isRun && d.CWDDigest != "" && !(failed && last[key].failed) {\n', "TestINT18_")
+m("VER-1.8r a green leaves the red open (two pairs)", P,
+  '\t\tif isRun && d.CWDDigest != "" {\n', '\t\tif failed && d.CWDDigest != "" {\n', "TestINT14_")
+m("VER-1.8r a run at no known location pairs", P, '\t\tif isRun && d.CWDDigest != "" {\n', "\t\tif isRun {\n", "TestINT14_")
+m("VER-1.8r the run's own edit is between", P, "others: others}", "others: others - 1}", "TestINT4_|TestINT14_")
+m("VER-1.8r a failed test edit counts", P, "\t\t\tcase ok:\n\t\t\t\ttests++\n", "\t\t\tdefault:\n\t\t\t\ttests++\n", "TestINT14_")
+m("VER-1.8r a failed test-file edit stops the pair", P,
+  "\t\t\tcase ok:\n\t\t\t\ttests++\n", "\t\t\tcase ok:\n\t\t\t\ttests++\n\t\t\tdefault:\n\t\t\t\tothers++\n", "TestINT14_")
+m("VER-1.8r a test edit needs no label", P,
+  " || d.FileLabel == nil || *d.FileLabel != shape.LabelTestFile:\n", ":\n", "TestINT14_")
+m("VER-1.8r the record is read in slice order", P,
+  "\tif slices.IsSortedFunc(run.Declarations, bySeq) {\n", "\tif true {\n", "TestINT14_|TestINT8_")
+m("VER-1.8r a call with no execution is a result", P,
+  "\tcase e == nil:\n\t\treturn false, false\n", "\tcase e == nil:\n\t\treturn true, false\n", "TestINT14_")
+m("VER-1.8r a timeout-124 red pairs", P, "\t\treturn false, !stopped\n", "\t\treturn false, !stopped || stopped\n", "TestINT14_")
+m("VER-1.8r a backgrounded green is a result", P, " && !e.Backgrounded, false\n", ", false\n", "TestINT14_")
+m("VER-1.8r a noWrite tool stops the pair", P, "\tif noWrite[d.ToolName] {\n\t\treturn false\n\t}\n", "", "TestINT14_")
+m("VER-1.8r the noWrite list misses a name", P, '"TodoWrite": true, ', "", "TestINT14_")
+m("VER-1.8r a shell line that may write is read by its class", P,
+  "\tif d.Shape.MayWrite || hidden {\n", "\tif hidden {\n", "TestINT14_")
+m("VER-1.8r a masked line is read by its class", P,
+  "\tif d.Shape.MayWrite || hidden {\n", "\tif d.Shape.MayWrite {\n", "TestINT14_")
+m("VER-1.8r an MCP call is no edit", P,
+  "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n", "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent, shape.VerbMCP:\n",
+  "TestINT14_|TestINT15_")
+m("VER-1.8r a read is an edit", P,
+  "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n", "\tcase shape.VerbNetwork, shape.VerbAgent:\n", "TestINT14_|TestINT15_")
+m("VER-1.8r an undeclared call is ignored", P,
+  "\tif len(pairs) > 0 && undeclared(run, at) {\n", "\tif len(pairs) > 0 && false {\n", "TestINT14_")
+m("VER-1.8r an orphan execution after the point cuts the pair", P, "; !ok && byPoint(e.Seq, at) {\n", "; !ok {\n", "TestINT17_")
+m("VER-1.8r an orphan terminal after the point cuts the pair", P, "; !ok && byPoint(t.Seq, at) {\n", "; !ok {\n", "TestINT17_")
+m("VER-1.8r a flush_failed marker with no id cuts the pair", P,
+  '\t\tif t.FlushFailed() && t.ToolUseID == "" {\n\t\t\tcontinue\n\t\t}\n', "", "TestINT14_")

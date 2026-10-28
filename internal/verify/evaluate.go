@@ -68,14 +68,15 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	if snap.Recording != Complete {
 		return snap
 	}
-	runs, writes, unnamed, _ := classify(run)
+	picked := pickExecutions(run)
+	runs, writes, unnamed, _ := classifyWith(run, picked)
 	snap.Gates = gateStates(runs, writes, unnamed, at)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
-	snap.Integrity = integrity(run, writes, 0, at)
+	snap.Integrity = integrity(run, picked, writes, 0, at)
 	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
 	return snap
 }

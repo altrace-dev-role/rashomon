@@ -22,7 +22,7 @@ type ids = map[string]int
 // writes, as Evaluate will call it.
 func integrityOf(r *store.Run, from, at int64) Integrity {
 	_, writes, _, _ := classify(r)
-	return integrity(r, writes, from, at)
+	return integrity(r, pickExecutions(r), writes, from, at)
 }
 
 // labelTest gives declaration i the test-file label the hook derives for a
@@ -86,7 +86,7 @@ func TestINT3_ARestoringEditResolves(t *testing.T) {
 	})
 }
 
-func TestINT4_TestsOnlyThenGreenComesFromReportAndNeverResolves(t *testing.T) {
+func TestINT4_TestsOnlyThenGreenIsUnresolvedAndNeverResolves(t *testing.T) {
 	r := runOf(t, gateCall(1, "go-test", store.ExecFailed), edit(2, "pkg/calc_test.go"), gateCall(3, "go-test", store.ExecOK), edit(4, "pkg/calc.go"))
 	labelTest(r, 1)
 	pair := IntegrityEntry{Check: TestsOnlyThenGreen, Marker: "", Seq: 5}
@@ -225,7 +225,7 @@ func TestINT6_UnknownMarkerAndNilMarksAreIgnored(t *testing.T) {
 		}
 	})
 	t.Run("a nil run", func(t *testing.T) {
-		wantIntegrity(t, integrity(nil, nil, 0, 10), IntegrityCounts{})
+		wantIntegrity(t, integrity(nil, nil, nil, 0, 10), IntegrityCounts{})
 	})
 }
 
@@ -259,7 +259,7 @@ func int8Run(t *testing.T) *store.Run {
 func TestINT8_RecordOrderDoesNotChangeTheOutput(t *testing.T) {
 	r := int8Run(t)
 	_, writes, _, _ := classify(r)
-	got := integrity(r, writes, 0, 12)
+	got := integrity(r, pickExecutions(r), writes, 0, 12)
 	wantIntegrity(t, got, IntegrityCounts{TestsDelta: -2, SkipsAdded: 2, SuppressionsAdded: 2},
 		IntegrityEntry{Check: TestsOnlyThenGreen, Seq: 5},
 		IntegrityEntry{Check: TestRemoved, Marker: "go.test_def", Seq: 7},
@@ -276,7 +276,9 @@ func TestINT8_RecordOrderDoesNotChangeTheOutput(t *testing.T) {
 		rng.Shuffle(len(r.Declarations), func(i, j int) { r.Declarations[i], r.Declarations[j] = r.Declarations[j], r.Declarations[i] })
 		rng.Shuffle(len(r.Executions), func(i, j int) { r.Executions[i], r.Executions[j] = r.Executions[j], r.Executions[i] })
 		rng.Shuffle(len(writes), func(i, j int) { writes[i], writes[j] = writes[j], writes[i] })
-		b, err := json.Marshal(integrity(r, writes, 0, 12))
+		// picked points into r.Executions, which the shuffle moves: it is
+		// picked again over the shuffled record.
+		b, err := json.Marshal(integrity(r, pickExecutions(r), writes, 0, 12))
 		if err != nil || !bytes.Equal(b, want) {
 			t.Fatalf("shuffle %d: %s, want %s", i, b, want)
 		}
@@ -421,14 +423,9 @@ func TestINT13_AWriteAtOrBeforeTheWindowStartIsNotInTheWindow(t *testing.T) {
 	}
 }
 
-// BenchmarkIntegrity is integrity at the end of a run of 100 edits with marks
-// over two test files, between a failed and a passing go test: the fold over
-// every write and the report's pair detector over every record. Evaluate
-// computes it once per point.
-func BenchmarkIntegrity(b *testing.B) {
-	// A top-level benchmark, not a b.Run: the name with a sub-benchmark's
-	// suffix reads as a secret to internal/secretshape's entropy test, which
-	// TestH113 runs over test/perf/budgets.json.
+// benchIntegrityRun is 100 edits with marks over two test files, between a
+// failed and a passing go test, and the point after its last record.
+func benchIntegrityRun(tb testing.TB) (*store.Run, int64) {
 	calls := []call{gateCall(1, "go-test", store.ExecFailed)}
 	for i := range 100 {
 		p := "pkg/a_test.go"
@@ -442,19 +439,31 @@ func BenchmarkIntegrity(b *testing.B) {
 		calls = append(calls, edit(int64(i+2), p).marks(added, removed))
 	}
 	calls = append(calls, gateCall(102, "go-test", store.ExecOK))
-	r := runOf(b, calls...)
+	r := runOf(tb, calls...)
 	for i := 1; i <= 100; i++ {
 		labelTest(r, i)
 	}
+	return r, int64(2 * len(calls))
+}
+
+// BenchmarkIntegrity is integrity at the end of benchIntegrityRun: the fold
+// over every write and the pair detector over every declaration, with the
+// pick Evaluate shares with classify built once outside the loop. Evaluate
+// computes it once per point.
+func BenchmarkIntegrity(b *testing.B) {
+	// A top-level benchmark, not a b.Run: the name with a sub-benchmark's
+	// suffix reads as a secret to internal/secretshape's entropy test, which
+	// TestH113 runs over test/perf/budgets.json.
+	r, at := benchIntegrityRun(b)
 	_, writes, _, _ := classify(r)
-	at := int64(2 * len(calls))
-	if got := integrity(r, writes, 0, at); len(got.Unresolved) != 3 || got.Counts.TestsDelta != 50 {
+	picked := pickExecutions(r)
+	if got := integrity(r, picked, writes, 0, at); len(got.Unresolved) != 3 || got.Counts.TestsDelta != 50 {
 		b.Fatalf("the fixture gives %+v, want three entries (the pair and two paths' assertions) and TestsDelta 50", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		integrity(r, writes, 0, at)
+		integrity(r, picked, writes, 0, at)
 	}
 	b.ReportMetric(float64(len(writes)), "writes")
 }
