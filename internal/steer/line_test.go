@@ -13,11 +13,14 @@ import (
 // line shows, every key the "Also:" sentence adds, `outcome` (its own bullet:
 // "closed, null on every other line"), `mirror_failure` (tech 6.2.1), and
 // `model_text_withheld` and `user_text_withheld`, the *_withheld keys of the
-// two capped texts (tech 1.2.9's 2,048-byte cap, 1.2.11's convention). A change to Line's JSON shape that does not also change
-// this list is exactly the drift this test exists to catch.
+// two capped texts (tech 1.2.9's 2,048-byte cap, 1.2.11's convention), and
+// `key`, the finding's dedupe key, which the per-key budget reads back from
+// the log (tech 4.2.5; card 2.2 R9, D53: 4.2.3's listing omits it). A change
+// to Line's JSON shape that does not also change this list is exactly the
+// drift this test exists to catch.
 var wantLineJSONTags = []string{
 	"type", "v", "id", "at_unix_ms", "session_id", "prompt_id", "agent_id",
-	"project", "pattern", "kind", "pattern_version", "level", "channel",
+	"project", "pattern", "kind", "key", "pattern_version", "level", "channel",
 	"event", "attendance", "arm", "after_seq", "evidence_seqs", "slots",
 	"model_text", "user_text", "state", "suppressed_by", "invocation_id",
 	"renderer_version", "rules_version", "steer_id", "label_rule",
@@ -244,5 +247,23 @@ func TestLine_ZeroValueMarshalsEmptyNotNull(t *testing.T) {
 		if _, ok := keys[k]; !ok {
 			t.Errorf("the line lost key %q", k)
 		}
+	}
+}
+
+// TestLine_KeyIsOnTheLine: the line carries its finding's key, because the
+// one-per-key budget (tech 4.2.5) is counted from the log under its lock
+// (card 2.2 R6, R9); a line written before the key existed reads back as
+// no key, never as an error.
+func TestLine_KeyIsOnTheLine(t *testing.T) {
+	b, err := json.Marshal(Line{Key: "task:7|internal/a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"key":"task:7|internal/a.go"`) {
+		t.Errorf("the line writes %s, want its key", b)
+	}
+	var l Line
+	if err := json.Unmarshal([]byte(specExampleLine), &l); err != nil || l.Key != "" {
+		t.Errorf("the spec's example line, which has no key, decodes as key %q, %v", l.Key, err)
 	}
 }

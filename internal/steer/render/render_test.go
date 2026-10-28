@@ -133,12 +133,49 @@ func TestNew_FillsTheTemplateAndReturnsTheClosedMessage(t *testing.T) {
 	}
 }
 
-// TestNew_ProductionTableHoldsNoTemplateYet: a pattern's PR adds its binding
-// struct and its row; until then New refuses every binding.
-func TestNew_ProductionTableHoldsNoTemplateYet(t *testing.T) {
+// TestNew_ProductionTableRefusesABindingWithNoRow: a pattern's PR adds its
+// binding struct and its row, and the row is keyed by the binding's type, so
+// a struct of the same shape under a pattern that has a row is still refused.
+func TestNew_ProductionTableRefusesABindingWithNoRow(t *testing.T) {
 	m, err := New(pattern.RegressionLocation, goodExample())
 	if !errors.Is(err, ErrNoTemplate) || !isZero(m) {
 		t.Errorf("New = (%+v, %v), want (zero Message, ErrNoTemplate)", m, err)
+	}
+}
+
+// TestSTR43a_RegressionLocationTemplateIsTheArchivesText: the first production
+// row is archive 40.4.2's model text with the gate named before its quote, as
+// Gate renders (P07N-11; card 2.2 R13, A3), filled with the spec example's
+// values (tech 4.2.3). Its four slots come back from Slots in the binding's
+// order, and the omitted count is the bound PathList's.
+func TestSTR43a_RegressionLocationTemplateIsTheArchivesText(t *testing.T) {
+	m, err := New(pattern.RegressionLocation, RegressionLocationBinding{
+		Gate: "go test", Minutes: 6, Exit: 1,
+		Paths: slot.NewPathList([]slot.Path{"internal/a.go", "internal/b.go"}, 0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "rashomon record: gate 'go test' exited 0 earlier in this session (6 min ago) and exited 1 on this run. " +
+		"Files written between the two runs: 'internal/a.go', 'internal/b.go'."
+	if m.Text() != want {
+		t.Errorf("Text() = %q, want %q", m.Text(), want)
+	}
+	if m.Pattern() != pattern.RegressionLocation || m.Template() != "regression-location/v1" {
+		t.Errorf("Pattern, Template = %q, %q", m.Pattern(), m.Template())
+	}
+	var names []string
+	for _, s := range m.Slots() {
+		names = append(names, s.Name)
+	}
+	if !slices.Equal(names, []string{"gate", "minutes", "exit", "paths"}) {
+		t.Errorf("Slots() names = %q", names)
+	}
+	if l, ok := m.Slots()[3].Value.(slot.PathList); !ok || l.More() != 0 || len(l.Paths()) != 2 {
+		t.Errorf("the paths slot = %#v, want the two listed paths and 0 more", m.Slots()[3].Value)
+	}
+	if Version != 1 {
+		t.Errorf("Version = %d, want 1 (the spec example's renderer_version)", Version)
 	}
 }
 

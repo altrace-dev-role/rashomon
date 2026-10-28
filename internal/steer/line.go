@@ -57,10 +57,14 @@ type Line struct {
 	PromptID *string `json:"prompt_id"`
 	// AgentID is null for the main agent, matching Finding.AgentID's ""
 	// meaning the same thing one layer up.
-	AgentID        *string    `json:"agent_id"`
-	Project        string     `json:"project"`
-	Pattern        string     `json:"pattern"`
-	Kind           string     `json:"kind"`
+	AgentID *string `json:"agent_id"`
+	Project string  `json:"project"`
+	Pattern string  `json:"pattern"`
+	Kind    string  `json:"kind"`
+	// Key is the finding's dedupe key (Finding.Key). The one-per-key budget
+	// (tech 4.2.5) is counted from this log under its lock, so the log
+	// carries the key; 4.2.3's listing omits it (card 2.2 R9, D53).
+	Key            string     `json:"key"`
 	PatternVersion int        `json:"pattern_version"`
 	Level          string     `json:"level"`
 	Channel        Channel    `json:"channel"`
@@ -93,8 +97,11 @@ type Line struct {
 	ModelTextWithheld *string   `json:"model_text_withheld"`
 	UserTextWithheld  *string   `json:"user_text_withheld"`
 	State             LineState `json:"state"`
-	// SuppressedBy is null unless State is suppressed (or a budget_*
-	// suppression produced one of the other non-delivered states).
+	// SuppressedBy is null unless the line is suppressed (or a budget_*
+	// suppression produced one of the other non-delivered states) or its
+	// level was clamped below the finding's, where it names the clamp:
+	// steer_off, consent_missing, budget_prompt or stop_hook_active on a
+	// delivered flag (card 2.2 R14, D50).
 	SuppressedBy    *SuppressedBy `json:"suppressed_by"`
 	InvocationID    string        `json:"invocation_id"`
 	RendererVersion int           `json:"renderer_version"`
