@@ -69,9 +69,18 @@ var markerTable = map[string]markClass{
 // integrity is the Integrity view of the window (from, at] (2.2.6, Unresolved
 // at a point; D39, D40): a pure fold over two sources, the edit marks the
 // record carries on a write's execution and the tests_only_then_green pairs
-// (testsOnlyThenGreen, report's definition read over picked, D44). picked and
-// writes are classify's: its pick of each call's execution, and its writes,
+// (testPairs, report's definition read over picked, D44). picked and writes
+// are classify's: its pick of each call's execution, and its writes,
 // project-relative and classed.
+//
+// Precondition: recording reads the record Complete at at, as evaluate
+// establishes by returning first when it does not. Its
+// outcome_without_declaration refuses every record holding a call by the
+// point whose declaration was lost, a superset of the records
+// testsOnlyThenGreen's guard voids (it also counts a flush_failed terminal
+// with no id), so the pairs are read without the guard and its declared-id
+// set is never built (1.8r2). A caller that has not established Complete
+// reads testsOnlyThenGreen.
 //
 // The marks. A write in the window counts when it names a path and its call
 // is a file tool's: a Bash line names its paths in WrittenPaths, one write
@@ -116,8 +125,9 @@ var markerTable = map[string]markClass{
 // = 0 until 1.8w gives Evaluate the point's window start.
 //
 // Cost: one pass over the executions and declarations for the marks, one
-// over writes, one over the declarations for the pairs (testsOnlyThenGreen),
-// and a sort of the entries.
+// over writes, one over the declarations for the pairs (testPairs), and a
+// sort of the entries; none for the lost-declaration guard, which is
+// recording's.
 func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, from, at int64) Integrity {
 	out := Integrity{Unresolved: []IntegrityEntry{}}
 	nets := foldMarks(&out, marksByCall(run), writes, from, at)
@@ -140,7 +150,7 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: checkOf[n.class], Marker: k.id, Seq: n.last})
 		}
 	}
-	for _, p := range testsOnlyThenGreen(run, picked, from, at) {
+	for _, p := range testPairs(run, picked, from, at) {
 		out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: TestsOnlyThenGreen, Seq: p[1]})
 	}
 	slices.SortFunc(out.Unresolved, func(a, b IntegrityEntry) int {

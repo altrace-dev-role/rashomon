@@ -60,16 +60,31 @@ var noWrite = map[string]bool{
 // A record holding a call by the point whose declaration was lost (an
 // execution or terminal naming a tool_use_id no declaration names, other
 // than a flush_failed terminal with no id) has no pairs: that call may have
-// been an edit anywhere. Within Evaluate the point is never reached, since
-// recording marks such a record incomplete first; the check is for the
-// detector on its own, and runs only once a pair is found.
+// been an edit anywhere. The check is for the detector on its own, and runs
+// only once a pair is found. Within Evaluate it can never fire, since
+// recording's outcome_without_declaration marks such a record incomplete
+// first, so integrity reads testPairs, the walk without it (1.8r2).
+//
+// Cost: testPairs, then the declared-id set only when a pair is found.
+func testsOnlyThenGreen(run *store.Run, picked map[string]*store.Execution, from, at int64) [][2]int64 {
+	pairs := testPairs(run, picked, from, at)
+	if len(pairs) > 0 && undeclared(run, at) {
+		return nil
+	}
+	return pairs
+}
+
+// testPairs is testsOnlyThenGreen's walk without its guard: the pairs as
+// though no call by the point had lost its declaration. It is for a caller
+// that has established recording reads the record Complete at at, whose
+// outcome_without_declaration has then refused every record the guard
+// would void (integrity, by its precondition).
 //
 // Cost: one walk over the declarations, a map lookup in picked for each, and
-// a map of command to its last run; an
-// index slice and a sort only when the declarations are not already in Seq
-// order, as the store writes them; the declared-id set only when a pair is
-// found. No copy of the declarations and no executions index.
-func testsOnlyThenGreen(run *store.Run, picked map[string]*store.Execution, from, at int64) [][2]int64 {
+// a map of command to its last run; an index slice and a sort only when the
+// declarations are not already in Seq order, as the store writes them. No
+// copy of the declarations and no executions index.
+func testPairs(run *store.Run, picked map[string]*store.Execution, from, at int64) [][2]int64 {
 	if run == nil {
 		return nil
 	}
@@ -117,9 +132,6 @@ func testsOnlyThenGreen(run *store.Run, picked map[string]*store.Execution, from
 		for _, i := range order {
 			visit(&run.Declarations[i])
 		}
-	}
-	if len(pairs) > 0 && undeclared(run, at) {
-		return nil
 	}
 	return pairs
 }
