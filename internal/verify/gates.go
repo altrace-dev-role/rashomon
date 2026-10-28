@@ -3,6 +3,7 @@ package verify
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -231,7 +232,7 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 		}
 	}
 	g := GateState{
-		Gate:             sourceLearned + ":" + kind + ":" + prefix12(k.runner) + "@" + prefix12(k.location),
+		Gate:             learnedGateID(kind, k),
 		Kind:             kind,
 		Family:           k.runner + "@" + k.location,
 		Source:           sourceLearned,
@@ -262,6 +263,27 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 }
 
 func prefix12(s string) string { return s[:min(len(s), 12)] }
+
+// learnedGateID is a learned gate's id: its source, its kind, and the first
+// twelve bytes of its runner and of its location. kindOfGateID reads it back.
+func learnedGateID(kind string, k familyKey) string {
+	return sourceLearned + ":" + kind + ":" + prefix12(k.runner) + "@" + prefix12(k.location)
+}
+
+// kindOfGateID is the kind word learnedGateID put in a gate's id, "" for an id
+// it did not build. The steer note names a gate by its kind when the fact
+// carries no valid program (card 2.3 R7), and GateFact's fields are 2.2.9's.
+func kindOfGateID(id string) string {
+	rest, ok := strings.CutPrefix(id, sourceLearned+":")
+	if !ok {
+		return ""
+	}
+	kind, _, ok := strings.Cut(rest, ":")
+	if !ok {
+		return ""
+	}
+	return kind
+}
 
 // sameAgent: both the main agent (nil), or the same subagent.
 func sameAgent(a, b *string) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }

@@ -97,7 +97,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "hook":
 		return cmdHook(rest, stdin, stderr)
 	case "post":
-		return cmdPost(rest, stdin, stderr)
+		return cmdPost(rest, stdin, stdout, stderr)
 	case "probe":
 		return cmdProbe(rest, stdin, stderr)
 	case "recap":
@@ -278,56 +278,6 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
 		fault.Inject(fault.PointHookBeforeFlush)
 		if err := safe.Guard(h.Flush); err != nil {
-			fmt.Fprintln(stderr, flushLostLine)
-		}
-		return nil
-	})
-}
-
-// cmdPost handles one PostToolUse invocation, under the same rule as hook: it
-// is invoked by Claude Code, it always succeeds, and it writes nothing to
-// stdout.
-//
-// A declaration is a request. This is what closes it: the record that the call
-// the agent asked for went on to run.
-func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
-	// Guarded whole, for the reason given in cmdHook.
-	return guardedHook(stderr, func() error {
-		hook.IgnoreBrokenPipe()
-		sig := hook.WatchSignals()
-		defer sig.Stop()
-
-		payload, in, standDown, _ := claudeHostGuard(stdin)
-		if standDown {
-			return nil
-		}
-
-		if checkPaused(args, in(), store.PhasePost, stderr) {
-			return nil
-		}
-
-		st := openForHook(args, stderr)
-		if st == nil {
-			return nil
-		}
-		if standsDown(args, st, stderr) {
-			return nil
-		}
-
-		p := hook.NewPost(st, time.Now)
-		// Group commit, as in cmdHook.
-		st.DeferDurability()
-		// See cmdHook's own comment on payload != nil.
-		captureErr := safe.Guard(func() error {
-			if payload != nil {
-				return p.CapturePayload(payload)
-			}
-			return p.Capture(in())
-		})
-		// As in cmdHook: Guard is for Close's panic, and a coverage record
-		// Close did not write reads as its absence (H-10).
-		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
-		if err := safe.Guard(p.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
 		}
 		return nil

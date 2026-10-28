@@ -7,8 +7,8 @@
 m("REC-34 the hook never flushes", "cmd/rashomon/main.go",
   "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
   "", "TestREC34_")
-m("REC-34 post never flushes", "cmd/rashomon/main.go",
-  "\t\tif err := safe.Guard(p.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
+m("REC-34 post never flushes", "cmd/rashomon/post.go",
+  "\t\tif err := safe.Guard(p.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t\treturn nil\n\t\t}\n",
   "", "TestREC34_")
 m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
   "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",

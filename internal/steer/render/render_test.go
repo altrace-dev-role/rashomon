@@ -179,6 +179,36 @@ func TestSTR43a_RegressionLocationTemplateIsTheArchivesText(t *testing.T) {
 	}
 }
 
+// TestSTR43h_DegradedRowRenders: regression-location's no-paths form is its
+// own binding and row (card 2.3 R7): the full row's first sentence, then the
+// count of writes recorded between the runs, for the writes the record names
+// no path for (record scope v4) or whose every named path the deny list or
+// the entropy test left out. Its slots come back in the binding's order.
+func TestSTR43h_DegradedRowRenders(t *testing.T) {
+	m, err := New(pattern.RegressionLocation, RegressionLocationDegradedBinding{Gate: "go", Minutes: 3, Exit: 1, Count: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "rashomon record: gate 'go' exited 0 earlier in this session (3 min ago) and exited 1 on this run. " +
+		"2 file writes were recorded between the two runs."
+	if m.Text() != want {
+		t.Errorf("Text() = %q, want %q", m.Text(), want)
+	}
+	if m.Pattern() != pattern.RegressionLocation || m.Template() != "regression-location-degraded/v1" {
+		t.Errorf("Pattern, Template = %q, %q", m.Pattern(), m.Template())
+	}
+	var names []string
+	for _, s := range m.Slots() {
+		names = append(names, s.Name)
+	}
+	if !slices.Equal(names, []string{"gate", "minutes", "exit", "count"}) {
+		t.Errorf("Slots() names = %q", names)
+	}
+	if _, err := New(pattern.RegressionLocation, RegressionLocationDegradedBinding{Gate: "go", Minutes: 10_081, Exit: 1, Count: 2}); err == nil {
+		t.Error("minutes over the slot's range rendered; want the render refused, never a clamped number")
+	}
+}
+
 // TestSTR11b_NewRefusesAnyFailingSlot: a slot that fails its check gives an
 // error and the zero Message, never a Message.
 func TestSTR11b_NewRefusesAnyFailingSlot(t *testing.T) {
