@@ -73,9 +73,37 @@ type templateKey struct {
 	binding reflect.Type
 }
 
+// Version is the renderer's version, written on every steer line as
+// renderer_version (tech 4.2.3; its example writes 1). A suppressed line
+// keeps its slots and this version and is re-rendered on read (RES-32), so
+// a change to a row's text is a version change.
+const Version = 1
+
+// RegressionLocationBinding is regression-location's slots (archive
+// 40.4.2): the gate, how long ago it last exited 0, its exit on this run, and
+// the files written between the two runs. 2.3's producer fills it.
+type RegressionLocationBinding struct {
+	Gate    slot.Gate     `slot:"gate"`
+	Minutes slot.Minutes  `slot:"minutes"`
+	Exit    slot.Exit     `slot:"exit"`
+	Paths   slot.PathList `slot:"paths"`
+}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
-// it holds none yet, so New refuses every binding until one does.
-var templates = map[templateKey]template{}
+// New refuses a binding that has none.
+//
+// regression-location/v1 is archive 40.4.2's model text with "gate" before
+// the gate's quote: Gate renders inside a quote after a word that names it
+// (P07N-11), so the archive's bare {gate} opening cannot render as written.
+// The other-agents sentence and the degraded no-paths form are their own
+// binding structs and rows, which come with the pattern's producer.
+var templates = map[templateKey]template{
+	{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationBinding{})}: {
+		id: "regression-location/v1",
+		format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
+			"Files written between the two runs: {paths}.",
+	},
+}
 
 var (
 	// ErrUnknownPattern is returned by New for an id outside the frozen set.
