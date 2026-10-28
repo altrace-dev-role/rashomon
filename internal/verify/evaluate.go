@@ -45,6 +45,19 @@ type ProjectIndex struct {
 // after the point names its gate by that kind at the point, and by its
 // inferred kind in the prefix (RES14c). A nil run is an empty one.
 func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) Snapshot {
+	return evaluate(run, idx, sp, pt, now, &classified{})
+}
+
+// classified is what evaluate classified beside the snapshot, for the
+// obligation view (EvaluateWithObligations): classify's runs and writes, in
+// seq order; nil where the record is incomplete, which classifies nothing.
+type classified struct {
+	runs   []gateRun
+	writes []write
+}
+
+// evaluate is Evaluate, which also fills c.
+func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time, c *classified) Snapshot {
 	if run == nil {
 		run = &store.Run{}
 	}
@@ -70,6 +83,7 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	}
 	picked := pickExecutions(run)
 	runs, writes, unnamed, _ := classifyWith(run, picked)
+	c.runs, c.writes = runs, writes
 	snap.Gates = gateStates(runs, writes, unnamed, at)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
