@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
-	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
@@ -77,7 +76,7 @@ func applyHookRuntimeLimits() {
 
 func main() {
 	hook.Writer = version
-	hook.ConsentRecordScope = consent.RecordScope
+	wireConsentViews()
 	// os.Exit skips deferred functions, so every path that needs one has to
 	// have returned before this line is reached.
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))

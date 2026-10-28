@@ -259,8 +259,8 @@ func TestTRU48_CompactionKeepsEveryReadersAnswer(t *testing.T) {
 	for _, e := range entries {
 		left = append(left, e.Name())
 	}
-	if !slices.Equal(left, []string{store.FileConsent, store.FileRecordScope}) {
-		t.Errorf("store root after compaction holds %q, want consent.json and its record-scope marker alone", left)
+	if !slices.Equal(left, []string{store.FileConsent, store.FileRecordScope, store.FileSteerDisclosure}) {
+		t.Errorf("store root after compaction holds %q, want consent.json and its two markers alone", left)
 	}
 }
 
@@ -307,9 +307,10 @@ func TestTRU23_ConsentWritesAreInTheInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A replacement's temporary file exists only between its write and its
-	// rename; create one where compact, WriteSDKAnswer and the record-scope
-	// marker's write would, to check their rules.
-	for _, path := range []string{Path(root), HarnessesPath(root), filepath.Join(root, store.FileRecordScope)} {
+	// rename; create one where compact, WriteSDKAnswer and the two markers'
+	// writes would, to check their rules.
+	for _, path := range []string{Path(root), HarnessesPath(root), filepath.Join(root, store.FileRecordScope),
+		filepath.Join(root, store.FileSteerDisclosure)} {
 		tmp, err := os.CreateTemp(root, "."+filepath.Base(path)+".tmp-*")
 		if err != nil {
 			t.Fatal(err)
@@ -326,7 +327,7 @@ func TestTRU23_ConsentWritesAreInTheInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 6 {
+	if len(entries) < 8 {
 		t.Fatal("premise: the test wrote fewer files than it checks")
 	}
 	for _, e := range entries {

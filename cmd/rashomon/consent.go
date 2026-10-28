@@ -8,6 +8,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 )
 
 // cmdConsent is `rashomon consent [--yes] [--show]` (Technical spec 7.2.3,
@@ -48,14 +49,35 @@ func cmdConsent(args []string, stdout io.Writer) error {
 	}
 	gate.hold()
 	if err := consent.Append(plan.root, rec); err != nil {
-		if errors.Is(err, consent.ErrScopeMarker) {
-			return fmt.Errorf("%s: %s holds the record, but %w; recording keeps the v4 shape until it is", stepConsent, consent.Path(plan.root), err)
-		}
-		return fmt.Errorf("%s failed: %w; nothing was written", stepConsent, err)
+		return consentAppendError(plan.root, err)
 	}
 	fmt.Fprintf(stdout, "rashomon: consent recorded for scope %d (install %s) in %s\n", rec.ScopeVersion, plan.installID, consent.Path(plan.root))
 	if s := gate.heldSignal(); s != nil {
 		return fmt.Errorf("%s arrived while consent was writing; it was held until the record above was written", s)
 	}
 	return nil
+}
+
+// wireConsentViews hands the hook package consent.json's two readers, which
+// it cannot import without a cycle: the SessionStart probe syncs the
+// record_scope and steer_disclosure markers through them. main calls it
+// before any hook runs.
+func wireConsentViews() {
+	hook.ConsentRecordScope = consent.RecordScope
+	hook.ConsentSteerDisclosure = consent.SteerDisclosure
+}
+
+// consentAppendError is the consent command's message for an Append error.
+// A line on file whose marker after it was not written says the record is
+// held and what the missing marker withholds; only an Append that wrote
+// nothing says nothing was written. With both markers unwritten, the record
+// scope's consequence is named and the error names both.
+func consentAppendError(root string, err error) error {
+	switch {
+	case errors.Is(err, consent.ErrScopeMarker):
+		return fmt.Errorf("%s: %s holds the record, but %w; recording keeps the v4 shape until it is", stepConsent, consent.Path(root), err)
+	case errors.Is(err, consent.ErrSteerMarker):
+		return fmt.Errorf("%s: %s holds the record, but %w; notes reach the agent as flags until it is", stepConsent, consent.Path(root), err)
+	}
+	return fmt.Errorf("%s failed: %w; nothing was written", stepConsent, err)
 }

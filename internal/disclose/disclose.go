@@ -505,5 +505,28 @@ func recordScopeFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over record_scope); purge",
 			Owner:      "consent",
 		},
+		{
+			// Every consent write removes it, appends to consent.json and
+			// writes it again from consent.json's answer, and every session
+			// start puts it right (internal/consent, internal/hook).
+			Base:       "",
+			Pattern:    store.FileSteerDisclosure,
+			Mode:       "0600",
+			Purpose:    "the highest steering disclosure consent.json holds, kept beside it so a hook call reads one number instead of parsing consent.json; no marker means no consent to steering, so notes reach the agent as flags",
+			Holds:      "a non-negative integer, the highest steer disclosure version consented to",
+			NeverHolds: "anything else",
+			RemovedBy:  "every consent write, which writes it again after; purge",
+			Owner:      "consent",
+		},
+		{
+			Base:       "",
+			Pattern:    "." + store.FileSteerDisclosure + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "steer_disclosure's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "a non-negative integer",
+			NeverHolds: "anything else",
+			RemovedBy:  "the write that made it (renamed over steer_disclosure); purge",
+			Owner:      "consent",
+		},
 	}
 }

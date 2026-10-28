@@ -8,14 +8,16 @@
 // its cap. Three readers answer three questions from the same lines, and a
 // missing file, or one with no line that parses, is no consent at all three:
 //
-//   - Current: may a note reach the agent (STEER)?
+//   - Current: may a note reach the agent (STEER)? It is SteerDisclosure, the
+//     highest steer disclosure on file, against this build's version.
 //   - RecordScope: which record shape may RECORD write?
 //   - ScopeCovered: does the consent on file cover this build's capability
 //     classes, so watch can say "already watching" instead of asking again?
 //
 // The hook reads none of them on a tool call: it reads the record-scope
-// marker (store.FileRecordScope), which every Append keeps equal to
-// RecordScope's answer.
+// marker (store.FileRecordScope) and the steer-disclosure marker
+// (store.FileSteerDisclosure), which every Append keeps equal to RecordScope's
+// and SteerDisclosure's answers.
 package consent
 
 import (
@@ -174,14 +176,25 @@ func parse(data []byte) []Record {
 
 // Current is STEER's reader: whether the highest steer_disclosure on file is
 // at least this build's steer.DisclosureVersion. An unreadable file is no
-// consent, and the error says why.
+// consent, and the error says why. It is SteerDisclosure compared, so the
+// steer-disclosure marker, written from SteerDisclosure, answers the same.
 func Current(root string) (bool, error) {
+	n, err := SteerDisclosure(root)
+	return n >= steer.DisclosureVersion, err
+}
+
+// SteerDisclosure is the highest steer_disclosure any record on file
+// carries, the fact the steer-disclosure marker holds: 0 with no records,
+// and 0 with the error for a file that cannot be read. A negative highest,
+// which no build writes and a hand edit could, reads 0: no consent either
+// way, and a value the marker can hold.
+func SteerDisclosure(root string) (int, error) {
 	recs, err := Read(root)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	best, ok := maxBy(recs, func(r Record) int { return r.SteerDisclosure })
-	return ok && best >= steer.DisclosureVersion, nil
+	best, _ := maxBy(recs, func(r Record) int { return r.SteerDisclosure })
+	return max(best, 0), nil
 }
 
 // RecordScope is RECORD's reader: the record_scope of the latest record. With
@@ -246,19 +259,31 @@ var ErrScopeMarker = errors.New("the record_scope marker was not written")
 // it: the process dying between the consent line and the marker.
 var writeMarker = store.WriteRecordScopeMarker
 
+// ErrSteerMarker wraps Append's error when the consent line is durable and
+// the steer-disclosure marker after it could not be written: the marker is
+// then absent, which the hook reads as 0, no consent, until a later write
+// succeeds.
+var ErrSteerMarker = errors.New("the steer_disclosure marker was not written")
+
+// writeSteerMarker is store.WriteSteerDisclosureMarker, which TestSC3b
+// replaces to fail it.
+var writeSteerMarker = store.WriteSteerDisclosureMarker
+
 // Append adds rec to root's consent.json as one line, appended with O_APPEND
 // and synced before it returns, the file at mode 0600. A file whose last line
 // was torn gets a line feed first, so the torn bytes stay one skipped line
 // instead of swallowing this record. When the append would take the file past
 // CapBytes the file is compacted first (compact).
 //
-// It keeps the store's record-scope marker (store.FileRecordScope) a view of
-// the file: it removes the marker before it touches consent.json, compaction
-// included, and writes it again from RecordScope(root) once the line is
-// durable. The marker lags and never leads: a crash anywhere in between
-// leaves no marker, which the hook reads as v4 and so withholds, whichever
-// way this record moved the scope. An error wrapping ErrScopeMarker means
-// the line is on file and the marker is not.
+// It keeps the store's two markers, record scope (store.FileRecordScope) and
+// steer disclosure (store.FileSteerDisclosure), views of the file: it removes
+// both before it touches consent.json, compaction included, and writes each
+// again from consent.json's own answer once the line is durable. A marker
+// lags and never leads: a crash anywhere in between leaves it absent, which
+// the hook reads as v4 or as 0, and so withholds, whichever way this record
+// moved it. The two are independent: each is written whatever the other's
+// write did. An error wrapping ErrScopeMarker or ErrSteerMarker means the
+// line is on file and that marker is not; both can be joined in one error.
 func Append(root string, rec Record) error {
 	if !rec.parses() {
 		return fmt.Errorf("consent: refusing to append a record no reader would count (v %d, via %q)", rec.V, rec.Via)
@@ -272,13 +297,31 @@ func Append(root string, rec Record) error {
 	if err := store.RemoveRecordScopeMarker(root); err != nil {
 		return err
 	}
+	if err := store.RemoveSteerDisclosureMarker(root); err != nil {
+		return err
+	}
 	if err := appendRecord(root, line); err != nil {
 		return err
 	}
+	var scopeErr, steerErr error
 	if err := syncMarker(root); err != nil {
-		return fmt.Errorf("%w: %w", ErrScopeMarker, err)
+		scopeErr = fmt.Errorf("%w: %w", ErrScopeMarker, err)
 	}
-	return nil
+	if err := syncSteerMarker(root); err != nil {
+		steerErr = fmt.Errorf("%w: %w", ErrSteerMarker, err)
+	}
+	return errors.Join(scopeErr, steerErr)
+}
+
+// syncSteerMarker writes root's steer-disclosure marker from consent.json's
+// own answer, SteerDisclosure, 0 included. A file SteerDisclosure cannot
+// read leaves the marker absent.
+func syncSteerMarker(root string) error {
+	n, err := SteerDisclosure(root)
+	if err != nil {
+		return err
+	}
+	return writeSteerMarker(root, n)
 }
 
 // syncMarker writes root's marker from consent.json's own answer, never from

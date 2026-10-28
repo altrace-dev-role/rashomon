@@ -152,13 +152,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.WriteRecordScopeMarker(root, store.RecordScopeV5); err != nil {
 		t.Fatalf("store.WriteRecordScopeMarker: %v", err)
 	}
+	if err := store.WriteSteerDisclosureMarker(root, 2); err != nil {
+		t.Fatalf("store.WriteSteerDisclosureMarker: %v", err)
+	}
 	if err := store.SetRootInWorkTree(root, root); err != nil {
 		t.Fatalf("store.SetRootInWorkTree: %v", err)
 	}
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		"." + store.FileRecordScope + ".tmp-*", recap.StateTempPrefix + "*"} {
+		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -319,7 +322,9 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-27 (1.2q) to 22: replaceFile joined the pattern, so
 		// install_record.go's one call to it counts, and scope.go's
 		// WriteRecordScopeMarker (replaceFile, record_scope) is the new site.
-		{"store", 22},
+		// Moved 2026-10-27 (2.2c) to 23: WriteSteerDisclosureMarker's
+		// ReplaceFile, steer_disclosure, the second view of consent.json.
+		{"store", 23},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

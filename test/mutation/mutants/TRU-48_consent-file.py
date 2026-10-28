@@ -10,7 +10,7 @@ m("TRU-48 an append completes a torn last line", "internal/consent/record.go",
   "\t\tif last[0] != '\\n' {", "\t\tif false && last[0] != '\\n' {",
   "TestTRU48_OneConsentFileThreeReaders")
 m("TRU-48 Current needs a disclosure above the build's", "internal/consent/record.go",
-  "\treturn ok && best >= steer.DisclosureVersion, nil", "\treturn ok && best > steer.DisclosureVersion, nil",
+  "\treturn n >= steer.DisclosureVersion, err", "\treturn n > steer.DisclosureVersion, err",
   "TestTRU48_OneConsentFileThreeReaders")
 m("TRU-48 RecordScope takes the earliest record", "internal/consent/record.go",
   "\tfor i := len(recs) - 1; i >= 0; i-- {\n\t\tif s := recs[i].RecordScope; s != \"\" {",
