@@ -89,19 +89,38 @@ type RegressionLocationBinding struct {
 	Paths   slot.PathList `slot:"paths"`
 }
 
+// RegressionLocationDegradedBinding is regression-location's no-paths form
+// (card 2.3 R7): the full row's first sentence and the count of writes
+// recorded between the two runs, for writes the record names no path for
+// (record scope v4) or whose every named path the deny list or the entropy
+// test left out (slot.ErrNoPathsLeft).
+type RegressionLocationDegradedBinding struct {
+	Gate    slot.Gate    `slot:"gate"`
+	Minutes slot.Minutes `slot:"minutes"`
+	Exit    slot.Exit    `slot:"exit"`
+	Count   slot.Count   `slot:"count"`
+}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
 // regression-location/v1 is archive 40.4.2's model text with "gate" before
 // the gate's quote: Gate renders inside a quote after a word that names it
 // (P07N-11), so the archive's bare {gate} opening cannot render as written.
-// The other-agents sentence and the degraded no-paths form are their own
-// binding structs and rows, which come with the pattern's producer.
+// regression-location-degraded/v1 keeps that first sentence and states the
+// count, so the note still names the gate (card 2.3 R7). The other-agents
+// sentence is its own binding struct and row, which comes with
+// subagent-claim's producer (D62).
 var templates = map[templateKey]template{
 	{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationBinding{})}: {
 		id: "regression-location/v1",
 		format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
 			"Files written between the two runs: {paths}.",
+	},
+	{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationDegradedBinding{})}: {
+		id: "regression-location-degraded/v1",
+		format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
+			"{count} file writes were recorded between the two runs.",
 	},
 }
 

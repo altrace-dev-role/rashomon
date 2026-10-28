@@ -407,8 +407,15 @@ func BenchmarkRunPost(b *testing.B) {
 		name    string
 		payload func(testing.TB) []byte
 	}{{"bash_short", benchBashShortPost}, {"edit_314k", benchEdit314kPost}} {
-		b.Run(c.name, func(b *testing.B) { benchToolCalls(b, cmdPost, c.payload(b), false) })
+		b.Run(c.name, func(b *testing.B) { benchToolCalls(b, postEntry, c.payload(b), false) })
 	}
+}
+
+// postEntry is cmdPost with its stdout discarded, in the entry shape cmdHook
+// has: what the post prints is the steer step's, which these measures do not
+// read (a PostToolUse call runs no step, card 2.3 R3).
+func postEntry(args []string, stdin io.Reader, stderr io.Writer) int {
+	return cmdPost(args, stdin, io.Discard, stderr)
 }
 
 // TestBenchWarmupIndexIsDistinctFromEveryLoopIndex: benchToolCalls' one

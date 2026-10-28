@@ -113,6 +113,11 @@ const (
 	// open and before settings.json is edited: "hang" there holds the step
 	// open so a signal can be sent while it runs.
 	PointWatchWriting = "watch.writing"
+	// PointSteerFlush is in the post's steer step, before the Flush that
+	// makes the steer line durable ahead of its note (card 2.3 R4.7):
+	// "fail=N" there fails the flush, which the step answers by printing
+	// nothing while the line stays in the log.
+	PointSteerFlush = "steer.flush"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders

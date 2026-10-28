@@ -37,8 +37,8 @@ func TestColdCall(t *testing.T) {
 	}{
 		{"hook.bash_short", cmdHook, benchBashShortPre},
 		{"hook.edit_50k", cmdHook, benchEdit50kPre},
-		{"post.bash_short", cmdPost, benchBashShortPost},
-		{"post.edit_314k", cmdPost, benchEdit314kPost},
+		{"post.bash_short", postEntry, benchBashShortPost},
+		{"post.edit_314k", postEntry, benchEdit314kPost},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			_, installID := benchStarted(t)
