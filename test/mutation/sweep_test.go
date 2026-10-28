@@ -1348,3 +1348,83 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 		}
 	}
 }
+
+// SWEEP-1. --trim-cache-each touches a marker in the run's own GOCACHE after
+// the baseline and, after every judged mutant, removes each file newer than
+// it except go's README, trim.txt and log.txt, so a sweep's disk peak is the
+// baseline's cache plus one mutant's build; and it refuses, before any go
+// test, a GOCACHE that resolves to the shared cache (unset, or a symlink to
+// it), which the trim would cut into. A fake go on PATH logs each call with
+// the GOCACHE it saw, writes 3 MiB for the baseline, and for a mutant run 1
+// MiB in a nested entry plus its own three files: the cache reads 4.0 MiB
+// before each trim and 3.0 MiB after, so the first mutant's build is gone
+// before the second's. The fake writes only under ${GOCACHE:?}, so a GOCACHE
+// that reaches it empty stops the shell instead of naming /.
+func TestSWEEP1_TrimsOwnCacheAfterEachMutant(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+	write(t, filepath.Join(dir, "b.txt"), "gamma\n")
+	mutantFile := filepath.Join(dir, "T-1_two.py")
+	write(t, mutantFile, mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_")+
+		mutant("T-2 gamma goes", "b.txt", "gamma", "delta", "TestT2_"))
+	bin, own, shared := filepath.Join(dir, "bin"), filepath.Join(dir, "own"), filepath.Join(dir, "shared")
+	for _, d := range []string{bin, own, shared} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(shared, filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(bin, "go")
+	write(t, fake, "#!/bin/sh\necho \"$GOCACHE|$*\" >> \"$FAKE_GO_LOG\"\ncase \"$*\" in\n"+
+		"\"env GOCACHE\") echo \"${GOCACHE:-$FAKE_SHARED}\" ;;\n"+
+		"*-run*) mkdir -p \"${GOCACHE:?}/ab/cd\" && head -c 1048576 /dev/zero > \"$GOCACHE/ab/cd/$$\"\n"+
+		"  for f in README trim.txt log.txt; do echo go > \"$GOCACHE/$f\"; done\n"+
+		"  printf -- '--- FAIL: TestT1_x (0.00s)\\nFAIL\\n'; exit 1 ;;\n"+
+		"*) mkdir -p \"${GOCACHE:?}/00\" && head -c 3145728 /dev/zero > \"$GOCACHE/00/base\"; echo ok ;;\n"+
+		"esac\n")
+	if err := os.Chmod(fake, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, cache string
+		exit        int
+		calls       []string
+	}{
+		{"own cache", own, 0, []string{
+			own + "|env GOCACHE",
+			"|env GOCACHE",
+			own + "|test ./... -count=1",
+			own + "|test ./... -run TestT1_ -count=1 -v",
+			own + "|test ./... -run TestT2_ -count=1 -v",
+		}},
+		{"unset", "", 2, []string{"|env GOCACHE", "|env GOCACHE"}},
+		{"shared via link", filepath.Join(dir, "link"), 2, []string{filepath.Join(dir, "link") + "|env GOCACHE", "|env GOCACHE"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			goLog := filepath.Join(t.TempDir(), "go.log")
+			write(t, goLog, "")
+			env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"FAKE_GO_LOG=" + goLog, "FAKE_SHARED=" + shared, "GOCACHE=" + c.cache}
+			out, code := sweepEnv(t, dir, env, "--trim-cache-each", "--files", mutantFile)
+			if code != c.exit {
+				t.Fatalf("exit %d, want %d:\n%s", code, c.exit, out)
+			}
+			if got, want := strings.Join(nonEmptyLines(readFile(t, goLog)), "\n"), strings.Join(c.calls, "\n"); got != want {
+				t.Errorf("go calls:\n%s\nwant:\n%s", got, want)
+			}
+			if c.exit != 0 {
+				return
+			}
+			if n := strings.Count(out, "cache 4.0 MiB, trimmed to 3.0 MiB"); n != 2 {
+				t.Errorf("want the cache at 4.0 MiB before each of the two trims and 3.0 MiB after, read %d:\n%s", n, out)
+			}
+			for _, f := range []string{"00/base", "README", "trim.txt", "log.txt"} {
+				if _, err := os.Stat(filepath.Join(own, f)); err != nil {
+					t.Errorf("the trim removed %s: %v", f, err)
+				}
+			}
+		})
+	}
+}
