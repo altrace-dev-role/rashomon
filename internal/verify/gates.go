@@ -126,6 +126,7 @@ type gateRow struct {
 var gateTable = []gateRow{
 	{lastBackgrounded, Backgrounded, func(*fam) Reason { return BackgroundLaunch }},
 	{lastMasked, MaskedInconclusive, maskedReason},
+	{lastEmptyRun, Absent, func(*fam) Reason { return EmptyRun }},
 	{lastFailed, Red, redReason},
 	{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},
 	{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},
@@ -135,6 +136,7 @@ var gateTable = []gateRow{
 
 func lastBackgrounded(f *fam) bool    { return f.last.Backgrounded }
 func lastMasked(f *fam) bool          { return masked(f.last) }
+func lastEmptyRun(f *fam) bool        { return emptyRun(f.last) }
 func lastFailed(f *fam) bool          { return failed(f.last) }
 func lastOutcomeNotKnown(f *fam) bool { return outcomeNotKnown(f.last) }
 func lastOrderNotKnown(f *fam) bool   { return orderNotKnown(f.last) }
@@ -143,6 +145,16 @@ func writtenSince(f *fam) bool        { return len(f.counted) > 0 }
 // masked: the line hid a runner's status, so its outcome is not the gate's.
 func masked(r *gateRun) bool {
 	return r.Masked != nil && (*r.Masked == shape.MaskedTest || *r.Masked == shape.MaskedBuild)
+}
+
+// emptyRun: the run's output says no test ran (2.2.4 step 5, "visible ok ->
+// absent on empty_run"), whatever its exit: pytest's 5 is empty_run by the
+// exit map and arrives failed, so the row sits above lastFailed (D46). It
+// verified nothing, so it is no green and writes after it are not writes
+// after a green. A nil Output is not an empty run; the kind is the
+// classifier's to get right (2.2p).
+func emptyRun(r *gateRun) bool {
+	return r.Output != nil && r.Output.Kind == outEmptyRun
 }
 
 // failed: the run failed by its exit or said so in its output. An interrupt
@@ -172,7 +184,7 @@ func orderNotKnown(r *gateRun) bool {
 
 // green: no row before Stale matches the run.
 func green(r *gateRun) bool {
-	return !r.Backgrounded && !masked(r) && !failed(r) && !outcomeNotKnown(r) && !orderNotKnown(r)
+	return !r.Backgrounded && !masked(r) && !emptyRun(r) && !failed(r) && !outcomeNotKnown(r) && !orderNotKnown(r)
 }
 
 // maskedReason is what the output said beside a hidden status.

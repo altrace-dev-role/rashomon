@@ -56,7 +56,7 @@ m("VER-1.9 the first red used instead of the last", O,
 m("VER-1.9 a green before the last red counted", O,
   '\t\t\tbyKey[k] = watch{red: r}\n', '\t\t\tbyKey[k] = watch{red: r, green: w.green}\n', "TestPG7b_")
 m("VER-1.9 a masked failure counts as the red", O,
-  '\t\tcase !r.Backgrounded && !masked(r) && failed(r):\n', '\t\tcase !r.Backgrounded && failed(r):\n', "TestPG7b_")
+  '\t\tcase !r.Backgrounded && !masked(r) && !emptyRun(r) && failed(r):\n', '\t\tcase !r.Backgrounded && !emptyRun(r) && failed(r):\n', "TestPG7b_")
 m("VER-1.9 a green not yet landed counts", O,
   '!ok || !known || s > at {\n', '!ok || !known || s > at+1 {\n', "TestPG7b_")
 
