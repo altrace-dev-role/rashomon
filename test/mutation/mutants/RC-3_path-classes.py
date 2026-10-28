@@ -1,9 +1,7 @@
-# RC-3 (PF-RC3, D7, D8, D10): a written path's closed class and whether it
-# stales a gate. One break per table, per guard, per adjacent precedence
-# pair, per normalisation step, per Relevant class and per vocabulary word.
-# Rule 6's extension table has no break: under D7 it returns what the fallback
-# returns, so removing it is an equivalent mutant (the comment at its case
-# says why it stays).
+# RC-3 (PF-RC3): a written path's closed class and whether it stales a gate.
+# One break per table, per guard, per adjacent precedence pair (config's case
+# against the source fallback the last of them), per normalisation step, per
+# Relevant class and per vocabulary word.
 F = "internal/verify/pathclass.go"
 
 # The tables.
@@ -55,7 +53,8 @@ m("RC-3 constraints*.txt stops being config", F,
 m("RC-3 a dotfile stops being config", F,
   ' || isDotfile(n.base)', '', "TestRC3c_")
 
-# D10: the root-only words, build and .txt.
+# The root-only words (a directory word that classifies only as the first
+# path segment), build and .txt.
 m("RC-3 dist and target match below the root again", F,
   'inSet(n.first, generatedRootSegments)', 'hasSegment(n.dir, generatedRootSegments)', "TestRC3[ce]_")
 m("RC-3 docs and doc match below the root again", F,
@@ -109,16 +108,15 @@ DOCS = ("\tcase inSet(n.first, docsRootSegments) || inSet(n.ext, docsExtensions)
         "\t\treturn ClassDocs\n")
 CONFIG = ("\tcase inSet(n.ext, configExtensions) || isConfigName(n.base) || isDotfile(n.base):\n"
           "\t\treturn ClassConfig\n")
-SOURCE = ("\tcase inSet(n.ext, sourceExtensions):\n"
-          "\t\t// Rule 6 returns what the fallback returns, so under D7 it changes no\n"
-          "\t\t// result; it is the table D7's revisit would need, the line that keeps\n"
-          "\t\t// known source out of a seventh fallback class.\n"
-          "\t\treturn ClassSource\n")
+FALLBACK = "\t}\n\treturn ClassSource\n}\n"
 m("RC-3 CI ranks before generated", F, GEN + CI, CI + GEN, "TestRC3c_")
 m("RC-3 test ranks before CI", F, CI + TEST, TEST + CI, "TestRC3c_")
 m("RC-3 docs ranks before test", F, TEST + DOCS, DOCS + TEST, "TestRC3c_")
 m("RC-3 config ranks before docs", F, DOCS + CONFIG, CONFIG + DOCS, "TestRC3c_")
-m("RC-3 source ranks before config", F, CONFIG + SOURCE, SOURCE + CONFIG, "TestRC3c_")
+# The source fallback taken before config's case is tried: an always-true
+# case ahead of it, since the fallback follows the switch and cannot swap.
+m("RC-3 source ranks before config", F, CONFIG + FALLBACK,
+  "\tcase true:\n\t\treturn ClassSource\n" + CONFIG + FALLBACK, "TestRC3c_")
 
 # Normalisation and the fallback.
 m("RC-3 the path is not lower-cased", F,
@@ -135,7 +133,8 @@ m("RC-3 the CamelCase names read a lower-cased basename", F,
 m("RC-3 a path no rule matches falls back to docs", F,
   '\t}\n\treturn ClassSource\n}\n', '\t}\n\treturn ClassDocs\n}\n', "TestRC3c_")
 
-# Relevant (D8), the closed list and its words.
+# Relevant (source, test and config stale a gate), the closed list and its
+# words.
 m("RC-3 a CI edit stales a gate", F, 'c != ClassCI && ', '', "TestRC3d_")
 m("RC-3 a docs edit stales a gate", F, 'c != ClassDocs && ', '', "TestRC3d_")
 m("RC-3 a generated edit stales a gate", F, ' && c != ClassGenerated', '', "TestRC3d_")

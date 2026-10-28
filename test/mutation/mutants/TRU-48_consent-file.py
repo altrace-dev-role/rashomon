@@ -23,8 +23,8 @@ m("TRU-48 a via outside the closed set counts", "internal/consent/record.go",
   "\treturn r.V == RecordVersion && r.Via.Valid()", "\treturn r.V == RecordVersion",
   "TestTRU48_OneConsentFileThreeReaders")
 m("TRU-48 compaction drops the highest disclosure", "internal/consent/record.go",
-  "\t\tif latest[key{r.Via, r.ScopeVersion}] == i || i == maxDisclosure {",
-  "\t\tif latest[key{r.Via, r.ScopeVersion}] == i {",
+  "\t\tif latest[key{r.Via, r.ScopeVersion}] == i || i == maxDisclosure || i == scoped {",
+  "\t\tif latest[key{r.Via, r.ScopeVersion}] == i || i == scoped {",
   "TestTRU48_CompactionKeepsEveryReadersAnswer")
 m("TRU-48 compaction keeps one record per via only", "internal/consent/record.go",
   "\t\tlatest[key{r.Via, r.ScopeVersion}] = i\n", "\t\tlatest[key{r.Via, 0}] = i\n",

@@ -24,8 +24,18 @@ func tripleLess(a, b Triple) bool {
 	return a.Object < b.Object
 }
 
+// admitted says whether a producer of tier t may write a fact with predicate
+// p. May-call is dispatch by an algorithm that over-approximates, so it is
+// never PROVEN, wherever the fact comes from.
+func admitted(t Tier, p Predicate) error {
+	if t == Proven && p == MayCall {
+		return fmt.Errorf("pgraph: %v facts cannot be %v", p, t)
+	}
+	return nil
+}
+
 func (t Triple) check() error {
-	if t.Predicate < Declares || t.Predicate > ImplementsViaPointer {
+	if t.Predicate < Declares || t.Predicate > MayCall {
 		return fmt.Errorf("pgraph: invalid predicate %d", uint8(t.Predicate))
 	}
 	if err := checkField("subject", t.Subject); err != nil {
@@ -148,6 +158,9 @@ func (l *Log) Reconcile(p Producer, config, commit string, want []Triple) (Delta
 	wanted := make(map[factKey]struct{}, len(want))
 	for _, t := range want {
 		if err := t.check(); err != nil {
+			return Delta{}, err
+		}
+		if err := admitted(p.tier, t.Predicate); err != nil {
 			return Delta{}, err
 		}
 		wanted[factKey{t, p.tier, config}] = struct{}{}

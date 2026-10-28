@@ -3,15 +3,19 @@
 // This package is the only one that looks inside tool_input, and it exists so
 // that exactly one package has to be audited to believe the no-content
 // guarantee.
-// Everything it returns is either drawn from a closed vocabulary, a count, or a
-// keyed digest. No substring of the input reaches the result.
+// Everything it returns is drawn from a closed vocabulary, a count or a keyed
+// digest, with two exceptions, each returned by one named function: the
+// hostnames a call names (Hosts), which the report lists and forget --host
+// matches as written, and the path a file-changing tool names (DeclaredPath),
+// which the declaration carries so that a reader can tell which file a call
+// touched. No other substring of the input reaches a result.
 //
 // Every function here that takes a tool_input (Derive, LeadingDirectory,
-// Hosts, Label) requires one JSON value that json.Valid accepts, as the
-// tool_input span of a payload hookio.Intake returned is. Its fields are
-// located by jsonscan.Field, which trusts that validation: on bytes that did
-// not pass it, a field can be found where a decoder would have refused the
-// whole input, bytes after the object among them.
+// Hosts, Label, DeclaredPath) requires one JSON value that json.Valid
+// accepts, as the tool_input span of a payload hookio.Intake returned is. Its
+// fields are located by jsonscan.Field, which trusts that validation: on bytes
+// that did not pass it, a field can be found where a decoder would have
+// refused the whole input, bytes after the object among them.
 package shape
 
 import (

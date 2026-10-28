@@ -95,8 +95,12 @@ func (s *tbSession) line() (string, bool) {
 
 // B-A1: the pattern the ask names. The end-of-turn line says it in one
 // sentence with the pair, the digest carries the pair, the report's session
-// block and timeline both show it, and nothing from the command line or the
-// path reached the store.
+// block and timeline both show it, and nothing from the command line reached
+// the store. The path did, in the one place a declaration carries it: its own
+// cwd, project and file_path (sanctionedPathsBlanked). cwd and project are
+// blanked here and not in H-44 because here the path is the cwd by
+// construction: the session runs in /tmp/project and that is a string the
+// check looks for.
 func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	s := newTBSession(t)
 	s.shell("cd /tmp/project && go test ./...", false, "")
@@ -124,10 +128,14 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	if got := decls[1].str("file_label"); got != "test-file" {
 		t.Errorf("file_label of calc_test.go = %q, want test-file", got)
 	}
+	if got := decls[1].str("file_path"); got != "/tmp/project/calc_test.go" {
+		t.Errorf("file_path of the edit = %q, want the path as written", got)
+	}
 	for _, r := range s.e.records(testSession) {
+		raw := sanctionedPathsBlanked(t, r)
 		for _, leak := range []string{"calc_test", "./...", "/tmp/project", "want 4", "TestAdd"} {
-			if strings.Contains(r.raw, leak) {
-				t.Errorf("a record carries %q: %s", leak, r.raw)
+			if strings.Contains(raw, leak) {
+				t.Errorf("a record carries %q outside its path fields: %s", leak, r.raw)
 			}
 		}
 	}
@@ -433,8 +441,10 @@ func TestTestBending_AFailureIsNeverMovedToTheBackground(t *testing.T) {
 // cwd follows the shell, measured on 2.1.280); the identical line then fails
 // at its cd, since there is no sub/sub. Both lines digest equal, and the pair
 // read as the same command having both outcomes. Runs now pair only within
-// one directory, and the declarations carry the directory as a keyed digest,
-// never as the path.
+// one directory, which the declarations compare as a keyed digest; the path
+// itself is in their cwd and project and nowhere else. cwd and project are
+// blanked before the check, unlike H-44's, because the path the check looks
+// for is the cwd by construction.
 func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
 	s := newTBSession(t)
 	s.shell("cd sub && go test ./...", true, "")
@@ -449,11 +459,40 @@ func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
 	if len(a) != 64 || len(b) != 64 || a == b {
 		t.Errorf("cwd_digest = %q, %q: want two different 64-hex digests", a, b)
 	}
+	if a, b := decls[0].str("cwd"), decls[1].str("cwd"); a != "/tmp/project" || b != "/tmp/project/sub" {
+		t.Errorf("cwd = %q, %q: want each payload's cwd as written", a, b)
+	}
 	for _, d := range decls {
-		if strings.Contains(d.raw, "/tmp/project") {
-			t.Errorf("a declaration carries the directory: %s", d.raw)
+		if strings.Contains(sanctionedPathsBlanked(t, d), "/tmp/project") {
+			t.Errorf("a declaration carries the directory outside cwd and project: %s", d.raw)
 		}
 	}
+}
+
+// sanctionedPathsBlanked is a record's line with the path fields a
+// declaration carries by design set to null -- cwd, project and, for a tool
+// whose input names the file it changes, file_path -- by parsing the line and
+// writing it again. A leak check over the result still finds any other copy,
+// which replacing the path's text would erase as well. Any other record is
+// returned as written.
+func sanctionedPathsBlanked(t *testing.T, r record) string {
+	t.Helper()
+	if r.typ() != "declaration" {
+		return r.raw
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(r.raw), &rec); err != nil {
+		t.Fatal(err)
+	}
+	rec["cwd"], rec["project"] = nil, nil
+	if tool, _ := rec["tool_name"].(string); declaresPath(tool) {
+		rec["file_path"] = nil
+	}
+	out, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 // B-A9: the review's attached curl -o. `curl -o./calc.go URL` downloads over a

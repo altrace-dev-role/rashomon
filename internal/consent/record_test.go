@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // record is a record every reader counts, for the tests to vary.
@@ -253,12 +255,12 @@ func TestTRU48_CompactionKeepsEveryReadersAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 {
-		var left []string
-		for _, e := range entries {
-			left = append(left, e.Name())
-		}
-		t.Errorf("store root after compaction holds %q, want consent.json alone", left)
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	if !slices.Equal(left, []string{store.FileConsent, store.FileRecordScope}) {
+		t.Errorf("store root after compaction holds %q, want consent.json and its record-scope marker alone", left)
 	}
 }
 
@@ -305,9 +307,9 @@ func TestTRU23_ConsentWritesAreInTheInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A replacement's temporary file exists only between its write and its
-	// rename; create one where compact and WriteSDKAnswer would, to check
-	// their rules.
-	for _, path := range []string{Path(root), HarnessesPath(root)} {
+	// rename; create one where compact, WriteSDKAnswer and the record-scope
+	// marker's write would, to check their rules.
+	for _, path := range []string{Path(root), HarnessesPath(root), filepath.Join(root, store.FileRecordScope)} {
 		tmp, err := os.CreateTemp(root, "."+filepath.Base(path)+".tmp-*")
 		if err != nil {
 			t.Fatal(err)
@@ -324,7 +326,7 @@ func TestTRU23_ConsentWritesAreInTheInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 4 {
+	if len(entries) < 6 {
 		t.Fatal("premise: the test wrote fewer files than it checks")
 	}
 	for _, e := range entries {

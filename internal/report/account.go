@@ -537,11 +537,14 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 	}
 	type runner struct{ digest, cwd string }
 	// last is the seq of the last call whose status was its runner's and
-	// which recorded a result, per runner and directory.
+	// which recorded a result, per runner and directory. A call at no known
+	// directory (CWDDigest "") is kept out of it, so none is found for a
+	// masked run at none either: two such calls may be in two directories,
+	// and "" is not one place. The runner's digest is kept all the same.
 	last := map[runner]int64{}
 	for _, d := range run.Declarations {
 		m, r := d.Shape.StatusMasked, d.Shape.RunnerDigest
-		if m == nil || *m != shape.MaskedNone || r == nil {
+		if m == nil || *m != shape.MaskedNone || r == nil || d.CWDDigest == "" {
 			continue
 		}
 		if !ended(d, store.ExecOK) && !ended(d, store.ExecFailed) {

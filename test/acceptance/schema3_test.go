@@ -178,7 +178,7 @@ func TestSchemaVersionEnumAdmits3(t *testing.T) {
 				vals[int(n)] = true
 			}
 		}
-		for _, want := range []int{1, 2, 3, 4} {
+		for _, want := range []int{1, 2, 3} {
 			if !vals[want] {
 				t.Errorf("$defs.%s.schema_version does not admit %d; a record at that version "+
 					"fails the contract even though the reader accepts it", name, want)

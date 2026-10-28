@@ -85,6 +85,9 @@ m("TB every command is the same command", "internal/report/testbending.go",
   "\t\tif prev, ok := last[key]; ok && isRun {",
   "\t\tif prev, ok := last[runKey{}]; ok && isRun {",
   "TestTestBending")
+m("TB a run at an unknown location is marked", "internal/report/testbending.go",
+  "\t\tif isRun && d.CWDDigest != \"\" {\n\t\t\tlast[key] = mark{", "\t\tif isRun {\n\t\t\tlast[key] = mark{",
+  "TestTestBending")
 m("TB an interrupted test run is counted as a run", "internal/report/testbending.go",
   "\t\tcase store.ExecOK:\n\t\t\tout.Runs++", "\t\tcase store.ExecOK, store.ExecInterrupted:\n\t\t\tout.Runs++", "TestTestRuns_")
 m("TB the timeline annotates the earlier row", "internal/report/timeline.go",

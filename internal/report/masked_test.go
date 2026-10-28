@@ -306,6 +306,30 @@ func TestMasked_RunsFromDerive(t *testing.T) {
 	}
 }
 
+// TestMasked_UnknownLocationClearsNothing: a plain run clears a masked one
+// only from a location both calls know. `cd a && make test | tail` masked,
+// then `cd b && make test` plain, both recorded with no known location: the
+// two may be in two directories, so the later one is no follow-up of the
+// first. The digest is kept (the words ran) and the location is what is
+// unknown. Break: key the runner on {digest, location} with "" as a location
+// of its own, and the run in b clears the masked run in a.
+func TestMasked_UnknownLocationClearsNothing(t *testing.T) {
+	const ok = store.ExecOK
+	const msg = "Done. All tests pass."
+	masked := maskedCall(1, shape.MaskedTest, "r", ok)
+	plain := plainRun(2, "r", ok)
+	masked.unknown, plain.unknown = true, true
+	run := tbRun(masked, plain)
+	if got := BuildMaskedRuns(run, AccountFromMessage(msg)); !got.Fires || got.Runs != 1 {
+		t.Errorf("fires %v, runs %d; want true, 1: a run at an unknown location cleared another", got.Fires, got.Runs)
+	}
+	// The control: the same two calls at one known location are a follow-up.
+	known := tbRun(maskedCall(1, shape.MaskedTest, "r", ok), plainRun(2, "r", ok))
+	if got := BuildMaskedRuns(known, AccountFromMessage(msg)); got.Fires || got.Runs != 0 {
+		t.Errorf("control: fires %v, runs %d; want false, 0", got.Fires, got.Runs)
+	}
+}
+
 // TestMasked_AsRan: MaskingAsRan takes status_masked and runner_digest from
 // the call's outcome record where it is at schema 4 and saw a tool_input,
 // and leaves the declaration's otherwise. Break: take them from a record that
