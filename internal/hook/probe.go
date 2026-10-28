@@ -2,7 +2,10 @@ package hook
 
 import (
 	"io"
+	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
@@ -53,6 +56,7 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	sessionID := store.UnattributedSession
 	reason := ""
 	cwd := ""
+	transcriptPath := ""
 
 	err := safe.Guard(func() error {
 		if payload == nil {
@@ -88,6 +92,10 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 			syncSteerDisclosure(st.Root())
 			return nil
 		case store.PhaseEnd:
+			// Read here alone, and a path that is not a string is no copy:
+			// sessionPayload's fields fail the whole payload on a wrong type,
+			// and a probe that never read this field must not start failing.
+			transcriptPath, _ = payload.Str(hookio.TranscriptPath)
 			run, err := st.ReadRun(sessionID)
 			if err != nil {
 				return err
@@ -111,6 +119,20 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	_ = safe.Guard(func() error {
 		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 	})
+
+	// The transcript copy (card 4.1, D111 as amended) runs after the end
+	// record, which so neither waits on it nor is lost to it, in a barrier of
+	// its own. A refused payload (hookio.TooLargeError) never reaches the
+	// PhaseEnd case, so it has no path and no copy. The copy's error has no
+	// reader yet: this function's is eviction's alone, which cmdProbe prints
+	// as evictionLine, and card 4.1b gives the copy a line of its own.
+	if phase == store.PhaseEnd && transcriptPath != "" {
+		_ = safe.Guard(func() error {
+			key := baseline.Key(cwd)
+			_, err := st.CopyBody(sessionID, transcriptPath, key, strings.TrimSuffix(baseline.FileName(key), baseline.FileExt), now())
+			return err
+		})
+	}
 
 	// Eviction runs at session boundaries, off the per-call path. The session
 	// that is starting or ending is never a candidate. Its error is not this

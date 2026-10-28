@@ -334,7 +334,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// WriteRecordScopeMarker (replaceFile, record_scope) is the new site.
 		// Moved 2026-10-27 (2.2c) to 23: WriteSteerDisclosureMarker's
 		// ReplaceFile, steer_disclosure, the second view of consent.json.
-		{"store", 23},
+		// Moved 2026-10-28 (4.1) to 25: bodies.go's copyBody CreateTemp
+		// (bodies/<project>/.body.tmp-*, renamed over <session>.jsonl) and
+		// WriteBodies' ReplaceFile (bodies.json, the transcript-copy switch).
+		{"store", 25},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

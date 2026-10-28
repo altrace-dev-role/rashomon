@@ -8,8 +8,8 @@ m("H-114 the probe announces each phase on stdout", "cmd/rashomon/main.go",
   "\t\tif runErr != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe\", phase)\n",
   "TestH114_ProbeStartAndEndPrintNothing")
 m("H-114 the end probe reports on stdout", "internal/hook/probe.go",
-  "\t\tcase store.PhaseEnd:\n\t\t\trun, err := st.ReadRun(sessionID)\n",
-  "\t\tcase store.PhaseEnd:\n\t\t\tfmt.Println(\"rashomon: end of run\")\n\t\t\trun, err := st.ReadRun(sessionID)\n",
+  "\t\t\trun, err := st.ReadRun(sessionID)\n",
+  "\t\t\tfmt.Println(\"rashomon: end of run\")\n\t\t\trun, err := st.ReadRun(sessionID)\n",
   "TestH114_ProbeStartAndEndPrintNothing")
 IMPORTS["H-114 the end probe reports on stdout"] = ("internal/hook/probe.go", '\t"io"\n', '\t"fmt"\n\t"io"\n')
 m("H-114 the phase refusal goes to stdout", "cmd/rashomon/main.go",
