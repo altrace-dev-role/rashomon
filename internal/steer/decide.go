@@ -24,6 +24,9 @@ const (
 // with no per-pattern version table yet (card 2.2 R8, D52).
 const patternVersion = 1
 
+// holdoutSuffix ends a held-out note's user text (tech 5.2.4 E, R2).
+const holdoutSuffix = " (held out: not sent to the agent)"
+
 // channelRule is what an event's row lets a note do (card 2.2 R4), read
 // from Marshal's own key table so the router and the marshaller cannot
 // disagree about a row (STR-10).
@@ -163,19 +166,37 @@ func clampReason(ctx *Context) *SuppressedBy {
 
 // plan is one admitted finding's decision while decide makes it.
 type plan struct {
-	f      Finding
-	key    findingKey
-	level  Level
-	state  LineState
-	by     *SuppressedBy
-	slots  map[string]json.RawMessage
-	model  string
-	user   string
-	decide bool // still to be decided by the budget passes
+	f       Finding
+	key     findingKey
+	level   Level
+	state   LineState
+	by      *SuppressedBy
+	slots   map[string]json.RawMessage
+	model   string
+	user    string
+	decide  bool // still to be decided by the budget passes
+	holdout bool // held out: the user got the note, the model nothing
 }
 
 func (p *plan) suppress(r SuppressedBy) {
 	p.state, p.by, p.decide = LineStateSuppressed, reason(r), false
+}
+
+// holdoutEligible is the field holdout's eligible set (card 2.5 R3; tech
+// 5.2.4 E): a note charge delivered, which is the call's one note. Every flag
+// is ineligible, whether its finding is one, a clamp made it one
+// (clampReason: steering off, no consent, no prompt, an active Stop hook) or
+// its event has no model channel (ruleFlagOnly: Stop, PostModelSwitch); no
+// stop form reaches decide, LevelStop being a nudge here (STR-20) and
+// StopContinue never set; and a line that did not print has nothing to hold.
+func holdoutEligible(p *plan) bool {
+	return p.state == LineStateDelivered && p.level == LevelNudge
+}
+
+// holdOut gives the user the note's own text with holdoutSuffix and the
+// model nothing; never the mirror, which says the agent was told (G1).
+func (p *plan) holdOut() {
+	p.user, p.model, p.holdout = p.model+holdoutSuffix, "", true
 }
 
 // decide is the router's pure core (card 2.2 R1): no clock, no randomness,
@@ -246,6 +267,11 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 	}
 
 	note, flag := charge(plans, have)
+	for i := range plans {
+		if ctx.Holdout && holdoutEligible(&plans[i]) {
+			plans[i].holdOut()
+		}
+	}
 	var out Output
 	switch {
 	case note >= 0:
@@ -325,6 +351,10 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, p *plan, id string) *L
 		RendererVersion: render.Version, RulesVersion: shape.RulesVersion,
 		Delivery:  DeriveDelivery(p.state, p.level, p.by, false),
 		HarnessID: ctx.HarnessID, Surface: ctx.Surface, Mirror: MirrorNone,
+	}
+	if p.holdout && p.state == LineStateDelivered {
+		d := DeliveryHoldout // recorded by the draw, never derived (tech 5.2.4 E)
+		l.Delivery = &d
 	}
 	if ctx.PromptID != nil {
 		prompt := *ctx.PromptID

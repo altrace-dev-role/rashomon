@@ -23,6 +23,7 @@ func TestContext_FieldsAreTheRouterInputs(t *testing.T) {
 		"Project string", "InvocationID string", "HarnessID string", "Surface string", "NowUnixMS int64",
 		"NewID func() string", "Consent bool", "SteerOff bool", "Arm Arm", "Attendance Attendance",
 		"StopHookActive bool",
+		"Holdout bool", // the hook's draw (card 2.5, D109)
 	}
 	typ := reflect.TypeOf(Context{})
 	var got []string

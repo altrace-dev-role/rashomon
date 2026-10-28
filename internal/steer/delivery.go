@@ -13,7 +13,7 @@ package steer
 // line at off, which writes no line, is null too.
 //
 // The field holdout's holdout is recorded directly by the draw (5.2.4 E),
-// never derived, and v0 makes no draw (card 2.2 R12, D48).
+// never derived: lineOf sets it on a held-out session's note (card 2.5).
 func DeriveDelivery(state LineState, level Level, by *SuppressedBy, printed bool) *Delivery {
 	var d Delivery
 	switch state {

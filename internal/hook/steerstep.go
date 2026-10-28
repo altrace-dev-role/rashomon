@@ -3,6 +3,7 @@ package hook
 import (
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/arm"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -21,12 +22,14 @@ const SteerReadBudget = 10 * time.Millisecond
 
 // SteerEnv is the step's port: what cmd reads from the process for it.
 // Consent is the steer_disclosure marker's reader (store.SteerDisclosureMarker,
-// D84); a nil reader reads as no consent.
+// D84); a nil reader reads as no consent. HoldoutOff is EnvHoldout as
+// HoldoutOff reads it.
 type SteerEnv struct {
 	HarnessID, Surface string
 	MirrorInBand       bool
 	AIAgent            string
 	CI                 bool
+	HoldoutOff         bool
 	Consent            func(root string) (int, error)
 	Now                time.Time
 }
@@ -87,7 +90,8 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 // unattended under CI or the dontAsk permission mode. Consent is the marker
 // at or over the disclosure this build shows. The project is the view's
 // root only: under record scope v4 the record holds none and the line
-// follows the record, so the payload's cwd is never a fallback.
+// follows the record, so the payload's cwd is never a fallback. Holdout is
+// the session's draw (heldOut).
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := steer.AttendanceAttended
@@ -108,7 +112,47 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		Consent:    consented(env.Consent, p.st.Root()),
 		Arm:        steer.ArmLive,
 		Attendance: attendance,
+		Holdout:    p.heldOut(env.HoldoutOff),
 	}
+}
+
+// holdoutFeature is the arm feature the steer holdout draws under: one
+// name, so every reader of a session's arm draws the same answer.
+const holdoutFeature = "steer"
+
+// holdoutBP is the field holdout's share in basis points: on by default at
+// 1,000 (PRD PF-MS5, opt-out; D109 as amended). 5.6 adds the off switch and
+// the rate, the spec file's holdout object, when 3.1's discovery gives the
+// hook its one spec read.
+const holdoutBP = 1000
+
+// EnvHoldout names the operator's switch for the field holdout: "off" skips
+// the draw, and every session is treatment. The project file's holdout object
+// (5.6, with 3.1 PR 2's discovery) is the configured form (PRD PF-MS5); this
+// is the operator's override, kept after 5.6 as the organisation's off until
+// the organisation file PF-MS5 names exists.
+const EnvHoldout = "RASHOMON_HOLDOUT"
+
+// HoldoutOff reads EnvHoldout's value: true for "off" exactly. Any other
+// value, "OFF" and "0" among them, is ignored, with no error and no log.
+func HoldoutOff(v string) bool {
+	return v == "off"
+}
+
+// heldOut is the session's draw into the field holdout (card 2.5, D109):
+// arm's keyed draw for the session at holdoutBP, the same on each of its
+// calls, unless the operator's off is set. A draw arm refuses is treatment,
+// and nothing records it: the store's key exists on every opened store.
+func (p *Post) heldOut(off bool) bool {
+	if off {
+		return false
+	}
+	a, err := arm.New(p.st.Key())
+	if err != nil {
+		return false
+	}
+	got, err := a.Assign(holdoutFeature, p.sessionID, holdoutBP)
+	return err == nil && got == arm.Holdout
 }
 
 // consented reads the marker; no reader, a read error or a value below

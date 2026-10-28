@@ -56,6 +56,10 @@ type Context struct {
 	// StopHookActive is the Stop payload's stop_hook_active: false until
 	// the payload reader carries it.
 	StopHookActive bool
+	// Holdout is the session's draw into the field holdout (card 2.5, D109),
+	// made by the hook under the store's key: the call's note goes to the
+	// user only. The router itself draws nothing.
+	Holdout bool
 }
 
 // Route is the only path to Output (tech 4.2.4; tech 1141: "the only path
