@@ -7,9 +7,11 @@ import (
 
 // PathClass is what a written path is, for staleness (PF-RC3: "a closed path
 // class: source, test, config, CI, docs or generated"). The list is closed at
-// six (D7). Invariant: ClassOf maps every string to exactly one of the six,
-// and is total and pure -- it reads the path and nothing else, so storing the
-// class on the record later changes nothing it computes.
+// six: a path no rule matches is source, so an unknown write stales the gates
+// rather than taking a seventh class. Invariant: ClassOf maps every string to
+// exactly one of the six, and is total and pure -- it reads the path and
+// nothing else, so storing the class on the record later changes nothing it
+// computes.
 type PathClass string
 
 const (
@@ -28,7 +30,7 @@ func PathClasses() []PathClass {
 }
 
 // Relevant reports whether a write of class c can change a gate's outcome and
-// so stales it (D8): source, test and config. A dependency or build-config
+// so stales it: source, test and config. A dependency or build-config
 // edit changes outcomes exactly as a source edit does; CI config, docs and
 // generated output do not change the local gate. It names the three classes
 // that are not relevant rather than the three that are, so a class this
@@ -48,9 +50,11 @@ var (
 	generatedSegments = set("vendor", "node_modules", "__pycache__", ".next", "__generated__")
 	// dist and target name build output at the project root only: deeper in a
 	// tree they are hand-written source, as Go's own cmd/dist and a package
-	// named target are (D10, B28). build is in neither list: Gradle output in
-	// one repository, hand-written scripts in another, and an ambiguous word
-	// errs toward relevance (D4, D7).
+	// named target are, so they classify only as the first path segment. build
+	// is in neither list: Gradle output in one repository, hand-written scripts
+	// in another, and where two readings are possible the class that stales a
+	// gate is chosen, since an edit hidden behind a green gate is the miss to
+	// prevent.
 	generatedRootSegments = set("dist", "target")
 	generatedSuffixes     = []string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart", ".freezed.dart", ".pb.dart", ".pbenum.dart", ".pbjson.dart", ".pbserver.dart", ".pbgrpc.dart"}
 	// Kubernetes and operator-sdk codegen writes zz_generated.<kind>.go, a
@@ -74,8 +78,9 @@ var (
 	camelTestExtensions = set(".java", ".kt", ".cs", ".swift", ".scala")
 
 	// Rule 4, docs. docs and doc at the project root only, for dist's reason:
-	// go/doc is a Go package (D10, B28). .txt is not a docs extension, since
-	// requirements.txt and CMakeLists.txt are build inputs (D8).
+	// deeper in a tree a directory word may be hand-written source, as go/doc
+	// is a Go package. .txt is not a docs extension, since requirements.txt
+	// and CMakeLists.txt are build inputs, which are config, never docs.
 	docsRootSegments = set("docs", "doc")
 	docsExtensions   = set(".md", ".rst", ".adoc")
 	docsBasenames    = set("license", "changelog", "authors", "notice")
@@ -91,18 +96,13 @@ var (
 	configExtensions = set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj")
 	configBasenames  = set("makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",
 		"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift")
-
-	// Rule 6, source.
-	sourceExtensions = set(".go", ".py", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".java", ".kt",
-		".kts", ".rb", ".php", ".ex", ".exs", ".cs", ".c", ".cc", ".cpp", ".h", ".hpp", ".swift", ".scala",
-		".sh", ".bash", ".zsh", ".sql", ".proto", ".tf", ".hcl", ".vue", ".svelte", ".dart", ".lua", ".pl", ".r")
 )
 
 // ClassOf is the class of a path as the record stores it (PF-RC3), by a total
 // precedence in which the first rule that matches wins: generated, CI, test,
-// docs, config, source, and source again for a path no rule matches (D7: an
-// unknown file errs toward relevance). The path is normalised first, so the
-// class does not depend on the OS that wrote it or on a shouting extension.
+// docs, config, and source for a path no rule matches, so an unknown write
+// stales the gates. The path is normalised first, so the class does not
+// depend on the OS that wrote it or on a shouting extension.
 //
 // Segment rules match directory elements only. The last element is a
 // basename unless the path ends in a slash: "docs" is a file named docs and
@@ -135,11 +135,6 @@ func ClassOf(p string) PathClass {
 		return ClassDocs
 	case inSet(n.ext, configExtensions) || isConfigName(n.base) || isDotfile(n.base):
 		return ClassConfig
-	case inSet(n.ext, sourceExtensions):
-		// Rule 6 returns what the fallback returns, so under D7 it changes no
-		// result; it is the table D7's revisit would need, the line that keeps
-		// known source out of a seventh fallback class.
-		return ClassSource
 	}
 	return ClassSource
 }
@@ -189,7 +184,7 @@ func hasSegment(dir string, s map[string]struct{}) bool {
 // conftest.py, and the CamelCase names *Test and *Tests in .java, .kt, .cs,
 // .swift and .scala. The CamelCase names are matched on the basename as
 // written, because the convention is CamelCase: folded to lower case, Test
-// would also match Latest.kt and Contest.cs (B29). Only their extension is
+// would also match Latest.kt and Contest.cs. Only their extension is
 // compared without case, as n.ext; the stem is cut by the extension as
 // written, since folding can change a length in bytes (the Kelvin sign folds
 // to a one-byte k), and a length taken from n.raw itself never cuts past its
@@ -208,7 +203,8 @@ func isTestName(n normalised) bool {
 }
 
 // isConfigName is rule 5's basename half: the basename table, and the Python
-// dependency lists requirements*.txt and constraints*.txt (D8: a build input).
+// dependency lists requirements*.txt and constraints*.txt, build inputs, which
+// are config, never docs.
 func isConfigName(base string) bool {
 	if inSet(base, configBasenames) {
 		return true

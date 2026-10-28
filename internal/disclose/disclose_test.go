@@ -149,13 +149,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if _, _, err := store.Pause(root, time.Now()); err != nil {
 		t.Fatalf("store.Pause: %v", err)
 	}
+	if err := store.WriteRecordScopeMarker(root, store.RecordScopeV5); err != nil {
+		t.Fatalf("store.WriteRecordScopeMarker: %v", err)
+	}
 	if err := store.SetRootInWorkTree(root, root); err != nil {
 		t.Fatalf("store.SetRootInWorkTree: %v", err)
 	}
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		recap.StateTempPrefix + "*"} {
+		"." + store.FileRecordScope + ".tmp-*", recap.StateTempPrefix + "*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -228,14 +231,14 @@ func matchesAFileRule(rel string, rules []FileRule) bool {
 }
 
 // writeCallSite matches a line that can create or overwrite a file: the four
-// stdlib calls that put new bytes on disk, and store's own writeSmall, which
-// wraps one of them. It deliberately does not match the line defining
+// stdlib calls that put new bytes on disk, and store's own writeSmall and
+// replaceFile, which wrap them. It deliberately does not match the line defining
 // writeSmall itself (TestTRU23_WriteCallSitesArePinned excludes lines that
 // start the way a top-level function declaration does), so the primitive's
 // one real OpenFile call is counted once, at writeSmall's definition, and
 // every caller that reaches a NEW path through it is counted again at the
 // call site -- which is what lets a new call site change the count at all.
-var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(`)
+var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|replaceFile\(`)
 
 // countWriteCallSites counts writeCallSite matches in dir's non-test .go
 // files, one count per line so a multi-call line is not undercounted.
@@ -278,7 +281,7 @@ func countWriteCallSites(t *testing.T, dir string) int {
 //
 // It is deliberately a blunt instrument, not a semantic one: it counts
 // textual call sites of the four file-creating stdlib functions plus
-// writeSmall across store's, recap's, baseline's and consent's own non-test source, and
+// writeSmall and replaceFile across store's, recap's, baseline's and consent's own non-test source, and
 // fails the moment that count moves, in either direction. It cannot tell a
 // new call site that writes an already-covered path from one that writes an
 // uncovered one -- that distinction needs a human, which is the point. A
@@ -312,7 +315,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// (AppendSteer's append open, runs/<session>/steer.ndjson) +
 		// harnesscounts.go (the lock sidecar's open, harness_counts.lock,
 		// and the replacement's CreateTemp, harness_counts.json).
-		{"store", 20},
+		// Moved 2026-10-27 (1.2q) to 22: replaceFile joined the pattern, so
+		// install_record.go's one call to it counts, and scope.go's
+		// WriteRecordScopeMarker (replaceFile, record_scope) is the new site.
+		{"store", 22},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

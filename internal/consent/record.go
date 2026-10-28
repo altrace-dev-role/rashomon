@@ -12,6 +12,10 @@
 //   - RecordScope: which record shape may RECORD write?
 //   - ScopeCovered: does the consent on file cover this build's capability
 //     classes, so watch can say "already watching" instead of asking again?
+//
+// The hook reads none of them on a tool call: it reads the record-scope
+// marker (store.FileRecordScope), which every Append keeps equal to
+// RecordScope's answer.
 package consent
 
 import (
@@ -44,10 +48,11 @@ const CapBytes = 64 << 10
 // append.
 const maxReadBytes = 4 << 20
 
-// Record scopes RECORD can write (Technical spec 1.2; 7.2.3).
+// Record scopes RECORD can write (Technical spec 1.2; 7.2.3), the store's
+// two words: the store's marker (store.FileRecordScope) holds one of them.
 const (
-	RecordScopeV4 = "v4"
-	RecordScopeV5 = "v5"
+	RecordScopeV4 = store.RecordScopeV4
+	RecordScopeV5 = store.RecordScopeV5
 )
 
 // Steering states a record carries: whether notes to the agent were on when
@@ -232,11 +237,28 @@ func maxBy(recs []Record, field func(Record) int) (int, bool) {
 	return best, true
 }
 
+// ErrScopeMarker wraps Append's error when the consent line is durable and
+// the record-scope marker after it could not be written: the marker is then
+// absent, which the hook reads as v4, until a later write succeeds.
+var ErrScopeMarker = errors.New("the record_scope marker was not written")
+
+// writeMarker is store.WriteRecordScopeMarker, which TestRS8 replaces to fail
+// it: the process dying between the consent line and the marker.
+var writeMarker = store.WriteRecordScopeMarker
+
 // Append adds rec to root's consent.json as one line, appended with O_APPEND
 // and synced before it returns, the file at mode 0600. A file whose last line
 // was torn gets a line feed first, so the torn bytes stay one skipped line
 // instead of swallowing this record. When the append would take the file past
 // CapBytes the file is compacted first (compact).
+//
+// It keeps the store's record-scope marker (store.FileRecordScope) a view of
+// the file: it removes the marker before it touches consent.json, compaction
+// included, and writes it again from RecordScope(root) once the line is
+// durable. The marker lags and never leads: a crash anywhere in between
+// leaves no marker, which the hook reads as v4 and so withholds, whichever
+// way this record moved the scope. An error wrapping ErrScopeMarker means
+// the line is on file and the marker is not.
 func Append(root string, rec Record) error {
 	if !rec.parses() {
 		return fmt.Errorf("consent: refusing to append a record no reader would count (v %d, via %q)", rec.V, rec.Via)
@@ -247,6 +269,37 @@ func Append(root string, rec Record) error {
 	}
 	line = append(line, '\n')
 
+	if err := store.RemoveRecordScopeMarker(root); err != nil {
+		return err
+	}
+	if err := appendRecord(root, line); err != nil {
+		return err
+	}
+	if err := syncMarker(root); err != nil {
+		return fmt.Errorf("%w: %w", ErrScopeMarker, err)
+	}
+	return nil
+}
+
+// syncMarker writes root's marker from consent.json's own answer, never from
+// the record just appended: a record that names no scope leaves the scope
+// where the log has it. A scope that is neither word (a hand edit, a later
+// build's) is written as v4. A file RecordScope cannot read leaves the
+// marker absent.
+func syncMarker(root string) error {
+	scope, err := RecordScope(root)
+	if err != nil {
+		return err
+	}
+	if scope != RecordScopeV5 {
+		scope = RecordScopeV4
+	}
+	return writeMarker(root, scope)
+}
+
+// appendRecord is Append's write of one encoded line, compaction first when
+// the line would take the file past CapBytes.
+func appendRecord(root string, line []byte) error {
 	path := Path(root)
 	if info, err := os.Stat(path); err == nil && info.Size()+int64(len(line))+1 > CapBytes {
 		if err := compact(root); err != nil {
@@ -292,11 +345,15 @@ func appendLine(f *os.File, line []byte) error {
 
 // compact rewrites consent.json to the records that decide every reader's
 // answer: the latest record per (via, scope_version), which keeps the latest
-// record overall and the highest scope_version, plus the record with the
+// record overall and the highest scope_version; the record with the
 // highest steer_disclosure, which a newer via of the same scope could
-// otherwise push out and so withdraw a consent a downgrade must keep. The
-// result is written to a temporary file in the same directory, synced and
-// renamed over consent.json, so a crash leaves the old file or the new one.
+// otherwise push out and so withdraw a consent a downgrade must keep; and
+// the latest record that names a record_scope, which a newer record of the
+// same via and scope that names none would otherwise push out and so move
+// RecordScope's answer. The result is written to a temporary file in the
+// same directory, synced and renamed over consent.json, so a crash leaves
+// the old file or the new one. It runs only inside Append, after the
+// record-scope marker is removed and before it is written again.
 func compact(root string) error {
 	recs, err := Read(root)
 	if err != nil {
@@ -322,16 +379,19 @@ func keepForCompaction(recs []Record) []Record {
 		scope int
 	}
 	latest := map[key]int{}
-	maxDisclosure := -1
+	maxDisclosure, scoped := -1, -1
 	for i, r := range recs {
 		latest[key{r.Via, r.ScopeVersion}] = i
 		if maxDisclosure < 0 || r.SteerDisclosure > recs[maxDisclosure].SteerDisclosure {
 			maxDisclosure = i
 		}
+		if r.RecordScope != "" {
+			scoped = i
+		}
 	}
 	var out []Record
 	for i, r := range recs {
-		if latest[key{r.Via, r.ScopeVersion}] == i || i == maxDisclosure {
+		if latest[key{r.Via, r.ScopeVersion}] == i || i == maxDisclosure || i == scoped {
 			out = append(out, r)
 		}
 	}

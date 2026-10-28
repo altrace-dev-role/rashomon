@@ -259,7 +259,9 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
-	// The caps, as on the declaration path (REC-52).
+	// The record-scope gate, then the caps, as on the declaration path
+	// (store.GateExecution; REC-52).
+	store.GateExecution(&rec, recordScope(p.st))
 	if p.capExec(&rec) {
 		p.withheld = true
 	}

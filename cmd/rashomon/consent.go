@@ -48,6 +48,9 @@ func cmdConsent(args []string, stdout io.Writer) error {
 	}
 	gate.hold()
 	if err := consent.Append(plan.root, rec); err != nil {
+		if errors.Is(err, consent.ErrScopeMarker) {
+			return fmt.Errorf("%s: %s holds the record, but %w; recording keeps the v4 shape until it is", stepConsent, consent.Path(plan.root), err)
+		}
 		return fmt.Errorf("%s failed: %w; nothing was written", stepConsent, err)
 	}
 	fmt.Fprintf(stdout, "rashomon: consent recorded for scope %d (install %s) in %s\n", rec.ScopeVersion, plan.installID, consent.Path(plan.root))
