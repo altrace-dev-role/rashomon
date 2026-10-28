@@ -1,8 +1,10 @@
 package recap
 
 import (
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -27,20 +29,32 @@ const maxGateNames = 3
 // titles names each pattern a delivered note can carry in the clause (tech
 // 2.2.11 Titles). integrity and model-switch are never delivered, and
 // sequence-risk is reserved; none has a title.
-var titles = map[string]string{
-	string(pattern.SubtaskGate):        "task check",
-	string(pattern.RegressionLocation): "regression location",
-	string(pattern.ContinuityBriefing): "briefing",
-	string(pattern.DeclaredFact):       "known fix",
-	string(pattern.LearnedFact):        "known fix",
-	string(pattern.PlatformRule):       "platform rule",
-	string(pattern.IdenticalRetry):     "repeat-call note",
-	string(pattern.CredSpray):          "credentials note",
-	string(pattern.OrderingRule):       "ordering rule",
-	string(pattern.AgentInterference):  "interference note",
-	string(pattern.SubagentClaim):      "subagent check",
-	string(pattern.ClaimVsRecord):      "record check",
-	string(pattern.MaskedStatus):       "hidden-status note",
+func titles() map[string]string {
+	titlesOnce.Do(func() {
+		titlesOnce.v = map[string]string{
+			string(pattern.SubtaskGate):        "task check",
+			string(pattern.RegressionLocation): "regression location",
+			string(pattern.ContinuityBriefing): "briefing",
+			string(pattern.DeclaredFact):       "known fix",
+			string(pattern.LearnedFact):        "known fix",
+			string(pattern.PlatformRule):       "platform rule",
+			string(pattern.IdenticalRetry):     "repeat-call note",
+			string(pattern.CredSpray):          "credentials note",
+			string(pattern.OrderingRule):       "ordering rule",
+			string(pattern.AgentInterference):  "interference note",
+			string(pattern.SubagentClaim):      "subagent check",
+			string(pattern.ClaimVsRecord):      "record check",
+			string(pattern.MaskedStatus):       "hidden-status note",
+		}
+	})
+	return titlesOnce.v
+}
+
+// titlesOnce holds what titles returns, built on its first call and never at
+// init (RES-2).
+var titlesOnce struct {
+	sync.Once
+	v map[string]string
 }
 
 // whens is the clause's <when> by the delivering line's event (D78, D87):
@@ -48,19 +62,32 @@ var titles = map[string]string{
 // PostToolUse and PostToolBatch read "after the call". SessionStart's
 // compact and resume kinds are on no line, and the commit, push, pull-request
 // and task phrases have no event, so those events render no <when>.
-var whens = map[string]string{
-	string(steer.EventPostToolUseFailure): "at the failure",
-	string(steer.EventUserPromptSubmit):   "with your prompt",
-	string(steer.EventSubagentStart):      "at the subagent start",
-	string(steer.EventPostToolUse):        "after the call",
-	string(steer.EventPostToolBatch):      "after the call",
+func whens() map[string]string {
+	whensOnce.Do(func() {
+		whensOnce.v = map[string]string{
+			string(steer.EventPostToolUseFailure): "at the failure",
+			string(steer.EventUserPromptSubmit):   "with your prompt",
+			string(steer.EventSubagentStart):      "at the subagent start",
+			string(steer.EventPostToolUse):        "after the call",
+			string(steer.EventPostToolBatch):      "after the call",
+		}
+	})
+	return whensOnce.v
+}
+
+// whensOnce holds what whens returns, built on its first call and never at
+// init (RES-2).
+var whensOnce struct {
+	sync.Once
+	v map[string]string
 }
 
 // prefixWords are the words that lead a shell line before its runner, as in
 // `set -o pipefail; make test`: a gate run whose program word is one names
 // no runner, and the record holds the runner's words only as a digest, so the
-// sentence names the gate's kind instead (D94).
-var prefixWords = map[string]bool{"set": true, "export": true, "source": true, "eval": true, "exec": true, "env": true, "time": true}
+// sentence names the gate's kind instead (D94). A slice of constants, with
+// no code run at init (RES-2).
+var prefixWords = []string{"set", "export", "source", "eval", "exec", "env", "time"}
 
 // Note is one note delivered to the agent in the prompt: its pattern, the
 // event that delivered it, and the text the model received.
@@ -72,7 +99,19 @@ type Note struct {
 
 // noteKeys is the one KeySet a steer line is read with (RES-5's pattern: no
 // decode of a whole line).
-var noteKeys = jsonscan.NewKeySet("state", "prompt_id", "event", "pattern", "model_text")
+func noteKeys() *jsonscan.KeySet {
+	noteKeysOnce.Do(func() {
+		noteKeysOnce.v = jsonscan.NewKeySet("state", "prompt_id", "event", "pattern", "model_text")
+	})
+	return noteKeysOnce.v
+}
+
+// noteKeysOnce holds what noteKeys returns, built on its first call and never
+// at init (RES-2).
+var noteKeysOnce struct {
+	sync.Once
+	v *jsonscan.KeySet
+}
 
 const (
 	nkState = iota
@@ -93,7 +132,7 @@ func DeliveredNotes(lines [][]byte, promptID string) []Note {
 	var notes []Note
 	var out [nkCount]jsonscan.Span
 	for _, b := range lines {
-		if jsonscan.Top(b, noteKeys, out[:]) != nil {
+		if jsonscan.Top(b, noteKeys(), out[:]) != nil {
 			continue
 		}
 		if text(b, out[nkState]) != string(steer.LineStateDelivered) || text(b, out[nkPrompt]) != promptID {
@@ -148,12 +187,12 @@ func clause(notes []Note) string {
 	case 0:
 		return ""
 	case 1:
-		title := titles[notes[0].Pattern]
+		title := titles()[notes[0].Pattern]
 		if title == "" {
 			title = "note"
 		}
 		s := "AutoSteer: 1 " + title + " given"
-		if when := whens[notes[0].Event]; when != "" {
+		if when := whens()[notes[0].Event]; when != "" {
 			s += " " + when
 		}
 		return s + "."
@@ -307,7 +346,7 @@ func (t gateSet) first(s verify.State) *verify.GateState {
 // name is g's program word, else its kind: with no program word, or with a
 // prefix word in its place.
 func (t gateSet) name(g *verify.GateState) string {
-	if p := t.programs[g.Gate]; p != "" && !prefixWords[p] {
+	if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {
 		return p
 	}
 	return g.Kind

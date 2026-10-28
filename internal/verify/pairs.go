@@ -18,13 +18,14 @@ const timeoutFired = 124
 // list and read MCP resources: none writes a source or test file. The copy of
 // report's list (testbending.go:281), which is the source and must stay equal
 // to this (INT14 holds one row per name). Owed: one copy, lifted into shape
-// with mayEdit, which both read (a later card, beside outranks's).
-var noWrite = map[string]bool{
-	"TodoWrite": true, "TaskCreate": true, "TaskUpdate": true, "TaskList": true, "TaskGet": true,
-	"TaskOutput": true, "TaskStop": true, "AskUserQuestion": true, "EnterPlanMode": true,
-	"ExitPlanMode": true, "BashOutput": true, "KillShell": true, "KillBash": true, "Skill": true,
-	"ToolSearch": true, "SendMessage": true, "CronCreate": true, "CronDelete": true, "CronList": true,
-	"ListMcpResourcesTool": true, "ReadMcpResourceTool": true,
+// with mayEdit, which both read (a later card, beside outranks's). A slice
+// of constants, with no code run at init (RES-2).
+var noWrite = []string{
+	"TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+	"TaskOutput", "TaskStop", "AskUserQuestion", "EnterPlanMode",
+	"ExitPlanMode", "BashOutput", "KillShell", "KillBash", "Skill",
+	"ToolSearch", "SendMessage", "CronCreate", "CronDelete", "CronList",
+	"ListMcpResourcesTool", "ReadMcpResourceTool",
 }
 
 // testsOnlyThenGreen is the tests_only_then_green pairs whose passing run is
@@ -166,7 +167,7 @@ func maskedAsRan(d *store.Declaration, e *store.Execution) bool {
 // network and agent, and a shell line of any class that may write or hid a
 // runner's status; never a noWrite tool.
 func mayEdit(d *store.Declaration, hidden bool) bool {
-	if noWrite[d.ToolName] {
+	if slices.Contains(noWrite, d.ToolName) {
 		return false
 	}
 	if d.Shape.MayWrite || hidden {

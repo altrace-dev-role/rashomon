@@ -2,6 +2,7 @@ package report
 
 import (
 	"sort"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -25,21 +26,33 @@ import (
 // here is not reported as a family at all -- this is a named set, and an
 // unrecognised program would otherwise create a family per command a session
 // happened to run.
-var families = map[string]string{
-	"curl": "curl", "wget": "curl",
+func families() map[string]string {
+	familiesOnce.Do(func() {
+		familiesOnce.v = map[string]string{
+			"curl": "curl", "wget": "curl",
 
-	"python3": "python", "python": "python", "pip": "python", "pip3": "python",
-	"uv": "python", "poetry": "python",
+			"python3": "python", "python": "python", "pip": "python", "pip3": "python",
+			"uv": "python", "poetry": "python",
 
-	"node": "node", "npm": "node", "npx": "node", "yarn": "node",
-	"pnpm": "node", "bun": "node",
+			"node": "node", "npm": "node", "npx": "node", "yarn": "node",
+			"pnpm": "node", "bun": "node",
 
-	"go": "go",
+			"go": "go",
 
-	"git": "git",
-	"gh":  "gh",
+			"git": "git",
+			"gh":  "gh",
 
-	"aws": "aws", "kubectl": "kubectl", "helm": "helm", "brew": "brew",
+			"aws": "aws", "kubectl": "kubectl", "helm": "helm", "brew": "brew",
+		}
+	})
+	return familiesOnce.v
+}
+
+// familiesOnce holds what families returns, built on its first call and never
+// at init (RES-2).
+var familiesOnce struct {
+	sync.Once
+	v map[string]string
 }
 
 // Family is one program family's coverage for this session.
@@ -86,7 +99,7 @@ func buildFamilies(run *store.Run, forgotten func(host string, declaredAtMS int6
 		if d.Shape.Program == nil {
 			continue
 		}
-		name, ok := families[*d.Shape.Program]
+		name, ok := families()[*d.Shape.Program]
 		if !ok {
 			continue
 		}
@@ -114,7 +127,7 @@ func buildFamilies(run *store.Run, forgotten func(host string, declaredAtMS int6
 	// Every family name in the table, so "not exercised" is a complete list
 	// rather than whatever happened to come to mind.
 	all := map[string]bool{}
-	for _, name := range families {
+	for _, name := range families() {
 		all[name] = true
 	}
 	names := make([]string, 0, len(all))

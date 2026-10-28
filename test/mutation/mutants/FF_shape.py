@@ -8,7 +8,7 @@ m("FF workflow subagent transcripts are not read", "internal/report/gather/gathe
   "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok && filepath.Dir(p) == dir {",
   "TestTranscript_WorkflowSubagent")
 m("FF a harness-completed input counts as a rewrite", "internal/report/destinations.go",
-  "\t\tif d.Shape.Digest == \"\" || inputCompletedByHarness[d.ToolName] {",
+  "\t\tif d.Shape.Digest == \"\" || slices.Contains(inputCompletedByHarness, d.ToolName) {",
   "\t\tif d.Shape.Digest == \"\" {", "TestRewritten_")
 m("FF the program is cd for every cd-and-command line", "internal/shape/shape.go",
   "\t\tif i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {", "\t\tif i, ok = i, true; ok {",

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
@@ -16,7 +17,19 @@ const budgetChunk = 64 << 10
 // budgetKeys are the eight keys the scan reads from a line, in one walk
 // that allocates nothing per value (jsonscan.Top); RES-5 bans a decode on
 // the hook path.
-var budgetKeys = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key")
+func budgetKeys() *jsonscan.KeySet {
+	budgetKeysOnce.Do(func() {
+		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key")
+	})
+	return budgetKeysOnce.v
+}
+
+// budgetKeysOnce holds what budgetKeys returns, built on its first call and
+// never at init (RES-2).
+var budgetKeysOnce struct {
+	sync.Once
+	v *jsonscan.KeySet
+}
 
 // budgetKeys' slots, in the order given above.
 const (
@@ -147,7 +160,7 @@ type budgetScan struct {
 
 // line reads one line, newest first.
 func (s *budgetScan) line(b []byte) {
-	if len(b) == 0 || jsonscan.Top(b, budgetKeys, s.out[:]) != nil {
+	if len(b) == 0 || jsonscan.Top(b, budgetKeys(), s.out[:]) != nil {
 		return
 	}
 	if !s.ours(b) {

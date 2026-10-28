@@ -91,7 +91,7 @@ m("VER-1.8 SuppressionsAdded counts negatives", I,
 m("VER-1.8 an empty Unresolved is null", I,
   "\tout := Integrity{Unresolved: []IntegrityEntry{}}\n", "\tout := Integrity{}\n", "TestINT6_")
 m("VER-1.8 the entries are unsorted", I, SORT, "", "TestINT8_")
-IMPORTS["VER-1.8 the entries are unsorted"] = (I, "import (\n\t\"cmp\"\n\t\"slices\"\n\n", "import (\n")
+IMPORTS["VER-1.8 the entries are unsorted"] = (I, "import (\n\t\"cmp\"\n\t\"slices\"\n\t\"sync\"\n", "import (\n\t\"sync\"\n")
 m("VER-1.8 the check is not a sort key", I,
   "cmp.Compare(slices.Index(IntegrityKinds, a.Check), slices.Index(IntegrityKinds, b.Check)),\n", "0,\n", "TestINT8_")
 m("VER-1.8 the marker is not a sort key", I,
@@ -146,8 +146,8 @@ m("VER-1.8r a call with no execution is a result", P,
   "\tcase e == nil:\n\t\treturn false, false\n", "\tcase e == nil:\n\t\treturn true, false\n", "TestINT14_")
 m("VER-1.8r a timeout-124 red pairs", P, "\t\treturn false, !stopped\n", "\t\treturn false, !stopped || stopped\n", "TestINT14_")
 m("VER-1.8r a backgrounded green is a result", P, " && !e.Backgrounded, false\n", ", false\n", "TestINT14_")
-m("VER-1.8r a noWrite tool stops the pair", P, "\tif noWrite[d.ToolName] {\n\t\treturn false\n\t}\n", "", "TestINT14_")
-m("VER-1.8r the noWrite list misses a name", P, '"TodoWrite": true, ', "", "TestINT14_")
+m("VER-1.8r a noWrite tool stops the pair", P, "\tif slices.Contains(noWrite, d.ToolName) {\n\t\treturn false\n\t}\n", "", "TestINT14_")
+m("VER-1.8r the noWrite list misses a name", P, '"TodoWrite", ', "", "TestINT14_")
 m("VER-1.8r a shell line that may write is read by its class", P,
   "\tif d.Shape.MayWrite || hidden {\n", "\tif hidden {\n", "TestINT14_")
 m("VER-1.8r a masked line is read by its class", P,

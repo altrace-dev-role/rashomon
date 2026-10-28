@@ -28,8 +28,9 @@ m("ST-2.4 the done flag on a green verdict", DN,
 
 # The value line and the clause (R6, R8).
 m("ST-2.4 and <k> more at four", VL, 'const maxGateNames = 3\n', 'const maxGateNames = 4\n', "TestVER65_ValueLineRowsRender")
+IMPORTS["ST-2.4 a prefix word names the gate"] = (VL, '\t"slices"\n', '')
 m("ST-2.4 a prefix word names the gate", VL,
-  'if p := t.programs[g.Gate]; p != "" && !prefixWords[p] {\n', 'if p := t.programs[g.Gate]; p != "" {\n', "TestVER65_ValueLineRowsRender")
+  'if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {\n', 'if p := t.programs[g.Gate]; p != "" {\n', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the no-write variant dropped", VL,
   '\tif !wrote {\n\t\twhere = " in this turn"\n\t}\n', '', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the clause counts suppressed lines", VL,

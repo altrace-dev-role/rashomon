@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -114,22 +115,23 @@ const Basis = "declared"
 // first run would fire on almost every first run and be ignored from then on.
 // The list is short, fixed, and deliberately made of package registries and
 // their CDNs rather than anything an operator might run themselves.
-var ubiquitous = map[string]bool{
-	"registry.npmjs.org":            true,
-	"pypi.org":                      true,
-	"files.pythonhosted.org":        true,
-	"github.com":                    true,
-	"api.github.com":                true,
-	"objects.githubusercontent.com": true,
-	"proxy.golang.org":              true,
-	"sum.golang.org":                true,
-	"formulae.brew.sh":              true,
-	"ghcr.io":                       true,
+// A slice of constants, with no code run at init (RES-2).
+var ubiquitous = []string{
+	"registry.npmjs.org",
+	"pypi.org",
+	"files.pythonhosted.org",
+	"github.com",
+	"api.github.com",
+	"objects.githubusercontent.com",
+	"proxy.golang.org",
+	"sum.golang.org",
+	"formulae.brew.sh",
+	"ghcr.io",
 }
 
 // Ubiquitous reports whether a host is on the never-novel list. Exported so the
 // report can say so rather than silently dropping the host.
-func Ubiquitous(host string) bool { return ubiquitous[host] }
+func Ubiquitous(host string) bool { return slices.Contains(ubiquitous, host) }
 
 // entry is when a host was first named in this project, and by which session,
 // and when it was last named: the start of the latest session that named it,

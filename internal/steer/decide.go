@@ -45,7 +45,7 @@ const (
 )
 
 func ruleOf(e Event) channelRule {
-	keys, ok := outputKeys[string(e)]
+	keys, ok := outputKeys()[string(e)]
 	switch {
 	case !ok || keys.decision:
 		return ruleNoChannel

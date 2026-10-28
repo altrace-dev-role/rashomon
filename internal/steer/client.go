@@ -3,6 +3,7 @@ package steer
 import (
 	"slices"
 	"strings"
+	"sync"
 )
 
 // Client is what the marshaller knows about the program reading the hook's
@@ -41,19 +42,31 @@ const (
 // a row added to outputKeys later fails closed. Exempt rows
 // (eventKeys.exempt) are not read here. Only a release changes this list;
 // test/live/p-tru-1.sh, the per-release canary, is what extends it.
-var mirrorVerifiedOn = map[string][]string{
-	// P-TRU-1, 2026-10-23, on 2.1.280: one PostToolUse output carrying
-	// both additionalContext and systemMessage (PRD PF-ST4).
-	string(EventPostToolUse): {"2.1.280"},
-	// The same payload shape as PostToolUse (hook/post.go), not probed.
-	string(EventPostToolUseFailure): {},
-	// Not probed; empty until test/live/p-tru-1.sh runs on them (:2019).
-	string(EventPostToolBatch): {},
-	string(EventSessionStart):  {},
-	string(EventSubagentStart): {},
-	// permissionDecisionReason (G3); nonce A only, since the row has no
-	// additionalContext slot for nonce B; not probed.
-	string(EventPreToolUse): {},
+func mirrorVerifiedOn() map[string][]string {
+	mirrorVerifiedOnOnce.Do(func() {
+		mirrorVerifiedOnOnce.v = map[string][]string{
+			// P-TRU-1, 2026-10-23, on 2.1.280: one PostToolUse output carrying
+			// both additionalContext and systemMessage (PRD PF-ST4).
+			string(EventPostToolUse): {"2.1.280"},
+			// The same payload shape as PostToolUse (hook/post.go), not probed.
+			string(EventPostToolUseFailure): {},
+			// Not probed; empty until test/live/p-tru-1.sh runs on them (:2019).
+			string(EventPostToolBatch): {},
+			string(EventSessionStart):  {},
+			string(EventSubagentStart): {},
+			// permissionDecisionReason (G3); nonce A only, since the row has no
+			// additionalContext slot for nonce B; not probed.
+			string(EventPreToolUse): {},
+		}
+	})
+	return mirrorVerifiedOnOnce.v
+}
+
+// mirrorVerifiedOnOnce holds what mirrorVerifiedOn returns, built on its first
+// call and never at init (RES-2).
+var mirrorVerifiedOnOnce struct {
+	sync.Once
+	v map[string][]string
 }
 
 // verified reports whether event's model-visible field may print for c
@@ -72,13 +85,13 @@ func verified(keys eventKeys, event string, c Client, table map[string][]string)
 // MarshalFor reads, so a router that shadows a finding with suppressed_by
 // unverified_channel where this is false cannot disagree with the marshal.
 func ContextAllowed(event string, c Client) bool {
-	return allowed(event, c, mirrorVerifiedOn)
+	return allowed(event, c, mirrorVerifiedOn())
 }
 
 // allowed is ContextAllowed over a given table, the seam a test reaches a
 // row's printing path through while the compiled list keeps it empty.
 func allowed(event string, c Client, table map[string][]string) bool {
-	keys, ok := outputKeys[event]
+	keys, ok := outputKeys()[event]
 	return ok && keys.context && verified(keys, event, c, table)
 }
 

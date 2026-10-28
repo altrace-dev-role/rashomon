@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -86,9 +87,21 @@ const (
 // one in v0 (Q1). The window is the run (D40), and an id digests its scope,
 // so a subtask or commit label over session-wide evidence would change
 // meaning under the same id once those windows land.
-var obligationScopes = map[string]string{
-	PointStop: ScopeSession, PointSubagentStop: ScopeSession, PointSubtask: ScopeSession,
-	PointCommit: ScopeSession, PointPush: ScopeSession, PointPR: ScopeSession, PointQuery: ScopeSession,
+func obligationScopes() map[string]string {
+	obligationScopesOnce.Do(func() {
+		obligationScopesOnce.v = map[string]string{
+			PointStop: ScopeSession, PointSubagentStop: ScopeSession, PointSubtask: ScopeSession,
+			PointCommit: ScopeSession, PointPush: ScopeSession, PointPR: ScopeSession, PointQuery: ScopeSession,
+		}
+	})
+	return obligationScopesOnce.v
+}
+
+// obligationScopesOnce holds what obligationScopes returns, built on its first
+// call and never at init (RES-2).
+var obligationScopesOnce struct {
+	sync.Once
+	v map[string]string
 }
 
 // obligationSourceSpec is the source of a declared or ci_commands gate.
@@ -187,7 +200,7 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 	l := ledger{
 		rows:     make([]Obligation, 0, 4*n),
 		evidence: make([]int64, 0, 6*n),
-		scope:    cmp.Or(obligationScopes[snap.Point.Kind], ScopeSession),
+		scope:    cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession),
 	}
 	reds := watches(runs, snap.Point.Seq)
 	for i := range snap.Gates {

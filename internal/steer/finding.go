@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -214,16 +215,28 @@ type eventKeys struct {
 // there): the row allows the key, and mirrorVerifiedOn decides whether it
 // prints, so a per-call event never prints it ungated. PostModelSwitch
 // prints a systemMessage only. An event absent from it is unknown.
-var outputKeys = map[string]eventKeys{
-	string(EventPreToolUse):         {decision: true},
-	string(EventPostToolUse):        {context: true},
-	string(EventPostToolUseFailure): {context: true},
-	string(EventPostToolBatch):      {context: true},
-	string(EventUserPromptSubmit):   {context: true, exempt: true},
-	string(EventSessionStart):       {context: true},
-	string(EventSubagentStart):      {context: true},
-	string(EventStop):               {stopContinue: true},
-	string(EventPostModelSwitch):    {},
+func outputKeys() map[string]eventKeys {
+	outputKeysOnce.Do(func() {
+		outputKeysOnce.v = map[string]eventKeys{
+			string(EventPreToolUse):         {decision: true},
+			string(EventPostToolUse):        {context: true},
+			string(EventPostToolUseFailure): {context: true},
+			string(EventPostToolBatch):      {context: true},
+			string(EventUserPromptSubmit):   {context: true, exempt: true},
+			string(EventSessionStart):       {context: true},
+			string(EventSubagentStart):      {context: true},
+			string(EventStop):               {stopContinue: true},
+			string(EventPostModelSwitch):    {},
+		}
+	})
+	return outputKeysOnce.v
+}
+
+// outputKeysOnce holds what outputKeys returns, built on its first call and
+// never at init (RES-2).
+var outputKeysOnce struct {
+	sync.Once
+	v map[string]eventKeys
 }
 
 // Marshal renders Output for event, following tech 4.2.3's per-event key
@@ -268,13 +281,13 @@ func (o Output) Marshal(event string) ([]byte, error) {
 // systemMessage is never gated. The refusal comes after every check of the
 // Output's own shape, so a malformed Output reports its defect first.
 func (o Output) MarshalFor(event string, c Client) ([]byte, error) {
-	return o.marshalFor(event, c, mirrorVerifiedOn)
+	return o.marshalFor(event, c, mirrorVerifiedOn())
 }
 
 // marshalFor is MarshalFor under table, the seam that lets a test reach a
 // gated row's printing path.
 func (o Output) marshalFor(event string, c Client, table map[string][]string) ([]byte, error) {
-	keys, ok := outputKeys[event]
+	keys, ok := outputKeys()[event]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownEvent, event)
 	}

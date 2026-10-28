@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"sync"
 )
 
 // The one-pass reader's parts (card 2.3b). Every record the store writes is
@@ -26,13 +27,23 @@ const (
 // prefixPair returns the kind a line names as the table's own string:
 // indexing a map with a converted byte slice allocates nothing. A kind added
 // to kindVersion is read from its prefix with no row here.
-var runKindNames = func() map[string]string {
-	names := make(map[string]string, len(kindVersion))
-	for kind := range kindVersion {
-		names[kind] = kind
-	}
-	return names
-}()
+func runKindNames() map[string]string {
+	runKindNamesOnce.Do(func() {
+		names := make(map[string]string, len(kindVersion))
+		for kind := range kindVersion {
+			names[kind] = kind
+		}
+		runKindNamesOnce.v = names
+	})
+	return runKindNamesOnce.v
+}
+
+// runKindNamesOnce holds what runKindNames returns, built on its first call
+// and never at init (RES-2).
+var runKindNamesOnce struct {
+	sync.Once
+	v map[string]string
+}
 
 // prefixPair reads a line's pair from its first bytes when the line begins in
 // the writer's form: prefixType, a kind named in kindVersion, prefixVersion,
@@ -50,7 +61,7 @@ func prefixPair(line []byte) (kind string, version int, ok bool) {
 	if end < 0 {
 		return "", 0, false
 	}
-	if kind, ok = runKindNames[string(rest[:end])]; !ok {
+	if kind, ok = runKindNames()[string(rest[:end])]; !ok {
 		return "", 0, false
 	}
 	if rest, ok = cutPrefix(rest[end:], prefixVersion); !ok {

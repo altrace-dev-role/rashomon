@@ -286,8 +286,8 @@ func TestVER13d_EmptyRunReachesTheLedger(t *testing.T) {
 // TestVER13e_StateOrderAndVocabularyUnchanged: the empty-run row adds no
 // state and no reason; Order and empty_run's state stand as they were.
 func TestVER13e_StateOrderAndVocabularyUnchanged(t *testing.T) {
-	if want := []State{Red, MaskedInconclusive, Backgrounded, Stale, Absent, Unknown, Green}; !slices.Equal(Order, want) || reasonState[EmptyRun] != Absent {
-		t.Fatalf("Order %v and empty_run's state %s, want %v and absent", Order, reasonState[EmptyRun], want)
+	if want := []State{Red, MaskedInconclusive, Backgrounded, Stale, Absent, Unknown, Green}; !slices.Equal(Order, want) || reasonState()[EmptyRun] != Absent {
+		t.Fatalf("Order %v and empty_run's state %s, want %v and absent", Order, reasonState()[EmptyRun], want)
 	}
 }
 

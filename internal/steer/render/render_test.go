@@ -472,7 +472,7 @@ func TestSTR14b_BannedWordsOutsideAQuote(t *testing.T) {
 // verb opening a sentence or clause; quotes are exempt; the spec's own
 // statements pass (STR-14).
 func TestSTR14_TemplatesAreStatementsOfFact(t *testing.T) {
-	if err := checkTable(templates); err != nil {
+	if err := checkTable(templates()); err != nil {
 		t.Errorf("the template table: %v", err)
 	}
 	for _, c := range []struct {
@@ -529,7 +529,7 @@ func TestSTR14c_ImperativeOpeningsCoverTheEditAndGitVerbs(t *testing.T) {
 			t.Errorf("CheckTemplate opening with %q passed", v)
 		}
 	}
-	if err := checkTable(templates); err != nil {
+	if err := checkTable(templates()); err != nil {
 		t.Errorf("the template table trips on the wider verb list: %v", err)
 	}
 }

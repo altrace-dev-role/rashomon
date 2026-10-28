@@ -372,7 +372,7 @@ func TestINT12_EverySpecMarkerIdIsInTheTableAndValid(t *testing.T) {
 			}
 			seen[id] = true
 			n++
-			if got, ok := markerTable[id]; !ok || got != class {
+			if got, ok := markerTable()[id]; !ok || got != class {
 				t.Errorf("%s: class %d (present %t), want %d", id, got, ok, class)
 			}
 			if !MarkerID(id).Valid() {
@@ -380,8 +380,8 @@ func TestINT12_EverySpecMarkerIdIsInTheTableAndValid(t *testing.T) {
 			}
 		}
 	}
-	if n != 35 || len(markerTable) != n {
-		t.Errorf("the table holds %d ids, the list %d, want 35 and 35: 11 skip, 12 suppression, 8 test_def, 4 assert", len(markerTable), n)
+	if n != 35 || len(markerTable()) != n {
+		t.Errorf("the table holds %d ids, the list %d, want 35 and 35: 11 skip, 12 suppression, 8 test_def, 4 assert", len(markerTable()), n)
 	}
 	if MarkerTableVersion != 1 {
 		t.Errorf("MarkerTableVersion %d, want 1", MarkerTableVersion)

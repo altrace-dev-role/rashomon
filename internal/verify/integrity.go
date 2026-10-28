@@ -3,6 +3,7 @@ package verify
 import (
 	"cmp"
 	"slices"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -50,20 +51,32 @@ var checkOf = [...]IntegrityKind{markSkip: SkipAdded, markTestDef: TestRemoved, 
 // skip.*) is superseded; no writer emitted it. Its secret.<rule> and
 // stub.not_implemented stay RECORD-only ids in the same map, which integrity
 // counts as unknown and reads no further.
-var markerTable = map[string]markClass{
-	"go.t_skip": markSkip, "py.pytest_skip": markSkip, "py.unittest_skip": markSkip, "py.xfail": markSkip,
-	"js.it_skip": markSkip, "js.xit": markSkip, "js.only": markSkip, "rust.ignore": markSkip,
-	"jvm.disabled": markSkip, "ruby.skip": markSkip, "php.skip": markSkip,
+func markerTable() map[string]markClass {
+	markerTableOnce.Do(func() {
+		markerTableOnce.v = map[string]markClass{
+			"go.t_skip": markSkip, "py.pytest_skip": markSkip, "py.unittest_skip": markSkip, "py.xfail": markSkip,
+			"js.it_skip": markSkip, "js.xit": markSkip, "js.only": markSkip, "rust.ignore": markSkip,
+			"jvm.disabled": markSkip, "ruby.skip": markSkip, "php.skip": markSkip,
 
-	"py.nosec": markSuppression, "py.noqa": markSuppression, "py.type_ignore": markSuppression,
-	"py.pylint_disable": markSuppression, "go.nolint": markSuppression, "js.eslint_disable": markSuppression,
-	"ts.ts_ignore": markSuppression, "ts.ts_expect_error": markSuppression, "rust.allow": markSuppression,
-	"jvm.suppress_warnings": markSuppression, "any.nosemgrep": markSuppression, "any.gitleaks_allow": markSuppression,
+			"py.nosec": markSuppression, "py.noqa": markSuppression, "py.type_ignore": markSuppression,
+			"py.pylint_disable": markSuppression, "go.nolint": markSuppression, "js.eslint_disable": markSuppression,
+			"ts.ts_ignore": markSuppression, "ts.ts_expect_error": markSuppression, "rust.allow": markSuppression,
+			"jvm.suppress_warnings": markSuppression, "any.nosemgrep": markSuppression, "any.gitleaks_allow": markSuppression,
 
-	"go.test_def": markTestDef, "py.test_def": markTestDef, "js.test_def": markTestDef, "rust.test_def": markTestDef,
-	"jvm.test_def": markTestDef, "ruby.test_def": markTestDef, "php.test_def": markTestDef, "dotnet.test_def": markTestDef,
+			"go.test_def": markTestDef, "py.test_def": markTestDef, "js.test_def": markTestDef, "rust.test_def": markTestDef,
+			"jvm.test_def": markTestDef, "ruby.test_def": markTestDef, "php.test_def": markTestDef, "dotnet.test_def": markTestDef,
 
-	"go.assert": markAssert, "py.assert": markAssert, "js.assert": markAssert, "rust.assert": markAssert,
+			"go.assert": markAssert, "py.assert": markAssert, "js.assert": markAssert, "rust.assert": markAssert,
+		}
+	})
+	return markerTableOnce.v
+}
+
+// markerTableOnce holds what markerTable returns, built on its first call and
+// never at init (RES-2).
+var markerTableOnce struct {
+	sync.Once
+	v map[string]markClass
 }
 
 // integrity is the Integrity view of the window (from, at] (2.2.6, Unresolved
@@ -238,7 +251,7 @@ func foldMarks(out *Integrity, marks map[int64]*store.EditMarks, writes []write,
 // the adverse way; an id outside the table is counted in out.UnknownMarks,
 // once per write that carries it, so the count is how often the table missed.
 func moveMark(nets map[markKey]*markNet, out *Integrity, w write, id string, d int) {
-	class, ok := markerTable[id]
+	class, ok := markerTable()[id]
 	if !ok {
 		out.UnknownMarks++
 		return

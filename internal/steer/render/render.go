@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
@@ -111,17 +112,29 @@ type RegressionLocationDegradedBinding struct {
 // count, so the note still names the gate (card 2.3 R7). The other-agents
 // sentence is its own binding struct and row, which comes with
 // subagent-claim's producer (D62).
-var templates = map[templateKey]template{
-	{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationBinding{})}: {
-		id: "regression-location/v1",
-		format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
-			"Files written between the two runs: {paths}.",
-	},
-	{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationDegradedBinding{})}: {
-		id: "regression-location-degraded/v1",
-		format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
-			"{count} file writes were recorded between the two runs.",
-	},
+func templates() map[templateKey]template {
+	templatesOnce.Do(func() {
+		templatesOnce.v = map[templateKey]template{
+			{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationBinding{})}: {
+				id: "regression-location/v1",
+				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
+					"Files written between the two runs: {paths}.",
+			},
+			{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationDegradedBinding{})}: {
+				id: "regression-location-degraded/v1",
+				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
+					"{count} file writes were recorded between the two runs.",
+			},
+		}
+	})
+	return templatesOnce.v
+}
+
+// templatesOnce holds what templates returns, built on its first call and
+// never at init (RES-2).
+var templatesOnce struct {
+	sync.Once
+	v map[templateKey]template
 }
 
 var (
@@ -145,7 +158,7 @@ var (
 // continuity-briefing, the one multi-line note, Validate for every other
 // pattern -- and returns the Message, or the zero Message and an error.
 func New(p pattern.ID, binding any) (Message, error) {
-	return newMessage(templates, p, binding)
+	return newMessage(templates(), p, binding)
 }
 
 func newMessage(table map[templateKey]template, p pattern.ID, binding any) (Message, error) {

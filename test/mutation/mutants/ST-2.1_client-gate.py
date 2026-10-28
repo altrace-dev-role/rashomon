@@ -44,7 +44,7 @@ m("ST-2.1 Marshal calls MarshalFor with a verified Client", F,
   '\treturn o.MarshalFor(event, Client{Version: "2.1.280", Source: VersionSourceEnv, MirrorInBand: true})\n',
   "TestST4b_")
 m("ST-2.1 ContextAllowed reads another table than MarshalFor", C,
-  '\treturn allowed(event, c, mirrorVerifiedOn)\n',
+  '\treturn allowed(event, c, mirrorVerifiedOn())\n',
   '\treturn allowed(event, c, map[string][]string{string(EventPostToolUse): {"2.1.280"}, '
   'string(EventSessionStart): {"2.1.280"}})\n', "TestTRU12_")
 

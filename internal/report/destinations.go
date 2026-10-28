@@ -1,6 +1,7 @@
 package report
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -117,13 +118,14 @@ type Novelty struct {
 // off its allowlist, refused it. The sandbox section then read "refused by the
 // sandbox: http-intake.logs.us5.datadoghq.com", an attempt the agent never
 // made. The exact host, as measured; another region's intake is not assumed.
-var clientPlaneHosts = map[string]bool{
-	"api.anthropic.com":                  true,
-	"statsig.anthropic.com":              true,
-	"statsig.com":                        true,
-	"sentry.io":                          true,
-	"mcp-proxy.anthropic.com":            true,
-	"http-intake.logs.us5.datadoghq.com": true,
+// A slice of constants, with no code run at init (RES-2).
+var clientPlaneHosts = []string{
+	"api.anthropic.com",
+	"statsig.anthropic.com",
+	"statsig.com",
+	"sentry.io",
+	"mcp-proxy.anthropic.com",
+	"http-intake.logs.us5.datadoghq.com",
 }
 
 // clientPlaneHost is the one rule for whether a host is the client's own
@@ -133,7 +135,7 @@ var clientPlaneHosts = map[string]bool{
 // section -- rather than restating it, so the views cannot drift apart;
 // TestClientPlane_EveryViewAppliesTheOneRule holds them together.
 func clientPlaneHost(h string, mcpAttributed bool) bool {
-	return clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)
+	return slices.Contains(clientPlaneHosts, h) && !(h == mcpProxyHost && mcpAttributed)
 }
 
 // mcpProxyHost is the one client-plane host that can belong to the agent.
@@ -332,9 +334,10 @@ type Rewritten struct {
 // different digest there is the harness doing its job, not a rewrite. Measured
 // on a real 2,353-call session: every one of its four "executed differently"
 // rows was one of these two tools, and no other tool produced one.
-var inputCompletedByHarness = map[string]bool{
-	"AskUserQuestion": true,
-	"ExitPlanMode":    true,
+// A slice of constants, with no code run at init (RES-2).
+var inputCompletedByHarness = []string{
+	"AskUserQuestion",
+	"ExitPlanMode",
 }
 
 // rewrittenCalls is executedNotAsDeclared with the ids kept.
@@ -350,7 +353,7 @@ func rewrittenCalls(run *store.Run) []Rewritten {
 	}
 	declared := make(map[string]decl, len(run.Declarations))
 	for _, d := range run.Declarations {
-		if d.Shape.Digest == "" || inputCompletedByHarness[d.ToolName] {
+		if d.Shape.Digest == "" || slices.Contains(inputCompletedByHarness, d.ToolName) {
 			continue
 		}
 		e := decl{digest: d.Shape.Digest, tool: d.ToolName, verb: d.Shape.VerbClass}

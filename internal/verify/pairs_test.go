@@ -2,7 +2,6 @@ package verify
 
 import (
 	"cmp"
-	"maps"
 	"math"
 	"math/rand"
 	"slices"
@@ -405,7 +404,7 @@ func TestINT14_PairsEqualTheReportsOnAnyRecord(t *testing.T) {
 		t.Logf("400 generated records hold %d pairs", total)
 	})
 	t.Run("the noWrite map matches the test's copy of testbending.go:281-287", func(t *testing.T) {
-		if got := slices.Sorted(maps.Keys(noWrite)); !slices.Equal(got, slices.Sorted(slices.Values(noWriteNames))) {
+		if got := slices.Sorted(slices.Values(noWrite)); !slices.Equal(got, slices.Sorted(slices.Values(noWriteNames))) {
 			t.Errorf("verify's noWrite %v, want the test's copy of testbending.go:281-287 %v", got, noWriteNames)
 		}
 	})

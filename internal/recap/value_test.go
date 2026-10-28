@@ -227,11 +227,11 @@ func TestFUN15_AutoSteerClauseCountsDeliveredNotes(t *testing.T) {
 // the continuation indent, is held to 80 here: a title or phrase that grows
 // past it fails this test rather than printing a wide line.
 func TestFUN15c_WidestClauseFitsEightyColumns(t *testing.T) {
-	if len(titles) == 0 || len(whens) == 0 {
-		t.Fatalf("%d titles and %d <when> phrases, want both tables filled", len(titles), len(whens))
+	if len(titles()) == 0 || len(whens()) == 0 {
+		t.Fatalf("%d titles and %d <when> phrases, want both tables filled", len(titles()), len(whens()))
 	}
-	for _, title := range titles {
-		for _, when := range whens {
+	for _, title := range titles() {
+		for _, when := range whens() {
 			clause := indent + "AutoSteer: 1 " + title + " given " + when + "."
 			if n := len([]rune(clause)); n > 80 {
 				t.Errorf("%q is %d columns, want at most 80", clause, n)
@@ -268,16 +268,16 @@ func TestFUN15b_TemplatesUseNoBannedWord(t *testing.T) {
 		if id == pattern.Integrity || id == pattern.ModelSwitch || id == pattern.SequenceRisk {
 			continue // flag only, user only, or reserved: never delivered (tech 2.2.11 titles; pattern.go)
 		}
-		if titles[string(id)] == "" {
+		if titles()[string(id)] == "" {
 			t.Errorf("pattern %q has no title", id)
 		}
 	}
-	for id, title := range titles {
+	for id, title := range titles() {
 		if w, ok := banned(title); ok {
 			t.Errorf("title %q of %q holds %q", title, id, w)
 		}
 	}
-	for event, when := range whens {
+	for event, when := range whens() {
 		if w, ok := banned(when); ok {
 			t.Errorf("<when> %q of %q holds %q", when, event, w)
 		}
