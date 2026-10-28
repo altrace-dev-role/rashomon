@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -149,14 +150,40 @@ func (f *benchSteer) lines(b *testing.B) []steer.Line {
 	return out
 }
 
-// logged fails the step row unless each of its b.N iterations appended one
-// regression-location line suppressed by unverified_channel, its note's
-// slots bound (a suppressed line carries no text, RES-32).
-func (f *benchSteer) logged(b *testing.B, before int) {
+// keepSteerLog returns the function that puts the session's steer log back
+// as it is now: removed if there is none, cut back to its length if there
+// is. The step rows call it after each iteration, so every iteration's Route
+// reads the same log (D103: a benchmark measures one state).
+func (f *benchSteer) keepSteerLog(b *testing.B) func() {
+	b.Helper()
+	path := filepath.Join(f.st.RunDir(benchSteerSession), store.FileSteer)
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return func() {
+			if err := os.Remove(path); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	if err != nil {
+		b.Fatal(err)
+	}
+	return func() {
+		if err := os.Truncate(path, info.Size()); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// logged fails the step row unless the step appended want lines past the
+// log's first before, each a regression-location line suppressed by
+// unverified_channel with its note's slots bound (a suppressed line carries
+// no text, RES-32).
+func (f *benchSteer) logged(b *testing.B, before, want int) {
 	b.Helper()
 	lines := f.lines(b)
-	if got := len(lines) - before; got != b.N {
-		b.Fatalf("%d steer lines appended over %d iterations, want one each", got, b.N)
+	if got := len(lines) - before; got != want {
+		b.Fatalf("%d steer lines appended, want %d", got, want)
 	}
 	for _, l := range lines[before:] {
 		by := "null"
@@ -182,8 +209,10 @@ func (f *benchSteer) logged(b *testing.B, before int) {
 // three-notes-per-prompt cap never turns later iterations into cheaper
 // suppressed ones. Under the shipped client table the note is logged, not
 // printed (D69): each step iteration appends one line suppressed by
-// unverified_channel, and the work-done check after the loop reads exactly
-// that, b.N lines and no budget suppression.
+// unverified_channel, and the work-done check after it, outside the timer,
+// reads exactly that, one line and no budget suppression. The log is then
+// put back as it was before the loop (keepSteerLog), so every iteration
+// steps on the same record and the same log (D103).
 func BenchmarkPostSteer(b *testing.B) {
 	// A table of literal names: RES36 reads every b.Run name statically.
 	for _, c := range []struct {
@@ -205,15 +234,17 @@ func BenchmarkPostSteer(b *testing.B) {
 			}
 		})
 		b.Run(c.step, func(b *testing.B) {
-			before := len(f.lines(b))
+			before, restore := len(f.lines(b)), f.keepSteerLog(b)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
 				f.post.promptID = next()
 				f.post.Steer(env)
+				b.StopTimer()
+				f.logged(b, before, 1)
+				restore()
+				b.StartTimer()
 			}
-			b.StopTimer()
-			f.logged(b, before)
 		})
 	}
 }
