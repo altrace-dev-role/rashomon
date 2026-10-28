@@ -104,8 +104,6 @@ m("VER-1.6 the index file is written 0644", S,
 
 # IndexPath.
 m("VER-1.6 the key is used raw as the file name", I,
-  "\"projects\", baseline.FileName(projectKey))", "\"projects\", projectKey)", "TestIDX9_")
-IMPORTS["VER-1.6 the key is used raw as the file name"] = (I,
-  INDEX_IMPORTS, "\t\"github.com/altrace-dev-role/rashomon/internal/store\"\n")
+  "ProjectsDir, baseline.FileName(projectKey))", "ProjectsDir, projectKey)", "TestIDX9_")
 m("VER-1.6 the file name carries a second .json", I,
-  "\"projects\", baseline.FileName(projectKey))", "\"projects\", baseline.FileName(projectKey)+\".json\")", "TestIDX9_")
+  "ProjectsDir, baseline.FileName(projectKey))", "ProjectsDir, baseline.FileName(projectKey)+\".json\")", "TestIDX9_")

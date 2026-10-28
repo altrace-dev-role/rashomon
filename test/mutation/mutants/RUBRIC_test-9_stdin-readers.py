@@ -1,6 +1,6 @@
 # test-9 / conc-3: the stdin readers' timeout, error and oversize branches,
 # which a healthy pipe never takes (rubric fix list entry 31).
-m("test-9  recap waits on stdin with no time budget", "cmd/rashomon/main.go",
+m("test-9  recap waits on stdin with no time budget", "cmd/rashomon/recap_turn.go",
   "\tselect {\n\tcase r := <-ch:\n\t\treturn r.payload\n\tcase <-time.After(timeout):\n\t\treturn recapPayload{}\n\t}\n",
   "\tr := <-ch\n\t_ = timeout\n\treturn r.payload\n", "TestRubricTEST9_")
 m("test-9  the final-message readers take a payload over the cap", "cmd/rashomon/intake.go",
@@ -15,6 +15,6 @@ m("test-9  a failed hook read returns what it read so far", "internal/hookio/rea
 m("test-9  a short last chunk reads as a failed hook read", "internal/hookio/read.go",
   "\t\tif err == io.EOF || err == io.ErrUnexpectedEOF {\n",
   "\t\tif err == io.EOF {\n", "TestRubricTEST9_")
-m("test-9  the abandoned recap reader blocks forever on an unbuffered send", "cmd/rashomon/main.go",
+m("test-9  the abandoned recap reader blocks forever on an unbuffered send", "cmd/rashomon/recap_turn.go",
   "\tch := make(chan parsed, 1)\n",
   "\tch := make(chan parsed)\n", "TestRubricTEST9_RecapReaderGivesUp")

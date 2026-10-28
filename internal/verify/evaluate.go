@@ -49,11 +49,14 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 }
 
 // classified is what evaluate classified beside the snapshot, for the
-// obligation view (EvaluateWithObligations): classify's runs and writes, in
-// seq order; nil where the record is incomplete, which classifies nothing.
+// obligation and Stop views (EvaluateWithObligations, EvaluateStop): classify's
+// four returns, in seq order; nil where the record is incomplete, which
+// classifies nothing.
 type classified struct {
-	runs   []gateRun
-	writes []write
+	runs      []gateRun
+	writes    []write
+	unnamed   []int64
+	rewritten []int64
 }
 
 // evaluate is Evaluate, which also fills c.
@@ -82,8 +85,8 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 		return snap
 	}
 	picked := pickExecutions(run)
-	runs, writes, unnamed, _ := classifyWith(run, picked)
-	c.runs, c.writes = runs, writes
+	runs, writes, unnamed, rewritten := classifyWith(run, picked)
+	c.runs, c.writes, c.unnamed, c.rewritten = runs, writes, unnamed, rewritten
 	snap.Gates = gateStates(runs, writes, unnamed, at)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
@@ -258,6 +261,23 @@ func rowFor(s State) Row {
 	return RowUnknown
 }
 
+// Advisory reports whether no gate in gates is required, so the learned
+// gates are read as advisory (D38).
+func Advisory(gates []GateState) bool {
+	return !slices.ContainsFunc(gates, func(g GateState) bool { return g.Required })
+}
+
+// TurnGate reports whether g is a turn gate as TurnSummary reads one: a
+// required gate, or, when the gates are advisory, a learned one. The value
+// line names its gates by the same rule.
+func TurnGate(g GateState, advisory bool) bool {
+	return g.Required || advisory && g.Source == sourceLearned
+}
+
+// Advisory reports whether the row was read from advisory gates alone, which
+// its rendered sentence says (D38).
+func (s Summary) Advisory() bool { return s.Sentence == sentenceAdvisoryOnly }
+
 // TurnSummary picks the value line's row from the turn gates by the one Order
 // (VER-65; VER 11 (a)). P-07 builds the row choice over the snapshot's
 // required gates; P-45 adds the families run in the prompt, which need the
@@ -286,7 +306,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if snap.Recording != Complete {
 		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete}
 	}
-	advisory := !slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required })
+	advisory := Advisory(snap.Gates)
 	var states []State
 	defect := false
 	// The unnamed-write rule reads "after a turn gate's last green run": with
@@ -294,7 +314,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	// can invalidate, and a gate with no green run counts as seq 0.
 	earliestGreen := int64(-1)
 	for _, g := range snap.Gates {
-		if !g.Required && !(advisory && g.Source == sourceLearned) {
+		if !TurnGate(g, advisory) {
 			continue
 		}
 		if Rank(g.State) < 0 {

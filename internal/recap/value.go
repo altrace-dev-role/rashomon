@@ -1,0 +1,369 @@
+package recap
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
+)
+
+// The end-of-turn value line (tech 2.2.11; card 2.4 R6, R8) states what the
+// record shows about the turn's checks after its last edit: one sentence per
+// row of verify's table, an optional AutoSteer clause counting the notes the
+// agent was given in the prompt, and the report pointer recap.Line uses. Every
+// slot is a count, a call number or a gate's program word from the record;
+// the templates hold none of FUN-15's words (TestFUN15b scans this file), so
+// the sentences are built by concatenation, with no format verbs.
+
+// lineColumns is the width each line of the value line is fitted to.
+const lineColumns = 80
+
+// maxGateNames is how many programs a gate list names before `and <k> more`.
+const maxGateNames = 3
+
+// titles names each pattern a delivered note can carry in the clause (tech
+// 2.2.11 Titles). integrity and model-switch are never delivered, and
+// sequence-risk is reserved; none has a title.
+var titles = map[string]string{
+	string(pattern.SubtaskGate):        "task check",
+	string(pattern.RegressionLocation): "regression location",
+	string(pattern.ContinuityBriefing): "briefing",
+	string(pattern.DeclaredFact):       "known fix",
+	string(pattern.LearnedFact):        "known fix",
+	string(pattern.PlatformRule):       "platform rule",
+	string(pattern.IdenticalRetry):     "repeat-call note",
+	string(pattern.CredSpray):          "credentials note",
+	string(pattern.OrderingRule):       "ordering rule",
+	string(pattern.AgentInterference):  "interference note",
+	string(pattern.SubagentClaim):      "subagent check",
+	string(pattern.ClaimVsRecord):      "record check",
+	string(pattern.MaskedStatus):       "hidden-status note",
+}
+
+// whens is the clause's <when> by the delivering line's event (D78, D87):
+// v0 delivers a PostToolUse note at PostToolUse itself (D54), so both
+// PostToolUse and PostToolBatch read "after the call". SessionStart's
+// compact and resume kinds are on no line, and the commit, push, pull-request
+// and task phrases have no event, so those events render no <when>.
+var whens = map[string]string{
+	string(steer.EventPostToolUseFailure): "at the failure",
+	string(steer.EventUserPromptSubmit):   "with your prompt",
+	string(steer.EventSubagentStart):      "at the subagent start",
+	string(steer.EventPostToolUse):        "after the call",
+	string(steer.EventPostToolBatch):      "after the call",
+}
+
+// prefixWords are the words that lead a shell line before its runner, as in
+// `set -o pipefail; make test`: a gate run whose program word is one names
+// no runner, and the record holds the runner's words only as a digest, so the
+// sentence names the gate's kind instead (D94).
+var prefixWords = map[string]bool{"set": true, "export": true, "source": true, "eval": true, "exec": true, "env": true, "time": true}
+
+// Note is one note delivered to the agent in the prompt: its pattern, the
+// event that delivered it, and the text the model received.
+type Note struct {
+	Pattern   string
+	Event     string
+	ModelText []byte
+}
+
+// noteKeys is the one KeySet a steer line is read with (RES-5's pattern: no
+// decode of a whole line).
+var noteKeys = jsonscan.NewKeySet("state", "prompt_id", "event", "pattern", "model_text")
+
+const (
+	nkState = iota
+	nkPrompt
+	nkEvent
+	nkPattern
+	nkModelText
+	nkCount
+)
+
+// DeliveredNotes is the prompt's delivered notes among a run's steer lines:
+// state delivered, prompt_id the prompt's, and a model text, which a flag
+// lacks. A line that does not read is passed over; no prompt, no note.
+func DeliveredNotes(lines [][]byte, promptID string) []Note {
+	if promptID == "" {
+		return nil
+	}
+	var notes []Note
+	var out [nkCount]jsonscan.Span
+	for _, b := range lines {
+		if jsonscan.Top(b, noteKeys, out[:]) != nil {
+			continue
+		}
+		if text(b, out[nkState]) != string(steer.LineStateDelivered) || text(b, out[nkPrompt]) != promptID {
+			continue
+		}
+		model := text(b, out[nkModelText])
+		if model == "" {
+			continue
+		}
+		notes = append(notes, Note{Pattern: text(b, out[nkPattern]), Event: text(b, out[nkEvent]), ModelText: []byte(model)})
+	}
+	return notes
+}
+
+// text is a string value's text, "" for any other kind or a bad escape.
+func text(b []byte, sp jsonscan.Span) string {
+	if sp.Kind != jsonscan.String {
+		return ""
+	}
+	s, err := jsonscan.DecodeString(b, sp)
+	if err != nil {
+		return ""
+	}
+	return s
+}
+
+// ValueLine renders the turn's value line from the Stop view, or "" for
+// RowNone, which prints nothing. Its state line names fewer gates while it is
+// over lineColumns and more than one is named; past that it prints whole
+// (D86). The clause has no width rule of its own: every title with every
+// <when> fits (D89, TestFUN15c).
+func ValueLine(v verify.StopView, notes []Note, sessionID string, fromPlugin bool) string {
+	if v.Summary.Row == verify.RowNone {
+		return ""
+	}
+	sentence := fitted(v, prefix)
+	if sentence == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(prefix + sentence + ".\n")
+	if c := clause(notes); c != "" {
+		b.WriteString(continuation() + c + "\n")
+	}
+	b.WriteString(pointer(sessionID, fromPlugin))
+	return b.String()
+}
+
+// clause is the AutoSteer clause for notes, "" with none.
+func clause(notes []Note) string {
+	switch len(notes) {
+	case 0:
+		return ""
+	case 1:
+		title := titles[notes[0].Pattern]
+		if title == "" {
+			title = "note"
+		}
+		s := "AutoSteer: 1 " + title + " given"
+		if when := whens[notes[0].Event]; when != "" {
+			s += " " + when
+		}
+		return s + "."
+	}
+	return "AutoSteer: " + strconv.Itoa(len(notes)) + " notes given."
+}
+
+// fitted is the row's sentence with as many gate names as fit after lead on
+// one line, down to one.
+func fitted(v verify.StopView, lead string) string {
+	s := sentence(v, maxGateNames)
+	for k := maxGateNames - 1; k >= 1 && columns(lead+s+".") > lineColumns; k-- {
+		s = sentence(v, k)
+	}
+	return s
+}
+
+func columns(s string) int { return len([]rune(s)) }
+
+// sentence is the row's sentence (tech 2.2.11's table, first match won in
+// TurnSummary), naming at most k programs in a gate list, with "; advisory
+// only" when the row was read from advisory gates.
+func sentence(v verify.StopView, k int) string {
+	s := rowSentence(v, k)
+	if s != "" && v.Summary.Advisory() {
+		s += "; advisory only"
+	}
+	return s
+}
+
+// rowSentence fills the row's template. <gate> is the first turn gate in the
+// row's state, <seq> its last run; <gates> are the green turn gates'
+// programs, and their <seq> the latest of their runs (D5, D6).
+func rowSentence(v verify.StopView, k int) string {
+	t := turnGates(v)
+	wrote := v.Turn.Writes > 0
+	files := filesEdited(v.Turn.PathsWritten)
+	where := " after the last edit"
+	if !wrote {
+		where = " in this turn"
+	}
+	switch v.Summary.Row {
+	case verify.RowUnknown:
+		if v.Snap.Recording != verify.Complete {
+			return v.Summary.Sentence
+		}
+		g := t.first(verify.Unknown)
+		if g == nil {
+			return ""
+		}
+		if g.Reason == verify.OrderUnknown {
+			return "the record does not order every " + t.name(g) + " run and edit in this turn; verification state unknown"
+		}
+		return t.name(g) + " ran after the last edit (call " + seqOf(g) + "); its result is not in the record"
+	case verify.RowRed:
+		g := t.first(verify.Red)
+		if g == nil {
+			return ""
+		}
+		verb := "failed"
+		if g.LastRun != nil && g.LastRun.ExitCode != nil {
+			verb = "exited " + strconv.Itoa(*g.LastRun.ExitCode)
+		}
+		s := t.name(g) + " " + verb + where + " (call " + seqOf(g) + ")"
+		if wrote {
+			s = files + "; " + s
+		}
+		return s
+	case verify.RowMasked:
+		if g := t.first(verify.MaskedInconclusive); g != nil {
+			return t.name(g) + " ran" + where + "; its exit status was hidden by its line (call " + seqOf(g) + ")"
+		}
+	case verify.RowBackgrounded:
+		if g := t.first(verify.Backgrounded); g != nil {
+			return t.name(g) + " moved to the background" + where + "; its result is not in the record"
+		}
+	case verify.RowRanOnly:
+		return "no edits; " + t.greens(k) + " passed (call " + t.greenSeq() + ")"
+	case verify.RowUnverified:
+		return t.unverified(v, k, files)
+	case verify.RowNoGate:
+		if v.Index != nil && len(v.Index.Entries) > 0 {
+			return files + "; no known test or build applies to these files"
+		}
+		return files + "; no test or build is known for this project yet"
+	case verify.RowUnnamedWrite:
+		return files + "; " + t.greens(k) + " passed (call " + t.greenSeq() + "); call " +
+			strconv.FormatInt(v.Turn.UnnamedWriteSeq, 10) + " may have written files after that"
+	case verify.RowVerified:
+		return "verified - " + t.greens(k) + " passed after the last edit"
+	case verify.RowFindings:
+		return files + "; " + t.greens(k) + " passed after the last edit; " + v.Summary.Sentence
+	}
+	return ""
+}
+
+// unverified is the unverified row's sentence: a gate not run after the last
+// edit beside the greens, or none run; with no write, a run that checked
+// nothing or only part of the project; and, under the advisory cap, greens
+// alone, which are not established gates (D38).
+func (t gateSet) unverified(v verify.StopView, k int, files string) string {
+	g := t.first(verify.Stale)
+	if g == nil {
+		g = t.first(verify.Absent)
+	}
+	if v.Turn.Writes == 0 && g != nil {
+		switch g.Reason {
+		case verify.EmptyRun:
+			return t.name(g) + " ran in this turn and ran no checks (call " + seqOf(g) + ")"
+		case verify.PartialOnly:
+			return t.name(g) + " ran on part of the project in this turn (call " + seqOf(g) + ")"
+		}
+	}
+	greens := t.greens(k)
+	switch {
+	case g == nil && greens != "":
+		return files + "; " + greens + " passed after the last edit"
+	case g != nil && greens != "":
+		return files + "; " + greens + " passed after the last edit, " + t.name(g) + " not run after it"
+	}
+	return files + ", no test or build run after the last edit"
+}
+
+// gateSet is the turn gates of a view and the programs that name them.
+type gateSet struct {
+	gates    []verify.GateState
+	programs map[string]string
+}
+
+func turnGates(v verify.StopView) gateSet {
+	advisory := verify.Advisory(v.Snap.Gates)
+	t := gateSet{programs: v.Programs}
+	for _, g := range v.Snap.Gates {
+		if verify.TurnGate(g, advisory) {
+			t.gates = append(t.gates, g)
+		}
+	}
+	return t
+}
+
+// first is the first turn gate in state s, nil with none.
+func (t gateSet) first(s verify.State) *verify.GateState {
+	for i := range t.gates {
+		if t.gates[i].State == s {
+			return &t.gates[i]
+		}
+	}
+	return nil
+}
+
+// name is g's program word, else its kind: with no program word, or with a
+// prefix word in its place.
+func (t gateSet) name(g *verify.GateState) string {
+	if p := t.programs[g.Gate]; p != "" && !prefixWords[p] {
+		return p
+	}
+	return g.Kind
+}
+
+// greens is the distinct programs of the green turn gates, in order, at most
+// k named and then `and <n> more`.
+func (t gateSet) greens(k int) string {
+	var names []string
+	for i := range t.gates {
+		if n := t.name(&t.gates[i]); t.gates[i].State == verify.Green && !contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	switch {
+	case len(names) == 0:
+		return ""
+	case len(names) > k:
+		return strings.Join(names[:k], ", ") + " and " + strconv.Itoa(len(names)-k) + " more"
+	case len(names) == 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
+func contains(names []string, n string) bool {
+	for _, m := range names {
+		if m == n {
+			return true
+		}
+	}
+	return false
+}
+
+// greenSeq is the latest last run among the green turn gates.
+func (t gateSet) greenSeq() string {
+	var at int64
+	for _, g := range t.gates {
+		if g.State == verify.Green && g.LastRun != nil {
+			at = max(at, g.LastRun.Seq)
+		}
+	}
+	return strconv.FormatInt(at, 10)
+}
+
+func seqOf(g *verify.GateState) string {
+	if g.LastRun == nil {
+		return "0"
+	}
+	return strconv.FormatInt(g.LastRun.Seq, 10)
+}
+
+// filesEdited is the count slot with its noun in number (D88).
+func filesEdited(n int) string {
+	if n == 1 {
+		return "1 file edited"
+	}
+	return strconv.Itoa(n) + " files edited"
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 func jsonTags(t reflect.Type) []string {
@@ -182,6 +183,15 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if res := baseline.Update(root, "tru23-project", sessionID, time.Now(), []string{"example.org"}); res.Err != nil {
 		t.Fatalf("baseline.Update: %v", res.Err)
 	}
+	index := verify.IndexPath(root, "/tru23/project")
+	if _, err := verify.WriteIndex(index, &verify.ProjectIndex{ProjectKey: "/tru23/project"}); err != nil {
+		t.Fatalf("verify.WriteIndex: %v", err)
+	}
+	if tmp, err := os.CreateTemp(filepath.Dir(index), "."+filepath.Base(index)+".tmp-*"); err != nil {
+		t.Fatal(err)
+	} else if err := tmp.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	inv, err := Default()
 	if err != nil {
@@ -335,10 +345,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// os.OpenFile, and replace, one os.CreateTemp.
 		{"consent", 2},
 		// Pinned 2026-10-27 (1.6): internal/verify/index.go's WriteIndex, one
-		// store.ReplaceFile, verify/projects/<name>.json. Not yet in
-		// defaultFiles nor purge's plan: nothing calls WriteIndex until recap
-		// does (2.4), whose card adds both. store's 22 is unchanged by the
-		// export, since the pattern follows replaceFile to ReplaceFile.
+		// store.ReplaceFile, verify/projects/<name>.json, the project index
+		// the Stop hook's recap reads and writes since 2.4 (indexFiles in the
+		// inventory, verify's tree in purge's plan). store's 22 was unchanged
+		// by the export, since the pattern follows replaceFile to ReplaceFile.
 		{"verify", 1},
 	}
 	for _, c := range cases {

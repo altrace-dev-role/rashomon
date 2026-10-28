@@ -4,13 +4,13 @@
 # decision can go wrong -- ignore the marker (the shipped defect: a settings
 # install made from the plugin's binary was sent to /rashomon:report), or
 # replace the decision with either constant.
-m("H-91 the recap pointer ignores the --install marker", "cmd/rashomon/main.go",
+m("H-91 the recap pointer ignores the --install marker", "cmd/rashomon/recap_turn.go",
   "\tif installArg(args) != \"\" {\n\t\treturn false\n\t}\n\tpresent, err := install.PluginFires(install.EventStop)",
   "\tif false {\n\t\treturn false\n\t}\n\tpresent, err := install.PluginFires(install.EventStop)",
   "TestH91_TheReportPointer")
-m("H-91 the recap pointer is always the CLI command", "cmd/rashomon/main.go",
+m("H-91 the recap pointer is always the CLI command", "cmd/rashomon/recap_turn.go",
   "\treturn err == nil && present\n", "\treturn err == nil && present && false\n", "TestH91_TheReportPointer")
-m("H-91 the recap pointer is always the plugin command", "cmd/rashomon/main.go",
+m("H-91 the recap pointer is always the plugin command", "cmd/rashomon/recap_turn.go",
   "func recapFromPlugin(args []string) bool {\n",
   "func recapFromPlugin(args []string) bool {\n\tif true {\n\t\treturn true\n\t}\n", "TestH91_TheReportPointer")
 m("a legacy present record is treated with suspicion and renders unverified", "internal/report/report.go",

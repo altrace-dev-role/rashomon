@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -48,13 +49,35 @@ type IndexEntry struct {
 	LastSeen    int64  `json:"last_seen_unix_ms"`
 }
 
+// DirName is the directory under the store root that verify writes into, and
+// ProjectsDir the directory of index files within it; the disclosure
+// inventory and purge read both from here.
+const (
+	DirName     = "verify"
+	ProjectsDir = "projects"
+)
+
 // IndexPath is the index file of projectKey under the store root:
 // <root>/verify/projects/<name>, where name is baseline.FileName(projectKey),
 // as the baseline files are named. baseline.Key is an absolute path, so the
 // key is not a file name as it stands; FileName gives it one path element
 // and its own ".json".
 func IndexPath(root, projectKey string) string {
-	return filepath.Join(root, "verify", "projects", baseline.FileName(projectKey))
+	return filepath.Join(root, DirName, ProjectsDir, baseline.FileName(projectKey))
+}
+
+// IsIndexFile reports whether a file of this name in ProjectsDir is one
+// WriteIndex leaves: an index file, which has baseline.FileName's shape, or
+// the temporary name store.ReplaceFile writes one under before its rename,
+// "." + the index file's name + ".tmp-" and a suffix, left by a process that
+// died in between.
+func IsIndexFile(name string) bool {
+	if baseline.IsFileName(name) {
+		return true
+	}
+	rest, ok := strings.CutPrefix(name, ".")
+	i := strings.LastIndex(rest, ".tmp-")
+	return ok && i >= 0 && baseline.IsFileName(rest[:i])
 }
 
 // Required reports whether the index requires family at nowMS: its entry

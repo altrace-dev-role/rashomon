@@ -134,6 +134,28 @@ var (
 	forgottenHostKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms", "host_digest",
 	}
+	// The verify checkpoint (schema 5, card 2.4 D92) the Stop hook's recap
+	// appends to records.ndjson: verify.Checkpoint's keys and the objects
+	// keyPaths descends into. Its lists (gates, claims, spec_verdicts,
+	// integrity.unresolved, background_in_flight, practice.not_applicable)
+	// are arrays, whose elements keyPaths does not walk.
+	checkpointKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms",
+		"session_id", "prompt_id", "agent_id",
+		"point", "point_seq", "point_tool_use_id", "task_ref",
+		"verify_version", "rules_version", "spec_digest", "spec_trust",
+		"recording", "project_root",
+		"gates", "gates_omitted", "claims", "claims_omitted",
+		"spec_verdicts", "spec_verdicts_omitted",
+		"integrity", "integrity.unresolved", "integrity.counts", "integrity.counts.tests_delta",
+		"integrity.counts.skips_added", "integrity.counts.suppressions_added",
+		"integrity.unknown_marks", "integrity.unread_bases", "integrity_omitted",
+		"background_in_flight", "background_omitted",
+		"practice", "practice.practice_version", "practice.score", "practice.components",
+		"practice.components.gates", "practice.components.claims", "practice.components.spec",
+		"practice.components.integrity", "practice.components.hygiene", "practice.not_applicable",
+		"practice_omitted", "record_green", "truncated",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {

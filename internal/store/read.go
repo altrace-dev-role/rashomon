@@ -45,6 +45,28 @@ func (r *Run) SessionID() string {
 	return r.Dir
 }
 
+// LastSeq is the greatest seq among the run's declarations, executions and
+// terminals: the point a Stop is taken at. A spilled execution or terminal
+// carries no seq and is passed over; coverage and gap records carry none. An
+// empty run, or one whose every seq is nil, is 0, which is no point.
+func (r *Run) LastSeq() int64 {
+	var last int64
+	for _, d := range r.Declarations {
+		last = max(last, d.Seq)
+	}
+	for _, e := range r.Executions {
+		if e.Seq != nil {
+			last = max(last, *e.Seq)
+		}
+	}
+	for _, t := range r.Terminals {
+		if t.Seq != nil {
+			last = max(last, *t.Seq)
+		}
+	}
+	return last
+}
+
 // Runs lists run directory names, oldest first by modification time.
 func (s *Store) Runs() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(s.root, DirRuns))

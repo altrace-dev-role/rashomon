@@ -43,7 +43,8 @@ m("VER-1.7 the URL strip dropped", T,
 m("VER-1.7 a delivered line matches by prefix", T,
   '\t\tif bytes.Equal(text, d) {\n', '\t\tif bytes.HasPrefix(text, d) {\n', "TestVER56_")
 m("VER-1.7 a bare mark excludes everything", T,
-  '\tif !ok {\n\t\treturn false\n\t}\n\ttext := ', '\tif !ok || len(delivered) >= 0 {\n\t\treturn ok\n\t}\n\ttext := ', "TestVER56_")
+  '\trest, _ := bytes.CutPrefix(lead, []byte("※"))\n',
+  '\trest, ok := bytes.CutPrefix(lead, []byte("※"))\n\tif ok {\n\t\treturn true\n\t}\n', "TestVER56_")
 
 # Step 3: the split and the skips.
 m("VER-1.7 a dot before a word ends a sentence", T,

@@ -140,15 +140,19 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		return "", false
 	}
 
-	var b strings.Builder
-	b.WriteString(prefix)
-	b.WriteString(strings.Join(sentences, ". "))
-	b.WriteString(".\n")
-	b.WriteString(strings.Repeat(" ", len([]rune(prefix))))
+	return prefix + strings.Join(sentences, ". ") + ".\n" + pointer(sessionID, fromPlugin), true
+}
+
+// continuation is the lead of every line after the first: spaces as wide as
+// the prefix, so the text aligns under the first character after it.
+func continuation() string { return strings.Repeat(" ", len([]rune(prefix))) }
+
+// pointer is the last line of every line this package renders: the report
+// command for the session, under the text.
+func pointer(sessionID string, fromPlugin bool) string {
+	s := continuation() + "→ rashomon report" // → RIGHTWARDS ARROW
 	if fromPlugin {
-		b.WriteString("→ /rashomon:report") // → RIGHTWARDS ARROW
-	} else {
-		b.WriteString("→ rashomon report")
+		s = continuation() + "→ /rashomon:report"
 	}
 	// A turn that named no session (digest.Sessionless) has no session to
 	// point at, so the pointer is the whole report -- which is also where the
@@ -156,10 +160,9 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	// "unknown", which names a session nobody has, and not any real id, which
 	// would be the guess the no_session_id reason exists to refuse.
 	if sessionID != "" {
-		b.WriteString(" --session ")
-		b.WriteString(sanitizeSessionID(sessionID))
+		s += " --session " + sanitizeSessionID(sessionID)
 	}
-	return b.String(), true
+	return s
 }
 
 // maskedSentence renders the masked-status trigger: the count of this turn's
@@ -270,10 +273,10 @@ func sanitizeSessionID(s string) string {
 // PreviousTurn marks a line as being about the turn before the one just
 // started. The catch-up path prints it when the next prompt is sent, one
 // turn late, and a reader who has moved on needs to know which turn it means.
+// Every continuation line moves under the longer prefix: a value line has
+// three.
 func PreviousTurn(line string) string {
 	previous := mark + " rashomon, previous turn: "
 	line = strings.Replace(line, prefix, previous, 1)
-	return strings.Replace(line,
-		"\n"+strings.Repeat(" ", len([]rune(prefix))),
-		"\n"+strings.Repeat(" ", len([]rune(previous))), 1)
+	return strings.ReplaceAll(line, "\n"+continuation(), "\n"+strings.Repeat(" ", len([]rune(previous))))
 }
