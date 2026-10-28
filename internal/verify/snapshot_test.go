@@ -90,7 +90,7 @@ func TestVER52b_SnapshotKeysAreTheVerifyJSONList(t *testing.T) {
 		{SpecInfo{}, []string{"path", "digest", "trust", "errors"}},
 		{ClaimVerdict{}, []string{"source", "class", "strict", "verdict", "gates", "quote_hmac"}},
 		{RuleVerdict{}, []string{"rule", "kind", "verdict", "seqs", "hard_control"}},
-		{Integrity{}, []string{"unresolved", "counts"}},
+		{Integrity{}, []string{"unresolved", "counts", "unknown_marks", "unread_bases"}}, // the last two D41, D42
 		{IntegrityEntry{}, []string{"check", "marker", "seq"}},
 		{IntegrityCounts{}, []string{"tests_delta", "skips_added", "suppressions_added"}},
 		{Practice{}, []string{"practice_version", "score", "components", "not_applicable"}},
@@ -225,7 +225,7 @@ func TestVER52c_SnapshotMarshalsAsTheGolden(t *testing.T) {
 	golden := map[string][]string{
 		"point":     {"agent_id", "kind", "prompt_id", "seq", "session_id", "task_ref"},
 		"spec":      {"digest", "errors", "path", "trust"},
-		"integrity": {"counts", "unresolved"},
+		"integrity": {"counts", "unknown_marks", "unread_bases", "unresolved"}, // unknown_marks, unread_bases: D41, D42
 		"practice":  {"components", "not_applicable", "practice_version", "score"},
 		"subtasks":  {"boundaries", "items", "reason"},
 	}

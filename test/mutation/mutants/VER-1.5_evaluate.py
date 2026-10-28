@@ -66,7 +66,7 @@ m("VER-1.5 advisory gates never reach the row", E,
   '\tadvisory := false\n', "TestVER46_")
 # The advisory line is evaluate.go's one use of slices.
 for name in ("VER-1.5 every row is advisory", "VER-1.5 advisory gates never reach the row"):
-    IMPORTS[name] = (E, '\t"slices"\n\t"time"\n', '\t"time"\n')
+    IMPORTS[name] = (E, '\t"slices"\n\t"strconv"\n', '\t"strconv"\n')
 m("VER-1.5 the advisory set takes every non-required gate", E,
   ' && !(advisory && g.Source == sourceLearned) {\n', ' && !advisory {\n', "TestVER65c_")
 m("VER-1.5 an advisory green reads verified", E,
@@ -76,7 +76,7 @@ m("VER-1.5 an advisory green with no write is unverified", E,
 m("VER-1.5 an advisory red is hidden as unverified", E,
   '\tcase ok && worst != Green:\n', '\tcase ok && worst != Green && !advisory:\n', "TestVER46_")
 m("VER-1.5 the advisory sentence is dropped", E,
-  '\tif advisory {\n\t\ts.Sentence = sentenceAdvisoryOnly\n\t}\n', '', "TestVER46_")
+  '\tcase advisory:\n\t\ts.Sentence = sentenceAdvisoryOnly\n', '\tcase advisory:\n', "TestVER46_")
 
 # ProjectRoot: the nearest named project at or before the point, in no slice order.
 m("VER-1.5 ProjectRoot by slice order", E, ' && (root == nil || d.Seq > seq) {\n', ' && (root == nil || d.Seq != seq) {\n', "TestVER44_")
