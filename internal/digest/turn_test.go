@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -146,4 +147,61 @@ func TestSelectTurn_EmptyRunHasNoDefaultTurn(t *testing.T) {
 	if w.known {
 		t.Error("known = true on an empty run")
 	}
+}
+
+// TestTURN_SelectTurnCopiesOnlyTheChosenTurn (card 2.3c R3, R4): selectTurn
+// copies the chosen turn's declarations once, into a slice of that turn's
+// size, not every prompt's into slices that grow. The run is built in memory
+// and out of seq order, which no read run is (the reader yields declarations
+// in seq order), so that it also separates the minSeq update and the sort: b
+// is listed first at seq 1000 and holds seqs 1 to 199 after it, c and d are in
+// order, and a is listed from seq 799 down to 600. With the update the minSeqs
+// are b 1, c 200, d 400 and a 600, and a, the highest, is the current turn;
+// without it b's stays 1000 and b is chosen. a's declarations arrive
+// descending, so only the sort makes them ascend.
+//
+// The ceiling is the two-pass shape's count on go1.27.3: four group structs
+// (stored in the map, so they escape), order's three growth steps (1, 2, 4),
+// sort.Slice's box of order and its Swapper's string closure, the presized
+// slice, and sort.SliceStable's box, scratch element and Swapper closure: 13,
+// as measured green, plain and under -race.
+//
+// The one-pass shape it replaced, measured red on the same run, spent 48: the
+// same less the presized slice, plus nine growth steps (1 to 276) for each
+// prompt's slice of 200.
+func TestTURN_SelectTurnCopiesOnlyTheChosenTurn(t *testing.T) {
+	const ceiling = 13
+	var decls []store.Declaration
+	add := func(prompt string, seq int64) {
+		decls = append(decls, decl(seq, fmt.Sprint("toolu_", seq), "Bash", prompt, "/t.jsonl", 10*seq))
+	}
+	add("b", 1000)
+	for seq := int64(1); seq < 200; seq++ {
+		add("b", seq)
+	}
+	for seq := int64(200); seq < 400; seq++ {
+		add("c", seq)
+	}
+	for seq := int64(400); seq < 600; seq++ {
+		add("d", seq)
+	}
+	for seq := int64(799); seq >= 600; seq-- {
+		add("a", seq)
+	}
+	run := &store.Run{Declarations: decls}
+
+	w := selectTurn(run, "")
+	if w.promptID != "a" || len(w.declarations) != 200 {
+		t.Fatalf("selectTurn chose %q with %d declarations, want a with 200", w.promptID, len(w.declarations))
+	}
+	for i := 1; i < len(w.declarations); i++ {
+		if prev, seq := w.declarations[i-1].Seq, w.declarations[i].Seq; prev >= seq {
+			t.Fatalf("declarations %d and %d are seqs %d then %d, want ascending", i-1, i, prev, seq)
+		}
+	}
+	n := testing.AllocsPerRun(10, func() { selectTurn(run, "") })
+	if n > ceiling {
+		t.Errorf("selectTurn allocates %v on four prompts of 200, want at most %d", n, ceiling)
+	}
+	t.Logf("selectTurn allocates %v on four prompts of 200", n)
 }
