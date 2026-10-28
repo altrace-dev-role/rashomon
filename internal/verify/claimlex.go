@@ -75,7 +75,8 @@ var claimSkips = [...][]string{{"please"}, {"run"}, {"try"}, {"you", "can"}, {"y
 // phrases. A one-word entry matches any word it opens, "fail" in "failures"
 // as report's substring match would (Gate A Q7); a phrase matches whole
 // words. The words of an accepted predicate, "no errors" say, are none (Q3,
-// Q8). TestVER60b pins that every failureVocabulary entry loosens a claim.
+// Q8). TestVER60b pins that every report.FailureVocabulary entry is one here
+// and loosens a claim.
 var claimDisclosures = [...][]string{
 	{"fail"}, {"failed"}, {"failing"}, {"error"}, {"errors"}, {"couldn't"}, {"could", "not"},
 	{"unable"}, {"not", "able"}, {"didn't"}, {"did", "not"}, {"blocked"}, {"denied"}, {"timed", "out"},
