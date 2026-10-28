@@ -642,3 +642,124 @@ func TestINT18_TwoRedsThenAGreenPairTheLastRed(t *testing.T) {
 		t.Errorf("verify pairs %v, want %v", got, want)
 	}
 }
+
+// TestINT19a_TheUnguardedPairsAgreeWhereRecordingIsComplete: integrity reads
+// testPairs on its precondition, that recording reads the record Complete;
+// there, testsOnlyThenGreen's guard never fires, on every INT14 row and 400
+// generated records. The rows recording refuses are counted, and must
+// include an orphan and leave a complete row with pairs, so the agreement is
+// not vacuous.
+func TestINT19a_TheUnguardedPairsAgreeWhereRecordingIsComplete(t *testing.T) {
+	var complete, withPairs, orphaned int
+	check := func(name string, r *store.Run) {
+		state, ns := recording(r, math.MaxInt64)
+		if state != Complete {
+			if slices.Contains(ns, notes[noteOrphan]) {
+				orphaned++
+			}
+			return
+		}
+		complete++
+		picked := pickExecutions(r)
+		got, want := testPairs(r, picked, 0, math.MaxInt64), testsOnlyThenGreen(r, picked, 0, math.MaxInt64)
+		if !samePairs(got, want) {
+			t.Errorf("%s: testPairs %v, testsOnlyThenGreen %v on a complete record", name, got, want)
+		}
+		if len(want) > 0 {
+			withPairs++
+		}
+	}
+	for _, row := range pairRows() {
+		check(row.name, row.run(t))
+	}
+	rng := rand.New(rand.NewSource(19))
+	for i := range 400 {
+		check("generated "+strconv.Itoa(i), generatedRun(t, rng))
+	}
+	if orphaned == 0 || withPairs == 0 {
+		t.Fatalf("%d complete records, %d with pairs, %d refused for an orphan: the agreement is vacuous", complete, withPairs, orphaned)
+	}
+	t.Logf("%d complete records, %d with pairs; %d refused for an orphan", complete, withPairs, orphaned)
+}
+
+// TestINT19b_AnOrphanNeverReachesTheUnguardedPairs: a record holding a pair
+// and a call whose declaration was lost is one recording refuses, so
+// Evaluate never calls integrity on it: Integrity stays as Evaluate begins
+// it. testsOnlyThenGreen voids the pair and testPairs, which no caller reads
+// on such a record, keeps it. The stricter orphan, a flush_failed terminal
+// with no id, is one recording refuses and the report's guard skips.
+func TestINT19b_AnOrphanNeverReachesTheUnguardedPairs(t *testing.T) {
+	const tf = "pkg/calc_test.go"
+	pair := [][2]int64{{1, 5}}
+	for _, c := range []struct {
+		name    string
+		run     func(t *testing.T) *store.Run
+		guarded [][2]int64
+	}{
+		{"an execution with no declaration", func(t *testing.T) *store.Run {
+			return labelled(t, redRun(1), edit(2, tf), greenRun(3), lostCall(4))
+		}, nil},
+		{"a flush_failed terminal with no id", func(t *testing.T) *store.Run {
+			r := labelled(t, redRun(1), edit(2, tf), greenRun(3))
+			s, reason := int64(7), store.ReasonFlushFailed
+			r.Terminals = append(r.Terminals, store.Terminal{Type: store.TypeTerminal, SchemaVersion: store.SchemaVersion, Seq: &s,
+				SessionID: "s1", Outcome: store.OutcomeError, Reason: &reason})
+			return r
+		}, pair},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := c.run(t)
+			if state, ns := recording(r, math.MaxInt64); state != Incomplete || !slices.Contains(ns, notes[noteOrphan]) {
+				t.Fatalf("recording %s %v, want incomplete with %s", state, ns, notes[noteOrphan])
+			}
+			picked := pickExecutions(r)
+			if got := testsOnlyThenGreen(r, picked, 0, math.MaxInt64); !slices.Equal(got, c.guarded) {
+				t.Errorf("testsOnlyThenGreen %v, want %v", got, c.guarded)
+			}
+			if got := testPairs(r, picked, 0, math.MaxInt64); !slices.Equal(got, pair) {
+				t.Errorf("testPairs %v, want %v", got, pair)
+			}
+			snap := evalAt(r, math.MaxInt64)
+			if snap.Recording != Incomplete {
+				t.Fatalf("Evaluate reads %s, want incomplete", snap.Recording)
+			}
+			wantIntegrity(t, snap.Integrity, IntegrityCounts{})
+		})
+	}
+}
+
+// TestINT19c_IntegrityBuildsNoDeclaredSetOnPairs pins integrity's
+// allocations on the ten-pair record, picked and writes built outside, at
+// the 12 measured at 1.8r2 plus 8. Reading testsOnlyThenGreen, integrity
+// allocated 29 there, the guard's declared-id set the difference (1.8r's
+// doubt 4); allocation counts on a fixed record do not vary, the budget
+// gate's own premise.
+func TestINT19c_IntegrityBuildsNoDeclaredSetOnPairs(t *testing.T) {
+	const measured = 12
+	r := benchPairsRun(t)
+	_, writes, _, _ := classify(r)
+	picked := pickExecutions(r)
+	if got := integrity(r, picked, writes, 0, benchPairsAt); len(got.Unresolved) != 10 {
+		t.Fatalf("integrity gives %d unresolved, want the ten pairs", len(got.Unresolved))
+	}
+	n := testing.AllocsPerRun(20, func() { integrity(r, picked, writes, 0, benchPairsAt) })
+	if n > measured+8 {
+		t.Errorf("integrity allocates %v on the ten-pair record, want at most %d", n, measured+8)
+	}
+	t.Logf("integrity allocates %v on the ten-pair record", n)
+}
+
+// TestINT19d_TheTenPairRecordIsTheCaseItNames: BenchmarkPairs's record holds
+// ten pairs, the report's, and Evaluate reads it complete with ten
+// unresolved entries.
+func TestINT19d_TheTenPairRecordIsTheCaseItNames(t *testing.T) {
+	r := benchPairsRun(t)
+	got, want := pairsOf(r), reportPairs(r)
+	if len(got) != 10 || !samePairs(got, want) {
+		t.Fatalf("verify %v, report %v; want ten equal pairs", got, want)
+	}
+	snap := evalAt(r, benchPairsAt)
+	if snap.Recording != Complete || len(snap.Integrity.Unresolved) != 10 {
+		t.Fatalf("Evaluate reads %s with %d unresolved, want complete with ten", snap.Recording, len(snap.Integrity.Unresolved))
+	}
+}

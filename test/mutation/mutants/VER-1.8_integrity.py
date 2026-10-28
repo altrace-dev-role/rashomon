@@ -163,3 +163,25 @@ m("VER-1.8r an orphan execution after the point cuts the pair", P, "; !ok && byP
 m("VER-1.8r an orphan terminal after the point cuts the pair", P, "; !ok && byPoint(t.Seq, at) {\n", "; !ok {\n", "TestINT17_")
 m("VER-1.8r a flush_failed marker with no id cuts the pair", P,
   '\t\tif t.FlushFailed() && t.ToolUseID == "" {\n\t\t\tcontinue\n\t\t}\n', "", "TestINT14_")
+
+# 1.8r2: integrity reads testPairs on its precondition, that recording reads
+# the record Complete, whose outcome_without_declaration is a superset of the
+# guard; testsOnlyThenGreen keeps the guard for the detector on its own. The
+# card's "testsOnlyThenGreen drops the guard" is "an undeclared call is
+# ignored" above, and its "undeclared() stops skipping the flush_failed
+# terminal" is "a flush_failed marker with no id cuts the pair".
+m("VER-1.8r2 integrity reads the guarded pairs", I,
+  "\tfor _, p := range testPairs(run, picked, from, at) {\n",
+  "\tfor _, p := range testsOnlyThenGreen(run, picked, from, at) {\n", "TestINT19c_")
+m("VER-1.8r2 testPairs keeps the guard", P,
+  "\t\t\tvisit(&run.Declarations[i])\n\t\t}\n\t}\n\treturn pairs\n}\n",
+  "\t\t\tvisit(&run.Declarations[i])\n\t\t}\n\t}\n\tif len(pairs) > 0 && undeclared(run, at) {\n\t\treturn nil\n\t}\n\treturn pairs\n}\n",
+  "TestINT19b_|TestINT19c_")
+m("VER-1.8r2 evaluate reads integrity before recording's return", E,
+  "\tif snap.Recording != Complete {\n\t\treturn snap\n\t}\n\tpicked := pickExecutions(run)\n\truns, writes, unnamed, _ := classifyWith(run, picked)\n",
+  "\tpicked := pickExecutions(run)\n\truns, writes, unnamed, _ := classifyWith(run, picked)\n"
+  "\tif snap.Recording != Complete {\n\t\tsnap.Integrity = integrity(run, picked, writes, 0, at)\n\t\treturn snap\n\t}\n",
+  "TestINT19b_")
+m("VER-1.8r2 undeclared finds no orphan", P,
+  "func undeclared(run *store.Run, at int64) bool {\n",
+  "func undeclared(run *store.Run, at int64) bool {\n\treturn false\n", "TestINT19b_")
