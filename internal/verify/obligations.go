@@ -30,8 +30,8 @@ import (
 //     gate with no write owes nothing and has no row of any kind.
 //   - watched_red_then_green (PF-PG7), from classify's runs and writes
 //     (watchedRow): no row without a red run.
-//   - exit_unmasked, from the state, where the gate has a last run
-//     (exitUnmaskedTable).
+//   - exit_unmasked, from the state, where the gate has a last run and owes
+//     a row (exitUnmaskedTable).
 //   - evidence_bound, unknown with no evidence, where gate_after_write has a
 //     row (Phase 5 binds the evidence to the tree digest; Q6).
 //
@@ -144,13 +144,16 @@ var gateAfterWriteTable = []obRow{
 	{Unknown, ObligationUnknown, citeRun},
 }
 
-// exitUnmaskedTable: a status was read on Green, Red and Stale; a pipe hid it
-// on Masked; none was read yet on Backgrounded, and none on Unknown (output
-// unread, an unended run or a spilled execution: Gate B F2).
+// exitUnmaskedTable: a status was read on Green, Red and Stale, and on an
+// Absent gate's run, an empty run, which the state table reads only where no
+// pipe hid it (D47); a pipe hid it on Masked; none was read yet on
+// Backgrounded, and none on Unknown (output unread, an unended run or a
+// spilled execution: Gate B F2).
 var exitUnmaskedTable = []obRow{
 	{Green, ObligationMet, citeRun},
 	{Red, ObligationMet, citeRun},
 	{Stale, ObligationMet, citeRun},
+	{Absent, ObligationMet, citeRun},
 	{MaskedInconclusive, ObligationUnmet, citeRun},
 	{Backgrounded, ObligationUnknown, citeRun},
 	{Unknown, ObligationUnknown, citeRun},
@@ -202,7 +205,7 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 			state, ev, n := watchedRow(w, writes)
 			l.add(g, source, WatchedRedThenGreen, state, ev[:n]...)
 		}
-		if g.LastRun != nil {
+		if g.LastRun != nil && owed {
 			l.fromTable(g, source, ExitUnmasked, exitUnmaskedTable)
 		}
 		if owed {
@@ -306,8 +309,8 @@ type watch struct {
 // watches is every family with a red run at the point, by its Family name
 // (stateOf's runner@location). A run counts once its outcome has landed at or
 // before at, in declaration order, as gateStates reads them. A red is a run
-// the state table would read Red (Q3): not backgrounded, not masked, failed;
-// a later red resets the green.
+// the state table would read Red (Q3): not backgrounded, not masked, not an
+// empty run (D47), failed; a later red resets the green.
 func watches(runs []gateRun, at int64) map[string]watch {
 	var byKey map[familyKey]watch
 	for i := range runs {
@@ -317,7 +320,7 @@ func watches(runs []gateRun, at int64) map[string]watch {
 			continue
 		}
 		switch w := byKey[k]; {
-		case !r.Backgrounded && !masked(r) && failed(r):
+		case !r.Backgrounded && !masked(r) && !emptyRun(r) && failed(r):
 			if byKey == nil {
 				byKey = make(map[familyKey]watch)
 			}
