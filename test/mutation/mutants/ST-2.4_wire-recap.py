@@ -32,7 +32,7 @@ IMPORTS["ST-2.4 a prefix word names the gate"] = (VL, '\t"slices"\n', '')
 m("ST-2.4 a prefix word names the gate", VL,
   'if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {\n', 'if p := t.programs[g.Gate]; p != "" {\n', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the no-write variant dropped", VL,
-  '\tif !wrote {\n\t\twhere = " in this turn"\n\t}\n', '', "TestVER65_ValueLineRowsRender")
+  '\tcase seq >= v.Turn.FirstSeq:\n\t\treturn " in this turn", false\n', '', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the clause counts suppressed lines", VL,
   'if text(b, out[nkState]) != string(steer.LineStateDelivered) || text(b, out[nkPrompt]) != promptID {\n',
   'if text(b, out[nkPrompt]) != promptID {\n', "TestFUN15_")
@@ -109,4 +109,4 @@ m("ST-2.4 cwd not read", IN, '\t\t\tfm.CWD = string(v)\n', '\t\t\tfm.CWD = ""\n'
 m("ST-2.4 purge leaves the project index", PU,
   '\t\treturn level == 1 && verify.IsIndexFile(name)\n', '\t\treturn false\n', "TestTRU28_PurgeTakesTheProjectIndex")
 m("ST-2.4 the index rows left out of the inventory", DI,
-  '}, append(recordScopeFiles(), indexFiles()...)...)\n', '}, recordScopeFiles()...)\n', "TestTRU23_EveryWrittenPathIsInTheInventory")
+  '}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)\n', '}, append(recordScopeFiles(), bodiesFiles()...)...)\n', "TestTRU23_EveryWrittenPathIsInTheInventory")

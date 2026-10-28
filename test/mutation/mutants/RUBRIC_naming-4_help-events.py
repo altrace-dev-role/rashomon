@@ -5,7 +5,7 @@ m("naming-4 the watch line drops UserPromptSubmit", "cmd/rashomon/main.go",
   "                               Stop/StopFailure exception-only recap, and its\n                               UserPromptSubmit catch-up; --show prints that\n",
   "                               Stop/StopFailure exception-only recap; --show prints that\n",
   "TestRubricNAMING4_")
-m("naming-4 recap pending is not listed", "cmd/rashomon/main.go",
+m("naming-4 recap pending is not listed", "cmd/rashomon/usage_hooks.go",
   "  rashomon recap pending [--install ID]\n",
   "  rashomon recap [--install ID]\n",
   "TestRubricNAMING4_")

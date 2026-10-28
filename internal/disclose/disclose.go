@@ -474,7 +474,7 @@ func defaultFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over harness_counts.json); purge",
 			Owner:      "store",
 		},
-	}, append(recordScopeFiles(), indexFiles()...)...)
+	}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's

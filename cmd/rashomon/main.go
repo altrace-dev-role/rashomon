@@ -128,6 +128,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdDigest(rest, stdin, stdout) })
 	case "forget":
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
+	case "bodies":
+		return guarded(stderr, func() error { return cmdBodies(rest, stdout) })
 	case "spend":
 		return guarded(stderr, func() error { return cmdSpend(rest, stdout) })
 
@@ -329,7 +331,10 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		} else {
 			runErr = hook.RunProbe(sig, phase, in(), st, time.Now)
 		}
-		if runErr != nil {
+		if errors.Is(runErr, store.ErrBodyOverCap) {
+			fmt.Fprintln(stderr, bodyOverCapLine)
+		}
+		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
 		return nil
@@ -925,6 +930,7 @@ func cmdStatus(stdout io.Writer) error {
 			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
 		}
 		statusSize(stdout, st)
+		fmt.Fprintf(stdout, "  %s\n", bodiesLine(st))
 		statusLockWait(stdout, st)
 	} else {
 		fmt.Fprintln(stdout, "  present: no")
@@ -1437,9 +1443,11 @@ func cmdSpend(args []string, stdout io.Writer) error {
 // naming both is refused rather than resolved.
 func cmdForget(args []string, stdout io.Writer) error {
 	var from, to *time.Time
-	hostArg := ""
+	hostArg, bodies := "", false
 	for i := 0; i < len(args); i++ {
 		switch flag := args[i]; flag {
+		case "--bodies":
+			bodies = true
 		case "--host":
 			if i+1 >= len(args) {
 				return errors.New("--host needs a value")
@@ -1469,14 +1477,16 @@ func cmdForget(args []string, stdout io.Writer) error {
 		}
 	}
 	switch {
-	case hostArg != "" && (from != nil || to != nil):
-		return errors.New("--host removes by destination and --since/--before remove by time; pass one kind or the other")
+	case forgetKinds(hostArg != "", from != nil || to != nil, bodies) > 1:
+		return errors.New("--host removes by destination, --since/--before by time and --bodies this project's transcript copies; pass one kind")
 	case hostArg != "":
 		return forgetHost(hostArg, stdout)
+	case bodies:
+		return forgetBodies(stdout)
 	case from != nil && to != nil:
 		return errors.New("--since and --before name opposite ends of the store's timeline; pass one or the other")
 	case from == nil && to == nil:
-		return errors.New("forget needs --since or --before <RFC3339 time or duration such as 24h>, or --host <hostname>")
+		return errors.New("forget needs --since or --before <RFC3339 time or duration such as 24h>, --host <hostname>, or --bodies")
 	}
 
 	st, err := openStoreForRead()
@@ -1611,29 +1621,16 @@ usage:
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T
                                either way, leaving a coverage gap behind
+  rashomon forget --bodies       remove this project's transcript copies
+  rashomon bodies on [--max-bytes N] | off | status
+                               on copies each of this project's session
+                               transcripts at SessionEnd, evicting the oldest
+                               to keep every copy within N bytes (default
+                               2 GiB); off stops, keeping the copies (forget
+                               --bodies removes them); status counts them
   rashomon version               print the version
 
-invoked by Claude Code, never by hand:
-  rashomon hook [--install ID]   handle one PreToolUse invocation
-  rashomon post [--install ID]   handle one PostToolUse invocation
-  rashomon probe start [--install ID]
-                               handle SessionStart
-  rashomon probe end [--install ID]
-                               handle SessionEnd
-  rashomon recap [--install ID]  handle Stop / StopFailure: print an
-                               exception-only line on stdout as a
-                               systemMessage when a turn has something worth
-                               looking at, and nothing otherwise; never
-                               exits non-zero
-  rashomon recap pending [--install ID]
-                               handle UserPromptSubmit: print that line for
-                               the turn that just ended if no recap reached
-                               it, as when a refused permission prompt
-                               interrupted it; never exits non-zero
-
---install names the install whose entry is running. An entry belonging to
-another install stands down: it records nothing in this environment.
-`)
+`+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the

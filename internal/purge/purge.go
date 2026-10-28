@@ -5,8 +5,8 @@
 //
 // It removes nothing it did not list in a Plan first, and a Plan lists only
 // names rashomon writes. A file a user put in the store root, or in runs,
-// baseline or verify beside or inside what rashomon wrote, is left, and so is
-// every directory that holds it.
+// baseline, verify or bodies beside or inside what rashomon wrote, is left,
+// and so is every directory that holds it.
 package purge
 
 import (
@@ -40,21 +40,21 @@ const (
 // than the two anchors: the gap log, the forgotten-host digests, the pause
 // marker, the size cap the last hook resolved, the consent log and its
 // record-scope marker, the harness switches watch writes, the harness
-// mismatch counts and their lock, and recap's state and the one temporary
-// file builds through v1.1.0 wrote it to.
+// mismatch counts and their lock, recap's state and the one temporary file
+// builds through v1.1.0 wrote it to, and the transcript-copy switch.
 // Each name is the writing package's own constant, so a rename there cannot
 // strand the file here.
 var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, store.FileResolvedCap,
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
 	store.FileRecordScope, store.FileSteerDisclosure,
-	recap.StateFileName, recap.StateTempName}
+	recap.StateFileName, recap.StateTempName, store.FileBodies}
 
 // topDirs are the directories under the store root that rashomon writes
 // into. Only the entries it writes there are planned for removal (see
 // ownedTree): the directory can be shared with the user's own files when
-// RASHOMON_HOME names a directory they already use, and "runs", "baseline"
-// and "verify" are ordinary names for such a directory.
-var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName}
+// RASHOMON_HOME names a directory they already use, and "runs", "baseline",
+// "verify" and "bodies" are ordinary names for such a directory.
+var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies}
 
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
@@ -64,13 +64,13 @@ var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, 
 var runTempPrefixes = []string{fold.TempPrefix}
 
 // tempPrefixes are the names of an anchor's, consent.json's, record_scope's,
-// steer_disclosure's, harnesses.json's, harness_counts.json's and
-// recap.json's temporary file, left by a process that died between writing
-// and renaming it.
+// steer_disclosure's, harnesses.json's, harness_counts.json's,
+// recap.json's and bodies.json's temporary file, left by a process that died
+// between writing and renaming it.
 var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tmp-",
 	"." + store.FileConsent + ".tmp-", "." + store.FileRecordScope + ".tmp-",
 	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",
-	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix}
+	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix, "." + store.FileBodies + ".tmp-"}
 
 // ownName reports whether a name directly under the store root is one
 // rashomon writes.
@@ -284,24 +284,31 @@ func ownedTree(top, name string) (own, foreign []string, err error) {
 }
 
 // ownTreeDir reports whether a directory of this name, at this level below
-// top (one of topDirs, by name), is one rashomon writes: runs/<session> and
-// verify/projects.
+// top (one of topDirs, by name), is one rashomon writes: runs/<session>,
+// verify/projects and bodies/<project> (any name not starting with a dot).
 func ownTreeDir(top, name string, level int) bool {
 	switch top {
 	case store.DirRuns:
 		return level == 0
 	case verify.DirName:
 		return level == 0 && name == verify.ProjectsDir
+	case store.DirBodies:
+		return level == 0 && !strings.HasPrefix(name, ".")
 	}
 	return false
 }
 
 // treeFile reports whether a regular file of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: verify's index files
-// in verify/projects, and ownTreeFile's for runs and baseline.
+// in verify/projects, a project's transcript copies and the temporary files
+// their writes leave in bodies/<project>, and ownTreeFile's for runs and
+// baseline.
 func treeFile(top, name string, level int) bool {
 	if top == verify.DirName {
 		return level == 1 && verify.IsIndexFile(name)
+	}
+	if top == store.DirBodies {
+		return level == 1 && (strings.HasSuffix(name, ".jsonl") || strings.HasPrefix(name, store.BodiesTempPrefix))
 	}
 	return ownTreeFile(name, top == store.DirRuns, level)
 }

@@ -230,10 +230,6 @@ func rowSentence(v verify.StopView, k int) string {
 	t := turnGates(v)
 	wrote := v.Turn.Writes > 0
 	files := filesEdited(v.Turn.PathsWritten)
-	where := " after the last edit"
-	if !wrote {
-		where = " in this turn"
-	}
 	switch v.Summary.Row {
 	case verify.RowUnknown:
 		if v.Snap.Recording != verify.Complete {
@@ -246,7 +242,8 @@ func rowSentence(v verify.StopView, k int) string {
 		if g.Reason == verify.OrderUnknown {
 			return "the record does not order every " + t.name(g) + " run and edit in this turn; verification state unknown"
 		}
-		return t.name(g) + " ran after the last edit (call " + seqOf(g) + "); its result is not in the record"
+		where, _ := when(v, g)
+		return t.name(g) + " ran" + where + " (call " + seqOf(g) + "); its result is not in the record"
 	case verify.RowRed:
 		g := t.first(verify.Red)
 		if g == nil {
@@ -256,17 +253,23 @@ func rowSentence(v verify.StopView, k int) string {
 		if g.LastRun != nil && g.LastRun.ExitCode != nil {
 			verb = "exited " + strconv.Itoa(*g.LastRun.ExitCode)
 		}
+		where, since := when(v, g)
 		s := t.name(g) + " " + verb + where + " (call " + seqOf(g) + ")"
+		if since {
+			s += " and has not run since"
+		}
 		if wrote {
 			s = files + "; " + s
 		}
 		return s
 	case verify.RowMasked:
 		if g := t.first(verify.MaskedInconclusive); g != nil {
+			where, _ := when(v, g)
 			return t.name(g) + " ran" + where + "; its exit status was hidden by its line (call " + seqOf(g) + ")"
 		}
 	case verify.RowBackgrounded:
 		if g := t.first(verify.Backgrounded); g != nil {
+			where, _ := when(v, g)
 			return t.name(g) + " moved to the background" + where + "; its result is not in the record"
 		}
 	case verify.RowRanOnly:
@@ -299,11 +302,12 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		g = t.first(verify.Absent)
 	}
 	if v.Turn.Writes == 0 && g != nil {
+		where, _ := when(v, g)
 		switch g.Reason {
 		case verify.EmptyRun:
-			return t.name(g) + " ran in this turn and ran no checks (call " + seqOf(g) + ")"
+			return t.name(g) + " ran" + where + " and ran no checks (call " + seqOf(g) + ")"
 		case verify.PartialOnly:
-			return t.name(g) + " ran on part of the project in this turn (call " + seqOf(g) + ")"
+			return t.name(g) + " ran on part of the project" + where + " (call " + seqOf(g) + ")"
 		}
 	}
 	greens := t.greens(k)
@@ -314,6 +318,25 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		return files + "; " + greens + " passed after the last edit, " + t.name(g) + " not run after it"
 	}
 	return files + ", no test or build run after the last edit"
+}
+
+// when places g's last run by seq (card 2.4r): after the turn's last edit, a
+// tie too (writes count strictly after a run, gates.go), or before it; with no
+// write, in this turn or, before its first seq, an earlier one; since if before.
+func when(v verify.StopView, g *verify.GateState) (where string, since bool) {
+	var seq int64
+	if g.LastRun != nil {
+		seq = g.LastRun.Seq
+	}
+	switch {
+	case v.Turn.Writes > 0 && seq >= v.Turn.LastWriteSeq:
+		return " after the last edit", false
+	case v.Turn.Writes > 0:
+		return " before the last edit", true
+	case seq >= v.Turn.FirstSeq:
+		return " in this turn", false
+	}
+	return " in an earlier turn", true
 }
 
 // gateSet is the turn gates of a view and the programs that name them.
