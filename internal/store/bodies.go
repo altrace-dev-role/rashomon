@@ -147,47 +147,15 @@ func copyBody(src string, size int64, dir, dst string) error {
 	return os.Rename(tmp.Name(), dst)
 }
 
-// evictBodies removes copies, oldest mtime first and by path among equals,
-// until the rest total at most budget bytes. except, the file about to be
-// replaced, is neither counted nor removed, and nor is anything not named
-// *.jsonl: a temporary file is a copy in flight, or one a crash left, which
-// is purge's to remove, and any other file is the user's, as purge's
-// treeFile has it.
+// evictBodies removes copies (listBodies), oldest mtime first and by path
+// among equals, until the rest total at most budget bytes. except, the file
+// about to be replaced, is neither counted nor removed.
 func (s *Store) evictBodies(budget int64, except string) error {
-	type body struct {
-		path string
-		size int64
-		mod  time.Time
-	}
-	var all []body
-	var total int64
-	projects, err := os.ReadDir(filepath.Join(s.root, DirBodies))
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
+	all, total, err := s.listBodies(except)
 	if err != nil {
 		return err
 	}
-	for _, p := range projects {
-		if !p.IsDir() {
-			continue
-		}
-		dir := filepath.Join(s.root, DirBodies, p.Name())
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return err
-		}
-		for _, e := range entries {
-			info, err := e.Info()
-			path := filepath.Join(dir, e.Name())
-			if err != nil || !info.Mode().IsRegular() || path == except || !strings.HasSuffix(e.Name(), ".jsonl") {
-				continue
-			}
-			all = append(all, body{path, info.Size(), info.ModTime()})
-			total += info.Size()
-		}
-	}
-	slices.SortFunc(all, func(a, b body) int {
+	slices.SortFunc(all, func(a, b bodyFile) int {
 		if c := a.mod.Compare(b.mod); c != 0 {
 			return c
 		}
@@ -203,6 +171,56 @@ func (s *Store) evictBodies(budget int64, except string) error {
 		total -= b.size
 	}
 	return nil
+}
+
+// BodiesTotal counts every project's copies and their bytes, the figures the
+// cap holds: the files eviction counts, and only those.
+func (s *Store) BodiesTotal() (int, int64, error) {
+	all, total, err := s.listBodies("")
+	return len(all), total, err
+}
+
+// bodyFile is one copy as listBodies finds it.
+type bodyFile struct {
+	path string
+	size int64
+	mod  time.Time
+}
+
+// listBodies lists every project's copies but except, and their total. A
+// copy is a regular file named *.jsonl: a temporary file is a copy in
+// flight, or one a crash left, which is purge's to remove, and any other
+// file is the user's, as purge's treeFile has it.
+func (s *Store) listBodies(except string) ([]bodyFile, int64, error) {
+	var all []bodyFile
+	var total int64
+	projects, err := os.ReadDir(filepath.Join(s.root, DirBodies))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, p := range projects {
+		if !p.IsDir() {
+			continue
+		}
+		dir := filepath.Join(s.root, DirBodies, p.Name())
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, e := range entries {
+			info, err := e.Info()
+			path := filepath.Join(dir, e.Name())
+			if err != nil || !info.Mode().IsRegular() || path == except || !strings.HasSuffix(e.Name(), ".jsonl") {
+				continue
+			}
+			all = append(all, bodyFile{path, info.Size(), info.ModTime()})
+			total += info.Size()
+		}
+	}
+	return all, total, nil
 }
 
 // ForgetBodies removes projectDir's copies, and the directory when nothing

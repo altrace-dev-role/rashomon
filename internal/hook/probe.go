@@ -1,6 +1,8 @@
 package hook
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -121,17 +123,21 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	})
 
 	// The transcript copy (card 4.1, D111 as amended) runs after the end
-	// record, which so neither waits on it nor is lost to it, in a barrier of
-	// its own. A refused payload (hookio.TooLargeError) never reaches the
-	// PhaseEnd case, so it has no path and no copy. The copy's error has no
-	// reader yet: this function's is eviction's alone, which cmdProbe prints
-	// as evictionLine, and card 4.1b gives the copy a line of its own.
+	// record, so that the record neither waits on it nor is lost to it, in a
+	// barrier of its own. A refused payload (hookio.TooLargeError) never
+	// reaches the PhaseEnd case, so it has no path and no copy. Of the copy's
+	// errors only the over-cap refusal has a reader: it is returned beside
+	// eviction's, and cmdProbe prints each as a line of its own (card 4.1b).
+	var overCap error
 	if phase == store.PhaseEnd && transcriptPath != "" {
-		_ = safe.Guard(func() error {
+		err := safe.Guard(func() error {
 			key := baseline.Key(cwd)
 			_, err := st.CopyBody(sessionID, transcriptPath, key, strings.TrimSuffix(baseline.FileName(key), baseline.FileExt), now())
 			return err
 		})
+		if errors.Is(err, store.ErrBodyOverCap) {
+			overCap = err
+		}
 	}
 
 	// Eviction runs at session boundaries, off the per-call path. The session
@@ -145,8 +151,17 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	// disagree with what Claude Code hands the hooks (hld-7).
 	capSetting := store.ResolveCap()
 	_ = st.RecordResolvedCap(capSetting)
-	return safe.Guard(func() error {
+	evictErr := safe.Guard(func() error {
 		_, err := st.Evict(capSetting.Bytes, sessionID, now())
 		return err
 	})
+	if evictErr != nil {
+		evictErr = fmt.Errorf("%w: %w", ErrEvictIncomplete, evictErr)
+	}
+	return errors.Join(overCap, evictErr)
 }
+
+// ErrEvictIncomplete marks the probe's error as eviction's, which cmdProbe
+// prints as its own line; store.ErrBodyOverCap, joined beside it, is the
+// transcript copy's (card 4.1b).
+var ErrEvictIncomplete = errors.New("store eviction incomplete")
