@@ -24,6 +24,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // ScopeVersion is bumped on a new capability class. The consent a user gave
@@ -473,7 +474,36 @@ func defaultFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over harness_counts.json); purge",
 			Owner:      "store",
 		},
-	}, recordScopeFiles()...)
+	}, append(recordScopeFiles(), indexFiles()...)...)
+}
+
+// indexFiles is the inventory's rows for the project index the Stop hook's
+// recap reads and writes (verify.IndexPath, card 2.4), and its replacement.
+// Like recordScopeFiles, they sit apart from defaultFiles for Law 10.
+func indexFiles() []FileRule {
+	const base = verify.DirName + "/" + verify.ProjectsDir
+	return []FileRule{
+		{
+			Base:       base,
+			Pattern:    baseline.FilePattern,
+			Mode:       "0600",
+			Purpose:    "one project's index of the test and build commands its sessions have run, so a command two sessions ran in thirty days is required before a turn reads verified",
+			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen",
+			NeverHolds: "a command's arguments or output, or anything about a call beyond its family",
+			RemovedBy:  "eviction of the least recently seen families at 64 KiB; purge",
+			Owner:      "verify",
+		},
+		{
+			Base:       base,
+			Pattern:    "." + baseline.FilePattern + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "a project index's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "what the project index is about to hold",
+			NeverHolds: "a command's arguments or output, or anything about a call beyond its family",
+			RemovedBy:  "the write that made it (renamed over the index); purge",
+			Owner:      "verify",
+		},
+	}
 }
 
 // recordScopeFiles is the inventory's rows for the record_scope marker and

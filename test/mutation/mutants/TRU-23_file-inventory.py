@@ -35,8 +35,8 @@ m("TRU-23 the temporary file builds through v1.1.0 left drops out of the invento
   "\t\t\tPattern:    \"recap.json.old\",",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
 m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/disclose/disclose.go",
-  "\t\t\tPattern:    baseline.FilePattern,",
-  "\t\t\tPattern:    \"*.ndjson\",",
+  "\t\t\tBase:       baseline.DirName,\n\t\t\tPattern:    baseline.FilePattern,",
+  "\t\t\tBase:       baseline.DirName,\n\t\t\tPattern:    \"*.ndjson\",",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
 
 # TRU-23: the write-call-site trip-wire (TestTRU23_WriteCallSitesArePinned)

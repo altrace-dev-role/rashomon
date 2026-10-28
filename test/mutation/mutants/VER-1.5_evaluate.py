@@ -58,17 +58,19 @@ m("VER-1.5 an index that requires nothing reads as learned", E,
   '\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n', '\t\t\treturn true\n\t\t}\n\t}\n\treturn true\n}\n', "TestVER46_")
 
 # The row with advisory gates only (D38): capped green, red kept, learned gates alone.
+# The advisory test lives in Advisory since 2.4, which TurnSummary and the
+# value line's gate list both call.
 m("VER-1.5 every row is advisory", E,
-  '\tadvisory := !slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required })\n',
-  '\tadvisory := true\n', "TestVER65c_|TestVER46_")
+  '\treturn !slices.ContainsFunc(gates, func(g GateState) bool { return g.Required })\n',
+  '\treturn true\n', "TestVER65c_|TestVER46_")
 m("VER-1.5 advisory gates never reach the row", E,
-  '\tadvisory := !slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required })\n',
-  '\tadvisory := false\n', "TestVER46_")
+  '\treturn !slices.ContainsFunc(gates, func(g GateState) bool { return g.Required })\n',
+  '\treturn false\n', "TestVER46_")
 # The advisory line is evaluate.go's one use of slices.
 for name in ("VER-1.5 every row is advisory", "VER-1.5 advisory gates never reach the row"):
     IMPORTS[name] = (E, '\t"slices"\n\t"strconv"\n', '\t"strconv"\n')
 m("VER-1.5 the advisory set takes every non-required gate", E,
-  ' && !(advisory && g.Source == sourceLearned) {\n', ' && !advisory {\n', "TestVER65c_")
+  '\treturn g.Required || advisory && g.Source == sourceLearned\n', '\treturn g.Required || advisory\n', "TestVER65c_")
 m("VER-1.5 an advisory green reads verified", E,
   '\t\trow = RowUnverified // the cap', '\t\trow = RowVerified // the cap', "TestVER46_")
 m("VER-1.5 an advisory green with no write is unverified", E,

@@ -4,9 +4,9 @@
 // interrupted can be run again to completion.
 //
 // It removes nothing it did not list in a Plan first, and a Plan lists only
-// names rashomon writes. A file a user put in the store root, or in runs or
-// baseline beside or inside what rashomon wrote, is left, and so is every
-// directory that holds it.
+// names rashomon writes. A file a user put in the store root, or in runs,
+// baseline or verify beside or inside what rashomon wrote, is left, and so is
+// every directory that holds it.
 package purge
 
 import (
@@ -24,6 +24,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/fold"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // The two files that make a directory a store. They are removed last, so
@@ -51,9 +52,9 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 // topDirs are the directories under the store root that rashomon writes
 // into. Only the entries it writes there are planned for removal (see
 // ownedTree): the directory can be shared with the user's own files when
-// RASHOMON_HOME names a directory they already use, and "runs" and
-// "baseline" are ordinary names for such a directory.
-var topDirs = []string{store.DirRuns, baseline.DirName}
+// RASHOMON_HOME names a directory they already use, and "runs", "baseline"
+// and "verify" are ordinary names for such a directory.
+var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName}
 
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
@@ -191,7 +192,7 @@ func Build(root string, createdDirs []string, binary string) (Plan, error) {
 		case name == InstallMeta || name == InstallKey:
 			// Added last, below.
 		case isTopDir(name):
-			sub, foreign, err := ownedTree(path, name == store.DirRuns)
+			sub, foreign, err := ownedTree(path, name)
 			if err != nil {
 				return p, err
 			}
@@ -231,12 +232,12 @@ func isTopDir(name string) bool {
 // ownedTree splits what is under top, one of topDirs, into the paths
 // rashomon wrote -- returned deepest first, a directory after what is in it
 // -- and the paths it did not, which are left, along with every directory
-// above one. top is runs when isRuns is set (runs/<session>/<file>) and
-// baseline otherwise (baseline/<file>). A symlink is never followed and never
-// taken as rashomon's: a link, a device or a directory where only a regular
-// file rashomon writes can be, is foreign, and so is a top that is not itself
-// a directory.
-func ownedTree(top string, isRuns bool) (own, foreign []string, err error) {
+// above one. name is top's own name, which says its shape:
+// runs/<session>/<file>, baseline/<file> or verify/projects/<file>. A symlink
+// is never followed and never taken as rashomon's: a link, a device or a
+// directory where only a regular file rashomon writes can be, is foreign, and
+// so is a top that is not itself a directory.
+func ownedTree(top, name string) (own, foreign []string, err error) {
 	info, err := os.Lstat(top)
 	if err != nil {
 		return nil, nil, err
@@ -254,7 +255,7 @@ func ownedTree(top string, isRuns bool) (own, foreign []string, err error) {
 		for _, ent := range entries {
 			path := filepath.Join(dir, ent.Name())
 			switch {
-			case ent.IsDir() && isRuns && level == 0:
+			case ent.IsDir() && ownTreeDir(name, ent.Name(), level):
 				ok, err := walk(path, level+1)
 				if err != nil {
 					return false, err
@@ -263,7 +264,7 @@ func ownedTree(top string, isRuns bool) (own, foreign []string, err error) {
 					own = append(own, path)
 				}
 				clean = clean && ok
-			case ent.Type().IsRegular() && ownTreeFile(ent.Name(), isRuns, level):
+			case ent.Type().IsRegular() && treeFile(name, ent.Name(), level):
 				own = append(own, path)
 			default:
 				foreign = append(foreign, path)
@@ -280,6 +281,29 @@ func ownedTree(top string, isRuns bool) (own, foreign []string, err error) {
 		own = append(own, top)
 	}
 	return own, foreign, nil
+}
+
+// ownTreeDir reports whether a directory of this name, at this level below
+// top (one of topDirs, by name), is one rashomon writes: runs/<session> and
+// verify/projects.
+func ownTreeDir(top, name string, level int) bool {
+	switch top {
+	case store.DirRuns:
+		return level == 0
+	case verify.DirName:
+		return level == 0 && name == verify.ProjectsDir
+	}
+	return false
+}
+
+// treeFile reports whether a regular file of this name, at this level below
+// top (one of topDirs, by name), is one rashomon writes: verify's index files
+// in verify/projects, and ownTreeFile's for runs and baseline.
+func treeFile(top, name string, level int) bool {
+	if top == verify.DirName {
+		return level == 1 && verify.IsIndexFile(name)
+	}
+	return ownTreeFile(name, top == store.DirRuns, level)
 }
 
 // ownTreeFile reports whether a regular file of this name, at this level

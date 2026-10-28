@@ -178,8 +178,8 @@ m("VER-1.8r2 testPairs keeps the guard", P,
   "\t\t\tvisit(&run.Declarations[i])\n\t\t}\n\t}\n\tif len(pairs) > 0 && undeclared(run, at) {\n\t\treturn nil\n\t}\n\treturn pairs\n}\n",
   "TestINT19b_|TestINT19c_")
 m("VER-1.8r2 evaluate reads integrity before recording's return", E,
-  "\tif snap.Recording != Complete {\n\t\treturn snap\n\t}\n\tpicked := pickExecutions(run)\n\truns, writes, unnamed, _ := classifyWith(run, picked)\n",
-  "\tpicked := pickExecutions(run)\n\truns, writes, unnamed, _ := classifyWith(run, picked)\n"
+  "\tif snap.Recording != Complete {\n\t\treturn snap\n\t}\n\tpicked := pickExecutions(run)\n\truns, writes, unnamed, rewritten := classifyWith(run, picked)\n",
+  "\tpicked := pickExecutions(run)\n\truns, writes, unnamed, rewritten := classifyWith(run, picked)\n"
   "\tif snap.Recording != Complete {\n\t\tsnap.Integrity = integrity(run, picked, writes, 0, at)\n\t\treturn snap\n\t}\n",
   "TestINT19b_")
 m("VER-1.8r2 undeclared finds no orphan", P,

@@ -42,6 +42,10 @@ const (
 	// and prints nothing" -- H-93's own bar, stricter than the recorder's
 	// "never exit 2".
 	PointRecapStart = "recap.start"
+	// PointRecapFlush is recap's Flush before its systemMessage is written:
+	// a failure there prints nothing (card 2.4 R12, REC-34), the same fail
+	// closed rule as a failed checkpoint append.
+	PointRecapFlush = "recap.flush"
 	// PointProbeStart is the first statement of cmdProbe's guarded body,
 	// ahead of signal watching and the phase check. Those once ran before
 	// the barrier, and a fault here is what shows they no longer do.

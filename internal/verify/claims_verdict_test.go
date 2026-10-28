@@ -55,9 +55,10 @@ func wantClasses(t *testing.T, msg string, s ClaimScan, want ...string) {
 }
 
 // TestVER56_QuotedRashomonSentenceIsNotAClaim: a line that is a delivered
-// steer line behind "※" is no claim; the words without the mark, a bare mark,
-// a prefix of the line, or no delivered lines at all leave the claim (20.2.5
-// step 2).
+// steer line, behind "※" or bare, is no claim: a bare quote of a delivered
+// note is not a claim, since the model receives the note without the mark
+// (D81). A bare mark, a prefix of the line, or no delivered lines at all
+// leave the claim (20.2.5 step 2).
 func TestVER56_QuotedRashomonSentenceIsNotAClaim(t *testing.T) {
 	delivered := [][]byte{[]byte("tests pass after the last edit")}
 	for _, c := range []struct {
@@ -68,7 +69,7 @@ func TestVER56_QuotedRashomonSentenceIsNotAClaim(t *testing.T) {
 	}{
 		{"※ tests pass after the last edit", delivered, 0, "the delivered line"},
 		{"  ※   tests pass after the last edit \r", delivered, 0, "spaces around the line"},
-		{"tests pass after the last edit", delivered, 1, "the same words without the mark"},
+		{"tests pass after the last edit", delivered, 0, "a bare quote of a delivered note"},
 		{"※\nAll tests pass.", delivered, 1, "a bare mark on its own line"},
 		{"All tests pass. ※", delivered, 1, "a bare mark after the claim"},
 		{"※ tests pass after the last edit, twice", delivered, 1, "the delivered line a prefix of the message's"},

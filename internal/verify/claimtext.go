@@ -81,14 +81,14 @@ func stripWindow(b []byte, delivered [][]byte) []byte {
 	return out
 }
 
-// isDelivered reports whether a line, past its leading spaces, is "※" and,
-// past the spaces after it, one of delivered byte for byte. A bare "※" or a
-// prefix of a delivered line is not one.
+// isDelivered reports whether a line, past its leading spaces and an
+// optional "※" with the spaces after it, is one of delivered byte for byte.
+// The mark is optional because the model receives a note bare (the mark is
+// the user mirror's, steer MirrorPrefix), so a note the agent quotes back
+// arrives without it (D81). A bare "※" or a prefix of a delivered line is not
+// one.
 func isDelivered(lead []byte, delivered [][]byte) bool {
-	rest, ok := bytes.CutPrefix(lead, []byte("※"))
-	if !ok {
-		return false
-	}
+	rest, _ := bytes.CutPrefix(lead, []byte("※"))
 	text := bytes.TrimRight(bytes.TrimLeft(rest, " \t"), " \t\r")
 	for _, d := range delivered {
 		if bytes.Equal(text, d) {
