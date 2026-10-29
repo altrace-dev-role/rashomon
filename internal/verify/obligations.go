@@ -41,20 +41,11 @@ import (
 // state outside States, a source outside snapshot.go's three, or a record not
 // Complete makes every row of the gate unknown (INV-2, A1).
 //
-<<<<<<< ours
-// The three v0 facts: the scope is the session at every point (Q1); the
-// evidence_bound rows are unknown; and no spec_rule, platform_impact or
-// proposed_check row is emitted (Phase 3 and 6). expected_evidence rows
-// come from the task file (evidence.go, card 3.3).
-||||||| base
-// The three v0 facts: the scope is the session at every point (Q1); the
-// evidence_bound rows are unknown; and no spec_rule, platform_impact,
-// expected_evidence or proposed_check row is emitted (Phase 3 and 6).
-=======
 // The two v0 facts: the scope is the session at every point (Q1); and no
-// spec_rule, platform_impact, expected_evidence or proposed_check row is
-// emitted (Phase 3 and 6).
->>>>>>> theirs
+// spec_rule or proposed_check row is emitted (Phase 3 and 6). The other
+// kinds have their own sources: expected_evidence rows come from the task
+// file (evidence.go, card 3.3) and platform_impact rows from
+// internal/platform (6.1).
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string
