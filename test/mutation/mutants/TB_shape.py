@@ -1087,3 +1087,5 @@ m("WT a cd later on the line moves nothing", "internal/shape/writetargets.go",
 m("WT a tool that is not a shell is incomplete", "internal/shape/writetargets.go",
   "\tif verbForTool(toolName) != VerbExecute {\n\t\treturn nil, true\n", "\tif verbForTool(toolName) != VerbExecute {\n\t\treturn nil, false\n",
   "TestWT9_")
+m("WT the hook leaves written_paths null", "internal/hook/handle.go",
+  "\tdecl.WrittenPaths, decl.WrittenPathsComplete = written, &complete\n", "\t_, _ = written, complete\n", "TestWT11_")
