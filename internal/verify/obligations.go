@@ -107,7 +107,7 @@ var obligationScopesOnce struct {
 // obligationSourceSpec is the source of a declared or ci_commands gate.
 const obligationSourceSpec = "spec"
 
-// Obligation is one ledger row. ID is a stable digest (obligationID);
+// Obligation is one ledger row. ID is a stable digest (ObligationID);
 // Evidence is record seqs only, ascending, never null.
 type Obligation struct {
 	ID       string          `json:"id"`
@@ -295,15 +295,16 @@ func (l *ledger) add(g *GateState, source string, kind ObligationKind, state Obl
 	slices.Sort(l.evidence[from:])
 	l.evidence = l.evidence[:from+len(slices.Compact(l.evidence[from:]))]
 	l.rows = append(l.rows, Obligation{
-		ID: obligationID(l.scope, kind, g.Family), Scope: l.scope, Kind: kind, Source: source, State: state,
+		ID: ObligationID(l.scope, kind, g.Family), Scope: l.scope, Kind: kind, Source: source, State: state,
 		Evidence: l.evidence[from:len(l.evidence):len(l.evidence)],
 	})
 }
 
-// obligationID is "ob:" and the first 16 hex of sha256 over scope, kind and
+// ObligationID is "ob:" and the first 16 hex of sha256 over scope, kind and
 // family joined by newlines: the family, not the gate's label, which can
 // change between reads (D33 item 3). None of the three holds a newline.
-func obligationID(scope string, kind ObligationKind, family string) string {
+// Exported for the rows another package builds (internal/platform).
+func ObligationID(scope string, kind ObligationKind, family string) string {
 	var a [128]byte
 	b := append(append(append(append(append(a[:0], scope...), '\n'), kind...), '\n'), family...)
 	sum := sha256.Sum256(b)
