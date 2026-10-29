@@ -11,6 +11,21 @@ results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
 
+### Revision 7: rulings on B2a
+
+| Point | Ruling |
+|---|---|
+| `duration_ms` | Omitted on replay: the recorder stores null, as for an unmeasured call. This is an **explicit exception to record equivalence**, named in B2b's comparison. It is never estimated from transcript timestamps. A guard test fails if any non-test code outside the recorder's write path reads the stored duration, so any future use of duration in a verdict forces this ruling to be revisited |
+| Subagent `agent_type` | Recovered only through an unambiguous link: the child's agent id to exactly one parent Agent call, and that call's input type. Never from message text or file names. A missing or ambiguous link stays unsupported. It is established on a fixture with **two differently typed subagents**, captured before B2c |
+| Harness location | The B2b replay harness lives in `cmd/rashomon` and reuses the live Stop and catch-up code there (`recapTurn`, `stopView`), with no package extraction. Isolation (a temporary store root, nothing written outside it) and injected historical time are explicit and tested |
+| Invisible input rewrites | On replay, the declared and executed inputs both come from the transcript's single input, so the recorder's rewrite check cannot fire. **A replayed Verified means "consistent with the transcript", not "equivalent to what executed"**, whenever a PreToolUse hook could have rewritten the input. Each replayed session carries a "rewrite evidence absent" coverage flag. B3e keeps such cases out of safety conclusions unless evidence resolves them |
+| Final-message memory | Bounded across the whole replay, not only per Stop. Replay keeps exactly what the live recorder keeps (its head and tail capture). Where a replay cap removes evidence the live recorder would have had, the claim evaluation that needed it is downgraded with a reason, never run on truncated text |
+
+**B2b acceptance gate:**
+- ordered record equivalence with the captured-payload replay, with the documented `duration_ms` exception;
+- correct cwd handling through the recorder: the `cd sub && …` Pre/Post pair stays associated, and it resolves to the same gate family and location as live;
+- per-Stop verdicts that use only prior, untainted evidence.
+
 ### Revision 6: what B2a established
 
 **The live recorder never calls `gateout`.** No live record holds an output
