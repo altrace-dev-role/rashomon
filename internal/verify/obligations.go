@@ -127,7 +127,7 @@ func EvaluateWithObligations(run *store.Run, idx *ProjectIndex, sp *spec.Compile
 	snap := evaluate(run, idx, sp, pt, now, &c)
 	ex := expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(run, pt.Seq)})
 	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
-	return snap, append(obligations(snap, c.runs, c.writes), expectedObligations(scope, ex)...)
+	return snap, append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
 }
 
 // cite is the gate pointers a row's evidence reads.
