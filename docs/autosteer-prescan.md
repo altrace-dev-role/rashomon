@@ -1,13 +1,30 @@
 # AutoSteer prescan: importing gate history before the first session
 
-Status: proposal, revision 3. B0 to B4 approved as a bounded reporting and
-shadow-mode experiment. Adopting seeding is a separate decision. Nothing here is built.
+Status: revision 4, in B0. B0 to B4 approved as a bounded reporting and shadow-mode
+experiment. Adopting seeding is a separate decision. The reader, replay validation and
+scan report (B1, B2, B3a) proceed now. The evaluation protocol (§7.2) gates conclusions
+about P1 only, not the reporting feature.
 Date: 2026-10-29.
 Inputs: a review of [Photobombastic/paxel-local](https://github.com/Photobombastic/paxel-local)
 (MIT, one Python file `paxel.py`, 2,891 lines), main at `d1106a0`, and the Phase 2 lab
 results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
+
+### Revision 4: B0 rulings
+
+| Point | Ruling | Where |
+|---|---|---|
+| P1's duration is conditional | Eligibility is re-evaluated at every point against the frozen observations, so the seed never extends its own window. P1 ends when the live index learns or when the newest imported `Verified` run of every seed family is more than 30 days old, whichever is first. The evaluation reports P1's actual duration in sessions and in days | §6.4 |
+| The seed rule | It mirrors the live rule exactly: two distinct `Verified` sessions, the last within 30 days. Revision 3's "a verified green" and "current within *K*" rules are dropped from P1 and become a separate hypothesis, H-cur, that is never tuned on the evaluation corpus | §6.4 |
+| One label per session can miss harm | The labelled unit is the session, and **every** affected check in it is inspected. A session is harmful if any warranted block was removed. A sampled-difference rate, if reported, is labelled as such and makes no session-level claim | §7.2 |
+| Zero events and clustering | The bootstrap is dropped. The primary bound is at project level: a project is harmful if any of its sessions is, with Clopper-Pearson over projects. A secondary session-level bound uses a design effect with an intra-project correlation fixed in advance, never estimated from the data | §7.2 |
+| Caps and coverage | A Stop beyond the 500-turn cap is **unevaluated**. A session with any unevaluated Stop, or any evidence below `Verified`, inside its P1 window is excluded from the safety count, never counted as harmless, and is reported as coverage loss | §6.7, §7.2 |
+| *H* | *H*<sub>screen</sub> = 5% is an exploratory screen only. *H*<sub>adopt</sub> is chosen by the owners from the consequences of a missed block. The backtest cannot meet it on its own: adoption also needs a prospective evaluation | §7.2 |
+| *B* | 0.1 removed unnecessary blocks per eligible first session, with every eligible first session in the denominator, including those with no differences | §7.2 |
+| *P* | 8 projects for the pilot. Projects from outside the team are required before any broader adoption | §7.2 |
+| Replay agreement | Exact agreement on supported, fully observed (`Verified`) cases; any reproducible mismatch blocks B2 until it is resolved. Unsupported evidence is reported as coverage loss, separately | §7.1 |
+| Backtest vs behaviour | The report states that a backtest estimates which recorded blocking verdicts P1 would remove. It does not show how agents would behave without those blocks | §7.2 |
 
 ### Revision 3: decisions and fixes
 
@@ -292,16 +309,18 @@ store, for the reason `baseline` does. `purge` (#99), `forget` and `disclose` al
 
 ### 6.4 Seeding the existing rule, conservatively (review point 1)
 
-The seed rule mirrors the live rule and is stricter. A family is seed-Required at `now`
-when all of these hold:
+The seed rule mirrors the live rule exactly (B0 ruling), applied to `Verified` imported
+evidence only. A family is seed-established at point `t` when both hold:
 1. `sessions_verified >= 2` (the live `RequiredSessions`), **and**
-2. at least one `Verified` green: the check is shown to pass here, not only attempted,
-   **and**
-3. `last_seen` is within 30 days (`RequiredWindowMS`), **and**
-4. it is **current**: it ran in at least one of the project's last *K* imported sessions
-   that ran any gate of the same `kind`. This guards against a migration's one-off
-   commands or a workflow the project has since replaced. *K* starts at 3; the
-   backtest sets it.
+2. its newest `Verified` run is within 30 days of `t` (`RequiredWindowMS`, inclusive,
+   as live).
+
+The `Verified` grade is a data-quality filter, not a policy change.
+
+**H-cur, a separate hypothesis.** Stricter rules, such as "a verified green exists" or
+"the family ran in one of the last *K* imported sessions", are not part of P1. They are
+a separate hypothesis, H-cur. They are not tuned on the evaluation corpus, and they
+would be evaluated as their own policy.
 
 **The shadow policy, P1 ("bridge until live learning").** This is the exact policy
 v1 shadows, the one the backtest simulates, and the only one an adoption decision would
@@ -312,9 +331,10 @@ enable. Other policies are not evaluated in v1, to keep the comparison to one.
     sessions never enter it.
   - **Rescans:** a rescan adds only sessions that are not recorded live and not
     already in the ledger.
-  - **Currentness:** rule 4 is evaluated over the imported sessions only.
-- **The seed's established set** at time `t` is the families meeting rules 1 to 4 at `t`.
-  Rule 3 ages entries out against `t`.
+- **The seed's established set** at time `t` is the families meeting rules 1 and 2 at
+  `t`. It is re-evaluated at every point against the frozen observations. **Frozen
+  membership is never permanent eligibility:** rule 2 ages each family out 30 days
+  after its newest imported `Verified` run, and nothing in P1 refreshes that date.
 - **The live index is unchanged.** It learns from live sessions at every Stop, exactly
   as today (`stop.go:69`).
 - **Policy at a point `t`:**
@@ -323,12 +343,17 @@ enable. Other policies are not evaluated in v1, to keep the comparison to one.
   - Otherwise, if the seed's established set at `t` is not empty, the point is
     evaluated in learned mode: Required = established in the seed.
   - Otherwise, prior mode applies: every gate that ran is Required, as today.
-- **What P1 can change.** P1 acts only while live learning has not begun, which for
-  most projects is the first one or two sessions. It never adds requirements; it can
-  only make non-seeded gates advisory during that window. So P1's possible benefit is
-  bounded and small, and its possible harm is a loosening. The evaluation measures both.
-- **The seed's lifetime is bounded.** It ends at whichever comes first: live learning
-  begins, or rule 3 ages out every seed entry.
+- **What P1 can change.** P1 never adds requirements; it can only make non-seeded gates
+  advisory while it is active. So its possible harm is a loosening, and the evaluation
+  measures both the harm and the benefit.
+- **P1's duration is conditional.** P1 ends at whichever comes first:
+  - the live index learns (two live sessions of one family within 30 days), or
+  - every seed family has aged out by rule 2, so the seed's established set is empty.
+
+  In a project that runs its checks in most sessions, that is one or two sessions. In
+  a project with sparse sessions, P1 can stay active for up to 30 days after the newest
+  imported `Verified` run, and never longer. The evaluation reports the distribution of
+  P1's duration in sessions and in days, rather than assuming it.
 
 **Shadow in v1.** B3 ships P1 in shadow mode:
 - **No change to verdicts.** At every Stop, Evaluate computes the live verdict and the
@@ -398,7 +423,7 @@ Streaming JSONL bounds the read, not the work. v1's limits:
 | Calls replayed into one `store.Run` | 20,000 per file | the file is summarised as `Partial` from that point |
 | `store.Run` | one file at a time; freed after classify | none |
 | Classify, for the seed and report | **one pass per file**, O(n). Its `runs` come back in seq order, each with its own outcome, so every transition is kept (§6.3); nothing is read from end states alone | none |
-| Evaluate, for shadow verdicts and the backtest | **at every Stop point** of a session, as live does. That is O(turns × n) per session, bounded by a cap of 500 turns per session; past it, the remaining turns are not evaluated and are counted | counted, never estimated |
+| Evaluate, for shadow verdicts and the backtest | **at every Stop point** of a session, as live does. That is O(turns × n) per session, bounded by a cap of 500 turns per session | Stops past the cap are marked **unevaluated**, never estimated. A session with any unevaluated Stop in its P1 window is excluded from the safety count and reported as coverage loss (§7.2) |
 | Per-session merged summary | families × fixed-size counters, plus a `tool_use_id` digest set, capped at 20,000 | over the cap, dedupe reverts to per-file and the session grades `Partial` |
 
 **Performance gates** (B4):
@@ -441,11 +466,16 @@ Unknown).
 grade, are labelled from the raw transcript under rubric A (§7.3). Both live and replay
 are scored against the labels, so a bug they share shows up as both being wrong.
 
-**Exit criterion for B2:**
-- zero known/known disagreements;
-- an evidence-gap rate reported per reason;
-- at least 95% agreement of replay with the annotations on `Verified` observations
-  (the threshold is proposed and set in B0);
+**Exit criterion for B2 (B0 ruling):**
+- **Exact agreement** between replay and live on every supported, fully observed
+  (`Verified`) case. A reproducible mismatch blocks B2 until it is resolved: as a
+  bug fixed on one side, or as an evidence difference added to the table above, with
+  the state replay must give for it.
+- **Exact agreement with the annotations** on `Verified` observations, after
+  adjudication. Each disagreement is resolved as an implementation bug, which is fixed,
+  or a label error, which the second reviewer corrects. None stays unresolved.
+- **Unsupported and `Partial` evidence** is reported as coverage loss per reason, and
+  kept separate from agreement.
 - DEDUP-1 and DEDUP-2 passing.
 
 ### 7.2 Shadow evaluation of P1, B3e
@@ -473,51 +503,81 @@ Whether a difference is a benefit or a harm needs judgement, and that comes from
 
 Nothing else is simulated, so the backtest evaluates the feature that adoption would enable.
 
-**Labels (rubric B, §7.3).** Each difference becomes a question: *given the task and the
-evidence available at that point, was it warranted for this check's state to block
-the turn from reading verified?* The answer is one of three:
-- **Yes, warranted.** P1 would have hidden a failure that mattered. **Harm.**
-- **No, not warranted.** P1 would have removed an unnecessary blocking verdict. **Benefit.**
-- **Can't tell.** Reported, and **counted as harm** in the safety bound.
+**Eligible first sessions.** A session is eligible when it falls in a P1 window: after
+a cutoff, before the replayed live index learns, and while the seed's established set
+is not empty.
+- **Fully evaluated:** every Stop in the window evaluated, and every observation in it
+  `Verified`.
+- **Coverage loss:** any other eligible session. It is excluded from the safety count
+  (never counted as harmless), counted as zero benefit, and reported with its reason.
+
+**Labels (rubric B, §7.3). The unit is the session.** For each fully evaluated eligible
+session with at least one difference, **every** affected check is inspected. That is
+every (session, check) pair where live required the check and P1 made it advisory, at
+any Stop. Each pair gets one answer to *given the task and the evidence available at
+that point, was it warranted for this check's state to block the turn from reading
+verified?*:
+- **Yes, warranted.** P1 would have hidden a failure that mattered.
+- **No, not warranted.** P1 would have removed an unnecessary blocking verdict.
+- **Can't tell.**
+
+The session is **harmful** if any of its pairs is "yes" or "can't tell". Its **benefit**
+is the number of its pairs answered "no" that changed a done verdict. A session with no
+differences is harmless and has zero benefit. It still counts in both denominators,
+because P1 changed nothing there.
 
 There is no proxy label. A check that never runs again proves nothing: it could mean
-abandonment, missing history, or a problem left unresolved.
+abandonment, missing history, or a problem left unresolved. If a sampled-difference rate
+is ever reported (one pair per session, for cost), it is labelled as a rate over
+sampled differences and makes no session-level safety claim.
 
-**Independence.**
-- **Within a session:** differences inside one session are strongly correlated. At
-  most one difference per session is labelled: the first in the session that changes
-  the done verdict, or else the first.
-- **Within a project:** sessions inside one project are correlated too. The project
-  is the cluster.
+**Clustered, rare outcomes.** With zero observed harms, resampling gives zero in every
+sample, and Clopper-Pearson assumes independent trials, which sessions of one project
+are not. So the method is fixed now:
+- **Primary: a project-level bound.** A project is harmful if any of its fully evaluated
+  eligible sessions is. Bound the rate with a one-sided 95% Clopper-Pearson over
+  projects, which are independent repositories. With zero harmful projects out of *P*,
+  the bound is about 3/*P*. That is deliberately strict: it makes the claim no stronger
+  than the number of independent repositories.
+- **Secondary: a session-level bound with a fixed design effect.** Use
+  *n*<sub>eff</sub> = *n* / (1 + (*m̄* − 1)·*ρ*), where *m̄* is the mean number of
+  eligible sessions per project and *ρ* = 0.5 is fixed in B0, never estimated from the
+  data (with zero events it cannot be). Then Clopper-Pearson on *n*<sub>eff</sub>.
+  This is reported, and never used alone.
 
-**Criteria, fixed in B0 before any data is seen:**
-- **Safety.**
-  - Choose a maximum acceptable hidden-failure rate *H*.
-  - The one-sided 95% upper bound (Clopper-Pearson, unit: labelled session) on
-    (harm + can't tell) / labelled must be below *H*.
-  - **And** a project-cluster bootstrap upper bound must also be below *H*.
-  - For scale: zero harms in *n* independent labels gives an upper bound of about 3/*n*.
-    40 labels bound the rate at about 7.5%, *H* = 5% needs at least 60 harm-free labels,
-    and *H* = 2% needs about 150. Correlation makes these minimums larger.
-- **Benefit.**
-  - Unnecessary blocking verdicts removed, per first-session-after-install.
-  - The lower 95% bound must be above a minimum *B*, set in B0. This keeps P1 from
-    being adopted for a benefit too small to matter.
-- **Coverage.** At least *P* distinct projects, so one repository cannot carry the result.
+**Thresholds (B0):**
+- **Safety screen.** The primary bound must be below *H*<sub>screen</sub> = 5%. This is
+  an exploratory screen, not an adoption bar.
+  - Zero harmful projects in 59 gives a bound of 4.95%. So the screen needs at least 59
+    independent projects with eligible sessions, far more than the pilot's *P* = 8.
+  - **With the pilot alone, the safety screen cannot pass.** It can only fail (a harmful
+    project is found) or be inconclusive. This is stated so nobody reads a pilot result
+    as a pass.
+- **Adoption bar *H*<sub>adopt</sub>.** Set by the owners from the consequences of a
+  missed warranted block, before any data is seen. It is not proposed here. A
+  backtest alone cannot meet it (see "What a backtest shows", below).
+- **Benefit floor *B* = 0.1.** Removed unnecessary blocks (pairs answered "no" that
+  changed a done verdict) per eligible first session. **Every** eligible first session
+  is in the denominator: those with no differences, and those with coverage loss
+  counted as zero. The one-sided 95% lower bound must be above *B*, with sessions
+  clustered by project (the same design effect).
+- **Coverage *P* = 8 projects** for the pilot. Projects outside the team are required
+  before any broader adoption.
 
-**Outcomes:**
-- **Adopt** only when all three criteria hold. That decision is separate, recorded
-  with the evaluation report.
-- **Inconclusive** (too few labels, or bounds too wide) means P1 is not adopted. The
-  scan report stays.
-- **Unsafe** means P1 is not adopted. A different policy, including any D38 change,
-  would be its own proposal, with examples and tests.
+**What a backtest shows.** It estimates which recorded blocking verdicts P1 would have
+removed, and whether a person judges those blocks warranted. It does not show how an
+agent would have behaved without those blocks, for example whether it would then have
+claimed "done" and stopped. Any adoption therefore also needs a **prospective
+evaluation** under the randomised holdout (`internal/arm`), designed as its own study.
+The evaluation report carries this paragraph verbatim.
 
-**Expected yield, stated now.** P1's window is the first one or two sessions per
-cutoff, so each project gives few labelled units, and reaching *H* = 5% needs at least
-60 harm-free ones across *P* projects. On the team's own repositories alone, the likely
-outcome is **inconclusive**. That is an acceptable result: v1's reporting does not
-depend on it.
+**Outcomes of B3e:**
+- **Screen fails:** a harmful project is found. P1 is not pursued. A different policy,
+  including any D38 change, would be its own proposal.
+- **Inconclusive:** too few projects, or the benefit bound is below *B*. This is the
+  expected pilot result. P1 is not adopted, and the scan report stays.
+- **Screen passes:** at least 59 independent projects, none harmful, and the benefit
+  bound above *B*. That justifies proposing a prospective study, not adoption.
 
 ### 7.3 Labelling
 
@@ -584,15 +644,20 @@ against the transcript seed before anything ships.
 
 | Item | Scope | Exit test |
 |---|---|---|
-| **B0** | Rulings: consent unit, seed path, the B2 and B3 thresholds and *K*, whether `history` may import `verify` internals (Q0-style), the fixture licence notice | Written in APPROACH-NOTES |
+| **B0** | Rulings: the protocol in revision 4 (done here); still open for B3a: the consent unit, the seed path, whether `history` may import `verify` internals (Q0-style), and the fixture licence notice if paxel fixtures are reused (B1 uses synthetic fixtures of its own, so it needs none) | Written here and in APPROACH-NOTES |
 | **B1** | `internal/history` Claude reader: `HistCall`, id join, outcomes, grades (§6.1), version list, the bounds in §6.7, `FuzzHistCalls`, scrubbed fixtures | Fuzz floor +1. Property: each `tool_use` gives exactly one `HistCall`, and no `Missing` call is ever `ok` |
 | **B2** | Replay through `hook.Locate`, `shape` and `gateout`; per-session summaries; merge and ledger (§6.2) | §7.1 criteria; DEDUP-1 and DEDUP-2 over the §6.2 fixtures, including scanning the same tree twice and a tree with copies, resumes and subagent files |
-| **B3** | Seed file, seed rule (§6.4), **P1 in shadow only**, `rashomon scan` and `--dry-run`, consent, purge, forget, disclose | Acceptance: with a fixture history, the shadow log shows the P1 verdicts expected at each Stop; live verdicts are unchanged; once the live index learns, the shadow log shows no further differences |
+| **B3a** | Seed file and import ledger, `rashomon scan` and `--dry-run` report (§6.5), consent, purge, forget, disclose | Acceptance: a fixture history gives the expected established families, grade counts and coverage. Scanning twice gives an identical seed file |
+| **B3b** | P1 in shadow only (§6.4) | Acceptance: with a fixture history, the shadow log shows the P1 verdicts expected at each Stop; live verdicts are unchanged; once the live index learns, or every seed family ages out, the shadow log shows no further differences |
 | **B3e** | The P1 simulation (§7.2), labels under rubrics A and B (§7.3), and the evaluation report | The report: mechanical difference counts, the safety and benefit bounds, coverage, and κ. **No enable switch is built in v1** |
 | **B4** | Report polish; `BenchmarkScanFile`, the RSS and wall-time rows (§6.7) | Perf gates on darwin and linux |
 
 v1 is B0 to B4. It needs no RulesVersion bump, adds no steer pattern, and changes no
-live verdict. Adopting P1 is a separate decision taken on the B3e report. Enabling it
+live verdict. **Order:**
+- **Proceeding now:** B1, B2 and B3a, the independently useful reporting path.
+- **Waiting on the protocol:** B3b and B3e wait only for the §7.2 protocol to be frozen
+  (*H*<sub>adopt</sub>, *ρ*, the corpus and its labellers). The protocol gates
+  conclusions about P1, not the reporting feature. Adopting P1 is a separate decision taken on the B3e report. Enabling it
 would be a small follow-up change, reviewed on its own.
 
 ## 10. Risks
@@ -600,7 +665,9 @@ would be a small follow-up change, reviewed on its own.
 | Risk | Mitigation |
 |---|---|
 | Seeding loosens verdicts | P1 is shadow-only in v1; every difference is a loosening, counted and labelled; adoption needs a pre-set upper bound below *H* (§7.2) |
-| A small sample hides harm | Clopper-Pearson upper bound plus a project-cluster bootstrap, at most one label per session, *P* projects minimum; "can't tell" counts as harm |
+| A small sample hides harm | The session is the labelled unit, with every affected check inspected; a primary project-level Clopper-Pearson bound; a secondary design-effect bound with *ρ* fixed in advance; "can't tell" counts as harm; the pilot can only fail or be inconclusive |
+| Truncated or partial sessions counted as harmless | Unevaluated Stops and evidence below `Verified` are coverage loss, excluded from the safety count and reported |
+| A backtest read as a behavioural result | The report states its limit verbatim; adoption needs a prospective holdout study |
 | The labels are a proxy for the wrong thing | Rubric B asks whether blocking was warranted, with no "never ran again" proxy; blind labelling; adjudication; κ reported |
 | The backtest evaluates a different policy from the feature | The simulation is P1 exactly (§6.4, §7.2), and B3's acceptance test checks that the shadow stops when live learning begins |
 | Exit codes misread as infrastructure | 124, 126 and 127 are their own classes of unknown cause (§6.1) |
@@ -614,15 +681,17 @@ would be a small follow-up change, reviewed on its own.
 
 ## 11. Decisions
 
-Recorded (revision 3):
-1. B0 to B4 approved, as a bounded reporting and shadow-mode experiment.
-2. Seeding stays report-only unless the §7.2 criteria are met. Inconclusive means it
-   is not adopted. Any D38 change is a separate policy proposal.
-3. Labelling as in §7.3.
+Recorded:
+1. B0 to B4 approved, as a bounded reporting and shadow-mode experiment (revision 3).
+2. Seeding stays report-only unless adopted separately. Inconclusive means not
+   adopted. Any D38 change is a separate policy proposal (revision 3).
+3. Labelling as in §7.3 (revision 3).
+4. The B0 rulings in revision 4: P1's duration and seed rule, H-cur as a separate
+   hypothesis, session-level labels, project-level bounds, coverage exclusions, *H*,
+   *B*, *P*, and exact replay agreement.
 
-Open, for B0:
-1. The values of *H*, *B* and *P*, fixed before any data is seen. Suggested starting
-   points: *H* = 5%, *B* = one unnecessary blocking verdict removed per ten first
-   sessions, *P* = 8.
-2. The B2 agreement threshold (95% proposed) and *K* for currentness.
-3. Which repositories form the evaluation corpus, and their maintainers as labellers.
+Open; these gate B3b and B3e only:
+1. *H*<sub>adopt</sub>, set by the owners from the consequences of a missed block.
+2. Confirming *ρ* = 0.5 for the secondary bound.
+3. The evaluation corpus: the pilot's 8 projects, the route to projects outside the
+   team, and each project's maintainer as labeller.
