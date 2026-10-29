@@ -8,8 +8,8 @@ HP = "internal/hook/probe.go"
 PG = "internal/purge/purge.go"
 
 m("ST-4.1 eviction removes the newest first", SB,
-  '\t\tif c := a.mod.Compare(b.mod); c != 0 {\n\t\t\treturn c\n',
-  '\t\tif c := a.mod.Compare(b.mod); c != 0 {\n\t\t\treturn -c\n', "TestRC14c_CapEvictsOldestFirst")
+  '\tif c := a.mod.Compare(b.mod); c != 0 {\n\t\treturn c\n',
+  '\tif c := a.mod.Compare(b.mod); c != 0 {\n\t\treturn -c\n', "TestRC14c_CapEvictsOldestFirst")
 m("ST-4.1 eviction takes the user's file", SB,
   ' || path == except || !strings.HasSuffix(e.Name(), ".jsonl") {\n',
   ' || path == except {\n', "TestRC14c_CapEvictsOldestFirst")

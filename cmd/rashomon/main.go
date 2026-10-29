@@ -137,6 +137,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdReceipt(rest, stdout) })
 	case "learn":
 		return guarded(stderr, func() error { return cmdLearn(rest, stdout) })
+	case "backtest":
+		return guarded(stderr, func() error { return cmdBacktest(rest, stdout) })
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -518,14 +520,6 @@ func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, 
 		return nil, nil, err
 	}
 	return rep, key, nil
-}
-
-func openStore() (*store.Store, error) {
-	root, err := store.DefaultRoot()
-	if err != nil {
-		return nil, err
-	}
-	return store.Open(root)
 }
 
 // installMetaFile is the store file carrying the install id. Its presence is
@@ -1520,7 +1514,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+hookUsage)
+`+receiptUsage+learnUsage+backtestUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the

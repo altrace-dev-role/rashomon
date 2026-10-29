@@ -22,3 +22,11 @@ func openStoreForRead() (*store.Store, error) {
 // nothing is a satisfied request, and exiting non-zero would tell a user their
 // privacy action failed when it had nothing to do.
 const nothingRecordedHere = "nothing has been recorded here, so there is nothing to forget"
+
+func openStore() (*store.Store, error) {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return nil, err
+	}
+	return store.Open(root)
+}

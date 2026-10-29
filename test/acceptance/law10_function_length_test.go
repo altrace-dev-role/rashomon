@@ -43,10 +43,11 @@ var overLimit = map[string]int{
 // main while it waited on its branch; main.go moved 1140 to 1138 with card
 // 4.1b's usage extraction, 1138 to 1067 with card 4.3's, cmdForget and
 // parseInstant to forget.go, 1067 to 1065 with card 5.5's receipt
-// command, clearBaselines to forget.go, and 1065 to 1059 with card P6's
-// learn command, openStoreForRead to storeopen.go.
+// command, clearBaselines to forget.go, 1065 to 1059 with card P6's learn
+// command, openStoreForRead to storeopen.go, and 1059 to 1054 with its
+// backtest command, openStore to storeopen.go.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    1059,
+	"cmd/rashomon/main.go":    1054,
 	"internal/store/store.go": 549,
 	"cmd/rashomon/watch.go":   545,
 }
