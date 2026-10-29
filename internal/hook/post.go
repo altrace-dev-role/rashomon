@@ -146,14 +146,16 @@ type Post struct {
 
 	// What the steer step reads (card 2.3 R5): the payload's prompt, agent,
 	// permission mode and event, the seq the execution landed at in the
-	// ordered stream (0 when it spilled or did not land), and whether it
-	// carried a runner digest.
+	// ordered stream (0 when it spilled or did not land), whether it
+	// carried a runner digest, and whether its tool input names
+	// .claude/rashomon (storeNamed; card P5B, 5.7).
 	promptID       string
 	agentID        string
 	permissionMode string
 	event          string
 	landedSeq      int64
 	landedRunner   bool
+	landedStore    bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -298,7 +300,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		p.withheld = true
 	}
 	seq, err := p.st.LandExecution(rec)
-	p.landedSeq, p.landedRunner = seq, rec.RunnerDigest != nil
+	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput)
 	return landed(err, &p.withheld)
 }
 

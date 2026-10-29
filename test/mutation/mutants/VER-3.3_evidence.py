@@ -49,8 +49,8 @@ m("VER-3.3 judgment read as met before Stop", E,
 m("VER-3.3 EvaluateStop leaves Expected unset", S,
   '\tv.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, disclosed: v.Scan.Disclosed, wrote: wrote})\n', '', "TestEV5b_")
 m("VER-3.3 the ledger drops the expected rows", O,
-  'append(obligations(snap, c.runs, c.writes), expectedObligations(scope, ex)...)',
-  'append(obligations(snap, c.runs, c.writes), expectedObligations(scope, ex)[:0]...)', "TestEV5b_")
+  'append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)',
+  'append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)[:0]...)', "TestEV5b_")
 
 # The done flag (Gate B 1).
 m("VER-3.3 Gate B: the gate ignores unmet kinds", F,
@@ -62,3 +62,7 @@ m("VER-3.3 Gate B: the clause lists one kind when two are unmet", F,
   '\tfor _, e := range unmet {\n', '\tfor _, e := range unmet[:min(1, len(unmet))] {\n', "TestEV6_")
 m("VER-3.3 the clause dropped", F,
   ' + "." + expectedClause(unmet) + "\\n" + ', ' + "." + "\\n" + ', "TestEV6_")
+
+# 3.3b: a met run row cites its supplying gate's green run (D143).
+m("VER-3.3 a met run row cites nothing", E, "Evidence: expectedCites(snap, e)})", "Evidence: []int64{}})",
+  "TestEV8_")

@@ -139,24 +139,30 @@ func printsFlag(t *testing.T, b []byte) bool {
 	return strings.Contains(msg, "rashomon record: gate 'go' exited 0 earlier in this session") && !model
 }
 
-// TestST_StepsIsTheTriggerTable: the step runs only on a failure event
-// whose execution landed in the ordered stream and carried a runner (card
-// 2.3 R3).
+// TestST_StepsIsTheTriggerTable: the step runs only on an execution that
+// landed in the ordered stream, at a failure event that carried a runner
+// (card 2.3 R3) or at either post event when the call's input names
+// .claude/rashomon (card P5B, 5.7, D-B7).
 func TestST_StepsIsTheTriggerTable(t *testing.T) {
 	for _, tc := range []struct {
 		event  string
 		seq    int64
 		runner bool
+		store  bool
 		want   bool
 	}{
-		{FailureEvent, 7, true, true},
-		{"PostToolUse", 7, true, false},
-		{FailureEvent, 0, true, false},
-		{FailureEvent, 7, false, false},
-		{"", 7, true, false},
+		{FailureEvent, 7, true, false, true},
+		{"PostToolUse", 7, true, false, false},
+		{FailureEvent, 0, true, false, false},
+		{FailureEvent, 7, false, false, false},
+		{"", 7, true, false, false},
+		{"PostToolUse", 7, false, true, true},
+		{FailureEvent, 7, false, true, true},
+		{"PostToolUse", 0, false, true, false},
+		{"", 7, false, true, false},
 	} {
-		if got := steps(tc.event, tc.seq, tc.runner); got != tc.want {
-			t.Errorf("steps(%q, %d, %v) = %v, want %v", tc.event, tc.seq, tc.runner, got, tc.want)
+		if got := steps(tc.event, tc.seq, tc.runner, tc.store); got != tc.want {
+			t.Errorf("steps(%q, %d, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.store, got, tc.want)
 		}
 	}
 }

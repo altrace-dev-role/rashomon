@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -184,10 +185,39 @@ func TestEV5_NoTaskNoRows(t *testing.T) {
 		}
 	}
 	ex := expected(evSnap(), evidenceIn{sp: evSpec([]string{"cross_check"}, ""), atStop: true})
-	obs := expectedObligations(ScopeSession, ex)
+	obs := expectedObligations(ScopeSession, evSnap(), ex)
 	if len(obs) != 1 || obs[0].Kind != ExpectedEvidence || obs[0].Source != SourceTask || obs[0].State != ObligationUnmet ||
-		obs[0].Evidence == nil || obs[0].ID != ObligationID(ScopeSession, ExpectedEvidence, "cross_check") {
+		len(obs[0].Evidence) != 0 || obs[0].Evidence == nil || obs[0].ID != ObligationID(ScopeSession, ExpectedEvidence, "cross_check") {
 		t.Errorf("obligations %+v, want one unmet expected_evidence row from the task over cross_check", obs)
+	}
+}
+
+// TestEV8_MetRunRowCitesTheSupplyingGreen (card 3.3b, D143): a met run row
+// cites the supplying gate's last green run, read from the snapshot when the
+// ledger is built; a met text row, the same gate open, and the gate stale
+// after that green cite nothing, as an empty list and never null.
+func TestEV8_MetRunRowCitesTheSupplyingGreen(t *testing.T) {
+	empty := func(ev []int64) bool { return len(ev) == 0 && ev != nil }
+	green := gateIn("r", Green)
+	green.LastGreen = &RunRef{Seq: 7}
+	sp := evSpec([]string{"real_data_run", "mechanism_stated"}, "the cache is keyed by path and size", supplier("r", "real_data_run"))
+	obs := expectedObligations(ScopeSession, evSnap(green), expected(evSnap(green), evidenceIn{sp: sp, atStop: true, wrote: true}))
+	if len(obs) != 2 || obs[0].State != ObligationMet || !slices.Equal(obs[0].Evidence, []int64{7}) ||
+		obs[1].State != ObligationMet || !empty(obs[1].Evidence) {
+		t.Fatalf("rows %+v; want the met run row citing [7] and the met text row citing nothing", obs)
+	}
+	rdr := evSpec([]string{"real_data_run"}, "", supplier("r", "real_data_run"))
+	stale := gateIn("r", Stale)
+	stale.LastGreen = &RunRef{Seq: 7}
+	for _, c := range []struct {
+		name  string
+		g     GateState
+		state ObligationState
+	}{{"open", gateIn("r", Absent), ObligationOpen}, {"stale after its green", stale, ObligationUnmet}} {
+		obs := expectedObligations(ScopeSession, evSnap(c.g), expected(evSnap(c.g), evidenceIn{sp: rdr}))
+		if len(obs) != 1 || obs[0].State != c.state || !empty(obs[0].Evidence) {
+			t.Errorf("%s: %+v, want %s citing an empty, non-nil list", c.name, obs, c.state)
+		}
 	}
 }
 

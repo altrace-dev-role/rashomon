@@ -188,13 +188,29 @@ func UnmetExpected(ex []Expected) []Expected {
 }
 
 // expectedObligations is the ledger's rows for ex: the evidence kind is the
-// row's family, so its ID is stable per kind; Evidence is empty, the
-// supplying gate's own rows citing its runs.
-func expectedObligations(scope string, ex []Expected) []Obligation {
+// row's family, so its ID is stable per kind. A met run row cites the
+// supplying gate's last green run, read from snap at projection time (card
+// 3.3b, D143); every other row, both text kinds included, cites nothing, as
+// a run row's supplying gate has its own rows citing the write and the red.
+func expectedObligations(scope string, snap Snapshot, ex []Expected) []Obligation {
 	out := make([]Obligation, 0, len(ex))
 	for _, e := range ex {
 		out = append(out, Obligation{ID: ObligationID(scope, ExpectedEvidence, e.Kind), Scope: scope,
-			Kind: ExpectedEvidence, Source: SourceTask, State: e.State, Evidence: []int64{}})
+			Kind: ExpectedEvidence, Source: SourceTask, State: e.State, Evidence: expectedCites(snap, e)})
 	}
 	return out
+}
+
+// expectedCites is e's citation: the supplying gate's last green run when e
+// is a met run row, else an empty list, never nil.
+func expectedCites(snap Snapshot, e Expected) []int64 {
+	if e.State != ObligationMet || e.Gate == "" {
+		return []int64{}
+	}
+	for i := range snap.Gates {
+		if g := &snap.Gates[i]; g.Gate == e.Gate && g.LastGreen != nil {
+			return []int64{g.LastGreen.Seq}
+		}
+	}
+	return []int64{}
 }

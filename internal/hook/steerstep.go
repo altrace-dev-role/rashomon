@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"bytes"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/arm"
@@ -38,17 +39,30 @@ type SteerEnv struct {
 	ManagedDir         string
 }
 
-// steps is the v0 trigger (card 2.3 R3): a failure event whose execution
-// landed in the ordered stream and carried a runner digest. No other call can
-// raise regression-location (a success event is outcome ok, D61), so every
-// other call costs this one branch.
-func steps(event string, landedSeq int64, runner bool) bool {
-	return event == FailureEvent && landedSeq > 0 && runner
+// steps is the trigger (card 2.3 R3; card P5B, 5.7): an execution that
+// landed in the ordered stream, at a failure event that carried a runner
+// digest, the one call that can raise regression-location (a success event
+// is outcome ok, D61), or at either post event when the call's input names
+// .claude/rashomon, the one call that can raise integrity/store-touched
+// (D-B7). Every other call costs these branches and storeNamed's scan.
+func steps(event string, landedSeq int64, runner, inStore bool) bool {
+	failure := event == FailureEvent
+	return landedSeq > 0 && (failure && runner || inStore && (failure || event == string(steer.EventPostToolUse)))
+}
+
+// storeNamed reports a tool input whose raw bytes name .claude/rashomon, its
+// slash plain or escaped as JSON may write it (D-B7): a byte scan, with no
+// decode and no allocation. It is a superset of the calls that write there,
+// and verify says which did. A Bash line that reaches the store by cd and a
+// relative path is missed here; its store_touched entry still reaches the
+// ledger and the Stop view.
+func storeNamed(input []byte) bool {
+	return bytes.Contains(input, []byte(".claude/rashomon")) || bytes.Contains(input, []byte(`.claude\/rashomon`))
 }
 
 // Steer runs the step after the record's Flush succeeded and returns the
 // bytes to print, or nil. It returns no error: each exit before Route prints
-// nothing (no landed runner, an unreadable run), and every exit after Route
+// nothing (no trigger, an unreadable run), and every exit after Route
 // has its line in the steer log.
 func (p *Post) Steer(env SteerEnv) []byte {
 	ctx, view, ok := p.judge(env)
@@ -79,7 +93,7 @@ func (p *Post) Steer(env SteerEnv) []byte {
 // could not be read. It writes nothing, so BenchmarkPostSteer's eval rows
 // measure it apart from the append and the sync.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
-	if !steps(p.event, p.landedSeq, p.landedRunner) {
+	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
 		return steer.Context{}, verify.SteerView{}, false
 	}
 	run, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
