@@ -6,6 +6,7 @@
 # quarantines every lesson. The kill row is the named test's.
 L = "internal/learn/learn.go"
 D = "internal/learn/ledger.go"
+C = "cmd/rashomon/learn.go"
 
 # Tiers move by the bound alone.
 m("VER-6.2 proven without the lower bound", L,
@@ -65,3 +66,13 @@ m("VER-6.2 the key is not private", D, "\tif err := store.ReplaceFile(path, key)
 m("VER-6.2 purge leaves a project's manifest", D,
   "\t\tfiles = append(slices.Clone(stateFiles), FileSum)\n", "\t\tfiles = slices.Clone(stateFiles)\n",
   "TestP6_PurgeLeavesNoLearnerFile")
+
+# The verb (cmd/rashomon/learn.go): approval is typed at a terminal.
+m("VER-6.2 approval without the code", C,
+  "\tif subtle.ConstantTimeCompare([]byte(strings.TrimSpace(line)), []byte(code)) != 1 {\n",
+  "\tif false && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(line)), []byte(code)) != 1 {\n",
+  "TestP6_LearnImportThenApprove")
+m("VER-6.2 approval read from stdin", C,
+  "\tin, out, closeTTY, err := learnTerminal()\n",
+  "\tin, out, closeTTY, err := io.Reader(os.Stdin), io.Writer(os.Stderr), func() {}, error(nil)\n",
+  "TestP6_LearnImportThenApprove")
