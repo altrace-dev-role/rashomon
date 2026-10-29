@@ -1,6 +1,8 @@
 package hook
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
+	"github.com/altrace-dev-role/rashomon/test/perf/payload"
 )
 
 // benchSteer is one session's record, built through Handler and Post on a
@@ -31,13 +34,47 @@ type benchSteer struct {
 
 const benchSteerSession = "sess-bench"
 
+// benchStore opens a fixture's store at a fresh root pinned to payload.KeyHex
+// and payload.InstallIDSteer (payload.PinSteer), as the recap, digest and
+// ReadRun fixtures are pinned to KeyHex and InstallID. A fresh store's key and
+// install id are random, and the step reads the run back through json/v2's
+// 256-slot string cache, which the record's keyed digests and its coverage
+// records' install id reach: unpinned, eval_6000 moved by up to 5,950
+// allocs/op between processes, at base as much as after a change (D104, D126),
+// so a D103 window read the draw, not the code (BENCH-KEY1).
+func benchStore(tb testing.TB) *store.Store {
+	tb.Helper()
+	root := tb.TempDir()
+	if err := payload.PinSteer(root); err != nil {
+		tb.Fatal(err)
+	}
+	st, err := store.Open(root)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return st
+}
+
+// TestBENCHKEY1_FixtureStoreIsPinned: two fixture stores open with KeyHex and
+// InstallIDSteer, so every process the steer rows run in reads the same
+// digests and install id.
+func TestBENCHKEY1_FixtureStoreIsPinned(t *testing.T) {
+	want, err := hex.DecodeString(payload.KeyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range []*store.Store{benchStore(t), benchStore(t)} {
+		if !bytes.Equal(st.Key(), want) || st.InstallID() != payload.InstallIDSteer {
+			t.Fatalf("fixture key %x and install id %s, want KeyHex %x and InstallIDSteer %s",
+				st.Key(), st.InstallID(), want, payload.InstallIDSteer)
+		}
+	}
+}
+
 func newBenchSteer(b *testing.B, n int) *benchSteer {
 	b.Helper()
 	b.Setenv("CLAUDE_CONFIG_DIR", b.TempDir())
-	st, err := store.Open(b.TempDir())
-	if err != nil {
-		b.Fatal(err)
-	}
+	st := benchStore(b)
 	st.DeferDurability()
 	if err := store.WriteRecordScopeMarker(st.Root(), store.RecordScopeV5); err != nil {
 		b.Fatal(err)
