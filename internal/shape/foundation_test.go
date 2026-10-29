@@ -139,3 +139,73 @@ func TestPG1c_RunnerKindsAreTheListsWords(t *testing.T) {
 		t.Fatalf("RunnerKinds() = %q, want %q", got, want)
 	}
 }
+
+// TestS1_EditorWordsAndPerlDigitRun (5.9): each editor's own words decide,
+// and perl's -0 record separator, whose digit run may lead a cluster, does
+// not hide the in-place letter after it. The first three writes read true
+// already when this test was added, since -l left checkOnly; -0777pi and
+// -00pi read false (a cluster had to start with a letter).
+func TestS1_EditorWordsAndPerlDigitRun(t *testing.T) {
+	for _, tc := range []struct {
+		cmd   string
+		write bool
+	}{
+		{"sed -l -i.bak s/x/y/ a.go", true}, {"perl -l -pi -e s/x/y/ a.go", true}, {"perl -l -i -pe s/x/y/ a.go", true},
+		{"perl -0777pi -e s/x/y/ a.go", true}, {"perl -00pi -e s/x/y/ a.go", true},
+		{"gofmt -l .", false}, {"npx prettier -l .", false},
+	} {
+		if sh := verbOf(t, tc.cmd); sh.MayWrite != tc.write {
+			t.Errorf("%q: may_write %t, want %t", tc.cmd, sh.MayWrite, tc.write)
+		}
+	}
+}
+
+// TestS1_WholeCommandCountsGroupsAndComments (5.10): a `)` after the runner
+// is the line's only when it closes a `(` opened before the runner, and `; }`
+// likewise for `{`; a word starting with `#` ends the command, so a paren
+// after it is comment text. A stray paren is a syntax error that runs
+// nothing, and the line keeps go's own class, package.
+func TestS1_WholeCommandCountsGroupsAndComments(t *testing.T) {
+	for _, tc := range []struct{ cmd, class, masked, kind string }{
+		{"go test ./... )", VerbPackage, "<nil>", "<nil>"},
+		{"(go test ./...", VerbPackage, "<nil>", "<nil>"},
+		{"(go test ./...))", VerbPackage, "<nil>", "<nil>"},
+		{"{ go test ./...; }", VerbTest, MaskedNone, RunnerTest},
+		{"go test ./... # )", VerbTest, MaskedNone, RunnerTest},
+		{"go test ./... #)", VerbTest, MaskedNone, RunnerTest},
+	} {
+		sh := verbOf(t, tc.cmd)
+		if got := []string{sh.VerbClass, orNil(sh.StatusMasked), orNil(sh.RunnerKind)}; !slices.Equal(got, []string{tc.class, tc.masked, tc.kind}) {
+			t.Errorf("%q: class, masked, kind %q, want %q", tc.cmd, got, []string{tc.class, tc.masked, tc.kind})
+		}
+	}
+}
+
+// TestS1_CommandEndReadersUnmoved: the two other readers of commandEnd,
+// directoryChanges and definesFunctions, read these lines as they did before
+// wholeCommand counted groups, since the count is wholeCommand's own. A `)`
+// after cd is a syntax error the cd step search does not see; a `#` after cd
+// makes the rest comment text, and cd is the whole command.
+func TestS1_CommandEndReadersUnmoved(t *testing.T) {
+	for _, tc := range []struct {
+		cmd, class, masked, program string
+		steps                       int
+	}{
+		{"cd /a) && go test ./...", VerbTest, "<nil>", "go", 1},
+		{"cd /a # ) && go test ./...", VerbExecute, MaskedNone, "cd", 0},
+	} {
+		sh := verbOf(t, tc.cmd)
+		toks, err := tokenizeProgram(tc.cmd)
+		i, ok := programToken(toks, false)
+		steps := -1
+		if err == nil && ok {
+			_, steps, _, _ = directoryChanges(toks, i, false)
+		}
+		if sh.VerbClass != tc.class || orNil(sh.StatusMasked) != tc.masked || sh.RunnerKind != nil ||
+			orNil(sh.Program) != tc.program || steps != tc.steps {
+			t.Errorf("%q: class %s masked %s kind %s program %s steps %d, want class %s masked %s kind <nil> program %s steps %d",
+				tc.cmd, sh.VerbClass, orNil(sh.StatusMasked), orNil(sh.RunnerKind), orNil(sh.Program), steps,
+				tc.class, tc.masked, tc.program, tc.steps)
+		}
+	}
+}

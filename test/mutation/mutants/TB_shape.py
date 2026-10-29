@@ -169,8 +169,8 @@ m("TB a runner piped or listed into another command is a test run", "internal/sh
   "testCommands) && wholeCommand(toks, i)\n", "testCommands) && wholeCommand(toks[:i+1], i)\n",
   "TestTestRunnerIsRecognised|TestTestBending_ShapesFromDerive")
 m("TB a command on the runner's next line is not seen", "internal/shape/verb.go",
-  "\t\tif t.nlBefore {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
-  "\t\tif t.nlBefore && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
+  "\t\tif t.nlBefore {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn closesGroups(toks, i)\n}",
+  "\t\tif t.nlBefore && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn closesGroups(toks, i)\n}",
   "TestTestRunnerIsRecognised")
 m("TB a cd between two runs does not break the pair", "internal/report/testbending.go",
   "func mayEdit(d store.Declaration) bool {\n",
@@ -753,7 +753,7 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 6\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 7\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
@@ -802,14 +802,14 @@ m("TB ignoring the tests' failures is a test run", "internal/shape/verb.go",
   "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 6\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 7\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
 
 # Version 5: the masked parser passes over the leading cd steps the program
 # search steps over, `~` is read, and a fold that is not read has a location
 # of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
 # or giving an unread fold a read location, is the regression.
 m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
-  "const RulesVersion = 6\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 7\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
   "TestLocation|TestUnreadLocationDomain")
@@ -843,7 +843,7 @@ m("TB -l clears an editor again", "internal/shape/verb.go",
   "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
   "TestRC3b_")
 m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
-  "const RulesVersion = 6\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+  "const RulesVersion = 7\n", "const RulesVersion = 5\n", "TestRulesVersion_")
 
 # The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
 # -j4x test` and `make -j=4 test` read verb_class test where execute is
@@ -866,8 +866,8 @@ m("TB any word after make's -j is its count", "internal/shape/runner.go",
   "\treturn literalWord(toks, k+1) && n != \"\" && allDigits(n)\n", "\treturn literalWord(toks, k+1) && n != \"\"\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 
-# A flag table edited with RulesVersion left at 6: TestRulesVersion_FlagTables,
-# `the flag tables digest to ..., and RulesVersion 6 pins ...: a table changed
+# A flag table edited with RulesVersion left as it is: TestRulesVersion_FlagTables,
+# `the flag tables digest to ..., and RulesVersion 7 pins ...: a table changed
 # without a bump`. No behaviour row reads the words these drop, so the pin
 # alone kills each.
 m("TB the flag tables stay at the same pin when notARunAny drops --watchAll", "internal/shape/verb.go",
@@ -882,3 +882,37 @@ m("TB the flag tables stay at the same pin when curl's argument options change",
 m("TB the flag tables stay at the same pin when make's -j entry changes", "internal/shape/runner.go",
   "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-s\"},\n",
   "TestRulesVersion_FlagTables")
+
+# 5.9 and 5.10 (card S1). The digit run: TestS1_EditorWordsAndPerlDigitRun,
+# `"perl -0777pi -e s/x/y/ a.go": may_write false, want true` (and -00pi).
+# The group count lives in wholeCommand's closesGroups: each rule's rows in
+# TestS1_WholeCommandCountsGroupsAndComments read test where package is
+# wanted, or package where test is. TestS1_CommandEndReadersUnmoved kills the
+# last two: the count moved into commandEnd moves the cd step search's reading
+# (program <nil>), and a `)` before the runner that closes a group it never
+# opened refuses `cd /a) && go test ./...` (class package).
+m("TB perl's -0 digit run hides the in-place letter after it", "internal/shape/verb.go",
+  "tok[1] <= 'Z' || tok[1] == '0') ||", "tok[1] <= 'Z') ||",
+  "TestS1_EditorWordsAndPerlDigitRun")
+m("TB a ( opened before the runner need not close", "internal/shape/program.go",
+  "\t\t\treturn sep < 0 && parens == 0 && braces == 0\n", "\t\t\treturn sep < 0 && braces == 0\n",
+  "TestS1_WholeCommandCountsGroupsAndComments")
+m("TB a ) after the runner that closes nothing is passed over", "internal/shape/program.go",
+  "\t\tcase t.text == \")\" && parens == 0:\n\t\t\treturn 0, false, false\n\t\tcase t.text == \")\":\n\t\t\tparens--\n",
+  "\t\tcase t.text == \")\" && parens > 0:\n\t\t\tparens--\n",
+  "TestS1_WholeCommandCountsGroupsAndComments")
+m("TB a paren after a comment is counted", "internal/shape/program.go",
+  "\t\tcase depth == 0 && isComment(t):\n\t\t\treturn parens, true, true\n", "",
+  "TestS1_WholeCommandCountsGroupsAndComments")
+m("TB the ; of a brace group's ; } ends the runner's line", "internal/shape/program.go",
+  "\t\tif toks[sep].text != \";\" || braces == 0 ||", "\t\tif true || braces == 0 ||",
+  "TestS1_WholeCommandCountsGroupsAndComments")
+m("TB a ) before the runner closes a group it never opened", "internal/shape/program.go",
+  "\t\tcase t.meta && t.text == \")\" && parens > 0:\n", "\t\tcase t.meta && t.text == \")\":\n",
+  "TestS1_CommandEndReadersUnmoved")
+m("TB the paren count moved into commandEnd", "internal/shape/program.go",
+  "\t\tcase t.text == \";\" || t.text == \"&&\" || t.text == \"||\" || t.text == \"|\" || t.text == \"&\":\n\t\t\treturn j, true\n",
+  "\t\tcase t.text == \")\":\n\t\t\treturn 0, false\n\t\tcase t.text == \";\" || t.text == \"&&\" || t.text == \"||\" || t.text == \"|\" || t.text == \"&\":\n\t\t\treturn j, true\n",
+  "TestS1_CommandEndReadersUnmoved")
+m("TB the rules version stays at 6 when wholeCommand counts groups", "internal/shape/masked.go",
+  "const RulesVersion = 7\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")

@@ -40,7 +40,10 @@ const (
 // where its reading agrees (agreedFold), reads `~`, and gives an unread fold
 // a location of its own; version 6 drops -l from checkOnly (gofmt -l -w and
 // sed -l N -i write), reads make's -j as digits only, and puts the flag tables
-// under a pin --
+// under a pin; version 7 holds a test runner's line whole only where the
+// groups opened before the runner close after it (closesGroups: a stray `)`
+// is not, `{ go test ./...; }` is, and a `#` ends the count) and lets perl's
+// -0 digit run lead a short-option cluster (`perl -0777pi`) --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -52,7 +55,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 6
+const RulesVersion = 7
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {

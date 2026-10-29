@@ -47,7 +47,7 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{"X=1 cd /tmp && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd /a && cd $B && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"(cd /tmp && go test ./...)", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
-		{"{ cd /tmp && go test ./...; }", VerbPackage, MaskedNone, RunnerTest, "go test ./..."},
+		{"{ cd /tmp && go test ./...; }", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"(cd /tmp && go test ./...) | tail", VerbPackage, MaskedTest, RunnerTest, "go test ./..."},
 		{`cd "$REPO" && go test ./...`, VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd ~user/x && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
@@ -57,7 +57,7 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{"cd sub && cd - && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd $(git rev-parse --show-toplevel) && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd /a && (cd b && go test ./...)", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
-		{"cd /a && { cd b && go test ./...; }", VerbPackage, MaskedNone, RunnerTest, "go test ./..."},
+		{"cd /a && { cd b && go test ./...; }", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"(cd /x); go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{strings.Repeat("cd $D && ", MaxLeadingCd) + "go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		// A fold leadingCd reads, into the home.

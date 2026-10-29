@@ -22,6 +22,7 @@ var runnerListPins = map[int]string{
 	4: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 4 changed how the lists are matched (matcherPins); the lists are unchanged
 	5: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 5 changed the leading-cd fold and the location rule; the lists are unchanged
 	6: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 6 dropped -l from checkOnly, made make's -j a digits entry and put the flag tables under a pin (flagTablePins); the lists are unchanged
+	7: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 7 changed when a runner's line is whole (closesGroups) and perl's -0 in clusterHas; the lists are unchanged
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
@@ -64,6 +65,7 @@ var writeTablePins = map[int]string{
 	4: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 4 changed how the runner lists are matched; the in-place tables are unchanged
 	5: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 5 changed the leading-cd fold and the location rule; the in-place tables are unchanged
 	6: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // -l no longer clears an editor: gofmt -l -w, sed -l N -i, perl -l -pi, black -l N and isort -l N write (2026-10-25)
+	7: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 7 reads perl's -0 digit run in clusterHas, code and not a table; the in-place tables are unchanged
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -116,6 +118,7 @@ var matcherPins = map[int]string{
 	4: "d8ce2f1af01d7dbec051b928d5ac03ccf16830cb432ab1f36c972466f6ccebb0", // a listed flag may stand before a runner's row words (leadingFlags); a flag that hides the runner's failure refuses it (2026-10-24)
 	5: "a6b4f738864bca26e64502c754ade947cef3f0d4eca78ab34c5a3f4fff89fb38", // the masked parser passes over every leading cd step the program search does where both readings fold alike (agreedFold): `(cd /tmp && go test ./...)` gains its runner (2026-10-24)
 	6: "8c69e44656ed2328c904397bcb2182e6937a22205c22fc0508167d4a5b554d35", // make\'s -j takes digits only (a `-j*` prefix admitted `make -j=4 test` and `make -j4x test`, which make rejects): their lines lose the runner (2026-10-25)
+	7: "165e06eef4489b033a8484ee4800cfe74f08a98cd935e6005c6dd49ed21865d5", // a runner's line is whole only where the groups opened before the runner close after it: `go test ./... )` and `(go test ./...` lose class test, `{ go test ./...; }` gains it, and a `#` ends the count (2026-10-28)
 }
 
 // matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
@@ -148,6 +151,11 @@ var matcherCorpus = []string{
 	strings.Repeat("cd a && ", 64) + "go test ./...", strings.Repeat("cd a && ", 65) + "go test ./...",
 
 	"make -j test", "make -j16 test", "make -j=4 test", "make -jx test", "make -j 4x test", "make -j $N test",
+
+	"sed -l -i.bak s/x/y/ a.go", "perl -l -pi -e s/x/y/ a.go", "perl -l -i -pe s/x/y/ a.go", "perl -0777pi -e s/x/y/ a.go",
+	"gofmt -l .", "npx prettier -l .",
+	"go test ./... )", "(go test ./...", "(go test ./...))", "{ go test ./...; }", "go test ./... # )", "go test ./... #)",
+	"cd /a) && go test ./...", "cd /a # ) && go test ./...",
 }
 
 // matcherDigest digests, for each line of matcherCorpus in order, the line,
@@ -199,6 +207,7 @@ func TestRulesVersion_Matchers(t *testing.T) {
 // test was added. A bump adds a pin; a pin is never edited.
 var flagTablePins = map[int]string{
 	6: "c03726242fe0dd64c144087e62bc5dfdcbf229fae18f0b9a1b5fb69d2f13063f",
+	7: "c03726242fe0dd64c144087e62bc5dfdcbf229fae18f0b9a1b5fb69d2f13063f", // RulesVersion 7 changed when a runner's line is whole and perl's -0 in clusterHas; the flag tables are unchanged
 }
 
 // flagTablesDigest digests notARun (each runner in sorted order, then its

@@ -349,18 +349,18 @@ func isDuration(w string) bool {
 // next line, leaves the class what it was before -- the under-claim. The end
 // is found by commandEnd, the scan pastDirectoryChange uses, so a `;` inside
 // `$( )` ends nothing; a newline anywhere after the runner refuses, whether
-// commandEnd reached it or stopped at it.
+// commandEnd reached it or stopped at it. The one separator passed is the
+// `;` of a `; }` that closes a brace group opened before the runner, and a
+// `)` is the line's only where it closes a `(` opened there (closesGroups):
+// `{ go test ./...; }` and `(go test ./...)` are whole, and `go test ./... )`
+// is a syntax error that runs nothing.
 func wholeCommand(toks []token, i int) bool {
-	sep, ok := commandEnd(toks, i, false)
-	if !ok || sep >= 0 {
-		return false
-	}
 	for _, t := range toks[i+1:] {
 		if t.nlBefore {
 			return false
 		}
 	}
-	return true
+	return closesGroups(toks, i)
 }
 
 // backgrounded reports a shell call Claude Code was asked to run in the
@@ -751,11 +751,15 @@ func inPlaceEdit(toks []token) bool {
 }
 
 // clusterHas reports a word that is a cluster of short options (one dash,
-// then a letter, and no =) in which one of c.letters stands before any
-// letter of c.consumes: the walk stops at the first of either, since a
-// consuming letter takes the rest of the word as its value.
+// then a letter or a 0, and no =) in which one of c.letters stands before
+// any letter of c.consumes: the walk stops at the first of either, since a
+// consuming letter takes the rest of the word as its value. A 0 leads
+// perl's -0[digits], the record separator, whose digits the walk passes
+// over as it passes -l's, so `perl -0777pi` and `perl -00pi` edit in place.
+// No sed option is a digit; `sed -0i` is an error to both seds, and reads
+// as a write here: the over-claim.
 func clusterHas(tok string, c shortCluster) bool {
-	if len(tok) < 2 || tok[0] != '-' || !('a' <= tok[1] && tok[1] <= 'z' || 'A' <= tok[1] && tok[1] <= 'Z') ||
+	if len(tok) < 2 || tok[0] != '-' || !('a' <= tok[1] && tok[1] <= 'z' || 'A' <= tok[1] && tok[1] <= 'Z' || tok[1] == '0') ||
 		strings.Contains(tok, "=") {
 		return false
 	}

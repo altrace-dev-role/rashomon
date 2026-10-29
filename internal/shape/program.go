@@ -453,3 +453,92 @@ func inGroup(open []byte, t token) []byte {
 	}
 	return open
 }
+
+// closesGroups reports whether the command whose program is the token at i
+// closes the groups the line opens before it, and no others, so that the
+// groups' status is the command's: each `(` open before i is closed by a `)`
+// after it, each `{` by a `; }`, and no `)` or `}` after it closes a group
+// not opened before it (`go test ./... )` and `(go test ./...))` are syntax
+// errors that run nothing). Before i a closer closes only an opened group, so
+// the `)` of `cd /a) && go test ./...` counts for nothing here, and
+// directoryChanges, which counts no groups, reads that line as one cd step.
+//
+// After i each command's end is commandEnd's, as for every other reader of
+// the line: a `;` inside `$( )` ends nothing, and a separator is passed only
+// where it is the `;` of a `; }` closing an opened brace. A word starting
+// with `#` outside a group the words open themselves starts a comment, and
+// nothing after it on the line counts (`go test ./... # )`); a comment
+// before a separator commandEnd stopped at leaves the line refused, as
+// before. Counts, not a stack: `{ (go test ./...; } )`, an error to the
+// shell, reads as closed -- the over-claim.
+func closesGroups(toks []token, i int) bool {
+	parens, braces := 0, 0
+	for _, t := range toks[:i] {
+		switch {
+		case t.meta && t.text == "(":
+			parens++
+		case t.meta && t.text == ")" && parens > 0:
+			parens--
+		case bareWord(t, "{"):
+			braces++
+		case bareWord(t, "}") && braces > 0:
+			braces--
+		}
+	}
+	for {
+		sep, ok := commandEnd(toks, i, false)
+		if !ok {
+			return false
+		}
+		end := sep
+		if sep < 0 {
+			end = len(toks)
+		}
+		var comment bool
+		if parens, comment, ok = closedParens(toks[i+1:end], parens); !ok {
+			return false
+		}
+		if comment || sep < 0 {
+			return sep < 0 && parens == 0 && braces == 0
+		}
+		if toks[sep].text != ";" || braces == 0 || sep+1 == len(toks) || !bareWord(toks[sep+1], "}") {
+			return false
+		}
+		i, braces = sep+1, braces-1
+	}
+}
+
+// closedParens reads the words of one command after its program, with parens
+// `(` groups open before it, and returns how many are still open after them;
+// comment says the words reached a comment, after which nothing was read, and
+// ok is false where a `)` closes none of the parens. A group the words open
+// themselves ($( ), <( ), a glob's @( ), backticks) closes within them, as
+// commandEnd found, and inside backticks a paren counts for nothing, as in
+// inGroup.
+func closedParens(toks []token, parens int) (open int, comment, ok bool) {
+	depth, ticks := 0, false
+	for _, t := range toks {
+		switch {
+		case ticks:
+			ticks = t.ticks%2 == 0
+		case t.ticks%2 == 1:
+			ticks = true
+		case depth == 0 && isComment(t):
+			return parens, true, true
+		case !t.meta:
+		case t.text == "(":
+			depth++
+		case t.text == ")" && depth > 0:
+			depth--
+		case t.text == ")" && parens == 0:
+			return 0, false, false
+		case t.text == ")":
+			parens--
+		}
+	}
+	return parens, false, true
+}
+
+// bareWord reports the unquoted word w: `{` and `}` open and close a brace
+// group only so, as programToken reads the brace keyword.
+func bareWord(t token, w string) bool { return !t.meta && t.quotedAt < 0 && t.text == w }
