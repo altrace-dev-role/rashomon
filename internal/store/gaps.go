@@ -662,6 +662,24 @@ func (s *Store) HostDigest(host string) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// InstallDigest is the install as a share bundle names it (card 4.3):
+// HMAC-SHA256 of the install id under the per-install key, in its own domain,
+// hex, the shape HostDigest has. The report carries the id plain; a bundle the
+// user hands on does not, and a receiver can tell one install's bundles from
+// another's without learning either id. The domain is its own, as every HMAC
+// this key signs has one, so the digest is no other digest of the same bytes.
+//
+// It is "" for a Store without a key of the install's length, as HostDigest is.
+func (s *Store) InstallDigest() string {
+	if s.installID == "" || len(s.key) != keyLen {
+		return ""
+	}
+	m := hmac.New(sha256.New, s.key)
+	m.Write([]byte("share-install\x00"))
+	m.Write([]byte(s.installID))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
 // ForgottenHost reports whether a host has been removed by a host-scoped
 // forget, by recomputing its keyed digest and looking for it among the gaps
 // and the store-level forget records.

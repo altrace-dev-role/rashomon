@@ -49,7 +49,7 @@ func writeBody(t *testing.T, st *store.Store, dir, name string, n int) {
 // with the default cap, --max-bytes sets the cap, off removes this project
 // and keeps every other, and status says which, counting copies and never a
 // temporary file. Arguments it does not know, --help among them, are
-// refused as forget refuses them (main.go cmdForget's default case).
+// refused as forget refuses them (forget.go cmdForget's default case).
 func TestRC14i_BodiesOnOffStatus(t *testing.T) {
 	st, key, dir := bodiesHere(t)
 	var out bytes.Buffer

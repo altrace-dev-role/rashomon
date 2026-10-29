@@ -3,10 +3,10 @@ m("H-15 eviction deletes without a gap record", "internal/store/evict.go", "\t\t
 m("H-15 eviction does not count the executions it removed", "internal/store/evict.go",
   "g.RemovedRecords = len(run.Declarations) + len(run.Executions) + len(run.Terminals)\n",
   "g.RemovedRecords = len(run.Declarations) + len(run.Terminals)\n", "TestH15_SizeCap")
-m("H-15 forget --before behaves like --since", "cmd/rashomon/main.go",
+m("H-15 forget --before behaves like --since", "cmd/rashomon/forget.go",
   "\t\t\tif flag == \"--since\" {\n\t\t\t\tfrom = &t\n\t\t\t} else {\n\t\t\t\tto = &t\n\t\t\t}", "\t\t\tfrom = &t",
   "TestH15_Forget")
-m("H-15 forget takes both windows and resolves them itself", "cmd/rashomon/main.go",
+m("H-15 forget takes both windows and resolves them itself", "cmd/rashomon/forget.go",
   "\tcase from != nil && to != nil:\n\t\treturn errors.New(\"--since and --before name opposite ends of the store's timeline; pass one or the other\")\n",
   "", "TestH15_ForgetRefusesBothWindows")
 m("H-15 executions are not part of forget's doomed plan", "internal/store/gaps.go",

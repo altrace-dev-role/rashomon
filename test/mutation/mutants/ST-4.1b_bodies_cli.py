@@ -4,6 +4,7 @@
 # over the whole cap. Each guard is broken once (R2, R2b).
 CB = "cmd/rashomon/bodies.go"
 MG = "cmd/rashomon/main.go"
+CF = "cmd/rashomon/forget.go"
 HP = "internal/hook/probe.go"
 SB = "internal/store/bodies.go"
 
@@ -23,7 +24,7 @@ m("ST-4.1b status counts the temporary files", SB,
   ' || path == except || !strings.HasSuffix(e.Name(), ".jsonl") {\n',
   ' || path == except || !strings.HasSuffix(e.Name(), ".jsonl") && !strings.HasPrefix(e.Name(), BodiesTempPrefix) {\n',
   "TestRC14i_BodiesOnOffStatus")
-m("ST-4.1b the kind count accepts two", MG,
+m("ST-4.1b the kind count accepts two", CF,
   '\tcase forgetKinds(hostArg != "", from != nil || to != nil, bodies) > 1:\n',
   '\tcase forgetKinds(hostArg != "", from != nil || to != nil, bodies) > 2:\n',
   "TestRC14j_ForgetOneKindOnly")
