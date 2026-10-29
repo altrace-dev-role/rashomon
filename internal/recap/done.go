@@ -1,6 +1,10 @@
 package recap
 
-import "github.com/altrace-dev-role/rashomon/internal/verify"
+import (
+	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/verify"
+)
 
 // doneLead opens the done flag's sentence. It names the claim class "done",
 // which FUN-15 keeps off the value line's templates, so it lives here and not
@@ -15,9 +19,12 @@ const noRunSentence = "no test or build run is recorded for this turn"
 // final message whose verdict is a state other than green, on a turn whose
 // row is not verified, takes the value line's place with the row's sentence.
 // no_gate_known is no state and does not fire it: a claim no gate speaks to
-// contradicts nothing (D79), as steer's claim kinds read it.
+// contradicts nothing (D79), as steer's claim kinds read it. A strict done
+// claim with an expected evidence kind unmet fires it too, on any row (card
+// 3.3, Gate B 1), and each unmet kind's sentence follows the row's.
 func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, bool) {
-	if v.Summary.Row == verify.RowVerified || !unbacked(v.Scan.Claims) {
+	unmet := unmetExpected(v)
+	if (v.Summary.Row == verify.RowVerified || !unbacked(v.Scan.Claims)) && len(unmet) == 0 {
 		return "", false
 	}
 	s := noRunSentence
@@ -26,7 +33,7 @@ func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, boo
 			s = f
 		}
 	}
-	return prefix + doneLead + s + ".\n" + pointer(sessionID, fromPlugin), true
+	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + pointer(sessionID, fromPlugin), true
 }
 
 // unbacked reports whether a strict claim's verdict is a state other than
@@ -38,4 +45,26 @@ func unbacked(claims []verify.ClaimVerdict) bool {
 		}
 	}
 	return false
+}
+
+// unmetExpected is the unmet expected evidence rows when the final message
+// makes a strict done claim, and none otherwise: an unmet kind alone, with no
+// claim of done, raises no "done was claimed" flag (Gate B 1).
+func unmetExpected(v verify.StopView) []verify.Expected {
+	for _, c := range v.Scan.Claims {
+		if c.Strict && c.Class == verify.ClaimDone {
+			return verify.UnmetExpected(v.Expected)
+		}
+	}
+	return nil
+}
+
+// expectedClause is one sentence per unmet kind, in order (card 3.3, D-A5):
+// " expected evidence <kind> is not on the record (<reason>)."
+func expectedClause(unmet []verify.Expected) string {
+	var b strings.Builder
+	for _, e := range unmet {
+		b.WriteString(" expected evidence " + e.Kind + " is not on the record (" + e.Reason + ").")
+	}
+	return b.String()
 }

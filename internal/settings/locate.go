@@ -74,6 +74,13 @@ func DefaultLocations(cwd string) (Locations, error) {
 	}, nil
 }
 
+// ManagedDir is the directory that holds managed-settings.json, where the
+// managed spec lives as rashomon/spec.json (card 3.1; archive 20.2.8). Under
+// RASHOMON_MANAGED_SETTINGS_PATH it is that file's directory.
+func ManagedDir() string {
+	return filepath.Dir(managedPath())
+}
+
 // managedPath is where enterprise policy lives on each platform.
 //
 // RASHOMON_MANAGED_SETTINGS_PATH exists so the refusal path can be tested

@@ -9,13 +9,15 @@ package spec
 // File is one parsed spec.json (archive 20.2.8, Schema, version 1).
 // Invariant: RashomonSpec is 1, len(Gates)+len(CICommands) <= MaxGates,
 // len(Rules) <= MaxRules, len(Facts) <= MaxFacts, and ids are unique within
-// Gates, Rules and Facts each.
+// Gates, Rules and Facts each. Holdout is the zero value when the file has no
+// holdout object (PF-MS5).
 type File struct {
 	RashomonSpec int        `json:"rashomon_spec"`
 	Gates        []Gate     `json:"gates,omitempty"`
 	CICommands   [][]string `json:"ci_commands,omitempty"`
 	Rules        []Rule     `json:"rules,omitempty"`
 	Facts        []Fact     `json:"facts,omitempty"`
+	Holdout      Holdout    `json:"holdout,omitzero"`
 }
 
 // Fact is a declared environment fact: the mechanism the project uses, never a
@@ -41,8 +43,10 @@ type FactTarget struct {
 
 // Gate is a declared evidence gate (archive 20.2.8, Schema). Match is
 // "prefix" or "exact"; after Parse it is never empty. Required is never nil
-// after Parse. The three *Line lists, with Rule.Pattern, are the only regular
-// expressions in a File, each within the RE2 bounds of archive 20.2.8.
+// after Parse. Supplies names the evidence kinds the gate's run supplies, each
+// at most once, from supplyKinds (D117; read by 3.3). The three *Line lists,
+// with Rule.Pattern, are the only regular expressions in a File, each within
+// the RE2 bounds of archive 20.2.8.
 type Gate struct {
 	ID           string            `json:"id"`
 	Kind         string            `json:"kind"`
@@ -57,6 +61,7 @@ type Gate struct {
 	FailureLine  []string          `json:"failure_line,omitempty"`
 	EmptyRunLine []string          `json:"empty_run_line,omitempty"`
 	ExitCodes    map[string]string `json:"exit_codes,omitempty"`
+	Supplies     []string          `json:"supplies,omitempty"`
 }
 
 // Rule is one rule of the five kinds in archive 20.2.8's table. Why and

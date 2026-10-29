@@ -30,6 +30,7 @@ var staticWordSets = map[string][]string{
 	"internal/baseline": {"ubiquitous"},
 	"internal/recap":    {"prefixWords"},
 	"internal/report":   {"clientPlaneHosts", "inputCompletedByHarness"},
+	"internal/spec":     {"EvidenceKinds"},
 	"internal/verify": {"noWrite", "generatedSegments", "generatedRootSegments", "ciSegments", "ciBasenames",
 		"testSegments", "camelTestExtensions", "docsRootSegments", "docsExtensions", "docsBasenames",
 		"configExtensions", "configBasenames"},

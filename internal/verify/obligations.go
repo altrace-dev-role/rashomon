@@ -41,8 +41,9 @@ import (
 // Complete makes every row of the gate unknown (INV-2, A1).
 //
 // The three v0 facts: the scope is the session at every point (Q1); the
-// evidence_bound rows are unknown; and no spec_rule, platform_impact,
-// expected_evidence or proposed_check row is emitted (Phase 3 and 6).
+// evidence_bound rows are unknown; and no spec_rule, platform_impact or
+// proposed_check row is emitted (Phase 3 and 6). expected_evidence rows
+// come from the task file (evidence.go, card 3.3).
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string
@@ -124,7 +125,9 @@ type Obligation struct {
 func EvaluateWithObligations(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) (Snapshot, []Obligation) {
 	var c classified
 	snap := evaluate(run, idx, sp, pt, now, &c)
-	return snap, obligations(snap, c.runs, c.writes)
+	ex := expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(run, pt.Seq)})
+	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
+	return snap, append(obligations(snap, c.runs, c.writes), expectedObligations(scope, ex)...)
 }
 
 // cite is the gate pointers a row's evidence reads.

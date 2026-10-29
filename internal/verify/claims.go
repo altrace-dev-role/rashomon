@@ -67,6 +67,10 @@ type ClaimScan struct {
 	LastIsQuestion bool           `json:"last_is_question"` // the message's last sentence ends in '?'
 	Cut            bool           `json:"cut"`              // a window lost text: every claim is loose
 	ClaimsOmitted  int            `json:"claims_omitted"`   // verdicts past MaxClaims
+	// Disclosed is a sentence of the windows the sentence reader reads as
+	// disclosing a failure or a gap (card 3.3, judgment_disclosed); not
+	// encoded, so no shape moves.
+	Disclosed bool `json:"-"`
 }
 
 // Claims compares the claims of a message's head and tail windows with gates
@@ -85,6 +89,7 @@ func Claims(head, tail, key []byte, gates []GateState, wrote bool, source ClaimS
 		scan.LastIsQuestion = strings.HasSuffix(texts[n-1], "?")
 	}
 	found := compare(texts, gates, wrote, scan.Cut)
+	scan.Disclosed = discloses(texts, wrote)
 	kept := keep(found)
 	scan.ClaimsOmitted = len(found) - len(kept)
 
@@ -297,6 +302,20 @@ type mapping struct {
 	read    bool
 	verdict Verdict
 	ids     []SlotID
+}
+
+// discloses reports a sentence of texts that the sentence reader's own
+// disclosed() reads as disclosing (card 3.3, D-A4): one more pass over the
+// sentences, which capWindow has already bounded.
+func discloses(texts []string, wrote bool) bool {
+	for _, t := range texts {
+		var s sentence
+		s.read(t, wrote)
+		if s.disclosed() {
+			return true
+		}
+	}
+	return false
 }
 
 // compare is the verdict of each sentence's classes, sentence order then

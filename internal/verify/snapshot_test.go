@@ -91,7 +91,7 @@ func TestVER52b_SnapshotKeysAreTheVerifyJSONList(t *testing.T) {
 		{ClaimVerdict{}, []string{"source", "class", "strict", "verdict", "gates", "quote_hmac"}},
 		{RuleVerdict{}, []string{"rule", "kind", "verdict", "seqs", "hard_control"}},
 		{Integrity{}, []string{"unresolved", "counts", "unknown_marks", "unread_bases"}}, // the last two D41, D42
-		{IntegrityEntry{}, []string{"check", "marker", "seq"}},
+		{IntegrityEntry{}, []string{"check", "marker", "seq", "path"}},
 		{IntegrityCounts{}, []string{"tests_delta", "skips_added", "suppressions_added"}},
 		{Practice{}, []string{"practice_version", "score", "components", "not_applicable"}},
 		{PracticeComponents{}, []string{"gates", "claims", "spec", "integrity", "hygiene"}},
@@ -118,7 +118,7 @@ func TestVER52b_SnapshotKeysAreTheVerifyJSONList(t *testing.T) {
 	if CheckpointMaxBytes != 8<<10 {
 		t.Errorf("CheckpointMaxBytes = %d, want 8 KiB", CheckpointMaxBytes)
 	}
-	wantKinds := []IntegrityKind{"test_removed", "skip_added", "assertions_removed", "suppression_added", "generated_edited", "tests_only_then_green", "gate_weakened", "gate_config_edited"}
+	wantKinds := []IntegrityKind{"test_removed", "skip_added", "assertions_removed", "suppression_added", "generated_edited", "tests_only_then_green", "gate_weakened", "gate_config_edited", "store_touched"}
 	if !slices.Equal(IntegrityKinds, wantKinds) {
 		t.Errorf("IntegrityKinds\n got %q\nwant %q", IntegrityKinds, wantKinds)
 	}
