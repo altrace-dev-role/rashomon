@@ -31,6 +31,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -116,13 +117,22 @@ type Record struct {
 	InvocationID         string `json:"invocation_id"`
 	// At is when the record was appended, in Unix milliseconds.
 	At int64 `json:"at"`
+	// Unit is the consent unit a unit record answers, one of Units, and ""
+	// on every other record; UnitOn is the answer (card 4.2). A unit record
+	// claims nothing the install readers read: its scope_version,
+	// record_scope and steer_disclosure are zero, or it does not parse, so a
+	// unit answer never stands in for the install screen.
+	Unit   string `json:"unit"`
+	UnitOn bool   `json:"unit_on"`
 }
 
 // parses reports whether a decoded line is a record a reader may count: the
-// version this build reads and a Via from the closed set. Anything else is
-// skipped like a torn line, never read as consent.
+// version this build reads and a Via from the closed set, and for a unit
+// record a unit of Units claiming no install scope (card 4.2). Anything else
+// is skipped like a torn line, never read as consent.
 func (r Record) parses() bool {
-	return r.V == RecordVersion && r.Via.Valid()
+	return r.V == RecordVersion && r.Via.Valid() &&
+		(r.Unit == "" || slices.Contains(Units, r.Unit) && r.ScopeVersion == 0 && r.RecordScope == "" && r.SteerDisclosure == 0)
 }
 
 // Path is consent.json under a store root.
@@ -229,6 +239,9 @@ func ScopeCovered(root string) (bool, error) {
 // block compares this build against. ok is false when there is none.
 func LastAccepted(recs []Record) (Record, bool) {
 	for i := len(recs) - 1; i >= 0; i-- {
+		if recs[i].Unit != "" {
+			continue // a unit answer is not the install screen's
+		}
 		switch recs[i].Via {
 		case ViaWatchTTY, ViaWatchYes, ViaConsentTTY, ViaConsentYes, ViaPluginEnable:
 			return recs[i], true
@@ -387,7 +400,9 @@ func appendLine(f *os.File, line []byte) error {
 }
 
 // compact rewrites consent.json to the records that decide every reader's
-// answer: the latest record per (via, scope_version), which keeps the latest
+// answer: the latest record per (via, scope_version, unit), which keeps the
+// latest record overall, each unit's latest answer (card 4.2) and the
+// highest scope_version, and so keeps the latest
 // record overall and the highest scope_version; the record with the
 // highest steer_disclosure, which a newer via of the same scope could
 // otherwise push out and so withdraw a consent a downgrade must keep; and
@@ -420,11 +435,12 @@ func keepForCompaction(recs []Record) []Record {
 	type key struct {
 		via   Via
 		scope int
+		unit  string
 	}
 	latest := map[key]int{}
 	maxDisclosure, scoped := -1, -1
 	for i, r := range recs {
-		latest[key{r.Via, r.ScopeVersion}] = i
+		latest[key{r.Via, r.ScopeVersion, r.Unit}] = i
 		if maxDisclosure < 0 || r.SteerDisclosure > recs[maxDisclosure].SteerDisclosure {
 			maxDisclosure = i
 		}
@@ -434,7 +450,7 @@ func keepForCompaction(recs []Record) []Record {
 	}
 	var out []Record
 	for i, r := range recs {
-		if latest[key{r.Via, r.ScopeVersion}] == i || i == maxDisclosure || i == scoped {
+		if latest[key{r.Via, r.ScopeVersion, r.Unit}] == i || i == maxDisclosure || i == scoped {
 			out = append(out, r)
 		}
 	}

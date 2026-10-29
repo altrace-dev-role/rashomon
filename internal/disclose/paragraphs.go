@@ -28,6 +28,7 @@ const (
 	OwnerMeasure = "measure"
 	OwnerBreadth = "breadth"
 	OwnerScreen  = "screen"
+	OwnerTrust   = "trust"
 )
 
 // defaultParagraphs is the consent screen's text, owner by owner, in print
@@ -59,5 +60,30 @@ func defaultParagraphs() []Paragraph {
 		{Owner: OwnerRecord, Cite: CiteSection5, Text: "At the end of a turn that edited files or ran a test, build or lint, one line says what the record shows: which checks passed after the last edit, and what followed any note. Off, and it stays off: rashomon summary off --user"},
 
 		{Owner: OwnerScreen, Cite: CiteChangedSince, Text: "CHANGED SINCE YOU LAST AGREED ({version}, scope {scope}): this build asks for scope {current}. Everything it now does is below."},
+	}
+}
+
+// UnitParagraph is one consent unit's screen text (card 4.2): what a y to
+// `rashomon consent <unit>` allows. It is not on the install screen, so the
+// install text_sha256 and ScopeVersion do not move with it.
+type UnitParagraph struct {
+	Owner string `json:"owner"`
+	Unit  string `json:"unit"`
+	Text  string `json:"text"`
+	Cite  string `json:"cite"`
+}
+
+// CitePFSH1 is the requirement the unit paragraphs answer: units are off
+// until the user turns each on.
+const CitePFSH1 = "prd:PF-SH1"
+
+// defaultUnits is the unit screens' text, in consent.Units' order, for the
+// units a command in this release uses. share.lessons and share.bodies have
+// none until a command builds them: a grant to a bundle nobody has been
+// shown would not be consent to it.
+func defaultUnits() []UnitParagraph {
+	return []UnitParagraph{
+		{Owner: OwnerTrust, Unit: "bodies", Cite: CitePFSH1, Text: "Lets rashomon copy each Claude Code transcript of a project you list with `rashomon bodies on` into <root>/bodies when its session ends, mode 0600, within the cap you set (2 GiB unless you say otherwise), removing the oldest copy first. The copies stay on this machine. `rashomon forget --bodies` removes a project's copies; `rashomon consent bodies off` stops new ones."},
+		{Owner: OwnerTrust, Unit: "share.outcomes", Cite: CitePFSH1, Text: "Lets `rashomon share build outcomes --out FILE` write a file of counts: how many notes rashomon gave the agent, by pattern, and the span of time they cover, any count under five written as <5, with a keyed digest of this install that names no person or machine. It prints the whole file and its sha256 before it writes it. rashomon sends nothing; the file goes only where you take it. `rashomon consent share.outcomes off` withdraws this."},
 	}
 }

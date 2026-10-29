@@ -129,7 +129,7 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	// errors only the over-cap refusal has a reader: it is returned beside
 	// eviction's, and cmdProbe prints each as a line of its own (card 4.1b).
 	var overCap error
-	if phase == store.PhaseEnd && transcriptPath != "" {
+	if phase == store.PhaseEnd && transcriptPath != "" && bodiesConsented(st.Root()) {
 		err := safe.Guard(func() error {
 			key := baseline.Key(cwd)
 			_, err := st.CopyBody(sessionID, transcriptPath, key, strings.TrimSuffix(baseline.FileName(key), baseline.FileExt), now())

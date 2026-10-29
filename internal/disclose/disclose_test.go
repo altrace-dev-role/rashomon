@@ -30,7 +30,7 @@ func jsonTags(t reflect.Type) []string {
 // The inventory's keys, a literal copy of 7.2.2.
 func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 	cases := map[reflect.Type][]string{
-		reflect.TypeOf(Inventory{}):     {"version", "scope_version", "entries", "files", "settings_writes", "outputs", "never_emit", "never_write", "switches", "env_vars", "screen_paragraphs"},
+		reflect.TypeOf(Inventory{}):     {"version", "scope_version", "entries", "files", "settings_writes", "outputs", "never_emit", "never_write", "switches", "env_vars", "screen_paragraphs", "units"},
 		reflect.TypeOf(HookEntry{}):     {"event", "matcher", "subcommand", "timeout_s", "why", "prints", "owner"},
 		reflect.TypeOf(OutputRule{}):    {"event", "field", "audience", "mirror_verified", "mirror_source", "template_ids"},
 		reflect.TypeOf(FileRule{}):      {"base", "pattern", "mode", "purpose", "holds", "never_holds", "removed_by", "owner"},
@@ -39,6 +39,7 @@ func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 		reflect.TypeOf(Switch{}):        {"name", "default", "command", "stored", "ratchet"},
 		reflect.TypeOf(EnvVar{}):        {"name", "effect", "test_only"},
 		reflect.TypeOf(Paragraph{}):     {"owner", "text", "cite"},
+		reflect.TypeOf(UnitParagraph{}): {"owner", "unit", "text", "cite"},
 	}
 	for typ, want := range cases {
 		if got := jsonTags(typ); !reflect.DeepEqual(got, want) {

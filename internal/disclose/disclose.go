@@ -49,6 +49,7 @@ type Inventory struct {
 	Switches     []Switch        `json:"switches"`
 	EnvVars      []EnvVar        `json:"env_vars"`
 	Paragraphs   []Paragraph     `json:"screen_paragraphs"`
+	Units        []UnitParagraph `json:"units"`
 }
 
 // HookEntry is one hook rashomon installs into Claude Code's settings.
@@ -168,6 +169,7 @@ func Default() (Inventory, error) {
 		ScopeVersion: ScopeVersion,
 		Files:        defaultFiles(),
 		Paragraphs:   defaultParagraphs(),
+		Units:        defaultUnits(),
 	}, nil
 }
 
