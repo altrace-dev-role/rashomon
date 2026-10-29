@@ -31,16 +31,21 @@ type SteerView struct {
 // whose tool_use_id is toolUseID, raised at event. The id is the capped form
 // both records store (store.CapID), so a call whose payload id is over the
 // cap still matches its own run. Evaluate and EvaluateWithObligations are
-// untouched: this is a third view of the same classification.
+// untouched: this is a third view of the same classification. Its facts
+// are regression-location's and the one-way doors this call opened
+// (integrityRaises, card P5B).
 func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
 	snap := evaluate(run, idx, sp, pt, now, &c)
-	found, dropped := mapFacts(run, regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID), pt)
+	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
+	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
+	found, dropped := mapFacts(run, facts, pt)
 	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
 }
 
 // mapFacts maps each fact to its steer candidate through ToSteer and renders
-// its Message from the record. A fact ToSteer refuses is counted in dropped.
+// its Message from the record: an integrity fact by renderIntegrity, a gate
+// fact by renderRegression. A fact ToSteer refuses is counted in dropped.
 func mapFacts(run *store.Run, facts []Finding, pt Point) (found []steer.Finding, dropped int) {
 	if len(facts) == 0 {
 		return nil, 0
@@ -56,7 +61,11 @@ func mapFacts(run *store.Run, facts []Finding, pt Point) (found []steer.Finding,
 			dropped++
 			continue
 		}
-		sf.Message = renderRegression(run, &times, f)
+		if f.Integrity != nil {
+			sf.Message = renderIntegrity(f)
+		} else {
+			sf.Message = renderRegression(run, &times, f)
+		}
 		found = append(found, sf)
 	}
 	return found, dropped

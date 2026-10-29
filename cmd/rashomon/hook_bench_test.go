@@ -413,7 +413,8 @@ func BenchmarkRunPost(b *testing.B) {
 
 // postEntry is cmdPost with its stdout discarded, in the entry shape cmdHook
 // has: what the post prints is the steer step's, which these measures do not
-// read (a PostToolUse call runs no step, card 2.3 R3).
+// read (a PostToolUse call that names no path under .claude/rashomon runs
+// no step, card 2.3 R3 and P5B).
 func postEntry(args []string, stdin io.Reader, stderr io.Writer) int {
 	return cmdPost(args, stdin, io.Discard, stderr)
 }
