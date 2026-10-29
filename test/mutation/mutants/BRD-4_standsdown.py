@@ -30,14 +30,14 @@ m("BRD-4 a seen-only write also counts a stand-down, so an Unknown that was reco
 
 m("BRD-4 an Unknown detection leaves harness_id null on the declaration",
   "cmd/rashomon/hostguard.go",
-  "\th := hook.New(st, time.Now)\n\tif id.ID == harness.Unknown {",
-  "\th := hook.New(st, time.Now)\n\tif false {",
+  "\th := hook.New(st, entryNow)\n\tif id.ID == harness.Unknown {",
+  "\th := hook.New(st, entryNow)\n\tif false {",
   "TestBRD4_HookRecordsUnknownHarness")
 
 m("BRD-4 every detection stamps harness_id unknown, Claude Code's own included",
   "cmd/rashomon/hostguard.go",
-  "\th := hook.New(st, time.Now)\n\tif id.ID == harness.Unknown {",
-  "\th := hook.New(st, time.Now)\n\tif true {",
+  "\th := hook.New(st, entryNow)\n\tif id.ID == harness.Unknown {",
+  "\th := hook.New(st, entryNow)\n\tif true {",
   "TestBRD4_ClaudeEntryNeverStandsDown")
 
 m("BRD-4 recap stops counting an Unknown detection as seen",

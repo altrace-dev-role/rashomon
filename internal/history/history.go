@@ -197,6 +197,11 @@ type Call struct {
 	// ResultPromptID is the promptId the tool_result line names, with the same
 	// three empties as ResultCWD.
 	ResultPromptID string
+	// ResultTimestamp is the tool_result line's timestamp as written, the
+	// moment a PostToolUse would have fired (Timestamp is the tool_use line's,
+	// the moment of the PreToolUse). Empty with the same three empties as
+	// ResultCWD. Parsing it is the caller's.
+	ResultTimestamp string
 	// ResultObject: the result line held exactly one tool_result and its
 	// toolUseResult was an object. Only then do ResultBackgroundTaskID and
 	// ResultBackgroundedByUser say anything: on a line with several results
@@ -263,8 +268,8 @@ var DefaultLimits = Limits{
 // counted in OtherVersions.
 const maxVersions = 16
 
-// maxHeaderBytes bounds the two strings read off a call's result line, its
-// cwd and its promptId. A path or an id is a few hundred bytes at most; one
+// maxHeaderBytes bounds the three strings read off a call's result line, its
+// cwd, its promptId and its timestamp. A path or an id is a few hundred bytes at most; one
 // over this is not kept, and the call reads as if its line named none. They
 // are held for as long as the call waits, so they count against
 // Limits.MaxQueuedBytes as the output head and tail do.
@@ -482,12 +487,16 @@ func (rd *reader) result(h *header, b *block, at Pos, tur toolUseResult) {
 	if len(h.PromptID) <= maxHeaderBytes {
 		p.ResultPromptID = h.PromptID
 	}
+	if len(h.Timestamp) <= maxHeaderBytes {
+		p.ResultTimestamp = h.Timestamp
+	}
 	p.ResultObject = tur.object
 	p.ResultBackgroundTaskID, p.ResultBackgroundedByUser = tur.backgroundTaskID, tur.backgroundedByUser
 	if rd.unread > p.unread && p.Reason == ReasonNone {
 		p.Reason = LineSkipped
 	}
 	held := len(p.ResultCWD) + len(p.ResultPromptID)
+	held += len(p.ResultTimestamp)
 	if p.ToolName == "Bash" || b.IsError {
 		p.OutputHead, p.OutputTail = headTail(parts, rd.lim.OutputHeadBytes, rd.lim.OutputTailBytes)
 		held += len(p.OutputHead) + len(p.OutputTail)

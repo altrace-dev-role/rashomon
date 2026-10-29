@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
@@ -145,7 +144,7 @@ func harnessSessionKey(payload *hookio.Payload, id harness.Identity) string {
 // BRD-4 ruling, 2026-10-24: stand down on positive foreign evidence only;
 // Unknown is recorded and counted.
 func newHandler(st *store.Store, id harness.Identity) *hook.Handler {
-	h := hook.New(st, time.Now)
+	h := hook.New(st, entryNow)
 	if id.ID == harness.Unknown {
 		h.HarnessID = string(id.ID)
 	}
@@ -180,14 +179,14 @@ func recordHarnessBestEffort(sessionID string, id harness.Identity, standDown bo
 	// which is the one outcome that actually matters (no record, no run
 	// directory, no output).
 	if !standDown {
-		_, _ = store.RecordHarnessSeen(root, key, sessionID, time.Now())
+		_, _ = store.RecordHarnessSeen(root, key, sessionID, entryNow())
 		return
 	}
 	evidence := make([]string, len(id.Evidence))
 	for i, e := range id.Evidence {
 		evidence[i] = string(e)
 	}
-	_, _ = store.RecordHarnessMismatch(root, key, sessionID, evidence, time.Now())
+	_, _ = store.RecordHarnessMismatch(root, key, sessionID, evidence, entryNow())
 }
 
 // syntheticHarnessPayload builds a *hookio.Payload carrying exactly the

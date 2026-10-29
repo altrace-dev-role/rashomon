@@ -144,7 +144,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	hook.IgnoreBrokenPipe()
 	fault.Inject(fault.PointRecapStart)
 
-	now := time.Now()
+	now := entryNow()
 	payload := readRecapPayload(stdin, recapStdinTimeout)
 
 	if id, down := recapHostGuard(payload.Harness, payload.OK); noteHarness(payload.SessionID, id, down) {
@@ -236,6 +236,10 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	stop, serr := stopView(st, run, d, payload, pending, now)
 	if serr != nil {
 		return serr
+	}
+	// The replay's tap (replay.go): nil, and so nothing, outside a replay.
+	if stopSeen != nil {
+		stopSeen(payload.Harness.HookEventName, pending, d.SessionID, stop.view)
 	}
 
 	// recap.Line's sentences win; the done flag and the value line speak

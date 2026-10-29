@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/history"
 )
@@ -28,6 +29,19 @@ func (u *unsupported) version(v string) {
 	case !history.Supported(v):
 		u.add(UnsupportedVersion)
 	}
+}
+
+// at sets the event's time from a line's timestamp, as written, and adds
+// NoTimestamp when the line names none or one that does not parse. The time is
+// the moment the recorder's clock is told it is (Event.At); a missing one is
+// never replaced with another line's or with now.
+func (u *unsupported) at(ts string) {
+	t, err := time.Parse(time.RFC3339Nano, ts)
+	if err != nil {
+		u.add(NoTimestamp)
+		return
+	}
+	u.ev.At = t.UTC()
 }
 
 // settle makes an Unsupported event a Gap: the first reason is the one
@@ -118,6 +132,7 @@ func (w *walker) pre(c *history.Call) *Event {
 	// A conflict between two results is the Post's to bear: the declaration
 	// was made before either.
 	u.version(c.Version)
+	u.at(c.Timestamp)
 	u.when(c.SessionID == "", NoSessionID)
 	u.when(w.opt.TranscriptPath == "", NoTranscriptPath)
 	u.when(c.Sidechain, SidechainAgentType)
@@ -159,6 +174,7 @@ func (w *walker) post(c *history.Call) *Event {
 	e := callEvent(kind, c.ResultPos, c)
 	u := &unsupported{ev: e}
 	u.version(c.Version)
+	u.at(c.ResultTimestamp)
 	u.when(c.Reason == history.ResultConflict, ResultConflict)
 	u.when(c.SessionID == "", NoSessionID)
 	u.when(w.opt.TranscriptPath == "", NoTranscriptPath)

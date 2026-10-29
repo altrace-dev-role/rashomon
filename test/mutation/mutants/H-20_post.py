@@ -10,8 +10,8 @@ m("H-20 the execution record is never written", "internal/hook/post.go",
 m("H-20 an execution the lock refuses is dropped", "internal/store/landexec.go",
   "\t\treturn 0, s.SpillExecution(rec)", "\t\treturn 0, err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
 m("H-20 the post path ignores the install it was told it belongs to", "cmd/rashomon/post.go",
-  "\t\tif standsDown(args, st, stderr) {\n\t\t\treturn nil\n\t\t}\n\n\t\tp := hook.NewPost(st, time.Now)",
-  "\t\tp := hook.NewPost(st, time.Now)",
+  "\t\tif standsDown(args, st, stderr) {\n\t\t\treturn nil\n\t\t}\n\n\t\tp := hook.NewPost(st, entryNow)",
+  "\t\tp := hook.NewPost(st, entryNow)",
   "TestH20_PostFromAnotherInstallStandsDown")
 m("H-20 post coverage resolves the recorder's entry instead of its own", "internal/hook/coverage.go",
   "\tif phase == store.PhasePost {", "\tif false {", "TestH20_PostCoverageReadsItsOwnEntry")

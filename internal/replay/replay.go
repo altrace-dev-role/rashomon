@@ -89,11 +89,44 @@
 // no SubagentStop in it, so a subagent's turn end is not an event, and a
 // sidechain line never moves a turn's end. SessionStart and SessionEnd are
 // the liveness probe: they write a coverage marker, not evidence, and a
-// transcript records no moment for either, so they are not rebuilt. StopFailure
+// transcript records no moment for either, so this package does not rebuild
+// them. The harness that feeds the events to the recorder (cmd/rashomon,
+// replay.go) must start each session itself, because a run with no marker
+// reads coverage_unverified and the recorder then silences every verdict, and
+// it never ends one (a killed session fired no SessionEnd, and feeding one
+// would claim a clean close); it flags both. StopFailure
 // fires where an API error ends the turn in place of Stop; a transcript
 // records the error as a line this reader has no fixture for, so a turn that
 // ended that way is one of the unknown-Stop cases above rather than a guess at
 // StopFailure's payload.
+//
+// # Time
+//
+// Every event carries its historical time (Event.At): the timestamp of the
+// line it is taken from. The recorder stamps its records with a clock, and a
+// replay sets that clock to At for the length of the event; it never reads the
+// time it is run at. A line with no timestamp, or one that is not RFC 3339,
+// makes the event Unsupported (NoTimestamp): another line's time is not
+// substituted.
+//
+// # Final-message memory
+//
+// A Stop's payload carries the turn's final message, which the recorder reads
+// for its claim scan. The recorder keeps the head of it (MessageHeadBytes) and,
+// when it is longer, the tail (MessageTailBytes), and nothing else of it, so the
+// scan keeps exactly that: a message longer than both is held as its head and
+// its tail with the middle left out (keepFinal), cut a few bytes past each
+// capture and at rune boundaries, and the recorder's reader captures the same
+// two strings from that payload as from the whole message. What is held is
+// bounded across the whole file, not only per Stop: the text of the Stops not
+// yet yielded counts against Options.FinalBudget, a Stop's text is released as
+// the Stop is yielded (the payload is built then), and a Stop whose text would
+// go over the budget is Unsupported (FinalTextBudget), so it is never fed a cut
+// or an empty message, and everything after it is tainted. A message whose
+// JSON encoding the live payload could not have carried (past
+// hookio.MaxPayloadBytes less a headroom) is FinalTextTooLarge for the same
+// reason. Summary reports the most held at once and what was still held at the
+// end.
 //
 // # What is never guessed
 //
@@ -115,6 +148,7 @@ import (
 	"container/heap"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/history"
 )
@@ -159,6 +193,11 @@ const (
 	NoVersion          Reason = "no_version"
 	UnsupportedVersion Reason = "unsupported_version"
 	ResultConflict     Reason = "result_conflict"
+	// NoTimestamp: the line the event is taken from names no timestamp, or one
+	// that is not RFC 3339. The recorder stamps its records with its clock, and
+	// a replay sets that clock to the event's historical time (Event.At); an
+	// event with no time is not given the time of another.
+	NoTimestamp Reason = "no_timestamp"
 	// NoSessionID: the line names no session. The recorder files a payload
 	// that names none under an unattributed session, which a replay is not.
 	NoSessionID Reason = "no_session_id"
@@ -209,6 +248,12 @@ const (
 	NoFinalText       Reason = "no_final_text"
 	SplitFinalMessage Reason = "final_message_text_unmeasured"
 	FinalTextTooLarge Reason = "final_message_too_large"
+	// FinalTextBudget: the Stop's final message could not be held without
+	// going over Options.FinalBudget, the most final-message text a replay
+	// holds at once. The recorder reads that text for its claim scan, so a
+	// Stop without it is not fed (never fed an empty or a cut message), and
+	// the Stop and everything after it are tainted.
+	FinalTextBudget Reason = "final_message_budget"
 	// The Stop boundary is unknown: the transcript alone does not establish
 	// that a Stop fired here. StopInterrupted: the turn's last assistant line
 	// is followed by an interrupt marker. StopNotEndTurn: the last assistant
@@ -268,8 +313,25 @@ type Event struct {
 	// at a position from Taint on Verified, since the skipped event could have
 	// changed it.
 	Taint history.Pos
-	// Payload is the JSON object the recorder would have read on stdin.
+	// At is the event's historical time: the timestamp of the line it is taken
+	// from (the tool_use line for a Pre, the tool_result line for a Post, the
+	// prompt's line, the turn's last assistant line for a Stop). It is the
+	// time the recorder's clock must read while it handles the event; a
+	// replay never reads the time it is run at. Zero when the event is
+	// Unsupported for want of one (NoTimestamp) and on an unknown Stop.
+	At time.Time
+	// FinalBytes and FinalElided describe a Stop's final message: its length
+	// as written, and whether the replay kept only its head and tail, as the
+	// recorder does (see keepFinal). Zero on every other event.
+	FinalBytes  int
+	FinalElided bool
+	// Payload is the JSON object the recorder would have read on stdin. A
+	// Stop's is built when the Stop is yielded, from the text the scan held
+	// for it, and the text is released then.
 	Payload []byte
+
+	// final is the Stop's held text, until it is yielded.
+	final *finalText
 }
 
 // Supported reports whether the event has a payload to feed.
@@ -326,10 +388,21 @@ type Summary struct {
 	TaintFrom  history.Pos
 	Gaps       int
 	Unreadable int
+	// FinalHeldPeak is the most final-message text held at once, FinalDropped
+	// the Stops that could not be fed for want of Options.FinalBudget, and
+	// FinalHeldAtEnd what was still held when the walk ended (zero after a
+	// walk that reached the end: each Stop's text is released as it is
+	// yielded).
+	FinalHeldPeak, FinalDropped, FinalHeldAtEnd int
 }
 
 // Options configure a replay.
 type Options struct {
+	// FinalBudget is the most final-message text, in bytes, that the replay
+	// holds at once for Stops it has not yet replayed. Zero is
+	// DefaultFinalBudget. A Stop whose text would go over it is Unsupported
+	// (FinalTextBudget): it is not fed, and it taints what follows.
+	FinalBudget int
 	// Limits bound the call reader (history.Limits). The zero value reads with
 	// history.DefaultLimits.
 	Limits history.Limits
@@ -337,6 +410,13 @@ type Options struct {
 	// it in transcript_path. It is the caller's, not the reader's: a reader
 	// of one stream cannot know where it came from.
 	TranscriptPath string
+}
+
+func (o Options) finalBudget() int {
+	if o.FinalBudget <= 0 {
+		return DefaultFinalBudget
+	}
+	return o.FinalBudget
 }
 
 func (o Options) limits() history.Limits {
@@ -396,7 +476,8 @@ func Walk(src io.ReadSeeker, opt Options, yield func(Event) error) (Summary, err
 	}
 	// An unreadable line after the last event is still a gap.
 	w.taint(history.Pos{Line: int(^uint(0) >> 1)})
-	sum := Summary{Stats: stats, Turns: sc.turns, TaintFrom: w.first, Gaps: w.gaps, Unreadable: sc.unreadable}
+	sum := Summary{Stats: stats, Turns: sc.turns, TaintFrom: w.first, Gaps: w.gaps, Unreadable: sc.unreadable,
+		FinalHeldPeak: sc.peak, FinalDropped: sc.dropped, FinalHeldAtEnd: sc.held}
 	switch {
 	case errors.Is(w.err, ErrStop):
 		return sum, nil
@@ -466,6 +547,7 @@ func (w *walker) drain(through *history.Pos) {
 		} else {
 			w.next++
 		}
+		fin := e.final
 		// Placed in file order, so every event sees the gaps before it and
 		// its own, and the earliest never moves later.
 		w.taint(e.Pos)
@@ -476,7 +558,18 @@ func (w *walker) drain(through *history.Pos) {
 			}
 		}
 		e.Taint = w.first
-		w.err = w.yield(*e)
+		// A Stop's payload is built from its held text now and the text is
+		// released as the Stop is handed over, so what is held at once is
+		// the Stops not yet reached, not the file's.
+		out := *e
+		out.final = nil
+		if fin != nil {
+			out.Payload = marshal(&recapPayload{SessionID: e.SessionID, TranscriptPath: w.opt.TranscriptPath, CWD: fin.cwd,
+				HookEventName: Stop.String(), LastAssistantMessage: &fin.text})
+			w.sc.held -= len(fin.text)
+			e.final = nil
+		}
+		w.err = w.yield(out)
 	}
 }
 

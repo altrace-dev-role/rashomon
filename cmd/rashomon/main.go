@@ -329,9 +329,9 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		// See cmdHook's own comment on payload != nil.
 		var runErr error
 		if payload != nil {
-			runErr = hook.RunProbeFromPayload(sig, phase, payload, st, time.Now)
+			runErr = hook.RunProbeFromPayload(sig, phase, payload, st, entryNow)
 		} else {
-			runErr = hook.RunProbe(sig, phase, in(), st, time.Now)
+			runErr = hook.RunProbe(sig, phase, in(), st, entryNow)
 		}
 		if errors.Is(runErr, store.ErrBodyOverCap) {
 			fmt.Fprintln(stderr, bodyOverCapLine)
@@ -483,7 +483,7 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if standsDown(args, st, stderr) {
 		return true
 	}
-	hook.RecordPaused(stdin, phase, reason, st, time.Now)
+	hook.RecordPaused(stdin, phase, reason, st, entryNow)
 	return true
 }
 

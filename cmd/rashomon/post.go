@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
@@ -42,7 +41,7 @@ func cmdPost(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 
-		p := hook.NewPost(st, time.Now)
+		p := hook.NewPost(st, entryNow)
 		// Group commit, as in cmdHook.
 		st.DeferDurability()
 		// See cmdHook's own comment on payload != nil.
@@ -59,7 +58,7 @@ func cmdPost(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, flushLostLine)
 			return nil
 		}
-		if b := p.Steer(steerEnv(id, time.Now())); len(b) > 0 {
+		if b := p.Steer(steerEnv(id, entryNow())); len(b) > 0 {
 			fmt.Fprintln(stdout, string(b))
 		}
 		return nil

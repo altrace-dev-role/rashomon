@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/history"
 )
@@ -17,6 +18,12 @@ const (
 	synthSession = "s1"
 	synthPath    = "/home/dev/.claude/projects/-repo/s1.jsonl"
 )
+
+// synthTime is the timestamp the n-th line (1-based) of a synthetic transcript
+// carries: one second apart, so an event's time says which line it is from.
+func synthTime(n int) time.Time {
+	return time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC).Add(time.Duration(n) * time.Second)
+}
 
 // doc is a transcript under construction.
 type doc struct {
@@ -36,7 +43,10 @@ type wantEvent struct {
 func newDoc() *doc { return &doc{cwd: "/repo"} }
 
 func (d *doc) add(m map[string]any) int {
-	m["sessionId"], m["version"], m["timestamp"] = synthSession, "2.1.312", "2026-10-29T10:00:00Z"
+	m["sessionId"], m["version"] = synthSession, "2.1.312"
+	if _, ok := m["timestamp"]; !ok {
+		m["timestamp"] = synthTime(len(d.lines) + 1).Format("2006-01-02T15:04:05.000Z")
+	}
 	if _, ok := m["cwd"]; !ok {
 		m["cwd"] = d.cwd
 	}
@@ -199,3 +209,14 @@ func show(ws []wantEvent) string {
 // sorted is want in file order, which is how the builder's account is
 // compared: the builder appends in the order it writes, which is file order.
 func (d *doc) expected() []wantEvent { return d.want }
+
+// history0 is the zero Limits: history.DefaultLimits.
+var history0 = history.Limits{}
+
+func mustJSON(m map[string]any) string {
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}

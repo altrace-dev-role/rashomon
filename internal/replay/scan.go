@@ -5,19 +5,93 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/history"
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/linescan"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
-// maxFinalTextBytes bounds the text kept for a Stop's last_assistant_message.
-// The recorder reads the head of a message up to 256 KiB and its tail up to
-// 64 KiB (cmd/rashomon messageHeadBytes, messageTailBytes), and the whole is
-// refused past hookio.MaxPayloadBytes; a message over this is not kept and
-// its Stop is Unsupported rather than cut, because a cut message is a
-// different message.
-const maxFinalTextBytes = 1 << 20
+// The live recorder never holds a Stop's final message whole. It captures the
+// head of the message, up to MessageHeadBytes, and, when the message is longer
+// than that, its tail, the last MessageTailBytes (cmd/rashomon
+// messageHeadBytes and messageTailBytes, readFinalMessage); the claim scan and
+// the account read nothing else. These two are those constants, and
+// cmd/rashomon's TestREPLAY13_ holds them equal.
+//
+// A replay keeps exactly that and no more (see keepFinal), so what it holds per
+// Stop is at most MessageHeadBytes + MessageTailBytes + 2*finalMargin, not the
+// message. And it holds it only until its Stop is replayed: a Stop's text is
+// released when the Stop is yielded, and the total held at once is bounded by
+// Options.FinalBudget however many turns the file has.
+const (
+	MessageHeadBytes = 256 << 10
+	MessageTailBytes = 64 << 10
+	// finalMargin is how many bytes beyond the recorder's capture are kept at
+	// each end of an elided message, so that the recorder's own cut (at a
+	// byte count, backed to a rune boundary) falls where it would have on the
+	// whole message. TestREPLAY13_ feeds the recorder's reader both and
+	// compares what it captures.
+	finalMargin = 16
+	// DefaultFinalBudget is the most final-message text a replay holds at
+	// once when Options.FinalBudget is zero: about fifty messages of the
+	// largest size, or tens of thousands of ordinary ones.
+	DefaultFinalBudget = 16 << 20
+)
+
+// The live payload carries the whole message, JSON-encoded, and is refused
+// past hookio.MaxPayloadBytes (readFinalMessage returns nothing then, and recap
+// records no Stop). A message whose encoding would not fit is therefore a Stop
+// the live recorder did not see, and the replay marks it Unsupported
+// (FinalTextTooLarge) rather than invent one. Claude Code's payload has other
+// keys beside the message, whose size no transcript shows, so the test leaves
+// finalPayloadHeadroom: a message within that of the limit is not fed either.
+const (
+	maxFinalPayloadBytes = hookio.MaxPayloadBytes
+	finalPayloadHeadroom = 16 << 10
+)
+
+// encodedLen is the length of s as a JSON string, quotes excluded, without
+// building it: a quote or a backslash is two bytes, a newline, return or tab
+// two, any other control byte six, and the rest one. U+2028 and U+2029, which
+// the encoder escapes to six bytes for three, are not counted; the headroom is
+// the allowance for that and for the other keys.
+func encodedLen(s string) int {
+	n := len(s)
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t':
+			n++
+		case c < 0x20:
+			n += 5
+		}
+	}
+	return n
+}
+
+// keepFinal is the part of a final message a replay keeps: the whole of it
+// when it is no longer than what the recorder captures plus the margins, and
+// otherwise its head and its tail with the middle left out. The recorder reads
+// the head of the payload's message and, because the message is longer than
+// the head, the tail of it; the elided message is longer than the head too, and
+// its head and tail are the message's own bytes, so the recorder captures the
+// same two strings from either. The pieces are cut at rune boundaries, so the
+// result is valid UTF-8.
+func keepFinal(s string) (kept string, elided bool) {
+	if len(s) <= MessageHeadBytes+MessageTailBytes+2*finalMargin {
+		return s, false
+	}
+	i := MessageHeadBytes + finalMargin
+	for i > 0 && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	j := len(s) - MessageTailBytes - finalMargin
+	for j < len(s) && !utf8.RuneStart(s[j]) {
+		j++
+	}
+	return s[:i] + s[j:], true
+}
 
 // interruptMarker opens the text of the user line Claude Code writes when the
 // user interrupts a turn ("[Request interrupted by user]" and "...for tool
@@ -42,6 +116,10 @@ type scan struct {
 	// all a walker needs.
 	firstUnreadable history.Pos
 	unreadable      int
+	// budget is Options.FinalBudget; held is the final-message text held for
+	// Stops not yet yielded; peak is the greatest held reached; dropped counts
+	// the Stops that could not be fed for want of budget.
+	budget, held, peak, dropped int
 }
 
 // turnCtx is what a call event needs from the turn it falls in: the prompt's
@@ -69,6 +147,7 @@ func (sc *scan) at(line int) *turnCtx {
 // head is the part of a line the first pass decodes. Everything but the
 // message's content is a key of the line itself.
 type head struct {
+	Timestamp      string `json:"timestamp"`
 	Type           string `json:"type"`
 	IsSidechain    bool   `json:"isSidechain"`
 	IsMeta         bool   `json:"isMeta"`
@@ -101,11 +180,23 @@ type final struct {
 	// end is just past the last block of the message's last line.
 	end                     history.Pos
 	sessionID, cwd, version string
-	// texts counts the message's non-blank text blocks; text is the first
-	// one's, unless it was over the bound (big).
-	texts int
-	text  string
-	big   bool
+	// ts is the timestamp of the last of the message's lines.
+	ts string
+	// texts counts the message's non-blank text blocks. text is the first
+	// one's as keepFinal keeps it, elided when it was cut; size is its length
+	// as written and encoded its length as a JSON string.
+	texts   int
+	text    string
+	size    int
+	encoded int
+	elided  bool
+}
+
+// finalText is a Stop's final message while it waits to be replayed: what
+// keepFinal kept, and the cwd the payload names. It is held in the Stop's
+// Event and dropped when the Stop is yielded.
+type finalText struct {
+	text, cwd string
 }
 
 // open is the turn being read.
@@ -127,7 +218,7 @@ type open struct {
 
 // scanTurns is the first pass.
 func scanTurns(src io.Reader, opt Options) (*scan, error) {
-	sc := &scan{}
+	sc := &scan{budget: opt.finalBudget()}
 	rd := linescan.New(src, report.TranscriptInitialBuffer, report.TranscriptMaxLine)
 	var cur *open
 	n := 0
@@ -262,6 +353,7 @@ func (sc *scan) start(h *head, n int, otherShape bool, opt Options) *open {
 	ev := Event{Kind: UserPromptSubmit, Pos: pos, SessionID: h.SessionID, Seq: -1}
 	un := &unsupported{ev: &ev}
 	un.version(h.Version)
+	un.at(h.Timestamp)
 	un.when(h.SessionID == "", NoSessionID)
 	un.when(opt.TranscriptPath == "", NoTranscriptPath)
 	un.when(h.CWD == "", NoCWD)
@@ -302,17 +394,14 @@ func (sc *scan) assistant(o *open, h *head, n int) {
 	m := o.msg
 	m.stopReason = h.Message.StopReason
 	m.end = history.Pos{Line: n, Block: max(len(blocks), 1)}
-	m.sessionID, m.cwd, m.version = h.SessionID, h.CWD, h.Version
+	m.sessionID, m.cwd, m.version, m.ts = h.SessionID, h.CWD, h.Version, h.Timestamp
 	for _, b := range blocks {
 		if b.Type != "text" || strings.TrimSpace(b.Text) == "" {
 			continue
 		}
 		if m.texts++; m.texts == 1 {
-			if len(b.Text) > maxFinalTextBytes {
-				m.big = true
-			} else {
-				m.text = b.Text
-			}
+			m.size, m.encoded = len(b.Text), encodedLen(b.Text)
+			m.text, m.elided = keepFinal(b.Text)
 		}
 	}
 	o.interrupted, o.unreadable = false, false
@@ -362,15 +451,27 @@ func (sc *scan) finish(o *open, opt Options, last bool) {
 		ev := Event{Kind: Stop, Pos: m.end, SessionID: m.sessionID, Seq: -1}
 		un := &unsupported{ev: &ev}
 		un.version(m.version)
+		un.at(m.ts)
 		un.when(m.sessionID == "", NoSessionID)
 		un.when(opt.TranscriptPath == "", NoTranscriptPath)
 		un.when(m.cwd == "", NoCWD)
 		un.when(m.texts == 0, NoFinalText)
 		un.when(m.texts > 1, SplitFinalMessage)
-		un.when(m.big, FinalTextTooLarge)
+		un.when(m.encoded > maxFinalPayloadBytes-finalPayloadHeadroom, FinalTextTooLarge)
+		// The text is held from here until the Stop is yielded, within the
+		// budget; a Stop that does not fit is not fed (never fed a cut or an
+		// empty message). The check is last, so a Stop that is unsupported
+		// anyway holds nothing.
 		if ev.Supported() {
-			ev.Payload = marshal(&recapPayload{SessionID: m.sessionID, TranscriptPath: opt.TranscriptPath, CWD: m.cwd,
-				HookEventName: Stop.String(), LastAssistantMessage: &m.text})
+			if sc.held+len(m.text) > sc.budget {
+				un.add(FinalTextBudget)
+				sc.dropped++
+			} else {
+				sc.held += len(m.text)
+				sc.peak = max(sc.peak, sc.held)
+				ev.final = &finalText{text: m.text, cwd: m.cwd}
+				ev.FinalBytes, ev.FinalElided = m.size, m.elided
+			}
 		}
 		ev.settle()
 		sc.events = append(sc.events, ev)

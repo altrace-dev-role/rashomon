@@ -131,7 +131,7 @@ var fieldTable = map[Kind][]Field{
 		{Key: "transcript_path", Class: Normalised, Note: noteTransc},
 		{Key: "cwd", Class: Equal, Note: noteCWD + " The turn's last assistant line's: where the shell stood when the turn ended (2.1.312: wd/sub, after the cd)."},
 		{Key: "hook_event_name", Class: Equal, Note: "stopView: writes only for Stop and StopFailure; harness.Detect."},
-		{Key: "last_assistant_message", Class: Equal, Note: "digest.BuildFrom scans it for claims; stopView hands its head and tail to verify.EvaluateStop (readFinalMessage: head 256 KiB, tail 64 KiB). The turn's last message's one text block, byte for byte; a message with no text block or more than one is Unsupported."},
+		{Key: "last_assistant_message", Class: Equal, Note: "digest.BuildFrom scans it for claims; stopView hands its head and tail to verify.EvaluateStop (readFinalMessage: head 256 KiB, tail 64 KiB). The turn's last message's one text block, byte for byte up to what the recorder keeps: a message longer than its head and tail is fed as those two (keepFinal) and the recorder captures the same from either; a message with no text block or more than one, one the live payload could not have carried, or one the replay's budget cannot hold (Options.FinalBudget) is Unsupported."},
 		{Key: "prompt_id", Class: Unread, Note: "digest.BuildFrom chooses the prompt from the run, not the payload. " + noteUnread},
 		{Key: "permission_mode", Class: Unread, Note: noteUnread},
 		{Key: "stop_hook_active", Class: Unread, Note: "parsed into recapPayload.StopHookActive and consulted nowhere ('carried unread', cmd/rashomon/recap_turn.go). " + noteUnread},
