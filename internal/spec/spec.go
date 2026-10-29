@@ -5,6 +5,8 @@
 // in the later SPEC PRs.
 package spec
 
+import "time"
+
 // Trust is how far a spec's text may travel (2.2.7, Trust).
 type Trust string
 
@@ -111,4 +113,45 @@ func Lowest(a, b Trust) Trust {
 		return Untrusted
 	}
 	return b
+}
+
+// The field holdout's bounds (PF-MS5; README 5.6): a share in basis points of
+// 500 to 2000, 1000 when the file names none, and a window of 1 to 365 days.
+const (
+	MinHoldoutBP         = 500
+	DefaultHoldoutBP     = 1000
+	MaxHoldoutBP         = 2000
+	MaxHoldoutWindowDays = 365
+)
+
+// Holdout is a spec's holdout object (PF-MS5): the project's own switch for
+// the W4 field holdout, which 2.5's steer line reads through On and passes to
+// arm.Assign. The zero value means the file has no holdout object, and On of
+// the zero value is on at DefaultHoldoutBP, 1000 basis points; a Holdout that
+// Parse returns from an object is never zero, since its RateBP is 500 to 2000.
+// Started is a UTC midnight, and it is set exactly when WindowDays is.
+type Holdout struct {
+	Off        bool      `json:"off,omitempty"`
+	RateBP     int       `json:"rate_bp,omitempty"`
+	Started    time.Time `json:"started,omitzero"`
+	WindowDays int       `json:"window_days,omitempty"`
+}
+
+// On reports whether the holdout is on at now and, when it is, its share in
+// basis points. It is off when the file says off, and off once the window has
+// closed: the window runs from Started through the day Started plus
+// WindowDays, in UTC, and closes at the next midnight. Before Started it is on,
+// as with no window: the window only ends the holdout. The rate is 0 when off.
+// On reads no clock; now is the hook's.
+func (h Holdout) On(now time.Time) (on bool, rateBP int) {
+	if h.Off {
+		return false, 0
+	}
+	if h.WindowDays > 0 && !now.Before(h.Started.AddDate(0, 0, h.WindowDays+1)) {
+		return false, 0
+	}
+	if h.RateBP == 0 {
+		return true, DefaultHoldoutBP
+	}
+	return true, h.RateBP
 }
