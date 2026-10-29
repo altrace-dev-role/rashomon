@@ -1556,11 +1556,11 @@ usage:
                                directories watch created; prints every path
                                first and asks on the terminal unless --yes;
                                --binary also removes this binary
-  rashomon consent [--yes] [--show]
+  rashomon consent [UNIT [off]] [--yes] [--show]
                                show the screen again, opening with what
                                changed since you last agreed, and record your
-                               consent after y on the terminal; the one way
-                               to widen an upgraded store's record scope
+                               consent after y; UNIT (bodies, share.outcomes)
+                               asks for that alone, and off withdraws it
   rashomon pause                 stop recording on this machine, reaching every
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused

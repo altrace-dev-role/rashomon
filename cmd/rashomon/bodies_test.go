@@ -178,6 +178,7 @@ func TestRC14l_OverCapPrintsOneLine(t *testing.T) {
 			if err := store.WriteBodies(root, store.BodiesSetting{MaxBytes: c.maxBytes, Projects: []string{baseline.Key(benchCWD)}}); err != nil {
 				t.Fatal(err)
 			}
+			grantBodiesHere(t, root)
 			transcript := filepath.Join(t.TempDir(), "t.jsonl")
 			if err := os.WriteFile(transcript, bytes.Repeat([]byte("y"), 64), 0o600); err != nil {
 				t.Fatal(err)

@@ -284,7 +284,8 @@ func TestTRU48_RecordCarriesTheSpecsKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"v", "scope_version", "record_scope", "steer_disclosure", "steer", "text_sha256",
-		"binary_version", "binary_sha256", "via", "tty", "plugin_option_steering", "invocation_id", "at"}
+		"binary_version", "binary_sha256", "via", "tty", "plugin_option_steering", "invocation_id", "at",
+		"unit", "unit_on"}
 	if len(keys) != len(want) {
 		t.Errorf("record has %d keys, want %d: %s", len(keys), len(want), b)
 	}

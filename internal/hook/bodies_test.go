@@ -27,6 +27,7 @@ func TestRC14g_SessionEndCopiesWhenOn(t *testing.T) {
 	if err := store.WriteBodies(st.Root(), store.BodiesSetting{MaxBytes: 1 << 20, Projects: []string{key}}); err != nil {
 		t.Fatal(err)
 	}
+	grantBodies(t, st.Root())
 	body := []byte(`{"type":"user","message":{"content":"hi"}}` + "\n" + `{"type":"assistant"`)
 	transcript := filepath.Join(t.TempDir(), "rc14g.jsonl")
 	if err := os.WriteFile(transcript, body, 0o600); err != nil {

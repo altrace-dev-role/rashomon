@@ -35,8 +35,8 @@ m("ST-4.1 forget leaves the project's copies", SB,
   '\t\tif err := os.Remove(filepath.Join(dir, name)); err != nil {\n\t\t\treturn removed, err\n',
   '\t\tif err := error(nil); err != nil {\n\t\t\treturn removed, err\n', "TestRC14h_ForgetBodiesRemovesTheProjectOnly")
 m("ST-4.1 the copy moves to SessionStart", HP,
-  '\tif phase == store.PhaseEnd && transcriptPath != "" {\n',
-  '\tif phase == store.PhaseStart && transcriptPath != "" {\n', "TestRC14g_SessionEndCopiesWhenOn")
+  '\tif phase == store.PhaseEnd && transcriptPath != "" && bodiesConsented(st.Root()) {\n',
+  '\tif phase == store.PhaseStart && transcriptPath != "" && bodiesConsented(st.Root()) {\n', "TestRC14g_SessionEndCopiesWhenOn")
 m("ST-4.1 purge leaves the copies", PG,
   '\t\treturn level == 1 && (strings.HasSuffix(name, ".jsonl") || strings.HasPrefix(name, store.BodiesTempPrefix))\n',
   '\t\treturn false\n', "TestRC14d_PurgeLeavesNoFile")

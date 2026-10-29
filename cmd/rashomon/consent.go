@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
@@ -17,6 +18,9 @@ import (
 // a consent record and nothing else; it is the one command that widens the
 // record scope of a store installed by an older release.
 func cmdConsent(args []string, stdout io.Writer) error {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		return cmdConsentUnit(args[0], args[1:], stdout)
+	}
 	yes, show, err := consentFlags(args)
 	if err != nil {
 		return err
@@ -58,13 +62,15 @@ func cmdConsent(args []string, stdout io.Writer) error {
 	return nil
 }
 
-// wireConsentViews hands the hook package consent.json's two readers, which
-// it cannot import without a cycle: the SessionStart probe syncs the
-// record_scope and steer_disclosure markers through them. main calls it
-// before any hook runs.
+// wireConsentViews hands the hook package consent.json's three readers,
+// which it cannot import without a cycle: the SessionStart probe syncs the
+// record_scope and steer_disclosure markers through two, and SessionEnd asks
+// the third whether the bodies unit is granted. main calls it before any
+// hook runs.
 func wireConsentViews() {
 	hook.ConsentRecordScope = consent.RecordScope
 	hook.ConsentSteerDisclosure = consent.SteerDisclosure
+	hook.ConsentHas = consent.Has
 }
 
 // consentAppendError is the consent command's message for an Append error.
