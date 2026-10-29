@@ -258,3 +258,34 @@ func TestLocateIsWhatCaptureRecords(t *testing.T) {
 }
 
 func sameDigest(a, b *string) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+
+// TestS3_13_DirectoryOptionAfterTheRowsWords (5.13) pins, as the tree reads
+// it, `make test -C sub`: a test run whose location is the payload's cwd, the
+// start directory, and whose identity holds the option, so its runner digest
+// is neither `make test`'s nor that of `cd sub && make test`, which runs in
+// another location. No table reads the option as a directory (a later card's);
+// this row fails if a digest moves.
+func TestS3_13_DirectoryOptionAfterTheRowsWords(t *testing.T) {
+	key, cwd := []byte("key"), "/tmp/project"
+	locate := func(cmd string) (shape.Shape, string) {
+		raw, err := json.Marshal(map[string]string{"command": cmd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Locate(key, "Bash", raw, cwd)
+	}
+	s, at := locate("make test -C sub")
+	bare, _ := locate("make test")
+	sub, subAt := locate("cd sub && make test")
+	if s.VerbClass != shape.VerbTest || s.RunnerKind == nil || *s.RunnerKind != shape.RunnerTest ||
+		s.StatusMasked == nil || *s.StatusMasked != shape.MaskedNone || at != shape.CWDDigest(key, cwd) {
+		t.Errorf("make test -C sub: class %s, kind %v, masked %v, location the payload cwd's %t; want test, test, none, true",
+			s.VerbClass, s.RunnerKind, s.StatusMasked, at == shape.CWDDigest(key, cwd))
+	}
+	if s.RunnerDigest == nil || sameDigest(s.RunnerDigest, bare.RunnerDigest) || sameDigest(s.RunnerDigest, sub.RunnerDigest) ||
+		subAt != shape.CWDDigest(key, cwd+"/sub") {
+		t.Errorf("make test -C sub: runner digest set %t, make test's %t, cd sub's %t, cd sub's location /tmp/project/sub's %t",
+			s.RunnerDigest != nil, sameDigest(s.RunnerDigest, bare.RunnerDigest), sameDigest(s.RunnerDigest, sub.RunnerDigest),
+			subAt == shape.CWDDigest(key, cwd+"/sub"))
+	}
+}

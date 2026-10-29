@@ -967,8 +967,8 @@ m("TB pushd's stack forms are read as a location", "internal/shape/leading.go",
   " || cd.text == \"pushd\" && strings.HasPrefix(dir.text, \"+\") ||", " ||", "TestS2_PushdFoldsAsCd")
 m("TB the rules version stays at 7 when hiding flags and pushd change", "internal/shape/masked.go",
   "const RulesVersion = 9\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
-# S3 (5.15): the program stream reads a comment as the list stream does, and the here-document skip
-# stays the list stream's.
+# S3 (5.15, 5.13): the program stream reads a comment as the list stream does, and the here-document skip
+# stays the list stream's; `make test -C sub` is pinned at the payload's cwd.
 m("TB the program stream joins a comment's backslash-newline", "internal/shape/tokenize.go",
   "\treturn bounded(lex(joinLines(s, true), true, false))\n", "\treturn bounded(lex(joinLines(s, false), true, false))\n",
   "TestS3_TK15_|TestS3_TK15b_|TestFoldKeepsRunnerIdentity")
@@ -978,5 +978,8 @@ m("TB the program stream reads no comment", "internal/shape/tokenize.go",
 m("TB the program stream skips a here-document's body", "internal/shape/tokenize.go",
   "\treturn bounded(lex(joinLines(s, true), true, false))\n", "\treturn bounded(lex(joinLines(s, true), true, true))\n",
   "TestS3_TK15c_")
+m("TB make test -C sub is located in its directory option", "internal/hook/handle.go",
+  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
+  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, append(dirs, \"sub\")))\n", "TestS3_13_")
 m("TB the rules version stays at 8 when comments end at their newline", "internal/shape/masked.go",
   "const RulesVersion = 9\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
