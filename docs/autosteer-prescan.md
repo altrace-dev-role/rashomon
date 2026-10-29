@@ -652,6 +652,21 @@ against the transcript seed before anything ships.
 | **B3e** | The P1 simulation (§7.2), labels under rubrics A and B (§7.3), and the evaluation report | The report: mechanical difference counts, the safety and benefit bounds, coverage, and κ. **No enable switch is built in v1** |
 | **B4** | Report polish; `BenchmarkScanFile`, the RSS and wall-time rows (§6.7) | Perf gates on darwin and linux |
 
+**Status of B1.** `internal/history` reads one transcript file:
+- It joins each `tool_use` to its `tool_result` by id and emits calls in `tool_use`
+  order.
+- It sets outcomes and grades per §6.1 and enforces the §6.7 limits, each of which
+  degrades a grade rather than growing memory.
+- It shares the report's denial rule (`report.IsDenial`).
+- It is tested against the real 2.1.280 fixture, with `FuzzHistCalls` and 13 mutants
+  (`HIST-1`).
+
+Owed:
+- **A fixture for the current Claude Code version.** Only 2.1.280 is supported, so
+  transcripts from later versions (2.1.312 is current here) grade `Unsupported` until
+  a scrubbed fixture of each is added.
+- **The `BenchmarkScanFile` and RSS rows,** which are B4's.
+
 v1 is B0 to B4. It needs no RulesVersion bump, adds no steer pattern, and changes no
 live verdict. **Order:**
 - **Proceeding now:** B1, B2 and B3a, the independently useful reporting path.

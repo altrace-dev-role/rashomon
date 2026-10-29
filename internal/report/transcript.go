@@ -73,6 +73,10 @@ func resultText(raw json.RawMessage) string {
 	return ""
 }
 
+// IsDenial is isDenial for the other readers of a transcript
+// (internal/history), so a refusal is told from a failure by one rule.
+func IsDenial(isError bool, text string) bool { return isDenial(isError, text) }
+
 // isDenial reports whether a tool_result is the user refusing the call.
 //
 // BOTH halves are required. is_error alone is every failed command; the prefix
