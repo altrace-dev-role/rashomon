@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
@@ -134,6 +133,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdShare(rest, stdout) })
 	case "spend":
 		return guarded(stderr, func() error { return cmdSpend(rest, stdout) })
+	case "receipt":
+		return guarded(stderr, func() error { return cmdReceipt(rest, stdout) })
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -1538,7 +1539,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+hookUsage)
+`+receiptUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the
@@ -1629,18 +1630,6 @@ func countOf(n int, noun string) string {
 		return "1 " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
-}
-
-// clearBaselines removes a host from every project baseline in the store, and
-// reports whether the store holds a baseline directory at all.
-//
-// A file it cannot clear does not stop it: the host still leaves every other
-// project's baseline, and the failures are returned together. The listing
-// and the per-file work are baseline.ForgetAll's, under its one lock -- see
-// its own doc for why this cannot list the directory itself and call
-// baseline.ForgetFile per file the way it once did.
-func clearBaselines(root, raw string) (int, bool, error) {
-	return baseline.ForgetAll(filepath.Join(root, baseline.DirName), raw)
 }
 
 // storeExistsAt asks whether a root holds a store without opening one.
