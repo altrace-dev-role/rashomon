@@ -1,8 +1,8 @@
 // Package spec holds the repository spec's contract: the compiled form VERIFY
 // evaluates against (tech spec 2.2.7). P-07 freezes the names and the limits
 // the spec text states. Parse reads one spec.json strictly into a File and
-// returns its digest; discovery, the managed spec and the trust binding land
-// in the later SPEC PRs.
+// returns its digest; Discover finds the files that apply to a call and
+// merges them into a Compiled. The trust binding lands in a later SPEC PR.
 package spec
 
 import "time"
@@ -18,6 +18,11 @@ const (
 	Trusted Trust = "trusted"
 	// Managed is the managed-directory spec, read as trusted.
 	Managed Trust = "managed"
+	// Builtin is the trust of a declaration no file makes (TrustOf of
+	// SourceImplied; 1.3's learned gates carry the same word). It is not a
+	// source's trust, so it is not in Trusts, and Lowest reads it as
+	// untrusted.
+	Builtin Trust = "builtin"
 )
 
 // Trusts is the closed list in the spec's declaration order.
@@ -83,12 +88,26 @@ type Source struct {
 // SHA-256 over the source digests in that order, the one value the
 // checkpoint's spec_digest carries; Trust is the lowest among the sources,
 // the checkpoint's spec_trust, while each rule keeps its own source's trust
-// on the fact it raises. Gates, rules and facts are added by the PR that
-// parses them (2.2.7; archive 20.2.8).
+// on the fact it raises (2.2.7; archive 20.2.8). Discover builds it (README
+// 3.1); every slice is in a fixed order, sources by precedence and entries by
+// file order.
 type Compiled struct {
 	Sources []Source
 	Digest  string
 	Trust   Trust
+	// Gates, Rules and Facts are the sources' declarations merged, managed
+	// first, each Source indexing Sources.
+	Gates []Declared
+	Rules []DeclaredRule
+	Facts []DeclaredFact
+	// Dropped is each repository declaration a managed one shadowed.
+	Dropped []Dropped
+	// Errors has one line per file that applied nothing: "<path>: <Parse's
+	// error>", or "<path>: managed spec ignored: not admin-owned".
+	Errors []string
+	// Holdout is the managed spec's holdout object when it has one, else the
+	// repository spec's, else the zero Holdout (on at DefaultHoldoutBP).
+	Holdout Holdout
 }
 
 // Lowest is the lower of two trusts in the order untrusted < trusted <
