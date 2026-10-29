@@ -1,0 +1,1671 @@
+{
+  "prd": "autosteer-prd-2026-10-21",
+  "rows": [
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/shape/runner.go"
+        },
+        {
+          "file": "internal/verify/index.go",
+          "symbol": "Required"
+        },
+        {
+          "file": "internal/verify/evaluate.go",
+          "symbol": "indexLearned"
+        },
+        {
+          "file": "internal/verify/gates.go",
+          "symbol": "learnedGateID"
+        },
+        {
+          "file": "internal/verify/index_test.go",
+          "symbol": "TestIDX1_AFamilySeenInTwoSessionsIsRequired"
+        },
+        {
+          "file": "internal/verify/evaluate_test.go",
+          "symbol": "TestVER46_RequiredFollowsTheIndex"
+        }
+      ],
+      "id": "PF-PG1",
+      "implementation": "Gates are runner families from closed test and build runner tables, required after two sessions within 30 days or all required while no index has learned one, but spec-declared gates never enter the snapshot and lint, typecheck and scan have no runner table.",
+      "integration": [
+        {
+          "event": "PreToolUse",
+          "handler": "internal/hook/handle.go"
+        },
+        {
+          "event": "PostToolUse",
+          "handler": "internal/hook/steerstep.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "spec-declared gates into gateStates (DECLARED-GATES1, proposed): evaluate reads the spec only into SpecInfo and builds every gate with source learned",
+        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom",
+        "the PostToolUse steer step passes a nil index (steerstep.go judge), so every gate reads required there, against index.go's comment"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Gate families"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/shape/masked.go",
+          "symbol": "statusMasked"
+        },
+        {
+          "file": "internal/verify/gates.go",
+          "symbol": "maskedReason"
+        },
+        {
+          "file": "internal/gateout/gateout.go",
+          "symbol": "Classify"
+        },
+        {
+          "file": "internal/verify/gates_test.go",
+          "symbol": "TestVER13_MaskedIsInconclusiveNeverGreen"
+        },
+        {
+          "file": "internal/verify/gates_test.go",
+          "symbol": "TestVER13b_MaskedReasonsByOutput"
+        }
+      ],
+      "id": "PF-PG2",
+      "implementation": "The hook records whether a pipe hid a recognised runner's status and a masked run is never green, but no summary line is read under an allowlist and no hook writes gate_output, so in a session the masked reason is always masked_no_success_line.",
+      "integration": [
+        {
+          "event": "PreToolUse",
+          "handler": "internal/hook/handle.go"
+        },
+        {
+          "event": "PostToolUse",
+          "handler": "internal/hook/post.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "a post-hook writer of the execution's gate_output (GATEOUT-WIRE1, proposed): gateout.Classify has no runtime caller and TestVER13b reads fixture-built output",
+        "the pass read from the last summary line under a closed allowlist of the other pipeline commands (VER-6 to VER-10)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Masked-output classifier"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/evaluate.go",
+          "symbol": "evaluate"
+        },
+        {
+          "file": "internal/verify/gates.go",
+          "symbol": "gateStates"
+        },
+        {
+          "file": "internal/verify/state.go",
+          "symbol": "State"
+        },
+        {
+          "file": "internal/verify/gates_test.go",
+          "symbol": "TestVER10_GreenAfterTheLastRelevantWrite"
+        },
+        {
+          "file": "internal/verify/evaluate_test.go",
+          "symbol": "TestVER44_ShuffledRecordOrderGivesIdenticalBytes"
+        },
+        {
+          "file": "internal/verify/evaluate_test.go",
+          "symbol": "TestRES14b_EvaluateAtAPointEqualsEvaluateOverThePrefix"
+        }
+      ],
+      "id": "PF-PG3",
+      "implementation": "A pure first-match table gives one of seven states per runner family, byte-identical over shuffled records and equal over a prefix, but absent and output-based red cannot occur in a session because no hook writes gate_output.",
+      "integration": [
+        {
+          "event": "PostToolUse",
+          "handler": "internal/hook/steerstep.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "the gate_output writer (as PF-PG2)",
+        "a run scope on the record: every run's scope is unknown, so the latest full-scope run is not told apart"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Gate evaluator"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/claims.go",
+          "symbol": "Claims"
+        },
+        {
+          "file": "internal/verify/claims.go",
+          "symbol": "quote"
+        },
+        {
+          "file": "internal/verify/claimlex.go",
+          "symbol": "claimRule"
+        },
+        {
+          "file": "internal/verify/claims_test.go",
+          "symbol": "TestVER55_ClaimExtractionTable"
+        },
+        {
+          "file": "internal/verify/claims_verdict_test.go",
+          "symbol": "TestVER57_ClaimKeepsOnlyTheHMAC"
+        },
+        {
+          "file": "internal/verify/claims_verdict_test.go",
+          "symbol": "TestVER62_SentenceSplitAndLastQuestion"
+        }
+      ],
+      "id": "PF-PG4",
+      "implementation": "At Stop the final message is scanned in memory against a closed claim lexicon with negation, modal and question filters, each claim judged against its kind's required gates, and only an HMAC of the sentence is kept.",
+      "integration": [
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "no live gate has kind lint, typecheck or scan, so those claim classes read no_gate_known (PF-PG1)",
+        "no claim verdict becomes a steer finding for the agent"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "Claim comparator"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/obligations.go",
+          "symbol": "EvaluateWithObligations"
+        },
+        {
+          "file": "internal/verify/obligations.go",
+          "symbol": "obligations"
+        },
+        {
+          "file": "internal/verify/evidence.go",
+          "symbol": "expectedObligations"
+        },
+        {
+          "file": "internal/verify/obligations_test.go",
+          "symbol": "TestPG5c_LedgerIsByteIdenticalOverShuffledRecords"
+        },
+        {
+          "file": "internal/verify/obligations_test.go",
+          "symbol": "TestINV2_IncompleteIsUnknownNeverUnmet"
+        },
+        {
+          "file": "internal/verify/obligations_test.go",
+          "symbol": "TestPG5e_EveryListNonNilAndOnlyV0Kinds"
+        }
+      ],
+      "id": "PF-PG5",
+      "implementation": "EvaluateWithObligations folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, but nothing outside tests calls it, it emits no spec_rule or proposed_check row, and its scope is the session at every point.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a hook or verb that calls EvaluateWithObligations: the checkpoint and the done flag read the snapshot, not the ledger",
+        "spec_rule rows: no spec rule evaluator exists and SpecVerdicts is always empty",
+        "proposed_check rows",
+        "declared gates (PF-PG1)",
+        "platform_impact wiring: internal/platform has no runtime caller (6.1)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "The obligation ledger"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/hook/treesha.go",
+          "symbol": "writtenSHA"
+        },
+        {
+          "file": "internal/hook/treesha.go",
+          "symbol": "TreeShas"
+        },
+        {
+          "file": "internal/verify/tree.go",
+          "symbol": "TreeTargets"
+        },
+        {
+          "file": "internal/verify/tree.go",
+          "symbol": "bind"
+        },
+        {
+          "file": "internal/verify/tree_test.go",
+          "symbol": "TestPG6a_EditAfterTheRunChangesTheDigest"
+        },
+        {
+          "file": "internal/verify/tree_test.go",
+          "symbol": "TestCONC1_ForeignEditIsUnknownNotUnmet"
+        }
+      ],
+      "id": "PF-PG6",
+      "implementation": "A named write's post records its file's sha256 under record scope v5 and the Stop hashes the same files now, so a green run whose files moved is stale; as ruled in D140, HEAD is no part of it and the trees are compared path by path.",
+      "integration": [
+        {
+          "event": "SessionStart",
+          "handler": "internal/hook/recordscope.go"
+        },
+        {
+          "event": "PostToolUse",
+          "handler": "internal/hook/post.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "under record scope v4, the scope without consent, no sha is written and the binding reads unknown",
+        "the evidence_bound ledger row is unreachable with the ledger (PF-PG5)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "The tree digest"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/obligations.go",
+          "symbol": "watchedRow"
+        },
+        {
+          "file": "internal/verify/obligations_test.go",
+          "symbol": "TestPG7a_RedWriteGreenMeetsWatched"
+        },
+        {
+          "file": "internal/verify/obligations_test.go",
+          "symbol": "TestPG7b_GreenOnlyDoesNotMeetWatched"
+        }
+      ],
+      "id": "PF-PG7",
+      "implementation": "watchedRow meets watched_red_then_green on a red run, a later relevant write and a later green, but only as a ledger row, and the ledger has no runtime caller.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "the ledger's caller (PF-PG5)",
+        "the change's scope: the window is the session (PF-PG13)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Watched red, then green"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/evaluate.go",
+          "symbol": "recordGreen"
+        },
+        {
+          "file": "internal/verify/checkpoint.go",
+          "symbol": "Cut"
+        },
+        {
+          "file": "internal/verify/checkpoint.go",
+          "symbol": "cutOrder"
+        },
+        {
+          "file": "internal/verify/checkpoint_test.go",
+          "symbol": "TestVER51b_CheckpointUnderEightKiBWithOmittedCounts"
+        },
+        {
+          "file": "internal/verify/checkpoint_test.go",
+          "symbol": "TestVER51c_CutOrderNeverDropsARedBeforeAGreen"
+        },
+        {
+          "file": "internal/verify/integrity_test.go",
+          "symbol": "TestINT10_UnresolvedBlocksRecordGreenAndRowsFindings"
+        }
+      ],
+      "id": "PF-PG8",
+      "implementation": "recordGreen needs a complete record, no unresolved integrity entry and every required gate green, and Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order, but no spec violation holds only vacuously because no spec rule is evaluated.",
+      "integration": [
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "a spec rule evaluator to fill SpecVerdicts",
+        "the ledger's all-met state (PF-PG5)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Record-green point and checkpoint"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/recap/done.go",
+          "symbol": "DoneFlag"
+        },
+        {
+          "file": "internal/recap/done.go",
+          "symbol": "unmetExpected"
+        },
+        {
+          "file": "internal/verify/evidence.go",
+          "symbol": "runRow"
+        },
+        {
+          "file": "internal/recap/done_test.go",
+          "symbol": "TestPG9_UnbackedDoneFlagFiresOnAClaimWithoutAGreen"
+        },
+        {
+          "file": "internal/recap/evidence_done_test.go",
+          "symbol": "TestEV6_DoneWithUnmetEvidenceNamesTheKind"
+        },
+        {
+          "file": "internal/verify/evidence_test.go",
+          "symbol": "TestEV1_DeclaredEvidenceRunMeetsTheKind"
+        }
+      ],
+      "id": "PF-PG9",
+      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, prints one user flag in place of the value line and never blocks, but the agent is not told at the next prompt and a declared gate's evidence row cannot read met in a session.",
+      "integration": [
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "the next-prompt note to the agent: recap prints systemMessage only",
+        "declared gates in the snapshot: runRow looks up spec:<id> and every live gate id is learned:..., so with a task file the flag names a declared gate's kind unmet even after its green run; TestEV1 builds the spec: gate by hand",
+        "W1 precision measurement"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "The done flag"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/recap/value.go",
+          "symbol": "ValueLine"
+        },
+        {
+          "file": "internal/recap/value.go",
+          "symbol": "fitted"
+        },
+        {
+          "file": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "file": "internal/recap/value_test.go",
+          "symbol": "TestVER65_ValueLineRowsRender"
+        },
+        {
+          "file": "internal/recap/value_test.go",
+          "symbol": "TestFUN15b_TemplatesUseNoBannedWord"
+        },
+        {
+          "file": "internal/recap/value_test.go",
+          "symbol": "TestFUN15c_WidestClauseFitsEightyColumns"
+        }
+      ],
+      "id": "PF-PG10",
+      "implementation": "ValueLine renders at most three lines from closed templates with the state sentence fitted to 80 columns, but the summary switch is the constant summaryOn = true and no summary off or summary on verb exists.",
+      "integration": [
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "summary off and summary on with a persisted switch (FUN-16)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "End-of-turn value line"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/report/text.go",
+          "symbol": "writeSession"
+        },
+        {
+          "file": "internal/report/text.go",
+          "symbol": "writeAccount"
+        },
+        {
+          "file": "internal/recap/recap.go",
+          "symbol": "pointer"
+        },
+        {
+          "file": "internal/report/account_test.go",
+          "symbol": "TestAccount_QuotesTheLastAssistantMessage"
+        },
+        {
+          "file": "internal/recap/recap_test.go",
+          "symbol": "TestLinePointsAtACommandTheOriginHas"
+        }
+      ],
+      "id": "PF-PG11",
+      "implementation": "report opens each session with the final message read live from the transcript beside the record and the recap points at it, but report reads no checkpoint verdict, never matches the quote to its HMAC and names no next command per contradiction.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/main.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "report reading the checkpoint's claim verdicts",
+        "the live quote matched to its QuoteHMAC (VER-66, VER-67)",
+        "one next command per contradiction"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Contradiction-first report"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/integrity.go",
+          "symbol": "integrity"
+        },
+        {
+          "file": "internal/verify/integrity_raise.go",
+          "symbol": "integrityRaises"
+        },
+        {
+          "file": "internal/verify/pairs.go",
+          "symbol": "testPairs"
+        },
+        {
+          "file": "internal/verify/snapshot.go",
+          "symbol": "IntegrityKind"
+        },
+        {
+          "file": "internal/verify/integrity_test.go",
+          "symbol": "TestINT1_ATestDeletedAfterRedIsUnresolvedTestRemoved"
+        },
+        {
+          "file": "internal/verify/integrity_raise_test.go",
+          "symbol": "TestIV3b_EachDoorIsAUserFlagWithItsLine"
+        },
+        {
+          "file": "internal/recap/recap_test.go",
+          "symbol": "TestLineTestBending"
+        }
+      ],
+      "id": "PF-PG12",
+      "implementation": "Nine closed integrity kinds are folded and kept user-only, with the one-way doors flagged at PostToolUse, but no hook writes edit marks, so only tests_only_then_green and store_touched have producers in a session.",
+      "integration": [
+        {
+          "event": "PostToolUse",
+          "handler": "internal/hook/steerstep.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        }
+      ],
+      "missing": [
+        "the edit-marks writer (1.8p) for test_removed, skip_added, assertions_removed and suppression_added",
+        "producers for generated_edited, gate_weakened and gate_config_edited (IV-PRODUCERS1, D139)",
+        "three kinds more to reach the PRD's twelve"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Integrity markers (user-only)"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/verify/obligations.go",
+          "symbol": "obligationScopes"
+        }
+      ],
+      "id": "PF-PG13",
+      "implementation": "Every point kind maps to the session scope (v0 fact Q1), and only the Stop point and the post's steer point are evaluated in a session.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "turn, subtask, commit, push and PR windows and their evaluation points",
+        "SubagentStop and PreCompact are not installed"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Scopes"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/ingest.go",
+          "symbol": "Config"
+        },
+        {
+          "file": "pgraph/ingest.go",
+          "symbol": "Load"
+        },
+        {
+          "file": "pgraph/ingest.go",
+          "symbol": "hashFile"
+        },
+        {
+          "file": "pgraph/ingest.go",
+          "symbol": "normalisePath"
+        },
+        {
+          "file": "pgraph/ingest_test.go",
+          "symbol": "TestPL1_ResolvedSetEqualsGoList"
+        }
+      ],
+      "id": "PF-PL1",
+      "implementation": "Load and LoadScanRoot resolve Go modules through go/packages under a canonical Config, keying files by normalised path and content sha256, never mtime.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a caller in cmd/rashomon or a hook that runs Load and writes a log a hook can read: the rashomon module does not require pgraph"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "Ingest"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/extract.go",
+          "symbol": "Extract"
+        },
+        {
+          "file": "pgraph/extract.go",
+          "symbol": "callsIn"
+        },
+        {
+          "file": "pgraph/extract.go",
+          "symbol": "embeddedOf"
+        },
+        {
+          "file": "pgraph/identity.go"
+        },
+        {
+          "file": "pgraph/oracle_test.go",
+          "symbol": "rederive"
+        },
+        {
+          "file": "pgraph/cha_test.go",
+          "symbol": "TestPL3_AgreesWithRederivation"
+        }
+      ],
+      "id": "PF-PL2",
+      "implementation": "Extract reads calls, declarations, embeds and interface satisfaction from go/types at tier PROVEN, and an independent re-derivation oracle agrees with it.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a hook-reachable producer (as PF-PL1)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "PROVEN facts"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/cha.go",
+          "symbol": "Dispatch"
+        },
+        {
+          "file": "pgraph/cha.go",
+          "symbol": "chaProducer"
+        },
+        {
+          "file": "pgraph/cha.go",
+          "symbol": "SyncCHA"
+        },
+        {
+          "file": "pgraph/cha_test.go",
+          "symbol": "TestPL3_CorpusPrecisionRecall"
+        },
+        {
+          "file": "pgraph/cha_test.go",
+          "symbol": "TestPL3_SoundOnPartialPrograms"
+        }
+      ],
+      "id": "PF-PL3",
+      "implementation": "Dispatch and SyncCHA run CHA over whole-program SSA and write only may-call facts at tier ALGORITHMIC, and a test reproduces the published precision and recall on the real corpus.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a hook-reachable producer (as PF-PL1)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "ALGORITHMIC dispatch"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/tier.go",
+          "symbol": "Tier"
+        },
+        {
+          "file": "pgraph/tier.go",
+          "symbol": "Producer"
+        },
+        {
+          "file": "pgraph/tier.go",
+          "symbol": "newProducer"
+        },
+        {
+          "file": "pgraph/tier.go",
+          "symbol": "ProposedProducer"
+        },
+        {
+          "file": "pgraph/tier.go",
+          "symbol": "checkField"
+        },
+        {
+          "file": "pgraph/cha_test.go",
+          "symbol": "TestPL3_MayCallRefusedAtProven"
+        }
+      ],
+      "id": "PF-PL4",
+      "implementation": "The tier is a property of the producer, fixed at construction, only pgraph can mint a PROVEN or ALGORITHMIC producer, and a may-call fact is refused at PROVEN on write and on decode.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a hook-reachable producer (as PF-PL1)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "Trust tiers"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/log.go",
+          "symbol": "Triple"
+        },
+        {
+          "file": "pgraph/log.go",
+          "symbol": "Fact"
+        },
+        {
+          "file": "pgraph/log.go",
+          "symbol": "Log"
+        },
+        {
+          "file": "pgraph/log.go",
+          "symbol": "Reconcile"
+        },
+        {
+          "file": "pgraph/codec.go",
+          "symbol": "Encode"
+        },
+        {
+          "file": "pgraph/codec.go",
+          "symbol": "DecodeLog"
+        },
+        {
+          "file": "pgraph/sync_test.go",
+          "symbol": "TestPL5_IncrementalViewByteIdenticalToFull"
+        },
+        {
+          "file": "pgraph/sync_test.go",
+          "symbol": "TestPL5_TwoTiersIncrementalViewByteIdenticalToFull"
+        }
+      ],
+      "id": "PF-PL5",
+      "implementation": "An append-only log of assert and retract records over triples with tier, configuration, commit and extractor encodes and decodes deterministically, and an incremental view is byte-identical to a full rebuild.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a producer that runs Sync or SyncCHA from cmd/rashomon or a hook and writes a log internal/platform can read"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "Fact log"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/doc.go"
+        }
+      ],
+      "id": "PF-PL6",
+      "implementation": "pgraph's package doc names per-package invalidation as a later slice, and Sync and SyncCHA always recompute.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a per-package content-hash gate before PROVEN re-extraction",
+        "a debounce before CHA re-sync"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Two-speed invalidation"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/doc.go"
+        }
+      ],
+      "id": "PF-PL7",
+      "implementation": "pgraph's package doc names blast radius as a later slice, and no fan-in, fan-out or reverse-reachability code exists.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a reverse-reachability query over the live log, reported as two numbers, PROVEN-only and ALGORITHMIC-inclusive"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Blast radius"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/platform/platform.go",
+          "symbol": "Obligations"
+        },
+        {
+          "file": "internal/platform/platform.go",
+          "symbol": "Impact"
+        },
+        {
+          "file": "internal/platform/platform.go",
+          "symbol": "familyHash"
+        },
+        {
+          "file": "internal/platform/decode.go",
+          "symbol": "decode"
+        },
+        {
+          "file": "internal/platform/decode.go",
+          "symbol": "parseRecord"
+        },
+        {
+          "file": "internal/platform/resolve.go",
+          "symbol": "packageOf"
+        },
+        {
+          "file": "pgraph/platform_fixture_test.go",
+          "symbol": "TestPL8h_FixturePinned"
+        }
+      ],
+      "id": "PF-PL8",
+      "implementation": "internal/platform's Impact and Obligations decode a pgraph log with their own decoder, resolve written paths to packages and emit one obligation per touched package, one unknown row on any error, but nothing fills RunView.LogPath outside a test and no strict identifier resolution exists.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a pgraph-log producer wired into a real hook (SessionStart or PostToolUse)",
+        "a LogPath setter reachable from that hook",
+        "strict identifier resolution: an exact id, an exact qualified name, or a refusal naming every candidate"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "`Impact()` and `Obligations()`"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/ingest.go",
+          "symbol": "LoaderEnv"
+        },
+        {
+          "file": "pgraph/egress_test.go",
+          "symbol": "TestPL9_LoaderEnvForced"
+        },
+        {
+          "file": "pgraph/egress_test.go",
+          "symbol": "TestPL9_MissingModuleFailsWithoutDialing"
+        },
+        {
+          "file": "pgraph/egress_test.go",
+          "symbol": "TestPL9_LoaderRunsInNetworklessNamespace"
+        }
+      ],
+      "id": "PF-PL9",
+      "implementation": "LoaderEnv forces GOPROXY=off, GOTOOLCHAIN=local, GOSUMDB=off and the other loader settings whatever the environment asks, and a test re-runs the loader in a network namespace where unshare exists.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a CI job that runs under unshare -n, so the namespace test runs instead of skipping"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "No egress"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/identity.go",
+          "symbol": "findLocalTypes"
+        },
+        {
+          "file": "pgraph/link.go",
+          "symbol": "Fingerprint"
+        },
+        {
+          "file": "pgraph/link.go",
+          "symbol": "Fingerprints"
+        },
+        {
+          "file": "pgraph/link.go",
+          "symbol": "similarity"
+        },
+        {
+          "file": "pgraph/link_test.go",
+          "symbol": "TestPL10_SimilarityOnRealBodies"
+        }
+      ],
+      "id": "PF-PL10",
+      "implementation": "Symbol ids are injective within a build, numbered on duplicate names, and a rename or a body at least 90% similar above a 20-node floor is linked across commits while an ambiguous match is left unlinked.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a caller that fingerprints two commits and keeps the link where a session could read it"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "built",
+      "title": "Stable identity"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/doc.go"
+        }
+      ],
+      "id": "PF-PL11",
+      "implementation": "pgraph's package doc lists unknown fan-in as a later slice, and no reflection or cgo boundary detection exists.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "fan-in itself (PF-PL7)",
+        "a reflection and cgo call-boundary detector"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Unknown, never zero"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/doc.go"
+        }
+      ],
+      "id": "PF-PL12",
+      "implementation": "pgraph's package doc names the untracked-configuration warning as a later slice, and no detector exists.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a detector that compares a changed file against every tracked Config and warns loudly, never zero obligations"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Untracked build-configuration warning"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "pgraph/accuracy.go",
+          "symbol": "Accuracy"
+        },
+        {
+          "file": "pgraph/accuracy.go",
+          "symbol": "Score"
+        },
+        {
+          "file": "pgraph/accuracy.go",
+          "symbol": "Describe"
+        },
+        {
+          "file": "pgraph/accuracy_test.go",
+          "symbol": "TestPL3_DescribeCarriesCountsAndCorpusSize"
+        },
+        {
+          "file": "pgraph/cha_test.go",
+          "symbol": "TestPL3_CorpusPrecisionRecall"
+        }
+      ],
+      "id": "PF-PL13",
+      "implementation": "Score and Describe compute precision and recall, NaN when undefined, and a test reproduces the published figure on the real corpus, but no pgraph eval command exists, and the PRD's done-when names one.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a pgraph eval command in a main package that runs Dispatch, Score and Describe against a named corpus"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Accuracy publication"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [],
+      "id": "PF-PL14",
+      "implementation": "No demo exists, and the PRD's status for the row is proposed.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a design: the row is proposed"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Read-only demo"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/steer/line.go",
+          "symbol": "Line"
+        },
+        {
+          "file": "internal/hook/steerstep.go",
+          "symbol": "heldOut"
+        },
+        {
+          "file": "internal/store/steerlog.go",
+          "symbol": "AppendSteer"
+        },
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "AppendLabel"
+        },
+        {
+          "file": "internal/steer/holdout_test.go",
+          "symbol": "TestMS5b_HeldOutNoteReachesTheUserOnly"
+        },
+        {
+          "file": "internal/steer/line_store_test.go",
+          "symbol": "TestREC42f_StoredLineReadsBackAsALine"
+        },
+        {
+          "file": "internal/learn/learn_test.go",
+          "symbol": "TestP6_LabelRowIsLabelWriter1sContract"
+        }
+      ],
+      "id": "PF-HD1",
+      "implementation": "Every steer line is kept in the session's steer log under the store caps with its holdout arm and label rule, but no label and no outcome is written.",
+      "integration": [
+        {
+          "event": "PostToolUse",
+          "handler": "internal/hook/steerstep.go"
+        }
+      ],
+      "missing": [
+        "LABEL-WRITER1: AppendLabel has no runtime caller",
+        "an outcome per line"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "History from day one"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/learn.go",
+          "symbol": "Next"
+        },
+        {
+          "file": "internal/learn/learn.go",
+          "symbol": "Wilson95"
+        },
+        {
+          "file": "internal/learn/learn_test.go",
+          "symbol": "TestP6_TierMovesOnlyByTheBound"
+        },
+        {
+          "file": "internal/learn/learn_test.go",
+          "symbol": "TestP6_Wilson95MatchesTheDetectorTable"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_LabelsMoveAnApprovedLesson"
+        }
+      ],
+      "id": "PF-HD2",
+      "implementation": "A lesson's tier moves only by the Wilson 95% bound over its confirmed and refuted labels with soft, auto-reactivating demotion, but nothing compares a lesson against the holdout and labels have no producer.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        }
+      ],
+      "missing": [
+        "LABEL-WRITER1",
+        "a per-lesson holdout comparison: the bound reads labels, not a treatment-versus-holdout difference",
+        "LEARN-DELIVER1, so a lesson can be in an arm"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Lessons are hypotheses"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/learn.go",
+          "symbol": "Candidate"
+        },
+        {
+          "file": "internal/disclose/paragraphs.go",
+          "symbol": "defaultParagraphs"
+        },
+        {
+          "file": "internal/learn/learn_test.go",
+          "symbol": "TestP6_CandidateGate"
+        }
+      ],
+      "id": "PF-HD3",
+      "implementation": "No episode miner exists; learn.Candidate takes the counts one would report, and the consent screen describes mining this tree does not do.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "the episode miner (LRN-1 to LRN-10)",
+        "consent text for the learner that matches what is built"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Episode mining"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Import"
+        }
+      ],
+      "id": "PF-HD4",
+      "implementation": "No typed delta, refusal list or masker pass exists, and Import takes a lesson's text as given.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "the five learnable delta kinds and the seven refusals (LRN-4, LRN-5, LRN-18, LRN-35)",
+        "the masker on lesson text"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Typed deltas and refusals"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/learn.go",
+          "symbol": "Candidate"
+        },
+        {
+          "file": "cmd/rashomon/learn.go",
+          "symbol": "approveLesson"
+        },
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Open"
+        },
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Approve"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_AgentWriteQuarantinesEveryFact"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_ApprovalMovesOnlyAProposedLesson"
+        },
+        {
+          "file": "cmd/rashomon/learn_test.go",
+          "symbol": "TestP6_LearnImportThenApproveAtTheTerminal"
+        }
+      ],
+      "id": "PF-HD5",
+      "implementation": "The candidate floors are one function, a lesson is approved only by a one-time code typed back at the terminal, and an outside write to the learning state quarantines every lesson to proposed, but no miner nominates a candidate and no delivery reaches the agent.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        }
+      ],
+      "missing": [
+        "the miner (PF-HD3)",
+        "LEARN-DELIVER1",
+        "the quarantine is seen only when a learn verb opens the ledger, and the key is readable by an agent with the user's rights"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Fact lifecycle with human approval"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "activeBytes"
+        },
+        {
+          "file": "internal/steer/pattern/pattern.go"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_ActiveCapDropsTheOldestDemotedFirst"
+        }
+      ],
+      "id": "PF-HD6",
+      "implementation": "Save writes active.json for a delivery to read and the learned-fact pattern id exists, but nothing reads active.json or produces a learned-fact finding.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "LEARN-DELIVER1"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Delivery of learned facts"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "cmd/rashomon/learn.go",
+          "symbol": "importLessons"
+        },
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Import"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_ImportLandsAtProposed"
+        }
+      ],
+      "id": "PF-HD7",
+      "implementation": "learn import adds a shared lessons file at proposed and each lesson needs approval at the user's own terminal, but packs are not counts-only, pinned or expiring, and no repository or organisation tier exists.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        }
+      ],
+      "missing": [
+        "sha256-pinned packs that expire within 90 days",
+        "repository and organisation tiers through PRs (#84 review)",
+        "the counts-only clause predates the 10-21 content ruling (Q0 reversed); the owner rules which holds"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Team packs through git"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [],
+      "id": "PF-HD8",
+      "implementation": "No correction counting or draft spec-rule suggestion exists, and prompt_class stays off.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a correction miner (LRN-23 to LRN-25; D-REC-3 open)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Human-correction counts"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/install/install.go",
+          "symbol": "Events"
+        }
+      ],
+      "id": "PF-HD9",
+      "implementation": "No instruction-load record exists, and the installer subscribes to no instruction-load event.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "instruction-load capture and its report (LRN-26, LRN-27)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Instruction-load report"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Owns"
+        },
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "AppendLabel"
+        },
+        {
+          "file": "internal/purge/learn_test.go",
+          "symbol": "TestP6_PurgeLeavesNoLearnerFile"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_AgentWriteQuarantinesEveryFact"
+        }
+      ],
+      "id": "PF-HD10",
+      "implementation": "Quarantine and a zero-residue purge of the learner's files are built, but no 16 MiB or 64 MiB cap exists, only active.json being capped, and learn off does not exist though the consent screen names it.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/purge.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        }
+      ],
+      "missing": [
+        "16 MiB per-project and 64 MiB total caps: labels.ndjson is appended without one",
+        "learn off (LRN-11, LRN-28 to LRN-36), which the consent screen already names"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Storage bounds and quarantine"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/baseline/baseline.go",
+          "symbol": "Key"
+        },
+        {
+          "file": "cmd/rashomon/bodies.go",
+          "symbol": "bodiesProject"
+        },
+        {
+          "file": "cmd/rashomon/learn.go",
+          "symbol": "openLedger"
+        },
+        {
+          "file": "internal/baseline/baseline_test.go",
+          "symbol": "TestKey_FindsTheGitRootByWalkingUp"
+        }
+      ],
+      "id": "PF-HD11",
+      "implementation": "The learner's project is the work tree root found by walking up to .git, else the directory, so the normalised git origin is not used and two clones of one repository are two ledgers.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        }
+      ],
+      "missing": [
+        "the normalised git origin as the key (Q2 lean)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Scope key"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Import"
+        },
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Approve"
+        },
+        {
+          "file": "cmd/rashomon/learn.go",
+          "symbol": "approveLesson"
+        },
+        {
+          "file": "internal/learn/ledger_test.go",
+          "symbol": "TestP6_ImportLandsAtProposed"
+        }
+      ],
+      "id": "PF-HD12",
+      "implementation": "No lesson reaches active.json without a person's approval and an import always lands at proposed, but there are no personal, repository or organisation tiers, no taint tracking and no masked preview before send.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        }
+      ],
+      "missing": [
+        "personal, repository and organisation tiers",
+        "taint for text from tool output",
+        "masked, previewed sharing (#84 review)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "Promotion needs a person"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [],
+      "id": "PF-HD13",
+      "implementation": "Not built: an idea, with ED-9 versus earned autonomy open.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "a design, once ED-9 is decided"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Earned, scoped autonomy"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Approve"
+        },
+        {
+          "file": "internal/learn/learn.go",
+          "symbol": "Next"
+        }
+      ],
+      "id": "PF-HD14",
+      "implementation": "No holdout-comparison record exists; a tier rises by the bound alone, and approval can return a quarantined lesson at proven from its old tally.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "the holdout-comparison record and its check on every raise (P10)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Relax only through a holdout"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "cmd/rashomon/backtest.go",
+          "symbol": "cmdBacktest"
+        }
+      ],
+      "id": "PF-HD15",
+      "implementation": "No correction miner and no E1 arm exist; backtest replays one steer pattern's fires and is not Slice 0.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "the Slice 0 miner (#84 plan, step 5)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Slice 0 and E1"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/learn/ledger.go",
+          "symbol": "Ledger"
+        },
+        {
+          "file": "test/acceptance/p6_learn_apart_test.go",
+          "symbol": "TestP6_HookAndStoreImportNoLearner"
+        },
+        {
+          "file": "internal/purge/learn_test.go",
+          "symbol": "TestP6_PurgeLeavesNoLearnerFile"
+        }
+      ],
+      "id": "PF-HD16",
+      "implementation": "The learner is its own package with its own store, key and purge, and neither hook nor store imports it, but it reads no content.",
+      "integration": [
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/learn.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/purge.go"
+        }
+      ],
+      "missing": [
+        "the content-reading miner (PF-HD3, PF-HD15)"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "partial",
+      "title": "The learner reads content"
+    },
+    {
+      "e2e_verified": false,
+      "evidence": [
+        {
+          "file": "internal/disclose/paragraphs.go",
+          "symbol": "defaultParagraphs"
+        }
+      ],
+      "id": "PF-HD17",
+      "implementation": "No seed command reads the transcripts on disk, and the consent screen's session-start transcript read does not exist.",
+      "integration": [
+        {
+          "event": "none",
+          "handler": ""
+        }
+      ],
+      "missing": [
+        "the seed command over audit's read path and Slice 0 (N14)",
+        "consent text for the learner that matches what is built"
+      ],
+      "planned_pr": "",
+      "session_proof": "",
+      "status": "none",
+      "title": "Seed from existing sessions"
+    }
+  ],
+  "tree": "acb1c0d588bc40d0c217f95a853ddc273c1b005e"
+}
