@@ -42,6 +42,9 @@ type StopView struct {
 	Programs map[string]string
 	Index    *ProjectIndex
 	Scan     ClaimScan
+	// Expected is the task's expected evidence rows at Stop (card 3.3), in
+	// spec.EvidenceKinds order, never nil.
+	Expected []Expected
 }
 
 // EvaluateStop is the Stop hook's view at pt. One classification feeds the
@@ -68,7 +71,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	if in.ProjectKey != "" {
 		v.Index.Observe(c.runs, pt.SessionID, now.UnixMilli())
 	}
-	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, WroteRelevant(run, pt.Seq), SourceFinalMessage, in.Delivered)
+	wrote := WroteRelevant(run, pt.Seq)
+	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
+	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, disclosed: v.Scan.Disclosed, wrote: wrote})
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims
 	}

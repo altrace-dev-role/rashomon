@@ -102,6 +102,28 @@ type RegressionLocationDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// IntegrityStoreTouchedBinding is integrity/store-touched's user line
+// (archive 40.4.7; card P5B, 5.7): the path under .claude/rashomon the call
+// wrote, project-relative.
+type IntegrityStoreTouchedBinding struct {
+	Path slot.Path `slot:"path"`
+}
+
+// IntegrityStoreTouchedUnnamedBinding is store-touched's no-path form, for a
+// path the fact or render slot refuses (its charset, the deny list, the
+// entropy test).
+type IntegrityStoreTouchedUnnamedBinding struct{}
+
+// IntegrityTestRemovedBinding, IntegrityGateWeakenedBinding and
+// IntegrityGateConfigEditedBinding are the other three one-way doors' lines
+// (PF-IV3). Their entries carry no path, so the lines name the kind only;
+// none has a producer on a real session yet (D139, IV-PRODUCERS1).
+type IntegrityTestRemovedBinding struct{}
+
+type IntegrityGateWeakenedBinding struct{}
+
+type IntegrityGateConfigEditedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -111,7 +133,9 @@ type RegressionLocationDegradedBinding struct {
 // regression-location-degraded/v1 keeps that first sentence and states the
 // count, so the note still names the gate (card 2.3 R7). The other-agents
 // sentence is its own binding struct and row, which comes with
-// subagent-claim's producer (D62).
+// subagent-claim's producer (D62). The integrity rows are archive 40.4.7's
+// user lines for PF-IV3's four one-way doors (card P5B, 5.7); user-only,
+// so no model text exists for them.
 func templates() map[templateKey]template {
 	templatesOnce.Do(func() {
 		templatesOnce.v = map[templateKey]template{
@@ -124,6 +148,26 @@ func templates() map[templateKey]template {
 				id: "regression-location-degraded/v1",
 				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
 					"{count} file writes were recorded between the two runs.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
+				id:     "integrity-store-touched/v1",
+				format: "rashomon record: this call wrote {path}, under .claude/rashomon, which holds the spec and the task file rashomon reads.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedUnnamedBinding{})}: {
+				id:     "integrity-store-touched-unnamed/v1",
+				format: "rashomon record: this call wrote a file under .claude/rashomon, which holds the spec and the task file rashomon reads.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityTestRemovedBinding{})}: {
+				id:     "integrity-test-deleted/v1",
+				format: "rashomon record: this edit removed a test after a gate run in this session exited non-zero.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityGateWeakenedBinding{})}: {
+				id:     "integrity-gate-weakened/v1",
+				format: "rashomon record: this call ran a gate with a flag or variable that skips its checks.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityGateConfigEditedBinding{})}: {
+				id:     "integrity-gate-config-edited/v1",
+				format: "rashomon record: this edit changed a CI or test-configuration file.",
 			},
 		}
 	})

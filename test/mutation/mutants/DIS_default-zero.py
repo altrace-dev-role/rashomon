@@ -4,7 +4,7 @@
 # now that Default is filled, the break is a scope version without the files,
 # or without the screen paragraphs that joined them.
 m("DIS Default carries a scope version on an otherwise-empty inventory", "internal/disclose/disclose.go",
-  "\t\tFiles:        defaultFiles(),\n",
+  "\t\tFiles:        append(defaultFiles(), learnFiles()...),\n",
   "", "TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory")
 m("DIS Default carries a scope version with no screen paragraphs", "internal/disclose/disclose.go",
   "\t\tParagraphs:   defaultParagraphs(),\n",

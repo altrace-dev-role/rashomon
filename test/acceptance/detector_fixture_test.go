@@ -38,9 +38,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 )
 
 // The labels. The first three are the three a precision figure is built from;
@@ -342,23 +343,11 @@ func (t *fireTally) add(label, by string) {
 // N is the counted fires.
 func (t fireTally) N() int { return t.TP + t.FP }
 
-// z95 is the standard normal quantile for a two-sided 95% interval.
-const z95 = 1.959963984540054
-
-// wilson95 is the Wilson score interval for k true of n, at 95%. ok is false
-// for n == 0, where there is no interval to give. Wilson and not the normal
-// approximation because it stays inside [0, 1] and is honest at small n and
-// at p near 1, which is exactly where a detector's precision lives.
+// wilson95 is the Wilson score interval for k true of n, at 95%: the
+// lesson ledger's (learn.Wilson95, card P6), so the table
+// detector_stats_test.go pins holds one formula, not two copies of it.
 func wilson95(k, n int) (lo, hi float64, ok bool) {
-	if n <= 0 || k < 0 || k > n {
-		return 0, 0, false
-	}
-	nf, p := float64(n), float64(k)/float64(n)
-	z2 := z95 * z95
-	den := 1 + z2/nf
-	centre := (p + z2/(2*nf)) / den
-	half := z95 * math.Sqrt(p*(1-p)/nf+z2/(4*nf*nf)) / den
-	return math.Max(0, centre-half), math.Min(1, centre+half), true
+	return learn.Wilson95(k, n)
 }
 
 // precisionRow is one printed line of the per-detector table.

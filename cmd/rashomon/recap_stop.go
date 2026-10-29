@@ -6,6 +6,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -36,7 +37,10 @@ type stopTurn struct {
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
 // read recapTurn made, for the prompt the digest chose. A Stop-family event
 // or the catch-up has a view; any other payload, a payload naming no
-// session, and a run with no seq have none. On Stop and StopFailure it
+// session, and a run with no seq have none. The turn is judged against the
+// spec discovered from the payload's cwd as the steer step discovers it
+// (hook.DiscoverSpec, card 3.1 (c)), and with the content now of each file
+// the session wrote (hook.TreeShas, card P5A). On Stop and StopFailure it
 // appends the checkpoint and, with a cwd, writes the observed index.
 //
 // A checkpoint append that times out on the lock is dropped and the turn
@@ -58,6 +62,9 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	if d.PromptID != "" {
 		pt.PromptID = &d.PromptID
 	}
+	// The files the session's tree names, as they are now: the claim
+	// point's side of the binding (card P5A, D140).
+	pt.Tree = hook.TreeShas(verify.TreeTargets(run))
 
 	var path string
 	var idx *verify.ProjectIndex
@@ -75,7 +82,9 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	if writes {
 		in.ProjectKey = key
 	}
-	v := verify.EvaluateStop(run, idx, nil, pt, now, in)
+	projectDir, managedDir := specDirs()
+	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir)
+	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
 
 	if writes {
 		cp := verify.Cut(v.Snap, now)

@@ -76,7 +76,7 @@ var v5Lists = []struct {
 		"writer string", "executed_command *string", "executed_command_reason *string", "executed_command_bytes *int",
 		"executed_command_cut *store.Cut", "executed_masked []store.MaskSpan", "failure *store.Failure",
 		"output_evidence *store.OutputEvidence", "edit_marks *store.EditMarks", "head_after *store.GitState",
-		"gate_output *store.GateOutput", "credmech *string",
+		"gate_output *store.GateOutput", "credmech *string", "content_sha256 *string",
 		"executed_command_withheld *string", "failure_withheld *string", "output_evidence_withheld *string",
 		"edit_marks_withheld *string", "head_after_withheld *string",
 		"harness_id *string", "harness_tool_name *string", "declared_via *string",

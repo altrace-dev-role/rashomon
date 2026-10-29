@@ -119,7 +119,8 @@ func GateDeclaration(d *Declaration, scope string) {
 
 // GateExecution is GateDeclaration for an execution: the executed command
 // with its cut and marker spans, and the git state after the call, withheld
-// whole since its root is a path and its branch a name.
+// whole since its root is a path and its branch a name. The written file's
+// sha256 is nulled, with no withheld key (P5A).
 func GateExecution(x *Execution, scope string) {
 	if scope == RecordScopeV5 {
 		return
@@ -130,6 +131,7 @@ func GateExecution(x *Execution, scope string) {
 	if x.HeadAfter != nil {
 		x.HeadAfter, x.HeadAfterWithheld = nil, noConsent()
 	}
+	x.ContentSHA256 = nil
 }
 
 // unconsented is the gate for one nullable string: null, with key set to

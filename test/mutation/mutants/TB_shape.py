@@ -754,7 +754,7 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 10\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
@@ -808,14 +808,14 @@ m("TB -Dmaven.test.failure.ignore hides nothing", "internal/shape/runner.go",
   "\"--fail-never!\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 10\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
 
 # Version 5: the masked parser passes over the leading cd steps the program
 # search steps over, `~` is read, and a fold that is not read has a location
 # of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
 # or giving an unread fold a read location, is the regression.
 m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 10\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
   "TestLocation|TestUnreadLocationDomain")
@@ -849,7 +849,7 @@ m("TB -l clears an editor again", "internal/shape/verb.go",
   "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
   "TestRC3b_")
 m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+  "const RulesVersion = 10\n", "const RulesVersion = 5\n", "TestRulesVersion_")
 
 # The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
 # -j4x test` and `make -j=4 test` read verb_class test where execute is
@@ -922,7 +922,7 @@ m("TB the paren count moved into commandEnd", "internal/shape/program.go",
   "\t\tcase t.text == \")\":\n\t\t\treturn 0, false\n\t\tcase t.text == \";\" || t.text == \"&&\" || t.text == \"||\" || t.text == \"|\" || t.text == \"&\":\n\t\t\treturn j, true\n",
   "TestS1_CommandEndReadersUnmoved")
 m("TB the rules version stays at 6 when wholeCommand counts groups", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 10\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
 
 # 5.11 and 5.12 (card S2). A hiding flag (leadingFlags, ! entries) keeps the
 # runner, masked: TestTestClassRefusesWhatDoesNotRunTests's rows read none or test where
@@ -966,7 +966,7 @@ m("TB pushd is folded by the program search only", "internal/shape/program.go",
 m("TB pushd's stack forms are read as a location", "internal/shape/leading.go",
   " || cd.text == \"pushd\" && strings.HasPrefix(dir.text, \"+\") ||", " ||", "TestS2_PushdFoldsAsCd")
 m("TB the rules version stays at 7 when hiding flags and pushd change", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
+  "const RulesVersion = 10\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
 # S3 (5.15, 5.13): the program stream reads a comment as the list stream does, and the here-document skip
 # stays the list stream's; `make test -C sub` is pinned at the payload's cwd.
 m("TB the program stream joins a comment's backslash-newline", "internal/shape/tokenize.go",
@@ -982,4 +982,110 @@ m("TB make test -C sub is located in its directory option", "internal/hook/handl
   "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
   "\treturn s, shape.CWDDigest(key, startDirectory(cwd, append(dirs, \"sub\")))\n", "TestS3_13_")
 m("TB the rules version stays at 8 when comments end at their newline", "internal/shape/masked.go",
-  "const RulesVersion = 9\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 10\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+
+# 1.2w: WrittenPaths, the write targets of a Bash line (writetargets.go), and
+# stageMayWrite, factored out of mayWrite. Version 10 names them, so the
+# RulesVersion anchors above moved from 9 to 10, each still setting an older
+# version.
+m("TB the rules version stays at 9 when the write targets change", "internal/shape/masked.go",
+  "const RulesVersion = 10\n", "const RulesVersion = 9\n", "TestRulesVersion_WriteTargets")
+m("TB stageMayWrite answers true for a stage no word of which writes", "internal/shape/verb.go",
+  "\treturn w.edit || w.redirect || w.substitution || w.writer\n", "\t_ = w\n\treturn true\n",
+  "TestWT10_|TestMayWrite")
+m("WT a redirection's word is not named", "internal/shape/writetargets.go",
+  "\t\t\t\tif writes {\n\t\t\t\t\tw.name(toks[end+1], toks[end+1].text)\n\t\t\t\t}\n", "", "TestWT1_")
+m("WT the word after < or >&2 is named", "internal/shape/writetargets.go",
+  "\t\t\twrites := outputRedirect(toks, j) || end > j && outputRedirect(toks, j+1)\n",
+  "\t\t\twrites := true\n", "TestWT1_")
+m("WT sed's script is named", "internal/shape/writetargets.go",
+  "\tcase ruleSed:\n\t\to.first = !sedScript(o.w.toks, at, o.e)\n", "\tcase ruleSed:\n\t\to.first = false\n", "TestWT2_")
+m("WT sed's -e is never read", "internal/shape/writetargets.go",
+  "\t\tif script, _ := sedOption(text); script && len(text) > 1 && text[0] == '-' {\n",
+  "\t\tif script, _ := sedOption(text); false && script {\n", "TestWT2_")
+m("WT sed's -e takes no next word", "internal/shape/writetargets.go",
+  "\t\tcase 'e', 'f':\n\t\t\treturn true, k == len(text)-1\n", "\t\tcase 'e', 'f':\n\t\t\treturn true, false\n", "TestWT2_")
+m("WT BSD sed's empty suffix is the script", "internal/shape/writetargets.go",
+  "o.w.toks[k].text == \"\" {\n\t\t\t\to.value = true\n", "o.w.toks[k].text == \"\" {\n\t\t\t\to.value = false\n", "TestWT2c_")
+m("WT perl's program file is named", "internal/shape/writetargets.go",
+  "\tcase rulePerl:\n\t\to.first = true\n", "\tcase rulePerl:\n\t\to.first = false\n", "TestWT2_")
+m("WT perl's -e takes no next word", "internal/shape/writetargets.go",
+  "\t\tcase c == 'e' || c == 'E':\n\t\t\treturn true, k == len(text)-1\n", "\t\tcase c == 'e' || c == 'E':\n\t\t\treturn true, false\n", "TestWT2_")
+m("WT perl reads options after its first operand", "internal/shape/writetargets.go",
+  "\t\to.ended = true // perl reads no option after its first operand\n", "", "TestWT2_")
+m("WT the arming word is a target", "internal/shape/writetargets.go",
+  "\tif o.rule == ruleEvery && onList(text, inPlaceEditors[o.name]) {\n",
+  "\tif false && o.rule == ruleEvery && onList(text, inPlaceEditors[o.name]) {\n", "TestWT2_")
+m("WT an unarmed editor's stage is classed by its program", "internal/shape/writetargets.go",
+  "\tif _, editor := inPlaceEditors[name]; editor {\n", "\tif _, editor := inPlaceEditors[name]; false && editor {\n", "TestWT2b_")
+m("WT no program writes by itself", "internal/shape/writetargets.go",
+  "\treturn verbForProgram(name) != VerbRead\n}\n", "\treturn false\n}\n", "TestWT6_")
+m("WT tee names nothing", "internal/shape/writetargets.go",
+  "\tcase \"rm\", \"mkdir\", \"touch\", \"tee\", \"truncate\":\n", "\tcase \"rm\", \"mkdir\", \"touch\", \"truncate\":\n", "TestWT3_")
+m("WT rm names nothing", "internal/shape/writetargets.go",
+  "\tcase \"rm\", \"mkdir\", \"touch\", \"tee\", \"truncate\":\n", "\tcase \"mkdir\", \"touch\", \"tee\", \"truncate\":\n", "TestWT5_")
+m("WT truncate's size is a file", "internal/shape/writetargets.go",
+  "\t\to.value = o.name == \"truncate\" && text == \"-s\"\n", "\t\to.value = false\n", "TestWT5_")
+m("WT cp's destination is its first operand", "internal/shape/writetargets.go",
+  "\t\t\tlast = j\n", "\t\t\tif last < 0 {\n\t\t\t\tlast = j\n\t\t\t}\n", "TestWT4_")
+m("WT cp's -t is not read", "internal/shape/writetargets.go",
+  "\t\tcase text == \"-t\" || text == \"--target-directory\":\n", "\t\tcase false:\n", "TestWT4_")
+m("WT an option is a target", "internal/shape/writetargets.go",
+  "\tcase !o.ended && len(text) > 1 && text[0] == '-':\n", "\tcase false && !o.ended && len(text) > 1 && text[0] == '-':\n",
+  "TestWT5_")
+m("WT -- is a target", "internal/shape/writetargets.go",
+  "\tcase !o.ended && text == \"--\":\n\t\to.ended = true\n\t\treturn\n",
+  "\tcase !o.ended && text == \"--\":\n\t\to.ended = true\n\t\to.target(t, text)\n\t\treturn\n", "TestWT7_")
+m("WT an fd prefix is an operand", "internal/shape/writetargets.go",
+  "\t\tcase t.meta, j <= at, at < 0, fdPrefix(toks, j, e):\n", "\t\tcase t.meta, j <= at, at < 0:\n", "TestWT5_")
+m("WT a word holding $ is named", "internal/shape/writetargets.go",
+  "\t\tstrings.ContainsAny(text, \"$`*?[{\") ||\n", "\t\tstrings.ContainsAny(text, \"`*?[{\") ||\n", "TestWT7_")
+m("WT a word holding a quoted backtick is named", "internal/shape/writetargets.go",
+  "\t\tstrings.ContainsAny(text, \"$`*?[{\") ||\n", "\t\tstrings.ContainsAny(text, \"$*?[{\") ||\n", "TestWT7_")
+m("WT a glob is named", "internal/shape/writetargets.go",
+  "\t\tstrings.ContainsAny(text, \"$`*?[{\") ||\n", "\t\tstrings.ContainsAny(text, \"$`?[{\") ||\n", "TestWT7_")
+m("WT a ? glob is named", "internal/shape/writetargets.go",
+  "\t\tstrings.ContainsAny(text, \"$`*?[{\") ||\n", "\t\tstrings.ContainsAny(text, \"$`*[{\") ||\n", "TestWT7_")
+m("WT a bracket glob is named", "internal/shape/writetargets.go",
+  "\t\tstrings.ContainsAny(text, \"$`*?[{\") ||\n", "\t\tstrings.ContainsAny(text, \"$`*?{\") ||\n", "TestWT7_")
+m("WT a brace expansion is named", "internal/shape/writetargets.go",
+  "\t\tstrings.ContainsAny(text, \"$`*?[{\") ||\n", "\t\tstrings.ContainsAny(text, \"$`*?[\") ||\n", "TestWT7_")
+m("WT a tilde is named", "internal/shape/writetargets.go",
+  " || text == \"-\" || text[0] == '~' ||\n", " || text == \"-\" ||\n", "TestWT7_")
+m("WT - is named", "internal/shape/writetargets.go",
+  " || text == \"\" || text == \"-\" || text[0] == '~' ||\n", " || text == \"\" || text[0] == '~' ||\n", "TestWT7_")
+m("WT the directory-like rule is dropped", "internal/shape/writetargets.go",
+  "\t\tstrings.HasSuffix(text, \"/\") || strings.HasSuffix(text, \"...\") || base == \".\" || base == \"..\":\n",
+  "\t\tbase == \"\\x00\":\n", "TestWT7_|TestWT4_")
+m("WT a device is a file", "internal/shape/writetargets.go",
+  "\tcase devFile(text):\n\t\treturn false\n", "\tcase false && devFile(text):\n\t\treturn false\n", "TestWT7_")
+m("WT the stages are one at a separator", "internal/shape/writetargets.go",
+  "\t\tcase stageSeparator(toks, j):\n\t\t\treturn j, j + 1\n", "\t\tcase false && stageSeparator(toks, j):\n\t\t\treturn j, j + 1\n",
+  "TestWT8_")
+m("WT a newline ends no stage", "internal/shape/writetargets.go",
+  "\t\tcase j > s && t.nlBefore:\n", "\t\tcase false && j > s && t.nlBefore:\n", "TestWT8_")
+m("WT complete is forced true", "internal/shape/writetargets.go",
+  "\treturn w.targets, w.complete\n}\n", "\treturn w.targets, true\n}\n", "TestWT")
+m("WT complete is forced false", "internal/shape/writetargets.go",
+  "\treturn w.targets, w.complete\n}\n", "\treturn w.targets, false\n}\n", "TestWT")
+m("WT a stage that may write and names nothing is complete", "internal/shape/writetargets.go",
+  "\tif runs && !o.named {\n", "\tif false && runs && !o.named {\n", "TestWT6_")
+m("WT the may_write guard is dropped", "internal/shape/writetargets.go",
+  "\tif w.targets == nil && w.complete && mayWrite(toks, i) {\n", "\tif false && w.targets == nil && w.complete && mayWrite(toks, i) {\n",
+  "TestWT12_")
+m("WT a relative target past a cd is recorded as written", "internal/shape/writetargets.go",
+  "\t\tif dir != \"\" {\n\t\t\ttext = path.Join(dir, text)\n\t\t}\n", "\t\t_ = dir\n", "TestWT13_")
+m("WT an unread fold resolves", "internal/shape/writetargets.go",
+  "\tif len(dirs) == 0 || len(dirs) > MaxLeadingCd {\n\t\treturn \"\", false\n",
+  "\tif len(dirs) == 0 || len(dirs) > MaxLeadingCd {\n\t\treturn \"\", true\n", "TestWT13_")
+m("WT an absolute cd step is joined on", "internal/shape/writetargets.go",
+  "\t\tcase path.IsAbs(d):\n\t\t\tdir = d\n", "\t\tcase path.IsAbs(d):\n\t\t\tdir = path.Join(dir, d)\n", "TestWT13_")
+m("WT a step under ~ is folded", "internal/shape/writetargets.go",
+  "\t\tcase d[0] == '~':\n\t\t\treturn \"\", false\n", "\t\tcase false:\n\t\t\treturn \"\", false\n", "TestWT13_")
+m("WT a cd later on the line moves nothing", "internal/shape/writetargets.go",
+  "\t\tw.moved = true\n", "\t\tw.moved = false\n", "TestWT13_")
+m("WT a tool that is not a shell is incomplete", "internal/shape/writetargets.go",
+  "\tif verbForTool(toolName) != VerbExecute {\n\t\treturn nil, true\n", "\tif verbForTool(toolName) != VerbExecute {\n\t\treturn nil, false\n",
+  "TestWT9_")
+m("WT the hook leaves written_paths null", "internal/hook/handle.go",
+  "\tdecl.WrittenPaths, decl.WrittenPathsComplete = written, &complete\n", "\t_, _ = written, complete\n", "TestWT11_")

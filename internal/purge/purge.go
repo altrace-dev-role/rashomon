@@ -22,6 +22,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/fold"
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -53,8 +54,8 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 // into. Only the entries it writes there are planned for removal (see
 // ownedTree): the directory can be shared with the user's own files when
 // RASHOMON_HOME names a directory they already use, and "runs", "baseline",
-// "verify" and "bodies" are ordinary names for such a directory.
-var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies}
+// "verify", "bodies" and "learn" are ordinary names for such a directory.
+var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies, learn.DirLearn}
 
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
@@ -285,14 +286,15 @@ func ownedTree(top, name string) (own, foreign []string, err error) {
 
 // ownTreeDir reports whether a directory of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: runs/<session>,
-// verify/projects and bodies/<project> (any name not starting with a dot).
+// verify/projects, bodies/<project> and learn/<project> (any name not
+// starting with a dot).
 func ownTreeDir(top, name string, level int) bool {
 	switch top {
 	case store.DirRuns:
 		return level == 0
 	case verify.DirName:
 		return level == 0 && name == verify.ProjectsDir
-	case store.DirBodies:
+	case store.DirBodies, learn.DirLearn:
 		return level == 0 && !strings.HasPrefix(name, ".")
 	}
 	return false
@@ -301,11 +303,14 @@ func ownTreeDir(top, name string, level int) bool {
 // treeFile reports whether a regular file of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: verify's index files
 // in verify/projects, a project's transcript copies and the temporary files
-// their writes leave in bodies/<project>, and ownTreeFile's for runs and
-// baseline.
+// their writes leave in bodies/<project>, the learner's key and state
+// (learn.Owns, card P6), and ownTreeFile's for runs and baseline.
 func treeFile(top, name string, level int) bool {
 	if top == verify.DirName {
 		return level == 1 && verify.IsIndexFile(name)
+	}
+	if top == learn.DirLearn {
+		return level <= 1 && learn.Owns(name, level == 1)
 	}
 	if top == store.DirBodies {
 		return level == 1 && (strings.HasSuffix(name, ".jsonl") || strings.HasPrefix(name, store.BodiesTempPrefix))

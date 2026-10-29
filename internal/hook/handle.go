@@ -198,9 +198,12 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	decl.CWD = nilIfEmpty(p.CWD)
 	decl.Project = nilIfEmpty(baseline.Key(p.CWD))
 	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
-	// WrittenPaths and WrittenPathsComplete are left null here: a Bash call's
-	// write targets are a derivation of their own, and that derivation fills
-	// them.
+	// The files a Bash call's line may write, and whether they are all of
+	// them (shape.WrittenPaths): null and complete for any other tool, which
+	// names its one path in file_path. The gate and the caps below withhold
+	// the list as they do the paths above, and set complete false then.
+	written, complete := shape.WrittenPaths(p.ToolName, p.ToolInput)
+	decl.WrittenPaths, decl.WrittenPathsComplete = written, &complete
 
 	// The label is computed on every declaration, and attached only to a
 	// record whose schema carries the field.

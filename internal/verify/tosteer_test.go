@@ -120,7 +120,7 @@ func TestVER54e_ToSteerMapsEveryVerifyPattern(t *testing.T) {
 // forbid_code and forbid_command as edit and command; masked_inconclusive as
 // masked), and nothing outside pattern.Kinds reaches STEER.
 func TestVER54f_ToSteerEmitsOnlyFrozenKinds(t *testing.T) {
-	want := []steer.Kind{"test-deleted", "skip-added", "assert-drop", "suppression-added", "generated-edited", "tests-only-green", "gate-weakened", "gate-config-edited"}
+	want := []steer.Kind{"test-deleted", "skip-added", "assert-drop", "suppression-added", "generated-edited", "tests-only-green", "gate-weakened", "gate-config-edited", "store-touched"}
 	for i, k := range IntegrityKinds {
 		f := Finding{Pattern: pattern.Integrity, Event: string(steer.EventPostToolUse), Integrity: &IntegrityFact{Kind: k, Count: 1, Seq: 40}}
 		got, err := ToSteer(f, at(PointStop), "")
@@ -444,7 +444,7 @@ func TestVER54m_EveryGateReasonExplainsOneState(t *testing.T) {
 		MaskedWithSuccessLine: Green, OK: Green,
 		MaskedNoSuccessLine: MaskedInconclusive, MaskedUnattributable: MaskedInconclusive,
 		EmptyRun: Absent, PartialOnly: Absent, NeverRunAfterWrite: Absent,
-		RedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale,
+		RedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale, StaleForeign: Stale,
 		BackgroundLaunch: Backgrounded,
 		OrderUnknown:     Unknown, OutcomeUnknown: Unknown, RecordingIncomplete: Unknown, Budget: Unknown,
 	}

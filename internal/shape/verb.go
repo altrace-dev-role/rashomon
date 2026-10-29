@@ -429,33 +429,14 @@ var runInBackgroundKey = jsonscan.NewFoldKeySet("run_in_background")
 // by program: they are the `cd DIR &&` that pastDirectoryChange stepped over,
 // and a directory change is told apart by the declarations' directory
 // digests, not as a write.
+//
+// The words are read by stageMayWrite over the whole line as one span, the
+// predicate WrittenPaths reads stage by stage: one definition of a word that
+// writes, two readers. As one span, the line's curl and its output flag may
+// stand in different stages, and an in-place editor's words carry over a
+// newline, which only a stage separator ends (inPlaceEdit); both over-claim.
 func mayWrite(toks []token, i int) bool {
-	if inPlaceEdit(toks) {
-		return true
-	}
-	curl, curlOut := false, false
-	for j, t := range toks {
-		if opensSubstitution(toks, j) {
-			return true
-		}
-		if t.meta {
-			if outputRedirect(toks, j) {
-				return true
-			}
-			continue
-		}
-		if t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {
-			return true
-		}
-		if slices.Contains(inlineWriters, path.Base(t.text)) || slices.Contains(findWriteWords, t.text) {
-			return true
-		}
-		if path.Base(t.text) == "curl" {
-			curl = true
-		}
-		curlOut = curlOut || curlOutputFlag(t.text)
-	}
-	if curl && curlOut {
+	if stageMayWrite(toks, 0, len(toks)) {
 		return true
 	}
 	for j := i + 1; j < len(toks); j++ {
@@ -478,6 +459,57 @@ func mayWrite(toks []token, i int) bool {
 	return false
 }
 
+// stageMayWrite reports words in toks[s:e] that may write a file whatever
+// program they belong to: any of stageWrites' sources.
+func stageMayWrite(toks []token, s, e int) bool {
+	w := writesIn(toks, s, e)
+	return w.edit || w.redirect || w.substitution || w.writer
+}
+
+// stageWrites is what the words of a span say it may write, by source, as
+// mayWrite's comment lists them.
+type stageWrites struct {
+	edit         bool // an in-place editor with a word that makes it write (inPlaceEdit)
+	redirect     bool // an output redirection to a file (outputRedirect)
+	substitution bool // a command or process substitution, whose command is not looked into
+	writer       bool // a word that writes by itself, or curl with an output flag
+}
+
+// writesIn reads the words of toks[s:e] for stageWrites; a word at the end
+// of the span may look past it, as a redirection's operator does for its
+// target.
+func writesIn(toks []token, s, e int) stageWrites {
+	w := stageWrites{edit: inPlaceEdit(toks[s:e])}
+	curl, curlOut := false, false
+	for j := s; j < e; j++ {
+		t := toks[j]
+		if opensSubstitution(toks, j) {
+			w.substitution = true
+			continue
+		}
+		if t.meta {
+			if outputRedirect(toks, j) {
+				w.redirect = true
+			}
+			continue
+		}
+		if t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {
+			w.substitution = true
+		}
+		if slices.Contains(inlineWriters, path.Base(t.text)) || slices.Contains(findWriteWords, t.text) {
+			w.writer = true
+		}
+		if path.Base(t.text) == "curl" {
+			curl = true
+		}
+		curlOut = curlOut || curlOutputFlag(t.text)
+	}
+	if curl && curlOut {
+		w.writer = true
+	}
+	return w
+}
+
 // inlineWriters are the programs whose word anywhere in a stage sets may_write
 // (mayWrite): they take a file or a command to run as an argument, and the
 // words that name which are not read.
@@ -490,7 +522,7 @@ var findWriteWords = []string{"-delete", "-exec", "-execdir", "-ok", "-okdir"}
 // outputRedirect reports an output redirection whose operator starts at j and
 // whose target is a file: `>`, `>>`, `>|`, `&>`, `<>`, and `>&` onto a word
 // that is not a descriptor number or `-`. /dev/null, /dev/stdout,
-// /dev/stderr and /dev/tty are not files it writes.
+// /dev/stderr and /dev/tty are not files it writes (devFile).
 func outputRedirect(toks []token, j int) bool {
 	t := toks[j]
 	if t.text != ">" && t.text != ">>" {
@@ -514,11 +546,18 @@ func outputRedirect(toks []token, j int) bool {
 	if dup && (target == "-" || isFDPrefix(toks[end+1])) {
 		return false
 	}
+	return !devFile(target)
+}
+
+// devFile reports a device a command line names that is not a file written:
+// /dev/null, /dev/stdout, /dev/stderr and /dev/tty, as a redirection's target
+// (outputRedirect) or an operand (WrittenPaths).
+func devFile(target string) bool {
 	switch target {
 	case "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty":
-		return false
+		return true
 	}
-	return true
+	return false
 }
 
 // opensSubstitution reports a token at j that opens a command or process

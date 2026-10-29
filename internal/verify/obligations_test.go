@@ -99,7 +99,7 @@ func encodeObs(t *testing.T, obs []Obligation) []byte {
 // TestPG5a_GreenGateIsMet: a required gate green after the last relevant write
 // owes three rows, in kind order: gate_after_write met on its last green run,
 // exit_unmasked met on its last run, evidence_bound unknown with no evidence
-// (Phase 5); no watched row, since no run was red. An advisory gate owes
+// (no tree at the point; card P5A); no watched row, since no run was red. An advisory gate owes
 // nothing (D36, D38), and a Green with no LastGreen is unknown (INV-2).
 func TestPG5a_GreenGateIsMet(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK))
@@ -124,7 +124,7 @@ func TestPG5a_GreenGateIsMet(t *testing.T) {
 	}
 	advisory.Gate, advisory.Family = "learned:test:r:go-vet@d:repo", vetFamily
 	for _, o := range obligations(obSnap(obGate(Green), advisory), nil, nil) {
-		if o.ID == obligationID(ScopeSession, o.Kind, vetFamily) {
+		if o.ID == ObligationID(ScopeSession, o.Kind, vetFamily) {
 			t.Errorf("an advisory gate beside a required one owes %+v", o)
 		}
 	}
@@ -365,11 +365,11 @@ func TestPG5d_IDIsAStableDigestOfScopeKindFamily(t *testing.T) {
 		t.Fatalf("a label change moved the id: %q and %q", a[0].ID, b[0].ID)
 	}
 
-	base := obligationID(ScopeSession, GateAfterWrite, testFamily)
+	base := ObligationID(ScopeSession, GateAfterWrite, testFamily)
 	for _, other := range []string{
-		obligationID(ScopeCommit, GateAfterWrite, testFamily),
-		obligationID(ScopeSession, ExitUnmasked, testFamily),
-		obligationID(ScopeSession, GateAfterWrite, vetFamily),
+		ObligationID(ScopeCommit, GateAfterWrite, testFamily),
+		ObligationID(ScopeSession, ExitUnmasked, testFamily),
+		ObligationID(ScopeSession, GateAfterWrite, vetFamily),
 	} {
 		if other == base {
 			t.Errorf("id %q does not change with its input", base)
@@ -424,7 +424,7 @@ func TestPG5e_EveryListNonNilAndOnlyV0Kinds(t *testing.T) {
 	for _, f := range families {
 		for _, k := range v0 {
 			if k != WatchedRedThenGreen || f == testFamily {
-				want = append(want, obligationID(ScopeSession, k, f))
+				want = append(want, ObligationID(ScopeSession, k, f))
 			}
 		}
 	}

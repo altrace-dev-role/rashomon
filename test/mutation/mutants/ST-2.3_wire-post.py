@@ -15,13 +15,13 @@ E = "cmd/rashomon/steerenv.go"
 
 # The trigger (R3): each condition dropped.
 m("ST-2.3 the trigger ignores the event", H,
-  "\treturn event == FailureEvent && landedSeq > 0 && runner\n", "\treturn landedSeq > 0 && runner\n",
+  "\tfailure := event == FailureEvent\n", "\tfailure := true\n",
   "TestST_StepsIsTheTriggerTable")
 m("ST-2.3 the trigger ignores the landed seq", H,
-  "\treturn event == FailureEvent && landedSeq > 0 && runner\n", "\treturn event == FailureEvent && runner\n",
+  "\treturn landedSeq > 0 && (", "\treturn (",
   "TestST_StepsIsTheTriggerTable")
 m("ST-2.3 the trigger ignores the runner", H,
-  "\treturn event == FailureEvent && landedSeq > 0 && runner\n", "\treturn event == FailureEvent && landedSeq > 0\n",
+  "(failure && runner ||", "(failure ||",
   "TestST_StepsIsTheTriggerTable")
 
 # The step (R4): the consent threshold, attendance, the flush before the print.

@@ -270,18 +270,77 @@ func BenchmarkPostSteer(b *testing.B) {
 				}
 			}
 		})
-		b.Run(c.step, func(b *testing.B) {
-			before, restore := len(f.lines(b)), f.keepSteerLog(b)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for range b.N {
-				f.post.promptID = next()
-				f.post.Steer(env)
-				b.StopTimer()
-				f.logged(b, before, 1)
-				restore()
-				b.StartTimer()
-			}
-		})
+		b.Run(c.step, f.stepRow(env, next))
 	}
+	// step_100_spec is step_100 with a spec to find (card 3.1 (c), Gate A
+	// 3): the post's cwd is two levels below a .git root that holds a 4 KiB
+	// spec, so the row adds discovery's walk, its read and Parse. The record
+	// is step_100's; only the cwd discovery reads moves.
+	f := newBenchSteer(b, 100)
+	f.post.cwd = benchSpecCWD(b)
+	f.premise(b)
+	env := f.env()
+	if _, view, _ := f.post.judge(env); view.Spec == nil || view.Spec.Path == "" || len(view.Spec.Errors) != 0 {
+		b.Fatalf("the spec row's view has spec %+v, want the 4 KiB spec found", view.Spec)
+	}
+	prompt := 0
+	b.Run("step_100_spec", f.stepRow(env, func() string { prompt++; return fmt.Sprint("p", prompt) }))
+}
+
+// stepRow is a step row: the whole step per iteration, on a fresh prompt id
+// from next, with the work-done check and the log put back outside the
+// timer.
+func (f *benchSteer) stepRow(env SteerEnv, next func() string) func(*testing.B) {
+	return func(b *testing.B) {
+		before, restore := len(f.lines(b)), f.keepSteerLog(b)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for range b.N {
+			f.post.promptID = next()
+			f.post.Steer(env)
+			b.StopTimer()
+			f.logged(b, before, 1)
+			restore()
+			b.StartTimer()
+		}
+	}
+}
+
+// benchSpecCWD is a cwd two levels below a .git root whose
+// .claude/rashomon/spec.json is benchSpecDoc, made fresh under tb's temporary
+// directory with symlinks resolved, as benchProjectCWD (cmd) makes its tree.
+func benchSpecCWD(tb testing.TB) string {
+	tb.Helper()
+	base, err := filepath.EvalSymlinks(tb.TempDir())
+	if err != nil {
+		tb.Fatal(err)
+	}
+	cwd := filepath.Join(base, "internal", "batch")
+	dir := filepath.Join(base, ".claude", "rashomon")
+	for _, d := range []string{cwd, dir, filepath.Join(base, ".git")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			tb.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec.json"), []byte(benchSpecDoc()), 0o644); err != nil {
+		tb.Fatal(err)
+	}
+	return cwd
+}
+
+// benchSpecDoc is a spec of at least 4 KiB: 16 gates no call of the fixture
+// runs, and protect_path rules until the size is reached.
+func benchSpecDoc() string {
+	var gates, rules []string
+	for i := range 16 {
+		gates = append(gates, fmt.Sprintf(`{"id": "g%02d", "kind": "custom", "argv": ["make", "check-%02d"]}`, i, i))
+	}
+	doc := func() string {
+		return `{"rashomon_spec": 1, "gates": [` + strings.Join(gates, ", ") + `], "rules": [` + strings.Join(rules, ", ") + `]}`
+	}
+	for i := 0; len(doc()) < 4096; i++ {
+		rules = append(rules, fmt.Sprintf(`{"id": "frozen-%02d", "kind": "protect_path", "paths": ["db/m%02d/**"], `+
+			`"why": "Applied migrations are immutable.", "hard_control": "CODEOWNERS on db/m%02d"}`, i, i, i))
+	}
+	return doc()
 }

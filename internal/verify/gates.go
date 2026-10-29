@@ -58,9 +58,14 @@ const (
 // AgentType is nil for v0: classify's write carries no agent type, though the
 // declaration has one.
 //
+// tree is the claim point's (Point.Tree), nil at a point that read none: a
+// green last run whose tree moved since, by the session's unnamed write or by
+// no write of its own, is Stale (bind, tree.go).
+//
 // Cost: one pass to bucket the runs, a sort per family, and one pass over the
-// writes and the unnamed per family: O(R log R + F(W + U)).
-func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64) []GateState {
+// writes and the unnamed per family, then with a tree one more over the
+// writes before the green run: O(R log R + F(W + U)).
+func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) []GateState {
 	byFamily := make(map[familyKey][]gateRun)
 	for _, r := range runs {
 		if k, ok := r.family(); ok {
@@ -75,7 +80,7 @@ func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64) []Gat
 		if len(fr) == 0 {
 			continue
 		}
-		out = append(out, stateOf(k, kind, fr, writes, unnamed, at))
+		out = append(out, stateOf(k, kind, fr, writes, unnamed, at, tree))
 	}
 	slices.SortFunc(out, func(a, b GateState) int {
 		return cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))
@@ -112,6 +117,7 @@ type fam struct {
 	green   *gateRun // the last green run; nil where none is
 	ref     *gateRun // green, else last
 	counted []write  // relevant named writes after ref and at or before at
+	bound   treeBind // the last run's tree against the point's, where it is green
 }
 
 // gateRow is one line of the table: when it matches, the state and its reason.
@@ -132,6 +138,8 @@ var gateTable = []gateRow{
 	{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},
 	{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},
 	{writtenSince, Stale, func(*fam) Reason { return WritesAfterGreen }},
+	{treeMovedOwn, Stale, func(*fam) Reason { return WritesAfterGreen }},
+	{treeMovedForeign, Stale, func(*fam) Reason { return StaleForeign }},
 	{func(*fam) bool { return true }, Green, func(*fam) Reason { return OK }},
 }
 
@@ -142,6 +150,8 @@ func lastFailed(f *fam) bool          { return failed(f.last) }
 func lastOutcomeNotKnown(f *fam) bool { return outcomeNotKnown(f.last) }
 func lastOrderNotKnown(f *fam) bool   { return orderNotKnown(f.last) }
 func writtenSince(f *fam) bool        { return len(f.counted) > 0 }
+func treeMovedOwn(f *fam) bool        { return f.bound == boundOwn }
+func treeMovedForeign(f *fam) bool    { return f.bound == boundForeign }
 
 // masked: the line hid a runner's status, so its outcome is not the gate's.
 func masked(r *gateRun) bool {
@@ -217,7 +227,7 @@ func redReason(f *fam) Reason {
 
 // stateOf is one family's GateState; fr is its runs at the point, in Seq
 // order, at least one, and kind is the family's.
-func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, at int64) GateState {
+func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
 	f := fam{last: &fr[len(fr)-1]}
 	for i := len(fr) - 1; i >= 0; i-- {
 		if green(&fr[i]) {
@@ -231,6 +241,9 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 			f.counted = append(f.counted, w)
 		}
 	}
+	if f.green == f.last {
+		f.bound = bind(writes, unnamed, f.green.Seq, at, tree)
+	}
 	g := GateState{
 		Gate:             learnedGateID(kind, k),
 		Kind:             kind,
@@ -242,6 +255,7 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 		Reason:           OutcomeUnknown,
 		LastRun:          runRef(f.last),
 		WritesSinceGreen: len(f.counted),
+		bound:            f.bound,
 	}
 	for _, r := range gateTable {
 		if r.when(&f) {

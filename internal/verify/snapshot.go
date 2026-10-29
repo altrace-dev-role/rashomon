@@ -24,6 +24,13 @@ type Point struct {
 	PromptID  *string `json:"prompt_id"`
 	AgentID   *string `json:"agent_id"`
 	TaskRef   *string `json:"task_ref"`
+	// Tree is the content at the point of each file the session's tree
+	// names, by project-relative path (TreeTargets): the sha256, or nil for
+	// a file gone, not regular or over 1 MiB; no entry for one unread. The
+	// Stop hook reads it (hook.TreeShas), the one I/O the binding does; nil
+	// at a point that read none, and over MaxTreeFiles (P5A, D140). Not
+	// encoded: the checkpoint keeps the states it decided, not the shas.
+	Tree map[string]*string `json:"-"`
 }
 
 // Point kinds (archive 20.2.4: stop|subagent_stop|subtask|commit|push|pr|query).
@@ -89,6 +96,11 @@ type GateState struct {
 	WritersOmitted    int          `json:"writers_omitted"`
 	UnknownTarget     int          `json:"unknown_target_writes"`
 	PartialRunsSince  int          `json:"partial_runs_since"`
+
+	// bound is the last run's tree against the point's where the last run
+	// is green (bind), which the evidence_bound row reads; unknown with no
+	// tree. Not a key: the archive's GateState has none for it (P5A).
+	bound treeBind
 }
 
 // Recording is whether the window's record is complete; incomplete recording
@@ -189,7 +201,8 @@ type CheckpointRuleVerdict struct {
 }
 
 // IntegrityKind names the eight lexical integrity checks (2.2.6), in the
-// spec's order; STEER's kind ids follow the same order under `integrity/`.
+// spec's order, then store_touched (card 3.2); STEER's kind ids follow the
+// same order under `integrity/`.
 type IntegrityKind string
 
 const (
@@ -201,12 +214,17 @@ const (
 	TestsOnlyThenGreen IntegrityKind = "tests_only_then_green"
 	GateWeakened       IntegrityKind = "gate_weakened"
 	GateConfigEdited   IntegrityKind = "gate_config_edited"
+	// StoreTouched is a recorded call that targets a path under
+	// .claude/rashomon/, whatever its outcome (card 3.2, D131, D135);
+	// STEER's reserved store-touched kind.
+	StoreTouched IntegrityKind = "store_touched"
 )
 
 // IntegrityKinds is the closed list in the spec's order.
 var IntegrityKinds = []IntegrityKind{
 	TestRemoved, SkipAdded, AssertionsRemoved, SuppressionAdded,
 	GeneratedEdited, TestsOnlyThenGreen, GateWeakened, GateConfigEdited,
+	StoreTouched,
 }
 
 // IntegrityEntry is one unresolved check with the marker and the edit that
@@ -215,6 +233,10 @@ type IntegrityEntry struct {
 	Check  IntegrityKind `json:"check"`
 	Marker string        `json:"marker"` // closed marker id, e.g. go.t_skip
 	Seq    int64         `json:"seq"`
+	// Path is the path a store_touched entry's call targeted, as the record
+	// names it (project-relative under the project); "" and left out on
+	// every other check.
+	Path string `json:"path,omitempty"`
 }
 
 // IntegrityCounts are the window's net deltas (archive 20.2.14).

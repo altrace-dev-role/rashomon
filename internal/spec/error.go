@@ -29,7 +29,7 @@ const (
 	ReasonControl        Reason = "control_character"         // a control character in a string
 	ReasonEnum           Reason = "not_in_closed_list"        // a value outside its closed list
 	ReasonID             Reason = "id_charset"                // an id outside the id pattern
-	ReasonDuplicateID    Reason = "duplicate_id"              // an id twice in one list
+	ReasonDuplicateID    Reason = "duplicate_id"              // an id, or a gate's supplies kind, twice in one list
 	ReasonPatternSyntax  Reason = "pattern_syntax"            // not RE2
 	ReasonPatternLong    Reason = "pattern_too_long"          // over MaxPatternBytes
 	ReasonRepeatTooLarge Reason = "repeat_count_too_large"    // a counted repeat over MaxRepeat
@@ -38,6 +38,8 @@ const (
 	ReasonClassNotAuthn  Reason = "class_not_authentication"  // an identity fact's class is not an authentication class
 	ReasonNotIdentifier  Reason = "value_not_identifier"      // a fact value that has a space
 	ReasonSpecComplex    Reason = "spec_patterns_too_complex" // over MaxSpecInstructions in all
+	ReasonHoldoutRate    Reason = "holdout_rate_out_of_range" // a holdout rate_bp outside 500 to 2000
+	ReasonHoldoutWindow  Reason = "holdout_window_invalid"    // started without window_days or the converse, a window outside 1 to 365 days, or a started that is not a YYYY-MM-DD date
 )
 
 // Error is the one error Parse returns (archive 20.2.8, Schema): the first

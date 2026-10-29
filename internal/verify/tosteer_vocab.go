@@ -101,6 +101,7 @@ func reasonState() map[Reason]State {
 			RedThenWrites:         Stale,
 			WritesAfterGreen:      Stale,
 			WriteDuringRun:        Stale,
+			StaleForeign:          Stale,
 			NeverRunAfterWrite:    Absent,
 			BackgroundLaunch:      Backgrounded,
 			OrderUnknown:          Unknown,

@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -106,4 +108,16 @@ func parseInstant(flag, v string, now time.Time) (time.Time, error) {
 		return t, nil
 	}
 	return time.Time{}, fmt.Errorf("%s %q is neither a duration nor an RFC3339 time", flag, v)
+}
+
+// clearBaselines removes a host from every project baseline in the store, and
+// reports whether the store holds a baseline directory at all.
+//
+// A file it cannot clear does not stop it: the host still leaves every other
+// project's baseline, and the failures are returned together. The listing
+// and the per-file work are baseline.ForgetAll's, under its one lock -- see
+// its own doc for why this cannot list the directory itself and call
+// baseline.ForgetFile per file the way it once did.
+func clearBaselines(root, raw string) (int, bool, error) {
+	return baseline.ForgetAll(filepath.Join(root, baseline.DirName), raw)
 }

@@ -261,6 +261,7 @@ func integrityKinds() map[IntegrityKind]steer.Kind {
 			TestsOnlyThenGreen: "tests-only-green",
 			GateWeakened:       "gate-weakened",
 			GateConfigEdited:   "gate-config-edited",
+			StoreTouched:       "store-touched",
 		}
 	})
 	return integrityKindsOnce.v

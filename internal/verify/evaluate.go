@@ -87,7 +87,7 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	picked := pickExecutions(run)
 	runs, writes, unnamed, rewritten := classifyWith(run, picked)
 	c.runs, c.writes, c.unnamed, c.rewritten = runs, writes, unnamed, rewritten
-	snap.Gates = gateStates(runs, writes, unnamed, at)
+	snap.Gates = gateStates(runs, writes, unnamed, at, pt.Tree)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
 	for i := range snap.Gates {
@@ -119,12 +119,13 @@ func indexLearned(idx *ProjectIndex, nowMS int64) bool {
 
 // specInfo is the spec's identity as a snapshot carries it, nil with no spec.
 // The golden names one path: the repository spec's, which is the last source
-// in precedence order (managed first), or the only one.
+// in precedence order (managed first), or the only one. Errors is the
+// Compiled's, a copy, never null.
 func specInfo(sp *spec.Compiled) *SpecInfo {
 	if sp == nil {
 		return nil
 	}
-	info := &SpecInfo{Digest: sp.Digest, Trust: sp.Trust, Errors: []string{}}
+	info := &SpecInfo{Digest: sp.Digest, Trust: sp.Trust, Errors: append([]string{}, sp.Errors...)}
 	if n := len(sp.Sources); n > 0 {
 		info.Path = sp.Sources[n-1].Path
 	}

@@ -28,6 +28,8 @@ type stFix struct {
 	t   *testing.T
 	st  *store.Store
 	now time.Time
+	// cwd is each payload's cwd, /tmp/project unless a test moves it.
+	cwd string
 	// setup runs on each Post before its Capture.
 	setup func(*Post)
 }
@@ -39,7 +41,7 @@ func newST(t *testing.T) *stFix {
 	if err := store.WriteRecordScopeMarker(st.Root(), store.RecordScopeV5); err != nil {
 		t.Fatal(err)
 	}
-	f := &stFix{t: t, st: st, now: time.UnixMilli(1_800_000_000_000)}
+	f := &stFix{t: t, st: st, now: time.UnixMilli(1_800_000_000_000), cwd: "/tmp/project"}
 	cov := store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SessionSchemaVersion, RecordedAtMS: f.now.UnixMilli(),
 		SessionID: stSession, Phase: store.PhasePost, State: store.StateVerified,
 		HookEntry: store.EntryPresentSettings, Probe: store.ProbeFresh}
@@ -54,7 +56,7 @@ func (f *stFix) clock() time.Time { return f.now }
 func (f *stFix) payload(event, id, tool string, input, extra map[string]any) string {
 	f.t.Helper()
 	p := map[string]any{"session_id": stSession, "tool_use_id": id, "prompt_id": "p1", "transcript_path": "/tmp/t.jsonl",
-		"permission_mode": "default", "tool_name": tool, "cwd": "/tmp/project", "hook_event_name": event, "tool_input": input}
+		"permission_mode": "default", "tool_name": tool, "cwd": f.cwd, "hook_event_name": event, "tool_input": input}
 	maps.Copy(p, extra)
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -88,13 +90,13 @@ func (f *stFix) call(id, tool string, input map[string]any, exit int) *Post {
 
 var goTest = map[string]any{"command": "go test ./..."}
 
-// red lands a green `go test ./...`, an Edit of internal/a.go and a red
-// `go test ./...` under redID, the regression the step names, and returns
-// the red's Post.
+// red lands a green `go test ./...`, an Edit of internal/a.go under cwd and
+// a red `go test ./...` under redID, the regression the step names, and
+// returns the red's Post.
 func (f *stFix) red(redID string) *Post {
 	f.t.Helper()
 	f.call("toolu_g", "Bash", goTest, 0)
-	f.call("toolu_e", "Edit", map[string]any{"file_path": "/tmp/project/internal/a.go", "old_string": "a", "new_string": "b"}, 0)
+	f.call("toolu_e", "Edit", map[string]any{"file_path": filepath.Join(f.cwd, "internal", "a.go"), "old_string": "a", "new_string": "b"}, 0)
 	return f.call(redID, "Bash", goTest, 1)
 }
 
@@ -137,24 +139,30 @@ func printsFlag(t *testing.T, b []byte) bool {
 	return strings.Contains(msg, "rashomon record: gate 'go' exited 0 earlier in this session") && !model
 }
 
-// TestST_StepsIsTheTriggerTable: the step runs only on a failure event
-// whose execution landed in the ordered stream and carried a runner (card
-// 2.3 R3).
+// TestST_StepsIsTheTriggerTable: the step runs only on an execution that
+// landed in the ordered stream, at a failure event that carried a runner
+// (card 2.3 R3) or at either post event when the call's input names
+// .claude/rashomon (card P5B, 5.7, D-B7).
 func TestST_StepsIsTheTriggerTable(t *testing.T) {
 	for _, tc := range []struct {
 		event  string
 		seq    int64
 		runner bool
+		store  bool
 		want   bool
 	}{
-		{FailureEvent, 7, true, true},
-		{"PostToolUse", 7, true, false},
-		{FailureEvent, 0, true, false},
-		{FailureEvent, 7, false, false},
-		{"", 7, true, false},
+		{FailureEvent, 7, true, false, true},
+		{"PostToolUse", 7, true, false, false},
+		{FailureEvent, 0, true, false, false},
+		{FailureEvent, 7, false, false, false},
+		{"", 7, true, false, false},
+		{"PostToolUse", 7, false, true, true},
+		{FailureEvent, 7, false, true, true},
+		{"PostToolUse", 0, false, true, false},
+		{"", 7, false, true, false},
 	} {
-		if got := steps(tc.event, tc.seq, tc.runner); got != tc.want {
-			t.Errorf("steps(%q, %d, %v) = %v, want %v", tc.event, tc.seq, tc.runner, got, tc.want)
+		if got := steps(tc.event, tc.seq, tc.runner, tc.store); got != tc.want {
+			t.Errorf("steps(%q, %d, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.store, got, tc.want)
 		}
 	}
 }

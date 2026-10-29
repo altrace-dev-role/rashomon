@@ -1,0 +1,9 @@
+pgraph-log v0
++	func:example.com/m/b.G	calls	func:example.com/m/a.F	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
++	method:example.com/m/a.T.M	calls	func:example.com/m/a.F	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
++	pkg:example.com/m/a	declares	func:example.com/m/a.F	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
++	pkg:example.com/m/a	declares	type:example.com/m/a.T	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
++	pkg:example.com/m/b	declares	func:example.com/m/b.G	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
++	pkg:example.com/m/b	declares	var:example.com/m/b.Old	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
++	type:example.com/m/a.T	declares	method:example.com/m/a.T.M	PROVEN	linux/amd64/cgo=0/tags=	c1	gotypes@v2
+-	pkg:example.com/m/b	declares	var:example.com/m/b.Old	PROVEN	linux/amd64/cgo=0/tags=	c2	gotypes@v2

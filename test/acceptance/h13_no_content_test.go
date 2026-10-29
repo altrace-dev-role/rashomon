@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -100,6 +101,11 @@ var (
 		"edit_marks_withheld", "head_after_withheld",
 		"harness_id", "harness_tool_name", "declared_via", "outcome_source", "failure_type",
 		"mcp_server_source",
+		// v6, P5A. The sha256 of the file a named write names, read after
+		// the call: 64 hex, fixed width, and null below record_scope v5
+		// with the content fields, since an unkeyed digest of a small file
+		// can be confirmed by guessing it.
+		"content_sha256",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -303,8 +309,13 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 			repText := e.run("", nil, "report", "--session", testSession)
 			repRedact := e.run("", nil, "report", "--redact", "--session", testSession)
 
+			// watch consents to record scope v5, where written_paths holds
+			// the files a line's redirects name, as the line names them
+			// (card 1.2w): a target the user agreed to record. The canary
+			// may stand there as that whole path, and in no other field,
+			// file or output.
 			for rel, f := range walkStore(t, e.home) {
-				if bytes.Contains(f.body, []byte(canary)) {
+				if bytes.Contains(withoutWrittenPath(t, f.body, "/tmp/"+canary), []byte(canary)) {
 					t.Errorf("%s contains the canary", rel)
 				}
 			}
@@ -324,6 +335,37 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withoutWrittenPath is body with every written_paths entry equal to path
+// taken out of each line that is a JSON object holding the list. Any other
+// line, and any other field, is searched as it was written.
+func withoutWrittenPath(t *testing.T, body []byte, path string) []byte {
+	t.Helper()
+	lines := bytes.Split(body, []byte("\n"))
+	for i, line := range lines {
+		var rec map[string]any
+		if json.Unmarshal(line, &rec) != nil {
+			continue
+		}
+		list, ok := rec["written_paths"].([]any)
+		if !ok {
+			continue
+		}
+		kept := []any{}
+		for _, v := range list {
+			if v != path {
+				kept = append(kept, v)
+			}
+		}
+		rec["written_paths"] = kept
+		b, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines[i] = b
+	}
+	return bytes.Join(lines, []byte("\n"))
 }
 
 // TestH12_InternalErrorCoverageCarriesNoCount covers the failure half of H-12

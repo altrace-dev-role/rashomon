@@ -54,7 +54,9 @@ var (
 //     4.2.12: "`stop` with no stop form is `nudge`").
 //   - ordering-rule: nudge after the call; ask on PreToolUse of the Bash
 //     call (40.4.10; STR-68).
-//   - integrity and subagent-claim: user flags at release (2.2.9's table).
+//   - integrity and subagent-claim: user flags at release (2.2.9's table);
+//     integrity at either post event, whatever the call's outcome (D135;
+//     card P5B).
 //
 // A loose claim, a rule neither trusted nor managed, a rule whose input
 // another hook rewrote, and a finding VERIFY marks UserOnly are user flags
@@ -101,7 +103,8 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceili
 		return nudge, true
 	case id == pattern.OrderingRule && event == pre:
 		return ceiling{steer.LevelStop, steer.StopFormAsk}, true
-	case id == pattern.Integrity && (event == post || event == string(steer.EventStop)):
+	case id == pattern.Integrity && (event == post || event == string(steer.EventPostToolUseFailure) ||
+		event == string(steer.EventStop)):
 		return flag, true
 	case id == pattern.SubagentClaim && (event == eventSubagentStop || event == post):
 		return flag, true

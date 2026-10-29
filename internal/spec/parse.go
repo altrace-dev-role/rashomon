@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -135,7 +136,9 @@ func list[T any](r *reader, n *node, one func(*node) T) []T {
 	return out
 }
 
-// The closed lists of archive 20.2.8, Schema, in the archive's order.
+// The closed lists of archive 20.2.8, Schema, in the archive's order, and
+// supplyKinds: the evidence kinds a gate may supply (D117), 3.2's closed
+// EvidenceKinds less its two text kinds.
 var (
 	gateKinds   = []string{"test", "build", "lint", "typecheck", "scan", "custom"}
 	matchModes  = []string{"prefix", "exact"}
@@ -145,7 +148,8 @@ var (
 	factKinds   = []string{"aws_profile", "aws_region", "kube_context", "kube_namespace", "package_index_host", "env_var_name", "sign_in_step"}
 	mechanisms  = []string{"profile", "region", "context", "namespace", "index", "env var name", "sign-in step"}
 	targetKinds = []string{"aws_account", "aws_region", "endpoint_host", "kube_context", "gcp_project", "azure_subscription"}
-	gateKeys    = []string{"id", "kind", "argv", "match", "aliases", "dir", "applies_to", "required", "partial_flags", "success_line", "failure_line", "empty_run_line", "exit_codes"}
+	supplyKinds = []string{"real_data_run", "hostile_input_run", "cross_check"}
+	gateKeys    = []string{"id", "kind", "argv", "match", "aliases", "dir", "applies_to", "required", "partial_flags", "success_line", "failure_line", "empty_run_line", "exit_codes", "supplies"}
 	ruleKeys    = []string{"id", "kind", "why", "hard_control", "alternative", "pattern", "languages", "paths", "exclude_paths", "command", "modes", "at", "before", "evidence", "then", "after", "after_gate", "same_run_key", "invalidated_by"}
 	commandKeys = []string{"argv", "flags", "require_flags", "flag_values", "sql"}
 	factKeys    = []string{"id", "kind", "programs", "target", "classes", "value", "mechanism", "why"}
@@ -316,7 +320,7 @@ func (r *reader) file(root *node) *File {
 	case v.num != 1:
 		r.failAt("rashomon_spec", ReasonVersion, 0)
 	}
-	if r.err != nil || r.object(root, "rashomon_spec", "gates", "ci_commands", "rules", "facts") == nil {
+	if r.err != nil || r.object(root, "rashomon_spec", "gates", "ci_commands", "rules", "facts", "holdout") == nil {
 		return nil
 	}
 	items := func(key string) []node {
@@ -347,6 +351,7 @@ func (r *reader) file(root *node) *File {
 	each(r, "ci_commands", ci, func(n *node, _ map[string]struct{}) { f.CICommands = append(f.CICommands, r.words(n)) })
 	each(r, "rules", rules, func(n *node, seen map[string]struct{}) { f.Rules = append(f.Rules, r.rule(n, seen)) })
 	each(r, "facts", facts, func(n *node, seen map[string]struct{}) { f.Facts = append(f.Facts, r.fact(n, seen)) })
+	f.Holdout = field(r, top, "holdout", false, r.holdout)
 	return f
 }
 
@@ -380,6 +385,7 @@ func (r *reader) gate(n *node, seen map[string]struct{}) (g Gate) {
 	g.FailureLine = field(r, f, "failure_line", false, r.regexes)
 	g.EmptyRunLine = field(r, f, "empty_run_line", false, r.regexes)
 	g.ExitCodes = field(r, f, "exit_codes", false, func(n *node) map[string]string { return strMap(r, n, r.plain) })
+	g.Supplies = field(r, f, "supplies", false, r.supplies)
 	if g.Match == "" {
 		g.Match = "prefix"
 	}
@@ -388,6 +394,71 @@ func (r *reader) gate(n *node, seen map[string]struct{}) (g Gate) {
 		g.Required = &yes
 	}
 	return g
+}
+
+// supplies reads a gate's evidence kinds: a list from supplyKinds with no
+// kind twice.
+func (r *reader) supplies(n *node) []string {
+	out := list(r, n, r.oneOf(supplyKinds))
+	for i := range out {
+		if slices.Contains(out[:i], out[i]) {
+			r.failAt(strconv.Itoa(i), ReasonDuplicateID, 0)
+			return nil
+		}
+	}
+	return out
+}
+
+// holdout reads the holdout object (PF-MS5): every key optional, rate_bp 500
+// to 2000 and 1000 when absent, started and window_days together or neither.
+// The Holdout it returns is never the zero value, which stands for no object.
+func (r *reader) holdout(n *node) (h Holdout) {
+	f := r.object(n, "off", "rate_bp", "started", "window_days")
+	h.Off = field(r, f, "off", false, func(n *node) bool { b := r.boolean(n); return b != nil && *b })
+	h.RateBP = field(r, f, "rate_bp", false, func(n *node) int { return r.intIn(n, MinHoldoutBP, MaxHoldoutBP, ReasonHoldoutRate) })
+	h.Started = field(r, f, "started", false, r.date)
+	h.WindowDays = field(r, f, "window_days", false, func(n *node) int { return r.intIn(n, 1, MaxHoldoutWindowDays, ReasonHoldoutWindow) })
+	_, started := f["started"]
+	_, window := f["window_days"]
+	switch {
+	case r.err != nil:
+	case started && !window:
+		r.failAt("window_days", ReasonHoldoutWindow, 0)
+	case window && !started:
+		r.failAt("started", ReasonHoldoutWindow, 0)
+	}
+	if h.RateBP == 0 {
+		h.RateBP = DefaultHoldoutBP
+	}
+	return h
+}
+
+// intIn reads an integer from lo to hi, refusing one outside with reason.
+func (r *reader) intIn(n *node, lo, hi int, reason Reason) int {
+	switch {
+	case n.kind != kInt:
+		r.fail(ReasonType, 0)
+	case n.num < int64(lo) || n.num > int64(hi):
+		r.fail(reason, 0)
+	default:
+		return int(n.num)
+	}
+	return 0
+}
+
+// date reads a calendar date written YYYY-MM-DD, as UTC midnight; a string in
+// another form, or a day the month does not have, is refused as the window's.
+func (r *reader) date(n *node) time.Time {
+	s := r.plain(n)
+	if r.err != nil {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.DateOnly, s)
+	if err != nil {
+		r.fail(ReasonHoldoutWindow, 0)
+		return time.Time{}
+	}
+	return t
 }
 
 func (r *reader) command(n *node) (c *CommandMatch) {

@@ -11,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -137,19 +138,24 @@ type Post struct {
 	sessionID string
 	toolUseID string
 	cwd       string
+	// sp is the spec the steer step discovered for this call (DiscoverSpec),
+	// nil for none or before the step runs (card 3.1 (c)).
+	sp *spec.Compiled
 	// withheld is Handler.withheld for the execution record.
 	withheld bool
 
 	// What the steer step reads (card 2.3 R5): the payload's prompt, agent,
 	// permission mode and event, the seq the execution landed at in the
-	// ordered stream (0 when it spilled or did not land), and whether it
-	// carried a runner digest.
+	// ordered stream (0 when it spilled or did not land), whether it
+	// carried a runner digest, and whether its tool input names
+	// .claude/rashomon (storeNamed; card P5B, 5.7).
 	promptID       string
 	agentID        string
 	permissionMode string
 	event          string
 	landedSeq      int64
 	landedRunner   bool
+	landedStore    bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -280,14 +286,21 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
+	// The content of the file a named write names, as the call left it: the
+	// tree a later gate run is bound to (card P5A, D140). A digest of content,
+	// so it is read only where record_scope v5 keeps it.
+	scope := recordScope(p.st)
+	if scope == store.RecordScopeV5 {
+		rec.ContentSHA256 = writtenSHA(&pl)
+	}
 	// The record-scope gate, then the caps, as on the declaration path
 	// (store.GateExecution; REC-52).
-	store.GateExecution(&rec, recordScope(p.st))
+	store.GateExecution(&rec, scope)
 	if p.capExec(&rec) {
 		p.withheld = true
 	}
 	seq, err := p.st.LandExecution(rec)
-	p.landedSeq, p.landedRunner = seq, rec.RunnerDigest != nil
+	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput)
 	return landed(err, &p.withheld)
 }
 

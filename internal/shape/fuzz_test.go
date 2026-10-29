@@ -226,6 +226,37 @@ func checkLeadingDirectory(t *testing.T, cmd string) {
 	}
 }
 
+func FuzzWrittenPaths(f *testing.F) {
+	for _, s := range shapeSeeds() {
+		f.Add(s)
+	}
+	for _, s := range writeTargetCorpus {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, cmd string) { checkWrittenPaths(t, cmd) })
+}
+
+// checkWrittenPaths: every target is a path the shell takes as it stands --
+// not empty, not `-`, no leading `~`, nothing it expands or globs -- a list
+// with no targets is nil, never empty, and a line may_write says may write is
+// never complete with no targets, the record's "writes nothing".
+func checkWrittenPaths(t *testing.T, cmd string) {
+	t.Helper()
+	raw := bashInput(t, cmd)
+	targets, complete := WrittenPaths("Bash", raw)
+	if targets != nil && len(targets) == 0 {
+		t.Fatalf("WrittenPaths(%q) is an empty list, not nil", cmd)
+	}
+	for _, p := range targets {
+		if p == "" || p == "-" || strings.HasPrefix(p, "~") || strings.ContainsAny(p, "$`*?[{") {
+			t.Fatalf("WrittenPaths(%q) names %q, which the shell does not take as it stands", cmd, p)
+		}
+	}
+	if targets == nil && complete && Derive("Bash", raw, []byte("fuzz-key")).MayWrite {
+		t.Fatalf("WrittenPaths(%q) is complete with no targets, and may_write is true", cmd)
+	}
+}
+
 // TestRubricTEST1_ShapeSeeds runs every fuzz property over the seeds as a
 // plain test, which is what a mutant names and what runs without -fuzz.
 func TestRubricTEST1_ShapeSeeds(t *testing.T) {
@@ -233,6 +264,7 @@ func TestRubricTEST1_ShapeSeeds(t *testing.T) {
 		checkDerive(t, s)
 		checkHosts(t, s)
 		checkLeadingDirectory(t, s)
+		checkWrittenPaths(t, s)
 		raw, err := json.Marshal(map[string]string{"file_path": s})
 		if err != nil {
 			t.Fatal(err)

@@ -155,12 +155,7 @@ func (s *Store) evictBodies(budget int64, except string) error {
 	if err != nil {
 		return err
 	}
-	slices.SortFunc(all, func(a, b bodyFile) int {
-		if c := a.mod.Compare(b.mod); c != 0 {
-			return c
-		}
-		return strings.Compare(a.path, b.path)
-	})
+	slices.SortFunc(all, oldestFirst)
 	for _, b := range all {
 		if total <= budget {
 			break
@@ -180,11 +175,37 @@ func (s *Store) BodiesTotal() (int, int64, error) {
 	return len(all), total, err
 }
 
+// BodyCopies lists projectDir's transcript copies, oldest first: the
+// backtest's read (card P6), a CLI reader's, as every reader of copies is.
+func (s *Store) BodyCopies(projectDir string) ([]string, error) {
+	if !isPlainSegment(projectDir) {
+		return nil, fmt.Errorf("bodies: project directory %q is not one path element", projectDir)
+	}
+	all, _, err := s.listBodies("")
+	slices.SortFunc(all, oldestFirst)
+	var out []string
+	for _, f := range all {
+		if filepath.Dir(f.path) == filepath.Join(s.root, DirBodies, projectDir) {
+			out = append(out, f.path)
+		}
+	}
+	return out, err
+}
+
 // bodyFile is one copy as listBodies finds it.
 type bodyFile struct {
 	path string
 	size int64
 	mod  time.Time
+}
+
+// oldestFirst orders copies by mtime, oldest first, and by path among equals:
+// the order eviction removes them in and BodyCopies lists them in.
+func oldestFirst(a, b bodyFile) int {
+	if c := a.mod.Compare(b.mod); c != 0 {
+		return c
+	}
+	return strings.Compare(a.path, b.path)
 }
 
 // listBodies lists every project's copies but except, and their total. A
