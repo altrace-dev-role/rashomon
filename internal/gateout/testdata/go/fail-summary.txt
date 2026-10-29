@@ -1,0 +1,2 @@
+--- FAIL: [redacted] (0.00s)
+FAIL	github.com/example/project	0.01s

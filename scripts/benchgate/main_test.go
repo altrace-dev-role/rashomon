@@ -58,7 +58,7 @@ func TestRES36c_CompareFailsClosed(t *testing.T) {
 		{Name: "BenchmarkA", BytesPerOpMax: 1000, AllocsPerOpMax: 10},
 		{Name: "BenchmarkB", BytesPerOpMax: 1500, AllocsPerOpMax: 20},
 		{Name: "BenchmarkC", BytesPerOpMax: 1, AllocsPerOpMax: 1},
-		{Name: "BenchmarkA", BytesPerOpMax: 0, AllocsPerOpMax: 0},
+		{Name: "BenchmarkA", BytesPerOpMax: -1, AllocsPerOpMax: 0},
 	}
 	problems := Compare(results, budgets, tolerance)
 	want := []string{
@@ -78,6 +78,20 @@ func TestRES36c_CompareFailsClosed(t *testing.T) {
 	}
 	if p := Compare(map[string]Result{"BenchmarkA": {1000, 12}}, budgets[:1], tolerance); len(p) != 1 {
 		t.Errorf("allocs more than ten percent over must fail: %q", p)
+	}
+}
+
+func TestRES36r_ZeroAllocationsAreGateable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "budgets.json")
+	doc := `{"budgets_version": 1, "go_version": "go1.27.2", "benchmark_platform": "linux/amd64", "benchmarks": [` +
+		`{"name": "BenchmarkZeroAlloc", "measured_bytes_per_op": 0, "measured_allocs_per_op": 0, "bytes_per_op_max": 0, "allocs_per_op_max": 0}]}`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	line := "BenchmarkZeroAlloc-8 20 100 ns/op 0 B/op 0 allocs/op\n"
+	var stdout, stderr bytes.Buffer
+	if code := run(path, strings.NewReader(line), &stdout, &stderr, "go1.27.2", "linux/amd64"); code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout %s\nstderr %s", code, stdout.String(), stderr.String())
 	}
 }
 
