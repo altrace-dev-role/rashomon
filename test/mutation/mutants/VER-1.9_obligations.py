@@ -68,7 +68,7 @@ m("VER-1.9 a Phase 3 kind emitted", O,
 
 # The id.
 m("VER-1.9 the id over the gate's label", O,
-  '\t\tID: obligationID(l.scope, kind, g.Family),', '\t\tID: obligationID(l.scope, kind, g.Gate),', "TestPG5d_")
+  '\t\tID: ObligationID(l.scope, kind, g.Family),', '\t\tID: ObligationID(l.scope, kind, g.Gate),', "TestPG5d_")
 m("VER-1.9 the id without the kind", O,
   "\tb := append(append(append(append(append(a[:0], scope...), '\\n'), kind...), '\\n'), family...)\n",
   "\tb := append(append(append(append(a[:0], scope...), '\\n'), '\\n'), family...)\n", "TestPG5d_")

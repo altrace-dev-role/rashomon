@@ -41,8 +41,9 @@ import (
 // Complete makes every row of the gate unknown (INV-2, A1).
 //
 // The three v0 facts: the scope is the session at every point (Q1); the
-// evidence_bound rows are unknown; and no spec_rule, platform_impact,
-// expected_evidence or proposed_check row is emitted (Phase 3 and 6).
+// evidence_bound rows are unknown; and no spec_rule, platform_impact or
+// proposed_check row is emitted (Phase 3 and 6). expected_evidence rows
+// come from the task file (evidence.go, card 3.3).
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string
@@ -107,7 +108,7 @@ var obligationScopesOnce struct {
 // obligationSourceSpec is the source of a declared or ci_commands gate.
 const obligationSourceSpec = "spec"
 
-// Obligation is one ledger row. ID is a stable digest (obligationID);
+// Obligation is one ledger row. ID is a stable digest (ObligationID);
 // Evidence is record seqs only, ascending, never null.
 type Obligation struct {
 	ID       string          `json:"id"`
@@ -124,7 +125,9 @@ type Obligation struct {
 func EvaluateWithObligations(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) (Snapshot, []Obligation) {
 	var c classified
 	snap := evaluate(run, idx, sp, pt, now, &c)
-	return snap, obligations(snap, c.runs, c.writes)
+	ex := expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(run, pt.Seq)})
+	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
+	return snap, append(obligations(snap, c.runs, c.writes), expectedObligations(scope, ex)...)
 }
 
 // cite is the gate pointers a row's evidence reads.
@@ -295,15 +298,16 @@ func (l *ledger) add(g *GateState, source string, kind ObligationKind, state Obl
 	slices.Sort(l.evidence[from:])
 	l.evidence = l.evidence[:from+len(slices.Compact(l.evidence[from:]))]
 	l.rows = append(l.rows, Obligation{
-		ID: obligationID(l.scope, kind, g.Family), Scope: l.scope, Kind: kind, Source: source, State: state,
+		ID: ObligationID(l.scope, kind, g.Family), Scope: l.scope, Kind: kind, Source: source, State: state,
 		Evidence: l.evidence[from:len(l.evidence):len(l.evidence)],
 	})
 }
 
-// obligationID is "ob:" and the first 16 hex of sha256 over scope, kind and
+// ObligationID is "ob:" and the first 16 hex of sha256 over scope, kind and
 // family joined by newlines: the family, not the gate's label, which can
 // change between reads (D33 item 3). None of the three holds a newline.
-func obligationID(scope string, kind ObligationKind, family string) string {
+// Exported for the rows another package builds (internal/platform).
+func ObligationID(scope string, kind ObligationKind, family string) string {
 	var a [128]byte
 	b := append(append(append(append(append(a[:0], scope...), '\n'), kind...), '\n'), family...)
 	sum := sha256.Sum256(b)
