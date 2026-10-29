@@ -48,7 +48,7 @@ m("VER-3.1 the trust fold reads the first source only", D, "range c.Sources[1:]"
 m("VER-3.1 an implied source is untrusted", D, "\t\treturn Builtin\n", "\t\treturn Untrusted\n", SP10)
 m("VER-3.1 a broken spec falls back to the parent's", D, "\t\td.add(path, data, Untrusted)\n\t\tbreak\n", "\t\td.add(path, data, Untrusted)\n\t\tif len(d.c.Errors) == 0 {\n\t\t\tbreak\n\t\t}\n", SP11)
 m("VER-3.1 a refused file's Errors line is dropped", D, '\t\td.c.Errors = append(d.c.Errors, path+": "+err.Error())\n', "", SP11)
-m("VER-3.1 nil when only errors exist", D, "if len(d.c.Sources) == 0 && len(d.c.Errors) == 0 {", "if len(d.c.Sources) == 0 {", SP11)
+m("VER-3.1 nil when only errors exist", D, "if len(d.c.Sources) == 0 && len(d.c.Errors) == 0 && d.c.Task == nil {", "if len(d.c.Sources) == 0 && d.c.Task == nil {", SP11)
 m("VER-3.1 a repository I/O error reads as no file", D, "\t\tif errors.Is(err, fs.ErrNotExist) {\n\t\t\tcontinue\n", "\t\tif err != nil {\n\t\t\tcontinue\n", SP12)
 m("VER-3.1 a managed I/O error reads as no file", D, "\tuid, mode, err := fsys.Owner(path)\n\tif errors.Is(err, fs.ErrNotExist) {", "\tuid, mode, err := fsys.Owner(path)\n\tif err != nil {", SP12)
 m("VER-3.1 OSFS opens what is not a regular file", D, "\tif !fi.Mode().IsRegular() {\n", "\tif !fi.Mode().IsRegular() && false {\n", SP12b)

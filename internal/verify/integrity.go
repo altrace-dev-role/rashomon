@@ -118,13 +118,22 @@ var markerTableOnce struct {
 // and stops a pattern rather than completing one, as report's detector does
 // with denied nil.
 //
+// The store (card 3.2, D131). One store_touched entry per write in the
+// window whose path carries a .claude/rashomon/ segment (inStore): the
+// spec, the task file, the store itself. Marker is "", Seq the write's
+// and Path its path. Every write the record names counts, whatever its
+// outcome: a failed shaped write may still have landed, and the entry
+// fails closed. It never resolves, and holds RecordGreen false as any
+// entry does.
+//
 // Counts are counts, not verdicts (20.2.6): TestsDelta is the signed net of
 // test definitions across test-class paths and may be positive while a
 // test_removed entry stands (one file lost three, another gained five);
 // SkipsAdded and SuppressionsAdded sum each (path, id)'s net floored at zero,
 // so each is positive exactly when an entry of its check stands. Unresolved
-// is sorted by Seq, then check in IntegrityKinds order, then marker, and is
-// never nil; nothing depends on the order of the run's records or of writes.
+// is sorted by Seq, then check in IntegrityKinds order, then marker, then
+// path, and is never nil; nothing depends on the order of the run's records
+// or of writes.
 //
 // Not read: generated_edited, gate_weakened and gate_config_edited, whose
 // producers (the edit's first 1 KiB, the gate line's flags, a path list) are
@@ -137,8 +146,8 @@ var markerTableOnce struct {
 // removed holds RecordGreen false for the session. Every caller passes from
 // = 0 until 1.8w gives Evaluate the point's window start.
 //
-// Cost: one pass over the executions and declarations for the marks, one
-// over writes, one over the declarations for the pairs (testPairs), and a
+// Cost: one pass over the executions and declarations for the marks, two
+// over writes (the marks, the store), one over the declarations for the pairs (testPairs), and a
 // sort of the entries; none for the lost-declaration guard, which is
 // recording's.
 func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, from, at int64) Integrity {
@@ -166,9 +175,14 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 	for _, p := range testPairs(run, picked, from, at) {
 		out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: TestsOnlyThenGreen, Seq: p[1]})
 	}
+	for _, w := range writes {
+		if w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {
+			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: w.Seq, Path: *w.Path})
+		}
+	}
 	slices.SortFunc(out.Unresolved, func(a, b IntegrityEntry) int {
 		return cmp.Or(cmp.Compare(a.Seq, b.Seq), cmp.Compare(slices.Index(IntegrityKinds, a.Check), slices.Index(IntegrityKinds, b.Check)),
-			cmp.Compare(a.Marker, b.Marker))
+			cmp.Compare(a.Marker, b.Marker), cmp.Compare(a.Path, b.Path))
 	})
 	return out
 }

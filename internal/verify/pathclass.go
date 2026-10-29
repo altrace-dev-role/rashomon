@@ -244,3 +244,11 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 func inSet(s string, words []string) bool {
 	return slices.Contains(words, s)
 }
+
+// inStore reports whether the slash-separated path p, cleaned, carries a
+// .claude/rashomon/ segment (card 3.2, D131): the store's directory
+// itself or anything under it, at the root or below any directory.
+// integrity's store_touched check reads it.
+func inStore(p string) bool {
+	return strings.Contains("/"+path.Clean(p)+"/", "/.claude/rashomon/")
+}

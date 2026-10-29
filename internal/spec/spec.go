@@ -96,18 +96,25 @@ type Compiled struct {
 	Digest  string
 	Trust   Trust
 	// Gates, Rules and Facts are the sources' declarations merged, managed
-	// first, each Source indexing Sources.
+	// first, each Source indexing Sources; the rule a task file implies
+	// (3.2) follows the declared rules with Source SourceImplied.
 	Gates []Declared
 	Rules []DeclaredRule
 	Facts []DeclaredFact
 	// Dropped is each repository declaration a managed one shadowed.
 	Dropped []Dropped
 	// Errors has one line per file that applied nothing: "<path>: <Parse's
-	// error>", or "<path>: managed spec ignored: not admin-owned".
+	// error>", or "<path>: managed spec ignored: not admin-owned"; and
+	// "<task path>: <ParseTask's or the read's error>" (3.2).
 	Errors []string
 	// Holdout is the managed spec's holdout object when it has one, else the
 	// repository spec's, else the zero Holdout (on at DefaultHoldoutBP).
 	Holdout Holdout
+	// Task is the active task file (README 3.2): nil with none, and nil
+	// with an Errors line when it was refused or could not be read.
+	// TaskDigest is its digest, "" when Task is nil.
+	Task       *Task
+	TaskDigest string
 }
 
 // Lowest is the lower of two trusts in the order untrusted < trusted <

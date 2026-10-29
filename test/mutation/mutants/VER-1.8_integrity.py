@@ -6,7 +6,7 @@
 I = "internal/verify/integrity.go"
 SORT = ("\tslices.SortFunc(out.Unresolved, func(a, b IntegrityEntry) int {\n"
         "\t\treturn cmp.Or(cmp.Compare(a.Seq, b.Seq), cmp.Compare(slices.Index(IntegrityKinds, a.Check), slices.Index(IntegrityKinds, b.Check)),\n"
-        "\t\t\tcmp.Compare(a.Marker, b.Marker))\n"
+        "\t\t\tcmp.Compare(a.Marker, b.Marker), cmp.Compare(a.Path, b.Path))\n"
         "\t})\n")
 
 # The window (from, at] (D40).
@@ -95,7 +95,7 @@ IMPORTS["VER-1.8 the entries are unsorted"] = (I, "import (\n\t\"cmp\"\n\t\"slic
 m("VER-1.8 the check is not a sort key", I,
   "cmp.Compare(slices.Index(IntegrityKinds, a.Check), slices.Index(IntegrityKinds, b.Check)),\n", "0,\n", "TestINT8_")
 m("VER-1.8 the marker is not a sort key", I,
-  "\t\t\tcmp.Compare(a.Marker, b.Marker))\n", "\t\t\t0)\n", "TestINT8_")
+  "\t\t\tcmp.Compare(a.Marker, b.Marker), cmp.Compare(a.Path, b.Path))\n", "\t\t\t0, cmp.Compare(a.Path, b.Path))\n", "TestINT8_")
 
 # Part two: Evaluate's wiring (PF-IV3, D39, D40) and the findings row (Gate B F1).
 E = "internal/verify/evaluate.go"

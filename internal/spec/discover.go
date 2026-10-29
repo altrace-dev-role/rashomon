@@ -153,7 +153,10 @@ func within(p, root string) bool {
 // nothing, and the walk does not go on to a farther one. Discover returns nil,
 // nil when no file applies and none was refused, else a Compiled. The error
 // is an I/O failure other than a missing file; the caller then has no spec
-// and raises one flag.
+// and raises one flag. The task file (README 3.2) is TaskFile beside the
+// repository spec that was read or, with none, under the farthest
+// candidate's directory, the project root; a task counts as a file that
+// applies, and its failures are discovery.task's.
 func Discover(fsys FS, repoCandidates []string, managedPath string) (*Compiled, error) {
 	var d discovery
 	if managedPath != "" {
@@ -161,6 +164,7 @@ func Discover(fsys FS, repoCandidates []string, managedPath string) (*Compiled, 
 			return nil, err
 		}
 	}
+	near := "" // the candidate the task file sits beside
 	for _, path := range repoCandidates {
 		data, err := fsys.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -169,10 +173,17 @@ func Discover(fsys FS, repoCandidates []string, managedPath string) (*Compiled, 
 		if err != nil {
 			return nil, err
 		}
+		near = path
 		d.add(path, data, Untrusted)
 		break
 	}
-	if len(d.c.Sources) == 0 && len(d.c.Errors) == 0 {
+	if near == "" && len(repoCandidates) > 0 {
+		near = repoCandidates[len(repoCandidates)-1]
+	}
+	if near != "" {
+		d.task(fsys, taskPath(near))
+	}
+	if len(d.c.Sources) == 0 && len(d.c.Errors) == 0 && d.c.Task == nil {
 		return nil, nil
 	}
 	return d.compile(), nil
@@ -244,7 +255,8 @@ func (d *discovery) add(path string, data []byte, trust Trust) {
 // compile finishes the Compiled: Digest over the source digests in Sources
 // order (each is DigestPrefix and 64 hex digits, so their concatenation is
 // unambiguous), Trust the lowest folded over the sources, untrusted with
-// none, and each source merged in turn.
+// none, each source merged in turn, and then the rule a task file implies
+// (taskRule).
 func (d *discovery) compile() *Compiled {
 	c := &d.c
 	h := sha256.New()
@@ -261,6 +273,9 @@ func (d *discovery) compile() *Compiled {
 	}
 	for i, f := range d.files {
 		c.merge(i, f)
+	}
+	if c.Task != nil {
+		c.Rules = append(c.Rules, taskRule())
 	}
 	return c
 }
