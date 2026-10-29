@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/arm"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -163,9 +164,20 @@ func TestST_StepsIsTheTriggerTable(t *testing.T) {
 // dontAsk is unattended; consent is the marker at or over the disclosure
 // version, and an error or no reader is no consent; AI_AGENT gives the
 // client version; an agent id is a subagent; the project is the view's root
-// only, never the payload's cwd.
+// only, never the payload's cwd. Holdout is s1's draw under the store's
+// key, which is random per run, so the want reads the draw from arm rather
+// than fixing it: MS5e and MS5f check the draw, this test that the context
+// carries it (card 2.5).
 func TestST_SteerEnvBecomesTheContext(t *testing.T) {
 	st := mustOpen(t)
+	a, err := arm.New(st.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	drawn, err := a.Assign(holdoutFeature, "s1", holdoutBP)
+	if err != nil {
+		t.Fatal(err)
+	}
 	base := func() (*Post, SteerEnv, verify.SteerView) {
 		p := &Post{st: st, sessionID: "s1", promptID: "p1", permissionMode: "default", event: FailureEvent, cwd: "/tmp/project"}
 		return p, stEnv(steer.DisclosureVersion), verify.SteerView{ProjectRoot: "/repo"}
@@ -175,7 +187,8 @@ func TestST_SteerEnvBecomesTheContext(t *testing.T) {
 		return steer.Context{Event: steer.EventPostToolUseFailure,
 			Client: steer.Client{Version: "2.1.280", Source: steer.VersionSourceEnv, MirrorInBand: true},
 			Store:  st, SessionID: "s1", PromptID: &prompt, Project: "/repo", HarnessID: "claude_code", Surface: "cli",
-			NowUnixMS: 1_800_000_600_000, Consent: true, Arm: steer.ArmLive, Attendance: steer.AttendanceAttended}
+			NowUnixMS: 1_800_000_600_000, Consent: true, Arm: steer.ArmLive, Attendance: steer.AttendanceAttended,
+			Holdout: drawn == arm.Holdout}
 	}
 	for _, tc := range []struct {
 		name string
