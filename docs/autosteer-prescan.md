@@ -11,6 +11,72 @@ results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
 
+### Revision 8: what B2b established
+
+**Equivalence holds on both fixtures.** The captured payloads and the rebuilt timeline,
+each fed through the real entry points into its own isolated store under the same
+injected clock, leave zero differences in order, field by field, outputs included:
+- 2.1.280: 65 records, 24 outputs.
+- 2.1.312: 48 records, including a regression steer note, 17 outputs.
+
+**Normalisation is exactly two items:**
+- `duration_ms`, null on replay, by ruling;
+- steer line ids, which are random and are compared by ordinal.
+
+**cwd holds through the recorder.** On 2.1.312:
+- the `cd sub && …` call's Pre and Post stay associated (declaration, terminal and
+  execution adjacent);
+- all three unittest runs share one location digest and one gate family, live and
+  replayed alike.
+
+**Per-Stop verdicts.** Each Stop is equal to the live one, and is the StopView the
+recorder itself computed. Cutting the transcript at a Stop gives the same verdict. A
+result after a Stop does not reach that Stop. A Stop with a gap at or before it is
+*evaluated*, never Verified, and names its first gap.
+
+**Corrections to earlier revisions:**
+- **SessionStart is synthesized, one per session, at its first event.** Without the
+  liveness marker, coverage reads unverified and every verdict is empty, so revision
+  6's "out of scope" was wrong. SessionEnd is never replayed: a killed session fired
+  none, and replaying one would claim a clean close. Both are coverage flags:
+  `probe_start_synthesized` and `probe_end_not_replayed`.
+- **The host guard is pinned on replay** (entrypoint "cli", the ambient agent and CI
+  variables unset). Otherwise an imported transcript's path would stamp every
+  declaration `harness_id: unknown`.
+- **Final messages:**
+  - Replay keeps the recorder's own head and tail (256 KiB and 64 KiB) and holds at
+    most 16 MiB in total for Stops not yet replayed.
+  - A Stop over that budget is unsupported (`final_message_budget`) and taints what
+    follows.
+  - A message the live payload could not carry is `final_message_too_large`.
+- **Rewrite evidence:** no transcript field records an executed input. The 2.1.312
+  `wireToolInputs` differs from the model's input only by a default Claude Code adds.
+  Every replayed session carries `rewrite_evidence_absent`.
+
+**Must fix before B3a: the key.** B2b replays under a pinned key and install id, so
+its digests are comparable only between replay worlds. A seed is only useful if its
+family keys equal the live install's (§4). B3a must therefore replay under the real
+install key:
+- read-only access to the real key;
+- passed in memory where possible;
+- never left on disk outside the install's own store.
+
+A test must show that a seeded family equals the family the live recorder gives the
+same command.
+
+**Owed to later items:**
+- **Cost (B4):** every entry point fsyncs per event, about 3 to 5 ms an event, so a
+  20,000-call session takes minutes.
+- **Turn cap (B3):** §6.7's 500-turn cap is not implemented yet.
+- **Interrupts (B3a):** `scan` must watch for interrupts between events, since the
+  recorder's signal handling swallows them during an entry point.
+
+**Live code touched (for reviewers):**
+- `entryNow`, a package clock variable, replaces `time.Now` on the five entry paths;
+  it is `time.Now` outside a replay.
+- `stopSeen`, a nil tap in `recapTurn`, does nothing outside a replay.
+- Three existing mutants were re-anchored to match.
+
 ### Revision 7: rulings on B2a
 
 | Point | Ruling |
