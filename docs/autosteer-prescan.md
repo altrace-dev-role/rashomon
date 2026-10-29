@@ -1,12 +1,47 @@
 # AutoSteer prescan: importing gate history before the first session
 
-Status: proposal, revision 2, for review. Nothing here is built.
+Status: proposal, revision 3. B0 to B4 approved as a bounded reporting and
+shadow-mode experiment. Adopting seeding is a separate decision. Nothing here is built.
 Date: 2026-10-29.
 Inputs: a review of [Photobombastic/paxel-local](https://github.com/Photobombastic/paxel-local)
 (MIT, one Python file `paxel.py`, 2,891 lines), main at `d1106a0`, and the Phase 2 lab
 results on `lab/autosteer-phase2` (PR #91).
 
-## 0. What changed in revision 2
+## 0. Revisions
+
+### Revision 3: decisions and fixes
+
+**The investment case, restated.** The cold-start justification of revision 1 does not
+hold (see revision 2 below). What remains is two things:
+- **Historical reporting**, useful on its own.
+- **An experiment** in whether imported history can safely improve gate policy. Its
+  benefit is not established, and the experiment has to measure it.
+
+**Decisions recorded:**
+1. **B0 to B4 approved**, as reporting plus a shadow experiment. Seeding is not enabled
+   because results look inconclusive. It is enabled only if a separate adoption
+   decision finds a measured benefit and a bounded harm (§7.2).
+2. **Seeding stays report-only** if safe adoption is not shown. Revision 2's D38
+   fallback is withdrawn. Any D38 change is its own policy proposal, with examples and
+   tests.
+3. **Labelling:**
+   - The primary labeller is a maintainer who knows the repository's intended checks.
+   - They never see which output is live and which is replay.
+   - A second reviewer adjudicates ambiguous cases.
+   - One labelling session may serve several evaluations, but each has its own rubric (§7.3).
+
+**Fixes:**
+
+| Fix | Where |
+|---|---|
+| The safety criterion is a threshold set in advance, met by the upper confidence bound, with sessions correlated within a project accounted for. "Not distinguishable from zero" is dropped | §7.2 |
+| A positive benefit is measured: unnecessary blocking verdicts removed, and needed ones added | §7.2 |
+| The nuisance proxy is dropped ("never ran again" proves nothing). Each policy difference is counted mechanically and labelled for whether blocking was warranted given the task and the evidence | §7.2 |
+| Exit codes do not establish infrastructure failure. Timeout, 126 and 127 are their own outcome classes, of unknown cause | §6.1, §8.1 |
+| The shadow policy has an exact rule for which history it uses as live sessions arrive, and the backtest simulates exactly that rule | §6.4, §7.2 |
+| "Classified once per file" is clarified: transitions are kept from classify's ordered runs, and verdicts are computed at every Stop point | §6.3, §6.7, §7.1 |
+
+### Revision 2
 
 Review asked for a narrower first release and six changes. Rereading the code for them
 also corrected a premise of revision 1.
@@ -35,8 +70,8 @@ advisory). That switch:
   obsolete workflow is established and the current test suite is not, a real failure
   stops blocking "done".
 
-This supports review point 1 more strongly than review put it. Section 6.4 sets
-seeding up to be measured in both directions before it is turned on.
+This supports review point 1 more strongly than review put it. Section 6.4 defines
+the shadow policy, and §7.2 measures it in both directions.
 
 **The six review points**, and where each is handled:
 
@@ -52,8 +87,9 @@ seeding up to be measured in both directions before it is turned on.
 
 ## 1. The goal of v1
 
-v1 is a release that **imports gate history, shows what it found, and seeds the
-existing rules, conservatively and only after measurement.**
+v1 is a release that **imports gate history and shows what it found.** It also runs
+seeding of the existing rules in shadow, so the policy can be measured. Adopting
+seeding is a separate decision, after v1.
 
 | In v1 | Out of v1 (§8) |
 |---|---|
@@ -62,11 +98,11 @@ existing rules, conservatively and only after measurement.**
 | Gate inventory per family, with evidence grades | Fragile paths and write-time nudges |
 | A `rashomon scan` report: what was found, and the coverage | Steer ranking from history |
 | Idempotent import with a session-identity invariant | Regression and recovery statistics as inputs to steering (the report may show them as descriptive) |
-| Seeding the existing index rules, shadow first, enabled after the backtest | Any new steer pattern, and any RulesVersion bump |
+| Seeding the existing index rules, in shadow only, with its evaluation | Enabling seeding; any D38 change; any new steer pattern; any RulesVersion bump |
 
-The promise v1 makes is concrete and testable: **on the first session, Rashomon knows
-which checks this project has established**, shows them, and (once the backtest
-passes) uses them the way it would after two live sessions.
+The promise v1 makes is concrete and testable: **on the first session, Rashomon can
+show which checks this project has established**, from history, and report what
+seeding them would have changed. Whether to act on them is decided from the evaluation.
 
 ## 2. How paxel-local scans
 
@@ -150,9 +186,10 @@ per-session family summaries, merged across files by session id and tool_use_id
    │ 3 dedupe against the import ledger and the live store
    ▼
 seed file: verify/seeds/<FileName(key)>.json   +   `rashomon scan` report
-   │ 4 shadow: Evaluate computes the live verdict and the seeded verdict, and logs the difference
+   │ 4 shadow: Evaluate computes the live verdict and the verdict under policy P1 (§6.4),
+   │   and logs the difference; the agent and the user see the live verdict only
    ▼
-   enabled after the backtest: Required = live rule OR seed rule (no cross-source count)
+   adoption of P1: a separate decision, from the §7.2 evaluation
 ```
 
 ## 6. Design
@@ -175,7 +212,13 @@ const (
 The grade rules:
 - **Outcome.**
   - `ok` when the result is not an error.
-  - `failed(exit)` when the error text starts with an anchored `Exit code N`.
+  - `failed(exit)` when the error text starts with an anchored `Exit code N`, N other
+    than 124, 126 and 127.
+  - `timeout` for exit 124, and `not_run` for 126 and 127. Each is its own class
+    **of unknown cause.** A timeout can come from a code regression, and 126/127 from
+    a change that broke permissions or removed a tool. They are never labelled
+    "infrastructure", and v1 does not fold them into `failed`. Live regression-location
+    already excludes 126 and 127 (`regressedHere`); v1 does not change that.
   - `denied` when it starts with `deniedPrefix`; a denial is never a failure.
   - `interrupted` from the result's `interrupted` flag.
   - `none` when there is no result.
@@ -233,7 +276,8 @@ keys on the path, as `baseline` does. Per family (`runner@location`):
 | `sessions_verified` | distinct sessions with a `Verified` run (DEDUP-1) |
 | `sessions_any` | the same, at any grade (report only) |
 | `first_seen`, `last_seen` | times of `Verified` runs |
-| `greens_verified`, `reds_verified` | `Verified` run outcomes (report only in v1) |
+| `greens_verified`, `reds_verified`, `timeouts`, `not_run` | `Verified` run outcomes by class (report only in v1) |
+| `transitions` | counts of green→red, red→green and green→red→green episodes per session, from classify's runs **in seq order** (report only). Transitions are read from the ordered run list, never from end states. Across the files of one resumed session, the order is file order and then seq, and a transition that spans two files is graded `Partial` |
 | `last_observed` | state, time and `session_complete` of the newest session (report only) |
 | `rules_version` | the RulesVersion this entry was derived under (§6.6) |
 
@@ -259,21 +303,43 @@ when all of these hold:
    commands or a workflow the project has since replaced. *K* starts at 3; the
    backtest sets it.
 
-Because seeds age out after 30 days by rule 3, **the seed is a bridge by construction**:
-within one window, live evidence has replaced it.
+**The shadow policy, P1 ("bridge until live learning").** This is the exact policy
+v1 shadows, the one the backtest simulates, and the only one an adoption decision would
+enable. Other policies are not evaluated in v1, to keep the comparison to one.
 
-**Shadow first.** B3 ships seeding in shadow mode:
-- **No change to verdicts.** Evaluate computes the live verdict and the verdict with the
-  seed, and writes neither to the agent.
-- **A local log of differences.** Per turn, a `seed_shadow` count of what would differ
-  is kept, digest-only, in the store, and the scan report and `rashomon status` show it.
+- **The seed is frozen at scan time.**
+  - **What it contains:** sessions not recorded live (DEDUP-2). After install, live
+    sessions never enter it.
+  - **Rescans:** a rescan adds only sessions that are not recorded live and not
+    already in the ledger.
+  - **Currentness:** rule 4 is evaluated over the imported sessions only.
+- **The seed's established set** at time `t` is the families meeting rules 1 to 4 at `t`.
+  Rule 3 ages entries out against `t`.
+- **The live index is unchanged.** It learns from live sessions at every Stop, exactly
+  as today (`stop.go:69`).
+- **Policy at a point `t`:**
+  - If the live index has learned (`indexLearned(live, t)`), **the seed is ignored
+    entirely** and the live policy applies unchanged.
+  - Otherwise, if the seed's established set at `t` is not empty, the point is
+    evaluated in learned mode: Required = established in the seed.
+  - Otherwise, prior mode applies: every gate that ran is Required, as today.
+- **What P1 can change.** P1 acts only while live learning has not begun, which for
+  most projects is the first one or two sessions. It never adds requirements; it can
+  only make non-seeded gates advisory during that window. So P1's possible benefit is
+  bounded and small, and its possible harm is a loosening. The evaluation measures both.
+- **The seed's lifetime is bounded.** It ends at whichever comes first: live learning
+  begins, or rule 3 ages out every seed entry.
 
-The seed is enabled only after the backtest (§7.2) passes. It is a separate
-switch, recorded in consent like the record scope.
+**Shadow in v1.** B3 ships P1 in shadow mode:
+- **No change to verdicts.** At every Stop, Evaluate computes the live verdict and the
+  P1 verdict. Only the live verdict reaches the agent, the recap and the report's verdicts.
+- **A local log of differences.** Every point where the two differ is logged locally,
+  digest-only, with each changed gate's family, state and Required under both policies.
+  The scan report and `rashomon status` show the counts.
 
-**Visible without changing verdicts.** The scan report and the recap can name the
-established checks ("established here: 3 checks, last run 2 days ago") before seeding
-is enabled. That delivers the v1 promise even while seeding is shadowed.
+**Visible without changing verdicts.** The scan report can name the established checks
+("established here: 3 checks, last run 2 days ago"). That delivers v1's reporting
+promise whatever the adoption decision.
 
 ### 6.5 The command and consent
 
@@ -331,7 +397,8 @@ Streaming JSONL bounds the read, not the work. v1's limits:
 | Output kept per gate call, for `gateout` | 8 KiB head and 8 KiB tail, gate kinds only | truncated; `gateout`'s classes already bound their scan |
 | Calls replayed into one `store.Run` | 20,000 per file | the file is summarised as `Partial` from that point |
 | `store.Run` | one file at a time; freed after classify | none |
-| Evaluate | **once per file at its end (classify, as Stop does), not per point**, so O(n) | none |
+| Classify, for the seed and report | **one pass per file**, O(n). Its `runs` come back in seq order, each with its own outcome, so every transition is kept (§6.3); nothing is read from end states alone | none |
+| Evaluate, for shadow verdicts and the backtest | **at every Stop point** of a session, as live does. That is O(turns × n) per session, bounded by a cap of 500 turns per session; past it, the remaining turns are not evaluated and are counted | counted, never estimated |
 | Per-session merged summary | families × fixed-size counters, plus a `tool_use_id` digest set, capped at 20,000 | over the cap, dedupe reverts to per-file and the session grades `Partial` |
 
 **Performance gates** (B4):
@@ -349,7 +416,10 @@ Streaming JSONL bounds the read, not the work. v1's limits:
 **Corpus:** sessions Rashomon recorded live whose transcript still exists. The
 report's transcript cross-check already finds these.
 
-Compare per (session, family):
+Compare per (session, family), **at every gate-run point and at every Stop point**,
+not only at session end. A replay that matched end states but missed a
+green→red→green episode would pass an end-state comparison. This comparison runs on
+the B2 corpus offline, so per-point Evaluate is affordable there.
 
 | Live state | Replay state | Verdict |
 |---|---|---|
@@ -368,10 +438,8 @@ known difference is named in a table, with the state replay must give for it (us
 Unknown).
 
 **Independent annotation.** About 40 sessions, chosen to cover each §6.2 row and each
-grade, are labelled by a person from the raw transcript. For each, the person records
-the families run, each run's outcome, and the last observed state. The person does not
-see either implementation's output. Both live and replay are scored against the labels,
-so a bug they share shows up as both being wrong.
+grade, are labelled from the raw transcript under rubric A (§7.3). Both live and replay
+are scored against the labels, so a bug they share shows up as both being wrong.
 
 **Exit criterion for B2:**
 - zero known/known disagreements;
@@ -380,36 +448,99 @@ so a bug they share shows up as both being wrong.
   (the threshold is proposed and set in B0);
 - DEDUP-1 and DEDUP-2 passing.
 
-### 7.2 Seeding backtest, B3 (review point 1)
+### 7.2 Shadow evaluation of P1, B3e
 
-**Data:** projects with at least 20 imported sessions.
+**What P1 can change, mechanically.** P1 acts only while the live index has not
+learned. In that window, prior mode makes every gate that ran Required, and P1
+Required = seed-established. So **every difference is one kind: a gate that live
+requires and P1 makes advisory.** P1 adds no requirement. A difference can change four
+things:
+- the done verdict (`recordGreen`);
+- the turn summary and value line;
+- the obligation ledger;
+- whether a "done" claim is checked against that gate (`claims.go:340`).
 
-**Time split:** seed from sessions before *T*; replay the sessions after *T* in order,
-updating the live index as Stop would. For each turn, compute the verdict in four ways:
-- live prior mode,
-- live learned mode,
-- seeded,
-- seeded plus live.
+Each difference is counted mechanically, with no judgement, as a policy difference.
+Whether a difference is a benefit or a harm needs judgement, and that comes from labels.
 
-Measure the differences in both directions:
+**The simulation is exactly P1.** For a project with imported history:
+1. Choose cutoffs T1, T2, and so on (at most one per 30 days).
+2. At each cutoff, the seed is a scan of the sessions before *T*, frozen as in §6.4.
+3. The sessions after *T* are replayed in order as if Rashomon had just been
+   installed: a fresh live index, updated by Observe at every Stop (`stop.go:69`).
+4. At every Stop point, the live verdict and the P1 verdict are computed.
+5. The P1 window ends when the replayed live index learns.
 
-| Direction | Event | Counted as |
-|---|---|---|
-| Tightening | a seed-established family's red or stale now blocks a turn that would have read verified | needed if the family is run again later in that project; **nuisance** if it never runs again (obsolete) |
-| Loosening | a non-established red gate goes advisory, so a turn reads verified, or a done claim passes, where prior mode would not | **hidden failure** unless a person labels the gate a one-off |
+Nothing else is simulated, so the backtest evaluates the feature that adoption would enable.
 
-Every loosening event, and a sample of tightening events, goes to person labels, as W1
-does. They are reported with Wilson intervals; a rate with fewer than 30 labels reads
-"unmeasured".
+**Labels (rubric B, §7.3).** Each difference becomes a question: *given the task and the
+evidence available at that point, was it warranted for this check's state to block
+the turn from reading verified?* The answer is one of three:
+- **Yes, warranted.** P1 would have hidden a failure that mattered. **Harm.**
+- **No, not warranted.** P1 would have removed an unnecessary blocking verdict. **Benefit.**
+- **Can't tell.** Reported, and **counted as harm** in the safety bound.
 
-**Enable criteria** (proposed, set in B0):
-- the hidden-failure rate is not distinguishable from zero on the labels;
-- the nuisance rate is under 10% of tightening events;
-- otherwise, tighten rules 1 to 4 (raise *K*, require 3 sessions) and re-run.
+There is no proxy label. A check that never runs again proves nothing: it could mean
+abandonment, missing history, or a problem left unresolved.
 
-If loosening cannot be made safe, there is a fallback: seed only established families,
-and keep prior mode for the gates that are not established. That fallback needs a
-small change to D38's `!learned ||` and its own ruling.
+**Independence.**
+- **Within a session:** differences inside one session are strongly correlated. At
+  most one difference per session is labelled: the first in the session that changes
+  the done verdict, or else the first.
+- **Within a project:** sessions inside one project are correlated too. The project
+  is the cluster.
+
+**Criteria, fixed in B0 before any data is seen:**
+- **Safety.**
+  - Choose a maximum acceptable hidden-failure rate *H*.
+  - The one-sided 95% upper bound (Clopper-Pearson, unit: labelled session) on
+    (harm + can't tell) / labelled must be below *H*.
+  - **And** a project-cluster bootstrap upper bound must also be below *H*.
+  - For scale: zero harms in *n* independent labels gives an upper bound of about 3/*n*.
+    40 labels bound the rate at about 7.5%, *H* = 5% needs at least 60 harm-free labels,
+    and *H* = 2% needs about 150. Correlation makes these minimums larger.
+- **Benefit.**
+  - Unnecessary blocking verdicts removed, per first-session-after-install.
+  - The lower 95% bound must be above a minimum *B*, set in B0. This keeps P1 from
+    being adopted for a benefit too small to matter.
+- **Coverage.** At least *P* distinct projects, so one repository cannot carry the result.
+
+**Outcomes:**
+- **Adopt** only when all three criteria hold. That decision is separate, recorded
+  with the evaluation report.
+- **Inconclusive** (too few labels, or bounds too wide) means P1 is not adopted. The
+  scan report stays.
+- **Unsafe** means P1 is not adopted. A different policy, including any D38 change,
+  would be its own proposal, with examples and tests.
+
+**Expected yield, stated now.** P1's window is the first one or two sessions per
+cutoff, so each project gives few labelled units, and reaching *H* = 5% needs at least
+60 harm-free ones across *P* projects. On the team's own repositories alone, the likely
+outcome is **inconclusive**. That is an acceptable result: v1's reporting does not
+depend on it.
+
+### 7.3 Labelling
+
+- **Primary labeller:** a maintainer of the repository being labelled, who knows its
+  intended checks. Labels for a project come from someone who knows that project, and
+  are read from transcripts on the owner's machine, with the owner's consent.
+- **Blinding:**
+  - The labeller sees the raw transcript and the question, never which output came
+    from live or replay (rubric A), nor which policy produced which verdict (rubric B).
+  - Rubric B presents "a check whose state blocked this turn", without saying that
+    another policy would not have blocked it.
+- **Second reviewer.** Every "can't tell", and a random 20% of the rest, is labelled
+  again by a second reviewer, who adjudicates disagreements. Agreement (Cohen's κ) is
+  reported per rubric.
+- **One session, separate rubrics.** One labelling session may cover several
+  evaluations, but each has its own rubric, and rubric A is done before rubric B for a
+  given session.
+
+| Rubric | Used by | Question | Answers |
+|---|---|---|---|
+| **A, facts** | B2 (§7.1) | For each gate run: which check (command and directory), its outcome (pass, fail, timeout, not run, unknown); per check, the last observed state and whether the session's transcript is complete | Factual fields; no judgement |
+| **B, warranted blocking** | B3e (§7.2) | Given the task (the session's prompts up to the point), the agent's final message, the checks and their states, and the writes, was it warranted for this check's state to block "verified"? | Yes / No / Can't tell, plus a descriptive reason (relevant to the change, pre-existing and unrelated, obsolete check, environment or flaky, other). The reason is reported, not used for the decision |
+| **W1** | W1 detector precision | As W1 defines it | As W1 defines it |
 
 ## 8. Deferred: earns its way in through the lab
 
@@ -423,9 +554,13 @@ Kept as an experiment, not a feature. If built, it is built this way:
     minimum exposure (for example 10) applies before any value is shown.
   - Central files that are edited before every run get a high exposure and so a
     ratio near the base rate, not a high count.
-- **Test failures separate from infrastructure failures**, from `gateout`'s class and
-  the exit code. Exit 126/127, timeout 124, killed, network or environment patterns are
-  infrastructure and never count against a path.
+- **Test failures separate from failures of other or unknown cause.** Only
+  `failed(exit)` runs whose `gateout` class is an assertion or test failure count
+  against a path. Timeouts (124), not run (126/127), kills, and network or
+  environment output are kept as their own classes **of unknown cause**, never
+  labelled infrastructure. A timeout can be a code regression, and 126/127 can be a
+  change that broke permissions or removed a tool. They are reported, and counted for
+  or against a path only once enough labelled evidence classifies them.
 - **Wording is association:** "runs after edits to this file failed 6 of 9 times,
   against 2 of 30 overall". Never "this file breaks the build".
 - **Order of use:** first offline in the lab; then as one input to *ranking existing
@@ -452,17 +587,23 @@ against the transcript seed before anything ships.
 | **B0** | Rulings: consent unit, seed path, the B2 and B3 thresholds and *K*, whether `history` may import `verify` internals (Q0-style), the fixture licence notice | Written in APPROACH-NOTES |
 | **B1** | `internal/history` Claude reader: `HistCall`, id join, outcomes, grades (§6.1), version list, the bounds in §6.7, `FuzzHistCalls`, scrubbed fixtures | Fuzz floor +1. Property: each `tool_use` gives exactly one `HistCall`, and no `Missing` call is ever `ok` |
 | **B2** | Replay through `hook.Locate`, `shape` and `gateout`; per-session summaries; merge and ledger (§6.2) | §7.1 criteria; DEDUP-1 and DEDUP-2 over the §6.2 fixtures, including scanning the same tree twice and a tree with copies, resumes and subagent files |
-| **B3** | Seed file, seed rule (§6.4), **shadow mode**, `rashomon scan` and `--dry-run`, consent, purge, forget, disclose | Acceptance: with a fixture history, the first session's shadow log shows the expected seeded verdicts, and live verdicts are unchanged |
-| **B3e** | Backtest (§7.2) and person labels; the enable switch | §7.2 enable criteria |
+| **B3** | Seed file, seed rule (§6.4), **P1 in shadow only**, `rashomon scan` and `--dry-run`, consent, purge, forget, disclose | Acceptance: with a fixture history, the shadow log shows the P1 verdicts expected at each Stop; live verdicts are unchanged; once the live index learns, the shadow log shows no further differences |
+| **B3e** | The P1 simulation (§7.2), labels under rubrics A and B (§7.3), and the evaluation report | The report: mechanical difference counts, the safety and benefit bounds, coverage, and κ. **No enable switch is built in v1** |
 | **B4** | Report polish; `BenchmarkScanFile`, the RSS and wall-time rows (§6.7) | Perf gates on darwin and linux |
 
-v1 is B0 to B4. It needs no RulesVersion bump and adds no steer pattern.
+v1 is B0 to B4. It needs no RulesVersion bump, adds no steer pattern, and changes no
+live verdict. Adopting P1 is a separate decision taken on the B3e report. Enabling it
+would be a small follow-up change, reviewed on its own.
 
 ## 10. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Seeding loosens verdicts | Shadow mode, the loosening count in the backtest, the fallback in §7.2 |
+| Seeding loosens verdicts | P1 is shadow-only in v1; every difference is a loosening, counted and labelled; adoption needs a pre-set upper bound below *H* (§7.2) |
+| A small sample hides harm | Clopper-Pearson upper bound plus a project-cluster bootstrap, at most one label per session, *P* projects minimum; "can't tell" counts as harm |
+| The labels are a proxy for the wrong thing | Rubric B asks whether blocking was warranted, with no "never ran again" proxy; blind labelling; adjudication; κ reported |
+| The backtest evaluates a different policy from the feature | The simulation is P1 exactly (§6.4, §7.2), and B3's acceptance test checks that the shadow stops when live learning begins |
+| Exit codes misread as infrastructure | 124, 126 and 127 are their own classes of unknown cause (§6.1) |
 | One session counted twice | §6.2 rules, DEDUP-1 and DEDUP-2 acceptance tests, no cross-source count |
 | Replay agrees with a bug it shares with live | Independent annotation (§7.1) |
 | Format drift | Supported-version list; unknown versions graded `Unsupported` and never seeded |
@@ -471,10 +612,17 @@ v1 is B0 to B4. It needs no RulesVersion bump and adds no steer pattern.
 | Privacy | Text stays in memory; the seed is digests; new consent unit; current project by default; purge covers it |
 | Over-claiming | Report language is "last observed", "established here", and association only; the description and causal claims are kept apart |
 
-## 11. Decisions needed
+## 11. Decisions
 
-1. Approve v1 as B0 to B4 with seeding shadowed until B3e passes.
-2. The §7.2 fallback, if needed: is changing D38 for seeded projects acceptable, or
-   does seeding stay report-only?
-3. Who labels for B2's annotation set and B3e. This is the same person-labelling need
-   as W1, so one labelling session could serve both.
+Recorded (revision 3):
+1. B0 to B4 approved, as a bounded reporting and shadow-mode experiment.
+2. Seeding stays report-only unless the §7.2 criteria are met. Inconclusive means it
+   is not adopted. Any D38 change is a separate policy proposal.
+3. Labelling as in §7.3.
+
+Open, for B0:
+1. The values of *H*, *B* and *P*, fixed before any data is seen. Suggested starting
+   points: *H* = 5%, *B* = one unnecessary blocking verdict removed per ten first
+   sessions, *P* = 8.
+2. The B2 agreement threshold (95% proposed) and *K* for currentness.
+3. Which repositories form the evaluation corpus, and their maintainers as labellers.
