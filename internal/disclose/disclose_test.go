@@ -354,6 +354,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// inventory, verify's tree in purge's plan). store's 22 was unchanged
 		// by the export, since the pattern follows replaceFile to ReplaceFile.
 		{"verify", 1},
+		// Pinned 2026-10-29 (P6): internal/learn/ledger.go's AppendLabel
+		// open (labels.ndjson), Save's two store.ReplaceFile calls
+		// (lessons.json and active.json in one loop, state.sum) and
+		// ensureKey's (learn/key); learnFiles in the inventory, learn's
+		// tree in purge's plan, TestTRU23_LearnPathsAreInTheInventory.
+		{"learn", 4},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

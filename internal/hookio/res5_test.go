@@ -26,7 +26,11 @@ var res5Dirs = []string{
 // closed shape, the trust boundary of the record-scope marker (D32 item 7).
 // Its per-call cost (218156 B/op at the cap, 58 percent the decoder's read
 // buffer) is ruled where it is called, and no hook path calls it on 1.6.
-var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true}
+// learn.decode reads the lesson ledger's own files and an import file (card
+// P6): CLI commands alone call it, and no hook links internal/learn
+// (TestP6_HookAndStoreImportNoLearner).
+var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
+	"internal/learn.decode": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding

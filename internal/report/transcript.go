@@ -73,6 +73,15 @@ func resultText(raw json.RawMessage) string {
 	return ""
 }
 
+// ResultClass is collectIDs' reading of one tool_result block, for a reader
+// that replays a transcript (the backtest, card P6): its text, whether it is
+// the user denying the call, and whether it has the shape of a call Claude
+// Code refused before any hook fired.
+func ResultClass(isError bool, content json.RawMessage) (text string, denied, unhooked bool) {
+	text = resultText(content)
+	return text, isDenial(isError, text), isError && strings.HasPrefix(text, toolUseErrorTag)
+}
+
 // isDenial reports whether a tool_result is the user refusing the call.
 //
 // BOTH halves are required. is_error alone is every failed command; the prefix
