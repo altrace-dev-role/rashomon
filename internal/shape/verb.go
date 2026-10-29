@@ -98,10 +98,12 @@ func refusalsOf(c []string) string {
 // check what it would do (`make -n`, `make -q`, `--dry-run`), skip them
 // (`-DskipTests`, `tox --notest`, `nox --install-only`), set up an
 // environment instead (`tox devenv`), watch for changes (`gradle -t`), show
-// its version (`-v` where that is what -v means), or end ok whatever the
-// tests did (`make -i`, `mvn --fail-never`, `npm --if-present` where there is
-// no test script). Each of those ends ok or failed on something no test
-// decided, and as a test run it would complete a pattern on that outcome. A
+// its version (`-v` where that is what -v means). Each of those ends ok or
+// failed on something no test decided, and as a test run it would complete a
+// pattern on that outcome. A flag with which the run happens and ends ok
+// whatever the tests did (`make -i`, `mvn --fail-never`) is not here but a
+// hiding flag (leadingFlags, an entry ending in !): the runner ran, and the
+// line records its status as hidden. A
 // word ending in * is a prefix: `-list=Foo`, `-elint`, matched whatever
 // follows it. A flag is matched in its `flag=value` form too (`-c=true`,
 // `--watch=true`), unless the value is false (onList). Maven's skip
@@ -130,7 +132,6 @@ func refusalsOf(c []string) string {
 var notARun = map[string][]string{
 	"go":      {"-c", "--c", "-n", "--n", "-list*", "--list*"},
 	"cargo":   {"--no-run", "--list", "-V"},
-	"npm":     {"--if-present"},
 	"pytest":  pytestNotARun,
 	"python":  pytestNotARun,
 	"python3": pytestNotARun,
@@ -141,10 +142,9 @@ var notARun = map[string][]string{
 	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
 	"ctest":   {"-N", "--show-only*"},
 	"dotnet":  {"--list-tests", "-t"},
-	"mvn":     {"-v", "-fn", "--fail-never"},
+	"mvn":     {"-v"},
 	"gradle":  {"--dry-run", "-m", "-v", "-t", "--continuous"},
-	"make": {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v",
-		"-i", "--ignore-errors"},
+	"make":    {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v"},
 	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini", "--notest",
 		"--devenv*", "list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e", "devenv", "d"},
 	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*", "--install-only"},
@@ -203,19 +203,21 @@ func refusesRun(runner string, before, args []token) bool {
 // letter-clustering case only; a new caller re-justifies it against its
 // own safe direction.
 func onList(word string, list []string) bool {
-	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
-		if p, ok := strings.CutSuffix(w, "*"); ok {
-			if strings.HasPrefix(word, p) {
-				return true
-			}
-		} else if word == w {
-			return true
-		} else if hasValue && strings.HasPrefix(w, "-") && name == w && !isFalse(value) {
+		if onEntry(word, w) {
 			return true
 		}
 	}
 	return false
+}
+
+// onEntry is onList's reading of word against one entry w.
+func onEntry(word, w string) bool {
+	if p, ok := strings.CutSuffix(w, "*"); ok {
+		return strings.HasPrefix(word, p)
+	}
+	name, value, hasValue := strings.Cut(word, "=")
+	return word == w || hasValue && strings.HasPrefix(w, "-") && name == w && !isFalse(value)
 }
 
 // isFalse reports the false spellings of Go's strconv.ParseBool, for Go's and
@@ -231,18 +233,30 @@ func isFalse(v string) bool {
 
 // mavenSkipProperties are the Maven properties mavenSkip reads: the ones
 // that skip the tests, -DskipTests, -Dmaven.test.skip and
-// -Dmaven.test.skip.exec, and the one that ignores their failures,
-// -Dmaven.test.failure.ignore (Surefire's testFailureIgnore). A list, so
-// that TestLeadingFlagsAreNotRefusals tries each against leadingFlags.
-var mavenSkipProperties = []string{"-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec", "-Dmaven.test.failure.ignore"}
+// -Dmaven.test.skip.exec. The one that ignores their failures,
+// -Dmaven.test.failure.ignore (Surefire's testFailureIgnore), runs them and
+// is a hiding flag (leadingFlags). A list, so that
+// TestLeadingFlagsAreNotRefusals tries each against leadingFlags.
+var mavenSkipProperties = []string{"-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec"}
 
 // mavenSkip reports one of mavenSkipProperties with no `=value` or with a
 // value equal to true ignoring case. Maven reads them with Java's
 // Boolean.valueOf, where nothing else is true, so `-DskipTests=false`, `=1`
 // and `=no` all run the tests.
 func mavenSkip(word string) bool {
+	for _, p := range mavenSkipProperties {
+		if mavenTrue(word, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// mavenTrue reports word as the Maven property p set true: `-Dp` alone, or
+// `-Dp=value` with a value equal to true ignoring case.
+func mavenTrue(word, p string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
-	return slices.Contains(mavenSkipProperties, name) && (!hasValue || strings.EqualFold(value, "true"))
+	return name == p && (!hasValue || strings.EqualFold(value, "true"))
 }
 
 // runsTests reports whether the command whose program is the token at i,
@@ -272,7 +286,8 @@ func runsTests(toks []token, i int, prog string, whole bool) bool {
 	if !ok {
 		return false
 	}
-	return runnerOn(toks, i, prog, len(toks), testCommands) && wholeCommand(toks, i)
+	on, hides := runnerOn(toks, i, prog, len(toks), testCommands)
+	return on && !hides && wholeCommand(toks, i)
 }
 
 // runnerPrefix steps past the prefixes that pass a runner's exit status

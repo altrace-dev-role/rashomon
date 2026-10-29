@@ -84,6 +84,9 @@ func TestLocation(t *testing.T) {
 		{"cd ~/x && ls", "/home/loc/x"},
 		{"cd /tmp && go test ./...", "/tmp"},
 		{"cd sub && go test ./...", cwd + "/sub"},
+		// `pushd DIR &&` folds as `cd DIR &&` does (version 8).
+		{"pushd /b && go test ./...", "/b"},
+		{"cd /a && pushd /b && go test ./...", "/b"},
 
 		{"cd ~user/x && go test ./...", unread},
 		{"cd ~+/x && go test ./...", unread},
@@ -101,7 +104,6 @@ func TestLocation(t *testing.T) {
 		{"(cd /tmp && go test ./...)", unread},
 		{"{ cd /tmp && go test ./...; }", unread},
 		{"cd && go test ./...", unread},
-		{"cd /a && pushd /b && go test ./...", unread},
 		{strings.Repeat("cd $D && ", maxLeadingCd+1) + "go test ./...", unread},
 
 		{"go test ./...", cwd},
@@ -110,11 +112,6 @@ func TestLocation(t *testing.T) {
 		{"make test -C sub", cwd},
 		{"go test -C sub ./...", cwd},
 		{"cd /repo\r && ls", cwd},
-		// ACCEPTED GAP: pushd is not a fold (the program search names pushd
-		// as the program), so the line keeps the payload's cwd, though the
-		// runner starts in /b. Its runner digest is null, so no runner
-		// family takes it in.
-		{"pushd /b && go test ./...", cwd},
 		// ACCEPTED GAP: a comment ending in a backslash continues nothing to
 		// the shell, but the program search's reading joins the next line to
 		// it, so the steps it reads stop short of where the runner starts

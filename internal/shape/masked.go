@@ -43,7 +43,11 @@ const (
 // under a pin; version 7 holds a test runner's line whole only where the
 // groups opened before the runner close after it (closesGroups: a stray `)`
 // is not, `{ go test ./...; }` is, and a `#` ends the count) and lets perl's
-// -0 digit run lead a short-option cluster (`perl -0777pi`) --
+// -0 digit run lead a short-option cluster (`perl -0777pi`); version 8 reads
+// a flag that hides a runner's result (`make -i`, `mvn -fn`, `npm
+// --if-present`, `-Dmaven.test.failure.ignore`) as the runner run with its
+// status masked, not as no run, and folds `pushd DIR` as a cd step in every
+// reader of the leading run --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -55,7 +59,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 7
+const RulesVersion = 8
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
@@ -280,7 +284,8 @@ const (
 type simple struct {
 	start, end int
 	op         simpleOp
-	runner     int // the runner group, for opRunner
+	runner     int  // the runner group, for opRunner
+	hides      bool // a hiding flag stands on the runner: it ends 0 failing or passing
 	args       []value
 	opts       []setOpt
 	assigns    []assignment

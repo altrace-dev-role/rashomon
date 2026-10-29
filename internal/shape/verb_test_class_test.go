@@ -380,33 +380,36 @@ func TestTestClassRefusesWhatDoesNotRunTests(t *testing.T) {
 		{"mvn -P test compile", VerbExecute, MaskedNone, RunnerBuild},
 		{"mvn -pl test compile", VerbExecute, MaskedNone, RunnerBuild},
 
-		// A run that ends 0 when the tests fail, or when there are none
-		// (notARun), before or after the row's words: the runner is refused
-		// on both sides, so each of these but `npm --if-present test`, which
-		// matched no row before, moves from a test or build runner to none.
-		// ACCEPTED GAP: the line's status hides the runner's, which
-		// status_masked would call masked test (masked build for `make -i
-		// build`); a refused runner is no runner, so it records none.
-		{"make -i test", VerbExecute, MaskedNone, ""},
-		{"make test -i", VerbExecute, MaskedNone, ""},
-		{"make --ignore-errors test", VerbExecute, MaskedNone, ""},
-		{"make -i build", VerbExecute, MaskedNone, ""},
-		{"mvn -fn test", VerbExecute, MaskedNone, ""},
-		{"mvn test -fn", VerbExecute, MaskedNone, ""},
-		{"mvn --fail-never test", VerbExecute, MaskedNone, ""},
-		{"npm --if-present test", VerbPackage, MaskedNone, ""},
-		{"npm test --if-present", VerbPackage, MaskedNone, ""},
-		// Ignoring the tests' failures refuses the test row and still
-		// builds, so the tail form moves from a test runner to Maven's build
-		// row: refusesRun reads mavenSkip on the test row only, not on the
-		// build row (`mvn build`). Before the row's words the property is an
-		// unlisted flag.
-		{"mvn test -Dmaven.test.failure.ignore", VerbExecute, MaskedNone, RunnerBuild},
-		{"mvn -Dmaven.test.failure.ignore=true test", VerbExecute, MaskedNone, RunnerBuild},
-		{"mvn -Dmaven.test.failure.ignore=true package", VerbExecute, MaskedNone, RunnerBuild},
-		{"mvn package -Dmaven.test.failure.ignore=true", VerbExecute, MaskedNone, RunnerBuild},
+		// A run that ends 0 whatever the tests or the build did, a hiding
+		// flag (leadingFlags, an entry ending in !), before or after the
+		// row's words: the runner ran and its status never reached the
+		// line, so the line keeps its program's class and records the
+		// runner masked, with its kind, as `make test | tail` does. Until
+		// version 8 these were refused as notARun and recorded no runner.
+		{"make -i test", VerbExecute, MaskedTest, RunnerTest},
+		{"make test -i", VerbExecute, MaskedTest, RunnerTest},
+		{"make --ignore-errors test", VerbExecute, MaskedTest, RunnerTest},
+		{"make test --ignore-errors", VerbExecute, MaskedTest, RunnerTest},
+		{"make -i build", VerbExecute, MaskedBuild, RunnerBuild},
+		{"mvn -fn test", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn test -fn", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn --fail-never test", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn test --fail-never", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn -fn package", VerbExecute, MaskedBuild, RunnerBuild},
+		{"npm --if-present test", VerbPackage, MaskedTest, RunnerTest},
+		{"npm test --if-present", VerbPackage, MaskedTest, RunnerTest},
+		{"mvn test -Dmaven.test.failure.ignore", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn -Dmaven.test.failure.ignore test", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn -Dmaven.test.failure.ignore=true test", VerbExecute, MaskedTest, RunnerTest},
+		{"mvn -Dmaven.test.failure.ignore=true package", VerbExecute, MaskedBuild, RunnerBuild},
+		{"mvn package -Dmaven.test.failure.ignore=true", VerbExecute, MaskedBuild, RunnerBuild},
+		// A false value hides nothing: Maven reads only true as true, so
+		// `=1` runs the tests as `=false` does.
 		{"mvn test -Dmaven.test.failure.ignore=false", VerbTest, MaskedNone, RunnerTest},
+		{"mvn test -Dmaven.test.failure.ignore=1", VerbTest, MaskedNone, RunnerTest},
 		{"npm test --if-present=false", VerbTest, MaskedNone, RunnerTest},
+		// A refusal after a hiding flag still refuses: the run is not one.
+		{"make -i test -n", VerbExecute, MaskedNone, ""},
 
 		// ACCEPTED GAP: an unlisted flag whose value is a separate word.
 		{"bazel --output_base /tmp test //...", VerbExecute, MaskedNone, ""},
@@ -460,7 +463,7 @@ func TestLeadingFlagsAreNotRefusals(t *testing.T) {
 					continue
 				}
 				for _, w := range words {
-					tok := []token{{text: strings.TrimSuffix(strings.TrimSuffix(w, "*"), "#"), quotedAt: -1}}
+					tok := []token{{text: strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(w, "*"), "#"), "!"), quotedAt: -1}}
 					if strings.HasSuffix(w, "#") {
 						tok[0].text += "4"
 					}
@@ -794,9 +797,8 @@ func TestLeadingDirectory(t *testing.T) {
 		// first target is not where the runner starts.
 		{"cd /a && cd - && go test", nil, false},
 		{"cd /a && cd ~user && go test", nil, false},
-		{"cd /a && pushd b && go test", nil, false},
 		{"cd /a && popd && go test", nil, false},
-		{"pushd /a && go test", nil, false},
+		{"cd /a && pushd ~+ && go test", nil, false},
 		// A cd behind an assignment is still a directory change.
 		{"cd /a && CDPATH= cd - && go test ./...", nil, false},
 		{"cd /a && X=1 cd b && go test ./...", nil, false},

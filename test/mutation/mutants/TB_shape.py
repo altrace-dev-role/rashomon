@@ -166,7 +166,8 @@ m("TB a background launch is a test run", "internal/shape/shape.go",
 # Re-anchored after the masked-status refactor: runsTests now ends in one return
 # joining runnerOn and wholeCommand.
 m("TB a runner piped or listed into another command is a test run", "internal/shape/verb.go",
-  "testCommands) && wholeCommand(toks, i)\n", "testCommands) && wholeCommand(toks[:i+1], i)\n",
+  "return on && !hides && wholeCommand(toks, i)\n",
+  "return on && !hides && wholeCommand(toks[:i+1], i)\n",
   "TestTestRunnerIsRecognised|TestTestBending_ShapesFromDerive")
 m("TB a command on the runner's next line is not seen", "internal/shape/verb.go",
   "\t\tif t.nlBefore {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn closesGroups(toks, i)\n}",
@@ -217,16 +218,16 @@ m("TB make check is a test run", "internal/shape/runner.go",
 # Re-anchored after the masked-status refactor: the refusal moved into runnerOn,
 # over the runner's own command (toks up to end); the next two as well.
 m("TB an argument that does not run the tests is ignored", "internal/shape/runner.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])",
-  "\t\treturn !(false && refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end]))",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], args) {",
+  "\t\tif false && refusesRun(refusalsOf(c), toks[:i], args) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the refusal reads only the first argument", "internal/shape/runner.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:min(from+len(c), end)])",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], args) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], args[:min(1, len(args))]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/verb.go",
-  "\t\t\tif strings.HasPrefix(word, p) {\n",
-  "\t\t\tif word == p {\n",
+  "\t\treturn strings.HasPrefix(word, p)\n",
+  "\t\treturn word == p\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the per-runner list is not read", "internal/shape/verb.go",
   "\tlist := notARun[strings.TrimSuffix(runner, \" build\")]\n",
@@ -323,28 +324,28 @@ m("TB a task or todo update between two runs is an edit", "internal/report/testb
   "TestTestBending")
 
 m("TB a flag's =value form is not refused", "internal/shape/verb.go",
-  "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
-  "\t\t} else if false && hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
+  "\treturn word == w || hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value)\n",
+  "\treturn word == w || false && hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value)\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a flag set =false is refused", "internal/shape/verb.go",
-  "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
-  "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && (!isFalse(value) || true) {",
+  "\treturn word == w || hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value)\n",
+  "\treturn word == w || hasValue && strings.HasPrefix(w, \"-\") && name == w && (!isFalse(value) || true)\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB make test -n is a test run", "internal/shape/verb.go",
-  "\"make\": {\"-n\", \"--just-print\", \"--dry-run\", \"--recon\", \"-q\", \"--question\", ",
-  "\"make\": {\"--recon\", ",
+  "\"make\":    {\"-n\", \"--just-print\", \"--dry-run\", \"--recon\", \"-q\", \"--question\", ",
+  "\"make\":    {\"--recon\", ",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB make test -v is a test run", "internal/shape/verb.go",
-  "\"-t\", \"--touch\", \"-v\",\n",
-  "\"-t\", \"--touch\",\n",
+  "\"-t\", \"--touch\", \"-v\"},\n",
+  "\"-t\", \"--touch\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB gradle continuous mode is a test run", "internal/shape/verb.go",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\", \"-t\", \"--continuous\"},",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\"},",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB mvn test -v is a test run", "internal/shape/verb.go",
-  "\t\"mvn\":     {\"-v\", \"-fn\", \"--fail-never\"},\n",
-  "\t\"mvn\":     {\"-fn\", \"--fail-never\"},\n",
+  "\t\"mvn\":     {\"-v\"},\n",
+  "\t\"mvn\":     {},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB tox --notest is a test run", "internal/shape/verb.go",
   "\"--help-ini\", \"--notest\",",
@@ -364,8 +365,8 @@ m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/verb.go",
   "TestTestClassRefusesWhatDoesNotRunTests")
 # Re-anchored after the masked-status refactor: the refusal is in runnerOn.
 m("TB the words before the runner are not read", "internal/shape/runner.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[i:i], toks[from+len(c)-1:end])",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], args) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[i:i], args) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 
 m("TB *Test.cs and *Tests.kt are not test files", "internal/shape/label.go",
@@ -646,8 +647,8 @@ m("TB a Maven skip property is read as true only in lower case", "internal/shape
   "(!hasValue || value == \"true\")\n",
   "TestTestRunnerIsRecognised")
 m("TB a prefix entry takes isFalse's exception", "internal/shape/verb.go",
-  "\t\t\tif strings.HasPrefix(word, p) {\n",
-  "\t\t\tif v, ok := strings.CutPrefix(strings.TrimPrefix(word, p), \"=\"); strings.HasPrefix(word, p) && !(ok && isFalse(v)) {\n",
+  "\t\treturn strings.HasPrefix(word, p)\n",
+  "\t\tv, ok := strings.CutPrefix(strings.TrimPrefix(word, p), \"=\")\n\t\treturn strings.HasPrefix(word, p) && !(ok && isFalse(v))\n",
   "TestTestRunnerIsRecognised")
 
 m("TB the .cpp and .cxx GoogleTest spellings are not test files", "internal/shape/label.go",
@@ -674,8 +675,8 @@ m("TB curl's : takes an argument", "internal/shape/verb.go",
   "'0' <= c && c <= '9', c == '#':\n",
   "TestMayWrite")
 m("TB -Dmaven.test.skip runs the tests", "internal/shape/verb.go",
-  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\", \"-Dmaven.test.failure.ignore\"}\n",
-  "{\"-DskipTests\", \"-Dmaven.test.skip.exec\", \"-Dmaven.test.failure.ignore\"}\n",
+  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\"}\n",
+  "{\"-DskipTests\", \"-Dmaven.test.skip.exec\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB an empty session id pastes as nothing", "internal/report/text.go",
   "\tif s == \"\" {\n\t\treturn \"''\"\n\t}\n",
@@ -753,32 +754,34 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 7\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 8\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
 # is the matcher pin's own: no table the three table pins digest moved, so
 # each of them still finds its version-3 digest under key 3.
 m("TB every dash word may stand before the row's words", "internal/shape/runner.go",
-  "\tfor _, f := range leadingFlags[prog] {\n",
-  "\tif strings.HasPrefix(t.text, \"-\") {\n\t\treturn true\n\t}\n\tfor _, f := range leadingFlags[prog] {\n",
+  "\tt := toks[k]\n\tfor _, f := range leadingFlags[prog] {\n",
+  "\tt := toks[k]\n\tif strings.HasPrefix(t.text, \"-\") {\n\t\treturn true\n\t}\n\tfor _, f := range leadingFlags[prog] {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB no flag may stand before the row's words", "internal/shape/runner.go",
   "var leadingFlags = map[string][]string{\n",
   "var leadingFlags = map[string][]string{}\n\nvar _ = map[string][]string{\n",
   "TestTestRunnerIsRecognised|TestLeadingOptionsOneMatcher")
-m("TB make's -i may stand before the row's words", "internal/shape/runner.go",
-  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-i\"},\n",
+m("TB make's -n may stand before the row's words", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\", \"-i!\", \"--ignore-errors!\"},\n",
+  "\t\"make\":    {\"-j#\", \"-n\", \"-i!\", \"--ignore-errors!\"},\n",
   "TestLeadingFlagsAreNotRefusals|TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a Maven property prefix may stand before the row's words", "internal/shape/runner.go",
-  "\tmavenLeadingFlags  = []string{\"-B\", \"-q\"}\n", "\tmavenLeadingFlags  = []string{\"-B\", \"-q\", \"-D*\"}\n",
+  "\tmavenLeadingFlags  = []string{\"-B\", \"-q\", \"-fn!\", \"--fail-never!\", \"-Dmaven.test.failure.ignore!\"}\n",
+  "\tmavenLeadingFlags  = []string{\"-B\", \"-q\", \"-fn!\", \"--fail-never!\", \"-Dmaven.test.failure.ignore!\", \"-D*\"}\n",
   "TestLeadingFlagsAreNotRefusals")
 m("TB python3 has no leading flags of its own", "internal/shape/runner.go",
   "\t\"python3\": pythonLeadingFlags,\n", "",
   "TestTestRunnerIsRecognised|TestLeadingOptionsOneMatcher")
 m("TB a toolchain word may stand before any program's row", "internal/shape/runner.go",
-  "\tfor _, f := range leadingFlags[prog] {\n",
-  "\tfor _, f := range append(leadingFlags[prog], \"+*\") {\n",
+  "\tt := toks[k]\n\tfor _, f := range leadingFlags[prog] {\n",
+  "\tt := toks[k]\n\tfor _, f := range append(leadingFlags[prog], \"+*\") {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a quoted word is read as a listed flag", "internal/shape/runner.go",
   "\treturn !(t.meta || t.quotedAt >= 0 || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
@@ -788,28 +791,31 @@ m("TB an expansion is read as a listed flag", "internal/shape/runner.go",
   "\t\tstrings.ContainsAny(t.text, \"$`*?[{\\\\\"))\n}\n",
   "\t\tfalse)\n}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB make test -i is a test run", "internal/shape/verb.go",
-  "\t\t\"-i\", \"--ignore-errors\"},\n", "\t\t\"--ignore-errors\"},\n",
+m("TB make's -i hides nothing", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\", \"-i!\", \"--ignore-errors!\"},\n",
+  "\t\"make\":    {\"-j#\", \"--ignore-errors!\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB npm test --if-present is a test run", "internal/shape/verb.go",
-  "\t\"npm\":     {\"--if-present\"},\n", "\t\"npm\":     {},\n",
+m("TB npm's --if-present hides nothing", "internal/shape/runner.go",
+  "\t\"npm\":     {\"--if-present!\"},\n",
+  "\t\"npm\":     {},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB mvn test -fn is a test run", "internal/shape/verb.go",
-  "\t\"mvn\":     {\"-v\", \"-fn\", \"--fail-never\"},\n", "\t\"mvn\":     {\"-v\", \"--fail-never\"},\n",
+m("TB mvn's -fn hides nothing", "internal/shape/runner.go",
+  "\"-B\", \"-q\", \"-fn!\", \"--fail-never!\",",
+  "\"-B\", \"-q\", \"--fail-never!\",",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB ignoring the tests' failures is a test run", "internal/shape/verb.go",
-  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\", \"-Dmaven.test.failure.ignore\"}\n",
-  "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\"}\n",
+m("TB -Dmaven.test.failure.ignore hides nothing", "internal/shape/runner.go",
+  "\"--fail-never!\", \"-Dmaven.test.failure.ignore!\"}\n",
+  "\"--fail-never!\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 7\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 8\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
 
 # Version 5: the masked parser passes over the leading cd steps the program
 # search steps over, `~` is read, and a fold that is not read has a location
 # of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
 # or giving an unread fold a read location, is the regression.
 m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
-  "const RulesVersion = 7\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 8\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
   "TestLocation|TestUnreadLocationDomain")
@@ -843,14 +849,15 @@ m("TB -l clears an editor again", "internal/shape/verb.go",
   "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
   "TestRC3b_")
 m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
-  "const RulesVersion = 7\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+  "const RulesVersion = 8\n", "const RulesVersion = 5\n", "TestRulesVersion_")
 
 # The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
 # -j4x test` and `make -j=4 test` read verb_class test where execute is
 # wanted (the glob restored), `make -j test` and `make -j 4 test` read execute
 # where test is wanted (a count required; the separate count not passed over).
 m("TB make's -j admits whatever follows it", "internal/shape/runner.go",
-  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j*\"},\n",
+  "\t\"make\":    {\"-j#\", \"-i!\", \"--ignore-errors!\"},\n",
+  "\t\"make\":    {\"-j*\", \"-i!\", \"--ignore-errors!\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB make's -j needs a count", "internal/shape/runner.go",
   "ok && allDigits(n) {", "ok && n != \"\" && allDigits(n) {",
@@ -880,7 +887,8 @@ m("TB the flag tables stay at the same pin when curl's argument options change",
   "const curlArgumentOptions = \"AbcCdDeEFhHKmPQrtTuUwxXyYz\"", "const curlArgumentOptions = \"AbcCdDeEFhHKmPQrtTuUwxXyY\"",
   "TestRulesVersion_FlagTables")
 m("TB the flag tables stay at the same pin when make's -j entry changes", "internal/shape/runner.go",
-  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-s\"},\n",
+  "\t\"make\":    {\"-j#\", \"-i!\", \"--ignore-errors!\"},\n",
+  "\t\"make\":    {\"-j#\", \"-i!\", \"--ignore-errors!\", \"-s\"},\n",
   "TestRulesVersion_FlagTables")
 
 # 5.9 and 5.10 (card S1). The digit run: TestS1_EditorWordsAndPerlDigitRun,
@@ -915,4 +923,48 @@ m("TB the paren count moved into commandEnd", "internal/shape/program.go",
   "\t\tcase t.text == \")\":\n\t\t\treturn 0, false\n\t\tcase t.text == \";\" || t.text == \"&&\" || t.text == \"||\" || t.text == \"|\" || t.text == \"&\":\n\t\t\treturn j, true\n",
   "TestS1_CommandEndReadersUnmoved")
 m("TB the rules version stays at 6 when wholeCommand counts groups", "internal/shape/masked.go",
-  "const RulesVersion = 7\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 8\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
+
+# 5.11 and 5.12 (card S2). A hiding flag (leadingFlags, ! entries) keeps the
+# runner, masked: TestTestClassRefusesWhatDoesNotRunTests's rows read none or test where
+# masked test or build is wanted. pushd folds as cd in every reader:
+# TestS2_PushdFoldsAsCd, whose end-to-end row's digest fails when one reading
+# lags, and whose popd and stack-form rows fail when either is read.
+m("TB make's --ignore-errors hides nothing", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\", \"-i!\", \"--ignore-errors!\"},\n", "\t\"make\":    {\"-j#\", \"-i!\"},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB mvn's --fail-never hides nothing", "internal/shape/runner.go",
+  "\"-fn!\", \"--fail-never!\", \"-Dmaven", "\"-fn!\", \"-Dmaven", "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a hiding flag after the row's words is not read", "internal/shape/runner.go",
+  "\t\tfor _, t := range args {\n\t\t\thides = hides || hidingFlag(t.text, prog)\n\t\t}\n", "",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a hiding flag reads Maven's =1 as true", "internal/shape/verb.go",
+  "\treturn name == p && (!hasValue || strings.EqualFold(value, \"true\"))\n",
+  "\treturn name == p && (!hasValue || !isFalse(value))\n", "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a hiding runner is a test run", "internal/shape/verb.go",
+  "return on && !hides && wholeCommand(toks, i)\n", "return on && (!hides || true) && wholeCommand(toks, i)\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB the masked parser drops the hiding bit", "internal/shape/masked_simple.go",
+  "\tc.op, c.runner, c.hides = opRunner, g, hides\n", "\tc.op, c.runner, c.hides = opRunner, g, hides && false\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a hiding runner's failure reaches the line", "internal/shape/masked_eval.go",
+  "\t\t\tif ev.fail && !c.hides {\n", "\t\t\tif ev.fail {\n", "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB popd is stepped over as cd is", "internal/shape/program.go",
+  "\tfor (toks[i].text == \"cd\" || toks[i].text == \"pushd\") && toks[i].quotedAt < 0 {\n",
+  "\tfor (toks[i].text == \"cd\" || toks[i].text == \"pushd\" || toks[i].text == \"popd\") && toks[i].quotedAt < 0 {\n",
+  "TestS2_PushdFoldsAsCd")
+m("TB popd DIR is read as a location", "internal/shape/leading.go",
+  "\tif cd.text != \"cd\" && cd.text != \"pushd\" || cd.quotedAt >= 0 || cd.opaque {\n",
+  "\tif cd.text != \"cd\" && cd.text != \"pushd\" && cd.text != \"popd\" || cd.quotedAt >= 0 || cd.opaque {\n",
+  "TestS2_PushdFoldsAsCd")
+m("TB pushd is folded by the location reader only", "internal/shape/program.go",
+  "\tfor (toks[i].text == \"cd\" || toks[i].text == \"pushd\") && toks[i].quotedAt < 0 {\n",
+  "\tfor toks[i].text == \"cd\" && toks[i].quotedAt < 0 {\n", "TestS2_PushdFoldsAsCd")
+m("TB pushd is folded by the program search only", "internal/shape/program.go",
+  "\tif !slices.Equal(toks[:after], fold) {\n",
+  "\tif !slices.Equal(toks[:after], fold) || slices.ContainsFunc(fold, func(t token) bool { return t.text == \"pushd\" }) {\n",
+  "TestS2_PushdFoldsAsCd")
+m("TB pushd's stack forms are read as a location", "internal/shape/leading.go",
+  " || cd.text == \"pushd\" && strings.HasPrefix(dir.text, \"+\") ||", " ||", "TestS2_PushdFoldsAsCd")
+m("TB the rules version stays at 7 when hiding flags and pushd change", "internal/shape/masked.go",
+  "const RulesVersion = 8\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")

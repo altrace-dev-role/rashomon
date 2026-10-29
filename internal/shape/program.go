@@ -118,7 +118,10 @@ func programToken(toks []token, uncertain bool) (int, bool) {
 }
 
 // pastDirectoryChange moves the program from a leading `cd DIR &&` or
-// `cd DIR;` to the command that follows it.
+// `cd DIR;`, or the same with pushd, to the command that follows it. pushd
+// changes the directory as cd does and pushes the old one on the stack, which
+// nothing after it here reads; popd is not stepped over, since where it leads
+// is not on the line.
 //
 // `cd` is where a command runs, not what it runs. Measured on a real session:
 // 1,397 of 1,495 shell calls were `cd … && <command>`, so reporting the first
@@ -137,9 +140,9 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 }
 
 // directoryChanges steps from the command whose program is toks[i] over each
-// leading `cd ARGS &&` or `cd ARGS;`, and returns after, the index past the
-// last separator it stepped over (0 when none), steps, how many it stepped
-// over, and prog and ok, pastDirectoryChange's answer. after and steps are
+// leading `cd ARGS &&` or `cd ARGS;`, and pushd's alike, and returns after,
+// the index past the last separator it stepped over (0 when none), steps, how
+// many it stepped over, and prog and ok, pastDirectoryChange's answer. after and steps are
 // set even where the program after the last step cannot be told.
 //
 // The separator is found by commandEnd, the scan that decides where a
@@ -152,7 +155,7 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 // of thousands of them is within the token bound, and its depth is the
 // input's to choose (RES-10, CWE-674).
 func directoryChanges(toks []token, i int, uncertain bool) (after, steps, prog int, ok bool) {
-	for toks[i].text == "cd" && toks[i].quotedAt < 0 {
+	for (toks[i].text == "cd" || toks[i].text == "pushd") && toks[i].quotedAt < 0 {
 		sep, ok := commandEnd(toks, i, uncertain)
 		if !ok {
 			return after, steps, 0, false

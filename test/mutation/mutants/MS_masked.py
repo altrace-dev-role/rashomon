@@ -110,7 +110,9 @@ m("MS make is no build runner", "internal/shape/masked.go",
 m("MS a build masked before a test wins", "internal/shape/masked.go",
   "\t\t\tif p.runners[g].kind == MaskedTest {\n\t\t\t\tk = MaskedTest\n", "\t\t\tif p.runners[g].kind == MaskedTest && false {\n\t\t\t\tk = MaskedTest\n", SH)
 m("MS the runner's arguments run to the end of the line", "internal/shape/runner.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:])", SH)
+  "\t\targs := toks[from+len(c)-1 : end]\n",
+  "\t\targs := toks[from+len(c)-1:]\n",
+  "TestStatusMasked|TestRunnerDigest|TestMasked_")
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
   "\t\tl.pending = append(l.pending, j)\n", "\t\t_ = j\n", SH)
 m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",

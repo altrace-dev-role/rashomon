@@ -17,10 +17,13 @@ import (
 // `~` alone or before a slash, as written, which the hook expands with its
 // own home (startDirectory); a named home (`~user`) and the directory stack's
 // `~+` and `~-` are refused. `cd DIR;` is left out, since what follows a `;`
-// runs whether the cd succeeded or not. A step in the leading run whose
-// command, past any assignments, redirections or an opening ( or { in front
-// of it, is cd, pushd or popd and is not such a cd spoils the run, since the
-// directory it leads to is not on the line. So a `cd -` is refused anywhere
+// runs whether the cd succeeded or not. `pushd DIR &&` is read as `cd DIR &&`
+// is: it changes to DIR and pushes the old directory, which nothing read here
+// pops. Its stack forms, a bare pushd and `pushd +N` or `-N`, are refused as
+// `~+` and `~-` are. A step in the leading run whose command, past any
+// assignments, redirections or an opening ( or { in front of it, is cd, pushd
+// or popd and is not such a cd or pushd spoils the run, since the directory
+// it leads to is not on the line: popd always. So a `cd -` is refused anywhere
 // in the leading run, even when an earlier step names its target: `cd /a &&
 // cd b && cd - && go test` loses a pair that way, but it never forms a false
 // one. Anything else reports false. Where the program search steps over cd
@@ -100,18 +103,18 @@ func leadingRun(toks []token, err error) ([]string, bool) {
 	return dirs, len(dirs) > 0
 }
 
-// leadingCd reports the DIR of a plain literal `cd DIR &&` at the start of
-// toks, by LeadingDirectory's rules.
+// leadingCd reports the DIR of a plain literal `cd DIR &&` or `pushd DIR &&`
+// at the start of toks, by LeadingDirectory's rules.
 func leadingCd(toks []token) (string, bool) {
 	if len(toks) < 3 {
 		return "", false
 	}
 	cd, dir, and := toks[0], toks[1], toks[2]
-	if cd.text != "cd" || cd.quotedAt >= 0 || cd.opaque {
+	if cd.text != "cd" && cd.text != "pushd" || cd.quotedAt >= 0 || cd.opaque {
 		return "", false
 	}
 	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore || isComment(dir) ||
-		dir.text == "" || strings.HasPrefix(dir.text, "-") ||
+		dir.text == "" || strings.HasPrefix(dir.text, "-") || cd.text == "pushd" && strings.HasPrefix(dir.text, "+") ||
 		strings.HasPrefix(dir.text, "~") && dir.text != "~" && !strings.HasPrefix(dir.text, "~/") ||
 		strings.ContainsAny(dir.text, "$`*?[{\\") {
 		return "", false

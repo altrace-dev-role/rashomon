@@ -24,6 +24,7 @@ var locationPins = map[int]string{
 	5: "e22b69da181e207739b0bbb3615684f1e2a02d397d9ce71c37584277dc252c50", // `~` read with the hook's home; an unread fold's location in its own domain, keyed on the payload's cwd and the fold (2026-10-24)
 	6: "e22b69da181e207739b0bbb3615684f1e2a02d397d9ce71c37584277dc252c50", // RulesVersion 6 changed checkOnly, make's -j and the flag-table pins; the cwd rule is unchanged
 	7: "e22b69da181e207739b0bbb3615684f1e2a02d397d9ce71c37584277dc252c50", // RulesVersion 7 changed when a runner's line is whole and perl's -0 cluster; the cwd rule is unchanged
+	8: "e3a671f14c9c1922425e28caa9348428c3e1c9fd51480f579fa5a5ae3e58650f", // `pushd DIR &&` folds as `cd DIR &&` does: `pushd /b && go test ./...` and `cd /a && pushd /b && go test ./...` record /b (2026-10-28)
 }
 
 // locationCorpus is the (line, payload cwd) pairs locationPins digests, a

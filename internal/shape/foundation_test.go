@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 )
@@ -74,11 +75,11 @@ var runnerKindLines = []struct{ cmd, kind string }{
 	{"go build ./... | tail; go test ./...", RunnerBuild}, // the hidden runner is digested over the reaching one
 }
 
-// noRunnerDigestLines carry none: no runner, a runner a pushd displaced, two
+// noRunnerDigestLines carry none: no runner, a runner a popd displaced, two
 // hidden runners, and a line whose masking is not known.
 var noRunnerDigestLines = []string{
 	"ls -la", "echo hi | grep h", "cd x && cat y",
-	"pushd /a && go test ./...", "make release | tail; make test | tail", "make test | tail; exit ${PIPESTATUS[0]}",
+	"popd && go test ./...", "make release | tail; make test | tail", "make test | tail; exit ${PIPESTATUS[0]}",
 }
 
 func orNil(p *string) string {
@@ -206,6 +207,46 @@ func TestS1_CommandEndReadersUnmoved(t *testing.T) {
 			t.Errorf("%q: class %s masked %s kind %s program %s steps %d, want class %s masked %s kind <nil> program %s steps %d",
 				tc.cmd, sh.VerbClass, orNil(sh.StatusMasked), orNil(sh.RunnerKind), orNil(sh.Program), steps,
 				tc.class, tc.masked, tc.program, tc.steps)
+		}
+	}
+}
+
+// TestS2_PushdFoldsAsCd (5.12): `pushd DIR &&` is a directory change to every
+// reader of a leading step at once: the location reader (leadingCd), the
+// program search and the masked parser (directoryChanges, one loop for both).
+// The end-to-end row records location /b with the runner's digest and kind, so
+// a pushd folded in one reading only, which displaces the runner, fails here.
+// popd is never folded, and pushd's stack forms and a `;` step are not read as
+// a location (dirs empty, the fold unread). may_write is set where popd is the
+// program, which is not classed, and clear where the runner is.
+func TestS2_PushdFoldsAsCd(t *testing.T) {
+	for _, tc := range []struct {
+		cmd, class, program string
+		dirs                []string
+		unread, digest      bool
+	}{
+		{"cd /a && pushd /b && go test ./...", VerbTest, "go", []string{"/a", "/b"}, false, true},
+		{"pushd /b && go test ./...", VerbTest, "go", []string{"/b"}, false, true},
+		{"pushd /b; go test ./...", VerbTest, "go", nil, true, true},
+		{"pushd && go test ./...", VerbTest, "go", nil, true, true},
+		{"pushd +1 && go test ./...", VerbTest, "go", nil, true, true},
+		{"pushd -1 && go test ./...", VerbTest, "go", nil, true, true},
+		{"popd && go test ./...", VerbExecute, "popd", nil, false, false},
+		{"popd; go test ./...", VerbExecute, "popd", nil, false, false},
+		{"popd +1 && go test ./...", VerbExecute, "popd", nil, false, false},
+		{"cd /a && popd && go test ./...", VerbExecute, "popd", nil, true, false},
+	} {
+		raw, _ := json.Marshal(map[string]string{"command": tc.cmd})
+		sh, _, dirs, unread := DeriveWithDirs("Bash", raw, []byte("key"))
+		kind := "<nil>"
+		if tc.digest {
+			kind = RunnerTest
+		}
+		if sh.VerbClass != tc.class || orNil(sh.Program) != tc.program || !slices.Equal(dirs, tc.dirs) ||
+			(unread != "") != tc.unread || (sh.RunnerDigest != nil) != tc.digest || orNil(sh.RunnerKind) != kind || sh.MayWrite != (tc.program == "popd") {
+			t.Errorf("%q: class %s program %s dirs %q unread %t digest %t kind %s may_write %t; want %s %s %q %t %t %s %t",
+				tc.cmd, sh.VerbClass, orNil(sh.Program), dirs, unread != "", sh.RunnerDigest != nil, orNil(sh.RunnerKind), sh.MayWrite,
+				tc.class, tc.program, tc.dirs, tc.unread, tc.digest, kind, tc.program == "popd")
 		}
 	}
 }
