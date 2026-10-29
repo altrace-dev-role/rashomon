@@ -856,6 +856,13 @@
             "null"
           ]
         },
+        "content_sha256": {
+          "description": "Schema 6. The sha256, 64 lowercase hex, of the file a named write (Edit, Write, MultiEdit, NotebookEdit) names, read after the call: the content a later gate run is bound to (AutoSteer P5A, D140). Null for any other call, and for a file that is gone, not a regular file, over 1 MiB or unreadable; null below record_scope v5, as a content field. An unkeyed digest of content, so it is kept only with the consent that keeps content.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "executed_command_withheld": {
           "description": "Schema 5. Why executed_command is null when it is null by rule; command_withheld's values. One of: no_consent, switched_off, masker_error, oversize, forgotten; or null.",
           "type": [
@@ -1049,6 +1056,7 @@
               "head_after",
               "gate_output",
               "credmech",
+              "content_sha256",
               "executed_command_withheld",
               "failure_withheld",
               "output_evidence_withheld",

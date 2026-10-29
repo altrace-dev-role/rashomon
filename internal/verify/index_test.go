@@ -50,7 +50,7 @@ func TestIDX1_AFamilySeenInTwoSessionsIsRequired(t *testing.T) {
 	idx := &ProjectIndex{ProjectKey: "/p"}
 	idx.Observe(runs, "s1", idxNow-dayMS)
 	idx.Observe(append(slices.Clone(runs), idxRun(2, "a0", "l1", kindBuild, true), idxRun(3, "a1", "l1", kindBuild, true)), "s2", idxNow)
-	gs := gateStates(runs, nil, nil, 1)
+	gs := gateStates(runs, nil, nil, 1, nil)
 	if len(gs) != 1 {
 		t.Fatalf("gateStates gives %d families, want 1", len(gs))
 	}
@@ -449,7 +449,7 @@ func TestIDX7_KindIsTheFamilys(t *testing.T) {
 	}}
 	idx.Observe(runs, "s1", idxNow)
 	want := map[string]string{"r1@l1": kindTest, "r2@l1": kindCustom}
-	gs := gateStates(runs, nil, nil, 4)
+	gs := gateStates(runs, nil, nil, 4, nil)
 	if len(gs) != 2 {
 		t.Fatalf("gateStates gives %d families, want 2", len(gs))
 	}

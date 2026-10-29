@@ -29,7 +29,7 @@ func statesAt(t *testing.T, at int64, calls ...call) []GateState {
 func statesOf(t *testing.T, r *store.Run, at int64) []GateState {
 	t.Helper()
 	runs, writes, unnamed, _ := classify(r)
-	got := gateStates(runs, writes, unnamed, at)
+	got := gateStates(runs, writes, unnamed, at, nil)
 	for _, g := range got {
 		if g.Source != "learned" || g.Trust != "builtin" || !g.Required || g.PartialRunsSince != 0 {
 			t.Fatalf("%s: source %q trust %q required %t partial %d, want learned, builtin, true, 0", g.Gate, g.Source, g.Trust, g.Required, g.PartialRunsSince)
@@ -342,7 +342,7 @@ func TestVER14_BackgroundedAndNoFamily(t *testing.T) {
 	bg.bg = true
 	wantState(t, one(t, statesAt(t, 2, bg)), Backgrounded, BackgroundLaunch)
 
-	got := gateStates(nil, nil, nil, 10)
+	got := gateStates(nil, nil, nil, 10, nil)
 	b, err := json.Marshal(got)
 	if err != nil || got == nil || string(b) != "[]" {
 		t.Fatalf("no family: %v encodes as %s (err %v), want a made empty slice encoding as []", got, b, err)
@@ -426,7 +426,7 @@ func TestVER17_WritersAreCapped(t *testing.T) {
 func encodedUnderShuffles(t *testing.T, r *store.Run, at int64) []byte {
 	t.Helper()
 	runs, writes, unnamed, _ := classify(r)
-	want, err := json.Marshal(gateStates(runs, writes, unnamed, at))
+	want, err := json.Marshal(gateStates(runs, writes, unnamed, at, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func encodedUnderShuffles(t *testing.T, r *store.Run, at int64) []byte {
 		rng.Shuffle(len(runs), func(i, j int) { runs[i], runs[j] = runs[j], runs[i] })
 		rng.Shuffle(len(writes), func(i, j int) { writes[i], writes[j] = writes[j], writes[i] })
 		rng.Shuffle(len(unnamed), func(i, j int) { unnamed[i], unnamed[j] = unnamed[j], unnamed[i] })
-		got, err := json.Marshal(gateStates(runs, writes, unnamed, at))
+		got, err := json.Marshal(gateStates(runs, writes, unnamed, at, nil))
 		if err != nil || !bytes.Equal(got, want) {
 			t.Fatalf("shuffle %d: %s, want %s", i, got, want)
 		}
@@ -672,12 +672,12 @@ func BenchmarkGateStates(b *testing.B) {
 	}
 	runs, writes, unnamed, _ := classify(runOf(b, calls...))
 	at := 2 * seq
-	if got := gateStates(runs, writes, unnamed, at); len(got) != 2 || got[0].WritesSinceGreen != 10 {
+	if got := gateStates(runs, writes, unnamed, at, nil); len(got) != 2 || got[0].WritesSinceGreen != 10 {
 		b.Fatalf("the fixture gives %+v, want two families with ten writes since green", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gateStates(runs, writes, unnamed, at)
+		gateStates(runs, writes, unnamed, at, nil)
 	}
 }

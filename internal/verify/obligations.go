@@ -21,9 +21,9 @@ import (
 // with Evaluate's one stated exception (RES14c) reaching it as row order
 // only: a gate's label, which snap.Gates sorts by, can differ between the
 // two, and no row carries the label, so ids, states and evidence cannot. Done is
-// snap.RecordGreen, never "every row met" and never an empty ledger: in v0
-// every evidence_bound row is unknown, and an incomplete record's ledger is
-// empty (Q9).
+// snap.RecordGreen, never "every row met" and never an empty ledger: an
+// evidence_bound row is unknown at a point with no tree, and an incomplete
+// record's ledger is empty (Q9).
 //
 // The mapping, per required gate (D36, D38: an advisory gate owes nothing),
 // rows in snap.Gates order and per gate in ObligationKinds order:
@@ -33,16 +33,17 @@ import (
 //     (watchedRow): no row without a red run.
 //   - exit_unmasked, from the state, where the gate has a last run and owes
 //     a row (exitUnmaskedTable).
-//   - evidence_bound, unknown with no evidence, where gate_after_write has a
-//     row (Phase 5 binds the evidence to the tree digest; Q6).
+//   - evidence_bound, where gate_after_write has a row (evidenceBound): met
+//     where the green run's tree is the point's, unmet where the session
+//     wrote since it, unknown otherwise (card P5A; Q6).
 //
 // A cited pointer that is nil makes its row unknown with no evidence (Q2). A
 // state outside States, a source outside snapshot.go's three, or a record not
 // Complete makes every row of the gate unknown (INV-2, A1).
 //
-// The three v0 facts: the scope is the session at every point (Q1); the
-// evidence_bound rows are unknown; and no spec_rule, platform_impact,
-// expected_evidence or proposed_check row is emitted (Phase 3 and 6).
+// The two v0 facts: the scope is the session at every point (Q1); and no
+// spec_rule, platform_impact, expected_evidence or proposed_check row is
+// emitted (Phase 3 and 6).
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string
@@ -51,7 +52,7 @@ const (
 	GateAfterWrite      ObligationKind = "gate_after_write"       // a gate ran green after the last relevant write
 	WatchedRedThenGreen ObligationKind = "watched_red_then_green" // the family went red, then green after a write
 	ExitUnmasked        ObligationKind = "exit_unmasked"          // the run's status was readable, not hidden by a pipe
-	EvidenceBound       ObligationKind = "evidence_bound"         // Phase 5 fills it; v0 always unknown
+	EvidenceBound       ObligationKind = "evidence_bound"         // the green run's tree is the point's (P5A)
 	SpecRule            ObligationKind = "spec_rule"              // Phase 3
 	PlatformImpact      ObligationKind = "platform_impact"        // Phase 6
 	ExpectedEvidence    ObligationKind = "expected_evidence"      // Phase 3
@@ -172,6 +173,27 @@ var exitUnmaskedTable = []obRow{
 	{Unknown, ObligationUnknown, citeRun},
 }
 
+// evidenceBound is the evidence_bound row's table for g (PF-PG6, INV-14):
+// met, citing the green run, where its tree reads as it did at the point;
+// unmet where the session wrote since that run, named or unnamed beside a
+// moved tree (writes_after_green); otherwise unknown, with no evidence: no
+// tree at the point, a sha either side lacks, a foreign edit (stale_foreign,
+// INV-2), or no green last run to bind.
+func evidenceBound(g *GateState) []obRow {
+	switch {
+	case g.State == Green && g.bound == boundMet:
+		return evidenceMet
+	case g.Reason == WritesAfterGreen:
+		return evidenceUnmet
+	}
+	return nil
+}
+
+var (
+	evidenceMet   = []obRow{{Green, ObligationMet, citeGreen}}
+	evidenceUnmet = []obRow{{Stale, ObligationUnmet, citeGreen}}
+)
+
 // ledger builds the rows. Every row's Evidence is a window of one backing
 // array, made with room for the most a gate cites (two, three and one), and
 // capped so an append to one never writes into the next; the array is never
@@ -222,7 +244,7 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 			l.fromTable(g, source, ExitUnmasked, exitUnmaskedTable)
 		}
 		if owed {
-			l.add(g, source, EvidenceBound, ObligationUnknown)
+			l.fromTable(g, source, EvidenceBound, evidenceBound(g))
 		}
 		if snap.Recording != Complete || Rank(g.State) < 0 || !known {
 			for j := start; j < len(l.rows); j++ {

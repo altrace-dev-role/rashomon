@@ -21,7 +21,7 @@ var (
 		"Writer", "ExecutedCommand", "ExecutedCommandReason", "ExecutedCommandBytes", "ExecutedCommandCut", "ExecutedMasked",
 		"Failure", "OutputEvidence", "EditMarks", "HeadAfter", "GateOutput", "CredMech", "ExecutedCommandWithheld",
 		"FailureWithheld", "OutputEvidenceWithheld", "EditMarksWithheld", "HeadAfterWithheld", "HarnessID",
-		"HarnessToolName", "DeclaredVia", "OutcomeSource", "FailureType", "MCPServerSource"}
+		"HarnessToolName", "DeclaredVia", "OutcomeSource", "FailureType", "MCPServerSource", "ContentSHA256"}
 	maskingWithheld = []string{"Program", "VerbClass", "Argc", "Digest", "MayWrite"}
 )
 

@@ -46,6 +46,10 @@ type call struct {
 	// marks and copied onto the execution; nil writes none. No writer fills
 	// edit_marks yet (1.8p is the producer).
 	editMarks *store.EditMarks
+	// sha is the execution's content_sha256: the sha256 the post recorded
+	// for the file an Edit or Write names, as the call left it (card P5A);
+	// "" writes none.
+	sha string
 	// schema is the version both records are stamped at: 0 is
 	// store.SchemaVersion; 5 is a record written before runner_kind, whose
 	// runner carries no kind.
@@ -131,6 +135,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - ExitCode is set only on the failure event, whose outcome is failed or interrupted, with a known code (post.go parses it before the interrupt check); an exit on an ok call is refused.
 //   - A Bash write that names paths is complete unless incomplete says otherwise, and one that names none carries MayWrite alone. This is the schema's written_paths_complete (record_v5.go): no writer fills written_paths yet, so a named Bash write is the schema's shape, not the hook's.
 //   - A gate_output is what the call literal says, copied onto the execution. No writer fills gate_output yet (record_v5.go GateOutput is the schema), so a run carrying one is the schema's shape, not the hook's.
+//   - A content sha is on an Edit or a Write only, copied onto the execution (post.go hashes the file a named write names; card P5A).
 //   - Edit marks are on an Edit or a Write only (archive 10.2.8: file-writing tools; the builder models those two), copied onto the execution. No writer fills edit_marks yet (1.8p), so a run carrying them is the schema's shape, not the hook's; a test that needs marks where no writer would put them sets the execution's field itself.
 //   - No field is over the cap the hook would withhold it at (store.CapDeclaration and store.CapExecution, which the hook applies before its write).
 //   - A terminal's outcome is one of the Terminal outcomes (record.go).
@@ -250,6 +255,9 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if c.term != "" && c.term != store.OutcomeOK && c.term != store.OutcomeError && c.term != store.OutcomeSignal {
 			t.Fatalf("runOf: call %d terminal outcome %q is not one of %q, %q and %q (store: Terminal outcomes)", i, c.term, store.OutcomeOK, store.OutcomeError, store.OutcomeSignal)
 		}
+		if c.sha != "" && c.tool != "Edit" && c.tool != "Write" {
+			t.Fatalf("runOf: call %d carries a content sha on %s (post.go: only a named write's post hashes the file it names; the builder models Edit and Write)", i, c.tool)
+		}
 		if c.editMarks != nil && c.tool != "Edit" && c.tool != "Write" {
 			t.Fatalf("runOf: call %d carries edit marks on %s (archive 10.2.8: edit_marks are a file-writing tool's; the builder models Edit and Write)", i, c.tool)
 		}
@@ -333,6 +341,10 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 				g.Reason = &reason
 			}
 			e.GateOutput = &g // a fresh copy, never the caller's
+		}
+		if c.sha != "" {
+			sha := c.sha
+			e.ContentSHA256 = &sha
 		}
 		if c.editMarks != nil {
 			m := *c.editMarks

@@ -65,6 +65,10 @@ type write struct {
 	Path    *string // project-relative (relativise); nil when the target is unknown
 	Class   PathClass
 	Tool    string
+	// SHA is the sha256 the post recorded for the file a non-Bash named
+	// write names, as the call left it (ContentSHA256); nil where it has
+	// none, and for every other write (P5A).
+	SHA *string
 }
 
 // classify turns a run's calls into the two things the gate state reads: the
@@ -143,8 +147,12 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 	var pending []int // indexes into runs whose kind waits on the inference
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
+		n := len(writes)
 		writes, unnamed = appendWrites(writes, unnamed, d)
 		e := picked[d.ToolUseID]
+		if e != nil && hashed(d) {
+			writes[n].SHA = e.ContentSHA256
+		}
 		if e == nil || d.ToolName != "Bash" {
 			continue
 		}
@@ -289,6 +297,12 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 		blind()
 	}
 	return writes, unnamed
+}
+
+// hashed reports a declaration whose post hashes the file it names (P5A): a
+// non-Bash write that names its path, which appendWrites gives one named write.
+func hashed(d *store.Declaration) bool {
+	return d.ToolName != "Bash" && d.Shape.VerbClass == shape.VerbWrite && d.FilePath != nil
 }
 
 // relativise is a written path relative to the project, the form ClassOf's

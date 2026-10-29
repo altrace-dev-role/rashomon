@@ -100,6 +100,11 @@ var (
 		"edit_marks_withheld", "head_after_withheld",
 		"harness_id", "harness_tool_name", "declared_via", "outcome_source", "failure_type",
 		"mcp_server_source",
+		// v6, P5A. The sha256 of the file a named write names, read after
+		// the call: 64 hex, fixed width, and null below record_scope v5
+		// with the content fields, since an unkeyed digest of a small file
+		// can be confirmed by guessing it.
+		"content_sha256",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

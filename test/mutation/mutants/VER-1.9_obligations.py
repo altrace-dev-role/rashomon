@@ -10,8 +10,8 @@ m("VER-1.9 an advisory gate owes rows", O, '\t\tif !g.Required {\n\t\t\tcontinue
 m("VER-1.9 an Absent gate with no write owes rows", O,
   '\t\towed := g.State != Absent || g.LastWrite != nil\n', '\t\towed := true\n', "TestPG5b_")
 m("VER-1.9 evidence_bound on an Absent gate with no write", O,
-  '\t\tif owed {\n\t\t\tl.add(g, source, EvidenceBound, ObligationUnknown)\n',
-  '\t\tif true {\n\t\t\tl.add(g, source, EvidenceBound, ObligationUnknown)\n', "TestPG5b_")
+  '\t\tif owed {\n\t\t\tl.fromTable(g, source, EvidenceBound, evidenceBound(g))\n',
+  '\t\tif true {\n\t\t\tl.fromTable(g, source, EvidenceBound, evidenceBound(g))\n', "TestPG5b_")
 
 # gate_after_write.
 m("VER-1.9 Red reads met", O, '\t{Red, ObligationUnmet, citeRun},\n', '\t{Red, ObligationMet, citeRun},\n', "TestPG5b_")
@@ -62,9 +62,9 @@ m("VER-1.9 a green not yet landed counts", O,
 
 # evidence_bound and the kinds.
 m("VER-1.9 evidence_bound reads met", O,
-  '\t\t\tl.add(g, source, EvidenceBound, ObligationUnknown)\n', '\t\t\tl.add(g, source, EvidenceBound, ObligationMet)\n', "TestPG5a_")
+  '\t\t\tl.fromTable(g, source, EvidenceBound, evidenceBound(g))\n', '\t\t\tl.add(g, source, EvidenceBound, ObligationMet)\n', "TestPG5a_")
 m("VER-1.9 a Phase 3 kind emitted", O,
-  '\t\t\tl.add(g, source, EvidenceBound, ObligationUnknown)\n', '\t\t\tl.add(g, source, SpecRule, ObligationUnknown)\n', "TestPG5e_")
+  '\t\t\tl.fromTable(g, source, EvidenceBound, evidenceBound(g))\n', '\t\t\tl.fromTable(g, source, SpecRule, evidenceBound(g))\n', "TestPG5e_")
 
 # The id.
 m("VER-1.9 the id over the gate's label", O,

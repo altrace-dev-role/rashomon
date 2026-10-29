@@ -24,6 +24,13 @@ type Point struct {
 	PromptID  *string `json:"prompt_id"`
 	AgentID   *string `json:"agent_id"`
 	TaskRef   *string `json:"task_ref"`
+	// Tree is the content at the point of each file the session's tree
+	// names, by project-relative path (TreeTargets): the sha256, or nil for
+	// a file gone, not regular or over 1 MiB; no entry for one unread. The
+	// Stop hook reads it (hook.TreeShas), the one I/O the binding does; nil
+	// at a point that read none, and over MaxTreeFiles (P5A, D140). Not
+	// encoded: the checkpoint keeps the states it decided, not the shas.
+	Tree map[string]*string `json:"-"`
 }
 
 // Point kinds (archive 20.2.4: stop|subagent_stop|subtask|commit|push|pr|query).
@@ -89,6 +96,11 @@ type GateState struct {
 	WritersOmitted    int          `json:"writers_omitted"`
 	UnknownTarget     int          `json:"unknown_target_writes"`
 	PartialRunsSince  int          `json:"partial_runs_since"`
+
+	// bound is the last run's tree against the point's where the last run
+	// is green (bind), which the evidence_bound row reads; unknown with no
+	// tree. Not a key: the archive's GateState has none for it (P5A).
+	bound treeBind
 }
 
 // Recording is whether the window's record is complete; incomplete recording

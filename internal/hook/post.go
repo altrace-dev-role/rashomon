@@ -284,9 +284,16 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
+	// The content of the file a named write names, as the call left it: the
+	// tree a later gate run is bound to (card P5A, D140). A digest of content,
+	// so it is read only where record_scope v5 keeps it.
+	scope := recordScope(p.st)
+	if scope == store.RecordScopeV5 {
+		rec.ContentSHA256 = writtenSHA(&pl)
+	}
 	// The record-scope gate, then the caps, as on the declaration path
 	// (store.GateExecution; REC-52).
-	store.GateExecution(&rec, recordScope(p.st))
+	store.GateExecution(&rec, scope)
 	if p.capExec(&rec) {
 		p.withheld = true
 	}

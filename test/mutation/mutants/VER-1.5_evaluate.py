@@ -9,7 +9,7 @@ E = "internal/verify/evaluate.go"
 # The cut.
 m("VER-1.5 the cut is off by one", E, '\tat := pt.Seq\n', '\tat := pt.Seq + 1\n', "TestRES14b_")
 m("VER-1.5 the gates' cut alone is off by one", E,
-  '\tsnap.Gates = gateStates(runs, writes, unnamed, at)\n', '\tsnap.Gates = gateStates(runs, writes, unnamed, at+1)\n', "TestRES14b_")
+  '\tsnap.Gates = gateStates(runs, writes, unnamed, at, pt.Tree)\n', '\tsnap.Gates = gateStates(runs, writes, unnamed, at+1, pt.Tree)\n', "TestRES14b_")
 m("VER-1.5 Seq 0 counts the first call", E, '\tat := pt.Seq\n', '\tat := max(pt.Seq, 2)\n', "TestVER42_")
 m("VER-1.5 a nil run is not an empty one", E, '\tif run == nil {\n\t\trun = &store.Run{}\n\t}\n', '', "TestVER18b_")
 

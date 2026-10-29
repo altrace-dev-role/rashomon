@@ -13,12 +13,15 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// jsonKeys lists a struct's json keys in field order.
+// jsonKeys lists a struct's json keys in field order: an unexported field,
+// or one tagged "-", has none.
 func jsonKeys(v any) []string {
 	rt := reflect.TypeOf(v)
 	keys := make([]string, 0, rt.NumField())
 	for i := 0; i < rt.NumField(); i++ {
-		keys = append(keys, strings.Split(rt.Field(i).Tag.Get("json"), ",")[0])
+		if key := strings.Split(rt.Field(i).Tag.Get("json"), ",")[0]; rt.Field(i).IsExported() && key != "-" {
+			keys = append(keys, key)
+		}
 	}
 	return keys
 }

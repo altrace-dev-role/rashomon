@@ -99,7 +99,7 @@ func encodeObs(t *testing.T, obs []Obligation) []byte {
 // TestPG5a_GreenGateIsMet: a required gate green after the last relevant write
 // owes three rows, in kind order: gate_after_write met on its last green run,
 // exit_unmasked met on its last run, evidence_bound unknown with no evidence
-// (Phase 5); no watched row, since no run was red. An advisory gate owes
+// (no tree at the point; card P5A); no watched row, since no run was red. An advisory gate owes
 // nothing (D36, D38), and a Green with no LastGreen is unknown (INV-2).
 func TestPG5a_GreenGateIsMet(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK))

@@ -444,7 +444,7 @@ func TestVER54m_EveryGateReasonExplainsOneState(t *testing.T) {
 		MaskedWithSuccessLine: Green, OK: Green,
 		MaskedNoSuccessLine: MaskedInconclusive, MaskedUnattributable: MaskedInconclusive,
 		EmptyRun: Absent, PartialOnly: Absent, NeverRunAfterWrite: Absent,
-		RedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale,
+		RedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale, StaleForeign: Stale,
 		BackgroundLaunch: Backgrounded,
 		OrderUnknown:     Unknown, OutcomeUnknown: Unknown, RecordingIncomplete: Unknown, Budget: Unknown,
 	}

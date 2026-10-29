@@ -25,7 +25,7 @@ var (
 	postWithheld   = []string{"Type", "SchemaVersion", "Seq", "RecordedAtMS", "ToolUseID", "SessionID", "ToolName",
 		"Outcome", "ExitCode", "IsInterrupt", "DurationMS", "RuleMatch", "Backgrounded", "RulesVersion",
 		"Writer", "ExecutedCommand", "ExecutedCommandReason", "ExecutedCommandBytes", "ExecutedCommandCut", "ExecutedMasked",
-		"Failure", "OutputEvidence", "EditMarks", "HeadAfter", "GateOutput", "CredMech", "ExecutedCommandWithheld",
+		"Failure", "OutputEvidence", "EditMarks", "HeadAfter", "GateOutput", "CredMech", "ContentSHA256", "ExecutedCommandWithheld",
 		"FailureWithheld", "OutputEvidenceWithheld", "EditMarksWithheld", "HeadAfterWithheld", "HarnessID",
 		"HarnessToolName", "DeclaredVia", "OutcomeSource", "FailureType", "MCPServerSource"}
 )
