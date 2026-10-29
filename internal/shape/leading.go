@@ -113,7 +113,7 @@ func leadingCd(toks []token) (string, bool) {
 	if cd.text != "cd" && cd.text != "pushd" || cd.quotedAt >= 0 || cd.opaque {
 		return "", false
 	}
-	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore || isComment(dir) ||
+	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore ||
 		dir.text == "" || strings.HasPrefix(dir.text, "-") || cd.text == "pushd" && strings.HasPrefix(dir.text, "+") ||
 		strings.HasPrefix(dir.text, "~") && dir.text != "~" && !strings.HasPrefix(dir.text, "~/") ||
 		strings.ContainsAny(dir.text, "$`*?[{\\") {

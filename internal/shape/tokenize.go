@@ -220,30 +220,31 @@ func tokenizeShape(s string) ([]token, error) {
 // shell, and to tokenizeShape a string that ends at the first inner quote.
 //
 // It is handed the line as written and removes every backslash-newline itself
-// (joinContinuations), keeping where it removed each, because a here-document
-// or a quote inside such a $( ) cannot be followed without: see comsubEnd.
+// (joinLines), keeping where it removed each, because a here-document or a
+// quote inside such a $( ) cannot be followed without: see comsubEnd. A
+// comment it reads as the shell and tokenizeList do, to the end of its line,
+// where a backslash continues nothing (version 9): `# run the tests \` and
+// then `go test ./...` on the next line runs go test.
 //
 // Where it cannot tell how the shell reads on, it stops with errUncertain
 // rather than guess: see lex.
 func tokenizeProgram(s string) ([]token, error) {
-	return bounded(lex(joinContinuations(s), true, false))
+	return bounded(lex(joinLines(s, true), true, false))
 }
 
 // tokenizeList is tokenizeProgram for the walk over a line's whole list of
 // commands (statusMasked), which has to read past a here-document to the
 // commands after it: python3 - <<'E', a script, E, and then `make test |
-// tail` is how agents write a line that edits and then checks. Two things
-// differ, and only there:
-//
-//   - A here-document's body is skipped, from the newline after its operator
-//     to its delimiter line, found by the same reading comsubEnd follows one
-//     with (heredocDelim, bodiesEnd). Where that reading is not certain -- a
-//     delimiter it will not match, a body running to the end, a here-document
-//     after a paren, a backtick or an expansion lex does not parse, whose
-//     extent is then unknown -- it stops with errUncertain.
-//   - An unquoted # at the start of a word runs to the end of its line, as a
-//     comment does to the shell, so a quote in `# don't` opens nothing, and
-//     a backslash at its end joins no line to it (joinLines).
+// tail` is how agents write a line that edits and then checks. One thing
+// differs, and only there: a here-document's body is skipped, from the
+// newline after its operator to its delimiter line, found by the same reading
+// comsubEnd follows one with (heredocDelim, bodiesEnd). Where that reading is
+// not certain -- a delimiter it will not match, a body running to the end, a
+// here-document after a paren, a backtick or an expansion lex does not parse,
+// whose extent is then unknown -- it stops with errUncertain. A comment both
+// read alike (version 9): an unquoted # at the start of a word runs to the end
+// of its line, so a quote in `# don't` opens nothing, and a backslash at its
+// end joins no line to it (joinLines).
 //
 // The program search keeps its own reading, which stops at a here-document
 // instead: what it names is unchanged.
@@ -265,8 +266,9 @@ func tokenizeList(s string) ([]token, error) {
 //
 // r is the line, with the offsets at which backslash-newlines were removed
 // from it (joinContinuations); none for tokenizeShape, which reads each as
-// a continuation where it stands. docs selects tokenizeList's reading of
-// here-documents and comments.
+// a continuation where it stands. program reads a comment, an unquoted # at
+// the start of a word, to the end of its line (comment); docs selects
+// tokenizeList's reading of here-documents.
 func lex(r joined, program, docs bool) ([]token, error) {
 	return lexTo(r, program, docs, maxTokens)
 }
@@ -286,7 +288,7 @@ func lexTo(r joined, program, docs bool, limit int) ([]token, error) {
 		switch c := s[i]; {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			i, err = l.blank(i)
-		case docs && c == '#' && !l.w.started:
+		case l.program && c == '#' && !l.w.started:
 			i = l.comment(i)
 		case c == '\\':
 			i, err = l.backslash(i)
@@ -422,8 +424,9 @@ func (l *lexer) blank(i int) (int, error) {
 	return e, nil
 }
 
-// comment reads, for docs, an unquoted # at the start of a word to the end of
-// its line.
+// comment reads, for tokenizeProgram and tokenizeList, an unquoted # at the
+// start of a word to the end of its line. No token holds it: a reader of
+// either stream never meets a comment.
 func (l *lexer) comment(i int) int {
 	for i+1 < len(l.s) && l.s[i+1] != '\n' {
 		i++

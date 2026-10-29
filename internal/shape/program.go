@@ -76,7 +76,7 @@ func programToken(toks []token, uncertain bool) (int, bool) {
 		}
 
 		switch {
-		case t.opaque, isComment(t):
+		case t.opaque:
 			return 0, false
 		case t.text == "{" && t.quotedAt < 0 && start:
 			// The brace keyword, which only a command's first word can be.
@@ -149,7 +149,8 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 // command ends for definesFunctions, so a `;` inside `$( )` or backticks ends
 // nothing here either. The command after it is searched by programToken and
 // held to every rule the line's first command is. A comment before the
-// separator makes it comment text, and `cd` is then the whole command.
+// separator runs to the end of its line (lex), the separator with it, and
+// `cd` is then the whole command.
 //
 // It is a loop, one step per cd, rather than a call per cd: a line of tens
 // of thousands of them is within the token bound, and its depth is the
@@ -162,11 +163,6 @@ func directoryChanges(toks []token, i int, uncertain bool) (after, steps, prog i
 		}
 		if sep < 0 || toks[sep].text != "&&" && toks[sep].text != ";" {
 			return after, steps, i, true
-		}
-		for j := i + 1; j < sep; j++ {
-			if isComment(toks[j]) {
-				return after, steps, i, true
-			}
 		}
 		after, steps = sep+1, steps+1
 		k, ok := programToken(toks[after:], uncertain)
@@ -199,10 +195,10 @@ func leadingFold(toks []token, uncertain bool) int {
 
 // agreedFold is leadingFold over the masked parser's reading of the line,
 // toks, where its steps are the program search's, fold, token for token, and
-// 0 where they are not. The two readings differ at a comment and at a
-// here-document (tokenizeList): a comment ending in a backslash continues
-// nothing to the shell or to tokenizeList, and tokenizeProgram joins the next
-// line to it, so the one would step over a cd the other does not. Folding
+// 0 where they are not. The two readings differ only at a here-document,
+// whose body tokenizeList skips and tokenizeProgram reads as words (a comment
+// both end at its newline since version 9), so the one could step over a cd
+// the other does not. Folding
 // none there displaces the runner after any cd, so the runner whose identity
 // the masked parser records is always the command the program search names.
 func agreedFold(toks, fold []token) int {
@@ -400,15 +396,13 @@ func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
 
 // unknownDepth reports a token inside a group from which the group's depth
 // cannot be told, because what follows may hold a paren, a quote or a
-// backtick that counts for nothing: a comment; a case statement, whose
+// backtick that counts for nothing: a case statement, whose
 // patterns end in a `)` that closes no group; a here-document, whose body is
 // text; and, once a here-document has been passed (heredoc), a newline, after
 // which its body may begin.
 func unknownDepth(toks []token, j int, heredoc bool) bool {
 	t := toks[j]
 	switch {
-	case isComment(t):
-		return true
 	case !t.meta && t.quotedAt < 0 && t.text == "case":
 		return true
 	case hereDoc(toks, j):
@@ -468,11 +462,9 @@ func inGroup(open []byte, t token) []byte {
 //
 // After i each command's end is commandEnd's, as for every other reader of
 // the line: a `;` inside `$( )` ends nothing, and a separator is passed only
-// where it is the `;` of a `; }` closing an opened brace. A word starting
-// with `#` outside a group the words open themselves starts a comment, and
-// nothing after it on the line counts (`go test ./... # )`); a comment
-// before a separator commandEnd stopped at leaves the line refused, as
-// before. Counts, not a stack: `{ (go test ./...; } )`, an error to the
+// where it is the `;` of a `; }` closing an opened brace. A comment is no
+// token (lex), so nothing after a `#` on the line counts (`go test ./... #
+// )`). Counts, not a stack: `{ (go test ./...; } )`, an error to the
 // shell, reads as closed -- the over-claim.
 func closesGroups(toks []token, i int) bool {
 	parens, braces := 0, 0
@@ -497,11 +489,10 @@ func closesGroups(toks []token, i int) bool {
 		if sep < 0 {
 			end = len(toks)
 		}
-		var comment bool
-		if parens, comment, ok = closedParens(toks[i+1:end], parens); !ok {
+		if parens, ok = closedParens(toks[i+1:end], parens); !ok {
 			return false
 		}
-		if comment || sep < 0 {
+		if sep < 0 {
 			return sep < 0 && parens == 0 && braces == 0
 		}
 		if toks[sep].text != ";" || braces == 0 || sep+1 == len(toks) || !bareWord(toks[sep+1], "}") {
@@ -513,12 +504,11 @@ func closesGroups(toks []token, i int) bool {
 
 // closedParens reads the words of one command after its program, with parens
 // `(` groups open before it, and returns how many are still open after them;
-// comment says the words reached a comment, after which nothing was read, and
 // ok is false where a `)` closes none of the parens. A group the words open
 // themselves ($( ), <( ), a glob's @( ), backticks) closes within them, as
 // commandEnd found, and inside backticks a paren counts for nothing, as in
 // inGroup.
-func closedParens(toks []token, parens int) (open int, comment, ok bool) {
+func closedParens(toks []token, parens int) (open int, ok bool) {
 	depth, ticks := 0, false
 	for _, t := range toks {
 		switch {
@@ -526,20 +516,18 @@ func closedParens(toks []token, parens int) (open int, comment, ok bool) {
 			ticks = t.ticks%2 == 0
 		case t.ticks%2 == 1:
 			ticks = true
-		case depth == 0 && isComment(t):
-			return parens, true, true
 		case !t.meta:
 		case t.text == "(":
 			depth++
 		case t.text == ")" && depth > 0:
 			depth--
 		case t.text == ")" && parens == 0:
-			return 0, false, false
+			return 0, false
 		case t.text == ")":
 			parens--
 		}
 	}
-	return parens, false, true
+	return parens, true
 }
 
 // bareWord reports the unquoted word w: `{` and `}` open and close a brace

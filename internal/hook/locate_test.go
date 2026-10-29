@@ -112,15 +112,12 @@ func TestLocation(t *testing.T) {
 		{"make test -C sub", cwd},
 		{"go test -C sub ./...", cwd},
 		{"cd /repo\r && ls", cwd},
-		// ACCEPTED GAP: a comment ending in a backslash continues nothing to
-		// the shell, but the program search's reading joins the next line to
-		// it, so the steps it reads stop short of where the runner starts
-		// (/a/b, /a, /a/b). The two readings fold apart there, so the runner
-		// digest is null (shape's TestFoldKeepsRunnerIdentity) and no runner
-		// family takes the line in.
-		{"cd a && # c\\\ncd b && go test ./...", cwd + "/a"},
-		{"# c\\\ncd a && go test ./...", cwd},
-		{"cd a && #\\\n cd b && go test ./...", cwd + "/a"},
+		// A comment ending in a backslash continues nothing, to the shell or
+		// to either reading (version 9): the steps after it are read, and the
+		// location is where the runner starts.
+		{"cd a && # c\\\ncd b && go test ./...", cwd + "/a/b"},
+		{"# c\\\ncd a && go test ./...", cwd + "/a"},
+		{"cd a && #\\\n cd b && go test ./...", cwd + "/a/b"},
 
 		{strings.Repeat("cd a && ", maxLeadingCd+1) + "go test ./...", ""},
 	} {

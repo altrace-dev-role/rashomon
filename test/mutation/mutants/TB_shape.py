@@ -754,7 +754,7 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 8\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 9\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
@@ -808,14 +808,14 @@ m("TB -Dmaven.test.failure.ignore hides nothing", "internal/shape/runner.go",
   "\"--fail-never!\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 8\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 9\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
 
 # Version 5: the masked parser passes over the leading cd steps the program
 # search steps over, `~` is read, and a fold that is not read has a location
 # of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
 # or giving an unread fold a read location, is the regression.
 m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
-  "const RulesVersion = 8\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 9\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
   "TestLocation|TestUnreadLocationDomain")
@@ -849,7 +849,7 @@ m("TB -l clears an editor again", "internal/shape/verb.go",
   "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
   "TestRC3b_")
 m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
-  "const RulesVersion = 8\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+  "const RulesVersion = 9\n", "const RulesVersion = 5\n", "TestRulesVersion_")
 
 # The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
 # -j4x test` and `make -j=4 test` read verb_class test where execute is
@@ -906,12 +906,11 @@ m("TB a ( opened before the runner need not close", "internal/shape/program.go",
   "\t\t\treturn sep < 0 && parens == 0 && braces == 0\n", "\t\t\treturn sep < 0 && braces == 0\n",
   "TestS1_WholeCommandCountsGroupsAndComments")
 m("TB a ) after the runner that closes nothing is passed over", "internal/shape/program.go",
-  "\t\tcase t.text == \")\" && parens == 0:\n\t\t\treturn 0, false, false\n\t\tcase t.text == \")\":\n\t\t\tparens--\n",
+  "\t\tcase t.text == \")\" && parens == 0:\n\t\t\treturn 0, false\n\t\tcase t.text == \")\":\n\t\t\tparens--\n",
   "\t\tcase t.text == \")\" && parens > 0:\n\t\t\tparens--\n",
   "TestS1_WholeCommandCountsGroupsAndComments")
-m("TB a paren after a comment is counted", "internal/shape/program.go",
-  "\t\tcase depth == 0 && isComment(t):\n\t\t\treturn parens, true, true\n", "",
-  "TestS1_WholeCommandCountsGroupsAndComments")
+# Removed by 5.15 (RulesVersion 9): the program stream holds no comment token (lex), so the branch it broke was
+# dead and is deleted: "TB a paren after a comment is counted" (closedParens; S1's `#` rule).
 m("TB the ; of a brace group's ; } ends the runner's line", "internal/shape/program.go",
   "\t\tif toks[sep].text != \";\" || braces == 0 ||", "\t\tif true || braces == 0 ||",
   "TestS1_WholeCommandCountsGroupsAndComments")
@@ -923,7 +922,7 @@ m("TB the paren count moved into commandEnd", "internal/shape/program.go",
   "\t\tcase t.text == \")\":\n\t\t\treturn 0, false\n\t\tcase t.text == \";\" || t.text == \"&&\" || t.text == \"||\" || t.text == \"|\" || t.text == \"&\":\n\t\t\treturn j, true\n",
   "TestS1_CommandEndReadersUnmoved")
 m("TB the rules version stays at 6 when wholeCommand counts groups", "internal/shape/masked.go",
-  "const RulesVersion = 8\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 9\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
 
 # 5.11 and 5.12 (card S2). A hiding flag (leadingFlags, ! entries) keeps the
 # runner, masked: TestTestClassRefusesWhatDoesNotRunTests's rows read none or test where
@@ -967,4 +966,17 @@ m("TB pushd is folded by the program search only", "internal/shape/program.go",
 m("TB pushd's stack forms are read as a location", "internal/shape/leading.go",
   " || cd.text == \"pushd\" && strings.HasPrefix(dir.text, \"+\") ||", " ||", "TestS2_PushdFoldsAsCd")
 m("TB the rules version stays at 7 when hiding flags and pushd change", "internal/shape/masked.go",
-  "const RulesVersion = 8\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
+  "const RulesVersion = 9\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
+# S3 (5.15): the program stream reads a comment as the list stream does, and the here-document skip
+# stays the list stream's.
+m("TB the program stream joins a comment's backslash-newline", "internal/shape/tokenize.go",
+  "\treturn bounded(lex(joinLines(s, true), true, false))\n", "\treturn bounded(lex(joinLines(s, false), true, false))\n",
+  "TestS3_TK15_|TestS3_TK15b_|TestFoldKeepsRunnerIdentity")
+m("TB the program stream reads no comment", "internal/shape/tokenize.go",
+  "\t\tcase l.program && c == '#' && !l.w.started:", "\t\tcase l.docs && c == '#' && !l.w.started:",
+  "TestS3_TK15_|TestS3_TK15b_|TestFoldKeepsRunnerIdentity")
+m("TB the program stream skips a here-document's body", "internal/shape/tokenize.go",
+  "\treturn bounded(lex(joinLines(s, true), true, false))\n", "\treturn bounded(lex(joinLines(s, true), true, true))\n",
+  "TestS3_TK15c_")
+m("TB the rules version stays at 8 when comments end at their newline", "internal/shape/masked.go",
+  "const RulesVersion = 9\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")

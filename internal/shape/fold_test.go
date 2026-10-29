@@ -75,6 +75,12 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{"cd /a && pushd /b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"pushd /b; go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"pushd +1 && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		// A comment ends at its newline in both readings (version 9), as it
+		// does to the shell: a backslash at its end continues nothing, so the
+		// cd steps after it fold and the runner is go test.
+		{"cd a && # c\\\ncd b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"# c\\\ncd a && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"cd a && #\\\n cd b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 
 		// Unchanged. A cd the program search does not fold still displaces
 		// the runner after it: popd, one whose rest is a comment,
@@ -94,13 +100,6 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{strings.Repeat("cd a && ", MaxLeadingCd+1) + "go test ./...", VerbTest, MaskedNone, "", ""},
 		{strings.Repeat("cd $D && ", MaxLeadingCd+1) + "go test ./...", VerbTest, MaskedNone, "", ""},
 		{strings.Repeat("cd ~/a && ", MaxLeadingCd+1) + "go test ./...", VerbTest, MaskedNone, "", ""},
-		// The two readings fold apart: tokenizeList ends a comment at its
-		// newline, as the shell does, and tokenizeProgram joins the next line
-		// to it, so the masked parser would pass over a cd the program search
-		// does not. Then no step is folded (agreedFold).
-		{"cd a && # c\\\ncd b && go test ./...", VerbExecute, MaskedNone, "", ""},
-		{"# c\\\ncd a && go test ./...", VerbExecute, MaskedNone, "", ""},
-		{"cd a && #\\\n cd b && go test ./...", VerbExecute, MaskedNone, "", ""},
 	} {
 		s := derive(tc.cmd)
 		masked, kind := "", ""
@@ -194,8 +193,11 @@ func TestLeadingFold(t *testing.T) {
 	}
 }
 
-// foldApart are lines the two readings fold apart: a comment ending in a
-// backslash, before the leading steps or among them.
+// foldApart are lines the two readings folded apart before version 9: a
+// comment ending in a backslash, before the leading steps or among them, which
+// tokenizeProgram joined the next line to. Both readings now end a comment at
+// its newline (lex), and the lines stay as seeds; the one divergence left is a
+// here-document, whose body only tokenizeList skips.
 var foldApart = []string{
 	"cd a && # c\\\ncd b && go test ./...",
 	"# c\\\ncd a && go test ./...",

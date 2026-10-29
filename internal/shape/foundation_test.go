@@ -250,3 +250,58 @@ func TestS2_PushdFoldsAsCd(t *testing.T) {
 		}
 	}
 }
+
+// TestS3_TK15_CommentEndsAtItsNewline (5.15): the program search reads a
+// comment as the shell does, to the end of its line, where a backslash
+// continues nothing: `# note \` and then `go test ./...` runs go test, and a
+// comment after the runner no longer hides the command on the next line, whose
+// status is then the line's. A backslash-newline outside a comment still joins
+// the next line to the word before it.
+func TestS3_TK15_CommentEndsAtItsNewline(t *testing.T) {
+	for _, tc := range []struct {
+		cmd, program string
+		test         bool
+	}{
+		{"# note \\\ngo test ./...", "go", true},
+		{"echo a \\\ngo test ./...", "echo", false},
+		{"go test ./... # c\\\nrm -rf x", "go", false},
+	} {
+		raw, _ := json.Marshal(map[string]string{"command": tc.cmd})
+		s := Derive("Bash", raw, []byte("key"))
+		if orNil(s.Program) != tc.program || (s.VerbClass == VerbTest) != tc.test {
+			t.Errorf("%q: program %s, class %s; want %s, test %t", tc.cmd, orNil(s.Program), s.VerbClass, tc.program, tc.test)
+		}
+	}
+}
+
+// TestS3_TK15b_BothReadingsFoldAlike (5.15): a line with a comment and no
+// here-document is the same tokens to the program search and to the masked
+// parser, so both fold the same leading steps, all of them.
+func TestS3_TK15b_BothReadingsFoldAlike(t *testing.T) {
+	for _, cmd := range append([]string{"# note \\\ncd a && go test ./..."}, foldApart...) {
+		lt, lerr := tokenizeList(cmd)
+		pt, perr := tokenizeProgram(cmd)
+		if lerr != nil || perr != nil || !slices.Equal(lt, pt) {
+			t.Errorf("%q: the two readings are apart (%v, %v)", cmd, lerr, perr)
+			continue
+		}
+		if p := leadingFold(pt, false); p == 0 || agreedFold(lt, pt[:p]) != p {
+			t.Errorf("%q: the program search folds %d tokens, the masked parser %d", cmd, p, agreedFold(lt, pt[:p]))
+		}
+	}
+}
+
+// TestS3_TK15c_HereDocumentStillRead (5.15's boundary): the program stream
+// still does not skip a here-document's body, which only tokenizeList does:
+// the comment reading moved, the here-document reading did not.
+func TestS3_TK15c_HereDocumentStillRead(t *testing.T) {
+	cmd := "cat <<E\n# x\ncd a && go test ./...\nE\nls"
+	has := func(toks []token, w string) bool {
+		return slices.ContainsFunc(toks, func(t token) bool { return t.text == w })
+	}
+	lt, _ := tokenizeList(cmd)
+	pt, _ := tokenizeProgram(cmd)
+	if !has(pt, "go") || has(lt, "go") {
+		t.Errorf("%q: the body's go read by the program stream %t, by the list stream %t; want true, false", cmd, has(pt, "go"), has(lt, "go"))
+	}
+}
