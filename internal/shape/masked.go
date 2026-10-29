@@ -18,9 +18,9 @@ const (
 )
 
 // RulesVersion names every table this build decides a recorded shape field
-// with (verb_class, status_masked, runner_kind, may_write), and the matchers
-// that read them, and the rule that decides a declaration's cwd_digest, and
-// moves whenever one of them changes. The tables are the test runners
+// with (verb_class, status_masked, runner_kind, may_write, written_paths and
+// written_paths_complete), and the matchers that read them, and the rule that
+// decides a declaration's cwd_digest, and moves whenever one of them changes. The tables are the test runners
 // (testCommands) and the build runners (buildCommands), with the arguments
 // that refuse one (notARun, notARunAny) and the flags that may stand before
 // its words (leadingFlags), which set verb_class, status_masked and
@@ -50,7 +50,9 @@ const (
 // reader of the leading run; version 9 ends a comment at its newline in the
 // program search as in the masked parser, so a backslash at its end joins no
 // line to it and the cd steps after it fold (`# c\` and then `cd a && go
-// test ./...`) --
+// test ./...`); version 10 names a Bash line's write targets and whether they
+// are all of them (WrittenPaths), pinned over a corpus of its own
+// (writeTargetPins) --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -62,7 +64,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 9
+const RulesVersion = 10
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {

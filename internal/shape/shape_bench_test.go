@@ -211,6 +211,34 @@ func BenchmarkDerive(b *testing.B) {
 	}
 }
 
+// BenchmarkWritten is WrittenPaths, the write-target reading the hook does
+// beside Derive on every Bash call, over bash_short's line: one more
+// tokenize and a walk over its two stages, which name nothing (git) and
+// leave it incomplete. The case name is a literal, so the budget gate reads
+// it from the source. The name is short because budgets.json is a fixture
+// H-113 screens, and a run of 20 or more mixed-case letters there,
+// "BenchmarkWrittenPaths" among them, reads as a secret's shape (B152).
+func BenchmarkWritten(b *testing.B) {
+	b.Run("bash_short", func(b *testing.B) {
+		input := benchBashInput(b, benchShortCommand)
+		WrittenPaths("Bash", input) // warm-up before the timer starts; see BenchmarkDerive
+		b.ReportAllocs()
+		b.SetBytes(int64(len(input)))
+		var (
+			got      []string
+			complete bool
+		)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			got, complete = WrittenPaths("Bash", input)
+		}
+		b.StopTimer()
+		if got != nil || complete {
+			b.Fatalf("bash_short: %q complete %t, want nil and incomplete: git names nothing it writes", got, complete)
+		}
+	})
+}
+
 // BenchmarkLexTokens is the lexer on the 4 KB line, per token: B/token is
 // what each token allocates, the figure the token bound's arithmetic (RES-9)
 // divides into a memory budget. It is one reading of the line, the one argc
