@@ -11,6 +11,14 @@ results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
 
+### Revision 5
+
+| Point | Ruling | Where |
+|---|---|---|
+| Use order and result order | Each call carries `UsePos` and `ResultPos`. The replay places declarations and executions by position, and ORDER-1 says no point sees a later result | §6.1, §9 B2 |
+| Project-level safety is its own quantity | One cutoff per project by a fixed rule, and a fixed observation window. A harmful project is one with any harmful evaluated session in that window. The 59-project figure bounds the proportion of harmful projects, not the session harm rate. The design-effect estimate stays secondary | §7.2 |
+| Current-format coverage | A paired 2.1.312 fixture before B2, with a passing check, a genuine failure, a recovery, a write and a Stop, and a test that the scrub kept call ids, order, cwd relations and result semantics | §9 |
+
 ### Revision 4: B0 rulings
 
 | Point | Ruling | Where |
@@ -257,6 +265,28 @@ when its newest file ends with an assistant turn and no outstanding `tool_use`. 
 `last_observed` in an incomplete session says nothing about what the agent did next.
 The report words it as "the last result we can see was red", and v1 uses it for nothing else.
 
+**Use order and result order are different (revision 5).** B1 emits calls in
+`tool_use` order, which is the right order for identity. But the evidence a point can
+see depends on when each result **became available**. Calls overlap (parallel tool
+uses, background runs), so one sequence number per call cannot carry both. Each call
+therefore carries two positions in its file:
+- `UsePos`, where its `tool_use` block is;
+- `ResultPos`, where its `tool_result` block is (none when `Missing`).
+
+Each is (line, block index within the line). The replay (B2) builds its record from
+these positions, never from the call order:
+- a declaration at `UsePos`, as PreToolUse writes one before the call runs;
+- an execution at `ResultPos`, as PostToolUse writes one after it;
+- a Stop at the position where its turn ends, defined in B2 and checked against the
+  Stop payloads of both paired fixtures.
+
+**Invariant ORDER-1:** a point at position *p* (a Stop, or a gate run's execution)
+sees exactly the records whose position is before *p*. **No point ever sees a later
+result.** A call whose result comes after a Stop is, at that Stop, a declaration
+without an execution, as it would be live. ORDER-1 is an acceptance test in B2, with
+fixtures of overlapping calls whose results arrive on either side of a Stop and of a
+write.
+
 ### 6.2 Session identity and idempotence (review point 4)
 
 **The identity of a session is its Claude Code `sessionId`, the same value the hook
@@ -494,12 +524,19 @@ Each difference is counted mechanically, with no judgement, as a policy differen
 Whether a difference is a benefit or a harm needs judgement, and that comes from labels.
 
 **The simulation is exactly P1.** For a project with imported history:
-1. Choose cutoffs T1, T2, and so on (at most one per 30 days).
-2. At each cutoff, the seed is a scan of the sessions before *T*, frozen as in §6.4.
+1. **One cutoff per project**, chosen by a rule fixed before any data is seen (revision
+   5): *T* is the start of the latest session such that the seed built from the
+   sessions before *T* has a non-empty established set and at least one session starts
+   at or after *T*. This is the most history a real install would have. Several
+   cutoffs per project would make "a harmful project" depend on how many were taken,
+   so there is one.
+2. At the cutoff, the seed is a scan of the sessions before *T*, frozen as in §6.4.
 3. The sessions after *T* are replayed in order as if Rashomon had just been
    installed: a fresh live index, updated by Observe at every Stop (`stop.go:69`).
 4. At every Stop point, the live verdict and the P1 verdict are computed.
-5. The P1 window ends when the replayed live index learns.
+5. **The observation window** is from *T* to the end of P1: the replayed live index
+   learns, or every seed family ages out, and at most 30 days after *T* in any case.
+   Sessions after the window are not evaluated.
 
 Nothing else is simulated, so the backtest evaluates the feature that adoption would enable.
 
@@ -534,22 +571,32 @@ sampled differences and makes no session-level safety claim.
 **Clustered, rare outcomes.** With zero observed harms, resampling gives zero in every
 sample, and Clopper-Pearson assumes independent trials, which sessions of one project
 are not. So the method is fixed now:
-- **Primary: a project-level bound.** A project is harmful if any of its fully evaluated
-  eligible sessions is. Bound the rate with a one-sided 95% Clopper-Pearson over
-  projects, which are independent repositories. With zero harmful projects out of *P*,
-  the bound is about 3/*P*. That is deliberately strict: it makes the claim no stronger
-  than the number of independent repositories.
+- **Primary: the proportion of harmful projects.** Under the protocol above (one
+  cutoff, one fixed observation window), **a project is harmful if any harmful session
+  is among its fully evaluated eligible sessions in that window.** The primary quantity
+  is the proportion of harmful projects under this protocol, bounded with a one-sided
+  95% Clopper-Pearson over projects, which are independent repositories. With zero
+  harmful projects out of *P*, the bound is about 3/*P*.
+  - **This is not a session harm rate.** It answers how likely it is that a project,
+    observed this way, has at least one harmful session. Its value depends on the window
+    and on how many eligible sessions a project has, which is why both are fixed.
+  - A project with no fully evaluated eligible session in its window is not counted in
+    *P*. It is reported as coverage loss, never as a harm-free project.
 - **Secondary: a session-level bound with a fixed design effect.** Use
   *n*<sub>eff</sub> = *n* / (1 + (*m̄* − 1)·*ρ*), where *m̄* is the mean number of
   eligible sessions per project and *ρ* = 0.5 is fixed in B0, never estimated from the
   data (with zero events it cannot be). Then Clopper-Pearson on *n*<sub>eff</sub>.
-  This is reported, and never used alone.
+  This is the only estimate of the session harm rate. It is reported, stays secondary,
+  and is never used alone or in place of the primary.
 
 **Thresholds (B0):**
 - **Safety screen.** The primary bound must be below *H*<sub>screen</sub> = 5%. This is
   an exploratory screen, not an adoption bar.
-  - Zero harmful projects in 59 gives a bound of 4.95%. So the screen needs at least 59
-    independent projects with eligible sessions, far more than the pilot's *P* = 8.
+  - Zero harmful projects in 59 gives a bound of 4.95% on **the proportion of harmful
+    projects** under this protocol. That says nothing directly about the session harm
+    rate, which only the secondary estimate addresses. So the screen needs at least 59
+    independent projects with at least one fully evaluated eligible session each, far
+    more than the pilot's *P* = 8.
   - **With the pilot alone, the safety screen cannot pass.** It can only fail (a harmful
     project is found) or be inconclusive. This is stated so nobody reads a pilot result
     as a pass.
@@ -646,7 +693,7 @@ against the transcript seed before anything ships.
 |---|---|---|
 | **B0** | Rulings: the protocol in revision 4 (done here); still open for B3a: the consent unit, the seed path, whether `history` may import `verify` internals (Q0-style), and the fixture licence notice if paxel fixtures are reused (B1 uses synthetic fixtures of its own, so it needs none) | Written here and in APPROACH-NOTES |
 | **B1** | `internal/history` Claude reader: `HistCall`, id join, outcomes, grades (§6.1), version list, the bounds in §6.7, `FuzzHistCalls`, scrubbed fixtures | Fuzz floor +1. Property: each `tool_use` gives exactly one `HistCall`, and no `Missing` call is ever `ok` |
-| **B2** | Replay through `hook.Locate`, `shape` and `gateout`; per-session summaries; merge and ledger (§6.2) | §7.1 criteria; DEDUP-1 and DEDUP-2 over the §6.2 fixtures, including scanning the same tree twice and a tree with copies, resumes and subagent files |
+| **B2** | Positions on each call (`UsePos`, `ResultPos`, §6.1); replay through `hook.Locate`, `shape` and `gateout` into records placed by position; Stop points; per-session summaries; merge and ledger (§6.2) | §7.1 criteria against both paired fixtures (2.1.280 and 2.1.312); ORDER-1; DEDUP-1 and DEDUP-2 over the §6.2 fixtures, including scanning the same tree twice and a tree with copies, resumes and subagent files |
 | **B3a** | Seed file and import ledger, `rashomon scan` and `--dry-run` report (§6.5), consent, purge, forget, disclose | Acceptance: a fixture history gives the expected established families, grade counts and coverage. Scanning twice gives an identical seed file |
 | **B3b** | P1 in shadow only (§6.4) | Acceptance: with a fixture history, the shadow log shows the P1 verdicts expected at each Stop; live verdicts are unchanged; once the live index learns, or every seed family ages out, the shadow log shows no further differences |
 | **B3e** | The P1 simulation (§7.2), labels under rubrics A and B (§7.3), and the evaluation report | The report: mechanical difference counts, the safety and benefit bounds, coverage, and κ. **No enable switch is built in v1** |
