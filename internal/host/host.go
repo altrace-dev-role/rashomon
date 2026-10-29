@@ -252,9 +252,11 @@ func atonPart(p string) (uint64, bool) {
 // Shaped reports whether s has the shape of a host as Canonical returns one:
 // a bracketed IPv6 address with no zone, or a name of at most 253 bytes made
 // of ASCII letters, digits, '-', '_' and '.', or non-ASCII letters, marks and
-// digits for an internationalised name, with no empty label, no '-' or '.'
-// at its start and no '-' at its end. One trailing dot is allowed: it is the
-// fully-qualified spelling, which Canonical drops.
+// digits for an internationalised name, with no empty label, no '.' at its
+// start and no label that begins or ends with '-' (RFC 1123 2.1). One
+// trailing dot is allowed: it is the fully-qualified spelling, which
+// Canonical drops, so the rule is per label and not per string: a name
+// ending "-." would otherwise pass here and fail once the dot is gone.
 //
 // Canonical is permissive about the bytes a name may hold on purpose: it
 // serves every caller, and an over-strict rule there would silently drop
@@ -275,7 +277,8 @@ func Shaped(s string) bool {
 	if s == "" || len(s) > maxName || !utf8.ValidString(s) {
 		return false
 	}
-	if s[0] == '-' || s[0] == '.' || s[len(s)-1] == '-' || strings.Contains(s, "..") {
+	if s[0] == '-' || s[0] == '.' || s[len(s)-1] == '-' || strings.Contains(s, "..") ||
+		strings.Contains(s, "-.") || strings.Contains(s, ".-") {
 		return false
 	}
 	alnum := false

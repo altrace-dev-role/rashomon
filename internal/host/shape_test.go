@@ -51,6 +51,14 @@ func TestRubricLLD2_ShapedAcceptsHostnamesOnly(t *testing.T) {
 		{".", false},
 		{"-leading.example", false},
 		{"trailing-", false},
+		// RFC 1123: no label begins or ends with a hyphen, the last one or
+		// any other; a root dot does not hide the label before it (FuzzHosts,
+		// "ssh deploy@acm------.", which the destination reader took and
+		// CanonicalName then cut to a name ending in one).
+		{"acm------.", false},
+		{"a-.example.com", false},
+		{"a.-b.example", false},
+		{"a-b.example.", true},
 		{".example.com", false},
 		{"a..b", false},
 		{"---", false},
