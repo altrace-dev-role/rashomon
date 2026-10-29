@@ -44,6 +44,15 @@ func checkRaw(t *testing.T, raw []byte) {
 		if c.Grade == Missing && c.Outcome != OutcomeNone {
 			t.Fatalf("a Missing call with outcome %s", c.Outcome)
 		}
+		if c.UsePos.IsZero() || c.UsePos.Line != c.Line {
+			t.Fatalf("%q: use at %+v, line %d", c.ToolUseID, c.UsePos, c.Line)
+		}
+		if (c.Outcome == OutcomeNone) != c.ResultPos.IsZero() {
+			t.Fatalf("%q: outcome %s with result at %+v", c.ToolUseID, c.Outcome, c.ResultPos)
+		}
+		if !c.ResultPos.IsZero() && !c.UsePos.Before(c.ResultPos) {
+			t.Fatalf("%q: result at %+v is not after its use at %+v", c.ToolUseID, c.ResultPos, c.UsePos)
+		}
 	})
 	if err != nil {
 		t.Fatalf("a read from memory failed: %v", err)
@@ -69,6 +78,7 @@ func checkOps(t *testing.T, ops []byte) {
 	type idState struct {
 		used, answered, skipped bool
 		first                   Outcome
+		useLine, resultLine     int // each line holds one block, so the block is 0
 	}
 	var lines []string
 	state := map[string]*idState{}
@@ -86,7 +96,7 @@ func checkOps(t *testing.T, ops []byte) {
 			uses++
 			lines = append(lines, at(use(id, "Bash", bash("x"))).String())
 			if !st.used {
-				st.used = true
+				st.used, st.useLine = true, len(lines)
 				order = append(order, id)
 			}
 		case 2: // a result
@@ -94,7 +104,7 @@ func checkOps(t *testing.T, ops []byte) {
 			results++
 			lines = append(lines, at(result(id, v.isError, v.text)).String())
 			if st.used && !st.answered {
-				st.answered, st.first = true, v.outcome
+				st.answered, st.first, st.resultLine = true, v.outcome, len(lines)
 			}
 		case 3: // a line that cannot be read
 			lines = append(lines, "{cut")
@@ -118,6 +128,12 @@ func checkOps(t *testing.T, ops []byte) {
 			t.Fatalf("call %d is %q, want %q (first-use order)", i, c.ToolUseID, order[i])
 		}
 		st := state[c.ToolUseID]
+		if c.UsePos != (Pos{Line: st.useLine}) {
+			t.Fatalf("%q used at %+v, want line %d", c.ToolUseID, c.UsePos, st.useLine)
+		}
+		if st.answered && c.ResultPos != (Pos{Line: st.resultLine}) || !st.answered && !c.ResultPos.IsZero() {
+			t.Fatalf("%q answered at %+v, want line %d (answered %v)", c.ToolUseID, c.ResultPos, st.resultLine, st.answered)
+		}
 		switch {
 		case !st.answered:
 			if c.Grade != Missing || c.Reason != NoResult {

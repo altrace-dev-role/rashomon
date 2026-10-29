@@ -17,6 +17,7 @@ type line struct {
 	session, cwd, version string
 	sidechain             bool
 	agentID               string
+	promptID              string
 	blocks                []map[string]any
 	toolUseResult         any
 }
@@ -27,6 +28,9 @@ func (l line) String() string {
 		"message": map[string]any{"content": l.blocks}}
 	if l.agentID != "" {
 		m["agentId"] = l.agentID
+	}
+	if l.promptID != "" {
+		m["promptId"] = l.promptID
 	}
 	if l.toolUseResult != nil {
 		m["toolUseResult"] = l.toolUseResult
@@ -567,6 +571,16 @@ func TestHIST10_Fixture2_1_312(t *testing.T) {
 		if c.SessionID != "00000000-0000-4000-8000-000000000001" || c.Version != "2.1.312" || c.CWD != uses[i].cwd || c.Backgrounded || c.Sidechain {
 			t.Errorf("call %d header = %q %q %q backgrounded=%v sidechain=%v", i, c.SessionID, c.CWD, c.Version, c.Backgrounded, c.Sidechain)
 		}
+		// Positions and the result's own line: every line of this fixture holds
+		// one block, and the cd call's result line names the new directory. A
+		// failure's toolUseResult is a string, with no keys to read.
+		if c.UsePos != (Pos{Line: uses[i].line}) || c.ResultPos != (Pos{Line: uses[i].result}) || c.ResultCWD != uses[i].resCWD ||
+			c.ResultPromptID != "00000000-0000-4000-8000-000000000002" {
+			t.Errorf("call %d: use %+v, result %+v, result cwd %q, prompt %q", i, c.UsePos, c.ResultPos, c.ResultCWD, c.ResultPromptID)
+		}
+		if c.ResultObject != (c.Outcome != Failed) || c.ResultBackgroundTaskID || c.ResultBackgroundedByUser {
+			t.Errorf("call %d (%s): toolUseResult object %v, background %v %v", i, c.Outcome, c.ResultObject, c.ResultBackgroundTaskID, c.ResultBackgroundedByUser)
+		}
 		if c.Outcome == Failed {
 			if c.ExitCode == nil || *c.ExitCode != 1 || !strings.HasPrefix(string(c.OutputHead), "Exit code 1\nF\n") ||
 				!strings.HasSuffix(string(c.OutputHead), "FAILED (failures=1)") {
@@ -596,6 +610,140 @@ func TestHIST10_Fixture2_1_312(t *testing.T) {
 	}
 	if !Supported("2.1.312") {
 		t.Error("2.1.312 has a fixture and is not Supported")
+	}
+}
+
+// TestHIST11_Positions: a call carries the place of its tool_use block and of
+// the tool_result block that answered it, as (line, block index within the
+// line). Calls are emitted in use order, but the positions say what the file
+// says: here the second call is answered first, in a line of its own, and the
+// first and third are answered in one line, in the opposite order to their
+// uses; a blank line and an unreadable one take numbers like any other.
+func TestHIST11_Positions(t *testing.T) {
+	calls, _ := readAll(t, DefaultLimits,
+		at(use("a", "Bash", bash("1")), use("b", "Bash", bash("2"))).String(), // 1: a at 0, b at 1
+		"",                                   // 2
+		at(result("b", false, "2")).String(), // 3: b at 0
+		"{cut",                               // 4
+		at(use("c", "Bash", bash("3")), map[string]any{"type": "text", "text": "x"}, use("d", "Bash", bash("4"))).String(), // 5: c at 0, d at 2
+		at(result("c", false, "3"), result("a", false, "1")).String(),                                                      // 6: c at 0, a at 1
+	)
+	want := map[string]struct{ use, result Pos }{
+		"a": {Pos{1, 0}, Pos{6, 1}},
+		"b": {Pos{1, 1}, Pos{3, 0}},
+		"c": {Pos{5, 0}, Pos{6, 0}},
+		"d": {Pos{5, 2}, Pos{}},
+	}
+	if len(calls) != 4 {
+		t.Fatalf("%d calls", len(calls))
+	}
+	for i, c := range calls {
+		w := want[c.ToolUseID]
+		if c.Seq != i || c.UsePos != w.use || c.ResultPos != w.result || c.Line != w.use.Line {
+			t.Errorf("%s: seq %d, use %+v, result %+v, line %d; want use %+v, result %+v", c.ToolUseID, c.Seq, c.UsePos, c.ResultPos, c.Line, w.use, w.result)
+		}
+	}
+	if !calls[1].ResultPos.Before(calls[0].ResultPos) || calls[0].UsePos.Before(calls[1].UsePos) == false {
+		t.Errorf("b is used after a and answered before it, and the positions must say so: %+v %+v", calls[0], calls[1])
+	}
+	if p, q := (Pos{3, 9}), (Pos{4, 0}); !p.Before(q) || q.Before(p) || p.Before(p) || !(Pos{}).IsZero() || p.IsZero() {
+		t.Error("Pos.Before or IsZero")
+	}
+	// Two agreeing results: the first is the place.
+	calls, _ = readAll(t, DefaultLimits,
+		at(use("a", "Bash", bash("1"))).String(), at(result("a", false, "1")).String(), at(result("a", false, "1")).String())
+	if calls[0].ResultPos != (Pos{2, 0}) {
+		t.Errorf("result at %+v, want the first, line 2", calls[0].ResultPos)
+	}
+}
+
+// TestHIST12_ResultSide: what a PostToolUse payload needs from the result's
+// own line: its cwd and promptId, which are the result line's and not the
+// tool_use line's; whether its toolUseResult was readable and which of the
+// two background keys it set; and, for an error, the text, of any tool.
+func TestHIST12_ResultSide(t *testing.T) {
+	useLine := at(use("a", "Bash", bash("cd sub && make")))
+	useLine.cwd = "/repo"
+	res := at(result("a", false, "done"))
+	res.cwd, res.promptID = "/repo/sub", "prompt-9"
+	res.toolUseResult = map[string]any{"stdout": "done", "interrupted": false, "backgroundTaskId": "bg-1", "backgroundedByUser": false}
+	calls, _ := readAll(t, DefaultLimits, useLine.String(), res.String())
+	c := calls[0]
+	if c.CWD != "/repo" || c.ResultCWD != "/repo/sub" || c.ResultPromptID != "prompt-9" {
+		t.Errorf("cwd %q then %q, prompt %q", c.CWD, c.ResultCWD, c.ResultPromptID)
+	}
+	if !c.ResultObject || !c.ResultBackgroundTaskID || c.ResultBackgroundedByUser || c.Outcome != OK {
+		t.Errorf("object %v, task %v, by user %v, outcome %s", c.ResultObject, c.ResultBackgroundTaskID, c.ResultBackgroundedByUser, c.Outcome)
+	}
+
+	cases := []struct {
+		name             string
+		tur              any
+		results          int
+		object, task, by bool
+	}{
+		{"absent", nil, 1, false, false, false},
+		{"a string, as a failure's", "Error: Exit code 1", 1, false, false, false},
+		{"an object with neither key", map[string]any{"stdout": "x"}, 1, true, false, false},
+		{"by user", map[string]any{"backgroundedByUser": true}, 1, true, false, true},
+		{"a null id is no id", map[string]any{"backgroundTaskId": nil}, 1, true, false, false},
+		{"a false flag is none", map[string]any{"backgroundedByUser": false}, 1, true, false, false},
+		{"an id of any type", map[string]any{"backgroundTaskId": 0}, 1, true, true, false},
+		{"two results on the line say nothing of either", map[string]any{"backgroundTaskId": "x"}, 2, false, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			blocks := []map[string]any{result("a", false, "ok")}
+			lines := []string{at(use("a", "Bash", bash("x")), use("z", "Bash", bash("y"))).String()}
+			if tc.results == 2 {
+				blocks = append(blocks, result("z", false, "ok"))
+			}
+			r := at(blocks...)
+			r.toolUseResult = tc.tur
+			calls, _ := readAll(t, DefaultLimits, append(lines, r.String())...)
+			c := calls[0]
+			if c.ResultObject != tc.object || c.ResultBackgroundTaskID != tc.task || c.ResultBackgroundedByUser != tc.by {
+				t.Errorf("object %v, task %v, by user %v; want %v %v %v", c.ResultObject, c.ResultBackgroundTaskID, c.ResultBackgroundedByUser, tc.object, tc.task, tc.by)
+			}
+		})
+	}
+
+	// An error of any tool keeps its text head and tail; a success of another
+	// tool keeps none. A denial is an error and keeps it too.
+	calls, _ = readAll(t, DefaultLimits,
+		at(use("e", "Edit", map[string]any{"file_path": "/x"}), use("r", "Read", map[string]any{"file_path": "/y"})).String(),
+		at(result("e", true, "<tool_use_error>String to replace not found"), result("r", false, "file text")).String())
+	if string(calls[0].OutputHead) != "<tool_use_error>String to replace not found" || calls[1].OutputHead != nil && len(calls[1].OutputHead) != 0 {
+		t.Errorf("heads %q and %q", calls[0].OutputHead, calls[1].OutputHead)
+	}
+
+	// Strings over the bound are not kept, and read as if the line named none.
+	long := strings.Repeat("d", maxHeaderBytes+1)
+	res = at(result("a", false, "done"))
+	res.cwd, res.promptID = long, long
+	calls, _ = readAll(t, DefaultLimits, useLine.String(), res.String())
+	if calls[0].ResultCWD != "" || calls[0].ResultPromptID != "" || calls[0].Grade != Verified {
+		t.Errorf("a result line over the bound kept %d and %d bytes (grade %s)", len(calls[0].ResultCWD), len(calls[0].ResultPromptID), calls[0].Grade)
+	}
+}
+
+// TestHIST13_ResultSideBytesAreCounted: the result's cwd and promptId are held
+// while the call waits for the calls before it to be answered, so they count
+// against MaxQueuedBytes as the output head and tail do. Break: leave them out
+// of the count and a queue of calls answered out of order grows without bound.
+func TestHIST13_ResultSideBytesAreCounted(t *testing.T) {
+	lim := DefaultLimits
+	lim.MaxQueuedBytes = 600
+	cwd := strings.Repeat("c", 400)
+	first := at(use("a", "Bash", bash("1")))
+	second := at(use("b", "Bash", bash("2")))
+	res := at(result("b", false, "2"))
+	res.cwd, res.promptID = cwd, strings.Repeat("p", 400)
+	// b is answered first and holds 800 bytes of result side; a, before it, has
+	// not been, so b waits, and the bound evicts a to make room for it.
+	calls, _ := readAll(t, lim, first.String(), second.String(), res.String())
+	if len(calls) != 2 || calls[0].ToolUseID != "a" || calls[0].Reason != Evicted || calls[1].Grade != Verified {
+		t.Fatalf("calls = %+v", calls)
 	}
 }
 

@@ -14,6 +14,7 @@
 package history
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"strconv"
@@ -139,6 +140,26 @@ var supported = map[string]bool{
 // fixture for.
 func Supported(v string) bool { return supported[v] }
 
+// Pos is a place in a transcript file: the 1-based Line and the index of the
+// block within that line's content array (Block, from 0). Lines are counted
+// as Read counts them, every one of them: a blank line, one that did not
+// parse and one that was too long each take a number, so a position names the
+// same place whatever was readable around it.
+//
+// Positions are what the replay orders events by. A call's use and its result
+// are different places, and calls overlap (parallel tool uses, a result that
+// arrives after the next prompt), so the order calls are emitted in is the
+// order of their Seq, not of their results; see Call.UsePos and Call.ResultPos.
+type Pos struct{ Line, Block int }
+
+// IsZero reports the zero Pos, which is no place: lines count from 1.
+func (p Pos) IsZero() bool { return p == Pos{} }
+
+// Before reports whether p is earlier in the file than q.
+func (p Pos) Before(q Pos) bool {
+	return p.Line < q.Line || p.Line == q.Line && p.Block < q.Block
+}
+
 // Call is one tool call as the transcript records it.
 type Call struct {
 	SessionID string
@@ -151,11 +172,45 @@ type Call struct {
 	// are emitted in Seq order.
 	Seq int
 	// Line is the 1-based line of the tool_use.
-	Line      int
+	Line int
+	// UsePos is where the tool_use block is. Its Line is Line.
+	UsePos Pos
+	// ResultPos is where the tool_result block that answered the call is, the
+	// first one read when two agree. It is the zero Pos when no result was
+	// read (Missing).
+	//
+	// Calls are emitted in Seq order, which is use order; the two Pos are the
+	// order the file itself records. A later call can be answered before an
+	// earlier one, and either result can fall on either side of a write or a
+	// turn's end, which Seq cannot say.
+	ResultPos Pos
 	Timestamp string // as written; parsing it is the caller's
-	CWD       string
-	Version   string
-	ToolName  string
+	// CWD is the working directory the tool_use line names: where the call
+	// was made, and what a PreToolUse payload carries.
+	CWD     string
+	Version string
+	// ResultCWD is the working directory the tool_result line names: where the
+	// shell ended up, and what a PostToolUse payload carries. It differs from
+	// CWD after `cd sub && ...`. Empty when no result was read, when the line
+	// names none, and when it was over maxHeaderBytes.
+	ResultCWD string
+	// ResultPromptID is the promptId the tool_result line names, with the same
+	// three empties as ResultCWD.
+	ResultPromptID string
+	// ResultObject: the result line held exactly one tool_result and its
+	// toolUseResult was an object. Only then do ResultBackgroundTaskID and
+	// ResultBackgroundedByUser say anything: on a line with several results
+	// toolUseResult describes none of them in particular, and a string
+	// toolUseResult (a failure's) is the error again, with no keys to read.
+	ResultObject bool
+	// ResultBackgroundTaskID and ResultBackgroundedByUser are whether that
+	// object carries backgroundTaskId or backgroundedByUser with a value
+	// other than null or false: the two presence bits the live recorder
+	// reads off a Bash call's tool_response (hook.backgroundedCall). On every
+	// fixture toolUseResult equals the hook's tool_response key for key; the
+	// values are never kept.
+	ResultBackgroundTaskID, ResultBackgroundedByUser bool
+	ToolName                                         string
 	// ToolInput is the input as written, nil when it was over
 	// Limits.MaxInputBytes.
 	ToolInput json.RawMessage
@@ -167,8 +222,10 @@ type Call struct {
 	ExitCode *int
 	Grade    Grade
 	Reason   Reason
-	// OutputHead and OutputTail are the first and last bytes of a Bash
-	// result's text, for the output classifier. In memory only.
+	// OutputHead and OutputTail are the first and last bytes of a result's
+	// text: a Bash result's always, for the output classifier, and any other
+	// tool's only when it is an error, which is the text a PostToolUseFailure
+	// payload carries as its error. In memory only.
 	OutputHead, OutputTail []byte
 }
 
@@ -205,6 +262,13 @@ var DefaultLimits = Limits{
 // maxVersions is how many distinct versions Stats names; the rest are
 // counted in OtherVersions.
 const maxVersions = 16
+
+// maxHeaderBytes bounds the two strings read off a call's result line, its
+// cwd and its promptId. A path or an id is a few hundred bytes at most; one
+// over this is not kept, and the call reads as if its line named none. They
+// are held for as long as the call waits, so they count against
+// Limits.MaxQueuedBytes as the output head and tail do.
+const maxHeaderBytes = 4 << 10
 
 // Stats are what one Read saw, for the scan's coverage report.
 type Stats struct {
@@ -276,6 +340,7 @@ func Read(r io.Reader, lim Limits, emit func(Call)) (Stats, error) {
 // header is the part of a transcript line the reader decodes.
 type header struct {
 	SessionID   string `json:"sessionId"`
+	PromptID    string `json:"promptId"`
 	CWD         string `json:"cwd"`
 	Version     string `json:"version"`
 	Timestamp   string `json:"timestamp"`
@@ -323,20 +388,24 @@ func (rd *reader) line(raw []byte, n int) {
 	}
 	for i := range blocks {
 		b := &blocks[i]
+		at := Pos{Line: n, Block: i}
 		switch {
 		case b.Type == "tool_use" && b.ID != "":
-			rd.use(&h, b, n)
+			rd.use(&h, b, at)
 		case b.Type == "tool_result" && b.ToolUseID != "":
 			// toolUseResult describes the line's result, so it is read only
 			// when the line holds exactly one.
-			interrupted := results == 1 && interruptedResult(h.ToolUseResult)
-			rd.result(b, interrupted)
+			var tur toolUseResult
+			if results == 1 {
+				tur = readToolUseResult(h.ToolUseResult)
+			}
+			rd.result(&h, b, at, tur)
 		}
 	}
 	rd.flush()
 }
 
-func (rd *reader) use(h *header, b *block, n int) {
+func (rd *reader) use(h *header, b *block, at Pos) {
 	rd.st.Uses++
 	overCap := len(rd.seen) >= rd.lim.MaxCallsPerFile
 	if rd.seen[b.ID] || rd.byID[b.ID] != nil {
@@ -354,7 +423,7 @@ func (rd *reader) use(h *header, b *block, n int) {
 		}
 	}
 	p := &pending{Call: Call{
-		SessionID: h.SessionID, Sidechain: h.IsSidechain, ToolUseID: b.ID, Seq: rd.seq, Line: n,
+		SessionID: h.SessionID, Sidechain: h.IsSidechain, ToolUseID: b.ID, Seq: rd.seq, Line: at.Line, UsePos: at,
 		Timestamp: h.Timestamp, CWD: h.CWD, Version: h.Version, ToolName: b.Name,
 	}, unread: rd.unread}
 	rd.seq++
@@ -379,7 +448,7 @@ func (rd *reader) use(h *header, b *block, n int) {
 	rd.evict()
 }
 
-func (rd *reader) result(b *block, interrupted bool) {
+func (rd *reader) result(h *header, b *block, at Pos, tur toolUseResult) {
 	rd.st.Results++
 	p := rd.byID[b.ToolUseID]
 	if p == nil {
@@ -395,7 +464,7 @@ func (rd *reader) result(b *block, interrupted bool) {
 	if len(parts) > 0 {
 		first = parts[0]
 	}
-	out, code := outcome(b.IsError, first, interrupted)
+	out, code := outcome(b.IsError, first, tur.interrupted)
 	if p.answered {
 		if out != p.Outcome || !sameCode(code, p.ExitCode) {
 			p.Reason = ResultConflict
@@ -406,16 +475,26 @@ func (rd *reader) result(b *block, interrupted bool) {
 	}
 	p.answered = true
 	p.Outcome, p.ExitCode = out, code
+	p.ResultPos = at
+	if len(h.CWD) <= maxHeaderBytes {
+		p.ResultCWD = h.CWD
+	}
+	if len(h.PromptID) <= maxHeaderBytes {
+		p.ResultPromptID = h.PromptID
+	}
+	p.ResultObject = tur.object
+	p.ResultBackgroundTaskID, p.ResultBackgroundedByUser = tur.backgroundTaskID, tur.backgroundedByUser
 	if rd.unread > p.unread && p.Reason == ReasonNone {
 		p.Reason = LineSkipped
 	}
-	if p.ToolName == "Bash" {
+	held := len(p.ResultCWD) + len(p.ResultPromptID)
+	if p.ToolName == "Bash" || b.IsError {
 		p.OutputHead, p.OutputTail = headTail(parts, rd.lim.OutputHeadBytes, rd.lim.OutputTailBytes)
-		n := len(p.OutputHead) + len(p.OutputTail)
-		p.bytes += n
-		rd.queued += n
-		rd.evict()
+		held += len(p.OutputHead) + len(p.OutputTail)
 	}
+	p.bytes += held
+	rd.queued += held
+	rd.evict()
 }
 
 // evict emits from the front of the queue until it is within Limits. An
@@ -606,11 +685,36 @@ func runInBackground(input json.RawMessage) bool {
 	return json.Unmarshal(input, &in) == nil && in.RunInBackground
 }
 
-// interruptedResult reads toolUseResult.interrupted, which Bash results
-// carry. A toolUseResult that is a string or absent says nothing.
-func interruptedResult(raw json.RawMessage) bool {
+// toolUseResult is what the reader keeps of a result line's toolUseResult:
+// whether it was an object at all, and three of its keys. Nothing else of it
+// is read, and none of the values is kept.
+type toolUseResult struct {
+	object                               bool
+	interrupted                          bool
+	backgroundTaskID, backgroundedByUser bool
+}
+
+// readToolUseResult reads toolUseResult.interrupted, which Bash results carry,
+// and the presence of backgroundTaskId and backgroundedByUser, which a
+// backgrounded Bash call's carries. A toolUseResult that is a string or absent
+// says nothing, and is not an object: a value that is not set (null, false)
+// is no presence.
+func readToolUseResult(raw json.RawMessage) toolUseResult {
 	var r struct {
-		Interrupted bool `json:"interrupted"`
+		Interrupted        bool            `json:"interrupted"`
+		BackgroundTaskID   json.RawMessage `json:"backgroundTaskId"`
+		BackgroundedByUser json.RawMessage `json:"backgroundedByUser"`
 	}
-	return len(raw) > 0 && raw[0] == '{' && json.Unmarshal(raw, &r) == nil && r.Interrupted
+	if len(raw) == 0 || raw[0] != '{' || json.Unmarshal(raw, &r) != nil {
+		return toolUseResult{}
+	}
+	return toolUseResult{object: true, interrupted: r.Interrupted,
+		backgroundTaskID: set(r.BackgroundTaskID), backgroundedByUser: set(r.BackgroundedByUser)}
+}
+
+// set reports a JSON value present and neither null nor false, which is the
+// bit hookio.Payload.Has and jsonscan.Span.Set read.
+func set(v json.RawMessage) bool {
+	s := bytes.TrimSpace(v)
+	return len(s) > 0 && string(s) != "null" && string(s) != "false"
 }
