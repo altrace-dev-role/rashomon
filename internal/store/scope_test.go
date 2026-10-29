@@ -364,6 +364,11 @@ func TestRS1u_GateNullsEveryContentFieldOnlyBelowV5(t *testing.T) {
 		clearWithheld(reflect.ValueOf(&x).Elem())
 		GateExecution(&x, scope)
 		checkGate(t, "execution", scope, wire(t, x), gatedExecution, exemptExecution)
+		// content_sha256 has no withheld key: it is null below v5 and kept
+		// at v5 (P5A).
+		if sha, _ := at(wire(t, x), "content_sha256"); (sha == nil) != (scope != RecordScopeV5) {
+			t.Errorf("execution at %q: content_sha256 = %v", scope, sha)
+		}
 	}
 }
 

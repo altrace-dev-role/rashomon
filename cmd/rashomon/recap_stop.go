@@ -39,8 +39,9 @@ type stopTurn struct {
 // or the catch-up has a view; any other payload, a payload naming no
 // session, and a run with no seq have none. The turn is judged against the
 // spec discovered from the payload's cwd as the steer step discovers it
-// (hook.DiscoverSpec, card 3.1 (c)). On Stop and StopFailure it appends the
-// checkpoint and, with a cwd, writes the observed index.
+// (hook.DiscoverSpec, card 3.1 (c)), and with the content now of each file
+// the session wrote (hook.TreeShas, card P5A). On Stop and StopFailure it
+// appends the checkpoint and, with a cwd, writes the observed index.
 //
 // A checkpoint append that times out on the lock is dropped and the turn
 // still speaks (D76): the record is derivable from the run. Any other append
@@ -61,6 +62,9 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	if d.PromptID != "" {
 		pt.PromptID = &d.PromptID
 	}
+	// The files the session's tree names, as they are now: the claim
+	// point's side of the binding (card P5A, D140).
+	pt.Tree = hook.TreeShas(verify.TreeTargets(run))
 
 	var path string
 	var idx *verify.ProjectIndex

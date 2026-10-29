@@ -153,7 +153,9 @@ func TestSchema5_OrdinaryCallRecordsAreWrittenAtTheCallVersion(t *testing.T) {
 
 // TestSchema6_EveryCallGateHoldsTheGateBeforeIt: a record at 6 carries every
 // key a record at 5 does, and runner_kind on the declaration's shape and the
-// execution (D11): each call kind's v6 gate is its v5 gate and those keys.
+// execution (D11), and the execution's content_sha256 (card P5A, added in
+// place: v6 is unreleased, no tag contains a65f9ac9): each call kind's v6
+// gate is its v5 gate and those keys.
 // The terminal gains nothing, so its v6 gate is its v5 gate: without it a v6
 // terminal that names no phase or writer would pass the contract. Break:
 // drop a key from a v6 gate, or runner_kind from either.
@@ -164,7 +166,7 @@ func TestSchema6_EveryCallGateHoldsTheGateBeforeIt(t *testing.T) {
 		added []string
 	}{
 		{"declaration", []string{"shape.runner_kind"}},
-		{"execution", []string{"runner_kind"}},
+		{"execution", []string{"content_sha256", "runner_kind"}},
 		{"terminal", nil},
 	} {
 		def, ok := defs[c.def].(map[string]any)

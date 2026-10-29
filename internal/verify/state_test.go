@@ -7,14 +7,15 @@ import (
 )
 
 // TestDEL22_GateReasonsAreDistinct pins the gate Reason vocabulary of 2.2.4:
-// the eighteen reasons, in the spec's order, each a distinct snake_case
-// identifier (DEL-22, "gate Reason vocabulary").
+// the nineteen reasons, in the spec's order with card P5A's stale_foreign
+// among the stale ones, each a distinct snake_case identifier (DEL-22, "gate
+// Reason vocabulary").
 func TestDEL22_GateReasonsAreDistinct(t *testing.T) {
 	frozen := []Reason{
 		"failed_exit", "failed_output",
 		"masked_with_success_line", "masked_no_success_line", "masked_unattributable",
 		"empty_run", "partial_after_red", "partial_only",
-		"red_then_writes", "writes_after_green", "write_during_run", "never_run_after_write",
+		"red_then_writes", "writes_after_green", "write_during_run", "stale_foreign", "never_run_after_write",
 		"background_launch", "order_unknown", "outcome_unknown", "recording_incomplete",
 		"budget", "ok",
 	}

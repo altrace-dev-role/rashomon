@@ -87,7 +87,7 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	picked := pickExecutions(run)
 	runs, writes, unnamed, rewritten := classifyWith(run, picked)
 	c.runs, c.writes, c.unnamed, c.rewritten = runs, writes, unnamed, rewritten
-	snap.Gates = gateStates(runs, writes, unnamed, at)
+	snap.Gates = gateStates(runs, writes, unnamed, at, pt.Tree)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
 	for i := range snap.Gates {

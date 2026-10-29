@@ -89,6 +89,7 @@ const (
 	RedThenWrites         Reason = "red_then_writes"
 	WritesAfterGreen      Reason = "writes_after_green"
 	WriteDuringRun        Reason = "write_during_run"
+	StaleForeign          Reason = "stale_foreign" // the green run's tree moved with no write of the session's (P5A)
 	NeverRunAfterWrite    Reason = "never_run_after_write"
 	BackgroundLaunch      Reason = "background_launch"
 	OrderUnknown          Reason = "order_unknown"
@@ -103,7 +104,7 @@ var Reasons = []Reason{
 	FailedExit, FailedOutput,
 	MaskedWithSuccessLine, MaskedNoSuccessLine, MaskedUnattributable,
 	EmptyRun, PartialAfterRed, PartialOnly,
-	RedThenWrites, WritesAfterGreen, WriteDuringRun, NeverRunAfterWrite,
+	RedThenWrites, WritesAfterGreen, WriteDuringRun, StaleForeign, NeverRunAfterWrite,
 	BackgroundLaunch, OrderUnknown, OutcomeUnknown, RecordingIncomplete,
 	Budget, OK,
 }

@@ -127,6 +127,13 @@ type ExecutionV5 struct {
 	// its closed values and how it is filled land with P-14. P-07 proposal:
 	// it sits on every execution rather than under failure.
 	CredMech *string `json:"credmech"`
+	// ContentSHA256 is the sha256 (64 hex) of the file a named write's tool
+	// input names, read by the post after the call: the tree a later gate
+	// run is bound to (P5A, D140). Null for any other call, and for a file
+	// that is gone, not regular, over 1 MiB or unreadable. A digest of
+	// content, so it is gated with the content fields below record_scope
+	// v5, with no withheld key: a write with no path binds nothing anyway.
+	ContentSHA256 *string `json:"content_sha256"`
 
 	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K):
 	// ExecutedCommandWithheld takes command_withheld's values (no_consent |
