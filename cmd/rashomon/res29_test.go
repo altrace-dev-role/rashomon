@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/test/perf/pathological"
@@ -37,6 +38,26 @@ func res29Payload(t *testing.T, size int, prefix, unit, suffix string) []byte {
 	return body
 }
 
+// res29PostPayload is a PostToolUse payload for `go test ./...` whose stdout
+// is go test's pass lines repeated to as many bytes as the post's intake takes
+// (hookio.MaxPayloadBytes; one more is refused before anything reads it): the
+// largest gate run's output the post can be handed, eight times the
+// gateout.MaxScanBytes it decodes.
+func res29PostPayload(t *testing.T) []byte {
+	t.Helper()
+	post := func(stdout string) []byte {
+		return benchToolCall(t, "PostToolUse", "Bash", benchJSON(t, map[string]string{"command": "go test ./..."}),
+			benchJSON(t, map[string]string{"stdout": stdout, "stderr": ""}))
+	}
+	const unit = "--- PASS: TestX (0.00s)\n"
+	per := len(post(unit)) - len(post(""))
+	body := post(strings.Repeat(unit, (hookio.MaxPayloadBytes-len(post("")))/per))
+	if len(body) > hookio.MaxPayloadBytes || len(body) <= hookio.MaxPayloadBytes-per {
+		t.Fatalf("payload is %d bytes, want at most %d and within one unit of it", len(body), hookio.MaxPayloadBytes)
+	}
+	return body
+}
+
 // TestRES29_PathologicalInputsStayBounded: each pathological input the shape
 // of a call reads exits 0 inside the hook's hard stop at peak RSS of at most
 // rssMiB (64 on linux, 76 on darwin -- see its own comment), and still
@@ -48,7 +69,11 @@ func res29Payload(t *testing.T, size int, prefix, unit, suffix string) []byte {
 // 8 MiB of `<`, a 1 MB `cd a&&` (the leading-cd fold, RES-10) and nesting one
 // past maxNest (32 levels; 17 quoted substitutions are 34) -- and every other
 // 8 MiB line shape in pathological.Lines, so the hook's measured peak on each
-// is pinned rather than taken by hand. The table's other rows are pinned
+// is pinned rather than taken by hand -- and one row for the post entry: a
+// gate run's stdout at the intake bound, which the post decodes at most 1 MiB
+// of and records unread, too_large (card GATEOUT-WIRE1; its PostToolUse and
+// PostToolUseFailure entries have the same 5 s timeout, so the same 4 s
+// ceiling). The table's other rows are pinned
 // beside their own entries: the 7 MB final message by
 // TestRES7_HugeFinalMessageIsConstant; the 64 MiB PostToolBatch, the 187 MB
 // transcript line, the 1 MiB file before a Write, the masker's bound on
@@ -63,7 +88,9 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 		// every hook entry (applyHookRuntimeLimits), not whatever GC and
 		// memory-limit settings the child inherited. Calling cmdHook
 		// directly skipped it.
-		os.Exit(run(append([]string{"hook"}, strings.Fields(args)...), os.Stdin, os.Stdout, os.Stderr))
+		// args name the entry first: hook for a PreToolUse row, post for the
+		// gate run's output row.
+		os.Exit(run(strings.Fields(args), os.Stdin, os.Stdout, os.Stderr))
 	}
 	if testing.Short() {
 		t.Skip("runs the hook in child processes on 8 MiB payloads")
@@ -98,22 +125,25 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 	// the git@ line is one 8 MiB word, which is its program, and a program
 	// over store.MaxProgramBytes is left out of the declaration and said on
 	// the coverage record (REC-52). That run is recorded once and is not
-	// verified, for that reason and no other.
+	// verified, for that reason and no other. post marks the row that runs
+	// the post entry on a gate run's output (card GATEOUT-WIRE1).
 	type row struct {
 		name     string
 		payload  func(*testing.T) []byte
 		withheld bool
+		post     bool
 	}
 	var rows []row
 	for _, l := range pathological.Lines() {
 		rows = append(rows, row{"8 MiB of " + l.Name, func(t *testing.T) []byte {
 			return res29Payload(t, 8<<20, l.Prefix, l.Unit, l.Suffix)
-		}, l.Name == "git@ scheme runs"})
+		}, l.Name == "git@ scheme runs", false})
 	}
 	nested := `cd "` + strings.Repeat(`$(echo "`, 17) + "x" + strings.Repeat(`")`, 17) + `" && ls`
 	rows = append(rows,
-		row{"a 1 MB cd a&&", func(t *testing.T) []byte { return res29Payload(t, 1_000_000, "", "cd a&&", "") }, false},
-		row{"nesting one past maxNest", func(t *testing.T) []byte { return res29Payload(t, len(nested)+1024, nested, " ", "") }, false},
+		row{"a 1 MB cd a&&", func(t *testing.T) []byte { return res29Payload(t, 1_000_000, "", "cd a&&", "") }, false, false},
+		row{"nesting one past maxNest", func(t *testing.T) []byte { return res29Payload(t, len(nested)+1024, nested, " ", "") }, false, false},
+		row{"a gate run's stdout at the intake bound, to the post", res29PostPayload, false, true},
 	)
 	if rows[0].name != "8 MiB of short words" || rows[7].name != "8 MiB of redirections" {
 		t.Fatalf("premise: the table's first row is %q and its eighth %q; RES-29 names short words and `<`", rows[0].name, rows[7].name)
@@ -131,7 +161,11 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root, installID := benchStarted(t)
 			cmd := exec.Command(os.Args[0], "-test.run=^TestRES29_PathologicalInputsStayBounded$")
-			cmd.Env = append(os.Environ(), res29Child+"="+install.Marker+" "+installID)
+			entry := "hook"
+			if tc.post {
+				entry = "post"
+			}
+			cmd.Env = append(os.Environ(), res29Child+"="+entry+" "+install.Marker+" "+installID)
 			cmd.Stdin = bytes.NewReader(tc.payload(t))
 			var out bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &out, &out
@@ -184,6 +218,18 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 			run, err := st.ReadRun(benchSessionID)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.post {
+				// The post decodes at most gateout's 1 MiB of the output, so
+				// the run is unread, too_large, and the execution still lands.
+				if len(run.Executions) != 1 {
+					t.Fatalf("the post recorded %d executions, want 1", len(run.Executions))
+				}
+				g := run.Executions[0].GateOutput
+				if g == nil || g.Kind != "unread" || g.Reason == nil || *g.Reason != "too_large" {
+					t.Errorf("gate_output %+v, want unread, too_large", g)
+				}
+				return
 			}
 			want := [5]int{1, 1, 0, 1, 0}
 			if tc.withheld {

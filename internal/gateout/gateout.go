@@ -115,6 +115,7 @@ func matchLine(line []byte, row *table) (string, string) {
 }
 
 func matchDelegatedLine(line []byte) (string, string) {
+	rows := tables()
 	for i := range rows {
 		candidate := &rows[i]
 		if candidate.delegate {

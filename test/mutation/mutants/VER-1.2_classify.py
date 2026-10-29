@@ -5,16 +5,18 @@
 # as-ran fields, each relativise step and each output sort. The kill row is
 # the named test's.
 C = "internal/verify/classify.go"
+# The gate-run rule lives in internal/shape, where both readers call it (card GATEOUT-WIRE1).
+R = "internal/shape/gaterun.go"
 
 # The family: both the runner and the location known.
 m("VER-1.2 a run at no known location has a family", C,
   '\tif g.Runner == nil || g.Location == "" {\n', '\tif g.Runner == nil {\n', "TestVER5b_|TestVER6_")
 
 # Which calls are gate runs.
-m("VER-1.2 a hidden runner's line is not a gate run", C,
-  ' || masked != nil && (*masked == shape.MaskedTest || *masked == shape.MaskedBuild) ||', ' ||', "TestVER5_")
-m("VER-1.2 a test-class line with no runner is not a gate run", C,
-  ' ||\n\t\td.Shape.VerbClass == shape.VerbTest\n', '\n', "TestVER5_")
+m("VER-1.2 a hidden runner's line is not a gate run", R,
+  ' || statusMasked != nil && (*statusMasked == MaskedTest || *statusMasked == MaskedBuild) ||', ' ||', "TestVER5_")
+m("VER-1.2 a test-class line with no runner is not a gate run", R,
+  ' ||\n\t\tverbClass == VerbTest\n', '\n', "TestVER5_")
 
 # Kind: the recorded kind first, then the inference, then custom.
 m("VER-1.2 a recorded runner kind is not read", C,

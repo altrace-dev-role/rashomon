@@ -141,8 +141,10 @@ var reasonVocabularyPaths = map[string]bool{
 }
 
 // reservedReasonPaths are reason-named keys of schema 5 that are not reason
-// codes and that no writer fills yet: why an execution's command was stored
-// (differs | declaration_not_in_tail) and why a gate's output went unread.
+// codes: why an execution's command was stored (differs |
+// declaration_not_in_tail), which no writer fills yet, and why a gate's
+// output went unread, which the post hook fills (card GATEOUT-WIRE1) from
+// three of its four words, verify_off having no producer.
 // Each is published as a nullable string with no enum, so the schema states
 // no vocabulary the code could disagree with, and the tripwire passes over
 // it only while that holds: the change that adds the enum adds the

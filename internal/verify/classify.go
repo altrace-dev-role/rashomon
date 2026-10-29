@@ -224,10 +224,11 @@ func asRan(d *store.Declaration, e *store.Execution) (masked, runner, kind *stri
 	return d.Shape.StatusMasked, d.Shape.RunnerDigest, d.Shape.RunnerKind, d.SchemaVersion
 }
 
-// isGateRun: the line names a runner, hides one's status, or is class test.
+// isGateRun: the line names a runner, hides one's status, or is class test --
+// shape.GateRun over the fields as the line ran, the rule the post hook
+// applies before it reads a call's output.
 func isGateRun(d *store.Declaration, masked, runner *string) bool {
-	return runner != nil || masked != nil && (*masked == shape.MaskedTest || *masked == shape.MaskedBuild) ||
-		d.Shape.VerbClass == shape.VerbTest
+	return shape.GateRun(runner, masked, d.Shape.VerbClass)
 }
 
 // inferKinds sets the kind of each run at pending, a record before schema 6,

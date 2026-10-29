@@ -81,7 +81,7 @@ func TestGO10_TablesPinned(t *testing.T) {
 	if got != pin {
 		t.Fatalf("table digest %s, want %s", got, pin)
 	}
-	for _, row := range rows {
+	for _, row := range tables() {
 		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
 			for _, pattern := range group {
 				if _, reason, _ := spec.CheckRegex(pattern.String()); reason != "" {
@@ -197,7 +197,7 @@ func want(t *testing.T, got store.GateOutput, kind, parser string, reason *strin
 
 func tableDigest() string {
 	h := sha256.New()
-	for _, row := range rows {
+	for _, row := range tables() {
 		fmt.Fprintf(h, "%s\x00%t\x00", row.program, row.delegate)
 		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
 			for _, pattern := range group {

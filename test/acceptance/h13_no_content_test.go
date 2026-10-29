@@ -107,6 +107,14 @@ var (
 		// can be confirmed by guessing it.
 		"content_sha256",
 	}
+	// gateOutputKeys are a gate run's gate_output keys (card GATEOUT-WIRE1):
+	// three closed words -- the result kind, the parser's program name and,
+	// for unread, why -- the whole of what survives the post reading the
+	// run's output. Every other call's gate_output is null, so they are not
+	// in executionKeys, which is an ordinary call's key set; the store check
+	// allows them on any execution.
+	gateOutputKeys = []string{"gate_output.kind", "gate_output.parser", "gate_output.reason"}
+
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "outcome", "reason",
@@ -325,6 +333,79 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 			for name, s := range map[string]string{
 				"hook stdout":     res.stdout,
 				"hook stderr":     res.stderr,
+				"report --json":   repJSON.stdout,
+				"report text":     repText.stdout,
+				"report --redact": repRedact.stdout,
+			} {
+				if strings.Contains(s, canary) {
+					t.Errorf("%s contains the canary", name)
+				}
+			}
+		})
+	}
+}
+
+// TestGO1f_StdoutSentinelNeverLands is the canary above, extended to the one
+// place the post now reads tool output: a gate run's stdout and stderr, and a
+// failure event's error after its first line (card GATEOUT-WIRE1). The post
+// decodes them into a buffer it clears, classifies, and keeps three closed
+// words; the sentinel reaches no store file, neither hook stream and no form
+// of the report.
+func TestGO1f_StdoutSentinelNeverLands(t *testing.T) {
+	const canary = "CANARY-go1f-5b8e0c3d-must-not-persist"
+	for _, tc := range []struct {
+		name  string
+		event string
+		body  map[string]any
+	}{
+		{"stdout", "PostToolUse", map[string]any{"tool_response": map[string]any{"stdout": canary + "\nok  \tpkg\t0.01s\n", "stderr": ""}}},
+		{"stderr", "PostToolUse", map[string]any{"tool_response": map[string]any{"stdout": "running 1 test\n", "stderr": canary + "\n"}}},
+		{"failure error", "PostToolUseFailure", map[string]any{"error": "Exit code 1\n" + canary + "\nFAIL\tpkg\t0.01s\n", "is_interrupt": false}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+			pre := defaultPayload()
+			pre.ToolInput = map[string]any{"command": "go test ./..."}
+			if res := e.hook(pre.build(t)); res.exitCode != 0 {
+				t.Fatalf("hook exit code %d, want 0", res.exitCode)
+			}
+			body := map[string]any{"hook_event_name": tc.event, "session_id": testSession, "transcript_path": "/tmp/transcripts/sess-1.jsonl",
+				"cwd": "/tmp/project", "permission_mode": "default", "tool_name": "Bash", "tool_use_id": testToolUseID,
+				"tool_input": map[string]any{"command": "go test ./..."}}
+			for k, v := range tc.body {
+				body[k] = v
+			}
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res := e.post(string(raw))
+			if res.exitCode != 0 {
+				t.Fatalf("post exit code %d, want 0", res.exitCode)
+			}
+			e.probe("end", testSession)
+			xs := e.executions(testSession)
+			if len(xs) != 1 {
+				t.Fatalf("premise: %d executions, want one", len(xs))
+			}
+			if kind, _ := nested(xs[0], "gate_output.kind"); kind == nil {
+				t.Fatalf("premise: the execution has no gate_output kind; the sweep would prove nothing")
+			}
+			// The key set, closed: the read adds gate_output's three words and
+			// nothing else.
+			assertKeySet(t, xs[0], append(append([]string(nil), executionKeys...), gateOutputKeys...))
+			repJSON := e.run("", nil, "report", "--json", "--session", testSession)
+			repText := e.run("", nil, "report", "--session", testSession)
+			repRedact := e.run("", nil, "report", "--redact", "--session", testSession)
+			for rel, f := range walkStore(t, e.home) {
+				if bytes.Contains(f.body, []byte(canary)) {
+					t.Errorf("%s contains the canary", rel)
+				}
+			}
+			for name, s := range map[string]string{
+				"post stdout":     res.stdout,
+				"post stderr":     res.stderr,
 				"report --json":   repJSON.stdout,
 				"report text":     repText.stdout,
 				"report --redact": repRedact.stdout,

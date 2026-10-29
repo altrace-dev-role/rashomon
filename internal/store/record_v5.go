@@ -118,7 +118,9 @@ type ExecutionV5 struct {
 	// HeadAfter is the git state after a HEAD-moving vcs call (1.2.6).
 	HeadAfter *GitState `json:"head_after"`
 	// GateOutput is VERIFY's classification of a gate-family call's output
-	// (2.2.3, 2.2.10): the kind, the parser and, for unread, the reason.
+	// (2.2.3, 2.2.10): the kind, the parser and, for unread, the reason. The
+	// post hook reads the output of a call shape.GateRun names, bounded, and
+	// keeps these words alone; every other call's is null.
 	GateOutput *GateOutput `json:"gate_output"`
 	// CredMech names the credential mechanism a call used (a profile, a
 	// role, an env var name, a vault path; never a value), read by
@@ -221,6 +223,8 @@ type EditMarks struct {
 }
 
 // GateOutput is the output classification of a gate-family call (2.2.3).
+// The post hook writes it (internal/hook, gateOutput); verify_off is a word
+// of the schema with no producer, since no switch turns verification off.
 type GateOutput struct {
 	Kind   string  `json:"kind"` // summary_pass | summary_fail | fail_line | empty_run | no_summary | unattributable | unread
 	Parser string  `json:"parser"`
