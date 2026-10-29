@@ -4,11 +4,12 @@ m("H-20 the post entry is installed without a matcher", "internal/install/instal
   "\treturn event == EventPreToolUse ||\n\t\tevent == EventPostToolUse ||\n\t\tevent == EventPostToolUseFailure",
   "\treturn event == EventPreToolUse", "TestH3_")
 m("H-20 the execution record is never written", "internal/hook/post.go",
-  "\treturn landed(p.st.AppendExecution(rec), &p.withheld)", "\treturn nil",
+  "\tseq, err := p.st.LandExecution(rec)\n\tp.landedSeq, p.landedRunner = seq, rec.RunnerDigest != nil\n\treturn landed(err, &p.withheld)",
+  "\treturn nil",
   "TestH20_PostRecordsTheExecution")
-m("H-20 an execution the lock refuses is dropped", "internal/store/store.go",
-  "\treturn s.SpillExecution(rec)", "\treturn err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
-m("H-20 the post path ignores the install it was told it belongs to", "cmd/rashomon/main.go",
+m("H-20 an execution the lock refuses is dropped", "internal/store/landexec.go",
+  "\t\treturn 0, s.SpillExecution(rec)", "\t\treturn 0, err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
+m("H-20 the post path ignores the install it was told it belongs to", "cmd/rashomon/post.go",
   "\t\tif standsDown(args, st, stderr) {\n\t\t\treturn nil\n\t\t}\n\n\t\tp := hook.NewPost(st, time.Now)",
   "\t\tp := hook.NewPost(st, time.Now)",
   "TestH20_PostFromAnotherInstallStandsDown")
@@ -28,7 +29,7 @@ m("H-20 declarations with no execution are not named", "internal/store/read.go",
 m("H-20 the unexecuted list drops the permission mode", "internal/report/report.go",
   "Unexecuted{ToolUseID: id, PermissionMode: mode[id]})", "Unexecuted{ToolUseID: id})",
   "TestH20_DeclarationWithoutAnExecutionIsNamed")
-m("H-20 the post path runs outside the panic barrier", "cmd/rashomon/main.go",
+m("H-20 the post path runs outside the panic barrier", "cmd/rashomon/post.go",
   "\t\tcaptureErr := safe.Guard(func() error {\n\t\t\tif payload != nil {\n\t\t\t\treturn p.CapturePayload(payload)\n\t\t\t}\n\t\t\treturn p.Capture(in())\n\t\t})",
   "\t\tvar captureErr error\n\t\tif payload != nil {\n\t\t\tcaptureErr = p.CapturePayload(payload)\n\t\t} else {\n\t\t\tcaptureErr = p.Capture(in())\n\t\t}",
   "TestH20_NoFaultOnThePostPathReachesTheAgent")

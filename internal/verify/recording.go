@@ -71,13 +71,18 @@ func recording(run *store.Run, at int64) (Recording, []string) {
 		s.due = s.due || d.Seq <= at
 		ids[d.ToolUseID] = s
 	}
+	// answer marks the declaration answered by every outcome, wherever it
+	// landed, so it stands on its own line: no condition may short-circuit
+	// past it.
 	for _, e := range run.Executions {
-		if !answer(ids, e.ToolUseID, e.Seq) && byPoint(e.Seq, at) {
+		declared := answer(ids, e.ToolUseID, e.Seq)
+		if !declared && byPoint(e.Seq, at) {
 			fault[noteOrphan] = true
 		}
 	}
 	for _, t := range run.Terminals {
-		if !answer(ids, t.ToolUseID, t.Seq) && byPoint(t.Seq, at) {
+		declared := answer(ids, t.ToolUseID, t.Seq)
+		if !declared && byPoint(t.Seq, at) {
 			fault[noteOrphan] = true
 		}
 	}

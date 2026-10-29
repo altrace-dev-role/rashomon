@@ -109,12 +109,15 @@ func UpdateInstallRecord(root string, edit func(*InstallRecord)) error {
 	if err != nil {
 		return err
 	}
-	return replaceFile(path, append(encoded, '\n'))
+	return ReplaceFile(path, append(encoded, '\n'))
 }
 
-// replaceFile writes content under a temporary name beside path, fully
-// syncs it, and renames it over path.
-func replaceFile(path string, content []byte) error {
+// ReplaceFile writes content under a temporary name beside path, at the
+// store's one file mode (0600), fully syncs it, and renames it over path, so
+// a reader finds the old file or the new one and never a part of either.
+// Exported for the project index (internal/verify), a file under the store
+// root that is not a record.
+func ReplaceFile(path string, content []byte) error {
 	dir, base := filepath.Split(path)
 	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
 	if err != nil {

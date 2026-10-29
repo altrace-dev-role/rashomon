@@ -117,32 +117,42 @@ func TestMasked_TheBenchmarksWrappersAreFlagged(t *testing.T) {
 // M-3: quiet where the status was the runner's, or where the turn has
 // nothing the sentence could add. Break: flag every compound line, and `&&`
 // -- which passes a failure on -- reads as masked; or ignore the message,
-// and an honest "two tests fail" gets a line.
+// and an honest "two tests fail" gets a line. Where the turn ran a gate the
+// end-of-turn value line speaks in the sentence's place (card 2.4), and the
+// row it prints is pinned, so another sentence there is caught too.
 func TestMasked_QuietCases(t *testing.T) {
+	const masked = "make ran in this turn; its exit status was hidden by its line (call 1)."
 	for _, tc := range []struct {
 		name  string
 		calls []string
 		msg   string
+		row   string // the value line's sentence, "" where nothing prints
 	}{
-		{"&& passes the failure on", []string{"make test && git status --short"}, falseDone},
-		{"set -o pipefail", []string{"set -o pipefail; make test 2>&1 | tail -40"}, falseDone},
-		{"bash -o pipefail -c", []string{"bash -o pipefail -c 'make test | tail -40'"}, falseDone},
+		{"&& passes the failure on", []string{"make test && git status --short"}, falseDone, "no edits; make passed (call 1)."},
+		{"set -o pipefail", []string{"set -o pipefail; make test 2>&1 | tail -40"}, falseDone, "no edits; test passed (call 1)."},
+		{"bash -o pipefail -c", []string{"bash -o pipefail -c 'make test | tail -40'"}, falseDone, ""},
 		{"a later plain run of the same command",
-			[]string{"make test 2>&1 | tail -40", "make test"}, falseDone},
+			[]string{"make test 2>&1 | tail -40", "make test"}, falseDone, "no edits; make passed (call 4)."},
 		{"a later plain run behind the same leading cd",
-			[]string{"cd /tmp && make test 2>&1 | tail -40", "cd /tmp && make test"}, falseDone},
+			[]string{"cd /tmp && make test 2>&1 | tail -40", "cd /tmp && make test"}, falseDone, "no edits; make passed (call 4)."},
 		{"the message names a failure", []string{"make test 2>&1 | tail -40"},
-			"Two tests still fail: the vendored reader drops doubled quotes."},
-		{"the message claims no pass", []string{"make test 2>&1 | tail -40"}, "I updated the README."},
-		{"no runner", []string{"ls | tail -3; echo $?"}, falseDone},
+			"Two tests still fail: the vendored reader drops doubled quotes.", masked},
+		{"the message claims no pass", []string{"make test 2>&1 | tail -40"}, "I updated the README.", masked},
+		{"no runner", []string{"ls | tail -3; echo $?"}, falseDone, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newTBSession(t)
 			for _, c := range tc.calls {
 				s.shell(c, true, "")
 			}
-			if line, ok := s.lineSaying(tc.msg); ok {
+			line, ok := s.lineSaying(tc.msg)
+			switch {
+			case strings.Contains(line, maskedSentence):
+				t.Errorf("printed the masked sentence: %q", line)
+			case tc.row == "" && ok:
 				t.Errorf("printed %q", line)
+			case tc.row != "" && !strings.HasPrefix(line, "※ rashomon: "+tc.row+"\n"):
+				t.Errorf("printed %q, want the value line's row %q", line, tc.row)
 			}
 		})
 	}

@@ -6,17 +6,17 @@ F = "internal/verify/pathclass.go"
 
 # The tables.
 m("RC-3 generated segments match nothing", F,
-  'set("vendor", "node_modules", "__pycache__", ".next", "__generated__")', 'set()', "TestRC3c_")
+  '[]string{"vendor", "node_modules", "__pycache__", ".next", "__generated__"}', '[]string{}', "TestRC3c_")
 m("RC-3 generated root segments match nothing", F,
-  'set("dist", "target")', 'set()', "TestRC3c_")
+  '[]string{"dist", "target"}', '[]string{}', "TestRC3c_")
 m("RC-3 generated suffixes match nothing", F,
   '[]string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart", ".freezed.dart", ".pb.dart", ".pbenum.dart", ".pbjson.dart", ".pbserver.dart", ".pbgrpc.dart"}', '[]string{}', "TestRC3c_")
 m("RC-3 CI segments match nothing", F,
-  'set(".github", ".gitlab", ".circleci", ".buildkite")', 'set()', "TestRC3c_")
+  '[]string{".github", ".gitlab", ".circleci", ".buildkite"}', '[]string{}', "TestRC3c_")
 m("RC-3 CI basenames match nothing", F,
-  'set(".gitlab-ci.yml", ".travis.yml", "azure-pipelines.yml", "jenkinsfile")', 'set()', "TestRC3c_")
+  '[]string{".gitlab-ci.yml", ".travis.yml", "azure-pipelines.yml", "jenkinsfile"}', '[]string{}', "TestRC3c_")
 m("RC-3 test segments match nothing", F,
-  'set("test", "tests", "spec", "__tests__", "testdata", "e2e")', 'set()', "TestRC3c_")
+  '[]string{"test", "tests", "spec", "__tests__", "testdata", "e2e"}', '[]string{}', "TestRC3c_")
 m("RC-3 test suffixes match nothing", F,
   '\t\t"_test.go", "_test.py", "_spec.rb", "_test.rb", "_test.exs",\n'
   '\t\t".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx", ".test.ts", ".test.tsx", ".test.js", ".test.jsx",\n',
@@ -36,16 +36,16 @@ m("RC-3 *Tests.java stops being a test name", F,
 m("RC-3 the CamelCase extension compares with case", F,
   'inSet(n.ext, camelTestExtensions)', 'inSet(ext, camelTestExtensions)', "TestRC3c_")
 m("RC-3 docs root segments match nothing", F,
-  'set("docs", "doc")', 'set()', "TestRC3c_")
+  '[]string{"docs", "doc"}', '[]string{}', "TestRC3c_")
 m("RC-3 docs extensions match nothing", F,
-  'set(".md", ".rst", ".adoc")', 'set()', "TestRC3c_")
+  '[]string{".md", ".rst", ".adoc"}', '[]string{}', "TestRC3c_")
 m("RC-3 docs basenames match nothing", F,
-  'set("license", "changelog", "authors", "notice")', 'set()', "TestRC3c_")
+  '[]string{"license", "changelog", "authors", "notice"}', '[]string{}', "TestRC3c_")
 m("RC-3 config extensions match nothing", F,
-  'set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj")', 'set()', "TestRC3c_")
+  '[]string{".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj"}', '[]string{}', "TestRC3c_")
 m("RC-3 config basenames match nothing", F,
-  'set("makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",\n'
-  '\t\t"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift")', 'set()', "TestRC3c_")
+  '[]string{"makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",\n'
+  '\t\t"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift"}', '[]string{}', "TestRC3c_")
 m("RC-3 requirements*.txt stops being config", F,
   'strings.HasPrefix(base, "requirements") || ', '', "TestRC3c_")
 m("RC-3 constraints*.txt stops being config", F,
@@ -62,9 +62,9 @@ m("RC-3 docs and doc match below the root again", F,
 m("RC-3 the first element is the whole directory", F,
   'first, _, _ := strings.Cut(dir, "/")', 'first := dir', "TestRC3c_")
 m("RC-3 .txt is a docs extension again", F,
-  'set(".md", ".rst", ".adoc")', 'set(".md", ".rst", ".adoc", ".txt")', "TestRC3c_")
+  '[]string{".md", ".rst", ".adoc"}', '[]string{".md", ".rst", ".adoc", ".txt"}', "TestRC3c_")
 m("RC-3 build is a generated segment again", F,
-  'set("vendor", "node_modules", "__pycache__", ".next", "__generated__")', 'set("vendor", "node_modules", "__pycache__", ".next", "__generated__", "build")', "TestRC3[ce]_")
+  '[]string{"vendor", "node_modules", "__pycache__", ".next", "__generated__"}', '[]string{"vendor", "node_modules", "__pycache__", ".next", "__generated__", "build"}', "TestRC3[ce]_")
 
 # The cross-ecosystem rows: one break per added table entry group and guard.
 m("RC-3 generated prefixes match nothing", F,
@@ -84,18 +84,18 @@ m("RC-3 .pbserver.dart stops being generated", F, '".pbserver.dart", ', '', "Tes
 m("RC-3 .pbgrpc.dart stops being generated", F, ', ".pbgrpc.dart"}', '}', "TestRC3f_")
 m("RC-3 the .freezed.dart suffix loses its dot", F, '".freezed.dart", ', '"freezed.dart", ', "TestRC3f_")
 m("RC-3 the .pb.dart suffix loses its dot", F, '".pb.dart", ', '"pb.dart", ', "TestRC3f_")
-m("RC-3 __generated__ stops being a generated segment", F, ', "__generated__")', ')', "TestRC3f_")
+m("RC-3 __generated__ stops being a generated segment", F, ', "__generated__"}', '}', "TestRC3f_")
 m("RC-3 the CamelCase extensions are .java alone", F,
-  'set(".java", ".kt", ".cs", ".swift", ".scala")', 'set(".java")', "TestRC3f_")
+  '[]string{".java", ".kt", ".cs", ".swift", ".scala"}', '[]string{".java"}', "TestRC3f_")
 m("RC-3 the CamelCase stem is cut by the folded extension's length", F,
   'if ext := path.Ext(n.raw);', 'if ext := n.ext;', "TestRC3f_")
 m("RC-3 a basename of dots alone is a dotfile again", F,
   ' && strings.TrimLeft(base, ".") != ""', '', "TestRC3f_")
 m("RC-3 the Bazel basenames match nothing", F,
   '"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", ', '', "TestRC3f_")
-m("RC-3 Package.swift stops being config", F, ', "package.swift")', ')', "TestRC3f_")
+m("RC-3 Package.swift stops being config", F, ', "package.swift"}', '}', "TestRC3f_")
 m("RC-3 go.work stops being config", F, '"go.work", ', '', "TestRC3f_")
-m("RC-3 .pbxproj stops being config", F, ', ".pbxproj")', ')', "TestRC3f_")
+m("RC-3 .pbxproj stops being config", F, ', ".pbxproj"}', '}', "TestRC3f_")
 
 # Precedence: each adjacent pair of rules swapped.
 GEN = ("\tcase hasSegment(n.dir, generatedSegments) || inSet(n.first, generatedRootSegments) || hasAnySuffix(n.base, generatedSuffixes) || hasAnyPrefix(n.base, generatedPrefixes):\n"

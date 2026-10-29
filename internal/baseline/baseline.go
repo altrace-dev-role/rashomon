@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,14 +39,14 @@ import (
 const Version = 1
 
 // DirName is the store-root sibling directory holding one file per project
-// key; see Update and fileName. Exported so the disclosure inventory
+// key; see Update and FileName. Exported so the disclosure inventory
 // (internal/disclose) and callers outside this package name the same
 // directory from this constant rather than a second copy of the literal
 // string.
 const DirName = "baseline"
 
 // FileExt is the extension of a project's baseline file, and FilePattern the
-// glob every one matches under DirName: fileName's sanitised key, a digest
+// glob every one matches under DirName: FileName's sanitised key, a digest
 // suffix, and FileExt. Exported for the same reason as DirName.
 const (
 	FileExt     = ".json"
@@ -58,21 +59,21 @@ const (
 // Exported so purge names the same spelling.
 const TempPrefix = ".baseline-"
 
-// digestLen is the length of the hex digest fileName appends to a key.
+// digestLen is the length of the hex digest FileName appends to a key.
 const digestLen = 12
 
-// unsafeRune is what fileName writes for every character of a key that is not
+// unsafeRune is what FileName writes for every character of a key that is not
 // plainly safe (safeNameRune).
 const unsafeRune = '_'
 
-// safeNameRune reports whether fileName copies r from the key as it is. It is
+// safeNameRune reports whether FileName copies r from the key as it is. It is
 // the alphabet of the readable part of a baseline file name, with unsafeRune.
 func safeNameRune(r rune) bool {
 	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '.'
 }
 
-// IsFileName reports whether name has the shape fileName gives a baseline
-// file: characters of fileName's alphabet (safeNameRune, or unsafeRune where
+// IsFileName reports whether name has the shape FileName gives a baseline
+// file: characters of FileName's alphabet (safeNameRune, or unsafeRune where
 // it replaced one), "-", a digestLen-digit lower-case hex digest and FileExt.
 // It checks shape only, not that the digest belongs to any key. A file is
 // named like this only if rashomon, or something imitating it, wrote it.
@@ -114,22 +115,23 @@ const Basis = "declared"
 // first run would fire on almost every first run and be ignored from then on.
 // The list is short, fixed, and deliberately made of package registries and
 // their CDNs rather than anything an operator might run themselves.
-var ubiquitous = map[string]bool{
-	"registry.npmjs.org":            true,
-	"pypi.org":                      true,
-	"files.pythonhosted.org":        true,
-	"github.com":                    true,
-	"api.github.com":                true,
-	"objects.githubusercontent.com": true,
-	"proxy.golang.org":              true,
-	"sum.golang.org":                true,
-	"formulae.brew.sh":              true,
-	"ghcr.io":                       true,
+// A slice of constants, with no code run at init (RES-2).
+var ubiquitous = []string{
+	"registry.npmjs.org",
+	"pypi.org",
+	"files.pythonhosted.org",
+	"github.com",
+	"api.github.com",
+	"objects.githubusercontent.com",
+	"proxy.golang.org",
+	"sum.golang.org",
+	"formulae.brew.sh",
+	"ghcr.io",
 }
 
 // Ubiquitous reports whether a host is on the never-novel list. Exported so the
 // report can say so rather than silently dropping the host.
-func Ubiquitous(host string) bool { return ubiquitous[host] }
+func Ubiquitous(host string) bool { return slices.Contains(ubiquitous, host) }
 
 // entry is when a host was first named in this project, and by which session,
 // and when it was last named: the start of the latest session that named it,
@@ -255,14 +257,15 @@ func Key(cwd string) string {
 	return cwd
 }
 
-// fileName turns a project key into one path element.
+// FileName turns a project key into one path element.
 //
 // The key is an absolute path, so it cannot be a filename as it stands. Every
 // separator and every character that is not plainly safe becomes an underscore,
 // and a digest of the full key is appended so that two different projects whose
 // sanitised names collide still get two files. Without the digest, /a/b and
-// /a-b would share a baseline.
-func fileName(key string) string {
+// /a-b would share a baseline. Exported for the project index
+// (verify.IndexPath), whose files are named the same way.
+func FileName(key string) string {
 	var b strings.Builder
 	for _, r := range key {
 		if safeNameRune(r) {
@@ -306,7 +309,7 @@ func UpdateOrigin(root, key, sessionID string, sessionStart time.Time, hosts []s
 		return Result{Err: errors.New("baseline: no store root or project key")}
 	}
 	dir := filepath.Join(root, DirName)
-	path := filepath.Join(dir, fileName(key))
+	path := filepath.Join(dir, FileName(key))
 	res, err := update(dir, path, key, sessionID, sessionStart, hosts, sshHosts)
 	res.Path = path
 	if err != nil {

@@ -32,6 +32,16 @@ const (
 	cursorVersionBytes  = 64
 )
 
+// Stop-view capture sizes, read with the harness paths (card 2.4 R11). cwd is
+// a path, capped as transcript_path is; a cwd over it names no project, as an
+// over-long session_id names no session. stop_hook_active is a JSON boolean
+// read as its literal: five bytes hold "false", and anything longer is not
+// "true".
+const (
+	cwdBytes            = 4 << 10
+	stopHookActiveBytes = 5
+)
+
 // finalMessage is the slice of a Stop or StopFailure payload recap and
 // digest --stdin read.
 type finalMessage struct {
@@ -39,6 +49,12 @@ type finalMessage struct {
 	Message   string // the head: the whole message up to messageHeadBytes
 	Tail      string // the last messageTailBytes when the head was cut
 	Harness   harnessSignal
+	// CWD is the payload's cwd, the directory the project index is keyed on
+	// (baseline.Key; card 2.4 R10); "" when absent or over cwdBytes.
+	CWD string
+	// StopHookActive is the payload's stop_hook_active. It is carried, not
+	// read, in v0 (card 2.4 R11, D77).
+	StopHookActive bool
 }
 
 // harnessSignal is the slice of a Stop payload internal/harness.Detect
@@ -97,11 +113,18 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // message is still read, and recap falls back to the newest run, as for a
 // payload with no session_id.
 //
-// withHarness adds the harnessSignal paths (recapTurn's own call), so H1's
-// recap entry point gets what internal/harness.Detect reads from the same
-// single stream pass that reads the message -- recap has no second read of
-// stdin to spend on it (see cmd/rashomon's recapHostGuard). digest --stdin's
-// call passes false: it has no installed-for to stand down against.
+// withHarness adds the paths only recapTurn's call reads: the harnessSignal
+// paths, so H1's recap entry point gets what internal/harness.Detect reads
+// from the same single stream pass that reads the message -- recap has no
+// second read of stdin to spend on it (see cmd/rashomon's recapHostGuard) --
+// and the Stop view's cwd and stop_hook_active (card 2.4 R11). digest
+// --stdin's call passes false: it has no installed-for to stand down
+// against and no Stop view. cwd is read as the three string fields are, so a
+// cwd that is not a string is no payload. stop_hook_active is a boolean, so
+// its path takes any value (a String path would refuse the whole payload on
+// it, stream.go's ErrNotString) and only the literal true reads as set; a
+// string "true" reads as set too, which the field's v0 use, none, cannot
+// tell apart.
 func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage, bool) {
 	var fm finalMessage
 	paths := []jsonscan.Path{
@@ -123,6 +146,8 @@ func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage
 			jsonscan.Path{Elems: []string{"generation_id"}, Mode: jsonscan.CapturePresence, Fold: true},
 			jsonscan.Path{Elems: []string{"turn_id"}, Mode: jsonscan.CapturePresence, Fold: true},
 			jsonscan.Path{Elems: []string{"model"}, Mode: jsonscan.CapturePresence, Fold: true},
+			jsonscan.Path{Elems: []string{"cwd"}, Max: cwdBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+			jsonscan.Path{Elems: []string{"stop_hook_active"}, Max: stopHookActiveBytes, Mode: jsonscan.CaptureHead, Fold: true},
 		)
 	}
 	cut := false
@@ -158,6 +183,13 @@ func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage
 			fm.Harness.HasTurnID = true
 		case 10:
 			fm.Harness.HasModel = true
+		case 11:
+			fm.CWD = string(v)
+			if truncated {
+				fm.CWD = ""
+			}
+		case 12:
+			fm.StopHookActive = string(v) == "true" && !truncated
 		}
 		return true
 	})

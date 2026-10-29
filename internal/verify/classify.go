@@ -120,6 +120,14 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 	if run == nil {
 		return nil, nil, nil, nil
 	}
+	return classifyWith(run, pickExecutions(run))
+}
+
+// pickExecutions is the execution each call is judged on, by ToolUseID:
+// outranks's pick among the call's records. Evaluate builds it once and hands
+// it to classifyWith and to integrity, so the record is grouped one way. run
+// is not nil.
+func pickExecutions(run *store.Run) map[string]*store.Execution {
 	picked := make(map[string]*store.Execution, len(run.Executions))
 	for i := range run.Executions {
 		e := &run.Executions[i]
@@ -127,7 +135,11 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 			picked[e.ToolUseID] = e
 		}
 	}
+	return picked
+}
 
+// classifyWith is classify over picked, pickExecutions(run); run is not nil.
+func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64) {
 	var pending []int // indexes into runs whose kind waits on the inference
 	for i := range run.Declarations {
 		d := &run.Declarations[i]

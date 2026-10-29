@@ -292,3 +292,109 @@ func TestRES36k_NoBenchmarkRowsComparesNothing(t *testing.T) {
 		})
 	}
 }
+
+// pkgHeader is the header go test prints before a package's benchmarks, for
+// platform ("goos/goarch").
+func pkgHeader(platform string) string {
+	goos, goarch, _ := strings.Cut(platform, "/")
+	return "goos: " + goos + "\ngoarch: " + goarch + "\npkg: github.com/altrace-dev-role/rashomon/internal/verify\ncpu: Apple M3\n"
+}
+
+// TestRES36r_MeasureLabelsRowsByTheInputHeader: rows measured on linux/amd64
+// and replayed on darwin/arm64 (B144's method, a CI artifact turned into rows
+// elsewhere) are labelled linux/amd64 in the footer, both times, with the
+// toolchain marked as this benchgate's own; the printed array is the one the
+// same output prints without its header.
+func TestRES36r_MeasureLabelsRowsByTheInputHeader(t *testing.T) {
+	in := pkgHeader("linux/amd64") + lexLine
+	var stdout, stderr, plain bytes.Buffer
+	if code := runMeasure(strings.NewReader(in), &stdout, &stderr, "go1.27.3", "darwin/arm64"); code != 0 {
+		t.Fatalf("exit %d, want 0\nstderr %s", code, stderr.String())
+	}
+	foot := stderr.String()
+	if strings.Count(foot, "linux/amd64") != 2 || strings.Contains(foot, "darwin/arm64") || strings.Contains(foot, "host platform") ||
+		!strings.Contains(foot, "under go1.27.3 (the toolchain this benchgate was built with; the input does not say)") {
+		t.Errorf("footer does not name the input's platform twice and only it:\n%s", foot)
+	}
+	if code := runMeasure(strings.NewReader(lexLine), &plain, &bytes.Buffer{}, "go1.27.3", "darwin/arm64"); code != 0 ||
+		stdout.String() != plain.String() {
+		t.Errorf("the header changed the printed rows\nwith %s\nwithout %s", stdout.String(), plain.String())
+	}
+	p, err := ParseAll(strings.NewReader(in))
+	if err != nil || p.GOOS != "linux" || p.GOARCH != "amd64" || p.Platform() != "linux/amd64" || len(p.Results) != 1 {
+		t.Errorf("ParseAll = %+v, %v; want linux, amd64, one result", p, err)
+	}
+}
+
+// TestRES36s_HeaderlessInputNamesTheHostAndSaysSo: with no goos and goarch
+// pair in the input (no header, or goos alone as sample carries), the footer
+// names the host and says that it is the host's.
+func TestRES36s_HeaderlessInputNamesTheHostAndSaysSo(t *testing.T) {
+	for _, in := range []string{lexLine, "goos: linux\n" + lexLine} {
+		var stdout, stderr bytes.Buffer
+		code := runMeasure(strings.NewReader(in), &stdout, &stderr, "go1.27.3", "darwin/arm64")
+		foot := stderr.String()
+		if code != 0 || strings.Count(foot, "darwin/arm64") != 2 || strings.Contains(foot, "linux") ||
+			!strings.Contains(foot, "(host platform: the input carried no goos/goarch header)") {
+			t.Errorf("input %q: exit %d, footer\n%s", in, code, foot)
+		}
+	}
+}
+
+// TestRES36t_MixedHeadersRefused: packages measured on different platforms
+// in one output are refused, never averaged: ParseAll errors naming the key
+// and both values, Parse with it, and -measure exits 2 printing no rows. A
+// header repeated per package with the same values is one platform.
+func TestRES36t_MixedHeadersRefused(t *testing.T) {
+	same := pkgHeader("linux/amd64") + lexLine + pkgHeader("linux/amd64") + "BenchmarkB-8   20   1 ns/op   2 B/op   3 allocs/op\n"
+	if p, err := ParseAll(strings.NewReader(same)); err != nil || p.Platform() != "linux/amd64" || len(p.Results) != 2 {
+		t.Errorf("one platform's header per package: %+v, %v", p, err)
+	}
+	for _, c := range []struct{ name, in, says string }{
+		{"goarch", pkgHeader("linux/amd64") + lexLine + pkgHeader("linux/arm64") + lexLine, "goarch amd64 then arm64"},
+		{"goos", pkgHeader("linux/amd64") + lexLine + pkgHeader("darwin/amd64") + lexLine, "goos linux then darwin"},
+		{"goos alone", "goos: linux\n" + lexLine + "goos: darwin\n" + lexLine, "goos linux then darwin"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := ParseAll(strings.NewReader(c.in)); err == nil ||
+				!strings.Contains(err.Error(), "mixed platforms in one benchmark output: "+c.says) {
+				t.Errorf("ParseAll error %v, want one naming %q", err, c.says)
+			}
+			if _, err := Parse(strings.NewReader(c.in)); err == nil {
+				t.Error("Parse accepted mixed platforms")
+			}
+			var stdout, stderr bytes.Buffer
+			if code := runMeasure(strings.NewReader(c.in), &stdout, &stderr, "go1.27.3", "linux/amd64"); code != 2 || stdout.Len() != 0 {
+				t.Errorf("-measure exit %d, want 2 with no rows\nstdout %s", code, stdout.String())
+			}
+		})
+	}
+}
+
+// TestRES36u_GateRefusesOutputFromAnotherPlatform: the gate reads its own
+// host's live output, so a header naming another platform means a file from
+// elsewhere was piped in: exit 2 naming both, before any result is printed
+// (RES36n's shape). A header naming the host, or none, compares as before.
+func TestRES36u_GateRefusesOutputFromAnotherPlatform(t *testing.T) {
+	for _, c := range []struct {
+		name, in string
+		want     int
+		says     string
+	}{
+		{"foreign", pkgHeader("darwin/arm64") + lexLine, 2,
+			"benchmark output was measured on darwin/arm64 and this run is linux/amd64: nothing compared"},
+		{"own", pkgHeader("linux/amd64") + lexLine, 0, "1 benchmarks within budget"},
+		{"none", lexLine, 0, "1 benchmarks within budget"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := run(fixture(t, "go1.27.2"), strings.NewReader(c.in), &stdout, &stderr, "go1.27.2", fixturePlatform)
+			if code != c.want || !strings.Contains(stdout.String()+stderr.String(), c.says) {
+				t.Errorf("exit %d, want %d naming %q\nstdout %s\nstderr %s", code, c.want, c.says, stdout.String(), stderr.String())
+			}
+			if c.want == 2 && strings.Contains(stdout.String(), "B/op") {
+				t.Errorf("results printed before the header check:\n%s", stdout.String())
+			}
+		})
+	}
+}

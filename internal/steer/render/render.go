@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
@@ -73,9 +74,68 @@ type templateKey struct {
 	binding reflect.Type
 }
 
+// Version is the renderer's version, written on every steer line as
+// renderer_version (tech 4.2.3; its example writes 1). A suppressed line
+// keeps its slots and this version and is re-rendered on read (RES-32), so
+// a change to a row's text is a version change.
+const Version = 1
+
+// RegressionLocationBinding is regression-location's slots (archive
+// 40.4.2): the gate, how long ago it last exited 0, its exit on this run, and
+// the files written between the two runs. 2.3's producer fills it.
+type RegressionLocationBinding struct {
+	Gate    slot.Gate     `slot:"gate"`
+	Minutes slot.Minutes  `slot:"minutes"`
+	Exit    slot.Exit     `slot:"exit"`
+	Paths   slot.PathList `slot:"paths"`
+}
+
+// RegressionLocationDegradedBinding is regression-location's no-paths form
+// (card 2.3 R7): the full row's first sentence and the count of writes
+// recorded between the two runs, for writes the record names no path for
+// (record scope v4) or whose every named path the deny list or the entropy
+// test left out (slot.ErrNoPathsLeft).
+type RegressionLocationDegradedBinding struct {
+	Gate    slot.Gate    `slot:"gate"`
+	Minutes slot.Minutes `slot:"minutes"`
+	Exit    slot.Exit    `slot:"exit"`
+	Count   slot.Count   `slot:"count"`
+}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
-// it holds none yet, so New refuses every binding until one does.
-var templates = map[templateKey]template{}
+// New refuses a binding that has none.
+//
+// regression-location/v1 is archive 40.4.2's model text with "gate" before
+// the gate's quote: Gate renders inside a quote after a word that names it
+// (P07N-11), so the archive's bare {gate} opening cannot render as written.
+// regression-location-degraded/v1 keeps that first sentence and states the
+// count, so the note still names the gate (card 2.3 R7). The other-agents
+// sentence is its own binding struct and row, which comes with
+// subagent-claim's producer (D62).
+func templates() map[templateKey]template {
+	templatesOnce.Do(func() {
+		templatesOnce.v = map[templateKey]template{
+			{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationBinding{})}: {
+				id: "regression-location/v1",
+				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
+					"Files written between the two runs: {paths}.",
+			},
+			{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationDegradedBinding{})}: {
+				id: "regression-location-degraded/v1",
+				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
+					"{count} file writes were recorded between the two runs.",
+			},
+		}
+	})
+	return templatesOnce.v
+}
+
+// templatesOnce holds what templates returns, built on its first call and
+// never at init (RES-2).
+var templatesOnce struct {
+	sync.Once
+	v map[templateKey]template
+}
 
 var (
 	// ErrUnknownPattern is returned by New for an id outside the frozen set.
@@ -98,7 +158,7 @@ var (
 // continuity-briefing, the one multi-line note, Validate for every other
 // pattern -- and returns the Message, or the zero Message and an error.
 func New(p pattern.ID, binding any) (Message, error) {
-	return newMessage(templates, p, binding)
+	return newMessage(templates(), p, binding)
 }
 
 func newMessage(table map[templateKey]template, p pattern.ID, binding any) (Message, error) {

@@ -225,9 +225,16 @@ type IntegrityCounts struct {
 }
 
 // Integrity is the checks still unresolved at the point and the counts.
+// UnknownMarks and UnreadBases are what the fold read no further, counted so
+// that ignoring is never silent (D41, D42; beyond archive 20.2.14's golden):
+// mark ids outside the marker table, once per write that carries one (how
+// often the table missed), and calls whose marks are not a delta for their
+// basis, across the window.
 type Integrity struct {
-	Unresolved []IntegrityEntry `json:"unresolved"`
-	Counts     IntegrityCounts  `json:"counts"`
+	Unresolved   []IntegrityEntry `json:"unresolved"`
+	Counts       IntegrityCounts  `json:"counts"`
+	UnknownMarks int              `json:"unknown_marks"`
+	UnreadBases  int              `json:"unread_bases"`
 }
 
 // PracticeComponents are the five components of 2.2.8, each in [0, 1];

@@ -63,6 +63,14 @@ type PostPayload struct {
 	// CWD is carried onto the coverage record so the project key is present
 	// on every phase rather than only the two the probe writes.
 	CWD string
+
+	// PromptID, AgentID and PermissionMode are read for the steer step only
+	// (card 2.3 R5): the prompt a note is budgeted against, the subagent the
+	// call ran in, and whether anyone is there to approve. The execution
+	// record is unchanged; its declaration carries all three.
+	PromptID       string
+	AgentID        string
+	PermissionMode string
 }
 
 // errorHeadBytes is how much of a failure message is unescaped. The exit
@@ -75,7 +83,8 @@ const errorHeadBytes = 8 << 10
 func (pl *PostPayload) from(in *hookio.Payload) error {
 	if err := in.Strs(hookio.Into(hookio.SessionID, &pl.SessionID), hookio.Into(hookio.ToolName, &pl.ToolName),
 		hookio.Into(hookio.ToolUseID, &pl.ToolUseID), hookio.Into(hookio.HookEventName, &pl.HookEventName),
-		hookio.Into(hookio.CWD, &pl.CWD)); err != nil {
+		hookio.Into(hookio.CWD, &pl.CWD), hookio.Into(hookio.PromptID, &pl.PromptID), hookio.Into(hookio.AgentID, &pl.AgentID),
+		hookio.Into(hookio.PermissionMode, &pl.PermissionMode)); err != nil {
 		return err
 	}
 	var err error
@@ -130,6 +139,17 @@ type Post struct {
 	cwd       string
 	// withheld is Handler.withheld for the execution record.
 	withheld bool
+
+	// What the steer step reads (card 2.3 R5): the payload's prompt, agent,
+	// permission mode and event, the seq the execution landed at in the
+	// ordered stream (0 when it spilled or did not land), and whether it
+	// carried a runner digest.
+	promptID       string
+	agentID        string
+	permissionMode string
+	event          string
+	landedSeq      int64
+	landedRunner   bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -186,6 +206,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	p.withheld = len(pl.SessionID) > store.MaxIDBytes
 	p.toolUseID = store.CapID(pl.ToolUseID)
 	p.cwd = pl.CWD
+	p.promptID, p.agentID, p.permissionMode, p.event = pl.PromptID, pl.AgentID, pl.PermissionMode, pl.HookEventName
 
 	fault.Inject(fault.PointPostParsed)
 
@@ -265,7 +286,9 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if p.capExec(&rec) {
 		p.withheld = true
 	}
-	return landed(p.st.AppendExecution(rec), &p.withheld)
+	seq, err := p.st.LandExecution(rec)
+	p.landedSeq, p.landedRunner = seq, rec.RunnerDigest != nil
+	return landed(err, &p.withheld)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

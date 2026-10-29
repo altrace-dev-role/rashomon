@@ -155,6 +155,43 @@ func packageScopeRegexpCompiles(files []*ast.File) []token.Pos {
 	return found
 }
 
+// TestRES2d_VerifyImportsNoReportHookOrNet: no non-test file of this package
+// imports internal/report, internal/hook or net, nor a package under any of
+// them (ENG-STD Task 2.1, pinned at 1.8r). verify reads the record through
+// store, shape and spec and decides; the report renders, the hook writes the
+// record, and a network client is Altrace's, never rashomon's. A test file may
+// import report as an oracle (INT14): a test's imports are not linked into the
+// binary.
+func TestRES2d_VerifyImportsNoReportHookOrNet(t *testing.T) {
+	const module = "github.com/altrace-dev-role/rashomon/"
+	refused := []string{module + "internal/report", module + "internal/hook", "net"}
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := 0
+	for _, pkg := range pkgs {
+		for path, f := range pkg.Files {
+			files++
+			for _, imp := range f.Imports {
+				p, err := strconv.Unquote(imp.Path.Value)
+				if err != nil {
+					t.Fatalf("%s: %v", path, err)
+				}
+				for _, r := range refused {
+					if p == r || strings.HasPrefix(p, r+"/") {
+						t.Errorf("%s imports %q: verify imports nothing from %s", filepath.Clean(path), p, r)
+					}
+				}
+			}
+		}
+	}
+	if files < 10 {
+		t.Fatalf("parsed %d files; this package holds more than that", files)
+	}
+}
+
 // TestRES2e_HelperInAnotherFileIsFollowed: a var initialiser in one file of
 // a package that calls a helper declared in another file is followed into
 // that helper, and the helper's compile is read through its own file's name

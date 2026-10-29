@@ -2,6 +2,7 @@ package verify
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -41,6 +42,10 @@ type call struct {
 	// (record_v5.go GateOutput), copied onto the execution; nil writes none.
 	// No writer fills gate_output yet.
 	gateOutput *store.GateOutput
+	// editMarks is the execution's edit marks (record_v5.go EditMarks), set by
+	// marks and copied onto the execution; nil writes none. No writer fills
+	// edit_marks yet (1.8p is the producer).
+	editMarks *store.EditMarks
 	// schema is the version both records are stamped at: 0 is
 	// store.SchemaVersion; 5 is a record written before runner_kind, whose
 	// runner carries no kind.
@@ -84,6 +89,21 @@ func bashWrite(seq int64, paths ...string) call {
 	return call{seq: seq, tool: "Bash", prog: "sed", class: shape.VerbExecute, outcome: store.ExecOK, paths: paths}
 }
 
+// marks is c with its execution carrying edit marks, the deltas per marker id
+// (record_v5.go EditMarks), version 1, on the basis archive 10.2.8 gives the
+// tool: an Edit's old_string against its new_string (edit_delta), a Write's
+// content against the counts read before it (write_vs_before). runOf refuses
+// marks on any other tool and copies them, so the record never shares the
+// caller's maps.
+func (c call) marks(added, removed map[string]int) call {
+	basis := "edit_delta"
+	if c.tool == "Write" {
+		basis = "write_vs_before"
+	}
+	c.editMarks = &store.EditMarks{Added: added, Removed: removed, Basis: basis, Version: 1}
+	return c
+}
+
 // runOf is runOfSession for the session "s1", the one most tests need.
 func runOf(t testing.TB, calls ...call) *store.Run {
 	t.Helper()
@@ -111,6 +131,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - ExitCode is set only on the failure event, whose outcome is failed or interrupted, with a known code (post.go parses it before the interrupt check); an exit on an ok call is refused.
 //   - A Bash write that names paths is complete unless incomplete says otherwise, and one that names none carries MayWrite alone. This is the schema's written_paths_complete (record_v5.go): no writer fills written_paths yet, so a named Bash write is the schema's shape, not the hook's.
 //   - A gate_output is what the call literal says, copied onto the execution. No writer fills gate_output yet (record_v5.go GateOutput is the schema), so a run carrying one is the schema's shape, not the hook's.
+//   - Edit marks are on an Edit or a Write only (archive 10.2.8: file-writing tools; the builder models those two), copied onto the execution. No writer fills edit_marks yet (1.8p), so a run carrying them is the schema's shape, not the hook's; a test that needs marks where no writer would put them sets the execution's field itself.
 //   - No field is over the cap the hook would withhold it at (store.CapDeclaration and store.CapExecution, which the hook applies before its write).
 //   - A terminal's outcome is one of the Terminal outcomes (record.go).
 //   - The session id is its own run directory name (the store's DirName method, over segment): the builder does not digest. DirName reads no Store field (store.go:453, segment), which is what lets a zero Store answer; no test pins that.
@@ -229,6 +250,9 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if c.term != "" && c.term != store.OutcomeOK && c.term != store.OutcomeError && c.term != store.OutcomeSignal {
 			t.Fatalf("runOf: call %d terminal outcome %q is not one of %q, %q and %q (store: Terminal outcomes)", i, c.term, store.OutcomeOK, store.OutcomeError, store.OutcomeSignal)
 		}
+		if c.editMarks != nil && c.tool != "Edit" && c.tool != "Write" {
+			t.Fatalf("runOf: call %d carries edit marks on %s (archive 10.2.8: edit_marks are a file-writing tool's; the builder models Edit and Write)", i, c.tool)
+		}
 		if c.incomplete && (c.tool != "Bash" || len(c.paths) == 0) {
 			t.Fatalf("runOf: call %d is incomplete but is not a named Bash write (written_paths_complete describes a Bash write's named targets; the unnamed write carries MayWrite alone)", i)
 		}
@@ -309,6 +333,11 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 				g.Reason = &reason
 			}
 			e.GateOutput = &g // a fresh copy, never the caller's
+		}
+		if c.editMarks != nil {
+			m := *c.editMarks
+			m.Added, m.Removed = maps.Clone(m.Added), maps.Clone(m.Removed)
+			e.EditMarks = &m // a fresh copy, never the caller's
 		}
 		// Every field CapExecution caps that the builder sets (ToolUseID,
 		// ToolName) is capped the same on the declaration, probed first, so
@@ -584,6 +613,18 @@ func TestFixture_BuiltRecordsDoNotAliasTheCallersGateOutput(t *testing.T) {
 	}
 }
 
+func TestFixture_BuiltRecordsDoNotAliasTheCallersMarks(t *testing.T) {
+	added, removed := map[string]int{"go.t_skip": 1}, map[string]int{"go.test_def": 1}
+	r := runOf(t, edit(1, "a_test.go").marks(added, removed), call{seq: 2, tool: "Write", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"b_test.go"}}.marks(added, nil))
+	added["go.t_skip"], removed["go.test_def"] = 9, 9
+	if m := r.Executions[0].EditMarks; m == nil || m.Added["go.t_skip"] != 1 || m.Removed["go.test_def"] != 1 || m.Basis != "edit_delta" || m.Version != 1 {
+		t.Fatalf("the edit's record follows the caller's maps or lost its marks: %+v", m)
+	}
+	if m := r.Executions[1].EditMarks; m == nil || m.Added["go.t_skip"] != 1 || m.Removed != nil || m.Basis != "write_vs_before" {
+		t.Fatalf("the write's record follows the caller's map, or its basis is not write_vs_before: %+v", m)
+	}
+}
+
 // fakeTB records Fatalf and unwinds by panicking with itself, so a test can
 // prove that runOf rejects an impossible run. runOf may call only Helper and
 // Fatalf on its TB; the embedded nil TB makes any other call a loud failure.
@@ -675,6 +716,8 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"incomplete named write", "s1", []call{incompleteWrite}, ""},
 		{"incomplete write naming no paths", "s1", []call{call{seq: 1, tool: "Bash", prog: "sh", class: shape.VerbExecute, outcome: store.ExecOK, mayWrite: true, incomplete: true}}, "not a named Bash write"},
 		{"incomplete edit", "s1", []call{incompleteEdit}, "not a named Bash write"},
+		{"marks on an edit", "s1", []call{edit(1, "a_test.go").marks(map[string]int{"go.t_skip": 1}, nil)}, ""},
+		{"marks on a bash write", "s1", []call{bashWrite(1, "a_test.go").marks(map[string]int{"go.t_skip": 1}, nil)}, "edit marks on Bash"},
 
 		// The pairings the hook keeps between fields, each with its accepted twin.
 		// A hidden status keeps go's base class, package (a stage after the
@@ -751,7 +794,10 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
 	gate := gateCall(1, "go-test", store.ExecOK)
 	gate.term = store.OutcomeOK
-	ed := edit(2, "a.go")
+	// An Edit that added a skip and a suppression and took an assertion away
+	// (archive 10.2.8): the field 1.8 reads, which no writer fills yet, read
+	// back as built (REC caps: a few ids are well inside MaxRecordBytes).
+	ed := edit(2, "a.go").marks(map[string]int{"go.t_skip": 1, "go.nolint": 2}, map[string]int{"go.assert": 3})
 	ed.term = store.OutcomeOK
 	complete := bashWrite(3, "b.go", "c.go")
 	incomplete := bashWrite(4, "d.go")
@@ -859,6 +905,7 @@ func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
 			{"StatusMasked", samePtr(g.StatusMasked, w.StatusMasked)},
 			{"RunnerKind", samePtr(g.RunnerKind, w.RunnerKind)},
 			{"GateOutput", sameGateOutput(g.GateOutput, w.GateOutput)},
+			{"EditMarks", reflect.DeepEqual(g.EditMarks, w.EditMarks)},
 		} {
 			if !f.same {
 				t.Errorf("execution %d (%s): %s differs after the round trip", i, w.ToolUseID, f.name)
@@ -899,6 +946,17 @@ func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
 	}
 	if g := got.Executions[6].GateOutput; g == nil || g.Kind != "unread" || g.Reason == nil || *g.Reason != "budget" {
 		t.Errorf("the unread run reads back GateOutput set %t, Reason set %t, want kind %q reason %q", g != nil, g != nil && g.Reason != nil, "unread", "budget")
+	}
+	// Against the call, not the built run: a builder that dropped the marks
+	// would build and read back nil on both sides.
+	want := &store.EditMarks{Added: map[string]int{"go.t_skip": 1, "go.nolint": 2}, Removed: map[string]int{"go.assert": 3}, Basis: "edit_delta", Version: 1}
+	if m := got.Executions[1].EditMarks; !reflect.DeepEqual(m, want) {
+		t.Errorf("the edit reads back EditMarks %+v, want %+v", m, want)
+	}
+	for i, e := range got.Executions {
+		if i != 1 && e.EditMarks != nil {
+			t.Errorf("execution %d reads back EditMarks %+v, want none: only the edit carries marks", i, e.EditMarks)
+		}
 	}
 
 	// Seq is the store's, one per record in append order, and the builder

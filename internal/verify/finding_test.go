@@ -102,6 +102,7 @@ func TestVER54d_SlotsHoldTheSpecsCharsets(t *testing.T) {
 		want bool
 	}{
 		{"go-test", true}, {"spec:ci:1", true}, {"a.b_c-d", true}, {"0", true}, {SlotID(long), true},
+		{"learned:test:r:go-test@d:repo", true}, {"@x", false}, // D43: '@' after the first byte
 		{"", false}, {"Go", false}, {"-x", false}, {"a b", false}, {SlotID(long + "a"), false},
 	} {
 		if got := c.id.Valid(); got != c.want {

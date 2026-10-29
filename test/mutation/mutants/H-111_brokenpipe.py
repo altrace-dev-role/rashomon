@@ -13,15 +13,15 @@ m("H-111 hook does not ignore SIGPIPE", "cmd/rashomon/main.go",
   "\t\thook.IgnoreBrokenPipe()\n\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tpayload, in, standDown, hid := claudeHostGuard(stdin)\n\t\tif standDown {\n\t\t\treturn nil\n\t\t}\n\n\t\tif checkPaused(args, in(), store.PhaseCall, stderr) {",
   "\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tpayload, in, standDown, hid := claudeHostGuard(stdin)\n\t\tif standDown {\n\t\t\treturn nil\n\t\t}\n\n\t\tif checkPaused(args, in(), store.PhaseCall, stderr) {",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^hook$")
-m("H-111 post does not ignore SIGPIPE", "cmd/rashomon/main.go",
-  "\t\thook.IgnoreBrokenPipe()\n\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tpayload, in, standDown, _ := claudeHostGuard(stdin)\n\t\tif standDown {\n\t\t\treturn nil\n\t\t}\n\n\t\tif checkPaused(args, in(), store.PhasePost, stderr) {",
-  "\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tpayload, in, standDown, _ := claudeHostGuard(stdin)\n\t\tif standDown {\n\t\t\treturn nil\n\t\t}\n\n\t\tif checkPaused(args, in(), store.PhasePost, stderr) {",
+m("H-111 post does not ignore SIGPIPE", "cmd/rashomon/post.go",
+  "\t\thook.IgnoreBrokenPipe()\n\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tpayload, in, standDown, id := claudeHostGuard(stdin)\n\t\tif standDown {\n\t\t\treturn nil\n\t\t}\n\n\t\tif checkPaused(args, in(), store.PhasePost, stderr) {",
+  "\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tpayload, in, standDown, id := claudeHostGuard(stdin)\n\t\tif standDown {\n\t\t\treturn nil\n\t\t}\n\n\t\tif checkPaused(args, in(), store.PhasePost, stderr) {",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^post$")
 m("H-111 probe does not ignore SIGPIPE", "cmd/rashomon/main.go",
   "\t\thook.IgnoreBrokenPipe()\n\t\tfault.Inject(fault.PointProbeStart)\n",
   "\t\tfault.Inject(fault.PointProbeStart)\n",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^probe$")
-m("H-111 recap does not ignore SIGPIPE", "cmd/rashomon/main.go",
+m("H-111 recap does not ignore SIGPIPE", "cmd/rashomon/recap_turn.go",
   "\thook.IgnoreBrokenPipe()\n\tfault.Inject(fault.PointRecapStart)\n",
   "\tfault.Inject(fault.PointRecapStart)\n",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^recap$")

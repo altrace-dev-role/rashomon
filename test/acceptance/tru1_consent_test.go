@@ -395,9 +395,9 @@ func TestTRU1_SignalDuringTheWriteIsHeld(t *testing.T) {
 			for _, d := range entries {
 				names = append(names, d.Name())
 			}
-			// record_scope is consent.json's marker: the consent write that
-			// completed wrote it beside the line (1.2q).
-			if want := []string{"consent.json", "harnesses.json", "install.json", "install.key", "record_scope"}; !reflect.DeepEqual(names, want) {
+			// record_scope and steer_disclosure are consent.json's markers: the
+			// consent write that completed wrote them beside the line (1.2q, 2.2c).
+			if want := []string{"consent.json", "harnesses.json", "install.json", "install.key", "record_scope", "steer_disclosure"}; !reflect.DeepEqual(names, want) {
 				t.Errorf("store root holds %q, want %q", names, want)
 			}
 			if recs := e.consentRecords(); len(recs) != 1 {

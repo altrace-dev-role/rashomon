@@ -2,6 +2,7 @@ package verify
 
 import (
 	"slices"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -33,7 +34,7 @@ func vocabValid(f Finding) string {
 		if g.Reason != "" && !slices.Contains(Reasons, g.Reason) {
 			return "gate reason outside its vocabulary"
 		}
-		if g.Reason != "" && reasonState[g.Reason] != g.State {
+		if g.Reason != "" && reasonState()[g.Reason] != g.State {
 			return "a gate reason that explains another state"
 		}
 		if !gateFits(f) {
@@ -86,23 +87,35 @@ func gateFits(f Finding) bool {
 // contradicts itself and is refused (P07N-13). Neither spec names the state
 // of `budget` as a gate reason; VER-22's stand-down issues no verdict, so it
 // is read as unknown, the state that asserts nothing. `ok` is green's.
-var reasonState = map[Reason]State{
-	FailedExit:            Red,
-	FailedOutput:          Red,
-	MaskedWithSuccessLine: Green,
-	MaskedNoSuccessLine:   MaskedInconclusive,
-	MaskedUnattributable:  MaskedInconclusive,
-	EmptyRun:              Absent,
-	PartialAfterRed:       Red,
-	PartialOnly:           Absent,
-	RedThenWrites:         Stale,
-	WritesAfterGreen:      Stale,
-	WriteDuringRun:        Stale,
-	NeverRunAfterWrite:    Absent,
-	BackgroundLaunch:      Backgrounded,
-	OrderUnknown:          Unknown,
-	OutcomeUnknown:        Unknown,
-	RecordingIncomplete:   Unknown,
-	Budget:                Unknown,
-	OK:                    Green,
+func reasonState() map[Reason]State {
+	reasonStateOnce.Do(func() {
+		reasonStateOnce.v = map[Reason]State{
+			FailedExit:            Red,
+			FailedOutput:          Red,
+			MaskedWithSuccessLine: Green,
+			MaskedNoSuccessLine:   MaskedInconclusive,
+			MaskedUnattributable:  MaskedInconclusive,
+			EmptyRun:              Absent,
+			PartialAfterRed:       Red,
+			PartialOnly:           Absent,
+			RedThenWrites:         Stale,
+			WritesAfterGreen:      Stale,
+			WriteDuringRun:        Stale,
+			NeverRunAfterWrite:    Absent,
+			BackgroundLaunch:      Backgrounded,
+			OrderUnknown:          Unknown,
+			OutcomeUnknown:        Unknown,
+			RecordingIncomplete:   Unknown,
+			Budget:                Unknown,
+			OK:                    Green,
+		}
+	})
+	return reasonStateOnce.v
+}
+
+// reasonStateOnce holds what reasonState returns, built on its first call and
+// never at init (RES-2).
+var reasonStateOnce struct {
+	sync.Once
+	v map[Reason]State
 }

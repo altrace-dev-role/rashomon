@@ -12,7 +12,7 @@
 //
 //	go test -run '^$' -bench . -benchtime 20x -count 3 ./... | go run ./scripts/benchgate
 //
-// -measure skips the comparison and instead prints the rows this run's
+// -measure skips the comparison and instead prints the rows the measured
 // platform would need to gate itself: a JSON array, one Benchmark object per
 // benchmark that ran, with bytes_per_op_max and allocs_per_op_max equal to
 // what was measured (test/perf/budgets.json's own convention). It reads no
@@ -20,7 +20,12 @@
 // rows name neither, and a human pastes them into
 // test/perf/budgets.json's platforms.<goos>/<goarch>.benchmarks by hand
 // (RES-36p) -- this command does not write that file itself, so a row
-// reaches it only after someone has read where it came from.
+// reaches it only after someone has read where it came from. The footer
+// names the platform the input's goos and goarch header names, so a CI
+// artifact replayed on another machine is labelled where it was measured,
+// and says when it falls back to the host's for want of a header (BG1). The
+// gate, which reads its own host's live output, refuses output whose header
+// names another platform.
 //
 //	go test -run '^$' -bench . -benchtime 20x -count 3 ./... | go run ./scripts/benchgate -measure
 package main
@@ -45,7 +50,7 @@ import (
 const tolerance = 0.10
 
 func main() {
-	measure := flag.Bool("measure", false, "print this platform's own benchmark rows instead of comparing")
+	measure := flag.Bool("measure", false, "print the measured platform's own benchmark rows instead of comparing")
 	flag.Parse()
 	if *measure {
 		os.Exit(runMeasure(os.Stdin, os.Stdout, os.Stderr, runtime.Version(), runtime.GOOS+"/"+runtime.GOARCH))
@@ -57,7 +62,9 @@ func main() {
 // run is the gate: 0 when every benchmark is within budget, 1 when one is
 // not, 2 when nothing could be compared. The toolchain and the platform are
 // both checked before any result is read, because the rows are one
-// toolchain's figures taken on one platform (CheckToolchain, CheckPlatform).
+// toolchain's figures taken on one platform (CheckToolchain, CheckPlatform);
+// output whose header names another platform than the host is refused
+// before any result is printed (BG1).
 func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion, platform string) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "benchgate:", err)
@@ -81,10 +88,14 @@ func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion, 
 	if len(benchmarks) == 0 {
 		return fail(fmt.Errorf("%s has no benchmark rows, so there is nothing to compare", budgetsPath))
 	}
-	results, err := Parse(in)
+	parsed, err := ParseAll(in)
 	if err != nil {
 		return fail(err)
 	}
+	if got := parsed.Platform(); got != "" && got != platform {
+		return fail(fmt.Errorf("benchmark output was measured on %s and this run is %s: nothing compared", got, platform))
+	}
+	results := parsed.Results
 	problems := Compare(results, benchmarks, tolerance)
 	for _, name := range sortedNames(results) {
 		r := results[name]
@@ -100,17 +111,19 @@ func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion, 
 	return 0
 }
 
-// runMeasure prints in reads as rows for goVersion/platform: 2 when nothing
-// ran or the output could not be parsed, 0 otherwise. It never reads
+// runMeasure prints in reads as rows, its footer naming the platform in's
+// header names, or platform, the host's, saying so, when it names none: 2
+// when nothing ran or the output could not be parsed, 0 otherwise. It never reads
 // budgets.json, so a row it prints carries no claim about any file; Measure
 // is the pure part, kept separate so a test can check the rows without
 // capturing stdout.
 func runMeasure(in io.Reader, stdout, stderr io.Writer, goVersion, platform string) int {
-	results, err := Parse(in)
+	parsed, err := ParseAll(in)
 	if err != nil {
 		fmt.Fprintln(stderr, "benchgate:", err)
 		return 2
 	}
+	results := parsed.Results
 	if len(results) == 0 {
 		fmt.Fprintln(stderr, "benchgate: -measure read no benchmark output, so there is nothing to measure")
 		return 2
@@ -121,8 +134,13 @@ func runMeasure(in io.Reader, stdout, stderr io.Writer, goVersion, platform stri
 		fmt.Fprintln(stderr, "benchgate:", err)
 		return 2
 	}
-	fmt.Fprintf(stderr, "benchgate: measured %d benchmarks on %s under %s; paste the array above into "+
-		"test/perf/budgets.json's platforms.%s.benchmarks\n", len(results), platform, goVersion, platform)
+	where, note := parsed.Platform(), ""
+	if where == "" {
+		where, note = platform, " (host platform: the input carried no goos/goarch header)"
+	}
+	fmt.Fprintf(stderr, "benchgate: measured %d benchmarks on %s%s under %s (the toolchain this benchgate was built "+
+		"with; the input does not say); paste the array above into test/perf/budgets.json's platforms.%s.benchmarks\n",
+		len(results), where, note, goVersion, where)
 	return 0
 }
 
@@ -158,7 +176,7 @@ type Result struct {
 // between ns/op and B/op and are skipped. The optional -N suffix is Go's
 // GOMAXPROCS marker; a benchmark whose own name ended in -digits would lose
 // them here under GOMAXPROCS=1 and read "budgeted but did not run", which
-// fails closed; no benchmark is named that way. It is compiled per Parse,
+// fails closed; no benchmark is named that way. It is compiled per ParseAll,
 // not at package scope (RES-2's rule, kept here too).
 const benchLinePattern = `^(Benchmark\S+?)(?:-\d+)?\s+\d+\s+[\d.]+ ns/op(?:\s+[\d.]+ [A-Za-z0-9/_-]+)*?\s+(\d+) B/op\s+(\d+) allocs/op`
 
@@ -169,21 +187,53 @@ const benchLinePattern = `^(Benchmark\S+?)(?:-\d+)?\s+\d+\s+[\d.]+ ns/op(?:\s+[\
 // for such a line.
 const maxOutputLine = 1 << 20
 
-// Parse reads benchmark output and keeps, per benchmark, the one run with
+// Parsed is one benchmark output read whole: its results and the platform
+// its header names. go test prints "goos: X" and "goarch: Y" before each
+// package's benchmarks (BG1); the output carries no toolchain line.
+type Parsed struct {
+	Results      map[string]Result
+	GOOS, GOARCH string
+}
+
+// Platform is "goos/goarch" when the output named both, else "": a half
+// header is no header (sample, a FuzzParse seed, carries goos alone).
+func (p *Parsed) Platform() string {
+	if p.GOOS == "" || p.GOARCH == "" {
+		return ""
+	}
+	return p.GOOS + "/" + p.GOARCH
+}
+
+// Parse is ParseAll's results under Parse's contract before BG1: nil with a
+// line it refuses, what it read beside a scanner error.
+func Parse(r io.Reader) (map[string]Result, error) {
+	p, err := ParseAll(r)
+	if p == nil {
+		return nil, err
+	}
+	return p.Results, err
+}
+
+// ParseAll reads benchmark output and keeps, per benchmark, the one run with
 // the lowest B/op (ties broken by allocs/op) across repeated runs -- the
 // whole run, not each field's own minimum independently, which could report
 // a B/op from one run beside an allocs/op from another and hide a
 // regression that showed up in only one or two of the runs. A line that
 // starts with "Benchmark" and carries ns/op but no B/op is an error: a
 // benchmark without ReportAllocs cannot be gated and must not read as
-// passing.
-func Parse(r io.Reader) (map[string]Result, error) {
+// passing. It reads the platform from the header lines too, and output
+// naming two values for one key is refused, never averaged.
+func ParseAll(r io.Reader) (*Parsed, error) {
 	benchLine := regexp.MustCompile(benchLinePattern)
 	best := map[string]Result{}
+	p := &Parsed{Results: best}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), maxOutputLine)
 	for sc.Scan() {
 		ln := sc.Text()
+		if err := p.header(ln); err != nil {
+			return nil, err
+		}
 		if !strings.HasPrefix(ln, "Benchmark") || !strings.Contains(ln, "ns/op") {
 			continue
 		}
@@ -205,7 +255,28 @@ func Parse(r io.Reader) (map[string]Result, error) {
 			best[name] = run
 		}
 	}
-	return best, sc.Err()
+	return p, sc.Err()
+}
+
+// header takes the platform from a header line ("goos: linux", "goarch:
+// amd64"), every package's alike; a second value for a key is an error.
+func (p *Parsed) header(ln string) error {
+	for _, h := range [...]struct {
+		key   string
+		field *string
+	}{{"goos", &p.GOOS}, {"goarch", &p.GOARCH}} {
+		v, ok := strings.CutPrefix(ln, h.key+": ")
+		if !ok {
+			continue
+		}
+		switch v = strings.TrimSpace(v); {
+		case *h.field == "":
+			*h.field = v
+		case *h.field != v:
+			return fmt.Errorf("mixed platforms in one benchmark output: %s %s then %s", h.key, *h.field, v)
+		}
+	}
+	return nil
 }
 
 // betterRun reports whether a is the run Parse should keep over b: the

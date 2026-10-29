@@ -60,8 +60,16 @@ var testCommands = [][]string{
 // is matched by an entry ending in *, a prefix, or in #, a prefix and then
 // digits only, with none required); it changes neither the
 // directory nor the file the runner reads; and it changes neither whether the
-// run happens nor how its result reaches the exit status. No entry may be on
-// notARun or notARunAny (TestLeadingFlagsAreNotRefusals): a listed flag is
+// run happens nor how its result reaches the exit status -- but for an entry
+// ending in !, a flag that hides the result: the run happens and ends 0
+// whatever the tests or the build did (`make -i`, `mvn --fail-never`,
+// `-Dmaven.test.failure.ignore`, and `npm --if-present`, which ends 0 without
+// a script to run). A hiding flag is passed over before the row's words and
+// read after them too (hidingFlag); the runner is still the row's, and the
+// line records it as run with its status hidden: masked test or build with
+// the runner's kind and digest, as `make test | tail` is, and never class
+// test (runsTests). No entry may be on notARun, notARunAny or
+// mavenSkipProperties (TestLeadingFlagsAreNotRefusals): a listed flag is
 // passed over, not read by refusesRun, so a listed refusal would make a line
 // that runs no tests read as one that does. An unlisted token stops the
 // search, and the line reads as it would with nothing listed: an
@@ -93,8 +101,15 @@ var testCommands = [][]string{
 //     workspace read (bazel's command-line reference, startup options).
 //     --bazelrc is not listed: an rc file holds options of every kind, the
 //     ones that decide a test's verdict among them.
+//   - make -i!, --ignore-errors!: every recipe's error is ignored (GNU
+//     make's --help). mvn -fn!, --fail-never!: the build never fails
+//     (Maven's CLIManager). mvn -Dmaven.test.failure.ignore!: failed tests
+//     do not fail the build (Surefire's testFailureIgnore), true with no
+//     value or one equal to true ignoring case, as Maven's Boolean.valueOf
+//     reads it (mavenTrue). npm --if-present!: a missing script ends 0
+//     (npm's run-script reference).
 var leadingFlags = map[string][]string{
-	"make":    {"-j#"},
+	"make":    {"-j#", "-i!", "--ignore-errors!"},
 	"mvn":     mavenLeadingFlags,
 	"mvnw":    mavenLeadingFlags,
 	"cargo":   {"+*"},
@@ -103,18 +118,21 @@ var leadingFlags = map[string][]string{
 	"python":  pythonLeadingFlags,
 	"python3": pythonLeadingFlags,
 	"npx":     {"--yes", "-y"},
+	"npm":     {"--if-present!"},
 	"bazel":   {"--output_base=*"},
 }
 
 var (
-	mavenLeadingFlags  = []string{"-B", "-q"}
+	mavenLeadingFlags  = []string{"-B", "-q", "-fn!", "--fail-never!", "-Dmaven.test.failure.ignore!"}
 	gradleLeadingFlags = []string{"--no-daemon"}
 	pythonLeadingFlags = []string{"-u"}
 )
 
 // runnerOn reports whether the command whose program, past runnerPrefix, is
 // the token at i, named prog, and which ends before toks[end], is a row of
-// list -- testCommands, or buildCommands -- and is not refused by notARun:
+// list -- testCommands, or buildCommands -- and is not refused by notARun,
+// and hides, whether a hiding flag of prog's stands before the row's words
+// or after them:
 // the comparison runsTests makes, over one command's words rather than the
 // whole line's, so that a `-v` given to the grep after a pipe is not read as
 // make's. The verb class and the masked parser both read a runner through
@@ -125,25 +143,34 @@ var (
 // `make test`'s row. Any other token stops the search, and the row is not
 // matched. A one-word row has no words to look for, so it is matched at the
 // token after the program, with nothing passed over.
-func runnerOn(toks []token, i int, prog string, end int, list [][]string) bool {
+func runnerOn(toks []token, i int, prog string, end int, list [][]string) (on, hides bool) {
 next:
 	for _, c := range list {
 		if c[0] != prog {
 			continue
 		}
 		from := i + 1
+		hides = false
 		for !rowAt(toks, from, end, c) {
 			if from >= end || !leadingFlag(toks, from, prog) {
 				continue next
 			}
+			hides = hides || hidingFlag(toks[from].text, prog)
 			from++
 			if from < end && countFollows(toks, from-1, prog) {
 				from++
 			}
 		}
-		return !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])
+		args := toks[from+len(c)-1 : end]
+		if refusesRun(refusalsOf(c), toks[:i], args) {
+			return false, false
+		}
+		for _, t := range args {
+			hides = hides || hidingFlag(t.text, prog)
+		}
+		return true, hides
 	}
-	return false
+	return false, false
 }
 
 // rowAt reports whether row c's words after its program are the tokens from
@@ -173,7 +200,11 @@ func leadingFlag(toks []token, k int, prog string) bool {
 	}
 	t := toks[k]
 	for _, f := range leadingFlags[prog] {
-		if p, ok := strings.CutSuffix(f, "*"); ok {
+		if name, ok := strings.CutSuffix(f, "!"); ok {
+			if hidingWord(t.text, name) {
+				return true
+			}
+		} else if p, ok := strings.CutSuffix(f, "*"); ok {
 			if strings.HasPrefix(t.text, p) {
 				return true
 			}
@@ -186,6 +217,29 @@ func leadingFlag(toks []token, k int, prog string) bool {
 		}
 	}
 	return false
+}
+
+// hidingFlag reports word as one of prog's hiding flags (leadingFlags entries
+// ending in !), compared as refusesRun compares, quoted or not: the shell
+// passes "-i" as -i, and reading it as hiding is the under-claim.
+func hidingFlag(word, prog string) bool {
+	for _, f := range leadingFlags[prog] {
+		if name, ok := strings.CutSuffix(f, "!"); ok && hidingWord(word, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// hidingWord reports word as the hiding flag name: the flag alone, or
+// `flag=value` with a value onList does not read as false; a Maven property
+// (-D) only as Maven reads one true (mavenTrue), so `=1` runs the tests as
+// `=false` does.
+func hidingWord(word, name string) bool {
+	if strings.HasPrefix(name, "-D") {
+		return mavenTrue(word, name)
+	}
+	return onEntry(word, name)
 }
 
 // literalWord reports a token that is one literal word of the command: not a

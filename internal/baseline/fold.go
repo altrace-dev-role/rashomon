@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"slices"
 	"sort"
 	"time"
 
@@ -162,7 +163,7 @@ func foldOrigin(f File, existed bool, sessionID string, sessionStart time.Time, 
 	// Novel is computed from the file AFTER folding, so it is exactly "the
 	// hosts this session owns" -- stable across renders by construction.
 	for h := range named {
-		if e := out.Hosts[h]; !ubiquitous[h] && e.FirstSeenSession == sessionID && !res.Established {
+		if e := out.Hosts[h]; !slices.Contains(ubiquitous, h) && e.FirstSeenSession == sessionID && !res.Established {
 			res.Novel = append(res.Novel, h)
 		}
 	}

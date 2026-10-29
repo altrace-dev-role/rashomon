@@ -1,8 +1,13 @@
 package hook
 
 import (
+	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
@@ -11,9 +16,10 @@ import (
 
 // RunProbe handles a SessionStart or SessionEnd invocation.
 //
-// At start it marks the session as probed, sets the record-scope marker
-// from consent.json (syncRecordScope: the one read of consent.json by any
-// hook, at SessionStart only) and records the resolved config state. At end it records it again, this time having read the run's records
+// At start it marks the session as probed, sets the record-scope and
+// steer-disclosure markers from consent.json (syncRecordScope and
+// syncSteerDisclosure: the only reads of consent.json by any hook, at
+// SessionStart only) and records the resolved config state. At end it records it again, this time having read the run's records
 // to see whether every declaration was closed -- so that a handler killed
 // mid-flight is written into the run's own coverage while the run is still
 // live, rather than inferred later by a report that has to guess.
@@ -52,6 +58,7 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	sessionID := store.UnattributedSession
 	reason := ""
 	cwd := ""
+	transcriptPath := ""
 
 	err := safe.Guard(func() error {
 		if payload == nil {
@@ -76,14 +83,21 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 			if err := st.MarkProbe(sessionID, now()); err != nil {
 				return err
 			}
-			// The record scope the session's calls apply, set from
-			// consent.json once here so that no call has to read it
-			// (syncRecordScope).
+			// The record scope the session's calls apply, and the steer
+			// disclosure they check consent against, set from consent.json
+			// once here so that no call has to read it (syncRecordScope,
+			// syncSteerDisclosure). Each runs whatever the other did; only
+			// the record scope's failure names a reason.
 			if !syncRecordScope(st.Root()) {
 				reason = store.ReasonRecordScopeUnresolved
 			}
+			syncSteerDisclosure(st.Root())
 			return nil
 		case store.PhaseEnd:
+			// Read here alone, and a path that is not a string is no copy:
+			// sessionPayload's fields fail the whole payload on a wrong type,
+			// and a probe that never read this field must not start failing.
+			transcriptPath, _ = payload.Str(hookio.TranscriptPath)
 			run, err := st.ReadRun(sessionID)
 			if err != nil {
 				return err
@@ -108,6 +122,24 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 	})
 
+	// The transcript copy (card 4.1, D111 as amended) runs after the end
+	// record, so that the record neither waits on it nor is lost to it, in a
+	// barrier of its own. A refused payload (hookio.TooLargeError) never
+	// reaches the PhaseEnd case, so it has no path and no copy. Of the copy's
+	// errors only the over-cap refusal has a reader: it is returned beside
+	// eviction's, and cmdProbe prints each as a line of its own (card 4.1b).
+	var overCap error
+	if phase == store.PhaseEnd && transcriptPath != "" && bodiesConsented(st.Root()) {
+		err := safe.Guard(func() error {
+			key := baseline.Key(cwd)
+			_, err := st.CopyBody(sessionID, transcriptPath, key, strings.TrimSuffix(baseline.FileName(key), baseline.FileExt), now())
+			return err
+		})
+		if errors.Is(err, store.ErrBodyOverCap) {
+			overCap = err
+		}
+	}
+
 	// Eviction runs at session boundaries, off the per-call path. The session
 	// that is starting or ending is never a candidate. Its error is not this
 	// session's, so it goes to no coverage record; Evict writes each gap
@@ -119,8 +151,17 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 	// disagree with what Claude Code hands the hooks (hld-7).
 	capSetting := store.ResolveCap()
 	_ = st.RecordResolvedCap(capSetting)
-	return safe.Guard(func() error {
+	evictErr := safe.Guard(func() error {
 		_, err := st.Evict(capSetting.Bytes, sessionID, now())
 		return err
 	})
+	if evictErr != nil {
+		evictErr = fmt.Errorf("%w: %w", ErrEvictIncomplete, evictErr)
+	}
+	return errors.Join(overCap, evictErr)
 }
+
+// ErrEvictIncomplete marks the probe's error as eviction's, which cmdProbe
+// prints as its own line; store.ErrBodyOverCap, joined beside it, is the
+// transcript copy's (card 4.1b).
+var ErrEvictIncomplete = errors.New("store eviction incomplete")

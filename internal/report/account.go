@@ -177,6 +177,11 @@ var failureVocabulary = []string{
 	"returned 1", "did not succeed", "unsuccessful", "aborted", "rejected",
 }
 
+// FailureVocabulary is a copy of the list checked against the final message.
+// verify's disclosure superset pin reads it: every word this package reads as
+// acknowledging a failure loosens a claim in verify's comparator (TestVER60b).
+func FailureVocabulary() []string { return slices.Clone(failureVocabulary) }
+
 // buildAccount is the agent's summary for a run: the final assistant message
 // the read step read from the first transcript, in declaration order, that
 // had one.

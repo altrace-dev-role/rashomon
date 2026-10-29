@@ -49,11 +49,17 @@ func (w turnWindow) contains(ms int64) bool {
 // no separate marker for "the turn in progress", and none is needed, since a
 // turn only starts by a declaration naming a prompt_id nothing before it
 // carried.
+//
+// Two passes (card 2.3c): the first finds the turn from each prompt's first
+// seq and declaration count, copying nothing; the second copies that turn's
+// declarations once, into a slice of their number. A declaration is 592
+// bytes, and copying every prompt's into slices that grow cost 7.7 MB at
+// 3,488 calls, and one growth step of it an 8 percent budget move (D104).
 func selectTurn(run *store.Run, promptID string) turnWindow {
 	type group struct {
 		minSeq  int64
 		startMS int64
-		decls   []store.Declaration
+		count   int
 	}
 	byPrompt := map[string]*group{}
 	var order []string
@@ -71,7 +77,7 @@ func selectTurn(run *store.Run, promptID string) turnWindow {
 		if d.Seq < g.minSeq {
 			g.minSeq, g.startMS = d.Seq, d.RecordedAtMS
 		}
-		g.decls = append(g.decls, d)
+		g.count++
 	}
 	sort.Slice(order, func(i, j int) bool { return byPrompt[order[i]].minSeq < byPrompt[order[j]].minSeq })
 
@@ -99,10 +105,16 @@ func selectTurn(run *store.Run, promptID string) turnWindow {
 		break
 	}
 
-	sort.SliceStable(g.decls, func(i, j int) bool { return g.decls[i].Seq < g.decls[j].Seq })
+	decls := make([]store.Declaration, 0, g.count)
+	for _, d := range run.Declarations {
+		if d.PromptID != nil && *d.PromptID == promptID {
+			decls = append(decls, d)
+		}
+	}
+	sort.SliceStable(decls, func(i, j int) bool { return decls[i].Seq < decls[j].Seq })
 	return turnWindow{
 		promptID:     promptID,
-		declarations: g.decls,
+		declarations: decls,
 		known:        true,
 		startMS:      g.startMS,
 		endMS:        endMS,

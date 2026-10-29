@@ -10,7 +10,7 @@ m("VER-1.2q the session start never sets the marker", "internal/hook/probe.go",
 m("VER-1.2q an unresolved record scope names no reason", "internal/hook/probe.go",
   "\t\t\t\treason = store.ReasonRecordScopeUnresolved\n", "\t\t\t\t_ = store.ReasonRecordScopeUnresolved\n",
   "TestRS11c_")
-m("VER-1.2q the binary hands the probe no consent reader", "cmd/rashomon/main.go",
+m("VER-1.2q the binary hands the probe no consent reader", "cmd/rashomon/consent.go",
   "\thook.ConsentRecordScope = consent.RecordScope\n", "",
   "TestRS11_")
 m("VER-1.2q an unreadable consent.json keeps the marker", "internal/hook/recordscope.go",

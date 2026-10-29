@@ -47,8 +47,12 @@ func TestRubricDOCS9_AZeroStoreWritesNothing(t *testing.T) {
 // TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines backs the Store's doc: an
 // undeferred Store holds no state its appends change, and each append takes
 // its file's lock through a descriptor of its own, so goroutines sharing one
-// Store get a total order with every seq handed out once. The central race
-// run (-race) is what proves the "no data race" half.
+// Store get a total order with every seq handed out once. An append that
+// gives up on the lock is busy, not broken (ErrLockTimeout): it is counted,
+// never fatal, and it took no seq, so the appends that landed hold exactly
+// the seqs 1 to their count. How long a wait may take is RES-30's gate, not
+// this test's (card DOCS9r). The central race run (-race) is what proves the
+// "no data race" half.
 func TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -56,20 +60,28 @@ func TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines(t *testing.T) {
 	}
 	const writers, each = 8, 10
 	errs := make(chan error, writers*each)
+	// The writers start together, so their first appends contend at once.
+	start := make(chan struct{})
 	var done []<-chan struct{}
 	for w := 0; w < writers; w++ {
 		done = append(done, safe.Go(func() {
+			<-start
 			for i := 0; i < each; i++ {
 				errs <- st.AppendDeclaration(testDecl("sess-shared", "toolu"))
 			}
 		}, func(err error) { errs <- err }))
 	}
+	close(start)
 	for _, d := range done {
 		<-d
 	}
 	close(errs)
+	gaveUp := 0
 	for err := range errs {
-		if err != nil {
+		switch {
+		case errors.Is(err, ErrLockTimeout):
+			gaveUp++
+		case err != nil:
 			t.Fatal(err)
 		}
 	}
@@ -77,15 +89,20 @@ func TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	landed := len(run.Declarations)
+	if landed+gaveUp != writers*each || landed < 2 {
+		t.Fatalf("%d appends landed and %d gave up, of %d", landed, gaveUp, writers*each)
+	}
+	if gaveUp > 0 {
+		t.Logf("%d of %d appends gave up on the lock", gaveUp, writers*each)
+	}
+	// Distinct and within 1 to landed, over landed seqs: exactly 1 to landed.
 	seen := map[int64]bool{}
 	for _, d := range run.Declarations {
-		if seen[d.Seq] || d.Seq < 1 || d.Seq > writers*each {
-			t.Errorf("seq %d handed out twice or out of range", d.Seq)
+		if seen[d.Seq] || d.Seq < 1 || d.Seq > int64(landed) {
+			t.Errorf("seq %d handed out twice or outside 1 to %d", d.Seq, landed)
 		}
 		seen[d.Seq] = true
-	}
-	if len(seen) != writers*each {
-		t.Errorf("%d distinct seqs for %d appends", len(seen), writers*each)
 	}
 }
 

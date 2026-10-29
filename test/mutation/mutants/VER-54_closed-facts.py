@@ -113,7 +113,7 @@ m("VER-54 regression-location fires with no red run", "internal/verify/tosteer_v
   " && g.LastRunSeq != nil && *g.LastGreenSeq < *g.LastRunSeq\n",
   " && (g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)\n", "TestVER54l_")
 m("VER-54 a gate reason may explain another state", "internal/verify/tosteer_vocab.go",
-  "\t\tif g.Reason != \"\" && reasonState[g.Reason] != g.State {\n", "\t\tif false {\n", "TestVER54l_")
+  "\t\tif g.Reason != \"\" && reasonState()[g.Reason] != g.State {\n", "\t\tif false {\n", "TestVER54l_")
 m("VER-54 writes_after_green explains a red gate", "internal/verify/tosteer_vocab.go",
   "\tWritesAfterGreen:      Stale,\n", "\tWritesAfterGreen:      Red,\n", "TestVER54m_")
 m("VER-54 ok explains a red gate", "internal/verify/tosteer_vocab.go",

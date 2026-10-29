@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -181,6 +182,13 @@ var ErrDecisionRequired = errors.New("steer: PreToolUse output without a decisio
 // UTF-8, which encoding/json would otherwise print as U+FFFD.
 var ErrInvalidUTF8 = errors.New("steer: output string is not valid UTF-8")
 
+// ErrUnverifiedChannel is returned by MarshalFor, and so by Marshal, for
+// AdditionalContext or a Decision on a row whose channel no live probe has
+// verified for the Client (tech spec :2019; G3). It is a row the router
+// ships in shadow with suppressed_by unverified_channel, not a malformed
+// Output, so it stays distinct from the wrong-event errors.
+var ErrUnverifiedChannel = errors.New("steer: model-visible output on a channel not verified for this client")
+
 // eventKeys is one event's row of Marshal's key table: which optional keys
 // the event may print. systemMessage is allowed on every event (on
 // PreToolUse only beside a decision); hookEventName goes with any
@@ -194,23 +202,41 @@ type eventKeys struct {
 	// stopContinue: StopContinue may be set; it is the event's only source
 	// of additionalContext.
 	stopContinue bool
+	// exempt: the row's model-visible field needs no probed version (tech
+	// spec :2019: UserPromptSubmit's mirror is the shipped catch-up). Every
+	// other context or decision row is gated by mirrorVerifiedOn.
+	exempt bool
 }
 
 // outputKeys is Marshal's per-event table (tech 4.2.3: "emits only
 // per-event keys"; archive 40.3.2's "Output STEER may emit" column). The
-// per-call events and PostModelSwitch print a systemMessage only (archive
-// 40.3.5: "Per-call events (PostToolUse, PostToolUseFailure) never produce
-// `AdditionalContext`"). An event absent from it is unknown.
-var outputKeys = map[string]eventKeys{
-	string(EventPreToolUse):         {decision: true},
-	string(EventPostToolUse):        {},
-	string(EventPostToolUseFailure): {},
-	string(EventPostToolBatch):      {context: true},
-	string(EventUserPromptSubmit):   {context: true},
-	string(EventSessionStart):       {context: true},
-	string(EventSubagentStart):      {context: true},
-	string(EventStop):               {stopContinue: true},
-	string(EventPostModelSwitch):    {},
+// per-call events print AdditionalContext only where their channel is
+// verified (tech spec :2019, which supersedes archive 40.3.5's "never"
+// there): the row allows the key, and mirrorVerifiedOn decides whether it
+// prints, so a per-call event never prints it ungated. PostModelSwitch
+// prints a systemMessage only. An event absent from it is unknown.
+func outputKeys() map[string]eventKeys {
+	outputKeysOnce.Do(func() {
+		outputKeysOnce.v = map[string]eventKeys{
+			string(EventPreToolUse):         {decision: true},
+			string(EventPostToolUse):        {context: true},
+			string(EventPostToolUseFailure): {context: true},
+			string(EventPostToolBatch):      {context: true},
+			string(EventUserPromptSubmit):   {context: true, exempt: true},
+			string(EventSessionStart):       {context: true},
+			string(EventSubagentStart):      {context: true},
+			string(EventStop):               {stopContinue: true},
+			string(EventPostModelSwitch):    {},
+		}
+	})
+	return outputKeysOnce.v
+}
+
+// outputKeysOnce holds what outputKeys returns, built on its first call and
+// never at init (RES-2).
+var outputKeysOnce struct {
+	sync.Once
+	v map[string]eventKeys
 }
 
 // Marshal renders Output for event, following tech 4.2.3's per-event key
@@ -236,11 +262,32 @@ var outputKeys = map[string]eventKeys{
 // JSON object a caller would still have to special-case. Likewise,
 // hookSpecificOutput itself is omitted (not emitted empty) when none of
 // AdditionalContext, Decision or StopContinue is set, even if
-// SystemMessage is. A string that is not valid UTF-8 is refused. Marshal
-// does not apply output rule G2's 2,048-byte cap or G3's mirror check:
-// those are the output gate's (tech 7.2.5).
+// SystemMessage is. A string that is not valid UTF-8 is refused.
+//
+// Marshal is MarshalFor under the zero Client, an unknown version: it
+// refuses AdditionalContext and a Decision on every gated row with
+// ErrUnverifiedChannel, so no caller of it reaches a channel no probe
+// verified. It does not apply output rule G2's 2,048-byte cap or G3's
+// mirror-text check: those are the output gate's (tech 7.2.5).
 func (o Output) Marshal(event string) ([]byte, error) {
-	keys, ok := outputKeys[event]
+	return o.MarshalFor(event, Client{})
+}
+
+// MarshalFor is Marshal for the client c: AdditionalContext on a context
+// row, or a Decision on a decision row, prints only where the row is exempt
+// or mirrorVerifiedOn lists c's version for it with the mirror verified and
+// on the main agent; otherwise the Output is refused whole with
+// ErrUnverifiedChannel, never printed with the field dropped. A
+// systemMessage is never gated. The refusal comes after every check of the
+// Output's own shape, so a malformed Output reports its defect first.
+func (o Output) MarshalFor(event string, c Client) ([]byte, error) {
+	return o.marshalFor(event, c, mirrorVerifiedOn())
+}
+
+// marshalFor is MarshalFor under table, the seam that lets a test reach a
+// gated row's printing path.
+func (o Output) marshalFor(event string, c Client, table map[string][]string) ([]byte, error) {
+	keys, ok := outputKeys()[event]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownEvent, event)
 	}
@@ -255,6 +302,12 @@ func (o Output) Marshal(event string) ([]byte, error) {
 	}
 	if err := o.checkUTF8(); err != nil {
 		return nil, err
+	}
+	if o.AdditionalContext != "" && !verified(keys, event, c, table) {
+		return nil, fmt.Errorf("%w: additionalContext on %q", ErrUnverifiedChannel, event)
+	}
+	if o.Decision != nil && !verified(keys, event, c, table) {
+		return nil, fmt.Errorf("%w: a decision on %q", ErrUnverifiedChannel, event)
 	}
 
 	top := make(map[string]any, 2)

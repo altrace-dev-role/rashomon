@@ -16,6 +16,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 func jsonTags(t reflect.Type) []string {
@@ -29,7 +30,7 @@ func jsonTags(t reflect.Type) []string {
 // The inventory's keys, a literal copy of 7.2.2.
 func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 	cases := map[reflect.Type][]string{
-		reflect.TypeOf(Inventory{}):     {"version", "scope_version", "entries", "files", "settings_writes", "outputs", "never_emit", "never_write", "switches", "env_vars", "screen_paragraphs"},
+		reflect.TypeOf(Inventory{}):     {"version", "scope_version", "entries", "files", "settings_writes", "outputs", "never_emit", "never_write", "switches", "env_vars", "screen_paragraphs", "units"},
 		reflect.TypeOf(HookEntry{}):     {"event", "matcher", "subcommand", "timeout_s", "why", "prints", "owner"},
 		reflect.TypeOf(OutputRule{}):    {"event", "field", "audience", "mirror_verified", "mirror_source", "template_ids"},
 		reflect.TypeOf(FileRule{}):      {"base", "pattern", "mode", "purpose", "holds", "never_holds", "removed_by", "owner"},
@@ -38,6 +39,7 @@ func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 		reflect.TypeOf(Switch{}):        {"name", "default", "command", "stored", "ratchet"},
 		reflect.TypeOf(EnvVar{}):        {"name", "effect", "test_only"},
 		reflect.TypeOf(Paragraph{}):     {"owner", "text", "cite"},
+		reflect.TypeOf(UnitParagraph{}): {"owner", "unit", "text", "cite"},
 	}
 	for typ, want := range cases {
 		if got := jsonTags(typ); !reflect.DeepEqual(got, want) {
@@ -152,13 +154,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.WriteRecordScopeMarker(root, store.RecordScopeV5); err != nil {
 		t.Fatalf("store.WriteRecordScopeMarker: %v", err)
 	}
+	if err := store.WriteSteerDisclosureMarker(root, 2); err != nil {
+		t.Fatalf("store.WriteSteerDisclosureMarker: %v", err)
+	}
 	if err := store.SetRootInWorkTree(root, root); err != nil {
 		t.Fatalf("store.SetRootInWorkTree: %v", err)
 	}
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		"." + store.FileRecordScope + ".tmp-*", recap.StateTempPrefix + "*"} {
+		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -178,6 +183,15 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	if res := baseline.Update(root, "tru23-project", sessionID, time.Now(), []string{"example.org"}); res.Err != nil {
 		t.Fatalf("baseline.Update: %v", res.Err)
+	}
+	index := verify.IndexPath(root, "/tru23/project")
+	if _, err := verify.WriteIndex(index, &verify.ProjectIndex{ProjectKey: "/tru23/project"}); err != nil {
+		t.Fatalf("verify.WriteIndex: %v", err)
+	}
+	if tmp, err := os.CreateTemp(filepath.Dir(index), "."+filepath.Base(index)+".tmp-*"); err != nil {
+		t.Fatal(err)
+	} else if err := tmp.Close(); err != nil {
+		t.Fatal(err)
 	}
 
 	inv, err := Default()
@@ -232,13 +246,14 @@ func matchesAFileRule(rel string, rules []FileRule) bool {
 
 // writeCallSite matches a line that can create or overwrite a file: the four
 // stdlib calls that put new bytes on disk, and store's own writeSmall and
-// replaceFile, which wrap them. It deliberately does not match the line defining
+// ReplaceFile, which wrap them (ReplaceFile also where another package calls
+// it, as store.ReplaceFile). It deliberately does not match the line defining
 // writeSmall itself (TestTRU23_WriteCallSitesArePinned excludes lines that
 // start the way a top-level function declaration does), so the primitive's
 // one real OpenFile call is counted once, at writeSmall's definition, and
 // every caller that reaches a NEW path through it is counted again at the
 // call site -- which is what lets a new call site change the count at all.
-var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|replaceFile\(`)
+var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|ReplaceFile\(`)
 
 // countWriteCallSites counts writeCallSite matches in dir's non-test .go
 // files, one count per line so a multi-call line is not undercounted.
@@ -281,7 +296,7 @@ func countWriteCallSites(t *testing.T, dir string) int {
 //
 // It is deliberately a blunt instrument, not a semantic one: it counts
 // textual call sites of the four file-creating stdlib functions plus
-// writeSmall and replaceFile across store's, recap's, baseline's and consent's own non-test source, and
+// writeSmall and ReplaceFile across store's, recap's, baseline's, consent's and verify's own non-test source, and
 // fails the moment that count moves, in either direction. It cannot tell a
 // new call site that writes an already-covered path from one that writes an
 // uncovered one -- that distinction needs a human, which is the point. A
@@ -318,7 +333,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-27 (1.2q) to 22: replaceFile joined the pattern, so
 		// install_record.go's one call to it counts, and scope.go's
 		// WriteRecordScopeMarker (replaceFile, record_scope) is the new site.
-		{"store", 22},
+		// Moved 2026-10-27 (2.2c) to 23: WriteSteerDisclosureMarker's
+		// ReplaceFile, steer_disclosure, the second view of consent.json.
+		// Moved 2026-10-28 (4.1) to 25: bodies.go's copyBody CreateTemp
+		// (bodies/<project>/.body.tmp-*, renamed over <session>.jsonl) and
+		// WriteBodies' ReplaceFile (bodies.json, the transcript-copy switch).
+		{"store", 25},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -328,6 +348,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Pinned 2026-10: internal/consent/record.go's Append, one
 		// os.OpenFile, and replace, one os.CreateTemp.
 		{"consent", 2},
+		// Pinned 2026-10-27 (1.6): internal/verify/index.go's WriteIndex, one
+		// store.ReplaceFile, verify/projects/<name>.json, the project index
+		// the Stop hook's recap reads and writes since 2.4 (indexFiles in the
+		// inventory, verify's tree in purge's plan). store's 22 was unchanged
+		// by the export, since the pattern follows replaceFile to ReplaceFile.
+		{"verify", 1},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

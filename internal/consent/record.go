@@ -8,14 +8,16 @@
 // its cap. Three readers answer three questions from the same lines, and a
 // missing file, or one with no line that parses, is no consent at all three:
 //
-//   - Current: may a note reach the agent (STEER)?
+//   - Current: may a note reach the agent (STEER)? It is SteerDisclosure, the
+//     highest steer disclosure on file, against this build's version.
 //   - RecordScope: which record shape may RECORD write?
 //   - ScopeCovered: does the consent on file cover this build's capability
 //     classes, so watch can say "already watching" instead of asking again?
 //
 // The hook reads none of them on a tool call: it reads the record-scope
-// marker (store.FileRecordScope), which every Append keeps equal to
-// RecordScope's answer.
+// marker (store.FileRecordScope) and the steer-disclosure marker
+// (store.FileSteerDisclosure), which every Append keeps equal to RecordScope's
+// and SteerDisclosure's answers.
 package consent
 
 import (
@@ -29,6 +31,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -114,13 +117,22 @@ type Record struct {
 	InvocationID         string `json:"invocation_id"`
 	// At is when the record was appended, in Unix milliseconds.
 	At int64 `json:"at"`
+	// Unit is the consent unit a unit record answers, one of Units, and ""
+	// on every other record; UnitOn is the answer (card 4.2). A unit record
+	// claims nothing the install readers read: its scope_version,
+	// record_scope and steer_disclosure are zero, or it does not parse, so a
+	// unit answer never stands in for the install screen.
+	Unit   string `json:"unit"`
+	UnitOn bool   `json:"unit_on"`
 }
 
 // parses reports whether a decoded line is a record a reader may count: the
-// version this build reads and a Via from the closed set. Anything else is
-// skipped like a torn line, never read as consent.
+// version this build reads and a Via from the closed set, and for a unit
+// record a unit of Units claiming no install scope (card 4.2). Anything else
+// is skipped like a torn line, never read as consent.
 func (r Record) parses() bool {
-	return r.V == RecordVersion && r.Via.Valid()
+	return r.V == RecordVersion && r.Via.Valid() &&
+		(r.Unit == "" || slices.Contains(Units, r.Unit) && r.ScopeVersion == 0 && r.RecordScope == "" && r.SteerDisclosure == 0)
 }
 
 // Path is consent.json under a store root.
@@ -174,14 +186,25 @@ func parse(data []byte) []Record {
 
 // Current is STEER's reader: whether the highest steer_disclosure on file is
 // at least this build's steer.DisclosureVersion. An unreadable file is no
-// consent, and the error says why.
+// consent, and the error says why. It is SteerDisclosure compared, so the
+// steer-disclosure marker, written from SteerDisclosure, answers the same.
 func Current(root string) (bool, error) {
+	n, err := SteerDisclosure(root)
+	return n >= steer.DisclosureVersion, err
+}
+
+// SteerDisclosure is the highest steer_disclosure any record on file
+// carries, the fact the steer-disclosure marker holds: 0 with no records,
+// and 0 with the error for a file that cannot be read. A negative highest,
+// which no build writes and a hand edit could, reads 0: no consent either
+// way, and a value the marker can hold.
+func SteerDisclosure(root string) (int, error) {
 	recs, err := Read(root)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	best, ok := maxBy(recs, func(r Record) int { return r.SteerDisclosure })
-	return ok && best >= steer.DisclosureVersion, nil
+	best, _ := maxBy(recs, func(r Record) int { return r.SteerDisclosure })
+	return max(best, 0), nil
 }
 
 // RecordScope is RECORD's reader: the record_scope of the latest record. With
@@ -216,6 +239,9 @@ func ScopeCovered(root string) (bool, error) {
 // block compares this build against. ok is false when there is none.
 func LastAccepted(recs []Record) (Record, bool) {
 	for i := len(recs) - 1; i >= 0; i-- {
+		if recs[i].Unit != "" {
+			continue // a unit answer is not the install screen's
+		}
 		switch recs[i].Via {
 		case ViaWatchTTY, ViaWatchYes, ViaConsentTTY, ViaConsentYes, ViaPluginEnable:
 			return recs[i], true
@@ -246,19 +272,31 @@ var ErrScopeMarker = errors.New("the record_scope marker was not written")
 // it: the process dying between the consent line and the marker.
 var writeMarker = store.WriteRecordScopeMarker
 
+// ErrSteerMarker wraps Append's error when the consent line is durable and
+// the steer-disclosure marker after it could not be written: the marker is
+// then absent, which the hook reads as 0, no consent, until a later write
+// succeeds.
+var ErrSteerMarker = errors.New("the steer_disclosure marker was not written")
+
+// writeSteerMarker is store.WriteSteerDisclosureMarker, which TestSC3b
+// replaces to fail it.
+var writeSteerMarker = store.WriteSteerDisclosureMarker
+
 // Append adds rec to root's consent.json as one line, appended with O_APPEND
 // and synced before it returns, the file at mode 0600. A file whose last line
 // was torn gets a line feed first, so the torn bytes stay one skipped line
 // instead of swallowing this record. When the append would take the file past
 // CapBytes the file is compacted first (compact).
 //
-// It keeps the store's record-scope marker (store.FileRecordScope) a view of
-// the file: it removes the marker before it touches consent.json, compaction
-// included, and writes it again from RecordScope(root) once the line is
-// durable. The marker lags and never leads: a crash anywhere in between
-// leaves no marker, which the hook reads as v4 and so withholds, whichever
-// way this record moved the scope. An error wrapping ErrScopeMarker means
-// the line is on file and the marker is not.
+// It keeps the store's two markers, record scope (store.FileRecordScope) and
+// steer disclosure (store.FileSteerDisclosure), views of the file: it removes
+// both before it touches consent.json, compaction included, and writes each
+// again from consent.json's own answer once the line is durable. A marker
+// lags and never leads: a crash anywhere in between leaves it absent, which
+// the hook reads as v4 or as 0, and so withholds, whichever way this record
+// moved it. The two are independent: each is written whatever the other's
+// write did. An error wrapping ErrScopeMarker or ErrSteerMarker means the
+// line is on file and that marker is not; both can be joined in one error.
 func Append(root string, rec Record) error {
 	if !rec.parses() {
 		return fmt.Errorf("consent: refusing to append a record no reader would count (v %d, via %q)", rec.V, rec.Via)
@@ -272,13 +310,31 @@ func Append(root string, rec Record) error {
 	if err := store.RemoveRecordScopeMarker(root); err != nil {
 		return err
 	}
+	if err := store.RemoveSteerDisclosureMarker(root); err != nil {
+		return err
+	}
 	if err := appendRecord(root, line); err != nil {
 		return err
 	}
+	var scopeErr, steerErr error
 	if err := syncMarker(root); err != nil {
-		return fmt.Errorf("%w: %w", ErrScopeMarker, err)
+		scopeErr = fmt.Errorf("%w: %w", ErrScopeMarker, err)
 	}
-	return nil
+	if err := syncSteerMarker(root); err != nil {
+		steerErr = fmt.Errorf("%w: %w", ErrSteerMarker, err)
+	}
+	return errors.Join(scopeErr, steerErr)
+}
+
+// syncSteerMarker writes root's steer-disclosure marker from consent.json's
+// own answer, SteerDisclosure, 0 included. A file SteerDisclosure cannot
+// read leaves the marker absent.
+func syncSteerMarker(root string) error {
+	n, err := SteerDisclosure(root)
+	if err != nil {
+		return err
+	}
+	return writeSteerMarker(root, n)
 }
 
 // syncMarker writes root's marker from consent.json's own answer, never from
@@ -344,7 +400,9 @@ func appendLine(f *os.File, line []byte) error {
 }
 
 // compact rewrites consent.json to the records that decide every reader's
-// answer: the latest record per (via, scope_version), which keeps the latest
+// answer: the latest record per (via, scope_version, unit), which keeps the
+// latest record overall, each unit's latest answer (card 4.2) and the
+// highest scope_version, and so keeps the latest
 // record overall and the highest scope_version; the record with the
 // highest steer_disclosure, which a newer via of the same scope could
 // otherwise push out and so withdraw a consent a downgrade must keep; and
@@ -377,11 +435,12 @@ func keepForCompaction(recs []Record) []Record {
 	type key struct {
 		via   Via
 		scope int
+		unit  string
 	}
 	latest := map[key]int{}
 	maxDisclosure, scoped := -1, -1
 	for i, r := range recs {
-		latest[key{r.Via, r.ScopeVersion}] = i
+		latest[key{r.Via, r.ScopeVersion, r.Unit}] = i
 		if maxDisclosure < 0 || r.SteerDisclosure > recs[maxDisclosure].SteerDisclosure {
 			maxDisclosure = i
 		}
@@ -391,7 +450,7 @@ func keepForCompaction(recs []Record) []Record {
 	}
 	var out []Record
 	for i, r := range recs {
-		if latest[key{r.Via, r.ScopeVersion}] == i || i == maxDisclosure || i == scoped {
+		if latest[key{r.Via, r.ScopeVersion, r.Unit}] == i || i == maxDisclosure || i == scoped {
 			out = append(out, r)
 		}
 	}

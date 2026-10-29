@@ -311,11 +311,25 @@ func unread(now time.Time, sessionID, promptID, reason string) *Digest {
 // hook's own payload -- never a path this function reads for itself. See the
 // package doc and report.AccountFromMessage.
 func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, now time.Time) (*Digest, error) {
-	run, err := st.ReadRunConsistent(sessionID, readLockBudget)
+	run, err := ReadRun(st, sessionID)
 	if err != nil {
 		return nil, err
 	}
+	return BuildFrom(run, st, sessionID, promptID, lastAssistantMessage, now)
+}
 
+// ReadRun is Build's read of the run: ReadRunConsistent under
+// readLockBudget. A caller that reads the run once for the digest and a view
+// beside it (recap at Stop, card 2.4 R2) reads it here, so the budget stays
+// the one digest owns.
+func ReadRun(st *store.Store, sessionID string) (*store.Run, error) {
+	return st.ReadRunConsistent(sessionID, readLockBudget)
+}
+
+// BuildFrom is Build after the read: run is ReadRun's for sessionID, and is
+// written into (build's masking fields), so a caller that reads it after
+// reads what the digest read (card 2.4 R2). st's rule is Build's.
+func BuildFrom(run *store.Run, st *store.Store, sessionID, promptID, lastAssistantMessage string, now time.Time) (*Digest, error) {
 	allGaps, gapsSkipped, err := st.ReadGaps()
 	if err != nil {
 		return nil, err

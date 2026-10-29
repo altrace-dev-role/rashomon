@@ -123,21 +123,21 @@ func runsShellLine(toks []token, ws []int, i int) bool {
 
 // runner marks the simple command c, the tokens s to e whose program prog is
 // at i, as a run of a test or build runner when it is one, in the group of
-// the runs with the same words; any other command is returned as it is.
+// the runs with the same words, and as hiding its result when a hiding flag
+// stands on it (runnerOn); any other command is returned as it is.
 func (p *lineParser) runner(c *simple, s, i, e int, prog string) (command, bool) {
 	toks := p.toks
 	ri, name, ok := runnerPrefix(toks[:e], i, prog)
 	if !ok {
 		return c, true
 	}
-	var kind string
-	switch {
-	case runnerOn(toks, ri, name, e, testCommands):
-		kind = MaskedTest
-	case runnerOn(toks, ri, name, e, buildCommands):
+	kind := MaskedTest
+	on, hides := runnerOn(toks, ri, name, e, testCommands)
+	if !on {
 		kind = MaskedBuild
-	default:
-		return c, true
+		if on, hides = runnerOn(toks, ri, name, e, buildCommands); !on {
+			return c, true
+		}
 	}
 	key := p.runnerWords(ri, e)
 	g, seen := p.groups[key]
@@ -148,7 +148,7 @@ func (p *lineParser) runner(c *simple, s, i, e int, prog string) (command, bool)
 	}
 	p.runners[g].starts = append(p.runners[g].starts, s)
 	p.runners[g].last = s
-	c.op, c.runner = opRunner, g
+	c.op, c.runner, c.hides = opRunner, g, hides
 	return c, true
 }
 

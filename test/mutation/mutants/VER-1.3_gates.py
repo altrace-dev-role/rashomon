@@ -20,8 +20,8 @@ m("VER-1.3 the green row is dropped", G,
 
 # Row order and each row's terms.
 m("VER-1.3 masked ranks below failed", G,
-  '\t{lastMasked, MaskedInconclusive, maskedReason},\n\t{lastFailed, Red, redReason},\n',
-  '\t{lastFailed, Red, redReason},\n\t{lastMasked, MaskedInconclusive, maskedReason},\n', "TestVER16_")
+  '\t{lastMasked, MaskedInconclusive, maskedReason},\n\t{lastEmptyRun, Absent, func(*fam) Reason { return EmptyRun }},\n\t{lastFailed, Red, redReason},\n',
+  '\t{lastFailed, Red, redReason},\n\t{lastEmptyRun, Absent, func(*fam) Reason { return EmptyRun }},\n\t{lastMasked, MaskedInconclusive, maskedReason},\n', "TestVER16_")
 m("VER-1.3 a hidden build status is not masked", G,
   ' || *r.Masked == shape.MaskedBuild)', ')', "TestVER13_")
 m("VER-1.3 an interrupt with a code is not red", G,
@@ -104,3 +104,34 @@ m("VER-1.3b the kind is read at the point", G,
 m("VER-1.3b the kind is the first recorded", G,
   '\tfor i := len(fr) - 1; i >= 0; i-- {\n\t\tif fr[i].KindRecorded {\n', '\tfor i := 0; i < len(fr); i++ {\n\t\tif fr[i].KindRecorded {\n', "TestVER27b_")
 m("VER-1.3b a recorded kind is not marked", C, 'g.Kind, g.KindRecorded = *kind, true', 'g.Kind = *kind', "TestVER27b_")
+
+# 1.3c: an empty run is Absent (2.2.4 step 5; D46), no green (D47-a), no red
+# for the watched row (D47-b), and its status was read (D47).
+OB = "internal/verify/obligations.go"
+EMPTY_ROW = '\t{lastEmptyRun, Absent, func(*fam) Reason { return EmptyRun }},\n'
+m("VER-1.3c the empty-run row is dropped", G, EMPTY_ROW, '', "TestVER13c_")
+m("VER-1.3c the empty-run row ranks below writes since", G,
+  EMPTY_ROW + '\t{lastFailed, Red, redReason},\n\t{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},\n'
+  '\t{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},\n\t{writtenSince, Stale, func(*fam) Reason { return WritesAfterGreen }},\n',
+  '\t{lastFailed, Red, redReason},\n\t{lastOutcomeNotKnown, Unknown, func(*fam) Reason { return OutcomeUnknown }},\n'
+  '\t{lastOrderNotKnown, Unknown, func(*fam) Reason { return OrderUnknown }},\n\t{writtenSince, Stale, func(*fam) Reason { return WritesAfterGreen }},\n' + EMPTY_ROW,
+  "TestVER13c_")
+m("VER-1.3c the empty-run row ranks below failed", G,
+  EMPTY_ROW + '\t{lastFailed, Red, redReason},\n', '\t{lastFailed, Red, redReason},\n' + EMPTY_ROW, "TestVER13c_")
+m("VER-1.3c an empty run reads green", G, '\t{lastEmptyRun, Absent, ', '\t{lastEmptyRun, Green, ', "TestVER13c_")
+m("VER-1.3c an empty run's reason is ok", G, EMPTY_ROW, '\t{lastEmptyRun, Absent, func(*fam) Reason { return OK }},\n', "TestVER13c_")
+m("VER-1.3c no output reads as an empty run", G,
+  '\treturn r.Output != nil && r.Output.Kind == outEmptyRun\n', '\treturn r.Output == nil || r.Output.Kind == outEmptyRun\n', "TestVER13c_")
+m("VER-1.3c no summary reads as an empty run", G,
+  '\treturn r.Output != nil && r.Output.Kind == outEmptyRun\n',
+  '\treturn r.Output != nil && (r.Output.Kind == outEmptyRun || r.Output.Kind == outNoSummary)\n', "TestVER13c_")
+m("VER-1.3c an empty run is a green", G, ' && !masked(r) && !emptyRun(r) && !failed(r) && ', ' && !masked(r) && !failed(r) && ', "TestVER13c_")
+m("VER-1.3c a row above Stale has no term in green()", G,
+  '\t{writtenSince, Stale, func(*fam) Reason { return WritesAfterGreen }},\n',
+  '\t{func(f *fam) bool { return f.last.Output != nil && f.last.Output.Kind == outNoSummary }, Absent, func(*fam) Reason { return EmptyRun }},\n'
+  '\t{writtenSince, Stale, func(*fam) Reason { return WritesAfterGreen }},\n', "TestVER13f_")
+m("VER-1.3c a failed empty run is the watched red", OB,
+  '\t\tcase !r.Backgrounded && !masked(r) && !emptyRun(r) && failed(r):\n', '\t\tcase !r.Backgrounded && !masked(r) && failed(r):\n', "TestVER13d_")
+m("VER-1.3c an Absent gate with no write owes exit_unmasked", OB,
+  '\t\tif g.LastRun != nil && owed {\n', '\t\tif g.LastRun != nil {\n', "TestVER13d_")
+m("VER-1.3c an empty run's status is not read", OB, '\t{Absent, ObligationMet, citeRun},\n', '', "TestVER13d_")

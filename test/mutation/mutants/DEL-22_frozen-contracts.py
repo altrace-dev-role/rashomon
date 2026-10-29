@@ -24,7 +24,7 @@ m("DEL-22 the pattern interface's Revalidate is renamed", "internal/steer/patter
 m("DEL-22 a steer line drops prompt_id when it has none", "internal/steer/line.go",
   "\tPromptID *string `json:\"prompt_id\"`\n", "\tPromptID *string `json:\"prompt_id,omitempty\"`\n", "TestDEL22d_")
 m("DEL-22 any kind passes as a frozen kind", "internal/steer/pattern/pattern.go",
-  "\treturn slices.Contains(kinds[id], kind)\n}\n\n// classForm", "\treturn true\n}\n\n// classForm", "TestDEL22e_")
+  "\treturn slices.Contains(kinds()[id], kind)\n}\n\n// classForm", "\treturn true\n}\n\n// classForm", "TestDEL22e_")
 m("DEL-22 the masked claim may be model-visible", "internal/steer/finding.go",
   '\treturn f.Pattern == pattern.ClaimVsRecord && f.Kind == "masked"\n', "\treturn false\n", "TestDEL22e_")
 m("DEL-22 a message rides another pattern's finding", "internal/steer/finding.go",

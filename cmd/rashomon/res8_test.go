@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,17 @@ func TestRES8_ReportPeakHeapStaysFlatAsSessionCountGrows(t *testing.T) {
 	}
 	if testing.Short() {
 		t.Skip("runs report in child processes")
+	}
+	// darwin under -race measures load, not retention (D129): the race
+	// detector puts about 30 MiB of shadow under the child (measured
+	// 2026-10-28, outside a full run: 44.98 MiB at 3 sessions and 47.38 at
+	// 60 with -race, 15.17 and 16.44 without), and macOS compresses idle
+	// pages out of resident size when memory is short, so inside a full
+	// -race run the 3-session reading fell far enough to fail the bound.
+	// linux under -race and darwin without it still catch Read holding
+	// every session.
+	if runtime.GOOS == "darwin" && raceEnabled {
+		t.Skip("darwin under -race: macOS compresses the child's race shadow out of resident size under memory pressure, so the 3-session reading moves by about the bound with load (D129)")
 	}
 	reaper, err := peakrss.NewReaper(t.TempDir())
 	if errors.Is(err, peakrss.ErrUnavailable) {

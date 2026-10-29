@@ -20,6 +20,8 @@ Run from the module root:
     python3 test/mutation/sweep.py --list          every mutant name, in load order
     python3 test/mutation/sweep.py --check         the static checks, no test runs
     python3 test/mutation/sweep.py --files 'mutants/DEL-*'   these files only
+    GOCACHE=<own dir> python3 test/mutation/sweep.py --trim-cache-each
+                                                    each mutant's build trimmed after it
 
 The sweep refuses to start when --check would fail. A break whose anchor occurs
 twice mutates whichever site comes first, and a verdict on a break nobody wrote
@@ -31,12 +33,14 @@ import os
 import pathlib
 import re
 import signal
+import stat
 import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 MUTANT_GLOB = "mutants/*.py"
 SHARED_TESTS = HERE / "shared-tests.txt"
+TRIM_MARKER = "sweep-trim-marker"
 
 # The requirement prefixes of the 1.2.0 specification. A mutant file named
 # <PREFIX>-<n>_<slug>.py claims that row, and every test it names must pin the
@@ -312,6 +316,52 @@ def test_failed(r):
     return False
 
 
+def own_cache():
+    """Return the build cache this run owns and None, or None and why not.
+
+    --trim-cache-each deletes from whatever cache go resolves (`go env
+    GOCACHE`), so that has to be a cache this run owns: never the one go
+    resolves without GOCACHE in the environment (a symlink resolved), which
+    every other build on the machine shares. GOCACHE unset resolves to that
+    one, so it is refused by the same comparison.
+    """
+    root = subprocess.run(["go", "env", "GOCACHE"], capture_output=True, text=True).stdout.strip()
+    env = {k: v for k, v in os.environ.items() if k != "GOCACHE"}
+    shared = subprocess.run(["go", "env", "GOCACHE"], capture_output=True, text=True, env=env).stdout.strip()
+    if not root or root == "off":
+        return None, f"--trim-cache-each needs a build cache; go env GOCACHE reads {root!r}"
+    if shared and os.path.realpath(root) == os.path.realpath(shared):
+        return None, f"--trim-cache-each would trim the shared build cache {shared}; set GOCACHE to a cache this run owns"
+    return root, None
+
+
+def trim_cache(root, marker):
+    """Remove every regular file under root newer than marker; return the bytes before and after.
+
+    The marker is touched after the baseline, so what goes is what the
+    mutant runs since then built, and the baseline's objects stay for the
+    next mutant's incremental build. go's own README, trim.txt and log.txt
+    stay, and the marker is never newer than itself. go touches an entry it
+    uses only when the entry is over an hour old (mtimeInterval in cmd/go's
+    cache), so past the hour some baseline entries go too: a removed entry is
+    a cache miss, which go rebuilds, so that costs time and never a verdict.
+    """
+    keep = {os.path.join(root, n) for n in ("README", "trim.txt", "log.txt")}
+    since = os.stat(os.path.join(root, marker)).st_mtime_ns
+    before = removed = 0
+    for d, _, files in os.walk(root):
+        for f in files:
+            path = os.path.join(d, f)
+            st = os.lstat(path)
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            before += st.st_size
+            if path not in keep and st.st_mtime_ns > since:
+                os.unlink(path)
+                removed += st.st_size
+    return before, before - removed
+
+
 def read_list(path):
     """The entries of a list file: one per line, blank and # lines ignored."""
     if not path.exists():
@@ -531,7 +581,7 @@ def _dirty_targets():
     return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
 
 
-def run_sweep(strict=False):
+def run_sweep(strict=False, trim_root=None):
     for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
         signal.signal(_sig, _restore_and_reraise)
 
@@ -578,6 +628,8 @@ def run_sweep(strict=False):
         print(_baseline.stderr[-2000:])
         return 1
     print("baseline: green\n")
+    if trim_root:
+        pathlib.Path(trim_root, TRIM_MARKER).touch()
 
     undetected = []
     skipped = []  # the judging test skipped here; --strict fails on these
@@ -653,6 +705,14 @@ def run_sweep(strict=False):
             else:
                 print(f"  NOT JUDGED     <- {name}   (go test exited {r.returncode} with no test failure on record)\n{r.stdout}{r.stderr}"); undetected.append(name)
             restore()
+            if trim_root:
+                # The disk peak is the baseline's cache plus one mutant's build.
+                try:
+                    before, after = trim_cache(trim_root, TRIM_MARKER)
+                except OSError as e:
+                    print(f"CACHE NOT TRIMMED: {e}; the next mutant would build on top of this one, so the sweep stops.")
+                    return 1
+                print(f"    cache {before / 2**20:.1f} MiB, trimmed to {after / 2**20:.1f} MiB")
     finally:
         restore()
 
@@ -691,6 +751,10 @@ def main(argv):
     ap.add_argument("--shared-tests", metavar="PATH",
                     help="read declared shared-test pairs from PATH instead of "
                          "test/mutation/shared-tests.txt (a test points this at a fixture)")
+    ap.add_argument("--trim-cache-each", action="store_true",
+                    help="after every mutant, remove what its build added to the build cache since the baseline, "
+                         "so the cache holds the baseline and one mutant's build at most; GOCACHE must name a "
+                         "cache this run owns")
     args = ap.parse_args(argv)
     problems = load(args.files or [MUTANT_GLOB])
     if args.list:
@@ -706,7 +770,12 @@ def main(argv):
     if problems:
         print("refusing to sweep: the static checks fail", file=sys.stderr)
         return report(problems)
-    return run_sweep(strict=args.strict)
+    trim_root = None
+    if args.trim_cache_each:
+        trim_root, why = own_cache()
+        if why:
+            ap.error(why)
+    return run_sweep(strict=args.strict, trim_root=trim_root)
 
 
 if __name__ == "__main__":

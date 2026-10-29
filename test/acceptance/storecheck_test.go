@@ -97,8 +97,14 @@ type storeFile struct {
 
 func storeFiles() map[string]storeFile {
 	call := map[string][]string{"declaration": declarationKeys, "execution": executionKeys, "terminal": terminalKeys}
+	// records.ndjson also holds the Stop's verify checkpoint, an ordered
+	// record with a seq of its own (card 2.4 D92); the spill file never does.
+	records := map[string][]string{"verify": checkpointKeys}
+	for k, v := range call {
+		records[k] = v
+	}
 	return map[string]storeFile{
-		"records.ndjson":  {types: call, ordered: true},
+		"records.ndjson":  {types: records, ordered: true},
 		"spill.ndjson":    {types: call},
 		"coverage.ndjson": {types: map[string][]string{"coverage": coverageKeys}},
 		"gaps.ndjson":     {types: map[string][]string{"gap": gapKeys}},
