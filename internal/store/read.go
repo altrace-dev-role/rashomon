@@ -45,6 +45,28 @@ func (r *Run) SessionID() string {
 	return r.Dir
 }
 
+// LastSeq is the greatest seq among the run's declarations, executions and
+// terminals: the point a Stop is taken at. A spilled execution or terminal
+// carries no seq and is passed over; coverage and gap records carry none. An
+// empty run, or one whose every seq is nil, is 0, which is no point.
+func (r *Run) LastSeq() int64 {
+	var last int64
+	for _, d := range r.Declarations {
+		last = max(last, d.Seq)
+	}
+	for _, e := range r.Executions {
+		if e.Seq != nil {
+			last = max(last, *e.Seq)
+		}
+	}
+	for _, t := range r.Terminals {
+		if t.Seq != nil {
+			last = max(last, *t.Seq)
+		}
+	}
+	return last
+}
+
 // Runs lists run directory names, oldest first by modification time.
 func (s *Store) Runs() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(s.root, DirRuns))
@@ -166,12 +188,46 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 // record written before the bit existed carries no key, so it is the
 // must-understand case, which is what every reader before this one did with
 // a record it could not read.
+//
+// A line in the form the store writes has its pair read from its first bytes
+// (prefixPair) and is decoded once, into its kind's record; any other line
+// has its head decoded first, as every line once did (card 2.3b). On every
+// path a record whose decoded pair is not the pair it was read under is
+// Skipped (decodeAs, D97). The one-pass path differs from the two-pass one
+// in one more way, also D97's: on an accepted kind the critical key is not
+// read, so a value that is not a boolean no longer refuses the line.
 func classifyRunLine(run *Run, line []byte) {
-	var head struct {
-		Type          string `json:"type"`
-		SchemaVersion int    `json:"schema_version"`
-		Critical      *bool  `json:"critical"`
+	kind, version, ok := prefixPair(line)
+	if !ok {
+		classifyByHead(run, line)
+		return
 	}
+	if !AcceptsKind(kind, version) {
+		var head runHead
+		if decodeAs(line, &head, kind, version) != nil {
+			run.Skipped++
+			return
+		}
+		passOver(run, head.Critical)
+		return
+	}
+	if readAccepted(run, line, kind, version) != nil {
+		run.Skipped++
+	}
+}
+
+// runHead is what every record starts with: its pair, and the critical key
+// that tells a reader refusing the pair how to pass the record over.
+type runHead struct {
+	Type          string `json:"type"`
+	SchemaVersion int    `json:"schema_version"`
+	Critical      *bool  `json:"critical"`
+}
+
+// classifyByHead reads a line not in the writer's form: the head, decoded
+// first, decides the pair, and an accepted pair's record is decoded after.
+func classifyByHead(run *Run, line []byte) {
+	var head runHead
 	// AcceptsKind, not equality against a version: a store written before
 	// the v2 fields existed is still readable, and equality here would have
 	// silently skipped every record already on disk the moment the writer
@@ -181,46 +237,61 @@ func classifyRunLine(run *Run, line []byte) {
 		return
 	}
 	if !AcceptsKind(head.Type, head.SchemaVersion) {
-		if head.Critical != nil && !*head.Critical {
-			run.Ignored++
-		} else {
-			run.Skipped++
-		}
+		passOver(run, head.Critical)
 		return
 	}
-	var err error
-	switch head.Type {
+	if readAccepted(run, line, head.Type, head.SchemaVersion) != nil {
+		run.Skipped++
+	}
+}
+
+// passOver counts a record whose pair this reader refuses (1.2.2):
+// `"critical": false` in Ignored, true or no key at all in Skipped.
+func passOver(run *Run, critical *bool) {
+	if critical != nil && !*critical {
+		run.Ignored++
+	} else {
+		run.Skipped++
+	}
+}
+
+// readAccepted decodes a line of an accepted pair once and files its record
+// in run; an error means the line counts as Skipped.
+func readAccepted(run *Run, line []byte, kind string, version int) error {
+	switch kind {
 	case TypeDeclaration:
 		var rec Declaration
-		if err = json.Unmarshal(line, &rec); err == nil {
-			run.Declarations = append(run.Declarations, rec)
+		if err := decodeAs(line, &rec, kind, version); err != nil {
+			return err
 		}
+		run.Declarations = append(run.Declarations, rec)
 	case TypeExecution:
 		var rec Execution
-		if err = json.Unmarshal(line, &rec); err == nil {
-			run.Executions = append(run.Executions, rec)
+		if err := decodeAs(line, &rec, kind, version); err != nil {
+			return err
 		}
+		run.Executions = append(run.Executions, rec)
 	case TypeTerminal:
 		var rec Terminal
-		if err = json.Unmarshal(line, &rec); err == nil {
-			run.Terminals = append(run.Terminals, rec)
+		if err := decodeAs(line, &rec, kind, version); err != nil {
+			return err
 		}
+		run.Terminals = append(run.Terminals, rec)
 	case TypeCoverage:
 		var rec Coverage
-		if err = json.Unmarshal(line, &rec); err == nil {
-			run.Coverage = append(run.Coverage, rec)
+		if err := decodeAs(line, &rec, kind, version); err != nil {
+			return err
 		}
+		run.Coverage = append(run.Coverage, rec)
 	default:
 		// A kind introduced at 1.2.0, at its version. Its readers land
 		// with its writers; until then the record is checked to be the
 		// header every such kind starts with, and passed over without
 		// marking the session, as an older reader passes over it.
 		var rec EventHeader
-		err = json.Unmarshal(line, &rec)
+		return decodeAs(line, &rec, kind, version)
 	}
-	if err != nil {
-		run.Skipped++
-	}
+	return nil
 }
 
 // ReadGaps reads every gap record in the store, and counts the lines it

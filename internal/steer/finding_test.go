@@ -29,9 +29,11 @@ func TestOutput_Marshal_DecisionWrongEvent(t *testing.T) {
 	}
 }
 
+// The deny and ask wire forms are read through a table that verifies
+// PreToolUse: the compiled map gates the row until its probe runs (card 2.1).
 func TestOutput_Marshal_DecisionDenyOnPreToolUse(t *testing.T) {
 	o := Output{Decision: &PreDecision{Ask: false, Reason: "denied: frozen path"}}
-	b, err := o.Marshal(string(EventPreToolUse))
+	b, err := o.marshalFor(string(EventPreToolUse), verifiedClient, tableVerifying(verifiedClient.Version))
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
@@ -59,7 +61,7 @@ func TestOutput_Marshal_DecisionDenyOnPreToolUse(t *testing.T) {
 
 func TestOutput_Marshal_DecisionAskOnPreToolUse(t *testing.T) {
 	o := Output{Decision: &PreDecision{Ask: true, Reason: "needs a human"}}
-	b, err := o.Marshal(string(EventPreToolUse))
+	b, err := o.marshalFor(string(EventPreToolUse), verifiedClient, tableVerifying(verifiedClient.Version))
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
@@ -122,29 +124,34 @@ func TestOutput_Marshal_StopContinueIsAdditionalContextOnStop(t *testing.T) {
 
 // stdoutRow is what one event may print (archive 40.3.2's "Output STEER may
 // emit" column; tech 4.2.3's per-event keys; G6: no PreToolUse output
-// without a project stop). Written out here, not read from the code's own
-// table, so the two are checked against each other.
+// without a project stop), and whether its model-visible field waits for a
+// probed client (tech spec :2019; card 2.1). Written out here, not read from
+// the code's own table, so the two are checked against each other.
 type stdoutRow struct {
 	context      bool // the AdditionalContext field
 	decision     bool // permissionDecision with its reason, required for any output
 	stopContinue bool // additionalContext built from StopContinue
+	gated        bool // context or decision prints only for a verified client
 }
 
 var wantStdout = map[Event]stdoutRow{
-	"PreToolUse":         {decision: true},
-	"PostToolUse":        {},
-	"PostToolUseFailure": {},
-	"PostToolBatch":      {context: true},
+	"PreToolUse":         {decision: true, gated: true},
+	"PostToolUse":        {context: true, gated: true},
+	"PostToolUseFailure": {context: true, gated: true},
+	"PostToolBatch":      {context: true, gated: true},
 	"UserPromptSubmit":   {context: true},
-	"SessionStart":       {context: true},
-	"SubagentStart":      {context: true},
+	"SessionStart":       {context: true, gated: true},
+	"SubagentStart":      {context: true, gated: true},
 	"Stop":               {stopContinue: true},
 	"PostModelSwitch":    {},
 }
 
-// TestSTR3_OutputKeysAreAnAllowlist: Marshal prints a key only on an event
-// whose row allows it, refuses the Output otherwise, and never prints a key
-// outside the allowlist.
+// TestSTR3_OutputKeysAreAnAllowlist: the output prints a key only on an
+// event whose row allows it, refuses the Output otherwise, and never prints
+// a key outside the allowlist. The key table is read through a client and a
+// table that verify every row, so a refusal there is the key table's alone;
+// a second pass over the zero Client, Marshal's own, refuses every gated
+// row's model-visible field with ErrUnverifiedChannel and prints the rest.
 func TestSTR3_OutputKeysAreAnAllowlist(t *testing.T) {
 	if len(wantStdout) != len(AllEvents()) {
 		t.Fatalf("the table covers %d events, AllEvents() has %d", len(wantStdout), len(AllEvents()))
@@ -155,9 +162,10 @@ func TestSTR3_OutputKeysAreAnAllowlist(t *testing.T) {
 			t.Fatalf("no expected row for %q", ev)
 		}
 		e := string(ev)
+		everyRow := tableVerifying(verifiedClient.Version)
 		check := func(o Output, allowed bool, refusal error) {
 			t.Helper()
-			b, err := o.Marshal(e)
+			b, err := o.marshalFor(e, verifiedClient, everyRow)
 			if !allowed {
 				if !errors.Is(err, refusal) || b != nil {
 					t.Errorf("%s %+v = (%s, %v), want (nil, %v)", e, o, b, err, refusal)
@@ -178,6 +186,35 @@ func TestSTR3_OutputKeysAreAnAllowlist(t *testing.T) {
 		check(Output{StopContinue: "c"}, row.stopContinue, ErrStopContinueWrongEvent)
 		if row.decision {
 			check(Output{AdditionalContext: "ctx", Decision: &PreDecision{Reason: "r"}}, false, ErrAdditionalContextWrongEvent)
+		}
+
+		zero := func(o Output) {
+			t.Helper()
+			b, err := o.Marshal(e)
+			if row.gated {
+				if !errors.Is(err, ErrUnverifiedChannel) || b != nil {
+					t.Errorf("%s %+v under the zero Client = (%s, %v), want (nil, ErrUnverifiedChannel)", e, o, b, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("%s %+v under the zero Client: %v, want it printed", e, o, err)
+				return
+			}
+			assertAllowlisted(t, e, row, b)
+		}
+		if row.context {
+			zero(Output{AdditionalContext: "ctx"})
+			zero(Output{SystemMessage: "sys", AdditionalContext: "ctx"})
+		}
+		if row.decision {
+			zero(Output{Decision: &PreDecision{Reason: "r"}})
+			zero(Output{SystemMessage: "mirror", Decision: &PreDecision{Ask: true, Reason: "r"}})
+		}
+		if !row.decision {
+			if b, err := (Output{SystemMessage: "sys"}).Marshal(e); err != nil {
+				t.Errorf("%s: a systemMessage alone under the zero Client = (%s, %v), want it printed", e, b, err)
+			}
 		}
 	}
 }
@@ -248,18 +285,20 @@ func TestSTR9b_MarshalNeverRewritesBytes(t *testing.T) {
 
 func TestOutput_Marshal_SystemMessageOnlyNoHookSpecificOutput(t *testing.T) {
 	o := Output{SystemMessage: "just a note"}
-	b, err := o.Marshal(string(EventSessionStart))
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	var got map[string]any
-	if err := json.Unmarshal(b, &got); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-	if _, has := got["hookSpecificOutput"]; has {
-		t.Errorf("hookSpecificOutput present with nothing hook-specific to say: %v", got)
-	}
-	if got["systemMessage"] != "just a note" {
-		t.Errorf("systemMessage = %v, want %q", got["systemMessage"], "just a note")
+	for _, ev := range []Event{EventSessionStart, EventPostToolUse} {
+		b, err := o.Marshal(string(ev))
+		if err != nil {
+			t.Fatalf("Marshal(%s): %v", ev, err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatalf("Unmarshal: %v", err)
+		}
+		if _, has := got["hookSpecificOutput"]; has {
+			t.Errorf("%s: hookSpecificOutput present with nothing hook-specific to say: %v", ev, got)
+		}
+		if got["systemMessage"] != "just a note" {
+			t.Errorf("%s: systemMessage = %v, want %q", ev, got["systemMessage"], "just a note")
+		}
 	}
 }

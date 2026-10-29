@@ -53,7 +53,7 @@ m("hld-1 an edited plugin reads as not installed", "cmd/rashomon/main.go",
 # The recap pointer asks whether the plugin running this binary fires on Stop
 # at all: a hand-edited Stop entry is loaded, so /rashomon:report exists. Each
 # break sends that entry's line to the CLI command instead.
-m("hld-1 the recap pointer asks the intact-only answer", "cmd/rashomon/main.go",
+m("hld-1 the recap pointer asks the intact-only answer", "cmd/rashomon/recap_turn.go",
   "\tpresent, err := install.PluginFires(install.EventStop)\n",
   "\tpresent, err := install.PluginPresent(install.EventStop)\n",
   "TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand")

@@ -104,13 +104,13 @@ m("NONO the client's own traffic is dropped rather than named", "internal/report
   "\t\t\t\tclient = append(client, h)\n", "",
   "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
 m("NONO the MCP transport is the client's on an MCP session", "internal/report/destinations.go",
-  "\treturn clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)", "\treturn clientPlaneHosts[h]",
+  "\treturn slices.Contains(clientPlaneHosts, h) && !(h == mcpProxyHost && mcpAttributed)", "\treturn slices.Contains(clientPlaneHosts, h)",
   "TestNono_TheMCPTransport|TestClientPlane_")
 m("NONO the session's MCP calls never reach the sandbox section", "internal/report/assemble.go",
   "nonoConfigured, madeMCPCall(run), declaredHosts(run), forgotten)", "nonoConfigured, false, declaredHosts(run), forgotten)",
   "TestSeam_TheMCPTransportReachesTheSandboxSection")
 m("NONO the client's log intake is not on the client-plane list", "internal/report/destinations.go",
-  "\t\"http-intake.logs.us5.datadoghq.com\": true,\n", "",
+  "\t\"http-intake.logs.us5.datadoghq.com\",\n", "",
   "TestNono_TheClientsOwnTraffic")
 m("NONO the text never names the client's own traffic", "internal/report/text.go",
   "\t\tif len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {", "\t\tif false {",

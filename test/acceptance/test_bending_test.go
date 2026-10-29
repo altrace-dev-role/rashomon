@@ -93,6 +93,14 @@ func (s *tbSession) line() (string, bool) {
 	return s.e.recapLine(stopPayload(testSession, tbHonest, false))
 }
 
+// bends reports whether a recap line raises either test-bending sentence.
+// The end-of-turn value line speaks on most turns these tests build (card
+// 2.4), so a test that a pattern stays quiet asks for its sentences, not for
+// silence.
+func bends(line string) bool {
+	return strings.Contains(line, "files named like tests") || strings.Contains(line, "had both outcomes")
+}
+
 // B-A1: the pattern the ask names. The end-of-turn line says it in one
 // sentence with the pair, the digest carries the pair, the report's session
 // block and timeline both show it, and nothing from the command line reached
@@ -222,7 +230,7 @@ func TestTestBending_CodeAndTestEditedIsNotFlagged(t *testing.T) {
 	s.edit("/tmp/project/calc.go")
 	s.edit("/tmp/project/calc_test.go")
 	s.shell("go test ./...", true, "")
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("code and test edited, then the tests passed; recap printed %q", line)
 	}
 }
@@ -235,7 +243,7 @@ func TestTestBending_ADifferentCommandIsNotFlagged(t *testing.T) {
 	s.shell("go test ./a/...", false, "")
 	s.edit("/tmp/project/a/calc_test.go")
 	s.shell("go test ./b/...", true, "")
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("different test commands; recap printed %q", line)
 	}
 }
@@ -268,7 +276,7 @@ func TestTestBending_AnEditBetweenIsNotFlaky(t *testing.T) {
 	s.shell("npm test", false, "")
 	// No line at all: the turn holds nothing else to show, so a line here
 	// is a finding the pair made up under some other wording.
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("an edit came between the two runs; recap printed %q", line)
 	}
 }
@@ -301,7 +309,7 @@ func TestTestBending_AnyCallThatCouldChangeFilesBreaksThePair(t *testing.T) {
 			s.shell("jest", false, "")
 			tc.call(s)
 			s.shell("jest", true, "")
-			if line, ok := s.line(); ok {
+			if line, _ := s.line(); bends(line) {
 				t.Errorf("a call that could change files came between the two runs; recap printed %q", line)
 			}
 		})
@@ -345,7 +353,7 @@ func TestTestBending_ARunMovedToTheBackgroundFinishesNothing(t *testing.T) {
 	if got := execs[0].fields["backgrounded"]; got != false {
 		t.Errorf("backgrounded = %v on a foreground failure, want false", got)
 	}
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("a run moved to the background completed a pattern: %q", line)
 	}
 
@@ -451,7 +459,7 @@ func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
 	s.cwd = "/tmp/project/sub"
 	s.shell("cd sub && go test ./...", false, "")
 
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("a run in another directory paired: %q", line)
 	}
 	decls := s.e.declarations(testSession)
@@ -472,19 +480,24 @@ func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
 // sanctionedPathsBlanked is a record's line with the path fields a
 // declaration carries by design set to null -- cwd, project and, for a tool
 // whose input names the file it changes, file_path -- by parsing the line and
-// writing it again. A leak check over the result still finds any other copy,
-// which replacing the path's text would erase as well. Any other record is
-// returned as written.
+// writing it again; a verify checkpoint's project_root, the project root in
+// the clear (card 2.4), likewise. A leak check over the result still finds
+// any other copy, which replacing the path's text would erase as well. Any
+// other record is returned as written.
 func sanctionedPathsBlanked(t *testing.T, r record) string {
 	t.Helper()
-	if r.typ() != "declaration" {
+	if r.typ() != "declaration" && r.typ() != "verify" {
 		return r.raw
 	}
 	var rec map[string]any
 	if err := json.Unmarshal([]byte(r.raw), &rec); err != nil {
 		t.Fatal(err)
 	}
-	rec["cwd"], rec["project"] = nil, nil
+	if r.typ() == "verify" {
+		rec["project_root"] = nil
+	} else {
+		rec["cwd"], rec["project"] = nil, nil
+	}
 	if tool, _ := rec["tool_name"].(string); declaresPath(tool) {
 		rec["file_path"] = nil
 	}
@@ -506,7 +519,7 @@ func TestTestBending_AnAttachedCurlOutputIsAnEdit(t *testing.T) {
 	s.edit("/tmp/project/calc_test.go")
 	s.shell("curl -o./calc.go https://example.com/x", true, "")
 	s.shell("go test ./...", true, "")
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("a download over a source file came between the runs; recap printed %q", line)
 	}
 }
@@ -519,7 +532,7 @@ func TestTestBending_ACurlProgressBarOutputIsAnEdit(t *testing.T) {
 	s.edit("/tmp/project/calc_test.go")
 	s.shell("curl -#O https://example.com/calc.go", true, "")
 	s.shell("go test ./...", true, "")
-	if line, ok := s.line(); ok {
+	if line, _ := s.line(); bends(line) {
 		t.Errorf("a download over a source file came between the runs; recap printed %q", line)
 	}
 }

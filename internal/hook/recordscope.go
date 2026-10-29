@@ -21,10 +21,10 @@ var ConsentRecordScope func(root string) (string, error)
 // predates the marker gains it at its next session start, and a marker a
 // crash or a hand edit left disagreeing with consent.json is put right.
 //
-// This is the one place a hook reads consent.json, and it is on SessionStart
-// only, never on PreToolUse or PostToolUse: those read the marker, one small
-// file, and a consent.json of up to 64 KiB is parsed here once per session
-// rather than on every tool call.
+// This and SessionEnd's bodies gate (bodiesConsented, card 4.2) are the two
+// places a hook reads consent.json, each once per session, never on
+// PreToolUse or PostToolUse: those read the marker, one small file, rather
+// than parse a consent.json of up to 64 KiB on every tool call.
 //
 // It writes only on a difference. No marker already reads v4, so a store
 // with no consent on file keeps none. A consent.json it cannot read, or a

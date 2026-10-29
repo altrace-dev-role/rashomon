@@ -4,18 +4,17 @@
 // delivered, suppressed or deferred line writes. Technical spec 4.2.3
 // (data model) and 4.2.4 (the router that is the only path to Output).
 //
-// Contract only (P-07): the types, the closed lists, and Output.Marshal's
-// key allowlist, all of which are pure data shape and so are implemented
-// for real rather than stubbed. Route itself is the one stub in this
-// package -- see route.go -- because deciding which Finding wins needs
-// the record and the rules a later wave reads, not just the shape of what
-// it returns.
+// The types, the closed lists and Output.Marshal's key allowlist are P-07's
+// contract; Route (route.go) is the router over them (card 2.2): it ranks
+// the findings, charges the prompt's budget counted from the steer log
+// under its lock, and writes one line per decision through
+// store.AppendSteer before it returns the one Output.
 //
 // None of internal/steer, internal/steer/render or
 // internal/steer/render/slot imports net, net/http, crypto/tls, os/exec,
-// internal/hook, internal/report (or report/transcript), or
-// internal/store: steer answers "what should be said," never "what
-// happened" or "where does it go."
+// internal/hook, or internal/report (or report/transcript): steer answers
+// "what should be said," never "what happened." The one store it touches is
+// the steer log, the record of what it said.
 package steer
 
 // Level is how hard a delivered finding pushes: a flag is visible but

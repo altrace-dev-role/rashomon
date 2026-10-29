@@ -58,5 +58,5 @@ m("REC-31 the hook takes a degraded declaration as a failed append", "internal/h
   "\tif err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {\n",
   "\tif err := h.st.AppendDeclaration(decl); err != nil {\n", "TestREC31e_")
 m("REC-31 the hook takes a degraded execution as a failed append", "internal/hook/post.go",
-  "\treturn landed(p.st.AppendExecution(rec), &p.withheld)\n}\n",
-  "\treturn p.st.AppendExecution(rec)\n}\n", "TestREC31e_")
+  "\treturn landed(err, &p.withheld)\n}\n",
+  "\treturn err\n}\n", "TestREC31e_")

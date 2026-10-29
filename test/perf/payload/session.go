@@ -24,6 +24,17 @@ const (
 	InstallID = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
 )
 
+// InstallIDSteer is the install id the steer benchmarks' fixture is pinned to,
+// with KeyHex for the key (BENCH-KEY1, D126). json/v2's string cache hashes a
+// string of eight bytes or more on its first eight and last eight, XORed, so
+// one whose halves match, as InstallID's do, takes slot 0 with every
+// eight-byte string ("coverage", "terminal", "verified"), and each coverage
+// record the steer step reads back misses once more. This one's halves differ
+// and its slot holds none of the record's fixed strings: PostSteer/eval_6000
+// reads 127,912 allocs/op under it and 139,912 under InstallID, two coverage
+// records a call at 6,000 calls.
+const InstallIDSteer = "a5a5a5a5a5a5a5a5a5a5a5a55a5a5a5a"
+
 // CWD is the working directory a generated session's records name.
 const CWD = cwd
 
@@ -44,13 +55,19 @@ const durationMS = 1200
 // Pin gives the store root dir the fixed identity before anything opens a
 // store there, so store.Open reads KeyHex and InstallID rather than minting
 // random ones.
-func Pin(dir string) error {
+func Pin(dir string) error { return pin(dir, InstallID) }
+
+// PinSteer is Pin with InstallIDSteer for the install id, for the steer
+// benchmarks' fixture only.
+func PinSteer(dir string) error { return pin(dir, InstallIDSteer) }
+
+func pin(dir, installID string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	files := map[string]string{
 		"install.key":  KeyHex + "\n",
-		"install.json": fmt.Sprintf(`{"install_id":%q,"created_at_unix_ms":1791380383430,"schema_version":%d}`+"\n", InstallID, store.SchemaVersion),
+		"install.json": fmt.Sprintf(`{"install_id":%q,"created_at_unix_ms":1791380383430,"schema_version":%d}`+"\n", installID, store.SchemaVersion),
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {

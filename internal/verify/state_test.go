@@ -143,7 +143,7 @@ func TestVER65c_TurnSummaryRowsFollowTheTable(t *testing.T) {
 		{"two gates green at 5 and 20, unnamed write at 3: before both", Snapshot{Recording: Complete, Gates: []GateState{green("a", 5), green("b", 20)}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 3}, RowVerified},
 		{"a green gate with no green ref is a defect, not a pass, beside a real green", Snapshot{Recording: Complete, Gates: []GateState{green("a", 20), {Gate: "never", Required: true, State: Green}}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 1}, RowUnknown},
 		{"record-green point", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9)}, RecordGreen: true}, TurnCounts{Writes: 1}, RowVerified},
-		{"all green, no record-green point", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9)}}, TurnCounts{Writes: 1}, RowFindings},
+		{"all green, no record-green point", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9)}, Integrity: Integrity{Unresolved: []IntegrityEntry{{Check: SkipAdded, Marker: "go.t_skip", Seq: 4}}}}, TurnCounts{Writes: 1}, RowFindings},
 		{"a state outside the vocabulary beside green is unknown, never a pass", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9), {Gate: "b", Required: true, State: State("purple")}}, RecordGreen: true}, TurnCounts{Writes: 1}, RowUnknown},
 		{"a state outside the vocabulary never hides a red", Snapshot{Recording: Complete, Gates: []GateState{{Gate: "a", Required: true, State: Red}, {Gate: "b", Required: true, State: State("purple")}}}, TurnCounts{Writes: 1}, RowRed},
 		{"only a defective gate: unknown, not no_gate", Snapshot{Recording: Complete, Gates: []GateState{{Gate: "b", Required: true, State: State("purple")}}}, TurnCounts{Writes: 1}, RowUnknown},
@@ -155,10 +155,14 @@ func TestVER65c_TurnSummaryRowsFollowTheTable(t *testing.T) {
 		}
 		// P-45 adds the sentences; until then, every row this table picks
 		// carries none, recording-incomplete's sentenceRecordingIncomplete
-		// (checked separately below) excepted.
+		// (checked separately below) and the findings row's count clause
+		// (1.8, TestINT10_) excepted.
 		wantSentence := ""
-		if c.name == "recording incomplete" {
+		switch c.name {
+		case "recording incomplete":
 			wantSentence = sentenceRecordingIncomplete
+		case "all green, no record-green point":
+			wantSentence = "1 record finding(s) in this turn"
 		}
 		if got.Sentence != wantSentence {
 			t.Errorf("%s: sentence %q, want %q", c.name, got.Sentence, wantSentence)

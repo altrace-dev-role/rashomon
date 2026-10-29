@@ -261,7 +261,7 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 // be filed the same way by both.
 func TestClientPlane_EveryViewAppliesTheOneRule(t *testing.T) {
 	hosts := []string{"pypi.org"}
-	for h := range clientPlaneHosts {
+	for _, h := range clientPlaneHosts {
 		hosts = append(hosts, h)
 	}
 	for _, mcp := range []bool{false, true} {

@@ -43,11 +43,14 @@ func idForm(s, extra string) bool {
 }
 
 // SlotID is a gate or rule id as a fact carries it (2.2.9):
-// ^[a-z0-9][a-z0-9._:-]{0,63}$.
+// ^[a-z0-9][a-z0-9._:@-]{0,63}$. SlotID, which gate and rule ids share,
+// admits '@' (D43) because a learned gate's name is
+// "learned:<kind>:<runner>@<location>" (gates.go); MarkerID and PathSlot are
+// the charsets untouched.
 type SlotID string
 
 // Valid reports whether the id is within the slot charset.
-func (s SlotID) Valid() bool { return idForm(string(s), "._:-") }
+func (s SlotID) Valid() bool { return idForm(string(s), "._:@-") }
 
 // PathSlot is a project-relative path as a fact carries it (2.2.9):
 // ^[A-Za-z0-9._/@+-]{1,120}$.

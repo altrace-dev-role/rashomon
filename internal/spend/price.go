@@ -1,6 +1,9 @@
 package spend
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // PriceSnapshot is the date the rate table below was copied from Anthropic's
 // published API list prices. Every rendering of a dollar figure names it,
@@ -66,34 +69,46 @@ func mtok(hundredths int64) int64 { return hundredths * 10 }
 // whose responses name the dated "claude-opus-4-20250514" -- are keyed
 // without the "-0" of their aliases, and Haiku 3.5 by its older
 // "claude-3-5-haiku" shape.
-var table = map[string]Rates{
-	"claude-fable-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
-	"claude-fable-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
-	"claude-opus-5-5":  {Input: mtok(400), Output: mtok(2000), CacheRead: mtok(20)},
+func table() map[string]Rates {
+	tableOnce.Do(func() {
+		tableOnce.v = map[string]Rates{
+			"claude-fable-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
+			"claude-fable-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
+			"claude-opus-5-5":  {Input: mtok(400), Output: mtok(2000), CacheRead: mtok(20)},
 
-	// The Mythos models, invite only, at their Fable twins' rates -- cache
-	// reads included, which differ between the two
-	// (https://platform.claude.com/docs/en/models/mythos-5-1/overview,
-	// https://platform.claude.com/docs/en/models/mythos-5/overview).
-	"claude-mythos-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
-	"claude-mythos-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
+			// The Mythos models, invite only, at their Fable twins' rates -- cache
+			// reads included, which differ between the two
+			// (https://platform.claude.com/docs/en/models/mythos-5-1/overview,
+			// https://platform.claude.com/docs/en/models/mythos-5/overview).
+			"claude-mythos-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
+			"claude-mythos-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
 
-	"claude-opus-5":   {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
-	"claude-opus-4-8": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
-	"claude-opus-4-7": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
-	"claude-opus-4-6": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
-	"claude-opus-4-5": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
-	"claude-opus-4-1": {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},
-	"claude-opus-4":   {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},
+			"claude-opus-5":   {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+			"claude-opus-4-8": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+			"claude-opus-4-7": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+			"claude-opus-4-6": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+			"claude-opus-4-5": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+			"claude-opus-4-1": {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},
+			"claude-opus-4":   {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},
 
-	"claude-sonnet-5-5": {Input: mtok(200), Output: mtok(1000), CacheRead: mtok(20)},
-	"claude-sonnet-5":   {Input: mtok(200), Output: mtok(1000), CacheRead: mtok(20)},
-	"claude-sonnet-4-6": {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
-	"claude-sonnet-4-5": {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
-	"claude-sonnet-4":   {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
+			"claude-sonnet-5-5": {Input: mtok(200), Output: mtok(1000), CacheRead: mtok(20)},
+			"claude-sonnet-5":   {Input: mtok(200), Output: mtok(1000), CacheRead: mtok(20)},
+			"claude-sonnet-4-6": {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
+			"claude-sonnet-4-5": {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
+			"claude-sonnet-4":   {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
 
-	"claude-haiku-4-5": {Input: mtok(100), Output: mtok(500), CacheRead: mtok(10)},
-	"claude-3-5-haiku": {Input: mtok(80), Output: mtok(400), CacheRead: mtok(8)},
+			"claude-haiku-4-5": {Input: mtok(100), Output: mtok(500), CacheRead: mtok(10)},
+			"claude-3-5-haiku": {Input: mtok(80), Output: mtok(400), CacheRead: mtok(8)},
+		}
+	})
+	return tableOnce.v
+}
+
+// tableOnce holds what table returns, built on its first call and never at
+// init (RES-2).
+var tableOnce struct {
+	sync.Once
+	v map[string]Rates
 }
 
 // PriceKey resolves a transcript's message.model to a row of the table, and
@@ -110,7 +125,7 @@ var table = map[string]Rates{
 // model is priced as unknown, never as zero and never as its nearest
 // neighbour. An unknown cost is a gap the reader can see; a wrong cost is not.
 func PriceKey(model string) (string, bool) {
-	if _, ok := table[model]; ok {
+	if _, ok := table()[model]; ok {
 		return model, true
 	}
 	i := strings.LastIndexByte(model, '-')
@@ -118,7 +133,7 @@ func PriceKey(model string) (string, bool) {
 		return "", false
 	}
 	base := model[:i]
-	if _, ok := table[base]; ok {
+	if _, ok := table()[base]; ok {
 		return base, true
 	}
 	return "", false
@@ -142,6 +157,6 @@ func isDate(s string) bool {
 
 // RatesFor is the table row for a resolved key.
 func RatesFor(key string) (Rates, bool) {
-	r, ok := table[key]
+	r, ok := table()[key]
 	return r, ok
 }

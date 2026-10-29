@@ -88,7 +88,8 @@ func TestTRU4_ConsentFollowsWatchsTerminalRule(t *testing.T) {
 // consent_tty record holding the hash of the screen shown -- the screen
 // --show prints, opening with what changed when the consent on file is for
 // an older scope -- and leaves every earlier line and every other file as it
-// was; n appends nothing.
+// was, but for the steer_disclosure marker, which follows the line it views;
+// n appends nothing.
 func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
@@ -135,6 +136,14 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 3 hashing the screen shown", recs)
 	}
 	after := e.machine()
+	// steer_disclosure is consent.json's view of the highest steer disclosure
+	// on file: the watch --yes record's 0 before, this record's 2 after (2.2c).
+	marker := filepath.Join(e.home, "steer_disclosure")
+	if before[marker] != "0\n" || after[marker] != "2\n" {
+		t.Errorf("the steer marker went from %q to %q, want \"0\\n\" to \"2\\n\"", before[marker], after[marker])
+	}
+	delete(after, marker)
+	delete(before, marker)
 	delete(after, filepath.Join(e.home, "consent.json"))
 	delete(before, filepath.Join(e.home, "consent.json"))
 	if len(after) != len(before) {

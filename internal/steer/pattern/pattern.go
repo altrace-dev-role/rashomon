@@ -9,7 +9,10 @@
 // against the Finding and Message contracts steer and steer/render freeze.
 package pattern
 
-import "slices"
+import (
+	"slices"
+	"sync"
+)
 
 // ID names one of the sixteen frozen STEER patterns. The set is closed: the
 // review that gates this package checks the constants below against the
@@ -62,21 +65,33 @@ func All() []ID {
 // is deliberately absent although the paragraph names it: its kind is the
 // open `declared-fact/<class>`, not a closed list, so Kinds returns nil
 // rather than a placeholder entry that would look like a closed set of one.
-var kinds = map[ID][]string{
-	ClaimVsRecord: {
-		"red", "masked", "stale", "absent", "backgrounded",
-		"silent-failure", "done-unverified",
-	},
-	PlatformRule: {"edit", "command", "pragma"},
-	Integrity: {
-		"skip-added", "test-deleted", "assert-drop", "frozen-path",
-		"tests-only-green", "spec-edited", "steer-config", "store-touched",
-		"suppression-added", "generated-edited", "gate-weakened",
-		"gate-config-edited",
-	},
-	SubtaskGate:  {"commit", "push", "pr"},
-	LearnedFact:  {"local", "pack"},
-	SequenceRisk: {"secret-then-egress", "lockfile-unverified", "dep-unresolved"},
+func kinds() map[ID][]string {
+	kindsOnce.Do(func() {
+		kindsOnce.v = map[ID][]string{
+			ClaimVsRecord: {
+				"red", "masked", "stale", "absent", "backgrounded",
+				"silent-failure", "done-unverified",
+			},
+			PlatformRule: {"edit", "command", "pragma"},
+			Integrity: {
+				"skip-added", "test-deleted", "assert-drop", "frozen-path",
+				"tests-only-green", "spec-edited", "steer-config", "store-touched",
+				"suppression-added", "generated-edited", "gate-weakened",
+				"gate-config-edited",
+			},
+			SubtaskGate:  {"commit", "push", "pr"},
+			LearnedFact:  {"local", "pack"},
+			SequenceRisk: {"secret-then-egress", "lockfile-unverified", "dep-unresolved"},
+		}
+	})
+	return kindsOnce.v
+}
+
+// kindsOnce holds what kinds returns, built on its first call and never at
+// init (RES-2).
+var kindsOnce struct {
+	sync.Once
+	v map[ID][]string
 }
 
 // Kinds returns a copy of the closed sub-kind vocabulary under id, or nil
@@ -90,7 +105,7 @@ var kinds = map[ID][]string{
 // kinds to exactly seven ids, and silence for the rest is read here as
 // "Kind is empty on a Finding of this pattern."
 func Kinds(id ID) []string {
-	return slices.Clone(kinds[id])
+	return slices.Clone(kinds()[id])
 }
 
 // KindValid reports whether kind may stand under id on a Finding: one of the
@@ -107,9 +122,9 @@ func KindValid(id ID, kind string) bool {
 	case id == DeclaredFact:
 		return classForm(kind)
 	case kind == "":
-		return kinds[id] == nil || id == SubtaskGate
+		return kinds()[id] == nil || id == SubtaskGate
 	}
-	return slices.Contains(kinds[id], kind)
+	return slices.Contains(kinds()[id], kind)
 }
 
 // classForm reports a declared-fact class: ^[a-z0-9][a-z0-9._-]{0,63}$.
@@ -148,26 +163,38 @@ func Valid(id ID) bool {
 // flag-only in Wave B, so on an egress call its secret-then-egress flag beats
 // identical-retry (40). TestSTR16_EveryCandidatePatternHasAPriority pins the
 // split so a change to it is a reviewed decision, not a drift.
-var priority = map[ID]int{
-	Integrity:          95,
-	SubtaskGate:        90,
-	ClaimVsRecord:      85,
-	RegressionLocation: 80,
-	DeclaredFact:       75,
-	LearnedFact:        70,
-	CredSpray:          65,
-	SequenceRisk:       62,
-	PlatformRule:       60,
-	AgentInterference:  55,
-	SubagentClaim:      50,
-	MaskedStatus:       45,
-	IdenticalRetry:     40,
-	OrderingRule:       30,
+func priority() map[ID]int {
+	priorityOnce.Do(func() {
+		priorityOnce.v = map[ID]int{
+			Integrity:          95,
+			SubtaskGate:        90,
+			ClaimVsRecord:      85,
+			RegressionLocation: 80,
+			DeclaredFact:       75,
+			LearnedFact:        70,
+			CredSpray:          65,
+			SequenceRisk:       62,
+			PlatformRule:       60,
+			AgentInterference:  55,
+			SubagentClaim:      50,
+			MaskedStatus:       45,
+			IdenticalRetry:     40,
+			OrderingRule:       30,
+		}
+	})
+	return priorityOnce.v
+}
+
+// priorityOnce holds what priority returns, built on its first call and never
+// at init (RES-2).
+var priorityOnce struct {
+	sync.Once
+	v map[ID]int
 }
 
 // Priority returns id's step 8 ordering value and true, or (0, false) for
 // the two own-channel ids that never compete at steer.Route (tech 4.2.4).
 func Priority(id ID) (int, bool) {
-	p, ok := priority[id]
+	p, ok := priority()[id]
 	return p, ok
 }

@@ -35,8 +35,8 @@ m("TRU-23 the temporary file builds through v1.1.0 left drops out of the invento
   "\t\t\tPattern:    \"recap.json.old\",",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
 m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/disclose/disclose.go",
-  "\t\t\tPattern:    baseline.FilePattern,",
-  "\t\t\tPattern:    \"*.ndjson\",",
+  "\t\t\tBase:       baseline.DirName,\n\t\t\tPattern:    baseline.FilePattern,",
+  "\t\t\tBase:       baseline.DirName,\n\t\t\tPattern:    \"*.ndjson\",",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
 
 # TRU-23: the write-call-site trip-wire (TestTRU23_WriteCallSitesArePinned)
@@ -45,8 +45,8 @@ m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/
 # the only way to show the comparison is load-bearing: a pinned count that
 # silently matched anything would be as useless as no test at all.
 m("TRU-23 the pinned store write-call-site count stops matching the source", "internal/disclose/disclose_test.go",
-  "\t\t{\"store\", 22},",
-  "\t\t{\"store\", 23},",
+  "\t\t{\"store\", 25},",
+  "\t\t{\"store\", 26},",
   "TestTRU23_WriteCallSitesArePinned")
 # Two root-level writes main's store gained: resolved-cap (hld-7) and the
 # baseline directory's lock. The inventory test drives both, so an entry

@@ -961,8 +961,8 @@ func TestPricing_TheTableIsTheDesignsTable(t *testing.T) {
 		"claude-mythos-5-1": {10, 50, 0.25},
 		"claude-mythos-5":   {10, 50, 1},
 	}
-	if len(want) != len(table) {
-		t.Errorf("table has %d rows, the design has %d", len(table), len(want))
+	if len(want) != len(table()) {
+		t.Errorf("table has %d rows, the design has %d", len(table()), len(want))
 	}
 	const M = 1_000_000
 	for model, w := range want {

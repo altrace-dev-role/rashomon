@@ -2,12 +2,6 @@ package shape
 
 import "strings"
 
-// isComment reports whether a word begins a comment: an unquoted `#` at its
-// start.
-func isComment(t token) bool {
-	return strings.HasPrefix(t.text, "#") && t.quotedAt != 0
-}
-
 // isFDPrefix reports whether an unquoted word could be an fd number (2 in 2>)
 // or an fd variable ({fd} in {fd}>).
 func isFDPrefix(t token) bool {
@@ -66,7 +60,8 @@ func redirectEnd(toks []token, i int) (int, bool) {
 //
 //   - the line ends there;
 //   - the next word is on the next line, where it begins the next command;
-//   - a comment begins there (`ls > #x`), which runs to the end of the line;
+//   - a comment begins there (`ls > #x`), which the lexer reads to the end of
+//     the line, so the line ends there;
 //   - an operator comes first -- a separator, `> ;` or `< |`, or another
 //     redirection, `> > f`, which owns the word after it -- unless it is a
 //     paren, a glob or process substitution that the callers refuse or skip,
@@ -78,8 +73,6 @@ func noTarget(toks []token, i int) bool {
 	next := toks[i+1]
 	switch {
 	case next.nlBefore:
-		return true
-	case isComment(next):
 		return true
 	case !next.meta, next.text == "(":
 		return false

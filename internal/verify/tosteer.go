@@ -3,6 +3,7 @@ package verify
 import (
 	"slices"
 	"strconv"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -249,33 +250,57 @@ func evidenceFor(f Finding, at Point) []int64 {
 }
 
 // integrityKinds is 2.2.6's translation, VERIFY's check to STEER's kind id.
-var integrityKinds = map[IntegrityKind]steer.Kind{
-	TestRemoved:        "test-deleted",
-	SkipAdded:          "skip-added",
-	AssertionsRemoved:  "assert-drop",
-	SuppressionAdded:   "suppression-added",
-	GeneratedEdited:    "generated-edited",
-	TestsOnlyThenGreen: "tests-only-green",
-	GateWeakened:       "gate-weakened",
-	GateConfigEdited:   "gate-config-edited",
+func integrityKinds() map[IntegrityKind]steer.Kind {
+	integrityKindsOnce.Do(func() {
+		integrityKindsOnce.v = map[IntegrityKind]steer.Kind{
+			TestRemoved:        "test-deleted",
+			SkipAdded:          "skip-added",
+			AssertionsRemoved:  "assert-drop",
+			SuppressionAdded:   "suppression-added",
+			GeneratedEdited:    "generated-edited",
+			TestsOnlyThenGreen: "tests-only-green",
+			GateWeakened:       "gate-weakened",
+			GateConfigEdited:   "gate-config-edited",
+		}
+	})
+	return integrityKindsOnce.v
+}
+
+// integrityKindsOnce holds what integrityKinds returns, built on its first
+// call and never at init (RES-2).
+var integrityKindsOnce struct {
+	sync.Once
+	v map[IntegrityKind]steer.Kind
 }
 
 // claimKinds is a contradicting verdict's claim-vs-record kind (2.2.9,
 // 2.2.11: masked_inconclusive is masked). green, unknown (VER-17: never
 // fires) and no_gate_known are no contradiction and have none.
-var claimKinds = map[Verdict]steer.Kind{
-	Verdict(Red):                "red",
-	Verdict(MaskedInconclusive): "masked",
-	Verdict(Backgrounded):       "backgrounded",
-	Verdict(Stale):              "stale",
-	Verdict(Absent):             "absent",
+func claimKinds() map[Verdict]steer.Kind {
+	claimKindsOnce.Do(func() {
+		claimKindsOnce.v = map[Verdict]steer.Kind{
+			Verdict(Red):                "red",
+			Verdict(MaskedInconclusive): "masked",
+			Verdict(Backgrounded):       "backgrounded",
+			Verdict(Stale):              "stale",
+			Verdict(Absent):             "absent",
+		}
+	})
+	return claimKindsOnce.v
+}
+
+// claimKindsOnce holds what claimKinds returns, built on its first call and
+// never at init (RES-2).
+var claimKindsOnce struct {
+	sync.Once
+	v map[Verdict]steer.Kind
 }
 
 // kindFor is the frozen kind under the pattern, or the reason there is none.
 func kindFor(f Finding, at Point) (steer.Kind, string) {
 	switch f.Pattern {
 	case pattern.ClaimVsRecord, pattern.SubagentClaim:
-		k, ok := claimKinds[f.Claim.Verdict]
+		k, ok := claimKinds()[f.Claim.Verdict]
 		switch {
 		case f.Pattern == pattern.ClaimVsRecord && at.Kind != PointStop:
 			return "", "claim-vs-record away from a stop point"
@@ -315,7 +340,7 @@ func kindFor(f Finding, at Point) (steer.Kind, string) {
 		}
 	case pattern.Integrity:
 		if f.Rule == nil {
-			k, ok := integrityKinds[f.Integrity.Kind]
+			k, ok := integrityKinds()[f.Integrity.Kind]
 			if ok {
 				return k, ""
 			}

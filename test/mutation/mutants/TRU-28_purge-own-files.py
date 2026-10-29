@@ -9,8 +9,8 @@ m("TRU-28 a baseline entry that is not a baseline file is planned for removal", 
   "\t\treturn true || baseline.IsFileName(name) || name == baseline.LockName",
   "TestTRU28_")
 m("TRU-28 a symlink or directory under runs or baseline is taken as rashomon's", "internal/purge/purge.go",
-  "\t\t\tcase ent.Type().IsRegular() && ownTreeFile(ent.Name(), isRuns, level):\n",
-  "\t\t\tcase ownTreeFile(ent.Name(), isRuns, level):\n",
+  "\t\t\tcase ent.Type().IsRegular() && treeFile(name, ent.Name(), level):\n",
+  "\t\t\tcase treeFile(name, ent.Name(), level):\n",
   "TestTRU28_")
 m("TRU-28 a directory that holds a foreign path is still planned for removal", "internal/purge/purge.go",
   "\t\t\t\tif ok {\n\t\t\t\t\town = append(own, path)\n",

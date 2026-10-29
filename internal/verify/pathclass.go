@@ -2,6 +2,7 @@ package verify
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -44,10 +45,12 @@ func Relevant(c PathClass) bool {
 // The tables, lower case, one per rule of ClassOf's precedence. Segments are
 // directory elements; root segments match the first element only; basenames
 // and suffixes are matched against the last element; extensions are path.Ext
-// of it.
+// of it. Each is a slice of constants, laid out in the binary with no code
+// run at init (RES-2), and searched in order; the longest, generatedSuffixes,
+// holds fifteen.
 var (
 	// Rule 1, generated. These words name build output wherever they appear.
-	generatedSegments = set("vendor", "node_modules", "__pycache__", ".next", "__generated__")
+	generatedSegments = []string{"vendor", "node_modules", "__pycache__", ".next", "__generated__"}
 	// dist and target name build output at the project root only: deeper in a
 	// tree they are hand-written source, as Go's own cmd/dist and a package
 	// named target are, so they classify only as the first path segment. build
@@ -55,19 +58,19 @@ var (
 	// in another, and where two readings are possible the class that stales a
 	// gate is chosen, since an edit hidden behind a green gate is the miss to
 	// prevent.
-	generatedRootSegments = set("dist", "target")
+	generatedRootSegments = []string{"dist", "target"}
 	generatedSuffixes     = []string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart", ".freezed.dart", ".pb.dart", ".pbenum.dart", ".pbjson.dart", ".pbserver.dart", ".pbgrpc.dart"}
 	// Kubernetes and operator-sdk codegen writes zz_generated.<kind>.go, a
 	// basename prefix no segment, basename, suffix or extension expresses.
 	generatedPrefixes = []string{"zz_generated."}
 
 	// Rule 2, CI.
-	ciSegments  = set(".github", ".gitlab", ".circleci", ".buildkite")
-	ciBasenames = set(".gitlab-ci.yml", ".travis.yml", "azure-pipelines.yml", "jenkinsfile")
+	ciSegments  = []string{".github", ".gitlab", ".circleci", ".buildkite"}
+	ciBasenames = []string{".gitlab-ci.yml", ".travis.yml", "azure-pipelines.yml", "jenkinsfile"}
 
 	// Rule 3, test. With test_*.py, conftest.py and the CamelCase names, in
 	// isTestName.
-	testSegments = set("test", "tests", "spec", "__tests__", "testdata", "e2e")
+	testSegments = []string{"test", "tests", "spec", "__tests__", "testdata", "e2e"}
 	testSuffixes = []string{
 		"_test.go", "_test.py", "_spec.rb", "_test.rb", "_test.exs",
 		".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx", ".test.ts", ".test.tsx", ".test.js", ".test.jsx",
@@ -75,15 +78,15 @@ var (
 	// The extensions whose test classes are named <Name>Test or <Name>Tests:
 	// JUnit's Java, Kotlin, xUnit's and NUnit's C#, XCTest's Swift and
 	// ScalaTest's Scala.
-	camelTestExtensions = set(".java", ".kt", ".cs", ".swift", ".scala")
+	camelTestExtensions = []string{".java", ".kt", ".cs", ".swift", ".scala"}
 
 	// Rule 4, docs. docs and doc at the project root only, for dist's reason:
 	// deeper in a tree a directory word may be hand-written source, as go/doc
 	// is a Go package. .txt is not a docs extension, since requirements.txt
 	// and CMakeLists.txt are build inputs, which are config, never docs.
-	docsRootSegments = set("docs", "doc")
-	docsExtensions   = set(".md", ".rst", ".adoc")
-	docsBasenames    = set("license", "changelog", "authors", "notice")
+	docsRootSegments = []string{"docs", "doc"}
+	docsExtensions   = []string{".md", ".rst", ".adoc"}
+	docsBasenames    = []string{"license", "changelog", "authors", "notice"}
 
 	// Rule 5, config. With every dotfile, and requirements*.txt and
 	// constraints*.txt in isConfigName. The extension list already covers
@@ -93,9 +96,9 @@ var (
 	// build inputs with no telling extension; a script named build reads as
 	// config too, which is relevant either way. .pbxproj is Xcode's project
 	// file, a build input.
-	configExtensions = set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj")
-	configBasenames  = set("makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",
-		"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift")
+	configExtensions = []string{".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj"}
+	configBasenames  = []string{"makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",
+		"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift"}
 )
 
 // ClassOf is the class of a path as the record stores it (PF-RC3), by a total
@@ -111,9 +114,10 @@ var (
 // to the project: an absolute path never matches one and falls through, which
 // errs toward relevance.
 //
-// Complexity: four walks over the k directory elements and O(1) basename and
-// extension lookups, so O(k); no allocation when the path is already lower
-// case with forward slashes.
+// Complexity: four walks over the k directory elements, each element and the
+// basename and extension looked up in tables of at most twelve words, so
+// O(k); no allocation when the path is already lower case with forward
+// slashes.
 //
 // Input is bounded upstream: the hook caps every path field at MaxPathBytes
 // and written_paths at MaxWrittenPathsBytes with store.CapDeclaration, called
@@ -169,7 +173,7 @@ func normalise(p string) normalised {
 
 // hasSegment reports whether an element of dir is in s. Empty elements, from
 // "a//b" or a leading slash, match nothing.
-func hasSegment(dir string, s map[string]struct{}) bool {
+func hasSegment(dir string, s []string) bool {
 	for dir != "" {
 		var seg string
 		seg, dir, _ = strings.Cut(dir, "/")
@@ -237,15 +241,6 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 	return false
 }
 
-func inSet(s string, m map[string]struct{}) bool {
-	_, ok := m[s]
-	return ok
-}
-
-func set(words ...string) map[string]struct{} {
-	m := make(map[string]struct{}, len(words))
-	for _, w := range words {
-		m[w] = struct{}{}
-	}
-	return m
+func inSet(s string, words []string) bool {
+	return slices.Contains(words, s)
 }

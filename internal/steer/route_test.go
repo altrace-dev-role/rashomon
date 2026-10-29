@@ -12,31 +12,49 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 )
 
-// TestContext_IsEmptyPlaceholder pins that Context is not frozen in P-07
-// (the gaps table closes it before P-30 opens): zero fields today, so adding
-// the real ones later is additive, not a breaking change to anything that
-// depends only on the type existing.
-func TestContext_IsEmptyPlaceholder(t *testing.T) {
-	if n := reflect.TypeOf(Context{}).NumField(); n != 0 {
-		t.Errorf("Context has %d fields, want 0 (not frozen until P-30)", n)
+// TestContext_FieldsAreTheRouterInputs pins Context to the router's inputs
+// (card 2.2 R2), in order: every one a value the caller already holds or a
+// constant until its reader lands, and none a counter, which the router
+// derives from the steer log under its lock. A field added without its
+// ruling fails here.
+func TestContext_FieldsAreTheRouterInputs(t *testing.T) {
+	want := []string{
+		"Event Event", "Client Client", "Store *store.Store", "SessionID string", "PromptID *string", "AgentID string",
+		"Project string", "InvocationID string", "HarnessID string", "Surface string", "NowUnixMS int64",
+		"NewID func() string", "Consent bool", "SteerOff bool", "Arm Arm", "Attendance Attendance",
+		"StopHookActive bool",
+		"Holdout bool", // the hook's draw (card 2.5, D109)
+	}
+	typ := reflect.TypeOf(Context{})
+	var got []string
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		got = append(got, f.Name+" "+strings.ReplaceAll(f.Type.String(), "steer.", ""))
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Context fields = %q, want %q", got, want)
 	}
 }
 
-// TestRoute_StubReturnsEmptyOutput pins this package's one deliberate
-// behavioural gap: Route decides nothing yet (tech 4.2.4's router is P-30's),
-// and the zero Output is the only honest value for "no decision was made."
+// TestRoute_StubReturnsEmptyOutput (the name kept from the stub it
+// replaced): with nowhere to write a line -- a Context with no store --
+// Route prints nothing, because nothing may print that no line records
+// (card 2.2 R1; STR-8).
 func TestRoute_StubReturnsEmptyOutput(t *testing.T) {
-	findings := []Finding{{Pattern: pattern.SubtaskGate, AfterSeq: 1}}
-	got := Route(&Context{}, findings)
+	findings := []Finding{{Pattern: pattern.SubtaskGate, Priority: 90, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 1}}
+	got := Route(&Context{Event: EventPostToolUse, SessionID: "s1", Consent: true}, findings)
 	if got != (Output{}) {
-		t.Errorf("Route() = %+v, want the zero Output", got)
+		t.Errorf("Route() with no store = %+v, want the zero Output", got)
 	}
 }
 
+// TestRoute_StubIgnoresNilInputs: a nil Context or no finding says nothing.
 func TestRoute_StubIgnoresNilInputs(t *testing.T) {
-	got := Route(nil, nil)
-	if got != (Output{}) {
+	if got := Route(nil, nil); got != (Output{}) {
 		t.Errorf("Route(nil, nil) = %+v, want the zero Output", got)
+	}
+	if got := Route(&Context{}, nil); got != (Output{}) {
+		t.Errorf("Route(&Context{}, nil) = %+v, want the zero Output", got)
 	}
 }
 

@@ -21,6 +21,13 @@ const (
 	// the program search and the masked-status walk both have work to do.
 	benchShortCommand = "git status --short && git diff --stat"
 
+	// benchCDPipeCommand and benchCDVarCommand are the cd-fold cases: a
+	// literal leading cd before a piped runner, and a leading cd whose
+	// directory the shell computes. Each costs 7 allocs and about 0.95 KB a
+	// call more than the same line without its cd (measured on linux/amd64).
+	benchCDPipeCommand = "cd sub && go test ./... | tail"
+	benchCDVarCommand  = "cd $X && go test ./..."
+
 	// benchLongBytes is the size of bash_long_4k's command line.
 	benchLongBytes = 4096
 
@@ -109,6 +116,8 @@ type deriveCase struct {
 	program string
 	verb    string
 	argc    int
+	// masked is the status_masked the shape must carry; empty is MaskedNone.
+	masked string
 }
 
 // benchDeriveInput is the tool_input of BenchmarkDerive's case name, and the
@@ -124,6 +133,10 @@ func benchDeriveInput(tb testing.TB, name string) (json.RawMessage, string) {
 			tb.Fatalf("bash_long_4k command is %d bytes, want %d", len(long), benchLongBytes)
 		}
 		return benchBashInput(tb, long), digest(benchKey, "Bash", long)
+	case "cd_sub_go_test_tail":
+		return benchBashInput(tb, benchCDPipeCommand), digest(benchKey, "Bash", benchCDPipeCommand)
+	case "cd_var_go_test":
+		return benchBashInput(tb, benchCDVarCommand), digest(benchKey, "Bash", benchCDVarCommand)
 	case "edit_50k":
 		edit := benchEditInput(tb)
 		return edit, canonicalDigest(benchKey, "Edit", edit)
@@ -154,8 +167,12 @@ func checkDerived(b *testing.B, c deriveCase, want string, got Shape) {
 	if got.Argc == nil || *got.Argc != c.argc {
 		b.Fatalf("%s: argc %v, want %d", c.name, show(got.Argc), c.argc)
 	}
-	if got.StatusMasked == nil || *got.StatusMasked != MaskedNone {
-		b.Fatalf("%s: status_masked %v, want %q: the masked-status walk did not read the line to its end", c.name, show(got.StatusMasked), MaskedNone)
+	masked := c.masked
+	if masked == "" {
+		masked = MaskedNone
+	}
+	if got.StatusMasked == nil || *got.StatusMasked != masked {
+		b.Fatalf("%s: status_masked %v, want %q: the masked-status walk did not read the line to its end", c.name, show(got.StatusMasked), masked)
 	}
 }
 
@@ -167,6 +184,8 @@ func BenchmarkDerive(b *testing.B) {
 		{name: "bash_short", tool: "Bash", program: "git", verb: VerbVCS, argc: 7},
 		{name: "bash_long_4k", tool: "Bash", program: "cat", verb: VerbRead, argc: benchLongTokens},
 		{name: "edit_50k", tool: "Edit", verb: VerbWrite, argc: -1},
+		{name: "cd_sub_go_test_tail", tool: "Bash", program: "go", verb: VerbPackage, argc: 8, masked: MaskedTest},
+		{name: "cd_var_go_test", tool: "Bash", program: "go", verb: VerbTest, argc: 6},
 	} {
 		b.Run(c.name, func(b *testing.B) {
 			input, want := benchDeriveInput(b, c.name)

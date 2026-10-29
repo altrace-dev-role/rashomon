@@ -1,4 +1,4 @@
-m("H-18 the post path installs on every call", "cmd/rashomon/main.go",
+m("H-18 the post path installs on every call", "cmd/rashomon/post.go",
   "\tp := hook.NewPost(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\tp := hook.NewPost(st, time.Now)\n", "TestH18_")
 
 m("H-18 the hook installs on every call", "cmd/rashomon/main.go",

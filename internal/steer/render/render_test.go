@@ -133,12 +133,79 @@ func TestNew_FillsTheTemplateAndReturnsTheClosedMessage(t *testing.T) {
 	}
 }
 
-// TestNew_ProductionTableHoldsNoTemplateYet: a pattern's PR adds its binding
-// struct and its row; until then New refuses every binding.
-func TestNew_ProductionTableHoldsNoTemplateYet(t *testing.T) {
+// TestNew_ProductionTableRefusesABindingWithNoRow: a pattern's PR adds its
+// binding struct and its row, and the row is keyed by the binding's type, so
+// a struct of the same shape under a pattern that has a row is still refused.
+func TestNew_ProductionTableRefusesABindingWithNoRow(t *testing.T) {
 	m, err := New(pattern.RegressionLocation, goodExample())
 	if !errors.Is(err, ErrNoTemplate) || !isZero(m) {
 		t.Errorf("New = (%+v, %v), want (zero Message, ErrNoTemplate)", m, err)
+	}
+}
+
+// TestSTR43a_RegressionLocationTemplateIsTheArchivesText: the first production
+// row is archive 40.4.2's model text with the gate named before its quote, as
+// Gate renders (P07N-11; card 2.2 R13, A3), filled with the spec example's
+// values (tech 4.2.3). Its four slots come back from Slots in the binding's
+// order, and the omitted count is the bound PathList's.
+func TestSTR43a_RegressionLocationTemplateIsTheArchivesText(t *testing.T) {
+	m, err := New(pattern.RegressionLocation, RegressionLocationBinding{
+		Gate: "go test", Minutes: 6, Exit: 1,
+		Paths: slot.NewPathList([]slot.Path{"internal/a.go", "internal/b.go"}, 0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "rashomon record: gate 'go test' exited 0 earlier in this session (6 min ago) and exited 1 on this run. " +
+		"Files written between the two runs: 'internal/a.go', 'internal/b.go'."
+	if m.Text() != want {
+		t.Errorf("Text() = %q, want %q", m.Text(), want)
+	}
+	if m.Pattern() != pattern.RegressionLocation || m.Template() != "regression-location/v1" {
+		t.Errorf("Pattern, Template = %q, %q", m.Pattern(), m.Template())
+	}
+	var names []string
+	for _, s := range m.Slots() {
+		names = append(names, s.Name)
+	}
+	if !slices.Equal(names, []string{"gate", "minutes", "exit", "paths"}) {
+		t.Errorf("Slots() names = %q", names)
+	}
+	if l, ok := m.Slots()[3].Value.(slot.PathList); !ok || l.More() != 0 || len(l.Paths()) != 2 {
+		t.Errorf("the paths slot = %#v, want the two listed paths and 0 more", m.Slots()[3].Value)
+	}
+	if Version != 1 {
+		t.Errorf("Version = %d, want 1 (the spec example's renderer_version)", Version)
+	}
+}
+
+// TestSTR43h_DegradedRowRenders: regression-location's no-paths form is its
+// own binding and row (card 2.3 R7): the full row's first sentence, then the
+// count of writes recorded between the runs, for the writes the record names
+// no path for (record scope v4) or whose every named path the deny list or
+// the entropy test left out. Its slots come back in the binding's order.
+func TestSTR43h_DegradedRowRenders(t *testing.T) {
+	m, err := New(pattern.RegressionLocation, RegressionLocationDegradedBinding{Gate: "go", Minutes: 3, Exit: 1, Count: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "rashomon record: gate 'go' exited 0 earlier in this session (3 min ago) and exited 1 on this run. " +
+		"2 file writes were recorded between the two runs."
+	if m.Text() != want {
+		t.Errorf("Text() = %q, want %q", m.Text(), want)
+	}
+	if m.Pattern() != pattern.RegressionLocation || m.Template() != "regression-location-degraded/v1" {
+		t.Errorf("Pattern, Template = %q, %q", m.Pattern(), m.Template())
+	}
+	var names []string
+	for _, s := range m.Slots() {
+		names = append(names, s.Name)
+	}
+	if !slices.Equal(names, []string{"gate", "minutes", "exit", "count"}) {
+		t.Errorf("Slots() names = %q", names)
+	}
+	if _, err := New(pattern.RegressionLocation, RegressionLocationDegradedBinding{Gate: "go", Minutes: 10_081, Exit: 1, Count: 2}); err == nil {
+		t.Error("minutes over the slot's range rendered; want the render refused, never a clamped number")
 	}
 }
 
@@ -405,7 +472,7 @@ func TestSTR14b_BannedWordsOutsideAQuote(t *testing.T) {
 // verb opening a sentence or clause; quotes are exempt; the spec's own
 // statements pass (STR-14).
 func TestSTR14_TemplatesAreStatementsOfFact(t *testing.T) {
-	if err := checkTable(templates); err != nil {
+	if err := checkTable(templates()); err != nil {
 		t.Errorf("the template table: %v", err)
 	}
 	for _, c := range []struct {
@@ -462,7 +529,7 @@ func TestSTR14c_ImperativeOpeningsCoverTheEditAndGitVerbs(t *testing.T) {
 			t.Errorf("CheckTemplate opening with %q passed", v)
 		}
 	}
-	if err := checkTable(templates); err != nil {
+	if err := checkTable(templates()); err != nil {
 		t.Errorf("the template table trips on the wider verb list: %v", err)
 	}
 }

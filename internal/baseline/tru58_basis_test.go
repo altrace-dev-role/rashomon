@@ -37,7 +37,7 @@ func TestTRU58_PreDeclaredBaselineIsReestablishedNotCompared(t *testing.T) {
 	}
 
 	// The rewritten file carries the marker, so the next session compares.
-	f, existed, err := load(filepath.Join(dir, fileName(key)), key)
+	f, existed, err := load(filepath.Join(dir, FileName(key)), key)
 	if err != nil || !existed || f.Basis != Basis {
 		t.Fatalf("after re-establishing: existed=%v basis=%q err=%v", existed, f.Basis, err)
 	}
@@ -162,7 +162,7 @@ func writePreDeclared(t *testing.T, root, key string, hosts ...string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, fileName(key))
+	path := filepath.Join(dir, FileName(key))
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestTRU58_ForgetLeavesAnUnparseableBaselineWithoutTheHost(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, fileName("project"))
+	path := filepath.Join(dir, FileName("project"))
 	if err := os.WriteFile(path, []byte(`{"version": 1, "hosts": {"pypi.org"`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestTRU58_ForgetMatchesTheWholeHostInAnUnparseableBaseline(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, fileName("other"))
+	path := filepath.Join(dir, FileName("other"))
 	body := `{"version": 2, "basis": "declared", "project": "other", "hosts": {"pypi.org": {}, "data.io": {}}}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -279,7 +279,7 @@ func TestTRU58_ForgetMatchesATruncatedHostname(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, fileName("project"))
+	path := filepath.Join(dir, FileName("project"))
 	// Cut off inside "secret.example", after only "secret.exam".
 	body := `{"version": 2, "basis": "declared", "project": "project", "hosts": {"keep.example": {}, "secret.exam`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
@@ -303,7 +303,7 @@ func TestTRU58_ForgetMatchesATruncatedHostname(t *testing.T) {
 	if err := os.MkdirAll(dir2, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path2 := filepath.Join(dir2, fileName("other"))
+	path2 := filepath.Join(dir2, FileName("other"))
 	if err := os.WriteFile(path2, []byte(`{"version": 2, "hosts": {"secret.exam`), 0o600); err != nil {
 		t.Fatal(err)
 	}

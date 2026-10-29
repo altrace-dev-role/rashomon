@@ -448,8 +448,8 @@ func TestVER54m_EveryGateReasonExplainsOneState(t *testing.T) {
 		BackgroundLaunch: Backgrounded,
 		OrderUnknown:     Unknown, OutcomeUnknown: Unknown, RecordingIncomplete: Unknown, Budget: Unknown,
 	}
-	if len(frozen) != len(Reasons) || len(reasonState) != len(Reasons) {
-		t.Fatalf("frozen %d, reasonState %d, Reasons %d: a reason has no state", len(frozen), len(reasonState), len(Reasons))
+	if len(frozen) != len(Reasons) || len(reasonState()) != len(Reasons) {
+		t.Fatalf("frozen %d, reasonState %d, Reasons %d: a reason has no state", len(frozen), len(reasonState()), len(Reasons))
 	}
 	beside := func(r Reason, s State) Finding {
 		return Finding{

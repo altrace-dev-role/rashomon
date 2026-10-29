@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"reflect"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -186,6 +187,153 @@ func TestVER13b_MaskedReasonsByOutput(t *testing.T) {
 		if g.State != MaskedInconclusive || g.Reason != tc.want {
 			t.Errorf("output %q: %s %s, want %s %s", tc.kind, g.State, g.Reason, MaskedInconclusive, tc.want)
 		}
+	}
+}
+
+// TestVER13c_EmptyRunIsAbsentNeverGreen: a run whose output says no test ran
+// is Absent with reason empty_run (2.2.4 step 5), after the backgrounded and
+// masked rows and before every other (D46), and it is no green: LastGreen
+// stays the last real one and writes count from it (D47). An ok run with
+// no_summary stays green: the spec's "visible ok ... else green"; only
+// empty_run moves. Seqs: call i declares at 2i-1.
+func TestVER13c_EmptyRunIsAbsentNeverGreen(t *testing.T) {
+	empty := func(seq int64, outcome string) call {
+		return withOutput(gateCall(seq, "go-test", outcome), outEmptyRun)
+	}
+	pytest5 := empty(1, store.ExecFailed)
+	pytest5.exit = 5
+	for _, c := range []struct {
+		name      string
+		at        int64
+		calls     []call
+		state     State
+		reason    Reason
+		lastRun   int64
+		lastGreen int64 // 0 is none
+		writes    int
+		lastWrite int64 // 0 is none
+	}{
+		{"(a) an ok empty run", 2, []call{empty(1, store.ExecOK)}, Absent, EmptyRun, 1, 0, 0, 0},
+		{"(b) green, a write, an empty run", 6, []call{gateCall(1, "go-test", store.ExecOK), edit(2, "pkg/a.go"), empty(3, store.ExecOK)},
+			Absent, EmptyRun, 5, 1, 1, 3},
+		{"(c) an empty run, then a write", 4, []call{empty(1, store.ExecOK), edit(2, "pkg/a.go")}, Absent, EmptyRun, 1, 0, 1, 3},
+		{"(d) a masked empty run", 2, []call{withOutput(maskedCall(1), outEmptyRun)}, MaskedInconclusive, MaskedNoSuccessLine, 1, 0, 0, 0},
+		{"(e) an ok run with no output", 2, []call{gateCall(1, "go-test", store.ExecOK)}, Green, OK, 1, 1, 0, 0},
+		{"(f) an ok run with no summary", 2, []call{withOutput(gateCall(1, "go-test", store.ExecOK), outNoSummary)}, Green, OK, 1, 1, 0, 0},
+		{"(g) pytest's exit 5", 2, []call{pytest5}, Absent, EmptyRun, 1, 0, 0, 0},
+		{"(h) a failed run with a failing summary", 2, []call{withOutput(gateCall(1, "go-test", store.ExecFailed), outSummaryFail)},
+			Red, FailedExit, 1, 0, 0, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			g := one(t, statesAt(t, c.at, c.calls...))
+			wantState(t, g, c.state, c.reason)
+			if g.LastRun == nil || g.LastRun.Seq != c.lastRun {
+				t.Errorf("LastRun %+v, want the run at %d", g.LastRun, c.lastRun)
+			}
+			if got := refSeq(g.LastGreen); got != c.lastGreen {
+				t.Errorf("LastGreen at %d, want %d (0 is none)", got, c.lastGreen)
+			}
+			if g.WritesSinceGreen != c.writes {
+				t.Errorf("WritesSinceGreen %d, want %d", g.WritesSinceGreen, c.writes)
+			}
+			if got := int64(0); g.LastWrite != nil && g.LastWrite.Seq != c.lastWrite || g.LastWrite == nil && c.lastWrite != got {
+				t.Errorf("LastWrite %+v, want the write at %d (0 is none)", g.LastWrite, c.lastWrite)
+			}
+		})
+	}
+	if snap := evalAt(runOf(t, empty(1, store.ExecOK)), 2); snap.RecordGreen || snap.Gates[0].State != Absent {
+		t.Errorf("an empty run: RecordGreen %t, gate %s, want false and absent", snap.RecordGreen, snap.Gates[0].State)
+	}
+}
+
+// refSeq is r's Seq, 0 where r is nil.
+func refSeq(r *RunRef) int64 {
+	if r == nil {
+		return 0
+	}
+	return r.Seq
+}
+
+// TestVER13d_EmptyRunReachesTheLedger: through EvaluateWithObligations, the
+// Absent rows card 1.9 pinned on obligations() directly (TestPG5b): an empty
+// run with no write after it owes nothing, no row of any kind; with one,
+// gate_after_write is open on the write. Absent now has a run, so
+// exit_unmasked is met on it where a row is owed: the table reads an empty
+// run only where no pipe hid its status (D47). The watched row's
+// red is the table's Red and its green the table's green (D47): an empty run
+// after a red leaves the row open (TestPG7b's red with no green), and
+// pytest's exit 5 alone opens none.
+func TestVER13d_EmptyRunReachesTheLedger(t *testing.T) {
+	empty := func(seq int64, outcome string) call {
+		return withOutput(gateCall(seq, "go-test", outcome), outEmptyRun)
+	}
+	if obs := obAt(runOf(t, empty(1, store.ExecOK)), 2); len(obs) != 0 {
+		t.Errorf("an empty run with no write owes %+v, want nothing", obs)
+	}
+	r := runOf(t, empty(1, store.ExecOK), edit(2, "pkg/a.go"))
+	obs := obAt(r, 4)
+	wantRow(t, rowOf(t, obs, GateAfterWrite), ObligationOpen, declSeq(r, 1))
+	wantRow(t, rowOf(t, obs, ExitUnmasked), ObligationMet, declSeq(r, 0))
+
+	r = runOf(t, gateCall(1, "go-test", store.ExecFailed), empty(2, store.ExecOK))
+	wantRow(t, rowOf(t, obAt(r, 4), WatchedRedThenGreen), ObligationOpen, declSeq(r, 0))
+
+	pytest5 := empty(1, store.ExecFailed)
+	pytest5.exit = 5
+	noRow(t, obAt(runOf(t, pytest5), 2), WatchedRedThenGreen)
+}
+
+// TestVER13e_StateOrderAndVocabularyUnchanged: the empty-run row adds no
+// state and no reason; Order and empty_run's state stand as they were.
+func TestVER13e_StateOrderAndVocabularyUnchanged(t *testing.T) {
+	if want := []State{Red, MaskedInconclusive, Backgrounded, Stale, Absent, Unknown, Green}; !slices.Equal(Order, want) || reasonState()[EmptyRun] != Absent {
+		t.Fatalf("Order %v and empty_run's state %s, want %v and absent", Order, reasonState()[EmptyRun], want)
+	}
+}
+
+// TestVER13f_GreenIsTheNegationOfTheRowsAboveStale is green()'s doc as a
+// test, over every run the rows above Stale read: backgrounded or not,
+// masked by test, build or not at all, each outcome (an interrupt with a code
+// and one without), no output or each of the seven kinds, and landed in
+// order or spilled. green(r) holds exactly when no row before Stale matches a
+// family whose last run is r, so a row added above Stale without its term in
+// green() fails here (D47). The enumeration varies f.last only; counted stays
+// empty, so a row above Stale that reads f.counted or any other fam field
+// needs its own test.
+func TestVER13f_GreenIsTheNegationOfTheRowsAboveStale(t *testing.T) {
+	stale := slices.IndexFunc(gateTable, func(r gateRow) bool { return r.state == Stale })
+	if stale < 1 {
+		t.Fatalf("the Stale row is at %d, want a row after the first", stale)
+	}
+	one := 1
+	type outcome struct {
+		name string
+		exit *int
+	}
+	n := 0
+	for _, bg := range []bool{false, true} {
+		for _, m := range []*string{nil, ptr(shape.MaskedTest), ptr(shape.MaskedBuild)} {
+			for _, o := range []outcome{{store.ExecOK, nil}, {store.ExecFailed, nil}, {store.ExecInterrupted, &one}, {store.ExecInterrupted, nil}, {"", nil}} {
+				for _, k := range []string{"", outSummaryPass, outSummaryFail, outFailLine, outEmptyRun, outNoSummary, "unattributable", outUnread} {
+					for _, execSeq := range []*int64{ptr(int64(2)), nil} {
+						r := gateRun{Seq: 1, ExecSeq: execSeq, Backgrounded: bg, Masked: m, Outcome: o.name, ExitCode: o.exit}
+						if k != "" {
+							r.Output = &store.GateOutput{Kind: k}
+						}
+						f := fam{last: &r}
+						above := slices.ContainsFunc(gateTable[:stale], func(row gateRow) bool { return row.when(&f) })
+						if green(&r) == above {
+							t.Errorf("bg %t masked %v outcome %q exit %v output %q landed %t: green %t, a row above Stale matches %t",
+								bg, m, o.name, o.exit, k, execSeq != nil, green(&r), above)
+						}
+						n++
+					}
+				}
+			}
+		}
+	}
+	if n != 480 {
+		t.Fatalf("%d runs, want 480", n)
 	}
 }
 

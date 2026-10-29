@@ -31,6 +31,8 @@ var parseSeeds = []struct {
 	// of the two runs' figures.
 	{"BenchmarkA-8   20   100 ns/op   50 B/op   3 allocs/op\n", "A", 40, 5},
 	{"BenchmarkA-8   20   100 ns/op   50 B/op   3 allocs/op\n", "A", 60, 2},
+	// A complete header, as every package of a CI run prints it (BG1).
+	{pkgHeader("linux/amd64") + "BenchmarkA-8   20   100 ns/op   50 B/op   3 allocs/op\n", "A", 40, 5},
 }
 
 // TestRubricERRORS7_ParseSeeds runs FuzzParse's property over its seeds as a
