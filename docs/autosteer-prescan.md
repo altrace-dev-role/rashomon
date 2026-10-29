@@ -11,6 +11,63 @@ results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
 
+### Revision 6: what B2a established
+
+**The live recorder never calls `gateout`.** No live record holds an output
+classification. So the replay feeds the recorder exactly the payloads it would have
+received and adds nothing. Output classes from `OutputHead` and `OutputTail` are
+report-only, never a record. §5.2's "through `hook.Locate`, `shape` and `gateout`"
+should read "through the recorder's own entry points".
+
+**Field completeness, from both paired fixtures (39 events, 0 unsupported).**
+`internal/replay.Fields` is the table as code. `TestREPLAY5_` in `cmd/rashomon`
+established "not read" by running the real entry points (`hook`, `post`, `recap`,
+`probe`) in process against a store. It removed or altered each field and checked that
+the whole store and every output stayed the same, under both host-guard settings.
+`TestREPLAY6_` shows the rebuilt payloads and the captured ones leave identical stores
+and identical outputs on both fixtures.
+
+| Event | Rebuilt equal | Equal after normalisation | Not read | Read, not in the transcript (unsupported) |
+|---|---|---|---|---|
+| UserPromptSubmit | `session_id`, `cwd`, `hook_event_name` | `transcript_path` (the caller's path) | `prompt`, `prompt_id`, `permission_mode`, `scratchpad_dir` (prompt text is never rebuilt) | none |
+| PreToolUse | `session_id`, `cwd` (from the use line), `prompt_id`, `permission_mode`, `tool_name`, `tool_use_id` | `tool_input` (same JSON value; Edit key order differs), `transcript_path` | `effort`, `scratchpad_dir` | `agent_id`, `agent_type` on subagent calls |
+| PostToolUse | `session_id`, `cwd` (from the result line), `tool_name`, `tool_use_id` | `tool_input`, `transcript_path`, Bash `tool_response` (its two presence bits) | `prompt_id`, `permission_mode` (supplied anyway), other tools' `tool_response`, `effort`, `scratchpad_dir` | none; `duration_ms` is omitted (below) |
+| PostToolUseFailure | `session_id`, `cwd`, `prompt_id`, `permission_mode`, `tool_name`, `tool_use_id`, `error`, `is_interrupt` | `tool_input`, `transcript_path` | `effort`, `scratchpad_dir` | `agent_id` on subagent calls |
+| Stop | `session_id`, `cwd` (the last assistant line's), `last_assistant_message` | `transcript_path` | `prompt_id`, `permission_mode`, `stop_hook_active`, `background_tasks`, `session_crons`, `effort`, `scratchpad_dir` | none |
+
+SessionStart and SessionEnd are out of scope: they write a liveness marker, and a
+transcript has no moment for either.
+
+**`duration_ms` is read and stored, never read back, and not in a transcript.**
+B2a omits it, so the recorder stores null as it does for an unmeasured call. B2b
+compares execution records without it. (Ruling pending; the alternative makes every
+PostToolUse unsupported.)
+
+**Stop rule.** A Stop is placed only after a main-agent message with
+`stop_reason == "end_turn"`, with no later message, interrupt marker or unreadable line
+in that turn. Anything else is an **unknown** boundary, with a reason, and it taints
+what follows. The rule gives the same boundaries with every hook-written line removed
+(`TestREPLAY3_`).
+
+**Taint.** Each event carries the earliest gap at or before its position:
+- an unsupported event;
+- an unknown Stop;
+- an evicted call;
+- an unreadable line.
+
+B2b must not call a verdict Verified when the point is tainted by a gap that could
+have changed it.
+
+**New evidence differences for §7.1:**
+- A PreToolUse hook that rewrote a call's input is invisible: the transcript keeps the
+  original.
+- The `cwd` drifts after `cd`: the Pre's comes from the use line, the Post's from the
+  result line.
+- Subagent calls need `agent_type`, which no transcript line holds. It may be
+  recoverable by joining the sidechain's `agentId` to the parent's Agent call, whose
+  result names the agent and whose input names the `subagent_type`. That needs a
+  subagent fixture first.
+
 ### Revision 5
 
 | Point | Ruling | Where |
