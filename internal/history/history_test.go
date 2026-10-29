@@ -3,8 +3,12 @@ package history
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // line builds one transcript line from a header and content blocks. The
@@ -342,4 +346,264 @@ func TestHIST9_ContentShapes(t *testing.T) {
 	if len(calls) != 1 || calls[0].Outcome != Failed || *calls[0].ExitCode != 3 || string(calls[0].OutputHead) != "Exit code 3\nno\nmore" {
 		t.Fatalf("calls = %+v", calls)
 	}
+}
+
+// fixture312 is the 2.1.312 fixture: one live session, its transcript and the
+// hook payloads it sent, scrubbed together (see
+// test/acceptance/rubric_test7_real_payloads_test.go for the procedure).
+const fixture312 = "../../test/fixtures/claude-code/2.1.312/"
+
+// jsonLines reads a file of one JSON object per line.
+func jsonLines(t *testing.T, name string) []map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(fixture312 + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []map[string]any
+	for i, l := range strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(l), &m); err != nil {
+			t.Fatalf("%s line %d: %v", name, i+1, err)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func str(m map[string]any, key string) string {
+	s, _ := m[key].(string)
+	return s
+}
+
+// TestHIST10_Fixture2_1_312 holds the scrub of the 2.1.312 fixture to what it
+// must keep. The session wrote two files, ran `cd sub && python3 -m unittest`
+// (passes), edited in a bug, ran `python3 -m unittest` (fails, exit 1), fixed
+// it, and ran it again (passes). Scrubbing rewrote every id, path and UUID;
+// this test proves the joins a reader depends on survived it: the call ids
+// agree across the transcript and the payloads and are answered, the payloads
+// fire in the order the transcript records, each call's working directory is
+// the same in both (and the cd lands where the later calls say they are), and
+// the reader grades every call the way the session went.
+func TestHIST10_Fixture2_1_312(t *testing.T) {
+	type seen struct {
+		id, tool string
+		input    any
+		line     int
+		cwd      string
+		result   int // line of the tool_result, 0 if none
+		resCWD   string
+	}
+	var uses []*seen
+	byID := map[string]*seen{}
+	transcript := jsonLines(t, "transcript.jsonl")
+	lastResult, finalText, finalLine := 0, "", 0
+	for i, l := range transcript {
+		msg, _ := l["message"].(map[string]any)
+		blocks, _ := msg["content"].([]any)
+		for _, b := range blocks {
+			b, _ := b.(map[string]any)
+			switch str(b, "type") {
+			case "tool_use":
+				u := &seen{id: str(b, "id"), tool: str(b, "name"), input: b["input"], line: i + 1, cwd: str(l, "cwd")}
+				uses = append(uses, u)
+				byID[u.id] = u
+			case "tool_result":
+				u := byID[str(b, "tool_use_id")]
+				if u == nil || u.result != 0 {
+					t.Fatalf("line %d: a tool_result answers no earlier tool_use, or a second time", i+1)
+				}
+				u.result, u.resCWD = i+1, str(l, "cwd")
+				lastResult = i + 1
+			case "text":
+				if str(msg, "role") == "assistant" {
+					finalText, finalLine = str(b, "text"), i+1
+				}
+			}
+		}
+	}
+	if len(uses) != 7 {
+		t.Fatalf("premise: %d tool_use blocks in the transcript, want 7", len(uses))
+	}
+
+	// Call ids: the transcript's tool_use ids, in order, are the PreToolUse ids
+	// and the PostToolUse/PostToolUseFailure ids, and every one has its result.
+	type payload struct {
+		idx                      int
+		event, tool, id, cwd, ts string
+		input                    any
+		raw                      map[string]any
+	}
+	var pre, post []payload
+	stop, stopCount := payload{idx: -1}, 0
+	for i, p := range jsonLines(t, "payloads.ndjson") {
+		q := payload{idx: i, event: str(p, "hook_event_name"), tool: str(p, "tool_name"), id: str(p, "tool_use_id"),
+			cwd: str(p, "cwd"), ts: str(p, "transcript_path"), input: p["tool_input"], raw: p}
+		switch q.event {
+		case "PreToolUse":
+			pre = append(pre, q)
+		case "PostToolUse", "PostToolUseFailure":
+			post = append(post, q)
+		case "Stop":
+			stop, stopCount = q, stopCount+1
+		}
+		if str(p, "session_id") != "00000000-0000-4000-8000-000000000001" ||
+			q.ts != "~/.claude/projects/-private-tmp-rashomon-fixture-wd/00000000-0000-4000-8000-000000000001.jsonl" {
+			t.Errorf("payload %d names session %q, transcript %q", i, str(p, "session_id"), q.ts)
+		}
+	}
+	if len(pre) != len(uses) || len(post) != len(uses) || stopCount != 1 {
+		t.Fatalf("payloads: %d pre, %d post, %d stop; want %d, %d, 1", len(pre), len(post), stopCount, len(uses), len(uses))
+	}
+	for i, u := range uses {
+		if u.result == 0 {
+			t.Errorf("tool_use %s (line %d) has no tool_result", u.id, u.line)
+		}
+		if pre[i].id != u.id || post[i].id != u.id {
+			t.Errorf("call %d: transcript id %s, PreToolUse %s, Post %s", i, u.id, pre[i].id, post[i].id)
+		}
+		if pre[i].tool != u.tool || post[i].tool != u.tool {
+			t.Errorf("call %d: transcript tool %s, payloads %s and %s", i, u.tool, pre[i].tool, post[i].tool)
+		}
+		if !reflect.DeepEqual(pre[i].input, u.input) || !reflect.DeepEqual(post[i].input, u.input) {
+			t.Errorf("call %d (%s): the input differs between the transcript and a payload", i, u.id)
+		}
+	}
+
+	// Ordering: each call's Pre comes before its Post, which comes before the
+	// next call's Pre, as the transcript's use, result, next use do; the Stop
+	// payload follows the last call's Post, as the closing text follows the
+	// last result.
+	for i, u := range uses {
+		if !(pre[i].idx < post[i].idx) || i+1 < len(uses) && !(post[i].idx < pre[i+1].idx) {
+			t.Errorf("call %d: payload order pre %d, post %d, next pre %v", i, pre[i].idx, post[i].idx, pre[min(i+1, len(pre)-1)].idx)
+		}
+		if !(u.line < u.result) || i+1 < len(uses) && !(u.result < uses[i+1].line) {
+			t.Errorf("call %d: transcript order use %d, result %d", i, u.line, u.result)
+		}
+	}
+	if stop.idx <= post[len(post)-1].idx {
+		t.Errorf("Stop payload %d does not follow the last call's Post %d", stop.idx, post[len(post)-1].idx)
+	}
+	if finalLine <= lastResult {
+		t.Errorf("closing text on line %d does not follow the last result on line %d", finalLine, lastResult)
+	}
+	if got := str(stop.raw, "last_assistant_message"); got == "" || got != finalText {
+		t.Errorf("Stop payload's last_assistant_message %q, transcript's closing text %q", got, finalText)
+	}
+	f, err := os.Open(fixture312 + "transcript.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := report.FinalAssistantText(f); !ok || text != str(stop.raw, "last_assistant_message") {
+		t.Errorf("FinalAssistantText = %q, %v", text, ok)
+	}
+	f.Close()
+
+	// Working directories. The tool_use line's cwd is where the call was made,
+	// and the PreToolUse payload's the same; the tool_result line's cwd is
+	// where the shell ended up, and the PostToolUse payload's the same. They
+	// differ only for the call that cd'd.
+	const wd = "$TMPDIR/rashomon-fixture/wd"
+	sub := filepath.Join(wd, "sub")
+	wantCWD := []struct{ at, after string }{
+		{wd, wd}, {wd, wd}, {wd, sub}, {sub, sub}, {sub, sub}, {sub, sub}, {sub, sub},
+	}
+	for i, u := range uses {
+		if u.cwd != pre[i].cwd || u.resCWD != post[i].cwd {
+			t.Errorf("call %d: cwd transcript %q/%q, payloads %q/%q", i, u.cwd, u.resCWD, pre[i].cwd, post[i].cwd)
+		}
+		if u.cwd != wantCWD[i].at || u.resCWD != wantCWD[i].after {
+			t.Errorf("call %d: cwd %q then %q, want %q then %q", i, u.cwd, u.resCWD, wantCWD[i].at, wantCWD[i].after)
+		}
+		in, _ := u.input.(map[string]any)
+		if path := str(in, "file_path"); path != "" {
+			if rel, err := filepath.Rel(u.cwd, path); err != nil || (rel != "sub/"+filepath.Base(path) && rel != filepath.Base(path)) {
+				t.Errorf("call %d: %s is not under its cwd %s", i, path, u.cwd)
+			}
+		}
+		if cmd := str(in, "command"); strings.HasPrefix(cmd, "cd ") {
+			target, _, _ := strings.Cut(strings.TrimPrefix(cmd, "cd "), " && ")
+			if got := filepath.Join(pre[i].cwd, target); got != post[i].cwd {
+				t.Errorf("call %d: %q from %s lands in %s, but the Post payload says %s", i, cmd, pre[i].cwd, got, post[i].cwd)
+			}
+			if got := filepath.Join(u.cwd, target); got != u.resCWD {
+				t.Errorf("call %d: %q from %s lands in %s, but the result line says %s", i, cmd, u.cwd, got, u.resCWD)
+			}
+		}
+	}
+
+	// Result semantics, as the reader gives them: from the transcript alone.
+	var calls []Call
+	st, err := Read(strings.NewReader(mustRead(t, fixture312+"transcript.jsonl")), DefaultLimits, func(c Call) {
+		c.OutputHead = append([]byte(nil), c.OutputHead...)
+		c.OutputTail = append([]byte(nil), c.OutputTail...)
+		calls = append(calls, c)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		tool    string
+		cmd     string
+		outcome Outcome
+	}{
+		{"Write", "", OK}, {"Write", "", OK}, {"Bash", "cd sub && python3 -m unittest", OK}, {"Edit", "", OK},
+		{"Bash", "python3 -m unittest", Failed}, {"Edit", "", OK}, {"Bash", "python3 -m unittest", OK},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("read %d calls, want %d", len(calls), len(want))
+	}
+	for i, c := range calls {
+		var in struct {
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal(c.ToolInput, &in)
+		if c.Seq != i || c.ToolUseID != uses[i].id || c.ToolName != want[i].tool || in.Command != want[i].cmd ||
+			c.Outcome != want[i].outcome || c.Grade != Verified || c.Reason != ReasonNone {
+			t.Errorf("call %d = seq %d %s %s %q %s %s %s, want %s %q %s verified", i, c.Seq, c.ToolUseID, c.ToolName, in.Command,
+				c.Outcome, c.Grade, c.Reason, want[i].tool, want[i].cmd, want[i].outcome)
+		}
+		if c.SessionID != "00000000-0000-4000-8000-000000000001" || c.Version != "2.1.312" || c.CWD != uses[i].cwd || c.Backgrounded || c.Sidechain {
+			t.Errorf("call %d header = %q %q %q backgrounded=%v sidechain=%v", i, c.SessionID, c.CWD, c.Version, c.Backgrounded, c.Sidechain)
+		}
+		if c.Outcome == Failed {
+			if c.ExitCode == nil || *c.ExitCode != 1 || !strings.HasPrefix(string(c.OutputHead), "Exit code 1\nF\n") ||
+				!strings.HasSuffix(string(c.OutputHead), "FAILED (failures=1)") {
+				t.Errorf("call %d: exit %v, output %q", i, c.ExitCode, c.OutputHead)
+			}
+		} else if c.ExitCode != nil {
+			t.Errorf("call %d (%s) names exit code %d", i, c.Outcome, *c.ExitCode)
+		}
+		if c.ToolName == "Bash" && c.Outcome == OK && !strings.HasSuffix(string(c.OutputHead), "\nOK") {
+			t.Errorf("call %d: a passing unittest run reads %q", i, c.OutputHead)
+		}
+	}
+	// The payloads agree with the reader about which call failed: it is the one
+	// PostToolUseFailure, and its error opens the same "Exit code 1".
+	for i, p := range post {
+		failed := p.event == "PostToolUseFailure"
+		if failed != (calls[i].Outcome == Failed) {
+			t.Errorf("call %d: Post event %s, reader outcome %s", i, p.event, calls[i].Outcome)
+		}
+		if failed && !strings.HasPrefix(str(p.raw, "error"), "Exit code 1\n") {
+			t.Errorf("call %d: PostToolUseFailure error %q", i, str(p.raw, "error"))
+		}
+	}
+	if st.Uses != 7 || st.Results != 7 || st.Grades[Verified] != 7 || st.Undecodable != 0 || st.TooLong != 0 ||
+		st.DuplicateUses+st.DuplicateResults+st.OrphanResults != 0 || st.Versions["2.1.312"] != 7 || len(st.Versions) != 1 {
+		t.Errorf("stats = %+v", st)
+	}
+	if !Supported("2.1.312") {
+		t.Error("2.1.312 has a fixture and is not Supported")
+	}
+}
+
+func mustRead(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

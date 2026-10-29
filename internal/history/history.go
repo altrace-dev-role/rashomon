@@ -132,6 +132,7 @@ func (r Reason) String() string {
 // and a version nobody has read is graded Unsupported rather than guessed at.
 var supported = map[string]bool{
 	"2.1.280": true,
+	"2.1.312": true,
 }
 
 // Supported reports whether v is a transcript version this reader has a
