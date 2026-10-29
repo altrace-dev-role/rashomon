@@ -178,6 +178,15 @@ func Discover(fsys FS, repoCandidates []string, managedPath string) (*Compiled, 
 	return d.compile(), nil
 }
 
+// Unreadable is the Compiled of a discovery the caller could not finish
+// (Discover's error, or a call with no cwd): no source, and reason as its one
+// Errors line, the user's one flag. Its Digest and Trust are any sourceless
+// Compiled's.
+func Unreadable(reason string) *Compiled {
+	d := discovery{c: Compiled{Errors: []string{reason}}}
+	return d.compile()
+}
+
 // discovery is Discover's state: the Compiled so far and, parallel to its
 // Sources, each source's File.
 type discovery struct {

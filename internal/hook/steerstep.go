@@ -23,7 +23,9 @@ const SteerReadBudget = 10 * time.Millisecond
 // SteerEnv is the step's port: what cmd reads from the process for it.
 // Consent is the steer_disclosure marker's reader (store.SteerDisclosureMarker,
 // D84); a nil reader reads as no consent. HoldoutOff is EnvHoldout as
-// HoldoutOff reads it.
+// HoldoutOff reads it. ProjectDir is CLAUDE_PROJECT_DIR and ManagedDir the
+// managed-settings directory (settings.ManagedDir), DiscoverSpec's two
+// inputs beside the call's cwd (card 3.1 (c)).
 type SteerEnv struct {
 	HarnessID, Surface string
 	MirrorInBand       bool
@@ -32,6 +34,8 @@ type SteerEnv struct {
 	HoldoutOff         bool
 	Consent            func(root string) (int, error)
 	Now                time.Time
+	ProjectDir         string
+	ManagedDir         string
 }
 
 // steps is the v0 trigger (card 2.3 R3): a failure event whose execution
@@ -68,11 +72,12 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	return b
 }
 
-// judge is the step's compute before Route: the trigger, the run read once
-// and judged at the landed seq, and Route's context for the call. ok is false
-// when the step does not run or the run could not be read. It writes nothing,
-// so BenchmarkPostSteer's eval rows measure it apart from the append and the
-// sync.
+// judge is the step's compute before Route: the trigger, the run read once,
+// the spec discovered from the payload's cwd (per trigger, not per call:
+// D128), the run judged at the landed seq against that spec, and Route's
+// context for the call. ok is false when the step does not run or the run
+// could not be read. It writes nothing, so BenchmarkPostSteer's eval rows
+// measure it apart from the append and the sync.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	if !steps(p.event, p.landedSeq, p.landedRunner) {
 		return steer.Context{}, verify.SteerView{}, false
@@ -81,8 +86,9 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	if err != nil {
 		return steer.Context{}, verify.SteerView{}, false
 	}
+	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir)
 	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID)}
-	view := verify.SteerAt(run, nil, nil, pt, env.Now, p.event, p.toolUseID)
+	view := verify.SteerAt(run, nil, p.sp, pt, env.Now, p.event, p.toolUseID)
 	return p.contextOf(env, view), view, true
 }
 
@@ -112,7 +118,7 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		Consent:    consented(env.Consent, p.st.Root()),
 		Arm:        steer.ArmLive,
 		Attendance: attendance,
-		Holdout:    p.heldOut(env.HoldoutOff),
+		Holdout:    p.heldOut(env),
 	}
 }
 
@@ -120,10 +126,9 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 // name, so every reader of a session's arm draws the same answer.
 const holdoutFeature = "steer"
 
-// holdoutBP is the field holdout's share in basis points: on by default at
-// 1,000 (PRD PF-MS5, opt-out; D109 as amended). 5.6 adds the off switch and
-// the rate, the spec file's holdout object, when 3.1's discovery gives the
-// hook its one spec read.
+// holdoutBP is the field holdout's share in basis points with no spec: on
+// by default at 1,000 (PRD PF-MS5, opt-out; D109 as amended). A discovered
+// spec's holdout object sets the share instead (5.6, heldOut).
 const holdoutBP = 1000
 
 // EnvHoldout names the operator's switch for the field holdout: "off" skips
@@ -140,18 +145,28 @@ func HoldoutOff(v string) bool {
 }
 
 // heldOut is the session's draw into the field holdout (card 2.5, D109):
-// arm's keyed draw for the session at holdoutBP, the same on each of its
-// calls, unless the operator's off is set. A draw arm refuses is treatment,
-// and nothing records it: the store's key exists on every opened store.
-func (p *Post) heldOut(off bool) bool {
-	if off {
+// arm's keyed draw for the session, the same on each of its calls, at the
+// share the discovered spec's holdout object gives at env.Now (On: none when
+// it is off or its window has closed), or at holdoutBP with no spec (5.6).
+// The operator's off is above both. A draw arm refuses is treatment, and
+// nothing records it: the store's key exists on every opened store.
+func (p *Post) heldOut(env SteerEnv) bool {
+	if env.HoldoutOff {
 		return false
+	}
+	bp := holdoutBP
+	if p.sp != nil {
+		on, rate := p.sp.Holdout.On(env.Now)
+		if !on {
+			return false
+		}
+		bp = rate
 	}
 	a, err := arm.New(p.st.Key())
 	if err != nil {
 		return false
 	}
-	got, err := a.Assign(holdoutFeature, p.sessionID, holdoutBP)
+	got, err := a.Assign(holdoutFeature, p.sessionID, bp)
 	return err == nil && got == arm.Holdout
 }
 

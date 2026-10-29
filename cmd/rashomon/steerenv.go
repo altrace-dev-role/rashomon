@@ -6,6 +6,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
+	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -20,7 +21,9 @@ import (
 //   - Consent is the steer_disclosure marker, never consent.json: the marker
 //     is the hook path's view of it (D49, D84), which the SessionStart probe
 //     keeps in step.
+//   - ProjectDir and ManagedDir are specDirs'.
 func steerEnv(id harness.Identity, now time.Time) hook.SteerEnv {
+	projectDir, managedDir := specDirs()
 	return hook.SteerEnv{
 		HarnessID:    string(id.ID),
 		Surface:      string(id.Surface),
@@ -30,5 +33,14 @@ func steerEnv(id harness.Identity, now time.Time) hook.SteerEnv {
 		HoldoutOff:   hook.HoldoutOff(os.Getenv(hook.EnvHoldout)),
 		Consent:      store.SteerDisclosureMarker,
 		Now:          now,
+		ProjectDir:   projectDir,
+		ManagedDir:   managedDir,
 	}
+}
+
+// specDirs is hook.DiscoverSpec's two directories from this process (card 3.1
+// (c)): CLAUDE_PROJECT_DIR as claudeEnv reads it, and the managed-settings
+// directory, under which the managed spec is rashomon/spec.json.
+func specDirs() (projectDir, managedDir string) {
+	return os.Getenv("CLAUDE_PROJECT_DIR"), settings.ManagedDir()
 }

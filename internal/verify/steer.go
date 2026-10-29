@@ -16,13 +16,15 @@ import (
 // SteerView is what the steer step reads from VERIFY at one call (card 2.3
 // R1): the candidates, each with its rendered Message (the zero Message when
 // the render was refused, which Route logs as render_refused); the project
-// root the record holds, "" where it holds none (record scope v4); and how
-// many facts the mapper refused, a contract break between producer and
-// mapper that is counted, never passed on.
+// root the record holds, "" where it holds none (record scope v4); how many
+// facts the mapper refused, a contract break between producer and mapper that
+// is counted, never passed on; and the spec judged against, the snapshot's
+// (card 3.1 (c)).
 type SteerView struct {
 	Findings    []steer.Finding
 	ProjectRoot string
 	Dropped     int
+	Spec        *SpecInfo
 }
 
 // SteerAt evaluates run at pt once and returns the steer view of the call
@@ -34,7 +36,7 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now
 	var c classified
 	snap := evaluate(run, idx, sp, pt, now, &c)
 	found, dropped := mapFacts(run, regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID), pt)
-	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped}
+	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
 }
 
 // mapFacts maps each fact to its steer candidate through ToSteer and renders

@@ -28,6 +28,8 @@ type stFix struct {
 	t   *testing.T
 	st  *store.Store
 	now time.Time
+	// cwd is each payload's cwd, /tmp/project unless a test moves it.
+	cwd string
 	// setup runs on each Post before its Capture.
 	setup func(*Post)
 }
@@ -39,7 +41,7 @@ func newST(t *testing.T) *stFix {
 	if err := store.WriteRecordScopeMarker(st.Root(), store.RecordScopeV5); err != nil {
 		t.Fatal(err)
 	}
-	f := &stFix{t: t, st: st, now: time.UnixMilli(1_800_000_000_000)}
+	f := &stFix{t: t, st: st, now: time.UnixMilli(1_800_000_000_000), cwd: "/tmp/project"}
 	cov := store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SessionSchemaVersion, RecordedAtMS: f.now.UnixMilli(),
 		SessionID: stSession, Phase: store.PhasePost, State: store.StateVerified,
 		HookEntry: store.EntryPresentSettings, Probe: store.ProbeFresh}
@@ -54,7 +56,7 @@ func (f *stFix) clock() time.Time { return f.now }
 func (f *stFix) payload(event, id, tool string, input, extra map[string]any) string {
 	f.t.Helper()
 	p := map[string]any{"session_id": stSession, "tool_use_id": id, "prompt_id": "p1", "transcript_path": "/tmp/t.jsonl",
-		"permission_mode": "default", "tool_name": tool, "cwd": "/tmp/project", "hook_event_name": event, "tool_input": input}
+		"permission_mode": "default", "tool_name": tool, "cwd": f.cwd, "hook_event_name": event, "tool_input": input}
 	maps.Copy(p, extra)
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -88,13 +90,13 @@ func (f *stFix) call(id, tool string, input map[string]any, exit int) *Post {
 
 var goTest = map[string]any{"command": "go test ./..."}
 
-// red lands a green `go test ./...`, an Edit of internal/a.go and a red
-// `go test ./...` under redID, the regression the step names, and returns
-// the red's Post.
+// red lands a green `go test ./...`, an Edit of internal/a.go under cwd and
+// a red `go test ./...` under redID, the regression the step names, and
+// returns the red's Post.
 func (f *stFix) red(redID string) *Post {
 	f.t.Helper()
 	f.call("toolu_g", "Bash", goTest, 0)
-	f.call("toolu_e", "Edit", map[string]any{"file_path": "/tmp/project/internal/a.go", "old_string": "a", "new_string": "b"}, 0)
+	f.call("toolu_e", "Edit", map[string]any{"file_path": filepath.Join(f.cwd, "internal", "a.go"), "old_string": "a", "new_string": "b"}, 0)
 	return f.call(redID, "Bash", goTest, 1)
 }
 

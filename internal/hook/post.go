@@ -11,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -137,6 +138,9 @@ type Post struct {
 	sessionID string
 	toolUseID string
 	cwd       string
+	// sp is the spec the steer step discovered for this call (DiscoverSpec),
+	// nil for none or before the step runs (card 3.1 (c)).
+	sp *spec.Compiled
 	// withheld is Handler.withheld for the execution record.
 	withheld bool
 
