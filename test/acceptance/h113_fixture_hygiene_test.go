@@ -37,6 +37,17 @@ import (
 // Break: skip the .ndjson captures, and a credential planted in a captured
 // transcript passes CI.
 
+// h113Contracts are the files whose secret-shape findings H-113 excuses, by
+// exact path, each with its reason (D156): hand-written contracts that a test
+// of their own reads, not captures, whose Go identifiers and the prose naming
+// them the entropy test reads as secret shapes. An allow list, not a skip:
+// the file is still scanned, only that shape is excused (an email address,
+// an account UUID, a home directory or an inventory in it still fails), and
+// an entry the scan did not read fails as stale.
+var h113Contracts = map[string]string{
+	"test/prd/truth_table.json": "the PRD implementation truth table (card TRUTH-TABLE1): Go identifiers and prose, checked by test/prd's TestPRD1 tests",
+}
+
 func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 	scanned, found, err := hygiene.Walk(moduleRoot)
 	if err != nil {
@@ -49,7 +60,15 @@ func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 			t.Fatalf("premise: the scan did not read %s; it read %v", want, scanned)
 		}
 	}
+	for path := range h113Contracts {
+		if !slices.Contains(scanned, path) {
+			t.Errorf("h113Contracts names %s, which the scan did not read: a stale entry", path)
+		}
+	}
 	for _, f := range found {
+		if _, ok := h113Contracts[f.Path]; ok && f.What == "a secret shape" {
+			continue
+		}
 		t.Errorf("%s -- run go run ./test/tools/scrub -w on it, read the result, and commit that", f)
 	}
 }
