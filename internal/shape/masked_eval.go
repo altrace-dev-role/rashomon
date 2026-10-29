@@ -294,7 +294,7 @@ func (ev *evaluator) simple(st *evalState, c *simple) {
 		st.status = 0
 		if c.runner == ev.target {
 			ev.ran = true
-			if ev.fail {
+			if ev.fail && !c.hides {
 				st.status = 1
 			}
 		}

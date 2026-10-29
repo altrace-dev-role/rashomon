@@ -47,7 +47,7 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{"X=1 cd /tmp && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd /a && cd $B && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"(cd /tmp && go test ./...)", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
-		{"{ cd /tmp && go test ./...; }", VerbPackage, MaskedNone, RunnerTest, "go test ./..."},
+		{"{ cd /tmp && go test ./...; }", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"(cd /tmp && go test ./...) | tail", VerbPackage, MaskedTest, RunnerTest, "go test ./..."},
 		{`cd "$REPO" && go test ./...`, VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd ~user/x && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
@@ -57,7 +57,7 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{"cd sub && cd - && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd $(git rev-parse --show-toplevel) && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"cd /a && (cd b && go test ./...)", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
-		{"cd /a && { cd b && go test ./...; }", VerbPackage, MaskedNone, RunnerTest, "go test ./..."},
+		{"cd /a && { cd b && go test ./...; }", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{"(cd /x); go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{strings.Repeat("cd $D && ", MaxLeadingCd) + "go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		// A fold leadingCd reads, into the home.
@@ -69,18 +69,28 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{"cd ~/x && make -j4 test", VerbTest, MaskedNone, RunnerTest, "make -j4 test"},
 		{"cd /tmp && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 		{strings.Repeat("cd a && ", MaxLeadingCd) + "go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		// pushd folds as cd does, in both readings (version 8): `&&` and
+		// `;` alike, its stack forms too, which the location reader refuses.
+		{"pushd /b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"cd /a && pushd /b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"pushd /b; go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"pushd +1 && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		// A comment ends at its newline in both readings (version 9), as it
+		// does to the shell: a backslash at its end continues nothing, so the
+		// cd steps after it fold and the runner is go test.
+		{"cd a && # c\\\ncd b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"# c\\\ncd a && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
+		{"cd a && #\\\n cd b && go test ./...", VerbTest, MaskedNone, RunnerTest, "go test ./..."},
 
 		// Unchanged. A cd the program search does not fold still displaces
-		// the runner after it: pushd and popd, one whose rest is a comment,
+		// the runner after it: popd, one whose rest is a comment,
 		// `||`, a cd mid-line, and the second run of two. A quoted cd is no
 		// cd to either reader and leaves the runner its digest. Past
 		// MaxLeadingCd steps none is folded (RES-10). A line the masked
 		// parser reads as null (a cd behind a redirection) stays null.
-		{"pushd /tmp && go test ./...", VerbExecute, MaskedNone, "", ""},
-		{"cd /a && pushd /b && go test ./...", VerbExecute, MaskedNone, "", ""},
 		{"cd /a && popd && go test ./...", VerbExecute, MaskedNone, "", ""},
-		{"pushd /b && make test | tail", VerbExecute, MaskedTest, "", ""},
-		{"cd /a && pushd /b && ls", VerbExecute, MaskedNone, "", ""},
+		{"popd && make test | tail", VerbExecute, MaskedTest, "", ""},
+		{"cd /a && popd && ls", VerbExecute, MaskedNone, "", ""},
 		{">/dev/null cd /tmp && go test ./...", VerbTest, "", "", ""},
 		{"cd /tmp # x && go test ./...", VerbExecute, MaskedNone, "", ""},
 		{`"cd" /tmp && go test ./...`, VerbExecute, MaskedNone, RunnerTest, "go test ./..."},
@@ -90,13 +100,6 @@ func TestFoldKeepsRunnerIdentity(t *testing.T) {
 		{strings.Repeat("cd a && ", MaxLeadingCd+1) + "go test ./...", VerbTest, MaskedNone, "", ""},
 		{strings.Repeat("cd $D && ", MaxLeadingCd+1) + "go test ./...", VerbTest, MaskedNone, "", ""},
 		{strings.Repeat("cd ~/a && ", MaxLeadingCd+1) + "go test ./...", VerbTest, MaskedNone, "", ""},
-		// The two readings fold apart: tokenizeList ends a comment at its
-		// newline, as the shell does, and tokenizeProgram joins the next line
-		// to it, so the masked parser would pass over a cd the program search
-		// does not. Then no step is folded (agreedFold).
-		{"cd a && # c\\\ncd b && go test ./...", VerbExecute, MaskedNone, "", ""},
-		{"# c\\\ncd a && go test ./...", VerbExecute, MaskedNone, "", ""},
-		{"cd a && #\\\n cd b && go test ./...", VerbExecute, MaskedNone, "", ""},
 	} {
 		s := derive(tc.cmd)
 		masked, kind := "", ""
@@ -190,8 +193,11 @@ func TestLeadingFold(t *testing.T) {
 	}
 }
 
-// foldApart are lines the two readings fold apart: a comment ending in a
-// backslash, before the leading steps or among them.
+// foldApart are lines the two readings folded apart before version 9: a
+// comment ending in a backslash, before the leading steps or among them, which
+// tokenizeProgram joined the next line to. Both readings now end a comment at
+// its newline (lex), and the lines stay as seeds; the one divergence left is a
+// here-document, whose body only tokenizeList skips.
 var foldApart = []string{
 	"cd a && # c\\\ncd b && go test ./...",
 	"# c\\\ncd a && go test ./...",
@@ -274,7 +280,8 @@ func TestDeriveWithDirsUnread(t *testing.T) {
 		{"X=1 cd /tmp && go test", view("X=1", "cd", "/tmp", "&&")},
 		{"(cd /tmp && go test ./...)", view("(", "cd", "/tmp", "&&")},
 		{"cd /x && cd - && go test ./...", view("cd", "/x", "&&", "cd", "-", "&&")},
-		{"cd /a && pushd /b && go test ./...", view("cd", "/a", "&&")},
+		{"pushd /b; go test ./...", view("pushd", "/b", ";")},
+		{"cd /a && pushd +1 && go test ./...", view("cd", "/a", "&&", "pushd", "+1", "&&")},
 		{"cd && go test ./...", view("cd", "&&")},
 		{"cd ~user/x && go test ./...", view("cd", "~user/x", "&&")},
 
@@ -283,6 +290,7 @@ func TestDeriveWithDirsUnread(t *testing.T) {
 		{"cd /a && ls", ""},
 		{"go test ./...", ""},
 		{"pushd /b && go test ./...", ""},
+		{"cd /a && pushd /b && go test ./...", ""},
 		{"cd /repo\r && ls", ""},
 		{"cd $D\r && ls", ""},
 		{strings.Repeat("cd a && ", MaxLeadingCd+1) + "go test ./...", ""},

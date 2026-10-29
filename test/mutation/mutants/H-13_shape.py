@@ -5,7 +5,7 @@ m("the report stops counting programs at all", "internal/report/report.go",
   "\t\t\tsess.Declarations.ByProgram[*d.Shape.Program]++", "\t\t\t_ = d.Shape.Program",
   "TestByProgramAndVerb")
 m("H-13 a word the tokenizer cannot vouch for is read as the program", "internal/shape/program.go",
-  "\t\tcase t.opaque, isComment(t):", "\t\tcase isComment(t):", "TestNoCorpusLineLeaksIntoProgram")
+  "\t\tcase t.opaque:\n\t\t\treturn 0, false\n", "\t\tcase false:\n\t\t\treturn 0, false\n", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize.go",
   "\tif l.expands(i, false) {\n\t\tl.w.opaque = true\n\t}",
   "\tif l.expands(i, false) {\n\t\t_ = l.w.opaque\n\t}", "TestNoCorpusLineLeaksIntoProgram")
@@ -96,8 +96,8 @@ m("H-13 a closed ${ } is taken for an open one", "internal/shape/program.go",
   "strings.Count(t.text[k:], \"{\") >= strings.Count(t.text[k:], \"}\")", "TestProgramIsAProgram")
 m("H-13 a quoted ${ is taken for an expansion", "internal/shape/program.go",
   "\treturn t.opaque && k >= 0 &&", "\treturn k >= 0 &&", "TestProgramIsAProgram")
-m("H-13 a comment inside a group is read past", "internal/shape/program.go",
-  "\tcase isComment(t):\n\t\treturn true\n", "\tcase false && isComment(t):\n\t\treturn true\n", PROG)
+# Removed by 5.15 (RulesVersion 9): the program stream holds no comment token (lex), so the branch it broke was
+# dead and is deleted: "H-13 a comment inside a group is read past" (unknownDepth).
 m("H-13 a case statement inside a group is read past", "internal/shape/program.go",
   "\tcase !t.meta && t.quotedAt < 0 && t.text == \"case\":\n", "\tcase false:\n", PROG)
 m("H-13 a here-document inside a group is read past", "internal/shape/program.go",
@@ -231,8 +231,8 @@ m("H-13 a process substitution is refused as a redirect's target", "internal/sha
   "\treturn !procSub(toks, i+1)\n}", "\treturn true\n}", "TestProgramIsAProgram")
 m("H-13 a paren spaced from its < is read as a process substitution", "internal/shape/words.go",
   "\treturn next.meta && next.glued && next.text == \"(\"\n}", "\treturn next.meta && next.text == \"(\"\n}", PROG)
-m("H-13 a comment where a redirect target belongs is taken for the target", "internal/shape/words.go",
-  "\tcase isComment(next):\n\t\treturn true\n", "\tcase false && isComment(next):\n\t\treturn true\n", PROG)
+# Removed by 5.15 (RulesVersion 9): the program stream holds no comment token (lex), so the branch it broke was
+# dead and is deleted: "H-13 a comment where a redirect target belongs is taken for the target" (noTarget).
 m("H-13 a C0 control other than NUL and CR is read past", "internal/shape/shape.go",
   "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
   "\t\tif c := cmd[i]; c == 0 || c == '\\r' || c == 0x7f {", PROG)
