@@ -49,4 +49,4 @@ m("ST-4.1 purge does not plan bodies.json", PG,
 m("ST-4.1 purge does not plan bodies.json's temporary file", PG,
   ', "." + store.FileBodies + ".tmp-"}', '}', "TestRC14d_PurgeLeavesNoFile")
 m("ST-4.1 the bodies rows left out of the inventory", "internal/disclose/disclose.go",
-  'append(indexFiles(), bodiesFiles()...)', 'indexFiles()', "TestTRU23_BodiesPathsAreInTheInventory")
+  'append(bodiesFiles(), labFiles()...)', 'labFiles()', "TestTRU23_BodiesPathsAreInTheInventory")

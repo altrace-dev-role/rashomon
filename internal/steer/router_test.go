@@ -309,7 +309,9 @@ func TestST_ClampsRecordTheirReason(t *testing.T) {
 }
 
 // TestST_ArmOffLogsAndPrintsNothing (step 4; STR-28): arm off evaluates and
-// logs every finding, suppressed arm_off, and prints nothing, flags included.
+// logs every finding and prints nothing, flags included. What the steer arm
+// would have printed is suppressed arm_off; the flag the note made wait
+// stays the turn-end line's candidate, as it would under steer.
 func TestST_ArmOffLogsAndPrintsNothing(t *testing.T) {
 	ctx := routerContext(t)
 	ctx.Arm = ArmOff
@@ -317,8 +319,10 @@ func TestST_ArmOffLogsAndPrintsNothing(t *testing.T) {
 	if out != (Output{}) {
 		t.Errorf("arm off printed %+v", out)
 	}
-	for _, l := range lastLines(t, ctx, 2) {
-		wantLine(t, l, LineStateSuppressed, SuppressedByArmOff, DeliveryShadow)
+	lines := lastLines(t, ctx, 2)
+	wantLine(t, lines[0], LineStateSuppressed, SuppressedByArmOff, DeliveryShadow)
+	wantLine(t, lines[1], LineStateCandidate, "", "")
+	for _, l := range lines {
 		if l.Arm != ArmOff {
 			t.Errorf("arm %q", l.Arm)
 		}

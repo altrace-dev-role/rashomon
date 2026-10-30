@@ -21,7 +21,7 @@ import (
 func TestSP15b_SteerEnvCarriesTheSpecDirs(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", "/work/project")
 	t.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", "/etc/managed/managed-settings.json")
-	env := steerEnv(harness.Identity{}, time.Unix(0, 0))
+	env := steerEnv(harness.Identity{}, time.Unix(0, 0), t.TempDir())
 	if env.ProjectDir != "/work/project" || env.ManagedDir != "/etc/managed" {
 		t.Errorf("steerEnv ProjectDir %q, ManagedDir %q; want /work/project and /etc/managed", env.ProjectDir, env.ManagedDir)
 	}
