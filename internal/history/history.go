@@ -215,7 +215,28 @@ type Call struct {
 	// fixture toolUseResult equals the hook's tool_response key for key; the
 	// values are never kept.
 	ResultBackgroundTaskID, ResultBackgroundedByUser bool
-	ToolName                                         string
+	// ResultAgentID is the agentId the answering tool_result line's
+	// toolUseResult names, with the conditions ResultObject states (one
+	// result on the line, an object) and the bound maxHeaderBytes. An Agent or
+	// Task call's result names the subagent it ran: the parent half of the link
+	// that gives a subagent's calls their agent_type (docs/autosteer-prescan.md,
+	// revision 7). ResultAgentConflict: a second result line for the call named
+	// another agent, so the call claims two and answers for neither.
+	ResultAgentID       string
+	ResultAgentConflict bool
+	// ResultDetailAbsent: the result line held exactly one tool_result and
+	// carries no toolUseResult key at all. A subagent's result lines never do
+	// (2.1.312, test/fixtures/claude-code/2.1.312-subagents), so for them it
+	// says nothing about the call; for the main agent's it is a line whose
+	// shape no fixture shows.
+	ResultDetailAbsent bool
+	// AttributionAgent is the attributionAgent key of the tool_use line, which
+	// a subagent's assistant lines carry and the main agent's do not: the type
+	// the harness attributed the line to. It is a cross-check on the type the
+	// parent link recovers, never a source of one. Empty when the line names
+	// none or names one over maxHeaderBytes.
+	AttributionAgent string
+	ToolName         string
 	// ToolInput is the input as written, nil when it was over
 	// Limits.MaxInputBytes.
 	ToolInput json.RawMessage
@@ -351,7 +372,9 @@ type header struct {
 	Timestamp   string `json:"timestamp"`
 	IsSidechain bool   `json:"isSidechain"`
 	AgentID     string `json:"agentId"`
-	Message     struct {
+	// AttributionAgent is read off assistant lines only, by what carries it.
+	AttributionAgent string `json:"attributionAgent"`
+	Message          struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
 	ToolUseResult json.RawMessage `json:"toolUseResult"`
@@ -441,6 +464,10 @@ func (rd *reader) use(h *header, b *block, at Pos) {
 	} else {
 		p.Reason = InputTooLarge
 	}
+	if len(h.AttributionAgent) <= maxHeaderBytes {
+		p.AttributionAgent = h.AttributionAgent
+		p.bytes += len(p.AttributionAgent)
+	}
 	if overCap {
 		p.Reason = OverCap
 	}
@@ -476,6 +503,18 @@ func (rd *reader) result(h *header, b *block, at Pos, tur toolUseResult) {
 		} else {
 			rd.st.DuplicateResults++
 		}
+		// A second line for the call that names an agent: the same agent adds
+		// nothing, another is a call claiming two.
+		if a := tur.agentID; a != "" && len(a) <= maxHeaderBytes {
+			switch {
+			case p.ResultAgentID == "":
+				p.ResultAgentID = a
+				p.bytes += len(a)
+				rd.queued += len(a)
+			case p.ResultAgentID != a:
+				p.ResultAgentConflict = true
+			}
+		}
 		return
 	}
 	p.answered = true
@@ -490,13 +529,16 @@ func (rd *reader) result(h *header, b *block, at Pos, tur toolUseResult) {
 	if len(h.Timestamp) <= maxHeaderBytes {
 		p.ResultTimestamp = h.Timestamp
 	}
-	p.ResultObject = tur.object
+	p.ResultObject, p.ResultDetailAbsent = tur.object, tur.absent
 	p.ResultBackgroundTaskID, p.ResultBackgroundedByUser = tur.backgroundTaskID, tur.backgroundedByUser
+	if len(tur.agentID) <= maxHeaderBytes {
+		p.ResultAgentID = tur.agentID
+	}
 	if rd.unread > p.unread && p.Reason == ReasonNone {
 		p.Reason = LineSkipped
 	}
 	held := len(p.ResultCWD) + len(p.ResultPromptID)
-	held += len(p.ResultTimestamp)
+	held += len(p.ResultTimestamp) + len(p.ResultAgentID)
 	if p.ToolName == "Bash" || b.IsError {
 		p.OutputHead, p.OutputTail = headTail(parts, rd.lim.OutputHeadBytes, rd.lim.OutputTailBytes)
 		held += len(p.OutputHead) + len(p.OutputTail)
@@ -616,91 +658,17 @@ func exitCode(text string) (int, bool) {
 
 func sameCode(a, b *int) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
 
-// textParts are the texts of a tool_result's content, which is a plain string
-// in some results and an array of blocks in others.
-func textParts(raw json.RawMessage) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	var plain string
-	if json.Unmarshal(raw, &plain) == nil {
-		return []string{plain}
-	}
-	var blocks []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &blocks) != nil {
-		return nil
-	}
-	var out []string
-	for _, b := range blocks {
-		if b.Type == "text" {
-			out = append(out, b.Text)
-		}
-	}
-	return out
-}
-
-// headTail returns the first h and last t bytes of the parts joined with
-// newlines, without building the join: a result can be as long as a
-// transcript line. When the whole text fits in h, the tail is empty.
-func headTail(parts []string, h, t int) (head, tail []byte) {
-	total := 0
-	for i, p := range parts {
-		if i > 0 {
-			total++
-		}
-		total += len(p)
-	}
-	head = make([]byte, 0, min(h, total))
-	for i, p := range parts {
-		if i > 0 {
-			head = appendCapped(head, "\n", h)
-		}
-		head = appendCapped(head, p, h)
-		if len(head) == h {
-			break
-		}
-	}
-	if total <= h {
-		return head, nil
-	}
-	want := min(t, total-h)
-	tail = make([]byte, want)
-	at := want
-	for i := len(parts) - 1; i >= 0 && at > 0; i-- {
-		p := parts[i]
-		n := min(len(p), at)
-		at -= n
-		copy(tail[at:], p[len(p)-n:])
-		if i > 0 && at > 0 {
-			at--
-			tail[at] = '\n'
-		}
-	}
-	return head, tail
-}
-
-func appendCapped(b []byte, s string, max int) []byte {
-	return append(b, s[:min(len(s), max-len(b))]...)
-}
-
-// runInBackground reports whether a Bash input asks for a background run.
-func runInBackground(input json.RawMessage) bool {
-	var in struct {
-		RunInBackground bool `json:"run_in_background"`
-	}
-	return json.Unmarshal(input, &in) == nil && in.RunInBackground
-}
-
 // toolUseResult is what the reader keeps of a result line's toolUseResult:
-// whether it was an object at all, and three of its keys. Nothing else of it
-// is read, and none of the values is kept.
+// whether it was an object at all, and four of its keys. Nothing else of it
+// is read; only agentId's value is kept, for the subagent link.
 type toolUseResult struct {
 	object                               bool
 	interrupted                          bool
 	backgroundTaskID, backgroundedByUser bool
+	// agentID is the agentId key when it is a string, "" otherwise.
+	agentID string
+	// absent: the key is not on the line at all.
+	absent bool
 }
 
 // readToolUseResult reads toolUseResult.interrupted, which Bash results carry,
@@ -713,11 +681,19 @@ func readToolUseResult(raw json.RawMessage) toolUseResult {
 		Interrupted        bool            `json:"interrupted"`
 		BackgroundTaskID   json.RawMessage `json:"backgroundTaskId"`
 		BackgroundedByUser json.RawMessage `json:"backgroundedByUser"`
+		AgentID            json.RawMessage `json:"agentId"`
 	}
-	if len(raw) == 0 || raw[0] != '{' || json.Unmarshal(raw, &r) != nil {
+	if len(raw) == 0 {
+		return toolUseResult{absent: true}
+	}
+	if raw[0] != '{' || json.Unmarshal(raw, &r) != nil {
 		return toolUseResult{}
 	}
-	return toolUseResult{object: true, interrupted: r.Interrupted,
+	var agent string
+	if json.Unmarshal(r.AgentID, &agent) != nil {
+		agent = "" // absent, null or not a string: names no agent
+	}
+	return toolUseResult{object: true, interrupted: r.Interrupted, agentID: agent,
 		backgroundTaskID: set(r.BackgroundTaskID), backgroundedByUser: set(r.BackgroundedByUser)}
 }
 

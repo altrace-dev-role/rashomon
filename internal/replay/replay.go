@@ -219,10 +219,38 @@ const (
 	// call ran under. No fixture holds such a line, so this is detected by its
 	// type name alone, and unverified.
 	PermissionModeChanged Reason = "permission_mode_changed_mid_turn"
-	// SidechainAgentType: a subagent's call. The payload names the subagent's
-	// agent_id and agent_type, which the recorder stores, and a transcript
-	// names the first only.
+	// SidechainAgentType: a subagent's call whose type no link recovered. The
+	// payload names the subagent's agent_id and agent_type, which the recorder
+	// stores, and a transcript names the first only. The type is recovered
+	// from the parent's Agent call alone (Options.Agents; ResolveAgents says
+	// when); a call with no link, an ambiguous one, or one the line's own
+	// attributionAgent contradicts keeps this reason.
 	SidechainAgentType Reason = "sidechain_agent_type"
+	// CopiesDisagree: two copies of one tool_use_id, in two files of a session
+	// (a resumed session's, or a copied transcript), differ in their input or
+	// in their result. Neither is trusted; the call is Unsupported and taints
+	// what follows it.
+	CopiesDisagree Reason = "copies_disagree"
+	// SessionIDCap: the session holds more distinct tool_use_ids than the merge
+	// tracks (MergeOptions.MaxCallIDs), so a later copy of this call could not
+	// be recognised, and the call is not fed.
+	SessionIDCap Reason = "session_call_cap"
+	// The order of events from different files cannot be established. Each
+	// names a way, and each is a Gap from the event it is found at, because a
+	// different order could have changed what a later point sees (a write
+	// before a gate run, a gate run before a Stop).
+	//
+	// ResultBeforeUse: a result is merged before its call's use.
+	// OrderAmbiguous: two different events of two files carry the very same
+	// time and nothing else orders them. OrderRegression: a file's timestamps go
+	// backward in a session of several files, so its place among the others is
+	// not known. SubagentOutsideCall: a subagent's line is outside the window
+	// between its parent's Agent call and that call's result, as a background
+	// subagent's, or a skewed clock's, are.
+	ResultBeforeUse     Reason = "result_before_use"
+	OrderAmbiguous      Reason = "order_ambiguous"
+	OrderRegression     Reason = "order_timestamp_regression"
+	SubagentOutsideCall Reason = "subagent_outside_parent_call"
 	// InputDropped: the tool_use input was over history's bound, or absent.
 	InputDropped Reason = "tool_input_dropped"
 	// InterruptedCall: the call was interrupted. No fixture holds one, so the
@@ -254,6 +282,10 @@ const (
 	// Stop without it is not fed (never fed an empty or a cut message), and
 	// the Stop and everything after it are tainted.
 	FinalTextBudget Reason = "final_message_budget"
+	// SidechainResponseAbsent: a foreground Bash call of a subagent, whose
+	// result line carries no toolUseResult (a subagent's never do), was fed as
+	// not backgrounded. The payload is supported and the event is Assumed.
+	SidechainResponseAbsent Reason = "sidechain_response_absent"
 	// The Stop boundary is unknown: the transcript alone does not establish
 	// that a Stop fired here. StopInterrupted: the turn's last assistant line
 	// is followed by an interrupt marker. StopNotEndTurn: the last assistant
@@ -274,8 +306,12 @@ const (
 // Event is one hook invocation the live recorder would have received.
 type Event struct {
 	Kind Kind
-	// Pos is where in the file the event happened.
-	Pos history.Pos
+	// Pos is where in its file the event happened. File says which file of a
+	// session's merged timeline (WalkSession): the index into the files in the
+	// order the caller gave them, which is a stated rule (OrderFiles). It is
+	// zero for Walk, which reads one file.
+	Pos  history.Pos
+	File int
 	// SessionID is the sessionId of the line the event is taken from.
 	SessionID string
 	// The call-bearing events (Pre and Post) name the call. Seq is the call's
@@ -296,6 +332,11 @@ type Event struct {
 	// Unsupported lists why the event cannot be fed to the recorder, in the
 	// order found. Payload is nil when it is not empty.
 	Unsupported []Reason
+	// Assumed lists what the payload took as true without the transcript
+	// showing it (a Reason, though the event is supported). The recorder is fed
+	// the payload; a reader that grades the call must not count it as matching
+	// the transcript's inputs without that assumption.
+	Assumed []Reason
 	// BoundaryUnknown: a Stop whose place the transcript does not establish
 	// (see "Where a turn ends"). Its Pos is the end of the turn's last line
 	// and Unsupported names why. It is not a Stop to be evaluated; it is a
@@ -313,6 +354,12 @@ type Event struct {
 	// at a position from Taint on Verified, since the skipped event could have
 	// changed it.
 	Taint history.Pos
+	// TaintFile is the file Taint is a position in; zero for Walk.
+	TaintFile int
+	// AgentID and AgentType are the subagent a sidechain call belongs to and
+	// its type, as the link established them (Options.Agents); empty for the
+	// main agent's. They are the payload's agent_id and agent_type.
+	AgentID, AgentType string
 	// At is the event's historical time: the timestamp of the line it is taken
 	// from (the tool_use line for a Pre, the tool_result line for a Post, the
 	// prompt's line, the turn's last assistant line for a Stop). It is the
@@ -410,6 +457,37 @@ type Options struct {
 	// it in transcript_path. It is the caller's, not the reader's: a reader
 	// of one stream cannot know where it came from.
 	TranscriptPath string
+	// Agents are the subagents whose type a link established, by the agentId
+	// their lines carry (ResolveAgents). A sidechain call whose agentId is not
+	// here is Unsupported (SidechainAgentType). Nil for a reader that has no
+	// link, which is every Walk of one file by itself.
+	Agents map[string]Agent
+}
+
+// Agent is a subagent whose type the parent's Agent call named.
+type Agent struct {
+	// Type is the Agent call's input.subagent_type, byte for byte.
+	Type string
+	// Turn is the turn the parent's Agent call was made in: the prompt and
+	// permission mode a subagent's own lines do not carry. Nil when the
+	// parent's line falls before any prompt, and a call of this agent is then
+	// Unsupported for want of a prompt.
+	Turn *AgentTurn
+	// CallID is the parent's Agent call, its tool_use_id.
+	CallID string
+	// NotBefore and NotAfter are when the parent made the Agent call and when
+	// its result came, the window a subagent's lines belong in (see
+	// WalkSession). Zero for none: a call with no result has no end.
+	NotBefore, NotAfter time.Time
+}
+
+// AgentTurn is a parent turn's context for its subagents.
+type AgentTurn struct {
+	PromptID, Mode string
+	// ModeChanged: a permission-mode line falls in the turn before the Agent
+	// call's result, so the mode the prompt was sent under may not be the one
+	// the subagent ran under (PermissionModeChanged).
+	ModeChanged bool
 }
 
 func (o Options) finalBudget() int {

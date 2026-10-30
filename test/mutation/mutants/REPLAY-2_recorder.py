@@ -80,7 +80,7 @@ m("replay-2  a declaration takes the result line's cwd", P,
 m("replay-2  an execution takes the use line's cwd", P,
   "TranscriptPath: w.opt.TranscriptPath, CWD: c.ResultCWD, PromptID: c.ResultPromptID,", "TranscriptPath: w.opt.TranscriptPath, CWD: c.CWD, PromptID: c.ResultPromptID,", "TestREPLAY10_|TestREPLAY12_")
 m("replay-2  an execution is filed under another id", P,
-  "HookEventName: kind.String(), ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID}", "HookEventName: kind.String(), ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID + \"x\"}", "TestREPLAY10_|TestREPLAY12_")
+  "HookEventName: kind.String(), ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID,\n", "HookEventName: kind.String(), ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID + \"x\",\n", "TestREPLAY10_|TestREPLAY12_")
 
 # Stop-prefix evidence and taint.
 m("replay-2  a Stop is placed past every later result", S,
@@ -112,5 +112,5 @@ m("replay-2  a message that cannot be carried live is fed", S,
 
 # Rewrites cannot be seen: the flag says so on every session.
 m("replay-2  a session is not flagged as having no rewrite evidence", RP,
-  "var replayFlags = []string{flagRewriteAbsent, flagDurationNull, flagProbeStartSynthesized, flagProbeEndAbsent}\n",
-  "var replayFlags = []string{flagDurationNull, flagProbeStartSynthesized, flagProbeEndAbsent}\n", "TestREPLAY16_")
+  "var replayFlags = []string{flagRewriteAbsent, flagDurationNull, flagProbeStartSynthesized, flagSessionEndUnknown}\n",
+  "var replayFlags = []string{flagDurationNull, flagProbeStartSynthesized, flagSessionEndUnknown}\n", "TestREPLAY16_")

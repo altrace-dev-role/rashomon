@@ -90,7 +90,7 @@ func capturedTool(s step) string {
 // liveSteps is run A: the payloads Claude Code sent, which the rebuilt events
 // stand in for, each at the time its rebuilt twin carries. The captured
 // SessionStart opens the session at the time of the first event; SessionEnd
-// is left out because the replay does not replay it (flagProbeEndAbsent). The
+// is left out because the replay does not replay it (flagSessionEndUnknown). The
 // captured steps keep every key they have, duration_ms among them.
 func (f fixtureSession) liveSteps(t *testing.T) (steps []replayStep, ids []string) {
 	t.Helper()

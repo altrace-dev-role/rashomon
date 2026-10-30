@@ -24,6 +24,10 @@ type tdoc struct {
 	lines  []string
 	prompt string
 	cwd    string
+	// sid is the session the lines name, tSession when empty. shift moves every
+	// line's time, for a file that begins later than another.
+	sid   string
+	shift time.Duration
 }
 
 func newTdoc() *tdoc { return &tdoc{cwd: "/repo"} }
@@ -34,7 +38,12 @@ func tAt(n int) time.Time { return tEpoch.Add(time.Duration(n) * time.Second) }
 func (d *tdoc) add(m map[string]any) int {
 	n := len(d.lines) + 1
 	m["sessionId"], m["version"] = tSession, "2.1.312"
-	m["timestamp"] = tAt(n).Format("2006-01-02T15:04:05.000Z")
+	if d.sid != "" {
+		m["sessionId"] = d.sid
+	}
+	if _, ok := m["timestamp"]; !ok {
+		m["timestamp"] = tAt(n).Add(d.shift).Format("2006-01-02T15:04:05.000Z")
+	}
 	if _, ok := m["cwd"]; !ok {
 		m["cwd"] = d.cwd
 	}
@@ -113,8 +122,10 @@ func (d *tdoc) results(cwd string, r tResult) int { return d.resultsWith(cwd, ni
 // resultsWith is results with more keys on the line.
 func (d *tdoc) resultsWith(cwd string, extra map[string]any, r tResult) int {
 	blocks := []any{map[string]any{"type": "tool_result", "tool_use_id": r.id, "is_error": r.isError, "content": r.text}}
-	m := map[string]any{"type": "user", "promptId": d.prompt, "message": map[string]any{"role": "user", "content": blocks},
-		"toolUseResult": r.tur}
+	m := map[string]any{"type": "user", "promptId": d.prompt, "message": map[string]any{"role": "user", "content": blocks}}
+	if r.tur != nil {
+		m["toolUseResult"] = r.tur
+	}
 	if cwd != "" {
 		m["cwd"] = cwd
 	}

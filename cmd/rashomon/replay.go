@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -180,18 +181,25 @@ const (
 	// run with no liveness marker reads coverage_unverified, which silences
 	// every verdict (verify.recording). The replay therefore feeds the
 	// recorder a SessionStart of its own at the session's first event, which
-	// marks that the replay's recorder was alive for the session. It says
-	// nothing about the install that recorded the transcript.
+	// marks that the replay's recorder was alive for the session. It is
+	// scaffolding, not evidence: it says nothing about the install that
+	// recorded the transcript, and it must not raise any coverage of the
+	// imported session to complete. A reader of the replay's records that
+	// reads "recording complete" is reading the scaffolding (see
+	// sessionBasis, which keeps this apart from the grade of the runs).
 	flagProbeStartSynthesized = "probe_start_synthesized"
-	// flagProbeEndAbsent: SessionEnd is not replayed. A transcript has no
-	// moment for it, and a session killed or still running never fired one;
-	// feeding one would claim a clean close. The end probe's records (run
-	// closed, unterminated entries) are therefore absent.
-	flagProbeEndAbsent = "probe_end_not_replayed"
+	// flagSessionEndUnknown: whether the session ended, and how, is unknown.
+	// A transcript has no moment for SessionEnd, and a session killed or still
+	// running never fired one; the transcript cannot tell the two from a clean
+	// close, so the replay neither feeds one (it would claim a clean close) nor
+	// calls the session killed. The end probe's records (run closed,
+	// unterminated entries) are therefore absent, and the report reads the run
+	// as not closed (TestREPLAY24_).
+	flagSessionEndUnknown = "session_end_unknown"
 )
 
 // replayFlags is the flags every replayed session carries, in order.
-var replayFlags = []string{flagRewriteAbsent, flagDurationNull, flagProbeStartSynthesized, flagProbeEndAbsent}
+var replayFlags = []string{flagRewriteAbsent, flagDurationNull, flagProbeStartSynthesized, flagSessionEndUnknown}
 
 // sessionStartPayload is the SessionStart payload a replay feeds for a session:
 // the keys the probe reads (session_id, cwd) and the ones the host guard
@@ -229,6 +237,11 @@ type replayWorld struct {
 	id           replayIdentity
 	// clock is the time entryNow reads, set before each event.
 	clock time.Time
+	// afterClock, when set, is called each time an entry point reads the
+	// clock, inside the entry point. It is a seam for tests, which use it to
+	// make an entry point panic and to see the environment an entry point
+	// sees; production code never sets it.
+	afterClock func()
 }
 
 // newReplayWorld makes a world under scratch, which must not exist or must be
@@ -239,6 +252,11 @@ type replayWorld struct {
 // resolves them as present. The consent and the settings are the world's own;
 // the caller's are neither read nor written.
 func newReplayWorld(scratch string, id replayIdentity) (*replayWorld, error) {
+	// The ambient check below reads the process environment, which another
+	// replay may be holding set to its own world: a world is made between
+	// replays, not during one.
+	replayMu.Lock()
+	defer replayMu.Unlock()
 	if id == (replayIdentity{}) {
 		id = defaultReplayIdentity
 	}
@@ -380,6 +398,13 @@ type replayConfig struct {
 	// KeepOutput keeps what the entry points printed, in replayRun.outputs,
 	// for a test to compare. Otherwise it is dropped as it is produced.
 	KeepOutput bool
+	// Ctx, when set, is checked before each event is fed: a replay whose
+	// context is done stops with its error. The environment, the clock and the
+	// tap are put back whatever stops a replay (with).
+	Ctx context.Context
+	// Observe, when set, is called with each event the walk yields and whether
+	// it was fed, after it was; its error stops the replay.
+	Observe func(e replay.Event, fed bool) error
 }
 
 // replayOutput is what one entry point returned and printed.
@@ -397,8 +422,13 @@ type replayStep struct {
 	At    time.Time
 }
 
-// with enters the world for fn: the environment and the clock are the
-// world's until fn returns, and are restored whatever fn does.
+// with enters the world for fn: the environment, the clock and the Stop tap are
+// the world's until fn returns, and are restored whatever fn does: an error, a
+// panic in an entry point, a cancelled context (every restore is deferred, and
+// the mutex that makes two replays one after the other is released after them).
+// The mutex is held for the whole of fn, so a second replay waits for the
+// first to finish and put everything back; two never run at once
+// (TestREPLAY26_).
 func (w *replayWorld) with(cfg replayConfig, fn func(*replayRun) error) (err error) {
 	replayMu.Lock()
 	defer replayMu.Unlock()
@@ -442,6 +472,10 @@ func (w *replayWorld) with(cfg replayConfig, fn func(*replayRun) error) (err err
 	prevNow, prevSeen := entryNow, stopSeen
 	entryNow = func() time.Time { return w.clock }
 	defer func() { entryNow, stopSeen = prevNow, prevSeen }()
+	if w.afterClock != nil {
+		inner := entryNow
+		entryNow = func() time.Time { w.afterClock(); return inner() }
+	}
 
 	r := &replayRun{w: w, cfg: cfg}
 	stopSeen = func(event string, pending bool, _ string, v verify.StopView) {
@@ -459,6 +493,11 @@ func (w *replayWorld) with(cfg replayConfig, fn func(*replayRun) error) (err err
 func (r *replayRun) feed(s replayStep, toolUseID string) (*verify.StopView, error) {
 	if s.At.IsZero() {
 		return nil, fmt.Errorf("replay: %s %s has no time to set the clock to", s.Event, toolUseID)
+	}
+	if r.cfg.Ctx != nil {
+		if err := r.cfg.Ctx.Err(); err != nil {
+			return nil, err
+		}
 	}
 	r.w.clock = s.At
 	r.seen = nil
@@ -589,13 +628,26 @@ type replayResult struct {
 // taints the Stops after it.
 func (w *replayWorld) replayTranscript(src io.ReadSeeker, opt replay.Options, cfg replayConfig) (*replayResult, error) {
 	res := &replayResult{}
+	err := w.replayEvents(res, cfg, func(yield func(replay.Event) error) error {
+		sum, err := replay.Walk(src, opt, yield)
+		res.Summary = sum
+		return err
+	})
+	return res, err
+}
+
+// replayEvents feeds the events walk yields to the recorder, in the order it
+// yields them, and fills res. The events may come from one transcript or from
+// a session's merged files (replay.WalkSession): the feeding is the same, and
+// the position a taint names is a file and a place in it.
+func (w *replayWorld) replayEvents(res *replayResult, cfg replayConfig, walk func(yield func(replay.Event) error) error) error {
 	bySession := map[string]int{}
 	var taintReason string
 	err := w.with(cfg, func(r *replayRun) error {
-		sum, err := replay.Walk(src, opt, func(e replay.Event) error {
+		err := walk(func(e replay.Event) error {
 			// The first gap, named, once the timeline has one.
 			if !e.Taint.IsZero() && taintReason == "" {
-				if e.Gap != "" && e.Taint == e.Pos {
+				if e.Gap != "" && e.Taint == e.Pos && e.TaintFile == e.File {
 					taintReason = string(e.Gap)
 				} else {
 					taintReason = "unreadable_line"
@@ -608,7 +660,7 @@ func (w *replayWorld) replayTranscript(src io.ReadSeeker, opt replay.Options, cf
 					stop.Unevaluated = string(e.Unsupported[0])
 					res.Stops = append(res.Stops, stop)
 				}
-				return nil
+				return observe(cfg, e, false)
 			}
 			i, started := bySession[e.SessionID]
 			if !started {
@@ -633,12 +685,12 @@ func (w *replayWorld) replayTranscript(src io.ReadSeeker, opt replay.Options, cf
 			res.Fed++
 			res.Sessions[i].Fed++
 			if e.Kind != replay.Stop {
-				return nil
+				return observe(cfg, e, true)
 			}
 			if view == nil {
 				stop.Unevaluated = "recorder_produced_no_view"
 				res.Stops = append(res.Stops, stop)
-				return nil
+				return observe(cfg, e, true)
 			}
 			stop.Evaluated = true
 			stop.Verdict = &stopVerdict{Snap: view.Snap, Summary: view.Summary, Turn: view.Turn}
@@ -647,11 +699,18 @@ func (w *replayWorld) replayTranscript(src io.ReadSeeker, opt replay.Options, cf
 				stop.Downgrade = fmt.Sprintf("tainted_by_%s_at_line_%d", taintReason, e.Taint.Line)
 			}
 			res.Stops = append(res.Stops, stop)
-			return nil
+			return observe(cfg, e, true)
 		})
-		res.Summary = sum
 		res.Outputs = r.outputs
 		return err
 	})
-	return res, err
+	return err
+}
+
+// observe hands an event to the config's observer, if it has one.
+func observe(cfg replayConfig, e replay.Event, fed bool) error {
+	if cfg.Observe == nil {
+		return nil
+	}
+	return cfg.Observe(e, fed)
 }

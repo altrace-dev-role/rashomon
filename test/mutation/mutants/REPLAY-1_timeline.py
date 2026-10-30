@@ -43,9 +43,9 @@ m("replay-1  a system line ends a turn", S,
 
 # A field the transcript cannot supply is never filled.
 m("replay-1  a subagent's declaration is rebuilt without its agent_type", P,
-  "\tu.when(c.Sidechain, SidechainAgentType)\n\tu.when(c.CWD == \"\", NoCWD)\n", "\tu.when(c.CWD == \"\", NoCWD)\n", "TestREPLAY4_")
+  "\tu.when(c.Sidechain && !linked, SidechainAgentType)\n\tu.when(c.CWD == \"\", NoCWD)\n", "\tu.when(c.CWD == \"\", NoCWD)\n", "TestREPLAY4_")
 m("replay-1  a subagent's execution is rebuilt without its agent_type", P,
-  "\tu.when(c.Sidechain, SidechainAgentType)\n\tu.when(c.ResultCWD == \"\", NoResultCWD)\n", "\tu.when(c.ResultCWD == \"\", NoResultCWD)\n", "TestREPLAY4_")
+  "\tu.when(c.Sidechain && !linked, SidechainAgentType)\n\tu.when(c.ResultCWD == \"\", NoResultCWD)\n", "\tu.when(c.ResultCWD == \"\", NoResultCWD)\n", "TestREPLAY4_")
 m("replay-1  an interrupted call is rebuilt as an ordinary failure", P,
   "\tcase c.Outcome == history.Interrupted:\n\t\tu.add(InterruptedCall)\n", "\tcase false:\n\t\tu.add(InterruptedCall)\n", "TestREPLAY4_")
 m("replay-1  an execution that names no result cwd is rebuilt with none", P,
@@ -55,7 +55,7 @@ m("replay-1  a dropped input is rebuilt as empty", P,
 m("replay-1  a permission mode that may have changed is used", P,
   "\t\tu.when(ctx.permChange != 0 && ctx.permChange < c.UsePos.Line, PermissionModeChanged)\n", "", "TestREPLAY4_")
 m("replay-1  a Bash response nobody can read is taken as foreground", P,
-  "\t\tu.when(!c.ResultObject, ResponseUnreadable)\n", "", "TestREPLAY4_")
+  "\t\tu.when(!c.ResultObject && !assumed, ResponseUnreadable)\n", "", "TestREPLAY4_")
 m("replay-1  a background launch the result does not confirm is taken as foreground", P,
   "\t\tu.when(c.ResultObject && c.Backgrounded && !c.ResultBackgroundTaskID && !c.ResultBackgroundedByUser, BackgroundUnconfirmed)\n", "", "TestREPLAY4_")
 m("replay-1  a version no fixture shows is rebuilt", P,
@@ -83,6 +83,6 @@ m("replay-1  the result side is not counted against the queue", H,
 m("replay-1  another tool's error text is dropped", H,
   "\tif p.ToolName == \"Bash\" || b.IsError {\n", "\tif p.ToolName == \"Bash\" {\n", "TestHIST12_")
 m("replay-1  a toolUseResult is always an object", H,
-  "\tp.ResultObject = tur.object\n", "\tp.ResultObject = true\n", "TestHIST12_|TestHIST10_")
+  "\tp.ResultObject, p.ResultDetailAbsent = tur.object, tur.absent\n", "\tp.ResultObject, p.ResultDetailAbsent = true, tur.absent\n", "TestHIST12_|TestHIST10_")
 m("replay-1  a null task id is a task", H,
   "backgroundTaskID: set(r.BackgroundTaskID),", "backgroundTaskID: len(r.BackgroundTaskID) > 0,", "TestHIST12_")

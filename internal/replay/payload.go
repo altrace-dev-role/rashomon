@@ -66,8 +66,9 @@ func marshal(v any) []byte {
 }
 
 // prePayload is the PreToolUse payload as hook.Payload reads it: the fields
-// of hook.Payload.from, less agent_id and agent_type, which a main agent's
-// call does not carry and a subagent's makes the event Unsupported.
+// of hook.Payload.from. agent_id and agent_type are a subagent's call's alone:
+// they are left out of a main agent's, and a subagent's call whose type no
+// link recovers (Options.Agents) makes the event Unsupported.
 type prePayload struct {
 	SessionID      string          `json:"session_id"`
 	TranscriptPath string          `json:"transcript_path"`
@@ -78,6 +79,8 @@ type prePayload struct {
 	ToolName       string          `json:"tool_name"`
 	ToolInput      json.RawMessage `json:"tool_input"`
 	ToolUseID      string          `json:"tool_use_id"`
+	AgentID        string          `json:"agent_id,omitempty"`
+	AgentType      string          `json:"agent_type,omitempty"`
 }
 
 // postPayload is the PostToolUse and PostToolUseFailure payload as
@@ -97,6 +100,8 @@ type postPayload struct {
 	ToolInput      json.RawMessage `json:"tool_input"`
 	ToolResponse   *response       `json:"tool_response,omitempty"`
 	ToolUseID      string          `json:"tool_use_id"`
+	AgentID        string          `json:"agent_id,omitempty"`
+	AgentType      string          `json:"agent_type,omitempty"`
 	Error          *string         `json:"error,omitempty"`
 	IsInterrupt    *bool           `json:"is_interrupt,omitempty"`
 }
@@ -135,7 +140,8 @@ func (w *walker) pre(c *history.Call) *Event {
 	u.at(c.Timestamp)
 	u.when(c.SessionID == "", NoSessionID)
 	u.when(w.opt.TranscriptPath == "", NoTranscriptPath)
-	u.when(c.Sidechain, SidechainAgentType)
+	agent, linked := w.agentOf(c, e)
+	u.when(c.Sidechain && !linked, SidechainAgentType)
 	u.when(c.CWD == "", NoCWD)
 	input := toolInput(c)
 	u.when(input == nil, InputDropped)
@@ -145,12 +151,18 @@ func (w *walker) pre(c *history.Call) *Event {
 		promptID, mode = ctx.promptID, ctx.mode
 		u.when(ctx.permChange != 0 && ctx.permChange < c.UsePos.Line, PermissionModeChanged)
 	}
+	if linked && agent.Turn != nil {
+		// A subagent's own lines open no turn. The turn it ran in is the one
+		// its parent's Agent call was made in.
+		promptID, mode = agent.Turn.PromptID, agent.Turn.Mode
+		u.when(agent.Turn.ModeChanged, PermissionModeChanged)
+	}
 	u.when(promptID == "", NoPromptID)
 	u.when(mode == "", NoPermissionMode)
 	if e.Supported() {
 		e.Payload = marshal(&prePayload{SessionID: c.SessionID, TranscriptPath: w.opt.TranscriptPath, CWD: c.CWD,
 			PromptID: promptID, PermissionMode: mode, HookEventName: PreToolUse.String(),
-			ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID})
+			ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID, AgentID: e.AgentID, AgentType: e.AgentType})
 	}
 	e.settle()
 	if e.Gap == "" && c.Reason == history.Evicted {
@@ -178,7 +190,8 @@ func (w *walker) post(c *history.Call) *Event {
 	u.when(c.Reason == history.ResultConflict, ResultConflict)
 	u.when(c.SessionID == "", NoSessionID)
 	u.when(w.opt.TranscriptPath == "", NoTranscriptPath)
-	u.when(c.Sidechain, SidechainAgentType)
+	agent, linked := w.agentOf(c, e)
+	u.when(c.Sidechain && !linked, SidechainAgentType)
 	u.when(c.ResultCWD == "", NoResultCWD)
 	u.when(c.ResultPromptID == "", NoPromptID)
 	input := toolInput(c)
@@ -188,10 +201,15 @@ func (w *walker) post(c *history.Call) *Event {
 		mode = ctx.mode
 		u.when(ctx.permChange != 0 && ctx.permChange < c.ResultPos.Line, PermissionModeChanged)
 	}
+	if linked && agent.Turn != nil {
+		mode = agent.Turn.Mode
+		u.when(agent.Turn.ModeChanged, PermissionModeChanged)
+	}
 	u.when(mode == "", NoPermissionMode)
 
 	p := &postPayload{SessionID: c.SessionID, TranscriptPath: w.opt.TranscriptPath, CWD: c.ResultCWD, PromptID: c.ResultPromptID, PermissionMode: mode,
-		HookEventName: kind.String(), ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID}
+		HookEventName: kind.String(), ToolName: c.ToolName, ToolInput: input, ToolUseID: c.ToolUseID,
+		AgentID: e.AgentID, AgentType: e.AgentType}
 	switch {
 	case c.Outcome == history.Interrupted:
 		u.add(InterruptedCall)
@@ -209,7 +227,18 @@ func (w *walker) post(c *history.Call) *Event {
 		// bits. A line the bits cannot be read off leaves them unknown, and a
 		// launch the call asked to background whose result names neither is
 		// one the live payload would have flagged (hook.backgroundedCall).
-		u.when(!c.ResultObject, ResponseUnreadable)
+		// A subagent's result lines carry no toolUseResult at all, for any
+		// tool (the one subagent fixture, a foreground Bash that did not
+		// background). A foreground call of theirs is taken as not
+		// backgrounded, and the event says it assumed so (Event.Assumed): a
+		// run the user moved to the background would be misread, and nothing
+		// in the line could say. A call that asked for the background, or any
+		// other line without an object, is unreadable as before.
+		assumed := c.Sidechain && c.ResultDetailAbsent && !c.Backgrounded
+		u.when(!c.ResultObject && !assumed, ResponseUnreadable)
+		if assumed {
+			e.Assumed = append(e.Assumed, SidechainResponseAbsent)
+		}
 		u.when(c.ResultObject && c.Backgrounded && !c.ResultBackgroundTaskID && !c.ResultBackgroundedByUser, BackgroundUnconfirmed)
 		if c.ResultBackgroundTaskID || c.ResultBackgroundedByUser {
 			p.ToolResponse = &response{BackgroundTaskID: c.ResultBackgroundTaskID, BackgroundedByUser: c.ResultBackgroundedByUser}
@@ -220,6 +249,23 @@ func (w *walker) post(c *history.Call) *Event {
 	}
 	e.settle()
 	return e
+}
+
+// agentOf is the subagent a sidechain call belongs to, when its type is
+// established, and sets the event's AgentID and AgentType from it. A main
+// agent's call is none, and so is a sidechain call whose line names no agentId
+// or whose agent no link established (Options.Agents): the caller marks that
+// one Unsupported. Nothing but the link supplies a type.
+func (w *walker) agentOf(c *history.Call, e *Event) (Agent, bool) {
+	if !c.Sidechain || c.AgentID == "" {
+		return Agent{}, false
+	}
+	a, ok := w.opt.Agents[c.AgentID]
+	if !ok || a.Type == "" {
+		return Agent{}, false
+	}
+	e.AgentID, e.AgentType = c.AgentID, a.Type
+	return a, true
 }
 
 func callEvent(k Kind, at history.Pos, c *history.Call) *Event {
