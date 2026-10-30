@@ -62,6 +62,9 @@ type classified struct {
 	writes    []write
 	unnamed   []int64
 	rewritten []int64
+	// learned is indexLearned's answer at the point, which stale-evidence
+	// reads: nothing raises it before a family is established.
+	learned bool
 }
 
 // evaluate is Evaluate, which also fills c, and joins the gates sp declares
@@ -98,6 +101,7 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 	snap.Gates = gateStates(runs, writes, unnamed, at, pt.Tree)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
+	c.learned = learned
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}

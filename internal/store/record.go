@@ -133,6 +133,9 @@ const (
 	// invocation of the run waited for store locks (perf-7). It is a note
 	// about the store, like probe and seq, and not a record.
 	FileLockWait = "lockwait"
+	// FileStaleArmed is the stale trigger's hint (ArmStale): empty, and like
+	// probe and lockwait a note about the run, not a record.
+	FileStaleArmed = "stale-armed"
 	// FileResolvedCap is at the store root: the size cap the last hook
 	// invocation resolved, written so status can show the value eviction
 	// actually runs with instead of reading EnvCapBytes in its own,

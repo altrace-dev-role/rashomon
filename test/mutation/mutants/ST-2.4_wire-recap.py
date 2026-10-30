@@ -109,4 +109,4 @@ m("ST-2.4 cwd not read", IN, '\t\t\tfm.CWD = string(v)\n', '\t\t\tfm.CWD = ""\n'
 m("ST-2.4 purge leaves the project index", PU,
   '\t\treturn level == 1 && verify.IsIndexFile(name)\n', '\t\treturn false\n', "TestTRU28_PurgeTakesTheProjectIndex")
 m("ST-2.4 the index rows left out of the inventory", DI,
-  '}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)\n', '}, append(recordScopeFiles(), bodiesFiles()...)...)\n', "TestTRU23_EveryWrittenPathIsInTheInventory")
+  '}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)...)\n', '}, append(recordScopeFiles(), bodiesFiles()...)...)...)\n', "TestTRU23_EveryWrittenPathIsInTheInventory")

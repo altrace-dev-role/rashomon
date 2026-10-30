@@ -29,7 +29,7 @@ m("VER-5.7 a red after the edit counts", R, "\t\tif runs[i].Seq >= seq {\n\t\t\t
 # The facts reach the view, and their lines.
 m("VER-5.7 SteerAt drops the raises", V,
   "\tfacts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)\n", "", "TestIV3e_")
-m("VER-5.7 an integrity fact renders as a gate fact", V, "\t\tif f.Integrity != nil {\n", "\t\tif false {\n", "TestIV3b_")
+m("VER-5.7 an integrity fact renders as a gate fact", V, "\t\tcase f.Integrity != nil:\n", "\t\tcase false:\n", "TestIV3b_")
 m("VER-5.7 the card drops the failure event", K,
   "event == post || event == string(steer.EventPostToolUseFailure) ||\n", "event == post ||\n", "TestIV3b_")
 m("VER-5.7 no store-touched row", T,

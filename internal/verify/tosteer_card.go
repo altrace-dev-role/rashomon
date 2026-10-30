@@ -50,6 +50,8 @@ var (
 //     its task ("teammate task {task_id}"), is a flag.
 //   - regression-location: nudge at PostToolUseFailure, or PostToolUse for
 //     a masked run with a failure line (40.4.2); no stop form.
+//   - stale-evidence: nudge at the PostToolUse of the write that left a
+//     required gate's green behind (card STALE-NUDGE1); no stop form.
 //   - platform-rule: nudge at PostToolUse, no stop form (40.4.6;
 //     4.2.12: "`stop` with no stop form is `nudge`").
 //   - ordering-rule: nudge after the call; ask on PreToolUse of the Bash
@@ -97,6 +99,8 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceili
 		return flag, true
 	case id == pattern.RegressionLocation && (event == string(steer.EventPostToolUseFailure) || event == post):
 		return nudge, true
+	case id == pattern.StaleEvidence && event == post:
+		return nudge, true
 	case id == pattern.PlatformRule && event == post:
 		return nudge, true
 	case id == pattern.OrderingRule && event == post:
@@ -121,6 +125,9 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceili
 //     prompt"); a TodoWrite completion names no task and keys "todo".
 //   - subtask-gate at a commit, push or pr, and regression-location: the
 //     gate id, the family (40.4.2: "Once per F per prompt").
+//   - stale-evidence: the gate id too (card STALE-NUDGE1: once per gate per
+//     prompt), so a green rerun and a second write in one prompt are told
+//     once.
 //   - platform-rule and integrity/frozen-path: "<rule>|<path>" for a
 //     forbid_code or protect_path rule, which always names its file, and
 //     the rule alone for a forbid_command rule, which never does
@@ -144,6 +151,8 @@ func keyFor(f Finding, kind steer.Kind, at Point) (string, string) {
 		}
 		return "task:" + *at.TaskRef, ""
 	case pattern.RegressionLocation:
+		return string(f.Gate.GateID), ""
+	case pattern.StaleEvidence:
 		return string(f.Gate.GateID), ""
 	case pattern.PlatformRule, pattern.OrderingRule, pattern.Integrity:
 		if f.Rule == nil {

@@ -193,8 +193,7 @@ func Default() (Inventory, error) {
 // command in this tree) and a keyed digest cannot answer "which host is new"
 // without the plaintext to compare.
 func defaultFiles() []FileRule {
-	const runSegment = store.DirRuns + "/<session>"
-	return append([]FileRule{
+	rules := append([]FileRule{
 		{
 			Base:       "",
 			Pattern:    store.FileInstallKey,
@@ -227,81 +226,8 @@ func defaultFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over install.json); purge",
 			Owner:      "store",
 		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileRecords,
-			Mode:       "0600",
-			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), rule match, outcome, exit code and timing, its working directory, its project root and the file path an edit names, all in the clear, plus keyed digests of its working directory and its shape",
-			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
-			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileSpill,
-			Mode:       "0600",
-			Purpose:    "an execution or terminal record the ordered append lock could not place in time",
-			Holds:      "the same fields records.ndjson holds, unordered",
-			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
-			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileSteer,
-			Mode:       "0600",
-			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
-			Holds:      "the pattern, its level, channel and arm, the hook event, the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
-			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
-			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileCoverage,
-			Mode:       "0600",
-			Purpose:    "the configuration state resolved for the session",
-			Holds:      "phase, hook outcome, and the session's own working directory",
-			NeverHolds: "a tool call's content",
-			// Coverage records stay through a forget on purpose (store/gaps.go:
-			// "Coverage records stay: they describe whether the run could be
-			// trusted"): ForgetWindow never opens coverage.ndjson. What does
-			// remove it is a whole run directory going, which eviction and
-			// purge both do.
-			RemovedBy: "size-cap eviction; purge",
-			Owner:     "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileProbe,
-			Mode:       "0600",
-			Purpose:    "a liveness marker for the session's hook entries",
-			Holds:      "one Unix-millisecond timestamp",
-			NeverHolds: "anything else",
-			RemovedBy:  "size-cap eviction; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileSeq,
-			Mode:       "0600",
-			Purpose:    "the session's last allocated record sequence number",
-			Holds:      "one integer",
-			NeverHolds: "anything else",
-			RemovedBy:  "size-cap eviction; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileLockWait,
-			Mode:       "0600",
-			Purpose:    "the longest any one hook call of the session waited for the store's locks",
-			Holds:      "one integer, in milliseconds, rounded up; absent until a call has waited",
-			NeverHolds: "anything else",
-			RemovedBy:  "size-cap eviction; purge",
-			Owner:      "store",
-		},
+	}, runSegmentFiles()...)
+	return append(rules, append([]FileRule{
 		{
 			Base:       "",
 			Pattern:    store.FileRecordingPaused,
@@ -476,7 +402,101 @@ func defaultFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over harness_counts.json); purge",
 			Owner:      "store",
 		},
-	}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)
+	}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)...)
+}
+
+// runSegmentFiles is defaultFiles' run segment, the files under
+// runs/<session>, in inventory order (split out under Law 10, card
+// STALE-NUDGE1, when the stale marker joined it).
+func runSegmentFiles() []FileRule {
+	const runSegment = store.DirRuns + "/<session>"
+	return []FileRule{
+		{
+			Base:       runSegment,
+			Pattern:    store.FileRecords,
+			Mode:       "0600",
+			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), rule match, outcome, exit code and timing, its working directory, its project root and the file path an edit names, all in the clear, plus keyed digests of its working directory and its shape",
+			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
+			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileSpill,
+			Mode:       "0600",
+			Purpose:    "an execution or terminal record the ordered append lock could not place in time",
+			Holds:      "the same fields records.ndjson holds, unordered",
+			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
+			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileSteer,
+			Mode:       "0600",
+			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
+			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
+			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileCoverage,
+			Mode:       "0600",
+			Purpose:    "the configuration state resolved for the session",
+			Holds:      "phase, hook outcome, and the session's own working directory",
+			NeverHolds: "a tool call's content",
+			// Coverage records stay through a forget on purpose (store/gaps.go:
+			// "Coverage records stay: they describe whether the run could be
+			// trusted"): ForgetWindow never opens coverage.ndjson. What does
+			// remove it is a whole run directory going, which eviction and
+			// purge both do.
+			RemovedBy: "size-cap eviction; purge",
+			Owner:     "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileProbe,
+			Mode:       "0600",
+			Purpose:    "a liveness marker for the session's hook entries",
+			Holds:      "one Unix-millisecond timestamp",
+			NeverHolds: "anything else",
+			RemovedBy:  "size-cap eviction; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileSeq,
+			Mode:       "0600",
+			Purpose:    "the session's last allocated record sequence number",
+			Holds:      "one integer",
+			NeverHolds: "anything else",
+			RemovedBy:  "size-cap eviction; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileLockWait,
+			Mode:       "0600",
+			Purpose:    "the longest any one hook call of the session waited for the store's locks",
+			Holds:      "one integer, in milliseconds, rounded up; absent until a call has waited",
+			NeverHolds: "anything else",
+			RemovedBy:  "size-cap eviction; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileStaleArmed,
+			Mode:       "0600",
+			Purpose:    "a hint that a gate ran since the last edit the session's steer step judged for stale evidence",
+			Holds:      "nothing; present after a gate run, removed by the next judged edit",
+			NeverHolds: "anything",
+			RemovedBy:  "the steer step; size-cap eviction; purge",
+			Owner:      "store",
+		},
+	}
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's

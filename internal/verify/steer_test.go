@@ -372,7 +372,7 @@ func TestST_SteerAtDropsAnUnmappableFact(t *testing.T) {
 	g := *bad.Gate
 	g.GateID = "not a slot id"
 	bad.Gate = &g
-	got, dropped := mapFacts(r, []Finding{bad, good[0]}, pt)
+	got, dropped := mapFacts(r, []Finding{bad, good[0]}, pt, 0)
 	if len(got) != 1 || dropped != 1 || got[0].Message.Text() == "" {
 		t.Errorf("mapFacts = %d findings, %d dropped; want the good one rendered and 1 dropped", len(got), dropped)
 	}

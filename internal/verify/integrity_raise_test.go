@@ -37,7 +37,7 @@ var (
 func ivRaise(runs []gateRun, event, toolUseID string, entries ...IntegrityEntry) ([]steer.Finding, int) {
 	r := &store.Run{Declarations: []store.Declaration{{Seq: 9, ToolUseID: "w"}, {Seq: 10, ToolUseID: "x"}, {Seq: 11, ToolUseID: "y"}}}
 	snap := Snapshot{Integrity: Integrity{Unresolved: entries}}
-	return mapFacts(r, integrityRaises(r, snap, runs, event, toolUseID), Point{Seq: 12, SessionID: "s1", PromptID: strp("p1")})
+	return mapFacts(r, integrityRaises(r, snap, runs, event, toolUseID), Point{Seq: 12, SessionID: "s1", PromptID: strp("p1")}, 0)
 }
 
 // TestIV3a_OneWayDoorsAreTheRaiseSet: the checks raised are PF-IV3's closed
