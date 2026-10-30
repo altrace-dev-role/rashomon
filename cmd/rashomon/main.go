@@ -1516,7 +1516,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+backtestUsage+measureUsage+hookUsage)
+`+receiptUsage+learnUsage+backtestUsage+measureUsage+measurePairUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the

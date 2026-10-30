@@ -21,15 +21,17 @@ const measureUsage = `  rashomon measure --prepare [--home DIR]
 `
 
 // cmdMeasure is `rashomon measure` (card MEASURE1): --prepare marks a store
-// as a lab. It runs nothing: the driver starts the sessions and runs the
-// oracle.
+// as a lab, and pair reads two sessions of a paired run side by side.
+// Neither runs anything: the driver starts the sessions and runs the oracle.
 func cmdMeasure(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("measure needs --prepare")
+		return errors.New("measure needs --prepare or pair")
 	}
 	switch args[0] {
 	case "--prepare":
 		return measurePrepare(args[1:], stdout)
+	case "pair":
+		return measurePair(args[1:], stdout)
 	}
 	return fmt.Errorf("unknown argument %q", args[0])
 }
