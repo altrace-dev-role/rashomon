@@ -35,12 +35,12 @@ type Command struct {
 // Commands are the seven commands the screen ends with, the short version of
 // everything above them (Technical spec 7.2.3; FUN-12).
 var Commands = []Command{
-	{"Everything rashomon did here", "rashomon disclose"},
-	{"Every note, word for word", "rashomon steer log"},
-	{"Stop the notes (they stay off)", "rashomon steer off --user"},
+	{"What is installed and recorded", "rashomon status"},
+	{"What each session recorded", "rashomon report"},
+	{"Read this screen again", "rashomon watch --show"},
 	{"Stop recording", "rashomon pause"},
-	{"Stop storing commands", "rashomon config set record.commands off"},
-	{"Remove the hook entries", "rashomon detach"},
+	{"Start recording again", "rashomon resume"},
+	{"Stop the notes; remove the hooks", "rashomon detach"},
 	{"Remove everything", "rashomon purge"},
 }
 
@@ -124,7 +124,7 @@ func Screen(inv disclose.Inventory, in ScreenInput) ([]byte, error) {
 	}
 	w.blank()
 
-	w.line("4. WHAT RASHOMON LEARNS  (on this machine only)")
+	w.line("4. LESSONS  (on this machine only)")
 	if err := w.paragraphs(paras[disclose.CiteSection4]); err != nil {
 		return nil, err
 	}

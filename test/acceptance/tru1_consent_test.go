@@ -503,7 +503,7 @@ func TestTRU3_ShowIsTheScreenAndWritesNothing(t *testing.T) {
 	if first.exitCode != 0 {
 		t.Fatalf("watch --show: exit %d, stderr %q", first.exitCode, first.stderr)
 	}
-	for _, h := range []string{"1. HOOK ENTRIES", "2. WHAT IS RECORDED", "3. WHAT RASHOMON ADDS", "4. WHAT RASHOMON LEARNS", "5. WHAT YOU WILL SEE", "rashomon purge"} {
+	for _, h := range []string{"1. HOOK ENTRIES", "2. WHAT IS RECORDED", "3. WHAT RASHOMON ADDS", "4. LESSONS", "5. WHAT YOU WILL SEE", "rashomon purge"} {
 		if !strings.Contains(first.stdout, h) {
 			t.Errorf("watch --show does not print %q:\n%s", h, first.stdout)
 		}

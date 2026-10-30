@@ -45,8 +45,8 @@ m("PF-1 the catch-up asks a nil run for its last seq", "cmd/rashomon/preflight.g
 m("PF-1 clearPrompt drops the prompt without zeroing it", "cmd/rashomon/preflight.go",
   "\tclear(p.Prompt)\n\tp.Prompt = nil\n", "\tp.Prompt = nil\n", "TestPF1k_")
 m("PF-1 the screen still says a prompt's text is not examined", "internal/disclose/paragraphs.go",
-  "Your prompts are never stored: rashomon reads each in memory to pick project facts for a note and records only its length, and the project paths it names in the note's steer line, unless you turn on record.prompt_class (off).",
-  "Your prompts are never stored; rashomon records only each prompt's length and does not examine its text unless you turn on record.prompt_class (off).",
+  "Your prompts are never stored: rashomon reads each in memory to pick project facts for a note and keeps only the project paths it names in the note's steer line.",
+  "Your prompts are never stored; rashomon records only each prompt's length and does not examine its text.",
   "TestPF1n_")
 m("PF-1 task-preflight ranks below learned-fact", "internal/steer/pattern/pattern.go",
   "\t\t\tTaskPreflight:      72,\n", "\t\t\tTaskPreflight:      20,\n", "TestPF1p_|TestPriority_StepEightValues")
