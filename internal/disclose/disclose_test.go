@@ -157,13 +157,17 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.WriteSteerDisclosureMarker(root, 2); err != nil {
 		t.Fatalf("store.WriteSteerDisclosureMarker: %v", err)
 	}
+	if err := store.WriteLab(root); err != nil {
+		t.Fatalf("store.WriteLab: %v", err)
+	}
 	if err := store.SetRootInWorkTree(root, root); err != nil {
 		t.Fatalf("store.SetRootInWorkTree: %v", err)
 	}
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*"} {
+		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*",
+		"." + store.FileLab + ".tmp-*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -338,7 +342,9 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-28 (4.1) to 25: bodies.go's copyBody CreateTemp
 		// (bodies/<project>/.body.tmp-*, renamed over <session>.jsonl) and
 		// WriteBodies' ReplaceFile (bodies.json, the transcript-copy switch).
-		{"store", 25},
+		// Moved 2026-10-29 (MEASURE1) to 26: lab.go's WriteLab ReplaceFile,
+		// the lab marker `measure --prepare` writes.
+		{"store", 26},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
