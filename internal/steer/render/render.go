@@ -124,6 +124,29 @@ type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
 
+// TaskPreflightBinding is task-preflight's later-prompt note (internal/intent).
+type TaskPreflightBinding struct {
+	Paths    slot.PathSet  `slot:"paths"`
+	Rules    slot.RuleRefs `slot:"rules"`
+	Gates    slot.GateRefs `slot:"gates"`
+	Source   slot.Enum     `slot:"source"`
+	Evidence slot.EnumList `slot:"evidence"`
+	Unknown  slot.EnumList `slot:"unknown"`
+}
+
+// TaskPreflightFirstBinding is task-preflight's first-prompt note.
+type TaskPreflightFirstBinding struct {
+	Instructions slot.PathSet  `slot:"instructions"`
+	Manifests    slot.PathSet  `slot:"manifests"`
+	GoDirs       slot.Count    `slot:"go_dirs"`
+	Paths        slot.PathSet  `slot:"paths"`
+	Rules        slot.RuleRefs `slot:"rules"`
+	Gates        slot.GateRefs `slot:"gates"`
+	Source       slot.Enum     `slot:"source"`
+	Evidence     slot.EnumList `slot:"evidence"`
+	Unknown      slot.EnumList `slot:"unknown"`
+}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -169,10 +192,27 @@ func templates() map[templateKey]template {
 				id:     "integrity-gate-config-edited/v1",
 				format: "rashomon record: this edit changed a CI or test-configuration file.",
 			},
+			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
+				id:     "task-preflight/v1",
+				format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
+			},
+			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
+				id: "task-preflight-first/v1",
+				format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
+					"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+			},
 		}
 	})
 	return templatesOnce.v
 }
+
+// preflightLines are the four lines both task-preflight rows end with: what
+// the request named, the spec rules over it, the gates and the evidence a
+// done claim needs, and what the preflight could not read.
+const preflightLines = "paths named: {paths}\n" +
+	"spec rules that apply: {rules}\n" +
+	"gates before done: {gates}; evidence for a done claim ({source}): {evidence}\n" +
+	"unknown: {unknown}"
 
 // templatesOnce holds what templates returns, built on its first call and
 // never at init (RES-2).
@@ -199,8 +239,9 @@ var (
 // New fills p's template for binding's type, runs every slot check (a
 // listed path that fails the deny list or the entropy test is left out of
 // the list instead) and the whole-string check -- ValidateBriefing for
-// continuity-briefing, the one multi-line note, Validate for every other
-// pattern -- and returns the Message, or the zero Message and an error.
+// the two multi-line notes, continuity-briefing and task-preflight, Validate
+// for every other pattern -- and returns the Message, or the zero Message
+// and an error.
 func New(p pattern.ID, binding any) (Message, error) {
 	return newMessage(templates(), p, binding)
 }
@@ -222,7 +263,7 @@ func newMessage(table map[templateKey]template, p pattern.ID, binding any) (Mess
 		return Message{}, err
 	}
 	check := Validate
-	if p == pattern.ContinuityBriefing {
+	if p == pattern.ContinuityBriefing || p == pattern.TaskPreflight {
 		check = ValidateBriefing
 	}
 	if err := check(text); err != nil {

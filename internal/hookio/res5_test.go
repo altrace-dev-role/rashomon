@@ -15,7 +15,7 @@ import (
 // package that does not exist on this tree yet is skipped by name.
 var res5Dirs = []string{
 	"internal/hook", "internal/shape", "internal/verify", "internal/steer",
-	"internal/harness", "internal/learn", "cmd/rashomon",
+	"internal/harness", "internal/learn", "cmd/rashomon", "internal/intent",
 }
 
 // res5Allowed are the decodes a hook path may still make, named by package
@@ -25,7 +25,8 @@ var res5Dirs = []string{
 // own project index under the store root, capped at MaxIndexBytes with a
 // closed shape, the trust boundary of the record-scope marker (D32 item 7).
 // Its per-call cost (218156 B/op at the cap, 58 percent the decoder's read
-// buffer) is ruled where it is called, and no hook path calls it on 1.6.
+// buffer) is ruled where it is called: once per turn by recap's Stop view and
+// once per prompt by the catch-up's preflight, both in BenchmarkRecapPending.
 // learn.decode reads the lesson ledger's own files and an import file (card
 // P6): CLI commands alone call it, and no hook links internal/learn
 // (TestP6_HookAndStoreImportNoLearner).

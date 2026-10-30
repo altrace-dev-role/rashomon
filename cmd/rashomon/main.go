@@ -1243,7 +1243,7 @@ func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 // promise that made this read safe -- see cmdDigest's doc on why sniffing
 // stdin's type cannot make that promise itself.
 func readStdinLastMessage(in io.Reader) (string, bool) {
-	fm, ok := readFinalMessage(in, false, false)
+	fm, ok := readFinalMessage(in, false, false, false)
 	return fm.Message, ok && fm.Message != ""
 }
 

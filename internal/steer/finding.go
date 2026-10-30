@@ -45,7 +45,7 @@ type PreDecision struct {
 // render.Message, which only render.New builds, so a Finding cannot carry
 // text that skipped the renderer's checks.
 type Finding struct {
-	// Pattern is which of the sixteen frozen patterns produced this
+	// Pattern is which of the seventeen frozen patterns produced this
 	// Finding.
 	Pattern PatternID
 	// Kind is Pattern's sub-category, or empty if Pattern has none.
@@ -114,8 +114,33 @@ func (f Finding) Check() error {
 	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
 		return fmt.Errorf("%w: %s does not carry its own-channel or table priority", ErrFinding, f.Pattern)
 	}
-	if f.AfterSeq < 1 {
-		return fmt.Errorf("%w: after_seq must be at least 1", ErrFinding)
+	return f.checkSeqs(1)
+}
+
+// CheckOn is Check for a finding routed on event, which admit takes from the
+// hook's Context, never from the finding. UserPromptSubmit is the one event
+// with no call before it: at a session's first prompt the run holds no record
+// and the last seq the decision saw is 0, so there a finding may stand at
+// after_seq 0, citing nothing. Every other event keeps Check's floor of 1.
+func (f Finding) CheckOn(event Event) error {
+	if event != EventUserPromptSubmit || f.AfterSeq != 0 {
+		return f.Check()
+	}
+	if err := f.Check(); err == nil || !errors.Is(err, errAfterSeq) {
+		return err
+	}
+	return f.checkSeqs(0)
+}
+
+// errAfterSeq is Check's after_seq floor alone, so CheckOn can lower that
+// floor and keep every other rule.
+var errAfterSeq = fmt.Errorf("%w: after_seq below its floor", ErrFinding)
+
+// checkSeqs holds after_seq at floor or more, and every evidence seq at 1 or
+// later, ascending, and at or before after_seq.
+func (f Finding) checkSeqs(floor int64) error {
+	if f.AfterSeq < floor {
+		return errAfterSeq
 	}
 	for i, seq := range f.Evidence {
 		if seq < 1 || seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {

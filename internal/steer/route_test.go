@@ -71,11 +71,11 @@ func TestDEL22f_RouteAdmitsOnlyCheckedFindings(t *testing.T) {
 		{Pattern: pattern.SubtaskGate, Evidence: []int64{9}, AfterSeq: 5},
 		{Pattern: pattern.ClaimVsRecord, Kind: "masked", MaxLevel: LevelStop, StopForm: StopFormStopContinue, AfterSeq: 5},
 	}
-	got := admit(append([]Finding{bad[0], good, bad[1]}, bad[2]))
+	got := admit(nil, append([]Finding{bad[0], good, bad[1]}, bad[2]))
 	if len(got) != 1 || got[0].Pattern != good.Pattern || got[0].StopForm != good.StopForm {
 		t.Errorf("admit kept %+v, want only the finding that passes Check", got)
 	}
-	if got := admit(nil); len(got) != 0 {
+	if got := admit(nil, nil); len(got) != 0 {
 		t.Errorf("admit(nil) = %v", got)
 	}
 
@@ -90,7 +90,7 @@ func TestDEL22f_RouteAdmitsOnlyCheckedFindings(t *testing.T) {
 			body = fn.Body.List
 		}
 	}
-	want := "return route(ctx, admit(findings))"
+	want := "return route(ctx, admit(ctx, findings))"
 	if len(body) != 1 || source(t, fset, body[0]) != want {
 		t.Errorf("Route's body is not %q; every finding must pass Check before the router sees it", want)
 	}
@@ -105,7 +105,7 @@ func TestAdmitCountsWhatItDrops(t *testing.T) {
 	bad := Finding{Pattern: pattern.SubtaskGate, Kind: "not-a-kind", AfterSeq: 5}
 
 	before := DroppedFindings()
-	if got := admit([]Finding{good, bad, bad}); len(got) != 1 {
+	if got := admit(nil, []Finding{good, bad, bad}); len(got) != 1 {
 		t.Fatalf("admit kept %d findings, want 1", len(got))
 	}
 	if got := DroppedFindings() - before; got != 2 {

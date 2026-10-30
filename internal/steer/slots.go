@@ -26,8 +26,8 @@ func slotsOf(m render.Message) (map[string]json.RawMessage, error) {
 // slotsFrom is slotsOf's table, one row per concrete slot type, an allow
 // list: counts, exit codes and minutes as JSON numbers, dollars as a number
 // with two decimals, a path list as its paths under the slot's name and its
-// omitted count under "more", and every other type as the JSON string of
-// its raw value. Never Text(): a repository-named slot's text carries the
+// omitted count under "more", the preflight's lists as one object each
+// (preflightJSON), and every other type as the JSON string of its raw value. Never Text(): a repository-named slot's text carries the
 // quotes it renders inside (P07N-11), and the example records "go test",
 // not "'go test'" (card 2.2 R10, A2). Each value is the bound one, so a path
 // the renderer left out is in "more", never in "paths".
@@ -85,6 +85,8 @@ func slotsFrom(slots []render.Slot) (map[string]json.RawMessage, error) {
 			err = putJSON(put, s.Name, v.Text())
 		case slot.FactValue:
 			err = putJSON(put, s.Name, v.Value)
+		case slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:
+			err = putJSON(put, s.Name, preflightJSON(v))
 		default:
 			err = fmt.Errorf("%w: %q holds %T", errSlot, s.Name, s.Value)
 		}
@@ -102,4 +104,56 @@ func putJSON(put func(string, json.RawMessage) error, name string, v any) error 
 		return err
 	}
 	return put(name, raw)
+}
+
+// The preflight lists' line forms: flat arrays of raw values beside their
+// counts, keys in sorted order, so the delivered-set reader scans them with
+// jsonscan and never decodes a line (RES-5).
+type (
+	pathSetJSON struct {
+		Earlier int      `json:"earlier"`
+		Items   []string `json:"items"`
+		More    int      `json:"more"`
+	}
+	ruleRefsJSON struct {
+		Earlier  int      `json:"earlier"`
+		IDs      []string `json:"ids"`
+		More     int      `json:"more"`
+		Trust    []string `json:"trust"`
+		Why      []string `json:"why"`
+		Withheld int      `json:"withheld"`
+	}
+	gateRefsJSON struct {
+		Gates   []string `json:"gates"`
+		Learned int      `json:"learned"`
+		More    int      `json:"more"`
+		Trust   []string `json:"trust"`
+	}
+)
+
+// preflightJSON is one preflight list as its line records it.
+func preflightJSON(v slot.Value) any {
+	switch v := v.(type) {
+	case slot.PathSet:
+		out := pathSetJSON{Earlier: v.Earlier(), Items: []string{}, More: v.More()}
+		for _, p := range v.Paths() {
+			out.Items = append(out.Items, string(p))
+		}
+		return out
+	case slot.RuleRefs:
+		out := ruleRefsJSON{Earlier: v.Earlier(), IDs: []string{}, More: v.More(), Trust: []string{}, Why: []string{}, Withheld: v.Withheld()}
+		for _, r := range v.Items() {
+			out.IDs, out.Trust, out.Why = append(out.IDs, r.ID), append(out.Trust, r.Trust.Text()), append(out.Why, string(r.Why))
+		}
+		return out
+	case slot.GateRefs:
+		out := gateRefsJSON{Gates: []string{}, Learned: v.Learned(), More: v.More(), Trust: []string{}}
+		for _, g := range v.Items() {
+			out.Gates, out.Trust = append(out.Gates, string(g.Words)), append(out.Trust, g.Trust.Text())
+		}
+		return out
+	case slot.EnumList:
+		return append([]string{}, v.Values()...)
+	}
+	return nil
 }
