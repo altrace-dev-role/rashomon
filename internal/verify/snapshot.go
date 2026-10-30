@@ -240,8 +240,9 @@ type IntegrityEntry struct {
 	Seq    int64         `json:"seq"`
 	// Path is the path a store_touched entry's call targeted, as the record
 	// names it (project-relative under the project, as named elsewhere, so
-	// absolute for a write under a store root outside it, D173); "" and
-	// left out on every other check.
+	// absolute for a write under a store root outside it, D173); "" on a
+	// store_touched entry from a call's store-root bit where the record
+	// withholds its paths (D173b), and "" and left out on every other check.
 	Path string `json:"path,omitempty"`
 }
 

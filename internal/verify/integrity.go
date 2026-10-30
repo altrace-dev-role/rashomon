@@ -148,9 +148,10 @@ var markerTableOnce struct {
 // = 0 until 1.8w gives Evaluate the point's window start.
 //
 // Cost: one pass over the executions and declarations for the marks, two
-// over writes (the marks, the store), one over the declarations for the pairs (testPairs), and a
-// sort of the entries; none for the lost-declaration guard, which is
-// recording's.
+// over writes (the marks, the store), one over the declarations for the pairs (testPairs), one
+// for the store-root bit where the paths are withheld (D173b: an entry with
+// no path), and a sort of the entries; none for the lost-declaration guard,
+// which is recording's.
 func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, from, at int64, storeRoot string) Integrity {
 	out := Integrity{Unresolved: []IntegrityEntry{}}
 	nets := foldMarks(&out, marksByCall(run), writes, from, at)
@@ -181,6 +182,13 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: w.Seq, Path: *w.Path})
 		}
 	}
+	if run != nil {
+		for i := range run.Declarations {
+			if d := &run.Declarations[i]; d.Seq > from && d.Seq <= at && namedWithheld(d) {
+				out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: d.Seq})
+			}
+		}
+	}
 	slices.SortFunc(out.Unresolved, func(a, b IntegrityEntry) int {
 		return cmp.Or(cmp.Compare(a.Seq, b.Seq), cmp.Compare(slices.Index(IntegrityKinds, a.Check), slices.Index(IntegrityKinds, b.Check)),
 			cmp.Compare(a.Marker, b.Marker), cmp.Compare(a.Path, b.Path))
@@ -192,7 +200,10 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 // before seq at (D173): the writes integrity's store_touched names there,
 // read through writeTargets as appendWrites reads them, without classifying
 // the run. The steer step and the Stop read it before any trust is bound
-// (hook.TrustRoot). Cost: one pass over the declarations and their named
+// (hook.TrustRoot). Where the record withholds a call's paths (record scope
+// v4, the default, or a cap), the call's store-root bit stands for them
+// (rootNamed, D173b): a call that named the root counts as a write there,
+// read or not. Cost: one pass over the declarations and their named
 // paths, allocating only to clean a path that is not clean.
 func StoreWritten(run *store.Run, storeRoot string, at int64) bool {
 	if run == nil || storeRoot == "" {
@@ -202,6 +213,9 @@ func StoreWritten(run *store.Run, storeRoot string, at int64) bool {
 		d := &run.Declarations[i]
 		if d.Seq > at {
 			continue
+		}
+		if namedWithheld(d) {
+			return true
 		}
 		file, shell := writeTargets(d)
 		if file != nil && underStore(slashed(*file), storeRoot) {
@@ -214,6 +228,15 @@ func StoreWritten(run *store.Run, storeRoot string, at int64) bool {
 		}
 	}
 	return false
+}
+
+// namedWithheld reports a call that named the store root (its StoreNamed
+// bit, D173b) on a record that withholds what would name its target: the
+// command, the file_path or the written paths, for want of consent, over a
+// cap or switched off. Where they are recorded, writeTargets reads them and
+// the bit is not read, so a read that names the root drops nothing there.
+func namedWithheld(d *store.Declaration) bool {
+	return d.StoreNamed && (d.CommandWithheld != nil || d.FilePathWithheld != nil || d.WrittenPathsWithheld != nil)
 }
 
 // marksByCall is the edit marks of each file-tool call (one whose declaration

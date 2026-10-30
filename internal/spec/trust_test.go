@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -95,5 +97,49 @@ func TestST1k_UnsignedBindingsBindNothing(t *testing.T) {
 	}
 	if _, err := EncodeBindings(b, trustKey(1)[:8]); err == nil {
 		t.Error("EncodeBindings under an 8-byte key: no error")
+	}
+}
+
+// TestST1w_AFileTheVerbDidNotWriteIsUnsigned (D173b, QA-2's item 4): a
+// bindings file that is not the file the verb writes is ErrBindingsUnsigned
+// with no binding read, so the verb replaces it rather than stopping on it:
+// a file that is not JSON, a file with a field it does not name, a file
+// over its cap, a file beside an unreadable key, and a file whose bindings
+// are not a list under a MAC that checks. A file that cannot be read at all
+// is another error.
+func TestST1w_AFileTheVerbDidNotWriteIsUnsigned(t *testing.T) {
+	inner := []byte(`{"not":"a list"}`)
+	m := hmac.New(sha256.New, trustKey(1))
+	m.Write(inner)
+	notAList := `{"bindings":` + string(inner) + `,"mac":"` + hex.EncodeToString(m.Sum(nil)) + `"}`
+	for _, c := range []struct {
+		name     string
+		file     string
+		fileErr  error
+		keyErr   error
+		unsigned bool
+	}{
+		{"not JSON", "x\n", nil, nil, true},
+		{"a field it does not name", `{"bindings":[],"mac":"00","extra":1}`, nil, nil, true},
+		{"over its cap", `{"bindings":[],"mac":"` + strings.Repeat("0", MaxTrustBytes) + `"}`, nil, nil, true},
+		{"an unreadable key", `{"bindings":[],"mac":"00"}`, nil, fs.ErrPermission, true},
+		{"bindings that are not a list", notAList, nil, nil, true},
+		{"a file that cannot be read", "", fs.ErrPermission, nil, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fsys := newFS()
+			fsys.files[filepath.Join("/store", TrustFile)] = c.file
+			fsys.files[filepath.Join("/store", TrustKeyFile)] = string(trustKey(1))
+			if c.fileErr != nil {
+				fsys.errs[filepath.Join("/store", TrustFile)] = c.fileErr
+			}
+			if c.keyErr != nil {
+				fsys.errs[filepath.Join("/store", TrustKeyFile)] = c.keyErr
+			}
+			got, err := ReadBindings(fsys, "/store")
+			if err == nil || got != nil || errors.Is(err, ErrBindingsUnsigned) != c.unsigned {
+				t.Errorf("ReadBindings = %+v, %v; want nothing and unsigned %v", got, err, c.unsigned)
+			}
+		})
 	}
 }

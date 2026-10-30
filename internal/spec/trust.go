@@ -62,17 +62,21 @@ type signedBindings struct {
 }
 
 // ErrBindingsUnsigned is a bindings file whose MAC does not check under the
-// store's trust key, or a file with no key to check it under: something
-// other than `rashomon spec trust` wrote it. It binds nothing.
+// store's trust key, a file with no key to check it under, or one that is
+// not the file the verb writes (over its cap, not its shape, or beside a key
+// that cannot be read): something other than `rashomon spec trust` wrote it.
+// It binds nothing, and a trust replaces it (D173b).
 var ErrBindingsUnsigned = errors.New("spec: the trust bindings do not carry this store's MAC")
 
 // ReadBindings reads the bindings file under storeRoot through fsys, and the
 // trust key beside it only when there is a file to check. A missing file is
 // no binding and no error. The MAC is checked over the bindings' bytes
 // before any binding is decoded: a file with no key to check it under, or
-// whose MAC does not match, is ErrBindingsUnsigned. A file over
-// MaxTrustBytes, or one that is not this shape (one JSON value, no field it
-// does not name), is an error. Discovery reads every error as no binding:
+// whose MAC does not match, is ErrBindingsUnsigned, and so is a file over
+// MaxTrustBytes, one that is not this shape (one JSON value, no field it
+// does not name) and one whose key cannot be read (D173b: QA-2's item 4, so
+// the verb replaces it rather than stopping on it). Only a file that cannot
+// be read is another error. Discovery reads every error as no binding:
 // untrusted, the fail-closed direction.
 func ReadBindings(fsys FS, storeRoot string) (*Bindings, error) {
 	path := filepath.Join(storeRoot, TrustFile)
@@ -84,22 +88,22 @@ func ReadBindings(fsys FS, storeRoot string) (*Bindings, error) {
 		return nil, err
 	}
 	if len(data) > MaxTrustBytes {
-		return nil, fmt.Errorf("spec: %s is over its %d-byte cap", path, MaxTrustBytes)
+		return nil, fmt.Errorf("%w: %s is over its %d-byte cap", ErrBindingsUnsigned, path, MaxTrustBytes)
 	}
 	var f signedBindings
 	if err := decodeOne(data, &f); err != nil {
-		return nil, fmt.Errorf("spec: %s: %w", path, err)
+		return nil, fmt.Errorf("%w: %s: %v", ErrBindingsUnsigned, path, err)
 	}
 	key, err := fsys.ReadFile(filepath.Join(storeRoot, TrustKeyFile))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
+		return nil, fmt.Errorf("%w: %s: the trust key: %v", ErrBindingsUnsigned, path, err)
 	}
 	if len(key) != TrustKeyBytes || !hmac.Equal([]byte(f.MAC), []byte(trustMAC(key, f.Bindings))) {
 		return nil, fmt.Errorf("%w: %s", ErrBindingsUnsigned, path)
 	}
 	var b Bindings
 	if err := decodeOne(f.Bindings, &b.Bindings); err != nil {
-		return nil, fmt.Errorf("spec: %s: %w", path, err)
+		return nil, fmt.Errorf("%w: %s: %v", ErrBindingsUnsigned, path, err)
 	}
 	return &b, nil
 }

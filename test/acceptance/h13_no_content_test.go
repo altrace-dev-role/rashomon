@@ -44,6 +44,9 @@ var (
 		// named LOOKS LIKE, from a closed vocabulary, never the path. Null on
 		// every record this build writes.
 		"host_source", "rule_match", "file_label",
+		// D173b. One bit: whether the call's input named rashomon's store
+		// root. The root is compared and dropped, never stored.
+		"store_named",
 		// v3. A keyed digest of the directory its command starts in: 64 hex
 		// characters, never the path.
 		"cwd_digest",

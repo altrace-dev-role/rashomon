@@ -105,3 +105,49 @@ func TestST1s_StoreWrittenNamesTheStoreTouchedWrites(t *testing.T) {
 		t.Errorf("StoreWritten over clean paths: %v allocs, want 0", n)
 	}
 }
+
+// TestST1v_TheStoreRootBitStandsForWithheldPaths (D173b, QA-2's blocking
+// item): at record scope v4, the default, the gate withholds a call's paths,
+// so the call's store-root bit decides. A Write or a shell write whose input
+// named the root is a store write for StoreWritten and a store_touched entry
+// with no path; a call that did not name it, or one after at, is neither.
+// Where the paths are recorded the bit is not read: a v5 call whose input
+// named the root and whose recorded path is elsewhere is neither.
+func TestST1v_TheStoreRootBitStandsForWithheldPaths(t *testing.T) {
+	const root = "/home/u/.local/state/rashomon"
+	mark := func(r *store.Run, named bool, scope string) *store.Run {
+		for i := range r.Declarations {
+			r.Declarations[i].StoreNamed = named
+			store.GateDeclaration(&r.Declarations[i], scope)
+		}
+		return r
+	}
+	late := mark(runOf(t, edit(1, "pkg/a.go"), writeCall(3, root+"/spec-trust.json")), false, store.RecordScopeV4)
+	late.Declarations[1].StoreNamed = true
+	for _, c := range []struct {
+		name string
+		r    *store.Run
+		at   int64
+		want bool
+	}{
+		{"a v4 Write that named the root", mark(runOf(t, writeCall(1, root+"/spec-trust.json")), true, store.RecordScopeV4), 2, true},
+		{"a v4 shell write that named it", mark(runOf(t, bashWrite(1, root+"/spec-trust.key")), true, store.RecordScopeV4), 2, true},
+		{"a v4 call that did not name it", mark(runOf(t, writeCall(1, "/tmp/x")), false, store.RecordScopeV4), 2, false},
+		{"a v4 call after at", late, 2, false},
+		{"that call at at", late, 3, true},
+		{"a v5 call whose path is elsewhere", mark(runOf(t, edit(1, "pkg/a.go")), true, store.RecordScopeV5), 2, false},
+	} {
+		if got, named := StoreWritten(c.r, root, c.at), storeTouchedAt(c.r, root, c.at); got != c.want || named != c.want {
+			t.Errorf("%s: StoreWritten %v, store_touched %v; want %v", c.name, got, named, c.want)
+		}
+	}
+	r := mark(runOf(t, writeCall(1, root+"/spec-trust.json")), true, store.RecordScopeV4)
+	if r.Declarations[0].FilePath != nil {
+		t.Fatalf("the v4 Write's file_path %q is recorded; the gate withholds it", *r.Declarations[0].FilePath)
+	}
+	_, writes, _, _ := classify(r)
+	got := integrity(r, pickExecutions(r), writes, 0, 2, root).Unresolved
+	if len(got) != 1 || got[0] != (IntegrityEntry{Check: StoreTouched, Seq: 1}) {
+		t.Errorf("the v4 Write's entries %+v, want one store_touched at seq 1 with no path", got)
+	}
+}
