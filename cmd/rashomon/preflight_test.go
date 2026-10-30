@@ -11,8 +11,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // promptPayload is a UserPromptSubmit payload carrying prompt.
@@ -101,5 +103,27 @@ func TestPF1u_APromptWithNoSessionDoesNotPanic(t *testing.T) {
 	}()
 	if panicked != nil || rerr != nil || stdout.Len() != 0 {
 		t.Errorf("recap pending with no session_id: panic %v, error %v, stdout %q; want none of them", panicked, rerr, stdout.String())
+	}
+}
+
+// TestPF1v_ARequestNamingNothingBuildsNoSteerEnv: a request that names no
+// path and no identifier stops at intent.Names, before any read and before
+// the steer environment is built, so the catch-up's preflight costs it what
+// Names costs and nothing more. Break: build the environment ahead of the
+// guard (harness.Caps' map, specDirs, the Getenv reads) and every catch-up
+// pays for it.
+func TestPF1v_ARequestNamingNothingBuildsNoSteerEnv(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the race detector's own allocations are counted")
+	}
+	pp := pendingPayload{recapPayload: recapPayload{CWD: t.TempDir()}, Prompt: []byte("Now add a test for a key that is too long.")}
+	if intent.Names(pp.Prompt, false) {
+		t.Fatal("premise: the request names a path or an identifier")
+	}
+	id, now := harness.Identity{ID: harness.ClaudeCode}, time.Now()
+	names := testing.AllocsPerRun(100, func() { intent.Names(pp.Prompt, false) })
+	note := testing.AllocsPerRun(100, func() { preflightNote(nil, &store.Run{}, &pp, id, now) })
+	if note != names {
+		t.Errorf("preflightNote on a request naming nothing: %v allocations a call, want intent.Names' %v", note, names)
 	}
 }

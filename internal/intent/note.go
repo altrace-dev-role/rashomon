@@ -93,7 +93,7 @@ func Finding(in Intent, d Delivered, b *Brief, afterSeq int64) (steer.Finding, b
 		}
 		prio, _ := pattern.Priority(pattern.TaskPreflight)
 		return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
-			Message: m, AfterSeq: afterSeq}, true
+			StopForm: steer.StopFormNone, Message: m, AfterSeq: afterSeq}, true
 	}
 	return steer.Finding{}, false
 }

@@ -116,17 +116,17 @@ func TestRES7_HugeFinalMessageIsConstant(t *testing.T) {
 
 func TestReadFinalMessageKeepsTodaysAccountWindow(t *testing.T) {
 	msg := strings.Repeat("é", 70_000) // 70,000 runes, 140,000 bytes: past 64 KiB, inside 64 Ki runes
-	fm, ok := readFinalMessage(strings.NewReader(`{"session_id":"s","last_assistant_message":"`+msg+`"}`), true, false)
+	fm, ok := readFinalMessage(strings.NewReader(`{"session_id":"s","last_assistant_message":"`+msg+`"}`), true, false, false)
 	if !ok || fm.SessionID != "s" || fm.Message != msg || fm.Tail != "" {
 		t.Fatalf("ok=%v session %q head %d bytes tail %d bytes", ok, fm.SessionID, len(fm.Message), len(fm.Tail))
 	}
 	long := strings.Repeat("a", messageHeadBytes) + strings.Repeat("z", 100)
-	fm, ok = readFinalMessage(strings.NewReader(`{"last_assistant_message":"`+long+`"}`), false, false)
+	fm, ok = readFinalMessage(strings.NewReader(`{"last_assistant_message":"`+long+`"}`), false, false, false)
 	if !ok || len(fm.Message) != messageHeadBytes || !strings.HasSuffix(fm.Tail, strings.Repeat("z", 100)) || len(fm.Tail) != messageTailBytes {
 		t.Fatalf("long message: head %d tail %d", len(fm.Message), len(fm.Tail))
 	}
 	for _, bad := range []string{`{"session_id":5,"last_assistant_message":"x"}`, `{"last_assistant_message":["x"]}`, `["x"]`, `{"last_assistant_message":"x"} {}`, ``} {
-		if _, ok := readFinalMessage(strings.NewReader(bad), true, false); ok {
+		if _, ok := readFinalMessage(strings.NewReader(bad), true, false, false); ok {
 			t.Errorf("%q read as a payload", bad)
 		}
 	}
@@ -148,12 +148,12 @@ func TestReadFinalMessageCapIsExact(t *testing.T) {
 	if len(at) != hookio.MaxPayloadBytes {
 		t.Fatalf("payload %d bytes, want exactly the %d-byte cap", len(at), hookio.MaxPayloadBytes)
 	}
-	if _, ok := readFinalMessage(strings.NewReader(at), true, false); !ok {
+	if _, ok := readFinalMessage(strings.NewReader(at), true, false, false); !ok {
 		t.Fatalf("exactly %d bytes refused, want accepted", hookio.MaxPayloadBytes)
 	}
 
 	over := build(hookio.MaxPayloadBytes + 1)
-	if _, ok := readFinalMessage(strings.NewReader(over), true, false); ok {
+	if _, ok := readFinalMessage(strings.NewReader(over), true, false, false); ok {
 		t.Fatalf("%d bytes read as a payload, want refused one byte over the cap", len(over))
 	}
 }

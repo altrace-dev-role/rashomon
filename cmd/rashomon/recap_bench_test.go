@@ -128,7 +128,7 @@ func BenchmarkRecap(b *testing.B) {
 // BenchmarkRecapPending is the UserPromptSubmit catch-up on a turn no Stop
 // reached: the digest, the pending check and the previous-turn line. Its
 // prompt names nothing, so the preflight stops at intent.Names. /preflight is
-// the catch-up for a prompt that names a file of a project on disk (B198):
+// the catch-up for a prompt that names a file of a project on disk:
 // the spec walk, the index and steer-log reads, the resolve and its lookup,
 // the note's render and its steer line, which is removed before each call so
 // that every call gives the session's first note.

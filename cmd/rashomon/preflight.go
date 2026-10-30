@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -39,14 +40,15 @@ func clearPrompt(p *pendingPayload) {
 // under the session, and the client its Output is marshalled for; the zero
 // Output when there is no run to log it under (no session_id, H-107), no
 // cwd to resolve against, or nothing new to say. A request that names no
-// path and no identifier stops at intent.Names, before any read: with no
-// brief on this branch it can have no note. A session's first prompt finds
-// its run empty, so the note decides at after_seq 0, which CheckOn admits at
-// UserPromptSubmit only.
-func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, env hook.SteerEnv) (steer.Output, steer.Client) {
+// path and no identifier stops at intent.Names, before any read and before
+// the steer environment is built: with no brief on this branch it can have
+// no note. A session's first prompt finds its run empty, so the note decides at
+// after_seq 0, which CheckOn admits at UserPromptSubmit only.
+func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, id harness.Identity, now time.Time) (steer.Output, steer.Client) {
 	if run == nil || p.CWD == "" || !intent.Names(p.Prompt, p.PromptCut) {
 		return steer.Output{}, steer.Client{}
 	}
+	env := steerEnv(id, now)
 	sp := hook.DiscoverSpec(p.CWD, env.ProjectDir, env.ManagedDir)
 	var idx *verify.ProjectIndex
 	if key := baseline.Key(p.CWD); key != "" {

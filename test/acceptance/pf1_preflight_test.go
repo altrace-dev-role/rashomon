@@ -40,9 +40,8 @@ func (e *env) writeProject(files ...string) {
 }
 
 func TestPF1d_PromptWordsNeverLand(t *testing.T) {
-	e := newEnv(t)
+	e := newSteerEnv(t)
 	e.writeProject("go.mod", "CLAUDE.md", "internal/verify/stop.go")
-	e.watched(testSession)
 
 	prompt := "fix the " + pf1Sentinel1 + " bug in internal/verify/stop.go and rename " + pf1Sentinel2 + " in quokka/" + pf1Sentinel1 + ".go"
 	payload, err := json.Marshal(map[string]any{
