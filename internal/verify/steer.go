@@ -43,7 +43,7 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	var decl int64
 	if c.learned && event == string(steer.EventPostToolUse) {
-		decl = declSeq(run, toolUseID, pt.Seq)
+		decl = declSeqAt(run, toolUseID, pt.Seq)
 	}
 	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, pt, event)...)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
@@ -184,9 +184,9 @@ func staleHere(g *GateState, writes []write, decl int64) bool {
 	return false
 }
 
-// declSeq is the seq of the call's declaration, the last one at or before
+// declSeqAt is the seq of the call's declaration, the last one at or before
 // at whose id is toolUseID (both records store the capped id), else 0.
-func declSeq(run *store.Run, toolUseID string, at int64) int64 {
+func declSeqAt(run *store.Run, toolUseID string, at int64) int64 {
 	var seq int64
 	for i := range run.Declarations {
 		if d := &run.Declarations[i]; d.ToolUseID == toolUseID && d.Seq <= at && d.Seq > seq {
