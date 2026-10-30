@@ -1,7 +1,7 @@
 // Package disclose is the inventory of everything rashomon installs, writes,
 // reads, prints and may say to the agent, and the one source every
 // user-facing statement of it is rendered from: the consent screen, the
-// README's machine section, `rashomon disclose` and `status`.
+// README's machine section and `rashomon status`.
 //
 // It exists because a tool that installs hooks into an editor and adds text
 // to an agent's context is the kind of tool people get warned about, and the
@@ -133,7 +133,7 @@ type Paragraph struct {
 	Cite  string `json:"cite"`
 }
 
-// Sections of `rashomon disclose`, in print order (7.2.8).
+// Sections of the inventory's print, in order (7.2.8).
 const (
 	SectionInstalled    = "INSTALLED"
 	SectionConsent      = "CONSENT"

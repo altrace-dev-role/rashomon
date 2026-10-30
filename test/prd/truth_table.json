@@ -1276,7 +1276,7 @@
         }
       ],
       "id": "PF-HD3",
-      "implementation": "No episode miner exists; learn.Candidate takes the counts one would report, and the consent screen describes mining this tree does not do.",
+      "implementation": "No episode miner exists; learn.Candidate takes the counts one would report, and the consent screen says this build learns nothing by itself.",
       "integration": [
         {
           "event": "none",
@@ -1284,8 +1284,7 @@
         }
       ],
       "missing": [
-        "the episode miner (LRN-1 to LRN-10)",
-        "consent text for the learner that matches what is built"
+        "the episode miner (LRN-1 to LRN-10)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1496,7 +1495,7 @@
         }
       ],
       "id": "PF-HD10",
-      "implementation": "Quarantine and a zero-residue purge of the learner's files are built, but no 16 MiB or 64 MiB cap exists, only active.json being capped, and learn off does not exist though the consent screen names it.",
+      "implementation": "Quarantine and a zero-residue purge of the learner's files are built, but no 16 MiB or 64 MiB cap exists, only active.json being capped, and learn off does not exist.",
       "integration": [
         {
           "event": "verb",
@@ -1509,7 +1508,7 @@
       ],
       "missing": [
         "16 MiB per-project and 64 MiB total caps: labels.ndjson is appended without one",
-        "learn off (LRN-11, LRN-28 to LRN-36), which the consent screen already names"
+        "learn off (LRN-11, LRN-28 to LRN-36)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1706,7 +1705,7 @@
         }
       ],
       "id": "PF-HD17",
-      "implementation": "No seed command reads the transcripts on disk, and the consent screen's session-start transcript read does not exist.",
+      "implementation": "No seed command reads the transcripts on disk, and the consent screen no longer names a session-start transcript read.",
       "integration": [
         {
           "event": "none",
@@ -1714,8 +1713,7 @@
         }
       ],
       "missing": [
-        "the seed command over audit's read path and Slice 0 (N14)",
-        "consent text for the learner that matches what is built"
+        "the seed command over audit's read path and Slice 0 (N14)"
       ],
       "planned_pr": "",
       "session_proof": "",
