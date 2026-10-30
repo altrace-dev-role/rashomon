@@ -39,7 +39,7 @@ func lessonFinding(a learn.Active, afterSeq int64, lines [][]byte, paths []strin
 		return steer.Finding{}, false
 	}
 	given := learn.Delivered(lines)
-	f := steer.Finding{Pattern: pattern.LearnedFact, Kind: "local", AfterSeq: afterSeq}
+	f := steer.Finding{Pattern: pattern.LearnedFact, Kind: "local", StopForm: steer.StopFormNone, AfterSeq: afterSeq}
 	if p, ok := pattern.Priority(pattern.LearnedFact); ok {
 		f.Priority = p
 	}

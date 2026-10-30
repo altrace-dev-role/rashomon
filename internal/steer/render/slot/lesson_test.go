@@ -1,16 +1,26 @@
 package slot
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
 
 // TestSTR11b_LessonIDCharset: a lesson id is learn's id form, verify.SlotID's
 // charset `^[a-z0-9][a-z0-9._:@-]{0,63}$`, and renders as it is, unquoted.
+// The charset is not the whole check: an id comes with an import row, so it
+// runs the secret screens too, and an id in the charset shaped like
+// `user:token@` or a 64-hex digest is refused as secret-shaped. learn.Message
+// runs the same check at approval, so no such id is ever approved.
 func TestSTR11b_LessonIDCharset(t *testing.T) {
 	checkSlot(t,
-		[]LessonID{"go-test-cwd", "x", "a.b_c:d@e-f", "0", LessonID(strings.Repeat("a", 64))},
+		[]LessonID{"go-test-cwd", "x", "a.b_c@d:e-f", "0", LessonID(strings.Repeat("x", 64))},
 		[]LessonID{"", "Go-test", "-lead", ".lead", "has space", "it's", "#unchecked", LessonID(strings.Repeat("a", 65))})
+	for _, id := range []LessonID{"a.b_c:d@e-f", LessonID(strings.Repeat("a", 64))} {
+		if err := id.Validate(); !errors.Is(err, ErrSecretShaped) {
+			t.Errorf("LessonID(%s).Validate() = %v, want the secret screen's refusal", id, err)
+		}
+	}
 	if got := LessonID("go-test-cwd").Text(); got != "go-test-cwd" {
 		t.Errorf("LessonID.Text() = %q, want it unquoted", got)
 	}
