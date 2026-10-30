@@ -136,3 +136,8 @@ func answer(ids map[string]declState, id string, seq *int64) bool {
 // byPoint: an outcome at seq is in the record by the point at. A spilled one
 // has no place, so it is at every point.
 func byPoint(seq *int64, at int64) bool { return seq == nil || *seq <= at }
+
+// RecordingAt is recording for a reader outside the package: status names
+// why the last Stop's record was incomplete from it, in the words the
+// checkpoint's own recording field was decided by.
+func RecordingAt(run *store.Run, at int64) (Recording, []string) { return recording(run, at) }

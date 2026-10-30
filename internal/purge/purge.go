@@ -327,7 +327,7 @@ func ownTreeFile(name string, isRuns bool, level int) bool {
 	if level != 1 {
 		return false
 	}
-	if slices.Contains(runFiles, name) {
+	if slices.Contains(runFiles, name) || store.IsFiredFile(name) {
 		return true
 	}
 	for _, p := range runTempPrefixes {
