@@ -178,14 +178,22 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 		out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: TestsOnlyThenGreen, Seq: p[1]})
 	}
 	for _, w := range writes {
-		if w.Path != nil && w.Seq > from && w.Seq <= at && (inStore(*w.Path) || underStore(w.raw, storeRoot)) {
+		if w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {
 			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: w.Seq, Path: *w.Path})
 		}
 	}
 	if run != nil {
 		for i := range run.Declarations {
-			if d := &run.Declarations[i]; d.Seq > from && d.Seq <= at && namedWithheld(d) {
-				out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: d.Seq})
+			if d := &run.Declarations[i]; d.Seq > from && d.Seq <= at {
+				// The bit's entry has no path; a root write's is the write's
+				// relativised path, less the ones inStore named above.
+				storeWrites(d, storeRoot, func(p string) {
+					if p == "" {
+						out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: d.Seq})
+					} else if rel := relativise(p, d.Project, d.CWD); !inStore(rel) {
+						out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: d.Seq, Path: rel})
+					}
+				})
 			}
 		}
 	}
@@ -214,20 +222,53 @@ func StoreWritten(run *store.Run, storeRoot string, at int64) bool {
 		if d.Seq > at {
 			continue
 		}
-		if namedWithheld(d) {
+		if storeWrites(d, storeRoot, nil) {
 			return true
-		}
-		file, shell := writeTargets(d)
-		if file != nil && underStore(slashed(*file), storeRoot) {
-			return true
-		}
-		for _, p := range shell {
-			if underStore(slashed(p), storeRoot) {
-				return true
-			}
 		}
 	}
 	return false
+}
+
+// storeWrites reports whether d is a store write: a call whose paths are
+// withheld and whose store-root bit is set (namedWithheld, D173b), or a
+// write d names (writeTargets' paths, as appendWrites reads them) under
+// storeRoot once cleaned (underStore). It calls f, when it is not nil, with
+// "" for the bit and with each such path in the order the call named them;
+// with f nil it stops at the first. It is the one store-write reading
+// StoreWritten and integrity's store_touched share, so the trust drop and
+// integrity agree by construction (D173, D173b, D173d: the root match moved
+// here from a raw path each write carried, which grew every write by a
+// string and every writes slice with it). A storeRoot of "" reads the bit
+// alone. It allocates only to clean a path that is not clean.
+func storeWrites(d *store.Declaration, storeRoot string, f func(p string)) bool {
+	if namedWithheld(d) {
+		if f != nil {
+			f("")
+		}
+		return true
+	}
+	if storeRoot == "" {
+		return false
+	}
+	hit := false
+	file, shell := writeTargets(d)
+	if file != nil && underStore(slashed(*file), storeRoot) {
+		if f == nil {
+			return true
+		}
+		hit = true
+		f(*file)
+	}
+	for _, p := range shell {
+		if underStore(slashed(p), storeRoot) {
+			if f == nil {
+				return true
+			}
+			hit = true
+			f(p)
+		}
+	}
+	return hit
 }
 
 // namedWithheld reports a call that named the store root (its StoreNamed
