@@ -44,6 +44,9 @@ const (
 	ClaimVsRecord ID = "claim-vs-record"
 	MaskedStatus  ID = "masked-status"
 	SequenceRisk  ID = "sequence-risk"
+	// TaskPreflight is the request's preflight note at UserPromptSubmit
+	// (internal/intent).
+	TaskPreflight ID = "task-preflight"
 )
 
 // All returns the frozen pattern IDs in the spec's order. Callers that need a stable iteration order -- rendering a legend,
@@ -54,7 +57,7 @@ func All() []ID {
 		SubtaskGate, RegressionLocation, ContinuityBriefing, DeclaredFact,
 		LearnedFact, PlatformRule, Integrity, IdenticalRetry, CredSpray,
 		OrderingRule, AgentInterference, SubagentClaim, ModelSwitch,
-		ClaimVsRecord, MaskedStatus, SequenceRisk,
+		ClaimVsRecord, MaskedStatus, SequenceRisk, TaskPreflight,
 	}
 }
 
@@ -142,7 +145,7 @@ func classForm(s string) bool {
 	return true
 }
 
-// Valid reports whether id is one of the sixteen frozen patterns.
+// Valid reports whether id is one of the seventeen frozen patterns.
 func Valid(id ID) bool {
 	for _, known := range All() {
 		if known == id {
@@ -161,8 +164,10 @@ func Valid(id ID) bool {
 // subtask-gate: the evidence other notes rely on may be compromised) although
 // it is flag-capped in Wave A, and sequence-risk carries 62 while it is
 // flag-only in Wave B, so on an egress call its secret-then-egress flag beats
-// identical-retry (40). TestSTR16_EveryCandidatePatternHasAPriority pins the
-// split so a change to it is a reviewed decision, not a drift.
+// identical-retry (40). task-preflight carries 72, above learned-fact (70):
+// the two meet only at UserPromptSubmit, and a prompt that carries a lesson
+// keeps its preflight note. TestSTR16_EveryCandidatePatternHasAPriority pins
+// the split so a change to it is a reviewed decision, not a drift.
 func priority() map[ID]int {
 	priorityOnce.Do(func() {
 		priorityOnce.v = map[ID]int{
@@ -171,6 +176,7 @@ func priority() map[ID]int {
 			ClaimVsRecord:      85,
 			RegressionLocation: 80,
 			DeclaredFact:       75,
+			TaskPreflight:      72,
 			LearnedFact:        70,
 			CredSpray:          65,
 			SequenceRisk:       62,

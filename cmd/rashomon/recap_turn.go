@@ -12,6 +12,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -81,26 +82,31 @@ type recapPayload struct {
 // and ends (TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns); an
 // unbuffered channel would hold it on that send for good.
 func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
-	type parsed struct {
-		payload recapPayload
-		ok      bool
-	}
-	ch := make(chan parsed, 1)
+	return readPayload(in, timeout, false).recapPayload
+}
+
+// readPayload is readRecapPayload's read, with the catch-up's prompt paths
+// when withPrompt (readPendingPayload).
+func readPayload(in io.Reader, timeout time.Duration, withPrompt bool) pendingPayload {
+	ch := make(chan pendingPayload, 1)
 	safe.Go(func() {
-		fm, ok := readFinalMessage(in, true, true)
+		fm, ok := readFinalMessage(in, true, true, withPrompt)
 		if !ok {
-			ch <- parsed{}
+			ch <- pendingPayload{}
 			return
 		}
-		ch <- parsed{payload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail,
-			Harness: fm.Harness, OK: true, CWD: fm.CWD, StopHookActive: fm.StopHookActive}, ok: true}
+		ch <- pendingPayload{
+			recapPayload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail,
+				Harness: fm.Harness, OK: true, CWD: fm.CWD, StopHookActive: fm.StopHookActive},
+			Prompt: fm.Prompt, PromptCut: fm.PromptCut, PromptID: fm.PromptID, PermissionMode: fm.PermissionMode,
+		}
 	}, nil)
 
 	select {
 	case r := <-ch:
-		return r.payload
+		return r
 	case <-time.After(timeout):
-		return recapPayload{}
+		return pendingPayload{}
 	}
 }
 
@@ -145,9 +151,20 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fault.Inject(fault.PointRecapStart)
 
 	now := time.Now()
-	payload := readRecapPayload(stdin, recapStdinTimeout)
+	// `recap pending` alone reads the new prompt, into a buffer zeroed when
+	// this returns.
+	pending := recapPending(args)
+	var pp pendingPayload
+	if pending {
+		pp = readPendingPayload(stdin, recapStdinTimeout)
+		defer clearPrompt(&pp)
+	} else {
+		pp.recapPayload = readRecapPayload(stdin, recapStdinTimeout)
+	}
+	payload := pp.recapPayload
 
-	if id, down := recapHostGuard(payload.Harness, payload.OK); noteHarness(payload.SessionID, id, down) {
+	id, down := recapHostGuard(payload.Harness, payload.OK)
+	if noteHarness(payload.SessionID, id, down) {
 		return nil
 	}
 
@@ -185,10 +202,9 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// No at a permission prompt interrupts the turn and Claude Code fires
 	// no Stop after an interrupt, so without this a refused call -- the
 	// case the line exists for -- could never be shown at all.
-	pending := recapPending(args)
 	if pending {
-		// An interrupted turn has no final message, and this payload's
-		// prompt field is the NEW prompt's text, never read here.
+		// An interrupted turn has no final message; the payload's prompt
+		// field is the NEW prompt's, which only the preflight below reads.
 		payload.LastAssistantMessage, payload.LastMessageTail = "", ""
 	}
 
@@ -230,8 +246,15 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		d, run = built, r
 	}
+	// The new prompt's preflight note, routed and logged before the
+	// catch-up decides, so a turn with nothing to catch up on still gets it.
+	var note steer.Output
+	var client steer.Client
+	if pending {
+		note, client = preflightNote(st, run, &pp, id, now)
+	}
 	if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
-		return nil
+		return printTurn(st, stdout, note, client, "")
 	}
 	stop, serr := stopView(st, run, d, payload, pending, now)
 	if serr != nil {
@@ -261,10 +284,15 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// missing line and never a hook error (see Claim's doc).
 	speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
 	if !speak {
-		return nil
-	}
-	if pending {
+		line = ""
+	} else if pending {
 		line = recap.PreviousTurn(line)
+	}
+	if note != (steer.Output{}) {
+		return printTurn(nil, stdout, note, client, line)
+	}
+	if line == "" {
+		return nil
 	}
 
 	b, merr := json.Marshal(map[string]string{"systemMessage": line})

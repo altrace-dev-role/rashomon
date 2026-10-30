@@ -42,19 +42,19 @@ func (g gatedReader) Read([]byte) (int, error) {
 }
 
 // TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns pins the bound on
-// the goroutine readRecapPayload leaves behind when stdin outlives its
-// budget. The goroutine stays blocked in Read for as long as the pipe is open
-// -- the process lifetime, at worst, which is what readRecapPayload's doc
-// assumes -- and it ends the moment the Read returns, without anyone
-// receiving its result. With an unbuffered result channel it would block
-// forever on the send instead, one goroutine per call for the life of any
-// longer-lived caller.
+// the goroutine readRecapPayload's read (readPayload) leaves behind when
+// stdin outlives its budget. The goroutine stays blocked in Read for as
+// long as the pipe is open -- the process lifetime, at worst, which is what
+// readRecapPayload's doc assumes -- and it ends the moment the Read
+// returns, without anyone receiving its result. With an unbuffered result
+// channel it would block forever on the send instead, one goroutine per
+// call for the life of any longer-lived caller.
 func TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns(t *testing.T) {
-	// readRecapPayload's own goroutine, by its stack trace alone: the
+	// The reader goroutine readPayload starts, by its stack trace alone: the
 	// process-wide count an earlier version of this test compared read as
 	// flaky under -race and under t.Parallel, where an unrelated test's own
 	// goroutine can start or end inside this window.
-	const frame = "readRecapPayload"
+	const frame = "cmd/rashomon.readPayload.func"
 	in := gatedReader{release: make(chan struct{})}
 
 	start := time.Now()
@@ -66,14 +66,14 @@ func TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns(t *testing.T) {
 		t.Fatalf("readRecapPayload waited %v on a pipe that never closed; its budget was 20ms", waited)
 	}
 	if n := goroutinesIn(frame); n == 0 {
-		t.Fatal("no goroutine in readRecapPayload after the budget ran out; the reader should still be blocked in Read")
+		t.Fatal("no goroutine in readPayload after the budget ran out; the reader should still be blocked in Read")
 	}
 
 	close(in.release)
 	deadline := time.Now().Add(5 * time.Second)
 	for goroutinesIn(frame) > 0 {
 		if time.Now().After(deadline) {
-			t.Fatalf("a goroutine in readRecapPayload was still running five seconds after its Read returned")
+			t.Fatalf("a goroutine in readPayload was still running five seconds after its Read returned")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}

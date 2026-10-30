@@ -2,8 +2,8 @@
 # gate Reason vocabulary are the two lists the row names; a dropped id, a
 # dropped reason or two reasons sharing a string is the whole regression.
 m("DEL-22 the frozen pattern set loses masked-status", "internal/steer/pattern/pattern.go",
-  "\t\tClaimVsRecord, MaskedStatus, SequenceRisk,\n",
-  "\t\tClaimVsRecord, SequenceRisk,\n", "TestDEL22_")
+  "\t\tClaimVsRecord, MaskedStatus, SequenceRisk, TaskPreflight,\n",
+  "\t\tClaimVsRecord, SequenceRisk, TaskPreflight,\n", "TestDEL22_")
 m("DEL-22 a gate reason is dropped from the vocabulary", "internal/verify/state.go",
   "\tBudget, OK,\n}", "\tOK,\n}", "TestDEL22_")
 # Two gate reasons sharing a string is no longer a mutant: reasonState in
@@ -55,9 +55,9 @@ m("DEL-22 BREADTH's mcp_server_source key is absent", "internal/store/record_v5.
   "\tMCPServerSource *string `json:\"mcp_server_source\"`\n", "", "TestDEL22b_")
 # Route admits only findings that pass Check (P07N-14).
 m("DEL-22 Route routes findings that skipped Check", "internal/steer/route.go",
-  "\treturn route(ctx, admit(findings))\n", "\treturn route(ctx, findings)\n", "TestDEL22f_")
+  "\treturn route(ctx, admit(ctx, findings))\n", "\treturn route(ctx, findings)\n", "TestDEL22f_")
 m("DEL-22 admit keeps a finding that fails Check", "internal/steer/route.go",
-  "\t\tif f.Check() == nil {\n", "\t\tif f.Check() == nil || true {\n", "TestDEL22f_")
+  "\t\tif f.CheckOn(event) == nil {\n", "\t\tif f.CheckOn(event) == nil || true {\n", "TestDEL22f_")
 # A withheld key beside every field a cap or a switch can null (STORE-9).
 m("DEL-22 a switched-off task subject reads as not applicable", "internal/store/record_v5.go",
   "\tSubjectWithheld  *string `json:\"subject_withheld\"`   // switched_off (task_subjects) | masker_error\n", "", "TestDEL22g_")
@@ -73,7 +73,7 @@ m("DEL-22 an oversize instructions path cannot be null", "internal/store/record_
 m("DEL-22 an oversize git root has no key", "internal/store/record_v5.go",
   "\tRootWithheld *string `json:\"root_withheld\"`\n", "\tRootWithheld *string `json:\"-\"`\n", "TestDEL22g_")
 m("DEL-22 a finding may name an after_seq below 1", "internal/steer/finding.go",
-  "\tif f.AfterSeq < 1 {\n\t\treturn fmt.Errorf(\"%w: after_seq must be at least 1\", ErrFinding)\n\t}\n",
+  "\tif f.AfterSeq < floor {\n\t\treturn errAfterSeq\n\t}\n",
   "", "TestDEL22e_")
 m("DEL-22 an evidence seq of zero or less is accepted", "internal/steer/finding.go",
   "\t\tif seq < 1 || seq > f.AfterSeq ", "\t\tif seq > f.AfterSeq ", "TestDEL22e_")

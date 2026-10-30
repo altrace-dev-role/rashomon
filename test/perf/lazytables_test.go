@@ -13,6 +13,7 @@ import (
 // struct{ sync.Once; v T } holder named <getter>Once, so the table is built
 // by the first process that reads it and by no other.
 var lazyGetters = map[string][]string{
+	"internal/intent":        {"classWords", "lineKeys"},
 	"internal/recap":         {"titles", "whens", "noteKeys"},
 	"internal/report":        {"families"},
 	"internal/spend":         {"table"},
@@ -28,6 +29,7 @@ var lazyGetters = map[string][]string{
 // init; baseline's and report's are on no hook, post, probe or recap path.
 var staticWordSets = map[string][]string{
 	"internal/baseline": {"ubiquitous"},
+	"internal/intent":   {"extensions"},
 	"internal/recap":    {"prefixWords"},
 	"internal/report":   {"clientPlaneHosts", "inputCompletedByHarness"},
 	"internal/spec":     {"EvidenceKinds"},
