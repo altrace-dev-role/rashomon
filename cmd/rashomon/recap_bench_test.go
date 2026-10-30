@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -230,6 +231,10 @@ var benchLessons = [][2]string{
 func benchRecapLessons(b *testing.B, n int, caps bool) {
 	root, cfg := b.TempDir(), b.TempDir()
 	benchSetenv(b, root, cfg)
+	// An attended treatment session, as newLessonEnv's: a CI runner's CI
+	// would suppress the lesson (no_mirror) and the draw could hold it out.
+	b.Setenv("CI", "")
+	b.Setenv(hook.EnvHoldout, "off")
 	installID, turn := benchRecapStore(b, root, cfg, 10)
 	if err := store.WriteSteerDisclosureMarker(root, steer.DisclosureVersion); err != nil {
 		b.Fatal(err)
