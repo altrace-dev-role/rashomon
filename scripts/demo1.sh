@@ -63,8 +63,18 @@ rbin=$(cd -P "${rbin%/*}" && pwd -P)/${rbin##*/}
 qrbin="'$rbin'"
 qbin="'$bin'"
 ptmp="/private$T"
+# The brief's first line shows a long root as "..." and its tail from a
+# separator (brief's shown), so the scratch directory can print as any of
+# its tails: each, from a separator, masks as <tmp> with the dots.
+tails=()
+t=$ptmp
+while :; do
+  tails+=("$t")
+  case $t in /*/*) t=/${t#/*/} ;; *) break ;; esac
+done
 say() {
-  local s=$1
+  local s=$1 t
+  for t in "${tails[@]}"; do s=${s//"...$t"/"<tmp>"}; done
   s=${s//"$qrbin"/rashomon}
   s=${s//"$rbin"/rashomon}
   s=${s//"$qbin"/rashomon}

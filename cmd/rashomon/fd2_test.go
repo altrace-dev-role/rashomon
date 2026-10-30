@@ -113,7 +113,7 @@ func TestFD2a_NoSecondGoroutineOnTheCallPath(t *testing.T) {
 		}},
 		{"probe start", nil, func(int) {
 			call("probe start", func(_ []string, in io.Reader, e io.Writer) int {
-				return cmdProbe([]string{"start", install.Marker, installID}, in, e)
+				return cmdProbe([]string{"start", install.Marker, installID}, in, io.Discard, e)
 			}, bytes.NewReader(start))
 		}},
 	}

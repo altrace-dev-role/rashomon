@@ -13,7 +13,15 @@ setup: the eight lines it installed in settings.json, one per event:
   UserPromptSubmit    rashomon recap pending --install <install>
 
 session start
-  SessionStart                                (silent)
+  SessionStart
+      rashomon brief: <tmp>/proj
+        instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+        build: no manifest at the root
+        tests: no spec gate; no test runner seen in this project yet
+        spec: none
+        task: none
+        packages: not read (no go.mod)
+        verify: rashomon report --session demo-1
 
 turn 1, prompt p1: "Add the discount to calc.go and run the tests."
   UserPromptSubmit                            (silent)

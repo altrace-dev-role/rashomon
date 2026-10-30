@@ -1,26 +1,33 @@
 package acceptance
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 )
 
-// H-114 -- the probe says nothing on stdout.
+// H-114 -- the probe says nothing to the model on stdout.
 //
 // Claude Code hands a SessionStart hook's stdout to the model. A JSON
 // object's additionalContext arrives as a system reminder, and so does plain
-// text, labelled "SessionStart:startup hook success" (measured live on
-// 2.1.304; test/live/hc-items.sh's HC-1 and fm-11 measure it again). A probe
-// that printed would be writing into the context of every session it
-// records, which is further than a recorder has any business reaching. What
-// SessionEnd does with stdout has not been measured; it is held to the same
-// rule because the probe has nothing to say there either.
+// text, labelled "SessionStart:startup hook success"; its systemMessage does
+// not (measured live on 2.1.304: the reply named both additionalContext
+// values and neither systemMessage; test/live/hc-items.sh's HC-1 and fm-11
+// measure it again). A probe that printed context would be writing into
+// every session it records, which is further than a recorder has any
+// business reaching. So probe start prints at most one JSON object whose
+// only key is systemMessage, the project brief for the user (card BRIEF1),
+// and probe end prints nothing: what SessionEnd does with stdout has not
+// been measured, and the probe has nothing to say there.
 //
 // Break: one Fprintln to stdout -- in cmdProbe after the probe has run, in
 // RunProbe's end phase, or in the refusal of a phase the probe does not know.
 // The positive twin is the coverage record each phase writes: a probe that
 // printed nothing because it did nothing would pass the stdout half alone.
-func TestH114_ProbeStartAndEndPrintNothing(t *testing.T) {
+func TestH114_ProbeStartPrintsOnlyASystemMessageAndEndNothing(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
@@ -30,13 +37,27 @@ func TestH114_ProbeStartAndEndPrintNothing(t *testing.T) {
 		if res.exitCode != 0 {
 			t.Fatalf("probe %s: exit %d, stderr %q", phase, res.exitCode, res.stderr)
 		}
-		if res.stdout != "" {
+		if res.stdout != "" && (phase != "start" || !onlySystemMessage(res.stdout)) {
 			t.Errorf("probe %s wrote %q to stdout, which Claude Code would pass to the model", phase, res.stdout)
 		}
 		if got := e.coverage(testSession, phase); len(got) != 1 {
 			t.Errorf("probe %s left %d %s-phase coverage records, want 1: it has to have run for its silence to mean anything", phase, len(got), phase)
 		}
 	}
+}
+
+// onlySystemMessage: out is exactly one JSON object whose only key is
+// systemMessage, a string, with no other byte before or after it.
+func onlySystemMessage(out string) bool {
+	dec := json.NewDecoder(strings.NewReader(out))
+	var obj map[string]json.RawMessage
+	var msg string
+	if len(bytes.TrimSpace([]byte(out))) != len(out) || dec.Decode(&obj) != nil || len(obj) != 1 ||
+		json.Unmarshal(obj["systemMessage"], &msg) != nil {
+		return false
+	}
+	_, err := dec.Token()
+	return errors.Is(err, io.EOF)
 }
 
 // TestH114_ProbeThatDoesNotRecordPrintsNothing covers the two ways a probe
