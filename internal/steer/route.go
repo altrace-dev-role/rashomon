@@ -71,7 +71,7 @@ type Context struct {
 // admit then route, and TestDEL22f pins that body, so P-30 fills in route
 // and cannot drop the check by forgetting it (P07N-14).
 func Route(ctx *Context, findings []Finding) Output {
-	return route(ctx, admit(findings))
+	return route(ctx, admit(ctx, findings))
 }
 
 // dropped counts findings admit has refused since process start. Route's
@@ -89,10 +89,14 @@ func DroppedFindings() int64 { return dropped.Load() }
 // a finding outside the contract says nothing rather than reach a hook's
 // stdout (fail closed). Logging a dropped finding is P-30's, with the
 // router's own telemetry; DroppedFindings is the count it reads from.
-func admit(findings []Finding) []Finding {
+func admit(ctx *Context, findings []Finding) []Finding {
+	var event Event
+	if ctx != nil {
+		event = ctx.Event
+	}
 	kept := make([]Finding, 0, len(findings))
 	for _, f := range findings {
-		if f.Check() == nil {
+		if f.CheckOn(event) == nil {
 			kept = append(kept, f)
 		} else {
 			dropped.Add(1)

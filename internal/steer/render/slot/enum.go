@@ -18,12 +18,30 @@ const (
 	// Gate slot is known (archive 40.4.1: "else the Enum `test, build or
 	// lint`").
 	EnumGateKinds EnumTable = iota + 1
+	// EnumTrust is the trust word a preflight item prints beside its id:
+	// never "untrusted", whose rules a note counts and does not name.
+	EnumTrust
+	// EnumEvidenceKinds is spec.EvidenceKinds, in its order.
+	EnumEvidenceKinds
+	// EnumEvidenceSource is where a preflight's expected evidence came from.
+	EnumEvidenceSource
+	// EnumPreflightUnknown is what a preflight could not read or count.
+	EnumPreflightUnknown
 )
 
 // enumTables is every Enum table. Nothing writes to it after this
 // declaration; TestSTR11c holds that by AST.
 var enumTables = map[EnumTable][]string{
-	EnumGateKinds: {"test, build or lint"},
+	EnumGateKinds:      {"test, build or lint"},
+	EnumTrust:          {"trusted", "managed", "builtin"},
+	EnumEvidenceKinds:  {"real_data_run", "hostile_input_run", "cross_check", "judgment_disclosed", "mechanism_stated"},
+	EnumEvidenceSource: {"task file", "inferred from the request"},
+	EnumPreflightUnknown: {
+		"no spec found", "spec present, untrusted", "spec unreadable", "no gate history for this project",
+		"symbols not matched, no platform graph log", "request over 16 KiB, the rest not read",
+		"no named path exists in the project", "no go.mod, packages not counted",
+		"package walk capped, count is a lower bound",
+	},
 }
 
 // Enum is one value of a closed table. It renders unquoted, so only a

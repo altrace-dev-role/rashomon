@@ -11,7 +11,7 @@ var frozenOrder = []ID{
 	"subtask-gate", "regression-location", "continuity-briefing", "declared-fact",
 	"learned-fact", "platform-rule", "integrity", "identical-retry", "cred-spray",
 	"ordering-rule", "agent-interference", "subagent-claim", "model-switch",
-	"claim-vs-record", "masked-status", "sequence-risk",
+	"claim-vs-record", "masked-status", "sequence-risk", "task-preflight",
 }
 
 func sameIDs(got, want []ID) bool {
@@ -38,7 +38,7 @@ func sameStrings(got, want []string) bool {
 	return true
 }
 
-// TestDEL22_PatternIDSetEqualsTheFrozenList pins the sixteen ids, their
+// TestDEL22_PatternIDSetEqualsTheFrozenList pins the seventeen ids, their
 // order, and the closed kind list under each of the six that have one (the
 // frozen-set paragraph, decided 2026-10-13). A reorder, an addition, a
 // removal, a renamed id or a kind typo all fail here first.
@@ -107,6 +107,7 @@ func TestPriority_StepEightValues(t *testing.T) {
 		ClaimVsRecord:      85,
 		RegressionLocation: 80,
 		DeclaredFact:       75,
+		TaskPreflight:      72,
 		LearnedFact:        70,
 		CredSpray:          65,
 		SequenceRisk:       62,
@@ -150,5 +151,26 @@ func TestKinds_ReturnsACopy(t *testing.T) {
 	got[0] = "edited"
 	if again := Kinds(SubtaskGate); again[0] != "commit" {
 		t.Fatalf("Kinds(%q)[0] = %q after a caller edited its copy, want %q", SubtaskGate, again[0], "commit")
+	}
+}
+
+// TestPF1p_TaskPreflightIsAnIDWithNoKinds: task-preflight, the request's
+// preflight note, is the seventeenth id: valid, with no sub-kind, and ranked
+// above learned-fact and below declared-fact, so a prompt that carries a
+// lesson still gets its preflight note (the two meet only at
+// UserPromptSubmit). Break: rank it below learned-fact, and the first
+// prompt's brief is superseded on exactly the prompts that carry a lesson.
+func TestPF1p_TaskPreflightIsAnIDWithNoKinds(t *testing.T) {
+	if !Valid("task-preflight") {
+		t.Fatal(`Valid("task-preflight") = false, want true`)
+	}
+	if !KindValid("task-preflight", "") || KindValid("task-preflight", "brief") {
+		t.Error("task-preflight takes the empty kind only")
+	}
+	pre, _ := Priority(TaskPreflight)
+	learned, _ := Priority(LearnedFact)
+	declared, _ := Priority(DeclaredFact)
+	if pre <= learned || pre >= declared {
+		t.Errorf("Priority(task-preflight) = %d, want above learned-fact's %d and below declared-fact's %d", pre, learned, declared)
 	}
 }

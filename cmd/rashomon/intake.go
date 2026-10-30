@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
+	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
 
@@ -42,6 +43,12 @@ const (
 	stopHookActiveBytes = 5
 )
 
+// Catch-up capture sizes, read only by `recap pending` (withPrompt): the new
+// prompt's first intent.MaxPromptBytes, cut on a character boundary and said
+// cut, its id, capped as session_id is, and the permission mode, a short
+// enum the steer context reads.
+const permissionModeBytes = 64
+
 // finalMessage is the slice of a Stop or StopFailure payload recap and
 // digest --stdin read.
 type finalMessage struct {
@@ -55,6 +62,13 @@ type finalMessage struct {
 	// StopHookActive is the payload's stop_hook_active. It is carried, not
 	// read, in v0 (card 2.4 R11, D77).
 	StopHookActive bool
+	// Prompt, PromptCut, PromptID and PermissionMode are read only with
+	// withPrompt: the new prompt's head in a buffer of its own, never the
+	// streamer's, so clearPrompt can zero it.
+	Prompt         []byte
+	PromptCut      bool
+	PromptID       string
+	PermissionMode string
 }
 
 // harnessSignal is the slice of a Stop payload internal/harness.Detect
@@ -125,7 +139,11 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // it, stream.go's ErrNotString) and only the literal true reads as set; a
 // string "true" reads as set too, which the field's v0 use, none, cannot
 // tell apart.
-func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage, bool) {
+//
+// withPrompt adds the UserPromptSubmit catch-up's paths: the prompt, its id
+// and the permission mode. Only `recap pending` passes it, so no other read
+// ever holds a prompt.
+func readFinalMessage(in io.Reader, withSession, withHarness, withPrompt bool) (finalMessage, bool) {
 	var fm finalMessage
 	paths := []jsonscan.Path{
 		{Elems: []string{"session_id"}, Max: sessionIDBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
@@ -150,10 +168,23 @@ func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage
 			jsonscan.Path{Elems: []string{"stop_hook_active"}, Max: stopHookActiveBytes, Mode: jsonscan.CaptureHead, Fold: true},
 		)
 	}
+	promptAt := -1
+	if withPrompt {
+		promptAt = len(paths)
+		paths = append(paths,
+			jsonscan.Path{Elems: []string{"prompt"}, Max: intent.MaxPromptBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+			jsonscan.Path{Elems: []string{"prompt_id"}, Max: sessionIDBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+			jsonscan.Path{Elems: []string{"permission_mode"}, Max: permissionModeBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+		)
+	}
 	cut := false
 	cr := &countingReader{r: io.LimitReader(in, hookio.MaxPayloadBytes+1)}
 	// The head is passed before the tail of the same value (path order).
 	err := hookio.IntakeStream(cr, paths, func(i int, v []byte, truncated bool) bool {
+		if promptAt >= 0 && i >= promptAt {
+			fm.readPrompt(i-promptAt, v, truncated)
+			return true
+		}
 		switch i {
 		case 0:
 			fm.SessionID = string(v)
@@ -194,7 +225,29 @@ func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage
 		return true
 	})
 	if err != nil || cr.n == 0 || cr.n > hookio.MaxPayloadBytes {
+		clear(fm.Prompt)
 		return finalMessage{}, false
 	}
 	return fm, true
+}
+
+// readPrompt takes the k-th withPrompt path's value. The prompt is copied
+// out of v, which aliases the streamer's buffers; an id or mode over its cap
+// is none, as an over-long session_id is.
+func (fm *finalMessage) readPrompt(k int, v []byte, truncated bool) {
+	switch k {
+	case 0:
+		clear(fm.Prompt)
+		fm.Prompt, fm.PromptCut = append(make([]byte, 0, len(v)), v...), truncated
+	case 1:
+		fm.PromptID = ""
+		if !truncated {
+			fm.PromptID = string(v)
+		}
+	case 2:
+		fm.PermissionMode = ""
+		if !truncated {
+			fm.PermissionMode = string(v)
+		}
+	}
 }
