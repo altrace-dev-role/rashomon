@@ -32,21 +32,31 @@ type SteerView struct {
 // both records store (store.CapID), so a call whose payload id is over the
 // cap still matches its own run. Evaluate and EvaluateWithObligations are
 // untouched: this is a third view of the same classification. Its facts
-// are regression-location's and the one-way doors this call opened
-// (integrityRaises, card P5B).
+// are regression-location's, stale-evidence's and the one-way doors this
+// call opened (integrityRaises, card P5B). stale-evidence is raised at a
+// PostToolUse only, under an index that has established a family (D164):
+// the call's declaration seq, which its writes carry, is looked up only
+// then.
 func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
 	snap := evaluate(run, idx, sp, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
+	var decl int64
+	if c.learned && event == string(steer.EventPostToolUse) {
+		decl = declSeqAt(run, toolUseID, pt.Seq)
+	}
+	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, pt, event)...)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
-	found, dropped := mapFacts(run, facts, pt)
+	found, dropped := mapFacts(run, facts, pt, decl)
 	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
 }
 
 // mapFacts maps each fact to its steer candidate through ToSteer and renders
-// its Message from the record: an integrity fact by renderIntegrity, a gate
-// fact by renderRegression. A fact ToSteer refuses is counted in dropped.
-func mapFacts(run *store.Run, facts []Finding, pt Point) (found []steer.Finding, dropped int) {
+// its Message from the record: an integrity fact by renderIntegrity, a
+// stale-evidence fact by renderStale against this call's declaration at
+// decl, and any other gate fact by renderRegression. A fact ToSteer refuses
+// is counted in dropped.
+func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []steer.Finding, dropped int) {
 	if len(facts) == 0 {
 		return nil, 0
 	}
@@ -61,9 +71,12 @@ func mapFacts(run *store.Run, facts []Finding, pt Point) (found []steer.Finding,
 			dropped++
 			continue
 		}
-		if f.Integrity != nil {
+		switch {
+		case f.Integrity != nil:
 			sf.Message = renderIntegrity(f)
-		} else {
+		case f.Pattern == pattern.StaleEvidence:
+			sf.Message = renderStale(&times, f, decl)
+		default:
 			sf.Message = renderRegression(run, &times, f)
 		}
 		found = append(found, sf)
@@ -117,6 +130,96 @@ func regressedHere(g *GateState, toolUseID string) bool {
 	}
 	code := *g.LastRun.ExitCode
 	return code != 126 && code != 127
+}
+
+// staleEvidence is stale-evidence's producer (card STALE-NUDGE1): for each
+// gate, in snapshot order, that staleHere names, the fact of its green run
+// and of this call's writes after it, declared at decl. decl is 0 where the
+// call raises none: not a PostToolUse, no established family, or no
+// declaration of the call in the record.
+func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, pt Point, event string) []Finding {
+	if decl == 0 {
+		return nil
+	}
+	var out []Finding
+	for i := range snap.Gates {
+		g := &snap.Gates[i]
+		if !staleHere(g, writes, decl) {
+			continue
+		}
+		green := g.LastGreen.Seq
+		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
+			LastGreenSeq: &green, LastRunSeq: &green, PartialRuns: g.PartialRunsSince}
+		if p := Program(programOf(runs, green)); p.Valid() {
+			fact.Program = p
+		}
+		own(&fact, writes, decl)
+		prompt := ""
+		if pt.PromptID != nil {
+			prompt = *pt.PromptID
+		}
+		out = append(out, Finding{Pattern: pattern.StaleEvidence, Class: Absence, Event: event,
+			DedupeKey: string(pattern.StaleEvidence) + "|" + g.Gate + "|" + prompt, Gate: &fact})
+	}
+	return out
+}
+
+// staleHere is the candidate condition: a required gate, stale by writes
+// after its green, whose first counted write after that green is this
+// call's, declared at decl. The first, not the last (LastWrite): the call
+// that left the green behind raises it, and the writes after it are quiet.
+// A write carries its declaration's seq (appendWrites), never the point's,
+// which is the execution's, so the call is matched by its declaration. A
+// moved tree is no reason here: a per-call point carries no Tree.
+func staleHere(g *GateState, writes []write, decl int64) bool {
+	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil {
+		return false
+	}
+	lo := g.LastGreen.Seq
+	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo }); i < len(writes); i++ {
+		if w := &writes[i]; w.Path != nil && Relevant(w.Class) {
+			return w.Seq == decl
+		}
+	}
+	return false
+}
+
+// declSeqAt is the seq of the call's declaration, the last one at or before
+// at whose id is toolUseID (both records store the capped id), else 0.
+func declSeqAt(run *store.Run, toolUseID string, at int64) int64 {
+	var seq int64
+	for i := range run.Declarations {
+		if d := &run.Declarations[i]; d.ToolUseID == toolUseID && d.Seq <= at && d.Seq > seq {
+			seq = d.Seq
+		}
+	}
+	return seq
+}
+
+// own fills f's write counts from this call's relevant writes, those
+// declared at decl: the distinct named paths, first first, at most MaxPaths,
+// and PathsOmitted the rest or those outside the slot's charset. A write
+// another call declared beside this one, by this agent or another, is not
+// this call's and is never named in its sentence (INV-2).
+func own(f *GateFact, writes []write, decl int64) {
+	seen := map[PathSlot]bool{}
+	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq >= decl }); i < len(writes) && writes[i].Seq == decl; i++ {
+		w := &writes[i]
+		if w.Path == nil || !Relevant(w.Class) {
+			continue
+		}
+		f.WritesSince++
+		p := PathSlot(*w.Path)
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		if p.Valid() && len(f.Paths) < MaxPaths {
+			f.Paths = append(f.Paths, p)
+		} else {
+			f.PathsOmitted++
+		}
+	}
 }
 
 // between fills f's write counts from the relevant writes strictly between
@@ -216,6 +319,39 @@ func renderRegression(run *store.Run, times *declTimes, f Finding) render.Messag
 	}
 	m, _ := render.New(pattern.RegressionLocation, render.RegressionLocationDegradedBinding{
 		Gate: word, Minutes: minutes, Exit: exit, Count: slot.Count(g.WritesSince)})
+	return m
+}
+
+// renderStale is stale-evidence's note, or the zero Message when the record
+// cannot back one: the green run or this call, declared at decl, with no
+// recorded time, or a span outside its slot's range. The full row lists this
+// call's named paths; when the renderer left every one out, the degraded row
+// counts them.
+func renderStale(times *declTimes, f Finding, decl int64) render.Message {
+	g := f.Gate
+	green, okGreen := times.of(*g.LastGreenSeq)
+	wrote, okWrote := times.of(decl)
+	if !okGreen || !okWrote {
+		return render.Message{}
+	}
+	minutes := slot.Minutes(max(0, (wrote-green)/60_000))
+	word := slot.Gate(g.Program)
+	if g.Program == "" {
+		word = slot.Gate(kindOfGateID(string(g.GateID)))
+	}
+	if len(g.Paths) > 0 {
+		paths := make([]slot.Path, len(g.Paths))
+		for i, p := range g.Paths {
+			paths[i] = slot.Path(p)
+		}
+		m, err := render.New(pattern.StaleEvidence, render.StaleEvidenceBinding{
+			Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, g.PathsOmitted)})
+		if !errors.Is(err, slot.ErrNoPathsLeft) {
+			return m
+		}
+	}
+	m, _ := render.New(pattern.StaleEvidence, render.StaleEvidenceDegradedBinding{
+		Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})
 	return m
 }
 

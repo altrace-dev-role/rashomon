@@ -31,11 +31,13 @@ const (
 // under it on main (the store files the stack beneath it added to the
 // inventory) while it waited on its branch. usage stood beside it at 106 until
 // card 4.1b moved its hook-handler block to a constant of its own
-// (usage_hooks.go), which brought it under the limit.
+// (usage_hooks.go), which brought it under the limit. defaultFiles went from
+// 263 to 194 when card STALE-NUDGE1 moved its run segment to
+// runSegmentFiles, as the stale marker joined it.
 var overLimit = map[string]int{
 	"internal/spend/spend.go:Build":              177,
 	"internal/spend/join.go:Summary.Join":        111,
-	"internal/disclose/disclose.go:defaultFiles": 263,
+	"internal/disclose/disclose.go:defaultFiles": 194,
 }
 
 // filesOverLimit is overLimit's ratchet for whole files, at their sizes on

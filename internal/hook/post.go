@@ -152,8 +152,10 @@ type Post struct {
 	// What the steer step reads (card 2.3 R5): the payload's prompt, agent,
 	// permission mode and event, the seq the execution landed at in the
 	// ordered stream (0 when it spilled or did not land), whether it
-	// carried a runner digest, and whether its tool input names
-	// .claude/rashomon (storeNamed; card P5B, 5.7).
+	// carried a runner digest, whether its tool input names
+	// .claude/rashomon (storeNamed; card P5B, 5.7), and a success event's
+	// call as the stale trigger reads its writes (writtenCall; card
+	// STALE-NUDGE1).
 	promptID       string
 	agentID        string
 	permissionMode string
@@ -161,6 +163,7 @@ type Post struct {
 	landedSeq      int64
 	landedRunner   bool
 	landedStore    bool
+	landedWrite    writtenCall
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -282,6 +285,9 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		s = shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key())
 		rec.ExecutedDigest = s.Digest
 		rec.StatusMasked, rec.RunnerDigest, rec.RunnerKind = s.StatusMasked, s.RunnerDigest, s.RunnerKind
+		if pl.HookEventName != FailureEvent {
+			p.landedWrite = writtenCall{pl.ToolName, pl.ToolInput, s.VerbClass == shape.VerbWrite, s.MayWrite}
+		}
 	}
 	if pl.HookEventName == FailureEvent {
 		rec.Outcome = store.ExecFailed

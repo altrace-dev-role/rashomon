@@ -2,10 +2,15 @@ package hook
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"slices"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/arm"
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -60,11 +65,40 @@ func storeNamed(input []byte) bool {
 	return bytes.Contains(input, []byte(".claude/rashomon")) || bytes.Contains(input, []byte(`.claude\/rashomon`))
 }
 
+// writtenNamed is the paths a call names as written, read as the
+// declaration path reads them (handle.go): the one path a file-changing
+// tool's input names, else a shell line's write targets. A line the shape
+// says writes nothing is not tokenized again, so no other call pays for it.
+func writtenNamed(tool string, input json.RawMessage, mayWrite bool) []string {
+	if p := shape.DeclaredPath(tool, input); p != nil {
+		return []string{*p}
+	}
+	if !mayWrite {
+		return nil
+	}
+	paths, _ := shape.WrittenPaths(tool, input)
+	return paths
+}
+
+// writtenCall is a success event's call as the stale trigger reads it: the
+// tool and input writtenNamed decodes, and the shape's two answers to
+// whether it may name a written path at all (a verb class of write, a shell
+// line that may write), which cost nothing to keep. The paths are decoded
+// only for a write the session is armed for (staleWrite).
+type writtenCall struct {
+	tool      string
+	input     json.RawMessage
+	writeVerb bool
+	mayWrite  bool
+}
+
 // Steer runs the step after the record's Flush succeeded and returns the
 // bytes to print, or nil. It returns no error: each exit before Route prints
 // nothing (no trigger, an unreadable run), and every exit after Route
-// has its line in the steer log.
+// has its line in the steer log. A gate run's post arms the stale trigger
+// first (armStale), whatever the step then does.
 func (p *Post) Steer(env SteerEnv) []byte {
+	p.armStale()
 	ctx, view, ok := p.judge(env)
 	if !ok {
 		return nil
@@ -86,23 +120,74 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	return b
 }
 
+// armStale arms the session's stale trigger at the post of a gate run: a
+// runner call, the only kind that forms a family (verify classify), landed
+// at a success event. The marker is a hint (store.ArmStale), so an arm that
+// failed to write is a missed nudge and nothing else.
+func (p *Post) armStale() {
+	if p.landedSeq > 0 && p.landedRunner && p.event == string(steer.EventPostToolUse) {
+		_ = p.st.ArmStale(p.sessionID)
+	}
+}
+
+// staleWrite is the stale trigger (card STALE-NUDGE1, D166): a write landed
+// at a success event while the session is armed, naming a path under the
+// project root that a gate counts (verify.RelevantUnder), in a project with
+// an index file. It returns the project key it resolved and whether this
+// call took the arm, which only one of two racing posts does. An unarmed
+// write pays one Lstat and decodes no path; an armed one adds the key's
+// walk, its paths' decode (writtenNamed) and a second Lstat; only the call
+// that takes the arm reads the run.
+func (p *Post) staleWrite() (string, bool) {
+	w := &p.landedWrite
+	if p.landedSeq == 0 || p.event != string(steer.EventPostToolUse) || !(w.writeVerb || w.mayWrite) {
+		return "", false
+	}
+	if armed, _ := p.st.StaleArmed(p.sessionID); !armed {
+		return "", false
+	}
+	key := baseline.Key(p.cwd)
+	if key == "" || !slices.ContainsFunc(writtenNamed(w.tool, w.input, w.mayWrite), func(path string) bool { return verify.RelevantUnder(path, key, p.cwd) }) {
+		return "", false
+	}
+	if _, err := os.Lstat(verify.IndexPath(p.st.Root(), key)); err != nil {
+		return "", false
+	}
+	return key, p.st.TakeStaleArm(p.sessionID)
+}
+
 // judge is the step's compute before Route: the trigger, the run read once,
 // the spec discovered from the payload's cwd (per trigger, not per call:
-// D128), the run judged at the landed seq against that spec, and Route's
-// context for the call. ok is false when the step does not run or the run
-// could not be read. It writes nothing, so BenchmarkPostSteer's eval rows
-// measure it apart from the append and the sync.
+// D128), the project index read from the cwd's project key as the Stop path
+// reads it (recap_stop.go; card INDEX-POST1), the key walked once for both
+// (discoverSpecAt), the run judged at the landed seq against both, and
+// Route's context for the call. An index that cannot be read, or is over its
+// cap, reads as none (ReadIndex). ok is false when the step does not run or
+// the run could not be read. It writes nothing but the stale trigger's
+// disarm, so BenchmarkPostSteer's eval rows measure it apart from the append
+// and the sync.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
+	var key string
 	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
-		return steer.Context{}, verify.SteerView{}, false
+		var took bool
+		if key, took = p.staleWrite(); !took {
+			return steer.Context{}, verify.SteerView{}, false
+		}
 	}
 	run, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
 	if err != nil {
 		return steer.Context{}, verify.SteerView{}, false
 	}
-	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir)
+	if key == "" {
+		key = baseline.Key(p.cwd)
+	}
+	p.sp = discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir)
+	var idx *verify.ProjectIndex
+	if key != "" {
+		idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))
+	}
 	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID)}
-	view := verify.SteerAt(run, nil, p.sp, pt, env.Now, p.event, p.toolUseID)
+	view := verify.SteerAt(run, idx, p.sp, pt, env.Now, p.event, p.toolUseID)
 	return p.contextOf(env, view), view, true
 }
 

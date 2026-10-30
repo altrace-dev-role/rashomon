@@ -21,11 +21,19 @@ const errNoCWD = "spec: the payload names no cwd"
 // form (macOS's /tmp is /private/tmp). It is nil when nothing applies. An
 // empty cwd or an I/O error is no spec and one flag, spec.Unreadable.
 func DiscoverSpec(cwd, projectDir, managedDir string) *spec.Compiled {
+	return discoverSpecAt(cwd, baseline.Key(cwd), projectDir, managedDir)
+}
+
+// discoverSpecAt is DiscoverSpec given cwd's project key, baseline.Key(cwd),
+// which the post's judge also reads the project index under: it walks the
+// key once for both (card STALE-NUDGE1), where a second walk was most of the
+// step the index read added to a judged post.
+func discoverSpecAt(cwd, key, projectDir, managedDir string) *spec.Compiled {
 	if cwd == "" {
 		return spec.Unreadable(errNoCWD)
 	}
 	cwd = resolved(cwd)
-	root := spec.WalkRoot(cwd, gitRoot(cwd), resolved(projectDir))
+	root := spec.WalkRoot(cwd, gitRoot(key), resolved(projectDir))
 	managed := ""
 	if managedDir != "" {
 		managed = filepath.Join(managedDir, "rashomon", "spec.json")
@@ -37,11 +45,10 @@ func DiscoverSpec(cwd, projectDir, managedDir string) *spec.Compiled {
 	return sp
 }
 
-// gitRoot is baseline.Key(cwd) when a .git is there, else "": with no .git,
-// Key is cwd itself, which as a root would stop the walk at cwd and never
-// reach a CLAUDE_PROJECT_DIR above it.
-func gitRoot(cwd string) string {
-	key := baseline.Key(cwd)
+// gitRoot is key, a cwd's baseline.Key, when a .git is there, else "": with
+// no .git, Key is cwd itself, which as a root would stop the walk at cwd and
+// never reach a CLAUDE_PROJECT_DIR above it.
+func gitRoot(key string) string {
 	if _, err := os.Lstat(filepath.Join(key, ".git")); err != nil {
 		return ""
 	}

@@ -46,6 +46,7 @@ func titles() map[string]string {
 			string(pattern.SubagentClaim):      "subagent check",
 			string(pattern.ClaimVsRecord):      "record check",
 			string(pattern.MaskedStatus):       "hidden-status note",
+			string(pattern.StaleEvidence):      "stale-gate note",
 		}
 	})
 	return titlesOnce.v

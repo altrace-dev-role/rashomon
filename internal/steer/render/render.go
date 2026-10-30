@@ -102,6 +102,25 @@ type RegressionLocationDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// StaleEvidenceBinding is stale-evidence's slots (card STALE-NUDGE1): the
+// gate, how long ago its green run exited 0, and the files this call wrote
+// after it. Only this call's files: a write another call declared beside it
+// is never put in this call's sentence (INV-2).
+type StaleEvidenceBinding struct {
+	Gate    slot.Gate     `slot:"gate"`
+	Minutes slot.Minutes  `slot:"minutes"`
+	Paths   slot.PathList `slot:"paths"`
+}
+
+// StaleEvidenceDegradedBinding is stale-evidence's no-paths form, for a
+// call whose every named path the deny list or the entropy test left out
+// (slot.ErrNoPathsLeft): the count of the files it wrote.
+type StaleEvidenceDegradedBinding struct {
+	Gate    slot.Gate    `slot:"gate"`
+	Minutes slot.Minutes `slot:"minutes"`
+	Count   slot.Count   `slot:"count"`
+}
+
 // IntegrityStoreTouchedBinding is integrity/store-touched's user line
 // (archive 40.4.7; card P5B, 5.7): the path under .claude/rashomon the call
 // wrote, project-relative.
@@ -158,7 +177,10 @@ type TaskPreflightFirstBinding struct {
 // sentence is its own binding struct and row, which comes with
 // subagent-claim's producer (D62). The integrity rows are archive 40.4.7's
 // user lines for PF-IV3's four one-way doors (card P5B, 5.7); user-only,
-// so no model text exists for them.
+// so no model text exists for them. stale-evidence/v1 states the green and
+// the write after it and stops there: the card's "Run it again before
+// claiming done" is an order, which STR-14 refuses, and the last sentence
+// says the same as a fact.
 func templates() map[templateKey]template {
 	templatesOnce.Do(func() {
 		templatesOnce.v = map[templateKey]template{
@@ -171,6 +193,16 @@ func templates() map[templateKey]template {
 				id: "regression-location-degraded/v1",
 				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
 					"{count} file writes were recorded between the two runs.",
+			},
+			{pattern.StaleEvidence, reflect.TypeOf(StaleEvidenceBinding{})}: {
+				id: "stale-evidence/v1",
+				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago); this call then wrote {paths}. " +
+					"No later run of the gate is recorded.",
+			},
+			{pattern.StaleEvidence, reflect.TypeOf(StaleEvidenceDegradedBinding{})}: {
+				id: "stale-evidence-degraded/v1",
+				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago); this call then wrote {count} files. " +
+					"No later run of the gate is recorded.",
 			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
 				id:     "integrity-store-touched/v1",
