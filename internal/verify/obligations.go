@@ -123,10 +123,11 @@ type Obligation struct {
 
 // EvaluateWithObligations is Evaluate and the ledger over its snapshot, from
 // one classification. Evaluate keeps its signature (Snapshot is frozen); the
-// ledger is never nil.
-func EvaluateWithObligations(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) (Snapshot, []Obligation) {
+// ledger is never nil. key is the install key the gates sp declares are
+// digested under (evaluate).
+func EvaluateWithObligations(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time) (Snapshot, []Obligation) {
 	var c classified
-	snap := evaluate(run, idx, sp, pt, now, &c)
+	snap := evaluate(run, idx, sp, key, pt, now, &c)
 	ex := expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(run, pt.Seq)})
 	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
 	return snap, append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
@@ -321,9 +322,19 @@ func (l *ledger) add(g *GateState, source string, kind ObligationKind, state Obl
 	slices.Sort(l.evidence[from:])
 	l.evidence = l.evidence[:from+len(slices.Compact(l.evidence[from:]))]
 	l.rows = append(l.rows, Obligation{
-		ID: ObligationID(l.scope, kind, g.Family), Scope: l.scope, Kind: kind, Source: source, State: state,
+		ID: ObligationID(l.scope, kind, idFamily(g)), Scope: l.scope, Kind: kind, Source: source, State: state,
 		Evidence: l.evidence[from:len(l.evidence):len(l.evidence)],
 	})
+}
+
+// idFamily is the family a row's ids digest: the gate's Family, except a
+// declared row's, whose Family is "declared" for every declared gate, and
+// whose ids digest its Gate id instead (card DECLARED-GATES1, G12).
+func idFamily(g *GateState) string {
+	if g.Family == familyDeclared {
+		return g.Gate
+	}
+	return g.Family
 }
 
 // ObligationID is "ob:" and the first 16 hex of sha256 over scope, kind and

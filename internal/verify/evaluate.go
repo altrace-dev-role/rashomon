@@ -44,8 +44,13 @@ type ProjectIndex struct {
 // record (kindOf, D33 item 3). So a runner whose recorded kind lands only
 // after the point names its gate by that kind at the point, and by its
 // inferred kind in the prefix (RES14c). A nil run is an empty one.
+//
+// Evaluate holds no install key, so no line a spec declares digests as the
+// hook digested the runs, and it reads no declared gate: its rows are the
+// learned ones alone. EvaluateStop, SteerAt and EvaluateWithObligations take
+// the key and join them (card DECLARED-GATES1).
 func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) Snapshot {
-	return evaluate(run, idx, sp, pt, now, &classified{})
+	return evaluate(run, idx, sp, nil, pt, now, &classified{})
 }
 
 // classified is what evaluate classified beside the snapshot, for the
@@ -59,8 +64,11 @@ type classified struct {
 	rewritten []int64
 }
 
-// evaluate is Evaluate, which also fills c.
-func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time, c *classified) Snapshot {
+// evaluate is Evaluate, which also fills c, and joins the gates sp declares
+// under key, the install key (declaredGates), to the learned rows after the
+// index has set theirs required or not: a declared row's Required is its
+// spec's (G2).
+func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, c *classified) Snapshot {
 	if run == nil {
 		run = &store.Run{}
 	}
@@ -92,6 +100,9 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	learned := indexLearned(idx, nowMS)
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
+	}
+	if dgs := declaredGates(sp, key, snap.ProjectRoot); len(dgs) > 0 {
+		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, at, pt.Tree)
 	}
 	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)
 	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))

@@ -16,7 +16,7 @@ SP15c = "TestSP15c_StopJudgesTheDiscoveredSpec"
 SP16 = "TestSP16_BrokenSpecIsOneFlagNotAStop"
 MS5h = "TestMS5h_HeldOutReadsTheSpec"
 V41c = "TestVER41c_OSFSRefusesAFIFO"
-m("VER-3.1 the hook passes nil with a spec present", S, "view := verify.SteerAt(run, nil, p.sp, pt", "view := verify.SteerAt(run, nil, nil, pt", SP15)
+m("VER-3.1 the hook passes nil with a spec present", S, "view := verify.SteerAt(run, nil, p.sp, p.st.Key(), pt", "view := verify.SteerAt(run, nil, nil, p.st.Key(), pt", SP15)
 m("VER-3.1 the hook does not discover", S, "\tp.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))\n", "", SP15)
 m("VER-3.1 the steer view drops the spec", V, "Dropped: dropped, Spec: snap.Spec}", "Dropped: dropped}", SP15)
 m("VER-3.1 a symlinked cwd walked as given", H, "\tcwd = resolved(cwd)\n", "", SP15)

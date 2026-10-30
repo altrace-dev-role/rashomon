@@ -160,14 +160,7 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 		if !isGateRun(d, masked, runner) {
 			continue
 		}
-		g := gateRun{
-			Seq: d.Seq, ExecSeq: e.Seq, ToolUseID: d.ToolUseID, AgentID: d.AgentID,
-			Runner: runner, Location: d.CWDDigest, Masked: masked,
-			Outcome: e.Outcome, ExitCode: e.ExitCode, Output: e.GateOutput, Backgrounded: e.Backgrounded,
-		}
-		if d.Shape.Program != nil {
-			g.Program = *d.Shape.Program
-		}
+		g := newRun(d, e, masked, runner)
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 			rewritten = append(rewritten, d.Seq)
@@ -211,6 +204,22 @@ func execSeq(e *store.Execution) int64 {
 		return -1
 	}
 	return *e.Seq
+}
+
+// newRun is the run d and e record, read as the line ran (masked and runner
+// are asRan's). Its location is the declaration's; the caller clears it
+// where the line was rewritten. The line's digest is lineRun's, not the
+// run's (D209).
+func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) gateRun {
+	g := gateRun{
+		Seq: d.Seq, ExecSeq: e.Seq, ToolUseID: d.ToolUseID, AgentID: d.AgentID,
+		Runner: runner, Location: d.CWDDigest, Masked: masked,
+		Outcome: e.Outcome, ExitCode: e.ExitCode, Output: e.GateOutput, Backgrounded: e.Backgrounded,
+	}
+	if d.Shape.Program != nil {
+		g.Program = *d.Shape.Program
+	}
+	return g
 }
 
 // asRan is a Bash call's masking and runner as the line ran, the rule

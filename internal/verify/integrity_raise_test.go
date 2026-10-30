@@ -137,7 +137,7 @@ func TestIV3e_SteerAtRaisesTheStoreWriteOfThisCall(t *testing.T) {
 	specPath := ".claude/rashomon/spec.json"
 	r := runOf(t, edit(1, ivTask), edit(2, "pkg/a.go"), edit(3, specPath))
 	at := func(n int64, event string) []steer.Finding {
-		return SteerAt(r, nil, nil, callPoint(t, r, n), time.Time{}, event, "t"+strconv.FormatInt(n, 10)).Findings
+		return SteerAt(r, nil, nil, nil, callPoint(t, r, n), time.Time{}, event, "t"+strconv.FormatInt(n, 10)).Findings
 	}
 	for _, event := range ivEvents {
 		if got := at(1, event); len(got) != 1 || got[0].Message.Text() != ivStoreLine {
