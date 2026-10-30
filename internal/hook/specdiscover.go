@@ -24,6 +24,14 @@ const errNoCWD = "spec: the payload names no cwd"
 // or storeRoot "", binds nothing. It is nil when nothing applies. An empty cwd or an I/O error
 // is no spec and one flag, spec.Unreadable.
 func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled {
+	return discoverSpecAt(cwd, baseline.Key(cwd), projectDir, managedDir, storeRoot)
+}
+
+// discoverSpecAt is DiscoverSpec given cwd's project key, baseline.Key(cwd),
+// which the post's judge also reads the project index under: it walks the
+// key once for both (card STALE-NUDGE1), where a second walk was most of the
+// step the index read added to a judged post.
+func discoverSpecAt(cwd, key, projectDir, managedDir, storeRoot string) *spec.Compiled {
 	if cwd == "" {
 		return spec.Unreadable(errNoCWD)
 	}
@@ -38,7 +46,7 @@ func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled 
 		b, err := spec.ReadBindings(spec.OSFS{}, storeRoot)
 		return err == nil && b.Holds(SpecProject(path), path, digest)
 	}
-	sp, err := spec.DiscoverBound(spec.OSFS{}, SpecLocations(cwd, projectDir), managed, bound)
+	sp, err := spec.DiscoverBound(spec.OSFS{}, specLocationsAt(cwd, key, projectDir), managed, bound)
 	if err != nil {
 		return spec.Unreadable(err.Error())
 	}
@@ -100,8 +108,14 @@ func specTrustKey(storeRoot string) ([]byte, error) {
 // cwd, so the lexical walk compares one form (macOS's /tmp is /private/tmp).
 // `rashomon spec trust` names the spec it binds from the same list.
 func SpecLocations(cwd, projectDir string) []string {
+	return specLocationsAt(cwd, baseline.Key(cwd), projectDir)
+}
+
+// specLocationsAt is SpecLocations given cwd's project key, baseline.Key(cwd)
+// (discoverSpecAt).
+func specLocationsAt(cwd, key, projectDir string) []string {
 	cwd = resolved(cwd)
-	return spec.Locations(cwd, spec.WalkRoot(cwd, gitRoot(cwd), resolved(projectDir)))
+	return spec.Locations(cwd, spec.WalkRoot(cwd, gitRoot(key), resolved(projectDir)))
 }
 
 // SpecProject is the project of the repository spec at path, the
@@ -112,11 +126,10 @@ func SpecProject(path string) string {
 	return baseline.Key(filepath.Dir(filepath.Dir(filepath.Dir(path))))
 }
 
-// gitRoot is baseline.Key(cwd) when a .git is there, else "": with no .git,
-// Key is cwd itself, which as a root would stop the walk at cwd and never
-// reach a CLAUDE_PROJECT_DIR above it.
-func gitRoot(cwd string) string {
-	key := baseline.Key(cwd)
+// gitRoot is key, a cwd's baseline.Key, when a .git is there, else "": with
+// no .git, Key is cwd itself, which as a root would stop the walk at cwd and
+// never reach a CLAUDE_PROJECT_DIR above it.
+func gitRoot(key string) string {
 	if _, err := os.Lstat(filepath.Join(key, ".git")); err != nil {
 		return ""
 	}

@@ -86,8 +86,8 @@ m("VER-40 the trigger does not scan for the store root", S, "\tif rootNamed(inpu
 m("VER-40 an escaped store root is not scanned", S,
   "\treturn bytes.Contains(input, []byte(`\\/`)) && bytes.Contains(input, []byte(strings.ReplaceAll(root, \"/\", `\\/`)))\n",
   "\treturn false\n", "TestST1t_")
-IMPORTS["VER-40 an escaped store root is not scanned"] = (S, "\t\"path/filepath\"\n\t\"strings\"\n\t\"time\"\n",
-  "\t\"path/filepath\"\n\t\"time\"\n")
+IMPORTS["VER-40 an escaped store root is not scanned"] = (S, "\t\"slices\"\n\t\"strings\"\n\t\"time\"\n",
+  "\t\"slices\"\n\t\"time\"\n")
 m("VER-40 the escaped form is built for every input", S,
   "\treturn bytes.Contains(input, []byte(`\\/`)) && bytes.Contains(input, []byte(strings.ReplaceAll(",
   "\treturn bytes.Contains(input, []byte(strings.ReplaceAll(", "TestST1t_")

@@ -9,10 +9,12 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -285,6 +287,103 @@ func BenchmarkPostSteer(b *testing.B) {
 	}
 	prompt := 0
 	b.Run("step_100_spec", f.stepRow(env, func() string { prompt++; return fmt.Sprint("p", prompt) }))
+	// write_6000_unarmed and write_6000_armed are the step on an Edit's post
+	// after the 6,000-call record (card STALE-NUDGE1, D166). Unarmed, the
+	// step stops at the marker's Lstat, which every write pays; armed, it
+	// reads the run and judges it under a learned index, which a write pays
+	// about once per green gate run. The Edit names a file under a real
+	// project with an index requiring both families, so the armed step goes
+	// the whole way; no gate's green is left behind by this write (the vet
+	// family's was left by an earlier Edit, the test family is red), so it
+	// appends no line.
+	w, wf := newBenchWrite(b, 6000)
+	env = wf.env()
+	b.Run("write_6000_unarmed", wf.writeRow(w, env, false))
+	b.Run("write_6000_armed", wf.writeRow(w, env, true))
+}
+
+// newBenchWrite is newBenchSteer's record at n with an Edit of a file under a
+// fresh project landed after the red, and that project's index requiring
+// every gate family the record holds, as two sessions within 30 days do. The
+// Edit's post is returned, its cwd the project.
+func newBenchWrite(b *testing.B, n int) (*Post, *benchSteer) {
+	b.Helper()
+	f := newBenchSteer(b, n)
+	dir, err := filepath.EvalSymlinks(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	edit := map[string]any{"file_path": filepath.Join(dir, "pkg", "a.go"), "old_string": "a", "new_string": "b"}
+	w := f.call(b, n+2, "Edit", edit, 0)
+	w.cwd = dir
+	if err := w.Flush(); err != nil {
+		b.Fatal(err)
+	}
+	run, err := f.st.ReadRun(benchSteerSession)
+	if err != nil {
+		b.Fatal(err)
+	}
+	snap := verify.Evaluate(run, nil, nil, verify.Point{Seq: w.landedSeq, SessionID: benchSteerSession}, f.now)
+	key, ms := baseline.Key(dir), f.now.UnixMilli()
+	idx := &verify.ProjectIndex{ProjectKey: key}
+	for _, g := range snap.Gates {
+		idx.Entries = append(idx.Entries, verify.IndexEntry{Family: g.Family, Kind: g.Kind, Sessions: 2,
+			LastSession: "s0", FirstSeen: ms, LastSeen: ms})
+	}
+	slices.SortFunc(idx.Entries, func(x, y verify.IndexEntry) int { return strings.Compare(x.Family, y.Family) })
+	if _, err := verify.WriteIndex(verify.IndexPath(f.st.Root(), key), idx); err != nil {
+		b.Fatal(err)
+	}
+	return w, f
+}
+
+// writeRow is a write row: the whole step on w's post per iteration, armed
+// first outside the timer when armed is set. The check after it, outside the
+// timer too, reads what the step must leave: no arm, and no steer line.
+func (f *benchSteer) writeRow(w *Post, env SteerEnv, armed bool) func(*testing.B) {
+	return func(b *testing.B) {
+		before := len(f.lines(b))
+		f.writePremise(b, w, env, armed)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for range b.N {
+			if armed {
+				b.StopTimer()
+				if err := f.st.ArmStale(benchSteerSession); err != nil {
+					b.Fatal(err)
+				}
+				b.StartTimer()
+			}
+			w.Steer(env)
+			b.StopTimer()
+			if on, err := f.st.StaleArmed(benchSteerSession); err != nil || on {
+				b.Fatalf("after the step the trigger is armed (%v, %v)", on, err)
+			}
+			if got := len(f.lines(b)) - before; got != 0 {
+				b.Fatalf("%d steer lines appended, want none", got)
+			}
+			b.StartTimer()
+		}
+	}
+}
+
+// writePremise fails the row unless judge does what the row claims: an
+// unarmed write is not judged, and an armed one is, and takes the arm, with
+// no finding.
+func (f *benchSteer) writePremise(b *testing.B, w *Post, env SteerEnv, armed bool) {
+	b.Helper()
+	if armed {
+		if err := f.st.ArmStale(benchSteerSession); err != nil {
+			b.Fatal(err)
+		}
+	}
+	_, view, ok := w.judge(env)
+	if ok != armed || len(view.Findings) != 0 {
+		b.Fatalf("judge = %v with %d findings, want %v with none", ok, len(view.Findings), armed)
+	}
+	if on, err := f.st.StaleArmed(benchSteerSession); err != nil || on {
+		b.Fatalf("after judge the trigger is armed (%v, %v)", on, err)
+	}
 }
 
 // stepRow is a step row: the whole step per iteration, on a fresh prompt id

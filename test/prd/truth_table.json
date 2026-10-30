@@ -42,6 +42,14 @@
         {
           "file": "internal/verify/declared_test.go",
           "symbol": "TestDG1d2_EmptyDirBindsTheProjectRoot"
+        },
+        {
+          "file": "internal/hook/steerstep.go",
+          "symbol": "staleWrite"
+        },
+        {
+          "file": "internal/hook/steerstep_stale_test.go",
+          "symbol": "TestIP1_PostJudgesUnderTheProjectIndex"
         }
       ],
       "id": "PF-PG1",
@@ -65,8 +73,7 @@
         }
       ],
       "missing": [
-        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom",
-        "the PostToolUse steer step passes a nil index (steerstep.go judge), so every gate reads required there, against index.go's comment"
+        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom"
       ],
       "planned_pr": "",
       "session_proof": "",

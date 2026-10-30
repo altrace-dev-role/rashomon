@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -364,6 +365,19 @@ func relativise(filePath string, project, cwd *string) string {
 }
 
 func slashed(s string) string { return strings.ReplaceAll(s, `\`, "/") }
+
+// RelevantUnder reports whether a path a call names as written, read as the
+// classifier reads a declaration's (relativise against root, then cwd),
+// lies under one of them and is of a class a gate counts (Relevant). It is
+// the stale trigger's test of a write before it reads the run (card
+// STALE-NUDGE1): a path outside both is not one the trigger judges.
+func RelevantUnder(path, root, cwd string) bool {
+	rel := relativise(path, &root, &cwd)
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, "../") {
+		return false
+	}
+	return Relevant(ClassOf(rel))
+}
 
 // under is p below dir, without dir and the separator, and whether it is.
 // A dir of "" or "/" alone is no prefix: it would make every absolute path
