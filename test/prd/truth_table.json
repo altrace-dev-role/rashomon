@@ -74,16 +74,32 @@
           "symbol": "Classify"
         },
         {
+          "file": "internal/hook/gateoutput.go",
+          "symbol": "gateOutput"
+        },
+        {
+          "file": "internal/shape/gaterun.go",
+          "symbol": "GateRun"
+        },
+        {
           "file": "internal/verify/gates_test.go",
           "symbol": "TestVER13_MaskedIsInconclusiveNeverGreen"
         },
         {
           "file": "internal/verify/gates_test.go",
           "symbol": "TestVER13b_MaskedReasonsByOutput"
+        },
+        {
+          "file": "internal/hook/gateoutput_test.go",
+          "symbol": "TestGO1_GateRunOutputIsClassified"
+        },
+        {
+          "file": "internal/hook/gateoutput_test.go",
+          "symbol": "TestGO1g_MaskedPipeReadsTheSummary"
         }
       ],
       "id": "PF-PG2",
-      "implementation": "The hook records whether a pipe hid a recognised runner's status and a masked run is never green, but no summary line is read under an allowlist and no hook writes gate_output, so in a session the masked reason is always masked_no_success_line.",
+      "implementation": "The hook records whether a pipe hid a recognised runner's status and a masked run is never green; the post reads a gate run's output, at most 1 MiB, classifies it with gateout's tables and writes gate_output, so a masked run whose output carries a pass line reads masked_with_success_line, but its state stays masked_inconclusive and no summary line is read under a pipeline allowlist.",
       "integration": [
         {
           "event": "PreToolUse",
@@ -94,13 +110,17 @@
           "handler": "internal/hook/post.go"
         },
         {
+          "event": "PostToolUseFailure",
+          "handler": "internal/hook/post.go"
+        },
+        {
           "event": "Stop",
           "handler": "cmd/rashomon/recap_stop.go"
         }
       ],
       "missing": [
-        "a post-hook writer of the execution's gate_output (GATEOUT-WIRE1, proposed): gateout.Classify has no runtime caller and TestVER13b reads fixture-built output",
-        "the pass read from the last summary line under a closed allowlist of the other pipeline commands (VER-6 to VER-10)"
+        "the pass read from the last summary line under a closed allowlist of the other pipeline commands (VER-6 to VER-10)",
+        "the masked state read from the output (MASKED-STATE1, proposed): a pass line leaves masked_inconclusive where archive 20.2.4 gives green, and a failure line gives masked_unattributable where 2.2.4 step 5 gives red"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -136,7 +156,7 @@
         }
       ],
       "id": "PF-PG3",
-      "implementation": "A pure first-match table gives one of seven states per runner family, byte-identical over shuffled records and equal over a prefix, but absent and output-based red cannot occur in a session because no hook writes gate_output.",
+      "implementation": "A pure first-match table gives one of seven states per runner family, byte-identical over shuffled records and equal over a prefix; the post writes gate_output, so absent on an empty run and red on an unmasked run's failure line reach it in a session.",
       "integration": [
         {
           "event": "PostToolUse",
@@ -152,7 +172,6 @@
         }
       ],
       "missing": [
-        "the gate_output writer (as PF-PG2)",
         "a run scope on the record: every run's scope is unknown, so the latest full-scope run is not told apart"
       ],
       "planned_pr": "",

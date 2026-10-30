@@ -23,9 +23,14 @@ import (
 // put that content into memory this program controls, from where a panic
 // value or a log line carries it to Claude Code's debug log. The payload is
 // walked once into spans (hookio.Intake) and no field here is filled from
-// the response's span. The one thing read from it is read by
-// backgroundedCall, for Bash only: whether two keys are present, as bits on
-// their spans, so stdout, stderr and the task id are never a value here.
+// the response's span. Two things are read from it, and neither is held:
+// backgroundedCall reads, for Bash only, whether two keys are present, as
+// bits on their spans, so the task id is never a value here; and gateOutput
+// reads the output of a gate run, the call shape.GateRun names -- stdout,
+// then stderr where stdout gives no summary, or a failure event's error after
+// its first line -- decoded into a buffer local to that call, at most
+// gateout.MaxScanBytes of it, cleared before it returns. What survives is
+// gate_output's three closed words; no other call's output is read at all.
 //
 // tool_input IS held, as a subslice of the payload, for the executed digest:
 // the post-rewrite input is the only evidence a rewriting hook leaves
@@ -170,7 +175,8 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 //
 // stdin is bounded exactly as the declaration path bounds it. Of the response
 // only the presence of backgroundTaskId and backgroundedByUser is read, for a
-// Bash call (backgroundResponse), but the whole of it does arrive: an
+// Bash call (backgroundedCall), and a gate run's output, bounded and dropped
+// (gateOutput), but the whole of it does arrive: an
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
@@ -248,10 +254,12 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		return nil
 	}
 
+	// start is also when a gate run's output read begins its budget.
+	start := p.now()
 	rec := store.Execution{
 		Type:          store.TypeExecution,
 		SchemaVersion: store.SchemaVersion,
-		RecordedAtMS:  p.now().UnixMilli(),
+		RecordedAtMS:  start.UnixMilli(),
 		ToolUseID:     pl.ToolUseID,
 		SessionID:     p.sessionID,
 		ToolName:      pl.ToolName,
@@ -267,9 +275,11 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	// to every declaration and report every such call as rewritten.
 	//
 	// The same Derive gives the masking of the line as it ran, which a
-	// rewriting hook may have changed from the declaration's.
+	// rewriting hook may have changed from the declaration's, and the
+	// fields that decide whether its output is read (below).
+	var s shape.Shape
 	if len(pl.ToolInput) > 0 {
-		s := shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key())
+		s = shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key())
 		rec.ExecutedDigest = s.Digest
 		rec.StatusMasked, rec.RunnerDigest, rec.RunnerKind = s.StatusMasked, s.RunnerDigest, s.RunnerKind
 	}
@@ -285,6 +295,13 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	// never moved to the background, whatever its payload carries.
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(payload)
+	}
+	// A gate run's output, read, classified and dropped: three closed words
+	// survive (card GATEOUT-WIRE1). Every other call's output is never read,
+	// and its gate_output stays null.
+	if shape.GateRun(s.RunnerDigest, s.StatusMasked, s.VerbClass) {
+		out := gateOutput(payload, pl.HookEventName == FailureEvent, gateKind(&s), programOf(&s), start.Add(gateOutputBudget), p.now)
+		rec.GateOutput = &out
 	}
 	// The content of the file a named write names, as the call left it: the
 	// tree a later gate run is bound to (card P5A, D140). A digest of content,
@@ -314,10 +331,11 @@ func (p *Post) capture(payload *hookio.Payload) error {
 // marks it with backgroundTaskId or backgroundedByUser, which was not
 // measured; backgroundedByUser is read the same way as the task id.
 //
-// This is the whole of what is read from tool_response: two presence bits on
-// spans, true when a key carries anything but null or false. The task id is
-// never copied, and stdout and stderr are never touched. A response that is
-// not an object is a foreground call: the flag is set only on evidence.
+// It reads two presence bits on spans, true when a key carries anything but
+// null or false, and the task id is never copied. stdout and stderr are not
+// touched here: the one reader of those is gateOutput, for a gate run only. A
+// response that is not an object is a foreground call: the flag is set only
+// on evidence.
 func backgroundedCall(in *hookio.Payload) bool {
 	var bits [2]jsonscan.Span
 	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], backgroundKeys, bits[:]) != nil {

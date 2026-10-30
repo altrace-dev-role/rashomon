@@ -96,7 +96,9 @@ type storeFile struct {
 }
 
 func storeFiles() map[string]storeFile {
-	call := map[string][]string{"declaration": declarationKeys, "execution": executionKeys, "terminal": terminalKeys}
+	// An execution may carry a gate run's gate_output words beside
+	// executionKeys, an ordinary call's set (card GATEOUT-WIRE1).
+	call := map[string][]string{"declaration": declarationKeys, "execution": slices.Concat(executionKeys, gateOutputKeys), "terminal": terminalKeys}
 	// records.ndjson also holds the Stop's verify checkpoint, an ordered
 	// record with a seq of its own (card 2.4 D92); the spill file never does.
 	records := map[string][]string{"verify": checkpointKeys}

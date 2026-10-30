@@ -16,8 +16,9 @@ import (
 // The fields of the execution record's copy from the shape of the input that
 // ran (Post.capture, under `if len(pl.ToolInput) > 0`): the masked triple and
 // the shape's digest as executed_digest are carried (postCarried), the
-// shape's other fields are not read (postNotCarried), and the rest of the
-// record is not the shape's (postWithheld). A field added to shape.Shape or
+// shape's other fields are not copied (postNotCarried), and the rest of the
+// record is not the shape's (postWithheld) -- but for gate_output, which the
+// shape decides and the test sets aside. A field added to shape.Shape or
 // store.Execution goes in one of them, here, before this test passes again.
 var (
 	postCarried    = []string{"StatusMasked", "RunnerDigest", "RunnerKind", "ExecutedDigest=Digest"}
@@ -67,6 +68,14 @@ func TestB39_PostCopiesTheShapesMaskedTriple(t *testing.T) {
 	}
 	before, _ := record(false)
 	after, key := record(true)
+	// gate_output is not copied from the shape but decided by it: the line
+	// runs a runner, so the post reads its output (card GATEOUT-WIRE1, which
+	// TestGO1_ and its siblings pin), where the record with no tool_input has
+	// no shape to name a gate run by. Set aside, it leaves the copy to check.
+	if after.GateOutput == nil || before.GateOutput != nil {
+		t.Fatalf("gate_output %v with the input and %v without; want set and null", after.GateOutput, before.GateOutput)
+	}
+	after.GateOutput = nil
 	in, err := json.Marshal(map[string]string{"command": line})
 	if err != nil {
 		t.Fatal(err)
