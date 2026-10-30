@@ -56,11 +56,11 @@ m("VER-3.2 implied rule takes the first source's trust", T,
 
 # store_touched (D131).
 m("VER-3.2 class test dropped", I,
-  '\tfor _, w := range writes {\n\t\tif w.Path != nil && w.Seq > from && w.Seq <= at && (inStore(*w.Path) || underStore(w.raw, storeRoot)) {\n',
-  '\tfor _, w := range writes[:0] {\n\t\tif w.Path != nil && w.Seq > from && w.Seq <= at && (inStore(*w.Path) || underStore(w.raw, storeRoot)) {\n', "TestTF10_")
+  '\tfor _, w := range writes {\n\t\tif w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {\n',
+  '\tfor _, w := range writes[:0] {\n\t\tif w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {\n', "TestTF10_")
 m("VER-3.2 segment loosened to .claude/", P, '"/.claude/rashomon/")', '"/.claude/")', "TestTF10_")
 m("VER-3.2 the store check ignores the window", I,
-  'if w.Path != nil && w.Seq > from && w.Seq <= at && (inStore(*w.Path) || underStore(w.raw, storeRoot)) {', 'if w.Path != nil && (inStore(*w.Path) || underStore(w.raw, storeRoot)) {', "TestTF10_")
+  'if w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {', 'if w.Path != nil && inStore(*w.Path) {', "TestTF10_")
 m("VER-3.2 store entries unordered by path", I,
   'cmp.Compare(a.Marker, b.Marker), cmp.Compare(a.Path, b.Path))', 'cmp.Compare(a.Marker, b.Marker))', "TestTF10_")
 m("VER-3.2 store_touched outside IntegrityKinds", S, '\tStoreTouched,\n}\n', '}\n', "TestVER52b_")

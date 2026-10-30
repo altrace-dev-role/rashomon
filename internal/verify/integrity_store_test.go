@@ -58,7 +58,9 @@ func storeTouchedAt(r *store.Run, storeRoot string, at int64) bool {
 // inside the project, where the record names the path relative to the
 // project, matches on the path as the call named it. A write under the
 // project's .claude/rashomon/ is integrity's alone: the trust drop reads the
-// store root. A clean path costs StoreWritten no allocation.
+// store root. A root under that segment gives a write there one entry, not
+// one from each check, and a write at or before from is none (D173d). A
+// clean path costs StoreWritten no allocation.
 func TestST1s_StoreWrittenNamesTheStoreTouchedWrites(t *testing.T) {
 	const root = "/home/u/.local/state/rashomon"
 	mcp := runOf(t, writeCall(1, root+"/spec-trust.json"))
@@ -99,6 +101,17 @@ func TestST1s_StoreWrittenNamesTheStoreTouchedWrites(t *testing.T) {
 	if StoreWritten(local, root, 2) || !storeTouchedAt(local, root, 2) {
 		t.Errorf("the project's .claude/rashomon: StoreWritten %v, store_touched %v; want false, true",
 			StoreWritten(local, root, 2), storeTouchedAt(local, root, 2))
+	}
+	inside := runOf(t, writeCall(1, "/repo/.claude/rashomon/spec-trust.json"))
+	inside.Declarations[0].Project = &project
+	_, iw, _, _ := classify(inside)
+	if got := integrity(inside, pickExecutions(inside), iw, 0, 2, "/repo/.claude/rashomon").Unresolved; len(got) != 1 || got[0].Path != ".claude/rashomon/spec-trust.json" {
+		t.Errorf("a root under the project's .claude/rashomon: entries %+v, want one at .claude/rashomon/spec-trust.json", got)
+	}
+	past := runOf(t, writeCall(1, root+"/spec-trust.json"))
+	_, pw, _, _ := classify(past)
+	if got := integrity(past, pickExecutions(past), pw, 1, 2, root).Unresolved; len(got) != 0 {
+		t.Errorf("a root write at from: entries %+v, want none", got)
 	}
 	clean := runOf(t, edit(1, "pkg/a.go"), bashWrite(3, "/tmp/x"), writeCall(5, root+"/spec-trust.json"))
 	if n := testing.AllocsPerRun(20, func() { StoreWritten(clean, root, 6) }); n != 0 {
