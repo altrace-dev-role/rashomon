@@ -7,6 +7,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
@@ -26,9 +27,11 @@ type RuleCall struct {
 }
 
 // RulesAtCall is the spec's rules raised at a post from the call alone, no
-// run read: each forbid_command rule one of the line's commands matches
-// raises platform-rule/command, a nudge for a trusted or managed rule and a
-// user flag otherwise; each protect_path rule whose paths the file tool's
+// run read: at PostToolUse, each forbid_command rule one of the line's
+// commands matches raises platform-rule/command, a nudge for a trusted or
+// managed rule and a user flag otherwise (the card raises platform-rule at
+// that event alone, so a call that failed is the record's, judged at Stop);
+// at either post event, each protect_path rule whose paths the file tool's
 // path falls in, in a mode the rule lists, raises integrity/frozen-path, a
 // user flag. One matcher reads the line and the path as ruleVerdicts reads
 // the record, so what is undecided there raises nothing here; a Bash
@@ -61,7 +64,8 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 		f := Finding{Event: event, UserOnly: !binding(fact.Trust), Rule: &fact}
 		switch fact.Kind {
 		case spec.ForbidCommand:
-			if call.ToolName != "Bash" || call.Command == "" || dr.Rule.Command == nil || len(dr.Rule.Command.Argv) == 0 {
+			if event != string(steer.EventPostToolUse) || call.ToolName != "Bash" || call.Command == "" ||
+				dr.Rule.Command == nil || len(dr.Rule.Command.Argv) == 0 {
 				continue
 			}
 			if !read {

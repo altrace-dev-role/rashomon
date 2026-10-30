@@ -92,9 +92,10 @@ func (p *Post) Steer(env SteerEnv) []byte {
 
 // ruled is the spec rules' trigger (card SPEC-RULES1): an execution that
 // landed, at either post event, of a Bash call or a tool that names the
-// file it writes, the calls a forbid_command or a protect_path rule raises
-// at from the call alone (verify.RulesAtCall). Such a call costs the spec's
-// discovery at every post, whether the spec declares a rule or not.
+// file it writes, the calls a forbid_command rule (at PostToolUse) or a
+// protect_path rule raises at from the call alone (verify.RulesAtCall).
+// Such a call costs the spec's discovery at every post, whether the spec
+// declares a rule or not.
 func ruled(event string, landedSeq int64, toolName string) bool {
 	if landedSeq <= 0 || event != FailureEvent && event != string(steer.EventPostToolUse) {
 		return false

@@ -118,7 +118,7 @@ const postEvent = string(steer.EventPostToolUse)
 // call's declaration; the ledger's spec_rule row is unmet citing it, sourced
 // "spec"; a clean run is no_recorded_violation with a met row citing nothing;
 // the post raises platform-rule/command at nudge from the call alone, with
-// the rule id and the program and no rule text.
+// the rule id and the program and no rule text, at PostToolUse only.
 func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 	sp := ruleSpec(spec.Trusted, noForce())
 	r := shells(t, "git status", "git push --force origin main", "git push origin main")
@@ -162,6 +162,13 @@ func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 	if v := RulesAtCall(sp, RuleCall{Seq: 9, ToolName: "Bash", Command: "git push origin main"}, atPost(9), postEvent); len(v.Findings) != 0 {
 		t.Fatalf("a clean call raised %+v", v.Findings)
 	}
+	// The card raises platform-rule at PostToolUse alone: a forced push that
+	// failed is the record's, and the post neither raises it nor hands the
+	// mapper a finding to refuse.
+	failed := string(steer.EventPostToolUseFailure)
+	if v := RulesAtCall(sp, RuleCall{Seq: 9, ToolName: "Bash", Command: "git push -f origin main"}, atPost(9), failed); len(v.Findings) != 0 || v.Dropped != 0 {
+		t.Fatalf("at a failure: findings %+v dropped %d, want neither", v.Findings, v.Dropped)
+	}
 }
 
 // TestSR1b_ProtectPathWriteInMode: a write to a path the rule's paths match
@@ -172,7 +179,8 @@ func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 // may be any of the three. A pattern naming a directory covers what is under
 // it (the matcher's parent rule), not a prefix of its name. A path outside
 // the project matches nothing; an MCP call is no write a path rule reads.
-// The post raises integrity/frozen-path, a user flag, naming the path.
+// The post raises integrity/frozen-path, a user flag, naming the path, at
+// either post event.
 func TestSR1b_ProtectPathWriteInMode(t *testing.T) {
 	excl := frozen(allModes...)
 	excl.ExcludePaths = []string{"db/migrations/README.md"}
@@ -233,6 +241,10 @@ func TestSR1b_ProtectPathWriteInMode(t *testing.T) {
 		if v := RulesAtCall(sp, rc, atPost(7), postEvent); len(v.Findings) != 0 {
 			t.Errorf("%+v raised %+v", rc, v.Findings)
 		}
+	}
+	failed := RuleCall{Seq: 7, ToolName: "Edit", FilePath: "/repo/db/migrations/001.sql", Project: "/repo"}
+	if v := RulesAtCall(sp, failed, atPost(7), string(steer.EventPostToolUseFailure)); len(v.Findings) != 1 {
+		t.Errorf("an edit that failed raised %+v, want the flag: integrity is raised at either post event", v.Findings)
 	}
 }
 

@@ -77,3 +77,7 @@ m("sr1 a store fault silences the rules", "internal/hook/steerstep.go",
   "\t\tif r, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget); err == nil {\n\t\t\trun = r\n\t\t}\n",
   "\t\tr, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)\n\t\tif err != nil {\n\t\t\treturn steer.Context{}, verify.SteerView{}, false\n\t\t}\n\t\trun = r\n",
   "TestSR1y_")
+m("sr1 the post raises a forbidden command that failed", "internal/verify/rules_raise.go",
+  "\t\t\tif event != string(steer.EventPostToolUse) || call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
+  "\t\t\tif call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
+  "TestSR1_")

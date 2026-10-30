@@ -9,6 +9,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // Spec rules as a repository file declares them: no-force forbids a forced
@@ -78,12 +79,14 @@ func TestSR1w_TheRulesTriggerIsABashOrFileToolCallThatLanded(t *testing.T) {
 }
 
 // TestSR1x_APostRaisesItsRulesFromTheCallAlone: under an untrusted spec, a
-// forced push raises platform-rule/command and an edit of a protected path
-// integrity/frozen-path, each a flag at its own post, success or failure:
+// forced push raises platform-rule/command at PostToolUse and an edit of a
+// protected path integrity/frozen-path at either post event, each a flag:
 // the user's systemMessage carries the line, no model-visible key prints, and
-// the steer line is the pattern's flag. A plain push, an edit elsewhere and a
-// read of the path raise nothing and log nothing. The raise reads no run: it
-// stands with the session's run made unreadable.
+// the steer line is the pattern's flag. A forced push that failed (the card
+// raises platform-rule at PostToolUse alone; the record judges it at Stop),
+// a plain push, an edit elsewhere and a read of the path raise nothing and
+// log nothing. The raise reads no run: it stands with the session's run made
+// unreadable.
 func TestSR1x_APostRaisesItsRulesFromTheCallAlone(t *testing.T) {
 	for _, c := range []struct {
 		name       string
@@ -97,11 +100,16 @@ func TestSR1x_APostRaisesItsRulesFromTheCallAlone(t *testing.T) {
 	}{
 		{"a forced push", "Bash", func(string) map[string]any { return map[string]any{"command": "git push --force origin main"} },
 			0, srForceLine, pattern.PlatformRule, "command", false},
-		{"a forced push that failed", "Bash", func(string) map[string]any { return map[string]any{"command": "cd sub && git push -f"} },
-			1, srForceLine, pattern.PlatformRule, "command", false},
+		{"a forced push after a cd", "Bash", func(string) map[string]any { return map[string]any{"command": "cd sub && git push -f"} },
+			0, srForceLine, pattern.PlatformRule, "command", false},
 		{"an edit of a migration", "Edit", func(base string) map[string]any {
 			return map[string]any{"file_path": filepath.Join(base, "db", "migrations", "001.sql"), "old_string": "a", "new_string": "b"}
 		}, 0, srPathLine, pattern.Integrity, "frozen-path", false},
+		{"an edit of a migration that failed", "Edit", func(base string) map[string]any {
+			return map[string]any{"file_path": filepath.Join(base, "db", "migrations", "001.sql"), "old_string": "a", "new_string": "b"}
+		}, 1, srPathLine, pattern.Integrity, "frozen-path", false},
+		{"a forced push that failed", "Bash", func(string) map[string]any { return map[string]any{"command": "git push --force origin main"} },
+			1, "", "", "", true},
 		{"a relative write of a migration", "Write", func(string) map[string]any {
 			return map[string]any{"file_path": "db/migrations/001.sql", "content": "x"}
 		}, 0, srPathLine, pattern.Integrity, "frozen-path", false},
@@ -167,22 +175,32 @@ func TestSR1x_APostRaisesItsRulesFromTheCallAlone(t *testing.T) {
 	}
 }
 
-// TestSR1y_TheStepAndTheRulesShareOnePost: a red go test under a spec that
-// forbids go test is judged once by both: the step's findings as a spec
-// without the rule gives them, then the rule's platform-rule/command. A run
-// the step cannot read drops the step's findings alone: an edit of a
-// protected path whose input names .claude/rashomon, so the step fires too,
-// still prints its frozen-path flag with the session's records unreadable.
+// TestSR1y_TheStepAndTheRulesShareOnePost: a Bash call at PostToolUse that
+// writes under .claude/rashomon, so the step fires, and runs go test, under
+// a spec that forbids go test, is judged once by both: the step's findings
+// as a spec without the rule gives them, then the rule's
+// platform-rule/command. A run the step cannot read drops the step's
+// findings alone: an edit of a protected path whose input names
+// .claude/rashomon, so the step fires too, still prints its frozen-path flag
+// with the session's records unreadable.
 func TestSR1y_TheStepAndTheRulesShareOnePost(t *testing.T) {
-	control := newSRFix(t, srSpec())
-	_, base, ok := control.red("toolu_r").judge(stEnv(0))
-	if !ok {
-		t.Fatal("premise: the red call's step did not run")
+	both := map[string]any{"command": "echo {} > .claude/rashomon/task/current.json && go test ./..."}
+	judged := func(doc string) verify.SteerView {
+		t.Helper()
+		f := newSRFix(t, doc)
+		p := f.call("toolu_b", "Bash", both, 0)
+		if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
+			t.Fatal("premise: the step does not fire for a line naming .claude/rashomon")
+		}
+		_, view, ok := p.judge(stEnv(0))
+		if !ok {
+			t.Fatal("premise: the step did not run")
+		}
+		return view
 	}
-	f := newSRFix(t, srSpec(srNoGoTest))
-	_, view, ok := f.red("toolu_r").judge(stEnv(0))
-	if !ok || len(view.Findings) != len(base.Findings)+1 {
-		t.Fatalf("judge: ok %v, %d findings; want the step's %d and the rule's", ok, len(view.Findings), len(base.Findings))
+	base, view := judged(srSpec()), judged(srSpec(srNoGoTest))
+	if len(view.Findings) != len(base.Findings)+1 {
+		t.Fatalf("%d findings; want the step's %d and the rule's", len(view.Findings), len(base.Findings))
 	}
 	for i, b := range base.Findings {
 		if view.Findings[i].Pattern != b.Pattern {
