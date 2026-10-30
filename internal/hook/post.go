@@ -317,7 +317,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		p.withheld = true
 	}
 	seq, err := p.st.LandExecution(rec)
-	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput)
+	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
 	return landed(err, &p.withheld)
 }
 

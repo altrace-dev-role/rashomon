@@ -266,4 +266,15 @@ type IntegrityFact struct {
 	// none (P-07 proposal: archive 20.2.14 `"marker": "go.t_skip"`; 20.2.10
 	// "(t.Skip)").
 	Marker MarkerID
+	// StoreRoot marks a store_touched fact whose write was under rashomon's
+	// store root rather than .claude/rashomon (P-07 proposal: 4.2.13's
+	// store-touched, "a recorded call names the store root"; D173): its line
+	// names the store, and Paths holds the path relative to that root.
+	StoreRoot bool
+	// StoreNamed marks a store-root fact from the call's store-root bit, on
+	// a record that withholds the call's paths (P-07 proposal: 4.2.13's
+	// store-touched, "a recorded call names the store root"; D173b): it has
+	// no path, and its line says the call named the store, since a read
+	// there cannot be told from a write.
+	StoreNamed bool
 }

@@ -114,6 +114,21 @@ type IntegrityStoreTouchedBinding struct {
 // entropy test).
 type IntegrityStoreTouchedUnnamedBinding struct{}
 
+// IntegrityStoreRootTouchedBinding is store-touched's line for a write under
+// rashomon's store root rather than .claude/rashomon (D173): the path
+// relative to that root, since a path slot is never absolute.
+type IntegrityStoreRootTouchedBinding struct {
+	Path slot.Path `slot:"path"`
+}
+
+// IntegrityStoreRootTouchedUnnamedBinding is that line's no-path form.
+type IntegrityStoreRootTouchedUnnamedBinding struct{}
+
+// IntegrityStoreRootNamedBinding is the store root's line for a call whose
+// input named the root on a record that withholds its paths (D173b): a read
+// there cannot be told from a write, so the line says named.
+type IntegrityStoreRootNamedBinding struct{}
+
 // IntegrityTestRemovedBinding, IntegrityGateWeakenedBinding and
 // IntegrityGateConfigEditedBinding are the other three one-way doors' lines
 // (PF-IV3). Their entries carry no path, so the lines name the kind only;
@@ -179,6 +194,21 @@ func templates() map[templateKey]template {
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedUnnamedBinding{})}: {
 				id:     "integrity-store-touched-unnamed/v1",
 				format: "rashomon record: this call wrote a file under .claude/rashomon, which holds the spec and the task file rashomon reads.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityStoreRootTouchedBinding{})}: {
+				id: "integrity-store-root-touched/v1",
+				format: "rashomon record: this call wrote {path} in rashomon's store, which holds the trust bindings; " +
+					"no repository spec counts as trusted for the rest of this session.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityStoreRootTouchedUnnamedBinding{})}: {
+				id: "integrity-store-root-touched-unnamed/v1",
+				format: "rashomon record: this call wrote a file in rashomon's store, which holds the trust bindings; " +
+					"no repository spec counts as trusted for the rest of this session.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityStoreRootNamedBinding{})}: {
+				id: "integrity-store-root-named/v1",
+				format: "rashomon record: this call named rashomon's store, which holds the trust bindings; " +
+					"no repository spec counts as trusted for the rest of this session.",
 			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityTestRemovedBinding{})}: {
 				id:     "integrity-test-deleted/v1",

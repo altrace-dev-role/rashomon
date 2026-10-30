@@ -17,7 +17,7 @@ SP16 = "TestSP16_BrokenSpecIsOneFlagNotAStop"
 MS5h = "TestMS5h_HeldOutReadsTheSpec"
 V41c = "TestVER41c_OSFSRefusesAFIFO"
 m("VER-3.1 the hook passes nil with a spec present", S, "view := verify.SteerAt(run, nil, p.sp, pt", "view := verify.SteerAt(run, nil, nil, pt", SP15)
-m("VER-3.1 the hook does not discover", S, "\tp.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir)\n", "", SP15)
+m("VER-3.1 the hook does not discover", S, "\tp.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))\n", "", SP15)
 m("VER-3.1 the steer view drops the spec", V, "Dropped: dropped, Spec: snap.Spec}", "Dropped: dropped}", SP15)
 m("VER-3.1 a symlinked cwd walked as given", H, "\tcwd = resolved(cwd)\n", "", SP15)
 m("VER-3.1 resolved evaluates no symlink", H, "if r, err := filepath.EvalSymlinks(p); err == nil {", "if r, err := filepath.EvalSymlinks(p); err == nil && false {", SP15)
@@ -32,7 +32,7 @@ m("VER-3.1 an unreadable discovery has no line", D, "d := discovery{c: Compiled{
 m("VER-3.1 heldOut ignores the spec's holdout", S, "\t\ton, rate := p.sp.Holdout.On(env.Now)\n\t\tif !on {\n\t\t\treturn false\n\t\t}\n\t\tbp = rate\n", "", MS5h)
 m("VER-3.1 heldOut ignores the spec's rate", S, "\t\tbp = rate\n", "\t\t_ = rate\n", MS5h)
 m("VER-3.1 the Stop path passes nil", R, "v := verify.EvaluateStop(run, idx, sp, pt, now, in)", "v := verify.EvaluateStop(run, idx, nil, pt, now, in); _ = sp", SP15c)
-m("VER-3.1 the Stop path ignores its cwd", R, "sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir)", "sp := hook.DiscoverSpec(\"\", projectDir, managedDir)", SP15c)
+m("VER-3.1 the Stop path ignores its cwd", R, "sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))", "sp := hook.DiscoverSpec(\"\", projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))", SP15c)
 m("VER-3.1 CLAUDE_PROJECT_DIR not read", C, "return os.Getenv(\"CLAUDE_PROJECT_DIR\"), settings.ManagedDir()", "return \"\", settings.ManagedDir()", SP15b)
 m("VER-3.1 the managed directory is the settings file", L, "return filepath.Dir(managedPath())", "return managedPath()", SP15b)
 m("VER-3.1 OSFS opens a FIFO", D, "\tif !fi.Mode().IsRegular() {\n", "\tif !fi.Mode().IsRegular() && false {\n", V41c)

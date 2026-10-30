@@ -76,7 +76,7 @@ func TestIV1a_StoreNamedScansTheRawInput(t *testing.T) {
 		`{"command":"rashomon status"}`:                         false,
 		``:                                                      false,
 	} {
-		if got := storeNamed([]byte(in)); got != want {
+		if got := storeNamed([]byte(in), ""); got != want {
 			t.Errorf("storeNamed(%s) = %v, want %v", in, got, want)
 		}
 	}

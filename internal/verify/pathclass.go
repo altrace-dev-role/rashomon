@@ -252,3 +252,15 @@ func inSet(s string, words []string) bool {
 func inStore(p string) bool {
 	return strings.Contains("/"+path.Clean(p)+"/", "/.claude/rashomon/")
 }
+
+// underStore reports whether p, a path as a call named it (slashed), is
+// root, rashomon's store root, or under it once cleaned (D173). A root of
+// "" is no store.
+func underStore(p, root string) bool {
+	if root == "" || p == "" {
+		return false
+	}
+	p, r := path.Clean(p), path.Clean(slashed(root))
+	_, in := under(p, r)
+	return in || p == r
+}

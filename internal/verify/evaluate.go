@@ -93,7 +93,7 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
-	snap.Integrity = integrity(run, picked, writes, 0, at)
+	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)
 	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
 	return snap
 }

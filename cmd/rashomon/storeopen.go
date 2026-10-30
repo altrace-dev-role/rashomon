@@ -1,6 +1,11 @@
 package main
 
-import "github.com/altrace-dev-role/rashomon/internal/store"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
+)
 
 // openStoreForRead opens the store without creating one, and reports
 // ErrNoStore when there is nothing here.
@@ -29,4 +34,14 @@ func openStore() (*store.Store, error) {
 		return nil, err
 	}
 	return store.Open(root)
+}
+
+// storeExistsAt asks whether a root holds a store without opening one.
+// checkPaused, cmdPause and cmdResume all need to ask this about a root
+// before -- or instead of -- ever opening a *Store: opening CREATES a store,
+// and none of the three may do that as a side effect of a question about
+// recording state.
+func storeExistsAt(root string) bool {
+	_, err := os.Stat(filepath.Join(root, installMetaFile))
+	return err == nil
 }

@@ -58,7 +58,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	if seq == 0 {
 		return stopTurn{}, nil
 	}
-	pt := verify.Point{Kind: verify.PointStop, Seq: seq, SessionID: p.SessionID}
+	pt := verify.Point{Kind: verify.PointStop, Seq: seq, SessionID: p.SessionID, StoreRoot: st.Root()}
 	if d.PromptID != "" {
 		pt.PromptID = &d.PromptID
 	}
@@ -83,7 +83,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		in.ProjectKey = key
 	}
 	projectDir, managedDir := specDirs()
-	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir)
+	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
 
 	if writes {

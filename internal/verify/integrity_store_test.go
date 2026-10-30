@@ -3,6 +3,7 @@ package verify
 import (
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -33,4 +34,133 @@ func TestTF10_AnAgentWriteToTheStoreIsAnIntegrityEntry(t *testing.T) {
 		wantIntegrity(t, integrityOf(runOf(t, edit(1, p)), 0, 2), IntegrityCounts{})
 	}
 	wantIntegrity(t, integrityOf(r, 1, 4), IntegrityCounts{})
+}
+
+// storeTouchedAt reports whether integrity over r for the window (0, at],
+// with storeRoot, names a store_touched entry: the flag StoreWritten's trust
+// drop has to agree with.
+func storeTouchedAt(r *store.Run, storeRoot string, at int64) bool {
+	_, writes, _, _ := classify(r)
+	for _, e := range integrity(r, pickExecutions(r), writes, 0, at, storeRoot).Unresolved {
+		if e.Check == StoreTouched {
+			return true
+		}
+	}
+	return false
+}
+
+// TestST1s_StoreWrittenNamesTheStoreTouchedWrites (D173): StoreWritten, the
+// trust drop's read, and integrity's store_touched over the store root agree
+// on every write: a file tool's path or a shell call's named path under the
+// root once cleaned, or the root itself, at or before at, read either way;
+// not a sibling whose name only starts like the root's, a path that cleans
+// out of it, an MCP call, a write after at, or a read with no root. A root
+// inside the project, where the record names the path relative to the
+// project, matches on the path as the call named it. A write under the
+// project's .claude/rashomon/ is integrity's alone: the trust drop reads the
+// store root. A root under that segment gives a write there one entry, not
+// one from each check, and a write at or before from is none (D173d). A
+// clean path costs StoreWritten no allocation.
+func TestST1s_StoreWrittenNamesTheStoreTouchedWrites(t *testing.T) {
+	const root = "/home/u/.local/state/rashomon"
+	mcp := runOf(t, writeCall(1, root+"/spec-trust.json"))
+	mcp.Declarations[0].Shape.VerbClass = shape.VerbMCP
+	inProject := runOf(t, writeCall(1, "/repo/.state/rashomon/spec-trust.json"))
+	project := "/repo"
+	inProject.Declarations[0].Project = &project
+	later := runOf(t, edit(1, "pkg/a.go"), writeCall(3, root+"/spec-trust.key"))
+	for _, c := range []struct {
+		name string
+		r    *store.Run
+		root string
+		at   int64
+		want bool
+	}{
+		{"a Write under the root", runOf(t, writeCall(1, root+"/spec-trust.json")), root, 2, true},
+		{"the root itself", runOf(t, edit(1, root)), root, 2, true},
+		{"a shell write's second path", runOf(t, bashWrite(1, "/tmp/x", root+"/spec-trust.key")), root, 2, true},
+		{"a path through ..", runOf(t, writeCall(1, "/home/u/.local/state/x/../rashomon/spec-trust.json")), root, 2, true},
+		{"a root with a trailing slash", runOf(t, writeCall(1, root+"/spec-trust.json")), root + "/", 2, true},
+		{"a backslashed path and root", runOf(t, writeCall(1, `C:\Users\u\rashomon\k`)), `C:\Users\u\rashomon`, 2, true},
+		{"a root inside the project", inProject, "/repo/.state/rashomon", 2, true},
+		{"a write at at", later, root, 3, true},
+		{"a write after at", later, root, 2, false},
+		{"a path that cleans out of the root", runOf(t, writeCall(1, root+"/../x")), root, 2, false},
+		{"a sibling", runOf(t, writeCall(1, root+"x/spec-trust.json")), root, 2, false},
+		{"an MCP call", mcp, root, 2, false},
+		{"no root", runOf(t, writeCall(1, root+"/spec-trust.json")), "", 2, false},
+	} {
+		if got, named := StoreWritten(c.r, c.root, c.at), storeTouchedAt(c.r, c.root, c.at); got != c.want || named != c.want {
+			t.Errorf("%s: StoreWritten %v, store_touched %v; want %v", c.name, got, named, c.want)
+		}
+	}
+	if StoreWritten(nil, root, 2) {
+		t.Error("StoreWritten over no run: true")
+	}
+	local := runOf(t, edit(1, ".claude/rashomon/spec.json"))
+	if StoreWritten(local, root, 2) || !storeTouchedAt(local, root, 2) {
+		t.Errorf("the project's .claude/rashomon: StoreWritten %v, store_touched %v; want false, true",
+			StoreWritten(local, root, 2), storeTouchedAt(local, root, 2))
+	}
+	inside := runOf(t, writeCall(1, "/repo/.claude/rashomon/spec-trust.json"))
+	inside.Declarations[0].Project = &project
+	_, iw, _, _ := classify(inside)
+	if got := integrity(inside, pickExecutions(inside), iw, 0, 2, "/repo/.claude/rashomon").Unresolved; len(got) != 1 || got[0].Path != ".claude/rashomon/spec-trust.json" {
+		t.Errorf("a root under the project's .claude/rashomon: entries %+v, want one at .claude/rashomon/spec-trust.json", got)
+	}
+	past := runOf(t, writeCall(1, root+"/spec-trust.json"))
+	_, pw, _, _ := classify(past)
+	if got := integrity(past, pickExecutions(past), pw, 1, 2, root).Unresolved; len(got) != 0 {
+		t.Errorf("a root write at from: entries %+v, want none", got)
+	}
+	clean := runOf(t, edit(1, "pkg/a.go"), bashWrite(3, "/tmp/x"), writeCall(5, root+"/spec-trust.json"))
+	if n := testing.AllocsPerRun(20, func() { StoreWritten(clean, root, 6) }); n != 0 {
+		t.Errorf("StoreWritten over clean paths: %v allocs, want 0", n)
+	}
+}
+
+// TestST1v_TheStoreRootBitStandsForWithheldPaths (D173b, QA-2's blocking
+// item): at record scope v4, the default, the gate withholds a call's paths,
+// so the call's store-root bit decides. A Write or a shell write whose input
+// named the root is a store write for StoreWritten and a store_touched entry
+// with no path; a call that did not name it, or one after at, is neither.
+// Where the paths are recorded the bit is not read: a v5 call whose input
+// named the root and whose recorded path is elsewhere is neither.
+func TestST1v_TheStoreRootBitStandsForWithheldPaths(t *testing.T) {
+	const root = "/home/u/.local/state/rashomon"
+	mark := func(r *store.Run, named bool, scope string) *store.Run {
+		for i := range r.Declarations {
+			r.Declarations[i].StoreNamed = named
+			store.GateDeclaration(&r.Declarations[i], scope)
+		}
+		return r
+	}
+	late := mark(runOf(t, edit(1, "pkg/a.go"), writeCall(3, root+"/spec-trust.json")), false, store.RecordScopeV4)
+	late.Declarations[1].StoreNamed = true
+	for _, c := range []struct {
+		name string
+		r    *store.Run
+		at   int64
+		want bool
+	}{
+		{"a v4 Write that named the root", mark(runOf(t, writeCall(1, root+"/spec-trust.json")), true, store.RecordScopeV4), 2, true},
+		{"a v4 shell write that named it", mark(runOf(t, bashWrite(1, root+"/spec-trust.key")), true, store.RecordScopeV4), 2, true},
+		{"a v4 call that did not name it", mark(runOf(t, writeCall(1, "/tmp/x")), false, store.RecordScopeV4), 2, false},
+		{"a v4 call after at", late, 2, false},
+		{"that call at at", late, 3, true},
+		{"a v5 call whose path is elsewhere", mark(runOf(t, edit(1, "pkg/a.go")), true, store.RecordScopeV5), 2, false},
+	} {
+		if got, named := StoreWritten(c.r, root, c.at), storeTouchedAt(c.r, root, c.at); got != c.want || named != c.want {
+			t.Errorf("%s: StoreWritten %v, store_touched %v; want %v", c.name, got, named, c.want)
+		}
+	}
+	r := mark(runOf(t, writeCall(1, root+"/spec-trust.json")), true, store.RecordScopeV4)
+	if r.Declarations[0].FilePath != nil {
+		t.Fatalf("the v4 Write's file_path %q is recorded; the gate withholds it", *r.Declarations[0].FilePath)
+	}
+	_, writes, _, _ := classify(r)
+	got := integrity(r, pickExecutions(r), writes, 0, 2, root).Unresolved
+	if len(got) != 1 || got[0] != (IntegrityEntry{Check: StoreTouched, Seq: 1}) {
+		t.Errorf("the v4 Write's entries %+v, want one store_touched at seq 1 with no path", got)
+	}
 }

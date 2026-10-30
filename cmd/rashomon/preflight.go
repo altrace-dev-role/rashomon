@@ -8,6 +8,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -49,7 +50,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, id harnes
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now)
-	sp := hook.DiscoverSpec(p.CWD, env.ProjectDir, env.ManagedDir)
+	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
 	var idx *verify.ProjectIndex
 	if key := baseline.Key(p.CWD); key != "" {
 		idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
@@ -93,4 +94,13 @@ func printTurn(st *store.Store, stdout io.Writer, note steer.Output, c steer.Cli
 	}
 	_, _ = stdout.Write(b)
 	return nil
+}
+
+// preflightSpec is the spec the prompt's note reads, discovered as the steer
+// step and the Stop discover it: the trust bindings are read under the store
+// root only while the session has not written there by the run's last seq
+// (hook.TrustRoot, D203), so a session that could have forged its own
+// binding gets no trusted repository spec on the prompt path either.
+func preflightSpec(st *store.Store, run *store.Run, cwd, projectDir, managedDir string) *spec.Compiled {
+	return hook.DiscoverSpec(cwd, projectDir, managedDir, hook.TrustRoot(run, st.Root(), run.LastSeq()))
 }

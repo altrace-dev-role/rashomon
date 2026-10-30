@@ -1,6 +1,7 @@
 package disclose
 
 import (
+	"bytes"
 	"io"
 	"io/fs"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -163,7 +165,8 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*"} {
+		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*",
+		"." + spec.TrustFile + ".tmp-*", "." + spec.TrustKeyFile + ".tmp-*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -192,6 +195,18 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 		t.Fatal(err)
 	} else if err := tmp.Close(); err != nil {
 		t.Fatal(err)
+	}
+	// hook.WriteSpecBindings' two writes, which this package's tests cannot
+	// import: the trust key and the encoding signed under it, each through
+	// store.ReplaceFile.
+	key := bytes.Repeat([]byte{1}, spec.TrustKeyBytes)
+	if err := store.ReplaceFile(filepath.Join(root, spec.TrustKeyFile), key); err != nil {
+		t.Fatalf("store.ReplaceFile: %v", err)
+	}
+	if data, err := spec.EncodeBindings(&spec.Bindings{}, key); err != nil {
+		t.Fatalf("spec.EncodeBindings: %v", err)
+	} else if err := store.ReplaceFile(filepath.Join(root, spec.TrustFile), data); err != nil {
+		t.Fatalf("store.ReplaceFile: %v", err)
 	}
 
 	inv, err := Default()
@@ -360,6 +375,16 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// ensureKey's (learn/key); learnFiles in the inventory, learn's
 		// tree in purge's plan, TestTRU23_LearnPathsAreInTheInventory.
 		{"learn", 4},
+		// Pinned 2026-10-29 (SPEC-TRUST1): spec writes no file (VER-37f,
+		// the standard library alone), and internal/hook/specdiscover.go's
+		// WriteSpecBindings is hook's one, a store.ReplaceFile of
+		// spec-trust.json, the trust bindings `rashomon spec trust` writes
+		// (specFiles in the inventory, topFiles in purge's plan).
+		// Moved 2026-10-29 (D173) to 2: specTrustKey's store.ReplaceFile of
+		// spec-trust.key, the 32-byte key the bindings are signed under,
+		// made on the first trust (specFiles, topFiles).
+		{"spec", 0},
+		{"hook", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

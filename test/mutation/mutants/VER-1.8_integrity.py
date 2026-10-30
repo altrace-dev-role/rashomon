@@ -99,9 +99,9 @@ m("VER-1.8 the marker is not a sort key", I,
 
 # Part two: Evaluate's wiring (PF-IV3, D39, D40) and the findings row (Gate B F1).
 E = "internal/verify/evaluate.go"
-m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, picked, writes, 0, at)\n", "", "TestINT10_")
+m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)\n", "", "TestINT10_")
 m("VER-1.8 Evaluate's window starts at the point", E,
-  "integrity(run, picked, writes, 0, at)", "integrity(run, picked, writes, at, at)", "TestINT10_")
+  "integrity(run, picked, writes, 0, at, pt.StoreRoot)", "integrity(run, picked, writes, at, at, pt.StoreRoot)", "TestINT10_")
 m("VER-1.8 RecordGreen ignores integrity", E, "\tif unresolved > 0 {\n\t\treturn false, nil\n\t}\n", "", "TestINT10_")
 m("VER-1.8 the findings row is not taken", E,
   "\tdefault:\n\t\trow = RowFindings\n", "\tdefault:\n\t\trow = RowVerified\n", "TestINT10_")
@@ -114,7 +114,7 @@ m("VER-1.8 the count sentence is on every row", E, "\tcase row == RowFindings:\n
 # equal to report.DetectTestBending's on any record; its rows are each built
 # where a break would part the two.
 m("VER-1.8r Evaluate hands integrity no pick", E,
-  "integrity(run, picked, writes, 0, at)", "integrity(run, nil, writes, 0, at)", "TestINT15_")
+  "integrity(run, picked, writes, 0, at, pt.StoreRoot)", "integrity(run, nil, writes, 0, at, pt.StoreRoot)", "TestINT15_")
 m("VER-1.8r verify imports report again", I,
   '\t"github.com/altrace-dev-role/rashomon/internal/store"\n',
   '\t_ "github.com/altrace-dev-role/rashomon/internal/report"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n', "TestRES2d_")

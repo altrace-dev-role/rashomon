@@ -57,4 +57,4 @@ m("VER-5.7 the plain store name is not scanned", H,
   '\treturn bytes.Contains(input, []byte(".claude/rashomon")) || ', "\treturn ", "TestSTR58_")
 m("VER-5.7 the escaped store name is not scanned", H,
   " || bytes.Contains(input, []byte(`.claude\\/rashomon`))\n", "\n", "TestIV1a_")
-m("VER-5.7 the post never reads the input", P, ", storeNamed(pl.ToolInput)\n", ", false\n", "TestSTR58_")
+m("VER-5.7 the post never reads the input", P, ", storeNamed(pl.ToolInput, p.st.Root())\n", ", false\n", "TestSTR58_")

@@ -31,6 +31,11 @@ type Point struct {
 	// at a point that read none, and over MaxTreeFiles (P5A, D140). Not
 	// encoded: the checkpoint keeps the states it decided, not the shas.
 	Tree map[string]*string `json:"-"`
+	// StoreRoot is rashomon's store root, which the caller knows (D173):
+	// integrity's store_touched also names a write the session made under
+	// it, and the raise of one names the store. "" names no store. Not
+	// encoded, as Tree is not.
+	StoreRoot string `json:"-"`
 }
 
 // Point kinds (archive 20.2.4: stop|subagent_stop|subtask|commit|push|pr|query).
@@ -234,8 +239,10 @@ type IntegrityEntry struct {
 	Marker string        `json:"marker"` // closed marker id, e.g. go.t_skip
 	Seq    int64         `json:"seq"`
 	// Path is the path a store_touched entry's call targeted, as the record
-	// names it (project-relative under the project); "" and left out on
-	// every other check.
+	// names it (project-relative under the project, as named elsewhere, so
+	// absolute for a write under a store root outside it, D173); "" on a
+	// store_touched entry from a call's store-root bit where the record
+	// withholds its paths (D173b), and "" and left out on every other check.
 	Path string `json:"path,omitempty"`
 }
 

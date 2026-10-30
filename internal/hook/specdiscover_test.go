@@ -231,7 +231,7 @@ func TestMS5h_HeldOutReadsTheSpec(t *testing.T) {
 		s.mkdir(".git")
 		s.put(s.base, doc)
 		p := &Post{st: st, sessionID: session, promptID: "p1", permissionMode: "default", event: FailureEvent, cwd: s.base}
-		if p.sp = DiscoverSpec(p.cwd, "", ""); p.sp == nil || len(p.sp.Sources) != 1 {
+		if p.sp = DiscoverSpec(p.cwd, "", "", ""); p.sp == nil || len(p.sp.Sources) != 1 {
 			t.Fatalf("DiscoverSpec: %+v; want the one spec", p.sp)
 		}
 		return p.contextOf(stEnv(steer.DisclosureVersion), verify.SteerView{ProjectRoot: s.base}).Holdout

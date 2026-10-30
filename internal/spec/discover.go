@@ -156,8 +156,17 @@ func within(p, root string) bool {
 // and raises one flag. The task file (README 3.2) is TaskFile beside the
 // repository spec that was read or, with none, under the farthest
 // candidate's directory, the project root; a task counts as a file that
-// applies, and its failures are discovery.task's.
+// applies, and its failures are discovery.task's. The repository spec is
+// untrusted: Discover is DiscoverBound with no binding.
 func Discover(fsys FS, repoCandidates []string, managedPath string) (*Compiled, error) {
+	return DiscoverBound(fsys, repoCandidates, managedPath, nil)
+}
+
+// DiscoverBound is Discover with the user's trust bindings (card
+// SPEC-TRUST1): the repository spec it reads is Trusted when bound reports a
+// binding of its path and digest, else Untrusted. bound is called at most
+// once, and only when a repository spec was read; nil binds nothing.
+func DiscoverBound(fsys FS, repoCandidates []string, managedPath string, bound func(path, digest string) bool) (*Compiled, error) {
 	var d discovery
 	if managedPath != "" {
 		if err := d.managed(fsys, managedPath); err != nil {
@@ -176,6 +185,11 @@ func Discover(fsys FS, repoCandidates []string, managedPath string) (*Compiled, 
 		near = path
 		d.add(path, data, Untrusted)
 		break
+	}
+	if n := len(d.c.Sources); n > 0 && near != "" && bound != nil {
+		if s := &d.c.Sources[n-1]; s.Path == near && bound(near, s.Digest) {
+			s.Trust = Trusted
+		}
 	}
 	if near == "" && len(repoCandidates) > 0 {
 		near = repoCandidates[len(repoCandidates)-1]
