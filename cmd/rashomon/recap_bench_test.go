@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -141,10 +142,16 @@ func BenchmarkRecapPending(b *testing.B) {
 
 // benchRecapPreflight is BenchmarkRecapPending/preflight: the 10-call
 // session, consented to notes, and a prompt naming internal/verify/stop.go
-// of a project that holds it.
+// of a project that holds it. The run is attended and out of the holdout
+// whatever the shell holds: CI set makes the catch-up unattended, which
+// suppresses the note, and each run's fresh store draws the holdout again.
+// AI_AGENT is cleared so a runner and a Claude Code shell measure one path.
 func benchRecapPreflight(b *testing.B) {
 	root, cfg := b.TempDir(), b.TempDir()
 	benchSetenv(b, root, cfg)
+	b.Setenv("CI", "")
+	b.Setenv("AI_AGENT", "")
+	b.Setenv(hook.EnvHoldout, "off")
 	installID, turn := benchRecapStore(b, root, cfg, 10)
 	if err := store.WriteSteerDisclosureMarker(root, steer.DisclosureVersion); err != nil {
 		b.Fatal(err)
