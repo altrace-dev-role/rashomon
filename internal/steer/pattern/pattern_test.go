@@ -12,6 +12,8 @@ var frozenOrder = []ID{
 	"learned-fact", "platform-rule", "integrity", "identical-retry", "cred-spray",
 	"ordering-rule", "agent-interference", "subagent-claim", "model-switch",
 	"claim-vs-record", "masked-status", "sequence-risk",
+	// The seventeenth, by ruling after the spec's sixteen (card STALE-NUDGE1, D164).
+	"stale-evidence",
 }
 
 func sameIDs(got, want []ID) bool {
@@ -38,7 +40,7 @@ func sameStrings(got, want []string) bool {
 	return true
 }
 
-// TestDEL22_PatternIDSetEqualsTheFrozenList pins the sixteen ids, their
+// TestDEL22_PatternIDSetEqualsTheFrozenList pins the seventeen ids, their
 // order, and the closed kind list under each of the six that have one (the
 // frozen-set paragraph, decided 2026-10-13). A reorder, an addition, a
 // removal, a renamed id or a kind typo all fail here first.
@@ -106,6 +108,7 @@ func TestPriority_StepEightValues(t *testing.T) {
 		SubtaskGate:        90,
 		ClaimVsRecord:      85,
 		RegressionLocation: 80,
+		StaleEvidence:      78,
 		DeclaredFact:       75,
 		LearnedFact:        70,
 		CredSpray:          65,

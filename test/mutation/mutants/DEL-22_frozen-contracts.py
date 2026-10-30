@@ -2,8 +2,8 @@
 # gate Reason vocabulary are the two lists the row names; a dropped id, a
 # dropped reason or two reasons sharing a string is the whole regression.
 m("DEL-22 the frozen pattern set loses masked-status", "internal/steer/pattern/pattern.go",
-  "\t\tClaimVsRecord, MaskedStatus, SequenceRisk,\n",
-  "\t\tClaimVsRecord, SequenceRisk,\n", "TestDEL22_")
+  "\t\tClaimVsRecord, MaskedStatus, SequenceRisk, StaleEvidence,\n",
+  "\t\tClaimVsRecord, SequenceRisk, StaleEvidence,\n", "TestDEL22_")
 m("DEL-22 a gate reason is dropped from the vocabulary", "internal/verify/state.go",
   "\tBudget, OK,\n}", "\tOK,\n}", "TestDEL22_")
 # Two gate reasons sharing a string is no longer a mutant: reasonState in

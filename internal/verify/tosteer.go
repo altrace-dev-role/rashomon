@@ -102,10 +102,11 @@ type MappingError struct {
 
 func (e *MappingError) Error() string { return "verify: " + string(e.Pattern) + ": " + e.Reason }
 
-// raisedByVerify reports the seven patterns VERIFY raises (tech 58).
+// raisedByVerify reports the eight patterns VERIFY raises: tech 58's seven
+// and stale-evidence (card STALE-NUDGE1).
 func raisedByVerify(id pattern.ID) bool {
 	switch id {
-	case pattern.ClaimVsRecord, pattern.SubagentClaim, pattern.RegressionLocation,
+	case pattern.ClaimVsRecord, pattern.SubagentClaim, pattern.RegressionLocation, pattern.StaleEvidence,
 		pattern.SubtaskGate, pattern.PlatformRule, pattern.OrderingRule, pattern.Integrity:
 		return true
 	}
@@ -140,7 +141,7 @@ func factsFit(f Finding) bool {
 	switch f.Pattern {
 	case pattern.ClaimVsRecord, pattern.SubagentClaim:
 		return c && !r && !i
-	case pattern.RegressionLocation, pattern.SubtaskGate:
+	case pattern.RegressionLocation, pattern.StaleEvidence, pattern.SubtaskGate:
 		return g && !c && !r && !i
 	case pattern.PlatformRule, pattern.OrderingRule:
 		return r && !g && !c && !i
@@ -350,7 +351,7 @@ func kindFor(f Finding, at Point) (steer.Kind, string) {
 		if f.Rule.Kind == spec.ProtectPath && !f.Rule.Pragma {
 			return "frozen-path", ""
 		}
-	case pattern.RegressionLocation:
+	case pattern.RegressionLocation, pattern.StaleEvidence:
 		return "", ""
 	}
 	return "", "a rule of another pattern's kind"

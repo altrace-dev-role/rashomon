@@ -45,7 +45,7 @@ type PreDecision struct {
 // render.Message, which only render.New builds, so a Finding cannot carry
 // text that skipped the renderer's checks.
 type Finding struct {
-	// Pattern is which of the sixteen frozen patterns produced this
+	// Pattern is which of the seventeen frozen patterns produced this
 	// Finding.
 	Pattern PatternID
 	// Kind is Pattern's sub-category, or empty if Pattern has none.

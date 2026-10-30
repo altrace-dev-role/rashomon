@@ -70,7 +70,8 @@ m("ST-2.3 a red with no earlier green is a candidate", V,
   "g.Reason != FailedExit || g.LastGreen == nil || g.LastRun == nil", "g.Reason != FailedExit || g.LastRun == nil",
   "TestSTR43d_")
 m("ST-2.3 the green run's own writes are between", V,
-  "return writes[i].Seq > lo })", "return writes[i].Seq >= lo })", "TestSTR43b_")
+  "return writes[i].Seq > lo }); i < len(writes) && writes[i].Seq < hi; i++ {",
+  "return writes[i].Seq >= lo }); i < len(writes) && writes[i].Seq < hi; i++ {", "TestSTR43b_")
 m("ST-2.3 the red run's own writes are between", V,
   "i < len(writes) && writes[i].Seq < hi; i++", "i < len(writes) && writes[i].Seq <= hi; i++", "TestSTR43b_")
 m("ST-2.3 a red with nothing written between locates", V,
@@ -78,9 +79,11 @@ m("ST-2.3 a red with nothing written between locates", V,
 m("ST-2.3 an irrelevant write counts as between", V,
   "\t\tif !Relevant(w.Class) {\n\t\t\tcontinue\n\t\t}\n", "", "TestSTR43c_")
 m("ST-2.3 a path written twice is named twice", V,
-  "\t\tif seen[p] {\n\t\t\tcontinue\n\t\t}\n", "", "TestSTR43b_")
+  "\t\t\tcontinue\n\t\t}\n\t\tp := PathSlot(*w.Path)\n\t\tif seen[p] {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\t\tcontinue\n\t\t}\n\t\tp := PathSlot(*w.Path)\n", "TestSTR43b_")
 m("ST-2.3 a path outside the slot charset is named", V,
-  "\t\tif p.Valid() && len(f.Paths) < MaxPaths {\n", "\t\tif len(f.Paths) < MaxPaths {\n", "TestSTR43b_")
+  "\t\tif p.Valid() && len(f.Paths) < MaxPaths {\n\t\t\tf.Paths = append(f.Paths, p)\n\t\t} else {\n\t\t\tf.PathsOmitted++\n\t\t}\n\t}\n}\n\n// programOf",
+  "\t\tif len(f.Paths) < MaxPaths {\n\t\t\tf.Paths = append(f.Paths, p)\n\t\t} else {\n\t\t\tf.PathsOmitted++\n\t\t}\n\t}\n}\n\n// programOf", "TestSTR43b_")
 m("ST-2.3 a program outside its charset is kept", V,
   "\t\tif p := Program(programOf(runs, last)); p.Valid() {\n", "\t\tif p := Program(programOf(runs, last)); true {\n",
   "TestST_ProgramFallsBackToTheKind")
@@ -89,11 +92,12 @@ m("ST-2.3 other agents counted as the point's own", V,
 
 # The renderer (R7, D85).
 m("ST-2.3 the degraded row is never chosen", V,
-  "\t\tif !errors.Is(err, slot.ErrNoPathsLeft) {\n\t\t\treturn m\n\t\t}\n\t}\n",
-  "\t\tif !errors.Is(err, slot.ErrNoPathsLeft) {\n\t\t\treturn m\n\t\t}\n\t}\n\tif true {\n\t\treturn render.Message{}\n\t}\n",
+  "\t\t}\n\t}\n\tm, _ := render.New(pattern.RegressionLocation, ",
+  "\t\t}\n\t}\n\tif true {\n\t\treturn render.Message{}\n\t}\n\tm, _ := render.New(pattern.RegressionLocation, ",
   "TestSTR43f_")
 m("ST-2.3 every named path left out refuses the note", V,
-  "\t\tif !errors.Is(err, slot.ErrNoPathsLeft) {\n\t\t\treturn m\n\t\t}\n", "\t\t_ = errors.Is\n\t\treturn m\n",
+  "Paths: slot.NewPathList(paths, unlisted)})\n\t\tif !errors.Is(err, slot.ErrNoPathsLeft) {\n\t\t\treturn m\n\t\t}\n",
+  "Paths: slot.NewPathList(paths, unlisted)})\n\t\t_ = errors.Is\n\t\treturn m\n",
   "TestSTR43j_")
 m("ST-2.3 minutes over the slot's range are clamped", V,
   "\tminutes := slot.Minutes(max(0, (red-green)/60_000))\n",

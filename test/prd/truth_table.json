@@ -26,6 +26,14 @@
         {
           "file": "internal/verify/evaluate_test.go",
           "symbol": "TestVER46_RequiredFollowsTheIndex"
+        },
+        {
+          "file": "internal/hook/steerstep.go",
+          "symbol": "staleWrite"
+        },
+        {
+          "file": "internal/hook/steerstep_stale_test.go",
+          "symbol": "TestIP1_PostJudgesUnderTheProjectIndex"
         }
       ],
       "id": "PF-PG1",
@@ -50,8 +58,7 @@
       ],
       "missing": [
         "spec-declared gates into gateStates (DECLARED-GATES1, proposed): evaluate reads the spec only into SpecInfo and builds every gate with source learned",
-        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom",
-        "the PostToolUse steer step passes a nil index (steerstep.go judge), so every gate reads required there, against index.go's comment"
+        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom"
       ],
       "planned_pr": "",
       "session_proof": "",
