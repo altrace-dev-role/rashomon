@@ -22,7 +22,7 @@ type ids = map[string]int
 // writes, as Evaluate will call it.
 func integrityOf(r *store.Run, from, at int64) Integrity {
 	_, writes, _, _ := classify(r)
-	return integrity(r, pickExecutions(r), writes, from, at)
+	return integrity(r, pickExecutions(r), writes, from, at, "")
 }
 
 // labelTest gives declaration i the test-file label the hook derives for a
@@ -225,7 +225,7 @@ func TestINT6_UnknownMarkerAndNilMarksAreIgnored(t *testing.T) {
 		}
 	})
 	t.Run("a nil run", func(t *testing.T) {
-		wantIntegrity(t, integrity(nil, nil, nil, 0, 10), IntegrityCounts{})
+		wantIntegrity(t, integrity(nil, nil, nil, 0, 10, ""), IntegrityCounts{})
 	})
 }
 
@@ -259,7 +259,7 @@ func int8Run(t *testing.T) *store.Run {
 func TestINT8_RecordOrderDoesNotChangeTheOutput(t *testing.T) {
 	r := int8Run(t)
 	_, writes, _, _ := classify(r)
-	got := integrity(r, pickExecutions(r), writes, 0, 12)
+	got := integrity(r, pickExecutions(r), writes, 0, 12, "")
 	wantIntegrity(t, got, IntegrityCounts{TestsDelta: -2, SkipsAdded: 2, SuppressionsAdded: 2},
 		IntegrityEntry{Check: TestsOnlyThenGreen, Seq: 5},
 		IntegrityEntry{Check: TestRemoved, Marker: "go.test_def", Seq: 7},
@@ -278,7 +278,7 @@ func TestINT8_RecordOrderDoesNotChangeTheOutput(t *testing.T) {
 		rng.Shuffle(len(writes), func(i, j int) { writes[i], writes[j] = writes[j], writes[i] })
 		// picked points into r.Executions, which the shuffle moves: it is
 		// picked again over the shuffled record.
-		b, err := json.Marshal(integrity(r, pickExecutions(r), writes, 0, 12))
+		b, err := json.Marshal(integrity(r, pickExecutions(r), writes, 0, 12, ""))
 		if err != nil || !bytes.Equal(b, want) {
 			t.Fatalf("shuffle %d: %s, want %s", i, b, want)
 		}
@@ -457,13 +457,13 @@ func BenchmarkIntegrity(b *testing.B) {
 	r, at := benchIntegrityRun(b)
 	_, writes, _, _ := classify(r)
 	picked := pickExecutions(r)
-	if got := integrity(r, picked, writes, 0, at); len(got.Unresolved) != 3 || got.Counts.TestsDelta != 50 {
+	if got := integrity(r, picked, writes, 0, at, ""); len(got.Unresolved) != 3 || got.Counts.TestsDelta != 50 {
 		b.Fatalf("the fixture gives %+v, want three entries (the pair and two paths' assertions) and TestsDelta 50", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		integrity(r, picked, writes, 0, at)
+		integrity(r, picked, writes, 0, at, "")
 	}
 	b.ReportMetric(float64(len(writes)), "writes")
 }

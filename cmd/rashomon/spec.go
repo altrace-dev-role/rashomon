@@ -55,7 +55,16 @@ func cmdSpec(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	b, err := spec.ReadBindings(spec.OSFS{}, filepath.Join(st.Root(), spec.TrustFile))
+	b, err := spec.ReadBindings(spec.OSFS{}, st.Root())
+	if errors.Is(err, spec.ErrBindingsUnsigned) {
+		// Something other than this verb wrote the file (D173): it binds
+		// nothing, which discovery already reads it as, and a trust
+		// replaces it.
+		if _, err := fmt.Fprintf(stdout, "%s does not carry this store's MAC, so it trusts nothing: something other than rashomon spec trust wrote it\n", spec.TrustFile); err != nil {
+			return err
+		}
+		b, err = &spec.Bindings{}, nil
+	}
 	if err != nil {
 		return err
 	}
@@ -108,11 +117,12 @@ func specPath(args []string) (string, error) {
 // terminal, never stdout or stdin, and binds it only when the digest's first
 // 8 characters are typed back there (PRD PF-SP2; design spec 5.3): an agent's
 // shell has no terminal, and under an agent signal the verb does not ask
-// (tech spec 7.2.4, Trust grant). What the repository wrote is quoted, so its
-// bytes never reach the terminal raw.
+// (tech spec 7.2.4, Trust grant). What the repository wrote is quoted, the
+// spec's path and project among it (their directory names are the
+// repository's), so its bytes never reach the terminal raw.
 func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; trust a spec in your own terminal", s)
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Trust a spec in your own terminal.", s)
 	}
 	data, err := spec.OSFS{}.ReadFile(path)
 	if err != nil {
@@ -128,7 +138,7 @@ func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	}
 	defer closeTTY()
 	project, typed := hook.SpecProject(path), strings.TrimPrefix(digest, spec.DigestPrefix)[:8]
-	fmt.Fprintf(out, "%s in %s\n  digest %s  now untrusted: flags to you only\n  once trusted, these count:\n", path, project, digest)
+	fmt.Fprintf(out, "%q in %q\n  digest %s  now untrusted: flags to you only\n  once trusted, these count:\n", path, project, digest)
 	for _, g := range f.Gates {
 		fmt.Fprintf(out, "    gate  %q  %q\n", g.ID, g.Argv)
 	}

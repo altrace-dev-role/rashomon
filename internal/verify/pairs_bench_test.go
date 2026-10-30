@@ -43,13 +43,13 @@ func BenchmarkPairs(b *testing.B) {
 	r := benchPairsRun(b)
 	_, writes, _, _ := classify(r)
 	picked := pickExecutions(r)
-	if got := integrity(r, picked, writes, 0, benchPairsAt); len(got.Unresolved) != 10 {
+	if got := integrity(r, picked, writes, 0, benchPairsAt, ""); len(got.Unresolved) != 10 {
 		b.Fatalf("the fixture gives %d unresolved, want the ten pairs", len(got.Unresolved))
 	}
 	b.Run("ten_6000", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			integrity(r, picked, writes, 0, benchPairsAt)
+			integrity(r, picked, writes, 0, benchPairsAt, "")
 		}
 	})
 }

@@ -738,10 +738,10 @@ func TestINT19c_IntegrityBuildsNoDeclaredSetOnPairs(t *testing.T) {
 	r := benchPairsRun(t)
 	_, writes, _, _ := classify(r)
 	picked := pickExecutions(r)
-	if got := integrity(r, picked, writes, 0, benchPairsAt); len(got.Unresolved) != 10 {
+	if got := integrity(r, picked, writes, 0, benchPairsAt, ""); len(got.Unresolved) != 10 {
 		t.Fatalf("integrity gives %d unresolved, want the ten pairs", len(got.Unresolved))
 	}
-	n := testing.AllocsPerRun(20, func() { integrity(r, picked, writes, 0, benchPairsAt) })
+	n := testing.AllocsPerRun(20, func() { integrity(r, picked, writes, 0, benchPairsAt, "") })
 	if n > measured+8 {
 		t.Errorf("integrity allocates %v on the ten-pair record, want at most %d", n, measured+8)
 	}

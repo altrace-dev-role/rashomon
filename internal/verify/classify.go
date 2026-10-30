@@ -69,6 +69,10 @@ type write struct {
 	// write names, as the call left it (ContentSHA256); nil where it has
 	// none, and for every other write (P5A).
 	SHA *string
+	// raw is the path as the call named it, slashed, before relativise:
+	// what the store root is matched against (D173), so a store root inside
+	// the project still matches. "" for an unnamed write.
+	raw string
 }
 
 // classify turns a run's calls into the two things the gate state reads: the
@@ -268,11 +272,13 @@ func inferKinds(run *store.Run, picked map[string]*store.Execution, runs []gateR
 }
 
 // appendWrites adds d's writes, and its seq to unnamed where it may have
-// written a path the record cannot name.
+// written a path the record cannot name. The paths it names are
+// writeTargets'.
 func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]write, []int64) {
+	file, shell := writeTargets(d)
 	named := func(p string) {
 		rel := relativise(p, d.Project, d.CWD)
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName})
+		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, raw: slashed(p), Class: ClassOf(rel), Tool: d.ToolName})
 	}
 	blind := func() {
 		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Tool: d.ToolName})
@@ -282,13 +288,13 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 	case d.Shape.VerbClass == shape.VerbMCP:
 		blind()
 	case d.ToolName != "Bash" && d.Shape.VerbClass == shape.VerbWrite:
-		if d.FilePath == nil {
+		if file == nil {
 			blind()
 		} else {
-			named(*d.FilePath)
+			named(*file)
 		}
-	case len(d.WrittenPaths) > 0:
-		for _, p := range d.WrittenPaths {
+	case len(shell) > 0:
+		for _, p := range shell {
 			named(p)
 		}
 		if d.WrittenPathsComplete == nil || !*d.WrittenPathsComplete {
@@ -298,6 +304,21 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 		blind()
 	}
 	return writes, unnamed
+}
+
+// writeTargets is the paths d names as written, as the call named them: a
+// file tool's FilePath, or a shell call's WrittenPaths, and neither for an
+// MCP call. appendWrites records them as named writes and StoreWritten
+// matches them against the store root, so the trust drop and integrity read
+// the same writes (D173). It allocates nothing.
+func writeTargets(d *store.Declaration) (file *string, shell []string) {
+	switch {
+	case d.Shape.VerbClass == shape.VerbMCP:
+		return nil, nil
+	case d.ToolName != "Bash" && d.Shape.VerbClass == shape.VerbWrite:
+		return d.FilePath, nil
+	}
+	return nil, d.WrittenPaths
 }
 
 // hashed reports a declaration whose post hashes the file it names (P5A): a

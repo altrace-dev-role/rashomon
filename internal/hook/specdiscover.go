@@ -1,12 +1,14 @@
 package hook
 
 import (
+	"crypto/rand"
 	"os"
 	"path/filepath"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // errNoCWD is the flag of a call whose payload names no cwd: no spec, never
@@ -18,8 +20,8 @@ const errNoCWD = "spec: the payload names no cwd"
 // names, and the managed spec at managedDir/rashomon/spec.json ("" for none).
 // The repository spec is trusted when the bindings file under storeRoot
 // names its project, path and digest (card SPEC-TRUST1); that file is read
-// only when a repository spec was, and an unreadable one, or storeRoot "",
-// binds nothing. It is nil when nothing applies. An empty cwd or an I/O error
+// only when a repository spec was, and an unreadable or unsigned one (D173),
+// or storeRoot "", binds nothing. It is nil when nothing applies. An empty cwd or an I/O error
 // is no spec and one flag, spec.Unreadable.
 func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled {
 	if cwd == "" {
@@ -33,7 +35,7 @@ func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled 
 		if storeRoot == "" {
 			return false
 		}
-		b, err := spec.ReadBindings(spec.OSFS{}, filepath.Join(storeRoot, spec.TrustFile))
+		b, err := spec.ReadBindings(spec.OSFS{}, storeRoot)
 		return err == nil && b.Holds(SpecProject(path), path, digest)
 	}
 	sp, err := spec.DiscoverBound(spec.OSFS{}, SpecLocations(cwd, projectDir), managed, bound)
@@ -43,16 +45,52 @@ func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled 
 	return sp
 }
 
+// TrustRoot is the store root DiscoverSpec reads trust bindings under for a
+// point at seq at of run: storeRoot, or "" once the session wrote under it
+// (D173), so for the rest of a session that could have written its own
+// binding, no repository spec reads as trusted. The steer step and the Stop
+// read it between reading the run and discovering the spec.
+func TrustRoot(run *store.Run, storeRoot string, at int64) string {
+	if verify.StoreWritten(run, storeRoot, at) {
+		return ""
+	}
+	return storeRoot
+}
+
 // WriteSpecBindings writes b as the bindings file under storeRoot, the one
-// DiscoverSpec reads (store.ReplaceFile: 0600, renamed over the old one).
-// An encoding spec.EncodeBindings refuses, over spec.MaxTrustBytes, writes
-// nothing.
+// DiscoverSpec reads (store.ReplaceFile: 0600, renamed over the old one),
+// signed under the store's trust key, which it makes on the first binding
+// (specTrustKey). Only the verb calls it. An encoding spec.EncodeBindings
+// refuses, over spec.MaxTrustBytes, writes nothing.
 func WriteSpecBindings(storeRoot string, b *spec.Bindings) error {
-	data, err := spec.EncodeBindings(b)
+	key, err := specTrustKey(storeRoot)
+	if err != nil {
+		return err
+	}
+	data, err := spec.EncodeBindings(b, key)
 	if err != nil {
 		return err
 	}
 	return store.ReplaceFile(filepath.Join(storeRoot, spec.TrustFile), data)
+}
+
+// specTrustKey is the store's trust key, spec.TrustKeyBytes random bytes at
+// spec.TrustKeyFile (0600), learn's ensureKey at the store root: read, or
+// made when absent or of another length, which leaves any bindings signed
+// under the old one unsigned.
+func specTrustKey(storeRoot string) ([]byte, error) {
+	path := filepath.Join(storeRoot, spec.TrustKeyFile)
+	if b, err := os.ReadFile(path); err == nil && len(b) == spec.TrustKeyBytes {
+		return b, nil
+	}
+	key := make([]byte, spec.TrustKeyBytes)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	if err := store.ReplaceFile(path, key); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // SpecLocations is the repository spec candidates for cwd: spec.Locations
