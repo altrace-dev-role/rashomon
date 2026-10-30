@@ -23,7 +23,7 @@ func hashedEdit(seq int64, path, sha string) call {
 // r, with tree as the point's.
 func treeAt(t *testing.T, r *store.Run, tree map[string]*string) (Snapshot, GateState, []Obligation) {
 	t.Helper()
-	snap, obs := EvaluateWithObligations(r, nil, nil, Point{Kind: PointStop, Seq: 100, SessionID: "s1", Tree: tree}, time.Time{})
+	snap, obs := EvaluateWithObligations(r, nil, nil, nil, Point{Kind: PointStop, Seq: 100, SessionID: "s1", Tree: tree}, time.Time{})
 	return snap, one(t, snap.Gates), obs
 }
 

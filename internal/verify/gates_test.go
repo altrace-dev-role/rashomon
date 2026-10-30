@@ -421,12 +421,22 @@ func TestVER17_WritersAreCapped(t *testing.T) {
 	}
 }
 
-// encodedUnderShuffles is gateStates' JSON for one order of its inputs, then
-// checked byte-identical over 100 shuffles of runs, writes and unnamed.
-func encodedUnderShuffles(t *testing.T, r *store.Run, at int64) []byte {
+// encodedUnderShuffles is gateStates' JSON for one order of its inputs, with
+// dgs' rows joined (withDeclared) where any is given, then checked
+// byte-identical over 100 shuffles of runs, writes, unnamed and the declared
+// gates' candidate runs.
+func encodedUnderShuffles(t *testing.T, r *store.Run, at int64, dgs ...declaredGate) []byte {
 	t.Helper()
 	runs, writes, unnamed, _ := classify(r)
-	want, err := json.Marshal(gateStates(runs, writes, unnamed, at, nil))
+	cands := lineRuns(r, pickExecutions(r))
+	rows := func() []GateState {
+		g := gateStates(runs, writes, unnamed, at, nil)
+		if len(dgs) > 0 {
+			g = withDeclared(g, dgs, cands, runs, writes, unnamed, at, nil)
+		}
+		return g
+	}
+	want, err := json.Marshal(rows())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +445,8 @@ func encodedUnderShuffles(t *testing.T, r *store.Run, at int64) []byte {
 		rng.Shuffle(len(runs), func(i, j int) { runs[i], runs[j] = runs[j], runs[i] })
 		rng.Shuffle(len(writes), func(i, j int) { writes[i], writes[j] = writes[j], writes[i] })
 		rng.Shuffle(len(unnamed), func(i, j int) { unnamed[i], unnamed[j] = unnamed[j], unnamed[i] })
-		got, err := json.Marshal(gateStates(runs, writes, unnamed, at, nil))
+		rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
+		got, err := json.Marshal(rows())
 		if err != nil || !bytes.Equal(got, want) {
 			t.Fatalf("shuffle %d: %s, want %s", i, got, want)
 		}
@@ -457,6 +468,19 @@ func TestVER18_SortedAndOrderIndependent(t *testing.T) {
 	if w := got[1].LastWrite; w == nil || w.Seq != 13 || str(w.Path) != "pkg/d.go" {
 		t.Fatalf("LastWrite %+v, want pkg/d.go at 13", w)
 	}
+	// A declared gate over the test runner absorbs its family, and one no run
+	// matched reads Absent with the writes counted: the same bytes whatever
+	// the order (PRD PG3).
+	unit := declaredGate{id: "spec:unit", kind: kindTest, source: sourceDeclared, trust: "trusted", required: true, runners: map[string]bool{"r:go-test": true}, location: "d:repo"}
+	lint := declaredGate{id: "spec:lint", kind: "lint", source: sourceDeclared, trust: "trusted", required: true, lines: map[string]bool{"no-such-line": true}, location: "d:repo"}
+	var rows []GateState
+	if err := json.Unmarshal(encodedUnderShuffles(t, r, 14, unit, lint), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0].Gate != "learned:build:r:make-relea@d:repo" || rows[1].Gate != "spec:lint" || rows[1].State != Absent ||
+		rows[1].WritesSinceGreen != 4 || rows[2].Gate != "spec:unit" || rows[2].Family != familyDeclared || rows[2].State != Red {
+		t.Fatalf("rows %+v, want the build gate, spec:lint absent with four writes, spec:unit red", rows)
+	}
 }
 
 func TestVER18c_OneRunnerInTwoLocationsIsTwoGates(t *testing.T) {
@@ -476,6 +500,17 @@ func TestVER18c_OneRunnerInTwoLocationsIsTwoGates(t *testing.T) {
 	}
 	if len(rows) != 2 || rows[0].Gate != rows[1].Gate || rows[0].Family != "r:go-test-unit-a@d:repo" {
 		t.Fatalf("rows %+v, want one Gate name ordered by Family", rows)
+	}
+	// A declared gate bound to one of the two locations takes that family's
+	// run alone; the other family keeps its learned row.
+	r = runOf(t, gateCall(1, "go-test", store.ExecOK), other)
+	web := declaredGate{id: "spec:web", kind: kindTest, source: sourceDeclared, trust: "trusted", required: true, runners: map[string]bool{"r:go-test": true}, location: "d:other"}
+	rows = nil
+	if err := json.Unmarshal(encodedUnderShuffles(t, r, 4, web), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Family != "r:go-test@d:repo" || rows[1].Gate != "spec:web" || seqOr0(rows[1].LastRun) != 3 {
+		t.Fatalf("rows %+v, want the root's learned row, then spec:web from the other location's run at 3", rows)
 	}
 }
 

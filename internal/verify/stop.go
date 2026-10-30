@@ -18,7 +18,8 @@ import (
 // StopInput is what the Stop hook read beside the record: the prompt the
 // digest chose, the project key of the payload's cwd ("" when it named none),
 // the final message's head and tail windows, the install key the quotes are
-// HMACed under, and the model texts of the notes delivered in the prompt.
+// HMACed under and the declared gates' lines digested under, and the model
+// texts of the notes delivered in the prompt.
 type StopInput struct {
 	PromptID   string
 	ProjectKey string
@@ -58,7 +59,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		run = &store.Run{}
 	}
 	var c classified
-	snap := evaluate(run, idx, sp, pt, now, &c)
+	snap := evaluate(run, idx, sp, in.Key, pt, now, &c)
 	counted := c
 	if snap.Recording != Complete {
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten = classifyWith(run, pickExecutions(run))

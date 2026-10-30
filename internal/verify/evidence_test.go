@@ -230,7 +230,7 @@ func TestEV5b_StopAndLedgerCarryTheRows(t *testing.T) {
 	if v := EvaluateStop(&store.Run{}, nil, sp, pt, time.UnixMilli(1), StopInput{}); len(v.Expected) != 2 {
 		t.Errorf("StopView.Expected = %+v, want the task's two kinds", v.Expected)
 	}
-	_, obs := EvaluateWithObligations(&store.Run{}, nil, sp, pt, time.UnixMilli(1))
+	_, obs := EvaluateWithObligations(&store.Run{}, nil, sp, nil, pt, time.UnixMilli(1))
 	n := 0
 	for _, o := range obs {
 		if o.Kind == ExpectedEvidence {
