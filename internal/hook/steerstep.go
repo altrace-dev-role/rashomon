@@ -100,7 +100,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	if err != nil {
 		return steer.Context{}, verify.SteerView{}, false
 	}
-	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir)
+	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir, p.st.Root())
 	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID)}
 	view := verify.SteerAt(run, nil, p.sp, pt, env.Now, p.event, p.toolUseID)
 	return p.contextOf(env, view), view, true

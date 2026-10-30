@@ -2,7 +2,8 @@
 // evaluates against (tech spec 2.2.7). P-07 freezes the names and the limits
 // the spec text states. Parse reads one spec.json strictly into a File and
 // returns its digest; Discover finds the files that apply to a call and
-// merges them into a Compiled. The trust binding lands in a later SPEC PR.
+// merges them into a Compiled; ReadBindings and EncodeBindings read and encode
+// the trust bindings `rashomon spec trust` makes (trust.go).
 package spec
 
 import "time"

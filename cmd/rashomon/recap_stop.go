@@ -83,7 +83,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		in.ProjectKey = key
 	}
 	projectDir, managedDir := specDirs()
-	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir)
+	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, st.Root())
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
 
 	if writes {

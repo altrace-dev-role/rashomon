@@ -167,7 +167,7 @@ const (
 func Default() (Inventory, error) {
 	return Inventory{
 		ScopeVersion: ScopeVersion,
-		Files:        append(defaultFiles(), learnFiles()...),
+		Files:        append(defaultFiles(), append(learnFiles(), specFiles()...)...),
 		Paragraphs:   defaultParagraphs(),
 		Units:        defaultUnits(),
 	}, nil
