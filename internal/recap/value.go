@@ -35,6 +35,7 @@ func titles() map[string]string {
 			string(pattern.SubtaskGate):        "task check",
 			string(pattern.RegressionLocation): "regression location",
 			string(pattern.ContinuityBriefing): "briefing",
+			string(pattern.TaskPreflight):      "preflight",
 			string(pattern.DeclaredFact):       "known fix",
 			string(pattern.LearnedFact):        "known fix",
 			string(pattern.PlatformRule):       "platform rule",

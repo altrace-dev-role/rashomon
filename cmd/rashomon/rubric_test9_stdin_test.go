@@ -89,10 +89,10 @@ func TestRubricTEST9_RecapReaderGivesUpOnAWriterThatNeverCloses(t *testing.T) {
 	}
 }
 
-// recapReaderFrame is the frame of the goroutine readRecapPayload starts. In
-// a test binary package main is named by its import path, not "main", so the
-// frame reads ".../cmd/rashomon.readRecapPayload.func1".
-const recapReaderFrame = "cmd/rashomon.readRecapPayload.func"
+// recapReaderFrame is the frame of the goroutine readRecapPayload's read,
+// readPayload, starts. In a test binary package main is named by its import
+// path, not "main", so the frame reads ".../cmd/rashomon.readPayload.func1".
+const recapReaderFrame = "cmd/rashomon.readPayload.func"
 
 // requireGoroutine fails the test unless some goroutine's stack names fn.
 func requireGoroutine(t *testing.T, fn string) {

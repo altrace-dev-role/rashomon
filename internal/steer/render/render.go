@@ -124,6 +124,62 @@ type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
 
+// TaskPreflightBinding is task-preflight's later-prompt note (internal/intent).
+type TaskPreflightBinding struct {
+	Paths    slot.PathSet  `slot:"paths"`
+	Rules    slot.RuleRefs `slot:"rules"`
+	Gates    slot.GateRefs `slot:"gates"`
+	Source   slot.Enum     `slot:"source"`
+	Evidence slot.EnumList `slot:"evidence"`
+	Unknown  slot.EnumList `slot:"unknown"`
+}
+
+// TaskPreflightFirstBinding is task-preflight's first-prompt note.
+type TaskPreflightFirstBinding struct {
+	Instructions slot.PathSet  `slot:"instructions"`
+	Manifests    slot.PathSet  `slot:"manifests"`
+	GoDirs       slot.Count    `slot:"go_dirs"`
+	Paths        slot.PathSet  `slot:"paths"`
+	Rules        slot.RuleRefs `slot:"rules"`
+	Gates        slot.GateRefs `slot:"gates"`
+	Source       slot.Enum     `slot:"source"`
+	Evidence     slot.EnumList `slot:"evidence"`
+	Unknown      slot.EnumList `slot:"unknown"`
+}
+
+// PlatformRuleCommandBinding is platform-rule/command's line (archive
+// 40.4.6): the program the call ran and the id of the forbid_command rule
+// its line matched, the id without its "spec:" prefix.
+type PlatformRuleCommandBinding struct {
+	Program slot.Program `slot:"program"`
+	Rule    slot.RuleID  `slot:"rule_id"`
+}
+
+// PlatformRuleCommandApprovedBinding is that line and the form a trusted
+// rule records instead, its alternative (archive 20.2.8: the one rule text
+// that may reach the model, and only through the Approved slot).
+type PlatformRuleCommandApprovedBinding struct {
+	Program  slot.Program  `slot:"program"`
+	Rule     slot.RuleID   `slot:"rule_id"`
+	Approved slot.Approved `slot:"approved"`
+}
+
+// PlatformRuleCommandUnnamedBinding is the command line for a program or a
+// rule id its slot refuses.
+type PlatformRuleCommandUnnamedBinding struct{}
+
+// IntegrityFrozenPathBinding is integrity/frozen-path's user line: the path
+// the call wrote, project-relative, and the id of the protect_path rule
+// whose paths match it.
+type IntegrityFrozenPathBinding struct {
+	Path slot.Path   `slot:"path"`
+	Rule slot.RuleID `slot:"rule_id"`
+}
+
+// IntegrityFrozenPathUnnamedBinding is the frozen-path line for a path or a
+// rule id its slot refuses.
+type IntegrityFrozenPathUnnamedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -135,7 +191,10 @@ type IntegrityGateConfigEditedBinding struct{}
 // sentence is its own binding struct and row, which comes with
 // subagent-claim's producer (D62). The integrity rows are archive 40.4.7's
 // user lines for PF-IV3's four one-way doors (card P5B, 5.7); user-only,
-// so no model text exists for them.
+// so no model text exists for them. The platform-rule rows state which
+// rule a command matched, never its why; the frozen-path rows are user
+// lines, as every integrity row is. Each has a row without its named slots
+// for a value a slot refuses.
 func templates() map[templateKey]template {
 	templatesOnce.Do(func() {
 		templatesOnce.v = map[templateKey]template{
@@ -169,10 +228,47 @@ func templates() map[templateKey]template {
 				id:     "integrity-gate-config-edited/v1",
 				format: "rashomon record: this edit changed a CI or test-configuration file.",
 			},
+			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
+				id:     "task-preflight/v1",
+				format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
+			},
+			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
+				id: "task-preflight-first/v1",
+				format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
+					"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+			},
+			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
+				id:     "platform-rule-command/v1",
+				format: "rashomon record: this {program} call matched spec rule {rule_id}.",
+			},
+			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandApprovedBinding{})}: {
+				id:     "platform-rule-command-approved/v1",
+				format: "rashomon record: this {program} call matched spec rule {rule_id}. The spec records the approved form: {approved}.",
+			},
+			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
+				id:     "platform-rule-command-unnamed/v1",
+				format: "rashomon record: this call matched a spec rule.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
+				id:     "integrity-frozen-path/v1",
+				format: "rashomon record: this call wrote {path}, which spec rule {rule_id} protects.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathUnnamedBinding{})}: {
+				id:     "integrity-frozen-path-unnamed/v1",
+				format: "rashomon record: this call wrote a file that a spec rule protects.",
+			},
 		}
 	})
 	return templatesOnce.v
 }
+
+// preflightLines are the four lines both task-preflight rows end with: what
+// the request named, the spec rules over it, the gates and the evidence a
+// done claim needs, and what the preflight could not read.
+const preflightLines = "paths named: {paths}\n" +
+	"spec rules that apply: {rules}\n" +
+	"gates before done: {gates}; evidence for a done claim ({source}): {evidence}\n" +
+	"unknown: {unknown}"
 
 // templatesOnce holds what templates returns, built on its first call and
 // never at init (RES-2).
@@ -199,8 +295,9 @@ var (
 // New fills p's template for binding's type, runs every slot check (a
 // listed path that fails the deny list or the entropy test is left out of
 // the list instead) and the whole-string check -- ValidateBriefing for
-// continuity-briefing, the one multi-line note, Validate for every other
-// pattern -- and returns the Message, or the zero Message and an error.
+// the two multi-line notes, continuity-briefing and task-preflight, Validate
+// for every other pattern -- and returns the Message, or the zero Message
+// and an error.
 func New(p pattern.ID, binding any) (Message, error) {
 	return newMessage(templates(), p, binding)
 }
@@ -222,7 +319,7 @@ func newMessage(table map[templateKey]template, p pattern.ID, binding any) (Mess
 		return Message{}, err
 	}
 	check := Validate
-	if p == pattern.ContinuityBriefing {
+	if p == pattern.ContinuityBriefing || p == pattern.TaskPreflight {
 		check = ValidateBriefing
 	}
 	if err := check(text); err != nil {

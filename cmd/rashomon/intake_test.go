@@ -53,14 +53,14 @@ func (r *repeatReader) Read(p []byte) (int, error) {
 func TestRES7_FinalMessageReadStopsAtTheCap(t *testing.T) {
 	const prefix = `{"session_id":"s","last_assistant_message":"`
 	r := &repeatReader{prefix: prefix, c: 'a', n: 4 * hookio.MaxPayloadBytes}
-	if _, ok := readFinalMessage(r, true, false); ok {
+	if _, ok := readFinalMessage(r, true, false, false); ok {
 		t.Fatal("a payload four times the cap was read as a payload")
 	}
 	if r.read > hookio.MaxPayloadBytes+1 {
 		t.Fatalf("read %d bytes of a %d-byte payload, want at most %d", r.read, r.n, hookio.MaxPayloadBytes+1)
 	}
 	endless := &repeatReader{prefix: prefix, c: 'a', n: -1}
-	if _, ok := readFinalMessage(endless, true, false); ok || endless.read > hookio.MaxPayloadBytes+1 {
+	if _, ok := readFinalMessage(endless, true, false, false); ok || endless.read > hookio.MaxPayloadBytes+1 {
 		t.Fatalf("an endless stream: ok %v after %d bytes, want refused after at most %d", ok, endless.read, hookio.MaxPayloadBytes+1)
 	}
 }
@@ -71,7 +71,7 @@ func TestRES7_FinalMessageReadStopsAtTheCap(t *testing.T) {
 func TestRES7_FinalMessageRefusesATopLevelString(t *testing.T) {
 	for _, in := range []string{`""`, `"{"`, `"{\"last_assistant_message\":\"x\"}"`, `"{\"x\":1}"`} {
 		for _, withSession := range []bool{true, false} {
-			if fm, ok := readFinalMessage(strings.NewReader(in), withSession, false); ok {
+			if fm, ok := readFinalMessage(strings.NewReader(in), withSession, false, false); ok {
 				t.Errorf("%s (session %v): read as a payload, %+v", in, withSession, fm)
 			}
 		}
@@ -95,7 +95,7 @@ func TestRES7_FinalMessageSessionIDLastCopyWins(t *testing.T) {
 		{`{"session_id":"` + long + `","last_assistant_message":"m"}`, ""},
 		{`{"session_id":"a","session_id":null,"last_assistant_message":"m"}`, "a"},
 	} {
-		fm, ok := readFinalMessage(strings.NewReader(c.in), true, false)
+		fm, ok := readFinalMessage(strings.NewReader(c.in), true, false, false)
 		if !ok || fm.SessionID != c.session || fm.Message != "m" {
 			t.Errorf("%.60s...: ok %v session %.20q message %q, want session %q and the message", c.in, ok, fm.SessionID, fm.Message, c.session)
 		}
@@ -110,7 +110,7 @@ func TestRES7_FinalMessageMatchesStructFieldNames(t *testing.T) {
 	if err := json.Unmarshal([]byte(in), &want); err != nil {
 		t.Fatal(err)
 	}
-	fm, ok := readFinalMessage(strings.NewReader(in), true, false)
+	fm, ok := readFinalMessage(strings.NewReader(in), true, false, false)
 	if !ok || fm.SessionID != want.SessionID || fm.Message != want.LastAssistantMessage {
 		t.Fatalf("ok %v %+v, want %+v", ok, fm, want)
 	}
@@ -153,7 +153,7 @@ func FuzzRES7_FinalMessageMatchesTheStructDecode(f *testing.F) {
 		if oldOK && len(old.SessionID) > sessionIDBytes {
 			old.SessionID = ""
 		}
-		fm, ok := readFinalMessage(strings.NewReader(string(raw)), true, false)
+		fm, ok := readFinalMessage(strings.NewReader(string(raw)), true, false, false)
 		if ok != oldOK || (ok && (fm.SessionID != old.SessionID || fm.Message != old.LastAssistantMessage)) {
 			t.Fatalf("recap on %q: ok %v %q %q, struct decode ok %v %q %q", raw, ok, fm.SessionID, fm.Message, oldOK, old.SessionID, old.LastAssistantMessage)
 		}
@@ -161,7 +161,7 @@ func FuzzRES7_FinalMessageMatchesTheStructDecode(f *testing.F) {
 			LastAssistantMessage string `json:"last_assistant_message"`
 		}
 		oldOK = len(raw) > 0 && json.Unmarshal(raw, &digest) == nil
-		fm, ok = readFinalMessage(strings.NewReader(string(raw)), false, false)
+		fm, ok = readFinalMessage(strings.NewReader(string(raw)), false, false, false)
 		if ok != oldOK || (ok && fm.Message != digest.LastAssistantMessage) {
 			t.Fatalf("digest on %q: ok %v %q, struct decode ok %v %q", raw, ok, fm.Message, oldOK, digest.LastAssistantMessage)
 		}

@@ -413,8 +413,10 @@ func BenchmarkRunPost(b *testing.B) {
 
 // postEntry is cmdPost with its stdout discarded, in the entry shape cmdHook
 // has: what the post prints is the steer step's, which these measures do not
-// read (a PostToolUse call that names no path under .claude/rashomon runs
-// no step, card 2.3 R3 and P5B).
+// read. Both calls run the rules step's spec discovery, from a cwd two
+// levels under a .git root with no spec, and stop there: neither names a
+// path under .claude/rashomon nor fails a runner, so the step reads no run
+// (card 2.3 R3 and P5B), and no rule raises (SPEC-RULES1).
 func postEntry(args []string, stdin io.Reader, stderr io.Writer) int {
 	return cmdPost(args, stdin, io.Discard, stderr)
 }

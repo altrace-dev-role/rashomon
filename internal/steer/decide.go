@@ -255,7 +255,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if p.decide {
 			var refused *SuppressedBy
 			if p.level == LevelNudge {
-				p.model, p.user, refused = noteTexts(f.Message.Text(), f.Pattern == pattern.ContinuityBriefing)
+				p.model, p.user, refused = noteTexts(f.Message.Text(), briefing(f.Pattern))
 			} else {
 				p.user, refused = flagText(f.Message.Text())
 			}
@@ -369,4 +369,10 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, p *plan, id string) *L
 		l.Mirror, l.MirroredToUser = MirrorSystemMessage, true
 	}
 	return l
+}
+
+// briefing reports the two multi-line notes, which noteTexts mirrors line by
+// line (MirrorBriefing) rather than as one line.
+func briefing(p PatternID) bool {
+	return p == pattern.ContinuityBriefing || p == pattern.TaskPreflight
 }

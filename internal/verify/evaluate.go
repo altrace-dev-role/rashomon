@@ -32,11 +32,12 @@ type ProjectIndex struct {
 // with no index, or one that requires no family yet, every gate is (D38,
 // indexLearned). Integrity is the window's integrity view (integrity.go),
 // from 0, the run: v0 deviation (D40), window = the run until 1.8w; a skip
-// added and never removed holds RecordGreen false for the session. The record
+// added and never removed holds RecordGreen false for the session. The spec's
+// rules are judged over the same classification (ruleVerdicts). The record
 // is green when at least one gate is required, every required gate is Green
-// (D36) and no integrity check is unresolved (PF-IV3, D39), as of the latest
-// LastGreen among the gates. Every list is non-nil, so a consumer never reads
-// null as unknown.
+// (D36), no integrity check is unresolved (PF-IV3, D39) and no trusted or
+// managed rule is violated (PF-PG8), as of the latest LastGreen among the
+// gates. Every list is non-nil, so a consumer never reads null as unknown.
 //
 // Evaluate at a point equals Evaluate over the record's prefix by declaration
 // at that point (INV-11, D37; RES14b), with one stated exception. A gate's
@@ -94,7 +95,8 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
 	snap.Integrity = integrity(run, picked, writes, 0, at)
-	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
+	snap.SpecVerdicts = ruleVerdicts(sp, run, picked, c, &snap, sp != nil && wroteIn(writes, at))
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved)+bindingViolations(snap.SpecVerdicts))
 	return snap
 }
 
@@ -150,8 +152,9 @@ func projectRoot(decls []store.Declaration, at int64) string {
 }
 
 // recordGreen is whether the record backs a "done" at the point (D36): no
-// integrity check unresolved (unresolved is their count; archive 20.2.4's
-// record-green point needs the integrity component at 1, PF-IV3), at least
+// integrity check unresolved and no binding rule violated (unresolved is
+// their count; archive 20.2.4's record-green point needs the integrity
+// component at 1, PF-IV3, and no spec violation, PF-PG8), at least
 // one required gate, and every required gate Green; and then the latest
 // LastGreen among them, else nil. A gate that is not required is reported
 // with its state and never blocks. Green with no LastGreen is a gate
@@ -300,10 +303,11 @@ func (s Summary) Advisory() bool { return s.Sentence == sentenceAdvisoryOnly }
 // sentence. A gate that is neither required nor learned is not a turn gate.
 //
 // The findings row is every turn gate green without the record-green point:
-// today an unresolved integrity check, so its sentence counts them,
-// k = len(Integrity.Unresolved) (findingsSentence); executed spec violations
-// join k when they are evaluated. While the window is the run (D40), k counts
-// the session's unresolved checks, not only this turn's, until 1.8w.
+// an unresolved integrity check or a binding rule's violation, so its
+// sentence counts them, k = len(Integrity.Unresolved) plus the violations of
+// trusted and managed rules (findingsSentence, bindingViolations). While the
+// window is the run (D40), k counts the session's, not only this turn's,
+// until 1.8w.
 func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if turn.Writes == 0 && turn.GateRuns == 0 {
 		return Summary{Row: RowNone}
@@ -369,7 +373,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	case advisory:
 		s.Sentence = sentenceAdvisoryOnly
 	case row == RowFindings:
-		s.Sentence = findingsSentence(len(snap.Integrity.Unresolved))
+		s.Sentence = findingsSentence(len(snap.Integrity.Unresolved) + bindingViolations(snap.SpecVerdicts))
 	}
 	return s
 }

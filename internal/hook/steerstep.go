@@ -5,8 +5,12 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/arm"
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -62,8 +66,8 @@ func storeNamed(input []byte) bool {
 
 // Steer runs the step after the record's Flush succeeded and returns the
 // bytes to print, or nil. It returns no error: each exit before Route prints
-// nothing (no trigger, an unreadable run), and every exit after Route
-// has its line in the steer log.
+// nothing (no trigger, an unreadable run with no rule raised), and every
+// exit after Route has its line in the steer log.
 func (p *Post) Steer(env SteerEnv) []byte {
 	ctx, view, ok := p.judge(env)
 	if !ok {
@@ -86,24 +90,96 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	return b
 }
 
-// judge is the step's compute before Route: the trigger, the run read once,
-// the spec discovered from the payload's cwd (per trigger, not per call:
-// D128), the run judged at the landed seq against that spec, and Route's
-// context for the call. ok is false when the step does not run or the run
-// could not be read. It writes nothing, so BenchmarkPostSteer's eval rows
-// measure it apart from the append and the sync.
+// ruled is the spec rules' trigger (card SPEC-RULES1): an execution that
+// landed, at either post event, of a Bash call or a tool that names the
+// file it writes, the calls a forbid_command rule (at PostToolUse) or a
+// protect_path rule raises at from the call alone (verify.RulesAtCall).
+// Such a call costs the spec's discovery at every post, whether the spec
+// declares a rule or not.
+func ruled(event string, landedSeq int64, toolName string) bool {
+	if landedSeq <= 0 || event != FailureEvent && event != string(steer.EventPostToolUse) {
+		return false
+	}
+	switch toolName {
+	case "Bash", "Edit", "MultiEdit", "NotebookEdit", "Write":
+		return true
+	}
+	return false
+}
+
+// judge is the step's compute before Route: the triggers, the run read once
+// where steps fires, the spec discovered from the payload's cwd (per
+// trigger, not per call: D128), the run judged at the landed seq against
+// that spec, the call judged against its rules, and Route's context for the
+// call. The rules read the call and the spec, never the run, so a run that
+// could not be read drops the step's findings and keeps theirs. ok is false
+// when neither trigger fires, or when no run was read and the rules raised
+// nothing. It writes nothing, so BenchmarkPostSteer's eval rows measure it
+// apart from the append and the sync.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
-	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
+	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedStore)
+	if !stepped && !ruled(p.event, p.landedSeq, p.toolName) {
 		return steer.Context{}, verify.SteerView{}, false
 	}
-	run, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
-	if err != nil {
-		return steer.Context{}, verify.SteerView{}, false
+	var run *store.Run
+	if stepped {
+		if r, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget); err == nil {
+			run = r
+		}
 	}
 	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir)
 	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID)}
+	rules := verify.RulesAtCall(p.sp, p.ruleCall(), pt, p.event)
+	if run == nil {
+		if len(rules.Findings) == 0 {
+			return steer.Context{}, verify.SteerView{}, false
+		}
+		return p.contextOf(env, rules), rules, true
+	}
 	view := verify.SteerAt(run, nil, p.sp, pt, env.Now, p.event, p.toolUseID)
+	view.Findings = append(view.Findings, rules.Findings...)
+	view.Dropped += rules.Dropped
 	return p.contextOf(env, view), view, true
+}
+
+// ruleCall is the call the spec's rules judge, read from the input only as
+// far as a discovered rule reads it: a Bash call's line, under the cap a
+// recorded command keeps whole, where a forbid_command rule is declared,
+// and a file tool's path, with the project key a declaration carries
+// (baseline.Key of the cwd), where a protect_path rule is.
+func (p *Post) ruleCall() verify.RuleCall {
+	c := verify.RuleCall{Seq: p.landedSeq, ToolName: p.toolName, CWD: p.cwd}
+	command, path := ruleReads(p.sp)
+	if command {
+		c.Command, _ = shape.CommandLine(p.toolName, p.toolInput, store.MaxCommandBytes)
+	}
+	if path {
+		if fp := shape.DeclaredPath(p.toolName, p.toolInput); fp != nil {
+			c.FilePath, c.Project = *fp, baseline.Key(p.cwd)
+		}
+	}
+	return c
+}
+
+// ruleReads reports whether sp declares a forbid_command rule and whether
+// it declares a protect_path rule, the two kinds that read a call; the
+// implied task-file rule reads none (RulesAtCall passes it over).
+func ruleReads(sp *spec.Compiled) (command, path bool) {
+	if sp == nil {
+		return false, false
+	}
+	for i := range sp.Rules {
+		if sp.Rules[i].Source == spec.SourceImplied {
+			continue
+		}
+		switch spec.RuleKind(sp.Rules[i].Rule.Kind) {
+		case spec.ForbidCommand:
+			command = true
+		case spec.ProtectPath:
+			path = true
+		}
+	}
+	return command, path
 }
 
 // contextOf is Route's context for this call (card 2.3 R4.5). Attendance is
