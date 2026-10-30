@@ -98,7 +98,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "post":
 		return cmdPost(rest, stdin, stdout, stderr)
 	case "probe":
-		return cmdProbe(rest, stdin, stderr)
+		return cmdProbe(rest, stdin, stdout, stderr)
 	case "recap":
 		// Not under guarded(): guarded exits 1 and writes to stderr on error,
 		// which a hook renders as a visible "hook error" -- fine for a command
@@ -141,6 +141,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdSpec(rest, stdout) })
 	case "backtest":
 		return guarded(stderr, func() error { return cmdBacktest(rest, stdout) })
+	case "brief":
+		return guarded(stderr, func() error { return cmdBrief(rest, stdout) })
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -296,8 +298,9 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 }
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
-// it is invoked by Claude Code and it always succeeds.
-func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
+// it is invoked by Claude Code and it always succeeds. At start it prints the
+// project brief to the user (printBrief), its one write to stdout.
+func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook: signal watching and the
 	// phase check included. They ran ahead of the barrier, under this same
 	// comment, and a panic in either exited 2.
@@ -346,6 +349,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
+		printBrief(args, payload, st.Root(), stdout)
 		return nil
 	})
 }
@@ -386,18 +390,6 @@ func standsDown(args []string, st *store.Store, stderr io.Writer) bool {
 	}
 	fmt.Fprintln(stderr, standDownLine)
 	return true
-}
-
-// installArg returns the install id the command line names, or "" for one that
-// names none. Anything else in args is ignored: these are the paths Claude
-// Code invokes, and there is no argument they are allowed to fail over.
-func installArg(args []string) string {
-	for i, a := range args {
-		if a == install.Marker && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
 }
 
 // openForHook opens the store for a hook-invoked path. It prints a fixed
@@ -1516,7 +1508,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+specUsage+backtestUsage+hookUsage)
+`+receiptUsage+learnUsage+specUsage+backtestUsage+briefUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the
