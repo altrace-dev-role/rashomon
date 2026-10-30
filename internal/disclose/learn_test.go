@@ -27,7 +27,7 @@ func TestTRU23_LearnPathsAreInTheInventory(t *testing.T) {
 	if _, _, err := l.Import(strings.NewReader(`{"lessons":[{"id":"a","text":"b"}]}`), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := l.Approve("a"); err != nil {
+	if err := l.Approve("a", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.AppendLabel(learn.Label{LessonID: "a", SessionID: "s", Label: steer.LabelConfirmed}); err != nil {

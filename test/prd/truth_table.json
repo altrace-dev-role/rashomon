@@ -1214,8 +1214,7 @@
       ],
       "missing": [
         "LABEL-WRITER1",
-        "a per-lesson holdout comparison: the bound reads labels, not a treatment-versus-holdout difference",
-        "LEARN-DELIVER1, so a lesson can be in an arm"
+        "a per-lesson holdout comparison: the bound reads labels, not a treatment-versus-holdout difference"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1313,7 +1312,7 @@
         }
       ],
       "id": "PF-HD5",
-      "implementation": "The candidate floors are one function, a lesson is approved only by a one-time code typed back at the terminal, and an outside write to the learning state quarantines every lesson to proposed, but no miner nominates a candidate and no delivery reaches the agent.",
+      "implementation": "The candidate floors are one function, a lesson is approved only by a one-time code typed back at the terminal, and an outside write to the learning state quarantines every lesson to proposed, and an approved lesson reaches the agent with a prompt, but no miner nominates a candidate.",
       "integration": [
         {
           "event": "verb",
@@ -1322,8 +1321,7 @@
       ],
       "missing": [
         "the miner (PF-HD3)",
-        "LEARN-DELIVER1",
-        "the quarantine is seen only when a learn verb opens the ledger, and the key is readable by an agent with the user's rights"
+        "a mismatch is seen at the next prompt (no delivery, one flag) and the quarantine is written only when a learn verb opens the ledger; the key is readable by an agent with the user's rights"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1338,27 +1336,46 @@
           "symbol": "activeBytes"
         },
         {
-          "file": "internal/steer/pattern/pattern.go"
+          "file": "internal/learn/active.go",
+          "symbol": "ReadActive"
+        },
+        {
+          "file": "internal/learn/deliver.go",
+          "symbol": "Pick"
+        },
+        {
+          "file": "internal/steer/render/render.go",
+          "symbol": "LearnedFactBinding"
         },
         {
           "file": "internal/learn/ledger_test.go",
           "symbol": "TestP6_ActiveCapDropsTheOldestDemotedFirst"
+        },
+        {
+          "file": "cmd/rashomon/recap_learn_test.go",
+          "symbol": "TestLRN17_OnlyApprovedFactsReachTheModel"
+        },
+        {
+          "file": "cmd/rashomon/recap_learn_test.go",
+          "symbol": "TestLRN17m_SupersededAtPromptNArrivesAtNPlus1"
         }
       ],
       "id": "PF-HD6",
-      "implementation": "Save writes active.json for a delivery to read and the learned-fact pattern id exists, but nothing reads active.json or produces a learned-fact finding.",
+      "implementation": "recap pending reads active.json at each prompt, checked against its manifest and never written, and gives the first approved lesson not yet given in the session as a learned-fact note through the router, below the request's preflight note; a state that does not check gives the user one flag a session. The PRD's trigger is the first matching failure, and no session has run it yet.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/recap_turn.go"
         }
       ],
       "missing": [
-        "LEARN-DELIVER1"
+        "the PRD's failure-time trigger (LEARN-DELIVER2): lessons carry no failure key and PostToolUseFailure's channel is not probed",
+        "LABEL-WRITER1: no label is written, so no lesson is ever demoted and the one demotion rule has nothing to act on",
+        "the pack kind (PF-HD7)"
       ],
       "planned_pr": "",
       "session_proof": "",
-      "status": "none",
+      "status": "partial",
       "title": "Delivery of learned facts"
     },
     {
@@ -1641,7 +1658,7 @@
         }
       ],
       "id": "PF-HD16",
-      "implementation": "The learner is its own package with its own store, key and purge, and neither hook nor store imports it, but it reads no content.",
+      "implementation": "The learner is its own package with its own store, key and purge, neither hook nor store imports it, and recap's prompt path reads only its active.json, but it reads no content.",
       "integration": [
         {
           "event": "verb",

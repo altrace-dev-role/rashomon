@@ -124,6 +124,21 @@ type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
 
+// LearnedFactBinding is learned-fact's note at a prompt (LEARN-DELIVER1): an
+// approved lesson's id and its text, which renders in quotes.
+type LearnedFactBinding struct {
+	Lesson slot.LessonID `slot:"lesson"`
+	Text   slot.Approved `slot:"text"`
+}
+
+// LearnedFactUncheckedBinding and LearnedFactOversizeBinding are
+// learned-fact's two user flags for a ledger the prompt path could not read:
+// its files fail their signature check, or one is over the size the prompt
+// path reads. One struct each, since a row is keyed by its binding's type.
+type LearnedFactUncheckedBinding struct{}
+
+type LearnedFactOversizeBinding struct{}
+
 // TaskPreflightBinding is task-preflight's later-prompt note (internal/intent).
 type TaskPreflightBinding struct {
 	Paths    slot.PathSet  `slot:"paths"`
@@ -158,7 +173,9 @@ type TaskPreflightFirstBinding struct {
 // sentence is its own binding struct and row, which comes with
 // subagent-claim's producer (D62). The integrity rows are archive 40.4.7's
 // user lines for PF-IV3's four one-way doors (card P5B, 5.7); user-only,
-// so no model text exists for them.
+// so no model text exists for them. learned-fact/v1 is a lesson a person
+// approved at a terminal, its text in quotes (LEARN-DELIVER1, L7); its two
+// flags say why a ledger gave none.
 func templates() map[templateKey]template {
 	templatesOnce.Do(func() {
 		templatesOnce.v = map[templateKey]template{
@@ -191,6 +208,20 @@ func templates() map[templateKey]template {
 			{pattern.Integrity, reflect.TypeOf(IntegrityGateConfigEditedBinding{})}: {
 				id:     "integrity-gate-config-edited/v1",
 				format: "rashomon record: this edit changed a CI or test-configuration file.",
+			},
+			{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
+				id:     "learned-fact/v1",
+				format: "rashomon record: lesson {lesson}, approved for this project at a terminal: {text}.",
+			},
+			{pattern.LearnedFact, reflect.TypeOf(LearnedFactUncheckedBinding{})}: {
+				id: "learned-fact-unchecked/v1",
+				format: "rashomon record: this project's lesson files fail their signature check, " +
+					"so no lesson was given to the agent; rashomon learn lists them.",
+			},
+			{pattern.LearnedFact, reflect.TypeOf(LearnedFactOversizeBinding{})}: {
+				id: "learned-fact-oversize/v1",
+				format: "rashomon record: this project's lesson files are larger than the 4 MiB the prompt path reads, " +
+					"so no lesson was given to the agent; rashomon learn lists them.",
 			},
 			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
 				id:     "task-preflight/v1",
