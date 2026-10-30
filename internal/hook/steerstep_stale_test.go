@@ -250,3 +250,53 @@ func TestSN1i_OncePerGatePerPrompt(t *testing.T) {
 		t.Errorf("second line suppressed by %v, want budget_pattern", by)
 	}
 }
+
+// TestVG1j_ANewerClientDeliversTheNote: the stale note reaches the model on a
+// Claude Code release after the probed one, 2.1.314 (the version the
+// finding was made on), as on 2.1.280: the channel's table is a floor, not a
+// list (card VERSION-GATE1). On 2.1.257, below the floor, the note is
+// shadowed and the user gets the channel notice alone.
+func TestVG1j_ANewerClientDeliversTheNote(t *testing.T) {
+	for _, tc := range []struct {
+		agent     string
+		delivered bool
+		notice    string
+	}{
+		{"claude-code_2-1-314_harness", true, ""},
+		{"claude-code_2-2-0_harness", true, ""},
+		{"claude-code_2-1-257_harness", false, "rashomon: a note was built and not sent to the agent (Claude Code 2.1.257, PostToolUse; " +
+			"delivery verified from 2.1.280): this version is older. Shown once per session."},
+	} {
+		t.Run(tc.agent, func(t *testing.T) {
+			f := newSN(t)
+			f.green()
+			f.require(f.family())
+			env := snEnv()
+			env.AIAgent = tc.agent
+			b := f.editOf("toolu_e", "internal/a.go").Steer(env)
+			var out map[string]any
+			if err := json.Unmarshal(b, &out); err != nil {
+				t.Fatalf("printed %q: %v", b, err)
+			}
+			_, model := out["hookSpecificOutput"]
+			msg, _ := out["systemMessage"].(string)
+			switch {
+			case tc.delivered && (!model || !strings.Contains(string(b), snLine)):
+				t.Errorf("printed %s; want the note model-visible and mirrored", b)
+			case !tc.delivered && (model || len(out) != 1 || msg != tc.notice):
+				t.Errorf("printed %s; want the systemMessage %q alone", b, tc.notice)
+			}
+			got := staleLines(t, f.st)
+			if len(got) != 1 {
+				t.Fatalf("%d stale-evidence lines, want 1", len(got))
+			}
+			want := steer.DeliveryDelivered
+			if !tc.delivered {
+				want = steer.DeliveryShadow
+			}
+			if l := got[0]; l.Delivery == nil || *l.Delivery != want {
+				t.Errorf("line delivery %v, want %s", l.Delivery, want)
+			}
+		})
+	}
+}

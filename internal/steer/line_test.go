@@ -15,7 +15,9 @@ import (
 // `model_text_withheld` and `user_text_withheld`, the *_withheld keys of the
 // two capped texts (tech 1.2.9's 2,048-byte cap, 1.2.11's convention), and
 // `key`, the finding's dedupe key, which the per-key budget reads back from
-// the log (tech 4.2.5; card 2.2 R9, D53: 4.2.3's listing omits it). A change
+// the log (tech 4.2.5; card 2.2 R9, D53: 4.2.3's listing omits it), and the
+// channel's basis and the once-per-session notice (card VERSION-GATE1:
+// `client_version`, `verified_floor`, `excluded`, `notice`). A change
 // to Line's JSON shape that does not also change this list is exactly the
 // drift this test exists to catch.
 var wantLineJSONTags = []string{
@@ -27,6 +29,7 @@ var wantLineJSONTags = []string{
 	"delivery", "mirrored_to_user", "facts", "records_offset", "harness_id",
 	"surface", "mirror", "mirror_failure", "outcome",
 	"model_text_withheld", "user_text_withheld",
+	"client_version", "verified_floor", "excluded", "notice",
 }
 
 // TestLine_JSONTagsMatchSpec is a construction-truth test: it reads Line's
@@ -104,6 +107,7 @@ func TestLine_PopulatedRoundTrip(t *testing.T) {
 	rule := LabelRuleGateRed
 	delivery := DeliveryDelivered
 	outcome := OutcomeAskUnattended
+	notice := NoticeChannel
 	l := Line{
 		Type:         LineType,
 		V:            LineVersion,
@@ -136,6 +140,10 @@ func TestLine_PopulatedRoundTrip(t *testing.T) {
 		Delivery:        &delivery,
 		MirroredToUser:  true,
 		Mirror:          MirrorSystemMessage,
+		ClientVersion:   "2.1.314",
+		VerifiedFloor:   "2.1.280",
+		Excluded:        []string{"2.1.300"},
+		Notice:          &notice,
 	}
 	b, err := json.Marshal(l)
 	if err != nil {

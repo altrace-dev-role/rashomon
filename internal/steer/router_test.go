@@ -209,12 +209,15 @@ func TestST_AFlagWaitsBesideANote(t *testing.T) {
 
 // TestST_SubagentIsReadFromEitherSource (doubt 1): a call from a subagent
 // is gated whether the caller set Client.Subagent or only AgentID, and the
-// line carries the agent.
+// line carries the agent. Nothing of the note prints; the session's channel
+// notice says why.
 func TestST_SubagentIsReadFromEitherSource(t *testing.T) {
 	ctx := routerContext(t)
 	ctx.AgentID = "agent-7"
-	if out := Route(ctx, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge)}); out != (Output{}) {
-		t.Errorf("a subagent's note printed %+v", out)
+	want := Output{SystemMessage: "rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUse; " +
+		"delivery verified from 2.1.280): notes on a subagent's calls are not sent yet. Shown once per session."}
+	if out := Route(ctx, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge)}); out != want {
+		t.Errorf("a subagent's note printed %+v, want the channel notice alone", out)
 	}
 	l := lastLines(t, ctx, 1)[0]
 	wantLine(t, l, LineStateSuppressed, SuppressedByUnverifiedChannel, DeliveryShadow)
@@ -242,14 +245,15 @@ func TestR2_StopNeverContinues(t *testing.T) {
 	wantLine(t, l, LineStateDelivered, "", DeliveryFlagOnly)
 }
 
-// TestTRU12b_UnverifiedChannelShipsTheNoteInShadow: on a client version the
-// probe has not passed, the note ships in shadow, in the steer log only; a
-// flag beside it still prints, flags being user-only.
+// TestTRU12b_UnverifiedChannelShipsTheNoteInShadow: on a client version
+// below the probe's floor, the note ships in shadow, in the steer log only,
+// and the session's first such call prints the channel notice and nothing of
+// the note; a flag beside a later one still prints, flags being user-only.
 func TestTRU12b_UnverifiedChannelShipsTheNoteInShadow(t *testing.T) {
 	ctx := routerContext(t)
 	ctx.Client = Client{Version: "2.1.279", Source: VersionSourceEnv, MirrorInBand: true}
-	if out := Route(ctx, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge)}); out != (Output{}) {
-		t.Errorf("the unverified note printed %+v", out)
+	if out := Route(ctx, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge)}); out != (Output{SystemMessage: belowNotice}) {
+		t.Errorf("the unverified note printed %+v, want the channel notice alone", out)
 	}
 	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByUnverifiedChannel, DeliveryShadow)
 	flag := regressionNote(t, "go vet", 6, "f", LevelFlag)

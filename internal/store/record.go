@@ -136,6 +136,11 @@ const (
 	// FileStaleArmed is the stale trigger's hint (ArmStale): empty, and like
 	// probe and lockwait a note about the run, not a record.
 	FileStaleArmed = "stale-armed"
+	// FileNoticeChannel and FileNoticeHoldout are the steer router's
+	// once-per-session notice markers (TakeNotice): empty, present once the
+	// session's channel notice or holdout notice has printed.
+	FileNoticeChannel = "notice-channel"
+	FileNoticeHoldout = "notice-holdout"
 	// FileResolvedCap is at the store root: the size cap the last hook
 	// invocation resolved, written so status can show the value eviction
 	// actually runs with instead of reading EnvCapBytes in its own,

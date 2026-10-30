@@ -124,7 +124,8 @@ type Line struct {
 	// "`candidate` and `deferred` carry null until final").
 	Delivery *Delivery `json:"delivery"`
 	// MirroredToUser is whether this line's mirror reached the user: true
-	// for delivered, flag_only and holdout lines.
+	// for delivered and flag_only lines. A holdout line's note reaches
+	// neither side, so it is false there.
 	MirroredToUser bool  `json:"mirrored_to_user"`
 	Facts          Facts `json:"facts"`
 	RecordsOffset  int64 `json:"records_offset"`
@@ -145,13 +146,38 @@ type Line struct {
 	// turned into a deny because nobody was attending (tech 4.2.3: "closed,
 	// null on every other line"). The line stays delivered.
 	Outcome *Outcome `json:"outcome"`
+
+	// ClientVersion is the Claude Code version the call's client declared,
+	// "" when it could not be read. VerifiedFloor and Excluded are the
+	// event's row of the probed-version table in force when the line was
+	// decided: the lowest version its model-visible field is verified on, ""
+	// when it is verified on none or the row is exempt, and the versions at
+	// or above the floor a probe failed on. With SuppressedBy, Surface and
+	// AgentID they say why a note was or was not delivered, on the line, so a
+	// client updated mid-session keeps each decision's own basis.
+	ClientVersion string   `json:"client_version"`
+	VerifiedFloor string   `json:"verified_floor"`
+	Excluded      []string `json:"excluded"`
+	// Notice is the once-per-session line the call printed in place of this
+	// line's note: NoticeChannel on the first note of the session shadowed
+	// by unverified_channel, NoticeHoldout on the first held-out note; null
+	// on every other line.
+	Notice *Notice `json:"notice"`
 }
 
-// MarshalJSON writes a nil EvidenceSeqs or Slots as [] or {}, not null:
-// the spec's example line never writes either key as null, and only the
-// pointer fields above are null for "we don't know." It is on the value,
-// so a Line, a *Line and a Line inside a slice or struct all marshal the
-// same way, and nothing a caller builds can write null there.
+// Notice is which once-per-session line a call printed (Line.Notice).
+type Notice string
+
+const (
+	NoticeChannel Notice = "channel"
+	NoticeHoldout Notice = "holdout"
+)
+
+// MarshalJSON writes a nil EvidenceSeqs, Slots or Excluded as [] or {}, not
+// null: the spec's example line never writes the first two as null, and
+// only the pointer fields above are null for "we don't know." It is on the
+// value, so a Line, a *Line and a Line inside a slice or struct all marshal
+// the same way, and nothing a caller builds can write null there.
 func (l Line) MarshalJSON() ([]byte, error) {
 	type wire Line // the same fields without this method, so no recursion
 	w := wire(l)
@@ -160,6 +186,9 @@ func (l Line) MarshalJSON() ([]byte, error) {
 	}
 	if w.Slots == nil {
 		w.Slots = map[string]json.RawMessage{}
+	}
+	if w.Excluded == nil {
+		w.Excluded = []string{}
 	}
 	return json.Marshal(w)
 }

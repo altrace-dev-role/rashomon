@@ -13,8 +13,9 @@
 // None of internal/steer, internal/steer/render or
 // internal/steer/render/slot imports net, net/http, crypto/tls, os/exec,
 // internal/hook, or internal/report (or report/transcript): steer answers
-// "what should be said," never "what happened." The one store it touches is
-// the steer log, the record of what it said.
+// "what should be said," never "what happened." The store it touches is the
+// steer log, the record of what it said, and the session's two notice
+// markers (notice.go), which say a once-per-session line was printed.
 package steer
 
 // Level is how hard a delivered finding pushes: a flag is visible but

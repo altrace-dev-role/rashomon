@@ -21,6 +21,21 @@ import (
 // steer_disclosure marker at 2 (card 2.3 R11, A2, A3).
 const stAgent = "AI_AGENT=claude-code_2-1-280_harness"
 
+// stFailureNotice is the channel notice the binary prints, as 2.1.280, on
+// the session's first note shadowed at PostToolUseFailure, an event no probe
+// has verified: nothing of the note, the version, the event and why (card
+// VERSION-GATE1).
+const stFailureNotice = "rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; " +
+	"delivery verified on no version yet): notes on this event wait for a release that passes the delivery check. " +
+	"Shown once per session."
+
+// printsOnly reports that stdout is the hook's JSON with msg as its
+// systemMessage and no other key.
+func printsOnly(stdout, msg string) bool {
+	var out map[string]any
+	return json.Unmarshal([]byte(stdout), &out) == nil && len(out) == 1 && out["systemMessage"] == msg
+}
+
 var (
 	stGoTest  = map[string]any{"command": "go test ./..."}
 	stGoBuild = map[string]any{"command": "go build ./..."}
@@ -190,15 +205,16 @@ func strs(v any) []string {
 // TestSTR43_RegressionLocationNamesWritesBetweenGreenAndRed: a green go
 // test, an edit, then a red go test: the red's post decides the
 // regression-location note. Under the shipped table PostToolUseFailure's
-// model channel is unverified (D69), so it prints nothing and logs one
-// suppressed line whose slots re-render to the card's note; the line keeps
-// no text, as every undelivered line (RES-32). Under record scope v4 the
+// model channel is unverified (D69), so nothing of the note prints, the
+// session's channel notice does, and one suppressed line is logged whose
+// slots re-render to the card's note; the line keeps no text, as every
+// undelivered line (RES-32), and names the notice. Under record scope v4 the
 // write is unnamed and the slots are the degraded row's.
 func TestSTR43_RegressionLocationNamesWritesBetweenGreenAndRed(t *testing.T) {
 	check := func(t *testing.T, e *env, res result) map[string]any {
 		t.Helper()
-		if res.stdout != "" {
-			t.Errorf("the red's post printed %q, want nothing (D69: the channel is unverified)", res.stdout)
+		if !printsOnly(res.stdout, stFailureNotice) {
+			t.Errorf("the red's post printed %q, want the channel notice alone (D69: the channel is unverified)", res.stdout)
 		}
 		lines := e.steerLines()
 		if len(lines) != 1 {
@@ -208,7 +224,8 @@ func TestSTR43_RegressionLocationNamesWritesBetweenGreenAndRed(t *testing.T) {
 		if l.str("pattern") != string(pattern.RegressionLocation) || l.str("state") != "suppressed" ||
 			l.str("suppressed_by") != "unverified_channel" || l.str("level") != "nudge" ||
 			l.str("event") != "PostToolUseFailure" || l.str("attendance") != "attended" ||
-			l.str("model_text") != "" || l.str("prompt_id") != "p1" {
+			l.str("model_text") != "" || l.str("prompt_id") != "p1" || l.str("notice") != "channel" ||
+			l.str("client_version") != "2.1.280" || l.str("verified_floor") != "" {
 			t.Errorf("line = %s", l.raw)
 		}
 		if !strings.HasPrefix(l.str("key"), "learned:test:") {
@@ -324,8 +341,8 @@ func TestST_NoConsentPrintsAFlagOnly(t *testing.T) {
 			}
 			l := lines[0]
 			if !tc.flag {
-				if res.stdout != "" || l.str("suppressed_by") != "unverified_channel" {
-					t.Errorf("with consent: stdout %q, line %s; want nothing printed and unverified_channel", res.stdout, l.raw)
+				if !printsOnly(res.stdout, stFailureNotice) || l.str("suppressed_by") != "unverified_channel" {
+					t.Errorf("with consent: stdout %q, line %s; want the channel notice alone and unverified_channel", res.stdout, l.raw)
 				}
 				return
 			}
@@ -346,13 +363,14 @@ func TestST_NoConsentPrintsAFlagOnly(t *testing.T) {
 }
 
 // TestST_UnattendedRunLogsItsAttendance: under CI the line records the run
-// as unattended. Nothing prints; the reason is the first clamp 2.2's decide
-// reaches, unverified_channel, which it checks before no_mirror.
+// as unattended. Nothing of the note prints; the reason is the first clamp
+// 2.2's decide reaches, unverified_channel, which it checks before
+// no_mirror, so the session's channel notice prints, user-only.
 func TestST_UnattendedRunLogsItsAttendance(t *testing.T) {
 	e := newSteerEnv(t)
 	res := e.regression("toolu_r", "CI=1")
-	if res.stdout != "" {
-		t.Errorf("stdout %q under CI, want nothing", res.stdout)
+	if !printsOnly(res.stdout, stFailureNotice) {
+		t.Errorf("stdout %q under CI, want the channel notice alone", res.stdout)
 	}
 	lines := e.steerLines()
 	if len(lines) != 1 || lines[0].str("attendance") != "unattended" || lines[0].str("suppressed_by") != "unverified_channel" {

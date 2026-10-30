@@ -27,6 +27,22 @@ func TestSP15b_SteerEnvCarriesTheSpecDirs(t *testing.T) {
 	}
 }
 
+// TestVG1m_SteerEnvReadsBothHoldoutSwitches: RASHOMON_HOLDOUT reaches the
+// steer step as the hook reads it, "on" and "off" exactly and nothing for
+// any other value (card VERSION-GATE1).
+func TestVG1m_SteerEnvReadsBothHoldoutSwitches(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		on, off bool
+	}{{"on", true, false}, {"off", false, true}, {"", false, false}, {"ON", false, false}} {
+		t.Setenv("RASHOMON_HOLDOUT", tc.value)
+		env := steerEnv(harness.Identity{}, time.Unix(0, 0))
+		if env.HoldoutOn != tc.on || env.HoldoutOff != tc.off {
+			t.Errorf("RASHOMON_HOLDOUT=%q: HoldoutOn %v, HoldoutOff %v; want %v, %v", tc.value, env.HoldoutOn, env.HoldoutOff, tc.on, tc.off)
+		}
+	}
+}
+
 // TestSP15c_StopJudgesTheDiscoveredSpec: the Stop view discovers the spec
 // from the Stop payload's cwd as the steer step does, and the checkpoint the
 // Stop appends carries its digest (card 3.1 (c), Gate A 1 and 2).

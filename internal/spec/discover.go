@@ -298,7 +298,10 @@ func (d *discovery) compile() *Compiled {
 // (rule 3, managed first): a gate, rule or fact whose ID an earlier source
 // declared goes to Dropped instead. ci_commands entries are numbered per
 // source in their own id space, so they never collide. The holdout is the
-// first source's that has the object (a parsed one has a RateBP).
+// first source's that has the object (a parsed one has a RateBP) and is
+// managed or trusted: an untrusted repository spec's holdout object is not
+// read, so a repository cannot opt its user into a session whose notes
+// reach neither the agent nor the user.
 func (c *Compiled) merge(src int, f *File) {
 	ci := "ci:"
 	if c.Sources[src].Trust == Managed {
@@ -333,7 +336,7 @@ func (c *Compiled) merge(src int, f *File) {
 		}
 		c.Facts = append(c.Facts, DeclaredFact{ID: id, Source: src, Fact: x})
 	}
-	if c.Holdout.RateBP == 0 {
+	if t := c.Sources[src].Trust; c.Holdout.RateBP == 0 && (t == Managed || t == Trusted) {
 		c.Holdout = f.Holdout
 	}
 }

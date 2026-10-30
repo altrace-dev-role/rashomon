@@ -358,7 +358,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// WriteBodies' ReplaceFile (bodies.json, the transcript-copy switch).
 		// Moved 2026-10-29 (STALE-NUDGE1) to 26: stalearm.go's ArmStale open,
 		// runs/<session>/stale-armed, the stale trigger's empty hint.
-		{"store", 26},
+		// Moved 2026-10-30 (VERSION-GATE1) to 27: notice.go's TakeNotice
+		// open, runs/<session>/notice-channel and notice-holdout, the steer
+		// router's once-per-session notice markers.
+		{"store", 27},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

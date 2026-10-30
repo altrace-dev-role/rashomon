@@ -109,7 +109,8 @@ type Compiled struct {
 	// "<task path>: <ParseTask's or the read's error>" (3.2).
 	Errors []string
 	// Holdout is the managed spec's holdout object when it has one, else the
-	// repository spec's, else the zero Holdout (on at DefaultHoldoutBP).
+	// repository spec's when that spec is trusted, else the zero Holdout: no
+	// object, so the hook's default share applies.
 	Holdout Holdout
 	// Task is the active task file (README 3.2): nil with none, and nil
 	// with an Errors line when it was refused or could not be read.

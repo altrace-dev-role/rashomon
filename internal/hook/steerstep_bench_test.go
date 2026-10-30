@@ -217,7 +217,7 @@ func (f *benchSteer) keepSteerLog(b *testing.B) func() {
 // logged fails the step row unless the step appended want lines past the
 // log's first before, each a regression-location line suppressed by
 // unverified_channel with its note's slots bound (a suppressed line carries
-// no text, RES-32).
+// no text, RES-32) and no notice, the session having had it.
 func (f *benchSteer) logged(b *testing.B, before, want int) {
 	b.Helper()
 	lines := f.lines(b)
@@ -229,7 +229,7 @@ func (f *benchSteer) logged(b *testing.B, before, want int) {
 		if l.SuppressedBy != nil {
 			by = string(*l.SuppressedBy)
 		}
-		if l.Pattern != string(pattern.RegressionLocation) || by != string(steer.SuppressedByUnverifiedChannel) || len(l.Slots) == 0 {
+		if l.Pattern != string(pattern.RegressionLocation) || by != string(steer.SuppressedByUnverifiedChannel) || len(l.Slots) == 0 || l.Notice != nil {
 			b.Fatalf("a step line is %s suppressed by %s with %d slots, want regression-location, unverified_channel and the note's slots",
 				l.Pattern, by, len(l.Slots))
 		}
@@ -392,6 +392,10 @@ func (f *benchSteer) writePremise(b *testing.B, w *Post, env SteerEnv, armed boo
 func (f *benchSteer) stepRow(env SteerEnv, next func() string) func(*testing.B) {
 	return func(b *testing.B) {
 		before, restore := len(f.lines(b)), f.keepSteerLog(b)
+		// The session has had its channel notice, so every iteration is a
+		// later shadowed call, which pays the marker's refused create and
+		// prints nothing: one state for every iteration.
+		f.st.TakeNotice(benchSteerSession, store.FileNoticeChannel)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
