@@ -5,6 +5,20 @@ tells you and the agent what the repository says about the files a request
 names, and tells you at the end of a turn whether a test or build passed after
 the last edit.
 
+What this build does today: it records every tool call the agent makes. Before
+the agent starts on a request, it tells the agent what the repository declares
+about the files the request names: the rules a spec you have trusted sets for
+them, and the checks to run before done. At the end of a turn it tells you
+whether a test or build passed after the last edit, and when done was claimed
+without one. It never blocks a call. The notes and the end-of-turn checks are
+its steering layer, AutoSteer. The note before the agent starts reaches it on
+every supported version; a note after a call that succeeded reaches the agent
+only on Claude Code 2.1.280, where that was verified, and a note after a failed
+call, or on another version, is built and logged but not delivered.
+
+What it does not do yet: learn your architecture or conventions, or deliver
+lessons from past sessions. That is the next layer, and it is not in this build.
+
 ## Get started
 
 Needs Claude Code 2.1.280 or later, macOS or Linux, and Go 1.25 or later. In a
