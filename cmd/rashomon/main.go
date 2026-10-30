@@ -139,6 +139,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdLearn(rest, stdout) })
 	case "backtest":
 		return guarded(stderr, func() error { return cmdBacktest(rest, stdout) })
+	case "measure":
+		return guarded(stderr, func() error { return cmdMeasure(rest, stdout) })
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -431,7 +433,7 @@ func openForHook(args []string, stderr io.Writer) *store.Store {
 // small file directly -- never by opening the store, which is what
 // openForHook does as a side effect of doing its job. A paused machine that
 // has never recorded must not acquire an install identity merely by being
-// asked whether it is paused; storeExistsAt, a few hundred lines down, stats
+// asked whether it is paused; storeExistsAt (storeopen.go) stats
 // the same kind of marker for the identical reason, and this is why the call
 // sites put it before openForHook rather than after.
 //
@@ -850,7 +852,7 @@ const (
 // active: the same unresolved-vs-absent distinction statusUnreadable exists
 // for elsewhere in this file.
 //
-// It is a plain read, like storeExistsAt below: os.Stat and os.ReadFile,
+// It is a plain read, like storeExistsAt: os.Stat and os.ReadFile,
 // nothing that opens or creates a store. That is what lets it answer "paused"
 // truthfully on a machine that has never recorded, which is the case the
 // spec requires status be able to report.
@@ -1514,7 +1516,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+backtestUsage+hookUsage)
+`+receiptUsage+learnUsage+backtestUsage+measureUsage+measurePairUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the
@@ -1605,14 +1607,4 @@ func countOf(n int, noun string) string {
 		return "1 " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
-}
-
-// storeExistsAt asks whether a root holds a store without opening one.
-// checkPaused, cmdPause and cmdResume all need to ask this about a root
-// before -- or instead of -- ever opening a *Store: opening CREATES a store,
-// and none of the three may do that as a side effect of a question about
-// recording state.
-func storeExistsAt(root string) bool {
-	_, err := os.Stat(filepath.Join(root, installMetaFile))
-	return err == nil
 }
