@@ -42,6 +42,9 @@ m("LRN-17 the lesson dropped when the preflight has a note", P,
 m("LRN-17 the delivered set ignored", R,
   "\tls, m, ok := learn.Pick(a, func(id string) bool { return given[id] }, paths)\n",
   "\tls, m, ok := learn.Pick(a, func(id string) bool { return false }, paths)\n", "TestLRN17c_")
+m("LRN-17 the lesson finding carries no stop form", R,
+  "Kind: \"local\", StopForm: steer.StopFormNone, AfterSeq: afterSeq}",
+  "Kind: \"local\", AfterSeq: afterSeq}", "TestLRN17n_")
 m("LRN-17 a superseded lesson counted as given", V,
   "spanText(b, sp[dkState]) != string(steer.LineStateDelivered)",
   "spanText(b, sp[dkState]) != string(steer.LineStateDelivered) && spanText(b, sp[dkState]) != string(steer.LineStateSuperseded)",

@@ -44,6 +44,9 @@ func newLessonEnv(t *testing.T) *lessonEnv {
 		t.Fatal(err)
 	}
 	t.Setenv(hook.EnvHoldout, "off")
+	// CI set makes the session unattended, which suppresses every note at
+	// the prompt (decide's no_mirror), and a CI runner sets it.
+	t.Setenv("CI", "")
 	cwd := t.TempDir()
 	key := baseline.Key(cwd)
 	return &lessonEnv{t: t, root: root, installID: installID, cwd: cwd, project: strings.TrimSuffix(baseline.FileName(key), baseline.FileExt)}
@@ -589,5 +592,26 @@ func TestLRN17f_HeldOutSessionGivesTheUserOnly(t *testing.T) {
 	got := e.lessonLines(held)
 	if len(got) != 1 || got[0].State != "delivered" || got[0].Delivery == nil || *got[0].Delivery != "holdout" || got[0].ModelText != "" {
 		t.Errorf("lines %v, want one delivered line, delivery holdout, no model text", got)
+	}
+}
+
+// TestLRN17n_LessonFindingsPassTheRouterContract: lessonFinding's two
+// findings, a lesson's nudge and the unchecked flag, pass the router's
+// contract at UserPromptSubmit (steer.Finding.CheckOn), at a session's first
+// prompt and after a call. admit drops a finding outside it and nothing
+// prints, so a field the contract holds (a stop form, a priority) left unset
+// reads as no lesson at all; this names the rule.
+func TestLRN17n_LessonFindingsPassTheRouterContract(t *testing.T) {
+	lesson := learn.Active{Lessons: []learn.Lesson{{ID: "go-test-cwd", Tier: learn.TierProbation, Text: cwdLesson}}}
+	for name, a := range map[string]learn.Active{"lesson": lesson, "unchecked": {Unchecked: learn.UncheckedSignature}} {
+		for _, after := range []int64{0, 3} {
+			f, ok := lessonFinding(a, after, nil, nil)
+			if !ok {
+				t.Fatalf("%s at after_seq %d: no finding", name, after)
+			}
+			if err := f.CheckOn(steer.EventUserPromptSubmit); err != nil {
+				t.Errorf("%s at after_seq %d: %v", name, after, err)
+			}
+		}
 	}
 }
