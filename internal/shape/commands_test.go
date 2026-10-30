@@ -98,7 +98,7 @@ func TestSR1u_CommandsRefusesWhatItCannotRead(t *testing.T) {
 		"f() { git push --force; }; f",
 	} {
 		if cmds, ok := Commands(line); ok {
-			t.Errorf("Commands(%q) = %q, true; want ok false", line, cmds)
+			t.Errorf("Commands(%q) = %+v, true; want ok false", line, cmds)
 		}
 	}
 }

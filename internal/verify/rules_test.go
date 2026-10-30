@@ -81,19 +81,6 @@ func shells(t *testing.T, lines ...string) *store.Run {
 	return withLines(runOf(t, calls...), m)
 }
 
-// declSeq is the record seq of the declaration of the call with seq k.
-func declOf(t *testing.T, r *store.Run, k int64) int64 {
-	t.Helper()
-	id := "t" + strconv.FormatInt(k, 10)
-	for _, d := range r.Declarations {
-		if d.ToolUseID == id {
-			return d.Seq
-		}
-	}
-	t.Fatalf("no declaration for call %d", k)
-	return 0
-}
-
 func stopPoint(r *store.Run) Point { return Point{Kind: PointStop, Seq: r.LastSeq(), SessionID: "s1"} }
 
 // ledgerAt is the session's ledger at pt: the one producer the Stop path
@@ -136,7 +123,7 @@ func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 	sp := ruleSpec(spec.Trusted, noForce())
 	r := shells(t, "git status", "git push --force origin main", "git push origin main")
 	snap, obs := ledgerAt(r, sp, stopPoint(r))
-	bad := declOf(t, r, 2)
+	bad := declOf(r, 2).Seq
 	want := RuleVerdict{Rule: "spec:no-force", Kind: spec.ForbidCommand, Verdict: Violation, Seqs: []int64{bad}, HardControl: "branch protection"}
 	if v := oneVerdict(t, snap); v.Rule != want.Rule || v.Kind != want.Kind || v.Verdict != want.Verdict ||
 		!slices.Equal(v.Seqs, want.Seqs) || v.HardControl != want.HardControl {
@@ -221,7 +208,7 @@ func TestSR1b_ProtectPathWriteInMode(t *testing.T) {
 		if v.Verdict != c.want || v.Kind != spec.ProtectPath {
 			t.Errorf("%s: verdict %+v, want %s", c.name, v, c.want)
 		}
-		if c.want == Violation && !slices.Equal(v.Seqs, []int64{declOf(t, r, 1)}) {
+		if c.want == Violation && !slices.Equal(v.Seqs, []int64{declOf(r, 1).Seq}) {
 			t.Errorf("%s: seqs %v, want the write's declaration", c.name, v.Seqs)
 		}
 	}
@@ -433,7 +420,7 @@ func TestSR1e_UndecidedNeverFires(t *testing.T) {
 	}
 
 	both := shells(t, "bash -c 'git push --force'", "git push --force")
-	if v := oneVerdict(t, Evaluate(both, nil, sp, stopPoint(both), time.Time{})); v.Verdict != Violation || !slices.Equal(v.Seqs, []int64{declOf(t, both, 2)}) {
+	if v := oneVerdict(t, Evaluate(both, nil, sp, stopPoint(both), time.Time{})); v.Verdict != Violation || !slices.Equal(v.Seqs, []int64{declOf(both, 2).Seq}) {
 		t.Errorf("a violation beside an undecided call: %+v, want the violation", v)
 	}
 
@@ -454,7 +441,7 @@ func TestSR1g_VerdictsReachTheCheckpoint(t *testing.T) {
 	r := shells(t, "git push --force")
 	snap := Evaluate(r, nil, ruleSpec(spec.Trusted, noForce()), stopPoint(r), time.Time{})
 	cp := Cut(snap, time.UnixMilli(1))
-	want := []CheckpointRuleVerdict{{Rule: "spec:no-force", Kind: spec.ForbidCommand, Verdict: Violation, Seqs: []int64{declOf(t, r, 1)}}}
+	want := []CheckpointRuleVerdict{{Rule: "spec:no-force", Kind: spec.ForbidCommand, Verdict: Violation, Seqs: []int64{declOf(r, 1).Seq}}}
 	if len(cp.SpecVerdicts) != 1 || cp.SpecVerdictsOmitted != 0 || cp.SpecVerdicts[0].Rule != want[0].Rule ||
 		cp.SpecVerdicts[0].Verdict != want[0].Verdict || !slices.Equal(cp.SpecVerdicts[0].Seqs, want[0].Seqs) {
 		t.Fatalf("checkpoint spec verdicts %+v omitted %d, want %+v", cp.SpecVerdicts, cp.SpecVerdictsOmitted, want)
