@@ -51,7 +51,7 @@ func TestPF1d_PromptWordsNeverLand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := e.run(string(payload), []string{"RASHOMON_HOLDOUT=off"}, append([]string{"recap", "pending"}, e.installArgs()...)...)
+	res := e.run(string(payload), []string{"RASHOMON_HOLDOUT=off", "CI="}, append([]string{"recap", "pending"}, e.installArgs()...)...)
 	if res.exitCode != 0 {
 		t.Fatalf("recap pending: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
