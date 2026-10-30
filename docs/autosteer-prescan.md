@@ -11,6 +11,83 @@ results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
 
+### Revision 10: what B2c established
+
+B2 is complete. Replay now covers a whole session across its files.
+
+**Merge:**
+- **File order** depends on bytes only: the session's own files first, then the
+  earliest timestamp in the file, then its SHA-256. A byte-identical copy is dropped.
+- **Event order** is by event time, with causal constraints. A subagent's calls fall
+  inside its parent call's use and result. A result follows its use. A resume's new
+  turns follow the turns it repeats.
+- **Order that cannot be established taints from where it is found:**
+  `order_ambiguous`, `order_timestamp_regression`, `subagent_outside_parent_call`.
+- **Copies:** copies of a call that disagree make it unsupported (`copies_disagree`).
+- **This replaces §6.3's "file order, then seq".** A transition across two files is
+  reported apart, as partial.
+
+**Subagents.**
+- `agent_type` is recovered through the parent link only; `attributionAgent` is a
+  cross-check only.
+- On the two-subagent fixture, replay gives zero differences against the captured
+  payloads: 37 records in each store.
+- Eight synthetic link failures stay unsupported, taint, and keep the Stop from
+  Verified: no parent, two parents, an unreadable parent line, an attribution mismatch,
+  disagreeing parent copies, and others.
+- **Revision 6's table changes:** `agent_id` and `agent_type` are recoverable through
+  the link, not unrecoverable.
+- **One new assumption.** A subagent's result lines carry no `toolUseResult`, so whether
+  its Bash call was backgrounded cannot be read. Such calls are fed as foreground and
+  marked `assumed` (`subagent_tool_response_assumed`). They count in "any" runs, never
+  as matching recorded inputs. This rests on one fixture.
+
+**Ledger and dedup.**
+- The import ledger is keyed by `HMAC(key, sessionId)` and holds file digests and the
+  session's summary. A rescan replaces an entry. A session that has since been
+  recorded live is removed.
+- The live-store check is a read-only `Lstat`.
+- DEDUP-1 and DEDUP-2 are tested on every §6.2 row and on a six-session tree scanned in
+  shuffled orders with rescans.
+
+**Two kinds of confidence**, as separate fields (`sessionBasis`):
+- reconstruction is `matches_recorded_inputs`;
+- `ExecutedInputsVerified` is false;
+- `CaptureComplete` is false;
+- `SessionEnd` is `unknown`;
+- `SafetyGrade()` is false.
+
+B3a's seed eligibility must read them.
+
+**Terminology:** every "Verified" in §6 means "matches recorded inputs".
+
+**SessionEnd** changes no verdict input. It does change report coverage
+(`run_not_closed`) and leaves the sandbox-trail window open, and the seed uses neither.
+
+**Replay globals.** One replay at a time, under a mutex. Cleanup runs on error, panic
+and cancellation, each tested, including six concurrent replays under the race
+detector.
+
+**Bounds:**
+- 20,000 call ids per session; past it, calls are unsupported and the session is
+  partial. This replaces §6.7's "dedupe reverts to per-file".
+- 128 files per session.
+- One event held per file stream.
+
+**Owed to B3a:**
+- **Rescan needs per-session contributions.** Replace-on-rescan needs either per-session
+  contributions kept or a full recompute on every scan; aggregates alone cannot
+  support it. That is in tension with the 64 KiB seed cap.
+- **`Project` is a clear path** (`baseline.Key`) in the summary. It must be hashed or
+  dropped before anything is written.
+- **The real key** still has to be injected (revision 9). The ledger's HMAC and the
+  family keys change together.
+
+**Conservative choices worth revisiting with data:**
+- A background subagent's later lines are tainted.
+- A backup copy cut mid-turn taints the session even when a complete copy exists.
+- A result whose use is in a cut file is dropped.
+
 ### Revision 9: rulings on B2b
 
 Historical replay is **validated as reconstruction, not yet as a basis for seeding.**
