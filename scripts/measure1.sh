@@ -11,6 +11,10 @@
 #       [--limit SECONDS] [--allowed TOOLS]
 #       the gates G0, G2 (the oracle, before any session spends a token),
 #       G1, G3 to G6; each stops the run on failure.
+#   measure1.sh task M --task DIR
+#       G2 alone: whether DIR is a task at all (its FAIL_TO_PASS red on base
+#       on their own assertions, everything green on the reference), with
+#       no session started.
 #
 # A task directory holds repo/ (a git repository), base and fix (one commit
 # id each), issue.txt, optionally prompts.txt (one prompt per paragraph;
@@ -277,6 +281,7 @@ g1() {
 		put "PSID_$arm" "$(cat "$M/out/g1c-$arm.session")"
 		cp "$A/envdump.txt" "$M/out/g1a-$arm.env" 2>/dev/null || die "G1a: the $arm probe's hook wrote no dump"
 	done
+	check projection "$NPROMPTS" "$(check transcript "$P_off/cc" "$PSID_off")" "$(check transcript "$P_steer/cc" "$PSID_steer")"
 	check envdiff "$M/out/g1a-off.env" "$P_off" "$PWS_off" "$PSID_off" "$M/out/g1a-steer.env" "$P_steer" "$PWS_steer" "$PSID_steer"
 	text=$(check control "$P_steer/store" "$PSID_steer" "$P_off/store" "$PSID_off") || { printf '%s\n' "$text" >&2; die "G1c: the positive control failed"; }
 	tr=$(check transcript "$P_steer/cc" "$PSID_steer")
@@ -423,5 +428,15 @@ run)
 	shift
 	run "$@"
 	;;
-*) die "usage: measure1.sh prepare BIN [DIR] | run M --task DIR [--model ID] [--order seed:N] [--reps K] [--limit S] [--allowed TOOLS]" ;;
+task)
+	[ $# -eq 4 ] && [ "$3" = --task ] || die "usage: measure1.sh task M --task DIR"
+	M=$2
+	[ -x "$M/bin/go" ] || die "task: $M is not a prepared directory"
+	task=$(cd "$4" && pwd)
+	base=$(cat "$task/base")
+	fix=$(cat "$task/fix")
+	g2
+	say "G2 the task holds: FAIL_TO_PASS red on base, the reference green"
+	;;
+*) die "usage: measure1.sh prepare BIN [DIR] | run M --task DIR [--model ID] [--order seed:N] [--reps K] [--limit S] [--allowed TOOLS] | task M --task DIR" ;;
 esac

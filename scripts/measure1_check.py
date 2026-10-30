@@ -328,6 +328,44 @@ def cmd_sensors(args):
         fail("G5: S2's control failed: the steer transcript holds no rashomon marker, though G1c found the channel there")
 
 
+def usage_of(tr):
+    """requests, context tokens, cache reads and output in a transcript.
+    Claude Code writes one entry per content block, each with its
+    message's usage, so a message id counts once; an entry with none
+    counts as its own."""
+    seen, r, ctx, cr, out = set(), 0, 0, 0, 0
+    for e in lines(tr):
+        m = e.get("message") or {}
+        u = m.get("usage")
+        if e.get("type") != "assistant" or not u:
+            continue
+        mid = m.get("id")
+        if mid and mid in seen:
+            continue
+        seen.add(mid)
+        r += 1
+        c = u.get("cache_read_input_tokens", 0)
+        ctx += u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0) + c
+        cr += c
+        out += u.get("output_tokens", 0)
+    return r, ctx, cr, out
+
+
+def cmd_projection(args):
+    """projection PROMPTS TRANSCRIPT...: G1c's probes ran prompt 1, so their
+    usage is the per-prompt figure before any arm spends; prints it per
+    probe and the arms' projection, prompt 1 times the prompts times two."""
+    n, trs = int(args[0]), [t for t in args[1:] if t]
+    if not trs:
+        print("measure1: G1c no probe transcript, so no projection")
+        return
+    tot = [sum(x) for x in zip(*(usage_of(t) for t in trs))]
+    r, ctx, cr, out = (v / len(trs) for v in tot)
+    print("measure1: G1c prompt 1 per probe: %.0f request(s), %.0f context tokens (%.0f%% cache reads), %.0f output; "
+          "projected arms (x%d prompts x2 arms): %.0f requests, %.0f context tokens, %.0f output"
+          % (r, ctx, 100 * cr / ctx if ctx else 0, out, n, r * n * 2, ctx * n * 2, out * n * 2))
+
+
 def cmd_markers(args):
     """markers: S2's markers, one JSON string a line, for the driver test
     that pins them to the binary's own prefixes."""
@@ -340,8 +378,8 @@ def cmd_oracle(args):
     "<package> <Test>", P2P lines a package. MODE red: every F2P test emits
     its own fail (a build failure is not one: go reports it as the package's
     fail with FailedBuild set, the build-fail event naming only ImportPath).
-    MODE green: every F2P test passes and no P2P package fails. MODE score:
-    print the counts only."""
+    MODE green: every F2P test passes, and no P2P test fails apart from
+    them, nor any P2P package's build. MODE score: print the counts only."""
     events = lines(args[0])
     f2p = [l.split() for l in open(args[1]).read().splitlines() if l.strip()]
     p2p = [l.strip() for l in open(args[2]).read().splitlines() if l.strip()]
@@ -353,13 +391,24 @@ def cmd_oracle(args):
         elif not e.get("Test") and e.get("Package") and act in ("pass", "fail", "skip"):
             pkgs[e["Package"]] = "build-fail" if act == "fail" and e.get("FailedBuild") else act
 
+    def in_pkg(p, q):
+        return p == q or p.endswith("/" + q.lstrip("./")) or q in (".", "./")
+
     def match(pkg, name):
-        return [v for (p, n), v in tests.items() if n == name and (p == pkg or p.endswith("/" + pkg.lstrip("./")) or pkg in (".", "./"))]
+        return [v for (p, n), v in tests.items() if n == name and in_pkg(p, pkg)]
+
+    def is_f2p(p, n):
+        return any(in_pkg(p, fp) and (n == fn or n.startswith(fn + "/")) for fp, fn in f2p)
     f2p_pass = sum(1 for p, n in f2p if match(p, n) == ["pass"])
     f2p_fail = sum(1 for p, n in f2p if match(p, n) == ["fail"])
-    p2p_bad = [p for p, v in pkgs.items() if v in ("fail", "build-fail") and any(p == q or p.endswith("/" + q.lstrip("./")) or q in (".", "./") for q in p2p)]
+    # PASS_TO_PASS is scored per test, the FAIL_TO_PASS tests and their
+    # subtests apart: in a one-package task the package holds both, and a
+    # package verdict would count a failed fix as a regression too.
+    p2p_bad = sorted("%s %s" % (p, n) for (p, n), v in tests.items()
+                     if v == "fail" and any(in_pkg(p, q) for q in p2p) and not is_f2p(p, n))
     unbuilt = sorted(p for p, v in pkgs.items() if v == "build-fail")
-    print("measure1: oracle FAIL_TO_PASS %d/%d passed, %d failed on their assertions; PASS_TO_PASS %d package(s) failing; %d package(s) did not build"
+    p2p_bad += [p + " (did not build)" for p in unbuilt if any(in_pkg(p, q) for q in p2p)]
+    print("measure1: oracle FAIL_TO_PASS %d/%d passed, %d failed on their assertions; PASS_TO_PASS %d failing apart from them; %d package(s) did not build"
           % (f2p_pass, len(f2p), f2p_fail, len(p2p_bad), len(unbuilt)))
     if args[3] == "red" and f2p_fail != len(f2p):
         why = "; %s did not build, so its tests never ran" % ", ".join(unbuilt) if unbuilt else ""
@@ -374,7 +423,7 @@ COMMANDS = {
     "addhook": cmd_addhook, "uuid": cmd_uuid,
     "transcript": cmd_transcript, "submitted": cmd_submitted, "turnend": cmd_turnend,
     "pending": cmd_pending, "control": cmd_control, "holds": cmd_holds, "sensors": cmd_sensors,
-    "oracle": cmd_oracle, "markers": cmd_markers,
+    "oracle": cmd_oracle, "markers": cmd_markers, "projection": cmd_projection,
 }
 
 if __name__ == "__main__":

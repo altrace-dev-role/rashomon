@@ -270,7 +270,9 @@ func (r *m1Rig) want(res m1Result, lines ...string) {
 // TestMS1x_DriverStopsWithNoModelChannel: on a tree whose steer arm delivers
 // nothing at nudge, a run passes G0, G2, G1b and G1a and stops at G1c's
 // positive control, before any arm runs. Each probe's turn ends on this
-// binary's own stop checkpoint, the end the driver reads.
+// binary's own stop checkpoint, the end the driver reads, and the probes'
+// usage is projected over the arms before any arm spends (the stub's one
+// call per turn: 10 tokens in, 5 out).
 func TestMS1x_DriverStopsWithNoModelChannel(t *testing.T) {
 	t.Parallel()
 	r := newM1Rig(t, nil, m1Red)
@@ -283,6 +285,8 @@ func TestMS1x_DriverStopsWithNoModelChannel(t *testing.T) {
 		"measure1: oracle FAIL_TO_PASS 1/1 passed, 0 failed on their assertions",
 		"measure1: G1b init events equal in 14 keys",
 		"equal but for RASHOMON_STEER_ARM=off and RASHOMON_STEER_ARM=steer",
+		"measure1: G1c prompt 1 per probe: 1 request(s), 10 context tokens (0% cache reads), 5 output; "+
+			"projected arms (x3 prompts x2 arms): 6 requests, 60 context tokens, 30 output",
 		"measure1: G1c: no model channel on this tree",
 		"measure1: G1c: the positive control failed")
 	for _, arm := range []string{"off", "steer"} {
