@@ -1,7 +1,104 @@
 {
-  "go_version": "go1.27.3",
-  "benchmark_rows": "the measured best of three on the reference machine (darwin/arm64, go1.27.3, -benchtime 20x, 2026-10-22; the eight store rows re-measured 2026-10-24 as the median of five CI-style invocations, at 1.1c and 1.1f on the foundation branch); a row's max equals its measurement, and the gate's ten percent (scripts/benchgate) is the only margin",
   "budgets_version": 1,
+  "parallel": {
+    "ways": 64,
+    "summed_peak_mib_max": 704,
+    "basis": "per-process rule (RES-30, ruling 2026-10-13): largest pair peak at most 1.25x the median of 25 solo pairs, both measured in the same run. Restated from measurement on the reference machine with GOMAXPROCS unchanged: largest 1.08x to 1.21x over six runs with nine solo pairs, 1.10x to 1.19x over eleven runs with 25 (4.02 to 4.31 MiB against solo medians of 3.61 to 3.69 MiB), burst median 1.02x to 1.05x; GOMAXPROCS(1) in hook and post measured 1.03x to 1.09x over twenty runs and was rejected. No tolerance on the reference machine; macos-latest unmeasured, so a CI runner gets the platform tolerance on the ratio until it is measured"
+  },
+  "rss_cases": [
+    {
+      "id": "hook.400B",
+      "entry": "hook",
+      "payload_bytes": 400,
+      "budget_mib": 6.5008,
+      "measured_mib": 5.97,
+      "gates_from": "P-08"
+    },
+    {
+      "id": "hook.40KB",
+      "entry": "hook",
+      "payload_bytes": 40000,
+      "budget_mib": 6.5839,
+      "measured_mib": 6.12,
+      "gates_from": "P-08"
+    },
+    {
+      "id": "hook.1MiB",
+      "entry": "hook",
+      "payload_bytes": 1048576,
+      "budget_mib": 9.9,
+      "measured_mib": 9.48,
+      "gates_from": "P-10",
+      "slope_mib_per_mib": 3.4,
+      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input, whose constant overhead shows most at 1 MiB, until RES-48 (archive 85.3.3)"
+    },
+    {
+      "id": "hook.4MiB",
+      "entry": "hook",
+      "payload_bytes": 4194304,
+      "budget_mib": 20.1,
+      "measured_mib": 19.72,
+      "gates_from": "P-10",
+      "slope_mib_per_mib": 3.4,
+      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input, whose constant overhead shows most at 1 MiB, until RES-48 (archive 85.3.3)"
+    },
+    {
+      "id": "hook.8MiB",
+      "entry": "hook",
+      "payload_bytes": 8388608,
+      "budget_mib": 33.7,
+      "measured_mib": 31.88,
+      "gates_from": "P-10",
+      "slope_mib_per_mib": 3.4,
+      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input, whose constant overhead shows most at 1 MiB, until RES-48 (archive 85.3.3)"
+    },
+    {
+      "id": "post.540B",
+      "entry": "post",
+      "payload_bytes": 540,
+      "budget_mib": 6.5011,
+      "measured_mib": 6.06,
+      "gates_from": "P-08"
+    },
+    {
+      "id": "post.40KB",
+      "entry": "post",
+      "payload_bytes": 40000,
+      "budget_mib": 6.5839,
+      "measured_mib": 6.05,
+      "gates_from": "P-08"
+    },
+    {
+      "id": "post.1MiB",
+      "entry": "post",
+      "payload_bytes": 1048576,
+      "budget_mib": 8.95,
+      "measured_mib": 8.86,
+      "gates_from": "P-10",
+      "slope_mib_per_mib": 2.45,
+      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
+    },
+    {
+      "id": "post.4MiB",
+      "entry": "post",
+      "payload_bytes": 4194304,
+      "budget_mib": 16.3,
+      "measured_mib": 15.42,
+      "gates_from": "P-10",
+      "slope_mib_per_mib": 2.45,
+      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
+    },
+    {
+      "id": "post.8MiB",
+      "entry": "post",
+      "payload_bytes": 8388608,
+      "budget_mib": 26.1,
+      "measured_mib": 23.66,
+      "gates_from": "P-10",
+      "slope_mib_per_mib": 2.45,
+      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
+    }
+  ],
   "entries": [
     {
       "id": "hook.bash_short",
@@ -76,7 +173,7 @@
       "payload_class": "edit_314k",
       "payload_bytes": 314000,
       "benchmark": "BenchmarkRunPost/edit_314k",
-      "alloc_bytes_max": 471379,
+      "alloc_bytes_max": 476405,
       "cold_alloc_bytes_max": 575120,
       "maxrss_mib_p50": 6.73,
       "maxrss_mib_p95": 7.16,
@@ -146,7 +243,7 @@
       "parent_maxrss_mib_p50": null,
       "wall_ms_p50": 15,
       "wall_ms_p95": 400,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.02 / 5.97 / 5.91 MiB); nothing queued; expected per archive 85.4.1: 8 MiB with nothing queued at p50, mining and briefing at p95. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet."
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.02 / 5.97 / 5.91 MiB); nothing queued; expected per archive 85.4.1: 8 MiB with nothing queued at p50, mining and briefing at p95. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet. STATUS-VERBS1 (2026-10-30) steps this entry +0.30 MiB on the linux runner, its markFired on the probe path: 5.84 against 5.54, the Perf gates (linux) medians of run 41021093140 (job 123948341323, e12097a5) and run 41015883212 (job 123931990205, its base b213146d), one image (ubuntu-24.04 20261025.353.1). The linux row does not move; the step reads against it."
     },
     {
       "id": "probe.end",
@@ -167,14 +264,10 @@
       "parent_maxrss_mib_p50": null,
       "wall_ms_p50": 6,
       "wall_ms_p95": 12,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.95 / 6.05 / 5.98 MiB); closing a started session; expected per archive 85.4.1: one record, 6 / 6.5 MiB. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet."
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.95 / 6.05 / 5.98 MiB); closing a started session; expected per archive 85.4.1: one record, 6 / 6.5 MiB. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet. STATUS-VERBS1 (2026-10-30) steps this entry +0.43 MiB on the linux runner, its markFired on the probe path: 6.09 against 5.66, the Perf gates (linux) medians of run 41021093140 (job 123948341323, e12097a5) and run 41015883212 (job 123931990205, its base b213146d), one image (ubuntu-24.04 20261025.353.1). The linux row does not move; the step reads against it."
     }
   ],
-  "parallel": {
-    "ways": 64,
-    "summed_peak_mib_max": 704,
-    "basis": "per-process rule (RES-30, ruling 2026-10-13): largest pair peak at most 1.25x the median of 25 solo pairs, both measured in the same run. Restated from measurement on the reference machine with GOMAXPROCS unchanged: largest 1.08x to 1.21x over six runs with nine solo pairs, 1.10x to 1.19x over eleven runs with 25 (4.02 to 4.31 MiB against solo medians of 3.61 to 3.69 MiB), burst median 1.02x to 1.05x; GOMAXPROCS(1) in hook and post measured 1.03x to 1.09x over twenty runs and was rejected. No tolerance on the reference machine; macos-latest unmeasured, so a CI runner gets the platform tolerance on the ratio until it is measured"
-  },
+  "growth": [],
   "benchmarks": [
     {
       "name": "BenchmarkDerive/bash_short",
@@ -290,11 +383,11 @@
     },
     {
       "name": "BenchmarkRunPost/edit_314k",
-      "measured_bytes_per_op": 471379,
-      "measured_allocs_per_op": 271,
-      "bytes_per_op_max": 471379,
-      "allocs_per_op_max": 271,
-      "basis": "remeasured 2026-10-27 at 1.2q on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 470331 B/op and 265 allocs before (runs 470363, 470363, 470331; the old row, 473631 and 273, predates both), 471379 and 271 after (runs 471411, 471411, 471379)"
+      "measured_bytes_per_op": 476405,
+      "measured_allocs_per_op": 299,
+      "bytes_per_op_max": 476405,
+      "allocs_per_op_max": 299,
+      "basis": "measured on the runner (D215, anchored where it is gated): the Perf gates (macos) job of run 41010569949 (job 123915264628, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on 788f0def (SV1a on main a00ea4e5), the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 476,405 and 299; 477,179 and 301; 477,043 and 301. The base is the same job of run 41009998604 (job 123913499290, the same image) on main a00ea4e5, best 474,758 B/op and 288 allocs/op, the runs reading 475,274 and 290; 474,758 and 288; 476,624 and 293. The step, the markFired step, is +1647 B/op and +11 allocs/op on the runner; linux's, measured the same way, is +15 allocs/op. It replaces the reference machine's 471,379 B/op and 271 allocs/op, which the runner reads main +0.7% B/op and +6.3% allocs/op over; the reference recipe's pair in lane 4's window on the tree (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2, best of nine a side by benchgate -measure), corroboration only: base 471,851 and 277, tree 472,627 and 286, step +776 B/op and +9 allocs/op (PF-BENCH-ENV1 reads the recipe gap). The figures were read on SV1a over main a00ea4e5; #136's own CI run on the re-cut is the first reading of the merged code (D218)"
     },
     {
       "name": "BenchmarkRecap/10",
@@ -752,6 +845,12 @@
       "basis": "measured on the runner: the Perf gates (macos) job of run 40999250662 (job 123879538778, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/brief1 e3cb90c9 (BRIEF1 on SPEC-TRUST1's D173b), the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 160,937 B/op and 847 allocs/op; 160,940 B/op and 847 allocs/op; 160,937 B/op and 847 allocs/op: printBrief at startup on a payload already taken in, with a settings install's args, so the origin check stops at the --install marker (the plugin entry adds install.PluginFires's reads, not in this row); a .git project under the temp root holding CLAUDE.md, go.mod, 32 package directories and cmd/app (71 entries), a 24-family index, no spec; ns/op is ungated"
     }
   ],
+  "disk": {
+    "bytes_per_call_max": 6000
+  },
+  "benchmark_platform": "darwin/arm64",
+  "go_version": "go1.27.3",
+  "benchmark_rows": "the measured best of three on the reference machine (darwin/arm64, go1.27.3, -benchtime 20x, 2026-10-22; the eight store rows re-measured 2026-10-24 as the median of five CI-style invocations, at 1.1c and 1.1f on the foundation branch); a row's max equals its measurement, and the gate's ten percent (scripts/benchgate) is the only margin",
   "platforms": {
     "darwin/arm64": {
       "reference": "Apple M3, 8 GB, go1.27.2 (every RSS and init gate re-run under go1.27.3 on 2026-10-22 and within its row), release flags (CGO_ENABLED=0 -trimpath -ldflags \"-s -w\")",
@@ -807,57 +906,6 @@
       }
     },
     "linux/amd64": {
-      "reference": "ubuntu-latest",
-      "tolerance_until": "",
-      "entries": {
-        "hook.bash_short": {
-          "p50": 5.59,
-          "p95": 5.59
-        },
-        "post.bash_short": {
-          "p50": 5.47,
-          "p95": 5.47
-        },
-        "hook.edit_50k": {
-          "p50": 5.72,
-          "p95": 5.72
-        },
-        "post.edit_314k": {
-          "p50": 6.22,
-          "p95": 6.22
-        },
-        "recap.stop": {
-          "p50": 7.46,
-          "p95": 7.46
-        },
-        "recap.pending": {
-          "p50": 6.34,
-          "p95": 6.34
-        },
-        "probe.start": {
-          "p50": 5.78,
-          "p95": 5.78
-        },
-        "probe.end": {
-          "p50": 6.03,
-          "p95": 6.03
-        }
-      },
-      "tolerance": 0.1,
-      "case_budgets": {
-        "hook.400B": 5.59,
-        "hook.40KB": 5.72,
-        "hook.1MiB": 8.04,
-        "hook.4MiB": 14.78,
-        "hook.8MiB": 22.93,
-        "post.540B": 5.59,
-        "post.40KB": 5.59,
-        "post.1MiB": 7.59,
-        "post.4MiB": 13.97,
-        "post.8MiB": 22.09
-      },
-      "set_from": "RSS rows (entries, case_budgets): the median of nine readings through the reaper in one run, the Perf gates (linux) job of run 40147955591 (job 121033244967, PR #93 head 4f1f479c, ubuntu-latest, ubuntu-24.04 image 20261012.334.1, go1.27.3, 2026-10-25), the first run under the harness controls: THP disabled for the harness and its children (the harness logged the sysfs setting as [always] madvise never, so the runner was at always), every measured child under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2. The gated figure is the serialized 4 KiB-page peak. It is one run, the only one that carries 4f1f479c (no other PR head does), so each row is that run's median, not a highest median over several runs; the nine readings per row were each one cluster (widest: hook.1MiB 6.91 to 7.21, hook.4MiB 13.54 to 13.79, hook.8MiB 21.74 to 22.02), so no row sits on a mode and none is bimodal. Medians in MiB: hook.400B 4.71, hook.40KB 4.96, hook.1MiB 7.00, hook.4MiB 13.68, hook.8MiB 21.93, post.540B 4.71, post.40KB 4.71, post.1MiB 6.33, post.4MiB 12.96, post.8MiB 20.96; hook.bash_short 4.71, hook.edit_50k 4.83, post.bash_short 4.71, post.edit_314k 5.33, recap.stop 6.33, recap.pending 5.21, probe.start 4.58, probe.end 4.71. These replace the rows measured before the controls (8.14 to 10.51 on the small entries and cases, hook.4MiB 19.05, hook.8MiB 27.35, post.4MiB 16.86, post.8MiB 24.58), which read 3 MiB or more higher on THP at always with a concurrent collector, and which post.edit_314k (8.24) and recap.pending (8.54) had set on the low mode of a bimodal pair. The earlier rows are withdrawn. This repository's reference Linux VM reads lower than the runner (about 4.7 for hook.400B, 22.0 for hook.8MiB under the controls), so a row cannot be taken from any other machine; the next run of this job on a further head should be added and the highest median taken. benchmarks: best of three, -benchtime 20x, from run 39876043270's bench-linux artifact on 323e4075 under go1.27.3, cross-checked on a second linux/amd64 machine within 0.1 percent on 31 of 40 rows, and within 5 percent on all of them RES-ROWS1 (2026-10-28): 18 RSS rows (10 case_budgets, 8 entries) are the highest median per row over run 40147955591 and run 40790551553 (job 123174418804, PR #111 head 54ae497f, ubuntu-latest, ubuntu-24.04 image 20261025.353.1, go1.27.3, THP sysfs always [madvise] never, disabled for the harness and its children, measured children under GOMAXPROCS=1 and GODEBUG set to gcstoptheworld=2), whose medians are the higher on every one: hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. 40790551553 read eleven rows over the ten percent (hook.400B, post.540B, post.40KB and the eight entries) and hook.1MiB and post.1MiB within 0.02 MiB of it; the widest spread of a row's nine readings was hook.4MiB's, 14.09 to 14.49. RSS-ROW1 (2026-10-30): the 18 RSS rows (10 case_budgets, 8 entries) are re-anchored where they are gated, on main 7da6abaa's own Perf gates (linux) job: run 41021267211 (job 123948892271, ubuntu-latest, image ubuntu-24.04 20261025.353.1, go1.27.3), each row that job's median of nine through the reaper: hook.400B 5.59, hook.40KB 5.72, hook.1MiB 8.04, hook.4MiB 14.78, hook.8MiB 22.93, post.540B 5.59, post.40KB 5.59, post.1MiB 7.59, post.4MiB 13.97, post.8MiB 22.09; hook.bash_short 5.59, hook.edit_50k 5.72, post.bash_short 5.47, post.edit_314k 6.22, recap.stop 7.46, recap.pending 6.34, probe.start 5.78, probe.end 6.03. They replace hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. On that run every row read 0.5 to 7.8% under its old line (the row plus 10%); probe.end was closest. Main a00ea4e5, 6fc382ac and b213146d build the same release binary, and their runs of this job (job 123913498909, job 123925250351, job 123931990205) read within 0.13 MiB of each other on every row (hook.4MiB the widest), while the open changes' steps read +0.25 to +0.38 MiB on every row (PR #137) and +0.30 and +0.43 on probe.start and probe.end (PR #136): on this runner the readings track the code, so these rows are main's code here and a change's own step is read against them.",
-      "tolerance_after": 0.1,
       "benchmarks": [
         {
           "name": "BenchmarkDerive/bash_short",
@@ -977,11 +1025,11 @@
         },
         {
           "name": "BenchmarkRunPost/edit_314k",
-          "measured_bytes_per_op": 468895,
-          "measured_allocs_per_op": 248,
-          "bytes_per_op_max": 468895,
-          "allocs_per_op_max": 248,
-          "basis": "measured on the runner: the Perf gates (linux) job of run 40583817139 (job 122469905330, ubuntu-latest, ubuntu-24.04 image 20261012.334.1, go1.27.3, 2026-10-27) on PR #110's merge ref e84020d (9d8e4ea5 into main fcf15f4f), best of three at -benchtime 20x, by benchgate -measure over the job's bench-linux artifact"
+          "measured_bytes_per_op": 472577,
+          "measured_allocs_per_op": 273,
+          "bytes_per_op_max": 472577,
+          "allocs_per_op_max": 273,
+          "basis": "re-anchored 2026-10-29 under D174 and D208 from two CI readings on linux/amd64 (Perf gates (linux), ubuntu-latest, go1.27.3, -benchtime 20x, -count 3, the best of three as benchgate -measure takes it, the lower B/op, a whole run): the tree, run 41010569949 at head 788f0def (SV1a on main a00ea4e5), 472,577 B/op and 273 allocs/op (B/op 472,577 to 473,161, allocs/op 273 to 275); the base, run 41006359634 at head 44e579d8 (main's code, budgets apart), 469,912 B/op and 258 allocs/op (B/op 469,912 to 473,467, allocs/op 258 to 269). The step, the markFired step, is tree minus base: +2665 B/op, +15 allocs/op. The base reads +1017 B/op and +10 allocs/op against the previous row (468,895 and 248), drift since that row's run, unattributed. A darwin pair cannot set a linux row (BenchmarksFor never blends). The figures were read on SV1a over main a00ea4e5; #136's own CI run on the re-cut is the first reading of the merged code (D218)"
         },
         {
           "name": "BenchmarkRecap/10",
@@ -1451,11 +1499,60 @@
           "allocs_per_op_max": 626,
           "basis": "measured on the runner: the Perf gates (linux) job of run 40999250662 (job 123879538869, AMD EPYC 7763, GOMAXPROCS 4, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/brief1 e3cb90c9 (BRIEF1 on SPEC-TRUST1's D173b), the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 64,633 B/op and 626 allocs/op; 64,697 B/op and 626 allocs/op; 64,697 B/op and 626 allocs/op: printBrief at startup on a payload already taken in, with a settings install's args, so the origin check stops at the --install marker (the plugin entry adds install.PluginFires's reads, not in this row); a .git project under the temp root holding CLAUDE.md, go.mod, 32 package directories and cmd/app (71 entries), a 24-family index, no spec; ns/op is ungated"
         }
-      ]
+      ],
+      "case_budgets": {
+        "hook.400B": 5.59,
+        "hook.40KB": 5.72,
+        "hook.1MiB": 8.04,
+        "hook.4MiB": 14.78,
+        "hook.8MiB": 22.93,
+        "post.540B": 5.59,
+        "post.40KB": 5.59,
+        "post.1MiB": 7.59,
+        "post.4MiB": 13.97,
+        "post.8MiB": 22.09
+      },
+      "tolerance_after": 0.1,
+      "tolerance_until": "",
+      "tolerance": 0.1,
+      "reference": "ubuntu-latest",
+      "set_from": "RSS rows (entries, case_budgets): the median of nine readings through the reaper in one run, the Perf gates (linux) job of run 40147955591 (job 121033244967, PR #93 head 4f1f479c, ubuntu-latest, ubuntu-24.04 image 20261012.334.1, go1.27.3, 2026-10-25), the first run under the harness controls: THP disabled for the harness and its children (the harness logged the sysfs setting as [always] madvise never, so the runner was at always), every measured child under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2. The gated figure is the serialized 4 KiB-page peak. It is one run, the only one that carries 4f1f479c (no other PR head does), so each row is that run's median, not a highest median over several runs; the nine readings per row were each one cluster (widest: hook.1MiB 6.91 to 7.21, hook.4MiB 13.54 to 13.79, hook.8MiB 21.74 to 22.02), so no row sits on a mode and none is bimodal. Medians in MiB: hook.400B 4.71, hook.40KB 4.96, hook.1MiB 7.00, hook.4MiB 13.68, hook.8MiB 21.93, post.540B 4.71, post.40KB 4.71, post.1MiB 6.33, post.4MiB 12.96, post.8MiB 20.96; hook.bash_short 4.71, hook.edit_50k 4.83, post.bash_short 4.71, post.edit_314k 5.33, recap.stop 6.33, recap.pending 5.21, probe.start 4.58, probe.end 4.71. These replace the rows measured before the controls (8.14 to 10.51 on the small entries and cases, hook.4MiB 19.05, hook.8MiB 27.35, post.4MiB 16.86, post.8MiB 24.58), which read 3 MiB or more higher on THP at always with a concurrent collector, and which post.edit_314k (8.24) and recap.pending (8.54) had set on the low mode of a bimodal pair. The earlier rows are withdrawn. This repository's reference Linux VM reads lower than the runner (about 4.7 for hook.400B, 22.0 for hook.8MiB under the controls), so a row cannot be taken from any other machine; the next run of this job on a further head should be added and the highest median taken. benchmarks: best of three, -benchtime 20x, from run 39876043270's bench-linux artifact on 323e4075 under go1.27.3, cross-checked on a second linux/amd64 machine within 0.1 percent on 31 of 40 rows, and within 5 percent on all of them RES-ROWS1 (2026-10-28): 18 RSS rows (10 case_budgets, 8 entries) are the highest median per row over run 40147955591 and run 40790551553 (job 123174418804, PR #111 head 54ae497f, ubuntu-latest, ubuntu-24.04 image 20261025.353.1, go1.27.3, THP sysfs always [madvise] never, disabled for the harness and its children, measured children under GOMAXPROCS=1 and GODEBUG set to gcstoptheworld=2), whose medians are the higher on every one: hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. 40790551553 read eleven rows over the ten percent (hook.400B, post.540B, post.40KB and the eight entries) and hook.1MiB and post.1MiB within 0.02 MiB of it; the widest spread of a row's nine readings was hook.4MiB's, 14.09 to 14.49. RSS-ROW1 (2026-10-30): the 18 RSS rows (10 case_budgets, 8 entries) are re-anchored where they are gated, on main 7da6abaa's own Perf gates (linux) job: run 41021267211 (job 123948892271, ubuntu-latest, image ubuntu-24.04 20261025.353.1, go1.27.3), each row that job's median of nine through the reaper: hook.400B 5.59, hook.40KB 5.72, hook.1MiB 8.04, hook.4MiB 14.78, hook.8MiB 22.93, post.540B 5.59, post.40KB 5.59, post.1MiB 7.59, post.4MiB 13.97, post.8MiB 22.09; hook.bash_short 5.59, hook.edit_50k 5.72, post.bash_short 5.47, post.edit_314k 6.22, recap.stop 7.46, recap.pending 6.34, probe.start 5.78, probe.end 6.03. They replace hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. On that run every row read 0.5 to 7.8% under its old line (the row plus 10%); probe.end was closest. Main a00ea4e5, 6fc382ac and b213146d build the same release binary, and their runs of this job (job 123913498909, job 123925250351, job 123931990205) read within 0.13 MiB of each other on every row (hook.4MiB the widest), while the open changes' steps read +0.25 to +0.38 MiB on every row (PR #137) and +0.30 and +0.43 on probe.start and probe.end (PR #136): on this runner the readings track the code, so these rows are main's code here and a change's own step is read against them.",
+      "entries": {
+        "hook.bash_short": {
+          "p50": 5.59,
+          "p95": 5.59
+        },
+        "post.bash_short": {
+          "p50": 5.47,
+          "p95": 5.47
+        },
+        "hook.edit_50k": {
+          "p50": 5.72,
+          "p95": 5.72
+        },
+        "post.edit_314k": {
+          "p50": 6.22,
+          "p95": 6.22
+        },
+        "recap.stop": {
+          "p50": 7.46,
+          "p95": 7.46
+        },
+        "recap.pending": {
+          "p50": 6.34,
+          "p95": 6.34
+        },
+        "probe.start": {
+          "p50": 5.78,
+          "p95": 5.78
+        },
+        "probe.end": {
+          "p50": 6.03,
+          "p95": 6.03
+        }
+      }
     }
   },
-  "growth": [],
-  "benchmark_platform": "darwin/arm64",
   "per_tool_call": {
     "memory_time_mib_ms_max": 379,
     "summed_peak_mib_max": 32,
@@ -1463,102 +1560,5 @@
       "settings": 6,
       "plugin": 6
     }
-  },
-  "disk": {
-    "bytes_per_call_max": 6000
-  },
-  "rss_cases": [
-    {
-      "id": "hook.400B",
-      "entry": "hook",
-      "payload_bytes": 400,
-      "budget_mib": 6.5008,
-      "measured_mib": 5.97,
-      "gates_from": "P-08"
-    },
-    {
-      "id": "hook.40KB",
-      "entry": "hook",
-      "payload_bytes": 40000,
-      "budget_mib": 6.5839,
-      "measured_mib": 6.12,
-      "gates_from": "P-08"
-    },
-    {
-      "id": "hook.1MiB",
-      "entry": "hook",
-      "payload_bytes": 1048576,
-      "budget_mib": 9.9,
-      "measured_mib": 9.48,
-      "gates_from": "P-10",
-      "slope_mib_per_mib": 3.4,
-      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input, whose constant overhead shows most at 1 MiB, until RES-48 (archive 85.3.3)"
-    },
-    {
-      "id": "hook.4MiB",
-      "entry": "hook",
-      "payload_bytes": 4194304,
-      "budget_mib": 20.1,
-      "measured_mib": 19.72,
-      "gates_from": "P-10",
-      "slope_mib_per_mib": 3.4,
-      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input, whose constant overhead shows most at 1 MiB, until RES-48 (archive 85.3.3)"
-    },
-    {
-      "id": "hook.8MiB",
-      "entry": "hook",
-      "payload_bytes": 8388608,
-      "budget_mib": 33.7,
-      "measured_mib": 31.88,
-      "gates_from": "P-10",
-      "slope_mib_per_mib": 3.4,
-      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input, whose constant overhead shows most at 1 MiB, until RES-48 (archive 85.3.3)"
-    },
-    {
-      "id": "post.540B",
-      "entry": "post",
-      "payload_bytes": 540,
-      "budget_mib": 6.5011,
-      "measured_mib": 6.06,
-      "gates_from": "P-08"
-    },
-    {
-      "id": "post.40KB",
-      "entry": "post",
-      "payload_bytes": 40000,
-      "budget_mib": 6.5839,
-      "measured_mib": 6.05,
-      "gates_from": "P-08"
-    },
-    {
-      "id": "post.1MiB",
-      "entry": "post",
-      "payload_bytes": 1048576,
-      "budget_mib": 8.95,
-      "measured_mib": 8.86,
-      "gates_from": "P-10",
-      "slope_mib_per_mib": 2.45,
-      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
-    },
-    {
-      "id": "post.4MiB",
-      "entry": "post",
-      "payload_bytes": 4194304,
-      "budget_mib": 16.3,
-      "measured_mib": 15.42,
-      "gates_from": "P-10",
-      "slope_mib_per_mib": 2.45,
-      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
-    },
-    {
-      "id": "post.8MiB",
-      "entry": "post",
-      "payload_bytes": 8388608,
-      "budget_mib": 26.1,
-      "measured_mib": 23.66,
-      "gates_from": "P-10",
-      "slope_mib_per_mib": 2.45,
-      "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
-    }
-  ]
+  }
 }

@@ -48,11 +48,10 @@ var overLimit = map[string]int{
 // command, clearBaselines to forget.go, 1065 to 1059 with card P6's learn
 // command, openStoreForRead to storeopen.go, 1059 to 1054 with its
 // backtest command, openStore to storeopen.go, 1054 to 1052 with card
-// SPEC-TRUST1's spec command, storeExistsAt to storeopen.go; 1052 to 975 with
-// LEDGER-WIRE1's ledger verb (cmdReport/reportOrEmpty to report.go) and
-// BRIEF1's brief command (installArg to hostguard.go).
+// SPEC-TRUST1's spec command, storeExistsAt to storeopen.go; then LEDGER-WIRE1,
+// BRIEF1 and STATUS-VERBS1a extractions. Ratchet measured after the stacked re-cut.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    975,
+	"cmd/rashomon/main.go":    930,
 	"internal/store/store.go": 549,
 	"cmd/rashomon/watch.go":   545,
 }

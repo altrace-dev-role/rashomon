@@ -117,8 +117,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, noArgs(rest, stdout, cmdPause))
 	case "resume":
 		return guarded(stderr, noArgs(rest, stdout, cmdResume))
-	case "status":
-		return guarded(stderr, noArgs(rest, stdout, cmdStatus))
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
 	case "digest":
@@ -163,6 +161,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitOK
 
 	default:
+		if verb := verbNamed(args[0]); verb != nil {
+			return guarded(stderr, func() error { return verb(rest, stdout) })
+		}
 		usage(stderr)
 		return exitFail
 	}
@@ -291,6 +292,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		if err := safe.Guard(h.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
 		}
+		markFired(st, sessionOf(payload), "PreToolUse")
 		return nil
 	})
 }
@@ -348,6 +350,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, evictionLine)
 		}
 		printBrief(args, payload, st.Root(), stdout)
+		markFired(st, sessionOf(payload), probeEvent(phase))
 		return nil
 	})
 }
@@ -837,71 +840,6 @@ func RecordingState() (state string, since time.Time, err error) {
 	return RecordingPaused, pausedSince, nil
 }
 
-// cmdStatus prints what is installed here and what the store holds, and writes
-// nothing at all.
-//
-// Reading the store is the easy way to break that. Opening a store creates one,
-// key material and all, so the command whose whole answer may be "nothing is
-// installed on this machine" must not be the command that installs something.
-// It looks for the store the same way a plain detach does: by the one file that
-// is only there if a store is.
-func cmdStatus(stdout io.Writer) error {
-	root, err := store.DefaultRoot()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(stdout, "store: %s\n", root)
-	statusRecording(stdout, root)
-	statusRecordScope(stdout, root)
-
-	installID := ""
-	var st *store.Store
-	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
-		st, err = openStore()
-		if err != nil {
-			return err
-		}
-		installID = st.InstallID()
-		fmt.Fprintf(stdout, "  present: yes (install %s)\n", installID)
-		runs, err := st.Runs()
-		if err != nil {
-			fmt.Fprintf(stdout, "  runs: %s\n", statusUnknown)
-		} else {
-			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
-		}
-		statusSize(stdout, st)
-		fmt.Fprintf(stdout, "  %s\n", bodiesLine(st))
-		statusLockWait(stdout, st)
-	} else {
-		fmt.Fprintln(stdout, "  present: no")
-	}
-	statusCapProblem(stdout, "  cap: ", st)
-
-	settingsLive, err := statusSettings(stdout, installID)
-	if err != nil {
-		return err
-	}
-	pluginLive, err := statusPlugin(stdout)
-	if err != nil {
-		return err
-	}
-	// Named here so a user sees it without running report, and in the SAME
-	// words report uses (duplicate_declarations): a settings install and an
-	// enabled plugin can share one machine during the migration window Part 1's
-	// spec describes, and nothing removes either of them on its own. detach is
-	// the resolution, and it is the settings entries it removes -- the
-	// plugin's are not detach's to touch.
-	if settingsLive && pluginLive {
-		fmt.Fprintln(stdout, "overlap: both a settings install and the rashomon plugin provide these entries, "+
-			"recording every tool call twice (report will read coverage: unverified, reason duplicate_declarations); "+
-			"run `rashomon detach` to remove the settings entries and keep the plugin")
-	}
-	if err := statusHooks(stdout); err != nil {
-		return err
-	}
-	return statusRecap(stdout, root)
-}
-
 // statusRecap reports the exception line's own evaluation history: whether a
 // Stop/StopFailure has ever been evaluated here, when the last one was, and
 // whether it completed cleanly (H-92).
@@ -1337,7 +1275,7 @@ usage:
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused
                                window with a record of how long it lasted
-  rashomon status                say what is installed and what the store holds,
+  rashomon status [--json]       say what is installed and what the store holds,
                                writing nothing and creating no store
   rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]
                   [--nono-audit PATH]
@@ -1407,7 +1345,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+specUsage+backtestUsage+briefUsage+hookUsage)
+`+receiptUsage+learnUsage+specUsage+backtestUsage+briefUsage+verbUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the
