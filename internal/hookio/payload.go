@@ -34,6 +34,7 @@ const (
 	Model
 	UserEmail // presence only: no consumer may read its value
 	MCPServer
+	Source // SessionStart's: startup | resume | clear | compact (card BRIEF1)
 	NumKeys
 )
 
@@ -44,7 +45,7 @@ func KeyNames() []string {
 		"tool_name", "tool_use_id", "cwd", "permission_mode", "transcript_path",
 		"tool_input", "tool_response", "error", "is_interrupt", "duration_ms",
 		"cursor_version", "conversation_id", "generation_id", "turn_id", "model",
-		"user_email", "mcp_server",
+		"user_email", "mcp_server", "source",
 	}
 }
 

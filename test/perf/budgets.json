@@ -1,4 +1,757 @@
 {
+  "go_version": "go1.27.3",
+  "benchmark_rows": "the measured best of three on the reference machine (darwin/arm64, go1.27.3, -benchtime 20x, 2026-10-22; the eight store rows re-measured 2026-10-24 as the median of five CI-style invocations, at 1.1c and 1.1f on the foundation branch); a row's max equals its measurement, and the gate's ten percent (scripts/benchgate) is the only margin",
+  "budgets_version": 1,
+  "entries": [
+    {
+      "id": "hook.bash_short",
+      "events": [
+        "PreToolUse"
+      ],
+      "command": [
+        "hook"
+      ],
+      "payload_class": "bash_short",
+      "payload_bytes": 400,
+      "benchmark": "BenchmarkRunHook/bash_short",
+      "alloc_bytes_max": 55424,
+      "cold_alloc_bytes_max": 171136,
+      "maxrss_mib_p50": 5.95,
+      "maxrss_mib_p95": 7.5,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 10,
+      "wall_ms_p95": 20,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.89 / 5.97 / 5.95 MiB); expected per archive 85.4.1: 6.5 / 7.5 MiB, the floor of about 5.9 under the pin plus the masker, targets and written paths. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/hook.bash_short call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [160576, 160736, 160224] bytes, min 160224). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27: the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. Warm (the benchmark row): 47184 old code on the old fixture, 47640 old code on the new, 54376 new code. Cold, minimum of three fresh processes: 163272 ([163544, 163272, 175088]), 163776 ([163776, 171056, 170448]), 170048 ([177040, 170512, 170048]). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 54376 before, 55424 after. Cold, minimum of three fresh processes: 170864 ([177040, 174832, 170864]) before, 171136 ([177968, 171136, 177648]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
+    },
+    {
+      "id": "hook.edit_50k",
+      "events": [
+        "PreToolUse"
+      ],
+      "command": [
+        "hook"
+      ],
+      "payload_class": "edit_50k",
+      "payload_bytes": 51200,
+      "benchmark": "BenchmarkRunHook/edit_50k",
+      "alloc_bytes_max": 172319,
+      "cold_alloc_bytes_max": 285024,
+      "maxrss_mib_p50": 6.2,
+      "maxrss_mib_p95": 7.5,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 15,
+      "wall_ms_p95": 25,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.12 / 6.23 / 6.20 MiB); expected per RES-28: 6.61 MiB at 50 KB. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/hook.edit_50k call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [278568, 285240, 284680] bytes, min 278568). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27: the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. Warm (the benchmark row): 164319 old code on the old fixture, 164567 old code on the new, 171415 new code. Cold, minimum of three fresh processes: 276064 ([276064, 280544, 280944]), 276232 ([287928, 281080, 276232]), 283688 ([283688, 295400, 294760]). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 171271 before, 172319 after. Cold, minimum of three fresh processes: 287448 ([287448, 287928, 288056]) before, 285024 ([288800, 295648, 285024]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
+    },
+    {
+      "id": "post.bash_short",
+      "events": [
+        "PostToolUse",
+        "PostToolUseFailure"
+      ],
+      "command": [
+        "post"
+      ],
+      "payload_class": "bash_short",
+      "payload_bytes": 540,
+      "benchmark": "BenchmarkRunPost/bash_short",
+      "alloc_bytes_max": 42552,
+      "cold_alloc_bytes_max": 146672,
+      "maxrss_mib_p50": 5.94,
+      "maxrss_mib_p95": 7.5,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 11,
+      "wall_ms_p95": 18,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.94 / 5.89 / 6.00 MiB); expected per archive 85.4.1: 6.5 / 7.5 MiB. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/post.bash_short call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [144992, 152016, 144992] bytes, min 144992). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 41504 before, 42552 after. Cold, minimum of three fresh processes: 145160 ([145640, 145160, 149224]) before, 146672 ([152768, 151952, 146672]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
+    },
+    {
+      "id": "post.edit_314k",
+      "events": [
+        "PostToolUse",
+        "PostToolUseFailure"
+      ],
+      "command": [
+        "post"
+      ],
+      "payload_class": "edit_314k",
+      "payload_bytes": 314000,
+      "benchmark": "BenchmarkRunPost/edit_314k",
+      "alloc_bytes_max": 471379,
+      "cold_alloc_bytes_max": 575120,
+      "maxrss_mib_p50": 6.73,
+      "maxrss_mib_p95": 7.16,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 12,
+      "wall_ms_p95": 22,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.73 / 6.67 / 6.73 MiB); p95 is RES-28's line at 314 KB (7.16 MiB), which the archive applies from P-10 in place of 8 / 10 MiB; 60 runs gave p95 6.92, max 6.95. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/post.edit_314k call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [576632, 574224, 571792] bytes, min 571792). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 470331 before, 471379 after. Cold, minimum of three fresh processes: 576616 ([580344, 576616, 576776]) before, 575120 ([581232, 578784, 575120]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
+    },
+    {
+      "id": "recap.stop",
+      "events": [
+        "Stop",
+        "StopFailure"
+      ],
+      "command": [
+        "recap"
+      ],
+      "payload_class": "stop_100",
+      "payload_bytes": 2048,
+      "benchmark": "BenchmarkRecap/100",
+      "alloc_bytes_max": 1265159,
+      "cold_alloc_bytes_max": 0,
+      "maxrss_mib_p50": 7.06,
+      "maxrss_mib_p95": 16,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 20,
+      "wall_ms_p95": 60,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (7.06 / 7.03 / 7.06 MiB); on the 100-call session BenchmarkRecap/100 reads; expected per archive 85.4.1: 12 / 16 MiB, flat in session size. cold_alloc_bytes_max is 0 (P-12): no fresh-process cold-call harness built for recap.* yet, not a claim of zero cost."
+    },
+    {
+      "id": "recap.pending",
+      "events": [
+        "UserPromptSubmit"
+      ],
+      "command": [
+        "recap",
+        "pending"
+      ],
+      "payload_class": "prompt",
+      "payload_bytes": 256,
+      "benchmark": "BenchmarkRecapPending/10",
+      "alloc_bytes_max": 294862,
+      "cold_alloc_bytes_max": 0,
+      "maxrss_mib_p50": 6.06,
+      "maxrss_mib_p95": 7.5,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 8,
+      "wall_ms_p95": 20,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.09 / 6.06 / 5.98 MiB); on the 10-call session BenchmarkRecapPending/10 reads (the earlier 5.2 measured the no-store early return); expected per archive 85.4.1: 6.5 / 7.5 MiB. cold_alloc_bytes_max is 0 (P-12): no fresh-process cold-call harness built for recap.* yet, not a claim of zero cost."
+    },
+    {
+      "id": "probe.start",
+      "events": [
+        "SessionStart"
+      ],
+      "command": [
+        "probe",
+        "start"
+      ],
+      "payload_class": "session_start",
+      "payload_bytes": 256,
+      "benchmark": "",
+      "alloc_bytes_max": 0,
+      "cold_alloc_bytes_max": 0,
+      "maxrss_mib_p50": 5.97,
+      "maxrss_mib_p95": 24,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 15,
+      "wall_ms_p95": 400,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.02 / 5.97 / 5.91 MiB); nothing queued; expected per archive 85.4.1: 8 MiB with nothing queued at p50, mining and briefing at p95. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet."
+    },
+    {
+      "id": "probe.end",
+      "events": [
+        "SessionEnd"
+      ],
+      "command": [
+        "probe",
+        "end"
+      ],
+      "payload_class": "session_end",
+      "payload_bytes": 256,
+      "benchmark": "",
+      "alloc_bytes_max": 0,
+      "cold_alloc_bytes_max": 0,
+      "maxrss_mib_p50": 5.98,
+      "maxrss_mib_p95": 6.5,
+      "parent_maxrss_mib_p50": null,
+      "wall_ms_p50": 6,
+      "wall_ms_p95": 12,
+      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.95 / 6.05 / 5.98 MiB); closing a started session; expected per archive 85.4.1: one record, 6 / 6.5 MiB. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet."
+    }
+  ],
+  "parallel": {
+    "ways": 64,
+    "summed_peak_mib_max": 704,
+    "basis": "per-process rule (RES-30, ruling 2026-10-13): largest pair peak at most 1.25x the median of 25 solo pairs, both measured in the same run. Restated from measurement on the reference machine with GOMAXPROCS unchanged: largest 1.08x to 1.21x over six runs with nine solo pairs, 1.10x to 1.19x over eleven runs with 25 (4.02 to 4.31 MiB against solo medians of 3.61 to 3.69 MiB), burst median 1.02x to 1.05x; GOMAXPROCS(1) in hook and post measured 1.03x to 1.09x over twenty runs and was rejected. No tolerance on the reference machine; macos-latest unmeasured, so a CI runner gets the platform tolerance on the ratio until it is measured"
+  },
+  "benchmarks": [
+    {
+      "name": "BenchmarkDerive/bash_short",
+      "measured_bytes_per_op": 2656,
+      "measured_allocs_per_op": 33,
+      "bytes_per_op_max": 2656,
+      "allocs_per_op_max": 33
+    },
+    {
+      "name": "BenchmarkDerive/bash_long_4k",
+      "measured_bytes_per_op": 268944,
+      "measured_allocs_per_op": 229,
+      "bytes_per_op_max": 268944,
+      "allocs_per_op_max": 229
+    },
+    {
+      "name": "BenchmarkDerive/edit_50k",
+      "measured_bytes_per_op": 63464,
+      "measured_allocs_per_op": 28,
+      "bytes_per_op_max": 63464,
+      "allocs_per_op_max": 28
+    },
+    {
+      "name": "BenchmarkDerive/cd_sub_go_test_tail",
+      "measured_bytes_per_op": 4536,
+      "measured_allocs_per_op": 69,
+      "bytes_per_op_max": 4536,
+      "allocs_per_op_max": 69
+    },
+    {
+      "name": "BenchmarkDerive/cd_var_go_test",
+      "measured_bytes_per_op": 3712,
+      "measured_allocs_per_op": 55,
+      "bytes_per_op_max": 3712,
+      "allocs_per_op_max": 55
+    },
+    {
+      "name": "BenchmarkWritten/bash_short",
+      "measured_bytes_per_op": 432,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 432,
+      "allocs_per_op_max": 2
+    },
+    {
+      "name": "BenchmarkLexTokens",
+      "measured_bytes_per_op": 99184,
+      "measured_allocs_per_op": 90,
+      "bytes_per_op_max": 99184,
+      "allocs_per_op_max": 90
+    },
+    {
+      "name": "BenchmarkRecordBytesPerCall",
+      "measured_bytes_per_op": 20026,
+      "measured_allocs_per_op": 94,
+      "bytes_per_op_max": 20026,
+      "allocs_per_op_max": 94
+    },
+    {
+      "name": "BenchmarkBuild/188",
+      "measured_bytes_per_op": 1935627,
+      "measured_allocs_per_op": 5902,
+      "bytes_per_op_max": 1935627,
+      "allocs_per_op_max": 5902,
+      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 188 calls, the median session measured; drift: 837f887b at 2,224,046 B/op and 5,930 allocs/op, +0.00% and +0.00% on the row before (2,224,046 and 5,930); 2.3c's step: -288,419 B/op and -28 allocs/op (-13.0% and -0.47%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 288,352 B and 27 allocs: go1.27.3's growth rules give 288,256 B and 27 allocs for four prompts with the last of 47 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); GOGC=off on the test binary (one run a side) measures the step at 288,352 B and 27 allocs, the code's share to the byte; the 1 alloc and 67 B beyond the code's share are collection-gated: GOGC=off measures none of them, and the profile pair at Build/899 and Recap/1000 names the json/v2 decoder pool's refills; not profiled at this size; passover: none; ns/op is ungated, 2.359 ms best of nine against 837f887b's 2.392 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
+    },
+    {
+      "name": "BenchmarkBuild/899",
+      "measured_bytes_per_op": 8782692,
+      "measured_allocs_per_op": 27533,
+      "bytes_per_op_max": 8782692,
+      "allocs_per_op_max": 27533,
+      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 899 calls, the p90 session; drift: 837f887b at 9,946,608 B/op and 27,588 allocs/op, +0.00% and +0.00% on the row before (9,946,608 and 27,588); 2.3c's step: -1,163,916 B/op and -55 allocs/op (-11.7% and -0.20%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 1,160,800 B and 35 allocs: go1.27.3's growth rules give 1,160,704 B and 35 allocs for four prompts with the last of 224 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); GOGC=off on the test binary (one run a side) measures the step at 1,161,066 B and 35 allocs, 266 B over the code's share; the 20 allocs and 3,116 B beyond the code's share are collection-gated: GOGC=off measures none of them, and an alloc_objects profile pair at -memprofilerate=1 (Build/899 and Recap/1000, tree against 837f887b, same flags, -count 1) puts them in json/v2's decode under unchanged store code: the pooled Decoder (jsontext/pools.go:119), the 4 KiB string cache it carries (v2/arshal_default.go:296), the strings that cache would have interned (v2/intern.go:52) and the fresh decoder's stacks (jsontext/state.go:312, 347, 587), at Recap/1000 net of sync.Pool.pinSlow's +120 over the profile's 21 ops (sync/pool.go:238, 242); each of these allocates only after a collection (a pool empties after two with no use between, and pinSlow runs on a pool's first use after one), so where the collections land decides them, and a later change that moves them can return these allocations; its basis names them by these sites; passover: none; ns/op is ungated, 11.958 ms best of nine against 837f887b's 11.979 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
+    },
+    {
+      "name": "BenchmarkBuild/3488",
+      "measured_bytes_per_op": 33089993,
+      "measured_allocs_per_op": 105978,
+      "bytes_per_op_max": 33089993,
+      "allocs_per_op_max": 105978,
+      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 3488 calls, the largest session measured; drift: 837f887b at 40,274,618 B/op and 106,027 allocs/op, +0.03% and +0.00% on the row before (40,260,963 and 106,026); 2.3c's step: -7,184,625 B/op and -49 allocs/op (-17.8% and -0.05%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 7,165,536 B and 47 allocs: go1.27.3's growth rules give 7,165,440 B and 47 allocs for four prompts with the last of 872 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); GOGC=off on the test binary (one run a side) measures the step at 7,156,797 B and 46 allocs, 8,739 B under the code's share and 1 under its allocs; the 2 allocs and 19,089 B beyond the code's share are within the nine runs' spread with the code fixed, 62,300 B and 5 allocs (837f887b's 34,990 and 2); passover: none; ns/op is ungated, 47.656 ms best of nine against 837f887b's 49.339 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
+    },
+    {
+      "name": "BenchmarkBuild/20000",
+      "measured_bytes_per_op": 210130248,
+      "measured_allocs_per_op": 606067,
+      "bytes_per_op_max": 210130248,
+      "allocs_per_op_max": 606067,
+      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 20000 calls, the stress size; drift: 837f887b at 256,142,248 B/op and 606,134 allocs/op, +0.00% and +0.00% on the row before (256,142,248 and 606,134); 2.3c's step: -46,012,000 B/op and -67 allocs/op (-18.0% and -0.01%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 46,012,000 B and 67 allocs: go1.27.3's growth rules give 46,011,904 B and 67 allocs for four prompts with the last of 5000 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); not run with GOGC=off (about 5 GB a side); the window's step is the code's share to the byte; passover: none; ns/op is ungated, 277.823 ms best of nine against 837f887b's 286.125 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
+    },
+    {
+      "name": "BenchmarkRunHook/bash_short",
+      "measured_bytes_per_op": 55424,
+      "measured_allocs_per_op": 387,
+      "bytes_per_op_max": 55424,
+      "allocs_per_op_max": 387,
+      "basis": "remeasured 2026-10-27 on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. The fixture alone, old code: 47184 to 47640 B/op, 318 allocs either way; the code on the new fixture: 47640 to 54376 B/op, 318 to 381 allocs; baseline.Key alone on that cwd, under the symlinked macOS temp root, is 61 allocs and 6208 B a call. Then 1.2q, the same day under the same settings: every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 54376 B/op and 381 allocs before (runs 54376, 54376, 54376), 55424 and 387 after (runs 55424, 55424, 55427)"
+    },
+    {
+      "name": "BenchmarkRunHook/edit_50k",
+      "measured_bytes_per_op": 172319,
+      "measured_allocs_per_op": 381,
+      "bytes_per_op_max": 172319,
+      "allocs_per_op_max": 381,
+      "basis": "remeasured 2026-10-27 on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. The fixture alone, old code: 164319 to 164567 B/op, 310 allocs either way; the code on the new fixture: 164567 to 171415 B/op, 310 to 375 allocs; baseline.Key alone on that cwd, under the symlinked macOS temp root, is 61 allocs and 6208 B a call. Then 1.2q, the same day under the same settings: every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 171271 B/op and 375 allocs before (runs 171415, 171271, 171418), 172319 and 381 after (runs 172463, 172466, 172319)"
+    },
+    {
+      "name": "BenchmarkRunPost/bash_short",
+      "measured_bytes_per_op": 42552,
+      "measured_allocs_per_op": 276,
+      "bytes_per_op_max": 42552,
+      "allocs_per_op_max": 276,
+      "basis": "remeasured 2026-10-27 at 1.2q on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 41504 B/op and 270 allocs before (runs 41504, 41504, 41504; the old row read 41583), 42552 and 276 after (runs 42552, 42552, 42552)"
+    },
+    {
+      "name": "BenchmarkRunPost/edit_314k",
+      "measured_bytes_per_op": 471379,
+      "measured_allocs_per_op": 271,
+      "bytes_per_op_max": 471379,
+      "allocs_per_op_max": 271,
+      "basis": "remeasured 2026-10-27 at 1.2q on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 470331 B/op and 265 allocs before (runs 470363, 470363, 470331; the old row, 473631 and 273, predates both), 471379 and 271 after (runs 471411, 471411, 471379)"
+    },
+    {
+      "name": "BenchmarkRecap/10",
+      "measured_bytes_per_op": 336254,
+      "measured_allocs_per_op": 941,
+      "bytes_per_op_max": 336254,
+      "allocs_per_op_max": 941,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 330,601 B/op and 917 allocs/op, which this row replaces; base bc90c073 at 331,950 B/op and 917 allocs/op (+0.41% and +0.00% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,304 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; the min-of-3 alarm in CI's form on this machine (swap at 4.8 of 6.1 GB) read the base at +18.71% and the green at +20.12% B/op, which the recipe reads as +0.41% and +1.71%: re-anchored on the director's word (D183), the step attributed"
+    },
+    {
+      "name": "BenchmarkRecap/100",
+      "measured_bytes_per_op": 1265159,
+      "measured_allocs_per_op": 3834,
+      "bytes_per_op_max": 1265159,
+      "allocs_per_op_max": 3834,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 1,240,496 B/op and 3,729 allocs/op, which this row replaces; base bc90c073 at 1,260,840 B/op and 3,810 allocs/op (+1.64% and +2.17% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,319 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
+    },
+    {
+      "name": "BenchmarkRecap/1000",
+      "measured_bytes_per_op": 10527196,
+      "measured_allocs_per_op": 31558,
+      "bytes_per_op_max": 10527196,
+      "allocs_per_op_max": 31558,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 10,388,430 B/op and 31,453 allocs/op, which this row replaces; base bc90c073 at 10,522,877 B/op and 31,534 allocs/op (+1.29% and +0.26% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,319 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
+    },
+    {
+      "name": "BenchmarkRecapPending/10",
+      "measured_bytes_per_op": 294862,
+      "measured_allocs_per_op": 759,
+      "bytes_per_op_max": 294862,
+      "allocs_per_op_max": 759,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 285,182 B/op and 679 allocs/op, which this row replaces; base bc90c073 at 290,541 B/op and 735 allocs/op (+1.88% and +8.25% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,321 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; the green read +11.78% allocs/op against the row before, over its ten percent, and the base +8.25%, over D174's five"
+    },
+    {
+      "name": "BenchmarkRecapPending/1000",
+      "measured_bytes_per_op": 10399928,
+      "measured_allocs_per_op": 31401,
+      "bytes_per_op_max": 10399928,
+      "allocs_per_op_max": 31401,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 10,261,359 B/op and 31,309 allocs/op, which this row replaces; base bc90c073 at 10,395,548 B/op and 31,377 allocs/op (+1.31% and +0.22% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,380 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
+    },
+    {
+      "name": "BenchmarkRecapPending/preflight",
+      "measured_bytes_per_op": 439685,
+      "measured_allocs_per_op": 1434,
+      "bytes_per_op_max": 439685,
+      "allocs_per_op_max": 1434,
+      "basis": "measured on the runner: the Perf gates (macos) job of run 41009998604 (job 123913499290, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on main a00ea4e5, the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 449,064 B/op and 1,450 allocs/op; 439,786 B/op and 1,436 allocs/op; 439,685 B/op and 1,434 allocs/op: the catch-up on a prompt naming one project path, with the benchmark's environment pinned (CI and AI_AGENT empty, RASHOMON_HOLDOUT off). It replaces the reference machine's 415,257 B/op and 1,304 allocs/op (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2), which the runner reads +5.9% B/op and +10.0% allocs/op over; the #127 merge run met that row's line by 0.4 alloc (1,434 against 1,434.4). The gap's cause is open (PF-BENCH-ENV1)"
+    },
+    {
+      "name": "BenchmarkRecapStop/run_100",
+      "measured_bytes_per_op": 926813,
+      "measured_allocs_per_op": 3018,
+      "bytes_per_op_max": 926813,
+      "allocs_per_op_max": 3018,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 902,153 B/op and 2,913 allocs/op, which this row replaces; base bc90c073 at 922,495 B/op and 2,994 allocs/op (+2.25% and +2.78% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,318 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; the min-of-3 alarm in CI's form on this machine read the base at +11.14% B/op, which the recipe reads as +2.25%: re-anchored on the director's word (D183), the step attributed"
+    },
+    {
+      "name": "BenchmarkRecapStop/run_6000",
+      "measured_bytes_per_op": 44441119,
+      "measured_allocs_per_op": 152202,
+      "bytes_per_op_max": 44441119,
+      "allocs_per_op_max": 152202,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 43,406,524 B/op and 152,086 allocs/op, which this row replaces; base bc90c073 at 44,436,798 B/op and 152,178 allocs/op (+2.37% and +0.06% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,321 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
+    },
+    {
+      "name": "BenchmarkHookStoreSequence/full",
+      "measured_bytes_per_op": 17117,
+      "measured_allocs_per_op": 79,
+      "bytes_per_op_max": 17117,
+      "allocs_per_op_max": 79
+    },
+    {
+      "name": "BenchmarkHookStoreSequence/deferred",
+      "measured_bytes_per_op": 17414,
+      "measured_allocs_per_op": 82,
+      "bytes_per_op_max": 17414,
+      "allocs_per_op_max": 82
+    },
+    {
+      "name": "BenchmarkAppendDeclarationParallel",
+      "measured_bytes_per_op": 585682,
+      "measured_allocs_per_op": 3150,
+      "bytes_per_op_max": 585682,
+      "allocs_per_op_max": 3150
+    },
+    {
+      "name": "BenchmarkOrderedAppendHold/serial_full",
+      "measured_bytes_per_op": 12554,
+      "measured_allocs_per_op": 48,
+      "bytes_per_op_max": 12554,
+      "allocs_per_op_max": 48
+    },
+    {
+      "name": "BenchmarkOrderedAppendHold/serial_deferred",
+      "measured_bytes_per_op": 12946,
+      "measured_allocs_per_op": 51,
+      "bytes_per_op_max": 12946,
+      "allocs_per_op_max": 51
+    },
+    {
+      "name": "BenchmarkOrderedAppendHold/parallel_full",
+      "measured_bytes_per_op": 582510,
+      "measured_allocs_per_op": 2962,
+      "bytes_per_op_max": 582510,
+      "allocs_per_op_max": 2962
+    },
+    {
+      "name": "BenchmarkOrderedAppendHold/parallel_deferred",
+      "measured_bytes_per_op": 601365,
+      "measured_allocs_per_op": 3148,
+      "bytes_per_op_max": 601365,
+      "allocs_per_op_max": 3148
+    },
+    {
+      "name": "BenchmarkTop",
+      "measured_bytes_per_op": 616,
+      "measured_allocs_per_op": 6,
+      "bytes_per_op_max": 616,
+      "allocs_per_op_max": 6
+    },
+    {
+      "name": "BenchmarkLines/4MiB",
+      "measured_bytes_per_op": 24,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 24,
+      "allocs_per_op_max": 2
+    },
+    {
+      "name": "BenchmarkStream/64MiB_batch",
+      "measured_bytes_per_op": 158322,
+      "measured_allocs_per_op": 17,
+      "bytes_per_op_max": 158322,
+      "allocs_per_op_max": 17
+    },
+    {
+      "name": "BenchmarkStream/187MB_line",
+      "measured_bytes_per_op": 349380,
+      "measured_allocs_per_op": 30,
+      "bytes_per_op_max": 349380,
+      "allocs_per_op_max": 30
+    },
+    {
+      "name": "BenchmarkRead/400B",
+      "measured_bytes_per_op": 464,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 464,
+      "allocs_per_op_max": 2,
+      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 4584 B/op, 4 allocs/op"
+    },
+    {
+      "name": "BenchmarkRead/40KB",
+      "measured_bytes_per_op": 41008,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 41008,
+      "allocs_per_op_max": 2,
+      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 83456 B/op, 16 allocs/op"
+    },
+    {
+      "name": "BenchmarkRead/1MiB",
+      "measured_bytes_per_op": 1048636,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 1048636,
+      "allocs_per_op_max": 2,
+      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 2163585 B/op, 48 allocs/op"
+    },
+    {
+      "name": "BenchmarkRead/4MiB",
+      "measured_bytes_per_op": 4194352,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 4194352,
+      "allocs_per_op_max": 2,
+      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 8459141 B/op, 97 allocs/op"
+    },
+    {
+      "name": "BenchmarkRead/8MiB",
+      "measured_bytes_per_op": 8388656,
+      "measured_allocs_per_op": 2,
+      "bytes_per_op_max": 8388656,
+      "allocs_per_op_max": 2,
+      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 16823173 B/op, 161 allocs/op"
+    },
+    {
+      "name": "BenchmarkRead/400B_opaque",
+      "measured_bytes_per_op": 4600,
+      "measured_allocs_per_op": 5,
+      "bytes_per_op_max": 4600,
+      "allocs_per_op_max": 5
+    },
+    {
+      "name": "BenchmarkRead/40KB_opaque",
+      "measured_bytes_per_op": 83472,
+      "measured_allocs_per_op": 17,
+      "bytes_per_op_max": 83472,
+      "allocs_per_op_max": 17
+    },
+    {
+      "name": "BenchmarkRead/1MiB_opaque",
+      "measured_bytes_per_op": 2163605,
+      "measured_allocs_per_op": 49,
+      "bytes_per_op_max": 2163605,
+      "allocs_per_op_max": 49
+    },
+    {
+      "name": "BenchmarkRead/4MiB_opaque",
+      "measured_bytes_per_op": 8459152,
+      "measured_allocs_per_op": 98,
+      "bytes_per_op_max": 8459152,
+      "allocs_per_op_max": 98
+    },
+    {
+      "name": "BenchmarkRead/8MiB_opaque",
+      "measured_bytes_per_op": 16823184,
+      "measured_allocs_per_op": 162,
+      "bytes_per_op_max": 16823184,
+      "allocs_per_op_max": 162
+    },
+    {
+      "name": "BenchmarkDetect",
+      "measured_bytes_per_op": 1600,
+      "measured_allocs_per_op": 14,
+      "bytes_per_op_max": 1600,
+      "allocs_per_op_max": 14
+    },
+    {
+      "name": "BenchmarkClassify/run_100",
+      "measured_bytes_per_op": 23488,
+      "measured_allocs_per_op": 87,
+      "bytes_per_op_max": 23488,
+      "allocs_per_op_max": 87,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.2 phase 2 (fcf15f4f plus classify) at 22400 B/op; re-measured the same day at 1.3 (2644d64f plus gateStates), where gateRun gained ExecSeq, eight bytes per run, best of three under go1.27.3, -benchtime 20x, by benchgate -measure"
+    },
+    {
+      "name": "BenchmarkGateStates",
+      "measured_bytes_per_op": 10496,
+      "measured_allocs_per_op": 39,
+      "bytes_per_op_max": 10496,
+      "allocs_per_op_max": 39,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.3 (2644d64f plus gateStates), best of three under go1.27.3, -benchtime 20x, by benchgate -measure"
+    },
+    {
+      "name": "BenchmarkRecording",
+      "measured_bytes_per_op": 6568,
+      "measured_allocs_per_op": 3,
+      "bytes_per_op_max": 6568,
+      "allocs_per_op_max": 3,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.4 (bc66988c plus recording), best of three under go1.27.3, -benchtime 20x, by benchgate -measure; the three allocations are the one map sized to the 200 declarations (a swiss map of that size allocates three times under go1.27.3, by testing.AllocsPerRun)"
+    },
+    {
+      "name": "BenchmarkReadIndex",
+      "measured_bytes_per_op": 218156,
+      "measured_allocs_per_op": 475,
+      "bytes_per_op_max": 218156,
+      "allocs_per_op_max": 475,
+      "basis": "first measured 2026-10-27 on feat/autosteer-lane2 at 1.6 (9d8e4ea5 plus the project index), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: ReadIndex of an index at its cap, 223 entries shaped as real ones in 64 KiB; by -memprofile (200x), 58 percent is the decoder's read buffer (jsontext fetch), 19 the entries slice's growth and 19 the strings; ns/op is ungated"
+    },
+    {
+      "name": "BenchmarkEvaluate/run_100",
+      "measured_bytes_per_op": 44024,
+      "measured_allocs_per_op": 134,
+      "bytes_per_op_max": 44024,
+      "allocs_per_op_max": 134,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.5 (22f07a3b plus Evaluate's part two), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: Evaluate at the last point of 100 calls in two gate families (go-test every seventh call, go-vet every eleventh, an edit otherwise); of the 131 allocations classify is 101, gateStates 26, recording 3 and the fold 1, recordGreen's seq (testing.AllocsPerRun on the same fixture); ns/op is ungated; re-measured 2026-10-27 at 1.8 part two (d217c519 plus integrity wired into Evaluate), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 313 allocations and 120904 B, most of it report.DetectTestBending walking every record; re-measured 2026-10-27 at 1.8r (61b43a0b plus the pair read in verify over classify's pick, the report import removed), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 2 allocations and 96 B (132 to 134 against Evaluate with integrity removed), against 313 and 120904 B at 1.8 part two; re-measured 2026-10-27 at the merge of 1.8r and 1.9 (0c4fa580 and 84bb7492), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: unchanged; evaluate's hand-off of its classification to the obligation view allocates nothing"
+    },
+    {
+      "name": "BenchmarkEvaluate/run_6000",
+      "measured_bytes_per_op": 2641608,
+      "measured_allocs_per_op": 4787,
+      "bytes_per_op_max": 2641608,
+      "allocs_per_op_max": 4787,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.5 (22f07a3b plus Evaluate's part two), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: the same fixture at 6000 calls; classify grows with the calls, about one allocation each; ns/op is ungated; re-measured 2026-10-27 at 1.8 part two (d217c519 plus integrity wired into Evaluate), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 18041 allocations and 6904155 B, most of it report.DetectTestBending walking every record; re-measured 2026-10-27 at 1.8r (61b43a0b plus the pair read in verify over classify's pick, the report import removed), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 2 allocations and 96 B (4785 to 4787 against Evaluate with integrity removed), against 18041 and 6904155 B at 1.8 part two; re-measured 2026-10-27 at the merge of 1.8r and 1.9 (0c4fa580 and 84bb7492), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: 2 B under the 1.8r reading, allocations unchanged; evaluate's hand-off of its classification to the obligation view allocates nothing"
+    },
+    {
+      "name": "BenchmarkLedger/run_6000",
+      "measured_bytes_per_op": 2789722,
+      "measured_allocs_per_op": 4795,
+      "bytes_per_op_max": 2789722,
+      "allocs_per_op_max": 4795,
+      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): BenchmarkEvaluate's run_6000 fixture through ledgerAt, evaluate and the ledger's one producer ledgerOf (the Stop view's ledger without its other parts; the entry point this row first measured is removed by LEDGER-WIRE1), six rows over two gates; the row before was 2,642,744 B/op and 4,795 allocs/op (first measured 2026-10-27 at 1.9, best of three), which this row replaces; base bc90c073 at 2,789,802 B/op and 4,797 allocs/op (+5.56% and +0.04% on the row before, over D174's five on bytes), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step -80 B/op and -2 allocs/op (the bench's entry point moves from the removed one to evaluate plus ledgerOf)"
+    },
+    {
+      "name": "BenchmarkIntegrity",
+      "measured_bytes_per_op": 12240,
+      "measured_allocs_per_op": 34,
+      "bytes_per_op_max": 12240,
+      "allocs_per_op_max": 34,
+      "basis": "first measured 2026-10-27 on feat/autosteer-lane2 at 1.8 (ee3d41a3 plus integrity), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity at the end of 100 edits with marks over two test files between a failed and a passing go test; by -memprofile (200x), 91 percent is report.DetectTestBending (its sorted copy of the declarations 47, executionsByID 36) and 8 the marks' pick; ns/op is ungated; re-measured 2026-10-27 at 1.8r (61b43a0b plus the pair read in verify over classify's pick, the report import removed), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: report.DetectTestBending's sorted copy of the declarations and executionsByID are gone; the pick is built outside the loop, as Evaluate shares classify's; re-measured 2026-10-27 at the merge of 1.8r and 1.9 (0c4fa580 and 84bb7492), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: unchanged; re-measured 2026-10-27 at 1.8r2 (e0dea9ef plus integrity reading the pairs without the orphan guard), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: from 37 allocations and 15736 B to 34 and 12240 B: the fixture holds a pair, so before 1.8r2 the guard built its declared-id set over the fixture's declarations here too"
+    },
+    {
+      "name": "BenchmarkPairs/ten_6000",
+      "measured_bytes_per_op": 2464,
+      "measured_allocs_per_op": 12,
+      "bytes_per_op_max": 2464,
+      "allocs_per_op_max": 12,
+      "basis": "re-measured 2026-10-29 on feat/autosteer-merge4 at acb1c0d5, six samples (three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2; three with both unset, CI's form), every sample 2464 B/op and 12 allocs/op, and CI run 40950617096 read 2464 and 12 on both runners; content (D104): 3.2a (89361628, store_touched) gave IntegrityEntry a Path string, 40 B to 56 B, and the profile pair 1b9d7986 against 89361628 at -memprofilerate=1 and alloc_space puts the whole +560 B at one site, integrity.go:176, the append of the ten pairs into Unresolved, 1312 B to 1872 B per call across its five growth steps; the 64 B beyond 31 x 16 is the 512 B malloc-header line, which the cap-16 step crosses in both trees (648 B lands in class 704 and 904 B in class 1024); the row before, 1904 B/op and 12 allocs/op, is 3.1c's reading exactly, and 3.3, P5A and P5B read 2464 or 1904 by whether they carry 3.2a"
+    },
+    {
+      "name": "BenchmarkClaims/head_64k",
+      "measured_bytes_per_op": 320000,
+      "measured_allocs_per_op": 970,
+      "bytes_per_op_max": 320000,
+      "allocs_per_op_max": 970,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.7 (77d77ca1 plus the comparator), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: Claims over a full 64 KiB head of some 570 summary sentences, claims of every class among them, against twelve gates; the cap of 64 verdicts is reached; ns/op is ungated"
+    },
+    {
+      "name": "BenchmarkCut/gates_200",
+      "measured_bytes_per_op": 6434282,
+      "measured_allocs_per_op": 221,
+      "bytes_per_op_max": 6434282,
+      "allocs_per_op_max": 221,
+      "basis": "first measured 2026-10-27 on the foundation branch at 1.10 (e0dea9ef plus the checkpoint cut), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: VER51b's snapshot, 200 green gates, 20 loose claims and a practice score, cut to the budget by 188 cuts (the practice and 187 gates), each a re-marshal of the record, which is written at 8070 bytes; ns/op is ungated, 8.72 ms best of three against the card's 10 ms note"
+    },
+    {
+      "name": "BenchmarkRoute/count_6000",
+      "measured_bytes_per_op": 66902,
+      "measured_allocs_per_op": 9,
+      "bytes_per_op_max": 66902,
+      "allocs_per_op_max": 9,
+      "basis": "first measured 2026-10-27 on the foundation branch at 2.2 (dd77699b plus the router), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: R6's reverse scan of a 6,000-line steer log (120 prompts of 50 lines, each the shape Route writes) whose current prompt holds the last 50 lines: one 64 KiB chunk read, the chunk buffer most of the bytes; ns/op is ungated, 0.138 ms best of nine"
+    },
+    {
+      "name": "BenchmarkRoute/decide_3",
+      "measured_bytes_per_op": 9103,
+      "measured_allocs_per_op": 96,
+      "bytes_per_op_max": 9103,
+      "allocs_per_op_max": 96,
+      "basis": "first measured 2026-10-27 on the foundation branch at 2.2 (dd77699b plus the router), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: decide over three admitted regression-location findings (a note, a lower note it supersedes, and a flag that waits beside it), ids minted outside: rank, slots, texts, MarshalFor and three lines; ns/op is ungated, 0.009 ms best of nine"
+    },
+    {
+      "name": "BenchmarkPostSteer/eval_100",
+      "measured_bytes_per_op": 796330,
+      "measured_allocs_per_op": 2514,
+      "bytes_per_op_max": 796330,
+      "allocs_per_op_max": 2514,
+      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 796,330 B/op and 2,514 allocs/op, a step of +6176 B/op and +1 allocs/op from the row as e9203984 holds it, 790,154 B/op and 2,513 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
+    },
+    {
+      "name": "BenchmarkPostSteer/eval_6000",
+      "measured_bytes_per_op": 38032305,
+      "measured_allocs_per_op": 135322,
+      "bytes_per_op_max": 38032305,
+      "allocs_per_op_max": 135322,
+      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 38,032,305 B/op and 135,322 allocs/op, a step of +346241 B/op and +1 allocs/op from the row as e9203984 holds it, 37,686,064 B/op and 135,321 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
+    },
+    {
+      "name": "BenchmarkPostSteer/step_100",
+      "measured_bytes_per_op": 804800,
+      "measured_allocs_per_op": 2567,
+      "bytes_per_op_max": 804800,
+      "allocs_per_op_max": 2567,
+      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 804,800 B/op and 2,567 allocs/op, a step of +6208 B/op and +1 allocs/op from the row as e9203984 holds it, 798,592 B/op and 2,566 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
+    },
+    {
+      "name": "BenchmarkPostSteer/step_100_spec",
+      "measured_bytes_per_op": 1007952,
+      "measured_allocs_per_op": 4102,
+      "bytes_per_op_max": 1007952,
+      "allocs_per_op_max": 4102,
+      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 1,007,952 B/op and 4,102 allocs/op, a step of +9426 B/op and +32 allocs/op from the row as e9203984 holds it, 998,526 B/op and 4,070 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
+    },
+    {
+      "name": "BenchmarkPostSteer/step_6000",
+      "measured_bytes_per_op": 38048448,
+      "measured_allocs_per_op": 135400,
+      "bytes_per_op_max": 38048448,
+      "allocs_per_op_max": 135400,
+      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 38,048,448 B/op and 135,400 allocs/op, a step of +346281 B/op and +2 allocs/op from the row as e9203984 holds it, 37,702,167 B/op and 135,398 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
+    },
+    {
+      "name": "BenchmarkPostSteer/write_6000_unarmed",
+      "measured_bytes_per_op": 816,
+      "measured_allocs_per_op": 6,
+      "bytes_per_op_max": 816,
+      "allocs_per_op_max": 6,
+      "basis": "measured on the runner: the Perf gates (macos) job of run 41013478525 (job 123924385601, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/stale-nudge1-main c531bdc7, STALE-NUDGE1 on main a00ea4e5; the job's conclusion is failure, for the write_6000_unarmed and write_6000_armed rows' absence from budgets.json and the old darwin /preflight anchor (D214), not for the figures taken from it. The job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 816 B/op and 6 allocs/op; 816 B/op and 6 allocs/op; 816 B/op and 6 allocs/op: the step on an Edit's post after the 6,000-call record with the session unarmed: the stale marker's Lstat (store.StaleArmed), which every landed write pays, and no path decoded, no run read; a new row (the benchmark is new with the card), anchored where it gates (D214, D215; BENCH-PROVENANCE1's default). The reference recipe read 768 B/op and 6 allocs/op (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2, three hold-checked rounds of -count 3, each flat, one mode, 2026-10-29, tree 1c176505)"
+    },
+    {
+      "name": "BenchmarkPostSteer/write_6000_armed",
+      "measured_bytes_per_op": 37475550,
+      "measured_allocs_per_op": 135298,
+      "bytes_per_op_max": 37475550,
+      "allocs_per_op_max": 135298,
+      "basis": "measured on the runner: the Perf gates (macos) job of run 41013478525 (job 123924385601, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/stale-nudge1-main c531bdc7, STALE-NUDGE1 on main a00ea4e5; the job's conclusion is failure, for the write_6000_unarmed and write_6000_armed rows' absence from budgets.json and the old darwin /preflight anchor (D214), not for the figures taken from it. The job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 37,475,710 B/op and 135,301 allocs/op; 37,476,077 B/op and 135,302 allocs/op; 37,475,550 B/op and 135,298 allocs/op: the step on an Edit's post after the 6,000-call record with the session armed by a green gate run (card STALE-NUDGE1, D166): the marker taken, the run read once and judged under the project's learned index requiring both gate families, which a write pays about once per green gate run; no gate's green is left behind by this write (the vet family's was left by an earlier Edit, the test family is red), so it appends no line; a new row (the benchmark is new with the card), anchored where it gates (D214, D215; BENCH-PROVENANCE1's default). The reference recipe read 37,464,424 B/op and 135,236 allocs/op (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2, three hold-checked rounds of -count 3, each flat, one mode, 2026-10-29, tree 1c176505)"
+    },
+    {
+      "name": "BenchmarkReadRun/calls_100",
+      "measured_bytes_per_op": 806810,
+      "measured_allocs_per_op": 2592,
+      "bytes_per_op_max": 806810,
+      "allocs_per_op_max": 2592,
+      "basis": "first measured 2026-10-28 on feat/autosteer-foundation at 2.3b (9f12af10 plus the one-pass decode), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 9f12af10 measured in the same window: ReadRunConsistent, the full read every Stop, every failed runner call's step and every report pays, of payload.WriteSession's session of 100 calls (329 KB), the generator BenchmarkBuild reads; drift: none, a new row; 2.3b's step: -1.9% B/op and -16.1% allocs/op against 9f12af10's 822,778 and 3,091, classifyRunLine decoding each line once; passover: none; allocations equal in all nine; ns/op is ungated, 1.179 ms best of nine against 9f12af10's 2.263 ms"
+    },
+    {
+      "name": "BenchmarkReadRun/calls_6000",
+      "measured_bytes_per_op": 39856270,
+      "measured_allocs_per_op": 149485,
+      "bytes_per_op_max": 39856270,
+      "allocs_per_op_max": 149485,
+      "basis": "first measured 2026-10-28 on feat/autosteer-foundation at 2.3b (9f12af10 plus the one-pass decode), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 9f12af10 measured in the same window: ReadRunConsistent of payload.WriteSession's session of 6000 calls (19.8 MB), as calls_100; drift: none, a new row; 2.3b's step: -2.3% B/op and -16.7% allocs/op against 9f12af10's 40,810,880 and 179,455, classifyRunLine decoding each line once; passover: none; allocations equal in all nine; ns/op is ungated, 73.31 ms best of nine against 9f12af10's 139.6 ms"
+    },
+    {
+      "name": "BenchmarkClassify/go_pass",
+      "measured_bytes_per_op": 0,
+      "measured_allocs_per_op": 0,
+      "bytes_per_op_max": 0,
+      "allocs_per_op_max": 0,
+      "basis": "best of three after regexp match-state warm-up, Apple M1 Pro (darwin/arm64, go1.27.2, -benchtime 20x)"
+    },
+    {
+      "name": "BenchmarkClassify/go_fail_at_cap",
+      "measured_bytes_per_op": 0,
+      "measured_allocs_per_op": 0,
+      "bytes_per_op_max": 0,
+      "allocs_per_op_max": 0,
+      "basis": "best of three after regexp match-state warm-up, Apple M1 Pro (darwin/arm64, go1.27.2, -benchtime 20x)"
+    },
+    {
+      "name": "BenchmarkDiscover",
+      "measured_bytes_per_op": 69007,
+      "measured_allocs_per_op": 628,
+      "bytes_per_op_max": 69007,
+      "allocs_per_op_max": 628,
+      "basis": "first measured 2026-10-29 on feat/autosteer-lane3 at 3.1 (b) (1aac533a plus 3.1 (a) and (b)), best of nine (three rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: spec.Discover over a map FS, cwd five levels below the root, the repository spec (specExample) at the root and the managed spec absent, so six candidate paths, five misses, one read and one Parse; 69007 B/op and 628 allocs/op in nine samples of nine"
+    },
+    {
+      "name": "BenchmarkTreeDigest/files_64",
+      "measured_bytes_per_op": 77496,
+      "measured_allocs_per_op": 584,
+      "bytes_per_op_max": 77496,
+      "allocs_per_op_max": 584,
+      "basis": "first measured 2026-10-29 on feat/autosteer-lane3 at P5A (1b9d7986 plus P5A), best of nine (three rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: TreeShas, the Stop's side of the tree binding at its cap, over verify.MaxTreeFiles = 64 targets of MaxHashBytes = 1 MiB each: 64 stats, 64 opens and a 64 MiB sha256 read from the page cache through one hasher (a 32 KiB buffer, one sha256 Reset per file); 77496 to 77503 B/op and 584 allocs/op in 9 samples of nine; ns/op is ungated"
+    },
+    {
+      "name": "BenchmarkImpact/records_1000",
+      "measured_bytes_per_op": 845696,
+      "measured_allocs_per_op": 1989,
+      "bytes_per_op_max": 845696,
+      "allocs_per_op_max": 1989,
+      "basis": "first measured 2026-10-28 on feat/autosteer-lane2 at 6.1 (base 1aac533a): best of nine (three rounds of -count 3), -benchtime 20x, under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2, go1.27.3, through benchgate -measure"
+    },
+    {
+      "name": "BenchmarkImpact/records_50000",
+      "measured_bytes_per_op": 32599811,
+      "measured_allocs_per_op": 95588,
+      "bytes_per_op_max": 32599811,
+      "allocs_per_op_max": 95588,
+      "basis": "first measured 2026-10-28 on feat/autosteer-lane2 at 6.1 (base 1aac533a): best of nine (three rounds of -count 3), -benchtime 20x, under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2, go1.27.3, through benchgate -measure"
+    },
+    {
+      "name": "BenchmarkProbeStart/brief",
+      "measured_bytes_per_op": 160937,
+      "measured_allocs_per_op": 847,
+      "bytes_per_op_max": 160937,
+      "allocs_per_op_max": 847,
+      "basis": "measured on the runner: the Perf gates (macos) job of run 40999250662 (job 123879538778, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/brief1 e3cb90c9 (BRIEF1 on SPEC-TRUST1's D173b), the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 160,937 B/op and 847 allocs/op; 160,940 B/op and 847 allocs/op; 160,937 B/op and 847 allocs/op: printBrief at startup on a payload already taken in, with a settings install's args, so the origin check stops at the --install marker (the plugin entry adds install.PluginFires's reads, not in this row); a .git project under the temp root holding CLAUDE.md, go.mod, 32 package directories and cmd/app (71 entries), a 24-family index, no spec; ns/op is ungated"
+    }
+  ],
   "platforms": {
     "darwin/arm64": {
       "reference": "Apple M3, 8 GB, go1.27.2 (every RSS and init gate re-run under go1.27.3 on 2026-10-22 and within its row), release flags (CGO_ENABLED=0 -trimpath -ldflags \"-s -w\")",
@@ -54,9 +807,8 @@
       }
     },
     "linux/amd64": {
-      "set_from": "RSS rows (entries, case_budgets): the median of nine readings through the reaper in one run, the Perf gates (linux) job of run 40147955591 (job 121033244967, PR #93 head 4f1f479c, ubuntu-latest, ubuntu-24.04 image 20261012.334.1, go1.27.3, 2026-10-25), the first run under the harness controls: THP disabled for the harness and its children (the harness logged the sysfs setting as [always] madvise never, so the runner was at always), every measured child under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2. The gated figure is the serialized 4 KiB-page peak. It is one run, the only one that carries 4f1f479c (no other PR head does), so each row is that run's median, not a highest median over several runs; the nine readings per row were each one cluster (widest: hook.1MiB 6.91 to 7.21, hook.4MiB 13.54 to 13.79, hook.8MiB 21.74 to 22.02), so no row sits on a mode and none is bimodal. Medians in MiB: hook.400B 4.71, hook.40KB 4.96, hook.1MiB 7.00, hook.4MiB 13.68, hook.8MiB 21.93, post.540B 4.71, post.40KB 4.71, post.1MiB 6.33, post.4MiB 12.96, post.8MiB 20.96; hook.bash_short 4.71, hook.edit_50k 4.83, post.bash_short 4.71, post.edit_314k 5.33, recap.stop 6.33, recap.pending 5.21, probe.start 4.58, probe.end 4.71. These replace the rows measured before the controls (8.14 to 10.51 on the small entries and cases, hook.4MiB 19.05, hook.8MiB 27.35, post.4MiB 16.86, post.8MiB 24.58), which read 3 MiB or more higher on THP at always with a concurrent collector, and which post.edit_314k (8.24) and recap.pending (8.54) had set on the low mode of a bimodal pair. The earlier rows are withdrawn. This repository's reference Linux VM reads lower than the runner (about 4.7 for hook.400B, 22.0 for hook.8MiB under the controls), so a row cannot be taken from any other machine; the next run of this job on a further head should be added and the highest median taken. benchmarks: best of three, -benchtime 20x, from run 39876043270's bench-linux artifact on 323e4075 under go1.27.3, cross-checked on a second linux/amd64 machine within 0.1 percent on 31 of 40 rows, and within 5 percent on all of them RES-ROWS1 (2026-10-28): 18 RSS rows (10 case_budgets, 8 entries) are the highest median per row over run 40147955591 and run 40790551553 (job 123174418804, PR #111 head 54ae497f, ubuntu-latest, ubuntu-24.04 image 20261025.353.1, go1.27.3, THP sysfs always [madvise] never, disabled for the harness and its children, measured children under GOMAXPROCS=1 and GODEBUG set to gcstoptheworld=2), whose medians are the higher on every one: hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. 40790551553 read eleven rows over the ten percent (hook.400B, post.540B, post.40KB and the eight entries) and hook.1MiB and post.1MiB within 0.02 MiB of it; the widest spread of a row's nine readings was hook.4MiB's, 14.09 to 14.49. RSS-ROW1 (2026-10-30): the 18 RSS rows (10 case_budgets, 8 entries) are re-anchored where they are gated, on main 7da6abaa's own Perf gates (linux) job: run 41021267211 (job 123948892271, ubuntu-latest, image ubuntu-24.04 20261025.353.1, go1.27.3), each row that job's median of nine through the reaper: hook.400B 5.59, hook.40KB 5.72, hook.1MiB 8.04, hook.4MiB 14.78, hook.8MiB 22.93, post.540B 5.59, post.40KB 5.59, post.1MiB 7.59, post.4MiB 13.97, post.8MiB 22.09; hook.bash_short 5.59, hook.edit_50k 5.72, post.bash_short 5.47, post.edit_314k 6.22, recap.stop 7.46, recap.pending 6.34, probe.start 5.78, probe.end 6.03. They replace hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. On that run every row read 0.5 to 7.8% under its old line (the row plus 10%); probe.end was closest. Main a00ea4e5, 6fc382ac and b213146d build the same release binary, and their runs of this job (job 123913498909, job 123925250351, job 123931990205) read within 0.13 MiB of each other on every row (hook.4MiB the widest), while the open changes' steps read +0.25 to +0.38 MiB on every row (PR #137) and +0.30 and +0.43 on probe.start and probe.end (PR #136): on this runner the readings track the code, so these rows are main's code here and a change's own step is read against them.",
-      "tolerance": 0.1,
-      "tolerance_after": 0.1,
+      "reference": "ubuntu-latest",
+      "tolerance_until": "",
       "entries": {
         "hook.bash_short": {
           "p50": 5.59,
@@ -91,6 +843,7 @@
           "p95": 6.03
         }
       },
+      "tolerance": 0.1,
       "case_budgets": {
         "hook.400B": 5.59,
         "hook.40KB": 5.72,
@@ -103,8 +856,8 @@
         "post.4MiB": 13.97,
         "post.8MiB": 22.09
       },
-      "tolerance_until": "",
-      "reference": "ubuntu-latest",
+      "set_from": "RSS rows (entries, case_budgets): the median of nine readings through the reaper in one run, the Perf gates (linux) job of run 40147955591 (job 121033244967, PR #93 head 4f1f479c, ubuntu-latest, ubuntu-24.04 image 20261012.334.1, go1.27.3, 2026-10-25), the first run under the harness controls: THP disabled for the harness and its children (the harness logged the sysfs setting as [always] madvise never, so the runner was at always), every measured child under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2. The gated figure is the serialized 4 KiB-page peak. It is one run, the only one that carries 4f1f479c (no other PR head does), so each row is that run's median, not a highest median over several runs; the nine readings per row were each one cluster (widest: hook.1MiB 6.91 to 7.21, hook.4MiB 13.54 to 13.79, hook.8MiB 21.74 to 22.02), so no row sits on a mode and none is bimodal. Medians in MiB: hook.400B 4.71, hook.40KB 4.96, hook.1MiB 7.00, hook.4MiB 13.68, hook.8MiB 21.93, post.540B 4.71, post.40KB 4.71, post.1MiB 6.33, post.4MiB 12.96, post.8MiB 20.96; hook.bash_short 4.71, hook.edit_50k 4.83, post.bash_short 4.71, post.edit_314k 5.33, recap.stop 6.33, recap.pending 5.21, probe.start 4.58, probe.end 4.71. These replace the rows measured before the controls (8.14 to 10.51 on the small entries and cases, hook.4MiB 19.05, hook.8MiB 27.35, post.4MiB 16.86, post.8MiB 24.58), which read 3 MiB or more higher on THP at always with a concurrent collector, and which post.edit_314k (8.24) and recap.pending (8.54) had set on the low mode of a bimodal pair. The earlier rows are withdrawn. This repository's reference Linux VM reads lower than the runner (about 4.7 for hook.400B, 22.0 for hook.8MiB under the controls), so a row cannot be taken from any other machine; the next run of this job on a further head should be added and the highest median taken. benchmarks: best of three, -benchtime 20x, from run 39876043270's bench-linux artifact on 323e4075 under go1.27.3, cross-checked on a second linux/amd64 machine within 0.1 percent on 31 of 40 rows, and within 5 percent on all of them RES-ROWS1 (2026-10-28): 18 RSS rows (10 case_budgets, 8 entries) are the highest median per row over run 40147955591 and run 40790551553 (job 123174418804, PR #111 head 54ae497f, ubuntu-latest, ubuntu-24.04 image 20261025.353.1, go1.27.3, THP sysfs always [madvise] never, disabled for the harness and its children, measured children under GOMAXPROCS=1 and GODEBUG set to gcstoptheworld=2), whose medians are the higher on every one: hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. 40790551553 read eleven rows over the ten percent (hook.400B, post.540B, post.40KB and the eight entries) and hook.1MiB and post.1MiB within 0.02 MiB of it; the widest spread of a row's nine readings was hook.4MiB's, 14.09 to 14.49. RSS-ROW1 (2026-10-30): the 18 RSS rows (10 case_budgets, 8 entries) are re-anchored where they are gated, on main 7da6abaa's own Perf gates (linux) job: run 41021267211 (job 123948892271, ubuntu-latest, image ubuntu-24.04 20261025.353.1, go1.27.3), each row that job's median of nine through the reaper: hook.400B 5.59, hook.40KB 5.72, hook.1MiB 8.04, hook.4MiB 14.78, hook.8MiB 22.93, post.540B 5.59, post.40KB 5.59, post.1MiB 7.59, post.4MiB 13.97, post.8MiB 22.09; hook.bash_short 5.59, hook.edit_50k 5.72, post.bash_short 5.47, post.edit_314k 6.22, recap.stop 7.46, recap.pending 6.34, probe.start 5.78, probe.end 6.03. They replace hook.400B 5.26, hook.40KB 5.38, hook.1MiB 7.68, hook.4MiB 14.27, hook.8MiB 22.48, post.540B 5.26, post.40KB 5.38, post.1MiB 6.95, post.4MiB 13.57, post.8MiB 21.57; hook.bash_short 5.26, hook.edit_50k 5.51, post.bash_short 5.32, post.edit_314k 6.01, recap.stop 7.13, recap.pending 6.01, probe.start 5.38, probe.end 5.51. On that run every row read 0.5 to 7.8% under its old line (the row plus 10%); probe.end was closest. Main a00ea4e5, 6fc382ac and b213146d build the same release binary, and their runs of this job (job 123913498909, job 123925250351, job 123931990205) read within 0.13 MiB of each other on every row (hook.4MiB the widest), while the open changes' steps read +0.25 to +0.38 MiB on every row (PR #137) and +0.30 and +0.43 on probe.start and probe.end (PR #136): on this runner the readings track the code, so these rows are main's code here and a change's own step is read against them.",
+      "tolerance_after": 0.1,
       "benchmarks": [
         {
           "name": "BenchmarkDerive/bash_short",
@@ -689,180 +1442,31 @@
           "bytes_per_op_max": 32599811,
           "allocs_per_op_max": 95588,
           "basis": "darwin/arm64 figures; provisional until the first CI run"
+        },
+        {
+          "name": "BenchmarkProbeStart/brief",
+          "measured_bytes_per_op": 64633,
+          "measured_allocs_per_op": 626,
+          "bytes_per_op_max": 64633,
+          "allocs_per_op_max": 626,
+          "basis": "measured on the runner: the Perf gates (linux) job of run 40999250662 (job 123879538869, AMD EPYC 7763, GOMAXPROCS 4, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/brief1 e3cb90c9 (BRIEF1 on SPEC-TRUST1's D173b), the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 64,633 B/op and 626 allocs/op; 64,697 B/op and 626 allocs/op; 64,697 B/op and 626 allocs/op: printBrief at startup on a payload already taken in, with a settings install's args, so the origin check stops at the --install marker (the plugin entry adds install.PluginFires's reads, not in this row); a .git project under the temp root holding CLAUDE.md, go.mod, 32 package directories and cmd/app (71 entries), a 24-family index, no spec; ns/op is ungated"
         }
       ]
     }
   },
   "growth": [],
   "benchmark_platform": "darwin/arm64",
-  "entries": [
-    {
-      "id": "hook.bash_short",
-      "events": [
-        "PreToolUse"
-      ],
-      "command": [
-        "hook"
-      ],
-      "payload_class": "bash_short",
-      "payload_bytes": 400,
-      "benchmark": "BenchmarkRunHook/bash_short",
-      "alloc_bytes_max": 55424,
-      "cold_alloc_bytes_max": 171136,
-      "maxrss_mib_p50": 5.95,
-      "maxrss_mib_p95": 7.5,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 10,
-      "wall_ms_p95": 20,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.89 / 5.97 / 5.95 MiB); expected per archive 85.4.1: 6.5 / 7.5 MiB, the floor of about 5.9 under the pin plus the masker, targets and written paths. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/hook.bash_short call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [160576, 160736, 160224] bytes, min 160224). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27: the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. Warm (the benchmark row): 47184 old code on the old fixture, 47640 old code on the new, 54376 new code. Cold, minimum of three fresh processes: 163272 ([163544, 163272, 175088]), 163776 ([163776, 171056, 170448]), 170048 ([177040, 170512, 170048]). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 54376 before, 55424 after. Cold, minimum of three fresh processes: 170864 ([177040, 174832, 170864]) before, 171136 ([177968, 171136, 177648]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
-    },
-    {
-      "id": "hook.edit_50k",
-      "events": [
-        "PreToolUse"
-      ],
-      "command": [
-        "hook"
-      ],
-      "payload_class": "edit_50k",
-      "payload_bytes": 51200,
-      "benchmark": "BenchmarkRunHook/edit_50k",
-      "alloc_bytes_max": 172319,
-      "cold_alloc_bytes_max": 285024,
-      "maxrss_mib_p50": 6.2,
-      "maxrss_mib_p95": 7.5,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 15,
-      "wall_ms_p95": 25,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.12 / 6.23 / 6.20 MiB); expected per RES-28: 6.61 MiB at 50 KB. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/hook.edit_50k call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [278568, 285240, 284680] bytes, min 278568). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27: the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. Warm (the benchmark row): 164319 old code on the old fixture, 164567 old code on the new, 171415 new code. Cold, minimum of three fresh processes: 276064 ([276064, 280544, 280944]), 276232 ([287928, 281080, 276232]), 283688 ([283688, 295400, 294760]). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 171271 before, 172319 after. Cold, minimum of three fresh processes: 287448 ([287448, 287928, 288056]) before, 285024 ([288800, 295648, 285024]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
-    },
-    {
-      "id": "post.bash_short",
-      "events": [
-        "PostToolUse",
-        "PostToolUseFailure"
-      ],
-      "command": [
-        "post"
-      ],
-      "payload_class": "bash_short",
-      "payload_bytes": 540,
-      "benchmark": "BenchmarkRunPost/bash_short",
-      "alloc_bytes_max": 42552,
-      "cold_alloc_bytes_max": 146672,
-      "maxrss_mib_p50": 5.94,
-      "maxrss_mib_p95": 7.5,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 11,
-      "wall_ms_p95": 18,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.94 / 5.89 / 6.00 MiB); expected per archive 85.4.1: 6.5 / 7.5 MiB. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/post.bash_short call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [144992, 152016, 144992] bytes, min 144992). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 41504 before, 42552 after. Cold, minimum of three fresh processes: 145160 ([145640, 145160, 149224]) before, 146672 ([152768, 151952, 146672]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
-    },
-    {
-      "id": "post.edit_314k",
-      "events": [
-        "PostToolUse",
-        "PostToolUseFailure"
-      ],
-      "command": [
-        "post"
-      ],
-      "payload_class": "edit_314k",
-      "payload_bytes": 314000,
-      "benchmark": "BenchmarkRunPost/edit_314k",
-      "alloc_bytes_max": 471379,
-      "cold_alloc_bytes_max": 575120,
-      "maxrss_mib_p50": 6.73,
-      "maxrss_mib_p95": 7.16,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 12,
-      "wall_ms_p95": 22,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.73 / 6.67 / 6.73 MiB); p95 is RES-28's line at 314 KB (7.16 MiB), which the archive applies from P-10 in place of 8 / 10 MiB; 60 runs gave p95 6.92, max 6.95. alloc_bytes_max remeasured 2026-10-22 (P-12): the benchmark now opens its store with one warm-up call before ResetTimer, so the row no longer carries a fraction of the store's own first-write cost; best of three at -benchtime 20x. cold_alloc_bytes_max measured 2026-10-22 (P-12): TotalAlloc of exactly one TestColdCall/post.edit_314k call in a fresh test process; TestColdAllocBudget gates the minimum of three fresh-process runs, not a single one, because single-run noise alone can clear the 10% margin (measured spread [576632, 574224, 571792] bytes, min 571792). alloc_bytes_max and cold_alloc_bytes_max remeasured 2026-10-27 at 1.2q: the hook reads the record_scope marker on every call, and the benchmark's store now carries a v5 consent. Warm (the benchmark row): 470331 before, 471379 after. Cold, minimum of three fresh processes: 576616 ([580344, 576616, 576776]) before, 575120 ([581232, 578784, 575120]) after; the spread within one side is wider than the 1048 B the marker read adds, so this row moves with that noise, not with the change."
-    },
-    {
-      "id": "recap.stop",
-      "events": [
-        "Stop",
-        "StopFailure"
-      ],
-      "command": [
-        "recap"
-      ],
-      "payload_class": "stop_100",
-      "payload_bytes": 2048,
-      "benchmark": "BenchmarkRecap/100",
-      "alloc_bytes_max": 1265159,
-      "cold_alloc_bytes_max": 0,
-      "maxrss_mib_p50": 7.06,
-      "maxrss_mib_p95": 16,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 20,
-      "wall_ms_p95": 60,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (7.06 / 7.03 / 7.06 MiB); on the 100-call session BenchmarkRecap/100 reads; expected per archive 85.4.1: 12 / 16 MiB, flat in session size. cold_alloc_bytes_max is 0 (P-12): no fresh-process cold-call harness built for recap.* yet, not a claim of zero cost."
-    },
-    {
-      "id": "recap.pending",
-      "events": [
-        "UserPromptSubmit"
-      ],
-      "command": [
-        "recap",
-        "pending"
-      ],
-      "payload_class": "prompt",
-      "payload_bytes": 256,
-      "benchmark": "BenchmarkRecapPending/10",
-      "alloc_bytes_max": 294862,
-      "cold_alloc_bytes_max": 0,
-      "maxrss_mib_p50": 6.06,
-      "maxrss_mib_p95": 7.5,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 8,
-      "wall_ms_p95": 20,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.09 / 6.06 / 5.98 MiB); on the 10-call session BenchmarkRecapPending/10 reads (the earlier 5.2 measured the no-store early return); expected per archive 85.4.1: 6.5 / 7.5 MiB. cold_alloc_bytes_max is 0 (P-12): no fresh-process cold-call harness built for recap.* yet, not a claim of zero cost."
-    },
-    {
-      "id": "probe.start",
-      "events": [
-        "SessionStart"
-      ],
-      "command": [
-        "probe",
-        "start"
-      ],
-      "payload_class": "session_start",
-      "payload_bytes": 256,
-      "benchmark": "",
-      "alloc_bytes_max": 0,
-      "cold_alloc_bytes_max": 0,
-      "maxrss_mib_p50": 5.97,
-      "maxrss_mib_p95": 24,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 15,
-      "wall_ms_p95": 400,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.02 / 5.97 / 5.91 MiB); nothing queued; expected per archive 85.4.1: 8 MiB with nothing queued at p50, mining and briefing at p95. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet."
-    },
-    {
-      "id": "probe.end",
-      "events": [
-        "SessionEnd"
-      ],
-      "command": [
-        "probe",
-        "end"
-      ],
-      "payload_class": "session_end",
-      "payload_bytes": 256,
-      "benchmark": "",
-      "alloc_bytes_max": 0,
-      "cold_alloc_bytes_max": 0,
-      "maxrss_mib_p50": 5.98,
-      "maxrss_mib_p95": 6.5,
-      "parent_maxrss_mib_p50": null,
-      "wall_ms_p50": 6,
-      "wall_ms_p95": 12,
-      "basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.95 / 6.05 / 5.98 MiB); closing a started session; expected per archive 85.4.1: one record, 6 / 6.5 MiB. cold_alloc_bytes_max is 0 (P-12), the convention alloc_bytes_max already uses for probe.*: no fresh-process cold-call harness built for probe.* yet."
+  "per_tool_call": {
+    "memory_time_mib_ms_max": 379,
+    "summed_peak_mib_max": 32,
+    "process_creations_max": {
+      "settings": 6,
+      "plugin": 6
     }
-  ],
+  },
+  "disk": {
+    "bytes_per_call_max": 6000
+  },
   "rss_cases": [
     {
       "id": "hook.400B",
@@ -955,594 +1559,6 @@
       "gates_from": "P-10",
       "slope_mib_per_mib": 2.45,
       "basis": "RES-4's 2.0x read plus canonical's decoded copy of tool_input for the executed digest, until RES-48 (archive 85.3.3)"
-    }
-  ],
-  "parallel": {
-    "ways": 64,
-    "summed_peak_mib_max": 704,
-    "basis": "per-process rule (RES-30, ruling 2026-10-13): largest pair peak at most 1.25x the median of 25 solo pairs, both measured in the same run. Restated from measurement on the reference machine with GOMAXPROCS unchanged: largest 1.08x to 1.21x over six runs with nine solo pairs, 1.10x to 1.19x over eleven runs with 25 (4.02 to 4.31 MiB against solo medians of 3.61 to 3.69 MiB), burst median 1.02x to 1.05x; GOMAXPROCS(1) in hook and post measured 1.03x to 1.09x over twenty runs and was rejected. No tolerance on the reference machine; macos-latest unmeasured, so a CI runner gets the platform tolerance on the ratio until it is measured"
-  },
-  "go_version": "go1.27.3",
-  "per_tool_call": {
-    "memory_time_mib_ms_max": 379,
-    "summed_peak_mib_max": 32,
-    "process_creations_max": {
-      "settings": 6,
-      "plugin": 6
-    }
-  },
-  "benchmark_rows": "the measured best of three on the reference machine (darwin/arm64, go1.27.3, -benchtime 20x, 2026-10-22; the eight store rows re-measured 2026-10-24 as the median of five CI-style invocations, at 1.1c and 1.1f on the foundation branch); a row's max equals its measurement, and the gate's ten percent (scripts/benchgate) is the only margin",
-  "disk": {
-    "bytes_per_call_max": 6000
-  },
-  "budgets_version": 1,
-  "benchmarks": [
-    {
-      "name": "BenchmarkDerive/bash_short",
-      "measured_bytes_per_op": 2656,
-      "measured_allocs_per_op": 33,
-      "bytes_per_op_max": 2656,
-      "allocs_per_op_max": 33
-    },
-    {
-      "name": "BenchmarkDerive/bash_long_4k",
-      "measured_bytes_per_op": 268944,
-      "measured_allocs_per_op": 229,
-      "bytes_per_op_max": 268944,
-      "allocs_per_op_max": 229
-    },
-    {
-      "name": "BenchmarkDerive/edit_50k",
-      "measured_bytes_per_op": 63464,
-      "measured_allocs_per_op": 28,
-      "bytes_per_op_max": 63464,
-      "allocs_per_op_max": 28
-    },
-    {
-      "name": "BenchmarkDerive/cd_sub_go_test_tail",
-      "measured_bytes_per_op": 4536,
-      "measured_allocs_per_op": 69,
-      "bytes_per_op_max": 4536,
-      "allocs_per_op_max": 69
-    },
-    {
-      "name": "BenchmarkDerive/cd_var_go_test",
-      "measured_bytes_per_op": 3712,
-      "measured_allocs_per_op": 55,
-      "bytes_per_op_max": 3712,
-      "allocs_per_op_max": 55
-    },
-    {
-      "name": "BenchmarkWritten/bash_short",
-      "measured_bytes_per_op": 432,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 432,
-      "allocs_per_op_max": 2
-    },
-    {
-      "name": "BenchmarkLexTokens",
-      "measured_bytes_per_op": 99184,
-      "measured_allocs_per_op": 90,
-      "bytes_per_op_max": 99184,
-      "allocs_per_op_max": 90
-    },
-    {
-      "name": "BenchmarkRecordBytesPerCall",
-      "measured_bytes_per_op": 20026,
-      "measured_allocs_per_op": 94,
-      "bytes_per_op_max": 20026,
-      "allocs_per_op_max": 94
-    },
-    {
-      "name": "BenchmarkBuild/188",
-      "measured_bytes_per_op": 1935627,
-      "measured_allocs_per_op": 5902,
-      "bytes_per_op_max": 1935627,
-      "allocs_per_op_max": 5902,
-      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 188 calls, the median session measured; drift: 837f887b at 2,224,046 B/op and 5,930 allocs/op, +0.00% and +0.00% on the row before (2,224,046 and 5,930); 2.3c's step: -288,419 B/op and -28 allocs/op (-13.0% and -0.47%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 288,352 B and 27 allocs: go1.27.3's growth rules give 288,256 B and 27 allocs for four prompts with the last of 47 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); GOGC=off on the test binary (one run a side) measures the step at 288,352 B and 27 allocs, the code's share to the byte; the 1 alloc and 67 B beyond the code's share are collection-gated: GOGC=off measures none of them, and the profile pair at Build/899 and Recap/1000 names the json/v2 decoder pool's refills; not profiled at this size; passover: none; ns/op is ungated, 2.359 ms best of nine against 837f887b's 2.392 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
-    },
-    {
-      "name": "BenchmarkBuild/899",
-      "measured_bytes_per_op": 8782692,
-      "measured_allocs_per_op": 27533,
-      "bytes_per_op_max": 8782692,
-      "allocs_per_op_max": 27533,
-      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 899 calls, the p90 session; drift: 837f887b at 9,946,608 B/op and 27,588 allocs/op, +0.00% and +0.00% on the row before (9,946,608 and 27,588); 2.3c's step: -1,163,916 B/op and -55 allocs/op (-11.7% and -0.20%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 1,160,800 B and 35 allocs: go1.27.3's growth rules give 1,160,704 B and 35 allocs for four prompts with the last of 224 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); GOGC=off on the test binary (one run a side) measures the step at 1,161,066 B and 35 allocs, 266 B over the code's share; the 20 allocs and 3,116 B beyond the code's share are collection-gated: GOGC=off measures none of them, and an alloc_objects profile pair at -memprofilerate=1 (Build/899 and Recap/1000, tree against 837f887b, same flags, -count 1) puts them in json/v2's decode under unchanged store code: the pooled Decoder (jsontext/pools.go:119), the 4 KiB string cache it carries (v2/arshal_default.go:296), the strings that cache would have interned (v2/intern.go:52) and the fresh decoder's stacks (jsontext/state.go:312, 347, 587), at Recap/1000 net of sync.Pool.pinSlow's +120 over the profile's 21 ops (sync/pool.go:238, 242); each of these allocates only after a collection (a pool empties after two with no use between, and pinSlow runs on a pool's first use after one), so where the collections land decides them, and a later change that moves them can return these allocations; its basis names them by these sites; passover: none; ns/op is ungated, 11.958 ms best of nine against 837f887b's 11.979 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
-    },
-    {
-      "name": "BenchmarkBuild/3488",
-      "measured_bytes_per_op": 33089993,
-      "measured_allocs_per_op": 105978,
-      "bytes_per_op_max": 33089993,
-      "allocs_per_op_max": 105978,
-      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 3488 calls, the largest session measured; drift: 837f887b at 40,274,618 B/op and 106,027 allocs/op, +0.03% and +0.00% on the row before (40,260,963 and 106,026); 2.3c's step: -7,184,625 B/op and -49 allocs/op (-17.8% and -0.05%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 7,165,536 B and 47 allocs: go1.27.3's growth rules give 7,165,440 B and 47 allocs for four prompts with the last of 872 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); GOGC=off on the test binary (one run a side) measures the step at 7,156,797 B and 46 allocs, 8,739 B under the code's share and 1 under its allocs; the 2 allocs and 19,089 B beyond the code's share are within the nine runs' spread with the code fixed, 62,300 B and 5 allocs (837f887b's 34,990 and 2); passover: none; ns/op is ungated, 47.656 ms best of nine against 837f887b's 49.339 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
-    },
-    {
-      "name": "BenchmarkBuild/20000",
-      "measured_bytes_per_op": 210130248,
-      "measured_allocs_per_op": 606067,
-      "bytes_per_op_max": 210130248,
-      "allocs_per_op_max": 606067,
-      "basis": "re-measured 2026-10-28 on feat/autosteer-foundation at 2.3c (837f887b plus selectTurn copying the chosen turn only), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 837f887b measured in the same window, its rounds alternating with the tree's: the Stop-time digest of 20000 calls, the stress size; drift: 837f887b at 256,142,248 B/op and 606,134 allocs/op, +0.00% and +0.00% on the row before (256,142,248 and 606,134); 2.3c's step: -46,012,000 B/op and -67 allocs/op (-18.0% and -0.01%) against 837f887b, selectTurn copying one presized turn where it copied all four prompts into slices that grow; the code's own share is 46,012,000 B and 67 allocs: go1.27.3's growth rules give 46,011,904 B and 67 allocs for four prompts with the last of 5000 declarations chosen, and the group struct, its slice field now a count, 96 B (four of 48 B to 24 B); not run with GOGC=off (about 5 GB a side); the window's step is the code's share to the byte; passover: none; ns/op is ungated, 277.823 ms best of nine against 837f887b's 286.125 ms; the row it replaces is 2.3b's (954748fe), whose basis names the drift of call schema 6 (a65f9ac9) and the 871-capacity step this card removes"
-    },
-    {
-      "name": "BenchmarkRunHook/bash_short",
-      "measured_bytes_per_op": 55424,
-      "measured_allocs_per_op": 387,
-      "bytes_per_op_max": 55424,
-      "allocs_per_op_max": 387,
-      "basis": "remeasured 2026-10-27 on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. The fixture alone, old code: 47184 to 47640 B/op, 318 allocs either way; the code on the new fixture: 47640 to 54376 B/op, 318 to 381 allocs; baseline.Key alone on that cwd, under the symlinked macOS temp root, is 61 allocs and 6208 B a call. Then 1.2q, the same day under the same settings: every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 54376 B/op and 381 allocs before (runs 54376, 54376, 54376), 55424 and 387 after (runs 55424, 55424, 55427)"
-    },
-    {
-      "name": "BenchmarkRunHook/edit_50k",
-      "measured_bytes_per_op": 172319,
-      "measured_allocs_per_op": 381,
-      "bytes_per_op_max": 172319,
-      "allocs_per_op_max": 381,
-      "basis": "remeasured 2026-10-27 on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): the PreToolUse payload's cwd is a real directory two levels below a .git marker (benchProjectCWD), and the hook resolves every declaration's cwd to its project key (baseline.Key: symlinks resolved, then a walk up to the nearest .git) and records cwd, project and file_path. The fixture alone, old code: 164319 to 164567 B/op, 310 allocs either way; the code on the new fixture: 164567 to 171415 B/op, 310 to 375 allocs; baseline.Key alone on that cwd, under the symlinked macOS temp root, is 61 allocs and 6208 B a call. Then 1.2q, the same day under the same settings: every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 171271 B/op and 375 allocs before (runs 171415, 171271, 171418), 172319 and 381 after (runs 172463, 172466, 172319)"
-    },
-    {
-      "name": "BenchmarkRunPost/bash_short",
-      "measured_bytes_per_op": 42552,
-      "measured_allocs_per_op": 276,
-      "bytes_per_op_max": 42552,
-      "allocs_per_op_max": 276,
-      "basis": "remeasured 2026-10-27 at 1.2q on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 41504 B/op and 270 allocs before (runs 41504, 41504, 41504; the old row read 41583), 42552 and 276 after (runs 42552, 42552, 42552)"
-    },
-    {
-      "name": "BenchmarkRunPost/edit_314k",
-      "measured_bytes_per_op": 471379,
-      "measured_allocs_per_op": 271,
-      "bytes_per_op_max": 471379,
-      "allocs_per_op_max": 271,
-      "basis": "remeasured 2026-10-27 at 1.2q on the reference machine (go1.27.3, -benchtime 20x -count 3, best of three, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2): every PreToolUse and PostToolUse call reads the record_scope marker (store.RecordScopeMarker, one small file read, measured alone at 1048 B, 6 allocs and 8.6 to 9.5 us a call), the record-scope gate allocates nothing at v5, and the benchmark's store now carries a v5 consent, so the row measures the scope that records the content fields; 470331 B/op and 265 allocs before (runs 470363, 470363, 470331; the old row, 473631 and 273, predates both), 471379 and 271 after (runs 471411, 471411, 471379)"
-    },
-    {
-      "name": "BenchmarkRecap/10",
-      "measured_bytes_per_op": 336254,
-      "measured_allocs_per_op": 941,
-      "bytes_per_op_max": 336254,
-      "allocs_per_op_max": 941,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 330,601 B/op and 917 allocs/op, which this row replaces; base bc90c073 at 331,950 B/op and 917 allocs/op (+0.41% and +0.00% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,304 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; the min-of-3 alarm in CI's form on this machine (swap at 4.8 of 6.1 GB) read the base at +18.71% and the green at +20.12% B/op, which the recipe reads as +0.41% and +1.71%: re-anchored on the director's word (D183), the step attributed"
-    },
-    {
-      "name": "BenchmarkRecap/100",
-      "measured_bytes_per_op": 1265159,
-      "measured_allocs_per_op": 3834,
-      "bytes_per_op_max": 1265159,
-      "allocs_per_op_max": 3834,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 1,240,496 B/op and 3,729 allocs/op, which this row replaces; base bc90c073 at 1,260,840 B/op and 3,810 allocs/op (+1.64% and +2.17% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,319 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
-    },
-    {
-      "name": "BenchmarkRecap/1000",
-      "measured_bytes_per_op": 10527196,
-      "measured_allocs_per_op": 31558,
-      "bytes_per_op_max": 10527196,
-      "allocs_per_op_max": 31558,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 10,388,430 B/op and 31,453 allocs/op, which this row replaces; base bc90c073 at 10,522,877 B/op and 31,534 allocs/op (+1.29% and +0.26% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,319 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
-    },
-    {
-      "name": "BenchmarkRecapPending/10",
-      "measured_bytes_per_op": 294862,
-      "measured_allocs_per_op": 759,
-      "bytes_per_op_max": 294862,
-      "allocs_per_op_max": 759,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 285,182 B/op and 679 allocs/op, which this row replaces; base bc90c073 at 290,541 B/op and 735 allocs/op (+1.88% and +8.25% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,321 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; the green read +11.78% allocs/op against the row before, over its ten percent, and the base +8.25%, over D174's five"
-    },
-    {
-      "name": "BenchmarkRecapPending/1000",
-      "measured_bytes_per_op": 10399928,
-      "measured_allocs_per_op": 31401,
-      "bytes_per_op_max": 10399928,
-      "allocs_per_op_max": 31401,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 10,261,359 B/op and 31,309 allocs/op, which this row replaces; base bc90c073 at 10,395,548 B/op and 31,377 allocs/op (+1.31% and +0.22% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,380 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
-    },
-    {
-      "name": "BenchmarkRecapPending/preflight",
-      "measured_bytes_per_op": 439685,
-      "measured_allocs_per_op": 1434,
-      "bytes_per_op_max": 439685,
-      "allocs_per_op_max": 1434,
-      "basis": "measured on the runner: the Perf gates (macos) job of run 41009998604 (job 123913499290, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on main a00ea4e5, the job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 449,064 B/op and 1,450 allocs/op; 439,786 B/op and 1,436 allocs/op; 439,685 B/op and 1,434 allocs/op: the catch-up on a prompt naming one project path, with the benchmark's environment pinned (CI and AI_AGENT empty, RASHOMON_HOLDOUT off). It replaces the reference machine's 415,257 B/op and 1,304 allocs/op (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2), which the runner reads +5.9% B/op and +10.0% allocs/op over; the #127 merge run met that row's line by 0.4 alloc (1,434 against 1,434.4). The gap's cause is open (PF-BENCH-ENV1)"
-    },
-    {
-      "name": "BenchmarkRecapStop/run_100",
-      "measured_bytes_per_op": 926813,
-      "measured_allocs_per_op": 3018,
-      "bytes_per_op_max": 926813,
-      "allocs_per_op_max": 3018,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 902,153 B/op and 2,913 allocs/op, which this row replaces; base bc90c073 at 922,495 B/op and 2,994 allocs/op (+2.25% and +2.78% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,318 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; the min-of-3 alarm in CI's form on this machine read the base at +11.14% B/op, which the recipe reads as +2.25%: re-anchored on the director's word (D183), the step attributed"
-    },
-    {
-      "name": "BenchmarkRecapStop/run_6000",
-      "measured_bytes_per_op": 44441119,
-      "measured_allocs_per_op": 152202,
-      "bytes_per_op_max": 44441119,
-      "allocs_per_op_max": 152202,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): the row before was 43,406,524 B/op and 152,086 allocs/op, which this row replaces; base bc90c073 at 44,436,798 B/op and 152,178 allocs/op (+2.37% and +0.06% on the row before), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step +4,321 B/op and +24 allocs/op, the same +24 allocs on all seven Recap rows (+4,304 to +4,380 B), named by a memprofilerate-1 pair on RecapPending/10 (bc90c073 against green4, one run each, 21 ops): 506 of the diff's 507 objects sit under verify.EvaluateStop's ledgerOf, in obligations (ObligationID 16 per op through ledger.add, watches 6, obligations 2), the ledger now built on the live Stop path; 4,219 B per op of its space; re-anchored inside tolerance because the pair names a content step on it (D188: the anchor tracks measured content)"
-    },
-    {
-      "name": "BenchmarkHookStoreSequence/full",
-      "measured_bytes_per_op": 17117,
-      "measured_allocs_per_op": 79,
-      "bytes_per_op_max": 17117,
-      "allocs_per_op_max": 79
-    },
-    {
-      "name": "BenchmarkHookStoreSequence/deferred",
-      "measured_bytes_per_op": 17414,
-      "measured_allocs_per_op": 82,
-      "bytes_per_op_max": 17414,
-      "allocs_per_op_max": 82
-    },
-    {
-      "name": "BenchmarkAppendDeclarationParallel",
-      "measured_bytes_per_op": 585682,
-      "measured_allocs_per_op": 3150,
-      "bytes_per_op_max": 585682,
-      "allocs_per_op_max": 3150
-    },
-    {
-      "name": "BenchmarkOrderedAppendHold/serial_full",
-      "measured_bytes_per_op": 12554,
-      "measured_allocs_per_op": 48,
-      "bytes_per_op_max": 12554,
-      "allocs_per_op_max": 48
-    },
-    {
-      "name": "BenchmarkOrderedAppendHold/serial_deferred",
-      "measured_bytes_per_op": 12946,
-      "measured_allocs_per_op": 51,
-      "bytes_per_op_max": 12946,
-      "allocs_per_op_max": 51
-    },
-    {
-      "name": "BenchmarkOrderedAppendHold/parallel_full",
-      "measured_bytes_per_op": 582510,
-      "measured_allocs_per_op": 2962,
-      "bytes_per_op_max": 582510,
-      "allocs_per_op_max": 2962
-    },
-    {
-      "name": "BenchmarkOrderedAppendHold/parallel_deferred",
-      "measured_bytes_per_op": 601365,
-      "measured_allocs_per_op": 3148,
-      "bytes_per_op_max": 601365,
-      "allocs_per_op_max": 3148
-    },
-    {
-      "name": "BenchmarkTop",
-      "measured_bytes_per_op": 616,
-      "measured_allocs_per_op": 6,
-      "bytes_per_op_max": 616,
-      "allocs_per_op_max": 6
-    },
-    {
-      "name": "BenchmarkLines/4MiB",
-      "measured_bytes_per_op": 24,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 24,
-      "allocs_per_op_max": 2
-    },
-    {
-      "name": "BenchmarkStream/64MiB_batch",
-      "measured_bytes_per_op": 158322,
-      "measured_allocs_per_op": 17,
-      "bytes_per_op_max": 158322,
-      "allocs_per_op_max": 17
-    },
-    {
-      "name": "BenchmarkStream/187MB_line",
-      "measured_bytes_per_op": 349380,
-      "measured_allocs_per_op": 30,
-      "bytes_per_op_max": 349380,
-      "allocs_per_op_max": 30
-    },
-    {
-      "name": "BenchmarkRead/400B",
-      "measured_bytes_per_op": 464,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 464,
-      "allocs_per_op_max": 2,
-      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 4584 B/op, 4 allocs/op"
-    },
-    {
-      "name": "BenchmarkRead/40KB",
-      "measured_bytes_per_op": 41008,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 41008,
-      "allocs_per_op_max": 2,
-      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 83456 B/op, 16 allocs/op"
-    },
-    {
-      "name": "BenchmarkRead/1MiB",
-      "measured_bytes_per_op": 1048636,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 1048636,
-      "allocs_per_op_max": 2,
-      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 2163585 B/op, 48 allocs/op"
-    },
-    {
-      "name": "BenchmarkRead/4MiB",
-      "measured_bytes_per_op": 4194352,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 4194352,
-      "allocs_per_op_max": 2,
-      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 8459141 B/op, 97 allocs/op"
-    },
-    {
-      "name": "BenchmarkRead/8MiB",
-      "measured_bytes_per_op": 8388656,
-      "measured_allocs_per_op": 2,
-      "bytes_per_op_max": 8388656,
-      "allocs_per_op_max": 2,
-      "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 16823173 B/op, 161 allocs/op"
-    },
-    {
-      "name": "BenchmarkRead/400B_opaque",
-      "measured_bytes_per_op": 4600,
-      "measured_allocs_per_op": 5,
-      "bytes_per_op_max": 4600,
-      "allocs_per_op_max": 5
-    },
-    {
-      "name": "BenchmarkRead/40KB_opaque",
-      "measured_bytes_per_op": 83472,
-      "measured_allocs_per_op": 17,
-      "bytes_per_op_max": 83472,
-      "allocs_per_op_max": 17
-    },
-    {
-      "name": "BenchmarkRead/1MiB_opaque",
-      "measured_bytes_per_op": 2163605,
-      "measured_allocs_per_op": 49,
-      "bytes_per_op_max": 2163605,
-      "allocs_per_op_max": 49
-    },
-    {
-      "name": "BenchmarkRead/4MiB_opaque",
-      "measured_bytes_per_op": 8459152,
-      "measured_allocs_per_op": 98,
-      "bytes_per_op_max": 8459152,
-      "allocs_per_op_max": 98
-    },
-    {
-      "name": "BenchmarkRead/8MiB_opaque",
-      "measured_bytes_per_op": 16823184,
-      "measured_allocs_per_op": 162,
-      "bytes_per_op_max": 16823184,
-      "allocs_per_op_max": 162
-    },
-    {
-      "name": "BenchmarkDetect",
-      "measured_bytes_per_op": 1600,
-      "measured_allocs_per_op": 14,
-      "bytes_per_op_max": 1600,
-      "allocs_per_op_max": 14
-    },
-    {
-      "name": "BenchmarkClassify/run_100",
-      "measured_bytes_per_op": 23488,
-      "measured_allocs_per_op": 87,
-      "bytes_per_op_max": 23488,
-      "allocs_per_op_max": 87,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.2 phase 2 (fcf15f4f plus classify) at 22400 B/op; re-measured the same day at 1.3 (2644d64f plus gateStates), where gateRun gained ExecSeq, eight bytes per run, best of three under go1.27.3, -benchtime 20x, by benchgate -measure"
-    },
-    {
-      "name": "BenchmarkGateStates",
-      "measured_bytes_per_op": 10496,
-      "measured_allocs_per_op": 39,
-      "bytes_per_op_max": 10496,
-      "allocs_per_op_max": 39,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.3 (2644d64f plus gateStates), best of three under go1.27.3, -benchtime 20x, by benchgate -measure"
-    },
-    {
-      "name": "BenchmarkRecording",
-      "measured_bytes_per_op": 6568,
-      "measured_allocs_per_op": 3,
-      "bytes_per_op_max": 6568,
-      "allocs_per_op_max": 3,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.4 (bc66988c plus recording), best of three under go1.27.3, -benchtime 20x, by benchgate -measure; the three allocations are the one map sized to the 200 declarations (a swiss map of that size allocates three times under go1.27.3, by testing.AllocsPerRun)"
-    },
-    {
-      "name": "BenchmarkReadIndex",
-      "measured_bytes_per_op": 218156,
-      "measured_allocs_per_op": 475,
-      "bytes_per_op_max": 218156,
-      "allocs_per_op_max": 475,
-      "basis": "first measured 2026-10-27 on feat/autosteer-lane2 at 1.6 (9d8e4ea5 plus the project index), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: ReadIndex of an index at its cap, 223 entries shaped as real ones in 64 KiB; by -memprofile (200x), 58 percent is the decoder's read buffer (jsontext fetch), 19 the entries slice's growth and 19 the strings; ns/op is ungated"
-    },
-    {
-      "name": "BenchmarkEvaluate/run_100",
-      "measured_bytes_per_op": 44024,
-      "measured_allocs_per_op": 134,
-      "bytes_per_op_max": 44024,
-      "allocs_per_op_max": 134,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.5 (22f07a3b plus Evaluate's part two), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: Evaluate at the last point of 100 calls in two gate families (go-test every seventh call, go-vet every eleventh, an edit otherwise); of the 131 allocations classify is 101, gateStates 26, recording 3 and the fold 1, recordGreen's seq (testing.AllocsPerRun on the same fixture); ns/op is ungated; re-measured 2026-10-27 at 1.8 part two (d217c519 plus integrity wired into Evaluate), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 313 allocations and 120904 B, most of it report.DetectTestBending walking every record; re-measured 2026-10-27 at 1.8r (61b43a0b plus the pair read in verify over classify's pick, the report import removed), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 2 allocations and 96 B (132 to 134 against Evaluate with integrity removed), against 313 and 120904 B at 1.8 part two; re-measured 2026-10-27 at the merge of 1.8r and 1.9 (0c4fa580 and 84bb7492), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: unchanged; evaluate's hand-off of its classification to the obligation view allocates nothing"
-    },
-    {
-      "name": "BenchmarkEvaluate/run_6000",
-      "measured_bytes_per_op": 2641608,
-      "measured_allocs_per_op": 4787,
-      "bytes_per_op_max": 2641608,
-      "allocs_per_op_max": 4787,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.5 (22f07a3b plus Evaluate's part two), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: the same fixture at 6000 calls; classify grows with the calls, about one allocation each; ns/op is ungated; re-measured 2026-10-27 at 1.8 part two (d217c519 plus integrity wired into Evaluate), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 18041 allocations and 6904155 B, most of it report.DetectTestBending walking every record; re-measured 2026-10-27 at 1.8r (61b43a0b plus the pair read in verify over classify's pick, the report import removed), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity adds 2 allocations and 96 B (4785 to 4787 against Evaluate with integrity removed), against 18041 and 6904155 B at 1.8 part two; re-measured 2026-10-27 at the merge of 1.8r and 1.9 (0c4fa580 and 84bb7492), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: 2 B under the 1.8r reading, allocations unchanged; evaluate's hand-off of its classification to the obligation view allocates nothing"
-    },
-    {
-      "name": "BenchmarkLedger/run_6000",
-      "measured_bytes_per_op": 2789722,
-      "measured_allocs_per_op": 4795,
-      "bytes_per_op_max": 2789722,
-      "allocs_per_op_max": 4795,
-      "basis": "re-measured 2026-10-29 on feat/ledger-wire1 at LEDGER-WIRE1's green4 (tree 836a5e30, on pr/declared-gates1 bc90c073), best of nine (three rounds of -count 3, each round one process per side, base then green, from test binaries built once per side) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with bc90c073 measured in the same window; one mode per side (D180, lane 3's mode.py, 3% gap): BenchmarkEvaluate's run_6000 fixture through ledgerAt, evaluate and the ledger's one producer ledgerOf (the Stop view's ledger without its other parts; the entry point this row first measured is removed by LEDGER-WIRE1), six rows over two gates; the row before was 2,642,744 B/op and 4,795 allocs/op (first measured 2026-10-27 at 1.9, best of three), which this row replaces; base bc90c073 at 2,789,802 B/op and 4,797 allocs/op (+5.56% and +0.04% on the row before, over D174's five on bytes), stated as SPEC-TRUST1 plus DECLARED-GATES1's (DiscoverSpec's trust read and declared-gate matching now on the Stop path; director, D183), the pair owed by lane 1 in BRIEF1's window and not attributed by this card; LEDGER-WIRE1's step -80 B/op and -2 allocs/op (the bench's entry point moves from the removed one to evaluate plus ledgerOf)"
-    },
-    {
-      "name": "BenchmarkIntegrity",
-      "measured_bytes_per_op": 12240,
-      "measured_allocs_per_op": 34,
-      "bytes_per_op_max": 12240,
-      "allocs_per_op_max": 34,
-      "basis": "first measured 2026-10-27 on feat/autosteer-lane2 at 1.8 (ee3d41a3 plus integrity), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: integrity at the end of 100 edits with marks over two test files between a failed and a passing go test; by -memprofile (200x), 91 percent is report.DetectTestBending (its sorted copy of the declarations 47, executionsByID 36) and 8 the marks' pick; ns/op is ungated; re-measured 2026-10-27 at 1.8r (61b43a0b plus the pair read in verify over classify's pick, the report import removed), best of three under go1.27.3, -benchtime 20x, by benchgate -measure: report.DetectTestBending's sorted copy of the declarations and executionsByID are gone; the pick is built outside the loop, as Evaluate shares classify's; re-measured 2026-10-27 at the merge of 1.8r and 1.9 (0c4fa580 and 84bb7492), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: unchanged; re-measured 2026-10-27 at 1.8r2 (e0dea9ef plus integrity reading the pairs without the orphan guard), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: from 37 allocations and 15736 B to 34 and 12240 B: the fixture holds a pair, so before 1.8r2 the guard built its declared-id set over the fixture's declarations here too"
-    },
-    {
-      "name": "BenchmarkPairs/ten_6000",
-      "measured_bytes_per_op": 2464,
-      "measured_allocs_per_op": 12,
-      "bytes_per_op_max": 2464,
-      "allocs_per_op_max": 12,
-      "basis": "re-measured 2026-10-29 on feat/autosteer-merge4 at acb1c0d5, six samples (three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2; three with both unset, CI's form), every sample 2464 B/op and 12 allocs/op, and CI run 40950617096 read 2464 and 12 on both runners; content (D104): 3.2a (89361628, store_touched) gave IntegrityEntry a Path string, 40 B to 56 B, and the profile pair 1b9d7986 against 89361628 at -memprofilerate=1 and alloc_space puts the whole +560 B at one site, integrity.go:176, the append of the ten pairs into Unresolved, 1312 B to 1872 B per call across its five growth steps; the 64 B beyond 31 x 16 is the 512 B malloc-header line, which the cap-16 step crosses in both trees (648 B lands in class 704 and 904 B in class 1024); the row before, 1904 B/op and 12 allocs/op, is 3.1c's reading exactly, and 3.3, P5A and P5B read 2464 or 1904 by whether they carry 3.2a"
-    },
-    {
-      "name": "BenchmarkClaims/head_64k",
-      "measured_bytes_per_op": 320000,
-      "measured_allocs_per_op": 970,
-      "bytes_per_op_max": 320000,
-      "allocs_per_op_max": 970,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.7 (77d77ca1 plus the comparator), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: Claims over a full 64 KiB head of some 570 summary sentences, claims of every class among them, against twelve gates; the cap of 64 verdicts is reached; ns/op is ungated"
-    },
-    {
-      "name": "BenchmarkCut/gates_200",
-      "measured_bytes_per_op": 6434282,
-      "measured_allocs_per_op": 221,
-      "bytes_per_op_max": 6434282,
-      "allocs_per_op_max": 221,
-      "basis": "first measured 2026-10-27 on the foundation branch at 1.10 (e0dea9ef plus the checkpoint cut), best of three under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: VER51b's snapshot, 200 green gates, 20 loose claims and a practice score, cut to the budget by 188 cuts (the practice and 187 gates), each a re-marshal of the record, which is written at 8070 bytes; ns/op is ungated, 8.72 ms best of three against the card's 10 ms note"
-    },
-    {
-      "name": "BenchmarkRoute/count_6000",
-      "measured_bytes_per_op": 66902,
-      "measured_allocs_per_op": 9,
-      "bytes_per_op_max": 66902,
-      "allocs_per_op_max": 9,
-      "basis": "first measured 2026-10-27 on the foundation branch at 2.2 (dd77699b plus the router), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: R6's reverse scan of a 6,000-line steer log (120 prompts of 50 lines, each the shape Route writes) whose current prompt holds the last 50 lines: one 64 KiB chunk read, the chunk buffer most of the bytes; ns/op is ungated, 0.138 ms best of nine"
-    },
-    {
-      "name": "BenchmarkRoute/decide_3",
-      "measured_bytes_per_op": 9103,
-      "measured_allocs_per_op": 96,
-      "bytes_per_op_max": 9103,
-      "allocs_per_op_max": 96,
-      "basis": "first measured 2026-10-27 on the foundation branch at 2.2 (dd77699b plus the router), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: decide over three admitted regression-location findings (a note, a lower note it supersedes, and a flag that waits beside it), ids minted outside: rank, slots, texts, MarshalFor and three lines; ns/op is ungated, 0.009 ms best of nine"
-    },
-    {
-      "name": "BenchmarkPostSteer/eval_100",
-      "measured_bytes_per_op": 796330,
-      "measured_allocs_per_op": 2514,
-      "bytes_per_op_max": 796330,
-      "allocs_per_op_max": 2514,
-      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 796,330 B/op and 2,514 allocs/op, a step of +6176 B/op and +1 allocs/op from the row as e9203984 holds it, 790,154 B/op and 2,513 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
-    },
-    {
-      "name": "BenchmarkPostSteer/eval_6000",
-      "measured_bytes_per_op": 38032305,
-      "measured_allocs_per_op": 135322,
-      "bytes_per_op_max": 38032305,
-      "allocs_per_op_max": 135322,
-      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 38,032,305 B/op and 135,322 allocs/op, a step of +346241 B/op and +1 allocs/op from the row as e9203984 holds it, 37,686,064 B/op and 135,321 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
-    },
-    {
-      "name": "BenchmarkPostSteer/step_100",
-      "measured_bytes_per_op": 804800,
-      "measured_allocs_per_op": 2567,
-      "bytes_per_op_max": 804800,
-      "allocs_per_op_max": 2567,
-      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 804,800 B/op and 2,567 allocs/op, a step of +6208 B/op and +1 allocs/op from the row as e9203984 holds it, 798,592 B/op and 2,566 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
-    },
-    {
-      "name": "BenchmarkPostSteer/step_100_spec",
-      "measured_bytes_per_op": 1007952,
-      "measured_allocs_per_op": 4102,
-      "bytes_per_op_max": 1007952,
-      "allocs_per_op_max": 4102,
-      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 1,007,952 B/op and 4,102 allocs/op, a step of +9426 B/op and +32 allocs/op from the row as e9203984 holds it, 998,526 B/op and 4,070 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
-    },
-    {
-      "name": "BenchmarkPostSteer/step_6000",
-      "measured_bytes_per_op": 38048448,
-      "measured_allocs_per_op": 135400,
-      "bytes_per_op_max": 38048448,
-      "allocs_per_op_max": 135400,
-      "basis": "re-measured 2026-10-29 at DECLARED-GATES1 on SPEC-TRUST1, both rebased onto e9203984 (tree 1f2fb182), by the row's recipe (D188): best of nine, three processes of -count 3, under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure (1 mode): 38,048,448 B/op and 135,400 allocs/op, a step of +346281 B/op and +2 allocs/op from the row as e9203984 holds it, 37,702,167 B/op and 135,398 allocs/op; its sites, by memprofilerate=1 pairs at e9203984, SPEC-TRUST1's tree and this one: SPEC-TRUST1's, on step_100_spec, the one row with a spec: DiscoverBound's binding check, filepath.EvalSymlinks (walkSymlinks, lstat) and ReadBindings's read of the absent bindings file, +714 objects over the pair's 21 calls (4,136 to 4,167 allocs/op); DECLARED-GATES1's: the install key's clone the steer step takes for SteerAt (steerstep.go:129, Store.Key's bytes.Clone), +25 objects over the 21 calls, one a call"
-    },
-    {
-      "name": "BenchmarkPostSteer/write_6000_unarmed",
-      "measured_bytes_per_op": 816,
-      "measured_allocs_per_op": 6,
-      "bytes_per_op_max": 816,
-      "allocs_per_op_max": 6,
-      "basis": "measured on the runner: the Perf gates (macos) job of run 41013478525 (job 123924385601, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/stale-nudge1-main c531bdc7, STALE-NUDGE1 on main a00ea4e5; the job's conclusion is failure, for the write_6000_unarmed and write_6000_armed rows' absence from budgets.json and the old darwin /preflight anchor (D214), not for the figures taken from it. The job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 816 B/op and 6 allocs/op; 816 B/op and 6 allocs/op; 816 B/op and 6 allocs/op: the step on an Edit's post after the 6,000-call record with the session unarmed: the stale marker's Lstat (store.StaleArmed), which every landed write pays, and no path decoded, no run read; a new row (the benchmark is new with the card), anchored where it gates (D214, D215; BENCH-PROVENANCE1's default). The reference recipe read 768 B/op and 6 allocs/op (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2, three hold-checked rounds of -count 3, each flat, one mode, 2026-10-29, tree 1c176505)"
-    },
-    {
-      "name": "BenchmarkPostSteer/write_6000_armed",
-      "measured_bytes_per_op": 37475550,
-      "measured_allocs_per_op": 135298,
-      "bytes_per_op_max": 37475550,
-      "allocs_per_op_max": 135298,
-      "basis": "measured on the runner: the Perf gates (macos) job of run 41013478525 (job 123924385601, image macos-26-arm64 20261021.0445.8, Apple M1 (Virtual), GOMAXPROCS 3, go1.27.3, no GOMAXPROCS or GODEBUG pin) on ci/stale-nudge1-main c531bdc7, STALE-NUDGE1 on main a00ea4e5; the job's conclusion is failure, for the write_6000_unarmed and write_6000_armed rows' absence from budgets.json and the old darwin /preflight anchor (D214), not for the figures taken from it. The job's own invocation (-benchtime 20x, -count 3), the best of three as benchgate -measure takes it (the lower B/op, a whole run), the runs reading 37,475,710 B/op and 135,301 allocs/op; 37,476,077 B/op and 135,302 allocs/op; 37,475,550 B/op and 135,298 allocs/op: the step on an Edit's post after the 6,000-call record with the session armed by a green gate run (card STALE-NUDGE1, D166): the marker taken, the run read once and judged under the project's learned index requiring both gate families, which a write pays about once per green gate run; no gate's green is left behind by this write (the vet family's was left by an earlier Edit, the test family is red), so it appends no line; a new row (the benchmark is new with the card), anchored where it gates (D214, D215; BENCH-PROVENANCE1's default). The reference recipe read 37,464,424 B/op and 135,236 allocs/op (Apple M3, GOMAXPROCS 1, GODEBUG gcstoptheworld=2, three hold-checked rounds of -count 3, each flat, one mode, 2026-10-29, tree 1c176505)"
-    },
-    {
-      "name": "BenchmarkReadRun/calls_100",
-      "measured_bytes_per_op": 806810,
-      "measured_allocs_per_op": 2592,
-      "bytes_per_op_max": 806810,
-      "allocs_per_op_max": 2592,
-      "basis": "first measured 2026-10-28 on feat/autosteer-foundation at 2.3b (9f12af10 plus the one-pass decode), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 9f12af10 measured in the same window: ReadRunConsistent, the full read every Stop, every failed runner call's step and every report pays, of payload.WriteSession's session of 100 calls (329 KB), the generator BenchmarkBuild reads; drift: none, a new row; 2.3b's step: -1.9% B/op and -16.1% allocs/op against 9f12af10's 822,778 and 3,091, classifyRunLine decoding each line once; passover: none; allocations equal in all nine; ns/op is ungated, 1.179 ms best of nine against 9f12af10's 2.263 ms"
-    },
-    {
-      "name": "BenchmarkReadRun/calls_6000",
-      "measured_bytes_per_op": 39856270,
-      "measured_allocs_per_op": 149485,
-      "bytes_per_op_max": 39856270,
-      "allocs_per_op_max": 149485,
-      "basis": "first measured 2026-10-28 on feat/autosteer-foundation at 2.3b (9f12af10 plus the one-pass decode), best of nine (three hold-checked rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure, with 9f12af10 measured in the same window: ReadRunConsistent of payload.WriteSession's session of 6000 calls (19.8 MB), as calls_100; drift: none, a new row; 2.3b's step: -2.3% B/op and -16.7% allocs/op against 9f12af10's 40,810,880 and 179,455, classifyRunLine decoding each line once; passover: none; allocations equal in all nine; ns/op is ungated, 73.31 ms best of nine against 9f12af10's 139.6 ms"
-    },
-    {
-      "name": "BenchmarkClassify/go_pass",
-      "measured_bytes_per_op": 0,
-      "measured_allocs_per_op": 0,
-      "bytes_per_op_max": 0,
-      "allocs_per_op_max": 0,
-      "basis": "best of three after regexp match-state warm-up, Apple M1 Pro (darwin/arm64, go1.27.2, -benchtime 20x)"
-    },
-    {
-      "name": "BenchmarkClassify/go_fail_at_cap",
-      "measured_bytes_per_op": 0,
-      "measured_allocs_per_op": 0,
-      "bytes_per_op_max": 0,
-      "allocs_per_op_max": 0,
-      "basis": "best of three after regexp match-state warm-up, Apple M1 Pro (darwin/arm64, go1.27.2, -benchtime 20x)"
-    },
-    {
-      "name": "BenchmarkDiscover",
-      "measured_bytes_per_op": 69007,
-      "measured_allocs_per_op": 628,
-      "bytes_per_op_max": 69007,
-      "allocs_per_op_max": 628,
-      "basis": "first measured 2026-10-29 on feat/autosteer-lane3 at 3.1 (b) (1aac533a plus 3.1 (a) and (b)), best of nine (three rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: spec.Discover over a map FS, cwd five levels below the root, the repository spec (specExample) at the root and the managed spec absent, so six candidate paths, five misses, one read and one Parse; 69007 B/op and 628 allocs/op in nine samples of nine"
-    },
-    {
-      "name": "BenchmarkTreeDigest/files_64",
-      "measured_bytes_per_op": 77496,
-      "measured_allocs_per_op": 584,
-      "bytes_per_op_max": 77496,
-      "allocs_per_op_max": 584,
-      "basis": "first measured 2026-10-29 on feat/autosteer-lane3 at P5A (1b9d7986 plus P5A), best of nine (three rounds of -count 3) under go1.27.3, -benchtime 20x, GOMAXPROCS set to 1 and GODEBUG set to gcstoptheworld=2, by benchgate -measure: TreeShas, the Stop's side of the tree binding at its cap, over verify.MaxTreeFiles = 64 targets of MaxHashBytes = 1 MiB each: 64 stats, 64 opens and a 64 MiB sha256 read from the page cache through one hasher (a 32 KiB buffer, one sha256 Reset per file); 77496 to 77503 B/op and 584 allocs/op in 9 samples of nine; ns/op is ungated"
-    },
-    {
-      "name": "BenchmarkImpact/records_1000",
-      "measured_bytes_per_op": 845696,
-      "measured_allocs_per_op": 1989,
-      "bytes_per_op_max": 845696,
-      "allocs_per_op_max": 1989,
-      "basis": "first measured 2026-10-28 on feat/autosteer-lane2 at 6.1 (base 1aac533a): best of nine (three rounds of -count 3), -benchtime 20x, under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2, go1.27.3, through benchgate -measure"
-    },
-    {
-      "name": "BenchmarkImpact/records_50000",
-      "measured_bytes_per_op": 32599811,
-      "measured_allocs_per_op": 95588,
-      "bytes_per_op_max": 32599811,
-      "allocs_per_op_max": 95588,
-      "basis": "first measured 2026-10-28 on feat/autosteer-lane2 at 6.1 (base 1aac533a): best of nine (three rounds of -count 3), -benchtime 20x, under GOMAXPROCS=1 and with GODEBUG set to gcstoptheworld=2, go1.27.3, through benchgate -measure"
     }
   ]
 }
