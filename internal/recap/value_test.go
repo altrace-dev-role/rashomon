@@ -227,6 +227,7 @@ func TestFUN15_AutoSteerClauseCountsDeliveredNotes(t *testing.T) {
 		{"one note", notes, "AutoSteer: 1 regression location given at the failure."},
 		{"two notes", append(slices.Clone(notes), Note{Pattern: "identical-retry", Event: "PostToolUse"}), "AutoSteer: 2 notes given."},
 		{"one note at the prompt", []Note{{Pattern: "subtask-gate", Event: "UserPromptSubmit"}}, "AutoSteer: 1 task check given with your prompt."},
+		{"a lesson at the prompt (FD-10)", []Note{{Pattern: "learned-fact", Event: "UserPromptSubmit"}}, "AutoSteer: 1 lesson given with your prompt."},
 		{"one note at session start", []Note{{Pattern: "continuity-briefing", Event: "SessionStart"}}, "AutoSteer: 1 briefing given."},
 		{"no note", nil, ""},
 	} {

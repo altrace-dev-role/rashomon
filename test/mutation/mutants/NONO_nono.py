@@ -21,7 +21,7 @@ m("NONO the drop counters are discarded on the bail-out path",
   "internal/nono/nono.go", "\t\tobs.Reason = NotObservedNoRecords",
   "\t\tobs = Observation{Trail: path}\n\t\tobs.Reason = NotObservedNoRecords",
   "TestRead_AFileOfUnlearned")
-m("NONO the trail is not read at all from the CLI", "cmd/rashomon/main.go",
+m("NONO the trail is not read at all from the CLI", "cmd/rashomon/report.go",
   "gather.WithNonoTrail(nonoTrail)", "gather.WithNonoTrail(\"\")", "TestH31_NonoTrail")
 
 # nono integration test run, finding 1: an unknown transport went uncounted on
@@ -35,7 +35,7 @@ m("NONO the text never reports an unknown mode", "internal/report/text.go",
   "TestNono_AnUnknownModeIsCountedWithout")
 
 # Finding 2: `--nono-audit ""` read as no trail asked for, printing nothing.
-m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main.go",
+m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/report.go",
   "\t\t\tif i+1 >= len(args) || args[i+1] == \"\" {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
   "\t\t\tif i+1 >= len(args) {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
   "TestReport_RefusesAnEmptyNonoAudit")

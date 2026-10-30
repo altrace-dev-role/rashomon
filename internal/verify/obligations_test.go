@@ -17,8 +17,15 @@ import (
 
 // obAt is the ledger at a stop point at seq, with no index and no spec.
 func obAt(r *store.Run, seq int64) []Obligation {
-	_, obs := EvaluateWithObligations(r, nil, nil, nil, Point{Kind: PointStop, Seq: seq, SessionID: "s1"}, time.Time{})
+	_, obs := stopLedger(r, Point{Kind: PointStop, Seq: seq, SessionID: "s1"})
 	return obs
+}
+
+// stopLedger is the Stop view's snapshot and ledger at pt, with no index, no
+// spec and no final message.
+func stopLedger(r *store.Run, pt Point) (Snapshot, []Obligation) {
+	v := EvaluateStop(r, nil, nil, pt, time.Time{}, StopInput{})
+	return v.Snap, v.Obligations
 }
 
 // obGate is a required learned gate of testFamily in state s, citing what a
@@ -199,7 +206,7 @@ func TestPG3a_MaskedIsUnmetExitUnmasked(t *testing.T) {
 	wantRow(t, rowOf(t, obs, GateAfterWrite), ObligationUnknown, declSeq(r, 0))
 
 	r = runOf(t, withOutput(maskedCall(1), outSummaryPass))
-	if snap, obs := EvaluateWithObligations(r, nil, nil, nil, Point{Kind: PointStop, Seq: 2}, time.Time{}); len(snap.Gates) != 1 ||
+	if snap, obs := stopLedger(r, Point{Kind: PointStop, Seq: 2}); len(snap.Gates) != 1 ||
 		snap.Gates[0].Reason != MaskedWithSuccessLine {
 		t.Fatalf("gates %+v, want one masked with a success line", snap.Gates)
 	} else {
@@ -224,7 +231,7 @@ func TestPG3a_MaskedIsUnmetExitUnmasked(t *testing.T) {
 // TestINV2_IncompleteIsUnknownNeverUnmet: with recording not complete, every
 // row is unknown, whatever the gate's state, a Red one included. Evaluate
 // returns no gates then, so this drives obligations() with a built snapshot;
-// through EvaluateWithObligations an incomplete record's ledger is empty, and
+// through the Stop view an incomplete record's ledger is empty, and
 // never null (Gate B item 3).
 func TestINV2_IncompleteIsUnknownNeverUnmet(t *testing.T) {
 	green := obGate(Green)
@@ -247,7 +254,7 @@ func TestINV2_IncompleteIsUnknownNeverUnmet(t *testing.T) {
 
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecFailed))
 	r.Skipped = 1
-	s, obs := EvaluateWithObligations(r, nil, nil, nil, Point{Kind: PointStop, Seq: 4}, time.Time{})
+	s, obs := stopLedger(r, Point{Kind: PointStop, Seq: 4})
 	if s.Recording == Complete || obs == nil || len(obs) != 0 {
 		t.Fatalf("recording %s, ledger %+v: want incomplete and empty", s.Recording, obs)
 	}
@@ -416,7 +423,7 @@ func TestPG5e_EveryListNonNilAndOnlyV0Kinds(t *testing.T) {
 			t.Errorf("a %s row in v0", o.Kind)
 		}
 	}
-	snap, _ := EvaluateWithObligations(full, nil, nil, nil, Point{Kind: PointStop, Seq: 10}, time.Time{})
+	snap, _ := stopLedger(full, Point{Kind: PointStop, Seq: 10})
 	for _, g := range snap.Gates {
 		families = append(families, g.Family)
 	}

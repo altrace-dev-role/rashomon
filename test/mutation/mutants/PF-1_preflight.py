@@ -40,8 +40,8 @@ m("PF-1 ** matches within one segment", "internal/spec/match.go",
 m("PF-1 a rule covers a path its ExcludePaths name", "internal/spec/match.go",
   " && !slices.ContainsFunc(r.ExcludePaths, match)", "", "TestPF1l_CoversHonoursExcludePaths")
 m("PF-1 the catch-up asks a nil run for its last seq", "cmd/rashomon/preflight.go",
-  "\tif run == nil || p.CWD == \"\" || !intent.Names(p.Prompt, p.PromptCut) {\n",
-  "\tif p.CWD == \"\" || !intent.Names(p.Prompt, p.PromptCut) {\n", "TestPF1u_")
+  "\tif run == nil || p.CWD == \"\" {\n",
+  "\tif p.CWD == \"\" {\n", "TestPF1u_")
 m("PF-1 clearPrompt drops the prompt without zeroing it", "cmd/rashomon/preflight.go",
   "\tclear(p.Prompt)\n\tp.Prompt = nil\n", "\tp.Prompt = nil\n", "TestPF1k_")
 m("PF-1 the screen still says a prompt's text is not examined", "internal/disclose/paragraphs.go",
@@ -51,6 +51,6 @@ m("PF-1 the screen still says a prompt's text is not examined", "internal/disclo
 m("PF-1 task-preflight ranks below learned-fact", "internal/steer/pattern/pattern.go",
   "\t\t\tTaskPreflight:      72,\n", "\t\t\tTaskPreflight:      20,\n", "TestPF1p_|TestPriority_StepEightValues")
 m("PF-1 the steer environment is built before the Names guard", "cmd/rashomon/preflight.go",
-  "\tif run == nil || p.CWD == \"\" || !intent.Names(p.Prompt, p.PromptCut) {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tenv := steerEnv(id, now)\n",
-  "\tenv := steerEnv(id, now)\n\tif run == nil || p.CWD == \"\" || !intent.Names(p.Prompt, p.PromptCut) {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
+  "\tif !named && !proj.lessons.Any() {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tenv := steerEnv(id, now)\n",
+  "\tenv := steerEnv(id, now)\n\tif !named && !proj.lessons.Any() {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
   "TestPF1v_")

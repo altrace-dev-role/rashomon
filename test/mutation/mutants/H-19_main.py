@@ -6,7 +6,7 @@ m("report text renders a count it does not have as 0", "internal/report/text.go"
   "\tif p == nil {\n\t\treturn notRead\n\t}", "\tif p == nil {\n\t\treturn \"0\"\n\t}", "TestReport_")
 m("report text renders a comparison it could not make as an empty list", "internal/report/text.go",
   "\tif ids == nil {\n\t\treturn unknown\n\t}", "\tif ids == nil {\n\t\treturn none\n\t}", "TestReport_")
-m("report --json is accepted and ignored", "cmd/rashomon/main.go",
+m("report --json is accepted and ignored", "cmd/rashomon/report.go",
   "\t\tcase \"--json\":\n\t\t\tasJSON = true\n\t\tcase \"--redact\":", "\t\tcase \"--json\":\n\t\t\tasJSON = false\n\t\tcase \"--redact\":", "TestReport_")
 m("status opens the store, which creates one", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err = openStore()",

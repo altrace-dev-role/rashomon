@@ -108,7 +108,7 @@ func TestEV1c_IncompleteRecordingReadsUnknown(t *testing.T) {
 			t.Errorf("%+v, want unknown with no reason", e)
 		}
 	}
-	if u := UnmetExpected(ex); len(u) != 0 {
+	if u := UnmetExpected(ex, expectedObligations(ScopeSession, snap, ex)); len(u) != 0 {
 		t.Errorf("UnmetExpected over unknown rows: %+v, want none", u)
 	}
 }
@@ -227,17 +227,17 @@ func TestEV8_MetRunRowCitesTheSupplyingGreen(t *testing.T) {
 func TestEV5b_StopAndLedgerCarryTheRows(t *testing.T) {
 	sp := evSpec([]string{"cross_check", "judgment_disclosed"}, "")
 	pt := Point{Kind: PointStop, Seq: 1, SessionID: "s"}
-	if v := EvaluateStop(&store.Run{}, nil, sp, pt, time.UnixMilli(1), StopInput{}); len(v.Expected) != 2 {
+	v := EvaluateStop(&store.Run{}, nil, sp, pt, time.UnixMilli(1), StopInput{})
+	if len(v.Expected) != 2 {
 		t.Errorf("StopView.Expected = %+v, want the task's two kinds", v.Expected)
 	}
-	_, obs := EvaluateWithObligations(&store.Run{}, nil, sp, nil, pt, time.UnixMilli(1))
 	n := 0
-	for _, o := range obs {
+	for _, o := range v.Obligations {
 		if o.Kind == ExpectedEvidence {
 			n++
 		}
 	}
 	if n != 2 {
-		t.Errorf("the ledger holds %d expected_evidence rows, want 2: %+v", n, obs)
+		t.Errorf("the ledger holds %d expected_evidence rows, want 2: %+v", n, v.Obligations)
 	}
 }

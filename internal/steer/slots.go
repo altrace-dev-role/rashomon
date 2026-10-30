@@ -73,6 +73,8 @@ func slotsFrom(slots []render.Slot) (map[string]json.RawMessage, error) {
 			err = putJSON(put, s.Name, string(v))
 		case slot.Mechanism:
 			err = putJSON(put, s.Name, string(v))
+		case slot.LessonID:
+			err = putJSON(put, s.Name, string(v))
 		case slot.TaskID:
 			err = putJSON(put, s.Name, string(v))
 		case slot.RuleID:

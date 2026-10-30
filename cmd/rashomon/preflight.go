@@ -4,10 +4,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -37,32 +37,59 @@ func clearPrompt(p *pendingPayload) {
 	p.Prompt = nil
 }
 
-// preflightNote is the new prompt's task-preflight note, routed and logged
-// under the session, and the client its Output is marshalled for; the zero
-// Output when there is no run to log it under (no session_id, H-107), no
-// cwd to resolve against, or nothing new to say. A request that names no
-// path and no identifier stops at intent.Names, before any read and before
-// the steer environment is built: with no brief on this branch it can have
-// no note. A session's first prompt finds its run empty, so the note decides at
-// after_seq 0, which CheckOn admits at UserPromptSubmit only.
-func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, id harness.Identity, now time.Time) (steer.Output, steer.Client) {
-	if run == nil || p.CWD == "" || !intent.Names(p.Prompt, p.PromptCut) {
+// promptProject is the payload's project as the prompt path reads it, once a
+// prompt (D204): key, baseline.Key's walk from the cwd, names both the
+// project index the preflight reads and the lesson ledger, and lessons is
+// that ledger's approved lessons (readPromptProject).
+type promptProject struct {
+	key     string
+	lessons learn.Active
+}
+
+// preflightNote is the new prompt's notes, routed and logged under the
+// session in one Route call, and the client its Output is marshalled for:
+// the request's task-preflight note and a lesson from proj
+// (lessonFinding), which ranks below the note and so is superseded on a
+// prompt that carries one (D170 L3). The zero Output when there is no run to
+// log it under (no session_id, H-107), no cwd to resolve against, or nothing
+// new to say. A request that names no path and no identifier, with no lesson
+// to give, stops at intent.Names, before any read and before the steer
+// environment is built: with no brief on this branch it can have no note.
+// proj is the caller's read (readPromptProject). A session's first prompt
+// finds its run empty, so the note decides at after_seq 0, which CheckOn
+// admits at UserPromptSubmit only.
+func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj promptProject, id harness.Identity, now time.Time) (steer.Output, steer.Client) {
+	if run == nil || p.CWD == "" {
+		return steer.Output{}, steer.Client{}
+	}
+	named := intent.Names(p.Prompt, p.PromptCut)
+	if !named && !proj.lessons.Any() {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now)
 	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
-	var idx *verify.ProjectIndex
-	if key := baseline.Key(p.CWD); key != "" {
-		idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
-	}
 	lines, _, _ := st.ReadSteer(p.SessionID)
-	in := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: p.CWD, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
-	f, ok := intent.Finding(in, intent.ReadDelivered(lines), nil, run.LastSeq())
-	if !ok {
+	var found []steer.Finding
+	var paths []string
+	if named {
+		var idx *verify.ProjectIndex
+		if proj.key != "" {
+			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), proj.key))
+		}
+		in := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: p.CWD, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
+		paths = in.Paths
+		if f, ok := intent.Finding(in, intent.ReadDelivered(lines), nil, run.LastSeq()); ok {
+			found = append(found, f)
+		}
+	}
+	if f, ok := lessonFinding(proj.lessons, run.LastSeq(), lines, paths); ok {
+		found = append(found, f)
+	}
+	if len(found) == 0 {
 		return steer.Output{}, steer.Client{}
 	}
 	ctx := hook.PromptContext(st, sp, p.SessionID, p.PromptID, p.CWD, p.PermissionMode, env)
-	return steer.Route(&ctx, []steer.Finding{f}), ctx.Client
+	return steer.Route(&ctx, found), ctx.Client
 }
 
 // printTurn prints the catch-up's one stdout object: the preflight note's
