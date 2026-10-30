@@ -27,10 +27,12 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// ScopeVersion is bumped on a new capability class. The consent a user gave
-// is recorded against it, so a build that can do a new kind of thing shows
-// the screen again rather than riding on an older yes. Pinned by TRU-8.
-const ScopeVersion = 3
+// ScopeVersion is bumped on a new capability class, and when the screen
+// newly names something the record holds. The consent a user gave is
+// recorded against it, so a build that can do a new kind of thing, or says
+// it keeps what an earlier screen did not name, shows the screen again
+// rather than riding on an older yes. Pinned by TRU-8.
+const ScopeVersion = 4
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
 var ErrNotImplemented = errors.New("disclose: not implemented in this build")

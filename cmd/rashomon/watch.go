@@ -125,7 +125,7 @@ func cmdWatch(args []string, stdout io.Writer) error {
 	}
 	capProblem(stdout, "rashomon: ")
 	printUndoLine(stdout, installID)
-	fmt.Fprintln(stdout, "rashomon: rashomon disclose shows everything rashomon does here")
+	fmt.Fprintln(stdout, "rashomon: rashomon status shows what is installed and what the store holds")
 	if s := gate.heldSignal(); s != nil {
 		return fmt.Errorf("%s arrived while watch was writing; it was held until the install above completed", s)
 	}
