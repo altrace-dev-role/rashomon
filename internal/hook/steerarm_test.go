@@ -2,11 +2,28 @@ package hook
 
 import (
 	"bytes"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
+
+// twinST is a fixture whose store holds f's install key. A line's learned
+// gate ids and digests are HMACs under its store's key (shape.CWDDigest),
+// and each new store draws its own, so an arm's line can equal the live
+// line only when both stores share one.
+func twinST(t *testing.T, f *stFix) *stFix {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, store.FileInstallKey), []byte(hex.EncodeToString(f.st.Key())+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return newSTIn(t, root)
+}
 
 // TestMS1_ArmOffLogsShadowAndPrintsNothing: under arm off the step decides
 // the regression as it would live and prints nothing. Its one line is the
@@ -20,7 +37,7 @@ func TestMS1_ArmOffLogsShadowAndPrintsNothing(t *testing.T) {
 	}
 	live := steerLines(t, control.st)
 
-	f := newST(t)
+	f := twinST(t, control)
 	env := stEnv(0)
 	env.Arm = SteerArm("off")
 	if b := f.red("toolu_r").Steer(env); b != nil {
@@ -59,7 +76,7 @@ func TestMS1b_ArmSteerDeliversAsLive(t *testing.T) {
 	if !printsFlag(t, want) {
 		t.Fatalf("premise: the control printed %q, want the consent flag", want)
 	}
-	f := newST(t)
+	f := twinST(t, control)
 	env := stEnv(0)
 	env.Arm = SteerArm("steer")
 	if b := f.red("toolu_r").Steer(env); !bytes.Equal(b, want) {
