@@ -32,7 +32,7 @@ m("ST-4.1b forget --bodies takes another project's copies", CB,
   '\tn, err := st.ForgetBodies(dir)\n',
   '\tn, err := st.ForgetBodies("other-project")\n',
   "TestRC14j_ForgetOneKindOnly")
-m("ST-4.1b status has no bodies line", MG,
+m("ST-4.1b status has no bodies line", "cmd/rashomon/verbs_status.go",
   '\t\tfmt.Fprintf(stdout, "  %s\\n", bodiesLine(st))\n',
   '',
   "TestRC14k_StatusLineBesideStoreSize")

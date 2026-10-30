@@ -128,6 +128,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.MarkProbe(sessionID, time.Now()); err != nil {
 		t.Fatalf("MarkProbe: %v", err)
 	}
+	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
+		t.Fatalf("MarkFired: %v", err)
+	}
 	if err := s.AppendGap(store.Gap{
 		Type: store.TypeGap, SchemaVersion: store.SessionSchemaVersion,
 		SessionID: sessionID, Reason: store.GapForget,
@@ -338,7 +341,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-28 (4.1) to 25: bodies.go's copyBody CreateTemp
 		// (bodies/<project>/.body.tmp-*, renamed over <session>.jsonl) and
 		// WriteBodies' ReplaceFile (bodies.json, the transcript-copy switch).
-		{"store", 25},
+		// Moved 2026-10-29 (STATUS-VERBS1) to 26: fired.go's MarkFired
+		// create (runs/<session>/fired-<Event>, the hook entries' fired
+		// markers status counts), a new write kind; fired-* in the inventory.
+		{"store", 26},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

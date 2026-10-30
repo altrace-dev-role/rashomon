@@ -77,10 +77,7 @@ func listLessons(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if at := l.QuarantinedAt(); !at.IsZero() {
-		fmt.Fprintf(stdout, "quarantined %s: a write this command did not make changed the learning state, "+
-			"so every lesson went back to proposed\n", at.UTC().Format(time.RFC3339))
-	}
+	fmt.Fprint(stdout, quarantineLine(l.QuarantinedAt()))
 	for _, ls := range l.Lessons() {
 		t := l.Tally(ls.ID)
 		bound := "no bound"
