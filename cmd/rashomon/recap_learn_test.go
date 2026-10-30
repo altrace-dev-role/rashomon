@@ -76,48 +76,64 @@ func (e *lessonEnv) call(sessionID, promptID, toolUseID string) {
 	}
 }
 
-// ledger imports rows (id, text pairs) into the project's ledger one second
-// apart, so their order is the order given, and approves the ids named, as
-// the learn verb does after the code is typed.
-func (e *lessonEnv) ledger(rows [][2]string, approve ...string) {
-	e.t.Helper()
+// lessonsInto imports rows (id, text pairs) into project's ledger under
+// root one second apart, so their order is the order given, and approves the
+// ids named, as the learn verb does after the code is typed. The tests and
+// BenchmarkRecapPending's lesson rows build their ledgers with it.
+func lessonsInto(tb testing.TB, root, project string, rows [][2]string, approve ...string) {
+	tb.Helper()
 	base := time.UnixMilli(1_761_700_000_000)
 	for i, r := range rows {
 		file, err := json.Marshal(map[string]any{"lessons": []map[string]string{{"id": r[0], "text": r[1]}}})
 		if err != nil {
-			e.t.Fatal(err)
+			tb.Fatal(err)
 		}
-		l := e.open(base)
+		l := ledgerAt(tb, root, project, base)
 		if _, _, err := l.Import(bytes.NewReader(file), base.Add(time.Duration(i)*time.Second)); err != nil {
-			e.t.Fatal(err)
+			tb.Fatal(err)
 		}
 		if err := l.Save(); err != nil {
-			e.t.Fatal(err)
+			tb.Fatal(err)
 		}
 	}
-	e.approve(approve...)
+	approveLessons(tb, root, project, approve...)
+}
+
+func approveLessons(tb testing.TB, root, project string, ids ...string) {
+	tb.Helper()
+	l := ledgerAt(tb, root, project, time.Now())
+	for _, id := range ids {
+		if err := l.Approve(id, time.Now()); err != nil {
+			tb.Fatal(err)
+		}
+	}
+	if err := l.Save(); err != nil {
+		tb.Fatal(err)
+	}
+}
+
+func ledgerAt(tb testing.TB, root, project string, now time.Time) *learn.Ledger {
+	tb.Helper()
+	l, err := learn.Open(root, project, now)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return l
+}
+
+func (e *lessonEnv) ledger(rows [][2]string, approve ...string) {
+	e.t.Helper()
+	lessonsInto(e.t, e.root, e.project, rows, approve...)
 }
 
 func (e *lessonEnv) approve(ids ...string) {
 	e.t.Helper()
-	l := e.open(time.Now())
-	for _, id := range ids {
-		if err := l.Approve(id, time.Now()); err != nil {
-			e.t.Fatal(err)
-		}
-	}
-	if err := l.Save(); err != nil {
-		e.t.Fatal(err)
-	}
+	approveLessons(e.t, e.root, e.project, ids...)
 }
 
 func (e *lessonEnv) open(now time.Time) *learn.Ledger {
 	e.t.Helper()
-	l, err := learn.Open(e.root, e.project, now)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	return l
+	return ledgerAt(e.t, e.root, e.project, now)
 }
 
 func (e *lessonEnv) learnDir() string { return filepath.Join(e.root, learn.DirLearn, e.project) }
@@ -217,27 +233,34 @@ const (
 	tamperFlag = "rashomon record: this project's lesson files fail their signature check, so no lesson was given to the agent; rashomon learn lists them."
 )
 
-// resign signs the project's state files as they are now, as an agent that
-// read learn/key could (the manifest is tamper evidence, not a boundary):
-// an HMAC-SHA256 over each state file's name and digest, "-" for one absent.
-func (e *lessonEnv) resign() {
-	e.t.Helper()
-	key, err := os.ReadFile(filepath.Join(e.root, learn.DirLearn, learn.FileKey))
+// signLearnState signs project's state files under root as they are now, as
+// an agent that read learn/key could (the manifest is tamper evidence, not a
+// boundary): an HMAC-SHA256 over each state file's name and digest, "-" for
+// one absent.
+func signLearnState(tb testing.TB, root, project string) {
+	tb.Helper()
+	key, err := os.ReadFile(filepath.Join(root, learn.DirLearn, learn.FileKey))
 	if err != nil {
-		e.t.Fatal(err)
+		tb.Fatal(err)
 	}
+	dir := filepath.Join(root, learn.DirLearn, project)
 	m := hmac.New(sha256.New, key)
 	for _, name := range []string{learn.FileLessons, learn.FileLabels, learn.FileActive} {
 		digest := "-"
-		if b, err := os.ReadFile(filepath.Join(e.learnDir(), name)); err == nil {
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
 			d := sha256.Sum256(b)
 			digest = hex.EncodeToString(d[:])
 		}
 		fmt.Fprintf(m, "%s\x00%s\n", name, digest)
 	}
-	if err := os.WriteFile(filepath.Join(e.learnDir(), learn.FileSum), []byte(hex.EncodeToString(m.Sum(nil))+"\n"), 0o600); err != nil {
-		e.t.Fatal(err)
+	if err := os.WriteFile(filepath.Join(dir, learn.FileSum), []byte(hex.EncodeToString(m.Sum(nil))+"\n"), 0o600); err != nil {
+		tb.Fatal(err)
 	}
+}
+
+func (e *lessonEnv) resign() {
+	e.t.Helper()
+	signLearnState(e.t, e.root, e.project)
 }
 
 // TestLRN17_OnlyApprovedFactsReachTheModel (STR-52's pair): a proposed

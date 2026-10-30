@@ -10,21 +10,22 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// promptLessons is the approved lessons of the payload's project for recap
-// pending (LEARN-DELIVER1): cwd keyed as the learn verb keys it, its
-// active.json read against the manifest and never written. A project with
-// no ledger costs baseline.Key's walk and one Lstat (D171 LD9). The zero
-// Active with no run to log a lesson under (H-107), no cwd or a read error:
-// the prompt path stays silent rather than fail.
-func promptLessons(root string, run *store.Run, cwd string) learn.Active {
+// readPromptProject is recap pending's one read of the payload's project
+// (LEARN-DELIVER1, D204): baseline.Key's walk from cwd, once a prompt, and
+// the approved lessons of the ledger it names, as the learn verb names it,
+// active.json read against the manifest and never written. A project with no
+// ledger costs the walk and one Lstat (D171 LD9). Nothing is read with no
+// run to log a note under (H-107) or no cwd, and a read error gives no
+// lessons: the prompt path stays silent rather than fail.
+func readPromptProject(root string, run *store.Run, cwd string) promptProject {
 	if run == nil || cwd == "" {
-		return learn.Active{}
+		return promptProject{}
 	}
-	a, err := learn.ReadActive(root, strings.TrimSuffix(baseline.FileName(baseline.Key(cwd)), baseline.FileExt))
-	if err != nil {
-		return learn.Active{}
+	proj := promptProject{key: baseline.Key(cwd)}
+	if a, err := learn.ReadActive(root, strings.TrimSuffix(baseline.FileName(proj.key), baseline.FileExt)); err == nil {
+		proj.lessons = a
 	}
-	return a
+	return proj
 }
 
 // lessonFinding is the prompt's learned-fact finding, routed beside the
