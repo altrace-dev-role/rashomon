@@ -11,6 +11,33 @@ results on `lab/autosteer-phase2` (PR #91).
 
 ## 0. Revisions
 
+### Revision 9: rulings on B2b
+
+Historical replay is **validated as reconstruction, not yet as a basis for seeding.**
+The paired-fixture equivalence is strong evidence that replay reproduces what the
+recorder would have made of the recorded inputs. The synthetic SessionStart and the
+missing rewrite evidence limit what it proves about the sessions themselves. **The key
+and the confidence semantics below are correctness requirements that must be met
+before any seeding.** They are not reporting details.
+
+| Point | Ruling |
+|---|---|
+| Real install key | Required before B3a. The key is injected into the isolated replay explicitly. Tests show that the same key gives the live family identity, that a different key does not, and that using the real key redirects no write into live storage |
+| Synthetic SessionStart | Accepted as **replay scaffolding, not evidence of complete capture**. A transcript proves the session existed; it does not prove every relevant event was kept. The marker lets the recorder evaluate. It never raises historical coverage to Verified |
+| SessionEnd | Not assumed to be a kill. Its occurrence cannot be established from a transcript, so it is **unknown lifecycle evidence** (`session_end_unknown`). B2c checks whether leaving it out changes any reported metric |
+| Rewrite evidence | Enforced downstream, not only flagged. While `rewrite_evidence_absent` holds, a replayed run "matches recorded inputs" and is never "verified to match executed inputs". Seed eligibility must read this distinction; report-only analysis may go ahead |
+| Two kinds of confidence | **Reconstruction fidelity** (did replay reproduce the recorder's view of the recorded inputs) and **source completeness** (lifecycle, capture, rewrites) are separate fields. Neither stands in for the other |
+| Replay globals | The clock variable, the Stop tap and the environment overrides must not let two replays interfere. Cleanup is certain on error, panic and cancellation, with tests (B2c) |
+| fsync cost | Now a **product constraint**. A representative scan is measured before B3a counts as usable. If it is too slow, the durable recorder path stays the equivalence reference, and a faster scratch-store mode is validated separately against it |
+
+**Added to B2c:** merging files must keep cross-file causal order:
+- a subagent's calls fall between its parent call's use and result;
+- each result comes after its use;
+- a resume's new turns come after the turns it repeats.
+
+Where the order cannot be established and could change a verdict, the affected points
+lose confidence.
+
 ### Revision 8: what B2b established
 
 **Equivalence holds on both fixtures.** The captured payloads and the rebuilt timeline,
