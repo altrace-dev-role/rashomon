@@ -169,6 +169,25 @@ func (m Mechanism) Validate() error {
 func (m Mechanism) Text() string         { return string(m) }
 func (m Mechanism) bind() (Value, error) { return checked(m, m.Validate()) }
 
+// LessonID is a lesson's id (LEARN-DELIVER1, L7): learn's id form, which
+// is verify.SlotID's charset, `^[a-z0-9][a-z0-9._:@-]{0,63}$`. A person
+// approved the lesson, but its id came with the row (an import file names
+// it), so it runs Mechanism's screens. An identifier, it renders unquoted
+// after the word "lesson".
+type LessonID string
+
+var lessonIDRE = &lazyRegexp{pattern: `^[a-z0-9][a-z0-9._:@-]{0,63}$`}
+
+func (l LessonID) Validate() error {
+	if err := charset("lesson id", string(l), lessonIDRE); err != nil {
+		return err
+	}
+	return screened("lesson id", string(l))
+}
+
+func (l LessonID) Text() string         { return string(l) }
+func (l LessonID) bind() (Value, error) { return checked(l, l.Validate()) }
+
 // Approved is text from a trusted spec's `approved` or `alternative` field
 // (archive 40.3.8): its charset, no URL scheme, and none of four words as
 // ASCII case-insensitive whole words. It renders only inside an attributed

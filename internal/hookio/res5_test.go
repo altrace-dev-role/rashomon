@@ -27,11 +27,15 @@ var res5Dirs = []string{
 // Its per-call cost (218156 B/op at the cap, 58 percent the decoder's read
 // buffer) is ruled where it is called: once per turn by recap's Stop view and
 // once per prompt by the catch-up's preflight, both in BenchmarkRecapPending.
-// learn.decode reads the lesson ledger's own files and an import file (card
-// P6): CLI commands alone call it, and no hook links internal/learn
-// (TestP6_HookAndStoreImportNoLearner).
+// learn.decode reads the lesson ledger's own files read whole and an import
+// file (card P6); only the learn verb calls it. learn.decodeActive is the one
+// decode on a hook path (recap pending, LEARN-DELIVER1): active.json, the
+// file Save keeps under ActiveMaxBytes (64 KiB), limited to it before the
+// decoder sees it, after its manifest checked. Each is allowed by name, so a
+// hook-path caller of Open or decode shows up as a new name. Neither the hook
+// nor the store links internal/learn (TestP6_HookAndStoreImportNoLearner).
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
-	"internal/learn.decode": true}
+	"internal/learn.decode": true, "internal/learn.decodeActive": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding
