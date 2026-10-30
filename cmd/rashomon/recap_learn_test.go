@@ -45,8 +45,10 @@ func newLessonEnv(t *testing.T) *lessonEnv {
 	}
 	t.Setenv(hook.EnvHoldout, "off")
 	// CI set makes the session unattended, which suppresses every note at
-	// the prompt (decide's no_mirror), and a CI runner sets it.
+	// the prompt (decide's no_mirror), and a CI runner sets it. AI_AGENT is
+	// cleared so a runner and a Claude Code shell take one path.
 	t.Setenv("CI", "")
+	t.Setenv("AI_AGENT", "")
 	cwd := t.TempDir()
 	key := baseline.Key(cwd)
 	return &lessonEnv{t: t, root: root, installID: installID, cwd: cwd, project: strings.TrimSuffix(baseline.FileName(key), baseline.FileExt)}
