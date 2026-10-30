@@ -46,9 +46,10 @@ var overLimit = map[string]int{
 // command, clearBaselines to forget.go, 1065 to 1059 with card P6's learn
 // command, openStoreForRead to storeopen.go, 1059 to 1054 with its
 // backtest command, openStore to storeopen.go, and 1054 to 1052 with card
-// SPEC-TRUST1's spec command, storeExistsAt to storeopen.go.
+// SPEC-TRUST1's spec command, storeExistsAt to storeopen.go, and 1052 to 1007
+// with STATUS-VERBS1's verb table, cmdStatus to verbs_status.go.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    1052,
+	"cmd/rashomon/main.go":    1007,
 	"internal/store/store.go": 549,
 	"cmd/rashomon/watch.go":   545,
 }

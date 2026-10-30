@@ -55,6 +55,7 @@ func cmdPost(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// As in cmdHook: Guard is for Close's panic, and a coverage record
 		// Close did not write reads as its absence (H-10).
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
+		markFired(st, sessionOf(payload), postEvent(payload))
 		if err := safe.Guard(p.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
 			return nil

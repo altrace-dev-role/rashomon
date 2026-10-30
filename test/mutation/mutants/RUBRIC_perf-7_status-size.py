@@ -1,5 +1,5 @@
 # perf-7: status prints the store's size against the cap in force.
-m("perf-7 status does not print the store's size", "cmd/rashomon/main.go",
+m("perf-7 status does not print the store's size", "cmd/rashomon/verbs_status.go",
   "\t\tstatusSize(stdout, st)\n", "", "TestRubricPERF7_StatusShowsTheStoreAgainstItsCap")
 m("perf-7 status does not say eviction is off", "cmd/rashomon/status_store.go",
   "\tif bytes == 0 {\n", "\tif false {\n", "TestRubricPERF7_StatusShowsTheStoreAgainstItsCap")

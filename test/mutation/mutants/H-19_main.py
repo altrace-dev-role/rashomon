@@ -8,9 +8,10 @@ m("report text renders a comparison it could not make as an empty list", "intern
   "\tif ids == nil {\n\t\treturn unknown\n\t}", "\tif ids == nil {\n\t\treturn none\n\t}", "TestReport_")
 m("report --json is accepted and ignored", "cmd/rashomon/main.go",
   "\t\tcase \"--json\":\n\t\t\tasJSON = true\n\t\tcase \"--redact\":", "\t\tcase \"--json\":\n\t\t\tasJSON = false\n\t\tcase \"--redact\":", "TestReport_")
-m("status opens the store, which creates one", "cmd/rashomon/main.go",
-  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err = openStore()",
-  "\tif true {\n\t\tst, err = openStore()", "TestH18_")
+m("status opens the store, which creates one", "cmd/rashomon/verbs_status.go",
+  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {\n\t\treturn nil, nil\n",
+  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); false && err != nil {\n\t\treturn nil, nil\n",
+  "TestH18_")
 m("status calls recording active on a fresh machine", "cmd/rashomon/status_recording.go",
   "\tcase state == RecordingActive && !installed:",
   "\tcase state == RecordingActive && false:", "TestStatus_OnAFreshMachineSaysSo")
@@ -48,9 +49,9 @@ m("pause --help pauses recording", "cmd/rashomon/main.go",
 m("resume --help lifts the pause", "cmd/rashomon/main.go",
   "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdResume))",
   "\t\treturn guarded(stderr, func() error { return cmdResume(stdout) })", "TestArguments_Resume")
-m("status --help prints the status", "cmd/rashomon/main.go",
-  "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdStatus))",
-  "\t\treturn guarded(stderr, func() error { return cmdStatus(stdout) })", "TestArguments_Status")
+m("status --help prints the status", "cmd/rashomon/verbs_status.go",
+  "\tasJSON, err := jsonFlag(args)\n\tif err != nil {\n\t\treturn err\n\t}\n\tif !asJSON {\n\t\treturn cmdStatus(stdout)",
+  "\tasJSON, _ := jsonFlag(args)\n\tif !asJSON {\n\t\treturn cmdStatus(stdout)", "TestArguments_Status")
 m("version --help prints the version", "cmd/rashomon/main.go",
   "\t\treturn guarded(stderr, noArgs(rest, stdout, printVersion))",
   "\t\treturn guarded(stderr, func() error { return printVersion(stdout) })", "TestArguments_Version")
