@@ -6,6 +6,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // errNoCWD is the flag of a call whose payload names no cwd: no spec, never
@@ -13,28 +14,63 @@ import (
 const errNoCWD = "spec: the payload names no cwd"
 
 // DiscoverSpec is the spec that applies to a call run in cwd (card 3.1 (c),
-// D119, D128): spec.Discover over the OS, with the candidates
-// spec.Locations names from cwd up to spec.WalkRoot of the .git root above
-// cwd (gitRoot) and projectDir (CLAUDE_PROJECT_DIR), and the managed spec at
-// managedDir/rashomon/spec.json ("" for none). cwd and projectDir are
-// resolved as baseline.Key resolves a cwd, so the lexical walk compares one
-// form (macOS's /tmp is /private/tmp). It is nil when nothing applies. An
-// empty cwd or an I/O error is no spec and one flag, spec.Unreadable.
-func DiscoverSpec(cwd, projectDir, managedDir string) *spec.Compiled {
+// D119, D128): spec.Discover over the OS, with the candidates SpecLocations
+// names, and the managed spec at managedDir/rashomon/spec.json ("" for none).
+// The repository spec is trusted when the bindings file under storeRoot
+// names its project, path and digest (card SPEC-TRUST1); that file is read
+// only when a repository spec was, and an unreadable one, or storeRoot "",
+// binds nothing. It is nil when nothing applies. An empty cwd or an I/O error
+// is no spec and one flag, spec.Unreadable.
+func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled {
 	if cwd == "" {
 		return spec.Unreadable(errNoCWD)
 	}
-	cwd = resolved(cwd)
-	root := spec.WalkRoot(cwd, gitRoot(cwd), resolved(projectDir))
 	managed := ""
 	if managedDir != "" {
 		managed = filepath.Join(managedDir, "rashomon", "spec.json")
 	}
-	sp, err := spec.Discover(spec.OSFS{}, spec.Locations(cwd, root), managed)
+	bound := func(path, digest string) bool {
+		if storeRoot == "" {
+			return false
+		}
+		b, err := spec.ReadBindings(spec.OSFS{}, filepath.Join(storeRoot, spec.TrustFile))
+		return err == nil && b.Holds(SpecProject(path), path, digest)
+	}
+	sp, err := spec.DiscoverBound(spec.OSFS{}, SpecLocations(cwd, projectDir), managed, bound)
 	if err != nil {
 		return spec.Unreadable(err.Error())
 	}
 	return sp
+}
+
+// WriteSpecBindings writes b as the bindings file under storeRoot, the one
+// DiscoverSpec reads (store.ReplaceFile: 0600, renamed over the old one).
+// An encoding spec.EncodeBindings refuses, over spec.MaxTrustBytes, writes
+// nothing.
+func WriteSpecBindings(storeRoot string, b *spec.Bindings) error {
+	data, err := spec.EncodeBindings(b)
+	if err != nil {
+		return err
+	}
+	return store.ReplaceFile(filepath.Join(storeRoot, spec.TrustFile), data)
+}
+
+// SpecLocations is the repository spec candidates for cwd: spec.Locations
+// from cwd up to spec.WalkRoot of the .git root above cwd (gitRoot) and
+// projectDir (CLAUDE_PROJECT_DIR), both resolved as baseline.Key resolves a
+// cwd, so the lexical walk compares one form (macOS's /tmp is /private/tmp).
+// `rashomon spec trust` names the spec it binds from the same list.
+func SpecLocations(cwd, projectDir string) []string {
+	cwd = resolved(cwd)
+	return spec.Locations(cwd, spec.WalkRoot(cwd, gitRoot(cwd), resolved(projectDir)))
+}
+
+// SpecProject is the project of the repository spec at path, the
+// ProjectRoot of its trust binding: baseline.Key of the directory that holds
+// .claude/rashomon. It is read from the path alone, so the hook, where
+// CLAUDE_PROJECT_DIR is set, and a terminal, where it is not, name one root.
+func SpecProject(path string) string {
+	return baseline.Key(filepath.Dir(filepath.Dir(filepath.Dir(path))))
 }
 
 // gitRoot is baseline.Key(cwd) when a .git is there, else "": with no .git,

@@ -73,3 +73,9 @@ m("TRU-23 the inventory does not cover harness_counts.lock", "internal/disclose/
 m("TRU-23 the inventory does not cover harness_counts.json's replacement", "internal/disclose/disclose.go",
   "\t\t\tPattern:    \".\" + store.FileHarnessCounts + \".rashomon-*\",\n", "\t\t\tPattern:    \".\" + store.FileHarnessCounts + \".tmp-*\",\n",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the inventory does not cover spec-trust.json", "internal/disclose/spec.go",
+  "\t\t\tPattern:    spec.TrustFile,\n", "\t\t\tPattern:    spec.TrustFile + \"~\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the inventory does not cover spec-trust.json's replacement", "internal/disclose/spec.go",
+  "\t\t\tPattern:    \".\" + spec.TrustFile + \".tmp-*\",\n", "\t\t\tPattern:    \".\" + spec.TrustFile + \".rashomon-*\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")

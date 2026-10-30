@@ -49,7 +49,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, id harnes
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now)
-	sp := hook.DiscoverSpec(p.CWD, env.ProjectDir, env.ManagedDir)
+	sp := hook.DiscoverSpec(p.CWD, env.ProjectDir, env.ManagedDir, st.Root())
 	var idx *verify.ProjectIndex
 	if key := baseline.Key(p.CWD); key != "" {
 		idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))

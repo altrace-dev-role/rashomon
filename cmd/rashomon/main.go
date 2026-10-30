@@ -137,6 +137,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdReceipt(rest, stdout) })
 	case "learn":
 		return guarded(stderr, func() error { return cmdLearn(rest, stdout) })
+	case "spec":
+		return guarded(stderr, func() error { return cmdSpec(rest, stdout) })
 	case "backtest":
 		return guarded(stderr, func() error { return cmdBacktest(rest, stdout) })
 
@@ -1514,7 +1516,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+backtestUsage+hookUsage)
+`+receiptUsage+learnUsage+specUsage+backtestUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the
@@ -1605,14 +1607,4 @@ func countOf(n int, noun string) string {
 		return "1 " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
-}
-
-// storeExistsAt asks whether a root holds a store without opening one.
-// checkPaused, cmdPause and cmdResume all need to ask this about a root
-// before -- or instead of -- ever opening a *Store: opening CREATES a store,
-// and none of the three may do that as a side effect of a question about
-// recording state.
-func storeExistsAt(root string) bool {
-	_, err := os.Stat(filepath.Join(root, installMetaFile))
-	return err == nil
 }
