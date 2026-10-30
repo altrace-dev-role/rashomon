@@ -70,6 +70,14 @@ func dgGate(id string, argv ...string) spec.Declared {
 
 func dgPoint(seq int64) Point { return Point{Kind: PointStop, Seq: seq, SessionID: "s1"} }
 
+// dgLedger is the Stop view's snapshot and ledger at pt over sp, its lines
+// digested under key, with no index (card LEDGER-WIRE1: the ledger's one
+// producer is EvaluateStop's).
+func dgLedger(r *store.Run, sp *spec.Compiled, key []byte, pt Point) (Snapshot, []Obligation) {
+	v := EvaluateStop(r, nil, sp, pt, time.Time{}, StopInput{Key: key})
+	return v.Snap, v.Obligations
+}
+
 // gateNamed is the row of snap whose Gate is id, and whether there is one.
 func gateNamed(gates []GateState, id string) (GateState, bool) {
 	for _, g := range gates {
@@ -90,7 +98,7 @@ func TestDG1_DeclaredGateReadsItsRuns(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK))
 	recorded(t, r, 2, "go test ./...")
 	ranIn(r, "/repo", "")
-	snap, obs := EvaluateWithObligations(r, nil, dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./...")), dgKey, dgPoint(10), time.Time{})
+	snap, obs := dgLedger(r, dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./...")), dgKey, dgPoint(10))
 	if len(snap.Gates) != 1 {
 		t.Fatalf("rows %+v, want spec:unit alone: the learned family it absorbed has no row", snap.Gates)
 	}
@@ -120,7 +128,7 @@ func TestDG1_DeclaredGateReadsItsRuns(t *testing.T) {
 func TestDG1b_UntrustedSpecDeclaresNoGate(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK))
 	recorded(t, r, 2, "go test ./...")
-	snap, _ := EvaluateWithObligations(r, nil, dgSpec(spec.Untrusted, dgGate("unit", "go", "test", "./...")), dgKey, dgPoint(10), time.Time{})
+	snap, _ := dgLedger(r, dgSpec(spec.Untrusted, dgGate("unit", "go", "test", "./...")), dgKey, dgPoint(10))
 	if len(snap.Gates) != 1 || snap.Gates[0].Source != sourceLearned || snap.Gates[0].State != Green {
 		t.Fatalf("rows %+v, want the learned row alone, green", snap.Gates)
 	}
@@ -148,7 +156,7 @@ func TestDG1c_ExactMatchNeedsTheWholeLine(t *testing.T) {
 		r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK))
 		recorded(t, r, 2, c.line)
 		ranIn(r, "/repo", "")
-		snap, _ := EvaluateWithObligations(r, nil, dgSpec(spec.Trusted, c.gate), dgKey, dgPoint(10), time.Time{})
+		snap, _ := dgLedger(r, dgSpec(spec.Trusted, c.gate), dgKey, dgPoint(10))
 		g, ok := gateNamed(snap.Gates, "spec:unit")
 		run := declOf(r, 2)
 		_, learned := gateNamed(snap.Gates, learnedGateID("test", familyKey{runner: *run.Shape.RunnerDigest, location: run.CWDDigest}))
@@ -186,7 +194,7 @@ func TestDG1c2_ARewrittenLineMatchesNoGate(t *testing.T) {
 			execOf(r, 2).ExecutedDigest = ran
 		}
 		ranIn(r, "/repo", "")
-		snap, _ := EvaluateWithObligations(r, nil, dgSpec(spec.Trusted, exact), dgKey, dgPoint(10), time.Time{})
+		snap, _ := dgLedger(r, dgSpec(spec.Trusted, exact), dgKey, dgPoint(10))
 		if g, ok := gateNamed(snap.Gates, "spec:unit"); !ok || g.State != c.state {
 			t.Errorf("%s: spec:unit %+v (present %v), want %s", c.name, g, ok, c.state)
 		}
@@ -217,7 +225,7 @@ func TestDG1d_DirBindsTheLocation(t *testing.T) {
 			}
 			r.Declarations[1].CWDDigest = shape.CWDDigest(dgKey, "/repo/web")
 		}
-		snap, _ := EvaluateWithObligations(r, nil, dgSpec(spec.Trusted, gate), dgKey, dgPoint(10), time.Time{})
+		snap, _ := dgLedger(r, dgSpec(spec.Trusted, gate), dgKey, dgPoint(10))
 		if g, ok := gateNamed(snap.Gates, "spec:web"); !ok || g.State != c.state {
 			t.Errorf("%s: spec:web %+v (present %v), want %s", c.name, g, ok, c.state)
 		}
@@ -252,7 +260,7 @@ func TestDG1d2_EmptyDirBindsTheProjectRoot(t *testing.T) {
 		if c.at != "" {
 			declOf(r, 2).CWDDigest = shape.CWDDigest(dgKey, c.at)
 		}
-		snap, _ := EvaluateWithObligations(r, nil, dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./...")), dgKey, dgPoint(10), time.Time{})
+		snap, _ := dgLedger(r, dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./...")), dgKey, dgPoint(10))
 		g, ok := gateNamed(snap.Gates, "spec:unit")
 		run := declOf(r, 2)
 		_, learned := gateNamed(snap.Gates, learnedGateID("test", familyKey{runner: *run.Shape.RunnerDigest, location: run.CWDDigest}))
@@ -268,13 +276,13 @@ func TestDG1d2_EmptyDirBindsTheProjectRoot(t *testing.T) {
 // required reads advisory: its Required is the spec's.
 func TestDG1e_AbsentDeclaredGateReadsNeverRun(t *testing.T) {
 	sp := dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./..."))
-	snap, _ := EvaluateWithObligations(runOf(t, edit(1, "pkg/a.go")), nil, sp, dgKey, dgPoint(10), time.Time{})
+	snap, _ := dgLedger(runOf(t, edit(1, "pkg/a.go")), sp, dgKey, dgPoint(10))
 	g, ok := gateNamed(snap.Gates, "spec:unit")
 	if !ok || g.State != Absent || g.Reason != NeverRunAfterWrite || !g.Required || g.LastRun != nil || g.LastGreen != nil ||
 		g.WritesSinceGreen != 1 || g.LastWrite == nil || str(g.LastWrite.Path) != "pkg/a.go" || g.WritersSinceGreen == nil {
 		t.Fatalf("after an edit: %+v (present %v), want absent never_run_after_write, required, one write pkg/a.go", g, ok)
 	}
-	snap, _ = EvaluateWithObligations(runOf(t, gateCall(1, "go-vet", store.ExecOK)), nil, sp, dgKey, dgPoint(10), time.Time{})
+	snap, _ = dgLedger(runOf(t, gateCall(1, "go-vet", store.ExecOK)), sp, dgKey, dgPoint(10))
 	g, ok = gateNamed(snap.Gates, "spec:unit")
 	if !ok || g.State != Absent || g.Reason != EmptyRun || g.WritesSinceGreen != 0 || g.LastWrite != nil {
 		t.Fatalf("with no write: %+v (present %v), want absent empty_run, no write", g, ok)
@@ -282,7 +290,7 @@ func TestDG1e_AbsentDeclaredGateReadsNeverRun(t *testing.T) {
 	no := false
 	advisory := dgGate("unit", "go", "test", "./...")
 	advisory.Gate.Required = &no
-	snap, _ = EvaluateWithObligations(runOf(t, edit(1, "pkg/a.go")), nil, dgSpec(spec.Trusted, advisory), dgKey, dgPoint(10), time.Time{})
+	snap, _ = dgLedger(runOf(t, edit(1, "pkg/a.go")), dgSpec(spec.Trusted, advisory), dgKey, dgPoint(10))
 	if g, ok = gateNamed(snap.Gates, "spec:unit"); !ok || g.Required {
 		t.Fatalf("required false: %+v (present %v), want the row advisory", g, ok)
 	}
@@ -323,7 +331,7 @@ func TestDG1g_CIGateRowCarriesItsSource(t *testing.T) {
 		recorded(t, r, 2, "golangci-lint run")
 		ranIn(r, "/repo", "")
 		ci := spec.Declared{ID: c.id, Gate: spec.Gate{Kind: "custom", Argv: []string{"golangci-lint", "run"}, Match: "prefix", Required: &yes}}
-		snap, _ := EvaluateWithObligations(r, nil, dgSpec(c.trust, ci), dgKey, dgPoint(10), time.Time{})
+		snap, _ := dgLedger(r, dgSpec(c.trust, ci), dgKey, dgPoint(10))
 		g, ok := gateNamed(snap.Gates, c.id)
 		if !ok || g.Source != "ci_commands" || g.Kind != "custom" || g.Trust != string(c.trust) || g.State != Green {
 			t.Errorf("%s: %+v (present %v), want source ci_commands, kind custom, trust %s, green", c.id, g, ok, c.trust)
@@ -340,8 +348,8 @@ func TestDG1h_EvaluateWithoutKeyDeclaresNothing(t *testing.T) {
 	recorded(t, r, 2, "go test ./...")
 	sp := dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./..."))
 	for name, snap := range map[string]Snapshot{
-		"Evaluate":                     Evaluate(r, nil, sp, dgPoint(10), time.Time{}),
-		"EvaluateWithObligations, nil": func() Snapshot { s, _ := EvaluateWithObligations(r, nil, sp, nil, dgPoint(10), time.Time{}); return s }(),
+		"Evaluate":              Evaluate(r, nil, sp, dgPoint(10), time.Time{}),
+		"EvaluateStop, nil key": EvaluateStop(r, nil, sp, dgPoint(10), time.Time{}, StopInput{}).Snap,
 	} {
 		if len(snap.Gates) != 1 || snap.Gates[0].Source != sourceLearned {
 			t.Errorf("%s: rows %+v, want the learned row alone", name, snap.Gates)

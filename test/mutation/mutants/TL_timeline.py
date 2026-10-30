@@ -20,7 +20,7 @@ m("TL a failure with no later success says nothing", "internal/report/timeline_t
 m("TL the capped listing drops the rest silently", "internal/report/timeline_text.go",
   "\t\t\tfmt.Fprintf(b, \"    %d more call%s, see --json\\n\", rest, plural(rest))\n",
   "\t\t\t_ = rest\n", "TestTimeline_")
-m("TL --timeline never reaches the renderer", "cmd/rashomon/main.go",
+m("TL --timeline never reaches the renderer", "cmd/rashomon/report.go",
   "\t\t\topts = append(opts, report.WithTimeline())", "\t\t\t_ = report.WithTimeline", "TestTimeline_")
 
 # #36 review fixes: the timeline says what the record supports and no more.
