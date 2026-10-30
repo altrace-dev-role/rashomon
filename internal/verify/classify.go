@@ -69,10 +69,6 @@ type write struct {
 	// write names, as the call left it (ContentSHA256); nil where it has
 	// none, and for every other write (P5A).
 	SHA *string
-	// raw is the path as the call named it, slashed, before relativise:
-	// what the store root is matched against (D173), so a store root inside
-	// the project still matches. "" for an unnamed write.
-	raw string
 }
 
 // classify turns a run's calls into the two things the gate state reads: the
@@ -278,7 +274,7 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 	file, shell := writeTargets(d)
 	named := func(p string) {
 		rel := relativise(p, d.Project, d.CWD)
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, raw: slashed(p), Class: ClassOf(rel), Tool: d.ToolName})
+		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName})
 	}
 	blind := func() {
 		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Tool: d.ToolName})

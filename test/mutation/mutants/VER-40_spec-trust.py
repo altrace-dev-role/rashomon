@@ -59,18 +59,22 @@ m("VER-40 a store write keeps trust", H, "\tif verify.StoreWritten(run, storeRoo
 m("VER-40 the steer step reads trust past a store write", S, "TrustRoot(run, root, p.landedSeq)", "root", "TestST1m_AWrite")
 m("VER-40 the Stop reads trust past a store write", R, "hook.TrustRoot(run, st.Root(), seq)", "st.Root()", "TestST1m_TheStop")
 m("VER-40 StoreWritten reads past its point", I,
-  "\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tif namedWithheld(d) {\n", "\t\tif namedWithheld(d) {\n", "TestST1s_|TestST1v_")
-m("VER-40 StoreWritten reads no file tool", I, "\t\tif file != nil && underStore(slashed(*file), storeRoot) {\n",
-  "\t\tif file != nil && underStore(slashed(*file), storeRoot) && false {\n", "TestST1s_")
-m("VER-40 StoreWritten reads no shell write", I, "\t\tfor _, p := range shell {\n\t\t\tif underStore(slashed(p), storeRoot) {\n",
-  "\t\tfor _, p := range shell[:0] {\n\t\t\tif underStore(slashed(p), storeRoot) {\n", "TestST1s_|TestST1m_AWrite")
+  "\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tif storeWrites(d, storeRoot, nil) {\n", "\t\tif storeWrites(d, storeRoot, nil) {\n", "TestST1s_|TestST1v_")
+m("VER-40 StoreWritten reads no file tool", I, "\tif file != nil && underStore(slashed(*file), storeRoot) {\n",
+  "\tif file != nil && underStore(slashed(*file), storeRoot) && false {\n", "TestST1s_")
+m("VER-40 StoreWritten reads no shell write", I, "\tfor _, p := range shell {\n\t\tif underStore(slashed(p), storeRoot) {\n",
+  "\tfor _, p := range shell[:0] {\n\t\tif underStore(slashed(p), storeRoot) {\n", "TestST1s_|TestST1m_AWrite")
 m("VER-40 the store root's own path is not under it", PC, "\treturn in || p == r\n", "\treturn in\n", "TestST1s_|TestST1r_")
 m("VER-40 a store path is matched uncleaned", PC, "\tp, r := path.Clean(p), path.Clean(slashed(root))\n",
   "\tp, r := p, path.Clean(slashed(root))\n", "TestST1s_")
 
 # The flag: integrity matches the store root, from the point each path builds.
-m("VER-40 integrity does not match the store root", I, "(inStore(*w.Path) || underStore(w.raw, storeRoot))",
-  "inStore(*w.Path)", "TestST1s_")
+m("VER-40 integrity does not match the store root", I,
+  "\t\t\t\t\t} else if rel := relativise(p, d.Project, d.CWD); !inStore(rel) {\n", "\t\t\t\t\t} else if rel := relativise(p, d.Project, d.CWD); false {\n", "TestST1s_")
+m("VER-40 integrity names a store write twice", I, "relativise(p, d.Project, d.CWD); !inStore(rel) {",
+  "relativise(p, d.Project, d.CWD); rel != \"\" {", "TestST1s_")
+m("VER-40 integrity reads the root before from", I, "\t\t\tif d := &run.Declarations[i]; d.Seq > from && d.Seq <= at {\n",
+  "\t\t\tif d := &run.Declarations[i]; d.Seq <= at {\n", "TestST1s_|TestST1v_")
 m("VER-40 Evaluate hands integrity no store root", E, "integrity(run, picked, writes, 0, at, pt.StoreRoot)",
   "integrity(run, picked, writes, 0, at, \"\")", "TestST1m_")
 m("VER-40 the steer step's point names no store root", S, "\t\tStoreRoot: root}\n", "\t}\n", "TestST1m_AWrite|TestST1r_")
@@ -127,11 +131,10 @@ m("VER-40 purge leaves the trust key's replacement", P, "\t\".\" + spec.TrustKey
 HD = "internal/hook/handle.go"
 m("VER-40 the store-root bit is not set", HD, "\tdecl.StoreNamed = rootNamed(p.ToolInput, h.st.Root())\n",
   "\tdecl.StoreNamed = false\n", "TestST1u_")
-m("VER-40 StoreWritten ignores the bit", I, "\t\tif namedWithheld(d) {\n\t\t\treturn true\n\t\t}\n", "",
+m("VER-40 StoreWritten ignores the bit", I, "\tif namedWithheld(d) {\n\t\tif f != nil {\n", "\tif false {\n\t\tif f != nil {\n",
   "TestST1v_|TestST1u_")
 m("VER-40 integrity raises nothing for the bit", I,
-  "\t\t\tif d := &run.Declarations[i]; d.Seq > from && d.Seq <= at && namedWithheld(d) {\n",
-  "\t\t\tif d := &run.Declarations[i]; d.Seq > from && d.Seq <= at && namedWithheld(d) && false {\n", "TestST1v_|TestST1u_")
+  "\t\t\t\t\t\tout.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: d.Seq})\n", "", "TestST1v_|TestST1u_")
 m("VER-40 the bit is read where the paths are recorded", I,
   "\treturn d.StoreNamed && (d.CommandWithheld != nil || d.FilePathWithheld != nil || d.WrittenPathsWithheld != nil)\n",
   "\treturn d.StoreNamed\n", "TestST1v_")
