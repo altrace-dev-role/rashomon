@@ -14,10 +14,13 @@ import (
 	"sync"
 )
 
-// ID names one of the sixteen frozen STEER patterns. The set is closed: the
-// review that gates this package checks the constants below against the
+// ID names one of the eighteen frozen STEER patterns. The set is closed:
+// the review that gates this package checks the constants below against the
 // spec's list verbatim, so adding or renaming one is a contract change, not
-// a local edit.
+// a local edit. The spec's list froze sixteen; task-preflight (card
+// PREFLIGHT1) is the seventeenth and stale-evidence (card STALE-NUDGE1, D164)
+// the eighteenth, each added by ruling after them in merge order, so their
+// order holds.
 type ID string
 
 // The frozen pattern IDs, in the order the frozen-set paragraph lists them
@@ -47,6 +50,9 @@ const (
 	// TaskPreflight is the request's preflight note at UserPromptSubmit
 	// (internal/intent).
 	TaskPreflight ID = "task-preflight"
+	// StaleEvidence names a required gate whose green this call's write left
+	// behind, at the write (card STALE-NUDGE1).
+	StaleEvidence ID = "stale-evidence"
 )
 
 // All returns the frozen pattern IDs in the spec's order. Callers that need a stable iteration order -- rendering a legend,
@@ -57,7 +63,7 @@ func All() []ID {
 		SubtaskGate, RegressionLocation, ContinuityBriefing, DeclaredFact,
 		LearnedFact, PlatformRule, Integrity, IdenticalRetry, CredSpray,
 		OrderingRule, AgentInterference, SubagentClaim, ModelSwitch,
-		ClaimVsRecord, MaskedStatus, SequenceRisk, TaskPreflight,
+		ClaimVsRecord, MaskedStatus, SequenceRisk, TaskPreflight, StaleEvidence,
 	}
 }
 
@@ -104,9 +110,9 @@ var kindsOnce struct {
 // and this package does not enumerate it. Every other id with no entry
 // (regression-location, continuity-briefing, identical-retry, cred-spray,
 // ordering-rule, agent-interference, subagent-claim, model-switch,
-// masked-status) has no sub-kind taxonomy: the frozen-set paragraph gives
-// kinds to exactly seven ids, and silence for the rest is read here as
-// "Kind is empty on a Finding of this pattern."
+// masked-status, stale-evidence) has no sub-kind taxonomy: the frozen-set
+// paragraph gives kinds to exactly seven ids, and silence for the rest is
+// read here as "Kind is empty on a Finding of this pattern."
 func Kinds(id ID) []string {
 	return slices.Clone(kinds()[id])
 }
@@ -145,7 +151,7 @@ func classForm(s string) bool {
 	return true
 }
 
-// Valid reports whether id is one of the seventeen frozen patterns.
+// Valid reports whether id is one of the eighteen frozen patterns.
 func Valid(id ID) bool {
 	for _, known := range All() {
 		if known == id {
@@ -166,8 +172,10 @@ func Valid(id ID) bool {
 // flag-only in Wave B, so on an egress call its secret-then-egress flag beats
 // identical-retry (40). task-preflight carries 72, above learned-fact (70):
 // the two meet only at UserPromptSubmit, and a prompt that carries a lesson
-// keeps its preflight note. TestSTR16_EveryCandidatePatternHasAPriority pins
-// the split so a change to it is a reviewed decision, not a drift.
+// keeps its preflight note. stale-evidence takes 78, below
+// regression-location: a red the call caused outranks a green it left behind
+// (card STALE-NUDGE1). TestSTR16_EveryCandidatePatternHasAPriority pins the
+// split so a change to it is a reviewed decision, not a drift.
 func priority() map[ID]int {
 	priorityOnce.Do(func() {
 		priorityOnce.v = map[ID]int{
@@ -175,6 +183,7 @@ func priority() map[ID]int {
 			SubtaskGate:        90,
 			ClaimVsRecord:      85,
 			RegressionLocation: 80,
+			StaleEvidence:      78,
 			DeclaredFact:       75,
 			TaskPreflight:      72,
 			LearnedFact:        70,

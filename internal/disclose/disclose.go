@@ -303,6 +303,16 @@ func defaultFiles() []FileRule {
 			Owner:      "store",
 		},
 		{
+			Base:       runSegment,
+			Pattern:    store.FileStaleArmed,
+			Mode:       "0600",
+			Purpose:    "a hint that a gate ran since the last edit the session's steer step judged for stale evidence",
+			Holds:      "nothing; present after a gate run, removed by the next judged edit",
+			NeverHolds: "anything",
+			RemovedBy:  "the steer step; size-cap eviction; purge",
+			Owner:      "store",
+		},
+		{
 			Base:       "",
 			Pattern:    store.FileRecordingPaused,
 			Mode:       "0600",
