@@ -152,3 +152,6 @@ m("VER-40 the bit's fact is not named", V, "\t\t\tfact.StoreRoot, fact.StoreName
 m("VER-40 no store-root named row", RD,
   "\t\t\t{pattern.Integrity, reflect.TypeOf(IntegrityStoreRootNamedBinding{})}: {\n",
   "\t\t\t{pattern.Integrity, reflect.TypeOf(struct{ N int }{})}: {\n", "TestST1u_")
+# D203: the prompt's preflight note reads trust as the Stop does.
+m("VER-40 the preflight reads trust past a store write", "cmd/rashomon/preflight.go",
+  "hook.TrustRoot(run, st.Root(), run.LastSeq())", "st.Root()", "TestST1m_TheStop")

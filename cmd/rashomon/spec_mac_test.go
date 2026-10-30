@@ -251,15 +251,34 @@ func TestST1m_TheStopReadsTheStoreWriteBeforeTrusting(t *testing.T) {
 		return turn.view
 	}
 
+	// The prompt's note reads the spec the same way (D203).
+	preflight := func() spec.Trust {
+		t.Helper()
+		run, err := digest.ReadRun(st, session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sp := preflightSpec(st, run, base, "", ""); sp != nil {
+			return sp.Trust
+		}
+		return ""
+	}
+
 	land("toolu_r", "Read", map[string]any{"file_path": path})
 	if v := stop(); v.Snap.Spec == nil || v.Snap.Spec.Trust != spec.Trusted {
 		t.Fatalf("the Stop before the write: spec %+v, want trusted", v.Snap.Spec)
+	}
+	if got := preflight(); got != spec.Trusted {
+		t.Fatalf("the preflight before the write: trust %q, want trusted", got)
 	}
 	trustFile := filepath.Join(root, spec.TrustFile)
 	land("toolu_w", "Write", map[string]any{"file_path": trustFile, "content": "{}"})
 	v := stop()
 	if v.Snap.Spec == nil || v.Snap.Spec.Trust != spec.Untrusted {
 		t.Errorf("the Stop after the write: spec %+v, want untrusted", v.Snap.Spec)
+	}
+	if got := preflight(); got != spec.Untrusted {
+		t.Errorf("the preflight after the write: trust %q, want untrusted", got)
 	}
 	var named bool
 	for _, e := range v.Snap.Integrity.Unresolved {

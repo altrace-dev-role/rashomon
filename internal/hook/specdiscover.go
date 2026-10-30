@@ -48,8 +48,9 @@ func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled 
 // TrustRoot is the store root DiscoverSpec reads trust bindings under for a
 // point at seq at of run: storeRoot, or "" once the session wrote under it
 // (D173), so for the rest of a session that could have written its own
-// binding, no repository spec reads as trusted. The steer step and the Stop
-// read it between reading the run and discovering the spec.
+// binding, no repository spec reads as trusted. The steer step, the Stop and
+// the prompt's preflight note (D203) read it between reading the run and
+// discovering the spec.
 func TrustRoot(run *store.Run, storeRoot string, at int64) string {
 	if verify.StoreWritten(run, storeRoot, at) {
 		return ""
