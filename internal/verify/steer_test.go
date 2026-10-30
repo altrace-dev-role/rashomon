@@ -51,14 +51,14 @@ func callPoint(t *testing.T, r *store.Run, n int64) Point {
 func facts(t *testing.T, r *store.Run, n int64, pt Point) []Finding {
 	t.Helper()
 	var c classified
-	snap := evaluate(r, nil, nil, pt, time.Time{}, &c)
+	snap := evaluate(r, nil, nil, nil, pt, time.Time{}, &c)
 	return regressionLocations(snap, c.runs, c.writes, pt, stEvent, "t"+strconv.FormatInt(n, 10))
 }
 
 // viewAt is SteerAt at call n's own point, as the hook calls it.
 func viewAt(t *testing.T, r *store.Run, n int64) SteerView {
 	t.Helper()
-	return SteerAt(r, nil, nil, callPoint(t, r, n), time.Time{}, stEvent, "t"+strconv.FormatInt(n, 10))
+	return SteerAt(r, nil, nil, nil, callPoint(t, r, n), time.Time{}, stEvent, "t"+strconv.FormatInt(n, 10))
 }
 
 // gateOf is the one gate of r at pt.
@@ -349,7 +349,7 @@ func TestSTR43k_AConcurrentWriteAfterTheRedIsNoCandidate(t *testing.T) {
 					t.Fatalf("premise: gates %+v, want one with reason red_then_writes", s.Gates)
 				}
 			}
-			view := SteerAt(r, nil, nil, pt, time.Time{}, stEvent, "t3")
+			view := SteerAt(r, nil, nil, nil, pt, time.Time{}, stEvent, "t3")
 			if len(view.Findings) != tc.want || view.Dropped != 0 {
 				t.Errorf("%d findings, %d dropped; want %d, 0", len(view.Findings), view.Dropped, tc.want)
 			}

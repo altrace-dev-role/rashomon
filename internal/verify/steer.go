@@ -31,12 +31,13 @@ type SteerView struct {
 // whose tool_use_id is toolUseID, raised at event. The id is the capped form
 // both records store (store.CapID), so a call whose payload id is over the
 // cap still matches its own run. Evaluate and EvaluateWithObligations are
-// untouched: this is a third view of the same classification. Its facts
+// untouched: this is a third view of the same classification. key is the
+// install key the gates sp declares are digested under (evaluate). Its facts
 // are regression-location's and the one-way doors this call opened
 // (integrityRaises, card P5B).
-func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time, event, toolUseID string) SteerView {
+func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
-	snap := evaluate(run, idx, sp, pt, now, &c)
+	snap := evaluate(run, idx, sp, key, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
 	found, dropped := mapFacts(run, facts, pt)
