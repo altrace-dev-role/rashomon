@@ -11,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/hostguard"
+	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -277,4 +278,16 @@ func recapHostGuard(hs harnessSignal, ok bool) (harness.Identity, bool) {
 		return harness.Identity{}, false
 	}
 	return hostguard.EvaluateFromPayload(payload, claudeEnv(), hostguard.FamilyClaude)
+}
+
+// installArg returns the install id the command line names, or "" for one that
+// names none. Anything else in args is ignored: these are the paths Claude
+// Code invokes, and there is no argument they are allowed to fail over.
+func installArg(args []string) string {
+	for i, a := range args {
+		if a == install.Marker && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }

@@ -298,7 +298,7 @@ func benchStarted(b testing.TB) (root, installID string) {
 		Source string `json:"source"`
 	}{newBenchHead("SessionStart"), "startup"})
 	var stderr benchSink
-	if code := cmdProbe([]string{"start", install.Marker, installID}, bytes.NewReader(start), &stderr); code != exitOK || stderr.writes != 0 {
+	if code := cmdProbe([]string{"start", install.Marker, installID}, bytes.NewReader(start), io.Discard, &stderr); code != exitOK || stderr.writes != 0 {
 		b.Fatalf("probe start: exit %d, stderr %q", code, stderr.lastWrite())
 	}
 	return root, installID

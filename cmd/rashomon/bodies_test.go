@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -190,7 +191,7 @@ func TestRC14l_OverCapPrintsOneLine(t *testing.T) {
 				Reason string `json:"reason"`
 			}{head, "exit"})
 			var stderr bytes.Buffer
-			if code := cmdProbe([]string{"end", install.Marker, installID}, bytes.NewReader(end), &stderr); code != exitOK || stderr.String() != c.stderr {
+			if code := cmdProbe([]string{"end", install.Marker, installID}, bytes.NewReader(end), io.Discard, &stderr); code != exitOK || stderr.String() != c.stderr {
 				t.Errorf("probe end: exit %d, stderr %q; want exit 0, stderr %q", code, stderr.String(), c.stderr)
 			}
 			st, err := store.Open(root)
