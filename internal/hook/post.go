@@ -161,6 +161,11 @@ type Post struct {
 	landedSeq      int64
 	landedRunner   bool
 	landedStore    bool
+	// toolName and toolInput are the call's, kept for the spec's rules
+	// (ruleCall), which read the input only when a discovered rule reads
+	// what it names.
+	toolName  string
+	toolInput json.RawMessage
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -316,6 +321,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if p.capExec(&rec) {
 		p.withheld = true
 	}
+	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput)
 	return landed(err, &p.withheld)

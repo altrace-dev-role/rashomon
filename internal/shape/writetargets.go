@@ -37,6 +37,10 @@ import (
 //
 // Cost: one tokenize, as Hosts pays, and one walk over the stages; a line no
 // stage of which may write allocates nothing more.
+//
+// This is one of the four places a substring of a tool input leaves this
+// package (see the package comment): each target is a word of the line, or
+// one joined to a leading cd's directory.
 func WrittenPaths(toolName string, toolInput json.RawMessage) (targets []string, complete bool) {
 	if verbForTool(toolName) != VerbExecute {
 		return nil, true

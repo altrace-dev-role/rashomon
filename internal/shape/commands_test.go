@@ -102,3 +102,34 @@ func TestSR1u_CommandsRefusesWhatItCannotRead(t *testing.T) {
 		}
 	}
 }
+
+// TestSR1v_CommandLineIsAShellToolsLineUnderTheCap: CommandLine is the line
+// Derive reads, decoded, for a shell tool alone, and nothing for another
+// tool's command field, a command that is no string, or a command whose
+// encoded form is over the cap, which is refused before it is decoded.
+func TestSR1v_CommandLineIsAShellToolsLineUnderTheCap(t *testing.T) {
+	for _, c := range []struct {
+		name, tool, input string
+		max               int
+		want              string
+		ok                bool
+	}{
+		{"a Bash line", "Bash", `{"command": "git push --force origin main"}`, 64, "git push --force origin main", true},
+		{"decoded", "Bash", `{"command": "echo \"a\tb\" é"}`, 64, "echo \"a\tb\" é", true},
+		{"at the cap", "Bash", `{"command": "` + strings.Repeat("x", 16) + `"}`, 16, strings.Repeat("x", 16), true},
+		{"over the cap", "Bash", `{"command": "` + strings.Repeat("x", 17) + `"}`, 16, "", false},
+		{"escapes count as encoded", "Bash", `{"command": "` + strings.Repeat(`\"`, 9) + `"}`, 16, "", false},
+		{"empty", "Bash", `{"command": ""}`, 16, "", true},
+		{"null", "Bash", `{"command": null}`, 16, "", false},
+		{"not a string", "Bash", `{"command": ["git", "push"]}`, 64, "", false},
+		{"absent", "Bash", `{"description": "git push"}`, 64, "", false},
+		{"a file tool's field", "Edit", `{"command": "git push", "file_path": "/p/a.go"}`, 64, "", false},
+		{"an MCP tool's field", "mcp__srv__run", `{"command": "git push"}`, 64, "", false},
+		{"no input", "Bash", ``, 64, "", false},
+	} {
+		got, ok := CommandLine(c.tool, []byte(c.input), c.max)
+		if got != c.want || ok != c.ok {
+			t.Errorf("%s: CommandLine(%s, %s, %d) = %q, %v; want %q, %v", c.name, c.tool, c.input, c.max, got, ok, c.want, c.ok)
+		}
+	}
+}

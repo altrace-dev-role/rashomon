@@ -12,6 +12,8 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -119,10 +121,17 @@ func oneVerdict(t *testing.T, snap Snapshot) RuleVerdict {
 	return snap.SpecVerdicts[0]
 }
 
+// atPost is a post point for a call that landed at seq.
+func atPost(seq int64) Point { return Point{Seq: seq, SessionID: "s1"} }
+
+const postEvent = string(steer.EventPostToolUse)
+
 // TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet: a trusted
 // forbid_command rule matched at command position is a violation citing the
 // call's declaration; the ledger's spec_rule row is unmet citing it, sourced
-// "spec"; a clean run is no_recorded_violation with a met row citing nothing.
+// "spec"; a clean run is no_recorded_violation with a met row citing nothing;
+// the post raises platform-rule/command at nudge from the call alone, with
+// the rule id and the program and no rule text.
 func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 	sp := ruleSpec(spec.Trusted, noForce())
 	r := shells(t, "git status", "git push --force origin main", "git push origin main")
@@ -150,6 +159,22 @@ func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 	if rows := specRows(obs); len(rows) != 1 || rows[0].State != ObligationMet || rows[0].Evidence == nil || len(rows[0].Evidence) != 0 {
 		t.Fatalf("clean rows %+v, want one met citing nothing", rows)
 	}
+
+	view := RulesAtCall(sp, RuleCall{Seq: 9, ToolName: "Bash", Command: "git push -f origin main"}, atPost(9), postEvent)
+	if len(view.Findings) != 1 || view.Dropped != 0 {
+		t.Fatalf("findings %+v dropped %d, want one", view.Findings, view.Dropped)
+	}
+	f := view.Findings[0]
+	if f.Pattern != pattern.PlatformRule || f.Kind != "command" || f.MaxLevel != steer.LevelNudge ||
+		!slices.Equal(f.Evidence, []int64{9}) || f.AfterSeq != 9 {
+		t.Fatalf("finding %+v, want platform-rule/command at nudge citing 9", f)
+	}
+	if got := f.Message.Text(); got != "rashomon record: this 'git' call matched spec rule no-force." {
+		t.Fatalf("note %q", got)
+	}
+	if v := RulesAtCall(sp, RuleCall{Seq: 9, ToolName: "Bash", Command: "git push origin main"}, atPost(9), postEvent); len(v.Findings) != 0 {
+		t.Fatalf("a clean call raised %+v", v.Findings)
+	}
 }
 
 // TestSR1b_ProtectPathWriteInMode: a write to a path the rule's paths match
@@ -160,6 +185,7 @@ func TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet(t *testing.T) {
 // may be any of the three. A pattern naming a directory covers what is under
 // it (the matcher's parent rule), not a prefix of its name. A path outside
 // the project matches nothing; an MCP call is no write a path rule reads.
+// The post raises integrity/frozen-path, a user flag, naming the path.
 func TestSR1b_ProtectPathWriteInMode(t *testing.T) {
 	excl := frozen(allModes...)
 	excl.ExcludePaths = []string{"db/migrations/README.md"}
@@ -197,6 +223,28 @@ func TestSR1b_ProtectPathWriteInMode(t *testing.T) {
 		}
 		if c.want == Violation && !slices.Equal(v.Seqs, []int64{declOf(t, r, 1)}) {
 			t.Errorf("%s: seqs %v, want the write's declaration", c.name, v.Seqs)
+		}
+	}
+
+	sp := ruleSpec(spec.Trusted, frozen("modify", "delete"))
+	view := RulesAtCall(sp, RuleCall{Seq: 7, ToolName: "Edit", FilePath: "/repo/db/migrations/001.sql", Project: "/repo"}, atPost(7), postEvent)
+	if len(view.Findings) != 1 {
+		t.Fatalf("findings %+v, want one", view.Findings)
+	}
+	f := view.Findings[0]
+	if f.Pattern != pattern.Integrity || f.Kind != "frozen-path" || f.MaxLevel != steer.LevelFlag || !slices.Equal(f.Evidence, []int64{7}) {
+		t.Fatalf("finding %+v, want integrity/frozen-path, a flag, citing 7", f)
+	}
+	if got := f.Message.Text(); got != "rashomon record: this call wrote 'db/migrations/001.sql', which spec rule frozen-migrations protects." {
+		t.Fatalf("line %q", got)
+	}
+	for _, rc := range []RuleCall{
+		{Seq: 7, ToolName: "Edit", FilePath: "/repo/db/schema.sql", Project: "/repo"},
+		{Seq: 7, ToolName: "Write", FilePath: "/repo/db/migrations/002.sql", Project: "/repo"},
+		{Seq: 7, ToolName: "Read", FilePath: "/repo/db/migrations/001.sql", Project: "/repo"},
+	} {
+		if v := RulesAtCall(sp, rc, atPost(7), postEvent); len(v.Findings) != 0 {
+			t.Errorf("%+v raised %+v", rc, v.Findings)
 		}
 	}
 }
@@ -287,9 +335,10 @@ func TestSR1i_RequireEvidenceNamingAGateTheSnapshotLacksIsUnknown(t *testing.T) 
 }
 
 // TestSR1d_UntrustedSpecFlagsTheUserOnly: an untrusted rule's verdict is
-// kept, but it owes no ledger row and never clears record-green. Trust is
-// per rule: a managed rule beside an untrusted repository spec keeps its row
-// although the Compiled's trust is the lowest.
+// kept, but it owes no ledger row, never clears record-green, and its post
+// finding is a user flag. Trust is per rule: a managed rule beside an
+// untrusted repository spec keeps its row although the Compiled's trust is
+// the lowest.
 func TestSR1d_UntrustedSpecFlagsTheUserOnly(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), sh(3, "git push --force"))
 	r = withLines(r, map[int64]string{3: "git push --force"})
@@ -303,6 +352,10 @@ func TestSR1d_UntrustedSpecFlagsTheUserOnly(t *testing.T) {
 	}
 	if !snap.RecordGreen {
 		t.Fatal("an untrusted violation cleared record-green")
+	}
+	view := RulesAtCall(sp, RuleCall{Seq: 9, ToolName: "Bash", Command: "git push --force"}, atPost(9), postEvent)
+	if len(view.Findings) != 1 || view.Findings[0].MaxLevel != steer.LevelFlag {
+		t.Fatalf("findings %+v, want one flag", view.Findings)
 	}
 
 	mixed := &spec.Compiled{
@@ -320,10 +373,14 @@ func TestSR1d_UntrustedSpecFlagsTheUserOnly(t *testing.T) {
 	if snap.RecordGreen {
 		t.Fatal("a managed violation left record-green")
 	}
+	view = RulesAtCall(mixed, RuleCall{Seq: 9, ToolName: "Bash", Command: "git push --force"}, atPost(9), postEvent)
+	if len(view.Findings) != 1 || view.Findings[0].MaxLevel != steer.LevelNudge {
+		t.Fatalf("managed findings %+v, want one nudge", view.Findings)
+	}
 }
 
 // TestSR1e_UndecidedNeverFires: what the record or the line cannot decide is
-// undecided: unknown verdict, unknown row. A command withheld (no
+// undecided: unknown verdict, unknown row, no finding. A command withheld (no
 // record scope v5) or cut; a masked line, short of what it still shows; a
 // shell's -c string, eval, a here-document or here-string into a shell, a
 // wrapper before the rule's program, an expansion where the rule's words or
@@ -350,6 +407,9 @@ func TestSR1e_UndecidedNeverFires(t *testing.T) {
 		}
 		if rows := specRows(obs); len(rows) != 1 || rows[0].State != ObligationUnknown {
 			t.Errorf("%q: rows %+v, want one unknown", line, rows)
+		}
+		if v := RulesAtCall(sp, RuleCall{Seq: 5, ToolName: "Bash", Command: line}, atPost(5), postEvent); len(v.Findings) != 0 {
+			t.Errorf("%q raised %+v", line, v.Findings)
 		}
 	}
 
@@ -432,8 +492,8 @@ func TestSR1h_TrustedViolationClearsRecordGreen(t *testing.T) {
 
 // TestSR1j_ImpliedTaskRuleIsStoreTouchedsNotARow: the protect_path rule a
 // task file implies (Source SourceImplied, trust builtin) keeps its verdict
-// and owes no row: its writes are store-touched's, raised at the call
-// already.
+// and owes no row and raises no finding: its writes are store-touched's,
+// raised at the call already.
 func TestSR1j_ImpliedTaskRuleIsStoreTouchedsNotARow(t *testing.T) {
 	sp := ruleSpec(spec.Trusted)
 	sp.Task = &spec.Task{ID: "t1", Goal: "g", Decision: "d", ExpectedEvidence: []string{"mechanism_stated"}}
@@ -450,6 +510,10 @@ func TestSR1j_ImpliedTaskRuleIsStoreTouchedsNotARow(t *testing.T) {
 	}
 	if !slices.ContainsFunc(snap.Integrity.Unresolved, func(e IntegrityEntry) bool { return e.Check == StoreTouched }) {
 		t.Fatalf("no store_touched entry: %+v", snap.Integrity.Unresolved)
+	}
+	view := RulesAtCall(sp, RuleCall{Seq: 3, ToolName: "Edit", FilePath: "/repo/.claude/rashomon/task/current.json", Project: "/repo"}, atPost(3), postEvent)
+	if len(view.Findings) != 0 {
+		t.Fatalf("findings %+v, want none", view.Findings)
 	}
 }
 
@@ -487,11 +551,11 @@ func TestSR1k_VerdictsAndRowsUnderShuffledRecords(t *testing.T) {
 	}
 }
 
-// TestSR1l_ForbidCommandConditions: archive 20.2.8's forbid_command row:
-// argv at command position, the program by its base name; then any flags
-// token as an exact word or its flag= form, a flag_values value
-// case-insensitively in either form, or every require_flags token absent;
-// no condition at all is the argv alone.
+// TestSR1l_ForbidCommandConditions: archive 20.2.8's forbid_command row, read
+// the same at Stop and at the post (one matcher): argv at command position,
+// the program by its base name; then any flags token as an exact word or its
+// flag= form, a flag_values value case-insensitively in either form, or
+// every require_flags token absent; no condition at all is the argv alone.
 // An expansion that could be the missing word is undecided; SQL is
 // undecided in 1a (ACCEPTED GAP: no SQL reader yet). ACCEPTED GAP: options
 // between the argv words are not stepped over, so `git -C repo push
@@ -540,6 +604,10 @@ func TestSR1l_ForbidCommandConditions(t *testing.T) {
 		v := oneVerdict(t, Evaluate(r, nil, sp, stopPoint(r), time.Time{}))
 		if v.Verdict != c.want {
 			t.Errorf("%s over %q: %s, want %s", c.rule.ID, c.line, v.Verdict, c.want)
+		}
+		raised := len(RulesAtCall(sp, RuleCall{Seq: 3, ToolName: "Bash", Command: c.line}, atPost(3), postEvent).Findings) == 1
+		if raised != (c.want == Violation) {
+			t.Errorf("%s over %q: the post raised %t, the record reads %s", c.rule.ID, c.line, raised, c.want)
 		}
 	}
 }

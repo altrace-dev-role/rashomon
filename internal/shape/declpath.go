@@ -34,10 +34,11 @@ var declPathFields = map[string]string{
 // is not bounded here either; the declaration's cap is
 // (store.CapDeclaration).
 //
-// This is one of the two places a substring of a tool input leaves this
-// package, Hosts being the other (see the package comment). It reads one
-// named field with stringField, the reader Label and Hosts share, so no field
-// whose name is not written in the table above can be read by accident.
+// This is one of the four places a substring of a tool input leaves this
+// package, Hosts, WrittenPaths and CommandLine being the others (see the
+// package comment). It reads one named field with stringField, the reader
+// Label and Hosts share, so no field whose name is not written in the table
+// above can be read by accident.
 func DeclaredPath(toolName string, toolInput json.RawMessage) *string {
 	field, ok := declPathFields[toolName]
 	if !ok {

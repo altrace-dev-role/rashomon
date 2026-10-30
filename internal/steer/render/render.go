@@ -147,6 +147,39 @@ type TaskPreflightFirstBinding struct {
 	Unknown      slot.EnumList `slot:"unknown"`
 }
 
+// PlatformRuleCommandBinding is platform-rule/command's line (archive
+// 40.4.6): the program the call ran and the id of the forbid_command rule
+// its line matched, the id without its "spec:" prefix.
+type PlatformRuleCommandBinding struct {
+	Program slot.Program `slot:"program"`
+	Rule    slot.RuleID  `slot:"rule_id"`
+}
+
+// PlatformRuleCommandApprovedBinding is that line and the form a trusted
+// rule records instead, its alternative (archive 20.2.8: the one rule text
+// that may reach the model, and only through the Approved slot).
+type PlatformRuleCommandApprovedBinding struct {
+	Program  slot.Program  `slot:"program"`
+	Rule     slot.RuleID   `slot:"rule_id"`
+	Approved slot.Approved `slot:"approved"`
+}
+
+// PlatformRuleCommandUnnamedBinding is the command line for a program or a
+// rule id its slot refuses.
+type PlatformRuleCommandUnnamedBinding struct{}
+
+// IntegrityFrozenPathBinding is integrity/frozen-path's user line: the path
+// the call wrote, project-relative, and the id of the protect_path rule
+// whose paths match it.
+type IntegrityFrozenPathBinding struct {
+	Path slot.Path   `slot:"path"`
+	Rule slot.RuleID `slot:"rule_id"`
+}
+
+// IntegrityFrozenPathUnnamedBinding is the frozen-path line for a path or a
+// rule id its slot refuses.
+type IntegrityFrozenPathUnnamedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -158,7 +191,10 @@ type TaskPreflightFirstBinding struct {
 // sentence is its own binding struct and row, which comes with
 // subagent-claim's producer (D62). The integrity rows are archive 40.4.7's
 // user lines for PF-IV3's four one-way doors (card P5B, 5.7); user-only,
-// so no model text exists for them.
+// so no model text exists for them. The platform-rule rows state which
+// rule a command matched, never its why; the frozen-path rows are user
+// lines, as every integrity row is. Each has a row without its named slots
+// for a value a slot refuses.
 func templates() map[templateKey]template {
 	templatesOnce.Do(func() {
 		templatesOnce.v = map[templateKey]template{
@@ -200,6 +236,26 @@ func templates() map[templateKey]template {
 				id: "task-preflight-first/v1",
 				format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
 					"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+			},
+			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
+				id:     "platform-rule-command/v1",
+				format: "rashomon record: this {program} call matched spec rule {rule_id}.",
+			},
+			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandApprovedBinding{})}: {
+				id:     "platform-rule-command-approved/v1",
+				format: "rashomon record: this {program} call matched spec rule {rule_id}. The spec records the approved form: {approved}.",
+			},
+			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
+				id:     "platform-rule-command-unnamed/v1",
+				format: "rashomon record: this call matched a spec rule.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
+				id:     "integrity-frozen-path/v1",
+				format: "rashomon record: this call wrote {path}, which spec rule {rule_id} protects.",
+			},
+			{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathUnnamedBinding{})}: {
+				id:     "integrity-frozen-path-unnamed/v1",
+				format: "rashomon record: this call wrote a file that a spec rule protects.",
 			},
 		}
 	})

@@ -1,7 +1,10 @@
 # SPEC-RULES1 1a: forbid_command, protect_path and require_evidence judged
-# over the record (verify/rules.go), and the command walker they read lines
-# with (shape/commands.go). Two rows per kind, then trust, record-green, the
-# one reading per line and the walker.
+# over the record (verify/rules.go), raised at the post from the call alone
+# (verify/rules_raise.go) by the hook's rules step (hook/steerstep.go), and
+# the command walker and line reader they read with (shape/commands.go). Two
+# rows per kind, then trust, record-green, the one reading per line, the
+# post's certainty, the walker, the rules step, the line's cap and a store
+# fault that must not silence the rules.
 m("sr1 forbid_command compares the program as written, not by base name", "internal/verify/rules.go",
   "\tprog, want := path.Base(c.Words[0]), path.Base(m.Argv[0])\n",
   "\tprog, want := c.Words[0], m.Argv[0]\n",
@@ -38,6 +41,10 @@ m("sr1 each rule reads every line again", "internal/verify/rules.go",
   "\t\t\t\tlines, read = ruleLines(run, picked, at), true\n",
   "\t\t\t\tlines, read = ruleLines(run, picked, at), false\n",
   "TestSR1m_")
+m("sr1 the post raises a rule it cannot decide", "internal/verify/rules_raise.go",
+  "\t\tif commandMatch(m, c) == triYes {\n",
+  "\t\tif commandMatch(m, c) != triNo {\n",
+  "TestSR1e_|TestSR1l_")
 m("sr1 commands reads an unquoted glob as literal", "internal/shape/commands.go",
   "\treturn strings.ContainsAny(bare, \"*?[{\")\n",
   "\treturn false\n",
@@ -46,3 +53,27 @@ m("sr1 commands reads a reserved word as the program", "internal/shape/commands.
   "\t\tfor b < e && !toks[b].meta && toks[b].quotedAt < 0 && reservedWord(toks[b].text) {\n",
   "\t\tfor b < e && false {\n",
   "TestSR1s_")
+m("sr1 the rules step passes a Bash call over", "internal/hook/steerstep.go",
+  "\tcase \"Bash\", \"Edit\", \"MultiEdit\", \"NotebookEdit\", \"Write\":\n\t\treturn true\n",
+  "\tcase \"Edit\", \"MultiEdit\", \"NotebookEdit\", \"Write\":\n\t\treturn true\n",
+  "TestSR1w_|TestSR1x_")
+m("sr1 the rules step reads the run", "internal/hook/steerstep.go",
+  "\tvar run *store.Run\n\tif stepped {\n",
+  "\tvar run *store.Run\n\tif true {\n",
+  "TestSR1x_")
+m("sr1 the step drops the rules' findings", "internal/hook/steerstep.go",
+  "\tview.Findings = append(view.Findings, rules.Findings...)\n",
+  "",
+  "TestSR1y_")
+m("sr1 the rules step reads what no rule reads", "internal/hook/steerstep.go",
+  "\treturn command, path\n",
+  "\treturn true, true\n",
+  "TestSR1z_")
+m("sr1 the command line has no cap", "internal/shape/commands.go",
+  "\tif !ok || s.Kind != jsonscan.String || int(s.Len)-2 > max {\n",
+  "\tif !ok || s.Kind != jsonscan.String {\n",
+  "TestSR1v_")
+m("sr1 a store fault silences the rules", "internal/hook/steerstep.go",
+  "\t\tif r, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget); err == nil {\n\t\t\trun = r\n\t\t}\n",
+  "\t\tr, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)\n\t\tif err != nil {\n\t\t\treturn steer.Context{}, verify.SteerView{}, false\n\t\t}\n\t\trun = r\n",
+  "TestSR1y_")

@@ -1,6 +1,11 @@
 package shape
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+)
 
 // Command is one simple command of a line as Commands reads it: its words
 // from the program on, quotes removed, without assignments before the
@@ -108,4 +113,22 @@ func expands(t token) bool {
 		bare = bare[:t.quotedAt]
 	}
 	return strings.ContainsAny(bare, "*?[{")
+}
+
+// CommandLine is the command line a shell tool's input carries, the one
+// Derive reads, decoded for a caller that matches it against a rule in
+// memory: false for any other tool, for an input with no string command,
+// and for a command whose encoded form is over max bytes, refused before it
+// is decoded so a large line costs no copy. It is one of the four places a
+// substring of a tool input leaves this package (see the package comment),
+// and no record stores what it returns.
+func CommandLine(toolName string, toolInput json.RawMessage, max int) (string, bool) {
+	if verbForTool(toolName) != VerbExecute {
+		return "", false
+	}
+	s, ok := inputField(toolInput, "command")
+	if !ok || s.Kind != jsonscan.String || int(s.Len)-2 > max {
+		return "", false
+	}
+	return stringValue(toolInput, s)
 }

@@ -598,6 +598,10 @@
           "symbol": "IntegrityKind"
         },
         {
+          "file": "internal/verify/rules_raise.go",
+          "symbol": "RulesAtCall"
+        },
+        {
           "file": "internal/verify/integrity_test.go",
           "symbol": "TestINT1_ATestDeletedAfterRedIsUnresolvedTestRemoved"
         },
@@ -606,12 +610,16 @@
           "symbol": "TestIV3b_EachDoorIsAUserFlagWithItsLine"
         },
         {
+          "file": "internal/hook/steer_rules_test.go",
+          "symbol": "TestSR1x_APostRaisesItsRulesFromTheCallAlone"
+        },
+        {
           "file": "internal/recap/recap_test.go",
           "symbol": "TestLineTestBending"
         }
       ],
       "id": "PF-PG12",
-      "implementation": "Nine closed integrity kinds are folded and kept user-only, with the one-way doors flagged at PostToolUse, but no hook writes edit marks, so only tests_only_then_green and store_touched have producers in a session.",
+      "implementation": "Nine closed integrity kinds are folded and kept user-only, with the one-way doors flagged at PostToolUse, and a frozen path edited is flagged there from a file tool's call against a protect_path rule, but no hook writes edit marks, so among the nine only tests_only_then_green and store_touched have producers in a session.",
       "integration": [
         {
           "event": "PostToolUse",
@@ -625,7 +633,7 @@
       "missing": [
         "the edit-marks writer (1.8p) for test_removed, skip_added, assertions_removed and suppression_added",
         "producers for generated_edited, gate_weakened and gate_config_edited (IV-PRODUCERS1, D139)",
-        "three kinds more to reach the PRD's twelve"
+        "two kinds more to reach the PRD's twelve: frozen-path is the post's flag and a spec_rule verdict at Stop, never a folded integrity kind (SPEC-RULES1)"
       ],
       "planned_pr": "",
       "session_proof": "",
