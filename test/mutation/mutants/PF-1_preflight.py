@@ -51,6 +51,6 @@ m("PF-1 the screen still says a prompt's text is not examined", "internal/disclo
 m("PF-1 task-preflight ranks below learned-fact", "internal/steer/pattern/pattern.go",
   "\t\t\tTaskPreflight:      72,\n", "\t\t\tTaskPreflight:      20,\n", "TestPF1p_|TestPriority_StepEightValues")
 m("PF-1 the steer environment is built before the Names guard", "cmd/rashomon/preflight.go",
-  "\tif !named && !lessons.Any() {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tenv := steerEnv(id, now)\n",
-  "\tenv := steerEnv(id, now)\n\tif !named && !lessons.Any() {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
+  "\tif !named && !proj.lessons.Any() {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tenv := steerEnv(id, now)\n",
+  "\tenv := steerEnv(id, now)\n\tif !named && !proj.lessons.Any() {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
   "TestPF1v_")
