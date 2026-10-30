@@ -43,6 +43,13 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // for either list. The terminal gained nothing and is written at 6 with its
 // declaration.
 //
+// v7 is additive over v6: the declaration gained store_named, whether the
+// call's raw input named rashomon's store root (D173b), kept at every record
+// scope so the trust drop reads it where the scope withholds the paths. A
+// version of its own for the same reason (D11): a v6 record has no such key,
+// and a reader reads it false. The execution and the terminal gained nothing
+// and are written at 7 with their declaration.
+//
 // SchemaVersion is the version of a call's ordinary records: its
 // declaration, the terminal that actually closes it, and its execution,
 // KindVersion's entry for each. Coverage and gap records are written at
@@ -74,7 +81,8 @@ const SchemaVersion = CallSchemaVersion
 // none of whose keys it carries -- and would have cost every 1.1.x reader
 // every call record in a run the moment one flush failed. With DeclarationV5,
 // ExecutionV5 and TerminalV5 embedded, every call record carries the v5 keys
-// and was written at 5 too, and at 6 once runner_kind landed (D11); the
+// and was written at 5 too, at 6 once runner_kind landed and at 7 with
+// store_named (D11); the
 // marker stays at 5. A 1.1.x reader skips the calls and reads the session
 // unverified, as it did for v4, and coverage and gaps stay at 3 so
 // it still lists every session.
@@ -222,6 +230,16 @@ type Declaration struct {
 	// nobody looked; "none" means a real path matched no row; "unknown" means
 	// a path could not be read at all. The path itself is never stored here.
 	FileLabel *string `json:"file_label"`
+
+	// StoreNamed is one bit: whether the call's raw input names rashomon's
+	// store root, its slashes plain or escaped (internal/hook's rootNamed,
+	// D173b). The root is compared and dropped, never stored. Unlike the
+	// paths, it is kept at every record scope, so a record whose scope or
+	// caps withhold the paths still says the call named the store, and
+	// verify.StoreWritten reads it there. A read that names the root sets
+	// it too. Schema 7, a version of its own (D11): a record before it has
+	// no such key and reads false, as a call that did not name the root.
+	StoreNamed bool `json:"store_named"`
 
 	// HostSource says where each entry of Hosts came from, positionally (v3).
 	// "structured" is a host read from a field whose value is a URL, so the

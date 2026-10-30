@@ -222,6 +222,10 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 		decl.FileLabel = &label
 	}
 	h.labelRecovered = recovered
+	// Whether the call names the store root (D173b), from the raw input
+	// before the gate below withholds the paths: the bit is kept at every
+	// scope, so the trust drop reads it where the paths are not recorded.
+	decl.StoreNamed = rootNamed(p.ToolInput, h.st.Root())
 	// The record-scope gate, after every field is filled and before the
 	// caps: a content field the consent on file does not cover is left out
 	// and reads no_consent (store.GateDeclaration), never oversize.

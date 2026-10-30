@@ -10,6 +10,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The store-root lines (D173): integrity/store-touched for a write under
@@ -18,6 +19,8 @@ const (
 	stRootLine = "rashomon record: this call wrote 'spec-trust.json' in rashomon's store, which holds the trust bindings; " +
 		"no repository spec counts as trusted for the rest of this session."
 	stRootUnnamedLine = "rashomon record: this call wrote a file in rashomon's store, which holds the trust bindings; " +
+		"no repository spec counts as trusted for the rest of this session."
+	stRootNamedLine = "rashomon record: this call named rashomon's store, which holds the trust bindings; " +
 		"no repository spec counts as trusted for the rest of this session."
 )
 
@@ -161,6 +164,60 @@ func TestST1m_AWriteUnderTheStoreRootDropsTrust(t *testing.T) {
 			}
 			if got := f.trustAt("toolu_r2"); got != spec.Untrusted {
 				t.Errorf("trust after the write %q, want untrusted", got)
+			}
+		})
+	}
+}
+
+// TestST1u_AtV4TheStoreRootBitDropsTrust (D173b, QA-2's blocking item): at
+// record scope v4, the default, the gate withholds the write's path, so the
+// record carries the call's store-root bit instead, and the drop reads it:
+// the write prints the store root's named line (a read there cannot be told
+// from a write), user-only, and the spec reads untrusted from the next call
+// on.
+func TestST1u_AtV4TheStoreRootBitDropsTrust(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		tool  string
+		input func(target string) map[string]any
+	}{
+		{"Write", "Write", func(target string) map[string]any { return map[string]any{"file_path": target, "content": "{}"} }},
+		{"shell redirect", "Bash", func(target string) map[string]any { return map[string]any{"command": "printf x > " + target} }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := boundST(t)
+			if err := store.WriteRecordScopeMarker(f.st.Root(), store.RecordScopeV4); err != nil {
+				t.Fatal(err)
+			}
+			if got := f.trustAt("toolu_r1"); got != spec.Trusted {
+				t.Fatalf("trust before the write %q, want trusted", got)
+			}
+			b := f.call("toolu_w", c.tool, c.input(filepath.Join(f.st.Root(), spec.TrustFile)), 0).Steer(stEnv(0))
+			var out map[string]any
+			if err := json.Unmarshal(b, &out); err != nil {
+				t.Fatalf("the write printed %q: %v", b, err)
+			}
+			if msg, _ := out["systemMessage"].(string); msg != stRootNamedLine {
+				t.Errorf("systemMessage %q, want %q", msg, stRootNamedLine)
+			}
+			if _, model := out["hookSpecificOutput"]; model {
+				t.Errorf("a model-visible key printed: %s", b)
+			}
+			if got := f.trustAt("toolu_r2"); got != spec.Untrusted {
+				t.Errorf("trust after the write %q, want untrusted", got)
+			}
+			run, err := f.st.ReadRun(stSession)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var d *store.Declaration
+			for i := range run.Declarations {
+				if run.Declarations[i].ToolUseID == "toolu_w" {
+					d = &run.Declarations[i]
+				}
+			}
+			if d == nil || !d.StoreNamed || d.FilePath != nil || d.WrittenPaths != nil || d.Command != nil {
+				t.Errorf("the write's declaration %+v: want the store-root bit and no path or command (v4)", d)
 			}
 		})
 	}

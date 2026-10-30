@@ -9,12 +9,13 @@ package store
 const EventSchemaVersion = 5
 
 // CallSchemaVersion is the version the call records (declaration, execution,
-// terminal) are written at: the v5 keys (record_v5.go), and at 6 runner_kind
-// on the declaration's shape and the execution. A new key gets a version of
+// terminal) are written at: the v5 keys (record_v5.go), at 6 runner_kind on
+// the declaration's shape and the execution, and at 7 store_named on the
+// declaration (D173b). A new key gets a version of
 // its own and never joins an existing one, whose records are already on disk
 // without it (D11). SchemaVersion is the same number under the name the
 // writers use.
-const CallSchemaVersion = 6
+const CallSchemaVersion = 7
 
 // The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
 // STEER's lines live in their own side file, runs/<dir>/steer.ndjson.
@@ -36,7 +37,7 @@ const (
 )
 
 // kindVersion is the version each writer stamps on its kind (REC-1): call
-// kinds at 6, coverage and gaps unchanged at 3, every new kind at 5. It is
+// kinds at 7, coverage and gaps unchanged at 3, every new kind at 5. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{

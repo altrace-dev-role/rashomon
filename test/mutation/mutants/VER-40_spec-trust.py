@@ -59,7 +59,7 @@ m("VER-40 a store write keeps trust", H, "\tif verify.StoreWritten(run, storeRoo
 m("VER-40 the steer step reads trust past a store write", S, "TrustRoot(run, root, p.landedSeq)", "root", "TestST1m_AWrite")
 m("VER-40 the Stop reads trust past a store write", R, "hook.TrustRoot(run, st.Root(), seq)", "st.Root()", "TestST1m_TheStop")
 m("VER-40 StoreWritten reads past its point", I,
-  "\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tfile, shell := writeTargets(d)\n", "\t\tfile, shell := writeTargets(d)\n", "TestST1s_")
+  "\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tif namedWithheld(d) {\n", "\t\tif namedWithheld(d) {\n", "TestST1s_|TestST1v_")
 m("VER-40 StoreWritten reads no file tool", I, "\t\tif file != nil && underStore(slashed(*file), storeRoot) {\n",
   "\t\tif file != nil && underStore(slashed(*file), storeRoot) && false {\n", "TestST1s_")
 m("VER-40 StoreWritten reads no shell write", I, "\t\tfor _, p := range shell {\n\t\t\tif underStore(slashed(p), storeRoot) {\n",
@@ -91,7 +91,8 @@ m("VER-40 an empty root names every input", S, "\tif root == \"\" || !bytes.Cont
   "\tif !bytes.Contains(input, []byte(filepath.Base(root))) {\n", "TestST1t_")
 
 # The raise: the store root's row, with the path relative to the root.
-m("VER-40 the raise does not mark the store root", V, "\t\t\tfact.StoreRoot = true\n", "", "TestST1m_AWrite|TestST1r_")
+m("VER-40 the raise does not mark the store root", V, "\t\t\tfact.StoreRoot, fact.StoreNamed = true, e.Path == \"\"\n",
+  "\t\t\tfact.StoreNamed = e.Path == \"\"\n", "TestST1m_AWrite|TestST1r_")
 m("VER-40 a project store write reads as the store root", V, "\t\tif e.Check == StoreTouched && !inStore(e.Path) {\n",
   "\t\tif e.Check == StoreTouched {\n", "TestIV3b_")
 m("VER-40 the raise shows the store path whole", V, "\t\t\t\tshown = rel\n", "\t\t\t\t_ = rel\n", "TestST1m_AWrite|TestST1r_")
@@ -117,3 +118,34 @@ m("VER-40 a binding trusts the managed spec", D, "s.Path == near && bound(near, 
 m("VER-40 purge leaves the trust key", P, "\tspec.TrustKeyFile,\n", "", "TestST1e_PurgeTakesTheBindingsFile")
 m("VER-40 purge leaves the trust key's replacement", P, "\t\".\" + spec.TrustKeyFile + \".tmp-\",\n", "",
   "TestST1e_PurgeTakesTheBindingsFile")
+
+# D173b (QA-2's blocking item): at record scope v4 the gate withholds the
+# paths, so the hook keeps a store-root bit on the declaration and the drop and
+# the raise read it there; where the paths are recorded it is not read. And
+# QA-2's item 4: a file the verb did not write reads unsigned, so trust
+# replaces it. One break per promise.
+HD = "internal/hook/handle.go"
+m("VER-40 the store-root bit is not set", HD, "\tdecl.StoreNamed = rootNamed(p.ToolInput, h.st.Root())\n",
+  "\tdecl.StoreNamed = false\n", "TestST1u_")
+m("VER-40 StoreWritten ignores the bit", I, "\t\tif namedWithheld(d) {\n\t\t\treturn true\n\t\t}\n", "",
+  "TestST1v_|TestST1u_")
+m("VER-40 integrity raises nothing for the bit", I,
+  "\t\t\tif d := &run.Declarations[i]; d.Seq > from && d.Seq <= at && namedWithheld(d) {\n",
+  "\t\t\tif d := &run.Declarations[i]; d.Seq > from && d.Seq <= at && namedWithheld(d) && false {\n", "TestST1v_|TestST1u_")
+m("VER-40 the bit is read where the paths are recorded", I,
+  "\treturn d.StoreNamed && (d.CommandWithheld != nil || d.FilePathWithheld != nil || d.WrittenPathsWithheld != nil)\n",
+  "\treturn d.StoreNamed\n", "TestST1v_")
+m("VER-40 a file that is not JSON stops the verb", T,
+  "\tif err := decodeOne(data, &f); err != nil {\n\t\treturn nil, fmt.Errorf(\"%w: %s: %v\", ErrBindingsUnsigned, path, err)\n",
+  "\tif err := decodeOne(data, &f); err != nil {\n\t\treturn nil, fmt.Errorf(\"spec: %s: %v\", path, err)\n", "TestST1w_")
+m("VER-40 a file over its cap stops the verb", T,
+  "\t\treturn nil, fmt.Errorf(\"%w: %s is over its %d-byte cap\", ErrBindingsUnsigned, path, MaxTrustBytes)\n",
+  "\t\treturn nil, fmt.Errorf(\"spec: %s is over its %d-byte cap\", path, MaxTrustBytes)\n", "TestST1w_")
+m("VER-40 an unreadable key stops the verb", T,
+  "\t\treturn nil, fmt.Errorf(\"%w: %s: the trust key: %v\", ErrBindingsUnsigned, path, err)\n",
+  "\t\treturn nil, err\n", "TestST1w_")
+m("VER-40 the bit's fact is not named", V, "\t\t\tfact.StoreRoot, fact.StoreNamed = true, e.Path == \"\"\n",
+  "\t\t\tfact.StoreRoot, fact.StoreNamed = true, false\n", "TestST1u_")
+m("VER-40 no store-root named row", RD,
+  "\t\t\t{pattern.Integrity, reflect.TypeOf(IntegrityStoreRootNamedBinding{})}: {\n",
+  "\t\t\t{pattern.Integrity, reflect.TypeOf(struct{ N int }{})}: {\n", "TestST1u_")
