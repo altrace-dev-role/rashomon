@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // FactKind is a fact value's kind: the fact-kind allowlist of archive
@@ -47,6 +48,33 @@ var urlRE = &lazyRegexp{pattern: `://|^[A-Za-z][A-Za-z0-9+.-]*:/`}
 
 // hostnameRE is a bare DNS hostname: no scheme, port, path or query.
 var hostnameRE = &lazyRegexp{pattern: `^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`}
+
+// hostLabels is the closed list of last labels RefuseHosts reads a dotted
+// word against (L13, as ruled). A host under a label off it passes: the
+// stated limit, with no public-suffix list in the tree (STR-53 stays
+// LEARN-MASK1's).
+var hostLabels = []string{"com", "net", "org", "io", "dev", "ai", "app", "cloud", "co", "internal", "local", "corp", "lan"}
+
+// RefuseHosts refuses text that names a host (LEARN-DELIVER1, D171 LD2): a
+// word, with a leading "(" and trailing ".,;:)" trimmed, that is a bare
+// hostname (hostnameRE), holds a dot and ends in a label on hostLabels, so
+// "build.example.com" and "db.corp" are refused and "go.mod", "main.go" and
+// "v1.2.3" pass. Approved text may hold a project-relative path a person
+// approved, never a host. Unlike a slot check, its error names the word: it
+// is shown to the person who wrote the text, at approval.
+func RefuseHosts(text string) error {
+	for _, w := range strings.Fields(text) {
+		w = strings.TrimRight(strings.TrimLeft(w, "("), ".,;:)")
+		dot := strings.LastIndexByte(w, '.')
+		if dot < 0 || !hostnameRE.get().MatchString(w) {
+			continue
+		}
+		if slices.Contains(hostLabels, strings.ToLower(w[dot+1:])) {
+			return fmt.Errorf("slot: approved text names the host %q", w)
+		}
+	}
+	return nil
+}
 
 // envNameRE is an environment variable name.
 var envNameRE = &lazyRegexp{pattern: `^[A-Za-z_][A-Za-z0-9_]*$`}

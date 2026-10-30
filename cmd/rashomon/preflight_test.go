@@ -14,6 +14,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -107,11 +108,12 @@ func TestPF1u_APromptWithNoSessionDoesNotPanic(t *testing.T) {
 }
 
 // TestPF1v_ARequestNamingNothingBuildsNoSteerEnv: a request that names no
-// path and no identifier stops at intent.Names, before any read and before
-// the steer environment is built, so the catch-up's preflight costs it what
-// Names costs and nothing more. Break: build the environment ahead of the
-// guard (harness.Caps' map, specDirs, the Getenv reads) and every catch-up
-// pays for it.
+// path and no identifier, with no lesson to give, stops at intent.Names,
+// before any read and before the steer environment is built, so the
+// catch-up's preflight costs it what Names costs and nothing more (the
+// lesson state is recapTurn's read, promptLessons, measured on its own).
+// Break: build the environment ahead of the guard (harness.Caps' map,
+// specDirs, the Getenv reads) and every catch-up pays for it.
 func TestPF1v_ARequestNamingNothingBuildsNoSteerEnv(t *testing.T) {
 	if raceEnabled {
 		t.Skip("the race detector's own allocations are counted")
@@ -122,7 +124,7 @@ func TestPF1v_ARequestNamingNothingBuildsNoSteerEnv(t *testing.T) {
 	}
 	id, now := harness.Identity{ID: harness.ClaudeCode}, time.Now()
 	names := testing.AllocsPerRun(100, func() { intent.Names(pp.Prompt, false) })
-	note := testing.AllocsPerRun(100, func() { preflightNote(nil, &store.Run{}, &pp, id, now) })
+	note := testing.AllocsPerRun(100, func() { preflightNote(nil, &store.Run{}, &pp, learn.Active{}, id, now) })
 	if note != names {
 		t.Errorf("preflightNote on a request naming nothing: %v allocations a call, want intent.Names' %v", note, names)
 	}
