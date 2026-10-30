@@ -6,6 +6,20 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
+// withRows is v with its Expected projected into ledger rows, as EvaluateStop
+// projects them: the done flag reads each kind's state from its row.
+func withRows(v verify.StopView) verify.StopView {
+	v.Obligations = make([]verify.Obligation, 0, len(v.Expected))
+	for _, e := range v.Expected {
+		v.Obligations = append(v.Obligations, verify.Obligation{
+			ID:    verify.ObligationID(verify.ScopeSession, verify.ExpectedEvidence, e.Kind),
+			Scope: verify.ScopeSession, Kind: verify.ExpectedEvidence, Source: verify.SourceTask, State: e.State,
+			Evidence: []int64{},
+		})
+	}
+	return v
+}
+
 // doneClaim is a final message's one strict done claim at verdict v.
 func doneClaim(v verify.State) verify.ClaimScan {
 	return verify.ClaimScan{Claims: []verify.ClaimVerdict{{Class: verify.ClaimDone, Strict: true, Verdict: verify.Verdict(v)}}}
@@ -26,6 +40,7 @@ func TestEV6_DoneWithUnmetEvidenceNamesTheKind(t *testing.T) {
 		{Kind: "judgment_disclosed", State: verify.ObligationUnknown},
 		{Kind: "mechanism_stated", State: verify.ObligationUnmet, Reason: "the task file states no mechanism"},
 	}
+	v = withRows(v)
 	row := fitted(v, prefix+doneLead)
 	if row == "" {
 		t.Fatal("premise: the verified row has a sentence")
@@ -62,15 +77,42 @@ func TestEV7_DoneWithAllMetSaysNothingNew(t *testing.T) {
 	green := gateAt("go:test", "test", verify.Green, verify.OK, 3, nil)
 	v := viewOf(verify.RowVerified, wrote, green)
 	v.Scan, v.Expected = doneClaim(verify.Green), ex
+	v = withRows(v)
 	if got, ok := DoneFlag(v, "sess-1", false); ok || got != "" {
 		t.Errorf("verified, all met: DoneFlag = %q, %v; want no flag", got, ok)
 	}
 	red := gateAt("go:test", "test", verify.Red, verify.FailedExit, 7, exitCode(1))
 	rv := viewOf(verify.RowRed, wrote, red)
 	rv.Scan, rv.Expected = scanOf("All 42 tests pass.", "", red), ex
+	rv = withRows(rv)
 	want := prefix + "done was claimed; the record shows 2 files edited; go exited 1 after the last edit (call 7).\n" +
 		indent + "→ rashomon report --session sess-1"
 	if got, ok := DoneFlag(rv, "sess-1", false); !ok || got != want {
 		t.Errorf("red, all met: DoneFlag = %q, %v\nwant %q, true", got, ok, want)
+	}
+}
+
+// TestLW1k_DoneClauseReadsTheLedger (card LEDGER-WIRE1): the done flag's
+// expected clause takes each kind's state from its ledger row and its words
+// from Expected, so it cannot disagree with the ledger: Expected unmet over a
+// met row names nothing; Expected met over an unmet row names the kind, with
+// Expected's reason.
+func TestLW1k_DoneClauseReadsTheLedger(t *testing.T) {
+	green := gateAt("go:test", "test", verify.Green, verify.OK, 3, nil)
+	v := viewOf(verify.RowVerified, wrote, green)
+	v.Scan = doneClaim(verify.Green)
+	v.Expected = []verify.Expected{{Kind: "cross_check", State: verify.ObligationUnmet, Reason: "no gate declares it"}}
+	v = withRows(v)
+	v.Obligations[0].State = verify.ObligationMet
+	if got, ok := DoneFlag(v, "sess-1", false); ok || got != "" {
+		t.Errorf("Expected unmet over a met row: DoneFlag = %q, %v; want no flag", got, ok)
+	}
+	v.Expected = []verify.Expected{{Kind: "cross_check", State: verify.ObligationMet, Reason: "no gate declares it"}}
+	v.Obligations[0].State = verify.ObligationUnmet
+	want := prefix + doneLead + fitted(v, prefix+doneLead) + "." +
+		" expected evidence cross_check is not on the record (no gate declares it).\n" +
+		indent + "→ rashomon report --session sess-1"
+	if got, ok := DoneFlag(v, "sess-1", false); !ok || got != want {
+		t.Errorf("Expected met over an unmet row: DoneFlag = %q, %v\nwant %q, true", got, ok, want)
 	}
 }

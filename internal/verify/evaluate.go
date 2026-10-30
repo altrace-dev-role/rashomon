@@ -47,14 +47,14 @@ type ProjectIndex struct {
 //
 // Evaluate holds no install key, so no line a spec declares digests as the
 // hook digested the runs, and it reads no declared gate: its rows are the
-// learned ones alone. EvaluateStop, SteerAt and EvaluateWithObligations take
-// the key and join them (card DECLARED-GATES1).
+// learned ones alone. EvaluateStop and SteerAt take the key and join them
+// (card DECLARED-GATES1).
 func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) Snapshot {
 	return evaluate(run, idx, sp, nil, pt, now, &classified{})
 }
 
-// classified is what evaluate classified beside the snapshot, for the
-// obligation and Stop views (EvaluateWithObligations, EvaluateStop): classify's
+// classified is what evaluate classified beside the snapshot, for the Stop
+// view, its ledger and the steer view (EvaluateStop, SteerAt): classify's
 // four returns, in seq order; nil where the record is incomplete, which
 // classifies nothing.
 type classified struct {
@@ -141,6 +141,15 @@ func specInfo(sp *spec.Compiled) *SpecInfo {
 		info.Path = sp.Sources[n-1].Path
 	}
 	return info
+}
+
+// ProjectRoot is the Snapshot's ProjectRoot for run at seq at, read before
+// any evaluation: what a replay discovers the spec from (card LEDGER-WIRE1).
+func ProjectRoot(run *store.Run, at int64) string {
+	if run == nil {
+		return ""
+	}
+	return projectRoot(run.Declarations, at)
 }
 
 // projectRoot is where the turn ran: the Project of the declaration with the
