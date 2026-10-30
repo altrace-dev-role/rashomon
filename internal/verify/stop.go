@@ -7,25 +7,32 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// The Stop view (card 2.4) is the third view over evaluate's one
-// classification, after the obligation ledger and the steer view: at the
-// turn's end it gives recap the value line's row and counts, the claim scan
-// the done flag reads, the gate programs the sentences name, and the project
-// index observed for this session. It is pure, as Evaluate is: the caller
-// reads the index and the steer log before and writes the index and the
-// checkpoint after.
+// The Stop view (card 2.4) is a view over evaluate's one classification,
+// beside the steer view: at the turn's end it gives recap the value line's
+// row and counts, the claim scan the done flag reads, the gate programs the
+// sentences name, the project index observed for this session, and the
+// obligation ledger (card LEDGER-WIRE1). It is pure, as Evaluate is: the
+// caller reads the index and the steer log before and writes the index and
+// the checkpoint after.
 
 // StopInput is what the Stop hook read beside the record: the prompt the
 // digest chose, the project key of the payload's cwd ("" when it named none),
 // the final message's head and tail windows, the install key the quotes are
 // HMACed under and the declared gates' lines digested under, and the model
-// texts of the notes delivered in the prompt.
+// texts of the notes delivered in the prompt. A replay of a Stop from the
+// record sets the last two: MessageUnread says no final message is held, so
+// what is read from it is unknown, never absent (INV-2); Required pins each
+// gate it names, by gate name, to the Required the Stop's checkpoint
+// recorded, the Stop-time truth the index on disk may since have moved past
+// (nil pins nothing).
 type StopInput struct {
-	PromptID   string
-	ProjectKey string
-	Head, Tail []byte
-	Key        []byte
-	Delivered  [][]byte
+	PromptID      string
+	ProjectKey    string
+	Head, Tail    []byte
+	Key           []byte
+	Delivered     [][]byte
+	MessageUnread bool
+	Required      map[string]bool
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and
@@ -46,10 +53,15 @@ type StopView struct {
 	// Expected is the task's expected evidence rows at Stop (card 3.3), in
 	// spec.EvidenceKinds order, never nil.
 	Expected []Expected
+	// Obligations is the ledger at the Stop point (PF-PG5): the gates' rows
+	// over the classification Snap came from, then Expected's rows, never
+	// nil.
+	Obligations []Obligation
 }
 
 // EvaluateStop is the Stop hook's view at pt. One classification feeds the
-// snapshot, the programs and the index. An incomplete record classifies
+// snapshot, the programs, the index and the ledger, whose expected rows are
+// the at-Stop ones the done flag reads. An incomplete record classifies
 // nothing in evaluate, a contract the obligation view relies on, so here the
 // run is classified once more for that case only, and that classification
 // feeds the turn's counts and nothing else: an incomplete turn that wrote
@@ -60,6 +72,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	var c classified
 	snap := evaluate(run, idx, sp, in.Key, pt, now, &c)
+	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten = classifyWith(run, pickExecutions(run))
@@ -74,11 +87,27 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	wrote := WroteRelevant(run, pt.Seq)
 	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
-	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, disclosed: v.Scan.Disclosed, wrote: wrote})
+	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})
+	v.Obligations = ledgerOf(snap, &c, v.Expected)
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims
 	}
 	return v
+}
+
+// pinRequired sets each gate pins names to the Required it names, and then
+// the record green that follows (D36); a gate pins does not name keeps
+// evaluate's. Nil pins nothing.
+func pinRequired(snap *Snapshot, pins map[string]bool) {
+	if pins == nil {
+		return
+	}
+	for i := range snap.Gates {
+		if r, ok := pins[snap.Gates[i].Gate]; ok {
+			snap.Gates[i].Required = r
+		}
+	}
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
 }
 
 // programs maps each gate to the program of the run its LastRun names, found
