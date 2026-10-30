@@ -407,12 +407,40 @@ func defaultFiles() []FileRule {
 	}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)...)
 }
 
+// noticeFiles is the run segment's two notice markers (store.TakeNotice)
+// under runSegment, apart from runSegmentFiles for Law 10 (card
+// VERSION-GATE1).
+func noticeFiles(runSegment string) []FileRule {
+	return []FileRule{
+		{
+			Base:       runSegment,
+			Pattern:    store.FileNoticeChannel,
+			Mode:       "0600",
+			Purpose:    "says the session has printed its one line that a note was built and not sent to the agent because the Claude Code version's channel is not verified",
+			Holds:      "nothing; present once that line has printed",
+			NeverHolds: "anything",
+			RemovedBy:  "size-cap eviction, with its run; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileNoticeHoldout,
+			Mode:       "0600",
+			Purpose:    "says the session has printed its one line that it is in the measurement holdout",
+			Holds:      "nothing; present once that line has printed",
+			NeverHolds: "anything",
+			RemovedBy:  "size-cap eviction, with its run; purge",
+			Owner:      "store",
+		},
+	}
+}
+
 // runSegmentFiles is defaultFiles' run segment, the files under
 // runs/<session>, in inventory order (split out under Law 10, card
 // STALE-NUDGE1, when the stale marker joined it).
 func runSegmentFiles() []FileRule {
 	const runSegment = store.DirRuns + "/<session>"
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       runSegment,
 			Pattern:    store.FileRecords,
@@ -438,7 +466,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileSteer,
 			Mode:       "0600",
 			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
-			Holds:      "the pattern, its level, channel and arm, the hook event, the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
 			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
 			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
 			Owner:      "store",
@@ -498,7 +526,7 @@ func runSegmentFiles() []FileRule {
 			RemovedBy:  "the steer step; size-cap eviction; purge",
 			Owner:      "store",
 		},
-	}
+	}, noticeFiles(runSegment)...)
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's

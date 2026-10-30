@@ -45,8 +45,8 @@ m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/
 # the only way to show the comparison is load-bearing: a pinned count that
 # silently matched anything would be as useless as no test at all.
 m("TRU-23 the pinned store write-call-site count stops matching the source", "internal/disclose/disclose_test.go",
-  "\t\t{\"store\", 26},",
   "\t\t{\"store\", 27},",
+  "\t\t{\"store\", 28},",
   "TestTRU23_WriteCallSitesArePinned")
 # Two root-level writes main's store gained: resolved-cap (hld-7) and the
 # baseline directory's lock. The inventory test drives both, so an entry

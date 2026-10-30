@@ -11,7 +11,8 @@ import (
 
 // Context is Route's whole input besides the findings (tech 4.2.4; card 2.2
 // R2): values the hook's caller already holds, or a constant until their
-// reader lands. The router reads no file but the steer log, under its lock.
+// reader lands. The router reads no file but the steer log, under its lock,
+// and writes none but the log and the session's notice markers.
 // The per-prompt counters (steer.budget, RES-19) are not a field: the router
 // derives them from the log under the same lock that writes its lines.
 type Context struct {
@@ -57,8 +58,9 @@ type Context struct {
 	// the payload reader carries it.
 	StopHookActive bool
 	// Holdout is the session's draw into the field holdout (card 2.5, D109),
-	// made by the hook under the store's key: the call's note goes to the
-	// user only. The router itself draws nothing.
+	// made by the hook under the store's key: the call's note goes to neither
+	// side, and the session's first prints the holdout notice. The router
+	// itself draws nothing.
 	Holdout bool
 }
 
@@ -123,10 +125,12 @@ func AppendFailures() int64 { return appendFailures.Load() }
 // say -- no Context, no store, no finding above off -- writes nothing and
 // prints nothing, and never takes the lock. Otherwise, under the steer
 // log's lock, it counts the prompt's delivered lines (countBudget), decides
-// (decide) and appends every line; it returns the Output only when the
-// append succeeded, so nothing prints that no line records (STR-8). It
-// never flushes: the caller flushes before it prints a non-empty Output
-// (REC-34's group commit).
+// (decide) and appends every line; a call that prints nothing else may print
+// the session's once-per-session notice (notice), recorded on the line it
+// stands in for. It returns the Output only when the append succeeded, so
+// nothing prints that no line records (STR-8), and an append that failed
+// returns the notice's marker for a later call. It never flushes: the caller
+// flushes before it prints a non-empty Output (REC-34's group commit).
 //
 // The Client's Subagent is read from either source, the Client or a
 // non-empty AgentID: one fact with two sources, and the stricter wins.
@@ -141,12 +145,16 @@ func route(ctx *Context, findings []Finding) Output {
 		mint = newID
 	}
 	var out Output
+	var marker string
 	err := ctx.Store.AppendSteer(ctx.SessionID, func(locked io.ReaderAt) ([]store.SteerLine, error) {
 		have, err := countBudget(locked, ctx)
 		if err != nil {
 			return nil, err
 		}
 		o, lines := decide(ctx, c, findings, have, mint)
+		if o == (Output{}) {
+			o, marker = notice(ctx, c, lines)
+		}
 		batch := make([]store.SteerLine, len(lines))
 		for i, l := range lines {
 			batch[i] = l
@@ -155,6 +163,9 @@ func route(ctx *Context, findings []Finding) Output {
 		return batch, nil
 	})
 	if err != nil {
+		if marker != "" {
+			ctx.Store.ReturnNotice(ctx.SessionID, marker)
+		}
 		if errors.Is(err, store.ErrLockTimeout) {
 			lockTimeouts.Add(1)
 		} else {

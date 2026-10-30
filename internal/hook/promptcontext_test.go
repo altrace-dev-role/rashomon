@@ -9,12 +9,13 @@ import (
 // TestPF1m_PromptContextDrawsAsThePostDoes: the preflight's Route context,
 // made outside a Post for recap's UserPromptSubmit catch-up, carries the new
 // prompt's id, the marker's consent and the same holdout draw a post of the
-// same session gets, so a held-out session's preflight goes to the user
-// only, like its other notes.
+// same session gets, so a held-out session's preflight goes to neither side,
+// like its other notes. The draw is on here by EnvHoldout's "on".
 func TestPF1m_PromptContextDrawsAsThePostDoes(t *testing.T) {
 	st := mustOpen(t)
 	held, treated := armSessions(t, st)
 	env := stEnv(steer.DisclosureVersion)
+	env.HoldoutOn = true
 
 	ctx := PromptContext(st, nil, held, "prompt-2", "/repo", "default", env)
 	if ctx.Event != steer.EventUserPromptSubmit || ctx.Store != st || ctx.SessionID != held || ctx.Project != "/repo" {

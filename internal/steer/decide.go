@@ -24,9 +24,6 @@ const (
 // with no per-pattern version table yet (card 2.2 R8, D52).
 const patternVersion = 1
 
-// holdoutSuffix ends a held-out note's user text (tech 5.2.4 E, R2).
-const holdoutSuffix = " (held out: not sent to the agent)"
-
 // channelRule is what an event's row lets a note do (card 2.2 R4), read
 // from Marshal's own key table so the router and the marshaller cannot
 // disagree about a row (STR-10).
@@ -175,7 +172,7 @@ type plan struct {
 	model   string
 	user    string
 	decide  bool // still to be decided by the budget passes
-	holdout bool // held out: the user got the note, the model nothing
+	holdout bool // held out: neither side got the note
 }
 
 func (p *plan) suppress(r SuppressedBy) {
@@ -193,10 +190,13 @@ func holdoutEligible(p *plan) bool {
 	return p.state == LineStateDelivered && p.level == LevelNudge
 }
 
-// holdOut gives the user the note's own text with holdoutSuffix and the
-// model nothing; never the mirror, which says the agent was told (G1).
+// holdOut keeps the note from both sides: the model gets nothing, and the
+// user gets neither the mirror, which says the agent was told (G1), nor the
+// note's text. The session's first held-out note prints the holdout notice
+// instead (notice.go). The line stays delivered, so the note is charged as
+// a treated session's would be and the two arms spend one budget.
 func (p *plan) holdOut() {
-	p.user, p.model, p.holdout = p.model+holdoutSuffix, "", true
+	p.user, p.model, p.holdout = "", "", true
 }
 
 // decide is the router's pure core (card 2.2 R1): no clock, no randomness,
@@ -290,9 +290,10 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		}
 	}
 
+	basis := mirrorVerifiedOn()[string(ctx.Event)]
 	lines := make([]*Line, len(plans))
 	for i := range plans {
-		lines[i] = lineOf(ctx, arm, attendance, &plans[i], mint())
+		lines[i] = lineOf(ctx, arm, attendance, c.Version, basis, &plans[i], mint())
 	}
 	return out, lines
 }
@@ -338,8 +339,10 @@ func charge(plans []plan, have counts) (note, flag int) {
 
 // lineOf is a decided plan's steer line (card 2.2 R8). Text is kept only on
 // a line that printed (RES-32): every other line keeps its slots and
-// renderer_version and is re-rendered on read.
-func lineOf(ctx *Context, arm Arm, attendance Attendance, p *plan, id string) *Line {
+// renderer_version and is re-rendered on read. Every line carries the
+// client's version and the event's row of the probed-version table (basis),
+// the reason a note did or did not reach the agent.
+func lineOf(ctx *Context, arm Arm, attendance Attendance, version string, basis channelBasis, p *plan, id string) *Line {
 	l := &Line{
 		Type: LineType, V: LineVersion, ID: id, SteerID: id, AtUnixMS: ctx.NowUnixMS,
 		SessionID: ctx.SessionID, Project: ctx.Project,
@@ -351,6 +354,7 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, p *plan, id string) *L
 		RendererVersion: render.Version, RulesVersion: shape.RulesVersion,
 		Delivery:  DeriveDelivery(p.state, p.level, p.by, false),
 		HarnessID: ctx.HarnessID, Surface: ctx.Surface, Mirror: MirrorNone,
+		ClientVersion: version, VerifiedFloor: basis.floor, Excluded: slices.Clip(basis.excluded),
 	}
 	if p.holdout && p.state == LineStateDelivered {
 		d := DeliveryHoldout // recorded by the draw, never derived (tech 5.2.4 E)
@@ -364,7 +368,7 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, p *plan, id string) *L
 		agent := ctx.AgentID
 		l.AgentID = &agent
 	}
-	if p.state == LineStateDelivered {
+	if p.state == LineStateDelivered && !p.holdout {
 		l.ModelText, l.UserText = p.model, p.user
 		l.Mirror, l.MirroredToUser = MirrorSystemMessage, true
 	}

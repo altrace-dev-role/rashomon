@@ -16,8 +16,9 @@ import (
 //     mirror is what Caps says that pair verifies.
 //   - AI_AGENT carries the client's version (steer.ClientVersion reads it).
 //   - CI set to anything is an unattended run.
-//   - RASHOMON_HOLDOUT (hook.EnvHoldout) set to "off" skips the field
-//     holdout's draw: the operator's off (card 2.5, D109 as amended).
+//   - RASHOMON_HOLDOUT (hook.EnvHoldout) set to "on" draws the field holdout
+//     where no spec's holdout object sets it, which is off by default, and
+//     "off" skips the draw: the operator's two switches (card 2.5).
 //   - Consent is the steer_disclosure marker, never consent.json: the marker
 //     is the hook path's view of it (D49, D84), which the SessionStart probe
 //     keeps in step.
@@ -31,6 +32,7 @@ func steerEnv(id harness.Identity, now time.Time) hook.SteerEnv {
 		AIAgent:      os.Getenv("AI_AGENT"),
 		CI:           os.Getenv("CI") != "",
 		HoldoutOff:   hook.HoldoutOff(os.Getenv(hook.EnvHoldout)),
+		HoldoutOn:    hook.HoldoutOn(os.Getenv(hook.EnvHoldout)),
 		Consent:      store.SteerDisclosureMarker,
 		Now:          now,
 		ProjectDir:   projectDir,

@@ -13,7 +13,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/arm"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
-	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // specTree is a temp tree for discovery: base with symlinks resolved, and
@@ -199,10 +198,11 @@ func TestSP16_BrokenSpecIsOneFlagNotAStop(t *testing.T) {
 	}
 }
 
-// TestMS5h_HeldOutReadsTheSpec: the hook's draw reads the discovered spec's
-// holdout object (card 3.1 R3, 5.6): with "off" no session is held out, the
-// one MS5e's search holds at the default share among them; at rate_bp 2000 a
-// session arm holds at 2,000 basis points and treats at 1,000 is held out.
+// TestMS5h_HeldOutReadsTheSpec: the hook's draw reads the discovered, trusted
+// spec's holdout object (card 3.1 R3, 5.6): with "off" no session is held
+// out, the one MS5e's search holds at the default share among them; at
+// rate_bp 2000 a session arm holds at 2,000 basis points and treats at 1,000
+// is held out.
 func TestMS5h_HeldOutReadsTheSpec(t *testing.T) {
 	st := mustOpen(t)
 	held, _ := armSessions(t, st)
@@ -227,14 +227,7 @@ func TestMS5h_HeldOutReadsTheSpec(t *testing.T) {
 	}
 	drawn := func(doc, session string) bool {
 		t.Helper()
-		s := newSpecTree(t)
-		s.mkdir(".git")
-		s.put(s.base, doc)
-		p := &Post{st: st, sessionID: session, promptID: "p1", permissionMode: "default", event: FailureEvent, cwd: s.base}
-		if p.sp = DiscoverSpec(p.cwd, "", "", ""); p.sp == nil || len(p.sp.Sources) != 1 {
-			t.Fatalf("DiscoverSpec: %+v; want the one spec", p.sp)
-		}
-		return p.contextOf(stEnv(steer.DisclosureVersion), verify.SteerView{ProjectRoot: s.base}).Holdout
+		return drawnWithSpec(t, st, stEnv(steer.DisclosureVersion), doc, true, session)
 	}
 	if drawn(`{"rashomon_spec": 1, "holdout": {"off": true}}`, held) {
 		t.Errorf("off: %s is held out; want no session held", held)

@@ -30,16 +30,18 @@ const SteerReadBudget = 10 * time.Millisecond
 
 // SteerEnv is the step's port: what cmd reads from the process for it.
 // Consent is the steer_disclosure marker's reader (store.SteerDisclosureMarker,
-// D84); a nil reader reads as no consent. HoldoutOff is EnvHoldout as
-// HoldoutOff reads it. ProjectDir is CLAUDE_PROJECT_DIR and ManagedDir the
-// managed-settings directory (settings.ManagedDir), DiscoverSpec's two
-// inputs beside the call's cwd (card 3.1 (c)).
+// D84); a nil reader reads as no consent. HoldoutOff and HoldoutOn are
+// EnvHoldout as HoldoutOff and HoldoutOn read it. ProjectDir is
+// CLAUDE_PROJECT_DIR and ManagedDir the managed-settings directory
+// (settings.ManagedDir), DiscoverSpec's two inputs beside the call's cwd
+// (card 3.1 (c)).
 type SteerEnv struct {
 	HarnessID, Surface string
 	MirrorInBand       bool
 	AIAgent            string
 	CI                 bool
 	HoldoutOff         bool
+	HoldoutOn          bool
 	Consent            func(root string) (int, error)
 	Now                time.Time
 	ProjectDir         string
@@ -249,16 +251,19 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 // name, so every reader of a session's arm draws the same answer.
 const holdoutFeature = "steer"
 
-// holdoutBP is the field holdout's share in basis points with no spec: on
-// by default at 1,000 (PRD PF-MS5, opt-out; D109 as amended). A discovered
-// spec's holdout object sets the share instead (5.6, heldOut).
+// holdoutBP is the field holdout's share in basis points when EnvHoldout is
+// "on" and no spec's holdout object gives one (PRD PF-MS5). With neither, the
+// share is 0 and no session is held out: the alpha is opt-in, and MEASURE's
+// sessions opt in.
 const holdoutBP = 1000
 
-// EnvHoldout names the operator's switch for the field holdout: "off" skips
-// the draw, and every session is treatment. The project file's holdout object
-// (5.6, with 3.1 PR 2's discovery) is the configured form (PRD PF-MS5); this
-// is the operator's override, kept after 5.6 as the organisation's off until
-// the organisation file PF-MS5 names exists.
+// EnvHoldout names the operator's switch for the field holdout: "on" draws
+// every session at holdoutBP where no spec's holdout object sets the share,
+// and "off" skips the draw, so every session is treatment, whatever a spec
+// says. The project file's holdout object (5.6, with 3.1 PR 2's discovery)
+// is the configured form (PRD PF-MS5); this is the operator's override,
+// kept after 5.6 as the organisation's switch until the organisation file
+// PF-MS5 names exists.
 const EnvHoldout = "RASHOMON_HOLDOUT"
 
 // HoldoutOff reads EnvHoldout's value: true for "off" exactly. Any other
@@ -267,23 +272,38 @@ func HoldoutOff(v string) bool {
 	return v == "off"
 }
 
+// HoldoutOn reads EnvHoldout's value: true for "on" exactly. Any other
+// value, "ON" and "1" among them, is ignored, with no error and no log.
+func HoldoutOn(v string) bool {
+	return v == "on"
+}
+
 // heldOut is the session's draw into the field holdout (card 2.5, D109):
 // arm's keyed draw for the session, the same on each of its calls, at the
 // share the discovered spec's holdout object gives at env.Now (On: none when
-// it is off or its window has closed), or at holdoutBP with no spec (5.6).
-// The operator's off is above both. A draw arm refuses is treatment, and
-// nothing records it: the store's key exists on every opened store.
+// it is off or its window has closed), else at holdoutBP under EnvHoldout
+// "on", else at none (5.6). A spec with no holdout object reads as none: the
+// parser never leaves an object's rate at 0 (spec.Holdout), so a rate of 0
+// is no object. The operator's off is above all of them. A draw arm refuses
+// is treatment, and nothing records it: the store's key exists on every
+// opened store. With no share, no draw is made.
 func (p *Post) heldOut(env SteerEnv) bool {
 	if env.HoldoutOff {
 		return false
 	}
-	bp := holdoutBP
-	if p.sp != nil {
+	bp := 0
+	if env.HoldoutOn {
+		bp = holdoutBP
+	}
+	if p.sp != nil && p.sp.Holdout.RateBP != 0 {
 		on, rate := p.sp.Holdout.On(env.Now)
 		if !on {
 			return false
 		}
 		bp = rate
+	}
+	if bp == 0 {
+		return false
 	}
 	a, err := arm.New(p.st.Key())
 	if err != nil {

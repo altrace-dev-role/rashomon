@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """The one reader of what the live hook-contract checks capture.
 
-test/live/hc-items.sh runs real Claude Code sessions and hands this file every
-payload, stream and log they produce. Nothing else in those checks looks
-inside one, for the reason internal/shape is the only code in the program that
-looks inside tool_input: one file to audit for the claim that nothing kept or
-printed is a value. What leaves here is a key name Claude Code's schema gives
+test/live/hc-items.sh and test/live/p-tru-1.sh run real Claude Code sessions
+and hand this file every payload, stream and log they produce. Nothing else in
+those checks looks inside one, for the reason internal/shape is the only code
+in the program that looks inside tool_input: one file to audit for the claim
+that nothing kept or printed is a value. What leaves here is a key name Claude Code's schema gives
 it, a count, a size, an exit code, a yes or no, a value from a closed list, or
 a digest that is compared and never printed. A prompt, a command, a tool's
 output, an error's text, a path, the account's tools and plugins: none of it.
@@ -15,6 +15,7 @@ canary in what it writes.
     record LOG TAG          a hook: reads the payload on stdin, appends its shape to LOG
     hooks STREAM            the hook_response events of a stream-json run
     hc1 .. hc6, fm11 .. fm13   one check's summary; see each function
+    ptru1 STREAM TRANSCRIPT EVENT CTX SM FIRED   p-tru-1.sh's verdict on one event
 
 Run it with python3 -I, as the script does: it reads nothing from the
 environment but the two variables named below, and imports nothing local.
@@ -502,8 +503,45 @@ def fm11(probe_log, store, sid):
     return 0
 
 
+def ptru1(stream, transcript, event, ctx, sm, fired):
+    """P-TRU-1 on one event (test/live/p-tru-1.sh): one hook output carried ctx as
+    additionalContext and sm as systemMessage. It passes when ctx is in a
+    hook_additional_context attachment for the event in the session's
+    transcript, what the agent is given, and sm in a system/informational event
+    on the stream, what the user's terminal shows. 0 pass, 1 fail, 3 when the
+    hook never ran, so the run says nothing of the channel."""
+    events = jsonl(stream) or []
+    if not os.path.exists(fired):
+        print("  the hook ran: no")
+        print("  verdict: inconclusive: no login, or the model did not run the command")
+        return 3
+    print("  the hook ran: yes")
+    hooks(stream)
+    recs = jsonl(transcript)
+    seen = collections.Counter()
+    for r in recs or []:
+        a = r.get("attachment")
+        if isinstance(a, dict) and a.get("type") in ATTACHMENTS and a.get("hookEvent") == event:
+            blob = json.dumps(a)
+            seen[(a["type"], "ctx")] += ctx in blob
+            seen[(a["type"], "sm")] += sm in blob
+    to_agent = seen[("hook_additional_context", "ctx")] > 0
+    info = [e.get("content") for e in events if e.get("type") == "system" and e.get("subtype") == "informational"]
+    to_user = sm in " ".join(c for c in info if isinstance(c, str))
+    reply = text_of(result_of(events))
+    print("  transcript %s; additionalContext in a hook_additional_context attachment for the event: %s" % (
+        "found" if recs is not None else "not found", yn(to_agent)))
+    print("  stream system/informational events: %d; systemMessage in one: %s" % (len(info), yn(to_user)))
+    print("  outside the verdict: the reply names additionalContext %s and systemMessage %s; systemMessage in a "
+          "hook_system_message attachment: %s" % (has(reply, ctx), has(reply, sm), yn(seen[("hook_system_message", "sm")] > 0)))
+    ok = to_agent and to_user
+    print("  verdict: " + ("pass" if ok else "fail"))
+    return 0 if ok else 1
+
+
 COMMANDS = {"record": (record, 2), "hooks": (hooks, 1), "hc1": (hc1, 6), "hc2": (hc2, 1), "hc3": (hc3, 1),
-            "hc5": (hc5, 4), "hc6": (hc6, 7), "fm11": (fm11, 3), "fm12": (fm12, 1), "fm13": (fm13, 1)}
+            "hc5": (hc5, 4), "hc6": (hc6, 7), "fm11": (fm11, 3), "fm12": (fm12, 1), "fm13": (fm13, 1),
+            "ptru1": (ptru1, 6)}
 
 
 def main(argv):

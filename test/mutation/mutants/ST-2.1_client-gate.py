@@ -1,10 +1,11 @@
 # Card 2.1: the per-call context gate behind the probed client version (tech
-# spec :2019, G3). A model-visible field, additionalContext or a decision,
-# prints only on a row a live probe verified for the exact client version,
-# with the mirror verified and on the main agent; the exempt row and a
-# systemMessage are never gated; Marshal is the gate under the zero Client;
-# the version is read only from the harness form of AI_AGENT. The kill row
-# is the named test's.
+# spec :2019, G3; read as a floor per event by card VERSION-GATE1). A
+# model-visible field, additionalContext or a decision, prints only on a row
+# whose floor a live probe set, for a client version at or above it by
+# component and not excluded, with the mirror verified and on the main agent;
+# the exempt row and a systemMessage are never gated; Marshal is the gate
+# under the zero Client; the version is read only from the harness form of
+# AI_AGENT. The kill row is the named test's.
 C = "internal/steer/client.go"
 F = "internal/steer/finding.go"
 
@@ -13,40 +14,55 @@ m("ST-2.1 PostToolUse prints additionalContext ungated", F,
   '\tif o.AdditionalContext != "" && !verified(keys, event, c, table) {\n', '\tif false {\n', "TestST4_")
 m("ST-2.1 the decision gate dropped", F,
   '\tif o.Decision != nil && !verified(keys, event, c, table) {\n', '\tif false {\n', "TestST4_")
-m("ST-2.1 PostToolUse's probed version dropped", C,
-  '\tstring(EventPostToolUse): {"2.1.280"},\n', '\tstring(EventPostToolUse): {},\n', "TestST4_")
-m("ST-2.1 PostToolUseFailure given 2.1.280 without a probe", C,
-  '\tstring(EventPostToolUseFailure): {},\n', '\tstring(EventPostToolUseFailure): {"2.1.280"},\n', "TestST4_")
-m("ST-2.1 PreToolUse given 2.1.280 without a probe", C,
-  '\tstring(EventPreToolUse): {},\n', '\tstring(EventPreToolUse): {"2.1.280"},\n', "TestST4_")
+m("ST-2.1 PostToolUse's floor dropped", C,
+  '\tstring(EventPostToolUse): {floor: "2.1.280"},\n', '\tstring(EventPostToolUse): {},\n', "TestST4_")
+m("ST-2.1 PostToolUseFailure given a floor without a probe", C,
+  '\tstring(EventPostToolUseFailure): {},\n', '\tstring(EventPostToolUseFailure): {floor: "2.1.280"},\n', "TestST4_")
+m("ST-2.1 PreToolUse given a floor without a probe", C,
+  '\tstring(EventPreToolUse): {},\n', '\tstring(EventPreToolUse): {floor: "2.1.280"},\n', "TestST4_")
+m("ST-2.1 SessionStart given a floor without a probe", C,
+  '\tstring(EventSessionStart):  {},\n', '\tstring(EventSessionStart):  {floor: "2.1.280"},\n', "TestST4_")
 m("ST-2.1 the exempt row gated", F,
   '\tstring(EventUserPromptSubmit):   {context: true, exempt: true},\n',
   '\tstring(EventUserPromptSubmit):   {context: true},\n', "TestST4_")
 m("ST-2.1 the PostToolUse row's context flag not lifted", F,
   '\tstring(EventPostToolUse):        {context: true},\n', '\tstring(EventPostToolUse):        {},\n', "TestST4_")
 
-# The predicate.
-m("ST-2.1 a row absent from the table read as verified", C,
-  '\tversions := table[event]\n', '\tversions, listed := table[event]\n\tif !listed {\n\t\treturn true\n\t}\n',
-  "TestST4_")
-m("ST-2.1 a listed version matched as a prefix of the client's", C,
-  'slices.Contains(versions, c.Version)',
-  'slices.ContainsFunc(versions, func(v string) bool { return strings.HasPrefix(c.Version, v) })', "TestST4_")
-m("ST-2.1 the client's version matched as a prefix of a listed one", C,
-  'slices.Contains(versions, c.Version)',
-  'slices.ContainsFunc(versions, func(v string) bool { return strings.HasPrefix(v, c.Version) })', "TestST4_")
+# The predicate: shutBy, read as a floor per event.
+m("ST-2.1 a row with no floor read as verified", C,
+  '\tcase b.floor == "":\n\t\treturn shutEventClosed\n', '', "TestST4_")
+m("ST-2.1 the floor read as the one verified version", C,
+  '\tcase compareVersions(c.Version, b.floor) < 0:\n', '\tcase compareVersions(c.Version, b.floor) != 0:\n', "TestST4_")
+m("ST-2.1 the floor read as a ceiling", C,
+  '\tcase compareVersions(c.Version, b.floor) < 0:\n', '\tcase compareVersions(c.Version, b.floor) > 0:\n', "TestST4_")
+m("ST-2.1 the floor compared as a string", C,
+  '\tcase compareVersions(c.Version, b.floor) < 0:\n', '\tcase c.Version < b.floor:\n', "TestST4_")
+m("ST-2.1 a malformed version compared", C,
+  "\tcase !digitRuns(c.Version, '.'):\n\t\treturn shutUnknownVersion\n", '', "TestST4_")
+m("ST-2.1 the exclusions ignored", C,
+  '\tcase b.excludes(c.Version):\n', '\tcase false:\n', "TestST4_")
+m("ST-2.1 an exclusion matched as text", C,
+  '\t\tif compareVersions(v, x) == 0 {\n', '\t\tif v == x {\n', "TestVG1b_")
 m("ST-2.1 MirrorInBand ignored", C,
-  '\treturn c.MirrorInBand && !c.Subagent && ', '\treturn !c.Subagent && ', "TestST4_")
+  '\tcase !c.MirrorInBand:\n\t\treturn shutNoMirror\n', '', "TestST4_")
 m("ST-2.1 Subagent ignored", C,
-  '\treturn c.MirrorInBand && !c.Subagent && ', '\treturn c.MirrorInBand && ', "TestST4_")
+  '\tcase c.Subagent:\n\t\treturn shutSubagent\n', '', "TestST4_")
 m("ST-2.1 Marshal calls MarshalFor with a verified Client", F,
   '\treturn o.MarshalFor(event, Client{})\n',
   '\treturn o.MarshalFor(event, Client{Version: "2.1.280", Source: VersionSourceEnv, MirrorInBand: true})\n',
   "TestST4b_")
 m("ST-2.1 ContextAllowed reads another table than MarshalFor", C,
   '\treturn allowed(event, c, mirrorVerifiedOn())\n',
-  '\treturn allowed(event, c, map[string][]string{string(EventPostToolUse): {"2.1.280"}, '
-  'string(EventSessionStart): {"2.1.280"}})\n', "TestTRU12_")
+  '\treturn allowed(event, c, map[string]channelBasis{string(EventPostToolUse): {floor: "2.1.280"}, '
+  'string(EventSessionStart): {floor: "2.1.280"}})\n', "TestTRU12_")
+
+# The comparison (compareVersions).
+m("ST-2.1 a component's leading zeros kept", C,
+  '\t\tx, y = strings.TrimLeft(x, "0"), strings.TrimLeft(y, "0")\n', '', "TestVG1a_")
+m("ST-2.1 components compared as text, not by length first", C,
+  '\t\tif len(x) != len(y) {\n', '\t\tif false {\n', "TestVG1a_")
+m("ST-2.1 the comparison stops at the shorter version", C,
+  '\tfor a != "" || b != "" {\n', '\tfor a != "" && b != "" {\n', "TestVG1a_")
 
 # The version source.
 m("ST-2.1 ClientVersion accepts letters", C,

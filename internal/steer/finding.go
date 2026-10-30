@@ -300,8 +300,9 @@ func (o Output) Marshal(event string) ([]byte, error) {
 
 // MarshalFor is Marshal for the client c: AdditionalContext on a context
 // row, or a Decision on a decision row, prints only where the row is exempt
-// or mirrorVerifiedOn lists c's version for it with the mirror verified and
-// on the main agent; otherwise the Output is refused whole with
+// or c's version is verified for it under mirrorVerifiedOn (at or above the
+// row's floor, not excluded) with the mirror verified and on the main agent;
+// otherwise the Output is refused whole with
 // ErrUnverifiedChannel, never printed with the field dropped. A
 // systemMessage is never gated. The refusal comes after every check of the
 // Output's own shape, so a malformed Output reports its defect first.
@@ -311,7 +312,7 @@ func (o Output) MarshalFor(event string, c Client) ([]byte, error) {
 
 // marshalFor is MarshalFor under table, the seam that lets a test reach a
 // gated row's printing path.
-func (o Output) marshalFor(event string, c Client, table map[string][]string) ([]byte, error) {
+func (o Output) marshalFor(event string, c Client, table map[string]channelBasis) ([]byte, error) {
 	keys, ok := outputKeys()[event]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownEvent, event)

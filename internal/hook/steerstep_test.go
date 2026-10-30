@@ -175,7 +175,9 @@ func TestST_StepsIsTheTriggerTable(t *testing.T) {
 // only, never the payload's cwd. Holdout is s1's draw under the store's
 // key, which is random per run, so the want reads the draw from arm rather
 // than fixing it: MS5e and MS5f check the draw, this test that the context
-// carries it (card 2.5).
+// carries it (card 2.5). The draw runs under EnvHoldout "on", since with
+// nothing configured the share is 0 and no session is held out (card
+// VERSION-GATE1, TestVG1e).
 func TestST_SteerEnvBecomesTheContext(t *testing.T) {
 	st := mustOpen(t)
 	a, err := arm.New(st.Key())
@@ -188,7 +190,9 @@ func TestST_SteerEnvBecomesTheContext(t *testing.T) {
 	}
 	base := func() (*Post, SteerEnv, verify.SteerView) {
 		p := &Post{st: st, sessionID: "s1", promptID: "p1", permissionMode: "default", event: FailureEvent, cwd: "/tmp/project"}
-		return p, stEnv(steer.DisclosureVersion), verify.SteerView{ProjectRoot: "/repo"}
+		env := stEnv(steer.DisclosureVersion)
+		env.HoldoutOn = true
+		return p, env, verify.SteerView{ProjectRoot: "/repo"}
 	}
 	prompt := "p1"
 	want := func() steer.Context {

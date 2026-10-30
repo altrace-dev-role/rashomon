@@ -1189,7 +1189,7 @@
         },
         {
           "file": "internal/steer/holdout_test.go",
-          "symbol": "TestMS5b_HeldOutNoteReachesTheUserOnly"
+          "symbol": "TestMS5b_HeldOutNoteReachesNeitherSide"
         },
         {
           "file": "internal/steer/line_store_test.go",

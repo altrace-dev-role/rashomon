@@ -310,21 +310,30 @@ func TestSP7_AdditiveMergeManagedWinsId(t *testing.T) {
 }
 
 // TestMS5j_ManagedHoldoutWins: the managed spec's holdout object wins; with
-// none, the repository's applies; with neither, the zero Holdout.
+// none, a trusted repository spec's applies, and an untrusted one's is not
+// read, so a repository cannot opt its user into the holdout (card
+// VERSION-GATE1); with neither, the zero Holdout.
 func TestMS5j_ManagedHoldoutWins(t *testing.T) {
 	on := withHoldout(`{"rate_bp": 500}`)
 	off := withHoldout(`{"off": true}`)
 	for _, tc := range []struct {
 		name          string
 		managed, repo string
+		trusted       bool
 		want          Holdout
 	}{
-		{"both", on, off, Holdout{RateBP: 500}},
-		{"the managed one only", on, top(""), Holdout{RateBP: 500}},
-		{"the repository's only", top(""), off, Holdout{Off: true, RateBP: DefaultHoldoutBP}},
-		{"neither", top(""), top(""), Holdout{}},
+		{"both", on, off, false, Holdout{RateBP: 500}},
+		{"both, the repository trusted", on, off, true, Holdout{RateBP: 500}},
+		{"the managed one only", on, top(""), false, Holdout{RateBP: 500}},
+		{"the repository's only, trusted", top(""), off, true, Holdout{Off: true, RateBP: DefaultHoldoutBP}},
+		{"the repository's only, untrusted", top(""), off, false, Holdout{}},
+		{"neither", top(""), top(""), true, Holdout{}},
 	} {
-		c := found(t, newFS().managed(tc.managed).repo("/r", tc.repo), "/r", "/r")
+		c, err := DiscoverBound(newFS().managed(tc.managed).repo("/r", tc.repo), Locations("/r", "/r"), managedAt,
+			func(string, string) bool { return tc.trusted })
+		if err != nil || c == nil {
+			t.Fatalf("%s: DiscoverBound = %v, %v", tc.name, c, err)
+		}
 		if c.Holdout != tc.want {
 			t.Errorf("%s: holdout %+v, want %+v", tc.name, c.Holdout, tc.want)
 		}
