@@ -70,12 +70,23 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"PathList":  slot.NewPathList([]slot.Path{"a.go"}, 2),
 		"Enum":      slot.NewEnum(slot.EnumGateKinds, "test, build or lint"),
 		"FactValue": slot.FactValue{Kind: slot.FactAWSRegion, Value: "us-east-1"},
+		"PathSet":   slot.NewPathSet([]slot.Path{"a.go"}, 2, 1),
+		"RuleRefs": slot.NewRuleRefs([]slot.RuleRef{
+			{ID: "conv-errors", Trust: slot.NewEnum(slot.EnumTrust, "trusted"), Why: "errors are wrapped"},
+			{ID: "no-init", Trust: slot.NewEnum(slot.EnumTrust, "managed")},
+		}, 0, 2, 1),
+		"GateRefs": slot.NewGateRefs([]slot.GateRef{{Words: "go test", Trust: slot.NewEnum(slot.EnumTrust, "trusted")}}, 0, 2),
+		"EnumList": slot.NewEnumList(slot.EnumEvidenceKinds, []string{"cross_check", "judgment_disclosed"}),
 	}
 	want := map[string]string{
 		"Program": `"aws"`, "Gate": `"go test"`, "Mechanism": `"AWS_PROFILE"`, "Approved": `"use the staging profile"`,
 		"Count": `3`, "Exit": `-2`, "Minutes": `6`, "TaskID": `"7"`, "AgentType": `"reviewer"`, "RuleID": `"no-shell-true"`,
 		"Model": `"claude-sonnet-5[1m]"`, "USD": `1.50`, "Date": `"2026-10-27"`, "Path": `"internal/a.go"`,
 		"PathList": `["a.go"]`, "Enum": `"test, build or lint"`, "FactValue": `"us-east-1"`,
+		"PathSet":  `{"earlier":1,"items":["a.go"],"more":2}`,
+		"RuleRefs": `{"earlier":2,"ids":["conv-errors","no-init"],"more":0,"trust":["trusted","managed"],"why":["errors are wrapped",""],"withheld":1}`,
+		"GateRefs": `{"gates":["go test"],"learned":2,"more":0,"trust":["trusted"]}`,
+		"EnumList": `["cross_check","judgment_disclosed"]`,
 	}
 	for _, name := range slotTypes(t) {
 		v, ok := samples[name]

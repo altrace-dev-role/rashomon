@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/test/perf/payload"
 )
 
@@ -124,9 +126,78 @@ func BenchmarkRecap(b *testing.B) {
 }
 
 // BenchmarkRecapPending is the UserPromptSubmit catch-up on a turn no Stop
-// reached: the digest, the pending check and the previous-turn line.
+// reached: the digest, the pending check and the previous-turn line. Its
+// prompt names nothing, so the preflight stops at intent.Names. /preflight is
+// the catch-up for a prompt that names a file of a project on disk (B198):
+// the spec walk, the index and steer-log reads, the resolve and its lookup,
+// the note's render and its steer line, which is removed before each call so
+// that every call gives the session's first note.
 func BenchmarkRecapPending(b *testing.B) {
 	for _, calls := range []int{10, 1000} {
 		b.Run(strconv.Itoa(calls), func(b *testing.B) { benchRecap(b, true, calls) })
+	}
+	b.Run("preflight", benchRecapPreflight)
+}
+
+// benchRecapPreflight is BenchmarkRecapPending/preflight: the 10-call
+// session, consented to notes, and a prompt naming internal/verify/stop.go
+// of a project that holds it.
+func benchRecapPreflight(b *testing.B) {
+	root, cfg := b.TempDir(), b.TempDir()
+	benchSetenv(b, root, cfg)
+	installID, turn := benchRecapStore(b, root, cfg, 10)
+	if err := store.WriteSteerDisclosureMarker(root, steer.DisclosureVersion); err != nil {
+		b.Fatal(err)
+	}
+	project := b.TempDir()
+	for _, f := range []string{"go.mod", "internal/verify/stop.go"} {
+		p := filepath.Join(project, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			b.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
+			b.Fatal(err)
+		}
+	}
+	st, err := store.Open(root)
+	if err != nil {
+		b.Fatal(err)
+	}
+	steerLog := filepath.Join(st.RunDir(benchSessionID), store.FileSteer)
+	input := benchJSON(b, struct {
+		benchHead
+		Prompt   string `json:"prompt"`
+		PromptID string `json:"prompt_id"`
+	}{benchHead{benchSessionID, benchTranscript, project, "default", "UserPromptSubmit"},
+		"Now fix the nil check in internal/verify/stop.go.", "prompt-bench-2"})
+	args := []string{"pending", install.Marker, installID}
+	state := filepath.Join(root, "recap.json")
+	rd := bytes.NewReader(input)
+	var stdout, stderr benchSink
+	b.ReportAllocs()
+	b.SetBytes(turn.Bytes)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		for _, f := range []string{state, steerLog} {
+			if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				b.Fatal(err)
+			}
+		}
+		rd.Reset(input)
+		b.StartTimer()
+		if code := cmdRecap(args, rd, &stdout, &stderr); code != exitOK {
+			b.Fatalf("recap exited %d", code)
+		}
+	}
+	b.StopTimer()
+	benchCheckRecap(b, &stdout, &stderr, true, turn)
+	var out struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(stdout.lastWrite(), &out); err != nil || !strings.Contains(out.HookSpecificOutput.AdditionalContext, "'internal/verify/stop.go'") {
+		b.Fatalf("the catch-up printed no preflight note: %s", stdout.lastWrite())
 	}
 }
