@@ -12,9 +12,11 @@ them, and the checks to run before done. At the end of a turn it tells you
 whether a test or build passed after the last edit, and when done was claimed
 without one. It never blocks a call. The notes and the end-of-turn checks are
 its steering layer, AutoSteer. The note before the agent starts reaches it on
-every supported version; a note after a call that succeeded reaches the agent
-only on Claude Code 2.1.280, where that was verified, and a note after a failed
-call, or on another version, is built and logged but not delivered.
+every supported version, and a note after a call that succeeded on Claude Code
+2.1.280 and later. A note after a failed call is built and recorded but not
+delivered in this build; one line per session tells you why, such as:
+
+    rashomon: a note was built and not sent to the agent (Claude Code 2.1.314, PostToolUseFailure; delivery verified on no version yet): notes on this event wait for a release that passes the delivery check. Shown once per session.
 
 What it does not do yet: learn your architecture or conventions, or deliver
 lessons from past sessions. That is the next layer, and it is not in this build.
@@ -62,7 +64,7 @@ When the agent says it is done and no test or build ran after its last edit:
        printf 'module example.com/rktry\n\ngo 1.25\n' > go.mod
        printf 'package parse\n' > internal/parse/lexer.go
 
-2. Run `RASHOMON_HOLDOUT=off claude`, accept the folder trust prompt, and send
+2. Run `claude`, accept the folder trust prompt, and send
    `fix the zebracornflake check in internal/parse/lexer.go; reply in one sentence and run no tools`.
    The note shown above appears before the reply.
 3. Type `/exit`, then check that no word of the request beyond the path was
@@ -70,9 +72,9 @@ When the agent says it is done and no test or build ran after its last edit:
 
        grep -rl zebracornflake "$(rashomon status | sed -n 's/^store: //p')"; echo "grep exit=$?"
 
-One session in ten is held out at random: its notes reach you, ending
-`(held out: not sent to the agent)`, and not the agent. `RASHOMON_HOLDOUT=off`
-turns that off. With `CI` set in the environment, no note is shown.
+The measurement holdout is opt-in: it is off unless you set
+`RASHOMON_HOLDOUT=on` or a trusted spec carries a `holdout` object. With `CI`
+set in the environment, no note is shown.
 
 ## Other install routes
 
@@ -163,6 +165,10 @@ it adds become part of the conversation Claude Code sends to your model provider
 
 **Can it break my agent?** It never blocks a call, and its hooks exit 0 when
 something inside them goes wrong, so Claude Code carries on.
+
+**Why did a passing test not count?** A test command piped to `tail` or `head`
+hides its exit status from rashomon in this build, so the run is not counted as
+a pass. Run tests unpiped, or add a line to your CLAUDE.md asking the agent to.
 
 **Is it a sandbox or a security tool?** No. It does not stop or contain the
 agent, and it cannot stop a determined agent from changing its records.
