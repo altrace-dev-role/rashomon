@@ -118,10 +118,11 @@ var markerTableOnce struct {
 // and stops a pattern rather than completing one, as report's detector does
 // with denied nil.
 //
-// The store (card 3.2, D131). One store_touched entry per write in the
-// window whose path carries a .claude/rashomon/ segment (inStore): the
-// spec, the task file, the store itself. Marker is "", Seq the write's
-// and Path its path. Every write the record names counts, whatever its
+// The store (card 3.2, D131, D173). One store_touched entry per write in the
+// window whose path carries a .claude/rashomon/ segment (inStore), the spec
+// and the task file, or is under storeRoot, rashomon's store (underStore),
+// whose trust bindings a write there could forge. Marker is "", Seq the
+// write's and Path its path. Every write the record names counts, whatever its
 // outcome: a failed shaped write may still have landed, and the entry
 // fails closed. It never resolves, and holds RecordGreen false as any
 // entry does.
@@ -150,7 +151,7 @@ var markerTableOnce struct {
 // over writes (the marks, the store), one over the declarations for the pairs (testPairs), and a
 // sort of the entries; none for the lost-declaration guard, which is
 // recording's.
-func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, from, at int64) Integrity {
+func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, from, at int64, storeRoot string) Integrity {
 	out := Integrity{Unresolved: []IntegrityEntry{}}
 	nets := foldMarks(&out, marksByCall(run), writes, from, at)
 	tests := make(map[string]int)
@@ -176,7 +177,7 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 		out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: TestsOnlyThenGreen, Seq: p[1]})
 	}
 	for _, w := range writes {
-		if w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {
+		if w.Path != nil && w.Seq > from && w.Seq <= at && (inStore(*w.Path) || underStore(w.raw, storeRoot)) {
 			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: w.Seq, Path: *w.Path})
 		}
 	}
@@ -185,6 +186,34 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 			cmp.Compare(a.Marker, b.Marker), cmp.Compare(a.Path, b.Path))
 	})
 	return out
+}
+
+// StoreWritten reports whether run names a write under storeRoot at or
+// before seq at (D173): the writes integrity's store_touched names there,
+// read through writeTargets as appendWrites reads them, without classifying
+// the run. The steer step and the Stop read it before any trust is bound
+// (hook.TrustRoot). Cost: one pass over the declarations and their named
+// paths, allocating only to clean a path that is not clean.
+func StoreWritten(run *store.Run, storeRoot string, at int64) bool {
+	if run == nil || storeRoot == "" {
+		return false
+	}
+	for i := range run.Declarations {
+		d := &run.Declarations[i]
+		if d.Seq > at {
+			continue
+		}
+		file, shell := writeTargets(d)
+		if file != nil && underStore(slashed(*file), storeRoot) {
+			return true
+		}
+		for _, p := range shell {
+			if underStore(slashed(p), storeRoot) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // marksByCall is the edit marks of each file-tool call (one whose declaration

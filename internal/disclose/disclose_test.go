@@ -1,6 +1,7 @@
 package disclose
 
 import (
+	"bytes"
 	"io"
 	"io/fs"
 	"os"
@@ -165,7 +166,7 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
 		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*",
-		"." + spec.TrustFile + ".tmp-*"} {
+		"." + spec.TrustFile + ".tmp-*", "." + spec.TrustKeyFile + ".tmp-*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -195,9 +196,14 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	} else if err := tmp.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// hook.WriteSpecBindings' write, which this package's tests cannot
-	// import: the encoding, through store.ReplaceFile.
-	if data, err := spec.EncodeBindings(&spec.Bindings{}); err != nil {
+	// hook.WriteSpecBindings' two writes, which this package's tests cannot
+	// import: the trust key and the encoding signed under it, each through
+	// store.ReplaceFile.
+	key := bytes.Repeat([]byte{1}, spec.TrustKeyBytes)
+	if err := store.ReplaceFile(filepath.Join(root, spec.TrustKeyFile), key); err != nil {
+		t.Fatalf("store.ReplaceFile: %v", err)
+	}
+	if data, err := spec.EncodeBindings(&spec.Bindings{}, key); err != nil {
 		t.Fatalf("spec.EncodeBindings: %v", err)
 	} else if err := store.ReplaceFile(filepath.Join(root, spec.TrustFile), data); err != nil {
 		t.Fatalf("store.ReplaceFile: %v", err)
@@ -374,8 +380,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// WriteSpecBindings is hook's one, a store.ReplaceFile of
 		// spec-trust.json, the trust bindings `rashomon spec trust` writes
 		// (specFiles in the inventory, topFiles in purge's plan).
+		// Moved 2026-10-29 (D173) to 2: specTrustKey's store.ReplaceFile of
+		// spec-trust.key, the 32-byte key the bindings are signed under,
+		// made on the first trust (specFiles, topFiles).
 		{"spec", 0},
-		{"hook", 1},
+		{"hook", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

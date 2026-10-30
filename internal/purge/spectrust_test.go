@@ -9,12 +9,14 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 )
 
-// TestST1e_PurgeTakesTheBindingsFile: the trust bindings file and the
-// temporary file its replace leaves are rashomon's and gone after purge (card
-// SPEC-TRUST1, D6); a user's file named like it is foreign and stays.
+// TestST1e_PurgeTakesTheBindingsFile: the trust bindings file, the trust
+// key the bindings are signed under (D173), and the temporary file each
+// one's replace leaves are rashomon's and gone after purge (card
+// SPEC-TRUST1, D6); a user's file named like the bindings is foreign and
+// stays.
 func TestST1e_PurgeTakesTheBindingsFile(t *testing.T) {
 	root := storeAt(t)
-	ours := []string{spec.TrustFile, "." + spec.TrustFile + ".tmp-1"}
+	ours := []string{spec.TrustFile, "." + spec.TrustFile + ".tmp-1", spec.TrustKeyFile, "." + spec.TrustKeyFile + ".tmp-1"}
 	mine := spec.TrustFile + ".bak"
 	for _, f := range append(slices.Clone(ours), mine) {
 		if err := os.WriteFile(filepath.Join(root, f), []byte("x"), 0o600); err != nil {

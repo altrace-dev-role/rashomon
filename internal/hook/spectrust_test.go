@@ -1,6 +1,9 @@
 package hook
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -80,7 +83,8 @@ func TestST1d_DiscoveryReadsTheBinding(t *testing.T) {
 // writeBindings writes b as the store root's bindings file: through
 // WriteSpecBindings, or, over, after enough other projects' bindings that
 // the file is past spec.MaxTrustBytes, written by hand since
-// spec.EncodeBindings refuses that size.
+// spec.EncodeBindings refuses that size, and signed under the store's trust
+// key as the verb signs, so the cap alone leaves it unread (D173).
 func writeBindings(t *testing.T, root string, b spec.Binding, over bool) {
 	t.Helper()
 	all := spec.Bindings{Bindings: []spec.Binding{b}}
@@ -95,10 +99,17 @@ func writeBindings(t *testing.T, root string, b spec.Binding, over bool) {
 		all.Bindings = append(all.Bindings, spec.Binding{ProjectRoot: p,
 			SpecPath: filepath.Join(p, ".claude", "rashomon", "spec.json"), SpecDigest: b.SpecDigest, BoundAtMS: 1})
 	}
-	data, err := json.Marshal(all)
+	raw, err := json.Marshal(all.Bindings)
 	if err != nil {
 		t.Fatal(err)
 	}
+	key, err := specTrustKey(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(raw)
+	data := []byte(`{"bindings":` + string(raw) + `,"mac":"` + hex.EncodeToString(mac.Sum(nil)) + `"}` + "\n")
 	if len(data) <= spec.MaxTrustBytes {
 		t.Fatalf("the padded file is %d bytes, not over the %d-byte cap", len(data), spec.MaxTrustBytes)
 	}

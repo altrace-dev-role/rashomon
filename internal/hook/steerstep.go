@@ -2,6 +2,8 @@ package hook
 
 import (
 	"bytes"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/arm"
@@ -51,13 +53,33 @@ func steps(event string, landedSeq int64, runner, inStore bool) bool {
 }
 
 // storeNamed reports a tool input whose raw bytes name .claude/rashomon, its
-// slash plain or escaped as JSON may write it (D-B7): a byte scan, with no
-// decode and no allocation. It is a superset of the calls that write there,
-// and verify says which did. A Bash line that reaches the store by cd and a
-// relative path is missed here; its store_touched entry still reaches the
-// ledger and the Stop view.
-func storeNamed(input []byte) bool {
+// slash plain or escaped as JSON may write it (D-B7), or name root, the
+// store root (rootNamed, D173): a byte scan, with no decode. It is a
+// superset of the calls that write there, and verify says which did. A Bash
+// line that reaches the store by cd and a relative path is missed here; its
+// store_touched entry still reaches the ledger and the Stop view.
+func storeNamed(input []byte, root string) bool {
+	if rootNamed(input, root) {
+		return true
+	}
 	return bytes.Contains(input, []byte(".claude/rashomon")) || bytes.Contains(input, []byte(`.claude\/rashomon`))
+}
+
+// rootNamed reports a tool input whose raw bytes name root, its slashes plain
+// or escaped. The root's last element is looked for first: an input that
+// names the root holds it, and it is short, so a call that does not name it
+// is one scan. The escaped form is built only for an input that escapes a
+// slash, which neither encoding/json nor Claude Code's payloads do, so the
+// common path allocates nothing (each []byte conversion is read-only and
+// zero-copy). A root of "" is none.
+func rootNamed(input []byte, root string) bool {
+	if root == "" || !bytes.Contains(input, []byte(filepath.Base(root))) {
+		return false
+	}
+	if bytes.Contains(input, []byte(root)) {
+		return true
+	}
+	return bytes.Contains(input, []byte(`\/`)) && bytes.Contains(input, []byte(strings.ReplaceAll(root, "/", `\/`)))
 }
 
 // Steer runs the step after the record's Flush succeeded and returns the
@@ -100,8 +122,10 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	if err != nil {
 		return steer.Context{}, verify.SteerView{}, false
 	}
-	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir, p.st.Root())
-	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID)}
+	root := p.st.Root()
+	p.sp = DiscoverSpec(p.cwd, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))
+	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID),
+		StoreRoot: root}
 	view := verify.SteerAt(run, nil, p.sp, pt, env.Now, p.event, p.toolUseID)
 	return p.contextOf(env, view), view, true
 }

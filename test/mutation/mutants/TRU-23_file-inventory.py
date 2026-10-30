@@ -79,3 +79,9 @@ m("TRU-23 the inventory does not cover spec-trust.json", "internal/disclose/spec
 m("TRU-23 the inventory does not cover spec-trust.json's replacement", "internal/disclose/spec.go",
   "\t\t\tPattern:    \".\" + spec.TrustFile + \".tmp-*\",\n", "\t\t\tPattern:    \".\" + spec.TrustFile + \".rashomon-*\",\n",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the inventory does not cover spec-trust.key", "internal/disclose/spec.go",
+  "\t\t\tPattern:    spec.TrustKeyFile,\n", "\t\t\tPattern:    spec.TrustKeyFile + \"~\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the inventory does not cover spec-trust.key's replacement", "internal/disclose/spec.go",
+  "\t\t\tPattern:    \".\" + spec.TrustKeyFile + \".tmp-*\",\n", "\t\t\tPattern:    \".\" + spec.TrustKeyFile + \".rashomon-*\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")

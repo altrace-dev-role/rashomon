@@ -73,7 +73,7 @@ func (p specProject) trust() spec.Trust {
 // bindings is the store's bindings file, decoded; none is an empty list.
 func (p specProject) bindings() []spec.Binding {
 	p.t.Helper()
-	b, err := spec.ReadBindings(spec.OSFS{}, filepath.Join(p.root, spec.TrustFile))
+	b, err := spec.ReadBindings(spec.OSFS{}, p.root)
 	if err != nil {
 		p.t.Fatal(err)
 	}
