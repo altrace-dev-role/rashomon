@@ -22,11 +22,10 @@ import (
 const stAgent = "AI_AGENT=claude-code_2-1-280_harness"
 
 // stFailureNotice is the channel notice the binary prints, as 2.1.280, on
-// the session's first note shadowed at PostToolUseFailure, an event no probe
-// has verified: nothing of the note, the version, the event and why (card
-// VERSION-GATE1).
+// the session's first note shadowed at PostToolUseFailure: that event's floor
+// is 2.1.304 (P-TRU-1 2026-10-30), so 2.1.280 is older (card VERSION-GATE1).
 const stFailureNotice = "rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; " +
-	"delivery verified on no version yet): notes on this event wait for a release that passes the delivery check. " +
+	"delivery verified from 2.1.304): this version is older. " +
 	"Shown once per session."
 
 // printsOnly reports that stdout is the hook's JSON with msg as its
@@ -204,9 +203,9 @@ func strs(v any) []string {
 
 // TestSTR43_RegressionLocationNamesWritesBetweenGreenAndRed: a green go
 // test, an edit, then a red go test: the red's post decides the
-// regression-location note. Under the shipped table PostToolUseFailure's
-// model channel is unverified (D69), so nothing of the note prints, the
-// session's channel notice does, and one suppressed line is logged whose
+// regression-location note. These tests run as Claude Code 2.1.280; that is
+// below PostToolUseFailure's floor (2.1.304), so nothing of the note prints,
+// the session's channel notice does, and one suppressed line is logged whose
 // slots re-render to the card's note; the line keeps no text, as every
 // undelivered line (RES-32), and names the notice. Under record scope v4 the
 // write is unnamed and the slots are the degraded row's.
@@ -225,7 +224,7 @@ func TestSTR43_RegressionLocationNamesWritesBetweenGreenAndRed(t *testing.T) {
 			l.str("suppressed_by") != "unverified_channel" || l.str("level") != "nudge" ||
 			l.str("event") != "PostToolUseFailure" || l.str("attendance") != "attended" ||
 			l.str("model_text") != "" || l.str("prompt_id") != "p1" || l.str("notice") != "channel" ||
-			l.str("client_version") != "2.1.280" || l.str("verified_floor") != "" {
+			l.str("client_version") != "2.1.280" || l.str("verified_floor") != "2.1.304" {
 			t.Errorf("line = %s", l.raw)
 		}
 		if !strings.HasPrefix(l.str("key"), "learned:test:") {

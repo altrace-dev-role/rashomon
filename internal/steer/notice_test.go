@@ -117,7 +117,7 @@ func TestVG1l_TheLineCarriesItsEventsRow(t *testing.T) {
 	for _, tc := range []struct {
 		event Event
 		floor string
-	}{{EventPostToolUseFailure, ""}, {EventPostToolUse, "2.1.280"}} {
+	}{{EventPostToolUseFailure, "2.1.304"}, {EventPostToolUse, "2.1.280"}} {
 		ctx := routerContext(t)
 		ctx.Event = tc.event
 		Route(ctx, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge)})
@@ -132,7 +132,10 @@ func TestVG1l_TheLineCarriesItsEventsRow(t *testing.T) {
 // the note was built and not sent, and gives the reason shutBy finds, one
 // text per reason. claude -p and the SDKs read as by design.
 func TestVG1h_TheNoticeNamesVersionEventFloorAndWhy(t *testing.T) {
-	table := map[string]channelBasis{string(EventPostToolUse): {floor: "2.1.280", excluded: []string{"2.1.300"}}}
+	table := map[string]channelBasis{
+		string(EventPostToolUse):        {floor: "2.1.280", excluded: []string{"2.1.300"}},
+		string(EventPostToolUseFailure): {floor: "2.1.304"},
+	}
 	const head = "rashomon: a note was built and not sent to the agent ("
 	const tail = ". Shown once per session."
 	at := func(v string) Client { return Client{Version: v, Source: VersionSourceEnv, MirrorInBand: true} }
@@ -147,8 +150,10 @@ func TestVG1h_TheNoticeNamesVersionEventFloorAndWhy(t *testing.T) {
 			"Claude Code 2.1.279, PostToolUse; delivery verified from 2.1.280): this version is older"},
 		{"an excluded version", EventPostToolUse, at("2.1.300"), "cli",
 			"Claude Code 2.1.300, PostToolUse; delivery verified from 2.1.280): this version failed the delivery check"},
-		{"a closed event", EventPostToolUseFailure, at("2.1.314"), "cli",
-			"Claude Code 2.1.314, PostToolUseFailure; delivery verified on no version yet): notes on this event wait for a release that passes the delivery check"},
+		{"below the failure floor", EventPostToolUseFailure, at("2.1.280"), "cli",
+			"Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older"},
+		{"a closed event", EventSessionStart, at("2.1.314"), "cli",
+			"Claude Code 2.1.314, SessionStart; delivery verified on no version yet): notes on this event wait for a release that passes the delivery check"},
 		{"claude -p", EventPostToolUse, Client{Version: "2.1.314", Source: VersionSourceEnv}, "sdk",
 			"Claude Code 2.1.314, PostToolUse; delivery verified from 2.1.280): claude -p and SDK sessions receive no notes by design"},
 		{"an unknown surface", EventPostToolUse, Client{Version: "2.1.314", Source: VersionSourceEnv}, "unknown",

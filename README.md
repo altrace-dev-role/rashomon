@@ -12,11 +12,12 @@ them, and the checks to run before done. At the end of a turn it tells you
 whether a test or build passed after the last edit, and when done was claimed
 without one. It never blocks a call. The notes and the end-of-turn checks are
 its steering layer, AutoSteer. The note before the agent starts reaches it on
-every supported version, and a note after a call that succeeded on Claude Code
-2.1.280 and later. A note after a failed call is built and recorded but not
-delivered in this build; one line per session tells you why, such as:
+every supported version; a note after a call that succeeded on Claude Code
+2.1.280 and later; and a note after a failed call on Claude Code 2.1.304 and
+later. Below those floors, one line per session tells you a note was built and
+not sent, such as:
 
-    rashomon: a note was built and not sent to the agent (Claude Code 2.1.314, PostToolUseFailure; delivery verified on no version yet): notes on this event wait for a release that passes the delivery check. Shown once per session.
+    rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
 
 What it does not do yet: learn your architecture or conventions, or deliver
 lessons from past sessions. That is the next layer, and it is not in this build.
