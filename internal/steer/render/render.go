@@ -20,6 +20,7 @@ package render
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -190,6 +191,21 @@ type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
 
+// LearnedFactBinding is learned-fact's note at a prompt (LEARN-DELIVER1): an
+// approved lesson's id and its text, which renders in quotes.
+type LearnedFactBinding struct {
+	Lesson slot.LessonID `slot:"lesson"`
+	Text   slot.Approved `slot:"text"`
+}
+
+// LearnedFactUncheckedBinding and LearnedFactOversizeBinding are
+// learned-fact's two user flags for a ledger the prompt path could not read:
+// its files fail their signature check, or one is over the size the prompt
+// path reads. One struct each, since a row is keyed by its binding's type.
+type LearnedFactUncheckedBinding struct{}
+
+type LearnedFactOversizeBinding struct{}
+
 // TaskPreflightBinding is task-preflight's later-prompt note (internal/intent).
 type TaskPreflightBinding struct {
 	Paths    slot.PathSet  `slot:"paths"`
@@ -227,7 +243,9 @@ type TaskPreflightFirstBinding struct {
 // so no model text exists for them. stale-evidence/v1 states the green and
 // the write after it and stops there: the card's "Run it again before
 // claiming done" is an order, which STR-14 refuses, and the last sentence
-// says the same as a fact.
+// says the same as a fact. learned-fact/v1 is a lesson a person approved at a
+// terminal, its text in quotes (LEARN-DELIVER1, L7); its two flags say why a
+// ledger gave none.
 func templates() map[templateKey]template {
 	templatesOnce.Do(func() {
 		templatesOnce.v = map[templateKey]template{
@@ -306,18 +324,41 @@ func templates() map[templateKey]template {
 				id:     "integrity-gate-config-edited/v1",
 				format: "rashomon record: this edit changed a CI or test-configuration file.",
 			},
-			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
-				id:     "task-preflight/v1",
-				format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
-			},
-			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
-				id: "task-preflight-first/v1",
-				format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
-					"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
-			},
 		}
+		maps.Copy(templatesOnce.v, templatesLater())
 	})
 	return templatesOnce.v
+}
+
+// templatesLater is the rows templates adds to its own map: the lesson and
+// task-preflight rows, split out so each function stays inside Law 10 as the
+// rows of several cards accumulate.
+func templatesLater() map[templateKey]template {
+	return map[templateKey]template{
+		{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
+			id:     "learned-fact/v1",
+			format: "rashomon record: lesson {lesson}, approved for this project: {text}.",
+		},
+		{pattern.LearnedFact, reflect.TypeOf(LearnedFactUncheckedBinding{})}: {
+			id: "learned-fact-unchecked/v1",
+			format: "rashomon record: this project's lesson files fail their signature check, " +
+				"so no lesson was given to the agent; rashomon learn lists them.",
+		},
+		{pattern.LearnedFact, reflect.TypeOf(LearnedFactOversizeBinding{})}: {
+			id: "learned-fact-oversize/v1",
+			format: "rashomon record: this project's lesson files are larger than the 4 MiB the prompt path reads, " +
+				"so no lesson was given to the agent; rashomon learn lists them.",
+		},
+		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
+			id:     "task-preflight/v1",
+			format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
+		},
+		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
+			id: "task-preflight-first/v1",
+			format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
+				"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+		},
+	}
 }
 
 // preflightLines are the four lines both task-preflight rows end with: what

@@ -99,7 +99,7 @@ func TestP6_ApprovalMovesOnlyAProposedLesson(t *testing.T) {
 	root := t.TempDir()
 	l := open(t, root, t0)
 	importText(t, l, twoLessons)
-	if err := l.Approve("npm-ci"); err != nil {
+	if err := l.Approve("npm-ci", t1); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Save(); err != nil {
@@ -112,10 +112,10 @@ func TestP6_ApprovalMovesOnlyAProposedLesson(t *testing.T) {
 	if a := activeOf(t, root); len(a.Lessons) != 1 || a.Lessons[0].ID != "npm-ci" {
 		t.Errorf("active.json %+v, want npm-ci alone", a)
 	}
-	if err := l.Approve("npm-ci"); err == nil {
+	if err := l.Approve("npm-ci", t1); err == nil {
 		t.Error("a second approval of npm-ci was taken")
 	}
-	if err := l.Approve("nope"); err == nil {
+	if err := l.Approve("nope", t1); err == nil {
 		t.Error("approving a lesson that does not exist was taken")
 	}
 }
@@ -126,7 +126,7 @@ func TestP6_LabelsMoveAnApprovedLesson(t *testing.T) {
 	root := t.TempDir()
 	l := open(t, root, t0)
 	importText(t, l, twoLessons)
-	if err := l.Approve("npm-ci"); err != nil {
+	if err := l.Approve("npm-ci", t1); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.AppendLabel(Label{LessonID: "npm-ci", Label: "fixed"}); err == nil {
@@ -197,7 +197,7 @@ func TestP6_AgentWriteQuarantinesEveryFact(t *testing.T) {
 			l := open(t, root, t0)
 			importText(t, l, twoLessons)
 			for _, id := range []string{"npm-ci", "go-test-cwd"} {
-				if err := l.Approve(id); err != nil {
+				if err := l.Approve(id, t1); err != nil {
 					t.Fatal(err)
 				}
 			}

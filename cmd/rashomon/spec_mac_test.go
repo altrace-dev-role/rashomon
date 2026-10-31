@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -286,5 +288,115 @@ func TestST1m_TheStopReadsTheStoreWriteBeforeTrusting(t *testing.T) {
 	}
 	if !named {
 		t.Errorf("the Stop's integrity %+v; want store_touched at %s", v.Snap.Integrity.Unresolved, trustFile)
+	}
+}
+
+// TestST1x_ThePromptsNoteReadsTheStoreWriteBeforeTrusting (D203): the
+// prompt's note reads a bound spec through preflightSpec, so it names the
+// spec's gate as trusted until the session writes under the store root, and
+// from that write on names no gate and says the spec is untrusted. TestST1m
+// pins preflightSpec; this pins that the note reads it. Break: discover the
+// note's spec with the store root directly (hook.DiscoverSpec with
+// st.Root()) and the note after the write still names the gate as trusted.
+//
+// Two traps in the fixture; the first hides the break, the second fakes one:
+//   - The prompts name different files. A note with nothing new is not
+//     given, so a second prompt naming pkg/a.go again gets no note at all,
+//     and an empty note passes the after-write check with or without the
+//     break.
+//   - The prompts carry different prompt ids. Route's budget gives a key one
+//     note a prompt (charge's budget_pattern), so under a shared id the
+//     second note is suppressed and the after-write check fails with or
+//     without the break.
+func TestST1x_ThePromptsNoteReadsTheStoreWriteBeforeTrusting(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", filepath.Join(t.TempDir(), "managed-settings.json"))
+	// CI makes the session unattended, which withholds every note at the
+	// prompt, and a CI runner sets it; the holdout draw could withhold it too.
+	t.Setenv("CI", "")
+	t.Setenv("AI_AGENT", "")
+	t.Setenv(hook.EnvHoldout, "off")
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(base, ".claude", "rashomon", "spec.json")
+	for _, dir := range []string{filepath.Join(base, ".git"), filepath.Dir(path), filepath.Join(base, "pkg")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{path: specUnit, filepath.Join(base, "pkg", "a.go"): "package pkg\n",
+		filepath.Join(base, "pkg", "b.go"): "package pkg\n"}
+	for name, body := range files {
+		if err := os.WriteFile(name, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := t.TempDir()
+	st, err := store.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteRecordScopeMarker(root, store.RecordScopeV5); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteSteerDisclosureMarker(root, steer.DisclosureVersion); err != nil {
+		t.Fatal(err)
+	}
+	bound := spec.Binding{ProjectRoot: hook.SpecProject(path), SpecPath: path, SpecDigest: digestOf(t, specUnit), BoundAtMS: 1}
+	if err := hook.WriteSpecBindings(root, &spec.Bindings{Bindings: []spec.Binding{bound}}); err != nil {
+		t.Fatal(err)
+	}
+	const session = "sess-st1x"
+	now := time.Date(2026, 10, 30, 1, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	if err := st.AppendCoverage(store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SessionSchemaVersion,
+		RecordedAtMS: now.UnixMilli(), SessionID: session, Phase: store.PhasePost, State: store.StateVerified,
+		HookEntry: store.EntryPresentSettings, Probe: store.ProbeFresh}); err != nil {
+		t.Fatal(err)
+	}
+	land := func(id, tool string, input map[string]any) {
+		t.Helper()
+		for _, event := range []string{"PreToolUse", "PostToolUse"} {
+			b, err := json.Marshal(map[string]any{"session_id": session, "tool_use_id": id, "prompt_id": "p1",
+				"transcript_path": "/tmp/t.jsonl", "permission_mode": "default", "tool_name": tool, "cwd": base,
+				"hook_event_name": event, "tool_input": input, "tool_response": map[string]any{"stdout": ""}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if event == "PreToolUse" {
+				h := hook.New(st, clock)
+				h.Close(&hook.Signals{}, h.Capture(bytes.NewReader(b)))
+			} else if err := hook.NewPost(st, clock).Capture(bytes.NewReader(b)); err != nil {
+				t.Fatalf("post %s: %v", id, err)
+			}
+		}
+	}
+	// note is the note at prompt promptID as recapTurn routes it, flushed as
+	// printTurn flushes it, so the next prompt reads what this one delivered.
+	note := func(promptID, prompt string) string {
+		t.Helper()
+		run, err := digest.ReadRun(st, session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := pendingPayload{recapPayload: recapPayload{SessionID: session, CWD: base}, Prompt: []byte(prompt),
+			PromptID: promptID, PermissionMode: "default"}
+		id := harness.Identity{ID: harness.ClaudeCode, Surface: harness.SurfaceCLI}
+		out, _ := preflightNote(st, run, &p, promptProject{}, id, now)
+		if err := st.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		return out.AdditionalContext + "\n" + out.SystemMessage
+	}
+
+	land("toolu_r", "Read", map[string]any{"file_path": path})
+	if got := note("p2", "fix pkg/a.go"); !strings.Contains(got, "'go test' (trusted)") {
+		t.Fatalf("the note before the write %q; want the spec's gate named, trusted", got)
+	}
+	land("toolu_w", "Write", map[string]any{"file_path": filepath.Join(root, spec.TrustFile), "content": "{}"})
+	if got := note("p3", "fix pkg/b.go"); strings.Contains(got, "'go test'") || !strings.Contains(got, "spec present, untrusted") {
+		t.Errorf("the note after the write %q; want no gate and the spec named untrusted", got)
 	}
 }

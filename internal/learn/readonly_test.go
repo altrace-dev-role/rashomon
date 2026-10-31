@@ -17,7 +17,7 @@ func TestRP2q_OpenReadOnlyNeverWrites(t *testing.T) {
 	root := t.TempDir()
 	l := open(t, root, t0)
 	importText(t, l, twoLessons)
-	if err := l.Approve("npm-ci"); err != nil {
+	if err := l.Approve("npm-ci", t0); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Save(); err != nil {

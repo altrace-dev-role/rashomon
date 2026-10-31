@@ -25,6 +25,14 @@ m("STR-11 Gate admits a flag-shaped word", "internal/steer/render/slot/slot.go",
   "\t\tif false {\n", "TestSTR11b_")
 m("STR-11 Approved sees a URL scheme only before //", "internal/steer/render/slot/slot.go",
   "*://|(?i:(?:^|", "*://|(?i:x\\bx(?:^|", "TestSTR11b_")
+m("STR-11 LessonID admits a capital letter", "internal/steer/render/slot/slot.go",
+  "lessonIDRE = &lazyRegexp{pattern: `^[a-z0-9][a-z0-9._:@-]{0,63}$`}",
+  "lessonIDRE = &lazyRegexp{pattern: `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$`}", "TestSTR11b_")
+m("STR-11 LessonID skips the secret screens", "internal/steer/render/slot/slot.go",
+  "\tif err := screened(\"lesson id\", string(l)); err != nil {\n", "\tif err := screened(\"lesson id\", string(l)); false && err != nil {\n", "TestSTR11b_")
+m("STR-11 Import admits a secret-shaped lesson id", "internal/learn/ledger.go",
+  "\t\tif idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {\n",
+  "\t\tif false && idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {\n", "TestSTR11b_")
 m("STR-11 Enum ignores its table", "internal/steer/render/slot/enum.go",
   "\tif !slices.Contains(enumTables[e.table], e.value) {\n", "\tif !slices.Contains(append(enumTables[e.table], e.value), e.value) {\n", "TestSTR11b_")
 m("STR-11 an Enum value brings its own table", "internal/steer/render/slot/enum.go",

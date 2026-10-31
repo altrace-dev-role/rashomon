@@ -7,8 +7,10 @@ import (
 
 // TestP6_HookAndStoreImportNoLearner: the learner is its own component with
 // its own store (PRD PF-HD16): no package the hook or the store links reaches
-// internal/learn, so a lesson can change no recorded byte and cost no hook
-// time; and the learner links no network package (TRU-40, owner rule 10-23).
+// internal/learn, so a lesson can change no recorded byte and cost the record
+// path (hook, post, probe) no time. Only recap pending reads it, at a prompt
+// (LEARN-DELIVER1). The learner links no network package (TRU-40, owner rule
+// 10-23).
 func TestP6_HookAndStoreImportNoLearner(t *testing.T) {
 	const learner = "github.com/altrace-dev-role/rashomon/internal/learn"
 	for _, pkg := range []string{"./internal/hook", "./internal/store"} {
