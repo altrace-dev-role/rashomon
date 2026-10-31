@@ -14,6 +14,9 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -64,23 +67,45 @@ func Latest(st *store.Store, project string) (record []byte, ok bool, err error)
 	return line, true, nil
 }
 
+// MaxWalk is how many run directories one walk looks at: the cost of a
+// walk is a stat of each, so a store of any size costs at most this many.
+// Past it the walk says so (Scan.Bound BoundWalk) and never claims to have
+// read the store.
+const MaxWalk = 1024
+
 // byWritten is the store's runs that hold a records file, newest written
-// first. A run with no records file holds no checkpoint.
-func byWritten(st *store.Store) ([]written, error) {
-	names, err := st.Runs()
-	if err != nil {
-		return nil, err
+// first, from at most MaxWalk run directories taken in name order, and
+// whether the directory held more than that. A run with no records file
+// holds no checkpoint. One stat per run: the directory is listed by name
+// only, so nothing is sorted or statted twice.
+func byWritten(st *store.Store) (runs []written, truncated bool, err error) {
+	dir, err := os.Open(filepath.Join(st.Root(), store.DirRuns))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
 	}
-	runs := make([]written, 0, len(names))
-	for _, name := range names {
-		info, err := os.Stat(filepath.Join(st.RunDir(name), store.FileRecords))
+	if err != nil {
+		return nil, false, err
+	}
+	defer dir.Close() //nolint:errcheck // read-only
+	entries, err := dir.ReadDir(MaxWalk + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, false, err
+	}
+	if truncated = len(entries) > MaxWalk; truncated {
+		entries = entries[:MaxWalk]
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, err := os.Stat(filepath.Join(st.Root(), store.DirRuns, e.Name(), store.FileRecords))
 		if err != nil {
 			continue
 		}
-		runs = append(runs, written{name, info.ModTime().UnixMilli(), info.Size()})
+		runs = append(runs, written{e.Name(), info.ModTime().UnixMilli(), info.Size()})
 	}
 	slices.SortStableFunc(runs, func(a, b written) int { return cmp.Compare(b.at, a.at) })
-	return runs, nil
+	return runs, truncated, nil
 }
 
 // PrepareCommitMsg is the prepare-commit-msg hook body `rashomon receipt on`

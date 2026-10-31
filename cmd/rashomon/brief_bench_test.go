@@ -84,12 +84,16 @@ func BenchmarkProbeStart(b *testing.B) {
 		}
 	})
 	for _, row := range []struct {
-		name  string
-		bound bool
-		want  string
-	}{{"previous_hit", false, "last session: "}, {"previous_bound", true, "last session: none within the 8 MiB"}} {
+		name string
+		fix  benchPrevious
+		want string
+	}{
+		{"previous_hit", benchPrevious{previous: true}, "last session: "},
+		{"previous_bound", benchPrevious{previous: true, others: 900, big: true}, "last session: none within the 8 MiB"},
+		{"previous_capped", benchPrevious{others: 2000}, "last session: none in the 16 most recent"},
+	} {
 		b.Run(row.name, func(b *testing.B) {
-			st, payload, args := benchPreviousFixture(b, row.bound)
+			st, payload, args := benchPreviousFixture(b, row.fix)
 			var out countingWriter
 			printBrief(args, payload, st, &out)
 			if out.n == 0 {
@@ -116,7 +120,16 @@ func BenchmarkProbeStart(b *testing.B) {
 // thousand run directories of another project, written before it, and one
 // 20 MiB records file, the newest, whose tail holds no checkpoint, so the
 // scan pays the stat walk and the capped fallback and ends at its byte bound.
-func benchPreviousFixture(b *testing.B, bound bool) (*store.Store, *hookio.Payload, []string) {
+// benchPrevious is what benchPreviousFixture seeds: the project's previous
+// session, others runs of another project written before it, and a 20 MiB
+// records file newer than all of them.
+type benchPrevious struct {
+	previous bool
+	others   int
+	big      bool
+}
+
+func benchPreviousFixture(b *testing.B, fx benchPrevious) (*store.Store, *hookio.Payload, []string) {
 	b.Helper()
 	storeRoot, cfg, dir := b.TempDir(), b.TempDir(), b.TempDir()
 	benchSetenv(b, storeRoot, cfg)
@@ -147,11 +160,15 @@ func benchPreviousFixture(b *testing.B, bound bool) (*store.Store, *hookio.Paylo
 		}
 	}
 	base := time.Now().Add(-time.Hour)
-	seed("previous", line("previous", root), base)
-	if bound {
-		for i := range 2000 {
+	if fx.previous {
+		seed("previous", line("previous", root), base)
+	}
+	{
+		for i := range fx.others {
 			seed(fmt.Sprintf("other-%04d", i), line("other", "/other/project"), base.Add(-time.Duration(i+1)*time.Second))
 		}
+	}
+	if fx.big {
 		big := line("big", root) + strings.Repeat(`{"type":"declaration","schema_version":5,"pad":"`+strings.Repeat("x", 4000)+`"}`+"\n", 20<<20/4050)
 		seed("big", big, base.Add(time.Minute))
 	}

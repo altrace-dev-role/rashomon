@@ -218,3 +218,31 @@ func TestRP2j_TheLineCarriesOneReason(t *testing.T) {
 		t.Errorf("%q: want only '2 gates not green'", line)
 	}
 }
+
+// TestRP2z_TheWalkLooksAtAtMostMaxWalkDirectories (card REPORT1b, the
+// startup cost): a store of more than MaxWalk run directories is not walked
+// past MaxWalk, and a walk that found nothing says so ("walk") instead of
+// claiming the project has no session; one of exactly MaxWalk, read whole,
+// gives no bound. Which MaxWalk directories are looked at is the directory's
+// order, not the newest, and the line says "the first". The line names the
+// bound and carries no pointer. Break: lift the cap, or drop its flag.
+func TestRP2z_TheWalkLooksAtAtMostMaxWalkDirectories(t *testing.T) {
+	st := openStore(t)
+	const a, b = "/work/a", "/work/b"
+	for i := range MaxWalk {
+		seedRun(t, st, fmt.Sprintf("r%04d", i), int64(1_000_000+i), ckpt{project: b, session: "b", ms: int64(900_000 + i), seq: 1}.line())
+	}
+	q := Query{Project: a, MaxRuns: 2 * MaxWalk, MaxBytes: MaxBytes}
+	if got, sc, err := Previous(st, q); err != nil || sc.Found || sc.Bound != "" {
+		t.Fatalf("exactly MaxWalk runs, all read: %+v %+v err %v; want none, no bound", got, sc, err)
+	}
+	seedRun(t, st, "extra", 3_000_000, ckpt{project: b, session: "b", ms: 2_900_000, seq: 1}.line())
+	got, sc, err := Previous(st, q)
+	if err != nil || sc.Found || sc.Bound != BoundWalk {
+		t.Fatalf("one run past the cap: %+v %+v err %v; want none, bound walk", got, sc, err)
+	}
+	line := PreviousLine(got, sc, "ptr")
+	if line != "last session: none among the first 1024 session directories on this machine" || len("  "+line) > 80 {
+		t.Errorf("the walk line: %q", line)
+	}
+}

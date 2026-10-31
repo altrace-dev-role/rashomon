@@ -6,6 +6,7 @@
 # read that never writes, and the redaction pass.
 G = "internal/report/gather/knowledge.go"
 R = "internal/receipt/previous.go"
+R2 = "internal/receipt/receipt.go"
 S = "internal/store/latestrecord.go"
 W = "internal/report/gather/why.go"
 D = "internal/report/redact.go"
@@ -31,6 +32,8 @@ m("RP-2 Previous does not skip the current session", R, "\t\tif r.name == skip {
 m("RP-2 the 16-run bound is removed", R, "\t\tif q.MaxRuns > 0 && read >= q.MaxRuns {\n", "\t\tif false {\n", "TestRP2h_")
 m("RP-2 the fallback reads the whole file, not the budget left", R, "\t\tleft = q.MaxBytes - spent\n", "\t\tleft = r.size\n", "TestRP2h_")
 m("RP-2 the before bound is ignored", R, "p.RecordedAtUnixMS < q.Before && ", "", "TestRP2h_")
+m("RP-2 the walk lifts its cap on run directories", R2, "\tif truncated = len(entries) > MaxWalk; truncated {\n\t\tentries = entries[:MaxWalk]\n\t}\n", "", "TestRP2z_")
+m("RP-2 a walk the cap cut claims it read the store", R, "\tif truncated && !sc.Found && sc.Bound == \"\" {\n", "\tif false {\n", "TestRP2z_")
 m("RP-2 a gate not green reads red only", R, '\t\t\tif g.State != "green" {\n\t\t\t\tp.NotGreen++', '\t\t\tif g.State == "red" {\n\t\t\t\tp.NotGreen++', "TestRP2i_")
 m("RP-2 a line that does not fit keeps its reason", R, '\tif len("  "+line) > 80 {\n', "\tif false {\n", "TestRP2i_")
 m("RP-2 LatestRecordTail reads the whole file", S, "\tif tail > 0 && info.Size() > tail {\n", "\tif false {\n", "TestRP2s_")
@@ -40,7 +43,8 @@ m("RP-2 a record of any version is handed over", S, "\treturn AcceptsKind(kind, 
 # The startup line (RP2t, RP2x).
 m("RP-2 the startup line is appended to the verify line", B, "\tfacts[len(facts)-1] = f\n", "\tfacts = append(facts, f)\n", "TestRP2t_")
 m("RP-2 a walk that found nothing replaces the verify line", C, '\tif err != nil || !scan.Found && scan.Bound == "" {\n', "\tif err != nil {\n", "TestRP2t_|TestBR1e_")
-m("RP-2 the pointer is not rendered from the plugin's name", C, '\t\tpointer = "/" + install.PluginName + ":report last"\n', '\t\tpointer = "/autosteer:report last"\n', "TestRP2x_")
+m("RP-2 the pointer is not rendered from the plugin's name", B, 'const PluginReport = "/" + install.PluginName + ":report last"', 'const PluginReport = "/auto" + "steer:report last"', "TestRP2x_|TestBR1i_")
+IMPORTS["RP-2 the pointer is not rendered from the plugin's name"] = (B, '\t"github.com/altrace-dev-role/rashomon/internal/install"\n', "")
 
 # why (RP2l, RP2n, RP2o).
 m("RP-2 why's ambiguity check is dropped, so the first match wins", W, "\tswitch len(byID) {\n", "\tswitch min(len(byID), 1) {\n", "TestRP2l_")

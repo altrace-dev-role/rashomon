@@ -80,6 +80,9 @@ type Scan struct {
 const (
 	BoundRuns  = "runs"
 	BoundBytes = "bytes"
+	// BoundWalk: the store held more run directories than MaxWalk, and the
+	// ones past it were not looked at.
+	BoundWalk = "walk"
 )
 
 // decodeHeadT is what a checkpoint line is read as: the head of one record
@@ -155,7 +158,7 @@ func Previous(st *store.Store, q Query) (Last, Scan, error) {
 // scan is the walk Latest and PreviousOf share. line is the best
 // checkpoint's bytes as stored.
 func scan(st *store.Store, q Query) (line []byte, best Last, sc Scan, err error) {
-	runs, err := byWritten(st)
+	runs, truncated, err := byWritten(st)
 	if err != nil {
 		return nil, Last{}, Scan{}, err
 	}
@@ -203,6 +206,9 @@ func scan(st *store.Store, q Query) (line []byte, best Last, sc Scan, err error)
 	}
 	if sc.Found {
 		sc.Bound = ""
+	}
+	if truncated && !sc.Found && sc.Bound == "" {
+		sc.Bound = BoundWalk
 	}
 	sc.ReadBytes = spent
 	return line, best, sc, nil
@@ -266,6 +272,8 @@ func PreviousLine(p Last, s Scan, pointer string) string {
 		switch s.Bound {
 		case BoundRuns:
 			return lead + "none in the " + strconv.Itoa(MaxRuns) + " most recent sessions on this machine"
+		case BoundWalk:
+			return lead + "none among the first " + strconv.Itoa(MaxWalk) + " session directories on this machine"
 		case BoundBytes:
 			return lead + "none within the " + strconv.Itoa(MaxBytes>>20) + " MiB read bound on this machine"
 		}
