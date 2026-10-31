@@ -325,17 +325,18 @@ func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 // readmeSilentTrailClaims are the README's sentences that the render in
 // TestH31_ASilentTrailLeavesTheNamedHostInTheChain backs, whitespace-folded.
 //
-// The second claim here still names the OLD rendering ("0 allowed, 0
-// denied"), not the "the trail holds no network events" wording the reader
-// now prints (see writeNono in internal/report/text.go). README.md's
-// matching wording update is a follow-up, not part of this commit, so the
-// committed tree's claim list has to track the committed tree's README
-// until that follow-up lands, or this test fails on a plain checkout of
-// this commit.
+// The second claim names the v1.1.0 rendering ("0 allowed, 0 denied") and
+// says so, as the README does; the third names what a build from main
+// prints (see writeNono in internal/report/text.go), which the test above
+// asserts. The README scopes each reading to its version, so a claim that
+// drops the scope would pin a sentence true only of v1.1.0. When a release
+// ships the new wording, the README and these claims change together.
 var readmeSilentTrailClaims = []string{
 	"The sandbox section has something to count only when nono filters the network.",
-	"the trail holds no network event at all, and the section reads " +
-		"`0 allowed, 0 denied` however many hosts the session reached.",
+	"In v1.1.0, with nono's `claude` profile, which leaves the network " +
+		"unfiltered, the trail holds no network event at all, and the section " +
+		"reads `0 allowed, 0 denied` however many hosts the session reached.",
+	"A build from `main` says `the trail holds no network events` instead.",
 	"An allowed `http://` request leaves nothing in the sandbox section.",
 	"`--chain` still lists its host under the call if the command named it",
 }

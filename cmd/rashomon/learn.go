@@ -107,7 +107,7 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 		return err
 	}
 	_, err = fmt.Fprintf(stdout, "imported %d lessons at proposed, skipped %d; "+
-		"each reaches the agent only after `rashomon learn approve ID`\n", added, skipped)
+		"approving one with `rashomon learn approve ID` marks it approved; no lesson reaches the agent in this build\n", added, skipped)
 	return err
 }
 

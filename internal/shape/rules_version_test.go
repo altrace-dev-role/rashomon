@@ -123,7 +123,7 @@ var matcherPins = map[int]string{
 	3:  "3b37daf2498f1bfed509f7f0bcc4b9b44381e6a56ab537abfb3b553d4b90ea9a",
 	4:  "d8ce2f1af01d7dbec051b928d5ac03ccf16830cb432ab1f36c972466f6ccebb0", // a listed flag may stand before a runner's row words (leadingFlags); a flag that hides the runner's failure refuses it (2026-10-24)
 	5:  "a6b4f738864bca26e64502c754ade947cef3f0d4eca78ab34c5a3f4fff89fb38", // the masked parser passes over every leading cd step the program search does where both readings fold alike (agreedFold): `(cd /tmp && go test ./...)` gains its runner (2026-10-24)
-	6:  "8c69e44656ed2328c904397bcb2182e6937a22205c22fc0508167d4a5b554d35", // make\'s -j takes digits only (a `-j*` prefix admitted `make -j=4 test` and `make -j4x test`, which make rejects): their lines lose the runner (2026-10-25)
+	6:  "8c69e44656ed2328c904397bcb2182e6937a22205c22fc0508167d4a5b554d35", // make's -j takes digits only (a `-j*` prefix admitted `make -j=4 test` and `make -j4x test`, which make rejects): their lines lose the runner (2026-10-25)
 	7:  "165e06eef4489b033a8484ee4800cfe74f08a98cd935e6005c6dd49ed21865d5", // a runner's line is whole only where the groups opened before the runner close after it: `go test ./... )` and `(go test ./...` lose class test, `{ go test ./...; }` gains it, and a `#` ends the count (2026-10-28)
 	8:  "f867982fb3673009fa5854a8fe5d862ff455e6e0d0be54fb334739db2dcb67b3", // a hiding flag records its runner masked with the runner's kind, not as no run; pushd folds as a cd step in both readings (2026-10-28)
 	9:  "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // a comment ends at its newline in the program search as in the masked parser: the cd steps after `# c\` fold and the runner is go test (2026-10-28)
