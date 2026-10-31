@@ -28,11 +28,11 @@ m("ST-2.3 the trigger ignores the runner", H,
 m("ST-2.3 consent needs more than the disclosure version", H,
   "\treturn err == nil && n >= steer.DisclosureVersion\n", "\treturn err == nil && n > steer.DisclosureVersion\n",
   "TestST_SteerEnvBecomesTheContext")
-m("ST-2.3 CI is attended", H,
-  "\tif env.CI || p.permissionMode == \"dontAsk\" {\n", "\tif p.permissionMode == \"dontAsk\" {\n",
+m("ST-2.3 CI is attended", "internal/hook/promptcontext.go",
+  "\tunattended := env.CI\n", "\tunattended := false\n",
   "TestST_SteerEnvBecomesTheContext")
-m("ST-2.3 dontAsk is attended", H,
-  "\tif env.CI || p.permissionMode == \"dontAsk\" {\n", "\tif env.CI {\n",
+m("ST-2.3 dontAsk is attended", "internal/hook/promptcontext.go",
+  "\tif unattended || permissionMode == \"dontAsk\" {\n", "\tif unattended {\n",
   "TestST_SteerEnvBecomesTheContext")
 m("ST-2.3 the step prints before its line is durable", H,
   "\tif err := p.st.Flush(); err != nil {\n\t\treturn nil\n\t}\n", "",

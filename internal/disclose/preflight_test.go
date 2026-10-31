@@ -28,7 +28,7 @@ func TestPF1n_ScreenSaysPromptsAreReadInMemory(t *testing.T) {
 		if p.Owner != OwnerRecord || p.Cite != CiteSection2 {
 			t.Errorf("the prompt sentence is in %s/%s, want %s/%s", p.Owner, p.Cite, OwnerRecord, CiteSection2)
 		}
-		for _, want := range []string{"Your prompts are never stored", "to pick project facts for a note", "keeps only the project paths it names"} {
+		for _, want := range []string{"Your prompts are never stored", "to pick project facts for a note", "the project paths it names at record scope v5", "only their count and keyed digests at v4"} {
 			if !strings.Contains(p.Text, want) {
 				t.Errorf("the prompt sentence does not say %q: %q", want, p.Text)
 			}

@@ -143,6 +143,33 @@ func flagText(text string) (user string, refused *SuppressedBy) {
 
 func reason(r SuppressedBy) *SuppressedBy { return &r }
 
+// recorded is the message the finding's steer line holds: Record when the
+// producer set one, else the message that prints.
+func (f Finding) recorded() render.Message {
+	if f.Record.Text() != "" {
+		return f.Record
+	}
+	return f.Message
+}
+
+// recordTexts sets the line's text from the finding's Record, when it has one
+// (PREFLIGHT1b): the printed texts are decided, and a record form that does
+// not fit the cap suppresses the line like any text over it.
+func (p *plan) recordTexts() {
+	if p.f.Record.Text() == "" {
+		return
+	}
+	var refused *SuppressedBy
+	if p.level == LevelNudge {
+		p.recModel, p.recUser, refused = noteTexts(p.f.Record.Text(), briefing(p.f.Pattern))
+	} else {
+		p.recUser, refused = flagText(p.f.Record.Text())
+	}
+	if refused != nil {
+		p.suppress(*refused)
+	}
+}
+
 // clampReason is the first clamp to flag that bites, in step order (tech
 // 4.2.4 steps 2, 5 and 6; card 2.2 R3): steering off, consent not current,
 // no prompt to charge (4.2.5: a missing budget counts as spent), and a Stop
@@ -163,16 +190,19 @@ func clampReason(ctx *Context) *SuppressedBy {
 
 // plan is one admitted finding's decision while decide makes it.
 type plan struct {
-	f       Finding
-	key     findingKey
-	level   Level
-	state   LineState
-	by      *SuppressedBy
-	slots   map[string]json.RawMessage
-	model   string
-	user    string
-	decide  bool // still to be decided by the budget passes
-	holdout bool // held out: neither side got the note
+	f     Finding
+	key   findingKey
+	level Level
+	state LineState
+	by    *SuppressedBy
+	slots map[string]json.RawMessage
+	model string
+	user  string
+	// recModel and recUser are the line's text when it records Finding.Record
+	// rather than what printed.
+	recModel, recUser string
+	decide            bool // still to be decided by the budget passes
+	holdout           bool // held out: neither side got the note
 }
 
 func (p *plan) suppress(r SuppressedBy) {
@@ -235,7 +265,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if p.level == LevelNudge && rule == ruleFlagOnly {
 			p.level = LevelFlag // the event has no model channel; the event says why (D50)
 		}
-		slots, slotErr := slotsOf(f.Message)
+		slots, slotErr := slotsOf(f.recorded())
 		p.slots = slots
 		switch {
 		case arm == ArmOff:
@@ -261,6 +291,9 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 			}
 			if refused != nil {
 				p.suppress(*refused)
+			}
+			if refused == nil {
+				p.recordTexts()
 			}
 		}
 		plans = append(plans, p)
@@ -370,6 +403,9 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, version string, basis 
 	}
 	if p.state == LineStateDelivered && !p.holdout {
 		l.ModelText, l.UserText = p.model, p.user
+		if p.f.Record.Text() != "" {
+			l.ModelText, l.UserText = p.recModel, p.recUser
+		}
 		l.Mirror, l.MirroredToUser = MirrorSystemMessage, true
 	}
 	return l

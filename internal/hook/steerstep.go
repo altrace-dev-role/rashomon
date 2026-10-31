@@ -219,17 +219,15 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 }
 
 // contextOf is Route's context for this call (card 2.3 R4.5). Attendance is
-// unattended under CI or the dontAsk permission mode. Consent is the marker
+// attendanceOf's: CI or the dontAsk permission mode, and on the prompt path
+// the surface. Consent is the marker
 // at or over the disclosure this build shows. The project is the view's
 // root only: under record scope v4 the record holds none and the line
 // follows the record, so the payload's cwd is never a fallback. Holdout is
 // the session's draw (heldOut).
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
-	attendance := steer.AttendanceAttended
-	if env.CI || p.permissionMode == "dontAsk" {
-		attendance = steer.AttendanceUnattended
-	}
+	attendance := attendanceOf(p.event, env, p.permissionMode)
 	return steer.Context{
 		Event:      steer.Event(p.event),
 		Client:     steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != ""},

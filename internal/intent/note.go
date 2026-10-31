@@ -23,12 +23,29 @@ const (
 // gates and evidence print in full. The note steps down to fit the briefing
 // cap: whys dropped first, then one item per list.
 func Finding(in Intent, d Delivered, b *Brief, afterSeq int64) (steer.Finding, bool) {
+	return FindingKeyed(in, d, b, afterSeq, nil)
+}
+
+// FindingKeyed is Finding for a line recorded at record scope v4 (card
+// PREFLIGHT1b). digest, when not nil, is the keyed digest of a path
+// (PathDigest): the delivered set holds digests, so a candidate path is
+// digested before the "given earlier" check, and the finding's Record is the
+// message the steer line holds, each path list as its count and its keyed
+// digests. The message that prints is Finding's, unchanged. A nil digest is
+// scope v5: the line records what printed.
+func FindingKeyed(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	first := !d.BriefGiven && b.has()
 	var paths []string
 	var rules []Rule
 	earlierPaths, earlierRules := 0, 0
+	seen := func(p string) bool {
+		if digest != nil {
+			return d.Paths[digest(p)]
+		}
+		return d.Paths[p]
+	}
 	for _, p := range in.Paths {
-		if d.Paths[p] {
+		if seen(p) {
 			earlierPaths++
 		} else {
 			paths = append(paths, p)
@@ -91,11 +108,39 @@ func Finding(in Intent, d Delivered, b *Brief, afterSeq int64) (steer.Finding, b
 		if err != nil {
 			continue
 		}
+		var rec render.Message
+		if digest != nil {
+			if rec, err = render.New(pattern.TaskPreflight, recordBinding(pf, first, b, n, digest)); err != nil {
+				continue
+			}
+		}
 		prio, _ := pattern.Priority(pattern.TaskPreflight)
 		return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
-			StopForm: steer.StopFormNone, Message: m, AfterSeq: afterSeq}, true
+			StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq}, true
 	}
 	return steer.Finding{}, false
+}
+
+// recordBinding is the binding the steer line holds at record scope v4: pf's
+// every path list as keyed digests (the same items pf lists at this step),
+// the rest as it is.
+func recordBinding(pf render.TaskPreflightBinding, first bool, b *Brief, n int, digest func(string) string) any {
+	keyed := func(s slot.PathSet) slot.PathSet {
+		ps := s.Paths()
+		ds := make([]string, len(ps))
+		for i, p := range ps {
+			ds[i] = digest(string(p))
+		}
+		return slot.NewDigestPathSet(ds, s.More(), s.Earlier())
+	}
+	pf.Paths = keyed(pf.Paths)
+	if !first {
+		return pf
+	}
+	return render.TaskPreflightFirstBinding{
+		Instructions: keyed(pathSet(b.Instructions, n, 0)), Manifests: keyed(pathSet(b.Manifests, n, 0)), GoDirs: slot.Count(b.GoDirs),
+		Paths: pf.Paths, Rules: pf.Rules, Gates: pf.Gates, Source: pf.Source, Evidence: pf.Evidence, Unknown: pf.Unknown,
+	}
 }
 
 // listed is the first n items (every item for n < 0) and the count of the
