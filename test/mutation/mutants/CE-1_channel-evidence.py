@@ -76,8 +76,8 @@ m("CE-1 a StopFailure reads the transcript", RT, "if !pending && payload.Harness
 # Disclosure.
 m("CE-1 purge leaves the marker", P, "\tif store.IsChannelEvidenceMarker(name) {\n\t\treturn true\n\t}\n", "",
   "TestCE1d_PurgeRemovesTheChannelEvidenceMarker")
-m("CE-1 the inventory omits the marker", D, "slices.Concat(defaultFiles(), learnFiles(), specFiles(), evidenceFiles())",
-  "slices.Concat(defaultFiles(), learnFiles(), specFiles())", "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("CE-1 the inventory omits the marker", D, "\t\t\tevidenceFiles(),\n",
+  "", "TestTRU23_EveryWrittenPathIsInTheInventory")
 
 # The safety margin and the read's guards (the review of PR #159).
 m("CE-1 a transcript that has not caught up with the note reads absent", S,

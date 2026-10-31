@@ -58,7 +58,7 @@ m("sr1 the rules step passes a Bash call over", "internal/hook/steerstep.go",
   "\tcase \"Edit\", \"MultiEdit\", \"NotebookEdit\", \"Write\":\n\t\treturn true\n",
   "TestSR1w_|TestSR1x_")
 m("sr1 the rules step reads the run", "internal/hook/steerstep.go",
-  "\tvar run *store.Run\n\tif stepped {\n",
+  "\tvar run *store.Run\n\tif readRun {\n",
   "\tvar run *store.Run\n\tif true {\n",
   "TestSR1x_")
 m("sr1 the step drops the rules' findings", "internal/hook/steerstep.go",
