@@ -155,3 +155,21 @@ func TestST_KeysCompareUnescaped(t *testing.T) {
 		t.Errorf("counts = %+v, want the escaped prompt matched and the key unescaped", c)
 	}
 }
+
+// TestST7f_EvidenceLinesNeverEndTheScan: a channel-evidence line
+// (steer_evidence) shares the log with the notes, and its session, prompt and
+// time are the evidence's, not a note's. Read as a foreign line, two of them
+// at the tail (different times) end the newest-first scan before it reaches
+// the prompt's own delivered note, so the note is not counted and the budget
+// is exceeded. Break: drop the steer_evidence skip in budgetScan.line.
+func TestST7f_EvidenceLinesNeverEndTheScan(t *testing.T) {
+	p := ptr("p1")
+	log := logLine(t, p, 2, LineStateDelivered, LevelNudge, "regression-location", "first")
+	for _, at := range []string{"10", "11"} {
+		log = append(log, []byte(`{"type":"steer_evidence","v":1,"session_id":"s1","prompt_id":"p0","at_unix_ms":`+at+`,"evidence":"seen"}`+"\n")...)
+	}
+	c := countOf(t, log, p)
+	if c.notes != 1 || !c.keys[findingKey{"regression-location", "", "first"}] {
+		t.Errorf("counts = %+v, want the prompt's one note counted past two evidence lines", c)
+	}
+}

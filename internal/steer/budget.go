@@ -14,12 +14,12 @@ import (
 // A prompt's lines are expected under 64 KiB, so one read is the usual cost.
 const budgetChunk = 64 << 10
 
-// budgetKeys are the eight keys the scan reads from a line, in one walk
+// budgetKeys are the nine keys the scan reads from a line, in one walk
 // that allocates nothing per value (jsonscan.Top); RES-5 bans a decode on
 // the hook path.
 func budgetKeys() *jsonscan.KeySet {
 	budgetKeysOnce.Do(func() {
-		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key")
+		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key", "type")
 	})
 	return budgetKeysOnce.v
 }
@@ -41,6 +41,7 @@ const (
 	bkPattern
 	bkKind
 	bkKey
+	bkType
 	bkCount
 )
 
@@ -161,6 +162,13 @@ type budgetScan struct {
 // line reads one line, newest first.
 func (s *budgetScan) line(b []byte) {
 	if len(b) == 0 || jsonscan.Top(b, budgetKeys(), s.out[:]) != nil {
+		return
+	}
+	// A channel-evidence line (steer_evidence, evidence.go) is the reader's
+	// record of a note it saw, not a note: it counts in nothing and, being
+	// written later than the note it names, is no prompt's start, so it cannot
+	// end the scan or open a foreign batch.
+	if s.is(b, s.out[bkType], EvidenceLineType) {
 		return
 	}
 	if !s.ours(b) {

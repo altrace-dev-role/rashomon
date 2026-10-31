@@ -44,7 +44,9 @@ const (
 // record-scope marker, the harness switches watch writes, the harness
 // mismatch counts and their lock, recap's state and the one temporary file
 // builds through v1.1.0 wrote it to, the transcript-copy switch, and the
-// spec trust bindings and their key. Each name is the writing package's own
+// spec trust bindings and their key. The channel-evidence markers
+// (store.IsChannelEvidenceMarker, one per event) are matched by ownName
+// rather than listed. Each name is the writing package's own
 // constant, so a rename there cannot strand the file here.
 var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, store.FileResolvedCap,
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
@@ -83,6 +85,9 @@ var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tm
 // ownName reports whether a name directly under the store root is one
 // rashomon writes.
 func ownName(name string) bool {
+	if store.IsChannelEvidenceMarker(name) {
+		return true
+	}
 	for _, n := range topFiles {
 		if name == n {
 			return true
