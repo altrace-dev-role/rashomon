@@ -142,3 +142,23 @@ func TestMS1v_ArmNeedsALabStore(t *testing.T) {
 		}
 	}
 }
+
+// TestMS1zh_ReadmeNamesTheMeasureVerbs: the README's command table has a row
+// for each measure verb the usage screen offers, and says where
+// RASHOMON_STEER_ARM counts (a lab store only), beside RASHOMON_HOLDOUT.
+func TestMS1zh_ReadmeNamesTheMeasureVerbs(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readme := string(b)
+	for _, row := range []string{"| `rashomon measure --prepare [--home DIR]` |", "| `rashomon measure pair --session ID --arm off\\|steer"} {
+		if !strings.Contains(readme, row) {
+			t.Errorf("README has no table row starting %q", row)
+		}
+	}
+	i := strings.Index(readme, "`RASHOMON_STEER_ARM=off`")
+	if i < 0 || !strings.Contains(readme[i:min(len(readme), i+400)], "only on a lab store") || i < strings.Index(readme, "`RASHOMON_HOLDOUT=on`") {
+		t.Error("README does not say, after the RASHOMON_HOLDOUT sentence, that RASHOMON_STEER_ARM counts on a lab store only")
+	}
+}
