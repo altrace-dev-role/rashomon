@@ -238,12 +238,12 @@ func derivedRun(t *testing.T, calls ...[3]string) *store.Run {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, loc := hook.Locate(key, "Bash", raw, cwd)
+		s, loc, unread := hook.Locate(key, "Bash", raw, cwd)
 		id := fmt.Sprintf("toolu_%d", n+1)
 		seq := int64(n + 1)
 		run.Declarations = append(run.Declarations, store.Declaration{
 			SchemaVersion: store.SchemaVersion, Seq: seq, ToolUseID: id, ToolName: "Bash", SessionID: "s1",
-			Shape: s, CWDDigest: loc,
+			Shape: s, CWDDigest: loc, LocationUnread: unread,
 		})
 		run.Executions = append(run.Executions, store.Execution{
 			SchemaVersion: store.SchemaVersion, ToolUseID: id, ToolName: "Bash", Outcome: outcome,

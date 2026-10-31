@@ -458,8 +458,8 @@ m("TB runs pair across directories", "internal/report/testbending.go",
   "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
   "TestTestBending")
 m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
-  "\tdecl.Shape, decl.CWDDigest = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)\n",
-  "\tdecl.Shape, _ = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)\n",
+  "\tdecl.Shape, decl.CWDDigest, decl.LocationUnread = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)\n",
+  "\tdecl.Shape, _, decl.LocationUnread = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)\n",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd\", cwd)\n",
@@ -605,8 +605,8 @@ m("TB a backgrounded call is not counted as unobserved", "internal/report/accoun
   "TestSilentFailures_")
 
 m("TB a leading cd's target is not the run's directory", "internal/hook/handle.go",
-  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))\n",
-  "\t_ = dirs\n\treturn s, shape.CWDDigest(key, physicalDir(cwd))\n",
+  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), false\n",
+  "\t_ = dirs\n\treturn s, shape.CWDDigest(key, physicalDir(cwd)), false\n",
   "TestTestBending_ALeadingAbsoluteCd")
 m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.go",
   "\t\t\tcwd = filepath.Join(cwd, dir)\n",
@@ -831,8 +831,8 @@ m("TB a leading cd before ; is read as a location", "internal/shape/leading.go",
   "\tif !and.meta || and.text != \"&&\" && and.text != \";\" || and.nlBefore {\n",
   "TestLocation|TestLeadingDirectory")
 m("TB an unread fold with no payload cwd is keyed on the fold alone", "internal/hook/handle.go",
-  "\t\tif cwd == \"\" {\n\t\t\treturn s, \"\"\n\t\t}\n\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread)\n",
-  "\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread)\n", "TestLocation")
+  "\t\tif cwd == \"\" {\n\t\t\treturn s, \"\", true\n\t\t}\n\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread), true\n",
+  "\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread), true\n", "TestLocation")
 m("TB ~ is not expanded with the hook's home", "internal/hook/handle.go",
   "\t\tcase dir == \"~\" || strings.HasPrefix(dir, \"~/\"):\n", "\t\tcase false:\n",
   "TestLocation|TestStartDirectory")
@@ -979,8 +979,8 @@ m("TB the program stream skips a here-document's body", "internal/shape/tokenize
   "\treturn bounded(lex(joinLines(s, true), true, false))\n", "\treturn bounded(lex(joinLines(s, true), true, true))\n",
   "TestS3_TK15c_")
 m("TB make test -C sub is located in its directory option", "internal/hook/handle.go",
-  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))\n",
-  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, append(dirs, \"sub\"))))\n", "TestS3_13_")
+  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), false\n",
+  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, append(dirs, \"sub\")))), false\n", "TestS3_13_")
 m("TB the rules version stays at 8 when comments end at their newline", "internal/shape/masked.go",
   "const RulesVersion = 11\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 

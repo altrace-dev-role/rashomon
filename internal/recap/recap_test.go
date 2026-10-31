@@ -285,7 +285,7 @@ func TestLineNoTestBendingIsSilent(t *testing.T) {
 // hold, and never a word about why the line was written that way.
 func TestLineMaskedRuns(t *testing.T) {
 	d := cleanDigest()
-	d.MaskedRuns = report.MaskedRuns{Runs: 2, Fires: false, PassClaimed: true, FinalMessageAvailable: true}
+	d.MaskedRuns = digest.MaskedRuns{Runs: 2, Fires: false, PassClaimed: true, FinalMessageAvailable: true}
 	if line, ok := Line(d, d.SessionID, false); ok {
 		t.Errorf("a digest whose masked runs do not fire printed %q", line)
 	}
@@ -293,7 +293,7 @@ func TestLineMaskedRuns(t *testing.T) {
 		1: "pass claimed; exit status of 1 build or test run not recorded.",
 		3: "pass claimed; exit status of 3 build or test runs not recorded.",
 	} {
-		d.MaskedRuns = report.MaskedRuns{Runs: n, Fires: true, PassClaimed: true, FinalMessageAvailable: true}
+		d.MaskedRuns = digest.MaskedRuns{Runs: n, Fires: true, PassClaimed: true, FinalMessageAvailable: true}
 		line, ok := Line(d, d.SessionID, false)
 		if !ok || !strings.Contains(line, want) {
 			t.Errorf("runs %d: line = %q, want %q", n, line, want)

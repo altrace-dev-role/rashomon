@@ -251,7 +251,7 @@ func TestLocateIsWhatCaptureRecords(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, loc := Locate(r.st.Key(), "Bash", in, c[1])
+		s, loc, _ := Locate(r.st.Key(), "Bash", in, c[1])
 		if loc != d.CWDDigest || s.Digest != d.Shape.Digest || !sameDigest(s.RunnerDigest, d.Shape.RunnerDigest) {
 			t.Errorf("%q from %q: Locate's location equal %v, shape digest equal %v, runner digest equal %v; want all true",
 				short(c[0]), c[1], loc == d.CWDDigest, s.Digest == d.Shape.Digest, sameDigest(s.RunnerDigest, d.Shape.RunnerDigest))
@@ -274,7 +274,8 @@ func TestS3_13_DirectoryOptionAfterTheRowsWords(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return Locate(key, "Bash", raw, cwd)
+		s, at, _ := Locate(key, "Bash", raw, cwd)
+		return s, at
 	}
 	s, at := locate("make test -C sub")
 	bare, _ := locate("make test")

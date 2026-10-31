@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -691,7 +692,7 @@ func assertKeySet(t *testing.T, r record, allowed []string) {
 	}
 	got := pathsOf(r)
 	for k := range got {
-		if !want[k] {
+		if !want[k] && !(r.typ() == "declaration" && slices.Contains(omittedWhenFalseKeys, k) && r.fields[k] == true) {
 			t.Errorf("record carries key %q, which is not in the allowlist", k)
 		}
 	}

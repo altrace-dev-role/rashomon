@@ -45,7 +45,7 @@ func newCS1Tree(t *testing.T) cs1Tree {
 func cs1Digest(t *testing.T, cmd, cwd string) string {
 	t.Helper()
 	in, _ := json.Marshal(map[string]string{"command": cmd})
-	_, d := Locate(cs1Key, "Bash", in, cwd)
+	_, d, _ := Locate(cs1Key, "Bash", in, cwd)
 	return d
 }
 
