@@ -68,6 +68,20 @@ func openLedger() (*learn.Ledger, error) {
 	return learn.Open(st.Root(), dir, time.Now())
 }
 
+// openLedgerReadOnly is openLedger through learn.OpenReadOnly: a listing
+// must not rewrite the ledger a mismatch would quarantine.
+func openLedgerReadOnly() (*learn.Ledger, error) {
+	st, err := openStoreForRead()
+	if err != nil {
+		return nil, err
+	}
+	_, dir, err := bodiesProject()
+	if err != nil {
+		return nil, err
+	}
+	return learn.OpenReadOnly(st.Root(), dir)
+}
+
 func listLessons(stdout io.Writer) error {
 	l, err := openLedger()
 	if errors.Is(err, store.ErrNoStore) {
