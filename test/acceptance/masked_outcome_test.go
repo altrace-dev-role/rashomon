@@ -58,19 +58,15 @@ func TestMO1_APipedPytestIsRecordedAndSaidWithItsRunner(t *testing.T) {
 }
 
 // TestMO1_APipedPytestThatFailedRaisesTheClaim: the same line failing under a
-// pass claim is the done-was-claimed line, naming python3 -m pytest and saying it failed
-// from its output, where it used to say the exit status was hidden.
+// pass claim still raises the masked-runs sentence, as it did: a summary that
+// says it failed is the detector's true positive, and the record holds it.
 func TestMO1_APipedPytestThatFailedRaisesTheClaim(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	e.turnCall(t, "p1", "toolu_edit", editOf("calc.py"))
 	e.turnCall(t, "p1", "toolu_test", pytestUnderTail("..F.\n1 failed, 3 passed in 0.20s\n"))
 	line := e.mustSpeak(stopEvent("Stop", "All tests pass.", e.cwd))
-	if !strings.Contains(line, "done was claimed") || !strings.Contains(line, "python3 -m pytest failed") ||
-		!strings.Contains(line, "(read from its output; the pipe hid the exit status)") {
-		t.Errorf("value line %q, want done was claimed with pytest failed, read from its output", line)
-	}
-	if strings.Contains(line, "pass claimed") {
-		t.Errorf("value line %q is the masked-runs sentence, which cannot say the run failed", line)
+	if !strings.Contains(line, "pass claimed; exit status of 1 build or test run not recorded") {
+		t.Errorf("line %q, want the masked-runs sentence: the pass claim stands over a run that failed", line)
 	}
 }

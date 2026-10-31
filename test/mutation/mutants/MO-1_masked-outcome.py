@@ -87,6 +87,10 @@ m("MO-1 a summary read ignores the stage", R,
   "e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) ||", "e.MaskedBy == nil ||",
   "TestMO1_ASummaryReadMaskedRunIsNotCounted")
 m("MO-1 a fail line is a summary read", R,
+  "return e.GateOutput.Kind == \"summary_pass\"",
+  "return e.GateOutput.Kind == \"summary_pass\" || e.GateOutput.Kind == \"fail_line\"",
+  "TestMO1_ASummaryReadMaskedRunIsNotCounted")
+m("MO-1 a summary_fail is a summary read", R,
+  "return e.GateOutput.Kind == \"summary_pass\"",
   "return e.GateOutput.Kind == \"summary_pass\" || e.GateOutput.Kind == \"summary_fail\"",
-  "return e.GateOutput.Kind == \"summary_pass\" || e.GateOutput.Kind == \"summary_fail\" || e.GateOutput.Kind == \"fail_line\"",
   "TestMO1_ASummaryReadMaskedRunIsNotCounted")

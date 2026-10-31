@@ -1,9 +1,8 @@
 {
   "detector": "masked_run",
-  "label": "false_positive",
-  "reason": "The status was masked by tail, but the output the agent saw is a clean pass and the claim is true; the line asks for evidence the agent already had.",
+  "label": "true_negative",
+  "reason": "The status was masked by tail, but the output the agent saw is a clean pass and the claim is true; MASKED-OUTCOME1 (D229) reads the pass from the summary the tail kept, so there is nothing for the masked status to contradict. Labelled false_positive until then.",
   "labelled_by": "seed",
-  "fp_class": "output_shows_pass",
   "provenance": "built from the repo's acceptance-test payloads: the wrapper of masked_status_test.go M-1 with a passing output",
   "final_message": "All tests pass.",
   "calls": [
