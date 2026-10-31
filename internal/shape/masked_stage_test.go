@@ -154,7 +154,7 @@ func TestMO1_TheWordsAreTheBinarys(t *testing.T) {
 // isListWord reports a word that is on a runner list or in the stage words,
 // which a line may also hold: `go test` is in the line and in the row.
 func isListWord(w string) bool {
-	return slices.Contains(testCommandNames, w) || slices.Contains(buildCommandNames, w) || slices.Contains(MaskedByWords(), w)
+	return slices.Contains(testCommandNames(), w) || slices.Contains(buildCommandNames(), w) || slices.Contains(MaskedByWords(), w)
 }
 
 // TestMO1_EveryNameIsAListedWord: whatever line is derived, the two fields
@@ -165,7 +165,7 @@ func TestMO1_EveryNameIsAListedWord(t *testing.T) {
 		"zzz | tail", "`go test` | tail", "bash -c 'go test ./...' | tail", "go test ./... | $PAGER", "go test ./... | \"tail\"",
 	} {
 		s := mo1Derive(t, cmd)
-		if s.RunnerName != nil && !slices.Contains(testCommandNames, *s.RunnerName) && !slices.Contains(buildCommandNames, *s.RunnerName) {
+		if s.RunnerName != nil && !slices.Contains(testCommandNames(), *s.RunnerName) && !slices.Contains(buildCommandNames(), *s.RunnerName) {
 			t.Errorf("%q: runner_name %q is on no list", cmd, *s.RunnerName)
 		}
 		if s.MaskedBy != nil && !slices.Contains(MaskedByWords(), *s.MaskedBy) {
@@ -180,7 +180,7 @@ func TestMO1_RowNamesAreTheRows(t *testing.T) {
 	for _, c := range []struct {
 		names []string
 		rows  [][]string
-	}{{testCommandNames, testCommands}, {buildCommandNames, buildCommands}} {
+	}{{testCommandNames(), testCommands}, {buildCommandNames(), buildCommands}} {
 		if len(c.names) != len(c.rows) {
 			t.Fatalf("%d names for %d rows", len(c.names), len(c.rows))
 		}
@@ -268,8 +268,8 @@ func TestMO1_TheListsFitAOneByteId(t *testing.T) {
 		name  string
 		words []string
 	}{
-		{"testCommandNames", testCommandNames},
-		{"buildCommandNames", buildCommandNames},
+		{"testCommandNames", testCommandNames()},
+		{"buildCommandNames", buildCommandNames()},
 		{"RunnerNames", RunnerNames()},
 		{"MaskedByWords", MaskedByWords()},
 	} {
@@ -277,7 +277,7 @@ func TestMO1_TheListsFitAOneByteId(t *testing.T) {
 			t.Errorf("%s has %d words, want at most 254 for a one-byte id", l.name, len(l.words))
 		}
 	}
-	if got, want := len(RunnerNames()), len(testCommandNames)+len(buildCommandNames); got != want {
+	if got, want := len(RunnerNames()), len(testCommandNames())+len(buildCommandNames()); got != want {
 		t.Errorf("RunnerNames has %d words, want the two lists' %d", got, want)
 	}
 }

@@ -16,10 +16,11 @@ import (
 // written out as one string each, in the lists' order, built once from them so
 // that a row added to a list is named with it (TestMO1_RowNamesAreTheRows). A
 // runnerGroup holds a pointer to its entry: two lines that run the same row
-// carry the same string.
+// carry the same string. They are built on first use, not at package init:
+// every hook call would allocate them there, and RES-2 bounds init at 64 KiB.
 var (
-	testCommandNames  = rowNames(testCommands)
-	buildCommandNames = rowNames(buildCommands)
+	testCommandNames  = sync.OnceValue(func() []string { return rowNames(testCommands) })
+	buildCommandNames = sync.OnceValue(func() []string { return rowNames(buildCommands) })
 )
 
 func rowNames(rows [][]string) []string {
@@ -56,7 +57,7 @@ const OutputOutcomeRulesVersion = 11
 // two runner lists, for the store check that holds a record's runner_name to
 // the binary's own words.
 func RunnerNames() []string {
-	return append(append([]string(nil), testCommandNames...), buildCommandNames...)
+	return append(append([]string(nil), testCommandNames()...), buildCommandNames()...)
 }
 
 // The ids below are for a reader that holds a run in memory for every call of
@@ -88,10 +89,10 @@ func RunnerNameOf(id uint8) string {
 	switch i := int(id) - 1; {
 	case i < 0:
 		return ""
-	case i < len(testCommandNames):
-		return testCommandNames[i]
-	case i-len(testCommandNames) < len(buildCommandNames):
-		return buildCommandNames[i-len(testCommandNames)]
+	case i < len(testCommandNames()):
+		return testCommandNames()[i]
+	case i-len(testCommandNames()) < len(buildCommandNames()):
+		return buildCommandNames()[i-len(testCommandNames())]
 	}
 	return ""
 }
