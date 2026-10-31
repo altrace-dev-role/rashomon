@@ -560,6 +560,8 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 			last[k] = d.Seq
 		}
 	}
+	// A second pass, because a masked run is cleared by a call that comes
+	// after it, and that call is not seen until the first pass has read them all.
 	for _, d := range run.Declarations {
 		if !statusMasked(d) || !ended(d, store.ExecOK) {
 			continue
