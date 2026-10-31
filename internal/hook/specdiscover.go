@@ -18,20 +18,22 @@ const errNoCWD = "spec: the payload names no cwd"
 // DiscoverSpec is the spec that applies to a call run in cwd (card 3.1 (c),
 // D119, D128): spec.Discover over the OS, with the candidates SpecLocations
 // names, and the managed spec at managedDir/rashomon/spec.json ("" for none).
-// The repository spec is trusted when the bindings file under storeRoot
-// names its project, path and digest (card SPEC-TRUST1); that file is read
-// only when a repository spec was, and an unreadable or unsigned one (D173),
-// or storeRoot "", binds nothing. It is nil when nothing applies. An empty cwd or an I/O error
-// is no spec and one flag, spec.Unreadable.
-func DiscoverSpec(cwd, projectDir, managedDir, storeRoot string) *spec.Compiled {
-	return discoverSpecAt(cwd, baseline.Key(cwd), projectDir, managedDir, storeRoot)
+// The repository spec is trusted when the bindings file under root names its
+// project, path and digest (card SPEC-TRUST1); that file is read only when a
+// repository spec was, and an unreadable or unsigned one (D173), or a root
+// that is "", binds nothing. It is nil when nothing applies. An empty cwd or
+// an I/O error is no spec and one flag, spec.Unreadable. The root is a
+// TrustedRoot, which only TrustRoot and NoRun make (card SPEC-TRUST2), so a
+// caller cannot hand it a raw store path.
+func DiscoverSpec(cwd, projectDir, managedDir string, root TrustedRoot) *spec.Compiled {
+	return discoverSpecAt(cwd, baseline.Key(cwd), projectDir, managedDir, root)
 }
 
 // discoverSpecAt is DiscoverSpec given cwd's project key, baseline.Key(cwd),
 // which the post's judge also reads the project index under: it walks the
 // key once for both (card STALE-NUDGE1), where a second walk was most of the
 // step the index read added to a judged post.
-func discoverSpecAt(cwd, key, projectDir, managedDir, storeRoot string) *spec.Compiled {
+func discoverSpecAt(cwd, key, projectDir, managedDir string, root TrustedRoot) *spec.Compiled {
 	if cwd == "" {
 		return spec.Unreadable(errNoCWD)
 	}
@@ -40,10 +42,10 @@ func discoverSpecAt(cwd, key, projectDir, managedDir, storeRoot string) *spec.Co
 		managed = filepath.Join(managedDir, "rashomon", "spec.json")
 	}
 	bound := func(path, digest string) bool {
-		if storeRoot == "" {
+		if root.root == "" {
 			return false
 		}
-		b, err := spec.ReadBindings(spec.OSFS{}, storeRoot)
+		b, err := spec.ReadBindings(spec.OSFS{}, root.root)
 		return err == nil && b.Holds(SpecProject(path), path, digest)
 	}
 	sp, err := spec.DiscoverBound(spec.OSFS{}, specLocationsAt(cwd, key, projectDir), managed, bound)
@@ -53,17 +55,35 @@ func discoverSpecAt(cwd, key, projectDir, managedDir, storeRoot string) *spec.Co
 	return sp
 }
 
+// TrustedRoot is the store root DiscoverSpec reads trust bindings under,
+// or "" for none (card SPEC-TRUST2). Its field is unexported, so a caller
+// outside this package cannot set it: TrustRoot and NoRun are the only
+// makers (H-142 pins that). The type does not stop a caller passing a raw
+// store path through NoRun; what pins that is who may call it, an allowlist
+// of one production file (H-142, cmd/rashomon/brief.go). Every other caller
+// says which run's store writes it checked, through TrustRoot (D217).
+type TrustedRoot struct{ root string }
+
+// NoRun is the TrustedRoot of a caller that holds no run to check for a
+// store write: root as it is. It is sound only where no write by the
+// session being read can have happened, or where the caller is not bound to
+// a session: the probe at SessionStart reads before the session's first
+// call, and the brief it builds prints only at a run's first record. A
+// caller that reads a session's own record has a run and uses TrustRoot.
+func NoRun(root string) TrustedRoot { return TrustedRoot{root: root} }
+
 // TrustRoot is the store root DiscoverSpec reads trust bindings under for a
 // point at seq at of run: storeRoot, or "" once the session wrote under it
 // (D173), so for the rest of a session that could have written its own
 // binding, no repository spec reads as trusted. The steer step, the Stop and
 // the prompt's preflight note (D203) read it between reading the run and
-// discovering the spec.
-func TrustRoot(run *store.Run, storeRoot string, at int64) string {
-	if verify.StoreWritten(run, storeRoot, at) {
-		return ""
+// discovering the spec. A nil run is no proof that the session wrote nothing
+// under the store, so it reads as written (fail closed).
+func TrustRoot(run *store.Run, storeRoot string, at int64) TrustedRoot {
+	if run == nil || verify.StoreWritten(run, storeRoot, at) {
+		return TrustedRoot{}
 	}
-	return storeRoot
+	return TrustedRoot{root: storeRoot}
 }
 
 // WriteSpecBindings writes b as the bindings file under storeRoot, the one
