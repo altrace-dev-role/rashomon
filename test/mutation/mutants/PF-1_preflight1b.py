@@ -52,7 +52,7 @@ m("PF-1 the prompt path counts sdk-cli as attended", "internal/hook/promptcontex
   "\t\tunattended = env.Surface == string(harness.SurfaceCloud)\n",
   "TestPF1z_")
 m("PF-1 the preflight reads the spec with the store root directly", "cmd/rashomon/preflight.go",
-  "hook.TrustRoot(run, st.Root(), run.LastSeq())", "st.Root()",
+  "hook.TrustRoot(run, st.Root(), run.LastSeq())", "hook.NoRun(st.Root())",
   "TestST1x_")
 m("PF-1 the stored paragraph claims every note word for word", "internal/disclose/paragraphs.go",
   "Each note it adds, word for word, except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them.", "Each note it adds, word for word.",
