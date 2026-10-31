@@ -334,6 +334,19 @@ func TestSTC1e_EveryReasonIsExplained(t *testing.T) {
 	}
 }
 
+// TestSTC1e2_UnverifiedChannelNamesBothCauses: unverified_channel is logged
+// both for a Claude Code version not verified to carry the note and, since
+// #159, for a transcript that did not show an earlier note delivered on the
+// event, so its sentence says both.
+func TestSTC1e2_UnverifiedChannelNamesBothCauses(t *testing.T) {
+	got := meaning(steerRow{State: string(steer.LineStateSuppressed), SuppressedBy: string(steer.SuppressedByUnverifiedChannel)})
+	for _, want := range []string{"version has not been verified", "a transcript did not show an earlier note delivered on this event"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("unverified_channel reads %q, want it to say %q", got, want)
+		}
+	}
+}
+
 func TestSTC1k_ReadVerbsWriteNothing(t *testing.T) {
 	st, _ := stcStore(t)
 	stcAppend(t, st, stcFixture...)
