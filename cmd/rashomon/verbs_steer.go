@@ -21,10 +21,11 @@ import (
 const steerUsage = `  rashomon steer [off|on] [--user|--project]
                                say whether the notes are on, or turn them off
                                or on for you (--user, the default) or for this
-                               project (--project); off sends the agent no
-                               note and shows you what it would have said,
-                               recording goes on, and the end-of-turn line
-                               still prints
+                               project (--project), from your own terminal
+                               (never from an agent session); off sends the
+                               agent no note and shows you what it would have
+                               said, recording goes on, and the end-of-turn
+                               line still prints
   rashomon steer on --repair   replace a config.json that does not read, after
                                asking on your terminal (never from an agent
                                session); until then the notes are off
@@ -214,16 +215,18 @@ func steerLine(c store.Config, key string) string {
 	return fmt.Sprintf("steer: %s (you: %s; this project: %s, %s)", state, user, proj, safeText(key))
 }
 
-// steerVerb is the `steer off|on` command line for a scope.
+// steerVerb is the `steer off|on` command line for a scope, the scope
+// always named: --user is the default, and the consent screen teaches
+// `steer off --user`, so a refusal names the command the person read.
 func steerVerb(off, project bool) string {
 	v := "on"
 	if off {
 		v = "off"
 	}
 	if project {
-		v += " --project"
+		return v + " --project"
 	}
-	return v
+	return v + " --user"
 }
 
 // steerSet is `steer off|on`: the scope's key, under the config lock. It is
