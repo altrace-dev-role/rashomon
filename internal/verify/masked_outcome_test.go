@@ -2,6 +2,7 @@ package verify
 
 import (
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -50,11 +51,11 @@ func TestMO1_AMaskedRunTakesItsOutcomeFromItsOutput(t *testing.T) {
 		if g.LastRun == nil {
 			t.Fatalf("output %q: no last run", tc.kind)
 		}
-		if g.LastRun.OutcomeFrom != tc.from {
+		if g.LastRun.OutcomeFrom.String() != tc.from {
 			t.Errorf("output %q: outcome_from %q, want %q", tc.kind, g.LastRun.OutcomeFrom, tc.from)
 		}
 		if tc.from != "" && tc.state != Absent {
-			if g.LastRun.ExitCode != nil || g.LastRun.RunnerName != "python3 -m pytest" || g.LastRun.MaskedBy != "tail" {
+			if g.LastRun.ExitCode != nil || g.LastRun.RunnerName.String() != "python3 -m pytest" || g.LastRun.MaskedBy.String() != "tail" {
 				t.Errorf("output %q: run ref %+v, want no exit code, runner python3 -m pytest and masked_by tail", tc.kind, *g.LastRun)
 			}
 		}
@@ -75,7 +76,7 @@ func TestMO1_OnlyAKeepingStageOnRulesElevenReadsOutput(t *testing.T) {
 	for _, by := range []string{"head", "grep", "wc", "sort", "cut", "other", ""} {
 		g := one(t, statesAt(t, 2, tailedPytest(1, by, "summary_pass")))
 		wantState(t, g, MaskedInconclusive, MaskedWithSuccessLine)
-		if g.LastRun.OutcomeFrom != "" {
+		if g.LastRun.OutcomeFrom != SourceExit {
 			t.Errorf("masked_by %q: outcome_from %q, want none", by, g.LastRun.OutcomeFrom)
 		}
 	}
@@ -91,12 +92,16 @@ func TestMO1_OnlyAKeepingStageOnRulesElevenReadsOutput(t *testing.T) {
 func TestMO1_AFailedOrBackgroundedRunIsNotRead(t *testing.T) {
 	bg := tailedPytest(1, "tail", "summary_pass")
 	bg.bg = true
-	wantState(t, one(t, statesAt(t, 2, bg)), Backgrounded, BackgroundLaunch)
+	gb := one(t, statesAt(t, 2, bg))
+	wantState(t, gb, Backgrounded, BackgroundLaunch)
+	if gb.LastRun.OutcomeFrom != SourceExit {
+		t.Errorf("a backgrounded run: outcome_from %q, want none", gb.LastRun.OutcomeFrom)
+	}
 	failed := tailedPytest(1, "tail", "summary_pass")
 	failed.outcome, failed.exit = store.ExecFailed, 1
 	g := one(t, statesAt(t, 2, failed))
 	wantState(t, g, MaskedInconclusive, MaskedWithSuccessLine)
-	if g.LastRun.OutcomeFrom != "" {
+	if g.LastRun.OutcomeFrom != SourceExit {
 		t.Errorf("a failed run: outcome_from %q, want none", g.LastRun.OutcomeFrom)
 	}
 }
@@ -107,7 +112,7 @@ func TestMO1_AFailedOrBackgroundedRunIsNotRead(t *testing.T) {
 func TestMO1_AnExitStatusGreenCarriesNoProvenance(t *testing.T) {
 	g := one(t, statesAt(t, 2, gateCall(1, "go-test", store.ExecOK)))
 	wantState(t, g, Green, OK)
-	if g.LastRun.OutcomeFrom != "" || g.LastRun.MaskedBy != "" || g.LastRun.RunnerName != "" {
+	if g.LastRun.OutcomeFrom != SourceExit || g.LastRun.MaskedBy != 0 || g.LastRun.RunnerName != 0 {
 		t.Errorf("run ref %+v, want no outcome_from, masked_by or runner_name", *g.LastRun)
 	}
 }
@@ -119,7 +124,7 @@ func TestMO1_AnExitStatusGreenCarriesNoProvenance(t *testing.T) {
 func TestMO1_ADerivedGreenGoesStale(t *testing.T) {
 	g := one(t, statesAt(t, 4, tailedPytest(1, "tail", "summary_pass"), edit(3, "internal/a.py")))
 	wantState(t, g, Stale, WritesAfterGreen)
-	if g.LastGreen == nil || g.LastGreen.Seq != 1 || g.LastGreen.OutcomeFrom != OutcomeFromOutput {
+	if g.LastGreen == nil || g.LastGreen.Seq != 1 || g.LastGreen.OutcomeFrom != SourceOutput {
 		t.Errorf("last green %+v, want the tailed run with outcome_from %s", g.LastGreen, OutcomeFromOutput)
 	}
 }
@@ -180,5 +185,24 @@ func TestMO1_TheStaleNoteCarriesTheProvenance(t *testing.T) {
 	}
 	if f := got[0]; f.OutcomeFrom != OutcomeFromOutput {
 		t.Errorf("finding outcome_from %q, want %s", f.OutcomeFrom, OutcomeFromOutput)
+	}
+}
+
+// TestSTR43k_AFailLineRedIsNoCandidate: a red by a fail line in the output of a
+// run whose exit status was its own (D61), where no summary was read in place of
+// the status, is no regression. Only a red whose outcome was read from the
+// output's summary (D229) joins the exit-status red as a candidate. Break: let
+// every failed_output red through regressedHere.
+func TestSTR43k_AFailLineRedIsNoCandidate(t *testing.T) {
+	fail := gateCall(3, "go", store.ExecOK)
+	fail.gateOutput = &store.GateOutput{Kind: "fail_line", Parser: "go"}
+	r := runOf(t, gateCall(1, "go", store.ExecOK), edit(2, "internal/a.go"), fail)
+	minuteClock(t, r)
+	pt := callPoint(t, r, 3)
+	if s := Evaluate(r, nil, nil, pt, time.Time{}); len(s.Gates) != 1 || s.Gates[0].State != Red || s.Gates[0].Reason != FailedOutput {
+		t.Fatalf("premise: gates %+v, want one red by failed_output", s.Gates)
+	}
+	if got := facts(t, r, 3, pt); len(got) != 0 {
+		t.Errorf("%d regression findings for a fail line the exit status did not back, want none", len(got))
 	}
 }

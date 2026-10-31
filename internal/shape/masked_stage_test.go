@@ -224,3 +224,36 @@ func TestMO1_TheFieldsAreNotOnTheDeclaration(t *testing.T) {
 		}
 	}
 }
+
+// TestMO1_TheIdsAreThePlacesInTheLists: the one-byte ids verify holds in place
+// of the two words, round trip over every word, 0 for a word that is none, and
+// the lists fit a byte.
+func TestMO1_TheIdsAreThePlacesInTheLists(t *testing.T) {
+	names := RunnerNames()
+	if len(names) > 254 {
+		t.Fatalf("%d runner names do not fit an id of one byte", len(names))
+	}
+	for i, n := range names {
+		id := RunnerNameID(n)
+		if id == 0 || int(id) > i+1 {
+			t.Errorf("RunnerNameID(%q) = %d, want the place of its first row, at most %d", n, id, i+1)
+		}
+		if got := RunnerNameOf(id); got != n {
+			t.Errorf("RunnerNameOf(%d) = %q, want %q", id, got, n)
+		}
+	}
+	for _, w := range MaskedByWords() {
+		id := MaskedByID(w)
+		if id == 0 || MaskedByOf(id) != w {
+			t.Errorf("MaskedByID(%q) = %d reads back %q", w, id, MaskedByOf(id))
+		}
+	}
+	for _, none := range []string{"", "python3", "canary", "Tail"} {
+		if RunnerNameID(none) != 0 || MaskedByID(none) != 0 {
+			t.Errorf("%q has an id", none)
+		}
+	}
+	if RunnerNameOf(0) != "" || RunnerNameOf(255) != "" || MaskedByOf(0) != "" || MaskedByOf(255) != "" {
+		t.Error("an id past the lists names a word")
+	}
+}

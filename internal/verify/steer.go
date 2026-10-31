@@ -101,8 +101,8 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 		green, last := g.LastGreen.Seq, g.LastRun.Seq
 		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
 			LastGreenSeq: &green, LastRunSeq: &last, PartialRuns: g.PartialRunsSince,
-			OutcomeFrom: OutcomeFrom(g.LastRun.OutcomeFrom)}
-		if g.LastRun.ExitCode != nil && g.LastRun.OutcomeFrom == "" {
+			OutcomeFrom: OutcomeFrom(g.LastRun.OutcomeFrom.String())}
+		if g.LastRun.ExitCode != nil && g.LastRun.OutcomeFrom == SourceExit {
 			exit := *g.LastRun.ExitCode
 			fact.ExitCode = &exit
 		}
@@ -144,7 +144,7 @@ func regressedHere(g *GateState, toolUseID string) bool {
 		code := *g.LastRun.ExitCode
 		return code != 126 && code != 127
 	case FailedOutput:
-		return g.LastRun.OutcomeFrom == OutcomeFromOutput
+		return g.LastRun.OutcomeFrom == SourceOutput
 	}
 	return false
 }
@@ -167,7 +167,7 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, pt
 		green := g.LastGreen.Seq
 		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
 			LastGreenSeq: &green, LastRunSeq: &green, PartialRuns: g.PartialRunsSince,
-			OutcomeFrom: OutcomeFrom(g.LastGreen.OutcomeFrom)}
+			OutcomeFrom: OutcomeFrom(g.LastGreen.OutcomeFrom.String())}
 		if p := Program(programOf(runs, green)); p.Valid() {
 			fact.Program = p
 		}

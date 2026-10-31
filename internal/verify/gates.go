@@ -158,7 +158,7 @@ func treeMovedForeign(f *fam) bool    { return f.bound == boundForeign }
 // maskedFromRulesVersion is the rules version from which masked_by is read as
 // the stage that hid a status (MASKED-OUTCOME1, D229): a record written before
 // it holds no such word, and a masked run on it stays masked.
-const maskedFromRulesVersion = 11
+const maskedFromRulesVersion = shape.OutputOutcomeRulesVersion
 
 // OutcomeFromOutput is the outcome_from word of a run whose outcome was read
 // from its output's summary, not from its exit status: a line whose pipe hid
@@ -189,9 +189,9 @@ func statusHidden(r *gateRun) bool {
 // a table that has a summary is a substring a pipe kept, not the runner's
 // verdict, so it does not decide: the run stays masked. Every other word
 // (no_summary, unread, unattributable) leaves the run masked.
-func readsOutput(r *gateRun) bool {
-	if !statusHidden(r) || r.RulesVersion < maskedFromRulesVersion || r.Outcome != store.ExecOK || r.Backgrounded ||
-		r.Output == nil || r.MaskedBy == "" || !shape.MaskedByKeeps(r.MaskedBy) {
+func readsOutput(r *gateRun, rulesVersion int) bool {
+	if !statusHidden(r) || rulesVersion < maskedFromRulesVersion || r.Outcome != store.ExecOK || r.Backgrounded ||
+		r.Output == nil || !shape.MaskedByKeeps(shape.MaskedByOf(r.MaskedByID)) {
 		return false
 	}
 	switch r.Output.Kind {
@@ -350,9 +350,9 @@ func sameAgent(a, b *string) bool { return a == nil && b == nil || a != nil && b
 func runRef(r *gateRun) *RunRef {
 	ref := &RunRef{Seq: r.Seq, ToolUseID: r.ToolUseID, AgentID: r.AgentID, Outcome: r.Outcome,
 		ExitCode: r.ExitCode, Masked: r.Masked, GateOutput: r.Output, Scope: scopeUnknown,
-		MaskedBy: r.MaskedBy, RunnerName: r.RunnerName}
+		MaskedBy: StageWord(r.MaskedByID), RunnerName: RunnerWord(r.RunnerID)}
 	if r.FromOutput {
-		ref.OutcomeFrom = OutcomeFromOutput
+		ref.OutcomeFrom = SourceOutput
 	}
 	return ref
 }

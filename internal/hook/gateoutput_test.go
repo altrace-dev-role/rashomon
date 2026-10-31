@@ -196,7 +196,7 @@ func go1gFrom(g verify.GateState) string {
 	if g.LastRun == nil {
 		return ""
 	}
-	return g.LastRun.OutcomeFrom
+	return g.LastRun.OutcomeFrom.String()
 }
 
 // TestGO1g_MaskedPipeReadsTheSummary: PG2's sentence, live. A pipe that drops

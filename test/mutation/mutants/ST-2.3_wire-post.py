@@ -64,7 +64,7 @@ m("ST-2.3 a red of another call is taken as this run", V,
   " || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {\n", " || g.LastRun == nil {\n",
   "TestSTR43i_")
 m("ST-2.3 any red reason is a candidate", V,
-  "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == OutcomeFromOutput\n\t}\n\treturn false\n", "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == OutcomeFromOutput\n\t}\n\treturn true\n",
+  "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == SourceOutput\n\t}\n\treturn false\n", "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == SourceOutput\n\t}\n\treturn true\n",
   "TestSTR43k_")
 m("ST-2.3 a red with no earlier green is a candidate", V,
   "g.State != Red || g.LastGreen == nil || g.LastRun == nil ||", "g.State != Red || g.LastRun == nil ||",

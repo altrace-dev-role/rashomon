@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -91,7 +92,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
-		bySeq[r.Seq] = cmp.Or(r.RunnerName, r.Program)
+		bySeq[r.Seq] = cmp.Or(shape.RunnerNameOf(r.RunnerID), r.Program)
 	}
 	out := make(map[string]string, len(gates))
 	for _, g := range gates {

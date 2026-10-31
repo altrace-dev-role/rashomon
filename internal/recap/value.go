@@ -262,7 +262,7 @@ func rowSentence(v verify.StopView, k int) string {
 		if g.LastRun != nil && g.LastRun.ExitCode != nil {
 			verb = "exited " + strconv.Itoa(*g.LastRun.ExitCode)
 		}
-		if g.LastRun != nil && g.LastRun.OutcomeFrom == verify.OutcomeFromOutput {
+		if g.LastRun != nil && g.LastRun.OutcomeFrom == verify.SourceOutput {
 			verb = "failed"
 		}
 		where, since := when(v, g)
@@ -395,7 +395,7 @@ func (t gateSet) name(g *verify.GateState) string {
 // where their result came from.
 func (t gateSet) fromOutput() string {
 	for _, g := range t.gates {
-		if g.State == verify.Green && g.LastRun != nil && g.LastRun.OutcomeFrom == verify.OutcomeFromOutput {
+		if g.State == verify.Green && g.LastRun != nil && g.LastRun.OutcomeFrom == verify.SourceOutput {
 			return readFromOutput
 		}
 	}
@@ -404,7 +404,7 @@ func (t gateSet) fromOutput() string {
 
 // fromOutput is readFromOutput for a run that had its outcome from its output.
 func fromOutput(r *verify.RunRef) string {
-	if r != nil && r.OutcomeFrom == verify.OutcomeFromOutput {
+	if r != nil && r.OutcomeFrom == verify.SourceOutput {
 		return readFromOutput
 	}
 	return ""
@@ -417,13 +417,13 @@ func fromOutput(r *verify.RunRef) string {
 // that is not a pipe) or the stage keeps the summary, whose output simply did
 // not say.
 func droppingStage(r *verify.RunRef) string {
-	if r == nil || r.MaskedBy == "" || shape.MaskedByKeeps(r.MaskedBy) {
+	if r == nil || r.MaskedBy == 0 || shape.MaskedByKeeps(r.MaskedBy.String()) {
 		return ""
 	}
-	if r.MaskedBy == "other" {
+	if r.MaskedBy.String() == "other" {
 		return "a pipe"
 	}
-	return "the pipe to " + r.MaskedBy
+	return "the pipe to " + r.MaskedBy.String()
 }
 
 // greens is the distinct programs of the green turn gates, in order, at most

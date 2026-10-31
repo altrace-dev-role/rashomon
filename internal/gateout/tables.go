@@ -76,8 +76,16 @@ func matches(patterns []*regexp.Regexp, line []byte) bool {
 // runner no table names, `python3 -m unittest` or `bun test`, returns program
 // as it was, and Classify answers unattributable for it as before.
 func ProgramFor(program, runner string) string {
-	for _, w := range strings.Fields(runner) {
-		if findProgram(w) != nil {
+	// The words are walked in place: strings.Fields would allocate a slice for
+	// every run that names a runner.
+	for rest := runner; rest != ""; {
+		w := rest
+		if i := strings.IndexByte(rest, ' '); i >= 0 {
+			w, rest = rest[:i], rest[i+1:]
+		} else {
+			rest = ""
+		}
+		if w != "" && findProgram(w) != nil {
 			return w
 		}
 	}

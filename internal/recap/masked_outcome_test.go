@@ -3,6 +3,7 @@ package recap
 import (
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -11,11 +12,11 @@ import (
 // said (D229).
 func fromOutputRun(g verify.GateState) verify.GateState {
 	run := *g.LastRun
-	run.OutcomeFrom, run.MaskedBy, run.RunnerName = verify.OutcomeFromOutput, "tail", "python3 -m pytest"
+	run.OutcomeFrom, run.MaskedBy, run.RunnerName = verify.SourceOutput, verify.StageWord(shape.MaskedByID("tail")), verify.RunnerWord(shape.RunnerNameID("python3 -m pytest"))
 	g.LastRun = &run
 	if g.LastGreen != nil {
 		green := *g.LastGreen
-		green.OutcomeFrom = verify.OutcomeFromOutput
+		green.OutcomeFrom = verify.SourceOutput
 		g.LastGreen = &green
 	}
 	return g
@@ -24,7 +25,7 @@ func fromOutputRun(g verify.GateState) verify.GateState {
 // maskedBy is a masked gate whose last run's pipe stage is by.
 func maskedBy(by string) verify.GateState {
 	g := gateAt("pytest:test", "test", verify.MaskedInconclusive, verify.MaskedNoSuccessLine, 7, nil)
-	g.LastRun.MaskedBy, g.LastRun.RunnerName = by, "python3 -m pytest"
+	g.LastRun.MaskedBy, g.LastRun.RunnerName = verify.StageWord(shape.MaskedByID(by)), verify.RunnerWord(shape.RunnerNameID("python3 -m pytest"))
 	return g
 }
 

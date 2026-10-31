@@ -31,22 +31,14 @@ type gateRun struct {
 	// names no one runner; Location is the declaration's CWDDigest verbatim,
 	// "" where it is not known or the line was rewritten. Never VerbClass:
 	// a sequenced test run is class package and the same runner.
-	Runner   *string
-	Location string
-	Kind     string // test | build | custom
-	Program  string
-	Outcome  string // the execution's outcome
-	ExitCode *int
-	Masked   *string
-	Output   *store.GateOutput
-	// RunnerName and MaskedBy are the execution's runner_name and masked_by
-	// (call schema 8), "" where the record has none: the runner's words in
-	// its row of the binary's lists, and the stage of the pipe that hid its
-	// status. RulesVersion is the version of the rules that decided them.
-	RunnerName string
-	MaskedBy   string
-	// RulesVersion is the execution's rules_version.
-	RulesVersion int
+	Runner       *string
+	Location     string
+	Kind         string // test | build | custom
+	Program      string
+	Outcome      string // the execution's outcome
+	ExitCode     *int
+	Masked       *string
+	Output       *store.GateOutput
 	Backgrounded bool
 	// FromOutput: the run's outcome is the output's, not the exit status's
 	// (outputOutcome): a masked line whose masking stage keeps the summary,
@@ -56,6 +48,15 @@ type gateRun struct {
 	// KindRecorded: Kind is the record's runner_kind, not inferred. Beside
 	// Backgrounded, so the two bools share one word of padding.
 	KindRecorded bool
+	// RunnerID and MaskedByID are the execution's runner_name and masked_by
+	// (call schema 8) as their place in the binary's lists (shape.RunnerNameID,
+	// shape.MaskedByID), 0 where the record has none: the runner's words in
+	// its row of the lists, and the stage of the pipe that hid its status. One
+	// byte each, in the padding the three flags leave, so a run of any kind
+	// costs no byte more than before schema 8 (D209, D173d); the words are
+	// read back where they are named (shape.RunnerNameOf, shape.MaskedByOf).
+	RunnerID   uint8
+	MaskedByID uint8
 }
 
 // familyKey is a gate's identity: the same runner at the same location.
@@ -240,15 +241,14 @@ func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) ga
 	// python3 -m pytest), as gateout keys its tables by it (D229).
 	if e.SchemaVersion >= 8 {
 		if e.RunnerName != nil {
-			g.RunnerName = *e.RunnerName
+			g.RunnerID = shape.RunnerNameID(*e.RunnerName)
 		}
 		if e.MaskedBy != nil {
-			g.MaskedBy = *e.MaskedBy
+			g.MaskedByID = shape.MaskedByID(*e.MaskedBy)
 		}
 	}
-	g.RulesVersion = e.RulesVersion
-	g.Program = gateout.ProgramFor(g.Program, g.RunnerName)
-	g.FromOutput = readsOutput(&g)
+	g.Program = gateout.ProgramFor(g.Program, shape.RunnerNameOf(g.RunnerID))
+	g.FromOutput = readsOutput(&g, e.RulesVersion)
 	return g
 }
 

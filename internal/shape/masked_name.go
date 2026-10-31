@@ -1,6 +1,9 @@
 package shape
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // The runner's name and the stage that hid its status (D229). Both are words
 // the binary ships and never a word of the line: RunnerName is a row of
@@ -43,11 +46,74 @@ const (
 
 var stageNames = [...]string{"other", "tail", "tee", "cat", "head", "grep", "wc", "sort", "cut"}
 
+// OutputOutcomeRulesVersion is the first RulesVersion at which masked_by is
+// decided, so that a masked run's outcome may be read from its output's summary
+// (D229). A record written under an earlier version holds no such word, and a
+// reader that takes an outcome from the output asks this of it first.
+const OutputOutcomeRulesVersion = 11
+
 // RunnerNames is the vocabulary of runner_name: the words of every row of the
 // two runner lists, for the store check that holds a record's runner_name to
 // the binary's own words.
 func RunnerNames() []string {
 	return append(append([]string(nil), testCommandNames...), buildCommandNames...)
+}
+
+// The ids below are for a reader that holds a run in memory for every call of
+// a turn (verify's gateRun): a word it would hold as a string costs sixteen
+// bytes in every run, masked or not, where its place in the list is one byte
+// beside the flags the run already has (D209, D173d). Id 0 is no word.
+var runnerIDs struct {
+	once sync.Once
+	m    map[string]uint8
+}
+
+// RunnerNameID is the place of a runner_name among RunnerNames, counted from
+// 1: 0 for a word that is none, such as an empty one or one a record was
+// tampered to hold. RunnerNameOf reads it back.
+func RunnerNameID(name string) uint8 {
+	runnerIDs.once.Do(func() {
+		names := RunnerNames()
+		runnerIDs.m = make(map[string]uint8, len(names))
+		for i := len(names) - 1; i >= 0 && i < 255; i-- {
+			runnerIDs.m[names[i]] = uint8(i + 1)
+		}
+	})
+	return runnerIDs.m[name]
+}
+
+// RunnerNameOf is the runner_name an id from RunnerNameID stands for, "" for
+// 0 or an id past the lists. The string is the binary's own.
+func RunnerNameOf(id uint8) string {
+	switch i := int(id) - 1; {
+	case i < 0:
+		return ""
+	case i < len(testCommandNames):
+		return testCommandNames[i]
+	case i-len(testCommandNames) < len(buildCommandNames):
+		return buildCommandNames[i-len(testCommandNames)]
+	}
+	return ""
+}
+
+// MaskedByID is the place of a masked_by word among MaskedByWords, counted
+// from 1: 0 for a word that is none. MaskedByOf reads it back.
+func MaskedByID(word string) uint8 {
+	for i, w := range stageNames {
+		if w == word {
+			return uint8(i + 1)
+		}
+	}
+	return 0
+}
+
+// MaskedByOf is the masked_by word an id from MaskedByID stands for, "" for 0
+// or an id past the words. The string is the binary's own.
+func MaskedByOf(id uint8) string {
+	if i := int(id) - 1; i >= 0 && i < len(stageNames) {
+		return stageNames[i]
+	}
+	return ""
 }
 
 // MaskedByWords is the vocabulary of masked_by, for the schema enum test.
