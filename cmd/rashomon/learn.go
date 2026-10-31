@@ -86,6 +86,9 @@ func listLessons(stdout io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "%s %s: %d fires, %d confirmed, %d refuted, %d unresolved; %s\n    %s\n",
 			ls.ID, ls.Tier, t.Fires, t.Confirmed, t.Refuted, t.Unresolved, bound, ls.Text)
+		if _, err := learn.Message(ls); err != nil && ls.Tier != learn.TierProposed {
+			fmt.Fprintf(stdout, "    cannot reach the agent: %v\n", err)
+		}
 	}
 	return nil
 }
@@ -96,6 +99,10 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // read-only
+	had := map[string]bool{}
+	for _, ls := range l.Lessons() {
+		had[ls.ID] = true
+	}
 	added, skipped, err := l.Import(f, time.Now())
 	if err != nil {
 		return err
@@ -103,14 +110,28 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 	if err := l.Save(); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "imported %d lessons at proposed, skipped %d; "+
-		"each reaches the agent only after `rashomon learn approve ID`\n", added, skipped)
-	return err
+	if _, err = fmt.Fprintf(stdout, "imported %d lessons at proposed, skipped %d; "+
+		"an approved lesson reaches the agent with your prompt, once a session; `rashomon learn approve ID` approves one\n", added, skipped); err != nil {
+		return err
+	}
+	// Import admits text approval refuses (2,048 bytes in any charset), so
+	// each row that can never be approved is named now, not at approval.
+	for _, ls := range l.Lessons() {
+		if _, merr := learn.Message(ls); merr != nil && !had[ls.ID] {
+			if _, err := fmt.Fprintf(stdout, "lesson %s cannot reach the agent: %v\n", ls.ID, merr); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // approveLesson shows the lesson and a one-time code on the terminal, never
 // stdout or stdin, and approves only when the code is typed back there: an
 // agent's shell has no terminal, so it can neither read the code nor answer.
+// A lesson whose text cannot reach the agent (learn.Message: the renderer's
+// slot checks and the host screen) is refused before the code is shown, so
+// a person approves only text that arrives (L8).
 func approveLesson(l *learn.Ledger, id string, stdout io.Writer) error {
 	i := -1
 	lessons := l.Lessons()
@@ -120,7 +141,10 @@ func approveLesson(l *learn.Ledger, id string, stdout io.Writer) error {
 		}
 	}
 	if i < 0 || lessons[i].Tier != learn.TierProposed {
-		return l.Approve(id) // its refusal names the reason
+		return l.Approve(id, time.Now()) // its refusal names the reason
+	}
+	if _, err := learn.Message(lessons[i]); err != nil {
+		return fmt.Errorf("lesson %s cannot reach the agent: %w; nothing was approved", id, err)
 	}
 	in, out, closeTTY, err := learnTerminal()
 	if err != nil {
@@ -137,7 +161,7 @@ func approveLesson(l *learn.Ledger, id string, stdout io.Writer) error {
 	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(line)), []byte(code)) != 1 {
 		return errors.New("the code did not match, so nothing was approved")
 	}
-	if err := l.Approve(id); err != nil {
+	if err := l.Approve(id, time.Now()); err != nil {
 		return err
 	}
 	if err := l.Save(); err != nil {

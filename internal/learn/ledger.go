@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -66,6 +67,10 @@ type Lesson struct {
 	Tier        Tier   `json:"tier"`
 	Text        string `json:"text"`
 	SinceUnixMS int64  `json:"since_unix_ms"`
+	// ApprovedUnixMS is when a person last approved the lesson at a terminal,
+	// 0 for never. A quarantine sends the tier back to proposed and keeps it,
+	// so "approved now" reads the tier as well.
+	ApprovedUnixMS int64 `json:"approved_unix_ms,omitempty"`
 }
 
 // Label is one row of labels.ndjson: one fire of a lesson and what it came
@@ -108,8 +113,8 @@ type Ledger struct {
 // back so (fail closed): every lesson returns to proposed, to be approved
 // again, and active.json holds none. No state at all is an empty ledger.
 func Open(root, project string, now time.Time) (*Ledger, error) {
-	if project == "" || project == "." || project == ".." || strings.ContainsAny(project, `/\`) {
-		return nil, fmt.Errorf("learn: project %q is not one path element", project)
+	if err := projectElement(project); err != nil {
+		return nil, err
 	}
 	l := &Ledger{root: root, dir: filepath.Join(root, DirLearn, project), tallies: map[string]Tally{}}
 	files, sum, err := l.readState()
@@ -136,6 +141,14 @@ func Open(root, project string, now time.Time) (*Ledger, error) {
 	}
 	l.file.QuarantinedAtUnixMS = now.UnixMilli()
 	return l, l.Save()
+}
+
+// projectElement refuses a project name that is not one path element.
+func projectElement(project string) error {
+	if project == "" || project == "." || project == ".." || strings.ContainsAny(project, `/\`) {
+		return fmt.Errorf("learn: project %q is not one path element", project)
+	}
+	return nil
 }
 
 // readState reads the three state files (nil where absent) and the manifest.
@@ -171,25 +184,42 @@ func (l *Ledger) readState() (map[string][]byte, []byte, error) {
 	return files, bytes.TrimSpace(sum), err
 }
 
-// decode is the learner's one JSON read, of its own files and an import
-// file. It runs in CLI commands only: no hook links this package
-// (TestP6_HookAndStoreImportNoLearner), so RES-5's hook-path ban allows it by
-// name.
+// decode is the learner's JSON read of its own files read whole and of an
+// import file. Only the learn verb calls it: recap pending, a hook command,
+// links this package but reads active.json through decodeActive, under its
+// cap, so RES-5 allows the two by name and a hook-path caller of Open would
+// show up as a new one.
 func decode(b []byte, v any) error { return json.Unmarshal(b, v) }
 
-// sign is the manifest: an HMAC over each state file's name and digest, "-"
-// for one that is absent.
+// sign is the manifest over files read whole (Open's and Save's reads):
+// signDigests over each one's SHA-256.
 func sign(key []byte, files map[string][]byte) string {
-	m := hmac.New(sha256.New, key)
-	for _, name := range stateFiles {
-		digest := "-"
+	digests := make([]string, len(stateFiles))
+	for i, name := range stateFiles {
+		digests[i] = "-"
 		if b, ok := files[name]; ok {
-			d := sha256.Sum256(b)
-			digest = hex.EncodeToString(d[:])
+			digests[i] = digestHex(b)
 		}
-		fmt.Fprintf(m, "%s\x00%s\n", name, digest)
+	}
+	return signDigests(key, digests)
+}
+
+// signDigests is the manifest: an HMAC over each state file's name and
+// digest, in stateFiles' order, "-" for one that is absent. Open and Save
+// reach it through sign and ReadActive with the digests it streamed, so the
+// two readers check one manifest.
+func signDigests(key []byte, digests []string) string {
+	m := hmac.New(sha256.New, key)
+	for i, name := range stateFiles {
+		fmt.Fprintf(m, "%s\x00%s\n", name, digests[i])
 	}
 	return hex.EncodeToString(m.Sum(nil))
+}
+
+// digestHex is b's SHA-256 in hex.
+func digestHex(b []byte) string {
+	d := sha256.Sum256(b)
+	return hex.EncodeToString(d[:])
 }
 
 // tallies counts labels.ndjson by lesson; a line that does not parse is
@@ -240,7 +270,12 @@ func byAge(a, b Lesson) int {
 // Import adds the lessons of a shared file (the lessons.json shape) at
 // proposed, whatever tier each names (PF-HD5: a shared lesson is approved
 // here or not at all). A row whose id is taken, malformed or whose text is
-// empty or over store.MaxSteerTextBytes is skipped. The caller saves.
+// empty or over store.MaxSteerTextBytes is skipped. A row whose id is
+// secret-shaped (the screens a lesson id runs when it renders: a deny-list
+// shape, a high-entropy run) refuses the whole file with slot.ErrSecretShaped
+// and adds nothing: an id is stored and printed by the verbs, so an import
+// never carries a token in as one, and the error names the row, not its
+// value (Q4). The caller saves.
 func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err error) {
 	b, err := io.ReadAll(io.LimitReader(r, 1<<20))
 	if err != nil {
@@ -249,6 +284,11 @@ func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err err
 	var in lessonsFile
 	if err := decode(b, &in); err != nil {
 		return 0, 0, fmt.Errorf("learn: the import file is not a lessons file: %w", err)
+	}
+	for i, ls := range in.Lessons {
+		if idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {
+			return 0, 0, fmt.Errorf("learn: import row %d: the lesson id is secret-shaped, so nothing was imported: %w", i+1, slot.ErrSecretShaped)
+		}
 	}
 	for _, ls := range in.Lessons {
 		if !idForm(ls.ID) || ls.Text == "" || len(ls.Text) > store.MaxSteerTextBytes || l.index(ls.ID) >= 0 {
@@ -279,9 +319,9 @@ func (l *Ledger) index(id string) int {
 }
 
 // Approve moves a proposed lesson to the tier its tally gives an approved
-// one. The caller has had a person type the one-time code; this does not
-// ask. The caller saves.
-func (l *Ledger) Approve(id string) error {
+// one and stamps now as its approval time. The caller has had a person type
+// the one-time code; this does not ask. The caller saves.
+func (l *Ledger) Approve(id string, now time.Time) error {
 	i := l.index(id)
 	if i < 0 {
 		return fmt.Errorf("no lesson %q", id)
@@ -290,6 +330,7 @@ func (l *Ledger) Approve(id string) error {
 		return fmt.Errorf("lesson %q is %s, not proposed; nothing to approve", id, l.file.Lessons[i].Tier)
 	}
 	l.file.Lessons[i].Tier = TierProbation.Next(l.tallies[id])
+	l.file.Lessons[i].ApprovedUnixMS = now.UnixMilli()
 	l.Quarantined = false
 	return nil
 }
