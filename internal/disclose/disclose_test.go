@@ -371,7 +371,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// ReplaceFile (config.json, the person's switches; `rashomon summary
 		// on|off` is its one writer), configFiles in the inventory, purge's
 		// topFiles and temp prefix.
-		{"store", 29},
+		// Moved 2026-10-30 (STEER-CLI1) to 30: config.go's UpdateConfig open
+		// of config.lock, the sidecar its writers (`summary`, `steer off|on`)
+		// lock; configFiles' lock row, purge's topFiles. The ReplaceFile of
+		// config.json is the same one call, now behind writeConfig.
+		{"store", 30},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

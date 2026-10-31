@@ -44,7 +44,7 @@ m("ST-4.1 the Stop path gains a copy", "cmd/rashomon/recap_stop.go",
   '\tlines, _, _ := st.ReadSteer(p.SessionID)\n',
   '\tlines, _, _ := st.ReadSteer(p.SessionID)\n\tif false {\n\t\t_, _ = st.CopyBody("", "", "", "", now)\n\t}\n', "TestRC14e_OnlySessionEndTouchesBodies")
 m("ST-4.1 purge does not plan bodies.json", PG,
-  '\trecap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig}', '\trecap.StateFileName, recap.StateTempName, store.FileConfig}',
+  '\trecap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}', '\trecap.StateFileName, recap.StateTempName, store.FileConfig, store.FileConfigLock}',
   "TestRC14d_PurgeLeavesNoFile|TestTRU28_PurgeListsEveryNameItsWritersExport")
 m("ST-4.1 purge does not plan bodies.json's temporary file", PG,
   ', "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-"}', ', "." + store.FileConfig + ".tmp-"}', "TestRC14d_PurgeLeavesNoFile")
