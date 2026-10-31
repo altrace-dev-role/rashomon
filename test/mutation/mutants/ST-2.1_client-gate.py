@@ -16,8 +16,14 @@ m("ST-2.1 the decision gate dropped", F,
   '\tif o.Decision != nil && !verified(keys, event, c, table) {\n', '\tif false {\n', "TestST4_")
 m("ST-2.1 PostToolUse's floor dropped", C,
   '\tstring(EventPostToolUse): {floor: "2.1.280"},\n', '\tstring(EventPostToolUse): {},\n', "TestST4_")
-m("ST-2.1 PostToolUseFailure given a floor without a probe", C,
-  '\tstring(EventPostToolUseFailure): {},\n', '\tstring(EventPostToolUseFailure): {floor: "2.1.280"},\n', "TestST4_")
+# PostToolUseFailure's floor is the version its own P-TRU-1 run passed on,
+# 2.1.304. PostToolUse's 2.1.280, on the strength of the same payload shape,
+# is a floor without a probe (D226).
+m("ST-2.1 PostToolUseFailure's floor dropped", C,
+  '\tstring(EventPostToolUseFailure): {floor: "2.1.304"},\n', '\tstring(EventPostToolUseFailure): {},\n', "TestST4_")
+m("ST-2.1 PostToolUseFailure given PostToolUse's floor without its own probe", C,
+  '\tstring(EventPostToolUseFailure): {floor: "2.1.304"},\n',
+  '\tstring(EventPostToolUseFailure): {floor: "2.1.280"},\n', "TestST4_")
 m("ST-2.1 PreToolUse given a floor without a probe", C,
   '\tstring(EventPreToolUse): {},\n', '\tstring(EventPreToolUse): {floor: "2.1.280"},\n', "TestST4_")
 m("ST-2.1 SessionStart given a floor without a probe", C,

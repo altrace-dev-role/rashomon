@@ -70,9 +70,11 @@ func mirrorVerifiedOn() map[string]channelBasis {
 			// P-TRU-1, 2026-10-23, on 2.1.280: one PostToolUse output carrying
 			// both additionalContext and systemMessage (PRD PF-ST4).
 			string(EventPostToolUse): {floor: "2.1.280"},
-			// The same payload shape as PostToolUse (hook/post.go), which is
-			// not a probe: closed until p-tru-1.sh passes on the event.
-			string(EventPostToolUseFailure): {},
+			// P-TRU-1, 2026-10-30, on 2.1.304: PostToolUseFailure carrying both
+			// halves (same payload shape as PostToolUse is not enough; the
+			// event stayed closed until this probe). Logs under
+			// /tmp/rk-probe-g/p-tru-1-PostToolUseFailure-20261030T231317Z.log.
+			string(EventPostToolUseFailure): {floor: "2.1.304"},
 			// Not probed; closed until test/live/p-tru-1.sh runs on them (:2019).
 			string(EventPostToolBatch): {},
 			string(EventSessionStart):  {},
