@@ -22,12 +22,12 @@ func tables() []table {
 			{program: "go", pass: compile(`^ok\s`), fail: compile(`^FAIL\s`, `^FAIL$`), failLine: compile(`^--- FAIL`), empty: compile(`\[no test files\]`, `\[no tests to run\]`)},
 			{program: "jest", pass: compile(`^Tests:.*\d+ passed`), fail: compile(`^Tests:.*\d+ failed`)},
 			{program: "vitest", pass: compile(`^Tests\s+.*\d+ passed`), fail: compile(`^Tests\s+.*\d+ failed`)},
-			{program: "pytest", pass: compile(`\d+ passed`), fail: compile(`\d+ (failed|error)`), empty: compile(`no tests ran`)},
+			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`\d+ (failed|error)`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`)},
 			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \d+ targets? failed`)},
-			{program: "make", delegate: true},
-			{program: "npm", delegate: true},
-			{program: "yarn", delegate: true},
-			{program: "pnpm", delegate: true},
+			{program: "make", delegate: true, fail: compile(`^make(\[\d+\])?: \*\*\*`)},
+			{program: "npm", delegate: true, fail: compile(`^npm (ERR!|error)`, `ELIFECYCLE`)},
+			{program: "yarn", delegate: true, fail: compile(`^error Command failed`)},
+			{program: "pnpm", delegate: true, fail: compile(`^ERR_PNPM`)},
 		}
 	})
 	return rowsOnce.v
@@ -90,6 +90,15 @@ func ProgramFor(program, runner string) string {
 		}
 	}
 	return program
+}
+
+// Delegated reports whether program is a delegate row: a runner that runs
+// other runners (make, npm, yarn, pnpm), whose output holds any step's lines.
+// A pass line in it is one step's, not the run's, so a reader that takes an
+// outcome from the output takes only a failure from a delegated run.
+func Delegated(program string) bool {
+	row := findProgram(program)
+	return row != nil && row.delegate
 }
 
 // FailLineDecides reports whether a bare fail line is all the table has to

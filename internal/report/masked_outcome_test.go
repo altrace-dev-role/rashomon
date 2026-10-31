@@ -57,3 +57,27 @@ func TestMO1_ASummaryReadMaskedRunIsNotCounted(t *testing.T) {
 		}
 	}
 }
+
+// TestMO1_ADelegatedSummaryIsNotASummaryRead: a delegate run's pass line is one
+// step's, and verify leaves it masked, so the sentence still counts it. Break:
+// drop the Delegated check in readFromSummary.
+func TestMO1_ADelegatedSummaryIsNotASummaryRead(t *testing.T) {
+	tail := "tail"
+	for _, tc := range []struct {
+		runner string
+		runs   int
+	}{
+		{"make test", 1}, {"npm run test", 1}, {"yarn test", 1}, {"pnpm test", 1},
+		{"python3 -m pytest", 0}, {"go test", 0},
+	} {
+		run := summaryRun(&tail, 11, 8, "summary_pass")
+		for i := range run.Executions {
+			name := tc.runner
+			run.Executions[i].RunnerName = &name
+		}
+		got := BuildMaskedRuns(run, AccountFromMessage("Done. All tests pass."))
+		if got.Runs != tc.runs {
+			t.Errorf("%s: runs %d, want %d", tc.runner, got.Runs, tc.runs)
+		}
+	}
+}

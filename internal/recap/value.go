@@ -390,16 +390,33 @@ func (t gateSet) name(g *verify.GateState) string {
 	return g.Kind
 }
 
-// fromOutput is readFromOutput where a green turn gate's last run had its
-// outcome read from its output, else "": the sentence about the greens says
-// where their result came from.
+// fromOutput is the provenance clause where a green turn gate's last run had
+// its outcome read from its output, else "". The sentence before it lists the
+// green programs, so with every one of them read from output the clause stands
+// alone (readFromOutput); with only some, it names them, and the others read
+// as the exit status they had.
 func (t gateSet) fromOutput() string {
-	for _, g := range t.gates {
-		if g.State == verify.Green && g.LastRun != nil && g.LastRun.OutcomeFrom == verify.SourceOutput {
-			return readFromOutput
+	var read, all []string
+	for i := range t.gates {
+		g := &t.gates[i]
+		if g.State != verify.Green {
+			continue
+		}
+		n := t.name(g)
+		if !contains(all, n) {
+			all = append(all, n)
+		}
+		if g.LastRun != nil && g.LastRun.OutcomeFrom == verify.SourceOutput && !contains(read, n) {
+			read = append(read, n)
 		}
 	}
-	return ""
+	switch {
+	case len(read) == 0:
+		return ""
+	case len(read) == len(all):
+		return readFromOutput
+	}
+	return " (" + joinNames(read) + " " + strings.TrimPrefix(readFromOutput, " (")
 }
 
 // fromOutput is readFromOutput for a run that had its outcome from its output.
@@ -440,7 +457,13 @@ func (t gateSet) greens(k int) string {
 		return ""
 	case len(names) > k:
 		return strings.Join(names[:k], ", ") + " and " + strconv.Itoa(len(names)-k) + " more"
-	case len(names) == 1:
+	}
+	return joinNames(names)
+}
+
+// joinNames is names as a list in words: "a", "a and b", "a, b and c".
+func joinNames(names []string) string {
+	if len(names) == 1 {
 		return names[0]
 	}
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]

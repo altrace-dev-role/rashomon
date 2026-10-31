@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -533,6 +534,11 @@ func sessionMaskedRuns(run *store.Run, acct Account) *MaskedRuns {
 func readFromSummary(e *store.Execution) bool {
 	if e == nil || e.SchemaVersion < 8 || e.RulesVersion < shape.OutputOutcomeRulesVersion ||
 		e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) || e.GateOutput == nil {
+		return false
+	}
+	// A delegate's pass line is one step's, so verify does not read it
+	// (gateout.Delegated); the run stays counted.
+	if e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor("", *e.RunnerName)) {
 		return false
 	}
 	return e.GateOutput.Kind == "summary_pass"
