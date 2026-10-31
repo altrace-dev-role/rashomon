@@ -557,7 +557,7 @@
         }
       ],
       "id": "PF-PG10",
-      "implementation": "ValueLine renders at most three lines from closed templates with the state sentence fitted to 80 columns and an AutoSteer clause of counts (delivered, findings, resolved, checks) that prints only when they changed; `rashomon summary on|off` persists the switch in the store's config.json (absent means on).",
+      "implementation": "ValueLine renders at most three lines from closed templates with the state sentence fitted to 80 columns and an AutoSteer clause of counts (delivered, findings, resolved, checks) that prints only when they changed; `rashomon summary [on|off] [--user|--project]` persists the switch in the store's config.json: per user by default (summary), or for this project alone with --project (summary_projects), and absent means on (TestSTC1_SummaryScopes, TestSTC1_ScopesAreEachOwn).",
       "integration": [
         {
           "event": "Stop",
@@ -568,9 +568,7 @@
           "handler": "cmd/rashomon/recap_stop.go"
         }
       ],
-      "missing": [
-        "a user-scoped summary switch beside the store-scoped one (STEER-CLI1)"
-      ],
+      "missing": [],
       "planned_pr": "",
       "session_proof": "",
       "status": "partial",

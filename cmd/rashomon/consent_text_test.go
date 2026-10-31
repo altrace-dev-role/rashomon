@@ -74,13 +74,18 @@ func TestTRU2c_ScreenAndWatchNameOnlyCommandsMainDispatches(t *testing.T) {
 func TestTRU2d_CommandFaultsFindsEachKind(t *testing.T) {
 	verbs, usage := dispatchedVerbs(t), usageWords(t)
 	for text, want := range map[string]bool{
-		"`rashomon steer log` shows them":              true,
-		"only in rashomon steer log":                   true,
+		"`rashomon steer set` shows them":              true,
+		"only in rashomon tally":                       true,
 		"rashomon disclose --cost shows this machine":  true,
 		"rashomon forget --commands removes it":        true,
 		"Turn it off with `rashomon learn off --user`": true,
 		"rashomon frobnicates the store":               true,
 		"rashomon status counts the sessions":          false,
+		"`rashomon steer off --user` stops them":       false,
+		"`rashomon steer explain` says why":            false,
+		"`rashomon steer log` lists them":              false,
+		"`rashomon scorecard` counts them":             false,
+		"`rashomon summary off --project` stops it":    false,
 		"until you run `rashomon spec trust`.":         false,
 		"`rashomon detach --install %s`":               false,
 		"rashomon records them only if you answer y":   false,

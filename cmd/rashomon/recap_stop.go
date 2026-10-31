@@ -100,15 +100,16 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		}
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
-		summary: summaryOn(st.Root()), speaks: event == install.EventStop || pending}, nil
+		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending}, nil
 }
 
-// summaryOn is the summary switch: on unless config.json says off. A file
+// summaryOn is the summary switch for the project key (baseline.Key of the
+// turn's cwd): on unless config.json says off for the user or the project. A file
 // that does not read leaves it on, which is the default: a switch that cannot
 // be read is not one a person was heard to set.
-func summaryOn(root string) bool {
+func summaryOn(root, project string) bool {
 	c, err := store.ReadConfig(root)
-	return err != nil || c.SummaryOn()
+	return err != nil || c.SummaryOnFor(project)
 }
 
 // line is what speaks when recap.Line has no sentence (card 2.4 R12): the

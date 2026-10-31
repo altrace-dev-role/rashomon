@@ -312,6 +312,27 @@ func TestST_ClampsRecordTheirReason(t *testing.T) {
 	}
 }
 
+// TestSTC1f_SteerOffClampsToAFlag (card STEER-CLI1): the user's steer switch
+// keeps every note from the agent (no additionalContext) and still shows the
+// user what it would have said, as a flag; the line records suppressed_by
+// steer_off with the clamp's delivery, flag_only. A flag-level finding is
+// shown as it is, so the integrity markers a flag carries are not lost.
+func TestSTC1f_SteerOffClampsToAFlag(t *testing.T) {
+	ctx := routerContext(t)
+	ctx.SteerOff = true
+	note := regressionNote(t, "go test", 5, "a", LevelNudge)
+	out := Route(ctx, []Finding{note})
+	if out.AdditionalContext != "" || out.SystemMessage != note.Message.Text() {
+		t.Errorf("steer off, a note: %+v, want the bare text as a flag and nothing for the agent", out)
+	}
+	wantLine(t, lastLines(t, ctx, 1)[0], LineStateDelivered, SuppressedBySteerOff, DeliveryFlagOnly)
+	flag := regressionNote(t, "go vet", 6, "f", LevelFlag)
+	out = Route(ctx, []Finding{flag})
+	if out.AdditionalContext != "" || out.SystemMessage != flag.Message.Text() {
+		t.Errorf("steer off, a flag: %+v, want it shown to the user", out)
+	}
+}
+
 // TestST_ArmOffLogsAndPrintsNothing (step 4; STR-28): arm off evaluates and
 // logs every finding, suppressed arm_off, and prints nothing, flags included.
 func TestST_ArmOffLogsAndPrintsNothing(t *testing.T) {
