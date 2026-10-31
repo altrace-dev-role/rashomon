@@ -36,7 +36,8 @@ const verbUsage = lessonsUsage +
 	summaryUsage +
 	steerUsage +
 	scorecardUsage +
-	measureUsage
+	measureUsage +
+	measurePairUsage
 
 const lessonsUsage = `  rashomon lessons [--json]      list this project's lessons by tier, proven
                                first, each with the day it entered and its
