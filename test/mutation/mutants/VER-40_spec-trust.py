@@ -56,8 +56,8 @@ m("VER-40 a key of another length is kept", H, KEY, "\tif b, err := os.ReadFile(
 # The trust drop, at the steer step and at the Stop.
 m("VER-40 a store write keeps trust", H, "\tif verify.StoreWritten(run, storeRoot, at) {\n",
   "\tif verify.StoreWritten(run, storeRoot, at) && false {\n", "TestST1m_")
-m("VER-40 the steer step reads trust past a store write", S, "TrustRoot(run, root, p.landedSeq)", "root", "TestST1m_AWrite")
-m("VER-40 the Stop reads trust past a store write", R, "hook.TrustRoot(run, st.Root(), seq)", "st.Root()", "TestST1m_TheStop")
+m("VER-40 the steer step reads trust past a store write", S, "TrustRoot(run, root, p.landedSeq)", "NoRun(root)", "TestST1m_AWrite")
+m("VER-40 the Stop reads trust past a store write", R, "hook.TrustRoot(run, st.Root(), seq)", "hook.NoRun(st.Root())", "TestST1m_TheStop")
 m("VER-40 StoreWritten reads past its point", I,
   "\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tif storeWrites(d, storeRoot, nil) {\n", "\t\tif storeWrites(d, storeRoot, nil) {\n", "TestST1s_|TestST1v_")
 m("VER-40 StoreWritten reads no file tool", I, "\tif file != nil && underStore(slashed(*file), storeRoot) {\n",
@@ -152,6 +152,9 @@ m("VER-40 the bit's fact is not named", V, "\t\t\tfact.StoreRoot, fact.StoreName
 m("VER-40 no store-root named row", RD,
   "\t\t\t{pattern.Integrity, reflect.TypeOf(IntegrityStoreRootNamedBinding{})}: {\n",
   "\t\t\t{pattern.Integrity, reflect.TypeOf(struct{ N int }{})}: {\n", "TestST1u_")
+# SPEC-TRUST2: DiscoverSpec takes a TrustedRoot, so a raw root no longer
+# builds; each of the three breaks above reads the root as hook.NoRun does,
+# the root as it is, which is the same missing store-write check.
 # D203: the prompt's preflight note reads trust as the Stop does.
 m("VER-40 the preflight reads trust past a store write", "cmd/rashomon/preflight.go",
-  "hook.TrustRoot(run, st.Root(), run.LastSeq())", "st.Root()", "TestST1m_TheStop")
+  "hook.TrustRoot(run, st.Root(), run.LastSeq())", "hook.NoRun(st.Root())", "TestST1m_TheStop")

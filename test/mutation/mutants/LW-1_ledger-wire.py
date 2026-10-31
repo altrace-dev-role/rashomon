@@ -39,6 +39,6 @@ m("LW-1 the spec mismatch line dropped", LR,
   'if cp != nil && specText(cp.SpecDigest, cp.SpecTrust) != now {',
   'if false && cp != nil && specText(cp.SpecDigest, cp.SpecTrust) != now {', "TestLW1d_")
 m("LW-1 the replay discovers the spec with no store root", LS,
-  'hook.DiscoverSpec(root, projectDir, managedDir, st.Root())', 'hook.DiscoverSpec(root, projectDir, managedDir, "")', "TestLW1n_")
+  'hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustRoot(run, st.Root(), pt.Seq))', 'hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustedRoot{})', "TestLW1n_")
 m("LW-1 a declared row's family matched over Family alone", LR,
   'for _, fam := range []string{g.Family, g.Gate} {', 'for _, fam := range []string{g.Family} {', "TestLW1o_")

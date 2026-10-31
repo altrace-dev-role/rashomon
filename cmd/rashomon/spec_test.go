@@ -63,7 +63,7 @@ func (p specProject) edit(doc string) {
 // trust is what discovery from the project reads the spec's trust as.
 func (p specProject) trust() spec.Trust {
 	p.t.Helper()
-	sp := hook.DiscoverSpec(p.dir, "", "", p.root)
+	sp := hook.DiscoverSpec(p.dir, "", "", hook.NoRun(p.root))
 	if sp == nil || len(sp.Sources) != 1 || sp.Sources[0].Path != p.path {
 		p.t.Fatalf("discovery from %s: %+v; want the one repository spec %s", p.dir, sp, p.path)
 	}
