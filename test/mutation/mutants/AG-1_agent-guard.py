@@ -11,3 +11,8 @@ SM = "cmd/rashomon/verbs_summary.go"
 m("AG-1 summary on and off work in an agent session", SM,
   "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" && len(words) == 1 {\n",
   "\tif s := \"\"; s != \"\" && len(words) == 1 {\n", "TestAGSM1_")
+
+BO = "cmd/rashomon/bodies.go"
+m("AG-1 bodies on and off work in an agent session", BO,
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n",
+  "\tif s := \"\"; s != \"\" {\n", "TestAGBO1_")
