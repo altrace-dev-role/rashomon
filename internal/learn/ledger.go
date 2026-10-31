@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -269,7 +270,12 @@ func byAge(a, b Lesson) int {
 // Import adds the lessons of a shared file (the lessons.json shape) at
 // proposed, whatever tier each names (PF-HD5: a shared lesson is approved
 // here or not at all). A row whose id is taken, malformed or whose text is
-// empty or over store.MaxSteerTextBytes is skipped. The caller saves.
+// empty or over store.MaxSteerTextBytes is skipped. A row whose id is
+// secret-shaped (the screens a lesson id runs when it renders: a deny-list
+// shape, a high-entropy run) refuses the whole file with slot.ErrSecretShaped
+// and adds nothing: an id is stored and printed by the verbs, so an import
+// never carries a token in as one, and the error names the row, not its
+// value (Q4). The caller saves.
 func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err error) {
 	b, err := io.ReadAll(io.LimitReader(r, 1<<20))
 	if err != nil {
@@ -278,6 +284,11 @@ func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err err
 	var in lessonsFile
 	if err := decode(b, &in); err != nil {
 		return 0, 0, fmt.Errorf("learn: the import file is not a lessons file: %w", err)
+	}
+	for i, ls := range in.Lessons {
+		if idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {
+			return 0, 0, fmt.Errorf("learn: import row %d: the lesson id is secret-shaped, so nothing was imported: %w", i+1, slot.ErrSecretShaped)
+		}
 	}
 	for _, ls := range in.Lessons {
 		if !idForm(ls.ID) || ls.Text == "" || len(ls.Text) > store.MaxSteerTextBytes || l.index(ls.ID) >= 0 {
