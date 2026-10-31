@@ -41,3 +41,6 @@ test/perf/budgets.json 87375573ca3f739b a lesson row's basis note (LEARN-DELIVER
 test/perf/budgets.json a55af4fd6156431a a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
 test/perf/budgets.json a7c430e7d8d4ee14 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
 test/perf/budgets.json d6e1c99ea967b361 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json 1194e3713edb34a1 the preflight_stopped catch-up benchmark's row name: an identifier
+test/perf/budgets.json 8b84053ab8132136 the preflight_stopped catch-up benchmark's row name: an identifier
+test/perf/budgets.json 731e50e33b7b2808 the preflight_stopped catch-up benchmark's row name on the linux platform: an identifier
