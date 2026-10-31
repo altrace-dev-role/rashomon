@@ -26,6 +26,12 @@ type Client struct {
 	// agent only (:2019, "events with agent_id only once P-TRU-1 has their
 	// row").
 	Subagent bool
+	// EvidenceAbsent is true when the store's channel-evidence marker for the
+	// call's event shadows it: a Stop read the transcript and did not find a
+	// delivered note for the event, on a version the floor trusted, and no
+	// probe or newer Claude Code has cleared it (card CHANNEL-EVIDENCE1).
+	// Route sets it; it never makes a closed row open.
+	EvidenceAbsent bool
 }
 
 // The two values of Client.Source.
@@ -145,6 +151,9 @@ const (
 	// or equal to one of its exclusions.
 	shutBelowFloor
 	shutExcluded
+	// shutEvidence: the version is trusted, and the last session's transcript
+	// did not show a delivered note for this event.
+	shutEvidence
 )
 
 // shutBy is why event's model-visible field may not print for c under
@@ -168,6 +177,8 @@ func shutBy(keys eventKeys, event string, c Client, table map[string]channelBasi
 		return shutBelowFloor
 	case b.excludes(c.Version):
 		return shutExcluded
+	case c.EvidenceAbsent:
+		return shutEvidence
 	}
 	return channelOpen
 }
