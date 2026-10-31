@@ -294,7 +294,7 @@ func TestMS1x_DriverStopsWithNoModelChannel(t *testing.T) {
 			t.Errorf("the %s probe's turns read %q, want one turn ended by its stop checkpoint", arm, got)
 		}
 	}
-	if r.ran("arm-*") {
+	if r.ran("arm-[0-9]*") {
 		t.Errorf("an arm ran past G1c's stop")
 	}
 }
@@ -359,6 +359,36 @@ func TestMS1k_DriverStopsOnVersionDrift(t *testing.T) {
 	r.want(res, "G0: claude is 2.1.281 at ", "not the pinned 2.1.280")
 	if r.ran("g1b-*") || r.ran("red.json") {
 		t.Errorf("the run went past G0")
+	}
+}
+
+// TestMS1m_DriverRefusesWithAMessage: the machine facts G0 meets, each a
+// one-line refusal before anything starts and never a hang: no tmux, a
+// claude path that is not a file, a version that drifted (with the pin to
+// set), a pin below the verified floor.
+func TestMS1m_DriverRefusesWithAMessage(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, map[string]any{"version": "2.1.308"}, m1Red)
+	for _, c := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"no tmux", []string{"MEASURE1_TMUX=/nonexistent/tmux"}, "G0: no tmux on PATH: install it (brew install tmux)"},
+		{"no claude", []string{"MEASURE1_CLAUDE=/nonexistent/claude"}, "G0: /nonexistent/claude is not an executable file"},
+		{"drift names the pin", nil, "(to run on 2.1.308, set MEASURE1_PIN=2.1.308)"},
+		{"pin below the floor", []string{"MEASURE1_PIN=2.1.279"}, "G0: MEASURE1_PIN=2.1.279 is below the verified floor 2.1.280"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			res := r.script(c.env, "run", r.m, "--task", r.task, "--limit", "20")
+			if res.code == 0 {
+				t.Errorf("exit 0, want G0's refusal")
+			}
+			r.want(res, c.want)
+			if r.ran("g1b-*") || r.ran("red.json") {
+				t.Errorf("the run went past G0")
+			}
+		})
 	}
 }
 

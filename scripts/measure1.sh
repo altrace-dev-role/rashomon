@@ -23,14 +23,27 @@
 #
 # The driver runs Claude Code and go; the binary under test only records and
 # reads. MEASURE1_CLAUDE, MEASURE1_TMUX and MEASURE1_POLICY_DIR replace the
-# pinned claude, tmux and the managed-policy directory, for the driver's own
-# tests.
+# claude, tmux and the managed-policy directory, for the driver's own tests
+# or another install. MEASURE1_PIN=X.Y.Z names the version G0 demands of that
+# claude (default 2.1.280; never below it), e.g. MEASURE1_PIN=2.1.308.
 set -euo pipefail
 
-PIN=2.1.280
+# PIN is the Claude Code version this run is pinned to (G0 demands exactly
+# it). MEASURE1_PIN picks another, never below FLOOR, the oldest version the
+# steer channel is verified on; PRFLOOR is the first that delivers
+# PostToolUseFailure notes (below it the steer arm gets no regression notes).
+FLOOR=2.1.280
+PRFLOOR=2.1.304
+PIN=${MEASURE1_PIN:-$FLOOR}
 PREFIX="Task: "
 here=$(cd "$(dirname "$0")" && pwd)
-claude=${MEASURE1_CLAUDE:-$HOME/.local/share/claude/versions/$PIN}
+# claude: MEASURE1_CLAUDE, else the pinned versions directory if it exists,
+# else the claude on PATH (G0 then checks its version against PIN).
+claude=${MEASURE1_CLAUDE:-}
+if [ -z "$claude" ]; then
+	if [ -x "$HOME/.local/share/claude/versions/$PIN" ]; then claude=$HOME/.local/share/claude/versions/$PIN
+	else claude=$(command -v claude || true); fi
+fi
 tmux=$(command -v "${MEASURE1_TMUX:-tmux}" || true)
 policy=${MEASURE1_POLICY_DIR:-/Library/Application Support/ClaudeCode}
 
@@ -218,10 +231,17 @@ session() {
 }
 
 g0() {
+	[ -n "$claude" ] || die "G0: no claude found: set MEASURE1_CLAUDE to its absolute path"
 	case $claude in /*) ;; *) die "G0: claude must be an absolute path, not $claude" ;; esac
-	[ -n "$tmux" ] || die "G0: no tmux"
-	CLAUDE_V=$("$claude" --version | awk '{print $1}')
-	[ "$CLAUDE_V" = "$PIN" ] || die "G0: claude is $CLAUDE_V at $claude, not the pinned $PIN"
+	[ -x "$claude" ] || die "G0: $claude is not an executable file: set MEASURE1_CLAUDE"
+	[ -n "$tmux" ] || die "G0: no tmux on PATH: install it (brew install tmux) or set MEASURE1_TMUX"
+	[ "$(printf '%s\n%s\n' "$FLOOR" "$PIN" | sort -V | head -n1)" = "$FLOOR" ] ||
+		die "G0: MEASURE1_PIN=$PIN is below the verified floor $FLOOR"
+	CLAUDE_V=$("$claude" --version </dev/null | awk '{print $1}')
+	[ "$CLAUDE_V" = "$PIN" ] || die "G0: claude is $CLAUDE_V at $claude, not the pinned $PIN (to run on $CLAUDE_V, set MEASURE1_PIN=$CLAUDE_V)"
+	if [ "$(printf '%s\n%s\n' "$PRFLOOR" "$PIN" | sort -V | head -n1)" != "$PRFLOOR" ]; then
+		say "G0 note: $PIN is below $PRFLOOR; PostToolUseFailure notes are not delivered, so the steer arm gets no regression notes"
+	fi
 	GO_V=$("$M/bin/go" version)
 	BIN_SHA=$(shasum -a 256 "$M/bin/rashomon" | awk '{print $1}')
 	local f
@@ -381,7 +401,7 @@ run() {
 		[ "$(shasum -a 256 "$M/bin/rashomon" | awk '{print $1}')" = "$BIN_SHA" ] || die "G0: M/bin/rashomon changed during $label"
 	done
 	report
-	[ "$("$claude" --version | awk '{print $1}')" = "$PIN" ] || die "G0: claude's version moved during the run"
+	[ "$("$claude" --version </dev/null | awk '{print $1}')" = "$PIN" ] || die "G0: claude's version moved during the run"
 }
 
 # report runs G4, G5 and G6 over the arms' tars.
