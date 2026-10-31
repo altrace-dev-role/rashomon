@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -208,4 +209,87 @@ func TestDGH4_ControlsUntrustedSpecAndStoreWrite(t *testing.T) {
 			t.Errorf("after a store write: Stop line %q, want go test and no 'unit'", got)
 		}
 	})
+}
+
+// dgh5Spec forbids a forced push and declares the unit gate.
+const dgh5Spec = `{"rashomon_spec": 1,
+ "gates": [{"id": "unit", "kind": "test", "argv": ["go", "test", "./..."]}],
+ "rules": [{"id": "no-force", "kind": "forbid_command", "command": {"argv": ["git", "push"], "flags": ["--force", "-f"]},
+            "why": "history is shared", "hard_control": "branch protection"}]}`
+
+// dghFailedCall runs one call of the session in dir whose tool failed with
+// exit, hook then a PostToolUseFailure post, and returns the post's stdout.
+func (e *env) dghFailedCall(dir, id, tool string, input map[string]any, exit int) string {
+	e.t.Helper()
+	envs := []string{stAgent, "CI="}
+	if res := e.hook(stPayload(e.t, "PreToolUse", id, tool, input, map[string]any{"cwd": dir}), envs...); res.exitCode != 0 || res.stdout != "" {
+		e.t.Fatalf("hook %s: exit %d, stdout %q, stderr %q", id, res.exitCode, res.stdout, res.stderr)
+	}
+	more := map[string]any{"cwd": dir, "error": "Exit code " + strconv.Itoa(exit), "is_interrupt": false, "duration_ms": 30}
+	res := e.post(stPayload(e.t, "PostToolUseFailure", id, tool, input, more), envs...)
+	if res.exitCode != 0 {
+		e.t.Fatalf("post %s: exit %d, stderr %q", id, res.exitCode, res.stderr)
+	}
+	return res.stdout
+}
+
+// dghLedgerRow is the session's ledger row of spec rule id, `report --ledger`
+// fields split, or nil with none.
+func (e *env) dghLedgerRow(id string) []string {
+	e.t.Helper()
+	res := e.run("", nil, "report", "--ledger", "--session", testSession)
+	if res.exitCode != 0 {
+		e.t.Fatalf("report --ledger: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	for _, line := range strings.Split(res.stdout, "\n") {
+		if f := strings.Fields(line); len(f) == 7 && f[2] == "spec_rule" && f[6] == id {
+			return f
+		}
+	}
+	e.t.Logf("ledger:\n%s", res.stdout)
+	return nil
+}
+
+// TestDGH5_AForbiddenCallIsAViolationAtStop (card SPEC-RULES-STOP1, #173
+// F1): a trusted forbid_command rule matched by `git push --force`. At
+// PostToolUse the call raises; at PostToolUseFailure it raises nothing (D210
+// (1)'s card stands). Either way the Stop line is not verified and the
+// ledger's no-force row is unmet, citing the call.
+func TestDGH5_AForbiddenCallIsAViolationAtStop(t *testing.T) {
+	push := map[string]any{"command": "git push --force origin main"}
+	for _, c := range []struct {
+		name  string
+		exit  int
+		raise bool
+	}{
+		{"post", 0, true},
+		{"failure", 128, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newSteerEnv(t)
+			dir, path := dghProject(t, dgh5Spec)
+			e.trust(path)
+			e.dghCall(dir, "toolu_e", "Edit", dghEdit(dir))
+			var out string
+			if c.exit == 0 {
+				out = e.dghCall(dir, "toolu_p", "Bash", push)
+			} else {
+				out = e.dghFailedCall(dir, "toolu_p", "Bash", push, c.exit)
+			}
+			if got := strings.Contains(out, "matched spec rule no-force"); got != c.raise {
+				t.Errorf("push post stdout %q: raised %v, want %v", out, got, c.raise)
+			}
+			e.dghCall(dir, "toolu_g", "Bash", dghRun)
+			got := e.dghStop(dir)
+			t.Logf("Stop line: %q", got)
+			// A failed call's Stop prints the recorded-failure line in place
+			// of the value line, so only the post case counts the finding.
+			if strings.Contains(got, "verified - ") || c.raise && !strings.Contains(got, "1 record finding(s)") {
+				t.Errorf("Stop line %q, want not verified (and, after a post, 1 record finding(s))", got)
+			}
+			if row := e.dghLedgerRow("spec:no-force"); row == nil || row[4] != "unmet" || row[5] == "-" {
+				t.Errorf("ledger no-force row %v, want unmet citing the push", row)
+			}
+		})
+	}
 }
