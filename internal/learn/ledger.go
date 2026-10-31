@@ -113,6 +113,22 @@ type Ledger struct {
 // back so (fail closed): every lesson returns to proposed, to be approved
 // again, and active.json holds none. No state at all is an empty ledger.
 func Open(root, project string, now time.Time) (*Ledger, error) {
+	return openAt(root, project, now, true)
+}
+
+// OpenReadOnly is Open that never writes: a state that does not check is
+// read as quarantined in memory (Quarantined true, every lesson proposed,
+// QuarantinedAt zero, since no quarantine was recorded) and left on disk as
+// it is. A report reads the ledger this way (card REPORT1b): a question must
+// not change the learning state, and the next learn verb that opens it still
+// finds the mismatch and records the quarantine itself.
+func OpenReadOnly(root, project string) (*Ledger, error) {
+	return openAt(root, project, time.Time{}, false)
+}
+
+// openAt is Open and OpenReadOnly: write is whether a mismatch is quarantined
+// on disk.
+func openAt(root, project string, now time.Time, write bool) (*Ledger, error) {
 	if err := projectElement(project); err != nil {
 		return nil, err
 	}
@@ -138,6 +154,9 @@ func Open(root, project string, now time.Time) (*Ledger, error) {
 	}
 	for i := range l.file.Lessons {
 		l.file.Lessons[i].Tier = TierProposed
+	}
+	if !write {
+		return l, nil
 	}
 	l.file.QuarantinedAtUnixMS = now.UnixMilli()
 	return l, l.Save()
