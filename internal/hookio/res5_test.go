@@ -15,7 +15,7 @@ import (
 // package that does not exist on this tree yet is skipped by name.
 var res5Dirs = []string{
 	"internal/hook", "internal/shape", "internal/verify", "internal/steer",
-	"internal/harness", "internal/learn", "cmd/rashomon", "internal/intent",
+	"internal/harness", "internal/learn", "cmd/rashomon", "internal/intent", "internal/receipt",
 }
 
 // res5Allowed are the decodes a hook path may still make, named by package
@@ -34,8 +34,12 @@ var res5Dirs = []string{
 // decoder sees it, after its manifest checked. Each is allowed by name, so a
 // hook-path caller of Open or decode shows up as a new name. Neither the hook
 // nor the store links internal/learn (TestP6_HookAndStoreImportNoLearner).
+// receipt.decodeHead reads one checkpoint line, rashomon's own record cut at
+// CheckpointMaxBytes, for the startup line SessionStart prints (REPORT1b):
+// the same ground as verify.ReadIndex, a file rashomon wrote, capped, in a
+// closed shape. It is receipt's one decode.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
-	"internal/learn.decode": true, "internal/learn.decodeActive": true}
+	"internal/learn.decode": true, "internal/learn.decodeActive": true, "internal/receipt.decodeHead": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding

@@ -14,7 +14,6 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,52 +38,30 @@ func Trailer(record []byte) string {
 	return TrailerKey + ": " + Digest(record)
 }
 
-// head is what Latest reads of a checkpoint record: the project it was cut
-// for, baseline.Key's form, and when.
-type head struct {
-	ProjectRoot string `json:"project_root"`
-	RecordedAt  int64  `json:"recorded_at_unix_ms"`
-}
-
-// written is a run directory and its records file's modification time.
+// written is a run directory, its records file's modification time and size.
 type written struct {
 	name string
 	at   int64
+	size int64
 }
 
 // Latest is the newest checkpoint record cut for project (baseline.Key of a
 // directory, which a checkpoint's project_root holds), by recorded_at, among
-// each run's last checkpoint, as LatestRecordBytes hands it back. A run's
-// last checkpoint is the only one it offers: an earlier one is older, and a
+// each run's last checkpoint, exactly as the store wrote it. A run's last
+// checkpoint is the only one it offers: an earlier one is older, and a
 // session that moved to another project since has left this one.
 //
 // Runs are read newest first by their records file's modification time, and
 // the walk stops at a run last written before the best record found: every
 // record in that run was recorded no later than its file was written, so it
 // holds none newer. A commit reads the runs written since, not the store.
+// It is Previous with no skip and no bound.
 func Latest(st *store.Store, project string) (record []byte, ok bool, err error) {
-	runs, err := byWritten(st)
-	if err != nil {
+	line, _, sc, err := scan(st, Query{Project: project})
+	if err != nil || !sc.Found {
 		return nil, false, err
 	}
-	var bestAt int64
-	for _, r := range runs {
-		if ok && r.at < bestAt {
-			break
-		}
-		line, found, _, err := st.LatestRecordBytes(r.name, store.TypeVerify)
-		if err != nil {
-			return nil, false, err
-		}
-		var h head
-		if !found || json.Unmarshal(line, &h) != nil || h.ProjectRoot != project {
-			continue
-		}
-		if !ok || h.RecordedAt > bestAt {
-			record, ok, bestAt = line, true, h.RecordedAt
-		}
-	}
-	return record, ok, nil
+	return line, true, nil
 }
 
 // byWritten is the store's runs that hold a records file, newest written
@@ -100,7 +77,7 @@ func byWritten(st *store.Store) ([]written, error) {
 		if err != nil {
 			continue
 		}
-		runs = append(runs, written{name, info.ModTime().UnixMilli()})
+		runs = append(runs, written{name, info.ModTime().UnixMilli(), info.Size()})
 	}
 	slices.SortStableFunc(runs, func(a, b written) int { return cmp.Compare(b.at, a.at) })
 	return runs, nil
