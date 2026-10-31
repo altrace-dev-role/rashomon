@@ -1,9 +1,13 @@
 package digest
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -66,5 +70,53 @@ func TestBuild_MaskedRunsAreTurnScoped(t *testing.T) {
 	}
 	if d := Empty(time.Now(), "s", "p"); d.MaskedRuns.Runs != 0 || d.MaskedRuns.Fires {
 		t.Errorf("the empty digest has masked runs: %+v", d.MaskedRuns)
+	}
+}
+
+// TestMaskedRuns_DigestDoesNotCarryTheReportsUnreadLocation: report.MaskedRuns
+// gained unread_location in 5.14b. The digest projects the struct, so the
+// document keeps its four masked_runs keys and schema_version 1 stays true.
+func TestMaskedRuns_DigestDoesNotCarryTheReportsUnreadLocation(t *testing.T) {
+	got := projectMaskedRuns(report.MaskedRuns{Fires: true, Runs: 3, UnreadLocation: 2, PassClaimed: true, FinalMessageAvailable: true})
+	if got != (MaskedRuns{Fires: true, Runs: 3, PassClaimed: true, FinalMessageAvailable: true}) {
+		t.Fatalf("projection = %+v: Runs must keep the unread-location runs", got)
+	}
+	b, err := json.Marshal(Digest{MaskedRuns: got})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Masked map[string]json.RawMessage `json:"masked_runs"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc.Masked["unread_location"]; ok || len(doc.Masked) != 4 {
+		t.Errorf("masked_runs keys = %v, want exactly fires, runs, pass_claimed, final_message_available", doc.Masked)
+	}
+}
+
+// TestTruncate_TheMaskedBlockIsFixedSizeAndInsideTheCeiling: the masked block
+// is four scalars, so truncate has nothing to cut from it; a worst-case block
+// beside turn-wide growable fields must still marshal under CapBytes.
+func TestTruncate_TheMaskedBlockIsFixedSizeAndInsideTheCeiling(t *testing.T) {
+	d := &Digest{Declarations: emptyDeclarations()}
+	d.MaskedRuns = MaskedRuns{Fires: true, Runs: math.MaxInt64, PassClaimed: true, FinalMessageAvailable: true}
+	for i := 0; i < 400; i++ {
+		id := fmt.Sprintf("toolu_%04d", i)
+		d.Declarations.Dropped = append(d.Declarations.Dropped, id)
+		d.Declarations.Unterminated = append(d.Declarations.Unterminated, id)
+		d.Declarations.ByTool[fmt.Sprintf("Tool%04d", i)] = 1
+	}
+	truncate(d)
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) > CapBytes {
+		t.Fatalf("size %d > CapBytes %d with the masked block at its widest", len(b), CapBytes)
+	}
+	if d.MaskedRuns.Runs != math.MaxInt64 || !d.MaskedRuns.Fires {
+		t.Errorf("truncate touched the masked block: %+v", d.MaskedRuns)
 	}
 }
