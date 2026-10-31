@@ -626,7 +626,7 @@
           "symbol": "writeSession"
         },
         {
-          "file": "internal/report/text.go",
+          "file": "internal/report/account.go",
           "symbol": "writeAccount"
         },
         {
