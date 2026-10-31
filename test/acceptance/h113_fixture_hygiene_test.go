@@ -45,7 +45,8 @@ import (
 // an account UUID, a home directory or an inventory in it still fails), and
 // an entry the scan did not read fails as stale.
 var h113Contracts = map[string]string{
-	"test/prd/truth_table.json": "the PRD implementation truth table (card TRUTH-TABLE1): Go identifiers and prose, checked by test/prd's TestPRD1 tests",
+	"test/prd/truth_table.json":                   "the PRD implementation truth table (card TRUTH-TABLE1): Go identifiers and prose, checked by test/prd's TestPRD1 tests",
+	"test/acceptance/testdata/measure1/claude.py": "the hand-written claude stub of MEASURE1's driver tests (not a capture): Python identifiers, keyword arguments and prose naming Claude Code's hook fields, read by TestMS1; scrub would redact its code",
 }
 
 func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {

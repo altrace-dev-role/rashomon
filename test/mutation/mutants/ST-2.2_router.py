@@ -27,7 +27,7 @@ m("ST-2.2 a note on Stop is not a flag", D,
 m("ST-2.2 PreToolUse prints", D,
   '\tcase !ok || keys.decision:\n', '\tcase !ok:\n', "TestST_PreToolUsePrintsNothing")
 m("ST-2.2 arm off prints the Output", D,
-  '\t\tcase arm == ArmOff:\n\t\t\tp.suppress(SuppressedByArmOff)\n', '', "TestST_ArmOffLogsAndPrintsNothing")
+  '\tif arm == ArmOff {\n\t\tnote, flag = armOff(plans)\n\t}\n', '', "TestST_ArmOffLogsAndPrintsNothing")
 m("ST-2.2 an unverified channel delivers", D,
   '\t\tcase p.level == LevelNudge && !ContextAllowed(string(ctx.Event), c):\n\t\t\tp.suppress(SuppressedByUnverifiedChannel)\n',
   '', "TestTRU12b_")
@@ -51,7 +51,7 @@ m("ST-2.2 the flags cap is 6", D, '\tmaxFlags = 5\n', '\tmaxFlags = 6\n', "TestS
 m("ST-2.2 the flag printed beside a note", D,
   '\t\tif note >= 0 || flag >= 0 || have.flags >= maxFlags {\n', '\t\tif flag >= 0 || have.flags >= maxFlags {\n', "TestST_AFlagWaitsBesideANote")
 m("ST-2.2 an unconfirmed line counts", B,
-  '\tif !s.is(b, s.out[bkState], string(LineStateDelivered)) {\n\t\treturn\n\t}\n', '', "TestST7d_")
+  '\tif !s.is(b, s.out[bkState], string(LineStateDelivered)) && !s.is(b, s.out[bkSuppressedBy], string(SuppressedByArmOff)) {\n\t\treturn\n\t}\n', '', "TestST7d_")
 m("ST-2.2 another prompt's lines count", B,
   '\treturn s.is(b, p, *s.ctx.PromptID)\n', '\treturn true\n', "TestST7d_")
 m("ST-2.2 the reverse scan stops one line early", B,

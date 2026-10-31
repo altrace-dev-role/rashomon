@@ -60,7 +60,7 @@ func cmdPost(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, flushLostLine)
 			return nil
 		}
-		if b := p.Steer(steerEnv(id, time.Now())); len(b) > 0 {
+		if b := p.Steer(steerEnv(id, time.Now(), st.Root())); len(b) > 0 {
 			fmt.Fprintln(stdout, string(b))
 		}
 		return nil
