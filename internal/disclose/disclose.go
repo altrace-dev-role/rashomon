@@ -20,6 +20,7 @@ package disclose
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -169,7 +170,7 @@ const (
 func Default() (Inventory, error) {
 	return Inventory{
 		ScopeVersion: ScopeVersion,
-		Files:        append(defaultFiles(), append(learnFiles(), specFiles()...)...),
+		Files:        slices.Concat(defaultFiles(), learnFiles(), specFiles(), evidenceFiles()),
 		Paragraphs:   defaultParagraphs(),
 		Units:        defaultUnits(),
 	}, nil
@@ -466,7 +467,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileSteer,
 			Mode:       "0600",
 			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
-			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
 			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
 			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
 			Owner:      "store",

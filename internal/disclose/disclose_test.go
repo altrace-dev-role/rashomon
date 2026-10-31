@@ -133,6 +133,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.ArmStale(sessionID); err != nil {
 		t.Fatalf("ArmStale: %v", err)
 	}
+	if !s.TakeChannelEvidence("PostToolUse", "2.1.304") {
+		t.Fatal("TakeChannelEvidence refused")
+	}
 	if err := s.AppendGap(store.Gap{
 		Type: store.TypeGap, SchemaVersion: store.SessionSchemaVersion,
 		SessionID: sessionID, Reason: store.GapForget,
@@ -361,7 +364,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-30 (VERSION-GATE1) to 27: notice.go's TakeNotice
 		// open, runs/<session>/notice-channel and notice-holdout, the steer
 		// router's once-per-session notice markers.
-		{"store", 27},
+		// Moved 2026-10-30 (CHANNEL-EVIDENCE1) to 28: evidence.go's
+		// TakeChannelEvidence open, <root>/channel-evidence-<event>, the
+		// marker that shadows an event whose delivered note the transcript
+		// did not show (evidenceFiles in the inventory, ownName in purge).
+		{"store", 28},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
