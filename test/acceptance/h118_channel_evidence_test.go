@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // H-118 -- a note the transcript does not show shadows its event next session
@@ -32,7 +33,7 @@ const stNow304 = "AI_AGENT=claude-code_2-1-304_harness"
 
 // ceNotice is the channel notice the next session prints, as 2.1.304.
 const ceNotice = "rashomon: a note was built and not sent to the agent (Claude Code 2.1.304, PostToolUseFailure; " +
-	"delivery verified from 2.1.304): the last session's transcript did not show a delivered note for this event. " +
+	"delivery verified from 2.1.304): a transcript did not show a delivered note for this event. " +
 	"Shown once per session."
 
 var atStamp = regexp.MustCompile(`"at_unix_ms":(\d{13})`)
@@ -75,6 +76,33 @@ func (e *env) ceNote(session string) string {
 		e.t.Fatalf("the red's post as 2.1.304 delivered no note: %q (%v)", res.stdout, err)
 	}
 	return out.Hook.Context
+}
+
+// dupNote appends a copy of session's delivered note to its steer log under
+// a new id: a second note of the event for a second Stop to judge, which the
+// router would not deliver in the same session within the test's minutes.
+func (e *env) dupNote(session string) {
+	e.t.Helper()
+	path := filepath.Join(e.home, "runs", session, "steer.ndjson")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, l := range strings.SplitAfter(string(b), "\n") {
+		if !strings.Contains(l, `"state":"delivered"`) {
+			continue
+		}
+		m := regexp.MustCompile(`"id":"([0-9a-f]+)"`).FindStringSubmatch(l)
+		if m == nil {
+			e.t.Fatalf("no id in %s", l)
+		}
+		dup := strings.Replace(l, m[0], `"id":"`+strings.Repeat("f", len(m[1]))+`"`, 1)
+		if err := os.WriteFile(path, []byte(string(b)+dup), 0o600); err != nil {
+			e.t.Fatal(err)
+		}
+		return
+	}
+	e.t.Fatal("no delivered note to copy")
 }
 
 // backdateIn is backdate for any session's records.
@@ -121,9 +149,13 @@ func (e *env) ageNotes(session string, ms int64) {
 // returns its path.
 func (e *env) ceTranscript(texts ...string) string {
 	e.t.Helper()
-	lines := []string{`{"type":"user","timestamp":"2026-10-30T00:00:00.000Z","message":{"role":"user","content":"a prompt"}}`}
+	// The records are stamped now, as a transcript a Stop reads is: the
+	// Stop's clock is after every note, which the scan requires of the file's
+	// last record.
+	stamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	lines := []string{`{"type":"user","timestamp":"` + stamp + `","sessionId":"` + testSession + `","message":{"role":"user","content":"a prompt"}}`}
 	for _, text := range texts {
-		b, err := json.Marshal(map[string]any{"type": "attachment", "timestamp": "2026-10-30T00:00:01.000Z",
+		b, err := json.Marshal(map[string]any{"type": "attachment", "timestamp": stamp, "sessionId": testSession,
 			"attachment": map[string]any{"type": "hook_additional_context", "hookEvent": "PostToolUseFailure",
 				"hookName": "PostToolUseFailure:Bash", "toolUseID": "toolu_r-context", "content": []string{text}}})
 		if err != nil {
@@ -196,6 +228,16 @@ func TestH118_AbsentNoteShadowsItsEventNextSession(t *testing.T) {
 	note := e.read(testSession, "steer.ndjson")[0]
 	if ev[0].str("steer_id") != note.str("id") {
 		t.Errorf("the evidence names %q, want the note %q", ev[0].str("steer_id"), note.str("id"))
+	}
+	// One absent reading is not enough: the marker waits for a second Stop.
+	if _, err := os.Stat(e.markerPath("PostToolUseFailure")); err == nil {
+		t.Fatal("one absent reading wrote the marker")
+	}
+	e.dupNote(testSession)
+	e.ageNotes(testSession, 60_000)
+	e.ceStop(testSession, e.ceTranscript("some other hook's context"))
+	if ev := e.evidenceLines(testSession); len(ev) != 2 || ev[1].str("evidence") != "absent" {
+		t.Fatalf("evidence lines after the second Stop = %v, want two absent", ev)
 	}
 	b, err := os.ReadFile(e.markerPath("PostToolUseFailure"))
 	if err != nil || string(b) != "2.1.304\n" {
@@ -278,5 +320,26 @@ func TestH118_SeenAndUnreadableChangeNoState(t *testing.T) {
 				t.Error("a marker was written")
 			}
 		})
+	}
+}
+
+// TestH118_ALaggingTranscriptIsUnreadable: a transcript whose last record is
+// older than the note has not caught up with it, so the Stop labels the note
+// unreadable and writes no marker, however often it reads it.
+func TestH118_ALaggingTranscriptIsUnreadable(t *testing.T) {
+	e := newSteerEnv(t)
+	e.ceNote(testSession)
+	e.ageNotes(testSession, 60_000)
+	p := filepath.Join(t.TempDir(), "transcript.jsonl")
+	old := `{"type":"user","timestamp":"2020-01-01T00:00:00.000Z","sessionId":"` + testSession + `","message":{"role":"user","content":"a prompt"}}` + "\n"
+	if err := os.WriteFile(p, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.ceStop(testSession, p)
+	if ev := e.evidenceLines(testSession); len(ev) != 1 || ev[0].str("evidence") != "unreadable" {
+		t.Fatalf("evidence lines = %v, want one unreadable", ev)
+	}
+	if _, err := os.Stat(e.markerPath("PostToolUseFailure")); err == nil {
+		t.Error("a lagging transcript wrote the marker")
 	}
 }

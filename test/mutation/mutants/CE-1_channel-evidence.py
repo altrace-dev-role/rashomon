@@ -1,7 +1,7 @@
 # CE-1: channel evidence (card CHANNEL-EVIDENCE1, D226). At Stop each delivered
 # note is looked for in the transcript as the text of a hook_additional_context
-# attachment and labelled seen, absent or unreadable; one absent reading on a
-# version the floor trusts shadows that event for the next session through an
+# attachment and labelled seen, absent or unreadable; two consecutive absent readings, at two Stops, on a
+# version the floor trusts shadow that event for the next session through an
 # O_EXCL marker, which a probe's removal or a newer Claude Code clears. Each
 # break removes one rule and names the test that holds it.
 E = "internal/steer/evidence.go"
@@ -23,7 +23,6 @@ m("CE-1 a single-string attachment is not read", J, "\t\tif s := textOf(b, sp); 
 m("CE-1 an exclusion on the line is not read", E, "stringsOf(b, out[nkExcluded])", "nil", "TestCE1b_OnlyATrustedVersionShadows")
 m("CE-1 any attachment counts, not only hook_additional_context", S,
   "textOf(b, att[0]) != \"hook_additional_context\"", "false", "TestCE1a_")
-m("CE-1 a transcript with no record reads as read", S, "s.records == 0", "false", "TestCE1_SeenAbsentUnreadable")
 
 # Who is judged, and once.
 m("CE-1 a subagent's note is judged", E, "textOf(b, out[nkAgent]) != \"\"", "false", "TestCE1d_ASubagentsNoteIsNotJudged")
@@ -32,9 +31,9 @@ m("CE-1 a note too young to be in the transcript is judged", E, "\t\tif now.Sub(
 m("CE-1 a judged note is judged again", E, "\t\t\tjudged[textOf(b, out[nkSteerID])] = true\n", "", "TestCE1d_ANoteIsJudgedOnce")
 
 # The policy on absent.
-m("CE-1 an absent note shadows on any version", E, "if out[i].Evidence == EvidenceAbsent && n.trusted {", "if out[i].Evidence == EvidenceAbsent {",
+m("CE-1 an absent note shadows on any version", E, "if out[i].AbsentStreak >= evidenceAbsents && n.trusted {", "if out[i].AbsentStreak >= evidenceAbsents {",
   "TestCE1b_OnlyATrustedVersionShadows")
-m("CE-1 an unreadable note shadows", E, "if out[i].Evidence == EvidenceAbsent && n.trusted {", "if out[i].Evidence != EvidenceSeen && n.trusted {",
+m("CE-1 an unreadable note shadows", E, "if out[i].AbsentStreak >= evidenceAbsents && n.trusted {", "if out[i].Evidence != EvidenceSeen && n.trusted {",
   "TestCE1b_AnUnreadableTranscriptChangesNoState")
 m("CE-1 a version below the floor is trusted", E, "compareVersions(version, floor) < 0", "false", "TestCE1b_OnlyATrustedVersionShadows")
 m("CE-1 an excluded version is trusted", E, "return !channelBasis{floor: floor, excluded: excluded}.excludes(version)", "return true",
@@ -79,3 +78,22 @@ m("CE-1 purge leaves the marker", P, "\tif store.IsChannelEvidenceMarker(name) {
   "TestCE1d_PurgeRemovesTheChannelEvidenceMarker")
 m("CE-1 the inventory omits the marker", D, "slices.Concat(defaultFiles(), learnFiles(), specFiles(), evidenceFiles())",
   "slices.Concat(defaultFiles(), learnFiles(), specFiles())", "TestTRU23_EveryWrittenPathIsInTheInventory")
+
+# The safety margin and the read's guards (the review of PR #159).
+m("CE-1 a transcript that has not caught up with the note reads absent", S,
+  "if s.last.IsZero() || s.last.Before(newest.Add(evidenceSlack)) {", "if s.last.IsZero() {", "TestCE1f_ALaggingTranscriptIsUnreadable")
+m("CE-1 a last record at the note's own instant has caught up", S, "s.last.Before(newest.Add(evidenceSlack))", "s.last.Before(newest)",
+  "TestCE1f_ALaggingTranscriptIsUnreadable")
+m("CE-1 another session's transcript is read", S, "\t\ts.mismatch = true\n", "", "TestCE1f_AnotherSessionsTranscriptIsUnreadable")
+m("CE-1 an attachment from before the note shows it", S, "!at.Before(n.At) && ", "", "TestCE1f_AnAttachmentBeforeTheNoteIsNotSeen")
+m("CE-1 one absent reading writes the marker", E, "out[i].AbsentStreak >= evidenceAbsents", "out[i].AbsentStreak >= 1", "TestCE1f_TwoAbsentsWriteTheMarker")
+m("CE-1 a seen reading does not restart the count", E, "\t\t\tout[textOf(b, f[nkEvent])] = 0\n", "", "TestCE1f_AbsentThenSeenWritesNone")
+m("CE-1 an unreadable reading restarts the count", E, "\t\tcase EvidenceAbsent:\n\t\t\tout[textOf(b, f[nkEvent])] = int(",
+  "\t\tcase EvidenceUnreadable:\n\t\t\tout[textOf(b, f[nkEvent])] = 0\n\t\tcase EvidenceAbsent:\n\t\t\tout[textOf(b, f[nkEvent])] = int(",
+  "TestCE1f_AnUnreadableBetweenAbsentsKeepsTheCount")
+m("CE-1 a seen note of the event in the same Stop is not a reset", E, "if out[i].Evidence != EvidenceAbsent || seen[n.event] {",
+  "if out[i].Evidence != EvidenceAbsent {", "TestCE1f_ASeenNoteInTheSameStopClearsTheCount")
+m("CE-1 a first absent reading writes the marker through the binary", E, "streak[n.event] = prior[n.event] + 1", "streak[n.event] = 2",
+  "TestH118_AbsentNoteShadowsItsEventNextSession")
+m("CE-1 a lagging transcript is judged through the binary", S, "if s.last.IsZero() || s.last.Before(newest.Add(evidenceSlack)) {",
+  "if s.last.IsZero() {", "TestH118_ALaggingTranscriptIsUnreadable")

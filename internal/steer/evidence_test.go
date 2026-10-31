@@ -23,8 +23,19 @@ func bigLimits(time.Time) ScanLimits { return DefaultScanLimits(time.Now()) }
 // attachment, in the form Claude Code writes: content a list of strings.
 func attachmentLine(t *testing.T, typ string, content any) string {
 	t.Helper()
+	return attachmentAt(t, evStamp, "s1", typ, content)
+}
+
+// evStamp is the time of the records the tests' transcripts end with: hours
+// after the router context's calls (07:33:20), so a transcript that holds one
+// has caught up with every note.
+const evStamp = "2026-10-26T12:00:00.000Z"
+
+// attachmentAt is attachmentLine with its own timestamp and session.
+func attachmentAt(t *testing.T, stamp, session, typ string, content any) string {
+	t.Helper()
 	b, err := json.Marshal(map[string]any{
-		"type": "attachment", "timestamp": "2026-10-26T00:00:01.000Z", "sessionId": "s1",
+		"type": "attachment", "timestamp": stamp, "sessionId": session,
 		"attachment": map[string]any{"type": typ, "hookEvent": "PostToolUse", "hookName": "PostToolUse:Bash", "content": content},
 	})
 	if err != nil {
@@ -138,7 +149,7 @@ func TestCE1a_TheCheckKeysOnTheAttachmentAndNothingElse(t *testing.T) {
 		attachmentLine(t, "hook_success", []string{note}),
 		// A record that names the type in another field, so the cheap filter
 		// passes it: only the attachment's own type counts.
-		`{"type":"attachment","timestamp":"2026-10-26T00:00:02.000Z","attachment":{"type":"hook_success","about":"hook_additional_context","content":[`+mustJSON(t, note)+`]}}`)
+		`{"type":"attachment","timestamp":"`+evStamp+`","attachment":{"type":"hook_success","about":"hook_additional_context","content":[`+mustJSON(t, note)+`]}}`)
 	got := CheckEvidence(ctx.Store, ctx.SessionID, path, evNow(ctx), bigLimits(evNow(ctx)))
 	if len(got) != 1 || got[0].Evidence != EvidenceAbsent {
 		t.Errorf("the text outside a hook_additional_context attachment read as %+v, want absent", got)
@@ -165,18 +176,34 @@ func appendLine(t *testing.T, ctx *Context, l *Line) {
 	}
 }
 
-// TestCE1b_AbsentShadowsNextSessionOnce: a note absent from the transcript on
-// a version the floor trusts writes the event's marker with that version.
+// absentTwice delivers a note, reads it absent at one Stop, delivers a second,
+// and reads that absent at a later Stop, the two readings that write the
+// marker. The first reading must not have written it.
+func absentTwice(t *testing.T, ctx *Context) {
+	t.Helper()
+	path := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"another note"}))
+	deliver(t, ctx, "a")
+	if got := CheckEvidence(ctx.Store, ctx.SessionID, path, evNow(ctx), bigLimits(evNow(ctx))); len(got) != 1 || got[0].Evidence != EvidenceAbsent || got[0].AbsentStreak != 1 {
+		t.Fatalf("first Stop: CheckEvidence = %+v, want absent, streak 1", got)
+	}
+	if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); ok {
+		t.Fatal("one absent reading wrote the marker")
+	}
+	deliver(t, ctx, "b")
+	if got := CheckEvidence(ctx.Store, ctx.SessionID, path, evNow(ctx), bigLimits(evNow(ctx))); len(got) != 1 || got[0].Evidence != EvidenceAbsent || got[0].AbsentStreak != 2 {
+		t.Fatalf("second Stop: CheckEvidence = %+v, want absent, streak 2", got)
+	}
+}
+
+// TestCE1b_AbsentShadowsNextSessionOnce: a note absent from the transcript at
+// two Stops on a version the floor trusts writes the event's marker with that
+// version.
 // The next session's note on that event is shadowed with unverified_channel,
 // and its one notice line gives the reason; its second prints nothing. A
 // different event is not shadowed.
 func TestCE1b_AbsentShadowsNextSessionOnce(t *testing.T) {
 	ctx := routerContext(t)
-	deliver(t, ctx, "a")
-	path := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"another note"}))
-	if got := CheckEvidence(ctx.Store, ctx.SessionID, path, evNow(ctx), bigLimits(evNow(ctx))); len(got) != 1 || got[0].Evidence != EvidenceAbsent {
-		t.Fatalf("CheckEvidence = %+v, want absent", got)
-	}
+	absentTwice(t, ctx)
 	if v, ok := ctx.Store.ChannelEvidence("PostToolUse"); !ok || v != "2.1.280" {
 		t.Fatalf("marker = (%q, %v), want (2.1.280, true)", v, ok)
 	}
@@ -184,7 +211,7 @@ func TestCE1b_AbsentShadowsNextSessionOnce(t *testing.T) {
 	next := *ctx
 	next.SessionID = "s2"
 	const why = "rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUse; delivery verified from 2.1.280): " +
-		"the last session's transcript did not show a delivered note for this event. Shown once per session."
+		"a transcript did not show a delivered note for this event. Shown once per session."
 	if out := Route(&next, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge)}); out != (Output{SystemMessage: why}) {
 		t.Errorf("the next session's first note printed %+v, want only %q", out, why)
 	}
@@ -227,12 +254,14 @@ func TestCE1b_OnlyATrustedVersionShadows(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := routerContext(t)
-			l := Line{Type: LineType, V: LineVersion, ID: "n1", AtUnixMS: ctx.NowUnixMS, SessionID: ctx.SessionID, State: LineStateDelivered,
-				ModelText: "rashomon record: a note", Event: tc.event, ClientVersion: tc.version, VerifiedFloor: tc.floor, Excluded: tc.excluded}
-			appendLine(t, ctx, &l)
-			got := CheckEvidence(ctx.Store, ctx.SessionID, path(t), evNow(ctx), bigLimits(evNow(ctx)))
-			if len(got) != 1 || got[0].Evidence != EvidenceAbsent {
-				t.Fatalf("CheckEvidence = %+v, want absent", got)
+			for _, id := range []string{"n1", "n2"} {
+				l := Line{Type: LineType, V: LineVersion, ID: id, AtUnixMS: ctx.NowUnixMS, SessionID: ctx.SessionID, State: LineStateDelivered,
+					ModelText: "rashomon record: a note", Event: tc.event, ClientVersion: tc.version, VerifiedFloor: tc.floor, Excluded: tc.excluded}
+				appendLine(t, ctx, &l)
+				got := CheckEvidence(ctx.Store, ctx.SessionID, path(t), evNow(ctx), bigLimits(evNow(ctx)))
+				if len(got) != 1 || got[0].Evidence != EvidenceAbsent {
+					t.Fatalf("CheckEvidence = %+v, want absent", got)
+				}
 			}
 			_, shadowed := ctx.Store.ChannelEvidence(tc.event)
 			if shadowed != tc.trusted {
@@ -270,9 +299,7 @@ func TestCE1b_AnUnreadableTranscriptChangesNoState(t *testing.T) {
 func TestCE1c_ProbePassAndNewerVersionClear(t *testing.T) {
 	shadow := func(t *testing.T) *Context {
 		ctx := routerContext(t)
-		deliver(t, ctx, "a")
-		path := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"other"}))
-		CheckEvidence(ctx.Store, ctx.SessionID, path, evNow(ctx), bigLimits(evNow(ctx)))
+		absentTwice(t, ctx)
 		if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); !ok {
 			t.Fatal("no marker")
 		}
@@ -402,32 +429,32 @@ func TestCE1e_TheReadIsBounded(t *testing.T) {
 
 	covered := writeTranscript(t, append(filler("2026-10-25T00:00:00.000Z"), other)...)
 	// The window is the last 4096 bytes: filler records stamped before the note.
-	if _, complete := ScanTranscript(covered, []string{"needle"}, noteAt, lim); !complete {
+	if _, complete := ScanTranscript(covered, "s1", []Needle{{"needle", noteAt}}, lim); !complete {
 		t.Error("a window starting before the note's time was read as not covering it")
 	}
 	late := writeTranscript(t, append(filler("2026-10-27T00:00:00.000Z"), other)...)
-	if found, complete := ScanTranscript(late, []string{"needle"}, noteAt, lim); complete || found[0] {
+	if found, complete := ScanTranscript(late, "s1", []Needle{{"needle", noteAt}}, lim); complete || found[0] {
 		t.Errorf("a window starting after the note's time: found %v, complete %v; want neither", found, complete)
 	}
 	hit := writeTranscript(t, append(filler("2026-10-27T00:00:00.000Z"), attachmentLine(t, "hook_additional_context", []string{"a needle here"}))...)
-	if found, _ := ScanTranscript(hit, []string{"needle"}, noteAt, lim); !found[0] {
+	if found, _ := ScanTranscript(hit, "s1", []Needle{{"needle", noteAt}}, lim); !found[0] {
 		t.Error("a needle inside the window was not found")
 	}
 	nostamp := writeTranscript(t, append(strings.Split(strings.Repeat(`{"type":"user"}`+"\n", 400), "\n"), other)...)
-	if _, complete := ScanTranscript(nostamp, []string{"needle"}, noteAt, ScanLimits{MaxBytes: 1024, MaxLine: 1 << 20}); complete {
+	if _, complete := ScanTranscript(nostamp, "s1", []Needle{{"needle", noteAt}}, ScanLimits{MaxBytes: 1024, MaxLine: 1 << 20}); complete {
 		t.Error("a window with no timestamp was read as covering the note")
 	}
 
 	expired := ScanLimits{MaxBytes: 1 << 20, MaxLine: 1 << 20, Deadline: time.Now().Add(-time.Second)}
-	if found, complete := ScanTranscript(covered, []string{"needle"}, noteAt, expired); complete || found[0] {
+	if found, complete := ScanTranscript(covered, "s1", []Needle{{"needle", noteAt}}, expired); complete || found[0] {
 		t.Errorf("an expired deadline: found %v, complete %v; want neither", found, complete)
 	}
 
 	huge := writeTranscript(t, userLine, fillerLine(3<<10, "2026-10-26T00:00:00.000Z"), attachmentLine(t, "hook_additional_context", []string{"a needle"}))
-	if found, complete := ScanTranscript(huge, []string{"needle"}, noteAt, ScanLimits{MaxBytes: 1 << 20, MaxLine: 2 << 10}); !found[0] || !complete {
+	if found, complete := ScanTranscript(huge, "s1", []Needle{{"needle", noteAt}}, ScanLimits{MaxBytes: 1 << 20, MaxLine: 2 << 10}); !found[0] || !complete {
 		t.Errorf("a line over the line bound ended the read: found %v, complete %v", found, complete)
 	}
-	if found, complete := ScanTranscript(t.TempDir(), []string{"needle"}, noteAt, lim); found[0] || complete {
+	if found, complete := ScanTranscript(t.TempDir(), "s1", []Needle{{"needle", noteAt}}, lim); found[0] || complete {
 		t.Errorf("a directory read as a transcript: %v %v", found, complete)
 	}
 }
@@ -442,5 +469,176 @@ func TestCE1e_DefaultLimitsAreTheStopsBound(t *testing.T) {
 	}
 	if evidenceSettle != 2*time.Second {
 		t.Errorf("settle = %v", evidenceSettle)
+	}
+}
+
+// TestCE1f_ALaggingTranscriptIsUnreadable: a transcript whose last record is
+// older than the note has not caught up with it, so a note it lacks is not
+// absent: unreadable, no marker, however many Stops read it. The reviewer's
+// probe: one delivered note and a transcript whose one record is from 2020.
+func TestCE1f_ALaggingTranscriptIsUnreadable(t *testing.T) {
+	ctx := routerContext(t)
+	old := writeTranscript(t, attachmentAt(t, "2020-01-01T00:00:00.000Z", "s1", "hook_additional_context", []string{"another note"}))
+	for _, key := range []string{"a", "b", "c"} {
+		deliver(t, ctx, key)
+		got := CheckEvidence(ctx.Store, ctx.SessionID, old, evNow(ctx), bigLimits(evNow(ctx)))
+		if len(got) != 1 || got[0].Evidence != EvidenceUnreadable || got[0].AbsentStreak != 0 {
+			t.Fatalf("a transcript from 2020 read as %+v, want unreadable", got)
+		}
+	}
+	if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); ok {
+		t.Error("a lagging transcript wrote the marker")
+	}
+	// The same transcript, with its last record at the note's own instant,
+	// is still short of the slack.
+	at := time.UnixMilli(ctx.NowUnixMS).UTC().Format("2006-01-02T15:04:05.000Z")
+	ctx2 := routerContext(t)
+	deliver(t, ctx2, "a")
+	edge := writeTranscript(t, attachmentAt(t, at, "s1", "hook_additional_context", []string{"another note"}))
+	if got := CheckEvidence(ctx2.Store, ctx2.SessionID, edge, evNow(ctx2), bigLimits(evNow(ctx2))); len(got) != 1 || got[0].Evidence != EvidenceUnreadable {
+		t.Errorf("a last record at the note's time read as %+v, want unreadable", got)
+	}
+}
+
+// TestCE1f_TwoAbsentsWriteTheMarker: the first absent reading records absent
+// with streak 1 and writes nothing; a second at a later Stop writes it.
+func TestCE1f_TwoAbsentsWriteTheMarker(t *testing.T) {
+	ctx := routerContext(t)
+	absentTwice(t, ctx)
+	if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); !ok {
+		t.Error("two absent readings wrote no marker")
+	}
+	raw, _, _ := ctx.Store.ReadSteer(ctx.SessionID)
+	var streaks []int
+	for _, b := range raw {
+		var l EvidenceLine
+		if json.Unmarshal(b, &l) == nil && l.Type == EvidenceLineType {
+			streaks = append(streaks, l.AbsentStreak)
+		}
+	}
+	if len(streaks) != 2 || streaks[0] != 1 || streaks[1] != 2 {
+		t.Errorf("absent_streak on the log = %v, want [1 2]", streaks)
+	}
+}
+
+// TestCE1f_AnUnreadableBetweenAbsentsKeepsTheCount: an unreadable reading
+// changes nothing, so absent, unreadable, absent writes the marker.
+func TestCE1f_AnUnreadableBetweenAbsentsKeepsTheCount(t *testing.T) {
+	ctx := routerContext(t)
+	read := func(key, path string) []EvidenceLine {
+		deliver(t, ctx, key)
+		return CheckEvidence(ctx.Store, ctx.SessionID, path, evNow(ctx), bigLimits(evNow(ctx)))
+	}
+	absent := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"another note"}))
+	read("a", absent)
+	if got := read("b", filepath.Join(t.TempDir(), "gone.jsonl")); len(got) != 1 || got[0].Evidence != EvidenceUnreadable {
+		t.Fatalf("got %+v, want unreadable", got)
+	}
+	read("c", absent)
+	if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); !ok {
+		t.Error("an unreadable between two absents reset the count")
+	}
+}
+
+// TestCE1f_AbsentThenSeenWritesNone: a seen reading between absents starts
+// the count again, and so does a seen note in the same Stop as an absent one.
+func TestCE1f_AbsentThenSeenWritesNone(t *testing.T) {
+	ctx := routerContext(t)
+	absent := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"another note"}))
+	deliver(t, ctx, "a")
+	if got := CheckEvidence(ctx.Store, ctx.SessionID, absent, evNow(ctx), bigLimits(evNow(ctx))); len(got) != 1 || got[0].Evidence != EvidenceAbsent {
+		t.Fatalf("got %+v, want absent", got)
+	}
+	note := deliver(t, ctx, "b")
+	seen := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{note}))
+	if got := CheckEvidence(ctx.Store, ctx.SessionID, seen, evNow(ctx), bigLimits(evNow(ctx))); len(got) != 1 || got[0].Evidence != EvidenceSeen {
+		t.Fatalf("got %+v, want seen", got)
+	}
+	deliver(t, ctx, "c")
+	if got := CheckEvidence(ctx.Store, ctx.SessionID, absent, evNow(ctx), bigLimits(evNow(ctx))); len(got) != 1 || got[0].Evidence != EvidenceAbsent || got[0].AbsentStreak != 1 {
+		t.Fatalf("after a seen: %+v, want absent with streak 1", got)
+	}
+	if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); ok {
+		t.Error("absent, seen, absent wrote the marker")
+	}
+}
+
+// TestCE1f_AnAttachmentBeforeTheNoteIsNotSeen: the first line of many notes is
+// the same, so an attachment recorded before this note was delivered is
+// another note's, however well its text matches.
+func TestCE1f_AnAttachmentBeforeTheNoteIsNotSeen(t *testing.T) {
+	ctx := routerContext(t)
+	note := deliver(t, ctx, "a")
+	before := attachmentAt(t, "2026-10-26T07:00:00.000Z", "s1", "hook_additional_context", []string{note}) // note is at 07:33:20
+	after := attachmentAt(t, evStamp, "s1", "hook_additional_context", []string{"another note"})
+	got := CheckEvidence(ctx.Store, ctx.SessionID, writeTranscript(t, userLine, before, after), evNow(ctx), bigLimits(evNow(ctx)))
+	if len(got) != 1 || got[0].Evidence != EvidenceAbsent {
+		t.Errorf("an attachment from before the note read as %+v, want absent", got)
+	}
+	ctx2 := routerContext(t)
+	note = deliver(t, ctx2, "a")
+	on := attachmentAt(t, "2026-10-26T07:33:21.000Z", "s1", "hook_additional_context", []string{note})
+	got = CheckEvidence(ctx2.Store, ctx2.SessionID, writeTranscript(t, userLine, on, after), evNow(ctx2), bigLimits(evNow(ctx2)))
+	if len(got) != 1 || got[0].Evidence != EvidenceSeen {
+		t.Errorf("an attachment after the note read as %+v, want seen", got)
+	}
+}
+
+// TestCE1f_AnotherSessionsTranscriptIsUnreadable: a record that names another
+// session, in the middle of the file or at its end, makes the read
+// unreadable, even where the note's text is in it.
+func TestCE1f_AnotherSessionsTranscriptIsUnreadable(t *testing.T) {
+	for name, build := range map[string]func(t *testing.T, note string) string{
+		"in an attachment": func(t *testing.T, note string) string {
+			return writeTranscript(t, userLine, attachmentAt(t, evStamp, "other-session", "hook_additional_context", []string{note}))
+		},
+		"at the end": func(t *testing.T, _ string) string {
+			return writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"x"}),
+				`{"type":"user","timestamp":"`+evStamp+`","sessionId":"other-session"}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := routerContext(t)
+			note := deliver(t, ctx, "a")
+			got := CheckEvidence(ctx.Store, ctx.SessionID, build(t, note), evNow(ctx), bigLimits(evNow(ctx)))
+			if len(got) != 1 || got[0].Evidence != EvidenceUnreadable {
+				t.Errorf("another session's transcript read as %+v, want unreadable", got)
+			}
+		})
+	}
+}
+
+// TestCE1f_ASeenNoteInTheSameStopClearsTheCount: a Stop that reads one note of
+// an event seen and another absent has shown the channel working, so it is no
+// absent reading of the event: after an absent Stop, a mixed one writes no
+// marker.
+func TestCE1f_ASeenNoteInTheSameStopClearsTheCount(t *testing.T) {
+	ctx := routerContext(t)
+	absent := writeTranscript(t, userLine, attachmentLine(t, "hook_additional_context", []string{"another note"}))
+	deliver(t, ctx, "a")
+	CheckEvidence(ctx.Store, ctx.SessionID, absent, evNow(ctx), bigLimits(evNow(ctx)))
+	seenNote := deliver(t, ctx, "b") // at 07:33:20
+	ctx.NowUnixMS += 10_000
+	deliver(t, ctx, "c") // at 07:33:30; the notes share their first line, so only the time tells them apart
+	mixed := writeTranscript(t, userLine, attachmentAt(t, "2026-10-26T07:33:25.000Z", "s1", "hook_additional_context", []string{seenNote}),
+		attachmentLine(t, "hook_additional_context", []string{"another note"}))
+	got := CheckEvidence(ctx.Store, ctx.SessionID, mixed, evNow(ctx), bigLimits(evNow(ctx)))
+	if len(got) != 2 {
+		t.Fatalf("judged %d notes, want 2", len(got))
+	}
+	seen, absentN := 0, 0
+	for _, l := range got {
+		switch l.Evidence {
+		case EvidenceSeen:
+			seen++
+		case EvidenceAbsent:
+			absentN++
+		}
+	}
+	if seen+absentN != 2 {
+		t.Fatalf("got %+v, want one seen and one absent", got)
+	}
+	if _, ok := ctx.Store.ChannelEvidence("PostToolUse"); ok {
+		t.Error("a Stop that saw a note of the event counted as an absent reading")
 	}
 }

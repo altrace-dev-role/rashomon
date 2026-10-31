@@ -14,7 +14,7 @@ import (
 // noteKeyNames are the keys of a steer line, or of an EvidenceLine, a Stop
 // reads, in the order of noteKey's constants.
 var noteKeyNames = []string{"type", "id", "steer_id", "at_unix_ms", "session_id", "prompt_id", "agent_id", "event", "state",
-	"model_text", "client_version", "verified_floor", "excluded"}
+	"model_text", "client_version", "verified_floor", "excluded", "evidence", "absent_streak"}
 
 const (
 	nkType = iota
@@ -30,6 +30,8 @@ const (
 	nkVersion
 	nkFloor
 	nkExcluded
+	nkEvidence
+	nkStreak
 	nkCount
 )
 
@@ -54,7 +56,7 @@ var recordKeysOnce struct {
 // time and attachment, and the attachment's type and content.
 func recordKeys() (rec, att *jsonscan.KeySet) {
 	recordKeysOnce.Do(func() {
-		recordKeysOnce.rec = jsonscan.NewKeySet("timestamp", "attachment")
+		recordKeysOnce.rec = jsonscan.NewKeySet("timestamp", "attachment", "sessionId")
 		recordKeysOnce.att = jsonscan.NewKeySet("type", "content")
 	})
 	return recordKeysOnce.rec, recordKeysOnce.att
