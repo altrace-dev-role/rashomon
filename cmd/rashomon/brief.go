@@ -14,6 +14,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/receipt"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -66,7 +67,7 @@ func cmdBrief(args []string, stdout io.Writer) error {
 // is systemMessage, the channel the user reads and the model does not, as
 // recap_turn.go prints its line. A cwd that is not a directory this process
 // can read prints nothing (B7).
-func printBrief(args []string, payload *hookio.Payload, storeRoot string, stdout io.Writer) {
+func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout io.Writer) {
 	if len(args) == 0 || args[0] != store.PhaseStart || payload == nil {
 		return
 	}
@@ -81,7 +82,9 @@ func printBrief(args []string, payload *hookio.Payload, storeRoot string, stdout
 	case !ok:
 		return
 	case source == "" || source == "startup" || source == "clear":
-		msg = brief.Render(buildBrief(cwd, root, storeRoot, brief.Pointer{Plugin: briefFromPlugin(args), SessionID: sessionID}))
+		plugin := briefFromPlugin(args)
+		b := buildBrief(cwd, root, st.Root(), brief.Pointer{Plugin: plugin, SessionID: sessionID})
+		msg = brief.Render(withLastSession(b, st, root, sessionID, plugin))
 	case source == "resume":
 		msg = brief.Resumed(root)
 	default:
@@ -90,6 +93,31 @@ func printBrief(args []string, payload *hookio.Payload, storeRoot string, stdout
 	if b, err := json.Marshal(map[string]string{"systemMessage": msg}); err == nil {
 		_, _ = stdout.Write(b)
 	}
+}
+
+// withLastSession replaces the brief's verify line with the line for the
+// project's previous session (card REPORT1b): its time, one reason and the
+// report command its origin has. The scan is receipt.Previous at the startup
+// bounds, the one added read on this path. Any error leaves the verify line
+// as it is.
+func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plugin bool) brief.Brief {
+	last, scan, err := receipt.Previous(st, receipt.Query{Project: root, Skip: sessionID, MaxRuns: receipt.MaxRuns, MaxBytes: receipt.MaxBytes})
+	// Every run read and none of the project's: a first session, or one whose
+	// predecessors cut no checkpoint. The verify line, which names the report
+	// command, stays; "none" is for a walk the bounds ended.
+	if err != nil || !scan.Found && scan.Bound == "" {
+		return b
+	}
+	pointer := "rashomon report --session last"
+	if plugin {
+		pointer = "/" + install.PluginName + ":report last"
+	}
+	source := "the project's newest checkpoint before this session"
+	if !scan.Found {
+		source = "the store's runs, within the read bounds"
+	}
+	text := strings.TrimPrefix(receipt.PreviousLine(last, scan, pointer), brief.LastSessionLead)
+	return b.WithVerify(brief.Fact{Kind: brief.KindLastSession, Text: text, Source: source})
 }
 
 // briefRoot is the project root of dir, baseline.Key as recap_stop.go reads

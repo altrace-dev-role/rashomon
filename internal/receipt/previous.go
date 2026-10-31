@@ -257,7 +257,9 @@ func beforeIn(st *store.Store, r written, q Query, spent int64) (line []byte, no
 // checkpoint gives its time and one reason it was or was not green, then
 // "; " and pointer, the report command the user can run; a reason that
 // would not fit is left out, never the pointer. Nothing found gives the bound
-// that ended the walk and no pointer, since there is no session to show.
+// that ended the walk and no pointer, since there is no session to show; a
+// walk that read every run and found none gives "", for the caller to keep
+// the line it has.
 func PreviousLine(p Last, s Scan, pointer string) string {
 	const lead = "last session: "
 	if !s.Found {
@@ -267,7 +269,7 @@ func PreviousLine(p Last, s Scan, pointer string) string {
 		case BoundBytes:
 			return lead + "none within the " + strconv.Itoa(MaxBytes>>20) + " MiB read bound on this machine"
 		}
-		return lead + "none recorded for this project"
+		return ""
 	}
 	at := time.UnixMilli(p.RecordedAtUnixMS).Format("01-02 15:04")
 	line := lead + at + ", " + reason(p) + "; " + pointer

@@ -197,7 +197,10 @@ func TestRP2i_StartupLineFitsAndReasonsAreRight(t *testing.T) {
 	if line := PreviousLine(p, Scan{Found: true}, cli); line != "last session: 10-29 16:20; "+cli {
 		t.Errorf("a reason that does not fit is dropped, the pointer kept: %q", line)
 	}
-	for _, s := range []Scan{{Bound: BoundRuns}, {Bound: BoundBytes}, {}} {
+	if line := PreviousLine(Last{}, Scan{}, plugin); line != "" {
+		t.Errorf("a walk that read every run and found none has no line of its own: %q", line)
+	}
+	for _, s := range []Scan{{Bound: BoundRuns}, {Bound: BoundBytes}} {
 		if line := PreviousLine(Last{}, s, plugin); strings.Contains(line, "report") || !strings.HasPrefix(line, "last session: none") {
 			t.Errorf("a none form %+v carries a pointer or no 'none': %q", s, line)
 		}

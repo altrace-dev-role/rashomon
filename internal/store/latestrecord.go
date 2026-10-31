@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -51,6 +52,12 @@ var headKeys struct {
 // accepts. The head is located by span, not decoded (RES-5), so a line is
 // matched without being parsed into a record.
 func isKind(line []byte, kind string) bool {
+	// A line of this kind holds its name; json.Marshal, the writer's, never
+	// escapes it. The check spares the scan's validation of lines that are
+	// plainly another kind, the bulk of a long file.
+	if !bytes.Contains(line, []byte(kind)) {
+		return false
+	}
 	headKeys.Do(func() { headKeys.v = jsonscan.NewKeySet("type", "schema_version") })
 	var out [2]jsonscan.Span
 	if len(line) == 0 || jsonscan.Top(line, headKeys.v, out[:]) != nil || out[0].Kind != jsonscan.String || out[1].Kind != jsonscan.Number {
@@ -124,25 +131,25 @@ func (s *Store) LatestRecordTail(sessionID, kind string, tail int64) (line []byt
 	if err != nil {
 		return nil, false, 0, err
 	}
-	var r io.Reader = f
+	var r io.Reader = &countingReader{r: f, n: &readBytes}
 	if tail > 0 && info.Size() > tail {
 		if _, err := f.Seek(info.Size()-tail, io.SeekStart); err != nil {
 			return nil, false, 0, err
 		}
-		buf, err := io.ReadAll(io.LimitReader(f, tail))
-		if err != nil {
-			return nil, false, 0, err
+		// Streamed, so a long tail costs a buffer, not a copy of itself. The
+		// seek landed inside a line unless the byte before it was a newline,
+		// which is not known: the first newline ends the partial one.
+		br := bufio.NewReaderSize(&countingReader{r: io.LimitReader(f, tail), n: &readBytes}, readChunk)
+		for {
+			_, err := br.ReadSlice('\n')
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, bufio.ErrBufferFull) {
+				return nil, false, readBytes, nil
+			}
 		}
-		readBytes = int64(len(buf))
-		// The seek landed inside a line unless the byte before it was a
-		// newline, which is not read: the first newline ends the partial.
-		i := bytes.IndexByte(buf, '\n')
-		if i < 0 {
-			return nil, false, readBytes, nil
-		}
-		r = bytes.NewReader(buf[i+1:])
-	} else {
-		r = &countingReader{r: f, n: &readBytes}
+		r = br
 	}
 	err = forEachLine(r, func(l []byte) {
 		if l != nil && isKind(l, kind) {

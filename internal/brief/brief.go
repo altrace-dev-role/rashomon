@@ -38,6 +38,12 @@ const (
 	KindTask         = "task"
 	KindPackages     = "packages"
 	KindVerify       = "verify"
+	// KindLastSession is the line that replaces the verify line at startup
+	// when the project's previous session was looked for (Brief.WithVerify).
+	KindLastSession = "last session"
+	// LastSessionLead is the text receipt.PreviousLine opens with, which the
+	// fact's kind says already.
+	LastSessionLead = "last session: "
 )
 
 // The walk's bounds: MaxWalkEntries directory entries read in all and
@@ -123,6 +129,18 @@ func Build(root, storeRoot string, report Pointer, sp *spec.Compiled) Brief {
 		b.Facts = append(b.Facts, f)
 	}
 	b.Facts = append(b.Facts, taskFact(root, sp), packages, verifyFact(report))
+	return b
+}
+
+// WithVerify is b with its verify line, the last fact, replaced by f; a brief
+// whose last fact is not the verify line is returned as it is.
+func (b Brief) WithVerify(f Fact) Brief {
+	if n := len(b.Facts); n == 0 || b.Facts[n-1].Kind != KindVerify {
+		return b
+	}
+	facts := append([]Fact{}, b.Facts...)
+	facts[len(facts)-1] = f
+	b.Facts = facts
 	return b
 }
 
