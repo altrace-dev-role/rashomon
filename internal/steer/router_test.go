@@ -291,7 +291,6 @@ func TestST_ClampsRecordTheirReason(t *testing.T) {
 		set  func(*Context)
 		want SuppressedBy
 	}{
-		{"steering off", func(c *Context) { c.SteerOff = true }, SuppressedBySteerOff},
 		{"no consent", func(c *Context) { c.Consent = false }, SuppressedByConsentMissing},
 		{"no prompt", func(c *Context) { c.PromptID = nil }, SuppressedByBudgetPrompt},
 		{"stop hook active", func(c *Context) { c.Event, c.StopHookActive = EventStop, true }, SuppressedByStopHookActive},
@@ -309,6 +308,22 @@ func TestST_ClampsRecordTheirReason(t *testing.T) {
 			}
 			wantLine(t, l, LineStateDelivered, c.want, DeliveryFlagOnly)
 		})
+	}
+}
+
+// TestSTC1f_SteerOffSilencesNotesAndFlags (card STEER-CLI1): the user's steer
+// switch prints nothing, a flag no more than a note, and logs every finding
+// suppressed steer_off with delivery shadow. It is not a clamp to a flag: a
+// person who turned the notes off is not shown a flag in their place.
+func TestSTC1f_SteerOffSilencesNotesAndFlags(t *testing.T) {
+	ctx := routerContext(t)
+	ctx.SteerOff = true
+	out := Route(ctx, []Finding{regressionNote(t, "go test", 5, "a", LevelNudge), regressionNote(t, "go vet", 6, "f", LevelFlag)})
+	if out != (Output{}) {
+		t.Errorf("steer off printed %+v", out)
+	}
+	for _, l := range lastLines(t, ctx, 2) {
+		wantLine(t, l, LineStateSuppressed, SuppressedBySteerOff, DeliveryShadow)
 	}
 }
 

@@ -45,8 +45,10 @@ type Context struct {
 	// Consent is the steer-consent marker's answer (D49, 2.2c); false
 	// clamps every note to a flag.
 	Consent bool
-	// SteerOff is the user's steering switch; false until a config reader
-	// exists.
+	// SteerOff is the user's steering switch, from the user's or the
+	// project's key of config.json (store.Config.SteerOffFor); the hook
+	// reads it. Nothing prints while it is set, and each finding is logged
+	// suppressed steer_off.
 	SteerOff bool
 	// Arm is the lab arm: ArmLive on every install that is not a lab
 	// install, and none is yet; "" reads as ArmLive.
