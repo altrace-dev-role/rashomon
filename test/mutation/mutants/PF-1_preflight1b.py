@@ -54,3 +54,9 @@ m("PF-1 the prompt path counts sdk-cli as attended", "internal/hook/promptcontex
 m("PF-1 the preflight reads the spec with the store root directly", "cmd/rashomon/preflight.go",
   "hook.TrustRoot(run, st.Root(), run.LastSeq())", "st.Root()",
   "TestST1x_")
+m("PF-1 the stored paragraph claims every note word for word", "internal/disclose/paragraphs.go",
+  "Each note it adds, word for word, except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them.", "Each note it adds, word for word.",
+  "TestTRU_PF1b_")
+m("PF-1 steer.ndjson claims the text shown at every scope", "internal/disclose/disclose.go",
+  " (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them)", "",
+  "TestTRU_PF1b_")

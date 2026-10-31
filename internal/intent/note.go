@@ -32,7 +32,10 @@ func Finding(in Intent, d Delivered, b *Brief, afterSeq int64) (steer.Finding, b
 // digested before the "given earlier" check, and the finding's Record is the
 // message the steer line holds, each path list as its count and its keyed
 // digests. The message that prints is Finding's, unchanged. A nil digest is
-// scope v5: the line records what printed.
+// scope v5: the line records what printed. A switch from v4 to v5 in the
+// middle of a session can announce a path once more, since the digests the
+// v4 lines hold do not match the paths a v5 check looks for; that costs one
+// repeated path in one note and is harmless.
 func FindingKeyed(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	first := !d.BriefGiven && b.has()
 	var paths []string
