@@ -32,3 +32,12 @@ test/tools/hygiene/reviewed.txt 443d1f66631eae2a a fuzz seed's entry in this fil
 test/tools/hygiene/reviewed.txt 5fff17de04496d85 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt 883aa8477c75131f a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt 43454ff9356cb927 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/perf/budgets.json 067d72f29479b9ab a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json 0eaf9e0ed87b8180 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json 3f977a5f4c8dfb34 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json 69f6abd3e44de82b a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json 7e80605282766971 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json 87375573ca3f739b a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json a55af4fd6156431a a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json a7c430e7d8d4ee14 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
+test/perf/budgets.json d6e1c99ea967b361 a lesson row's basis note (LEARN-DELIVER1): prose saying the row is provisional and where its figures came from; it holds no credential and no account value
