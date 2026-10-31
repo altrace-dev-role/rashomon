@@ -59,6 +59,9 @@ func Why(st *store.Store, sessionID, prefix string) (report.WhyView, error) {
 		v.ModelText, v.UserText = l.ModelText, l.UserText
 	}
 	v.Source = sourceOf(l)
+	if l.Facts.OutcomeFrom != nil && *l.Facts.OutcomeFrom == report.OutcomeFromOutput {
+		v.OutcomeFrom = report.OutcomeFromOutput
+	}
 	seqs := l.EvidenceSeqs
 	if len(seqs) == 0 && l.AfterSeq > 0 {
 		seqs = []int64{l.AfterSeq}
@@ -160,10 +163,11 @@ func slotText(raw json.RawMessage) string {
 }
 
 // sourceOf is where the line's content came from, read from its slots and
-// key and never from Facts, which no producer writes. A learned-fact line is
-// the lesson its key names, or the ledger flag; a line with a rules slot
-// names its rule ids (PREFLIGHT1's RuleRefs); one with a gate slot names the
-// gate.
+// key and never from Facts, whose source members no producer writes (only
+// Facts.OutcomeFrom is written, and WhyView carries it apart). A learned-fact
+// line is the lesson its key names, or the ledger flag; a line with a rules
+// slot names its rule ids (PREFLIGHT1's RuleRefs); a platform-rule line names
+// the one rule its rule_id slot holds; one with a gate slot names the gate.
 func sourceOf(l steer.Line) report.WhySource {
 	if l.Pattern == "learned-fact" {
 		if l.Key == learn.UncheckedKey {
@@ -177,6 +181,12 @@ func sourceOf(l steer.Line) report.WhySource {
 		}
 		if json.Unmarshal(raw, &r) == nil && len(r.IDs) > 0 {
 			return report.WhySource{Kind: "rules", Detail: strings.Join(r.IDs, ", ")}
+		}
+	}
+	if l.Pattern == "platform-rule" {
+		var id string
+		if json.Unmarshal(l.Slots["rule_id"], &id) == nil && id != "" {
+			return report.WhySource{Kind: "rules", Detail: id}
 		}
 	}
 	if raw, ok := l.Slots["gate"]; ok {

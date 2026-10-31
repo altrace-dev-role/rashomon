@@ -35,6 +35,9 @@ func WhyText(w io.Writer, v *WhyView) error {
 		fmt.Fprintf(&b, "  slots: %s\n", slotsText(v.Slots))
 	}
 	writeWhyEvidence(&b, v)
+	if v.OutcomeFrom == OutcomeFromOutput {
+		fmt.Fprintln(&b, "  outcome: read from the run's output, not its exit status")
+	}
 	if v.Source.Kind != "none" {
 		fmt.Fprintf(&b, "  source: %s\n", sourceText(v.Source))
 	} else {
@@ -113,7 +116,7 @@ func sourceText(s WhySource) string {
 	case "gate":
 		return "gate " + printable(s.Detail) + " (slot gate)"
 	case "rules":
-		return "rules " + printable(s.Detail) + " (slot rules)"
+		return "rules " + printable(s.Detail) + " (the line's rule slot)"
 	case "lesson":
 		return "lesson " + printable(s.Detail) + " (the line's key)"
 	case "ledger_unchecked":

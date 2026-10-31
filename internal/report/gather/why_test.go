@@ -238,7 +238,7 @@ func learnDir(t *testing.T, st *store.Store) string {
 // steer.Route. A task-preflight line names its rule ids from the rules slot; a
 // learned-fact line names the lesson its key holds; the "#unchecked" key names
 // the ledger flag; a regression-location line names the gate slot. Break: read
-// the source from Facts, which no producer writes.
+// the source from Facts, whose source members no producer writes.
 func TestRP2o_WhyNamesTheSource(t *testing.T) {
 	st := whyRun(t)
 	lm, err := learn.Message(learn.Lesson{ID: "npm-ci", Text: "npm ci before npm test"})
@@ -262,6 +262,12 @@ func TestRP2o_WhyNamesTheSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	pf := finding(t, pattern.TaskPreflight, "note", steer.LevelNudge, pm, nil, 2)
+	rm, err := render.New(pattern.PlatformRule, render.PlatformRuleCommandBinding{Program: "git", Rule: "no-force"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf := finding(t, pattern.PlatformRule, "no-force|git", steer.LevelNudge, rm, nil, 2)
+	rf.Kind = "command"
 	for _, tc := range []struct {
 		name  string
 		event string
@@ -273,6 +279,7 @@ func TestRP2o_WhyNamesTheSource(t *testing.T) {
 		{"lesson", "UserPromptSubmit", lf, "lesson", "npm-ci"},
 		{"ledger flag", "UserPromptSubmit", uf, "ledger_unchecked", ""},
 		{"rules", "UserPromptSubmit", pf, "rules", "conv-errors, proof"},
+		{"platform rule", "PostToolUse", rf, "rules", "no-force"},
 	} {
 		id := route(t, st, "s1", tc.event, tc.f, true, false)
 		v, err := Why(st, "s1", id[:8])
@@ -282,6 +289,33 @@ func TestRP2o_WhyNamesTheSource(t *testing.T) {
 		}
 		if v.Source.Kind != tc.kind || v.Source.Detail != tc.want {
 			t.Errorf("%s: source %+v; want %s %q (line %+v)", tc.name, v.Source, tc.kind, tc.want, v.State)
+		}
+	}
+}
+
+// TestRP2o2_WhyShowsAnOutputReadOutcome: a line built on a run whose outcome
+// was read from its output carries the closed word, and any other line "".
+// Break: leave Facts.OutcomeFrom out of the view.
+func TestRP2o2_WhyShowsAnOutputReadOutcome(t *testing.T) {
+	st := whyRun(t)
+	plain := route(t, st, "s1", "PostToolUseFailure", regression(t), true, false)
+	f := regression(t)
+	f.OutcomeFrom = steer.OutcomeFromOutputSummary
+	read := route(t, st, "s1", "PostToolUseFailure", f, true, false)
+	for id, want := range map[string]string{plain: "", read: report.OutcomeFromOutput} {
+		v, err := Why(st, "s1", id[:8])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.OutcomeFrom != want {
+			t.Errorf("line %s: OutcomeFrom %q, want %q", id[:8], v.OutcomeFrom, want)
+		}
+		var b strings.Builder
+		if err := report.WhyText(&b, &v); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(b.String(), "read from the run's output"); got != (want != "") {
+			t.Errorf("line %s: text names the provenance = %v, want %v:\n%s", id[:8], got, want != "", b.String())
 		}
 	}
 }

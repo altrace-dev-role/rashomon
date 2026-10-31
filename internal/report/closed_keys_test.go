@@ -127,6 +127,7 @@ kind
 level
 line_id
 model_text
+outcome_from
 pattern
 prefix
 project

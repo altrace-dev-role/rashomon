@@ -46,6 +46,10 @@ type WhyView struct {
 	// the seq it was decided after.
 	Evidence []TimelineCall `json:"evidence"`
 	Source   WhySource      `json:"source"`
+	// OutcomeFrom is the closed word OutcomeFromOutput where the run the
+	// line rests on had its outcome read from its output (the pipe hid the
+	// exit status), "" on every other line.
+	OutcomeFrom string `json:"outcome_from"`
 	// Resolution is the named gate as the session's last checkpoint stored
 	// it, null when the line names no gate or the checkpoint holds none.
 	Resolution *WhyResolution `json:"resolution"`
@@ -68,9 +72,10 @@ type WhySlot struct {
 // The cases are the closed set of slot names whose value `why` prints: each is
 // a charset-checked, closed-vocabulary slot of internal/steer/render (gate,
 // minutes, exit, count, go_dirs, lesson id, source enum, the evidence and
-// unknown enum lists and the rule and gate refs) plus the program name. Every
-// other name is hidden, so a slot a later pattern adds is hidden until it is
-// listed here. A switch, not a map: a map literal is built at package init, in
+// unknown enum lists and the "rules" and "gates" ref lists) plus the program
+// name. Every other name is hidden, so a slot a later pattern adds is hidden
+// until it is listed here. A platform-rule line's "rule_id" is one such: it
+// prints as a byte count, and its id is named only by the line's source. A switch, not a map: a map literal is built at package init, in
 // every hook call (RES-2's init budget).
 func WhySlotShown(name string) bool {
 	switch name {
@@ -80,6 +85,10 @@ func WhySlotShown(name string) bool {
 	}
 	return false
 }
+
+// OutcomeFromOutput is the one OutcomeFrom word `why` carries: the run's
+// outcome was read from its output.
+const OutcomeFromOutput = "output_summary"
 
 // WhySource is what the line's content came from: Kind is gate, rules,
 // lesson, ledger_unchecked or none, Detail the name or names.
