@@ -32,7 +32,10 @@ func tableVerifying(v string) map[string]channelBasis {
 // floor a live P-TRU-1 run has set (2026-10-23, on 2.1.280), and no
 // exclusion. A canary run that sets a floor or excludes a version changes
 // both.
-var probedFloors = map[Event]channelBasis{EventPostToolUse: {floor: "2.1.280"}}
+var probedFloors = map[Event]channelBasis{
+	EventPostToolUse:        {floor: "2.1.280"},
+	EventPostToolUseFailure: {floor: "2.1.304"},
+}
 
 // openFor is whether probedFloors verifies c on ev, written without
 // compareVersions so the test does not share the code it checks: the floor
@@ -128,7 +131,9 @@ func TestST4_PostToolUseContextAllowedOnlyWhenTheChannelIsVerified(t *testing.T)
 		{"a subagent's call", EventPostToolUse, with(func(c *Client) { c.Subagent = true }), nil, ctx, ErrUnverifiedChannel},
 		{"the mirror unverified on this surface", EventPostToolUse, with(func(c *Client) { c.MirrorInBand = false }), nil, ctx, ErrUnverifiedChannel},
 		{"the zero Client", EventPostToolUse, Client{}, nil, ctx, ErrUnverifiedChannel},
-		{"PostToolUseFailure, never probed", EventPostToolUseFailure, verifiedClient, nil, ctx, ErrUnverifiedChannel},
+		{"PostToolUseFailure below its floor", EventPostToolUseFailure, verifiedClient, nil, ctx, ErrUnverifiedChannel},
+		{"PostToolUseFailure on its floor", EventPostToolUseFailure, version("2.1.304"), nil, ctx, nil},
+		{"PostToolUseFailure above its floor", EventPostToolUseFailure, version("2.1.314"), nil, ctx, nil},
 		{"SessionStart, never probed", EventSessionStart, verifiedClient, nil, ctx, ErrUnverifiedChannel},
 		{"SessionStart on a far newer version", EventSessionStart, version("99.0.0"), nil, ctx, ErrUnverifiedChannel},
 		{"UserPromptSubmit is exempt", EventUserPromptSubmit, Client{}, nil, ctx, nil},
