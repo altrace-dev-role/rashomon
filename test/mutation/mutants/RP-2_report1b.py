@@ -19,7 +19,7 @@ m("RP-2 the fold compares each checkpoint with itself", G, "\t\t\tf.pair(*prev, 
 m("RP-2 the fold compares Required again", G, "\t\tif !ok || from == g.State {\n", "\t\tif !ok || from == g.State && g.Required {\n", "TestRP2b_")
 m("RP-2 a cut checkpoint still prints gate transitions", G, "\tif f.cut > 0 {\n\t\tf.k.GatesCut = f.cut\n\t\treturn\n\t}\n", "", "TestRP2b_")
 m("RP-2 the baseline is the newest other session, not the newest before this one's first", G,
-  "receipt.Query{Project: project, Skip: sessionID, Before: first.RecordedAtUnixMS}", "receipt.Query{Project: project, Skip: sessionID}",
+  "receipt.Query{Project: project, Skip: sessionID, Before: first.RecordedAtUnixMS, CapWalk: true}", "receipt.Query{Project: project, Skip: sessionID, CapWalk: true}",
   "TestRP2c_")
 m("RP-2 a held-to-held digest change is read as invalidated", G, "\tcase hp && !hc:\n", "\tcase hp && (!hc || prev.SpecDigest != cur.SpecDigest):\n", "TestRP2c_")
 m("RP-2 a quarantine before the span counts", G, "!q.IsZero() && q.UnixMilli() >= start && q.UnixMilli() <= end", "!q.IsZero()", "TestRP2c_")
@@ -71,7 +71,7 @@ m("RP-2 the Stop does not note its checkpoint in the index", "cmd/rashomon/recap
   "\t\t\tv.Index.NoteCheckpoint(p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)\n", "", "TestRP2x_")
 m("RP-2 a pointer is taken for another project's checkpoint", P, "if !ok || p.ProjectRoot != project || p.PointSeq != seq {", "if !ok || p.PointSeq != seq {", "TestRP2zb_")
 m("RP-2 a pointer is taken for another point of the run", P, "if !ok || p.ProjectRoot != project || p.PointSeq != seq {", "if !ok || p.ProjectRoot != project {", "TestRP2zb_")
-m("RP-2 a pointer to a removed run is not said", P, "\tif !ok {\n\t\tsc.Bound = BoundGone\n\t\treturn Last{}, sc, nil\n\t}\n", "", "TestRP2zb_")
+m("RP-2 a pointer to a removed run is not said", P, "\t\tcase err != nil && errors.Is(err, fs.ErrNotExist):\n\t\t\tsc.Bound = BoundGone\n\t\t\treturn Last{}, sc, nil\n", "", "TestRP2zb_")
 m("RP-2 the previous session may be the current one", X, "\tif idx.Last != nil && idx.Last.SessionID != current {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
 m("RP-2 a clear overwrites the previous session's pointer", X, "\tif idx.Last != nil && idx.Last.SessionID != session {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
 m("RP-2 the index is written without its pointers", X, "Entries: entries, Last: idx.Last, Prior: idx.Prior})", "Entries: entries})", "TestRP2zc_")
