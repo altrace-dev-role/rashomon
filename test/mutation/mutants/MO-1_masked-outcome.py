@@ -42,7 +42,7 @@ m("MO-1 a fail line steers where its table has a summary form", V,
   "\t\treturn gateout.FailLineDecides(r.Program)\n", "\t\t_ = gateout.FailLineDecides\n\t\treturn true\n",
   "TestMO1_AMaskedRunTakesItsOutcomeFromItsOutput")
 m("MO-1 an empty run is not read", V,
-  "\tcase outSummaryPass, outSummaryFail, outEmptyRun:\n", "\tcase outSummaryPass, outSummaryFail:\n",
+  "\tcase outSummaryFail, outEmptyRun:\n", "\tcase outSummaryFail:\n",
   "TestMO1_AMaskedRunTakesItsOutcomeFromItsOutput")
 m("MO-1 the run ref carries no provenance", V,
   "\t\tref.OutcomeFrom = SourceOutput\n", "\t\tref.OutcomeFrom = SourceExit\n",
@@ -94,3 +94,27 @@ m("MO-1 a summary_fail is a summary read", R,
   "return e.GateOutput.Kind == \"summary_pass\"",
   "return e.GateOutput.Kind == \"summary_pass\" || e.GateOutput.Kind == \"summary_fail\"",
   "TestMO1_ASummaryReadMaskedRunIsNotCounted")
+
+# A delegate (make, npm, yarn, pnpm) runs other runners: any step's pass line
+# is no verdict, so its own failure markers decide and a pass is never read.
+T = "internal/gateout/tables.go"
+D = "TestMO1_ADelegatedFailureMarkerIsSummaryFail"
+m("MO-1 make's failure marker is dropped", T,
+  ", fail: compile(`^make(\\[\\d+\\])?: \\*\\*\\*`)}", "}", D)
+m("MO-1 npm's ERR! marker is dropped", T,
+  "compile(`^npm (ERR!|error)`, `ELIFECYCLE`)", "compile(`ELIFECYCLE`)", D)
+m("MO-1 npm's ELIFECYCLE marker is dropped", T,
+  "compile(`^npm (ERR!|error)`, `ELIFECYCLE`)", "compile(`^npm (ERR!|error)`)", D)
+m("MO-1 yarn's failure marker is dropped", T,
+  ", fail: compile(`^error Command failed`)}", "}", D)
+m("MO-1 pnpm's failure marker is dropped", T,
+  ", fail: compile(`^ERR_PNPM`)}", "}", D)
+m("MO-1 a delegate row's markers are not matched", "internal/gateout/gateout.go",
+  "\t\tcandidate := &rows[i]\n", "\t\tcandidate := &rows[i]\n\t\tif candidate.delegate {\n\t\t\tcontinue\n\t\t}\n", D)
+m("MO-1 a delegated run's summary_pass is read", V,
+  "\t\treturn !gateout.Delegated(r.Program)\n", "\t\treturn true\n",
+  "TestMO1_ADelegatedRunIsReadOnlyWhereItIsRed")
+m("MO-1 a delegated summary_pass is a summary read", R,
+  "\tif e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) {\n",
+  "\tif false {\n",
+  "TestMO1_ADelegatedSummaryIsNotASummaryRead")

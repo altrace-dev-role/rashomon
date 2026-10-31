@@ -118,9 +118,8 @@ func matchDelegatedLine(line []byte) (string, string) {
 	rows := tables()
 	for i := range rows {
 		candidate := &rows[i]
-		if candidate.delegate {
-			continue
-		}
+		// A delegate row has only fail patterns: the delegate's own failure
+		// markers, which apply to a run of any delegate (make runs npm).
 		if parser, result := matchLine(line, candidate); result != "" {
 			return parser, result
 		}

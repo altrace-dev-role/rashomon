@@ -188,6 +188,45 @@ func TestMO1_TheStaleNoteCarriesTheProvenance(t *testing.T) {
 	}
 }
 
+// tailedMake is `make check 2>&1 | tail -10`: a delegated run, ok, whose
+// status the pipe hid, and the post's reading of its output as kind.
+func tailedMake(seq int64, prog, runnerName, kind string) call {
+	c := tailedPytest(seq, "tail", kind)
+	c.prog, c.runnerName = prog, runnerName
+	return c
+}
+
+// TestMO1_ADelegatedRunIsReadOnlyWhereItIsRed: a delegate's output holds
+// every step's lines, so a pass line in it is one step's. A delegated run
+// takes only summary_fail and empty_run from its output; a summary_pass leaves
+// it masked, the answer that may understate and never overstates. Break: let
+// summary_pass read for any program, and make check reads green after a lint
+// step failed behind a passing pytest.
+func TestMO1_ADelegatedRunIsReadOnlyWhereItIsRed(t *testing.T) {
+	for _, tc := range []struct {
+		kind  string
+		state State
+		why   Reason
+		from  string
+	}{
+		{"summary_pass", MaskedInconclusive, MaskedWithSuccessLine, ""},
+		{"summary_fail", Red, FailedOutput, OutcomeFromOutput},
+		{"empty_run", Absent, EmptyRun, OutcomeFromOutput},
+		{"no_summary", MaskedInconclusive, MaskedNoSuccessLine, ""},
+	} {
+		for _, d := range [][2]string{{"make", "make test"}, {"npm", "npm run test"}, {"yarn", "yarn test"}, {"pnpm", "pnpm test"}} {
+			g := one(t, statesAt(t, 2, tailedMake(1, d[0], d[1], tc.kind)))
+			if g.State != tc.state || g.Reason != tc.why {
+				t.Errorf("%s output %q: %s %s, want %s %s", d[0], tc.kind, g.State, g.Reason, tc.state, tc.why)
+				continue
+			}
+			if g.LastRun.OutcomeFrom.String() != tc.from {
+				t.Errorf("%s output %q: outcome_from %q, want %q", d[0], tc.kind, g.LastRun.OutcomeFrom, tc.from)
+			}
+		}
+	}
+}
+
 // TestSTR43k_AFailLineRedIsNoCandidate: a red by a fail line in the output of a
 // run whose exit status was its own (D61), where no summary was read in place of
 // the status, is no regression. Only a red whose outcome was read from the
