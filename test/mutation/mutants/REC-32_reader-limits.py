@@ -3,9 +3,9 @@
 # read, and the probe says when eviction could not finish instead of throwing
 # the error away.
 m("REC-32 the reader returns the line-too-long error", "internal/store/lines.go",
-  "\t\tcase over:\n\t\t\tfn(nil)\n", "\t\tcase over:\n\t\t\treturn errLineTooLong\n", "TestREC32_")
+  "\t\tcase over:\n\t\t\tkeep = fn(nil)\n", "\t\tcase over:\n\t\t\treturn errLineTooLong\n", "TestREC32_")
 m("REC-32 an over-long line is dropped without a count", "internal/store/lines.go",
-  "\t\tcase over:\n\t\t\tfn(nil)\n", "\t\tcase over:\n", "TestREC32_OverlongLineSkippedAndCounted")
+  "\t\tcase over:\n\t\t\tkeep = fn(nil)\n", "\t\tcase over:\n", "TestREC32_OverlongLineSkippedAndCounted")
 m("REC-32 a line of exactly maxLine bytes is skipped", "internal/store/lines.go",
   "\t\t\tif len(line)+len(chunk) > maxLine {", "\t\t\tif len(line)+len(chunk) >= maxLine {", "TestREC32_OverlongLineSkippedAndCounted")
 m("REC-32 forget rewrites a file it could not read whole", "internal/store/gaps.go",
