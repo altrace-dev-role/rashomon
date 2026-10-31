@@ -311,8 +311,10 @@ session() {
 
 # attest SCREENFILE TEXT: SEEN is yes (found in the terminal capture), yes (the
 # person's word, asked on the terminal) or no. Headless never asks.
+# attest SCREEN LINE [REGEX]: the line is in the capture as written, or, with
+# REGEX, a line the extended regex matches (a line that has two forms).
 attest() {
-  if has "$2" "$1"; then SEEN="yes (found in the terminal capture)"; return 0; fi
+  if has "$2" "$1" || { [ -n "${3:-}" ] && grep -Eq -- "$3" "$1" 2> /dev/null; }; then SEEN="yes (found in the terminal capture)"; return 0; fi
   if [ "$HEADLESS" = 1 ]; then SEEN=no; return 0; fi
   printf 'The capture does not hold this line. Did the terminal show it after the reply?\n  %s\n[y/N] ' "$2" > /dev/tty
   read -r ans < /dev/tty
@@ -468,10 +470,11 @@ row_A4() {
   echo "$SID_DONE" > "$A/done.session"; echo "$SID_VER" > "$A/verified.session"
   v=$A/verdict.txt; : > "$v"
   dl="rashomon: done was claimed; the record shows 1 file edited, no test or build run after the last edit."
-  vl="rashomon: verified - go passed after the last edit."
+  vl="rashomon: verified - go test passed after the last edit."
+  vl_re='rashomon: verified - go( test)? passed after the last edit\.'
   attest "$SCREEN_DONE" "$dl"; d=$SEEN
-  attest "$SCREEN_VER" "$vl"; e=$SEEN
-  crossd=no; has "$vl" "$SCREEN_DONE" && crossd=yes
+  attest "$SCREEN_VER" "$vl" "$vl_re"; e=$SEEN
+  crossd=no; grep -Eq -- "$vl_re" "$SCREEN_DONE" 2> /dev/null && crossd=yes
   {
     echo "mode: $MODE"
     echo "A4 run at $(date -u +%Y-%m-%dT%H:%M:%SZ); binary $("$REAL" version)"
