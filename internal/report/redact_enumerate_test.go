@@ -81,7 +81,7 @@ var hostBearing = map[string]bool{
 	"knowledge.discovered[].source":                    false,
 	"knowledge.discovered[].to":                        false,
 	"knowledge.discovered[].what":                      false,
-	"knowledge.gate_states[].gate":                     false,
+	"knowledge.gate_states[].gate":                     true,
 	"knowledge.gate_states[].last_from":                false,
 	"knowledge.gate_states[].last_to":                  false,
 	"knowledge.invalidated[].from":                     false,
