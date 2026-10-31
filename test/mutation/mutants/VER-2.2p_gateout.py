@@ -22,9 +22,9 @@ m("VER-2.2p Go no-tests-to-run pattern removed", "internal/gateout/tables.go",
   "compile(`\\[no test files\\]`, `\\[no tests to run\\]`)",
   "compile(`\\[no test files\\]`)", "TestGO14_")
 m("VER-2.2p pytest pass pattern removed", "internal/gateout/tables.go",
-  "pass: compile(`\\d+ passed`)", "pass: nil", "TestGO4_")
+  "pass: compile(`^(\\d+ \\w+, )*\\d+ passed(, [^=]*)? in \\d`, `^=+ .*\\d+ passed.* in \\d[\\d.]*s.* =+$`)", "pass: nil", "TestGO4_")
 m("VER-2.2p pytest fail pattern removed", "internal/gateout/tables.go",
-  "fail: compile(`\\d+ (failed|error)`)", "fail: nil", "TestGO4_")
+  "fail: compile(`\\d+ (failed|error)`, `Fatal Python error`, `^Killed`)", "fail: nil", "TestGO4_")
 m("VER-2.2p pytest empty pattern removed", "internal/gateout/tables.go",
   "empty: compile(`no tests ran`)", "empty: nil", "TestGO4_")
 m("VER-2.2p Jest pass pattern removed", "internal/gateout/tables.go",
@@ -44,8 +44,8 @@ m("VER-2.2p Go pass and fail exchanged", "internal/gateout/tables.go",
   "pass: compile(`^ok\\s`), fail: compile(`^FAIL\\s`, `^FAIL$`)",
   "pass: compile(`^FAIL\\s`, `^FAIL$`), fail: compile(`^ok\\s`)", "TestGO1_|TestGO11_|TestGO12_")
 m("VER-2.2p pytest pass and fail exchanged", "internal/gateout/tables.go",
-  "pass: compile(`\\d+ passed`), fail: compile(`\\d+ (failed|error)`)",
-  "pass: compile(`\\d+ (failed|error)`), fail: compile(`\\d+ passed`)", "TestGO4_")
+  "pass: compile(`^(\\d+ \\w+, )*\\d+ passed(, [^=]*)? in \\d`, `^=+ .*\\d+ passed.* in \\d[\\d.]*s.* =+$`), fail: compile(`\\d+ (failed|error)`, `Fatal Python error`, `^Killed`)",
+  "pass: compile(`\\d+ (failed|error)`, `Fatal Python error`, `^Killed`), fail: compile(`^(\\d+ \\w+, )*\\d+ passed(, [^=]*)? in \\d`, `^=+ .*\\d+ passed.* in \\d[\\d.]*s.* =+$`)", "TestGO4_")
 m("VER-2.2p Jest pass and fail exchanged", "internal/gateout/tables.go",
   "pass: compile(`^Tests:.*\\d+ passed`), fail: compile(`^Tests:.*\\d+ failed`)",
   "pass: compile(`^Tests:.*\\d+ failed`), fail: compile(`^Tests:.*\\d+ passed`)", "TestGO5_")
