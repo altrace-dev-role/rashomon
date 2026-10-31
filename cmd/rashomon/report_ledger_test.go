@@ -303,7 +303,7 @@ func TestLW1d_ReportLedgerNamesASpecDigestMismatch(t *testing.T) {
 			}
 			f.file(lwSpecPath, c.after)
 			pd, md := specDirs()
-			sp := hook.DiscoverSpec(f.cwd, pd, md, f.st.Root())
+			sp := hook.DiscoverSpec(f.cwd, pd, md, hook.NoRun(f.st.Root()))
 			if sp == nil {
 				t.Fatal("no spec discovered now")
 			}
