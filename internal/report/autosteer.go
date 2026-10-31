@@ -33,7 +33,7 @@ type AutosteerStop struct {
 	Sentence string `json:"sentence"`
 }
 
-// AutosteerGate is one gate at the Stop: the program word (the kind when the
+// AutosteerGate is one gate at the Stop: a program word or the runner's name (the kind when the
 // program is a prefix word), its state and the seqs of its last run and last
 // green run, null with none.
 type AutosteerGate struct {

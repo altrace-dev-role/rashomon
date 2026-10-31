@@ -228,3 +228,24 @@ func TestRP1i_ARunnerNameIsComparedByItsProgramWord(t *testing.T) {
 		t.Errorf("keyed line: %+v, want resolved", im.Findings)
 	}
 }
+
+// TestRP1j_ARunnerWordAnywhereInItsNameSettlesAKeylessFinding: a keyless line
+// whose slot is the runner's name word ("pytest", made by gateout.ProgramFor)
+// finds the gate whose program is the whole line ("python3 -m pytest"), where
+// the first word is "python3". The one-match rule stands: go test and go build
+// still share "go" and read open. Break: compare the slot to the first word
+// only, and the pytest finding reads open.
+func TestRP1j_ARunnerWordAnywhereInItsNameSettlesAKeylessFinding(t *testing.T) {
+	line := [][]byte{finding(t, "a", "regression-location", "pytest", 10, "x")}
+	py := gateAt("learned:pytest", "test", verify.Green, verify.OK, 30, nil)
+	one := viewOf(verify.RowVerified, wrote, py)
+	one.Programs = map[string]string{"learned:pytest": "python3 -m pytest"}
+	if im := ImpactOf(one, line, nil); im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 30 {
+		t.Errorf("pytest under python3 -m pytest: %+v, want resolved by 30", im.Findings)
+	}
+	goLine := [][]byte{finding(t, "a", "regression-location", "go", 10, "x")}
+	both := runnerView(gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil), gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	if im := ImpactOf(both, goLine, nil); im.Findings[0].State != FindingOpen {
+		t.Errorf("go test and go build both hold the word go: %+v, want open", im.Findings)
+	}
+}
