@@ -139,6 +139,35 @@ func TestSTC1q_AnAgentSessionCannotSetTheSteerSwitch(t *testing.T) {
 	}
 }
 
+// The Stop line's verification must not be hidden by the agent it checks:
+// summary on and off, either scope, refuse an agent session and write nothing,
+// while a bare summary still says the state.
+func TestAGSM1_AnAgentSessionCannotSetTheSummarySwitch(t *testing.T) {
+	st, _ := stcStore(t)
+	p := filepath.Join(st.Root(), store.FileConfig)
+	seed := "{ \"summary\": false }\n"
+	if err := os.WriteFile(p, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDECODE", "1")
+	for _, args := range [][]string{{"off"}, {"off", "--project"}, {"on"}, {"on", "--project"}} {
+		err := cmdSummary(args, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "rashomon summary "+strings.Join(args, " ")) {
+			t.Errorf("summary %v in an agent session = %v, want a refusal naming the command to run", args, err)
+		}
+	}
+	if b, _ := os.ReadFile(p); string(b) != seed {
+		t.Errorf("an agent session changed config.json: %q", b)
+	}
+	if _, err := os.Lstat(filepath.Join(st.Root(), store.FileConfigLock)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("an agent session took the config lock: %v", err)
+	}
+	var out bytes.Buffer
+	if err := cmdSummary(nil, &out); err != nil || !strings.HasPrefix(out.String(), "summary: off (you: off") {
+		t.Errorf("a bare summary in an agent session = %q, %v; want the state", out.String(), err)
+	}
+}
+
 func TestSTC1_NoStoreHoldsNoSwitch(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "none")
 	benchSetenv(t, root, t.TempDir())
