@@ -36,6 +36,7 @@ func route(t *testing.T, st *store.Store, sess, event string, f steer.Finding, c
 	id := fmt.Sprintf("%02d%030x", whyIDs, whyIDs*7919)
 	ctx := &steer.Context{Event: steer.Event(event), Store: st, SessionID: sess, PromptID: &prompt, Project: "/work/app",
 		HarnessID: "claude_code", Surface: "cli", NowUnixMS: kBase + 41_000, Consent: consent, SteerOff: steerOff, Arm: whyArm,
+		Client:     steer.Client{Version: "2.1.304", Source: steer.VersionSourceEnv, MirrorInBand: true},
 		Attendance: steer.AttendanceAttended, NewID: func() string { return id }}
 	steer.Route(ctx, []steer.Finding{f})
 	return id
