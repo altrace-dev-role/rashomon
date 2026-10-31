@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"io"
 	"path/filepath"
 	"strings"
@@ -110,7 +109,10 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	// project's key where the scope keeps it (v5), "" at v4.
 	project := ""
 	if scope == store.RecordScopeV5 {
-		project = cmp.Or(proj.key, baseline.Key(p.CWD))
+		project = proj.key
+		if project == "" {
+			project = baseline.Key(p.CWD)
+		}
 	}
 	ctx := hook.PromptContextAt(st, sp, p.SessionID, p.PromptID, p.CWD, project, p.PermissionMode, env)
 	return steer.Route(&ctx, found), ctx.Client
@@ -174,7 +176,12 @@ func promptRoot(sp *spec.Compiled, cwd, key string) string {
 			}
 		}
 	}
-	return cmp.Or(key, baseline.Key(cwd))
+	// Not cmp.Or(key, baseline.Key(cwd)): that would run the walk and its
+	// symlink evaluation on every call, key set or not.
+	if key != "" {
+		return key
+	}
+	return baseline.Key(cwd)
 }
 
 // resolvedDir is dir with its symlinks evaluated, as baseline.Key resolves a
