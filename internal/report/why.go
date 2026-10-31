@@ -62,21 +62,24 @@ type WhySlot struct {
 	Bytes int    `json:"bytes,omitempty"`
 }
 
-// whySlotShown is the closed set of slot names whose value `why` prints:
-// each is a charset-checked, closed-vocabulary slot of internal/steer/render
-// (gate, minutes, exit, count, go_dirs, lesson id, source enum, the evidence
-// and unknown enum lists and the rule and gate refs) plus the program name.
-// Every other name is hidden, so a slot a later pattern adds is hidden until
-// it is listed here.
-var whySlotShown = map[string]bool{
-	"gate": true, "program": true, "exit": true, "minutes": true, "count": true,
-	"go_dirs": true, "lesson": true, "source": true, "rules": true, "gates": true,
-	"evidence": true, "unknown": true,
-}
-
 // WhySlotShown reports whether slot name's value may be printed as it is.
 // "path" is separate: it prints as is, and --redact digests it.
-func WhySlotShown(name string) bool { return whySlotShown[name] }
+//
+// The cases are the closed set of slot names whose value `why` prints: each is
+// a charset-checked, closed-vocabulary slot of internal/steer/render (gate,
+// minutes, exit, count, go_dirs, lesson id, source enum, the evidence and
+// unknown enum lists and the rule and gate refs) plus the program name. Every
+// other name is hidden, so a slot a later pattern adds is hidden until it is
+// listed here. A switch, not a map: a map literal is built at package init, in
+// every hook call (RES-2's init budget).
+func WhySlotShown(name string) bool {
+	switch name {
+	case "gate", "program", "exit", "minutes", "count", "go_dirs", "lesson", "source", "rules", "gates",
+		"evidence", "unknown":
+		return true
+	}
+	return false
+}
 
 // WhySource is what the line's content came from: Kind is gate, rules,
 // lesson, ledger_unchecked or none, Detail the name or names.

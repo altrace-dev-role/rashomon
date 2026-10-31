@@ -78,7 +78,7 @@ m("RP-2 the index is written without its pointers", X, "Entries: entries, Last: 
 
 # why's slot allowlist (RP2zd, RP2ze; review of PR 171).
 m("RP-2 why prints a non-allowlisted string slot", W, '\t\tif !report.WhySlotShown(name) && name != "path" && isString(raw) {\n', "\t\tif false {\n", "TestRP2zd_")
-m("RP-2 the allowlist admits the lesson text slot", "internal/report/why.go", '\t"evidence": true, "unknown": true,\n', '\t"evidence": true, "unknown": true, "text": true,\n', "TestRP2zd_|TestRP2ze_")
+m("RP-2 the allowlist admits the lesson text slot", "internal/report/why.go", '\t\t"evidence", "unknown":\n', '\t\t"evidence", "unknown", "text":\n', "TestRP2zd_|TestRP2ze_")
 m("RP-2 why's text prints a non-allowlisted slot's value", "internal/report/why_text.go", '\t\tif s.Name != "path" && !WhySlotShown(s.Name) {\n', "\t\tif false {\n", "TestRP2ze_")
 m("RP-2 --redact digests only the path slot", "internal/report/why.go", "\t\tcase !WhySlotShown(s.Name):\n", "\t\tcase false:\n", "TestRP2zd_|TestRP2ze_")
 
