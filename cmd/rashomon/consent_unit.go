@@ -65,7 +65,7 @@ func cmdConsentUnit(unit string, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	rec := consent.Record{V: consent.RecordVersion, TextSHA256: consent.TextSHA256(shown), BinaryVersion: version,
+	rec := consent.Record{V: consent.RecordVersion, TextSHA256: consent.TextSHA256(shown), BinaryVersion: buildVersion(),
 		BinarySHA256: plan.exeSHA256, Via: ans.via, TTY: ans.tty, InvocationID: id, At: time.Now().UnixMilli(),
 		Unit: unit, UnitOn: !off}
 	gate.hold()

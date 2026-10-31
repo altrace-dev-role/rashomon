@@ -31,7 +31,10 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// version is set at build time.
+// version is set at build time (-X main.version, as GoReleaser and
+// scripts/build-plugin.sh do). It stays the ldflags target; every reader uses
+// buildVersion (version.go), so a go install of a tag names its module
+// version instead of dev.
 var version = "dev"
 
 // The only two statuses this program produces. Notably absent: 2.
@@ -72,7 +75,7 @@ func applyHookRuntimeLimits() {
 }
 
 func main() {
-	hook.Writer = version
+	hook.Writer = buildVersion()
 	wireConsentViews()
 	// os.Exit skips deferred functions, so every path that needs one has to
 	// have returned before this line is reached.
@@ -219,7 +222,7 @@ func noArgs(args []string, stdout io.Writer, cmd func(io.Writer) error) func() e
 
 // printVersion is version's whole body, in the shape noArgs takes.
 func printVersion(stdout io.Writer) error {
-	fmt.Fprintln(stdout, version)
+	fmt.Fprintln(stdout, buildVersion())
 	return nil
 }
 
