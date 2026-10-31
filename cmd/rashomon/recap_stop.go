@@ -98,7 +98,9 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		}
 		if err == nil {
 			// The index's pointer to the last checkpoint rides the write below:
-			// no new file, and no pointer to a record that was dropped.
+			// no new file, and no pointer to a record that was dropped. Two
+			// Stops at once race on it (read, note, write, no lock): the last
+			// writer wins, which is safe because receipt.Pointed validates.
 			v.Index.NoteCheckpoint(p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)
 		}
 		if path != "" {

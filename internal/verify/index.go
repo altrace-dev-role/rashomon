@@ -298,6 +298,13 @@ func encodeIndex(idx ProjectIndex) ([]byte, error) {
 // that continues one session leaves Prior alone, so Prior stays the
 // previous session's). The Stop calls it only after the checkpoint was
 // appended, so the pointer never names a record that was dropped.
+//
+// Two sessions that Stop at once each read the index, note their checkpoint
+// and write it back with no lock between, so the last writer wins and the
+// other's Last (or Prior) is lost. That is safe: the pointer is only a hint,
+// and receipt.Pointed checks the checkpoint it names (project and point seq)
+// before anything is printed, so a lost pointer leaves the verify line and a
+// stale one is never shown as current.
 func (idx *ProjectIndex) NoteCheckpoint(session string, seq, atMS int64) {
 	if idx.Last != nil && idx.Last.SessionID != session {
 		prior := *idx.Last
