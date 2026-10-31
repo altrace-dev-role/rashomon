@@ -1433,7 +1433,7 @@
         }
       ],
       "id": "PF-HD6",
-      "implementation": "recap pending reads active.json at each prompt, checked against its manifest and never written, and gives the first approved lesson not yet given in the session as a learned-fact note through the router, below the request's preflight note; a state that does not check gives the user one flag a session. The PRD's trigger is the first matching failure, and no session has run it yet.",
+      "implementation": "recap pending reads active.json at each prompt, checked against its manifest and never written, and gives the first approved lesson not yet given in the session, proven-tier lessons first and, when the project holds more than three lessons, only one whose text names a path from the prompt, as a learned-fact note through the router, below the request's preflight note; a state that does not check gives the user one flag a session. The PRD's trigger is the first matching failure, and no session has run it yet.",
       "integration": [
         {
           "event": "UserPromptSubmit",
@@ -1524,7 +1524,7 @@
         }
       ],
       "id": "PF-HD9",
-      "implementation": "The project brief names each instruction file present at session start, the root's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md and the user's CLAUDE.md, with its byte size, printed to the user by probe start and by rashomon brief, but no instruction-load record exists and the installer subscribes to no instruction-load event, so what Claude Code loaded is not known.",
+      "implementation": "The project brief names each instruction file present at session start, the root's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md and the user's CLAUDE.md, with its byte size, printed to the user by probe start and by rashomon brief, but no instruction-load record is written and the installer subscribes to no instruction-load event, so what Claude Code loaded is not known.",
       "integration": [
         {
           "event": "SessionStart",

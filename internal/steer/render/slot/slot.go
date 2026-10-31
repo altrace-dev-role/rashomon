@@ -172,8 +172,10 @@ func (m Mechanism) bind() (Value, error) { return checked(m, m.Validate()) }
 // LessonID is a lesson's id (LEARN-DELIVER1, L7): learn's id form, which
 // is verify.SlotID's charset, `^[a-z0-9][a-z0-9._:@-]{0,63}$`. A person
 // approved the lesson, but its id came with the row (an import file names
-// it), so it runs Mechanism's screens. An identifier, it renders unquoted
-// after the word "lesson".
+// it), and it is model-visible and unquoted, so it runs the screens the
+// text runs: Mechanism's, the host screen (RefuseHosts), the URL-scheme
+// check and Approved's four banned words. An identifier, it renders
+// unquoted after the word "lesson".
 type LessonID string
 
 var lessonIDRE = &lazyRegexp{pattern: `^[a-z0-9][a-z0-9._:@-]{0,63}$`}
@@ -182,7 +184,19 @@ func (l LessonID) Validate() error {
 	if err := charset("lesson id", string(l), lessonIDRE); err != nil {
 		return err
 	}
-	return screened("lesson id", string(l))
+	if err := screened("lesson id", string(l)); err != nil {
+		return err
+	}
+	if err := RefuseHosts(string(l)); err != nil {
+		return err
+	}
+	if urlSchemeRE.get().MatchString(string(l)) {
+		return errors.New("slot: lesson id holds a URL scheme")
+	}
+	if w, ok := firstWordOf(string(l), approvedBanned); ok {
+		return fmt.Errorf("slot: lesson id holds the banned word %q", w)
+	}
+	return nil
 }
 
 func (l LessonID) Text() string         { return string(l) }

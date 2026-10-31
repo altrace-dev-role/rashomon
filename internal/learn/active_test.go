@@ -12,8 +12,8 @@ import (
 // The approved rows the delivery tests save, each entered at its own time so
 // the order Lessons gives is the order written here.
 var (
-	provenCwd    = Lesson{ID: "go-test-cwd", Tier: TierProven, Text: "run go test from the module root", SinceUnixMS: 1_761_700_001_000}
-	probationNpm = Lesson{ID: "npm-ci", Tier: TierProbation, Text: "npm ci before npm test", SinceUnixMS: 1_761_700_002_000}
+	provenCwd    = Lesson{ID: "go-test-cwd", Tier: TierProven, Text: "run go test from the module root", SinceUnixMS: 1_761_700_001_000, ApprovedUnixMS: 1_761_700_001_500}
+	probationNpm = Lesson{ID: "npm-ci", Tier: TierProbation, Text: "npm ci before npm test", SinceUnixMS: 1_761_700_002_000, ApprovedUnixMS: 1_761_700_002_500}
 )
 
 // lessonsAt saves rows into project's ledger under root at the tiers they

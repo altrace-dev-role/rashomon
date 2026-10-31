@@ -24,9 +24,29 @@ import (
 // statusWindow is how far back status counts the sessions with tool calls.
 const statusWindow = 7 * 24 * time.Hour
 
-// firedRemedy is the not-firing line's remedy, naming both causes the
-// consent screen names.
-const firedRemedy = "Claude Code before 2.1.280 lacks this event, or run `rashomon watch` to reinstall its entry"
+// eventSince is, for an event Claude Code added after the oldest version the
+// consent screen supports (2.1.280), the version that added it; an event with
+// no entry exists on every supported version, so a missing marker for it is
+// never a version. None of the eight is newer than the floor (PreToolUse and
+// PostToolUse are the original two, PostToolUseFailure was measured on
+// 2.1.258), so the table is empty; an event added to install.Events() later
+// that needs a newer Claude Code adds its row here.
+var eventSince = map[string]string{}
+
+// firedRemedy is a missing-marker row's remedy: the causes that can leave an
+// installed event with no marker in sessions that carry others. They are the
+// entry's absence, a pause or stand-down (no entry marks then), a folder
+// Claude Code has not trusted (it runs no hook there) and, only for an event
+// newer than the oldest supported Claude Code, a Claude Code too old to have
+// it. None is proven from here, so the line says "no marker", never "not
+// firing".
+func firedRemedy(event string) string {
+	causes := ""
+	if since, ok := eventSince[event]; ok {
+		causes = "Claude Code before " + since + " lacks this event, or "
+	}
+	return causes + "recording was paused or stood down, or this folder is not trusted, or run `rashomon watch` to reinstall its entry"
+}
 
 // errCheckpointShape is a verify record whose recording or point_seq is not
 // the type the checkpoint writes.
@@ -135,27 +155,35 @@ func statusStore(root string) (*store.Store, error) {
 // agreed. Its JSON keys are closed; a list is [] when empty and an object is
 // null when there is none or status could not read it, which the text says.
 type statusView struct {
-	Store             string          `json:"store"`
-	Session           *string         `json:"session"`
-	SessionsWithCalls int             `json:"sessions_with_calls"`
+	Store             string  `json:"store"`
+	Session           *string `json:"session"`
+	SessionsWithCalls int     `json:"sessions_with_calls"`
+	// BeforeMarkers is how many of the window's sessions, the newest apart,
+	// carry no marker at all: they ran on a build that wrote none, so no event
+	// is judged over them.
+	BeforeMarkers     int             `json:"sessions_before_markers"`
 	Events            []statusEvent   `json:"events"`
 	HarnessMismatches []statusHarness `json:"harness_mismatches"`
 	LastStop          *statusStop     `json:"last_stop"`
 	Consent           *statusConsent  `json:"consent"`
+	// Unknown names the blocks status could not read: a null above is then
+	// "unknown", not "none". [] when every block read.
+	Unknown []string `json:"unknown"`
 
 	// The reads that failed, each said as unknown in the text.
 	runsErr, stopErr, harnessErr, consentErr error
 }
 
-// statusEvent is one installed event: whether it fired in this session (the
-// newest with tool calls), and in how many of the sessions it is judged over.
+// statusEvent is one installed event: whether it fired in the newest session
+// with tool calls, and in how many of the sessions it is judged over (those
+// that carry a marker).
 type statusEvent struct {
-	Event       string `json:"event"`
-	Installed   bool   `json:"installed"`
-	ThisSession bool   `json:"this_session"`
-	Sessions    int    `json:"sessions"`
-	Of          int    `json:"of"`
-	NotFiring   bool   `json:"not_firing"`
+	Event         string `json:"event"`
+	Installed     bool   `json:"installed"`
+	NewestSession bool   `json:"newest_session"`
+	Sessions      int    `json:"sessions"`
+	Of            int    `json:"of"`
+	NotFiring     bool   `json:"not_firing"`
 }
 
 // statusHarness is a harness_counts.json key whose sessions stood down.
@@ -201,6 +229,19 @@ func statusOf(root string, st *store.Store, now time.Time) statusView {
 	}
 	v.HarnessMismatches, v.harnessErr = harnessMismatches(root)
 	v.Consent, v.consentErr = consentAgreed(root)
+	v.Unknown = []string{}
+	stopErr := v.stopErr
+	if v.runsErr != nil {
+		stopErr = v.runsErr
+	}
+	for _, b := range []struct {
+		name string
+		err  error
+	}{{"events", v.runsErr}, {"last_stop", stopErr}, {"harness_mismatches", v.harnessErr}, {"consent", v.consentErr}} {
+		if b.err != nil {
+			v.Unknown = append(v.Unknown, b.name)
+		}
+	}
 	return v
 }
 
@@ -214,6 +255,11 @@ func (v *statusView) readRuns(st *store.Store, now time.Time) {
 	v.Session, v.SessionsWithCalls = &newest.name, len(window)
 	if len(window) > 0 {
 		v.Events = eventsOf(newest, window, installedEvents(st.InstallID()))
+		for _, r := range window {
+			if r.name != newest.name && len(r.Fired) == 0 {
+				v.BeforeMarkers++
+			}
+		}
 	}
 	v.LastStop, v.stopErr = lastStop(st, newest.name)
 }
@@ -261,24 +307,27 @@ func firedRule(event string) (earlierOnly bool, onlyWhen string) {
 	return false, ""
 }
 
-// eventsOf is each installed event's row over the window's sessions. An event
-// every such session fires that fired in none of them, this one included, is
-// not firing.
+// eventsOf is each installed event's row over the window's sessions that carry
+// a marker: only a session run on a build that writes markers can show an
+// event missing, so one with none (it predates them) is not counted. An event
+// every such session fires that has a marker in none of them, the newest
+// included, is flagged.
 func eventsOf(newest *statusRun, window []statusRun, installed []bool) []statusEvent {
 	events := install.Events()
 	rows := make([]statusEvent, 0, len(events))
 	for i, e := range events {
 		earlierOnly, onlyWhen := firedRule(e)
-		ev := statusEvent{Event: e, Installed: installed[i], ThisSession: slices.Contains(newest.Fired, e), Of: len(window)}
-		if earlierOnly {
-			ev.Of--
-		}
+		ev := statusEvent{Event: e, Installed: installed[i], NewestSession: slices.Contains(newest.Fired, e)}
 		for _, r := range window {
-			if (!earlierOnly || r.name != newest.name) && slices.Contains(r.Fired, e) {
+			if len(r.Fired) == 0 || earlierOnly && r.name == newest.name {
+				continue
+			}
+			ev.Of++
+			if slices.Contains(r.Fired, e) {
 				ev.Sessions++
 			}
 		}
-		ev.NotFiring = onlyWhen == "" && ev.Of > 0 && ev.Sessions == 0 && !ev.ThisSession
+		ev.NotFiring = onlyWhen == "" && ev.Of > 0 && ev.Sessions == 0 && !ev.NewestSession
 		rows = append(rows, ev)
 	}
 	return rows
@@ -315,9 +364,16 @@ func lastStop(st *store.Store, name string) (*statusStop, error) {
 	if err != nil || !ok {
 		return stop, err
 	}
-	var out [2]jsonscan.Span
-	if err := jsonscan.Top(line, jsonscan.NewKeySet("point_seq", "recording"), out[:]); err != nil {
+	var out [3]jsonscan.Span
+	if err := jsonscan.Top(line, jsonscan.NewKeySet("point_seq", "recording", "point"), out[:]); err != nil {
 		return nil, err
+	}
+	// A checkpoint at another point (a commit's, a push's) is not a Stop's:
+	// it says nothing of how the last Stop's record stood.
+	if out[2].Kind == jsonscan.String {
+		if point, err := jsonscan.DecodeString(line, out[2]); err == nil && point != verify.PointStop {
+			return stop, nil
+		}
 	}
 	if out[0].Kind != jsonscan.Number || out[1].Kind != jsonscan.String {
 		return nil, errCheckpointShape
@@ -387,8 +443,12 @@ func (v statusView) text() string {
 	case v.SessionsWithCalls == 0:
 		b.WriteString("events: no session with tool calls in the last 7 days\n")
 	default:
-		fmt.Fprintf(&b, "events: this session %s; %d %s with tool calls in the last 7 days\n",
+		fmt.Fprintf(&b, "events: newest session %s; %d %s with tool calls in the last 7 days",
 			*v.Session, v.SessionsWithCalls, plural(v.SessionsWithCalls, "session", "sessions"))
+		if n := v.BeforeMarkers; n > 0 {
+			fmt.Fprintf(&b, "; %d earlier %s %s the markers", n, plural(n, "session", "sessions"), plural(n, "predates", "predate"))
+		}
+		b.WriteString("\n")
 		for _, ev := range v.Events {
 			b.WriteString(ev.line())
 		}
@@ -417,11 +477,11 @@ func (ev statusEvent) line() string {
 		sessions = "earlier sessions"
 	}
 	if ev.NotFiring {
-		return fmt.Sprintf("  %s: not firing: 0 of %d %s with tool calls; %s\n", ev.Event, ev.Of, sessions, firedRemedy)
+		return fmt.Sprintf("  %s: no marker: 0 of %d %s with a marker; %s\n", ev.Event, ev.Of, sessions, firedRemedy(ev.Event))
 	}
-	here := "not this session"
-	if ev.ThisSession {
-		here = "fired this session"
+	here := "not in the newest session"
+	if ev.NewestSession {
+		here = "fired in the newest session"
 	}
 	count := fmt.Sprintf("%d of %d %s", ev.Sessions, ev.Of, sessions)
 	if ev.Of == 0 {
