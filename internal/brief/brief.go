@@ -41,6 +41,12 @@ const (
 	KindTask         = "task"
 	KindPackages     = "packages"
 	KindVerify       = "verify"
+	// KindLastSession is the line that replaces the verify line at startup
+	// when the project's previous session was looked for (Brief.WithVerify).
+	KindLastSession = "last session"
+	// LastSessionLead is the text receipt.PreviousLine opens with, which the
+	// fact's kind says already.
+	LastSessionLead = "last session: "
 )
 
 // The walk's bounds: MaxWalkEntries directory entries read in all and
@@ -93,6 +99,10 @@ type Brief struct {
 	GoDirs       int
 	WalkCapped   bool
 	Dirs         []string
+	// Index is the project index as read from the store, nil when there is
+	// none or it did not read: what the tests line counts, and where the
+	// previous session is named (ProjectIndex.PreviousOf).
+	Index *verify.ProjectIndex
 }
 
 // PluginReport is the verify line's command inside the plugin: the slash
@@ -118,14 +128,30 @@ type Pointer struct {
 // verify line names the report command report points at.
 func Build(root, storeRoot string, report Pointer, sp *spec.Compiled) Brief {
 	b := Brief{Root: root}
+	if storeRoot != "" {
+		// Read once, for the tests line and for the previous session's pointer.
+		b.Index, _ = verify.ReadIndex(verify.IndexPath(storeRoot, root))
+	}
 	instructions := b.instructionsFact()
 	build := b.buildFact()
 	packages := b.packagesFact()
-	b.Facts = []Fact{instructions, build, testsFact(root, storeRoot, sp), specFact(root, sp)}
+	b.Facts = []Fact{instructions, build, testsFact(root, storeRoot, b.Index, sp), specFact(root, sp)}
 	if f, ok := trustFact(storeRoot, sp); ok {
 		b.Facts = append(b.Facts, f)
 	}
 	b.Facts = append(b.Facts, taskFact(root, sp), packages, verifyFact(report))
+	return b
+}
+
+// WithVerify is b with its verify line, the last fact, replaced by f; a brief
+// whose last fact is not the verify line is returned as it is.
+func (b Brief) WithVerify(f Fact) Brief {
+	if n := len(b.Facts); n == 0 || b.Facts[n-1].Kind != KindVerify {
+		return b
+	}
+	facts := append([]Fact{}, b.Facts...)
+	facts[len(facts)-1] = f
+	b.Facts = facts
 	return b
 }
 
@@ -397,7 +423,7 @@ func module(path string) string {
 // none, the test-kind families the project index has seen (B2: the index
 // counts runs, not greens), how many sessions the most-seen one ran in, and
 // how many are required.
-func testsFact(root, storeRoot string, sp *spec.Compiled) Fact {
+func testsFact(root, storeRoot string, idx *verify.ProjectIndex, sp *spec.Compiled) Fact {
 	if sp != nil {
 		var tests []spec.Declared
 		for _, d := range sp.Gates {
@@ -420,10 +446,8 @@ func testsFact(root, storeRoot string, sp *spec.Compiled) Fact {
 		}
 	}
 	source := "no store"
-	var idx *verify.ProjectIndex
 	if storeRoot != "" {
 		source = verify.IndexPath(storeRoot, root)
-		idx, _ = verify.ReadIndex(source)
 	}
 	runners, most, required := 0, 0, 0
 	if idx != nil {

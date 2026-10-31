@@ -1,6 +1,7 @@
 package learn
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestRP2q_OpenReadOnlyNeverWrites(t *testing.T) {
 	root := t.TempDir()
 	l := open(t, root, t0)
 	importText(t, l, twoLessons)
-	if err := l.Approve("npm-ci", t0); err != nil {
+	if err := l.Approve("npm-ci", t1); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Save(); err != nil {
@@ -71,4 +72,33 @@ func snapshotTree(t *testing.T, root string) string {
 		t.Fatal(err)
 	}
 	return b.String()
+}
+
+// TestRP2zk_AReadOnlyLedgerCannotSave (card REPORT1b review): Save on a
+// ledger OpenReadOnly returned is ErrReadOnly and changes no file; the ledger
+// Open returned still saves. Break: drop the flag, and Save writes.
+func TestRP2zk_AReadOnlyLedgerCannotSave(t *testing.T) {
+	root := t.TempDir()
+	l := open(t, root, t0)
+	importText(t, l, twoLessons)
+	if err := l.Save(); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshotTree(t, root)
+	ro, err := OpenReadOnly(root, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ro.Approve("npm-ci", t1); err != nil {
+		t.Fatal(err)
+	}
+	if err := ro.Save(); !errors.Is(err, ErrReadOnly) {
+		t.Errorf("Save on a read-only ledger: %v; want ErrReadOnly", err)
+	}
+	if after := snapshotTree(t, root); after != before {
+		t.Errorf("Save on a read-only ledger changed the store")
+	}
+	if err := l.Save(); err != nil {
+		t.Errorf("the ledger Open returned must still save: %v", err)
+	}
 }

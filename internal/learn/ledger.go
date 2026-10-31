@@ -59,6 +59,9 @@ func Owns(name string, inProject bool) bool {
 
 // ErrActiveOverCap is Save's refusal: active.json would pass ActiveMaxBytes
 // with every demoted row dropped. Nothing is written; the old files stand.
+// ErrReadOnly is Save on a ledger OpenReadOnly returned: it never writes.
+var ErrReadOnly = errors.New("learn: the ledger was opened read-only; nothing was written")
+
 var ErrActiveOverCap = errors.New("learn: active.json would pass 64 KiB with every demoted row dropped; nothing was written")
 
 // Lesson is one row of lessons.json and of active.json.
@@ -106,6 +109,9 @@ type Ledger struct {
 	// Quarantined is true when this Open found the state written by
 	// something other than this package and quarantined it.
 	Quarantined bool
+	// readOnly is set by OpenReadOnly: Save refuses, so a ledger a report
+	// holds cannot be written even by a caller that mutates it.
+	readOnly bool
 }
 
 // Open reads project's ledger under root and checks its manifest. A state
@@ -117,10 +123,11 @@ func Open(root, project string, now time.Time) (*Ledger, error) {
 }
 
 // OpenReadOnly is Open that never writes: a state that does not check is
-// read as quarantined in memory (Quarantined true, every lesson proposed)
-// and left on disk as it is. A question must not change the learning state,
-// and the next learn verb that opens it still finds the mismatch and records
-// the quarantine itself.
+// read as quarantined in memory (Quarantined true, every lesson proposed,
+// QuarantinedAt zero, since no quarantine was recorded) and left on disk as
+// it is. A report reads the ledger this way (card REPORT1b): a question must
+// not change the learning state, and the next learn verb that opens it still
+// finds the mismatch and records the quarantine itself.
 func OpenReadOnly(root, project string) (*Ledger, error) {
 	return openAt(root, project, time.Time{}, false)
 }
@@ -131,7 +138,7 @@ func openAt(root, project string, now time.Time, write bool) (*Ledger, error) {
 	if err := projectElement(project); err != nil {
 		return nil, err
 	}
-	l := &Ledger{root: root, dir: filepath.Join(root, DirLearn, project), tallies: map[string]Tally{}}
+	l := &Ledger{root: root, dir: filepath.Join(root, DirLearn, project), tallies: map[string]Tally{}, readOnly: !write}
 	files, sum, err := l.readState()
 	if err != nil || (files == nil && sum == nil) {
 		l.file.Schema = SchemaLessons
@@ -390,8 +397,12 @@ func (l *Ledger) AppendLabel(lb Label) error {
 
 // Save writes lessons.json and active.json, each whole or not at all, and
 // signs the three state files. active.json past ActiveMaxBytes drops its
-// oldest demoted rows first; still over, nothing is written.
+// oldest demoted rows first; still over, nothing is written. A ledger opened
+// with OpenReadOnly returns ErrReadOnly and writes nothing.
 func (l *Ledger) Save() error {
+	if l.readOnly {
+		return ErrReadOnly
+	}
 	active, err := l.activeBytes()
 	if err != nil {
 		return err
