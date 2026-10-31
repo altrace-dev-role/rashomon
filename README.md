@@ -216,7 +216,7 @@ under the call if the command named it.
 | `rashomon share build outcomes --out FILE` | Write counts of the notes given to the agent, by pattern; needs `rashomon consent share.outcomes` |
 | `rashomon detach` | Remove the hook entries, leaving everything else as found |
 | `rashomon purge [--yes] [--binary]` | Detach, then remove the store and the directories `watch` created |
-| `rashomon version` | Print the version (`dev` for a `go install` build) |
+| `rashomon version` | Print the version: the module version for a `go install` build (for example `1.2.0-alpha.1`), the release version for a release binary, `dev` for a local `go build` |
 
 `rashomon --help` lists the commands and their main flags.
 
