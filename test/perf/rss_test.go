@@ -559,7 +559,7 @@ const recapSeedCalls = 100
 func (r rig) scanStop(t *testing.T, size int) func(i int) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "transcript.jsonl")
-	if err := os.WriteFile(path, scanTranscript(size), 0o600); err != nil {
+	if err := os.WriteFile(path, scanTranscript(size, payload.Session, time.Now().UTC()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	st, err := store.Open(r.home)
@@ -598,10 +598,15 @@ func (r rig) scanStop(t *testing.T, size int) func(i int) []byte {
 }
 
 // scanTranscript is size bytes of transcript lines, each ending in a newline.
-func scanTranscript(size int) []byte {
+// Every record carries sessionID (the scan reads a record of another session
+// as unreadable) and the timestamp at: the note is put a minute before each
+// run, so the last record is well past the note's time plus the scan's slack,
+// and the scan may judge the note absent.
+func scanTranscript(size int, sessionID string, at time.Time) []byte {
 	const step = 1 << 20 // linescan's bound in steer.DefaultScanLimits
+	stamp := at.Format("2006-01-02T15:04:05.000Z")
 	fill := func(n int, kind string) []byte {
-		head := `{"type":"user","timestamp":"2026-10-30T00:00:00.000Z","message":{"role":"user","content":"` + kind
+		head := `{"type":"user","sessionId":"` + sessionID + `","timestamp":"` + stamp + `","message":{"role":"user","content":"` + kind
 		tail := `"}}` + "\n"
 		return []byte(head + strings.Repeat("x", n-len(head)-len(tail)) + tail)
 	}
