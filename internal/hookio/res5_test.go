@@ -30,8 +30,11 @@ var res5Dirs = []string{
 // learn.decode reads the lesson ledger's own files and an import file (card
 // P6): CLI commands alone call it, and no hook links internal/learn
 // (TestP6_HookAndStoreImportNoLearner).
+// cmd/rashomon.steerRows decodes the steer log's own lines for `steer log`,
+// `steer explain` and `scorecard` (card STEER-CLI1): CLI verbs alone, never
+// called from a hook entry.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
-	"internal/learn.decode": true}
+	"internal/learn.decode": true, "cmd/rashomon.steerRows": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding
