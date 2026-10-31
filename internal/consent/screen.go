@@ -32,7 +32,7 @@ type Command struct {
 	Does, Run string
 }
 
-// Commands are the seven commands the screen ends with, the short version of
+// Commands are the eight commands the screen ends with, the short version of
 // everything above them (Technical spec 7.2.3; FUN-12).
 var Commands = []Command{
 	{"What is installed and recorded", "rashomon status"},
@@ -40,7 +40,8 @@ var Commands = []Command{
 	{"Read this screen again", "rashomon watch --show"},
 	{"Stop recording", "rashomon pause"},
 	{"Start recording again", "rashomon resume"},
-	{"Stop the notes; remove the hooks", "rashomon detach"},
+	{"Stop the notes to your agent", "rashomon steer off --user"},
+	{"Remove the hooks", "rashomon detach"},
 	{"Remove everything", "rashomon purge"},
 }
 
@@ -65,7 +66,7 @@ type ScreenInput struct {
 	Prior *Record
 }
 
-// Screen renders the consent screen: five sections, the seven commands, every
+// Screen renders the consent screen: five sections, the eight commands, every
 // line at most Width characters. The layer paragraphs are printed verbatim
 // from the inventory's Paragraphs and the variants rendered from its
 // templates; nothing else in it is free text about what rashomon does.

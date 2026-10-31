@@ -3,9 +3,9 @@
 # The first four put back a command a user ran and got the general help for;
 # the last three remove one of the sweep's own checks, which a text that is
 # already right never shows, so TestTRU2d_ feeds each its defect.
-m("TRU-2 a screen paragraph names steer off again", "internal/disclose/paragraphs.go",
-  "\"`rashomon detach` removes the hook entries, and the notes stop with them.",
-  "\"`rashomon steer off --user` turns them off everywhere, and they stay off.",
+m("TRU-2 a screen paragraph names a steer sub-command main does not take", "internal/disclose/paragraphs.go",
+  "\"`rashomon steer off --user` stops the notes to your agent, and `rashomon steer off --project` for this project;",
+  "\"`rashomon steer set --user` stops the notes to your agent, and `rashomon steer off --project` for this project;",
   "TestTRU2c_")
 m("TRU-2 the closing table names a verb main does not dispatch", "internal/consent/screen.go",
   "\t{\"What is installed and recorded\", \"rashomon status\"},",

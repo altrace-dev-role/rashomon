@@ -18,6 +18,10 @@ func verbNamed(name string) func(args []string, stdout io.Writer) error {
 		return cmdLessons
 	case "summary":
 		return cmdSummary
+	case "steer":
+		return cmdSteer
+	case "scorecard":
+		return cmdScorecard
 	}
 	return nil
 }
@@ -27,7 +31,9 @@ func verbNamed(name string) func(args []string, stdout io.Writer) error {
 // card adding a verb adds a const and a line and two such cards do not
 // conflict on one raw string.
 const verbUsage = lessonsUsage +
-	summaryUsage
+	summaryUsage +
+	steerUsage +
+	scorecardUsage
 
 const lessonsUsage = `  rashomon lessons [--json]      list this project's lessons by tier, proven
                                first, each with the day it entered and its

@@ -53,7 +53,7 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 	spec.TrustFile,
 	spec.TrustKeyFile,
 	store.FileRecordScope, store.FileSteerDisclosure,
-	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig}
+	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}
 
 // topDirs are the directories under the store root that rashomon writes
 // into. Only the entries it writes there are planned for removal (see

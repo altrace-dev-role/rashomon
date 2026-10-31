@@ -370,15 +370,20 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-30 (STATUS-VERBS1a) to 28: fired.go's MarkFired
 		// create (runs/<session>/fired-<Event>, the hook entries' fired
 		// markers status counts), a new write kind; fired-* in the inventory.
-		// Moved 2026-10-30 (REPORT1a) to 29: config.go's WriteConfig
+		// Moved 2026-10-30 (REPORT1a) to 29: config.go's writeConfig
 		// ReplaceFile (config.json, the person's switches; `rashomon summary
-		// on|off` is its one writer), configFiles in the inventory, purge's
+		// on|off` and `rashomon steer` write it through UpdateConfig and
+		// RepairConfig), configFiles in the inventory, purge's
 		// topFiles and temp prefix.
 		// Moved 2026-10-31 (CHANNEL-EVIDENCE1) to 30: evidence.go's
 		// TakeChannelEvidence open, <root>/channel-evidence-<event>, the
 		// marker that shadows an event whose delivered note the transcript
 		// did not show (evidenceFiles in the inventory, ownName in purge).
-		{"store", 30},
+		// Moved 2026-10-30 (STEER-CLI1) to 31: config.go's UpdateConfig open
+		// of config.lock, the sidecar its writers (`summary`, `steer off|on`)
+		// lock; configFiles' lock row, purge's topFiles. The ReplaceFile of
+		// config.json is the same one call, now behind writeConfig.
+		{"store", 31},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

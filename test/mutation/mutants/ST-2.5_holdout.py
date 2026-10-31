@@ -37,7 +37,7 @@ m("ST-2.5 holdout predicate widened to flags", D,
 
 # The draw (R1d): made on every call under the on switch, at the default share.
 m("ST-2.5 the draw is skipped, every session treated", H,
-  "\t\tHoldout:    p.heldOut(env),\n", "\t\tHoldout:    false,\n", E)
+  "\t\tHoldout:          p.heldOut(env),\n", "\t\tHoldout:          false,\n", E)
 m("ST-2.5 the on switch's share is 0, so every session is treated", H,
   "const holdoutBP = 1000\n", "const holdoutBP = 0\n", E)
 m("ST-2.5 the env off is ignored", H,
