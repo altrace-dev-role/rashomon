@@ -503,3 +503,42 @@ func TestLW1o_ReportLedgerNamesADeclaredRowsGate(t *testing.T) {
 		t.Errorf("%d of spec:unit's %d rows printed: %q (stderr %q)", n, len(ids), o.all, o.stderr)
 	}
 }
+
+// TestLW1p_ReportLedgerNamesASpecRulesRule: a spec_rule row digests its
+// rule's id, so the family column names the rule on that row, never "-"
+// (the way a declared row names its gate). A trusted spec with one rule, a
+// call that matches it at the Stop. Break: leave SpecRule out of
+// ledgerFamilies and the column reads "-".
+func TestLW1p_ReportLedgerNamesASpecRulesRule(t *testing.T) {
+	f := newLW(t)
+	f.bind(`{"rashomon_spec": 1, "rules": [{"id": "no-force", "kind": "forbid_command", "command": {"argv": ["git", "push"], "flags": ["--force"]}, "why": "w", "hard_control": "h"}]}`)
+	f.land("toolu_e", "Edit", lwEdit(f.file("a.go", "package a\n")), nil)
+	f.land("toolu_g", "Bash", lwBash("go test ./..."), nil)
+	v := f.stop()
+	ids := map[string]string{}
+	for _, o := range v.Obligations {
+		if o.Kind == verify.SpecRule {
+			for _, sv := range v.Snap.SpecVerdicts {
+				if o.ID == verify.ObligationID(o.Scope, o.Kind, string(sv.Rule)) {
+					ids[o.ID] = string(sv.Rule)
+				}
+			}
+		}
+	}
+	if len(ids) == 0 {
+		t.Fatalf("premise: the Stop's ledger holds a spec_rule row; rows %+v, verdicts %+v", v.Obligations, v.Snap.SpecVerdicts)
+	}
+	o := f.out()
+	n := 0
+	for _, line := range strings.SplitAfter(o.rows, "\n") {
+		if id, _, _ := strings.Cut(line, " "); ids[id] != "" {
+			n++
+			if !strings.HasSuffix(line, " "+ids[id]+"\n") {
+				t.Errorf("spec_rule row %q, want its family column %s", line, ids[id])
+			}
+		}
+	}
+	if n != len(ids) {
+		t.Errorf("%d of %d spec_rule rows printed: %q (stderr %q)", n, len(ids), o.all, o.stderr)
+	}
+}

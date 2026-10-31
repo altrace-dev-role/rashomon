@@ -383,7 +383,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// of config.lock, the sidecar its writers (`summary`, `steer off|on`)
 		// lock; configFiles' lock row, purge's topFiles. The ReplaceFile of
 		// config.json is the same one call, now behind writeConfig.
-		{"store", 31},
+		// Moved 2026-10-31 (SPEC-RULES1, D210) to 32: specnone.go's
+		// NoteNoSpec WriteFile, runs/<session>/spec-none, the prompt
+		// preflight's note that a turn found no spec (specNoneFiles in the
+		// inventory, FileSpecNone in purge's run files).
+		{"store", 32},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

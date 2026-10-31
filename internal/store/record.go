@@ -152,6 +152,9 @@ const (
 	// FileStaleArmed is the stale trigger's hint (ArmStale): empty, and like
 	// probe and lockwait a note about the run, not a record.
 	FileStaleArmed = "stale-armed"
+	// FileSpecNone is the no-spec marker (NoteNoSpec): the turn's id and a
+	// keyed digest of the directory the preflight found no spec from.
+	FileSpecNone = "spec-none"
 	// FileNoticeChannel and FileNoticeHoldout are the steer router's
 	// once-per-session notice markers (TakeNotice): empty, present once the
 	// session's channel notice or holdout notice has printed.
