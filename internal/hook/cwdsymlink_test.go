@@ -85,6 +85,11 @@ func TestCS1b_AnUnresolvableDirKeepsTheSpelledDigest(t *testing.T) {
 	if got, want := cs1Digest(t, "go test", gone), shape.CWDDigest(cs1Key, gone); got != want {
 		t.Errorf("missing dir digest %s, want the spelled %s", got, want)
 	}
+	// A cd step into a directory that is not there: the fold's own
+	// resolution fails, and the folded spelling is digested.
+	if got, want := cs1Digest(t, "cd missing && go test", tr.link), shape.CWDDigest(cs1Key, gone); got != want {
+		t.Errorf("cd into a missing dir digest %s, want the spelled %s", got, want)
+	}
 	if got, want := cs1Digest(t, "go test", ""), shape.CWDDigest(cs1Key, ""); got != want {
 		t.Errorf("no cwd digest %s, want the unknown location %s", got, want)
 	}
@@ -151,4 +156,26 @@ func TestCS1_ASymlinkedProjectBindsItsDeclaredGate(t *testing.T) {
 		}
 	}
 	t.Fatalf("no spec:unit row in %+v", snap.Gates)
+}
+
+// TestCS1d_OnlyACdStepResolvesTheFoldedDirectory: a line with no cd step uses
+// the cwd the hook already resolved for the project key, and resolves nothing
+// more; a line with one resolves its folded directory, once.
+func TestCS1d_OnlyACdStepResolvesTheFoldedDirectory(t *testing.T) {
+	tr := newCS1Tree(t)
+	calls := 0
+	old := evalSymlinks
+	evalSymlinks = func(p string) (string, error) { calls++; return old(p) }
+	t.Cleanup(func() { evalSymlinks = old })
+	for _, c := range []struct {
+		cmd  string
+		want int
+	}{{"go test ./...", 0}, {"cd web && go test ./...", 1}} {
+		calls = 0
+		in, _ := json.Marshal(map[string]string{"command": c.cmd})
+		locate(cs1Key, "Bash", in, tr.link, tr.link)
+		if calls != c.want {
+			t.Errorf("%q: %d resolutions, want %d", c.cmd, calls, c.want)
+		}
+	}
 }

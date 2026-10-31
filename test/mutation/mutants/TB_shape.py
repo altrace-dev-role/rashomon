@@ -458,8 +458,8 @@ m("TB runs pair across directories", "internal/report/testbending.go",
   "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
   "TestTestBending")
 m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
-  "\tdecl.Shape, decl.CWDDigest = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)\n",
-  "\tdecl.Shape, _ = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)\n",
+  "\tdecl.Shape, decl.CWDDigest = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)\n",
+  "\tdecl.Shape, _ = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)\n",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd\", cwd)\n",

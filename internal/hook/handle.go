@@ -178,7 +178,11 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 		ToolName:       p.ToolName,
 		RulesVersion:   shape.RulesVersion,
 	}
-	decl.Shape, decl.CWDDigest = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)
+	// The cwd is resolved once (baseline.Resolve) and shared: the project key
+	// below walks up from it, and Locate digests it as the run's location when
+	// no cd step moves the line away from it.
+	physical := baseline.Resolve(p.CWD)
+	decl.Shape, decl.CWDDigest = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
@@ -196,7 +200,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	// gate below withholds all three unless the consent on file says v5, and
 	// the caps bound them.
 	decl.CWD = nilIfEmpty(p.CWD)
-	decl.Project = nilIfEmpty(baseline.Key(p.CWD))
+	decl.Project = nilIfEmpty(baseline.KeyOf(physical))
 	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
 	// The files a Bash call's line may write, and whether they are all of
 	// them (shape.WrittenPaths): null and complete for any other tool, which
@@ -348,12 +352,22 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 // as it is on disk (physicalDir), so a project reached through a symlink has
 // one location, the declared gate's.
 func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string) {
+	return locate(key, toolName, toolInput, cwd, baseline.Resolve(cwd))
+}
+
+// locate is Locate given physical, baseline.Resolve(cwd), which the caller has
+// already made: a line with no cd step starts in cwd and uses it as it is, and
+// only a fold resolves its own directory.
+func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string) {
 	s, _, dirs, unread := shape.DeriveWithDirs(toolName, toolInput, key)
 	if unread != "" {
 		if cwd == "" {
 			return s, ""
 		}
 		return s, shape.UnreadCWDDigest(key, cwd, unread)
+	}
+	if len(dirs) == 0 {
+		return s, shape.CWDDigest(key, physical)
 	}
 	return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))
 }
