@@ -237,4 +237,24 @@ func TestPF1z_AttendanceFollowsTheSurface(t *testing.T) {
 			t.Errorf("line attendance %q, suppressed_by %q, want unattended, no_mirror", l.str("attendance"), l.str("suppressed_by"))
 		}
 	})
+	// The cloud surface is Claude Code on the web (remote*) and the GitHub
+	// Action, which exports CI: a person reads the session or the run, and
+	// harness.Caps verifies the mirror there (PREFLIGHT-CLOUD1). With no
+	// entrypoint the call is a presumed Claude Code, attended as before.
+	for _, c := range []struct {
+		name  string
+		extra []string
+	}{
+		{"Claude Code on the web", []string{"CLAUDE_CODE_ENTRYPOINT=remote"}},
+		{"the GitHub Action", []string{"CLAUDE_CODE_ENTRYPOINT=claude-code-github-action", "CI=true"}},
+		{"no entrypoint", []string{"CLAUDE_CODE_ENTRYPOINT="}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, l := run(t, c.extra...)
+			if out.HookSpecificOutput.AdditionalContext == "" || l.str("state") != "delivered" || l.str("attendance") != "attended" {
+				t.Errorf("env %v: note %q, state %q, attendance %q, suppressed_by %q, want a delivered note, attended", c.extra,
+					out.HookSpecificOutput.AdditionalContext, l.str("state"), l.str("attendance"), l.str("suppressed_by"))
+			}
+		})
+	}
 }
