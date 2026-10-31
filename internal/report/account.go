@@ -522,6 +522,21 @@ func sessionMaskedRuns(run *store.Run, acct Account) *MaskedRuns {
 	return &m
 }
 
+// readFromSummary reports a masked run whose output's summary decided its
+// outcome: a record at call schema 8 under rules version 11 or later, whose
+// masking stage keeps the summary (shape.MaskedByKeeps) and whose runner's
+// table read it as a pass or a failure. A fail line, an empty run and every
+// other word leave the run as masked as it was. This is verify's rule for a
+// summary_pass or summary_fail (verify.readsOutput), which that reader also
+// applies to a runner with no summary form, where this one does not need to.
+func readFromSummary(e *store.Execution) bool {
+	if e == nil || e.SchemaVersion < 8 || e.RulesVersion < shape.OutputOutcomeRulesVersion ||
+		e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) || e.GateOutput == nil {
+		return false
+	}
+	return e.GateOutput.Kind == "summary_pass" || e.GateOutput.Kind == "summary_fail"
+}
+
 // BuildMaskedRuns counts run's masked runs that no later plain run of the
 // same runner followed up (MaskedRuns.Runs), and compares the count against
 // the final message. Exported so digest can call it with a turn-scoped run,
@@ -562,6 +577,12 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 	}
 	for _, d := range run.Declarations {
 		if !statusMasked(d) || !ended(d, store.ExecOK) {
+			continue
+		}
+		if readFromSummary(outcomeRecord(executed[d.ToolUseID])) {
+			// The pipe hid the exit status but kept the runner's summary,
+			// which says how the run ended: the record can back a pass, or
+			// name the failure, and verify's line says which (D229).
 			continue
 		}
 		if r := d.Shape.RunnerDigest; r != nil {
