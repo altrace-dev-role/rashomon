@@ -370,9 +370,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-30 (STATUS-VERBS1a) to 28: fired.go's MarkFired
 		// create (runs/<session>/fired-<Event>, the hook entries' fired
 		// markers status counts), a new write kind; fired-* in the inventory.
-		// Moved 2026-10-30 (REPORT1a) to 29: config.go's WriteConfig
+		// Moved 2026-10-30 (REPORT1a) to 29: config.go's writeConfig
 		// ReplaceFile (config.json, the person's switches; `rashomon summary
-		// on|off` is its one writer), configFiles in the inventory, purge's
+		// on|off` and `rashomon steer` write it through UpdateConfig and
+		// RepairConfig), configFiles in the inventory, purge's
 		// topFiles and temp prefix.
 		// Moved 2026-10-31 (CHANNEL-EVIDENCE1) to 30: evidence.go's
 		// TakeChannelEvidence open, <root>/channel-evidence-<event>, the

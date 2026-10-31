@@ -82,7 +82,7 @@ func (c Config) SteerOffFor(project string) bool {
 }
 
 // ErrConfigUnreadable is what a config.json that is there but does not read
-// (it does not parse, or is over its size) matches under errors.Is. The hook
+// (it cannot be opened, does not parse, or is over its size) matches under errors.Is. The hook
 // clamps the notes on it (steer's config_unreadable) and `steer on --repair`
 // is the one writer that replaces such a file.
 var ErrConfigUnreadable = errors.New("config.json is unreadable")
@@ -119,7 +119,7 @@ func ReadConfig(root string) (Config, error) {
 		return Config{}, nil
 	}
 	if err != nil {
-		return Config{}, err
+		return Config{}, unreadableConfig{err}
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	b, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -105,6 +106,30 @@ func TestSTC1o_RepairReplacesAnUnparseableConfigAfterAsking(t *testing.T) {
 	}
 	if !strings.HasPrefix(out.String(), "steer: on (you: on;") {
 		t.Errorf("repair printed %q", out.String())
+	}
+	if c, err := store.ReadConfig(st.Root()); err != nil || c.SteerOffUser() {
+		t.Errorf("config after repair = %+v, %v", c, err)
+	}
+}
+
+// TestSTC1o_RepairReplacesAConfigThatCannotBeOpened: a config.json that is
+// there with mode 000 is clamped by the hook as unreadable, so the repair
+// must be able to replace it, not fail with the open's raw error.
+func TestSTC1o_RepairReplacesAConfigThatCannotBeOpened(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("a mode 000 file opens on Windows and as root")
+	}
+	st, _ := stcStore(t)
+	p := stcBroken(t, st)
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReadConfig(st.Root()); !errors.Is(err, store.ErrConfigUnreadable) {
+		t.Fatalf("premise: ReadConfig = %v, want ErrConfigUnreadable", err)
+	}
+	var out bytes.Buffer
+	if err := steerRepair(&out, false, func(string) (bool, error) { return true, nil }); err != nil {
+		t.Fatalf("repair of a file that cannot be opened: %v", err)
 	}
 	if c, err := store.ReadConfig(st.Root()); err != nil || c.SteerOffUser() {
 		t.Errorf("config after repair = %+v, %v", c, err)
