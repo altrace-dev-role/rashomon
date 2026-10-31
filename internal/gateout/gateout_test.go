@@ -28,7 +28,7 @@ func TestGO3_NoTestFilesIsEmptyRun(t *testing.T) {
 
 func TestGO4_PytestCounts(t *testing.T) {
 	for _, tc := range []struct{ output, kind string }{
-		{"5 passed in 0.2s", "summary_pass"}, {"2 failed, 1 passed", "summary_fail"}, {"2 error", "summary_fail"},
+		{"5 passed in 0.2s", "summary_pass"}, {"2 failed, 1 passed in 0.31s", "summary_fail"}, {"2 errors in 0.05s", "summary_fail"},
 		{"no tests ran in 0.0s", "empty_run"},
 	} {
 		want(t, Classify("test", "pytest", []byte(tc.output)), tc.kind, "pytest", nil)
@@ -77,7 +77,7 @@ func TestGO9_CapBoundary(t *testing.T) {
 
 func TestGO10_TablesPinned(t *testing.T) {
 	got := tableDigest()
-	const pin = "e14ce46508497e9b46f91d4f9922b370c1697503ebc1a0792c9a4d31ce4ce874"
+	const pin = "e110082cbc677ed5e5cce54637a1fe39d6a359ad6f4eb60cddddbaa0ad9f9cd8"
 	if got != pin {
 		t.Fatalf("table digest %s, want %s", got, pin)
 	}
