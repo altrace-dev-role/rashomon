@@ -234,7 +234,6 @@ under the call if the command named it.
 | `rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT \| --stdin]` | Print one turn's record as JSON, at most 8 KiB: what one prompt recorded; read-only |
 | `rashomon backtest --sensor ID` | Replay this project's transcript copies (`rashomon bodies on`) through this build's hooks and print each session's fires of steer pattern ID beside the live steer log's; only reads the store |
 | `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
-| `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
 | `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires; a ledger written by anything but rashomon is said quarantined first |
 | `rashomon learn` | List this project's lessons: each one's tier, its labels and the 95% bound that moves it |
