@@ -68,7 +68,7 @@ func TestMO1_TheValueLineNamesTheRunnerAndSaysWhereTheOutcomeCameFrom(t *testing
 		{"verified by exit status", viewOf(verify.RowVerified, wrote, gateAt("pytest:test", "test", verify.Green, verify.OK, 3, nil)),
 			"verified - pytest passed after the last edit"},
 	} {
-		if got, want := ValueLine(c.v, nil, "sess-1", false), lineOf(c.want, ""); got != want {
+		if got, want := ValueLine(c.v, Impact{}, "sess-1", false), lineOf(c.want, ""); got != want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, want)
 		}
 	}

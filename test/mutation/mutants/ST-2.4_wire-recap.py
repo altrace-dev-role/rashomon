@@ -78,13 +78,13 @@ m("ST-2.4 StopFailure prints the value line", RS,
 
 # Precedence, the switch, the barrier and the one key (R12, R2b).
 m("ST-2.4 the value line printed when a recap sentence speaks", RT,
-  '\tif !wantSpeak {\n\t\tline, wantSpeak = stop.line(d.SessionID, fromPlugin)\n\t}\n',
-  '\tif l, ok := stop.line(d.SessionID, fromPlugin); ok {\n\t\tline, wantSpeak = l, true\n\t}\n', "TestFUN14_")
+  '\tclause := ""\n\tif !wantSpeak {\n\t\tline, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)\n\t}\n',
+  '\tclause := ""\n\tif l, ok, c := stop.line(d.SessionID, fromPlugin); ok {\n\t\tline, wantSpeak, clause = l, true, c\n\t}\n', "TestFUN14_")
 m("ST-2.4 the done flag loses to the value line", RS,
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {\n',
-  '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok && recap.ValueLine(s.view, s.notes, sessionID, fromPlugin) == "" {\n',
+  '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok && recap.ValueLine(s.view, s.impact, sessionID, fromPlugin) == "" {\n',
   "TestFUN14b_")
-m("ST-2.4 the summary switch read as off", RS, 'const summaryOn = true\n', 'const summaryOn = false\n', "TestFUN16_")
+m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOn()\n', '\treturn false\n', "TestFUN16_")
 m("ST-2.4 the Flush barrier dropped before print", RT,
   '\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n',
   '', "TestSTOP_FlushFailurePrintsNothing")
@@ -92,8 +92,8 @@ m("ST-2.4 Claim before the Flush barrier", RT,
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n"
   "\t// Claim's own error is intentionally ignored: recap.json is\n\t// bookkeeping, not evidence, and a failure to persist it must cost at\n"
   "\t// most a future duplicate or a stale health timestamp, never a\n\t// missing line and never a hook error (see Claim's doc).\n"
-  "\tspeak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)\n",
-  "\tspeak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)\n"
+  "\tspeak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause)\n",
+  "\tspeak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause)\n"
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n",
   "TestSTOP_FlushFailurePrintsNothing")
 m("ST-2.4 a second systemMessage key", RT,
