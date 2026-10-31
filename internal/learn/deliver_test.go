@@ -8,8 +8,8 @@ import "testing"
 // ledger's order. With more, only a lesson whose text holds one of the
 // prompt's path tokens arrives, and a prompt naming nothing gets none.
 func TestLRN17h_RelevanceRule(t *testing.T) {
-	verify := Lesson{ID: "vet-race", Tier: TierProbation, Text: "run internal/verify tests with -race", SinceUnixMS: 1_761_700_005_000}
-	tidy := Lesson{ID: "tidy", Tier: TierProbation, Text: "run go mod tidy after editing go.mod", SinceUnixMS: 1_761_700_006_000}
+	verify := Lesson{ID: "vet-race", Tier: TierProbation, Text: "run internal/verify tests with -race", SinceUnixMS: 1_761_700_005_000, ApprovedUnixMS: 1_761_700_005_500}
+	tidy := Lesson{ID: "tidy", Tier: TierProbation, Text: "run go mod tidy after editing go.mod", SinceUnixMS: 1_761_700_006_000, ApprovedUnixMS: 1_761_700_006_500}
 	none := func(string) bool { return false }
 	for _, tc := range []struct {
 		name    string
@@ -40,8 +40,13 @@ func TestLRN17h_RelevanceRule(t *testing.T) {
 		})
 	}
 	m, err := Message(provenCwd)
-	if want := "rashomon record: lesson go-test-cwd, approved for this project at a terminal: 'run go test from the module root'."; err != nil || m.Text() != want {
+	if want := "rashomon record: lesson go-test-cwd, approved for this project: 'run go test from the module root'."; err != nil || m.Text() != want {
 		t.Errorf("Message = %q, %v; want %q", m.Text(), err, want)
+	}
+	unapproved := provenCwd
+	unapproved.ApprovedUnixMS = 0
+	if ls, _, ok := Pick(Active{Lessons: []Lesson{unapproved}}, none, nil); ok {
+		t.Errorf("Pick gave %q, a lesson with no approval time: a signed file is not proof a person approved it", ls.ID)
 	}
 	if _, _, ok := Pick(Active{Lessons: []Lesson{provenCwd}, Unchecked: UncheckedSignature}, none, nil); ok {
 		t.Error("Pick gave a lesson from an unchecked state")

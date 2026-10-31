@@ -16,10 +16,10 @@ session start
   SessionStart
       rashomon brief: <tmp>/proj
         instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
-        build: no manifest at the root
-        tests: no spec gate; no test runner seen in this project yet
-        spec: none
-        task: none
+        build: no manifest at the root (go.mod, package.json, ...)
+        tests: no spec gate; no test runner in the index yet
+        spec: none (.claude/rashomon/spec.json)
+        task: none (task/current.json)
         packages: not read (no go.mod)
         verify: rashomon report --session demo-1
 

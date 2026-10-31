@@ -300,7 +300,9 @@ func byAge(a, b Lesson) int {
 // shape, a high-entropy run) refuses the whole file with slot.ErrSecretShaped
 // and adds nothing: an id is stored and printed by the verbs, so an import
 // never carries a token in as one, and the error names the row, not its
-// value (Q4). The caller saves.
+// value (Q4). A host- or address-shaped id (slot.RefuseHosts) refuses the
+// whole file the same way: an id is model-visible and unquoted, and the
+// error names the row, not the id. The caller saves.
 func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err error) {
 	b, err := io.ReadAll(io.LimitReader(r, 1<<20))
 	if err != nil {
@@ -313,6 +315,9 @@ func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err err
 	for i, ls := range in.Lessons {
 		if idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {
 			return 0, 0, fmt.Errorf("learn: import row %d: the lesson id is secret-shaped, so nothing was imported: %w", i+1, slot.ErrSecretShaped)
+		}
+		if idForm(ls.ID) && slot.RefuseHosts(ls.ID) != nil {
+			return 0, 0, fmt.Errorf("learn: import row %d: the lesson id is shaped like a host or an address, so nothing was imported", i+1)
 		}
 	}
 	for _, ls := range in.Lessons {
