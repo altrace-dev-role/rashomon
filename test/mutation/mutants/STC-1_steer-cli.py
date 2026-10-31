@@ -11,6 +11,7 @@ D = "internal/steer/decide.go"
 C = "internal/store/config.go"
 S = "cmd/rashomon/verbs_steer.go"
 SC = "cmd/rashomon/verbs_scorecard.go"
+SM = "cmd/rashomon/verbs_summary.go"
 RS = "cmd/rashomon/recap_stop.go"
 DP = "internal/disclose/paragraphs.go"
 SCREEN = "internal/consent/screen.go"
@@ -82,6 +83,10 @@ m("STC-1 --repair is taken with off", S,
   "\t\t\tif args[0] != \"on\" {\n", "\t\t\tif false {\n", "TestSTC1o_")
 m("STC-1 config_unreadable has no sentence", S,
   "\tsteer.SuppressedByConfigUnreadable:  \"config.json did not read, so the notes were off; nothing reached the agent (fix or delete the file, or run rashomon steer on --repair)\",\n", "", "TestSTC1e_EveryReasonIsExplained")
+m("STC-1 bare summary reports the user's switch alone", SM,
+  "\tif !c.SummaryOnFor(key) {\n\t\tstate = \"off\"\n\t}\n", "\tif !c.SummaryOn() {\n\t\tstate = \"off\"\n\t}\n", "TestSTC1_SummaryScopes|TestSTC1m_")
+m("STC-1 bare summary leaves out the project's scope", SM,
+  "\tif c.SummaryProjects[key] == store.SwitchOff {\n\t\tproj = \"off\"\n\t}\n\treturn fmt.Sprintf(\"summary:", "\treturn fmt.Sprintf(\"summary:", "TestSTC1_SummaryScopes")
 m("STC-1 steer log drops the delivery", S,
   "\t\t\tr.Level, r.State, r.SuppressedBy, r.Delivery)\n", "\t\t\tr.Level, r.State, r.SuppressedBy, \"-\")\n", "TestSTC1c_SteerLogPrintsClosedFields")
 m("STC-1 steer log --json drops the level", S,

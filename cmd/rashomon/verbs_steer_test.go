@@ -190,13 +190,21 @@ func TestSTC1_SummaryScopes(t *testing.T) {
 	if summaryOn(st.Root(), key) || !summaryOn(st.Root(), "/another") {
 		t.Error("the Stop line's reader does not honour the project's key alone")
 	}
-	if out := stcRun(t, cmdSummary); out != "summary: on\n" {
-		t.Errorf("summary = %q: a project's switch changed the user's", out)
+	if out, want := stcRun(t, cmdSummary), "summary: off (you: on; this project: off, "+safeText(key)+")\n"; out != want {
+		t.Errorf("summary = %q, want %q: the effective state, both scopes", out, want)
+	}
+	if out, want := stcRun(t, cmdSummary, "--project"), "summary: off (you: on; this project: off, "+safeText(key)+")\n"; out != want {
+		t.Errorf("summary --project = %q, want %q", out, want)
 	}
 	stcRun(t, cmdSummary, "on", "--project")
 	if c, _ := store.ReadConfig(st.Root()); !c.SummaryOnFor(key) {
 		t.Error("summary on --project did not clear the project's key")
 	}
+	stcRun(t, cmdSummary, "off")
+	if out, want := stcRun(t, cmdSummary), "summary: off (you: off; this project: on, "+safeText(key)+")\n"; out != want {
+		t.Errorf("summary with the user's off = %q, want %q", out, want)
+	}
+	stcRun(t, cmdSummary, "on")
 	if err := cmdSummary([]string{"off", "--user", "--project"}, io.Discard); err == nil {
 		t.Error("two scopes were accepted")
 	}

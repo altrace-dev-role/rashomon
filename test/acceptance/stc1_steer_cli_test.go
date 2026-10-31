@@ -22,8 +22,8 @@ func TestSTC1m_ProjectSummaryOffSilencesThatProjectsStopLine(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), `"summary_projects"`) || strings.Contains(string(b), `"summary":`) {
 		t.Fatalf("config.json is %q (%v), want the project's key and not the user's", b, err)
 	}
-	if res := e.run("", nil, "summary"); res.stdout != "summary: on\n" {
-		t.Errorf("a project's switch changed the user's: %q", res.stdout)
+	if res := e.run("", nil, "summary"); !strings.HasPrefix(res.stdout, "summary: off (you: on; this project: off, ") {
+		t.Errorf("bare summary after a project's off = %q, want the effective state, off, with both scopes", res.stdout)
 	}
 	e.rpCall(t, "prompt-1", "toolu_red", goTestRun("failed"))
 	e.rpFinding(t, "prompt-1", 1)
