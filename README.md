@@ -19,8 +19,12 @@ not sent, such as:
 
     rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
 
-What it does not do yet: learn your architecture or conventions, or deliver
-lessons from past sessions. That is the next layer, and it is not in this build.
+What it does not do yet: learn your architecture or conventions by itself. A
+lesson you import and approve at a terminal is sent with a prompt that carries
+no preflight note, at most one per prompt and each lesson once a session; it
+waits while a preflight note is sent, and with steering off or no agreement to
+steering notes it is shown to you and not sent. Finding lessons in past sessions is the next layer, and it is
+not in this build.
 
 ## Get started
 

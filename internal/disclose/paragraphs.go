@@ -53,7 +53,7 @@ func defaultParagraphs() []Paragraph {
 		{Owner: OwnerSteer, Cite: CiteSection3, Text: "A note looks like this:\n  rashomon record: gate 'go' exited 0 earlier in this session (6 min\n  ago) and exited 1 on this run. Files written between the two runs:\n  'internal/a.go' and 2 more."},
 
 		{Owner: OwnerLearn, Cite: CiteSection4, Text: "This build learns nothing by itself: no hook counts failures or reads Claude Code's transcripts. `rashomon learn import FILE` adds a shared lessons file's rows to this project's lessons under <root>/learn."},
-		{Owner: OwnerLearn, Cite: CiteSection4, Text: "No lesson reaches your agent in this build; `rashomon learn approve ID` marks one approved after you type its one-time code."},
+		{Owner: OwnerLearn, Cite: CiteSection4, Text: "An approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session; it waits while a preflight note is sent. If steering is off or you have not agreed to steering notes, it is shown to you and not sent. `rashomon learn approve ID` marks one approved after you type its one-time code. A write to the lesson files that this program did not make is detected, and no lesson is sent, unless the writer can also read the store key: the same limit as `rashomon spec trust`."},
 		{Owner: OwnerMeasure, Cite: CiteSection4, Text: "This build keeps no tally of how its notes turned out. Nothing is sent anywhere."},
 
 		{Owner: OwnerSteer, Cite: CiteSection5, Text: "In an interactive session, every note the agent gets, at the same moment, as a line starting \"※ rashomon told the agent:\"."},

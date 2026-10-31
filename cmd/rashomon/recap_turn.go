@@ -249,12 +249,13 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		d, run = built, r
 	}
-	// The new prompt's preflight note, routed and logged before the
-	// catch-up decides, so a turn with nothing to catch up on still gets it.
+	// The new prompt's preflight note and lesson, routed and logged before
+	// the catch-up decides, so a turn with nothing to catch up on still gets
+	// them.
 	var note steer.Output
 	var client steer.Client
 	if pending {
-		note, client = preflightNote(st, run, &pp, id, now)
+		note, client = preflightNote(st, run, &pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
 	}
 	if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
 		return printTurn(st, stdout, note, client, "")

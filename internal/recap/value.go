@@ -30,7 +30,9 @@ const maxGateNames = 3
 
 // titles names each pattern a delivered note can carry in the clause (tech
 // 2.2.11 Titles). integrity and model-switch are never delivered, and
-// sequence-risk is reserved; none has a title.
+// sequence-risk is reserved; none has a title. learned-fact reads "lesson",
+// the word the learn verb and the consent screen use, where tech 2.2.11
+// reads "known fix" (FD-10, signed by the owner 10-29, D175).
 func titles() map[string]string {
 	titlesOnce.Do(func() {
 		titlesOnce.v = map[string]string{
@@ -39,7 +41,7 @@ func titles() map[string]string {
 			string(pattern.ContinuityBriefing): "briefing",
 			string(pattern.TaskPreflight):      "preflight",
 			string(pattern.DeclaredFact):       "known fix",
-			string(pattern.LearnedFact):        "known fix",
+			string(pattern.LearnedFact):        "lesson",
 			string(pattern.PlatformRule):       "platform rule",
 			string(pattern.IdenticalRetry):     "repeat-call note",
 			string(pattern.CredSpray):          "credentials note",
