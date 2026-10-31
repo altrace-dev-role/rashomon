@@ -107,6 +107,8 @@ m("STC-1 scorecard drops the reasons", SC,
   "\t\tif r.SuppressedBy != \"-\" {\n", "\t\tif false {\n", "TestSTC1d_ScorecardCountsByPattern")
 
 # The screen.
+m("STC-1 the screen says every note is still shown to you", DP,
+  "is shown to you as a flag where the call has room for one (one flag per call, five per prompt), and nothing is shown on an event that has no way to carry one;", "is still shown to you;", "TestSTC1l_")
 m("STC-1 the screen stops naming the steer switch", DP,
   "`rashomon steer off --user` stops the notes to your agent, and ", "", "TestSTC1l_")
 m("STC-1 the closing table stops naming the steer switch", SCREEN,
