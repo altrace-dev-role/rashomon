@@ -22,6 +22,9 @@ type pendingPayload struct {
 	PromptCut      bool
 	PromptID       string
 	PermissionMode string
+	// specNoted is set by preflightNote when its discovery made the turn's
+	// no-spec note (hook.NoteSpecFound), so noteTurnSpec makes no second one.
+	specNoted bool
 }
 
 // readPendingPayload is readRecapPayload for `recap pending`.
@@ -68,6 +71,8 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	}
 	env := steerEnv(id, now)
 	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
+	hook.NoteSpecFound(st, p.SessionID, p.PromptID, p.CWD, env.ProjectDir, env.ManagedDir, sp)
+	p.specNoted = true
 	lines, _, _ := st.ReadSteer(p.SessionID)
 	var found []steer.Finding
 	var paths []string
@@ -121,6 +126,22 @@ func printTurn(st *store.Store, stdout io.Writer, note steer.Output, c steer.Cli
 	}
 	_, _ = stdout.Write(b)
 	return nil
+}
+
+// noteTurnSpec is the one spec discovery every prompt makes for the turn's
+// no-spec note (card SPEC-RULES1, D210), when preflightNote's did not: a
+// prompt that names no path or identifier, which the note itself never
+// discovers for. A project with no spec costs the lean discovery, and the
+// turn's rules-only posts then skip theirs (hook.NoteSpecFound). A prompt
+// with no run, no session or no cwd writes nothing, so its posts discover.
+func noteTurnSpec(st *store.Store, run *store.Run, p *pendingPayload) {
+	if st == nil || run == nil || p.SessionID == "" || p.CWD == "" || p.specNoted {
+		return
+	}
+	projectDir, managedDir := specDirs()
+	hook.NoteSpecFound(st, p.SessionID, p.PromptID, p.CWD, projectDir, managedDir,
+		preflightSpec(st, run, p.CWD, projectDir, managedDir))
+	p.specNoted = true
 }
 
 // preflightSpec is the spec the prompt's note reads, discovered as the steer

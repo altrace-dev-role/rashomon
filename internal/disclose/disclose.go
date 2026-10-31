@@ -537,7 +537,7 @@ func runSegmentFiles() []FileRule {
 			RemovedBy:  "the steer step; size-cap eviction; purge",
 			Owner:      "store",
 		},
-	}, noticeFiles(runSegment)...)
+	}, append(noticeFiles(runSegment), specNoneFiles(runSegment)...)...)
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's

@@ -267,6 +267,11 @@ type RuleVerdict struct {
 	Verdict     RuleVerdictValue `json:"verdict"`
 	Seqs        []int64          `json:"seqs"`
 	HardControl string           `json:"hard_control"`
+	// trust is the rule's own source's (spec.Compiled.TrustOf): only a
+	// trusted or managed rule's verdict owes a ledger row and holds
+	// record-green false. Unexported, so the encoding is unchanged, like
+	// GateState's bound.
+	trust spec.Trust
 }
 
 // CheckpointRuleVerdict is a rule verdict as the checkpoint keeps it
