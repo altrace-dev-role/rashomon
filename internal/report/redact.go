@@ -150,6 +150,7 @@ func Redact(rep *Report, key []byte) *Report {
 		s.Chains = redactChains(sess.Chains, key)
 		s.Autosteer = redactAutosteer(sess.Autosteer, key)
 		s.Nono = redactNono(sess.Nono, key)
+		s.Knowledge = redactKnowledge(sess.Knowledge, key)
 
 		out.Sessions[i] = s
 	}
@@ -237,5 +238,58 @@ func redactNono(n Nono, key []byte) Nono {
 	out.Denied = redactList(n.Denied, key)
 	out.ClientPlaneAllowed = redactList(n.ClientPlaneAllowed, key)
 	out.ClientPlaneDenied = redactList(n.ClientPlaneDenied, key)
+	return out
+}
+
+// redactKnowledge digests the two names the knowledge block carries: the
+// project root, which is often the customer's name, and each bound spec's
+// path, which sits under it, and the id of a declared gate in a gate key.
+// Ids, counts, seqs, digests and times stay (card REPORT1b K8 a). Every slice and pointer is rebuilt, for the
+// reason redactLinks gives: the copy shares nothing with the original.
+func redactKnowledge(k *Knowledge, key []byte) *Knowledge {
+	if k == nil {
+		return nil
+	}
+	out := *k
+	out.Project = redactHost(k.Project, key)
+	if k.Baseline != nil {
+		bl := *k.Baseline
+		out.Baseline = &bl
+	}
+	out.Retained.Specs = make([]SpecHeld, 0, len(k.Retained.Specs))
+	for _, sp := range k.Retained.Specs {
+		sp.Path = redactHost(sp.Path, key)
+		out.Retained.Specs = append(out.Retained.Specs, sp)
+	}
+	if k.Retained.SpecAtLastStop != nil {
+		st := *k.Retained.SpecAtLastStop
+		out.Retained.SpecAtLastStop = &st
+	}
+	out.Retained.Lessons = append([]LessonRef{}, k.Retained.Lessons...)
+	out.Discovered = copyChanges(k.Discovered)
+	out.Invalidated = copyChanges(k.Invalidated)
+	// A declared gate's key spells its id (spec:<id>), the owner's own word.
+	out.GateStates = make([]GateStates, 0, len(k.GateStates))
+	for _, g := range k.GateStates {
+		g.Gate = redactGateKey(g.Gate, key)
+		out.GateStates = append(out.GateStates, g)
+	}
+	return &out
+}
+
+// copyChanges is cs with its pointers copied, never null.
+func copyChanges(cs []Change) []Change {
+	out := make([]Change, 0, len(cs))
+	for _, c := range cs {
+		if c.PointSeq != nil {
+			v := *c.PointSeq
+			c.PointSeq = &v
+		}
+		if c.AtMS != nil {
+			v := *c.AtMS
+			c.AtMS = &v
+		}
+		out = append(out, c)
+	}
 	return out
 }

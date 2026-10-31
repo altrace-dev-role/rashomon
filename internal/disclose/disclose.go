@@ -555,7 +555,7 @@ func indexFiles() []FileRule {
 			Pattern:    baseline.FilePattern,
 			Mode:       "0600",
 			Purpose:    "one project's index of the test and build commands its sessions have run, so a command two sessions ran in thirty days is required before a turn reads verified",
-			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen",
+			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen; and the last and prior checkpoints (last, prior), each the session id, the point seq and when it was recorded, written at every Stop",
 			NeverHolds: "a command's arguments or output, or anything about a call beyond its family",
 			RemovedBy:  "eviction of the least recently seen families at 64 KiB; purge",
 			Owner:      "verify",

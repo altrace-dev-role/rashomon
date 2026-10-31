@@ -1,6 +1,8 @@
 package report
 
 import (
+	"bytes"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -635,4 +637,27 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 	}
 	out.Fires = out.PassClaimed && !failure
 	return out
+}
+
+// writeAccount renders the agent's own summary.
+//
+// It is quoted, on its own line, and marked when truncated, so a reader can see
+// that they are looking at the agent's words rather than the tool's. An
+// unreadable transcript renders "unknown" and not an empty quotation: the
+// second would read as an agent that said nothing.
+func writeAccount(b *bytes.Buffer, a Account) {
+	if !a.Available {
+		fmt.Fprintf(b, "  the agent's account: %s (no assistant message could be read)\n", unknown)
+		return
+	}
+	suffix := ""
+	if a.Truncated {
+		fmt.Fprintf(b, "  the agent's account (first %d characters):\n", accountLimit)
+		suffix = "..."
+	} else {
+		fmt.Fprintln(b, "  the agent's account:")
+	}
+	// Newlines are collapsed so a multi-line summary cannot be mistaken for
+	// the report's own structure.
+	fmt.Fprintf(b, "    %q%s\n", collapse(a.Text), suffix)
 }

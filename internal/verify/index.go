@@ -213,11 +213,11 @@ func ReadIndex(path string) (*ProjectIndex, error) {
 func WriteIndex(path string, idx *ProjectIndex) (evicted int, err error) {
 	entries := slices.Clone(idx.Entries)
 	slices.SortFunc(entries, entryOrder)
-	entries, evicted, err = evictToCap(idx.ProjectKey, entries)
+	entries, evicted, err = evictToCap(*idx, entries)
 	if err != nil {
 		return 0, err
 	}
-	encoded, err := encodeIndex(idx.ProjectKey, entries)
+	encoded, err := encodeIndex(ProjectIndex{ProjectKey: idx.ProjectKey, Entries: entries, Last: idx.Last, Prior: idx.Prior})
 	if err != nil {
 		return 0, err
 	}
@@ -241,8 +241,8 @@ func WriteIndex(path string, idx *ProjectIndex) (evicted int, err error) {
 // bytes and one comma. The count is exact, so the cap has one test, the
 // loop's. Where every entry goes and the frame alone is over the cap,
 // WriteIndex's check on the encoding refuses it.
-func evictToCap(projectKey string, entries []IndexEntry) ([]IndexEntry, int, error) {
-	frame, err := encodeIndex(projectKey, nil)
+func evictToCap(idx ProjectIndex, entries []IndexEntry) ([]IndexEntry, int, error) {
+	frame, err := encodeIndex(ProjectIndex{ProjectKey: idx.ProjectKey, Last: idx.Last, Prior: idx.Prior})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -282,13 +282,49 @@ func evictToCap(projectKey string, entries []IndexEntry) ([]IndexEntry, int, err
 
 // encodeIndex is the file's bytes: the index as one JSON line, its entries
 // [] rather than null when there are none.
-func encodeIndex(projectKey string, entries []IndexEntry) ([]byte, error) {
-	if entries == nil {
-		entries = []IndexEntry{}
+func encodeIndex(idx ProjectIndex) ([]byte, error) {
+	if idx.Entries == nil {
+		idx.Entries = []IndexEntry{}
 	}
-	b, err := json.Marshal(ProjectIndex{ProjectKey: projectKey, Entries: entries})
+	b, err := json.Marshal(idx)
 	if err != nil {
 		return nil, err
 	}
 	return append(b, '\n'), nil
+}
+
+// NoteCheckpoint records that session cut a checkpoint at point seq at atMS:
+// it becomes Last, and the Last of another session becomes Prior (a clear
+// that continues one session leaves Prior alone, so Prior stays the
+// previous session's). The Stop calls it only after the checkpoint was
+// appended, so the pointer never names a record that was dropped.
+//
+// Two sessions that Stop at once each read the index, note their checkpoint
+// and write it back with no lock between, so the last writer wins and the
+// other's Last (or Prior) is lost. That is safe: the pointer is only a hint,
+// and receipt.Pointed checks the checkpoint it names (project and point seq)
+// before anything is printed, so a lost pointer leaves the verify line and a
+// stale one is never shown as current.
+func (idx *ProjectIndex) NoteCheckpoint(session string, seq, atMS int64) {
+	if idx.Last != nil && idx.Last.SessionID != session {
+		prior := *idx.Last
+		idx.Prior = &prior
+	}
+	idx.Last = &LastCheckpoint{SessionID: session, PointSeq: seq, AtMS: atMS}
+}
+
+// PreviousOf is the checkpoint the index names for the session before
+// current: Last, unless that is current's own (a clear), then Prior. Nil
+// when the index names none.
+func (idx *ProjectIndex) PreviousOf(current string) *LastCheckpoint {
+	if idx == nil {
+		return nil
+	}
+	if idx.Last != nil && idx.Last.SessionID != current {
+		return idx.Last
+	}
+	if idx.Last != nil && idx.Prior != nil && idx.Prior.SessionID != current {
+		return idx.Prior
+	}
+	return nil
 }

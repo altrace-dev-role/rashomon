@@ -92,8 +92,16 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 
 	if writes {
 		cp := verify.Cut(v.Snap, now)
-		if err := st.AppendRecord(p.SessionID, &cp); err != nil && !errors.Is(err, store.ErrLockTimeout) {
+		err := st.AppendRecord(p.SessionID, &cp)
+		if err != nil && !errors.Is(err, store.ErrLockTimeout) {
 			return stopTurn{}, err
+		}
+		if err == nil {
+			// The index's pointer to the last checkpoint rides the write below:
+			// no new file, and no pointer to a record that was dropped. Two
+			// Stops at once race on it (read, note, write, no lock): the last
+			// writer wins, which is safe because receipt.Pointed validates.
+			v.Index.NoteCheckpoint(p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)
 		}
 		if path != "" {
 			_, _ = verify.WriteIndex(path, v.Index)
