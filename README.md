@@ -204,8 +204,10 @@ under the call if the command named it.
 | Command | What it does |
 | --- | --- |
 | `rashomon watch [--show]` | Show what installing does; after `y` on the terminal, install the hook entries. `--show` writes nothing |
-| `rashomon status` | Say what is installed and what the store holds, writing nothing |
+| `rashomon status [--json]` | Say what is installed and what the store holds, writing nothing; `--json` gives the same as one object |
 | `rashomon report [--session S] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named |
+| `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
+| `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes` |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
