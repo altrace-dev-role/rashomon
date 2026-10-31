@@ -1428,3 +1428,82 @@ func TestSWEEP1_TrimsOwnCacheAfterEachMutant(t *testing.T) {
 		})
 	}
 }
+
+// SWEEP-FINISH1. The shards of --shard K/N are disjoint and together are
+// --list: one run of the sweep did not fit the job's bound, and a mutant
+// dealt to no shard, or to two, would be judged by nobody or twice. Checked
+// for N of 1, 2, 3 and 7, a count that does not divide the total.
+func TestSweepShards_PartitionTheMutantsExactlyOnce(t *testing.T) {
+	root := moduleRoot(t)
+	out, code := sweep(t, root, "--list")
+	if code != 0 {
+		t.Fatalf("--list exited %d", code)
+	}
+	full := nonEmptyLines(out)
+	for _, n := range []int{1, 2, 3, 7} {
+		owner := map[string]int{}
+		for k := 1; k <= n; k++ {
+			out, code := sweep(t, root, "--list", "--shard", fmt.Sprintf("%d/%d", k, n))
+			if code != 0 {
+				t.Fatalf("--list --shard %d/%d exited %d", k, n, code)
+			}
+			part := nonEmptyLines(out)
+			if len(part) < len(full)/n || len(part) > len(full)/n+1 {
+				t.Errorf("shard %d/%d holds %d of %d mutants, want an even share", k, n, len(part), len(full))
+			}
+			for _, name := range part {
+				if j, ok := owner[name]; ok {
+					t.Errorf("%q is in shard %d and shard %d of %d", name, j, k, n)
+				}
+				owner[name] = k
+			}
+		}
+		for _, name := range full {
+			if owner[name] == 0 {
+				t.Errorf("%q is in no shard of %d", name, n)
+			}
+		}
+		if len(owner) != len(full) {
+			t.Errorf("%d shards hold %d mutants, --list has %d", n, len(owner), len(full))
+		}
+	}
+}
+
+// A shard that is not K/N with 1 <= K <= N is refused rather than read as an
+// empty sweep, which would pass.
+func TestSweepShards_ABadShardIsRefused(t *testing.T) {
+	root := moduleRoot(t)
+	for _, bad := range []string{"0/3", "4/3", "1/0", "x", "1/", "/3", "-1/3", "1/2/3"} {
+		if out, code := sweep(t, root, "--list", "--shard", bad); code == 0 {
+			t.Errorf("--shard %q was accepted:\n%s", bad, out)
+		}
+	}
+}
+
+// The workflow's matrix and the --shard each job passes name the same count,
+// or a shard is never run.
+func TestSweepJobRunsEveryShard(t *testing.T) {
+	root := moduleRoot(t)
+	doc := readFile(t, filepath.Join(root, ".github", "workflows", "ci.yaml"))
+	i := strings.Index(doc, "\n  sweep:\n")
+	next := strings.Index(doc[i+1:], "\n  fuzz:\n")
+	if i < 0 || next < 0 {
+		t.Fatal("ci.yaml: sweep: or the job after it not found")
+	}
+	job := doc[i : i+1+next]
+	m := regexp.MustCompile(`shard: \[([0-9, ]+)\]`).FindStringSubmatch(job)
+	if m == nil {
+		t.Fatal("the sweep job has no matrix of shards")
+	}
+	var n int
+	for _, f := range strings.Split(m[1], ",") {
+		n++
+		if got, _ := strconv.Atoi(strings.TrimSpace(f)); got != n {
+			t.Fatalf("matrix shard %d is %q, want %d", n, f, n)
+		}
+	}
+	want := "--shard ${{ matrix.shard }}/" + strconv.Itoa(n)
+	if !strings.Contains(job, "sweep.py --strict "+want) {
+		t.Errorf("the sweep step does not run `sweep.py --strict %s`", want)
+	}
+}
