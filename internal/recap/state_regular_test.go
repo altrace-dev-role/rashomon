@@ -63,7 +63,7 @@ func TestSRR1_AFIFOStateFileReadsAtOnce(t *testing.T) {
 // A recap.json one byte over its cap is an error, not a read of it whole.
 func TestSRR1_AnOverCapStateFileIsAnError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), StateFileName)
-	stateOfSize(t, path, 1<<20+1)
+	stateOfSize(t, path, maxStateBytes+1)
 	if _, err := readState(path); err == nil {
 		t.Error("readState read a state over its cap; want an error")
 	}

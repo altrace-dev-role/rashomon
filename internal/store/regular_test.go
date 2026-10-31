@@ -50,8 +50,8 @@ func TestSRR1_AFIFOConfigReadsUnreadableAtOnce(t *testing.T) {
 	fifoAt(t, filepath.Join(root, FileConfig))
 	var err error
 	returnsWithin(t, 2*time.Second, func() { _, err = ReadConfig(root) })
-	if !errors.Is(err, ErrConfigUnreadable) {
-		t.Errorf("ReadConfig on a named pipe = %v, want ErrConfigUnreadable", err)
+	if !errors.Is(err, ErrConfigUnreadable) || !errors.Is(err, ErrNotRegular) {
+		t.Errorf("ReadConfig on a named pipe = %v, want ErrConfigUnreadable over ErrNotRegular", err)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestSRR1_AFIFORecordsFileEndsTheTailReadAtOnce(t *testing.T) {
 	var ok bool
 	var tailErr error
 	returnsWithin(t, 2*time.Second, func() { _, ok, _, tailErr = st.LatestRecordTail("s1", TypeVerify, 4096) })
-	if ok || tailErr == nil {
-		t.Errorf("LatestRecordTail on a named pipe = ok %v, err %v; want ok false and an error", ok, tailErr)
+	if ok || !errors.Is(tailErr, ErrNotRegular) {
+		t.Errorf("LatestRecordTail on a named pipe = ok %v, err %v; want ok false and ErrNotRegular", ok, tailErr)
 	}
 }
 
@@ -90,7 +90,7 @@ func TestSRR1_AFIFORecordsFileEndsTheKindWalkAtOnce(t *testing.T) {
 	returnsWithin(t, 2*time.Second, func() {
 		_, eachErr = st.EachRecordOfKind("s1", TypeVerify, func([]byte) bool { called = true; return true })
 	})
-	if called || eachErr == nil {
-		t.Errorf("EachRecordOfKind on a named pipe = called %v, err %v; want no line and an error", called, eachErr)
+	if called || !errors.Is(eachErr, ErrNotRegular) {
+		t.Errorf("EachRecordOfKind on a named pipe = called %v, err %v; want no line and ErrNotRegular", called, eachErr)
 	}
 }

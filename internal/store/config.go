@@ -110,11 +110,7 @@ func ConfigReason(err error) string {
 // and most installs have none. A file that does not parse is an error, which
 // the caller decides how to read.
 func ReadConfig(root string) (Config, error) {
-	path := filepath.Join(root, FileConfig)
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		return Config{}, nil
-	}
-	f, err := os.Open(path)
+	f, err := OpenRegular(filepath.Join(root, FileConfig))
 	if errors.Is(err, fs.ErrNotExist) {
 		return Config{}, nil
 	}
