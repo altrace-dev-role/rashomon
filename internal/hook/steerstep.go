@@ -246,7 +246,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	}
 	var idx *verify.ProjectIndex
 	if key != "" {
-		idx, _ = verify.ReadIndex(verify.IndexPath(root, key))
+		idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))
 	}
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)

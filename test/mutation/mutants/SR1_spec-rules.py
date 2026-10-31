@@ -85,3 +85,6 @@ m("sr1 protectOver cleans each path again inside the rule", "internal/verify/rul
   "\t\trel, inside := rels[i].rel, rels[i].inside\n",
   "\t\trel, inside := projectPath(*w.Path)\n",
   "TestSR1n_")
+m("sr1 a no-spec discovery resolves symlinks before asking for a root", "internal/hook/specdiscover.go",
+  "\tif git == \"\" && projectDir == \"\" {\n\t\treturn nil\n\t}\n", "",
+  "TestSR1ab_")

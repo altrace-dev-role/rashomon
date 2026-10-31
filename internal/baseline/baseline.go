@@ -236,8 +236,9 @@ func Key(cwd string) string {
 		return ""
 	}
 	dir := cwd
-	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
-		dir = resolved
+	real, err := filepath.EvalSymlinks(cwd)
+	if err == nil {
+		dir = real
 	}
 	for {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
@@ -251,8 +252,8 @@ func Key(cwd string) string {
 		}
 		dir = parent
 	}
-	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
-		return resolved
+	if err == nil {
+		return real
 	}
 	return cwd
 }
