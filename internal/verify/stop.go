@@ -38,7 +38,7 @@ type StopInput struct {
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and
-// Turn; Programs maps each gate of Snap to its last run's program word ("" when
+// Turn; Programs maps each gate of Snap to its last run's program word or runner's name ("" when
 // the record names none); Index is the index EvaluateStop was given, or a new
 // one under the project key, observed in place when the key is set; Scan is
 // the final message's claims against Snap's gates. Snap.Claims is Scan.Claims
