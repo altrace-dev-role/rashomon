@@ -204,9 +204,15 @@ under the call if the command named it.
 | Command | What it does |
 | --- | --- |
 | `rashomon watch [--show]` | Show what installing does; after `y` on the terminal, install the hook entries. `--show` writes nothing |
-| `rashomon status` | Say what is installed and what the store holds, writing nothing |
+| `rashomon status [--json]` | Say what is installed and what the store holds, writing nothing; `--json` gives the same as one object |
 | `rashomon report [--session S\|last] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named (`last`: this project's newest with a checkpoint); a named session opens with a short story and an autosteer block, the tables below it |
-| `rashomon summary [on \| off]` | Say, or set, whether the end-of-turn line prints its value line; on unless set off |
+| `rashomon summary [on \| off] [--user \| --project]` | Say, or set, whether the end-of-turn line prints its value line, for you (`--user`, the default) or for this project; on unless set off |
+| `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
+| `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires |
+| `rashomon steer [off \| on] [--user \| --project]` | Say whether the notes to your agent are on, or turn them off or on; off sends the agent no note and shows you what it would have said, while recording goes on |
+| `rashomon steer on --repair` | Replace a `config.json` that does not read, after asking on your terminal; until then the notes are off |
+| `rashomon steer explain` / `rashomon steer log [--all] [--json]` | Say why the last note was or was not printed, or list the last 20 decisions (`--all`: every one); never a note's text |
+| `rashomon scorecard [--json]` | Count what the notes did, by pattern: sent to the agent, shown to you only, held out, or not printed, and why; counts only |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes` |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |

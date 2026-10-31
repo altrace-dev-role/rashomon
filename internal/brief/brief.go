@@ -1,6 +1,7 @@
 // Package brief is the project brief at session start (card BRIEF1): what
 // the project's own files say about it, read at the moment the session
-// starts, every line naming the file or record it came from. A source that
+// starts, every printed line naming the file or record it came from, in a few
+// words of its own text (a file's name, "(spec, trusted)", "(walk)"). A source that
 // is missing or cannot be read gives that line's none form, never an
 // inference: no manifest is guessed from file extensions, no test command
 // from a directory's contents. probe start prints it to the user and the
@@ -18,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -156,10 +158,19 @@ func Render(b Brief) string {
 	return strings.Join(lines, "\n")
 }
 
+// unsafePath is what a line says in place of a binary path that cannot be
+// shown: the verb by name, which runs from PATH, and why the path is not.
+const unsafePath = " (this binary's path cannot be shown safely)"
+
 // Resumed is the one line printed at resume in place of the brief, naming
 // the verb by this binary (self).
 func Resumed(root string) string {
-	return header + "resumed " + shown(root, Width-len(header)) + "; " + printable(self()) + " brief for the full brief"
+	cmd, ok := self()
+	line := header + "resumed " + shown(root, Width-len(header)) + "; " + cmd + " brief for the full brief"
+	if !ok {
+		line += unsafePath
+	}
+	return line
 }
 
 // executable is the path this process runs as; a test replaces it.
@@ -167,17 +178,35 @@ var executable = os.Executable
 
 // self is the command that runs this binary at a terminal (D189): the path
 // the process runs as, true for both installs, since a plugin's binary is
-// off PATH and a settings install may be too; quoted for a shell when it
-// holds a character a shell reads; rashomon when there is no path.
-func self() string {
+// off PATH and a settings install may be too; rashomon when there is no
+// path. A path is printed bare only when every character is one a shell
+// reads as itself (safeBare); any other is single-quoted. ok is false when
+// the path holds a control, non-printing or bidirectional-format rune or is
+// not valid UTF-8: it is then not shown at all (a "?" for it would still
+// be a path that runs nothing), and the command is "rashomon", from PATH.
+func self() (cmd string, ok bool) {
 	exe, err := executable()
 	if err != nil || exe == "" {
-		return "rashomon"
+		return "rashomon", true
 	}
-	if strings.ContainsAny(exe, " \t'\"\\$`!*?[](){}<>|&;#~") {
-		return "'" + strings.ReplaceAll(exe, "'", `'\''`) + "'"
+	if !utf8.ValidString(exe) || strings.IndexFunc(exe, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+		return "rashomon", false
 	}
-	return exe
+	if !safeBare(exe) {
+		return "'" + strings.ReplaceAll(exe, "'", `'\''`) + "'", true
+	}
+	return exe, true
+}
+
+// safeBare is whether s is made of characters a POSIX shell takes literally
+// outside quotes: letters, digits and _@%+=:,./-.
+func safeBare(s string) bool {
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_@%+=:,./-", r)) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // room is the columns a fact of kind k has for its text on a rendered line.
@@ -308,6 +337,10 @@ func (b *Brief) buildFact() Fact {
 		switch {
 		case fi.Mode()&fs.ModeSymlink != 0:
 			name += " (link)"
+		case !fi.Mode().IsRegular():
+			// A pipe, socket or device is no manifest, and opening a pipe
+			// can wait for a writer that never comes.
+			continue
 		case m == "go.mod":
 			if b.Module = module(p); b.Module != "" {
 				name += " (module " + b.Module + ")"
@@ -317,7 +350,7 @@ func (b *Brief) buildFact() Fact {
 		names, paths = append(names, name), append(paths, p)
 	}
 	if len(names) == 0 {
-		return newFact(KindBuild, "no manifest at the root", b.Root)
+		return newFact(KindBuild, "no manifest at the root (go.mod, package.json, ...)", b.Root)
 	}
 	return newFact(KindBuild, strings.Join(names, ", "), strings.Join(paths, ", "))
 }
@@ -325,11 +358,17 @@ func (b *Brief) buildFact() Fact {
 // module is go.mod's module path from its first modHead bytes, "" when no
 // whole line there declares one.
 func module(path string) string {
-	f, err := os.Open(path)
+	// O_NONBLOCK so a named pipe cannot hold the open until a writer comes
+	// (the session would wait on it); the file is then read only if it is a
+	// regular one.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return ""
 	}
 	defer f.Close() //nolint:errcheck // read-only
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
 	b, err := io.ReadAll(io.LimitReader(f, modHead))
 	if err != nil {
 		return ""
@@ -371,13 +410,12 @@ func testsFact(root, storeRoot string, sp *spec.Compiled) Fact {
 			if d.Source >= 0 && d.Source < len(sp.Sources) {
 				trust, source = sp.Sources[d.Source].Trust, sp.Sources[d.Source].Path
 			}
-			tail := " (" + string(trust) + ")"
+			tail := " (spec, " + string(trust) + ")"
 			if len(tests) > 1 {
 				tail += fmt.Sprintf(" +%d more", len(tests)-1)
 			}
-			const lead = "spec declares "
-			argv := cut(strings.Join(d.Gate.Argv, " "), room(KindTests)-len(lead)-len(tail)-2)
-			return newFact(KindTests, lead+strconv.Quote(argv)+tail, source)
+			argv := cut(strings.Join(d.Gate.Argv, " "), room(KindTests)-len(tail)-2)
+			return newFact(KindTests, strconv.Quote(argv)+tail, source)
 		}
 	}
 	source := "no store"
@@ -400,9 +438,9 @@ func testsFact(root, storeRoot string, sp *spec.Compiled) Fact {
 		}
 	}
 	if runners == 0 {
-		return newFact(KindTests, "no spec gate; no test runner seen in this project yet", source)
+		return newFact(KindTests, "no spec gate; no test runner in the index yet", source)
 	}
-	return newFact(KindTests, fmt.Sprintf("no spec gate; %s seen in up to %s (%d required)",
+	return newFact(KindTests, fmt.Sprintf("no spec gate; %s in the index, up to %s (%d required)",
 		count(runners, "test runner"), count(most, "session"), required), source)
 }
 
@@ -419,8 +457,9 @@ func count(n int, noun string) string {
 // trusts it, and how many files discovery refused.
 func specFact(root string, sp *spec.Compiled) Fact {
 	none := filepath.Join(root, ".claude", "rashomon", "spec.json")
+	const noneText = "none (.claude/rashomon/spec.json)"
 	if sp == nil || len(sp.Sources) == 0 && len(sp.Errors) == 0 {
-		return newFact(KindSpec, "none", none)
+		return newFact(KindSpec, noneText, none)
 	}
 	var parts, paths []string
 	for _, s := range sp.Sources {
@@ -434,7 +473,7 @@ func specFact(root string, sp *spec.Compiled) Fact {
 	}
 	text := strings.Join(parts, ", ")
 	if len(parts) == 0 {
-		text, paths = "none", []string{none}
+		text, paths = noneText, []string{none}
 	}
 	if n := len(sp.Errors); n > 0 {
 		text += " (" + count(n, "error") + ")"
@@ -461,7 +500,11 @@ func trustFact(storeRoot string, sp *spec.Compiled) (Fact, bool) {
 		return Fact{}, false
 	}
 	f := newFact(KindSpecTrust, "bindings file unsigned; re-trust from a terminal:", filepath.Join(storeRoot, spec.TrustFile))
-	f.Next = printable(self() + " spec trust")
+	cmd, ok := self()
+	f.Next = cmd + " spec trust"
+	if !ok {
+		f.Next += unsafePath
+	}
 	return f, true
 }
 
@@ -477,11 +520,13 @@ func taskFact(root string, sp *spec.Compiled) Fact {
 		}
 	}
 	if sp == nil || sp.Task == nil {
-		return newFact(KindTask, "none", path)
+		return newFact(KindTask, "none (task/current.json)", path)
 	}
-	const lead = "task/current.json: "
-	goal := cut(strings.Join(strings.Fields(sp.Task.Goal), " "), room(KindTask)-len(lead)-2)
-	return newFact(KindTask, lead+strconv.Quote(goal), path)
+	// The goal is the repository's words, not rashomon's: the line says so,
+	// and names the file it is in.
+	const lead, tail = "from the repo: ", " (task/current.json)"
+	goal := cut(strings.Join(strings.Fields(sp.Task.Goal), " "), room(KindTask)-len(lead)-len(tail)-2)
+	return newFact(KindTask, lead+strconv.Quote(goal)+tail, path)
 }
 
 // packagesFact counts the directories holding Go files when go.mod is at the
@@ -489,7 +534,7 @@ func taskFact(root string, sp *spec.Compiled) Fact {
 func (b *Brief) packagesFact() Fact {
 	switch {
 	case !slices.Contains(b.Manifests, "go.mod") && len(b.Manifests) > 0:
-		return newFact(KindPackages, "not read for this language", b.Root)
+		return newFact(KindPackages, "not read for this language (go.mod only)", b.Root)
 	case !slices.Contains(b.Manifests, "go.mod"):
 		return newFact(KindPackages, "not read (no go.mod)", b.Root)
 	}
@@ -499,11 +544,14 @@ func (b *Brief) packagesFact() Fact {
 	}
 	slices.Sort(b.Dirs)
 	b.GoDirs, b.WalkCapped = len(dirs), capped
-	n := count(len(dirs), "directory")
-	if capped {
-		return newFact(KindPackages, "walk capped: at least "+n+" with Go files", b.Root)
+	n := strconv.Itoa(len(dirs)) + " Go directories"
+	if len(dirs) == 1 {
+		n = "1 Go directory"
 	}
-	return newFact(KindPackages, n+" with Go files (bounded walk)", b.Root)
+	if capped {
+		return newFact(KindPackages, "at least "+n+" (walk capped)", b.Root)
+	}
+	return newFact(KindPackages, n+" (walk)", b.Root)
 }
 
 // walkGo is the directories at most maxDepth below root that hold a .go
@@ -544,7 +592,13 @@ func readGoDir(dir string, left int, over func() bool) (subs []string, hasGo boo
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	for {
-		if n >= left || over() {
+		if n >= left {
+			// The cap is reached, not necessarily passed: the directory
+			// is short only if one more entry is there to read.
+			ents, _ := f.ReadDir(1)
+			return subs, hasGo, n, len(ents) > 0
+		}
+		if over() {
 			return subs, hasGo, n, true
 		}
 		ents, err := f.ReadDir(min(walkChunk, left-n))

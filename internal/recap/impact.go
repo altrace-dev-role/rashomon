@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
@@ -147,7 +148,7 @@ var findingPatternsOnce struct {
 func lineKeys() *jsonscan.KeySet {
 	lineKeysOnce.Do(func() {
 		lineKeysOnce.v = jsonscan.NewKeySet("id", "state", "prompt_id", "event", "pattern", "model_text",
-			"after_seq", "evidence_seqs", "slots")
+			"after_seq", "evidence_seqs", "slots", "key")
 	})
 	return lineKeysOnce.v
 }
@@ -167,6 +168,7 @@ const (
 	lkAfter
 	lkEvidence
 	lkSlots
+	lkKey
 	lkCount
 )
 
@@ -201,7 +203,7 @@ func ImpactOf(v verify.StopView, lines [][]byte, ls *learn.Ledger) Impact {
 		if ev := seqs(b, out[lkEvidence]); len(ev) > 0 {
 			f.Seq = slices.Max(ev)
 		}
-		f.State, f.ResolvedBy = resolution(v, f)
+		f.State, f.ResolvedBy = resolution(v, f, gateKey(pat, text(b, out[lkKey])))
 		im.Findings = append(im.Findings, f)
 		if pat == string(pattern.MaskedStatus) {
 			im.Unknown = append(im.Unknown, UnknownRef{Kind: UnknownMasked, Seq: f.Seq})
@@ -235,25 +237,60 @@ func ImpactOf(v verify.StopView, lines [][]byte, ls *learn.Ledger) Impact {
 	return im
 }
 
-// resolution reads f against the view's gates. The line's gate slot is a
-// program word, or the gate's kind when the program is a prefix word, which
-// is how the clause names a gate too (gateSet.name).
-func resolution(v verify.StopView, f FindingRef) (FindingState, int64) {
+// gateKey is the gate id a line's dedupe key names: the gate patterns key
+// their line by the gate's id (verify.keyFor), so that key tells two gates
+// of one program apart where the gate slot cannot. "" for any other
+// pattern, and for a subtask-gate line keyed by a task.
+func gateKey(pat, key string) string {
+	switch pat {
+	case string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):
+		return key
+	}
+	return ""
+}
+
+// resolution reads f against the view's gates and settles it by one gate's
+// identity, never by a program or a kind another gate shares. With the
+// line's own gate id (key) that gate is the one; with none (or none in the view), the gate slot
+// (a program word, or the gate's kind when the program is a prefix word, as
+// the clause names a gate, gateSet.name) must pick exactly one gate. The
+// view's program may be the runner's whole name ("go test"), so the slot is
+// compared with its first word. A slot two gates share cannot tell them
+// apart (go test and go build both start with go), so the finding reads open:
+// the report may understate and never overstates.
+func resolution(v verify.StopView, f FindingRef, key string) (FindingState, int64) {
 	if f.Gate == "" {
 		return FindingUnchecked, 0
 	}
-	state, by := FindingOpen, int64(0)
-	for _, g := range v.Snap.Gates {
-		if g.Gate == "" || v.Programs[g.Gate] != f.Gate && g.Kind != f.Gate {
-			continue
+	var match *verify.GateState
+	n := 0
+	for i := range v.Snap.Gates {
+		if key != "" && v.Snap.Gates[i].Gate == key {
+			match, n = &v.Snap.Gates[i], 1
 		}
-		if g.LastGreen != nil && g.LastGreen.Seq > f.Seq && g.State == verify.Green {
-			if state != FindingResolved || g.LastGreen.Seq < by {
-				state, by = FindingResolved, g.LastGreen.Seq
+	}
+	if n == 0 {
+		for i := range v.Snap.Gates {
+			g := &v.Snap.Gates[i]
+			if g.Gate != "" && (programWord(v.Programs[g.Gate]) == f.Gate || g.Kind == f.Gate) {
+				match = g
+				n++
 			}
 		}
 	}
-	return state, by
+	if n != 1 || match.LastGreen == nil || match.LastGreen.Seq <= f.Seq || match.State != verify.Green {
+		return FindingOpen, 0
+	}
+	return FindingResolved, match.LastGreen.Seq
+}
+
+// programWord is the first whitespace-separated word of a gate's program: "go"
+// for "go" and for "go test", "" for none.
+func programWord(p string) string {
+	if w := strings.Fields(p); len(w) > 0 {
+		return w[0]
+	}
+	return ""
 }
 
 // number is a number value's integer, 0 for any other kind.

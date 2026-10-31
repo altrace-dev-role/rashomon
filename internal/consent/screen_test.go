@@ -134,7 +134,7 @@ func TestTRU2_ScreenNamesEveryEntryCarriesEveryParagraphFitsEighty(t *testing.T)
 	// Which section each layer's text belongs in is the screen's layout
 	// (Technical spec 7.2.3), not something the inventory may move: a paragraph
 	// cited into another section changes these counts.
-	wantPerSection := map[int]int{1: 3, 2: 5, 3: 4, 4: 3, 5: 2}
+	wantPerSection := map[int]int{1: 3, 2: 5, 3: 4, 4: 3, 5: 3}
 	gotPerSection := map[int]int{}
 	carried := 0
 	for _, p := range inv.Paragraphs {
@@ -173,8 +173,8 @@ func TestTRU2_ScreenNamesEveryEntryCarriesEveryParagraphFitsEighty(t *testing.T)
 			t.Errorf("section 5 does not list %q -> %q", c.Does, c.Run)
 		}
 	}
-	if len(Commands) != 7 || commands != 7 {
-		t.Errorf("the screen lists %d of %d commands; the spec names seven", commands, len(Commands))
+	if len(Commands) != 8 || commands != 8 {
+		t.Errorf("the screen lists %d of %d commands; the screen names eight", commands, len(Commands))
 	}
 
 	if again := render(t, in); again != screen {
