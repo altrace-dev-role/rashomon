@@ -32,3 +32,5 @@ test/tools/hygiene/reviewed.txt 443d1f66631eae2a a fuzz seed's entry in this fil
 test/tools/hygiene/reviewed.txt 5fff17de04496d85 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt 883aa8477c75131f a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt 43454ff9356cb927 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/perf/budgets.json 4e31a4368b654a3e a re-anchored benchmark row's basis note or the platform's set_from, written by scripts/reanchor: prose naming the CI run, runner, toolchain and old and new figures; it holds no credential and no account value
+test/perf/budgets.json c0e32bb5e5a445ba a re-anchored benchmark row's basis note or the platform's set_from, written by scripts/reanchor: prose naming the CI run, runner, toolchain and old and new figures; it holds no credential and no account value
