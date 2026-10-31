@@ -16,8 +16,8 @@ import (
 // neither. Break: write the stage's own text, and the enum and the
 // leak check both fail.
 func TestSchema8_TheExecutionNamesItsRunnerAndTheStageThatHidItsStatus(t *testing.T) {
-	if store.CallSchemaVersion != 8 {
-		t.Fatalf("CallSchemaVersion = %d, want 8", store.CallSchemaVersion)
+	if store.CallSchemaVersion < 8 {
+		t.Fatalf("CallSchemaVersion = %d, want 8 or later", store.CallSchemaVersion)
 	}
 	defs := schemaDefs(t)
 	exec, _ := defs["execution"].(map[string]any)

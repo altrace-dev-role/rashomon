@@ -12,11 +12,11 @@ const EventSchemaVersion = 5
 // terminal) are written at: the v5 keys (record_v5.go), at 6 runner_kind on
 // the declaration's shape and the execution, at 7 store_named on the
 // declaration (D173b), and at 8 runner_name and masked_by on the execution
-// (D229). A new key gets a version of
+// (D229), and at 9 location_unread on the declaration (5.14b). A new key gets a version of
 // its own and never joins an existing one, whose records are already on disk
 // without it (D11). SchemaVersion is the same number under the name the
 // writers use.
-const CallSchemaVersion = 8
+const CallSchemaVersion = 9
 
 // The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
 // STEER's lines live in their own side file, runs/<dir>/steer.ndjson.

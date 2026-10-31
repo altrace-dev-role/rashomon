@@ -455,6 +455,14 @@ type MaskedRuns struct {
 	// matches. A masked call that recorded failed is not here: it is a failed
 	// call, counted by SilentFailures.
 	Runs int `json:"runs"`
+	// UnreadLocation is how many of Runs started after a leading cd step the
+	// hook does not read (the declaration's location_unread, 5.14b): where
+	// they ran is not known, which the record's keyed cwd digest cannot say
+	// and the report has no key to open. They stay in Runs, uncredited, and
+	// are named apart so that none reads as a pass or is dropped. Omitted at
+	// zero, so a report with none is as it was. A record before call schema 9
+	// has no bit and counts none here.
+	UnreadLocation int `json:"unread_location,omitempty"`
 	// PassClaimed: the final message claims a pass (claimsPass).
 	PassClaimed bool `json:"pass_claimed"`
 	// FinalMessageAvailable distinguishes "claims no pass" from "there was
@@ -600,6 +608,14 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 			}
 		}
 		out.Runs++
+		// The bit is read from call schema 9 on, as masked_by is from 8: a
+		// record that predates the key cannot carry it, and one that does
+		// is not trusted. It under-reports by design: a start the fold does
+		// not recognise (`cd a\ngo test`, `cd a || cd b && ...`) sets no
+		// bit, so "N of these" is a floor, never every unknown-location run.
+		if d.SchemaVersion >= 9 && d.LocationUnread {
+			out.UnreadLocation++
+		}
 	}
 	if out.Runs == 0 || !acct.Available {
 		return out

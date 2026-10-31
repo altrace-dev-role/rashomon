@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/altrace-dev-role/rashomon/docs/store-schema.json",
   "title": "rashomon store records",
-  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
+  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. The one exception is a declaration's location_unread (schema 9), a bit that is present only when true: its absence is false, one spelling, as for a record before schema 9. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
   "oneOf": [
     {
       "$ref": "#/$defs/declaration"
@@ -62,7 +62,8 @@
             5,
             6,
             7,
-            8
+            8,
+            9
           ]
         },
         "seq": {
@@ -213,6 +214,10 @@
         "cwd_digest": {
           "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in, one of three outcomes. Where the line's leading `cd DIR &&` steps are read (no expansion, quoting or -, but `~` and `~/...`, which the hook expands with its own home, not `~user`, `~+` or `~-`): the PreToolUse payload's cwd, which follows the shell from one call to the next, with the steps folded onto it, an absolute target replacing the directory and a relative one joining it. Where the program search steps over leading cd steps that are not read (a variable, quoting, -, an option, an assignment, redirection, ( or { before the cd, a bare cd, or `cd DIR;`, which the shell does not guard): an HMAC in a domain of its own, of the payload's cwd and those steps as the tokenizer reads them, which no read directory's digest equals. With no leading cd step, a leading pushd or popd included: the payload's cwd. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd to resolve a relative step against or to key unread steps on, no home to expand `~` with, or more than 64 read leading cd steps, past which the fold stops.",
           "type": "string"
+        },
+        "location_unread": {
+          "description": "Schema 9 (5.14b). One bit: the line's leading cd steps were ones the hook does not read (a variable, quoting, `-`, an option, an assignment, a redirection, a bare cd, or `cd DIR;`, which the shell does not guard), so cwd_digest is the unread fold's digest and where the call ran is not known. The only key a call record omits: it is present, true, on such a call and absent on every other, so a call whose location was read costs no byte, and a reader reads an absent key false, as it does a record before schema 9. A fact about the parse, never a word of the command; it is not in any gate's required list for that reason.",
+          "type": "boolean"
         },
         "store_named": {
           "description": "Schema 7 (D173b). One bit: whether the call's raw input names rashomon's store root, its slashes plain or escaped. The root is compared at hook time and dropped; no path is stored. Kept at every record scope, so a record whose scope or caps withhold the paths still says the call named the store, and the trust drop reads it there. A read that names the root sets it too. A record before schema 7 has no such key, and a reader reads it false (D11).",
@@ -750,6 +755,65 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 9
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest",
+              "rules_version",
+              "writer",
+              "command",
+              "command_bytes",
+              "command_cut",
+              "masked",
+              "command_withheld",
+              "cwd",
+              "project",
+              "file_path",
+              "written_paths",
+              "written_paths_complete",
+              "target",
+              "edit_marks_before",
+              "written_paths_withheld",
+              "file_path_withheld",
+              "cwd_withheld",
+              "project_withheld",
+              "target_withheld",
+              "edit_marks_before_withheld",
+              "prompt_id_withheld",
+              "agent_id_withheld",
+              "agent_type_withheld",
+              "hosts_withheld",
+              "ssh_hosts_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "store_named"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest",
+                  "runner_kind"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -788,7 +852,8 @@
             5,
             6,
             7,
-            8
+            8,
+            9
           ]
         },
         "seq": {
@@ -1316,6 +1381,54 @@
               "mcp_server_source"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 9
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded",
+              "status_masked",
+              "runner_digest",
+              "runner_kind",
+              "runner_name",
+              "masked_by",
+              "rules_version",
+              "writer",
+              "executed_command",
+              "executed_command_reason",
+              "executed_command_bytes",
+              "executed_command_cut",
+              "executed_masked",
+              "failure",
+              "output_evidence",
+              "edit_marks",
+              "head_after",
+              "gate_output",
+              "credmech",
+              "content_sha256",
+              "executed_command_withheld",
+              "failure_withheld",
+              "output_evidence_withheld",
+              "edit_marks_withheld",
+              "head_after_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "outcome_source",
+              "failure_type",
+              "mcp_server_source"
+            ]
+          }
         }
       ]
     },
@@ -1406,6 +1519,24 @@
               "writer"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 9
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase",
+              "writer"
+            ]
+          }
         }
       ],
       "properties": {
@@ -1424,7 +1555,8 @@
             5,
             6,
             7,
-            8
+            8,
+            9
           ]
         },
         "seq": {
