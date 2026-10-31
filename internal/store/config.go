@@ -26,6 +26,8 @@ const (
 	configLockBudget = 2 * time.Second
 	// SwitchOff is the value a per-scope switch holds when it is off.
 	SwitchOff = "off"
+	// SwitchOn is the one value a steer switch that is set reads as on.
+	SwitchOn = "on"
 	// maxConfigBytes bounds the file's read: a few switches.
 	maxConfigBytes = 1 << 16
 )
@@ -64,13 +66,19 @@ func (c Config) SummaryOnFor(project string) bool {
 	return c.SummaryOn() && c.SummaryProjects[project] != SwitchOff
 }
 
+// steerSwitchOff reads a steer switch's value: absent is on (the default),
+// exactly "on" is on, and any other value is off, so a hand's "Off" or
+// "disabled" clamps the notes rather than leaving them on. The writer only
+// ever writes "off" (an on switch is absent).
+func steerSwitchOff(v string) bool { return v != "" && v != SwitchOn }
+
 // SteerOffUser reports the user's steer switch off.
-func (c Config) SteerOffUser() bool { return c.SteerUser == SwitchOff }
+func (c Config) SteerOffUser() bool { return steerSwitchOff(c.SteerUser) }
 
 // SteerOffFor reports the notes off for project: the user's switch or the
 // project's own.
 func (c Config) SteerOffFor(project string) bool {
-	return c.SteerOffUser() || c.SteerProjects[project] == SwitchOff
+	return c.SteerOffUser() || steerSwitchOff(c.SteerProjects[project])
 }
 
 // ReadConfig reads root's config. An absent file is the zero Config and no

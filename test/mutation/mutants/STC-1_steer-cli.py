@@ -36,10 +36,14 @@ m("STC-1 steer off clamps for another reason", D,
   "\t\treturn reason(SuppressedBySteerOff)\n", "\t\treturn reason(SuppressedByConsentMissing)\n", "TestSTC1f_|TestST_ClampsRecordTheirReason")
 
 # The config: scopes, lock, unknown keys.
+m("STC-1 only the exact word off reads as off", C,
+  "func steerSwitchOff(v string) bool { return v != \"\" && v != SwitchOn }", "func steerSwitchOff(v string) bool { return v == SwitchOff }", "TestSTC1n_")
+m("STC-1 an unrecognised user switch value reads as on", C,
+  "func (c Config) SteerOffUser() bool { return steerSwitchOff(c.SteerUser) }", "func (c Config) SteerOffUser() bool { return c.SteerUser == SwitchOff }", "TestSTC1n_")
 m("STC-1 a project's switch reads for every project", C,
-  "\treturn c.SteerOffUser() || c.SteerProjects[project] == SwitchOff\n", "\treturn c.SteerOffUser() || len(c.SteerProjects) > 0\n", "TestSTC1_ScopesAreEachOwn")
+  "\treturn c.SteerOffUser() || steerSwitchOff(c.SteerProjects[project])\n", "\treturn c.SteerOffUser() || len(c.SteerProjects) > 0\n", "TestSTC1_ScopesAreEachOwn")
 m("STC-1 the user's steer switch is not a scope", C,
-  "\treturn c.SteerOffUser() || c.SteerProjects[project] == SwitchOff\n", "\treturn c.SteerProjects[project] == SwitchOff\n", "TestSTC1_ScopesAreEachOwn")
+  "\treturn c.SteerOffUser() || steerSwitchOff(c.SteerProjects[project])\n", "\treturn steerSwitchOff(c.SteerProjects[project])\n", "TestSTC1_ScopesAreEachOwn")
 m("STC-1 a project's summary switch is ignored", C,
   "\treturn c.SummaryOn() && c.SummaryProjects[project] != SwitchOff\n", "\treturn c.SummaryOn()\n", "TestSTC1_ScopesAreEachOwn|TestSTC1_SummaryScopes")
 m("STC-1 the config writer takes no lock", C,
