@@ -252,12 +252,12 @@ func TestRP1h_SessionLast(t *testing.T) {
 	}
 }
 
-// TestH121_TheFirstScreenIsUnderTwentyLines: the report of a session opens
+// TestH143_TheFirstScreenIsUnderTwentyLines: the report of a session opens
 // with its story, and the story is over, "details below" included, inside
 // twenty lines of the top, store-wide header lines counted; the tables follow
 // it (Rishi's finding: the report is dense; the acceptance is the story in
 // under twenty lines, tables below).
-func TestH121_TheFirstScreenIsUnderTwentyLines(t *testing.T) {
+func TestH143_TheFirstScreenIsUnderTwentyLines(t *testing.T) {
 	e := newEnv(t)
 	e.rpSession(t)
 	res := e.run("", nil, "report", "--session", testSession)
