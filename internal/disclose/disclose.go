@@ -34,8 +34,10 @@ import (
 // keeps what an earlier screen did not name, or promises the model a new kind
 // of content, shows the screen again rather than riding on an older yes.
 // 5: the screen names the time each hook event first ran in a session (the
-// fired-<event> marker), and an approved lesson reaches the agent with a
-// prompt. Pinned by TRU-8.
+// fired-<event> marker, #148), says an approved lesson reaches the agent with
+// a prompt (#156), and names the on and off switches the record keeps in
+// config.json, with a project's directory for a project's switch (#160).
+// Pinned by TRU-8.
 const ScopeVersion = 5
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
