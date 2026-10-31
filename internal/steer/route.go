@@ -140,6 +140,10 @@ func route(ctx *Context, findings []Finding) Output {
 	}
 	c := ctx.Client
 	c.Subagent = c.Subagent || ctx.AgentID != ""
+	table := mirrorVerifiedOn()
+	if verified(outputKeys()[string(ctx.Event)], string(ctx.Event), c, table) {
+		c.EvidenceAbsent = evidenceShadow(ctx, c, table)
+	}
 	mint := ctx.NewID
 	if mint == nil {
 		mint = newID
