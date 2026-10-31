@@ -343,6 +343,13 @@ func newBenchWrite(b *testing.B, n int) (*Post, *benchSteer) {
 func (f *benchSteer) writeRow(w *Post, env SteerEnv, armed bool) func(*testing.B) {
 	return func(b *testing.B) {
 		before := len(f.lines(b))
+		if !armed {
+			// The turn's prompt found no spec and noted it (D210), as every
+			// prompt's preflight does, so the unarmed write's rules step
+			// stops at the note and discovers nothing.
+			w.promptID = "p1"
+			NoteSpecFound(f.st, benchSteerSession, w.promptID, w.cwd, env.ProjectDir, env.ManagedDir, nil)
+		}
 		f.writePremise(b, w, env, armed)
 		b.ReportAllocs()
 		b.ResetTimer()

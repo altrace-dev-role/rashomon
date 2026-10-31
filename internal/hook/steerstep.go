@@ -259,29 +259,50 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 
 // discoverFor is the spec the call is judged against. With the run read,
 // it is discovered under TrustRoot's root (D173). A rules-only call reads no
-// run, so it is discovered once under NoRun, and a repository spec found
-// trusted is checked: the run is read and, if it names a write under the
-// store root or cannot be read, the spec is discovered again with no trust,
-// so a session that could have written its own binding never raises a
-// model-visible rule (D173). A spec that binds nothing, the common case,
-// costs no read.
+// run, so it is discovered once with no trust, and a repository spec the bindings
+// hold is checked: the run is read and, if it names a write under the store
+// root or cannot be read, the spec stays untrusted, so a session that could
+// have written its own binding never raises a model-visible rule (D173). A
+// spec that binds nothing, the common case, costs no run read.
 func (p *Post) discoverFor(env SteerEnv, key string, run *store.Run, stepped bool) *spec.Compiled {
 	root := p.st.Root()
 	if stepped {
 		return discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))
 	}
-	sp := discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, NoRun(root))
-	if sp == nil || !slices.ContainsFunc(sp.Sources, func(s spec.Source) bool { return s.Trust == spec.Trusted }) {
+	sp := discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustedRoot{})
+	if sp == nil || !boundSource(sp, root) {
 		return sp
 	}
-	t := TrustedRoot{}
 	if r, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget); err == nil {
-		t = TrustRoot(r, root, p.landedSeq)
-	}
-	if t == (TrustedRoot{}) {
-		return discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, t)
+		if t := TrustRoot(r, root, p.landedSeq); t != (TrustedRoot{}) {
+			return discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, t)
+		}
 	}
 	return sp
+}
+
+// boundSource reports that the bindings file under root holds a source of sp
+// that was discovered with no trust. A session's own record is read before it
+// is believed (TrustRoot), so discoverFor discovers first under no root, and
+// only a spec the bindings could make trusted pays for the run read and a
+// second discovery.
+func boundSource(sp *spec.Compiled, root string) bool {
+	var b *spec.Bindings
+	for _, s := range sp.Sources {
+		if s.Trust != spec.Untrusted {
+			continue
+		}
+		if b == nil {
+			var err error
+			if b, err = spec.ReadBindings(spec.OSFS{}, root); err != nil {
+				return false
+			}
+		}
+		if b.Holds(SpecProject(s.Path), s.Path, s.Digest) {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleCall is the call the spec's rules judge, read from the input only as

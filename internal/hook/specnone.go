@@ -29,14 +29,16 @@ import (
 // from: the store's key over the cwd and the two directories the environment
 // adds, so the marker holds no path and a call from elsewhere does not match.
 func specNoneDigest(key []byte, cwd, projectDir, managedDir string) string {
-	h := sha256.New()
-	h.Write(key)
+	var buf [512]byte
+	b := append(buf[:0], key...)
 	for _, s := range [3]string{cwd, projectDir, managedDir} {
-		h.Write([]byte{0})
-		h.Write([]byte(s))
+		b = append(b, 0)
+		b = append(b, s...)
 	}
-	var sum [sha256.Size]byte
-	return hex.EncodeToString(h.Sum(sum[:0]))
+	sum := sha256.Sum256(b)
+	var out [sha256.Size * 2]byte
+	hex.Encode(out[:], sum[:])
+	return string(out[:])
 }
 
 // NoteSpecFound is the prompt preflight's note of its discovery for the

@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,10 +43,19 @@ func (s *Store) NoSpecNoted(sessionID, promptID, digest string) bool {
 	if promptID == "" || s.opened() != nil {
 		return false
 	}
-	b, err := os.ReadFile(filepath.Join(s.RunDir(sessionID), FileSpecNone))
-	if err != nil || len(b) > specNoneMaxBytes {
+	f, err := os.Open(s.RunDir(sessionID) + string(filepath.Separator) + FileSpecNone)
+	if err != nil {
 		return false
 	}
+	// One byte over the cap tells an oversize marker from a full one; the
+	// buffer stays on the stack where ReadFile's would not.
+	var buf [specNoneMaxBytes + 1]byte
+	n, _ := io.ReadFull(f, buf[:])
+	_ = f.Close()
+	if n > specNoneMaxBytes {
+		return false
+	}
+	b := buf[:n]
 	b, ok := bytes.CutPrefix(b, []byte("none\n"))
 	if !ok {
 		return false
