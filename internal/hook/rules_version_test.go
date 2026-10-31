@@ -86,7 +86,7 @@ func locationDigest(t *testing.T) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, d := Locate(key, "Bash", in, c[1])
+		_, d, _ := Locate(key, "Bash", in, c[1])
 		if d == "" {
 			d = "\x00"
 		}

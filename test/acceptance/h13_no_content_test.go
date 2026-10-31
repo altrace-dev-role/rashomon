@@ -67,6 +67,12 @@ var (
 		"agent_id_withheld", "agent_type_withheld", "hosts_withheld", "ssh_hosts_withheld",
 		"harness_id", "harness_tool_name", "declared_via",
 	}
+	// omittedWhenFalseKeys are the declaration keys that are present only when
+	// true (call schema 9, 5.14b): location_unread, a bit about the parse. The
+	// one place a key is absent where the fact is false, so the key sets above
+	// stay the ones every record carries, and these are allowed beside them.
+	omittedWhenFalseKeys = []string{"location_unread"}
+
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "tool_name",

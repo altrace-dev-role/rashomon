@@ -3,6 +3,8 @@ package acceptance
 import (
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // MASKED-OUTCOME1's card acceptance, through the binary: Claude Code's default
@@ -33,9 +35,9 @@ func TestMO1_APipedPytestIsRecordedAndSaidWithItsRunner(t *testing.T) {
 			continue
 		}
 		found = true
-		if r.str("runner_name") != "python3 -m pytest" || r.str("masked_by") != "tail" || r.fields["schema_version"] != float64(8) {
-			t.Errorf("execution names runner %v stage %v at schema %v, want python3 -m pytest, tail, 8",
-				r.fields["runner_name"], r.fields["masked_by"], r.fields["schema_version"])
+		if r.str("runner_name") != "python3 -m pytest" || r.str("masked_by") != "tail" || r.fields["schema_version"] != float64(store.CallSchemaVersion) {
+			t.Errorf("execution names runner %v stage %v at schema %v, want python3 -m pytest, tail, %d",
+				r.fields["runner_name"], r.fields["masked_by"], r.fields["schema_version"], store.CallSchemaVersion)
 		}
 		if r.str("status_masked") != "test" {
 			t.Errorf("status_masked = %v, want test: the exit status stays masked beside the output outcome", r.fields["status_masked"])

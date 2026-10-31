@@ -82,6 +82,11 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 			for _, k := range c.allowed {
 				want[k] = true
 			}
+			if c.def == "declaration" {
+				for _, k := range omittedWhenFalseKeys {
+					want[k] = true
+				}
+			}
 			for k := range got {
 				if !want[k] {
 					t.Errorf("the schema declares %q, which is not in the allowlist the tests enforce", k)
@@ -460,7 +465,7 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, gated map[s
 			path = prefix + "." + key
 		}
 		into[path] = true
-		if !required[key] {
+		if !required[key] && !(prefix == "" && slices.Contains(omittedWhenFalseKeys, key)) {
 			t.Errorf("%s is not in required; an absent key and a null one would be two spellings of one fact", path)
 		}
 		child, ok := raw.(map[string]any)
