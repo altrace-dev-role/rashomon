@@ -63,7 +63,7 @@ var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.Di
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
-	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileNoticeChannel,
+	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
 	store.FileNoticeHoldout, fold.FileName, fold.MidFileName}
 
 var runTempPrefixes = []string{fold.TempPrefix}

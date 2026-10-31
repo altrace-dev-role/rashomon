@@ -92,3 +92,20 @@ m("sr1 a rules-only call trusts a bound spec without reading the run", "internal
   "\tt := TrustedRoot{}\n\tif r, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget); err == nil {\n\t\tt = TrustRoot(r, root, p.landedSeq)\n\t}\n",
   "\tt := NoRun(root)\n",
   "TestSR1aa_")
+
+# D210's no-spec note: one row per way the note could be misread.
+m("sr1 the no-spec note is used across turns", "internal/store/specnone.go",
+  "\tif !ok || string(turn) != promptID {\n", "\tif !ok {\n", "TestSR1ae_")
+m("sr1 the no-spec note ignores the directory", "internal/store/specnone.go",
+  "\treturn ok && string(dig) == digest && len(b) == 0\n", "\treturn ok && len(b) == 0\n", "TestSR1ae_")
+m("sr1 a call naming .claude/rashomon leaves the no-spec note", "internal/hook/steerstep.go",
+  "\tif p.landedStore {\n\t\tp.st.ClearNoSpec(p.sessionID)\n\t}\n", "", "TestSR1ae_")
+m("sr1 a found spec is noted too", "internal/hook/specnone.go",
+  "\tif sp != nil {\n\t\tst.ClearNoSpec(sessionID)\n\t\treturn\n\t}\n", "", "TestSR1ae_")
+m("sr1 a missing no-spec note reads as no spec", "internal/store/specnone.go",
+  "\tif err != nil || len(b) > specNoneMaxBytes {\n\t\treturn false\n\t}\n",
+  "\tif err != nil || len(b) > specNoneMaxBytes {\n\t\treturn true\n\t}\n", "TestSR1ae_")
+m("sr1 the Stop takes the no-spec note for no spec", "cmd/rashomon/recap_stop.go",
+  "\tsp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))\n",
+  "\tsp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))\n\tif hook.SpecNoted(st, p.SessionID, d.PromptID, p.CWD, projectDir, managedDir) {\n\t\tsp = nil\n\t}\n",
+  "TestSR1ad_")

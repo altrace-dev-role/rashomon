@@ -12,6 +12,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -347,6 +348,29 @@ func benchCheckCalls(b *testing.B, root string, declarations, executions int, st
 	}
 }
 
+// benchNoteNoSpec is the UserPromptSubmit preflight's note that the turn's
+// directory holds no spec (hook.NoteSpecFound), for the post rows: the
+// rules step of a turn whose prompt named a path finds it and skips the
+// second discovery (card SPEC-RULES1, D210). A turn whose prompt named
+// nothing runs no preflight discovery, writes no note, and pays the
+// discovery in full; the rows measure the first case.
+func benchNoteNoSpec(b *testing.B, root string, body []byte) {
+	b.Helper()
+	var head struct {
+		benchHead
+		PromptID string `json:"prompt_id"`
+	}
+	if err := json.Unmarshal(body, &head); err != nil {
+		b.Fatal(err)
+	}
+	st, err := store.OpenExisting(root)
+	if err != nil {
+		b.Fatal(err)
+	}
+	projectDir, managedDir := specDirs()
+	hook.NoteSpecFound(st, head.SessionID, head.PromptID, head.CWD, projectDir, managedDir, nil)
+}
+
 // benchToolCalls runs a tool-call entry b.N times, each time as a new call,
 // against a store this helper opens and warms once first.
 //
@@ -368,6 +392,9 @@ func benchToolCalls(b *testing.B, entry func([]string, io.Reader, io.Writer) int
 	in := newBenchInput(b, body)
 	args := []string{install.Marker, installID}
 	var stderr benchSink
+	if !declares {
+		benchNoteNoSpec(b, root, body)
+	}
 	if code := entry(args, in.next(benchWarmupIndex), &stderr); code != exitOK {
 		b.Fatalf("warm-up call exited %d", code)
 	}

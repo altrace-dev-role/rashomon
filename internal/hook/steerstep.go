@@ -221,7 +221,10 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 			stepped = true
 		}
 	}
-	if !stepped && !ruled(p.event, p.landedSeq, p.toolName) {
+	if p.landedStore {
+		p.st.ClearNoSpec(p.sessionID)
+	}
+	if !stepped && (!ruled(p.event, p.landedSeq, p.toolName) || p.noSpecNoted(env)) {
 		return steer.Context{}, verify.SteerView{}, false
 	}
 	var run *store.Run
