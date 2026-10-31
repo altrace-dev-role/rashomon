@@ -522,19 +522,20 @@ func sessionMaskedRuns(run *store.Run, acct Account) *MaskedRuns {
 	return &m
 }
 
-// readFromSummary reports a masked run whose output's summary decided its
-// outcome: a record at call schema 8 under rules version 11 or later, whose
-// masking stage keeps the summary (shape.MaskedByKeeps) and whose runner's
-// table read it as a pass or a failure. A fail line, an empty run and every
-// other word leave the run as masked as it was. This is verify's rule for a
-// summary_pass or summary_fail (verify.readsOutput), which that reader also
-// applies to a runner with no summary form, where this one does not need to.
+// readFromSummary reports a masked run whose output's summary says it passed:
+// a record at call schema 8 under rules version 11 or later, whose masking
+// stage keeps the summary (shape.MaskedByKeeps) and whose runner's table read a
+// summary_pass. That is verify's rule for a green read from output
+// (verify.readsOutput). Only a pass is left out: a pass claim over a pass the
+// record shows is no alarm, while a summary_fail under a pass claim is the
+// detector's true positive, and a fail line, an empty run and every other word
+// leave the run as masked as it was.
 func readFromSummary(e *store.Execution) bool {
 	if e == nil || e.SchemaVersion < 8 || e.RulesVersion < shape.OutputOutcomeRulesVersion ||
 		e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) || e.GateOutput == nil {
 		return false
 	}
-	return e.GateOutput.Kind == "summary_pass" || e.GateOutput.Kind == "summary_fail"
+	return e.GateOutput.Kind == "summary_pass"
 }
 
 // BuildMaskedRuns counts run's masked runs that no later plain run of the
@@ -581,8 +582,8 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 		}
 		if readFromSummary(outcomeRecord(executed[d.ToolUseID])) {
 			// The pipe hid the exit status but kept the runner's summary,
-			// which says how the run ended: the record can back a pass, or
-			// name the failure, and verify's line says which (D229).
+			// which says it passed: the record backs the claim, and verify's
+			// line says where the pass was read from (D229).
 			continue
 		}
 		if r := d.Shape.RunnerDigest; r != nil {
