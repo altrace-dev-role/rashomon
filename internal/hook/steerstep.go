@@ -272,7 +272,8 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 }
 
 // discoverFor is the spec the call is judged against. With the run read,
-// it is discovered under TrustRoot's root (D173). A rules-only call reads no
+// it is discovered under TrustRoot's root (D173); a step whose run could not
+// be read has none to check and takes the path below. A rules-only call reads no
 // run, so it is discovered once with no trust, and a repository spec the bindings
 // hold is checked: the run is read and, if it names a write under the store
 // root or cannot be read, the spec stays untrusted, so a session that could
@@ -280,7 +281,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 // spec that binds nothing, the common case, costs no run read.
 func (p *Post) discoverFor(env SteerEnv, key string, run *store.Run, stepped bool) *spec.Compiled {
 	root := p.st.Root()
-	if stepped {
+	if stepped && run != nil {
 		return discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))
 	}
 	sp := discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustedRoot{})
