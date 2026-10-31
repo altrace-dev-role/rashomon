@@ -268,7 +268,9 @@ func TestRP1h_SessionLast(t *testing.T) {
 	e.rpSession(t)
 	last := e.run("", nil, "report", "--session", "last")
 	named := e.run("", nil, "report", "--session", testSession)
-	if last.exitCode != 0 || last.stdout != named.stdout {
+	// The first line stamps the second the report was generated, so two runs
+	// a second apart differ there; the rest must be the same report.
+	if last.exitCode != 0 || dropGenerated(last.stdout) != dropGenerated(named.stdout) {
 		t.Errorf("--session last: exit %d, %s\n%s", last.exitCode, last.stderr, last.stdout)
 	}
 	// Another project's checkpoint is not this one's last session.
@@ -313,4 +315,16 @@ func TestH143_TheFirstScreenIsUnderTwentyLines(t *testing.T) {
 	if !rpGates.MatchString(strings.Join(lines[:end+1], "\n")) {
 		t.Errorf("the first screen lacks the go gate green at a seq:\n%s", strings.Join(lines[:end+1], "\n"))
 	}
+}
+
+// dropGenerated is a text report without its "generated" stamp line.
+func dropGenerated(s string) string {
+	lines := strings.Split(s, "\n")
+	out := lines[:0]
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "rashomon report -- generated ") {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
 }
