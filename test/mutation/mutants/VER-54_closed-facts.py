@@ -1,7 +1,9 @@
 # VER-54: no fact field carries output or edit text. A fact field typed as a
 # bare string is the whole regression; the test walks the four fact structs.
+# The break adds a bare-string twin of the id beside it: retyping GateID itself
+# breaks every reader that converts it, and a mutant is one file.
 m("VER-54 a gate fact carries its id as free text", "internal/verify/finding.go",
-  "\tGateID       SlotID\n", "\tGateID       string\n", "TestVER54b_")
+  "\tGateID       SlotID\n", "\tGateID       SlotID\n\tGateIDText   string\n", "TestVER54b_")
 # ToSteer, the verify-to-steer mapping (P07N-1 to -5, -13; verify F11, F12).
 m("VER-54 the masked claim reaches the model at stop", "internal/verify/tosteer_card.go",
   '\t\tcase "masked":\n\t\t\treturn flag, true\n', '\t\tcase "masked-never":\n\t\t\treturn flag, true\n', "TestVER54e_")
@@ -128,8 +130,10 @@ m("VER-54 a closed reason has no state", "internal/verify/tosteer_vocab.go",
 m("VER-54 a quote HMAC is valid without its prefix", "internal/verify/finding.go",
   "\tif !strings.HasPrefix(s, QuoteHMACPrefix) {\n\t\treturn false\n\t}\n\treturn Digest(s[len(QuoteHMACPrefix):]).Valid()\n",
   "\treturn Digest(s).Valid()\n", "TestVER54d_")
+# The break types the field as any: GateOutput's one writer assigns a
+# *store.GateOutput, so a bare string would not build there (a mutant is one file).
 m("VER-54 a gate run's output classification is a free string again", "internal/verify/snapshot.go",
-  "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n", "\tGateOutput string            `json:\"gate_output\"`\n", "TestVER11b_")
+  "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n", "\tGateOutput any               `json:\"gate_output\"`\n", "TestVER11b_")
 IMPORTS["VER-54 a gate run's output classification is a free string again"] = ("internal/verify/snapshot.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '')
 m("VER-54 a path segment with a leading '-' is valid", "internal/verify/finding.go",
   '\t\tif el == "" || el == "." || el == ".." || el[0] == \'-\' {\n',

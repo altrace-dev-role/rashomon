@@ -180,7 +180,7 @@ m("VER-1.8r2 testPairs keeps the guard", P,
 m("VER-1.8r2 evaluate reads integrity before recording's return", E,
   "\tif snap.Recording != Complete {\n\t\treturn snap\n\t}\n\tpicked := pickExecutions(run)\n\truns, writes, unnamed, rewritten := classifyWith(run, picked)\n",
   "\tpicked := pickExecutions(run)\n\truns, writes, unnamed, rewritten := classifyWith(run, picked)\n"
-  "\tif snap.Recording != Complete {\n\t\tsnap.Integrity = integrity(run, picked, writes, 0, at)\n\t\treturn snap\n\t}\n",
+  "\tif snap.Recording != Complete {\n\t\tsnap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)\n\t\treturn snap\n\t}\n",
   "TestINT19b_")
 m("VER-1.8r2 undeclared finds no orphan", P,
   "func undeclared(run *store.Run, at int64) bool {\n",
