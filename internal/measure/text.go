@@ -15,17 +15,35 @@ import (
 // measure an effect.
 const Hypothesis = "n = 1 per arm: a difference here is a hypothesis to test, not a measured effect of rashomon's notes."
 
-// caveatText is each caveat's sentence; n_is_one's is Hypothesis.
-var caveatText = map[string]string{
-	CaveatArmUnrecorded:       "a session wrote no steer line, so its arm is the one asked, not one read from the record",
-	CaveatTranscriptMissing:   "a session has no transcript under the configuration directory, so its transcript rows are blank",
-	CaveatTranscriptPartial:   "some transcript lines did not read, so the transcript rows undercount",
-	CaveatRecordingIncomplete: "a session's record has an unreadable line, an unverified hook or a gap, so its record rows may undercount",
-	CaveatDifferentModels:     "the two sessions ran different models",
+// caveatText is each caveat's sentence, "" for n_is_one (its sentence is
+// Hypothesis) and for a word that is no caveat. A switch, not a map: a map
+// literal is built at package init, in every hook call (RES-2's init budget).
+func caveatText(c string) string {
+	switch c {
+	case CaveatArmUnrecorded:
+		return "a session wrote no steer line, so its arm is the one asked, not one read from the record"
+	case CaveatTranscriptMissing:
+		return "a session has no transcript under the configuration directory, so its transcript rows are blank"
+	case CaveatTranscriptPartial:
+		return "some transcript lines did not read, so the transcript rows undercount"
+	case CaveatRecordingIncomplete:
+		return "a session's record has an unreadable line, an unverified hook or a gap, so its record rows may undercount"
+	case CaveatDifferentModels:
+		return "the two sessions ran different models"
+	}
+	return ""
 }
 
-// armTitle heads a side's column.
-var armTitle = map[string]string{"off": "arm off (nothing sent)", "steer": "arm steer (AutoSteer)"}
+// armTitle heads a side's column, "" for an arm that is neither.
+func armTitle(arm string) string {
+	switch arm {
+	case "off":
+		return "arm off (nothing sent)"
+	case "steer":
+		return "arm steer (AutoSteer)"
+	}
+	return ""
+}
 
 // Text writes the pair as a table, one column per side, its caveats, and
 // Hypothesis last.
@@ -37,7 +55,7 @@ func Text(w io.Writer, p *Pair) error {
 	row := func(label string, cell func(s *Side) string) {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\n", label, cell(a), cell(b))
 	}
-	row("", func(s *Side) string { return armTitle[s.Arm] })
+	row("", func(s *Side) string { return armTitle(s.Arm) })
 	row("session", func(s *Side) string { return s.SessionID })
 	row("lines in the steer log", func(s *Side) string { return strconv.Itoa(s.Lines) })
 	row("notes given to the agent", notesCell)
@@ -65,7 +83,7 @@ func Text(w io.Writer, p *Pair) error {
 		return err
 	}
 	for _, c := range p.Caveats {
-		if t := caveatText[c]; t != "" {
+		if t := caveatText(c); t != "" {
 			out.WriteString("  caveat: " + t + ".\n")
 		}
 	}
