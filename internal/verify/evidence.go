@@ -45,11 +45,13 @@ const (
 
 // evidenceIn is what the rows read besides the snapshot: the compiled spec
 // (its task and its gates' supplies), whether the point is the turn's Stop,
-// whether the final message discloses a judgment (read at Stop only) and
-// whether the window holds a relevant write.
+// whether no final message is held (unread) and, when one is, whether it
+// discloses a judgment (both read at Stop only), and whether the window
+// holds a relevant write.
 type evidenceIn struct {
 	sp        *spec.Compiled
 	atStop    bool
+	unread    bool
 	disclosed bool
 	wrote     bool
 }
@@ -135,11 +137,14 @@ func gateAfterWrite(snap Snapshot, id string) ObligationState {
 }
 
 // judgmentRow: met when the final message discloses a judgment, unmet at Stop
-// otherwise, open before Stop.
+// otherwise, open before Stop; unknown at a Stop with no message held, since
+// a message not read is no judgment withheld (INV-2).
 func judgmentRow(in evidenceIn) Expected {
 	switch {
 	case !in.atStop:
 		return Expected{State: ObligationOpen}
+	case in.unread:
+		return Expected{State: ObligationUnknown}
 	case in.disclosed:
 		return Expected{State: ObligationMet}
 	}
@@ -174,14 +179,20 @@ func taskTargeted(snap Snapshot) bool {
 	return false
 }
 
-// UnmetExpected is the unmet rows of ex, in their order (EvidenceKinds'),
-// reasons kept: what the done flag's clause names (Gate B 1, D-A1). An
-// unknown row is not unmet (INV-2).
-func UnmetExpected(ex []Expected) []Expected {
+// UnmetExpected is the rows of ex whose expected_evidence row in obs, the
+// ledger they were projected into, is unmet, in ex's order (EvidenceKinds'),
+// reasons kept: what the done flag's clause names (Gate B 1, D-A1), its state
+// read from the ledger (card LEDGER-WIRE1), its words from ex. An unknown row
+// is not unmet (INV-2), and neither is a kind the ledger holds no row for.
+// Cost: O(K x R) over at most five kinds and the ledger's expected rows.
+func UnmetExpected(ex []Expected, obs []Obligation) []Expected {
 	var out []Expected
 	for _, e := range ex {
-		if e.State == ObligationUnmet {
-			out = append(out, e)
+		for _, o := range obs {
+			if o.Kind == ExpectedEvidence && o.State == ObligationUnmet && o.ID == ObligationID(o.Scope, ExpectedEvidence, e.Kind) {
+				out = append(out, e)
+				break
+			}
 		}
 	}
 	return out

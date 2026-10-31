@@ -96,9 +96,9 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 		t.Fatalf("premise: watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	// The consent on file becomes one for the scope before this build's.
-	older := strings.Replace(string(e.consentBytes()), `"scope_version":4`, `"scope_version":3`, 1)
+	older := strings.Replace(string(e.consentBytes()), `"scope_version":5`, `"scope_version":4`, 1)
 	if older == string(e.consentBytes()) {
-		t.Fatal("premise: the watch record does not carry scope_version 4")
+		t.Fatal("premise: the watch record does not carry scope_version 5")
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 		t.Fatal(err)
@@ -131,9 +131,9 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	}
 	recs := e.consentRecords()
 	sum := sha256.Sum256([]byte(show.stdout))
-	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(4) ||
+	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(5) ||
 		recs[1]["steer_disclosure"] != float64(2) || recs[1]["text_sha256"] != hex.EncodeToString(sum[:]) {
-		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 4 hashing the screen shown", recs)
+		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 5 hashing the screen shown", recs)
 	}
 	after := e.machine()
 	// steer_disclosure is consent.json's view of the highest steer disclosure

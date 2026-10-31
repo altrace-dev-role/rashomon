@@ -8,7 +8,9 @@ const hookUsage = `invoked by Claude Code, never by hand:
   rashomon hook [--install ID]   handle one PreToolUse invocation
   rashomon post [--install ID]   handle one PostToolUse invocation
   rashomon probe start [--install ID]
-                               handle SessionStart
+                               handle SessionStart: print the project brief
+                               (rashomon brief) on stdout as a systemMessage
+                               at startup and clear, one line at resume
   rashomon probe end [--install ID]
                                handle SessionEnd
   rashomon recap [--install ID]  handle Stop / StopFailure: print an

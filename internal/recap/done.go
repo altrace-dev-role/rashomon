@@ -47,13 +47,14 @@ func unbacked(claims []verify.ClaimVerdict) bool {
 	return false
 }
 
-// unmetExpected is the unmet expected evidence rows when the final message
-// makes a strict done claim, and none otherwise: an unmet kind alone, with no
-// claim of done, raises no "done was claimed" flag (Gate B 1).
+// unmetExpected is the expected evidence rows the ledger holds unmet when the
+// final message makes a strict done claim, and none otherwise: an unmet kind
+// alone, with no claim of done, raises no "done was claimed" flag (Gate B 1).
+// The state is the ledger's, so the clause and the ledger cannot disagree.
 func unmetExpected(v verify.StopView) []verify.Expected {
 	for _, c := range v.Scan.Claims {
 		if c.Strict && c.Class == verify.ClaimDone {
-			return verify.UnmetExpected(v.Expected)
+			return verify.UnmetExpected(v.Expected, v.Obligations)
 		}
 	}
 	return nil

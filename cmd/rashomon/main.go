@@ -25,8 +25,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
-	"github.com/altrace-dev-role/rashomon/internal/report"
-	"github.com/altrace-dev-role/rashomon/internal/report/gather"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
@@ -98,7 +96,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "post":
 		return cmdPost(rest, stdin, stdout, stderr)
 	case "probe":
-		return cmdProbe(rest, stdin, stderr)
+		return cmdProbe(rest, stdin, stdout, stderr)
 	case "recap":
 		// Not under guarded(): guarded exits 1 and writes to stderr on error,
 		// which a hook renders as a visible "hook error" -- fine for a command
@@ -119,8 +117,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, noArgs(rest, stdout, cmdPause))
 	case "resume":
 		return guarded(stderr, noArgs(rest, stdout, cmdResume))
-	case "status":
-		return guarded(stderr, noArgs(rest, stdout, cmdStatus))
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
 	case "digest":
@@ -141,6 +137,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdSpec(rest, stdout) })
 	case "backtest":
 		return guarded(stderr, func() error { return cmdBacktest(rest, stdout) })
+	case "brief":
+		return guarded(stderr, func() error { return cmdBrief(rest, stdout) })
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -163,6 +161,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitOK
 
 	default:
+		if verb := verbNamed(args[0]); verb != nil {
+			return guarded(stderr, func() error { return verb(rest, stdout) })
+		}
 		usage(stderr)
 		return exitFail
 	}
@@ -291,13 +292,15 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		if err := safe.Guard(h.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
 		}
+		markFired(st, sessionOf(payload), "PreToolUse")
 		return nil
 	})
 }
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
-// it is invoked by Claude Code and it always succeeds.
-func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
+// it is invoked by Claude Code and it always succeeds. At start it prints the
+// project brief to the user (printBrief), its one write to stdout.
+func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook: signal watching and the
 	// phase check included. They ran ahead of the barrier, under this same
 	// comment, and a panic in either exited 2.
@@ -346,6 +349,8 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
+		printBrief(args, payload, st.Root(), stdout)
+		markFired(st, sessionOf(payload), probeEvent(phase))
 		return nil
 	})
 }
@@ -386,18 +391,6 @@ func standsDown(args []string, st *store.Store, stderr io.Writer) bool {
 	}
 	fmt.Fprintln(stderr, standDownLine)
 	return true
-}
-
-// installArg returns the install id the command line names, or "" for one that
-// names none. Anything else in args is ignored: these are the paths Claude
-// Code invokes, and there is no argument they are allowed to fail over.
-func installArg(args []string) string {
-	for i, a := range args {
-		if a == install.Marker && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
 }
 
 // openForHook opens the store for a hook-invoked path. It prints a fixed
@@ -492,36 +485,6 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	}
 	hook.RecordPaused(stdin, phase, reason, st, time.Now)
 	return true
-}
-
-// reportOrEmpty builds the report, or the empty one when nothing has ever been
-// recorded here.
-//
-// "Nothing recorded yet" is not a failure and must not read as one: it is the
-// state every user is in exactly once, and it is the state in which they have
-// no way to tell a broken tool from one with nothing to say. The empty report
-// is the same shape as any other, so a consumer does not have to know whether
-// a store exists in order to parse the answer.
-// It also returns the per-install key, which --redact needs: the redaction
-// digest is an HMAC under it, so a shared report cannot be dictionary-attacked
-// by a recipient holding a candidate hostname. A location with no store has no
-// key, and also no hosts, so the nil is never used to digest anything.
-func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, []byte, error) {
-	st, err := openStoreForRead()
-	if errors.Is(err, store.ErrNoStore) {
-		return report.Empty(now), nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	opts := []gather.Option{gather.WithNonoTrail(nonoTrail)}
-	key := st.Key()
-
-	rep, err := gather.Build(st, sessionID, now, opts...)
-	if err != nil {
-		return nil, nil, err
-	}
-	return rep, key, nil
 }
 
 // installMetaFile is the store file carrying the install id. Its presence is
@@ -877,71 +840,6 @@ func RecordingState() (state string, since time.Time, err error) {
 	return RecordingPaused, pausedSince, nil
 }
 
-// cmdStatus prints what is installed here and what the store holds, and writes
-// nothing at all.
-//
-// Reading the store is the easy way to break that. Opening a store creates one,
-// key material and all, so the command whose whole answer may be "nothing is
-// installed on this machine" must not be the command that installs something.
-// It looks for the store the same way a plain detach does: by the one file that
-// is only there if a store is.
-func cmdStatus(stdout io.Writer) error {
-	root, err := store.DefaultRoot()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(stdout, "store: %s\n", root)
-	statusRecording(stdout, root)
-	statusRecordScope(stdout, root)
-
-	installID := ""
-	var st *store.Store
-	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
-		st, err = openStore()
-		if err != nil {
-			return err
-		}
-		installID = st.InstallID()
-		fmt.Fprintf(stdout, "  present: yes (install %s)\n", installID)
-		runs, err := st.Runs()
-		if err != nil {
-			fmt.Fprintf(stdout, "  runs: %s\n", statusUnknown)
-		} else {
-			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
-		}
-		statusSize(stdout, st)
-		fmt.Fprintf(stdout, "  %s\n", bodiesLine(st))
-		statusLockWait(stdout, st)
-	} else {
-		fmt.Fprintln(stdout, "  present: no")
-	}
-	statusCapProblem(stdout, "  cap: ", st)
-
-	settingsLive, err := statusSettings(stdout, installID)
-	if err != nil {
-		return err
-	}
-	pluginLive, err := statusPlugin(stdout)
-	if err != nil {
-		return err
-	}
-	// Named here so a user sees it without running report, and in the SAME
-	// words report uses (duplicate_declarations): a settings install and an
-	// enabled plugin can share one machine during the migration window Part 1's
-	// spec describes, and nothing removes either of them on its own. detach is
-	// the resolution, and it is the settings entries it removes -- the
-	// plugin's are not detach's to touch.
-	if settingsLive && pluginLive {
-		fmt.Fprintln(stdout, "overlap: both a settings install and the rashomon plugin provide these entries, "+
-			"recording every tool call twice (report will read coverage: unverified, reason duplicate_declarations); "+
-			"run `rashomon detach` to remove the settings entries and keep the plugin")
-	}
-	if err := statusHooks(stdout); err != nil {
-		return err
-	}
-	return statusRecap(stdout, root)
-}
-
 // statusRecap reports the exception line's own evaluation history: whether a
 // Stop/StopFailure has ever been evaluated here, when the last one was, and
 // whether it completed cleanly (H-92).
@@ -1151,75 +1049,6 @@ func statusHooks(stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "  resolved for %s\n", cwd)
 	return nil
-}
-
-func cmdReport(args []string, stdout io.Writer) error {
-	sessionID := ""
-	asJSON := false
-	redact := false
-	chain := false
-	timeline := false
-	nonoTrail := ""
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--session":
-			if i+1 >= len(args) {
-				return errors.New("--session needs a value")
-			}
-			sessionID = args[i+1]
-			i++
-		case "--json":
-			asJSON = true
-		case "--redact":
-			redact = true
-		case "--chain":
-			chain = true
-		case "--timeline":
-			timeline = true
-		case "--nono-audit":
-			// An empty path is refused like a missing one: "" is what not
-			// naming a trail means, so `--nono-audit "$NONO_TRAIL"` with the
-			// variable unset would print no sandbox section and no reason.
-			if i+1 >= len(args) || args[i+1] == "" {
-				return errors.New("--nono-audit needs a value")
-			}
-			nonoTrail = args[i+1]
-			i++
-		default:
-			return fmt.Errorf("unknown argument %q", args[i])
-		}
-	}
-	// Opened WITHOUT creating: a command that only asks a question must not mint
-	// an install identity and an HMAC key as a side effect of being asked. The
-	// same rule status follows, and for the same reason.
-	rep, key, err := reportOrEmpty(sessionID, nonoTrail, time.Now())
-	if err != nil {
-		return err
-	}
-	if redact {
-		// Applied to the whole report before either renderer sees it, so the
-		// two forms cannot disagree about what was hidden and a caller cannot
-		// render the plain form from the same value by mistake.
-		rep = report.Redact(rep, key)
-	}
-	if !asJSON {
-		// --chain and --timeline expand the text listing only. The JSON
-		// carries the whole structure either way: that reader is a program
-		// selecting fields, not a person scrolling, and making it pass a flag
-		// to receive a section would mean a consumer could parse a report and
-		// silently miss one.
-		opts := []report.TextOption{}
-		if chain {
-			opts = append(opts, report.WithChain())
-		}
-		if timeline {
-			opts = append(opts, report.WithTimeline())
-		}
-		return report.Text(stdout, rep, opts...)
-	}
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(rep)
 }
 
 // cmdDigest renders one turn's projection as JSON.
@@ -1446,7 +1275,7 @@ usage:
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused
                                window with a record of how long it lasted
-  rashomon status                say what is installed and what the store holds,
+  rashomon status [--json]       say what is installed and what the store holds,
                                writing nothing and creating no store
   rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]
                   [--nono-audit PATH]
@@ -1516,7 +1345,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+specUsage+backtestUsage+hookUsage)
+`+receiptUsage+learnUsage+specUsage+backtestUsage+briefUsage+verbUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the
