@@ -60,10 +60,10 @@ m("VER-40 the steer step reads trust past a store write", S, "TrustRoot(run, roo
 m("VER-40 the Stop reads trust past a store write", R, "hook.TrustRoot(run, st.Root(), seq)", "st.Root()", "TestST1m_TheStop")
 m("VER-40 StoreWritten reads past its point", I,
   "\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tif storeWrites(d, storeRoot, nil) {\n", "\t\tif storeWrites(d, storeRoot, nil) {\n", "TestST1s_|TestST1v_")
-m("VER-40 StoreWritten reads no file tool", I, "\tif file != nil && underStore(slashed(*file), storeRoot) {\n",
-  "\tif file != nil && underStore(slashed(*file), storeRoot) && false {\n", "TestST1s_")
-m("VER-40 StoreWritten reads no shell write", I, "\tfor _, p := range shell {\n\t\tif underStore(slashed(p), storeRoot) {\n",
-  "\tfor _, p := range shell[:0] {\n\t\tif underStore(slashed(p), storeRoot) {\n", "TestST1s_|TestST1m_AWrite")
+m("VER-40 StoreWritten reads no file tool", I, "\t\tif file != nil && underStore(slashed(*file), storeRoot) {\n",
+  "\t\tif file != nil && underStore(slashed(*file), storeRoot) && false {\n", "TestST1s_")
+m("VER-40 StoreWritten reads no shell write", I, "\t\tfor _, p := range shell {\n\t\t\tif underStore(slashed(p), storeRoot) {\n",
+  "\t\tfor _, p := range shell[:0] {\n\t\t\tif underStore(slashed(p), storeRoot) {\n", "TestST1s_|TestST1m_AWrite")
 m("VER-40 the store root's own path is not under it", PC, "\treturn in || p == r\n", "\treturn in\n", "TestST1s_|TestST1r_")
 m("VER-40 a store path is matched uncleaned", PC, "\tp, r := path.Clean(p), path.Clean(slashed(root))\n",
   "\tp, r := p, path.Clean(slashed(root))\n", "TestST1s_")
@@ -132,7 +132,7 @@ HD = "internal/hook/handle.go"
 m("VER-40 the store-root bit is not set", HD, "\tdecl.StoreNamed = rootNamed(p.ToolInput, h.st.Root())\n",
   "\tdecl.StoreNamed = false\n", "TestST1u_")
 m("VER-40 StoreWritten ignores the bit", I, "\tif namedWithheld(d) {\n\t\tif f != nil {\n", "\tif false {\n\t\tif f != nil {\n",
-  "TestST1v_|TestST1u_")
+  "TestST1v_|TestST1u_|TestST1x_")
 m("VER-40 integrity raises nothing for the bit", I,
   "\t\t\t\t\t\tout.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: d.Seq})\n", "", "TestST1v_|TestST1u_")
 m("VER-40 the bit is read where the paths are recorded", I,

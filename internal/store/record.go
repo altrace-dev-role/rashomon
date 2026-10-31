@@ -244,7 +244,9 @@ type Declaration struct {
 	// D173b). The root is compared and dropped, never stored. Unlike the
 	// paths, it is kept at every record scope, so a record whose scope or
 	// caps withhold the paths still says the call named the store, and
-	// verify.StoreWritten reads it there. A read that names the root sets
+	// verify.StoreWritten reads it there, and for a call the record cannot
+	// name a target for at any scope (an MCP call, a may-write with no list,
+	// an incomplete written list; D173c). A read that names the root sets
 	// it too. Schema 7, a version of its own (D11): a record before it has
 	// no such key and reads false, as a call that did not name the root.
 	StoreNamed bool `json:"store_named"`
