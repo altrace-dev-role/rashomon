@@ -21,6 +21,15 @@
 # event's verdict and the claude version go to a log under $PTRU_LOGS,
 # /tmp/rk-probe-g by default; nothing a session sent is in it.
 #
+# A pass clears a shadow by hand, not by this script (CHANNEL-EVIDENCE1). When
+# a Stop's read of the transcript did not show a note rashomon delivered,
+# rashomon shadows that event until a probe passes or Claude Code is newer
+# than the version that shadowed (a call on a newer version clears it itself).
+# After exit 0, remove the event's marker from rashomon's store root:
+#   rm -f "${RASHOMON_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/rashomon}/channel-evidence-PostToolUse"
+# (channel-evidence-PostToolUseFailure for that event). This script touches
+# nothing of rashomon's store, so the removal stays a person's step.
+#
 # Claude Code runs under $CLAUDE_CONFIG_DIR, $HOME/.claude-probe by default: a
 # configuration of its own, logged in once by a person, so no hook of the
 # user's fires beside this one. The script refuses when that directory has a

@@ -16,10 +16,17 @@ every supported version; a note after a call that succeeded on Claude Code
 2.1.280 and later; and a note after a failed call on Claude Code 2.1.304 and
 later. Where a note is not sent (an older version, a version that failed the
 delivery check or could not be read, a subagent's call, an SDK session, or a
-session whose surface could not be read), one line per session tells you a note
-was built and not sent, such as:
+session whose surface could not be read, or an event whose notes are withheld as
+described next), one line per session tells you a note was built and not sent,
+such as:
 
     rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
+
+At a turn end it also reads Claude Code's transcript in memory, and stores none
+of it, to check that each note it sent appears there. If a note is missing at
+two turn ends, it stores one small file, `channel-evidence-<event>`, holding
+only the Claude Code version, and stops sending notes for that hook event until
+a delivery check passes or Claude Code is newer; the line above then tells you.
 
 What it does not do yet: learn your architecture or conventions by itself. A
 lesson you import and approve at a terminal is sent with a prompt that carries
