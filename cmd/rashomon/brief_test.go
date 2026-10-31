@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // briefSession is an installed store and a project directory holding
@@ -115,6 +117,31 @@ func TestBR1f_ResumeIsOneLine(t *testing.T) {
 	}
 	if out := s.start("compact"); out != "" {
 		t.Errorf("compact: stdout %q, want nothing", out)
+	}
+}
+
+// TestMS1zg_ArmOffPrintsNoBrief: on a lab store under arm off probe start
+// prints nothing at startup, clear or resume (MEASURE1: every hook print is
+// withheld); the same session with the arm unset prints its brief, and a
+// store with no lab marker ignores the variable.
+func TestMS1zg_ArmOffPrintsNoBrief(t *testing.T) {
+	s := newBriefSession(t)
+	root := os.Getenv("RASHOMON_HOME")
+	t.Setenv(hook.EnvSteerArm, "off")
+	if out := s.start("startup"); out == "" {
+		t.Fatal("a store with no lab marker ignores the arm: want its brief")
+	}
+	if err := store.WriteLab(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"startup", "clear", "resume", ""} {
+		if out := s.start(source); out != "" {
+			t.Errorf("source %q under arm off printed %q, want nothing", source, out)
+		}
+	}
+	t.Setenv(hook.EnvSteerArm, "steer")
+	if out := s.start("startup"); out == "" {
+		t.Error("under the steer arm the brief printed nothing")
 	}
 }
 

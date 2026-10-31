@@ -27,3 +27,6 @@ m("MS-1 armOff runs in every arm", "internal/steer/decide.go",
 m("MS-1 the lab marker not checked (the arm env would defeat the holdout on a normal store)", "cmd/rashomon/steerenv.go",
   "\tif arm == \"\" || store.Lab(root) {\n",
   "\tif true {\n", "TestMS1v_")
+m("MS-1 the brief prints under arm off", "cmd/rashomon/brief.go",
+  "\tif armOff(st.Root()) {\n\t\treturn\n\t}\n\troot, ok := briefRoot(cwd)\n",
+  "\troot, ok := briefRoot(cwd)\n", "TestMS1zg_")

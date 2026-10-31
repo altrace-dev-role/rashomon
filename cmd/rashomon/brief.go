@@ -76,6 +76,12 @@ func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout 
 	if err != nil || cwd == "" {
 		return
 	}
+	// Arm off withholds every hook print (card MEASURE1, armOff), the
+	// brief's user-channel line included: the paired run compares what the
+	// person saw as well as what the model did.
+	if armOff(st.Root()) {
+		return
+	}
 	root, ok := briefRoot(cwd)
 	var msg string
 	switch {
