@@ -209,16 +209,20 @@ func TestPF1y_StopViewErrorStillPrintsTheNote(t *testing.T) {
 // TestPF1z_AttendanceFollowsTheSurface: on the prompt path CI alone does not
 // silence the note, and an SDK surface does; each with its positive control.
 func TestPF1z_AttendanceFollowsTheSurface(t *testing.T) {
-	run := func(t *testing.T, extra ...string) (preflightOut, record) {
+	runWith := func(t *testing.T, envOf func(e *env) []string) (preflightOut, record) {
 		t.Helper()
 		e := newSteerEnv(t)
 		e.preflightProject()
-		_, out := e.prompt(e.cwd, "fix the nil check in "+pf1bPath, "prompt-2", extra...)
+		_, out := e.prompt(e.cwd, "fix the nil check in "+pf1bPath, "prompt-2", envOf(e)...)
 		lines := e.steerLines()
 		if len(lines) != 1 {
 			t.Fatalf("%d steer lines, want 1", len(lines))
 		}
 		return out, lines[0]
+	}
+	run := func(t *testing.T, extra ...string) (preflightOut, record) {
+		t.Helper()
+		return runWith(t, func(*env) []string { return extra })
 	}
 	t.Run("CI on an interactive surface", func(t *testing.T) {
 		for _, extra := range [][]string{{"CI=1"}, nil} {
@@ -239,22 +243,37 @@ func TestPF1z_AttendanceFollowsTheSurface(t *testing.T) {
 	})
 	// The cloud surface is Claude Code on the web (remote*) and the GitHub
 	// Action, which exports CI: a person reads the session or the run, and
-	// harness.Caps verifies the mirror there (PREFLIGHT-CLOUD1). With no
-	// entrypoint the call is a presumed Claude Code, attended as before.
+	// harness.Caps says a person is at the prompt there (CapPersonAtPrompt,
+	// PREFLIGHT-CLOUD1). With no entrypoint but CLAUDE_PROJECT_DIR, which
+	// Claude Code sets for every hook, the call is a presumed Claude Code,
+	// attended as before.
 	for _, c := range []struct {
 		name  string
-		extra []string
+		envOf func(e *env) []string
 	}{
-		{"Claude Code on the web", []string{"CLAUDE_CODE_ENTRYPOINT=remote"}},
-		{"the GitHub Action", []string{"CLAUDE_CODE_ENTRYPOINT=claude-code-github-action", "CI=true"}},
-		{"no entrypoint", []string{"CLAUDE_CODE_ENTRYPOINT="}},
+		{"Claude Code on the web", func(*env) []string { return []string{"CLAUDE_CODE_ENTRYPOINT=remote"} }},
+		{"the GitHub Action", func(*env) []string { return []string{"CLAUDE_CODE_ENTRYPOINT=claude-code-github-action", "CI=true"} }},
+		{"no entrypoint", func(e *env) []string { return []string{"CLAUDE_CODE_ENTRYPOINT=", "CLAUDE_PROJECT_DIR=" + e.cwd} }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			out, l := run(t, c.extra...)
+			out, l := runWith(t, c.envOf)
 			if out.HookSpecificOutput.AdditionalContext == "" || l.str("state") != "delivered" || l.str("attendance") != "attended" {
-				t.Errorf("env %v: note %q, state %q, attendance %q, suppressed_by %q, want a delivered note, attended", c.extra,
+				t.Errorf("note %q, state %q, attendance %q, suppressed_by %q, want a delivered note, attended",
 					out.HookSpecificOutput.AdditionalContext, l.str("state"), l.str("attendance"), l.str("suppressed_by"))
 			}
 		})
 	}
+	// Nothing Claude-shaped at all, no entrypoint and no CLAUDE_PROJECT_DIR:
+	// Detect reads the Unknown harness, Caps claims no capability for it,
+	// CapPersonAtPrompt included, so the note is withheld and the line says
+	// why (a change from #170's surface rule, where it was attended).
+	t.Run("no Claude Code evidence", func(t *testing.T) {
+		out, l := run(t, "CLAUDE_CODE_ENTRYPOINT=")
+		if out.HookSpecificOutput.AdditionalContext != "" {
+			t.Errorf("the Unknown harness printed a note: %q", out.HookSpecificOutput.AdditionalContext)
+		}
+		if l.str("attendance") != "unattended" || l.str("suppressed_by") != "no_mirror" {
+			t.Errorf("line attendance %q, suppressed_by %q, want unattended, no_mirror", l.str("attendance"), l.str("suppressed_by"))
+		}
+	})
 }
