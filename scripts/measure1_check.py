@@ -295,7 +295,11 @@ def cmd_pending(args):
 
 
 def steer_lines(store, session):
-    return lines(os.path.join(store, "runs", session, "steer.ndjson"))
+    """The session's steer lines: type "steer" only. The Stop also writes
+    steer_evidence lines to the log (CHANNEL-EVIDENCE1); they judge a note,
+    name no arm or surface and are no note, so G1c's control and S1 skip
+    them."""
+    return [l for l in lines(os.path.join(store, "runs", session, "steer.ndjson")) if l.get("type") == "steer"]
 
 
 def cmd_control(args):

@@ -847,6 +847,11 @@ func TestMS1zf_ControlReadsTheTwinPair(t *testing.T) {
 			off[0]["prompt_id"] = ""
 			return on, off
 		}, 1, "not cli and an id"},
+		{"the Stop's evidence lines beside the pair", func(on, off lines) (lines, lines) {
+			ev := map[string]any{"type": "steer_evidence", "v": 1, "steer_id": "s1", "session_id": "sid",
+				"prompt_id": "p1", "event": "UserPromptSubmit", "evidence": "seen"}
+			return append(on, ev), append(off, ev)
+		}, 0, "the note"},
 	}
 	for _, c := range cases {
 		dir := t.TempDir()
