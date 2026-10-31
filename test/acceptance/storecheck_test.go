@@ -93,6 +93,11 @@ func damageProblems(found, declared []string) (unexpected, missing []string) {
 type storeFile struct {
 	types   map[string][]string // record type -> its key allowlist
 	ordered bool                // seq present and strictly increasing
+	// blankOK: an empty line is not a break. The spill file's lockless
+	// writer puts a newline before its record unconditionally, to never glue
+	// onto a torn tail, so a clean tail leaves a blank line; readers skip
+	// them (forEachLine). No other file has a lockless writer.
+	blankOK bool
 }
 
 func storeFiles() map[string]storeFile {
@@ -107,7 +112,7 @@ func storeFiles() map[string]storeFile {
 	}
 	return map[string]storeFile{
 		"records.ndjson":  {types: records, ordered: true},
-		"spill.ndjson":    {types: call},
+		"spill.ndjson":    {types: call, blankOK: true},
 		"coverage.ndjson": {types: map[string][]string{"coverage": coverageKeys}},
 		"gaps.ndjson":     {types: map[string][]string{"gap": gapKeys}},
 	}
@@ -157,6 +162,9 @@ func fileProblems(path, rel string, spec storeFile) []string {
 		where := fmt.Sprintf("%s:%d", rel, n)
 		if sc.TooLong() {
 			out = append(out, fmt.Sprintf("%s: a line over store.MaxLine", where))
+			continue
+		}
+		if spec.blankOK && len(sc.Bytes()) == 0 {
 			continue
 		}
 		var fields map[string]any
@@ -359,6 +367,27 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	}
 	if p := storeProblems(e.home); len(p) != 0 {
 		t.Errorf("a spilled record without a seq reads as a break: %v", p)
+	}
+
+	// The lockless spill writer's guard newline leaves a blank line in the
+	// spill file under contention: not a break there, and still one in the
+	// ordered stream, which has no lockless writer.
+	if err := os.WriteFile(spill, []byte("\n"+unordered+"\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if p := storeProblems(e.home); len(p) != 0 {
+		t.Errorf("blank lines in the spill file read as a break: %v", p)
+	}
+	blankHome := t.TempDir()
+	blankRecords := filepath.Join(blankHome, "runs", "s", "records.ndjson")
+	if err := os.MkdirAll(filepath.Dir(blankRecords), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(blankRecords, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if p := storeProblems(blankHome); !strings.Contains(strings.Join(p, "\n"), "is not one JSON object") {
+		t.Errorf("a blank line in records.ndjson passed the check: %v", p)
 	}
 }
 
