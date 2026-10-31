@@ -18,3 +18,12 @@ m("GZ-1 the -q fail form is dropped", T,
 m("GZ-1 the banner fail form is dropped", T,
   ", " + B + ", `Fatal", ", `Fatal",
   "TestGZ1_PytestSummariesStillFail")
+
+# The tables are pinned per shape.RulesVersion (gateout_test.go tablePins): a
+# table change with no new version fails, and so does a bump with no pin.
+m("GZ-1 a table changes with no new RulesVersion", T,
+  "pass: compile(`^test result: ok`)", "pass: compile(`^test result: ok\\b`)",
+  "TestGO10_TablesPinned")
+m("GZ-1 RulesVersion moves with no table pin", "internal/shape/masked.go",
+  "const RulesVersion = 11\n", "const RulesVersion = 12\n",
+  "TestGO10_TablesPinned")

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -75,11 +76,34 @@ func TestGO9_CapBoundary(t *testing.T) {
 	want(t, Classify("test", "go", over), "unread", "", stringPointer("too_large"))
 }
 
+// tablePins is tableDigest under each shape.RulesVersion a build ships it at.
+// The runner tables are lists a build decides with, so they are versioned by
+// the one counter that names those lists (verify/snapshot.go): a table change
+// with no new version and pin fails here, and so does a RulesVersion bump with
+// no pin for the tables it ships. The digest covers every list Classify
+// decides with: each row's program word, its delegate flag and its pass, fail,
+// fail-line and empty patterns, in row order (the order a delegated run's
+// lines are matched in), and the scan bound MaxScanBytes.
+//
+// 10 is v1.2.0-alpha.1's tables (949d6aca, pin 21b4d3f8 before the bound
+// joined the digest). 11 carries GATEOUT-ZERO1's anchored pytest fail forms
+// over #149's tables: 11 was never released, so no user's store holds a record
+// the earlier 11 tables judged (D232's reasoning). If a build at 11 is
+// released before GATEOUT-ZERO1 merges, 12 is forced, with 11 pinned at the
+// earlier tables' 3c9478c2.
+var tablePins = map[int]string{
+	10: "10c0ad3b221731500b5c9d8e0c235dc329e35d8c71314aa147a92f5e6a61415b",
+	11: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
+}
+
 func TestGO10_TablesPinned(t *testing.T) {
 	got := tableDigest()
-	const pin = "e110082cbc677ed5e5cce54637a1fe39d6a359ad6f4eb60cddddbaa0ad9f9cd8"
+	pin, ok := tablePins[shape.RulesVersion]
+	if !ok {
+		t.Fatalf("no runner-table pin for RulesVersion %d: a bump pins the tables it ships (digest %s)", shape.RulesVersion, got)
+	}
 	if got != pin {
-		t.Fatalf("table digest %s, want %s", got, pin)
+		t.Fatalf("table digest %s at RulesVersion %d, want %s: a table change takes a new RulesVersion and pin", got, shape.RulesVersion, pin)
 	}
 	for _, row := range tables() {
 		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
@@ -206,6 +230,7 @@ func tableDigest() string {
 			fmt.Fprint(h, "\x01")
 		}
 	}
+	fmt.Fprintf(h, "max_scan_bytes\x00%d\x00", MaxScanBytes)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
