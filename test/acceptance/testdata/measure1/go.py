@@ -14,6 +14,10 @@ if args[:1] == ["version"]:
 elif args[:1] == ["env"]:
     for k in ("GOCACHE", "GOMODCACHE", "GOFLAGS", "GOPROXY", "GOTOOLCHAIN"):
         print("%s='%s'" % (k, os.environ.get(k, "")))
+    # go env's cgo flags name the build's random work directory, different in
+    # every process (2.1.308's tmp is the arm's own).
+    work = "%s/go-build%d" % (os.environ.get("TMPDIR", "/tmp"), os.getpid() * 7919)
+    print("GOGCCFLAGS='-fPIC -ffile-prefix-map=" + work + "=/tmp/go-build'")
 elif args[:2] == ["mod", "download"]:
     pass
 elif args[:1] == ["test"]:

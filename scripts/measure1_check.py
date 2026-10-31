@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sys
 from typing import NoReturn
 
@@ -78,6 +79,9 @@ def cmd_order(args):
         print("\n".join(pair))
 
 
+ARM_DIR = re.compile(r"(?:/private)?/(?:[^\s'\"=:/]+/+)*measure1-arm\.[A-Za-z0-9]+")
+
+
 def cmd_envdiff(args):
     """envdiff DUMP_A DIR_A WS_A SID_A DUMP_B DIR_B WS_B SID_B: the hook-side
     dumps of G1a, each arm's workspace, directory and session id normalised;
@@ -87,6 +91,16 @@ def cmd_envdiff(args):
             text = f.read()
         for real, name in ((os.path.realpath(ws), "<WS>"), (ws, "<WS>"), (os.path.realpath(d), "<ARM>"), (d, "<ARM>"), (sid, "<SESSION>")):
             text = text.replace(real, name)
+        # Claude Code 2.1.308 sets values unique to each process or session
+        # (a socket named for its pid, a token, the pid); the arm's temp
+        # directory may also be spelled with a doubled slash. Each is
+        # normalised on its own key, so a key must still be present on both
+        # sides and any other difference still fails.
+        text = ARM_DIR.sub("<ARM>", text)
+        text = re.sub(r"(?m)^(CLAUDE_PID=)\d+$", r"\1<PID>", text)
+        text = re.sub(r"(?m)^(CLAUDE_CODE_MESSAGING_TOKEN=)[0-9a-fA-F]+$", r"\1<TOKEN>", text)
+        text = re.sub(r"(?m)^(CLAUDE_CODE_MESSAGING_SOCKET=<ARM>/tmp/cc-socks/)\d+(\.sock)$", r"\1<PID>\2", text)
+        text = re.sub(r"(<ARM>/tmp/go-build)\d+", r"\1<N>", text)
         return text.splitlines()
     a, b = read(*args[0:4]), read(*args[4:8])
     da = sorted(set(a) - set(b))
@@ -221,17 +235,36 @@ def user_text(entry):
     return c if isinstance(c, str) else None
 
 
+PASTED = re.compile(r"\A\n\n<pasted_content id=\"([^\"]+)\">\n(.*)\n</pasted_content id=\"([^\"]+)\">\n\Z", re.S)
+
+
+def is_prompt(text, prompt):
+    """Whether a user entry's text is the prompt. Claude Code 2.1.308 records
+    a pasted prompt as newline, newline, <pasted_content id="X">, newline,
+    TEXT, newline, </pasted_content id="X">, newline, with each tab of the
+    paste shown as four spaces. So the text is the prompt when it equals it,
+    or when it is exactly that wrapper (matching ids, no second wrapper in
+    TEXT) round a TEXT that is the prompt or the prompt with its tabs as four
+    spaces. Anything else is other text."""
+    if text == prompt:
+        return True
+    m = PASTED.match(text)
+    if not m or m.group(1) != m.group(3) or "<pasted_content" in m.group(2) or "</pasted_content" in m.group(2):
+        return False
+    return m.group(2) in (prompt, prompt.replace("\t", "    "))
+
+
 def cmd_submitted(args):
     """submitted TRANSCRIPT OFFSET PROMPT_FILE: exit 0 when a user entry past
     OFFSET carries the prompt's text, 1 when none has arrived yet, 3 when one
     arrived with other text (a resend could submit it twice)."""
     with open(args[2]) as f:
-        want = hashlib.sha256(f.read().encode()).hexdigest()
+        want = f.read()
     texts = [user_text(e) for e in lines(args[0], int(args[1])) if e.get("type") == "user"]
     texts = [t for t in texts if t is not None]
     if not texts:
         sys.exit(1)
-    if any(hashlib.sha256(t.encode()).hexdigest() == want for t in texts):
+    if any(is_prompt(t, want) for t in texts):
         sys.exit(0)
     print("measure1: a user entry arrived whose text is not the prompt's")
     sys.exit(3)

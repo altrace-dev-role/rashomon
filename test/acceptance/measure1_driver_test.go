@@ -574,3 +574,147 @@ func TestMS1y_DriverMarkersAreTheBinarysPrefixes(t *testing.T) {
 		t.Errorf("recap's line %q does not hold the marker %q", line, markers[1])
 	}
 }
+
+// TestMS1z_DriverRunsOnClaude2_1_308Shapes: Claude Code 2.1.308 records a
+// pasted prompt wrapped in <pasted_content id> and sets hook variables unique
+// to each process. A run still passes G1a (the arms differ only in those and
+// RASHOMON_STEER_ARM) and confirms each probe's submission, so the turn ends
+// on its stop checkpoint rather than as blocked.
+func TestMS1z_DriverRunsOnClaude2_1_308Shapes(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, map[string]any{"cc308": true}, m1Red)
+	res := r.run("20")
+	r.want(res, "equal but for RASHOMON_STEER_ARM=off and RASHOMON_STEER_ARM=steer",
+		"measure1: G1c prompt 1 per probe: 1 request(s), 10 context tokens")
+	for _, arm := range []string{"off", "steer"} {
+		if got := r.out("g1c-" + arm + ".turns"); got != "prompt 1: stop\n" {
+			t.Errorf("the %s probe's turns read %q, want the wrapped prompt confirmed and the turn ended by its stop", arm, got)
+		}
+		dump := "\n" + r.out("g1a-"+arm+".env")
+		for _, k := range []string{"CLAUDE_CODE_MESSAGING_SOCKET=", "CLAUDE_CODE_MESSAGING_TOKEN=", "CLAUDE_ENV_FILE=", "CLAUDE_PID=", "GOGCCFLAGS="} {
+			if !strings.Contains(dump, "\n"+k) {
+				t.Errorf("the %s arm's dump lacks %s, so the test does not exercise it", arm, k)
+			}
+		}
+	}
+}
+
+// TestMS1za_DriverStopsOnAnEnvDifferenceBeyondTheArm: a hook variable that
+// only one arm sees is not per-process, and G1a stops on it.
+func TestMS1za_DriverStopsOnAnEnvDifferenceBeyondTheArm(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, map[string]any{"cc308": true, "env_diff_for_arm": "steer"}, m1Red)
+	res := r.run("20")
+	if res.code == 0 {
+		t.Errorf("exit 0, want G1a's stop")
+	}
+	r.want(res, "G1a: the arms' environments differ beyond RASHOMON_STEER_ARM")
+	if r.ran("arm-[0-9]*") {
+		t.Errorf("an arm ran past G1a's stop")
+	}
+}
+
+// m1Check runs measure1_check.py's command directly.
+func m1Check(t *testing.T, args ...string) (int, string) {
+	t.Helper()
+	cmd := exec.Command("python3", append([]string{"-I", filepath.Join(moduleRoot, "scripts", "measure1_check.py")}, args...)...)
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	switch {
+	case errors.As(err, &ee):
+		return ee.ExitCode(), string(out)
+	case err != nil:
+		t.Fatal(err)
+	}
+	return 0, string(out)
+}
+
+// TestMS1zb_SubmittedReadsThePastedWrapper: the submitted check confirms a
+// user entry that is the prompt, bare or in exactly one matching
+// <pasted_content> wrapper (tabs shown as four spaces), and keeps exit 3 for
+// any other text, a wrapper with other text or mismatched ids included.
+func TestMS1zb_SubmittedReadsThePastedWrapper(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	prompt := "Task: fix Add\n\tgo test ./...\nthen stop.\n"
+	pf := filepath.Join(dir, "prompt.txt")
+	if err := os.WriteFile(pf, []byte(prompt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrap := func(open, body, shut string) string {
+		return "\n\n<pasted_content id=\"" + open + "\">\n" + body + "\n</pasted_content id=\"" + shut + "\">\n"
+	}
+	spaced := strings.ReplaceAll(prompt, "\t", "    ")
+	cases := []struct {
+		name, text string
+		want       int
+	}{
+		{"bare", prompt, 0},
+		{"wrapped", wrap("40a4", prompt, "40a4"), 0},
+		{"wrapped, tabs as spaces", wrap("40a4", spaced, "40a4"), 0},
+		{"wrapped other text", wrap("40a4", "Task: something else\n", "40a4"), 3},
+		{"other text", "something else", 3},
+		{"ids differ", wrap("40a4", prompt, "40a5"), 3},
+		{"no surrounding newlines", strings.TrimSpace(wrap("40a4", prompt, "40a4")), 3},
+		{"two wrappers", wrap("1111", wrap("40a4", prompt, "40a4"), "1111"), 3},
+		{"text beside the wrapper", "hello" + wrap("40a4", prompt, "40a4"), 3},
+	}
+	for _, c := range cases {
+		entry, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": c.text}})
+		tr := filepath.Join(dir, "t.jsonl")
+		if err := os.WriteFile(tr, append(entry, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if code, out := m1Check(t, "submitted", tr, "0", pf); code != c.want {
+			t.Errorf("%s: exit %d, want %d (%s)", c.name, code, c.want, out)
+		}
+	}
+}
+
+// TestMS1zc_EnvdiffNormalisesOnlyPerProcessValues: G1a's normaliser folds the
+// arm directory, pid, token and go-build suffix of 2.1.308, each on its own
+// key; any other difference, or a key on one side only, still fails.
+func TestMS1zc_EnvdiffNormalisesOnlyPerProcessValues(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	n := 0
+	dump := func(arm, rnd, pid, tok, build string, extra ...string) string {
+		d := "/var/folders/3p/xx/T/measure1-arm." + rnd
+		lines := append([]string{
+			"CLAUDE_CODE_MESSAGING_SOCKET=" + d + "/tmp/cc-socks/" + pid + ".sock",
+			"CLAUDE_CODE_MESSAGING_TOKEN=" + tok,
+			"CLAUDE_CONFIG_DIR=/var/folders/3p/xx/T//measure1-arm." + rnd + "/cc",
+			"CLAUDE_ENV_FILE=" + d + "/cc/session-env/SID/sessionstart-hook-1.sh",
+			"CLAUDE_PID=" + pid,
+			"GOGCCFLAGS='-fPIC -ffile-prefix-map=" + d + "/tmp/go-build" + build + "=/tmp/go-build -fno-common'",
+			"RASHOMON_STEER_ARM=" + arm}, extra...)
+		n++
+		p := filepath.Join(dir, strconv.Itoa(n)+".env")
+		if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	diff := func(a, b string) int {
+		code, _ := m1Check(t, "envdiff", a, "/nowhere/a", "/nowhere/wa", "SID", b, "/nowhere/b", "/nowhere/wb", "SID")
+		return code
+	}
+	off := func(extra ...string) string { return dump("off", "69KtT9", "76626", "5959aa", "1892231564", extra...) }
+	if code := diff(off(), dump("steer", "FoXEY1", "76922", "3175bb", "930180087")); code != 0 {
+		t.Errorf("per-process differences alone: exit %d, want 0", code)
+	}
+	fails := map[string]string{
+		"a variable on one side only":   dump("steer", "FoXEY1", "76922", "3175bb", "930180087", "FOO=1"),
+		"another variable that differs": dump("steer", "FoXEY1", "76922", "3175bb", "930180087", "FOO=2"),
+		"a token that is not hex":       dump("steer", "FoXEY1", "76922", "not-hex!", "930180087"),
+	}
+	for name, b := range fails {
+		a := off()
+		if name == "another variable that differs" {
+			a = off("FOO=1")
+		}
+		if code := diff(a, b); code == 0 {
+			t.Errorf("%s: exit 0, want G1a's failure", name)
+		}
+	}
+}

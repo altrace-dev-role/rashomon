@@ -22,7 +22,11 @@ session's directory) and AI_AGENT in the harness form the binary reads
 stub.json beside this file shapes a test's run: version, hang_at (a turn that
 declares its call and never runs it), die_at, ignore_pastes (pastes dropped
 before the first is read), extra_tool_for_arm (an init event that differs),
-logged_out.
+logged_out, cc308 (Claude Code 2.1.308's shapes: a pasted prompt recorded
+in the user entry wrapped in <pasted_content id> with its tabs as four
+spaces, and per-process hook variables: a messaging socket named for the
+pid, a token, CLAUDE_ENV_FILE, CLAUDE_PID), env_diff_for_arm (that arm's
+hooks see one more variable, a difference G1a must refuse).
 """
 
 import json
@@ -79,6 +83,14 @@ class Session:
         self.n = 0
         self.env = dict(os.environ, CLAUDECODE="1", CLAUDE_CODE_ENTRYPOINT="cli", CLAUDE_PROJECT_DIR=self.cwd,
                         AI_AGENT="claude-code_%s_harness" % VERSION.replace(".", "-"))
+        if KNOBS.get("cc308"):
+            tmp = os.environ.get("CLAUDE_CODE_TMPDIR") or "/tmp"
+            self.env.update(CLAUDE_CODE_MESSAGING_SOCKET=os.path.join(tmp, "cc-socks", "%d.sock" % os.getpid()),
+                            CLAUDE_CODE_MESSAGING_TOKEN=uuid.uuid4().hex,
+                            CLAUDE_ENV_FILE=os.path.join(cfg, "session-env", self.sid, "sessionstart-hook-1.sh"),
+                            CLAUDE_PID=str(os.getpid()))
+        if os.environ.get("RASHOMON_STEER_ARM") == KNOBS.get("env_diff_for_arm"):
+            self.env["CLAUDE_CODE_EXTRA_FLAG"] = "1"
 
     def write(self, entry):
         entry.setdefault("sessionId", self.sid)
@@ -119,7 +131,11 @@ class Session:
     def turn(self, prompt):
         self.n += 1
         self.prompt_id = str(uuid.uuid4())
-        self.write({"type": "user", "promptId": self.prompt_id, "message": {"role": "user", "content": prompt}})
+        shown = prompt
+        if KNOBS.get("cc308"):
+            pid = uuid.uuid4().hex[:4]
+            shown = '\n\n<pasted_content id="%s">\n%s\n</pasted_content id="%s">\n' % (pid, prompt.replace("\t", "    "), pid)
+        self.write({"type": "user", "promptId": self.prompt_id, "message": {"role": "user", "content": shown}})
         self.fire("UserPromptSubmit", prompt=prompt)
         if KNOBS.get("die_at") == self.n:
             sys.exit(1)
