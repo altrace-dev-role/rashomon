@@ -58,7 +58,9 @@ func WithNonoTrail(path string) Option {
 //
 // It is not read-only. Asking the project baseline which hosts are new
 // records this session's hosts in it (baseline.UpdateOrigin), which is what makes
-// the next session's answer possible.
+// the next session's answer possible. The knowledge block it fills for one
+// session is read-only: its ledger is opened with learn.OpenReadOnly, so a
+// report never quarantines a ledger on disk.
 func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*report.Report, error) {
 	cfg, names, byDir, gapsSkipped, forgotten, forgottenBefore, err := plan(st, sessionID, opts)
 	if err != nil {
@@ -77,7 +79,14 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*r
 		if err != nil {
 			return nil, err
 		}
-		rep.Sessions = append(rep.Sessions, report.AssembleSession(si, nonoConfigured, forgotten, forgottenBefore))
+		sess := report.AssembleSession(si, nonoConfigured, forgotten, forgottenBefore)
+		if sessionID != "" {
+			// Only a report of one session reads what the project knows: each
+			// is a fold over the session's checkpoints and a baseline scan,
+			// and the listing is what a person scrolls (card REPORT1b).
+			sess.Knowledge = knowledgeOf(st, si.Run, sessionID, now)
+		}
+		rep.Sessions = append(rep.Sessions, sess)
 	}
 	return rep, nil
 }

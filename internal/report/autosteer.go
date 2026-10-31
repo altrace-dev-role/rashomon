@@ -84,10 +84,16 @@ type AutosteerCheck struct {
 // AutosteerLessons is the project's lesson ledger by tier. Autosteer holds
 // none (null) when the report opened no ledger, which is unknown and never
 // zero.
+//
+// Unchecked says the ledger's state did not check (it was written by
+// something other than rashomon), so every lesson reads as proposed and the
+// counts are not the person's approvals. The report reads the ledger without
+// writing it, so the quarantine is left to the next learn verb.
 type AutosteerLessons struct {
-	Approved int `json:"approved"`
-	Proposed int `json:"proposed"`
-	Demoted  int `json:"demoted"`
+	Approved  int  `json:"approved"`
+	Proposed  int  `json:"proposed"`
+	Demoted   int  `json:"demoted"`
+	Unchecked bool `json:"unchecked"`
 }
 
 // AutosteerUnknown is something the record cannot settle: a masked run (Seq

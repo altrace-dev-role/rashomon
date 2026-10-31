@@ -237,10 +237,14 @@ func checksText(cs []AutosteerCheck) string {
 }
 
 // lessonsText is the ledger's counts by tier and the lessons delivered this
-// session, or not read when the report opened no ledger.
+// session, or not read when the report opened no ledger. The ledger is opened
+// read-only, so one that does not check is named, not quarantined.
 func lessonsText(a *Autosteer) string {
 	if a.Lessons == nil {
 		return "not read here"
+	}
+	if a.Lessons.Unchecked {
+		return fmt.Sprintf("the ledger did not check, so all %d read proposed (this project)", a.Lessons.Proposed)
 	}
 	s := fmt.Sprintf("%d approved, %d proposed, %d demoted (this project)", a.Lessons.Approved, a.Lessons.Proposed, a.Lessons.Demoted)
 	var fired []int64
