@@ -76,6 +76,23 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 	return out
 }
 
+// DeclaresRequired reports whether sp declares a required gate from a trusted
+// or managed source, as declaredGates reads one, with no digest built (D222).
+func DeclaresRequired(sp *spec.Compiled) bool {
+	if sp == nil {
+		return false
+	}
+	for _, d := range sp.Gates {
+		if d.Source < 0 || d.Source >= len(sp.Sources) {
+			continue
+		}
+		if tr := sp.Sources[d.Source].Trust; (tr == spec.Trusted || tr == spec.Managed) && (d.Gate.Required == nil || *d.Gate.Required) {
+			return true
+		}
+	}
+	return false
+}
+
 // lineShape is the shape of the Bash line argv's words make, joined by one
 // space, each quoted as a shell reads it back to the same word (shellWord).
 func lineShape(argv []string, key []byte) shape.Shape {
