@@ -304,10 +304,26 @@
         {
           "file": "cmd/rashomon/report_ledger_test.go",
           "symbol": "TestLW1e_StopLedgerEqualsTheVerbs"
+        },
+        {
+          "file": "internal/verify/obligations.go",
+          "symbol": "specObligations"
+        },
+        {
+          "file": "internal/verify/rules.go",
+          "symbol": "ruleVerdicts"
+        },
+        {
+          "file": "internal/verify/rules_test.go",
+          "symbol": "TestSR1_ForbidCommandViolatedByTheCallRaisesAndRowsUnmet"
+        },
+        {
+          "file": "internal/verify/rules_test.go",
+          "symbol": "TestSR1k_VerdictsAndRowsUnderShuffledRecords"
         }
       ],
       "id": "PF-PG5",
-      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, but it emits no spec_rule or proposed_check row, and its scope is the session at every point.",
+      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path and require_evidence rule (violation unmet, no recorded violation met, undecided unknown), but it emits no proposed_check row, and its scope is the session at every point.",
       "integration": [
         {
           "event": "Stop",
@@ -320,7 +336,7 @@
       ],
       "missing": [
         "the ledger verb replays from the record: the tree is read now and the final message is not held, so a file changed since the Stop reads its rows stale and judgment_disclosed reads unknown",
-        "spec_rule rows: no spec rule evaluator exists and SpecVerdicts is always empty",
+        "spec_rule rows for forbid_code and order rules: ruleVerdicts skips both kinds (SPEC-RULES1 1b)",
         "proposed_check rows",
         "watched_red_then_green for a declared gate: watches keys reds by learned family, so a declared row has none (DECLARED-GATES1 G13)",
         "platform_impact wiring: internal/platform has no runtime caller (6.1)"
@@ -445,10 +461,18 @@
         {
           "file": "internal/verify/integrity_test.go",
           "symbol": "TestINT10_UnresolvedBlocksRecordGreenAndRowsFindings"
+        },
+        {
+          "file": "internal/verify/rules.go",
+          "symbol": "bindingViolations"
+        },
+        {
+          "file": "internal/verify/rules_test.go",
+          "symbol": "TestSR1h_TrustedViolationClearsRecordGreen"
         }
       ],
       "id": "PF-PG8",
-      "implementation": "recordGreen needs a complete record, no unresolved integrity entry and every required gate green, and Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order, but no spec violation holds only vacuously because no spec rule is evaluated.",
+      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path or require_evidence rule of a trusted or managed spec, and every required gate green, and Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
       "integration": [
         {
           "event": "Stop",
@@ -456,7 +480,7 @@
         }
       ],
       "missing": [
-        "a spec rule evaluator to fill SpecVerdicts",
+        "forbid_code and order rules are not evaluated, so neither can block record-green (SPEC-RULES1 1b)",
         "the ledger's all-met state (PF-PG5)"
       ],
       "planned_pr": "",
@@ -646,6 +670,10 @@
           "symbol": "IntegrityKind"
         },
         {
+          "file": "internal/verify/rules_raise.go",
+          "symbol": "RulesAtCall"
+        },
+        {
           "file": "internal/verify/integrity_test.go",
           "symbol": "TestINT1_ATestDeletedAfterRedIsUnresolvedTestRemoved"
         },
@@ -654,12 +682,16 @@
           "symbol": "TestIV3b_EachDoorIsAUserFlagWithItsLine"
         },
         {
+          "file": "internal/hook/steer_rules_test.go",
+          "symbol": "TestSR1x_APostRaisesItsRulesFromTheCallAlone"
+        },
+        {
           "file": "internal/recap/recap_test.go",
           "symbol": "TestLineTestBending"
         }
       ],
       "id": "PF-PG12",
-      "implementation": "Nine closed integrity kinds are folded and kept user-only, with the one-way doors flagged at PostToolUse, but no hook writes edit marks, so only tests_only_then_green and store_touched have producers in a session.",
+      "implementation": "Nine closed integrity kinds are folded and kept user-only, with the one-way doors flagged at PostToolUse, and a frozen path edited is flagged there from a file tool's call against a protect_path rule, but no hook writes edit marks, so among the nine only tests_only_then_green and store_touched have producers in a session.",
       "integration": [
         {
           "event": "PostToolUse",
@@ -673,7 +705,7 @@
       "missing": [
         "the edit-marks writer (1.8p) for test_removed, skip_added, assertions_removed and suppression_added",
         "producers for generated_edited, gate_weakened and gate_config_edited (IV-PRODUCERS1, D139)",
-        "three kinds more to reach the PRD's twelve"
+        "two kinds more to reach the PRD's twelve: frozen-path is the post's flag and a spec_rule verdict at Stop, never a folded integrity kind (SPEC-RULES1)"
       ],
       "planned_pr": "",
       "session_proof": "",
