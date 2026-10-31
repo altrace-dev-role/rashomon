@@ -14,8 +14,8 @@ m("sr1 forbid_command reads an expanding word as literal", "internal/verify/rule
   "\topaque := false\n",
   "TestSR1l_|TestSR1e_")
 m("sr1 protect_path reads a Write as a modify", "internal/verify/rules.go",
-  "\tcase \"Edit\", \"MultiEdit\", \"NotebookEdit\":\n\t\treturn triOf(modify, modify)\n",
-  "\tcase \"Edit\", \"MultiEdit\", \"NotebookEdit\", \"Write\":\n\t\treturn triOf(modify, modify)\n",
+  "\tcase \"Write\":\n\t\treturn triOf(create && modify, create || modify)\n",
+  "\tcase \"Write\":\n\t\treturn triOf(modify, modify)\n",
   "TestSR1b_")
 m("sr1 protect_path ignores exclude_paths", "internal/verify/rules.go",
   "\treturn anyPath(r.Paths, rel) && !anyPath(r.ExcludePaths, rel)\n",
@@ -81,6 +81,7 @@ m("sr1 the post raises a forbidden command that failed", "internal/verify/rules_
   "\t\t\tif event != string(steer.EventPostToolUse) || call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
   "\t\t\tif call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
   "TestSR1_")
+IMPORTS["sr1 the post raises a forbidden command that failed"] = ("internal/verify/rules_raise.go", '\t"github.com/altrace-dev-role/rashomon/internal/steer"\n', "")
 m("sr1 protectOver cleans each path again inside the rule", "internal/verify/rules.go",
   "\t\trel, inside := rels[i].rel, rels[i].inside\n",
   "\t\trel, inside := projectPath(*w.Path)\n",
@@ -90,14 +91,14 @@ m("sr1 a no-spec discovery resolves symlinks before asking for a root", "interna
   "TestSR1ab_")
 m("sr1 a rules-only call trusts a bound spec without reading the run", "internal/hook/steerstep.go",
   "\t\tif t := TrustRoot(r, root, p.landedSeq); t != (TrustedRoot{}) {\n",
-  "\t\tif t := (TrustedRoot{root: root}); t != (TrustedRoot{}) {\n",
+  "\t\tif t := (TrustedRoot{root: root}); t != (TrustedRoot{}) && (r != nil || r == nil) {\n",
   "TestSR1aa_")
 
 # D210's no-spec note: one row per way the note could be misread.
 m("sr1 the no-spec note is used across turns", "internal/store/specnone.go",
-  "\tif !ok || string(turn) != promptID {\n", "\tif !ok {\n", "TestSR1ae_")
+  "\tif !ok || string(turn) != promptID {\n", "\tif !ok || len(turn) < 0 {\n", "TestSR1ae_")
 m("sr1 the no-spec note ignores the directory", "internal/store/specnone.go",
-  "\treturn ok && string(dig) == digest && len(b) == 0\n", "\treturn ok && len(b) == 0\n", "TestSR1ae_")
+  "\treturn ok && string(dig) == digest && len(b) == 0\n", "\treturn ok && len(dig) >= 0 && len(b) == 0\n", "TestSR1ae_")
 m("sr1 a call naming .claude/rashomon leaves the no-spec note", "internal/hook/steerstep.go",
   "\tif p.landedStore {\n\t\tp.st.ClearNoSpec(p.sessionID)\n\t}\n", "", "TestSR1ae_")
 m("sr1 a found spec is noted too", "internal/hook/specnone.go",
