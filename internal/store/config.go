@@ -26,6 +26,8 @@ const (
 	configLockBudget = 2 * time.Second
 	// SwitchOff is the value a per-scope switch holds when it is off.
 	SwitchOff = "off"
+	// SwitchOn is the one value a steer switch that is set reads as on.
+	SwitchOn = "on"
 	// maxConfigBytes bounds the file's read: a few switches.
 	maxConfigBytes = 1 << 16
 )
@@ -64,13 +66,43 @@ func (c Config) SummaryOnFor(project string) bool {
 	return c.SummaryOn() && c.SummaryProjects[project] != SwitchOff
 }
 
+// steerSwitchOff reads a steer switch's value: absent is on (the default),
+// exactly "on" is on, and any other value is off, so a hand's "Off" or
+// "disabled" clamps the notes rather than leaving them on. The writer only
+// ever writes "off" (an on switch is absent).
+func steerSwitchOff(v string) bool { return v != "" && v != SwitchOn }
+
 // SteerOffUser reports the user's steer switch off.
-func (c Config) SteerOffUser() bool { return c.SteerUser == SwitchOff }
+func (c Config) SteerOffUser() bool { return steerSwitchOff(c.SteerUser) }
 
 // SteerOffFor reports the notes off for project: the user's switch or the
 // project's own.
 func (c Config) SteerOffFor(project string) bool {
-	return c.SteerOffUser() || c.SteerProjects[project] == SwitchOff
+	return c.SteerOffUser() || steerSwitchOff(c.SteerProjects[project])
+}
+
+// ErrConfigUnreadable is what a config.json that is there but does not read
+// (it does not parse, or is over its size) matches under errors.Is. The hook
+// clamps the notes on it (steer's config_unreadable) and `steer on --repair`
+// is the one writer that replaces such a file.
+var ErrConfigUnreadable = errors.New("config.json is unreadable")
+
+// unreadableConfig is the read's error for a file that is there and does not
+// read: the file's name and the reason, matching ErrConfigUnreadable.
+type unreadableConfig struct{ err error }
+
+func (e unreadableConfig) Error() string        { return FileConfig + ": " + e.err.Error() }
+func (e unreadableConfig) Unwrap() error        { return e.err }
+func (e unreadableConfig) Is(target error) bool { return target == ErrConfigUnreadable }
+
+// ConfigReason is why err, a ReadConfig error, says the file does not read,
+// without the file's name: a short reason a person can act on.
+func ConfigReason(err error) string {
+	var u unreadableConfig
+	if errors.As(err, &u) {
+		return u.err.Error()
+	}
+	return err.Error()
 }
 
 // ReadConfig reads root's config. An absent file is the zero Config and no
@@ -102,7 +134,7 @@ func ReadConfig(root string) (Config, error) {
 		err = json.Unmarshal(b, &c.extra)
 	}
 	if err != nil {
-		return Config{}, fmt.Errorf("%s: %w", FileConfig, err)
+		return Config{}, unreadableConfig{err}
 	}
 	for _, k := range configKeys {
 		delete(c.extra, k)
@@ -119,6 +151,18 @@ func ReadConfig(root string) (Config, error) {
 // is atomic, so a reader never sees a torn file. A file that does not parse
 // is an error and is not replaced.
 func UpdateConfig(root string, change func(*Config)) (Config, error) {
+	return updateConfig(root, change, false)
+}
+
+// RepairConfig is UpdateConfig for the one case it refuses: a file that is
+// there and does not read (ErrConfigUnreadable) is replaced, its content
+// lost, by the zero Config with change applied. A file that reads is updated
+// as UpdateConfig does. Only a command a person confirmed calls it.
+func RepairConfig(root string, change func(*Config)) (Config, error) {
+	return updateConfig(root, change, true)
+}
+
+func updateConfig(root string, change func(*Config), repair bool) (Config, error) {
 	lf, err := os.OpenFile(filepath.Join(root, FileConfigLock), os.O_CREATE|os.O_RDWR, fileMode)
 	if err != nil {
 		return Config{}, err
@@ -130,7 +174,7 @@ func UpdateConfig(root string, change func(*Config)) (Config, error) {
 	}
 	defer unlock()
 	c, err := ReadConfig(root)
-	if err != nil {
+	if err != nil && !(repair && errors.Is(err, ErrConfigUnreadable)) {
 		return Config{}, err
 	}
 	change(&c)

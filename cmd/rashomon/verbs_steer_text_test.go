@@ -35,6 +35,18 @@ func TestSTC1l_ScreenNamesTheControlsOnceTheyDispatch(t *testing.T) {
 			t.Errorf("%s is named and %q is not dispatched", c, verb)
 		}
 	}
+	// The sentence says what steer off does for the user and no more: decide's
+	// flag budget is one flag per call and five per prompt, and an event with
+	// no channel prints nothing.
+	for _, want := range []string{"shown to you as a flag where the call has room for one", "one flag per call, five per prompt",
+		"nothing is shown on an event that has no way to carry one"} {
+		if !strings.Contains(all.String(), want) {
+			t.Errorf("the screen's steer-off sentence lacks %q", want)
+		}
+	}
+	if strings.Contains(all.String(), "is still shown to you") {
+		t.Error("the screen says a note is still shown to you, which the flag budget and a channel-less event make untrue")
+	}
 	stop := false
 	for _, c := range consent.Commands {
 		stop = stop || c.Does == "Stop the notes to your agent" && c.Run == "rashomon steer off --user"

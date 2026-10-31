@@ -44,6 +44,23 @@ func TestSTC1_ConfigKeepsWhatItDoesNotName(t *testing.T) {
 	}
 }
 
+// TestSTC1n_OnlyExactlyOnIsOn: a steer switch that is set and is not exactly
+// "on" reads off, in either scope, so a hand's "Off" or "disabled" clamps the
+// notes; an absent switch is the default, on.
+func TestSTC1n_OnlyExactlyOnIsOn(t *testing.T) {
+	for v, off := range map[string]bool{"": false, "on": false, "off": true, "Off": true, "OFF": true, "disabled": true, "false": true, "On": true, " on": true} {
+		if got := (Config{SteerUser: v}).SteerOffUser(); got != off {
+			t.Errorf("steer_user %q: off = %v, want %v", v, got, off)
+		}
+		if got := (Config{SteerProjects: map[string]string{"/p": v}}).SteerOffFor("/p"); got != off {
+			t.Errorf("steer_projects %q: off = %v, want %v", v, got, off)
+		}
+	}
+	if (Config{SteerProjects: map[string]string{"/p": "off"}}).SteerOffFor("/other") {
+		t.Error("a project's value silenced another project")
+	}
+}
+
 // TestSTC1_ScopesAreEachOwn: the project's key silences that project and no
 // other, the user's silences all, and an unset or other value silences none.
 func TestSTC1_ScopesAreEachOwn(t *testing.T) {

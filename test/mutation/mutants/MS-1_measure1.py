@@ -1,8 +1,8 @@
 # MS-1 (card MEASURE1, PR A1): the paired run's arm switch, arm off's
 # decide-time fold, recap's silence under arm off, and the lab gate.
 m("MS-1 contextOf keeps the live arm whatever env names", "internal/hook/steerstep.go",
-  "\t\tArm:        armOf(env),\n",
-  "\t\tArm:        steer.ArmLive,\n", "TestMS1_")
+  "\t\tArm:              armOf(env),\n",
+  "\t\tArm:              steer.ArmLive,\n", "TestMS1_")
 m("MS-1 SteerArm reads OFF as off", "internal/hook/steerstep.go",
   "\tcase \"off\":\n",
   "\tcase \"off\", \"OFF\":\n", "TestMS1c_")

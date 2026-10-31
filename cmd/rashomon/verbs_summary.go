@@ -18,6 +18,22 @@ const summaryUsage = `  rashomon summary [on|off] [--user|--project]
 
 `
 
+// summaryLine is the state a bare `summary` says, in steerLine's format: the
+// effective switch the Stop line reads, then each scope's.
+func summaryLine(c store.Config, key string) string {
+	state, user, proj := "on", "on", "on"
+	if !c.SummaryOnFor(key) {
+		state = "off"
+	}
+	if !c.SummaryOn() {
+		user = "off"
+	}
+	if c.SummaryProjects[key] == store.SwitchOff {
+		proj = "off"
+	}
+	return fmt.Sprintf("summary: %s (you: %s; this project: %s, %s)", state, user, proj, safeText(key))
+}
+
 // cmdSummary is `rashomon summary [on|off] [--user|--project]` (cards
 // REPORT1a, FUN-16, and STEER-CLI1 for the scopes): with no on or off it says
 // the switch's state, with one it persists it in the store's config.json,
@@ -71,6 +87,10 @@ func cmdSummary(args []string, stdout io.Writer) error {
 		}); err != nil {
 			return err
 		}
+	}
+	if len(words) == 0 {
+		_, err = fmt.Fprintln(stdout, summaryLine(c, key))
+		return err
 	}
 	state := "on"
 	if !c.SummaryOn() {
