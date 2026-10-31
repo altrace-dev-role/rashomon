@@ -367,7 +367,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-30 (STATUS-VERBS1a) to 28: fired.go's MarkFired
 		// create (runs/<session>/fired-<Event>, the hook entries' fired
 		// markers status counts), a new write kind; fired-* in the inventory.
-		{"store", 28},
+		// Moved 2026-10-30 (REPORT1a) to 29: config.go's WriteConfig
+		// ReplaceFile (config.json, the person's switches; `rashomon summary
+		// on|off` is its one writer), configFiles in the inventory, purge's
+		// topFiles and temp prefix.
+		{"store", 29},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

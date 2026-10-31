@@ -20,6 +20,7 @@ package disclose
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -169,9 +170,17 @@ const (
 func Default() (Inventory, error) {
 	return Inventory{
 		ScopeVersion: ScopeVersion,
-		Files:        append(defaultFiles(), append(firedFiles(), append(learnFiles(), specFiles()...)...)...),
-		Paragraphs:   defaultParagraphs(),
-		Units:        defaultUnits(),
+		// One call per line: each card that adds inventory adds one line here, so
+		// two of them merge instead of conflicting on a nested append.
+		Files: slices.Concat(
+			defaultFiles(),
+			firedFiles(),
+			learnFiles(),
+			specFiles(),
+			configFiles(),
+		),
+		Paragraphs: defaultParagraphs(),
+		Units:      defaultUnits(),
 	}, nil
 }
 

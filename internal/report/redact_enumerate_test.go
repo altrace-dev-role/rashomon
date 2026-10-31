@@ -45,6 +45,31 @@ var hostBearing = map[string]bool{
 	// NOT host-bearing, each decided rather than defaulted. Ids, reason codes,
 	// tool names, counts-as-strings and enum values. If one of these ever starts
 	// carrying a hostname, the entry moves to true and Redact gains a line.
+	// The autosteer block (REPORT1a): fixed vocabulary, steer line and prompt
+	// ids, seqs, and program words and gate kinds of the Stop's own sentence,
+	// which are program names and never a host. Counts and seqs survive
+	// --redact whole.
+	"autosteer.checks[].gate":                          false,
+	"autosteer.checks[].kind":                          false,
+	"autosteer.checks[].reason":                        false,
+	"autosteer.checks[].state":                         false,
+	"autosteer.clause":                                 false,
+	"autosteer.delivered[].event":                      false,
+	"autosteer.delivered[].id":                         false,
+	"autosteer.delivered[].pattern":                    false,
+	"autosteer.delivered[].prompt_id":                  false,
+	"autosteer.delivered[].title":                      false,
+	"autosteer.findings[].gate":                        false,
+	"autosteer.findings[].id":                          false,
+	"autosteer.findings[].pattern":                     false,
+	"autosteer.findings[].state":                       false,
+	"autosteer.findings[].title":                       false,
+	"autosteer.gates[].kind":                           false,
+	"autosteer.gates[].name":                           false,
+	"autosteer.gates[].state":                          false,
+	"autosteer.stop.row":                               false,
+	"autosteer.stop.sentence":                          false,
+	"autosteer.unknown[].kind":                         false,
 	"account.text":                                     false,
 	"chains.dropped[].outcome":                         false,
 	"chains.dropped[].outcomes[]":                      false,
