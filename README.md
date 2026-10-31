@@ -172,7 +172,11 @@ its last command, so `pytest -q | tail` exits 0 whether the tests passed or not,
 and rashomon cannot take the pass from the exit status. When every stage after
 the runner is `tail` (without `-c`), `tee` or a bare `cat`, rashomon reads the
 runner's own summary line in the output, in memory, and counts that. It does this
-for pytest, `go test`, `cargo test`, jest and vitest. The Stop line then names the
+for pytest, `go test`, `cargo test`, jest and vitest. A pass from a piped `make`,
+`npm run`, yarn or pnpm still reads as hidden, because a pass line in their output
+belongs to one step, not the whole command; their own failure markers (make's
+`***`, `npm ERR!`, yarn's `error Command failed`, pnpm's `ERR_PNPM`) do read as a
+failure. The Stop line then names the
 runner and where the result came from, for example "python3 -m pytest passed
 after the last edit (read from its output; the pipe hid the exit status)". A run
 still reads as hidden when a later stage is any other command (`head`, `grep`,
