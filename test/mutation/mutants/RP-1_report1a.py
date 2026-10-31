@@ -50,3 +50,15 @@ m("RP-1 the line's gate id is not read, so the true resolution is lost", "intern
   "\tcase string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):\n\t\treturn key",
   "\tcase string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):\n\t\treturn \"\"",
   "TestRP1i_TheSameGateGoingGreenResolves")
+
+# The Stop view names a gate by its runner's whole name ("go test"), the slot
+# by its program word ("go"): the fallback compares first words, and a word two
+# gates share settles nothing.
+m("RP-1 the program's first word is not taken, so go test never matches go", "internal/recap/impact.go",
+  "programWord(v.Programs[g.Gate]) == f.Gate",
+  "v.Programs[g.Gate] == f.Gate",
+  "TestRP1i_ARunnerNameIsComparedByItsProgramWord")
+m("RP-1 a first word two gates share resolves its finding", "internal/recap/impact.go",
+  "\tif n != 1 || match.LastGreen == nil || match.LastGreen.Seq <= f.Seq",
+  "\tif n == 0 || match.LastGreen == nil || match.LastGreen.Seq <= f.Seq",
+  "TestRP1i_ARunnerNameIsComparedByItsProgramWord")

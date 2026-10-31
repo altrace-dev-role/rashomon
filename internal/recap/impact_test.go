@@ -28,7 +28,7 @@ func finding(t *testing.T, id, pat, gate string, seq int64, model string) []byte
 // green at or before it, not a gate it does not name, not a green that has
 // since gone stale. The resolving seq is the green run's.
 func TestRP1_ResolvedOnlyByALaterGreen(t *testing.T) {
-	line := [][]byte{finding(t, "a", "regression-location", "go", 37, "x")}
+	line := [][]byte{keyed(t, "a", "regression-location", "go", "go:test", 37)}
 	for _, c := range []struct {
 		name  string
 		gate  verify.GateState
@@ -196,5 +196,35 @@ func TestRP1i_ASlotTwoGatesShareReadsOpen(t *testing.T) {
 	one := viewOf(verify.RowVerified, wrote, gateAt("go:test", "test", verify.Green, verify.OK, 30, nil))
 	if im := ImpactOf(one, line, nil); im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 30 {
 		t.Errorf("one gate on the slot: %+v, want resolved by 30", im.Findings)
+	}
+}
+
+// runnerView is goView with the programs as the Stop view names them once a
+// gate carries its runner's whole name: "go test" and "go build".
+func runnerView(test, build verify.GateState) verify.StopView {
+	v := goView(test, build)
+	v.Programs = map[string]string{"learned:go-test": "go test", "learned:go-build": "go build"}
+	return v
+}
+
+// TestRP1i_ARunnerNameIsComparedByItsProgramWord: a line with no gate id whose
+// slot is the program word ("go") finds the gate whose program is the runner's
+// whole name ("go test"), so a keyless finding resolves, and with go test and
+// go build both present the first word is shared and the finding reads open.
+func TestRP1i_ARunnerNameIsComparedByItsProgramWord(t *testing.T) {
+	line := [][]byte{finding(t, "a", "regression-location", "go", 10, "x")}
+	test := gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil)
+	one := viewOf(verify.RowVerified, wrote, test)
+	one.Programs = map[string]string{"learned:go-test": "go test"}
+	if im := ImpactOf(one, line, nil); im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 30 {
+		t.Errorf("one gate named go test: %+v, want resolved by 30", im.Findings)
+	}
+	both := runnerView(test, gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	if im := ImpactOf(both, line, nil); im.Findings[0].State != FindingOpen || im.Findings[0].ResolvedBy != 0 {
+		t.Errorf("go test and go build share the word go: %+v, want open", im.Findings)
+	}
+	// The line's own gate id still settles it with both present.
+	if im := ImpactOf(both, [][]byte{keyed(t, "a", "regression-location", "go", "learned:go-test", 10)}, nil); im.Findings[0].State != FindingResolved {
+		t.Errorf("keyed line: %+v, want resolved", im.Findings)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
@@ -252,9 +253,11 @@ func gateKey(pat, key string) string {
 // identity, never by a program or a kind another gate shares. With the
 // line's own gate id (key) that gate is the one; with none (or none in the view), the gate slot
 // (a program word, or the gate's kind when the program is a prefix word, as
-// the clause names a gate, gateSet.name) must pick exactly one gate. A slot
-// two gates share cannot tell them apart, so the finding reads open: the
-// report may understate and never overstates.
+// the clause names a gate, gateSet.name) must pick exactly one gate. The
+// view's program may be the runner's whole name ("go test"), so the slot is
+// compared with its first word. A slot two gates share cannot tell them
+// apart (go test and go build both start with go), so the finding reads open:
+// the report may understate and never overstates.
 func resolution(v verify.StopView, f FindingRef, key string) (FindingState, int64) {
 	if f.Gate == "" {
 		return FindingUnchecked, 0
@@ -269,7 +272,7 @@ func resolution(v verify.StopView, f FindingRef, key string) (FindingState, int6
 	if n == 0 {
 		for i := range v.Snap.Gates {
 			g := &v.Snap.Gates[i]
-			if g.Gate != "" && (v.Programs[g.Gate] == f.Gate || g.Kind == f.Gate) {
+			if g.Gate != "" && (programWord(v.Programs[g.Gate]) == f.Gate || g.Kind == f.Gate) {
 				match = g
 				n++
 			}
@@ -279,6 +282,15 @@ func resolution(v verify.StopView, f FindingRef, key string) (FindingState, int6
 		return FindingOpen, 0
 	}
 	return FindingResolved, match.LastGreen.Seq
+}
+
+// programWord is the first whitespace-separated word of a gate's program: "go"
+// for "go" and for "go test", "" for none.
+func programWord(p string) string {
+	if w := strings.Fields(p); len(w) > 0 {
+		return w[0]
+	}
+	return ""
 }
 
 // number is a number value's integer, 0 for any other kind.
