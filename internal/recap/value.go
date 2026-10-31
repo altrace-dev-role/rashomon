@@ -10,6 +10,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -23,6 +24,13 @@ import (
 
 // lineColumns is the width each line of the value line is fitted to.
 const lineColumns = 80
+
+// maxIDName is the longest spec gate id the line names: with it the verified
+// sentence, the one the id lengthens most, still fits lineColumns.
+const maxIDName = 24
+
+// specGatePrefix leads the id of a gate a trusted spec declares.
+const specGatePrefix = "spec:"
 
 // maxGateNames is how many programs a gate list names before `and <k> more`.
 const maxGateNames = 3
@@ -381,9 +389,15 @@ func (t gateSet) first(s verify.State) *verify.GateState {
 	return nil
 }
 
-// name is g's program word, else its kind: with no program word, or with a
+// name is the id of a gate a trusted spec declares, in the slot's quote;
+// else g's program word, else its kind: with no program word, or with a
 // prefix word in its place.
 func (t gateSet) name(g *verify.GateState) string {
+	if id, ok := strings.CutPrefix(g.Gate, specGatePrefix); ok && len(id) <= maxIDName {
+		if p := slot.Program(id); p.Validate() == nil {
+			return p.Text()
+		}
+	}
 	if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {
 		return p
 	}
