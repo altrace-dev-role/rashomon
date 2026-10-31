@@ -28,9 +28,10 @@ type svRun struct {
 	fired []string
 }
 
-// svRemedy is the not-firing line's remedy, naming both causes the consent
-// screen names.
-const svRemedy = "Claude Code before 2.1.280 lacks this event, or run `rashomon watch` to reinstall its entry"
+// svRemedy is a missing-marker line's remedy where the event exists on every
+// supported Claude Code: the pause or stand-down, the untrusted folder, and
+// the entry's absence.
+const svRemedy = "recording was paused or stood down, or this folder is not trusted, or run `rashomon watch` to reinstall its entry"
 
 // svInstalled is a store at a fresh root with the settings entries for every
 // event installed, holding runs. The markers are written as files, not by
@@ -92,10 +93,10 @@ func svBlock(t *testing.T, out, head string, n int) []string {
 }
 
 // TestSV1_StatusNamesAnEventThatNeverFired: an installed event every session
-// with tool calls fires, that fired in none of them, is "not firing" with
-// both causes the screen names. Stop is judged over the sessions before the
+// with tool calls fires, that fired in none of them, is "no marker" with
+// the causes that can leave one (never "not firing": no cause is proven). Stop is judged over the sessions before the
 // newest, which may be mid-turn; the failure events fire only on a failure,
-// so a 0 there is a count, never "not firing". Break: drop the never-fired
+// so a 0 there is a count, never "no marker". Break: drop the never-fired
 // check, and a recorder whose Stop entry is gone reads as healthy.
 func TestSV1_StatusNamesAnEventThatNeverFired(t *testing.T) {
 	everyone := []string{"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit"}
@@ -103,18 +104,128 @@ func TestSV1_StatusNamesAnEventThatNeverFired(t *testing.T) {
 		svRun{"s-old", true, 48 * time.Hour, append(slices.Clone(everyone), "SessionEnd")},
 		svRun{"s-new", true, time.Hour, everyone})
 	out := svStatus(t)
-	if want := "  Stop: not firing: 0 of 1 earlier sessions with tool calls; " + svRemedy + "\n"; !strings.Contains(out, want) {
+	if want := "  Stop: no marker: 0 of 1 earlier sessions with a marker; " + svRemedy + "\n"; !strings.Contains(out, want) {
 		t.Errorf("status does not name Stop as not firing:\n%s", out)
 	}
-	if n := strings.Count(out, "not firing"); n != 1 {
-		t.Errorf("status says not firing %d times, want once (Stop):\n%s", n, out)
+	if n := strings.Count(out, "no marker"); n != 1 || strings.Contains(out, "not firing") {
+		t.Errorf("status says no marker %d times, want once (Stop):\n%s", n, out)
 	}
 
 	// The newest session alone: its Stop may not have come yet.
 	svInstalled(t, svRun{"s-only", true, time.Hour, everyone})
 	out = svStatus(t)
-	if !strings.Contains(out, "  Stop: not this session; no earlier session\n") || strings.Contains(out, "not firing") {
+	if !strings.Contains(out, "  Stop: not in the newest session; no earlier session\n") || strings.Contains(out, "no marker") {
 		t.Errorf("a live first session reads as Stop not firing:\n%s", out)
+	}
+}
+
+// TestSV1p_UpgradeIsNotNotFiring: sessions run before the upgrade carry no
+// marker, so they are not evidence an entry stopped: three of them and one
+// new session fired Stop in none, and status names none of the events and
+// says how many sessions predate the markers (it once said "Stop: not
+// firing: 0 of 3 earlier sessions" and told the user to reinstall). Once an
+// earlier session with markers lacks Stop, that is said, over that session
+// alone. Break: count every session with calls, and the first reads as an
+// entry gone.
+func TestSV1p_UpgradeIsNotNotFiring(t *testing.T) {
+	everyone := []string{"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit"}
+	svInstalled(t,
+		svRun{"s-1", true, 96 * time.Hour, nil},
+		svRun{"s-2", true, 72 * time.Hour, nil},
+		svRun{"s-3", true, 48 * time.Hour, nil},
+		svRun{"s-new", true, time.Hour, everyone})
+	out := svStatus(t)
+	if strings.Contains(out, "no marker") || strings.Contains(out, "not firing") || strings.Contains(out, "reinstall") {
+		t.Errorf("a store holding only pre-marker sessions reads as an entry gone:\n%s", out)
+	}
+	if want := "events: newest session s-new; 4 sessions with tool calls in the last 7 days; 3 earlier sessions predate the markers\n"; !strings.Contains(out, want) {
+		t.Errorf("status does not say how many sessions predate the markers (want %q):\n%s", want, out)
+	}
+	if !strings.Contains(out, "  Stop: not in the newest session; no earlier session\n") {
+		t.Errorf("Stop is judged over unmarked sessions:\n%s", out)
+	}
+	var j struct {
+		Before int `json:"sessions_before_markers"`
+	}
+	if err := json.Unmarshal([]byte(svStatus(t, "--json")), &j); err != nil || j.Before != 3 {
+		t.Errorf("--json sessions_before_markers = %d (%v), want 3", j.Before, err)
+	}
+
+	svInstalled(t,
+		svRun{"s-1", true, 96 * time.Hour, nil},
+		svRun{"s-2", true, 72 * time.Hour, everyone},
+		svRun{"s-new", true, time.Hour, everyone})
+	out = svStatus(t)
+	if want := "  Stop: no marker: 0 of 1 earlier sessions with a marker; " + svRemedy + "\n"; !strings.Contains(out, want) ||
+		!strings.Contains(out, "; 1 earlier session predates the markers\n") {
+		t.Errorf("one marked earlier session without Stop:\n%s", out)
+	}
+}
+
+// TestSV1q_RemedyNamesTheCausesThatApply: a missing marker's remedy names the
+// pause or stand-down, the untrusted folder and the reinstall, and names a
+// Claude Code version only for an event newer than the oldest supported one,
+// which no installed event is today. Break: name the version for every event
+// again, and PreToolUse is said to need a Claude Code newer than the floor.
+func TestSV1q_RemedyNamesTheCausesThatApply(t *testing.T) {
+	for _, e := range install.Events() {
+		got := firedRemedy(e)
+		if strings.Contains(got, "Claude Code before") {
+			t.Errorf("%s: remedy names a version no installed event needs: %q", e, got)
+		}
+		for _, want := range []string{"paused or stood down", "not trusted", "rashomon watch"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: remedy %q lacks %q", e, got, want)
+			}
+		}
+	}
+	eventSince["Stop"] = "2.9.0"
+	defer delete(eventSince, "Stop")
+	if got := firedRemedy("Stop"); !strings.HasPrefix(got, "Claude Code before 2.9.0 lacks this event, or ") {
+		t.Errorf("an event newer than the floor: remedy = %q, want the version cause", got)
+	}
+	if got := firedRemedy("PreToolUse"); strings.Contains(got, "Claude Code before") {
+		t.Errorf("PreToolUse names a version: %q", got)
+	}
+}
+
+// TestSV1r_StatusJSONSaysWhichBlocksAreUnknown: a block status could not
+// read is null in --json, as an absent one is, so "unknown" names it. Break:
+// drop the list, and an unreadable consent file reads as none on file.
+func TestSV1r_StatusJSONSaysWhichBlocksAreUnknown(t *testing.T) {
+	st := svInstalled(t, svRun{"s1", true, time.Hour, nil})
+	var j struct {
+		Unknown []string `json:"unknown"`
+		Consent any      `json:"consent"`
+	}
+	if err := json.Unmarshal([]byte(svStatus(t, "--json")), &j); err != nil || j.Unknown == nil || len(j.Unknown) != 0 {
+		t.Errorf("a readable store: unknown = %v (%v), want []", j.Unknown, err)
+	}
+	consentFile := filepath.Join(st.Root(), store.FileConsent)
+	if err := os.Remove(consentFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(consentFile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	j.Unknown = nil
+	if err := json.Unmarshal([]byte(svStatus(t, "--json")), &j); err != nil || !slices.Equal(j.Unknown, []string{"consent"}) || j.Consent != nil {
+		t.Errorf("an unreadable consent file: unknown = %v (%v), consent = %v, want [consent] and null", j.Unknown, err, j.Consent)
+	}
+}
+
+// TestSV1s_LastStopIsAStopsCheckpoint: a run whose last checkpoint was cut at
+// another point is not shown as its last Stop's. Break: read the last
+// checkpoint whatever its point, and a commit's record is said to be the
+// Stop's.
+func TestSV1s_LastStopIsAStopsCheckpoint(t *testing.T) {
+	st := svInstalled(t, svRun{"s1", true, time.Hour, nil})
+	if err := st.AppendRecord("s1", &verify.Checkpoint{Type: store.TypeVerify, SchemaVersion: store.EventSchemaVersion,
+		SessionID: "s1", Point: verify.PointCommit, PointSeq: 1, Recording: verify.Complete}); err != nil {
+		t.Fatal(err)
+	}
+	if out := svStatus(t); !strings.Contains(out, "last stop: no Stop has checked session s1\n") {
+		t.Errorf("a commit's checkpoint is read as the last Stop's:\n%s", out)
 	}
 }
 
@@ -133,15 +244,15 @@ func TestSV1b_StatusCountsPerEvent(t *testing.T) {
 		svRun{"s-nocalls", false, 0, []string{"SessionStart", "SessionEnd"}})
 	got := svBlock(t, svStatus(t), "events: ", 8)
 	want := []string{
-		"events: this session s-c; 3 sessions with tool calls in the last 7 days",
-		"  PreToolUse: fired this session; 3 of 3 sessions",
-		"  PostToolUse: fired this session; 3 of 3 sessions",
-		"  PostToolUseFailure: not this session; 1 of 3 sessions (fires only when a tool call fails)",
-		"  SessionStart: fired this session; 3 of 3 sessions",
-		"  SessionEnd: not this session; 2 of 2 earlier sessions",
-		"  Stop: not this session; 2 of 2 earlier sessions",
-		"  StopFailure: fired this session; 1 of 3 sessions (fires only when a turn ends in an API error)",
-		"  UserPromptSubmit: fired this session; 3 of 3 sessions",
+		"events: newest session s-c; 3 sessions with tool calls in the last 7 days",
+		"  PreToolUse: fired in the newest session; 3 of 3 sessions",
+		"  PostToolUse: fired in the newest session; 3 of 3 sessions",
+		"  PostToolUseFailure: not in the newest session; 1 of 3 sessions (fires only when a tool call fails)",
+		"  SessionStart: fired in the newest session; 3 of 3 sessions",
+		"  SessionEnd: not in the newest session; 2 of 2 earlier sessions",
+		"  Stop: not in the newest session; 2 of 2 earlier sessions",
+		"  StopFailure: fired in the newest session; 1 of 3 sessions (fires only when a turn ends in an API error)",
+		"  UserPromptSubmit: fired in the newest session; 3 of 3 sessions",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("events block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -351,11 +462,11 @@ func TestSV1f_EveryVerbHasJSONWithClosedKeys(t *testing.T) {
 			t.Errorf("%s keys = %q, want %q", what, got, want)
 		}
 	}
-	check("status", status, "consent", "events", "harness_mismatches", "last_stop", "session", "sessions_with_calls", "store")
+	check("status", status, "consent", "events", "harness_mismatches", "last_stop", "session", "sessions_before_markers", "sessions_with_calls", "store", "unknown")
 	if rows, _ := status["events"].([]any); len(rows) != len(install.Events()) {
 		t.Errorf("status events has %d rows, want %d", len(rows), len(install.Events()))
 	} else {
-		check("events[0]", rows[0], "event", "installed", "not_firing", "of", "sessions", "this_session")
+		check("events[0]", rows[0], "event", "installed", "newest_session", "not_firing", "of", "sessions")
 	}
 	if rows, _ := status["harness_mismatches"].([]any); len(rows) != 1 {
 		t.Errorf("status harness_mismatches = %v, want one row", status["harness_mismatches"])
@@ -374,7 +485,7 @@ func TestSV1f_EveryVerbHasJSONWithClosedKeys(t *testing.T) {
 		t.Fatalf("import: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 	lessons := jsonOf("lessons", "--json")
-	check("lessons", lessons, "lessons", "project", "quarantined_at_unix_ms")
+	check("lessons", lessons, "lessons", "project", "quarantined", "quarantined_at_unix_ms")
 	if rows, _ := lessons["lessons"].([]any); len(rows) != 2 {
 		t.Errorf("lessons has %v, want two rows", lessons["lessons"])
 	} else {

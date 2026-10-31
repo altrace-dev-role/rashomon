@@ -43,7 +43,9 @@ func UncheckedMessage(u Unchecked) (render.Message, error) {
 
 // Pick is the prompt's one lesson (L3, L4): the first of a's lessons, proven
 // rows before the rest and then in a's order, that delivered does not name,
-// that is relevant, and whose Message builds. Every lesson is relevant when
+// that a person approved (ApprovedUnixMS is set: defence in depth, as the
+// signature is tamper evidence and not a boundary), that is relevant, and
+// whose Message builds. Every lesson is relevant when
 // a holds pickAll or fewer; past that, one whose text holds one of the
 // prompt's path tokens. An unchecked state gives none. Which tiers may
 // arrive is ReadActive's to decide, once.
@@ -54,7 +56,7 @@ func Pick(a Active, delivered func(id string) bool, paths []string) (Lesson, ren
 	all := len(a.Lessons) <= pickAll
 	for _, proven := range [...]bool{true, false} {
 		for _, ls := range a.Lessons {
-			if (ls.Tier == TierProven) != proven || delivered(ls.ID) || !all && !namesAny(ls.Text, paths) {
+			if (ls.Tier == TierProven) != proven || ls.ApprovedUnixMS == 0 || delivered(ls.ID) || !all && !namesAny(ls.Text, paths) {
 				continue
 			}
 			if m, err := Message(ls); err == nil {

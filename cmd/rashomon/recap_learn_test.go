@@ -235,7 +235,7 @@ func (l lessonLine) String() string {
 
 const (
 	cwdLesson  = "run go test from the module root"
-	cwdNote    = "rashomon record: lesson go-test-cwd, approved for this project at a terminal: 'run go test from the module root'."
+	cwdNote    = "rashomon record: lesson go-test-cwd, approved for this project: 'run go test from the module root'."
 	tamperFlag = "rashomon record: this project's lesson files fail their signature check, so no lesson was given to the agent; rashomon learn lists them."
 )
 
@@ -606,7 +606,7 @@ func TestLRN17f_HeldOutSessionGivesTheUserOnly(t *testing.T) {
 // prints, so a field the contract holds (a stop form, a priority) left unset
 // reads as no lesson at all; this names the rule.
 func TestLRN17n_LessonFindingsPassTheRouterContract(t *testing.T) {
-	lesson := learn.Active{Lessons: []learn.Lesson{{ID: "go-test-cwd", Tier: learn.TierProbation, Text: cwdLesson}}}
+	lesson := learn.Active{Lessons: []learn.Lesson{{ID: "go-test-cwd", Tier: learn.TierProbation, Text: cwdLesson, ApprovedUnixMS: 1}}}
 	for name, a := range map[string]learn.Active{"lesson": lesson, "unchecked": {Unchecked: learn.UncheckedSignature}} {
 		for _, after := range []int64{0, 3} {
 			f, ok := lessonFinding(a, after, nil, nil)
