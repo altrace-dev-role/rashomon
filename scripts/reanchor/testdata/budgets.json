@@ -1,0 +1,22 @@
+{
+  "budgets_version": 1,
+  "go_version": "go1.27.3",
+  "benchmark_rows": "fixture: the gate's ten percent is the only margin",
+  "benchmark_platform": "darwin/arm64",
+  "platforms": {"darwin/arm64": {"reference": "Apple M3", "set_from": "fixture \u00e9", "tolerance": 0.15, "tolerance_until": "2026-11-06", "tolerance_after": 0.1, "entries": {"hook.bash_short": {"p50": 6.98, "p95": 6.98}, "post.bash_short": {"p50": 6.78, "p95": 6.78}}, "case_budgets": {"hook.400B": 6.95, "hook.1MiB": 10.4}}, "linux/amd64": {"reference": "ubuntu-latest", "set_from": "fixture", "tolerance": 0.1, "tolerance_until": "", "tolerance_after": 0.1, "entries": {"hook.bash_short": {"p50": 5.59, "p95": 5.59}}, "case_budgets": {"hook.400B": 5.59}, "benchmarks": [{"name": "BenchmarkRunPost/edit_314k", "measured_bytes_per_op": 400000, "measured_allocs_per_op": 250, "bytes_per_op_max": 400000, "allocs_per_op_max": 250, "basis": "provisional until the first CI run: \"quoted\" and <angled> & caf\u00e9"}, {"name": "BenchmarkRunHook/bash_short", "measured_bytes_per_op": 50000, "measured_allocs_per_op": 380, "bytes_per_op_max": 50000, "allocs_per_op_max": 380}]}},
+  "entries": [
+    {"id": "hook.bash_short", "events": ["PreToolUse"], "command": ["hook"], "payload_bytes": 400, "benchmark": "BenchmarkRunHook/bash_short", "alloc_bytes_max": 55424, "cold_alloc_bytes_max": 171136, "basis": "fixture"}
+  ],
+  "rss_cases": [
+    {"id": "hook.400B", "entry": "hook", "payload_bytes": 400, "budget_mib": 6.5008, "measured_mib": 5.97, "gates_from": "P-08"}
+  ],
+  "per_tool_call": {"memory_time_mib_ms_max": 379, "summed_peak_mib_max": 32, "process_creations_max": {"settings": 6}},
+  "parallel": {"ways": 64, "summed_peak_mib_max": 704, "basis": "fixture"},
+  "benchmarks": [
+    {"name": "BenchmarkRunHook/bash_short", "measured_bytes_per_op": 55424, "measured_allocs_per_op": 387, "bytes_per_op_max": 55424, "allocs_per_op_max": 387},
+    {"name": "BenchmarkRunPost/edit_314k", "measured_bytes_per_op": 471379, "measured_allocs_per_op": 271, "bytes_per_op_max": 471379, "allocs_per_op_max": 271, "basis": "provisional until the first CI run: fixture"},
+    {"name": "BenchmarkRecap/100", "measured_bytes_per_op": 1256244, "measured_allocs_per_op": 3809, "bytes_per_op_max": 1256244, "allocs_per_op_max": 3809}
+  ],
+  "growth": [],
+  "disk": {"bytes_per_call_max": 6000}
+}
