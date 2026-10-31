@@ -211,6 +211,10 @@ under the call if the command named it.
 | `rashomon status` | Say what is installed and what the store holds, writing nothing |
 | `rashomon report [--session S] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
+| `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires; a ledger written by anything but rashomon is said quarantined first |
+| `rashomon learn` | List this project's lessons: each one's tier, its labels and the 95% bound that moves it |
+| `rashomon learn approve ID` | Show lesson ID and a one-time code on the terminal; the lesson may reach the agent only once that code is typed back there |
+| `rashomon learn import FILE` | Add a shared lessons file's rows at `proposed` |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes` |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon forget --host H \| --since T \| --before T \| --bodies` | Erase the calls that named a host, records by time, or this project's transcript copies |
