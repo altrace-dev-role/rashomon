@@ -252,9 +252,9 @@ func AllLineStates() []LineState {
 }
 
 // SuppressedBy is the closed list of reasons a candidate line did not
-// reach delivered or flag_only (Technical spec 4.2.3) -- exactly 22
-// values, pinned by TestSuppressedBy_ExactlyTwentyTwoValues so that
-// adding a 23rd without updating this comment and that test is
+// reach delivered or flag_only (Technical spec 4.2.3) -- exactly 23
+// values, pinned by TestSuppressedBy_ExactlyTwentyThreeValues so that
+// adding a 24th without updating this comment and that test is
 // impossible to do quietly.
 type SuppressedBy string
 
@@ -281,10 +281,14 @@ const (
 	SuppressedByHarnessOff        SuppressedBy = "harness_off"
 	SuppressedBySurfaceOff        SuppressedBy = "surface_off"
 	SuppressedByLate              SuppressedBy = "late"
+	// SuppressedByConfigUnreadable is a clamp: config.json is there and does
+	// not read, so the notes are clamped to flags until it is fixed
+	// (STEER-CLI1; a switch that cannot be read is not one to override).
+	SuppressedByConfigUnreadable SuppressedBy = "config_unreadable"
 )
 
-// AllSuppressedBy returns the 22 reasons in the order Technical spec
-// 4.2.3 lists them.
+// AllSuppressedBy returns the 23 reasons in the order Technical spec
+// 4.2.3 lists them, config_unreadable (STEER-CLI1) last.
 func AllSuppressedBy() []SuppressedBy {
 	return []SuppressedBy{
 		SuppressedByBudgetPrompt, SuppressedByBudgetPattern, SuppressedByBudgetBatch,
@@ -294,7 +298,7 @@ func AllSuppressedBy() []SuppressedBy {
 		SuppressedByDeadline, SuppressedByDenyCap, SuppressedBySlotRejected,
 		SuppressedByOutputGate, SuppressedByUnverifiedChannel, SuppressedByNoChannel,
 		SuppressedByNoMirror, SuppressedByHarnessOff, SuppressedBySurfaceOff,
-		SuppressedByLate,
+		SuppressedByLate, SuppressedByConfigUnreadable,
 	}
 }
 

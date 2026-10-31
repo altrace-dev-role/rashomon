@@ -17,21 +17,25 @@ SCREEN = "internal/consent/screen.go"
 
 # The hook reads the switch.
 m("STC-1 the config is ignored at the hook", H,
-  "\t\tSteerOff:   p.steerOff(),\n", "\t\tSteerOff:   false,\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
+  "\t\tSteerOff:         steerOff,\n", "\t\tSteerOff:         false,\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
 m("STC-1 the user's key is ignored", H,
-  "\tif c.SteerOffUser() {\n\t\treturn true\n\t}\n", "", "TestH145_|TestSTC1h_")
+  "\tif c.SteerOffUser() {\n\t\treturn true, false\n\t}\n", "", "TestH145_|TestSTC1h_")
 m("STC-1 the project's key is ignored", H,
-  "\treturn len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd))\n", "\treturn false\n", "TestSTC1b_ProjectKeyIsThatProjectsOnly|TestSTC1h_")
+  "\treturn len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd)), false\n", "\treturn false, false\n", "TestSTC1b_ProjectKeyIsThatProjectsOnly|TestSTC1h_")
 m("STC-1 every project reads off for one's key", H,
-  "\treturn len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd))\n", "\treturn len(c.SteerProjects) > 0\n", "TestSTC1b_ProjectKeyIsThatProjectsOnly")
+  "\treturn len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd)), false\n", "\treturn len(c.SteerProjects) > 0, false\n", "TestSTC1b_ProjectKeyIsThatProjectsOnly")
 m("STC-1 an unreadable config reads as the notes on", H,
-  "\tif err != nil {\n\t\treturn true\n\t}\n\tif c.SteerOffUser() {", "\tif err != nil {\n\t\treturn false\n\t}\n\tif c.SteerOffUser() {", "TestSTC1g_")
+  "\tif err != nil {\n\t\treturn true, true\n\t}\n\tif c.SteerOffUser() {", "\tif err != nil {\n\t\treturn false, false\n\t}\n\tif c.SteerOffUser() {", "TestSTC1g_")
 m("STC-1 the prompt's context has no project to look up", PC,
   " permissionMode: permissionMode, cwd: project,\n", " permissionMode: permissionMode,\n", "TestSTC1h_")
 
 # Off is a clamp: nothing for the agent, a flag for the user (tech 4.2.4).
 m("STC-1 steer off is not a clamp, a note reaches the agent", D,
   "\tcase ctx.SteerOff:\n\t\treturn reason(SuppressedBySteerOff)\n", "", "TestSTC1f_|TestH145_|TestST_ClampsRecordTheirReason")
+m("STC-1 an unreadable config is logged as the user's switch", D,
+  "\tcase ctx.ConfigUnreadable:\n\t\treturn reason(SuppressedByConfigUnreadable)\n", "", "TestSTC1g_")
+m("STC-1 the hook does not say the config is unreadable", H,
+  "\t\treturn true, true\n", "\t\treturn true, false\n", "TestSTC1g_")
 m("STC-1 steer off clamps for another reason", D,
   "\t\treturn reason(SuppressedBySteerOff)\n", "\t\treturn reason(SuppressedByConsentMissing)\n", "TestSTC1f_|TestST_ClampsRecordTheirReason")
 
@@ -51,7 +55,9 @@ m("STC-1 the config writer takes no lock", C,
 m("STC-1 a later build's key is dropped on write", C,
   "\tfor k, v := range c.extra {\n", "\tfor k, v := range map[string]json.RawMessage{} {\n", "TestSTC1_ConfigKeepsWhatItDoesNotName")
 m("STC-1 a file that does not parse is replaced", C,
-  "\tc, err := ReadConfig(root)\n\tif err != nil {\n\t\treturn Config{}, err\n\t}\n\tchange(&c)", "\tc, _ := ReadConfig(root)\n\tchange(&c)", "TestSTC1_UnparsableConfigIsNotReplaced")
+  "\tc, err := ReadConfig(root)\n\tif err != nil && !(repair && errors.Is(err, ErrConfigUnreadable)) {\n\t\treturn Config{}, err\n\t}\n\tchange(&c)", "\tc, _ := ReadConfig(root)\n\tchange(&c)", "TestSTC1_UnparsableConfigIsNotReplaced")
+m("STC-1 --repair does not replace an unparseable file", C,
+  "!(repair && errors.Is(err, ErrConfigUnreadable))", "true", "TestSTC1o_")
 m("STC-1 the Stop line ignores the project's summary key", RS,
   "summary: summaryOn(st.Root(), key),", "summary: summaryOn(st.Root(), \"\"),", "TestSTC1m_")
 
@@ -60,6 +66,22 @@ m("STC-1 steer on --project leaves the project's key", S,
   "\t\t\tdelete(c.SteerProjects, key)\n", "", "TestSTC1b_ProjectScopeOnlyThatProject")
 m("STC-1 steer off --project writes the user's key", S,
   "\t\tcase project && off:\n", "\t\tcase off:\n", "TestSTC1_SteerOffUserWritesTheUsersKey|TestSTC1b_ProjectScopeOnlyThatProject")
+m("STC-1 steer says nothing of an unreadable config", S,
+  "\tif errors.Is(err, store.ErrConfigUnreadable) {\n\t\t_, err = fmt.Fprintln(stdout, unreadableLine(", "\tif false {\n\t\t_, err = fmt.Fprintln(stdout, unreadableLine(", "TestSTC1o_")
+m("STC-1 steer explain says nothing of an unreadable config", S,
+  "errors.Is(err, store.ErrConfigUnreadable) {\n\t\t\tfmt.Fprintln(", "false {\n\t\t\tfmt.Fprintln(", "TestSTC1o_")
+m("STC-1 steer on an unreadable file gives the raw error", S,
+  "\tif errors.Is(err, store.ErrConfigUnreadable) {\n\t\treturn unreadableConfigText(", "\tif false {\n\t\treturn unreadableConfigText(", "TestSTC1o_")
+m("STC-1 --repair works in an agent session", S,
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n", "\tif s := \"\"; s != \"\" {\n", "TestSTC1o_")
+m("STC-1 --repair replaces without the person saying yes", S,
+  "\tif !ok {\n\t\treturn errors.New(\"nothing was written\")\n\t}\n", "", "TestSTC1o_")
+m("STC-1 --repair asks about a file that reads", S,
+  "\tif err == nil {\n\t\treturn steerSet(stdout, false, project)\n\t}\n", "", "TestSTC1o_")
+m("STC-1 --repair is taken with off", S,
+  "\t\t\tif args[0] != \"on\" {\n", "\t\t\tif false {\n", "TestSTC1o_")
+m("STC-1 config_unreadable has no sentence", S,
+  "\tsteer.SuppressedByConfigUnreadable:  \"config.json did not read, so the notes were off; nothing reached the agent (fix or delete the file, or run rashomon steer on --repair)\",\n", "", "TestSTC1e_EveryReasonIsExplained")
 m("STC-1 steer log drops the delivery", S,
   "\t\t\tr.Level, r.State, r.SuppressedBy, r.Delivery)\n", "\t\t\tr.Level, r.State, r.SuppressedBy, \"-\")\n", "TestSTC1c_SteerLogPrintsClosedFields")
 m("STC-1 steer log --json drops the level", S,
