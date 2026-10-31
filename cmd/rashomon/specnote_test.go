@@ -122,7 +122,7 @@ func TestSR1ag_ThePreflightsDiscoveryIsTheTurnsOnlyOne(t *testing.T) {
 	}
 	named := pendingPayload{recapPayload: recapPayload{SessionID: benchSessionID, CWD: project}, PromptID: payload.PromptID(0),
 		Prompt: []byte("fix internal/verify/stop.go")}
-	preflightNote(st, run, &named, harness.Identity{ID: harness.ClaudeCode}, time.Now())
+	preflightNote(st, run, &named, promptProject{}, harness.Identity{ID: harness.ClaudeCode}, time.Now())
 	if !named.specNoted {
 		t.Error("a prompt that names a path made its note from no discovery")
 	}
