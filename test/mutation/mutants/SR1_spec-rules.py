@@ -109,3 +109,9 @@ m("sr1 the Stop takes the no-spec note for no spec", "cmd/rashomon/recap_stop.go
   "\tsp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))\n",
   "\tsp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))\n\tif hook.SpecNoted(st, p.SessionID, d.PromptID, p.CWD, projectDir, managedDir) {\n\t\tsp = nil\n\t}\n",
   "TestSR1ad_")
+
+# D210's per-prompt discovery.
+m("sr1 a prompt naming no path writes no note", "cmd/rashomon/recap_turn.go",
+  "\t\tnoteTurnSpec(st, run, &pp)\n", "", "TestSR1af_")
+m("sr1 the preflight's discovery runs twice", "cmd/rashomon/preflight.go",
+  "p.CWD == \"\" || p.specNoted {\n", "p.CWD == \"\" {\n", "TestSR1ag_")
