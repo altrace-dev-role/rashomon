@@ -76,8 +76,8 @@ m("CE-1 a StopFailure reads the transcript", RT, "if !pending && payload.Harness
 # Disclosure.
 m("CE-1 purge leaves the marker", P, "\tif store.IsChannelEvidenceMarker(name) {\n\t\treturn true\n\t}\n", "",
   "TestCE1d_PurgeRemovesTheChannelEvidenceMarker")
-m("CE-1 the inventory omits the marker", D, "slices.Concat(defaultFiles(), learnFiles(), specFiles(), evidenceFiles())",
-  "slices.Concat(defaultFiles(), learnFiles(), specFiles())", "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("CE-1 the inventory omits the marker", D, "\t\t\tevidenceFiles(),\n",
+  "", "TestTRU23_EveryWrittenPathIsInTheInventory")
 
 # The safety margin and the read's guards (the review of PR #159).
 m("CE-1 a transcript that has not caught up with the note reads absent", S,
@@ -93,7 +93,7 @@ m("CE-1 an unreadable reading restarts the count", E, "\t\tcase EvidenceAbsent:\
   "TestCE1f_AnUnreadableBetweenAbsentsKeepsTheCount")
 m("CE-1 a seen note of the event in the same Stop is not a reset", E, "if out[i].Evidence != EvidenceAbsent || seen[n.event] {",
   "if out[i].Evidence != EvidenceAbsent {", "TestCE1f_ASeenNoteInTheSameStopClearsTheCount")
-m("CE-1 a first absent reading writes the marker through the binary", E, "streak[n.event] = prior[n.event] + 1", "streak[n.event] = 2",
+m("CE-1 a first absent reading writes the marker through the binary", E, "streak[n.event] = prior[n.event] + 1", "streak[n.event] = 2 + 0*prior[n.event]",
   "TestH118_AbsentNoteShadowsItsEventNextSession")
 m("CE-1 a lagging transcript is judged through the binary", S, "if s.last.IsZero() || s.last.Before(newest.Add(evidenceSlack)) {",
   "if s.last.IsZero() {", "TestH118_ALaggingTranscriptIsUnreadable")
