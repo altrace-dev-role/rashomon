@@ -7,10 +7,10 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// MASKED-OUTCOME1 (D229): a masked run whose pipe kept the runner's summary,
-// read as a pass or a failure, is no run whose exit status the record cannot
-// back, so the masked-runs sentence leaves it to verify's line, which names
-// the runner and says it was read from its output.
+// MASKED-OUTCOME1 (D229): a masked run whose pipe kept a summary that says it
+// passed is no run the record cannot back, so the masked-runs sentence leaves
+// it to verify's line, which names the runner and says it was read from its
+// output. A summary that says it failed stays the detector's true positive.
 
 func summaryRun(by *string, rules, schema int, kind string) *store.Run {
 	run := tbRun(maskedCall(1, shape.MaskedTest, "r", store.ExecOK))
@@ -24,7 +24,7 @@ func summaryRun(by *string, rules, schema int, kind string) *store.Run {
 }
 
 // TestMO1_ASummaryReadMaskedRunIsNotCounted: under a pass claim, a masked run
-// whose tail kept a summary_pass or summary_fail at rules version 11, call
+// whose tail kept a summary_pass at rules version 11, call
 // schema 8, is not counted; every other masked run still is. Break: drop the
 // readFromSummary skip and the false alarm Rishi saw comes back; or drop its
 // version, stage or kind conditions and a run the output did not decide stops
@@ -40,7 +40,7 @@ func TestMO1_ASummaryReadMaskedRunIsNotCounted(t *testing.T) {
 		runs         int
 	}{
 		{"a summary_pass under tail", &tail, 11, 8, "summary_pass", 0},
-		{"a summary_fail under tail", &tail, 11, 8, "summary_fail", 0},
+		{"a summary_fail under tail", &tail, 11, 8, "summary_fail", 1},
 		{"a later rules version", &tail, 12, 8, "summary_pass", 0},
 		{"a rules version before 11", &tail, 10, 8, "summary_pass", 1},
 		{"a record before schema 8", &tail, 11, 7, "summary_pass", 1},
