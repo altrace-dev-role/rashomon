@@ -113,7 +113,7 @@ func drawnWithSpec(t *testing.T, st *store.Store, env SteerEnv, doc string, trus
 		writeBindings(t, st.Root(), spec.Binding{ProjectRoot: s.base, SpecPath: path, SpecDigest: digest, BoundAtMS: 1}, false)
 	}
 	p := &Post{st: st, sessionID: session, promptID: "p1", permissionMode: "default", event: FailureEvent, cwd: s.base}
-	if p.sp = DiscoverSpec(p.cwd, "", "", st.Root()); p.sp == nil || len(p.sp.Sources) != 1 {
+	if p.sp = DiscoverSpec(p.cwd, "", "", NoRun(st.Root())); p.sp == nil || len(p.sp.Sources) != 1 {
 		t.Fatalf("DiscoverSpec: %+v; want the one spec", p.sp)
 	}
 	if want := map[bool]spec.Trust{true: spec.Trusted, false: spec.Untrusted}[trusted]; p.sp.Sources[0].Trust != want {

@@ -108,15 +108,15 @@ func briefRoot(dir string) (string, bool) {
 }
 
 // buildBrief is brief.Build with the spec discovered from cwd as the steer
-// step discovers it, trust read under storeRoot itself, not under
-// hook.TrustRoot's: the probe holds no run here (it records the start and
-// reads nothing back). That is sound while the full brief prints only at a
-// run's first record (startup, clear or no source), before any store write
-// TrustRoot would see; a clear that continued a run would break it, and
-// SPEC-TRUST2's typed fourth parameter is where that stops being a reading.
+// step discovers it, trust read under storeRoot as hook.NoRun: the probe
+// holds no run here (it records the start and reads nothing back). That is
+// sound while the full brief prints only at a run's first record (startup,
+// clear or no source), before any store write TrustRoot would see; a clear
+// that continued a run would break it. The type makes the reading a named
+// one (SPEC-TRUST2); the durable trust drop and its counter are not built.
 func buildBrief(cwd, root, storeRoot string, report brief.Pointer) brief.Brief {
 	projectDir, managedDir := specDirs()
-	return brief.Build(root, storeRoot, report, hook.DiscoverSpec(cwd, projectDir, managedDir, storeRoot))
+	return brief.Build(root, storeRoot, report, hook.DiscoverSpec(cwd, projectDir, managedDir, hook.NoRun(storeRoot)))
 }
 
 // briefFromPlugin is recapFromPlugin's rule for probe start's entry (D175):
