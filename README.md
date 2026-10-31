@@ -180,9 +180,25 @@ it adds become part of the conversation Claude Code sends to your model provider
 **Can it break my agent?** It never blocks a call, and its hooks exit 0 when
 something inside them goes wrong, so Claude Code carries on.
 
-**Why did a passing test not count?** A test command piped to `tail` or `head`
-hides its exit status from rashomon in this build, so the run is not counted as
-a pass. Run tests unpiped, or add a line to your CLAUDE.md asking the agent to.
+**Why did a passing test not count?** A pipe gives the line the exit status of
+its last command, so `pytest -q | tail` exits 0 whether the tests passed or not,
+and rashomon cannot take the pass from the exit status. When every stage after
+the runner is `tail` (without `-c`), `tee` or a bare `cat`, rashomon reads the
+runner's own summary line in the output, in memory, and counts that. It does this
+for pytest, `go test`, `cargo test`, jest and vitest. A pass from a piped `make`,
+`npm run`, yarn or pnpm still reads as hidden, because a pass line in their output
+belongs to one step, not the whole command; their own failure markers (make's
+`***`, `npm ERR!`, yarn's `error Command failed`, pnpm's `ERR_PNPM`) do read as a
+failure. The Stop line then names the
+runner and where the result came from, for example "python3 -m pytest passed
+after the last edit (read from its output; the pipe hid the exit status)". A run
+still reads as hidden when a later stage is any other command (`head`, `grep`,
+`wc`, `sort`, `cut`), when the output has no summary line (for example `tail -3`
+cut it off), when the runner is one rashomon has no summary reader for, such as
+`python3 -m unittest`, and when `|| true` or `; echo $?` hides the status instead
+of a pipe. Running the tests unpiped, or asking the agent to in your CLAUDE.md,
+is no longer needed for the pipes above and still gives the exit status for the
+rest.
 
 **Is it a sandbox or a security tool?** No. It does not stop or contain the
 agent, and it cannot stop a determined agent from changing its records.
