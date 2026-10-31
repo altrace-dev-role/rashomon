@@ -160,8 +160,11 @@ func TestSN1f_MirrorAndLog(t *testing.T) {
 
 // TestSN1g_OnlyAnArmedRelevantWriteIsJudged (D166): the step judges a write
 // only while the session is armed, for a path under the project a gate
-// counts, in a project with an index, and that write takes the arm; every
-// other write leaves the arm as it found it and reads no run.
+// counts, in a project with an index (or, with none, a spec that declares a
+// required gate: D222), and that write takes the arm; every other write
+// leaves the arm as it found it and reads no run. A relevant write in a
+// project with no index and no declared required gate is judged to nothing
+// and takes the arm, so the run is read once, not at every write.
 func TestSN1g_OnlyAnArmedRelevantWriteIsJudged(t *testing.T) {
 	t.Run("armed, relevant, indexed", func(t *testing.T) {
 		f := newSN(t)
@@ -189,7 +192,6 @@ func TestSN1g_OnlyAnArmedRelevantWriteIsJudged(t *testing.T) {
 	}{
 		{"a docs file", "README.md", true},
 		{"outside the project", filepath.Join("..", "elsewhere", "a.go"), true},
-		{"no index", "internal/a.go", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newSN(t)
@@ -204,6 +206,20 @@ func TestSN1g_OnlyAnArmedRelevantWriteIsJudged(t *testing.T) {
 				t.Error("the write took the arm it was not judged on")
 			}
 		})
+	}
+}
+
+// TestSN1g2_NoIndexNoDeclaredGateTakesTheArmUnjudged (D222): with no index
+// and no spec declaring a required gate, the first relevant write is not
+// judged and takes the arm, so the next one pays one Lstat.
+func TestSN1g2_NoIndexNoDeclaredGateTakesTheArmUnjudged(t *testing.T) {
+	f := newSN(t)
+	f.green()
+	if _, _, ok := f.editOf("toolu_e", "internal/a.go").judge(snEnv()); ok {
+		t.Error("the write was judged")
+	}
+	if armed, _ := f.st.StaleArmed(stSession); armed {
+		t.Error("the write left the arm in place")
 	}
 }
 

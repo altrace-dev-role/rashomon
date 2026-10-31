@@ -3,6 +3,7 @@
 package hook
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -36,5 +37,37 @@ func TestST_SpilledExecutionRunsNoStep(t *testing.T) {
 	}
 	if lines := steerLines(t, f.st); len(lines) != 0 {
 		t.Errorf("%d steer lines after a spilled execution, want 0", len(lines))
+	}
+}
+
+// TestDG2f_AReadErrorStillTakesTheArmWithNoIndex (card D222 review): in a
+// project with no index file the stale trigger takes its arm before the run
+// is read, as the indexed path does. A read that errors (the records file
+// unreadable) prints nothing, but the arm is gone: left set,
+// every later relevant write would read the run and discover the spec again
+// for the same answer.
+func TestDG2f_AReadErrorStillTakesTheArmWithNoIndex(t *testing.T) {
+	f := dgFix(t, specOneGate, true)
+	f.green()
+	p := f.editOf("toolu_e", "internal/a.go")
+	if armed, _ := f.st.StaleArmed(stSession); !armed {
+		t.Fatal("premise: the counted write left the trigger unarmed before its step")
+	}
+	records := filepath.Join(f.st.RunDir(stSession), store.FileRecords)
+	if err := os.Chmod(records, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(records, 0o600) })
+	if _, err := os.ReadFile(records); err == nil {
+		t.Skip("the file is readable at mode 0 (running as root)")
+	}
+	if b := p.Steer(snEnv()); b != nil {
+		t.Errorf("Steer with the run unreadable printed %q, want nil", b)
+	}
+	if got := staleLines(t, f.st); len(got) != 0 {
+		t.Errorf("%d stale-evidence lines with the run unreadable, want 0", len(got))
+	}
+	if armed, _ := f.st.StaleArmed(stSession); armed {
+		t.Error("a read error left the trigger armed: the next write would read the run again")
 	}
 }
