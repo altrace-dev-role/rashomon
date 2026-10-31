@@ -1,0 +1,3 @@
+error: 2 targets failed:
+    `--lib`
+    `--test integ`

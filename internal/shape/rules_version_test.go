@@ -26,6 +26,7 @@ var runnerListPins = map[int]string{
 	8:  "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 8 added the hiding flags and folded pushd; the lists are unchanged
 	9:  "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 9 ended a comment at its newline in the program search; the lists are unchanged
 	10: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 10 named a Bash line's write targets (writeTargetPins); the lists are unchanged
+	11: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
@@ -72,6 +73,7 @@ var writeTablePins = map[int]string{
 	8:  "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 8 added the hiding flags and folded pushd; the in-place tables are unchanged
 	9:  "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 9 ended a comment at its newline in the program search; the in-place tables are unchanged
 	10: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 10 named a Bash line's write targets (writeTargetPins); the in-place tables are unchanged
+	11: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -128,6 +130,7 @@ var matcherPins = map[int]string{
 	8:  "f867982fb3673009fa5854a8fe5d862ff455e6e0d0be54fb334739db2dcb67b3", // a hiding flag records its runner masked with the runner's kind, not as no run; pushd folds as a cd step in both readings (2026-10-28)
 	9:  "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // a comment ends at its newline in the program search as in the masked parser: the cd steps after `# c\` fold and the runner is go test (2026-10-28)
 	10: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 10 named a Bash line's write targets (writeTargetPins) and factored stageMayWrite out of mayWrite; no matcher field moves (2026-10-28)
+	11: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 }
 
 // matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
@@ -226,6 +229,7 @@ var flagTablePins = map[int]string{
 	8:  "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // the hiding flags (make -i and --ignore-errors, mvn -fn, --fail-never and -Dmaven.test.failure.ignore, npm --if-present) leave notARun and mavenSkipProperties for leadingFlags, marked ! (2026-10-28)
 	9:  "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 9 ended a comment at its newline in the program search; the flag tables are unchanged
 	10: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 10 named a Bash line's write targets (writeTargetPins); the flag tables are unchanged
+	11: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 }
 
 // flagTablesDigest digests notARun (each runner in sorted order, then its
@@ -298,6 +302,7 @@ func TestWT10_MayWriteUnchanged(t *testing.T) {
 // the corpus grows only with a bump.
 var writeTargetPins = map[int]string{
 	10: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b",
+	11: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 }
 
 // writeTargetCorpus is the lines writeTargetPins digests, a frozen copy of the
@@ -347,5 +352,68 @@ func TestRulesVersion_WriteTargets(t *testing.T) {
 	if !ok || want != got {
 		t.Fatalf("the write-target corpus digests to %s, and RulesVersion %d pins %q: the write-target rule changed without a bump. "+
 			"Bump RulesVersion and add its pin here (and the runner-list, write-table, matcher, flag-table, pass-list and location pins).", got, RulesVersion, want)
+	}
+}
+
+// maskedStagePins is, per RulesVersion, the sha256 of the runner's name and the
+// masking stage RunnerName and MaskedBy give the lines of maskedStageCorpus
+// (maskedStageDigest). Version 11 is the first to name them (D229). A bump
+// that moves a name or a stage on a corpus line adds a pin; a pin is never
+// edited, and the corpus grows only with a bump.
+var maskedStagePins = map[int]string{
+	11: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c",
+}
+
+// maskedStageCorpus is the lines maskedStagePins digests, a frozen copy of the
+// rows TestMO1_TheMaskingStageIsNamed and TestMO1_OnlyAPipeIsAMaskingStage
+// held when version 11 was made. A row a test gains later is not copied here
+// without a bump.
+var maskedStageCorpus = []string{
+	"python3 -m pytest -q 2>&1 | tail -15", "python3 -m pytest -q | tail", "python3 -u -m pytest -q | tail -n 20",
+	"go test ./... 2>&1 | tail -n 5", "go test ./... 2>&1 | tail -5 | tee out.log", "cargo test 2>&1 | tail -20",
+	"go test ./... | tee test.log", "go test ./... 2>&1 | cat", "make test |& cat", "go test ./... | tail -n +3",
+	"make release 2>&1 | tail", "python3 -m pytest | head -20", "python3 -m pytest | grep -E 'passed|failed'",
+	"go test ./... | wc -l", "go test ./... | sort", "go test ./... | cut -c1-80", "go test ./... | sed s/a/b/",
+	"go test ./... | tail | head -3", "go test ./... | head -3 | tail", "go test ./... | tail -c 100",
+	"go test ./... | tail --bytes=100", "go test ./... | tail -qc 9", "go test ./... | tail somefile",
+	"go test ./... | tail -n $N", "go test ./... | tail -n", "go test ./... | cat -n", "go test ./... | cat out.txt",
+	"go test ./... | cat -", "(go test ./...) | tail -3", "cd /repo && python3 -m pytest | tail",
+	"go test ./... || true", "go test ./...; echo $?", "go test ./... &", "go test ./... && echo ok",
+	"set -o pipefail; go test ./... | tail", "echo hi | go test ./...", "zzrunner --canaryarg 2>&1 | tail -5",
+}
+
+// maskedStageDigest digests, for each line of maskedStageCorpus in order, the
+// line, its runner name and its masking stage (a null as the empty word), with
+// runnerListsDigest's separators.
+func maskedStageDigest() string {
+	word := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	var b strings.Builder
+	for _, cmd := range maskedStageCorpus {
+		raw, _ := json.Marshal(map[string]string{"command": cmd})
+		s := Derive("Bash", raw, []byte("key"))
+		b.WriteString(strings.Join([]string{cmd, word(s.RunnerName), word(s.MaskedBy)}, "\x1f"))
+		b.WriteByte('\x1e')
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// TestRulesVersion_MaskedStage: a change in how a line's runner is named or
+// its masking stage is read that moves a name or a stage on a corpus line
+// cannot ship without a RulesVersion bump, or records written before and
+// after it carry the same rules_version and read as named by the same rule.
+// Break: name `tee` as a stage that drops the summary and leave RulesVersion
+// as it was; or leave RulesVersion at 10, which has no pin here.
+func TestRulesVersion_MaskedStage(t *testing.T) {
+	got := maskedStageDigest()
+	want, ok := maskedStagePins[RulesVersion]
+	if !ok || want != got {
+		t.Fatalf("the masked-stage corpus digests to %s, and RulesVersion %d pins %q: the runner name or the masking stage changed without a bump. "+
+			"Bump RulesVersion and add its pin here (and the runner-list, write-table, matcher, flag-table, write-target, pass-list and location pins).", got, RulesVersion, want)
 	}
 }

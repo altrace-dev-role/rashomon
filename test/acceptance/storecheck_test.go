@@ -227,6 +227,30 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 			out = append(out, fmt.Sprintf("%s: runner_kind %q is outside shape.RunnerKinds()", where, kind))
 		}
 	}
+	// runner_name and masked_by are the binary's own words (call schema 8,
+	// D229): a runner_name is a row of the runner lists and set only beside a
+	// runner_digest, and a masked_by is one of shape.MaskedByWords() and set
+	// only beside a runner_name. Neither is ever a word of the command.
+	if v, _ := fields["schema_version"].(float64); typ == "execution" && v >= 8 {
+		name, by := fields["runner_name"], fields["masked_by"]
+		for _, k := range []string{"runner_name", "masked_by"} {
+			if _, ok := fields[k]; !ok {
+				out = append(out, fmt.Sprintf("%s: an execution at schema 8 with no %s key", where, k))
+			}
+		}
+		if n, ok := name.(string); name != nil && (!ok || !slices.Contains(shape.RunnerNames(), n)) {
+			out = append(out, fmt.Sprintf("%s: runner_name %q is not a row of the runner lists", where, name))
+		}
+		if b, ok := by.(string); by != nil && (!ok || !slices.Contains(shape.MaskedByWords(), b)) {
+			out = append(out, fmt.Sprintf("%s: masked_by %q is outside shape.MaskedByWords()", where, by))
+		}
+		if (name == nil) != (fields["runner_digest"] == nil) {
+			out = append(out, fmt.Sprintf("%s: runner_digest %v beside runner_name %v, one null and one not", where, fields["runner_digest"], name))
+		}
+		if by != nil && name == nil {
+			out = append(out, fmt.Sprintf("%s: masked_by %v with no runner_name", where, by))
+		}
+	}
 	return out
 }
 

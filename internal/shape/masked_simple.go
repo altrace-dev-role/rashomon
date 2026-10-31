@@ -101,6 +101,7 @@ func (p *lineParser) parseSimple() (command, bool) {
 		}
 	}
 
+	c.stage = stageOf(toks, i, prog, args)
 	return p.runner(c, s, i, e, prog)
 }
 
@@ -131,11 +132,11 @@ func (p *lineParser) runner(c *simple, s, i, e int, prog string) (command, bool)
 	if !ok {
 		return c, true
 	}
-	kind := MaskedTest
-	on, hides := runnerOn(toks, ri, name, e, testCommands)
-	if !on {
-		kind = MaskedBuild
-		if on, hides = runnerOn(toks, ri, name, e, buildCommands); !on {
+	kind, names := MaskedTest, testCommandNames
+	row, hides := runnerRow(toks, ri, name, e, testCommands)
+	if row < 0 {
+		kind, names = MaskedBuild, buildCommandNames
+		if row, hides = runnerRow(toks, ri, name, e, buildCommands); row < 0 {
 			return c, true
 		}
 	}
@@ -144,7 +145,7 @@ func (p *lineParser) runner(c *simple, s, i, e int, prog string) (command, bool)
 	if !seen {
 		g = len(p.runners)
 		p.groups[key] = g
-		p.runners = append(p.runners, runnerGroup{key: key, kind: kind})
+		p.runners = append(p.runners, runnerGroup{key: key, kind: kind, name: &names[row]})
 	}
 	p.runners[g].starts = append(p.runners[g].starts, s)
 	p.runners[g].last = s

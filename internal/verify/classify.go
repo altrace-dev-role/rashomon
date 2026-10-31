@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -39,9 +40,23 @@ type gateRun struct {
 	Masked       *string
 	Output       *store.GateOutput
 	Backgrounded bool
+	// FromOutput: the run's outcome is the output's, not the exit status's
+	// (outputOutcome): a masked line whose masking stage keeps the summary,
+	// whose gate_output says pass, fail or empty. Beside KindRecorded, in the
+	// same word of padding.
+	FromOutput bool
 	// KindRecorded: Kind is the record's runner_kind, not inferred. Beside
 	// Backgrounded, so the two bools share one word of padding.
 	KindRecorded bool
+	// RunnerID and MaskedByID are the execution's runner_name and masked_by
+	// (call schema 8) as their place in the binary's lists (shape.RunnerNameID,
+	// shape.MaskedByID), 0 where the record has none: the runner's words in
+	// its row of the lists, and the stage of the pipe that hid its status. One
+	// byte each, in the padding the three flags leave, so a run of any kind
+	// costs no byte more than before schema 8 (D209, D173d); the words are
+	// read back where they are named (shape.RunnerNameOf, shape.MaskedByOf).
+	RunnerID   uint8
+	MaskedByID uint8
 }
 
 // familyKey is a gate's identity: the same runner at the same location.
@@ -220,6 +235,20 @@ func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) ga
 	if d.Shape.Program != nil {
 		g.Program = *d.Shape.Program
 	}
+	// The runner the line launched, which the call schema 8 execution names
+	// in the binary's own words; an older record has none. The program the
+	// gate is known by is then the table's word for that runner (pytest for
+	// python3 -m pytest), as gateout keys its tables by it (D229).
+	if e.SchemaVersion >= 8 {
+		if e.RunnerName != nil {
+			g.RunnerID = shape.RunnerNameID(*e.RunnerName)
+		}
+		if e.MaskedBy != nil {
+			g.MaskedByID = shape.MaskedByID(*e.MaskedBy)
+		}
+	}
+	g.Program = gateout.ProgramFor(g.Program, shape.RunnerNameOf(g.RunnerID))
+	g.FromOutput = readsOutput(&g, e.RulesVersion)
 	return g
 }
 

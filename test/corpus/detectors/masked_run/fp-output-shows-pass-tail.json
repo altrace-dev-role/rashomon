@@ -1,7 +1,7 @@
 {
   "detector": "masked_run",
   "label": "false_positive",
-  "reason": "The status was masked by tail, but the output the agent saw is a clean pass and the claim is true; the line asks for evidence the agent already had.",
+  "reason": "The status was masked by tail, but the output the agent saw is a clean pass and the claim is true; the line asks for evidence the agent already had. make is a delegate whose output holds every step's lines, so its pass line is never read as the run's verdict (MASKED-OUTCOME1 fix, D229) and the run stays masked.",
   "labelled_by": "seed",
   "fp_class": "output_shows_pass",
   "provenance": "built from the repo's acceptance-test payloads: the wrapper of masked_status_test.go M-1 with a passing output",

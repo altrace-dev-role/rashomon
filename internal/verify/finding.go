@@ -160,7 +160,16 @@ type GateFact struct {
 	PathsOmitted int
 	OtherAgents  int
 	PartialRuns  int
+	// OutcomeFrom is OutcomeFromOutput where the run the fact rests on had its
+	// outcome read from its output because a pipe hid the exit status (the
+	// last run for a regression, the green run for a stale gate), else "".
+	// One closed word, carried to the steer line and the note's text (D229).
+	OutcomeFrom OutcomeFrom
 }
+
+// OutcomeFrom is the closed provenance word of a fact: OutcomeFromOutput or
+// empty (D229).
+type OutcomeFrom string
 
 // ClaimFact is the record fact behind a claim finding (claim-vs-record,
 // subagent-claim). Neither spec defines its fields; every one is a P-07

@@ -77,7 +77,7 @@ func TestGO9_CapBoundary(t *testing.T) {
 
 func TestGO10_TablesPinned(t *testing.T) {
 	got := tableDigest()
-	const pin = "21b4d3f8976494232404a913dc875ab42adb57d3c679a3d9b07d065aa9ecbef6"
+	const pin = "e14ce46508497e9b46f91d4f9922b370c1697503ebc1a0792c9a4d31ce4ce874"
 	if got != pin {
 		t.Fatalf("table digest %s, want %s", got, pin)
 	}
@@ -213,4 +213,155 @@ func stringPointer(s string) *string { return &s }
 
 func sameStringPointer(a, b *string) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
+// MASKED-OUTCOME1 (D229): a piped run's output reaches gateout as the pipe
+// kept it, usually its last lines, and the runner is named by the run's own
+// words.
+
+func TestMO1_GoBareFailIsSummaryFail(t *testing.T) {
+	// go prints one bare FAIL at the end of a failed multi-package run, which
+	// a `| tail` may keep with no package line beside it.
+	for _, name := range []string{"bare-fail-tail.txt", "bare-fail-only.txt"} {
+		data, err := os.ReadFile(filepath.Join("testdata", "go", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want(t, Classify("test", "go", data), "summary_fail", "go", nil)
+	}
+	// Only the bare line: not FAIL as a word of another line.
+	want(t, Classify("test", "go", []byte("FAILURE\nFAIL: x\n")), "no_summary", "go", nil)
+}
+
+func TestMO1_CargoErrorLinesAreSummaryFail(t *testing.T) {
+	// cargo test --no-fail-fast ends with a "test result: ok" for the last
+	// target and reports the failure on stderr.
+	for _, name := range []string{"error-test-failed.txt", "error-targets-failed.txt"} {
+		data, err := os.ReadFile(filepath.Join("testdata", "cargo", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want(t, Classify("test", "cargo", data), "summary_fail", "cargo", nil)
+		both := append([]byte("test result: ok. 3 passed; 0 failed\n"), data...)
+		want(t, Classify("test", "cargo", both), "summary_fail", "cargo", nil)
+	}
+	want(t, Classify("test", "cargo", []byte("error: 1 target failed\n")), "summary_fail", "cargo", nil)
+	want(t, Classify("test", "cargo", []byte("error: could not compile `x`\n")), "no_summary", "cargo", nil)
+}
+
+func TestMO1_PytestUnderATail(t *testing.T) {
+	for _, tc := range []struct{ name, kind string }{
+		{"tail-pass.txt", "summary_pass"}, {"tail-fail.txt", "summary_fail"},
+	} {
+		data, err := os.ReadFile(filepath.Join("testdata", "pytest", tc.name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want(t, Classify("test", "pytest", data), tc.kind, "pytest", nil)
+	}
+}
+
+func TestMO1_ProgramForNamesTheLaunchedRunner(t *testing.T) {
+	for _, tc := range []struct{ program, runner, want string }{
+		{"python3", "python3 -m pytest", "pytest"},
+		{"python", "python -m pytest", "pytest"},
+		{"uv", "uv run pytest", "pytest"},
+		{"npx", "npx jest", "jest"},
+		{"npx", "npx vitest", "vitest"},
+		{"go", "go test", "go"},
+		{"cargo", "cargo test", "cargo"},
+		{"make", "make test", "make"},
+		{"npm", "npm run test", "npm"},
+		{"pytest", "pytest", "pytest"},
+		// No table names these: the program stays, and Classify says
+		// unattributable for it as it did.
+		{"python3", "python3 -m unittest", "python3"},
+		{"bun", "bun test", "bun"},
+		{"python3", "", "python3"},
+		{"python3", "something else", "python3"},
+	} {
+		if got := ProgramFor(tc.program, tc.runner); got != tc.want {
+			t.Errorf("ProgramFor(%q, %q) = %q, want %q", tc.program, tc.runner, got, tc.want)
+		}
+	}
+	want(t, Classify("test", ProgramFor("python3", "python3 -m pytest"), []byte("3 passed in 0.1s\n")), "summary_pass", "pytest", nil)
+	want(t, Classify("test", ProgramFor("python3", ""), []byte("3 passed in 0.1s\n")), "unattributable", "", nil)
+}
+
+// TestMO1_EveryRunnerHasASummaryForm: each table row that reads a run itself
+// has a fail pattern of its own, the runner's own verdict, so a fail line
+// alone (`--- FAIL`, a substring a pipe may keep out of a run that then
+// passed) decides for no row. A new row without one must say so here, and its
+// readers then rest on its fail line.
+func TestMO1_EveryRunnerHasASummaryForm(t *testing.T) {
+	for _, row := range tables() {
+		if row.delegate {
+			continue
+		}
+		if len(row.pass) == 0 || len(row.fail) == 0 {
+			t.Errorf("%s has no summary form (pass %d, fail %d patterns)", row.program, len(row.pass), len(row.fail))
+		}
+		if FailLineDecides(row.program) {
+			t.Errorf("FailLineDecides(%q) is true, but its table has a summary form", row.program)
+		}
+	}
+	for _, p := range []string{"make", "npm", "yarn", "pnpm", "unknown", ""} {
+		if FailLineDecides(p) {
+			t.Errorf("FailLineDecides(%q) = true: a delegate or unknown program is no row without a summary form", p)
+		}
+	}
+}
+
+// TestMO1_ADelegatedFailureMarkerIsSummaryFail: make, npm, yarn and pnpm run
+// other runners, so a step's pass line is no verdict on the run. Each one's
+// own failure marker decides, and fail outranks the pass line before it.
+// Break: drop a row's fail pattern and its run reads summary_pass.
+func TestMO1_ADelegatedFailureMarkerIsSummaryFail(t *testing.T) {
+	for _, tc := range []struct{ name, program, output, kind string }{
+		{"make after pytest", "make", "== 5 passed in 1s ==\nerror: lint failed\nmake: *** [lint] Error 2", "summary_fail"},
+		{"make after go test", "make", "ok  \tx/a\t0.1s\nmake: *** [vet] Error 1", "summary_fail"},
+		{"npm after jest", "npm", "Tests: 5 passed, 5 total\nnpm ERR! code ELIFECYCLE\nnpm ERR! errno 1", "summary_fail"},
+		{"recursive make", "make", "ok  \tx/a\t0.1s\nmake[2]: *** [sub] Error 1", "summary_fail"},
+		{"npm error", "npm", "Tests: 5 passed, 5 total\nnpm error code 1", "summary_fail"},
+		{"npm lifecycle alone", "npm", "Tests: 5 passed, 5 total\nELIFECYCLE  Command failed.", "summary_fail"},
+		{"yarn", "yarn", "Tests 5 passed (5)\nerror Command failed with exit code 1.", "summary_fail"},
+		{"pnpm", "pnpm", "Tests 5 passed (5)\nERR_PNPM_RECURSIVE_RUN_FIRST_FAIL x", "summary_fail"},
+		{"make running npm", "make", "Tests: 5 passed, 5 total\nnpm ERR! code ELIFECYCLE", "summary_fail"},
+		{"a clean make test | tail", "make", "ok  \tx/a\t0.1s\nok  \tx/b\t0.2s", "summary_pass"},
+		{"a make line that is not a failure", "make", "ok  \tx/a\t0.1s\nmake: Nothing to be done for 'x'.", "summary_pass"},
+	} {
+		got := Classify("test", tc.program, []byte(tc.output))
+		if got.Kind != tc.kind {
+			t.Errorf("%s: %s, want %s", tc.name, got.Kind, tc.kind)
+		}
+	}
+	for p, want := range map[string]bool{"make": true, "npm": true, "yarn": true, "pnpm": true, "go": false, "pytest": false, "unknown": false, "": false} {
+		if Delegated(p) != want {
+			t.Errorf("Delegated(%q) = %v, want %v", p, !want, want)
+		}
+	}
+}
+
+// TestMO1_PytestPassIsItsSummaryLine: pytest's pass is its summary line, the
+// -q form ("5 passed in 0.12s") or the banner form, never "N passed" inside
+// another line, and a crash that leaves a stray count is red. Break: unanchor
+// the pass pattern, or drop a crash marker.
+func TestMO1_PytestPassIsItsSummaryLine(t *testing.T) {
+	for _, tc := range []struct{ name, output, kind string }{
+		{"q form", "5 passed in 0.12s", "summary_pass"},
+		{"q form with skips and warnings", "3 skipped, 5 passed, 1 warning in 0.12s", "summary_pass"},
+		{"q form with a duration", "5 passed in 0.12s (0:00:00)", "summary_pass"},
+		{"banner", "============== 5 passed in 0.12s ==============", "summary_pass"},
+		{"banner with warnings", "===== 5 passed, 2 warnings in 1.50s =====", "summary_pass"},
+		{"a stray count in another line", "migrated 5 passed", "no_summary"},
+		{"a stray count after a segfault", ".....\nmigrated 5 passed\nSegmentation fault (core dumped)", "no_summary"},
+		{"a passed count without its timing", "5 passed", "no_summary"},
+		{"fatal python error", "5 passed in 0.12s\nFatal Python error: Segmentation fault", "summary_fail"},
+		{"oom kill", "5 passed in 0.12s\nKilled", "summary_fail"},
+	} {
+		got := Classify("test", "pytest", []byte(tc.output))
+		if got.Kind != tc.kind {
+			t.Errorf("%s: %s, want %s", tc.name, got.Kind, tc.kind)
+		}
+	}
 }

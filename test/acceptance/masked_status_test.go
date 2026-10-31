@@ -46,12 +46,16 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 	if got, _ := nested(decls[0], "shape.runner_digest"); got == nil {
 		t.Error("runner_digest is null")
 	}
-	if got := decls[0].fields["schema_version"]; got != float64(7) {
-		t.Errorf("schema_version = %v, want 7, the call version: runner_kind landed at 6, store_named at 7", got)
+	if got := decls[0].fields["schema_version"]; got != float64(8) {
+		t.Errorf("schema_version = %v, want 8, the call version: runner_kind landed at 6, store_named at 7, runner_name and masked_by at 8", got)
 	}
 	for _, r := range s.e.records(testSession) {
 		for _, leak := range []string{"tail", "-40", "2>&1"} {
-			if strings.Contains(r.raw, leak) {
+			// masked_by is the one place a word of the line may appear: the
+			// binary's own closed word for the stage that hid the status
+			// (shape.MaskedByWords), never the stage's text (D229).
+			raw := strings.ReplaceAll(r.raw, `"masked_by":"tail"`, `"masked_by":null`)
+			if strings.Contains(raw, leak) {
 				t.Errorf("a record carries %q: %s", leak, r.raw)
 			}
 		}
@@ -121,20 +125,20 @@ func TestMasked_TheBenchmarksWrappersAreFlagged(t *testing.T) {
 // end-of-turn value line speaks in the sentence's place (card 2.4), and the
 // row it prints is pinned, so another sentence there is caught too.
 func TestMasked_QuietCases(t *testing.T) {
-	const masked = "make ran in this turn; its exit status was hidden by its line (call 1)."
+	const masked = "make test ran in this turn; its exit status was hidden by its line (call 1)."
 	for _, tc := range []struct {
 		name  string
 		calls []string
 		msg   string
 		row   string // the value line's sentence, "" where nothing prints
 	}{
-		{"&& passes the failure on", []string{"make test && git status --short"}, falseDone, "no edits; make passed (call 1)."},
-		{"set -o pipefail", []string{"set -o pipefail; make test 2>&1 | tail -40"}, falseDone, "no edits; test passed (call 1)."},
+		{"&& passes the failure on", []string{"make test && git status --short"}, falseDone, "no edits; make test passed (call 1)."},
+		{"set -o pipefail", []string{"set -o pipefail; make test 2>&1 | tail -40"}, falseDone, "no edits; make test passed (call 1)."},
 		{"bash -o pipefail -c", []string{"bash -o pipefail -c 'make test | tail -40'"}, falseDone, ""},
 		{"a later plain run of the same command",
-			[]string{"make test 2>&1 | tail -40", "make test"}, falseDone, "no edits; make passed (call 4)."},
+			[]string{"make test 2>&1 | tail -40", "make test"}, falseDone, "no edits; make test passed (call 4)."},
 		{"a later plain run behind the same leading cd",
-			[]string{"cd /tmp && make test 2>&1 | tail -40", "cd /tmp && make test"}, falseDone, "no edits; make passed (call 4)."},
+			[]string{"cd /tmp && make test 2>&1 | tail -40", "cd /tmp && make test"}, falseDone, "no edits; make test passed (call 4)."},
 		{"the message names a failure", []string{"make test 2>&1 | tail -40"},
 			"Two tests still fail: the vendored reader drops doubled quotes.", masked},
 		{"the message claims no pass", []string{"make test 2>&1 | tail -40"}, "I updated the README.", masked},

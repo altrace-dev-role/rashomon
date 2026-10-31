@@ -32,6 +32,16 @@ var forbiddenWords = []string{
 	"malicious", "suspicious", "compromised", "off task", "on task",
 }
 
+// pipeHid are the two literals that say a pipe hid a run's exit status, the
+// fact the card MASKED-OUTCOME1 has the recap state (D229). The word's subject
+// is the pipe, a stage of the command, never the agent: the list's reason for
+// "hid" is a claim about intent, which a pipe has none of. Exact literals, so
+// any other "hid" in the package still fails.
+var pipeHid = map[string]bool{
+	" (read from its output; the pipe hid the exit status)": true,
+	" hid its result (call ":                                true,
+}
+
 // TestRecapRendererStatesNoVerdict is vocabulary_test.go's own AST scan
 // (internal/report), COPIED rather than imported.
 //
@@ -70,6 +80,9 @@ func TestRecapRendererStatesNoVerdict(t *testing.T) {
 			literals++
 			lower := strings.ToLower(text)
 			for _, w := range forbiddenWords {
+				if w == "hid" && pipeHid[text] {
+					continue
+				}
 				re := regexp.MustCompile(`\b` + regexp.QuoteMeta(w) + `\b`)
 				if re.MatchString(lower) {
 					t.Errorf("%s prints %q: %q\nThis package states records -- counts and the "+
