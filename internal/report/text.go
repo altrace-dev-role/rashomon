@@ -125,6 +125,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	}
 	writeTestRuns(b, sess.TestRuns, sess.SessionID)
 	writeAutosteer(b, sess.Autosteer)
+	writeKnowledge(b, sess.Knowledge)
 	writeDestinations(b, sess.Destinations)
 	writeFamilies(b, sess.Families)
 	writeNono(b, sess.Nono)

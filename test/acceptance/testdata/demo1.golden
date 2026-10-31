@@ -77,8 +77,16 @@ session demo-1
     delivered: none
     findings: 1 regression location at #7 (go), resolved by #21 green
     checks: none expected
-    lessons: not read here
+    lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session
     unknown: none
+  knowledge (project <tmp>/proj)
+    baseline: no earlier checkpoint of this project
+    retained: no family established; every gate required (index); no spec bound in spec-trust.json;
+      no lessons approved (learn)
+    discovered this session: gate family first seen in the project: test (index)
+    invalidated this session: none
+    gate states at the Stops: learned:test 1 change, last red to green at #23
+    project facts: read at each session start, not stored (rashomon brief)
   executed differently from declared: 0
   hosts named by tool calls: none
   not yet in this project's baseline: baseline established (0 hosts, loopback and client plane excluded)

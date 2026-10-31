@@ -12,10 +12,17 @@ creates no store.
 
 2. Pick flags from what the user asked for, passing through any they named:
    - default: `$RASHOMON report` — text for a terminal
-   - a specific session: `--session <id>`
+   - a specific session: `--session <id>` (or `last`); it adds a knowledge
+     block: what the project holds, and what this session found or
+     invalidated against the checkpoint before it
+   - why one note fired: `$RASHOMON why <id-prefix>`, six or more characters
+     of the id the report prints beside the note
    - machine-readable: `--json`
    - to share outside the team: `--redact` (hostnames become keyed digests
-     and the agent's prose summary is dropped)
+     and the agent's prose summary is dropped; in a one-session report the
+     project root and the spec paths in the knowledge block become digests
+     too). `rashomon why --redact <id-prefix>` is the same for one note: both
+     of its texts and the project root are dropped
    - which prompt produced which calls: `--chain` (lists each call under its
      prompt, with the hosts the call named; JSON always carries this)
    - every call in order: `--timeline` (lists every call, main agent and

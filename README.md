@@ -226,7 +226,8 @@ under the call if the command named it.
 | --- | --- |
 | `rashomon watch [--show]` | Show what installing does; after `y` on the terminal, install the hook entries. `--show` writes nothing |
 | `rashomon status` | Say what is installed and what the store holds, writing nothing |
-| `rashomon report [--session S\|last] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named (`last`: this project's newest with a checkpoint); a named session opens with a short story and an autosteer block, the tables below it |
+| `rashomon report [--session S\|last] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named (`last`: this project's newest with a checkpoint); a named session opens with a short story, an autosteer block and a knowledge block (what the project holds, and what the session found or invalidated), the tables below it; `--redact` covers both blocks |
+| `rashomon why [--session S\|last] [--json] [--redact] ID-PREFIX` | Say why one note fired: its pattern and key, the state it ended in, the calls it cites and the gate or rule it came from; reads, writes nothing |
 | `rashomon summary [on \| off]` | Say, or set, whether the end-of-turn line prints its value line; on unless set off |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes` |
