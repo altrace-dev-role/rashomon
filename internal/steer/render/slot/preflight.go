@@ -81,12 +81,41 @@ type PathSet struct {
 	paths   []Path
 	more    int
 	earlier int
+	// digests is the record form (PREFLIGHT1b): at record scope v4 the steer
+	// line holds each named path as a keyed digest, never the path, and its
+	// text is the count. paths is then empty.
+	digests []string
 }
 
 // NewPathSet lists paths, with more the named paths beyond them and earlier
 // the paths an earlier note of the session already gave.
 func NewPathSet(paths []Path, more, earlier int) PathSet {
 	return PathSet{paths: slices.Clone(paths), more: more, earlier: earlier}
+}
+
+// NewDigestPathSet is the record form of a path set at record scope v4: the
+// keyed digests of the named paths (intent's digest, 64 lowercase hex each),
+// with more and earlier as NewPathSet's. It renders as counts and never
+// carries a path.
+func NewDigestPathSet(digests []string, more, earlier int) PathSet {
+	return PathSet{digests: slices.Clone(digests), more: more, earlier: earlier}
+}
+
+// Digests returns a copy of the keyed digests of the record form, nil for the
+// plain form.
+func (s PathSet) Digests() []string { return slices.Clone(s.digests) }
+
+// digestShaped reports a 64-character lowercase hex string.
+func digestShaped(d string) bool {
+	if len(d) != 64 {
+		return false
+	}
+	for i := 0; i < len(d); i++ {
+		if c := d[i]; !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (s PathSet) Paths() []Path { return slices.Clone(s.paths) }
@@ -97,6 +126,14 @@ func (s PathSet) Validate() error {
 	if err := negative("path set", s.more, s.earlier); err != nil {
 		return err
 	}
+	if len(s.digests) > 0 && len(s.paths) > 0 {
+		return errors.New("slot: path set holds both paths and digests")
+	}
+	for _, d := range s.digests {
+		if !digestShaped(d) {
+			return errors.New("slot: path set digest is not 64 lowercase hex")
+		}
+	}
 	for _, p := range s.paths {
 		if err := p.Validate(); err != nil {
 			return err
@@ -106,6 +143,13 @@ func (s PathSet) Validate() error {
 }
 
 func (s PathSet) Text() string {
+	if len(s.digests) > 0 {
+		n := ""
+		if c := len(s.digests) + s.more; c > 0 {
+			n = strconv.Itoa(c)
+		}
+		return listText(nil, ", ", 0, n, countTail(s.earlier, "given earlier"))
+	}
 	shown, more := cut(s.paths, s.more)
 	texts := make([]string, len(shown))
 	for i, p := range shown {
@@ -119,6 +163,9 @@ func (s PathSet) Text() string {
 func (s PathSet) bind() (Value, error) {
 	if err := negative("path set", s.more, s.earlier); err != nil {
 		return nil, err
+	}
+	if len(s.digests) > 0 {
+		return checked(s, s.Validate())
 	}
 	kept, more := make([]Path, 0, len(s.paths)), s.more
 	for _, p := range s.paths {

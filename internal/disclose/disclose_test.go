@@ -435,3 +435,32 @@ type tru23Steer struct {
 }
 
 func (tru23Steer) CapText() bool { return false }
+
+// PREFLIGHT1b: at record scope v4 a request's preflight steer line stores a
+// count and keyed digests, not the note's text, so both places that say the
+// notes are stored as shown carry the exception (TRU-PF1b).
+func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const except = "except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them"
+	var stored string
+	for _, p := range inv.Paragraphs {
+		if strings.HasPrefix(p.Text, "STORED: for each tool call") {
+			stored = p.Text
+		}
+	}
+	if !strings.Contains(stored, "Each note it adds, word for word, "+except) {
+		t.Errorf("the STORED paragraph's note claim lacks the v4 exception: %q", stored)
+	}
+	for _, f := range inv.Files {
+		if f.Pattern == "steer.ndjson" {
+			if !strings.Contains(f.Holds, "the message text shown ("+except+")") {
+				t.Errorf("steer.ndjson's Holds lacks the v4 exception: %q", f.Holds)
+			}
+			return
+		}
+	}
+	t.Error("no steer.ndjson row in the inventory")
+}

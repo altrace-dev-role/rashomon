@@ -263,6 +263,12 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	stop, serr := stopView(st, run, d, payload, pending, now)
 	if serr != nil {
+		// Route logged the note as delivered above: print it before the
+		// error returns, or it never reaches the model and the next prompt
+		// counts its paths as given earlier. A failed flush prints nothing.
+		if note != (steer.Output{}) {
+			_ = printTurn(st, stdout, note, client, "")
+		}
 		return serr
 	}
 

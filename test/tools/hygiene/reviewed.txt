@@ -50,3 +50,6 @@ internal/steer/testdata/transcript/posttooluse-seen.jsonl def588b5bdb53e87 line 
 internal/steer/testdata/transcript/posttooluse-absent.jsonl 8dc15bbd4c6f7a00 the same record key sourceToolAssistantUUID on line 3 of the absent twin of the capture: an identifier, no credential or account value
 test/tools/hygiene/reviewed.txt cf9515f5c588fafa a transcript fixture's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt c1ce69723a2cb9ea a transcript fixture's entry in this file: its path and its reason, which the entropy test reads as one value
+test/perf/budgets.json 1194e3713edb34a1 the preflight_stopped catch-up benchmark's row name: an identifier
+test/perf/budgets.json 8b84053ab8132136 the preflight_stopped catch-up benchmark's row name: an identifier
+test/perf/budgets.json 731e50e33b7b2808 the preflight_stopped catch-up benchmark's row name on the linux platform: an identifier

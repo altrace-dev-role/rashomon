@@ -29,7 +29,7 @@ m("STC-1 every project reads off for one's key", H,
 m("STC-1 an unreadable config reads as the notes on", H,
   "\tif err != nil {\n\t\treturn true, true\n\t}\n\tif c.SteerOffUser() {", "\tif err != nil {\n\t\treturn false, false\n\t}\n\tif c.SteerOffUser() {", "TestSTC1g_")
 m("STC-1 the prompt's context has no project to look up", PC,
-  " permissionMode: permissionMode, cwd: project,\n", " permissionMode: permissionMode,\n", "TestSTC1h_")
+  " permissionMode: permissionMode, cwd: cwd,\n", " permissionMode: permissionMode,\n", "TestSTC1h_")
 
 # Off is a clamp: nothing for the agent, a flag for the user (tech 4.2.4).
 m("STC-1 steer off is not a clamp, a note reaches the agent", D,

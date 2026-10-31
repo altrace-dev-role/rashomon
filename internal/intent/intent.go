@@ -63,7 +63,12 @@ func (b *Brief) has() bool {
 
 // Project is what a request is resolved against.
 type Project struct {
-	Root  string
+	// Root is the project's root: the matched spec's project, else the
+	// cwd's baseline.Key. Rule paths are relative to it.
+	Root string
+	// Cwd is where the request was made. A relative named path is tried
+	// from it, then from Root; "" or a Cwd outside Root means Root alone.
+	Cwd   string
 	Spec  *spec.Compiled
 	Index *verify.ProjectIndex
 	NowMS int64
@@ -258,19 +263,68 @@ func resolvePaths(named []string, p Project) []string {
 		if len(kept) == MaxPaths || looked == MaxLstat {
 			break
 		}
-		rel, ok := relative(n, p.Root)
-		if !ok || slices.Contains(kept, rel) {
-			continue
-		}
-		if err := slot.Path(rel).Validate(); err != nil && !errors.Is(err, slot.ErrSecretShaped) {
-			continue
-		}
-		looked++
-		if info, err := lstat(rel); err == nil && (info.Mode().IsRegular() || info.IsDir()) {
-			kept = append(kept, rel)
+		for _, rel := range candidates(n, p.Root, p.Cwd) {
+			if len(kept) == MaxPaths || looked == MaxLstat {
+				break
+			}
+			if slices.Contains(kept, rel) {
+				break
+			}
+			if err := slot.Path(rel).Validate(); err != nil && !errors.Is(err, slot.ErrSecretShaped) {
+				continue
+			}
+			looked++
+			if info, err := lstat(rel); err == nil && (info.Mode().IsRegular() || info.IsDir()) {
+				kept = append(kept, rel)
+				break
+			}
 		}
 	}
 	return kept
+}
+
+// candidates is a named path's root-relative forms, in the order they are
+// looked up: a relative path as named from the cwd (when the cwd is inside
+// the root) and then as named from the root; an absolute path as relative
+// does. Each is cleaned, and one that leaves the root is not a candidate, so
+// "../../etc/passwd" from a subdirectory names nothing (R7).
+func candidates(name, root, cwd string) []string {
+	if strings.HasPrefix(name, "/") {
+		if rel, ok := relative(name, root); ok {
+			return []string{rel}
+		}
+		return nil
+	}
+	var out []string
+	if cwdRel, ok := cwdUnder(root, cwd); ok && cwdRel != "" {
+		if rel, ok := relative(path.Join(cwdRel, name), root); ok {
+			out = append(out, rel)
+		}
+	}
+	if rel, ok := relative(name, root); ok && !slices.Contains(out, rel) {
+		out = append(out, rel)
+	}
+	return out
+}
+
+// cwdUnder is cwd as a root-relative slash path ("" for the root itself),
+// false when either is empty or cwd is not inside root.
+func cwdUnder(root, cwd string) (string, bool) {
+	if root == "" || cwd == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, cwd)
+	if err != nil {
+		return "", false
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return "", true
+	}
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return rel, true
 }
 
 // relative is a named path as a cleaned root-relative slash path, or false

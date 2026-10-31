@@ -70,6 +70,11 @@ type Finding struct {
 	// closed struct"), built by render.New; the zero Message carries no
 	// text and is never delivered.
 	Message render.Message
+	// Record is the message the steer line records when that differs from
+	// the one delivered: the zero Message means the line records Message
+	// (PREFLIGHT1b: at record scope v4 the preflight's line holds counts and
+	// keyed digests where the note names paths).
+	Record render.Message
 	// Evidence is the record seqs this Finding cites.
 	Evidence []int64
 	// AfterSeq is the last record seq the decision saw (archive 40.3.4):
@@ -123,6 +128,8 @@ func (f Finding) Check() error {
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
 	case f.OutcomeFrom != "" && f.OutcomeFrom != OutcomeFromOutputSummary:
 		return fmt.Errorf("%w: outcome_from is outside its vocabulary", ErrFinding)
+	case f.Record.Text() != "" && f.Record.Pattern() != f.Pattern:
+		return fmt.Errorf("%w: a %q record message on a %q finding", ErrFinding, f.Record.Pattern(), f.Pattern)
 	}
 	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
 		return fmt.Errorf("%w: %s does not carry its own-channel or table priority", ErrFinding, f.Pattern)
