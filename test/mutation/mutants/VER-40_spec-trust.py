@@ -54,8 +54,8 @@ m("VER-40 each trust makes a new key", H, KEY,
 m("VER-40 a key of another length is kept", H, KEY, "\tif b, err := os.ReadFile(path); err == nil {\n", "TestST1n_")
 
 # The trust drop, at the steer step and at the Stop.
-m("VER-40 a store write keeps trust", H, "\tif verify.StoreWritten(run, storeRoot, at) {\n",
-  "\tif verify.StoreWritten(run, storeRoot, at) && false {\n", "TestST1m_")
+m("VER-40 a store write keeps trust", H, "\tif run == nil || verify.StoreWritten(run, storeRoot, at) {\n",
+  "\tif run == nil || verify.StoreWritten(run, storeRoot, at) && false {\n", "TestST1m_")
 m("VER-40 the steer step reads trust past a store write", S, "TrustRoot(run, root, p.landedSeq)", "NoRun(root)", "TestST1m_AWrite")
 m("VER-40 the Stop reads trust past a store write", R, "hook.TrustRoot(run, st.Root(), seq)", "hook.NoRun(st.Root())", "TestST1m_TheStop")
 m("VER-40 StoreWritten reads past its point", I,

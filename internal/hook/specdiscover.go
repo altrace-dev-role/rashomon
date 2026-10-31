@@ -77,9 +77,10 @@ func NoRun(root string) TrustedRoot { return TrustedRoot{root: root} }
 // (D173), so for the rest of a session that could have written its own
 // binding, no repository spec reads as trusted. The steer step, the Stop and
 // the prompt's preflight note (D203) read it between reading the run and
-// discovering the spec.
+// discovering the spec. A nil run is no proof that the session wrote nothing
+// under the store, so it reads as written (fail closed).
 func TrustRoot(run *store.Run, storeRoot string, at int64) TrustedRoot {
-	if verify.StoreWritten(run, storeRoot, at) {
+	if run == nil || verify.StoreWritten(run, storeRoot, at) {
 		return TrustedRoot{}
 	}
 	return TrustedRoot{root: storeRoot}

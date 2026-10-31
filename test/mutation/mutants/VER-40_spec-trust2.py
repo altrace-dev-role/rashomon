@@ -12,3 +12,9 @@ m("VER-40 the replay reads trust at the session's start", "cmd/rashomon/laststop
 m("VER-40 NoRun binds nothing", "internal/hook/specdiscover.go",
   "func NoRun(root string) TrustedRoot { return TrustedRoot{root: root} }",
   "func NoRun(root string) TrustedRoot { return TrustedRoot{} }", "TestST2b_BriefAtSessionStartReadsBindings")
+# TrustRoot of a nil run: no run is no proof the session wrote nothing under
+# the store, so the root is withheld. Without the nil test, StoreWritten(nil)
+# reads false and the root is handed back.
+m("VER-40 TrustRoot trusts a missing run", "internal/hook/specdiscover.go",
+  "	if run == nil || verify.StoreWritten(run, storeRoot, at) {",
+  "	if verify.StoreWritten(run, storeRoot, at) {", "TestST2e_NoRunIsNoProofOfNoStoreWrite")
