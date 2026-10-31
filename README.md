@@ -90,6 +90,11 @@ The measurement holdout is opt-in: it is off unless you set
 `RASHOMON_HOLDOUT=on` or a trusted spec carries a `holdout` object. With `CI`
 set in the environment, no note is shown.
 
+`RASHOMON_STEER_ARM=off` or `steer` forces the arm of a paired measurement run,
+and only on a lab store (one `rashomon measure --prepare` marked); on any
+other store it reads as unset, so a repository's settings cannot switch the
+holdout off with it.
+
 ## Other install routes
 
 These install the v1.1.0 release, which records and reports only: none of the
@@ -245,6 +250,8 @@ under the call if the command named it.
 | `rashomon steer on --repair` | Replace a `config.json` that does not read, after asking on your terminal; until then the notes are off |
 | `rashomon steer explain` / `rashomon steer log [--all] [--json]` | Say why the last note was or was not printed, or list the last 20 decisions (`--all`: every one); never a note's text |
 | `rashomon scorecard [--json]` | Count what the notes did, by pattern: sent to the agent, shown to you only, held out, or not printed, and why; counts only |
+| `rashomon measure --prepare [--home DIR]` | Mark the store at DIR (default: this process's) as a measurement lab, the only store whose hooks honour `RASHOMON_STEER_ARM`; writes that one file |
+| `rashomon measure pair --session ID --arm off\|steer [--home DIR]` | Compare two sessions of a paired run, one per arm, from their records; counts only, writes nothing |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
 | `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires; a ledger written by anything but rashomon is said quarantined first |
 | `rashomon learn` | List this project's lessons: each one's tier, its labels and the 95% bound that moves it |

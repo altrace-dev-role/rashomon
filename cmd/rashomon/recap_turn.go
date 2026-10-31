@@ -314,9 +314,12 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	b, merr := json.Marshal(map[string]string{"systemMessage": line})
-	if merr != nil {
+	if merr != nil || armOff(root) {
 		return nil
 	}
+	// Arm off returned above with the line decided and claimed as in every
+	// arm, so only the print differs between the arms.
+	//
 	// The human channel: systemMessage in JSON on stdout, capped at
 	// 10,000 characters by Claude Code itself. Plain stdout on a hook
 	// goes to the debug log, which is why hook/post above write nothing

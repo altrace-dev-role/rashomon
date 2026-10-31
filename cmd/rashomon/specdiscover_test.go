@@ -22,7 +22,7 @@ import (
 func TestSP15b_SteerEnvCarriesTheSpecDirs(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", "/work/project")
 	t.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", "/etc/managed/managed-settings.json")
-	env := steerEnv(harness.Identity{}, time.Unix(0, 0))
+	env := steerEnv(harness.Identity{}, time.Unix(0, 0), t.TempDir())
 	if env.ProjectDir != "/work/project" || env.ManagedDir != "/etc/managed" {
 		t.Errorf("steerEnv ProjectDir %q, ManagedDir %q; want /work/project and /etc/managed", env.ProjectDir, env.ManagedDir)
 	}
@@ -37,7 +37,7 @@ func TestVG1m_SteerEnvReadsBothHoldoutSwitches(t *testing.T) {
 		on, off bool
 	}{{"on", true, false}, {"off", false, true}, {"", false, false}, {"ON", false, false}} {
 		t.Setenv("RASHOMON_HOLDOUT", tc.value)
-		env := steerEnv(harness.Identity{}, time.Unix(0, 0))
+		env := steerEnv(harness.Identity{}, time.Unix(0, 0), t.TempDir())
 		if env.HoldoutOn != tc.on || env.HoldoutOff != tc.off {
 			t.Errorf("RASHOMON_HOLDOUT=%q: HoldoutOn %v, HoldoutOff %v; want %v, %v", tc.value, env.HoldoutOn, env.HoldoutOff, tc.on, tc.off)
 		}

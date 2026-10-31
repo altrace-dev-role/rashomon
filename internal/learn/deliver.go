@@ -79,15 +79,17 @@ func namesAny(text string, paths []string) bool {
 
 // Delivered is the session's given set from its steer lines: the key of
 // every learned-fact line in state delivered, whatever its delivery
-// (delivered, flag_only or holdout; PREFLIGHT1's P16 rule), so a lesson, and
-// the unchecked flag under its own key, comes once a session. A superseded
+// (delivered, flag_only or holdout; PREFLIGHT1's P16 rule), and of every line
+// arm off withheld (state suppressed, suppressed_by arm_off: the shadow
+// decision is the steer arm's, which gave it), so a lesson, and the unchecked
+// flag under its own key, comes once a session in either arm. A superseded
 // line is not given. Lines are located with jsonscan, never decoded (RES-5).
 func Delivered(lines [][]byte) map[string]bool {
 	var out map[string]bool
 	var sp [dkCount]jsonscan.Span
 	for _, b := range lines {
-		if jsonscan.Top(b, deliveredKeys(), sp[:]) != nil ||
-			spanText(b, sp[dkPattern]) != string(pattern.LearnedFact) || spanText(b, sp[dkState]) != string(steer.LineStateDelivered) {
+		if jsonscan.Top(b, deliveredKeys(), sp[:]) != nil || spanText(b, sp[dkPattern]) != string(pattern.LearnedFact) ||
+			spanText(b, sp[dkState]) != string(steer.LineStateDelivered) && spanText(b, sp[dkSuppressedBy]) != string(steer.SuppressedByArmOff) {
 			continue
 		}
 		if out == nil {
@@ -101,7 +103,7 @@ func Delivered(lines [][]byte) map[string]bool {
 // deliveredKeys is the one KeySet a steer line is read with here.
 func deliveredKeys() *jsonscan.KeySet {
 	deliveredKeysOnce.Do(func() {
-		deliveredKeysOnce.v = jsonscan.NewKeySet("pattern", "state", "key")
+		deliveredKeysOnce.v = jsonscan.NewKeySet("pattern", "state", "key", "suppressed_by")
 	})
 	return deliveredKeysOnce.v
 }
@@ -117,6 +119,7 @@ const (
 	dkPattern = iota
 	dkState
 	dkKey
+	dkSuppressedBy
 	dkCount
 )
 

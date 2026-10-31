@@ -72,7 +72,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	if !named && !proj.lessons.Any() {
 		return steer.Output{}, steer.Client{}
 	}
-	env := steerEnv(id, now)
+	env := steerEnv(id, now, st.Root())
 	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
 	hook.NoteSpecFound(st, p.SessionID, p.PromptID, p.CWD, env.ProjectDir, env.ManagedDir, sp)
 	p.specNoted = true

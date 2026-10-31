@@ -7,8 +7,8 @@ MAIN = "cmd/rashomon/main.go"
 RD = "internal/hookio/read.go"
 
 m("FD-5.4 the steer step runs on a second goroutine", C,
-  "\t\tif b := p.Steer(steerEnv(id, time.Now())); len(b) > 0 {\n",
-  "\t\tvar b []byte\n\t\t<-safe.Go(func() { b = p.Steer(steerEnv(id, time.Now())) }, nil)\n\t\tif len(b) > 0 {\n",
+  "\t\tif b := p.Steer(steerEnv(id, time.Now(), st.Root())); len(b) > 0 {\n",
+  "\t\tvar b []byte\n\t\t<-safe.Go(func() { b = p.Steer(steerEnv(id, time.Now(), st.Root())) }, nil)\n\t\tif len(b) > 0 {\n",
   "TestFD2a_")
 m("FD-5.4 no barrier over the entry", MAIN,
   "func guardedHook(stderr io.Writer, fn func() error) int {\n\tif err := safe.Guard(fn); err != nil {\n",

@@ -36,8 +36,18 @@ type stFix struct {
 
 func newST(t *testing.T) *stFix {
 	t.Helper()
+	return newSTIn(t, t.TempDir())
+}
+
+// newSTIn is newST over the store at root, which may already hold its
+// install key.
+func newSTIn(t *testing.T, root string) *stFix {
+	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	st := mustOpen(t)
+	st, err := store.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := store.WriteRecordScopeMarker(st.Root(), store.RecordScopeV5); err != nil {
 		t.Fatal(err)
 	}
