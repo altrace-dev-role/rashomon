@@ -212,7 +212,7 @@ func TestReportWritesNothingAndShowsOldArtifactDelta(t *testing.T) {
 			t.Errorf("report lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "NewRowless") {
+	if strings.Contains(out, "Extra") {
 		t.Error("a benchmark without a row is not a row to report")
 	}
 }

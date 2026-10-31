@@ -8,5 +8,5 @@ BenchmarkRunPost/edit_314k-3    	      20	    900000 ns/op	  480000 B/op	     30
 BenchmarkRunPost/edit_314k-3    	      20	    800000 ns/op	  475956 B/op	     294 allocs/op
 BenchmarkRunPost/edit_314k-3    	      20	    850000 ns/op	  476500 B/op	     290 allocs/op
 BenchmarkRecap/100-3            	      20	   5000000 ns/op	 1262312 B/op	    3804 allocs/op
-BenchmarkNewRowless-3           	      20	      5000 ns/op	     100 B/op	       1 allocs/op
+BenchmarkExtra-3           	      20	      5000 ns/op	     100 B/op	       1 allocs/op
 PASS
