@@ -130,9 +130,15 @@ var lineIDs int
 // Output; holdout draws the session into the field holdout.
 func routeAt(t *testing.T, st *store.Store, promptID string, holdout bool, f steer.Finding) steer.Output {
 	t.Helper()
+	return routeArm(t, st, promptID, holdout, steer.ArmLive, f)
+}
+
+// routeArm is routeAt under lab arm arm.
+func routeArm(t *testing.T, st *store.Store, promptID string, holdout bool, arm steer.Arm, f steer.Finding) steer.Output {
+	t.Helper()
 	ctx := &steer.Context{
 		Event: steer.EventUserPromptSubmit, Store: st, SessionID: "s1", PromptID: &promptID, Project: "/repo",
-		HarnessID: "claude_code", Surface: "cli", NowUnixMS: nowMS, Consent: true, Arm: steer.ArmLive,
+		HarnessID: "claude_code", Surface: "cli", NowUnixMS: nowMS, Consent: true, Arm: arm,
 		Attendance: steer.AttendanceAttended, Holdout: holdout,
 		NewID: func() string { lineIDs++; return fmt.Sprintf("%032d", lineIDs) },
 	}
@@ -195,6 +201,39 @@ func TestPF1b_SecondPromptGetsOnlyTheNew(t *testing.T) {
 	}
 	if _, ok := intent.Finding(intent.Resolve([]byte("fix it in internal/verify/stop.go"), false, p), delivered(t, st), nil, 1); ok {
 		t.Error("a request naming only delivered items got a note")
+	}
+}
+
+// TestPF1b_ArmOffCountsAsGiven: under arm off the decision is the steer
+// arm's with the print withheld (state suppressed, suppressed_by arm_off), so
+// the withheld lines are the session's given set as the steer arm's delivered
+// ones are: a second prompt naming the same path is not offered it again, and
+// one naming a new path gets only the new one.
+func TestPF1b_ArmOffCountsAsGiven(t *testing.T) {
+	root := projectTree(t)
+	p := projectOf(root, specOf(root, spec.Trusted), indexOf())
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := routeArm(t, st, "p1", false, steer.ArmOff, mustFinding(t, "fix the nil check in internal/verify/stop.go", p, intent.Delivered{}))
+	if out.AdditionalContext != "" {
+		t.Fatalf("premise: arm off printed to the model: %+v", out)
+	}
+	lines, _, err := st.ReadSteer("s1")
+	if err != nil || len(lines) == 0 || !strings.Contains(string(lines[0]), `"suppressed_by":"arm_off"`) {
+		t.Fatalf("premise: the first note was not withheld by arm off: %v %q", err, lines)
+	}
+	d := delivered(t, st)
+	if !d.Paths["internal/verify/stop.go"] || !d.Rules["conv-errors"] || !d.Gates["go test"] || !d.Evidence["judgment_disclosed"] {
+		t.Fatalf("delivered set = %+v, want the withheld note's path, rule, gate and evidence", d)
+	}
+	if _, ok := intent.Finding(intent.Resolve([]byte("fix it in internal/verify/stop.go"), false, p), d, nil, 1); ok {
+		t.Error("a second prompt under arm off was offered the same path again")
+	}
+	f := mustFinding(t, "fix the same in internal/verify/stop.go and .github/workflows/ci.yaml", p, d)
+	if text := f.Message.Text(); strings.Contains(text, "'internal/verify/stop.go'") || !strings.Contains(text, "paths named: '.github/workflows/ci.yaml'; 1 given earlier\n") {
+		t.Errorf("second note under arm off = %q, want only the new path and the given one as a count", text)
 	}
 }
 

@@ -440,6 +440,33 @@ func TestLRN17c_OncePerSession(t *testing.T) {
 	}
 }
 
+// TestLRN17c2_ArmOffGivesTheLessonOnceToo: on a lab store under arm off the
+// lesson is decided and withheld (state suppressed, suppressed_by arm_off),
+// and that withheld line is the session's given lesson as the steer arm's
+// delivered one is: the second prompt decides no second line.
+func TestLRN17c2_ArmOffGivesTheLessonOnceToo(t *testing.T) {
+	e := newLessonEnv(t)
+	if err := store.WriteLab(e.root); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(hook.EnvSteerArm, "off")
+	e.ledger([][2]string{{"go-test-cwd", cwdLesson}}, "go-test-cwd")
+
+	e.start("s-off-once")
+	if out := e.prompt("s-off-once", "prompt-1", "continue please"); strings.Contains(out.stdout, "go-test-cwd") {
+		t.Fatalf("prompt 1 under arm off: stdout %q, want nothing printed", out.stdout)
+	}
+	lines := e.lessonLines("s-off-once")
+	if len(lines) != 1 || lines[0].State != "suppressed" || lines[0].SuppressedBy == nil || *lines[0].SuppressedBy != "arm_off" {
+		t.Fatalf("prompt 1 lines: %v, want the one lesson withheld by arm_off", lines)
+	}
+	e.call("s-off-once", "prompt-1", "toolu_off_1")
+	e.prompt("s-off-once", "prompt-2", "continue please")
+	if got := e.lessonLines("s-off-once"); len(got) != 1 {
+		t.Errorf("lines after prompt 2: %v, want the one: the steer arm gives a lesson once", got)
+	}
+}
+
 // heldOutSession is the first session id with prefix that the store's key
 // draws into the steer holdout at the share RASHOMON_HOLDOUT=on gives, as the prompt path
 // draws it.
