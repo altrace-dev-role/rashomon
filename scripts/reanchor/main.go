@@ -6,17 +6,25 @@
 // each under the toolchain budgets.json pins (D214, D215, Q1). The reference
 // machine stays an instrument for diagnosing drift, not an anchor.
 //
-//	go run ./scripts/reanchor --run 41166204201 --platform darwin/arm64 --report --all
-//	go run ./scripts/reanchor --run 41166204201 --platform darwin/arm64 --rows RunPost/edit_314k,hook.400B
-//	go run ./scripts/reanchor --run 41166204201 --platform linux/amd64 --provisional
+// Use the wrapper, which downloads the run with gh and then runs this tool:
+//
+//	scripts/reanchor.sh 41166204201 --platform darwin/arm64 --report --all
+//	scripts/reanchor.sh 41166204201 --platform darwin/arm64 --rows RunPost/edit_314k,hook.400B
+//	scripts/reanchor.sh 41166204201 --platform linux/amd64 --provisional
+//
+// or, with a run already downloaded into ./artifacts, this tool alone:
+//
 //	go run ./scripts/reanchor --run 41166204201 --dir ./artifacts --platform linux/amd64 --all
 //
-// Inputs. --run names the CI run (it is what a row's basis cites). Without
-// --dir the tool fetches with gh (run view, run download: read-only) the
-// bench-macos or bench-linux artifact and the Perf gates job's log. --dir
-// reads what is already downloaded: <dir>/bench-<macos|linux>/bench.txt (gh
-// run download's layout) or <dir>/bench.txt, and optionally
-// <dir>/perf-<macos|linux>.log or <dir>/perf.log. Benchmark rows come from
+// Inputs. The tool reads a local directory and nothing else: it starts no
+// process and opens no socket, as H-17 requires of every package here.
+// --dir is required. --run names the CI run (it is what a row's basis
+// cites). <dir> holds <dir>/bench-<macos|linux>/bench.txt (gh run
+// download's layout) or <dir>/bench.txt; the Perf gates job's log as
+// <dir>/perf-<macos|linux>.log or <dir>/perf.log; and optionally
+// <dir>/perf-<macos|linux>.job, "<job id> <conclusion>", which the basis
+// cites and which draws a warning when the job did not succeed. The wrapper
+// writes all three. Benchmark rows come from
 // bench.txt, taken by the rule benchgate gates with: per benchmark the one
 // whole run with the lowest B/op (ties by allocs/op). RSS rows (the
 // platform's entries and case_budgets) come from the job log, which is the
@@ -39,8 +47,22 @@
 // is that row get their alloc_bytes_max set to match (TestRES36f). RSS rows
 // carry no per-row basis field, so the platform's set_from gains one
 // sentence naming the run, the runner, the toolchain and each old and new
-// figure. Then go generate ./internal/budget. --report prints, per row, the
-// old value, the artifact's and the delta, and writes nothing.
+// figure. --report prints, per row, the old value, the artifact's and the
+// delta, and writes nothing. The tool does not run go generate; the wrapper
+// does after a write (go generate ./internal/budget).
+//
+// Hygiene. The new text trips H-113 and the old fingerprints in
+// test/tools/hygiene/reviewed.txt become entries that excuse nothing. This
+// tool may not import test/ code (H-17's scope guard), so with --neutral
+// PATH it writes, beside budgets.json, the same edit with each basis it
+// composed (and set_from for RSS rows) replaced by "x". The wrapper then runs
+// go run ./test/tools/reviewsync, which drops this file's stale entries and
+// adds one per new finding, each with a fixed reason (benchmark provenance
+// prose holding no credential and no account value), but only for a finding
+// that is gone from the neutral copy, i.e. one inside the composed text. A
+// finding still in the neutral copy is somewhere else; unless a person has
+// already excused it, reviewsync refuses and the wrapper restores
+// budgets.json. The wrapper's --no-hygiene skips all of it.
 //
 // Refusals (exit 2, nothing written): the toolchain the run used (from the
 // job log's setup-go lines, or --toolchain) is not budgets.json's go_version,
@@ -105,7 +127,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -120,8 +141,6 @@ import (
 // two): one `go test -bench` line with -benchmem figures.
 const benchLinePattern = `^(Benchmark\S+?)(?:-\d+)?\s+\d+\s+[\d.]+ ns/op(?:\s+[\d.]+ [A-Za-z0-9/_-]+)*?\s+(\d+) B/op\s+(\d+) allocs/op`
 
-const defaultRepo = "altrace-dev-role/rashomon"
-
 // flagTolerance marks a row in --report whose artifact figure is more than
 // this over its old value: the gate's ten percent.
 const flagTolerance = 0.10
@@ -131,11 +150,11 @@ func main() {
 }
 
 type options struct {
-	run, repo, dir, platform, budgets, root string
-	rows                                    string
-	provisional, all, report, noGenerate    bool
-	noHygiene                               bool
-	kind, toolchain, runner                 string
+	run, dir, platform, budgets, root string
+	rows                              string
+	provisional, all, report          bool
+	neutral                           string
+	kind, toolchain, runner           string
 }
 
 func run(args []string, stdout, stderr io.Writer, now time.Time) int {
@@ -143,16 +162,14 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	fs.SetOutput(stderr)
 	var o options
 	fs.StringVar(&o.run, "run", "", "CI run id the artifacts come from (cited by every changed basis)")
-	fs.StringVar(&o.repo, "repo", defaultRepo, "GitHub repository, for gh")
-	fs.StringVar(&o.dir, "dir", "", "read already-downloaded artifacts from this directory instead of fetching")
+	fs.StringVar(&o.dir, "dir", "", "directory of downloaded artifacts and Perf gates job logs (required; scripts/reanchor.sh fills one)")
 	fs.StringVar(&o.platform, "platform", "", "linux/amd64 or darwin/arm64")
 	fs.StringVar(&o.budgets, "budgets", "", "budgets.json to edit (default test/perf/budgets.json under the module root)")
 	fs.StringVar(&o.rows, "rows", "", "comma-separated benchmark names and RSS ids")
 	fs.BoolVar(&o.provisional, "provisional", false, "select the benchmark rows whose basis says provisional")
 	fs.BoolVar(&o.all, "all", false, "select every row of the platform")
 	fs.BoolVar(&o.report, "report", false, "print old, artifact and delta per row; write nothing (defaults to --all)")
-	fs.BoolVar(&o.noGenerate, "no-generate", false, "skip go generate ./internal/budget")
-	fs.BoolVar(&o.noHygiene, "no-hygiene", false, "leave test/tools/hygiene/reviewed.txt alone (H-113 will then need the fingerprints by hand)")
+	fs.StringVar(&o.neutral, "neutral", "", "also write the edited file with every basis and set_from this run composed replaced by \"x\" to this path (what test/tools/reviewsync compares against)")
 	fs.StringVar(&o.kind, "kind", "all", "bench, rss or all: narrows --all and --provisional")
 	fs.StringVar(&o.toolchain, "toolchain", "", "the run's toolchain (go1.27.3), when its job log is not available")
 	fs.StringVar(&o.runner, "runner", "", "runner label for the basis (default ubuntu-latest or macos-latest)")
@@ -171,6 +188,9 @@ func reanchor(o options, date string, stdout, stderr io.Writer) error {
 	osName := map[string]string{"linux/amd64": "linux", "darwin/arm64": "macos"}[o.platform]
 	if osName == "" {
 		return fmt.Errorf("--platform must be linux/amd64 or darwin/arm64, not %q", o.platform)
+	}
+	if o.dir == "" {
+		return fmt.Errorf("--dir is required: the tool reads a downloaded run and never fetches one (H-17); scripts/reanchor.sh RUN_ID downloads it")
 	}
 	if o.run == "" || strings.Trim(o.run, "0123456789") != "" {
 		return fmt.Errorf("--run must be the numeric CI run id the artifacts come from, not %q", o.run)
@@ -242,11 +262,8 @@ func reanchor(o options, date string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stdout, "reanchor: nothing changed")
 		return nil
 	}
-	// The hygiene plan is made before anything is written, so a finding
-	// outside the rewritten text refuses with nothing changed.
-	var hy *hygienePlan
-	if !o.noHygiene {
-		if hy, err = planHygiene(o, p, src, out); err != nil {
+	if o.neutral != "" {
+		if err := os.WriteFile(o.neutral, p.applyWith(src, true), 0o644); err != nil {
 			return err
 		}
 	}
@@ -254,27 +271,6 @@ func reanchor(o options, date string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "reanchor: wrote %s (%d rows changed)\n", o.budgets, p.changed())
-	if !o.noGenerate {
-		if err := generate(o, stdout, stderr); err != nil {
-			return err
-		}
-	}
-	if hy != nil {
-		if err := hy.write(stdout); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func generate(o options, stdout, stderr io.Writer) error {
-	cmd := exec.Command("go", "generate", "./internal/budget")
-	cmd.Dir = o.root
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go generate ./internal/budget: %w", err)
-	}
-	fmt.Fprintln(stdout, "reanchor: go generate ./internal/budget done; run go test ./test/perf ./internal/budget ./scripts/benchgate -count=1")
 	return nil
 }
 
@@ -319,16 +315,18 @@ type meta struct {
 
 func loadArtifact(o options, osName string, stderr io.Writer) (*artifact, error) {
 	dir := o.dir
+	// perf-<os>.job, when the wrapper saved it: "<job id> <conclusion>".
 	var jobID, jobConc string
-	if dir == "" {
-		tmp, err := os.MkdirTemp("", "reanchor-")
-		if err != nil {
-			return nil, err
+	if raw, err := os.ReadFile(filepath.Join(dir, "perf-"+osName+".job")); err == nil {
+		f := strings.Fields(string(raw))
+		if len(f) > 0 {
+			jobID = f[0]
 		}
-		dir = tmp
-		jobID, jobConc, err = fetch(o, osName, dir, stderr)
-		if err != nil {
-			return nil, err
+		if len(f) > 1 {
+			jobConc = f[1]
+		}
+		if jobConc != "success" {
+			fmt.Fprintf(stderr, "reanchor: warning: run %s's Perf gates (%s) job concluded %q\n", o.run, osName, jobConc)
 		}
 	}
 	var benchRaw, logRaw []byte
@@ -362,58 +360,6 @@ func loadArtifact(o options, osName string, stderr io.Writer) (*artifact, error)
 		a.Toolchain = o.toolchain
 	}
 	return a, nil
-}
-
-// fetch downloads the run's bench artifact and the Perf gates job's log with
-// gh, read-only. It returns the job's id and conclusion.
-func fetch(o options, osName, dir string, stderr io.Writer) (string, string, error) {
-	gh := func(args ...string) ([]byte, error) {
-		cmd := exec.Command("gh", args...)
-		var eb bytes.Buffer
-		cmd.Stderr = &eb
-		out, err := cmd.Output()
-		if err != nil {
-			return nil, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(eb.String()))
-		}
-		return out, nil
-	}
-	raw, err := gh("run", "view", o.run, "--repo", o.repo, "--json", "jobs")
-	if err != nil {
-		return "", "", err
-	}
-	var jobs struct {
-		Jobs []struct {
-			ID         int64  `json:"databaseId"`
-			Name       string `json:"name"`
-			Conclusion string `json:"conclusion"`
-		} `json:"jobs"`
-	}
-	if err := json.Unmarshal(raw, &jobs); err != nil {
-		return "", "", err
-	}
-	var id, conc string
-	for _, j := range jobs.Jobs {
-		if j.Name == "Perf gates ("+osName+")" {
-			id, conc = strconv.FormatInt(j.ID, 10), j.Conclusion
-		}
-	}
-	if id == "" {
-		return "", "", fmt.Errorf("run %s has no job named %q", o.run, "Perf gates ("+osName+")")
-	}
-	if _, err := gh("run", "download", o.run, "--repo", o.repo, "-n", "bench-"+osName, "-D", dir); err != nil {
-		return "", "", err
-	}
-	logRaw, err := gh("run", "view", o.run, "--repo", o.repo, "--log", "--job", id)
-	if err != nil {
-		return "", "", err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "perf-"+osName+".log"), logRaw, 0o644); err != nil {
-		return "", "", err
-	}
-	if conc != "success" {
-		fmt.Fprintf(stderr, "reanchor: warning: run %s's Perf gates (%s) job concluded %q\n", o.run, osName, conc)
-	}
-	return id, conc, nil
 }
 
 // parseBench keeps, per benchmark, the one whole run with the lowest B/op

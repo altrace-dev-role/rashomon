@@ -38,11 +38,11 @@ func runTool(t *testing.T, args ...string) (int, string, string) {
 }
 
 func macos(budgets string, extra ...string) []string {
-	return append([]string{"--run", "41166204201", "--dir", "testdata/macos", "--platform", "darwin/arm64", "--budgets", budgets, "--no-generate", "--no-hygiene"}, extra...)
+	return append([]string{"--run", "41166204201", "--dir", "testdata/macos", "--platform", "darwin/arm64", "--budgets", budgets}, extra...)
 }
 
 func linux(budgets string, extra ...string) []string {
-	return append([]string{"--run", "41166204201", "--dir", "testdata/linux", "--platform", "linux/amd64", "--budgets", budgets, "--no-generate", "--no-hygiene"}, extra...)
+	return append([]string{"--run", "41166204201", "--dir", "testdata/linux", "--platform", "linux/amd64", "--budgets", budgets}, extra...)
 }
 
 func lines(b []byte) []string { return strings.Split(string(b), "\n") }
@@ -103,6 +103,42 @@ func TestSelectedBenchmarkRowTakesTheBestOfThree(t *testing.T) {
 		if r.BytesPerOpMax != r.MeasuredBytesPerOp || r.AllocsPerOpMax != r.MeasuredAllocsPerOp {
 			t.Errorf("%s carries a margin: %+v", r.Name, r)
 		}
+	}
+}
+
+// The tool reads a directory and never fetches (H-17).
+func TestDirIsRequired(t *testing.T) {
+	code, _, errb := runTool(t, "--run", "41166204201", "--platform", "darwin/arm64", "--rows", "RunPost/edit_314k")
+	if code != 2 || !strings.Contains(errb, "--dir is required") {
+		t.Errorf("exit %d: %s", code, errb)
+	}
+}
+
+// --neutral writes the edit with the composed basis replaced by "x": the same
+// bytes everywhere else, for test/tools/reviewsync to compare against.
+func TestNeutralCopyDiffersOnlyInTheComposedBasis(t *testing.T) {
+	p, _ := work(t)
+	np := filepath.Join(t.TempDir(), "neutral.json")
+	code, out, errb := runTool(t, macos(p, "--rows", "RunPost/edit_314k", "--neutral", np)...)
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	after, _ := os.ReadFile(p)
+	neutral, err := os.ReadFile(np)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := diffLines(t, after, neutral)
+	if len(d) != 1 {
+		t.Fatalf("lines differing %v, want only the row's", d)
+	}
+	basis := regexp.MustCompile(`"basis": "(?:[^"\\]|\\.)*"`)
+	row := lines(neutral)[d[0]]
+	if !strings.Contains(row, `"basis": "x"`) || strings.Contains(row, "41166204201") {
+		t.Errorf("neutral row: %s", row)
+	}
+	if basis.ReplaceAllString(row, "") != basis.ReplaceAllString(lines(after)[d[0]], "") {
+		t.Errorf("the neutral row differs beyond its basis")
 	}
 }
 
@@ -255,12 +291,12 @@ func TestMissingArtifactValueWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	raw, _ := os.ReadFile("testdata/linux/bench.txt")
 	os.WriteFile(filepath.Join(dir, "bench.txt"), raw, 0o644)
-	code, _, errb = runTool(t, "--run", "41166204201", "--dir", dir, "--platform", "linux/amd64", "--budgets", p, "--no-generate", "--rows", "hook.400B", "--toolchain", "go1.27.3")
+	code, _, errb = runTool(t, "--run", "41166204201", "--dir", dir, "--platform", "linux/amd64", "--budgets", p, "--rows", "hook.400B", "--toolchain", "go1.27.3")
 	if code != 2 || !strings.Contains(errb, "not in the job log") {
 		t.Errorf("exit %d: %s", code, errb)
 	}
 	// And with no log and no --toolchain, the toolchain is unknown: refused.
-	code, _, errb = runTool(t, "--run", "41166204201", "--dir", dir, "--platform", "linux/amd64", "--budgets", p, "--no-generate", "--all")
+	code, _, errb = runTool(t, "--run", "41166204201", "--dir", dir, "--platform", "linux/amd64", "--budgets", p, "--all")
 	if code != 2 || !strings.Contains(errb, "toolchain is unknown") {
 		t.Errorf("exit %d: %s", code, errb)
 	}
@@ -321,7 +357,7 @@ func TestRealFileLayoutSurvivesAnAllRowsRewrite(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "budgets.json")
 	os.WriteFile(p, raw, 0o644)
 	code, out, errb := runTool(t, "--run", "41166204201", "--dir", dir, "--platform", "darwin/arm64", "--budgets", p,
-		"--no-generate", "--no-hygiene", "--all", "--kind", "bench", "--toolchain", b.GoVersion)
+		"--all", "--kind", "bench", "--toolchain", b.GoVersion)
 	if code != 0 {
 		t.Fatalf("exit %d: %s%s", code, out, errb)
 	}
