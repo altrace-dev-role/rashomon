@@ -14,8 +14,10 @@ without one. It never blocks a call. The notes and the end-of-turn checks are
 its steering layer, AutoSteer. The note before the agent starts reaches it on
 every supported version; a note after a call that succeeded on Claude Code
 2.1.280 and later; and a note after a failed call on Claude Code 2.1.304 and
-later. Below those floors, one line per session tells you a note was built and
-not sent, such as:
+later. Where a note is not sent (an older version, a version that failed the
+delivery check or could not be read, a subagent's call, an SDK session, or a
+session whose surface could not be read), one line per session tells you a note
+was built and not sent, such as:
 
     rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
 
