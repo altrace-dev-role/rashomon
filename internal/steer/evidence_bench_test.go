@@ -38,11 +38,10 @@ func benchTranscript(tb testing.TB) string {
 // budget; the read's bytes, line and time bounds are DefaultScanLimits'.
 func BenchmarkEvidenceScan(b *testing.B) {
 	path := benchTranscript(b)
-	needles := []string{"rashomon record: a note that is not in the transcript"}
-	oldest := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
+	needles := []Needle{{"rashomon record: a note that is not in the transcript", time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)}}
 	b.ReportAllocs()
 	for b.Loop() {
-		found, complete := ScanTranscript(path, needles, oldest, DefaultScanLimits(time.Now()))
+		found, complete := ScanTranscript(path, "", needles, DefaultScanLimits(time.Now()))
 		if found[0] || !complete {
 			b.Fatalf("found %v, complete %v", found, complete)
 		}

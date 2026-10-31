@@ -151,7 +151,7 @@ const (
 	// or equal to one of its exclusions.
 	shutBelowFloor
 	shutExcluded
-	// shutEvidence: the version is trusted, and the last session's transcript
+	// shutEvidence: the version is trusted, and a transcript
 	// did not show a delivered note for this event.
 	shutEvidence
 )

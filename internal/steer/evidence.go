@@ -23,9 +23,13 @@ import (
 // unreadable. It goes on the steer log as a line of its own, keyed by the
 // note's id (EvidenceLine), because the log is append-only and a note's line
 // is long since written when the Stop reads the transcript. One absent
-// reading on a version the event's floor trusts shadows that event for the
-// sessions that follow (store.TakeChannelEvidence); an unreadable reading
-// changes nothing.
+// reading does not shadow: the second, at a later Stop of the session, on a
+// version the event's floor trusts, shadows that event for the sessions that
+// follow (store.TakeChannelEvidence), and a seen reading between them starts
+// the count again. A false shadow costs every session until Claude Code's
+// version changes, so one more Stop of confirmation is cheap. An unreadable
+// reading changes nothing, and a transcript that has not caught up with the
+// note, or is another session's, is unreadable.
 
 // Evidence is one delivered note's outcome.
 type Evidence string
@@ -34,8 +38,8 @@ const (
 	// EvidenceSeen: the note's text is in a hook_additional_context
 	// attachment of the transcript.
 	EvidenceSeen Evidence = "seen"
-	// EvidenceAbsent: the whole transcript was read, as far as the note's
-	// time reaches, and no attachment carries the text.
+	// EvidenceAbsent: the whole transcript was read, from before the note's
+	// time to after it, and no attachment recorded since carries the text.
 	EvidenceAbsent Evidence = "absent"
 	// EvidenceUnreadable: the transcript is missing, could not be read to the
 	// note's time within the bound, or holds no record; it says nothing of
@@ -69,7 +73,15 @@ type EvidenceLine struct {
 	AtUnixMS  int64    `json:"at_unix_ms"`
 	Event     string   `json:"event"`
 	Evidence  Evidence `json:"evidence"`
+	// AbsentStreak, on an absent line, is how many Stops in a row of the
+	// session read this event's note as absent, this one included; the
+	// marker is written at evidenceAbsents. Additive: omitted elsewhere.
+	AbsentStreak int `json:"absent_streak,omitempty"`
 }
+
+// evidenceAbsents is how many consecutive absent readings, one per Stop,
+// write an event's marker.
+const evidenceAbsents = 2
 
 // CapText is store.SteerLine's one method: an evidence line has no text.
 func (EvidenceLine) CapText() bool { return false }
@@ -167,26 +179,39 @@ func CheckEvidence(st *store.Store, sessionID, path string, now time.Time, lim S
 	if len(notes) == 0 {
 		return nil
 	}
-	needles := make([]string, len(notes))
-	oldest := notes[0].at
+	needles := make([]Needle, len(notes))
 	for i, n := range notes {
-		needles[i] = n.needle
-		if n.at.Before(oldest) {
-			oldest = n.at
-		}
+		needles[i] = Needle{Text: n.needle, At: n.at}
 	}
-	found, complete := ScanTranscript(path, needles, oldest, lim)
+	found, complete := ScanTranscript(path, sessionID, needles, lim)
 	out := make([]EvidenceLine, len(notes))
+	// One reading per event per Stop: seen if any of its notes is, else
+	// absent if any is, and the streak goes on from the session's last
+	// reading of the event that was not unreadable.
+	seen, absent := map[string]bool{}, map[string]bool{}
 	for i, n := range notes {
 		e := EvidenceUnreadable
 		switch {
 		case found[i]:
 			e = EvidenceSeen
+			seen[n.event] = true
 		case complete:
 			e = EvidenceAbsent
+			absent[n.event] = true
 		}
 		out[i] = EvidenceLine{Type: EvidenceLineType, V: LineVersion, SteerID: n.id, SessionID: sessionID, PromptID: n.prompt,
 			AtUnixMS: now.UnixMilli(), Event: n.event, Evidence: e}
+	}
+	prior := priorStreaks(lines, sessionID)
+	streak := map[string]int{}
+	for i, n := range notes {
+		if out[i].Evidence != EvidenceAbsent || seen[n.event] {
+			continue
+		}
+		if _, ok := streak[n.event]; !ok {
+			streak[n.event] = prior[n.event] + 1
+		}
+		out[i].AbsentStreak = streak[n.event]
 	}
 	err = st.AppendSteer(sessionID, func(_ io.ReaderAt) ([]store.SteerLine, error) {
 		batch := make([]store.SteerLine, len(out))
@@ -200,8 +225,29 @@ func CheckEvidence(st *store.Store, sessionID, path string, now time.Time, lim S
 	}
 	_ = st.Flush()
 	for i, n := range notes {
-		if out[i].Evidence == EvidenceAbsent && n.trusted {
+		if out[i].AbsentStreak >= evidenceAbsents && n.trusted {
 			st.TakeChannelEvidence(n.event, n.version)
+		}
+	}
+	return out
+}
+
+// priorStreaks is, per event, the absent streak the session's log stands at:
+// that of its last evidence line for the event that is not unreadable, 0 after
+// a seen one.
+func priorStreaks(lines [][]byte, sessionID string) map[string]int {
+	out := map[string]int{}
+	var f [nkCount]jsonscan.Span
+	for _, b := range lines {
+		if !bytes.Contains(b, evidenceType) || jsonscan.Top(b, noteKeys(), f[:]) != nil ||
+			textOf(b, f[nkSession]) != sessionID || textOf(b, f[nkType]) != EvidenceLineType {
+			continue
+		}
+		switch Evidence(textOf(b, f[nkEvidence])) {
+		case EvidenceSeen:
+			out[textOf(b, f[nkEvent])] = 0
+		case EvidenceAbsent:
+			out[textOf(b, f[nkEvent])] = int(int64Of(b, f[nkStreak]))
 		}
 	}
 	return out

@@ -104,7 +104,7 @@ func channelNotice(event Event, c Client, surface string, table map[string]chann
 	case shutExcluded:
 		why = "this version failed the delivery check"
 	case shutEvidence:
-		why = "the last session's transcript did not show a delivered note for this event"
+		why = "a transcript did not show a delivered note for this event"
 	default:
 		// Unreachable: a line is unverified_channel only where ContextAllowed,
 		// which is shutBy, refused.
