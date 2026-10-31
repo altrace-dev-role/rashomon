@@ -15,5 +15,5 @@ m("perf-1 each file of the read waits a budget of its own", "internal/store/read
   "\t\tleft := max(0, time.Until(deadline))\n", "\t\tleft := max(budget, time.Until(deadline))\n",
   "TestRubricPERF1_TheBudgetCoversTheWholeRead")
 m("perf-1 the last polling sleep runs past the deadline", "internal/store/lock_unix.go",
-  "\t\ttime.Sleep(min(backoff, left))\n", "\t\ttime.Sleep(backoff)\n",
-  "TestRubricPERF1_AGiveUpLandsAtItsBudget")
+  "\t\tpollSleep(min(backoff, left))\n", "\t\tpollSleep(backoff)\n",
+  "TestRubricPERF1_AGiveUpLandsAtItsBudgetOnAnExactClock")

@@ -197,11 +197,23 @@ func TestLeadingFold(t *testing.T) {
 // comment ending in a backslash, before the leading steps or among them, which
 // tokenizeProgram joined the next line to. Both readings now end a comment at
 // its newline (lex), and the lines stay as seeds; the one divergence left is a
-// here-document, whose body only tokenizeList skips.
+// here-document, whose body only tokenizeList skips (hereDocApart).
 var foldApart = []string{
 	"cd a && # c\\\ncd b && go test ./...",
 	"# c\\\ncd a && go test ./...",
 	"cd a && #\\\n cd b && go test ./...",
+}
+
+// hereDocApart are lines the two readings still fold apart: the masked
+// parser's steps over a cd after a here-document's body (8 tokens, 11 in the
+// last) where the program search's stop at the body's first word (5, 8). They
+// are not foldApart's: nothing may say the two agree on them, and agreedFold
+// must give the fold up. Break: skip agreedFold's comparison, and each folds a
+// cd the program search does not (SWEEP-FINISH1).
+var hereDocApart = []string{
+	"cd a <<EOF;\nfoo bar\nEOF\ncd b && go test ./...",
+	"cd a <<EOF &&\nfoo bar\nEOF\ncd b && go test ./...",
+	"cd a && cd b <<EOF;\nfoo bar\nEOF\ncd c && go test ./...",
 }
 
 // FuzzLeadingFoldAgrees: the masked parser and the program search read the
@@ -220,7 +232,7 @@ func FuzzLeadingFoldAgrees(f *testing.F) {
 	f.Add("cd /t\\\nmp && go test ./...")
 	f.Add("cd a#b && cd c && go test")
 	f.Add("X=1 >/dev/null cd $D; (cd b && { cd c && make test; })")
-	for _, s := range foldApart {
+	for _, s := range append(append([]string{}, foldApart...), hereDocApart...) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, cmd string) { checkLeadingFoldAgrees(t, cmd) })
@@ -244,7 +256,7 @@ func checkLeadingFoldAgrees(t *testing.T, cmd string) {
 // without -fuzz.
 func TestRubricTEST1_LeadingFoldSeeds(t *testing.T) {
 	for _, s := range append(append(shapeSeeds(), "cd /t\\\nmp && go test ./...", "cd a#b && cd c && go test",
-		"X=1 >/dev/null cd $D; (cd b && { cd c && make test; })"), foldApart...) {
+		"X=1 >/dev/null cd $D; (cd b && { cd c && make test; })"), append(append([]string{}, foldApart...), hereDocApart...)...) {
 		checkLeadingFoldAgrees(t, s)
 	}
 }

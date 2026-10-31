@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// pollNow and pollSleep are lockFileWait's clock and its polling sleep, held
+// in variables so a test can drive the wait on a clock it owns: the real one
+// overshoots under load, and an overshoot that crosses the deadline hides a
+// last sleep that was not cut (SWEEP-FINISH1).
+var (
+	pollNow   = time.Now
+	pollSleep = time.Sleep
+)
+
 // lockFileWait takes an exclusive advisory lock on f, polling so the wait can be
 // bounded. A blocking LOCK_EX cannot be interrupted on a deadline without
 // tearing down the goroutine holding it, and this process must not start
@@ -19,7 +28,7 @@ import (
 // visible before it costs a record (perf-7, Store.noteLockWait).
 func lockFileWait(f *os.File, budget time.Duration) (func(), time.Duration, error) {
 	fd := int(f.Fd())
-	start := time.Now()
+	start := pollNow()
 	deadline := start.Add(budget)
 	backoff := 200 * time.Microsecond
 	// waited is how long this call has spent on the lock, which it reports
@@ -34,15 +43,15 @@ func lockFileWait(f *os.File, budget time.Duration) (func(), time.Duration, erro
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, waited, err
 		}
-		left := time.Until(deadline)
+		left := deadline.Sub(pollNow())
 		if left <= 0 {
 			return nil, waited, ErrLockTimeout
 		}
 		// The last sleep is cut to the time left, so the final try lands at
 		// the deadline and a give-up never runs a whole sleep past the
 		// budget (perf-1).
-		time.Sleep(min(backoff, left))
-		waited = time.Since(start)
+		pollSleep(min(backoff, left))
+		waited = pollNow().Sub(start)
 		if backoff < 10*time.Millisecond {
 			backoff *= 2
 		}
