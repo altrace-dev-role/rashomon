@@ -1507,7 +1507,7 @@
         }
       ],
       "id": "PF-HD9",
-      "implementation": "The project brief names each instruction file present at session start, the root's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md and the user's CLAUDE.md, with its byte size, printed to the user by probe start and by rashomon brief, but no instruction-load record exists and the installer subscribes to no instruction-load event, so what Claude Code loaded is not known.",
+      "implementation": "The project brief names each instruction file present at session start, the root's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md and the user's CLAUDE.md, with its byte size, printed to the user by probe start and by rashomon brief, but no instruction-load record is written and the installer subscribes to no instruction-load event, so what Claude Code loaded is not known.",
       "integration": [
         {
           "event": "SessionStart",
