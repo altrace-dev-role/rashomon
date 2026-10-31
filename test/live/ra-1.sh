@@ -24,19 +24,35 @@
 #       exist. install.sh runs as the user would, with no pinned version, so
 #       it also shows what releases/latest serves (RA_INSTALL_PIN=1 pins it).
 #   A2  needs the RC binary (below), claude on PATH and ~/.claude-probe logged
-#       in with no settings.json. Two `claude -p` sessions (haiku): a green
-#       go test, then an edit. One reads as Claude Code 2.1.200, below the
-#       PostToolUse floor 2.1.280 (internal/steer/client.go); one reads as the
-#       real version. Saves A2/: claude version, both streams, both
-#       transcripts, both steer.ndjson, and verdict.txt. Spoofed: the once-
-#       per-session "a note was built and not sent to the agent" line, no
-#       note in the agent's context. Real: the stale-evidence note in the
-#       agent's context.
+#       in with no settings.json. Two sessions of an INTERACTIVE claude, in
+#       your terminal: the script runs watch, prints the prompt, starts claude
+#       under the probe's CLAUDE_CONFIG_DIR; you type the prompt, approve the
+#       tool calls and type /exit. The prompt has the model run a green go
+#       test, then edit a file. Session one reads as Claude Code 2.1.200: the
+#       version is SPOOFED (AI_AGENT, which steer.ClientVersion reads, is set
+#       to the 2.1.200 harness form for the hook only, by a wrapper the watch
+#       entries point at), and the floor, 2.1.280 for PostToolUse
+#       (internal/steer/client.go), is what is under test. Session two runs
+#       on the real version. Nothing else is spoofed: the entry point stays
+#       cli, the real surface. Saves A2/: claude version, both transcripts,
+#       both steer.ndjson, verdict.txt. Spoofed: the once-per-session "a note
+#       was built and not sent" notice recorded once, no note in the agent's
+#       transcript. Real: the stale-evidence note delivered, in the agent's
+#       transcript, and no notice.
 #   A4  needs the same, plus go. In a scratch Go project with a trusted spec
-#       that declares `go test ./...`: a session that edits and runs no test
-#       (the done line at Stop), then a session that edits and runs go test
-#       (the verified line). Saves A4/: both streams and transcripts, both
+#       that declares `go test ./...`: an interactive session that edits and
+#       runs no test (the done line at Stop), then one that edits and runs go
+#       test (the verified line). The terminal is captured with script(1) when
+#       it exists; a line the capture misses is asked of you at the terminal
+#       and the verdict says it is your word. Saves A4/: transcripts, both
 #       `rashomon report --session <id>`, status.txt, verdict.txt.
+#
+# RA_HEADLESS=1 runs A2 and A4 as one `claude -p` per session instead, with
+# AI_AGENT spoofed and, because claude -p is the SDK surface where notes are
+# shut by design (internal/steer/notice.go), CLAUDE_CODE_ENTRYPOINT forced to
+# cli. That is a SMOKE CHECK of the script and the plumbing. It is NOT
+# release evidence: forcing the entry point makes rashomon treat a headless
+# run as the CLI, which no user sees. verdict.txt names the mode that ran.
 #   A7  the report half of A4's run (A4 runs first if it is not listed).
 #       Saves A7/: the two reports and a verdict on what they name.
 #   A8  needs the RC binary only; no claude run. In a scratch config
@@ -46,8 +62,7 @@
 #
 # The RC binary is $RA_BIN, else the install.sh binary A1 saved
 # ($EVID/A1/prefix/bin/rashomon), and it must print $RA_TAG without the v
-# (RA_ANY_VERSION=1 skips that check). `go install` is not the default: a
-# go install build carries no -X main.version, so it prints dev.
+# (RA_ANY_VERSION=1 skips that check).
 #
 # Claude Code runs under CLAUDE_CONFIG_DIR, $HOME/.claude-probe by default,
 # and a scratch RASHOMON_HOME; ~/.claude and the user's store are never read
@@ -72,6 +87,8 @@ VER=${TAG#v}
 REPO=${RA_REPO:-altrace-dev-role/rashomon}
 EVID=${RA_EVIDENCE:-$ROOT/.handoff/evidence}
 CFG=${CLAUDE_CONFIG_DIR:-$HOME/.claude-probe}
+HEADLESS=${RA_HEADLESS:-0}
+if [ "$HEADLESS" = 1 ]; then MODE="headless smoke check, NOT release evidence"; else MODE="interactive"; fi
 SPOOF_VER=2.1.200
 SPOOF_AGENT=claude-code_2-1-200_harness
 ROWS=${*:-A1 A2 A4 A7 A8}
@@ -155,7 +172,7 @@ trap 'exit 143' TERM
 
 worst=0
 verdict() { # verdict ROW PASS|FAIL|INCONCLUSIVE file
-  echo "$1 $2" | tee -a "$3"
+  case $1 in A2 | A4 | A7) echo "$1 $2 ($MODE)" | tee -a "$3" ;; *) echo "$1 $2" | tee -a "$3" ;; esac
   case $2 in
     FAIL) worst=1 ;;
     INCONCLUSIVE) [ "$worst" = 1 ] || worst=3 ;;
@@ -183,20 +200,20 @@ pick_bin() {
 }
 
 # ---- the spoof wrapper: A2 only -------------------------------------------
-# claude sets AI_AGENT and CLAUDE_CODE_ENTRYPOINT itself in a hook's
-# environment, so exporting them here would be overwritten. The wrapper is
-# what the entries point at for A2: it sets the two for the hook only, then
-# execs the real binary. RA_SPOOF_AGENT sets AI_AGENT (steer.ClientVersion
-# reads it, harness form claude-code_<dashed version>_harness). The entry
-# point is forced to cli because claude -p reports sdk-cli, the SDK surface,
-# which is shut by design whatever the version (steer/notice.go), so no
-# version question would be asked of it.
+# claude sets AI_AGENT in a hook's environment itself, so exporting it here
+# would be overwritten. The wrapper is what the entries point at for A2: it
+# sets AI_AGENT for the hook only (RA_SPOOF_AGENT; steer.ClientVersion reads
+# it, harness form claude-code_<dashed version>_harness), then execs the real
+# binary. THE VERSION IS SPOOFED in the spoofed session; the floor is what is
+# under test. The entry point is left alone, except under RA_HEADLESS=1:
+# claude -p reports sdk-cli, the SDK surface, shut by design whatever the
+# version (steer/notice.go), so the smoke check forces cli for the hook.
 make_wrapper() {
   mkdir -p "$T/wrap"; WRAP=$T/wrap/rashomon
   cat > "$WRAP" << SH
 #!/bin/sh
 [ -n "\${RA_SPOOF_AGENT:-}" ] && AI_AGENT=\$RA_SPOOF_AGENT && export AI_AGENT
-CLAUDE_CODE_ENTRYPOINT=cli; export CLAUDE_CODE_ENTRYPOINT
+[ -n "\${RA_SPOOF_ENTRYPOINT:-}" ] && CLAUDE_CODE_ENTRYPOINT=\$RA_SPOOF_ENTRYPOINT && export CLAUDE_CODE_ENTRYPOINT
 exec $REAL "\$@"
 SH
   chmod 0755 "$WRAP"
@@ -229,31 +246,87 @@ setup_watch() { # setup_watch OUTFILE
   SHA_WATCH=$(sha "$CFG/settings.json")
 }
 
-# claude_run NAME PROMPT TOOLS DIR OUTDIR [ENV...]: one bounded claude -p
-# session in DIR; sets SID, copies the stream and the transcript to OUTDIR.
+# finish_session NAME OUT: copy the session's transcript and its steer log out
+# of the probe's directories, before the exit trap removes the transcript.
+finish_session() {
+  for f in "$CFG"/projects/*/"$SID".jsonl; do
+    [ -f "$f" ] && cp "$f" "$2/$1.transcript.jsonl"
+  done
+  if [ -f "$HOME_R/runs/$SID/steer.ndjson" ]; then cp "$HOME_R/runs/$SID/steer.ndjson" "$2/$1.steer.ndjson"; fi
+}
+
+# claude_run NAME PROMPT TOOLS DIR OUT [ENV...]: RA_HEADLESS only. One bounded
+# claude -p session in DIR; sets SID and SCREEN (the stream).
 claude_run() {
   name=$1 prompt=$2 tools=$3 dir=$4 out=$5; shift 5
   SID=$(uuid); SIDS="$SIDS $SID"
   mkdir -p "$out"
-  (cd "$dir" && bounded 600 env -u CI RASHOMON_HOLDOUT=off "$@" \
+  SCREEN=$out/$name.stream.ndjson
+  (cd "$dir" && bounded 600 env -u CI RASHOMON_HOLDOUT=off RA_SPOOF_ENTRYPOINT=cli "$@" \
     claude -p "$prompt" --session-id "$SID" --allowedTools "$tools" \
     --model haiku --max-turns 8 --output-format stream-json --verbose \
-    < /dev/null > "$out/$name.stream.ndjson" 2> "$out/$name.stderr") || echo "claude exit $? ($name)" >> "$out/$name.stderr"
-  for f in "$CFG"/projects/*/"$SID".jsonl; do
-    [ -f "$f" ] && cp "$f" "$out/$name.transcript.jsonl"
-  done
-  S_ROOT=$HOME_R
-  if [ -f "$S_ROOT/runs/$SID/steer.ndjson" ]; then cp "$S_ROOT/runs/$SID/steer.ndjson" "$out/$name.steer.ndjson"; fi
+    < /dev/null > "$SCREEN" 2> "$out/$name.stderr") || echo "claude exit $? ($name)" >> "$out/$name.stderr"
+  finish_session "$name" "$out"
 }
 
-# steer_summary FILE: pattern, state, suppressed_by per line; never a value.
+# interactive_run NAME PROMPT TOOLS DIR OUT [ENV...]: an interactive claude on
+# the terminal, bounded at 30 minutes; the person types PROMPT, approves the
+# tool calls and types /exit. Sets SID and SCREEN (a script(1) capture, or
+# none). TOOLS is not used: the person approves each call.
+interactive_run() {
+  name=$1 prompt=$2 dir=$4 out=$5; shift 5
+  SID=$(uuid); SIDS="$SIDS $SID"
+  mkdir -p "$out"
+  SCREEN=$out/$name.typescript
+  {
+    echo
+    echo "== $name: claude starts in $dir under $CFG"
+    echo "Type this prompt, approve the tool calls, then type /exit:"
+    echo
+    echo "    $prompt"
+    echo
+    printf 'Press Enter to start claude. '
+  } > /dev/tty
+  read -r _ < /dev/tty
+  cmd="claude --session-id $SID --permission-mode default --model haiku"
+  tout=
+  if [ -n "$TOCMD" ] && [ "$TOCMD" = timeout ]; then tout="timeout --foreground 1800"
+  elif [ -n "$TOCMD" ]; then tout="$TOCMD --foreground 1800"; fi
+  if command -v script > /dev/null 2>&1; then
+    case $(uname -s) in
+      Darwin) (cd "$dir" && $tout env -u CI RASHOMON_HOLDOUT=off "$@" script -q "$SCREEN" $cmd < /dev/tty > /dev/tty 2>&1) || true ;;
+      *) (cd "$dir" && $tout env -u CI RASHOMON_HOLDOUT=off "$@" script -q -c "$cmd" "$SCREEN" < /dev/tty > /dev/tty 2>&1) || true ;;
+    esac
+  else
+    SCREEN=/nonexistent
+    (cd "$dir" && bounded 1800 env -u CI RASHOMON_HOLDOUT=off "$@" $cmd < /dev/tty > /dev/tty 2>&1) || true
+  fi
+  finish_session "$name" "$out"
+}
+
+# session NAME PROMPT TOOLS DIR OUT [ENV...]: the mode's runner.
+session() {
+  if [ "$HEADLESS" = 1 ]; then claude_run "$@"; else interactive_run "$@"; fi
+}
+
+# attest SCREENFILE TEXT: SEEN is yes (found in the terminal capture), yes (the
+# person's word, asked on the terminal) or no. Headless never asks.
+attest() {
+  if has "$2" "$1"; then SEEN="yes (found in the terminal capture)"; return 0; fi
+  if [ "$HEADLESS" = 1 ]; then SEEN=no; return 0; fi
+  printf 'The capture does not hold this line. Did the terminal show it after the reply?\n  %s\n[y/N] ' "$2" > /dev/tty
+  read -r ans < /dev/tty
+  case $ans in y | Y) SEEN="yes (the person's word)" ;; *) SEEN=no ;; esac
+}
+
+# steer_summary FILE: pattern, state, suppressed_by, version, notice per line; never a value.
 steer_summary() {
   [ -f "$1" ] || { echo "(no steer.ndjson)"; return 0; }
   python3 -I -c '
 import json, sys
 for l in open(sys.argv[1]):
     d = json.loads(l)
-    print(d.get("pattern"), d.get("state"), d.get("suppressed_by"))' "$1"
+    print(d.get("pattern"), d.get("state"), d.get("suppressed_by"), d.get("client_version"), d.get("notice"))' "$1"
 }
 
 scratch_project() { # scratch_project DIR: the guide's beat 2 and 5 project
@@ -276,7 +349,7 @@ row_A1() {
   fi
   {
     echo "A1 install routes for $TAG, run at $(date -u +%Y-%m-%dT%H:%M:%SZ) on $(uname -sm)"
-    echo "wanted: rashomon version prints $VER on all three"
+    echo "wanted: rashomon version prints $VER on all three; the sha256s are recorded facts, not compared (the three builds differ)"
   } >> "$out"
   ok=1
 
@@ -288,7 +361,7 @@ row_A1() {
     { echo "version: $v"; echo "sha256: $(sha "$A/gobin/rashomon")"
       echo "build info: $(go version -m "$A/gobin/rashomon" | grep -E '^[[:space:]]*(mod|path)[[:space:]]' | tr '\n' ' ')"; } >> "$out"
     if [ "$v" != "$VER" ]; then
-      echo "MISMATCH: route 1 prints '$v'. A go install build carries no -X main.version, so it prints dev unless main.go reads the build info; the module version above says which tag it is." >> "$out"
+      echo "MISMATCH: route 1 prints '$v' (main.go takes the module version from the build info when no ldflags set one)" >> "$out"
       ok=0
     fi
   else echo "route 1 FAILED to install" >> "$out"; ok=0; fi
@@ -338,33 +411,36 @@ row_A2() {
   for mode in spoofed real; do
     D=$T/a2-$mode; scratch_project "$D"
     if [ "$mode" = spoofed ]; then
-      claude_run spoofed "$P" "Bash(go test:*) Edit" "$D" "$A" RA_SPOOF_AGENT=$SPOOF_AGENT
+      echo "NOTE: the next session reads as Claude Code $SPOOF_VER. The version is spoofed; the floor is under test."
+      session spoofed "$P" "Bash(go test:*) Edit" "$D" "$A" RA_SPOOF_AGENT=$SPOOF_AGENT
     else
-      claude_run real "$P" "Bash(go test:*) Edit" "$D" "$A"
+      session real "$P" "Bash(go test:*) Edit" "$D" "$A"
     fi
   done
   v=$A/verdict.txt; : > "$v"
   {
-    echo "A2 run at $(date -u +%Y-%m-%dT%H:%M:%SZ); real claude: $realv; spoofed: $SPOOF_VER (AI_AGENT=$SPOOF_AGENT, CLAUDE_CODE_ENTRYPOINT=cli for the hook only)"
-    echo "-- steer lines, spoofed (pattern state suppressed_by)"; steer_summary "$A/spoofed.steer.ndjson"
+    echo "mode: $MODE"
+    echo "A2 run at $(date -u +%Y-%m-%dT%H:%M:%SZ); real claude: $realv; spoofed session: $SPOOF_VER, AI_AGENT=$SPOOF_AGENT for the hook only (a spoofed VERSION; the floor is what is under test)"
+    echo "-- steer lines, spoofed (pattern state suppressed_by client_version notice)"; steer_summary "$A/spoofed.steer.ndjson"
     echo "-- steer lines, real"; steer_summary "$A/real.steer.ndjson"
   } >> "$v"
-  nline="a note was built and not sent to the agent (Claude Code $SPOOF_VER, PostToolUse"
   nctx="rashomon record: gate"
-  sp_notice=no; has "$nline" "$A/spoofed.stream.ndjson" && sp_notice=yes
+  sp_notice=$(grep -c '"notice":"channel"' "$A/spoofed.steer.ndjson" 2> /dev/null || true)
+  sp_ver=no; has "\"client_version\":\"$SPOOF_VER\"" "$A/spoofed.steer.ndjson" && sp_ver=yes
   sp_ctx=no; has "$nctx" "$A/spoofed.transcript.jsonl" && sp_ctx=yes
   re_ctx=no; has "$nctx" "$A/real.transcript.jsonl" && re_ctx=yes
-  re_notice=no; has "a note was built and not sent" "$A/real.stream.ndjson" && re_notice=yes
+  re_notice=$(grep -c '"notice":"channel"' "$A/real.steer.ndjson" 2> /dev/null || true)
   {
-    echo "spoofed: once-per-session line in the stream: $sp_notice (want yes)"
+    echo "spoofed: notice lines recorded: ${sp_notice:-0} (want 1)"
+    echo "spoofed: the steer log names client version $SPOOF_VER: $sp_ver (want yes)"
     echo "spoofed: note in the agent's transcript: $sp_ctx (want no)"
     echo "real: note in the agent's transcript: $re_ctx (want yes)"
-    echo "real: not-sent line in the stream: $re_notice (want no)"
+    echo "real: notice lines recorded: ${re_notice:-0} (want 0)"
   } >> "$v"
   if [ ! -f "$A/spoofed.steer.ndjson" ] || [ ! -f "$A/real.steer.ndjson" ]; then
     echo "no steer record for a session: the hooks did not run, or the model skipped the edit" >> "$v"
     verdict A2 INCONCLUSIVE "$v"
-  elif [ "$sp_notice" = yes ] && [ "$sp_ctx" = no ] && [ "$re_ctx" = yes ] && [ "$re_notice" = no ]; then
+  elif [ "${sp_notice:-0}" = 1 ] && [ "$sp_ver" = yes ] && [ "$sp_ctx" = no ] && [ "$re_ctx" = yes ] && [ "${re_notice:-0}" = 0 ]; then
     verdict A2 PASS "$v"
   else verdict A2 FAIL "$v"; fi
   swap "$WRAP" "$REAL" > /dev/null; SWAPPED=0
@@ -383,27 +459,28 @@ row_A4() {
   RC=$(cat "$T/rc")
   [ "$RC" = 0 ] || { echo "spec trust exited $RC; nothing to run" >&2; exit 2; }
   "$REAL" status > "$A/status.txt" 2>&1 || true
-  claude_run done "Add one comment line to internal/parse/lexer.go. Run no commands. Reply with only the word done." "Edit" "$D" "$A"
-  SID_DONE=$SID
-  claude_run verified "Add a second comment line to internal/parse/lexer.go, then run go test ./... Reply with only the word done." "Edit Bash(go test:*)" "$D" "$A"
-  SID_VER=$SID
+  session done "Add one comment line to internal/parse/lexer.go. Run no commands. Reply with only the word done." "Edit" "$D" "$A"
+  SID_DONE=$SID; SCREEN_DONE=$SCREEN
+  session verified "Add a second comment line to internal/parse/lexer.go, then run go test ./... Reply with only the word done." "Edit Bash(go test:*)" "$D" "$A"
+  SID_VER=$SID; SCREEN_VER=$SCREEN
   "$REAL" report --session "$SID_DONE" > "$A/done.report.txt" 2>&1 || true
   "$REAL" report --session "$SID_VER" > "$A/verified.report.txt" 2>&1 || true
   echo "$SID_DONE" > "$A/done.session"; echo "$SID_VER" > "$A/verified.session"
   v=$A/verdict.txt; : > "$v"
   dl="rashomon: done was claimed; the record shows 1 file edited, no test or build run after the last edit."
   vl="rashomon: verified - go passed after the last edit."
-  d=no; has "$dl" "$A/done.stream.ndjson" && d=yes
-  e=no; has "$vl" "$A/verified.stream.ndjson" && e=yes
-  crossd=no; has "$vl" "$A/done.stream.ndjson" && crossd=yes
+  attest "$SCREEN_DONE" "$dl"; d=$SEEN
+  attest "$SCREEN_VER" "$vl"; e=$SEEN
+  crossd=no; has "$vl" "$SCREEN_DONE" && crossd=yes
   {
+    echo "mode: $MODE"
     echo "A4 run at $(date -u +%Y-%m-%dT%H:%M:%SZ); binary $("$REAL" version)"
     echo "edit, no run: the done line at Stop: $d (want yes); a verified line there: $crossd (want no)"
     echo "edit, then go test: the verified line at Stop: $e (want yes)"
   } >> "$v"
   if [ ! -s "$A/done.report.txt" ] || has "no sessions recorded" "$A/done.report.txt" || has "no sessions recorded" "$A/verified.report.txt"; then
     echo "no session was recorded: the hooks did not run" >> "$v"; verdict A4 INCONCLUSIVE "$v"
-  elif [ "$d" = yes ] && [ "$e" = yes ] && [ "$crossd" = no ]; then verdict A4 PASS "$v"
+  elif [ "${d#yes}" != "$d" ] && [ "${e#yes}" != "$e" ] && [ "$crossd" = no ]; then verdict A4 PASS "$v"
   else
     echo "if a line is missing from the stream, check the transcript and the report: the line may print where the stream does not carry it" >> "$v"
     verdict A4 FAIL "$v"
