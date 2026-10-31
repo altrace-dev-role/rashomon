@@ -49,6 +49,19 @@ m("ST-2.1 the exclusions ignored", C,
   '\tcase b.excludes(c.Version):\n', '\tcase false:\n', "TestST4_")
 m("ST-2.1 an exclusion matched as text", C,
   '\t\tif compareVersions(v, x) == 0 {\n', '\t\tif v == x {\n', "TestVG1b_")
+# VG1-ORDER1: shutBy tests the floor before the exclusions, so an exclusion
+# below its floor would read "older"; the table refuses one, and an excluded
+# version at the floor pins the order.
+m("ST-2.1 an exclusion below its floor passes the table check", C,
+  '\t\tif compareVersions(x, b.floor) < 0 {\n', '\t\tif false {\n', "TestVG1o_")
+m("ST-2.1 an exclusion below its floor read as one above it", C,
+  '\t\tif compareVersions(x, b.floor) < 0 {\n', '\t\tif compareVersions(x, b.floor) > 0 {\n', "TestVG1o_")
+m("ST-2.1 an exclusion on a row with no floor passes the table check", C,
+  '\t\tif b.floor == "" {\n\t\t\treturn "exclusion "', '\t\tif false {\n\t\t\treturn "exclusion "', "TestVG1o_")
+m("ST-2.1 the floor read as exclusive, so an excluded version at it reads older", C,
+  '\tcase compareVersions(c.Version, b.floor) < 0:\n', '\tcase compareVersions(c.Version, b.floor) <= 0:\n', "TestVG1p_")
+m("ST-2.1 a refused row kept as written", C,
+  '\t\t\ttable[ev] = channelBasis{}\n', '\t\t\t_ = ev\n', "TestVG1q_")
 m("ST-2.1 MirrorInBand ignored", C,
   '\tcase !c.MirrorInBand:\n\t\treturn shutNoMirror\n', '', "TestST4_")
 m("ST-2.1 Subagent ignored", C,
