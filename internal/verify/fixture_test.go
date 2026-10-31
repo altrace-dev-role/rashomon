@@ -133,7 +133,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - An Edit or Write names its path (the payload's file_path, which the hook records).
 //   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite (deriveCut derives the runner and mayWrite only for a tool whose class is execute and whose input carries a command field, shape.go:158-163; of the three execute tools, verb.go:39, only Bash carries one; post.go reads Backgrounded for Bash alone).
 //   - A call that is not Bash, Edit or Write names no paths. The builder models those three: the hook records a file_path for MultiEdit and NotebookEdit too, which no evaluator test builds yet.
-//   - Every record of a call is stamped at schema 5, 6 or 7 (store.AcceptsKind reads 1 to 7; no evaluator test needs another yet). At 6 a runner's kind is set, at 5 it is not: runner_kind is a schema 6 key (store.CallSchemaVersion), so a record before it has a runner digest and no kind (record.go, Execution.RunnerKind).
+//   - Every record of a call is stamped at a schema from 5 to store.CallSchemaVersion (store.AcceptsKind reads 1 to store.CallSchemaVersion; no evaluator test needs another yet). At 6 a runner's kind is set, at 5 it is not: runner_kind is a schema 6 key (store.CallSchemaVersion), so a record before it has a runner digest and no kind (record.go, Execution.RunnerKind).
 //   - A runner's masked word is one of shape.MaskedKinds and, at schema 6, its kind one of shape.RunnerKinds; with a runner the word is none or the runner's own kind where it has one (statusMasked and runnerOf take both from the runner group); a runner-less Bash call carries its word, none unless the line hid two runners or a displaced one (masked.go:177-178; runnerDigest, masked_eval.go:34-39); a tool that is not Bash carries no word (deriveCut returns before statusMasked). A line statusMasked could not parse (StatusMasked nil on a shell call) is not built: no evaluator test needs it yet.
 //   - A call classed test has masked none and, when it names a kind, a test kind: Derive reclasses a shell line test only through runsTests, which no route to a hidden status reaches (the checks say why).
 //   - The execution's runner fields mirror the declaration's (post.go copies them from the shape it derives).
@@ -204,8 +204,8 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if schema == 0 {
 			schema = store.SchemaVersion
 		}
-		if schema < 5 || schema > 8 {
-			t.Fatalf("runOf: call %d schema %d is not 5, 6, 7 or 8 (the builder stamps those four; store.AcceptsKind reads 1 to 8)", i, c.schema)
+		if schema < 5 || schema > store.CallSchemaVersion {
+			t.Fatalf("runOf: call %d schema %d is not 5 to %d (the builder stamps 5 up to store.CallSchemaVersion; store.AcceptsKind reads 1 to %d)", i, c.schema, store.CallSchemaVersion, store.CallSchemaVersion)
 		}
 		if (c.runnerName != "" || c.maskedBy != "") && (schema < 8 || c.runner == "") {
 			t.Fatalf("runOf: call %d names a runner or a masking stage at schema %d with runner %q (runner_name and masked_by are schema 8 keys, set with a runner digest)", i, schema, c.runner)
@@ -782,7 +782,7 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"schema 5 hidden runner without a kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "make", class: shape.VerbExecute, runner: "make-release", masked: shape.MaskedBuild, outcome: store.ExecOK, schema: 5}}, ""},
 		{"schema 5 runner with a kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, schema: 5}}, "runner_kind is a schema 6 key"},
 		{"schema 6 runner without a kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecOK, schema: 6}}, "runner kind \"\" is not one of"},
-		{"schema 4", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, schema: 4}}, "is not 5, 6, 7 or 8"},
+		{"schema 4", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, schema: 4}}, "is not 5 to"},
 		// runner_name and masked_by, schema 8 keys set with a runner.
 		{"schema 8 runner name and stage", "s1", []call{call{seq: 1, tool: "Bash", prog: "python3", class: shape.VerbExecute, runner: "pytest", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, schema: 8, runnerName: "pytest", maskedBy: "tail"}}, ""},
 		{"runner name before schema 8", "s1", []call{call{seq: 1, tool: "Bash", prog: "python3", class: shape.VerbExecute, runner: "pytest", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, schema: 7, runnerName: "pytest"}}, "schema 8 keys"},

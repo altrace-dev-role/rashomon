@@ -59,6 +59,13 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // record has neither. The declaration and the terminal gained nothing and
 // are written at 8 with their execution.
 //
+// v9 is additive over v8: the declaration gained location_unread, one bit
+// set where hook.Locate could not read the call's starting directory (5.14b).
+// Unlike every other key it is omitted when false, so the record of a call
+// whose location was read costs no byte more than at v8 (D173d); a record
+// before v9 has no such key and a reader reads it false. The execution and
+// the terminal gained nothing and are written at 9 with their declaration.
+//
 // SchemaVersion is the version of a call's ordinary records: its
 // declaration, the terminal that actually closes it, and its execution,
 // KindVersion's entry for each. Coverage and gap records are written at
@@ -259,6 +266,18 @@ type Declaration struct {
 	// it too. Schema 7, a version of its own (D11): a record before it has
 	// no such key and reads false, as a call that did not name the root.
 	StoreNamed bool `json:"store_named"`
+
+	// LocationUnread is one bit (v9, 5.14b): the line's leading cd steps were
+	// ones hook.Locate does not read (a variable, quoting, `-`, an option, a
+	// `cd DIR;` the shell does not guard), so CWDDigest is the unread fold's
+	// keyed digest, which no read directory's equals, and the report cannot
+	// tell where the line ran. The record holds only that digest, which the
+	// report has no key to open, so this bit is the one place the fact lives.
+	// Omitted when false, the one key of a call record that is, so a line
+	// whose location was read costs nothing: a reader reads an absent key
+	// false, and so does a record before v9. It is a fact about the parse and
+	// never a word of the command.
+	LocationUnread bool `json:"location_unread,omitempty"`
 
 	// HostSource says where each entry of Hosts came from, positionally (v3).
 	// "structured" is a host read from a field whose value is a URL, so the

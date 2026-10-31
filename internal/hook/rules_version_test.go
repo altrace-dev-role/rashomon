@@ -86,7 +86,11 @@ func locationDigest(t *testing.T) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, d := Locate(key, "Bash", in, c[1])
+		// locate with the cwd as its own physical form: Locate would resolve it
+		// with filepath.EvalSymlinks (baseline.Resolve), which the pin above does
+		// not cover, so a host where the corpus directory exists would digest
+		// another path.
+		_, d, _ := locate(key, "Bash", in, c[1], c[1])
 		if d == "" {
 			d = "\x00"
 		}

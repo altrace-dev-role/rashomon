@@ -182,7 +182,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	// below walks up from it, and Locate digests it as the run's location when
 	// no cd step moves the line away from it.
 	physical := baseline.Resolve(p.CWD)
-	decl.Shape, decl.CWDDigest = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
+	decl.Shape, decl.CWDDigest, decl.LocationUnread = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
@@ -348,28 +348,35 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 //     run in two projects would be one location), or past maxLeadingCd read
 //     steps.
 //
+// The third result is true exactly where the location is the second of
+// these: the leading steps are ones the fold does not read (location_unread,
+// 5.14b), with or without a payload cwd to key them on. The digest cannot say
+// it, since a keyed digest is all the record holds and the report has no key;
+// a fold past maxLeadingCd read steps is a cut one, whose steps were read, and
+// is not it.
+//
 // With no steps it is the payload's cwd. Either way the directory is digested
 // as it is on disk (physicalDir), so a project reached through a symlink has
 // one location, the declared gate's.
-func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string) {
+func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string, bool) {
 	return locate(key, toolName, toolInput, cwd, baseline.Resolve(cwd))
 }
 
 // locate is Locate given physical, baseline.Resolve(cwd), which the caller has
 // already made: a line with no cd step starts in cwd and uses it as it is, and
 // only a fold resolves its own directory.
-func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string) {
+func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string, bool) {
 	s, _, dirs, unread := shape.DeriveWithDirs(toolName, toolInput, key)
 	if unread != "" {
 		if cwd == "" {
-			return s, ""
+			return s, "", true
 		}
-		return s, shape.UnreadCWDDigest(key, cwd, unread)
+		return s, shape.UnreadCWDDigest(key, cwd, unread), true
 	}
 	if len(dirs) == 0 {
-		return s, shape.CWDDigest(key, physical)
+		return s, shape.CWDDigest(key, physical), false
 	}
-	return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))
+	return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), false
 }
 
 // evalSymlinks is filepath.EvalSymlinks; a test that pins the fold's rules

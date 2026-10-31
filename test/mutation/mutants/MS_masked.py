@@ -201,9 +201,9 @@ m("MS masking is taken from an execution that saw no input", "internal/report/ti
   "\t\tif rec == nil || rec.SchemaVersion < 4 || rec.ExecutedDigest == \"\" {", "\t\tif rec == nil || rec.SchemaVersion < 4 {", RP)
 
 m("MS the digest builds no masked runs", "internal/digest/digest.go",
-  "\td.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)\n", "", "TestBuild_MaskedRuns|TestMasked_")
+  "\td.MaskedRuns = projectMaskedRuns(report.BuildMaskedRuns(turnRun, acct))\n", "", "TestBuild_MaskedRuns|TestMasked_")
 m("MS the digest counts the session's masked runs", "internal/digest/digest.go",
-  "\td.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)\n", "\td.MaskedRuns = report.BuildMaskedRuns(run, acct)\n", "TestBuild_MaskedRuns|TestMasked_")
+  "\td.MaskedRuns = projectMaskedRuns(report.BuildMaskedRuns(turnRun, acct))\n", "\td.MaskedRuns = projectMaskedRuns(report.BuildMaskedRuns(run, acct))\n", "TestBuild_MaskedRuns|TestMasked_")
 m("MS the end-of-turn line never says masked", "internal/recap/recap.go",
   "\tif m := d.MaskedRuns; d.Fired(report.DetectorMaskedRun) {", "\tif m := d.MaskedRuns; false && d.Fired(report.DetectorMaskedRun) {", "TestLineMaskedRuns|TestMasked_")
 m("MS the end-of-turn line says masked on the count alone", "internal/recap/recap.go",
@@ -223,3 +223,7 @@ m("MS none, nothing, neither, nor and without negate nothing", "internal/report/
   "\t\"none\": true, \"nothing\": true, \"neither\": true, \"nor\": true, \"without\": true,\n", "", RP)
 m("MS a typographic apostrophe is not read", "internal/report/account.go",
   "\tmsg = strings.ReplaceAll(strings.ToLower(msg), \"\\u2019\", \"'\")", "\tmsg = strings.ToLower(msg)", RP)
+m("MS the digest projection drops the runs count", "internal/digest/digest.go",
+  "\t\tRuns:                  m.Runs,\n", "", "TestBuild_MaskedRuns|TestMaskedRuns_")
+m("MS the digest projection carries unread_location again", "internal/digest/digest.go",
+  "\tFinalMessageAvailable bool `json:\"final_message_available\"`\n}", "\tFinalMessageAvailable bool `json:\"final_message_available\"`\n\tUnreadLocation        int  `json:\"unread_location,omitempty\"`\n}", "TestMaskedRuns_|TestRubricNAMING3")

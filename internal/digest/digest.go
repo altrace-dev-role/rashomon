@@ -164,6 +164,31 @@ type TestBending struct {
 	FlakyOmitted              int                `json:"flaky_omitted"`
 }
 
+// MaskedRuns is report.MaskedRuns as the digest carries it: the four fields
+// schema 1 has always had, and not report.MaskedRuns' UnreadLocation (5.14b).
+// That count is report-side detail about where a masked run started; the
+// digest's readers (the Stop line, recap) need only whether the line fires and
+// how many runs, and the unread-location runs stay in Runs either way.
+// Embedding the report's struct would make every key it gains a key of this
+// document with no version bump to show for it, so the digest projects it
+// field by field: a report-side addition changes the digest only when this
+// struct is changed on purpose.
+type MaskedRuns struct {
+	Fires                 bool `json:"fires"`
+	Runs                  int  `json:"runs"`
+	PassClaimed           bool `json:"pass_claimed"`
+	FinalMessageAvailable bool `json:"final_message_available"`
+}
+
+func projectMaskedRuns(m report.MaskedRuns) MaskedRuns {
+	return MaskedRuns{
+		Fires:                 m.Fires,
+		Runs:                  m.Runs,
+		PassClaimed:           m.PassClaimed,
+		FinalMessageAvailable: m.FinalMessageAvailable,
+	}
+}
+
 // Digest is one turn's projection.
 type Digest struct {
 	SchemaVersion     int    `json:"schema_version"`
@@ -190,8 +215,8 @@ type Digest struct {
 	// line masked and that no later plain run in this turn followed up, set
 	// against this turn's final message (report.BuildMaskedRuns over the
 	// same turn-scoped run SilentFailures reads).
-	MaskedRuns report.MaskedRuns `json:"masked_runs"`
-	Subagents  SubagentCounts    `json:"subagents"`
+	MaskedRuns MaskedRuns     `json:"masked_runs"`
+	Subagents  SubagentCounts `json:"subagents"`
 
 	// TestBending is the pairs report.DetectTestBending finds over the whole
 	// session, cut to those whose two runs are both this turn's calls, main
@@ -413,7 +438,7 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 
 	acct := report.AccountFromMessage(lastAssistantMessage)
 	d.SilentFailures = report.BuildSilentFailures(turnRun, acct)
-	d.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)
+	d.MaskedRuns = projectMaskedRuns(report.BuildMaskedRuns(turnRun, acct))
 
 	d.Gaps = gapsInWindow(gaps, w)
 	if d.Gaps == nil {
