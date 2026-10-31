@@ -3,7 +3,16 @@
 m("VER-2.2p Go pass pattern removed", "internal/gateout/tables.go",
   "pass: compile(`^ok\\s`)", "pass: nil", "TestGO1_GoTestOkIsSummaryPass|TestGO12_|TestGO13_")
 m("VER-2.2p Go fail pattern removed", "internal/gateout/tables.go",
-  "fail: compile(`^FAIL\\s`)", "fail: nil", "TestGO11_|TestGO12_")
+  "fail: compile(`^FAIL\\s`, `^FAIL$`)", "fail: nil", "TestGO11_|TestGO12_")
+# MASKED-OUTCOME1 (D229) added the bare FAIL go prints at the end of a failed
+# multi-package run, and cargo's --no-fail-fast error lines, to the fail rows:
+# the rows above are re-anchored on them, and each new pattern has its own.
+m("VER-2.2p Go bare FAIL pattern removed", "internal/gateout/tables.go",
+  "fail: compile(`^FAIL\\s`, `^FAIL$`)", "fail: compile(`^FAIL\\s`)", "TestMO1_GoBareFailIsSummaryFail")
+m("VER-2.2p Cargo error: test failed pattern removed", "internal/gateout/tables.go",
+  ", `^error: test failed`", "", "TestMO1_CargoErrorLinesAreSummaryFail")
+m("VER-2.2p Cargo error: N targets failed pattern removed", "internal/gateout/tables.go",
+  ", `^error: \\d+ targets? failed`", "", "TestMO1_CargoErrorLinesAreSummaryFail")
 m("VER-2.2p Go fail line pattern removed", "internal/gateout/tables.go",
   "failLine: compile(`^--- FAIL`)", "failLine: nil", "TestGO2_")
 m("VER-2.2p Go no-test-files pattern removed", "internal/gateout/tables.go",
@@ -29,11 +38,11 @@ m("VER-2.2p Vitest fail pattern removed", "internal/gateout/tables.go",
 m("VER-2.2p Cargo pass pattern removed", "internal/gateout/tables.go",
   "pass: compile(`^test result: ok`)", "pass: nil", "TestGO6_")
 m("VER-2.2p Cargo fail pattern removed", "internal/gateout/tables.go",
-  "fail: compile(`^test result: FAILED`)", "fail: nil", "TestGO6_")
+  "fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \\d+ targets? failed`)", "fail: nil", "TestGO6_")
 
 m("VER-2.2p Go pass and fail exchanged", "internal/gateout/tables.go",
-  "pass: compile(`^ok\\s`), fail: compile(`^FAIL\\s`)",
-  "pass: compile(`^FAIL\\s`), fail: compile(`^ok\\s`)", "TestGO1_|TestGO11_|TestGO12_")
+  "pass: compile(`^ok\\s`), fail: compile(`^FAIL\\s`, `^FAIL$`)",
+  "pass: compile(`^FAIL\\s`, `^FAIL$`), fail: compile(`^ok\\s`)", "TestGO1_|TestGO11_|TestGO12_")
 m("VER-2.2p pytest pass and fail exchanged", "internal/gateout/tables.go",
   "pass: compile(`\\d+ passed`), fail: compile(`\\d+ (failed|error)`)",
   "pass: compile(`\\d+ (failed|error)`), fail: compile(`\\d+ passed`)", "TestGO4_")
@@ -44,8 +53,8 @@ m("VER-2.2p Vitest pass and fail exchanged", "internal/gateout/tables.go",
   "pass: compile(`^Tests\\s+.*\\d+ passed`), fail: compile(`^Tests\\s+.*\\d+ failed`)",
   "pass: compile(`^Tests\\s+.*\\d+ failed`), fail: compile(`^Tests\\s+.*\\d+ passed`)", "TestGO7_")
 m("VER-2.2p Cargo pass and fail exchanged", "internal/gateout/tables.go",
-  "pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`)",
-  "pass: compile(`^test result: FAILED`), fail: compile(`^test result: ok`)", "TestGO6_")
+  "pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \\d+ targets? failed`)",
+  "pass: compile(`^test result: FAILED`, `^error: test failed`, `^error: \\d+ targets? failed`), fail: compile(`^test result: ok`)", "TestGO6_")
 
 m("VER-2.2p size cap removed", "internal/gateout/gateout.go",
   "if len(text) > MaxScanBytes {", "if false {", "TestGO9_")

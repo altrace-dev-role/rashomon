@@ -354,3 +354,66 @@ func TestRulesVersion_WriteTargets(t *testing.T) {
 			"Bump RulesVersion and add its pin here (and the runner-list, write-table, matcher, flag-table, pass-list and location pins).", got, RulesVersion, want)
 	}
 }
+
+// maskedStagePins is, per RulesVersion, the sha256 of the runner's name and the
+// masking stage RunnerName and MaskedBy give the lines of maskedStageCorpus
+// (maskedStageDigest). Version 11 is the first to name them (D229). A bump
+// that moves a name or a stage on a corpus line adds a pin; a pin is never
+// edited, and the corpus grows only with a bump.
+var maskedStagePins = map[int]string{
+	11: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c",
+}
+
+// maskedStageCorpus is the lines maskedStagePins digests, a frozen copy of the
+// rows TestMO1_TheMaskingStageIsNamed and TestMO1_OnlyAPipeIsAMaskingStage
+// held when version 11 was made. A row a test gains later is not copied here
+// without a bump.
+var maskedStageCorpus = []string{
+	"python3 -m pytest -q 2>&1 | tail -15", "python3 -m pytest -q | tail", "python3 -u -m pytest -q | tail -n 20",
+	"go test ./... 2>&1 | tail -n 5", "go test ./... 2>&1 | tail -5 | tee out.log", "cargo test 2>&1 | tail -20",
+	"go test ./... | tee test.log", "go test ./... 2>&1 | cat", "make test |& cat", "go test ./... | tail -n +3",
+	"make release 2>&1 | tail", "python3 -m pytest | head -20", "python3 -m pytest | grep -E 'passed|failed'",
+	"go test ./... | wc -l", "go test ./... | sort", "go test ./... | cut -c1-80", "go test ./... | sed s/a/b/",
+	"go test ./... | tail | head -3", "go test ./... | head -3 | tail", "go test ./... | tail -c 100",
+	"go test ./... | tail --bytes=100", "go test ./... | tail -qc 9", "go test ./... | tail somefile",
+	"go test ./... | tail -n $N", "go test ./... | tail -n", "go test ./... | cat -n", "go test ./... | cat out.txt",
+	"go test ./... | cat -", "(go test ./...) | tail -3", "cd /repo && python3 -m pytest | tail",
+	"go test ./... || true", "go test ./...; echo $?", "go test ./... &", "go test ./... && echo ok",
+	"set -o pipefail; go test ./... | tail", "echo hi | go test ./...", "zzrunner --canaryarg 2>&1 | tail -5",
+}
+
+// maskedStageDigest digests, for each line of maskedStageCorpus in order, the
+// line, its runner name and its masking stage (a null as the empty word), with
+// runnerListsDigest's separators.
+func maskedStageDigest() string {
+	word := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	var b strings.Builder
+	for _, cmd := range maskedStageCorpus {
+		raw, _ := json.Marshal(map[string]string{"command": cmd})
+		s := Derive("Bash", raw, []byte("key"))
+		b.WriteString(strings.Join([]string{cmd, word(s.RunnerName), word(s.MaskedBy)}, "\x1f"))
+		b.WriteByte('\x1e')
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// TestRulesVersion_MaskedStage: a change in how a line's runner is named or
+// its masking stage is read that moves a name or a stage on a corpus line
+// cannot ship without a RulesVersion bump, or records written before and
+// after it carry the same rules_version and read as named by the same rule.
+// Break: name `tee` as a stage that drops the summary and leave RulesVersion
+// as it was; or leave RulesVersion at 10, which has no pin here.
+func TestRulesVersion_MaskedStage(t *testing.T) {
+	got := maskedStageDigest()
+	want, ok := maskedStagePins[RulesVersion]
+	if !ok || want != got {
+		t.Fatalf("the masked-stage corpus digests to %s, and RulesVersion %d pins %q: the runner name or the masking stage changed without a bump. "+
+			"Bump RulesVersion and add its pin here (and the runner-list, write-table, matcher, flag-table, write-target, pass-list and location pins).", got, RulesVersion, want)
+	}
+}

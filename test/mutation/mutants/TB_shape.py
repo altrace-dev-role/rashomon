@@ -754,7 +754,7 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 11\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
@@ -808,14 +808,14 @@ m("TB -Dmaven.test.failure.ignore hides nothing", "internal/shape/runner.go",
   "\"--fail-never!\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 11\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
 
 # Version 5: the masked parser passes over the leading cd steps the program
 # search steps over, `~` is read, and a fold that is not read has a location
 # of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
 # or giving an unread fold a read location, is the regression.
 m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 11\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
   "TestLocation|TestUnreadLocationDomain")
@@ -849,7 +849,7 @@ m("TB -l clears an editor again", "internal/shape/verb.go",
   "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
   "TestRC3b_")
 m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+  "const RulesVersion = 11\n", "const RulesVersion = 5\n", "TestRulesVersion_")
 
 # The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
 # -j4x test` and `make -j=4 test` read verb_class test where execute is
@@ -922,7 +922,7 @@ m("TB the paren count moved into commandEnd", "internal/shape/program.go",
   "\t\tcase t.text == \")\":\n\t\t\treturn 0, false\n\t\tcase t.text == \";\" || t.text == \"&&\" || t.text == \"||\" || t.text == \"|\" || t.text == \"&\":\n\t\t\treturn j, true\n",
   "TestS1_CommandEndReadersUnmoved")
 m("TB the rules version stays at 6 when wholeCommand counts groups", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 11\n", "const RulesVersion = 6\n", "TestRulesVersion_Matchers")
 
 # 5.11 and 5.12 (card S2). A hiding flag (leadingFlags, ! entries) keeps the
 # runner, masked: TestTestClassRefusesWhatDoesNotRunTests's rows read none or test where
@@ -966,7 +966,7 @@ m("TB pushd is folded by the program search only", "internal/shape/program.go",
 m("TB pushd's stack forms are read as a location", "internal/shape/leading.go",
   " || cd.text == \"pushd\" && strings.HasPrefix(dir.text, \"+\") ||", " ||", "TestS2_PushdFoldsAsCd")
 m("TB the rules version stays at 7 when hiding flags and pushd change", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
+  "const RulesVersion = 11\n", "const RulesVersion = 7\n", "TestRulesVersion_Matchers|TestRulesVersion_FlagTables")
 # S3 (5.15, 5.13): the program stream reads a comment as the list stream does, and the here-document skip
 # stays the list stream's; `make test -C sub` is pinned at the payload's cwd.
 m("TB the program stream joins a comment's backslash-newline", "internal/shape/tokenize.go",
@@ -982,14 +982,20 @@ m("TB make test -C sub is located in its directory option", "internal/hook/handl
   "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
   "\treturn s, shape.CWDDigest(key, startDirectory(cwd, append(dirs, \"sub\")))\n", "TestS3_13_")
 m("TB the rules version stays at 8 when comments end at their newline", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 11\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 
 # 1.2w: WrittenPaths, the write targets of a Bash line (writetargets.go), and
 # stageMayWrite, factored out of mayWrite. Version 10 names them, so the
 # RulesVersion anchors above moved from 9 to 10, each still setting an older
 # version.
 m("TB the rules version stays at 9 when the write targets change", "internal/shape/masked.go",
-  "const RulesVersion = 10\n", "const RulesVersion = 9\n", "TestRulesVersion_WriteTargets")
+  "const RulesVersion = 11\n", "const RulesVersion = 9\n", "TestRulesVersion_WriteTargets")
+# MASKED-OUTCOME1 (D229): version 11 names the runner (RunnerName) and the stage
+# of a pipe that hid its status (MaskedBy), pinned over a corpus of its own
+# (maskedStagePins). Every anchor above moved from 10 to 11, each still setting
+# an older version; version 10 has no masked-stage pin.
+m("TB the rules version stays at 10 when the runner and the masking stage are named", "internal/shape/masked.go",
+  "const RulesVersion = 11\n", "const RulesVersion = 10\n", "TestRulesVersion_MaskedStage")
 m("TB stageMayWrite answers true for a stage no word of which writes", "internal/shape/verb.go",
   "\treturn w.edit || w.redirect || w.substitution || w.writer\n", "\t_ = w\n\treturn true\n",
   "TestWT10_|TestMayWrite")
