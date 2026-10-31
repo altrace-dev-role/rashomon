@@ -20,6 +20,7 @@ package render
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -359,52 +360,61 @@ func templates() map[templateKey]template {
 				id:     "integrity-gate-config-edited/v1",
 				format: "rashomon record: this edit changed a CI or test-configuration file.",
 			},
-			{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
-				id:     "learned-fact/v1",
-				format: "rashomon record: lesson {lesson}, approved for this project: {text}.",
-			},
-			{pattern.LearnedFact, reflect.TypeOf(LearnedFactUncheckedBinding{})}: {
-				id: "learned-fact-unchecked/v1",
-				format: "rashomon record: this project's lesson files fail their signature check, " +
-					"so no lesson was given to the agent; rashomon learn lists them.",
-			},
-			{pattern.LearnedFact, reflect.TypeOf(LearnedFactOversizeBinding{})}: {
-				id: "learned-fact-oversize/v1",
-				format: "rashomon record: this project's lesson files are larger than the 4 MiB the prompt path reads, " +
-					"so no lesson was given to the agent; rashomon learn lists them.",
-			},
-			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
-				id:     "task-preflight/v1",
-				format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
-			},
-			{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
-				id: "task-preflight-first/v1",
-				format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
-					"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
-			},
-			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
-				id:     "platform-rule-command/v1",
-				format: "rashomon record: this {program} call matched spec rule {rule_id}.",
-			},
-			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandApprovedBinding{})}: {
-				id:     "platform-rule-command-approved/v1",
-				format: "rashomon record: this {program} call matched spec rule {rule_id}. The spec records the approved form: {approved}.",
-			},
-			{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
-				id:     "platform-rule-command-unnamed/v1",
-				format: "rashomon record: this call matched a spec rule.",
-			},
-			{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
-				id:     "integrity-frozen-path/v1",
-				format: "rashomon record: this call wrote {path}, which spec rule {rule_id} protects.",
-			},
-			{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathUnnamedBinding{})}: {
-				id:     "integrity-frozen-path-unnamed/v1",
-				format: "rashomon record: this call wrote a file that a spec rule protects.",
-			},
 		}
+		maps.Copy(templatesOnce.v, templatesLater())
 	})
 	return templatesOnce.v
+}
+
+// templatesLater is the rows templates adds to its own map: the lesson,
+// task-preflight, platform-rule and frozen-path rows, split out so each
+// function stays inside Law 10 as the rows of several cards accumulate.
+func templatesLater() map[templateKey]template {
+	return map[templateKey]template{
+		{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
+			id:     "learned-fact/v1",
+			format: "rashomon record: lesson {lesson}, approved for this project: {text}.",
+		},
+		{pattern.LearnedFact, reflect.TypeOf(LearnedFactUncheckedBinding{})}: {
+			id: "learned-fact-unchecked/v1",
+			format: "rashomon record: this project's lesson files fail their signature check, " +
+				"so no lesson was given to the agent; rashomon learn lists them.",
+		},
+		{pattern.LearnedFact, reflect.TypeOf(LearnedFactOversizeBinding{})}: {
+			id: "learned-fact-oversize/v1",
+			format: "rashomon record: this project's lesson files are larger than the 4 MiB the prompt path reads, " +
+				"so no lesson was given to the agent; rashomon learn lists them.",
+		},
+		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
+			id:     "task-preflight/v1",
+			format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
+		},
+		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
+			id: "task-preflight-first/v1",
+			format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
+				"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+		},
+		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
+			id:     "platform-rule-command/v1",
+			format: "rashomon record: this {program} call matched spec rule {rule_id}.",
+		},
+		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandApprovedBinding{})}: {
+			id:     "platform-rule-command-approved/v1",
+			format: "rashomon record: this {program} call matched spec rule {rule_id}. The spec records the approved form: {approved}.",
+		},
+		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
+			id:     "platform-rule-command-unnamed/v1",
+			format: "rashomon record: this call matched a spec rule.",
+		},
+		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
+			id:     "integrity-frozen-path/v1",
+			format: "rashomon record: this call wrote {path}, which spec rule {rule_id} protects.",
+		},
+		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathUnnamedBinding{})}: {
+			id:     "integrity-frozen-path-unnamed/v1",
+			format: "rashomon record: this call wrote a file that a spec rule protects.",
+		},
+	}
 }
 
 // preflightLines are the four lines both task-preflight rows end with: what
