@@ -21,9 +21,9 @@ m("SN-1 the post judges with no index", H,
   "idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))",
   "_, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))", "TestIP1_PostJudgesUnderTheProjectIndex")
 m("SN-1 a gate raises before a family is established", V,
-  "if c.learned && event == string(steer.EventPostToolUse) {", "if event == string(steer.EventPostToolUse) {",
-  "TestSN1c_AdvisoryGatesStaySilent")
+  "\t\tif declaredOnly && g.Source == sourceLearned || !staleHere(g, writes, decl) {\n",
+  "\t\tif !staleHere(g, writes, decl) {\n", "TestDG2b_")
 m("SN-1 a write is judged without taking the arm", H,
-  "return key, p.st.TakeStaleArm(p.sessionID)", "return key, true", "TestSN1g_OnlyAnArmedRelevantWriteIsJudged")
+  "return key, p.st.TakeStaleArm(p.sessionID), false", "return key, true, false", "TestSN1g_OnlyAnArmedRelevantWriteIsJudged")
 m("SN-1 the spec walks from a key that is not the project's", H,
   "p.sp = discoverSpecAt(p.cwd, key,", "p.sp = discoverSpecAt(p.cwd, p.cwd,", "TestSP15_HookDiscoversTheNearestSpec")

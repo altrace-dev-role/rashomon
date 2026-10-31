@@ -163,22 +163,25 @@ func (p *Post) armStale() {
 // write pays one Lstat and decodes no path; an armed one adds the key's
 // walk, its paths' decode (writtenNamed) and a second Lstat; only the call
 // that takes the arm reads the run.
-func (p *Post) staleWrite() (string, bool) {
+func (p *Post) staleWrite() (key string, took, indexless bool) {
 	w := &p.landedWrite
 	if p.landedSeq == 0 || p.event != string(steer.EventPostToolUse) || !(w.writeVerb || w.mayWrite) {
-		return "", false
+		return "", false, false
 	}
 	if armed, _ := p.st.StaleArmed(p.sessionID); !armed {
-		return "", false
+		return "", false, false
 	}
-	key := baseline.Key(p.cwd)
+	key = baseline.Key(p.cwd)
 	if key == "" || !slices.ContainsFunc(writtenNamed(w.tool, w.input, w.mayWrite), func(path string) bool { return verify.RelevantUnder(path, key, p.cwd) }) {
-		return "", false
+		return "", false, false
 	}
 	if _, err := os.Lstat(verify.IndexPath(p.st.Root(), key)); err != nil {
-		return "", false
+		// No index file: only a spec's declared required gate can raise the
+		// note (D222), and judge takes the arm before it reads the run and
+		// reads the spec after.
+		return key, false, true
 	}
-	return key, p.st.TakeStaleArm(p.sessionID)
+	return key, p.st.TakeStaleArm(p.sessionID), false
 }
 
 // judge is the step's compute before Route: the trigger, the run read once,
@@ -193,12 +196,18 @@ func (p *Post) staleWrite() (string, bool) {
 // and the sync.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	var key string
+	var indexless bool
 	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
 		var took bool
-		if key, took = p.staleWrite(); !took {
+		if key, took, indexless = p.staleWrite(); !took && !indexless {
 			return steer.Context{}, verify.SteerView{}, false
 		}
 	}
+	// The index-less path takes the arm before the read, as the indexed path
+	// does in staleWrite: a read that errors (budget) must not leave it set,
+	// or every later relevant write would read the run and discover the spec
+	// again for the same answer. The result is carried to the spec test below.
+	tookIndexless := indexless && p.st.TakeStaleArm(p.sessionID)
 	run, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
 	if err != nil {
 		return steer.Context{}, verify.SteerView{}, false
@@ -208,6 +217,9 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	}
 	root := p.st.Root()
 	p.sp = discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))
+	if indexless && !(tookIndexless && verify.DeclaresRequired(p.sp)) {
+		return steer.Context{}, verify.SteerView{}, false
+	}
 	var idx *verify.ProjectIndex
 	if key != "" {
 		idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))
