@@ -125,10 +125,13 @@ func TestSTC1q_AnAgentSessionCannotSetTheSteerSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLAUDECODE", "1")
-	for _, args := range [][]string{{"off"}, {"off", "--project"}, {"on"}, {"on", "--project"}} {
-		err := cmdSteer(args, io.Discard)
-		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "rashomon steer "+strings.Join(args, " ")) {
-			t.Errorf("steer %v in an agent session = %v, want a refusal naming the command to run", args, err)
+	for _, c := range []struct{ args, run string }{
+		{"off", "off --user"}, {"off --user", "off --user"}, {"off --project", "off --project"},
+		{"on", "on --user"}, {"on --user", "on --user"}, {"on --project", "on --project"},
+	} {
+		err := cmdSteer(strings.Fields(c.args), io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "Run `rashomon steer "+c.run+"` in your own terminal") {
+			t.Errorf("steer %s in an agent session = %v, want a refusal naming `rashomon steer %s`", c.args, err, c.run)
 		}
 	}
 	if b, _ := os.ReadFile(p); string(b) != seed {
@@ -143,8 +146,9 @@ func TestSTC1_NoStoreHoldsNoSwitch(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "none")
 	benchSetenv(t, root, t.TempDir())
 	t.Chdir(t.TempDir())
-	if err := cmdSteer([]string{"off"}, io.Discard); err == nil {
-		t.Error("steer off with no store was accepted")
+	t.Setenv("CLAUDECODE", "") // the no-store branch, not the agent-session refusal
+	if err := cmdSteer([]string{"off"}, io.Discard); err == nil || !strings.Contains(err.Error(), "nothing has been recorded here yet") {
+		t.Errorf("steer off with no store = %v, want the no-store refusal", err)
 	}
 	for _, verb := range []func([]string, io.Writer) error{cmdSteer, cmdScorecard} {
 		if out := stcRun(t, verb); out == "" {
