@@ -20,6 +20,8 @@ Run from the module root:
     python3 test/mutation/sweep.py --list          every mutant name, in load order
     python3 test/mutation/sweep.py --check         the static checks, no test runs
     python3 test/mutation/sweep.py --shard 2/3     the second of three disjoint parts of the sweep
+    python3 test/mutation/sweep.py --platform-only darwin
+                                                    only the mutants that can be judged on darwin alone
     python3 test/mutation/sweep.py --files 'mutants/DEL-*'   these files only
     GOCACHE=<own dir> python3 test/mutation/sweep.py --trim-cache-each
                                                     each mutant's build trimmed after it
@@ -759,6 +761,16 @@ def keep_shard(index, count):
     M[:] = M[index::count]
 
 
+def keep_platform(goos):
+    """Keep the mutants only goos can judge: those declaring platform=goos, and
+    those whose target file is built for goos but not for linux, the other
+    runner (sync_darwin.go). The ubuntu shards report both as NOT JUDGED
+    (platform), without failing; a runner of goos judges them here. Called
+    after the static checks, which read all of M."""
+    M[:] = [x for x in M if x[5] == goos
+            or (x[5] is None and not _goos_excludes(x[1], goos) and _goos_excludes(x[1], "linux"))]
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description="the mutation sweep; run from the module root")
     ap.add_argument("--list", action="store_true", help="print every mutant name in load order and exit")
@@ -770,6 +782,10 @@ def main(argv):
                     help="judge only the K-th of N disjoint parts of the mutants (round-robin in load "
                          "order); the static checks still read them all, and with --list the part is "
                          "what prints")
+    ap.add_argument("--platform-only", metavar="GOOS",
+                    help="judge only the mutants that GOOS alone can judge (declared platform=GOOS, or a "
+                         "target built for GOOS and not for linux); applied before --shard, after the "
+                         "static checks, and with --list it is what prints")
     ap.add_argument("--strict", action="store_true",
                     help="exit non-zero if any mutant's judging test skipped here, not only if undetected; "
                          "a target not built for this GOOS is reported but never fails")
@@ -785,8 +801,12 @@ def main(argv):
         shard = parse_shard(args.shard) if args.shard else None
     except ValueError as e:
         ap.error(str(e))
+    if args.platform_only and args.platform_only not in _KNOWN_GOOS:
+        ap.error(f"--platform-only wants a GOOS name, got {args.platform_only!r}")
     problems = load(args.files or [MUTANT_GLOB])
     if args.list:
+        if args.platform_only:
+            keep_platform(args.platform_only)
         if shard:
             keep_shard(*shard)
         for name, *_ in M:
@@ -801,6 +821,8 @@ def main(argv):
     if problems:
         print("refusing to sweep: the static checks fail", file=sys.stderr)
         return report(problems)
+    if args.platform_only:
+        keep_platform(args.platform_only)
     if shard:
         keep_shard(*shard)
     trim_root = None

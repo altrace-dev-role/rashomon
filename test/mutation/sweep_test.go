@@ -1480,6 +1480,93 @@ func TestSweepShards_ABadShardIsRefused(t *testing.T) {
 	}
 }
 
+// SWEEP-FINISH1. --platform-only darwin keeps the mutants macOS alone can
+// judge: every one declaring platform="darwin" and every one whose target is
+// built for darwin and not for linux. It is a subset of --list, it is not
+// empty, and it composes with --shard without losing or repeating a row.
+func TestSweepPlatformOnly_KeepsTheDarwinRows(t *testing.T) {
+	root := moduleRoot(t)
+	out, code := sweep(t, root, "--list")
+	if code != 0 {
+		t.Fatalf("--list exited %d", code)
+	}
+	full := map[string]bool{}
+	for _, n := range nonEmptyLines(out) {
+		full[n] = true
+	}
+	out, code = sweep(t, root, "--list", "--platform-only", "darwin")
+	if code != 0 {
+		t.Fatalf("--list --platform-only darwin exited %d", code)
+	}
+	rows := nonEmptyLines(out)
+	if len(rows) == 0 || len(rows) >= len(full) {
+		t.Fatalf("--platform-only darwin kept %d of %d mutants", len(rows), len(full))
+	}
+	kept := map[string]bool{}
+	for _, n := range rows {
+		if !full[n] {
+			t.Errorf("%q is not in --list", n)
+		}
+		kept[n] = true
+	}
+	for _, want := range []string{
+		"ST-2.3 a post whose flush and marker both failed runs the step",
+		"ST-2.3 the step prints before its line is durable",
+		"REC-34 the barrier issues F_FULLFSYNC",
+	} {
+		if !kept[want] {
+			t.Errorf("--platform-only darwin dropped %q", want)
+		}
+	}
+	for _, other := range []string{"ST-2.3 consent read from consent.json, not the marker"} {
+		if kept[other] {
+			t.Errorf("--platform-only darwin kept %q, which every GOOS judges", other)
+		}
+	}
+	owner := map[string]int{}
+	for k := 1; k <= 2; k++ {
+		out, _ := sweep(t, root, "--list", "--platform-only", "darwin", "--shard", fmt.Sprintf("%d/2", k))
+		for _, n := range nonEmptyLines(out) {
+			owner[n]++
+		}
+	}
+	if len(owner) != len(rows) {
+		t.Errorf("two shards of the darwin rows hold %d, want %d", len(owner), len(rows))
+	}
+	for n, c := range owner {
+		if c != 1 {
+			t.Errorf("%q is in %d shards", n, c)
+		}
+	}
+}
+
+// A GOOS the sweep does not know is refused rather than read as an empty
+// sweep, which would pass.
+func TestSweepPlatformOnly_AnUnknownGOOSIsRefused(t *testing.T) {
+	root := moduleRoot(t)
+	if out, code := sweep(t, root, "--list", "--platform-only", "plan10"); code == 0 {
+		t.Errorf("--platform-only plan10 was accepted:\n%s", out)
+	}
+}
+
+// The workflow runs the darwin rows on a macOS runner, strictly.
+func TestSweepJobRunsTheDarwinRows(t *testing.T) {
+	doc := readFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yaml"))
+	i := strings.Index(doc, "\n  sweep-darwin:\n")
+	if i < 0 {
+		t.Fatal("ci.yaml: no sweep-darwin job")
+	}
+	job := doc[i+1:]
+	if j := strings.Index(job, "\n  measure-linux-benchmarks:\n"); j >= 0 {
+		job = job[:j]
+	}
+	for _, want := range []string{"runs-on: macos-latest", "github.event_name == 'workflow_dispatch'", "sweep.py --strict --platform-only darwin"} {
+		if !strings.Contains(job, want) {
+			t.Errorf("the sweep-darwin job lacks %q", want)
+		}
+	}
+}
+
 // The workflow's matrix and the --shard each job passes name the same count,
 // or a shard is never run.
 func TestSweepJobRunsEveryShard(t *testing.T) {

@@ -710,6 +710,33 @@ jobs:
       - name: TRU-1, 3, 4, 5 consent on a terminal (darwin)
         run: go test -race -count=1 -run 'TestTRU(1|3|4|5)_' ./test/acceptance
 
+  # The mutants only macOS can judge: the ones declaring platform="darwin"
+  # (their judging tests skip off darwin) and the ones whose target builds on
+  # darwin and not on linux (sync_darwin.go). The three ubuntu shards report
+  # them NOT JUDGED (platform), which does not fail them, so before this job
+  # nothing in CI judged them. 20 rows at about 9 s each is 180 s, about 3
+  # minutes, plus the baseline of about 15 minutes, under 20 minutes; the
+  # bound is 60 for a slower runner. ON DEMAND ONLY, like the sweep.
+  sweep-darwin:
+    name: Mutation sweep (darwin-only mutants)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sweep-darwin-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      - name: Mutation sweep, darwin-only mutants
+        run: python3 test/mutation/sweep.py --strict --platform-only darwin
+
   measure-linux-benchmarks:
     name: Measure linux/amd64 benchmark rows
     runs-on: ubuntu-latest
