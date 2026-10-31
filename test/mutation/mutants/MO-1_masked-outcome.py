@@ -132,3 +132,14 @@ m("MO-1 a Fatal Python error is not a failure", T,
   ", `Fatal Python error`", "", P)
 m("MO-1 a Killed line is not a failure", T,
   ", `^Killed`)", ")", P)
+
+# recap: the provenance clause is attached to the gates read from output.
+m("MO-1 the clause stands alone for a partial read", "internal/recap/value.go",
+  "\tcase len(read) == len(all):\n", "\tcase len(read) > 0:\n",
+  "TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput")
+m("MO-1 the clause names the gates of an exit-status green", "internal/recap/value.go",
+  "\t\tif !contains(all, n) {\n\t\t\tall = append(all, n)\n\t\t}\n", "\t\tall = append(all, n)\n\t\tread = append(read, n)\n",
+  "TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput")
+m("MO-1 a gate read from output is not named in the clause", "internal/recap/value.go",
+  "return \" (\" + joinNames(read) + \" \" + strings.TrimPrefix(readFromOutput, \" (\")", "return readFromOutput",
+  "TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput")
