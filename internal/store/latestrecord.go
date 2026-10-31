@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // LatestRecordBytes is the last line of a run's records.ndjson whose head
@@ -83,7 +84,7 @@ func isKind(line []byte, kind string) bool {
 // skipped only when they cannot be told from a record of another kind (a
 // torn tail, an over-long line). Read unlocked, as LatestRecordBytes reads.
 func (s *Store) EachRecordOfKind(sessionID, kind string, fn func(line []byte) bool) (skipped int, err error) {
-	f, err := OpenRegular(filepath.Join(s.RunDir(sessionID), FileRecords))
+	f, err := regfile.Open(filepath.Join(s.RunDir(sessionID), FileRecords))
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, nil
 	}
@@ -115,7 +116,7 @@ func (s *Store) EachRecordOfKind(sessionID, kind string, fn func(line []byte) bo
 // is read whole. readBytes is how many bytes were read. No such record, no
 // file, or a refused read is ok false.
 func (s *Store) LatestRecordTail(sessionID, kind string, tail int64) (line []byte, ok bool, readBytes int64, err error) {
-	f, err := OpenRegular(filepath.Join(s.RunDir(sessionID), FileRecords))
+	f, err := regfile.Open(filepath.Join(s.RunDir(sessionID), FileRecords))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, 0, nil
 	}

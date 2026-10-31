@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 const (
@@ -110,7 +112,7 @@ func ConfigReason(err error) string {
 // and most installs have none. A file that does not parse is an error, which
 // the caller decides how to read.
 func ReadConfig(root string) (Config, error) {
-	f, err := OpenRegular(filepath.Join(root, FileConfig))
+	f, err := regfile.Open(filepath.Join(root, FileConfig))
 	if errors.Is(err, fs.ErrNotExist) {
 		return Config{}, nil
 	}

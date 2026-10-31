@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
-	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // StateFileName is recap's own bookkeeping, a plain file under the store
@@ -106,7 +106,7 @@ func storeExists(root string) bool {
 const maxStateBytes = 1 << 20
 
 func readState(path string) (state, error) {
-	f, err := store.OpenRegular(path)
+	f, err := regfile.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return newState(), nil
 	}
