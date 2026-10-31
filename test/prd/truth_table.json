@@ -118,10 +118,30 @@
         {
           "file": "internal/hook/gateoutput_test.go",
           "symbol": "TestGO1g_MaskedPipeReadsTheSummary"
+        },
+        {
+          "file": "internal/verify/gates.go",
+          "symbol": "readsOutput"
+        },
+        {
+          "file": "internal/shape/masked_name.go",
+          "symbol": "MaskedByKeeps"
+        },
+        {
+          "file": "internal/gateout/tables.go",
+          "symbol": "ProgramFor"
+        },
+        {
+          "file": "internal/hook/gateoutput_test.go",
+          "symbol": "TestMO1_ATailedRunnerIsAttributed"
+        },
+        {
+          "file": "internal/report/masked_outcome_test.go",
+          "symbol": "TestMO1_ASummaryReadMaskedRunIsNotCounted"
         }
       ],
       "id": "PF-PG2",
-      "implementation": "The hook records whether a pipe hid a recognised runner's status and a masked run is never green; the post reads a gate run's output, at most 1 MiB, classifies it with gateout's tables and writes gate_output, so a masked run whose output carries a pass line reads masked_with_success_line, but its state stays masked_inconclusive and no summary line is read under a pipeline allowlist.",
+      "implementation": "The hook records the runner (runner_name, a row of the binary's own list) and the stage of the pipe that hid its exit status (masked_by); the post reads a gate run's output, at most 1 MiB, in memory, classifies it with gateout's tables keyed by the runner's table word and writes gate_output. At call schema 8 and rules version 11, a masked run whose every later stage is tail without -c, tee or a bare cat, that ended ok and was not backgrounded, takes its outcome from the runner's own summary line: summary_pass is green, summary_fail is red, empty_run is absent, each carrying outcome_from output_summary into the steer line and the Stop line, which names the runner and says it was read from its output. A bare fail line decides only for a runner whose table has no summary form (none now). Every other masked run is never green: a run behind head, grep, wc, sort, cut or an unlisted stage, an output with no summary line, a runner no table names, an older record, and a status hidden by something that is not a pipe (|| true, ; echo $?) stay in the masked_inconclusive state. Summary patterns are unanchored for pytest, and a gate word for a runner no table names stays the line's first word.",
       "integration": [
         {
           "event": "PreToolUse",
@@ -141,8 +161,8 @@
         }
       ],
       "missing": [
-        "the pass read from the last summary line under a closed allowlist of the other pipeline commands (VER-6 to VER-10)",
-        "the masked state read from the output (MASKED-STATE1, proposed): a pass line leaves masked_inconclusive where archive 20.2.4 gives green, and a failure line gives masked_unattributable where 2.2.4 step 5 gives red"
+        "the pass read from the last summary line under the pipeline commands that drop it (head, grep, wc, sort, cut) and under any stage no list names: only tail, tee and cat read the summary, and the rest stay masked_inconclusive (VER-6 to VER-10)",
+        "a masked run on a runner no gateout table names (python3 -m unittest, bun test) read from its output: it stays masked_unattributable"
       ],
       "planned_pr": "",
       "session_proof": "",
