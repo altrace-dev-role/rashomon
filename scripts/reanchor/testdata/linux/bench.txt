@@ -1,0 +1,5 @@
+goos: linux
+goarch: amd64
+BenchmarkRunPost/edit_314k-4    	      20	    900000 ns/op	  410000 B/op	     255 allocs/op
+BenchmarkRunHook/bash_short-4   	      20	    110000 ns/op	   50000 B/op	     380 allocs/op
+PASS

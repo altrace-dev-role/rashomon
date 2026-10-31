@@ -1,0 +1,8 @@
+Perf gates (macos)	Set up job	2026-10-31T03:52:37.9653920Z Image: macos-26-arm64
+Perf gates (macos)	Set up job	2026-10-31T03:52:37.9654300Z Version: 20261013.0424.1
+Perf gates (macos)	Run actions/setup-go	2026-10-31T03:53:01.3587310Z Successfully set up Go version 1.27.3
+Perf gates (macos)	Peak RSS	2026-10-31T04:00:08.8434720Z perf: darwin/arm64, THP sysfs not read (disabled for the harness and its children), GOMAXPROCS 3 of 3 CPUs, measured children under []
+Perf gates (macos)	Peak RSS	2026-10-31T04:00:15.4560070Z     rss_test.go:522: hook.400B: 6.91 MiB against 6.95 (+15%)
+Perf gates (macos)	Peak RSS	2026-10-31T04:00:15.6234520Z     rss_test.go:522: hook.1MiB: 10.40 MiB against 10.40 (+15%)
+Perf gates (macos)	Peak RSS	2026-10-31T04:00:16.0000000Z     rss_test.go:561: hook.bash_short: 7.20 MiB against 6.98 (+15%)
+Perf gates (macos)	Peak RSS	2026-10-31T04:00:16.1000000Z     rss_test.go:561: post.bash_short: 7.00 MiB against 6.78 (+15%)
