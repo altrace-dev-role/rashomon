@@ -29,7 +29,7 @@ m("STR-11 LessonID admits a capital letter", "internal/steer/render/slot/slot.go
   "lessonIDRE = &lazyRegexp{pattern: `^[a-z0-9][a-z0-9._:@-]{0,63}$`}",
   "lessonIDRE = &lazyRegexp{pattern: `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$`}", "TestSTR11b_")
 m("STR-11 LessonID skips the secret screens", "internal/steer/render/slot/slot.go",
-  "\treturn screened(\"lesson id\", string(l))\n", "\treturn nil\n", "TestSTR11b_")
+  "\tif err := screened(\"lesson id\", string(l)); err != nil {\n", "\tif err := screened(\"lesson id\", string(l)); false && err != nil {\n", "TestSTR11b_")
 m("STR-11 Import admits a secret-shaped lesson id", "internal/learn/ledger.go",
   "\t\tif idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {\n",
   "\t\tif false && idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {\n", "TestSTR11b_")

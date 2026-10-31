@@ -11,6 +11,7 @@ R = "cmd/rashomon/recap_learn.go"
 P = "cmd/rashomon/preflight.go"
 C = "cmd/rashomon/learn.go"
 F = "internal/steer/render/slot/fact.go"
+S = "internal/steer/render/slot/slot.go"
 
 # The read: verify, never write, a Save between reads not tamper, size apart.
 m("LRN-17 the manifest not compared", A,
@@ -71,6 +72,14 @@ m("LRN-17 the host screen refuses no IPv4 literal", F,
 m("LRN-17 the host screen refuses no IPv6 literal", F,
   "\t_, err := netip.ParseAddr(w)\n\treturn err == nil\n",
   "\ta, err := netip.ParseAddr(w)\n\treturn err == nil && !a.Is6()\n", "TestLRN17i_")
+m("LRN-17 the lesson id not host-screened", S,
+  "\tif err := RefuseHosts(string(l)); err != nil {\n", "\tif err := RefuseHosts(string(l)); false && err != nil {\n", "TestLRN17i_")
+m("LRN-17 the lesson id not URL-scheme screened", S,
+  "\tif urlSchemeRE.get().MatchString(string(l)) {\n", "\tif false && urlSchemeRE.get().MatchString(string(l)) {\n", "TestLRN17i_")
+m("LRN-17 the lesson id not banned-word screened", S,
+  "\tif w, ok := firstWordOf(string(l), approvedBanned); ok {\n", "\tif w, ok := firstWordOf(string(l), approvedBanned); false && ok {\n", "TestLRN17i_")
+m("LRN-17 import accepts a host-shaped lesson id", D,
+  "\t\tif idForm(ls.ID) && slot.RefuseHosts(ls.ID) != nil {\n", "\t\tif false && idForm(ls.ID) && slot.RefuseHosts(ls.ID) != nil {\n", "TestLRN17i_")
 m("LRN-17 the approval time not stamped", D,
   "\tl.file.Lessons[i].ApprovedUnixMS = now.UnixMilli()\n", "\t_ = now\n", "TestLRN17j_")
 

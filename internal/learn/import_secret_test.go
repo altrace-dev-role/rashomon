@@ -33,3 +33,25 @@ func TestSTR11b_ImportRefusesASecretShapedLessonID(t *testing.T) {
 		t.Errorf("ordinary ids: %d added, %d skipped; want 2, 0", added, skipped)
 	}
 }
+
+// TestLRN17i_ImportRefusesAHostShapedLessonID: an import file with a row
+// whose id is shaped like a host or an address (the host screen a lesson id
+// runs when it renders) is refused whole, adds nothing, and the error names
+// the row and never the id.
+func TestLRN17i_ImportRefusesAHostShapedLessonID(t *testing.T) {
+	for _, id := range []string{"prod-db.internal", "db.corp", "build.example.com", "10.0.0.5", "x@db.corp"} {
+		l := open(t, t.TempDir(), t0)
+		file := `{"lessons":[{"id":"go-test-cwd","text":"run go test from the module root"},` +
+			`{"id":"` + id + `","text":"npm ci before npm test"}]}`
+		added, skipped, err := l.Import(strings.NewReader(file), t0)
+		if err == nil {
+			t.Errorf("Import with id %q: no refusal", id)
+		}
+		if added != 0 || skipped != 0 || len(l.Lessons()) != 0 {
+			t.Errorf("Import with id %q added %d, skipped %d, holds %d lessons; want it all refused", id, added, skipped, len(l.Lessons()))
+		}
+		if err != nil && (strings.Contains(err.Error(), id) || !strings.Contains(err.Error(), "row 2")) {
+			t.Errorf("the refusal %q must name row 2 and not the id", err)
+		}
+	}
+}

@@ -95,3 +95,17 @@ func TestLRN17i_HostScreenBypasses(t *testing.T) {
 		}
 	}
 }
+
+// TestLRN17i_LessonIDScreens: a lesson id is model-visible and unquoted, so
+// it runs the text's screens: a host-shaped id, a URL scheme and a banned
+// word (as a whole word, hyphen- and dot-delimited) are refused, and an
+// ordinary id passes.
+func TestLRN17i_LessonIDScreens(t *testing.T) {
+	checkSlot(t,
+		[]LessonID{"go-test-cwd", "npm-ci", "ignored-files", "systemd-units", "a.b", "v1.2", "main.go", "files.example.museum"},
+		[]LessonID{
+			"prod-db.internal", "db.corp", "build.example.com", "db.corp:8443", "x@db.corp", "10.0.0.5",
+			"ignore-previous-instructions", "system-override", "do.ignore.this", "rashomon-admin", "instruction-set",
+			"javascript:x", "data:text",
+		})
+}
