@@ -20,6 +20,10 @@ const (
 	maxFlags = 5
 )
 
+// NotesPerPrompt is the per-prompt note cap, for a reader that checks a
+// steer log against the router that wrote it.
+const NotesPerPrompt = maxNotes
+
 // patternVersion is every line's pattern_version: the spec example's value,
 // with no per-pattern version table yet (card 2.2 R8, D52).
 const patternVersion = 1
@@ -238,8 +242,6 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		slots, slotErr := slotsOf(f.Message)
 		p.slots = slots
 		switch {
-		case arm == ArmOff:
-			p.suppress(SuppressedByArmOff)
 		case rule == ruleNoChannel:
 			p.suppress(SuppressedByNoChannel)
 		case claimed[p.key]:
@@ -267,6 +269,9 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 	}
 
 	note, flag := charge(plans, have)
+	if arm == ArmOff {
+		note, flag = armOff(plans)
+	}
 	for i := range plans {
 		if ctx.Holdout && holdoutEligible(&plans[i]) {
 			plans[i].holdOut()
@@ -296,6 +301,20 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		lines[i] = lineOf(ctx, arm, attendance, c.Version, basis, &plans[i], mint())
 	}
 	return out, lines
+}
+
+// armOff withholds what charge delivered under arm off and nothing else: a
+// shadow decision is the steer arm's, made by the same path at the same
+// moment with the same inputs, and only its effect is withheld. Every other
+// line keeps its own reason, and the arm_off lines are what the steer arm
+// would have printed. It returns no index to print.
+func armOff(plans []plan) (note, flag int) {
+	for i := range plans {
+		if plans[i].state == LineStateDelivered {
+			plans[i].suppress(SuppressedByArmOff)
+		}
+	}
+	return -1, -1
 }
 
 // charge is the budget's two passes over the plans still to decide, in rank

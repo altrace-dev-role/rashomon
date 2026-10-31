@@ -41,4 +41,4 @@ m("ST-2.5 the draw is skipped, every session treated", H,
 m("ST-2.5 the on switch's share is 0, so every session is treated", H,
   "const holdoutBP = 1000\n", "const holdoutBP = 0\n", E)
 m("ST-2.5 the env off is ignored", H,
-  "\tif env.HoldoutOff {\n\t\treturn false\n\t}\n", "", F)
+  "\tif env.HoldoutOff || env.Arm != \"\" {\n\t\treturn false\n\t}\n", "\tif env.Arm != \"\" {\n\t\treturn false\n\t}\n", F)

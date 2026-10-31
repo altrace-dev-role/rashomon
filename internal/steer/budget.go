@@ -14,12 +14,12 @@ import (
 // A prompt's lines are expected under 64 KiB, so one read is the usual cost.
 const budgetChunk = 64 << 10
 
-// budgetKeys are the eight keys the scan reads from a line, in one walk
+// budgetKeys are the nine keys the scan reads from a line, in one walk
 // that allocates nothing per value (jsonscan.Top); RES-5 bans a decode on
 // the hook path.
 func budgetKeys() *jsonscan.KeySet {
 	budgetKeysOnce.Do(func() {
-		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key")
+		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key", "suppressed_by")
 	})
 	return budgetKeysOnce.v
 }
@@ -41,6 +41,7 @@ const (
 	bkPattern
 	bkKind
 	bkKey
+	bkSuppressedBy
 	bkCount
 )
 
@@ -50,7 +51,9 @@ const (
 type findingKey struct{ pattern, kind, key string }
 
 // counts is what the current prompt has already delivered: notes at nudge
-// or stop, flags at flag, and the keys of its delivered notes.
+// or stop, flags at flag, and the keys of its delivered notes. A line arm off
+// withheld counts as delivered, so the off arm's budget runs as the steer
+// arm's would.
 type counts struct {
 	notes, flags int
 	keys         map[findingKey]bool
@@ -178,7 +181,7 @@ func (s *budgetScan) line(b []byte) {
 		return
 	}
 	s.own = true
-	if !s.is(b, s.out[bkState], string(LineStateDelivered)) {
+	if !s.is(b, s.out[bkState], string(LineStateDelivered)) && !s.is(b, s.out[bkSuppressedBy], string(SuppressedByArmOff)) {
 		return
 	}
 	switch {

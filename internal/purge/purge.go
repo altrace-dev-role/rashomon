@@ -44,13 +44,15 @@ const (
 // record-scope marker, the harness switches watch writes, the harness
 // mismatch counts and their lock, recap's state and the one temporary file
 // builds through v1.1.0 wrote it to, the transcript-copy switch, and the
-// spec trust bindings and their key. Each name is the writing package's own
+// spec trust bindings and their key, and the lab marker `measure --prepare`
+// writes. Each name is the writing package's own
 // constant, so a rename there cannot strand the file here.
 var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, store.FileResolvedCap,
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
 	spec.TrustFile,
 	spec.TrustKeyFile,
 	store.FileRecordScope, store.FileSteerDisclosure,
+	store.FileLab,
 	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}
 
 // topDirs are the directories under the store root that rashomon writes
@@ -70,7 +72,7 @@ var runTempPrefixes = []string{fold.TempPrefix}
 
 // tempPrefixes are the names of an anchor's, consent.json's, record_scope's,
 // steer_disclosure's, harnesses.json's, harness_counts.json's,
-// recap.json's, bodies.json's, spec-trust.json's and spec-trust.key's
+// recap.json's, bodies.json's, spec-trust.json's, spec-trust.key's and lab's
 // temporary file, left by a process that died between writing and renaming
 // it.
 var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tmp-",
@@ -78,7 +80,7 @@ var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tm
 	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",
 	"." + spec.TrustFile + ".tmp-",
 	"." + spec.TrustKeyFile + ".tmp-",
-	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix, "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-"}
+	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix, "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-", "." + store.FileLab + ".tmp-"}
 
 // ownName reports whether a name directly under the store root is one
 // rashomon writes.

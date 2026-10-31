@@ -413,7 +413,7 @@ func defaultFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over harness_counts.json); purge",
 			Owner:      "store",
 		},
-	}, append(recordScopeFiles(), append(indexFiles(), bodiesFiles()...)...)...)...)
+	}, append(recordScopeFiles(), append(indexFiles(), append(bodiesFiles(), labFiles()...)...)...)...)...)
 }
 
 // noticeFiles is the run segment's two notice markers (store.TakeNotice)

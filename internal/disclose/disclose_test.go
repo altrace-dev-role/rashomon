@@ -165,6 +165,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.WriteSteerDisclosureMarker(root, 2); err != nil {
 		t.Fatalf("store.WriteSteerDisclosureMarker: %v", err)
 	}
+	if err := store.WriteLab(root); err != nil {
+		t.Fatalf("store.WriteLab: %v", err)
+	}
 	if err := store.SetRootInWorkTree(root, root); err != nil {
 		t.Fatalf("store.SetRootInWorkTree: %v", err)
 	}
@@ -172,7 +175,7 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
 		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*",
-		"." + spec.TrustFile + ".tmp-*", "." + spec.TrustKeyFile + ".tmp-*"} {
+		"." + spec.TrustFile + ".tmp-*", "." + spec.TrustKeyFile + ".tmp-*", "." + store.FileLab + ".tmp-*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -375,7 +378,9 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// of config.lock, the sidecar its writers (`summary`, `steer off|on`)
 		// lock; configFiles' lock row, purge's topFiles. The ReplaceFile of
 		// config.json is the same one call, now behind writeConfig.
-		{"store", 30},
+		// Moved 2026-10-31 (MEASURE1) to 31: lab.go's WriteLab ReplaceFile,
+		// the lab marker `measure --prepare` writes.
+		{"store", 31},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

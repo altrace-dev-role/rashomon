@@ -49,7 +49,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, id harnes
 	if run == nil || p.CWD == "" || !intent.Names(p.Prompt, p.PromptCut) {
 		return steer.Output{}, steer.Client{}
 	}
-	env := steerEnv(id, now)
+	env := steerEnv(id, now, st.Root())
 	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
 	var idx *verify.ProjectIndex
 	if key := baseline.Key(p.CWD); key != "" {

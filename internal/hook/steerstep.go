@@ -32,7 +32,8 @@ const SteerReadBudget = 10 * time.Millisecond
 // SteerEnv is the step's port: what cmd reads from the process for it.
 // Consent is the steer_disclosure marker's reader (store.SteerDisclosureMarker,
 // D84); a nil reader reads as no consent. HoldoutOff and HoldoutOn are
-// EnvHoldout as HoldoutOff and HoldoutOn read it. ProjectDir is
+// EnvHoldout as HoldoutOff and HoldoutOn read it, and Arm is EnvSteerArm as
+// SteerArm reads it (cmd lets it count on a lab store only). ProjectDir is
 // CLAUDE_PROJECT_DIR and ManagedDir the managed-settings directory
 // (settings.ManagedDir), DiscoverSpec's two inputs beside the call's cwd
 // (card 3.1 (c)).
@@ -43,6 +44,7 @@ type SteerEnv struct {
 	CI                 bool
 	HoldoutOff         bool
 	HoldoutOn          bool
+	Arm                steer.Arm
 	Consent            func(root string) (int, error)
 	Now                time.Time
 	ProjectDir         string
@@ -222,8 +224,8 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 // unattended under CI or the dontAsk permission mode. Consent is the marker
 // at or over the disclosure this build shows. The project is the view's
 // root only: under record scope v4 the record holds none and the line
-// follows the record, so the payload's cwd is never a fallback. Holdout is
-// the session's draw (heldOut).
+// follows the record, so the payload's cwd is never a fallback. Arm is
+// armOf's, and Holdout is the session's draw (heldOut).
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := steer.AttendanceAttended
@@ -243,7 +245,7 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		NowUnixMS:  env.Now.UnixMilli(),
 		Consent:    consented(env.Consent, p.st.Root()),
 		SteerOff:   p.steerOff(),
-		Arm:        steer.ArmLive,
+		Arm:        armOf(env),
 		Attendance: attendance,
 		Holdout:    p.heldOut(env),
 	}
@@ -265,6 +267,15 @@ func (p *Post) steerOff() bool {
 		return true
 	}
 	return len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd))
+}
+
+// armOf is the context's arm: the operator's forced arm when env names one,
+// else live, the arm of every install no operator forced.
+func armOf(env SteerEnv) steer.Arm {
+	if env.Arm != "" {
+		return env.Arm
+	}
+	return steer.ArmLive
 }
 
 // holdoutFeature is the arm feature the steer holdout draws under: one
@@ -298,17 +309,37 @@ func HoldoutOn(v string) bool {
 	return v == "on"
 }
 
+// EnvSteerArm names the operator's forced arm for a paired run: "off" decides
+// every note and logs it as shadow with nothing printed, "steer" delivers as
+// live. Either is written on each steer line as the arm, and a forced arm
+// skips the holdout draw, so a forced session never reads as a drawn one.
+const EnvSteerArm = "RASHOMON_STEER_ARM"
+
+// SteerArm reads EnvSteerArm's value: steer.ArmOff for "off" and
+// steer.ArmSteer for "steer" exactly, else "" (no forced arm). Any other
+// value, "live" and "OFF" among them, is ignored, with no error and no log.
+func SteerArm(v string) steer.Arm {
+	switch v {
+	case "off":
+		return steer.ArmOff
+	case "steer":
+		return steer.ArmSteer
+	}
+	return ""
+}
+
 // heldOut is the session's draw into the field holdout (card 2.5, D109):
 // arm's keyed draw for the session, the same on each of its calls, at the
 // share the discovered spec's holdout object gives at env.Now (On: none when
 // it is off or its window has closed), else at holdoutBP under EnvHoldout
 // "on", else at none (5.6). A spec with no holdout object reads as none: the
 // parser never leaves an object's rate at 0 (spec.Holdout), so a rate of 0
-// is no object. The operator's off is above all of them. A draw arm refuses
+// is no object. The operator's off and a forced arm are above all of them: a
+// forced arm decides, not the draw. A draw arm refuses
 // is treatment, and nothing records it: the store's key exists on every
 // opened store. With no share, no draw is made.
 func (p *Post) heldOut(env SteerEnv) bool {
-	if env.HoldoutOff {
+	if env.HoldoutOff || env.Arm != "" {
 		return false
 	}
 	bp := 0
