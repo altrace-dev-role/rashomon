@@ -415,10 +415,10 @@ func TestLRN17c_OncePerSession(t *testing.T) {
 	}
 
 	held := heldOutSession(t, e.root, "s-once-held-")
-	t.Setenv(hook.EnvHoldout, "")
+	t.Setenv(hook.EnvHoldout, "on")
 	e.start(held)
-	if out := e.prompt(held, "prompt-1", "continue please"); out.context != "" || !strings.Contains(out.system, "go-test-cwd") {
-		t.Fatalf("held-out session, prompt 1: stdout %q, want the user's copy only", out.stdout)
+	if out := e.prompt(held, "prompt-1", "continue please"); out.context != "" || !strings.Contains(out.system, "measurement holdout") || strings.Contains(out.stdout, "go-test-cwd") {
+		t.Fatalf("held-out session, prompt 1: stdout %q, want the holdout notice only: no lesson text to the model or the user", out.stdout)
 	}
 	if out := e.prompt(held, "prompt-2", "continue please"); strings.Contains(out.stdout, "go-test-cwd") {
 		t.Errorf("held-out session, prompt 2: stdout %q, want nothing: a held-out delivery is given", out.stdout)
@@ -441,7 +441,7 @@ func TestLRN17c_OncePerSession(t *testing.T) {
 }
 
 // heldOutSession is the first session id with prefix that the store's key
-// draws into the steer holdout at the default share, as the prompt path
+// draws into the steer holdout at the share RASHOMON_HOLDOUT=on gives, as the prompt path
 // draws it.
 func heldOutSession(t *testing.T, root, prefix string) string {
 	t.Helper()
@@ -580,17 +580,18 @@ func TestLRN17e_NoLedgerPrintsNothingAndCreatesNothing(t *testing.T) {
 }
 
 // TestLRN17f_HeldOutSessionGivesTheUserOnly: in a session the draw holds
-// out, the user sees the note with the holdout suffix and the model gets
-// nothing; the line records the delivery as holdout.
+// out, the model gets nothing and the user gets the once-a-session holdout
+// notice (VERSION-GATE1), not the note; the line records the delivery as
+// holdout.
 func TestLRN17f_HeldOutSessionGivesTheUserOnly(t *testing.T) {
 	e := newLessonEnv(t)
-	t.Setenv(hook.EnvHoldout, "")
+	t.Setenv(hook.EnvHoldout, "on")
 	e.ledger([][2]string{{"go-test-cwd", cwdLesson}}, "go-test-cwd")
 	held := heldOutSession(t, e.root, "s-lrn17f-")
 	e.start(held)
 	out := e.prompt(held, "prompt-1", "continue please")
-	if out.context != "" || !strings.Contains(out.system, cwdNote) || !strings.Contains(out.system, "(held out: not sent to the agent)") {
-		t.Errorf("held out: systemMessage %q, additionalContext %q; want the note to the user with the holdout suffix, nothing to the model", out.system, out.context)
+	if out.context != "" || !strings.Contains(out.system, "measurement holdout") || strings.Contains(out.stdout, "go-test-cwd") {
+		t.Errorf("held out: systemMessage %q, additionalContext %q; want the once-a-session holdout notice, nothing to the model", out.system, out.context)
 	}
 	got := e.lessonLines(held)
 	if len(got) != 1 || got[0].State != "delivered" || got[0].Delivery == nil || *got[0].Delivery != "holdout" || got[0].ModelText != "" {
