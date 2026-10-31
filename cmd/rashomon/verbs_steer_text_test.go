@@ -55,6 +55,6 @@ func TestSTC1l_ScreenNamesTheControlsOnceTheyDispatch(t *testing.T) {
 		t.Errorf("the closing table's stop-the-notes line is not the steer switch: %v", consent.Commands)
 	}
 	if got := disclose.ScopeVersion; got != 5 {
-		t.Errorf("ScopeVersion = %d, want 5: the card changes the text only; the one bump (5) covers the release (#148)", got)
+		t.Errorf("ScopeVersion = %d, want 5: this card changes the text only; the one bump (5) covers the release (#148, #156, #160)", got)
 	}
 }

@@ -122,6 +122,11 @@ const (
 	// "fail=N" there fails the flush, which the step answers by printing
 	// nothing while the line stays in the log.
 	PointSteerFlush = "steer.flush"
+	// PointRecapStopView is in recap's stopView, once it has a view to make:
+	// "fail=N" there fails it with an error, the one way the catch-up reaches
+	// its error return after the preflight note was routed and logged as
+	// delivered (card PREFLIGHT1b, C).
+	PointRecapStopView = "recap.stop_view"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
