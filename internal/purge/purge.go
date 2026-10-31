@@ -51,7 +51,7 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 	spec.TrustFile,
 	spec.TrustKeyFile,
 	store.FileRecordScope, store.FileSteerDisclosure,
-	recap.StateFileName, recap.StateTempName, store.FileBodies}
+	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig}
 
 // topDirs are the directories under the store root that rashomon writes
 // into. Only the entries it writes there are planned for removal (see
@@ -78,7 +78,7 @@ var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tm
 	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",
 	"." + spec.TrustFile + ".tmp-",
 	"." + spec.TrustKeyFile + ".tmp-",
-	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix, "." + store.FileBodies + ".tmp-"}
+	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix, "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-"}
 
 // ownName reports whether a name directly under the store root is one
 // rashomon writes.

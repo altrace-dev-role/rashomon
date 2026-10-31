@@ -177,6 +177,7 @@ func Default() (Inventory, error) {
 			firedFiles(),
 			learnFiles(),
 			specFiles(),
+			configFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),
