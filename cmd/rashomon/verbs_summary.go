@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -50,6 +52,12 @@ func cmdSummary(args []string, stdout io.Writer) error {
 		if i > 0 || a != "on" && a != "off" {
 			return fmt.Errorf("unknown argument %q", a)
 		}
+	}
+	// Setting the switch, on or off, is the person's: an agent that could turn
+	// the Stop line off could hide the verification it carries. A bare query
+	// writes nothing and is allowed.
+	if s := selfguard.AgentSignal(os.Getenv); s != "" && len(words) == 1 {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon summary %s` in your own terminal.", s, steerVerb(words[0] == "off", project))
 	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {

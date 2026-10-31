@@ -11,6 +11,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 )
 
 // cmdConsentUnit is `rashomon consent <unit> [--yes] [--show] [off]` (card
@@ -37,6 +38,14 @@ func cmdConsentUnit(unit string, args []string, stdout io.Writer) error {
 	}
 	if off && (yes || show) {
 		return errors.New("off asks nothing and shows one line, so it takes no --yes or --show")
+	}
+	// Granting a unit is refused in an agent session by askConsent, which
+	// shows the screen and writes nothing. Withdrawing one asks nothing, so
+	// it needs its own refusal: the unit is the person's to turn off, and an
+	// agent that could would stop what was agreed to, before a record is
+	// appended or a lock taken.
+	if s := selfguard.AgentSignal(os.Getenv); off && s != "" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon consent %s off` in your own terminal.", s, unit)
 	}
 	gate := startSignalGate(os.Stderr)
 	defer gate.stop()

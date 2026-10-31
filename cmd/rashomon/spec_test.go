@@ -210,8 +210,7 @@ func TestST1b_EditDropsTrust(t *testing.T) {
 }
 
 // TestST1c_UntrustRemovesTheBinding: `spec untrust` removes the binding for
-// the project's spec, named or found, even under an agent signal (a
-// reduction, tech spec 7.2.4), and discovery reads the spec as untrusted
+// the project's spec, named or found, and discovery reads the spec as untrusted
 // again; a second untrust says there was nothing to remove and succeeds.
 func TestST1c_UntrustRemovesTheBinding(t *testing.T) {
 	p := newSpecProject(t, specUnit)
@@ -219,7 +218,6 @@ func TestST1c_UntrustRemovesTheBinding(t *testing.T) {
 	if code, out, errOut := specRun(t, "", "trust"); code != 0 {
 		t.Fatalf("trust: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
-	t.Setenv(selfguard.EnvClaudeCode, "1")
 	if code, out, errOut := specRun(t, "", "untrust", p.path); code != 0 || !strings.HasPrefix(out, "untrusted "+p.path) {
 		t.Fatalf("untrust: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
@@ -231,5 +229,34 @@ func TestST1c_UntrustRemovesTheBinding(t *testing.T) {
 	}
 	if code, out, errOut := specRun(t, "", "untrust"); code != 0 || !strings.Contains(out, "was not trusted") {
 		t.Errorf("untrust again: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
+
+// An agent session cannot take a spec's trust away: untrust stops the spec's
+// rules being nudges to the agent, so it is refused as trust is, naming the
+// command to run in a terminal, and writes nothing (the bindings and the key
+// stay as they were).
+func TestAGSU1_AnAgentSessionCannotUntrustASpec(t *testing.T) {
+	p := newSpecProject(t, specUnit)
+	atSpecTerminal(t, &person{answer: typedPrefix(t, specUnit)}, nil)
+	if code, out, errOut := specRun(t, "", "trust"); code != 0 {
+		t.Fatalf("trust: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	before, key := p.bindings(), p.readKey()
+	t.Setenv(selfguard.EnvClaudeCode, "1")
+	for _, args := range [][]string{{"untrust"}, {"untrust", p.path}} {
+		code, out, errOut := specRun(t, "", args...)
+		if code != 1 || out != "" || !strings.Contains(errOut, "agent session; nothing was written") || !strings.Contains(errOut, "rashomon spec untrust "+shellWord(p.path)) {
+			t.Errorf("%v in an agent session: exit %d, stdout %q, stderr %q", args, code, out, errOut)
+		}
+	}
+	if got := p.bindings(); len(got) != len(before) || got[0] != before[0] {
+		t.Errorf("an agent session changed the bindings: %+v, was %+v", got, before)
+	}
+	if again := p.readKey(); !bytes.Equal(again, key) {
+		t.Error("an agent session changed the key")
+	}
+	if tr := p.trust(); tr == spec.Untrusted {
+		t.Error("an agent session untrusted the spec")
 	}
 }
