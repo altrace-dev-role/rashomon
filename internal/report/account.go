@@ -536,6 +536,11 @@ func readFromSummary(e *store.Execution) bool {
 		e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) || e.GateOutput == nil {
 		return false
 	}
+	// A backgrounded command's record holds the launch and not the run's
+	// output, which verify does not read either (verify.readsOutput).
+	if e.Backgrounded {
+		return false
+	}
 	// A delegate's pass line is one step's, so verify does not read it
 	// (gateout.Delegated); the run stays counted.
 	if e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor("", *e.RunnerName)) {

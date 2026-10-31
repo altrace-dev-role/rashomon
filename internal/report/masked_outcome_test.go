@@ -81,3 +81,21 @@ func TestMO1_ADelegatedSummaryIsNotASummaryRead(t *testing.T) {
 		}
 	}
 }
+
+// TestMO1_ABackgroundedMaskedRunIsNotASummaryRead: a backgrounded command's
+// record holds the launch, not the run's output, and verify.readsOutput does
+// not read it (r.Backgrounded), so readFromSummary must not either, whatever
+// its caller has already filtered (BuildMaskedRuns' ended also drops it today;
+// the two copies of the rule are meant to be one). Break: drop the
+// Backgrounded check in readFromSummary.
+func TestMO1_ABackgroundedMaskedRunIsNotASummaryRead(t *testing.T) {
+	tail := "tail"
+	for _, bg := range []bool{false, true} {
+		run := summaryRun(&tail, 11, 8, "summary_pass")
+		e := &run.Executions[0]
+		e.Backgrounded = bg
+		if got := readFromSummary(e); got != !bg {
+			t.Errorf("backgrounded=%v: readFromSummary %v, want %v", bg, got, !bg)
+		}
+	}
+}
