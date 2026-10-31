@@ -6,14 +6,15 @@
 R = "internal/receipt/receipt.go"
 S = "internal/store/latestrecord.go"
 C = "cmd/rashomon/receipt.go"
+P = "internal/receipt/previous.go" # the walk Latest and Previous share
 
 # The trailer and the note.
 m("VER-5.5 the trailer digest is over the wrong bytes", R,
   '\treturn TrailerKey + ": " + Digest(record)\n', '\treturn TrailerKey + ": " + Digest(append(record, \'\\n\'))\n',
   "TestRG1b_|TestRG1e_")
-m("VER-5.5 the record is a re-marshal of the stored line", R,
-  "\t\t\trecord, ok, bestAt = line, true, h.RecordedAt\n",
-  "\t\t\trecord, _ = json.Marshal(json.RawMessage(line))\n\t\t\tok, bestAt = true, h.RecordedAt\n", "TestRG1e_")
+m("VER-5.5 the record is a re-marshal of the stored line", P,
+  "\t\t\t\tline, best, sc.Found = l, p, true\n",
+  "\t\t\t\tline, _ = json.Marshal(json.RawMessage(l))\n\t\t\t\tbest, sc.Found = p, true\n", "TestRG1e_")
 m("VER-5.5 the note is written for the wrong commit", R,
   "git notes --ref rashomon add -f -F - HEAD || true\n", "git notes --ref rashomon add -f -F - HEAD^ || true\n",
   "TestRG1b_")
@@ -23,11 +24,11 @@ m("VER-5.5 receipt note prints the record whatever the digest", C,
   "\t\tif !ok || receipt.Digest(record) != rest[0] {\n", "\t\tif !ok {\n", "TestRG1b_")
 
 # Which checkpoint: this project's, the newest recorded, the stored bytes.
-m("VER-5.5 the first checkpoint found is taken", R,
-  "\t\tif !ok || h.RecordedAt > bestAt {\n", "\t\tif !ok {\n", "TestRG1e_")
-m("VER-5.5 the walk reads every run", R, "\t\tif ok && r.at < bestAt {\n", "\t\tif false {\n", "TestRG1e_")
-m("VER-5.5 another project's checkpoint is named", R,
-  " || h.ProjectRoot != project {\n", " {\n", "TestRG1e_|TestRG1d_")
+m("VER-5.5 the first checkpoint found is taken", P,
+  "p.ProjectRoot == q.Project && (!sc.Found || p.RecordedAtUnixMS > best.RecordedAtUnixMS) {\n", "p.ProjectRoot == q.Project && !sc.Found {\n", "TestRG1e_")
+m("VER-5.5 the walk reads every run", P, "\t\tif sc.Found && r.at < best.RecordedAtUnixMS {\n", "\t\tif false {\n", "TestRG1e_")
+m("VER-5.5 another project's checkpoint is named", P,
+  "p.ProjectRoot == q.Project && (!sc.Found", "(!sc.Found", "TestRG1e_|TestRG1d_")
 m("VER-5.5 a run's first record of the kind is handed back", S,
   "\t\tif head.Type == kind && AcceptsKind(kind, head.SchemaVersion) {\n",
   "\t\tif head.Type == kind && AcceptsKind(kind, head.SchemaVersion) && !ok {\n", "TestRG1f_")

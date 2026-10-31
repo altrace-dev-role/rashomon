@@ -35,6 +35,12 @@ var errLineTooLong = errors.New("store: a line is longer than the reader's limit
 // A last line with no newline -- a torn append -- is handed over like any
 // other, and parses or not on its merits.
 func forEachLine(r io.Reader, fn func(line []byte)) error {
+	return forEachLineUntil(r, func(line []byte) bool { fn(line); return true })
+}
+
+// forEachLineUntil is forEachLine for a callback that may stop the read: fn
+// returning false ends it at once, with no line after read and no error.
+func forEachLineUntil(r io.Reader, fn func(line []byte) bool) error {
 	br := bufio.NewReaderSize(r, readChunk)
 	var line []byte
 	over := false
@@ -62,11 +68,15 @@ func forEachLine(r io.Reader, fn func(line []byte)) error {
 		if n := len(line); n > 0 && line[n-1] == '\r' {
 			line = line[:n-1]
 		}
+		keep := true
 		switch {
 		case over:
-			fn(nil)
+			keep = fn(nil)
 		case len(line) > 0:
-			fn(line)
+			keep = fn(line)
+		}
+		if !keep {
+			return nil
 		}
 		line, over = nil, false
 		if !ended {

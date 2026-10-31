@@ -349,7 +349,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
-		printBrief(args, payload, st.Root(), stdout)
+		printBrief(args, payload, st, stdout)
 		markFired(st, sessionOf(payload), probeEvent(phase))
 		return nil
 	})

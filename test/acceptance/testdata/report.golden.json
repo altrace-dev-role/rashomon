@@ -299,7 +299,8 @@
         "checks": [],
         "lessons": null,
         "unknown": []
-      }
+      },
+      "knowledge": null
     }
   ]
 }

@@ -3,10 +3,12 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/receipt"
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -84,9 +86,10 @@ func attachImpact(st *store.Store, rep *report.Report, sessionID string) {
 
 // autosteerOf is sessionID's Autosteer: nil when the replay did not read
 // (not read, which is not none), with a nil Stop when the session cut no
-// checkpoint, and otherwise the replay's counts. The lessons are not read:
-// the ledger's open can write (learn.Open quarantines), and a report that
-// writes the learning state is not this card's to make.
+// checkpoint, and otherwise the replay's counts. The lessons are read through
+// learn.OpenReadOnly, which never writes (learn.Open quarantines a state that
+// does not check, and a report must not write the learning state): a ledger
+// that does not check says so, and its lessons all read proposed.
 func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	r, err := replayLastStop(st, sessionID)
 	if err != nil {
@@ -99,7 +102,11 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	}
 	lines, _, _ := st.ReadSteer(sessionID)
 	v := r.View
-	im := recap.ImpactOf(v, lines, nil)
+	ls, _ := learn.OpenReadOnly(st.Root(), strings.TrimSuffix(baseline.FileName(r.Checkpoint.ProjectRoot), baseline.FileExt))
+	im := recap.ImpactOf(v, lines, ls)
+	if im.Lessons.Read {
+		a.Lessons = &report.AutosteerLessons{Approved: im.Lessons.Approved, Proposed: im.Lessons.Proposed, Demoted: im.Lessons.Demoted, Unchecked: ls.Quarantined}
+	}
 	a.Stop = &report.AutosteerStop{Seq: v.Snap.Point.Seq, Row: string(v.Summary.Row), Sentence: recap.StateSentence(v)}
 	a.Clause = recap.ClauseBody(im)
 	for _, g := range v.Snap.Gates {

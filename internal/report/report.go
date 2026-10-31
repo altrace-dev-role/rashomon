@@ -347,6 +347,14 @@ type Session struct {
 	// the report did not read it (see Autosteer); a key added in report
 	// version 2, which a consumer of 2 may ignore.
 	Autosteer *Autosteer `json:"autosteer"`
+
+	// Knowledge is what the project knows, as the record shows it for this
+	// session (card REPORT1b): the index, the spec bindings, the lessons and
+	// the session's checkpoints compared with the one before. Null when the
+	// report did not read it: a report of every session reads none, and a
+	// session with no checkpoint has nothing to fold. A key added in report
+	// version 2, which a new key does not bump (the rule above).
+	Knowledge *Knowledge `json:"knowledge"`
 }
 
 // CurrentReportVersion is ReportVersion's value on every report this binary

@@ -14,7 +14,9 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,71 +41,80 @@ func Trailer(record []byte) string {
 	return TrailerKey + ": " + Digest(record)
 }
 
-// head is what Latest reads of a checkpoint record: the project it was cut
-// for, baseline.Key's form, and when.
-type head struct {
-	ProjectRoot string `json:"project_root"`
-	RecordedAt  int64  `json:"recorded_at_unix_ms"`
-}
-
-// written is a run directory and its records file's modification time.
+// written is a run directory, its records file's modification time and size.
 type written struct {
 	name string
 	at   int64
+	size int64
 }
 
 // Latest is the newest checkpoint record cut for project (baseline.Key of a
 // directory, which a checkpoint's project_root holds), by recorded_at, among
-// each run's last checkpoint, as LatestRecordBytes hands it back. A run's
-// last checkpoint is the only one it offers: an earlier one is older, and a
+// each run's last checkpoint, exactly as the store wrote it. A run's last
+// checkpoint is the only one it offers: an earlier one is older, and a
 // session that moved to another project since has left this one.
 //
 // Runs are read newest first by their records file's modification time, and
 // the walk stops at a run last written before the best record found: every
 // record in that run was recorded no later than its file was written, so it
 // holds none newer. A commit reads the runs written since, not the store.
+// It is Previous with no skip and no bound, and it walks every run
+// directory: the commit trailer cites what it returns.
 func Latest(st *store.Store, project string) (record []byte, ok bool, err error) {
-	runs, err := byWritten(st)
+	line, _, sc, err := scan(st, Query{Project: project})
+	if err != nil || !sc.Found {
+		return nil, false, err
+	}
+	return line, true, nil
+}
+
+// MaxWalk is how many run directories a capped walk (Query.CapWalk, the
+// report baseline's best-effort one) looks at: the cost of a walk is a stat
+// of each, so a store of any size costs at most this many. Past it the walk
+// says so (Scan.Truncated, and Scan.Bound BoundWalk when it found nothing)
+// and never claims to have read the store. Latest is never capped: the
+// receipt trailer and the report name the newest checkpoint, and a walk that
+// skipped a directory could name an older one.
+const MaxWalk = 1024
+
+// byWritten is the store's runs that hold a records file, newest written
+// first. Capped, it takes at most MaxWalk run directories in the order the
+// filesystem lists them (hash order on APFS, not name order, so which ones
+// are left out is arbitrary), and reports whether the directory held more
+// than that; uncapped it takes every one. A run with no records file holds
+// no checkpoint. One stat per run, so nothing is statted twice.
+func byWritten(st *store.Store, capped bool) (runs []written, truncated bool, err error) {
+	dir, err := os.Open(filepath.Join(st.Root(), store.DirRuns))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
 	if err != nil {
 		return nil, false, err
 	}
-	var bestAt int64
-	for _, r := range runs {
-		if ok && r.at < bestAt {
-			break
-		}
-		line, found, _, err := st.LatestRecordBytes(r.name, store.TypeVerify)
-		if err != nil {
-			return nil, false, err
-		}
-		var h head
-		if !found || json.Unmarshal(line, &h) != nil || h.ProjectRoot != project {
+	defer dir.Close() //nolint:errcheck // read-only
+	n := -1
+	if capped {
+		n = MaxWalk + 1
+	}
+	entries, err := dir.ReadDir(n)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, false, err
+	}
+	if truncated = capped && len(entries) > MaxWalk; truncated {
+		entries = entries[:MaxWalk]
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
 			continue
 		}
-		if !ok || h.RecordedAt > bestAt {
-			record, ok, bestAt = line, true, h.RecordedAt
-		}
-	}
-	return record, ok, nil
-}
-
-// byWritten is the store's runs that hold a records file, newest written
-// first. A run with no records file holds no checkpoint.
-func byWritten(st *store.Store) ([]written, error) {
-	names, err := st.Runs()
-	if err != nil {
-		return nil, err
-	}
-	runs := make([]written, 0, len(names))
-	for _, name := range names {
-		info, err := os.Stat(filepath.Join(st.RunDir(name), store.FileRecords))
+		info, err := os.Stat(filepath.Join(st.Root(), store.DirRuns, e.Name(), store.FileRecords))
 		if err != nil {
 			continue
 		}
-		runs = append(runs, written{name, info.ModTime().UnixMilli()})
+		runs = append(runs, written{e.Name(), info.ModTime().UnixMilli(), info.Size()})
 	}
 	slices.SortStableFunc(runs, func(a, b written) int { return cmp.Compare(b.at, a.at) })
-	return runs, nil
+	return runs, truncated, nil
 }
 
 // PrepareCommitMsg is the prepare-commit-msg hook body `rashomon receipt on`
