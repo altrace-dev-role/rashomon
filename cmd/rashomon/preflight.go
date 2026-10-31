@@ -2,8 +2,11 @@ package main
 
 import (
 	"io"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
@@ -76,14 +79,28 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	lines, _, _ := st.ReadSteer(p.SessionID)
 	var found []steer.Finding
 	var paths []string
+	scope := hook.PromptRecordScope(st)
 	if named {
 		var idx *verify.ProjectIndex
 		if proj.key != "" {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), proj.key))
 		}
-		in := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: p.CWD, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
+		root := promptRoot(sp, p.CWD, proj.key)
+		cwd := p.CWD
+		if cwd != root {
+			cwd = resolvedDir(cwd)
+		}
+		in := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
 		paths = in.Paths
-		if f, ok := intent.Finding(in, intent.ReadDelivered(lines), nil, run.LastSeq()); ok {
+		// At record scope v4 the steer line holds each named path as a
+		// keyed digest and the delivered set compares digests; the note
+		// that prints is the same at either scope.
+		var digest func(string) string
+		if scope != store.RecordScopeV5 {
+			key := st.Key()
+			digest = func(path string) string { return intent.PathDigest(key, path) }
+		}
+		if f, ok := intent.FindingKeyed(in, intent.ReadDelivered(lines), nil, run.LastSeq(), digest); ok {
 			found = append(found, f)
 		}
 	}
@@ -93,7 +110,16 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	if len(found) == 0 {
 		return steer.Output{}, steer.Client{}
 	}
-	ctx := hook.PromptContext(st, sp, p.SessionID, p.PromptID, p.CWD, p.PermissionMode, env)
+	// The line's project follows the record scope as a post's does: the
+	// project's key where the scope keeps it (v5), "" at v4.
+	project := ""
+	if scope == store.RecordScopeV5 {
+		project = proj.key
+		if project == "" {
+			project = baseline.Key(p.CWD)
+		}
+	}
+	ctx := hook.PromptContextAt(st, sp, p.SessionID, p.PromptID, p.CWD, project, p.PermissionMode, env)
 	return steer.Route(&ctx, found), ctx.Client
 }
 
@@ -151,4 +177,39 @@ func noteTurnSpec(st *store.Store, run *store.Run, p *pendingPayload) {
 // binding gets no trusted repository spec on the prompt path either.
 func preflightSpec(st *store.Store, run *store.Run, cwd, projectDir, managedDir string) *spec.Compiled {
 	return hook.DiscoverSpec(cwd, projectDir, managedDir, hook.TrustRoot(run, st.Root(), run.LastSeq()))
+}
+
+// repoSpecSuffix ends the path of a repository spec source: the file sits at
+// <project>/.claude/rashomon/spec.json.
+const repoSpecSuffix = "/.claude/rashomon/spec.json"
+
+// promptRoot is the project a request's named paths and a spec's rule paths
+// resolve against: the project of the repository spec that matched
+// (hook.SpecProject), else key, baseline.Key(cwd) as the caller read it.
+// Resolving against the cwd
+// instead fails from a subdirectory: a path named from the project root
+// does not exist there, and an anchored rule never covers what is named.
+func promptRoot(sp *spec.Compiled, cwd, key string) string {
+	if sp != nil {
+		for i := len(sp.Sources) - 1; i >= 0; i-- {
+			if path := sp.Sources[i].Path; strings.HasSuffix(filepath.ToSlash(path), repoSpecSuffix) {
+				return hook.SpecProject(path)
+			}
+		}
+	}
+	// Not cmp.Or(key, baseline.Key(cwd)): that would run the walk and its
+	// symlink evaluation on every call, key set or not.
+	if key != "" {
+		return key
+	}
+	return baseline.Key(cwd)
+}
+
+// resolvedDir is dir with its symlinks evaluated, as baseline.Key resolves a
+// cwd, else dir as given, so the cwd and the project root compare in one form.
+func resolvedDir(dir string) string {
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		return r
+	}
+	return dir
 }

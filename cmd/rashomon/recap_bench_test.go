@@ -145,24 +145,42 @@ func BenchmarkRecapPending(b *testing.B) {
 	for _, calls := range []int{10, 1000} {
 		b.Run(strconv.Itoa(calls), func(b *testing.B) { benchRecap(b, true, calls) })
 	}
-	b.Run("preflight", benchRecapPreflight)
+	b.Run("preflight", func(b *testing.B) { benchRecapPreflight(b, false) })
+	b.Run("preflight_stopped", func(b *testing.B) { benchRecapPreflight(b, true) })
 	b.Run("no_ledger", func(b *testing.B) { benchRecapLessons(b, 0, false) })
 	b.Run("lessons_3", func(b *testing.B) { benchRecapLessons(b, 3, false) })
 	b.Run("lessons_caps", func(b *testing.B) { benchRecapLessons(b, 3, true) })
 }
 
-// benchRecapPreflight is BenchmarkRecapPending/preflight: the 10-call
-// session, consented to notes, and a prompt naming internal/verify/stop.go
-// of a project that holds it. The run is attended and out of the holdout
-// whatever the shell holds: CI set makes the catch-up unattended, which
-// suppresses the note, and each run's fresh store draws the holdout again.
-// AI_AGENT is cleared so a runner and a Claude Code shell measure one path.
-func benchRecapPreflight(b *testing.B) {
-	root, cfg := b.TempDir(), b.TempDir()
-	benchSetenv(b, root, cfg)
+// benchSteerPins is the hermetic form of the steer fixtures' process
+// environment (card PREFLIGHT1b, G; the acceptance suite's env.steerPins is
+// its twin): CI, AI_AGENT and CLAUDE_PROJECT_DIR cleared, RASHOMON_HOLDOUT
+// pinned to off. An attended run out of the holdout whatever the shell holds:
+// a CI runner's CI would suppress the note, a Claude Code shell's AI_AGENT
+// and CLAUDE_PROJECT_DIR would change the client and the spec walk, and each
+// run's fresh store would draw the holdout again. The holdout draw therefore
+// stays off the measured path; a fixture store key whose draw is treatment
+// would keep it on (D207's window), and is not built here.
+func benchSteerPins(b *testing.B) {
+	b.Helper()
 	b.Setenv("CI", "")
 	b.Setenv("AI_AGENT", "")
+	b.Setenv("CLAUDE_PROJECT_DIR", "")
 	b.Setenv(hook.EnvHoldout, "off")
+}
+
+// benchRecapPreflight is BenchmarkRecapPending/preflight: the 10-call
+// session, consented to notes, and a prompt naming internal/verify/stop.go
+// of a project that holds it. stopped is /preflight_stopped, the common
+// path: the turn's Stop reached the previous prompt, so recap.json stays as
+// that Stop wrote it, the catch-up returns at recap.Pending with the note
+// only, and /preflight stays the upper bound (it removes recap.json, so it
+// always runs the catch-up branch). The steer log is removed before each call
+// either way, so every call gives the session's first note.
+func benchRecapPreflight(b *testing.B, stopped bool) {
+	root, cfg := b.TempDir(), b.TempDir()
+	benchSetenv(b, root, cfg)
+	benchSteerPins(b)
 	installID, turn := benchRecapStore(b, root, cfg, 10)
 	if err := store.WriteSteerDisclosureMarker(root, steer.DisclosureVersion); err != nil {
 		b.Fatal(err)
@@ -175,6 +193,13 @@ func benchRecapPreflight(b *testing.B) {
 		}
 		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
 			b.Fatal(err)
+		}
+	}
+	if stopped {
+		stopArgs, stopInput := benchRecapInput(b, installID, false)
+		var stopOut benchSink
+		if code := cmdRecap(stopArgs, bytes.NewReader(stopInput), &stopOut, &stopOut); code != exitOK || stopOut.writes != 1 {
+			b.Fatalf("the Stop that claims the turn: exit %d, %d writes", code, stopOut.writes)
 		}
 	}
 	st, err := store.Open(root)
@@ -197,7 +222,11 @@ func benchRecapPreflight(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		for _, f := range []string{state, steerLog} {
+		gone := []string{steerLog}
+		if !stopped {
+			gone = append(gone, state)
+		}
+		for _, f := range gone {
 			if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				b.Fatal(err)
 			}
@@ -209,7 +238,15 @@ func benchRecapPreflight(b *testing.B) {
 		}
 	}
 	b.StopTimer()
-	benchCheckRecap(b, &stdout, &stderr, true, turn)
+	if stopped {
+		// The Stop reached the turn: the catch-up speaks the note and no
+		// previous-turn line.
+		if stderr.writes != 0 || stdout.writes != b.N {
+			b.Fatalf("stopped catch-up: %d stdout writes for %d calls, stderr %q", stdout.writes, b.N, stderr.lastWrite())
+		}
+	} else {
+		benchCheckRecap(b, &stdout, &stderr, true, turn)
+	}
 	var out struct {
 		HookSpecificOutput struct {
 			AdditionalContext string `json:"additionalContext"`
@@ -241,9 +278,7 @@ func benchRecapLessons(b *testing.B, n int, caps bool) {
 	// CI runner's CI would suppress the lesson (no_mirror) and the draw could
 	// hold it out; AI_AGENT is cleared so a runner and a Claude Code shell
 	// measure one path.
-	b.Setenv("CI", "")
-	b.Setenv("AI_AGENT", "")
-	b.Setenv(hook.EnvHoldout, "off")
+	benchSteerPins(b)
 	installID, turn := benchRecapStore(b, root, cfg, 10)
 	if err := store.WriteSteerDisclosureMarker(root, steer.DisclosureVersion); err != nil {
 		b.Fatal(err)

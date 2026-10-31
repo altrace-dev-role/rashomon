@@ -6,6 +6,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -58,6 +59,9 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	seq := run.LastSeq()
 	if seq == 0 {
 		return stopTurn{}, nil
+	}
+	if err := fault.Fail(fault.PointRecapStopView); err != nil {
+		return stopTurn{}, err
 	}
 	pt := verify.Point{Kind: verify.PointStop, Seq: seq, SessionID: p.SessionID, StoreRoot: st.Root()}
 	if d.PromptID != "" {
