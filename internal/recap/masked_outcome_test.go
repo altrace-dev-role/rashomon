@@ -73,3 +73,32 @@ func TestMO1_TheValueLineNamesTheRunnerAndSaysWhereTheOutcomeCameFrom(t *testing
 		}
 	}
 }
+
+// TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput: the sentence lists
+// every green program, so a clause that follows it reads as true of all of
+// them. With every green read from output the clause stands alone; with some,
+// it names them, and with none there is no clause. Break: make fromOutput
+// answer for any one green, and go reads as read from its output.
+func TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput(t *testing.T) {
+	byExit := gateAt("go:test", "test", verify.Green, verify.OK, 2, nil)
+	out := fromOutputRun(gateAt("pytest:test", "test", verify.Green, verify.OK, 3, nil))
+	out2 := fromOutputRun(gateAt("jest:test", "test", verify.Green, verify.OK, 4, nil))
+	const rest = " read from its output; the pipe hid the exit status)"
+	for _, c := range []struct {
+		name  string
+		gates []verify.GateState
+		want  string
+	}{
+		{"one of two", []verify.GateState{byExit, out}, "verified - go and pytest passed after the last edit (pytest" + rest},
+		{"the first of two", []verify.GateState{out, byExit}, "verified - pytest and go passed after the last edit (pytest" + rest},
+		{"two of three", []verify.GateState{byExit, out, out2}, "verified - go, pytest and jest passed after the last edit (pytest and jest" + rest},
+		{"all of two", []verify.GateState{out, out2}, "verified - pytest and jest passed after the last edit (read from its output; the pipe hid the exit status)"},
+		{"none", []verify.GateState{byExit}, "verified - go passed after the last edit"},
+	} {
+		// The sentence unfitted: the 80-column fit names fewer programs
+		// (and keeps the clause, which names the gates read from output).
+		if got := sentence(viewOf(verify.RowVerified, wrote, c.gates...), maxGateNames); got != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+}

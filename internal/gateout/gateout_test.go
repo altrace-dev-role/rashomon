@@ -77,7 +77,7 @@ func TestGO9_CapBoundary(t *testing.T) {
 
 func TestGO10_TablesPinned(t *testing.T) {
 	got := tableDigest()
-	const pin = "1284a9d720e67a7521e6af21022e2fa7cd1ee7959030cd9628e254134db90f7e"
+	const pin = "e14ce46508497e9b46f91d4f9922b370c1697503ebc1a0792c9a4d31ce4ce874"
 	if got != pin {
 		t.Fatalf("table digest %s, want %s", got, pin)
 	}
@@ -308,6 +308,60 @@ func TestMO1_EveryRunnerHasASummaryForm(t *testing.T) {
 	for _, p := range []string{"make", "npm", "yarn", "pnpm", "unknown", ""} {
 		if FailLineDecides(p) {
 			t.Errorf("FailLineDecides(%q) = true: a delegate or unknown program is no row without a summary form", p)
+		}
+	}
+}
+
+// TestMO1_ADelegatedFailureMarkerIsSummaryFail: make, npm, yarn and pnpm run
+// other runners, so a step's pass line is no verdict on the run. Each one's
+// own failure marker decides, and fail outranks the pass line before it.
+// Break: drop a row's fail pattern and its run reads summary_pass.
+func TestMO1_ADelegatedFailureMarkerIsSummaryFail(t *testing.T) {
+	for _, tc := range []struct{ name, program, output, kind string }{
+		{"make after pytest", "make", "== 5 passed in 1s ==\nerror: lint failed\nmake: *** [lint] Error 2", "summary_fail"},
+		{"make after go test", "make", "ok  \tx/a\t0.1s\nmake: *** [vet] Error 1", "summary_fail"},
+		{"npm after jest", "npm", "Tests: 5 passed, 5 total\nnpm ERR! code ELIFECYCLE\nnpm ERR! errno 1", "summary_fail"},
+		{"recursive make", "make", "ok  \tx/a\t0.1s\nmake[2]: *** [sub] Error 1", "summary_fail"},
+		{"npm error", "npm", "Tests: 5 passed, 5 total\nnpm error code 1", "summary_fail"},
+		{"npm lifecycle alone", "npm", "Tests: 5 passed, 5 total\nELIFECYCLE  Command failed.", "summary_fail"},
+		{"yarn", "yarn", "Tests 5 passed (5)\nerror Command failed with exit code 1.", "summary_fail"},
+		{"pnpm", "pnpm", "Tests 5 passed (5)\nERR_PNPM_RECURSIVE_RUN_FIRST_FAIL x", "summary_fail"},
+		{"make running npm", "make", "Tests: 5 passed, 5 total\nnpm ERR! code ELIFECYCLE", "summary_fail"},
+		{"a clean make test | tail", "make", "ok  \tx/a\t0.1s\nok  \tx/b\t0.2s", "summary_pass"},
+		{"a make line that is not a failure", "make", "ok  \tx/a\t0.1s\nmake: Nothing to be done for 'x'.", "summary_pass"},
+	} {
+		got := Classify("test", tc.program, []byte(tc.output))
+		if got.Kind != tc.kind {
+			t.Errorf("%s: %s, want %s", tc.name, got.Kind, tc.kind)
+		}
+	}
+	for p, want := range map[string]bool{"make": true, "npm": true, "yarn": true, "pnpm": true, "go": false, "pytest": false, "unknown": false, "": false} {
+		if Delegated(p) != want {
+			t.Errorf("Delegated(%q) = %v, want %v", p, !want, want)
+		}
+	}
+}
+
+// TestMO1_PytestPassIsItsSummaryLine: pytest's pass is its summary line, the
+// -q form ("5 passed in 0.12s") or the banner form, never "N passed" inside
+// another line, and a crash that leaves a stray count is red. Break: unanchor
+// the pass pattern, or drop a crash marker.
+func TestMO1_PytestPassIsItsSummaryLine(t *testing.T) {
+	for _, tc := range []struct{ name, output, kind string }{
+		{"q form", "5 passed in 0.12s", "summary_pass"},
+		{"q form with skips and warnings", "3 skipped, 5 passed, 1 warning in 0.12s", "summary_pass"},
+		{"q form with a duration", "5 passed in 0.12s (0:00:00)", "summary_pass"},
+		{"banner", "============== 5 passed in 0.12s ==============", "summary_pass"},
+		{"banner with warnings", "===== 5 passed, 2 warnings in 1.50s =====", "summary_pass"},
+		{"a stray count in another line", "migrated 5 passed", "no_summary"},
+		{"a stray count after a segfault", ".....\nmigrated 5 passed\nSegmentation fault (core dumped)", "no_summary"},
+		{"a passed count without its timing", "5 passed", "no_summary"},
+		{"fatal python error", "5 passed in 0.12s\nFatal Python error: Segmentation fault", "summary_fail"},
+		{"oom kill", "5 passed in 0.12s\nKilled", "summary_fail"},
+	} {
+		got := Classify("test", "pytest", []byte(tc.output))
+		if got.Kind != tc.kind {
+			t.Errorf("%s: %s, want %s", tc.name, got.Kind, tc.kind)
 		}
 	}
 }
