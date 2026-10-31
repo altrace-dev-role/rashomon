@@ -31,7 +31,7 @@ func learnFiles() []FileRule {
 		project(learn.FileActive, "the approved lessons recap gives the agent with a prompt, under 64 KiB",
 			"each approved lesson's id, tier, text, when it entered and when it was approved, and whether the lessons are quarantined",
 			"a lesson no person approved"),
-		project(learn.FileSum, "tamper evidence: an HMAC over the three files above, so a write rashomon did not make sends every lesson back to proposed",
+		project(learn.FileSum, "tamper evidence, not secrecy: an HMAC over the three files above, so a write rashomon did not make is detected and sends every lesson back to proposed, unless the writer can also read the store key (the same limit as spec trust)",
 			"one hex digest", "anything about a call, a session or a lesson"),
 		{
 			Base:       learn.DirLearn,

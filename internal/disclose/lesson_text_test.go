@@ -31,3 +31,33 @@ func TestLRN17k_ConsentSaysApprovedLessonsReachTheAgent(t *testing.T) {
 		t.Error("the learn section does not say an approved lesson reaches the agent with a prompt, once a session")
 	}
 }
+
+// TestLRN17k_ConsentClaimsOnlyWhatHolds: the lesson files' HMAC is tamper
+// evidence, not secrecy: an agent running as the user can read the store
+// key. So the learn section and the state.sum row do not say "nothing you
+// have not approved is sent", and say the limit spec trust has: a write
+// rashomon did not make is detected unless the writer can also read the key.
+func TestLRN17k_ConsentClaimsOnlyWhatHolds(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said bool
+	for _, p := range inv.Paragraphs {
+		if p.Owner != OwnerLearn || p.Cite != CiteSection4 {
+			continue
+		}
+		if strings.Contains(p.Text, "nothing you have not approved is sent") {
+			t.Errorf("the screen claims what a key-reading writer defeats: %q", p.Text)
+		}
+		said = strings.Contains(p.Text, "unless the writer can also read the store key") && strings.Contains(p.Text, "rashomon spec trust")
+	}
+	if !said {
+		t.Error("the learn section does not state the store-key limit")
+	}
+	for _, f := range inv.Files {
+		if strings.HasSuffix(f.Pattern, "state.sum") && (!strings.Contains(f.Purpose, "unless the writer can also read the store key") || !strings.Contains(f.Purpose, "not secrecy")) {
+			t.Errorf("state.sum's purpose %q does not state the limit", f.Purpose)
+		}
+	}
+}

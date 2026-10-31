@@ -50,6 +50,9 @@ m("LRN-17 a superseded lesson counted as given", V,
   "spanText(b, sp[dkState]) != string(steer.LineStateDelivered)",
   "spanText(b, sp[dkState]) != string(steer.LineStateDelivered) && spanText(b, sp[dkState]) != string(steer.LineStateSuperseded)",
   "TestLRN17m_")
+m("LRN-17 a lesson with no approval time delivered", V,
+  "(ls.Tier == TierProven) != proven || ls.ApprovedUnixMS == 0 || delivered(ls.ID)",
+  "(ls.Tier == TierProven) != proven || delivered(ls.ID)", "TestLRN17h_")
 m("LRN-17 every lesson relevant at any count", V,
   "\tall := len(a.Lessons) <= pickAll\n", "\tall := true\n", "TestLRN17h_")
 m("LRN-17 the flag keyed inside the id form", V,
@@ -85,6 +88,14 @@ m("LRN-17 the approval time not stamped", D,
 
 # The consent screen says what the build does: an approved lesson reaches the
 # agent with a prompt, once a session.
+m("LRN-17 the consent screen claims nothing unapproved is sent", "internal/disclose/paragraphs.go",
+  "after you type its one-time code. A write to the lesson files that this program did not make is detected, and no lesson is sent, unless the writer can also read the store key: the same limit as `rashomon spec trust`.",
+  "after you type its one-time code; nothing you have not approved is sent.", "TestLRN17k_")
+m("LRN-17 state.sum's row drops the key limit", "internal/disclose/learn.go",
+  "is detected and sends every lesson back to proposed, unless the writer can also read the store key (the same limit as spec trust)",
+  "sends every lesson back to proposed", "TestLRN17k_")
+m("LRN-17 the render says approved at a terminal", "internal/steer/render/render.go",
+  "approved for this project: {text}.", "approved for this project at a terminal: {text}.", "TestLRN17h_")
 m("LRN-17 the consent screen says no lesson reaches the agent", "internal/disclose/paragraphs.go",
   "An approved lesson reaches your agent with your prompt, once a session, below",
   "No lesson reaches your agent in this build; an approved one waits below", "TestLRN17k_")

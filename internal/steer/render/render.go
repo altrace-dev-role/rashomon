@@ -273,7 +273,7 @@ func templates() map[templateKey]template {
 			},
 			{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
 				id:     "learned-fact/v1",
-				format: "rashomon record: lesson {lesson}, approved for this project at a terminal: {text}.",
+				format: "rashomon record: lesson {lesson}, approved for this project: {text}.",
 			},
 			{pattern.LearnedFact, reflect.TypeOf(LearnedFactUncheckedBinding{})}: {
 				id: "learned-fact-unchecked/v1",
