@@ -344,7 +344,9 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 //     run in two projects would be one location), or past maxLeadingCd read
 //     steps.
 //
-// With no steps it is the payload's cwd.
+// With no steps it is the payload's cwd. Either way the directory is digested
+// as it is on disk (physicalDir), so a project reached through a symlink has
+// one location, the declared gate's.
 func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string) {
 	s, _, dirs, unread := shape.DeriveWithDirs(toolName, toolInput, key)
 	if unread != "" {
@@ -353,7 +355,30 @@ func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) 
 		}
 		return s, shape.UnreadCWDDigest(key, cwd, unread)
 	}
-	return s, shape.CWDDigest(key, startDirectory(cwd, dirs))
+	return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))
+}
+
+// evalSymlinks is filepath.EvalSymlinks; a test that pins the fold's rules
+// across hosts replaces it, since what /tmp resolves to is the host's.
+var evalSymlinks = filepath.EvalSymlinks
+
+// physicalDir is dir as it is on disk: symlinks resolved, the one form a
+// declared gate's location and a run's are both digested in (a gate's root is
+// the project key, which baseline.Key resolves; a run's directory came from
+// the payload as spelled, and under a symlink or macOS's /tmp and /var the two
+// never matched, CWD-SYMLINK1). One filepath.EvalSymlinks, and none for an
+// unknown directory. A directory that does not resolve (not on disk, or not
+// readable) keeps its spelling, so an unresolvable location is still one value
+// per spelling. Only the digest of the result is ever recorded, never the
+// path, so the record scope is untouched.
+func physicalDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if resolved, err := evalSymlinks(dir); err == nil {
+		return resolved
+	}
+	return dir
 }
 
 // startDirectory is the directory a call's command starts in: the payload's
@@ -384,7 +409,8 @@ func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) 
 // shell's default `cd -L` reads it. A physical cwd (`cd -P`, or a payload cwd
 // already resolved through a symlink) names another directory for `cd
 // link/..` than the one the fold reaches, and the hook cannot tell the two
-// apart; the digest is still one value per spelling, never a path.
+// apart; the fold's result is resolved afterwards (physicalDir), so the
+// digest is one value per physical directory, never a path.
 //
 // rules_version, written on every declaration and execution (shape.RulesVersion,
 // set where each is built), is written and not consulted: no reader branches on it,

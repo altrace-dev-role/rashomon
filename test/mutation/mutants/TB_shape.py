@@ -605,8 +605,8 @@ m("TB a backgrounded call is not counted as unobserved", "internal/report/accoun
   "TestSilentFailures_")
 
 m("TB a leading cd's target is not the run's directory", "internal/hook/handle.go",
-  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
-  "\t_ = dirs\n\treturn s, shape.CWDDigest(key, cwd)\n",
+  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))\n",
+  "\t_ = dirs\n\treturn s, shape.CWDDigest(key, physicalDir(cwd))\n",
   "TestTestBending_ALeadingAbsoluteCd")
 m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.go",
   "\t\t\tcwd = filepath.Join(cwd, dir)\n",
@@ -979,8 +979,8 @@ m("TB the program stream skips a here-document's body", "internal/shape/tokenize
   "\treturn bounded(lex(joinLines(s, true), true, false))\n", "\treturn bounded(lex(joinLines(s, true), true, true))\n",
   "TestS3_TK15c_")
 m("TB make test -C sub is located in its directory option", "internal/hook/handle.go",
-  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
-  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, append(dirs, \"sub\")))\n", "TestS3_13_")
+  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs)))\n",
+  "\treturn s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, append(dirs, \"sub\"))))\n", "TestS3_13_")
 m("TB the rules version stays at 8 when comments end at their newline", "internal/shape/masked.go",
   "const RulesVersion = 10\n", "const RulesVersion = 8\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 
