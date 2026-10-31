@@ -134,6 +134,7 @@ type options struct {
 	run, repo, dir, platform, budgets, root string
 	rows                                    string
 	provisional, all, report, noGenerate    bool
+	noHygiene                               bool
 	kind, toolchain, runner                 string
 }
 
@@ -151,6 +152,7 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	fs.BoolVar(&o.all, "all", false, "select every row of the platform")
 	fs.BoolVar(&o.report, "report", false, "print old, artifact and delta per row; write nothing (defaults to --all)")
 	fs.BoolVar(&o.noGenerate, "no-generate", false, "skip go generate ./internal/budget")
+	fs.BoolVar(&o.noHygiene, "no-hygiene", false, "leave test/tools/hygiene/reviewed.txt alone (H-113 will then need the fingerprints by hand)")
 	fs.StringVar(&o.kind, "kind", "all", "bench, rss or all: narrows --all and --provisional")
 	fs.StringVar(&o.toolchain, "toolchain", "", "the run's toolchain (go1.27.3), when its job log is not available")
 	fs.StringVar(&o.runner, "runner", "", "runner label for the basis (default ubuntu-latest or macos-latest)")
@@ -240,13 +242,32 @@ func reanchor(o options, date string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stdout, "reanchor: nothing changed")
 		return nil
 	}
+	// The hygiene plan is made before anything is written, so a finding
+	// outside the rewritten text refuses with nothing changed.
+	var hy *hygienePlan
+	if !o.noHygiene {
+		if hy, err = planHygiene(o, p, src, out); err != nil {
+			return err
+		}
+	}
 	if err := os.WriteFile(o.budgets, out, 0o644); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "reanchor: wrote %s (%d rows changed)\n", o.budgets, p.changed())
-	if o.noGenerate {
-		return nil
+	if !o.noGenerate {
+		if err := generate(o, stdout, stderr); err != nil {
+			return err
+		}
 	}
+	if hy != nil {
+		if err := hy.write(stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func generate(o options, stdout, stderr io.Writer) error {
 	cmd := exec.Command("go", "generate", "./internal/budget")
 	cmd.Dir = o.root
 	cmd.Stdout, cmd.Stderr = stdout, stderr
@@ -488,6 +509,17 @@ func parseLog(raw []byte, a *artifact) error {
 type edit struct {
 	start, end int
 	text       string
+	// prose marks the text the tool composed (a basis, set_from): hygiene
+	// judges findings in it. neutral stands in for it when the file is
+	// scanned without that text, to tell its findings from the rest.
+	prose   bool
+	neutral string
+}
+
+// proseEdit is an edit of a string the tool composed. neutral is the same
+// edit with the string's value replaced by "x".
+func proseEdit(start, end int, text, neutral string) edit {
+	return edit{start, end, text, true, neutral}
 }
 
 type reportRow struct {
@@ -504,12 +536,20 @@ type planned struct {
 
 func (p *planned) changed() int { return len(p.n) }
 
-func (p *planned) apply(src []byte) []byte {
+func (p *planned) apply(src []byte) []byte { return p.applyWith(src, false) }
+
+// applyWith applies the edits; withoutProse puts neutral where each prose
+// edit's text would go.
+func (p *planned) applyWith(src []byte, withoutProse bool) []byte {
 	es := append([]edit(nil), p.edits...)
 	sort.Slice(es, func(i, j int) bool { return es[i].start > es[j].start })
 	out := append([]byte(nil), src...)
 	for _, e := range es {
-		out = append(out[:e.start], append([]byte(e.text), out[e.end:]...)...)
+		text := e.text
+		if withoutProse && e.prose {
+			text = e.neutral
+		}
+		out = append(out[:e.start], append([]byte(text), out[e.end:]...)...)
 	}
 	return out
 }
@@ -649,14 +689,14 @@ func plan(src []byte, b budget.Budgets, o options, m meta) (*planned, error) {
 				if !ok {
 					return nil, fmt.Errorf("row %s has no %s", name, k.key)
 				}
-				p.edits = append(p.edits, edit{mm.vs, mm.ve, strconv.FormatInt(k.v, 10)})
+				p.edits = append(p.edits, edit{start: mm.vs, end: mm.ve, text: strconv.FormatInt(k.v, 10)})
 			}
 			basisText := m.benchBasis(oldB, oldA)
 			if bm, ok := row.get("basis"); ok {
-				p.edits = append(p.edits, edit{bm.vs, bm.ve, pyString(basisText)})
+				p.edits = append(p.edits, proseEdit(bm.vs, bm.ve, pyString(basisText), `"x"`))
 			} else {
 				// Before the object's closing brace, as json.dumps would append it.
-				p.edits = append(p.edits, edit{sp[1] - 1, sp[1] - 1, `, "basis": ` + pyString(basisText)})
+				p.edits = append(p.edits, proseEdit(sp[1]-1, sp[1]-1, `, "basis": `+pyString(basisText), `, "basis": "x"`))
 			}
 			p.n[name] = true
 			// An entry row's alloc_bytes_max is its benchmark's measurement
@@ -697,7 +737,7 @@ func plan(src []byte, b budget.Budgets, o options, m meta) (*planned, error) {
 					changedRSS = append(changedRSS, fmt.Sprintf("%s %s to %s", e.key, pyFloat(old), pyFloat(v)))
 					for _, k := range []string{"p50", "p95"} {
 						if mm, ok := rm.get(k); ok {
-							p.edits = append(p.edits, edit{mm.vs, mm.ve, pyFloat(v)})
+							p.edits = append(p.edits, edit{start: mm.vs, end: mm.ve, text: pyFloat(v)})
 						}
 					}
 					p.n["entry:"+e.key] = true
@@ -722,7 +762,7 @@ func plan(src []byte, b budget.Budgets, o options, m meta) (*planned, error) {
 				p.addRSS("rss case", e.key, old, v)
 				if old != v {
 					changedRSS = append(changedRSS, fmt.Sprintf("%s %s to %s", e.key, pyFloat(old), pyFloat(v)))
-					p.edits = append(p.edits, edit{e.vs, e.ve, pyFloat(v)})
+					p.edits = append(p.edits, edit{start: e.vs, end: e.ve, text: pyFloat(v)})
 					p.n["case:"+e.key] = true
 				}
 			}
@@ -736,7 +776,7 @@ func plan(src []byte, b budget.Budgets, o options, m meta) (*planned, error) {
 			if err := json.Unmarshal(src[sf.vs:sf.ve], &old); err != nil {
 				return nil, err
 			}
-			p.edits = append(p.edits, edit{sf.vs, sf.ve, pyString(old + " " + m.rssBasis(changedRSS))})
+			p.edits = append(p.edits, proseEdit(sf.vs, sf.ve, pyString(old+" "+m.rssBasis(changedRSS)), `"x"`))
 		}
 	}
 	if len(missing) > 0 {
@@ -780,7 +820,7 @@ func (p *planned) syncEntries(src []byte, root *memberList, bench string, bytesP
 		if string(src[am.vs:am.ve]) != strconv.FormatInt(bytesPerOp, 10) {
 			p.notes = append(p.notes, fmt.Sprintf("entry %s: alloc_bytes_max %s to %d (its benchmark's B/op, TestRES36f); check cold_alloc_bytes_max still passes TestRES36l", e.str(src, "id"), src[am.vs:am.ve], bytesPerOp))
 		}
-		p.edits = append(p.edits, edit{am.vs, am.ve, strconv.FormatInt(bytesPerOp, 10)})
+		p.edits = append(p.edits, edit{start: am.vs, end: am.ve, text: strconv.FormatInt(bytesPerOp, 10)})
 	}
 	return nil
 }

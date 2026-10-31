@@ -38,11 +38,11 @@ func runTool(t *testing.T, args ...string) (int, string, string) {
 }
 
 func macos(budgets string, extra ...string) []string {
-	return append([]string{"--run", "41166204201", "--dir", "testdata/macos", "--platform", "darwin/arm64", "--budgets", budgets, "--no-generate"}, extra...)
+	return append([]string{"--run", "41166204201", "--dir", "testdata/macos", "--platform", "darwin/arm64", "--budgets", budgets, "--no-generate", "--no-hygiene"}, extra...)
 }
 
 func linux(budgets string, extra ...string) []string {
-	return append([]string{"--run", "41166204201", "--dir", "testdata/linux", "--platform", "linux/amd64", "--budgets", budgets, "--no-generate"}, extra...)
+	return append([]string{"--run", "41166204201", "--dir", "testdata/linux", "--platform", "linux/amd64", "--budgets", budgets, "--no-generate", "--no-hygiene"}, extra...)
 }
 
 func lines(b []byte) []string { return strings.Split(string(b), "\n") }
@@ -321,7 +321,7 @@ func TestRealFileLayoutSurvivesAnAllRowsRewrite(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "budgets.json")
 	os.WriteFile(p, raw, 0o644)
 	code, out, errb := runTool(t, "--run", "41166204201", "--dir", dir, "--platform", "darwin/arm64", "--budgets", p,
-		"--no-generate", "--all", "--kind", "bench", "--toolchain", b.GoVersion)
+		"--no-generate", "--no-hygiene", "--all", "--kind", "bench", "--toolchain", b.GoVersion)
 	if code != 0 {
 		t.Fatalf("exit %d: %s%s", code, out, errb)
 	}
