@@ -168,3 +168,42 @@ func TestRP2zb_APointerThatCannotBeTrustedLeavesTheLine(t *testing.T) {
 		t.Errorf("a removed run: %q; want it said", msg)
 	}
 }
+
+// TestRP2zg_APointedCheckpointBehindMoreThanTheTailIsStillFound (card
+// REPORT1b review): a run that cut its checkpoint and then wrote 100 KB of
+// other records still has it, and SessionStart prints its line, not that the
+// record is gone. A run longer than the widened read says it was not found
+// within the bound. Break: never widen the read, or call every tail miss gone.
+func TestRP2zg_APointedCheckpointBehindMoreThanTheTailIsStillFound(t *testing.T) {
+	s := newBriefSession(t)
+	root, err := store.DefaultRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := baseline.Key(s.dir)
+	at := time.Date(2026, 10, 29, 16, 20, 0, 0, time.UTC)
+	seedPrevious(t, root, "earlier", project, at, true, `{"gate":"go","required":true,"state":"green"}`)
+	pad := []byte(`{"type":"declaration","schema_version":2,"pad":"` + strings.Repeat("x", 1000) + "\"}\n")
+	appendPad := func(n int) {
+		f, err := os.OpenFile(filepath.Join(root, store.DirRuns, "earlier", store.FileRecords), os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		for range n {
+			if _, err := f.Write(pad); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	appendPad(100)
+	msg := message(t, s.start("startup"))
+	if !strings.HasSuffix(msg, "\n  last session: 10-29 16:20, record green; rashomon report --session last") || strings.Contains(msg, "no longer") {
+		t.Errorf("a checkpoint behind 100 KB of records: %q", msg)
+	}
+	appendPad(1100)
+	msg = message(t, s.start("startup"))
+	if !strings.HasSuffix(msg, "\n  last session: its record was not found within the 1 MiB read bound") || strings.Contains(msg, "no longer") {
+		t.Errorf("a checkpoint behind more than the widened read: %q", msg)
+	}
+}

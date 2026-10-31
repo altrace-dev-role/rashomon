@@ -81,3 +81,9 @@ m("RP-2 why prints a non-allowlisted string slot", W, '\t\tif !report.WhySlotSho
 m("RP-2 the allowlist admits the lesson text slot", "internal/report/why.go", '\t"evidence": true, "unknown": true,\n', '\t"evidence": true, "unknown": true, "text": true,\n', "TestRP2zd_|TestRP2ze_")
 m("RP-2 why's text prints a non-allowlisted slot's value", "internal/report/why_text.go", '\t\tif s.Name != "path" && !WhySlotShown(s.Name) {\n', "\t\tif false {\n", "TestRP2ze_")
 m("RP-2 --redact digests only the path slot", "internal/report/why.go", "\t\tcase !WhySlotShown(s.Name):\n", "\t\tcase false:\n", "TestRP2zd_|TestRP2ze_")
+
+# Pointed's widening (RP2zf, RP2zg; review of PR 171).
+m("RP-2 Pointed never widens a tail miss", R, "\t\tcase info.Size() <= TailBytes:\n", "\t\tcase true:\n", "TestRP2zf_|TestRP2zg_")
+m("RP-2 Pointed calls a miss past the widened read gone", R, "\t\t\tif info.Size() > PointedMax {\n", "\t\t\tif false {\n", "TestRP2zf_|TestRP2zg_")
+m("RP-2 Pointed's widened read is the whole file", R, "st.LatestRecordTail(session, store.TypeVerify, PointedMax)", "st.LatestRecordTail(session, store.TypeVerify, 0)", "TestRP2zf_")
+m("RP-2 Pointed loses the missing-run case", R, "\t\tcase err != nil && errors.Is(err, fs.ErrNotExist):\n", "\t\tcase false:\n", "TestRP2zf_")

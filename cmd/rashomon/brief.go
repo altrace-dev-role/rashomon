@@ -120,6 +120,9 @@ func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plu
 	source := "the project index's last checkpoint of an earlier session"
 	if !scan.Found {
 		source = "the project index, whose last checkpoint is gone"
+		if scan.Bound == receipt.BoundTail {
+			source = "the project index, whose last checkpoint was not in the end of its run"
+		}
 	}
 	text := strings.TrimPrefix(receipt.PreviousLine(last, scan, pointer), brief.LastSessionLead)
 	return b.WithVerify(brief.Fact{Kind: brief.KindLastSession, Text: text, Source: source})

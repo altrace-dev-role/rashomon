@@ -2,7 +2,11 @@ package receipt
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -83,6 +87,10 @@ const (
 	// BoundGone: the checkpoint the project's index names is no longer in the
 	// store (forget, purge or eviction removed its run).
 	BoundGone = "gone"
+	// BoundTail: the run is there and longer than PointedMax, and the record
+	// the pointer names is not in the last PointedMax bytes of it. It may be
+	// earlier in the file; it was not looked for there.
+	BoundTail = "tail"
 	// BoundWalk: the store held more run directories than MaxWalk, and the
 	// ones past it were not looked at.
 	BoundWalk = "walk"
@@ -279,6 +287,8 @@ func PreviousLine(p Last, s Scan, pointer string) string {
 			return lead + "none; its record is no longer in the store"
 		case BoundWalk:
 			return lead + "none among the first " + strconv.Itoa(MaxWalk) + " session directories on this machine"
+		case BoundTail:
+			return lead + "its record was not found within the " + strconv.Itoa(PointedMax>>20) + " MiB read bound"
 		case BoundBytes:
 			return lead + "none within the " + strconv.Itoa(MaxBytes>>20) + " MiB read bound on this machine"
 		}
@@ -320,13 +330,23 @@ func reason(p Last) string {
 	return "not green"
 }
 
+// PointedMax is the most Pointed reads of a run when the first TailBytes hold
+// no checkpoint: a run that cut its checkpoint and then wrote more than
+// TailBytes of other records (a long tool-call tail) still has it nearer the
+// end than this. The wider read is paid only on that miss, and never grows
+// with the store.
+const PointedMax = 1 << 20
+
 // Pointed is the checkpoint a pointer names (the project index's last
 // checkpoint of an earlier session): one tail read of that session's run, at
-// most TailBytes, whatever the store's size. It is found only when the run's
-// last checkpoint is the one named, point seq and project both: a run that is
-// gone, or holds no checkpoint, is BoundGone, and one that holds another
-// checkpoint is neither found nor bounded, for the caller to leave its line
-// as it is. Nothing is guessed.
+// most TailBytes, whatever the store's size, and on a miss in a longer file
+// one wider read of at most PointedMax. It is found only when the run's last
+// checkpoint is the one named, point seq and project both. A run file that is
+// missing, or read whole without a checkpoint in it, is BoundGone (the record
+// is not in the store); a file longer than PointedMax with none in its last
+// PointedMax bytes is BoundTail (not found within the read bound, which says
+// nothing about the rest); one that holds another checkpoint is neither found
+// nor bounded, for the caller to leave its line as it is. Nothing is guessed.
 func Pointed(st *store.Store, project, session string, seq int64) (Last, Scan, error) {
 	line, ok, n, err := st.LatestRecordTail(session, store.TypeVerify, TailBytes)
 	sc := Scan{ReadBytes: n}
@@ -334,8 +354,29 @@ func Pointed(st *store.Store, project, session string, seq int64) (Last, Scan, e
 		return Last{}, sc, err
 	}
 	if !ok {
-		sc.Bound = BoundGone
-		return Last{}, sc, nil
+		info, err := os.Stat(filepath.Join(st.RunDir(session), store.FileRecords))
+		switch {
+		case err != nil && errors.Is(err, fs.ErrNotExist):
+			sc.Bound = BoundGone
+			return Last{}, sc, nil
+		case err != nil:
+			return Last{}, sc, err
+		case info.Size() <= TailBytes:
+			sc.Bound = BoundGone
+			return Last{}, sc, nil
+		}
+		line, ok, n, err = st.LatestRecordTail(session, store.TypeVerify, PointedMax)
+		sc.ReadBytes += n
+		if err != nil {
+			return Last{}, sc, err
+		}
+		if !ok {
+			sc.Bound = BoundGone
+			if info.Size() > PointedMax {
+				sc.Bound = BoundTail
+			}
+			return Last{}, sc, nil
+		}
 	}
 	p, ok := decodeHead(line)
 	if !ok || p.ProjectRoot != project || p.PointSeq != seq {
