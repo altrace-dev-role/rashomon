@@ -268,8 +268,9 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// only where none does (card 2.4 R12).
 	fromPlugin := recapFromPlugin(args)
 	line, wantSpeak := recap.Line(d, d.SessionID, fromPlugin)
+	clause := ""
 	if !wantSpeak {
-		line, wantSpeak = stop.line(d.SessionID, fromPlugin)
+		line, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)
 	}
 	// The barrier before stdout (REC-34), and before Claim (D93): a line
 	// printed over a checkpoint that is not durable would claim what the
@@ -285,7 +286,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// bookkeeping, not evidence, and a failure to persist it must cost at
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
-	speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
+	speak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause)
 	if !speak {
 		line = ""
 	} else if pending {

@@ -70,10 +70,16 @@ type state struct {
 	// interrupt, and a refused call -- the case the line most exists for --
 	// was therefore the one case it could never show. Pending reads this.
 	Checked map[string]string `json:"checked"`
+	// Shown maps a session id to the fingerprint of the impact counts the
+	// last printed AutoSteer clause carried (Impact.Fingerprint): the memory
+	// that lets the clause print only when the counts changed (REPORT1a).
+	// Counts and no content, like the two maps above; absent in a file written
+	// before it, which reads as nothing shown.
+	Shown map[string]string `json:"shown"`
 }
 
 func newState() state {
-	return state{Spoken: map[string]string{}, Checked: map[string]string{}}
+	return state{Spoken: map[string]string{}, Checked: map[string]string{}, Shown: map[string]string{}}
 }
 
 func statePath(root string) string {
@@ -110,6 +116,9 @@ func readState(path string) (state, error) {
 	if s.Checked == nil {
 		s.Checked = map[string]string{}
 	}
+	if s.Shown == nil {
+		s.Shown = map[string]string{}
+	}
 	return s, nil
 }
 
@@ -132,7 +141,7 @@ func readState(path string) (state, error) {
 // current is the session this write claims for, "" for none; the cap never
 // drops it (capSessions).
 func writeState(path string, s state, current string) error {
-	for _, m := range []map[string]string{s.Spoken, s.Checked} {
+	for _, m := range []map[string]string{s.Spoken, s.Checked, s.Shown} {
 		capSessions(m, current)
 	}
 	removeStaleTemps(filepath.Dir(path))
@@ -224,6 +233,15 @@ func capSessions(m map[string]string, current string) {
 // missing line and never a hook error. The caller is expected to ignore the
 // returned error for exactly that reason and is told so at the call site.
 func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (speak bool, err error) {
+	return ClaimShown(root, sessionID, promptID, now, wantSpeak, "")
+}
+
+// ClaimShown is Claim for a line that carried an AutoSteer clause: shown is
+// that clause's Impact.Fingerprint, kept for the session when the line is
+// printed, so the next Stop prints a clause only if the counts differ
+// (ImpactShown). "" claims no clause, and a line that was not printed
+// remembers nothing: the clause was not seen.
+func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
 	}
@@ -246,6 +264,9 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 	}
 	if sessionID != "" && promptID != "" {
 		s.Checked[sessionID] = promptID
+	}
+	if speak && sessionID != "" && shown != "" {
+		s.Shown[sessionID] = shown
 	}
 	return speak, writeState(path, s, sessionID)
 }
@@ -310,4 +331,18 @@ func Pending(root, sessionID, promptID string) bool {
 		return false
 	}
 	return s.Checked[sessionID] != promptID
+}
+
+// ImpactShown is the fingerprint of the counts the last printed clause of
+// sessionID carried, "" when none was printed or the file does not read:
+// nothing known shown, so the clause prints.
+func ImpactShown(root, sessionID string) string {
+	if sessionID == "" || !storeExists(root) {
+		return ""
+	}
+	s, err := readState(statePath(root))
+	if err != nil {
+		return ""
+	}
+	return s.Shown[sessionID]
 }
