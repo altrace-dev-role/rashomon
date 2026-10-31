@@ -214,8 +214,25 @@ func steerLine(c store.Config, key string) string {
 	return fmt.Sprintf("steer: %s (you: %s; this project: %s, %s)", state, user, proj, safeText(key))
 }
 
-// steerSet is `steer off|on`: the scope's key, under the config lock.
+// steerVerb is the `steer off|on` command line for a scope.
+func steerVerb(off, project bool) string {
+	v := "on"
+	if off {
+		v = "off"
+	}
+	if project {
+		v += " --project"
+	}
+	return v
+}
+
+// steerSet is `steer off|on`: the scope's key, under the config lock. It is
+// refused in an agent session as repair is, so the steered agent cannot turn
+// its own notes off.
 func steerSet(stdout io.Writer, off, project bool) error {
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s` in your own terminal.", s, steerVerb(off, project))
+	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
 		return errors.New("nothing has been recorded here yet, so there is no store to hold the switch")
