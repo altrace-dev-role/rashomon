@@ -34,8 +34,11 @@ var res5Dirs = []string{
 // decoder sees it, after its manifest checked. Each is allowed by name, so a
 // hook-path caller of Open or decode shows up as a new name. Neither the hook
 // nor the store links internal/learn (TestP6_HookAndStoreImportNoLearner).
+// cmd/rashomon.steerRows decodes the steer log's own lines for `steer log`,
+// `steer explain` and `scorecard` (card STEER-CLI1): CLI verbs alone, never
+// called from a hook entry.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
-	"internal/learn.decode": true, "internal/learn.decodeActive": true}
+	"internal/learn.decode": true, "internal/learn.decodeActive": true, "cmd/rashomon.steerRows": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding

@@ -40,7 +40,7 @@ var Commands = []Command{
 	{"Read this screen again", "rashomon watch --show"},
 	{"Stop recording", "rashomon pause"},
 	{"Start recording again", "rashomon resume"},
-	{"Stop the notes; remove the hooks", "rashomon detach"},
+	{"Stop the notes to your agent", "rashomon steer off --user"},
 	{"Remove everything", "rashomon purge"},
 }
 

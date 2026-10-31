@@ -14,6 +14,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -241,10 +242,29 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		Surface:    env.Surface,
 		NowUnixMS:  env.Now.UnixMilli(),
 		Consent:    consented(env.Consent, p.st.Root()),
+		SteerOff:   p.steerOff(),
 		Arm:        steer.ArmLive,
 		Attendance: attendance,
 		Holdout:    p.heldOut(env),
 	}
+}
+
+// steerOff is the user's steering switch for this call (card STEER-CLI1): the
+// store's config.json read once, at one Lstat when the file is absent, and the
+// user's key or the key of the call's project (baseline.Key of the cwd,
+// walked only when the file names a project) set to off. A file that does not
+// read is off: the notes reach the model, so a switch that cannot be read is
+// not one to override. Off is a clamp (clampReason): nothing reaches the agent,
+// the user still sees a flag, and each finding is logged steer_off.
+func (p *Post) steerOff() bool {
+	c, err := store.ReadConfig(p.st.Root())
+	if err != nil {
+		return true
+	}
+	if c.SteerOffUser() {
+		return true
+	}
+	return len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd))
 }
 
 // holdoutFeature is the arm feature the steer holdout draws under: one

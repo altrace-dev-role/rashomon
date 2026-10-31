@@ -84,7 +84,7 @@ m("ST-2.4 the done flag loses to the value line", RS,
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {\n',
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok && recap.ValueLine(s.view, s.impact, sessionID, fromPlugin) == "" {\n',
   "TestFUN14b_")
-m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOn()\n', '\treturn false\n', "TestFUN16_")
+m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOnFor(project)\n', '\treturn false\n', "TestFUN16_")
 m("ST-2.4 the Flush barrier dropped before print", RT,
   '\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n',
   '', "TestSTOP_FlushFailurePrintsNothing")
