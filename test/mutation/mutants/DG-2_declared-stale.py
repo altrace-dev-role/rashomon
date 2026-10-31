@@ -28,5 +28,8 @@ m("DG-2 an advisory declared gate opens the trigger", D,
 m("DG-2 the hook never reads the spec of an unindexed project", H,
   "\t\treturn key, false, true\n", "\t\treturn \"\", false, false\n", "TestDG2d_")
 m("DG-2 an unindexed write leaves the arm when no gate is declared", H,
-  "\ttook := p.st.TakeStaleArm(p.sessionID)\n\treturn took && verify.DeclaresRequired(p.sp)\n",
-  "\treturn verify.DeclaresRequired(p.sp) && p.st.TakeStaleArm(p.sessionID)\n", "TestDG2e_|TestSN1g2_")
+  "\ttookIndexless := indexless && p.st.TakeStaleArm(p.sessionID)\n",
+  "\ttookIndexless := indexless\n", "TestDG2e_|TestSN1g2_")
+m("DG-2 an unindexed write takes the arm only after the run is read", H,
+  "\ttookIndexless := indexless && p.st.TakeStaleArm(p.sessionID)\n\trun, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)\n\tif err != nil {\n\t\treturn steer.Context{}, verify.SteerView{}, false\n\t}\n",
+  "\trun, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)\n\tif err != nil {\n\t\treturn steer.Context{}, verify.SteerView{}, false\n\t}\n\ttookIndexless := indexless && p.st.TakeStaleArm(p.sessionID)\n", "TestDG2f_")

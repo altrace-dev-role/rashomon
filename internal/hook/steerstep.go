@@ -176,8 +176,8 @@ func (p *Post) staleWrite() (key string, took, indexless bool) {
 	}
 	if _, err := os.Lstat(verify.IndexPath(p.st.Root(), key)); err != nil {
 		// No index file: only a spec's declared required gate can raise the
-		// note (D222), and the spec is read after the run, in judge, which
-		// then takes the arm.
+		// note (D222), and judge takes the arm before it reads the run and
+		// reads the spec after.
 		return key, false, true
 	}
 	return key, p.st.TakeStaleArm(p.sessionID), false
@@ -202,6 +202,11 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 			return steer.Context{}, verify.SteerView{}, false
 		}
 	}
+	// The index-less path takes the arm before the read, as the indexed path
+	// does in staleWrite: a read that errors (budget) must not leave it set,
+	// or every later relevant write would read the run and discover the spec
+	// again for the same answer. The result is carried to the spec test below.
+	tookIndexless := indexless && p.st.TakeStaleArm(p.sessionID)
 	run, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
 	if err != nil {
 		return steer.Context{}, verify.SteerView{}, false
@@ -211,7 +216,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	}
 	root := p.st.Root()
 	p.sp = discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))
-	if indexless && !p.takeIndexless() {
+	if indexless && !(tookIndexless && verify.DeclaresRequired(p.sp)) {
 		return steer.Context{}, verify.SteerView{}, false
 	}
 	var idx *verify.ProjectIndex
@@ -222,16 +227,6 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 		StoreRoot: root}
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
 	return p.contextOf(env, view), view, true
-}
-
-// takeIndexless is the stale trigger's last test where the project has no
-// index file (D222): this call takes the arm, which only one of two racing
-// posts does, and the spec the step discovered declares a required gate. The
-// arm is taken whatever the spec says: left armed, every later write would
-// read the run again for the same answer.
-func (p *Post) takeIndexless() bool {
-	took := p.st.TakeStaleArm(p.sessionID)
-	return took && verify.DeclaresRequired(p.sp)
 }
 
 // contextOf is Route's context for this call (card 2.3 R4.5). Attendance is
