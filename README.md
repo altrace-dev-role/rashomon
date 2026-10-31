@@ -21,8 +21,12 @@ was built and not sent, such as:
 
     rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
 
-What it does not do yet: learn your architecture or conventions, or deliver
-lessons from past sessions. That is the next layer, and it is not in this build.
+What it does not do yet: learn your architecture or conventions by itself. A
+lesson you import and approve at a terminal is sent with a prompt that carries
+no preflight note, at most one per prompt and each lesson once a session; it
+waits while a preflight note is sent, and with steering off or no agreement to
+steering notes it is shown to you and not sent. Finding lessons in past sessions is the next layer, and it is
+not in this build.
 
 ## Get started
 
@@ -213,8 +217,11 @@ under the call if the command named it.
 | `rashomon backtest --sensor ID` | Replay this project's transcript copies (`rashomon bodies on`) through this build's hooks and print each session's fires of steer pattern ID beside the live steer log's; only reads the store |
 | `rashomon summary [on \| off]` | Say, or set, whether the end-of-turn line prints its value line; on unless set off |
 | `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
-| `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
+| `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires; a ledger written by anything but rashomon is said quarantined first |
+| `rashomon learn` | List this project's lessons: each one's tier, its labels and the 95% bound that moves it |
+| `rashomon learn approve ID` | Show lesson ID and a one-time code on the terminal; the lesson may reach the agent only once that code is typed back there |
+| `rashomon learn import FILE` | Add a shared lessons file's rows at `proposed` |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes` |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon forget --host H \| --since T \| --before T \| --bodies` | Erase the calls that named a host, records by time, or this project's transcript copies |
