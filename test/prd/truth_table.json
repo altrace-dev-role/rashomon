@@ -705,7 +705,7 @@
       "missing": [
         "the edit-marks writer (1.8p) for test_removed, skip_added, assertions_removed and suppression_added",
         "producers for generated_edited, gate_weakened and gate_config_edited (IV-PRODUCERS1, D139)",
-        "two kinds more to reach the PRD's twelve: frozen-path is the post's flag and a spec_rule verdict at Stop, never a folded integrity kind (SPEC-RULES1)"
+        "folded kinds stay at nine: frozen-path is delivered as a post flag and as a spec_rule verdict at Stop, never as a folded integrity kind (SPEC-RULES1)"
       ],
       "planned_pr": "",
       "session_proof": "",
