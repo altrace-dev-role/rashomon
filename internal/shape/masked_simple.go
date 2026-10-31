@@ -132,10 +132,10 @@ func (p *lineParser) runner(c *simple, s, i, e int, prog string) (command, bool)
 	if !ok {
 		return c, true
 	}
-	kind, names := MaskedTest, testCommandNames
+	kind, names := MaskedTest, testCommandNames()
 	row, hides := runnerRow(toks, ri, name, e, testCommands)
 	if row < 0 {
-		kind, names = MaskedBuild, buildCommandNames
+		kind, names = MaskedBuild, buildCommandNames()
 		if row, hides = runnerRow(toks, ri, name, e, buildCommands); row < 0 {
 			return c, true
 		}
