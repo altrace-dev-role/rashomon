@@ -230,7 +230,7 @@ m("NONO a forget whose store-level record failed reports success", "internal/sto
 # candidates are the declared hosts, a list of names. Re-anchored again when
 # loopback came to be decided on the parsed address (host.Loopback).
 m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
-  "\t\t\tif loopback(h) || clientPlaneHost(h, mcpAttributed) {\n", "\t\t\tif loopback(h) || clientPlaneHosts[h] {\n",
+  "\t\t\tif loopback(h) || clientPlaneHost(h, mcpAttributed) {\n", "\t\t\tif loopback(h) || slices.Contains(clientPlaneHosts, h) {\n",
   "TestClientPlane_EveryView")
 m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
   "\twire, ssh := novelHostCandidates(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten), madeMCPCall(run))\n",
