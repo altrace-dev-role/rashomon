@@ -29,9 +29,12 @@ import (
 // stubs cannot show, a real tmux server's environment, its default shell and
 // paste timing, is G1a's and G1c's to see on the real claude.
 //
-// On this tree no note reaches the model at nudge, so a run stops at G1c;
-// these tests hold everything up to that stop. G3 to G6 need a tree whose
-// steer arm delivers one.
+// G1c's positive control is a second probe per arm on a fixed prompt that
+// names go.mod (scripts/measure1_control_prompt.txt), whose task-preflight
+// note at UserPromptSubmit this binary delivers in the steer arm and withholds
+// in the off arm, whatever the model does. The stub's default run therefore
+// passes G1c and goes on through G6; the control_blind knob takes the note
+// from one arm to show G1c stopping.
 
 // The task's base: Add subtracts, so the fix's TestAdd fails on its own
 // assertion. The go stub passes it when calc.go says FIXED and fails the
@@ -268,14 +271,15 @@ func (r *m1Rig) want(res m1Result, lines ...string) {
 }
 
 // TestMS1x_DriverStopsWithNoModelChannel: on a tree whose steer arm delivers
-// nothing at nudge, a run passes G0, G2, G1b and G1a and stops at G1c's
-// positive control, before any arm runs. Each probe's turn ends on this
-// binary's own stop checkpoint, the end the driver reads, and the probes'
-// usage is projected over the arms before any arm spends (the stub's one
-// call per turn: 10 tokens in, 5 out).
+// nothing at nudge (the stub's steer arm sees a control prompt that names no
+// path), a run passes G0, G2, G1b and G1a and stops at G1c's positive
+// control, before any arm runs. Each probe's turn ends on this binary's own
+// stop checkpoint, the end the driver reads, and the probes' usage is
+// projected over the arms before any arm spends (the stub's one call per
+// turn: 10 tokens in, 5 out), from prompt 1's probe alone.
 func TestMS1x_DriverStopsWithNoModelChannel(t *testing.T) {
 	t.Parallel()
-	r := newM1Rig(t, nil, m1Red)
+	r := newM1Rig(t, map[string]any{"control_blind": []string{"steer"}}, m1Red)
 	res := r.run("20")
 	if res.code == 0 {
 		t.Errorf("exit 0, want the stop at G1c")
@@ -287,11 +291,11 @@ func TestMS1x_DriverStopsWithNoModelChannel(t *testing.T) {
 		"equal but for RASHOMON_STEER_ARM=off and RASHOMON_STEER_ARM=steer",
 		"measure1: G1c prompt 1 per probe: 1 request(s), 10 context tokens (0% cache reads), 5 output; "+
 			"projected arms (x3 prompts x2 arms): 6 requests, 60 context tokens, 30 output",
-		"measure1: G1c: no model channel on this tree",
+		"measure1: G1c: no model channel on this tree: the steer arm delivered no nudge with model text (0 steer lines logged)",
 		"measure1: G1c: the positive control failed")
-	for _, arm := range []string{"off", "steer"} {
-		if got := r.out("g1c-" + arm + ".turns"); got != "prompt 1: stop\n" {
-			t.Errorf("the %s probe's turns read %q, want one turn ended by its stop checkpoint", arm, got)
+	for _, name := range []string{"g1c-off", "g1c-steer", "g1c-control-off", "g1c-control-steer"} {
+		if got := r.out(name + ".turns"); got != "prompt 1: stop\n" {
+			t.Errorf("%s's turns read %q, want one turn ended by its stop checkpoint", name, got)
 		}
 	}
 	if r.ran("arm-[0-9]*") {
@@ -412,7 +416,7 @@ func TestMS1l_DriverStopsOnAnInputDiff(t *testing.T) {
 // terminal is not the call's return), and the pane is captured.
 func TestMS1t_DriverMarksABlockedPrompt(t *testing.T) {
 	t.Parallel()
-	r := newM1Rig(t, map[string]any{"hang_at": 1}, m1Red)
+	r := newM1Rig(t, map[string]any{"hang_at": 1, "control_blind": []string{"off", "steer"}}, m1Red)
 	r.run("3")
 	if got := r.out("g1c-off.turns"); got != "prompt 1: blocked (call pending: permission prompt or long call)\n" {
 		t.Errorf("the off probe's turns read %q, want the pending call named", got)
@@ -427,7 +431,10 @@ func TestMS1t_DriverMarksABlockedPrompt(t *testing.T) {
 // aborted tar named by the arm's label.
 func TestMS1u_DriverKeepsTranscriptsOnFailure(t *testing.T) {
 	t.Parallel()
-	r := newM1Rig(t, map[string]any{"die_at": 1}, m1Red)
+	// The stub dies after the prompt's hook has run, so the control note is
+	// still logged; blinding both arms stops the run at G1c, where the
+	// driver's cleanup keeps the probes.
+	r := newM1Rig(t, map[string]any{"die_at": 1, "control_blind": []string{"off", "steer"}}, m1Red)
 	r.run("20")
 	if got := r.out("g1c-off.turns"); got != "prompt 1: blocked (client exited)\n" {
 		t.Errorf("the off probe's turns read %q, want the exit named", got)
@@ -715,6 +722,151 @@ func TestMS1zc_EnvdiffNormalisesOnlyPerProcessValues(t *testing.T) {
 		}
 		if code := diff(a, b); code == 0 {
 			t.Errorf("%s: exit 0, want G1a's failure", name)
+		}
+	}
+}
+
+// TestMS1zd_G1cControlPassesOnTheFixedPrompt: both control probes ran the
+// fixed prompt, not the task's prompt 1; the steer arm delivered the note
+// with its model text, the off arm logged its arm_off twin, and the run went
+// on to the arms. The prompt is in the pre-registration with the other
+// inputs, and the cost projection is still prompt 1's.
+func TestMS1zd_G1cControlPassesOnTheFixedPrompt(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, nil, m1Red)
+	res := r.run("20")
+	if res.code != 0 {
+		t.Errorf("exit %d, want the run to pass G1c and finish", res.code)
+	}
+	r.want(res, "measure1: G1c control seen; the steer transcript holds the delivered note",
+		"measure1: G1c prompt 1 per probe: 1 request(s)",
+		"measure1: arm-1-")
+	want, err := os.ReadFile(filepath.Join(moduleRoot, "scripts", "measure1_control_prompt.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(r.m, "control-prompt.txt")); err != nil || string(got) != string(want) {
+		t.Errorf("M/control-prompt.txt is %q (%v), want the script's fixed prompt %q", got, err, want)
+	}
+	var prereg struct {
+		SHA256 map[string]string `json:"sha256"`
+	}
+	if err := json.Unmarshal([]byte(r.out("prereg.json")), &prereg); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for p := range prereg.SHA256 {
+		found = found || strings.HasSuffix(p, "/control-prompt.txt")
+	}
+	if !found {
+		t.Errorf("prereg.json's inputs %v do not name control-prompt.txt", prereg.SHA256)
+	}
+	for _, arm := range []string{"off", "steer"} {
+		if got := r.out("g1c-control-" + arm + ".turns"); got != "prompt 1: stop\n" {
+			t.Errorf("the %s control probe's turns read %q, want one turn ended by its stop", arm, got)
+		}
+		if got := r.out("g1c-control-" + arm + ".session"); got == r.out("g1c-"+arm+".session") || got == "" {
+			t.Errorf("the %s control probe is not a session of its own (%q)", arm, got)
+		}
+	}
+}
+
+// TestMS1ze_G1cStopsWhenAnArmLacksItsLine: the steer arm delivering nothing,
+// or the off arm logging no line, stops the run at G1c before any arm.
+func TestMS1ze_G1cStopsWhenAnArmLacksItsLine(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ name, blind, want string }{
+		{"the steer arm delivers nothing", "steer", "G1c: no model channel on this tree"},
+		{"the off arm logs no twin", "off", "G1c: the off arm's probe logged no steer line"},
+	} {
+		r := newM1Rig(t, map[string]any{"control_blind": []string{c.blind}}, m1Red)
+		res := r.run("20")
+		if res.code == 0 {
+			t.Errorf("%s: exit 0, want the stop at G1c", c.name)
+		}
+		r.want(res, c.want, "measure1: G1c: the positive control failed")
+		if r.ran("arm-[0-9]*") {
+			t.Errorf("%s: an arm ran past G1c's stop", c.name)
+		}
+	}
+}
+
+// m1SteerLine is one steer.ndjson line with the fields G1c's control reads.
+func m1SteerLine(arm, delivery, by, key, text string) map[string]any {
+	l := map[string]any{"type": "steer", "pattern": "task-preflight", "key": key, "level": "nudge", "arm": arm,
+		"delivery": delivery, "model_text": text, "surface": "cli", "prompt_id": "p1"}
+	if by != "" {
+		l["suppressed_by"] = by
+	}
+	return l
+}
+
+// TestMS1zf_ControlReadsTheTwinPair: measure1_check.py control over hand-made
+// stores. It passes on a delivered nudge with model text and an arm_off twin
+// of the same pattern and key, and fails on each missing half: no delivery,
+// no twin, a twin of another key, pattern or withholding reason, a line off
+// the cli surface or with no prompt id.
+func TestMS1zf_ControlReadsTheTwinPair(t *testing.T) {
+	t.Parallel()
+	type lines = []map[string]any
+	good := func() (lines, lines) {
+		return lines{m1SteerLine("steer", "delivered", "", "note", "the note")},
+			lines{m1SteerLine("off", "shadow", "arm_off", "note", "")}
+	}
+	const noTwin = "the off arm has no task-preflight/note line withheld by arm_off at nudge"
+	cases := []struct {
+		name   string
+		mutate func(on, off lines) (lines, lines)
+		want   int
+		out    string
+	}{
+		{"both halves", func(on, off lines) (lines, lines) { return on, off }, 0, "the note"},
+		{"the steer arm delivers nothing", func(on, off lines) (lines, lines) { return nil, off }, 1, "no model channel on this tree"},
+		{"delivered without model text", func(on, off lines) (lines, lines) {
+			on[0]["model_text"] = ""
+			return on, off
+		}, 1, "no model channel on this tree"},
+		{"the off arm logs nothing", func(on, off lines) (lines, lines) { return on, nil }, 1, "the off arm's probe logged no steer line"},
+		{"the off line is another key", func(on, off lines) (lines, lines) {
+			off[0]["key"] = "brief"
+			return on, off
+		}, 1, noTwin},
+		{"the off line is withheld by another reason", func(on, off lines) (lines, lines) {
+			off[0]["suppressed_by"] = "unverified_channel"
+			return on, off
+		}, 1, noTwin},
+		{"the off line is another pattern", func(on, off lines) (lines, lines) {
+			off[0]["pattern"] = "regression-location"
+			return on, off
+		}, 1, noTwin},
+		{"a line off the cli surface", func(on, off lines) (lines, lines) {
+			on[0]["surface"] = "sdk"
+			return on, off
+		}, 1, "not cli and an id"},
+		{"a line with no prompt id", func(on, off lines) (lines, lines) {
+			off[0]["prompt_id"] = ""
+			return on, off
+		}, 1, "not cli and an id"},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		on, off := c.mutate(good())
+		for arm, ls := range map[string]lines{"steer": on, "off": off} {
+			if err := os.MkdirAll(filepath.Join(dir, arm, "runs", "sid"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			for _, l := range ls {
+				b, _ := json.Marshal(l)
+				buf.Write(append(b, '\n'))
+			}
+			if err := os.WriteFile(filepath.Join(dir, arm, "runs", "sid", "steer.ndjson"), buf.Bytes(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		code, out := m1Check(t, "control", filepath.Join(dir, "steer"), "sid", filepath.Join(dir, "off"), "sid")
+		if code != c.want || !strings.Contains(out, c.out) {
+			t.Errorf("%s: exit %d, output %q; want exit %d holding %q", c.name, code, out, c.want, c.out)
 		}
 	}
 }

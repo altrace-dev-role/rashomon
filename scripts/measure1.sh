@@ -205,17 +205,25 @@ turn() {
 	done
 }
 
-# session runs one arm's session over the first n prompts and records each
+# session runs one arm's session over the first n prompts (or, when n is
+# "control", over the one fixed control prompt, G1c's) and records each
 # turn's end in M/out/<label>.turns.
 session() {
-	local a=$1 arm=$2 n=$3 label=$4 sid i end
+	local a=$1 arm=$2 n=$3 label=$4 sid i end pf pfs=()
+	if [ "$n" = control ]; then
+		pfs=("$M/control-prompt.txt")
+	else
+		for i in $(seq 1 "$n"); do pfs+=("$M/prompt-$i.txt"); done
+	fi
 	sid=$(check uuid)
 	echo "$sid" >"$M/out/$label.session"
 	echo "$label" >"$a/label"
 	: >"$M/out/$label.turns"
 	launch "$a" "$arm" "$sid" || { echo "blocked (no SessionStart record in 60 s)" >>"$M/out/$label.turns"; return; }
-	for i in $(seq 1 "$n"); do
-		end=$(turn "$a" "$sid" "$M/prompt-$i.txt")
+	i=0
+	for pf in "${pfs[@]}"; do
+		i=$((i + 1))
+		end=$(turn "$a" "$sid" "$pf")
 		echo "prompt $i: $end" >>"$M/out/$label.turns"
 		case $end in blocked*)
 			"$tmux" -S "$a/tmux.sock" capture-pane -p -t arm >"$M/out/$label.pane-$i.txt" 2>/dev/null || true
@@ -255,7 +263,7 @@ g0() {
 	check prereg "$M/out/prereg.json" "claude=$CLAUDE_V" "claude_path=$claude" "go=$GO_V" "rashomon_sha256=$BIN_SHA" \
 		"model=$model" "order=$order" "reps=$reps" "limit=$limit" "allowed=$allowed" "base=$base" "fix=$fix" \
 		"tree=$(git -C "$here/.." rev-parse HEAD 2>/dev/null || echo unknown)" "at=$(date '+%Y-%m-%dT%H:%M:%S%z')" \
-		-- "$task/issue.txt" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" "$M"/prompt-*.txt "$M/out/arm-sites.txt"
+		-- "$task/issue.txt" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" "$M"/prompt-*.txt "$M/control-prompt.txt" "$M/out/arm-sites.txt"
 	say "G0 claude $CLAUDE_V at $claude (pinned); $GO_V; rashomon $BIN_SHA; no managed policy"
 	local dropped
 	dropped=$(env | grep -E -o '^(ANTHROPIC_[A-Z_]*|CLAUDE[A-Z_]*|RASHOMON_[A-Z_]*|[A-Za-z_]*_PROXY)=' | tr -d '=' | sort | tr '\n' ' ' || true)
@@ -271,12 +279,39 @@ prompts() {
 		printf '%s%s' "$PREFIX" "Run the project's tests and fix what fails." >"$M/prompt-2.txt"
 		printf '%s%s' "$PREFIX" "Summarize what you changed." >"$M/prompt-3.txt"
 	fi
+	cp "$here/measure1_control_prompt.txt" "$M/control-prompt.txt"
 	NPROMPTS=$(find "$M" -maxdepth 1 -name 'prompt-*.txt' | wc -l | tr -d ' ')
 }
 
-# g1 runs the probes in scratch arms: G1b's -p init event, G1c's interactive
-# first prompt with G1a's hook-side dump, G1d's CLAUDE.md walk with its
-# controls, G1e's repository files.
+# g1 runs the probes in scratch arms: G1b's -p init event, the interactive
+# first prompt with G1a's hook-side dump and G1c's cost projection, G1c's
+# positive control (a second probe per arm, on a fixed prompt), G1d's
+# CLAUDE.md walk with its controls, G1e's repository files.
+#
+# The control cannot ride on the task's prompt 1: whether that prompt makes
+# the binary say anything is the task's luck (on go-humanize #103 it did
+# not, and the gate failed with no steer line at all). So the control is
+# scripts/measure1_control_prompt.txt, a fixed prompt that names go.mod. A
+# prompt that names a path the project holds gets a task-preflight note at
+# UserPromptSubmit (cmd/rashomon/preflight.go preflightNote: intent.Names
+# finds go.mod, intent.Finding calls it fresh because the session has not
+# been given that path). The note is decided from the prompt alone, so it
+# needs nothing of the model, and UserPromptSubmit is the one channel row
+# that is exempt from a probed version (steer/finding.go outputKeys,
+# client.go shutBy), so it delivers on every pinned version.
+#
+# Why not a note on a failing command, as the card first asked
+# (identical-retry run twice, or a red after a green)? identical-retry is a
+# reserved id with no producer on this tree: internal/verify raisedByVerify
+# lists the eight patterns VERIFY raises and it is not one. regression-
+# location is produced, at PostToolUseFailure, but that row of
+# mirrorVerifiedOn has no floor, so it is logged in shadow
+# (unverified_channel) on every version. Every other per-call pattern needs
+# a declared spec, a learned lesson or a required gate from earlier sessions,
+# which a fresh workspace has not. task-preflight at UserPromptSubmit is the
+# one note a fresh workspace deterministically delivers. It proves the hook
+# additionalContext path reaches the model; it does not prove the
+# PostToolUse path, which the paired run's notes use.
 g1() {
 	local arm a sid text tr plant decoy
 	for arm in off steer; do
@@ -303,8 +338,17 @@ g1() {
 	done
 	check projection "$NPROMPTS" "$(check transcript "$P_off/cc" "$PSID_off")" "$(check transcript "$P_steer/cc" "$PSID_steer")"
 	check envdiff "$M/out/g1a-off.env" "$P_off" "$PWS_off" "$PSID_off" "$M/out/g1a-steer.env" "$P_steer" "$PWS_steer" "$PSID_steer"
-	text=$(check control "$P_steer/store" "$PSID_steer" "$P_off/store" "$PSID_off") || { printf '%s\n' "$text" >&2; die "G1c: the positive control failed"; }
-	tr=$(check transcript "$P_steer/cc" "$PSID_steer")
+	for arm in off steer; do
+		newarm
+		session "$A" "$arm" control "g1c-control-$arm"
+		put "PC_$arm" "$A"
+		put "PCSID_$arm" "$(cat "$M/out/g1c-control-$arm.session")"
+	done
+	text=$(check control "$PC_steer/store" "$PCSID_steer" "$PC_off/store" "$PCSID_off") || {
+		printf '%s\n' "$text" >&2
+		die "G1c: the positive control failed"
+	}
+	tr=$(check transcript "$PC_steer/cc" "$PCSID_steer")
 	S2_CONTROL=0
 	if [ -n "$tr" ] && check holds "$tr" "$text"; then
 		S2_CONTROL=1
@@ -326,6 +370,8 @@ g1() {
 	check repoclaude "$PWS_steer"
 	tarball "$P_off" g1c-off
 	tarball "$P_steer" g1c-steer
+	tarball "$PC_off" g1c-control-off
+	tarball "$PC_steer" g1c-control-steer
 }
 
 # g2 builds the oracle apart from M: FAIL_TO_PASS red on base
