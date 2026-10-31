@@ -42,7 +42,7 @@ m("RP-2 a record of any version is handed over", S, "\treturn AcceptsKind(kind, 
 
 # The startup line (RP2t, RP2x).
 m("RP-2 the startup line is appended to the verify line", B, "\tfacts[len(facts)-1] = f\n", "\tfacts = append(facts, f)\n", "TestRP2t_")
-m("RP-2 a walk that found nothing replaces the verify line", C, '\tif err != nil || !scan.Found && scan.Bound == "" {\n', "\tif err != nil {\n", "TestRP2t_|TestBR1e_")
+m("RP-2 a pointer that names nothing replaces the verify line", C, '\tif err != nil || !scan.Found && scan.Bound == "" {\n', "\tif err != nil {\n", "TestRP2zb_|TestRP2t_")
 m("RP-2 the pointer is not rendered from the plugin's name", B, 'const PluginReport = "/" + install.PluginName + ":report last"', 'const PluginReport = "/auto" + "steer:report last"', "TestRP2x_|TestBR1i_")
 IMPORTS["RP-2 the pointer is not rendered from the plugin's name"] = (B, '\t"github.com/altrace-dev-role/rashomon/internal/install"\n', "")
 
@@ -61,3 +61,17 @@ m("RP-2 Redact skips the knowledge pass", D, "\t\ts.Knowledge = redactKnowledge(
 m("RP-2 Redact keeps the project root in the knowledge block", D, "\tout.Project = redactHost(k.Project, key)\n", "\tout.Project = k.Project\n", "TestRP2p_")
 m("RP-2 Redact keeps the project root in a why view", "internal/report/why.go", "\tout.Project = redactHost(v.Project, key)\n", "\tout.Project = v.Project\n", "TestRP2q_Why")
 m("RP-2 Redact keeps a why view's texts", "internal/report/why.go", '\tout.ModelText, out.UserText = "", ""\n', "", "TestRP2q_Why")
+
+# The startup line's pointer (RP2zb, RP2zc, RP2x): the index names the last two
+# sessions, the Stop writes them, and a pointer is trusted only when the run is
+# there and holds that checkpoint of this project.
+P = "internal/receipt/previous.go"
+X = "internal/verify/index.go"
+m("RP-2 the Stop does not note its checkpoint in the index", "cmd/rashomon/recap_stop.go",
+  "\t\t\tv.Index.NoteCheckpoint(p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)\n", "", "TestRP2x_")
+m("RP-2 a pointer is taken for another project's checkpoint", P, "if !ok || p.ProjectRoot != project || p.PointSeq != seq {", "if !ok || p.PointSeq != seq {", "TestRP2zb_")
+m("RP-2 a pointer is taken for another point of the run", P, "if !ok || p.ProjectRoot != project || p.PointSeq != seq {", "if !ok || p.ProjectRoot != project {", "TestRP2zb_")
+m("RP-2 a pointer to a removed run is not said", P, "\tif !ok {\n\t\tsc.Bound = BoundGone\n\t\treturn Last{}, sc, nil\n\t}\n", "", "TestRP2zb_")
+m("RP-2 the previous session may be the current one", X, "\tif idx.Last != nil && idx.Last.SessionID != current {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
+m("RP-2 a clear overwrites the previous session's pointer", X, "\tif idx.Last != nil && idx.Last.SessionID != session {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
+m("RP-2 the index is written without its pointers", X, "Entries: entries, Last: idx.Last, Prior: idx.Prior})", "Entries: entries})", "TestRP2zc_")

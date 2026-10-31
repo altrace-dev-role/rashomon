@@ -74,7 +74,7 @@ m("VER-1.6 a family twice reads", I,
 # WriteIndex and its eviction.
 m("VER-1.6 WriteIndex writes the entries unsorted", I, "\tslices.SortFunc(entries, entryOrder)\n", "", "TestIDX6_")
 m("VER-1.6 an empty index writes entries null", I,
-  "\tif entries == nil {\n\t\tentries = []IndexEntry{}\n\t}\n", "", "TestIDX6_")
+  "\tif idx.Entries == nil {\n\t\tidx.Entries = []IndexEntry{}\n\t}\n", "", "TestIDX6_")
 m("VER-1.6 nothing is evicted over the cap", I,
   "\t\tif total <= MaxIndexBytes {\n\t\t\tbreak\n", "\t\tif true {\n\t\t\tbreak\n", "TestIDX4_")
 m("VER-1.6 an encoding exactly at the cap is evicted from", I,

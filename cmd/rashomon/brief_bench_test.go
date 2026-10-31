@@ -89,8 +89,8 @@ func BenchmarkProbeStart(b *testing.B) {
 		want string
 	}{
 		{"previous_hit", benchPrevious{previous: true}, "last session: "},
-		{"previous_bound", benchPrevious{previous: true, others: 900, big: true}, "last session: none within the 8 MiB"},
-		{"previous_capped", benchPrevious{others: 2000}, "last session: none in the 16 most recent"},
+		{"previous_bound", benchPrevious{previous: true, others: 900, big: true}, "last session: "},
+		{"previous_2000", benchPrevious{previous: true, others: 2000}, "last session: "},
 	} {
 		b.Run(row.name, func(b *testing.B) {
 			st, payload, args := benchPreviousFixture(b, row.fix)
@@ -113,13 +113,13 @@ func BenchmarkProbeStart(b *testing.B) {
 	}
 }
 
-// benchPreviousFixture is a project directory and a store holding the earlier
-// session's checkpoint, for the two rows that read the previous session at
-// startup (card REPORT1b). hit is that store as it stands: the newest run is
-// the project's previous session, one 64 KiB tail read. bound adds about two
-// thousand run directories of another project, written before it, and one
-// 20 MiB records file, the newest, whose tail holds no checkpoint, so the
-// scan pays the stat walk and the capped fallback and ends at its byte bound.
+// benchPreviousFixture is a project directory and a store, for the rows that
+// read the previous session at startup (card REPORT1b). The line comes from
+// the project index's pointer and the one checkpoint it names, so the rows
+// show a cost that does not follow the store: previous_hit is the previous
+// session alone; previous_bound adds 900 run directories of another project
+// and a 20 MiB records file newer than all of them; previous_2000 adds 2,000
+// run directories. Each wants the same line.
 // benchPrevious is what benchPreviousFixture seeds: the project's previous
 // session, others runs of another project written before it, and a 20 MiB
 // records file newer than all of them.
@@ -162,6 +162,11 @@ func benchPreviousFixture(b *testing.B, fx benchPrevious) (*store.Store, *hookio
 	base := time.Now().Add(-time.Hour)
 	if fx.previous {
 		seed("previous", line("previous", root), base)
+		// The Stop that cut its checkpoint also noted it in the project index.
+		idx := &verify.ProjectIndex{ProjectKey: root, Last: &verify.LastCheckpoint{SessionID: "previous", PointSeq: 7, AtMS: 1760000000000}}
+		if _, err := verify.WriteIndex(verify.IndexPath(storeRoot, root), idx); err != nil {
+			b.Fatal(err)
+		}
 	}
 	{
 		for i := range fx.others {

@@ -80,6 +80,9 @@ type Scan struct {
 const (
 	BoundRuns  = "runs"
 	BoundBytes = "bytes"
+	// BoundGone: the checkpoint the project's index names is no longer in the
+	// store (forget, purge or eviction removed its run).
+	BoundGone = "gone"
 	// BoundWalk: the store held more run directories than MaxWalk, and the
 	// ones past it were not looked at.
 	BoundWalk = "walk"
@@ -272,6 +275,8 @@ func PreviousLine(p Last, s Scan, pointer string) string {
 		switch s.Bound {
 		case BoundRuns:
 			return lead + "none in the " + strconv.Itoa(MaxRuns) + " most recent sessions on this machine"
+		case BoundGone:
+			return lead + "none; its record is no longer in the store"
 		case BoundWalk:
 			return lead + "none among the first " + strconv.Itoa(MaxWalk) + " session directories on this machine"
 		case BoundBytes:
@@ -279,7 +284,7 @@ func PreviousLine(p Last, s Scan, pointer string) string {
 		}
 		return ""
 	}
-	at := time.UnixMilli(p.RecordedAtUnixMS).Format("01-02 15:04")
+	at := time.UnixMilli(p.RecordedAtUnixMS).UTC().Format("01-02 15:04")
 	line := lead + at + ", " + reason(p) + "; " + pointer
 	if len("  "+line) > 80 {
 		line = lead + at + "; " + pointer
@@ -313,4 +318,29 @@ func reason(p Last) string {
 		return "no required gate"
 	}
 	return "not green"
+}
+
+// Pointed is the checkpoint a pointer names (the project index's last
+// checkpoint of an earlier session): one tail read of that session's run, at
+// most TailBytes, whatever the store's size. It is found only when the run's
+// last checkpoint is the one named, point seq and project both: a run that is
+// gone, or holds no checkpoint, is BoundGone, and one that holds another
+// checkpoint is neither found nor bounded, for the caller to leave its line
+// as it is. Nothing is guessed.
+func Pointed(st *store.Store, project, session string, seq int64) (Last, Scan, error) {
+	line, ok, n, err := st.LatestRecordTail(session, store.TypeVerify, TailBytes)
+	sc := Scan{ReadBytes: n}
+	if err != nil {
+		return Last{}, sc, err
+	}
+	if !ok {
+		sc.Bound = BoundGone
+		return Last{}, sc, nil
+	}
+	p, ok := decodeHead(line)
+	if !ok || p.ProjectRoot != project || p.PointSeq != seq {
+		return Last{}, sc, nil
+	}
+	sc.Found = true
+	return p, sc, nil
 }

@@ -97,14 +97,19 @@ func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout 
 
 // withLastSession replaces the brief's verify line with the line for the
 // project's previous session (card REPORT1b): its time, one reason and the
-// report command its origin has. The scan is receipt.Previous at the startup
-// bounds, the one added read on this path. Any error leaves the verify line
-// as it is.
+// report command its origin has. One more small read and no walk, whatever
+// the store holds: the project index (already read for the brief), which the
+// Stop that cut each checkpoint also wrote its last two into
+// (ProjectIndex.Last and Prior), names the one checkpoint read. An index with no pointer for an earlier session (a
+// first session, or an index written before the pointer), a pointer to a
+// checkpoint that is not the one named, or any error leaves the verify line,
+// and a pointer to a run that is gone says so.
 func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plugin bool) brief.Brief {
-	last, scan, err := receipt.Previous(st, receipt.Query{Project: root, Skip: sessionID, MaxRuns: receipt.MaxRuns, MaxBytes: receipt.MaxBytes})
-	// Every run read and none of the project's: a first session, or one whose
-	// predecessors cut no checkpoint. The verify line, which names the report
-	// command, stays; "none" is for a walk the bounds ended.
+	ptr := b.Index.PreviousOf(sessionID)
+	if ptr == nil {
+		return b
+	}
+	last, scan, err := receipt.Pointed(st, root, ptr.SessionID, ptr.PointSeq)
 	if err != nil || !scan.Found && scan.Bound == "" {
 		return b
 	}
@@ -112,9 +117,9 @@ func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plu
 	if plugin {
 		pointer = brief.PluginReport
 	}
-	source := "the project's newest checkpoint before this session"
+	source := "the project index's last checkpoint of an earlier session"
 	if !scan.Found {
-		source = "the store's runs, within the read bounds"
+		source = "the project index, whose last checkpoint is gone"
 	}
 	text := strings.TrimPrefix(receipt.PreviousLine(last, scan, pointer), brief.LastSessionLead)
 	return b.WithVerify(brief.Fact{Kind: brief.KindLastSession, Text: text, Source: source})

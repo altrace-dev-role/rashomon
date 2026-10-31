@@ -97,6 +97,10 @@ type Brief struct {
 	GoDirs       int
 	WalkCapped   bool
 	Dirs         []string
+	// Index is the project index as read from the store, nil when there is
+	// none or it did not read: what the tests line counts, and where the
+	// previous session is named (ProjectIndex.PreviousOf).
+	Index *verify.ProjectIndex
 }
 
 // PluginReport is the verify line's command inside the plugin: the slash
@@ -122,10 +126,14 @@ type Pointer struct {
 // verify line names the report command report points at.
 func Build(root, storeRoot string, report Pointer, sp *spec.Compiled) Brief {
 	b := Brief{Root: root}
+	if storeRoot != "" {
+		// Read once, for the tests line and for the previous session's pointer.
+		b.Index, _ = verify.ReadIndex(verify.IndexPath(storeRoot, root))
+	}
 	instructions := b.instructionsFact()
 	build := b.buildFact()
 	packages := b.packagesFact()
-	b.Facts = []Fact{instructions, build, testsFact(root, storeRoot, sp), specFact(root, sp)}
+	b.Facts = []Fact{instructions, build, testsFact(root, storeRoot, b.Index, sp), specFact(root, sp)}
 	if f, ok := trustFact(storeRoot, sp); ok {
 		b.Facts = append(b.Facts, f)
 	}
@@ -376,7 +384,7 @@ func module(path string) string {
 // none, the test-kind families the project index has seen (B2: the index
 // counts runs, not greens), how many sessions the most-seen one ran in, and
 // how many are required.
-func testsFact(root, storeRoot string, sp *spec.Compiled) Fact {
+func testsFact(root, storeRoot string, idx *verify.ProjectIndex, sp *spec.Compiled) Fact {
 	if sp != nil {
 		var tests []spec.Declared
 		for _, d := range sp.Gates {
@@ -400,10 +408,8 @@ func testsFact(root, storeRoot string, sp *spec.Compiled) Fact {
 		}
 	}
 	source := "no store"
-	var idx *verify.ProjectIndex
 	if storeRoot != "" {
 		source = verify.IndexPath(storeRoot, root)
-		idx, _ = verify.ReadIndex(source)
 	}
 	runners, most, required := 0, 0, 0
 	if idx != nil {

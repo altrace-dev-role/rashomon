@@ -159,7 +159,7 @@ func TestRP2h_PreviousIsBounded(t *testing.T) {
 // width fallback.
 func TestRP2i_StartupLineFitsAndReasonsAreRight(t *testing.T) {
 	const plugin, cli = "/rashomon:report last", "rashomon report --session last"
-	at := time.Date(2026, 10, 29, 16, 20, 0, 0, time.Local).UnixMilli()
+	at := time.Date(2026, 10, 29, 16, 20, 0, 0, time.UTC).UnixMilli()
 	cases := []struct {
 		name string
 		c    ckpt

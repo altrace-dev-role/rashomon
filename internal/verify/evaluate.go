@@ -12,9 +12,26 @@ import (
 // ProjectIndex is the per-project learned-gate index (2.2.10): its file is
 // IndexPath's, and index.go reads, observes and writes it. Entries is sorted
 // by Family, and never null in the encoding.
+//
+// Last and Prior are the project's last two checkpoints by session, which
+// the Stop that cuts one notes in the same write: Last the newest, Prior the
+// newest of a different session. SessionStart reads them to name the
+// previous session in one small read instead of walking the store (card
+// REPORT1b); a file written before they existed has neither, and a reader
+// that finds none falls back, never guesses.
 type ProjectIndex struct {
-	ProjectKey string       `json:"project_key"`
-	Entries    []IndexEntry `json:"entries"`
+	ProjectKey string          `json:"project_key"`
+	Entries    []IndexEntry    `json:"entries"`
+	Last       *LastCheckpoint `json:"last,omitempty"`
+	Prior      *LastCheckpoint `json:"prior,omitempty"`
+}
+
+// LastCheckpoint names a checkpoint record: its session, its point seq and
+// when it was recorded.
+type LastCheckpoint struct {
+	SessionID string `json:"session_id"`
+	PointSeq  int64  `json:"point_seq"`
+	AtMS      int64  `json:"at_unix_ms"`
 }
 
 // Evaluate is the evaluator of 2.2.4: a pure fold from the record, the index,
