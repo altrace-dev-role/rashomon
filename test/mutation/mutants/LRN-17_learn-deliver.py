@@ -65,3 +65,9 @@ m("LRN-17 the closed label list dropped (every dotted word refused)", F,
   "\t\tif slices.Contains(hostLabels, strings.ToLower(w[dot+1:])) {\n", "\t\tif true {\n", "TestLRN17i_")
 m("LRN-17 the approval time not stamped", D,
   "\tl.file.Lessons[i].ApprovedUnixMS = now.UnixMilli()\n", "\t_ = now\n", "TestLRN17j_")
+
+# The consent screen says what the build does: an approved lesson reaches the
+# agent with a prompt, once a session.
+m("LRN-17 the consent screen says no lesson reaches the agent", "internal/disclose/paragraphs.go",
+  "An approved lesson reaches your agent with your prompt, once a session, below",
+  "No lesson reaches your agent in this build; an approved one waits below", "TestLRN17k_")

@@ -111,7 +111,7 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 		return err
 	}
 	if _, err = fmt.Fprintf(stdout, "imported %d lessons at proposed, skipped %d; "+
-		"each reaches the agent only after `rashomon learn approve ID`\n", added, skipped); err != nil {
+		"an approved lesson reaches the agent with your prompt, once a session; `rashomon learn approve ID` approves one\n", added, skipped); err != nil {
 		return err
 	}
 	// Import admits text approval refuses (2,048 bytes in any charset), so
