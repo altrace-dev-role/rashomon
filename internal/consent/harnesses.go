@@ -45,7 +45,7 @@ func WriteSDKAnswer(root string, record bool) error {
 // WriteSDKDefault is WriteSDKAnswer for a consent where the second question
 // was not asked (--yes): it records the default, "paused", only where
 // harnesses.json records no answer yet, and otherwise writes nothing, so an
-// earlier y, or a later rashomon resume --surface sdk, stays as it is.
+// earlier y stays as it is.
 func WriteSDKDefault(root string) error {
 	h, err := readHarnesses(root)
 	if err != nil {

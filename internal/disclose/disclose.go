@@ -1,7 +1,7 @@
 // Package disclose is the inventory of everything rashomon installs, writes,
 // reads, prints and may say to the agent, and the one source every
 // user-facing statement of it is rendered from: the consent screen, the
-// README's machine section, `rashomon disclose` and `status`.
+// README's machine section and `rashomon status`.
 //
 // It exists because a tool that installs hooks into an editor and adds text
 // to an agent's context is the kind of tool people get warned about, and the
@@ -133,7 +133,7 @@ type Paragraph struct {
 	Cite  string `json:"cite"`
 }
 
-// Sections of `rashomon disclose`, in print order (7.2.8).
+// Sections of the inventory's print, in order (7.2.8).
 const (
 	SectionInstalled    = "INSTALLED"
 	SectionConsent      = "CONSENT"
@@ -446,8 +446,8 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), rule match, outcome, exit code and timing, its working directory, its project root and the file path an edit names, all in the clear, plus keyed digests of its working directory and its shape",
-			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; at record scope v5 only, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, which record scope v4, the default, withholds",
+			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text (this build leaves the command field null at every record scope)",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
 		},
@@ -457,7 +457,7 @@ func runSegmentFiles() []FileRule {
 			Mode:       "0600",
 			Purpose:    "an execution or terminal record the ordered append lock could not place in time",
 			Holds:      "the same fields records.ndjson holds, unordered",
-			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
+			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text (this build leaves the command field null at every record scope)",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
 		},
