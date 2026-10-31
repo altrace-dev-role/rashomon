@@ -232,13 +232,30 @@ type Result struct {
 // the network through one. Walking the tree needs no subprocess and works in a
 // worktree, where .git is a file rather than a directory.
 func Key(cwd string) string {
+	return KeyOf(Resolve(cwd))
+}
+
+// Resolve is cwd with its symlinks resolved, or cwd as spelled when it does
+// not resolve (not on disk, or not readable), "" for "". It is the one
+// EvalSymlinks a caller that wants both the resolved directory and the project
+// key makes, handing the result to KeyOf.
+func Resolve(cwd string) string {
 	if cwd == "" {
 		return ""
 	}
-	dir := cwd
 	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
-		dir = resolved
+		return resolved
 	}
+	return cwd
+}
+
+// KeyOf is Key of a directory Resolve has already resolved: the nearest
+// enclosing .git, else the directory itself. No symlink is resolved here.
+func KeyOf(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	start := dir
 	for {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
 			return dir
@@ -251,10 +268,7 @@ func Key(cwd string) string {
 		}
 		dir = parent
 	}
-	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
-		return resolved
-	}
-	return cwd
+	return start
 }
 
 // FileName turns a project key into one path element.
