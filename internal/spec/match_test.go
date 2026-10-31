@@ -100,3 +100,35 @@ func TestPF1l_CoversHonoursExcludePaths(t *testing.T) {
 		t.Error("a rule with no paths covers a path")
 	}
 }
+
+// TestSR1a_MatchPathAllocatesNothing: the matcher runs once per rule, per
+// write and per pattern at every judged call, so it holds no slice: it walks
+// the pattern and the path with strings.Cut (D210). Break: split either side
+// into a slice.
+func TestSR1a_MatchPathAllocatesNothing(t *testing.T) {
+	r := Rule{Paths: []string{"internal/**/*.go", "db/migrations", "*.sql"}, ExcludePaths: []string{"**/testdata/"}}
+	for _, c := range []struct{ pattern, rel string }{
+		{"internal/**/*.go", "internal/verify/deep/rules.go"},
+		{"db/migrations", "db/migrations/001.sql"},
+		{"*.md", "docs/a/b/c/README.md"},
+		{"/cmd/*.go", "cmd/main.go"},
+		{"**/x/**/y", "a/b/x/c/d/y/z"},
+		{"é?.go", "pkg/éa.go"},
+		{"a/../b", "a/b"},
+	} {
+		if n := testing.AllocsPerRun(100, func() { MatchPath(c.pattern, c.rel) }); n != 0 {
+			t.Errorf("MatchPath(%q, %q) allocates %v times, want 0", c.pattern, c.rel, n)
+		}
+	}
+	if n := testing.AllocsPerRun(100, func() { r.Covers("internal/verify/deep/rules.go") }); n != 0 {
+		t.Errorf("Covers allocates %v times, want 0", n)
+	}
+}
+
+// BenchmarkMatchPath is the matcher's per-call cost, the row D210 reads.
+func BenchmarkMatchPath(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		MatchPath("internal/**/*.go", "internal/verify/deep/rules.go")
+	}
+}
