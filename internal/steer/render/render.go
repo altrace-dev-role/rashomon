@@ -102,6 +102,38 @@ type RegressionLocationDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// RegressionLocationOutputBinding is regression-location's slots for a run
+// whose outcome was read from its output because a pipe hid its exit status
+// (D229): the gate, how long ago it last passed, and the files written
+// between the two runs. No exit slot: the pipe's own status is not the run's.
+type RegressionLocationOutputBinding struct {
+	Gate    slot.Gate     `slot:"gate"`
+	Minutes slot.Minutes  `slot:"minutes"`
+	Paths   slot.PathList `slot:"paths"`
+}
+
+// RegressionLocationOutputDegradedBinding is the output form's no-paths row.
+type RegressionLocationOutputDegradedBinding struct {
+	Gate    slot.Gate    `slot:"gate"`
+	Minutes slot.Minutes `slot:"minutes"`
+	Count   slot.Count   `slot:"count"`
+}
+
+// StaleEvidenceOutputBinding is stale-evidence's slots where the green was
+// read from the run's output (D229).
+type StaleEvidenceOutputBinding struct {
+	Gate    slot.Gate     `slot:"gate"`
+	Minutes slot.Minutes  `slot:"minutes"`
+	Paths   slot.PathList `slot:"paths"`
+}
+
+// StaleEvidenceOutputDegradedBinding is the output form's no-paths row.
+type StaleEvidenceOutputDegradedBinding struct {
+	Gate    slot.Gate    `slot:"gate"`
+	Minutes slot.Minutes `slot:"minutes"`
+	Count   slot.Count   `slot:"count"`
+}
+
 // StaleEvidenceBinding is stale-evidence's slots (card STALE-NUDGE1): the
 // gate, how long ago its green run exited 0, and the files this call wrote
 // after it. Only this call's files: a write another call declared beside it
@@ -208,6 +240,26 @@ func templates() map[templateKey]template {
 				id: "regression-location-degraded/v1",
 				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. " +
 					"{count} file writes were recorded between the two runs.",
+			},
+			{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationOutputBinding{})}: {
+				id: "regression-location-output/v1",
+				format: "rashomon record: gate {gate} passed earlier in this session ({minutes} min ago) and its output reports a failure on this run " +
+					"(read from its output; the pipe hid the exit status). Files written between the two runs: {paths}.",
+			},
+			{pattern.RegressionLocation, reflect.TypeOf(RegressionLocationOutputDegradedBinding{})}: {
+				id: "regression-location-output-degraded/v1",
+				format: "rashomon record: gate {gate} passed earlier in this session ({minutes} min ago) and its output reports a failure on this run " +
+					"(read from its output; the pipe hid the exit status). {count} file writes were recorded between the two runs.",
+			},
+			{pattern.StaleEvidence, reflect.TypeOf(StaleEvidenceOutputBinding{})}: {
+				id: "stale-evidence-output/v1",
+				format: "rashomon record: gate {gate} passed earlier in this session ({minutes} min ago), read from its output as the pipe hid the exit status; " +
+					"this call then wrote {paths}. No later run of the gate is recorded.",
+			},
+			{pattern.StaleEvidence, reflect.TypeOf(StaleEvidenceOutputDegradedBinding{})}: {
+				id: "stale-evidence-output-degraded/v1",
+				format: "rashomon record: gate {gate} passed earlier in this session ({minutes} min ago), read from its output as the pipe hid the exit status; " +
+					"this call then wrote {count} files. No later run of the gate is recorded.",
 			},
 			{pattern.StaleEvidence, reflect.TypeOf(StaleEvidenceBinding{})}: {
 				id: "stale-evidence/v1",

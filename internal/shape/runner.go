@@ -144,8 +144,16 @@ var (
 // matched. A one-word row has no words to look for, so it is matched at the
 // token after the program, with nothing passed over.
 func runnerOn(toks []token, i int, prog string, end int, list [][]string) (on, hides bool) {
+	row, hides := runnerRow(toks, i, prog, end, list)
+	return row >= 0, hides
+}
+
+// runnerRow is runnerOn, and which row of list the command is: its index, or
+// -1 where it is none. A reader that names the runner reads the row's own
+// words from the list by this index (runnerName), never the command's.
+func runnerRow(toks []token, i int, prog string, end int, list [][]string) (row int, hides bool) {
 next:
-	for _, c := range list {
+	for n, c := range list {
 		if c[0] != prog {
 			continue
 		}
@@ -163,14 +171,14 @@ next:
 		}
 		args := toks[from+len(c)-1 : end]
 		if refusesRun(refusalsOf(c), toks[:i], args) {
-			return false, false
+			return -1, false
 		}
 		for _, t := range args {
 			hides = hides || hidingFlag(t.text, prog)
 		}
-		return true, hides
+		return n, hides
 	}
-	return false, false
+	return -1, false
 }
 
 // rowAt reports whether row c's words after its program are the tokens from

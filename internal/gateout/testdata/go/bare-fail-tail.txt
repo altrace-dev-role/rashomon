@@ -1,0 +1,2 @@
+FAIL
+FAIL	example.com/mod/b	0.012s

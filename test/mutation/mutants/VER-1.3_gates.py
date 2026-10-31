@@ -85,7 +85,7 @@ m("VER-1.3 rows sharing a Gate name are not ordered by Family", G,
   'cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))', 'cmp.Compare(a.Gate, b.Gate)', "TestVER18c_")
 
 # The v0 constants.
-m("VER-1.3 a run's scope is not unknown", G, 'GateOutput: r.Output, Scope: scopeUnknown}', 'GateOutput: r.Output}', "TestVER10_")
+m("VER-1.3 a run's scope is not unknown", G, 'GateOutput: r.Output, Scope: scopeUnknown,\n', 'GateOutput: r.Output,\n', "TestVER10_")
 
 # VER-1.3b (D33): a spilled last run's order, and the Gate's kind.
 m("VER-1.3b a spilled run's order is known", G, '\treturn r.Seq, false\n', '\treturn r.Seq, true\n', "TestVER26_")

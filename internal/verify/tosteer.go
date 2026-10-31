@@ -87,6 +87,9 @@ func ToSteer(f Finding, at Point, agentID string) (steer.Finding, error) {
 		AfterSeq: at.Seq,
 		AgentID:  agentID,
 	}
+	if f.Gate != nil {
+		out.OutcomeFrom = string(f.Gate.OutcomeFrom)
+	}
 	if err := out.Check(); err != nil {
 		return fail(err.Error())
 	}

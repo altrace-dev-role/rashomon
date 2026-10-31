@@ -100,9 +100,12 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 		}
 		green, last := g.LastGreen.Seq, g.LastRun.Seq
 		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
-			LastGreenSeq: &green, LastRunSeq: &last, PartialRuns: g.PartialRunsSince}
-		exit := *g.LastRun.ExitCode
-		fact.ExitCode = &exit
+			LastGreenSeq: &green, LastRunSeq: &last, PartialRuns: g.PartialRunsSince,
+			OutcomeFrom: OutcomeFrom(g.LastRun.OutcomeFrom.String())}
+		if g.LastRun.ExitCode != nil && g.LastRun.OutcomeFrom == SourceExit {
+			exit := *g.LastRun.ExitCode
+			fact.ExitCode = &exit
+		}
 		if p := Program(programOf(runs, last)); p.Valid() {
 			fact.Program = p
 		}
@@ -120,17 +123,30 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 	return out
 }
 
-// regressedHere is the candidate condition: the gate is red by a failed exit
-// (not by an output line, D61, and not with a write declared after the red,
-// D67), it was green earlier, and its last run is this call with an exit
-// code other than 126 and 127.
+// regressedHere is the candidate condition: the gate is red (not with a write
+// declared after the red, D67), it was green earlier, and its last run is
+// this call, and the red is one of two kinds. By a failed exit, with an exit
+// code other than 126 and 127 -- not by an output line alone (D61). Or by the
+// run's output, where the run's outcome was read from it because a pipe hid
+// the exit status (outcome_from output_summary, D229): readsOutput let in
+// only summary_fail, or a fail line for a runner whose table has no summary
+// form, so a FAIL substring a pipe happened to keep is never one. The run's
+// exit status is then the pipe's own and no code is named.
 func regressedHere(g *GateState, toolUseID string) bool {
-	if g.State != Red || g.Reason != FailedExit || g.LastGreen == nil || g.LastRun == nil ||
-		g.LastRun.ToolUseID != toolUseID || g.LastRun.ExitCode == nil {
+	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {
 		return false
 	}
-	code := *g.LastRun.ExitCode
-	return code != 126 && code != 127
+	switch g.Reason {
+	case FailedExit:
+		if g.LastRun.ExitCode == nil {
+			return false
+		}
+		code := *g.LastRun.ExitCode
+		return code != 126 && code != 127
+	case FailedOutput:
+		return g.LastRun.OutcomeFrom == SourceOutput
+	}
+	return false
 }
 
 // staleEvidence is stale-evidence's producer (card STALE-NUDGE1): for each
@@ -150,7 +166,8 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, pt
 		}
 		green := g.LastGreen.Seq
 		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
-			LastGreenSeq: &green, LastRunSeq: &green, PartialRuns: g.PartialRunsSince}
+			LastGreenSeq: &green, LastRunSeq: &green, PartialRuns: g.PartialRunsSince,
+			OutcomeFrom: OutcomeFrom(g.LastGreen.OutcomeFrom.String())}
 		if p := Program(programOf(runs, green)); p.Valid() {
 			fact.Program = p
 		}
@@ -297,7 +314,8 @@ func renderRegression(run *store.Run, times *declTimes, f Finding) render.Messag
 	g := f.Gate
 	green, okGreen := times.of(*g.LastGreenSeq)
 	red, okRed := times.of(*g.LastRunSeq)
-	if !okGreen || !okRed || g.ExitCode == nil {
+	fromOutput := g.OutcomeFrom == OutcomeFromOutput
+	if !okGreen || !okRed || g.ExitCode == nil && !fromOutput {
 		return render.Message{}
 	}
 	minutes := slot.Minutes(max(0, (red-green)/60_000))
@@ -305,18 +323,34 @@ func renderRegression(run *store.Run, times *declTimes, f Finding) render.Messag
 	if g.Program == "" {
 		word = slot.Gate(kindOfGateID(string(g.GateID)))
 	}
-	exit := slot.Exit(*g.ExitCode)
+	var exit slot.Exit
+	if g.ExitCode != nil {
+		exit = slot.Exit(*g.ExitCode)
+	}
 	if len(g.Paths) > 0 {
 		paths := make([]slot.Path, len(g.Paths))
 		for i, p := range g.Paths {
 			paths[i] = slot.Path(p)
 		}
 		unlisted := g.PathsOmitted + unnamedBetween(run.Declarations, *g.LastGreenSeq, *g.LastRunSeq)
-		m, err := render.New(pattern.RegressionLocation, render.RegressionLocationBinding{
-			Gate: word, Minutes: minutes, Exit: exit, Paths: slot.NewPathList(paths, unlisted)})
+		var m render.Message
+		var err error
+		if fromOutput {
+			// The run's outcome is its output's: the note says so (D229).
+			m, err = render.New(pattern.RegressionLocation, render.RegressionLocationOutputBinding{
+				Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, unlisted)})
+		} else {
+			m, err = render.New(pattern.RegressionLocation, render.RegressionLocationBinding{
+				Gate: word, Minutes: minutes, Exit: exit, Paths: slot.NewPathList(paths, unlisted)})
+		}
 		if !errors.Is(err, slot.ErrNoPathsLeft) {
 			return m
 		}
+	}
+	if fromOutput {
+		m, _ := render.New(pattern.RegressionLocation, render.RegressionLocationOutputDegradedBinding{
+			Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})
+		return m
 	}
 	m, _ := render.New(pattern.RegressionLocation, render.RegressionLocationDegradedBinding{
 		Gate: word, Minutes: minutes, Exit: exit, Count: slot.Count(g.WritesSince)})
@@ -340,16 +374,30 @@ func renderStale(times *declTimes, f Finding, decl int64) render.Message {
 	if g.Program == "" {
 		word = slot.Gate(kindOfGateID(string(g.GateID)))
 	}
+	fromOutput := g.OutcomeFrom == OutcomeFromOutput
 	if len(g.Paths) > 0 {
 		paths := make([]slot.Path, len(g.Paths))
 		for i, p := range g.Paths {
 			paths[i] = slot.Path(p)
 		}
-		m, err := render.New(pattern.StaleEvidence, render.StaleEvidenceBinding{
-			Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, g.PathsOmitted)})
+		var m render.Message
+		var err error
+		if fromOutput {
+			// The green is the run's output's: the note says so (D229).
+			m, err = render.New(pattern.StaleEvidence, render.StaleEvidenceOutputBinding{
+				Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, g.PathsOmitted)})
+		} else {
+			m, err = render.New(pattern.StaleEvidence, render.StaleEvidenceBinding{
+				Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, g.PathsOmitted)})
+		}
 		if !errors.Is(err, slot.ErrNoPathsLeft) {
 			return m
 		}
+	}
+	if fromOutput {
+		m, _ := render.New(pattern.StaleEvidence, render.StaleEvidenceOutputDegradedBinding{
+			Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})
+		return m
 	}
 	m, _ := render.New(pattern.StaleEvidence, render.StaleEvidenceDegradedBinding{
 		Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})

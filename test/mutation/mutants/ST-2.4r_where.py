@@ -27,8 +27,8 @@ m("ST-2.4r countTurn takes the window's last seq for its first", VS,
 
 # Each extra site back on its old clause.
 m("ST-2.4r the masked site keeps after the last edit", VL,
-  '\t\t\twhere, _ := when(v, g)\n\t\t\treturn t.name(g) + " ran" + where + "; its exit status',
-  '\t\t\twhere := " after the last edit"\n\t\t\treturn t.name(g) + " ran" + where + "; its exit status', "TestVER65_ValueLineRowsRender")
+  '\t\t\twhere, _ := when(v, g)\n\t\t\tif stage := droppingStage(g.LastRun)',
+  '\t\t\twhere := " after the last edit"\n\t\t\tif stage := droppingStage(g.LastRun)', "TestVER65_ValueLineRowsRender")
 m("ST-2.4r the backgrounded site keeps after the last edit", VL,
   '\t\t\twhere, _ := when(v, g)\n\t\t\treturn t.name(g) + " moved to the background"',
   '\t\t\twhere := " after the last edit"\n\t\t\treturn t.name(g) + " moved to the background"', "TestVER65_ValueLineRowsRender")

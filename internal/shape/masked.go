@@ -52,7 +52,10 @@ const (
 // line to it and the cd steps after it fold (`# c\` and then `cd a && go
 // test ./...`); version 10 names a Bash line's write targets and whether they
 // are all of them (WrittenPaths), pinned over a corpus of its own
-// (writeTargetPins) --
+// (writeTargetPins); version 11 names the runner the line ran (RunnerName, the
+// row's own words from the lists above) and the stage of a pipe that hid its
+// result (MaskedBy, a closed word), which verify reads with the output's
+// summary to say whether a piped run passed (D229) --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -64,7 +67,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 10
+const RulesVersion = 11
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
@@ -160,18 +163,18 @@ const maxRunnerGroups = 64
 // which is its words, and where it ran is the cwd digest's to say. A cd,
 // pushd or popd past them, past MaxLeadingCd steps, or in a line the two
 // readings fold apart, displaces the runners after it (displace).
-func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKind *string) {
+func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKind, name, by *string) {
 	if controlByte(cmd) {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	toks, err := tokenizeList(cmd)
 	if err != nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	p := &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
 	body, ok := p.parseLine()
 	if !ok {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	if len(p.runners) > maxRunnerGroups {
 		// Not sure: null. runShells below re-runs the whole parsed line for
@@ -182,7 +185,7 @@ func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKin
 		// square of the payload: 16,000 `make tN;` groups took 4.5s and
 		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
 		// already past what a build or test script looks like.
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	p.displace(agreedFold(toks, fold))
 
@@ -194,7 +197,7 @@ func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKin
 		f, pass, ran := p.runShells(body, g)
 		if f < 0 || pass < 0 || !ran {
 			// Not sure: null.
-			return nil, nil, nil
+			return nil, nil, nil, nil, nil
 		}
 		if f == 0 || f == pass {
 			hidden = append(hidden, g)
@@ -215,15 +218,21 @@ func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKin
 		}
 		if len(hidden) > 1 {
 			// No one later run follows up two runners.
-			return &k, nil, nil
+			return &k, nil, nil, nil, nil
 		}
 		d, rk := p.runnerOf(hidden[0], key)
-		return &k, d, rk
+		if d == nil {
+			return &k, nil, nil, nil, nil
+		}
+		return &k, d, rk, p.runners[hidden[0]].name, p.maskedBy(body, hidden[0])
 	case reach >= 0:
 		d, rk := p.runnerOf(reach, key)
-		return &none, d, rk
+		if d == nil {
+			return &none, nil, nil, nil, nil
+		}
+		return &none, d, rk, p.runners[reach].name, nil
 	}
-	return &none, nil, nil
+	return &none, nil, nil, nil, nil
 }
 
 // runnerOf is runner group g's digest and kind, the one place either is
@@ -290,6 +299,7 @@ type simple struct {
 	start, end int
 	op         simpleOp
 	runner     int  // the runner group, for opRunner
+	stage      int  // the pipe-stage word this command is (stageOf), stageOther where none
 	hides      bool // a hiding flag stands on the runner: it ends 0 failing or passing
 	args       []value
 	opts       []setOpt
@@ -330,7 +340,8 @@ type runnerGroup struct {
 	kind      string
 	starts    []int // the first token of each command that runs it
 	last      int
-	displaced bool // a cd, pushd or popd past the leading fold ran before it
+	displaced bool    // a cd, pushd or popd past the leading fold ran before it
+	name      *string // the runner's row in its list (runnerNames), never the line's words
 }
 
 type lineParser struct {

@@ -285,6 +285,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		s = shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key())
 		rec.ExecutedDigest = s.Digest
 		rec.StatusMasked, rec.RunnerDigest, rec.RunnerKind = s.StatusMasked, s.RunnerDigest, s.RunnerKind
+		rec.RunnerName, rec.MaskedBy = s.RunnerName, s.MaskedBy
 		if pl.HookEventName != FailureEvent {
 			p.landedWrite = writtenCall{pl.ToolName, pl.ToolInput, s.VerbClass == shape.VerbWrite, s.MayWrite}
 		}

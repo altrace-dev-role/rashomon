@@ -43,13 +43,22 @@ func gateKind(s *shape.Shape) string {
 	return ""
 }
 
-// programOf is the program gateout's tables are keyed by: path.Base of the
-// line's program word, or nothing where the shape could not name one.
+// programOf is the program gateout's tables are keyed by: the table's own word
+// for the runner the line launched (gateout.ProgramFor: pytest for `python3 -m
+// pytest`, go for `go test`), else path.Base of the line's program word, or
+// nothing where the shape could not name one. The first word of a line names
+// the interpreter and not the runner, so keyed by it a piped `python3 -m
+// pytest` read as unattributable before a byte of its output was looked at
+// (D229, MASKED-OUTCOME1).
 func programOf(s *shape.Shape) string {
-	if s.Program == nil {
-		return ""
+	program, runner := "", ""
+	if s.Program != nil {
+		program = *s.Program
 	}
-	return *s.Program
+	if s.RunnerName != nil {
+		runner = *s.RunnerName
+	}
+	return gateout.ProgramFor(program, runner)
 }
 
 // gateOutput classifies a gate run's output (2.2.3, 2.2.10) and returns only

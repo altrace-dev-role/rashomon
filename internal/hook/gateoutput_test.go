@@ -155,11 +155,10 @@ func TestGO1e_FailureEventReadsErrorAfterLineOne(t *testing.T) {
 	wantGateOutput(t, go1Post(t, FailureEvent, "go test ./...", lineOne), "summary_pass", "go", "")
 }
 
-// TestGO1g_MaskedPipeReadsTheSummary: PG2's sentence, live. A pipe hides go
-// test's status, and the evaluator still reads the summary line the post
-// classified: masked_inconclusive with a success line, not without one.
-// Break: leave gate_output unwritten, and the reason is no success line.
-func TestGO1g_MaskedPipeReadsTheSummary(t *testing.T) {
+// go1gGate is the one gate the evaluator reads after a post of cmd with the
+// stdout out: the pipe's masked run, live.
+func go1gGate(t *testing.T, cmd, out string) (verify.GateState, store.Execution) {
+	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	st := mustOpen(t)
 	now := time.Now()
@@ -174,11 +173,10 @@ func TestGO1g_MaskedPipeReadsTheSummary(t *testing.T) {
 	if err := st.AppendCoverage(cov); err != nil {
 		t.Fatal(err)
 	}
-	const cmd = "go test ./... | tail -5"
 	h := New(st, clock)
 	h.Close(&Signals{}, h.Capture(bytes.NewReader(go1Payload(t, "PreToolUse", cmd, nil))))
 	p := NewPost(st, clock)
-	if err := p.Capture(bytes.NewReader(go1Payload(t, "PostToolUse", cmd, streams("ok  \tpkg\t0.01s\n", "")))); err != nil {
+	if err := p.Capture(bytes.NewReader(go1Payload(t, "PostToolUse", cmd, streams(out, "")))); err != nil {
 		t.Fatal(err)
 	}
 	run, err := st.ReadRun("s")
@@ -186,11 +184,73 @@ func TestGO1g_MaskedPipeReadsTheSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap := verify.Evaluate(run, nil, nil, verify.Point{Seq: p.landedSeq, SessionID: "s"}, now)
-	if snap.Recording != verify.Complete || len(snap.Gates) != 1 {
+	if snap.Recording != verify.Complete || len(snap.Gates) != 1 || len(run.Executions) != 1 {
 		t.Fatalf("recording %s with %d gates, want complete and the one masked run", snap.Recording, len(snap.Gates))
 	}
-	if g := snap.Gates[0]; g.State != verify.MaskedInconclusive || g.Reason != verify.MaskedWithSuccessLine {
+	return snap.Gates[0], run.Executions[0]
+}
+
+// go1gFrom is the provenance word of the gate's last run, empty where the
+// exit status decided it or there is no run.
+func go1gFrom(g verify.GateState) string {
+	if g.LastRun == nil {
+		return ""
+	}
+	return g.LastRun.OutcomeFrom.String()
+}
+
+// TestGO1g_MaskedPipeReadsTheSummary: PG2's sentence, live. A pipe that drops
+// the summary's neighbours (head) hides go test's status, and the evaluator
+// still reads the summary line the post classified: masked_inconclusive with
+// a success line, not without one. Break: leave gate_output unwritten, and
+// the reason is no success line.
+func TestGO1g_MaskedPipeReadsTheSummary(t *testing.T) {
+	g, _ := go1gGate(t, "go test ./... | head -5", "ok  \tpkg\t0.01s\n")
+	if g.State != verify.MaskedInconclusive || g.Reason != verify.MaskedWithSuccessLine {
 		t.Errorf("gate %s %s, want %s %s", g.State, g.Reason, verify.MaskedInconclusive, verify.MaskedWithSuccessLine)
+	}
+}
+
+// TestMO1_ATailedRunnerIsAttributed: the run the card names, live. `python3
+// -m pytest -q 2>&1 | tail -N` is attributed to pytest, not to python3: the
+// record names the runner and the keeping stage, the post classifies the
+// output by the pytest table, and the evaluator takes the outcome from the
+// summary line it read, saying so (outcome_from). Break: key gate_output by
+// the program, and the output is unattributable and the run stays masked.
+func TestMO1_ATailedRunnerIsAttributed(t *testing.T) {
+	const cmd = "python3 -m pytest -q 2>&1 | tail -5"
+	g, x := go1gGate(t, cmd, "..\n3 passed in 0.12s\n")
+	if x.RunnerName == nil || *x.RunnerName != "python3 -m pytest" || x.MaskedBy == nil || *x.MaskedBy != "tail" {
+		t.Errorf("runner_name %v, masked_by %v, want python3 -m pytest and tail", x.RunnerName, x.MaskedBy)
+	}
+	wantGateOutput(t, x, "summary_pass", "pytest", "")
+	if g.State != verify.Green || go1gFrom(g) != verify.OutcomeFromOutput {
+		t.Errorf("gate %s from %q, want green from %s", g.State, go1gFrom(g), verify.OutcomeFromOutput)
+	}
+	// The same run under a stage that drops the summary stays masked.
+	g, x = go1gGate(t, "python3 -m pytest -q 2>&1 | head -5", "..\n3 passed in 0.12s\n")
+	if x.MaskedBy == nil || *x.MaskedBy != "head" || g.State != verify.MaskedInconclusive || go1gFrom(g) != "" {
+		t.Errorf("head: masked_by %v, gate %s from %q, want head, masked_inconclusive, no provenance", x.MaskedBy, g.State, go1gFrom(g))
+	}
+	// A failing summary through tail is red from the output.
+	g, _ = go1gGate(t, cmd, "..F\n1 failed, 2 passed in 0.12s\n")
+	if g.State != verify.Red || g.Reason != verify.FailedOutput || go1gFrom(g) != verify.OutcomeFromOutput {
+		t.Errorf("failing summary: gate %s %s from %q, want red failed_output from output_summary", g.State, g.Reason, go1gFrom(g))
+	}
+}
+
+// TestMO1_GoAndCargoReadThroughTail: go's bare FAIL and cargo's error lines
+// are failing output through a keeping stage, by the table word.
+func TestMO1_GoAndCargoReadThroughTail(t *testing.T) {
+	for _, c := range []struct{ cmd, out, runner string }{
+		{"go test ./... 2>&1 | tail -20", "--- FAIL: TestX (0.00s)\nFAIL\nFAIL\tpkg\t0.01s\n", "go"},
+		{"cargo test 2>&1 | tail -20", "test result: FAILED. 0 passed; 1 failed\nerror: test failed, to rerun pass `--lib`\n", "cargo"},
+	} {
+		g, x := go1gGate(t, c.cmd, c.out)
+		wantGateOutput(t, x, "summary_fail", c.runner, "")
+		if g.State != verify.Red || go1gFrom(g) != verify.OutcomeFromOutput {
+			t.Errorf("%s: gate %s from %q, want red from output_summary", c.cmd, g.State, go1gFrom(g))
+		}
 	}
 }
 

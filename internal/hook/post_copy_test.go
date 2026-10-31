@@ -21,7 +21,7 @@ import (
 // shape decides and the test sets aside. A field added to shape.Shape or
 // store.Execution goes in one of them, here, before this test passes again.
 var (
-	postCarried    = []string{"StatusMasked", "RunnerDigest", "RunnerKind", "ExecutedDigest=Digest"}
+	postCarried    = []string{"StatusMasked", "RunnerDigest", "RunnerKind", "RunnerName", "MaskedBy", "ExecutedDigest=Digest"}
 	postNotCarried = []string{"Program", "VerbClass", "Argc", "MayWrite"}
 	postWithheld   = []string{"Type", "SchemaVersion", "Seq", "RecordedAtMS", "ToolUseID", "SessionID", "ToolName",
 		"Outcome", "ExitCode", "IsInterrupt", "DurationMS", "RuleMatch", "Backgrounded", "RulesVersion",
@@ -43,7 +43,7 @@ var (
 // RunnerKind from the copy, and the row names RunnerKind; swap RunnerDigest
 // and RunnerKind, and it names RunnerDigest.
 func TestB39_PostCopiesTheShapesMaskedTriple(t *testing.T) {
-	const line = "make test && echo ok"
+	const line = "make test 2>&1 | tail -3"
 	at := time.UnixMilli(1_700_000_000_000)
 	record := func(input bool) (store.Execution, []byte) {
 		t.Helper()
@@ -82,8 +82,8 @@ func TestB39_PostCopiesTheShapesMaskedTriple(t *testing.T) {
 	}
 	s := shape.Derive("Bash", in, key)
 	// The line sets all four, no two alike, so a dropped or swapped one shows.
-	if s.StatusMasked == nil || *s.StatusMasked != shape.MaskedNone || s.RunnerKind == nil || *s.RunnerKind != shape.RunnerTest ||
-		s.RunnerDigest == nil || *s.RunnerDigest == "" || s.Digest == "" || *s.RunnerDigest == s.Digest {
+	if s.StatusMasked == nil || *s.StatusMasked != shape.MaskedTest || s.RunnerKind == nil || *s.RunnerKind != shape.RunnerTest ||
+		s.RunnerName == nil || s.MaskedBy == nil || s.RunnerDigest == nil || *s.RunnerDigest == "" || s.Digest == "" || *s.RunnerDigest == s.Digest {
 		t.Fatalf("%q: the shape does not set the four fields apart", line)
 	}
 	recordtest.AssertCopy(t, reflect.ValueOf(s), reflect.ValueOf(before), reflect.ValueOf(after),
