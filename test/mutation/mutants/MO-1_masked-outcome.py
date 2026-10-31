@@ -118,3 +118,17 @@ m("MO-1 a delegated summary_pass is a summary read", R,
   "\tif e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) {\n",
   "\tif false {\n",
   "TestMO1_ADelegatedSummaryIsNotASummaryRead")
+
+# pytest's pass is its summary line, not "N passed" inside another line.
+P = "TestMO1_PytestPassIsItsSummaryLine"
+m("MO-1 pytest's pass is unanchored", T,
+  "pass: compile(`^(\\d+ \\w+, )*\\d+ passed(, [^=]*)? in \\d`, `^=+ .*\\d+ passed.* in \\d[\\d.]*s.* =+$`)",
+  "pass: compile(`\\d+ passed`)", P)
+m("MO-1 pytest's banner form is not a pass", T,
+  ", `^=+ .*\\d+ passed.* in \\d[\\d.]*s.* =+$`)", ")", P)
+m("MO-1 pytest's -q form is not a pass", T,
+  "compile(`^(\\d+ \\w+, )*\\d+ passed(, [^=]*)? in \\d`, `^=+", "compile(`^=+", P)
+m("MO-1 a Fatal Python error is not a failure", T,
+  ", `Fatal Python error`", "", P)
+m("MO-1 a Killed line is not a failure", T,
+  ", `^Killed`)", ")", P)

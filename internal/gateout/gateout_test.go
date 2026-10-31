@@ -77,7 +77,7 @@ func TestGO9_CapBoundary(t *testing.T) {
 
 func TestGO10_TablesPinned(t *testing.T) {
 	got := tableDigest()
-	const pin = "5acd3826aa8435a4ae58412e67c413085957aa4968d4f80c96ca3ec20184a173"
+	const pin = "e14ce46508497e9b46f91d4f9922b370c1697503ebc1a0792c9a4d31ce4ce874"
 	if got != pin {
 		t.Fatalf("table digest %s, want %s", got, pin)
 	}
@@ -338,6 +338,30 @@ func TestMO1_ADelegatedFailureMarkerIsSummaryFail(t *testing.T) {
 	for p, want := range map[string]bool{"make": true, "npm": true, "yarn": true, "pnpm": true, "go": false, "pytest": false, "unknown": false, "": false} {
 		if Delegated(p) != want {
 			t.Errorf("Delegated(%q) = %v, want %v", p, !want, want)
+		}
+	}
+}
+
+// TestMO1_PytestPassIsItsSummaryLine: pytest's pass is its summary line, the
+// -q form ("5 passed in 0.12s") or the banner form, never "N passed" inside
+// another line, and a crash that leaves a stray count is red. Break: unanchor
+// the pass pattern, or drop a crash marker.
+func TestMO1_PytestPassIsItsSummaryLine(t *testing.T) {
+	for _, tc := range []struct{ name, output, kind string }{
+		{"q form", "5 passed in 0.12s", "summary_pass"},
+		{"q form with skips and warnings", "3 skipped, 5 passed, 1 warning in 0.12s", "summary_pass"},
+		{"q form with a duration", "5 passed in 0.12s (0:00:00)", "summary_pass"},
+		{"banner", "============== 5 passed in 0.12s ==============", "summary_pass"},
+		{"banner with warnings", "===== 5 passed, 2 warnings in 1.50s =====", "summary_pass"},
+		{"a stray count in another line", "migrated 5 passed", "no_summary"},
+		{"a stray count after a segfault", ".....\nmigrated 5 passed\nSegmentation fault (core dumped)", "no_summary"},
+		{"a passed count without its timing", "5 passed", "no_summary"},
+		{"fatal python error", "5 passed in 0.12s\nFatal Python error: Segmentation fault", "summary_fail"},
+		{"oom kill", "5 passed in 0.12s\nKilled", "summary_fail"},
+	} {
+		got := Classify("test", "pytest", []byte(tc.output))
+		if got.Kind != tc.kind {
+			t.Errorf("%s: %s, want %s", tc.name, got.Kind, tc.kind)
 		}
 	}
 }
