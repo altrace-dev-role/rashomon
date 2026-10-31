@@ -105,7 +105,14 @@ func specPath(args []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, p := range hook.SpecLocations(cwd, os.Getenv("CLAUDE_PROJECT_DIR")) {
+	locs := hook.SpecLocations(cwd, os.Getenv("CLAUDE_PROJECT_DIR"))
+	if len(locs) == 0 {
+		// A plain terminal with no .git above cwd and no CLAUDE_PROJECT_DIR:
+		// Claude Code, started here, sets CLAUDE_PROJECT_DIR to this
+		// directory, so the spec the hook would read is the one at cwd.
+		locs = hook.SpecLocations(cwd, cwd)
+	}
+	for _, p := range locs {
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
 		}
@@ -160,6 +167,15 @@ func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	if err := hook.WriteSpecBindings(root, b); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "trusted %s at digest %s; an edit to the file untrusts it\n  undo: rashomon spec untrust\n", path, typed)
+	_, err = fmt.Fprintf(stdout, "trusted %s at digest %s; an edit to the file untrusts it\n  undo: rashomon spec untrust %s\n", path, typed, shellWord(path))
 	return err
+}
+
+// shellWord is s as one shell word: bare when it holds only safe characters,
+// else single-quoted, so the undo line pastes back as the path it names.
+func shellWord(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-+:@%") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
