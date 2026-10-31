@@ -49,7 +49,7 @@ is shown to you above the reply. For the request in [Try it](#try-it-in-three-st
 
 At the end of a turn that edited files or ran a test or build:
 
-    ※ rashomon: verified - go passed after the last edit.
+    ※ rashomon: verified - go test passed after the last edit.
                 → rashomon report --session <id>
 
 When the agent says it is done and no test or build ran after its last edit:

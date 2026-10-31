@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -522,6 +523,32 @@ func sessionMaskedRuns(run *store.Run, acct Account) *MaskedRuns {
 	return &m
 }
 
+// readFromSummary reports a masked run whose output's summary says it passed:
+// a record at call schema 8 under rules version 11 or later, whose masking
+// stage keeps the summary (shape.MaskedByKeeps) and whose runner's table read a
+// summary_pass. That is verify's rule for a green read from output
+// (verify.readsOutput). Only a pass is left out: a pass claim over a pass the
+// record shows is no alarm, while a summary_fail under a pass claim is the
+// detector's true positive, and a fail line, an empty run and every other word
+// leave the run as masked as it was.
+func readFromSummary(e *store.Execution) bool {
+	if e == nil || e.SchemaVersion < 8 || e.RulesVersion < shape.OutputOutcomeRulesVersion ||
+		e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) || e.GateOutput == nil {
+		return false
+	}
+	// A backgrounded command's record holds the launch and not the run's
+	// output, which verify does not read either (verify.readsOutput).
+	if e.Backgrounded {
+		return false
+	}
+	// A delegate's pass line is one step's, so verify does not read it
+	// (gateout.Delegated); the run stays counted.
+	if e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor("", *e.RunnerName)) {
+		return false
+	}
+	return e.GateOutput.Kind == "summary_pass"
+}
+
 // BuildMaskedRuns counts run's masked runs that no later plain run of the
 // same runner followed up (MaskedRuns.Runs), and compares the count against
 // the final message. Exported so digest can call it with a turn-scoped run,
@@ -564,6 +591,12 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 	// after it, and that call is not seen until the first pass has read them all.
 	for _, d := range run.Declarations {
 		if !statusMasked(d) || !ended(d, store.ExecOK) {
+			continue
+		}
+		if readFromSummary(outcomeRecord(executed[d.ToolUseID])) {
+			// The pipe hid the exit status but kept the runner's summary,
+			// which says it passed: the record backs the claim, and verify's
+			// line says where the pass was read from (D229).
 			continue
 		}
 		if r := d.Shape.RunnerDigest; r != nil {

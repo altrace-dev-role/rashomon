@@ -74,7 +74,7 @@ m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked_
 m("MS a shell's -c line is read as a word", "internal/shape/masked_simple.go",
   "w[1] != '-' && strings.ContainsRune(w, 'c') {", "w[1] != '-' && strings.ContainsRune(w, 'c') && false {", SH)
 m("MS a line the run is not sure of is none", "internal/shape/masked.go",
-  "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil, nil\n", "\t\t\tcontinue\n", SH)
+  "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil, nil, nil, nil\n", "\t\t\tcontinue\n", SH)
 m("MS a runner the run never reaches is judged", "internal/shape/masked.go",
   "\t\tif f < 0 || pass < 0 || !ran {", "\t\tif f < 0 || pass < 0 || !ran && false {", SH)
 m("MS an exit 0 after || keeps the failure", "internal/shape/masked_eval.go",
@@ -124,9 +124,9 @@ m("MS the runner digest runs to the end of the line", "internal/shape/masked_sim
 m("MS the runner digest is not keyed", "internal/shape/masked_eval.go",
   "\td := digest(key, \"\\x00runner\",", "\td := digest(nil, \"\\x00runner\",", SH)
 m("MS a runner whose failure reaches the line carries no runner digest or kind", "internal/shape/masked.go",
-  "\t\td, rk := p.runnerOf(reach, key)\n\t\treturn &none, d, rk\n", "\t\treturn &none, nil, nil\n", SH)
+  "\t\treturn &none, d, rk, p.runners[reach].name, nil\n", "\t\t_, _ = d, rk\n\t\treturn &none, nil, nil, nil, nil\n", SH)
 m("MS two hidden runners carry one's digest and kind", "internal/shape/masked.go",
-  "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil, nil\n\t\t}\n", "", SH)
+  "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil, nil, nil, nil\n\t\t}\n", "", SH)
 m("MS a runner after a cd keeps its digest", "internal/shape/masked_eval.go",
   "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH + "|TestFoldKeepsRunnerIdentity")
 m("MS a folded leading cd displaces the runner", "internal/shape/masked_eval.go",

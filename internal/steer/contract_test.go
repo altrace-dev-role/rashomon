@@ -121,3 +121,32 @@ func TestDEL22e_FindingCheckHoldsTheFrozenKinds(t *testing.T) {
 		}
 	}
 }
+
+// TestMO1_FindingCheckHoldsTheProvenanceWord: a Finding's outcome_from is
+// empty or the one word OutcomeFromOutputSummary (D229); any other string,
+// the model's or a producer's, does not reach the router, and the line the
+// decision writes carries the word as its own fact, null where there is none.
+func TestMO1_FindingCheckHoldsTheProvenanceWord(t *testing.T) {
+	base := Finding{Pattern: pattern.StaleEvidence, Priority: 78, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5}
+	if p, ok := pattern.Priority(base.Pattern); !ok || p != base.Priority {
+		t.Fatalf("premise: stale-evidence priority is %d, the fixture says %d", p, base.Priority)
+	}
+	for _, from := range []string{"", OutcomeFromOutputSummary} {
+		f := base
+		f.OutcomeFrom = from
+		if err := f.Check(); err != nil {
+			t.Errorf("outcome_from %q: %v", from, err)
+		}
+	}
+	for _, from := range []string{"output", "exit", "Output_Summary", "output_summary "} {
+		f := base
+		f.OutcomeFrom = from
+		if err := f.Check(); err == nil {
+			t.Errorf("outcome_from %q passed Check", from)
+		}
+	}
+	var l Line
+	if l.Facts.OutcomeFrom != nil {
+		t.Errorf("a zero line's outcome_from is %v, want nil (JSON null)", l.Facts.OutcomeFrom)
+	}
+}

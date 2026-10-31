@@ -98,7 +98,7 @@ func (e *env) greenTurn(t *testing.T, prompt string) {
 }
 
 // verifiedLine is greenTurn's value line for sess-1, settings install.
-const verifiedLine = "※ rashomon: verified - go passed after the last edit.\n" +
+const verifiedLine = "※ rashomon: verified - go test passed after the last edit.\n" +
 	"            → rashomon report --session " + testSession
 
 // checkpoints is sess-1's verify records.
@@ -312,7 +312,7 @@ func TestSTOP_PendingWrapsTheValueLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	ind := strings.Repeat(" ", len([]rune("※ rashomon, previous turn: ")))
-	want := "※ rashomon, previous turn: verified - go passed after the last edit.\n" +
+	want := "※ rashomon, previous turn: verified - go test passed after the last edit.\n" +
 		ind + "AutoSteer: 1 regression location given at the failure.\n" +
 		ind + "→ rashomon report --session " + testSession
 	if line, ok := e.recapPending(testSession, "next"); line != want {

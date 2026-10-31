@@ -80,7 +80,18 @@ type Finding struct {
 	// AgentID is the subagent that produced this Finding, or empty for
 	// the main agent.
 	AgentID string
+	// OutcomeFrom is where the run the Finding rests on had its outcome
+	// from, when that was not its exit status: OutcomeFromOutputSummary for a
+	// run whose pipe hid the exit status and whose output's summary decided
+	// (D229). "" for every other finding. A closed word, written on the
+	// line's facts and named in the note's text.
+	OutcomeFrom string
 }
+
+// OutcomeFromOutputSummary is the one OutcomeFrom word a Finding carries:
+// the run's outcome was read from the summary of its output, because a pipe
+// on its line hid its exit status.
+const OutcomeFromOutputSummary = "output_summary"
 
 // ErrFinding is the error of every check Finding.Check fails; the message
 // names the rule, never a value beyond the pattern and kind.
@@ -110,6 +121,8 @@ func (f Finding) Check() error {
 		return fmt.Errorf("%w: stop form %q below the stop level", ErrFinding, f.StopForm)
 	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
+	case f.OutcomeFrom != "" && f.OutcomeFrom != OutcomeFromOutputSummary:
+		return fmt.Errorf("%w: outcome_from is outside its vocabulary", ErrFinding)
 	}
 	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
 		return fmt.Errorf("%w: %s does not carry its own-channel or table priority", ErrFinding, f.Pattern)

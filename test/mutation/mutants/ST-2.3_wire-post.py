@@ -67,13 +67,13 @@ m("ST-2.3 LandExecution reports a spilled execution as landed", S,
 m("ST-2.3 a red that did not run the gate (126, 127) still locates", V,
   "\treturn code != 126 && code != 127\n", "\t_ = code\n\treturn true\n", "TestSTR44_")
 m("ST-2.3 a red of another call is taken as this run", V,
-  "\t\tg.LastRun.ToolUseID != toolUseID || g.LastRun.ExitCode == nil {\n", "\t\tg.LastRun.ExitCode == nil {\n",
+  " || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {\n", " || g.LastRun == nil {\n",
   "TestSTR43i_")
 m("ST-2.3 any red reason is a candidate", V,
-  "g.State != Red || g.Reason != FailedExit || g.LastGreen == nil", "g.State != Red || g.LastGreen == nil",
+  "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == SourceOutput\n\t}\n\treturn false\n", "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == SourceOutput\n\t}\n\treturn true\n",
   "TestSTR43k_")
 m("ST-2.3 a red with no earlier green is a candidate", V,
-  "g.Reason != FailedExit || g.LastGreen == nil || g.LastRun == nil", "g.Reason != FailedExit || g.LastRun == nil",
+  "g.State != Red || g.LastGreen == nil || g.LastRun == nil ||", "g.State != Red || g.LastRun == nil ||",
   "TestSTR43d_")
 m("ST-2.3 the green run's own writes are between", V,
   "return writes[i].Seq > lo }); i < len(writes) && writes[i].Seq < hi; i++ {",
@@ -98,12 +98,12 @@ m("ST-2.3 other agents counted as the point's own", V,
 
 # The renderer (R7, D85).
 m("ST-2.3 the degraded row is never chosen", V,
-  "\t\t}\n\t}\n\tm, _ := render.New(pattern.RegressionLocation, ",
-  "\t\t}\n\t}\n\tif true {\n\t\treturn render.Message{}\n\t}\n\tm, _ := render.New(pattern.RegressionLocation, ",
+  "\t\t}\n\t}\n\tif fromOutput {\n\t\tm, _ := render.New(pattern.RegressionLocation, ",
+  "\t\t}\n\t}\n\tif true {\n\t\treturn render.Message{}\n\t}\n\tif fromOutput {\n\t\tm, _ := render.New(pattern.RegressionLocation, ",
   "TestSTR43f_")
 m("ST-2.3 every named path left out refuses the note", V,
-  "Paths: slot.NewPathList(paths, unlisted)})\n\t\tif !errors.Is(err, slot.ErrNoPathsLeft) {\n\t\t\treturn m\n\t\t}\n",
-  "Paths: slot.NewPathList(paths, unlisted)})\n\t\t_ = err\n\t\treturn m\n",
+  "\t\tif !errors.Is(err, slot.ErrNoPathsLeft) {\n\t\t\treturn m\n\t\t}\n\t}\n\tif fromOutput {\n\t\tm, _ := render.New(pattern.RegressionLocation, ",
+  "\t\t_ = err\n\t\treturn m\n\t}\n\tif fromOutput {\n\t\tm, _ := render.New(pattern.RegressionLocation, ",
   "TestSTR43j_")
 m("ST-2.3 minutes over the slot's range are clamped", V,
   "\tminutes := slot.Minutes(max(0, (red-green)/60_000))\n",

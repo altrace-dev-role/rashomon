@@ -65,6 +65,82 @@ type RunRef struct {
 	Masked     *string           `json:"status_masked"`
 	GateOutput *store.GateOutput `json:"gate_output"`
 	Scope      string            `json:"scope"` // full | partial | unknown
+	// OutcomeFrom is OutcomeFromOutput where the run's outcome was read from
+	// its output's summary because the pipe hid its exit status, and absent
+	// where the exit status decided it. MaskedBy and RunnerName are the
+	// execution's words of the same names (call schema 8): the stage of the
+	// pipe that hid the status, and the runner in its row of the binary's
+	// lists. All three are derived at verify time from the run, never read
+	// from a stored word, and absent on a record that has none.
+	//
+	// Each is a closed word held as one byte (OutcomeSource, StageWord,
+	// RunnerWord), written as its word: a string here would be sixteen bytes
+	// in every RunRef of every gate state, masked or not (D209, D173d).
+	OutcomeFrom OutcomeSource `json:"outcome_from,omitempty"`
+	MaskedBy    StageWord     `json:"masked_by,omitempty"`
+	RunnerName  RunnerWord    `json:"runner_name,omitempty"`
+}
+
+// OutcomeSource says where a run's outcome was read from: SourceExit, the
+// zero, for its exit status, which is the word absent; SourceOutput for its
+// output's summary (outcome_from output_summary, D229).
+type OutcomeSource uint8
+
+const (
+	SourceExit OutcomeSource = iota
+	SourceOutput
+)
+
+// String is the outcome_from word: OutcomeFromOutput, or "" for the exit status.
+func (o OutcomeSource) String() string {
+	if o == SourceOutput {
+		return OutcomeFromOutput
+	}
+	return ""
+}
+
+// MarshalText writes the word; omitempty leaves the zero out.
+func (o OutcomeSource) MarshalText() ([]byte, error) { return []byte(o.String()), nil }
+
+// UnmarshalText reads the word back; a word that is none reads SourceExit.
+func (o *OutcomeSource) UnmarshalText(b []byte) error {
+	*o = SourceExit
+	if string(b) == OutcomeFromOutput {
+		*o = SourceOutput
+	}
+	return nil
+}
+
+// StageWord is a masked_by word as its place in shape.MaskedByWords from 1
+// (shape.MaskedByID), 0 for none.
+type StageWord uint8
+
+// String is the word, "" for none.
+func (w StageWord) String() string { return shape.MaskedByOf(uint8(w)) }
+
+// MarshalText writes the word; omitempty leaves the zero out.
+func (w StageWord) MarshalText() ([]byte, error) { return []byte(w.String()), nil }
+
+// UnmarshalText reads the word back; a word that is none reads 0.
+func (w *StageWord) UnmarshalText(b []byte) error {
+	*w = StageWord(shape.MaskedByID(string(b)))
+	return nil
+}
+
+// RunnerWord is a runner_name as its place in shape.RunnerNames from 1
+// (shape.RunnerNameID), 0 for none.
+type RunnerWord uint8
+
+// String is the runner's words in its row of the lists, "" for none.
+func (w RunnerWord) String() string { return shape.RunnerNameOf(uint8(w)) }
+
+// MarshalText writes the words; omitempty leaves the zero out.
+func (w RunnerWord) MarshalText() ([]byte, error) { return []byte(w.String()), nil }
+
+// UnmarshalText reads the words back; words that are no row's read 0.
+func (w *RunnerWord) UnmarshalText(b []byte) error {
+	*w = RunnerWord(shape.RunnerNameID(string(b)))
+	return nil
 }
 
 // WriteRef is a relevant write as a gate's state cites it (archive 20.2.4).

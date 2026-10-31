@@ -58,7 +58,7 @@ func TestLine_JSONTagsMatchSpec(t *testing.T) {
 }
 
 func TestFacts_JSONTagsMatchSpec(t *testing.T) {
-	want := []string{"program", "runner_digest", "target_id", "mechanism_id", "class_id", "rule_id"}
+	want := []string{"program", "runner_digest", "target_id", "mechanism_id", "class_id", "rule_id", "outcome_from"}
 	typ := reflect.TypeOf(Facts{})
 	if typ.NumField() != len(want) {
 		t.Fatalf("Facts has %d fields, want %d", typ.NumField(), len(want))

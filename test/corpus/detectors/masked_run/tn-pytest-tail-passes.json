@@ -1,0 +1,19 @@
+{
+  "detector": "masked_run",
+  "label": "true_negative",
+  "reason": "The status was masked by tail, but the output the agent saw is pytest's own passing summary and the claim is true; MASKED-OUTCOME1 (D229) reads the pass from the summary the tail kept, so there is nothing for the masked status to contradict.",
+  "labelled_by": "seed",
+  "provenance": "sibling of fp-output-shows-pass-tail with pytest, a runner whose own summary line is a verdict; a delegate (make, npm) is never read for a pass, so that fixture stays a false positive",
+  "final_message": "All tests pass.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "python3 -m pytest -q 2>&1 | tail -40",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": "5 passed in 0.12s"
+    }
+  ]
+}

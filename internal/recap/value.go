@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -84,11 +85,17 @@ var whensOnce struct {
 	v map[string]string
 }
 
+// readFromOutput closes a sentence about a run whose outcome was read from
+// its output, because a pipe hid the exit status (D229): the provenance word,
+// in plain words, so the line never reads as an exit status the record holds.
+const readFromOutput = " (read from its output; the pipe hid the exit status)"
+
 // prefixWords are the words that lead a shell line before its runner, as in
 // `set -o pipefail; make test`: a gate run whose program word is one names
-// no runner, and the record holds the runner's words only as a digest, so the
-// sentence names the gate's kind instead (D94). A slice of constants, with
-// no code run at init (RES-2).
+// no runner. From call schema 8 the record holds the runner's row, which the
+// Stop view names (verify.StopView.Programs), so the sentence reaches for the
+// gate's kind (D94) only on an older record, or a run with no runner row. A
+// slice of constants, with no code run at init (RES-2).
 var prefixWords = []string{"set", "export", "source", "eval", "exec", "env", "time"}
 
 // Note is one note delivered to the agent in the prompt: its pattern, the
@@ -255,8 +262,11 @@ func rowSentence(v verify.StopView, k int) string {
 		if g.LastRun != nil && g.LastRun.ExitCode != nil {
 			verb = "exited " + strconv.Itoa(*g.LastRun.ExitCode)
 		}
+		if g.LastRun != nil && g.LastRun.OutcomeFrom == verify.SourceOutput {
+			verb = "failed"
+		}
 		where, since := when(v, g)
-		s := t.name(g) + " " + verb + where + " (call " + seqOf(g) + ")"
+		s := t.name(g) + " " + verb + where + " (call " + seqOf(g) + ")" + fromOutput(g.LastRun)
 		if since {
 			s += " and has not run since"
 		}
@@ -267,6 +277,9 @@ func rowSentence(v verify.StopView, k int) string {
 	case verify.RowMasked:
 		if g := t.first(verify.MaskedInconclusive); g != nil {
 			where, _ := when(v, g)
+			if stage := droppingStage(g.LastRun); stage != "" {
+				return t.name(g) + " ran" + where + ", but " + stage + " hid its result (call " + seqOf(g) + ")"
+			}
 			return t.name(g) + " ran" + where + "; its exit status was hidden by its line (call " + seqOf(g) + ")"
 		}
 	case verify.RowBackgrounded:
@@ -275,7 +288,7 @@ func rowSentence(v verify.StopView, k int) string {
 			return t.name(g) + " moved to the background" + where + "; its result is not in the record"
 		}
 	case verify.RowRanOnly:
-		return "no edits; " + t.greens(k) + " passed (call " + t.greenSeq() + ")"
+		return "no edits; " + t.greens(k) + " passed (call " + t.greenSeq() + ")" + t.fromOutput()
 	case verify.RowUnverified:
 		return t.unverified(v, k, files)
 	case verify.RowNoGate:
@@ -284,12 +297,12 @@ func rowSentence(v verify.StopView, k int) string {
 		}
 		return files + "; no test or build is known for this project yet"
 	case verify.RowUnnamedWrite:
-		return files + "; " + t.greens(k) + " passed (call " + t.greenSeq() + "); call " +
+		return files + "; " + t.greens(k) + " passed (call " + t.greenSeq() + ")" + t.fromOutput() + "; call " +
 			strconv.FormatInt(v.Turn.UnnamedWriteSeq, 10) + " may have written files after that"
 	case verify.RowVerified:
-		return "verified - " + t.greens(k) + " passed after the last edit"
+		return "verified - " + t.greens(k) + " passed after the last edit" + t.fromOutput()
 	case verify.RowFindings:
-		return files + "; " + t.greens(k) + " passed after the last edit; " + v.Summary.Sentence
+		return files + "; " + t.greens(k) + " passed after the last edit" + t.fromOutput() + "; " + v.Summary.Sentence
 	}
 	return ""
 }
@@ -315,9 +328,9 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 	greens := t.greens(k)
 	switch {
 	case g == nil && greens != "":
-		return files + "; " + greens + " passed after the last edit"
+		return files + "; " + greens + " passed after the last edit" + t.fromOutput()
 	case g != nil && greens != "":
-		return files + "; " + greens + " passed after the last edit, " + t.name(g) + " not run after it"
+		return files + "; " + greens + " passed after the last edit" + t.fromOutput() + ", " + t.name(g) + " not run after it"
 	}
 	return files + ", no test or build run after the last edit"
 }
@@ -377,6 +390,59 @@ func (t gateSet) name(g *verify.GateState) string {
 	return g.Kind
 }
 
+// fromOutput is the provenance clause where a green turn gate's last run had
+// its outcome read from its output, else "". The sentence before it lists the
+// green programs, so with every one of them read from output the clause stands
+// alone (readFromOutput); with only some, it names them, and the others read
+// as the exit status they had.
+func (t gateSet) fromOutput() string {
+	var read, all []string
+	for i := range t.gates {
+		g := &t.gates[i]
+		if g.State != verify.Green {
+			continue
+		}
+		n := t.name(g)
+		if !contains(all, n) {
+			all = append(all, n)
+		}
+		if g.LastRun != nil && g.LastRun.OutcomeFrom == verify.SourceOutput && !contains(read, n) {
+			read = append(read, n)
+		}
+	}
+	switch {
+	case len(read) == 0:
+		return ""
+	case len(read) == len(all):
+		return readFromOutput
+	}
+	return " (" + joinNames(read) + " " + strings.TrimPrefix(readFromOutput, " (")
+}
+
+// fromOutput is readFromOutput for a run that had its outcome from its output.
+func fromOutput(r *verify.RunRef) string {
+	if r != nil && r.OutcomeFrom == verify.SourceOutput {
+		return readFromOutput
+	}
+	return ""
+}
+
+// droppingStage is the words that say which stage of a pipe hid a masked
+// run's result, "the pipe to head" for a stage that drops the summary (head,
+// grep, wc, sort, cut) and "a pipe" for one no list names; "" where the run
+// names no stage (a record before schema 8, or a status hidden by something
+// that is not a pipe) or the stage keeps the summary, whose output simply did
+// not say.
+func droppingStage(r *verify.RunRef) string {
+	if r == nil || r.MaskedBy == 0 || shape.MaskedByKeeps(r.MaskedBy.String()) {
+		return ""
+	}
+	if r.MaskedBy.String() == "other" {
+		return "a pipe"
+	}
+	return "the pipe to " + r.MaskedBy.String()
+}
+
 // greens is the distinct programs of the green turn gates, in order, at most
 // k named and then `and <n> more`.
 func (t gateSet) greens(k int) string {
@@ -391,7 +457,13 @@ func (t gateSet) greens(k int) string {
 		return ""
 	case len(names) > k:
 		return strings.Join(names[:k], ", ") + " and " + strconv.Itoa(len(names)-k) + " more"
-	case len(names) == 1:
+	}
+	return joinNames(names)
+}
+
+// joinNames is names as a list in words: "a", "a and b", "a, b and c".
+func joinNames(names []string) string {
+	if len(names) == 1 {
 		return names[0]
 	}
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]

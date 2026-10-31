@@ -141,8 +141,8 @@ func TestSchema5_OrdinaryCallRecordsAreWrittenAtTheCallVersion(t *testing.T) {
 			t.Fatalf("no %s record was written", c.kind)
 		}
 		for i, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(7) {
-				t.Errorf("%s %d written at schema_version %v, want 7", c.kind, i, got)
+			if got := r.fields["schema_version"]; got != float64(8) {
+				t.Errorf("%s %d written at schema_version %v, want 8", c.kind, i, got)
 			}
 			if w, _ := r.fields["writer"].(string); w == "" {
 				t.Errorf("%s %d names no writer: %v", c.kind, i, r.fields["writer"])

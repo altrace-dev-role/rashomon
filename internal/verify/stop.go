@@ -1,8 +1,10 @@
 package verify
 
 import (
+	"cmp"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -36,7 +38,7 @@ type StopInput struct {
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and
-// Turn; Programs maps each gate of Snap to its last run's program word ("" when
+// Turn; Programs maps each gate of Snap to its last run's program word or runner's name ("" when
 // the record names none); Index is the index EvaluateStop was given, or a new
 // one under the project key, observed in place when the key is set; Scan is
 // the final message's claims against Snap's gates. Snap.Claims is Scan.Claims
@@ -112,11 +114,14 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 
 // programs maps each gate to the program of the run its LastRun names, found
 // by seq among runs (seq order, so a binary search would do; a gate list is
-// short and a map over runs is one pass).
+// short and a map over runs is one pass). A run that records the runner it
+// launched (call schema 8) is named by it, in the binary's own words --
+// `python3 -m pytest`, not the interpreter `python3` the line starts with
+// (D229); an older record's is the line's program word.
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
-		bySeq[r.Seq] = r.Program
+		bySeq[r.Seq] = cmp.Or(shape.RunnerNameOf(r.RunnerID), r.Program)
 	}
 	out := make(map[string]string, len(gates))
 	for _, g := range gates {

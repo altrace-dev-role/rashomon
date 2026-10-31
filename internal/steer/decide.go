@@ -356,6 +356,10 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, version string, basis 
 		HarnessID: ctx.HarnessID, Surface: ctx.Surface, Mirror: MirrorNone,
 		ClientVersion: version, VerifiedFloor: basis.floor, Excluded: slices.Clip(basis.excluded),
 	}
+	if p.f.OutcomeFrom != "" {
+		from := p.f.OutcomeFrom
+		l.Facts.OutcomeFrom = &from
+	}
 	if p.holdout && p.state == LineStateDelivered {
 		d := DeliveryHoldout // recorded by the draw, never derived (tech 5.2.4 E)
 		l.Delivery = &d

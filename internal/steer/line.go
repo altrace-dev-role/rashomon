@@ -19,6 +19,10 @@ type Facts struct {
 	MechanismID  *string `json:"mechanism_id"`
 	ClassID      *string `json:"class_id"`
 	RuleID       *string `json:"rule_id"`
+	// OutcomeFrom is the provenance word of a note built on a run whose
+	// outcome was read from its output (Finding.OutcomeFrom), null on every
+	// other line (D229).
+	OutcomeFrom *string `json:"outcome_from"`
 }
 
 // LineType is the fixed "type" value every steer.ndjson line carries
