@@ -325,12 +325,12 @@ func TestSTC1e_ExplainNamesTheLastDecision(t *testing.T) {
 
 func TestSTC1e_EveryReasonIsExplained(t *testing.T) {
 	for _, by := range steer.AllSuppressedBy() {
-		if reasonMeaning[by] == "" {
+		if reasonMeaning()[by] == "" {
 			t.Errorf("suppressed_by %q has no sentence", by)
 		}
 	}
-	if len(reasonMeaning) != len(steer.AllSuppressedBy()) {
-		t.Errorf("%d sentences for %d reasons", len(reasonMeaning), len(steer.AllSuppressedBy()))
+	if len(reasonMeaning()) != len(steer.AllSuppressedBy()) {
+		t.Errorf("%d sentences for %d reasons", len(reasonMeaning()), len(steer.AllSuppressedBy()))
 	}
 }
 

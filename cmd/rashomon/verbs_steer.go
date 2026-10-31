@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/selfguard"
@@ -404,37 +405,40 @@ func steerExplain(stdout io.Writer) error {
 
 // reasonMeaning is each suppressed_by reason in a sentence. It is closed with
 // the vocabulary: TestSTC1e_EveryReasonIsExplained fails on a reason without
-// one.
-var reasonMeaning = map[steer.SuppressedBy]string{
-	steer.SuppressedByBudgetPrompt:      "this prompt had already had its three notes",
-	steer.SuppressedByBudgetPattern:     "this prompt had already been told the same thing",
-	steer.SuppressedByBudgetBatch:       "another note in the same call went first",
-	steer.SuppressedByStopHookActive:    "the turn was already being continued by a stop hook",
-	steer.SuppressedByBackgroundRunning: "a background task was still running",
-	steer.SuppressedByHostForeign:       "the call came from a host rashomon is not installed for",
-	steer.SuppressedBySteerOff:          "you turned the notes to your agent off (rashomon steer on turns them back on); nothing reached the agent",
-	steer.SuppressedByConfigUnreadable:  "config.json did not read, so the notes were off; nothing reached the agent (fix or delete the file, or run rashomon steer on --repair)",
-	steer.SuppressedByConsentMissing:    "the notes were not agreed to on this build's consent screen",
-	steer.SuppressedByArmOff:            "this install's lab arm is off",
-	steer.SuppressedByDemoted:           "the pattern was held to a flag after it proved noisy",
-	steer.SuppressedByLockTimeout:       "the steer log was busy, so the note was dropped rather than said twice",
-	steer.SuppressedByRenderRefused:     "the note's text failed its checks and was not shown",
-	steer.SuppressedByDeadline:          "the hook ran out of time",
-	steer.SuppressedByDenyCap:           "the cap on denials was reached",
-	steer.SuppressedBySlotRejected:      "a value the note quotes failed its checks",
-	steer.SuppressedByOutputGate:        "the note was over the size cap",
-	steer.SuppressedByUnverifiedChannel: "Claude Code's version has not been verified to carry the note to the agent",
-	steer.SuppressedByNoChannel:         "this event has no way to carry a note",
-	steer.SuppressedByNoMirror:          "nobody was at the keyboard to be shown the note",
-	steer.SuppressedByHarnessOff:        "this harness is switched off",
-	steer.SuppressedBySurfaceOff:        "this surface is switched off",
-	steer.SuppressedByLate:              "the note arrived after the moment it applied to",
-}
+// one. It is built on first use: a table built at package init is allocated by
+// every hook call, and only `steer explain` reads it (RES-2's init budget).
+var reasonMeaning = sync.OnceValue(func() map[steer.SuppressedBy]string {
+	return map[steer.SuppressedBy]string{
+		steer.SuppressedByBudgetPrompt:      "this prompt had already had its three notes",
+		steer.SuppressedByBudgetPattern:     "this prompt had already been told the same thing",
+		steer.SuppressedByBudgetBatch:       "another note in the same call went first",
+		steer.SuppressedByStopHookActive:    "the turn was already being continued by a stop hook",
+		steer.SuppressedByBackgroundRunning: "a background task was still running",
+		steer.SuppressedByHostForeign:       "the call came from a host rashomon is not installed for",
+		steer.SuppressedBySteerOff:          "you turned the notes to your agent off (rashomon steer on turns them back on); nothing reached the agent",
+		steer.SuppressedByConfigUnreadable:  "config.json did not read, so the notes were off; nothing reached the agent (fix or delete the file, or run rashomon steer on --repair)",
+		steer.SuppressedByConsentMissing:    "the notes were not agreed to on this build's consent screen",
+		steer.SuppressedByArmOff:            "this install's lab arm is off",
+		steer.SuppressedByDemoted:           "the pattern was held to a flag after it proved noisy",
+		steer.SuppressedByLockTimeout:       "the steer log was busy, so the note was dropped rather than said twice",
+		steer.SuppressedByRenderRefused:     "the note's text failed its checks and was not shown",
+		steer.SuppressedByDeadline:          "the hook ran out of time",
+		steer.SuppressedByDenyCap:           "the cap on denials was reached",
+		steer.SuppressedBySlotRejected:      "a value the note quotes failed its checks",
+		steer.SuppressedByOutputGate:        "the note was over the size cap",
+		steer.SuppressedByUnverifiedChannel: "Claude Code's version has not been verified to carry the note to the agent",
+		steer.SuppressedByNoChannel:         "this event has no way to carry a note",
+		steer.SuppressedByNoMirror:          "nobody was at the keyboard to be shown the note",
+		steer.SuppressedByHarnessOff:        "this harness is switched off",
+		steer.SuppressedBySurfaceOff:        "this surface is switched off",
+		steer.SuppressedByLate:              "the note arrived after the moment it applied to",
+	}
+})
 
 // meaning is a row in a sentence: its reason when it has one, else what its
 // delivery says happened.
 func meaning(r steerRow) string {
-	if m, ok := reasonMeaning[steer.SuppressedBy(r.SuppressedBy)]; ok {
+	if m, ok := reasonMeaning()[steer.SuppressedBy(r.SuppressedBy)]; ok {
 		if r.State == string(steer.LineStateDelivered) {
 			return "shown to you as a flag, because " + m
 		}
