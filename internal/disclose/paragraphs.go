@@ -52,7 +52,7 @@ func defaultParagraphs() []Paragraph {
 		{Owner: OwnerVerify, Cite: CiteSection3, Text: "When the agent says work is done or passing and the record does not show it, the line at the end of the turn says so. A spec file in a repository only flags to you until you run `rashomon spec trust`. A spec your administrator manages applies as trusted."},
 		{Owner: OwnerSteer, Cite: CiteSection3, Text: "A note looks like this:\n  rashomon record: gate 'go' exited 0 earlier in this session (6 min\n  ago) and exited 1 on this run. Files written between the two runs:\n  'internal/a.go' and 2 more."},
 
-		{Owner: OwnerLearn, Cite: CiteSection4, Text: "This build learns nothing by itself: no hook counts failures or reads Claude Code's transcripts. `rashomon learn import FILE` adds a shared lessons file's rows to this project's lessons under <root>/learn."},
+		{Owner: OwnerLearn, Cite: CiteSection4, Text: "This build learns nothing by itself: no hook counts failures or learns from Claude Code's transcripts. `rashomon learn import FILE` adds a shared lessons file's rows to this project's lessons under <root>/learn."},
 		{Owner: OwnerLearn, Cite: CiteSection4, Text: "No lesson reaches your agent in this build; `rashomon learn approve ID` marks one approved after you type its one-time code."},
 		{Owner: OwnerMeasure, Cite: CiteSection4, Text: "This build keeps no tally of how its notes turned out. Nothing is sent anywhere."},
 
