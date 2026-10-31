@@ -84,7 +84,7 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
 		}
 		projectDir, managedDir := specDirs()
-		r.Spec = hook.DiscoverSpec(root, projectDir, managedDir, st.Root())
+		r.Spec = hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustRoot(run, st.Root(), pt.Seq))
 	}
 	r.View = verify.EvaluateStop(run, idx, r.Spec, pt, now, in)
 	return r, nil
