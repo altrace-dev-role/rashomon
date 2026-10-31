@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/host"
 )
@@ -257,6 +258,56 @@ func checkWrittenPaths(t *testing.T, cmd string) {
 	}
 }
 
+func FuzzCommands(f *testing.F) {
+	for _, s := range shapeSeeds() {
+		f.Add(s, []byte(nil), uint16(1<<10))
+	}
+	for _, in := range []string{
+		`{"command": "git push --force origin main"}`, `{"command": "echo \"a\tb\" é"}`, `{"command": "` + strings.Repeat(`\"`, 9) + `"}`,
+		`{"command": null}`, `{"command": ["git", "push"]}`, `{"command":"a","command":"b"}`, `{"description": "git push"}`, ``, `{bad`,
+	} {
+		f.Add("", []byte(in), uint16(16))
+	}
+	f.Fuzz(func(t *testing.T, line string, raw []byte, limit uint16) {
+		checkShellLine(t, line, int(limit))
+		if got, ok := CommandLine("Bash", raw, int(limit)); ok && len(got) > int(limit) {
+			t.Fatalf("CommandLine(Bash, %q, %d) gave %d bytes, over the cap", raw, limit, len(got))
+		}
+		if got, ok := CommandLine("Read", raw, int(limit)); ok || got != "" {
+			t.Fatalf("CommandLine(Read, %q) = %q, %v for a tool that runs no line", raw, got, ok)
+		}
+	})
+}
+
+// checkShellLine: the hook path's two readers of an agent's shell line.
+// Commands gives each command its program first, a mark for every word, a
+// program the shell does not expand, and no more commands or word bytes than
+// the line holds, the same way twice. CommandLine gives back the line the
+// Bash tool's input carries, within its cap.
+func checkShellLine(t *testing.T, line string, limit int) {
+	t.Helper()
+	cmds, ok := Commands(line)
+	words := 0
+	for _, c := range cmds {
+		if len(c.Words) == 0 || len(c.Expands) != len(c.Words) || c.Expands[0] {
+			t.Fatalf("Commands(%q) gave %+v: no program, a word with no mark, or a program the shell expands", line, c)
+		}
+		for _, w := range c.Words {
+			words += len(w)
+		}
+	}
+	if len(cmds) > len(line) || words > len(line) {
+		t.Fatalf("Commands(%q) gave %d commands of %d word bytes from %d bytes", line, len(cmds), words, len(line))
+	}
+	if again, ok2 := Commands(line); ok2 != ok || !reflect.DeepEqual(again, cmds) {
+		t.Fatalf("Commands(%q) is not deterministic", line)
+	}
+	got, ok := CommandLine("Bash", bashInput(t, line), limit)
+	if ok && (len(got) > limit || utf8.ValidString(line) && got != line) {
+		t.Fatalf("CommandLine of %q under %d gave %q", line, limit, got)
+	}
+}
+
 // TestRubricTEST1_ShapeSeeds runs every fuzz property over the seeds as a
 // plain test, which is what a mutant names and what runs without -fuzz.
 func TestRubricTEST1_ShapeSeeds(t *testing.T) {
@@ -265,6 +316,7 @@ func TestRubricTEST1_ShapeSeeds(t *testing.T) {
 		checkHosts(t, s)
 		checkLeadingDirectory(t, s)
 		checkWrittenPaths(t, s)
+		checkShellLine(t, s, 1<<10)
 		raw, err := json.Marshal(map[string]string{"file_path": s})
 		if err != nil {
 			t.Fatal(err)
