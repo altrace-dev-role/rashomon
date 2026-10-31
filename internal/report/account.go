@@ -600,7 +600,12 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 			}
 		}
 		out.Runs++
-		if d.LocationUnread {
+		// The bit is read from call schema 9 on, as masked_by is from 8: a
+		// record that predates the key cannot carry it, and one that does
+		// is not trusted. It under-reports by design: a start the fold does
+		// not recognise (`cd a\ngo test`, `cd a || cd b && ...`) sets no
+		// bit, so "N of these" is a floor, never every unknown-location run.
+		if d.SchemaVersion >= 9 && d.LocationUnread {
 			out.UnreadLocation++
 		}
 	}

@@ -41,11 +41,15 @@ m("LU-1 the call version stays at 8", K,
   "const CallSchemaVersion = 8",
   "TestREC1_|TestAcceptsKind")
 m("LU-1 the report counts every uncredited run", A,
-  "		if d.LocationUnread {\n			out.UnreadLocation++\n		}\n",
+  "		if d.SchemaVersion >= 9 && d.LocationUnread {\n			out.UnreadLocation++\n		}\n",
   "		out.UnreadLocation++\n",
   "TestLU1b_")
+m("LU-1 the report counts the bit on a schema-8 record", A,
+  "if d.SchemaVersion >= 9 && d.LocationUnread {",
+  "if d.LocationUnread {",
+  "TestLU1b_")
 m("LU-1 the report counts none", A,
-  "		if d.LocationUnread {\n			out.UnreadLocation++\n		}\n",
+  "		if d.SchemaVersion >= 9 && d.LocationUnread {\n			out.UnreadLocation++\n		}\n",
   "",
   "TestLU1b_|TestH155_")
 m("LU-1 the report does not name them", T,

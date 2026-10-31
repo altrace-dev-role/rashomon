@@ -42,7 +42,7 @@ func TestH155_AnUnreadLocationIsRecordedAndReported(t *testing.T) {
 	out := s.e.run("", nil, "report", "--session", testSession).stdout
 	for _, want := range []string{
 		"masked exit status: 2 build or test call(s) recorded ok",
-		"1 of these ran after a leading `cd` step the hook does not read (`cd DIR;`, a variable, quoting or `-`), so the directory they ran in is not known and they are not credited",
+		"1 of these ran after a leading `cd` step the hook does not read (`cd DIR;`, a variable, quoting or `-`), so the directory they ran in is not known; a later run is matched only under the same unread step",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("report is missing %q:\n%s", want, out)

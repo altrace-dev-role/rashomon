@@ -10,7 +10,7 @@ import (
 
 // lu1Line is the sentence the masked block says of the runs whose location the
 // hook could not read (5.14b): a closed template with one number, the count.
-const lu1Line = "    %s of these ran after a leading `cd` step the hook does not read (`cd DIR;`, a variable, quoting or `-`), so the directory they ran in is not known and they are not credited\n"
+const lu1Line = "    %s of these ran after a leading `cd` step the hook does not read (`cd DIR;`, a variable, quoting or `-`), so the directory they ran in is not known; a later run is matched only under the same unread step\n"
 
 // TestLU1b_TheReportSaysNotCredited: an uncredited masked run that started
 // after a cd the hook did not read is counted as such, from the declaration's
@@ -55,6 +55,15 @@ func TestLU1b_TheReportSaysNotCredited(t *testing.T) {
 		if tc.runs > 0 && !strings.Contains(b.String(), "masked exit status: ") {
 			t.Errorf("%s: an uncredited run is not reported as masked:\n%s", tc.name, b.String())
 		}
+	}
+	// A schema-8 record that carries the key anyway is not counted.
+	s8 := derivedRun(t, [3]string{"cd sub; make test | tail", "/repo", ok})
+	s8.Declarations[0].SchemaVersion = 8
+	if !s8.Declarations[0].LocationUnread {
+		t.Fatal("setup: the call should carry the bit")
+	}
+	if got := BuildMaskedRuns(s8, AccountFromMessage(msg)); got.Runs != 1 || got.UnreadLocation != 0 {
+		t.Errorf("a schema-8 record carrying location_unread: runs %d, unread %d; want 1, 0", got.Runs, got.UnreadLocation)
 	}
 	// A record before schema 9 has no bit and reads false, whatever its digest.
 	old := derivedRun(t, [3]string{"cd sub; make test | tail", "/repo", ok})
