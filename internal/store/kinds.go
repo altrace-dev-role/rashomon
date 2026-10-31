@@ -38,7 +38,7 @@ const (
 )
 
 // kindVersion is the version each writer stamps on its kind (REC-1): call
-// kinds at 8, coverage and gaps unchanged at 3, every new kind at 5. It is
+// kinds at 9, coverage and gaps unchanged at 3, every new kind at 5. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{
