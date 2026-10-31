@@ -88,3 +88,7 @@ m("sr1 protectOver cleans each path again inside the rule", "internal/verify/rul
 m("sr1 a no-spec discovery resolves symlinks before asking for a root", "internal/hook/specdiscover.go",
   "\tif git == \"\" && projectDir == \"\" {\n\t\treturn nil\n\t}\n", "",
   "TestSR1ab_")
+m("sr1 a rules-only call trusts a bound spec without reading the run", "internal/hook/steerstep.go",
+  "\tt := TrustedRoot{}\n\tif r, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget); err == nil {\n\t\tt = TrustRoot(r, root, p.landedSeq)\n\t}\n",
+  "\tt := NoRun(root)\n",
+  "TestSR1aa_")

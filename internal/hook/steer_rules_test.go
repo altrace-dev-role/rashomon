@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -45,6 +46,59 @@ func newSRFix(t *testing.T, doc string) *stFix {
 	f := newST(t)
 	f.cwd = s.base
 	return f
+}
+
+// TestSR1aa_ARulesOnlyCallReadsTrustAsTheStepDoes (D173): a forced push that
+// exits 0 reads no run for the step, but a repository spec found trusted is
+// trusted only if the session has not written under the store root: the run
+// is read once and the spec discovered again with no trust, so the rule is a
+// user flag and no nudge. With no such write the spec stays trusted, and a
+// spec that binds nothing reads no run at all.
+// Break: trust the spec without reading the run.
+func TestSR1aa_ARulesOnlyCallReadsTrustAsTheStepDoes(t *testing.T) {
+	doc := srSpec(srNoForce)
+	push := map[string]any{"command": "git push --force origin main"}
+	for _, c := range []struct {
+		name   string
+		bound  bool
+		wrote  bool
+		want   spec.Trust
+		nudged bool
+	}{
+		{"bound, no store write", true, false, spec.Trusted, true},
+		{"bound, the session wrote under the store", true, true, spec.Untrusted, false},
+		{"not bound", false, false, spec.Untrusted, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newSpecTree(t)
+			s.mkdir(".git")
+			path := s.put(s.base, doc)
+			_, digest, err := spec.Parse([]byte(doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := newST(t)
+			f.cwd = s.base
+			if c.bound {
+				writeBindings(t, f.st.Root(), spec.Binding{ProjectRoot: s.base, SpecPath: path, SpecDigest: digest, BoundAtMS: 1}, false)
+			}
+			if c.wrote {
+				f.call("toolu_w", "Write", map[string]any{"file_path": filepath.Join(f.st.Root(), "note.txt"), "content": "x"}, 0)
+			}
+			p := f.call("toolu_r", "Bash", push, 0)
+			p.Steer(stEnv(steer.DisclosureVersion))
+			if p.sp == nil || len(p.sp.Sources) == 0 || p.sp.Sources[0].Trust != c.want {
+				t.Fatalf("the spec read as %+v, want trust %q", p.sp, c.want)
+			}
+			lines := steerLines(t, f.st)
+			if len(lines) != 1 {
+				t.Fatalf("%d steer lines, want 1", len(lines))
+			}
+			if nudge := lines[0].Level != steer.LevelFlag.String(); nudge != c.nudged {
+				t.Errorf("the line is at %s, want a nudge: %v", lines[0].Level, c.nudged)
+			}
+		})
+	}
 }
 
 // TestSR1w_TheRulesTriggerIsABashOrFileToolCallThatLanded: the rules step
