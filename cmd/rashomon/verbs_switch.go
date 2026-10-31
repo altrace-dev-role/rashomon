@@ -38,11 +38,15 @@ func projectKey() (string, error) {
 	return baseline.Key(cwd), nil
 }
 
-// safeText is s with each control or non-printing rune made "?", for a value
-// that came from a file a hand may have written.
+// safeText is s with each control or terminal-hostile rune made "?", for a
+// value that came from a file a hand may have written: the C0 controls and
+// DEL, the C1 controls (U+0080 to U+009F, which a terminal may read as escape
+// introducers), and the bidi embeddings, overrides and isolates (U+202A to
+// U+202E, U+2066 to U+2069), which reorder what follows them on screen.
 func safeText(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+		switch {
+		case r < 0x20, r >= 0x7f && r <= 0x9f, r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
 			return '?'
 		}
 		return r

@@ -12,6 +12,7 @@ C = "internal/store/config.go"
 S = "cmd/rashomon/verbs_steer.go"
 SC = "cmd/rashomon/verbs_scorecard.go"
 SM = "cmd/rashomon/verbs_summary.go"
+VS = "cmd/rashomon/verbs_switch.go"
 RS = "cmd/rashomon/recap_stop.go"
 DP = "internal/disclose/paragraphs.go"
 SCREEN = "internal/consent/screen.go"
@@ -105,6 +106,16 @@ m("STC-1 scorecard counts a suppressed line as other", SC,
   "\t\tcase r.Delivery != \"-\" || r.State == string(steer.LineStateSuppressed):\n", "\t\tcase r.Delivery != \"-\":\n", "TestSTC1d_ScorecardCountsByPattern")
 m("STC-1 scorecard drops the reasons", SC,
   "\t\tif r.SuppressedBy != \"-\" {\n", "\t\tif false {\n", "TestSTC1d_ScorecardCountsByPattern")
+
+# What the verbs print from a file a hand wrote.
+m("STC-1 safeText lets the C1 controls through", VS,
+  "case r < 0x20, r >= 0x7f && r <= 0x9f,", "case r < 0x20, r == 0x7f,", "TestSTC1p_")
+m("STC-1 safeText lets the bidi overrides through", VS,
+  ", r >= 0x202a && r <= 0x202e,", ",", "TestSTC1p_")
+m("STC-1 safeText lets the bidi isolates through", VS,
+  ", r >= 0x2066 && r <= 0x2069:", ":", "TestSTC1p_")
+m("STC-1 safeText maps a neighbour of the bidi range too", VS,
+  "r >= 0x202a && r <= 0x202e", "r >= 0x2029 && r <= 0x202f", "TestSTC1p_")
 
 # The screen.
 m("STC-1 the screen says every note is still shown to you", DP,
