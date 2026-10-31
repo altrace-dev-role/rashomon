@@ -1,0 +1,12 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/altrace-dev-role/rashomon/cmd/rashomon
+BenchmarkRunHook/bash_short-3   	      20	    120000 ns/op	   57000 B/op	     390 allocs/op
+BenchmarkRunHook/bash_short-3   	      20	    110000 ns/op	   56093 B/op	     390 allocs/op
+BenchmarkRunHook/bash_short-3   	      20	    115000 ns/op	   56093 B/op	     388 allocs/op
+BenchmarkRunPost/edit_314k-3    	      20	    900000 ns/op	  480000 B/op	     300 allocs/op
+BenchmarkRunPost/edit_314k-3    	      20	    800000 ns/op	  475956 B/op	     294 allocs/op
+BenchmarkRunPost/edit_314k-3    	      20	    850000 ns/op	  476500 B/op	     290 allocs/op
+BenchmarkRecap/100-3            	      20	   5000000 ns/op	 1262312 B/op	    3804 allocs/op
+BenchmarkNewRowless-3           	      20	      5000 ns/op	     100 B/op	       1 allocs/op
+PASS
