@@ -45,7 +45,8 @@ func TestRES28i_ToleranceScheduleIsTheSpecs(t *testing.T) {
 // and post at 540 B (a PostToolUse envelope's fixed part is 467 bytes), both
 // at 40 KB, 1, 4 and 8 MiB; the small and 40 KB cases gate from P-08 and the
 // rest from P-10, and this tree carries both, so every case gates. Dropping a
-// case or moving one to a later PR is a change to what is gated.
+// case or moving one to a later PR is a change to what is gated. One case is
+// not RES-28's: the Stop's transcript scan, CHANNEL-EVIDENCE1's own row (Q11).
 func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 	type c struct {
 		entry string
@@ -57,6 +58,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"hook.1MiB": {"hook", 1 << 20, "P-10"}, "hook.4MiB": {"hook", 4 << 20, "P-10"}, "hook.8MiB": {"hook", 8 << 20, "P-10"},
 		"post.540B": {"post", 540, "P-08"}, "post.40KB": {"post", 40000, "P-08"},
 		"post.1MiB": {"post", 1 << 20, "P-10"}, "post.4MiB": {"post", 4 << 20, "P-10"}, "post.8MiB": {"post", 8 << 20, "P-10"},
+		// The Stop's transcript scan (CHANNEL-EVIDENCE1, Q11): the real recap entry over a transcript at the scan's 16 MiB bound.
+		"recap.stop.scan16MiB": {"recap", 16 << 20, "CE-1"},
 	}
 	b := loadBudgets(t)
 	seen := map[string]bool{}

@@ -136,6 +136,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
 	}
+	if !s.TakeChannelEvidence("PostToolUse", "2.1.304") {
+		t.Fatal("TakeChannelEvidence refused")
+	}
 	if err := s.AppendGap(store.Gap{
 		Type: store.TypeGap, SchemaVersion: store.SessionSchemaVersion,
 		SessionID: sessionID, Reason: store.GapForget,
@@ -371,7 +374,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// ReplaceFile (config.json, the person's switches; `rashomon summary
 		// on|off` is its one writer), configFiles in the inventory, purge's
 		// topFiles and temp prefix.
-		{"store", 29},
+		// Moved 2026-10-31 (CHANNEL-EVIDENCE1) to 30: evidence.go's
+		// TakeChannelEvidence open, <root>/channel-evidence-<event>, the
+		// marker that shadows an event whose delivered note the transcript
+		// did not show (evidenceFiles in the inventory, ownName in purge).
+		{"store", 30},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
