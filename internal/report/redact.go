@@ -148,6 +148,7 @@ func Redact(rep *Report, key []byte) *Report {
 		}
 		s.Transcripts = ts
 		s.Chains = redactChains(sess.Chains, key)
+		s.Autosteer = redactAutosteer(sess.Autosteer, key)
 		s.Nono = redactNono(sess.Nono, key)
 
 		out.Sessions[i] = s
