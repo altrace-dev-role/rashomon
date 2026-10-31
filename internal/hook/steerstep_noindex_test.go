@@ -2,10 +2,14 @@ package hook
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 )
 
-// TestSN1h_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun (card STALE-NOINDEX1,
+// TestSN1j_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun (card STALE-NOINDEX1,
 // #165 F1): in a project with no learned index, only a spec's required gate
 // can raise the stale note (D222), and with no spec file where discovery
 // looks there is none, so an armed counted write takes the arm and stops: it
@@ -13,7 +17,7 @@ import (
 // it read the whole run, discovered no spec and dropped what it read. The
 // bound is the run's own read, measured beside it, so it holds on any host.
 // Break: read the run whenever the index-less arm is taken.
-func TestSN1h_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun(t *testing.T) {
+func TestSN1j_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun(t *testing.T) {
 	f := newSN(t)
 	f.green()
 	for i := range 60 {
@@ -42,5 +46,38 @@ func TestSN1h_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun(t *testing.T) {
 	}
 	if armed, _ := f.st.StaleArmed(stSession); armed {
 		t.Error("the write left the trigger armed")
+	}
+}
+
+// TestSN1j2_ASpecFileIsLookedForWhereDiscoveryLooks: specFileAt is true where
+// a spec file is at one of discovery's candidates, the repository's or the
+// managed one (whose owner discovery checks, and this Lstat does not), and
+// false where none is, or with no cwd. Break: drop the managed candidate, or
+// read every location as present.
+func TestSN1j2_ASpecFileIsLookedForWhereDiscoveryLooks(t *testing.T) {
+	s := newSpecTree(t)
+	s.mkdir(".git")
+	managed := s.mkdir("managed")
+	key := baseline.Key(s.base)
+	if specFileAt(s.base, key, "", managed) {
+		t.Error("no spec file anywhere reads as present")
+	}
+	if specFileAt("", key, "", managed) {
+		t.Error("a call with no cwd reads a spec file as present")
+	}
+	if err := os.MkdirAll(filepath.Join(managed, "rashomon"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(managed, "rashomon", "spec.json"), []byte(specOneGate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !specFileAt(s.base, key, "", managed) {
+		t.Error("the managed spec file is not seen")
+	}
+	repo := newSpecTree(t)
+	repo.mkdir(".git")
+	repo.put(repo.base, specOneGate)
+	if !specFileAt(repo.base, baseline.Key(repo.base), "", "") {
+		t.Error("the repository's spec file is not seen")
 	}
 }
