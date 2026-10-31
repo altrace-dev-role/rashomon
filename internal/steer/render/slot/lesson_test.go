@@ -56,3 +56,42 @@ func TestLRN17i_HostScreen(t *testing.T) {
 		t.Errorf("a host under an unlisted label was refused (%v); the closed list is the stated limit", err)
 	}
 }
+
+// TestLRN17i_HostScreenBypasses: a host is read out of a word however it is
+// joined to its neighbours: after a path, a port, "=", "," or ";", an "@" or
+// a quote, and an IP literal is refused too (IPv4, and IPv6 bare or in
+// brackets). The refusal names the host or address.
+func TestLRN17i_HostScreenBypasses(t *testing.T) {
+	for _, c := range []struct{ text, want string }{
+		{"build.example.com/api", "build.example.com"},
+		{"build.example.com:8443", "build.example.com"},
+		{"host=db.corp", "db.corp"},
+		{"db.corp,db2.corp", "db.corp"},
+		{"prod-db.internal/v1", "prod-db.internal"},
+		{"10.0.0.5", "10.0.0.5"},
+		{"10.0.0.5:8443", "10.0.0.5"},
+		{"ssh to ops@db.corp now", "db.corp"},
+		{"x;db.corp", "db.corp"},
+		{"use 'db.corp'", "db.corp"},
+		{"(db.corp)", "db.corp"},
+		{"use 192.168.1.10.", "192.168.1.10"},
+		{"2001:db8::1", "2001:db8::1"},
+		{"fe80::1", "fe80::1"},
+		{"[::1]", "::1"},
+		{"host=[2001:db8::1]", "2001:db8::1"},
+	} {
+		err := RefuseHosts(c.text)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("RefuseHosts(%q) = %v, want a refusal naming %q", c.text, err, c.want)
+		}
+	}
+	for _, s := range []string{
+		"go test ./...", "run go test ./internal/...", "v1.2", "a.b", "1.2.3", "v1.2.3.4", "300.1.1.1",
+		"main.go:42", "path/to/file.go", "key=value", "ratio 3:1", "note: see go.mod/go.sum", "a,b;c",
+		"edit internal/verify/slot.go", "it's fine", "set x=1, y=2", "files.example.museum/x",
+	} {
+		if err := RefuseHosts(s); err != nil {
+			t.Errorf("RefuseHosts(%q) = %v, want nil", s, err)
+		}
+	}
+}

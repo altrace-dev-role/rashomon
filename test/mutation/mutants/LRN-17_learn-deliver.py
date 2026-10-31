@@ -63,6 +63,14 @@ m("LRN-17 the host screen dropped from Message", V,
   "\tif err := slot.RefuseHosts(ls.Text); false && err != nil {\n", "TestLRN17g_")
 m("LRN-17 the closed label list dropped (every dotted word refused)", F,
   "\t\tif slices.Contains(hostLabels, strings.ToLower(w[dot+1:])) {\n", "\t\tif true {\n", "TestLRN17i_")
+m("LRN-17 the host screen reads whole white-space words only", F,
+  "const hostSeps = \"/:=,;@()'+\"\n", "const hostSeps = \"\"\n", "TestLRN17i_")
+m("LRN-17 the host screen refuses no IPv4 literal", F,
+  "\t_, err := netip.ParseAddr(w)\n\treturn err == nil\n",
+  "\ta, err := netip.ParseAddr(w)\n\treturn err == nil && !a.Is4()\n", "TestLRN17i_")
+m("LRN-17 the host screen refuses no IPv6 literal", F,
+  "\t_, err := netip.ParseAddr(w)\n\treturn err == nil\n",
+  "\ta, err := netip.ParseAddr(w)\n\treturn err == nil && !a.Is6()\n", "TestLRN17i_")
 m("LRN-17 the approval time not stamped", D,
   "\tl.file.Lessons[i].ApprovedUnixMS = now.UnixMilli()\n", "\t_ = now\n", "TestLRN17j_")
 
