@@ -222,8 +222,12 @@ under the call if the command named it.
 | `rashomon report [--session S\|last] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named (`last`: this project's newest with a checkpoint); a named session opens with a short story and an autosteer block, the tables below it |
 | `rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT \| --stdin]` | Print one turn's record as JSON, at most 8 KiB: what one prompt recorded; read-only |
 | `rashomon backtest --sensor ID` | Replay this project's transcript copies (`rashomon bodies on`) through this build's hooks and print each session's fires of steer pattern ID beside the live steer log's; only reads the store |
-| `rashomon summary [on \| off]` | Say, or set, whether the end-of-turn line prints its value line; on unless set off |
+| `rashomon summary [on \| off] [--user \| --project]` | Say, or set, whether the end-of-turn line prints its value line, for you (`--user`, the default) or for this project; on unless set off |
 | `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
+| `rashomon steer [off \| on] [--user \| --project]` | Say whether the notes to your agent are on, or turn them off or on; off sends the agent no note and shows you what it would have said, while recording goes on |
+| `rashomon steer on --repair` | Replace a `config.json` that does not read, after asking on your terminal; until then the notes are off |
+| `rashomon steer explain` / `rashomon steer log [--all] [--json]` | Say why the last note was or was not printed, or list the last 20 decisions (`--all`: every one); never a note's text |
+| `rashomon scorecard [--json]` | Count what the notes did, by pattern: sent to the agent, shown to you only, held out, or not printed, and why; counts only |
 | `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
 | `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires; a ledger written by anything but rashomon is said quarantined first |
 | `rashomon learn` | List this project's lessons: each one's tier, its labels and the 95% bound that moves it |
