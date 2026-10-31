@@ -2,6 +2,7 @@ package recap
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -27,7 +28,7 @@ func finding(t *testing.T, id, pat, gate string, seq int64, model string) []byte
 // green at or before it, not a gate it does not name, not a green that has
 // since gone stale. The resolving seq is the green run's.
 func TestRP1_ResolvedOnlyByALaterGreen(t *testing.T) {
-	line := [][]byte{finding(t, "a", "regression-location", "go", 37, "x")}
+	line := [][]byte{keyed(t, "a", "regression-location", "go", "go:test", 37)}
 	for _, c := range []struct {
 		name  string
 		gate  verify.GateState
@@ -122,5 +123,108 @@ func TestRP1_ClauseFitsAndDropsDetailNotCounts(t *testing.T) {
 	}
 	if a, b := im.Fingerprint(), (Impact{Delivered: im.Delivered}).Fingerprint(); a == b {
 		t.Errorf("fingerprint %q ignores findings and checks", a)
+	}
+}
+
+// keyed is finding with the line's dedupe key, the gate id a gate pattern's
+// line carries (verify.keyFor).
+func keyed(t *testing.T, id, pat, gate, key string, seq int64) []byte {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(finding(t, id, pat, gate, seq, "x"), &m); err != nil {
+		t.Fatal(err)
+	}
+	m["key"] = key
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// goView is a view whose two gates both run go: learned:go-test and
+// learned:go-build, as the programs map names them.
+func goView(test, build verify.GateState) verify.StopView {
+	v := viewOf(verify.RowVerified, wrote, test, build)
+	v.Programs = map[string]string{"learned:go-test": "go", "learned:go-build": "go"}
+	return v
+}
+
+// TestRP1i_AGreenBuildDoesNotResolveATestFinding: a regression on go test is
+// still open while go test is red, though go build, which shares its
+// program, went green after it (the review's probe); the line's key names
+// the gate, and the slot alone, shared by two gates, settles nothing.
+func TestRP1i_AGreenBuildDoesNotResolveATestFinding(t *testing.T) {
+	v := goView(gateAt("learned:go-test", "test", verify.Red, verify.FailedExit, 10, exitCode(1)),
+		gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	for name, line := range map[string][]byte{
+		"keyed":   keyed(t, "a", "regression-location", "go", "learned:go-test", 10),
+		"unkeyed": finding(t, "a", "regression-location", "go", 10, "x"),
+	} {
+		im := ImpactOf(v, [][]byte{line}, nil)
+		if len(im.Findings) != 1 || im.Findings[0].State != FindingOpen || im.Findings[0].ResolvedBy != 0 || len(im.Resolved()) != 0 {
+			t.Errorf("%s: findings %+v, want one open", name, im.Findings)
+		}
+		if got := clause(im); strings.Contains(got, "resolved at") {
+			t.Errorf("%s: clause %q claims a resolution", name, got)
+		}
+	}
+}
+
+// TestRP1i_TheSameGateGoingGreenResolves: the gate the line's key names has a
+// green after the finding, so it is resolved at that green's seq, not at
+// the other gate's earlier green.
+func TestRP1i_TheSameGateGoingGreenResolves(t *testing.T) {
+	test := gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil)
+	v := goView(test, gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	im := ImpactOf(v, [][]byte{keyed(t, "a", "regression-location", "go", "learned:go-test", 10)}, nil)
+	if len(im.Findings) != 1 || im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 30 {
+		t.Errorf("findings %+v, want resolved by 30", im.Findings)
+	}
+}
+
+// TestRP1i_ASlotTwoGatesShareReadsOpen: a line with no gate id whose slot two
+// gates share cannot say which it means, so it reads open though one of the
+// two is green after it; with one gate on the slot it still resolves.
+func TestRP1i_ASlotTwoGatesShareReadsOpen(t *testing.T) {
+	line := [][]byte{finding(t, "a", "stale-evidence", "go", 10, "x")}
+	v := goView(gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil),
+		gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	if im := ImpactOf(v, line, nil); im.Findings[0].State != FindingOpen {
+		t.Errorf("two gates share the slot: %+v, want open", im.Findings)
+	}
+	one := viewOf(verify.RowVerified, wrote, gateAt("go:test", "test", verify.Green, verify.OK, 30, nil))
+	if im := ImpactOf(one, line, nil); im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 30 {
+		t.Errorf("one gate on the slot: %+v, want resolved by 30", im.Findings)
+	}
+}
+
+// runnerView is goView with the programs as the Stop view names them once a
+// gate carries its runner's whole name: "go test" and "go build".
+func runnerView(test, build verify.GateState) verify.StopView {
+	v := goView(test, build)
+	v.Programs = map[string]string{"learned:go-test": "go test", "learned:go-build": "go build"}
+	return v
+}
+
+// TestRP1i_ARunnerNameIsComparedByItsProgramWord: a line with no gate id whose
+// slot is the program word ("go") finds the gate whose program is the runner's
+// whole name ("go test"), so a keyless finding resolves, and with go test and
+// go build both present the first word is shared and the finding reads open.
+func TestRP1i_ARunnerNameIsComparedByItsProgramWord(t *testing.T) {
+	line := [][]byte{finding(t, "a", "regression-location", "go", 10, "x")}
+	test := gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil)
+	one := viewOf(verify.RowVerified, wrote, test)
+	one.Programs = map[string]string{"learned:go-test": "go test"}
+	if im := ImpactOf(one, line, nil); im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 30 {
+		t.Errorf("one gate named go test: %+v, want resolved by 30", im.Findings)
+	}
+	both := runnerView(test, gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	if im := ImpactOf(both, line, nil); im.Findings[0].State != FindingOpen || im.Findings[0].ResolvedBy != 0 {
+		t.Errorf("go test and go build share the word go: %+v, want open", im.Findings)
+	}
+	// The line's own gate id still settles it with both present.
+	if im := ImpactOf(both, [][]byte{keyed(t, "a", "regression-location", "go", "learned:go-test", 10)}, nil); im.Findings[0].State != FindingResolved {
+		t.Errorf("keyed line: %+v, want resolved", im.Findings)
 	}
 }

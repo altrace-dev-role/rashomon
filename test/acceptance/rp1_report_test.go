@@ -16,13 +16,35 @@ import (
 	"testing"
 )
 
+// rpGateID is the id of the go test gate the session's runs fall in, as the
+// binary builds it (verify.learnedGateID: the first twelve bytes of the runner
+// digest and of the location digest, which the records carry), so a finding
+// line can carry the key a real one does.
+func (e *env) rpGateID(t *testing.T) string {
+	t.Helper()
+	var runner, loc string
+	for _, r := range e.records(testSession) {
+		if s := r.str("runner_digest"); s != "" && runner == "" {
+			runner = s
+		}
+		if s := r.str("cwd_digest"); s != "" && loc == "" {
+			loc = s
+		}
+	}
+	if runner == "" || loc == "" {
+		t.Fatalf("no runner digest (%q) or cwd digest (%q) in the records", runner, loc)
+	}
+	return "learned:test:" + runner[:min(len(runner), 12)] + "@" + loc[:min(len(loc), 12)]
+}
+
 // rpFinding writes a regression-location finding line to sess-1's steer log:
-// delivered with a model text, naming the gate go, cited at evidence seq.
+// delivered with a model text, naming the gate go, cited at evidence seq. It
+// carries the gate's id as its key, as a real regression line does.
 func (e *env) rpFinding(t *testing.T, prompt string, seq int) {
 	t.Helper()
 	line, err := json.Marshal(map[string]any{"type": "steer", "id": "st-" + prompt, "state": "delivered", "prompt_id": prompt,
 		"event": "PostToolUseFailure", "pattern": "regression-location", "level": "nudge", "model_text": "go test failed",
-		"after_seq": seq, "evidence_seqs": []int{seq}, "slots": map[string]any{"gate": "go"}})
+		"after_seq": seq, "evidence_seqs": []int{seq}, "slots": map[string]any{"gate": "go"}, "key": e.rpGateID(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +106,12 @@ func (e *env) rpGreen(t *testing.T, prompt string) {
 
 // The Stop line's clause at the level of detail that fits eighty columns with
 // a finding resolved: the one note is counted, not titled.
+// The state sentence names the gate by its program ("go") or its runner ("go
+// test", once the Stop view carries runner names); both read as the same gate.
+var rpVerified = regexp.MustCompile(`verified - go( test)? passed after the last edit`)
+
+var rpGates = regexp.MustCompile(`    gates: go( test)? green at #`)
+
 var rpClause = regexp.MustCompile(`AutoSteer: 1 note given; 1 finding, resolved at #(\d+)\.`)
 
 func TestRP1_ClauseCountsDeliveredFindingsResolvedChecks(t *testing.T) {
@@ -93,7 +121,7 @@ func TestRP1_ClauseCountsDeliveredFindingsResolvedChecks(t *testing.T) {
 	if m == nil {
 		t.Fatalf("the Stop line is %q, want the clause naming one note, one finding and the green that resolved it", line)
 	}
-	if !strings.Contains(line, "verified - go passed after the last edit") {
+	if !rpVerified.MatchString(line) {
 		t.Errorf("the state sentence is missing from %q", line)
 	}
 	if n := len(strings.Split(strings.TrimRight(line, "\n"), "\n")); n != 3 {
@@ -277,9 +305,12 @@ func TestH143_TheFirstScreenIsUnderTwentyLines(t *testing.T) {
 	if end+1 >= 20 {
 		t.Errorf("the first screen is %d lines, want under twenty:\n%s", end+1, res.stdout)
 	}
-	for _, want := range []string{"  story\n", "    last Stop: verified", "    autosteer: ", "    gates: go green at #"} {
+	for _, want := range []string{"  story\n", "    last Stop: verified", "    autosteer: "} {
 		if !strings.Contains(strings.Join(lines[:end+1], "\n"), want) {
 			t.Errorf("the first screen lacks %q:\n%s", want, strings.Join(lines[:end+1], "\n"))
 		}
+	}
+	if !rpGates.MatchString(strings.Join(lines[:end+1], "\n")) {
+		t.Errorf("the first screen lacks the go gate green at a seq:\n%s", strings.Join(lines[:end+1], "\n"))
 	}
 }
