@@ -46,8 +46,8 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 	if got, _ := nested(decls[0], "shape.runner_digest"); got == nil {
 		t.Error("runner_digest is null")
 	}
-	if got := decls[0].fields["schema_version"]; got != float64(8) {
-		t.Errorf("schema_version = %v, want 8, the call version: runner_kind landed at 6, store_named at 7, runner_name and masked_by at 8", got)
+	if got := decls[0].fields["schema_version"]; got != float64(9) {
+		t.Errorf("schema_version = %v, want 9, the call version: runner_kind landed at 6, store_named at 7, runner_name and masked_by at 8, location_unread at 9", got)
 	}
 	for _, r := range s.e.records(testSession) {
 		for _, leak := range []string{"tail", "-40", "2>&1"} {

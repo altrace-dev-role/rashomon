@@ -454,6 +454,14 @@ type MaskedRuns struct {
 	// matches. A masked call that recorded failed is not here: it is a failed
 	// call, counted by SilentFailures.
 	Runs int `json:"runs"`
+	// UnreadLocation is how many of Runs started after a leading cd step the
+	// hook does not read (the declaration's location_unread, 5.14b): where
+	// they ran is not known, which the record's keyed cwd digest cannot say
+	// and the report has no key to open. They stay in Runs, uncredited, and
+	// are named apart so that none reads as a pass or is dropped. Omitted at
+	// zero, so a report with none is as it was. A record before call schema 9
+	// has no bit and counts none here.
+	UnreadLocation int `json:"unread_location,omitempty"`
 	// PassClaimed: the final message claims a pass (claimsPass).
 	PassClaimed bool `json:"pass_claimed"`
 	// FinalMessageAvailable distinguishes "claims no pass" from "there was
@@ -591,6 +599,9 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 			}
 		}
 		out.Runs++
+		if d.LocationUnread {
+			out.UnreadLocation++
+		}
 	}
 	if out.Runs == 0 || !acct.Available {
 		return out

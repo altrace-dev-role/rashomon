@@ -538,6 +538,9 @@ func writeMaskedRuns(b *bytes.Buffer, m MaskedRuns) {
 		return
 	}
 	fmt.Fprintf(b, "  masked exit status: %d build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run matched to the same runner in the same directory returned it\n", m.Runs)
+	if m.UnreadLocation > 0 {
+		fmt.Fprintf(b, "    %d of these ran after a leading `cd` step the hook does not read (`cd DIR;`, a variable, quoting or `-`), so the directory they ran in is not known and they are not credited\n", m.UnreadLocation)
+	}
 	switch {
 	case !m.FinalMessageAvailable:
 		fmt.Fprintln(b, "    the final message could not be read, so it was not compared")

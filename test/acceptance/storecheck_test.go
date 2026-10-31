@@ -202,6 +202,9 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 		allow[k] = true
 	}
 	for k := range pathsOf(record{fields: fields}) {
+		if typ == "declaration" && slices.Contains(omittedWhenFalseKeys, k) && fields[k] == true {
+			continue // present only when true (call schema 9)
+		}
 		if !allow[k] {
 			out = append(out, fmt.Sprintf("%s: a %s carries key %q, which is not on its allowlist", where, typ, k))
 		}
