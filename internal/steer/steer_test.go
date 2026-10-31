@@ -64,23 +64,25 @@ func TestTRU13b_StateListCarriesUnconfirmed(t *testing.T) {
 	t.Errorf("AllLineStates() = %v, missing %q", states, LineStateUnconfirmed)
 }
 
-// TestSuppressedBy_ExactlyTwentyTwoValues pins the closed list's size and
-// exact membership against Technical spec 4.2.3's "the one closed list" of
-// 22 suppression reasons.
-func TestSuppressedBy_ExactlyTwentyTwoValues(t *testing.T) {
+// TestSuppressedBy_ExactlyTwentyThreeValues pins the closed list's size and
+// exact membership: Technical spec 4.2.3's "the one closed list" of 22
+// suppression reasons, and config_unreadable after them (STEER-CLI1: the hook
+// clamps on a config.json it cannot read, and the person is told to fix the
+// file, which steer_off's "run steer on" would not say).
+func TestSuppressedBy_ExactlyTwentyThreeValues(t *testing.T) {
 	all := AllSuppressedBy()
-	if len(all) != 22 {
-		t.Fatalf("AllSuppressedBy() has %d entries, want 22", len(all))
+	if len(all) != 23 {
+		t.Fatalf("AllSuppressedBy() has %d entries, want 23", len(all))
 	}
 	want := []SuppressedBy{
 		"budget_prompt", "budget_pattern", "budget_batch", "stop_hook_active",
 		"background_running", "host_foreign", "steer_off", "consent_missing",
 		"arm_off", "demoted", "lock_timeout", "render_refused", "deadline",
 		"deny_cap", "slot_rejected", "output_gate", "unverified_channel",
-		"no_channel", "no_mirror", "harness_off", "surface_off", "late",
+		"no_channel", "no_mirror", "harness_off", "surface_off", "late", "config_unreadable",
 	}
-	if len(want) != 22 {
-		t.Fatalf("test setup: want has %d entries, not 22", len(want))
+	if len(want) != 23 {
+		t.Fatalf("test setup: want has %d entries, not 23", len(want))
 	}
 	seen := make(map[SuppressedBy]bool, len(all))
 	for i, v := range all {

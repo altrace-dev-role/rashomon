@@ -14,7 +14,7 @@ import (
 // notes. sp is the spec discovered for the prompt's cwd, whose holdout
 // object sets the share; project is the project root the note is about.
 func PromptContext(st *store.Store, sp *spec.Compiled, sessionID, promptID, project, permissionMode string, env SteerEnv) steer.Context {
-	p := &Post{st: st, sp: sp, sessionID: sessionID, promptID: promptID, permissionMode: permissionMode,
+	p := &Post{st: st, sp: sp, sessionID: sessionID, promptID: promptID, permissionMode: permissionMode, cwd: project,
 		event: string(steer.EventUserPromptSubmit)}
 	return p.contextOf(env, verify.SteerView{ProjectRoot: project})
 }

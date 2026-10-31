@@ -149,6 +149,8 @@ func reason(r SuppressedBy) *SuppressedBy { return &r }
 // whose hook is already active.
 func clampReason(ctx *Context) *SuppressedBy {
 	switch {
+	case ctx.ConfigUnreadable:
+		return reason(SuppressedByConfigUnreadable)
 	case ctx.SteerOff:
 		return reason(SuppressedBySteerOff)
 	case !ctx.Consent:

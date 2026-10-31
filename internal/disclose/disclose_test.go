@@ -378,7 +378,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// TakeChannelEvidence open, <root>/channel-evidence-<event>, the
 		// marker that shadows an event whose delivered note the transcript
 		// did not show (evidenceFiles in the inventory, ownName in purge).
-		{"store", 30},
+		// Moved 2026-10-30 (STEER-CLI1) to 31: config.go's UpdateConfig open
+		// of config.lock, the sidecar its writers (`summary`, `steer off|on`)
+		// lock; configFiles' lock row, purge's topFiles. The ReplaceFile of
+		// config.json is the same one call, now behind writeConfig.
+		{"store", 31},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

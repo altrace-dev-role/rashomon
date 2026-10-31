@@ -104,7 +104,8 @@ type Line struct {
 	// SuppressedBy is null unless the line is suppressed (or a budget_*
 	// suppression produced one of the other non-delivered states) or its
 	// level was clamped below the finding's, where it names the clamp:
-	// steer_off, consent_missing, budget_prompt or stop_hook_active on a
+	// steer_off, config_unreadable, consent_missing, budget_prompt or
+	// stop_hook_active on a
 	// delivered flag (card 2.2 R14, D50).
 	SuppressedBy    *SuppressedBy `json:"suppressed_by"`
 	InvocationID    string        `json:"invocation_id"`

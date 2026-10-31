@@ -45,9 +45,16 @@ type Context struct {
 	// Consent is the steer-consent marker's answer (D49, 2.2c); false
 	// clamps every note to a flag.
 	Consent bool
-	// SteerOff is the user's steering switch; false until a config reader
-	// exists.
+	// SteerOff is the user's steering switch, from the user's or the
+	// project's key of config.json (store.Config.SteerOffFor), which the hook
+	// reads. It is a clamp: no note reaches the agent, and what the note
+	// would have said is shown to the user as a flag, logged steer_off.
 	SteerOff bool
+	// ConfigUnreadable is config.json being there and not reading, which the
+	// hook cannot tell from the user having turned the notes off and so reads
+	// as off: the same clamp, logged config_unreadable so the person is told
+	// to fix the file rather than to run `steer on`.
+	ConfigUnreadable bool
 	// Arm is the lab arm: ArmLive on every install that is not a lab
 	// install, and none is yet; "" reads as ArmLive.
 	Arm Arm
