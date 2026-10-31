@@ -111,7 +111,7 @@ func TestVG1i_TheNoticeWaitsForACallThatPrintsNothingElse(t *testing.T) {
 }
 
 // TestVG1l_TheLineCarriesItsEventsRow: a line's basis is its own event's row:
-// on PostToolUseFailure, closed, the floor is "" while the same client's
+// on PostToolUseFailure the floor is 2.1.304 (#147), while the same client's
 // PostToolUse line carries 2.1.280.
 func TestVG1l_TheLineCarriesItsEventsRow(t *testing.T) {
 	for _, tc := range []struct {
