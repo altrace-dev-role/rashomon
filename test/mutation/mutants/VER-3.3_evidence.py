@@ -30,7 +30,8 @@ m("VER-3.3 rows in the task file's order", E,
 m("VER-3.3 an incomplete record keeps its states", E,
   '\t\tif snap.Recording != Complete {\n', '\t\tif snap.Recording != Complete && false {\n', "TestEV1c_")
 m("VER-3.3 an unknown row is named unmet", E,
-  '\t\tif e.State == ObligationUnmet {\n', '\t\tif e.State == ObligationUnmet || e.State == ObligationUnknown {\n', "TestEV1c_")
+  'o.Kind == ExpectedEvidence && o.State == ObligationUnmet && o.ID',
+  'o.Kind == ExpectedEvidence && (o.State == ObligationUnmet || o.State == ObligationUnknown) && o.ID', "TestEV1c_")
 
 # The text kinds.
 m("VER-3.3 an empty mechanism is met", E,
@@ -42,12 +43,12 @@ m("VER-3.3 any store write reads as the task file's", E,
 m("VER-3.3 disclosed() replaced by a word match", C,
   '\t\tif s.disclosed() {\n', '\t\tif strings.Contains(t, "error") {\n', "TestEV4_")
 m("VER-3.3 judgment read as met before Stop", E,
-  '\tcase !in.atStop:\n\t\treturn Expected{State: ObligationOpen}\n\tcase in.disclosed:\n',
-  '\tcase in.disclosed:\n', "TestEV4_")
+  '\tcase !in.atStop:\n\t\treturn Expected{State: ObligationOpen}\n\tcase in.unread:\n',
+  '\tcase in.unread:\n', "TestEV4_")
 
 # The rows reach the Stop view and the ledger.
 m("VER-3.3 EvaluateStop leaves Expected unset", S,
-  '\tv.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, disclosed: v.Scan.Disclosed, wrote: wrote})\n', '', "TestEV5b_")
+  '\tv.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})\n', '', "TestEV5b_")
 m("VER-3.3 the ledger drops the expected rows", O,
   'append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)',
   'append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)[:0]...)', "TestEV5b_")

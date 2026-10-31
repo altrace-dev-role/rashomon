@@ -57,7 +57,7 @@ func TestREC32c_OverlongLineNeitherHidesTheRunNorStopsEviction(t *testing.T) {
 
 	e.ageRun("old-session", 3*time.Hour)
 	res := e.probe("start", "new-session", "RASHOMON_STORE_CAP_BYTES=1")
-	if res.exitCode != 0 || res.stdout != "" {
+	if res.exitCode != 0 || (res.stdout != "" && !onlySystemMessage(res.stdout)) {
 		t.Fatalf("probe start: exit %d, stdout %q", res.exitCode, res.stdout)
 	}
 	if _, err := os.Stat(filepath.Join(e.home, "runs", "old-session")); !os.IsNotExist(err) {
@@ -76,7 +76,8 @@ func TestREC32c_OverlongLineNeitherHidesTheRunNorStopsEviction(t *testing.T) {
 // TestREC32d_ProbeSaysWhenEvictionFails: the probe threw eviction's error
 // away, so a store that could not evict grew past its cap with nothing
 // saying so anywhere. It now prints one fixed line on stderr, which reaches
-// Claude Code's debug log, and still exits 0 with nothing on stdout.
+// Claude Code's debug log, and still exits 0 with nothing on stdout but
+// the brief's one systemMessage object (BRIEF1, D206).
 func TestREC32d_ProbeSaysWhenEvictionFails(t *testing.T) {
 	e := newEnv(t)
 	e.watched("old-session")
@@ -93,7 +94,7 @@ func TestREC32d_ProbeSaysWhenEvictionFails(t *testing.T) {
 	}
 
 	res := e.probe("start", "new-session", "RASHOMON_STORE_CAP_BYTES=1")
-	if res.exitCode != 0 || res.stdout != "" {
+	if res.exitCode != 0 || (res.stdout != "" && !onlySystemMessage(res.stdout)) {
 		t.Fatalf("probe start: exit %d, stdout %q", res.exitCode, res.stdout)
 	}
 	if strings.TrimSpace(res.stderr) != "rashomon: store eviction incomplete" {

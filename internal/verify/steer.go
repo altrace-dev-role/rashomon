@@ -30,8 +30,8 @@ type SteerView struct {
 // SteerAt evaluates run at pt once and returns the steer view of the call
 // whose tool_use_id is toolUseID, raised at event. The id is the capped form
 // both records store (store.CapID), so a call whose payload id is over the
-// cap still matches its own run. Evaluate and EvaluateWithObligations are
-// untouched: this is a third view of the same classification. key is the
+// cap still matches its own run. Evaluate is untouched: this is a view of
+// the same classification, beside the Stop view and its ledger. key is the
 // install key the gates sp declares are digested under (evaluate). Its facts
 // are regression-location's, stale-evidence's and the one-way doors this
 // call opened (integrityRaises, card P5B). stale-evidence is raised at a

@@ -254,7 +254,7 @@ func refSeq(r *RunRef) int64 {
 	return r.Seq
 }
 
-// TestVER13d_EmptyRunReachesTheLedger: through EvaluateWithObligations, the
+// TestVER13d_EmptyRunReachesTheLedger: through the Stop view's ledger, the
 // Absent rows card 1.9 pinned on obligations() directly (TestPG5b): an empty
 // run with no write after it owes nothing, no row of any kind; with one,
 // gate_after_write is open on the write. Absent now has a run, so

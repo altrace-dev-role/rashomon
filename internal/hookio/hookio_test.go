@@ -21,7 +21,7 @@ func TestPayloadKeyOrderIsFrozen(t *testing.T) {
 		"tool_name", "tool_use_id", "cwd", "permission_mode", "transcript_path",
 		"tool_input", "tool_response", "error", "is_interrupt", "duration_ms",
 		"cursor_version", "conversation_id", "generation_id", "turn_id", "model",
-		"user_email", "mcp_server",
+		"user_email", "mcp_server", "source",
 	}
 	got := KeyNames()
 	if strings.Join(got, ",") != strings.Join(want, ",") || NumKeys != len(want) {
@@ -29,7 +29,7 @@ func TestPayloadKeyOrderIsFrozen(t *testing.T) {
 	}
 	idx := []int{SessionID, PromptID, AgentID, AgentType, HookEventName, ToolName, ToolUseID, CWD,
 		PermissionMode, TranscriptPath, ToolInput, ToolResponse, Error, IsInterrupt, DurationMS,
-		CursorVersion, ConversationID, GenerationID, TurnID, Model, UserEmail, MCPServer}
+		CursorVersion, ConversationID, GenerationID, TurnID, Model, UserEmail, MCPServer, Source}
 	for i, k := range idx {
 		if k != i {
 			t.Fatalf("constant %d is %d", i, k)

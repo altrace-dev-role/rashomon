@@ -139,38 +139,50 @@ func commandFault(words []string, strict bool, verbs map[string]bool, usage map[
 }
 
 // dispatchedVerbs is every case of run's switch on args[0], read from
-// main.go, so a verb added there is known here without a second list.
+// main.go, plus every case of verbNamed in verbs.go (STATUS-VERBS1a's
+// Law-10 path: new verbs cost main.go no line). A verb added in either
+// place is known here without a second list.
 func dispatchedVerbs(t *testing.T) map[string]bool {
 	t.Helper()
-	f, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
 	verbs := map[string]bool{}
-	for _, d := range f.Decls {
-		fn, ok := d.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "run" {
-			continue
+	collectSwitchStrings := func(file, fnName string, tagPred func(ast.Expr) bool) {
+		t.Helper()
+		f, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			sw, ok := n.(*ast.SwitchStmt)
-			if !ok {
-				return true
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != fnName {
+				continue
 			}
-			if ix, ok := sw.Tag.(*ast.IndexExpr); !ok || identName(ix.X) != "args" {
-				return true
-			}
-			for _, s := range sw.Body.List {
-				for _, e := range s.(*ast.CaseClause).List {
-					if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-						v, _ := strconv.Unquote(lit.Value)
-						verbs[v] = true
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				sw, ok := n.(*ast.SwitchStmt)
+				if !ok {
+					return true
+				}
+				if !tagPred(sw.Tag) {
+					return true
+				}
+				for _, s := range sw.Body.List {
+					for _, e := range s.(*ast.CaseClause).List {
+						if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+							v, _ := strconv.Unquote(lit.Value)
+							verbs[v] = true
+						}
 					}
 				}
-			}
-			return false
-		})
+				return false
+			})
+		}
 	}
+	collectSwitchStrings("main.go", "run", func(tag ast.Expr) bool {
+		ix, ok := tag.(*ast.IndexExpr)
+		return ok && identName(ix.X) == "args"
+	})
+	collectSwitchStrings("verbs.go", "verbNamed", func(tag ast.Expr) bool {
+		return identName(tag) == "name"
+	})
 	for _, want := range []string{"watch", "detach", "purge", "status", "report", "spec"} {
 		if !verbs[want] {
 			t.Fatalf("premise: run's switch does not dispatch %q (read %d verbs)", want, len(verbs))

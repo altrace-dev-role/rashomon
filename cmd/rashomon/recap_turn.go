@@ -195,6 +195,9 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if standsDown(args, st, stderr) {
 		return nil
 	}
+	if paused, _, perr := store.Paused(root); perr == nil && !paused {
+		markFired(st, payload.SessionID, recapEvent(args, payload.Harness.HookEventName))
+	}
 
 	// `recap pending` runs on UserPromptSubmit, before the new prompt has
 	// made a single call, so the newest turn in the store is the one that
