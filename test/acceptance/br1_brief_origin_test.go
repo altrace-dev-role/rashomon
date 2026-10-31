@@ -9,7 +9,7 @@ import (
 // TestBR1i_TheBriefPointsAtTheCommandItsOriginHas: probe start's verify line
 // follows the recap pointer's rule (TestH91_TheReportPointerNamesACommandTheOriginHas)
 // with the plugin's renamed command (D175). The plugin's entry names
-// /autosteer:report last; a settings install, the CLI's report of the
+// /rashomon:report last; a settings install, the CLI's report of the
 // payload's session, including a settings install made from the plugin's
 // binary, which sits in a plugin directory and carries the --install marker.
 //
@@ -19,7 +19,7 @@ import (
 func TestBR1i_TheBriefPointsAtTheCommandItsOriginHas(t *testing.T) {
 	const (
 		cliVerify    = "rashomon report --session " + testSession
-		pluginVerify = "/autosteer:report last"
+		pluginVerify = "/rashomon:report last"
 	)
 	verify := func(t *testing.T, e *env, bin string, marker ...string) string {
 		t.Helper()

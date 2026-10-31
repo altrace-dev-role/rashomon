@@ -20,7 +20,7 @@ m("BR-1 the verify line drops the session", B,
   "TestBR1e_")
 
 # D175: the verify line names the command its origin has, the plugin's
-# /autosteer:report last only from the plugin's own entry (the recap
+# /rashomon:report last only from the plugin's own entry (the recap
 # pointer's rule, H-91). D173: an unsigned bindings file is named, and only
 # that: no other read error, no spec the bindings do not decide, and no file
 # outside the store.
