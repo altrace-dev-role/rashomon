@@ -95,6 +95,14 @@ func slotsText(ss []WhySlot) string {
 	}
 	parts := make([]string, len(ss))
 	for i, s := range ss {
+		if s.Name != "path" && !WhySlotShown(s.Name) {
+			n := s.Bytes
+			if n == 0 {
+				n = len(s.Value)
+			}
+			parts[i] = fmt.Sprintf("%s=<%d bytes>", s.Name, n)
+			continue
+		}
 		parts[i] = s.Name + "=" + printable(s.Value)
 	}
 	return strings.Join(parts, ", ")

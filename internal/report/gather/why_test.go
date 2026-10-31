@@ -305,3 +305,44 @@ func TestRP2q_WhyRedactDropsTextAndRoot(t *testing.T) {
 		t.Errorf("redaction changed an id, a source or the original: %+v", r)
 	}
 }
+
+// TestRP2zd_WhyNeverPrintsALessonTextSlot (card REPORT1b review, blocking):
+// a suppressed learned-fact line keeps its lesson text in slot "text"; why
+// prints the slot's byte count and never the text, plain and under --redact,
+// in the text and in the JSON, while the lesson id (an allowlisted slot)
+// still prints. Break: print every slot, print "text", digest only "path".
+func TestRP2zd_WhyNeverPrintsALessonTextSlot(t *testing.T) {
+	const secret = "use Acme Corp staging cluster"
+	st := whyRun(t)
+	whyArm = steer.ArmOff
+	t.Cleanup(func() { whyArm = "" })
+	lm, err := learn.Message(learn.Lesson{ID: "npm-ci", Text: secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf := finding(t, pattern.LearnedFact, "npm-ci", steer.LevelNudge, lm, nil, 2)
+	lf.Kind = "local"
+	id := route(t, st, "s1", "UserPromptSubmit", lf, true, false)
+	v, err := Why(st, "s1", id[:8])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State != "suppressed" {
+		t.Fatalf("the line is %s, not suppressed", v.State)
+	}
+	for name, view := range map[string]*report.WhyView{"plain": &v, "redacted": report.RedactWhy(&v, []byte("install-key"))} {
+		var text strings.Builder
+		if err := report.WhyText(&text, view); err != nil {
+			t.Fatal(err)
+		}
+		body, _ := json.Marshal(view)
+		for _, out := range []string{text.String(), string(body)} {
+			if strings.Contains(out, "Acme") || strings.Contains(out, "staging") {
+				t.Errorf("%s: the lesson text is printed:\n%s", name, out)
+			}
+		}
+		if !strings.Contains(text.String(), "lesson=npm-ci") || !strings.Contains(text.String(), fmt.Sprintf("text=<%d bytes>", len(secret))) {
+			t.Errorf("%s: want the lesson id and the text's byte count:\n%s", name, text.String())
+		}
+	}
+}

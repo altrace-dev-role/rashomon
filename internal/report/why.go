@@ -52,11 +52,31 @@ type WhyView struct {
 	Redacted   bool           `json:"redacted"`
 }
 
-// WhySlot is one slot's name and value as text.
+// WhySlot is one slot's name and value as text. A slot whose name is not in
+// the closed set WhySlotShown names never carries its text: Value is "" and
+// Bytes is the length of what was left out (a learned-fact line keeps its
+// lesson text in slot "text", a free-text slot a share must not carry).
 type WhySlot struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	Bytes int    `json:"bytes,omitempty"`
 }
+
+// whySlotShown is the closed set of slot names whose value `why` prints:
+// each is a charset-checked, closed-vocabulary slot of internal/steer/render
+// (gate, minutes, exit, count, go_dirs, lesson id, source enum, the evidence
+// and unknown enum lists and the rule and gate refs) plus the program name.
+// Every other name is hidden, so a slot a later pattern adds is hidden until
+// it is listed here.
+var whySlotShown = map[string]bool{
+	"gate": true, "program": true, "exit": true, "minutes": true, "count": true,
+	"go_dirs": true, "lesson": true, "source": true, "rules": true, "gates": true,
+	"evidence": true, "unknown": true,
+}
+
+// WhySlotShown reports whether slot name's value may be printed as it is.
+// "path" is separate: it prints as is, and --redact digests it.
+func WhySlotShown(name string) bool { return whySlotShown[name] }
 
 // WhySource is what the line's content came from: Kind is gate, rules,
 // lesson, ledger_unchecked or none, Detail the name or names.
@@ -89,7 +109,9 @@ func TimelineRows(run *store.Run, seqs []int64) []TimelineCall {
 
 // RedactWhy is v for sharing: the project root becomes a keyed digest, both
 // texts are dropped, and a slot that holds a path is digested (a list is
-// already "(list)"). Ids, seqs, gate names, states and times stay.
+// already "(list)"), and every slot outside the closed WhySlotShown set is
+// blanked down to its byte count. Ids, seqs, gate names, states and times
+// stay.
 func RedactWhy(v *WhyView, key []byte) *WhyView {
 	if v == nil {
 		return nil
@@ -100,8 +122,14 @@ func RedactWhy(v *WhyView, key []byte) *WhyView {
 	out.ModelText, out.UserText = "", ""
 	out.Slots = make([]WhySlot, 0, len(v.Slots))
 	for _, s := range v.Slots {
-		if s.Name == "path" {
+		switch {
+		case s.Name == "path":
 			s.Value = redactHost(s.Value, key)
+		case !WhySlotShown(s.Name):
+			if s.Bytes == 0 {
+				s.Bytes = len(s.Value)
+			}
+			s.Value = ""
 		}
 		out.Slots = append(out.Slots, s)
 	}

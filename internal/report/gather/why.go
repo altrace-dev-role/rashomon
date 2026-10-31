@@ -125,14 +125,26 @@ func pickLine(lines [][]byte, prefix, sessionID string) ([]byte, error) {
 }
 
 // slotsOf is a line's slots as text in name order: a string as itself, a
-// number as written, a list or object as "(list)".
+// number as written, a list or object as "(list)". Only a slot whose name is
+// in report.WhySlotShown (or "path") keeps its string: any other string is
+// left out and only its length kept, whether the line was delivered or not.
 func slotsOf(m map[string]json.RawMessage) []report.WhySlot {
 	out := make([]report.WhySlot, 0, len(m))
 	for name, raw := range m {
-		out = append(out, report.WhySlot{Name: name, Value: slotText(raw)})
+		v := slotText(raw)
+		if !report.WhySlotShown(name) && name != "path" && isString(raw) {
+			out = append(out, report.WhySlot{Name: name, Bytes: len(v)})
+			continue
+		}
+		out = append(out, report.WhySlot{Name: name, Value: v})
 	}
 	slices.SortFunc(out, func(a, b report.WhySlot) int { return strings.Compare(a.Name, b.Name) })
 	return out
+}
+
+func isString(raw json.RawMessage) bool {
+	var s string
+	return json.Unmarshal(raw, &s) == nil
 }
 
 func slotText(raw json.RawMessage) string {

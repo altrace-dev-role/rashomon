@@ -75,3 +75,9 @@ m("RP-2 a pointer to a removed run is not said", P, "\tif !ok {\n\t\tsc.Bound = 
 m("RP-2 the previous session may be the current one", X, "\tif idx.Last != nil && idx.Last.SessionID != current {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
 m("RP-2 a clear overwrites the previous session's pointer", X, "\tif idx.Last != nil && idx.Last.SessionID != session {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
 m("RP-2 the index is written without its pointers", X, "Entries: entries, Last: idx.Last, Prior: idx.Prior})", "Entries: entries})", "TestRP2zc_")
+
+# why's slot allowlist (RP2zd, RP2ze; review of PR 171).
+m("RP-2 why prints a non-allowlisted string slot", W, '\t\tif !report.WhySlotShown(name) && name != "path" && isString(raw) {\n', "\t\tif false {\n", "TestRP2zd_")
+m("RP-2 the allowlist admits the lesson text slot", "internal/report/why.go", '\t"evidence": true, "unknown": true,\n', '\t"evidence": true, "unknown": true, "text": true,\n', "TestRP2zd_|TestRP2ze_")
+m("RP-2 why's text prints a non-allowlisted slot's value", "internal/report/why_text.go", '\t\tif s.Name != "path" && !WhySlotShown(s.Name) {\n', "\t\tif false {\n", "TestRP2ze_")
+m("RP-2 --redact digests only the path slot", "internal/report/why.go", "\t\tcase !WhySlotShown(s.Name):\n", "\t\tcase false:\n", "TestRP2zd_|TestRP2ze_")
