@@ -62,3 +62,15 @@ m("RP-1 a first word two gates share resolves its finding", "internal/recap/impa
   "\tif n != 1 || match.LastGreen == nil || match.LastGreen.Seq <= f.Seq",
   "\tif n == 0 || match.LastGreen == nil || match.LastGreen.Seq <= f.Seq",
   "TestRP1i_ARunnerNameIsComparedByItsProgramWord")
+
+# A trusted spec's gate id is not a host-safe word (RP1zl; census g3 W1, STEP-15).
+D = "internal/report/redact_autosteer.go"
+DR = "internal/report/redact.go"
+m("RP-1 Redact skips the autosteer pass", DR, "\t\ts.Autosteer = redactAutosteer(sess.Autosteer, key)\n", "\t\ts.Autosteer = sess.Autosteer\n", "TestRP2zl_")
+m("RP-1 Redact keeps a gate's name", D, "\t\tg.Name = redactWord(g.Name, key)\n", "", "TestRP2zl_")
+m("RP-1 Redact keeps the Stop's sentence", D, "\t\tst.Sentence = redactWord(st.Sentence, key)\n", "", "TestRP2zl_")
+m("RP-1 Redact keeps a finding's gate", D, "\t\tf.Gate = redactWord(f.Gate, key)\n", "", "TestRP2zm_")
+m("RP-1 Redact keeps a check's gate key", D, "\t\t\tc.Gate = redactGateKey(c.Gate, key)\n", "", "TestRP2zm_")
+m("RP-1 Redact keeps a check's reason", D, "\t\t\tc.Reason = strings.ReplaceAll(c.Reason, c.Gate, redactGateKey(c.Gate, key))\n", "", "TestRP2zm_")
+m("RP-1 a spec gate key loses its prefix", D, '\t\treturn "spec:" + redactWord(id, key)\n', "\t\treturn redactWord(id, key)\n", "TestRP2zm_")
+m("RP-1 a learned gate key is digested", D, '\tif strings.HasPrefix(k, "learned:") || strings.HasPrefix(k, "ci:") {\n', "\tif false {\n", "TestRP2zm_")
