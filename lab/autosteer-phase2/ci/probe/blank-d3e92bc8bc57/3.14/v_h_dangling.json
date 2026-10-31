@@ -1,0 +1,1 @@
+{"complete": false, "files": 1, "findings": [], "problems": [{"path": "t.py", "reason": "[Errno 2] No such file or directory: '/tmp/h/dangling/t.py'"}], "readiness": {"3.10": 100.0, "3.11": 100.0, "3.12": 100.0, "3.13": 100.0, "3.14": 100.0, "3.15": 100.0, "3.6": 100.0, "3.7": 100.0, "3.8": 100.0, "3.9": 100.0}, "rules": {}}

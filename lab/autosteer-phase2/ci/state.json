@@ -1,0 +1,108 @@
+{
+ "blank": {
+  "head": "3dd6f1961dda4537a4b3445ec6b021fd9dde3558",
+  "open": {
+   "2b:hostile/deep_nesting": {
+    "check": "2b",
+    "detail": "hostile/deep_nesting: JSON differs between 2.7 and 3.14 (key file_readiness differs)",
+    "since": "49d1499db411"
+   },
+   "2b:hostile/non_utf8_name": {
+    "check": "2b",
+    "detail": "hostile/non_utf8_name: JSON differs between 2.7 and 3.14 (key file_readiness differs)",
+    "since": "dfb0156bde36"
+   },
+   "2b:stdlib": {
+    "check": "2b",
+    "detail": "stdlib: JSON differs between 2.7 and 3.14 (key file_readiness differs)",
+    "since": "49d1499db411"
+   },
+   "oneside:tests.test_rules::test_ambiguous_tab_space_indentation_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_ambiguous_tab_space_indentation_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_backtick_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_backtick_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_every_non_text_codec_alias_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_every_non_text_codec_alias_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "5fecba17f93e"
+   },
+   "oneside:tests.test_rules::test_exec_call_alone_is_not_found_by_in_clause_check": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_exec_call_alone_is_not_found_by_in_clause_check runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_exec_call_with_tuple_args_is_not_found_by_in_clause_check": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_exec_call_with_tuple_args_is_not_found_by_in_clause_check runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_exec_in_clause_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_exec_in_clause_is_found runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_exec_statement_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_exec_statement_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_print_call_is_not_found_by_redirect_check": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_print_call_is_not_found_by_redirect_check runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_print_redirect_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_print_redirect_is_found runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_print_statement_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_print_statement_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_print_statement_is_not_found_by_redirect_check": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_print_statement_is_not_found_by_redirect_check runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "3dd6f1961dda"
+   },
+   "oneside:tests.test_rules::test_rot13_coding_declaration_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_rot13_coding_declaration_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "5fecba17f93e"
+   },
+   "oneside:tests.test_rules::test_ur_string_every_u_before_r_ordering_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_ur_string_every_u_before_r_ordering_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "c5568e801faa"
+   },
+   "oneside:tests.test_rules::test_ur_string_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_ur_string_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "c5568e801faa"
+   },
+   "oneside:tests.test_scanner::test_deep_nesting_still_blocks_versions_whose_own_limit_is_lower": {
+    "check": "tests",
+    "detail": "tests.test_scanner::test_deep_nesting_still_blocks_versions_whose_own_limit_is_lower runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "5fecba17f93e"
+   }
+  },
+  "pending_deps": []
+ },
+ "opus": {
+  "head": "ab361eeb793f0ba2968a236952a5cbf25e78bb4f",
+  "open": {},
+  "pending_deps": []
+ },
+ "sonnet": {
+  "head": "ffdbd9e337d72e391a4b78ef20c61e817ba2cfb0",
+  "open": {},
+  "pending_deps": []
+ }
+}

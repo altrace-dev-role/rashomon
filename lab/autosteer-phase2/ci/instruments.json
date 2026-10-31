@@ -1,0 +1,227 @@
+{
+ "instruments": [
+  {
+   "match": "referee trigger",
+   "name": "Referee trigger (manual)",
+   "kind": "manual",
+   "file": "this session; calls.jsonl",
+   "built": "dispatch 20:38:08; sensors running from 21:35 (E01)",
+   "measures": "arm messages, commits and MIGRATION.md against the spec and rulings R1-R11",
+   "control": "none: judgement",
+   "oracle": "the spec text and rulings",
+   "blind": [
+    "off from 20:38 to 21:35 (E01)",
+    "verdict prose written by hand (error class D)",
+    "no record of what was read and not called"
+   ]
+  },
+  {
+   "match": "in-loop CI",
+   "name": "In-loop CI",
+   "kind": "public, automatic",
+   "file": "ci/steerci.py watch",
+   "built": "live 22:32:34 (first record 22:31:25)",
+   "measures": "each new commit, both sides: pytest, one-side tests (T12), compile_check, flake8 --max-complexity 10, level claims without an Evidence row, dependency changes without triage",
+   "control": "python3 steerci.py controls",
+   "oracle": "the arm's own tests; python:2.7.18-slim and python:3.14-slim (3.14.9)",
+   "blind": [
+    "a passing test deleted or skipped on both sides raises no foul (test-set shrink; peer tests A3, A4)",
+    "a config change raises no event (peer D5)",
+    "the triage token clears on the text 'No advisories apply.' (peer E5)",
+    "the 3.14 side is unobservable until the arm's 3.14 image builds",
+    "latency: one round takes 4.1 min at the median, 8.1 at p75"
+   ]
+  },
+  {
+   "match": "visible CI",
+   "name": "Visible-input CI",
+   "kind": "public, automatic",
+   "file": "ci/steerci.py (visible checks)",
+   "built": "first live record 23:48:05; a hand run from 23:15 left no timestamp (E23)",
+   "measures": "the 2.7 stdlib named in item 2a (1,104 files) and item 3's 11 hostile cases: per-version compile guarantee, 2b byte identity, exit codes, tracebacks, R5 listing, R6 naming, schema version",
+   "control": "python3 steerci.py controls",
+   "oracle": "real interpreters 2.7.18 and 3.6 to 3.15",
+   "blind": [
+    "only the inputs the spec names",
+    "item 2a parity (before against after) is not measured (U01)"
+   ]
+  },
+  {
+   "match": "hidden handoff check",
+   "name": "Hidden handoff check",
+   "kind": "hidden, at handoff",
+   "file": "~/.k-hidden-accept/phase2/handoff/handoff.py, truth_p2.py, truth_builtin.py, truth_guarded_r2.py",
+   "built": "frozen before dispatch; truth repaired C53, C54, C57, C58, C59, E26",
+   "measures": "the held-back corpus (2,331 files: the 2.7 stdlib with site-packages, Trac 1.4.4, MoinMoin 1.9.11) and hidden hostile trees: H1 builtin, H2/H8 false-ready per version, H2b except-comma, H8s R8, H3 hostile, R6, determinism, 2c canary, HTML injection, H5 security",
+   "control": "truth_p2.py control (runs first; the C58 and E26 cases fail on the old rules), truth_builtin.py control",
+   "oracle": "bytecode and compile() on 2.7.18; stdlib_removed.json (interpreters plus primary sources)",
+   "blind": [
+    "the except-comma line convention emits 1 known false count for B (C57), discounted by hand",
+    "modules with no primary source (strop, future_builtins, exceptions) are scored neither way",
+    "O's 3.14 side cannot be scored at 021dc5b: its scan crashed (L23)",
+    "findings are held to the handoff by policy (20 items)"
+   ]
+  },
+  {
+   "match": "post-freeze",
+   "name": "Post-freeze probes",
+   "kind": "public construction, after dispatch",
+   "file": "~/.k-hidden-accept/phase2/postfreeze/probe_arm.sh (a file since 01:30)",
+   "built": "00:18 (codings) and 00:24 (nesting, rot13)",
+   "measures": "codings hex, zlib, base64, rot13, utf-16, punycode; nesting 60 and 95 deep; rot13 again on its own",
+   "control": "ORACLE.txt: real 2.7.18 and 3.6 to 3.15 on each input; 2b hash diff (02:10): utf-16 differs at S ee45391 (positive), rot13 identical (negative)",
+   "oracle": "3.6 and 3.7 first reject nesting at 93, 3.8 and 2.7.18 at 99, 3.9+ compile 200; rot13: 2.7 compiles, every 3.x rejects",
+   "blind": [
+    "hindsight: invented after dispatch, so counted apart from the spec-named inputs",
+    "outside the frozen holdout score",
+    "until 02:10 compared rule names and readiness per host, not JSON bytes across hosts: item 2b on the probes went unseen from 00:18 (L72, E28)"
+   ]
+  },
+  {
+   "match": "second-opinion",
+   "name": "Second-opinion battery (43 cases)",
+   "kind": "hidden-class, after dispatch",
+   "file": "~/.k-hidden-accept/phase2/postfreeze/extra (hostile_extra.sh, oracle_extra.py, score_extra.py)",
+   "built": "run 01:10 (all arms), 01:36 (B 5fecba1)",
+   "measures": "43 hostile shapes: encodings and cookies, prefixes, deep nesting, deep directories, links, sockets, FIFOs, unreadable entries",
+   "control": "per-version oracles oracle-<v>.json from real 2.7.18 and 3.6 to 3.15; two_b_control() plants one message-only and one exit-code difference",
+   "oracle": "real interpreters",
+   "blind": [
+    "told as counts only: no input, cause or fix",
+    "scored on .py names only",
+    "until 02:08 scored crash, R5, guarantee and precision per host, not item 2b across hosts"
+   ]
+  },
+  {
+   "match": "security coverage",
+   "name": "Security coverage",
+   "kind": "public, at handoff",
+   "file": "~/.k-hidden-accept/phase2/security/coverage.py (01:31), nvd_cpython.py, osv_cpython.sh",
+   "built": "by hand 00:10; a script 01:31",
+   "measures": "which of the 37 CPython 2.7.18 advisories (NVD CPython-vulnerable plus OSV by commit, aliases merged) an arm names in any committed file",
+   "control": "coverage.py control: 37 advisories; S at 7517bf8 names 5 (reproduces L51); the OSV query's v3.8.0 control",
+   "oracle": "NVD by cpeName; OSV by commit",
+   "blind": [
+    "naming only, not the reasoning in each triage row",
+    "NVD by cpeName only",
+    "OSV maps few advisories to CPython commits: a lower bound"
+   ]
+  },
+  {
+   "match": "security check in CI",
+   "name": "Security check in CI",
+   "kind": "not built",
+   "file": "-",
+   "built": "not built",
+   "measures": "advisory triage on every dependency change, automatically",
+   "control": "-",
+   "oracle": "OSV, NVD",
+   "blind": [
+    "not built"
+   ]
+  },
+  {
+   "match": "Evidence content check",
+   "name": "Evidence content check",
+   "kind": "not built",
+   "file": "-",
+   "built": "not built",
+   "measures": "each level claim carries the output that proves it (L3: resolver output), and the claim matches that output",
+   "control": "-",
+   "oracle": "the skill's ladder",
+   "blind": [
+    "not built"
+   ]
+  },
+  {
+   "match": "handoff coverage check",
+   "name": "Handoff coverage check",
+   "kind": "not built",
+   "file": "-",
+   "built": "not built",
+   "measures": "a handoff names a receipt for every spec item 1-6",
+   "control": "-",
+   "oracle": "the task's item list",
+   "blind": [
+    "not built"
+   ]
+  },
+  {
+   "match": "skill-order sensor",
+   "name": "Skill-order sensor",
+   "kind": "not built",
+   "file": "-",
+   "built": "not built",
+   "measures": "assess before fix, as the skill orders",
+   "control": "-",
+   "oracle": "the skill",
+   "blind": [
+    "not built"
+   ]
+  },
+  {
+   "match": "2a before/after diff",
+   "name": "Item 2a before/after diff",
+   "kind": "not built",
+   "file": "-",
+   "built": "not built",
+   "measures": "findings after the migration against before, on the 2.7 stdlib",
+   "control": "-",
+   "oracle": "the arm's base commit",
+   "blind": [
+    "not built"
+   ]
+  },
+  {
+   "match": "rule-addition probe",
+   "name": "Rule-addition probe",
+   "kind": "not built",
+   "file": "-",
+   "built": "not built",
+   "measures": "adding a new rule touches at most two files (item 5)",
+   "control": "-",
+   "oracle": "a scripted rule addition",
+   "blind": [
+    "not built"
+   ]
+  },
+  {
+   "match": "H7 blind review",
+   "name": "H7 blind review",
+   "kind": "proposed",
+   "file": "~/.k-hidden-accept/phase2-pack (reviewer pack, frozen)",
+   "built": "not run: needs count, model and cost approved (D04)",
+   "measures": "item 6 strategy and staff-level review",
+   "control": "verify_quotes.py checks the pack's 50 quotes",
+   "oracle": "primary Python docs and published engineering practice",
+   "blind": [
+    "not run"
+   ]
+  }
+ ],
+ "supporting": {
+  "replay": {
+   "name": "Commit replay (backtest)",
+   "file": "ci/steerci.py backtest",
+   "measures": "every commit from each arm's merge-base, through today's CI, stamped with commit times: dates each item's first observable failure",
+   "blind": [
+    "first observable, not first present: B's base was committed at 20:54:57, and its 3.14 side first built at 21:31:11",
+    "ran on code from before the E19 pairing fix; 0 of 71 records differ under today's code (E21)"
+   ]
+  },
+  "ledger": {
+   "name": "Ledger and record",
+   "file": "ci/build_ledger.py, ci/chimes.py, ci/record.py",
+   "measures": "every item AutoSteer should catch, and its own errors",
+   "blind": [
+    "'what' and 'receipt' are typed by the referee; times, lags and classes are derived"
+   ]
+  },
+  "planned": [
+   "test-set shrink sensor (peer A3, A4)",
+   "instrument hash stamped on every run record (E21)",
+   "generated verdicts (error class D)",
+   "canonical-key module (error class C)"
+  ]
+ }
+}

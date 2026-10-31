@@ -1,0 +1,17 @@
+From now on, AutoSteer CI runs the task's visible checks on every new commit of your migration branch: the tests on both interpreters (a failure, or a test that runs on one side only), compile_check, flake8 --max-complexity 10, advisory triage for dependency changes, and an Evidence row for every level raised. It sends a notice only when something new fails. This first notice gives the current status.
+
+AutoSteer CI, py-migrate/py2scan-3.14 at 021dc5b6c378: 10 new failing check(s). Notice only; no fix is suggested.
+Run on your committed files only, as uid 1000, no network, in python:2.7.18-slim (2.7.18), python:3.14-slim (3.14.9).
+- 2.7: pytest exit 0 (178 passed); compile_check exit 0; flake8 --max-complexity 10: 273 issue(s)
+- 3.14: pytest exit 2 (3 failed); compile_check exit 0; flake8 --max-complexity 10: 274 issue(s)
+New:
+  flake8 E501 on 2.7: 271 (first: py2scan/report.py:21:80: E501 line too long (83 > 79 characters))
+  flake8 E741 on 2.7: 1 (first: tests/test_advisories.py:232:39: E741 ambiguous variable name 'l')
+  flake8 F812 on 2.7: 1 (first: py2scan/scanner.py:57:30: F812 list comprehension redefines 'line' from line 50)
+  collecting tests.test_advisories fails on 3.14
+  collecting tests.test_cli fails on 3.14
+  collecting tests.test_rules fails on 3.14
+  pytest exits 2 on 3.14 (collection or usage error)
+  flake8 E501 on 3.14: 271 (first: .py-migrate/advisories.py:2:80: E501 line too long (95 > 79 characters))
+  flake8 E741 on 3.14: 1 (first: tests/test_advisories.py:232:39: E741 ambiguous variable name 'l')
+  flake8 F821 on 3.14: 2 (first: py2scan/report.py:63:19: F821 undefined name 'unicode')

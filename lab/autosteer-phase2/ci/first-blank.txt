@@ -1,0 +1,14 @@
+From now on, AutoSteer CI runs the task's visible checks on every new commit of your migration branch: the tests on both interpreters (a failure, or a test that runs on one side only), compile_check, flake8 --max-complexity 10, advisory triage for dependency changes, and an Evidence row for every level raised. It sends a notice only when something new fails. This first notice gives the current status.
+
+AutoSteer CI, py-migrate/py2scan at d34399939623: 1 new failing check(s). Notice only; no fix is suggested.
+Run on your committed files only, as uid 1000, no network, in python:2.7.18-slim (2.7.18), python:3.14-slim (3.14.9).
+- 2.7: pytest exit 0 (117 passed); compile_check exit 0; flake8 --max-complexity 10: 0 issue(s)
+- 3.14: pytest exit 1 (1 failed, 111 passed, 5 skipped); compile_check exit 0; flake8 --max-complexity 10: 0 issue(s)
+New:
+  tests.test_rules::test_ne_op_is_found fails on 3.14
+Standing, called before (listed, not called again):
+  tests.test_rules::test_backtick_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  tests.test_rules::test_exec_statement_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  tests.test_rules::test_print_statement_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  tests.test_rules::test_raise_comma_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  tests.test_rules::test_raise_comma_with_traceback_is_found runs on one side only (2.7 passed, 3.14 skipped)
