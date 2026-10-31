@@ -430,7 +430,7 @@ var reasonMeaning = sync.OnceValue(func() map[steer.SuppressedBy]string {
 		steer.SuppressedByDenyCap:           "the cap on denials was reached",
 		steer.SuppressedBySlotRejected:      "a value the note quotes failed its checks",
 		steer.SuppressedByOutputGate:        "the note was over the size cap",
-		steer.SuppressedByUnverifiedChannel: "Claude Code's version has not been verified to carry the note to the agent",
+		steer.SuppressedByUnverifiedChannel: "Claude Code's version has not been verified to carry the note to the agent, or a transcript did not show an earlier note delivered on this event",
 		steer.SuppressedByNoChannel:         "this event has no way to carry a note",
 		steer.SuppressedByNoMirror:          "nobody was at the keyboard to be shown the note",
 		steer.SuppressedByHarnessOff:        "this harness is switched off",
