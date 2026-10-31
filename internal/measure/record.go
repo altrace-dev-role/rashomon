@@ -83,6 +83,7 @@ func incomplete(st *store.Store, run *store.Run, session string) bool {
 
 // line is the part of a steer line the pair reads.
 type line struct {
+	Type         string              `json:"type"`
 	Pattern      string              `json:"pattern"`
 	Kind         string              `json:"kind"`
 	Key          string              `json:"key"`
@@ -95,12 +96,20 @@ type line struct {
 	Delivery     *steer.Delivery     `json:"delivery"`
 }
 
+// decodeLines decodes a session's steer log, leaving out the Stop's
+// evidence lines (CHANNEL-EVIDENCE1): they judge a note and are no note,
+// so they name no arm and give nothing.
 func decodeLines(raw [][]byte) ([]line, error) {
-	out := make([]line, len(raw))
-	for i, b := range raw {
-		if err := json.Unmarshal(b, &out[i]); err != nil {
+	out := make([]line, 0, len(raw))
+	for _, b := range raw {
+		var l line
+		if err := json.Unmarshal(b, &l); err != nil {
 			return nil, err
 		}
+		if l.Type == steer.EvidenceLineType {
+			continue
+		}
+		out = append(out, l)
 	}
 	return out, nil
 }

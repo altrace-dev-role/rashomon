@@ -547,3 +547,28 @@ func keysAt(v any, path string, out map[string][]string) {
 		}
 	}
 }
+
+// TestMS1zd_PairSkipsTheStopsEvidenceLines (CHANNEL-EVIDENCE1): a Stop that
+// judges a delivered note appends a steer_evidence line to the steer arm's
+// log. It names no arm and gives nothing, so the pair reads the session as
+// it did without it: one arm, the same lines and notes, no error.
+// Break: decode an evidence line as a steer line.
+func TestMS1zd_PairSkipsTheStopsEvidenceLines(t *testing.T) {
+	f := twoArms(t)
+	before := pairOf(t, f)
+	ev := &steer.EvidenceLine{Type: steer.EvidenceLineType, V: 1, SteerID: "s1", SessionID: sSteer, PromptID: ptr("p1"),
+		AtUnixMS: 1, Event: "PostToolUseFailure", Evidence: steer.EvidenceSeen}
+	if err := f.st.AppendSteer(sSteer, func(io.ReaderAt) ([]store.SteerLine, error) { return []store.SteerLine{ev}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	after, err := PairOf(f.ask(sOff, steer.ArmOff), f.ask(sSteer, steer.ArmSteer), f.now)
+	if err != nil {
+		t.Fatalf("PairOf with an evidence line = %v, want the pair read as before", err)
+	}
+	before.GeneratedAt, after.GeneratedAt = 0, 0
+	b, _ := json.Marshal(before)
+	a, _ := json.Marshal(after)
+	if !bytes.Equal(a, b) {
+		t.Errorf("an evidence line changed the pair:\n%s\nwant\n%s", a, b)
+	}
+}
