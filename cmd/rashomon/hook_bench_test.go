@@ -12,6 +12,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -347,6 +348,33 @@ func benchCheckCalls(b *testing.B, root string, declarations, executions int, st
 	}
 }
 
+// benchNoNote leaves the note out of a post row's store: the fallback a
+// turn pays when no note stands (bash_short_nonote).
+var benchNoNote bool
+
+// benchNoteNoSpec is the UserPromptSubmit preflight's note that the turn's
+// directory holds no spec (hook.NoteSpecFound), for the post rows: the
+// rules step of a turn whose prompt named a path finds it and skips the
+// second discovery (card SPEC-RULES1, D210). A turn whose prompt named
+// nothing runs no preflight discovery, writes no note, and pays the
+// discovery in full; the rows measure the first case.
+func benchNoteNoSpec(b *testing.B, root string, body []byte) {
+	b.Helper()
+	var head struct {
+		benchHead
+		PromptID string `json:"prompt_id"`
+	}
+	if err := json.Unmarshal(body, &head); err != nil {
+		b.Fatal(err)
+	}
+	st, err := store.OpenExisting(root)
+	if err != nil {
+		b.Fatal(err)
+	}
+	projectDir, managedDir := specDirs()
+	hook.NoteSpecFound(st, head.SessionID, head.PromptID, head.CWD, projectDir, managedDir, nil)
+}
+
 // benchToolCalls runs a tool-call entry b.N times, each time as a new call,
 // against a store this helper opens and warms once first.
 //
@@ -368,6 +396,9 @@ func benchToolCalls(b *testing.B, entry func([]string, io.Reader, io.Writer) int
 	in := newBenchInput(b, body)
 	args := []string{install.Marker, installID}
 	var stderr benchSink
+	if !declares && !benchNoNote {
+		benchNoteNoSpec(b, root, body)
+	}
 	if code := entry(args, in.next(benchWarmupIndex), &stderr); code != exitOK {
 		b.Fatalf("warm-up call exited %d", code)
 	}
@@ -409,12 +440,22 @@ func BenchmarkRunPost(b *testing.B) {
 	}{{"bash_short", benchBashShortPost}, {"edit_314k", benchEdit314kPost}} {
 		b.Run(c.name, func(b *testing.B) { benchToolCalls(b, postEntry, c.payload(b), false) })
 	}
+	// The post of a turn with no note: the discovery in full, which the
+	// gate rows above skip (card SPEC-RULES1, D210). A provisional row,
+	// measured and not gated.
+	b.Run("bash_short_nonote", func(b *testing.B) {
+		benchNoNote = true
+		defer func() { benchNoNote = false }()
+		benchToolCalls(b, postEntry, benchBashShortPost(b), false)
+	})
 }
 
 // postEntry is cmdPost with its stdout discarded, in the entry shape cmdHook
 // has: what the post prints is the steer step's, which these measures do not
-// read (a PostToolUse call that names no path under .claude/rashomon runs
-// no step, card 2.3 R3 and P5B).
+// read. Both calls run the rules step's spec discovery, from a cwd two
+// levels under a .git root with no spec, and stop there: neither names a
+// path under .claude/rashomon nor fails a runner, so the step reads no run
+// (card 2.3 R3 and P5B), and no rule raises (SPEC-RULES1).
 func postEntry(args []string, stdin io.Reader, stderr io.Writer) int {
 	return cmdPost(args, stdin, io.Discard, stderr)
 }

@@ -37,11 +37,11 @@ import (
 // state outside States, a source outside snapshot.go's three, or a record not
 // Complete makes every row of the gate unknown (INV-2, A1).
 //
-// The two v0 facts: the scope is the session at every point (Q1); and no
-// spec_rule or proposed_check row is emitted (Phase 3 and 6). The other
-// kinds have their own sources: expected_evidence rows come from the task
-// file (evidence.go, card 3.3) and platform_impact rows from
-// internal/platform (6.1).
+// The scope is the session at every point (Q1). The other kinds have their
+// own sources: spec_rule rows come from the snapshot's rule verdicts
+// (specObligations), expected_evidence rows from the task file (evidence.go,
+// card 3.3) and platform_impact rows from internal/platform (6.1); no
+// proposed_check row is emitted yet.
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string
@@ -103,7 +103,8 @@ var obligationScopesOnce struct {
 	v map[string]string
 }
 
-// obligationSourceSpec is the source of a declared or ci_commands gate.
+// obligationSourceSpec is the source of a declared or ci_commands gate and
+// of a spec rule (specObligations).
 const obligationSourceSpec = "spec"
 
 // Obligation is one ledger row. ID is a stable digest (ObligationID);
@@ -123,7 +124,32 @@ type Obligation struct {
 // ledger has one producer, on the path every Stop takes. Never nil.
 func ledgerOf(snap Snapshot, c *classified, ex []Expected) []Obligation {
 	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
-	return append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
+	obs := append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
+	return append(obs, specObligations(scope, snap)...)
+}
+
+// specObligations is one spec_rule row per verdict of a trusted or managed
+// rule, in verdict order, sourced "spec": a violation unmet citing the calls
+// that violated it, no recorded violation met citing none, unknown unknown
+// citing none. An untrusted rule's verdict owes no row, nor does the implied
+// task-file rule's, whose writes are integrity/store-touched's.
+func specObligations(scope string, snap Snapshot) []Obligation {
+	var out []Obligation
+	for _, v := range snap.SpecVerdicts {
+		if !binding(v.trust) {
+			continue
+		}
+		state := ObligationUnknown
+		switch v.Verdict {
+		case Violation:
+			state = ObligationUnmet
+		case NoRecordedViolation:
+			state = ObligationMet
+		}
+		out = append(out, Obligation{ID: ObligationID(scope, SpecRule, string(v.Rule)), Scope: scope, Kind: SpecRule,
+			Source: obligationSourceSpec, State: state, Evidence: append([]int64{}, v.Seqs...)})
+	}
+	return out
 }
 
 // cite is the gate pointers a row's evidence reads.
