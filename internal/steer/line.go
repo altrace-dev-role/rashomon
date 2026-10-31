@@ -135,7 +135,7 @@ type Line struct {
 	Facts          Facts `json:"facts"`
 	RecordsOffset  int64 `json:"records_offset"`
 	// HarnessID and Surface are opaque identifiers the spec names but
-	// never enumerates (unlike, say, SuppressedBy's closed 22). Plain
+	// never enumerates (unlike, say, SuppressedBy's closed 23). Plain
 	// strings, no frozen vocabulary.
 	HarnessID string `json:"harness_id"`
 	Surface   string `json:"surface"`

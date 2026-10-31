@@ -308,7 +308,11 @@ func steerRows(st *store.Store) (rows []steerRow, skipped int, err error) {
 		skipped += n
 		for _, b := range raw {
 			var l steer.Line
-			if err := json.Unmarshal(b, &l); err != nil || l.Type != steer.LineType {
+			err := json.Unmarshal(b, &l)
+			if err == nil && l.Type == steer.EvidenceLineType {
+				continue // a channel-evidence line is valid and is not a decision
+			}
+			if err != nil || l.Type != steer.LineType {
 				skipped++
 				continue
 			}
