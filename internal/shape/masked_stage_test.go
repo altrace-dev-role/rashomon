@@ -257,3 +257,27 @@ func TestMO1_TheIdsAreThePlacesInTheLists(t *testing.T) {
 		t.Error("an id past the lists names a word")
 	}
 }
+
+// TestMO1_TheListsFitAOneByteId: RunnerNameID and MaskedByID hold a word's
+// place in a uint8, and RunnerNameID stops counting at 254 words, so a 255th
+// row would map to 0 -- "no word" -- without a sound. Each list, and the two
+// runner lists together (an id counts across them), must fit, so that a 255th
+// row fails CI instead.
+func TestMO1_TheListsFitAOneByteId(t *testing.T) {
+	for _, l := range []struct {
+		name  string
+		words []string
+	}{
+		{"testCommandNames", testCommandNames},
+		{"buildCommandNames", buildCommandNames},
+		{"RunnerNames", RunnerNames()},
+		{"MaskedByWords", MaskedByWords()},
+	} {
+		if len(l.words) > 254 {
+			t.Errorf("%s has %d words, want at most 254 for a one-byte id", l.name, len(l.words))
+		}
+	}
+	if got, want := len(RunnerNames()), len(testCommandNames)+len(buildCommandNames); got != want {
+		t.Errorf("RunnerNames has %d words, want the two lists' %d", got, want)
+	}
+}
