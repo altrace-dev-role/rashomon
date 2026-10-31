@@ -162,22 +162,25 @@ func (p *Post) armStale() {
 // write pays one Lstat and decodes no path; an armed one adds the key's
 // walk, its paths' decode (writtenNamed) and a second Lstat; only the call
 // that takes the arm reads the run.
-func (p *Post) staleWrite() (string, bool) {
+func (p *Post) staleWrite() (key string, took, indexless bool) {
 	w := &p.landedWrite
 	if p.landedSeq == 0 || p.event != string(steer.EventPostToolUse) || !(w.writeVerb || w.mayWrite) {
-		return "", false
+		return "", false, false
 	}
 	if armed, _ := p.st.StaleArmed(p.sessionID); !armed {
-		return "", false
+		return "", false, false
 	}
-	key := baseline.Key(p.cwd)
+	key = baseline.Key(p.cwd)
 	if key == "" || !slices.ContainsFunc(writtenNamed(w.tool, w.input, w.mayWrite), func(path string) bool { return verify.RelevantUnder(path, key, p.cwd) }) {
-		return "", false
+		return "", false, false
 	}
 	if _, err := os.Lstat(verify.IndexPath(p.st.Root(), key)); err != nil {
-		return "", false
+		// No index file: only a spec's declared required gate can raise the
+		// note (D222), and the spec is read after the run, in judge, which
+		// then takes the arm.
+		return key, false, true
 	}
-	return key, p.st.TakeStaleArm(p.sessionID)
+	return key, p.st.TakeStaleArm(p.sessionID), false
 }
 
 // judge is the step's compute before Route: the trigger, the run read once,
@@ -192,9 +195,10 @@ func (p *Post) staleWrite() (string, bool) {
 // and the sync.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	var key string
+	var indexless bool
 	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
 		var took bool
-		if key, took = p.staleWrite(); !took {
+		if key, took, indexless = p.staleWrite(); !took && !indexless {
 			return steer.Context{}, verify.SteerView{}, false
 		}
 	}
@@ -207,6 +211,9 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	}
 	root := p.st.Root()
 	p.sp = discoverSpecAt(p.cwd, key, env.ProjectDir, env.ManagedDir, TrustRoot(run, root, p.landedSeq))
+	if indexless && !p.takeIndexless() {
+		return steer.Context{}, verify.SteerView{}, false
+	}
 	var idx *verify.ProjectIndex
 	if key != "" {
 		idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))
@@ -215,6 +222,16 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 		StoreRoot: root}
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
 	return p.contextOf(env, view), view, true
+}
+
+// takeIndexless is the stale trigger's last test where the project has no
+// index file (D222): this call takes the arm, which only one of two racing
+// posts does, and the spec the step discovered declares a required gate. The
+// arm is taken whatever the spec says: left armed, every later write would
+// read the run again for the same answer.
+func (p *Post) takeIndexless() bool {
+	took := p.st.TakeStaleArm(p.sessionID)
+	return took && verify.DeclaresRequired(p.sp)
 }
 
 // contextOf is Route's context for this call (card 2.3 R4.5). Attendance is

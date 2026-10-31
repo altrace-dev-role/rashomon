@@ -3,6 +3,7 @@ package verify
 import (
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -43,10 +44,10 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, p
 	snap := evaluate(run, idx, sp, key, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	var decl int64
-	if c.learned && event == string(steer.EventPostToolUse) {
+	if (c.learned || hasDeclaredRequired(snap)) && event == string(steer.EventPostToolUse) {
 		decl = declSeqAt(run, toolUseID, pt.Seq)
 	}
-	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, pt, event)...)
+	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, !c.learned, pt, event)...)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
 	found, dropped := mapFacts(run, facts, pt, decl)
 	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
@@ -152,16 +153,19 @@ func regressedHere(g *GateState, toolUseID string) bool {
 // staleEvidence is stale-evidence's producer (card STALE-NUDGE1): for each
 // gate, in snapshot order, that staleHere names, the fact of its green run
 // and of this call's writes after it, declared at decl. decl is 0 where the
-// call raises none: not a PostToolUse, no established family, or no
-// declaration of the call in the record.
-func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, pt Point, event string) []Finding {
+// call raises none: not a PostToolUse, no established family and no declared
+// required gate, or no declaration of the call in the record. declaredOnly is
+// true where no family is established: a learned row is then required by the
+// fail-closed prior, not by the index, and raises nothing (D164); only a
+// declared gate, required by its spec, does (D222).
+func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, declaredOnly bool, pt Point, event string) []Finding {
 	if decl == 0 {
 		return nil
 	}
 	var out []Finding
 	for i := range snap.Gates {
 		g := &snap.Gates[i]
-		if !staleHere(g, writes, decl) {
+		if declaredOnly && g.Source == sourceLearned || !staleHere(g, writes, decl) {
 			continue
 		}
 		green := g.LastGreen.Seq
@@ -197,6 +201,18 @@ func staleHere(g *GateState, writes []write, decl int64) bool {
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo }); i < len(writes); i++ {
 		if w := &writes[i]; w.Path != nil && Relevant(w.Class) {
 			return w.Seq == decl
+		}
+	}
+	return false
+}
+
+// hasDeclaredRequired reports whether the snapshot holds a required gate a
+// spec declared (not a learned row), the one gate that raises stale-evidence
+// where no family is established (D222).
+func hasDeclaredRequired(snap Snapshot) bool {
+	for i := range snap.Gates {
+		if g := &snap.Gates[i]; g.Required && g.Source != sourceLearned {
+			return true
 		}
 	}
 	return false
@@ -373,6 +389,10 @@ func renderStale(times *declTimes, f Finding, decl int64) render.Message {
 	word := slot.Gate(g.Program)
 	if g.Program == "" {
 		word = slot.Gate(kindOfGateID(string(g.GateID)))
+	}
+	if id, ok := strings.CutPrefix(string(g.GateID), "spec:"); ok && slot.Gate(id).Validate() == nil {
+		// A declared gate is named by its id, the word its spec gave it (D222).
+		word = slot.Gate(id)
 	}
 	fromOutput := g.OutcomeFrom == OutcomeFromOutput
 	if len(g.Paths) > 0 {
