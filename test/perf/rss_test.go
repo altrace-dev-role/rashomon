@@ -4,8 +4,10 @@ package perf
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -21,6 +23,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/test/perf/payload"
 	"github.com/altrace-dev-role/rashomon/test/perf/peakrss"
@@ -511,6 +514,13 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				}
 				return p
 			}
+			if c.Entry == "recap" {
+				// The Stop's transcript scan (CE-1): the real recap entry on a
+				// seeded session, over a transcript of PayloadBytes, with a
+				// delivered note the transcript does not hold.
+				r.seed(t, Seed{Calls: recapSeedCalls})
+				mk = r.scanStop(t, c.PayloadBytes)
+			}
 			got, attributable, floorWhy := r.medianRSS(t, []string{c.Entry}, mk)
 			if !attributable {
 				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, floorWhy)
@@ -531,6 +541,89 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 			}
 		})
 	}
+}
+
+// recapSeedCalls is the session size recap.stop's row is measured on
+// (BenchmarkRecap/100), so the scan case differs from it by the scan alone.
+const recapSeedCalls = 100
+
+// scanStop returns the payload builder of the recap.stop scan case: a
+// transcript of exactly size bytes, of 2 KiB records with a 1 MiB line (held,
+// at the step-over's edge) and a 1 MiB + 1 line (stepped over) every 2 MiB, and
+// no attachment holding the note, so the scan reads all of it and finds
+// nothing, the cost of an absent note. Before each run it resets the
+// session's steer log to one settled delivered note: the Stop appends an
+// evidence line, after which a later run would judge nothing and scan nothing.
+// A run's evidence line is checked before the reset, so a run that did not
+// scan fails the case.
+func (r rig) scanStop(t *testing.T, size int) func(i int) []byte {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(path, scanTranscript(size), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(r.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(st.RunDir(payload.Session), store.FileSteer)
+	stop, err := json.Marshal(map[string]any{"hook_event_name": "Stop", "session_id": payload.Session, "transcript_path": path,
+		"cwd": payload.CWD, "stop_hook_active": false, "last_assistant_message": payload.FinalMessage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := steer.Line{Type: steer.LineType, V: steer.LineVersion, ID: "note-1", SessionID: payload.Session,
+		AtUnixMS: time.Now().Add(-time.Minute).UnixMilli(), Event: "PostToolUseFailure",
+		State: steer.LineStateDelivered, ModelText: "rashomon record: a note that is not in the transcript"}
+	return func(i int) []byte {
+		if i > 0 {
+			b, err := os.ReadFile(log)
+			if err != nil || !bytes.Contains(b, []byte(`"evidence":"absent"`)) {
+				t.Fatalf("run %d did not scan the transcript: no absent evidence line in the steer log (%v)", i-1, err)
+			}
+		}
+		if err := os.Remove(log); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		note.AtUnixMS = time.Now().Add(-time.Minute).UnixMilli()
+		l := note
+		if err := st.AppendSteer(payload.Session, func(io.ReaderAt) ([]store.SteerLine, error) { return []store.SteerLine{&l}, nil }); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		return stop
+	}
+}
+
+// scanTranscript is size bytes of transcript lines, each ending in a newline.
+func scanTranscript(size int) []byte {
+	const step = 1 << 20 // linescan's bound in steer.DefaultScanLimits
+	fill := func(n int, kind string) []byte {
+		head := `{"type":"user","timestamp":"2026-10-30T00:00:00.000Z","message":{"role":"user","content":"` + kind
+		tail := `"}}` + "\n"
+		return []byte(head + strings.Repeat("x", n-len(head)-len(tail)) + tail)
+	}
+	out := make([]byte, 0, size)
+	for k := 0; len(out) < size; k++ {
+		var line []byte
+		switch {
+		case k%1000 == 500: // held: step-1 bytes and its newline are the longest line read
+			line = fill(step, "held ")
+		case k%1000 == 501: // one over: stepped over
+			line = fill(step+1, "over ")
+		default:
+			line = fill(2048, "")
+		}
+		if rest := size - len(out); len(line) > rest {
+			if line = fill(max(rest, 200), "last "); rest < 200 {
+				line = bytes.Repeat([]byte("\n"), rest) // blank lines: the scan skips them
+			}
+		}
+		out = append(out, line...)
+	}
+	return out
 }
 
 // TestRES28b_EveryEntryStaysWithinItsRow: every entry row's peak-RSS p50
