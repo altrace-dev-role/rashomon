@@ -4,7 +4,7 @@
 # run's longest, and status shows the longest across runs.
 P7 = "TestRubricPERF7_LockFileReportsItsWait|TestRubricPERF7_AContendedInvocationNotesItsLongestWait"
 m("perf-7 lockFileWait reports no wait", "internal/store/lock_unix.go",
-  "\t\ttime.Sleep(min(backoff, left))\n\t\twaited = time.Since(start)\n", "\t\ttime.Sleep(min(backoff, left))\n", P7)
+  "\t\tpollSleep(min(backoff, left))\n\t\twaited = pollNow().Sub(start)\n", "\t\tpollSleep(min(backoff, left))\n", P7)
 m("perf-7 an append's wait is not added up", "internal/store/store.go",
   "\ts.lockWaited.Add(int64(waited))\n", "\t_ = waited\n", "TestRubricPERF7_AContendedInvocationNotesItsLongestWait")
 m("perf-7 the invocation's wait is not noted", "internal/store/store.go",

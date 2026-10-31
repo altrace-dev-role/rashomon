@@ -36,7 +36,12 @@ m("ST-2.3 dontAsk is attended", H,
   "TestST_SteerEnvBecomesTheContext")
 m("ST-2.3 the step prints before its line is durable", H,
   "\tif err := p.st.Flush(); err != nil {\n\t\treturn nil\n\t}\n", "",
-  "TestST_TheLineIsDurableBeforeItsNote")
+  "TestST_TheLineIsDurableBeforeItsNote",
+  platform="darwin")
+# The break is judged on darwin only: off darwin no append is deferred, Flush
+# finds nothing dirty and returns at once (store.Flush), so dropping it
+# changes nothing a process can observe. On darwin the test sees the step's
+# full sync of the steer log after the line's barrier go missing.
 m("ST-2.3 the step matches the raw id, which no record stores over the cap", P,
   "\tp.toolUseID = store.CapID(pl.ToolUseID)\n", "\tp.toolUseID = pl.ToolUseID\n",
   "TestST_OverCapIdMatchesItsRun")
@@ -46,7 +51,8 @@ m("ST-2.3 the step matches the raw id, which no record stores over the cap", P,
 m("ST-2.3 a post whose flush and marker both failed runs the step", C,
   "\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t\treturn nil\n\t\t}\n",
   "\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
-  "TestST_FailedFlushCitesNothing")
+  "TestST_FailedFlushCitesNothing",
+  platform="darwin")  # skipWithoutAFlush: off darwin a deferred post issues no flush to fail
 m("ST-2.3 consent read from consent.json, not the marker", E,
   "\t\tConsent:      store.SteerDisclosureMarker,\n",
   "\t\tConsent:      func(root string) (int, error) { _ = store.SteerDisclosureMarker; return hook.ConsentSteerDisclosure(root) },\n",

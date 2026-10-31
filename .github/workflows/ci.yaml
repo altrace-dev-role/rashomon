@@ -281,18 +281,38 @@ jobs:
   # mutants.
   #
   # A job of its own so that its bound is its own: sharing Test's would cancel
-  # the sweep once it outgrew a bound sized for tests that take minutes. At
-  # about 4 s a mutant, 300 minutes holds about 4,000.
+  # the sweep once it outgrew a bound sized for tests that take minutes.
+  #
+  # Three shards (sweep.py --shard K/3), each a runner of its own under the
+  # 300-minute bound. The arithmetic is run 40960774628's, which ran one job
+  # to the bound and was cancelled: the baseline took 15 minutes (21:48 to
+  # 22:03), the bound ended at 02:48, and 1,909 mutants were judged in the
+  # 285 minutes between, 8.96 s a mutant, not the 4 s this comment used to
+  # say. The tree now holds 3,830 mutants: one job is 3,830 x 8.96 s = 572
+  # minutes plus the baseline, 587; two shards are 1,915 x 8.96 s = 286
+  # plus 15, 301, over the bound before any growth; three are 1,277 x 8.96 s
+  # = 191 plus 15, 206 minutes, and the bound holds up to about 5,700
+  # mutants before they need a fourth. Mutants are dealt round-robin in load
+  # order, so every shard samples every area; the shards are disjoint and
+  # their union is the whole sweep. Each shard fails on its own undetected
+  # mutants, so the sweep passes only when all three do; fail-fast is off so
+  # one red shard does not cancel the others' verdicts.
   sweep:
-    name: Mutation sweep
+    name: Mutation sweep (shard ${{ matrix.shard }}/3)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     # Two manual dispatches share no state and would only waste a second
     # runner's minutes side by side; cancelling the older one when a newer
     # dispatch starts is strictly better than letting both run to the end.
+    # The shard is part of the group: the three shards of one dispatch must
+    # not cancel one another.
     concurrency:
-      group: sweep-${{ github.ref }}
+      group: sweep-${{ github.ref }}-${{ matrix.shard }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -313,7 +333,7 @@ jobs:
           sudo setcap cap_sys_admin+ep "$(command -v unshare)"
 
       - name: Mutation sweep
-        run: python3 test/mutation/sweep.py --strict
+        run: python3 test/mutation/sweep.py --strict --shard ${{ matrix.shard }}/3
 
   # Every fuzz target in the tree, 30 seconds each. The Test job runs their
   # seed corpora as plain tests; this is the part that looks for new inputs.
@@ -689,6 +709,33 @@ jobs:
       # TIOCPTYGNAME) the ubuntu job never takes.
       - name: TRU-1, 3, 4, 5 consent on a terminal (darwin)
         run: go test -race -count=1 -run 'TestTRU(1|3|4|5)_' ./test/acceptance
+
+  # The mutants only macOS can judge: the ones declaring platform="darwin"
+  # (their judging tests skip off darwin) and the ones whose target builds on
+  # darwin and not on linux (sync_darwin.go). The three ubuntu shards report
+  # them NOT JUDGED (platform), which does not fail them, so before this job
+  # nothing in CI judged them. 20 rows at about 9 s each is 180 s, about 3
+  # minutes, plus the baseline of about 15 minutes, under 20 minutes; the
+  # bound is 60 for a slower runner. ON DEMAND ONLY, like the sweep.
+  sweep-darwin:
+    name: Mutation sweep (darwin-only mutants)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sweep-darwin-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      - name: Mutation sweep, darwin-only mutants
+        run: python3 test/mutation/sweep.py --strict --platform-only darwin
 
   measure-linux-benchmarks:
     name: Measure linux/amd64 benchmark rows
