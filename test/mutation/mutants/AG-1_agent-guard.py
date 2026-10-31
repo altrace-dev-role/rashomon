@@ -59,3 +59,12 @@ m("AG-1 a refusal leads with the signal", SG,
   "\treturn fmt.Errorf(\"%s is set, so this is an agent session; %s, so only you can run it, in %s: `rashomon %s`. Nothing was %s.\",\n\t\tsignal, why, Place, command, nothing)\n",
   "TestAGDP1_")
 
+m("AG-1 the plugin's stop skill runs detach itself", "plugin/skills/stop/SKILL.md",
+  "3. Otherwise the user runs `detach`, not you: it refuses an agent session,\n",
+  "3. Otherwise, run `$RASHOMON detach`; it refuses an agent session,\n", "TestAGSK1_")
+m("AG-1 the standalone stop skill runs detach itself", "skills/rashomon-stop/SKILL.md",
+  "2. The user runs `detach`, not you: it refuses an agent session, and a `!`\n",
+  "2. Run `$RASHOMON detach`: it refuses an agent session, and a `!`\n", "TestAGSK1_")
+m("AG-1 l-items.sh starts inside Claude Code", "test/live/l-items.sh",
+  "if [ -n \"${CLAUDECODE:-}\" ]; then\n",
+  "if false; then\n", "TestAGSK1_")
