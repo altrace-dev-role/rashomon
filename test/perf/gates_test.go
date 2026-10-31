@@ -82,6 +82,15 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 		}
 	}
 	for _, c := range b.RSSCases {
+		if c.Entry == "recap" {
+			// The Stop's transcript scan (CE-1) is no hook or post payload, so
+			// RES-28's line does not describe it: its row is its own figure,
+			// and its basis says where the figure came from.
+			if c.Basis == "" || c.SlopeMiBPerMiB != 0 || c.GatesFrom != "CE-1" {
+				t.Errorf("rss case %s: a recap case carries a basis, no slope, and gates from CE-1: %+v", c.ID, c)
+			}
+			continue
+		}
 		if want := round4(budget.RES28BudgetMiB(c.PayloadBytes, c.SlopeMiBPerMiB)); c.BudgetMiB != want {
 			t.Errorf("rss case %s: budget %v, its line gives %v", c.ID, c.BudgetMiB, want)
 		}
