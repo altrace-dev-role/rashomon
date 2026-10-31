@@ -113,6 +113,21 @@ type Ledger struct {
 // back so (fail closed): every lesson returns to proposed, to be approved
 // again, and active.json holds none. No state at all is an empty ledger.
 func Open(root, project string, now time.Time) (*Ledger, error) {
+	return openAt(root, project, now, true)
+}
+
+// OpenReadOnly is Open that never writes: a state that does not check is
+// read as quarantined in memory (Quarantined true, every lesson proposed)
+// and left on disk as it is. A question must not change the learning state,
+// and the next learn verb that opens it still finds the mismatch and records
+// the quarantine itself.
+func OpenReadOnly(root, project string) (*Ledger, error) {
+	return openAt(root, project, time.Time{}, false)
+}
+
+// openAt is Open and OpenReadOnly: write is whether a mismatch is quarantined
+// on disk.
+func openAt(root, project string, now time.Time, write bool) (*Ledger, error) {
 	if err := projectElement(project); err != nil {
 		return nil, err
 	}
@@ -138,6 +153,9 @@ func Open(root, project string, now time.Time) (*Ledger, error) {
 	}
 	for i := range l.file.Lessons {
 		l.file.Lessons[i].Tier = TierProposed
+	}
+	if !write {
+		return l, nil
 	}
 	l.file.QuarantinedAtUnixMS = now.UnixMilli()
 	return l, l.Save()
@@ -275,7 +293,9 @@ func byAge(a, b Lesson) int {
 // shape, a high-entropy run) refuses the whole file with slot.ErrSecretShaped
 // and adds nothing: an id is stored and printed by the verbs, so an import
 // never carries a token in as one, and the error names the row, not its
-// value (Q4). The caller saves.
+// value (Q4). A host- or address-shaped id (slot.RefuseHosts) refuses the
+// whole file the same way: an id is model-visible and unquoted, and the
+// error names the row, not the id. The caller saves.
 func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err error) {
 	b, err := io.ReadAll(io.LimitReader(r, 1<<20))
 	if err != nil {
@@ -288,6 +308,9 @@ func (l *Ledger) Import(r io.Reader, now time.Time) (added, skipped int, err err
 	for i, ls := range in.Lessons {
 		if idForm(ls.ID) && errors.Is(slot.LessonID(ls.ID).Validate(), slot.ErrSecretShaped) {
 			return 0, 0, fmt.Errorf("learn: import row %d: the lesson id is secret-shaped, so nothing was imported: %w", i+1, slot.ErrSecretShaped)
+		}
+		if idForm(ls.ID) && slot.RefuseHosts(ls.ID) != nil {
+			return 0, 0, fmt.Errorf("learn: import row %d: the lesson id is shaped like a host or an address, so nothing was imported", i+1)
 		}
 	}
 	for _, ls := range in.Lessons {

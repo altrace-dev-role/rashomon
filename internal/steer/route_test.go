@@ -21,7 +21,7 @@ func TestContext_FieldsAreTheRouterInputs(t *testing.T) {
 	want := []string{
 		"Event Event", "Client Client", "Store *store.Store", "SessionID string", "PromptID *string", "AgentID string",
 		"Project string", "InvocationID string", "HarnessID string", "Surface string", "NowUnixMS int64",
-		"NewID func() string", "Consent bool", "SteerOff bool", "Arm Arm", "Attendance Attendance",
+		"NewID func() string", "Consent bool", "SteerOff bool", "ConfigUnreadable bool", "Arm Arm", "Attendance Attendance",
 		"StopHookActive bool",
 		"Holdout bool", // the hook's draw (card 2.5, D109)
 	}

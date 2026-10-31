@@ -228,22 +228,24 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := attendanceOf(p.event, env, p.permissionMode)
+	steerOff, unreadable := p.steerOff()
 	return steer.Context{
-		Event:      steer.Event(p.event),
-		Client:     steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != ""},
-		Store:      p.st,
-		SessionID:  p.sessionID,
-		PromptID:   nilIfEmpty(p.promptID),
-		AgentID:    p.agentID,
-		Project:    view.ProjectRoot,
-		HarnessID:  env.HarnessID,
-		Surface:    env.Surface,
-		NowUnixMS:  env.Now.UnixMilli(),
-		Consent:    consented(env.Consent, p.st.Root()),
-		SteerOff:   p.steerOff(),
-		Arm:        steer.ArmLive,
-		Attendance: attendance,
-		Holdout:    p.heldOut(env),
+		Event:            steer.Event(p.event),
+		Client:           steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != ""},
+		Store:            p.st,
+		SessionID:        p.sessionID,
+		PromptID:         nilIfEmpty(p.promptID),
+		AgentID:          p.agentID,
+		Project:          view.ProjectRoot,
+		HarnessID:        env.HarnessID,
+		Surface:          env.Surface,
+		NowUnixMS:        env.Now.UnixMilli(),
+		Consent:          consented(env.Consent, p.st.Root()),
+		SteerOff:         steerOff,
+		ConfigUnreadable: unreadable,
+		Arm:              steer.ArmLive,
+		Attendance:       attendance,
+		Holdout:          p.heldOut(env),
 	}
 }
 
@@ -252,17 +254,19 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 // user's key or the key of the call's project (baseline.Key of the cwd,
 // walked only when the file names a project) set to off. A file that does not
 // read is off: the notes reach the model, so a switch that cannot be read is
-// not one to override. Off is a clamp (clampReason): nothing reaches the agent,
-// the user still sees a flag, and each finding is logged steer_off.
-func (p *Post) steerOff() bool {
+// not one to override, and the second result says that is why (each finding is
+// logged config_unreadable, so the person is told to fix the file). Off is a
+// clamp (clampReason): nothing reaches the agent, the user still sees a flag,
+// and each finding is logged steer_off.
+func (p *Post) steerOff() (off, unreadable bool) {
 	c, err := store.ReadConfig(p.st.Root())
 	if err != nil {
-		return true
+		return true, true
 	}
 	if c.SteerOffUser() {
-		return true
+		return true, false
 	}
-	return len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd))
+	return len(c.SteerProjects) > 0 && c.SteerOffFor(baseline.Key(p.cwd)), false
 }
 
 // holdoutFeature is the arm feature the steer holdout draws under: one

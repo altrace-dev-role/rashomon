@@ -390,8 +390,11 @@ func confirmOnTerminal() (bool, error) {
 
 // confirm writes the prompt and reads one answer: y or yes, in any case, is
 // yes; anything else, end of input included, is no.
-func confirm(in io.Reader, out io.Writer) bool {
-	fmt.Fprint(out, purgePrompt)
+func confirm(in io.Reader, out io.Writer) bool { return askYN(in, out, purgePrompt) }
+
+// askYN writes prompt and reads one answer, confirm's rule: y or yes is yes.
+func askYN(in io.Reader, out io.Writer, prompt string) bool {
+	fmt.Fprint(out, prompt)
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && line == "" {
 		return false

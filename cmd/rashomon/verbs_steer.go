@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -21,6 +24,9 @@ const steerUsage = `  rashomon steer [off|on] [--user|--project]
                                note and shows you what it would have said,
                                recording goes on, and the end-of-turn line
                                still prints
+  rashomon steer on --repair   replace a config.json that does not read, after
+                               asking on your terminal (never from an agent
+                               session); until then the notes are off
   rashomon steer explain       the last decision: its pattern, state, the
                                reason it did or did not print, and what that
                                reason means
@@ -50,8 +56,18 @@ func cmdSteer(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		repair := false
+		if i := slices.Index(rest, "--repair"); i >= 0 {
+			if args[0] != "on" {
+				return errors.New("--repair goes with `steer on`: it replaces a config.json that does not read")
+			}
+			repair, rest = true, slices.Delete(rest, i, i+1)
+		}
 		if len(rest) > 0 {
 			return fmt.Errorf("unknown argument %q", rest[0])
+		}
+		if repair {
+			return steerRepair(stdout, project, askOnTerminal)
 		}
 		return steerSet(stdout, args[0] == "off", project)
 	case "explain":
@@ -80,6 +96,100 @@ func steerState(stdout io.Writer) error {
 		return err
 	}
 	c, err := store.ReadConfig(st.Root())
+	if errors.Is(err, store.ErrConfigUnreadable) {
+		_, err = fmt.Fprintln(stdout, unreadableLine(st.Root(), err))
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, steerLine(c, key))
+	return err
+}
+
+// unreadableLine is the state when config.json is there and does not read:
+// the hook clamps the notes on it (config_unreadable), so it is off, and the
+// line says why and what to do.
+func unreadableLine(root string, err error) string {
+	return fmt.Sprintf("steer: off (config.json is unreadable: %s; fix or delete %s)",
+		safeText(store.ConfigReason(err)), safeText(filepath.Join(root, store.FileConfig)))
+}
+
+// unreadableConfigText is unreadableLine's reason in a refusal, for a verb
+// that cannot write a file it cannot read.
+func unreadableConfigText(root string, err error) error {
+	return fmt.Errorf("config.json is unreadable: %s; the notes are off until it is fixed; fix or delete %s, "+
+		"or run `rashomon steer on --repair` to replace it (it asks first); nothing was changed",
+		safeText(store.ConfigReason(err)), safeText(filepath.Join(root, store.FileConfig)))
+}
+
+// askOnTerminal is the question a confirming verb asks: prompt on the
+// controlling terminal, never on stdin, which a pipe can answer for the user.
+func askOnTerminal(prompt string) (bool, error) {
+	in, out, closeTTY, err := openTerminal()
+	if err != nil {
+		return false, errors.New("there is no terminal to ask on, so nothing was written; run it in your own terminal")
+	}
+	defer closeTTY()
+	return askYN(in, out, prompt), nil
+}
+
+// steerChange is the scope's key set by `steer off|on`.
+func steerChange(off, project bool, key string) func(*store.Config) {
+	return func(c *store.Config) {
+		switch {
+		case project && off:
+			if c.SteerProjects == nil {
+				c.SteerProjects = map[string]string{}
+			}
+			c.SteerProjects[key] = store.SwitchOff
+		case project:
+			delete(c.SteerProjects, key)
+		case off:
+			c.SteerUser = store.SwitchOff
+		default:
+			c.SteerUser = ""
+		}
+	}
+}
+
+// steerRepair is `steer on --repair`: a config.json that does not read is
+// replaced by a fresh one holding the switch, after ask says yes. It is a
+// confirming verb as consent and purge are: refused in an agent session,
+// asked on the terminal only. A file that reads is not replaced; the switch
+// is set as `steer on` does.
+func steerRepair(stdout io.Writer, project bool, ask func(prompt string) (bool, error)) error {
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon steer on --repair` in your own terminal.", s)
+	}
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		return errors.New("nothing has been recorded here yet, so there is no store to hold the switch")
+	}
+	if err != nil {
+		return err
+	}
+	key, err := projectKey()
+	if err != nil {
+		return err
+	}
+	_, err = store.ReadConfig(st.Root())
+	if err == nil {
+		return steerSet(stdout, false, project)
+	}
+	if !errors.Is(err, store.ErrConfigUnreadable) {
+		return err
+	}
+	path := filepath.Join(st.Root(), store.FileConfig)
+	ok, err := ask(fmt.Sprintf("%s is unreadable (%s). Replace it with a new one? Its content is lost. [y/N] ",
+		safeText(path), safeText(store.ConfigReason(err))))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("nothing was written")
+	}
+	c, err := store.RepairConfig(st.Root(), steerChange(false, project, key))
 	if err != nil {
 		return err
 	}
@@ -116,21 +226,10 @@ func steerSet(stdout io.Writer, off, project bool) error {
 	if err != nil {
 		return err
 	}
-	c, err := store.UpdateConfig(st.Root(), func(c *store.Config) {
-		switch {
-		case project && off:
-			if c.SteerProjects == nil {
-				c.SteerProjects = map[string]string{}
-			}
-			c.SteerProjects[key] = store.SwitchOff
-		case project:
-			delete(c.SteerProjects, key)
-		case off:
-			c.SteerUser = store.SwitchOff
-		default:
-			c.SteerUser = ""
-		}
-	})
+	c, err := store.UpdateConfig(st.Root(), steerChange(off, project, key))
+	if errors.Is(err, store.ErrConfigUnreadable) {
+		return unreadableConfigText(st.Root(), err)
+	}
 	if err != nil {
 		return err
 	}
@@ -278,8 +377,14 @@ func steerLog(stdout io.Writer, args []string) error {
 	return nil
 }
 
-// steerExplain is `steer explain`: the newest decision in words.
+// steerExplain is `steer explain`: the newest decision in words, after the
+// state's line when config.json does not read.
 func steerExplain(stdout io.Writer) error {
+	if st, err := openStoreForRead(); err == nil {
+		if _, err := store.ReadConfig(st.Root()); errors.Is(err, store.ErrConfigUnreadable) {
+			fmt.Fprintln(stdout, unreadableLine(st.Root(), err))
+		}
+	}
 	rows, _, ok, err := readSteerRows(stdout)
 	if !ok {
 		return err
@@ -308,6 +413,7 @@ var reasonMeaning = map[steer.SuppressedBy]string{
 	steer.SuppressedByBackgroundRunning: "a background task was still running",
 	steer.SuppressedByHostForeign:       "the call came from a host rashomon is not installed for",
 	steer.SuppressedBySteerOff:          "you turned the notes to your agent off (rashomon steer on turns them back on); nothing reached the agent",
+	steer.SuppressedByConfigUnreadable:  "config.json did not read, so the notes were off; nothing reached the agent (fix or delete the file, or run rashomon steer on --repair)",
 	steer.SuppressedByConsentMissing:    "the notes were not agreed to on this build's consent screen",
 	steer.SuppressedByArmOff:            "this install's lab arm is off",
 	steer.SuppressedByDemoted:           "the pattern was held to a flag after it proved noisy",

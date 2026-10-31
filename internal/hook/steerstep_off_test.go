@@ -35,11 +35,17 @@ func stcRed(t *testing.T, raw string) ([]byte, []steer.Line) {
 // level flag, delivery flag_only. At least one line.
 func stcClamped(t *testing.T, out []byte, lines []steer.Line) bool {
 	t.Helper()
+	return stcClampedBy(t, out, lines, steer.SuppressedBySteerOff)
+}
+
+// stcClampedBy is stcClamped for the clamp reason by.
+func stcClampedBy(t *testing.T, out []byte, lines []steer.Line, by steer.SuppressedBy) bool {
+	t.Helper()
 	if !printsFlag(t, out) || len(lines) == 0 {
 		return false
 	}
 	for _, l := range lines {
-		if l.State != steer.LineStateDelivered || l.Level != "flag" || l.SuppressedBy == nil || *l.SuppressedBy != steer.SuppressedBySteerOff ||
+		if l.State != steer.LineStateDelivered || l.Level != "flag" || l.SuppressedBy == nil || *l.SuppressedBy != by ||
 			l.Delivery == nil || *l.Delivery != steer.DeliveryFlagOnly {
 			return false
 		}
@@ -79,11 +85,29 @@ func TestSTC1b_ProjectKeyIsThatProjectsOnly(t *testing.T) {
 
 // TestSTC1g_AnUnreadableConfigClamps: a config.json that does not parse is
 // not read as the notes being on: a switch that cannot be read is not one
-// the hook may override, so nothing reaches the agent (the clamp).
+// the hook may override, so nothing reaches the agent (the clamp). Its own
+// reason, config_unreadable, tells the person to fix the file; steer_off
+// would say to run `steer on`, which refuses it.
 func TestSTC1g_AnUnreadableConfigClamps(t *testing.T) {
 	out, lines := stcRed(t, `{"steer_user":`)
-	if !stcClamped(t, out, lines) {
+	if !stcClampedBy(t, out, lines, steer.SuppressedByConfigUnreadable) {
 		t.Errorf("unreadable config: printed %q, lines %+v", out, lines)
+	}
+	out, lines = stcRed(t, `{"steer_user":"off"}`)
+	if !stcClamped(t, out, lines) {
+		t.Errorf("steer_user off: printed %q, lines %+v", out, lines)
+	}
+}
+
+// TestSTC1n_AValueThatIsNotOnClampsAtTheHook: "Off" and "disabled" are not
+// "on", so the hook clamps on them in either scope.
+func TestSTC1n_AValueThatIsNotOnClampsAtTheHook(t *testing.T) {
+	here := baseline.Key("/tmp/project")
+	for _, raw := range []string{`{"steer_user":"Off"}`, `{"steer_user":"disabled"}`, `{"steer_projects":{"` + here + `":"Off"}}`} {
+		out, lines := stcRed(t, raw)
+		if !stcClamped(t, out, lines) {
+			t.Errorf("%s: printed %q, lines %+v", raw, out, lines)
+		}
 	}
 }
 

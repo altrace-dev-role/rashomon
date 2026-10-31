@@ -176,6 +176,8 @@ func (p *plan) recordTexts() {
 // whose hook is already active.
 func clampReason(ctx *Context) *SuppressedBy {
 	switch {
+	case ctx.ConfigUnreadable:
+		return reason(SuppressedByConfigUnreadable)
 	case ctx.SteerOff:
 		return reason(SuppressedBySteerOff)
 	case !ctx.Consent:

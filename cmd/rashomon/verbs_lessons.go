@@ -13,8 +13,11 @@ import (
 
 // lessonsView is lessons --json. Project is the working directory's ledger
 // name and QuarantinedAtUnixMS the last quarantine, each null with none.
+// Quarantined is true when the state on disk does not check, so every lesson
+// is read as proposed though nothing has been written to say so yet.
 type lessonsView struct {
 	Project             *string     `json:"project"`
+	Quarantined         bool        `json:"quarantined"`
 	QuarantinedAtUnixMS *int64      `json:"quarantined_at_unix_ms"`
 	Lessons             []lessonRow `json:"lessons"`
 }
@@ -30,16 +33,17 @@ type lessonRow struct {
 
 // cmdLessons is `rashomon lessons [--json]`: this project's lessons under the
 // four tiers the learner moves them through, proven first, each tier in the
-// ledger's own order. It reads through learn.Open, which quarantines a ledger
-// something else wrote and writes that back (fail closed); the quarantine is
-// said first.
+// ledger's own order. It reads through learn.OpenReadOnly and writes nothing:
+// a ledger something else wrote reads as quarantined, every lesson proposed,
+// and stays on disk as it is for the next learn command to quarantine; a
+// quarantine is said first.
 func cmdLessons(args []string, stdout io.Writer) error {
 	asJSON, err := jsonFlag(args)
 	if err != nil {
 		return err
 	}
 	view := lessonsView{Lessons: []lessonRow{}}
-	l, err := openLedger()
+	l, err := openLedgerReadOnly()
 	if errors.Is(err, store.ErrNoStore) {
 		if asJSON {
 			return printJSON(stdout, view)
@@ -54,7 +58,7 @@ func cmdLessons(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	view.Project = &dir
+	view.Project, view.Quarantined = &dir, l.Quarantined
 	if at := l.QuarantinedAt(); !at.IsZero() {
 		ms := at.UnixMilli()
 		view.QuarantinedAtUnixMS = &ms
@@ -77,7 +81,12 @@ func cmdLessons(args []string, stdout io.Writer) error {
 // text is lessons as a person reads it: a tier with none says none.
 func (v lessonsView) text(quarantined time.Time) string {
 	var b strings.Builder
-	b.WriteString(quarantineLine(quarantined))
+	if !v.Quarantined {
+		b.WriteString(quarantineLine(quarantined))
+	} else {
+		b.WriteString("quarantined: a write this command did not make changed the learning state, " +
+			"so every lesson reads as proposed; this command wrote nothing, and the next learn command records it\n")
+	}
 	fmt.Fprintf(&b, "lessons for this project: %d\n", len(v.Lessons))
 	for _, tier := range []learn.Tier{learn.TierProven, learn.TierProbation, learn.TierProposed, learn.TierDemoted} {
 		var rows strings.Builder
