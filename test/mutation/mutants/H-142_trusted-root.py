@@ -8,3 +8,6 @@ m("H-142 a third maker of a TrustedRoot", "internal/hook/specdiscover.go",
 m("H-142 an exported field is added", "internal/hook/specdiscover.go",
   "type TrustedRoot struct{ root string }", "type TrustedRoot struct {\n\troot string\n\tRaw  string\n}",
   "TestH142_TrustedRootHasTwoMakers")
+m("H-142 laststop discovery takes NoRun in place of TrustRoot", "cmd/rashomon/laststop.go",
+  "hook.TrustRoot(run, st.Root(), pt.Seq)", "hook.NoRun(st.Root())",
+  "TestH142_NoRunHasOneProductionCaller")

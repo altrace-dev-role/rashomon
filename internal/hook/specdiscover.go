@@ -56,9 +56,12 @@ func discoverSpecAt(cwd, key, projectDir, managedDir string, root TrustedRoot) *
 }
 
 // TrustedRoot is the store root DiscoverSpec reads trust bindings under,
-// or "" for none (card SPEC-TRUST2). Its field is unexported: TrustRoot and
-// NoRun are the only ways to make one, so every DiscoverSpec caller says
-// either which run's store writes it checked or why it has no run (D217).
+// or "" for none (card SPEC-TRUST2). Its field is unexported, so a caller
+// outside this package cannot set it: TrustRoot and NoRun are the only
+// makers (H-142 pins that). The type does not stop a caller passing a raw
+// store path through NoRun; what pins that is who may call it, an allowlist
+// of one production file (H-142, cmd/rashomon/brief.go). Every other caller
+// says which run's store writes it checked, through TrustRoot (D217).
 type TrustedRoot struct{ root string }
 
 // NoRun is the TrustedRoot of a caller that holds no run to check for a
