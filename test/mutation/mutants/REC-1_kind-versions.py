@@ -9,4 +9,4 @@ m("REC-1 a terminal names no writer", "internal/hook/handle.go",
 m("REC-1 an execution names no writer", "internal/hook/post.go",
   "\trec.Writer = Writer\n", "\n", "TestREC1_")
 m("REC-1 the writer is not the build-time version", "cmd/rashomon/main.go",
-  "\thook.Writer = version\n", "\n", "TestREC1_")
+  "\thook.Writer = buildVersion()\n", "\n", "TestREC1_")
