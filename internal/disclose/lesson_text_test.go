@@ -23,12 +23,14 @@ func TestLRN17k_ConsentSaysApprovedLessonsReachTheAgent(t *testing.T) {
 		if strings.Contains(p.Text, "No lesson reaches your agent") {
 			t.Errorf("the screen still says no lesson reaches the agent: %q", p.Text)
 		}
-		if strings.Contains(p.Text, "An approved lesson reaches your agent with your prompt, once a session") {
-			said = true
+		if strings.Contains(p.Text, "below the note") {
+			t.Errorf("the screen puts a lesson below the preflight note, which supersedes it: %q", p.Text)
 		}
+		said = strings.Contains(p.Text, "An approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session; it waits while a preflight note is sent.") &&
+			strings.Contains(p.Text, "If steering is off or you have not agreed to steering notes, it is shown to you and not sent.")
 	}
 	if !said {
-		t.Error("the learn section does not say an approved lesson reaches the agent with a prompt, once a session")
+		t.Error("the learn section does not say when an approved lesson is sent: with a prompt that has no preflight note, once a session, and only with steering on")
 	}
 }
 

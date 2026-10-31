@@ -111,7 +111,8 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 		return err
 	}
 	if _, err = fmt.Fprintf(stdout, "imported %d lessons at proposed, skipped %d; "+
-		"an approved lesson reaches the agent with your prompt, once a session; `rashomon learn approve ID` approves one\n", added, skipped); err != nil {
+		"an approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session, "+
+		"and waits while a preflight note is sent; `rashomon learn approve ID` approves one\n", added, skipped); err != nil {
 		return err
 	}
 	// Import admits text approval refuses (2,048 bytes in any charset), so

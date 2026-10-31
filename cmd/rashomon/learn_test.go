@@ -200,3 +200,18 @@ func TestLRN17g_ApprovalRefusesTextThatCannotArrive(t *testing.T) {
 		t.Errorf("the list does not name the approved lesson that cannot arrive, alone: %q", out)
 	}
 }
+
+// TestLRN17k_ImportSaysWhenAnApprovedLessonIsSent: the import line says what
+// the consent screen says: an approved lesson is sent with a prompt that
+// carries no preflight note, and waits while one is sent.
+func TestLRN17k_ImportSaysWhenAnApprovedLessonIsSent(t *testing.T) {
+	bodiesHere(t)
+	file := filepath.Join(t.TempDir(), "shared.json")
+	if err := os.WriteFile(file, []byte(sharedLessons), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := learnRun(t, "import", file)
+	if code != 0 || !strings.Contains(out, "sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session, and waits while a preflight note is sent") {
+		t.Errorf("import: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}

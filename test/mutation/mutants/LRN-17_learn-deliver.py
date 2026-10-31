@@ -97,5 +97,13 @@ m("LRN-17 state.sum's row drops the key limit", "internal/disclose/learn.go",
 m("LRN-17 the render says approved at a terminal", "internal/steer/render/render.go",
   "approved for this project: {text}.", "approved for this project at a terminal: {text}.", "TestLRN17h_")
 m("LRN-17 the consent screen says no lesson reaches the agent", "internal/disclose/paragraphs.go",
-  "An approved lesson reaches your agent with your prompt, once a session, below",
-  "No lesson reaches your agent in this build; an approved one waits below", "TestLRN17k_")
+  "An approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session; it waits while a preflight note is sent.",
+  "No lesson reaches your agent in this build; an approved one waits below the note.", "TestLRN17k_")
+m("LRN-17 the consent screen puts a lesson below the preflight note", "internal/disclose/paragraphs.go",
+  "An approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session; it waits while a preflight note is sent.",
+  "An approved lesson reaches your agent with your prompt, once a session, below the note for the paths your prompt names.", "TestLRN17k_")
+m("LRN-17 the consent screen drops the steering clamp", "internal/disclose/paragraphs.go",
+  " If steering is off or you have not agreed to steering notes, it is shown to you and not sent.", "", "TestLRN17k_")
+m("LRN-17 the import line says a lesson reaches the agent with every prompt", C,
+  "\"an approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session, \"+\n\t\t\"and waits while a preflight note is sent; ",
+  "\"an approved lesson reaches the agent with your prompt; \"+\n\t\t\"", "TestLRN17k_")
