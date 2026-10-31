@@ -2,8 +2,10 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -127,6 +129,27 @@ func TestSTC1_UnparsableConfigIsNotReplaced(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(path); string(b) != `{"steer_user":` {
 		t.Errorf("config.json is now %q", b)
+	}
+}
+
+// TestSTC1_UnopenableConfigIsUnreadable: a config.json that is there but
+// cannot be opened (mode 000) is ErrConfigUnreadable from ReadConfig, as one
+// that does not parse is, so the hook's clamp and the steer verb's repair
+// agree on what is unreadable.
+func TestSTC1_UnopenableConfigIsUnreadable(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("a mode 000 file opens on Windows and as root")
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, FileConfig)
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadConfig(root); !errors.Is(err, ErrConfigUnreadable) {
+		t.Errorf("ReadConfig of a file that cannot be opened = %v, want ErrConfigUnreadable", err)
 	}
 }
 
