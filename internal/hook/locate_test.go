@@ -137,7 +137,9 @@ func TestLocation(t *testing.T) {
 				t.Errorf("%q: cwd digest set; want unknown, empty", short(tc.cmd))
 			}
 		default:
-			if want := shape.CWDDigest(key, tc.want); got != want {
+			// The fold's directory, as the hook keys it: on disk (/tmp is
+			// /private/tmp on macOS).
+			if want := shape.CWDDigest(key, physicalDir(tc.want)); got != want {
 				t.Errorf("%q: cwd digest is not %s's", short(tc.cmd), tc.want)
 			}
 		}

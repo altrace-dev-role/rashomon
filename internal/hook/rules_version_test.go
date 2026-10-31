@@ -72,6 +72,12 @@ var locationCorpus = [][2]string{
 // own home.
 func locationDigest(t *testing.T) string {
 	t.Setenv("HOME", "/home/pin")
+	// The pin is the fold's rules, one value on every host. What a corpus
+	// path resolves to is the host's (macOS's /tmp is /private/tmp), and the
+	// resolving is held by TestCS1_LocateKeysTheDirectoryAsItIsOnDisk.
+	old := evalSymlinks
+	evalSymlinks = func(p string) (string, error) { return p, nil }
+	t.Cleanup(func() { evalSymlinks = old })
 	key := []byte("key")
 	h := sha256.New()
 	for _, c := range locationCorpus {
