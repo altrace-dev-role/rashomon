@@ -29,15 +29,15 @@ import (
 )
 
 // ScopeVersion is bumped on a new capability class, and when the screen
-// newly names something the record holds. 5: the screen now names the time
-// each hook event first ran in a session (the fired-<event> marker), and
-// the screen now names the on and off switches the record keeps in
-// config.json, with a project's directory for a project's switch (STEER-CLI1).
-// The consent a user gave is
-// recorded against it, so a build that can do a new kind of thing, or says
-// it keeps what an earlier screen did not name, or promises the model a new
-// kind of content (5, as well: an approved lesson reaches the agent with a prompt),
-// shows the screen again rather than riding on an older yes. Pinned by TRU-8.
+// newly names something the record holds. The consent a user gave is
+// recorded against it, so a build that can do a new kind of thing, says it
+// keeps what an earlier screen did not name, or promises the model a new kind
+// of content, shows the screen again rather than riding on an older yes.
+// 5: the screen names the time each hook event first ran in a session (the
+// fired-<event> marker), the screen names the on and off switches the record
+// keeps in config.json, with a project's directory for a project's switch
+// (STEER-CLI1), and an approved lesson reaches the agent with a prompt.
+// Pinned by TRU-8.
 const ScopeVersion = 5
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
