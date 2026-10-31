@@ -95,3 +95,7 @@ m("RP-2 a walk the cap cut does not say it was cut", R, "\tsc.Truncated = trunca
 m("RP-2 the report baseline walks every directory", G, "Before: first.RecordedAtUnixMS, CapWalk: true})", "Before: first.RecordedAtUnixMS})", "TestRP2zi_")
 m("RP-2 the report does not carry the cut", G, "\t\tk.BaselineWalkCap = receipt.MaxWalk\n", "", "TestRP2zi_")
 m("RP-2 a cut baseline walk prints the plain line", "internal/report/text_knowledge.go", "\tcase k.Baseline == nil && k.BaselineWalkCap > 0:\n", "\tcase false:\n", "TestRP2zi_|TestRP2zj_")
+
+# A read-only ledger cannot save (RP2zk; review of PR 171).
+m("RP-2 OpenReadOnly's ledger is not marked read-only", L, "tallies: map[string]Tally{}, readOnly: !write}", "tallies: map[string]Tally{}, readOnly: false}", "TestRP2zk_")
+m("RP-2 Save ignores the read-only flag", L, "\tif l.readOnly {\n\t\treturn ErrReadOnly\n\t}\n", "", "TestRP2zk_")
