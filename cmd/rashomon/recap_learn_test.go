@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -62,7 +63,7 @@ func (e *lessonEnv) start(sessionID string) {
 		Source string `json:"source"`
 	}{benchHead{sessionID, benchTranscript, e.cwd, "default", "SessionStart"}, "startup"})
 	var stderr bytes.Buffer
-	if code := cmdProbe([]string{"start", install.Marker, e.installID}, bytes.NewReader(in), &stderr); code != exitOK {
+	if code := cmdProbe([]string{"start", install.Marker, e.installID}, bytes.NewReader(in), io.Discard, &stderr); code != exitOK {
 		e.t.Fatalf("probe start %s: exit %d, stderr %q", sessionID, code, stderr.String())
 	}
 }
