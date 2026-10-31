@@ -47,6 +47,7 @@ turn 3, prompt p3: "Run the tests."
   Bash go test ./... -> ok                    (silent)
   Stop: "go test passes after the util.go edit."
       ※ rashomon: verified - go test passed after the last edit.
+                  AutoSteer: 1 finding, resolved at #21.
                   → rashomon report --session demo-1
 
 session end
@@ -59,12 +60,25 @@ harness unknown: none
 
 session demo-1
   install: <install>
+  story
+    last Stop: verified - go test passed after the last edit (call 23)
+    record: 7 executions; 1 failed call; 3 test runs (2 ok, 1 failed)
+    autosteer: 1 finding, resolved at #21
+    gates: go test green at #21
+    account: the final message uses none of the 43 failure words, and 1 call failed
+    details below: the account, then the tables; the numbers are call seqs
   the agent's account:
     "go test passes after the util.go edit."
   subagents: none
   failed calls: 1
     the final message contains none of these 43 words: fail, failed, failing, error, errors, couldn't, could not, unable, not able, didn't, did not, blocked and 31 more of 43 (--json lists them all)
   test runs: 3 (2 ok, 1 failed)
+  autosteer
+    delivered: none
+    findings: 1 regression location at #7 (go), resolved by #21 green
+    checks: none expected
+    lessons: not read here
+    unknown: none
   executed differently from declared: 0
   hosts named by tool calls: none
   not yet in this project's baseline: baseline established (0 hosts, loopback and client plane excluded)

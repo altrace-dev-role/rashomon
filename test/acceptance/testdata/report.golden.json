@@ -289,6 +289,16 @@
         "undeclared": 0,
         "tests_only_then_green": [],
         "flaky": []
+      },
+      "autosteer": {
+        "stop": null,
+        "gates": [],
+        "clause": "",
+        "delivered": [],
+        "findings": [],
+        "checks": [],
+        "lessons": null,
+        "unknown": []
       }
     }
   ]

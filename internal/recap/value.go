@@ -15,8 +15,9 @@ import (
 
 // The end-of-turn value line (tech 2.2.11; card 2.4 R6, R8) states what the
 // record shows about the turn's checks after its last edit: one sentence per
-// row of verify's table, an optional AutoSteer clause counting the notes the
-// agent was given in the prompt, and the report pointer recap.Line uses. Every
+// row of verify's table, an optional AutoSteer clause counting the session's
+// notes, findings and checks (clause.go), and the report pointer recap.Line
+// uses. Every
 // slot is a count, a call number or a gate's program word from the record;
 // the templates hold none of FUN-15's words (TestFUN15b scans this file), so
 // the sentences are built by concatenation, with no format verbs.
@@ -171,9 +172,8 @@ func text(b []byte, sp jsonscan.Span) string {
 // ValueLine renders the turn's value line from the Stop view, or "" for
 // RowNone, which prints nothing. Its state line names fewer gates while it is
 // over lineColumns and more than one is named; past that it prints whole
-// (D86). The clause has no width rule of its own: every title with every
-// <when> fits (D89, TestFUN15c).
-func ValueLine(v verify.StopView, notes []Note, sessionID string, fromPlugin bool) string {
+// (D86). The clause fits the line by dropping detail (clause.go).
+func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) string {
 	if v.Summary.Row == verify.RowNone {
 		return ""
 	}
@@ -183,30 +183,11 @@ func ValueLine(v verify.StopView, notes []Note, sessionID string, fromPlugin boo
 	}
 	var b strings.Builder
 	b.WriteString(prefix + sentence + ".\n")
-	if c := clause(notes); c != "" {
+	if c := clause(im); c != "" {
 		b.WriteString(continuation() + c + "\n")
 	}
 	b.WriteString(pointer(sessionID, fromPlugin))
 	return b.String()
-}
-
-// clause is the AutoSteer clause for notes, "" with none.
-func clause(notes []Note) string {
-	switch len(notes) {
-	case 0:
-		return ""
-	case 1:
-		title := titles()[notes[0].Pattern]
-		if title == "" {
-			title = "note"
-		}
-		s := "AutoSteer: 1 " + title + " given"
-		if when := whens()[notes[0].Event]; when != "" {
-			s += " " + when
-		}
-		return s + "."
-	}
-	return "AutoSteer: " + strconv.Itoa(len(notes)) + " notes given."
 }
 
 // fitted is the row's sentence with as many gate names as fit after lead on

@@ -150,15 +150,15 @@ func TestVER65_ValueLineRowsRender(t *testing.T) {
 		{"findings", findings, "2 files edited; go passed after the last edit; 1 record finding(s) in this turn"},
 		{"advisory only", advisory, "2 files edited; go passed after the last edit; advisory only"},
 	} {
-		if got, want := ValueLine(c.v, nil, "sess-1", false), lineOf(c.want, ""); got != want {
+		if got, want := ValueLine(c.v, Impact{}, "sess-1", false), lineOf(c.want, ""); got != want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, want)
 		}
 	}
 
-	if got := ValueLine(viewOf(verify.RowNone, verify.TurnCounts{}, goGreen), nil, "sess-1", false); got != "" {
+	if got := ValueLine(viewOf(verify.RowNone, verify.TurnCounts{}, goGreen), Impact{}, "sess-1", false); got != "" {
 		t.Errorf("RowNone printed %q, want nothing", got)
 	}
-	if got, want := ValueLine(viewOf(verify.RowVerified, wrote, goGreen), nil, "sess-1", true),
+	if got, want := ValueLine(viewOf(verify.RowVerified, wrote, goGreen), Impact{}, "sess-1", true),
 		prefix+"verified - go passed after the last edit.\n"+indent+"→ /rashomon:report --session sess-1"; got != want {
 		t.Errorf("plugin pointer:\n got %q\nwant %q", got, want)
 	}
@@ -168,7 +168,7 @@ func TestVER65_ValueLineRowsRender(t *testing.T) {
 		gateAt("pytest:t", "test", verify.Green, verify.OK, 3, nil), gateAt("eslint:l", "lint", verify.Green, verify.OK, 4, nil),
 		gateAt("cargo:t", "test", verify.Green, verify.OK, 5, nil), gateAt("gradle:t", "test", verify.Green, verify.OK, 6, nil),
 		gateAt("mvn:t", "test", verify.Green, verify.OK, 7, nil))
-	got := ValueLine(wide, nil, "sess-1", false)
+	got := ValueLine(wide, Impact{}, "sess-1", false)
 	if want := lineOf("verified - pytest, eslint and 3 more passed after the last edit", ""); got != want {
 		t.Errorf("width:\n got %q\nwant %q", got, want)
 	}
@@ -219,18 +219,20 @@ func TestFUN15_AutoSteerClauseCountsDeliveredNotes(t *testing.T) {
 
 	v := viewOf(verify.RowRed, wrote, gateAt("go:test", "test", verify.Red, verify.FailedExit, 7, exitCode(1)))
 	const sentence = "2 files edited; go exited 1 after the last edit (call 7)"
+	ref := func(pat, event string) NoteRef { return NoteRef{Pattern: pat, Event: event} }
 	for _, c := range []struct {
 		name   string
-		notes  []Note
+		im     Impact
 		clause string
 	}{
-		{"one note", notes, "AutoSteer: 1 regression location given at the failure."},
-		{"two notes", append(slices.Clone(notes), Note{Pattern: "identical-retry", Event: "PostToolUse"}), "AutoSteer: 2 notes given."},
-		{"one note at the prompt", []Note{{Pattern: "subtask-gate", Event: "UserPromptSubmit"}}, "AutoSteer: 1 task check given with your prompt."},
-		{"one note at session start", []Note{{Pattern: "continuity-briefing", Event: "SessionStart"}}, "AutoSteer: 1 briefing given."},
-		{"no note", nil, ""},
+		{"one note", Impact{Delivered: []NoteRef{ref("regression-location", "PostToolUseFailure")}}, "AutoSteer: 1 regression location given at the failure."},
+		{"two notes", Impact{Delivered: []NoteRef{ref("regression-location", "PostToolUseFailure"), ref("identical-retry", "PostToolUse")}}, "AutoSteer: 2 notes given."},
+		{"two notes at one event", Impact{Delivered: []NoteRef{ref("subtask-gate", "UserPromptSubmit"), ref("declared-fact", "UserPromptSubmit")}}, "AutoSteer: 2 notes given with your prompt."},
+		{"one note at the prompt", Impact{Delivered: []NoteRef{ref("subtask-gate", "UserPromptSubmit")}}, "AutoSteer: 1 task check given with your prompt."},
+		{"one note at session start", Impact{Delivered: []NoteRef{ref("continuity-briefing", "SessionStart")}}, "AutoSteer: 1 briefing given."},
+		{"no note", Impact{}, ""},
 	} {
-		if got, want := ValueLine(v, c.notes, "sess-1", false), lineOf(sentence, c.clause); got != want {
+		if got, want := ValueLine(v, c.im, "sess-1", false), lineOf(sentence, c.clause); got != want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, want)
 		}
 	}
@@ -296,23 +298,27 @@ func TestFUN15b_TemplatesUseNoBannedWord(t *testing.T) {
 			t.Errorf("<when> %q of %q holds %q", when, event, w)
 		}
 	}
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "value.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ast.Inspect(file, func(n ast.Node) bool {
-		lit, ok := n.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			return true
-		}
-		text, err := strconv.Unquote(lit.Value)
+	// value.go, and the files the clause and the impact (card REPORT1a) put
+	// words in: every string literal in them is held to the list too.
+	for _, name := range []string{"value.go", "clause.go", "impact.go"} {
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, name, nil, 0)
 		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			text, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				return true
+			}
+			if w, ok := banned(text); ok {
+				t.Errorf("%s: template %q holds %q", fset.Position(lit.Pos()), text, w)
+			}
 			return true
-		}
-		if w, ok := banned(text); ok {
-			t.Errorf("%s: template %q holds %q", fset.Position(lit.Pos()), text, w)
-		}
-		return true
-	})
+		})
+	}
 }
