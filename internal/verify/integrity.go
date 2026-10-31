@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -247,26 +248,34 @@ func storeWrites(d *store.Declaration, storeRoot string, f func(p string)) bool 
 		}
 		return true
 	}
-	if storeRoot == "" {
-		return false
-	}
 	hit := false
-	file, shell := writeTargets(d)
-	if file != nil && underStore(slashed(*file), storeRoot) {
-		if f == nil {
-			return true
-		}
-		hit = true
-		f(*file)
-	}
-	for _, p := range shell {
-		if underStore(slashed(p), storeRoot) {
+	if storeRoot != "" {
+		file, shell := writeTargets(d)
+		if file != nil && underStore(slashed(*file), storeRoot) {
 			if f == nil {
 				return true
 			}
 			hit = true
-			f(p)
+			f(*file)
 		}
+		for _, p := range shell {
+			if underStore(slashed(p), storeRoot) {
+				if f == nil {
+					return true
+				}
+				hit = true
+				f(p)
+			}
+		}
+	}
+	// A call integrity counts unnamed that named the root, and whose recorded
+	// paths do not show it (D173c): the bit stands for the paths it lacks. A
+	// path that does show it is the entry, so a call counts once.
+	if !hit && d.StoreNamed && writesUnnamed(d) {
+		if f != nil {
+			f("")
+		}
+		return true
 	}
 	return hit
 }
@@ -275,9 +284,28 @@ func storeWrites(d *store.Declaration, storeRoot string, f func(p string)) bool 
 // bit, D173b) on a record that withholds what would name its target: the
 // command, the file_path or the written paths, for want of consent, over a
 // cap or switched off. Where they are recorded, writeTargets reads them and
-// the bit is not read, so a read that names the root drops nothing there.
+// the bit is not read, except for an unnamed call (storeWrites, D173c), so a
+// read that names the root drops nothing where a complete list is recorded.
 func namedWithheld(d *store.Declaration) bool {
 	return d.StoreNamed && (d.CommandWithheld != nil || d.FilePathWithheld != nil || d.WrittenPathsWithheld != nil)
+}
+
+// writesUnnamed reports a call that may have written a path the record cannot
+// name, the calls appendWrites lists as unnamed: an MCP call, a file tool's
+// write with no file_path, a shell call whose written list is not complete,
+// and a may-write with no list (D173c). appendWrites and this read the same
+// four cases, and a test holds them to it.
+func writesUnnamed(d *store.Declaration) bool {
+	file, shell := writeTargets(d)
+	switch {
+	case d.Shape.VerbClass == shape.VerbMCP:
+		return true
+	case d.ToolName != "Bash" && d.Shape.VerbClass == shape.VerbWrite:
+		return file == nil
+	case len(shell) > 0:
+		return d.WrittenPathsComplete == nil || !*d.WrittenPathsComplete
+	}
+	return d.Shape.MayWrite
 }
 
 // marksByCall is the edit marks of each file-tool call (one whose declaration
