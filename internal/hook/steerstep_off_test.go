@@ -30,14 +30,17 @@ func stcRed(t *testing.T, raw string) ([]byte, []steer.Line) {
 	return out, steerLines(t, f.st)
 }
 
-// stcSilenced reports the step printed nothing and every line it logged is a
-// steer_off suppression, at least one.
-func stcSilenced(out []byte, lines []steer.Line) bool {
-	if len(out) != 0 || len(lines) == 0 {
+// stcClamped reports the step printed the note as a user-only flag, nothing
+// for the agent, and every line it logged is a steer_off clamp: delivered at
+// level flag, delivery flag_only. At least one line.
+func stcClamped(t *testing.T, out []byte, lines []steer.Line) bool {
+	t.Helper()
+	if !printsFlag(t, out) || len(lines) == 0 {
 		return false
 	}
 	for _, l := range lines {
-		if l.State != steer.LineStateSuppressed || l.SuppressedBy == nil || *l.SuppressedBy != steer.SuppressedBySteerOff {
+		if l.State != steer.LineStateDelivered || l.Level != "flag" || l.SuppressedBy == nil || *l.SuppressedBy != steer.SuppressedBySteerOff ||
+			l.Delivery == nil || *l.Delivery != steer.DeliveryFlagOnly {
 			return false
 		}
 	}
@@ -45,15 +48,16 @@ func stcSilenced(out []byte, lines []steer.Line) bool {
 }
 
 // TestH145_SteerOffUserPrintsNothingAndLogsSteerOff (card STEER-CLI1): the
-// post with the user's steer switch off carries no additionalContext and no
-// systemMessage, and its line says suppressed steer_off. Without the switch
-// the same call prints (the premise), so the silence is the switch's.
-func TestH145_SteerOffUserPrintsNothingAndLogsSteerOff(t *testing.T) {
-	if out, _ := stcRed(t, ""); len(out) == 0 {
-		t.Fatalf("premise: the regression prints nothing with the switch unset")
+// post with the user's steer switch off carries no additionalContext, shows
+// the user the flag the note would have been, and its line says suppressed_by
+// steer_off, delivery flag_only. Without the switch the same call is not that
+// flag (the premise), so the clamp is the switch's.
+func TestH145_SteerOffUserClampsToAFlagAndLogsSteerOff(t *testing.T) {
+	if out, lines := stcRed(t, ""); stcClamped(t, out, lines) {
+		t.Fatalf("premise: the regression is a steer_off flag with the switch unset")
 	}
 	out, lines := stcRed(t, `{"steer_user":"off"}`)
-	if !stcSilenced(out, lines) {
+	if !stcClamped(t, out, lines) {
 		t.Errorf("steer_user off: printed %q, lines %+v", out, lines)
 	}
 }
@@ -64,21 +68,21 @@ func TestH145_SteerOffUserPrintsNothingAndLogsSteerOff(t *testing.T) {
 func TestSTC1b_ProjectKeyIsThatProjectsOnly(t *testing.T) {
 	here := baseline.Key("/tmp/project")
 	out, lines := stcRed(t, `{"steer_projects":{"`+here+`":"off"}}`)
-	if !stcSilenced(out, lines) {
+	if !stcClamped(t, out, lines) {
 		t.Errorf("this project off: printed %q, lines %+v", out, lines)
 	}
 	out, lines = stcRed(t, `{"steer_projects":{"/somewhere/else":"off"},"steer_user":"on"}`)
-	if stcSilenced(out, lines) || len(out) == 0 {
+	if stcClamped(t, out, lines) {
 		t.Errorf("another project off: printed %q, lines %+v", out, lines)
 	}
 }
 
-// TestSTC1g_AnUnreadableConfigIsQuiet: a config.json that does not parse is
+// TestSTC1g_AnUnreadableConfigClamps: a config.json that does not parse is
 // not read as the notes being on: a switch that cannot be read is not one
-// the hook may override, and the notes are model-visible.
-func TestSTC1g_AnUnreadableConfigIsQuiet(t *testing.T) {
+// the hook may override, so nothing reaches the agent (the clamp).
+func TestSTC1g_AnUnreadableConfigClamps(t *testing.T) {
 	out, lines := stcRed(t, `{"steer_user":`)
-	if !stcSilenced(out, lines) {
+	if !stcClamped(t, out, lines) {
 		t.Errorf("unreadable config: printed %q, lines %+v", out, lines)
 	}
 }

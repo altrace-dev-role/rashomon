@@ -254,7 +254,8 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 // user's key or the key of the call's project (baseline.Key of the cwd,
 // walked only when the file names a project) set to off. A file that does not
 // read is off: the notes reach the model, so a switch that cannot be read is
-// not one to override, and each finding is logged steer_off.
+// not one to override. Off is a clamp (clampReason): nothing reaches the agent,
+// the user still sees a flag, and each finding is logged steer_off.
 func (p *Post) steerOff() bool {
 	c, err := store.ReadConfig(p.st.Root())
 	if err != nil {

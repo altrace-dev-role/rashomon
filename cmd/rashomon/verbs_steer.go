@@ -17,9 +17,10 @@ import (
 const steerUsage = `  rashomon steer [off|on] [--user|--project]
                                say whether the notes are on, or turn them off
                                or on for you (--user, the default) or for this
-                               project (--project); off prints no note and no
-                               flag, recording goes on, and the end-of-turn
-                               line still prints
+                               project (--project); off sends the agent no
+                               note and shows you what it would have said,
+                               recording goes on, and the end-of-turn line
+                               still prints
   rashomon steer explain       the last decision: its pattern, state, the
                                reason it did or did not print, and what that
                                reason means
@@ -306,7 +307,7 @@ var reasonMeaning = map[steer.SuppressedBy]string{
 	steer.SuppressedByStopHookActive:    "the turn was already being continued by a stop hook",
 	steer.SuppressedByBackgroundRunning: "a background task was still running",
 	steer.SuppressedByHostForeign:       "the call came from a host rashomon is not installed for",
-	steer.SuppressedBySteerOff:          "you turned the notes off (rashomon steer on turns them back on)",
+	steer.SuppressedBySteerOff:          "you turned the notes to your agent off (rashomon steer on turns them back on); nothing reached the agent",
 	steer.SuppressedByConsentMissing:    "the notes were not agreed to on this build's consent screen",
 	steer.SuppressedByArmOff:            "this install's lab arm is off",
 	steer.SuppressedByDemoted:           "the pattern was held to a flag after it proved noisy",

@@ -37,7 +37,7 @@ func TestSTC1l_ScreenNamesTheControlsOnceTheyDispatch(t *testing.T) {
 	}
 	stop := false
 	for _, c := range consent.Commands {
-		stop = stop || c.Does == "Stop the notes" && c.Run == "rashomon steer off --user"
+		stop = stop || c.Does == "Stop the notes to your agent" && c.Run == "rashomon steer off --user"
 	}
 	if !stop {
 		t.Errorf("the closing table's stop-the-notes line is not the steer switch: %v", consent.Commands)

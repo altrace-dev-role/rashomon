@@ -1,7 +1,7 @@
 # STC-1 (card STEER-CLI1, claims no requirement row): the user's controls over
 # AutoSteer. The config reader behind steer.Context.SteerOff is read by the
-# hook from the user's key or the project's, an unreadable file is quiet, and
-# SteerOff silences a flag as it does a note; `steer off|on` write under
+# hook from the user's key or the project's, an unreadable file clamps, and
+# SteerOff clamps a note to a flag; `steer off|on` write under
 # UpdateConfig's lock; `steer log`, `steer explain` and `scorecard` print only
 # closed values; the screen names the controls. Each break removes one rule
 # and names the test that holds it.
@@ -29,11 +29,11 @@ m("STC-1 an unreadable config reads as the notes on", H,
 m("STC-1 the prompt's context has no project to look up", PC,
   " permissionMode: permissionMode, cwd: project,\n", " permissionMode: permissionMode,\n", "TestSTC1h_")
 
-# Off silences flags as it does notes.
-m("STC-1 steer off silences a note and prints a flag", D,
-  "\t\tcase ctx.SteerOff:\n", "\t\tcase ctx.SteerOff && p.level == LevelNudge:\n", "TestSTC1f_")
-m("STC-1 steer off suppresses for another reason", D,
-  "\t\t\tp.suppress(SuppressedBySteerOff) // the user's switch", "\t\t\tp.suppress(SuppressedByNoChannel) // the user's switch", "TestSTC1f_")
+# Off is a clamp: nothing for the agent, a flag for the user (tech 4.2.4).
+m("STC-1 steer off is not a clamp, a note reaches the agent", D,
+  "\tcase ctx.SteerOff:\n\t\treturn reason(SuppressedBySteerOff)\n", "", "TestSTC1f_|TestH145_|TestST_ClampsRecordTheirReason")
+m("STC-1 steer off clamps for another reason", D,
+  "\t\treturn reason(SuppressedBySteerOff)\n", "\t\treturn reason(SuppressedByConsentMissing)\n", "TestSTC1f_|TestST_ClampsRecordTheirReason")
 
 # The config: scopes, lock, unknown keys.
 m("STC-1 a project's switch reads for every project", C,
@@ -77,6 +77,6 @@ m("STC-1 scorecard drops the reasons", SC,
 
 # The screen.
 m("STC-1 the screen stops naming the steer switch", DP,
-  "`rashomon steer off --user` stops the notes for you, and ", "", "TestSTC1l_")
+  "`rashomon steer off --user` stops the notes to your agent, and ", "", "TestSTC1l_")
 m("STC-1 the closing table stops naming the steer switch", SCREEN,
-  "\t{\"Stop the notes\", \"rashomon steer off --user\"},\n", "\t{\"Stop the notes; remove the hooks\", \"rashomon detach\"},\n", "TestSTC1l_")
+  "\t{\"Stop the notes to your agent\", \"rashomon steer off --user\"},\n", "\t{\"Stop the notes; remove the hooks\", \"rashomon detach\"},\n", "TestSTC1l_")

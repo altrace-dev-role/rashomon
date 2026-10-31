@@ -144,12 +144,13 @@ func flagText(text string) (user string, refused *SuppressedBy) {
 func reason(r SuppressedBy) *SuppressedBy { return &r }
 
 // clampReason is the first clamp to flag that bites, in step order (tech
-// 4.2.4 steps 2, 5 and 6; card 2.2 R3): consent not current,
+// 4.2.4 steps 2, 5 and 6; card 2.2 R3): steering off, consent not current,
 // no prompt to charge (4.2.5: a missing budget counts as spent), and a Stop
-// whose hook is already active. Steering off is not one: it suppresses the
-// finding outright (decide), flags too.
+// whose hook is already active.
 func clampReason(ctx *Context) *SuppressedBy {
 	switch {
+	case ctx.SteerOff:
+		return reason(SuppressedBySteerOff)
 	case !ctx.Consent:
 		return reason(SuppressedByConsentMissing)
 	case ctx.PromptID == nil:
@@ -181,7 +182,7 @@ func (p *plan) suppress(r SuppressedBy) {
 // holdoutEligible is the field holdout's eligible set (card 2.5 R3; tech
 // 5.2.4 E): a note charge delivered, which is the call's one note. Every flag
 // is ineligible, whether its finding is one, a clamp made it one
-// (clampReason: no consent, no prompt, an active Stop hook) or
+// (clampReason: steering off, no consent, no prompt, an active Stop hook) or
 // its event has no model channel (ruleFlagOnly: Stop, PostModelSwitch); no
 // stop form reaches decide, LevelStop being a nudge here (STR-20) and
 // StopContinue never set; and a line that did not print has nothing to hold.
@@ -239,8 +240,6 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		switch {
 		case arm == ArmOff:
 			p.suppress(SuppressedByArmOff)
-		case ctx.SteerOff:
-			p.suppress(SuppressedBySteerOff) // the user's switch: nothing prints, a flag included (STEER-CLI1)
 		case rule == ruleNoChannel:
 			p.suppress(SuppressedByNoChannel)
 		case claimed[p.key]:

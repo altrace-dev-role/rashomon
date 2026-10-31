@@ -73,7 +73,7 @@ func stcRun(t *testing.T, verb func([]string, io.Writer) error, args ...string) 
 var stcFixture = []stcDecision{
 	{"s1", "regression-location", "PostToolUseFailure", "nudge", "delivered", "", "delivered", 1_800_000_000_000},
 	{"s1", "regression-location", "PostToolUseFailure", "nudge", "suppressed", "budget_pattern", "suppressed_budget", 1_800_000_001_000},
-	{"s2", "task-preflight", "UserPromptSubmit", "nudge", "suppressed", "steer_off", "shadow", 1_800_000_002_000},
+	{"s2", "task-preflight", "UserPromptSubmit", "flag", "delivered", "steer_off", "flag_only", 1_800_000_002_000},
 	{"s2", "regression-location", "PostToolUseFailure", "flag", "delivered", "consent_missing", "flag_only", 1_800_000_003_000},
 }
 
@@ -271,7 +271,7 @@ func TestSTC1d_ScorecardCountsByPattern(t *testing.T) {
 	}
 	want := map[string]scoreRow{
 		"regression-location": {Pattern: "regression-location", Decisions: 4, Delivered: 1, FlagOnly: 1, Holdout: 1, Suppressed: 1},
-		"task-preflight":      {Pattern: "task-preflight", Decisions: 3, Suppressed: 2, Other: 1},
+		"task-preflight":      {Pattern: "task-preflight", Decisions: 3, FlagOnly: 1, Suppressed: 1, Other: 1},
 	}
 	if sc.Decisions != 7 || len(sc.ByPattern) != len(want) {
 		t.Fatalf("scorecard = %+v", sc)
@@ -299,8 +299,8 @@ func TestSTC1e_ExplainNamesTheLastDecision(t *testing.T) {
 	st, _ := stcStore(t)
 	stcAppend(t, st, stcFixture[:3]...)
 	out := stcRun(t, cmdSteer, "explain")
-	for _, want := range []string{"last decision: task-preflight, session s2", "state:         suppressed", "suppressed_by: steer_off",
-		"delivery:      shadow", "you turned the notes off"} {
+	for _, want := range []string{"last decision: task-preflight, session s2", "state:         delivered", "suppressed_by: steer_off",
+		"delivery:      flag_only", "shown to you as a flag, because you turned the notes to your agent off", "nothing reached the agent"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("steer explain lacks %q:\n%s", want, out)
 		}
