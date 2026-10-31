@@ -557,7 +557,7 @@
         }
       ],
       "id": "PF-PG10",
-      "implementation": "ValueLine renders at most three lines from closed templates with the state sentence fitted to 80 columns, but the summary switch is the constant summaryOn = true and no summary off or summary on verb exists.",
+      "implementation": "ValueLine renders at most three lines from closed templates with the state sentence fitted to 80 columns and an AutoSteer clause of counts (delivered, findings, resolved, checks) that prints only when they changed; `rashomon summary on|off` persists the switch in the store's config.json (absent means on).",
       "integration": [
         {
           "event": "Stop",
@@ -569,7 +569,7 @@
         }
       ],
       "missing": [
-        "summary off and summary on with a persisted switch (FUN-16)"
+        "a user-scoped summary switch beside the store-scoped one (STEER-CLI1)"
       ],
       "planned_pr": "",
       "session_proof": "",

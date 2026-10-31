@@ -20,18 +20,19 @@ import (
 // turn no Stop reached still gets its value line. Stop and the catch-up print
 // it; StopFailure does not (tech 2.2.11 condition 4).
 
-// summaryOn is the summary switch (tech 2.2.11 condition 3). No config file
-// is read in v0 and no key names the switch, so it is on (D71: no config,
-// on); a reader of one replaces this constant.
-const summaryOn = true
-
 // stopTurn is the Stop view as recapTurn's line reads it: the view, the
-// prompt's delivered notes, and whether the value line and the done flag may
+// prompt's delivered notes (the claim scan strips them), the session's impact
+// and the fingerprint of the counts the last printed clause carried, whether
+// the summary switch is on (tech 2.2.11 condition 3: config.json's summary,
+// absent means on, D71), and whether the value line and the done flag may
 // print.
 type stopTurn struct {
-	view   verify.StopView
-	notes  []recap.Note
-	speaks bool
+	view    verify.StopView
+	notes   []recap.Note
+	impact  recap.Impact
+	shown   string
+	summary bool
+	speaks  bool
 }
 
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
@@ -85,6 +86,9 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	projectDir, managedDir := specDirs()
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
+	// The steer lines are already read; no ledger opens at Stop (learn.Open
+	// can write), so the lessons are not read here.
+	impact := recap.ImpactOf(v, lines, nil)
 
 	if writes {
 		cp := verify.Cut(v.Snap, now)
@@ -95,23 +99,43 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 			_, _ = verify.WriteIndex(path, v.Index)
 		}
 	}
-	return stopTurn{view: v, notes: notes, speaks: event == install.EventStop || pending}, nil
+	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
+		summary: summaryOn(st.Root()), speaks: event == install.EventStop || pending}, nil
+}
+
+// summaryOn is the summary switch: on unless config.json says off. A file
+// that does not read leaves it on, which is the default: a switch that cannot
+// be read is not one a person was heard to set.
+func summaryOn(root string) bool {
+	c, err := store.ReadConfig(root)
+	return err != nil || c.SummaryOn()
 }
 
 // line is what speaks when recap.Line has no sentence (card 2.4 R12): the
-// done flag, else the value line while the summary switch is on.
-func (s stopTurn) line(sessionID string, fromPlugin bool) (string, bool) {
+// done flag, else the value line while the summary switch is on. clause is
+// the fingerprint of the AutoSteer clause the line carries, "" with none:
+// the clause prints only when the counts differ from the last one printed.
+func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool, clause string) {
 	if !s.speaks {
-		return "", false
+		return "", false, ""
 	}
 	if flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {
-		return flag, true
+		return flag, true, ""
 	}
-	if !summaryOn {
-		return "", false
+	if !s.summary {
+		return "", false, ""
 	}
-	l := recap.ValueLine(s.view, s.notes, sessionID, fromPlugin)
-	return l, l != ""
+	im := s.impact
+	if fp := im.Fingerprint(); fp == s.shown || im.Empty() {
+		im = recap.Impact{}
+	} else {
+		clause = fp
+	}
+	l := recap.ValueLine(s.view, im, sessionID, fromPlugin)
+	if l == "" {
+		clause = ""
+	}
+	return l, l != "", clause
 }
 
 // modelTexts is each note's model text, the lines the claim scan strips

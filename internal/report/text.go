@@ -105,6 +105,7 @@ func Text(w io.Writer, rep *Report, opts ...TextOption) error {
 func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "\nsession %s\n", sess.SessionID)
 	fmt.Fprintf(b, "  install: %s\n", orUnknown(sess.InstallID))
+	writeStory(b, sess)
 	// The account-versus-record block first, then destinations, then the
 	// recorder's own accounting. The comparison is what the reader came for;
 	// coverage and the declaration counts are how far it can be trusted, and
@@ -123,6 +124,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		writeMaskedRuns(b, *sess.MaskedRuns)
 	}
 	writeTestRuns(b, sess.TestRuns, sess.SessionID)
+	writeAutosteer(b, sess.Autosteer)
 	writeDestinations(b, sess.Destinations)
 	writeFamilies(b, sess.Families)
 	writeNono(b, sess.Nono)

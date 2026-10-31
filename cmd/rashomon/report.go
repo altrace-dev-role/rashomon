@@ -51,6 +51,10 @@ func cmdReport(args []string, stdout io.Writer) error {
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
+	sessionID, err := sessionArg(sessionID)
+	if err != nil {
+		return err
+	}
 	if ledger {
 		for _, f := range []struct {
 			on   bool
@@ -125,5 +129,6 @@ func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, 
 	if err != nil {
 		return nil, nil, err
 	}
+	attachImpact(st, rep, sessionID)
 	return rep, key, nil
 }

@@ -341,6 +341,12 @@ type Session struct {
 	// call whose declaration was lost has no pair looked for, and undeclared
 	// says how many such calls it holds.
 	TestRuns *TestRuns `json:"test_runs"`
+
+	// Autosteer is the session's AutoSteer notes, findings and checks and its
+	// last Stop, from the same derivation as the Stop line's clause. Null when
+	// the report did not read it (see Autosteer); a key added in report
+	// version 2, which a consumer of 2 may ignore.
+	Autosteer *Autosteer `json:"autosteer"`
 }
 
 // CurrentReportVersion is ReportVersion's value on every report this binary

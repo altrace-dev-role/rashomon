@@ -16,13 +16,20 @@ func verbNamed(name string) func(args []string, stdout io.Writer) error {
 		return cmdStatusVerb
 	case "lessons":
 		return cmdLessons
+	case "summary":
+		return cmdSummary
 	}
 	return nil
 }
 
 // verbUsage is the usage screen's lines for the verbs above that it does not
-// already list.
-const verbUsage = `  rashomon lessons [--json]      list this project's lessons by tier, proven
+// already list: one const per verb, one per line of the concatenation, so a
+// card adding a verb adds a const and a line and two such cards do not
+// conflict on one raw string.
+const verbUsage = lessonsUsage +
+	summaryUsage
+
+const lessonsUsage = `  rashomon lessons [--json]      list this project's lessons by tier, proven
                                first, each with the day it entered and its
                                fires; a ledger written by anything but
                                rashomon is said quarantined first
