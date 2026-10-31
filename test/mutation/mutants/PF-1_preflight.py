@@ -36,9 +36,13 @@ m("PF-1 the steer line cannot record a preflight slot", "internal/steer/slots.go
   "\t\tcase slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:\n\t\t\terr = putJSON(put, s.Name, preflightJSON(v))\n",
   "", "TestPF1r_PreflightNoteIsMirroredAcrossItsLines|TestSlotsOf_EverySlotTypeHasARow")
 m("PF-1 ** matches within one segment", "internal/spec/match.go",
-  "\t\tif pat[0] != \"**\" {\n", "\t\tif true {\n", "TestPF1l_MatchPathClauses")
+  "\t\tif head != \"**\" {\n", "\t\tif true {\n", "TestPF1l_MatchPathClauses")
 m("PF-1 a rule covers a path its ExcludePaths name", "internal/spec/match.go",
-  " && !slices.ContainsFunc(r.ExcludePaths, match)", "", "TestPF1l_CoversHonoursExcludePaths")
+  "\tfor _, p := range r.ExcludePaths {\n\t\tif MatchPath(p, path) {\n\t\t\treturn false\n\t\t}\n\t}\n", "", "TestPF1l_CoversHonoursExcludePaths")
+m("SR1a MatchPath splits the path into a slice again", "internal/spec/match.go",
+  "\tif !cleanSegments(rel) {\n\t\treturn false\n\t}\n\tanchored",
+  "\tif !cleanSegments(rel) {\n\t\treturn false\n\t}\n\t_ = strings.Split(rel, \"/\")\n\tanchored",
+  "TestSR1a_MatchPathAllocatesNothing")
 m("PF-1 the catch-up asks a nil run for its last seq", "cmd/rashomon/preflight.go",
   "\tif run == nil || p.CWD == \"\" {\n",
   "\tif p.CWD == \"\" {\n", "TestPF1u_")

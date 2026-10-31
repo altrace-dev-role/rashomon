@@ -26,4 +26,4 @@ m("SN-1 a gate raises before a family is established", V,
 m("SN-1 a write is judged without taking the arm", H,
   "return key, p.st.TakeStaleArm(p.sessionID), false", "return key, true, false", "TestSN1g_OnlyAnArmedRelevantWriteIsJudged")
 m("SN-1 the spec walks from a key that is not the project's", H,
-  "p.sp = discoverSpecAt(p.cwd, key,", "p.sp = discoverSpecAt(p.cwd, p.cwd,", "TestSP15_HookDiscoversTheNearestSpec")
+  "p.sp = p.discoverFor(env, key,", "p.sp = p.discoverFor(env, p.cwd,", "TestSP15_HookDiscoversTheNearestSpec")

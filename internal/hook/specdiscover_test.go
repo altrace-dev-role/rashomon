@@ -236,3 +236,38 @@ func TestMS5h_HeldOutReadsTheSpec(t *testing.T) {
 		t.Errorf("rate_bp 2000: %s is treated; want it held out", at2000)
 	}
 }
+
+// TestSR1ab_NoSpecDiscoveryIsLean: the rules step discovers the spec at every
+// Bash and file-tool post (ruled), so a project with no spec pays for little
+// (D210). With no .git above the cwd and no CLAUDE_PROJECT_DIR no spec
+// candidate can exist: the walk has no root, so the cwd's and the project's
+// symlinks are not evaluated and no candidate path is built. The call is one
+// Lstat for the git root and nothing else. A cwd under a git root with no
+// spec still finds none, and one with a spec still finds it. Break: resolve
+// the cwd before asking whether a root exists.
+func TestSR1ab_NoSpecDiscoveryIsLean(t *testing.T) {
+	cwd := t.TempDir()
+	if sp := DiscoverSpec(cwd, "", "", NoRun("")); sp != nil {
+		t.Fatalf("an empty directory has a spec: %+v", sp)
+	}
+	key := cwd
+	if n := testing.AllocsPerRun(50, func() { discoverSpecAt(cwd, key, "", "", NoRun("")) }); n > 6 {
+		t.Errorf("a no-spec discovery under no root allocates %v times, want at most 6", n)
+	}
+	if err := os.Mkdir(filepath.Join(cwd, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if sp := DiscoverSpec(cwd, "", "", NoRun("")); sp != nil {
+		t.Errorf("a git root with no spec has one: %+v", sp)
+	}
+	dir := filepath.Join(cwd, ".claude", "rashomon")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec.json"), []byte(`{"rashomon_spec": 1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if sp := DiscoverSpec(cwd, "", "", NoRun("")); sp == nil {
+		t.Error("a git root with a spec found none")
+	}
+}

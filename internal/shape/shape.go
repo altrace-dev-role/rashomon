@@ -4,14 +4,17 @@
 // that exactly one package has to be audited to believe the no-content
 // guarantee.
 // Everything it returns is drawn from a closed vocabulary, a count or a keyed
-// digest, with two exceptions, each returned by one named function: the
+// digest, with four exceptions, each returned by one named function: the
 // hostnames a call names (Hosts), which the report lists and forget --host
-// matches as written, and the path a file-changing tool names (DeclaredPath),
+// matches as written; the path a file-changing tool names (DeclaredPath),
 // which the declaration carries so that a reader can tell which file a call
-// touched. No other substring of the input reaches a result.
+// touched; the write targets a Bash line names (WrittenPaths), which the
+// declaration carries for the same reader; and a shell tool's command line
+// (CommandLine), which a post matches against the spec's rules in memory and
+// no record stores. No other substring of the input reaches a result.
 //
 // Every function here that takes a tool_input (Derive, LeadingDirectory,
-// Hosts, Label, DeclaredPath) requires one JSON value that json.Valid
+// Hosts, Label, DeclaredPath, WrittenPaths, CommandLine) requires one JSON value that json.Valid
 // accepts, as the tool_input span of a payload hookio.Intake returned is. Its
 // fields are located by jsonscan.Field, which trusts that validation: on bytes
 // that did not pass it, a field can be found where a decoder would have

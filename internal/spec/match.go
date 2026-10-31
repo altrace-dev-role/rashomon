@@ -1,7 +1,6 @@
 package spec
 
 import (
-	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -26,22 +25,35 @@ import (
 // An empty pattern, a pattern with an empty, "." or ".." segment, and a rel
 // that is empty, absolute or not cleaned match nothing.
 func MatchPath(pattern, rel string) bool {
-	segs, ok := segments(rel)
-	if !ok {
+	if !cleanSegments(rel) {
 		return false
 	}
 	anchored := strings.HasPrefix(pattern, "/")
-	pat, ok := segments(strings.TrimSuffix(strings.TrimPrefix(pattern, "/"), "/"))
-	if !ok {
+	pat := strings.TrimSuffix(strings.TrimPrefix(pattern, "/"), "/")
+	if !cleanSegments(pat) {
 		return false
 	}
-	if !anchored && len(pat) == 1 {
-		return slices.ContainsFunc(segs, func(s string) bool { return matchSegment(pat[0], s) })
+	if !anchored && !strings.Contains(pat, "/") {
+		for rest, more := rel, true; more; {
+			var seg string
+			seg, rest, more = strings.Cut(rest, "/")
+			if matchSegment(pat, seg) {
+				return true
+			}
+		}
+		return false
 	}
-	for n := 1; n <= len(segs); n++ {
-		if matchSegments(pat, segs[:n]) {
+	// Each prefix of rel that ends at a segment boundary, shortest first.
+	for end := 0; end < len(rel); {
+		if i := strings.IndexByte(rel[end:], '/'); i >= 0 {
+			end += i
+		} else {
+			end = len(rel)
+		}
+		if matchSegments(pat, rel[:end]) {
 			return true
 		}
+		end++
 	}
 	return false
 }
@@ -49,49 +61,72 @@ func MatchPath(pattern, rel string) bool {
 // Covers reports whether one of the rule's Paths covers path and none of its
 // ExcludePaths does; a rule with no Paths covers no path.
 func (r Rule) Covers(path string) bool {
-	match := func(p string) bool { return MatchPath(p, path) }
-	return slices.ContainsFunc(r.Paths, match) && !slices.ContainsFunc(r.ExcludePaths, match)
-}
-
-// segments splits a relative path into its segments, refusing an empty or
-// absolute one and one with an empty, "." or ".." segment.
-func segments(p string) ([]string, bool) {
-	if p == "" || strings.HasPrefix(p, "/") {
-		return nil, false
-	}
-	s := strings.Split(p, "/")
-	for _, seg := range s {
-		if seg == "" || seg == "." || seg == ".." {
-			return nil, false
+	for _, p := range r.ExcludePaths {
+		if MatchPath(p, path) {
+			return false
 		}
 	}
-	return s, true
-}
-
-// matchSegments matches whole segments, `**` taking zero or more of them.
-func matchSegments(pat, segs []string) bool {
-	for len(pat) > 0 {
-		if pat[0] != "**" {
-			if len(segs) == 0 || !matchSegment(pat[0], segs[0]) {
-				return false
-			}
-			pat, segs = pat[1:], segs[1:]
-			continue
-		}
-		for len(pat) > 0 && pat[0] == "**" {
-			pat = pat[1:]
-		}
-		if len(pat) == 0 {
+	for _, p := range r.Paths {
+		if MatchPath(p, path) {
 			return true
 		}
-		for i := range segs {
-			if matchSegments(pat, segs[i:]) {
+	}
+	return false
+}
+
+// cleanSegments reports whether p is a non-empty, relative path whose every
+// segment is non-empty and neither "." nor ".."; it walks p with
+// strings.Cut and allocates nothing (card SPEC-RULES1, D210).
+func cleanSegments(p string) bool {
+	if p == "" || strings.HasPrefix(p, "/") {
+		return false
+	}
+	for rest, more := p, true; more; {
+		var seg string
+		seg, rest, more = strings.Cut(rest, "/")
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+// matchSegments matches whole segments, `**` taking zero or more of them. Both
+// arguments are slash-joined clean segment strings, walked with strings.Cut.
+func matchSegments(pat, segs string) bool {
+	for pat != "" {
+		head, rest, _ := strings.Cut(pat, "/")
+		if head != "**" {
+			if segs == "" {
+				return false
+			}
+			seg, segRest, _ := strings.Cut(segs, "/")
+			if !matchSegment(head, seg) {
+				return false
+			}
+			pat, segs = rest, segRest
+			continue
+		}
+		pat = rest
+		for pat != "" {
+			h, r, _ := strings.Cut(pat, "/")
+			if h != "**" {
+				break
+			}
+			pat = r
+		}
+		if pat == "" {
+			return true
+		}
+		for s := segs; s != ""; {
+			if matchSegments(pat, s) {
 				return true
 			}
+			_, s, _ = strings.Cut(s, "/")
 		}
 		return false
 	}
-	return len(segs) == 0
+	return segs == ""
 }
 
 // matchSegment matches one segment against one pattern segment: `*` any run

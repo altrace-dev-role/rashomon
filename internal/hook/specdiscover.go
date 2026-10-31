@@ -133,9 +133,18 @@ func SpecLocations(cwd, projectDir string) []string {
 
 // specLocationsAt is SpecLocations given cwd's project key, baseline.Key(cwd)
 // (discoverSpecAt).
+//
+// With no git root and no project dir the walk has no root and no candidate
+// exists (spec.WalkRoot, spec.Locations), so a project with no spec costs the
+// one Lstat gitRoot makes: no symlink is evaluated and no path is built
+// (card SPEC-RULES1, D210).
 func specLocationsAt(cwd, key, projectDir string) []string {
+	git := gitRoot(key)
+	if git == "" && projectDir == "" {
+		return nil
+	}
 	cwd = resolved(cwd)
-	return spec.Locations(cwd, spec.WalkRoot(cwd, gitRoot(key), resolved(projectDir)))
+	return spec.Locations(cwd, spec.WalkRoot(cwd, git, resolved(projectDir)))
 }
 
 // SpecProject is the project of the repository spec at path, the

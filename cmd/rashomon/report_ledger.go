@@ -101,7 +101,7 @@ func specNow(sp *spec.Compiled) string {
 // ledgerFamilies maps each row's id to the family ObligationID digested it
 // over: a gate's Family, a declared gate's Gate id (every declared gate's
 // Family is "declared", so its rows digest the id instead, DECLARED-GATES1),
-// or an expected row's evidence kind. A row carries no such text (D-A1), so
+// an expected row's evidence kind, or a spec_rule row's rule id. A row carries no such text (D-A1), so
 // it is recomputed over the view's gates and kinds, and the string printed is
 // whichever digests to the id. Cost: O(R x (2G + K)) digests, a verb's, never
 // a hook's.
@@ -112,6 +112,15 @@ func ledgerFamilies(v verify.StopView) map[string]string {
 			for _, e := range v.Expected {
 				if verify.ObligationID(o.Scope, o.Kind, e.Kind) == o.ID {
 					out[o.ID] = e.Kind
+				}
+			}
+			continue
+		}
+		if o.Kind == verify.SpecRule {
+			// A spec_rule row digests its rule's id (specObligations).
+			for _, sv := range v.Snap.SpecVerdicts {
+				if verify.ObligationID(o.Scope, o.Kind, string(sv.Rule)) == o.ID {
+					out[o.ID] = string(sv.Rule)
 				}
 			}
 			continue

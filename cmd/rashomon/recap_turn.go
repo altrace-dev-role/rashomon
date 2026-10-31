@@ -256,6 +256,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	var client steer.Client
 	if pending {
 		note, client = preflightNote(st, run, &pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
+		noteTurnSpec(st, run, &pp)
 	}
 	if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
 		return printTurn(st, stdout, note, client, "")
