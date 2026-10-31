@@ -34,10 +34,10 @@ m("SN-1 an index-less arm reads the run with no spec file", H,
   "readRun := stepped || tookIndexless && specFileAt(p.cwd, key, env.ProjectDir, env.ManagedDir)\n",
   "readRun := stepped || tookIndexless\n", "TestSN1j_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun")
 m("SN-1 a spec file is never seen", "internal/hook/specdiscover.go",
-  "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist)\n", "\t\treturn false\n",
+  "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist)\n", "\t\treturn (err == nil || !errors.Is(err, fs.ErrNotExist)) && false\n",
   "TestSN1j2_|TestDG2d_")
 m("SN-1 every location reads as present", "internal/hook/specdiscover.go",
-  "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist)\n", "\t\treturn true\n",
+  "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist)\n", "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist) || true\n",
   "TestSN1j2_|TestSN1j_")
 m("SN-1 the managed spec file is not looked for", "internal/hook/specdiscover.go",
   "\treturn managedDir != \"\" && present(filepath.Join(managedDir, \"rashomon\", \"spec.json\"))\n",
