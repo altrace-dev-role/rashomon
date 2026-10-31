@@ -237,7 +237,11 @@ under the call if the command named it.
 | `rashomon status [--json]` | Say what is installed and what the store holds, writing nothing; `--json` gives the same as one object |
 | `rashomon report [--session S\|last] [--json] [--chain] [--timeline] [--nono-audit PATH]` | Render every recorded session, or the one named (`last`: this project's newest with a checkpoint); a named session opens with a short story, an autosteer block and a knowledge block (what the project holds, and what the session found or invalidated), the tables below it; `--redact` covers both blocks |
 | `rashomon why [--session S\|last] [--json] [--redact] ID-PREFIX` | Say why one note fired: its pattern and key, the state it ended in, the calls it cites and the gate or rule it came from; reads, writes nothing |
-| `rashomon summary [on \| off]` | Say, or set, whether the end-of-turn line prints its value line; on unless set off |
+| `rashomon summary [on \| off] [--user \| --project]` | Say, or set, whether the end-of-turn line prints its value line, for you (`--user`, the default) or for this project; on unless set off |
+| `rashomon steer [off \| on] [--user \| --project]` | Say whether the notes to your agent are on, or turn them off or on; off sends the agent no note and shows you what it would have said, while recording goes on |
+| `rashomon steer on --repair` | Replace a `config.json` that does not read, after asking on your terminal; until then the notes are off |
+| `rashomon steer explain` / `rashomon steer log [--all] [--json]` | Say why the last note was or was not printed, or list the last 20 decisions (`--all`: every one); never a note's text |
+| `rashomon scorecard [--json]` | Count what the notes did, by pattern: sent to the agent, shown to you only, held out, or not printed, and why; counts only |
 | `rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT \| --stdin]` | Print one turn's record as JSON, at most 8 KiB: what one prompt recorded; read-only |
 | `rashomon backtest --sensor ID` | Replay this project's transcript copies (`rashomon bodies on`) through this build's hooks and print each session's fires of steer pattern ID beside the live steer log's; only reads the store |
 | `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
