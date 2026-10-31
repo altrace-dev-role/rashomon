@@ -637,3 +637,26 @@ func TestSR1m_EachCommandIsReadOncePerEvaluation(t *testing.T) {
 		t.Fatalf("16 rules cost %.0f allocations over one rule's %.0f: the lines are read per rule", a16, a1)
 	}
 }
+
+// TestSR1n_ProtectOverReadsEachPathCleanedOnce: a written path is cleaned for
+// the matcher once per evaluation, not once per protect_path rule (D210).
+// protectOver is handed projectRels and cleans nothing itself: over writes
+// whose paths are not clean, it allocates nothing and finds the same
+// violation. Break: clean the path again inside the rule.
+func TestSR1n_ProtectOverReadsEachPathCleanedOnce(t *testing.T) {
+	paths := []string{"src/./a/../a/x.go", "db//migrations/./001.sql", "docs/./readme.md"}
+	c := &classified{}
+	for i := range paths {
+		c.writes = append(c.writes, write{Seq: int64(i + 1), Path: &paths[i], Tool: "Edit"})
+	}
+	rels := projectRels(c.writes)
+	r := &spec.Rule{Paths: []string{"db/migrations"}}
+	got := protectOver(r, c, rels, 10)
+	if !slices.Equal(got.seqs, []int64{2}) || got.undecided {
+		t.Fatalf("protectOver = %+v, want a violation at seq 2", got)
+	}
+	none := &spec.Rule{Paths: []string{"vendor"}}
+	if n := testing.AllocsPerRun(50, func() { protectOver(none, c, rels, 10) }); n != 0 {
+		t.Errorf("protectOver allocates %v times over uncleaned paths, want 0: it cleans a path itself", n)
+	}
+}

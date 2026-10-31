@@ -66,6 +66,7 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 	}
 	at := snap.Point.Seq
 	var lines []ruleLine
+	var rels []projectRel
 	read := false
 	for i := range sp.Rules {
 		dr := &sp.Rules[i]
@@ -78,7 +79,10 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 			}
 			r = forbidOver(dr.Rule.Command, lines)
 		case spec.ProtectPath:
-			r = protectOver(&dr.Rule, c, at)
+			if rels == nil {
+				rels = projectRels(c.writes)
+			}
+			r = protectOver(&dr.Rule, c, rels, at)
 		case spec.RequireEvidence:
 			var ok bool
 			if r, ok = evidenceAt(&dr.Rule, snap, wrote); !ok {
@@ -363,8 +367,9 @@ func foldIn(vals []string, s string) bool {
 // Bash target holding a glob, a Bash line whose targets were not all read,
 // and a mode the record cannot tell are undecided; an MCP call is no write
 // a path rule reads. A path outside the project matches nothing; a symlink
-// is matched by the name written, not the file it reaches.
-func protectOver(r *spec.Rule, c *classified, at int64) ruleRead {
+// is matched by the name written, not the file it reaches. rels is
+// projectRels(c.writes), cleaned once for every rule.
+func protectOver(r *spec.Rule, c *classified, rels []projectRel, at int64) ruleRead {
 	var out ruleRead
 	if len(r.Paths) == 0 {
 		out.undecided = true
@@ -381,7 +386,7 @@ func protectOver(r *spec.Rule, c *classified, at int64) ruleRead {
 			out.undecided = out.undecided || !strings.HasPrefix(w.Tool, "mcp__")
 			continue
 		}
-		rel, inside := projectPath(*w.Path)
+		rel, inside := rels[i].rel, rels[i].inside
 		switch {
 		case !inside:
 		case w.Tool == "Bash" && strings.ContainsAny(rel, "*?[{"):
@@ -404,6 +409,26 @@ func protectOver(r *spec.Rule, c *classified, at int64) ruleRead {
 		}
 	}
 	out.undecided = out.undecided || unnamed > blind
+	return out
+}
+
+// projectRel is one write's path cleaned for the matcher and whether it lies
+// in the project (projectPath).
+type projectRel struct {
+	rel    string
+	inside bool
+}
+
+// projectRels is every named write's path through projectPath, in writes'
+// order, so the rule loop cleans each path once (card SPEC-RULES1, D210). It
+// is never nil.
+func projectRels(writes []write) []projectRel {
+	out := make([]projectRel, len(writes))
+	for i := range writes {
+		if writes[i].Path != nil {
+			out[i].rel, out[i].inside = projectPath(*writes[i].Path)
+		}
+	}
 	return out
 }
 

@@ -81,3 +81,7 @@ m("sr1 the post raises a forbidden command that failed", "internal/verify/rules_
   "\t\t\tif event != string(steer.EventPostToolUse) || call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
   "\t\t\tif call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
   "TestSR1_")
+m("sr1 protectOver cleans each path again inside the rule", "internal/verify/rules.go",
+  "\t\trel, inside := rels[i].rel, rels[i].inside\n",
+  "\t\trel, inside := projectPath(*w.Path)\n",
+  "TestSR1n_")
