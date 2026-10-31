@@ -304,9 +304,11 @@ prompts() {
 # (identical-retry run twice, or a red after a green)? identical-retry is a
 # reserved id with no producer on this tree: internal/verify raisedByVerify
 # lists the eight patterns VERIFY raises and it is not one. regression-
-# location is produced, at PostToolUseFailure, but that row of
-# mirrorVerifiedOn has no floor, so it is logged in shadow
-# (unverified_channel) on every version. Every other per-call pattern needs
+# location is produced, at PostToolUseFailure, but it needs a green run, a
+# write and then a red, which no fixed prompt can make a model do for sure;
+# and its channel row delivers only from 2.1.304 once #147's floor is in the
+# tree (without it the row has no floor and logs in shadow, unverified_channel,
+# on every version). Every other per-call pattern needs
 # a declared spec, a learned lesson or a required gate from earlier sessions,
 # which a fresh workspace has not. task-preflight at UserPromptSubmit is the
 # one note a fresh workspace deterministically delivers. It proves the hook
