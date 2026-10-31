@@ -13,6 +13,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fold"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // fsRoot is the filesystem root of the volume t.TempDir is on: "/" on Unix,
@@ -568,13 +569,23 @@ func storeFileConsts(t *testing.T) map[string]string {
 // a root file or a run file in purge's lists, and the names fold and baseline
 // export are owned where those packages write them. internal/store is read
 // from its source, so a constant added there fails this test until purge lists
-// it.
+// it. A constant that begins a family of names stands for those names, each
+// checked: its bare value is no file the store writes.
 func TestTRU28_PurgeListsEveryNameItsWritersExport(t *testing.T) {
 	consts := storeFileConsts(t)
 	if len(consts) < 15 {
 		t.Fatalf("found %d File constants in internal/store, fewer than the 17 it had: the scan is broken: %v", len(consts), consts)
 	}
+	families := map[string][]string{"FileFiredPrefix": store.FiredEvents()}
 	for name, v := range consts {
+		if suffixes, ok := families[name]; ok {
+			for _, s := range suffixes {
+				if !ownTreeFile(v+s, true, 1) {
+					t.Errorf("store.%s+%q is written by the store but purge does not list it", name, s)
+				}
+			}
+			continue
+		}
 		anchor := v == InstallMeta || v == InstallKey
 		if !anchor && !ownName(v) && !ownTreeFile(v, true, 1) {
 			t.Errorf("store.%s = %q is written by the store but purge does not list it", name, v)

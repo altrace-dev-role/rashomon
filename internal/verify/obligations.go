@@ -6,10 +6,6 @@ import (
 	"encoding/hex"
 	"slices"
 	"sync"
-	"time"
-
-	"github.com/altrace-dev-role/rashomon/internal/spec"
-	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The obligation ledger (PRD section 5, PF-PG5) is a view over what Evaluate
@@ -121,16 +117,13 @@ type Obligation struct {
 	Evidence []int64         `json:"evidence"`
 }
 
-// EvaluateWithObligations is Evaluate and the ledger over its snapshot, from
-// one classification. Evaluate keeps its signature (Snapshot is frozen); the
-// ledger is never nil. key is the install key the gates sp declares are
-// digested under (evaluate).
-func EvaluateWithObligations(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time) (Snapshot, []Obligation) {
-	var c classified
-	snap := evaluate(run, idx, sp, key, pt, now, &c)
-	ex := expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(run, pt.Seq)})
+// ledgerOf is the ledger at snap's point: the gates' rows over c, the
+// classification snap came from, then the expected_evidence rows of ex, in
+// the scope the point's kind owes in. EvaluateStop is its one caller, so the
+// ledger has one producer, on the path every Stop takes. Never nil.
+func ledgerOf(snap Snapshot, c *classified, ex []Expected) []Obligation {
 	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
-	return snap, append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
+	return append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
 }
 
 // cite is the gate pointers a row's evidence reads.

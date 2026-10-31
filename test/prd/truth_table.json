@@ -255,7 +255,11 @@
       "evidence": [
         {
           "file": "internal/verify/obligations.go",
-          "symbol": "EvaluateWithObligations"
+          "symbol": "ledgerOf"
+        },
+        {
+          "file": "internal/verify/stop.go",
+          "symbol": "EvaluateStop"
         },
         {
           "file": "internal/verify/obligations.go",
@@ -284,18 +288,38 @@
         {
           "file": "internal/verify/declared_test.go",
           "symbol": "TestDG1_DeclaredGateReadsItsRuns"
+        },
+        {
+          "file": "cmd/rashomon/laststop.go",
+          "symbol": "replayLastStop"
+        },
+        {
+          "file": "cmd/rashomon/report_ledger.go",
+          "symbol": "reportLedger"
+        },
+        {
+          "file": "internal/verify/ledger_wire_test.go",
+          "symbol": "TestLW1_StopViewCarriesTheLedger"
+        },
+        {
+          "file": "cmd/rashomon/report_ledger_test.go",
+          "symbol": "TestLW1e_StopLedgerEqualsTheVerbs"
         }
       ],
       "id": "PF-PG5",
-      "implementation": "EvaluateWithObligations folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, and a declared gate's rows carry source spec under ids of their own, but nothing outside tests calls it, it emits no spec_rule or proposed_check row, and its scope is the session at every point.",
+      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, but it emits no spec_rule or proposed_check row, and its scope is the session at every point.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/report_ledger.go"
         }
       ],
       "missing": [
-        "a hook or verb that calls EvaluateWithObligations: the checkpoint and the done flag read the snapshot, not the ledger",
+        "the ledger verb replays from the record: the tree is read now and the final message is not held, so a file changed since the Stop reads its rows stale and judgment_disclosed reads unknown",
         "spec_rule rows: no spec rule evaluator exists and SpecVerdicts is always empty",
         "proposed_check rows",
         "watched_red_then_green for a declared gate: watches keys reds by learned family, so a declared row has none (DECLARED-GATES1 G13)",
@@ -352,7 +376,7 @@
       ],
       "missing": [
         "under record scope v4, the scope without consent, no sha is written and the binding reads unknown",
-        "the evidence_bound ledger row is unreachable with the ledger (PF-PG5)"
+        "the ledger verb reads the tree now, not at the Stop (the checkpoint records no tree), so a file changed since the Stop reads its evidence_bound row stale"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -376,15 +400,18 @@
         }
       ],
       "id": "PF-PG7",
-      "implementation": "watchedRow meets watched_red_then_green on a red run, a later relevant write and a later green, but only as a ledger row, and the ledger has no runtime caller.",
+      "implementation": "watchedRow meets watched_red_then_green on a red run, a later relevant write and a later green, as a ledger row the Stop builds (EvaluateStop) and `rashomon report --ledger` prints; no flag or note reads it.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/report_ledger.go"
         }
       ],
       "missing": [
-        "the ledger's caller (PF-PG5)",
         "the change's scope: the window is the session (PF-PG13)"
       ],
       "planned_pr": "",
@@ -471,10 +498,18 @@
         {
           "file": "internal/verify/declared_test.go",
           "symbol": "TestDG1f_ExpectedRowReadsTheDeclaredGate"
+        },
+        {
+          "file": "internal/verify/evidence.go",
+          "symbol": "UnmetExpected"
+        },
+        {
+          "file": "internal/recap/evidence_done_test.go",
+          "symbol": "TestLW1k_DoneClauseReadsTheLedger"
         }
       ],
       "id": "PF-PG9",
-      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit, but the agent is not told at the next prompt.",
+      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit, but the agent is not told at the next prompt.",
       "integration": [
         {
           "event": "Stop",
@@ -1456,22 +1491,38 @@
         {
           "file": "internal/install/install.go",
           "symbol": "Events"
+        },
+        {
+          "file": "internal/brief/brief.go",
+          "symbol": "instructionsFact"
+        },
+        {
+          "file": "internal/brief/brief_test.go",
+          "symbol": "TestBR1_ThreeFactsOnARepoWithInstructionsAndATestCommand"
+        },
+        {
+          "file": "cmd/rashomon/brief.go",
+          "symbol": "printBrief"
         }
       ],
       "id": "PF-HD9",
-      "implementation": "No instruction-load record exists, and the installer subscribes to no instruction-load event.",
+      "implementation": "The project brief names each instruction file present at session start, the root's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md and the user's CLAUDE.md, with its byte size, printed to the user by probe start and by rashomon brief, but no instruction-load record is written and the installer subscribes to no instruction-load event, so what Claude Code loaded is not known.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "SessionStart",
+          "handler": "cmd/rashomon/brief.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/brief.go"
         }
       ],
       "missing": [
-        "instruction-load capture and its report (LRN-26, LRN-27)"
+        "instruction-load capture: the files Claude Code loaded, not the files present (LRN-26), and its report (LRN-27)"
       ],
       "planned_pr": "",
       "session_proof": "",
-      "status": "none",
+      "status": "partial",
       "title": "Instruction-load report"
     },
     {

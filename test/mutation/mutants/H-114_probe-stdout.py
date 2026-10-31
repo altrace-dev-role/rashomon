@@ -1,16 +1,17 @@
 # The probe's stdout is SessionStart's, and Claude Code hands that to the
-# model. One break per place a line could be printed: after the probe runs
+# model, all but a systemMessage (HC-1), which probe start's brief alone uses.
+# One break per place a line could be printed: after the probe runs
 # (both phases), inside the end phase, in the refusal of a phase the probe
 # does not know -- which runs before the store opens -- and
 # in the stand-down line, which the probe shares with hook and post.
 m("H-114 the probe announces each phase on stdout", "cmd/rashomon/main.go",
   "\t\tif errors.Is(runErr, hook.ErrEvictIncomplete) {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n",
   "\t\tif errors.Is(runErr, hook.ErrEvictIncomplete) {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe\", phase)\n",
-  "TestH114_ProbeStartAndEndPrintNothing")
+  "TestH114_ProbeStartPrintsOnlyASystemMessageAndEndNothing")
 m("H-114 the end probe reports on stdout", "internal/hook/probe.go",
   "\t\t\trun, err := st.ReadRun(sessionID)\n",
   "\t\t\tfmt.Println(\"rashomon: end of run\")\n\t\t\trun, err := st.ReadRun(sessionID)\n",
-  "TestH114_ProbeStartAndEndPrintNothing")
+  "TestH114_ProbeStartPrintsOnlyASystemMessageAndEndNothing")
 m("H-114 the phase refusal goes to stdout", "cmd/rashomon/main.go",
   "\t\tfmt.Fprintln(stderr, \"rashomon: probe expects start or end\")",
   "\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe expects start or end\")",

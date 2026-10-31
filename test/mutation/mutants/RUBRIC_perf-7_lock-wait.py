@@ -13,5 +13,5 @@ m("perf-7 a shorter wait replaces the run's longest", "internal/store/lockwait.g
   "err == nil && prev >= ms {", "err == nil && prev < 0 {", "TestRubricPERF7_AContendedInvocationNotesItsLongestWait")
 m("perf-7 the longest wait is the last run's", "internal/store/lockwait.go",
   "\t\tif ms > longest {\n", "\t\tif ms > 0 {\n", "TestRubricPERF7_AContendedInvocationNotesItsLongestWait")
-m("perf-7 status does not show the lock wait", "cmd/rashomon/main.go",
+m("perf-7 status does not show the lock wait", "cmd/rashomon/verbs_status.go",
   "\t\tstatusLockWait(stdout, st)\n", "", "TestRubricPERF7_StatusShowsTheLongestLockWait")

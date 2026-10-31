@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -198,11 +201,29 @@ func TestHookPathsAlwaysExitZero(t *testing.T) {
 			if got := run(args, strings.NewReader(stdin), &stdout, &stderr); got != 0 {
 				t.Errorf("run(%q) with stdin %q returned %d, want 0", args, stdin, got)
 			}
-			if stdout.Len() != 0 {
+			// Claude Code parses stdout as control output: probe start may
+			// print the brief as one JSON object holding systemMessage alone
+			// (card BRIEF1), and every other path prints nothing.
+			start := len(args) > 1 && args[0] == "probe" && args[1] == "start"
+			if stdout.Len() != 0 && !(start && onlySystemMessage(stdout.Bytes())) {
 				t.Errorf("run(%q) wrote to stdout, which Claude Code parses as control output: %q", args, stdout.String())
 			}
 		}
 	}
+}
+
+// onlySystemMessage: out is exactly one JSON object whose only key is
+// systemMessage, a string, with no other byte before or after it.
+func onlySystemMessage(out []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(out))
+	var obj map[string]json.RawMessage
+	var msg string
+	if len(bytes.TrimSpace(out)) != len(out) || dec.Decode(&obj) != nil || len(obj) != 1 ||
+		json.Unmarshal(obj["systemMessage"], &msg) != nil {
+		return false
+	}
+	_, err := dec.Token()
+	return errors.Is(err, io.EOF)
 }
 
 // TestGuardedHook_ReportsAPanicButAlwaysExitsOK: a panic guardedHook recovers

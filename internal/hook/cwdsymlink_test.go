@@ -145,8 +145,9 @@ func TestCS1_ASymlinkedProjectBindsItsDeclaredGate(t *testing.T) {
 		Gates: []spec.Declared{{ID: "spec:unit", Gate: spec.Gate{ID: "unit", Kind: "test",
 			Argv: []string{"go", "test", "./..."}, Match: "prefix", Required: &yes}}},
 	}
-	snap, _ := verify.EvaluateWithObligations(run, nil, sp, f.st.Key(),
-		verify.Point{Kind: verify.PointStop, Seq: 1 << 40, SessionID: stSession}, time.UnixMilli(1_800_000_600_000))
+	snap := verify.EvaluateStop(run, nil, sp,
+		verify.Point{Kind: verify.PointStop, Seq: 1 << 40, SessionID: stSession}, time.UnixMilli(1_800_000_600_000),
+		verify.StopInput{Key: f.st.Key()}).Snap
 	for _, g := range snap.Gates {
 		if g.Gate == "spec:unit" {
 			if g.State != verify.Green {

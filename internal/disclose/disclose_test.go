@@ -51,7 +51,7 @@ func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 }
 
 func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
-	if ScopeVersion != 4 {
+	if ScopeVersion != 5 {
 		t.Errorf("ScopeVersion = %d; a bump re-asks consent and must be deliberate", ScopeVersion)
 	}
 	inv, err := Default()
@@ -132,6 +132,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	if err := s.ArmStale(sessionID); err != nil {
 		t.Fatalf("ArmStale: %v", err)
+	}
+	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
+		t.Fatalf("MarkFired: %v", err)
 	}
 	if err := s.AppendGap(store.Gap{
 		Type: store.TypeGap, SchemaVersion: store.SessionSchemaVersion,
@@ -361,7 +364,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Moved 2026-10-30 (VERSION-GATE1) to 27: notice.go's TakeNotice
 		// open, runs/<session>/notice-channel and notice-holdout, the steer
 		// router's once-per-session notice markers.
-		{"store", 27},
+		// Moved 2026-10-30 (STATUS-VERBS1a) to 28: fired.go's MarkFired
+		// create (runs/<session>/fired-<Event>, the hook entries' fired
+		// markers status counts), a new write kind; fired-* in the inventory.
+		{"store", 28},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
