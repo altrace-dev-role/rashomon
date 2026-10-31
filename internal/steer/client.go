@@ -57,6 +57,22 @@ func (b channelBasis) excludes(v string) bool {
 	return false
 }
 
+// refusal is why a row cannot stand, or "": an exclusion below the floor
+// (shutBy would name it shutBelowFloor, not shutExcluded, and it excludes
+// nothing the floor does not already shut), or any exclusion on a row with
+// no floor.
+func (b channelBasis) refusal() string {
+	for _, x := range b.excluded {
+		if b.floor == "" {
+			return "exclusion " + x + " on a row with no floor"
+		}
+		if compareVersions(x, b.floor) < 0 {
+			return "exclusion " + x + " below the floor " + b.floor
+		}
+	}
+	return ""
+}
+
 // mirrorVerifiedOn is the compiled table, per event: on a verified version
 // the event's model-visible field reached the model while its systemMessage
 // mirror reached the user. A row with no entry, or with no floor, is gated
@@ -83,8 +99,20 @@ func mirrorVerifiedOn() map[string]channelBasis {
 			// additionalContext slot for nonce B; not probed.
 			string(EventPreToolUse): {},
 		}
+		closeRefused(mirrorVerifiedOnOnce.v)
 	})
 	return mirrorVerifiedOnOnce.v
+}
+
+// closeRefused replaces each row of table that refusal names with a closed
+// row: an invalid row can then never verify, the safe direction for this
+// table, and nothing on the hook path panics.
+func closeRefused(table map[string]channelBasis) {
+	for ev, b := range table {
+		if b.refusal() != "" {
+			table[ev] = channelBasis{}
+		}
+	}
 }
 
 // mirrorVerifiedOnOnce holds what mirrorVerifiedOn returns, built on its first

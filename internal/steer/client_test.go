@@ -403,9 +403,84 @@ func TestVG1c_TheCompiledTableIsTheProbedOne(t *testing.T) {
 			t.Errorf("%s: floor %q is not a dotted version", ev, b.floor)
 		}
 		for _, x := range b.excluded {
-			if !digitRuns(x, '.') || compareVersions(x, b.floor) < 0 {
-				t.Errorf("%s: exclusion %q is malformed or below the floor %q", ev, x, b.floor)
+			if !digitRuns(x, '.') {
+				t.Errorf("%s: exclusion %q is malformed", ev, x)
 			}
+		}
+		if r := b.refusal(); r != "" {
+			t.Errorf("%s: %s", ev, r)
+		}
+	}
+}
+
+// TestVG1o_AnExclusionBelowItsFloorIsRefused: a row whose exclusion sits
+// below its floor, or that excludes on no floor, is refused by name; an
+// exclusion at or above the floor stands; and the compiled table has no
+// refused row.
+func TestVG1o_AnExclusionBelowItsFloorIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		b       channelBasis
+		refused bool
+	}{
+		{"no exclusion", channelBasis{floor: "2.1.280"}, false},
+		{"closed row", channelBasis{}, false},
+		{"at the floor", channelBasis{floor: "2.1.280", excluded: []string{"2.1.280"}}, false},
+		{"above the floor", channelBasis{floor: "2.1.280", excluded: []string{"2.1.300"}}, false},
+		{"one below the floor", channelBasis{floor: "2.1.280", excluded: []string{"2.1.279"}}, true},
+		{"below by component", channelBasis{floor: "2.1.280", excluded: []string{"2.0.999"}}, true},
+		{"second entry below", channelBasis{floor: "2.1.280", excluded: []string{"2.1.300", "2.1.100"}}, true},
+		{"on a closed row", channelBasis{excluded: []string{"2.1.300"}}, true},
+	} {
+		if got := tc.b.refusal() != ""; got != tc.refused {
+			t.Errorf("%s: refusal %q, refused = %v, want %v", tc.name, tc.b.refusal(), got, tc.refused)
+		}
+	}
+	for ev, b := range mirrorVerifiedOn() {
+		if r := b.refusal(); r != "" {
+			t.Errorf("%s: %s", ev, r)
+		}
+	}
+}
+
+// TestVG1q_ARefusedRowReadsAsClosed: a row refusal names comes out of the
+// compile step closed, so it verifies on no version; a sound row is kept.
+func TestVG1q_ARefusedRowReadsAsClosed(t *testing.T) {
+	e := string(EventPostToolUse)
+	table := map[string]channelBasis{
+		e:                         {floor: "2.1.280", excluded: []string{"2.1.100"}},
+		string(EventSessionStart): {floor: "2.1.280", excluded: []string{"2.1.290"}},
+	}
+	closeRefused(table)
+	c := Client{Version: "99.0.0", Source: VersionSourceEnv, MirrorInBand: true}
+	if got := shutBy(outputKeys()[e], e, c, table); got != shutEventClosed {
+		t.Errorf("refused row: shutBy = %d, want shutEventClosed", got)
+	}
+	if b := table[string(EventSessionStart)]; b.floor != "2.1.280" || len(b.excluded) != 1 {
+		t.Errorf("sound row changed: %+v", b)
+	}
+}
+
+// TestVG1p_AnExcludedVersionAtTheFloorSaysExcluded pins shutBy's order: a
+// version that is both at the floor and excluded fails the delivery check
+// (shutExcluded); it is not "older" (shutBelowFloor).
+func TestVG1p_AnExcludedVersionAtTheFloorSaysExcluded(t *testing.T) {
+	table := map[string]channelBasis{
+		string(EventPostToolUse): {floor: "2.1.280", excluded: []string{"2.1.280"}},
+	}
+	e := string(EventPostToolUse)
+	at := func(v string) Client { return Client{Version: v, Source: VersionSourceEnv, MirrorInBand: true} }
+	for _, tc := range []struct {
+		v    string
+		want shutReason
+	}{
+		{"2.1.280", shutExcluded},
+		{"2.1.0280", shutExcluded},
+		{"2.1.279", shutBelowFloor},
+		{"2.1.281", channelOpen},
+	} {
+		if got := shutBy(outputKeys()[e], e, at(tc.v), table); got != tc.want {
+			t.Errorf("shutBy(%s) = %d, want %d", tc.v, got, tc.want)
 		}
 	}
 }
