@@ -20,6 +20,8 @@ func verbNamed(name string) func(args []string, stdout io.Writer) error {
 		return cmdSummary
 	case "steer":
 		return cmdSteer
+	case "measure":
+		return cmdMeasure
 	case "scorecard":
 		return cmdScorecard
 	case "why":
@@ -36,7 +38,9 @@ const verbUsage = lessonsUsage +
 	summaryUsage +
 	steerUsage +
 	scorecardUsage +
-	whyUsage
+	whyUsage +
+	measureUsage +
+	measurePairUsage
 
 const lessonsUsage = `  rashomon lessons [--json]      list this project's lessons by tier, proven
                                first, each with the day it entered and its

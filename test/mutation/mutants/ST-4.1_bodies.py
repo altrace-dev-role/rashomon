@@ -47,6 +47,6 @@ m("ST-4.1 purge does not plan bodies.json", PG,
   '\trecap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}', '\trecap.StateFileName, recap.StateTempName, store.FileConfig, store.FileConfigLock}',
   "TestRC14d_PurgeLeavesNoFile|TestTRU28_PurgeListsEveryNameItsWritersExport")
 m("ST-4.1 purge does not plan bodies.json's temporary file", PG,
-  ', "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-"}', ', "." + store.FileConfig + ".tmp-"}', "TestRC14d_PurgeLeavesNoFile")
+  ', "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-", "." + store.FileLab + ".tmp-"}', ', "." + store.FileConfig + ".tmp-", "." + store.FileLab + ".tmp-"}', "TestRC14d_PurgeLeavesNoFile")
 m("ST-4.1 the bodies rows left out of the inventory", "internal/disclose/disclose.go",
-  'append(indexFiles(), bodiesFiles()...)', 'indexFiles()', "TestTRU23_BodiesPathsAreInTheInventory")
+  'append(bodiesFiles(), labFiles()...)', 'labFiles()', "TestTRU23_BodiesPathsAreInTheInventory")

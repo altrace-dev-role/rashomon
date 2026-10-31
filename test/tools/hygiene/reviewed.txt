@@ -52,3 +52,5 @@ internal/steer/testdata/transcript/posttooluse-seen.jsonl def588b5bdb53e87 line 
 internal/steer/testdata/transcript/posttooluse-absent.jsonl 8dc15bbd4c6f7a00 the same record key sourceToolAssistantUUID on line 3 of the absent twin of the capture: an identifier, no credential or account value
 test/tools/hygiene/reviewed.txt cf9515f5c588fafa a transcript fixture's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt c1ce69723a2cb9ea a transcript fixture's entry in this file: its path and its reason, which the entropy test reads as one value
+test/acceptance/testdata/measure1/init-2.1.280.jsonl 4427544df8184d90 a field name of the init event, the socket path one: an identifier, not a credential; the capture keeps its keys because the driver compares them, and its value is the TMPDIR placeholder
+test/acceptance/testdata/measure1/init-2.1.280.jsonl d1eb932a50fa943e a field name of the init event, the background one: an identifier, not a credential; the capture keeps its keys because the driver compares them
