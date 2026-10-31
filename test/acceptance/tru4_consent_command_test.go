@@ -55,7 +55,7 @@ func TestTRU4_ConsentFollowsWatchsTerminalRule(t *testing.T) {
 	e.requireUnchanged(before, "consent with no terminal")
 
 	res = e.run("", []string{"CLAUDECODE=1"}, "consent", "--yes")
-	if res.exitCode != 1 || !strings.Contains(res.stderr, "consent was run from an agent session; nothing was written") {
+	if res.exitCode != 1 || !strings.Contains(res.stderr, "so only you can run it, in a terminal outside Claude Code: `rashomon consent`. Nothing was written.") {
 		t.Errorf("consent --yes from an agent session: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	if strings.Contains(res.stderr, "--yes") {
