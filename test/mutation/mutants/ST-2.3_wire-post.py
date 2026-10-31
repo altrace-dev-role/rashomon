@@ -51,7 +51,8 @@ m("ST-2.3 the step matches the raw id, which no record stores over the cap", P,
 m("ST-2.3 a post whose flush and marker both failed runs the step", C,
   "\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t\treturn nil\n\t\t}\n",
   "\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
-  "TestST_FailedFlushCitesNothing")
+  "TestST_FailedFlushCitesNothing",
+  platform="darwin")  # skipWithoutAFlush: off darwin a deferred post issues no flush to fail
 m("ST-2.3 consent read from consent.json, not the marker", E,
   "\t\tConsent:      store.SteerDisclosureMarker,\n",
   "\t\tConsent:      func(root string) (int, error) { _ = store.SteerDisclosureMarker; return hook.ConsentSteerDisclosure(root) },\n",
