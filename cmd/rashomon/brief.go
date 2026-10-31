@@ -110,7 +110,7 @@ func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plu
 	}
 	pointer := "rashomon report --session last"
 	if plugin {
-		pointer = "/" + install.PluginName + ":report last"
+		pointer = brief.PluginReport
 	}
 	source := "the project's newest checkpoint before this session"
 	if !scan.Found {

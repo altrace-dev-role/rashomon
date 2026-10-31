@@ -210,7 +210,7 @@ func TestBR1j_TheVerifyLineNamesItsOriginsCommand(t *testing.T) {
 		report     Pointer
 		text, from string
 	}{
-		{Pointer{Plugin: true, SessionID: id}, "/autosteer:report last", "the plugin's report command"},
+		{Pointer{Plugin: true, SessionID: id}, "/rashomon:report last", "the plugin's report command"},
 		{Pointer{SessionID: id}, "rashomon report --session " + id, "the payload's session_id"},
 		{Pointer{}, "rashomon status for coverage; rashomon report --session ID", "the rashomon command"},
 	} {
