@@ -68,8 +68,9 @@ func (s *Store) NoSpecNoted(sessionID, promptID, digest string) bool {
 	return ok && string(dig) == digest && len(b) == 0
 }
 
-// ClearNoSpec removes the session's marker: a call that named
-// .claude/rashomon may have made a spec.
+// ClearNoSpec removes the session's marker: a call that named .claude/rashomon
+// or the store root (hook's storeNamed, which judge reads as landedStore) may
+// have made a spec, and a prompt's discovery that found one clears it too.
 func (s *Store) ClearNoSpec(sessionID string) {
 	if s.opened() == nil {
 		_ = os.Remove(filepath.Join(s.RunDir(sessionID), FileSpecNone))
