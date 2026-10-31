@@ -229,6 +229,7 @@ func TestFUN15_AutoSteerClauseCountsDeliveredNotes(t *testing.T) {
 		{"two notes", Impact{Delivered: []NoteRef{ref("regression-location", "PostToolUseFailure"), ref("identical-retry", "PostToolUse")}}, "AutoSteer: 2 notes given."},
 		{"two notes at one event", Impact{Delivered: []NoteRef{ref("subtask-gate", "UserPromptSubmit"), ref("declared-fact", "UserPromptSubmit")}}, "AutoSteer: 2 notes given with your prompt."},
 		{"one note at the prompt", Impact{Delivered: []NoteRef{ref("subtask-gate", "UserPromptSubmit")}}, "AutoSteer: 1 task check given with your prompt."},
+		{"a lesson at the prompt (FD-10)", Impact{Delivered: []NoteRef{ref("learned-fact", "UserPromptSubmit")}}, "AutoSteer: 1 lesson given with your prompt."},
 		{"one note at session start", Impact{Delivered: []NoteRef{ref("continuity-briefing", "SessionStart")}}, "AutoSteer: 1 briefing given."},
 		{"no note", Impact{}, ""},
 	} {

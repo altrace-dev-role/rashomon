@@ -2,8 +2,8 @@
 // is a row with a tier and a tally, moved by a bound a person can recompute,
 // never a model. It is its own component with its own store under the store
 // root's learn/ directory (PF-HD16): hook and store import nothing of it,
-// and it reaches the agent only through active.json, which a later card's
-// delivery reads (LEARN-DELIVER1).
+// and it reaches the agent only through active.json, which recap pending
+// reads at each prompt (ReadActive, Pick; LEARN-DELIVER1) and never writes.
 package learn
 
 import (
