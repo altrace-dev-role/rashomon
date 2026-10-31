@@ -184,7 +184,8 @@ func statusHidden(r *gateRun) bool {
 // summary (masked_by tail, tee or cat, shape.MaskedByKeeps), on a record whose
 // rules know the word (version 11 or later), the call ended ok and was not
 // backgrounded, and gate_output is one of the words that decides --
-// summary_pass, summary_fail, empty_run, or fail_line where the runner's table
+// summary_pass (not for a delegate program, make or npm, whose output holds
+// every step's lines: gateout.Delegated), summary_fail, empty_run, or fail_line where the runner's table
 // has no summary form of its own (gateout.FailLineDecides). A fail_line beside
 // a table that has a summary is a substring a pipe kept, not the runner's
 // verdict, so it does not decide: the run stays masked. Every other word
@@ -195,7 +196,13 @@ func readsOutput(r *gateRun, rulesVersion int) bool {
 		return false
 	}
 	switch r.Output.Kind {
-	case outSummaryPass, outSummaryFail, outEmptyRun:
+	case outSummaryPass:
+		// A delegate's output holds every step's lines, so a pass line in it
+		// is one step's and not the run's: a delegated run is read only where
+		// it is red, and stays masked where it looks green (may understate,
+		// never overstate).
+		return !gateout.Delegated(r.Program)
+	case outSummaryFail, outEmptyRun:
 		return true
 	case outFailLine:
 		return gateout.FailLineDecides(r.Program)
