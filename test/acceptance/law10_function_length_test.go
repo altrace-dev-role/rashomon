@@ -50,10 +50,13 @@ var overLimit = map[string]int{
 // backtest command, openStore to storeopen.go, 1054 to 1052 with card
 // SPEC-TRUST1's spec command, storeExistsAt to storeopen.go; then LEDGER-WIRE1,
 // BRIEF1 and STATUS-VERBS1a extractions. Ratchet measured after the stacked re-cut.
+// SELFGUARD-ALL1: main.go 930 to 908, detachTarget to detach.go beside
+// detach's self-check, with pause's guard added; watch.go 545 to 544, its
+// agent refusal now selfguard.Refusal.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    930,
+	"cmd/rashomon/main.go":    908,
 	"internal/store/store.go": 549,
-	"cmd/rashomon/watch.go":   545,
+	"cmd/rashomon/watch.go":   544,
 }
 
 // codeLines counts the lines strictly between lbrace and rbrace (1-indexed,

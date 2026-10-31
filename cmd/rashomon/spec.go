@@ -48,7 +48,7 @@ func cmdSpec(args []string, stdout io.Writer) error {
 	// the agent: it is refused in an agent session as trust is, and writes
 	// nothing.
 	if s := selfguard.AgentSignal(os.Getenv); s != "" && args[0] == "untrust" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon spec untrust %s` in your own terminal.", s, shellWord(path))
+		return selfguard.Refusal(s, "untrusting a spec stops its rules reaching your agent", "spec untrust "+shellWord(path), "written")
 	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) && args[0] == "untrust" {
@@ -135,7 +135,7 @@ func specPath(args []string) (string, error) {
 // repository's), so its bytes never reach the terminal raw.
 func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Trust a spec in your own terminal.", s)
+		return selfguard.Refusal(s, "a trusted spec's rules become notes to your agent", "spec trust "+shellWord(path), "written")
 	}
 	data, err := spec.OSFS{}.ReadFile(path)
 	if err != nil {

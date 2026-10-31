@@ -383,6 +383,7 @@ func TestCmdResume_RecoversTrueStartFromTheGapLedgerWhenTheMarkerCannotBeRead(t 
 	}
 	root := t.TempDir()
 	t.Setenv("RASHOMON_HOME", root)
+	t.Setenv("CLAUDECODE", "") // pause refuses an agent session, and a run from one inherits the signal
 	if _, err := store.Open(root); err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}

@@ -27,10 +27,10 @@ import (
 // a person's answer.
 const ttyPath = "/dev/tty"
 
-// The refusals watch and consent print after the screen. Neither names
-// --yes: an agent told how to get past a refusal would use it.
+// The refusals watch and consent print after the screen, the agent
+// session's among them (askConsent). None names --yes: an agent told how to
+// get past a refusal would use it.
 const (
-	refuseAgent    = "%s was run from an agent session; nothing was written. Read the screen above, then run rashomon %s in your own terminal."
 	refuseNoTTY    = "%s needs a terminal to ask; nothing was written. Read the screen above, then run it in your own terminal."
 	nothingWritten = "nothing was written"
 	// refuseWorkTreeYes is --yes with the store root inside a git work
@@ -180,7 +180,7 @@ func askConsent(verb string, screen []byte, yes, show bool, wt workTreeQuestion,
 		if _, err := stdout.Write(screen); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf(refuseAgent, verb, verb)
+		return nil, selfguard.Refusal(signal, "the screen above is yours to agree to", verb, "written")
 	}
 	viaYes, viaTTY := consent.ViaWatchYes, consent.ViaWatchTTY
 	if verb == "consent" {

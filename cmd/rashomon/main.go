@@ -26,6 +26,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -621,39 +622,6 @@ func cmdDetach(args []string, stdout io.Writer) error {
 	return nil
 }
 
-// detachTarget resolves which entries a detach removes: the install named on
-// the command line, every install that left a marker, or -- for a plain detach
-// -- the one this machine's store records.
-func detachTarget(args []string) (installID string, all, force bool, err error) {
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--install":
-			if i+1 >= len(args) {
-				return "", false, false, errors.New("--install needs a value")
-			}
-			installID = args[i+1]
-			i++
-		case "--all":
-			all = true
-		case "--force":
-			// The way out of an entry someone edited. Without it, one edited
-			// value left every entry installed and no supported way to
-			// remove them.
-			force = true
-		default:
-			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
-		}
-	}
-	if all && installID != "" {
-		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
-	}
-	if all || installID != "" {
-		return installID, all, force, nil
-	}
-	installID, err = storedInstallID()
-	return installID, false, force, err
-}
-
 // pausedCoverageNote completes pause's line where a store exists: that a
 // paused call still leaves a coverage record, so the window it falls in
 // shows in the report rather than reading as silence.
@@ -675,7 +643,14 @@ const pausedCoverageNote = "; each one still writes a coverage record " +
 // gets the marker file pause reads back -- that is what lets status answer
 // "paused, no store recorded here yet" truthfully -- but nothing that would
 // mint an install identity.
+//
+// An agent session is refused before anything is read (R31): pause is how
+// the person stops the recording, so the agent being recorded cannot run it.
+// That announces rather than prevents, as above: the marker is a file.
 func cmdPause(stdout io.Writer) error {
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return selfguard.Refusal(s, "pause stops the recording of your sessions until you resume it", "pause", "written")
+	}
 	root, err := store.DefaultRoot()
 	if err != nil {
 		return err
