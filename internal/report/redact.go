@@ -243,8 +243,8 @@ func redactNono(n Nono, key []byte) Nono {
 
 // redactKnowledge digests the two names the knowledge block carries: the
 // project root, which is often the customer's name, and each bound spec's
-// path, which sits under it. Ids, counts, seqs, gate names, digests and times
-// stay (card REPORT1b K8 a). Every slice and pointer is rebuilt, for the
+// path, which sits under it, and the id of a declared gate in a gate key.
+// Ids, counts, seqs, digests and times stay (card REPORT1b K8 a). Every slice and pointer is rebuilt, for the
 // reason redactLinks gives: the copy shares nothing with the original.
 func redactKnowledge(k *Knowledge, key []byte) *Knowledge {
 	if k == nil {
@@ -268,7 +268,12 @@ func redactKnowledge(k *Knowledge, key []byte) *Knowledge {
 	out.Retained.Lessons = append([]LessonRef{}, k.Retained.Lessons...)
 	out.Discovered = copyChanges(k.Discovered)
 	out.Invalidated = copyChanges(k.Invalidated)
-	out.GateStates = append([]GateStates{}, k.GateStates...)
+	// A declared gate's key spells its id (spec:<id>), the owner's own word.
+	out.GateStates = make([]GateStates, 0, len(k.GateStates))
+	for _, g := range k.GateStates {
+		g.Gate = redactGateKey(g.Gate, key)
+		out.GateStates = append(out.GateStates, g)
+	}
 	return &out
 }
 

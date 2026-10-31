@@ -21,8 +21,14 @@ func TestRP2ze_WhySlotsAreAClosedAllowlist(t *testing.T) {
 			t.Fatal(err)
 		}
 		out := b.String()
-		if strings.Contains(out, "Acme") || !strings.Contains(out, "gate=go") || !strings.Contains(out, "text=<29 bytes>") || !strings.Contains(out, "message=<16 bytes>") {
+		if strings.Contains(out, "Acme") || !strings.Contains(out, "gate=") || !strings.Contains(out, "text=<29 bytes>") || !strings.Contains(out, "message=<16 bytes>") {
 			t.Errorf("%s:\n%s", name, out)
+		}
+		// The gate slot is a program word or a spec gate's id, which may be a
+		// hostname, so --redact digests it (STEP-15): "go" survives the plain
+		// view only.
+		if (name == "redacted") == strings.Contains(out, "gate=go") {
+			t.Errorf("%s: the gate slot's redaction is wrong:\n%s", name, out)
 		}
 		if name == "redacted" && strings.Contains(out, "/work/app") {
 			t.Errorf("redacted view keeps the path:\n%s", out)

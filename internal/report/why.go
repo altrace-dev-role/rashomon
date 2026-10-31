@@ -137,6 +137,9 @@ func RedactWhy(v *WhyView, key []byte) *WhyView {
 		switch {
 		case s.Name == "path":
 			s.Value = redactHost(s.Value, key)
+		case s.Name == "gate":
+			// The gate slot is a program word or a spec gate's bare id.
+			s.Value = redactWord(s.Value, key)
 		case !WhySlotShown(s.Name):
 			if s.Bytes == 0 {
 				s.Bytes = len(s.Value)
@@ -145,9 +148,13 @@ func RedactWhy(v *WhyView, key []byte) *WhyView {
 		}
 		out.Slots = append(out.Slots, s)
 	}
+	if v.Source.Kind == "gate" {
+		out.Source.Detail = redactWord(v.Source.Detail, key)
+	}
 	out.Evidence = append([]TimelineCall{}, v.Evidence...)
 	if v.Resolution != nil {
 		r := *v.Resolution
+		r.Gate = redactGateKey(r.Gate, key)
 		if r.LastGreenSeq != nil {
 			g := *r.LastGreenSeq
 			r.LastGreenSeq = &g

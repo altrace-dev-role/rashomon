@@ -322,7 +322,8 @@ func TestRP2o2_WhyShowsAnOutputReadOutcome(t *testing.T) {
 
 // TestRP2q_WhyRedactDropsTextAndRoot (card REPORT1b K8): under --redact the
 // view's project root is a digest, both texts are gone and a path slot is
-// digested; ids, seqs and gate names are unchanged.
+// digested; ids and seqs are unchanged, and a gate source's name is digested
+// (a spec gate's id can be a hostname, STEP-15).
 func TestRP2q_WhyRedactDropsTextAndRoot(t *testing.T) {
 	st := whyRun(t)
 	id := route(t, st, "s1", "PostToolUseFailure", regression(t), false, false)
@@ -335,7 +336,7 @@ func TestRP2q_WhyRedactDropsTextAndRoot(t *testing.T) {
 	if strings.Contains(string(body), "/work/app") || r.ModelText != "" || r.UserText != "" || !r.Redacted {
 		t.Errorf("the redacted view keeps a name or a text: %s", body)
 	}
-	if r.LineID != v.LineID || r.Source != v.Source || *r.Evidence[0].Seq != 1 || v.UserText == "" || v.Project != "/work/app" {
+	if r.LineID != v.LineID || r.Source.Kind != v.Source.Kind || (v.Source.Kind == "gate" && r.Source.Detail == v.Source.Detail) || *r.Evidence[0].Seq != 1 || v.UserText == "" || v.Project != "/work/app" {
 		t.Errorf("redaction changed an id, a source or the original: %+v", r)
 	}
 }
