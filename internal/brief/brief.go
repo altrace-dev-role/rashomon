@@ -24,6 +24,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -94,10 +95,10 @@ type Brief struct {
 	Dirs         []string
 }
 
-// PluginReport is the verify line's command inside the plugin (D175): the
-// Claude Code plugin is named autosteer, and its report reads the last
-// session.
-const PluginReport = "/autosteer:report last"
+// PluginReport is the verify line's command inside the plugin: the slash
+// command is the plugin's name (install.PluginName, what its manifest
+// declares) and its report skill, and it reads the last session.
+const PluginReport = "/" + install.PluginName + ":report last"
 
 // Pointer is the report command a brief's verify line names: PluginReport
 // when Plugin, probe start running as the plugin's entry, the one origin
