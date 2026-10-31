@@ -61,10 +61,10 @@ harness unknown: none
 session demo-1
   install: <install>
   story
-    last Stop: verified - go passed after the last edit (call 23)
+    last Stop: verified - go test passed after the last edit (call 23)
     record: 7 executions; 1 failed call; 3 test runs (2 ok, 1 failed)
     autosteer: 1 finding, resolved at #21
-    gates: go green at #21
+    gates: go test green at #21
     account: the final message uses none of the 43 failure words, and 1 call failed
     details below: the account, then the tables; the numbers are call seqs
   the agent's account:
