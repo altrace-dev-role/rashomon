@@ -13,6 +13,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/purge"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -53,6 +54,13 @@ func cmdPurge(args []string, stdout io.Writer) error {
 		}
 	}
 
+	// Purge deletes the record the person reads back, so it is refused in an
+	// agent session, with or without --yes, before anything is resolved or
+	// removed. It names the line without --yes: the person answers at their
+	// own terminal.
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was removed. Run `rashomon purge%s` in your own terminal.", s, map[bool]string{true: " --binary"}[withBinary])
+	}
 	t, err := resolvePurgeTarget()
 	if err != nil {
 		return err

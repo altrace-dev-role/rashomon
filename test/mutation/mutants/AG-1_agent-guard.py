@@ -21,3 +21,8 @@ CU = "cmd/rashomon/consent_unit.go"
 m("AG-1 consent <unit> off works in an agent session", CU,
   "\tif s := selfguard.AgentSignal(os.Getenv); off && s != \"\" {\n",
   "\tif s := \"\"; off && s != \"\" {\n", "TestAGCO1_")
+
+PU = "cmd/rashomon/purge.go"
+m("AG-1 purge works in an agent session", PU,
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n",
+  "\tif s := \"\"; s != \"\" {\n", "TestAGPU1_")
