@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -30,15 +31,28 @@ type gateRun struct {
 	// names no one runner; Location is the declaration's CWDDigest verbatim,
 	// "" where it is not known or the line was rewritten. Never VerbClass:
 	// a sequenced test run is class package and the same runner.
-	Runner       *string
-	Location     string
-	Kind         string // test | build | custom
-	Program      string
-	Outcome      string // the execution's outcome
-	ExitCode     *int
-	Masked       *string
-	Output       *store.GateOutput
+	Runner   *string
+	Location string
+	Kind     string // test | build | custom
+	Program  string
+	Outcome  string // the execution's outcome
+	ExitCode *int
+	Masked   *string
+	Output   *store.GateOutput
+	// RunnerName and MaskedBy are the execution's runner_name and masked_by
+	// (call schema 8), "" where the record has none: the runner's words in
+	// its row of the binary's lists, and the stage of the pipe that hid its
+	// status. RulesVersion is the version of the rules that decided them.
+	RunnerName string
+	MaskedBy   string
+	// RulesVersion is the execution's rules_version.
+	RulesVersion int
 	Backgrounded bool
+	// FromOutput: the run's outcome is the output's, not the exit status's
+	// (outputOutcome): a masked line whose masking stage keeps the summary,
+	// whose gate_output says pass, fail or empty. Beside KindRecorded, in the
+	// same word of padding.
+	FromOutput bool
 	// KindRecorded: Kind is the record's runner_kind, not inferred. Beside
 	// Backgrounded, so the two bools share one word of padding.
 	KindRecorded bool
@@ -220,6 +234,21 @@ func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) ga
 	if d.Shape.Program != nil {
 		g.Program = *d.Shape.Program
 	}
+	// The runner the line launched, which the call schema 8 execution names
+	// in the binary's own words; an older record has none. The program the
+	// gate is known by is then the table's word for that runner (pytest for
+	// python3 -m pytest), as gateout keys its tables by it (D229).
+	if e.SchemaVersion >= 8 {
+		if e.RunnerName != nil {
+			g.RunnerName = *e.RunnerName
+		}
+		if e.MaskedBy != nil {
+			g.MaskedBy = *e.MaskedBy
+		}
+	}
+	g.RulesVersion = e.RulesVersion
+	g.Program = gateout.ProgramFor(g.Program, g.RunnerName)
+	g.FromOutput = readsOutput(&g)
 	return g
 }
 

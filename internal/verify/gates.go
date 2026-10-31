@@ -5,7 +5,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -153,9 +155,52 @@ func writtenSince(f *fam) bool        { return len(f.counted) > 0 }
 func treeMovedOwn(f *fam) bool        { return f.bound == boundOwn }
 func treeMovedForeign(f *fam) bool    { return f.bound == boundForeign }
 
-// masked: the line hid a runner's status, so its outcome is not the gate's.
+// maskedFromRulesVersion is the rules version from which masked_by is read as
+// the stage that hid a status (MASKED-OUTCOME1, D229): a record written before
+// it holds no such word, and a masked run on it stays masked.
+const maskedFromRulesVersion = 11
+
+// OutcomeFromOutput is the outcome_from word of a run whose outcome was read
+// from its output's summary, not from its exit status: a line whose pipe hid
+// the exit status and kept the runner's summary. A run decided by its exit
+// status carries no word.
+const OutcomeFromOutput = steer.OutcomeFromOutputSummary
+
+// masked: the line hid a runner's status, so its outcome is not the gate's --
+// unless the stage that hid it kept the runner's summary and the output said
+// how the run ended (readsOutput), which is then the outcome.
 func masked(r *gateRun) bool {
+	return statusHidden(r) && !r.FromOutput
+}
+
+// statusHidden: the line's status_masked says a runner's status is not the
+// line's, whether or not its output says how the run ended.
+func statusHidden(r *gateRun) bool {
 	return r.Masked != nil && (*r.Masked == shape.MaskedTest || *r.Masked == shape.MaskedBuild)
+}
+
+// readsOutput reports a masked run whose outcome is its output's summary
+// (D229): the line hid the runner's exit status behind a stage that keeps the
+// summary (masked_by tail, tee or cat, shape.MaskedByKeeps), on a record whose
+// rules know the word (version 11 or later), the call ended ok and was not
+// backgrounded, and gate_output is one of the words that decides --
+// summary_pass, summary_fail, empty_run, or fail_line where the runner's table
+// has no summary form of its own (gateout.FailLineDecides). A fail_line beside
+// a table that has a summary is a substring a pipe kept, not the runner's
+// verdict, so it does not decide: the run stays masked. Every other word
+// (no_summary, unread, unattributable) leaves the run masked.
+func readsOutput(r *gateRun) bool {
+	if !statusHidden(r) || r.RulesVersion < maskedFromRulesVersion || r.Outcome != store.ExecOK || r.Backgrounded ||
+		r.Output == nil || r.MaskedBy == "" || !shape.MaskedByKeeps(r.MaskedBy) {
+		return false
+	}
+	switch r.Output.Kind {
+	case outSummaryPass, outSummaryFail, outEmptyRun:
+		return true
+	case outFailLine:
+		return gateout.FailLineDecides(r.Program)
+	}
+	return false
 }
 
 // emptyRun: the run's output says no test ran (2.2.4 step 5, "visible ok ->
@@ -303,8 +348,13 @@ func kindOfGateID(id string) string {
 func sameAgent(a, b *string) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
 
 func runRef(r *gateRun) *RunRef {
-	return &RunRef{Seq: r.Seq, ToolUseID: r.ToolUseID, AgentID: r.AgentID, Outcome: r.Outcome,
-		ExitCode: r.ExitCode, Masked: r.Masked, GateOutput: r.Output, Scope: scopeUnknown}
+	ref := &RunRef{Seq: r.Seq, ToolUseID: r.ToolUseID, AgentID: r.AgentID, Outcome: r.Outcome,
+		ExitCode: r.ExitCode, Masked: r.Masked, GateOutput: r.Output, Scope: scopeUnknown,
+		MaskedBy: r.MaskedBy, RunnerName: r.RunnerName}
+	if r.FromOutput {
+		ref.OutcomeFrom = OutcomeFromOutput
+	}
+	return ref
 }
 
 // lastWrite is the counted write with the highest Seq, the greatest path

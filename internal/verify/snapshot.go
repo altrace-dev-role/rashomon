@@ -65,6 +65,16 @@ type RunRef struct {
 	Masked     *string           `json:"status_masked"`
 	GateOutput *store.GateOutput `json:"gate_output"`
 	Scope      string            `json:"scope"` // full | partial | unknown
+	// OutcomeFrom is OutcomeFromOutput where the run's outcome was read from
+	// its output's summary because the pipe hid its exit status, and absent
+	// where the exit status decided it. MaskedBy and RunnerName are the
+	// execution's words of the same names (call schema 8): the stage of the
+	// pipe that hid the status, and the runner in its row of the binary's
+	// lists. All three are derived at verify time from the run, never read
+	// from a stored word, and absent on a record that has none.
+	OutcomeFrom string `json:"outcome_from,omitempty"`
+	MaskedBy    string `json:"masked_by,omitempty"`
+	RunnerName  string `json:"runner_name,omitempty"`
 }
 
 // WriteRef is a relevant write as a gate's state cites it (archive 20.2.4).

@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"cmp"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -83,11 +84,14 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 
 // programs maps each gate to the program of the run its LastRun names, found
 // by seq among runs (seq order, so a binary search would do; a gate list is
-// short and a map over runs is one pass).
+// short and a map over runs is one pass). A run that records the runner it
+// launched (call schema 8) is named by it, in the binary's own words --
+// `python3 -m pytest`, not the interpreter `python3` the line starts with
+// (D229); an older record's is the line's program word.
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
-		bySeq[r.Seq] = r.Program
+		bySeq[r.Seq] = cmp.Or(r.RunnerName, r.Program)
 	}
 	out := make(map[string]string, len(gates))
 	for _, g := range gates {

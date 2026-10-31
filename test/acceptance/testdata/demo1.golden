@@ -30,7 +30,7 @@ turn 2, prompt p2: "Fix it."
   Edit calc.go                                (silent)
   Edit util.go                                (silent)
   Stop: "All 42 tests pass."
-      ※ rashomon: done was claimed; the record shows 2 files edited; go exited 1 before the last edit (call 7) and has not run since.
+      ※ rashomon: done was claimed; the record shows 2 files edited; go test exited 1 before the last edit (call 7) and has not run since.
                   → rashomon report --session demo-1
 
 turn 3, prompt p3: "Run the tests."
@@ -38,7 +38,7 @@ turn 3, prompt p3: "Run the tests."
   Edit util.go                                (silent)
   Bash go test ./... -> ok                    (silent)
   Stop: "go test passes after the util.go edit."
-      ※ rashomon: verified - go passed after the last edit.
+      ※ rashomon: verified - go test passed after the last edit.
                   → rashomon report --session demo-1
 
 session end

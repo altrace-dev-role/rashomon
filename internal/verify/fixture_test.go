@@ -50,6 +50,12 @@ type call struct {
 	// for the file an Edit or Write names, as the call left it (card P5A);
 	// "" writes none.
 	sha string
+	// runnerName and maskedBy are the execution's runner_name and masked_by
+	// (call schema 8, D229): the runner in its row of the binary's lists and
+	// the stage of the pipe that hid its status; empty writes null. rules is
+	// the execution's rules_version, 0 where the fixture sets none.
+	runnerName, maskedBy string
+	rules                int
 	// schema is the version both records are stamped at: 0 is
 	// store.SchemaVersion; 5 is a record written before runner_kind, whose
 	// runner carries no kind.
@@ -198,8 +204,17 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if schema == 0 {
 			schema = store.SchemaVersion
 		}
-		if schema < 5 || schema > 7 {
-			t.Fatalf("runOf: call %d schema %d is not 5, 6 or 7 (the builder stamps those three; store.AcceptsKind reads 1 to 7)", i, c.schema)
+		if schema < 5 || schema > 8 {
+			t.Fatalf("runOf: call %d schema %d is not 5, 6, 7 or 8 (the builder stamps those four; store.AcceptsKind reads 1 to 8)", i, c.schema)
+		}
+		if (c.runnerName != "" || c.maskedBy != "") && (schema < 8 || c.runner == "") {
+			t.Fatalf("runOf: call %d names a runner or a masking stage at schema %d with runner %q (runner_name and masked_by are schema 8 keys, set with a runner digest)", i, schema, c.runner)
+		}
+		if c.runnerName != "" && !slices.Contains(shape.RunnerNames(), c.runnerName) {
+			t.Fatalf("runOf: call %d runner name %q is not a row of the runner lists", i, c.runnerName)
+		}
+		if c.maskedBy != "" && !slices.Contains(shape.MaskedByWords(), c.maskedBy) {
+			t.Fatalf("runOf: call %d masked_by %q is not one of %v", i, c.maskedBy, shape.MaskedByWords())
 		}
 		if c.runner != "" && schema >= 6 && !slices.Contains(shape.RunnerKinds(), c.kind) {
 			t.Fatalf("runOf: call %d runner kind %q is not one of %v", i, c.kind, shape.RunnerKinds())
@@ -328,6 +343,15 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		}
 		e := store.Execution{Type: store.TypeExecution, SchemaVersion: schema, Seq: &eseq, ToolUseID: id, SessionID: sessionID, ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg}
 		e.RunnerDigest, e.StatusMasked, e.RunnerKind = d.Shape.RunnerDigest, d.Shape.StatusMasked, d.Shape.RunnerKind
+		e.RulesVersion = c.rules
+		if c.runnerName != "" {
+			name := c.runnerName
+			e.RunnerName = &name
+		}
+		if c.maskedBy != "" {
+			by := c.maskedBy
+			e.MaskedBy = &by
+		}
 		if c.exit != 0 {
 			// The refusal above keeps an exit code to the failure event's two
 			// outcomes, failed and interrupted.
@@ -758,7 +782,13 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"schema 5 hidden runner without a kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "make", class: shape.VerbExecute, runner: "make-release", masked: shape.MaskedBuild, outcome: store.ExecOK, schema: 5}}, ""},
 		{"schema 5 runner with a kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, schema: 5}}, "runner_kind is a schema 6 key"},
 		{"schema 6 runner without a kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecOK, schema: 6}}, "runner kind \"\" is not one of"},
-		{"schema 4", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, schema: 4}}, "is not 5, 6 or 7"},
+		{"schema 4", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, schema: 4}}, "is not 5, 6, 7 or 8"},
+		// runner_name and masked_by, schema 8 keys set with a runner.
+		{"schema 8 runner name and stage", "s1", []call{call{seq: 1, tool: "Bash", prog: "python3", class: shape.VerbExecute, runner: "pytest", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, schema: 8, runnerName: "pytest", maskedBy: "tail"}}, ""},
+		{"runner name before schema 8", "s1", []call{call{seq: 1, tool: "Bash", prog: "python3", class: shape.VerbExecute, runner: "pytest", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, schema: 7, runnerName: "pytest"}}, "schema 8 keys"},
+		{"runner name without a runner", "s1", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, outcome: store.ExecOK, runnerName: "pytest"}}, "schema 8 keys"},
+		{"runner name outside the lists", "s1", []call{call{seq: 1, tool: "Bash", prog: "python3", class: shape.VerbExecute, runner: "pytest", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, runnerName: "rm -rf"}}, "not a row of the runner lists"},
+		{"masking stage outside the words", "s1", []call{call{seq: 1, tool: "Bash", prog: "python3", class: shape.VerbExecute, runner: "pytest", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, runnerName: "pytest", maskedBy: "awk"}}, "masked_by \"awk\" is not one of"},
 		// A location in one of the two digest domains, or none.
 		{"read location", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, loc: "d:repo"}}, ""},
 		{"unread location", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"a.go"}, loc: "u:repo"}}, ""},

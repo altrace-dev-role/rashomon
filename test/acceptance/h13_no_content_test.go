@@ -89,6 +89,10 @@ var (
 		"status_masked", "runner_digest",
 		// v6. The shape's runner_kind for the line as it ran: a closed word.
 		"runner_kind",
+		// v8. The runner's words in its row of the binary's lists, and the
+		// stage of the pipe that hid its status: closed words the binary
+		// ships, never a substring of the command (D229).
+		"runner_name", "masked_by",
 		// v4. An integer: which runner lists decided them.
 		"rules_version",
 		// v5. The writing binary's version, then the execution's v5 keys

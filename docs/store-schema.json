@@ -61,7 +61,8 @@
             4,
             5,
             6,
-            7
+            7,
+            8
           ]
         },
         "seq": {
@@ -690,6 +691,65 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 8
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest",
+              "rules_version",
+              "writer",
+              "command",
+              "command_bytes",
+              "command_cut",
+              "masked",
+              "command_withheld",
+              "cwd",
+              "project",
+              "file_path",
+              "written_paths",
+              "written_paths_complete",
+              "target",
+              "edit_marks_before",
+              "written_paths_withheld",
+              "file_path_withheld",
+              "cwd_withheld",
+              "project_withheld",
+              "target_withheld",
+              "edit_marks_before_withheld",
+              "prompt_id_withheld",
+              "agent_id_withheld",
+              "agent_type_withheld",
+              "hosts_withheld",
+              "ssh_hosts_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "store_named"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest",
+                  "runner_kind"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -727,7 +787,8 @@
             4,
             5,
             6,
-            7
+            7,
+            8
           ]
         },
         "seq": {
@@ -816,6 +877,32 @@
             null,
             "test",
             "build"
+          ]
+        },
+        "runner_name": {
+          "description": "Schema 8. The runner runner_digest digests, in the words of its row in the runner lists the binary ships: `python3 -m pytest`, `go test`, `cargo test`, `make test`, `make`. A closed vocabulary: the string is the binary's own, chosen by the row the line's runner matched, and never a substring of the command, so a runner no row names has none -- null, never a word of the line. Set exactly when runner_digest is, from the same runner (the one whose status the line hides or, when none is, whose failure it returns). Declared on the execution only: the declaration's shape does not carry it. It is the word verify names a run by, and gateout's tables are keyed by their own word found in it (`pytest` for `python3 -m pytest`). The words are held to the runner lists by TestMO1_RowNamesAreTheRows; the records disclosure names it beside the program and verb class the record already holds in the clear. A record before schema 8 does not carry it, and a reader reads it null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "masked_by": {
+          "description": "Schema 8. The stage of a pipe that hid the runner's exit status, when the line is masked (status_masked `test` or `build`) by a pipeline: `tail` (without -c or --bytes), `tee` and `cat` (with no operand) pass the runner's summary on, which verify reads in the run's gate_output to say whether the run passed; `head`, `grep`, `wc`, `sort` and `cut` drop it, and `other` is any stage no list names, or a tail or cat the keeping form does not cover. Where several stages follow the runner, the first that drops, else the first that keeps. Null when the line is not masked, when the status is hidden by something that is not a pipe (`|| true`, `; echo $?`, `&`), and wherever runner_name is null. A closed word chosen by comparing the stage's program and flags with fixed words, which are then dropped. Declared on the execution only. A record before schema 8 does not carry it, and a reader reads it null.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "other",
+            "tail",
+            "tee",
+            "cat",
+            "head",
+            "grep",
+            "wc",
+            "sort",
+            "cut"
           ]
         },
         "rule_match": {
@@ -1181,6 +1268,54 @@
               "mcp_server_source"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 8
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded",
+              "status_masked",
+              "runner_digest",
+              "runner_kind",
+              "runner_name",
+              "masked_by",
+              "rules_version",
+              "writer",
+              "executed_command",
+              "executed_command_reason",
+              "executed_command_bytes",
+              "executed_command_cut",
+              "executed_masked",
+              "failure",
+              "output_evidence",
+              "edit_marks",
+              "head_after",
+              "gate_output",
+              "credmech",
+              "content_sha256",
+              "executed_command_withheld",
+              "failure_withheld",
+              "output_evidence_withheld",
+              "edit_marks_withheld",
+              "head_after_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "outcome_source",
+              "failure_type",
+              "mcp_server_source"
+            ]
+          }
         }
       ]
     },
@@ -1253,6 +1388,24 @@
               "writer"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 8
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase",
+              "writer"
+            ]
+          }
         }
       ],
       "properties": {
@@ -1270,7 +1423,8 @@
             4,
             5,
             6,
-            7
+            7,
+            8
           ]
         },
         "seq": {

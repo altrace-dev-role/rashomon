@@ -2,6 +2,7 @@ package gateout
 
 import (
 	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -18,11 +19,11 @@ type table struct {
 func tables() []table {
 	rowsOnce.Do(func() {
 		rowsOnce.v = []table{
-			{program: "go", pass: compile(`^ok\s`), fail: compile(`^FAIL\s`), failLine: compile(`^--- FAIL`), empty: compile(`\[no test files\]`, `\[no tests to run\]`)},
+			{program: "go", pass: compile(`^ok\s`), fail: compile(`^FAIL\s`, `^FAIL$`), failLine: compile(`^--- FAIL`), empty: compile(`\[no test files\]`, `\[no tests to run\]`)},
 			{program: "jest", pass: compile(`^Tests:.*\d+ passed`), fail: compile(`^Tests:.*\d+ failed`)},
 			{program: "vitest", pass: compile(`^Tests\s+.*\d+ passed`), fail: compile(`^Tests\s+.*\d+ failed`)},
 			{program: "pytest", pass: compile(`\d+ passed`), fail: compile(`\d+ (failed|error)`), empty: compile(`no tests ran`)},
-			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`)},
+			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \d+ targets? failed`)},
 			{program: "make", delegate: true},
 			{program: "npm", delegate: true},
 			{program: "yarn", delegate: true},
@@ -63,4 +64,34 @@ func matches(patterns []*regexp.Regexp, line []byte) bool {
 		}
 	}
 	return false
+}
+
+// ProgramFor is the program word Classify's tables are keyed by for a run
+// whose line launched runner: the table's own word, found among the words of
+// the runner's row -- "pytest" for "python3 -m pytest", "go" for "go test",
+// "jest" for "npx jest" -- else program, the line's first word, which is what
+// the tables were keyed by before the line's runner was recorded. runner is
+// the shape's runner_name (a row of the binary's runner lists, never a word of
+// the command), so the word returned is a table's and not the line's. A
+// runner no table names, `python3 -m unittest` or `bun test`, returns program
+// as it was, and Classify answers unattributable for it as before.
+func ProgramFor(program, runner string) string {
+	for _, w := range strings.Fields(runner) {
+		if findProgram(w) != nil {
+			return w
+		}
+	}
+	return program
+}
+
+// FailLineDecides reports whether a bare fail line is all the table has to
+// say a run failed: true only for a program whose row has no summary form of
+// its own. A reader that steers on a failure rests on summary_fail where the
+// table has one, since a fail line is a substring a pipe may have kept without
+// the run's verdict (`--- FAIL` out of a test a retry then passed). Every row
+// now has a summary form, so this is false for each of them and for a program
+// no table names.
+func FailLineDecides(program string) bool {
+	row := findProgram(program)
+	return row != nil && !row.delegate && len(row.fail) == 0
 }

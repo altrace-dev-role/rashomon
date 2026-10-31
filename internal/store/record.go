@@ -50,6 +50,15 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // and a reader reads it false. The execution and the terminal gained nothing
 // and are written at 7 with their declaration.
 //
+// v8 is additive over v7: the execution gained runner_name and masked_by, the
+// runner's words in its row of the binary's lists and the stage of the pipe
+// that hid its status (D229, MASKED-OUTCOME1), so that a piped test run's
+// outcome can be read from its gate output and the run named by its runner,
+// not by `python3`. Both are closed words, never a substring of the line,
+// and a version of their own for the reason v6 and v7 were (D11): a v7
+// record has neither. The declaration and the terminal gained nothing and
+// are written at 8 with their execution.
+//
 // SchemaVersion is the version of a call's ordinary records: its
 // declaration, the terminal that actually closes it, and its execution,
 // KindVersion's entry for each. Coverage and gap records are written at
@@ -81,8 +90,8 @@ const SchemaVersion = CallSchemaVersion
 // none of whose keys it carries -- and would have cost every 1.1.x reader
 // every call record in a run the moment one flush failed. With DeclarationV5,
 // ExecutionV5 and TerminalV5 embedded, every call record carries the v5 keys
-// and was written at 5 too, at 6 once runner_kind landed and at 7 with
-// store_named (D11); the
+// and was written at 5 too, at 6 once runner_kind landed, at 7 with
+// store_named and at 8 with runner_name and masked_by (D11); the
 // marker stays at 5. A 1.1.x reader skips the calls and reads the session
 // unverified, as it did for v4, and coverage and gaps stay at 3 so
 // it still lists every session.
@@ -390,6 +399,15 @@ type Execution struct {
 	// RunnerKind is the shape's runner_kind for the line as it ran (v6), from
 	// the same Derive, so it is set exactly when RunnerDigest is.
 	RunnerKind *string `json:"runner_kind"`
+	// RunnerName and MaskedBy are the shape's two fields of the same names
+	// (v8), from the same Derive: the runner's words in its row of the
+	// binary's runner lists, and the stage of the pipe that hid its status
+	// (shape.MaskedByWords). Closed words and never a substring of the line
+	// (D229): a runner no list names has no name, null. RunnerName is set
+	// exactly when RunnerDigest is; MaskedBy only where the line is masked by
+	// a pipe. A record before v8 has neither, and a reader reads null.
+	RunnerName *string `json:"runner_name"`
+	MaskedBy   *string `json:"masked_by"`
 
 	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
 	// which runner and build lists decided StatusMasked. See Declaration's.

@@ -27,6 +27,7 @@ var locationPins = map[int]string{
 	8:  "e3a671f14c9c1922425e28caa9348428c3e1c9fd51480f579fa5a5ae3e58650f", // `pushd DIR &&` folds as `cd DIR &&` does: `pushd /b && go test ./...` and `cd /a && pushd /b && go test ./...` record /b (2026-10-28)
 	9:  "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // a comment ending in a backslash continues nothing: `cd a && # c\` NL `cd b && go test ./...` records a/b, and `# c\` NL `cd a && go test ./...` records a (2026-10-28)
 	10: "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // RulesVersion 10 named a Bash line's write targets; the cwd rule is unchanged
+	11: "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // RulesVersion 11 named the runner and the stage that hid its status; the cwd rule is unchanged
 }
 
 // locationCorpus is the (line, payload cwd) pairs locationPins digests, a

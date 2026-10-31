@@ -118,6 +118,31 @@ type Shape struct {
 	// Null wherever RunnerDigest is, and on a record written before schema
 	// 6, which could not say.
 	RunnerKind *string `json:"runner_kind"`
+
+	// RunnerName names the runner RunnerDigest digests, in the words of the
+	// row it is on in the runner lists: "python3 -m pytest" for `python3 -u -m
+	// pytest -q tests/`, "go test" for `go test ./...`, "make" for `make
+	// release`. The binary's own string, read from its list by the row's
+	// index (runnerRow): never a substring of the command, so an argument, a
+	// path or a program that no row names is not in it, and a line whose
+	// runner no row names has none -- null, never a word of the line. Set
+	// exactly when RunnerDigest is, from the same runner (D229).
+	//
+	// json:"-": the declaration does not carry it. The execution record does,
+	// as runner_name (call schema 8), where verify reads it to name the
+	// runner and to key gateout's tables by it.
+	RunnerName *string `json:"-"`
+
+	// MaskedBy names the stage of a pipe that hid the runner's status when
+	// the line is masked (status_masked test or build) by a pipeline: one of
+	// MaskedByWords. A stage that keeps the runner's summary (MaskedByKeeps:
+	// `tail` without -c or --bytes, `tee`, a bare `cat`) when every stage
+	// after the runner is one, else the first stage that drops it (head,
+	// grep, wc, sort, cut, or other for any command no list names). Null when
+	// the line is not masked, when the runner is hidden by something that is
+	// not a pipe (`|| true`, `; echo $?`, `&`), and wherever RunnerName is
+	// null. json:"-" for the reason RunnerName is (D229).
+	MaskedBy *string `json:"-"`
 }
 
 // Derive builds the shape of a call to toolName with the given raw tool_input.
@@ -235,7 +260,7 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	if !ctl && len(dirs) == 0 {
 		unread = unreadFold(pshaped, uncertain)
 	}
-	s.StatusMasked, s.RunnerDigest, s.RunnerKind = statusMasked(cmd, key, pshaped[:leadingFold(pshaped, uncertain)])
+	s.StatusMasked, s.RunnerDigest, s.RunnerKind, s.RunnerName, s.MaskedBy = statusMasked(cmd, key, pshaped[:leadingFold(pshaped, uncertain)])
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
 	return s, cut, dirs, unread
 }

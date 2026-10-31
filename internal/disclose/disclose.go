@@ -446,7 +446,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), rule match, outcome, exit code and timing, its working directory, its project root and the file path an edit names, all in the clear, plus keyed digests of its working directory and its shape",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), rule match, outcome, exit code and timing, its working directory, its project root and the file path an edit names, all in the clear, plus keyed digests of its working directory and its shape",
 			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text without consent",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
