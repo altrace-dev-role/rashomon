@@ -43,7 +43,10 @@ func knowledgeOf(st *store.Store, run *store.Run, sessionID string, now time.Tim
 		GateStates: []report.GateStates{}, Retained: report.Retained{Specs: []report.SpecHeld{}, Lessons: []report.LessonRef{}, Facts: factsNote}}
 	f := &fold{k: k, tallies: map[string]*report.GateStates{}}
 	var prev *receipt.Last
-	base, sc, err := receipt.Previous(st, receipt.Query{Project: project, Skip: sessionID, Before: first.RecordedAtUnixMS})
+	base, sc, err := receipt.Previous(st, receipt.Query{Project: project, Skip: sessionID, Before: first.RecordedAtUnixMS, CapWalk: true})
+	if sc.Truncated {
+		k.BaselineWalkCap = receipt.MaxWalk
+	}
 	if err == nil && sc.Found {
 		k.Baseline = &report.KnowledgeBaseline{SessionID: base.SessionID, RecordedAtUnixMS: base.RecordedAtUnixMS, PointSeq: base.PointSeq}
 		f.cut = base.GatesOmitted

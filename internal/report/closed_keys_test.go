@@ -57,6 +57,7 @@ func TestRP2r_TheKnowledgeAndWhyKeySetsAreClosed(t *testing.T) {
 baseline.point_seq
 baseline.recorded_at_unix_ms
 baseline.session_id
+baseline_walk_cap
 discovered
 discovered[].at_unix_ms
 discovered[].from

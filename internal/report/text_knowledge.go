@@ -21,9 +21,15 @@ func writeKnowledge(b *bytes.Buffer, k *Knowledge) {
 		return
 	}
 	fmt.Fprintf(b, "  knowledge (project %s)\n", k.Project)
-	if k.Baseline == nil {
+	switch {
+	case k.Baseline == nil && k.BaselineWalkCap > 0:
+		wrapKnowledge(b, fmt.Sprintf("baseline: not found in the first %d session directories walked", k.BaselineWalkCap))
+	case k.Baseline == nil:
 		wrapKnowledge(b, "baseline: no earlier checkpoint of this project")
-	} else {
+	case k.BaselineWalkCap > 0:
+		wrapKnowledge(b, fmt.Sprintf("baseline: session %s, last checkpoint %s at #%d (the newest of the first %d session directories walked; a newer one may exist)",
+			k.Baseline.SessionID, knowledgeTime(k.Baseline.RecordedAtUnixMS), k.Baseline.PointSeq, k.BaselineWalkCap))
+	default:
 		wrapKnowledge(b, fmt.Sprintf("baseline: session %s, last checkpoint %s at #%d (the project's newest before this session)",
 			k.Baseline.SessionID, knowledgeTime(k.Baseline.RecordedAtUnixMS), k.Baseline.PointSeq))
 	}

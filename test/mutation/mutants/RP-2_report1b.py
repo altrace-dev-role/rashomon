@@ -32,7 +32,7 @@ m("RP-2 Previous does not skip the current session", R, "\t\tif r.name == skip {
 m("RP-2 the 16-run bound is removed", R, "\t\tif q.MaxRuns > 0 && read >= q.MaxRuns {\n", "\t\tif false {\n", "TestRP2h_")
 m("RP-2 the fallback reads the whole file, not the budget left", R, "\t\tleft = q.MaxBytes - spent\n", "\t\tleft = r.size\n", "TestRP2h_")
 m("RP-2 the before bound is ignored", R, "p.RecordedAtUnixMS < q.Before && ", "", "TestRP2h_")
-m("RP-2 the walk lifts its cap on run directories", R2, "\tif truncated = len(entries) > MaxWalk; truncated {\n\t\tentries = entries[:MaxWalk]\n\t}\n", "", "TestRP2z_")
+m("RP-2 the walk lifts its cap on run directories", R2, "\tif truncated = capped && len(entries) > MaxWalk; truncated {\n\t\tentries = entries[:MaxWalk]\n\t}\n", "", "TestRP2z_|TestRP2zh_")
 m("RP-2 a walk the cap cut claims it read the store", R, "\tif truncated && !sc.Found && sc.Bound == \"\" {\n", "\tif false {\n", "TestRP2z_")
 m("RP-2 a gate not green reads red only", R, '\t\t\tif g.State != "green" {\n\t\t\t\tp.NotGreen++', '\t\t\tif g.State == "red" {\n\t\t\t\tp.NotGreen++', "TestRP2i_")
 m("RP-2 a line that does not fit keeps its reason", R, '\tif len("  "+line) > 80 {\n', "\tif false {\n", "TestRP2i_")
@@ -87,3 +87,11 @@ m("RP-2 Pointed never widens a tail miss", R, "\t\tcase info.Size() <= TailBytes
 m("RP-2 Pointed calls a miss past the widened read gone", R, "\t\t\tif info.Size() > PointedMax {\n", "\t\t\tif false {\n", "TestRP2zf_|TestRP2zg_")
 m("RP-2 Pointed's widened read is the whole file", R, "st.LatestRecordTail(session, store.TypeVerify, PointedMax)", "st.LatestRecordTail(session, store.TypeVerify, 0)", "TestRP2zf_")
 m("RP-2 Pointed loses the missing-run case", R, "\t\tcase err != nil && errors.Is(err, fs.ErrNotExist):\n", "\t\tcase false:\n", "TestRP2zf_")
+
+# The cap is the baseline's alone (RP2zh, RP2zi, RP2zj; review of PR 171).
+m("RP-2 Latest walks only the first MaxWalk directories", R2, "scan(st, Query{Project: project})", "scan(st, Query{Project: project, CapWalk: true})", "TestRP2zh_")
+m("RP-2 an uncapped walk is cut at MaxWalk too", R2, "\tif capped {\n\t\tn = MaxWalk + 1\n\t}\n", "\tn = MaxWalk + 1\n", "TestRP2zh_")
+m("RP-2 a walk the cap cut does not say it was cut", R, "\tsc.Truncated = truncated\n", "", "TestRP2zh_")
+m("RP-2 the report baseline walks every directory", G, "Before: first.RecordedAtUnixMS, CapWalk: true})", "Before: first.RecordedAtUnixMS})", "TestRP2zi_")
+m("RP-2 the report does not carry the cut", G, "\t\tk.BaselineWalkCap = receipt.MaxWalk\n", "", "TestRP2zi_")
+m("RP-2 a cut baseline walk prints the plain line", "internal/report/text_knowledge.go", "\tcase k.Baseline == nil && k.BaselineWalkCap > 0:\n", "\tcase false:\n", "TestRP2zi_|TestRP2zj_")

@@ -232,7 +232,7 @@ func TestRP2z_TheWalkLooksAtAtMostMaxWalkDirectories(t *testing.T) {
 	for i := range MaxWalk {
 		seedRun(t, st, fmt.Sprintf("r%04d", i), int64(1_000_000+i), ckpt{project: b, session: "b", ms: int64(900_000 + i), seq: 1}.line())
 	}
-	q := Query{Project: a, MaxRuns: 2 * MaxWalk, MaxBytes: MaxBytes}
+	q := Query{Project: a, MaxRuns: 2 * MaxWalk, MaxBytes: MaxBytes, CapWalk: true}
 	if got, sc, err := Previous(st, q); err != nil || sc.Found || sc.Bound != "" {
 		t.Fatalf("exactly MaxWalk runs, all read: %+v %+v err %v; want none, no bound", got, sc, err)
 	}

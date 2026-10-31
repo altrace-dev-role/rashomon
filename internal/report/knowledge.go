@@ -16,10 +16,15 @@ type Knowledge struct {
 	Project string `json:"project"`
 	// Baseline is the project's newest checkpoint before this session's
 	// first, null when there is none.
-	Baseline    *KnowledgeBaseline `json:"baseline"`
-	Retained    Retained           `json:"retained"`
-	Discovered  []Change           `json:"discovered"`
-	Invalidated []Change           `json:"invalidated"`
+	Baseline *KnowledgeBaseline `json:"baseline"`
+	// BaselineWalkCap is, when the baseline's best-effort walk looked at only
+	// the first this-many session directories of a larger store, that number,
+	// else 0: a null baseline is then "not found there" and a found one may
+	// not be the newest.
+	BaselineWalkCap int      `json:"baseline_walk_cap"`
+	Retained        Retained `json:"retained"`
+	Discovered      []Change `json:"discovered"`
+	Invalidated     []Change `json:"invalidated"`
 	// GateStates is, per gate, how many times its state changed between two
 	// consecutive checkpoints; empty when any checkpoint cut gates
 	// (GatesCut says by how many at most).

@@ -39,6 +39,10 @@ type Query struct {
 	// all. The stat of every run is not counted by either.
 	MaxRuns  int
 	MaxBytes int64
+	// CapWalk limits the walk to MaxWalk run directories, as the report's
+	// best-effort baseline does. Unset, every run directory is walked, as
+	// Latest does for the receipt.
+	CapWalk bool
 }
 
 // Gate is a gate as a checkpoint kept it.
@@ -78,6 +82,10 @@ type Scan struct {
 	Bound string
 	// ReadBytes is how many bytes of records files the walk read.
 	ReadBytes int64
+	// Truncated is set when a CapWalk walk left run directories unlooked at,
+	// whether it found a checkpoint or not: a found one may then not be the
+	// newest.
+	Truncated bool
 }
 
 // Bounds of a Scan.
@@ -169,7 +177,7 @@ func Previous(st *store.Store, q Query) (Last, Scan, error) {
 // scan is the walk Latest and PreviousOf share. line is the best
 // checkpoint's bytes as stored.
 func scan(st *store.Store, q Query) (line []byte, best Last, sc Scan, err error) {
-	runs, truncated, err := byWritten(st)
+	runs, truncated, err := byWritten(st, q.CapWalk)
 	if err != nil {
 		return nil, Last{}, Scan{}, err
 	}
@@ -218,6 +226,7 @@ func scan(st *store.Store, q Query) (line []byte, best Last, sc Scan, err error)
 	if sc.Found {
 		sc.Bound = ""
 	}
+	sc.Truncated = truncated
 	if truncated && !sc.Found && sc.Bound == "" {
 		sc.Bound = BoundWalk
 	}

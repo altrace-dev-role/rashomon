@@ -58,7 +58,8 @@ type written struct {
 // the walk stops at a run last written before the best record found: every
 // record in that run was recorded no later than its file was written, so it
 // holds none newer. A commit reads the runs written since, not the store.
-// It is Previous with no skip and no bound.
+// It is Previous with no skip and no bound, and it walks every run
+// directory: the commit trailer cites what it returns.
 func Latest(st *store.Store, project string) (record []byte, ok bool, err error) {
 	line, _, sc, err := scan(st, Query{Project: project})
 	if err != nil || !sc.Found {
@@ -67,18 +68,22 @@ func Latest(st *store.Store, project string) (record []byte, ok bool, err error)
 	return line, true, nil
 }
 
-// MaxWalk is how many run directories one walk looks at: the cost of a
-// walk is a stat of each, so a store of any size costs at most this many.
-// Past it the walk says so (Scan.Bound BoundWalk) and never claims to have
-// read the store.
+// MaxWalk is how many run directories a capped walk (Query.CapWalk, the
+// report baseline's best-effort one) looks at: the cost of a walk is a stat
+// of each, so a store of any size costs at most this many. Past it the walk
+// says so (Scan.Truncated, and Scan.Bound BoundWalk when it found nothing)
+// and never claims to have read the store. Latest is never capped: the
+// receipt trailer and the report name the newest checkpoint, and a walk that
+// skipped a directory could name an older one.
 const MaxWalk = 1024
 
 // byWritten is the store's runs that hold a records file, newest written
-// first, from at most MaxWalk run directories taken in name order, and
-// whether the directory held more than that. A run with no records file
-// holds no checkpoint. One stat per run: the directory is listed by name
-// only, so nothing is sorted or statted twice.
-func byWritten(st *store.Store) (runs []written, truncated bool, err error) {
+// first. Capped, it takes at most MaxWalk run directories in the order the
+// filesystem lists them (hash order on APFS, not name order, so which ones
+// are left out is arbitrary), and reports whether the directory held more
+// than that; uncapped it takes every one. A run with no records file holds
+// no checkpoint. One stat per run, so nothing is statted twice.
+func byWritten(st *store.Store, capped bool) (runs []written, truncated bool, err error) {
 	dir, err := os.Open(filepath.Join(st.Root(), store.DirRuns))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
@@ -87,11 +92,15 @@ func byWritten(st *store.Store) (runs []written, truncated bool, err error) {
 		return nil, false, err
 	}
 	defer dir.Close() //nolint:errcheck // read-only
-	entries, err := dir.ReadDir(MaxWalk + 1)
+	n := -1
+	if capped {
+		n = MaxWalk + 1
+	}
+	entries, err := dir.ReadDir(n)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, false, err
 	}
-	if truncated = len(entries) > MaxWalk; truncated {
+	if truncated = capped && len(entries) > MaxWalk; truncated {
 		entries = entries[:MaxWalk]
 	}
 	for _, e := range entries {
