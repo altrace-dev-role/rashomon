@@ -58,4 +58,3 @@ func TestMO1_APipedPytestIsRecordedAndSaidWithItsRunner(t *testing.T) {
 		}
 	}
 }
-

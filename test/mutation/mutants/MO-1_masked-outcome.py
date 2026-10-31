@@ -120,7 +120,7 @@ m("MO-1 a delegated run's summary_pass is read", V,
   "TestMO1_ADelegatedRunIsReadOnlyWhereItIsRed")
 m("MO-1 a delegated summary_pass is a summary read", R,
   "\t\treturn e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName))\n",
-  "\t\treturn true\n",
+  "\t\treturn e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) || true\n",
   "TestMO1_ADelegatedSummaryIsNotASummaryRead")
 
 # pytest's pass is its summary line, not "N passed" inside another line.
