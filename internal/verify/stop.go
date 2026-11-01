@@ -122,7 +122,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	turn := countTurn(run, counted, in.PromptID, pt.Seq)
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
-	inferredProgram(v.Programs, in.Inferred, in.Key)
+	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {
 		v.Index = &ProjectIndex{ProjectKey: in.ProjectKey}
 	}
@@ -177,14 +177,12 @@ func programs(gates []GateState, runs []gateRun) map[string]string {
 }
 
 // inferredProgram names the inferred gate, where programs left it unnamed
-// (no run bound it), by its command's runner row: a word of the binary's
-// own lists, never of the project's file (GATE-INFER1, W4). None where the
-// command names no runner.
-func inferredProgram(programs map[string]string, inf *InferredGate, key []byte) {
-	if inf == nil || len(inf.Argv) == 0 || programs[InferredGateID] != "" {
-		return
-	}
-	if name := nameOf(lineShape(inf.Argv, key).RunnerName); name != "" {
+// (no run bound it), by its command's runner row, name, which evaluate took
+// from the derivation that keyed the row (inferredGate; INFER-BUDGET1): a
+// word of the binary's own lists, never of the project's file (GATE-INFER1,
+// W4). None where the command names no runner.
+func inferredProgram(programs map[string]string, name string) {
+	if name != "" && programs[InferredGateID] == "" {
 		programs[InferredGateID] = name
 	}
 }

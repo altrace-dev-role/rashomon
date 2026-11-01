@@ -1527,7 +1527,7 @@
         }
       ],
       "missing": [
-        "the PRD's failure-time trigger (LEARN-DELIVER2): lessons carry no failure key and PostToolUseFailure's channel is not probed",
+        "the PRD's failure-time trigger (LEARN-DELIVER2): lessons carry no failure key and no handler delivers one at PostToolUseFailure, whose channel is probed (floor 2.1.304, #147)",
         "LABEL-WRITER1: no label is written, so no lesson is ever demoted and the one demotion rule has nothing to act on",
         "the pack kind (PF-HD7)"
       ],
