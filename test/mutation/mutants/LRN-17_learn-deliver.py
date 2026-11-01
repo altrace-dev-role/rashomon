@@ -115,8 +115,12 @@ m("LRN-17 a stamp-0 approval cannot be approved again", LG,
   "\treturn ls.Tier == TierProposed || ls.ApprovedUnixMS == 0\n",
   "\treturn ls.Tier == TierProposed\n", "TestLRN17s_")
 m("LRN-17 the list says nothing of a stamp-0 approval", C,
-  "\t\tif ls.Tier != learn.TierProposed && ls.AwaitsApproval() {\n",
-  "\t\tif false {\n", "TestLRN17s_")
+  "\t\t} else if ls.Tier != learn.TierProposed && ls.AwaitsApproval() {\n",
+  "\t\t} else if false {\n", "TestLRN17s_")
+# LEARN-DX1 F1: a text the check refuses is not offered approval again.
+m("LRN-17 the list offers approval for a text that cannot arrive", C,
+  "\t\t} else if ls.Tier != learn.TierProposed && ls.AwaitsApproval() {\n",
+  "\t\t}\n\t\tif ls.Tier != learn.TierProposed && ls.AwaitsApproval() {\n", "TestLRN17s_")
 m("LRN-17 a withdrawal keeps the stamp", LG,
   "\tl.file.Lessons[i].Tier = TierProposed\n\tl.file.Lessons[i].ApprovedUnixMS = 0\n",
   "\tl.file.Lessons[i].Tier = TierProposed\n", "TestLRN17w_")

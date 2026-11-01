@@ -104,8 +104,10 @@ func listLessons(stdout io.Writer) error {
 }
 
 // printLessons is the listing's rows, each lesson with its tally, and under
-// it why an approved one is not sent: text the check refuses, or an approval
-// a build before the stamp made, which Pick never sends (#156 D2).
+// it why an approved one is not sent: text the check refuses, or else an
+// approval a build before the stamp made, which Pick never sends (#156 D2).
+// A refused text is not offered approval again: approveLesson runs the same
+// check first and would refuse it too (LEARN-DX1 F1).
 func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) learn.Tally) {
 	for _, ls := range lessons {
 		t := tally(ls.ID)
@@ -117,8 +119,7 @@ func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) lea
 			ls.ID, ls.Tier, t.Fires, t.Confirmed, t.Refuted, t.Unresolved, bound, ls.Text)
 		if _, err := learn.Message(ls); err != nil && ls.Tier != learn.TierProposed {
 			fmt.Fprintf(w, "    cannot reach the agent: %v\n", err)
-		}
-		if ls.Tier != learn.TierProposed && ls.AwaitsApproval() {
+		} else if ls.Tier != learn.TierProposed && ls.AwaitsApproval() {
 			fmt.Fprintf(w, "    approved before this build; approve again to send it: `rashomon learn approve %s`\n", ls.ID)
 		}
 	}
