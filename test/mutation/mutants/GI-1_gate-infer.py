@@ -43,7 +43,7 @@ m("GI-1 a JSON manifest is read whole", G,
 
 # verify: the row, its key, its standing and its name.
 m("GI-1 the inferred gate is never judged", E,
-  "if g, ok := inferredGate(inf, key, snap.ProjectRoot); ok {", "if g, ok := inferredGate(inf, key, snap.ProjectRoot); false && ok {",
+  "if g, name, ok := inferredGate(inf, key, snap.ProjectRoot); ok {", "if g, name, ok := inferredGate(inf, key, snap.ProjectRoot); false && ok {",
   "TestGI1v_|TestGI1a_")
 m("GI-1 the inferred gate is advisory", D,
   "source: SourceInferred, trust: SourceInferred, required: true,", "source: SourceInferred, trust: SourceInferred, required: false,",
@@ -54,8 +54,12 @@ m("GI-1 the inferred gate is keyed by its words", D,
   "\tif k, ok := shape.RunnerKey(nameOf(s.RunnerName), s.RunnerDigest); ok {\n",
   "\tif k, ok := \"\", s.RunnerDigest != nil; ok {\n\t\tk = *s.RunnerDigest\n", "TestGI1v_ARunOfItsRunnerBindsIt|TestGI1a_")
 m("GI-1 the inferred gate is named by its kind", S,
-  "if name := nameOf(lineShape(inf.Argv, key).RunnerName); name != \"\" {",
-  "if name := nameOf(lineShape(inf.Argv, key).RunnerName); false && name != \"\" {", "TestGI1v_AnInferredGateNobodyRanIsAbsent|TestGI1a_")
+  "\tif name != \"\" && programs[InferredGateID] == \"\" {\n",
+  "\tif false && name != \"\" && programs[InferredGateID] == \"\" {\n", "TestGI1v_AnInferredGateNobodyRanIsAbsent|TestGI1a_")
+m("GI-1 the inferred line derived twice", D,
+  "\ts := lineShape(inf.Argv, key)\n", "\ts := lineShape(inf.Argv, key)\n\t_ = lineShape(inf.Argv, key)\n", "TestIB1_")
+m("GI-1 the row named from no derivation", E,
+  "\t\tc.inferred = name\n", "\t\tc.inferred = \"\"\n\t\t_ = name\n", "TestGI1v_AnInferredGateNobodyRanIsAbsent|TestIB1_")
 m("GI-1 the inferred gate's rows read unknown", O,
   "\tcase sourceLearned, SourceInferred:\n", "\tcase sourceLearned:\n", "TestGI1o_")
 
