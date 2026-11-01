@@ -893,13 +893,13 @@ func TestMS1zf_ControlReadsTheTwinPair(t *testing.T) {
 	}
 }
 
-// TestMS1zg_RepsReportEveryPair: --reps K runs K seeded pairs of sessions and
+// TestMS1zl_RepsReportEveryPair: --reps K runs K seeded pairs of sessions and
 // reports each pair, not only the last (c10: SID_<arm> was overwritten in the
 // report's loop, so a 3-rep run printed one `measure pair`). Each rep's
 // sensors run on its own two sessions, its pair is written to pair-N.txt and
 // pair-N.json holding that rep's two session ids and no other, and pairs.txt
 // lists every rep. A single rep keeps pair.txt and pair.json as before.
-func TestMS1zg_RepsReportEveryPair(t *testing.T) {
+func TestMS1zl_RepsReportEveryPair(t *testing.T) {
 	t.Parallel()
 	r := newM1Rig(t, nil, m1Red)
 	res := r.script(nil, "run", r.m, "--task", r.task, "--limit", "20", "--reps", "2")
@@ -961,9 +961,9 @@ func TestMS1zg_RepsReportEveryPair(t *testing.T) {
 	}
 }
 
-// TestMS1zh_OneRepKeepsThePairFiles: a single rep still writes pair.txt and
+// TestMS1zm_OneRepKeepsThePairFiles: a single rep still writes pair.txt and
 // pair.json, beside pair-1.txt and pair-1.json and the one-line pairs.txt.
-func TestMS1zh_OneRepKeepsThePairFiles(t *testing.T) {
+func TestMS1zm_OneRepKeepsThePairFiles(t *testing.T) {
 	t.Parallel()
 	r := newM1Rig(t, nil, m1Red)
 	res := r.run("20")
