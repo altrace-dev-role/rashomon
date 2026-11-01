@@ -1,6 +1,7 @@
 package recap
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -114,7 +115,16 @@ func readState(path string) (state, error) {
 		return state{}, err
 	}
 	defer f.Close() //nolint:errcheck // read-only
-	b, err := io.ReadAll(io.LimitReader(f, maxStateBytes+1))
+	// One buffer sized from the file, as os.ReadFile sizes one, with
+	// bytes.MinRead to spare so the read that meets end of file needs no
+	// second; io.ReadAll grows from 512 bytes, about six buffers for a
+	// 20 KiB recap.json (#179 F5). A file over the cap sizes at the cap.
+	var buf bytes.Buffer
+	if fi, err := f.Stat(); err == nil {
+		buf.Grow(int(min(fi.Size(), maxStateBytes+1)) + bytes.MinRead)
+	}
+	_, err = buf.ReadFrom(io.LimitReader(f, maxStateBytes+1))
+	b := buf.Bytes()
 	if err == nil && len(b) > maxStateBytes {
 		err = fmt.Errorf("%s: over %d bytes", StateFileName, maxStateBytes)
 	}

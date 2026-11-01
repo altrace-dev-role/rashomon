@@ -424,6 +424,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// made on the first trust (specFiles, topFiles).
 		{"spec", 0},
 		{"hook", 2},
+		// Pinned 2026-10-31 (STORE-READ-REGULAR1, #179 F2): regfile.go's
+		// Open, one os.OpenFile, the O_RDONLY|O_NONBLOCK read moved out of
+		// internal/store so store's count stays a count of writes. regfile
+		// writes no file: a second site here is a write with no inventory
+		// row.
+		{"regfile", 1},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

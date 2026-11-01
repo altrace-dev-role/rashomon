@@ -1,5 +1,3 @@
-//go:build unix
-
 package regfile
 
 import (
@@ -7,25 +5,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
-	"time"
 )
 
-// Open refuses at once what is not a regular file, opens what is, and leaves
-// a missing path as the open's own error. The named pipe has no writer, so an
-// open that waited for one would hold the row past its watchdog.
+// Open opens a regular file, refuses a directory and leaves a missing path
+// as the open's own error, on every platform the Test job runs: none of the
+// three needs a named pipe (regfile_fifo_test.go has that row).
 func TestSRR1_OpenRefusesWhatIsNotARegularFile(t *testing.T) {
 	dir := t.TempDir()
-	pipe := filepath.Join(dir, "pipe")
-	if err := syscall.Mkfifo(pipe, 0o600); err != nil {
-		t.Fatalf("mkfifo: %v", err)
-	}
-	t.Cleanup(func() {
-		if w, err := os.OpenFile(pipe, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
-			w.Close() //nolint:errcheck // only wakes a waiting reader
-		}
-	})
 	file := filepath.Join(dir, "file")
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
@@ -34,20 +21,11 @@ func TestSRR1_OpenRefusesWhatIsNotARegularFile(t *testing.T) {
 		name, path string
 		want       error // nil: opens
 	}{
-		{"named pipe", pipe, ErrNotRegular},
 		{"directory", dir, ErrNotRegular},
 		{"regular file", file, nil},
 		{"missing", filepath.Join(dir, "none"), fs.ErrNotExist},
 	} {
-		var f *os.File
-		var err error
-		done := make(chan struct{})
-		go func() { f, err = Open(c.path); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			t.Fatalf("%s: Open had not returned after 2s", c.name)
-		}
+		f, err := Open(c.path)
 		if f != nil {
 			f.Close() //nolint:errcheck // read-only
 		}
