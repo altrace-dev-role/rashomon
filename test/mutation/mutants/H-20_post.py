@@ -5,7 +5,7 @@ m("H-20 the post entry is installed without a matcher", "internal/install/instal
   "\treturn event == EventPreToolUse", "TestH3_")
 m("H-20 the execution record is never written", "internal/hook/post.go",
   "\tseq, err := p.st.LandExecution(rec)\n\tp.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, "
-  "storeNamed(pl.ToolInput, p.st.Root())\n\treturn landed(err, &p.withheld)",
+  "storeNamed(pl.ToolInput, p.st.Root())\n\tp.landedRed = redRead(&rec)\n\treturn landed(err, &p.withheld)",
   "\treturn nil",
   "TestH20_PostRecordsTheExecution")
 m("H-20 an execution the lock refuses is dropped", "internal/store/landexec.go",

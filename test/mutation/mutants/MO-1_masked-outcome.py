@@ -143,3 +143,12 @@ m("MO-1 the clause names the gates of an exit-status green", "internal/recap/val
 m("MO-1 a gate read from output is not named in the clause", "internal/recap/value.go",
   "return \" (\" + joinNames(read) + \" \" + strings.TrimPrefix(readFromOutput, \" (\")", "return readFromOutput",
   "TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput")
+
+# hook: a piped runner whose output read red steps at PostToolUse, so
+# regression-location fires where the pipe hid the exit (card c3).
+m("MO-1 a piped red runner does not step at PostToolUse", "internal/hook/steerstep.go",
+  " || redRead && event == string(steer.EventPostToolUse)", "",
+  "TestPR_APipedRedRunnerStepsAtPostToolUse")
+m("MO-1 the landed call is never read for a red output", "internal/hook/post.go",
+  "\tp.landedRed = redRead(&rec)\n", "",
+  "TestPR_APipedRedRunnerStepsAtPostToolUse")
