@@ -30,3 +30,9 @@ m("A8  an empty event array is filled at column zero", "internal/settings/docume
 m("A8  an empty hooks object is filled at column zero", "internal/settings/document.go",
   "\t\t\tcol := d.memberIndent(hooksKey)\n\t\t\tobj :=",
   "\t\t\tcol := \"\"\n\t\t\tobj :=", T)
+m("A8  the separator's gap starts at byte 0, not after the bracket", "internal/settings/splice.go",
+  "\tgap := raw[bytes.IndexAny(raw, \"[{\")+1 : spans[0].start]",
+  "\tgap := raw[1:spans[0].start]", T)
+m("A8  editSettings writes without parsing its own output", "cmd/rashomon/settingsrender.go",
+  "\tif !json.Valid(out) {",
+  "\tif false && !json.Valid(out) {", "TestEditSettings_RefusesToWriteInvalidJSON")
