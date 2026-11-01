@@ -37,6 +37,24 @@ func Finding(in Intent, d Delivered, b *Brief, afterSeq int64) (steer.Finding, b
 // v4 lines hold do not match the paths a v5 check looks for; that costs one
 // repeated path in one note and is harmless.
 func FindingKeyed(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
+	f, ok, _ := FindingRiding(in, d, b, afterSeq, digest, nil)
+	return f, ok
+}
+
+// Ride is an approved lesson a later prompt's note carries as its last line
+// (LEARN-RIDE1): its id and its text, both the project's ledger's.
+type Ride struct{ ID, Text string }
+
+// FindingRiding is FindingKeyed with lesson, when not nil, as the last line of a
+// later prompt's note (LEARN-RIDE1, R13 D1), so a lesson arrives on the
+// prompt it is about, one note still and inside the note's cap. A note too
+// long to hold the line drops its unknowns line first, then steps down as
+// it would without the lesson; one that still cannot hold it is the note
+// alone, and rode is false, so the lesson waits for a prompt that carries no
+// note. The first prompt's note is at its six-line cap and carries none. At
+// record scope v4 the line is kept as it printed: the lesson's text is the
+// ledger's, not the request's.
+func FindingRiding(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(string) string, lesson *Ride) (f steer.Finding, ok, rode bool) {
 	first := !d.BriefGiven && b.has()
 	var paths []string
 	var rules []Rule
@@ -69,7 +87,7 @@ func FindingKeyed(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(
 		fresh = fresh || !d.Evidence[k]
 	}
 	if !first && (!in.Named || !fresh && !in.Truncated) {
-		return steer.Finding{}, false
+		return steer.Finding{}, false, false
 	}
 
 	unknown := in.Unknown
@@ -85,49 +103,99 @@ func FindingKeyed(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(
 	if in.FromTask {
 		source = "task file"
 	}
-	for step := range 3 {
-		n := -1 // every item
-		if step == 2 {
-			n = 1
-		}
-		pf := render.TaskPreflightBinding{
-			Paths:    pathSet(paths, n, earlierPaths),
-			Rules:    ruleRefs(rules, n, earlierRules, in.Withheld, step == 0),
-			Gates:    gateRefs(in.Gates, n, in.Learned),
-			Source:   slot.NewEnum(slot.EnumEvidenceSource, source),
-			Evidence: slot.NewEnumList(slot.EnumEvidenceKinds, in.Evidence),
-			Unknown:  slot.NewEnumList(slot.EnumPreflightUnknown, unknown),
-		}
-		var binding any = pf
-		key := keyNote
-		if first {
-			key = keyBrief
-			binding = render.TaskPreflightFirstBinding{
-				Instructions: pathSet(b.Instructions, n, 0), Manifests: pathSet(b.Manifests, n, 0), GoDirs: slot.Count(b.GoDirs),
-				Paths: pf.Paths, Rules: pf.Rules, Gates: pf.Gates, Source: pf.Source, Evidence: pf.Evidence, Unknown: pf.Unknown,
-			}
-		}
-		m, err := render.New(pattern.TaskPreflight, binding)
-		if err != nil {
-			continue
-		}
-		var rec render.Message
-		if digest != nil {
-			if rec, err = render.New(pattern.TaskPreflight, recordBinding(pf, first, b, n, digest)); err != nil {
-				continue
-			}
-		}
-		prio, _ := pattern.Priority(pattern.TaskPreflight)
-		return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
-			StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq}, true
+	key := keyNote
+	if first {
+		key = keyBrief
 	}
-	return steer.Finding{}, false
+	for _, ride := range rides(lesson != nil && !first) {
+		for step := range 3 {
+			n := -1 // every item
+			if step == 2 {
+				n = 1
+			}
+			pf := render.TaskPreflightBinding{
+				Paths:    pathSet(paths, n, earlierPaths),
+				Rules:    ruleRefs(rules, n, earlierRules, in.Withheld, step == 0),
+				Gates:    gateRefs(in.Gates, n, in.Learned),
+				Source:   slot.NewEnum(slot.EnumEvidenceSource, source),
+				Evidence: slot.NewEnumList(slot.EnumEvidenceKinds, in.Evidence),
+				Unknown:  slot.NewEnumList(slot.EnumPreflightUnknown, unknown),
+			}
+			for _, unknowns := range unknownsAt(ride, step) {
+				var r *Ride
+				if ride {
+					r = lesson
+				}
+				m, rec, err := note(pf, first, b, n, unknowns, r, digest)
+				if err != nil {
+					continue
+				}
+				prio, _ := pattern.Priority(pattern.TaskPreflight)
+				return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
+					StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq}, true, ride
+			}
+		}
+	}
+	return steer.Finding{}, false, false
+}
+
+// rides is FindingRiding's two passes when a lesson may ride, with it and
+// then without it, and the one pass without it otherwise.
+func rides(lesson bool) []bool {
+	if lesson {
+		return []bool{true, false}
+	}
+	return []bool{false}
+}
+
+// unknownsAt is whether a note keeps its unknowns line at a step: a note
+// that carries a lesson tries it once, at step 0, and drops it before
+// anything else is cut; a note with no lesson always keeps it.
+func unknownsAt(ride bool, step int) []bool {
+	switch {
+	case !ride:
+		return []bool{true}
+	case step == 0:
+		return []bool{true, false}
+	}
+	return []bool{false}
+}
+
+// note is the message one rung of FindingRiding's ladder prints and, at
+// record scope v4 (digest not nil), the message its steer line holds.
+func note(pf render.TaskPreflightBinding, first bool, b *Brief, n int, unknowns bool, r *Ride, digest func(string) string) (m, rec render.Message, err error) {
+	var binding any = later(pf, unknowns, r)
+	if first {
+		binding = render.TaskPreflightFirstBinding{
+			Instructions: pathSet(b.Instructions, n, 0), Manifests: pathSet(b.Manifests, n, 0), GoDirs: slot.Count(b.GoDirs),
+			Paths: pf.Paths, Rules: pf.Rules, Gates: pf.Gates, Source: pf.Source, Evidence: pf.Evidence, Unknown: pf.Unknown,
+		}
+	}
+	if m, err = render.New(pattern.TaskPreflight, binding); err != nil || digest == nil {
+		return m, rec, err
+	}
+	rec, err = render.New(pattern.TaskPreflight, recordBinding(pf, first, b, n, unknowns, r, digest))
+	return m, rec, err
+}
+
+// later is a later prompt's note binding: pf alone, or with r as its last
+// line, with its unknowns line or, when unknowns is false, without it.
+func later(pf render.TaskPreflightBinding, unknowns bool, r *Ride) any {
+	switch {
+	case r == nil:
+		return pf
+	case unknowns:
+		return render.TaskPreflightLessonBinding{Paths: pf.Paths, Rules: pf.Rules, Gates: pf.Gates, Source: pf.Source,
+			Evidence: pf.Evidence, Unknown: pf.Unknown, Lesson: slot.LessonID(r.ID), Text: slot.Approved(r.Text)}
+	}
+	return render.TaskPreflightLessonKnownBinding{Paths: pf.Paths, Rules: pf.Rules, Gates: pf.Gates, Source: pf.Source,
+		Evidence: pf.Evidence, Lesson: slot.LessonID(r.ID), Text: slot.Approved(r.Text)}
 }
 
 // recordBinding is the binding the steer line holds at record scope v4: pf's
 // every path list as keyed digests (the same items pf lists at this step),
-// the rest as it is.
-func recordBinding(pf render.TaskPreflightBinding, first bool, b *Brief, n int, digest func(string) string) any {
+// the rest as it is, a riding lesson's line included.
+func recordBinding(pf render.TaskPreflightBinding, first bool, b *Brief, n int, unknowns bool, r *Ride, digest func(string) string) any {
 	keyed := func(s slot.PathSet) slot.PathSet {
 		ps := s.Paths()
 		ds := make([]string, len(ps))
@@ -138,7 +206,7 @@ func recordBinding(pf render.TaskPreflightBinding, first bool, b *Brief, n int, 
 	}
 	pf.Paths = keyed(pf.Paths)
 	if !first {
-		return pf
+		return later(pf, unknowns, r)
 	}
 	return render.TaskPreflightFirstBinding{
 		Instructions: keyed(pathSet(b.Instructions, n, 0)), Manifests: keyed(pathSet(b.Manifests, n, 0)), GoDirs: slot.Count(b.GoDirs),

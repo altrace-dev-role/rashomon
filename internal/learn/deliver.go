@@ -50,10 +50,24 @@ func UncheckedMessage(u Unchecked) (render.Message, error) {
 // prompt's path tokens. An unchecked state gives none. Which tiers may
 // arrive is ReadActive's to decide, once.
 func Pick(a Active, delivered func(id string) bool, paths []string) (Lesson, render.Message, bool) {
+	all := len(a.Lessons) <= pickAll
+	return pick(a, delivered, paths, all)
+}
+
+// PickRide is the lesson the request's preflight note carries as its last
+// line (LEARN-RIDE1, R13 D1): Pick's choice among the lessons whose text
+// holds one of the request's paths, however many a holds, so a lesson rides
+// only the note of a prompt it is about.
+func PickRide(a Active, delivered func(id string) bool, paths []string) (Lesson, bool) {
+	ls, _, ok := pick(a, delivered, paths, false)
+	return ls, ok
+}
+
+// pick is Pick with all, whether every lesson is relevant, given.
+func pick(a Active, delivered func(id string) bool, paths []string, all bool) (Lesson, render.Message, bool) {
 	if a.Unchecked != "" {
 		return Lesson{}, render.Message{}, false
 	}
-	all := len(a.Lessons) <= pickAll
 	for _, proven := range [...]bool{true, false} {
 		for _, ls := range a.Lessons {
 			if (ls.Tier == TierProven) != proven || ls.ApprovedUnixMS == 0 || delivered(ls.ID) || !all && !namesAny(ls.Text, paths) {
@@ -82,20 +96,34 @@ func namesAny(text string, paths []string) bool {
 // (delivered, flag_only or holdout; PREFLIGHT1's P16 rule), and of every line
 // arm off withheld (state suppressed, suppressed_by arm_off: the shadow
 // decision is the steer arm's, which gave it), so a lesson, and the unchecked
-// flag under its own key, comes once a session in either arm. A superseded
-// line is not given. Lines are located with jsonscan, never decoded (RES-5).
+// flag under its own key, comes once a session in either arm. A
+// task-preflight line under the same rule gave the lesson its lesson slot
+// names, one that rode the note (LEARN-RIDE1). A superseded line is not
+// given. Lines are located with jsonscan, never decoded (RES-5).
 func Delivered(lines [][]byte) map[string]bool {
 	var out map[string]bool
 	var sp [dkCount]jsonscan.Span
 	for _, b := range lines {
-		if jsonscan.Top(b, deliveredKeys(), sp[:]) != nil || spanText(b, sp[dkPattern]) != string(pattern.LearnedFact) ||
+		if jsonscan.Top(b, deliveredKeys(), sp[:]) != nil ||
 			spanText(b, sp[dkState]) != string(steer.LineStateDelivered) && spanText(b, sp[dkSuppressedBy]) != string(steer.SuppressedByArmOff) {
+			continue
+		}
+		id := ""
+		switch spanText(b, sp[dkPattern]) {
+		case string(pattern.LearnedFact):
+			id = spanText(b, sp[dkKey])
+		case string(pattern.TaskPreflight):
+			if l, err := jsonscan.Lookup(b, sp[dkSlots], "lesson"); err == nil {
+				id = spanText(b, l)
+			}
+		}
+		if id == "" {
 			continue
 		}
 		if out == nil {
 			out = map[string]bool{}
 		}
-		out[spanText(b, sp[dkKey])] = true
+		out[id] = true
 	}
 	return out
 }
@@ -103,7 +131,7 @@ func Delivered(lines [][]byte) map[string]bool {
 // deliveredKeys is the one KeySet a steer line is read with here.
 func deliveredKeys() *jsonscan.KeySet {
 	deliveredKeysOnce.Do(func() {
-		deliveredKeysOnce.v = jsonscan.NewKeySet("pattern", "state", "key", "suppressed_by")
+		deliveredKeysOnce.v = jsonscan.NewKeySet("pattern", "state", "key", "suppressed_by", "slots")
 	})
 	return deliveredKeysOnce.v
 }
@@ -120,6 +148,7 @@ const (
 	dkState
 	dkKey
 	dkSuppressedBy
+	dkSlots
 	dkCount
 )
 

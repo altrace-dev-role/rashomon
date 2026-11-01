@@ -7,7 +7,7 @@ m("SV-1 status --json drops not_firing", "cmd/rashomon/verbs_status.go",
   "\tNotFiring     bool   `json:\"not_firing\"`\n", "\tNotFiring     bool   `json:\"-\"`\n",
   "TestSV1f_EveryVerbHasJSONWithClosedKeys")
 m("SV-1 lessons --json drops since_unix_ms", "cmd/rashomon/verbs_lessons.go",
-  "\tSinceUnixMS int64      `json:\"since_unix_ms\"`\n", "\tSinceUnixMS int64      `json:\"-\"`\n",
+  "\tSinceUnixMS    int64      `json:\"since_unix_ms\"`\n", "\tSinceUnixMS    int64      `json:\"-\"`\n",
   "TestSV1f_EveryVerbHasJSONWithClosedKeys")
 m("SV-1 lessons is left out of the verb table", "cmd/rashomon/verbs.go",
   "\tcase \"lessons\":\n\t\treturn cmdLessons\n", "", "TestSV1f_EveryVerbHasJSONWithClosedKeys")
