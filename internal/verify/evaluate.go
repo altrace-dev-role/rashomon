@@ -68,7 +68,7 @@ type LastCheckpoint struct {
 // learned ones alone. EvaluateStop and SteerAt take the key and join them
 // (card DECLARED-GATES1).
 func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) Snapshot {
-	return evaluate(run, idx, sp, nil, pt, now, &classified{})
+	return evaluate(run, idx, sp, nil, nil, pt, now, &classified{})
 }
 
 // classified is what evaluate classified beside the snapshot, for the Stop
@@ -86,10 +86,11 @@ type classified struct {
 }
 
 // evaluate is Evaluate, which also fills c, and joins the gates sp declares
-// under key, the install key (declaredGates), to the learned rows after the
-// index has set theirs required or not: a declared row's Required is its
-// spec's (G2).
-func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, c *classified) Snapshot {
+// under key, the install key (declaredGates), and the inferred gate inf
+// (inferredGate; nil for none, as every caller but the Stop's passes), to
+// the learned rows after the index has set theirs required or not: a
+// declared row's Required is its spec's (G2), and the inferred row's true.
+func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, inf *InferredGate, pt Point, now time.Time, c *classified) Snapshot {
 	if run == nil {
 		run = &store.Run{}
 	}
@@ -123,7 +124,11 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
-	if dgs := declaredGates(sp, key, snap.ProjectRoot); len(dgs) > 0 {
+	dgs := declaredGates(sp, key, snap.ProjectRoot)
+	if g, ok := inferredGate(inf, key, snap.ProjectRoot); ok {
+		dgs = append(dgs, g)
+	}
+	if len(dgs) > 0 {
 		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, at, pt.Tree)
 	}
 	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)

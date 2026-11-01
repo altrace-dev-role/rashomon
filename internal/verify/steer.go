@@ -41,7 +41,7 @@ type SteerView struct {
 // then.
 func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
-	snap := evaluate(run, idx, sp, key, pt, now, &c)
+	snap := evaluate(run, idx, sp, key, nil, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	var decl int64
 	if (c.learned || hasDeclaredRequired(snap)) && event == string(steer.EventPostToolUse) {
