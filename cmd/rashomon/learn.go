@@ -23,6 +23,9 @@ const learnUsage = `  rashomon learn                 list this project's lessons
   rashomon learn approve ID      show lesson ID and a one-time code on the
                                terminal; the lesson may reach the agent only
                                once that code is typed back there
+  rashomon learn withdraw ID     the same, to stop an approved lesson: once
+                               the code is typed back, it no longer reaches
+                               the agent until it is approved again
   rashomon learn import FILE     add a shared lessons file's rows at proposed
 
 `
@@ -31,14 +34,15 @@ const learnUsage = `  rashomon learn                 list this project's lessons
 // a test replaces it.
 var learnTerminal = openTerminal
 
-// cmdLearn is `rashomon learn [approve ID | import FILE]` (card P6), the
-// verb the consent screen names (disclose/paragraphs.go).
+// cmdLearn is `rashomon learn [approve ID | withdraw ID | import FILE]`
+// (cards P6 and LEARN-DX1), the verb the consent screen names
+// (disclose/paragraphs.go).
 func cmdLearn(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return listLessons(stdout)
 	}
 	verb, rest := args[0], args[1:]
-	if verb != "approve" && verb != "import" {
+	if verb != "approve" && verb != "withdraw" && verb != "import" {
 		return fmt.Errorf("unknown argument %q", verb)
 	}
 	if len(rest) != 1 {
@@ -48,8 +52,11 @@ func cmdLearn(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if verb == "import" {
+	switch verb {
+	case "import":
 		return importLessons(l, rest[0], stdout)
+	case "withdraw":
+		return withdrawLesson(l, rest[0], stdout)
 	}
 	return approveLesson(l, rest[0], stdout)
 }
@@ -92,19 +99,29 @@ func listLessons(stdout io.Writer) error {
 		return err
 	}
 	fmt.Fprint(stdout, quarantineLine(l.QuarantinedAt()))
-	for _, ls := range l.Lessons() {
-		t := l.Tally(ls.ID)
+	printLessons(stdout, l.Lessons(), l.Tally)
+	return nil
+}
+
+// printLessons is the listing's rows, each lesson with its tally, and under
+// it why an approved one is not sent: text the check refuses, or an approval
+// a build before the stamp made, which Pick never sends (#156 D2).
+func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) learn.Tally) {
+	for _, ls := range lessons {
+		t := tally(ls.ID)
 		bound := "no bound"
 		if lo, hi, ok := t.Bound(); ok {
 			bound = fmt.Sprintf("bound [%.3f, %.3f]", lo, hi)
 		}
-		fmt.Fprintf(stdout, "%s %s: %d fires, %d confirmed, %d refuted, %d unresolved; %s\n    %s\n",
+		fmt.Fprintf(w, "%s %s: %d fires, %d confirmed, %d refuted, %d unresolved; %s\n    %s\n",
 			ls.ID, ls.Tier, t.Fires, t.Confirmed, t.Refuted, t.Unresolved, bound, ls.Text)
 		if _, err := learn.Message(ls); err != nil && ls.Tier != learn.TierProposed {
-			fmt.Fprintf(stdout, "    cannot reach the agent: %v\n", err)
+			fmt.Fprintf(w, "    cannot reach the agent: %v\n", err)
+		}
+		if ls.Tier != learn.TierProposed && ls.AwaitsApproval() {
+			fmt.Fprintf(w, "    approved before this build; approve again to send it: `rashomon learn approve %s`\n", ls.ID)
 		}
 	}
-	return nil
 }
 
 func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
@@ -148,33 +165,15 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 // slot checks and the host screen) is refused before the code is shown, so
 // a person approves only text that arrives (L8).
 func approveLesson(l *learn.Ledger, id string, stdout io.Writer) error {
-	i := -1
-	lessons := l.Lessons()
-	for j, ls := range lessons {
-		if ls.ID == id {
-			i = j
-		}
-	}
-	if i < 0 || lessons[i].Tier != learn.TierProposed {
+	ls, ok := lessonByID(l, id)
+	if !ok || !ls.AwaitsApproval() {
 		return l.Approve(id, time.Now()) // its refusal names the reason
 	}
-	if _, err := learn.Message(lessons[i]); err != nil {
+	if _, err := learn.Message(ls); err != nil {
 		return fmt.Errorf("lesson %s cannot reach the agent: %w; nothing was approved", id, err)
 	}
-	in, out, closeTTY, err := learnTerminal()
-	if err != nil {
-		return errors.New("there is no terminal to ask on, so nothing was approved; a person approves a lesson at a terminal")
-	}
-	defer closeTTY()
-	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
-	if err != nil {
+	if err := typedAtTerminal(ls, "to let it reach the agent", "approved", "approves"); err != nil {
 		return err
-	}
-	code := fmt.Sprintf("%06d", n.Int64())
-	fmt.Fprintf(out, "lesson %s:\n    %s\nto let it reach the agent, type %s: ", id, lessons[i].Text, code)
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(line)), []byte(code)) != 1 {
-		return errors.New("the code did not match, so nothing was approved")
 	}
 	if err := l.Approve(id, time.Now()); err != nil {
 		return err
@@ -182,6 +181,61 @@ func approveLesson(l *learn.Ledger, id string, stdout io.Writer) error {
 	if err := l.Save(); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "approved %s\n", id)
+	_, err := fmt.Fprintf(stdout, "approved %s\n", id)
 	return err
+}
+
+// withdrawLesson stops one approved lesson (#156 D3), asked as approval is:
+// the lesson and a one-time code on the terminal, the code typed back
+// there. The lesson goes back to proposed and leaves active.json; approval
+// takes it again.
+func withdrawLesson(l *learn.Ledger, id string, stdout io.Writer) error {
+	ls, ok := lessonByID(l, id)
+	if !ok || ls.Tier == learn.TierProposed {
+		return l.Withdraw(id) // its refusal names the reason
+	}
+	if err := typedAtTerminal(ls, "to stop it reaching the agent", "withdrawn", "withdraws"); err != nil {
+		return err
+	}
+	if err := l.Withdraw(id); err != nil {
+		return err
+	}
+	if err := l.Save(); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(stdout, "withdrew %s: it no longer reaches the agent; `rashomon learn approve %s` sends it again\n", id, id)
+	return err
+}
+
+func lessonByID(l *learn.Ledger, id string) (learn.Lesson, bool) {
+	for _, ls := range l.Lessons() {
+		if ls.ID == id {
+			return ls, true
+		}
+	}
+	return learn.Lesson{}, false
+}
+
+// typedAtTerminal shows the lesson and a one-time code on the terminal,
+// never stdout or stdin, and returns nil only when the code is typed back
+// there: an agent's shell has no terminal, so it can neither read the code
+// nor answer. to leads the prompt's "type CODE"; done and does fill the
+// refusals: "nothing was approved; a person approves a lesson at a terminal".
+func typedAtTerminal(ls learn.Lesson, to, done, does string) error {
+	in, out, closeTTY, err := learnTerminal()
+	if err != nil {
+		return fmt.Errorf("there is no terminal to ask on, so nothing was %s; a person %s a lesson at a terminal", done, does)
+	}
+	defer closeTTY()
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return err
+	}
+	code := fmt.Sprintf("%06d", n.Int64())
+	fmt.Fprintf(out, "lesson %s:\n    %s\n%s, type %s: ", ls.ID, ls.Text, to, code)
+	line, _ := bufio.NewReader(in).ReadString('\n')
+	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(line)), []byte(code)) != 1 {
+		return fmt.Errorf("the code did not match, so nothing was %s", done)
+	}
+	return nil
 }

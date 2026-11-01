@@ -267,3 +267,19 @@ func TestLRN17w_WithdrawIsTypedAtTheTerminal(t *testing.T) {
 		t.Errorf("approving again after a withdrawal: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 }
+
+// TestLRN17s_TheListNamesAStampZeroApproval (#156 D2): a lesson a build
+// before the stamp approved is listed with the line that says it is not
+// sent and how to send it; a stamped or a proposed lesson has no such line.
+func TestLRN17s_TheListNamesAStampZeroApproval(t *testing.T) {
+	var out bytes.Buffer
+	printLessons(&out, []learn.Lesson{
+		{ID: "npm-ci", Tier: learn.TierProbation, Text: "npm ci before npm test"},
+		{ID: "go-test-cwd", Tier: learn.TierProbation, Text: "run go test from the module root", ApprovedUnixMS: 1},
+		{ID: "make-check", Tier: learn.TierProposed, Text: "make check before a push"},
+	}, func(string) learn.Tally { return learn.Tally{} })
+	line := "    approved before this build; approve again to send it: `rashomon learn approve "
+	if got := strings.Count(out.String(), line); got != 1 || !strings.Contains(out.String(), line+"npm-ci`\n") {
+		t.Errorf("the list says %q; want the line once, for npm-ci alone", out.String())
+	}
+}

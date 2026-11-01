@@ -48,3 +48,44 @@ func TestLRN17s_AStampZeroApprovalApprovesAgain(t *testing.T) {
 		t.Errorf("a stamped lesson approved twice: %v; want refused as not proposed", err)
 	}
 }
+
+// TestLRN17w_WithdrawSendsALessonBackToProposed (#156 D3): Withdraw takes an
+// approved lesson back to proposed with no stamp, so it leaves active.json
+// and Pick never sends it, and approval takes it again. A proposed lesson
+// and an unknown id have nothing to withdraw.
+func TestLRN17w_WithdrawSendsALessonBackToProposed(t *testing.T) {
+	root := t.TempDir()
+	l := open(t, root, t0)
+	importText(t, l, twoLessons)
+	if err := l.Withdraw("npm-ci"); err == nil || !strings.Contains(err.Error(), "nothing to withdraw") {
+		t.Errorf("withdrawing a proposed lesson: %v; want nothing to withdraw", err)
+	}
+	if err := l.Withdraw("absent"); err == nil {
+		t.Error("withdrawing an unknown lesson succeeded")
+	}
+	if err := l.Approve("npm-ci", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(activeOf(t, root).Lessons); n != 1 {
+		t.Fatalf("premise: active.json holds %d lessons, want the approved one", n)
+	}
+	if err := l.Withdraw("npm-ci"); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Save(); err != nil {
+		t.Fatal(err)
+	}
+	l = open(t, root, t1)
+	if ls := lessonOf(t, l, "npm-ci"); ls.Tier != TierProposed || ls.ApprovedUnixMS != 0 || l.Quarantined {
+		t.Errorf("after a withdrawal: npm-ci %s at %d, quarantined %v; want proposed with no stamp", ls.Tier, ls.ApprovedUnixMS, l.Quarantined)
+	}
+	if n := len(activeOf(t, root).Lessons); n != 0 {
+		t.Errorf("active.json still holds %d lessons after the withdrawal", n)
+	}
+	if err := l.Approve("npm-ci", t1); err != nil {
+		t.Errorf("approving again after a withdrawal: %v", err)
+	}
+}

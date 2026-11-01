@@ -60,8 +60,8 @@ m("LRN-17 the flag keyed inside the id form", V,
 
 # Approval: delivery's check first, and its time.
 m("LRN-17 approval without the render check", C,
-  "\tif _, err := learn.Message(lessons[i]); err != nil {\n",
-  "\tif _, err := learn.Message(lessons[i]); false && err != nil {\n", "TestLRN17g_")
+  "\tif _, err := learn.Message(ls); err != nil {\n",
+  "\tif _, err := learn.Message(ls); false && err != nil {\n", "TestLRN17g_")
 m("LRN-17 the host screen dropped from Message", V,
   "\tif err := slot.RefuseHosts(ls.Text); err != nil {\n",
   "\tif err := slot.RefuseHosts(ls.Text); false && err != nil {\n", "TestLRN17g_")
@@ -89,8 +89,8 @@ m("LRN-17 the approval time not stamped", D,
 # The consent screen says what the build does: an approved lesson reaches the
 # agent with a prompt, once a session.
 m("LRN-17 the consent screen claims nothing unapproved is sent", "internal/disclose/paragraphs.go",
-  "after you type its one-time code. A write to the lesson files that this program did not make is detected, and no lesson is sent, unless the writer can also read the store key: the same limit as `rashomon spec trust`.",
-  "after you type its one-time code; nothing you have not approved is sent.", "TestLRN17k_")
+  "stops one the same way. A write to the lesson files that this program did not make is detected, and no lesson is sent, unless the writer can also read the store key: the same limit as `rashomon spec trust`.",
+  "stops one the same way; nothing you have not approved is sent.", "TestLRN17k_")
 m("LRN-17 state.sum's row drops the key limit", "internal/disclose/learn.go",
   "is detected and sends every lesson back to proposed, unless the writer can also read the store key (the same limit as spec trust)",
   "sends every lesson back to proposed", "TestLRN17k_")
@@ -107,3 +107,19 @@ m("LRN-17 the consent screen drops the steering clamp", "internal/disclose/parag
 m("LRN-17 the import line says a lesson reaches the agent with every prompt", C,
   "\"an approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session, \"+\n\t\t\"and waits while a preflight note is sent; ",
   "\"an approved lesson reaches the agent with your prompt; \"+\n\t\t\"", "TestLRN17k_")
+
+# LEARN-DX1 (#156 D2, D3): a stamp-0 approval approves again and the list
+# says so; `learn withdraw ID` is typed at the terminal and clears the stamp.
+LG = "internal/learn/ledger.go"
+m("LRN-17 a stamp-0 approval cannot be approved again", LG,
+  "\treturn ls.Tier == TierProposed || ls.ApprovedUnixMS == 0\n",
+  "\treturn ls.Tier == TierProposed\n", "TestLRN17s_")
+m("LRN-17 the list says nothing of a stamp-0 approval", C,
+  "\t\tif ls.Tier != learn.TierProposed && ls.AwaitsApproval() {\n",
+  "\t\tif false {\n", "TestLRN17s_")
+m("LRN-17 a withdrawal keeps the stamp", LG,
+  "\tl.file.Lessons[i].Tier = TierProposed\n\tl.file.Lessons[i].ApprovedUnixMS = 0\n",
+  "\tl.file.Lessons[i].Tier = TierProposed\n", "TestLRN17w_")
+m("LRN-17 withdraw without the code", C,
+  "\tif err := typedAtTerminal(ls, \"to stop it reaching the agent\", \"withdrawn\", \"withdraws\"); err != nil {\n\t\treturn err\n\t}\n",
+  "", "TestLRN17w_")

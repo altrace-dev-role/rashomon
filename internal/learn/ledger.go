@@ -76,6 +76,13 @@ type Lesson struct {
 	ApprovedUnixMS int64 `json:"approved_unix_ms,omitempty"`
 }
 
+// AwaitsApproval reports whether a person has yet to approve the lesson for
+// this build: it is proposed, or it holds an approved tier with no stamp,
+// which a build before the stamp wrote and Pick never sends (#156 D2).
+func (ls Lesson) AwaitsApproval() bool {
+	return ls.Tier == TierProposed || ls.ApprovedUnixMS == 0
+}
+
 // Label is one row of labels.ndjson: one fire of a lesson and what it came
 // to. Its fields are LABEL-WRITER1's contract, pinned by a test.
 type Label struct {
@@ -348,20 +355,38 @@ func (l *Ledger) index(id string) int {
 	return slices.IndexFunc(l.file.Lessons, func(ls Lesson) bool { return ls.ID == id })
 }
 
-// Approve moves a proposed lesson to the tier its tally gives an approved
-// one and stamps now as its approval time. The caller has had a person type
+// Approve moves a lesson that awaits approval to the tier its tally gives an
+// approved one and stamps now as its approval time: a proposed lesson, or
+// one a build before the stamp approved. The caller has had a person type
 // the one-time code; this does not ask. The caller saves.
 func (l *Ledger) Approve(id string, now time.Time) error {
 	i := l.index(id)
 	if i < 0 {
 		return fmt.Errorf("no lesson %q", id)
 	}
-	if l.file.Lessons[i].Tier != TierProposed {
+	if !l.file.Lessons[i].AwaitsApproval() {
 		return fmt.Errorf("lesson %q is %s, not proposed; nothing to approve", id, l.file.Lessons[i].Tier)
 	}
 	l.file.Lessons[i].Tier = TierProbation.Next(l.tallies[id])
 	l.file.Lessons[i].ApprovedUnixMS = now.UnixMilli()
 	l.Quarantined = false
+	return nil
+}
+
+// Withdraw sends an approved lesson back to proposed and clears its stamp,
+// so it leaves active.json and reaches the agent again only once a person
+// approves it (#156 D3). The caller has had a person type the one-time
+// code; the caller saves.
+func (l *Ledger) Withdraw(id string) error {
+	i := l.index(id)
+	if i < 0 {
+		return fmt.Errorf("no lesson %q", id)
+	}
+	if l.file.Lessons[i].Tier == TierProposed {
+		return fmt.Errorf("lesson %q is proposed; nothing to withdraw", id)
+	}
+	l.file.Lessons[i].Tier = TierProposed
+	l.file.Lessons[i].ApprovedUnixMS = 0
 	return nil
 }
 
