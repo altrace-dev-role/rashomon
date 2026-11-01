@@ -151,7 +151,7 @@ func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	}
 	defer closeTTY()
 	project, typed := hook.SpecProject(path), strings.TrimPrefix(digest, spec.DigestPrefix)[:8]
-	fmt.Fprintf(out, "%q in %q\n  digest %s  now untrusted: flags to you only\n  once trusted, these count:\n", path, project, digest)
+	fmt.Fprintf(out, "%q in %q\n  digest %s  %s\n", path, project, digest, trustState(b, project, path, digest))
 	for _, g := range f.Gates {
 		fmt.Fprintf(out, "    gate  %q  %q\n", g.ID, g.Argv)
 	}
@@ -175,6 +175,21 @@ func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	}
 	_, err = fmt.Fprintf(stdout, "trusted %s at digest %s; an edit to the file untrusts it\n  undo: rashomon spec untrust %s\n", path, typed, shellWord(path))
 	return err
+}
+
+// trustState is the trust screen's word on the spec as the bindings file
+// holds it, and the heading of the list after it (#153 D1, D221 item 2): a
+// binding of this digest is trusted; a binding of another is an edit since
+// the spec was trusted; no binding is never trusted.
+func trustState(b *spec.Bindings, project, path, digest string) string {
+	x, ok := b.Of(project, path)
+	switch {
+	case ok && x.SpecDigest == digest:
+		return "now trusted\n  these count:"
+	case ok:
+		return "now untrusted: edited since it was trusted, so it flags to you only\n  once trusted again, these count:"
+	}
+	return "now untrusted: flags to you only\n  once trusted, these count:"
 }
 
 // shellWord is s as one shell word: bare when it holds only safe characters,

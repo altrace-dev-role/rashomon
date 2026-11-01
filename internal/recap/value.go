@@ -193,10 +193,29 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	}
 	var b strings.Builder
 	b.WriteString(prefix + sentence + ".\n")
+	b.WriteString(unboundLines(v))
 	if c := clause(im); c != "" {
 		b.WriteString(continuation() + c + "\n")
 	}
 	b.WriteString(pointer(sessionID, fromPlugin))
+	return b.String()
+}
+
+// unboundLines is two lines for each spec the session edited after the user
+// trusted it (verify.StopView.Unbound, SPEC-TRUST-DROP1): the spec, and the
+// verb that trusts it again, each within lineColumns. A repository names the
+// path, so it prints only as the path slot admits it, else as "the
+// repository spec".
+func unboundLines(v verify.StopView) string {
+	var b strings.Builder
+	for _, p := range v.Unbound {
+		name := "the repository spec"
+		if s := slot.Path(p); s.Validate() == nil {
+			name = s.Text()
+		}
+		b.WriteString(continuation() + name + " was edited after you trusted it,\n")
+		b.WriteString(continuation() + "so it flags to you only until you run rashomon spec trust.\n")
+	}
 	return b.String()
 }
 
