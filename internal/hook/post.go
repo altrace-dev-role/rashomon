@@ -162,6 +162,7 @@ type Post struct {
 	event          string
 	landedSeq      int64
 	landedRunner   bool
+	landedRed      bool
 	landedStore    bool
 	landedWrite    writtenCall
 	// toolName and toolInput are the call's, kept for the spec's rules
@@ -331,7 +332,21 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
+	p.landedRed = redRead(&rec)
 	return landed(err, &p.withheld)
+}
+
+// redRead reports a success-event runner call whose status a pipe hid and
+// whose output read red (summary_fail, or a fail_line), the call the steer
+// step treats as a failure event's (MASKED-OUTCOME1). It is a hint: verify's
+// readsOutput and regressedHere decide whether the red counts, so a kind the
+// table reads but verify does not decide on raises nothing.
+func redRead(rec *store.Execution) bool {
+	if rec.Outcome != store.ExecOK || rec.RunnerDigest == nil || rec.StatusMasked == nil || rec.GateOutput == nil {
+		return false
+	}
+	k := rec.GateOutput.Kind
+	return k == "summary_fail" || k == "fail_line"
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

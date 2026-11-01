@@ -243,7 +243,7 @@ func TestSR1y_TheStepAndTheRulesShareOnePost(t *testing.T) {
 		t.Helper()
 		f := newSRFix(t, doc)
 		p := f.call("toolu_b", "Bash", both, 0)
-		if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
+		if !steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore) {
 			t.Fatal("premise: the step does not fire for a line naming .claude/rashomon")
 		}
 		_, view, ok := p.judge(stEnv(0))
@@ -269,7 +269,7 @@ func TestSR1y_TheStepAndTheRulesShareOnePost(t *testing.T) {
 	edit := map[string]any{"file_path": filepath.Join(g.cwd, "db", "migrations", "001.sql"),
 		"old_string": "a", "new_string": "see .claude/rashomon/spec.json"}
 	p := g.call("toolu_m", "Edit", edit, 0)
-	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
+	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore) {
 		t.Fatal("premise: the step does not fire for an input naming .claude/rashomon")
 	}
 	records := filepath.Join(g.st.RunDir(stSession), store.FileRecords)

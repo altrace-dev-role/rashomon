@@ -158,21 +158,26 @@ func TestST_StepsIsTheTriggerTable(t *testing.T) {
 		event  string
 		seq    int64
 		runner bool
+		red    bool
 		store  bool
 		want   bool
 	}{
-		{FailureEvent, 7, true, false, true},
-		{"PostToolUse", 7, true, false, false},
-		{FailureEvent, 0, true, false, false},
-		{FailureEvent, 7, false, false, false},
-		{"", 7, true, false, false},
-		{"PostToolUse", 7, false, true, true},
-		{FailureEvent, 7, false, true, true},
-		{"PostToolUse", 0, false, true, false},
-		{"", 7, false, true, false},
+		{FailureEvent, 7, true, false, false, true},
+		{"PostToolUse", 7, true, false, false, false},
+		{FailureEvent, 0, true, false, false, false},
+		{FailureEvent, 7, false, false, false, false},
+		{"", 7, true, false, false, false},
+		{"PostToolUse", 7, false, false, true, true},
+		{FailureEvent, 7, false, false, true, true},
+		{"PostToolUse", 0, false, false, true, false},
+		{"", 7, false, false, true, false},
+		// a piped runner whose output read red steps at PostToolUse alone.
+		{"PostToolUse", 7, true, true, false, true},
+		{"PostToolUse", 0, true, true, false, false},
+		{"", 7, true, true, false, false},
 	} {
-		if got := steps(tc.event, tc.seq, tc.runner, tc.store); got != tc.want {
-			t.Errorf("steps(%q, %d, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.store, got, tc.want)
+		if got := steps(tc.event, tc.seq, tc.runner, tc.red, tc.store); got != tc.want {
+			t.Errorf("steps(%q, %d, %v, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.red, tc.store, got, tc.want)
 		}
 	}
 }
