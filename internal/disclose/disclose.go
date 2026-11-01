@@ -461,7 +461,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), whether the hook could not read where its line started because of a leading cd it does not read (location_unread, one bit, present only when true), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; at record scope v5 only, the scope every consent from this build records, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, and the SHA-256 of the file an edit names as the call left it (content_sha256), which record scope v4, a store with no consent from this build, withholds",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), whether the hook could not read where its line started because of a leading cd it does not read (location_unread, one bit, present only when true), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; where a call matched a forbid_command rule of the spec it was judged against, a spec_event with the rule's id, the content digest of the spec file that declared it, the hook event and the seq the call's execution landed at; at record scope v5 only, the scope every consent from this build records, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, and the SHA-256 of the file an edit names as the call left it (content_sha256), which record scope v4, a store with no consent from this build, withholds",
 			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text (this build leaves the command field null at every record scope)",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
@@ -545,17 +545,18 @@ func runSegmentFiles() []FileRule {
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's
-// recap reads and writes (verify.IndexPath, card 2.4), and its replacement.
-// Like recordScopeFiles, they sit apart from defaultFiles for Law 10.
+// recap reads and writes (verify.IndexPath, card 2.4), and its replacement,
+// then the checkpoint file's (checkpointFiles). Like recordScopeFiles, they
+// sit apart from defaultFiles for Law 10.
 func indexFiles() []FileRule {
 	const base = verify.DirName + "/" + verify.ProjectsDir
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       base,
 			Pattern:    baseline.FilePattern,
 			Mode:       "0600",
 			Purpose:    "one project's index of the test and build commands its sessions have run, so a command two sessions ran in thirty days is required before a turn reads verified",
-			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen; and the last and prior checkpoints (last, prior), each the session id, the point seq and when it was recorded, written at every Stop",
+			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen",
 			NeverHolds: "a command's arguments or output, or anything about a call beyond its family",
 			RemovedBy:  "eviction of the least recently seen families at 64 KiB; purge",
 			Owner:      "verify",
@@ -570,7 +571,7 @@ func indexFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over the index); purge",
 			Owner:      "verify",
 		},
-	}
+	}, checkpointFiles()...)
 }
 
 // recordScopeFiles is the inventory's rows for the record_scope marker and
