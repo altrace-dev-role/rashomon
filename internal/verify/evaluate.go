@@ -128,7 +128,7 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 	}
 	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)
 	snap.SpecVerdicts = ruleVerdicts(sp, run, picked, c, &snap, sp != nil && wroteIn(writes, at))
-	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved)+bindingViolations(snap.SpecVerdicts))
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreenOf(&snap)
 	return snap
 }
 
@@ -190,6 +190,21 @@ func projectRoot(decls []store.Declaration, at int64) string {
 		return ""
 	}
 	return *root
+}
+
+// recordFindings is the snapshot's record findings: its unresolved integrity
+// checks and its binding rules' violations, the k of the findings row and
+// the count recordGreen takes.
+func recordFindings(snap *Snapshot) int {
+	return len(snap.Integrity.Unresolved) + bindingViolations(snap.SpecVerdicts)
+}
+
+// recordGreenOf is recordGreen over the snapshot's gates and its record
+// findings: the one reading evaluate and pinRequired (the replay's pinned
+// Required) both take, so the live Stop and the ledger count the same thing
+// (#173 F4, card SPEC-RULES-STOP1).
+func recordGreenOf(snap *Snapshot) (bool, *int64) {
+	return recordGreen(snap.Gates, recordFindings(snap))
 }
 
 // recordGreen is whether the record backs a "done" at the point (D36): no
@@ -414,7 +429,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	case advisory:
 		s.Sentence = sentenceAdvisoryOnly
 	case row == RowFindings:
-		s.Sentence = findingsSentence(len(snap.Integrity.Unresolved) + bindingViolations(snap.SpecVerdicts))
+		s.Sentence = findingsSentence(recordFindings(&snap))
 	}
 	return s
 }

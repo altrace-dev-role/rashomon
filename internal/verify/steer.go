@@ -26,6 +26,17 @@ type SteerView struct {
 	ProjectRoot string
 	Dropped     int
 	Spec        *SpecInfo
+	// Hits are the forbid_command rules the call matched at either post
+	// event (RulesAtCall), which the hook keeps as spec_event rule_hit
+	// records before Route (card SPEC-RULES-STOP1).
+	Hits []RuleHit
+}
+
+// RuleHit is a forbid_command rule a call matched: the rule's declared id
+// and the content digest of the spec file that declared it.
+type RuleHit struct {
+	RuleID       string
+	SourceDigest string
 }
 
 // SteerAt evaluates run at pt once and returns the steer view of the call
