@@ -325,4 +325,11 @@ func TestRubricTEST1_ShapeSeeds(t *testing.T) {
 			checkLabel(t, tool, raw)
 		}
 	}
+	// FuzzCommands' seed 6a2d8de6f879b780: an invalid byte decodes to
+	// U+FFFD's three, so the cap holds on the decoded line, not only on the
+	// encoded one.
+	raw := []byte("{\"command\": \"git push --force or\xff\x00in main\"}")
+	if got, ok := CommandLine("Bash", raw, 29); ok && len(got) > 29 {
+		t.Fatalf("CommandLine(Bash, %q, 29) gave %d bytes, over the cap", raw, len(got))
+	}
 }
