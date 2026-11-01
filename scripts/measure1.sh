@@ -22,7 +22,18 @@
 # A task directory holds repo/ (a git repository), base and fix (one commit
 # id each), issue.txt, optionally prompts.txt (one prompt per paragraph;
 # default three), FAIL_TO_PASS ("<package> <Test>" per line) and PASS_TO_PASS
-# (one package per line).
+# (one package per line). An optional RUNNER file says which oracle judges
+# the task: go (the default, so a task without one is as it was) or pytest.
+# A pytest task's FAIL_TO_PASS and PASS_TO_PASS lines are pytest node ids
+# (tests/test_x.py::test_y, or a test file for PASS_TO_PASS); its oracle is
+# `python3 -m pytest --junitxml`, no plugins, read by measure1_check.py
+# pyoracle into the events go test -json gives, so `check oracle` scores
+# either. The fix's test files are copied by pytest's convention (test_*.py,
+# *_test.py, conftest.py) rather than *_test.go. Toolchain: M/bin/python3
+# is the python3 found at prepare, and the python3 and pytest versions are
+# printed with G2 and frozen in the pre-registration; unlike the Go path
+# there is no module cache to freeze, so the Python packages are the host's
+# (not hermetic: a pytest task is as reproducible as the versions recorded).
 #
 # The driver runs Claude Code and go; the binary under test only records and
 # reads. MEASURE1_CLAUDE, MEASURE1_TMUX and MEASURE1_POLICY_DIR replace the
@@ -70,6 +81,15 @@ prepare() {
 	chmod 755 "$M/bin/rashomon"
 	ln -sf "$(command -v go)" "$M/bin/go"
 	ln -sf "$(command -v git)" "$M/bin/git"
+	# python3 and pytest by wrapper, not symlink: a venv's python3 finds its
+	# packages from where it is called, so a link elsewhere would lose them.
+	local py
+	py=$(command -v python3 || true)
+	if [ -n "$py" ]; then
+		printf '#!/bin/sh\nexec %q "$@"\n' "$py" >"$M/bin/python3"
+		printf '#!/bin/sh\nexec %q -m pytest "$@"\n' "$py" >"$M/bin/pytest"
+		chmod 755 "$M/bin/python3" "$M/bin/pytest"
+	fi
 	printf '[user]\n\tname = measure1\n\temail = measure1@example.invalid\n' >"$M/gitconfig"
 	"$M/bin/rashomon" measure --prepare --home "$M/tpl/store"
 	cat <<EOF
@@ -241,6 +261,31 @@ session() {
 	"$tmux" -S "$a/tmux.sock" kill-server 2>/dev/null || true
 }
 
+# taskrunner sets runner from the task's RUNNER file (go when absent).
+taskrunner() {
+	runner=go
+	if [ -f "$task/RUNNER" ]; then runner=$(tr -d ' \t\r\n' <"$task/RUNNER"); fi
+	case $runner in go | pytest) ;; *) die "$task: RUNNER is $runner: go or pytest" ;; esac
+}
+
+# pyversions sets PY_V and PYT_V from M/bin/python3, or refuses.
+pyversions() {
+	[ -x "$M/bin/python3" ] || die "$runner: $M has no python3: run prepare with python3 on PATH"
+	PY_V=$("$M/bin/python3" -c 'import platform; print(platform.python_version())' 2>&1) || die "$runner: $M/bin/python3 does not run: $PY_V"
+	PYT_V=$("$M/bin/python3" -c 'import pytest; print(pytest.__version__)' 2>&1) || die "$runner: pytest is not importable by $M/bin/python3: install it (pip install pytest)"
+}
+
+# specs sets F2P and P2P, the files check oracle reads: the task's own for go,
+# the derived "<file> <tail>" and file lines for pytest.
+specs() {
+	F2P=$task/FAIL_TO_PASS P2P=$task/PASS_TO_PASS
+	if [ "$runner" = pytest ]; then
+		F2P=$O/f2p P2P=$O/p2p
+		check pyspec f2p "$task/FAIL_TO_PASS" >"$F2P" || die "G2: FAIL_TO_PASS is not a list of pytest node ids"
+		check pyspec p2p "$task/PASS_TO_PASS" >"$P2P" || die "G2: PASS_TO_PASS is not a list of pytest node ids or files"
+	fi
+}
+
 g0() {
 	[ -n "$claude" ] || die "G0: no claude found: set MEASURE1_CLAUDE to its absolute path"
 	case $claude in /*) ;; *) die "G0: claude must be an absolute path, not $claude" ;; esac
@@ -254,6 +299,11 @@ g0() {
 		say "G0 note: $PIN is below $PRFLOOR; PostToolUseFailure notes are not delivered, so the steer arm gets no regression notes"
 	fi
 	GO_V=$("$M/bin/go" version)
+	PYKV=()
+	if [ "$runner" = pytest ]; then
+		pyversions
+		PYKV=("python=$PY_V" "pytest=$PYT_V")
+	fi
 	BIN_SHA=$(shasum -a 256 "$M/bin/rashomon" | awk '{print $1}')
 	local f
 	for f in managed-settings.json managed-mcp.json CLAUDE.md; do
@@ -264,10 +314,11 @@ g0() {
 	git -C "$here/.." grep -n -e 'EnvSteerArm' -e 'armOff(' -e 'systemMessage' -- cmd internal \
 		>"$M/out/arm-sites.txt" 2>/dev/null || deviation "arm-read sites not listed: $here/.. is not a git tree"
 	check prereg "$M/out/prereg.json" "claude=$CLAUDE_V" "claude_path=$claude" "go=$GO_V" "rashomon_sha256=$BIN_SHA" \
-		"model=$model" "order=$order" "reps=$reps" "limit=$limit" "allowed=$allowed" "base=$base" "fix=$fix" \
+		"model=$model" "order=$order" "reps=$reps" "limit=$limit" "allowed=$allowed" "base=$base" "fix=$fix" "runner=$runner" ${PYKV[@]+"${PYKV[@]}"} \
 		"tree=$(git -C "$here/.." rev-parse HEAD 2>/dev/null || echo unknown)" "at=$(date '+%Y-%m-%dT%H:%M:%S%z')" \
 		-- "$task/issue.txt" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" "$M"/prompt-*.txt "$M/control-prompt.txt" "$M/out/arm-sites.txt"
 	say "G0 claude $CLAUDE_V at $claude (pinned); $GO_V; rashomon $BIN_SHA; no managed policy"
+	if [ "$runner" = pytest ]; then say "G0 runner pytest: python $PY_V, pytest $PYT_V (from $M/bin/python3; the packages are the host's, not frozen)"; fi
 	local dropped
 	dropped=$(env | grep -E -o '^(ANTHROPIC_[A-Z_]*|CLAUDE[A-Z_]*|RASHOMON_[A-Z_]*|[A-Za-z_]*_PROXY)=' | tr -d '=' | sort | tr '\n' ' ' || true)
 	say "G1 dropped from every arm: ${dropped:-nothing}"
@@ -386,17 +437,26 @@ g2() {
 	mkdir "$O/base" "$O/ref"
 	git -C "$task/repo" archive "$base" | tar -x -C "$O/base"
 	git -C "$task/repo" archive "$fix" | tar -x -C "$O/ref"
-	git -C "$task/repo" diff --name-only --diff-filter=AM "$base" "$fix" -- '*_test.go' >"$O/added"
+	if [ "$runner" = pytest ]; then
+		pyversions
+		say "G2 runner pytest: python $PY_V, pytest $PYT_V"
+		git -C "$task/repo" diff --name-only --diff-filter=AM "$base" "$fix" -- 'test_*.py' '*/test_*.py' '*_test.py' conftest.py '*/conftest.py' >"$O/added"
+	else
+		git -C "$task/repo" diff --name-only --diff-filter=AM "$base" "$fix" -- '*_test.go' >"$O/added"
+	fi
 	[ -s "$O/added" ] || die "G2: the fix adds no test file"
-	(cd "$O/ref" && GOMODCACHE="$M/modcache" GOFLAGS=-mod=mod "$M/bin/go" mod download) ||
-		die "G2: go mod download failed"
-	chmod -R a-w "$M/modcache"
+	if [ "$runner" = go ]; then
+		(cd "$O/ref" && GOMODCACHE="$M/modcache" GOFLAGS=-mod=mod "$M/bin/go" mod download) ||
+			die "G2: go mod download failed"
+		chmod -R a-w "$M/modcache"
+	fi
+	specs
 	cp -R "$O/base" "$O/red"
 	while IFS= read -r f; do mkdir -p "$O/red/$(dirname "$f")" && cp "$O/ref/$f" "$O/red/$f"; done <"$O/added"
 	oracle "$O/red" "$O/red.json"
-	check oracle "$O/red.json" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" red
+	check oracle "$O/red.json" "$F2P" "$P2P" red
 	oracle "$O/ref" "$O/ref.json"
-	check oracle "$O/ref.json" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" green
+	check oracle "$O/ref.json" "$F2P" "$P2P" green
 	cp "$O/red.json" "$O/ref.json" "$M/out/"
 }
 
@@ -404,6 +464,7 @@ g2() {
 # package, under the arms' module rules.
 oracle() {
 	local dir=$1 out=$2 names pkgs
+	if [ "$runner" = pytest ]; then pyoracle "$dir" "$out"; return; fi
 	names=$(awk '{print $2}' "$task/FAIL_TO_PASS" | paste -sd'|' -)
 	pkgs=$(awk '{print $1}' "$task/FAIL_TO_PASS" | sort -u | tr '\n' ' ')
 	(cd "$dir" && GOMODCACHE="$M/modcache" GOFLAGS=-mod=readonly GOPROXY=off GOTOOLCHAIN=local GOENV=off \
@@ -411,6 +472,25 @@ oracle() {
 	[ -s "$task/PASS_TO_PASS" ] || return 0
 	(cd "$dir" && GOMODCACHE="$M/modcache" GOFLAGS=-mod=readonly GOPROXY=off GOTOOLCHAIN=local GOENV=off \
 		GOCACHE="$M/oracle-gocache" "$M/bin/go" test -count=1 -json $(tr '\n' ' ' <"$task/PASS_TO_PASS") >>"$out" 2>>"$out.stderr") || true
+}
+
+# pyoracle runs the task's pytest node ids in DIR with the pinned python3:
+# python3 -m pytest --junitxml, no plugins (the cache provider off, third-party
+# plugins not autoloaded), collection errors not stopping the other files;
+# measure1_check.py pyoracle writes the events go test -json would, one JSON
+# line each, to OUT. pytest's own output and exit status stay in OUT.pytest
+# and OUT.stderr: a pytest that wrote no junit leaves OUT empty and so
+# fails G2 on its own.
+pyoracle() {
+	local dir=$1 out=$2 ids=() l
+	while IFS= read -r l; do
+		if [ -n "$l" ]; then ids+=("$l"); fi
+	done < <(cat "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS")
+	rm -f "$out.xml"
+	(cd "$dir" && env -u PYTHONPATH -u PYTEST_ADDOPTS -u PYTEST_PLUGINS PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+		"$M/bin/python3" -m pytest -p no:cacheprovider --continue-on-collection-errors -q --junitxml="$out.xml" \
+		"${ids[@]}" >"$out.pytest" 2>"$out.stderr") || true
+	check pyoracle "$out.xml" "$dir" >"$out"
 }
 
 run() {
@@ -436,6 +516,7 @@ run() {
 	fix=$(cat "$task/fix")
 	ARMS=()
 	trap cleanup EXIT
+	taskrunner
 	prompts
 	g0
 	g2
@@ -472,8 +553,8 @@ report() {
 		while IFS= read -r f; do mkdir -p "$scratch/$(dirname "$f")" && cp "$O/ref/$f" "$scratch/$f"; done <"$O/added"
 		oracle "$scratch" "$M/out/$label.oracle.json"
 		rm -rf "$scratch"
-		check oracle "$M/out/$label.oracle.json" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" score | sed "s/^measure1: /measure1: G4 $label: /"
-		check oracle "$M/out/$label.oracle.json" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" green >/dev/null || both=0
+		check oracle "$M/out/$label.oracle.json" "$F2P" "$P2P" score | sed "s/^measure1: /measure1: G4 $label: /"
+		check oracle "$M/out/$label.oracle.json" "$F2P" "$P2P" green >/dev/null || both=0
 	done
 	: >"$M/out/pairs.txt"
 	for rep in $(seq 1 "$reps"); do
@@ -525,6 +606,7 @@ task)
 	task=$(cd "$4" && pwd)
 	base=$(cat "$task/base")
 	fix=$(cat "$task/fix")
+	taskrunner
 	g2
 	say "G2 the task holds: FAIL_TO_PASS red on base, the reference green"
 	;;
