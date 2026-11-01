@@ -283,33 +283,36 @@ jobs:
   # A job of its own so that its bound is its own: sharing Test's would cancel
   # the sweep once it outgrew a bound sized for tests that take minutes.
   #
-  # Three shards (sweep.py --shard K/3), each a runner of its own under the
-  # 300-minute bound. The arithmetic is run 40960774628's, which ran one job
-  # to the bound and was cancelled: the baseline took 15 minutes (21:48 to
-  # 22:03), the bound ended at 02:48, and 1,909 mutants were judged in the
-  # 285 minutes between, 8.96 s a mutant, not the 4 s this comment used to
-  # say. The tree now holds 3,830 mutants: one job is 3,830 x 8.96 s = 572
-  # minutes plus the baseline, 587; two shards are 1,915 x 8.96 s = 286
-  # plus 15, 301, over the bound before any growth; three are 1,277 x 8.96 s
-  # = 191 plus 15, 206 minutes, and the bound holds up to about 5,700
-  # mutants before they need a fourth. Mutants are dealt round-robin in load
-  # order, so every shard samples every area; the shards are disjoint and
-  # their union is the whole sweep. Each shard fails on its own undetected
-  # mutants, so the sweep passes only when all three do; fail-fast is off so
-  # one red shard does not cancel the others' verdicts.
+  # Eight shards (sweep.py --shard K/8), each a runner of its own, sized for
+  # a shard to finish in under 150 minutes on the slowest runner measured,
+  # well inside the 300-minute bound. The arithmetic is ten shard logs of
+  # five three-shard dispatches on 10-31 and 11-01 (runs 41235993315,
+  # 41269753304, 41271335222, 41272115102, 41273244963), 1,426 to 1,432
+  # mutants a shard: each shard's baseline took 19 to 26 minutes, and its
+  # mutants 7.48 to 11.03 s each, so three shards ran 197 to 289 minutes,
+  # one slow runner from the bound. The tree holds 4,289 mutants (731abf05).
+  # At the slowest rate and baseline, six shards are 715 x 11.03 s = 131
+  # minutes plus 26, 157, over 150 already; eight are 537 x 11.03 s = 99
+  # plus 26, 125, and stay under 150 up to about 5,390 mutants (674 a
+  # shard). Runner minutes are not the constraint: no shard of those runs
+  # waited more than 12 s for a runner. Mutants are dealt round-robin in
+  # load order, so every shard samples every area; the shards are disjoint
+  # and their union is the whole sweep. Each shard fails on its own
+  # undetected mutants, so the sweep passes only when all eight do;
+  # fail-fast is off so one red shard does not cancel the others' verdicts.
   sweep:
-    name: Mutation sweep (shard ${{ matrix.shard }}/3)
+    name: Mutation sweep (shard ${{ matrix.shard }}/8)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     # Two manual dispatches share no state and would only waste a second
     # runner's minutes side by side; cancelling the older one when a newer
     # dispatch starts is strictly better than letting both run to the end.
-    # The shard is part of the group: the three shards of one dispatch must
+    # The shard is part of the group: the shards of one dispatch must
     # not cancel one another.
     concurrency:
       group: sweep-${{ github.ref }}-${{ matrix.shard }}
@@ -333,7 +336,7 @@ jobs:
           sudo setcap cap_sys_admin+ep "$(command -v unshare)"
 
       - name: Mutation sweep
-        run: python3 test/mutation/sweep.py --strict --shard ${{ matrix.shard }}/3
+        run: python3 test/mutation/sweep.py --strict --shard ${{ matrix.shard }}/8
 
   # Every fuzz target in the tree, 30 seconds each. The Test job runs their
   # seed corpora as plain tests; this is the part that looks for new inputs.
@@ -712,7 +715,7 @@ jobs:
 
   # The mutants only macOS can judge: the ones declaring platform="darwin"
   # (their judging tests skip off darwin) and the ones whose target builds on
-  # darwin and not on linux (sync_darwin.go). The three ubuntu shards report
+  # darwin and not on linux (sync_darwin.go). The eight ubuntu shards report
   # them NOT JUDGED (platform), which does not fail them, so before this job
   # nothing in CI judged them. 20 rows at about 9 s each is 180 s, about 3
   # minutes, plus the baseline of about 15 minutes, under 20 minutes; the
