@@ -1,6 +1,7 @@
 package store
 
 import (
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -67,6 +68,36 @@ func TestSRS1g_AReaderPassesOverWhatItCannotRead(t *testing.T) {
 	}
 	if !AcceptsKind(TypeSpecEvent, EventSchemaVersion) || AcceptsKind(TypeSpecEvent, EventSchemaVersion-1) {
 		t.Error("AcceptsKind: spec_event is read at EventSchemaVersion only")
+	}
+}
+
+// TestSRS1j_ATornHitIsAGapAndTheNextAppendHeals: a rule_hit killed
+// mid-write leaves a fragment with no newline. The next hit starts a line of
+// its own, and the reader counts the fragment Skipped, which the Stop reads
+// as an incomplete recording (TestVER31_SkippedLinesAreIncomplete), so a lost
+// hit never reads green.
+func TestSRS1j_ATornHitIsAGapAndTheNextAppendHeals(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := "sha256:" + strings.Repeat("11", 32)
+	if err := st.AppendRecord("s1", NewRuleHit("s1", "PostToolUse", "spec:no-force", digest, 1, 1000)); err != nil {
+		t.Fatal(err)
+	}
+	appendRaw(t, filepath.Join(st.RunDir("s1"), FileRecords), []byte(`{"type":"spec_event","schema_version":5,"critical":true,"seq":2`))
+	if err := st.AppendRecord("s1", NewRuleHit("s1", "PostToolUseFailure", "spec:no-force", digest, 3, 1001)); err != nil {
+		t.Fatal(err)
+	}
+	if lines := recordLines(t, st, "s1"); len(lines) != 3 || !strings.HasPrefix(lines[2], `{"type":"spec_event",`) {
+		t.Fatalf("records.ndjson %q, want the fragment on a line of its own and the second hit after it", lines)
+	}
+	run, err := st.ReadRunConsistent("s1", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Skipped != 1 || len(run.SpecEvents) != 2 || run.SpecEvents[1].LandedSeq != 3 {
+		t.Errorf("read %d skipped and spec events %+v, want 1 and both hits", run.Skipped, run.SpecEvents)
 	}
 }
 

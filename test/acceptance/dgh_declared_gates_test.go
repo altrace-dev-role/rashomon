@@ -69,10 +69,10 @@ func (e *env) trust(path string) {
 }
 
 // dghCall runs one call of the session in dir, hook then post, and returns
-// the post's stdout.
-func (e *env) dghCall(dir, id, tool string, input map[string]any) string {
+// the post's stdout. extraEnv follows the steer defaults and wins.
+func (e *env) dghCall(dir, id, tool string, input map[string]any, extraEnv ...string) string {
 	e.t.Helper()
-	envs := []string{stAgent, "CI="}
+	envs := append([]string{stAgent, "CI="}, extraEnv...)
 	extra := map[string]any{"cwd": dir}
 	if res := e.hook(stPayload(e.t, "PreToolUse", id, tool, input, extra), envs...); res.exitCode != 0 || res.stdout != "" {
 		e.t.Fatalf("hook %s: exit %d, stdout %q, stderr %q", id, res.exitCode, res.stdout, res.stderr)
@@ -219,9 +219,10 @@ const dgh5Spec = `{"rashomon_spec": 1,
 
 // dghFailedCall runs one call of the session in dir whose tool failed with
 // exit, hook then a PostToolUseFailure post, and returns the post's stdout.
-func (e *env) dghFailedCall(dir, id, tool string, input map[string]any, exit int) string {
+// extraEnv follows the steer defaults and wins.
+func (e *env) dghFailedCall(dir, id, tool string, input map[string]any, exit int, extraEnv ...string) string {
 	e.t.Helper()
-	envs := []string{stAgent, "CI="}
+	envs := append([]string{stAgent, "CI="}, extraEnv...)
 	if res := e.hook(stPayload(e.t, "PreToolUse", id, tool, input, map[string]any{"cwd": dir}), envs...); res.exitCode != 0 || res.stdout != "" {
 		e.t.Fatalf("hook %s: exit %d, stdout %q, stderr %q", id, res.exitCode, res.stdout, res.stderr)
 	}
