@@ -495,6 +495,18 @@
           "symbol": "ruleHitSeqs"
         },
         {
+          "file": "internal/verify/rules_order.go",
+          "symbol": "afterHits"
+        },
+        {
+          "file": "internal/verify/rules_order_test.go",
+          "symbol": "TestSR1v_TheJudgeReadsHitsNotAfterLines"
+        },
+        {
+          "file": "test/acceptance/spr1_order_hook_test.go",
+          "symbol": "TestSPR1a_AnAfterCallLeavesAHitAndAThenWithOneIsMet"
+        },
+        {
           "file": "internal/verify/evaluate.go",
           "symbol": "recordGreenOf"
         },
@@ -516,7 +528,7 @@
         }
       ],
       "id": "PF-PG8",
-      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path, require_evidence or order rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
+      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path, require_evidence or order rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line, and an order rule from the after_hit records the post keeps of its After calls (exit status, foreground flag, directory digest, no command text), never an After call's line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
       "integration": [
         {
           "event": "Stop",
@@ -525,7 +537,7 @@
       ],
       "missing": [
         "forbid_code is undecided (content not read), so it cannot block record-green until an edit's content is read (EDITMARKS-WIRE1, issue #207)",
-        "order is decided only over command lines the record holds: no hook writes Declaration.Command yet, so a live session's order rows read unknown and raise nothing",
+        "an order rule is judged live at the Then call's post, from the call's own line in memory and the after_hit records of the After calls (#216 ruling 1), but the Stop reads the Then from command lines the record holds and no hook writes Declaration.Command yet, so a live session's order rows read unknown at the Stop; an After whose after_hit was lost reads undecided only where its line is recorded, and a Then with no hit under withheld lines is a violation at the post",
         "the ledger's all-met state (PF-PG5)"
       ],
       "planned_pr": "",
