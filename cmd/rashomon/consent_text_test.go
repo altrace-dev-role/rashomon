@@ -26,16 +26,17 @@ var bareCommand = regexp.MustCompile(`rashomon ([a-z][a-z.-]*)`)
 // word fails TestTRU2c_ until it is added here, so a verb main lacks cannot
 // pass as prose.
 var proseAfterRashomon = map[string]bool{
-	"adds": true, "binary": true, "copy": true, "does": true, "gave": true, "itself": true,
-	"keeps": true, "never": true, "reads": true, "record": true, "records": true, "sends": true,
-	"told": true,
+	"adds": true, "binary": true, "copy": true, "does": true, "gave": true, "is": true,
+	"itself": true, "keeps": true, "never": true, "reads": true, "record": true, "records": true,
+	"sends": true, "told": true,
 }
 
 // TestTRU2c_ScreenAndWatchNameOnlyCommandsMainDispatches: every command the
-// consent screen's paragraphs, its unit screens, its closing table and the
-// prints of watch and consent name is a verb run dispatches, and every flag
-// or sub-command it carries is a word of that verb's lines on the usage
-// screen. The same sweep arguments_test runs over the README's table, here
+// consent screen's paragraphs, its unit screens, its closing table, the
+// short screen's (CONSENT-SHORT1), the plugin's description and first-session
+// lines (PLUGIN-CONSENT1) and the prints of watch and consent name is a verb
+// run dispatches, and every flag or sub-command it carries is a word of that
+// verb's lines on the usage screen. The same sweep arguments_test runs over the README's table, here
 // over the text a person agrees to.
 func TestTRU2c_ScreenAndWatchNameOnlyCommandsMainDispatches(t *testing.T) {
 	verbs, usage := dispatchedVerbs(t), usageWords(t)
@@ -53,7 +54,12 @@ func TestTRU2c_ScreenAndWatchNameOnlyCommandsMainDispatches(t *testing.T) {
 	for _, c := range consent.Commands {
 		texts["closing command "+c.Does] = "`" + c.Run + "`"
 	}
-	for _, file := range []string{"watch.go", "consent.go"} {
+	for _, c := range consent.ShortCommands {
+		texts["short screen command "+c.Does] = "`" + c.Run + "`"
+	}
+	texts["plugin description"] = disclose.PluginDescription
+	texts["plugin first-session lines"] = pluginLead("/opt/plugin/bin/rashomon-darwin-arm64")
+	for _, file := range []string{"watch.go", "consent.go", "plugin_consent.go"} {
 		for i, s := range stringLiterals(t, file) {
 			texts[file+" string "+strconv.Itoa(i)] = s
 		}

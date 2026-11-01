@@ -17,6 +17,9 @@ const (
 	// when the consent on file is for an older scope. Slots: {version},
 	// {scope}, {current}.
 	CiteChangedSince = "variant:changed_since"
+
+	// CiteShort is the short screen's text (CONSENT-SHORT1).
+	CiteShort = "screen:short"
 )
 
 // Paragraph owners: the layer whose capability a paragraph discloses.
