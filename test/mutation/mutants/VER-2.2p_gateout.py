@@ -32,9 +32,9 @@ m("VER-2.2p Jest pass pattern removed", "internal/gateout/tables.go",
 m("VER-2.2p Jest fail pattern removed", "internal/gateout/tables.go",
   "fail: compile(`^Tests:.*\\d+ failed`)", "fail: nil", "TestGO5_")
 m("VER-2.2p Vitest pass pattern removed", "internal/gateout/tables.go",
-  "pass: compile(`^Tests\\s+.*\\d+ passed`)", "pass: nil", "TestGO7_")
+  "pass: compile(`^\\s*Tests\\s+.*\\d+ passed`)", "pass: nil", "TestGO7_")
 m("VER-2.2p Vitest fail pattern removed", "internal/gateout/tables.go",
-  "fail: compile(`^Tests\\s+.*\\d+ failed`)", "fail: nil", "TestGO7_")
+  "fail: compile(`^\\s*Tests\\s+.*\\d+ failed`)", "fail: nil", "TestGO7_")
 m("VER-2.2p Cargo pass pattern removed", "internal/gateout/tables.go",
   "pass: compile(`^test result: ok`)", "pass: nil", "TestGO6_")
 m("VER-2.2p Cargo fail pattern removed", "internal/gateout/tables.go",
@@ -50,8 +50,8 @@ m("VER-2.2p Jest pass and fail exchanged", "internal/gateout/tables.go",
   "pass: compile(`^Tests:.*\\d+ passed`), fail: compile(`^Tests:.*\\d+ failed`)",
   "pass: compile(`^Tests:.*\\d+ failed`), fail: compile(`^Tests:.*\\d+ passed`)", "TestGO5_")
 m("VER-2.2p Vitest pass and fail exchanged", "internal/gateout/tables.go",
-  "pass: compile(`^Tests\\s+.*\\d+ passed`), fail: compile(`^Tests\\s+.*\\d+ failed`)",
-  "pass: compile(`^Tests\\s+.*\\d+ failed`), fail: compile(`^Tests\\s+.*\\d+ passed`)", "TestGO7_")
+  "pass: compile(`^\\s*Tests\\s+.*\\d+ passed`), fail: compile(`^\\s*Tests\\s+.*\\d+ failed`)",
+  "pass: compile(`^\\s*Tests\\s+.*\\d+ failed`), fail: compile(`^\\s*Tests\\s+.*\\d+ passed`)", "TestGO7_")
 m("VER-2.2p Cargo pass and fail exchanged", "internal/gateout/tables.go",
   "pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \\d+ targets? failed`)",
   "pass: compile(`^test result: FAILED`, `^error: test failed`, `^error: \\d+ targets? failed`), fail: compile(`^test result: ok`)", "TestGO6_")
@@ -72,7 +72,7 @@ m("VER-2.2p fail line loses to pass", "internal/gateout/gateout.go",
 m("VER-2.2p empty is not recognized before pass", "internal/gateout/gateout.go",
   "if matches(row.empty, line) {", "if false && matches(row.empty, line) {", "TestGO14_")
 m("VER-2.2p delegate does not scan other rows", "internal/gateout/gateout.go",
-  "if delegate {\n\t\trow = nil\n\t}", "if delegate {\n\t\trow = findProgram(program)\n\t}", "TestGO7_")
+  "\t\trow, counted = nil, signedRows(text, wrapper)\n", "\t\tcounted = signedRows(text, wrapper)\n", "TestGO7_")
 m("VER-2.2p build output is scanned", "internal/gateout/gateout.go",
   "if kind == \"build\" {\n\t\treturn store.GateOutput{Kind: \"no_summary\", Parser: program}\n\t}",
   "if false {\n\t\treturn store.GateOutput{Kind: \"no_summary\", Parser: program}\n\t}", "TestGO16_")

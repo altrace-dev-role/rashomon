@@ -143,9 +143,13 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 // the exit status (outcome_from output_summary, D229): readsOutput let in
 // only summary_fail, or a fail line for a runner whose table has no summary
 // form, so a FAIL substring a pipe happened to keep is never one. The run's
-// exit status is then the pipe's own and no code is named.
+// exit status is then the pipe's own and no code is named. A run read in a
+// wrapper (WRAPPER-RUN1), red or green, is neither: the output rows say a
+// pipe hid the status and the exit rows would give the gate the wrapper's
+// exit, and no row says it ran in a wrapper (WRAPPER-RED-STEP1 adds one).
 func regressedHere(g *GateState, toolUseID string) bool {
-	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {
+	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID ||
+		g.LastRun.Wrapped != WrapNone || g.LastGreen.Wrapped != WrapNone {
 		return false
 	}
 	switch g.Reason {
@@ -203,9 +207,10 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, de
 // that left the green behind raises it, and the writes after it are quiet.
 // A write carries its declaration's seq (appendWrites), never the point's,
 // which is the execution's, so the call is matched by its declaration. A
-// moved tree is no reason here: a per-call point carries no Tree.
+// moved tree is no reason here: a per-call point carries no Tree. A green
+// read in a wrapper raises none, as in regressedHere (WRAPPER-RUN1).
 func staleHere(g *GateState, writes []write, decl int64) bool {
-	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil {
+	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil || g.LastGreen.Wrapped != WrapNone {
 		return false
 	}
 	lo := g.LastGreen.Seq

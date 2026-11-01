@@ -45,6 +45,11 @@ type gateRun struct {
 	// whose gate_output says pass, fail or empty. Beside KindRecorded, in the
 	// same word of padding.
 	FromOutput bool
+	// Wrapped: a declared gate bound the run by its output's parser, not by
+	// its line (wrapped, WRAPPER-RUN1): its outcome is the output's, and the
+	// call's exit status never makes it red. Set only on the gate's copy of
+	// the run; one byte in the same padding.
+	Wrapped bool
 	// KindRecorded: Kind is the record's runner_kind, not inferred. Beside
 	// Backgrounded, so the two bools share one word of padding.
 	KindRecorded bool

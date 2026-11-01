@@ -11,3 +11,13 @@ func GateRun(runnerDigest, statusMasked *string, verbClass string) bool {
 	return runnerDigest != nil || statusMasked != nil && (*statusMasked == MaskedTest || *statusMasked == MaskedBuild) ||
 		verbClass == VerbTest
 }
+
+// WrapperRun reports a Bash line that may run a gate no list names: a line of
+// class execute (a script, a shell, ./x, a program no list knows) that is no
+// gate run. Its output is read only for a runner's signature (WRAPPER-RUN1),
+// by the same two readers GateRun has; a line of any other class -- cat of a
+// log, a git or network command -- is never read, since an old log is not a
+// run.
+func WrapperRun(toolName string, runnerDigest, statusMasked *string, verbClass string) bool {
+	return toolName == "Bash" && verbClass == VerbExecute && !GateRun(runnerDigest, statusMasked, verbClass)
+}

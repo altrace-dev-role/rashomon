@@ -94,7 +94,9 @@ func gateOutput(in *hookio.Payload, failure bool, kind, program string, deadline
 }
 
 // readOutput decodes each string span of src into buf, the second only where
-// the first gives no summary, and classifies what it decoded. Every byte of
+// the first gives no summary, and classifies what it decoded; a second that
+// gives no summary either leaves the first's words, which may name the runner
+// a wrapper's stdout was signed by (WRAPPER-RUN1). Every byte of
 // buf is cleared before it returns, so neither a panic value nor a later read
 // of the heap finds the output; buf is never held past this call.
 //
@@ -124,7 +126,9 @@ func readOutput(raw []byte, src [2]jsonscan.Span, failure bool, program string, 
 		if failure {
 			_, text, _ = bytes.Cut(text, []byte{'\n'})
 		}
-		out = gateout.Classify(shape.RunnerTest, program, text)
+		if next := gateout.Classify(shape.RunnerTest, program, text); i == 0 || next.Kind != "no_summary" {
+			out = next
+		}
 	}
 	return out
 }

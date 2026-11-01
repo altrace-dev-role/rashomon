@@ -55,8 +55,11 @@ func TestGO7_Delegates(t *testing.T) {
 	for _, tc := range []struct{ program, output, kind, parser string }{
 		{"make", "ok\tpkg\t0.01s", "summary_pass", "go"},
 		{"npm", "Tests: 4 passed, 4 total", "summary_pass", "jest"},
-		{"yarn", "Tests 1 passed", "summary_pass", "vitest"},
-		{"yarn", "Tests 1 failed | 2 passed", "summary_fail", "vitest"},
+		// vitest 1.6.1's summary lines as recorded (testdata/wr1/vitest-*.stdout):
+		// a delegate's output counts vitest's lines where vitest signed it (D3).
+		{"yarn", " Test Files  1 passed (1)\n      Tests  2 passed (2)", "summary_pass", "vitest"},
+		{"yarn", " Test Files  1 failed (1)\n      Tests  1 failed | 1 passed (2)", "summary_fail", "vitest"},
+		{"yarn", "Tests 1 passed", "no_summary", "yarn"},
 		{"pnpm", "no recognizable result", "no_summary", "pnpm"},
 	} {
 		want(t, Classify("test", tc.program, []byte(tc.output)), tc.kind, tc.parser, nil)
@@ -77,12 +80,12 @@ func TestGO9_CapBoundary(t *testing.T) {
 
 func TestGO10_TablesPinned(t *testing.T) {
 	got := tableDigest()
-	const pin = "e14ce46508497e9b46f91d4f9922b370c1697503ebc1a0792c9a4d31ce4ce874"
+	const pin = "2b415ae9b144d4cc1bd9ab5c6d598f71067434d28eee8f20da92747e3fc4b319"
 	if got != pin {
 		t.Fatalf("table digest %s, want %s", got, pin)
 	}
 	for _, row := range tables() {
-		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
+		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty, row.sig} {
 			for _, pattern := range group {
 				if _, reason, _ := spec.CheckRegex(pattern.String()); reason != "" {
 					t.Errorf("%s pattern %q rejected: %s", row.program, pattern, reason)
@@ -199,7 +202,7 @@ func tableDigest() string {
 	h := sha256.New()
 	for _, row := range tables() {
 		fmt.Fprintf(h, "%s\x00%t\x00", row.program, row.delegate)
-		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
+		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty, row.sig} {
 			for _, pattern := range group {
 				fmt.Fprintf(h, "%s\x00", pattern.String())
 			}

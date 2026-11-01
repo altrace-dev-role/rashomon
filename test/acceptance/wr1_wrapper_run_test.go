@@ -126,7 +126,8 @@ func TestWR1_AWrappedRunIsFoundByItsOutput(t *testing.T) {
 	// failureEventKept is the gate_output kind the script's execution record
 	// keeps, by row, for the rows whose script exits 1; parser go in each.
 	failureEventKept := map[string]string{
-		"script, go red, failure event": "summary_fail",
+		"script, go red, failure event":             "summary_fail",
+		"script, go passed, then the script failed": "summary_pass",
 	}
 	for _, c := range []struct {
 		name       string
@@ -149,6 +150,12 @@ func TestWR1_AWrappedRunIsFoundByItsOutput(t *testing.T) {
 			[]string{failed}, []string{verified, notRun}, wr1Runs{1, 0, 1, 1}},
 		{"script, go red, failure event", []wr1Call{{command: "bash scripts/test.sh", failErr: "Exit code 1\n" + wr1GoFail}},
 			[]string{recordedFailure}, []string{verified, notRun}, wr1Runs{1, 0, 1, 1}},
+		// Added with the fix: go's summary says ok and the script exits 1
+		// after it (a lint step, say). Neither proven: unknown, and no run
+		// counted ok (report.TestRuns.Wrapped: a passed summary beside a
+		// failed call is no run), while the record keeps the word it read.
+		{"script, go passed, then the script failed", []wr1Call{{command: "bash scripts/test.sh", failErr: "Exit code 1\n" + wr1GoPass}},
+			[]string{recordedFailure}, []string{verified, notRun, "failed in a wrapper"}, wr1Runs{0, 0, 0, 0}},
 		{"script, output no table reads", []wr1Call{{command: "bash scripts/test.sh", stdout: "done\n"}},
 			[]string{unknown}, []string{verified, notRun}, wr1Runs{0, 0, 0, 0}},
 		{"script, a bats run is not go's", []wr1Call{{command: "bash scripts/test.sh", stdout: "1..2\nok 1 adds\nok 2 subtracts\n"}},

@@ -47,5 +47,5 @@ m("DG-1 an exact line is not matched", D, "r.digest != \"\" && g.lines[r.digest]
 
 # D211: the clearing that makes the digest's execution arm unobservable.
 m("DG-1 a rewritten line keeps its location", D,
-  "\t\t\tg.Location = \"\"\n\t\t}\n\t\tout = append(out, lineRun{",
-  "\t\t\t_ = 0\n\t\t}\n\t\tout = append(out, lineRun{", "TestDG1c2_")
+  "\t\t\tg.Location = \"\"\n\t\t}\n\t\twrapper := ",
+  "\t\t\t_ = 0\n\t\t}\n\t\twrapper := ", "TestDG1c2_")

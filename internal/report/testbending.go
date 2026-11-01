@@ -3,6 +3,7 @@ package report
 import (
 	"sort"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -307,6 +308,12 @@ type TestRuns struct {
 	// (undeclaredCalls). When it is not 0 no pair is looked for, and the two
 	// lists are empty for that reason, not because none was found.
 	Undeclared int `json:"undeclared"`
+	// Wrapped counts the runs among Runs found by their output in a call
+	// whose line names no runner, a script or a shell (shape.WrapperRun): the
+	// output a runner's row read said failed (in Failed), or passed with the
+	// call ended ok (in OK). One whose summary said passed beside a failed
+	// call is no run here, so Runs stays OK, Failed and Masked (WRAPPER-RUN1).
+	Wrapped int `json:"wrapped"`
 	TestBending
 }
 
@@ -339,6 +346,7 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 			continue
 		}
 		if d.Shape.VerbClass != shape.VerbTest {
+			countWrapped(out, d, executed, denied)
 			continue
 		}
 		switch testOutcome(d, executed, denied) {
@@ -351,6 +359,27 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 		}
 	}
 	return out
+}
+
+// countWrapped counts d in out where it is a wrapped run (TestRuns.Wrapped):
+// a call shape.WrapperRun names, whose outcome record's gate_output a runner's
+// row read, summary_fail or summary_pass on a call that ended ok.
+func countWrapped(out *TestRuns, d store.Declaration, executed map[string][]store.Execution, denied map[string]bool) {
+	rec := outcomeRecord(executed[d.ToolUseID])
+	if rec == nil || rec.GateOutput == nil || !gateout.Runner(rec.GateOutput.Parser) ||
+		!shape.WrapperRun(d.ToolName, d.Shape.RunnerDigest, d.Shape.StatusMasked, d.Shape.VerbClass) {
+		return
+	}
+	switch o := testOutcome(d, executed, denied); {
+	case rec.GateOutput.Kind == "summary_fail" && (o == store.ExecOK || o == store.ExecFailed):
+		out.Failed++
+	case rec.GateOutput.Kind == "summary_pass" && o == store.ExecOK:
+		out.OK++
+	default:
+		return
+	}
+	out.Runs++
+	out.Wrapped++
 }
 
 // outcomeTimedOut is testOutcome's word for a run whose `timeout N` prefix
