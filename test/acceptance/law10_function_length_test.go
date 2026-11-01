@@ -50,11 +50,13 @@ var overLimit = map[string]int{
 // backtest command, openStore to storeopen.go, 1054 to 1052 with card
 // SPEC-TRUST1's spec command, storeExistsAt to storeopen.go; then LEDGER-WIRE1,
 // BRIEF1 and STATUS-VERBS1a extractions. Ratchet measured after the stacked re-cut.
-// watch.go moved 545 to 541 with STEER-DISCLOSE-YES1 (the --yes clamp removed).
+// watch.go moved 545 to 541 with STEER-DISCLOSE-YES1 (the --yes clamp removed),
+// and 541 to 531 with CONSENT-SHORT1, consentFlags to consent.go; main.go 930
+// to 927 with it, printVersion to version.go.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    930,
+	"cmd/rashomon/main.go":    927,
 	"internal/store/store.go": 549,
-	"cmd/rashomon/watch.go":   541,
+	"cmd/rashomon/watch.go":   531,
 }
 
 // codeLines counts the lines strictly between lbrace and rbrace (1-indexed,

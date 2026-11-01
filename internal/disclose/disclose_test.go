@@ -470,7 +470,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	const except = "except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them"
 	var stored string
 	for _, p := range inv.Paragraphs {
-		if strings.HasPrefix(p.Text, "STORED: for each tool call") {
+		if strings.HasPrefix(p.Text, StoredHeading+" for each tool call") {
 			stored = p.Text
 		}
 	}

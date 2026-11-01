@@ -27,6 +27,8 @@ const (
 	outNoSummary   = "no_summary"
 	outEmptyRun    = "empty_run"
 	outUnread      = "unread"
+	outPrintedPass = gateout.KindPrintedPass
+	outPrintedFail = gateout.KindPrintedFail
 )
 
 // gateStates is the state of every gate family present at the point at
@@ -168,9 +170,22 @@ const OutcomeFromOutput = steer.OutcomeFromOutputSummary
 
 // masked: the line hid a runner's status, so its outcome is not the gate's --
 // unless the stage that hid it kept the runner's summary and the output said
-// how the run ended (readsOutput), which is then the outcome.
+// how the run ended (readsOutput), or the line printed the runner's status
+// (readsPrinted), which is then the outcome.
 func masked(r *gateRun) bool {
-	return statusHidden(r) && !r.FromOutput
+	return statusHidden(r) && !r.FromOutput && !r.FromPrinted
+}
+
+// readsPrinted reports a masked run whose outcome is the exit status its line
+// printed for it (STATUS-PROBE, shape.PrintedStatus): gate_output printed_pass
+// or printed_fail, on a record whose rules know the words (version 12 or
+// later), a call that ended ok and was not backgrounded. The status is the
+// runner's own, so neither the stage that hid it nor a delegate program
+// matters, as they do for a summary (readsOutput); the outcome is read from the
+// exit status, and no clause says it came from the output.
+func readsPrinted(r *gateRun, rulesVersion int) bool {
+	return statusHidden(r) && rulesVersion >= shape.PrintedStatusRulesVersion && r.Outcome == store.ExecOK &&
+		!r.Backgrounded && r.Output != nil && (r.Output.Kind == outPrintedPass || r.Output.Kind == outPrintedFail)
 }
 
 // statusHidden: the line's status_masked says a runner's status is not the
@@ -228,7 +243,8 @@ func failed(r *gateRun) bool {
 
 func failedByExit(r *gateRun) bool {
 	return r.Outcome == store.ExecFailed ||
-		r.Outcome == store.ExecInterrupted && r.ExitCode != nil && *r.ExitCode != 0
+		r.Outcome == store.ExecInterrupted && r.ExitCode != nil && *r.ExitCode != 0 ||
+		r.FromPrinted && r.Output.Kind == outPrintedFail
 }
 
 // outcomeNotKnown: a run no row above matched that did not end ok, or whose

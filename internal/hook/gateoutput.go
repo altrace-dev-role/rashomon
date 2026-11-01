@@ -2,6 +2,7 @@ package hook
 
 import (
 	"bytes"
+	"encoding/json"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/gateout"
@@ -127,6 +128,39 @@ func readOutput(raw []byte, src [2]jsonscan.Span, failure bool, program string, 
 		out = gateout.Classify(shape.RunnerTest, program, text)
 	}
 	return out
+}
+
+// printedOutput is the gate_output of a masked runner whose line printed its
+// exit status (STATUS-PROBE, shape.PrintedStatus): printed_pass for a status
+// of 0, printed_fail for any other, with ok false where the line prints none
+// of its runner's or the output does not say it once. It reads the response's
+// stdout only, where echo writes, decoded into a buffer local to this call,
+// capped at gateout.MaxScanBytes and cleared before it returns; past the cap,
+// past the deadline, or on an output that does not decode, it reads nothing.
+// The command is read in memory, as shape.Derive reads it, and dropped: no
+// word of it and no digit of the status survive.
+func printedOutput(in *hookio.Payload, toolName string, toolInput json.RawMessage, deadline time.Time, now func() time.Time) (store.GateOutput, bool) {
+	if now().After(deadline) {
+		return store.GateOutput{}, false
+	}
+	var src [2]jsonscan.Span
+	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], streamKeys, src[:]) != nil || src[0].Kind != jsonscan.String {
+		return store.GateOutput{}, false
+	}
+	buf := make([]byte, 0, min(int(src[0].Len), gateout.MaxScanBytes))
+	defer clear(buf[:cap(buf)])
+	text, truncated, err := jsonscan.Head(in.Raw, src[0], cap(buf), buf)
+	if err != nil || truncated {
+		return store.GateOutput{}, false
+	}
+	code, ok := shape.PrintedStatus(toolName, toolInput, text)
+	if !ok {
+		return store.GateOutput{}, false
+	}
+	if code == 0 {
+		return store.GateOutput{Kind: gateout.KindPrintedPass, Parser: gateout.ParserExitStatus}, true
+	}
+	return store.GateOutput{Kind: gateout.KindPrintedFail, Parser: gateout.ParserExitStatus}, true
 }
 
 func unread(reason string) store.GateOutput {

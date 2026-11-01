@@ -48,11 +48,14 @@ type gateRun struct {
 	// KindRecorded: Kind is the record's runner_kind, not inferred. Beside
 	// Backgrounded, so the two bools share one word of padding.
 	KindRecorded bool
+	// FromPrinted: the run's outcome is the exit status its line printed for
+	// it (readsPrinted, STATUS-PROBE), in the same word of padding.
+	FromPrinted bool
 	// RunnerID and MaskedByID are the execution's runner_name and masked_by
 	// (call schema 8) as their place in the binary's lists (shape.RunnerNameID,
 	// shape.MaskedByID), 0 where the record has none: the runner's words in
 	// its row of the lists, and the stage of the pipe that hid its status. One
-	// byte each, in the padding the three flags leave, so a run of any kind
+	// byte each, in the padding the four flags leave, so a run of any kind
 	// costs no byte more than before schema 8 (D209, D173d); the words are
 	// read back where they are named (shape.RunnerNameOf, shape.MaskedByOf).
 	RunnerID   uint8
@@ -249,6 +252,7 @@ func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) ga
 	}
 	g.Program = gateout.ProgramFor(g.Program, shape.RunnerNameOf(g.RunnerID))
 	g.FromOutput = readsOutput(&g, e.RulesVersion)
+	g.FromPrinted = readsPrinted(&g, e.RulesVersion)
 	return g
 }
 

@@ -73,14 +73,14 @@ func BenchmarkProbeStart(b *testing.B) {
 			b.Fatal(err)
 		}
 		var out countingWriter
-		printBrief(args, payload, st, &out)
+		printBrief(args, payload, st, "", &out)
 		if out.n == 0 {
 			b.Fatal("printBrief wrote nothing")
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
-			printBrief(args, payload, st, io.Discard)
+			printBrief(args, payload, st, "", io.Discard)
 		}
 	})
 	for _, row := range []struct {
@@ -95,19 +95,19 @@ func BenchmarkProbeStart(b *testing.B) {
 		b.Run(row.name, func(b *testing.B) {
 			st, payload, args := benchPreviousFixture(b, row.fix)
 			var out countingWriter
-			printBrief(args, payload, st, &out)
+			printBrief(args, payload, st, "", &out)
 			if out.n == 0 {
 				b.Fatal("printBrief wrote nothing")
 			}
 			var msg strings.Builder
-			printBrief(args, payload, st, &msg)
+			printBrief(args, payload, st, "", &msg)
 			if !strings.Contains(msg.String(), row.want) {
 				b.Fatalf("the brief holds no %q: %s", row.want, msg.String())
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
-				printBrief(args, payload, st, io.Discard)
+				printBrief(args, payload, st, "", io.Discard)
 			}
 		})
 	}

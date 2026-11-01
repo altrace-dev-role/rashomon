@@ -38,22 +38,6 @@ const (
 	refuseWorkTreeYes = "the store root %s is inside the git work tree %s, which has to be confirmed by typing its name; nothing was written. Run rashomon %s in your own terminal, without --yes."
 )
 
-// consentFlags parses watch's and consent's flags: --yes and --show, and
-// nothing else.
-func consentFlags(args []string) (yes, show bool, err error) {
-	for _, a := range args {
-		switch a {
-		case "--yes":
-			yes = true
-		case "--show":
-			show = true
-		default:
-			return false, false, fmt.Errorf("unknown argument %q", a)
-		}
-	}
-	return yes, show, nil
-}
-
 // watchPlan is what steps 1 and 2 found: everything step 6 needs, read
 // without writing anything.
 type watchPlan struct {
@@ -68,11 +52,15 @@ type watchPlan struct {
 	prior     *consent.Record
 }
 
-// cmdWatch is `rashomon watch [--yes] [--show]` (Technical spec 7.2.3).
+// cmdWatch is `rashomon watch [--yes] [--show] [--full]` (Technical spec
+// 7.2.3).
 func cmdWatch(args []string, stdout io.Writer) error {
-	yes, show, err := consentFlags(args)
+	yes, show, full, err := consentFlags(args)
 	if err != nil {
 		return err
+	}
+	if full {
+		return printFull(stdout)
 	}
 	gate := startSignalGate(os.Stderr)
 	defer gate.stop()
@@ -92,7 +80,7 @@ func cmdWatch(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	screen, err := consent.Screen(inv, plan.screenInput())
+	screen, err := consent.Short(inv, plan.screenInput())
 	if err != nil {
 		return err
 	}
