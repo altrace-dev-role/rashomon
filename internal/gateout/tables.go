@@ -16,13 +16,19 @@ type table struct {
 // init (RES-2): the post hook links this package and runs on every tool call,
 // and only a gate run's output is classified. Source patterns are fixed and
 // are validated against spec's RE2 bounds by TestGO10_TablesPinned.
+//
+// pytest's fail forms are its summary line, as its pass forms are, with a
+// count of at least 1: a delegated run is matched against every table, so a
+// bare count read another tool's "0 failed" or "0 errors", or a test's own log
+// line, as a failure, and the gate went red over a run that passed
+// (GATEOUT-ZERO1).
 func tables() []table {
 	rowsOnce.Do(func() {
 		rowsOnce.v = []table{
 			{program: "go", pass: compile(`^ok\s`), fail: compile(`^FAIL\s`, `^FAIL$`), failLine: compile(`^--- FAIL`), empty: compile(`\[no test files\]`, `\[no tests to run\]`)},
 			{program: "jest", pass: compile(`^Tests:.*\d+ passed`), fail: compile(`^Tests:.*\d+ failed`)},
 			{program: "vitest", pass: compile(`^Tests\s+.*\d+ passed`), fail: compile(`^Tests\s+.*\d+ failed`)},
-			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`\d+ (failed|error)`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`)},
+			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`^(\d+ \w+, )*[1-9]\d* (failed|errors?)(, [^=]*)? in \d`, `^=+ .*[1-9]\d* (failed|errors?).* in \d[\d.]*s.* =+$`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`)},
 			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \d+ targets? failed`)},
 			{program: "make", delegate: true, fail: compile(`^make(\[\d+\])?: \*\*\*`)},
 			{program: "npm", delegate: true, fail: compile(`^npm (ERR!|error)`, `ELIFECYCLE`)},
