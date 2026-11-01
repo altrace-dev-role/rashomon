@@ -59,7 +59,8 @@ func Owns(name string, inProject bool) bool {
 
 // ErrActiveOverCap is Save's refusal: active.json would pass ActiveMaxBytes
 // with every demoted row dropped. Nothing is written; the old files stand.
-// ErrReadOnly is Save on a ledger OpenReadOnly returned: it never writes.
+// ErrReadOnly is Save or AppendLabel on a ledger OpenReadOnly returned: it
+// never writes.
 var ErrReadOnly = errors.New("learn: the ledger was opened read-only; nothing was written")
 
 var ErrActiveOverCap = errors.New("learn: active.json would pass 64 KiB with every demoted row dropped; nothing was written")
@@ -367,6 +368,11 @@ func (l *Ledger) Approve(id string, now time.Time) error {
 
 // AppendLabel appends one label row and saves: LABEL-WRITER1's entry.
 func (l *Ledger) AppendLabel(lb Label) error {
+	// Before labels.ndjson is opened: the row would land unsigned, Save would
+	// then refuse, and the next Open would quarantine every lesson.
+	if l.readOnly {
+		return ErrReadOnly
+	}
 	if l.index(lb.LessonID) < 0 || !slices.Contains(steer.AllLabels(), lb.Label) {
 		return fmt.Errorf("learn: label %q for lesson %q is not one this ledger takes", lb.Label, lb.LessonID)
 	}

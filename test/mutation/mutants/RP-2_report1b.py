@@ -98,7 +98,10 @@ m("RP-2 a cut baseline walk prints the plain line", "internal/report/text_knowle
 
 # A read-only ledger cannot save (RP2zk; review of PR 171).
 m("RP-2 OpenReadOnly's ledger is not marked read-only", L, "tallies: map[string]Tally{}, readOnly: !write}", "tallies: map[string]Tally{}, readOnly: false}", "TestRP2zk_")
-m("RP-2 Save ignores the read-only flag", L, "\tif l.readOnly {\n\t\treturn ErrReadOnly\n\t}\n", "", "TestRP2zk_")
+m("RP-2 Save ignores the read-only flag", L, "\tif l.readOnly {\n\t\treturn ErrReadOnly\n\t}\n\tactive, err := l.activeBytes()", "\tactive, err := l.activeBytes()", "TestRP2zk_")
+m("RP-2 AppendLabel ignores the read-only flag", L,
+  "\t// then refuse, and the next Open would quarantine every lesson.\n\tif l.readOnly {\n\t\treturn ErrReadOnly\n\t}\n",
+  "\t// then refuse, and the next Open would quarantine every lesson.\n", "TestRP2zk_AReadOnlyLedgerCannotAppendALabel")
 
 # A trusted spec's gate id in the knowledge block and a why view (RP2zm; census g3 W1, STEP-15).
 m("RP-2 Redact keeps the knowledge block's gate keys", D, "\t\tg.Gate = redactGateKey(g.Gate, key)\n\t\tout.GateStates", "\t\tout.GateStates", "TestRP2zm_")
