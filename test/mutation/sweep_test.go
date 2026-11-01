@@ -1440,7 +1440,7 @@ func TestSweepShards_PartitionTheMutantsExactlyOnce(t *testing.T) {
 		t.Fatalf("--list exited %d", code)
 	}
 	full := nonEmptyLines(out)
-	for _, n := range []int{1, 2, 3, 7} {
+	for _, n := range []int{1, 2, 3, 7, 8} {
 		owner := map[string]int{}
 		for k := 1; k <= n; k++ {
 			out, code := sweep(t, root, "--list", "--shard", fmt.Sprintf("%d/%d", k, n))
