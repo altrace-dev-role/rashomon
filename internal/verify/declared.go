@@ -20,6 +20,14 @@ const (
 	sourceCICommands = "ci_commands"
 )
 
+// The gate an InferredGate makes (card GATE-INFER1): one closed id, so no
+// word of the project's files reaches the record, and SourceInferred as its
+// Source and its trust.
+const (
+	InferredGateID = "inferred:test"
+	SourceInferred = "inferred"
+)
+
 // declaredGate is one gate a trusted or managed spec declares, as the
 // evaluator matches it to runs (card DECLARED-GATES1). runners holds the
 // runner keys of its argv and aliases matched at their runner (shape.RunnerKey:
@@ -78,6 +86,33 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 		out = append(out, g)
 	}
 	return out
+}
+
+// inferredGate is inf as the gate InferredGateID (card GATE-INFER1, W1):
+// its argv keyed as a declared gate's matched by prefix is (lineShape,
+// shape.RunnerKey, the one key function), at the project root joined with
+// its Dir, required (W2'), with trust builtin once the index has learned a
+// test family and SourceInferred before (W3'). No inf, or no key, is none.
+func inferredGate(inf *InferredGate, key []byte, root string) (declaredGate, bool) {
+	if inf == nil || len(inf.Argv) == 0 || len(key) == 0 {
+		return declaredGate{}, false
+	}
+	g := declaredGate{id: InferredGateID, kind: "test", source: SourceInferred, trust: SourceInferred, required: true,
+		runners: map[string]bool{}, words: map[string]bool{}, lines: map[string]bool{}}
+	if inf.Learned {
+		g.trust = trustBuiltin
+	}
+	if root != "" {
+		g.location = shape.CWDDigest(key, filepath.Join(root, inf.Dir))
+	}
+	s := lineShape(inf.Argv, key)
+	if k, ok := shape.RunnerKey(nameOf(s.RunnerName), s.RunnerDigest); ok {
+		g.runners[k] = true
+		g.words[*s.RunnerDigest] = true
+	} else {
+		g.lines[s.Digest] = true
+	}
+	return g, true
 }
 
 // DeclaresRequired reports whether sp declares a required gate from a trusted

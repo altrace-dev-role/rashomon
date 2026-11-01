@@ -35,10 +35,10 @@ m("DG-1 an absent gate owes no write", D, "\t\tg.Reason = NeverRunAfterWrite\n",
   "\t\tg.Reason = EmptyRun\n", "TestDG1e_")
 m("DG-1 an empty key declares", D, "\tif sp == nil || len(key) == 0 {\n",
   "\tif sp == nil {\n", "TestDG1h_")
-m("DG-1 evaluate joins no declared row", E, "\tif dgs := declaredGates(sp, key, snap.ProjectRoot); len(dgs) > 0 {\n",
-  "\tif dgs := declaredGates(sp, key, snap.ProjectRoot); false && len(dgs) > 0 {\n", "TestDG1f_|TestDG1_")
-m("DG-1 the Stop view drops the key", S, "\tsnap := evaluate(run, idx, sp, in.Key, pt, now, &c)\n",
-  "\tsnap := evaluate(run, idx, sp, nil, pt, now, &c)\n", "TestDG1f_")
+m("DG-1 evaluate joins no declared row", E, "\tdgs := declaredGates(sp, key, snap.ProjectRoot)\n",
+  "\tvar dgs []declaredGate\n", "TestDG1f_|TestDG1_")
+m("DG-1 the Stop view drops the key", S, "\tsnap := evaluate(run, idx, sp, in.Key, in.Inferred, pt, now, &c)\n",
+  "\tsnap := evaluate(run, idx, sp, nil, in.Inferred, pt, now, &c)\n", "TestDG1f_")
 m("DG-1 two declared rows share their ids", O, "\tif g.Family == familyDeclared {\n\t\treturn g.Gate\n",
   "\tif false {\n\t\treturn g.Gate\n", "TestDG1_")
 # D209: the line digest moved from gateRun to lineRun; an exact gate reads it.

@@ -35,6 +35,29 @@ type StopInput struct {
 	Delivered     [][]byte
 	MessageUnread bool
 	Required      map[string]bool
+	// Inferred is the project's test command as gateinfer read it from the
+	// project's own files, judged as one more gate (card GATE-INFER1); nil
+	// for none. The Stop's caller sets it only while no spec declares a test
+	// gate.
+	Inferred *InferredGate
+}
+
+// InferredGate is a test command read from the project's own files: its
+// words and the directory, relative to the project root, it runs in. The
+// Stop judges it as the gate InferredGateID, required, since it stands for
+// the project's own declaration (card GATE-INFER1, W2'). Learned is whether
+// the index has seen a test run in the project: the row's trust is then the
+// learned gates' word, builtin, and else SourceInferred, which the Stop's
+// line labels. Its words never reach the record: the row's id is closed.
+// From, the file it was read from, and Declared, whether the project names
+// the command there rather than by convention, are the next prompt's note's
+// (W5); EvaluateStop reads neither.
+type InferredGate struct {
+	Argv     []string
+	Dir      string
+	Learned  bool
+	From     string
+	Declared bool
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and
@@ -91,7 +114,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		run = &store.Run{}
 	}
 	var c classified
-	snap := evaluate(run, idx, sp, in.Key, pt, now, &c)
+	snap := evaluate(run, idx, sp, in.Key, in.Inferred, pt, now, &c)
 	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
@@ -99,6 +122,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	turn := countTurn(run, counted, in.PromptID, pt.Seq)
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
+	inferredProgram(v.Programs, in.Inferred, in.Key)
 	if v.Index == nil {
 		v.Index = &ProjectIndex{ProjectKey: in.ProjectKey}
 	}
@@ -136,7 +160,8 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 // short and a map over runs is one pass). A run that records the runner it
 // launched (call schema 8) is named by it, in the binary's own words --
 // `python3 -m pytest`, not the interpreter `python3` the line starts with
-// (D229); an older record's is the line's program word.
+// (D229); an older record's is the line's program word. The inferred gate
+// with no run is named by inferredProgram.
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
@@ -149,6 +174,19 @@ func programs(gates []GateState, runs []gateRun) map[string]string {
 		}
 	}
 	return out
+}
+
+// inferredProgram names the inferred gate, where programs left it unnamed
+// (no run bound it), by its command's runner row: a word of the binary's
+// own lists, never of the project's file (GATE-INFER1, W4). None where the
+// command names no runner.
+func inferredProgram(programs map[string]string, inf *InferredGate, key []byte) {
+	if inf == nil || len(inf.Argv) == 0 || programs[InferredGateID] != "" {
+		return
+	}
+	if name := nameOf(lineShape(inf.Argv, key).RunnerName); name != "" {
+		programs[InferredGateID] = name
+	}
 }
 
 // countTurn counts the prompt's turn up to seq at (2.2.11 TurnCounts). The

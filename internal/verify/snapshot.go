@@ -170,8 +170,8 @@ type GateState struct {
 	Gate              string       `json:"gate"`   // "learned:go-test", "spec:unit", "ci:0"
 	Kind              string       `json:"kind"`   // test | build | lint | typecheck | scan | custom
 	Family            string       `json:"family"` // closed family name, or "declared"
-	Source            string       `json:"source"` // declared | ci_commands | learned
-	Trust             string       `json:"trust"`  // builtin | untrusted | trusted | managed
+	Source            string       `json:"source"` // declared | ci_commands | learned | inferred
+	Trust             string       `json:"trust"`  // builtin | untrusted | trusted | managed | inferred
 	Required          bool         `json:"required"`
 	State             State        `json:"state"`
 	Reason            Reason       `json:"reason"`

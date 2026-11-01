@@ -412,6 +412,10 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		return files + "; " + greens + " after the last edit" + t.fromOutput()
 	case g != nil && greens != "":
 		return files + "; " + greens + " after the last edit" + t.fromOutput() + ", " + t.name(g) + " not run after it"
+	case g != nil && g.Source == verify.SourceInferred:
+		// The project's own command, which no rule names otherwise
+		// (GATE-INFER1, W4); a declared gate keeps the line below.
+		return files + ", " + t.name(g) + " not run after the last edit"
 	}
 	return files + ", no test or build run after the last edit"
 }
@@ -468,18 +472,28 @@ func (t gateSet) first(s verify.State) *verify.GateState {
 // name is the id of a gate a trusted spec declares, in the slot's quote;
 // else g's program word, else its kind: with no program word, or with a
 // prefix word in its place. With short, a gate whose last run had other
-// arguments skips the id.
+// arguments skips the id. The inferred gate's name is labelled while its
+// trust says the index has not seen a test run, unless short (GATE-INFER1,
+// W3', W4).
 func (t gateSet) name(g *verify.GateState) string {
 	if id, ok := strings.CutPrefix(g.Gate, specGatePrefix); ok && len(id) <= maxIDName && !(t.short && otherArgs(g)) {
 		if p := slot.Program(id); p.Validate() == nil {
 			return p.Text()
 		}
 	}
+	n := g.Kind
 	if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {
-		return p
+		n = p
 	}
-	return g.Kind
+	if g.Source == verify.SourceInferred && g.Trust == verify.SourceInferred && !t.short {
+		n += inferredLabel
+	}
+	return n
 }
+
+// inferredLabel follows the name of a gate read from the project's files
+// that the index has not yet seen run (GATE-INFER1).
+const inferredLabel = " (inferred)"
 
 // fromOutput is the provenance clause where a green turn gate's last run had
 // its outcome read from its output, else "". The sentence before it lists the
