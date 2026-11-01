@@ -269,7 +269,7 @@ func defaultFiles() []FileRule {
 			Base:       "",
 			Pattern:    recap.StateFileName,
 			Mode:       "0600",
-			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice",
+			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice, and the prompt of a session's last turn end that raised the done flag, so the next prompt can tell the agent once",
 			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids -- never a tool call's content",
 			NeverHolds: "a tool call's content",
 			RemovedBy:  "purge",
