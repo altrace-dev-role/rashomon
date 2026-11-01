@@ -2,6 +2,7 @@ package learn
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,45 @@ func lessonIDs(ls []Lesson) string {
 		s = append(s, l.ID+"="+string(l.Tier))
 	}
 	return strings.Join(s, " ")
+}
+
+// TestLRN17_ReadActiveGivesProbationAndProvenOnly (STR-52): ReadActive is
+// the one place that decides which tiers arrive, and it keeps probation and
+// proven rows. Save never writes a proposed row to active.json, so one is
+// signed in by hand, as a holder of the key could; it carries an approval
+// stamp, as a quarantined lesson does (the stamp is kept when the tier goes
+// back to proposed), so Pick's own check would let it through. A demoted row
+// is signed in too.
+func TestLRN17_ReadActiveGivesProbationAndProvenOnly(t *testing.T) {
+	root := t.TempDir()
+	l := lessonsAt(t, root, provenCwd, probationNpm)
+	proposed := Lesson{ID: "proposed-one", Tier: TierProposed, Text: "a lesson nobody approved", SinceUnixMS: 1_761_700_003_000, ApprovedUnixMS: 1_761_700_003_500}
+	demoted := Lesson{ID: "demoted-one", Tier: TierDemoted, Text: "a lesson that went bad", SinceUnixMS: 1_761_700_004_000, ApprovedUnixMS: 1_761_700_004_500}
+	b, err := json.Marshal(activeFile{Schema: SchemaActive, Lessons: []Lesson{provenCwd, probationNpm, proposed, demoted}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(l.dir, FileActive), append(b, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	key, err := os.ReadFile(filepath.Join(root, DirLearn, FileKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _, err := l.readState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(l.dir, FileSum), []byte(sign(key, files)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := readActive(t, root)
+	if a.Unchecked != "" {
+		t.Fatalf("premise: the hand-signed state read as unchecked %q", a.Unchecked)
+	}
+	if got := lessonIDs(a.Lessons); got != "go-test-cwd=proven npm-ci=probation" {
+		t.Errorf("ReadActive gave %q, want the proven and probation rows only", got)
+	}
 }
 
 // TestLRN17k_SaveBetweenReadsIsNotTamper: Save replaces lessons.json and

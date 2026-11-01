@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,5 +144,85 @@ func TestSV1o_LessonsWritesNothing(t *testing.T) {
 	}
 	if !strings.HasPrefix(text.String(), "quarantined 20") {
 		t.Errorf("once the quarantine is recorded, lessons says when:\n%s", text.String())
+	}
+}
+
+// zeroStamp rewrites lesson id's rows in the project's lessons.json and
+// active.json without an approval time, as a build before the stamp wrote
+// them, and signs the state again, as that build's learner would have.
+func zeroStamp(t *testing.T, root, project, id string) {
+	t.Helper()
+	for _, name := range []string{learn.FileLessons, learn.FileActive} {
+		p := filepath.Join(root, learn.DirLearn, project, name)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(b, &doc); err != nil {
+			t.Fatal(err)
+		}
+		rows, _ := doc["lessons"].([]any)
+		for _, r := range rows {
+			if row, _ := r.(map[string]any); row["id"] == id {
+				delete(row, "approved_unix_ms")
+			}
+		}
+		if b, err = json.Marshal(doc); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signLearnState(t, root, project)
+}
+
+// TestLRN17s_TheLessonsVerbNamesAStampZeroApproval (LEARN-DX1 F2): lessons
+// lists a lesson a build before the stamp approved under its tier, as learn
+// does, with the line that says it is not sent and how to send it, and its
+// JSON row carries the approval time, 0 for it, so a reader can tell it from
+// one that is sent. A stamped approval has no such line and its time in the
+// row.
+func TestLRN17s_TheLessonsVerbNamesAStampZeroApproval(t *testing.T) {
+	st, _, dir := bodiesHere(t)
+	file := filepath.Join(t.TempDir(), "shared.json")
+	if err := os.WriteFile(file, []byte(sharedLessons), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := learnRun(t, "import", file); code != 0 {
+		t.Fatalf("import: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	for _, id := range []string{"npm-ci", "go-test-cwd"} {
+		atTerminal(t, &person{}, nil)
+		if code, out, errOut := learnRun(t, "approve", id); code != 0 {
+			t.Fatalf("approve %s: exit %d, stdout %q, stderr %q", id, code, out, errOut)
+		}
+	}
+	zeroStamp(t, st.Root(), dir, "npm-ci")
+	var text, js bytes.Buffer
+	if err := cmdLessons(nil, &text); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdLessons([]string{"--json"}, &js); err != nil {
+		t.Fatal(err)
+	}
+	line := "    approved before this build; approve again to send it: `rashomon learn approve "
+	if got := strings.Count(text.String(), line); got != 1 || !strings.Contains(text.String(), ": npm ci before npm test\n"+line+"npm-ci`\n") {
+		t.Errorf("lessons =\n%s\nwant the not-sent line once, under npm-ci", text.String())
+	}
+	var v struct {
+		Lessons []struct {
+			ID       string `json:"id"`
+			Approved *int64 `json:"approved_unix_ms"`
+		} `json:"lessons"`
+	}
+	if err := json.Unmarshal(js.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range v.Lessons {
+		if r.Approved == nil || (r.ID == "npm-ci") != (*r.Approved == 0) {
+			t.Errorf("lessons --json row %s: approved_unix_ms %v, want 0 for npm-ci alone", r.ID, r.Approved)
+		}
 	}
 }

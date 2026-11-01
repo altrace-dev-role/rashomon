@@ -183,6 +183,12 @@ var (
 		"practice.components.integrity", "practice.components.hygiene", "practice.not_applicable",
 		"practice_omitted", "record_green", "truncated",
 	}
+	// specEventKeys are a spec_event's keys (card SPEC-RULES-STOP1): the
+	// rule's id and its spec file's digest, never a command's text.
+	specEventKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"reason", "event", "rule_id", "source_digest", "landed_seq",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {

@@ -186,9 +186,16 @@ func TestSR1x_APostRaisesItsRulesFromTheCallAlone(t *testing.T) {
 					t.Fatalf("printed %q with %d steer lines, want nothing", b, len(lines))
 				}
 				// No trigger read the run, so the call ends before any
-				// context is built.
-				if _, _, ok := p.judge(stEnv(0)); ok {
-					t.Error("judge is ok for a call that raised nothing and read no run")
+				// context is built, unless it hit a rule: the failed forced
+				// push raises nothing and its hit is still kept (card
+				// SPEC-RULES-STOP1), which judge hands Steer as ok.
+				_, view, ok := p.judge(stEnv(0))
+				wantHits := 0
+				if c.name == "a forced push that failed" {
+					wantHits = 1
+				}
+				if len(view.Hits) != wantHits || ok != (wantHits > 0) || len(view.Findings) != 0 {
+					t.Errorf("judge = %v with %d hits and %d findings, want %v with %d hits and none", ok, len(view.Hits), len(view.Findings), wantHits > 0, wantHits)
 				}
 				return
 			}

@@ -20,6 +20,7 @@ test/perf/budgets.json c8a336fd64dc94aa the pending recap row's basis note: pros
 test/perf/budgets.json dadc6c7e35d1b83e the benchmark platform field name: an identifier
 test/perf/budgets.json ae8a06cbdbbff470 the benchmark row names: identifiers
 test/perf/budgets.json 6e4e495df52ba339 the preflight catch-up benchmark's row name: an identifier
+internal/hook/testdata/fuzz/FuzzRES5_IntakeMatchesTheStructDecode/23de8625204e8dff dbaaa49835a45aba a fuzz seed: the failing input CI found, a Go-escaped payload with a garbled key (an invalid byte) and agent_id as a number; no credential and no account value
 internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-00 be4d013d0dccbd1f a fuzz seed: a Go-escaped hook payload with one-letter placeholder values; no credential and no account value
 internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-03 13b28886815303b1 a fuzz seed: Go-escaped JSON with a duplicate key and a run of digits then letters as a placeholder; no credential and no account value
 internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-04 71ae96498d07753c a fuzz seed: Go-escaped JSON with escaped key letters and surrogate pairs; no credential and no account value
