@@ -545,17 +545,18 @@ func runSegmentFiles() []FileRule {
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's
-// recap reads and writes (verify.IndexPath, card 2.4), and its replacement.
-// Like recordScopeFiles, they sit apart from defaultFiles for Law 10.
+// recap reads and writes (verify.IndexPath, card 2.4), and its replacement,
+// then the checkpoint file's (checkpointFiles). Like recordScopeFiles, they
+// sit apart from defaultFiles for Law 10.
 func indexFiles() []FileRule {
 	const base = verify.DirName + "/" + verify.ProjectsDir
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       base,
 			Pattern:    baseline.FilePattern,
 			Mode:       "0600",
 			Purpose:    "one project's index of the test and build commands its sessions have run, so a command two sessions ran in thirty days is required before a turn reads verified",
-			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen; and the last and prior checkpoints (last, prior), each the session id, the point seq and when it was recorded, written at every Stop",
+			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen",
 			NeverHolds: "a command's arguments or output, or anything about a call beyond its family",
 			RemovedBy:  "eviction of the least recently seen families at 64 KiB; purge",
 			Owner:      "verify",
@@ -570,7 +571,7 @@ func indexFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over the index); purge",
 			Owner:      "verify",
 		},
-	}
+	}, checkpointFiles()...)
 }
 
 // recordScopeFiles is the inventory's rows for the record_scope marker and

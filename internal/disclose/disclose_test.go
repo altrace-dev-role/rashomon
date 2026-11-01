@@ -203,10 +203,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if _, err := verify.WriteIndex(index, &verify.ProjectIndex{ProjectKey: "/tru23/project"}); err != nil {
 		t.Fatalf("verify.WriteIndex: %v", err)
 	}
-	if tmp, err := os.CreateTemp(filepath.Dir(index), "."+filepath.Base(index)+".tmp-*"); err != nil {
-		t.Fatal(err)
-	} else if err := tmp.Close(); err != nil {
-		t.Fatal(err)
+	checkpoints := verify.CheckpointsPath(root, "/tru23/project")
+	if err := verify.WriteCheckpoints(checkpoints, &verify.Checkpoints{Last: &verify.LastCheckpoint{SessionID: sessionID, PointSeq: 1}}); err != nil {
+		t.Fatalf("verify.WriteCheckpoints: %v", err)
+	}
+	for _, p := range []string{index, checkpoints} {
+		if tmp, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp-*"); err != nil {
+			t.Fatal(err)
+		} else if err := tmp.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// hook.WriteSpecBindings' two writes, which this package's tests cannot
 	// import: the trust key and the encoding signed under it, each through
@@ -407,7 +413,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// the Stop hook's recap reads and writes since 2.4 (indexFiles in the
 		// inventory, verify's tree in purge's plan). store's 22 was unchanged
 		// by the export, since the pattern follows replaceFile to ReplaceFile.
-		{"verify", 1},
+		// Moved 2026-10-31 (INDEX-POINTER-FILE1) to 2: index_pointer.go's
+		// WriteCheckpoints, one store.ReplaceFile, verify/checkpoints/<name>.json,
+		// the project's last two checkpoints, which left the index so alpha.1's
+		// strict reader still reads it (indexFiles in the inventory, verify's
+		// tree in purge's plan).
+		{"verify", 2},
 		// Pinned 2026-10-29 (P6): internal/learn/ledger.go's AppendLabel
 		// open (labels.ndjson), Save's two store.ReplaceFile calls
 		// (lessons.json and active.json in one loop, state.sum) and
