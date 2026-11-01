@@ -141,6 +141,7 @@ func preflightJSON(v slot.Value) any {
 		for _, p := range v.Paths() {
 			out.Items = append(out.Items, string(p))
 		}
+		out.Items = append(out.Items, v.Digests()...)
 		return out
 	case slot.RuleRefs:
 		out := ruleRefsJSON{Earlier: v.Earlier(), IDs: []string{}, More: v.More(), Trust: []string{}, Why: []string{}, Withheld: v.Withheld()}
