@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ool_in\xf0ut\":null,\"agent_id\":7777}")

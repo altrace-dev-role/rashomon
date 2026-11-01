@@ -36,6 +36,10 @@ type (
 		DurationMS    *int64          `json:"duration_ms"`
 		ToolInput     json.RawMessage `json:"tool_input"`
 		CWD           string          `json:"cwd"`
+		// Added with card 2.3, the steer step.
+		PromptID       string `json:"prompt_id"`
+		AgentID        string `json:"agent_id"`
+		PermissionMode string `json:"permission_mode"`
 	}
 	oldSessionPayload struct {
 		SessionID string `json:"session_id"`
@@ -122,6 +126,9 @@ func FuzzRES5_IntakeMatchesTheStructDecode(f *testing.F) {
 		`[]`,
 		`"{\"session_id\":\"s\"}"`,
 		`{"session_id":"\ud800","cwd":"\u00e9"}`,
+		`{"agent_id":7777}`,
+		`{"prompt_id":1}`,
+		`{"permission_mode":true}`,
 	} {
 		f.Add([]byte(s))
 	}
@@ -173,7 +180,8 @@ func FuzzRES5_IntakeMatchesTheStructDecode(f *testing.F) {
 		}
 		if oerr == nil {
 			if npp.SessionID != opp.SessionID || npp.ToolName != opp.ToolName || npp.ToolUseID != opp.ToolUseID ||
-				npp.HookEventName != opp.HookEventName || npp.CWD != opp.CWD || !bytes.Equal(npp.ToolInput, opp.ToolInput) ||
+				npp.HookEventName != opp.HookEventName || npp.CWD != opp.CWD ||
+				npp.PromptID != opp.PromptID || npp.AgentID != opp.AgentID || npp.PermissionMode != opp.PermissionMode || !bytes.Equal(npp.ToolInput, opp.ToolInput) ||
 				!sameBool(npp.IsInterrupt, opp.IsInterrupt) || !sameInt(npp.DurationMS, opp.DurationMS) ||
 				!strings.HasPrefix(opp.Error, npp.Error) || (len(opp.Error) <= errorHeadBytes && npp.Error != opp.Error) {
 				t.Fatalf("PostPayload on %q:\n scan %+v\nwant %+v", raw, npp, opp)
