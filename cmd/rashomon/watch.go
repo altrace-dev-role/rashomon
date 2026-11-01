@@ -366,7 +366,7 @@ func refuseUnrunnable(loc settings.Locations) error {
 
 func (p *watchPlan) screenInput() consent.ScreenInput {
 	return consent.ScreenInput{
-		Version:      version,
+		Version:      buildVersion(),
 		SettingsPath: p.loc.User,
 		Executable:   p.exe,
 		InstallID:    p.installID,
@@ -395,7 +395,7 @@ func (p *watchPlan) record(screen []byte, ans *answers) (consent.Record, error) 
 		SteerDisclosure: disclosure,
 		Steer:           consent.SteerOn,
 		TextSHA256:      consent.TextSHA256(screen),
-		BinaryVersion:   version,
+		BinaryVersion:   buildVersion(),
 		BinarySHA256:    p.exeSHA256,
 		Via:             ans.via,
 		TTY:             ans.tty,
