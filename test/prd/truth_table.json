@@ -53,7 +53,7 @@
         }
       ],
       "id": "PF-PG1",
-      "implementation": "Gates are runner families from closed test and build runner tables, required after two sessions within 30 days or all required while no index has learned one, and a trusted or managed spec's declared gates join the snapshot at the steer step and at Stop, each bound to the project root and its dir and matched by runner or whole-line digest, absorbing the learned family whose runs it took, but lint, typecheck and scan have no runner table.",
+      "implementation": "Gates are runner families from closed test, build, lint, typecheck and scan runner tables (rules version 12: a runner's kind is the list its row is on, and a live gate's kind is test, build, lint, typecheck, scan or custom), required after two sessions within 30 days or all required while no index has learned one, and a trusted or managed spec's declared gates join the snapshot at the steer step and at Stop, each bound to the project root and its dir and matched by runner or whole-line digest, absorbing the learned family whose runs it took, but no check runner's output has a summary table, so a lint, typecheck or scan run's output is classified no_summary and never read.",
       "integration": [
         {
           "event": "PreToolUse",
@@ -73,7 +73,8 @@
         }
       ],
       "missing": [
-        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom"
+        "lint, typecheck and scan runs behind a wrapper (npm run lint, make lint, tox -e lint, pre-commit run) or with a flag before the word the row names (tsc -p . --noEmit) are still read as build or custom, since the tables name only the tool's own words",
+        "no gateout summary table for a lint, typecheck or scan runner: its output is classified no_summary, so a piped one stays masked_inconclusive"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -262,7 +263,7 @@
         }
       ],
       "missing": [
-        "no live gate has kind lint, typecheck or scan, so those claim classes read no_gate_known (PF-PG1)",
+        "a lint, typecheck or scan claim reads no_gate_known unless a run of a tool on the check lists is recorded: wrapped and flag-first spellings are not (PF-PG1)",
         "no claim verdict becomes a steer finding for the agent"
       ],
       "planned_pr": "",

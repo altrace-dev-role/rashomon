@@ -75,5 +75,5 @@ m("VER-2.2p empty is not recognized before pass", "internal/gateout/gateout.go",
 m("VER-2.2p delegate does not scan other rows", "internal/gateout/gateout.go",
   "if delegate {\n\t\trow = nil\n\t}", "if delegate {\n\t\trow = findProgram(program)\n\t}", "TestGO7_")
 m("VER-2.2p build output is scanned", "internal/gateout/gateout.go",
-  "if kind == \"build\" {\n\t\treturn store.GateOutput{Kind: \"no_summary\", Parser: program}\n\t}",
+  "if kind != \"test\" {\n\t\treturn store.GateOutput{Kind: \"no_summary\", Parser: program}\n\t}",
   "if false {\n\t\treturn store.GateOutput{Kind: \"no_summary\", Parser: program}\n\t}", "TestGO16_")

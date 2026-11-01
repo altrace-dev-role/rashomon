@@ -178,7 +178,7 @@
               ]
             },
             "runner_kind": {
-              "description": "Schema 6. The list the runner runner_digest digests is on: `test` for a test runner (the verb_class test list), `build` for a build runner (the status_masked build list). Set exactly when runner_digest is, from the same runner, and null exactly when it is null. The record names the runner's list because status_masked is `none` on a line that returns the runner's status and verb_class changes when the runner is sequenced: `go test ./... && echo ok` is class package and masked none. A record before schema 6 does not carry it, and its runner digest has no recorded kind, which is not `build`. A closed word: the words that decided it are compared and dropped.",
+              "description": "Schema 6. The list the runner runner_digest digests is on: `test` for a test runner (the verb_class test list), `build` for a build runner (the status_masked build list), and from rules version 12 `lint`, `typecheck` or `scan` for a runner on that check list (golangci-lint, mypy, semgrep and the like; a hidden status of one is recorded as status_masked `build`, the word of a runner that is not a test run). Set exactly when runner_digest is, from the same runner, and null exactly when it is null. The record names the runner's list because status_masked is `none` on a line that returns the runner's status and verb_class changes when the runner is sequenced: `go test ./... && echo ok` is class package and masked none. A record before schema 6 does not carry it, and its runner digest has no recorded kind, which is not `build`. A closed word: the words that decided it are compared and dropped.",
               "type": [
                 "string",
                 "null"
@@ -186,7 +186,10 @@
               "enum": [
                 null,
                 "test",
-                "build"
+                "build",
+                "lint",
+                "typecheck",
+                "scan"
               ]
             }
           }
@@ -941,7 +944,10 @@
           "enum": [
             null,
             "test",
-            "build"
+            "build",
+            "lint",
+            "typecheck",
+            "scan"
           ]
         },
         "runner_name": {

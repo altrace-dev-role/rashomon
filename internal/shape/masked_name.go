@@ -21,6 +21,10 @@ import (
 var (
 	testCommandNames  = sync.OnceValue(func() []string { return rowNames(testCommands) })
 	buildCommandNames = sync.OnceValue(func() []string { return rowNames(buildCommands) })
+
+	lintCommandNames      = sync.OnceValue(func() []string { return rowNames(lintCommands) })
+	typecheckCommandNames = sync.OnceValue(func() []string { return rowNames(typecheckCommands) })
+	scanCommandNames      = sync.OnceValue(func() []string { return rowNames(scanCommands) })
 )
 
 func rowNames(rows [][]string) []string {
@@ -54,10 +58,14 @@ var stageNames = [...]string{"other", "tail", "tee", "cat", "head", "grep", "wc"
 const OutputOutcomeRulesVersion = 11
 
 // RunnerNames is the vocabulary of runner_name: the words of every row of the
-// two runner lists, for the store check that holds a record's runner_name to
+// runner lists, in the order runnerLists reads them, for the store check that holds a record's runner_name to
 // the binary's own words.
 func RunnerNames() []string {
-	return append(append([]string(nil), testCommandNames()...), buildCommandNames()...)
+	var out []string
+	for _, l := range runnerLists {
+		out = append(out, l.names()...)
+	}
+	return out
 }
 
 // The ids below are for a reader that holds a run in memory for every call of
@@ -86,13 +94,15 @@ func RunnerNameID(name string) uint8 {
 // RunnerNameOf is the runner_name an id from RunnerNameID stands for, "" for
 // 0 or an id past the lists. The string is the binary's own.
 func RunnerNameOf(id uint8) string {
-	switch i := int(id) - 1; {
-	case i < 0:
+	i := int(id) - 1
+	if i < 0 {
 		return ""
-	case i < len(testCommandNames()):
-		return testCommandNames()[i]
-	case i-len(testCommandNames()) < len(buildCommandNames()):
-		return buildCommandNames()[i-len(testCommandNames())]
+	}
+	for _, l := range runnerLists {
+		if n := l.names(); i < len(n) {
+			return n[i]
+		}
+		i -= len(l.names())
 	}
 	return ""
 }
