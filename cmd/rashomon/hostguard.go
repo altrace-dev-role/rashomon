@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
@@ -91,6 +92,9 @@ func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io
 	}
 
 	payload, id, down := hostguard.EvaluateRaw(raw, rerr, claudeEnv(), hostguard.FamilyClaude)
+	if !down && sdkDeclined() {
+		return nil, replay, true, id
+	}
 	if !down && id.ID != harness.Unknown {
 		return payload, replay, false, id
 	}
@@ -100,6 +104,29 @@ func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io
 		return payload, replay, false, id
 	}
 	return nil, replay, true, id
+}
+
+// agentSDKEntrypoints are the CLAUDE_CODE_ENTRYPOINT values the Agent SDKs
+// set for the Claude Code process they start, TypeScript and Python. sdk-cli
+// is not one: Claude Code 2.1.280 sets it for every non-interactive run,
+// claude -p included, which is Claude Code run by a person or a script, not
+// a program built on the SDK.
+var agentSDKEntrypoints = map[string]bool{"sdk-ts": true, "sdk-py": true}
+
+// sdkDeclined is SDK-GATE1 (B309): whether this call came from an Agent SDK
+// program on a machine whose harnesses.json holds no y to the consent
+// screen's second question, which the full screen promises it is not
+// recorded without. Every hook path then stands down before it writes
+// anything, the harness count a stand-down keeps included. Only a positive
+// detection closes it, the entrypoint an SDK sets; any other call is Claude
+// Code's and records as before. No answer on file, the plugin route's case,
+// is not a y. A store root that does not resolve records nothing either.
+func sdkDeclined() bool {
+	if !agentSDKEntrypoints[claudeEnv().Entrypoint] {
+		return false
+	}
+	root, err := store.DefaultRoot()
+	return err != nil || !consent.SDKRecording(root)
 }
 
 // harnessSessionKey picks the field the DETECTED family (id.ID, never
