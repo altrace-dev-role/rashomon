@@ -169,23 +169,21 @@ func TestWR1_TheWrapWordKeepsItsJSON(t *testing.T) {
 	}
 }
 
-// TestWR1_AWrappedRunRaisesNoSteerNote: regression-location and
-// stale-evidence have no row that says a run was read in a wrapper, so a
-// gate whose red or green is wrapped raises neither (end to end:
-// TestWR1_AWrappedRunRaisesNoNoteThatNamesAPipe). Controls: the same gates
-// unwrapped raise each. Break: drop either guard.
-func TestWR1_AWrappedRunRaisesNoSteerNote(t *testing.T) {
+// TestRS1_AWrappedRunIsANoteCandidate: a gate whose red or green was read in
+// a wrapper is regression-location's candidate, and a wrapped green is
+// stale-evidence's, as an unwrapped one is: the rows say it ran inside
+// another command (WRAPPER-RED-STEP1). Controls: an unwrapped red after an
+// unwrapped green, and an unread wrapper, which decides nothing. Break: keep
+// WRAPPER-RUN1's refusal of either.
+func TestRS1_AWrappedRunIsANoteCandidate(t *testing.T) {
 	code := 1
 	red := func(last, green WrapWord) *GateState {
 		return &GateState{State: Red, Reason: FailedExit, LastGreen: &RunRef{Seq: 1, Wrapped: green},
 			LastRun: &RunRef{Seq: 3, ToolUseID: "toolu_r", ExitCode: &code, Wrapped: last}}
 	}
-	if !regressedHere(red(WrapNone, WrapNone), "toolu_r") {
-		t.Fatal("premise: an unwrapped red after an unwrapped green raises no regression")
-	}
-	for _, c := range []struct{ last, green WrapWord }{{WrapRead, WrapNone}, {WrapNone, WrapRead}} {
-		if regressedHere(red(c.last, c.green), "toolu_r") {
-			t.Errorf("red %s after green %s raised a regression", c.last, c.green)
+	for _, c := range []struct{ last, green WrapWord }{{WrapNone, WrapNone}, {WrapRead, WrapNone}, {WrapNone, WrapRead}, {WrapRead, WrapRead}} {
+		if !regressedHere(red(c.last, c.green), "toolu_r") {
+			t.Errorf("red %q after green %q raised no regression", c.last, c.green)
 		}
 	}
 	path := "internal/a.go"
@@ -193,10 +191,9 @@ func TestWR1_AWrappedRunRaisesNoSteerNote(t *testing.T) {
 	stale := func(green WrapWord) *GateState {
 		return &GateState{Required: true, State: Stale, Reason: WritesAfterGreen, LastGreen: &RunRef{Seq: 1, Wrapped: green}}
 	}
-	if !staleHere(stale(WrapNone), writes, 2) {
-		t.Fatal("premise: a write after an unwrapped green raises no stale evidence")
-	}
-	if staleHere(stale(WrapRead), writes, 2) {
-		t.Error("a write after a wrapped green raised stale evidence")
+	for _, green := range []WrapWord{WrapNone, WrapRead} {
+		if !staleHere(stale(green), writes, 2) {
+			t.Errorf("a write after green %q raised no stale evidence", green)
+		}
 	}
 }

@@ -13,7 +13,6 @@ S = "internal/shape/gaterun.go"
 V = "internal/verify/gates.go"
 D = "internal/verify/declared.go"
 STOP = "internal/verify/stop.go"
-SV = "internal/verify/steer.go"
 R = "internal/recap/value.go"
 REP = "internal/report/testbending.go"
 
@@ -88,15 +87,6 @@ m("WR-1 an unread wrapper leaves the gate not run (D5)", D,
 m("WR-1 a delegate's run is no wrapper", D,
   " ||\n\t\t\tisGateRun(d, masked, runner) && gateout.Delegated(g.Program)\n", "\n",
   "TestWR1_AWrappedRunIsFoundByItsOutput")
-m("WR-1 a wrapped red raises regression-location", SV,
-  "\t\tg.LastRun.Wrapped != WrapNone || g.LastGreen.Wrapped != WrapNone {", "\t\tg.LastGreen.Wrapped != WrapNone {",
-  "TestWR1_AWrappedRunRaisesNoSteerNote")
-m("WR-1 a wrapped green raises regression-location", SV,
-  "g.LastRun.Wrapped != WrapNone || g.LastGreen.Wrapped != WrapNone {", "g.LastRun.Wrapped != WrapNone {",
-  "TestWR1_AWrappedRunRaisesNoSteerNote")
-m("WR-1 a wrapped green raises stale-evidence", SV,
-  "g.LastGreen == nil || g.LastGreen.Wrapped != WrapNone {", "g.LastGreen == nil {",
-  "TestWR1_AWrappedRunRaisesNoSteerNote")
 m("WR-1 a wrapped run names its gate by the wrapper", STOP,
   " && g.LastRun.Wrapped == WrapNone", "",
   "TestWR1_AWrappedRunIsFoundByItsOutput")

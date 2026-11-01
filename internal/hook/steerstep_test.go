@@ -151,7 +151,9 @@ func printsFlag(t *testing.T, b []byte) bool {
 
 // TestST_StepsIsTheTriggerTable: the step runs only on an execution that
 // landed in the ordered stream, at a failure event that carried a runner
-// (card 2.3 R3) or at either post event when the call's input names
+// (card 2.3 R3), at a post whose output read red (a piped runner's at
+// PostToolUse, MASKED-OUTCOME1; a wrapper's at either event,
+// WRAPPER-RED-STEP1), or at either post event when the call's input names
 // .claude/rashomon (card P5B, 5.7, D-B7).
 func TestST_StepsIsTheTriggerTable(t *testing.T) {
 	for _, tc := range []struct {
@@ -175,6 +177,10 @@ func TestST_StepsIsTheTriggerTable(t *testing.T) {
 		{"PostToolUse", 7, true, true, false, true},
 		{"PostToolUse", 0, true, true, false, false},
 		{"", 7, true, true, false, false},
+		// a wrapper whose output read red (no runner) steps at either event.
+		{FailureEvent, 7, false, true, false, true},
+		{"PostToolUse", 7, false, true, false, true},
+		{FailureEvent, 0, false, true, false, false},
 	} {
 		if got := steps(tc.event, tc.seq, tc.runner, tc.red, tc.store); got != tc.want {
 			t.Errorf("steps(%q, %d, %v, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.red, tc.store, got, tc.want)

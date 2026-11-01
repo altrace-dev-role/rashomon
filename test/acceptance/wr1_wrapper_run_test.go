@@ -246,13 +246,11 @@ func (e *env) wr1DeclaredCall(dir, id, command, stdout, failErr string) string {
 
 // TestWR1_AWrappedRunRaisesNoNoteThatNamesAPipe: under a trusted spec's
 // gate (go test ./...), a make run whose output go test's table reads is
-// the gate's run, read from its output (WRAPPER-RUN1). No note row says so:
-// regression-location's and stale-evidence's output rows say the pipe hid
-// the exit status, and no pipe did; their exit rows would give go test the
-// exit make returned. So a wrapped run raises neither note, until a row
-// says it ran in a wrapper (WRAPPER-RED-STEP1). Controls: the same sessions
-// run go test directly, and each raises its note. Break: let a wrapped red
-// or green reach either producer.
+// the gate's run, read from its output (WRAPPER-RUN1), and its note never
+// says a pipe hid the exit status: no pipe did. WRAPPER-RUN1 raised none;
+// WRAPPER-RED-STEP1 raises each in rows that say the run ran inside another
+// command. Controls: the same sessions run go test directly, and each
+// raises its note. Break: render a wrapped run in the pipe's row.
 func TestWR1_AWrappedRunRaisesNoNoteThatNamesAPipe(t *testing.T) {
 	const makeFail = "Exit code 2\ngo test ./...\n" + wr1GoFail + "make: *** [check] Error 1\n"
 	count := func(e *env, p pattern.ID) int {
@@ -271,7 +269,7 @@ func TestWR1_AWrappedRunRaisesNoNoteThatNamesAPipe(t *testing.T) {
 		want           int
 	}{
 		{"control: go test red", "go test ./...", "go test ./...", "", "Exit code 1\n" + wr1GoFail, 1},
-		{"make check red", "go test ./...", "make check", "", makeFail, 0},
+		{"make check red", "go test ./...", "make check", "", makeFail, 1},
 	} {
 		t.Run("regression-location, "+c.name, func(t *testing.T) {
 			e, dir := dghEnv(t, true)
@@ -291,7 +289,7 @@ func TestWR1_AWrappedRunRaisesNoNoteThatNamesAPipe(t *testing.T) {
 		want                  int
 	}{
 		{"control: go test green", "go test ./...", wr1GoPass, 1},
-		{"make test green", "make test", "go test ./...\n" + wr1GoPass, 0},
+		{"make test green", "make test", "go test ./...\n" + wr1GoPass, 1},
 	} {
 		t.Run("stale-evidence, "+c.name, func(t *testing.T) {
 			e, dir := dghEnv(t, true)
