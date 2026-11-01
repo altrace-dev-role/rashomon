@@ -63,3 +63,10 @@ m("SV-1 lessons opens the ledger for writing", "cmd/rashomon/verbs_lessons.go",
   "\tl, err := openLedgerReadOnly()\n", "\tl, err := openLedger()\n", "TestSV1o_LessonsWritesNothing")
 m("SV-1 OpenReadOnly quarantines on disk", "internal/learn/ledger.go",
   "\tif !write {\n\t\treturn l, nil\n\t}\n", "", "TestRP2q_OpenReadOnlyNeverWrites")
+# STEER-DISCLOSE-YES1 (R32): status names the steer hold, read as the hook
+# reads it, from the highest steer disclosure on file.
+m("SV-1 status says nothing of the steer hold", "cmd/rashomon/verbs_status.go",
+  "\tcase c.notesHeld:\n", "\tcase false:\n", "TestSV1p_StatusNamesTheSteerHold")
+m("SV-1 status reads the hold from the last record", "cmd/rashomon/verbs_status.go",
+  "\t\tnotesHeld: !steerCurrent,\n", "\t\tnotesHeld: rec.SteerDisclosure < steer.DisclosureVersion,\n",
+  "TestSV1p_StatusNamesTheSteerHold")

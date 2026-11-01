@@ -12,11 +12,12 @@ import (
 
 // TestDEMO1_TranscriptMatchesGolden: scripts/demo1.sh, run against the suite's
 // binary, prints testdata/demo1.golden byte for byte -- the four printed lines
-// (turn 1's flag and recorded failure, turn 2's done flag carrying the red
-// forward, turn 3's verified line), every silent beat, and the closing report
-// under the masks its header names (card DEMO1 R3, D112). The golden is the
-// website's copy: a renderer change moves it in the same commit, and the
-// failure names the first line that moved. Regenerate with
+// (turn 1's note to the agent, shown as its mirror, and recorded failure,
+// turn 2's done flag carrying the red forward, turn 3's verified line),
+// every silent beat, and the closing report under the masks its header names
+// (card DEMO1 R3, D112). The golden is the website's copy: a renderer change
+// moves it in the same commit, and the failure names the first line that
+// moved. Regenerate with
 // `bash scripts/demo1.sh <a rashomonfault build> > test/acceptance/testdata/demo1.golden`.
 // The script seals its own environment (env -i), so the test sets only TMPDIR,
 // to keep the scratch directory under the test's own.

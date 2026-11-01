@@ -258,7 +258,8 @@ func benchSetenv(b testing.TB, root, cfg string) {
 // and a consent naming record_scope v5, so the hook records the content
 // fields: the healthy path. watch itself cannot run here, because
 // install.Executable refuses a go-build binary. The consent's
-// steer_disclosure is 0, as a --yes watch writes it, so no note is added.
+// steer_disclosure is 0, below steer.DisclosureVersion, so no note is added
+// and these rows measure the hook without steering.
 func benchInstall(b testing.TB, root, cfg string) string {
 	b.Helper()
 	if err := payload.Pin(root); err != nil {
