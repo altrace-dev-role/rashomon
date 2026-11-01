@@ -1062,7 +1062,7 @@
           "additionalProperties": true
         },
         "gate_output": {
-          "description": "Schema 5. VERIFY's classification of a gate-family call's output (2.2.3): kind (summary_pass, summary_fail, fail_line, empty_run, no_summary, unattributable or unread), parser, and for unread the reason (budget, too_large, decode or verify_off).",
+          "description": "Schema 5. VERIFY's classification of a gate-family call's output (2.2.3): kind (summary_pass, summary_fail, fail_line, empty_run, no_summary, unattributable or unread; printed_pass or printed_fail, with parser exit_status, from rules version 12, where the line printed the exit status of the runner it hid), parser, and for unread the reason (budget, too_large, decode or verify_off).",
           "type": [
             "object",
             "null"

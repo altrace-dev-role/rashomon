@@ -226,7 +226,7 @@ type EditMarks struct {
 // The post hook writes it (internal/hook, gateOutput); verify_off is a word
 // of the schema with no producer, since no switch turns verification off.
 type GateOutput struct {
-	Kind   string  `json:"kind"` // summary_pass | summary_fail | fail_line | empty_run | no_summary | unattributable | unread
+	Kind   string  `json:"kind"` // summary_pass | summary_fail | fail_line | empty_run | no_summary | unattributable | unread | printed_pass | printed_fail (gateout.Kinds)
 	Parser string  `json:"parser"`
 	Reason *string `json:"reason"` // unread: budget | too_large | decode | verify_off
 }
