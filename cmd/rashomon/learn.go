@@ -104,10 +104,7 @@ func listLessons(stdout io.Writer) error {
 }
 
 // printLessons is the listing's rows, each lesson with its tally, and under
-// it why an approved one is not sent: text the check refuses, or else an
-// approval a build before the stamp made, which Pick never sends (#156 D2).
-// A refused text is not offered approval again: approveLesson runs the same
-// check first and would refuse it too (LEARN-DX1 F1).
+// it why an approved one is not sent (notSentLine).
 func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) learn.Tally) {
 	for _, ls := range lessons {
 		t := tally(ls.ID)
@@ -117,12 +114,27 @@ func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) lea
 		}
 		fmt.Fprintf(w, "%s %s: %d fires, %d confirmed, %d refuted, %d unresolved; %s\n    %s\n",
 			ls.ID, ls.Tier, t.Fires, t.Confirmed, t.Refuted, t.Unresolved, bound, ls.Text)
-		if _, err := learn.Message(ls); err != nil && ls.Tier != learn.TierProposed {
-			fmt.Fprintf(w, "    cannot reach the agent: %v\n", err)
-		} else if ls.Tier != learn.TierProposed && ls.AwaitsApproval() {
-			fmt.Fprintf(w, "    approved before this build; approve again to send it: `rashomon learn approve %s`\n", ls.ID)
-		}
+		fmt.Fprint(w, notSentLine(ls))
 	}
+}
+
+// notSentLine is the line under a lesson past proposed that is not sent, ""
+// for any other: text the check refuses, or else an approval a build before
+// the stamp made, which Pick never sends (#156 D2). A refused text is not
+// offered approval again: approveLesson runs the same check first and would
+// refuse it too (LEARN-DX1 F1). learn's listing and lessons both print it
+// (LEARN-DX1 F2).
+func notSentLine(ls learn.Lesson) string {
+	if ls.Tier == learn.TierProposed {
+		return ""
+	}
+	if _, refused := learn.Message(ls); refused != nil {
+		return fmt.Sprintf("    cannot reach the agent: %v\n", refused)
+	}
+	if ls.AwaitsApproval() {
+		return fmt.Sprintf("    approved before this build; approve again to send it: `rashomon learn approve %s`\n", ls.ID)
+	}
+	return ""
 }
 
 func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
@@ -143,8 +155,9 @@ func importLessons(l *learn.Ledger, path string, stdout io.Writer) error {
 		return err
 	}
 	if _, err = fmt.Fprintf(stdout, "imported %d lessons at proposed, skipped %d; "+
-		"an approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session, "+
-		"and waits while a preflight note is sent; `rashomon learn approve ID` approves one\n", added, skipped); err != nil {
+		"an approved lesson is sent with a prompt, at most one per prompt and each lesson once a session: "+
+		"as the last line of that prompt's preflight note when the prompt names a path the lesson names, "+
+		"and otherwise with the next prompt that carries no preflight note; `rashomon learn approve ID` approves one\n", added, skipped); err != nil {
 		return err
 	}
 	// Import admits text approval refuses (2,048 bytes in any charset), so

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -247,5 +248,24 @@ func TestRP1j_ARunnerWordAnywhereInItsNameSettlesAKeylessFinding(t *testing.T) {
 	both := runnerView(gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil), gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
 	if im := ImpactOf(both, goLine, nil); im.Findings[0].State != FindingOpen {
 		t.Errorf("go test and go build both hold the word go: %+v, want open", im.Findings)
+	}
+}
+
+// TestLRN17s_TheRecapCountsAStampZeroApprovalAsProposed (LEARN-DX1 F2): a
+// proven or probation lesson with no approval time, which a build before
+// the stamp approved and Pick never sends, is not counted approved: it
+// awaits approval, as learn and lessons say under it, so it is counted
+// proposed.
+func TestLRN17s_TheRecapCountsAStampZeroApprovalAsProposed(t *testing.T) {
+	got := lessonCounts([]learn.Lesson{
+		{ID: "a", Tier: learn.TierProven, ApprovedUnixMS: 1},
+		{ID: "b", Tier: learn.TierProbation, ApprovedUnixMS: 1},
+		{ID: "c", Tier: learn.TierProbation},
+		{ID: "d", Tier: learn.TierProven},
+		{ID: "e", Tier: learn.TierProposed},
+		{ID: "f", Tier: learn.TierDemoted, ApprovedUnixMS: 1},
+	})
+	if want := (LessonCounts{Read: true, Approved: 2, Proposed: 3, Demoted: 1}); got != want {
+		t.Errorf("lessonCounts = %+v, want %+v", got, want)
 	}
 }
