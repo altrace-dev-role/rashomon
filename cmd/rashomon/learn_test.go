@@ -215,3 +215,78 @@ func TestLRN17k_ImportSaysWhenAnApprovedLessonIsSent(t *testing.T) {
 		t.Errorf("import: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 }
+
+// TestLRN17w_WithdrawIsTypedAtTheTerminal (#156 D3): `learn withdraw ID`
+// stops one approved lesson, asked as approval is: the lesson and a one-time
+// code on the terminal, the code typed back there. No terminal or a wrong
+// code withdraws nothing; the right one sends the lesson back to proposed,
+// where it no longer reaches the agent, and approval takes it again. A
+// lesson that is not approved has nothing to withdraw.
+func TestLRN17w_WithdrawIsTypedAtTheTerminal(t *testing.T) {
+	bodiesHere(t)
+	file := filepath.Join(t.TempDir(), "shared.json")
+	if err := os.WriteFile(file, []byte(sharedLessons), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := learnRun(t, "import", file); code != 0 {
+		t.Fatalf("import: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	atTerminal(t, &person{}, nil)
+	if code, out, errOut := learnRun(t, "approve", "npm-ci"); code != 0 {
+		t.Fatalf("approve: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+
+	atTerminal(t, nil, errors.New("no tty"))
+	if code, out, errOut := learnRun(t, "withdraw", "npm-ci"); code != 1 || out != "" || !strings.Contains(errOut, "no terminal to ask on, so nothing was withdrawn") {
+		t.Errorf("withdraw with no terminal: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	atTerminal(t, &person{answer: "1234567"}, nil)
+	if code, _, errOut := learnRun(t, "withdraw", "npm-ci"); code != 1 || !strings.Contains(errOut, "the code did not match, so nothing was withdrawn") {
+		t.Errorf("withdraw with a wrong code: exit %d, stderr %q", code, errOut)
+	}
+	if _, out, _ := learnRun(t); !strings.Contains(out, "npm-ci probation:") {
+		t.Fatalf("after two refused withdrawals the lesson is not approved: %q", out)
+	}
+	p := &person{}
+	atTerminal(t, p, nil)
+	code, out, errOut := learnRun(t, "withdraw", "npm-ci")
+	if code != 0 || out != "withdrew npm-ci: it no longer reaches the agent; `rashomon learn approve npm-ci` sends it again\n" {
+		t.Fatalf("withdraw with the code: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	if !strings.Contains(p.shown.String(), "npm ci before npm test") {
+		t.Errorf("the terminal showed %q: want the lesson's text", p.shown.String())
+	}
+	if _, out, _ := learnRun(t); !strings.Contains(out, "npm-ci proposed:") {
+		t.Errorf("after a withdrawal the list says %q; want npm-ci proposed", out)
+	}
+	if code, _, errOut := learnRun(t, "withdraw", "npm-ci"); code != 1 || !strings.Contains(errOut, "nothing to withdraw") {
+		t.Errorf("withdrawing a proposed lesson: exit %d, stderr %q", code, errOut)
+	}
+	atTerminal(t, &person{}, nil)
+	if code, out, errOut := learnRun(t, "approve", "npm-ci"); code != 0 || out != "approved npm-ci\n" {
+		t.Errorf("approving again after a withdrawal: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
+
+// TestLRN17s_TheListNamesAStampZeroApproval (#156 D2): a lesson a build
+// before the stamp approved is listed with the line that says it is not
+// sent and how to send it; a stamped or a proposed lesson has no such line.
+// Nor has one whose text the check now refuses (a build before the host
+// screen approved it): approval would refuse it too, so the list names only
+// why it cannot reach the agent (LEARN-DX1 F1).
+func TestLRN17s_TheListNamesAStampZeroApproval(t *testing.T) {
+	var out bytes.Buffer
+	printLessons(&out, []learn.Lesson{
+		{ID: "npm-ci", Tier: learn.TierProbation, Text: "npm ci before npm test"},
+		{ID: "go-test-cwd", Tier: learn.TierProbation, Text: "run go test from the module root", ApprovedUnixMS: 1},
+		{ID: "make-check", Tier: learn.TierProposed, Text: "make check before a push"},
+		{ID: "host-1", Tier: learn.TierProbation, Text: "push to build.example.com after tests"},
+	}, func(string) learn.Tally { return learn.Tally{} })
+	line := "    approved before this build; approve again to send it: `rashomon learn approve "
+	if got := strings.Count(out.String(), line); got != 1 || !strings.Contains(out.String(), line+"npm-ci`\n") {
+		t.Errorf("the list says %q; want the line once, for npm-ci alone", out.String())
+	}
+	if _, rest, _ := strings.Cut(out.String(), "host-1 probation:"); !strings.Contains(rest, "    cannot reach the agent: ") {
+		t.Errorf("the list says %q; want host-1 named as one that cannot reach the agent", out.String())
+	}
+}

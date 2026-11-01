@@ -350,11 +350,25 @@ jobs:
   # failing input is written under the target's testdata/fuzz, printed here
   # and kept as an artifact, so it can be committed as a seed; each input is
   # handed to a parser only, never run.
+  # Two shards (CI-PERF-SPLIT1): one job took 17 to 18 of its 25 minutes
+  # (18m10s at 32 targets, run 41224871717; 17m13s in the step at 35, run
+  # 41266120278), with each new target 30 s more. Every shard lists every
+  # target and fuzzes the ones whose index, from 1 in go list's and -list's
+  # order, falls to it, so the shards are disjoint, their union is the tree,
+  # and each holds the floor over the whole count. Each keeps its failing
+  # inputs under its own artifact name, since a run refuses a second upload
+  # under one name. fail-fast is off so one red shard does not cancel the
+  # other's verdicts.
   fuzz:
-    name: Fuzz
+    name: Fuzz (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
-    # Every target at 30 s each, plus their builds; the bound is DEL-17's.
+    # Each shard's targets at 30 s each, plus every package's test build for
+    # the listing; the bound is DEL-17's.
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -364,15 +378,24 @@ jobs:
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
-      - name: Fuzz every target
+      - name: Fuzz this shard's targets
         shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ strategy.job-total }}
         run: |
           set -euo pipefail
           found=0
+          ran=0
           failed=()
           log=$(mktemp)
           for pkg in $(go list ./...); do
             for name in $(go test "$pkg" -list '^Fuzz' | grep '^Fuzz' || true); do
+              found=$((found + 1))
+              if [ $(( (found - 1) % SHARDS + 1 )) -ne "$SHARD" ]; then
+                continue
+              fi
+              ran=$((ran + 1))
               echo "::group::${pkg} ${name}"
               if go test "$pkg" -run '^$' -fuzz "^${name}\$" -fuzztime 30s -fuzzminimizetime 10x 2>&1 | tee "$log"; then
                 if ! grep -q '^fuzz: elapsed' "$log"; then
@@ -388,11 +411,11 @@ jobs:
                 fi
               fi
               echo "::endgroup::"
-              found=$((found + 1))
             done
           done
-          echo "fuzzed ${found} targets"
+          echo "fuzzed ${ran} of ${found} targets (shard ${SHARD}/${SHARDS})"
           test "$found" -ge 35
+          test "$ran" -ge $((found / SHARDS))
           if [ "${#failed[@]}" -gt 0 ]; then
             printf '::error::failed: %s\n' "${failed[@]}"
             exit 1
@@ -402,7 +425,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: fuzz-failing-inputs
+          name: fuzz-failing-inputs-${{ matrix.shard }}
           path: "**/testdata/fuzz/**"
           if-no-files-found: ignore
 
@@ -681,16 +704,6 @@ jobs:
       - name: REC-34 group commit (darwin)
         run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
 
-      # sync_darwin.go's own 14 mutants build on no other GOOS, and the one
-      # mutant whose judging test is darwin-only (platform="darwin" in the
-      # mutant file) reports NOT JUDGED (platform) everywhere else too: this
-      # is the only runner where any of them are exercised at all. Scoped to
-      # this one file, not the full sweep, which stays on ubuntu-latest in
-      # its own job and would otherwise run twice for every mutant outside
-      # this file.
-      - name: REC-34 group commit mutants (darwin)
-        run: python3 test/mutation/sweep.py --strict --files mutants/REC-34_group-commit.py
-
       # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
       # budgets are derived from its holds (internal/store/lockbudget.go,
       # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not
@@ -709,6 +722,37 @@ jobs:
       # TIOCPTYGNAME) the ubuntu job never takes.
       - name: TRU-1, 3, 4, 5 consent on a terminal (darwin)
         run: go test -race -count=1 -run 'TestTRU(1|3|4|5)_' ./test/acceptance
+
+  # sync_darwin.go's own 14 mutants build on no other GOOS, and the one
+  # mutant whose judging test is darwin-only (platform="darwin" in the
+  # mutant file) reports NOT JUDGED (platform) everywhere else too: this is
+  # the only runner where any of them are exercised at all. Scoped to this
+  # one file, not the full sweep, which stays on ubuntu-latest in its own job
+  # and would otherwise run twice for every mutant outside this file. A job
+  # of its own, beside Perf gates (macos) with no needs: (CI-PERF-SPLIT1):
+  # as a step there it grew from 12 to 15-18 minutes as test files went from
+  # 582 to 665, past that job's 25. It was cancelled unfinished at the cap
+  # on #184 (run 41264688060, 18m02s in the step) and #168 (run
+  # 41217556896, 17m11s), and the H-16 and TRU steps after it were skipped;
+  # main at 85a75f37 (run 41266120278) passed with 14m59s in the step and
+  # 22m07s in the job. Runs on every push and pull request, like the gates.
+  rec34-darwin:
+    name: REC-34 group commit mutants (darwin)
+    runs-on: macos-latest
+    # 15 to 18 minutes and more at 665 test files, with room for the tree's
+    # growth on a 3-core runner; the bound is DEL-17's.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      - name: REC-34 group commit mutants (darwin)
+        run: python3 test/mutation/sweep.py --strict --files mutants/REC-34_group-commit.py
 
   # The mutants only macOS can judge: the ones declaring platform="darwin"
   # (their judging tests skip off darwin) and the ones whose target builds on
