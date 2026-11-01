@@ -54,3 +54,30 @@ func TestTRU23_RecordsRowNamesTheRuleHit(t *testing.T) {
 		t.Errorf("the records row's Holds does not name the rule hit it holds: %q", h)
 	}
 }
+
+// TestTRU24_RecordsRowNamesTheAfterHit (card SPEC-RULES1 1b, #216 ruling 1):
+// the inventory's row for a run's records.ndjson says it holds an after_hit
+// when a call matched an order rule's after pattern, and what it keeps: the
+// rule's id, its file's digest, how the call ended, its directory's keyed
+// digest, and no command text.
+func TestTRU24_RecordsRowNamesTheAfterHit(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, r := range inv.Files {
+		if !strings.Contains(r.Holds, "a spec_event with the rule's id") {
+			continue
+		}
+		found++
+		for _, want := range []string{"an after_hit with the same four", "its exit status", "whether it ran in the foreground", "the keyed digest of its working directory", "no command text"} {
+			if !strings.Contains(r.Holds, want) {
+				t.Errorf("the records row's Holds does not say %q: %q", want, r.Holds)
+			}
+		}
+	}
+	if found != 1 {
+		t.Errorf("%d rows hold the spec_event sentence, want 1", found)
+	}
+}

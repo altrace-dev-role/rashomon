@@ -59,8 +59,8 @@ func (r ruleRead) verdict() RuleVerdictValue {
 // protect_path the writes classify named; require_evidence the snapshot's
 // gates, at a point its at list names, done read at Stop and only when the
 // window holds a relevant write (wrote). A rule missing the field its kind
-// reads is undecided (spec/file.go, Rule). order reads the Bash lines and the
-// writes (orderOver); forbid_code reads the writes and is undecided at every
+// reads is undecided (spec/file.go, Rule). order reads the Bash lines (its Then), the
+// after_hits the posts wrote (afterHits) and the writes (orderOver); forbid_code reads the writes and is undecided at every
 // applicable one until an edit's content is read (codeOver). insufficient is the 30-day window's and
 // never read at a point.
 func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Execution, c *classified, snap *Snapshot, wrote bool) []RuleVerdict {
@@ -101,7 +101,7 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 			if rels == nil {
 				rels = projectRels(c.writes)
 			}
-			r = orderOver(&dr.Rule, lines, picked, c, rels, at)
+			r = orderOver(&dr.Rule, lines, afterHits(run, dr.ID, sourceDigest(sp, dr.Source), at), c, rels, at)
 		case spec.RequireEvidence:
 			var ok bool
 			if r, ok = evidenceAt(&dr.Rule, snap, wrote); !ok {

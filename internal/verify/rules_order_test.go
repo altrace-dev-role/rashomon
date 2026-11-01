@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -27,7 +28,9 @@ func noTodo() spec.Rule {
 		Pattern: `TODO`, Paths: []string{"src/**"}}
 }
 
-// ordered is a run of cs with each Bash call's line recorded (call.line).
+// ordered is a run of cs with each Bash call's line recorded (call.line) and,
+// as the post records them, an after_hit for each call the testFirst rule's
+// after may run (hitsFor).
 func ordered(t *testing.T, cs ...call) *store.Run {
 	t.Helper()
 	m := map[int64]string{}
@@ -36,7 +39,40 @@ func ordered(t *testing.T, cs ...call) *store.Run {
 			m[c.seq] = c.line
 		}
 	}
-	return withLines(runOf(t, cs...), m)
+	r := withLines(runOf(t, cs...), m)
+	hitsFor(t, r, cs)
+	return r
+}
+
+// testFirstDigest is the digest ruleSpec gives the source of its rules.
+const testFirstDigest = spec.DigestPrefix + "1111111111111111111111111111111111111111111111111111111111111111"
+
+// hitsFor appends to r the after_hit the post would record for each call of
+// cs whose line the testFirst rule's after matches or may match: its exit
+// status (nil for a failure with none), foreground flag and directory digest
+// as the call's records say, maybe where the line only may.
+func hitsFor(t *testing.T, r *store.Run, cs []call) {
+	t.Helper()
+	rule := testFirst()
+	for _, c := range cs {
+		if c.tool != "Bash" || c.line == "" {
+			continue
+		}
+		cmds, ok := shape.Commands(c.line)
+		tr := lineMatch(rule.After, &ruleLine{cmds: cmds, whole: ok})
+		if tr == triNo {
+			continue
+		}
+		var exit *int
+		if c.outcome == store.ExecOK {
+			zero := 0
+			exit = &zero
+		} else if c.exit != 0 {
+			exit = &c.exit
+		}
+		r.AfterHits = append(r.AfterHits, *store.NewAfterHit("s1", postEvent, "spec:test-first", testFirstDigest,
+			landedAt(t, r, c.seq), exit, !c.bg, c.loc, tr == triMaybe, 0))
+	}
 }
 
 // sedc is a Bash write of paths, its line recorded.
@@ -49,7 +85,7 @@ func sedc(seq int64, paths ...string) call {
 // shc is a Bash call of line that exits 0.
 func shc(seq int64, line string) call {
 	c := sh(seq, line)
-	c.line = line
+	c.line, c.loc = line, "d:repo"
 	return c
 }
 
@@ -158,7 +194,6 @@ func TestSR1q_OrderAfterMustQualify(t *testing.T) {
 	elsewhere := shc(1, "go test ./...")
 	elsewhere.loc = "d:other"
 	here := shc(2, "git push origin main")
-	here.loc = "d:repo"
 	for name, r := range map[string]*store.Run{
 		"nonzero exit":     ordered(t, failed, shc(2, "git push origin main")),
 		"background":       ordered(t, bg, shc(2, "git push origin main")),
@@ -187,15 +222,15 @@ func TestSR1r_OrderIndirectionIsUndecidedAndNeverFires(t *testing.T) {
 	withheld := ordered(t, shc(1, "go test ./..."), shc(2, "git push origin main"))
 	withheld.Declarations[0].Command = nil
 	cases := map[string]*store.Run{
-		"then in bash -c":     ordered(t, shc(1, "go build ./..."), shc(2, "bash -c 'git push'")),
-		"then expands":        ordered(t, shc(1, "go build ./..."), shc(2, "git $VERB origin")),
-		"then in a heredoc":   ordered(t, shc(1, "go build ./..."), shc(2, "bash <<EOF\ngit push\nEOF")),
-		"after in bash -c":    ordered(t, shc(1, "bash -c 'go test ./...'"), shc(2, "git push origin main")),
-		"after expands":       ordered(t, shc(1, "go $SUB ./..."), shc(2, "git push origin main")),
-		"both in one line":    ordered(t, shc(1, "go test ./... && git push origin main")),
-		"glob write between":  glob,
-		"unnamed write":       blind,
-		"after line withheld": withheld,
+		"then in bash -c":    ordered(t, shc(1, "go build ./..."), shc(2, "bash -c 'git push'")),
+		"then expands":       ordered(t, shc(1, "go build ./..."), shc(2, "git $VERB origin")),
+		"then in a heredoc":  ordered(t, shc(1, "go build ./..."), shc(2, "bash <<EOF\ngit push\nEOF")),
+		"after in bash -c":   ordered(t, shc(1, "bash -c 'go test ./...'"), shc(2, "git push origin main")),
+		"after expands":      ordered(t, shc(1, "go $SUB ./..."), shc(2, "git push origin main")),
+		"both in one line":   ordered(t, shc(1, "go test ./... && git push origin main")),
+		"glob write between": glob,
+		"unnamed write":      blind,
+		"line withheld":      withheld,
 	}
 	for name, r := range cases {
 		snap, obs := specLedgerAt(r, sp, stopPoint(r))
@@ -309,5 +344,126 @@ func TestSR1t_ForbidCodeIsUndecidedUntilContentIsRead(t *testing.T) {
 		if v := oneVerdict(t, Evaluate(r, nil, ruleSpec(spec.Trusted, rule), stopPoint(r), time.Time{})); v.Verdict != RuleUnknown {
 			t.Errorf("%s: %+v, want unknown", name, v)
 		}
+	}
+}
+
+// TestSR1u_AnAfterCallLeavesAHitFromTheCallAlone: RulesAtCall returns an
+// after_hit for a call whose line the rule's after matches, from the payload
+// in memory: the rule's id and its file's digest, the call's exit status and
+// foreground flag as the post read them, and its declaration's directory
+// digest; Maybe where the line only may run the after; nothing for a line
+// that does not, for a rule with no after, or for a call that is not Bash.
+// An untrusted rule's hit is the same (the user flag judges from it), and a
+// call with no run read carries no directory, which no Then compares equal
+// to.
+func TestSR1u_AnAfterCallLeavesAHitFromTheCallAlone(t *testing.T) {
+	zero, one := 0, 1
+	first := sh(1, "go test ./...")
+	first.loc = "d:repo"
+	r := runOf(t, first)
+	call1 := func(line string, exit *int, fg bool, run *store.Run) RuleCall {
+		return RuleCall{Seq: 2, ToolName: "Bash", Command: line, ToolUseID: callID(1), Run: run, Exit: exit, Foreground: fg}
+	}
+	for _, tr := range []spec.Trust{spec.Trusted, spec.Untrusted} {
+		sp := ruleSpec(tr, testFirst())
+		v := RulesAtCall(sp, call1("go test ./...", &zero, true, r), atPost(2), postEvent)
+		want := AfterHit{RuleID: "spec:test-first", SourceDigest: testFirstDigest, CWDDigest: "d:repo", Exit: &zero, Foreground: true}
+		if len(v.AfterHits) != 1 || !afterHitEqual(v.AfterHits[0], want) {
+			t.Errorf("%v: after hits %+v, want %+v", tr, v.AfterHits, want)
+		}
+	}
+	sp := ruleSpec(spec.Trusted, testFirst())
+	if v := RulesAtCall(sp, call1("go test ./...", &one, true, r), atPost(2), postEvent); len(v.AfterHits) != 1 || v.AfterHits[0].Exit == nil || *v.AfterHits[0].Exit != 1 {
+		t.Errorf("a failed after: %+v, want a hit with exit 1", v.AfterHits)
+	}
+	if v := RulesAtCall(sp, call1("go test ./...", nil, true, r), atPost(2), postEvent); len(v.AfterHits) != 1 || v.AfterHits[0].Exit != nil {
+		t.Errorf("an after with no stated status: %+v, want a hit with no exit", v.AfterHits)
+	}
+	if v := RulesAtCall(sp, call1("go test ./...", &zero, false, r), atPost(2), postEvent); len(v.AfterHits) != 1 || v.AfterHits[0].Foreground {
+		t.Errorf("a background after: %+v, want a hit that is not foreground", v.AfterHits)
+	}
+	if v := RulesAtCall(sp, call1("bash -c 'go test ./...'", &zero, true, r), atPost(2), postEvent); len(v.AfterHits) != 1 || !v.AfterHits[0].Maybe {
+		t.Errorf("an after in bash -c: %+v, want a maybe hit", v.AfterHits)
+	}
+	if v := RulesAtCall(sp, call1("go test ./...", &zero, true, nil), atPost(2), postEvent); len(v.AfterHits) != 1 || v.AfterHits[0].CWDDigest != "" {
+		t.Errorf("with no run: %+v, want a hit with no directory", v.AfterHits)
+	}
+	for name, c := range map[string]RuleCall{
+		"another command": call1("go build ./...", &zero, true, r),
+		"no line":         call1("", &zero, true, r),
+		"not Bash":        {Seq: 2, ToolName: "Edit", Command: "go test ./...", Run: r},
+	} {
+		if v := RulesAtCall(sp, c, atPost(2), postEvent); len(v.AfterHits) != 0 {
+			t.Errorf("%s: hit %+v, want none", name, v.AfterHits)
+		}
+	}
+	noAfter := testFirst()
+	noAfter.After = nil
+	if v := RulesAtCall(ruleSpec(spec.Trusted, noAfter), call1("go test ./...", &zero, true, r), atPost(2), postEvent); len(v.AfterHits) != 0 {
+		t.Errorf("a rule with no after: hit %+v, want none", v.AfterHits)
+	}
+}
+
+func afterHitEqual(a, b AfterHit) bool {
+	return a.RuleID == b.RuleID && a.SourceDigest == b.SourceDigest && a.CWDDigest == b.CWDDigest && a.Foreground == b.Foreground &&
+		a.Maybe == b.Maybe && (a.Exit == nil) == (b.Exit == nil) && (a.Exit == nil || *a.Exit == *b.Exit)
+}
+
+// TestSR1v_TheJudgeReadsHitsNotAfterLines: the After's record is its hit. With
+// every line withheld (record scope v4) but the hit, the Then call is met;
+// with no hit it is a violation at the post (the record shows no After). Where
+// the After's line is recorded and left no hit, or only a hit of an earlier
+// version of the rule's file, the Then is undecided, never violated: a lost
+// record is a gap, not a verdict. A hit past the Then does not qualify it.
+func TestSR1v_TheJudgeReadsHitsNotAfterLines(t *testing.T) {
+	sp := ruleSpec(spec.Trusted, testFirst())
+	thenAt := func(r *store.Run) (RuleVerdictValue, int) {
+		v := oneVerdict(t, Evaluate(r, nil, sp, stopPoint(r), time.Time{}))
+		return v.Verdict, len(RulesAtCall(sp, orderCall(t, r, 2, "git push origin main"), atPost(landedAt(t, r, 2)), postEvent).Findings)
+	}
+	v4 := func(hit bool) *store.Run {
+		r := ordered(t, shc(1, "go test ./..."), shc(2, "git push origin main"))
+		for i := range r.Declarations {
+			r.Declarations[i].Command = nil
+		}
+		if !hit {
+			r.AfterHits = nil
+		}
+		return r
+	}
+	// The Stop cannot see the Then line at v4 (undecided); the post can.
+	if _, n := thenAt(v4(true)); n != 0 {
+		t.Errorf("a hit and withheld lines: %d findings at the post, want 0", n)
+	}
+	if _, n := thenAt(v4(false)); n != 1 {
+		t.Errorf("no hit and withheld lines: %d findings at the post, want 1", n)
+	}
+	lost := ordered(t, shc(1, "go test ./..."), shc(2, "git push origin main"))
+	lost.AfterHits = nil
+	if v, n := thenAt(lost); v != RuleUnknown || n != 0 {
+		t.Errorf("an after line with no hit: verdict %v, %d findings, want unknown and none", v, n)
+	}
+	edited := ordered(t, shc(1, "go test ./..."), shc(2, "git push origin main"))
+	edited.AfterHits[0].SourceDigest = spec.DigestPrefix + "22"
+	if v, n := thenAt(edited); v != RuleUnknown || n != 0 {
+		t.Errorf("a hit of an earlier file: verdict %v, %d findings, want unknown and none", v, n)
+	}
+	other := ordered(t, shc(1, "go test ./..."), shc(2, "git push origin main"))
+	other.AfterHits[0].RuleID = "spec:another"
+	if v, _ := thenAt(other); v != RuleUnknown {
+		t.Errorf("a hit of another rule: verdict %v, want unknown", v)
+	}
+	later := ordered(t, shc(1, "git push origin main"), shc(2, "go test ./..."))
+	if v := oneVerdict(t, Evaluate(later, nil, sp, stopPoint(later), time.Time{})); v.Verdict != Violation {
+		t.Errorf("a hit after the Then: %+v, want violation", v)
+	}
+	maybe := ordered(t, shc(1, "bash -c 'go test ./...'"), shc(2, "git push origin main"))
+	if v, n := thenAt(maybe); v != RuleUnknown || n != 0 {
+		t.Errorf("a maybe hit: verdict %v, %d findings, want unknown and none", v, n)
+	}
+	unknownDir := ordered(t, shc(1, "go test ./..."), shc(2, "git push origin main"))
+	unknownDir.AfterHits[0].CWDDigest = ""
+	if v, n := thenAt(unknownDir); v != RuleUnknown || n != 0 {
+		t.Errorf("a hit with no directory: verdict %v, %d findings, want unknown and none", v, n)
 	}
 }

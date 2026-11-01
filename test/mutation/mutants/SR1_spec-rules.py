@@ -121,8 +121,8 @@ m("sr1 the preflight's discovery runs twice", "cmd/rashomon/preflight.go",
 # rules_raise.go and the hook's carrying of the run) and forbid_code (codeOver,
 # undecided "content not read" at every applicable write).
 m("sr1b order reads a failed after as qualifying", "internal/verify/rules_order.go",
-  "\tif e == nil || e.Outcome != store.ExecOK || e.Backgrounded || a.cwd != then.cwd {\n",
-  "\tif e == nil || e.Backgrounded || a.cwd != then.cwd {\n",
+  "\tcase h.exit == nil || *h.exit != 0 || !h.fg:\n",
+  "\tcase h.exit == nil || !h.fg:\n",
   "TestSR1q_")
 m("sr1b order ignores an invalidating write", "internal/verify/rules_order.go",
   "\t\tcase anyPath(r.InvalidatedBy, rel):\n\t\t\treturn triNo\n",
@@ -145,15 +145,15 @@ m("sr1b forbid_code is undecided at a write elsewhere", "internal/verify/rules_o
   "\tif false && len(w.seqs) == 0 && !w.undecided {\n\t\treturn ruleRead{}\n\t}\n",
   "TestSR1t_")
 m("sr1b the post raises an order at a call that is not the then", "internal/verify/rules_raise.go",
-  "\t\t\treturn slices.Contains(orderOver(r, v.lines, v.picked, &v.c, v.rels, v.at).seqs, d.Seq)\n",
-  "\t\t\treturn len(orderOver(r, v.lines, v.picked, &v.c, v.rels, v.at).seqs) > 0\n",
+  "\t\t\treturn slices.Contains(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs, d.Seq)\n",
+  "\t\t\treturn len(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs) > 0\n",
   "TestSR1p_")
 IMPORTS["sr1b the post raises an order at a call that is not the then"] = ("internal/verify/rules_raise.go", '\t"slices"\n', "")
 m("sr1b the post raises an order with no run read", "internal/verify/rules_raise.go",
-  "\t\t\tif call.ToolName != \"Bash\" || call.Run == nil || dr.Rule.Then == nil",
-  "\t\t\tif call.ToolName != \"Bash\" || dr.Rule.Then == nil",
+  "\t\t\tif call.Run == nil || !read {\n",
+  "\t\t\tif !read {\n",
   "TestSR1p_")
 m("sr1b the rules step does not carry the run to an order rule", "internal/hook/steerstep.go",
-  "\t\tc.Run = run\n",
-  "\t\tc.Run = nil\n",
+  "\t\t\tc.Run = run\n",
+  "\t\t\tc.Run = nil\n",
   "TestSR1ab_")

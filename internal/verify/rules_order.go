@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -40,15 +41,48 @@ func lineMatch(m *spec.CommandMatch, l *ruleLine) tri {
 	return t
 }
 
-// orderOver is an order rule over the lines at or before at: a violation at
-// each line its then command matches for certain with no qualifying earlier
-// after run (exit 0, foreground, the same directory, no write its
-// invalidated_by paths match between them). A then or an after the line does
-// not show, both in one line (their order is the shell's), a glob or an
-// unnamed write between, a line not read whole, and a rule with no then,
-// after, or with an after_gate or a same_run_key (not read yet) are
-// undecided.
-func orderOver(r *spec.Rule, lines []ruleLine, picked map[string]*store.Execution, c *classified, rels []projectRel, at int64) ruleRead {
+// afterHit is an order rule's After call as its post recorded it (the
+// after_hit record, #216 ruling 1): seq is the call's declaration seq, the rest the
+// record's own fields. The judge reads these and never an After call's line.
+type afterHit struct {
+	seq   int64
+	exit  *int
+	fg    bool
+	cwd   string
+	maybe bool
+}
+
+// afterHits is the after_hit records of the rule id recorded while its declaring
+// file had digest, whose call landed at or before at, each at its call's
+// declaration seq (hitSeq), as ruleHitSeqs reads a forbid_command rule's
+// hits: an edit of the file drops its earlier hits, which then qualify
+// nothing. Cost: O(H) per order rule.
+func afterHits(run *store.Run, id, digest string, at int64) []afterHit {
+	if digest == "" {
+		return nil
+	}
+	var out []afterHit
+	for i := range run.AfterHits {
+		h := &run.AfterHits[i]
+		if h.RuleID == id && h.SourceDigest == digest && h.LandedSeq > 0 && h.LandedSeq <= at {
+			out = append(out, afterHit{seq: hitSeq(run, h.LandedSeq), exit: h.ExitCode, fg: h.Foreground, cwd: h.CWDDigest, maybe: h.Maybe})
+		}
+	}
+	return out
+}
+
+// orderOver is an order rule over the Then lines at or before at and the
+// after_hits before each: a violation at each line its then command matches
+// for certain with no qualifying earlier hit (exit 0, foreground, the same
+// directory, no write its invalidated_by paths match between them). A then
+// the line does not show, a then and an after in one line (their order is
+// the shell's), an earlier line shown to the reader that the after matches
+// and that left no hit (a lost record, never a violation; a line the record
+// withheld shows nothing, so it adds no doubt), a hit that could not say it ran the after
+// (maybe), a hit or then with no known directory, a glob or an unnamed write
+// between, a line not read whole, and a rule with no then, after, or with an
+// after_gate or a same_run_key (not read yet) are undecided.
+func orderOver(r *spec.Rule, lines []ruleLine, hits []afterHit, c *classified, rels []projectRel, at int64) ruleRead {
 	var out ruleRead
 	if r.Then == nil || len(r.Then.Argv) == 0 || r.After == nil || len(r.After.Argv) == 0 || len(r.SameRunKey) > 0 {
 		out.undecided = true
@@ -64,13 +98,17 @@ func orderOver(r *spec.Rule, lines []ruleLine, picked map[string]*store.Executio
 		if lineMatch(r.After, l) != triNo {
 			best = triMaybe
 		}
-		for j := range lines {
-			a := &lines[j]
-			if a.seq >= l.seq {
+		for j := range hits {
+			h := &hits[j]
+			if h.seq >= l.seq {
 				continue
 			}
-			if m := lineMatch(r.After, a); m != triNo {
-				best = max(best, min(m, afterRan(a, l, picked), untouched(r, c, rels, a.seq, l.seq, at)))
+			best = max(best, min(afterRan(h, l), untouched(r, c, rels, h.seq, l.seq, at)))
+		}
+		for j := range lines {
+			a := &lines[j]
+			if a.seq < l.seq && len(a.cmds) > 0 && lineMatch(r.After, a) != triNo && !hasHit(hits, a.seq) {
+				best = max(best, triMaybe)
 			}
 		}
 		switch {
@@ -84,11 +122,24 @@ func orderOver(r *spec.Rule, lines []ruleLine, picked map[string]*store.Executio
 	return out
 }
 
-// afterRan is whether the after line's call qualifies for the then line's:
-// it landed with outcome ok in the foreground, in the same directory.
-func afterRan(a, then *ruleLine, picked map[string]*store.Execution) tri {
-	e := picked[a.id]
-	if e == nil || e.Outcome != store.ExecOK || e.Backgrounded || a.cwd != then.cwd {
+// hasHit reports a hit recorded for the call declared at seq.
+func hasHit(hits []afterHit, seq int64) bool {
+	return slices.ContainsFunc(hits, func(h afterHit) bool { return h.seq == seq })
+}
+
+// afterRan is whether the after hit qualifies for the then line's: the call
+// ended with exit 0 in the foreground, in the same directory. A hit that
+// said it may not be the after, or either call's directory not known, is
+// maybe.
+func afterRan(h *afterHit, then *ruleLine) tri {
+	switch {
+	case h.maybe:
+		return triMaybe
+	case h.exit == nil || *h.exit != 0 || !h.fg:
+		return triNo
+	case h.cwd == "" || then.cwd == "":
+		return triMaybe
+	case h.cwd != then.cwd:
 		return triNo
 	}
 	return triYes
