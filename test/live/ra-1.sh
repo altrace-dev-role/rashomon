@@ -11,7 +11,7 @@
 # first and refuses, exit 2, before it does anything else; it never passes
 # --yes, never unsets CLAUDECODE for a child, and never answers a prompt. The
 # person at the terminal answers y at watch (A2, A4, A7, A8), at spec trust
-# (A4, A7) and at purge (A8).
+# (A2, A4, A7) and at purge (A8).
 #
 # Rows, prerequisites, what is saved ($EVID = .handoff/evidence by default,
 # untracked; override with RA_EVIDENCE):
@@ -25,20 +25,36 @@
 #       it also shows what releases/latest serves (RA_INSTALL_PIN=1 pins it).
 #   A2  needs the RC binary (below), claude on PATH and ~/.claude-probe logged
 #       in with no settings.json. Two sessions of an INTERACTIVE claude, in
-#       your terminal: the script runs watch, prints the prompt, starts claude
-#       under the probe's CLAUDE_CONFIG_DIR; you type the prompt, approve the
-#       tool calls and type /exit. The prompt has the model run a green go
-#       test, then edit a file. Session one reads as Claude Code 2.1.200: the
-#       version is SPOOFED (AI_AGENT, which steer.ClientVersion reads, is set
-#       to the 2.1.200 harness form for the hook only, by a wrapper the watch
-#       entries point at), and the floor, 2.1.280 for PostToolUse
-#       (internal/steer/client.go), is what is under test. Session two runs
-#       on the real version. Nothing else is spoofed: the entry point stays
-#       cli, the real surface. Saves A2/: claude version, both transcripts,
-#       both steer.ndjson, verdict.txt. Spoofed: the once-per-session "a note
-#       was built and not sent" notice recorded once, no note in the agent's
-#       transcript. Real: the stale-evidence note delivered, in the agent's
-#       transcript, and no notice.
+#       your terminal, each in its own scratch Go project. Before the
+#       sessions the script runs spec trust in both projects (you answer y,
+#       twice) for a spec that declares one required gate, unit =
+#       `go test ./...`: without a trusted spec and a verification index
+#       nothing can raise a note in a fresh store (internal/hook/steerstep.go
+#       judge; internal/verify/steer.go staleEvidence). Then, per session, the
+#       script prints the prompt on its own lines (and copies it to the
+#       clipboard when pbcopy exists), you press Enter, claude starts under
+#       the probe's CLAUDE_CONFIG_DIR. CLAUDE CODE MAY FIRST ASK WHETHER TO
+#       TRUST THE FOLDER: accept it. Then type or paste the prompt EXACTLY,
+#       approve the tool calls and type /exit. The prompt has the model run a
+#       green go test, then edit a file, which is stale-evidence: the declared
+#       gate was green, then this call wrote, and no later run is recorded;
+#       the note fires at that Edit's PostToolUse. Session one reads as
+#       Claude Code 2.1.200: the version is SPOOFED (AI_AGENT, which
+#       steer.ClientVersion reads, is set to the 2.1.200 harness form for the
+#       hook only, by a wrapper the watch entries point at), and the floor,
+#       2.1.280 for PostToolUse (internal/steer/client.go), is what is under
+#       test. Session two runs on the real version. Nothing else is spoofed:
+#       the entry point stays cli, the real surface. Saves A2/: claude
+#       version, spec-trust-<mode>.txt, both transcripts, both steer.ndjson,
+#       both <mode>.prompt-fired markers (UserPromptSubmit reached the store),
+#       verdict.txt. PASS: spoofed, the once-per-session "a note was built and
+#       not sent" notice recorded once, a stale-evidence line shadowed, no
+#       note in the agent's transcript; real, the stale-evidence line
+#       delivered, "rashomon record: gate 'unit' ..." in the agent's
+#       transcript, and no notice. INCONCLUSIVE (exit 3), not FAIL, when a
+#       session never got the prompt (no user prompt in its transcript and no
+#       UserPromptSubmit in the store: claude was started and exited with
+#       nothing typed) or the model did not run go test and edit a file.
 #   A4  needs the same, plus go. In a scratch Go project with a trusted spec
 #       that declares `go test ./...`: an interactive session that edits and
 #       runs no test (the done line at Stop), then one that edits and runs go
@@ -253,6 +269,8 @@ finish_session() {
     [ -f "$f" ] && cp "$f" "$2/$1.transcript.jsonl"
   done
   if [ -f "$HOME_R/runs/$SID/steer.ndjson" ]; then cp "$HOME_R/runs/$SID/steer.ndjson" "$2/$1.steer.ndjson"; fi
+  # the store's marker that UserPromptSubmit fired: a prompt was submitted
+  if [ -e "$HOME_R/runs/$SID/fired-UserPromptSubmit" ]; then : > "$2/$1.prompt-fired"; fi
 }
 
 # claude_run NAME PROMPT TOOLS DIR OUT [ENV...]: RA_HEADLESS only. One bounded
@@ -278,12 +296,23 @@ interactive_run() {
   SID=$(uuid); SIDS="$SIDS $SID"
   mkdir -p "$out"
   SCREEN=$out/$name.typescript
+  copied=
+  if command -v pbcopy > /dev/null 2>&1 && printf '%s' "$prompt" | pbcopy 2> /dev/null; then copied=yes; fi
   {
     echo
+    echo "================================================================"
     echo "== $name: claude starts in $dir under $CFG"
-    echo "Type this prompt, approve the tool calls, then type /exit:"
+    echo "================================================================"
+    echo "1. Claude Code may FIRST ask whether you trust this folder. ACCEPT it"
+    echo "   (choose Yes); the session cannot start until you do."
+    echo "2. Then TYPE (or paste) this prompt EXACTLY, and press Enter:"
     echo
-    echo "    $prompt"
+    echo "$prompt"
+    echo
+    if [ -n "$copied" ]; then echo "   (the prompt is on your clipboard: paste it with Cmd-V)"; fi
+    echo "3. APPROVE each tool call it asks about."
+    echo "4. When it says done, type /exit."
+    echo "If you type /exit without the prompt, this row cannot be judged."
     echo
     printf 'Press Enter to start claude. '
   } > /dev/tty
@@ -410,8 +439,19 @@ row_A2() {
   claude --version > "$A/claude-version.txt" 2>&1 || true
   realv=$(head -n 1 "$A/claude-version.txt")
   P="Run go test ./... once. Then add one comment line to internal/parse/lexer.go. Run no other command. Reply with only the word done."
+  # A trusted spec with one required test gate, in each project, answered y
+  # on the terminal as A4 does: stale-evidence fires in a fresh store only
+  # for a trusted spec's required gate (no learned index exists yet).
   for mode in spoofed real; do
     D=$T/a2-$mode; scratch_project "$D"
+    printf '{"rashomon_spec": 1, "gates": [{"id": "unit", "kind": "test", "argv": ["go", "test", "./..."]}]}\n' > "$D/.claude/rashomon/spec.json"
+    echo "spec trust ($mode project): answer y at the terminal."
+    (cd "$D" && run_tee "$A/spec-trust-$mode.txt" "$REAL" spec trust .claude/rashomon/spec.json)
+    RC=$(cat "$T/rc")
+    [ "$RC" = 0 ] || { echo "spec trust exited $RC; nothing to run" >&2; exit 2; }
+  done
+  for mode in spoofed real; do
+    D=$T/a2-$mode
     if [ "$mode" = spoofed ]; then
       echo "NOTE: the next session reads as Claude Code $SPOOF_VER. The version is spoofed; the floor is under test."
       session spoofed "$P" "Bash(go test:*) Edit" "$D" "$A" RA_SPOOF_AGENT=$SPOOF_AGENT
@@ -423,26 +463,52 @@ row_A2() {
   {
     echo "mode: $MODE"
     echo "A2 run at $(date -u +%Y-%m-%dT%H:%M:%SZ); real claude: $realv; spoofed session: $SPOOF_VER, AI_AGENT=$SPOOF_AGENT for the hook only (a spoofed VERSION; the floor is what is under test)"
+    echo "spec: gate unit = go test ./... (required), trusted at spec trust in each project"
     echo "-- steer lines, spoofed (pattern state suppressed_by client_version notice)"; steer_summary "$A/spoofed.steer.ndjson"
     echo "-- steer lines, real"; steer_summary "$A/real.steer.ndjson"
   } >> "$v"
-  nctx="rashomon record: gate"
+  nctx="rashomon record: gate 'unit'"
+  # was the prompt ever submitted: a user line holding it in the transcript,
+  # or the store's UserPromptSubmit marker
+  typed_sp=no; typed_re=no
+  if [ -f "$A/spoofed.prompt-fired" ] || grep '"type":"user"' "$A/spoofed.transcript.jsonl" 2> /dev/null | grep -qF "Reply with only the word done"; then typed_sp=yes; fi
+  if [ -f "$A/real.prompt-fired" ] || grep '"type":"user"' "$A/real.transcript.jsonl" 2> /dev/null | grep -qF "Reply with only the word done"; then typed_re=yes; fi
+  # did the model do what the prompt asked: run go test, edit a file
+  did_sp=no; did_re=no
+  # (the prompt itself names go test, so look for a Bash tool call that runs it)
+  grep '"name":"Bash"' "$A/spoofed.transcript.jsonl" 2> /dev/null | grep -qF "go test" && has '"name":"Edit"' "$A/spoofed.transcript.jsonl" && did_sp=yes
+  grep '"name":"Bash"' "$A/real.transcript.jsonl" 2> /dev/null | grep -qF "go test" && has '"name":"Edit"' "$A/real.transcript.jsonl" && did_re=yes
   sp_notice=$(grep -c '"notice":"channel"' "$A/spoofed.steer.ndjson" 2> /dev/null || true)
   sp_ver=no; has "\"client_version\":\"$SPOOF_VER\"" "$A/spoofed.steer.ndjson" && sp_ver=yes
+  sp_built=no; grep '"pattern":"stale-evidence"' "$A/spoofed.steer.ndjson" 2> /dev/null | grep -qF '"suppressed_by":"unverified_channel"' && sp_built=yes
   sp_ctx=no; has "$nctx" "$A/spoofed.transcript.jsonl" && sp_ctx=yes
   re_ctx=no; has "$nctx" "$A/real.transcript.jsonl" && re_ctx=yes
+  re_line=no; grep '"pattern":"stale-evidence"' "$A/real.steer.ndjson" 2> /dev/null | grep -qF '"state":"delivered"' && re_line=yes
   re_notice=$(grep -c '"notice":"channel"' "$A/real.steer.ndjson" 2> /dev/null || true)
   {
+    echo "spoofed: the prompt was submitted: $typed_sp (want yes); the model ran go test and edited: $did_sp (want yes)"
+    echo "real: the prompt was submitted: $typed_re (want yes); the model ran go test and edited: $did_re (want yes)"
     echo "spoofed: notice lines recorded: ${sp_notice:-0} (want 1)"
     echo "spoofed: the steer log names client version $SPOOF_VER: $sp_ver (want yes)"
+    echo "spoofed: a stale-evidence line shadowed (unverified_channel): $sp_built (want yes)"
     echo "spoofed: note in the agent's transcript: $sp_ctx (want no)"
+    echo "real: a stale-evidence line delivered in the steer log: $re_line (want yes)"
     echo "real: note in the agent's transcript: $re_ctx (want yes)"
     echo "real: notice lines recorded: ${re_notice:-0} (want 0)"
   } >> "$v"
-  if [ ! -f "$A/spoofed.steer.ndjson" ] || [ ! -f "$A/real.steer.ndjson" ]; then
-    echo "no steer record for a session: the hooks did not run, or the model skipped the edit" >> "$v"
+  if [ "$typed_sp" = no ] || [ "$typed_re" = no ]; then
+    who=
+    [ "$typed_sp" = no ] && who="spoofed"
+    [ "$typed_re" = no ] && who="${who:+$who and }real"
+    echo "the prompt was never typed in the $who session: no user prompt in its transcript and no UserPromptSubmit in the store (claude was started and exited with nothing typed, or the folder-trust dialog was not accepted). Not a product failure; run A2 again and type the prompt." >> "$v"
     verdict A2 INCONCLUSIVE "$v"
-  elif [ "${sp_notice:-0}" = 1 ] && [ "$sp_ver" = yes ] && [ "$sp_ctx" = no ] && [ "$re_ctx" = yes ] && [ "${re_notice:-0}" = 0 ]; then
+  elif [ ! -f "$A/spoofed.steer.ndjson" ] || [ ! -f "$A/real.steer.ndjson" ]; then
+    echo "no steer record for a session: the hooks did not run, or no call reached the steer step" >> "$v"
+    verdict A2 INCONCLUSIVE "$v"
+  elif [ "$did_sp" = no ] || [ "$did_re" = no ]; then
+    echo "a session did not run go test and edit a file as the prompt asked: nothing to judge" >> "$v"
+    verdict A2 INCONCLUSIVE "$v"
+  elif [ "${sp_notice:-0}" = 1 ] && [ "$sp_ver" = yes ] && [ "$sp_built" = yes ] && [ "$sp_ctx" = no ] && [ "$re_line" = yes ] && [ "$re_ctx" = yes ] && [ "${re_notice:-0}" = 0 ]; then
     verdict A2 PASS "$v"
   else verdict A2 FAIL "$v"; fi
   swap "$WRAP" "$REAL" > /dev/null; SWAPPED=0
