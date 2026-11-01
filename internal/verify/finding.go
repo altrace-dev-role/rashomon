@@ -165,6 +165,11 @@ type GateFact struct {
 	// last run for a regression, the green run for a stale gate), else "".
 	// One closed word, carried to the steer line and the note's text (D229).
 	OutcomeFrom OutcomeFrom
+	// RedWrapped and GreenWrapped say the last run, and the green run, were
+	// read from the output of a command that ran the gate inside it
+	// (WRAPPER-RUN1): the note's row says so (WRAPPER-RED-STEP1). They choose
+	// the row and are stored nowhere; the line keeps OutcomeFrom.
+	RedWrapped, GreenWrapped bool
 }
 
 // OutcomeFrom is the closed provenance word of a fact: OutcomeFromOutput or

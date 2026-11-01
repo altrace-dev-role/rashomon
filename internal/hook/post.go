@@ -354,17 +354,25 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	return landed(err, &p.withheld)
 }
 
-// redRead reports a success-event runner call whose status a pipe hid and
-// whose output read red (summary_fail, or a fail_line), the call the steer
-// step treats as a failure event's (MASKED-OUTCOME1). It is a hint: verify's
-// readsOutput and regressedHere decide whether the red counts, so a kind the
-// table reads but verify does not decide on raises nothing.
+// redRead reports a call whose output read red, the call the steer step
+// treats as a failure event's: a success-event runner call whose status a
+// pipe hid and whose output read summary_fail or a fail_line
+// (MASKED-OUTCOME1), or a call with no runner whose kept read -- kept only
+// where a runner signed its output (WRAPPER-RUN1) -- is its runner's failing
+// summary, at either event but an interrupt: a wrapped run is red by its
+// summary alone, as verify reads it (WRAPPER-RED-STEP1). It is a hint:
+// verify's readsOutput, wrapped and regressedHere decide whether the red
+// counts, so a kind the table reads but verify does not decide on raises
+// nothing.
 func redRead(rec *store.Execution) bool {
-	if rec.Outcome != store.ExecOK || rec.RunnerDigest == nil || rec.StatusMasked == nil || rec.GateOutput == nil {
+	if rec.GateOutput == nil {
 		return false
 	}
 	k := rec.GateOutput.Kind
-	return k == "summary_fail" || k == "fail_line"
+	if rec.RunnerDigest == nil {
+		return k == "summary_fail" && rec.Outcome != store.ExecInterrupted
+	}
+	return rec.Outcome == store.ExecOK && rec.StatusMasked != nil && (k == "summary_fail" || k == "fail_line")
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

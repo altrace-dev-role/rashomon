@@ -55,14 +55,16 @@ type SteerEnv struct {
 // steps is the trigger (card 2.3 R3; card P5B, 5.7): an execution that
 // landed in the ordered stream, at a failure event that carried a runner
 // digest, the one call that can raise regression-location (a success event
-// is outcome ok, D61), or at a success event when the call's output read red
-// through a pipe that hid the exit (redRead, MASKED-OUTCOME1: the outcome a
-// failure event would have carried), or at either post event when the call's input names
+// is outcome ok, D61), or at either post event when the call's output read
+// red (redRead): through a pipe that hid the exit (MASKED-OUTCOME1: the
+// outcome a failure event would have carried; a success event only), or
+// inside a wrapper with no runner digest, whose failure event carries none
+// (WRAPPER-RED-STEP1), or at either post event when the call's input names
 // .claude/rashomon, the one call that can raise integrity/store-touched
 // (D-B7). Every other call costs these branches and storeNamed's scan.
 func steps(event string, landedSeq int64, runner, redRead, inStore bool) bool {
-	failure := event == FailureEvent
-	return landedSeq > 0 && (failure && runner || redRead && event == string(steer.EventPostToolUse) || inStore && (failure || event == string(steer.EventPostToolUse)))
+	failure, post := event == FailureEvent, event == string(steer.EventPostToolUse)
+	return landedSeq > 0 && (failure && runner || redRead && (failure || post) || inStore && (failure || post))
 }
 
 // storeNamed reports a tool input whose raw bytes name .claude/rashomon, its
