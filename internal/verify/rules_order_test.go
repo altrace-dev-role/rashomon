@@ -169,8 +169,8 @@ func TestSR1p_OrderViolatedRaisesAtTheThenCallAndRowsUnmet(t *testing.T) {
 	}
 	// Neither the call before the then nor the one after it, which sees the
 	// violation in the record, is the call that violated.
-	for _, seq := range []int64{1, 3} {
-		if v := RulesAtCall(sp, orderCall(t, r, seq, ""), atPost(landedAt(t, r, seq)), postEvent); len(v.Findings) != 0 {
+	for seq, line := range map[int64]string{1: "go build ./...", 3: "go vet ./..."} {
+		if v := RulesAtCall(sp, orderCall(t, r, seq, line), atPost(landedAt(t, r, seq)), postEvent); len(v.Findings) != 0 {
 			t.Fatalf("call %d, not the Then, raised %+v", seq, v.Findings)
 		}
 	}
