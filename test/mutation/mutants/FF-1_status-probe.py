@@ -33,6 +33,9 @@ m("FF-1 the first run decides", S,
 m("FF-1 a line that hides two runners reads", S,
   "\tif !ok || len(hidden) != 1 {\n", "\tif !ok || len(hidden) == 0 {\n", P)
 
+m("FF-1 the rules version stays at 11 when a printed status is read", "internal/shape/masked.go",
+  "const RulesVersion = 12\n", "const RulesVersion = 11\n", "TestFF1_PrintedStatusRulesVersion")
+
 # The lexer's literal dollars.
 T = "internal/shape/tokenize.go"
 m("FF-1 a dollar in single quotes is not marked literal", T,
@@ -52,7 +55,7 @@ m("FF-1 a printed run stays masked in verify", V,
   "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted\n", "\treturn statusHidden(r) && !r.FromOutput\n",
   "TestFF1_APrintedFailureIsTheRunsOutcome")
 m("FF-1 a printed failure is not red", V,
-  " ||\n\t\tr.FromPrinted && r.Output.Kind == outPrintedFail\n", "\n",
+  "\t\tr.FromPrinted && r.Output.Kind == outPrintedFail ||\n", "",
   "TestFF1_APrintedFailureIsTheRunsOutcome")
 m("FF-1 the masked-runs sentence counts a printed run", "internal/report/account.go",
   "\t\tif readFromPrinted(outcomeRecord(executed[d.ToolUseID])) {\n", "\t\tif false && readFromPrinted(outcomeRecord(executed[d.ToolUseID])) {\n",

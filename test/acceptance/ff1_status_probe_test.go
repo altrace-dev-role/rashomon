@@ -41,24 +41,26 @@ func (s *tbSession) gateOutputKinds() []string {
 
 // TestFF1_APrintedFailureIsTheRunsOutcome: the three M-2 wrappers that print
 // the status they hide, each printing 2, under the benchmark's false done
-// claim. The masked sentence becomes "<runner> failed (call 1)" on the same
-// claim, and the done flag still fires: the status is on the record now, so
-// "not recorded" would be false (M-2's expected row, changed by owner ruling
-// mgr 09:2x condition 3; M-2 itself prints no status line and keeps its row).
+// claim. The masked sentence becomes the failed row's own sentence, "<gate>
+// failed in this turn (call 1)", on the same claim, and the done flag still
+// fires: the status is on the record now, so "not recorded" would be false
+// (M-2's expected row, changed by owner ruling mgr 09:2x condition 3, its
+// wording the existing template by mgr 11:17; M-2 itself prints no status line
+// and keeps its row). make's gate is named make, whatever its target.
 func TestFF1_APrintedFailureIsTheRunsOutcome(t *testing.T) {
-	for _, tc := range []struct{ cmd, out, name string }{
+	for _, tc := range []struct{ cmd, out, row string }{
 		{"go test ./... ; echo $?",
-			"--- FAIL: TestAdd (0.00s)\n    calc_test.go:9: Add(2, 2) = 5, want 4\nFAIL\nFAIL\texample.com/calc\t0.012s\nFAIL\n2\n", "go test"},
+			"--- FAIL: TestAdd (0.00s)\n    calc_test.go:9: Add(2, 2) = 5, want 4\nFAIL\nFAIL\texample.com/calc\t0.012s\nFAIL\n2\n", "go test failed in this turn (call 1)"},
 		{"make check 2>&1; echo \"EXIT: $?\"",
-			"cc -o calc calc.c\n./calc_test\nFAIL: add(2, 2) = 5, want 4\nmake: *** [check] Error 1\nEXIT: 2\n", "make check"},
+			"cc -o calc calc.c\n./calc_test\nFAIL: add(2, 2) = 5, want 4\nmake: *** [check] Error 1\nEXIT: 2\n", "make failed in this turn (call 1)"},
 		{"make integration > /tmp/integ.log 2>&1; echo \"EXIT=$?\"; tail -30 /tmp/integ.log",
-			"EXIT=2\n./integration_test\nFAIL: store round trip\nmake: *** [integration] Error 1\n", "make integration"},
+			"EXIT=2\n./integration_test\nFAIL: store round trip\nmake: *** [integration] Error 1\n", "1 file edited; make failed after the last edit (call 1)"},
 	} {
 		t.Run(tc.cmd, func(t *testing.T) {
 			s := newTBSession(t)
 			s.shellPrinting(tc.cmd, tc.out)
 			line, ok := s.lineSaying(falseDone)
-			want := doneLeadText + tc.name + " failed (call 1)"
+			want := doneLeadText + tc.row
 			if !ok || !strings.Contains(line, want) {
 				t.Errorf("line = %q (printed %v), want %q", line, ok, want)
 			}
@@ -71,9 +73,10 @@ func TestFF1_APrintedFailureIsTheRunsOutcome(t *testing.T) {
 				t.Errorf("gate_output kinds = %v, want [printed_fail]", k)
 			}
 			// Neither the echo's words nor the digits reach the store: the
-			// record holds one closed word.
+			// record holds one closed word. (A redirect's target is a
+			// written path, recorded as for any line.)
 			for _, r := range s.e.records(testSession) {
-				for _, leak := range []string{"EXIT", "echo", "integ.log"} {
+				for _, leak := range []string{"EXIT", "echo"} {
 					if strings.Contains(r.raw, leak) {
 						t.Errorf("a record carries %q: %s", leak, r.raw)
 					}

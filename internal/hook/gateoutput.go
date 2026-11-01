@@ -148,7 +148,7 @@ func printedOutput(in *hookio.Payload, toolName string, toolInput json.RawMessag
 		return store.GateOutput{}, false
 	}
 	buf := make([]byte, 0, min(int(src[0].Len), gateout.MaxScanBytes))
-	defer clear(buf[:cap(buf)])
+	defer clear(buf[:cap(buf)]) // the printed text, as readOutput clears its own
 	text, truncated, err := jsonscan.Head(in.Raw, src[0], cap(buf), buf)
 	if err != nil || truncated {
 		return store.GateOutput{}, false

@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+// TestFF1_PrintedStatusRulesVersion: the version a printed status is first
+// read at is 12, and this build's rules are at least it, so a record it writes
+// is read for it (verify's readsPrinted).
+func TestFF1_PrintedStatusRulesVersion(t *testing.T) {
+	if PrintedStatusRulesVersion != 12 || RulesVersion < PrintedStatusRulesVersion {
+		t.Errorf("PrintedStatusRulesVersion = %d, RulesVersion = %d, want 12 and at least 12", PrintedStatusRulesVersion, RulesVersion)
+	}
+}
+
 // TestFF1_PrintedStatus pins what PrintedStatus reads and, row by row, each
 // rule that keeps it from reading a status that is not the runner's: a
 // mutant that drops one turns its row's want around.

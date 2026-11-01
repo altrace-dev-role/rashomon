@@ -243,8 +243,8 @@ func failed(r *gateRun) bool {
 
 func failedByExit(r *gateRun) bool {
 	return r.Outcome == store.ExecFailed ||
-		r.Outcome == store.ExecInterrupted && r.ExitCode != nil && *r.ExitCode != 0 ||
-		r.FromPrinted && r.Output.Kind == outPrintedFail
+		r.FromPrinted && r.Output.Kind == outPrintedFail ||
+		r.Outcome == store.ExecInterrupted && r.ExitCode != nil && *r.ExitCode != 0
 }
 
 // outcomeNotKnown: a run no row above matched that did not end ok, or whose
