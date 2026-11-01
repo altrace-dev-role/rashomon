@@ -243,29 +243,29 @@ under the call if the command named it.
 | `rashomon report [--session S\|last] [--json] [--chain] [--timeline] [--redact] [--nono-audit PATH]` | Render every recorded session, or the one named (`last`: this project's newest with a checkpoint); a named session opens with a short story, an autosteer block and a knowledge block (what the project holds, and what the session found or invalidated), the tables below it; `--redact` covers both blocks |
 | `rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT \| --stdin]` | Print one turn's record as JSON, at most 8 KiB: what one prompt recorded; read-only |
 | `rashomon backtest --sensor ID` | Replay this project's transcript copies (`rashomon bodies on`) through this build's hooks and print each session's fires of steer pattern ID beside the live steer log's; only reads the store |
-| `rashomon summary [on \| off] [--user \| --project]` | Say, or set, whether the end-of-turn line prints its value line, for you (`--user`, the default) or for this project; on unless set off |
+| `rashomon summary [on \| off] [--user \| --project]` | Say, or set, whether the end-of-turn line prints its value line, for you (`--user`, the default) or for this project; on unless set off; refused from an agent session |
 | `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
 | `rashomon why [--session S\|last] [--json] [--redact] ID-PREFIX` | Say why one note fired: its pattern and key, the state it ended in, the calls it cites and the gate or rule it came from; reads, writes nothing |
-| `rashomon steer [off \| on] [--user \| --project]` | Say whether the notes to your agent are on, or turn them off or on; off sends the agent no note and shows you what it would have said, while recording goes on |
+| `rashomon steer [off \| on] [--user \| --project]` | Say whether the notes to your agent are on, or turn them off or on; off sends the agent no note and shows you what it would have said, while recording goes on; refused from an agent session |
 | `rashomon steer on --repair` | Replace a `config.json` that does not read, after asking on your terminal; until then the notes are off |
 | `rashomon steer explain` / `rashomon steer log [--all] [--json]` | Say why the last note was or was not printed, or list the last 20 decisions (`--all`: every one); never a note's text |
 | `rashomon scorecard [--json]` | Count what the notes did, by pattern: sent to the agent, shown to you only, held out, or not printed, and why; counts only |
 | `rashomon measure --prepare [--home DIR]` | Mark the store at DIR (default: this process's) as a measurement lab, the only store whose hooks honour `RASHOMON_STEER_ARM`; writes that one file |
 | `rashomon measure pair --session ID --arm off\|steer [--home DIR]` | Compare two sessions of a paired run, one per arm, from their records; counts only, writes nothing |
-| `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back |
+| `rashomon spec trust [PATH]` / `rashomon spec untrust [PATH]` | Trust a repository spec at its current digest, or take that trust back; both refused from an agent session |
 | `rashomon lessons [--json]` | List this project's lessons by tier, proven first, each with the day it entered and its fires; a ledger written by anything but rashomon is said quarantined first |
 | `rashomon learn` | List this project's lessons: each one's tier, its labels and the 95% bound that moves it |
 | `rashomon learn approve ID` | Show lesson ID and a one-time code on the terminal; the lesson may reach the agent only once that code is typed back there |
 | `rashomon learn import FILE` | Add a shared lessons file's rows at `proposed` |
-| `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes` |
+| `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes`; refused from an agent session, `off` included |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon forget --host H \| --since T \| --before T \| --bodies` | Erase the calls that named a host, records by time, or this project's transcript copies |
-| `rashomon bodies on \| off \| status` | Copy this project's transcripts into the store at session end, stop, or count the copies |
+| `rashomon bodies on \| off \| status` | Copy this project's transcripts into the store at session end, stop, or count the copies; on and off are refused from an agent session |
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices; writes nothing |
 | `rashomon receipt on \| trailer \| note DIGEST` | Print the git hooks that put a receipt on each commit, the trailer naming the latest checkpoint, or that checkpoint; runs no git |
 | `rashomon share build outcomes --out FILE` | Write counts of the notes given to the agent, by pattern; needs `rashomon consent share.outcomes` |
 | `rashomon detach` | Remove the hook entries, leaving everything else as found |
-| `rashomon purge [--yes] [--binary]` | Detach, then remove the store and the directories `watch` created |
+| `rashomon purge [--yes] [--binary]` | Detach, then remove the store and the directories `watch` created; refused from an agent session |
 | `rashomon version` | Print the version: the module version for a `go install` build (for example `1.2.0-alpha.1`), the release version for a release binary, `dev` for a local `go build` |
 
 `rashomon --help` lists the commands and their main flags.

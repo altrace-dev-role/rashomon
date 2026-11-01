@@ -76,7 +76,8 @@ const (
 
 // LessonCounts is the project's lesson ledger by tier. Read is false when
 // no ledger was opened, which is unknown and never zero; Approved is the
-// proven and the probation tiers.
+// proven and the probation tiers a person approved in this build, and
+// Proposed every lesson that awaits approval (lessonCounts).
 type LessonCounts struct {
 	Read                        bool
 	Approved, Proposed, Demoted int
@@ -222,19 +223,31 @@ func ImpactOf(v verify.StopView, lines [][]byte, ls *learn.Ledger) Impact {
 		}
 	}
 	if ls != nil {
-		im.Lessons.Read = true
-		for _, l := range ls.Lessons() {
-			switch l.Tier {
-			case learn.TierProven, learn.TierProbation:
-				im.Lessons.Approved++
-			case learn.TierProposed:
-				im.Lessons.Proposed++
-			case learn.TierDemoted:
-				im.Lessons.Demoted++
-			}
-		}
+		im.Lessons = lessonCounts(ls.Lessons())
 	}
 	return im
+}
+
+// lessonCounts is lessons by tier, read. A proven or probation row with no
+// approval time, which a build before the stamp approved and Pick never
+// sends (#156 D2), awaits approval and counts as proposed (LEARN-DX1 F2).
+func lessonCounts(lessons []learn.Lesson) LessonCounts {
+	c := LessonCounts{Read: true}
+	for _, l := range lessons {
+		switch l.Tier {
+		case learn.TierProven, learn.TierProbation:
+			if l.AwaitsApproval() {
+				c.Proposed++
+			} else {
+				c.Approved++
+			}
+		case learn.TierProposed:
+			c.Proposed++
+		case learn.TierDemoted:
+			c.Demoted++
+		}
+	}
+	return c
 }
 
 // gateKey is the gate id a line's dedupe key names: the gate patterns key

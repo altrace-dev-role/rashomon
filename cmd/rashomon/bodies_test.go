@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -21,6 +22,9 @@ func bodiesHere(t *testing.T) (st *store.Store, key, dir string) {
 	t.Helper()
 	root := t.TempDir()
 	t.Setenv("RASHOMON_HOME", root)
+	// bodies on and off refuse an agent session, and a test run from one
+	// inherits the signal.
+	t.Setenv("CLAUDECODE", "")
 	st, err := store.Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -202,5 +206,31 @@ func TestRC14l_OverCapPrintsOneLine(t *testing.T) {
 				t.Errorf("copies after the end probe = (%d, %v), want copied %v", n, err, c.copied)
 			}
 		})
+	}
+}
+
+// An agent session cannot change what is copied of the person's transcripts:
+// bodies on and off, with or without a cap, refuse it, name the command to run
+// in a terminal, and write nothing; status still answers.
+func TestAGBO1_AnAgentSessionCannotSetTheBodiesSwitch(t *testing.T) {
+	st, key, _ := bodiesHere(t)
+	p := filepath.Join(st.Root(), store.FileBodies)
+	seed := "{ \"projects\": [" + strconv.Quote(key) + "], \"max_bytes\": 4096 }\n"
+	if err := os.WriteFile(p, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDECODE", "1")
+	for _, args := range [][]string{{"off"}, {"on"}, {"on", "--max-bytes", "9"}} {
+		err := cmdBodies(args, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "agent session; nothing was written") || !strings.Contains(err.Error(), "rashomon bodies "+strings.Join(args, " ")) {
+			t.Errorf("bodies %v in an agent session = %v, want a refusal naming the command to run", args, err)
+		}
+	}
+	if b, _ := os.ReadFile(p); string(b) != seed {
+		t.Errorf("an agent session changed bodies.json: %q", b)
+	}
+	var out bytes.Buffer
+	if err := cmdBodies([]string{"status"}, &out); err != nil || !strings.Contains(out.String(), key+" on") {
+		t.Errorf("bodies status in an agent session = %q, %v; want the state", out.String(), err)
 	}
 }

@@ -21,10 +21,11 @@ import (
 const steerUsage = `  rashomon steer [off|on] [--user|--project]
                                say whether the notes are on, or turn them off
                                or on for you (--user, the default) or for this
-                               project (--project); off sends the agent no
-                               note and shows you what it would have said,
-                               recording goes on, and the end-of-turn line
-                               still prints
+                               project (--project), from your own terminal
+                               (never from an agent session); off sends the
+                               agent no note and shows you what it would have
+                               said, recording goes on, and the end-of-turn
+                               line still prints
   rashomon steer on --repair   replace a config.json that does not read, after
                                asking on your terminal (never from an agent
                                session); until then the notes are off
@@ -214,8 +215,27 @@ func steerLine(c store.Config, key string) string {
 	return fmt.Sprintf("steer: %s (you: %s; this project: %s, %s)", state, user, proj, safeText(key))
 }
 
-// steerSet is `steer off|on`: the scope's key, under the config lock.
+// steerVerb is the `steer off|on` command line for a scope, the scope
+// always named: --user is the default, and the consent screen teaches
+// `steer off --user`, so a refusal names the command the person read.
+func steerVerb(off, project bool) string {
+	v := "on"
+	if off {
+		v = "off"
+	}
+	if project {
+		return v + " --project"
+	}
+	return v + " --user"
+}
+
+// steerSet is `steer off|on`: the scope's key, under the config lock. It is
+// refused in an agent session as repair is, so the steered agent cannot turn
+// its own notes off.
 func steerSet(stdout io.Writer, off, project bool) error {
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s` in your own terminal.", s, steerVerb(off, project))
+	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
 		return errors.New("nothing has been recorded here yet, so there is no store to hold the switch")

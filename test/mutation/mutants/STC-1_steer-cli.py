@@ -19,7 +19,7 @@ SCREEN = "internal/consent/screen.go"
 
 # The hook reads the switch.
 m("STC-1 the config is ignored at the hook", H,
-  "\t\tSteerOff:         steerOff,\n", "\t\tSteerOff:         false,\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
+  "\tsteerOff, unreadable := p.steerOff()\n", "\t_, unreadable := p.steerOff()\n\tsteerOff := false\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
 m("STC-1 the user's key is ignored", H,
   "\tif c.SteerOffUser() {\n\t\treturn true, false\n\t}\n", "", "TestH145_|TestSTC1h_")
 m("STC-1 the project's key is ignored", H,
@@ -75,7 +75,11 @@ m("STC-1 steer explain says nothing of an unreadable config", S,
 m("STC-1 steer on an unreadable file gives the raw error", S,
   "\tif errors.Is(err, store.ErrConfigUnreadable) {\n\t\treturn unreadableConfigText(", "\tif false {\n\t\treturn unreadableConfigText(", "TestSTC1o_")
 m("STC-1 --repair works in an agent session", S,
-  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n", "\tif s := \"\"; s != \"\" {\n", "TestSTC1o_")
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer on --repair`",
+  "\tif s := \"\"; s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer on --repair`", "TestSTC1o_")
+m("STC-1 steer on and off work in an agent session", S,
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s`",
+  "\tif s := \"\"; s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s`", "TestSTC1q_")
 m("STC-1 --repair replaces without the person saying yes", S,
   "\tif !ok {\n\t\treturn errors.New(\"nothing was written\")\n\t}\n", "", "TestSTC1o_")
 m("STC-1 --repair asks about a file that reads", S,

@@ -229,6 +229,32 @@ type TaskPreflightFirstBinding struct {
 	Unknown      slot.EnumList `slot:"unknown"`
 }
 
+// TaskPreflightLessonBinding is the later-prompt note with an approved lesson
+// as its last line, one whose text names a path the request named
+// (LEARN-RIDE1): the lesson arrives on the prompt it is about.
+type TaskPreflightLessonBinding struct {
+	Paths    slot.PathSet  `slot:"paths"`
+	Rules    slot.RuleRefs `slot:"rules"`
+	Gates    slot.GateRefs `slot:"gates"`
+	Source   slot.Enum     `slot:"source"`
+	Evidence slot.EnumList `slot:"evidence"`
+	Unknown  slot.EnumList `slot:"unknown"`
+	Lesson   slot.LessonID `slot:"lesson"`
+	Text     slot.Approved `slot:"text"`
+}
+
+// TaskPreflightLessonKnownBinding is TaskPreflightLessonBinding without the
+// unknowns line, the note's first line to go when the lesson's does not fit.
+type TaskPreflightLessonKnownBinding struct {
+	Paths    slot.PathSet  `slot:"paths"`
+	Rules    slot.RuleRefs `slot:"rules"`
+	Gates    slot.GateRefs `slot:"gates"`
+	Source   slot.Enum     `slot:"source"`
+	Evidence slot.EnumList `slot:"evidence"`
+	Lesson   slot.LessonID `slot:"lesson"`
+	Text     slot.Approved `slot:"text"`
+}
+
 // PlatformRuleCommandBinding is platform-rule/command's line (archive
 // 40.4.6): the program the call ran and the id of the forbid_command rule
 // its line matched, the id without its "spec:" prefix.
@@ -374,6 +400,7 @@ func templates() map[templateKey]template {
 			},
 		}
 		maps.Copy(templatesOnce.v, templatesLater())
+		maps.Copy(templatesOnce.v, templatesRide())
 	})
 	return templatesOnce.v
 }
@@ -399,7 +426,7 @@ func templatesLater() map[templateKey]template {
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
 			id:     "task-preflight/v1",
-			format: "rashomon record: preflight for this request from the repository; the request text is not kept.\n" + preflightLines,
+			format: preflightHead + preflightLines,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
 			id: "task-preflight-first/v1",
@@ -439,11 +466,37 @@ func templatesLater() map[templateKey]template {
 
 // preflightLines are the four lines both task-preflight rows end with: what
 // the request named, the spec rules over it, the gates and the evidence a
-// done claim needs, and what the preflight could not read.
-const preflightLines = "paths named: {paths}\n" +
+// done claim needs (preflightKnown), and what the preflight could not read.
+const preflightLines = preflightKnown + "\nunknown: {unknown}"
+
+// preflightKnown is preflightLines without the unknowns line, the line a
+// note that carries a lesson drops first to fit its cap (LEARN-RIDE1).
+const preflightKnown = "paths named: {paths}\n" +
 	"spec rules that apply: {rules}\n" +
-	"gates before done: {gates}; evidence for a done claim ({source}): {evidence}\n" +
-	"unknown: {unknown}"
+	"gates before done: {gates}; evidence for a done claim ({source}): {evidence}"
+
+// preflightHead is the later prompts' task-preflight header line.
+const preflightHead = "rashomon record: preflight for this request from the repository; the request text is not kept.\n"
+
+// lessonRide is the line a lesson takes at the end of a preflight note: the
+// words of its own learned-fact row, its text in quotes.
+const lessonRide = "\nlesson {lesson}, approved for this project: {text}"
+
+// templatesRide is the two task-preflight rows that carry a lesson as their
+// last line (LEARN-RIDE1): the later prompts' note, with its unknowns line
+// and without it. The first prompt's six lines are the cap, so it has none.
+func templatesRide() map[templateKey]template {
+	return map[templateKey]template{
+		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightLessonBinding{})}: {
+			id:     "task-preflight-lesson/v1",
+			format: preflightHead + preflightLines + lessonRide,
+		},
+		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightLessonKnownBinding{})}: {
+			id:     "task-preflight-lesson-known/v1",
+			format: preflightHead + preflightKnown + lessonRide,
+		},
+	}
+}
 
 // templatesOnce holds what templates returns, built on its first call and
 // never at init (RES-2).

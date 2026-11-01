@@ -185,6 +185,7 @@ func onePassFixture(t testing.TB) []onePassCase {
 		{name: "trailing_bytes", line: append(append([]byte(nil), decl...), " x"...)},
 		{name: "dup_type", differs: diffPair, line: withKey(decl, `"type":"terminal"`)},
 		{name: "dup_version", differs: diffPair, line: []byte(`{"type":"declaration","schema_version":9,"critical":false,"seq":1,"schema_version":6}`)},
+		{name: "dup_refused", differs: diffPair, line: []byte(`{"type":"declaration","schema_version":99,"critical":false,"type":"terminal"}`)},
 		{name: "dup_default", differs: diffPair, line: []byte(`{"type":"turn_end","schema_version":5,"critical":false,"type":"prompt"}`)},
 		{name: "case_type", differs: diffPair, line: withKey(decl, `"Type":"terminal"`)},
 		{name: "crit_not_bool", differs: diffCritical, line: withKey(decl, `"critical":"no"`)},

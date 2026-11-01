@@ -44,13 +44,22 @@ m("PF-1 the screen drops the v4 clause", "internal/disclose/paragraphs.go",
   ", or only their count and keyed digests at v4 (`rashomon status` shows the scope)", "",
   "TestPF1n_")
 m("PF-1 the prompt path reads CI for attendance again", "internal/hook/promptcontext.go",
-  "\t\tunattended = env.Surface == string(harness.SurfaceSDK) || env.Surface == string(harness.SurfaceCloud)\n",
-  "\t\tunattended = env.CI || env.Surface == string(harness.SurfaceSDK) || env.Surface == string(harness.SurfaceCloud)\n",
+  "\t\tunattended = harness.Caps(",
+  "\t\tunattended = env.CI || harness.Caps(",
   "TestPF1z_")
-m("PF-1 the prompt path counts sdk-cli as attended", "internal/hook/promptcontext.go",
-  "\t\tunattended = env.Surface == string(harness.SurfaceSDK) || env.Surface == string(harness.SurfaceCloud)\n",
-  "\t\tunattended = env.Surface == string(harness.SurfaceCloud)\n",
+# PREFLIGHT-CLOUD1 (DE 16:2x, option b): Caps' person column decides.
+m("PF-1 the prompt path counts sdk-cli as attended", "internal/harness/caps.go",
+  "\t\t\tout[CapPersonAtPrompt] = No\n", "\t\t\tout[CapPersonAtPrompt] = Unverified\n",
   "TestPF1z_")
+m("PF-1 the prompt path withholds what Caps leaves unverified", "internal/hook/promptcontext.go",
+  "[harness.CapPersonAtPrompt] == harness.No\n", "[harness.CapPersonAtPrompt] != harness.Yes\n",
+  "TestPF1z_")
+m("PF-1 the prompt path reads the mirror column for a person", "internal/hook/promptcontext.go",
+  "[harness.CapPersonAtPrompt] == harness.No\n", "[harness.CapMirrorInBand] == harness.No\n",
+  "TestPF1z_")
+m("PF-1 the record form steps the note down", "internal/intent/note.go",
+  "\t\t\tds[i] = digest(string(p))\n", "\t\t\tds[i] = string(p)\n",
+  "TestPF1w_RecordFormNeverStepsTheNoteDown")
 m("PF-1 the preflight reads the spec with the store root directly", "cmd/rashomon/preflight.go",
   "hook.TrustRoot(run, st.Root(), run.LastSeq())", "hook.NoRun(st.Root())",
   "TestST1x_")
