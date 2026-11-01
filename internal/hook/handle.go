@@ -180,9 +180,11 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	}
 	// The cwd is resolved once (baseline.Resolve) and shared: the project key
 	// below walks up from it, and Locate digests it as the run's location when
-	// no cd step moves the line away from it.
+	// no cd step moves the line away from it. own is the directory the call
+	// names for itself, where locate reads one.
 	physical := baseline.Resolve(p.CWD)
-	decl.Shape, decl.CWDDigest, decl.LocationUnread = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
+	var own string
+	decl.Shape, decl.CWDDigest, decl.LocationUnread, own = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
@@ -191,17 +193,17 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	// file-changing tool names (DeclaredPath, below), and shape is still the
 	// only package that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
-	// Where the call ran and what file it changes, as the harness said them:
-	// the cwd as written, its project key (the one every layer shares:
-	// symlinks resolved, then the nearest .git, else the directory itself),
-	// and the path an Edit, Write, MultiEdit or NotebookEdit input names.
-	// None is normalised here; resolving is the reader's. Key answers "" for
-	// an empty cwd, so a payload without one leaves both null. The record-scope
-	// gate below withholds all three unless the consent on file says v5, and
-	// the caps bound them.
+	// Where the call ran and what file it changes: the cwd as the harness
+	// said it, the project key of the repository the call ran in (project:
+	// the one key every layer shares, symlinks resolved, then the nearest
+	// .git, else the directory itself), and the path an Edit, Write,
+	// MultiEdit or NotebookEdit input names, as written. Key answers "" for
+	// an empty cwd, so a payload without one, which names no directory of
+	// its own, leaves both null. The record-scope gate below withholds all
+	// three unless the consent on file says v5, and the caps bound them.
 	decl.CWD = nilIfEmpty(p.CWD)
-	decl.Project = nilIfEmpty(baseline.KeyOf(physical))
 	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
+	decl.Project = nilIfEmpty(project(physical, own, decl.FilePath))
 	// The files a Bash call's line may write, and whether they are all of
 	// them (shape.WrittenPaths): null and complete for any other tool, which
 	// names its one path in file_path. The gate and the caps below withhold
@@ -359,24 +361,110 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 // as it is on disk (physicalDir), so a project reached through a symlink has
 // one location, the declared gate's.
 func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string, bool) {
-	return locate(key, toolName, toolInput, cwd, baseline.Resolve(cwd))
+	s, digest, unread, _ := locate(key, toolName, toolInput, cwd, baseline.Resolve(cwd))
+	return s, digest, unread
 }
 
 // locate is Locate given physical, baseline.Resolve(cwd), which the caller has
 // already made: a line with no cd step starts in cwd and uses it as it is, and
 // only a fold resolves its own directory.
-func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string, bool) {
-	s, _, dirs, unread := shape.DeriveWithDirs(toolName, toolInput, key)
+//
+// The fourth result, own, is the directory the line names for itself, as it
+// is on disk, for its project (card PROJECT-RESOLVE1): the fold's, carried on
+// to a `git -C DIR` that is its first command past the fold (shape.Dirs.GitC),
+// where git runs. "" where the line names none, where the fold is unread or
+// unknown, and where the line may move on to a second directory
+// (shape.Dirs.Later): two roots in one line are not one project.
+func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string, bool, string) {
+	s, _, d := shape.DeriveWithDirs(toolName, toolInput, key)
+	dirs, unread := d.Leading, d.Unread
 	if unread != "" {
 		if cwd == "" {
-			return s, "", true
+			return s, "", true, ""
 		}
-		return s, shape.UnreadCWDDigest(key, cwd, unread), true
+		return s, shape.UnreadCWDDigest(key, cwd, unread), true, ""
 	}
 	if len(dirs) == 0 {
-		return s, shape.CWDDigest(key, physical), false
+		return s, shape.CWDDigest(key, physical), false, ownDir(physical, d)
 	}
-	return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), false
+	start := physicalDir(startDirectory(cwd, dirs))
+	return s, shape.CWDDigest(key, start), false, ownDir(start, d)
+}
+
+// ownDir is locate's own: from start, the directory the line starts in as it
+// is on disk, the directory the line names for itself.
+func ownDir(start string, d shape.Dirs) string {
+	switch {
+	case d.Later || start == "":
+		return ""
+	case d.GitC != "":
+		return physicalDir(startDirectory(start, []string{d.GitC}))
+	case len(d.Leading) > 0:
+		return start
+	}
+	return ""
+}
+
+// project is the call's project key: the repository the call ran in where
+// the call names a directory of its own inside one -- own (locate), else the
+// directory of a file tool's absolute path -- and the cwd's key otherwise.
+// A directory of its own under no .git keeps the cwd's key when it is inside
+// the cwd, and gets no key at all when it is outside (B305: `cd /tmp/fixture
+// && go test ./...` from repository a was counted as a's test run), whether
+// the call is a Bash line or a file tool: one write, one project. Only a
+// repository found there is taken over where the cwd is, never a directory
+// on a guess. Without it, `cd ~/src/b && go test ./...` run from repository
+// a, or from the home, recorded a while its location folded onto b, so b's
+// declared gate, located under the project root, never met the run.
+//
+// own is already as it is on disk. A file's directory may not be on disk
+// yet (a Write makes it), so it is read at its nearest directory that is
+// (existingDir), resolved: the key is the one every layer compares, never a
+// second spelling of one repository.
+func project(physical, own string, path *string) string {
+	cwd := baseline.KeyOf(physical)
+	if own != "" {
+		if root := gitRoot(baseline.KeyOf(own)); root != "" {
+			return root
+		}
+		// A directory not on disk proves nothing: the cd fails and the line
+		// runs nowhere new, so it keeps the cwd's key.
+		if fi, err := os.Stat(own); err == nil && fi.IsDir() && !inside(baseline.KeyOf(own), cwd) {
+			return ""
+		}
+	} else if path != nil && filepath.IsAbs(*path) {
+		if dir := existingDir(filepath.Dir(*path)); dir != "" {
+			k := baseline.KeyOf(dir)
+			if gitRoot(k) != "" {
+				return k
+			}
+			if !inside(k, cwd) {
+				return ""
+			}
+		}
+	}
+	return cwd
+}
+
+// existingDir is the nearest directory at or above d that is on disk, its
+// symlinks resolved (/tmp is /private/tmp on macOS), "" where none resolves.
+// One EvalSymlinks per directory not yet made, and one for the first that is.
+func existingDir(d string) string {
+	for {
+		if resolved, err := evalSymlinks(d); err == nil {
+			return resolved
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return ""
+		}
+		d = up
+	}
+}
+
+// inside reports key at or under root, both project keys.
+func inside(key, root string) bool {
+	return key == root || strings.HasPrefix(key, strings.TrimSuffix(root, "/")+"/")
 }
 
 // evalSymlinks is filepath.EvalSymlinks; a test that pins the fold's rules
@@ -438,7 +526,7 @@ func physicalDir(dir string) string {
 // which holds while the stores are dev stores with nothing older to read.
 //
 // dirs, not toolName and toolInput: the caller already has
-// shape.DeriveWithDirs's dirs, from the SAME read of the program search
+// shape.DeriveWithDirs's Dirs.Leading, from the SAME read of the program search
 // Derive makes for every other field of the shape. Decoding the command and
 // tokenizing it again here, as a toolName/toolInput signature would need to
 // call shape.LeadingDirectory on its own, was a second and a third reading
