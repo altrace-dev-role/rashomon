@@ -1440,7 +1440,7 @@ func TestSweepShards_PartitionTheMutantsExactlyOnce(t *testing.T) {
 		t.Fatalf("--list exited %d", code)
 	}
 	full := nonEmptyLines(out)
-	for _, n := range []int{1, 2, 3, 7} {
+	for _, n := range []int{1, 2, 3, 7, 8} {
 		owner := map[string]int{}
 		for k := 1; k <= n; k++ {
 			out, code := sweep(t, root, "--list", "--shard", fmt.Sprintf("%d/%d", k, n))
@@ -1564,6 +1564,52 @@ func TestSweepJobRunsTheDarwinRows(t *testing.T) {
 		if !strings.Contains(job, want) {
 			t.Errorf("the sweep-darwin job lacks %q", want)
 		}
+	}
+}
+
+// ciJob returns job key's lines in the workflow, from its key to the next
+// job's.
+func ciJob(t *testing.T, doc, key string) string {
+	t.Helper()
+	i := strings.Index(doc, "\n  "+key+":\n")
+	if i < 0 {
+		t.Fatalf("ci.yaml: no %s job", key)
+	}
+	job := doc[i+1:]
+	if loc := regexp.MustCompile(`\n  [a-z0-9-]+:\n`).FindStringIndex(job); loc != nil {
+		job = job[:loc[0]+1]
+	}
+	return job
+}
+
+// The REC-34 group commit mutants run on every push and pull request, on
+// macOS, in a job of their own beside Perf gates (macos), not inside it: at
+// 15 to 18 minutes they pushed that job past its 25-minute bound, which
+// skipped the H-16 and TRU darwin steps after them (R26, CI-PERF-SPLIT1). No
+// needs:, so a red perf gate skips none of them, and a bound with room for
+// their growth.
+func TestSweepJobRunsTheREC34RowsBesidePerfGates(t *testing.T) {
+	doc := readFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yaml"))
+	if strings.Contains(ciJob(t, doc, "perf-macos"), "sweep.py") {
+		t.Error("perf-macos runs a mutation sweep: its 25 minutes are the gates'")
+	}
+	job := ciJob(t, doc, "rec34-darwin")
+	for _, want := range []string{"runs-on: macos-latest", "sweep.py --strict --files mutants/REC-34_group-commit.py"} {
+		if !strings.Contains(job, want) {
+			t.Errorf("the rec34-darwin job lacks %q", want)
+		}
+	}
+	for _, refuse := range []string{"\n    needs:", "\n    if:"} {
+		if strings.Contains(job, refuse) {
+			t.Errorf("the rec34-darwin job has %q: it runs on every push and pull request, on its own", strings.TrimSpace(refuse))
+		}
+	}
+	m := regexp.MustCompile(`\n    timeout-minutes: (\d+)\n`).FindStringSubmatch(job)
+	if m == nil {
+		t.Fatal("the rec34-darwin job has no timeout-minutes")
+	}
+	if n, _ := strconv.Atoi(m[1]); n < 40 {
+		t.Errorf("the rec34-darwin job's bound is %d minutes; its rows took 15 to 18 at 665 test files, want 40 or more", n)
 	}
 }
 

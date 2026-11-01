@@ -70,6 +70,7 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 		{"coverage", coverageKeys},
 		{"gap", gapKeys},
 		{"forgotten_host", forgottenHostKeys},
+		{"spec_event", specEventKeys},
 	} {
 		t.Run(c.def, func(t *testing.T) {
 			def, ok := defs[c.def].(map[string]any)
@@ -107,17 +108,18 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 // compares is one the schema declares.
 //
 // That test compares at fixed places: one row per reason enum (coverage,
-// terminal and gap's properties.reason, and report_reason's own enum), and
+// terminal, gap and spec_event's properties.reason, and report_reason's own
+// enum), and
 // nothing else -- not a second *_reason property beside reason, not a
 // reasons array's items.enum, not anything outside $defs. A fixed lookup
 // checks only what it was told about. This test restores the discovery: it
 // records the JSON-pointer path of every key named reason or reasons or
 // ending in _reason across the whole schema, and requires that set to equal
-// the four paths below exactly, less a reserved path that declares no enum
+// the five paths below exactly, less a reserved path that declares no enum
 // (reservedReasonPaths). A new reason key fails here until a row compares it
 // and its path is added to reasonVocabularyPaths; a row deleted there fails
 // TestStoreSchemaReasonEnumsAreTheirCodeLists, which requires the reason
-// rows' paths to be these four.
+// rows' paths to be these five.
 //
 // Its only signal is the key's name: a vocabulary published under a key that
 // is not reason-named is invisible to it, as it was to the walk it replaced.
@@ -139,10 +141,11 @@ func TestStoreSchemaHasNoUncheckedReasonVocabulary(t *testing.T) {
 // TestStoreSchemaReasonEnumsAreTheirCodeLists requires the reason rows'
 // paths to equal this set, so the two change together.
 var reasonVocabularyPaths = map[string]bool{
-	"/$defs/coverage/properties/reason": true,
-	"/$defs/terminal/properties/reason": true,
-	"/$defs/gap/properties/reason":      true,
-	"/$defs/report_reason":              true,
+	"/$defs/coverage/properties/reason":   true,
+	"/$defs/terminal/properties/reason":   true,
+	"/$defs/gap/properties/reason":        true,
+	"/$defs/report_reason":                true,
+	"/$defs/spec_event/properties/reason": true,
 }
 
 // reservedReasonPaths are reason-named keys of schema 5 that are not reason
