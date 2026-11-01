@@ -454,7 +454,81 @@ def cmd_oracle(args):
         fail("G2: the reference does not pass: FAIL_TO_PASS %d/%d, PASS_TO_PASS failing %s" % (f2p_pass, len(f2p), p2p_bad))
 
 
+def py_file(classname, name, root):
+    """The test file a junit testcase belongs to and the rest of its node id:
+    classname is the module path with dots (tests.test_a.TestK), so the longest
+    prefix naming a .py file under root is the file."""
+    parts = classname.split(".") if classname else []
+    for i in range(len(parts), 0, -1):
+        f = "/".join(parts[:i]) + ".py"
+        if os.path.isfile(os.path.join(root, f)):
+            return f, parts[i:]
+    return None, parts
+
+
+def py_tail(rest, name):
+    return re.sub(r"\s", "_", "::".join(rest + [name]))
+
+
+def cmd_pyoracle(args):
+    """pyoracle JUNIT DIR: pytest's --junitxml result as the events go test
+    -json gives check's oracle, one JSON line each: a test is
+    {Action pass|fail|skip, Package <file>, Test <tail of its node id>}; a
+    file that did not collect (a collection error: classname empty, the
+    module in name) or whose test errored in setup is its package failing
+    with FailedBuild, as go reports a package that did not build. Only a
+    <failure> is a test failing on its assertion. Whitespace in a node id's
+    tail becomes _ (check splits its lines on whitespace)."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.parse(args[0]).getroot()
+    except (OSError, ET.ParseError):
+        return
+    base = args[1]
+    for tc in root.iter("testcase"):
+        cls, name = tc.get("classname", ""), tc.get("name", "")
+        if not cls:
+            # collection error: name is the module, dotted or a path
+            f = name if name.endswith(".py") and os.path.isfile(os.path.join(base, name)) else None
+            if f is None:
+                f, _ = py_file(name, "", base)
+            ev = {"Action": "fail", "Package": f or name, "FailedBuild": True}
+        else:
+            f, rest = py_file(cls, name, base)
+            test = py_tail(rest, name)
+            if tc.find("failure") is not None:
+                ev = {"Action": "fail", "Package": f or cls, "Test": test}
+            elif tc.find("error") is not None:
+                ev = {"Action": "fail", "Package": f or cls, "FailedBuild": True}
+            elif tc.find("skipped") is not None:
+                ev = {"Action": "skip", "Package": f or cls, "Test": test}
+            else:
+                ev = {"Action": "pass", "Package": f or cls, "Test": test}
+        print(json.dumps(ev))
+
+
+def cmd_pyspec(args):
+    """pyspec f2p|p2p FILE: the task's node-id lines in the shape check oracle
+    reads. f2p: "<file>::<tail>" becomes "<file> <tail>" (whitespace in the
+    tail as pyoracle writes it); p2p: the file of each node id, once (only
+    the named ids are run, so the file's verdict is theirs)."""
+    seen = []
+    for l in open(args[1]).read().splitlines():
+        l = l.strip()
+        if not l:
+            continue
+        f, sep, tail = l.partition("::")
+        if args[0] == "f2p":
+            if not sep or not tail:
+                fail("FAIL_TO_PASS line %r is not a node id (file.py::test)" % l)
+            print("%s %s" % (f, re.sub(r"\s", "_", tail)))
+        elif f not in seen:
+            seen.append(f)
+            print(f)
+
+
 COMMANDS = {
+    "pyoracle": cmd_pyoracle, "pyspec": cmd_pyspec,
     "prereg": cmd_prereg, "order": cmd_order, "envdiff": cmd_envdiff, "init": cmd_init,
     "claudemd": cmd_claudemd, "repoclaude": cmd_repoclaude, "trust": cmd_trust,
     "addhook": cmd_addhook, "uuid": cmd_uuid,
