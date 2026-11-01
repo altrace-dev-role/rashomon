@@ -43,6 +43,7 @@ const (
 	KindTask         = "task"
 	KindPackages     = "packages"
 	KindVerify       = "verify"
+	KindHistory      = "history"
 	// KindLastSession is the line that replaces the verify line at startup
 	// when the project's previous session was looked for (Brief.WithVerify).
 	KindLastSession = "last session"

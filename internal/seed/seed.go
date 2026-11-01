@@ -13,6 +13,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/linescan"
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -45,6 +46,11 @@ type Row struct {
 
 // Tally folds transcripts one at a time.
 type Tally struct {
+	// Until, when set, leaves out every line written at or after it.
+	Until time.Time
+	// Key, when set, names the project a transcript's cwd belongs to.
+	Key func(cwd string) string
+
 	sessions, projects map[string]struct{}
 	calls, unread      int
 	kinds              [numKinds]int
