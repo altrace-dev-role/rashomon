@@ -131,6 +131,7 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if !ok {
 		return nil
 	}
+	p.keepHits(view.Hits, env.Now)
 	out := steer.Route(&ctx, view.Findings)
 	// The line is durable before its note prints (REC-34).
 	if err := fault.Fail(fault.PointSteerFlush); err != nil {
@@ -146,6 +147,20 @@ func (p *Post) Steer(env SteerEnv) []byte {
 		return nil
 	}
 	return b
+}
+
+// keepHits appends each forbid_command rule the call matched to the run as a
+// spec_event rule_hit (card SPEC-RULES-STOP1), at either post event and
+// whatever Route then decides: the steer switch, the arm, the holdout,
+// consent and attendance do not reach it. It runs before Route, so Steer's
+// one Flush makes the hits durable before any note prints (REC-34); at a
+// failure, where Route writes no line, that Flush is the one sync the hits
+// add. A hit that does not land (a lock timeout, an append error) is lost,
+// and the Stop then reads that rule undecided, never clear.
+func (p *Post) keepHits(hits []verify.RuleHit, now time.Time) {
+	for _, h := range hits {
+		_ = p.st.AppendRecord(p.sessionID, store.NewRuleHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq, now.UnixMilli()))
+	}
 }
 
 // armStale arms the session's stale trigger at the post of a gate run: a
@@ -214,9 +229,10 @@ func ruled(event string, landedSeq int64, toolName string) bool {
 // never the run, so a run that could not be read drops the step's findings
 // and keeps theirs. An index that cannot be read, or is over its cap, reads
 // as none (ReadIndex). ok is false when neither trigger fires, or when no run
-// was read and the rules raised nothing. It writes nothing but the stale
-// trigger's disarm, so BenchmarkPostSteer's eval rows measure it apart from
-// the append and the sync.
+// was read and the rules neither raised nor hit anything. It writes nothing
+// but the stale trigger's disarm, so BenchmarkPostSteer's eval rows measure
+// it apart from the append and the sync; the view's hits are Steer's to
+// keep.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	var key string
 	var indexless bool
@@ -258,7 +274,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 		StoreRoot: root}
 	rules := verify.RulesAtCall(p.sp, p.ruleCall(), pt, p.event)
 	if run == nil {
-		if len(rules.Findings) == 0 {
+		if len(rules.Findings) == 0 && len(rules.Hits) == 0 {
 			return steer.Context{}, verify.SteerView{}, false
 		}
 		return p.contextOf(env, rules), rules, true
@@ -270,6 +286,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)
 	view.Dropped += rules.Dropped
+	view.Hits = rules.Hits
 	return p.contextOf(env, view), view, true
 }
 

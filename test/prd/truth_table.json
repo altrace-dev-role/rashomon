@@ -489,10 +489,34 @@
         {
           "file": "internal/verify/rules_test.go",
           "symbol": "TestSR1h_TrustedViolationClearsRecordGreen"
+        },
+        {
+          "file": "internal/verify/rules.go",
+          "symbol": "ruleHitSeqs"
+        },
+        {
+          "file": "internal/verify/evaluate.go",
+          "symbol": "recordGreenOf"
+        },
+        {
+          "file": "internal/verify/srs1_test.go",
+          "symbol": "TestSRS1_ARuleHitIsAViolationAtStop"
+        },
+        {
+          "file": "internal/verify/srs1_test.go",
+          "symbol": "TestSRS1e2_TheReplayKeepsABindingViolationRed"
+        },
+        {
+          "file": "test/acceptance/dgh_declared_gates_test.go",
+          "symbol": "TestDGH5_AForbiddenCallIsAViolationAtStop"
+        },
+        {
+          "file": "test/acceptance/srs1_spec_edit_test.go",
+          "symbol": "TestSRS1m_AProtectPathViolationIsNamedAtStop"
         }
       ],
       "id": "PF-PG8",
-      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path or require_evidence rule of a trusted or managed spec, and every required gate green, and Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
+      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path or require_evidence rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
       "integration": [
         {
           "event": "Stop",
