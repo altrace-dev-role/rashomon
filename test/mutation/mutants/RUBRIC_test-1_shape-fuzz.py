@@ -27,3 +27,8 @@ m("test-1  the shape digest is written in upper case", "internal/shape/shape.go"
 m("test-1  a command argument host skips the hostname whitelist", "internal/shape/hosts.go",
   "\tif !host.Shaped(hostPart) {\n\t\treturn \"\", false\n\t}\n",
   "\tif false {\n\t\treturn \"\", false\n\t}\n", "TestRubricTEST1_")
+# TRAIN-FUZZ1's FuzzCommands seed 6a2d8de6f879b780, run in the seeds test: the
+# cap is held on the decoded line too, since an invalid byte decodes to three.
+m("test-1  CommandLine caps only the encoded command", "internal/shape/commands.go",
+  "\tif !ok || len(line) > max {\n\t\treturn \"\", false\n\t}\n\treturn line, true\n",
+  "\tif !ok {\n\t\treturn \"\", false\n\t}\n\treturn line, true\n", "TestRubricTEST1_")

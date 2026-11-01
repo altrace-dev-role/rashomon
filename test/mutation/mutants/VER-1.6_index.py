@@ -61,7 +61,8 @@ m("VER-1.6 a missing file reads as an error", I,
 m("VER-1.6 the read limit is the cap, not a byte past it", I,
   "N: MaxIndexBytes + 1}", "N: MaxIndexBytes}", "TestIDX5_")
 m("VER-1.6 a file over the cap reads", I, "\tif lr.N == 0 {\n", "\tif false {\n", "TestIDX5_")
-m("VER-1.6 an unknown field reads", I, "\tdec.DisallowUnknownFields()\n", "", "TestIDX5_")
+m("VER-1.6 an unknown key is refused, and the next Stop writes a fresh index", I,
+  "\tdec := json.NewDecoder(lr)\n", "\tdec := json.NewDecoder(lr)\n\tdec.DisallowUnknownFields()\n", "TestIDX5t_")
 m("VER-1.6 data after the one value reads", I,
   "\tif _, err := dec.Token(); !errors.Is(err, io.EOF) {\n", "\tif _, err := dec.Token(); false && err != nil {\n",
   "TestIDX5_")

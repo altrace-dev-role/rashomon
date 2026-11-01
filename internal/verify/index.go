@@ -161,10 +161,13 @@ func (idx *ProjectIndex) Observe(runs []gateRun, sessionID string, nowMS int64) 
 // A file over MaxIndexBytes, one that cannot be read, and one that is not
 // this shape are (nil, error), and a caller reads an error as no index, which
 // in 1.5 makes every family required: the fail-closed direction. The shape is
-// closed: one JSON value, no field it does not name, and entries strictly
-// ascending by Family, which Required's binary search relies on (out of
-// order, a present family would read as absent: not required, the fail-open
-// direction).
+// one JSON value with its entries strictly ascending by Family, which
+// Required's binary search relies on (out of order, a present family would
+// read as absent: not required, the fail-open direction). A key it does not
+// name, at the top or in an entry, reads and is dropped: a later build wrote
+// it, and refusing it would make this build's next Stop write a fresh index
+// over the learned history it could not read (INDEX-TOLERANT1, #171 D1). The
+// rewrite loses only that key.
 func ReadIndex(path string) (*ProjectIndex, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -177,7 +180,6 @@ func ReadIndex(path string) (*ProjectIndex, error) {
 	// One byte past the cap, so that a file over it is seen to be.
 	lr := &io.LimitedReader{R: f, N: MaxIndexBytes + 1}
 	dec := json.NewDecoder(lr)
-	dec.DisallowUnknownFields()
 	var idx ProjectIndex
 	if err := dec.Decode(&idx); err != nil {
 		return nil, fmt.Errorf("verify: project index %s: %w", path, err)
@@ -217,7 +219,7 @@ func WriteIndex(path string, idx *ProjectIndex) (evicted int, err error) {
 	if err != nil {
 		return 0, err
 	}
-	encoded, err := encodeIndex(ProjectIndex{ProjectKey: idx.ProjectKey, Entries: entries, Last: idx.Last, Prior: idx.Prior})
+	encoded, err := encodeIndex(ProjectIndex{ProjectKey: idx.ProjectKey, Entries: entries})
 	if err != nil {
 		return 0, err
 	}
@@ -242,7 +244,7 @@ func WriteIndex(path string, idx *ProjectIndex) (evicted int, err error) {
 // loop's. Where every entry goes and the frame alone is over the cap,
 // WriteIndex's check on the encoding refuses it.
 func evictToCap(idx ProjectIndex, entries []IndexEntry) ([]IndexEntry, int, error) {
-	frame, err := encodeIndex(ProjectIndex{ProjectKey: idx.ProjectKey, Last: idx.Last, Prior: idx.Prior})
+	frame, err := encodeIndex(ProjectIndex{ProjectKey: idx.ProjectKey})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -291,40 +293,4 @@ func encodeIndex(idx ProjectIndex) ([]byte, error) {
 		return nil, err
 	}
 	return append(b, '\n'), nil
-}
-
-// NoteCheckpoint records that session cut a checkpoint at point seq at atMS:
-// it becomes Last, and the Last of another session becomes Prior (a clear
-// that continues one session leaves Prior alone, so Prior stays the
-// previous session's). The Stop calls it only after the checkpoint was
-// appended, so the pointer never names a record that was dropped.
-//
-// Two sessions that Stop at once each read the index, note their checkpoint
-// and write it back with no lock between, so the last writer wins and the
-// other's Last (or Prior) is lost. That is safe: the pointer is only a hint,
-// and receipt.Pointed checks the checkpoint it names (project and point seq)
-// before anything is printed, so a lost pointer leaves the verify line and a
-// stale one is never shown as current.
-func (idx *ProjectIndex) NoteCheckpoint(session string, seq, atMS int64) {
-	if idx.Last != nil && idx.Last.SessionID != session {
-		prior := *idx.Last
-		idx.Prior = &prior
-	}
-	idx.Last = &LastCheckpoint{SessionID: session, PointSeq: seq, AtMS: atMS}
-}
-
-// PreviousOf is the checkpoint the index names for the session before
-// current: Last, unless that is current's own (a clear), then Prior. Nil
-// when the index names none.
-func (idx *ProjectIndex) PreviousOf(current string) *LastCheckpoint {
-	if idx == nil {
-		return nil
-	}
-	if idx.Last != nil && idx.Last.SessionID != current {
-		return idx.Last
-	}
-	if idx.Last != nil && idx.Prior != nil && idx.Prior.SessionID != current {
-		return idx.Prior
-	}
-	return nil
 }
