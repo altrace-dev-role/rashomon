@@ -28,5 +28,5 @@ m("MS-1 the lab marker not checked (the arm env would defeat the holdout on a no
   "\tif arm == \"\" || store.Lab(root) {\n",
   "\tif true {\n", "TestMS1v_")
 m("MS-1 the brief prints under arm off", "cmd/rashomon/brief.go",
-  "\tif armOff(st.Root()) {\n\t\treturn\n\t}\n\troot, ok := briefRoot(cwd)\n",
-  "\troot, ok := briefRoot(cwd)\n", "TestMS1zg_")
+  "\tif armOff(st.Root()) {\n\t\treturn\n\t}\n\tmsg := briefText(args, payload, st)\n",
+  "\tmsg := briefText(args, payload, st)\n", "TestMS1zg_")

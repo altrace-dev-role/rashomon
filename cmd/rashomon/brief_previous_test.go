@@ -117,7 +117,7 @@ func TestRP2u_AnErrorLeavesTheVerifyLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	printBrief([]string{store.PhaseStart, install.Marker, "x"}, payload, st, &out)
+	printBrief([]string{store.PhaseStart, install.Marker, "x"}, payload, st, "", &out)
 	msg := message(t, out.String())
 	if !strings.Contains(msg, "\n  verify: rashomon report --session "+benchSessionID) || strings.Contains(msg, "last session") {
 		t.Errorf("an unreadable runs directory must leave the verify line: %q", msg)

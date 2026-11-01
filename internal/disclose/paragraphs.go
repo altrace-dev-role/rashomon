@@ -18,8 +18,15 @@ const (
 	// {scope}, {current}.
 	CiteChangedSince = "variant:changed_since"
 
-	// CiteShort is the short screen's text (CONSENT-SHORT1).
+	// CiteShort is the short screen's text, the screen watch and consent
+	// print and ask under (CONSENT-SHORT1): what a yes records, what is
+	// never stored, and the notes, in print order. Each sentence sums up the
+	// section paragraphs above, which `rashomon consent --full` prints whole.
 	CiteShort = "screen:short"
+	// CiteChangedSinceShort is the short screen's CHANGED SINCE line, slots
+	// as CiteChangedSince's; the short screen sums up rather than lists, so
+	// it does not say everything is below.
+	CiteChangedSinceShort = "variant:changed_since_short"
 )
 
 // Paragraph owners: the layer whose capability a paragraph discloses.
@@ -45,7 +52,7 @@ func defaultParagraphs() []Paragraph {
 		{Owner: OwnerBreadth, Cite: CiteSection1, Text: "Programs built on the Claude Agent SDK on this machine also run these entries unless they set settingSources: []. rashomon records them only if you answer y to the second question below, and adds no notes for their agents."},
 
 		{Owner: OwnerRecord, Cite: CiteSection2, Text: "STORED: for each tool call, the tool; which agent made it; the program a command runs, its argument count and a keyed digest of its input (never its text); the hostnames it names; the transcript path; the permission mode; at record scope v5, the one a yes here records, the working directory, the project root, the file an edit names and the files a shell line may write, in the clear, and the SHA-256 of the file an edit names as the call left it (never its content), where `rashomon status` shows the scope and this build has no setting that leaves these out; how it ended (outcome, exit code, interrupted or not, duration); and the time each hook event first ran in a session. For a test or build line: the runner it ran in and the pipe stage that hid its exit status, each one word from a closed list the binary ships (never a word of the command); for a gate run, one closed word that classifies its output (a passing or failing summary, a failure line, an empty run, or none found), and not the output, which is read in memory; one bit, when true, that says the hook could not read where a shell line started because a leading cd was one it does not read (never the directory it names); in a note's steer line, where the outcome it rests on came from (the exit status or the output's summary); and, when a prompt's preflight finds no spec, one small hint that holds the turn's id and a keyed digest of the directory it looked from, nothing else. At each turn end: the state of each test or build check, a keyed digest of each claim sentence it checks in the agent's final message (never the sentence), and the digest of the project spec (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word for word, except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them. Your on and off switches (config.json), and for a project's switch (summary_projects, steer_projects) the project's directory."},
-		{Owner: OwnerVerify, Cite: CiteSection2, Text: "READ IN MEMORY, NEVER STORED: the output of build, test, lint and scan commands; the text of file edits and the file before a Write (up to 1 MiB); failure messages; the agent's final message and subagent replies; Claude Code's transcript files for this project. rashomon keeps only what it concluded, and the claim-sentence digests above."},
+		{Owner: OwnerVerify, Cite: CiteSection2, Text: "READ IN MEMORY, NEVER STORED: the output of build, test, lint and scan commands, and of a command rashomon does not recognize, to find a test runner's summary in it; the text of file edits and the file before a Write (up to 1 MiB); failure messages; the agent's final message and subagent replies; Claude Code's transcript files for this project. rashomon keeps only what it concluded, and the claim-sentence digests above."},
 		{Owner: OwnerRecord, Cite: CiteSection2, Text: "Never stored: your prompts, command text, tool output, the agent's messages, task subjects, files the agent reads or edits, and spec files. Your prompts are never stored: rashomon reads each in memory to pick project facts for a note and keeps only, in the note's steer line, the project paths it names at record scope v5, or only their count and keyed digests at v4 (`rashomon status` shows the scope). At most 512 MiB by default."},
 		{Owner: OwnerRecord, Cite: CiteSection2, Text: "rashomon itself makes no network connection and sends no telemetry. The notes it adds become part of the conversation Claude Code sends to your model provider and keeps in its own transcripts."},
 		{Owner: OwnerMeasure, Cite: CiteSection2, Text: "Each hook runs as two short processes, a supervisor and the recorder (a plugin install adds a small shell launcher). Budget at the median: about 11 MiB and 10.5 to 13.5 ms together for each hook of a tool call. A tool call runs about three hooks; their peaks add up to at most 32 MiB (1.1.0: two processes, about 21.5 MiB). Large tool outputs up to about 30 MiB, never more than 64 MiB; session start can add up to about 0.4 s (p95) before Claude's first reply. These are budgets, not yet measurements."},
@@ -64,6 +71,11 @@ func defaultParagraphs() []Paragraph {
 		{Owner: OwnerRecord, Cite: CiteSection5, Text: "When a session starts or is cleared, one block shown only to you says what the project holds: which instruction files (CLAUDE.md, AGENTS.md) and build manifests (go.mod, package.json and the like) exist, with their sizes, the module line of go.mod, the test command, the project spec and its task, and the names of the Go package directories. It reads those at that moment and stores none of it; the agent is not shown the block, and no instruction file's text is read. `rashomon brief` prints the same block."},
 
 		{Owner: OwnerScreen, Cite: CiteChangedSince, Text: "CHANGED SINCE YOU LAST AGREED ({version}, scope {scope}): this build asks for scope {current}. Everything it now does is below."},
+
+		{Owner: OwnerRecord, Cite: CiteShort, Text: "RECORDED for each tool call, including: the tool, the program a command runs (never its text), the paths it edits or may write and an edited file's SHA-256, the hosts it names, the directory it ran in, and how it ended; at each turn end, the state of each test and build check."},
+		{Owner: OwnerVerify, Cite: CiteShort, Text: "NEVER STORED: your prompts, command text, tool output, file contents or the agent's messages; rashomon reads some in memory and keeps what it concluded."},
+		{Owner: OwnerSteer, Cite: CiteShort, Text: "NOTES TO YOUR AGENT (on): short facts from the record, such as a test that passed earlier and fails now. You see each one as it is added; it goes to your model provider with the conversation. rashomon itself sends nothing."},
+		{Owner: OwnerScreen, Cite: CiteChangedSinceShort, Text: "CHANGED SINCE YOU LAST AGREED ({version}, scope {scope}): now scope {current}."},
 	}
 }
 
