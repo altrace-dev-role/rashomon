@@ -2,6 +2,7 @@ package install
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -105,33 +106,43 @@ func TestDetachByteExact_InlineHooksStayInline(t *testing.T) {
 // recording only hashes cannot say which keys were there), so it leaves the
 // file residue-free: the empty container goes, and nothing else changes.
 func TestDetachByteExact_EmptyContainersAreFilledInPlace(t *testing.T) {
-	const gone = "{\n  \"env\": {\"A\": \"1\"}\n}\n"
-	for _, c := range []struct{ name, seed, prefix, suffix string }{
-		{"empty event array", "{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {\n    \"PreToolUse\": []\n  }\n}\n",
-			"{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n", "\n    ]\n  }\n}\n"},
-		{"empty hooks object", "{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {}\n}\n",
-			"{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n", "\n    ]\n  }\n}\n"},
-	} {
-		doc, err := settings.Parse([]byte(c.seed))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := Apply(doc, spec(oneID)); err != nil {
-			t.Fatal(err)
-		}
-		got := string(doc.Bytes())
-		if !strings.HasPrefix(got, c.prefix) || !strings.HasSuffix(got, c.suffix) {
-			t.Errorf("%s: the file outside the empty container changed, or the entries are not at its column:\n%s", c.name, got)
-		}
-		back, err := settings.Parse(doc.Bytes())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, _, err := Remove(back, spec(oneID), false); err != nil {
-			t.Fatal(err)
-		}
-		if string(back.Bytes()) != gone {
-			t.Errorf("%s: detach changed more than the empty container:\n%q", c.name, back.Bytes())
+	// The seeds use the editor's own two spaces, and also four and a tab: a fill
+	// at the editor's fixed depth (two spaces) only looks right for the first.
+	for _, u := range []string{"  ", "    ", "\t"} {
+		gone := "{\n" + u + "\"env\": {\"A\": \"1\"}\n}\n"
+		head := "{\n" + u + "\"env\": {\"A\": \"1\"},\n" + u + "\"hooks\": {\n"
+		// What is checked is the user's own layout around the container: the keys
+		// before it, and the closing braces after it. The entries inside are the
+		// editor's, drawn on its two-space grid from the container's column.
+		fill := u + u + "\"PreToolUse\": [\n" + u + u + "  {\n"
+		for _, c := range []struct{ name, seed, prefix, suffix string }{
+			{"empty event array", head + u + u + "\"PreToolUse\": []\n" + u + "}\n}\n",
+				head + fill, "\n" + u + "}\n}\n"},
+			{"empty hooks object", "{\n" + u + "\"env\": {\"A\": \"1\"},\n" + u + "\"hooks\": {}\n}\n",
+				head + u + "  \"PreToolUse\": [\n" + u + "    {\n", "\n" + u + "}\n}\n"},
+		} {
+			c.name = fmt.Sprintf("%s, indent %q", c.name, u)
+			doc, err := settings.Parse([]byte(c.seed))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Apply(doc, spec(oneID)); err != nil {
+				t.Fatal(err)
+			}
+			got := string(doc.Bytes())
+			if !strings.HasPrefix(got, c.prefix) || !strings.HasSuffix(got, c.suffix) {
+				t.Errorf("%s: the file outside the empty container changed, or the entries are not at its column:\n%s", c.name, got)
+			}
+			back, err := settings.Parse(doc.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := Remove(back, spec(oneID), false); err != nil {
+				t.Fatal(err)
+			}
+			if string(back.Bytes()) != gone {
+				t.Errorf("%s: detach changed more than the empty container:\n%q", c.name, back.Bytes())
+			}
 		}
 	}
 }
