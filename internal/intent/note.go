@@ -112,6 +112,11 @@ func FindingKeyed(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(
 			continue
 		}
 		var rec render.Message
+		// The record form is m's binding with each path list as a count and
+		// keyed digests, 64 hex by construction, and a count is never longer
+		// than the paths it counts, so it renders wherever m did and this
+		// continue is not reached after m rendered (#170 F7,
+		// TestPF1w_RecordFormNeverStepsTheNoteDown).
 		if digest != nil {
 			if rec, err = render.New(pattern.TaskPreflight, recordBinding(pf, first, b, n, digest)); err != nil {
 				continue
