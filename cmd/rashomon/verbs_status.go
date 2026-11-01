@@ -204,7 +204,11 @@ type statusStop struct {
 }
 
 // statusConsent is the last act of consent on file beside this build's
-// versions; Current is whether it covers both.
+// versions; Current is whether it covers both. notesHeld is whether the hook
+// holds every note: no record on file reaches this build's steer disclosure
+// (consent.Current, the highest on file, which the marker holds), so it can
+// differ from the last record's own disclosure. It is in the text, not the
+// JSON, whose keys are closed (TestSV1f).
 type statusConsent struct {
 	ScopeVersion         int   `json:"scope_version"`
 	SteerDisclosure      int   `json:"steer_disclosure"`
@@ -212,6 +216,7 @@ type statusConsent struct {
 	BuildScopeVersion    int   `json:"build_scope_version"`
 	BuildSteerDisclosure int   `json:"build_steer_disclosure"`
 	Current              bool  `json:"current"`
+	notesHeld            bool
 }
 
 // statusRun is one run directory that holds a call.
@@ -425,10 +430,15 @@ func consentAgreed(root string) (*statusConsent, error) {
 	if !ok {
 		return nil, nil
 	}
+	steerCurrent, err := consent.Current(root)
+	if err != nil {
+		return nil, err
+	}
 	return &statusConsent{
 		ScopeVersion: rec.ScopeVersion, SteerDisclosure: rec.SteerDisclosure, AgreedAtUnixMS: rec.At,
 		BuildScopeVersion: disclose.ScopeVersion, BuildSteerDisclosure: steer.DisclosureVersion,
-		Current: rec.ScopeVersion >= disclose.ScopeVersion && rec.SteerDisclosure >= steer.DisclosureVersion,
+		Current:   rec.ScopeVersion >= disclose.ScopeVersion && rec.SteerDisclosure >= steer.DisclosureVersion,
+		notesHeld: !steerCurrent,
 	}, nil
 }
 
@@ -523,7 +533,10 @@ func (v statusView) consentLine() string {
 	line := fmt.Sprintf("consent: screen version %d, steer disclosure %d, agreed %s; this build shows %d, %d",
 		c.ScopeVersion, c.SteerDisclosure, time.UnixMilli(c.AgreedAtUnixMS).UTC().Format(time.RFC3339),
 		c.BuildScopeVersion, c.BuildSteerDisclosure)
-	if !c.Current {
+	switch {
+	case c.notesHeld:
+		line += ": steer notes are held until you see the steer disclosure: run `rashomon consent` in your own terminal"
+	case !c.Current:
 		line += ": run `rashomon consent` to see what changed"
 	}
 	return line + "\n"
