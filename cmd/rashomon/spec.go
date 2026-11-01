@@ -44,6 +44,12 @@ func cmdSpec(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// untrust takes a spec's trust away, so its rules stop being nudges to
+	// the agent: it is refused in an agent session as trust is, and writes
+	// nothing.
+	if s := selfguard.AgentSignal(os.Getenv); s != "" && args[0] == "untrust" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon spec untrust %s` in your own terminal.", s, shellWord(path))
+	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) && args[0] == "untrust" {
 		_, err = fmt.Fprintf(stdout, "%s was not trusted\n", path)
