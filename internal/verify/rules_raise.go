@@ -2,6 +2,7 @@ package verify
 
 import (
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // RuleCall is the call a post judges the spec's rules against, from its
@@ -24,6 +26,11 @@ type RuleCall struct {
 	FilePath string
 	Project  string
 	CWD      string
+	// ToolUseID and Run are an order rule's reads: the call's own id, and
+	// the run as read at this post, nil where none was (the rule then raises
+	// nothing: a rule over earlier calls needs the record).
+	ToolUseID string
+	Run       *store.Run
 }
 
 // RulesAtCall is the spec's rules raised at a post from the call alone, no
@@ -53,6 +60,8 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 	}
 	var cmds []shape.Command
 	read := false
+	var ord orderView
+	judged := false
 	rel, inside := "", false
 	if call.FilePath != "" {
 		rel, inside = projectPath(relativise(call.FilePath, &call.Project, &call.CWD))
@@ -92,6 +101,20 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 			p := PathSlot(rel)
 			fact.Path = &p
 			f.Pattern, f.Class, f.UserOnly = pattern.Integrity, UserLabelled, true
+		case spec.Order:
+			if call.ToolName != "Bash" || call.Run == nil || dr.Rule.Then == nil || len(dr.Rule.Then.Argv) == 0 {
+				continue
+			}
+			if !judged {
+				ord, judged = orderRead(call), true
+			}
+			if !ord.violates(&dr.Rule, call.ToolUseID) {
+				continue
+			}
+			if p := Program(path.Base(dr.Rule.Then.Argv[0])); p.Valid() {
+				fact.Program = &p
+			}
+			f.Pattern, f.Class = pattern.OrderingRule, Literal
 		default:
 			continue
 		}
@@ -105,6 +128,38 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 		view.Findings = append(view.Findings, sf)
 	}
 	return view
+}
+
+// orderView is the record an order rule reads at a post: the Bash lines and
+// writes at or before the call, read once for every order rule.
+type orderView struct {
+	lines  []ruleLine
+	picked map[string]*store.Execution
+	c      classified
+	rels   []projectRel
+	at     int64
+	run    *store.Run
+}
+
+func orderRead(call RuleCall) orderView {
+	v := orderView{run: call.Run, at: call.Seq, picked: pickExecutions(call.Run)}
+	runs, writes, unnamed, _ := classifyWith(call.Run, v.picked)
+	v.c = classified{runs: runs, writes: writes, unnamed: unnamed}
+	v.lines = ruleLines(call.Run, v.picked, call.Seq)
+	v.rels = projectRels(writes)
+	return v
+}
+
+// violates reports the rule violated at the call whose tool_use_id is id: a
+// violation the record names at that call's declaration, never an undecided
+// one.
+func (v *orderView) violates(r *spec.Rule, id string) bool {
+	for i := range v.run.Declarations {
+		if d := &v.run.Declarations[i]; d.ToolUseID == id {
+			return slices.Contains(orderOver(r, v.lines, v.picked, &v.c, v.rels, v.at).seqs, d.Seq)
+		}
+	}
+	return false
 }
 
 // matchedProgram is the base name of the first command m matches for
@@ -150,6 +205,11 @@ func renderRule(f *RuleFact, r *spec.Rule) render.Message {
 		p, unnamed = pattern.Integrity, render.IntegrityFrozenPathUnnamedBinding{}
 		if f.Path != nil {
 			full = render.IntegrityFrozenPathBinding{Path: slot.Path(*f.Path), Rule: id}
+		}
+	case spec.Order:
+		p, unnamed = pattern.OrderingRule, render.OrderingRuleThenUnnamedBinding{}
+		if f.Program != nil {
+			full = render.OrderingRuleThenBinding{Program: slot.Program(*f.Program), Rule: id}
 		}
 	default:
 		return render.Message{}

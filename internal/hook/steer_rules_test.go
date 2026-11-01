@@ -325,7 +325,7 @@ func TestSR1z_ACallIsReadOnlyAsFarAsARuleReadsIt(t *testing.T) {
 			}
 			p := f.call("toolu_r", c.tool, input, 0)
 			p.sp = DiscoverSpec(p.cwd, "", "", TrustedRoot{})
-			got := p.ruleCall()
+			got := p.ruleCall(nil)
 			if (got.Command != "") != c.command || (got.FilePath != "") != c.path || (got.Project != "") != c.key {
 				t.Errorf("ruleCall read command %q, path %q, project %q; want command %v, path %v, project %v",
 					got.Command, got.FilePath, got.Project, c.command, c.path, c.key)
@@ -337,7 +337,56 @@ func TestSR1z_ACallIsReadOnlyAsFarAsARuleReadsIt(t *testing.T) {
 	}
 	f := newSRFix(t, srSpec(srNoForce))
 	p := f.call("toolu_r", "Bash", push, 0)
-	if got := p.ruleCall(); got.Command != "" {
+	if got := p.ruleCall(nil); got.Command != "" {
 		t.Errorf("with no spec discovered, ruleCall read %q", got.Command)
+	}
+}
+
+// srTestFirst forbids a git push with no earlier green go test.
+const srTestFirst = `{"id": "test-first", "kind": "order", "then": {"argv": ["git", "push"]}, "after": {"argv": ["go", "test"]}, "invalidated_by": ["**/*.go"], "why": "push only tested code", "hard_control": "CI"}`
+
+// TestSR1ab_AnOrderRuleReadsTheRunAtItsThenCall (card SPEC-RULES1 1b): a
+// Bash call of a spec that declares an order rule carries its tool_use_id
+// and the run, read for the rule where no step read one; a call of a spec
+// without one, or a file tool's, carries none. The hook records no command
+// line yet (Declaration.Command has no producer here), so the earlier
+// calls' lines are withheld and the rule is undecided: a git push with no
+// go test before it prints nothing, and a run that cannot be read raises
+// nothing either, never a finding on what the record does not show.
+func TestSR1ab_AnOrderRuleReadsTheRunAtItsThenCall(t *testing.T) {
+	push := map[string]any{"command": "git push origin main"}
+	f := newSRFix(t, srSpec(srTestFirst))
+	f.call("toolu_a", "Bash", map[string]any{"command": "go build ./..."}, 0)
+	p := f.call("toolu_b", "Bash", push, 0)
+	p.sp = DiscoverSpec(p.cwd, "", "", TrustedRoot{})
+	got := p.ruleCall(nil)
+	if got.Run == nil || got.ToolUseID != "toolu_b" || len(got.Run.Declarations) != 2 {
+		t.Fatalf("ruleCall carried run %v and id %q, want the two-call run and toolu_b", got.Run, got.ToolUseID)
+	}
+	if b := p.Steer(stEnv(0)); b != nil || len(steerLines(t, f.st)) != 0 {
+		t.Errorf("printed %q with withheld lines, want nothing", b)
+	}
+	edit := f.call("toolu_c", "Edit", map[string]any{"file_path": filepath.Join(f.cwd, "a.go"), "old_string": "a", "new_string": "b"}, 0)
+	edit.sp = p.sp
+	if edit.ruleCall(nil).Run != nil {
+		t.Error("a file tool's call carried a run")
+	}
+	g := newSRFix(t, srSpec(srNoForce))
+	q := g.call("toolu_a", "Bash", push, 0)
+	q.sp = DiscoverSpec(q.cwd, "", "", TrustedRoot{})
+	if q.ruleCall(nil).Run != nil {
+		t.Error("a spec with no order rule carried a run")
+	}
+	h := newSRFix(t, srSpec(srTestFirst))
+	r := h.call("toolu_a", "Bash", push, 0)
+	dir := h.st.RunDir(stSession)
+	if err := os.Rename(dir, dir+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, view, _ := r.judge(stEnv(0)); len(view.Findings) != 0 {
+		t.Errorf("judge over an unreadable run raised %+v", view.Findings)
 	}
 }

@@ -262,6 +262,18 @@ type IntegrityFrozenPathBinding struct {
 // rule id its slot refuses.
 type IntegrityFrozenPathUnnamedBinding struct{}
 
+// OrderingRuleThenBinding is ordering-rule's line: the program of the call
+// that ran before the earlier step an order rule requires, and the id of the
+// rule.
+type OrderingRuleThenBinding struct {
+	Program slot.Program `slot:"program"`
+	Rule    slot.RuleID  `slot:"rule_id"`
+}
+
+// OrderingRuleThenUnnamedBinding is that line for a program or a rule id its
+// slot refuses.
+type OrderingRuleThenUnnamedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -405,6 +417,14 @@ func templatesLater() map[templateKey]template {
 		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
 			id:     "platform-rule-command-unnamed/v1",
 			format: "rashomon record: this call matched a spec rule.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenBinding{})}: {
+			id:     "ordering-rule-then/v1",
+			format: "rashomon record: this {program} call ran before the earlier step spec rule {rule_id} requires.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenUnnamedBinding{})}: {
+			id:     "ordering-rule-then-unnamed/v1",
+			format: "rashomon record: this call ran before the earlier step a spec rule requires.",
 		},
 		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
 			id:     "integrity-frozen-path/v1",

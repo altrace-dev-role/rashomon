@@ -272,7 +272,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	}
 	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID),
 		StoreRoot: root}
-	rules := verify.RulesAtCall(p.sp, p.ruleCall(), pt, p.event)
+	rules := verify.RulesAtCall(p.sp, p.ruleCall(run), pt, p.event)
 	if run == nil {
 		if len(rules.Findings) == 0 && len(rules.Hits) == 0 {
 			return steer.Context{}, verify.SteerView{}, false
@@ -344,9 +344,20 @@ func boundSource(sp *spec.Compiled, root string) bool {
 // recorded command keeps whole, where a forbid_command rule is declared,
 // and a file tool's path, with the project key a declaration carries
 // (baseline.Key of the cwd), where a protect_path rule is.
-func (p *Post) ruleCall() verify.RuleCall {
-	c := verify.RuleCall{Seq: p.landedSeq, ToolName: p.toolName, CWD: p.cwd}
+//
+// An order rule reads the calls before this one, so a Bash call of a spec
+// that declares one carries the run: the one this judge read, else its own
+// read, which is no step's (the step's findings stand on its own run). A run
+// that cannot be read leaves the order rule raising nothing.
+func (p *Post) ruleCall(run *store.Run) verify.RuleCall {
+	c := verify.RuleCall{Seq: p.landedSeq, ToolName: p.toolName, CWD: p.cwd, ToolUseID: p.toolUseID}
 	command, path := ruleReads(p.sp)
+	if p.toolName == "Bash" && declaresOrder(p.sp) {
+		if run == nil {
+			run, _ = p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
+		}
+		c.Run = run
+	}
 	if command {
 		c.Command, _ = shape.CommandLine(p.toolName, p.toolInput, store.MaxCommandBytes)
 	}
@@ -356,6 +367,20 @@ func (p *Post) ruleCall() verify.RuleCall {
 		}
 	}
 	return c
+}
+
+// declaresOrder reports an order rule among sp's own, the kind that reads
+// the run at a post.
+func declaresOrder(sp *spec.Compiled) bool {
+	if sp == nil {
+		return false
+	}
+	for i := range sp.Rules {
+		if sp.Rules[i].Source != spec.SourceImplied && spec.RuleKind(sp.Rules[i].Rule.Kind) == spec.Order {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleReads reports whether sp declares a forbid_command rule and whether
