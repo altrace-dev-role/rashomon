@@ -45,7 +45,7 @@ runs the live rows, writes the notes), CI.
 | G4 | P0 | CI green on the RC sha: test with `-race`, fuzz, perf on linux and macOS, cross builds, pgraph, mutation shards | Maintainer | `gh run list --repo altrace-dev-role/rashomon --branch main --json conclusion,headSha,workflowName` shows success for every workflow on that sha | **NOT RUN.** There is no RC yet. The macOS perf job hits its 25-minute cap (the REC-34 mutants step) until #193 merges. Several perf rows on main sit at 96-101% of their gates (darwin cold `post.bash_short`; linux hook peak RSS), so a rerun may be needed. A re-measure is the maintainer's call. |
 | G5 | P0 | Version strings say alpha.2: `plugin/.claude-plugin/plugin.json`, the default `RA_TAG` in `test/live/ra-1.sh` (lines 19 and 85), the README | Reviewer | `git show $tip:plugin/.claude-plugin/plugin.json \| grep version` | **FAIL.** `plugin.json` says 1.2.0-alpha.1. The release-prep PR is not opened; it waits for the PR set. |
 | G6 | P0 | A1: `go install`, `install.sh` and the plugin zip all print `1.2.0-alpha.2`, sha256s recorded; and a real `/plugin` install through Claude Code | Reviewer | `RA_TAG=v1.2.0-alpha.2 test/live/ra-1.sh A1` writes `A1/install.txt`. Needs the tag, so it runs after it. | **NOT RUN** for alpha.2. alpha.1 failed only the `go install` route (it printed `dev`), which #166 fixes. |
-| G7 | P0 | A2: the version floor is enforced. A spoofed 2.1.200 gives one notice and no note; the real version delivers the note | Reviewer (fixes the script, then runs it) | `ra-1.sh A2` prints `A2 PASS` | **INCONCLUSIVE on alpha.1.** The prompt was never typed, and the scenario cannot raise a note on a fresh store (no spec, no index). The `ra-1.sh` A2 fix is in progress. |
+| G7 | P0 | A2: the version floor is enforced. A spoofed 2.1.200 gives one notice and no note; the real version delivers the note | Reviewer (fixes the script, then runs it) | `ra-1.sh A2` prints `A2 PASS` | **INCONCLUSIVE on alpha.1.** The prompt was never typed, and the scenario cannot raise a note on a fresh store (no spec, no index). #202 fixes the script: A2 trusts a spec with a required test gate, so the real session can raise the stale-evidence note, and a session where nothing was typed reads INCONCLUSIVE with that reason. |
 | G8 | P0 | A3: `p-tru-1.sh` exits 0 for PostToolUse and PostToolUseFailure on the current Claude Code, with the RC binary | Reviewer | `test/live/p-tru-1.sh`, exit 0, logs saved. On failure, add a floor or exclusion in `internal/steer/client.go` before the tag. | **NOT RUN on the RC.** Last pass was Claude Code 2.1.304, before the alpha.1 tag. |
 | G9 | P0 | A4: the verified line after `go test`; the done line after an edit with no run | Reviewer | `ra-1.sh A4` prints `A4 PASS` | PASS on alpha.1 (Claude Code 2.1.308). Re-run on the RC. |
 | G10 | P0 | A5: unpiped pytest gives the verified line; `pytest -q \| tail` is read from its summary with no false alarm; a failing piped run gives the failure line | Reviewer | transcripts plus `rashomon report --session` for each | **NOT RUN.** |
@@ -57,7 +57,7 @@ runs the live rows, writes the notes), CI.
 | G16 | P1 | README and consent screen are coherent on the RC: README3 plus the alpha.2 wording; acceptance README tests pass; no false sentence | Reviewer | `go test -count=1 ./test/acceptance -run 'TestReadme\|TestTRU40\|TestArguments\|TestH31'` and `go test ./test/prd`; `grep -n v1.1.0 README.md` hits only history lines | **FAIL.** Main's README names v1.1.0. #188 is open. |
 | G17 | P1 | Release notes name every user-visible change and the known issues (see below) | Reviewer | the notes | **Draft.** |
 | G18 | P1 | Rollback on paper: delete the release and the tag, and `latest` falls back to alpha.1; cut alpha.3 instead of reusing a tag | Reviewer | the commands in the release card | PASS (written). |
-| G19 | P1 | A6: first-use value on unfamiliar repos. It does not block the tag; it decides the announcement wording | Reviewer | `evidence/first-use/<task>/` | **NOT RUN.** Task dirs are being built; the MEASURE1 go-humanize run (#103) was undiscriminated. |
+| G19 | P1 | A6: first-use value on unfamiliar repos. It does not block the tag; it decides the announcement wording | Reviewer | `evidence/first-use/<task>/` | **NOT RUN.** Three task dirs (go-version #208, go-humanize #127, godotenv #225) are built and pass the driver's G2 check with no tokens spent; #205 makes `--reps 3` pair every rep. The MEASURE1 go-humanize run (#103) was undiscriminated. |
 
 Known issues the notes must name (G17): the consent screen asks again once on
 an existing install (ScopeVersion 5); Windows is not usable; a downgrade to
@@ -77,10 +77,14 @@ Decided 2026-11-01 by Luis. "Merged" is as of the same date.
 | #192 | the mutant fixes | G3 |
 | #184 | `detach` and `pause` refuse an agent session | G14 |
 | #198 + #201 | the RES-5 fuzz oracle | G4 (fuzz) |
+| #202 | `ra-1.sh` A2 can pass (a trusted spec; the never-typed case reads INCONCLUSIVE) | G7 |
 
 **In** (planned for alpha.2; named as pending in the notes if left out):
-#179; #182 (merged); #183 + #186; #187 (merged); #178 + #181 (merged); and the
-CI changes #193 (macOS job cap) and #199 (sweep shards).
+#179; #182 (merged); #183 + #186; #187 (merged); #178 + #181 (merged); #203
+(truth-table drift); #206 (`install.sh` without the GitHub API, which the
+maintainer marks a release blocker); and the CI changes #193 (macOS job cap)
+and #199 (sweep shards). #205 (`measure1.sh --reps`) is needed for G19, not
+for the tag.
 
 **Everything else open is deferred** unless the release notes name it.
 
