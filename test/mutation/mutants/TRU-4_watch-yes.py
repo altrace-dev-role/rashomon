@@ -12,8 +12,8 @@ m("TRU-4 CLAUDECODE is not an agent signal", "internal/selfguard/selfguard.go",
   "\tif getenv(EnvClaudeCode) != \"\" {\n", "\tif false {\n",
   "TestTRU4_")
 m("TRU-4 the agent refusal names --yes", "cmd/rashomon/watch.go",
-  "Read the screen above, then run rashomon %s in your own terminal.\"",
-  "Read the screen above, then run rashomon %s in your own terminal, or pass --yes.\"",
+  "\"the screen above is yours to agree to\", verb, \"written\")",
+  "\"the screen above is yours to agree to\", verb+\" --yes\", \"written\")",
   "TestTRU4_")
 m("TRU-4 --yes still asks on the terminal", "cmd/rashomon/watch.go",
   "\tif yes {\n\t\tif _, err := stdout.Write(screen); err != nil {",

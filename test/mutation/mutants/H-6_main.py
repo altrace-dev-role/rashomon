@@ -26,7 +26,7 @@ m("H-6  plain detach creates a store to learn the id", "cmd/rashomon/main.go",
 m("H-6  watch does not print the undo line", "cmd/rashomon/watch.go",
   "\tfmt.Fprintf(stdout, \"rashomon detach --install %s\\n\", installID)\n", "", "TestH6_WatchPrintsTheUndoLine")
 
-m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",
+m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/detach.go",
   "\t\tcase \"--force\":", "\t\tcase \"--force-disabled\":", "TestH6_DetachForceRemovesAnEditedEntry")
 m("H-6 --force also removes hooks that are not ours", "internal/install/install.go",
   "\t\t\tid := Owner(e, event)\n\t\t\tif id == \"\" || !match(id) {", "\t\t\tid := Owner(e, event)\n\t\t\tif id == \"\" && !force || id != \"\" && !match(id) {",

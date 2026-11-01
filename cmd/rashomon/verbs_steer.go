@@ -162,7 +162,7 @@ func steerChange(off, project bool, key string) func(*store.Config) {
 // is set as `steer on` does.
 func steerRepair(stdout io.Writer, project bool, ask func(prompt string) (bool, error)) error {
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon steer on --repair` in your own terminal.", s)
+		return selfguard.Refusal(s, "repair replaces your steer config file", "steer on --repair", "written")
 	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
@@ -234,7 +234,7 @@ func steerVerb(off, project bool) string {
 // its own notes off.
 func steerSet(stdout io.Writer, off, project bool) error {
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s` in your own terminal.", s, steerVerb(off, project))
+		return selfguard.Refusal(s, "the steer switch sets what your agent is told", "steer "+steerVerb(off, project), "written")
 	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {

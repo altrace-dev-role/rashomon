@@ -55,11 +55,15 @@ func cmdPurge(args []string, stdout io.Writer) error {
 	}
 
 	// Purge deletes the record the person reads back, so it is refused in an
-	// agent session, with or without --yes, before anything is resolved or
-	// removed. It names the line without --yes: the person answers at their
-	// own terminal.
+	// agent session, with or without --yes, before anything is resolved,
+	// detached or removed. It names the line without --yes: the person
+	// answers at their own terminal.
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was removed. Run `rashomon purge%s` in your own terminal.", s, map[bool]string{true: " --binary"}[withBinary])
+		command := "purge"
+		if withBinary {
+			command += " --binary"
+		}
+		return selfguard.Refusal(s, "purge deletes your record", command, "removed")
 	}
 	t, err := resolvePurgeTarget()
 	if err != nil {

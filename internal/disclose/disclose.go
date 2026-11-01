@@ -114,8 +114,10 @@ type Forbidden struct {
 }
 
 // Switch is one user-settable switch, with the command that sets it, where
-// it is stored, and whether it ratchets (an expansion needs a terminal; a
-// reduction does not, 7.2.4).
+// it is stored, and whether it ratchets. Tech spec 7.2.4 had an expansion
+// need a terminal and a reduction not; the owner reversed that for
+// reductions (R33, 2026-10-31), so setting a switch either way refuses an
+// agent session (internal/selfguard). No inventory row sets Ratchet today.
 type Switch struct {
 	Name    string `json:"name"`
 	Default string `json:"default"`

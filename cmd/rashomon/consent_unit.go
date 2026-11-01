@@ -45,7 +45,7 @@ func cmdConsentUnit(unit string, args []string, stdout io.Writer) error {
 	// agent that could would stop what was agreed to, before a record is
 	// appended or a lock taken.
 	if s := selfguard.AgentSignal(os.Getenv); off && s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon consent %s off` in your own terminal.", s, unit)
+		return selfguard.Refusal(s, "withdrawing consent stops what you agreed to", "consent "+unit+" off", "written")
 	}
 	gate := startSignalGate(os.Stderr)
 	defer gate.stop()

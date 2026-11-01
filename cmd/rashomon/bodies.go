@@ -63,7 +63,7 @@ func cmdBodies(args []string, stdout io.Writer) error {
 	// transcripts: refused in an agent session either way, before the store
 	// is opened or bodies.json written.
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon bodies %s` in your own terminal.", s, strings.Join(args, " "))
+		return selfguard.Refusal(s, "the bodies switch sets what is copied of your transcripts", "bodies "+strings.Join(args, " "), "written")
 	}
 	st, err := openStore()
 	if err != nil {

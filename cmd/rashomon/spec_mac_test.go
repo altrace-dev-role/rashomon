@@ -106,9 +106,11 @@ func TestST1o_TrustRefusesAnAgentSession(t *testing.T) {
 	agent := &person{answer: typedPrefix(t, specUnit)}
 	atSpecTerminal(t, agent, nil)
 	t.Setenv(selfguard.EnvClaudeCode, "1")
-	if code, out, errOut := specRun(t, "", "trust"); code != 1 || out != "" || !strings.Contains(errOut, "agent session; nothing was written") || agent.read {
+	code, out, errOut := specRun(t, "", "trust")
+	if code != 1 || out != "" || agent.read {
 		t.Errorf("trust under an agent signal: exit %d, stdout %q, stderr %q, terminal read %v", code, out, errOut, agent.read)
 	}
+	wantRefusal(t, "spec trust", errOut, "spec trust "+shellWord(p.path), "written")
 	for _, f := range []string{spec.TrustFile, spec.TrustKeyFile} {
 		if _, err := os.Lstat(filepath.Join(p.root, f)); err == nil {
 			t.Errorf("trust under an agent signal wrote %s", f)
