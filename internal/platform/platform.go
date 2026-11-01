@@ -1,6 +1,8 @@
-// Package platform turns a pgraph fact log into the obligations a run's
-// writes owe (PRD 1.5, PF-PL8): the Go packages whose files the run wrote,
-// each a family the evaluator can hold a gate against.
+// Package platform reads a pgraph fact log for the Stop (PRD 1.5, PF-PL8):
+// the Go packages whose files a run wrote, each a family the Stop's ledger
+// owes a platform_impact row and holds the package's test gate against
+// (verify/platform.go), and whether the log's facts about each still hold
+// (digests.go).
 //
 // Boundary. pgraph is a separate module that the rashomon module never
 // imports (pgraph/doc.go); the crossing is a file in the format pgraph's
@@ -15,25 +17,25 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io/fs"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// Deadline bounds one Obligations call (PF-PL8). Past it the answer is one
-// unknown row and no family.
+// Deadline bounds one Read's decode of the log (PF-PL8). Past it the answer
+// is unreadable: one unknown row and no family.
 const Deadline = 20 * time.Millisecond
 
-// SourcePlatform is the Source of every row Obligations returns.
-const SourcePlatform = "platform"
-
-// RunView is what Obligations reads of a run: the project root, the paths the
-// run wrote (relative to Root, or absolute under it) and the pgraph log to
-// read. LogPath is filled by nothing yet: the first card that gives the hook a
-// log path (pgraph sync) wires it; until then the one caller is a test.
+// RunView is what Read reads of a run: the project root, the paths the run
+// wrote (relative to Root, or absolute under it) and the pgraph log to read.
+// The Stop fills LogPath with LogPath(Root) where that file exists (cmd's
+// platformRead, card PL-WIRE1), else leaves it "".
 type RunView struct {
 	Root         string
 	WrittenPaths []string
@@ -53,32 +55,73 @@ type Family struct {
 	Hash    string
 }
 
-// Obligations is one platform_impact row per family the run's writes touched,
-// each open, its family the package and its Hash, so a package whose facts
-// change owes a new row. A run with no writes or no log owes none. When the
-// log cannot be read whole within Deadline, or is unknown to this package, it
-// is one unknown row with no family: never a partial answer.
-func Obligations(run RunView) []verify.Obligation {
-	if run.LogPath == "" || len(run.WrittenPaths) == 0 {
-		return []verify.Obligation{}
+// Read is the Stop's view of the platform graph for the run's writes: one
+// family per Go package a written .go file belongs to (Go's rule, D132),
+// sorted by Package. A family is FactsKnown with its Hash where the log holds
+// the package and the sync's digests vouch for every written file of it,
+// FactsStale where the log holds it and they do not (staleOf), and
+// FactsUnknown where the log holds no such package or there is no log
+// (LogPath "", or gone by the time it is opened): never zero obligations for
+// a package the graph cannot speak for (PF-PL11, INV-2). A log that is there
+// and cannot be read whole within Deadline, or in a format this package does
+// not know, is Unreadable with no family: never a partial answer. A path that
+// is no .go file, or in no package, names none, and so does every path when
+// Root is "": a relative path would be read against the process's directory.
+func Read(run RunView) verify.PlatformRead {
+	out := verify.PlatformRead{Families: []verify.PlatformFamily{}}
+	if run.Root == "" {
+		return out
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), Deadline)
-	defer cancel()
-	fams, err := Impact(ctx, run.Root, run.LogPath, run.WrittenPaths)
-	if err != nil {
-		return []verify.Obligation{platformRow("", verify.ObligationUnknown)}
+	mods := map[string]goMod{}
+	locs := map[string]pkgLoc{}
+	files := map[string]string{}
+	var written []string
+	for _, p := range run.WrittenPaths {
+		if !strings.HasSuffix(p, ".go") {
+			continue
+		}
+		if l := locate(run.Root, p, mods); l.pkg != "" {
+			locs[l.pkg], files[p] = l, l.pkg
+			written = append(written, p)
+		}
 	}
-	out := make([]verify.Obligation, 0, len(fams))
-	for _, f := range fams {
-		out = append(out, platformRow(f.Package+"@"+f.Hash, verify.ObligationOpen))
+	if len(locs) == 0 {
+		return out
+	}
+	hashes := map[string]string{}
+	if run.LogPath != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), Deadline)
+		defer cancel()
+		fams, err := impactWithin(ctx, run.Root, run.LogPath, written, MaxLogBytes)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			out.Unreadable = true
+			return out
+		}
+		for _, f := range fams {
+			hashes[f.Package] = f.Hash
+		}
+	}
+	var stale map[string]bool
+	if len(hashes) > 0 {
+		stale = staleOf(run.Root, files)
+	}
+	pkgs := make([]string, 0, len(locs))
+	for pkg := range locs {
+		pkgs = append(pkgs, pkg)
+	}
+	slices.Sort(pkgs)
+	for _, pkg := range pkgs {
+		l := locs[pkg]
+		f := verify.PlatformFamily{Package: pkg, Dir: l.dir, ModuleDir: l.modDir, Facts: verify.FactsUnknown}
+		if h, ok := hashes[pkg]; ok {
+			f.Facts, f.Hash = verify.FactsKnown, h
+			if stale[pkg] {
+				f.Facts, f.Hash = verify.FactsStale, ""
+			}
+		}
+		out.Families = append(out.Families, f)
 	}
 	return out
-}
-
-func platformRow(family string, state verify.ObligationState) verify.Obligation {
-	return verify.Obligation{ID: verify.ObligationID(verify.ScopeSession, verify.PlatformImpact, family),
-		Scope: verify.ScopeSession, Kind: verify.PlatformImpact, Source: SourcePlatform, State: state,
-		Evidence: []int64{}}
 }
 
 // Impact is the families of the packages paths belong to, read from the log at

@@ -34,6 +34,9 @@ import (
 //     now, and only where the checkpoint names it, so a CI file changed
 //     since names the command it holds now, and with no index read its line
 //     keeps the "(inferred)" label the Stop may have dropped;
+//   - the pgraph log, its digests and the written Go files are read now
+//     (platformRead), so a sync or an edit since the Stop moves the
+//     platform rows' families;
 //   - the final message is not in the record, so what is read from it is
 //     unknown (StopInput.MessageUnread);
 //   - a gate the checkpoint's cut omitted (GatesOmitted, greens first) has no
@@ -70,6 +73,7 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 	pt := verify.Point{Kind: verify.PointStop, Seq: run.LastSeq(), SessionID: sessionID}
 	now := time.Now()
 	in := verify.StopInput{Key: st.Key(), MessageUnread: true}
+	in.Platform = platformRead
 	if cp != nil {
 		pt.Seq, pt.PromptID, now = cp.PointSeq, cp.PromptID, time.UnixMilli(cp.RecordedAtUnixMS)
 		if cp.PromptID != nil {

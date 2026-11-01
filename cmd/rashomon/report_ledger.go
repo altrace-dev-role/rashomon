@@ -68,6 +68,9 @@ func ledgerText(r stopReplay) string {
 	}
 	b.WriteString("task: outside spec_digest, so a change since the Stop is not named\n")
 	b.WriteString("tree: read now, not at the Stop\n")
+	if v.Platform.Families != nil {
+		b.WriteString("platform: the pgraph log and written Go files are read now, not at the Stop\n")
+	}
 	b.WriteString("final message: not in the record, so judgment_disclosed reads unknown\n")
 	if len(v.Obligations) == 0 {
 		fmt.Fprintf(&b, "no obligation rows at seq %d\n", seq)
@@ -101,7 +104,8 @@ func specNow(sp *spec.Compiled) string {
 // ledgerFamilies maps each row's id to the family ObligationID digested it
 // over: a gate's Family, a declared gate's Gate id (every declared gate's
 // Family is "declared", so its rows digest the id instead, DECLARED-GATES1),
-// an expected row's evidence kind, or a spec_rule row's rule id. A row carries no such text (D-A1), so
+// an expected row's evidence kind, a spec_rule row's rule id, or a
+// platform_impact row's package and hash. A row carries no such text (D-A1), so
 // it is recomputed over the view's gates and kinds, and the string printed is
 // whichever digests to the id. Cost: O(R x (2G + K)) digests, a verb's, never
 // a hook's.
@@ -112,6 +116,16 @@ func ledgerFamilies(v verify.StopView) map[string]string {
 			for _, e := range v.Expected {
 				if verify.ObligationID(o.Scope, o.Kind, e.Kind) == o.ID {
 					out[o.ID] = e.Kind
+				}
+			}
+			continue
+		}
+		if o.Kind == verify.PlatformImpact {
+			// A platform_impact row digests its family's package and hash
+			// (verify.PlatformFamily.Family); the unreadable log's row none.
+			for _, f := range v.Platform.Families {
+				if verify.ObligationID(o.Scope, o.Kind, f.Family()) == o.ID {
+					out[o.ID] = f.Family()
 				}
 			}
 			continue

@@ -30,40 +30,62 @@ type goMod struct {
 // module: that directory is in a module the go tool cannot build, not in the
 // one above it. mods caches each directory's go.mod for one call.
 func packageOf(root, file string, mods map[string]goMod) string {
-	rel := file
-	if filepath.IsAbs(file) {
-		r, err := filepath.Rel(root, file)
-		if err != nil {
-			return ""
-		}
-		rel = r
-	}
-	rel = filepath.ToSlash(filepath.Clean(rel))
-	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || path.IsAbs(rel) {
-		return ""
+	return locate(root, file, mods).pkg
+}
+
+// pkgLoc is where packageOf found a file's package: its import path, its
+// directory and the directory of the go.mod that names its module, both
+// relative to root and slash-separated, "." for root itself; all "" for no
+// package.
+type pkgLoc struct{ pkg, dir, modDir string }
+
+// locate is packageOf with the two directories the Stop's rows resolve a
+// run's patterns against (verify.PlatformFamily).
+func locate(root, file string, mods map[string]goMod) pkgLoc {
+	rel, ok := relUnder(root, file)
+	if !ok {
+		return pkgLoc{}
 	}
 	dir := path.Dir(rel)
 	for _, e := range strings.Split(dir, "/") {
 		if e == "testdata" || e != "." && (strings.HasPrefix(e, ".") || strings.HasPrefix(e, "_")) {
-			return ""
+			return pkgLoc{}
 		}
 	}
 	for d := dir; ; d = path.Dir(d) {
 		if m := moduleAt(root, d, mods); m.found {
 			switch {
 			case m.path == "":
-				return ""
+				return pkgLoc{}
 			case d == dir:
-				return m.path
+				return pkgLoc{m.path, dir, d}
 			case d == ".":
-				return m.path + "/" + dir
+				return pkgLoc{m.path + "/" + dir, dir, d}
 			}
-			return m.path + "/" + strings.TrimPrefix(dir, d+"/")
+			return pkgLoc{m.path + "/" + strings.TrimPrefix(dir, d+"/"), dir, d}
 		}
 		if d == "." {
-			return ""
+			return pkgLoc{}
 		}
 	}
+}
+
+// relUnder is file relative to root, clean and slash-separated, and whether
+// it lies under root: a relative file is taken as relative to root already.
+func relUnder(root, file string) (string, bool) {
+	rel := file
+	if filepath.IsAbs(file) {
+		r, err := filepath.Rel(root, file)
+		if err != nil {
+			return "", false
+		}
+		rel = r
+	}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || path.IsAbs(rel) {
+		return "", false
+	}
+	return rel, true
 }
 
 // moduleAt is what the go.mod in dir (relative to root) says, cached in mods.

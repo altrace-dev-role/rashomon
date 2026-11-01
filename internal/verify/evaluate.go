@@ -76,6 +76,12 @@ type classified struct {
 	// inferred is the inferred gate's runner name from the derivation that
 	// keyed its row, which the Stop names the row by; "" for none.
 	inferred string
+	// gates are the declared and inferred gates evaluate joined, and
+	// inferredDeclared whether the inferred one is the project's own word
+	// (InferredGate.Declared): the platform rows' gate (testRunners), kept
+	// here so the Stop derives no gate line twice (INFER-BUDGET1).
+	gates            []declaredGate
+	inferredDeclared bool
 }
 
 // evaluate is Evaluate, which also fills c, and joins the gates sp declares
@@ -121,7 +127,9 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 	if g, name, ok := inferredGate(inf, key, snap.ProjectRoot); ok {
 		dgs = append(dgs, g)
 		c.inferred = name
+		c.inferredDeclared = inf.Declared
 	}
+	c.gates = dgs
 	if len(dgs) > 0 {
 		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, at, pt.Tree)
 	}
