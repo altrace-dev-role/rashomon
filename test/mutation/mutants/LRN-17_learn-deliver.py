@@ -164,3 +164,19 @@ m("LRN-17 the unknowns line kept while the note steps down", N,
   "\tcase !ride:\n", "\tcase true:\n", "TestLRN17r_TheUnknownsLineGoesFirst")
 m("LRN-17 the first note says a lesson rode it", N,
   "rides(lesson != nil && !first)", "rides(lesson != nil)", "TestLRN17r_ALessonRidesInsideTheNotesCap")
+# #197 F2: a lesson rides only a prompt that names its path whole. The
+# request's paths are root-relative, so a substring or a /-separated suffix
+# is another file; a full stop or a leading "./" is the same path.
+WHOLE = "TestLRN17r_ALessonRidesOnlyAPathItNames"
+m("LRN-17 a lesson rides on a substring of its path", V,
+  "tok != \"\" && slices.Contains(paths, tok) {\n",
+  "tok != \"\" && slices.ContainsFunc(paths, func(p string) bool { return p != \"\" && strings.Contains(text, p) }) {\n",
+  "TestLRN17r_ALessonRidesNoPromptAboutAnotherFile")
+m("LRN-17 a lesson rides a nested file of the same name", V,
+  "tok != \"\" && slices.Contains(paths, tok) {\n",
+  "tok != \"\" && slices.ContainsFunc(paths, func(p string) bool { return tok == p || strings.HasSuffix(tok, \"/\"+p) }) {\n",
+  WHOLE)
+m("LRN-17 a full stop hides the path", V,
+  "strings.TrimRight(text[i:j], \".\")", "text[i:j]", WHOLE)
+m("LRN-17 a leading ./ hides the path", V,
+  "strings.TrimPrefix(strings.TrimRight(text[i:j], \".\"), \"./\")", "strings.TrimRight(text[i:j], \".\")", WHOLE)
