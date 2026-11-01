@@ -11,7 +11,12 @@ import (
 
 // The structs every hook entry decoded its payload into before the payload
 // was scanned, as they stood, less scratchpad_dir, which was never read: the
-// oracle FuzzRES5_IntakeMatchesTheStructDecode holds the scan to.
+// oracle FuzzRES5_IntakeMatchesTheStructDecode holds the scan to. A key an
+// entry's from reads after the scan landed joins that entry's struct here,
+// typed as from reads it, in the same commit: oldPostPayload carries the
+// prompt_id, agent_id and permission_mode PostPayload.from reads for the
+// steer step (card 2.3), and without them a wrongly typed one was a scan
+// refusal the oracle called a pass.
 type (
 	oldPayload struct {
 		SessionID      string          `json:"session_id"`
@@ -129,6 +134,7 @@ func FuzzRES5_IntakeMatchesTheStructDecode(f *testing.F) {
 		`{"agent_id":7777}`,
 		`{"prompt_id":1}`,
 		`{"permission_mode":true}`,
+		`{"permission_mode":[]}`,
 	} {
 		f.Add([]byte(s))
 	}
