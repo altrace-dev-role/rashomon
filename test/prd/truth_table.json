@@ -343,7 +343,7 @@
         }
       ],
       "id": "PF-PG5",
-      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path and require_evidence rule (violation unmet, no recorded violation met, undecided unknown), but it emits no proposed_check row, and its scope is the session at every point.",
+      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path, require_evidence, order and forbid_code rule (violation unmet, no recorded violation met, undecided unknown; a forbid_code rule with an applicable write is always unknown, reason content not read), but it emits no proposed_check row, and its scope is the session at every point.",
       "integration": [
         {
           "event": "Stop",
@@ -356,7 +356,7 @@
       ],
       "missing": [
         "the ledger verb replays from the record: the tree is read now and the final message is not held, so a file changed since the Stop reads its rows stale and judgment_disclosed reads unknown",
-        "spec_rule rows for forbid_code and order rules: ruleVerdicts skips both kinds (SPEC-RULES1 1b)",
+        "forbid_code reads unknown at every applicable write until an edit's content is read (EditMarks' pre-read, EDITMARKS-WIRE1, issue #207); the reason content not read is not persisted on the row",
         "proposed_check rows",
         "watched_red_then_green for a declared gate: watches keys reds by learned family, so a declared row has none (DECLARED-GATES1 G13)",
         "platform_impact wiring: internal/platform has no runtime caller (6.1)"
@@ -516,7 +516,7 @@
         }
       ],
       "id": "PF-PG8",
-      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path or require_evidence rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
+      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path, require_evidence or order rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
       "integration": [
         {
           "event": "Stop",
@@ -524,7 +524,8 @@
         }
       ],
       "missing": [
-        "forbid_code and order rules are not evaluated, so neither can block record-green (SPEC-RULES1 1b)",
+        "forbid_code is undecided (content not read), so it cannot block record-green until an edit's content is read (EDITMARKS-WIRE1, issue #207)",
+        "order is decided only over command lines the record holds: no hook writes Declaration.Command yet, so a live session's order rows read unknown and raise nothing",
         "the ledger's all-met state (PF-PG5)"
       ],
       "planned_pr": "",
