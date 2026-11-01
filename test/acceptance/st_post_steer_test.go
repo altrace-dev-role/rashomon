@@ -45,12 +45,9 @@ func newSteerEnv(t *testing.T) *env {
 	t.Helper()
 	e := newEnv(t)
 	e.watched(testSession)
-	raised := strings.Replace(string(e.consentBytes()), `"steer_disclosure":0`, `"steer_disclosure":2`, 1)
-	if raised == string(e.consentBytes()) {
-		t.Fatal("premise: the watch record does not carry steer_disclosure 0")
-	}
-	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(raised), 0o600); err != nil {
-		t.Fatal(err)
+	// watch --yes records this build's steer disclosure (STEER-DISCLOSE-YES1).
+	if !strings.Contains(string(e.consentBytes()), `"steer_disclosure":2`) {
+		t.Fatal("premise: the watch record does not carry steer_disclosure 2")
 	}
 	e.steerMarker("2\n")
 	if b, err := os.ReadFile(filepath.Join(e.home, "record_scope")); err != nil || strings.TrimSpace(string(b)) != "v5" {

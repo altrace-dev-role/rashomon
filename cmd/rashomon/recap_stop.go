@@ -100,12 +100,10 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		if err != nil && !errors.Is(err, store.ErrLockTimeout) {
 			return stopTurn{}, err
 		}
-		if err == nil {
-			// The index's pointer to the last checkpoint rides the write below:
-			// no new file, and no pointer to a record that was dropped. Two
-			// Stops at once race on it (read, note, write, no lock): the last
-			// writer wins, which is safe because receipt.Pointed validates.
-			v.Index.NoteCheckpoint(p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)
+		if err == nil && key != "" {
+			// After the append, so the pointer never names a record that was
+			// dropped.
+			noteCheckpoint(st.Root(), key, p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)
 		}
 		if path != "" {
 			_, _ = verify.WriteIndex(path, v.Index)
@@ -113,6 +111,23 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
 		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending}, nil
+}
+
+// noteCheckpoint makes the checkpoint at seq the project's Last in its own
+// file, never the index, which alpha.1 cannot read with a key it does not name
+// (INDEX-POINTER-FILE1): read, noted and written back. A file that does not
+// read starts over from this checkpoint, and a write that fails is dropped:
+// the pointer is a hint, and receipt.Pointed validates what it names. Two
+// Stops at once race on it (read, note, write, no lock), and the last writer
+// wins.
+func noteCheckpoint(root, key, sessionID string, seq, atMS int64) {
+	path := verify.CheckpointsPath(root, key)
+	c, _ := verify.ReadCheckpoints(path)
+	if c == nil {
+		c = &verify.Checkpoints{}
+	}
+	c.NoteCheckpoint(sessionID, seq, atMS)
+	_ = verify.WriteCheckpoints(path, c)
 }
 
 // summaryOn is the summary switch for the project key (baseline.Key of the

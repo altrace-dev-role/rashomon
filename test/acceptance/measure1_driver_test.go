@@ -252,12 +252,11 @@ func (r *m1Rig) prepare() {
 	if err != nil {
 		r.t.Fatal(err)
 	}
+	// watch --yes records this build's steer disclosure (STEER-DISCLOSE-YES1).
 	v := strconv.Itoa(steer.DisclosureVersion)
-	raised := strings.Replace(string(b), `"steer_disclosure":0`, `"steer_disclosure":`+v, 1)
-	if raised == string(b) {
-		r.t.Fatal("premise: watch's consent record does not carry steer_disclosure 0")
+	if !strings.Contains(string(b), `"steer_disclosure":`+v) {
+		r.t.Fatal("premise: watch's consent record does not carry steer_disclosure " + v)
 	}
-	r.write(consent, raised, 0o600)
 	r.write(filepath.Join(tpl, "steer_disclosure"), v+"\n", 0o600)
 }
 

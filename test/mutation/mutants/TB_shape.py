@@ -834,7 +834,7 @@ m("TB an unread fold with no payload cwd is keyed on the fold alone", "internal/
   "\t\tif cwd == \"\" {\n\t\t\treturn s, \"\", true\n\t\t}\n\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread), true\n",
   "\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread), true\n", "TestLocation")
 m("TB ~ is not expanded with the hook's home", "internal/hook/handle.go",
-  "\t\tcase dir == \"~\" || strings.HasPrefix(dir, \"~/\"):\n", "\t\tcase false:\n",
+  "\t\tcase dir == \"~\" || strings.HasPrefix(dir, \"~/\"):\n", "\t\tcase false && (dir == \"~\" || strings.HasPrefix(dir, \"~/\")):\n",
   "TestLocation|TestStartDirectory")
 
 # Version 6: -l leaves checkOnly (gofmt's -l lists files and does not stop a
