@@ -19,7 +19,7 @@ SCREEN = "internal/consent/screen.go"
 
 # The hook reads the switch.
 m("STC-1 the config is ignored at the hook", H,
-  "\t\tSteerOff:         steerOff,\n", "\t\tSteerOff:         false,\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
+  "\tsteerOff, unreadable := p.steerOff()\n", "\t_, unreadable := p.steerOff()\n\tsteerOff := false\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
 m("STC-1 the user's key is ignored", H,
   "\tif c.SteerOffUser() {\n\t\treturn true, false\n\t}\n", "", "TestH145_|TestSTC1h_")
 m("STC-1 the project's key is ignored", H,
