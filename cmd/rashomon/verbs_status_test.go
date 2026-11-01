@@ -415,6 +415,41 @@ func TestSV1n_StatusSaysTheConsentAgreed(t *testing.T) {
 	}
 }
 
+// TestSV1p_StatusNamesTheSteerHold (STEER-DISCLOSE-YES1, R32): when no
+// consent on file reaches this build's steer disclosure, the hook holds every
+// note, and status says so and how to lift it, rather than "to see what
+// changed" on an install where nothing changed. It reads the hold as the hook
+// does, from the highest steer_disclosure on file, so a later record at an
+// older disclosure does not bring it back. Break: read the last record's
+// disclosure, or say nothing of the hold.
+func TestSV1p_StatusNamesTheSteerHold(t *testing.T) {
+	st := svInstalled(t)
+	at := int64(1_793_000_000_000)
+	agreed := time.UnixMilli(at).UTC().Format(time.RFC3339)
+	const held = ": steer notes are held until you see the steer disclosure: run `rashomon consent` in your own terminal\n"
+	for _, c := range []struct {
+		name          string
+		scope, steerV int
+		suffix        string
+	}{
+		{"a --yes install before STEER-DISCLOSE-YES1", disclose.ScopeVersion, 0, held},
+		{"an older screen as well", disclose.ScopeVersion - 1, 0, held},
+		{"the disclosure seen", disclose.ScopeVersion, steer.DisclosureVersion, "\n"},
+		{"a later record at an older disclosure", disclose.ScopeVersion, steer.DisclosureVersion - 1, ": run `rashomon consent` to see what changed\n"},
+	} {
+		if err := consent.Append(st.Root(), consent.Record{V: consent.RecordVersion, ScopeVersion: c.scope,
+			RecordScope: consent.RecordScopeV5, SteerDisclosure: c.steerV, Steer: consent.SteerOn,
+			Via: consent.ViaWatchYes, At: at}); err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("consent: screen version %d, steer disclosure %d, agreed %s; this build shows %d, %d%s",
+			c.scope, c.steerV, agreed, disclose.ScopeVersion, steer.DisclosureVersion, c.suffix)
+		if out := svStatus(t); !strings.Contains(out, want) {
+			t.Errorf("%s: status does not say %q:\n%s", c.name, want, out)
+		}
+	}
+}
+
 // svKeys is the sorted keys of a decoded JSON object, or nil if v is not one.
 func svKeys(v any) []string {
 	m, ok := v.(map[string]any)
@@ -489,7 +524,7 @@ func TestSV1f_EveryVerbHasJSONWithClosedKeys(t *testing.T) {
 	if rows, _ := lessons["lessons"].([]any); len(rows) != 2 {
 		t.Errorf("lessons has %v, want two rows", lessons["lessons"])
 	} else {
-		check("lessons[0]", rows[0], "confirmed", "fires", "id", "refuted", "since_unix_ms", "text", "tier", "unresolved")
+		check("lessons[0]", rows[0], "approved_unix_ms", "confirmed", "fires", "id", "refuted", "since_unix_ms", "text", "tier", "unresolved")
 	}
 }
 
