@@ -248,7 +248,8 @@ func isTopDir(name string) bool {
 // rashomon wrote -- returned deepest first, a directory after what is in it
 // -- and the paths it did not, which are left, along with every directory
 // above one. name is top's own name, which says its shape:
-// runs/<session>/<file>, baseline/<file> or verify/projects/<file>. A symlink
+// runs/<session>/<file>, baseline/<file>, verify/projects/<file> or
+// verify/checkpoints/<file>. A symlink
 // is never followed and never taken as rashomon's: a link, a device or a
 // directory where only a regular file rashomon writes can be, is foreign, and
 // so is a top that is not itself a directory.
@@ -300,14 +301,14 @@ func ownedTree(top, name string) (own, foreign []string, err error) {
 
 // ownTreeDir reports whether a directory of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: runs/<session>,
-// verify/projects, bodies/<project> and learn/<project> (any name not
-// starting with a dot).
+// verify/projects, verify/checkpoints, bodies/<project> and learn/<project>
+// (any name not starting with a dot).
 func ownTreeDir(top, name string, level int) bool {
 	switch top {
 	case store.DirRuns:
 		return level == 0
 	case verify.DirName:
-		return level == 0 && name == verify.ProjectsDir
+		return level == 0 && (name == verify.ProjectsDir || name == verify.CheckpointsDir)
 	case store.DirBodies, learn.DirLearn:
 		return level == 0 && !strings.HasPrefix(name, ".")
 	}
@@ -316,7 +317,8 @@ func ownTreeDir(top, name string, level int) bool {
 
 // treeFile reports whether a regular file of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: verify's index files
-// in verify/projects, a project's transcript copies and the temporary files
+// in verify/projects and its checkpoint files, named as they are, in
+// verify/checkpoints, a project's transcript copies and the temporary files
 // their writes leave in bodies/<project>, the learner's key and state
 // (learn.Owns, card P6), and ownTreeFile's for runs and baseline.
 func treeFile(top, name string, level int) bool {

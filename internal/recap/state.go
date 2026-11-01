@@ -1,8 +1,11 @@
 package recap
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -11,6 +14,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // StateFileName is recap's own bookkeeping, a plain file under the store
@@ -107,10 +111,33 @@ func storeExists(root string) bool {
 	return err == nil
 }
 
+// maxStateBytes bounds recap.json's read. maxTrackedSessions bounds what it
+// holds: 64 sessions in three maps of an id and a short value, about 20 KiB,
+// so 1 MiB is fifty times that. Over it the read is an error, which every
+// caller takes as a fresh state (STORE-READ-REGULAR1).
+const maxStateBytes = 1 << 20
+
 func readState(path string) (state, error) {
-	b, err := os.ReadFile(path)
+	f, err := regfile.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return newState(), nil
+	}
+	if err != nil {
+		return state{}, err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	// One buffer sized from the file, as os.ReadFile sizes one, with
+	// bytes.MinRead to spare so the read that meets end of file needs no
+	// second; io.ReadAll grows from 512 bytes, about six buffers for a
+	// 20 KiB recap.json (#179 F5). A file over the cap sizes at the cap.
+	var buf bytes.Buffer
+	if fi, err := f.Stat(); err == nil {
+		buf.Grow(int(min(fi.Size(), maxStateBytes+1)) + bytes.MinRead)
+	}
+	_, err = buf.ReadFrom(io.LimitReader(f, maxStateBytes+1))
+	b := buf.Bytes()
+	if err == nil && len(b) > maxStateBytes {
+		err = fmt.Errorf("%s: over %d bytes", StateFileName, maxStateBytes)
 	}
 	if err != nil {
 		return state{}, err

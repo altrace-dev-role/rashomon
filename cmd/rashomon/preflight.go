@@ -57,11 +57,9 @@ type promptProject struct {
 	lessons learn.Active
 }
 
-// preflightNote is the new prompt's notes, routed and logged under the
-// session in one Route call, and the client its Output is marshalled for:
-// the request's task-preflight note and a lesson from proj
-// (lessonFinding), which ranks below the note and so is superseded on a
-// prompt that carries one (D170 L3). The zero Output when there is no run to
+// preflightNote is the new prompt's notes (promptFindings), routed and
+// logged under the session in one Route call, and the client its Output is
+// marshalled for. The zero Output when there is no run to
 // log it under (no session_id, H-107), no cwd to resolve against, or nothing
 // new to say. A request that names no path and no identifier, with no lesson
 // to give, stops at intent.Names, before any read and before the steer
@@ -83,8 +81,8 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	hook.NoteSpecFound(st, p.SessionID, p.PromptID, p.CWD, env.ProjectDir, env.ManagedDir, sp)
 	p.specNoted = true
 	lines, _, _ := st.ReadSteer(p.SessionID)
-	var found []steer.Finding
-	var paths []string
+	var in *intent.Intent
+	var digest func(string) string
 	scope := hook.PromptRecordScope(st)
 	if named {
 		var idx *verify.ProjectIndex
@@ -96,23 +94,17 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		if cwd != root {
 			cwd = resolvedDir(cwd)
 		}
-		in := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
-		paths = in.Paths
+		resolved := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
+		in = &resolved
 		// At record scope v4 the steer line holds each named path as a
 		// keyed digest and the delivered set compares digests; the note
 		// that prints is the same at either scope.
-		var digest func(string) string
 		if scope != store.RecordScopeV5 {
 			key := st.Key()
 			digest = func(path string) string { return intent.PathDigest(key, path) }
 		}
-		if f, ok := intent.FindingKeyed(in, intent.ReadDelivered(lines), nil, run.LastSeq(), digest); ok {
-			found = append(found, f)
-		}
 	}
-	if f, ok := lessonFinding(proj.lessons, run.LastSeq(), lines, paths); ok {
-		found = append(found, f)
-	}
+	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
 	if len(found) == 0 && !done {
 		return steer.Output{}, steer.Client{}
 	}
