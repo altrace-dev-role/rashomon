@@ -1,11 +1,13 @@
 package brief
 
 // SEED1-KEEP: the brief says the person's kept before count, at startup, to
-// the person only (systemMessage), and names the command until one is kept,
-// by this binary's path as the spec trust line does (D189).
-// A brief with no store root has no such line.
+// the person only (systemMessage), naming its file as every line names its
+// source. With nothing kept, or no store root, there is no such line and the
+// brief is as it was; a record that cannot be read is named.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,9 +21,15 @@ func TestSEED2e_TheBriefCarriesTheKeptCount(t *testing.T) {
 	if b := Build(root, "", Pointer{}, nil); hasKind(b, KindHistory) {
 		t.Errorf("a brief with no store root has a history line: %+v", b.Facts)
 	}
-	cmd, _ := self()
-	if f := fact(t, Build(root, storeRoot, Pointer{}, nil), KindHistory); f.Text != "no before count kept yet; run in your own terminal:" || f.Next != cmd+" audit --keep" {
-		t.Errorf("no kept count: %+v", f)
+	if b := Build(root, storeRoot, Pointer{}, nil); hasKind(b, KindHistory) {
+		t.Errorf("a brief with nothing kept has a history line: %+v", b.Facts)
+	}
+	path := filepath.Join(storeRoot, seed.KeptFile)
+	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if f := fact(t, Build(root, storeRoot, Pointer{}, nil), KindHistory); f.Text != "kept before count unreadable (seed.json):" || f.Next != path {
+		t.Errorf("an unreadable record: %+v", f)
 	}
 	k := seed.Kept{Version: 1, KeptAt: time.Now().UTC(), Days: 14,
 		All: seed.Counts{Sessions: 9, Kinds: map[string]int{"interrupted": 4, "rejected": 3, "pushed-back": 2}},
@@ -32,7 +40,7 @@ func TestSEED2e_TheBriefCarriesTheKeptCount(t *testing.T) {
 	}
 	b := Build(root, storeRoot, Pointer{}, nil)
 	f := fact(t, b, KindHistory)
-	if f.Text != "9 corrections in the 14 days before AutoSteer, 3 in this project" ||
+	if f.Text != "9 corrections in the 14 days before AutoSteer, 3 here (seed.json)" ||
 		f.Next != "most here: a write to a file changed since it was read, then tried again" {
 		t.Errorf("kept count: %+v", f)
 	}

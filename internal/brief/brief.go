@@ -25,15 +25,18 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/gateinfer"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/seed"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // The kinds of a brief's facts, one line each, in the order Build gives them;
-// the spec trust line only under an unsigned bindings file (trustFact).
+// the spec trust line only under an unsigned bindings file (trustFact), the
+// history line only under a kept before count (historyFact).
 const (
 	KindInstructions = "instructions"
 	KindBuild        = "build"
@@ -141,8 +144,39 @@ func Build(root, storeRoot string, report Pointer, sp *spec.Compiled) Brief {
 	if f, ok := trustFact(storeRoot, sp); ok {
 		b.Facts = append(b.Facts, f)
 	}
-	b.Facts = append(b.Facts, taskFact(root, sp), packages, verifyFact(report))
+	b.Facts = append(b.Facts, taskFact(root, sp), packages)
+	if storeRoot != "" {
+		if f, ok := historyFact(root, storeRoot); ok {
+			b.Facts = append(b.Facts, f)
+		}
+	}
+	b.Facts = append(b.Facts, verifyFact(report))
 	return b
+}
+
+// historyFact is the kept before count (card SEED1-KEEP, PF-HD8): the
+// corrections `rashomon audit --keep` counted in the days before the install,
+// this project's among them, and the one that recurred most (seed.History),
+// the line naming its file as every line names its source. With none kept
+// there is no line, and the brief is as it was before the card. A record that
+// cannot be read is named, for the person to look at. The record's projects
+// are baseline.Key's, which root is from the hook, and Key of a key is
+// itself: called here, a caller's unresolved path still finds its project.
+func historyFact(root, storeRoot string) (Fact, bool) {
+	source := filepath.Join(storeRoot, seed.KeptFile)
+	k, ok, err := seed.ReadKept(storeRoot)
+	switch {
+	case err != nil:
+		f := newFact(KindHistory, "kept before count unreadable ("+seed.KeptFile+"):", source)
+		f.Next = source
+		return f, true
+	case !ok:
+		return Fact{}, false
+	}
+	text, next := seed.History(k, baseline.Key(root))
+	f := newFact(KindHistory, text+" ("+seed.KeptFile+")", source)
+	f.Next = next
+	return f, true
 }
 
 // WithVerify is b with its verify line, the last fact, replaced by f; a brief

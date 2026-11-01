@@ -117,8 +117,7 @@ func TestSEED2b_ReadKeptRefusesWhatItDidNotWrite(t *testing.T) {
 
 // TestSEED2e_HistoryLines: the brief's words for a kept record, this
 // project's count and its most-often row, the machine's row when the project
-// has none that recurs, and when nothing is kept, the lead to the command
-// the brief names (by this binary's path, D189). The brief
+// has none that recurs. The brief
 // prints a fact's second line whole (a command cut short runs nothing), so
 // the row line fits by construction: every signature's, for every kind and
 // class, is within historyNextMax.
@@ -130,21 +129,17 @@ func TestSEED2e_HistoryLines(t *testing.T) {
 			"/w/a": {Sessions: 4, Kinds: map[string]int{"rejected": 3, "pushed-back": 1}, Rows: []KeptRow{{"rejected", "vcs", 3, 3}}},
 			"/w/b": {Sessions: 1, Kinds: map[string]int{"interrupted": 1}, Rows: []KeptRow{{"interrupted", "reply", 1, 1}}},
 		}}
-	for _, c := range []struct {
-		key, text, next string
-		ok              bool
-	}{
-		{"/w/a", "9 corrections in the 14 days before AutoSteer, 4 in this project",
-			"most here: you said no to a version-control command", true},
-		{"/w/b", "9 corrections in the 14 days before AutoSteer, 1 in this project",
-			"most: your rules blocked a shell command", true},
+	for _, c := range []struct{ key, text, next string }{
+		{"/w/a", "9 corrections in the 14 days before AutoSteer, 4 here",
+			"most here: you said no to a version-control command"},
+		{"/w/b", "9 corrections in the 14 days before AutoSteer, 1 here",
+			"most: your rules blocked a shell command"},
 		{"/w/c", "9 corrections in the 14 days before AutoSteer",
-			"most: your rules blocked a shell command", true},
-		{"/w/a", "no before count kept yet; run in your own terminal:", "", false},
+			"most: your rules blocked a shell command"},
 	} {
-		text, next := History(k, c.ok, c.key)
+		text, next := History(k, c.key)
 		if text != c.text || next != c.next {
-			t.Errorf("History(%s, %v) =\n %q\n %q\nwant\n %q\n %q", c.key, c.ok, text, next, c.text, c.next)
+			t.Errorf("History(%s) =\n %q\n %q\nwant\n %q\n %q", c.key, text, next, c.text, c.next)
 		}
 	}
 	for k := kind(0); k < numKinds; k++ {

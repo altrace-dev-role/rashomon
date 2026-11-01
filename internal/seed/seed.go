@@ -1,9 +1,11 @@
 // Package seed counts the corrections a person made to their coding agent,
 // read from the Claude Code transcripts already on their disk (card SEED1;
 // PRD PF-AU1, PF-AU2, PF-HD8 and PF-HD17's read path). It reads, folds and
-// renders; it opens no store, writes nothing and has no transport. Nothing on
-// a hook path imports it, and it holds no package-level table, so linking it
-// into the binary costs a hook process nothing at start-up.
+// renders, and writes one file when asked, the kept before count (WriteKept,
+// card SEED1-KEEP); it has no transport. The brief reads that file at session
+// start (ReadKept), so a hook links it; it holds no table that code builds at
+// start-up (its id arrays are static data), so linking it costs a hook
+// process nothing until the brief reads.
 package seed
 
 import (
@@ -46,15 +48,18 @@ type Row struct {
 
 // Tally folds transcripts one at a time.
 type Tally struct {
-	// Until, when set, leaves out every line written at or after it.
+	// Until, when set, leaves out every line not stamped before it: the
+	// install time, for the before count (Kept).
 	Until time.Time
-	// Key, when set, names the project a transcript's cwd belongs to.
+	// Key, when set, names the project a transcript belongs to from the
+	// first working directory it records (baseline.Key): Kept's projects.
 	Key func(cwd string) string
 
 	sessions, projects map[string]struct{}
 	calls, unread      int
 	kinds              [numKinds]int
 	rows               map[sig]*recurrence
+	per                map[string]*Tally
 }
 
 type sig struct {
@@ -78,6 +83,8 @@ type line struct {
 	SessionID   string `json:"sessionId"`
 	IsSidechain bool   `json:"isSidechain"`
 	IsMeta      bool   `json:"isMeta"`
+	Timestamp   string `json:"timestamp"`
+	Cwd         string `json:"cwd"`
 	// DenialKind is Claude Code's own word for a refused call (2.1.280):
 	// "user-rejected" when the person said no at the prompt,
 	// "permission-rule" when a hook or a settings rule refused it. A line
@@ -99,10 +106,12 @@ type block struct {
 	Text      string          `json:"text"`
 }
 
-// file is one transcript's state: the calls it has seen, by id, and the
-// turn since the person last spoke.
+// file is one transcript's state: the calls it has seen, by id, the turn
+// since the person last spoke, and its project's tally once Key has named it.
 type file struct {
 	t       *Tally
+	pt      *Tally
+	keyed   bool
 	project string
 	sub     bool
 	calls   map[string]call
@@ -142,6 +151,12 @@ func (t *Tally) Read(r io.Reader, project string, sub bool) error {
 		if json.Unmarshal(b, &l) != nil {
 			continue
 		}
+		if !t.Until.IsZero() && !before(l.Timestamp, t.Until) {
+			continue
+		}
+		if t.Key != nil && !f.keyed && l.Cwd != "" {
+			f.pt, f.keyed = t.project(t.Key(l.Cwd)), true
+		}
 		switch l.Type {
 		case "assistant":
 			f.assistant(&l)
@@ -153,15 +168,38 @@ func (t *Tally) Read(r io.Reader, project string, sub bool) error {
 	return sc.Err()
 }
 
+// before is whether a line's timestamp is before until; a line with none, or
+// one that does not parse, cannot be shown to be.
+func before(ts string, until time.Time) bool {
+	at, err := time.Parse(time.RFC3339Nano, ts)
+	return err == nil && at.Before(until)
+}
+
+// project is key's tally, made on first use; nil for "".
+func (t *Tally) project(key string) *Tally {
+	if key == "" {
+		return nil
+	}
+	if t.per == nil {
+		t.per = map[string]*Tally{}
+	}
+	p := t.per[key]
+	if p == nil {
+		p = New()
+		t.per[key] = p
+	}
+	return p
+}
+
 func (f *file) assistant(l *line) {
 	var blocks []block
 	if json.Unmarshal(l.Message.Content, &blocks) != nil {
 		return
 	}
-	if l.SessionID != "" {
-		f.t.sessions[l.SessionID] = struct{}{}
+	f.t.saw(l.SessionID, f.project)
+	if f.pt != nil {
+		f.pt.saw(l.SessionID, f.project)
 	}
-	f.t.projects[f.project] = struct{}{}
 	f.turn.acted = true
 	for i := range blocks {
 		b := &blocks[i]
@@ -170,6 +208,9 @@ func (f *file) assistant(l *line) {
 			c := call{b.Name, classOf(b.Name, b.Input)}
 			f.calls[b.ID] = c
 			f.t.calls++
+			if f.pt != nil {
+				f.pt.calls++
+			}
 			f.turn.last, f.turn.hasCall, f.turn.question = c.c, true, false
 			f.retried(b.Name, l.SessionID)
 		case "text":
@@ -291,12 +332,26 @@ func (f *file) said(l *line, text string) {
 const interruptMark = "[Request interrupted by user]"
 
 func (f *file) add(k kind, c class, session string) {
-	f.t.kinds[k]++
+	f.t.add(k, c, session)
+	if f.pt != nil {
+		f.pt.add(k, c, session)
+	}
+}
+
+func (t *Tally) saw(session, project string) {
+	if session != "" {
+		t.sessions[session] = struct{}{}
+	}
+	t.projects[project] = struct{}{}
+}
+
+func (t *Tally) add(k kind, c class, session string) {
+	t.kinds[k]++
 	s := sig{k, c}
-	r := f.t.rows[s]
+	r := t.rows[s]
 	if r == nil {
 		r = &recurrence{sessions: map[string]struct{}{}}
-		f.t.rows[s] = r
+		t.rows[s] = r
 	}
 	r.times++
 	if session != "" {
