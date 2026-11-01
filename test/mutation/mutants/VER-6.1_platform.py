@@ -9,8 +9,10 @@ R = "internal/platform/resolve.go"
 
 # The deadline: unknown, at the deadline, never partial.
 m("VER-6.1 Deadline ignored", P,
-  '\tctx, cancel := context.WithTimeout(context.Background(), Deadline)\n',
+  '\tctx, cancel := context.WithTimeout(context.Background(), d)\n',
   '\tctx, cancel := context.WithCancel(context.Background())\n', "TestPL8c_")
+m("VER-6.1 Obligations runs on a generous deadline instead of Deadline", P,
+  '\treturn obligationsWithin(run, Deadline)\n', '\treturn obligationsWithin(run, time.Minute)\n', "TestPL8c_")
 m("VER-6.1 a timed-out call waits for its worker", P,
   '\tcase <-ctx.Done():\n\t\treturn nil, ctx.Err()\n',
   '\tcase <-ctx.Done():\n\t\tr := <-done\n\t\treturn r.fams, r.err\n', "TestPL8c_")
