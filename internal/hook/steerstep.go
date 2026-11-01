@@ -230,10 +230,13 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	// The index-less path takes the arm before the read, as the indexed path
 	// does in staleWrite: a read that errors (budget) must not leave it set,
 	// or every later relevant write would read the run and discover the spec
-	// again for the same answer. A taken arm reads the run, as a step does;
-	// the spec test below decides whether its findings stand (D222).
+	// again for the same answer. A taken arm reads the run, as a step does,
+	// only where a spec file is: with no index, only a spec's required gate
+	// can stand the step (D222), and with no file there is none, so the run
+	// is not read (STALE-NOINDEX1). A lost arm reads no run either way, and
+	// still goes on to the call's rules.
 	tookIndexless := indexless && p.st.TakeStaleArm(p.sessionID)
-	readRun := stepped || tookIndexless
+	readRun := stepped || tookIndexless && specFileAt(p.cwd, key, env.ProjectDir, env.ManagedDir)
 	if p.landedStore {
 		p.st.ClearNoSpec(p.sessionID)
 	}
