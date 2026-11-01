@@ -20,9 +20,20 @@ const (
 	sourceCICommands = "ci_commands"
 )
 
+// The gate an InferredGate makes (card GATE-INFER1): one closed id, so no
+// word of the project's files reaches the record, and SourceInferred as its
+// Source and its trust.
+const (
+	InferredGateID = "inferred:test"
+	SourceInferred = "inferred"
+)
+
 // declaredGate is one gate a trusted or managed spec declares, as the
 // evaluator matches it to runs (card DECLARED-GATES1). runners holds the
-// runner digests of its argv and aliases matched by prefix, lines the
+// runner keys of its argv and aliases matched at their runner (shape.RunnerKey:
+// the runner's row name, so a run's arguments never unbind it, or a launcher's
+// exact words; GATE-BIND1), words those argv's exact-words runner digests,
+// which say whether a bound run was the gate's own words, and lines the
 // whole-line digests of those matched exactly or naming no runner (G4, G5).
 // location is the CWDDigest a run must carry: the project root joined with
 // the gate's Dir, the root itself where Dir is empty (D158); "" where no root
@@ -30,7 +41,7 @@ const (
 type declaredGate struct {
 	id, kind, source, trust string
 	required                bool
-	runners, lines          map[string]bool
+	runners, words, lines   map[string]bool
 	location                string
 }
 
@@ -53,7 +64,7 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 			continue
 		}
 		g := declaredGate{id: d.ID, kind: d.Gate.Kind, source: sourceDeclared, trust: string(tr),
-			required: d.Gate.Required == nil || *d.Gate.Required, runners: map[string]bool{}, lines: map[string]bool{}}
+			required: d.Gate.Required == nil || *d.Gate.Required, runners: map[string]bool{}, words: map[string]bool{}, lines: map[string]bool{}}
 		if strings.HasPrefix(d.ID, "ci:") {
 			g.source = sourceCICommands
 		}
@@ -65,8 +76,9 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 				continue
 			}
 			s := lineShape(argv, key)
-			if d.Gate.Match != "exact" && s.RunnerDigest != nil {
-				g.runners[*s.RunnerDigest] = true
+			if k, ok := shape.RunnerKey(nameOf(s.RunnerName), s.RunnerDigest); d.Gate.Match != "exact" && ok {
+				g.runners[k] = true
+				g.words[*s.RunnerDigest] = true
 			} else {
 				g.lines[s.Digest] = true
 			}
@@ -74,6 +86,35 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 		out = append(out, g)
 	}
 	return out
+}
+
+// inferredGate is inf as the gate InferredGateID (card GATE-INFER1, W1):
+// its argv keyed as a declared gate's matched by prefix is (lineShape,
+// shape.RunnerKey, the one key function), at the project root joined with
+// its Dir, required (W2'), with trust builtin once the index has learned a
+// test family and SourceInferred before (W3'). name is its runner's row from
+// the same derivation, which names the row (W4): the line is derived once
+// per Stop (INFER-BUDGET1). No inf, or no key, is none.
+func inferredGate(inf *InferredGate, key []byte, root string) (g declaredGate, name string, ok bool) {
+	if inf == nil || len(inf.Argv) == 0 || len(key) == 0 {
+		return declaredGate{}, "", false
+	}
+	g = declaredGate{id: InferredGateID, kind: "test", source: SourceInferred, trust: SourceInferred, required: true,
+		runners: map[string]bool{}, words: map[string]bool{}, lines: map[string]bool{}}
+	if inf.Learned {
+		g.trust = trustBuiltin
+	}
+	if root != "" {
+		g.location = shape.CWDDigest(key, filepath.Join(root, inf.Dir))
+	}
+	s := lineShape(inf.Argv, key)
+	if k, ok := shape.RunnerKey(nameOf(s.RunnerName), s.RunnerDigest); ok {
+		g.runners[k] = true
+		g.words[*s.RunnerDigest] = true
+	} else {
+		g.lines[s.Digest] = true
+	}
+	return g, nameOf(s.RunnerName), true
 }
 
 // DeclaresRequired reports whether sp declares a required gate from a trusted
@@ -157,18 +198,32 @@ type lineRun struct {
 }
 
 // matches: the run is where the gate binds it, never at another location,
-// and its runner is one of the gate's prefix runners or its whole line one of
+// and its runner key (shape.RunnerKey, the same function the gate's argv went
+// through) is one of the gate's runners, its runner's words are the gate's
+// (the rule before GATE-BIND1, and the one a run recorded with no
+// runner_name, before call schema 8, can meet), or its whole line is one of
 // the gate's lines.
 func (g *declaredGate) matches(r *lineRun) bool {
 	if g.location == "" || r.Location != g.location {
 		return false
 	}
-	return r.Runner != nil && g.runners[*r.Runner] || r.digest != "" && g.lines[r.digest]
+	k, ok := shape.RunnerKey(shape.RunnerNameOf(r.RunnerID), r.Runner)
+	return ok && (g.runners[k] || g.words[*r.Runner]) || r.digest != "" && g.lines[r.digest]
+}
+
+// nameOf is a shape's RunnerName, "" for none.
+func nameOf(name *string) string {
+	if name == nil {
+		return ""
+	}
+	return *name
 }
 
 // state is the gate's row from its matched runs at the point, in Seq order:
 // the learned table's (stateOf), or Absent with none, under the gate's own
-// words.
+// words. Its last run is marked OtherArgs where that run was bound at its
+// runner with words none of the gate's argv has, so no line says the gate
+// passed of a run that was not the gate's own (GATE-BIND1, D-c).
 func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
 	var s GateState
 	if len(fr) > 0 {
@@ -177,6 +232,13 @@ func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, at i
 		s = absentState(writes, unnamed, at)
 	}
 	s.Gate, s.Kind, s.Family, s.Source, s.Trust, s.Required = g.id, g.kind, familyDeclared, g.source, g.trust, g.required
+	if s.LastRun != nil {
+		for i := range fr {
+			if r := &fr[i]; r.Seq == s.LastRun.Seq && r.Runner != nil && len(g.words) > 0 && !g.words[*r.Runner] {
+				s.LastRun.OtherArgs = true
+			}
+		}
+	}
 	return s
 }
 

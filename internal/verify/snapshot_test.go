@@ -52,7 +52,7 @@ func TestVER11b_GateStateKeysAndTypes(t *testing.T) {
 		v    any
 		want []string
 	}{
-		{RunRef{}, []string{"seq", "tool_use_id", "agent_id", "outcome", "exit_code", "status_masked", "gate_output", "scope", "outcome_from", "masked_by", "runner_name"}},
+		{RunRef{}, []string{"seq", "tool_use_id", "agent_id", "outcome", "exit_code", "status_masked", "gate_output", "scope", "outcome_from", "masked_by", "runner_name", "other_args"}},
 		{WriteRef{}, []string{"seq", "agent_id", "path", "tool"}},
 		{AgentCount{}, []string{"agent_id", "agent_type", "writes"}},
 	} {

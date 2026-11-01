@@ -11,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -28,6 +29,9 @@ type pendingPayload struct {
 	// specNoted is set by preflightNote when its discovery made the turn's
 	// no-spec note (hook.NoteSpecFound), so noteTurnSpec makes no second one.
 	specNoted bool
+	// owed is what the session's last turn end owes this prompt
+	// (recap.Turn), which preflightNote routes beside its note.
+	owed recap.Owed
 }
 
 // readPendingPayload is readRecapPayload for `recap pending`.
@@ -52,13 +56,16 @@ type promptProject struct {
 	lessons learn.Active
 }
 
-// preflightNote is the new prompt's notes (promptFindings), routed and
-// logged under the session in one Route call, and the client its Output is
-// marshalled for. The zero Output when there is no run to
-// log it under (no session_id, H-107), no cwd to resolve against, or nothing
-// new to say. A request that names no path and no identifier, with no lesson
-// to give, stops at intent.Names, before any read and before the steer
-// environment is built: with no brief on this branch it can have no note.
+// preflightNote is the new prompt's notes, routed and logged under the
+// session in one Route call, and the client its Output is marshalled for:
+// the request's task-preflight note and a lesson from proj (promptFindings),
+// and what the last turn end owes this prompt (owedFinding, card
+// GATE-INFER1, W5), which ranks above both (claim-vs-record). The zero
+// Output when there is no run to log it under (no session_id, H-107), no cwd
+// to resolve against, or nothing new to say. A request that names no path
+// and no identifier, with no lesson to give and nothing owed, stops at
+// intent.Names, before any read and before the steer environment is built:
+// with no brief on this branch it can have no note.
 // proj is the caller's read (readPromptProject). A session's first prompt
 // finds its run empty, so the note decides at after_seq 0, which CheckOn
 // admits at UserPromptSubmit only.
@@ -67,7 +74,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		return steer.Output{}, steer.Client{}
 	}
 	named := intent.Names(p.Prompt, p.PromptCut)
-	if !named && !proj.lessons.Any() {
+	if !named && !proj.lessons.Any() && p.owed.Seq <= 0 {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
@@ -99,6 +106,9 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		}
 	}
 	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
+	if f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {
+		found = append(found, f)
+	}
 	if len(found) == 0 {
 		return steer.Output{}, steer.Client{}
 	}
