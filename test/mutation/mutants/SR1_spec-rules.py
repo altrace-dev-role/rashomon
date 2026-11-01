@@ -116,3 +116,142 @@ m("sr1 a prompt naming no path writes no note", "cmd/rashomon/recap_turn.go",
   "\tnoteTurnSpec(st, run, pp)\n", "", "TestSR1af_")
 m("sr1 the preflight's discovery runs twice", "cmd/rashomon/preflight.go",
   "p.CWD == \"\" || p.specNoted {\n", "p.CWD == \"\" {\n", "TestSR1ag_")
+
+O = "internal/verify/rules_order.go"
+# SPEC-RULES1 1b: order (verify/rules.go orderOver, its post raise in
+# rules_raise.go and the hook's carrying of the run) and forbid_code (codeOver,
+# undecided "content not read" at every applicable write).
+m("sr1b order reads a failed after as qualifying", "internal/verify/rules_order.go",
+  "\tcase h.exit == nil || *h.exit != 0 || !h.fg:\n",
+  "\tcase h.exit == nil || !h.fg:\n",
+  "TestSR1q_")
+m("sr1b order ignores an invalidating write", "internal/verify/rules_order.go",
+  "\t\tcase anyPath(r.InvalidatedBy, rel):\n\t\t\treturn triNo\n",
+  "\t\tcase anyPath(r.InvalidatedBy, rel):\n\t\t\treturn triYes\n",
+  "TestSR1q_")
+m("sr1b order fires on a then the line does not show", "internal/verify/rules_order.go",
+  "\t\tcase best == triMaybe || then == triMaybe:\n",
+  "\t\tcase best == triMaybe:\n",
+  "TestSR1ai_")
+m("sr1b order reads an after and a then in one line as ordered", "internal/verify/rules_order.go",
+  "\t\tif lineMatch(r.After, l) != triNo {\n\t\t\tbest = triMaybe\n\t\t}\n",
+  "\t\tif lineMatch(r.After, l) != triNo {\n\t\t\tbest = triYes\n\t\t}\n",
+  "TestSR1ai_")
+m("sr1b forbid_code reads an applicable write as violated", "internal/verify/rules_order.go",
+  "\treturn ruleRead{undecided: true, reason: ReasonContentNotRead}\n",
+  "\treturn ruleRead{seqs: append(w.seqs, 1), reason: ReasonContentNotRead}\n",
+  "TestSR1ak_")
+m("sr1b forbid_code is undecided at a write elsewhere", "internal/verify/rules_order.go",
+  "\tif len(w.seqs) == 0 && !w.undecided {\n\t\treturn ruleRead{}\n\t}\n",
+  "\tif false && len(w.seqs) == 0 && !w.undecided {\n\t\treturn ruleRead{}\n\t}\n",
+  "TestSR1ak_")
+m("sr1b the post raises an order at a call that is not the then", "internal/verify/rules_raise.go",
+  "\t\t\treturn slices.Contains(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs, d.Seq)\n",
+  "\t\t\treturn len(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs) > 0\n",
+  "TestSR1p_")
+IMPORTS["sr1b the post raises an order at a call that is not the then"] = ("internal/verify/rules_raise.go", '\t"slices"\n', "")
+m("sr1b the post raises an order with no run read", "internal/verify/rules_raise.go",
+  "\t\t\tif call.Run == nil || !read {\n",
+  "\t\t\tif !read {\n",
+  "TestSR1p_")
+m("sr1b the rules step does not carry the run to an order rule", "internal/hook/steerstep.go",
+  "\t\t\tc.Run = run\n",
+  "\t\t\tc.Run = nil\n",
+  "TestSR1ah_")
+
+# SPEC-RULES1 1b, #216 ruling 1: the order judge reads after_hit records
+# (afterHits, afterRan, orderOver) and never an After call's line; the post
+# writes one for the After call (RulesAtCall's AfterHits, the hook's keepHits)
+# as it writes a rule_hit; the kind itself (store/afterhit.go, kinds.go).
+m("sr1b order reads a background after as qualifying", O,
+  "\tcase h.exit == nil || *h.exit != 0 || !h.fg:\n",
+  "\tcase h.exit == nil || *h.exit != 0:\n",
+  "TestSR1q_")
+m("sr1b order reads an after in another directory as qualifying", O,
+  "\tcase h.cwd != then.cwd:\n\t\treturn triNo\n",
+  "\tcase h.cwd != then.cwd:\n\t\treturn triYes\n",
+  "TestSR1q_")
+m("sr1b order reads an after with no known directory as qualifying", O,
+  "\tcase h.cwd == \"\" || then.cwd == \"\":\n\t\treturn triMaybe\n",
+  "\tcase h.cwd == \"\" || then.cwd == \"\":\n\t\treturn triYes\n",
+  "TestSR1am_")
+m("sr1b order reads a maybe hit as qualifying", O,
+  "\tcase h.maybe:\n\t\treturn triMaybe\n",
+  "\tcase h.maybe:\n\t\treturn triYes\n",
+  "TestSR1am_")
+m("sr1b order counts a hit under any digest of its file", O,
+  "h.RuleID == id && h.SourceDigest == digest && h.LandedSeq > 0",
+  "h.RuleID == id && h.LandedSeq > 0",
+  "TestSR1am_")
+m("sr1b order counts another rule's hit", O,
+  "h.RuleID == id && h.SourceDigest == digest && h.LandedSeq > 0",
+  "h.SourceDigest == digest && h.LandedSeq > 0",
+  "TestSR1am_")
+m("sr1b order counts a hit that is not before the then", O,
+  "\t\t\tif h.seq >= l.seq {\n\t\t\t\tcontinue\n",
+  "\t\t\tif h.seq > l.seq {\n\t\t\t\tcontinue\n",
+  "TestSR1ai_")
+m("sr1b order reads an after line with no hit as no after", O,
+  "lineMatch(r.After, a) != triNo && !hasHit(hits, a.seq) {\n",
+  "lineMatch(r.After, a) != triNo && false {\n",
+  "TestSR1am_")
+m("sr1b order reads a line the record withheld as an after with no hit", O,
+  "a.seq < l.seq && len(a.cmds) > 0 && lineMatch",
+  "a.seq < l.seq && lineMatch",
+  "TestSR1aj_|TestSR1am_")
+m("sr1b the post reads the call's own line from the record, not the payload", "internal/verify/rules_raise.go",
+  "\tif own.id != \"\" {\n\t\tv.lines = append(v.lines, own)\n\t}\n",
+  "",
+  "TestSR1am_")
+m("sr1b the post leaves no hit for an After call", "internal/verify/rules_raise.go",
+  "\t\t\tif t := lineMatch(dr.Rule.After, &ordLine); t != triNo && read {\n",
+  "\t\t\tif t := lineMatch(dr.Rule.After, &ordLine); t != triNo && false {\n",
+  "TestSR1al_")
+m("sr1b the post leaves a hit for any Bash call", "internal/verify/rules_raise.go",
+  "\t\t\tif t := lineMatch(dr.Rule.After, &ordLine); t != triNo && read {\n",
+  "\t\t\tif t := lineMatch(dr.Rule.After, &ordLine); read {\n",
+  "TestSR1al_")
+m("sr1b the hit takes no directory from the declaration", "internal/verify/rules_raise.go",
+  "CWDDigest: call.cwdDigest(), Exit: call.Exit,",
+  "CWDDigest: \"\", Exit: call.Exit,",
+  "TestSR1al_")
+m("sr1b the hit does not say a line only may be the after", "internal/verify/rules_raise.go",
+  "Foreground: call.Foreground, Maybe: t == triMaybe})",
+  "Foreground: call.Foreground, Maybe: false})",
+  "TestSR1al_")
+m("sr1b the hook keeps no after_hit", "internal/hook/steerstep.go",
+  "\tfor _, h := range after {\n",
+  "\tfor _, h := range after[:0] {\n",
+  "TestSPR1a_")
+m("sr1b the hook records every after as foreground", "internal/hook/steerstep.go",
+  "Exit: p.exitCode, Foreground: !p.backgrounded}",
+  "Exit: p.exitCode, Foreground: true}",
+  "TestSPR1g_")
+m("sr1b the hook records no exit status at PostToolUse", "internal/hook/steerstep.go",
+  "\t\tzero := 0\n\t\tc.Exit = &zero\n",
+  "",
+  "TestSPR1a_")
+m("sr1b the hook records an exit 0 at a failure too", "internal/hook/steerstep.go",
+  "\tif p.event == string(steer.EventPostToolUse) {\n\t\tzero := 0\n",
+  "\tif p.event != \"\" {\n\t\tzero := 0\n",
+  "TestSPR1c_")
+m("sr1b the hook reads the run for every Bash call under an order spec", "internal/hook/steerstep.go",
+  "\t\tif verify.OrderTouches(p.sp, c.Cmds, c.CmdsOK) {\n",
+  "\t\tif true {\n",
+  "TestSR1ah_")
+m("sr1b the hook leaves a call that is not seen as order-bearing to a hit-less post", "internal/hook/steerstep.go",
+  "\t\tif len(rules.Findings) == 0 && len(rules.Hits) == 0 && len(rules.AfterHits) == 0 {\n",
+  "\t\tif len(rules.Findings) == 0 && len(rules.Hits) == 0 {\n",
+  "TestSPR1a_")
+m("sr1b the after_hit kind is not in the version table", "internal/store/kinds.go",
+  "\tTypeAfterHit:      EventSchemaVersion,\n", "",
+  "TestKindVersionsAreTheFrozenTable|TestSPR1w_")
+m("sr1b the reader does not file an after_hit", "internal/store/read.go",
+  "\tcase TypeAfterHit:\n\t\treturn readAfterHit(run, line, kind, version)\n", "",
+  "TestSPR1w_")
+m("sr1b the after_hit is stamped not critical", "internal/store/afterhit.go",
+  "SchemaVersion: EventSchemaVersion, Critical: true,", "SchemaVersion: EventSchemaVersion, Critical: false,",
+  "TestSPR1w_")
+m("sr1b the records row omits the after_hit it holds", "internal/disclose/disclose.go",
+  "; where a call matched the after pattern of an order rule of that spec, an after_hit with the same four, its exit status, whether it ran in the foreground, the keyed digest of its working directory and one bit for a line that may run the after program but does not show it, no command text;",
+  ";", "TestTRU24_RecordsRowNamesTheAfterHit")

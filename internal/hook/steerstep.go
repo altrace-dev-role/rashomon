@@ -133,7 +133,7 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if !ok {
 		return nil
 	}
-	p.keepHits(view.Hits, env.Now)
+	p.keepHits(view.Hits, view.AfterHits, env.Now)
 	out := steer.Route(&ctx, view.Findings)
 	// The line is durable before its note prints (REC-34).
 	if err := fault.Fail(fault.PointSteerFlush); err != nil {
@@ -152,16 +152,21 @@ func (p *Post) Steer(env SteerEnv) []byte {
 }
 
 // keepHits appends each forbid_command rule the call matched to the run as a
-// spec_event rule_hit (card SPEC-RULES-STOP1), at either post event and
+// spec_event rule_hit (card SPEC-RULES-STOP1), and each order rule whose After
+// pattern it matched as an after_hit (#216 ruling 1), at either post event and
 // whatever Route then decides: the steer switch, the arm, the holdout,
 // consent and attendance do not reach it. It runs before Route, so Steer's
 // one Flush makes the hits durable before any note prints (REC-34); at a
 // failure, where Route writes no line, that Flush is the one sync the hits
 // add. A hit that does not land (a lock timeout, an append error) is lost,
 // and the Stop then reads that rule undecided, never clear.
-func (p *Post) keepHits(hits []verify.RuleHit, now time.Time) {
+func (p *Post) keepHits(hits []verify.RuleHit, after []verify.AfterHit, now time.Time) {
 	for _, h := range hits {
 		_ = p.st.AppendRecord(p.sessionID, store.NewRuleHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq, now.UnixMilli()))
+	}
+	for _, h := range after {
+		_ = p.st.AppendRecord(p.sessionID, store.NewAfterHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq,
+			h.Exit, h.Foreground, h.CWDDigest, h.Maybe, now.UnixMilli()))
 	}
 }
 
@@ -274,9 +279,9 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	}
 	pt := verify.Point{Seq: p.landedSeq, SessionID: p.sessionID, PromptID: nilIfEmpty(p.promptID), AgentID: nilIfEmpty(p.agentID),
 		StoreRoot: root}
-	rules := verify.RulesAtCall(p.sp, p.ruleCall(), pt, p.event)
+	rules := verify.RulesAtCall(p.sp, p.ruleCall(run), pt, p.event)
 	if run == nil {
-		if len(rules.Findings) == 0 && len(rules.Hits) == 0 {
+		if len(rules.Findings) == 0 && len(rules.Hits) == 0 && len(rules.AfterHits) == 0 {
 			return steer.Context{}, verify.SteerView{}, false
 		}
 		return p.contextOf(env, rules), rules, true
@@ -288,7 +293,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)
 	view.Dropped += rules.Dropped
-	view.Hits = rules.Hits
+	view.Hits, view.AfterHits = rules.Hits, rules.AfterHits
 	return p.contextOf(env, view), view, true
 }
 
@@ -343,14 +348,39 @@ func boundSource(sp *spec.Compiled, root string) bool {
 
 // ruleCall is the call the spec's rules judge, read from the input only as
 // far as a discovered rule reads it: a Bash call's line, under the cap a
-// recorded command keeps whole, where a forbid_command rule is declared,
-// and a file tool's path, with the project key a declaration carries
-// (baseline.Key of the cwd), where a protect_path rule is.
-func (p *Post) ruleCall() verify.RuleCall {
-	c := verify.RuleCall{Seq: p.landedSeq, ToolName: p.toolName, CWD: p.cwd}
+// recorded command keeps whole, where a forbid_command or an order rule is
+// declared, and a file tool's path, with the project key a declaration
+// carries (baseline.Key of the cwd), where a protect_path rule is.
+//
+// An order rule reads the run at a call that touches it: a Bash call whose
+// line may run the rule's then or its after (verify.OrderTouches), the Then
+// to judge it against the after_hits the run holds, the After for the
+// directory digest its own hit carries. The run is the one this judge read,
+// else its own read, which is no step's (the step's findings stand on its
+// own run). Any other Bash call reads no run for the rule. A run that cannot
+// be read leaves the Then raising nothing, and the After's hit with no
+// directory, which no Then compares equal to.
+func (p *Post) ruleCall(run *store.Run) verify.RuleCall {
+	c := verify.RuleCall{Seq: p.landedSeq, ToolName: p.toolName, CWD: p.cwd, ToolUseID: p.toolUseID,
+		Exit: p.exitCode, Foreground: !p.backgrounded}
+	if p.event == string(steer.EventPostToolUse) {
+		zero := 0
+		c.Exit = &zero
+	}
 	command, path := ruleReads(p.sp)
-	if command {
+	order := p.toolName == "Bash" && declaresOrder(p.sp)
+	if command || order {
 		c.Command, _ = shape.CommandLine(p.toolName, p.toolInput, store.MaxCommandBytes)
+	}
+	if order && c.Command != "" {
+		c.Cmds, c.CmdsOK = shape.Commands(c.Command)
+		c.CmdsRead = true
+		if verify.OrderTouches(p.sp, c.Cmds, c.CmdsOK) {
+			if run == nil {
+				run, _ = p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)
+			}
+			c.Run = run
+		}
 	}
 	if path {
 		if fp := shape.DeclaredPath(p.toolName, p.toolInput); fp != nil {
@@ -358,6 +388,20 @@ func (p *Post) ruleCall() verify.RuleCall {
 		}
 	}
 	return c
+}
+
+// declaresOrder reports an order rule among sp's own, the kind that reads
+// the run at a post.
+func declaresOrder(sp *spec.Compiled) bool {
+	if sp == nil {
+		return false
+	}
+	for i := range sp.Rules {
+		if sp.Rules[i].Source != spec.SourceImplied && spec.RuleKind(sp.Rules[i].Rule.Kind) == spec.Order {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleReads reports whether sp declares a forbid_command rule and whether

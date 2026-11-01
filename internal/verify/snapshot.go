@@ -278,7 +278,16 @@ type RuleVerdict struct {
 	// record-green false. Unexported, so the encoding is unchanged, like
 	// GateState's bound.
 	trust spec.Trust
+	// reason says why an undecided verdict is, where the rule's kind has one
+	// fixed reason (ReasonContentNotRead). Unexported and unpersisted, so the
+	// snapshot's and the checkpoint's encoding is unchanged.
+	reason string
 }
+
+// ReasonContentNotRead is the reason a forbid_code verdict is undecided:
+// the record holds no edit content to match the pattern against (EditMarks'
+// pre-read, EDITMARKS-WIRE1), so the kind never reads violated.
+const ReasonContentNotRead = "content not read"
 
 // CheckpointRuleVerdict is a rule verdict as the checkpoint keeps it
 // (archive 20.2.14's example: rule, kind, verdict, seqs): RuleVerdict

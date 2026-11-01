@@ -65,6 +65,9 @@ type call struct {
 	// unread one (shape.UnreadCWDDigest), the two domains no digest of one
 	// equals in the other; "" is a location not known.
 	loc string
+	// line is the Bash call's command line, which withLines records on its
+	// declaration; the builder itself ignores it.
+	line string
 	// agent is the subagent the call ran in: AgentID, with AgentType beside it,
 	// both present only inside a subagent call (record.go, Declaration); ""
 	// is the main agent, both nil.

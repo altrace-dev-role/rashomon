@@ -170,6 +170,12 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// exitCode and backgrounded are how the call ended, kept for the
+	// after_hit an order rule's After call leaves (ruleCall): the parsed
+	// status of a failure (nil where none was stated), and whether a success
+	// event's command was still running in the background.
+	exitCode     *int
+	backgrounded bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -330,6 +336,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		p.withheld = true
 	}
 	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
+	p.exitCode, p.backgrounded = rec.ExitCode, rec.Backgrounded
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
 	p.landedRed = redRead(&rec)

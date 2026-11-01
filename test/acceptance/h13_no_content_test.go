@@ -189,6 +189,13 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"reason", "event", "rule_id", "source_digest", "landed_seq",
 	}
+	// afterHitKeys are an after_hit's keys (card SPEC-RULES1 1b, #216 ruling
+	// 1): the rule's id and its spec file's digest, how the After call
+	// ended and where, never a command's text.
+	afterHitKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"event", "rule_id", "source_digest", "landed_seq", "exit_code", "foreground", "cwd_digest", "maybe",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {
