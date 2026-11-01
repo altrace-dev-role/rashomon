@@ -208,8 +208,9 @@ rest.
 **Is it a sandbox or a security tool?** No. It does not stop or contain the
 agent, and it cannot stop a determined agent from changing its records.
 
-**How do I turn it off?** `rashomon detach` removes the hook entries;
-`rashomon purge` also removes the store. With the plugin, use `/plugin`.
+**How do I turn it off?** In a terminal outside Claude Code, `rashomon detach`
+removes the hook entries and `rashomon purge` also removes the store; both are
+refused from an agent session. With the plugin, use `/plugin`.
 
 **How much disk does it use?** At most 512 MiB of runs by default; the oldest
 runs go first, each leaving a gap record. `RASHOMON_STORE_CAP_BYTES` sets the
@@ -258,13 +259,13 @@ under the call if the command named it.
 | `rashomon learn approve ID` | Show lesson ID and a one-time code on the terminal; the lesson may reach the agent only once that code is typed back there |
 | `rashomon learn import FILE` | Add a shared lessons file's rows at `proposed` |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes`; refused from an agent session, `off` included |
-| `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
+| `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change; `pause` is refused from an agent session, `resume` is not |
 | `rashomon forget --host H \| --since T \| --before T \| --bodies` | Erase the calls that named a host, records by time, or this project's transcript copies |
 | `rashomon bodies on \| off \| status` | Copy this project's transcripts into the store at session end, stop, or count the copies; on and off are refused from an agent session |
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices; writes nothing |
 | `rashomon receipt on \| trailer \| note DIGEST` | Print the git hooks that put a receipt on each commit, the trailer naming the latest checkpoint, or that checkpoint; runs no git |
 | `rashomon share build outcomes --out FILE` | Write counts of the notes given to the agent, by pattern; needs `rashomon consent share.outcomes` |
-| `rashomon detach` | Remove the hook entries, leaving everything else as found |
+| `rashomon detach` | Remove the hook entries, leaving everything else as found; refused from an agent session |
 | `rashomon purge [--yes] [--binary]` | Detach, then remove the store and the directories `watch` created; refused from an agent session |
 | `rashomon version` | Print the version: the module version for a `go install` build (for example `1.2.0-alpha.1`), the release version for a release binary, `dev` for a local `go build` |
 
