@@ -26,6 +26,7 @@ internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-04 71ae96498d0775
 internal/jsonscan/testdata/fuzz/FuzzRES7_StreamMatchesStdlib/seed-00 43ff94f50713cc21 a fuzz seed: a Go-escaped hook payload with one-letter placeholder values; no credential and no account value
 internal/jsonscan/testdata/fuzz/FuzzRES7_StreamMatchesStdlib/seed-03 2cd9cbca1523bcbf a fuzz seed: Go-escaped JSON with a duplicate key and a run of digits then letters as a placeholder; no credential and no account value
 internal/jsonscan/testdata/fuzz/FuzzRES7_StreamMatchesStdlib/seed-04 865ed506f1dc104d a fuzz seed: Go-escaped JSON with escaped key letters and surrogate pairs; no credential and no account value
+internal/shape/testdata/fuzz/FuzzCommands/6a2d8de6f879b780 da463f91ca86310c a fuzz seed: FuzzCommands' failing input, a Go-escaped Bash tool_input of git push with an invalid byte (\xff) and a NUL; no credential and no account value
 test/tools/hygiene/reviewed.txt 5a6bf24071db2b70 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt 5cb84c90618c3b6f a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
 test/tools/hygiene/reviewed.txt 443d1f66631eae2a a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
