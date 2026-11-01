@@ -79,6 +79,12 @@ type RunRef struct {
 	OutcomeFrom OutcomeSource `json:"outcome_from,omitempty"`
 	MaskedBy    StageWord     `json:"masked_by,omitempty"`
 	RunnerName  RunnerWord    `json:"runner_name,omitempty"`
+	// OtherArgs is set on a declared gate's last run where the run was bound
+	// at its runner with words none of the gate's argv has (`go test
+	// -count=1 ./...` for ["go","test","./..."]), so the Stop says it ran
+	// with other arguments and never that the gate passed (GATE-BIND1, D-c).
+	// Absent everywhere else. The checkpoint keeps only the run's seq.
+	OtherArgs bool `json:"other_args,omitempty"`
 }
 
 // OutcomeSource says where a run's outcome was read from: SourceExit, the

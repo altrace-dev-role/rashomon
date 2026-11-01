@@ -65,7 +65,19 @@ type StopView struct {
 	// `rashomon spec trust`. EvaluateStop reads no bindings, so the Stop's
 	// caller fills it; nil for none.
 	Unbound []string
+	// Untrusted is each gate a spec declares from a source that reads
+	// untrusted, in the spec's order (STOP-UNBOUND-FIRST): the brief names
+	// it "(spec, untrusted)" and no run binds it (declaredGates), so the
+	// Stop says it does not count rather than that no test or build is
+	// known. The Stop's caller fills it beside Unbound; nil for none, and
+	// nil after a session write under the store root, when no trust holds
+	// for the rest of the session (hook.TrustRoot, D173).
+	Untrusted []UntrustedGate
 }
+
+// UntrustedGate is a gate a spec declares while the spec reads untrusted:
+// its id, and the spec's path, project-relative as Unbound names it.
+type UntrustedGate struct{ ID, Spec string }
 
 // EvaluateStop is the Stop hook's view at pt. One classification feeds the
 // snapshot, the programs, the index and the ledger, whose expected rows are
