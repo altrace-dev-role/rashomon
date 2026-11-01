@@ -558,8 +558,7 @@ func editSettings(path string, edit func(*settings.Document) (bool, error), remo
 			res.after, res.removed = nil, true
 			err = settings.Remove(path, original)
 		} else {
-			res.after = doc.Bytes()
-			err = settings.Write(path, original, res.after)
+			res.after, err = writeChecked(path, original, doc)
 		}
 		if errors.Is(err, settings.ErrChanged) {
 			continue

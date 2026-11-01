@@ -50,9 +50,10 @@ var overLimit = map[string]int{
 // backtest command, openStore to storeopen.go, 1054 to 1052 with card
 // SPEC-TRUST1's spec command, storeExistsAt to storeopen.go; then LEDGER-WIRE1,
 // BRIEF1 and STATUS-VERBS1a extractions. Ratchet measured after the stacked re-cut.
+// main.go 930 to 929: editSettings writes through writeChecked (settingsrender.go).
 // watch.go moved 545 to 541 with STEER-DISCLOSE-YES1 (the --yes clamp removed).
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    930,
+	"cmd/rashomon/main.go":    929,
 	"internal/store/store.go": 549,
 	"cmd/rashomon/watch.go":   541,
 }
