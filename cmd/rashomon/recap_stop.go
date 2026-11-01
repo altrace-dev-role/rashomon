@@ -95,6 +95,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
 	v.Unbound = unboundSpecs(run, &v.Snap, sp, st.Root(), seq)
+	v.Untrusted = untrustedGates(run, sp, st.Root(), seq)
 	// The steer lines are already read; no ledger opens at Stop (learn.Open
 	// can write), so the lessons are not read here.
 	impact := recap.ImpactOf(v, lines, nil)
@@ -152,6 +153,32 @@ func unboundSpecs(run *store.Run, snap *verify.Snapshot, sp *spec.Compiled, root
 				out = append(out, filepath.ToSlash(r))
 			}
 		}
+	}
+	return out
+}
+
+// untrustedGates is each gate sp declares from a source that reads
+// untrusted, with the source project-relative as unboundSpecs names it
+// (STOP-UNBOUND-FIRST). After a session write under the store root it is
+// nil: no trust holds for the rest of the session then (D173), so the Stop
+// could name no step that makes the gate count. The store-write pass is
+// read only when an untrusted spec declares a gate.
+func untrustedGates(run *store.Run, sp *spec.Compiled, root string, seq int64) []verify.UntrustedGate {
+	if sp == nil {
+		return nil
+	}
+	var out []verify.UntrustedGate
+	for _, d := range sp.Gates {
+		s := sp.Sources[d.Source]
+		if s.Trust != spec.Untrusted {
+			continue
+		}
+		if r, err := filepath.Rel(hook.SpecProject(s.Path), s.Path); err == nil {
+			out = append(out, verify.UntrustedGate{ID: d.ID, Spec: filepath.ToSlash(r)})
+		}
+	}
+	if out != nil && verify.StoreWritten(run, root, seq) {
+		return nil
 	}
 	return out
 }

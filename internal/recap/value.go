@@ -193,6 +193,9 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	}
 	var b strings.Builder
 	b.WriteString(prefix + sentence + ".\n")
+	if v.Summary.Row == verify.RowNoGate && untrustedOnly(v) {
+		b.WriteString(continuation() + "The spec is not trusted; review it, then run rashomon spec trust.\n")
+	}
 	b.WriteString(unboundLines(v))
 	if c := clause(im); c != "" {
 		b.WriteString(continuation() + c + "\n")
@@ -217,6 +220,48 @@ func unboundLines(v verify.StopView) string {
 		b.WriteString(continuation() + "no longer counts; review the edit, then run rashomon spec trust.\n")
 	}
 	return b.String()
+}
+
+// notCounted is the no-gate row's clause when a spec declares gates that
+// read untrusted (StopView.Untrusted, STOP-UNBOUND-FIRST). The brief named
+// them, so the line says they do not count, never that none is known; the
+// line below says why (ValueLine, or unboundLines for a spec the session
+// edited after a trust). At most k ids are named; short (fitted's last
+// resort past lineColumns), or an id the line cannot print, reads "the
+// spec's gates" instead.
+func notCounted(v verify.StopView, k int, short bool) string {
+	if len(v.Untrusted) == 0 {
+		return ""
+	}
+	var names []string
+	for _, u := range v.Untrusted {
+		id, ok := strings.CutPrefix(u.ID, specGatePrefix)
+		p := slot.Program(id)
+		if short || !ok || p.Validate() != nil {
+			names = nil
+			break
+		}
+		if !contains(names, p.Text()) {
+			names = append(names, p.Text())
+		}
+	}
+	s := "the spec's gates do not count"
+	switch {
+	case len(names) == 1:
+		s = names[0] + " does not count"
+	case len(names) > k:
+		s = strings.Join(names[:k], ", ") + " and " + strconv.Itoa(len(names)-k) + " more do not count"
+	case len(names) > 1:
+		s = joinNames(names) + " do not count"
+	}
+	return s
+}
+
+// untrustedOnly reports a gate of v.Untrusted in a spec no unbound line
+// names: the line under the value line then says the spec is not trusted,
+// and the step that counts its gates.
+func untrustedOnly(v verify.StopView) bool {
+	return slices.ContainsFunc(v.Untrusted, func(u verify.UntrustedGate) bool { return !slices.Contains(v.Unbound, u.Spec) })
 }
 
 // fitted is the row's sentence with as many gate names as fit after lead on
@@ -311,6 +356,9 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 	case verify.RowUnverified:
 		return t.unverified(v, k, files)
 	case verify.RowNoGate:
+		if s := notCounted(v, k, short); s != "" {
+			return files + "; " + s
+		}
 		if v.Index != nil && len(v.Index.Entries) > 0 {
 			return files + "; no known test or build applies to these files"
 		}
