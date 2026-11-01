@@ -92,12 +92,14 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 // its argv keyed as a declared gate's matched by prefix is (lineShape,
 // shape.RunnerKey, the one key function), at the project root joined with
 // its Dir, required (W2'), with trust builtin once the index has learned a
-// test family and SourceInferred before (W3'). No inf, or no key, is none.
-func inferredGate(inf *InferredGate, key []byte, root string) (declaredGate, bool) {
+// test family and SourceInferred before (W3'). name is its runner's row from
+// the same derivation, which names the row (W4): the line is derived once
+// per Stop (INFER-BUDGET1). No inf, or no key, is none.
+func inferredGate(inf *InferredGate, key []byte, root string) (g declaredGate, name string, ok bool) {
 	if inf == nil || len(inf.Argv) == 0 || len(key) == 0 {
-		return declaredGate{}, false
+		return declaredGate{}, "", false
 	}
-	g := declaredGate{id: InferredGateID, kind: "test", source: SourceInferred, trust: SourceInferred, required: true,
+	g = declaredGate{id: InferredGateID, kind: "test", source: SourceInferred, trust: SourceInferred, required: true,
 		runners: map[string]bool{}, words: map[string]bool{}, lines: map[string]bool{}}
 	if inf.Learned {
 		g.trust = trustBuiltin
@@ -112,7 +114,7 @@ func inferredGate(inf *InferredGate, key []byte, root string) (declaredGate, boo
 	} else {
 		g.lines[s.Digest] = true
 	}
-	return g, true
+	return g, nameOf(s.RunnerName), true
 }
 
 // DeclaresRequired reports whether sp declares a required gate from a trusted
