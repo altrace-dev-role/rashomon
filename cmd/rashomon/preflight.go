@@ -28,6 +28,11 @@ type pendingPayload struct {
 	// specNoted is set by preflightNote when its discovery made the turn's
 	// no-spec note (hook.NoteSpecFound), so noteTurnSpec makes no second one.
 	specNoted bool
+	// unverified is the previous Stop's done verdict, taken from recap.json by
+	// recapTurn before the preflight (recap.TakeUnverified): true once per
+	// flagged Stop of this session, so a prompt that routes nothing still
+	// consumes it, and the note is not read for at every prompt (card c4).
+	unverified bool
 }
 
 // readPendingPayload is readRecapPayload for `recap pending`.
@@ -67,7 +72,8 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		return steer.Output{}, steer.Client{}
 	}
 	named := intent.Names(p.Prompt, p.PromptCut)
-	if !named && !proj.lessons.Any() {
+	done := p.unverified
+	if !named && !proj.lessons.Any() && !done {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
@@ -99,7 +105,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		}
 	}
 	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
-	if len(found) == 0 {
+	if len(found) == 0 && !done {
 		return steer.Output{}, steer.Client{}
 	}
 	// The line's project follows the record scope as a post's does: the
@@ -112,6 +118,12 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		}
 	}
 	ctx := hook.PromptContextAt(st, sp, p.SessionID, p.PromptID, p.CWD, project, p.PermissionMode, env)
+	if f, ok := doneFinding(run.LastSeq()); ok && done && !withheld(&ctx) {
+		found = append(found, f)
+	}
+	if len(found) == 0 {
+		return steer.Output{}, steer.Client{}
+	}
 	return steer.Route(&ctx, found), ctx.Client
 }
 

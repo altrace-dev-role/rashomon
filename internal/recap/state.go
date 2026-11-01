@@ -80,10 +80,21 @@ type state struct {
 	// Counts and no content, like the two maps above; absent in a file written
 	// before it, which reads as nothing shown.
 	Shown map[string]string `json:"shown"`
+	// Unverified maps a session id to the prompt id of the last Stop whose
+	// done flag fired (DoneFlag): a strict claim the record does not back. The
+	// next prompt of that session tells the agent once (TakeUnverified). A
+	// prompt id and no content, like the maps above; absent in a file written
+	// before it, which reads as none flagged (card c4, PF-PG9).
+	Unverified map[string]string `json:"unverified"`
+	// Noted maps a session id to the Unverified prompt id the prompt path has
+	// taken, delivered or withheld: what makes the note once per flagged Stop,
+	// so a Stop replayed for the same turn does not raise it again.
+	Noted map[string]string `json:"noted"`
 }
 
 func newState() state {
-	return state{Spoken: map[string]string{}, Checked: map[string]string{}, Shown: map[string]string{}}
+	return state{Spoken: map[string]string{}, Checked: map[string]string{}, Shown: map[string]string{},
+		Unverified: map[string]string{}, Noted: map[string]string{}}
 }
 
 func statePath(root string) string {
@@ -146,6 +157,12 @@ func readState(path string) (state, error) {
 	if s.Shown == nil {
 		s.Shown = map[string]string{}
 	}
+	if s.Unverified == nil {
+		s.Unverified = map[string]string{}
+	}
+	if s.Noted == nil {
+		s.Noted = map[string]string{}
+	}
 	return s, nil
 }
 
@@ -168,7 +185,7 @@ func readState(path string) (state, error) {
 // current is the session this write claims for, "" for none; the cap never
 // drops it (capSessions).
 func writeState(path string, s state, current string) error {
-	for _, m := range []map[string]string{s.Spoken, s.Checked, s.Shown} {
+	for _, m := range []map[string]string{s.Spoken, s.Checked, s.Shown, s.Unverified, s.Noted} {
 		capSessions(m, current)
 	}
 	removeStaleTemps(filepath.Dir(path))
@@ -269,6 +286,14 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 // (ImpactShown). "" claims no clause, and a line that was not printed
 // remembers nothing: the clause was not seen.
 func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string) (speak bool, err error) {
+	return ClaimTurn(root, sessionID, promptID, now, wantSpeak, shown, false)
+}
+
+// ClaimTurn is ClaimShown for a Stop that also says whether its done flag
+// fired: unverified keeps promptID as the session's flagged Stop, whether or
+// not a line printed, for the next prompt's note (TakeUnverified). It is
+// written with the claim, so a Stop adds no write of its own.
+func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, unverified bool) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
 	}
@@ -295,7 +320,35 @@ func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool,
 	if speak && sessionID != "" && shown != "" {
 		s.Shown[sessionID] = shown
 	}
+	if unverified && sessionID != "" && promptID != "" {
+		s.Unverified[sessionID] = promptID
+	}
 	return speak, writeState(path, s, sessionID)
+}
+
+// TakeUnverified reports whether sessionID's last flagged Stop has not been
+// taken, and takes it: the prompt path calls it once per prompt, and the
+// answer is true once per flagged Stop, whatever the prompt then does with it
+// (a switch that withholds the note consumes it, so turning steering on later
+// does not deliver a stale one). A missing or unreadable file, a write that
+// fails, or no flagged Stop answers false: a note lost costs one sentence, a
+// note repeated costs the agent's trust, so the take is written before it is
+// answered.
+func TakeUnverified(root, sessionID string) bool {
+	if sessionID == "" || !storeExists(root) {
+		return false
+	}
+	path := statePath(root)
+	s, err := readState(path)
+	if err != nil {
+		return false
+	}
+	flagged := s.Unverified[sessionID]
+	if flagged == "" || flagged == s.Noted[sessionID] {
+		return false
+	}
+	s.Noted[sessionID] = flagged
+	return writeState(path, s, sessionID) == nil
 }
 
 // RecordFailure marks this evaluation as unhealthy, for the one path where

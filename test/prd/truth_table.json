@@ -574,10 +574,26 @@
         {
           "file": "internal/recap/evidence_done_test.go",
           "symbol": "TestLW1k_DoneClauseReadsTheLedger"
+        },
+        {
+          "file": "cmd/rashomon/preflight_done.go",
+          "symbol": "doneFinding"
+        },
+        {
+          "file": "internal/recap/state.go",
+          "symbol": "TakeUnverified"
+        },
+        {
+          "file": "test/acceptance/done_note_test.go",
+          "symbol": "TestDONE1_FlaggedStopIsNotedOnceAtTheNextPrompt"
+        },
+        {
+          "file": "test/acceptance/done_note_test.go",
+          "symbol": "TestDONE1d_OffArmDecidesAndWithholds"
         }
       ],
       "id": "PF-PG9",
-      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit, but the agent is not told at the next prompt.",
+      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit. The same decision is kept in recap.json at the Stop, and the session's next prompt carries one claim-vs-record/done-unverified note to the agent, once per flagged Stop, through the prompt's own Route call (steer off, no consent and the off arm withhold it; a prompt that also carries a preflight note gets this one and the preflight waits for the next).",
       "integration": [
         {
           "event": "Stop",
@@ -586,10 +602,13 @@
         {
           "event": "UserPromptSubmit",
           "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/preflight_done.go"
         }
       ],
       "missing": [
-        "the next-prompt note to the agent: recap prints systemMessage only",
         "W1 precision measurement"
       ],
       "planned_pr": "",
