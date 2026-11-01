@@ -90,10 +90,13 @@ func TestGO9_CapBoundary(t *testing.T) {
 // over #149's tables: 11 was never released, so no user's store holds a record
 // the earlier 11 tables judged (D232's reasoning). If a build at 11 is
 // released before GATEOUT-ZERO1 merges, 12 is forced, with 11 pinned at the
-// earlier tables' 3c9478c2.
+// earlier tables' 3c9478c2. 12 is c8's bump (the lint, typecheck and scan
+// runner lists and check kinds read as no_summary); it ships the tables 11
+// pinned, so its digest is 11's: tableDigest covers only Classify's lists.
 var tablePins = map[int]string{
 	10: "10c0ad3b221731500b5c9d8e0c235dc329e35d8c71314aa147a92f5e6a61415b",
 	11: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
+	12: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
 }
 
 func TestGO10_TablesPinned(t *testing.T) {
