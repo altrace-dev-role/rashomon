@@ -294,7 +294,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// bookkeeping, not evidence, and a failure to persist it must cost at
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
-	speak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause)
+	speak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause, recap.Owed{})
 	// The channel-evidence read, at a Stop only: the checkpoint is durable
 	// (the flush above returned), and the defer runs on every return below,
 	// after the line has printed.

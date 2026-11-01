@@ -191,6 +191,21 @@ type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
 
+// ClaimVsRecordInferredBinding is claim-vs-record's next-prompt note for
+// the project's inferred test command left unrun after the last edit (card
+// GATE-INFER1, W5): the runner's name, as the Stop's line gives it, and the
+// project-relative file the command was read from.
+type ClaimVsRecordInferredBinding struct {
+	Gate slot.Gate `slot:"gate"`
+	Path slot.Path `slot:"path"`
+}
+
+// ClaimVsRecordInferredUnnamedBinding is that note's form for a file the
+// path slot refuses.
+type ClaimVsRecordInferredUnnamedBinding struct {
+	Gate slot.Gate `slot:"gate"`
+}
+
 // LearnedFactBinding is learned-fact's note at a prompt (LEARN-DELIVER1): an
 // approved lesson's id and its text, which renders in quotes.
 type LearnedFactBinding struct {

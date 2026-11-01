@@ -49,10 +49,15 @@ type StopInput struct {
 // the index has seen a test run in the project: the row's trust is then the
 // learned gates' word, builtin, and else SourceInferred, which the Stop's
 // line labels. Its words never reach the record: the row's id is closed.
+// From, the file it was read from, and Declared, whether the project names
+// the command there rather than by convention, are the next prompt's note's
+// (W5); EvaluateStop reads neither.
 type InferredGate struct {
-	Argv    []string
-	Dir     string
-	Learned bool
+	Argv     []string
+	Dir      string
+	Learned  bool
+	From     string
+	Declared bool
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and

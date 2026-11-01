@@ -76,6 +76,10 @@ type state struct {
 	// Counts and no content, like the two maps above; absent in a file written
 	// before it, which reads as nothing shown.
 	Shown map[string]string `json:"shown"`
+	// Owed maps a session id to what its last turn end owes the next
+	// prompt (Owed): a record seq, a runner's name and a file name, no
+	// content. Absent in a file written before it, which reads as none.
+	Owed map[string]Owed `json:"owed"`
 }
 
 func newState() state {
@@ -233,7 +237,7 @@ func capSessions(m map[string]string, current string) {
 // missing line and never a hook error. The caller is expected to ignore the
 // returned error for exactly that reason and is told so at the call site.
 func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (speak bool, err error) {
-	return ClaimShown(root, sessionID, promptID, now, wantSpeak, "")
+	return ClaimShown(root, sessionID, promptID, now, wantSpeak, "", Owed{})
 }
 
 // ClaimShown is Claim for a line that carried an AutoSteer clause: shown is
@@ -241,7 +245,7 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 // printed, so the next Stop prints a clause only if the counts differ
 // (ImpactShown). "" claims no clause, and a line that was not printed
 // remembers nothing: the clause was not seen.
-func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string) (speak bool, err error) {
+func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
 	}
@@ -345,4 +349,23 @@ func ImpactShown(root, sessionID string) string {
 		return ""
 	}
 	return s.Shown[sessionID]
+}
+
+// Owed is what a turn end leaves the session's next prompt (card
+// GATE-INFER1, W5): the record seq of the Stop point that judged the
+// project's inferred test command not run after the turn's last edit,
+// whether it had run before that edit (stale) or not at all, the runner's
+// name the Stop's line gives it, and the project-relative file it was read
+// from. The zero Owed is none.
+type Owed struct {
+	Seq   int64  `json:"seq"`
+	Stale bool   `json:"stale,omitempty"`
+	Gate  string `json:"gate"`
+	From  string `json:"from"`
+}
+
+// Turn is Pending, and what the last turn end of sessionID owes its next
+// prompt.
+func Turn(root, sessionID, promptID string) (pending bool, owed Owed) {
+	return Pending(root, sessionID, promptID), Owed{}
 }
