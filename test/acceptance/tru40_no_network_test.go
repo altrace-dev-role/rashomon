@@ -64,6 +64,33 @@ func TestTRU40_ReadmeNetworkSentenceMatchesTheTest(t *testing.T) {
 	}
 }
 
+// NO-EGRESS1. The consent screen promises that rashomon itself makes no network
+// connection and that nothing is sent anywhere. The README's sentence is pinned
+// to forbiddenImports above; the screen's was pinned to nothing, so dropping net
+// from the ban and rewriting the README to match left the screen promising what
+// no test checked. While the screen carries the promise, the ban keeps the
+// packages that open a connection. The screen is read as `watch --show` prints
+// it, the text a user agrees to, not as the source spells it.
+func TestTRU40_ConsentScreensNetworkPromiseHasTheBanBehindIt(t *testing.T) {
+	e := newEnv(t)
+	shown := e.run("", []string{"CLAUDECODE=1"}, "watch", "--show")
+	if shown.exitCode != 0 {
+		t.Fatalf("watch --show: exit %d, stderr %q", shown.exitCode, shown.stderr)
+	}
+	// The screen wraps its paragraphs; each promise is one sentence.
+	screen := strings.Join(strings.Fields(shown.stdout), " ")
+	for _, promise := range []string{"rashomon itself makes no network connection", "Nothing is sent anywhere."} {
+		if !strings.Contains(screen, promise) {
+			t.Fatalf("premise: the consent screen no longer says %q; if the promise was withdrawn on purpose, this test goes with it", promise)
+		}
+	}
+	for _, pkg := range []string{"net", "net/http", "crypto/tls"} {
+		if _, banned := forbiddenImports[pkg]; !banned {
+			t.Errorf("the consent screen promises no network connection, but %s is not in the ban TestTRU40_BinaryHasNoNetworkingPackage enforces", pkg)
+		}
+	}
+}
+
 // networkSentence is the README's claim, rendered from the banned set.
 func networkSentence() string {
 	pkgs := make([]string, 0, len(forbiddenImports))
