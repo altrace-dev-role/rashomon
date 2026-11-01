@@ -19,13 +19,14 @@ const (
 	dkPattern
 	dkSlots
 	dkState
+	dkSuppressedBy
 	dkCount
 )
 
 // lineKeys is the one KeySet a steer line is read with (RES-5's pattern: no
 // decode of a whole line).
 func lineKeys() *jsonscan.KeySet {
-	lineKeysOnce.Do(func() { lineKeysOnce.v = jsonscan.NewKeySet("key", "pattern", "slots", "state") })
+	lineKeysOnce.Do(func() { lineKeysOnce.v = jsonscan.NewKeySet("key", "pattern", "slots", "state", "suppressed_by") })
 	return lineKeysOnce.v
 }
 
@@ -38,14 +39,16 @@ var lineKeysOnce struct {
 
 // ReadDelivered reads the delivered set from a run's steer lines: every
 // task-preflight line in state delivered, whatever its delivery (a held-out
-// note was still given), read through jsonscan as RES-5 asks. The set is
-// what the lines' slots named; a line that does not read is passed over.
+// note was still given), and every one arm off withheld (state suppressed,
+// suppressed_by arm_off: the steer arm gave it), read through jsonscan as
+// RES-5 asks. The set is what the lines' slots named; a line that does not
+// read is passed over.
 func ReadDelivered(lines [][]byte) Delivered {
 	d := Delivered{Paths: map[string]bool{}, Rules: map[string]bool{}, Gates: map[string]bool{}, Evidence: map[string]bool{}}
 	var out [dkCount]jsonscan.Span
 	for _, b := range lines {
-		if jsonscan.Top(b, lineKeys(), out[:]) != nil ||
-			text(b, out[dkPattern]) != string(pattern.TaskPreflight) || text(b, out[dkState]) != string(steer.LineStateDelivered) {
+		if jsonscan.Top(b, lineKeys(), out[:]) != nil || text(b, out[dkPattern]) != string(pattern.TaskPreflight) ||
+			text(b, out[dkState]) != string(steer.LineStateDelivered) && text(b, out[dkSuppressedBy]) != string(steer.SuppressedByArmOff) {
 			continue
 		}
 		if text(b, out[dkKey]) == keyBrief {

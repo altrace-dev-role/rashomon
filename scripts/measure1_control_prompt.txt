@@ -1,0 +1,1 @@
+Control probe. Name the module declared in go.mod, in one short line, then stop.
