@@ -140,7 +140,8 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 }
 
 // pinRequired sets each gate pins names to the Required it names, and then
-// the record green that follows (D36); a gate pins does not name keeps
+// the record green that follows (D36), read as evaluate reads it, binding
+// rule violations included (recordGreenOf); a gate pins does not name keeps
 // evaluate's. Nil pins nothing.
 func pinRequired(snap *Snapshot, pins map[string]bool) {
 	if pins == nil {
@@ -151,7 +152,7 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 			snap.Gates[i].Required = r
 		}
 	}
-	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreenOf(snap)
 }
 
 // programs maps each gate to the program of the run its LastRun names, found

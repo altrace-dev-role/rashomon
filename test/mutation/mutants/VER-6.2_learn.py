@@ -36,7 +36,7 @@ m("VER-6.2 an import keeps the tier it names", D,
 m("VER-6.2 an import takes a text over the steer cap", D,
   " || len(ls.Text) > store.MaxSteerTextBytes || ", " || ", "TestP6_ImportLandsAtProposed")
 m("VER-6.2 approval moves a lesson already approved", D,
-  "\tif l.file.Lessons[i].Tier != TierProposed {\n", "\tif false {\n", "TestP6_ApprovalMovesOnlyAProposedLesson")
+  "\tif !l.file.Lessons[i].AwaitsApproval() {\n", "\tif false {\n", "TestP6_ApprovalMovesOnlyAProposedLesson")
 
 # active.json and quarantine.
 m("VER-6.2 a proposed lesson reaches active.json", D,

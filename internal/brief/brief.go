@@ -102,8 +102,7 @@ type Brief struct {
 	WalkCapped   bool
 	Dirs         []string
 	// Index is the project index as read from the store, nil when there is
-	// none or it did not read: what the tests line counts, and where the
-	// previous session is named (ProjectIndex.PreviousOf).
+	// none or it did not read: what the tests line counts.
 	Index *verify.ProjectIndex
 }
 

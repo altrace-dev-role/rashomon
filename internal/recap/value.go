@@ -285,11 +285,16 @@ func columns(s string) int { return len([]rune(s)) }
 
 // sentence is the row's sentence (tech 2.2.11's table, first match won in
 // TurnSummary), naming at most k programs in a gate list, with "; advisory
-// only" when the row was read from advisory gates; short as gateSet's.
+// only" when the row was read from advisory gates, and then the record
+// findings' count clause on a row other than findings that has any (D-f);
+// short as gateSet's.
 func sentence(v verify.StopView, k int, short bool) string {
 	s := rowSentence(v, k, short)
 	if s != "" && v.Summary.Advisory() {
 		s += "; advisory only"
+	}
+	if c := v.Summary.FindingsClause(); s != "" && c != "" {
+		s += "; " + c
 	}
 	return s
 }
