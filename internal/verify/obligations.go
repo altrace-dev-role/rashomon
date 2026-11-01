@@ -280,14 +280,14 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 }
 
 // obligationSource is a gate's source as a row carries it, and whether it is
-// one of the three GateState.Source names (snapshot.go); another is carried
-// as given.
+// one of the four GateState.Source names (snapshot.go); another is carried
+// as given. An inferred gate's rows carry its own word (GATE-INFER1).
 func obligationSource(s string) (string, bool) {
 	switch s {
 	case "declared", "ci_commands":
 		return obligationSourceSpec, true
-	case sourceLearned:
-		return sourceLearned, true
+	case sourceLearned, SourceInferred:
+		return s, true
 	}
 	return s, false
 }

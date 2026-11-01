@@ -34,7 +34,7 @@ m("LRN-17 the size case reported as the signature case", A,
 # The call site: a lesson with a prompt that names nothing, and routed beside
 # the preflight note so the note supersedes it.
 m("LRN-17 a prompt naming nothing gives no lesson", P,
-  "\tif !named && !proj.lessons.Any() {\n", "\tif !named {\n", "TestLRN17_")
+  "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 {\n", "\tif !named && p.owed.Seq <= 0 {\n", "TestLRN17_")
 m("LRN-17 the lesson dropped when the preflight has a note", R,
   "\tif f, ok := lessonFinding(a, afterSeq, given, paths); ok && !rode {\n",
   "\tif f, ok := lessonFinding(a, afterSeq, given, paths); ok && !rode && len(found) == 0 {\n", "TestLRN17m_")

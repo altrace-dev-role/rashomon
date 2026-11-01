@@ -97,7 +97,7 @@ func TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput(t *testing.T) {
 	} {
 		// The sentence unfitted: the 80-column fit names fewer programs
 		// (and keeps the clause, which names the gates read from output).
-		if got := sentence(viewOf(verify.RowVerified, wrote, c.gates...), maxGateNames); got != c.want {
+		if got := sentence(viewOf(verify.RowVerified, wrote, c.gates...), maxGateNames, false); got != c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
 		}
 	}

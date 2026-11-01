@@ -136,7 +136,7 @@ func BenchmarkRecap(b *testing.B) {
 // the note's render and its steer line, which is removed before each call so
 // that every call gives the session's first note. /no_ledger, /lessons_3 and
 // /lessons_caps are the common path, a prompt after a turn its Stop reached,
-// which the catch-up leaves at recap.Pending, with the lesson read every
+// which the catch-up leaves at recap.Turn, with the lesson read every
 // prompt makes (LEARN-DELIVER1, D171 LD9): no ledger, so baseline.Key's walk
 // and one Lstat; three approved lessons, the first given; and the same with
 // lessons.json and labels.ndjson each at the 4 MiB the prompt path hashes
@@ -173,7 +173,7 @@ func benchSteerPins(b *testing.B) {
 // session, consented to notes, and a prompt naming internal/verify/stop.go
 // of a project that holds it. stopped is /preflight_stopped, the common
 // path: the turn's Stop reached the previous prompt, so recap.json stays as
-// that Stop wrote it, the catch-up returns at recap.Pending with the note
+// that Stop wrote it, the catch-up returns at recap.Turn with the note
 // only, and /preflight stays the upper bound (it removes recap.json, so it
 // always runs the catch-up branch). The steer log is removed before each call
 // either way, so every call gives the session's first note.
