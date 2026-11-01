@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
@@ -10,6 +13,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -90,6 +94,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	projectDir, managedDir := specDirs()
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
+	v.Unbound = unboundSpecs(run, &v.Snap, sp, st.Root(), seq)
 	// The steer lines are already read; no ledger opens at Stop (learn.Open
 	// can write), so the lessons are not read here.
 	impact := recap.ImpactOf(v, lines, nil)
@@ -111,6 +116,52 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
 		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending}, nil
+}
+
+// unboundSpecs is each repository spec in sp, project-relative, that the
+// session wrote (a store_touched entry names it), that reads untrusted, and
+// that a binding names: the binding is at another digest, or discovery would
+// have read it trusted, so the user trusted it and an edit dropped the
+// trust, which `rashomon spec trust` gives back (SPEC-TRUST-DROP1, d4). A
+// spec never trusted is the brief's to name. After a session write under
+// the store root no binding holds for the rest of the session
+// (hook.TrustRoot, D173), so a trust would not give it back, and nothing is
+// named. The bindings and the store-write pass are read only for an
+// untrusted spec the session wrote.
+func unboundSpecs(run *store.Run, snap *verify.Snapshot, sp *spec.Compiled, root string, seq int64) []string {
+	if sp == nil {
+		return nil
+	}
+	var out []string
+	var b *spec.Bindings
+	for _, s := range sp.Sources {
+		if s.Trust != spec.Untrusted || !specWritten(snap, s.Path) {
+			continue
+		}
+		if b == nil {
+			var err error
+			if b, err = spec.ReadBindings(spec.OSFS{}, root); err != nil || verify.StoreWritten(run, root, seq) {
+				return nil
+			}
+		}
+		project := hook.SpecProject(s.Path)
+		if _, ok := b.Of(project, s.Path); ok {
+			if r, err := filepath.Rel(project, s.Path); err == nil {
+				out = append(out, filepath.ToSlash(r))
+			}
+		}
+	}
+	return out
+}
+
+// specWritten reports whether a store_touched entry in snap names path. The
+// entry's path is relativised to the call's project or cwd, so it names
+// path when it is path or ends it after a separator.
+func specWritten(snap *verify.Snapshot, path string) bool {
+	slashed := filepath.ToSlash(path)
+	return slices.ContainsFunc(snap.Integrity.Unresolved, func(e verify.IntegrityEntry) bool {
+		return e.Check == verify.StoreTouched && e.Path != "" && (e.Path == slashed || strings.HasSuffix(slashed, "/"+e.Path))
+	})
 }
 
 // noteCheckpoint makes the checkpoint at seq the project's Last in its own

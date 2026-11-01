@@ -59,6 +59,12 @@ type StopView struct {
 	// over the classification Snap came from, then Expected's rows, never
 	// nil.
 	Obligations []Obligation
+	// Unbound is each repository spec, project-relative, the session edited
+	// after the user trusted it (SPEC-TRUST-DROP1): its binding names
+	// another digest, so what it declares flags to the user only until
+	// `rashomon spec trust`. EvaluateStop reads no bindings, so the Stop's
+	// caller fills it; nil for none.
+	Unbound []string
 }
 
 // EvaluateStop is the Stop hook's view at pt. One classification feeds the
