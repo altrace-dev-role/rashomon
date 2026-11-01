@@ -24,3 +24,9 @@ m("A8  an entry that stays is treated as removed and re-added", "internal/settin
 m("A8  removing a top-level member re-renders the document", "internal/settings/document.go",
   "\t\t\td.edit(func(buf []byte) ([]byte, bool) { return spliceRemove(buf, true, i) })",
   "\t\t\td.edit(func(buf []byte) ([]byte, bool) { return nil, false })", T)
+m("A8  an empty event array is filled at column zero", "internal/settings/document.go",
+  "\t\tarr = renderArrayAt(entries, d.eventIndent(h.raw, ei))",
+  "\t\tarr = renderArrayAt(entries, \"\")", T)
+m("A8  an empty hooks object is filled at column zero", "internal/settings/document.go",
+  "\t\t\tcol := d.memberIndent(hooksKey)\n\t\t\tobj :=",
+  "\t\t\tcol := \"\"\n\t\t\tobj :=", T)

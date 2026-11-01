@@ -193,6 +193,14 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 	if ei < 0 {
 		arr := writeArray(entries, 2)
 		key, _ := json.Marshal(event)
+		if h != nil && len(events) == 0 && !isNull(h.raw) {
+			// A hooks object the user left empty: only its {} is replaced, the
+			// entries indented to the column it sits at.
+			col := d.memberIndent(hooksKey)
+			obj := []byte("{\n" + col + "  " + string(key) + ": " + string(renderArrayAt(entries, col+"  ")) + "\n" + col + "}")
+			d.setHooks(obj)
+			return nil
+		}
 		if h != nil && !isNull(h.raw) {
 			if obj, ok := spliceAppend(h.raw, true, key, arr); ok {
 				d.setHooks(obj)
@@ -203,7 +211,13 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 		return nil
 	}
 
-	arr := spliceEntries(events[ei].raw, entries)
+	var arr []byte
+	if old, _ := parseArray(event, events[ei].raw); len(old) == 0 && len(entries) > 0 {
+		// An event the user left as an empty array: only its [] is replaced.
+		arr = renderArrayAt(entries, d.eventIndent(h.raw, ei))
+	} else {
+		arr = spliceEntries(events[ei].raw, entries)
+	}
 	if obj, ok := spliceReplace(h.raw, ei, arr); ok {
 		d.setHooks(obj)
 		return nil
@@ -530,3 +544,60 @@ func writeArray(items []json.RawMessage, depth int) []byte {
 func Indent(depth int) string { return indent(depth) }
 
 func indent(depth int) string { return strings.Repeat("  ", depth) }
+
+// memberIndent is the indentation of the line the top-level member key starts
+// on in the document as it stands, or the editor's own for a document with no
+// bytes to ask.
+func (d *Document) memberIndent(key string) string {
+	cur := d.src
+	if d.buf != nil {
+		cur = d.buf
+	}
+	for i := range d.members {
+		if d.members[i].key != key {
+			continue
+		}
+		if spans, ok := spansOf(cur, true); ok && i < len(spans) {
+			return lineIndent(cur, spans[i].start)
+		}
+	}
+	return indent(1)
+}
+
+// eventIndent is the indentation of the line event ei starts on in the hooks
+// object raw, or that of the hooks member when raw is written on one line.
+func (d *Document) eventIndent(raw []byte, ei int) string {
+	spans, ok := spansOf(raw, true)
+	if ok && ei < len(spans) && bytes.IndexByte(raw[:spans[ei].start], '\n') >= 0 {
+		return lineIndent(raw, spans[ei].start)
+	}
+	return d.memberIndent(hooksKey)
+}
+
+// lineIndent is the run of spaces and tabs at the start of the line that holds
+// offset at.
+func lineIndent(b []byte, at int) string {
+	start := bytes.LastIndexByte(b[:at], '\n') + 1
+	end := start
+	for end < at && (b[end] == ' ' || b[end] == '\t') {
+		end++
+	}
+	return string(b[start:end])
+}
+
+// renderArrayAt renders entries as a multi-line array whose closing bracket is
+// at base.
+func renderArrayAt(entries []json.RawMessage, base string) []byte {
+	var b bytes.Buffer
+	b.WriteString("[\n")
+	for i, e := range entries {
+		b.WriteString(base + "  ")
+		b.Write(e)
+		if i < len(entries)-1 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString(base + "]")
+	return b.Bytes()
+}

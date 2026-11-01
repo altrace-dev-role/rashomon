@@ -96,6 +96,43 @@ func TestDetachByteExact_InlineHooksStayInline(t *testing.T) {
 	}
 }
 
+// A container the user left empty is filled by replacing only its [] or {},
+// the entries at the column it sits at, and the rest of the file is the user's
+// bytes. Detach cannot tell such a container from one watch created (a file
+// recording only hashes cannot say which keys were there), so it leaves the
+// file residue-free: the empty container goes, and nothing else changes.
+func TestDetachByteExact_EmptyContainersAreFilledInPlace(t *testing.T) {
+	const gone = "{\n  \"env\": {\"A\": \"1\"}\n}\n"
+	for _, c := range []struct{ name, seed, prefix, suffix string }{
+		{"empty event array", "{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {\n    \"PreToolUse\": []\n  }\n}\n",
+			"{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n", "\n    ]\n  }\n}\n"},
+		{"empty hooks object", "{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {}\n}\n",
+			"{\n  \"env\": {\"A\": \"1\"},\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n", "\n    ]\n  }\n}\n"},
+	} {
+		doc, err := settings.Parse([]byte(c.seed))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Apply(doc, spec(oneID)); err != nil {
+			t.Fatal(err)
+		}
+		got := string(doc.Bytes())
+		if !strings.HasPrefix(got, c.prefix) || !strings.HasSuffix(got, c.suffix) {
+			t.Errorf("%s: the file outside the empty container changed, or the entries are not at its column:\n%s", c.name, got)
+		}
+		back, err := settings.Parse(doc.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := Remove(back, spec(oneID), false); err != nil {
+			t.Fatal(err)
+		}
+		if string(back.Bytes()) != gone {
+			t.Errorf("%s: detach changed more than the empty container:\n%q", c.name, back.Bytes())
+		}
+	}
+}
+
 // What watch adds follows the layout the file already has between entries:
 // the separator of its last two entries, or the line break and indentation of
 // its only one.
