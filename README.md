@@ -43,9 +43,8 @@ terminal, not inside a Claude Code session:
     curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
     rashomon watch
 
-That installs the latest release, v1.2.0-alpha.1 (the plugin route does too:
-[below](#other-install-routes)). To build `main` instead, which is ahead of
-the release and has everything this README describes:
+That installs the latest release, v1.2.0-alpha.1. To build `main` instead,
+which is ahead of the release and has everything this README describes:
 
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
     rashomon watch
