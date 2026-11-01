@@ -28,7 +28,7 @@ set -eu
 
 REPO="${RASHOMON_REPO:-altrace-dev-role/rashomon}"
 BASE_URL="${RASHOMON_BASE_URL:-https://github.com/${REPO}/releases/download}"
-API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+LATEST_SUMS_URL="https://github.com/${REPO}/releases/latest/download/checksums.txt"
 INSTALL_DIR="${RASHOMON_INSTALL_DIR:-${HOME}/.local/bin}"
 
 say()  { printf '%s\n' "$*"; }
@@ -64,7 +64,10 @@ os=$(uname -s)
 case "$os" in
   Darwin) OS=darwin ;;
   Linux)  OS=linux  ;;
-  *) die "unsupported operating system: $os (this release ships macOS and Linux)" ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+     die "Windows is not supported yet: no hook path is tested there.
+  Under WSL, run this installer inside your WSL shell." ;;
+  *) die "unsupported operating system: $os (macOS and Linux are supported)" ;;
 esac
 
 arch=$(uname -m)
@@ -79,13 +82,16 @@ esac
 if [ -n "${RASHOMON_VERSION:-}" ]; then
   TAG="$RASHOMON_VERSION"
 else
-  # Parse the tag out of the latest-release API without depending on jq.
-  TAG=$(fetch_out "$API_URL" 2>/dev/null \
-        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  # The latest release's checksums file names its archives, and so its
+  # version. It comes from the release host, not from api.github.com, which
+  # allows 60 unauthenticated requests an hour per address.
+  LATEST=$(fetch_out "$LATEST_SUMS_URL" 2>/dev/null \
+        | sed -n "s/^[0-9a-f]\{64\}[[:space:]]\{1,\}\*\{0,1\}rashomon_\(.*\)_${OS}_${ARCH}\.tar\.gz\$/\1/p" \
         | head -n 1) || true
-  [ -n "${TAG:-}" ] || die "could not resolve the latest release of ${REPO}.
-  If no release exists yet, build from source instead:
-      go install github.com/${REPO}/cmd/rashomon@main"
+  [ -n "${LATEST:-}" ] || die "could not read the latest release of ${REPO}.
+  Pick a tag from https://github.com/${REPO}/releases
+  and run this installer again with RASHOMON_VERSION=<tag> set."
+  TAG="v${LATEST}"
 fi
 
 # goreleaser's archive names carry the version WITHOUT the leading v.
