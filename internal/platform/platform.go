@@ -59,10 +59,17 @@ type Family struct {
 // log cannot be read whole within Deadline, or is unknown to this package, it
 // is one unknown row with no family: never a partial answer.
 func Obligations(run RunView) []verify.Obligation {
+	return obligationsWithin(run, Deadline)
+}
+
+// obligationsWithin is Obligations under deadline d: the seam a test that
+// checks the rows' content, not the deadline, runs with a generous d so a
+// loaded machine cannot turn its answer into the timeout's unknown row.
+func obligationsWithin(run RunView, d time.Duration) []verify.Obligation {
 	if run.LogPath == "" || len(run.WrittenPaths) == 0 {
 		return []verify.Obligation{}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), Deadline)
+	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
 	fams, err := Impact(ctx, run.Root, run.LogPath, run.WrittenPaths)
 	if err != nil {

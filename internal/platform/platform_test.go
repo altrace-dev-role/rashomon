@@ -213,7 +213,9 @@ func TestPL8c2_DeadlineCancelsTheWork(t *testing.T) {
 // its Hash; no writes, or no log, owe no row.
 func TestPL8d_ObligationsCarryPlatformImpactKindOnly(t *testing.T) {
 	root, lp := project(t, fixtureLog(t))
-	rows := Obligations(RunView{Root: root, WrittenPaths: []string{"b/b.go", "a/a.go"}, LogPath: lp})
+	// The shape is under test, not the deadline (TestPL8c*): a minute, so a
+	// loaded runner cannot turn the answer into the timeout's unknown row.
+	rows := obligationsWithin(RunView{Root: root, WrittenPaths: []string{"b/b.go", "a/a.go"}, LogPath: lp}, time.Minute)
 	want := []string{pkgA + "@" + hashA, pkgB + "@" + hashB}
 	if len(rows) != len(want) {
 		t.Fatalf("rows %+v, want %d", rows, len(want))
