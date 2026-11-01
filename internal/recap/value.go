@@ -213,8 +213,8 @@ func unboundLines(v verify.StopView) string {
 		if s := slot.Path(p); s.Validate() == nil {
 			name = s.Text()
 		}
-		b.WriteString(continuation() + name + " was edited after you trusted it,\n")
-		b.WriteString(continuation() + "so it flags to you only until you run rashomon spec trust.\n")
+		b.WriteString(continuation() + name + " was edited after you trusted it, so it\n")
+		b.WriteString(continuation() + "no longer counts; review the edit, then run rashomon spec trust.\n")
 	}
 	return b.String()
 }

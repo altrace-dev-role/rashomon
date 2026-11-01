@@ -187,7 +187,7 @@ func trustState(b *spec.Bindings, project, path, digest string) string {
 	case ok && x.SpecDigest == digest:
 		return "now trusted\n  these count:"
 	case ok:
-		return "now untrusted: edited since it was trusted, so it flags to you only\n  once trusted again, these count:"
+		return "now untrusted: edited since it was trusted, so it does not count\n  once trusted again, these count:"
 	}
 	return "now untrusted: flags to you only\n  once trusted, these count:"
 }

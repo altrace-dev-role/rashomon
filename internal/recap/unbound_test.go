@@ -22,8 +22,8 @@ func TestSTD1c_TheLineNamesASpecAnEditUnbound(t *testing.T) {
 	const steered = "AutoSteer: 1 regression location given at the failure.\n"
 	im := Impact{Delivered: []NoteRef{{Pattern: "regression-location", Event: "PostToolUseFailure"}}}
 	pair := func(name string) string {
-		return indent + name + " was edited after you trusted it,\n" +
-			indent + "so it flags to you only until you run rashomon spec trust.\n"
+		return indent + name + " was edited after you trusted it, so it\n" +
+			indent + "no longer counts; review the edit, then run rashomon spec trust.\n"
 	}
 	for _, c := range []struct {
 		name    string
