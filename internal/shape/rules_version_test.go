@@ -27,14 +27,15 @@ var runnerListPins = map[int]string{
 	9:  "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 9 ended a comment at its newline in the program search; the lists are unchanged
 	10: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 10 named a Bash line's write targets (writeTargetPins); the lists are unchanged
 	11: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
+	12: "515df41c5e471108d67e5000c1997a8a371311eeb4918fd943a7d703416ea234", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and moved go vet and cargo clippy to lint and cargo check to typecheck; the in-place tables, flag tables and corpora are unchanged except the runner lists
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
 // words, each row, and the two lists apart.
 func runnerListsDigest() string {
 	var b strings.Builder
-	for _, list := range [][][]string{testCommands, buildCommands} {
-		for _, row := range list {
+	for _, l := range runnerLists {
+		for _, row := range l.rows {
 			b.WriteString(strings.Join(row, "\x1f"))
 			b.WriteByte('\x1e')
 		}
@@ -74,6 +75,7 @@ var writeTablePins = map[int]string{
 	9:  "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 9 ended a comment at its newline in the program search; the in-place tables are unchanged
 	10: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 10 named a Bash line's write targets (writeTargetPins); the in-place tables are unchanged
 	11: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
+	12: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8); this table or corpus is unchanged
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -131,6 +133,7 @@ var matcherPins = map[int]string{
 	9:  "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // a comment ends at its newline in the program search as in the masked parser: the cd steps after `# c\` fold and the runner is go test (2026-10-28)
 	10: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 10 named a Bash line's write targets (writeTargetPins) and factored stageMayWrite out of mayWrite; no matcher field moves (2026-10-28)
 	11: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
+	12: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8); this table or corpus is unchanged
 }
 
 // matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
@@ -230,6 +233,7 @@ var flagTablePins = map[int]string{
 	9:  "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 9 ended a comment at its newline in the program search; the flag tables are unchanged
 	10: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 10 named a Bash line's write targets (writeTargetPins); the flag tables are unchanged
 	11: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
+	12: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8); this table or corpus is unchanged
 }
 
 // flagTablesDigest digests notARun (each runner in sorted order, then its
@@ -303,6 +307,7 @@ func TestWT10_MayWriteUnchanged(t *testing.T) {
 var writeTargetPins = map[int]string{
 	10: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b",
 	11: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
+	12: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8); this table or corpus is unchanged
 }
 
 // writeTargetCorpus is the lines writeTargetPins digests, a frozen copy of the
@@ -362,6 +367,7 @@ func TestRulesVersion_WriteTargets(t *testing.T) {
 // edited, and the corpus grows only with a bump.
 var maskedStagePins = map[int]string{
 	11: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c",
+	12: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8); this table or corpus is unchanged
 }
 
 // maskedStageCorpus is the lines maskedStagePins digests, a frozen copy of the

@@ -81,7 +81,7 @@ func TestMO1_OnlyAKeepingStageOnRulesElevenReadsOutput(t *testing.T) {
 		}
 	}
 	old := tailedPytest(1, "tail", "summary_pass")
-	old.rules = shape.RulesVersion - 1
+	old.rules = shape.OutputOutcomeRulesVersion - 1
 	wantState(t, one(t, statesAt(t, 2, old)), MaskedInconclusive, MaskedWithSuccessLine)
 }
 

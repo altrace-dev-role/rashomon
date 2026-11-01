@@ -24,11 +24,16 @@ func mo1Word(p *string) string {
 	return *p
 }
 
-// TestMO1_RulesVersionIsEleven: the version the runner's name and the masking
-// stage are decided at. A literal, not a comparison with the pins' own key.
-func TestMO1_RulesVersionIsEleven(t *testing.T) {
-	if RulesVersion != 11 {
-		t.Errorf("RulesVersion = %d, want 11 (MASKED-OUTCOME1: runner_name and masked_by)", RulesVersion)
+// TestMO1_RulesVersionIsTwelve: the version the lint, typecheck and scan lists
+// (C8) are decided at, after eleven named the runner and the masking stage
+// (MASKED-OUTCOME1: runner_name and masked_by; OutputOutcomeRulesVersion).
+// A literal, not a comparison with the pins' own key.
+func TestMO1_RulesVersionIsTwelve(t *testing.T) {
+	if RulesVersion != 12 {
+		t.Errorf("RulesVersion = %d, want 12 (C8: the lint, typecheck and scan runner lists)", RulesVersion)
+	}
+	if OutputOutcomeRulesVersion != 11 {
+		t.Errorf("OutputOutcomeRulesVersion = %d, want 11: records written at 11 already carry masked_by", OutputOutcomeRulesVersion)
 	}
 }
 
@@ -180,7 +185,8 @@ func TestMO1_RowNamesAreTheRows(t *testing.T) {
 	for _, c := range []struct {
 		names []string
 		rows  [][]string
-	}{{testCommandNames(), testCommands}, {buildCommandNames(), buildCommands}} {
+	}{{testCommandNames(), testCommands}, {buildCommandNames(), buildCommands}, {lintCommandNames(), lintCommands},
+		{typecheckCommandNames(), typecheckCommands}, {scanCommandNames(), scanCommands}} {
 		if len(c.names) != len(c.rows) {
 			t.Fatalf("%d names for %d rows", len(c.names), len(c.rows))
 		}
@@ -270,6 +276,9 @@ func TestMO1_TheListsFitAOneByteId(t *testing.T) {
 	}{
 		{"testCommandNames", testCommandNames()},
 		{"buildCommandNames", buildCommandNames()},
+		{"lintCommandNames", lintCommandNames()},
+		{"typecheckCommandNames", typecheckCommandNames()},
+		{"scanCommandNames", scanCommandNames()},
 		{"RunnerNames", RunnerNames()},
 		{"MaskedByWords", MaskedByWords()},
 	} {
@@ -277,7 +286,11 @@ func TestMO1_TheListsFitAOneByteId(t *testing.T) {
 			t.Errorf("%s has %d words, want at most 254 for a one-byte id", l.name, len(l.words))
 		}
 	}
-	if got, want := len(RunnerNames()), len(testCommandNames())+len(buildCommandNames()); got != want {
-		t.Errorf("RunnerNames has %d words, want the two lists' %d", got, want)
+	want := 0
+	for _, l := range runnerLists {
+		want += len(l.names())
+	}
+	if got := len(RunnerNames()); got != want {
+		t.Errorf("RunnerNames has %d words, want the lists' %d", got, want)
 	}
 }

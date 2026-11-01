@@ -716,3 +716,26 @@ func BenchmarkGateStates(b *testing.B) {
 		gateStates(runs, writes, unnamed, at, nil)
 	}
 }
+
+// TestC8_ALintRunIsALearnedGateOfKindLint: a run whose record carries
+// runner_kind lint (or typecheck or scan) is a learned gate of that kind, its
+// id names the kind, and it is a family of its own beside the test gate of the
+// same location.
+func TestC8_ALintRunIsALearnedGateOfKindLint(t *testing.T) {
+	for _, kind := range []string{shape.RunnerLint, shape.RunnerTypecheck, shape.RunnerScan} {
+		check := call{seq: 3, tool: "Bash", prog: "tool", class: shape.VerbExecute, runner: "tool-run", kind: kind, masked: shape.MaskedNone, outcome: store.ExecOK, loc: "d:repo"}
+		r := runOf(t, gateCall(1, "go-test", store.ExecOK), check)
+		got := statesOf(t, r, 14)
+		want := "learned:" + kind + ":r:tool-run@d:repo"
+		found, tests := false, 0
+		for _, g := range got {
+			found = found || g.Gate == want && g.Kind == kind
+			if g.Kind == "test" {
+				tests++
+			}
+		}
+		if len(got) != 2 || !found || tests != 1 {
+			t.Errorf("%s: rows %+v, want the %s gate (%s) and the test gate", kind, got, kind, want)
+		}
+	}
+}

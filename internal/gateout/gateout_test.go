@@ -365,3 +365,16 @@ func TestMO1_PytestPassIsItsSummaryLine(t *testing.T) {
 		}
 	}
 }
+
+// TestC8_CheckKindsAreNoSummary: a lint, typecheck or scan run is attributable
+// like a build: its output is not scanned, the word is no_summary and the
+// parser is the program. Any other kind is still unattributable (custom, "").
+func TestC8_CheckKindsAreNoSummary(t *testing.T) {
+	for _, kind := range []string{"lint", "typecheck", "scan"} {
+		want(t, Classify(kind, "ruff", []byte("All checks passed!")), "no_summary", "ruff", nil)
+		want(t, Classify(kind, "ruff", nil), "no_summary", "ruff", nil)
+	}
+	for _, kind := range []string{"custom", "", "Lint"} {
+		want(t, Classify(kind, "ruff", nil), "unattributable", "", nil)
+	}
+}

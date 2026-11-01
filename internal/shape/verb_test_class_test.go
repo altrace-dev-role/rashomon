@@ -457,8 +457,8 @@ func TestLeadingFlagsAreNotRefusals(t *testing.T) {
 		words = append(words, list...)
 	}
 	for prog := range leadingFlags {
-		for _, rows := range [][][]string{testCommands, buildCommands} {
-			for _, c := range rows {
+		for _, l := range runnerLists {
+			for _, c := range l.rows {
 				if c[0] != prog {
 					continue
 				}

@@ -12,14 +12,17 @@ import (
 // MaxScanBytes bounds the runner output scanned for a gate result (D22).
 const MaxScanBytes = 1 << 20
 
-// Classify reports the table-driven result of test runner output. Build
-// runners and unknown programs do not scan text. The scan is O(len(text))
+// Classify reports the table-driven result of test runner output. Build,
+// lint, typecheck and scan runners, which have no table of their own, and
+// unknown programs do not scan text. The scan is O(len(text))
 // with no per-line allocation; inputs over MaxScanBytes are unread.
 func Classify(kind, program string, text []byte) store.GateOutput {
-	if kind != "test" && kind != "build" {
+	switch kind {
+	case "test", "build", "lint", "typecheck", "scan":
+	default:
 		return store.GateOutput{Kind: "unattributable"}
 	}
-	if kind == "build" {
+	if kind != "test" {
 		return store.GateOutput{Kind: "no_summary", Parser: program}
 	}
 	if len(text) > MaxScanBytes {
