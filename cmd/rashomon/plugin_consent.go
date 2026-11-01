@@ -80,13 +80,15 @@ func pluginConsent(phase string, payload *hookio.Payload, args []string, root st
 // (PLUGIN-CONSENT1, the DE's addition 2): what is on and how to turn it off,
 // then where the record is read, the plugin's report command and, for a
 // terminal, which has no rashomon on PATH (B287), the plugin's own binary,
-// home as ~ where the path needs no quoting. Every line fits 80 columns but
-// the binary's, a path printed whole.
+// home as ~ where the path needs no quoting; last, the full list of what is
+// kept, that binary's consent --full (the DE's #228 verdict). Every line fits
+// 80 columns but the binary's, a path printed whole.
 func pluginLead(exe string) string {
 	bin := filepath.Join(filepath.Dir(exe), install.PluginName)
 	shown := install.ShellQuote(bin)
 	if home, err := os.UserHomeDir(); err == nil && shown == bin && strings.HasPrefix(bin, home+"/") {
 		shown = "~" + bin[len(home):]
 	}
-	return disclose.PluginOnLine + "\nSee what it recorded with " + brief.PluginReport + ", or in a terminal:\n  " + shown + " report"
+	return disclose.PluginOnLine + "\nSee what it recorded with " + brief.PluginReport + ", or in a terminal:\n  " + shown + " report" +
+		"\nFull list of what it keeps: the same, with consent --full in place of report"
 }
