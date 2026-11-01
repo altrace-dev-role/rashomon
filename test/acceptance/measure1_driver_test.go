@@ -875,3 +875,91 @@ func TestMS1zf_ControlReadsTheTwinPair(t *testing.T) {
 		}
 	}
 }
+
+// TestMS1zg_RepsReportEveryPair: --reps K runs K seeded pairs of sessions and
+// reports each pair, not only the last (c10: SID_<arm> was overwritten in the
+// report's loop, so a 3-rep run printed one `measure pair`). Each rep's
+// sensors run on its own two sessions, its pair is written to pair-N.txt and
+// pair-N.json holding that rep's two session ids and no other, and pairs.txt
+// lists every rep. A single rep keeps pair.txt and pair.json as before.
+func TestMS1zg_RepsReportEveryPair(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, nil, m1Red)
+	res := r.script(nil, "run", r.m, "--task", r.task, "--limit", "20", "--reps", "2")
+	if res.code != 0 {
+		t.Errorf("exit %d, want the two-rep run to finish", res.code)
+	}
+	sid := map[string]string{}
+	for n := 1; n <= 4; n++ {
+		for _, arm := range []string{"off", "steer"} {
+			if s := strings.TrimSpace(r.out("arm-" + strconv.Itoa(n) + "-" + arm + ".session")); s != "" {
+				sid[strconv.Itoa(n)+arm] = s
+			}
+		}
+	}
+	if len(sid) != 4 {
+		t.Fatalf("premise: two reps should leave four arm sessions, found %v", sid)
+	}
+	// the seeded order puts each rep's two arms side by side: arms 1,2 then 3,4
+	repSIDs := func(rep int) []string {
+		var out []string
+		for k, v := range sid {
+			if n, _ := strconv.Atoi(k[:1]); (n+1)/2 == rep {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	for rep := 1; rep <= 2; rep++ {
+		name := "pair-" + strconv.Itoa(rep)
+		raw := r.out(name + ".json")
+		if !json.Valid([]byte(raw)) {
+			t.Errorf("%s.json is not valid JSON (absent or damaged): %q", name, raw)
+			continue
+		}
+		if r.out(name+".txt") == "" {
+			t.Errorf("%s.txt is empty or absent", name)
+		}
+		for _, s := range repSIDs(rep) {
+			if !strings.Contains(raw, s) {
+				t.Errorf("%s.json does not hold rep %d's session %s", name, rep, s)
+			}
+		}
+		for _, s := range repSIDs(3 - rep) {
+			if strings.Contains(raw, s) {
+				t.Errorf("%s.json holds the other rep's session %s", name, s)
+			}
+		}
+		if !strings.Contains(r.out("pairs.txt"), "rep "+strconv.Itoa(rep)+": ") {
+			t.Errorf("pairs.txt does not list rep %d: %q", rep, r.out("pairs.txt"))
+		}
+	}
+	for _, l := range []string{"measure1: S1 off arm: ", "measure1: S1 steer arm: "} {
+		if n := strings.Count(res.out, l); n != 2 {
+			t.Errorf("the driver's output holds %q %d times, want once per rep (2)", l, n)
+		}
+	}
+	if r.out("pair.json") != "" {
+		t.Errorf("pair.json exists for a two-rep run; only a single rep keeps that name")
+	}
+}
+
+// TestMS1zh_OneRepKeepsThePairFiles: a single rep still writes pair.txt and
+// pair.json, beside pair-1.txt and pair-1.json and the one-line pairs.txt.
+func TestMS1zh_OneRepKeepsThePairFiles(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, nil, m1Red)
+	res := r.run("20")
+	if res.code != 0 {
+		t.Fatalf("exit %d\n%s", res.code, res.out)
+	}
+	if !json.Valid([]byte(r.out("pair.json"))) || r.out("pair.txt") == "" {
+		t.Errorf("a one-rep run lacks pair.json or pair.txt")
+	}
+	if r.out("pair.json") != r.out("pair-1.json") || r.out("pair.txt") != r.out("pair-1.txt") {
+		t.Errorf("pair.* differ from pair-1.*")
+	}
+	if !strings.Contains(r.out("pairs.txt"), "rep 1: ") || strings.Contains(r.out("pairs.txt"), "rep 2: ") {
+		t.Errorf("pairs.txt reads %q, want rep 1 alone", r.out("pairs.txt"))
+	}
+}

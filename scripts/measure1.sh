@@ -10,7 +10,10 @@
 #   measure1.sh run M --task DIR [--model ID] [--order seed:N] [--reps K]
 #       [--limit SECONDS] [--allowed TOOLS]
 #       the gates G0, G2 (the oracle, before any session spends a token),
-#       G1, G3 to G6; each stops the run on failure.
+#       G1, G3 to G6; each stops the run on failure. K reps run K shuffled
+#       off/steer pairs; each is sensed and paired on its own sessions, in
+#       out/pair-R.txt and out/pair-R.json (R = 1..K), listed in out/pairs.txt;
+#       with K = 1 out/pair.txt and out/pair.json are the same pair.
 #   measure1.sh task M --task DIR
 #       G2 alone: whether DIR is a task at all (its FAIL_TO_PASS red on base
 #       on their own assertions, everything green on the reference), with
@@ -452,12 +455,15 @@ run() {
 	[ "$("$claude" --version </dev/null | awk '{print $1}')" = "$PIN" ] || die "G0: claude's version moved during the run"
 }
 
-# report runs G4, G5 and G6 over the arms' tars.
+# report runs G4 over every arm's tar, then G5 and G6 once per rep. The order
+# is one shuffled off/steer pair per rep, so rep R's arms are runs 2R-1 and 2R
+# (arm-N-<arm>); each rep is sensed and paired on its own two sessions, and
+# its pair goes to pair-R.txt and pair-R.json (a single rep also keeps
+# pair.txt and pair.json). pairs.txt lists every rep.
 report() {
-	local t label arm x scratch both=1 out others
+	local t label arm x scratch both=1 out rep n sid_off sid_steer side_off side_steer root_off root_steer
 	for t in "$M"/out/arm-*.tar; do
 		label=$(basename "$t" .tar)
-		arm=${label##*-}
 		x="$M/out/$label"
 		mkdir -p "$x"
 		tar -C "$x" -xf "$t"
@@ -468,22 +474,38 @@ report() {
 		rm -rf "$scratch"
 		check oracle "$M/out/$label.oracle.json" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" score | sed "s/^measure1: /measure1: G4 $label: /"
 		check oracle "$M/out/$label.oracle.json" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" green >/dev/null || both=0
-		put "SID_$arm" "$(cat "$M/out/$label.session")"
-		put "SIDE_$arm" "$x"
-		put "ROOT_$arm" "$(cat "$M/out/$label.root")"
 	done
-	out=$(check sensors off "$SIDE_off/store" "$SID_off" "$(check transcript "$SIDE_off/cc" "$SID_off")" "$S2_CONTROL" "$M" "$O" "$ROOT_steer") ||
-		{ printf '%s\n' "$out" >&2; die "G5: a sensor failed on the off arm"; }
-	printf '%s\n' "$out"
-	out=$(check sensors steer "$SIDE_steer/store" "$SID_steer" "$(check transcript "$SIDE_steer/cc" "$SID_steer")" "$S2_CONTROL" "$M" "$O" "$ROOT_off") ||
-		{ printf '%s\n' "$out" >&2; die "G5: a sensor failed on the steer arm"; }
-	printf '%s\n' "$out"
-	set -- --session "$SID_off" --arm off --home "$SIDE_off/store" --config "$SIDE_off/cc" \
-		--session "$SID_steer" --arm steer --home "$SIDE_steer/store" --config "$SIDE_steer/cc"
-	"$M/bin/rashomon" measure pair "$@" | tee "$M/out/pair.txt"
-	"$M/bin/rashomon" measure pair "$@" --json >"$M/out/pair.json"
+	: >"$M/out/pairs.txt"
+	for rep in $(seq 1 "$reps"); do
+		# the two arms of this rep, whichever ran first
+		for n in $((2 * rep - 1)) $((2 * rep)); do
+			for t in "$M/out/arm-$n-"*.tar; do
+				label=$(basename "$t" .tar)
+				arm=${label##*-}
+				put "sid_$arm" "$(cat "$M/out/$label.session")"
+				put "side_$arm" "$M/out/$label"
+				put "root_$arm" "$(cat "$M/out/$label.root")"
+			done
+		done
+		say "rep $rep of $reps: off $sid_off, steer $sid_steer"
+		out=$(check sensors off "$side_off/store" "$sid_off" "$(check transcript "$side_off/cc" "$sid_off")" "$S2_CONTROL" "$M" "$O" "$root_steer") ||
+			{ printf '%s\n' "$out" >&2; die "G5: a sensor failed on the off arm (rep $rep)"; }
+		printf '%s\n' "$out"
+		out=$(check sensors steer "$side_steer/store" "$sid_steer" "$(check transcript "$side_steer/cc" "$sid_steer")" "$S2_CONTROL" "$M" "$O" "$root_off") ||
+			{ printf '%s\n' "$out" >&2; die "G5: a sensor failed on the steer arm (rep $rep)"; }
+		printf '%s\n' "$out"
+		set -- --session "$sid_off" --arm off --home "$side_off/store" --config "$side_off/cc" \
+			--session "$sid_steer" --arm steer --home "$side_steer/store" --config "$side_steer/cc"
+		"$M/bin/rashomon" measure pair "$@" | tee "$M/out/pair-$rep.txt"
+		"$M/bin/rashomon" measure pair "$@" --json >"$M/out/pair-$rep.json"
+		printf 'rep %s: off %s, steer %s: pair-%s.txt, pair-%s.json\n' "$rep" "$sid_off" "$sid_steer" "$rep" "$rep" >>"$M/out/pairs.txt"
+	done
+	if [ "$reps" = 1 ]; then
+		cp "$M/out/pair-1.txt" "$M/out/pair.txt"
+		cp "$M/out/pair-1.json" "$M/out/pair.json"
+	fi
 	if [ "$both" = 1 ]; then say "undiscriminated: both arms pass every FAIL_TO_PASS test"; fi
-	say "results in $M/out"
+	say "results in $M/out ($reps pair(s): $M/out/pairs.txt)"
 }
 
 case ${1:-} in
