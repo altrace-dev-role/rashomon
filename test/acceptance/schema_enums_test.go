@@ -72,6 +72,7 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/gap/properties/reason", "the store's gap reasons (store.Gap*)",
 				[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap, store.GapPaused}, false},
 			{"/$defs/terminal/properties/reason", "terminalReasons (the terminal writers)", terminal, true},
+			{"/$defs/spec_event/properties/reason", "store.SpecEventReasons()", store.SpecEventReasons(), false},
 		}},
 		{"report_reason", []enumRow{
 			{"/$defs/report_reason", "report.Reasons()", report.Reasons(), false},
@@ -83,6 +84,7 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/forgotten_host/properties/type", "store.TypeForgottenHost", []string{store.TypeForgottenHost}, false},
 			{"/$defs/gap/properties/type", "store.TypeGap", []string{store.TypeGap}, false},
 			{"/$defs/terminal/properties/type", "store.TypeTerminal", []string{store.TypeTerminal}, false},
+			{"/$defs/spec_event/properties/type", "store.TypeSpecEvent", []string{store.TypeSpecEvent}, false},
 		}},
 		{"outcome", []enumRow{
 			{"/$defs/execution/properties/outcome", "store.Exec*",
@@ -109,6 +111,8 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 				[]string{strconv.Itoa(store.SessionSchemaVersion)}, false},
 			{"/$defs/gap/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeGap), false},
 			{"/$defs/terminal/properties/schema_version", callRange, acceptedVersions(t, store.TypeTerminal), false},
+			{"/$defs/spec_event/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for spec_event",
+				eventVersions(t, store.TypeSpecEvent), false},
 		}},
 		{"hook_entry", []enumRow{
 			// EntryPresent has no live writer and stays for the version 2
@@ -148,6 +152,22 @@ func acceptedVersions(t *testing.T, kind string) []string {
 	if !slices.Equal(got, want) {
 		t.Errorf("store.AcceptsKind reads %s at %v, not 1..%d: the bound the schema_version row names is stale",
 			kind, got, bound)
+	}
+	return got
+}
+
+// eventVersions is every schema_version store.AcceptsKind reads for an
+// event kind, which it reads at EventSchemaVersion alone.
+func eventVersions(t *testing.T, kind string) []string {
+	t.Helper()
+	var got []string
+	for v := 0; v <= 64; v++ {
+		if store.AcceptsKind(kind, v) {
+			got = append(got, strconv.Itoa(v))
+		}
+	}
+	if want := []string{strconv.Itoa(store.EventSchemaVersion)}; !slices.Equal(got, want) {
+		t.Errorf("store.AcceptsKind reads %s at %v, want %v", kind, got, want)
 	}
 	return got
 }

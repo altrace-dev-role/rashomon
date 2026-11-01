@@ -52,6 +52,18 @@ func readTwoPass(run *Run, line []byte) {
 		if err = json.Unmarshal(line, &rec); err == nil {
 			run.Coverage = append(run.Coverage, rec)
 		}
+	case TypeSpecEvent:
+		var rec SpecEvent
+		if err = json.Unmarshal(line, &rec); err == nil {
+			switch {
+			case rec.Reason == SpecEventRuleHit:
+				run.SpecEvents = append(run.SpecEvents, rec)
+			case head.Critical != nil && !*head.Critical:
+				run.Ignored++
+			default:
+				run.Skipped++
+			}
+		}
 	default:
 		var rec EventHeader
 		err = json.Unmarshal(line, &rec)
@@ -65,7 +77,8 @@ const onePassSession = "sess-1p"
 
 // writerRecord is a record of kind at version, in the type the store writes
 // that kind as: the call records, coverage and gaps in their own structs,
-// every kind of 1.2.0 as the header each of them starts with.
+// the spec_event as a rule_hit, every other kind of 1.2.0 as the header each
+// of them starts with.
 func writerRecord(kind string, version int) any {
 	seq, at := int64(7), int64(1_800_000_000_000)
 	switch kind {
@@ -79,6 +92,10 @@ func writerRecord(kind string, version int) any {
 		return Coverage{Type: kind, SchemaVersion: version, RecordedAtMS: at, SessionID: onePassSession, Phase: PhasePost}
 	case TypeGap:
 		return Gap{Type: kind, SchemaVersion: version, RecordedAtMS: at, SessionID: onePassSession, Reason: "forget"}
+	case TypeSpecEvent:
+		e := NewRuleHit(onePassSession, "PostToolUse", "spec:no-force", "sha256:1p", 6, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
 	}
 	return EventHeader{Type: kind, SchemaVersion: version, Seq: &seq, RecordedAtMS: at, SessionID: onePassSession}
 }
