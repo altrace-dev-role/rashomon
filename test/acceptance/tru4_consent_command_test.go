@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
 // `rashomon consent [--yes] [--show]` (Technical spec 7.2.3, 7.2.11): the
@@ -76,8 +78,8 @@ func TestTRU4_ConsentFollowsWatchsTerminalRule(t *testing.T) {
 		t.Fatalf("consent --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	recs := e.consentRecords()
-	if len(recs) != 2 || recs[1]["via"] != "consent_yes" || recs[1]["steer_disclosure"] != float64(0) {
-		t.Errorf("consent.json after consent --yes = %v, want a second, consent_yes record at steer_disclosure 0", recs)
+	if len(recs) != 2 || recs[1]["via"] != "consent_yes" || recs[1]["steer_disclosure"] != float64(steer.DisclosureVersion) {
+		t.Errorf("consent.json after consent --yes = %v, want a second, consent_yes record at steer_disclosure %d", recs, steer.DisclosureVersion)
 	}
 	if !bytes.HasPrefix(e.consentBytes(), old) {
 		t.Error("consent --yes rewrote the records before its own")

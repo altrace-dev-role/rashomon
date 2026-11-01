@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
 // TRU-1, TRU-3, TRU-4 and TRU-5 (Technical spec 7.2.3): watch shows the
@@ -518,9 +520,11 @@ func TestTRU3_ShowIsTheScreenAndWritesNothing(t *testing.T) {
 }
 
 // TestTRU4_NonInteractiveWatchNeedsYes: with no terminal watch prints the
-// screen and refuses; with --yes it installs and records watch_yes at
-// steer_disclosure 0 with the Agent SDK answer at its default; from an agent
-// session it refuses with or without --yes, and neither refusal names --yes.
+// screen and refuses; with --yes it installs and records watch_yes at this
+// build's steer disclosure, with the marker at it, so notes are not held on
+// a scripted or Windows install (STEER-DISCLOSE-YES1, R32), and the Agent SDK
+// answer at its default; from an agent session it refuses with or without
+// --yes, and neither refusal names --yes.
 func TestTRU4_NonInteractiveWatchNeedsYes(t *testing.T) {
 	t.Run("no terminal", func(t *testing.T) {
 		e := newEnv(t)
@@ -556,8 +560,11 @@ func TestTRU4_NonInteractiveWatchNeedsYes(t *testing.T) {
 		}
 		e.requireInstalled()
 		recs := e.consentRecords()
-		if len(recs) != 1 || recs[0]["via"] != "watch_yes" || recs[0]["steer_disclosure"] != float64(0) || recs[0]["tty"] != false {
-			t.Errorf("consent.json after --yes = %v, want one watch_yes record at steer_disclosure 0, tty false", recs)
+		if len(recs) != 1 || recs[0]["via"] != "watch_yes" || recs[0]["steer_disclosure"] != float64(steer.DisclosureVersion) || recs[0]["tty"] != false {
+			t.Errorf("consent.json after --yes = %v, want one watch_yes record at steer_disclosure %d, tty false", recs, steer.DisclosureVersion)
+		}
+		if b, err := os.ReadFile(filepath.Join(e.home, "steer_disclosure")); err != nil || string(b) != fmt.Sprintf("%d\n", steer.DisclosureVersion) {
+			t.Errorf("the steer_disclosure marker after --yes = %q (%v), want %d: notes would be held", b, err, steer.DisclosureVersion)
 		}
 		if got := e.sdkRecording(); got != "paused" {
 			t.Errorf("--yes recorded the Agent SDK answer %q, want its default, paused", got)
