@@ -291,6 +291,12 @@ const SummaryMaxBytes = 16 << 10
 type Summary struct {
 	Row      Row
 	Sentence string
+	// Findings is k, the record findings at the point (recordFindings). The
+	// findings row's Sentence counts them, and every other row that prints
+	// ends with the same clause when k > 0 (FindingsClause; card
+	// SPEC-RULES-STOP1, D-f), so a recorded violation the turn's gates did
+	// not reach still reads on the line.
+	Findings int
 }
 
 const sentenceRecordingIncomplete = "recording incomplete for this turn; verification state unknown"
@@ -342,6 +348,19 @@ func TurnGate(g GateState, advisory bool) bool {
 // its rendered sentence says (D38).
 func (s Summary) Advisory() bool { return s.Sentence == sentenceAdvisoryOnly }
 
+// FindingsClause is the count clause a row other than findings ends with when
+// the record holds k > 0 findings (D-f): a trusted protect_path write in a
+// project with no gate, or a forbidden call beside a red gate, is counted on
+// the line its row prints. The findings row's Sentence is that clause
+// already. TurnSummary returns the row with no line before it counts k, and
+// verified never carries one: record-green needs k = 0.
+func (s Summary) FindingsClause() string {
+	if s.Findings == 0 || s.Row == RowFindings {
+		return ""
+	}
+	return findingsSentence(s.Findings)
+}
+
 // TurnSummary picks the value line's row from the turn gates by the one Order
 // (VER-65; VER 11 (a)). P-07 builds the row choice over the snapshot's
 // required gates; P-45 adds the families run in the prompt, which need the
@@ -363,13 +382,15 @@ func (s Summary) Advisory() bool { return s.Sentence == sentenceAdvisoryOnly }
 // sentence counts them, k = len(Integrity.Unresolved) plus the violations of
 // trusted and managed rules (findingsSentence, bindingViolations). While the
 // window is the run (D40), k counts the session's, not only this turn's,
-// until 1.8w.
+// until 1.8w. Every row that prints carries k as Findings, and a row other
+// than findings ends with its clause when k > 0 (FindingsClause, D-f).
 func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if turn.Writes == 0 && turn.GateRuns == 0 {
 		return Summary{Row: RowNone}
 	}
+	k := recordFindings(&snap)
 	if snap.Recording != Complete {
-		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete}
+		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete, Findings: k}
 	}
 	advisory := Advisory(snap.Gates)
 	var states []State
@@ -408,7 +429,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	case !ok && !defect && turn.Writes == 0:
 		return Summary{Row: RowNone}
 	case !ok && !defect:
-		return Summary{Row: RowNoGate}
+		return Summary{Row: RowNoGate, Findings: k}
 	case ok && worst != Green:
 		row = rowFor(worst)
 	case defect:
@@ -424,12 +445,12 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	default:
 		row = RowFindings
 	}
-	s := Summary{Row: row}
+	s := Summary{Row: row, Findings: k}
 	switch {
 	case advisory:
 		s.Sentence = sentenceAdvisoryOnly
 	case row == RowFindings:
-		s.Sentence = findingsSentence(recordFindings(&snap))
+		s.Sentence = findingsSentence(k)
 	}
 	return s
 }

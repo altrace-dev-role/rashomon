@@ -159,6 +159,12 @@ func TestSRS1i_AHitAddsOneAppendAndAtMostOneFullSync(t *testing.T) {
 		}
 	}
 	tail := post[steerAt+1:]
+	for _, ev := range tail {
+		if ev.file != "steer.ndjson" {
+			t.Errorf("after the steer line's append: %v; want no append after it, since the hit lands before Route", tail)
+			break
+		}
+	}
 	if flushesPerProcess() == 1 && (len(tail) != 1 || tail[0] != (syncEvent{kind: "full", file: "steer.ndjson"})) {
 		t.Errorf("after the steer line's barrier: %v; want exactly one full sync of the steer log, outside every lock", tail)
 	}

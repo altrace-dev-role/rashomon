@@ -37,3 +37,26 @@ m("SRS-1 the replay recounts record-green without binding violations", "internal
   "\tsnap.RecordGreen, snap.RecordGreenAtSeq = recordGreenOf(snap)\n",
   "\tsnap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))\n",
   "TestSRS1e2_")
+# The hook's append (internal/hook/steerstep.go): before Route, at either post
+# event, and a call whose only answer is a hit still reaches it.
+HK = "internal/hook/steerstep.go"
+m("SRS-1 the post keeps no hit", HK,
+  "\tp.keepHits(view.Hits, env.Now)\n\tout := steer.Route(&ctx, view.Findings)\n",
+  "\tout := steer.Route(&ctx, view.Findings)\n", "TestSRS1f_|TestDGH5_|TestH16b_")
+m("SRS-1 the hit lands after Route", HK,
+  "\tp.keepHits(view.Hits, env.Now)\n\tout := steer.Route(&ctx, view.Findings)\n",
+  "\tout := steer.Route(&ctx, view.Findings)\n\tp.keepHits(view.Hits, env.Now)\n", "TestSRS1i_")
+m("SRS-1 a call whose only answer is a hit ends before the append", HK,
+  "\t\tif len(rules.Findings) == 0 && len(rules.Hits) == 0 {\n", "\t\tif len(rules.Findings) == 0 {\n",
+  "TestSR1x_|TestDGH5_")
+# D-f: every row that prints counts the record findings (verify/evaluate.go),
+# and the value line ends with the clause (recap/value.go).
+E = "internal/verify/evaluate.go"
+m("SRS-1 a no-gate row carries no findings", E,
+  "\t\treturn Summary{Row: RowNoGate, Findings: k}\n", "\t\treturn Summary{Row: RowNoGate}\n",
+  "TestSRS1n_|TestSRS1m_")
+m("SRS-1 the findings row says its clause twice", E,
+  "\tif s.Findings == 0 || s.Row == RowFindings {\n", "\tif s.Findings == 0 {\n", "TestSRS1n_")
+m("SRS-1 the value line drops the findings clause", "internal/recap/value.go",
+  "\tif c := v.Summary.FindingsClause(); s != \"\" && c != \"\" {\n",
+  "\tif c := v.Summary.FindingsClause(); false && c != \"\" {\n", "TestSRS1n_|TestSRS1m_")

@@ -39,6 +39,48 @@ func TestSRS1e2_TheReplayKeepsABindingViolationRed(t *testing.T) {
 	}
 }
 
+// TestSRS1n_EveryRowThatPrintsCarriesItsFindings (card SPEC-RULES-STOP1,
+// D-f; QA-2's beat): a trusted protect_path violation in a project with no
+// gate reads no_gate, and its Summary carries k = 1, whose count clause the
+// line ends with. Every row that prints carries k, the incomplete-recording
+// row too; k = 0 adds no clause; the findings row's Sentence is the clause,
+// so FindingsClause adds none there; and the row with no line is returned
+// before k is counted.
+func TestSRS1n_EveryRowThatPrintsCarriesItsFindings(t *testing.T) {
+	const clause = "1 record finding(s) in this turn"
+	sp := ruleSpec(spec.Trusted, frozen(allModes...))
+	r := runOf(t, edit(1, "db/migrations/001.sql"))
+	live := EvaluateStop(r, nil, sp, stopPoint(r), time.Time{}, StopInput{})
+	if v := oneVerdict(t, live.Snap); v.Verdict != Violation || len(live.Snap.Gates) != 0 {
+		t.Fatalf("premise: verdict %+v and gates %+v, want a violation and no gate", v, live.Snap.Gates)
+	}
+	// The fixture's calls carry no prompt id, so the Stop's own turn window
+	// is empty; the turn is given as the hook's would count it.
+	if s := TurnSummary(live.Snap, TurnCounts{Writes: 1, PathsWritten: 1}); s.Row != RowNoGate || s.Findings != 1 || s.FindingsClause() != clause {
+		t.Errorf("summary %+v with clause %q, want no_gate, k 1 and %q", s, s.FindingsClause(), clause)
+	}
+
+	unresolved := Integrity{Unresolved: []IntegrityEntry{{Check: TestRemoved, Seq: 1}}}
+	for _, c := range []struct {
+		name string
+		snap Snapshot
+		turn TurnCounts
+		row  Row
+		want string
+	}{
+		{"incomplete", Snapshot{Recording: Incomplete, Integrity: unresolved}, TurnCounts{Writes: 1}, RowUnknown, clause},
+		{"no finding", Snapshot{Recording: Complete}, TurnCounts{Writes: 1}, RowNoGate, ""},
+		{"no line", Snapshot{Recording: Complete, Integrity: unresolved}, TurnCounts{}, RowNone, ""},
+	} {
+		if s := TurnSummary(c.snap, c.turn); s.Row != c.row || s.FindingsClause() != c.want {
+			t.Errorf("%s: row %q clause %q, want %q and %q", c.name, s.Row, s.FindingsClause(), c.row, c.want)
+		}
+	}
+	if s := (Summary{Row: RowFindings, Sentence: clause, Findings: 1}); s.FindingsClause() != "" {
+		t.Errorf("the findings row adds clause %q to its own", s.FindingsClause())
+	}
+}
+
 // hitOf is the rule_hit the post writes for call n of r, under digest.
 func hitOf(t *testing.T, r *store.Run, n int64, id, digest string) store.SpecEvent {
 	t.Helper()
