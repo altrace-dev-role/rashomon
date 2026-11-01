@@ -56,6 +56,41 @@ func TestLRN17h_RelevanceRule(t *testing.T) {
 	}
 }
 
+// TestLRN17r_ALessonRidesOnlyAPathItNames (LEARN-RIDE1, #197 F2): a lesson
+// rides when its text names one of the request's paths whole, read as intent
+// reads the request (a run of path bytes, trailing dots dropped), a leading
+// "./" dropped. The request's paths are root-relative, so a longer token that
+// holds one is another file: main.go is not cmd/domain.go, cmd/main.go or
+// main.go.bak, and a directory does not name a file inside it.
+// Break: match by substring, or by a /-separated suffix, and a lesson about
+// one file rides, and spends its once a session, on a prompt about another.
+func TestLRN17r_ALessonRidesOnlyAPathItNames(t *testing.T) {
+	none := func(string) bool { return false }
+	for _, c := range []struct {
+		text  string
+		paths []string
+		want  bool
+	}{
+		{"cmd/domain.go is generated from gen/domain.tmpl", []string{"main.go"}, false},
+		{"cmd/main.go must not import net/http", []string{"main.go"}, false},
+		{"keep main.go.bak out of the build", []string{"main.go"}, false},
+		{"internal/learn/ledger.go never decodes a line", []string{"internal/learn"}, false},
+		{"cmd/domain.go is generated from gen/domain.tmpl", []string{"main.go", "cmd/domain.go"}, true},
+		{"never edit gen/domain.tmpl.", []string{"gen/domain.tmpl"}, true},
+		{"never edit ./cmd/domain.go by hand", []string{"cmd/domain.go"}, true},
+		{"see cmd/domain.go:12 (generated)", []string{"cmd/domain.go"}, true},
+		{"main.go, then cmd/main.go", []string{"main.go"}, true},
+	} {
+		ls := Lesson{ID: "dom-gen", Tier: TierProbation, Text: c.text, SinceUnixMS: 1, ApprovedUnixMS: 2}
+		if _, err := Message(ls); err != nil {
+			t.Fatalf("premise: %q renders: %v", c.text, err)
+		}
+		if _, ok := PickRide(Active{Lessons: []Lesson{ls}}, none, c.paths); ok != c.want {
+			t.Errorf("PickRide(%q) for paths %q = %v, want %v", c.text, c.paths, ok, c.want)
+		}
+	}
+}
+
 // TestLRN17r_DeliveredReadsALessonThatRodeTheNote (LEARN-RIDE1, R13 D1): a
 // lesson that rode the request's preflight note was given on that prompt, so
 // the given set holds the lesson its task-preflight line names in its lesson

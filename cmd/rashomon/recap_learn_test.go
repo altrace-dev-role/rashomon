@@ -622,6 +622,34 @@ func TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout(t *testing.T) {
 	}
 }
 
+// TestLRN17r_ALessonRidesNoPromptAboutAnotherFile (#197 F2, through
+// recapTurn): a lesson about cmd/domain.go does not ride a prompt that names
+// main.go, a name its path holds. That prompt gets the note it gets with no
+// lesson, and the lesson is not spent, so it rides the prompt that names
+// cmd/domain.go. Break: match a path by substring, and the main.go prompt
+// carries a line about another file and spends the lesson's once a session.
+func TestLRN17r_ALessonRidesNoPromptAboutAnotherFile(t *testing.T) {
+	const lesson = "cmd/domain.go is generated from gen/domain.tmpl"
+	e := newLessonEnv(t)
+	goFilesIn(t, e.cwd, "main.go", "cmd/domain.go")
+	plain := e.prompt("s-lrn17r-other-plain", "prompt-1", "fix main.go").context
+	if plain == "" {
+		t.Fatal("premise: a request naming main.go gets a note")
+	}
+	e.ledger([][2]string{{"dom-gen", lesson}}, "dom-gen")
+	e.start("s-lrn17r-other")
+	if out := e.prompt("s-lrn17r-other", "prompt-1", "fix main.go"); out.context != plain {
+		t.Errorf("prompt-1 names main.go: additionalContext %q,\nwant the note it gets with no lesson, %q", out.context, plain)
+	}
+	ride := "lesson dom-gen, approved for this project: '" + lesson + "'"
+	if out := e.prompt("s-lrn17r-other", "prompt-2", "fix cmd/domain.go"); !strings.HasSuffix(out.context, "\n"+ride) {
+		t.Errorf("prompt-2 names cmd/domain.go: additionalContext %q, want the lesson as the note's last line", out.context)
+	}
+	if got, want := e.rodeLessons("s-lrn17r-other"), []string{"prompt-2 delivered dom-gen"}; !slices.Equal(got, want) {
+		t.Errorf("task-preflight lines naming a lesson: %v, want %v", got, want)
+	}
+}
+
 // TestLRN17d_QuarantinedOrDemotedNeverReachesTheModel: a ledger the learn
 // verb quarantined gives none; a demoted row gives none, while a proven row
 // in the same active.json is given (the positive control).
