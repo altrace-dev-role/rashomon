@@ -174,6 +174,12 @@ func note(pf render.TaskPreflightBinding, first bool, b *Brief, n int, unknowns 
 	if m, err = render.New(pattern.TaskPreflight, binding); err != nil || digest == nil {
 		return m, rec, err
 	}
+	// The record form is m's binding with each path list as a count and
+	// keyed digests, 64 hex by construction, and a count is never longer
+	// than the paths it counts, so it renders wherever m did and this
+	// error is not returned after m rendered (#170 F7,
+	// TestPF1w_RecordFormNeverStepsTheNoteDown). A riding lesson's line is
+	// the same in both.
 	rec, err = render.New(pattern.TaskPreflight, recordBinding(pf, first, b, n, unknowns, r, digest))
 	return m, rec, err
 }

@@ -161,10 +161,13 @@ func (idx *ProjectIndex) Observe(runs []gateRun, sessionID string, nowMS int64) 
 // A file over MaxIndexBytes, one that cannot be read, and one that is not
 // this shape are (nil, error), and a caller reads an error as no index, which
 // in 1.5 makes every family required: the fail-closed direction. The shape is
-// closed: one JSON value, no field it does not name, and entries strictly
-// ascending by Family, which Required's binary search relies on (out of
-// order, a present family would read as absent: not required, the fail-open
-// direction).
+// one JSON value with its entries strictly ascending by Family, which
+// Required's binary search relies on (out of order, a present family would
+// read as absent: not required, the fail-open direction). A key it does not
+// name, at the top or in an entry, reads and is dropped: a later build wrote
+// it, and refusing it would make this build's next Stop write a fresh index
+// over the learned history it could not read (INDEX-TOLERANT1, #171 D1). The
+// rewrite loses only that key.
 func ReadIndex(path string) (*ProjectIndex, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -177,7 +180,6 @@ func ReadIndex(path string) (*ProjectIndex, error) {
 	// One byte past the cap, so that a file over it is seen to be.
 	lr := &io.LimitedReader{R: f, N: MaxIndexBytes + 1}
 	dec := json.NewDecoder(lr)
-	dec.DisallowUnknownFields()
 	var idx ProjectIndex
 	if err := dec.Decode(&idx); err != nil {
 		return nil, fmt.Errorf("verify: project index %s: %w", path, err)
