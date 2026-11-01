@@ -6,22 +6,19 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // TestPL8e_UnknownHeaderIsUnknown: the fixture's records under the next
 // header version are a format this package does not know: Impact refuses it
-// and Obligations is the one unknown row, never families read as v0.
+// and Read calls the log unreadable, never families read as v0.
 func TestPL8e_UnknownHeaderIsUnknown(t *testing.T) {
 	v1 := bytes.Replace(fixtureLog(t), []byte(LogHeader+"\n"), []byte("pgraph-log v1\n"), 1)
 	root, lp := project(t, v1)
 	if fams, err := Impact(context.Background(), root, lp, []string{"a/a.go"}); !errors.Is(err, ErrUnknownHeader) || fams != nil {
 		t.Errorf("a v1 log: %+v, %v; want ErrUnknownHeader and no family", fams, err)
 	}
-	rows := Obligations(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp})
-	if len(rows) != 1 || rows[0].State != verify.ObligationUnknown || rows[0].Kind != verify.PlatformImpact {
-		t.Errorf("a v1 log's obligations: %+v, want one unknown platform_impact row", rows)
+	if r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); !r.Unreadable || len(r.Families) != 0 {
+		t.Errorf("a v1 log's read: %+v, want unreadable and no family", r)
 	}
 }
 
@@ -93,9 +90,12 @@ func TestPL8c3_CancelledDecodeReturnsNothing(t *testing.T) {
 	}
 }
 
-// FuzzDecode: the log is an untrusted file. No input panics the decoder, and
-// whatever it accepts is facts of non-empty fields within the field cap at a
-// v0 tier.
+// FuzzDecode: the log, and the digests pgraph sync writes beside it, are
+// untrusted files in the repository's tree. No input panics either reader;
+// whatever the decoder accepts is facts of non-empty fields within the field
+// cap at a v0 tier, and whatever parseDigests accepts maps non-empty paths to
+// 64 lower-case hex digits. The two readers share a target, so the CI fuzz
+// job's count of targets, and the floor it is held to, stay as they are.
 func FuzzDecode(f *testing.F) {
 	fix := fixtureLog(f)
 	f.Add(fix)
@@ -103,7 +103,16 @@ func FuzzDecode(f *testing.F) {
 	f.Add(fix[:len(fix)-1])
 	f.Add([]byte{})
 	f.Add([]byte(LogHeader + "\n-\ta\tcalls\tb\tALGORITHMIC\tc\td\te\n"))
+	f.Add(fixtureDigests(f))
+	f.Add([]byte(DigestsHeader + "\np\ta.go\tx\n"))
 	f.Fuzz(func(t *testing.T, b []byte) {
+		if sums, err := parseDigests(bytes.NewReader(b)); err == nil {
+			for p, s := range sums {
+				if p == "" || !isSHA256(s) || strings.ToLower(s) != s {
+					t.Fatalf("digests accepted %q -> %q", p, s)
+				}
+			}
+		}
 		live, err := decode(context.Background(), bytes.NewReader(b), nil)
 		if err != nil {
 			return

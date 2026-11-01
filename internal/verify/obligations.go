@@ -40,8 +40,10 @@ import (
 // The scope is the session at every point (Q1). The other kinds have their
 // own sources: spec_rule rows come from the snapshot's rule verdicts
 // (specObligations), expected_evidence rows from the task file (evidence.go,
-// card 3.3) and platform_impact rows from internal/platform (6.1); no
-// proposed_check row is emitted yet.
+// card 3.3) and platform_impact rows from the pgraph log internal/platform
+// reads, judged against the record's runs (platform.go, card PL-WIRE1),
+// which EvaluateStop appends after ledgerOf's; no proposed_check row is
+// emitted yet.
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string

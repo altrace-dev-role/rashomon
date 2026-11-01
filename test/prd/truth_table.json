@@ -340,10 +340,14 @@
         {
           "file": "internal/verify/rules_test.go",
           "symbol": "TestSR1k_VerdictsAndRowsUnderShuffledRecords"
+        },
+        {
+          "file": "internal/verify/platform.go",
+          "symbol": "platformObligations"
         }
       ],
       "id": "PF-PG5",
-      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path and require_evidence rule (violation unmet, no recorded violation met, undecided unknown), but it emits no proposed_check row, and its scope is the session at every point.",
+      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path and require_evidence rule (violation unmet, no recorded violation met, undecided unknown), and one platform_impact row per written Go package judged against the project's test gate (PL-WIRE1), but it emits no proposed_check row, and its scope is the session at every point.",
       "integration": [
         {
           "event": "Stop",
@@ -358,8 +362,7 @@
         "the ledger verb replays from the record: the tree is read now and the final message is not held, so a file changed since the Stop reads its rows stale and judgment_disclosed reads unknown",
         "spec_rule rows for forbid_code and order rules: ruleVerdicts skips both kinds (SPEC-RULES1 1b)",
         "proposed_check rows",
-        "watched_red_then_green for a declared gate: watches keys reds by learned family, so a declared row has none (DECLARED-GATES1 G13)",
-        "platform_impact wiring: internal/platform has no runtime caller (6.1)"
+        "watched_red_then_green for a declared gate: watches keys reds by learned family, so a declared row has none (DECLARED-GATES1 G13)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -801,18 +804,22 @@
         {
           "file": "pgraph/ingest_test.go",
           "symbol": "TestPL1_ResolvedSetEqualsGoList"
+        },
+        {
+          "file": "pgraph/syncroot.go",
+          "symbol": "ScanRoots"
         }
       ],
       "id": "PF-PL1",
       "implementation": "Load and LoadScanRoot resolve Go modules through go/packages under a canonical Config, keying files by normalised path and content sha256, never mtime.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a caller in cmd/rashomon or a hook that runs Load and writes a log a hook can read: the rashomon module does not require pgraph"
+        "the producer is pgraph's own command, which a person runs: the rashomon binary starts no process (H-17, TRU-40), so no hook or rashomon verb runs a sync"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -850,12 +857,12 @@
       "implementation": "Extract reads calls, declarations, embeds and interface satisfaction from go/types at tier PROVEN, and an independent re-derivation oracle agrees with it.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a hook-reachable producer (as PF-PL1)"
+        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -890,12 +897,12 @@
       "implementation": "Dispatch and SyncCHA run CHA over whole-program SSA and write only may-call facts at tier ALGORITHMIC, and a test reproduces the published precision and recall on the real corpus.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a hook-reachable producer (as PF-PL1)"
+        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -934,12 +941,12 @@
       "implementation": "The tier is a property of the producer, fixed at construction, only pgraph can mint a PROVEN or ALGORITHMIC producer, and a may-call fact is refused at PROVEN on write and on decode.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a hook-reachable producer (as PF-PL1)"
+        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -980,18 +987,26 @@
         {
           "file": "pgraph/sync_test.go",
           "symbol": "TestPL5_TwoTiersIncrementalViewByteIdenticalToFull"
+        },
+        {
+          "file": "pgraph/syncroot.go",
+          "symbol": "SyncPrograms"
+        },
+        {
+          "file": "pgraph/cmd/pgraph/main_test.go",
+          "symbol": "TestPLW1f_ResyncOnlyAppends"
         }
       ],
       "id": "PF-PL5",
       "implementation": "An append-only log of assert and retract records over triples with tier, configuration, commit and extractor encodes and decodes deterministically, and an incremental view is byte-identical to a full rebuild.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a producer that runs Sync or SyncCHA from cmd/rashomon or a hook and writes a log internal/platform can read"
+        "no compaction: the log only grows, refused past pgraph's 256 MiB cap, and the Stop reads a log of at most 64 MiB"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1002,24 +1017,46 @@
       "e2e_verified": false,
       "evidence": [
         {
-          "file": "pgraph/doc.go"
+          "file": "pgraph/syncroot.go",
+          "symbol": "EncodeDigests"
+        },
+        {
+          "file": "internal/platform/digests.go",
+          "symbol": "staleOf"
+        },
+        {
+          "file": "internal/platform/digests.go",
+          "symbol": "parseDigests"
+        },
+        {
+          "file": "internal/platform/read_test.go",
+          "symbol": "TestPLW1i_AWrittenFileTheDigestsDoNotVouchForMakesItsPackageStale"
+        },
+        {
+          "file": "test/acceptance/h156_platform_wire_test.go",
+          "symbol": "TestH156b_AnEditAfterTheSyncWithholdsTheHashUntilAResync"
         }
       ],
       "id": "PF-PL6",
-      "implementation": "pgraph's package doc names per-package invalidation as a later slice, and Sync and SyncCHA always recompute.",
+      "implementation": "pgraph sync writes the sha256 of every Go file it read beside the log, and at the Stop a written .go file whose content differs from its digest, is not among them or cannot be read marks its package's facts stale: the family withholds its hash until a re-sync, while the row is still judged; both tiers are still re-extracted whole at every sync.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
+        },
+        {
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
         }
       ],
       "missing": [
-        "a per-package content-hash gate before PROVEN re-extraction",
-        "a debounce before CHA re-sync"
+        "a per-package content-hash gate before PROVEN re-extraction: every sync re-extracts every package",
+        "a debounce before CHA re-sync",
+        "the two timings published separately"
       ],
       "planned_pr": "",
       "session_proof": "",
-      "status": "none",
+      "status": "partial",
       "title": "Two-speed invalidation"
     },
     {
@@ -1050,7 +1087,7 @@
       "evidence": [
         {
           "file": "internal/platform/platform.go",
-          "symbol": "Obligations"
+          "symbol": "Read"
         },
         {
           "file": "internal/platform/platform.go",
@@ -1065,30 +1102,55 @@
           "symbol": "decode"
         },
         {
-          "file": "internal/platform/decode.go",
-          "symbol": "parseRecord"
+          "file": "internal/platform/resolve.go",
+          "symbol": "locate"
         },
         {
-          "file": "internal/platform/resolve.go",
-          "symbol": "packageOf"
+          "file": "internal/verify/platform.go",
+          "symbol": "platformObligations"
+        },
+        {
+          "file": "internal/verify/platform_cover.go",
+          "symbol": "candidateLines"
+        },
+        {
+          "file": "cmd/rashomon/platform_stop.go",
+          "symbol": "platformRead"
         },
         {
           "file": "pgraph/platform_fixture_test.go",
           "symbol": "TestPL8h_FixturePinned"
+        },
+        {
+          "file": "internal/verify/platform_test.go",
+          "symbol": "TestPLW1m_PlatformRowsKnownAnswers"
+        },
+        {
+          "file": "test/acceptance/h156_platform_wire_test.go",
+          "symbol": "TestH156_ASyncedPackageOwesItsTestUntilAGoTestNamesIt"
         }
       ],
       "id": "PF-PL8",
-      "implementation": "internal/platform's Impact and Obligations decode a pgraph log with their own decoder, resolve written paths to packages and emit one obligation per touched package, one unknown row on any error, but nothing fills RunView.LogPath outside a test and no strict identifier resolution exists.",
+      "implementation": "internal/platform's Read decodes the log pgraph sync writes at the project root with its own decoder and resolves the session's written .go files to packages; the Stop's ledger owes one platform_impact row per package, met where a green run of the declared or CI-named test gate's runner after the package's last write names the package, open where none ran, unknown where there is no log, no such package, no gate or a run whose words the record cannot show, and one unknown row on a log it cannot read whole; no strict identifier resolution exists.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/report_ledger.go"
+        },
+        {
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a pgraph-log producer wired into a real hook (SessionStart or PostToolUse)",
-        "a LogPath setter reachable from that hook",
-        "strict identifier resolution: an exact id, an exact qualified name, or a refusal naming every candidate"
+        "strict identifier resolution: an exact id, an exact qualified name, or a refusal naming every candidate",
+        "the record holds no run's words (the hook records no command), so a run covers a package only where its runner digest is one of the lines that name the package with at most one common flag; any other run of the runner reads unknown",
+        "no line at Stop names an open row: `rashomon report --ledger` shows it",
+        "a recorded session showing the row (e2e)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1175,15 +1237,20 @@
       "e2e_verified": false,
       "evidence": [
         {
-          "file": "pgraph/doc.go"
+          "file": "internal/platform/platform.go",
+          "symbol": "Read"
+        },
+        {
+          "file": "test/acceptance/h156_platform_wire_test.go",
+          "symbol": "TestH156c_NoLogOrACorruptOneIsUnknown"
         }
       ],
       "id": "PF-PL11",
-      "implementation": "pgraph's package doc lists unknown fan-in as a later slice, and no reflection or cgo boundary detection exists.",
+      "implementation": "A written Go package the pgraph log does not hold, or a project with no log, owes an unknown platform_impact row, never none; no reflection or cgo boundary detection exists.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "Stop",
+          "handler": "cmd/rashomon/recap_stop.go"
         }
       ],
       "missing": [
@@ -1192,7 +1259,7 @@
       ],
       "planned_pr": "",
       "session_proof": "",
-      "status": "none",
+      "status": "partial",
       "title": "Unknown, never zero"
     },
     {
