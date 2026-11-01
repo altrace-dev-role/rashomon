@@ -22,7 +22,7 @@ func inferredGate(root string, sp *spec.Compiled, idx *verify.ProjectIndex) *ver
 	if !ok {
 		return nil
 	}
-	g := &verify.InferredGate{Argv: in.Argv, Dir: in.Dir}
+	g := &verify.InferredGate{Argv: in.Argv, Dir: in.Dir, From: in.From, Declared: in.Declared}
 	if idx != nil {
 		g.Learned = slices.ContainsFunc(idx.Entries, func(e verify.IndexEntry) bool { return e.Kind == "test" })
 	}

@@ -68,7 +68,7 @@ type state struct {
 	// Stop evaluated from one it never reached: saying No at a permission
 	// prompt interrupts the turn, Claude Code fires no Stop after an
 	// interrupt, and a refused call -- the case the line most exists for --
-	// was therefore the one case it could never show. Pending reads this.
+	// was therefore the one case it could never show. Turn reads this.
 	Checked map[string]string `json:"checked"`
 	// Shown maps a session id to the fingerprint of the impact counts the
 	// last printed AutoSteer clause carried (Impact.Fingerprint): the memory
@@ -78,7 +78,8 @@ type state struct {
 	Shown map[string]string `json:"shown"`
 	// Owed maps a session id to what its last turn end owes the next
 	// prompt (Owed): a record seq, a runner's name and a file name, no
-	// content. Absent in a file written before it, which reads as none.
+	// content. Absent in a file written before it, which reads as none; nil
+	// until a turn end owes one.
 	Owed map[string]Owed `json:"owed"`
 }
 
@@ -148,6 +149,7 @@ func writeState(path string, s state, current string) error {
 	for _, m := range []map[string]string{s.Spoken, s.Checked, s.Shown} {
 		capSessions(m, current)
 	}
+	capSessions(s.Owed, current)
 	removeStaleTemps(filepath.Dir(path))
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -207,7 +209,7 @@ func removeStaleTemps(dir string) {
 // and a fixed order makes the cap the same on every run. It never drops
 // current. That is the claim just made, and dropping it let a replayed Stop
 // for the same turn find no claim and print its line twice (lld-7).
-func capSessions(m map[string]string, current string) {
+func capSessions[V any](m map[string]V, current string) {
 	if len(m) <= maxTrackedSessions {
 		return
 	}
@@ -244,7 +246,10 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 // that clause's Impact.Fingerprint, kept for the session when the line is
 // printed, so the next Stop prints a clause only if the counts differ
 // (ImpactShown). "" claims no clause, and a line that was not printed
-// remembers nothing: the clause was not seen.
+// remembers nothing: the clause was not seen. owed is what this turn end
+// leaves the session's next prompt, kept whether or not the line printed
+// (the prompt's note is the agent's, not the line's), and the zero Owed
+// clears what an earlier turn end left.
 func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
@@ -271,6 +276,17 @@ func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool,
 	}
 	if speak && sessionID != "" && shown != "" {
 		s.Shown[sessionID] = shown
+	}
+	switch {
+	case sessionID == "":
+	case owed.Seq > 0:
+		// Made here, the one write, so the prompt's read allocates no map.
+		if s.Owed == nil {
+			s.Owed = map[string]Owed{}
+		}
+		s.Owed[sessionID] = owed
+	default:
+		delete(s.Owed, sessionID)
 	}
 	return speak, writeState(path, s, sessionID)
 }
@@ -320,21 +336,23 @@ func Status(root string) (evaluated bool, lastAt time.Time, healthy bool, err er
 	return true, time.UnixMilli(s.LastEvaluatedAtUnixMS), s.Healthy, nil
 }
 
-// Pending reports whether promptID is a turn in sessionID that no recap has
-// checked yet -- the turn a refused permission prompt interrupted before its
-// Stop could fire. A missing or unreadable bookkeeping file answers false:
-// with nothing to say which turns were checked, catching up could only repeat
-// a line Stop already printed, and a duplicate is the failure this file
-// exists to prevent.
-func Pending(root, sessionID, promptID string) bool {
-	if sessionID == "" || promptID == "" || !storeExists(root) {
-		return false
+// Turn reads the file once for the catch-up. pending reports whether
+// promptID is a turn in sessionID that no recap has checked yet -- the turn a
+// refused permission prompt interrupted before its Stop could fire. owed is
+// what the session's last turn end owes its next prompt (Owed). A missing or
+// unreadable bookkeeping file answers false and none: with nothing to say
+// which turns were checked, catching up could only repeat a line Stop
+// already printed, and a duplicate is the failure this file exists to
+// prevent.
+func Turn(root, sessionID, promptID string) (pending bool, owed Owed) {
+	if sessionID == "" || !storeExists(root) {
+		return false, Owed{}
 	}
 	s, err := readState(statePath(root))
 	if err != nil {
-		return false
+		return false, Owed{}
 	}
-	return s.Checked[sessionID] != promptID
+	return promptID != "" && s.Checked[sessionID] != promptID, s.Owed[sessionID]
 }
 
 // ImpactShown is the fingerprint of the counts the last printed clause of
@@ -362,10 +380,4 @@ type Owed struct {
 	Stale bool   `json:"stale,omitempty"`
 	Gate  string `json:"gate"`
 	From  string `json:"from"`
-}
-
-// Turn is Pending, and what the last turn end of sessionID owes its next
-// prompt.
-func Turn(root, sessionID, promptID string) (pending bool, owed Owed) {
-	return Pending(root, sessionID, promptID), Owed{}
 }

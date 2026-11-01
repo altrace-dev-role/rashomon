@@ -38,6 +38,9 @@ type stopTurn struct {
 	shown   string
 	summary bool
 	speaks  bool
+	// owed is what the turn end leaves the session's next prompt (card
+	// GATE-INFER1, W5).
+	owed recap.Owed
 }
 
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
@@ -119,7 +122,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		}
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
-		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending}, nil
+		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending, owed: owedNote(v, in.Inferred)}, nil
 }
 
 // unboundSpecs is each repository spec in sp, project-relative, that the

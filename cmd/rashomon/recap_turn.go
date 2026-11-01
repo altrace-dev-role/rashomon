@@ -8,6 +8,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -229,7 +230,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// one it can look up.
 	//
 	// The catch-up goes through the same digest and stops at
-	// recap.Pending, which answers false for a turn with no session id:
+	// recap.Turn, which answers false for a turn with no session id:
 	// it speaks only for a turn it can show no Stop reached, and without
 	// an id it can show nothing. Stating no_session_id is the Stop's job.
 	//
@@ -249,16 +250,17 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		d, run = built, r
 	}
-	// The new prompt's preflight note and lesson, routed and logged before
-	// the catch-up decides, so a turn with nothing to catch up on still gets
+	// The new prompt's preflight note and lesson, and what the last turn
+	// end owes it (card GATE-INFER1, W5), routed and logged before the
+	// catch-up decides, so a turn with nothing to catch up on still gets
 	// them.
 	var note steer.Output
 	var client steer.Client
+	unchecked := false
 	if pending {
-		note, client = preflightNote(st, run, &pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
-		noteTurnSpec(st, run, &pp)
+		note, client, unchecked = promptNotes(st, run, &pp, root, d, id, now)
 	}
-	if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
+	if pending && !unchecked {
 		return printTurn(st, stdout, note, client, "")
 	}
 	stop, serr := stopView(st, run, d, payload, pending, now)
@@ -294,7 +296,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// bookkeeping, not evidence, and a failure to persist it must cost at
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
-	speak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause, recap.Owed{})
+	speak, _ := recap.ClaimShown(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed)
 	// The channel-evidence read, at a Stop only: the checkpoint is durable
 	// (the flush above returned), and the defer runs on every return below,
 	// after the line has printed.
@@ -327,6 +329,18 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// human to read, and this JSON envelope is how it reaches them.
 	_, _ = stdout.Write(b)
 	return nil
+}
+
+// promptNotes is the catch-up's prompt half: one read of recap's
+// bookkeeping (recap.Turn), whose owed note rides pp to preflightNote, then
+// the note and the turn's spec note (noteTurnSpec). unchecked is Turn's
+// pending answer: no recap reached the turn d chose.
+func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
+	unchecked, owed := recap.Turn(root, d.SessionID, d.PromptID)
+	pp.owed = owed
+	note, client := preflightNote(st, run, pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
+	noteTurnSpec(st, run, pp)
+	return note, client, unchecked
 }
 
 // recapFromPlugin reports whether this recap runs as the plugin's entry.

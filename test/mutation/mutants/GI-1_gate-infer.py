@@ -1,8 +1,9 @@
-# GI-1 (card GATE-INFER1, R46 as W1-W4, W2', W3', W6): with no spec test
+# GI-1 (card GATE-INFER1, R46 as W1-W6, W2', W3'): with no spec test
 # gate, the project's own test command, read CI first by a closed grammar
 # through bounded reads, is a required gate the Stop names by its runner,
 # labelled "(inferred)" until the index has seen a test run, and the brief
-# quotes with its file.
+# quotes with its file; a declared or learned one a turn left unrun after
+# its edit is the next prompt's note, once per turn end (W5).
 G = "internal/gateinfer/gateinfer.go"
 D = "internal/verify/declared.go"
 E = "internal/verify/evaluate.go"
@@ -13,6 +14,10 @@ B = "internal/brief/brief.go"
 C = "cmd/rashomon/gateinfer_stop.go"
 R = "cmd/rashomon/recap_stop.go"
 L = "cmd/rashomon/laststop.go"
+N = "cmd/rashomon/gateinfer_note.go"
+T = "cmd/rashomon/recap_turn.go"
+P = "cmd/rashomon/preflight.go"
+Q = "internal/recap/state.go"
 
 # gateinfer: the order, the grammar and the bounds.
 m("GI-1 the CI is not read first", G,
@@ -76,3 +81,52 @@ m("GI-1 the Stop is not wired", R,
   "\tin.Inferred = inferredGate(key, sp, idx)\n", "", "TestGI1a_")
 m("GI-1 the replay is not wired", L,
   "\t\tin.Inferred = replayInferred(root, r.Spec, idx, in.Required)\n", "", "TestGI1l_")
+
+# W5: the next prompt's note, what the Stop owes, recap.json and the wiring.
+m("GI-1 a convention alone is owed", N,
+  "if inf == nil || !inf.Declared && !inf.Learned || v.Turn.Writes == 0", "if inf == nil || v.Turn.Writes == 0",
+  "TestGI1n_TheStopOwes|TestGI1na_")
+m("GI-1 a turn that wrote nothing is owed", N,
+  "!inf.Learned || v.Turn.Writes == 0 || name", "!inf.Learned || name", "TestGI1n_TheStopOwes")
+m("GI-1 a green or red row is owed", N,
+  "(g.State == verify.Absent || g.State == verify.Stale) && g.WritesSinceGreen", "true && g.WritesSinceGreen", "TestGI1n_TheStopOwes|TestGI1na_")
+m("GI-1 writes the gate ignores are owed", N,
+  "verify.Stale) && g.WritesSinceGreen > 0 {", "verify.Stale) {", "TestGI1n_TheStopOwes")
+m("GI-1 the Stop drops the stale kind", N,
+  "Stale: g.State == verify.Stale,", "Stale: false,", "TestGI1n_TheStopOwes")
+m("GI-1 the note drops the stale kind", N,
+  "\tif o.Stale {\n\t\tf.Kind = \"stale\"\n\t}\n", "", "TestGI1n_TheNextPrompt")
+m("GI-1 the note is not keyed by its turn end", N,
+  "\"@\" + strconv.FormatInt(o.Seq, 10)", "\"@\" + strconv.FormatInt(0, 10)", "TestGI1n_TheNextPrompt")
+m("GI-1 the note is given every prompt", N,
+  "\tif owedGiven(lines, key) {\n", "\tif false && owedGiven(lines, key) {\n", "TestGI1n_TheNextPrompt|TestGI1na_")
+m("GI-1 a superseded line counts as given", N,
+  "(scanText(b, sp[1]) == string(steer.LineStateDelivered) ||", "(scanText(b, sp[1]) != \"\" ||", "TestGI1n_TheNextPrompt")
+m("GI-1 an arm-off line is not given", N,
+  " || scanText(b, sp[3]) == string(steer.SuppressedByArmOff))", ")", "TestGI1n_TheNextPrompt")
+m("GI-1 a refused file drops the note", N,
+  "\t\tm, err = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n", "",
+  "TestGI1n_TheNextPrompt")
+m("GI-1 a seq past the decision's is noted", N,
+  "if o.Seq <= 0 || o.Seq > afterSeq {", "if o.Seq <= 0 {", "TestGI1n_TheNextPrompt")
+m("GI-1 the Stop owes nothing", R,
+  ", owed: owedNote(v, in.Inferred)}", "}", "TestGI1na_")
+m("GI-1 the prompt reads nothing owed", T,
+  "\tpp.owed = owed\n", "\t_ = owed\n", "TestGI1na_")
+m("GI-1 the prompt stops before the owed note", P,
+  " && p.owed.Seq <= 0 {", " {", "TestGI1na_")
+m("GI-1 the owed note is not routed", P,
+  "\tif f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {\n", "\tif f, ok := owedFinding(p.owed, run.LastSeq(), lines); false && ok {\n",
+  "TestGI1na_")
+m("GI-1 recap.json drops the owed note", Q,
+  "\t\ts.Owed[sessionID] = owed\n", "", "TestGI1s_|TestGI1na_")
+m("GI-1 a turn end that owes nothing keeps the last", Q,
+  "\tdefault:\n\t\tdelete(s.Owed, sessionID)\n", "\tdefault:\n", "TestGI1s_")
+m("GI-1 the owed map is left out of the cap", Q,
+  "\tcapSessions(s.Owed, current)\n", "", "TestGI1s_")
+m("GI-1 Turn reads every prompt as pending", Q,
+  "return promptID != \"\" && s.Checked[sessionID] != promptID, s.Owed[sessionID]", "return promptID != \"\", s.Owed[sessionID]", "TestGI1s_")
+m("GI-1 the Stop's command is not declared", C,
+  "From: in.From, Declared: in.Declared}", "From: in.From}", "TestGI1na_")
+m("GI-1 the Stop's file is not carried", C,
+  "From: in.From, Declared", "Declared", "TestGI1na_")
