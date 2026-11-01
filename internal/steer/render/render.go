@@ -191,6 +191,21 @@ type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
 
+// ClaimVsRecordInferredBinding is claim-vs-record's next-prompt note for
+// the project's inferred test command left unrun after the last edit (card
+// GATE-INFER1, W5): the runner's name, as the Stop's line gives it, and the
+// project-relative file the command was read from.
+type ClaimVsRecordInferredBinding struct {
+	Gate slot.Gate `slot:"gate"`
+	Path slot.Path `slot:"path"`
+}
+
+// ClaimVsRecordInferredUnnamedBinding is that note's form for a file the
+// path slot refuses.
+type ClaimVsRecordInferredUnnamedBinding struct {
+	Gate slot.Gate `slot:"gate"`
+}
+
 // LearnedFactBinding is learned-fact's note at a prompt (LEARN-DELIVER1): an
 // approved lesson's id and its text, which renders in quotes.
 type LearnedFactBinding struct {
@@ -317,6 +332,10 @@ type OrderingRuleThenUnnamedBinding struct{}
 // says the same as a fact. learned-fact/v1 is a lesson a person approved at a
 // terminal, its text in quotes (LEARN-DELIVER1, L7); its two flags say why a
 // ledger gave none.
+// claim-vs-record-inferred/v1 is the next prompt's note for the project's
+// inferred test command a turn left unrun after its last edit (card
+// GATE-INFER1, W5): the runner's name, never the command's arguments, and
+// the file it was read from.
 // The platform-rule rows state which rule a command matched, never its why;
 // the frozen-path rows are user lines, as every integrity row is. Each has a
 // row without its named slots for a value a slot refuses.
@@ -405,11 +424,19 @@ func templates() map[templateKey]template {
 	return templatesOnce.v
 }
 
-// templatesLater is the rows templates adds to its own map: the lesson,
-// task-preflight, platform-rule and frozen-path rows, split out so each function stays inside Law 10 as the
+// templatesLater is the rows templates adds to its own map: the inferred
+// command's note, the lesson, task-preflight, platform-rule and frozen-path rows, split out so each function stays inside Law 10 as the
 // rows of several cards accumulate.
 func templatesLater() map[templateKey]template {
 	return map[templateKey]template{
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredBinding{})}: {
+			id:     "claim-vs-record-inferred/v1",
+			format: "rashomon record: gate {gate} (from {path}) was not run after the last edit.",
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredUnnamedBinding{})}: {
+			id:     "claim-vs-record-inferred-unnamed/v1",
+			format: "rashomon record: gate {gate} was not run after the last edit.",
+		},
 		{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
 			id:     "learned-fact/v1",
 			format: "rashomon record: lesson {lesson}, approved for this project: {text}.",

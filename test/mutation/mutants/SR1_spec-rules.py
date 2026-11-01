@@ -113,7 +113,7 @@ m("sr1 the Stop takes the no-spec note for no spec", "cmd/rashomon/recap_stop.go
 
 # D210's per-prompt discovery.
 m("sr1 a prompt naming no path writes no note", "cmd/rashomon/recap_turn.go",
-  "\t\tnoteTurnSpec(st, run, &pp)\n", "", "TestSR1af_")
+  "\tnoteTurnSpec(st, run, pp)\n", "", "TestSR1af_")
 m("sr1 the preflight's discovery runs twice", "cmd/rashomon/preflight.go",
   "p.CWD == \"\" || p.specNoted {\n", "p.CWD == \"\" {\n", "TestSR1ag_")
 

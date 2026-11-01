@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"slices"
 	"strings"
 	"sync"
 )
@@ -95,6 +96,26 @@ func RunnerNameOf(id uint8) string {
 		return buildCommandNames()[i-len(testCommandNames())]
 	}
 	return ""
+}
+
+// RunnerKey is the key a gate matched at its runner (match:default) and a run
+// meet at, the one function both sides call (card GATE-BIND1, R47-R49): the
+// runner's row name where the row names the work, so no argument enters it
+// (`go test -count=1 ./...` is "go test"), else digest, the keyed digest of
+// the runner's exact words, for a launcher row (launcherRows) and for a run
+// recorded before call schema 8, which names no runner. name is RunnerName,
+// "" for none; digest is RunnerDigest; ok is false where there is no runner.
+// The two forms never collide: a digest is hex, a name key starts with a NUL.
+// RunnerDigest itself keeps the words: it is the learned families' key, and
+// `go test ./a` red then `go test ./b` green must stay two families (D-e).
+func RunnerKey(name string, digest *string) (key string, ok bool) {
+	switch {
+	case digest == nil:
+		return "", false
+	case name != "" && !slices.Contains(launcherRows, name):
+		return "\x00" + name, true
+	}
+	return *digest, true
 }
 
 // MaskedByID is the place of a masked_by word among MaskedByWords, counted

@@ -109,6 +109,14 @@ var buildCommands = [][]string{
 	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"},
 }
 
+// launcherRows are the rows of buildCommands, by their words, that name a
+// launcher and not the work: the word after them does (`make lint`, `npm run
+// build`, `mvn verify`, `gradle check`, `ninja docs`), and no record holds
+// that word. A gate keyed by such a row's name would be bound by the launcher
+// running other work, so RunnerKey keys these by their exact words (card
+// GATE-BIND1, D-b). Each entry is a row (TestGB1e_).
+var launcherRows = []string{"make", "gmake", "npm run", "yarn run", "pnpm run", "mvn", "mvnw", "gradle", "gradlew", "ninja"}
+
 // maxRunnerGroups bounds how many distinctly-worded runners statusMasked
 // will re-run the line for. See the check inside statusMasked for why: past
 // it, the kind is null, the same answer a line this function gives up

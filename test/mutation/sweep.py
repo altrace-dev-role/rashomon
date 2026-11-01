@@ -627,6 +627,24 @@ def run_sweep(strict=False, trim_root=None):
         print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
               "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
               "failure first; the sweep proves nothing until then.\n")
+        # Every failing test and package first, then the tail: the tail alone
+        # cut a package that failed early whenever a later failing package
+        # printed more than 4000 bytes (SWEEP-BASELINE1, batch/1's shard 4).
+        # A test killed by -timeout prints no "--- FAIL"; its name is only in
+        # the tab-indented "running tests:" block under "panic: test timed out".
+        _named, _running = [], False
+        for ln in _baseline.stdout.splitlines():
+            if _running and ln.startswith("\t"):
+                _named.append(ln)
+                continue
+            _running = ln.startswith("panic: test timed out")
+            if ln.startswith("panic:") or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
+                _named.append(ln)
+        if _named:
+            print("failing on the unmutated tree:")
+            for ln in _named:
+                print("   ", ln)
+            print("\nthe last 4000 bytes of go test's output:")
         print(_baseline.stdout[-4000:])
         print(_baseline.stderr[-2000:])
         return 1
