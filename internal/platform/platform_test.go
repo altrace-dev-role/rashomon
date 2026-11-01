@@ -295,22 +295,29 @@ func TestPL8j_FixtureIsPgraphs(t *testing.T) {
 	}
 }
 
-// BenchmarkImpact is one written file's family read from a log of 1,000 and
-// of 50,000 records, the decode and the index included. The names are
-// literals so the perf gate reads them without running the benchmark
-// (test/perf/gates_test.go).
+// BenchmarkImpact is the families of written files read from a log: the
+// pinned fixture (the log and the two files TestPL8d reads, so the allocs/op
+// of the real Impact on non-trivial input is a budget, the deterministic
+// signal a slowdown leaves where a 20 ms wall-clock assertion would flake,
+// #222), and one file's family from a log of 1,000 and of 50,000 records, the
+// decode and the index included. The names are literals so the perf gate
+// reads them without running the benchmark (test/perf/gates_test.go).
 func BenchmarkImpact(b *testing.B) {
 	for _, c := range []struct {
-		name string
-		n    int
-	}{{"records_1000", 1000}, {"records_50000", 50000}} {
+		name  string
+		log   func(testing.TB) []byte
+		paths []string
+	}{
+		{"fixture", fixtureLog, []string{"b/b.go", "a/a.go"}},
+		{"records_1000", func(t testing.TB) []byte { return synthLog(t, 1000) }, []string{"a/a.go"}},
+		{"records_50000", func(t testing.TB) []byte { return synthLog(t, 50000) }, []string{"a/a.go"}},
+	} {
 		b.Run(c.name, func(b *testing.B) {
-			root, lp := project(b, synthLog(b, c.n))
-			paths := []string{"a/a.go"}
+			root, lp := project(b, c.log(b))
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
-				if _, err := Impact(context.Background(), root, lp, paths); err != nil {
+				if _, err := Impact(context.Background(), root, lp, c.paths); err != nil {
 					b.Fatal(err)
 				}
 			}
