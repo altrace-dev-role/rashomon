@@ -40,12 +40,19 @@ not in this build.
 Needs Claude Code 2.1.280 or later, macOS or Linux, and Go 1.25 or later. In a
 terminal, not inside a Claude Code session:
 
+    curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
+    rashomon watch
+
+That installs the latest release, v1.2.0-alpha.1 (the plugin route does too:
+[below](#other-install-routes)). To build `main` instead, which is ahead of
+the release and has everything this README describes:
+
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
     rashomon watch
 
 `go install` puts `rashomon` in `$(go env GOPATH)/bin`, which must be on your
 `PATH`. `watch` shows what installing does and asks `Install? [y/N]`; answer `y`,
-then use `claude` as usual. The plugin and `curl` routes install v1.1.0 ([below](#other-install-routes)).
+then use `claude` as usual.
 
 ## What you'll see
 
@@ -97,9 +104,11 @@ holdout off with it.
 
 ## Other install routes
 
-These install the v1.1.0 release, which records and reports only: none of the
-notes, spec trust or declared gates in this README, until the next release.
-Use one route: `watch` refuses beside an enabled plugin.
+These install the v1.2.0-alpha.1 release: `rashomon version` prints
+`1.2.0-alpha.1`. Use one route: `watch` refuses beside an enabled plugin.
+This README describes `main`, which is ahead of that release: `rashomon steer`,
+`summary`, `scorecard`, `why`, `lessons`, `brief` and `measure` are in `main`
+only, until the next release.
 
     claude plugin marketplace add altrace-dev-role/rashomon
     claude plugin install rashomon@rashomon
@@ -229,8 +238,8 @@ rashomon report --nono-audit ~/.local/state/nono/audit/<nono session id>/audit-e
 The sandbox section has something to count only when nono filters the
 network. In v1.1.0, with nono's `claude` profile, which leaves the network
 unfiltered, the trail holds no network event at all, and the section reads
-`0 allowed, 0 denied` however many hosts the session reached. A build from
-`main` says `the trail holds no network events` instead. An allowed `http://`
+`0 allowed, 0 denied` however many hosts the session reached. From v1.2.0-alpha.1
+on, and in `main`, it says `the trail holds no network events` instead. An allowed `http://`
 request leaves nothing in the sandbox section. `--chain` still lists its host
 under the call if the command named it.
 
@@ -272,7 +281,7 @@ under the call if the command named it.
 
 ## Status
 
-Alpha. The latest release is v1.1.0, and `main` is ahead of it. Release
+Alpha. The latest release is v1.2.0-alpha.1, and `main` may be ahead of it. Release
 binaries are not signed, and there is no Homebrew formula. **Windows is not
 usable yet**: the release publishes Windows binaries, but `watch` quotes the
 installed command for a POSIX shell.
