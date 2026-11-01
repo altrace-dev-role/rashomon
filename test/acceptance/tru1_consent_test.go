@@ -253,8 +253,8 @@ func TestTRU1_WatchWritesNothingBeforeYes(t *testing.T) {
 		}
 		e.requireInstalled()
 		recs := e.consentRecords()
-		if len(recs) != 1 || recs[0]["via"] != "watch_tty" || recs[0]["tty"] != true || recs[0]["steer_disclosure"] != float64(2) {
-			t.Errorf("consent.json after a terminal y = %v, want one watch_tty record, tty true, steer_disclosure 2", recs)
+		if len(recs) != 1 || recs[0]["via"] != "watch_tty" || recs[0]["tty"] != true || recs[0]["steer_disclosure"] != float64(steer.DisclosureVersion) {
+			t.Errorf("consent.json after a terminal y = %v, want one watch_tty record, tty true, steer_disclosure %d", recs, steer.DisclosureVersion)
 		}
 		if got := e.sdkRecording(); got != "paused" {
 			t.Errorf("EOF at the Agent SDK question recorded %q, want paused", got)

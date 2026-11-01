@@ -3,8 +3,11 @@ package acceptance
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
 // TestSC6_SessionStartSetsTheSteerMarkerFromConsent: the binary's SessionStart
@@ -31,30 +34,32 @@ func TestSC6_SessionStartSetsTheSteerMarkerFromConsent(t *testing.T) {
 		}
 		return string(b)
 	}
+	// watch --yes records this build's steer disclosure (STEER-DISCLOSE-YES1).
+	want := strconv.Itoa(steer.DisclosureVersion) + "\n"
 	t.Run("consent from before the marker", func(t *testing.T) {
 		e := newEnv(t)
 		e.watched(testSession)
-		// watch --yes records this build's steer disclosure (STEER-DISCLOSE-YES1).
-		if !strings.Contains(string(e.consentBytes()), `"steer_disclosure":2`) {
-			t.Fatal("premise: the watch record does not carry steer_disclosure 2")
+		if !strings.Contains(string(e.consentBytes()), `"steer_disclosure":`+strconv.Itoa(steer.DisclosureVersion)) {
+			t.Fatalf("premise: the watch record does not carry steer_disclosure %d", steer.DisclosureVersion)
 		}
 		if err := os.Remove(marker(e)); err != nil {
 			t.Fatal(err)
 		}
-		if got := start(t, e); got != "2\n" {
-			t.Errorf("after a session start the steer marker holds %q, want \"2\\n\"", got)
+		if got := start(t, e); got != want {
+			t.Errorf("after a session start the steer marker holds %q, want %q", got, want)
 		}
 	})
 	t.Run("a marker that disagrees", func(t *testing.T) {
 		e := newEnv(t)
 		e.watched(testSession)
-		// Above consent's 2, which watch --yes records (STEER-DISCLOSE-YES1),
-		// so the sync has to lower it: the SC-2.2c "only raises" row.
-		if err := os.WriteFile(marker(e), []byte("3\n"), 0o600); err != nil {
+		// One above the consent watch --yes records (STEER-DISCLOSE-YES1), so
+		// the sync has to lower it: the SC-2.2c "only raises" row.
+		above := strconv.Itoa(steer.DisclosureVersion+1) + "\n"
+		if err := os.WriteFile(marker(e), []byte(above), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if got := start(t, e); got != "2\n" {
-			t.Errorf("after a session start the steer marker holds %q, want \"2\\n\"", got)
+		if got := start(t, e); got != want {
+			t.Errorf("after a session start the steer marker holds %q, want %q", got, want)
 		}
 	})
 }
