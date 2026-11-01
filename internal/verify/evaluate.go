@@ -13,25 +13,15 @@ import (
 // IndexPath's, and index.go reads, observes and writes it. Entries is sorted
 // by Family, and never null in the encoding.
 //
-// Last and Prior are the project's last two checkpoints by session, which
-// the Stop that cuts one notes in the same write: Last the newest, Prior the
-// newest of a different session. SessionStart reads them to name the
-// previous session in one small read instead of walking the store (card
-// REPORT1b); a file written before they existed has neither, and a reader
-// that finds none falls back, never guesses.
+// Its keys, here and in IndexEntry, are v1.2.0-alpha.1's and no other:
+// alpha.1 reads the index with DisallowUnknownFields and its Stop writes a
+// fresh one over a file it cannot read, so a key added here costs a person
+// who goes back to alpha.1 the project's learned gates. A new key goes in a
+// file of its own, as the last two checkpoints did (Checkpoints,
+// INDEX-POINTER-FILE1).
 type ProjectIndex struct {
-	ProjectKey string          `json:"project_key"`
-	Entries    []IndexEntry    `json:"entries"`
-	Last       *LastCheckpoint `json:"last,omitempty"`
-	Prior      *LastCheckpoint `json:"prior,omitempty"`
-}
-
-// LastCheckpoint names a checkpoint record: its session, its point seq and
-// when it was recorded.
-type LastCheckpoint struct {
-	SessionID string `json:"session_id"`
-	PointSeq  int64  `json:"point_seq"`
-	AtMS      int64  `json:"at_unix_ms"`
+	ProjectKey string       `json:"project_key"`
+	Entries    []IndexEntry `json:"entries"`
 }
 
 // Evaluate is the evaluator of 2.2.4: a pure fold from the record, the index,
