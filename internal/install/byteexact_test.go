@@ -20,11 +20,14 @@ var detachByteExactSeeds = map[string]string{
 	"ra-1 A8 seed (one-line hooks)": raSeed,
 	"multi-line hooks, two foreign events": "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\"matcher\": \"Bash\", \"hooks\": [{\"type\": \"command\", \"command\": \"a\"}]}\n    ],\n" +
 		"    \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"b\"}]}]\n  }\n}\n",
-	"tabs and a compact hooks object":  "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"a\"}]},{\"matcher\":\"Edit\",\"hooks\":[]}]}}\n",
-	"foreign Stop beside our four":     "{\n  \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"b\"}]}], \"Other\": []}\n}\n",
-	"no hooks at all":                  "{\n  \"env\": {\"A\": \"1\"}\n}\n",
-	"compact top level, no hooks":      "{\"env\": {\"A\": \"1\"}, \"x\": 2}",
-	"hooks with a trailing odd layout": "{\n  \"hooks\" : { \"PreToolUse\" :   [ {\"hooks\": []} ,\n   {\"hooks\": [1]} ]  }\n}\n",
+	"tabs and a compact hooks object":                 "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"a\"}]},{\"matcher\":\"Edit\",\"hooks\":[]}]}}\n",
+	"foreign Stop beside our four":                    "{\n  \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"b\"}]}], \"Other\": []}\n}\n",
+	"space and newline before a one-member top level": " \n{\"a\":1}",
+	"blank lines before a one-member top level":       "\n\n{\"model\":\"opus\"}",
+	"CRLF before a one-member top level":              "\r\n{\"model\":\"opus\"}",
+	"no hooks at all":                                 "{\n  \"env\": {\"A\": \"1\"}\n}\n",
+	"compact top level, no hooks":                     "{\"env\": {\"A\": \"1\"}, \"x\": 2}",
+	"hooks with a trailing odd layout":                "{\n  \"hooks\" : { \"PreToolUse\" :   [ {\"hooks\": []} ,\n   {\"hooks\": [1]} ]  }\n}\n",
 }
 
 func TestDetachByteExact_WatchThenDetachRestoresTheBytes(t *testing.T) {

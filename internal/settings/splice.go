@@ -76,7 +76,9 @@ func separator(raw []byte, spans []span) []byte {
 	if n := len(spans); n >= 2 {
 		return raw[spans[n-2].end:spans[n-1].start]
 	}
-	gap := raw[1:spans[0].start]
+	// The bracket is not always byte 0: the document keeps the file's leading
+	// whitespace.
+	gap := raw[bytes.IndexAny(raw, "[{")+1 : spans[0].start]
 	if i := bytes.LastIndexByte(gap, '\n'); i >= 0 {
 		return append([]byte(","), gap[i:]...)
 	}
