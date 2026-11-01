@@ -74,6 +74,12 @@ type Platform struct {
 	Entries        map[string]RSS     `json:"entries"`
 	CaseBudgets    map[string]float64 `json:"case_budgets,omitempty"`
 	Benchmarks     []Benchmark        `json:"benchmarks,omitempty"`
+	// ColdAllocBytesMax is this platform's own cold_alloc_bytes_max, by entry
+	// id, the same shape as Entries: an entry named here is gated against
+	// this figure on this platform, and an entry absent from it is gated
+	// against Entry.ColdAllocBytesMax, so a platform with no figure of its
+	// own keeps the single top-level one (test/perf's ColdBudget).
+	ColdAllocBytesMax map[string]int64 `json:"cold_alloc_bytes_max,omitempty"`
 }
 
 // RSS is a peak-RSS budget pair in MiB.
