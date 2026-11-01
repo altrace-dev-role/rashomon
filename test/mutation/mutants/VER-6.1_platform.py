@@ -7,8 +7,8 @@ D = "internal/platform/decode.go"
 R = "internal/platform/resolve.go"
 
 # The deadline: unknown, at the deadline, never partial.
-m("VER-6.1 Deadline ignored", P,
-  '\t\tctx, cancel := context.WithTimeout(context.Background(), Deadline)\n',
+m("VER-6.1 Deadline ignored", "internal/platform/read.go",
+  '\t\tctx, cancel := context.WithTimeout(context.Background(), deadline)\n',
   '\t\tctx, cancel := context.WithCancel(context.Background())\n', "TestPL8c_")
 m("VER-6.1 a timed-out call waits for its worker", P,
   '\tcase <-ctx.Done():\n\t\treturn nil, ctx.Err()\n',

@@ -1,15 +1,15 @@
-// Package platform reads a pgraph fact log for the Stop (PRD 1.5, PF-PL8):
-// the Go packages whose files a run wrote, each a family the Stop's ledger
-// owes a platform_impact row and holds the package's test gate against
-// (verify/platform.go), and whether the log's facts about each still hold
-// (digests.go).
+// Package platform reads a pgraph fact log for the ledger verb's replay of a
+// Stop (PRD 1.5, PF-PL8): the Go packages whose files a run wrote, each a
+// family the ledger owes a platform_impact row and holds the package's go
+// test against (verify/platform.go), and whether the log's facts about each
+// still hold (digests.go).
 //
 // Boundary. pgraph is a separate module that the rashomon module never
 // imports (pgraph/doc.go); the crossing is a file in the format pgraph's
 // (*Log).Encode writes, versioned by its header line. This package reads it
 // with its own decoder, the header and the record grammar alone, never through
 // pgraph.DecodeLog. A header it does not know, a log over its cap, a malformed
-// line or a decode past Deadline is unknown, never a guess (INV-14).
+// line or a decode past the crash guard is unknown, never a guess (INV-14).
 package platform
 
 import (
@@ -17,25 +17,24 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"io/fs"
-	"os"
 	"slices"
-	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
-	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// Deadline bounds one Read's decode of the log (PF-PL8). Past it the answer
-// is unreadable: one unknown row and no family.
-const Deadline = 20 * time.Millisecond
+// deadline is a crash guard on one Read's decode of the log, not a budget:
+// the answer must be the same for the same files (INV-11), and a decode
+// within MaxLogBytes is milliseconds (11 to 17 ms for this repository's 3 MB
+// log), so only a read that has stalled reaches it, and it reads
+// LogTimedOut. A variable so a test can hold a decode past it.
+var deadline = 10 * time.Second
 
 // RunView is what Read reads of a run: the project root, the paths the run
 // wrote (relative to Root, or absolute under it) and the pgraph log to read.
-// The Stop fills LogPath with LogPath(Root) where that file exists (cmd's
-// platformRead, card PL-WIRE1), else leaves it "".
+// The ledger verb fills LogPath with LogPath(Root) where that file exists
+// (cmd's platformRead, card PL-WIRE1), else leaves it "".
 type RunView struct {
 	Root         string
 	WrittenPaths []string
@@ -53,75 +52,6 @@ type RunView struct {
 type Family struct {
 	Package string
 	Hash    string
-}
-
-// Read is the Stop's view of the platform graph for the run's writes: one
-// family per Go package a written .go file belongs to (Go's rule, D132),
-// sorted by Package. A family is FactsKnown with its Hash where the log holds
-// the package and the sync's digests vouch for every written file of it,
-// FactsStale where the log holds it and they do not (staleOf), and
-// FactsUnknown where the log holds no such package or there is no log
-// (LogPath "", or gone by the time it is opened): never zero obligations for
-// a package the graph cannot speak for (PF-PL11, INV-2). A log that is there
-// and cannot be read whole within Deadline, or in a format this package does
-// not know, is Unreadable with no family: never a partial answer. A path that
-// is no .go file, or in no package, names none, and so does every path when
-// Root is "": a relative path would be read against the process's directory.
-func Read(run RunView) verify.PlatformRead {
-	out := verify.PlatformRead{Families: []verify.PlatformFamily{}}
-	if run.Root == "" {
-		return out
-	}
-	mods := map[string]goMod{}
-	locs := map[string]pkgLoc{}
-	files := map[string]string{}
-	var written []string
-	for _, p := range run.WrittenPaths {
-		if !strings.HasSuffix(p, ".go") {
-			continue
-		}
-		if l := locate(run.Root, p, mods); l.pkg != "" {
-			locs[l.pkg], files[p] = l, l.pkg
-			written = append(written, p)
-		}
-	}
-	if len(locs) == 0 {
-		return out
-	}
-	hashes := map[string]string{}
-	if run.LogPath != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), Deadline)
-		defer cancel()
-		fams, err := impactWithin(ctx, run.Root, run.LogPath, written, MaxLogBytes)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			out.Unreadable = true
-			return out
-		}
-		for _, f := range fams {
-			hashes[f.Package] = f.Hash
-		}
-	}
-	var stale map[string]bool
-	if len(hashes) > 0 {
-		stale = staleOf(run.Root, files)
-	}
-	pkgs := make([]string, 0, len(locs))
-	for pkg := range locs {
-		pkgs = append(pkgs, pkg)
-	}
-	slices.Sort(pkgs)
-	for _, pkg := range pkgs {
-		l := locs[pkg]
-		f := verify.PlatformFamily{Package: pkg, Dir: l.dir, ModuleDir: l.modDir, Facts: verify.FactsUnknown}
-		if h, ok := hashes[pkg]; ok {
-			f.Facts, f.Hash = verify.FactsKnown, h
-			if stale[pkg] {
-				f.Facts, f.Hash = verify.FactsStale, ""
-			}
-		}
-		out.Families = append(out.Families, f)
-	}
-	return out
 }
 
 // Impact is the families of the packages paths belong to, read from the log at
@@ -166,7 +96,7 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
-	f, err := os.Open(logPath)
+	f, err := regfile.Open(logPath)
 	if err != nil {
 		return nil, err
 	}

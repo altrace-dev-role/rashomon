@@ -33,7 +33,7 @@ func reportLedger(sessionID string, stdout io.Writer) error {
 	}
 	var r stopReplay
 	if err == nil {
-		r, err = replayLastStop(st, sessionID)
+		r, err = replayLastStop(st, sessionID, platformRead)
 	}
 	if errors.Is(err, errNoRecords) {
 		return fmt.Errorf("session %q has no records here", sessionID)
@@ -68,9 +68,7 @@ func ledgerText(r stopReplay) string {
 	}
 	b.WriteString("task: outside spec_digest, so a change since the Stop is not named\n")
 	b.WriteString("tree: read now, not at the Stop\n")
-	if v.Platform.Families != nil {
-		b.WriteString("platform: the pgraph log and written Go files are read now, not at the Stop\n")
-	}
+	b.WriteString(platformHeader(v.Platform.Log))
 	b.WriteString("final message: not in the record, so judgment_disclosed reads unknown\n")
 	if len(v.Obligations) == 0 {
 		fmt.Fprintf(&b, "no obligation rows at seq %d\n", seq)

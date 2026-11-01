@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"errors"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // goMod is what one directory's go.mod says for packageOf: whether the
@@ -101,9 +102,10 @@ func moduleAt(root, dir string, mods map[string]goMod) goMod {
 // readModule reads the go.mod at p for its first module directive: `module
 // PATH` or `module "PATH"`, comments and blank lines skipped. replace, vendor
 // and the block form are not read (D132). A go.mod that exists but cannot be
-// read names no module.
+// read, or is no regular file (a named pipe would hold the read), names no
+// module.
 func readModule(p string) goMod {
-	f, err := os.Open(p)
+	f, err := regfile.Open(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return goMod{}
 	}

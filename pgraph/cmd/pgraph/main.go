@@ -1,18 +1,24 @@
 // Command pgraph writes a Go repository's platform graph where the rashomon
-// hook reads it (card PL-WIRE1):
+// ledger verb reads it (card PL-WIRE1):
 //
 //	pgraph sync [-timeout d] <root>
 //
 // loads every Go module at or under root (pgraph.ScanRoots) offline
 // (pgraph.LoaderEnv), extracts the PROVEN facts and the ALGORITHMIC dispatch
-// facts, reconciles them into the log root/.rashomon/pgraph.log holds, or a
-// new one, and writes it back with the per-package file digests the load
-// read (root/.rashomon/pgraph.digests). A sync that cannot load every module
-// writes nothing: a partial log would read as a program with fewer packages.
+// facts, reconciles them into the log root/.pgraph/pgraph.log holds, or a new
+// one, and writes it back with the per-package file digests the load read
+// (root/.pgraph/pgraph.digests). Deleting root/.pgraph forgets both. A sync
+// that cannot load every module writes nothing: a partial log would read as
+// a program with fewer packages.
 //
 // It is a command of its own, not a rashomon verb: the rashomon binary links
 // no package that starts a process (H-17, TRU-40), so it cannot run this one;
-// a person runs it, and the hook reads what it wrote.
+// a person runs it, and `rashomon report --ledger` reads what it wrote.
+//
+// What it prints a person fits 80 columns and names no absolute path: the
+// root reads as ".", the home directory as "~" and the Go root as $GOROOT. The
+// summary keeps the tier names PROVEN and ALGORITHMIC, the words the PRD gives
+// people for them (PF-PL4).
 package main
 
 import (
@@ -26,6 +32,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/pgraph"
@@ -41,7 +49,11 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-const usage = "usage: pgraph sync [-timeout d] <root>\n"
+const usage = "usage: pgraph sync [-timeout d] <root>\n" +
+	"writes <root>/.pgraph, its graph and file digests; deleting it forgets them\n"
+
+// columns is the width every line pgraph prints is fitted to.
+const columns = 80
 
 // run is the command: 0 on a sync written, 1 on a sync that failed and wrote
 // nothing, 2 on a usage error.
@@ -59,16 +71,89 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	s, err := syncRoot(ctx, fl.Arg(0))
-	if err != nil {
-		fmt.Fprintf(stderr, "pgraph: %v\n", err)
-		return 1
+	root, err := filepath.Abs(fl.Arg(0))
+	if err == nil {
+		root, err = filepath.EvalSymlinks(root)
 	}
+	if err == nil {
+		var s synced
+		if s, err = syncRoot(ctx, root); err == nil {
+			report(stdout, s)
+			return 0
+		}
+	}
+	fmt.Fprint(stderr, fitted(sanitize(err.Error(), fl.Arg(0), root)))
+	return 1
+}
+
+// report is a sync's two lines.
+func report(stdout io.Writer, s synced) {
 	fmt.Fprintf(stdout, "pgraph: synced %s in %s into %s\n", count(s.packages, "package"), count(s.modules, "module"),
 		filepath.Join(pgraph.StateDir, pgraph.LogFile))
 	fmt.Fprintf(stdout, "pgraph: facts PROVEN +%d -%d, ALGORITHMIC +%d -%d\n",
 		s.proven.Asserted, s.proven.Retracted, s.algorithmic.Asserted, s.algorithmic.Retracted)
-	return 0
+}
+
+// sanitize is msg with the root, as given and resolved, read as ".", the home
+// directory as "~" and the Go root as $GOROOT, and without the "pgraph: " a
+// library error leads with, wherever a wrapper put it, which the line adds
+// once.
+func sanitize(msg, given, root string) string {
+	if abs, err := filepath.Abs(given); err == nil {
+		msg = strings.ReplaceAll(msg, abs, ".")
+	}
+	if root != "" {
+		msg = strings.ReplaceAll(msg, root, ".")
+	}
+	if g := runtime.GOROOT(); g != "" {
+		msg = strings.ReplaceAll(msg, g, "$GOROOT")
+	}
+	if h, err := os.UserHomeDir(); err == nil && h != "" && h != "/" {
+		msg = strings.ReplaceAll(msg, h, "~")
+	}
+	return strings.ReplaceAll(msg, "pgraph: ", "")
+}
+
+// fitted is msg as "pgraph: " lines of at most columns, broken at spaces and,
+// where one word is longer than a line, inside it; continuation lines are
+// indented under the first's text.
+func fitted(msg string) string {
+	const lead = "pgraph: "
+	width := columns - len(lead)
+	var b strings.Builder
+	line := ""
+	flush := func() {
+		if b.Len() == 0 {
+			b.WriteString(lead)
+		} else {
+			b.WriteString(strings.Repeat(" ", len(lead)))
+		}
+		b.WriteString(line + "\n")
+		line = ""
+	}
+	for _, w := range strings.Fields(msg) {
+		for len(w) > width {
+			if line != "" {
+				flush()
+			}
+			line = w[:width]
+			flush()
+			w = w[width:]
+		}
+		switch {
+		case line == "":
+			line = w
+		case len(line)+1+len(w) <= width:
+			line += " " + w
+		default:
+			flush()
+			line = w
+		}
+	}
+	if line != "" || b.Len() == 0 {
+		flush()
+	}
+	return b.String()
 }
 
 // count is n and noun, plural but for one.
@@ -85,18 +170,12 @@ type synced struct {
 	proven, algorithmic pgraph.Delta
 }
 
-// syncRoot loads root's modules, reconciles the log and writes the log, then
-// the digests. In that order: between the two writes the digests are the
-// last sync's, so a file changed since reads stale and its package's facts
-// unknown; the other order would let new digests vouch for old facts.
-func syncRoot(ctx context.Context, root string) (synced, error) {
-	abs, err := filepath.Abs(root)
-	if err == nil {
-		abs, err = filepath.EvalSymlinks(abs)
-	}
-	if err != nil {
-		return synced{}, err
-	}
+// syncRoot loads the modules of abs, a root made absolute and
+// symlink-resolved, reconciles the log and writes the log, then the digests.
+// In that order: between the two writes the digests are the last sync's, so
+// a file changed since reads stale and its package's facts unknown; the
+// other order would let new digests vouch for old facts.
+func syncRoot(ctx context.Context, abs string) (synced, error) {
 	mods, err := pgraph.ScanRoots(abs)
 	if err != nil {
 		return synced{}, err
@@ -106,14 +185,15 @@ func syncRoot(ctx context.Context, root string) (synced, error) {
 	for _, m := range mods {
 		p, err := pgraph.Load(ctx, m, pgraph.Config{})
 		if err != nil {
-			return synced{}, fmt.Errorf("%s: %w", m, err)
+			rel, _ := filepath.Rel(abs, m)
+			return synced{}, fmt.Errorf("module %s: %w", filepath.ToSlash(rel), err)
 		}
 		progs = append(progs, p)
 		s.packages += len(p.PackagePaths())
 	}
 	dir := filepath.Join(abs, pgraph.StateDir)
 	logPath := filepath.Join(dir, pgraph.LogFile)
-	l, err := readLog(logPath)
+	l, err := readLog(logPath, filepath.Join(pgraph.StateDir, pgraph.LogFile))
 	if err != nil {
 		return synced{}, err
 	}
@@ -140,10 +220,11 @@ func syncRoot(ctx context.Context, root string) (synced, error) {
 	return s, writeAtomic(filepath.Join(dir, pgraph.DigestsFile), digests)
 }
 
-// readLog is the log at path, or an empty one where there is none. A log
-// that does not decode is an error and is left as it is: its history is the
-// record of what was retracted, and a sync does not start one over silently.
-func readLog(path string) (*pgraph.Log, error) {
+// readLog is the log at path, named name in an error, or an empty one where
+// there is none. A log that does not decode is an error and is left as it
+// is: its history is the record of what was retracted, and a sync does not
+// start one over silently.
+func readLog(path, name string) (*pgraph.Log, error) {
 	fi, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return &pgraph.Log{}, nil
@@ -152,7 +233,7 @@ func readLog(path string) (*pgraph.Log, error) {
 		return nil, err
 	}
 	if fi.Size() > pgraph.MaxLogBytes {
-		return nil, fmt.Errorf("%s is %d bytes, over the %d byte cap", path, fi.Size(), pgraph.MaxLogBytes)
+		return nil, fmt.Errorf("%s is %d bytes, over the %d byte cap", name, fi.Size(), pgraph.MaxLogBytes)
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -160,7 +241,7 @@ func readLog(path string) (*pgraph.Log, error) {
 	}
 	l, err := pgraph.DecodeLog(b)
 	if err != nil {
-		return nil, fmt.Errorf("%s does not decode (%w); move it aside to start a new log", path, err)
+		return nil, fmt.Errorf("%s does not decode (%w); move it aside to start a new log", name, err)
 	}
 	return l, nil
 }

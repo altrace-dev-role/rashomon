@@ -26,8 +26,8 @@ var ciGoTest = &InferredGate{Argv: []string{"go", "test", "./..."}, Declared: tr
 
 // pkgFamily is the read for a write of pkg/a.go: package pkg of module
 // example.com/m at the root, its facts known.
-var pkgFamily = PlatformRead{Families: []PlatformFamily{
-	{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: FactsKnown, Hash: "h0"},
+var pkgFamily = PlatformRead{Log: LogRead, Families: []PlatformFamily{
+	{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: FactsKnown, Hash: "h0", Tests: true},
 }}
 
 // plwRun is a call of Bash: the line it ran, where (project-relative, "."
@@ -35,6 +35,9 @@ var pkgFamily = PlatformRead{Families: []PlatformFamily{
 type plwRun struct {
 	line, dir, outcome string
 	bg                 bool
+	// noName records the run as a record before call schema 8 does, with no
+	// runner name, so its runner key is its words' digest.
+	noName bool
 }
 
 // plwRecord is plwRecordAt for an edit of pkg/a.go.
@@ -69,7 +72,7 @@ func plwRecordAt(t *testing.T, path string, before bool, runs ...plwRun) *store.
 	ranIn(rec, "/repo", "")
 	for i, r := range runs {
 		s := first + int64(i)
-		if namesRunner(r.line) {
+		if namesRunner(r.line) && !r.noName {
 			named(t, rec, s, r.line)
 		} else {
 			recorded(t, rec, s, r.line)
@@ -127,13 +130,13 @@ var plwCases = []struct {
 	{"./pkg/...", false, []plwRun{{line: "go test ./pkg/...", dir: ".", outcome: store.ExecOK}}, ObligationMet},
 	{"./pkg exactly", false, []plwRun{{line: "go test ./pkg", dir: ".", outcome: store.ExecOK}}, ObligationMet},
 	{"one common flag", false, []plwRun{{line: "go test -count=1 ./pkg/...", dir: ".", outcome: store.ExecOK}}, ObligationMet},
-	{"a redirect the runner's words leave out", false, []plwRun{{line: "go test ./... 2>&1 > out.txt", dir: ".", outcome: store.ExecOK}}, ObligationMet},
-	{"cd pkg, local directory mode", false, []plwRun{{line: "cd pkg && go test", dir: "pkg", outcome: store.ExecOK}}, ObligationMet},
-	{"cd pkg, -v .", false, []plwRun{{line: "cd pkg && go test -v .", dir: "pkg", outcome: store.ExecOK}}, ObligationMet},
+	{"in pkg, local directory mode", false, []plwRun{{line: "go test", dir: "pkg", outcome: store.ExecOK}}, ObligationMet},
+	{"in pkg, -v .", false, []plwRun{{line: "go test -v .", dir: "pkg", outcome: store.ExecOK}}, ObligationMet},
 	{"the last covering run decides", false, []plwRun{
 		{line: "go test ./pkg", dir: ".", outcome: store.ExecFailed}, {line: "go test ./pkg", dir: ".", outcome: store.ExecOK}}, ObligationMet},
-	// Unmet: the covering run is red.
-	{"red ./...", false, []plwRun{{line: "go test ./...", dir: ".", outcome: store.ExecFailed}}, ObligationUnmet},
+	// Unmet: the covering run is red and names pkg alone.
+	{"red ./pkg alone", false, []plwRun{{line: "go test ./pkg", dir: ".", outcome: store.ExecFailed}}, ObligationUnmet},
+	{"red in pkg, local directory mode", false, []plwRun{{line: "go test", dir: "pkg", outcome: store.ExecFailed}}, ObligationUnmet},
 	// Open: no run of the runner after the edit.
 	{"no run", false, nil, ObligationOpen},
 	{"green before the edit", true, []plwRun{{line: "go test ./...", dir: ".", outcome: store.ExecOK}}, ObligationOpen},
@@ -156,6 +159,27 @@ var plwCases = []struct {
 		{line: "go test ./pkg", dir: ".", outcome: store.ExecOK}, {line: "go test -run TestA ./pkg", dir: ".", outcome: store.ExecFailed}}, ObligationUnknown},
 	{"a cover after a run it cannot read", false, []plwRun{
 		{line: "go test -run TestA ./pkg", dir: ".", outcome: store.ExecFailed}, {line: "go test ./pkg", dir: ".", outcome: store.ExecOK}}, ObligationMet},
+	// A red run over many packages says only that one of them failed (M4).
+	{"red ./... names many packages", false, []plwRun{{line: "go test ./...", dir: ".", outcome: store.ExecFailed}}, ObligationUnknown},
+	{"red ./pkg/... names pkg and below", false, []plwRun{{line: "go test ./pkg/...", dir: ".", outcome: store.ExecFailed}}, ObligationUnknown},
+	// A later red test run with no runner key may have run pkg's tests (M1).
+	{"a red subshell after a green cover", false, []plwRun{
+		{line: "go test ./...", dir: ".", outcome: store.ExecOK}, {line: "(cd pkg && go test .)", dir: ".", outcome: store.ExecFailed}}, ObligationUnknown},
+	{"a red subshell with no runner name after a green cover", false, []plwRun{
+		{line: "go test ./...", dir: ".", outcome: store.ExecOK}, {line: "(cd pkg && go test .)", dir: ".", outcome: store.ExecFailed, noName: true}}, ObligationUnknown},
+	{"two hidden go test runs, no runner key, after a green cover", false, []plwRun{
+		{line: "go test ./...", dir: ".", outcome: store.ExecOK}, {line: "go test ./pkg | tail -3; go test ./pkg | tail -3", dir: ".", outcome: store.ExecOK}}, ObligationUnknown},
+	{"a red make test after a green cover", false, []plwRun{
+		{line: "go test ./...", dir: ".", outcome: store.ExecOK}, {line: "make test", dir: ".", outcome: store.ExecFailed}}, ObligationUnknown},
+	{"a red cd past the fold after a green cover", false, []plwRun{
+		{line: "go test ./...", dir: ".", outcome: store.ExecOK}, {line: "echo x; cd pkg && go test .", dir: ".", outcome: store.ExecFailed}}, ObligationUnknown},
+	// Words ahead of the runner the runner digest leaves out (M3).
+	{"GOFLAGS ahead of go test", false, []plwRun{{line: "GOFLAGS=-run=TestOther go test ./...", dir: ".", outcome: store.ExecOK}}, ObligationUnknown},
+	{"export GOFLAGS, then go test", false, []plwRun{{line: "export GOFLAGS=-run=TestOther; go test ./...", dir: ".", outcome: store.ExecOK}}, ObligationUnknown},
+	{"a wrapper ahead of go test", false, []plwRun{{line: "timeout 60 go test ./...", dir: ".", outcome: store.ExecOK}}, ObligationUnknown},
+	{"cd ahead of go test", false, []plwRun{{line: "cd pkg && go test", dir: "pkg", outcome: store.ExecOK}}, ObligationUnknown},
+	{"a redirect after go test", false, []plwRun{{line: "go test ./... 2>&1 > out.txt", dir: ".", outcome: store.ExecOK}}, ObligationUnknown},
+	{"-short skips tests", false, []plwRun{{line: "go test -short ./...", dir: ".", outcome: store.ExecOK}}, ObligationUnknown},
 }
 
 // TestPLW1m_PlatformRowsKnownAnswers: each case's row is the state fixed for
@@ -200,19 +224,22 @@ func TestPLW1m_PlatformRowsKnownAnswers(t *testing.T) {
 
 // TestPLW1p_PlatformRowShapeAndGate: a row is platform_impact in the session
 // scope, source platform, its id over the package and its facts (a hash, or
-// the word for its state); the Stop asks the platform read for the project
-// root and the written .go files alone; the gate is the project's declared
-// one, or a trusted spec's, never a manifest's convention; an unknown family
-// is unknown whatever ran; a stale one is still judged, under its own id; an
-// unreadable log is one unknown row with no family; no Platform, or no Go
-// write, reads nothing. Break: let a convention-only command stand as the
-// gate, and a project with a bare go.mod owes rows it never declared.
+// the word for its state); the replay asks the platform read for the project
+// root and the written .go files alone. The gate is a go test gate a trusted
+// spec declares or the project's own files name, never a manifest's
+// convention, a build gate, an advisory one, or a make test gate (S4). Known,
+// stale and new facts are judged alike (S3); no log, or a package with no
+// test file (N2), reads unknown whatever ran; an unreadable or timed-out log
+// is one unknown row with no family; the packages past the cap are one
+// unknown row; no Platform, or no Go write, reads nothing. Break: let a
+// convention-only command stand as the gate, and a project with a bare
+// go.mod owes rows it never declared.
 func TestPLW1p_PlatformRowShapeAndGate(t *testing.T) {
 	green := plwRun{line: "go test ./...", dir: ".", outcome: store.ExecOK}
 	var asked []string
 	v := plwStop(plwRecord(t, false, green), nil, ciGoTest, pkgFamily, &asked)
 	if !slices.Equal(asked, []string{"/repo", "pkg/a.go"}) {
-		t.Errorf("the Stop asked for %q, want the root and pkg/a.go", asked)
+		t.Errorf("the replay asked for %q, want the root and pkg/a.go", asked)
 	}
 	rows := platformRows(v)
 	want := Obligation{ID: ObligationID(ScopeSession, PlatformImpact, "example.com/m/pkg@h0"), Scope: ScopeSession,
@@ -224,36 +251,53 @@ func TestPLW1p_PlatformRowShapeAndGate(t *testing.T) {
 		t.Errorf("view's platform %+v, want the read", v.Platform)
 	}
 	convention := &InferredGate{Argv: []string{"go", "test", "./..."}}
+	makeTest := &InferredGate{Argv: []string{"make", "test"}, Declared: true}
 	trusted := dgSpec(spec.Trusted, dgGate("unit", "go", "test", "./..."))
-	stale := PlatformRead{Families: []PlatformFamily{{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: FactsStale}}}
-	unknown := PlatformRead{Families: []PlatformFamily{{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: FactsUnknown}}}
+	family := func(facts FactsState, hash string, tests bool) PlatformRead {
+		return PlatformRead{Log: LogRead, Families: []PlatformFamily{
+			{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: facts, Hash: hash, Tests: tests}}}
+	}
 	yes, no := true, false
 	build := dgSpec(spec.Trusted, spec.Declared{ID: "spec:b", Gate: spec.Gate{ID: "b", Kind: "build", Argv: []string{"go", "build", "./..."}, Match: "prefix", Required: &yes}})
+	buildKind := dgSpec(spec.Trusted, spec.Declared{ID: "spec:k", Gate: spec.Gate{ID: "k", Kind: "build", Argv: []string{"go", "test", "./..."}, Match: "prefix", Required: &yes}})
 	advisory := dgSpec(spec.Trusted, spec.Declared{ID: "spec:t", Gate: spec.Gate{ID: "t", Kind: "test", Argv: []string{"go", "test", "./..."}, Match: "prefix", Required: &no}})
 	for _, c := range []struct {
-		name   string
-		sp     *spec.Compiled
-		inf    *InferredGate
-		read   PlatformRead
-		runs   []plwRun
-		family string
-		state  ObligationState
+		name     string
+		sp       *spec.Compiled
+		inf      *InferredGate
+		read     PlatformRead
+		runs     []plwRun
+		families []string
+		states   []ObligationState
 	}{
-		{"a trusted spec's gate", trusted, nil, pkgFamily, []plwRun{green}, "example.com/m/pkg@h0", ObligationMet},
-		{"a trusted spec's gate, not run", trusted, nil, pkgFamily, nil, "example.com/m/pkg@h0", ObligationOpen},
-		{"a manifest's convention is no gate", nil, convention, pkgFamily, nil, "example.com/m/pkg@h0", ObligationUnknown},
-		{"a build gate is no test gate", build, nil, pkgFamily, nil, "example.com/m/pkg@h0", ObligationUnknown},
-		{"an advisory test gate owes nothing", advisory, nil, pkgFamily, nil, "example.com/m/pkg@h0", ObligationUnknown},
-		{"no gate at all", nil, nil, pkgFamily, nil, "example.com/m/pkg@h0", ObligationUnknown},
-		{"stale facts are still judged", nil, ciGoTest, stale, []plwRun{green}, "example.com/m/pkg@stale", ObligationMet},
-		{"stale facts are still owed", nil, ciGoTest, stale, nil, "example.com/m/pkg@stale", ObligationOpen},
-		{"no log, or no such package", nil, ciGoTest, unknown, []plwRun{green}, "example.com/m/pkg@unknown", ObligationUnknown},
-		{"an unreadable log", nil, ciGoTest, PlatformRead{Families: []PlatformFamily{}, Unreadable: true}, []plwRun{green}, "", ObligationUnknown},
+		{"a trusted spec's gate", trusted, nil, pkgFamily, []plwRun{green}, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationMet}},
+		{"a trusted spec's gate, not run", trusted, nil, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationOpen}},
+		{"a manifest's convention is no gate", nil, convention, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"make test is no go test gate", nil, makeTest, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"a build gate is no test gate", build, nil, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"a build-kind gate is no test gate, go test or not", buildKind, nil, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"an advisory test gate owes nothing", advisory, nil, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"no gate at all", nil, nil, pkgFamily, nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"stale facts are judged", nil, ciGoTest, family(FactsStale, "", true), []plwRun{green}, []string{"example.com/m/pkg@stale"}, []ObligationState{ObligationMet}},
+		{"stale facts are owed", nil, ciGoTest, family(FactsStale, "", true), nil, []string{"example.com/m/pkg@stale"}, []ObligationState{ObligationOpen}},
+		{"a package the log does not hold is judged", nil, ciGoTest, family(FactsNew, "", true), []plwRun{green}, []string{"example.com/m/pkg@new"}, []ObligationState{ObligationMet}},
+		{"a package the log does not hold is owed", nil, ciGoTest, family(FactsNew, "", true), nil, []string{"example.com/m/pkg@new"}, []ObligationState{ObligationOpen}},
+		{"no log", nil, ciGoTest, PlatformRead{Log: LogNone, Families: family(FactsUnknown, "", true).Families}, []plwRun{green}, []string{"example.com/m/pkg@unknown"}, []ObligationState{ObligationUnknown}},
+		{"no test file, run green", nil, ciGoTest, family(FactsKnown, "h0", false), []plwRun{green}, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"no test file, not run", nil, ciGoTest, family(FactsKnown, "h0", false), nil, []string{"example.com/m/pkg@h0"}, []ObligationState{ObligationUnknown}},
+		{"an unreadable log", nil, ciGoTest, PlatformRead{Log: LogUnreadable, Families: []PlatformFamily{}}, []plwRun{green}, []string{""}, []ObligationState{ObligationUnknown}},
+		{"a timed-out log", nil, ciGoTest, PlatformRead{Log: LogTimedOut, Families: []PlatformFamily{}}, []plwRun{green}, []string{""}, []ObligationState{ObligationUnknown}},
+		{"packages past the cap", nil, ciGoTest, PlatformRead{Log: LogRead, Families: pkgFamily.Families, More: 3}, []plwRun{green},
+			[]string{"example.com/m/pkg@h0", PlatformMore}, []ObligationState{ObligationMet, ObligationUnknown}},
 	} {
 		rows := platformRows(plwStop(plwRecord(t, false, c.runs...), c.sp, c.inf, c.read, nil))
-		if len(rows) != 1 || rows[0].ID != ObligationID(ScopeSession, PlatformImpact, c.family) || rows[0].State != c.state ||
-			rows[0].Kind != PlatformImpact || rows[0].Source != SourcePlatform || rows[0].Evidence == nil {
-			t.Errorf("%s: rows %+v, want one %s row over %q", c.name, rows, c.state, c.family)
+		ok := len(rows) == len(c.families)
+		for i := 0; ok && i < len(rows); i++ {
+			ok = rows[i].ID == ObligationID(ScopeSession, PlatformImpact, c.families[i]) && rows[i].State == c.states[i] &&
+				rows[i].Kind == PlatformImpact && rows[i].Scope == ScopeSession && rows[i].Source == SourcePlatform && rows[i].Evidence != nil
+		}
+		if !ok {
+			t.Errorf("%s: rows %+v, want %v over %q", c.name, rows, c.states, c.families)
 		}
 	}
 	if rows := platformRows(EvaluateStop(plwRecord(t, false, green), nil, nil, dgPoint(30), time.Time{},
@@ -273,7 +317,7 @@ func TestPLW1p_PlatformRowShapeAndGate(t *testing.T) {
 // the root reaches; from sub it is. Break: drop the module check, and a run
 // that never built the nested module meets its row.
 func TestPLW1q_ANestedModuleIsNotCoveredFromAbove(t *testing.T) {
-	nested := PlatformRead{Families: []PlatformFamily{{Package: "example.com/s/q", Dir: "sub/q", ModuleDir: "sub", Facts: FactsKnown, Hash: "h1"}}}
+	nested := PlatformRead{Log: LogRead, Families: []PlatformFamily{{Package: "example.com/s/q", Dir: "sub/q", ModuleDir: "sub", Facts: FactsKnown, Hash: "h1", Tests: true}}}
 	for _, c := range []struct {
 		dir  string
 		want ObligationState
@@ -286,38 +330,42 @@ func TestPLW1q_ANestedModuleIsNotCoveredFromAbove(t *testing.T) {
 	}
 }
 
-// TestPLW1r_CandidateLinesNameThePackageFromWhereTheyRan: run at the
-// package's own directory a line names it with no pattern, ".", or ./...;
-// from an ancestor, with ./... and each ./d/... down to it, or its path; each
-// bare or after one common flag, never two. Break: leave out the bare form,
-// and `cd pkg && go test` never meets the row.
-func TestPLW1r_CandidateLinesNameThePackageFromWhereTheyRan(t *testing.T) {
-	lines := func(dir, pkg string) []string {
-		var out []string
-		for _, argv := range candidateLines(dir, pkg) {
-			out = append(out, strings.Join(argv, " "))
+// TestPLW1r_CoverLinesNameThePackageFromWhereTheyRan: run at the package's
+// own directory a line names it alone with no pattern or "."; from an
+// ancestor, alone with its path; and with others as ./... and each ./d/...
+// down to it; each bare or after one common flag, never two, never -short.
+// Break: call ./pkg/... a line that names pkg alone, and a red run of pkg and
+// its subpackages reads unmet for pkg.
+func TestPLW1r_CoverLinesNameThePackageFromWhereTheyRan(t *testing.T) {
+	lines := func(dir, pkg string) map[string]cover {
+		out := map[string]cover{}
+		for _, l := range coverLines(dir, pkg) {
+			out[strings.Join(l.argv, " ")] = l.cover
 		}
 		return out
 	}
 	for _, c := range []struct {
 		dir, pkg string
-		want     []string
+		want     map[string]cover
 		not      []string
 	}{
-		{".", "a/b", []string{"go test ./...", "go test ./a/...", "go test ./a/b/...", "go test ./a/b", "go test -v ./a/b", "go test -count=1 ./a/..."},
-			[]string{"go test", "go test .", "go test ./a", "go test -v -race ./a/b"}},
-		{"a", "a/b", []string{"go test ./...", "go test ./b/...", "go test ./b", "go test -race ./b"}, []string{"go test ./a/b", "go test ."}},
-		{"a/b", "a/b", []string{"go test", "go test .", "go test ./...", "go test -short ."}, []string{"go test ./b"}},
+		{".", "a/b", map[string]cover{"go test ./...": coverMany, "go test ./a/...": coverMany, "go test ./a/b/...": coverMany,
+			"go test ./a/b": coverAlone, "go test -v ./a/b": coverAlone, "go test -count=1 ./a/...": coverMany},
+			[]string{"go test", "go test .", "go test ./a", "go test -v -race ./a/b", "go test -short ./a/b"}},
+		{"a", "a/b", map[string]cover{"go test ./...": coverMany, "go test ./b/...": coverMany, "go test ./b": coverAlone, "go test -race ./b": coverAlone},
+			[]string{"go test ./a/b", "go test ."}},
+		{"a/b", "a/b", map[string]cover{"go test": coverAlone, "go test .": coverAlone, "go test ./...": coverMany, "go test -json .": coverAlone},
+			[]string{"go test ./b", "go test -short ."}},
 	} {
 		got := lines(c.dir, c.pkg)
-		for _, w := range c.want {
-			if !slices.Contains(got, w) {
-				t.Errorf("%s from %s: %q not among %q", c.pkg, c.dir, w, got)
+		for w, cv := range c.want {
+			if g, ok := got[w]; !ok || g != cv {
+				t.Errorf("%s from %s: %q is %d (present %v), want %d", c.pkg, c.dir, w, g, ok, cv)
 			}
 		}
 		for _, w := range c.not {
-			if slices.Contains(got, w) {
-				t.Errorf("%s from %s: %q is among the lines and names no test of it alone", c.pkg, c.dir, w)
+			if _, ok := got[w]; ok {
+				t.Errorf("%s from %s: %q is among the lines", c.pkg, c.dir, w)
 			}
 		}
 	}
@@ -344,9 +392,10 @@ func helpFlags(t *testing.T) []string {
 }
 
 // TestPLW1n_CoverFlagsAreTheGoCommands (corpus: the tool's own docs): each
-// flag candidateLines puts before a pattern is one the go command's help
+// flag coverLines puts before a pattern is one the go command's help
 // lists, read from `go help` here rather than from memory, and none of them
-// narrows the tests run (-run, -skip, -list, -c, -n are not among them).
+// narrows the tests run (-run, -skip, -list, -short, -c, -n are not among
+// them).
 // Break: add a remembered spelling the go command does not have, or -run.
 func TestPLW1n_CoverFlagsAreTheGoCommands(t *testing.T) {
 	help := helpFlags(t)
@@ -361,7 +410,7 @@ func TestPLW1n_CoverFlagsAreTheGoCommands(t *testing.T) {
 		if !slices.Contains(help, name) {
 			t.Errorf("coverFlags holds %s, which go help does not list", f)
 		}
-		if slices.Contains([]string{"run", "skip", "list", "c", "n", "C", "bench", "fuzz"}, name) {
+		if slices.Contains([]string{"run", "skip", "list", "short", "c", "n", "C", "bench", "fuzz"}, name) {
 			t.Errorf("coverFlags holds %s, which runs part of the tests, or none, or elsewhere", f)
 		}
 	}
@@ -375,9 +424,9 @@ func TestPLW1v_EachPackageOwesFromItsOwnLastWrite(t *testing.T) {
 	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), edit(3, "other/o.go"))
 	ranIn(r, "/repo", "")
 	named(t, r, 2, "go test ./pkg")
-	read := PlatformRead{Families: []PlatformFamily{
-		{Package: "example.com/m/other", Dir: "other", ModuleDir: ".", Facts: FactsKnown, Hash: "h2"},
-		{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: FactsKnown, Hash: "h0"},
+	read := PlatformRead{Log: LogRead, Families: []PlatformFamily{
+		{Package: "example.com/m/other", Dir: "other", ModuleDir: ".", Facts: FactsKnown, Hash: "h2", Tests: true},
+		{Package: "example.com/m/pkg", Dir: "pkg", ModuleDir: ".", Facts: FactsKnown, Hash: "h0", Tests: true},
 	}}
 	var asked []string
 	rows := platformRows(plwStop(inPrompt(r, "p1"), nil, ciGoTest, read, &asked))
@@ -386,5 +435,69 @@ func TestPLW1v_EachPackageOwesFromItsOwnLastWrite(t *testing.T) {
 	}
 	if len(rows) != 2 || rows[0].State != ObligationOpen || rows[1].State != ObligationMet {
 		t.Errorf("rows %+v, want other open and pkg met", rows)
+	}
+}
+
+// TestPLW1x_AWriteAfterTheCoverUndoesIt (M2): after `go test ./...` passed,
+// a named write under pkg's directory (its testdata, a package below it) or
+// to the module's go.mod or go.sum owes the row again, open; an unnamed
+// write makes it unknown; a file of pkg's that reads now other than the edit
+// left it makes it unknown; a write in another package leaves it met.
+// Break: reset the row on pkg's own .go files alone, and an edit of go.mod
+// or a golden file after the green run reads met.
+func TestPLW1x_AWriteAfterTheCoverUndoesIt(t *testing.T) {
+	sum := "0000000000000000000000000000000000000000000000000000000000000001"
+	other := "0000000000000000000000000000000000000000000000000000000000000002"
+	edited := edit(1, "pkg/a.go")
+	edited.sha = sum
+	for _, c := range []struct {
+		name  string
+		after []call
+		tree  map[string]*string
+		want  ObligationState
+	}{
+		{"nothing after", nil, nil, ObligationMet},
+		{"another package", []call{edit(3, "other/b.go")}, nil, ObligationMet},
+		{"go.mod", []call{edit(3, "go.mod")}, nil, ObligationOpen},
+		{"go.sum", []call{edit(3, "go.sum")}, nil, ObligationOpen},
+		{"pkg's testdata", []call{edit(3, "pkg/testdata/golden.txt")}, nil, ObligationOpen},
+		{"a package below pkg", []call{edit(3, "pkg/sub/s.go")}, nil, ObligationOpen},
+		{"an unnamed write", []call{unnamedWrite(3)}, nil, ObligationUnknown},
+		{"pkg/a.go as the edit left it", nil, map[string]*string{"pkg/a.go": &sum}, ObligationMet},
+		{"pkg/a.go moved since, no write recorded", nil, map[string]*string{"pkg/a.go": &other}, ObligationUnknown},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := runOf(t, append([]call{edited, gateCall(2, "go-test", store.ExecOK)}, c.after...)...)
+			ranIn(r, "/repo", "")
+			named(t, r, 2, "go test ./...")
+			pt := Point{Kind: PointStop, Seq: lastSeqOf(r), SessionID: "s1", Tree: c.tree}
+			in := StopInput{PromptID: "p1", Key: dgKey, Inferred: ciGoTest, Platform: func(string, []string) PlatformRead { return pkgFamily }}
+			rows := platformRows(EvaluateStop(inPrompt(r, "p1"), nil, nil, pt, time.Time{}, in))
+			var got ObligationState
+			for _, o := range rows {
+				if o.ID == ObligationID(ScopeSession, PlatformImpact, "example.com/m/pkg@h0") {
+					got = o.State
+				}
+			}
+			if got != c.want {
+				t.Errorf("pkg's row %q, want %s (rows %+v)", got, c.want, rows)
+			}
+		})
+	}
+}
+
+// TestPLW1o_ATestRunWithNoRunnerKeyMightHaveCovered (M1): a later run the
+// record classes test but whose runner it could not key (a runner a cd ran
+// past the fold, which carries no runner digest) may have run pkg's tests,
+// so after a green `go test ./...` a red one leaves the row unknown, never
+// met. Break: pass over a run with no runner key, and the red run is missed.
+func TestPLW1o_ATestRunWithNoRunnerKeyMightHaveCovered(t *testing.T) {
+	noKey := call{seq: 3, tool: "Bash", prog: "go", class: shape.VerbTest, outcome: store.ExecFailed, exit: 1, loc: "d:repo"}
+	r := runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), noKey)
+	ranIn(r, "/repo", "")
+	named(t, r, 2, "go test ./...")
+	rows := platformRows(plwStop(inPrompt(r, "p1"), nil, ciGoTest, pkgFamily, nil))
+	if len(rows) != 1 || rows[0].State != ObligationUnknown {
+		t.Errorf("rows %+v, want pkg's row unknown", rows)
 	}
 }

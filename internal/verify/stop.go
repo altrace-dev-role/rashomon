@@ -42,10 +42,11 @@ type StopInput struct {
 	Inferred *InferredGate
 	// Platform reads the pgraph log under root, the snapshot's project root,
 	// for written, the session's relevant .go writes, project-relative (card
-	// PL-WIRE1): the Stop's caller sets it to internal/platform's Read, which
-	// imports this package. EvaluateStop calls it once, after classifying,
-	// only where the session wrote a Go file; nil reads no log and owes no
-	// platform row.
+	// PL-WIRE1): the ledger verb's replay sets it to internal/platform's
+	// Read, which imports this package; the Stop hook leaves it nil, since
+	// nothing reads a Stop's platform rows yet. EvaluateStop calls it once,
+	// after classifying, only where the session wrote a Go file; nil reads
+	// no log and owes no platform row.
 	Platform func(root string, written []string) PlatformRead
 }
 
@@ -146,7 +147,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	v.Obligations = ledgerOf(snap, &c, v.Expected)
 	if written := platformPaths(in.Platform, c.writes, pt.Seq); len(written) > 0 {
 		v.Platform = in.Platform(snap.ProjectRoot, written)
-		v.Obligations = append(v.Obligations, platformObligations(snap, &c, in.Key, v.Platform)...)
+		v.Obligations = append(v.Obligations, platformObligations(snap, &c, run, in.Key, v.Platform)...)
 	}
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims

@@ -143,20 +143,31 @@ func synthLog(t testing.TB, n int) []byte {
 	return []byte(b.String())
 }
 
+// guard sets the crash guard to 20 ms for the test, so a held decode
+// reaches it in a test's time.
+func guard(t *testing.T) {
+	t.Helper()
+	was := deadline
+	deadline = 20 * time.Millisecond
+	t.Cleanup(func() { deadline = was })
+}
+
 // stall makes every record cost a millisecond, so a 5,000-record decode takes
-// seconds against a 20 ms Deadline; the hook does not look at any context, so
+// seconds against a 20 ms guard; the hook does not look at any context, so
 // only the decoder's own looks can stop it.
 func stall(t *testing.T) {
 	t.Helper()
+	guard(t)
 	recordHook = func() { time.Sleep(time.Millisecond) }
 	t.Cleanup(func() { recordHook = nil })
 }
 
 // hang makes the first record wait two seconds, or until the test ends, so a
-// decode past Deadline is one only the caller's deadline can cut short: an
-// Obligations that waits for its worker returns after two seconds.
+// decode past the guard is one only the caller's guard can cut short: a Read
+// that waits for its worker returns after two seconds.
 func hang(t *testing.T) {
 	t.Helper()
+	guard(t)
 	release := make(chan struct{})
 	timer := time.AfterFunc(2*time.Second, func() { close(release) })
 	recordHook = func() { <-release }
@@ -168,21 +179,21 @@ func hang(t *testing.T) {
 	})
 }
 
-// TestPL8c_DeadlineYieldsUnknownNotPartial: a decode held past Deadline is
-// an unreadable log and no family (the Stop's one unknown platform_impact
-// row, verify's TestPLW1p_), returned at the deadline, not when the decode
-// would have finished.
+// TestPL8c_DeadlineYieldsUnknownNotPartial: a decode held past the crash
+// guard is a timed-out log and no family (the ledger's one unknown
+// platform_impact row, verify's TestPLW1p_), returned at the guard, not when
+// the decode would have finished.
 func TestPL8c_DeadlineYieldsUnknownNotPartial(t *testing.T) {
 	root, lp := project(t, synthLog(t, 5000))
 	hang(t)
 	start := time.Now()
 	r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp})
 	elapsed := time.Since(start)
-	if !r.Unreadable || r.Families == nil || len(r.Families) != 0 {
-		t.Errorf("a stalled decode: %+v, want unreadable and no family", r)
+	if r.Log != verify.LogTimedOut || r.Families == nil || len(r.Families) != 0 {
+		t.Errorf("a stalled decode: %+v, want timed out and no family", r)
 	}
 	if elapsed > time.Second {
-		t.Errorf("Read returned after %v; Deadline is %v", elapsed, Deadline)
+		t.Errorf("Read returned after %v; the guard is %v", elapsed, deadline)
 	}
 }
 
@@ -194,8 +205,8 @@ func TestPL8c2_DeadlineCancelsTheWork(t *testing.T) {
 	stall(t)
 	before := runtime.NumGoroutine()
 	for i := 0; i < 50; i++ {
-		if r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); !r.Unreadable {
-			t.Fatalf("timeout %d: %+v, want unreadable", i, r)
+		if r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); r.Log != verify.LogTimedOut {
+			t.Fatalf("timeout %d: %+v, want timed out", i, r)
 		}
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -209,35 +220,46 @@ func TestPL8c2_DeadlineCancelsTheWork(t *testing.T) {
 
 // TestPLW1w_ReadNamesEachWrittenPackagesFamily (card PL-WIRE1): each written
 // .go file's package is one family, sorted by package, with its directory,
-// its go.mod's directory and, the log holding it and the digests vouching for
-// its file, its Hash; a write of no .go file, or none, is no family (an empty
-// list, never null); with no log every package is unknown, never dropped
-// (PF-PL11). Break: drop a package the log does not hold, as Impact does,
-// and the new package c owes nothing.
+// its go.mod's directory (a nested module's own), whether a test file is in
+// it, and, the log holding it and the digests vouching for its files, its
+// Hash; a package the log does not hold is new (S3); a write of no .go file,
+// or none, is no family (an empty list, never null); with no log every
+// package is unknown, never dropped (PF-PL11). Break: drop a package the log
+// does not hold, as Impact does, and the new package c owes nothing.
 func TestPLW1w_ReadNamesEachWrittenPackagesFamily(t *testing.T) {
 	root, lp := synced(t)
-	got := Read(RunView{Root: root, WrittenPaths: []string{"b/b.go", "a/a.go", "c/c.go", "a/notes.txt"}, LogPath: lp})
+	put(t, filepath.Join(root, "sub", "go.mod"), []byte("module example.com/s\n"))
+	put(t, filepath.Join(root, "sub", "q", "q.go"), []byte("package q\n"))
+	got := Read(RunView{Root: root, WrittenPaths: []string{"b/b.go", "a/a.go", "c/c.go", "a/notes.txt", "sub/q/q.go"}, LogPath: lp})
 	want := []verify.PlatformFamily{
-		{Package: pkgA, Dir: "a", ModuleDir: ".", Facts: verify.FactsKnown, Hash: hashA},
+		{Package: pkgA, Dir: "a", ModuleDir: ".", Facts: verify.FactsKnown, Hash: hashA, Tests: true},
 		{Package: pkgB, Dir: "b", ModuleDir: ".", Facts: verify.FactsKnown, Hash: hashB},
-		{Package: "example.com/m/c", Dir: "c", ModuleDir: ".", Facts: verify.FactsUnknown},
+		{Package: "example.com/m/c", Dir: "c", ModuleDir: ".", Facts: verify.FactsNew},
+		{Package: "example.com/s/q", Dir: "sub/q", ModuleDir: "sub", Facts: verify.FactsNew},
 	}
-	if got.Unreadable || !slices.Equal(got.Families, want) {
+	if got.Log != verify.LogRead || !slices.Equal(got.Families, want) {
 		t.Errorf("Read = %+v\nwant %+v", got, want)
 	}
 	for _, run := range []RunView{{Root: root, LogPath: lp}, {Root: root, WrittenPaths: []string{"README.md", "a/testdata/x.go"}, LogPath: lp}} {
-		if r := Read(run); r.Unreadable || r.Families == nil || len(r.Families) != 0 {
+		if r := Read(run); r.Families == nil || len(r.Families) != 0 {
 			t.Errorf("Read(%+v) = %+v, want no family (an empty list)", run, r)
 		}
 	}
 	for _, lp := range []string{"", filepath.Join(root, "gone.log")} {
 		r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp})
-		if r.Unreadable || len(r.Families) != 1 || r.Families[0].Facts != verify.FactsUnknown || r.Families[0].Hash != "" {
+		if r.Log != verify.LogNone || len(r.Families) != 1 || r.Families[0].Facts != verify.FactsUnknown || r.Families[0].Hash != "" {
 			t.Errorf("no log (LogPath %q): %+v, want a's family unknown, not an unreadable log", lp, r)
 		}
 	}
+	var many []string
+	for i := 0; i <= MaxFamilies; i++ {
+		many = append(many, fmt.Sprintf("p%02d/x.go", i))
+	}
+	if r := Read(RunView{Root: root, WrittenPaths: many}); len(r.Families) != MaxFamilies || r.More != 1 {
+		t.Errorf("%d packages: %d families and %d more, want %d and 1", len(many), len(r.Families), r.More, MaxFamilies)
+	}
 	t.Chdir(root)
-	if r := Read(RunView{WrittenPaths: []string{"a/a.go"}, LogPath: lp}); r.Unreadable || len(r.Families) != 0 {
+	if r := Read(RunView{WrittenPaths: []string{"a/a.go"}, LogPath: lp}); r.Log != verify.LogNone || len(r.Families) != 0 {
 		t.Errorf("no root, run where a module is: %+v, want nothing read", r)
 	}
 }

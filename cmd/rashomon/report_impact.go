@@ -91,7 +91,7 @@ func attachImpact(st *store.Store, rep *report.Report, sessionID string) {
 // does not check, and a report must not write the learning state): a ledger
 // that does not check says so, and its lessons all read proposed.
 func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
-	r, err := replayLastStop(st, sessionID)
+	r, err := replayLastStop(st, sessionID, nil)
 	if err != nil {
 		return nil
 	}

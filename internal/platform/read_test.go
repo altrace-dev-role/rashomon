@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -37,13 +38,15 @@ func put(t testing.TB, p string, b []byte) {
 }
 
 // synced is the module example.com/m as pgraph sync leaves it: the fixture
-// log and digests where LogPath and the digests path name them, and a/a.go
-// and b/b.go holding the bytes the digests were taken over.
+// log and digests where LogPath and the digests path name them, a/a.go and
+// b/b.go holding the bytes the digests were taken over, and a test file in a
+// alone.
 func synced(t testing.TB) (root, logPath string) {
 	t.Helper()
 	root = t.TempDir()
 	put(t, filepath.Join(root, "go.mod"), []byte("module example.com/m\n\ngo 1.25\n"))
 	put(t, filepath.Join(root, "a", "a.go"), []byte("package a\n"))
+	put(t, filepath.Join(root, "a", "a_test.go"), []byte("package a\n"))
 	put(t, filepath.Join(root, "b", "b.go"), []byte("package b\n"))
 	logPath = LogPath(root)
 	put(t, logPath, fixtureLog(t))
@@ -60,17 +63,18 @@ func factsOf(r verify.PlatformRead) string {
 	return strings.TrimSpace(b.String())
 }
 
-// TestPLW1i_AWrittenFileTheDigestsDoNotVouchForMakesItsPackageStale (card
-// PL-WIRE1 e, PF-PL6 first half): the known-answer set. A package is stale,
-// its hash withheld, where a written .go file of it differs from its
-// recorded digest, is not recorded, or is gone, or where the digests are
-// missing, under another header, malformed, or past the hash cap; a written
-// _test.go file, which no sync reads, never makes one stale, and neither does
-// a file whose bytes match; the synced bytes back give the hash back (a
-// re-sync is the acceptance item's). One case per term of staleOf's
-// condition. Break: compare nothing, and an edited package keeps the hash of
-// code it no longer holds.
-func TestPLW1i_AWrittenFileTheDigestsDoNotVouchForMakesItsPackageStale(t *testing.T) {
+// TestPLW1i_AFileTheDigestsDoNotVouchForMakesItsPackageStale (card PL-WIRE1
+// e, S3): the known-answer set. A package is stale, its hash withheld, where
+// any file the digests list for it differs from its recorded digest or is
+// gone, whether or not the session wrote it; where a .go file of it the
+// session wrote is not listed; or where the digests are missing, under
+// another header, malformed, or past the hash cap. A written _test.go file,
+// which no sync reads, never makes one stale, and neither does a file whose
+// bytes match; the synced bytes back give the hash back (a re-sync is the
+// acceptance item's). One case per term of fresh's condition. Break: hash
+// only the files the session wrote, and a package changed by `git pull`
+// keeps the hash of code it no longer holds.
+func TestPLW1i_AFileTheDigestsDoNotVouchForMakesItsPackageStale(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		edit    func(root string)
@@ -83,8 +87,10 @@ func TestPLW1i_AWrittenFileTheDigestsDoNotVouchForMakesItsPackageStale(t *testin
 		{"new file in a known package", func(r string) { put(t, filepath.Join(r, "a", "new.go"), []byte("package a\n")) },
 			[]string{"a/new.go"}, pkgA + "=stale"},
 		{"deleted file", func(r string) { os.Remove(filepath.Join(r, "b", "b.go")) }, []string{"b/b.go"}, pkgB + "=stale"},
-		{"a test file alone", func(r string) { put(t, filepath.Join(r, "a", "a_test.go"), []byte("package a\n")) },
+		{"a test file alone", func(r string) { put(t, filepath.Join(r, "a", "a_test.go"), []byte("package a\n\n// x\n")) },
 			[]string{"a/a_test.go"}, pkgA + "=known"},
+		{"an unwritten file of the package changed", func(r string) { put(t, filepath.Join(r, "a", "a.go"), []byte("package a\n\nvar X int\n")) },
+			[]string{"a/a_test.go"}, pkgA + "=stale"},
 		{"an absolute path matching", nil, nil, pkgB + "=known"},
 		{"no digests", func(r string) { os.Remove(digestsPath(r)) }, []string{"a/a.go"}, pkgA + "=stale"},
 		{"digests under another header", func(r string) {
@@ -109,17 +115,15 @@ func TestPLW1i_AWrittenFileTheDigestsDoNotVouchForMakesItsPackageStale(t *testin
 	}
 	t.Run("past the hash cap", func(t *testing.T) {
 		root, lp := synced(t)
-		var written []string
 		var digests strings.Builder
 		digests.Write(fixtureDigests(t))
-		for i := 0; i < maxHashed; i++ {
-			p := fmt.Sprintf("a/f%02d.go", i)
+		for i := 1; i < maxHashed; i++ {
+			p := fmt.Sprintf("a/f%03d.go", i)
 			put(t, filepath.Join(root, filepath.FromSlash(p)), []byte("package a\n"))
 			fmt.Fprintf(&digests, "%s\t%s\t%s\n", pkgA, p, sumOf("package a\n"))
-			written = append(written, p)
 		}
 		put(t, digestsPath(root), []byte(digests.String()))
-		got := factsOf(Read(RunView{Root: root, WrittenPaths: append(written, "b/b.go"), LogPath: lp}))
+		got := factsOf(Read(RunView{Root: root, WrittenPaths: []string{"a/a.go", "b/b.go"}, LogPath: lp}))
 		if want := pkgA + "=known " + pkgB + "=stale"; got != want {
 			t.Errorf("%d matching files and one more: %s, want %s (the one past the cap unknown)", maxHashed, got, want)
 		}
@@ -143,20 +147,21 @@ func TestPLW1i_AWrittenFileTheDigestsDoNotVouchForMakesItsPackageStale(t *testin
 // sha256. Break: read the package field as the path, and no file is found.
 func TestPLW1j_DigestsParseAsPgraphWritesThem(t *testing.T) {
 	got, err := parseDigests(bytes.NewReader(fixtureDigests(t)))
-	if err != nil || len(got) != 2 || got["a/a.go"] != sumOf("package a\n") || got["b/b.go"] != sumOf("package b\n") {
-		t.Errorf("parseDigests = %v, %v; want a/a.go and b/b.go by their sha256", got, err)
+	if err != nil || len(got.files) != 2 || got.files["a/a.go"] != sumOf("package a\n") || got.files["b/b.go"] != sumOf("package b\n") ||
+		!slices.Equal(got.byPkg[pkgA], []string{"a/a.go"}) || !slices.Equal(got.byPkg[pkgB], []string{"b/b.go"}) {
+		t.Errorf("parseDigests = %+v, %v; want a/a.go and b/b.go by their sha256 and package", got, err)
 	}
 }
 
 // TestPLW1k_PathsArePgraphs: the log and digests this package reads are where
-// pgraph sync writes them, root/.rashomon/pgraph.log and pgraph.digests, and
+// pgraph sync writes them, root/.pgraph/pgraph.log and pgraph.digests, and
 // the header is the one pgraph writes: the names are the boundary, read here
-// from pgraph's own source. Break: move the log, and the hook reads none.
+// from pgraph's own source. Break: move the log, and the verb reads none.
 func TestPLW1k_PathsArePgraphs(t *testing.T) {
-	if got, want := LogPath("/r"), filepath.Join("/r", ".rashomon", "pgraph.log"); got != want {
+	if got, want := LogPath("/r"), filepath.Join("/r", ".pgraph", "pgraph.log"); got != want {
 		t.Errorf("LogPath = %s, want %s", got, want)
 	}
-	if got, want := digestsPath("/r"), filepath.Join("/r", ".rashomon", "pgraph.digests"); got != want {
+	if got, want := digestsPath("/r"), filepath.Join("/r", ".pgraph", "pgraph.digests"); got != want {
 		t.Errorf("digestsPath = %s, want %s", got, want)
 	}
 	src, err := os.ReadFile(filepath.Join("..", "..", "pgraph", "syncroot.go"))
@@ -192,10 +197,10 @@ func TestPLW1l_DigestsParserRefusesWhatItCannotReadWhole(t *testing.T) {
 			t.Errorf("%s: parsed to %v, want refused", name, got)
 		}
 	}
-	if got, err := parseDigests(strings.NewReader(DigestsHeader + "\n")); err != nil || got == nil || len(got) != 0 {
+	if got, err := parseDigests(strings.NewReader(DigestsHeader + "\n")); err != nil || got == nil || len(got.files) != 0 {
 		t.Errorf("the header alone: %v, %v; want an empty set", got, err)
 	}
-	if got, err := parseDigests(strings.NewReader(DigestsHeader + "\np\ta.go\t" + sum + "\n")); err != nil || got["a.go"] != sum {
+	if got, err := parseDigests(strings.NewReader(DigestsHeader + "\np\ta.go\t" + sum + "\n")); err != nil || got.files["a.go"] != sum {
 		t.Errorf("one good line: %v, %v", got, err)
 	}
 }

@@ -64,17 +64,17 @@ func sync(root string, extra ...string) (int, string, string) {
 func sha(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
 // TestPLW1e_SyncWritesTheLogTheDigestsAndAnIgnore (card PL-WIRE1 a): `pgraph
-// sync <root>` writes root/.rashomon/pgraph.log in Encode's format, which
+// sync <root>` writes root/.pgraph/pgraph.log in Encode's format, which
 // decodes to both tiers' facts, the digests of every compiled file (no test
 // file), and a .gitignore of "*"; a .gitignore already there is left as it
 // is. Break: skip SyncCHA's half, and no may-call fact is live.
 func TestPLW1e_SyncWritesTheLogTheDigestsAndAnIgnore(t *testing.T) {
 	root := module(t, smallModule)
 	code, out, errs := sync(root)
-	if code != 0 || !strings.HasPrefix(out, "pgraph: synced 2 packages in 1 module into .rashomon/pgraph.log\npgraph: facts PROVEN +") || errs != "" {
+	if code != 0 || !strings.HasPrefix(out, "pgraph: synced 2 packages in 1 module into .pgraph/pgraph.log\npgraph: facts PROVEN +") || errs != "" {
 		t.Fatalf("sync: exit %d, stdout %q, stderr %q", code, out, errs)
 	}
-	dir := filepath.Join(root, ".rashomon")
+	dir := filepath.Join(root, ".pgraph")
 	l, err := pgraph.DecodeLog(read(t, filepath.Join(dir, "pgraph.log")))
 	if err != nil {
 		t.Fatalf("the log does not decode: %v", err)
@@ -116,7 +116,7 @@ func TestPLW1e_SyncWritesTheLogTheDigestsAndAnIgnore(t *testing.T) {
 // Break: start every sync from an empty log, and the history is rewritten.
 func TestPLW1f_ResyncOnlyAppends(t *testing.T) {
 	root := module(t, smallModule)
-	logPath := filepath.Join(root, ".rashomon", "pgraph.log")
+	logPath := filepath.Join(root, ".pgraph", "pgraph.log")
 	if code, _, errs := sync(root); code != 0 {
 		t.Fatalf("first sync: exit %d: %s", code, errs)
 	}
@@ -135,19 +135,19 @@ func TestPLW1f_ResyncOnlyAppends(t *testing.T) {
 	if !strings.Contains(string(second[len(first):]), "-\tfunc:example.com/m/b.G\tcalls\tfunc:example.com/m/a.Call\tPROVEN\t") {
 		t.Errorf("the dropped call has no tombstone in %q", second[len(first):])
 	}
-	if d := string(read(t, filepath.Join(root, ".rashomon", "pgraph.digests"))); !strings.Contains(d, "b/b.go\t"+sha([]byte("package b\n\nfunc G() {}\n"))) {
+	if d := string(read(t, filepath.Join(root, ".pgraph", "pgraph.digests"))); !strings.Contains(d, "b/b.go\t"+sha([]byte("package b\n\nfunc G() {}\n"))) {
 		t.Errorf("digests %q do not name b.go's new bytes", d)
 	}
 }
 
 // TestPLW1g_AFailedSyncWritesNothing: a log that does not decode is refused
 // and left as it was, with no digests written; a module that does not type
-// check, and a root with no go.mod, write no .rashomon at all; a nested
+// check, and a root with no go.mod, write no .pgraph at all; a nested
 // module's packages are synced with the root's. Break: start over on a log
 // that does not decode, and its history is lost without a word.
 func TestPLW1g_AFailedSyncWritesNothing(t *testing.T) {
 	root := module(t, smallModule)
-	corrupt := filepath.Join(root, ".rashomon", "pgraph.log")
+	corrupt := filepath.Join(root, ".pgraph", "pgraph.log")
 	write(t, corrupt, "pgraph-log v0\n+\tnot a record\n")
 	if code, _, errs := sync(root); code != 1 || !strings.Contains(errs, "does not decode") {
 		t.Errorf("a corrupt log: exit %d, stderr %q; want 1 naming it", code, errs)
@@ -155,7 +155,7 @@ func TestPLW1g_AFailedSyncWritesNothing(t *testing.T) {
 	if string(read(t, corrupt)) != "pgraph-log v0\n+\tnot a record\n" {
 		t.Error("the corrupt log was rewritten")
 	}
-	if _, err := os.Stat(filepath.Join(root, ".rashomon", "pgraph.digests")); err == nil {
+	if _, err := os.Stat(filepath.Join(root, ".pgraph", "pgraph.digests")); err == nil {
 		t.Error("a refused sync wrote digests")
 	}
 	for name, files := range map[string]map[string]string{
@@ -166,8 +166,8 @@ func TestPLW1g_AFailedSyncWritesNothing(t *testing.T) {
 		if code, _, _ := sync(dir); code != 1 {
 			t.Errorf("%s: exit %d, want 1", name, code)
 		}
-		if _, err := os.Stat(filepath.Join(dir, ".rashomon")); err == nil {
-			t.Errorf("%s: .rashomon was written", name)
+		if _, err := os.Stat(filepath.Join(dir, ".pgraph")); err == nil {
+			t.Errorf("%s: .pgraph was written", name)
 		}
 	}
 	nested := module(t, map[string]string{"go.mod": "module example.com/r\n", "r.go": "package r\n",
@@ -187,7 +187,53 @@ func TestPLW1h_UsageIsExitTwo(t *testing.T) {
 			t.Errorf("run(%q) = %d, stderr %q; want 2 and the usage", args, code, errb.String())
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, ".rashomon")); err == nil {
-		t.Error("a usage error wrote .rashomon")
+	if _, err := os.Stat(filepath.Join(root, ".pgraph")); err == nil {
+		t.Error("a usage error wrote .pgraph")
+	}
+}
+
+// TestPLW1z_WhatItPrintsFitsAndNamesNoAbsolutePath: every line of a refused
+// sync (a log that does not decode, a module that does not type check) and of
+// the usage fits 80 columns and names neither the root nor the home
+// directory; the usage says where the graph goes and how to forget it.
+// Break: print the library's error as it is, and the root's absolute path
+// and the compiler's file positions reach the person, past 80 columns.
+func TestPLW1z_WhatItPrintsFitsAndNamesNoAbsolutePath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	check := func(name, text string, roots ...string) {
+		t.Helper()
+		for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+			if len(line) > 80 {
+				t.Errorf("%s: a line of %d columns: %q", name, len(line), line)
+			}
+			for _, r := range append(roots, home) {
+				if r != "" && strings.Contains(line, r) {
+					t.Errorf("%s: %q names %s", name, line, r)
+				}
+			}
+		}
+	}
+	corrupt := module(t, smallModule)
+	write(t, filepath.Join(corrupt, ".pgraph", "pgraph.log"), "pgraph-log v0\n+\tnot a record\n")
+	code, _, errs := sync(corrupt)
+	if code != 1 || !strings.HasPrefix(errs, "pgraph: .pgraph/pgraph.log does not decode (line 2: ") {
+		t.Errorf("a corrupt log: exit %d, stderr %q", code, errs)
+	}
+	check("a corrupt log", errs, corrupt)
+	typeErr := module(t, map[string]string{"go.mod": "module example.com/m\n",
+		"a/a.go": "package a\n\nvar X int = \"a string that does not fit the int this variable declares\"\n"})
+	code, _, errs = sync(typeErr)
+	if code != 1 || !strings.HasPrefix(errs, "pgraph: module .: load failed: example.com/m/a: ./a/a.go:") {
+		t.Errorf("a type error: exit %d, stderr %q; want 1 naming a/a.go", code, errs)
+	}
+	check("a type error", errs, typeErr)
+	var out, usageErr bytes.Buffer
+	run(nil, &out, &usageErr)
+	if !strings.Contains(usageErr.String(), "writes <root>/.pgraph") || !strings.Contains(usageErr.String(), "deleting it forgets them") {
+		t.Errorf("usage %q does not say where the graph goes and how to forget it", usageErr.String())
+	}
+	check("the usage", usageErr.String())
+	if got := fitted(strings.Repeat("x", 100) + " tail"); !strings.HasPrefix(got, "pgraph: "+strings.Repeat("x", 72)+"\n        ") {
+		t.Errorf("a word longer than a line: %q", got)
 	}
 }

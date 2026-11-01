@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // TestPL8e_UnknownHeaderIsUnknown: the fixture's records under the next
@@ -17,7 +19,7 @@ func TestPL8e_UnknownHeaderIsUnknown(t *testing.T) {
 	if fams, err := Impact(context.Background(), root, lp, []string{"a/a.go"}); !errors.Is(err, ErrUnknownHeader) || fams != nil {
 		t.Errorf("a v1 log: %+v, %v; want ErrUnknownHeader and no family", fams, err)
 	}
-	if r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); !r.Unreadable || len(r.Families) != 0 {
+	if r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); r.Log != verify.LogUnreadable || len(r.Families) != 0 {
 		t.Errorf("a v1 log's read: %+v, want unreadable and no family", r)
 	}
 }
@@ -107,7 +109,7 @@ func FuzzDecode(f *testing.F) {
 	f.Add([]byte(DigestsHeader + "\np\ta.go\tx\n"))
 	f.Fuzz(func(t *testing.T, b []byte) {
 		if sums, err := parseDigests(bytes.NewReader(b)); err == nil {
-			for p, s := range sums {
+			for p, s := range sums.files {
 				if p == "" || !isSHA256(s) || strings.ToLower(s) != s {
 					t.Fatalf("digests accepted %q -> %q", p, s)
 				}

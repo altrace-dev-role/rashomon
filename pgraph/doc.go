@@ -23,8 +23,8 @@
 // corpus.
 //
 // cmd/pgraph's `pgraph sync <root>` is the producer: ScanRoots, Load,
-// SyncPrograms and EncodeDigests write root/.rashomon/pgraph.log and the
-// per-file digests the rashomon Stop reads to tell a package's facts stale
+// SyncPrograms and EncodeDigests write root/.pgraph/pgraph.log and the
+// per-file digests the rashomon ledger verb reads to tell a package's facts stale
 // (syncroot.go). Debounced CHA, blast radius, strict identifier resolution,
 // unknown fan-in and the untracked-configuration warning are later slices.
 package pgraph

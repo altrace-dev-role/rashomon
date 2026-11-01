@@ -17,8 +17,8 @@ const LogHeader = "pgraph-log v0"
 
 // MaxLogBytes caps the log Impact reads (INV-10). pgraph's own cap is 256 MiB
 // (pgraph/codec.go MaxLogBytes): a log between the two is valid to pgraph and
-// over the cap here, so its answer is unknown. No decode of a log that size
-// fits Deadline.
+// over the cap here, so its answer is unknown: the same bytes give the same
+// answer, whatever the clock (INV-11).
 const MaxLogBytes = 64 << 20
 
 // The v0 record's field caps, as pgraph/tier.go MaxFieldBytes and

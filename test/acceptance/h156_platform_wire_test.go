@@ -2,17 +2,19 @@ package acceptance
 
 // H-156: the platform graph has a producer and a reader in a real install
 // (card PL-WIRE1). `pgraph sync <root>`, the pgraph module's own command,
-// writes the log and the per-file digests under root/.rashomon; the Stop
-// hook, `rashomon recap` as watch installs it, reads them for the session's
-// written Go files, and the ledger `rashomon report --ledger` prints owes
-// each written package's test gate: open after the edit, met after a `go
-// test` that names the package. The risk it holds down is the one this card
-// exists for: a log nothing writes and a reader nothing calls, each green
-// against its own fixture. Here the writer is the real pgraph binary on a
-// real module and the reader is the installed hook, so the two sides of the
-// file boundary (its path, its header, the digests' format) are held to each
-// other, and an edit after the sync withholds the package's hash until a
-// re-sync gives it back.
+// writes the log and the per-file digests under root/.pgraph; the session's
+// calls are recorded by the hooks as watch installs them (hook, post, and
+// recap at Stop, which reads no platform graph), and `rashomon report
+// --ledger`, run by a person, replays the last Stop, reads the log for the
+// session's written Go files and owes each written package its go test:
+// open after the edit, met after a `go test` that names the package. The
+// risk it holds down is the one this card exists for: a log nothing writes
+// and a reader nothing calls, each green against its own fixture. Here the
+// writer is the real pgraph binary on a real module and the reader is the
+// real rashomon binary's verb, so the two sides of the file boundary (its
+// path, its header, the digests' format) are held to each other, and an
+// edit after the sync withholds the package's hash until a re-sync gives it
+// back.
 
 import (
 	"encoding/json"
@@ -69,6 +71,7 @@ func h156Sync(t *testing.T, dir string) {
 var h156Files = map[string]string{
 	"go.mod":                   "module example.com/m\n\ngo 1.25.0\n",
 	"a/a.go":                   "package a\n\nfunc F() int { return 1 }\n",
+	"a/a_test.go":              "package a\n",
 	"b/b.go":                   "package b\n\nimport \"example.com/m/a\"\n\nfunc G() int { return a.F() }\n",
 	".github/workflows/ci.yml": "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n",
 }
@@ -189,7 +192,7 @@ func TestH156c_NoLogOrACorruptOneIsUnknown(t *testing.T) {
 		t.Errorf("no log: rows %q, want a's row unknown", rows)
 	}
 	h156Sync(t, dir)
-	log := filepath.Join(dir, ".rashomon", "pgraph.log")
+	log := filepath.Join(dir, ".pgraph", "pgraph.log")
 	if err := os.WriteFile(log, []byte("pgraph-log v9\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

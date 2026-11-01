@@ -34,9 +34,10 @@ import (
 //     now, and only where the checkpoint names it, so a CI file changed
 //     since names the command it holds now, and with no index read its line
 //     keeps the "(inferred)" label the Stop may have dropped;
-//   - the pgraph log, its digests and the written Go files are read now
-//     (platformRead), so a sync or an edit since the Stop moves the
-//     platform rows' families;
+//   - where the caller passes a platform reader (the ledger verb passes
+//     platformRead; the session report passes none), the pgraph log, its
+//     digests, the go.mod files and the written Go files are read now, so a
+//     sync or an edit since the Stop moves the platform rows' families;
 //   - the final message is not in the record, so what is read from it is
 //     unknown (StopInput.MessageUnread);
 //   - a gate the checkpoint's cut omitted (GatesOmitted, greens first) has no
@@ -56,9 +57,10 @@ type stopReplay struct {
 	Spec       *spec.Compiled
 }
 
-// replayLastStop replays sessionID's last Stop from st. A session with no
-// records in st is errNoRecords, never an empty view.
-func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
+// replayLastStop replays sessionID's last Stop from st, reading the platform
+// graph through platform, nil for none. A session with no records in st is
+// errNoRecords, never an empty view.
+func replayLastStop(st *store.Store, sessionID string, platform func(string, []string) verify.PlatformRead) (stopReplay, error) {
 	run, err := digest.ReadRun(st, sessionID)
 	if err != nil {
 		return stopReplay{}, err
@@ -73,7 +75,7 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 	pt := verify.Point{Kind: verify.PointStop, Seq: run.LastSeq(), SessionID: sessionID}
 	now := time.Now()
 	in := verify.StopInput{Key: st.Key(), MessageUnread: true}
-	in.Platform = platformRead
+	in.Platform = platform
 	if cp != nil {
 		pt.Seq, pt.PromptID, now = cp.PointSeq, cp.PromptID, time.UnixMilli(cp.RecordedAtUnixMS)
 		if cp.PromptID != nil {

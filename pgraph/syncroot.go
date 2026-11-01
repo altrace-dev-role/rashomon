@@ -11,20 +11,21 @@ import (
 )
 
 // Where a sync writes, relative to its sync root (card PL-WIRE1). The
-// rashomon hook reads both files at the same place and imports nothing from
-// here: the names are the boundary, as LogHeader is, and its own copies are
-// pinned against these by a test that runs this command and then the hook.
+// rashomon ledger verb reads both files at the same place and imports nothing
+// from here: the names are the boundary, as LogHeader is, and its own copies
+// are pinned against these by a test that runs this command and then the
+// verb.
 //
-// The directory is in the repository's tree, not in rashomon's store. The
-// log is names read from the tree's own source (packages, functions, the
-// calls between them), and the store's first rule is that it records no
-// content; next to the source it holds nothing the tree does not already
-// hold. Its name starts with a dot, which the go tool skips when it resolves
-// ./..., so the log never becomes part of the graph it describes, and the
-// command writes a .gitignore of "*" into it so a commit of the tree does not
-// pick it up.
+// The directory is pgraph's own, in the repository's tree: pgraph is a tool
+// the person runs, rashomon writes no file in a repository, and deleting the
+// directory forgets the graph. The log is names read from the tree's own
+// source (packages, functions, the calls between them), so next to the source
+// it holds nothing the tree does not already hold. Its name starts with a
+// dot, which the go tool skips when it resolves ./..., so the log never
+// becomes part of the graph it describes, and the command writes a
+// .gitignore of "*" into it so a commit of the tree does not pick it up.
 const (
-	StateDir    = ".rashomon"
+	StateDir    = ".pgraph"
 	LogFile     = "pgraph.log"
 	DigestsFile = "pgraph.digests"
 )

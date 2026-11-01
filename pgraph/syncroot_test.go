@@ -53,7 +53,7 @@ func TestPLW1a_ScanRootsFindsTheModulesASyncLoads(t *testing.T) {
 	gomod := "module example.com/x\n"
 	root := writeTree(t, map[string]string{
 		"go.mod": gomod, "sub/go.mod": gomod, "a/b/go.mod": gomod,
-		"testdata/m/go.mod": gomod, "vendor/v/go.mod": gomod, ".rashomon/go.mod": gomod, "_tools/go.mod": gomod,
+		"testdata/m/go.mod": gomod, "vendor/v/go.mod": gomod, ".pgraph/go.mod": gomod, "_tools/go.mod": gomod,
 		"a/b/testdata/go.mod": gomod,
 	})
 	got, err := ScanRoots(root)

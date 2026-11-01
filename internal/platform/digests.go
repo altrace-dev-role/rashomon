@@ -7,20 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // Where `pgraph sync <root>` writes root's log and digests, and so where the
-// Stop reads them (pgraph/syncroot.go StateDir, LogFile, DigestsFile): in the
-// repository's tree, not the store, which records no content, and the log is
-// names read from the tree's source. This package writes neither file. The
-// names are the boundary, as LogHeader is; the acceptance item that runs
-// pgraph sync and then the hook (TestPLW1_*) fails if the two sides part.
+// ledger verb reads them (pgraph/syncroot.go StateDir, LogFile, DigestsFile):
+// in the repository's tree, under pgraph's own directory, which deleting
+// forgets; rashomon writes neither file. The names are the boundary, as
+// LogHeader is; the acceptance item that runs pgraph sync and then the
+// ledger verb (TestH156_*) fails if the two sides part.
 const (
-	stateDir    = ".rashomon"
+	stateDir    = ".pgraph"
 	logFile     = "pgraph.log"
 	digestsFile = "pgraph.digests"
 )
@@ -34,25 +35,32 @@ func digestsPath(root string) string { return filepath.Join(root, stateDir, dige
 // line pgraph's EncodeDigests writes: then one line per Go file the sync
 // read, "package path sha256", tab-separated, the path relative to the sync
 // root. Any other header is a format this package does not know, so every
-// package reads stale.
+// package the log holds reads stale.
 const DigestsHeader = "pgraph-digests v0"
 
 // The bounds of a digests read (INV-10): the file, one line (three fields at
-// pgraph's field cap and two tabs), the written files hashed for one Stop,
-// and one file hashed, pgraph's MaxSourceFileBytes, past which no sync read
-// the file either. A Stop that wrote more Go files than maxHashed reads the
-// packages of the rest stale: an unknown hash, never a guess.
+// pgraph's field cap and two tabs), the files hashed for one Read, and one
+// file hashed, pgraph's MaxSourceFileBytes, past which no sync read the file
+// either. A package with a file past maxHashed reads stale: an unknown hash,
+// never a guess.
 const (
 	MaxDigestsBytes = 16 << 20
 	maxDigestLine   = 3*maxFieldBytes + 2
-	maxHashed       = 64
+	maxHashed       = 512
 	maxSourceBytes  = 8 << 20
 )
 
-// readDigests is the digests file at p as path to sha256, refused whole
-// over MaxDigestsBytes or wherever parseDigests refuses it.
-func readDigests(p string) (map[string]string, error) {
-	f, err := os.Open(p)
+// digests is a digests file read whole: each path's sha256, and each
+// package's paths in path order.
+type digests struct {
+	files map[string]string
+	byPkg map[string][]string
+}
+
+// readDigests is the digests file at p, refused whole over MaxDigestsBytes,
+// when it is no regular file, or wherever parseDigests refuses it.
+func readDigests(p string) (*digests, error) {
+	f, err := regfile.Open(p)
 	if err != nil {
 		return nil, err
 	}
@@ -72,16 +80,19 @@ func readDigests(p string) (map[string]string, error) {
 // tab-separated fields, a sha256 that is not 64 lower-case hex digits, and a
 // path named twice, so a staleness answer is never read from a file this
 // package cannot read whole.
-func parseDigests(r io.Reader) (map[string]string, error) {
+func parseDigests(r io.Reader) (*digests, error) {
 	br := bufio.NewReaderSize(r, maxDigestLine+1)
 	header, err := readLine(br)
 	if err != nil || string(header) != DigestsHeader {
 		return nil, errors.New("platform: the digests' header is not " + DigestsHeader)
 	}
-	out := map[string]string{}
+	out := &digests{files: map[string]string{}, byPkg: map[string][]string{}}
 	for n := 2; ; n++ {
 		line, err := readLine(br)
 		if err == io.EOF {
+			for _, ps := range out.byPkg {
+				slices.Sort(ps)
+			}
 			return out, nil
 		}
 		if err != nil {
@@ -91,10 +102,11 @@ func parseDigests(r io.Reader) (map[string]string, error) {
 		if len(f) != 3 || f[0] == "" || f[1] == "" || !isSHA256(f[2]) {
 			return nil, fmt.Errorf("platform: digests line %d is not package, path and sha256", n)
 		}
-		if _, dup := out[f[1]]; dup {
+		if _, dup := out.files[f[1]]; dup {
 			return nil, fmt.Errorf("platform: digests line %d names %s again", n, f[1])
 		}
-		out[f[1]] = f[2]
+		out.files[f[1]] = f[2]
+		out.byPkg[f[0]] = append(out.byPkg[f[0]], f[1])
 	}
 }
 
@@ -110,44 +122,41 @@ func isSHA256(s string) bool {
 	return true
 }
 
-// staleOf is the packages of files, written paths under root to their
-// package, whose facts the sync's digests do not vouch for: a written .go
-// file whose content now differs from its recorded sha256, that is not
-// recorded (a file the sync never read), or that cannot be read, past the
-// maxHashed'th file hashed, or every package where the digests cannot be
-// read. A _test.go file makes nothing stale: no sync reads one, so no fact
-// rests on it.
-func staleOf(root string, files map[string]string) map[string]bool {
-	stale := map[string]bool{}
-	sums, err := readDigests(digestsPath(root))
-	paths := make([]string, 0, len(files))
-	for p := range files {
-		paths = append(paths, p)
+// fresh reports whether the sync's digests dg vouch for package pkg now:
+// every file they list for it reads as the sync read it, and every .go file
+// of it the session wrote is among them (S3). A _test.go file the session
+// wrote is passed over: no sync reads one, so no fact rests on it. No
+// digests, an unreadable file, or a file past the maxHashed'th hashed by this
+// Read (hashed counts them) is not fresh: an unknown hash, never a guess.
+func fresh(root string, dg *digests, pkg string, written []string, hashed *int) bool {
+	if dg == nil {
+		return false
 	}
-	slices.Sort(paths)
-	hashed := 0
-	for _, p := range paths {
-		pkg := files[p]
+	for _, p := range written {
 		rel, ok := relUnder(root, p)
-		if stale[pkg] || strings.HasSuffix(rel, "_test.go") {
-			continue
+		if !ok {
+			return false
 		}
-		if !ok || err != nil || hashed == maxHashed {
-			stale[pkg] = true
-			continue
-		}
-		hashed++
-		got, herr := hashFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if want, ok := sums[rel]; !ok || herr != nil || got != want {
-			stale[pkg] = true
+		if _, listed := dg.files[rel]; !listed && !strings.HasSuffix(rel, "_test.go") {
+			return false
 		}
 	}
-	return stale
+	for _, rel := range dg.byPkg[pkg] {
+		if *hashed == maxHashed {
+			return false
+		}
+		*hashed++
+		if got, err := hashFile(filepath.Join(root, filepath.FromSlash(rel))); err != nil || got != dg.files[rel] {
+			return false
+		}
+	}
+	return true
 }
 
-// hashFile is the hex sha256 of the file at p, refused over maxSourceBytes.
+// hashFile is the hex sha256 of the regular file at p, refused over
+// maxSourceBytes; a named pipe or a device is refused at once (regfile).
 func hashFile(p string) (string, error) {
-	f, err := os.Open(p)
+	f, err := regfile.Open(p)
 	if err != nil {
 		return "", err
 	}
