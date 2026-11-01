@@ -1,6 +1,9 @@
 package learn
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // TestLRN17h_RelevanceRule: one lesson per prompt (L4, PREFLIGHT1's step 6).
 // With three approved lessons or fewer, the first in order not yet given
@@ -50,5 +53,40 @@ func TestLRN17h_RelevanceRule(t *testing.T) {
 	}
 	if _, _, ok := Pick(Active{Lessons: []Lesson{provenCwd}, Unchecked: UncheckedSignature}, none, nil); ok {
 		t.Error("Pick gave a lesson from an unchecked state")
+	}
+}
+
+// TestLRN17r_DeliveredReadsALessonThatRodeTheNote (LEARN-RIDE1, R13 D1): a
+// lesson that rode the request's preflight note was given on that prompt, so
+// the given set holds the lesson its task-preflight line names in its lesson
+// slot, under the rule a learned-fact line has: delivered, or withheld by arm
+// off; a superseded note gave nothing, and a note with no lesson names none.
+func TestLRN17r_DeliveredReadsALessonThatRodeTheNote(t *testing.T) {
+	line := func(pattern, key, state, by, slots string) []byte {
+		b := "null"
+		if by != "" {
+			b = fmt.Sprintf("%q", by)
+		}
+		return []byte(fmt.Sprintf(`{"pattern":%q,"key":%q,"state":%q,"suppressed_by":%s,"slots":%s}`, pattern, key, state, b, slots))
+	}
+	ride := func(id string) string {
+		return fmt.Sprintf(`{"paths":{"items":["internal/a.go"],"more":0,"earlier":0},"lesson":%q,"text":"internal/a.go is generated from gen/a.tmpl"}`, id)
+	}
+	got := Delivered([][]byte{
+		line("task-preflight", "note", "delivered", "", ride("a-gen")),
+		line("task-preflight", "note", "superseded", "budget_batch", ride("b-gen")),
+		line("task-preflight", "brief", "suppressed", "arm_off", ride("c-gen")),
+		line("task-preflight", "note", "delivered", "", `{"paths":{"items":["internal/b.go"],"more":0,"earlier":0}}`),
+		line("task-preflight", "note", "delivered", "", `{"lesson":7}`),
+		line("learned-fact", "d-gen", "delivered", "", `{"lesson":"d-gen","text":"run go test from the module root"}`),
+	})
+	want := map[string]bool{"a-gen": true, "c-gen": true, "d-gen": true}
+	if len(got) != len(want) {
+		t.Fatalf("Delivered = %v, want %v", got, want)
+	}
+	for id := range want {
+		if !got[id] {
+			t.Errorf("Delivered = %v, want %s given", got, id)
+		}
 	}
 }
