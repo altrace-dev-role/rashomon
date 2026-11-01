@@ -345,7 +345,7 @@ func TestSR1z_ACallIsReadOnlyAsFarAsARuleReadsIt(t *testing.T) {
 // srTestFirst forbids a git push with no earlier green go test.
 const srTestFirst = `{"id": "test-first", "kind": "order", "then": {"argv": ["git", "push"]}, "after": {"argv": ["go", "test"]}, "invalidated_by": ["**/*.go"], "why": "push only tested code", "hard_control": "CI"}`
 
-// TestSR1ab_AnOrderRuleReadsTheRunAtItsThenCall (card SPEC-RULES1 1b, #216
+// TestSR1ah_AnOrderRuleReadsTheRunAtItsThenCall (card SPEC-RULES1 1b, #216
 // ruling 1): a Bash call of a spec that declares an order rule carries its
 // tool_use_id, its line read once and, where the line may run the rule's
 // then or its after, the run (read for the rule where no step read one): the
@@ -355,7 +355,7 @@ const srTestFirst = `{"id": "test-first", "kind": "order", "then": {"argv": ["gi
 // a finding though the record holds no command line (the call's own line is
 // the payload's); one with a hit is not; and a run that cannot be read
 // raises nothing, never a finding on what the record does not show.
-func TestSR1ab_AnOrderRuleReadsTheRunAtItsThenCall(t *testing.T) {
+func TestSR1ah_AnOrderRuleReadsTheRunAtItsThenCall(t *testing.T) {
 	push := map[string]any{"command": "git push origin main"}
 	f := newSRFix(t, srSpec(srTestFirst))
 	a := f.call("toolu_a", "Bash", map[string]any{"command": "go build ./..."}, 0)

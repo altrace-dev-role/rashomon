@@ -500,7 +500,7 @@
         },
         {
           "file": "internal/verify/rules_order_test.go",
-          "symbol": "TestSR1v_TheJudgeReadsHitsNotAfterLines"
+          "symbol": "TestSR1am_TheJudgeReadsHitsNotAfterLines"
         },
         {
           "file": "test/acceptance/spr1_order_hook_test.go",

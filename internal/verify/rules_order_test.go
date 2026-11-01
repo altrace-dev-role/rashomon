@@ -210,12 +210,12 @@ func TestSR1q_OrderAfterMustQualify(t *testing.T) {
 	}
 }
 
-// TestSR1r_OrderIndirectionIsUndecidedAndNeverFires: a Then or After the
+// TestSR1ai_OrderIndirectionIsUndecidedAndNeverFires: a Then or After the
 // line does not show, both in one line, a glob or unnamed write between, a
 // line the record withheld, a rule missing a field and one naming a
 // same_run_key: unknown verdict, unknown row, no finding. A violation of
 // another Then still beats an undecided one.
-func TestSR1r_OrderIndirectionIsUndecidedAndNeverFires(t *testing.T) {
+func TestSR1ai_OrderIndirectionIsUndecidedAndNeverFires(t *testing.T) {
 	sp := ruleSpec(spec.Trusted, testFirst())
 	glob := ordered(t, shc(1, "go test ./..."), sedc(2, "pkg/*.go"), shc(3, "git push origin main"))
 	blind := ordered(t, shc(1, "go test ./..."), unnamedWrite(2), shc(3, "git push origin main"))
@@ -279,10 +279,10 @@ func landedBy(r *store.Run, id string) int64 {
 	return 0
 }
 
-// TestSR1s_UntrustedOrderFlagsTheUserOnly: an untrusted spec's order
+// TestSR1aj_UntrustedOrderFlagsTheUserOnly: an untrusted spec's order
 // violation is a user flag at the Then call, owes no ledger row and does not
 // clear record-green.
-func TestSR1s_UntrustedOrderFlagsTheUserOnly(t *testing.T) {
+func TestSR1aj_UntrustedOrderFlagsTheUserOnly(t *testing.T) {
 	sp := ruleSpec(spec.Untrusted, testFirst())
 	r := ordered(t, edit(1, "docs/a.md"), gateCall(2, "go-test", store.ExecOK), shc(3, "git push origin main"))
 	snap, obs := specLedgerAt(r, sp, stopPoint(r))
@@ -301,12 +301,12 @@ func TestSR1s_UntrustedOrderFlagsTheUserOnly(t *testing.T) {
 	}
 }
 
-// TestSR1t_ForbidCodeIsUndecidedUntilContentIsRead: a write to a path the
+// TestSR1ak_ForbidCodeIsUndecidedUntilContentIsRead: a write to a path the
 // rule's paths match is undecided with reason "content not read" for every
 // applicable write, whatever it wrote: never a violation, an unknown row,
 // no finding, record-green untouched. With no applicable write the rule is
 // met. A rule without a pattern or paths is undecided too.
-func TestSR1t_ForbidCodeIsUndecidedUntilContentIsRead(t *testing.T) {
+func TestSR1ak_ForbidCodeIsUndecidedUntilContentIsRead(t *testing.T) {
 	sp := ruleSpec(spec.Trusted, noTodo())
 	marked := edit(1, "src/a.go").marks(map[string]int{"TODO": 1}, nil)
 	for name, r := range map[string]*store.Run{
@@ -347,7 +347,7 @@ func TestSR1t_ForbidCodeIsUndecidedUntilContentIsRead(t *testing.T) {
 	}
 }
 
-// TestSR1u_AnAfterCallLeavesAHitFromTheCallAlone: RulesAtCall returns an
+// TestSR1al_AnAfterCallLeavesAHitFromTheCallAlone: RulesAtCall returns an
 // after_hit for a call whose line the rule's after matches, from the payload
 // in memory: the rule's id and its file's digest, the call's exit status and
 // foreground flag as the post read them, and its declaration's directory
@@ -356,7 +356,7 @@ func TestSR1t_ForbidCodeIsUndecidedUntilContentIsRead(t *testing.T) {
 // An untrusted rule's hit is the same (the user flag judges from it), and a
 // call with no run read carries no directory, which no Then compares equal
 // to.
-func TestSR1u_AnAfterCallLeavesAHitFromTheCallAlone(t *testing.T) {
+func TestSR1al_AnAfterCallLeavesAHitFromTheCallAlone(t *testing.T) {
 	zero, one := 0, 1
 	first := sh(1, "go test ./...")
 	first.loc = "d:repo"
@@ -409,13 +409,13 @@ func afterHitEqual(a, b AfterHit) bool {
 		a.Maybe == b.Maybe && (a.Exit == nil) == (b.Exit == nil) && (a.Exit == nil || *a.Exit == *b.Exit)
 }
 
-// TestSR1v_TheJudgeReadsHitsNotAfterLines: the After's record is its hit. With
+// TestSR1am_TheJudgeReadsHitsNotAfterLines: the After's record is its hit. With
 // every line withheld (record scope v4) but the hit, the Then call is met;
 // with no hit it is a violation at the post (the record shows no After). Where
 // the After's line is recorded and left no hit, or only a hit of an earlier
 // version of the rule's file, the Then is undecided, never violated: a lost
 // record is a gap, not a verdict. A hit past the Then does not qualify it.
-func TestSR1v_TheJudgeReadsHitsNotAfterLines(t *testing.T) {
+func TestSR1am_TheJudgeReadsHitsNotAfterLines(t *testing.T) {
 	sp := ruleSpec(spec.Trusted, testFirst())
 	thenAt := func(r *store.Run) (RuleVerdictValue, int) {
 		v := oneVerdict(t, Evaluate(r, nil, sp, stopPoint(r), time.Time{}))
