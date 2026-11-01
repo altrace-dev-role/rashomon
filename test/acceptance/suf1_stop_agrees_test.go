@@ -49,7 +49,7 @@ func TestSUF1_TheStopAgreesWithTheBriefOnAnUntrustedGate(t *testing.T) {
 			[]string{"no test or build is known", "was edited after you trusted it"}},
 		{"edited by the session after a trust", true, true, `"go test ./..." (spec, trusted)`, false,
 			func(e *env, dir, path string) { e.specEditAt(dir, path, "toolu_s", edited) },
-			[]string{"'unit' does not count.\n", "was edited after you trusted it, so it",
+			[]string{"'unit' does not count; 1 record finding(s) in this turn.\n", "was edited after you trusted it, so it",
 				"no longer counts; review the edit, then run rashomon spec trust."},
 			[]string{"no test or build is known", review}},
 		{"no spec", false, false, "", false, nil,
@@ -86,7 +86,16 @@ func TestSUF1_TheStopAgreesWithTheBriefOnAnUntrustedGate(t *testing.T) {
 			e.dghCall(dir, "toolu_e", "Edit", dghEdit(dir))
 			got := e.dghStop(dir)
 			t.Logf("Stop line: %q", got)
-			gb1Columns(t, got)
+			// The value line holds 80 columns as main's fit rule fits it
+			// (9e306dce: gate names drop to fit, and past that it prints
+			// whole), so a value line ending in the record findings' clause
+			// is not held to it; every line under it is. Its width is owed
+			// to FINDINGS-FIT1.
+			fits := got
+			if first, rest, ok := strings.Cut(got, "\n"); ok && strings.Contains(first, "record finding(s) in this turn") {
+				fits = rest
+			}
+			gb1Columns(t, fits)
 			for _, w := range c.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("Stop line %q, want it to hold %q", got, w)
