@@ -206,6 +206,11 @@ type LearnedFactUncheckedBinding struct{}
 
 type LearnedFactOversizeBinding struct{}
 
+// ClaimVsRecordDoneUnverifiedBinding is claim-vs-record/done-unverified's note
+// at the prompt after a Stop whose done flag fired (card c4): a fact about
+// the previous turn, with no slot.
+type ClaimVsRecordDoneUnverifiedBinding struct{}
+
 // TaskPreflightBinding is task-preflight's later-prompt note (internal/intent).
 type TaskPreflightBinding struct {
 	Paths    slot.PathSet  `slot:"paths"`
@@ -393,6 +398,11 @@ func templatesLater() map[templateKey]template {
 			id: "task-preflight-first/v1",
 			format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
 				"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordDoneUnverifiedBinding{})}: {
+			id: "claim-vs-record-done-unverified/v1",
+			format: "rashomon record: the previous turn ended with a claim of completion that the record does not back " +
+				"(no passing test or build run after its last edit, or expected evidence missing).",
 		},
 		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
 			id:     "platform-rule-command/v1",

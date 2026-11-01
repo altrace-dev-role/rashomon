@@ -34,6 +34,9 @@ type stopTurn struct {
 	shown   string
 	summary bool
 	speaks  bool
+	// stops is the view of a Stop event itself, the one that records the
+	// done verdict for the next prompt.
+	stops bool
 }
 
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
@@ -112,7 +115,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		}
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
-		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending}, nil
+		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending}, nil
 }
 
 // summaryOn is the summary switch for the project key (baseline.Key of the
@@ -149,6 +152,17 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 		clause = ""
 	}
 	return l, l != "", clause
+}
+
+// unverified is the Stop's done verdict as the next prompt's note reads it
+// (card c4): the done flag fired, the same decision line prints, on a Stop
+// and not on the catch-up, whose turn a Stop did not reach.
+func (s stopTurn) unverified(sessionID string, fromPlugin bool) bool {
+	if !s.stops {
+		return false
+	}
+	_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)
+	return ok
 }
 
 // modelTexts is each note's model text, the lines the claim scan strips
