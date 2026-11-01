@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -101,9 +102,9 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	// scope before this build's, at steer disclosure 0 (as watch --yes wrote
 	// it before STEER-DISCLOSE-YES1), with its marker.
 	older := strings.Replace(string(e.consentBytes()), `"scope_version":5`, `"scope_version":4`, 1)
-	older = strings.Replace(older, `"steer_disclosure":2`, `"steer_disclosure":0`, 1)
+	older = strings.Replace(older, `"steer_disclosure":`+strconv.Itoa(steer.DisclosureVersion), `"steer_disclosure":0`, 1)
 	if !strings.Contains(older, `"scope_version":4`) || !strings.Contains(older, `"steer_disclosure":0`) {
-		t.Fatal("premise: the watch record does not carry scope_version 5 and steer_disclosure 2")
+		t.Fatalf("premise: the watch record does not carry scope_version 5 and steer_disclosure %d", steer.DisclosureVersion)
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 		t.Fatal(err)
@@ -140,15 +141,15 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	recs := e.consentRecords()
 	sum := sha256.Sum256([]byte(show.stdout))
 	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(5) ||
-		recs[1]["steer_disclosure"] != float64(2) || recs[1]["text_sha256"] != hex.EncodeToString(sum[:]) {
+		recs[1]["steer_disclosure"] != float64(steer.DisclosureVersion) || recs[1]["text_sha256"] != hex.EncodeToString(sum[:]) {
 		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 5 hashing the screen shown", recs)
 	}
 	after := e.machine()
 	// steer_disclosure is consent.json's view of the highest steer disclosure
-	// on file: the older --yes record's 0 before, this record's 2 after (2.2c).
+	// on file: the older --yes record's 0 before, this record's after (2.2c).
 	marker := filepath.Join(e.home, "steer_disclosure")
-	if before[marker] != "0\n" || after[marker] != "2\n" {
-		t.Errorf("the steer marker went from %q to %q, want \"0\\n\" to \"2\\n\"", before[marker], after[marker])
+	if want := strconv.Itoa(steer.DisclosureVersion) + "\n"; before[marker] != "0\n" || after[marker] != want {
+		t.Errorf("the steer marker went from %q to %q, want \"0\\n\" to %q", before[marker], after[marker], want)
 	}
 	delete(after, marker)
 	delete(before, marker)
