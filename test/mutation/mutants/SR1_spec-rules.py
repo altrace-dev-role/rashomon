@@ -198,7 +198,7 @@ m("sr1b order reads an after line with no hit as no after", O,
 m("sr1b order reads a line the record withheld as an after with no hit", O,
   "a.seq < l.seq && len(a.cmds) > 0 && lineMatch",
   "a.seq < l.seq && lineMatch",
-  "TestSR1s_|TestSR1v_")
+  "TestSR1aj_|TestSR1am_")
 m("sr1b the post reads the call's own line from the record, not the payload", "internal/verify/rules_raise.go",
   "\tif own.id != \"\" {\n\t\tv.lines = append(v.lines, own)\n\t}\n",
   "",
