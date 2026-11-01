@@ -22,7 +22,7 @@ const shortScreenRows = 24
 var fullHeadings = []string{"1. HOOK ENTRIES", "2. WHAT IS RECORDED", "3. WHAT RASHOMON ADDS", "4. LESSONS", "5. WHAT YOU WILL SEE"}
 
 // shortLandmarks are what the short screen says, in the inventory's words.
-var shortLandmarks = []string{"RECORDED for each tool call", "NEVER STORED:", "NOTES TO YOUR AGENT",
+var shortLandmarks = []string{"RECORDED ON THIS MACHINE for each tool call", "NEVER STORED:", "NOTES TO YOUR AGENT",
 	"rashomon steer off --user", "rashomon purge", "rashomon consent --full"}
 
 // homeEnv is a machine whose home directory is 40 characters, with the store

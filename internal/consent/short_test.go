@@ -105,7 +105,7 @@ func TestCSH1_TheShortScreenSaysWhatAYesRecordsNeverStoresAndTurnsOff(t *testing
 			t.Errorf("the inventory has no short paragraph of %s's", o)
 		}
 	}
-	for _, want := range []string{"RECORDED for each tool call", "NEVER STORED:", "NOTES TO YOUR AGENT",
+	for _, want := range []string{"RECORDED ON THIS MACHINE for each tool call", "NEVER STORED:", "NOTES TO YOUR AGENT",
 		fmt.Sprintf("%s holds %d hook entries", in.SettingsPath, len(install.Events())), in.StoreRoot,
 		"changes nothing until you type y."} {
 		if !strings.Contains(flat(screen), want) {
@@ -155,6 +155,38 @@ func TestCSH1_TheShortScreenSaysWhatAYesRecordsNeverStoresAndTurnsOff(t *testing
 	inv.Paragraphs = kept
 	if _, err := Short(inv, shortInput()); err == nil {
 		t.Error("a short screen rendered from an inventory with no short paragraphs")
+	}
+}
+
+// TestCSH1_TheStoredListsSayWhereTheyAreKept: keeping is not reporting
+// (owner, 11-01 10:4x PST). The heading over each list of what rashomon
+// keeps says the list stays on this machine, so "stored" never reads as
+// stored by someone else: the full screen's STORED paragraph and the short
+// screen's RECORDED one. NEVER SENT BY RASHOMON, not NEVER SENT: the notes
+// the list keeps word for word reach the model provider through Claude
+// Code. Break: restore either bare heading.
+func TestCSH1_TheStoredListsSayWhereTheyAreKept(t *testing.T) {
+	inv, err := disclose.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	heads := map[string]string{
+		disclose.CiteSection2: "STORED ON THIS MACHINE, NEVER SENT BY RASHOMON: for each tool call, ",
+		disclose.CiteShort:    "RECORDED ON THIS MACHINE for each tool call, ",
+	}
+	found := map[string]bool{}
+	for _, p := range inv.Paragraphs {
+		if strings.HasPrefix(p.Text, "STORED:") || strings.HasPrefix(p.Text, "RECORDED for") {
+			t.Errorf("a %s paragraph keeps a bare heading: %.60q", p.Cite, p.Text)
+		}
+		if want, ok := heads[p.Cite]; ok && p.Owner == disclose.OwnerRecord && strings.HasPrefix(p.Text, want) {
+			found[p.Cite] = true
+		}
+	}
+	for cite, want := range heads {
+		if !found[cite] {
+			t.Errorf("no record paragraph of %s opens %q", cite, want)
+		}
 	}
 }
 
