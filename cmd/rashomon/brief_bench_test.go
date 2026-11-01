@@ -115,7 +115,7 @@ func BenchmarkProbeStart(b *testing.B) {
 
 // benchPreviousFixture is a project directory and a store, for the rows that
 // read the previous session at startup (card REPORT1b). The line comes from
-// the project index's pointer and the one checkpoint it names, so the rows
+// the project's checkpoint file and the one checkpoint it names, so the rows
 // show a cost that does not follow the store: previous_hit is the previous
 // session alone; previous_bound adds 900 run directories of another project
 // and a 20 MiB records file newer than all of them; previous_2000 adds 2,000
@@ -162,9 +162,10 @@ func benchPreviousFixture(b *testing.B, fx benchPrevious) (*store.Store, *hookio
 	base := time.Now().Add(-time.Hour)
 	if fx.previous {
 		seed("previous", line("previous", root), base)
-		// The Stop that cut its checkpoint also noted it in the project index.
-		idx := &verify.ProjectIndex{ProjectKey: root, Last: &verify.LastCheckpoint{SessionID: "previous", PointSeq: 7, AtMS: 1760000000000}}
-		if _, err := verify.WriteIndex(verify.IndexPath(storeRoot, root), idx); err != nil {
+		// The Stop that cut its checkpoint also noted it in the project's
+		// checkpoint file.
+		c := &verify.Checkpoints{Last: &verify.LastCheckpoint{SessionID: "previous", PointSeq: 7, AtMS: 1760000000000}}
+		if err := verify.WriteCheckpoints(verify.CheckpointsPath(storeRoot, root), c); err != nil {
 			b.Fatal(err)
 		}
 	}

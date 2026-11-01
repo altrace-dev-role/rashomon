@@ -16,6 +16,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/receipt"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // briefUsage is the usage screen's brief entry, joined as receiptUsage is, so
@@ -103,15 +104,15 @@ func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout 
 
 // withLastSession replaces the brief's verify line with the line for the
 // project's previous session (card REPORT1b): its time, one reason and the
-// report command its origin has. One more small read and no walk, whatever
-// the store holds: the project index (already read for the brief), which the
-// Stop that cut each checkpoint also wrote its last two into
-// (ProjectIndex.Last and Prior), names the one checkpoint read. An index with no pointer for an earlier session (a
-// first session, or an index written before the pointer), a pointer to a
-// checkpoint that is not the one named, or any error leaves the verify line,
-// and a pointer to a run that is gone says so.
+// report command its origin has. Two small reads and no walk, whatever the
+// store holds: the project's checkpoint file, into which the Stop that cut
+// each checkpoint wrote the last two (verify.Checkpoints), names the one
+// checkpoint read. No file, one with no pointer for an earlier session (a
+// first session), a pointer to a checkpoint that is not the one named, or any
+// error leaves the verify line, and a pointer to a run that is gone says so.
 func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plugin bool) brief.Brief {
-	ptr := b.Index.PreviousOf(sessionID)
+	c, _ := verify.ReadCheckpoints(verify.CheckpointsPath(st.Root(), root))
+	ptr := c.PreviousOf(sessionID)
 	if ptr == nil {
 		return b
 	}
@@ -123,11 +124,11 @@ func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plu
 	if plugin {
 		pointer = brief.PluginReport
 	}
-	source := "the project index's last checkpoint of an earlier session"
+	source := "the project's checkpoint file, whose last checkpoint is of an earlier session"
 	if !scan.Found {
-		source = "the project index, whose last checkpoint is gone"
+		source = "the project's checkpoint file, whose last checkpoint is gone"
 		if scan.Bound == receipt.BoundTail {
-			source = "the project index, whose last checkpoint was not in the end of its run"
+			source = "the project's checkpoint file, whose last checkpoint was not in the end of its run"
 		}
 	}
 	text := strings.TrimPrefix(receipt.PreviousLine(last, scan, pointer), brief.LastSessionLead)

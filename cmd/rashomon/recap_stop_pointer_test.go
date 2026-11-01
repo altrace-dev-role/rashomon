@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -31,10 +32,9 @@ type alpha1Index struct {
 }
 
 // stopOnce runs one Stop view over a payload.WriteSession run of 100 calls in
-// a fresh store, as BenchmarkRecapStop's op does, and returns the store.
-func stopOnce(t *testing.T, now time.Time) *store.Store {
+// the store at root, as BenchmarkRecapStop's op does, and returns the store.
+func stopOnce(t *testing.T, root string, now time.Time) *store.Store {
 	t.Helper()
-	root := t.TempDir()
 	if _, err := payload.WriteSession(root, 100, payload.Prompts); err != nil {
 		t.Fatal(err)
 	}
@@ -66,10 +66,18 @@ func stopOnce(t *testing.T, now time.Time) *store.Store {
 // writes a fresh index over one it cannot read, so a key this build writes
 // there costs a person who goes back to alpha.1 the project's learned gates.
 // A Stop that cuts a checkpoint writes an index alpha.1's decoder reads, its
-// families intact. Break: note the checkpoint in the index again.
+// families intact, and notes the checkpoint in the project's checkpoint file
+// instead: Last its own, Prior the earlier session's Last it read there.
+// Break: note the checkpoint in the index again, write no checkpoint file, or
+// write it without reading it first.
 func TestIPF1_AnAlpha1BinaryReadsTheIndexAStopWrites(t *testing.T) {
-	st := stopOnce(t, time.Date(2026, 10, 31, 18, 0, 0, 0, time.UTC))
-	key := baseline.Key(payload.CWD)
+	now := time.Date(2026, 10, 31, 18, 0, 0, 0, time.UTC)
+	root, key := t.TempDir(), baseline.Key(payload.CWD)
+	earlier := verify.LastCheckpoint{SessionID: "earlier", PointSeq: 3, AtMS: now.Add(-time.Hour).UnixMilli()}
+	if err := verify.WriteCheckpoints(verify.CheckpointsPath(root, key), &verify.Checkpoints{Last: &earlier}); err != nil {
+		t.Fatal(err)
+	}
+	st := stopOnce(t, root, now)
 	raw, err := os.ReadFile(verify.IndexPath(st.Root(), key))
 	if err != nil {
 		t.Fatal(err)
@@ -83,4 +91,34 @@ func TestIPF1_AnAlpha1BinaryReadsTheIndexAStopWrites(t *testing.T) {
 	if old.ProjectKey != key || len(old.Entries) == 0 {
 		t.Errorf("alpha.1 reads %+v; want the run's families under %q", old, key)
 	}
+	c, err := verify.ReadCheckpoints(verify.CheckpointsPath(st.Root(), key))
+	if err != nil || c == nil || c.Last == nil || c.Last.SessionID != payload.Session || c.Last.PointSeq == 0 ||
+		c.Last.AtMS != now.UnixMilli() || c.Prior == nil || *c.Prior != earlier {
+		t.Errorf("the checkpoint file after the Stop: %+v (%v); want Last %s at now and Prior %+v", c, err, payload.Session, earlier)
+	} else if c.Last.PointSeq != lastPointSeq(t, st) {
+		t.Errorf("Last names point seq %d; the run's checkpoint is at %d", c.Last.PointSeq, lastPointSeq(t, st))
+	}
+}
+
+// lastPointSeq is the point seq of the run's last checkpoint line.
+func lastPointSeq(t *testing.T, st *store.Store) int64 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(st.RunDir(payload.Session), store.FileRecords))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seq int64 = -1
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if !bytes.HasPrefix(line, []byte(`{"type":"verify",`)) {
+			continue
+		}
+		var cp struct {
+			PointSeq int64 `json:"point_seq"`
+		}
+		if err := json.Unmarshal(line, &cp); err != nil {
+			t.Fatal(err)
+		}
+		seq = cp.PointSeq
+	}
+	return seq
 }

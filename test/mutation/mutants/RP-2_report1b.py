@@ -62,19 +62,19 @@ m("RP-2 Redact keeps the project root in the knowledge block", D, "\tout.Project
 m("RP-2 Redact keeps the project root in a why view", "internal/report/why.go", "\tout.Project = redactHost(v.Project, key)\n", "\tout.Project = v.Project\n", "TestRP2q_Why")
 m("RP-2 Redact keeps a why view's texts", "internal/report/why.go", '\tout.ModelText, out.UserText = "", ""\n', "", "TestRP2q_Why")
 
-# The startup line's pointer (RP2zb, RP2zc, RP2x): the index names the last two
-# sessions, the Stop writes them, and a pointer is trusted only when the run is
-# there and holds that checkpoint of this project.
+# The startup line's pointer (RP2zb, RP2zc, RP2x): the project's checkpoint
+# file names the last two sessions, the Stop writes them, and a pointer is
+# trusted only when the run is there and holds that checkpoint of this
+# project. Where the file lives and what reads it are IPF-1's rows.
 P = "internal/receipt/previous.go"
-X = "internal/verify/index.go"
-m("RP-2 the Stop does not note its checkpoint in the index", "cmd/rashomon/recap_stop.go",
-  "\t\t\tv.Index.NoteCheckpoint(p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)\n", "", "TestRP2x_")
+X = "internal/verify/index_pointer.go"
+m("RP-2 the Stop does not note its checkpoint", "cmd/rashomon/recap_stop.go",
+  "\t\t\tnoteCheckpoint(st.Root(), key, p.SessionID, cp.PointSeq, cp.RecordedAtUnixMS)\n", "", "TestIPF1_|TestRP2x_")
 m("RP-2 a pointer is taken for another project's checkpoint", P, "if !ok || p.ProjectRoot != project || p.PointSeq != seq {", "if !ok || p.PointSeq != seq {", "TestRP2zb_")
 m("RP-2 a pointer is taken for another point of the run", P, "if !ok || p.ProjectRoot != project || p.PointSeq != seq {", "if !ok || p.ProjectRoot != project {", "TestRP2zb_")
 m("RP-2 a pointer to a removed run is not said", P, "\t\tcase err != nil && errors.Is(err, fs.ErrNotExist):\n\t\t\tsc.Bound = BoundGone\n\t\t\treturn Last{}, sc, nil\n", "", "TestRP2zb_")
-m("RP-2 the previous session may be the current one", X, "\tif idx.Last != nil && idx.Last.SessionID != current {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
-m("RP-2 a clear overwrites the previous session's pointer", X, "\tif idx.Last != nil && idx.Last.SessionID != session {\n", "\tif idx.Last != nil {\n", "TestRP2zc_")
-m("RP-2 the index is written without its pointers", X, "Entries: entries, Last: idx.Last, Prior: idx.Prior})", "Entries: entries})", "TestRP2zc_")
+m("RP-2 the previous session may be the current one", X, "\tif c.Last != nil && c.Last.SessionID != current {\n", "\tif c.Last != nil {\n", "TestRP2zc_")
+m("RP-2 a clear overwrites the previous session's pointer", X, "\tif c.Last != nil && c.Last.SessionID != session {\n", "\tif c.Last != nil {\n", "TestRP2zc_")
 
 # why's slot allowlist (RP2zd, RP2ze; review of PR 171).
 m("RP-2 why prints a non-allowlisted string slot", W, '\t\tif !report.WhySlotShown(name) && name != "path" && isString(raw) {\n', "\t\tif false {\n", "TestRP2zd_")
