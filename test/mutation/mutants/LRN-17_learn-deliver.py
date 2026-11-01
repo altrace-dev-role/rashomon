@@ -147,8 +147,9 @@ m("LRN-17 the recap counts a stamp-0 approval approved", "internal/recap/impact.
   "\t\t\tif l.AwaitsApproval() {\n", "\t\t\tif false {\n", "TestLRN17s_")
 
 # LEARN-RIDE1 (R13 D1): a lesson rides the preflight note of the prompt that
-# names its path, as the note's last line inside its cap, the unknowns line
-# dropped first; the ride is given, once, and nothing goes beside it.
+# names its path, as the note's last line inside its cap, at the step the
+# note alone prints at, the unknowns line dropped first; the ride is given,
+# once, and nothing goes beside it.
 N = "internal/intent/note.go"
 m("LRN-17 a lesson never rides the note", R,
   "intent.ReadDelivered(lines), nil, afterSeq, digest, rideFor(a, given, paths))",
@@ -160,10 +161,17 @@ m("LRN-17 a lesson that rode goes again beside the note", R,
   "; ok && !rode {\n", "; ok && (!rode || true) {\n", "TestLRN17r_")
 m("LRN-17 a lesson that rode the note is not given", V,
   "\t\tcase string(pattern.TaskPreflight):\n", "\t\tcase \"\":\n", "TestLRN17r_")
-m("LRN-17 the unknowns line kept while the note steps down", N,
-  "\tcase !ride:\n", "\tcase true:\n", "TestLRN17r_TheUnknownsLineGoesFirst")
+m("LRN-17 the unknowns line kept over the lesson", N,
+  "for _, unknowns := range [...]bool{true, false} {", "for _, unknowns := range [...]bool{true} {",
+  "TestLRN17r_TheUnknownsLineGoesFirst")
 m("LRN-17 the first note says a lesson rode it", N,
-  "rides(lesson != nil && !first)", "rides(lesson != nil)", "TestLRN17r_ALessonRidesInsideTheNotesCap")
+  "\t\tif lesson != nil && !first {\n", "\t\tif lesson != nil {\n", "TestLRN17r_ALessonRidesInsideTheNotesCap")
+# #197 F1 (R55): a lesson rides only at the step the note alone prints at.
+m("LRN-17 a lesson steps the note down", N,
+  "\t\treturn steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio,",
+  "\t\tif !rode && lesson != nil && !first && step < 2 {\n\t\t\tcontinue\n\t\t}\n"
+  "\t\treturn steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio,",
+  "TestLRN17r_ALessonNeverStepsTheNoteDown")
 # #197 F2: a lesson rides only a prompt that names its path whole. The
 # request's paths are root-relative, so a substring or a /-separated suffix
 # is another file; a full stop or a leading "./" is the same path.

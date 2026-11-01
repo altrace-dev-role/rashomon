@@ -47,13 +47,13 @@ type Ride struct{ ID, Text string }
 
 // FindingRiding is FindingKeyed with lesson, when not nil, as the last line of a
 // later prompt's note (LEARN-RIDE1, R13 D1), so a lesson arrives on the
-// prompt it is about, one note still and inside the note's cap. A note too
-// long to hold the line drops its unknowns line first, then steps down as
-// it would without the lesson; one that still cannot hold it is the note
-// alone, and rode is false, so the lesson waits for a prompt that carries no
-// note. The first prompt's note is at its six-line cap and carries none. At
-// record scope v4 the line is kept as it printed: the lesson's text is the
-// ledger's, not the request's.
+// prompt it is about, one note still and inside the note's cap. The lesson
+// rides at the step the note alone prints at, dropping the unknowns line if
+// it must; a note that cannot hold it there is the note alone, and rode is
+// false, so the lesson waits for a prompt that carries no note. A lesson
+// never steps the note down (#197 F1, R55). The first prompt's note is at
+// its six-line cap and carries none. At record scope v4 the line is kept as
+// it printed: the lesson's text is the ledger's, not the request's.
 func FindingRiding(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(string) string, lesson *Ride) (f steer.Finding, ok, rode bool) {
 	first := !d.BriefGiven && b.has()
 	var paths []string
@@ -107,58 +107,40 @@ func FindingRiding(in Intent, d Delivered, b *Brief, afterSeq int64, digest func
 	if first {
 		key = keyBrief
 	}
-	for _, ride := range rides(lesson != nil && !first) {
-		for step := range 3 {
-			n := -1 // every item
-			if step == 2 {
-				n = 1
-			}
-			pf := render.TaskPreflightBinding{
-				Paths:    pathSet(paths, n, earlierPaths),
-				Rules:    ruleRefs(rules, n, earlierRules, in.Withheld, step == 0),
-				Gates:    gateRefs(in.Gates, n, in.Learned),
-				Source:   slot.NewEnum(slot.EnumEvidenceSource, source),
-				Evidence: slot.NewEnumList(slot.EnumEvidenceKinds, in.Evidence),
-				Unknown:  slot.NewEnumList(slot.EnumPreflightUnknown, unknown),
-			}
-			for _, unknowns := range unknownsAt(ride, step) {
-				var r *Ride
-				if ride {
-					r = lesson
+	prio, _ := pattern.Priority(pattern.TaskPreflight)
+	for step := range 3 {
+		n := -1 // every item
+		if step == 2 {
+			n = 1
+		}
+		pf := render.TaskPreflightBinding{
+			Paths:    pathSet(paths, n, earlierPaths),
+			Rules:    ruleRefs(rules, n, earlierRules, in.Withheld, step == 0),
+			Gates:    gateRefs(in.Gates, n, in.Learned),
+			Source:   slot.NewEnum(slot.EnumEvidenceSource, source),
+			Evidence: slot.NewEnumList(slot.EnumEvidenceKinds, in.Evidence),
+			Unknown:  slot.NewEnumList(slot.EnumPreflightUnknown, unknown),
+		}
+		m, rec, err := note(pf, first, b, n, true, nil, digest)
+		if err != nil {
+			continue
+		}
+		// The note prints at the first step it renders alone. A lesson
+		// rides at that step, its unknowns line dropped if it must be, or
+		// not at all: the rules a person trusted keep their whys, and the
+		// lesson waits a prompt (#197 F1, R55).
+		if lesson != nil && !first {
+			for _, unknowns := range [...]bool{true, false} {
+				if lm, lrec, err := note(pf, first, b, n, unknowns, lesson, digest); err == nil {
+					m, rec, rode = lm, lrec, true
+					break
 				}
-				m, rec, err := note(pf, first, b, n, unknowns, r, digest)
-				if err != nil {
-					continue
-				}
-				prio, _ := pattern.Priority(pattern.TaskPreflight)
-				return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
-					StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq}, true, ride
 			}
 		}
+		return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
+			StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq}, true, rode
 	}
 	return steer.Finding{}, false, false
-}
-
-// rides is FindingRiding's two passes when a lesson may ride, with it and
-// then without it, and the one pass without it otherwise.
-func rides(lesson bool) []bool {
-	if lesson {
-		return []bool{true, false}
-	}
-	return []bool{false}
-}
-
-// unknownsAt is whether a note keeps its unknowns line at a step: a note
-// that carries a lesson tries it once, at step 0, and drops it before
-// anything else is cut; a note with no lesson always keeps it.
-func unknownsAt(ride bool, step int) []bool {
-	switch {
-	case !ride:
-		return []bool{true}
-	case step == 0:
-		return []bool{true, false}
-	}
-	return []bool{false}
 }
 
 // note is the message one rung of FindingRiding's ladder prints and, at
