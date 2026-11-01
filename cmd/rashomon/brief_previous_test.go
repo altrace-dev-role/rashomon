@@ -23,12 +23,12 @@ func seedPrevious(t *testing.T, root, session, project string, at time.Time, gre
 	pointTo(t, root, project, session, 7, at)
 }
 
-// pointTo writes the project index with its Last naming session at seq, as
-// the Stop that cut the checkpoint does.
+// pointTo writes the project's checkpoint file with its Last naming session
+// at seq, as the Stop that cut the checkpoint does.
 func pointTo(t *testing.T, root, project, session string, seq int64, at time.Time) {
 	t.Helper()
-	idx := &verify.ProjectIndex{ProjectKey: project, Last: &verify.LastCheckpoint{SessionID: session, PointSeq: seq, AtMS: at.UnixMilli()}}
-	if _, err := verify.WriteIndex(verify.IndexPath(root, project), idx); err != nil {
+	c := &verify.Checkpoints{Last: &verify.LastCheckpoint{SessionID: session, PointSeq: seq, AtMS: at.UnixMilli()}}
+	if err := verify.WriteCheckpoints(verify.CheckpointsPath(root, project), c); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -125,10 +125,10 @@ func TestRP2u_AnErrorLeavesTheVerifyLine(t *testing.T) {
 }
 
 // TestRP2zb_APointerThatCannotBeTrustedLeavesTheLine (card REPORT1b): the
-// startup line comes from the project index's pointer and the one checkpoint
+// startup line comes from the project's checkpoint file and the one checkpoint
 // it names, and nothing is guessed. A checkpoint in the store with no pointer
 // to it, a pointer whose checkpoint is another project's or another point's,
-// and an index that names only the current session all leave the verify line;
+// and a file that names only the current session all leave the verify line;
 // a pointer to a run that was removed says so. Break: walk the store when
 // the pointer is missing, skip the project or seq check, or skip the
 // existence check.
@@ -156,7 +156,7 @@ func TestRP2zb_APointerThatCannotBeTrustedLeavesTheLine(t *testing.T) {
 	pointTo(t, root, project, "other", 7, at)
 	keeps("a pointer to another project's checkpoint")
 	pointTo(t, root, project, benchSessionID, 7, at)
-	keeps("an index that names only the current session")
+	keeps("a file that names only the current session")
 	pointTo(t, root, project, "earlier", 7, at)
 	if msg := message(t, s.start("startup")); !strings.HasSuffix(msg, "\n  last session: 10-29 16:20, record green; rashomon report --session last") {
 		t.Fatalf("the control, a good pointer: %q", msg)
