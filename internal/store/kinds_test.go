@@ -15,6 +15,8 @@ var frozenKindVersions = map[string]int{
 	"session": 5, "prompt": 5, "turn_end": 5, "turn_cost": 5, "human": 5, "subagent": 5,
 	"batch": 5, "task": 5, "compact": 5, "instructions": 5, "model": 5,
 	"verify": 5, "outcome_join": 5, "write_observed": 5,
+	// The first kind added after the freeze (card SPEC-RULES-STOP1, D-b).
+	"spec_event": 5,
 }
 
 func TestKindVersionsAreTheFrozenTable(t *testing.T) {
