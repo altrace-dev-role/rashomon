@@ -43,6 +43,12 @@ type Document struct {
 	// and column are counted in.
 	path string
 	src  []byte
+	// buf is src with the edits made so far spliced in, so the bytes of
+	// everything not edited, and the layout around it, are the file's own.
+	// It is nil until the first edit. canonical is set when an edit could not
+	// be spliced; the document is then rendered from its members.
+	buf       []byte
+	canonical bool
 }
 
 // Load reads a settings file. An absent file and an empty one are both an
@@ -130,6 +136,9 @@ func (d *Document) Empty() bool { return len(d.members) == 0 }
 
 // Bytes renders the document. Values not edited are emitted as they were read.
 func (d *Document) Bytes() []byte {
+	if d.buf != nil {
+		return bytes.Clone(d.buf)
+	}
 	return append(writeObject(d.members, 0), '\n')
 }
 
@@ -173,26 +182,103 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 		return err
 	}
 
-	arr := writeArray(entries, 2)
-	replaced := false
+	h := d.find(hooksKey)
+	ei := -1
 	for i := range events {
 		if events[i].key == event {
-			events[i].raw = arr
-			replaced = true
+			ei = i
 			break
 		}
 	}
-	if !replaced {
-		events = append(events, member{key: event, raw: arr})
+	if ei < 0 {
+		arr := writeArray(entries, 2)
+		key, _ := json.Marshal(event)
+		if h != nil && !isNull(h.raw) {
+			if obj, ok := spliceAppend(h.raw, true, key, arr); ok {
+				d.setHooks(obj)
+				return nil
+			}
+		}
+		d.setHooks(writeObject(append(events, member{key: event, raw: arr}), 1))
+		return nil
 	}
 
-	obj := writeObject(events, 1)
-	if h := d.find(hooksKey); h != nil {
-		h.set(obj)
-	} else {
-		d.members = append(d.members, member{key: hooksKey, raw: obj})
+	arr := spliceEntries(events[ei].raw, entries)
+	if obj, ok := spliceReplace(h.raw, ei, arr); ok {
+		d.setHooks(obj)
+		return nil
 	}
+	events[ei].raw = arr
+	d.setHooks(writeObject(events, 1))
 	return nil
+}
+
+// spliceEntries is the array old with its entries changed to entries, by
+// taking out the old ones entries lacks and putting the ones it adds after the
+// last, so the bytes of every entry that stays, and the layout between them,
+// are the ones the file had. An array that cannot be spliced that way is
+// rendered whole.
+func spliceEntries(old []byte, entries []json.RawMessage) []byte {
+	oldEntries, err := parseArray("", old)
+	if err != nil || len(oldEntries) == 0 {
+		return writeArray(entries, 2)
+	}
+	var removed []int
+	j := 0
+	for i, o := range oldEntries {
+		if j < len(entries) && bytes.Equal(o, entries[j]) {
+			j++
+		} else {
+			removed = append(removed, i)
+		}
+	}
+	out := old
+	for _, e := range entries[j:] {
+		var ok bool
+		if out, ok = spliceAppend(out, false, nil, e); !ok {
+			return writeArray(entries, 2)
+		}
+	}
+	for k := len(removed) - 1; k >= 0; k-- {
+		var ok bool
+		if out, ok = spliceRemove(out, false, removed[k]); !ok {
+			return writeArray(entries, 2)
+		}
+	}
+	return out
+}
+
+// setHooks replaces the value of the top-level hooks member, or adds the
+// member when the document has none, in the document's own bytes when it can.
+func (d *Document) setHooks(obj []byte) {
+	for i := range d.members {
+		if d.members[i].key == hooksKey {
+			d.members[i].set(obj)
+			d.edit(func(buf []byte) ([]byte, bool) { return spliceReplace(buf, i, obj) })
+			return
+		}
+	}
+	d.members = append(d.members, member{key: hooksKey, raw: obj})
+	d.edit(func(buf []byte) ([]byte, bool) { return spliceAppend(buf, true, []byte(`"hooks"`), obj) })
+}
+
+// edit applies a splice to the document's own bytes, which a document starts
+// editing as a copy of what it was read as. When there is nothing to splice
+// into, or the splice cannot be made, the document is from then on rendered
+// from its members.
+func (d *Document) edit(splice func(buf []byte) ([]byte, bool)) {
+	if d.canonical {
+		return
+	}
+	if d.buf == nil {
+		d.buf = bytes.Clone(d.src)
+	}
+	out, ok := splice(d.buf)
+	if !ok {
+		d.canonical, d.buf = true, nil
+		return
+	}
+	d.buf = out
 }
 
 // RemoveHookEvent deletes one event key from the hooks object, and the hooks
@@ -240,7 +326,15 @@ func (d *Document) RemoveHookEvent(event string) error {
 		d.removeMember(hooksKey)
 		return nil
 	}
-	h.set(writeObject(kept, 1))
+	for i := range events {
+		if events[i].key == event {
+			if obj, ok := spliceRemove(h.raw, true, i); ok {
+				d.setHooks(obj)
+				return nil
+			}
+		}
+	}
+	d.setHooks(writeObject(kept, 1))
 	return nil
 }
 
@@ -256,6 +350,7 @@ func (d *Document) removeMember(key string) {
 	for i := range d.members {
 		if d.members[i].key == key {
 			d.members = append(d.members[:i], d.members[i+1:]...)
+			d.edit(func(buf []byte) ([]byte, bool) { return spliceRemove(buf, true, i) })
 			return
 		}
 	}
