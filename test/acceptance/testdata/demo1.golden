@@ -42,12 +42,13 @@ turn 2, prompt p2: "Fix it."
                   → rashomon report --session demo-1
 
 turn 3, prompt p3: "Run the tests."
-  UserPromptSubmit                            (silent)
+  UserPromptSubmit
+      rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing).
   Edit util.go                                (silent)
   Bash go test ./... -> ok                    (silent)
   Stop: "go test passes after the util.go edit."
       ※ rashomon: verified - go test passed after the last edit.
-                  AutoSteer: 1 note given; 1 finding, resolved at #21.
+                  AutoSteer: 1 note given; 2 findings, 1 resolved at #21.
                   → rashomon report --session demo-1
 
 session end
@@ -63,7 +64,7 @@ session demo-1
   story
     last Stop: verified - go test passed after the last edit (call 23)
     record: 7 executions; 1 failed call; 3 test runs (2 ok, 1 failed)
-    autosteer: 1 regression location given at the failure; 1 finding, resolved at #21
+    autosteer: 1 regression location given at the failure; 2 findings, 1 resolved at #21
     gates: go test green at #21
     account: the final message uses none of the 43 failure words, and 1 call failed
     details below: the account, then the tables; the numbers are call seqs
@@ -75,7 +76,9 @@ session demo-1
   test runs: 3 (2 ok, 1 failed)
   autosteer
     delivered: 1 note (1 regression location) at #9 with prompt p1
-    findings: 1 regression location at #7 (go), resolved by #21 green
+    findings: 2
+      regression location at #7 (go), resolved by #21 green
+      record check at #16, no gate named, so no run settles it
     checks: none expected
     lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session
     unknown: none
