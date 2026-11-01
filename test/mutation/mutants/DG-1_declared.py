@@ -14,10 +14,10 @@ S = "internal/verify/stop.go"
 
 m("DG-1 an untrusted spec declares a gate", D, "\t\tif tr != spec.Trusted && tr != spec.Managed {\n",
   "\t\tif tr != spec.Trusted && tr != spec.Managed && tr != spec.Untrusted {\n", "TestDG1b_")
-m("DG-1 prefix is read as exact", D, "\t\t\tif d.Gate.Match != \"exact\" && s.RunnerDigest != nil {\n",
-  "\t\t\tif false && s.RunnerDigest != nil {\n", "TestDG1c_")
-m("DG-1 exact is read as prefix", D, "\t\t\tif d.Gate.Match != \"exact\" && s.RunnerDigest != nil {\n",
-  "\t\t\tif s.RunnerDigest != nil {\n", "TestDG1c_")
+m("DG-1 prefix is read as exact", D, "s.RunnerDigest); d.Gate.Match != \"exact\" && ok {\n",
+  "s.RunnerDigest); false && ok {\n", "TestDG1c_")
+m("DG-1 exact is read as prefix", D, "s.RunnerDigest); d.Gate.Match != \"exact\" && ok {\n",
+  "s.RunnerDigest); ok {\n", "TestDG1c_|TestGB1b_")
 m("DG-1 Dir is ignored", D, "\t\t\tg.location = shape.CWDDigest(key, filepath.Join(root, d.Gate.Dir))\n",
   "\t\t\tg.location = shape.CWDDigest(key, filepath.Clean(root))\n", "TestDG1d_")
 m("DG-1 an empty Dir reads any location", D, "\tif g.location == \"\" || r.Location != g.location {\n",

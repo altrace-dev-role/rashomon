@@ -52,7 +52,7 @@ func TestSNG1_ADeclaredGateIsNamedByItsID(t *testing.T) {
 		{"a ci gate", ran(viewOf(verify.RowVerified, wrote, ci), ci, "go"), "verified - go passed after the last edit"},
 		{"a learned gate", viewOf(verify.RowVerified, wrote, learned), "verified - go passed after the last edit"},
 	} {
-		if got := sentence(c.v, maxGateNames); got != c.want {
+		if got := sentence(c.v, maxGateNames, false); got != c.want {
 			t.Errorf("%s: sentence = %q, want %q", c.name, got, c.want)
 		}
 	}
