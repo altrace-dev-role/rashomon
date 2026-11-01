@@ -35,6 +35,24 @@ type StopInput struct {
 	Delivered     [][]byte
 	MessageUnread bool
 	Required      map[string]bool
+	// Inferred is the project's test command as gateinfer read it from the
+	// project's own files, judged as one more gate (card GATE-INFER1); nil
+	// for none. The Stop's caller sets it only while no spec declares a test
+	// gate.
+	Inferred *InferredGate
+}
+
+// InferredGate is a test command read from the project's own files: its
+// words and the directory, relative to the project root, it runs in. The
+// Stop judges it as the gate InferredGateID, required, since it stands for
+// the project's own declaration (card GATE-INFER1, W2'). Learned is whether
+// the index has seen a test run in the project: the row's trust is then the
+// learned gates' word, builtin, and else SourceInferred, which the Stop's
+// line labels. Its words never reach the record: the row's id is closed.
+type InferredGate struct {
+	Argv    []string
+	Dir     string
+	Learned bool
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and

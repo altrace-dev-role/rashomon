@@ -20,6 +20,14 @@ const (
 	sourceCICommands = "ci_commands"
 )
 
+// The gate an InferredGate makes (card GATE-INFER1): one closed id, so no
+// word of the project's files reaches the record, and SourceInferred as its
+// Source and its trust.
+const (
+	InferredGateID = "inferred:test"
+	SourceInferred = "inferred"
+)
+
 // declaredGate is one gate a trusted or managed spec declares, as the
 // evaluator matches it to runs (card DECLARED-GATES1). runners holds the
 // runner keys of its argv and aliases matched at their runner (shape.RunnerKey:
