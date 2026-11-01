@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -24,6 +25,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateinfer"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -100,8 +102,7 @@ type Brief struct {
 	WalkCapped   bool
 	Dirs         []string
 	// Index is the project index as read from the store, nil when there is
-	// none or it did not read: what the tests line counts, and where the
-	// previous session is named (ProjectIndex.PreviousOf).
+	// none or it did not read: what the tests line counts.
 	Index *verify.ProjectIndex
 }
 
@@ -422,7 +423,9 @@ func module(path string) string {
 // testsFact is the spec's declared test gate, quoted with its trust; with
 // none, the test-kind families the project index has seen (B2: the index
 // counts runs, not greens), how many sessions the most-seen one ran in, and
-// how many are required.
+// how many are required; with none of those, the command gateinfer reads
+// from the project's own files, quoted, with the file it came from (card
+// GATE-INFER1).
 func testsFact(root, storeRoot string, idx *verify.ProjectIndex, sp *spec.Compiled) Fact {
 	if sp != nil {
 		var tests []spec.Declared
@@ -463,10 +466,28 @@ func testsFact(root, storeRoot string, idx *verify.ProjectIndex, sp *spec.Compil
 		}
 	}
 	if runners == 0 {
+		if in, ok := gateinfer.Infer(root); ok {
+			return newFact(KindTests, inferredText(in), filepath.Join(root, filepath.FromSlash(in.From)))
+		}
 		return newFact(KindTests, "no spec gate; no test runner in the index yet", source)
 	}
 	return newFact(KindTests, fmt.Sprintf("no spec gate; %s in the index, up to %s (%d required)",
 		count(runners, "test runner"), count(most, "session"), required), source)
+}
+
+// inferredText is the tests line of an inferred command: the command
+// quoted, then the file it came from, its base name where the path leaves
+// the command too little room, or no file where even that does.
+func inferredText(in gateinfer.Inferred) string {
+	const least = 16
+	tail := " (inferred from " + in.From + ")"
+	if room(KindTests)-len(tail)-2 < least {
+		tail = " (inferred from " + path.Base(in.From) + ")"
+	}
+	if room(KindTests)-len(tail)-2 < least {
+		tail = " (inferred)"
+	}
+	return strconv.Quote(cut(strings.Join(in.Argv, " "), room(KindTests)-len(tail)-2)) + tail
 }
 
 // count is n and noun, plural unless n is one.

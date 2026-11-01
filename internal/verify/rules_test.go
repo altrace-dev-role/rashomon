@@ -87,7 +87,7 @@ func stopPoint(r *store.Run) Point { return Point{Kind: PointStop, Seq: r.LastSe
 // builds them: evaluate, then ledgerOf, the one producer of the rows.
 func specLedgerAt(r *store.Run, sp *spec.Compiled, pt Point) (Snapshot, []Obligation) {
 	var c classified
-	snap := evaluate(r, nil, sp, nil, pt, time.Time{}, &c)
+	snap := evaluate(r, nil, sp, nil, nil, pt, time.Time{}, &c)
 	return snap, ledgerOf(snap, &c, expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(r, pt.Seq)}))
 }
 

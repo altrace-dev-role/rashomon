@@ -26,6 +26,17 @@ type SteerView struct {
 	ProjectRoot string
 	Dropped     int
 	Spec        *SpecInfo
+	// Hits are the forbid_command rules the call matched at either post
+	// event (RulesAtCall), which the hook keeps as spec_event rule_hit
+	// records before Route (card SPEC-RULES-STOP1).
+	Hits []RuleHit
+}
+
+// RuleHit is a forbid_command rule a call matched: the rule's declared id
+// and the content digest of the spec file that declared it.
+type RuleHit struct {
+	RuleID       string
+	SourceDigest string
 }
 
 // SteerAt evaluates run at pt once and returns the steer view of the call
@@ -41,7 +52,7 @@ type SteerView struct {
 // then.
 func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
-	snap := evaluate(run, idx, sp, key, pt, now, &c)
+	snap := evaluate(run, idx, sp, key, nil, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	var decl int64
 	if (c.learned || hasDeclaredRequired(snap)) && event == string(steer.EventPostToolUse) {

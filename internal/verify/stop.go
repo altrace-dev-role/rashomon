@@ -35,6 +35,29 @@ type StopInput struct {
 	Delivered     [][]byte
 	MessageUnread bool
 	Required      map[string]bool
+	// Inferred is the project's test command as gateinfer read it from the
+	// project's own files, judged as one more gate (card GATE-INFER1); nil
+	// for none. The Stop's caller sets it only while no spec declares a test
+	// gate.
+	Inferred *InferredGate
+}
+
+// InferredGate is a test command read from the project's own files: its
+// words and the directory, relative to the project root, it runs in. The
+// Stop judges it as the gate InferredGateID, required, since it stands for
+// the project's own declaration (card GATE-INFER1, W2'). Learned is whether
+// the index has seen a test run in the project: the row's trust is then the
+// learned gates' word, builtin, and else SourceInferred, which the Stop's
+// line labels. Its words never reach the record: the row's id is closed.
+// From, the file it was read from, and Declared, whether the project names
+// the command there rather than by convention, are the next prompt's note's
+// (W5); EvaluateStop reads neither.
+type InferredGate struct {
+	Argv     []string
+	Dir      string
+	Learned  bool
+	From     string
+	Declared bool
 }
 
 // StopView is EvaluateStop's result. Summary is TurnSummary over Snap and
@@ -59,7 +82,25 @@ type StopView struct {
 	// over the classification Snap came from, then Expected's rows, never
 	// nil.
 	Obligations []Obligation
+	// Unbound is each repository spec, project-relative, the session edited
+	// after the user trusted it (SPEC-TRUST-DROP1): its binding names
+	// another digest, so what it declares flags to the user only until
+	// `rashomon spec trust`. EvaluateStop reads no bindings, so the Stop's
+	// caller fills it; nil for none.
+	Unbound []string
+	// Untrusted is each gate a spec declares from a source that reads
+	// untrusted, in the spec's order (STOP-UNBOUND-FIRST): the brief names
+	// it "(spec, untrusted)" and no run binds it (declaredGates), so the
+	// Stop says it does not count rather than that no test or build is
+	// known. The Stop's caller fills it beside Unbound; nil for none, and
+	// nil after a session write under the store root, when no trust holds
+	// for the rest of the session (hook.TrustRoot, D173).
+	Untrusted []UntrustedGate
 }
+
+// UntrustedGate is a gate a spec declares while the spec reads untrusted:
+// its id, and the spec's path, project-relative as Unbound names it.
+type UntrustedGate struct{ ID, Spec string }
 
 // EvaluateStop is the Stop hook's view at pt. One classification feeds the
 // snapshot, the programs, the index and the ledger, whose expected rows are
@@ -73,7 +114,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		run = &store.Run{}
 	}
 	var c classified
-	snap := evaluate(run, idx, sp, in.Key, pt, now, &c)
+	snap := evaluate(run, idx, sp, in.Key, in.Inferred, pt, now, &c)
 	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
@@ -81,6 +122,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	turn := countTurn(run, counted, in.PromptID, pt.Seq)
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
+	inferredProgram(v.Programs, in.Inferred, in.Key)
 	if v.Index == nil {
 		v.Index = &ProjectIndex{ProjectKey: in.ProjectKey}
 	}
@@ -98,7 +140,8 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 }
 
 // pinRequired sets each gate pins names to the Required it names, and then
-// the record green that follows (D36); a gate pins does not name keeps
+// the record green that follows (D36), read as evaluate reads it, binding
+// rule violations included (recordGreenOf); a gate pins does not name keeps
 // evaluate's. Nil pins nothing.
 func pinRequired(snap *Snapshot, pins map[string]bool) {
 	if pins == nil {
@@ -109,7 +152,7 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 			snap.Gates[i].Required = r
 		}
 	}
-	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved))
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreenOf(snap)
 }
 
 // programs maps each gate to the program of the run its LastRun names, found
@@ -117,7 +160,8 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 // short and a map over runs is one pass). A run that records the runner it
 // launched (call schema 8) is named by it, in the binary's own words --
 // `python3 -m pytest`, not the interpreter `python3` the line starts with
-// (D229); an older record's is the line's program word.
+// (D229); an older record's is the line's program word. The inferred gate
+// with no run is named by inferredProgram.
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
@@ -130,6 +174,19 @@ func programs(gates []GateState, runs []gateRun) map[string]string {
 		}
 	}
 	return out
+}
+
+// inferredProgram names the inferred gate, where programs left it unnamed
+// (no run bound it), by its command's runner row: a word of the binary's
+// own lists, never of the project's file (GATE-INFER1, W4). None where the
+// command names no runner.
+func inferredProgram(programs map[string]string, inf *InferredGate, key []byte) {
+	if inf == nil || len(inf.Argv) == 0 || programs[InferredGateID] != "" {
+		return
+	}
+	if name := nameOf(lineShape(inf.Argv, key).RunnerName); name != "" {
+		programs[InferredGateID] = name
+	}
 }
 
 // countTurn counts the prompt's turn up to seq at (2.2.11 TurnCounts). The

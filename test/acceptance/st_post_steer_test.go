@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
@@ -18,7 +19,8 @@ import (
 // The steer tests run the binary as Claude Code 2.1.280 on the CLI, attended
 // (CI empty, whatever the machine running the suite has set), on a watched
 // install with record scope v5 and both consent.json and the
-// steer_disclosure marker at 2 (card 2.3 R11, A2, A3).
+// steer_disclosure marker at this build's steer.DisclosureVersion (card 2.3
+// R11, A2, A3).
 const stAgent = "AI_AGENT=claude-code_2-1-280_harness"
 
 // stFailureNotice is the channel notice the binary prints, as 2.1.280, on
@@ -45,14 +47,12 @@ func newSteerEnv(t *testing.T) *env {
 	t.Helper()
 	e := newEnv(t)
 	e.watched(testSession)
-	raised := strings.Replace(string(e.consentBytes()), `"steer_disclosure":0`, `"steer_disclosure":2`, 1)
-	if raised == string(e.consentBytes()) {
-		t.Fatal("premise: the watch record does not carry steer_disclosure 0")
+	// watch --yes records this build's steer disclosure (STEER-DISCLOSE-YES1).
+	current := strconv.Itoa(steer.DisclosureVersion)
+	if !strings.Contains(string(e.consentBytes()), `"steer_disclosure":`+current) {
+		t.Fatalf("premise: the watch record does not carry steer_disclosure %s", current)
 	}
-	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(raised), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	e.steerMarker("2\n")
+	e.steerMarker(current + "\n")
 	if b, err := os.ReadFile(filepath.Join(e.home, "record_scope")); err != nil || strings.TrimSpace(string(b)) != "v5" {
 		t.Fatalf("premise: record_scope marker %q (%v), want v5", b, err)
 	}
@@ -318,9 +318,11 @@ func TestSTR43i_ARedOfAnotherFamilyIsNotThisRun(t *testing.T) {
 // TestST_NoConsentPrintsAFlagOnly: with no steer_disclosure marker the
 // nudge is clamped to a flag (consent_missing): stdout carries the
 // systemMessage alone, which no channel gates, and no model-visible key.
-// consent.json says 2 throughout: the hook reads the marker, never
-// consent.json (D49, 2.2c). The threshold is the marker against
-// steer.DisclosureVersion, 2.
+// consent.json says this build's version throughout: the hook reads the
+// marker, never consent.json (D49, 2.2c). The threshold is the marker
+// against steer.DisclosureVersion, which CONSENT-SCOPE1 moved past
+// alpha.1's 2: an alpha.1 consent's notes are flags until its person agrees
+// on the screen that names record scope v5.
 func TestST_NoConsentPrintsAFlagOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name, marker string
@@ -328,7 +330,8 @@ func TestST_NoConsentPrintsAFlagOnly(t *testing.T) {
 	}{
 		{"marker absent", "", true},
 		{"marker 1", "1\n", true},
-		{"control: marker 2", "2\n", false},
+		{"alpha.1's marker 2", "2\n", true},
+		{"control: this build's marker", strconv.Itoa(steer.DisclosureVersion) + "\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newSteerEnv(t)

@@ -34,9 +34,9 @@ m("sr1 an untrusted rule binds", "internal/verify/rules.go",
   "func binding(t spec.Trust) bool { return t != spec.Builtin }\n",
   "TestSR1d_")
 m("sr1 record-green ignores a binding rule's violation", "internal/verify/evaluate.go",
-  "recordGreen(snap.Gates, len(snap.Integrity.Unresolved)+bindingViolations(snap.SpecVerdicts))",
-  "recordGreen(snap.Gates, len(snap.Integrity.Unresolved))",
-  "TestSR1h_|TestSR1d_")
+  "\treturn len(snap.Integrity.Unresolved) + bindingViolations(snap.SpecVerdicts)\n",
+  "\treturn len(snap.Integrity.Unresolved)\n",
+  "TestSR1h_|TestSR1d_|TestSRS1_|TestSRS1e2_")
 m("sr1 each rule reads every line again", "internal/verify/rules.go",
   "\t\t\t\tlines, read = ruleLines(run, picked, at), true\n",
   "\t\t\t\tlines, read = ruleLines(run, picked, at), false\n",
@@ -78,9 +78,9 @@ m("sr1 a store fault silences the rules", "internal/hook/steerstep.go",
   "\t\tr, err := p.st.ReadRunConsistent(p.sessionID, SteerReadBudget)\n\t\tif err != nil {\n\t\t\treturn steer.Context{}, verify.SteerView{}, false\n\t\t}\n\t\trun = r\n",
   "TestSR1y_")
 m("sr1 the post raises a forbidden command that failed", "internal/verify/rules_raise.go",
-  "\t\t\tif event != string(steer.EventPostToolUse) || call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
-  "\t\t\tif call.ToolName != \"Bash\" || call.Command == \"\" ||\n",
-  "TestSR1_")
+  "\t\t\tif event != string(steer.EventPostToolUse) {\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "",
+  "TestSR1_|TestSRS1h_")
 IMPORTS["sr1 the post raises a forbidden command that failed"] = ("internal/verify/rules_raise.go", '\t"github.com/altrace-dev-role/rashomon/internal/steer"\n', "")
 m("sr1 protectOver cleans each path again inside the rule", "internal/verify/rules.go",
   "\t\trel, inside := rels[i].rel, rels[i].inside\n",
@@ -113,6 +113,6 @@ m("sr1 the Stop takes the no-spec note for no spec", "cmd/rashomon/recap_stop.go
 
 # D210's per-prompt discovery.
 m("sr1 a prompt naming no path writes no note", "cmd/rashomon/recap_turn.go",
-  "\t\tnoteTurnSpec(st, run, &pp)\n", "", "TestSR1af_")
+  "\tnoteTurnSpec(st, run, pp)\n", "", "TestSR1af_")
 m("sr1 the preflight's discovery runs twice", "cmd/rashomon/preflight.go",
   "p.CWD == \"\" || p.specNoted {\n", "p.CWD == \"\" {\n", "TestSR1ag_")

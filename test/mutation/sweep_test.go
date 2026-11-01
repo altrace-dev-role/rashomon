@@ -819,6 +819,71 @@ func TestStrict_NotJudgedFailsOnlyWithTheFlag(t *testing.T) {
 	}
 }
 
+// SWEEP-BASELINE1. A red baseline printed only the last 4000 bytes of go
+// test's output, so a package that failed early was cut whenever a later
+// failing package printed more than that: batch/1's shard 4 stopped on a red
+// baseline that named no package. Every "--- FAIL", "FAIL\t" and "panic:"
+// line, and the "running tests:" block of a timeout, is printed first, then
+// the tail. The fixture fails three times: a quietly; b by its 2s -timeout,
+// which prints no "--- FAIL" (its TestMain shortens its own -test.timeout,
+// so the sweep's go test command stays as it is); then c with 6000 bytes of
+// log, which alone fills the tail.
+func TestSWB1_ARedBaselineNamesEveryFailureBeforeTheTail(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	for _, d := range []string{"a", "b", "c", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(root, "a", "a.go"), "package a\n\nfunc A() int { return 1 }\n")
+	write(t, filepath.Join(root, "a", "a_test.go"),
+		"package a\n\nimport \"testing\"\n\nfunc TestFixtureQuiet_(t *testing.T) { t.Error(\"quiet failure\") }\n")
+	write(t, filepath.Join(root, "b", "b_test.go"), `package b
+
+import (
+	"flag"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	flag.Set("test.timeout", "2s")
+	os.Exit(m.Run())
+}
+
+func TestFixtureSlow_(t *testing.T) { time.Sleep(time.Minute) }
+`)
+	write(t, filepath.Join(root, "c", "c_test.go"),
+		"package c\n\nimport (\n\t\"strings\"\n\t\"testing\"\n)\n\n"+
+			"func TestFixtureLoud_(t *testing.T) { t.Log(strings.Repeat(\"loud \", 1200)); t.Error(\"loud failure\") }\n")
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant behind a red baseline", "a/a.go", "return 1", "return 2", "TestFixtureQuiet_"))
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code == 0 {
+		t.Fatalf("a red baseline exited 0:\n%s", out)
+	}
+	tail := strings.Index(out, "loud loud")
+	if tail < 0 {
+		t.Fatalf("premise: the loud package's log is not in the output, so nothing was cut:\n%s", out)
+	}
+	for _, want := range []string{
+		"--- FAIL: TestFixtureQuiet_", "FAIL\tfixture/a",
+		"panic: test timed out after 2s", "running tests:", "\t\tTestFixtureSlow_ (", "FAIL\tfixture/b",
+		"--- FAIL: TestFixtureLoud_", "FAIL\tfixture/c",
+	} {
+		i := strings.Index(out, want)
+		if i < 0 {
+			t.Errorf("the red baseline's output does not name %q", want)
+		} else if i > tail {
+			t.Errorf("%q is printed only after the tail, not before it", want)
+		}
+	}
+}
+
 // The sweep job runs only on a manual dispatch, so two dispatches share no
 // state; cancelling an older one when a newer dispatch starts costs nothing
 // and saves a runner's minutes.
@@ -1440,7 +1505,7 @@ func TestSweepShards_PartitionTheMutantsExactlyOnce(t *testing.T) {
 		t.Fatalf("--list exited %d", code)
 	}
 	full := nonEmptyLines(out)
-	for _, n := range []int{1, 2, 3, 7} {
+	for _, n := range []int{1, 2, 3, 7, 8} {
 		owner := map[string]int{}
 		for k := 1; k <= n; k++ {
 			out, code := sweep(t, root, "--list", "--shard", fmt.Sprintf("%d/%d", k, n))
@@ -1564,6 +1629,52 @@ func TestSweepJobRunsTheDarwinRows(t *testing.T) {
 		if !strings.Contains(job, want) {
 			t.Errorf("the sweep-darwin job lacks %q", want)
 		}
+	}
+}
+
+// ciJob returns job key's lines in the workflow, from its key to the next
+// job's.
+func ciJob(t *testing.T, doc, key string) string {
+	t.Helper()
+	i := strings.Index(doc, "\n  "+key+":\n")
+	if i < 0 {
+		t.Fatalf("ci.yaml: no %s job", key)
+	}
+	job := doc[i+1:]
+	if loc := regexp.MustCompile(`\n  [a-z0-9-]+:\n`).FindStringIndex(job); loc != nil {
+		job = job[:loc[0]+1]
+	}
+	return job
+}
+
+// The REC-34 group commit mutants run on every push and pull request, on
+// macOS, in a job of their own beside Perf gates (macos), not inside it: at
+// 15 to 18 minutes they pushed that job past its 25-minute bound, which
+// skipped the H-16 and TRU darwin steps after them (R26, CI-PERF-SPLIT1). No
+// needs:, so a red perf gate skips none of them, and a bound with room for
+// their growth.
+func TestSweepJobRunsTheREC34RowsBesidePerfGates(t *testing.T) {
+	doc := readFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yaml"))
+	if strings.Contains(ciJob(t, doc, "perf-macos"), "sweep.py") {
+		t.Error("perf-macos runs a mutation sweep: its 25 minutes are the gates'")
+	}
+	job := ciJob(t, doc, "rec34-darwin")
+	for _, want := range []string{"runs-on: macos-latest", "sweep.py --strict --files mutants/REC-34_group-commit.py"} {
+		if !strings.Contains(job, want) {
+			t.Errorf("the rec34-darwin job lacks %q", want)
+		}
+	}
+	for _, refuse := range []string{"\n    needs:", "\n    if:"} {
+		if strings.Contains(job, refuse) {
+			t.Errorf("the rec34-darwin job has %q: it runs on every push and pull request, on its own", strings.TrimSpace(refuse))
+		}
+	}
+	m := regexp.MustCompile(`\n    timeout-minutes: (\d+)\n`).FindStringSubmatch(job)
+	if m == nil {
+		t.Fatal("the rec34-darwin job has no timeout-minutes")
+	}
+	if n, _ := strconv.Atoi(m[1]); n < 40 {
+		t.Errorf("the rec34-darwin job's bound is %d minutes; its rows took 15 to 18 at 665 test files, want 40 or more", n)
 	}
 }
 
