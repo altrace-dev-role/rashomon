@@ -1,0 +1,486 @@
+{
+ "cases": {
+  "backtick_in_string": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "bom_latin1_cookie": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: encoding problem: iso-8859-1 with BOM"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "br_prefix": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "case_pair": {
+   "compile": {
+    "A.py": "SyntaxError: Missing parentheses in call to 'print'. Did you mean print(.",
+    "a.py": "SyntaxError: Missing parentheses in call to 'print'. Did you mean print(.",
+    "ok.py": "ok"
+   },
+   "entries": {
+    "A.py": "regular",
+    "a.py": "regular",
+    "ok.py": "regular"
+   }
+  },
+  "continuation_eof": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: unexpected EOF while parsing"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "cookie_on_line_3": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: (unicode error) 'utf-8' codec can't decode byte 0xe9 in posi"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "devnull_link": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "symlink"
+   }
+  },
+  "dot_py_name": {
+   "compile": {
+    ".py": "ok",
+    "ok.py": "ok"
+   },
+   "entries": {
+    ".py": "regular",
+    "ok.py": "regular"
+   }
+  },
+  "except_comma_continued": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: multiple exception types must be parenthesized"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "except_comma_in_string": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "except_comma_nested": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: multiple exception types must be parenthesized"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "exec_call_form": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "formfeed_indent": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "future_division": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "hardlink_pair": {
+   "compile": {
+    "a.py": "SyntaxError: Missing parentheses in call to 'print'. Did you mean print(.",
+    "b.py": "SyntaxError: Missing parentheses in call to 'print'. Did you mean print(.",
+    "ok.py": "ok"
+   },
+   "entries": {
+    "a.py": "regular",
+    "b.py": "regular",
+    "ok.py": "regular"
+   }
+  },
+  "has_key": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "leading_dash": {
+   "compile": {
+    "-t.py": "SyntaxError: Missing parentheses in call to 'print'. Did you mean print(.",
+    "ok.py": "ok"
+   },
+   "entries": {
+    "-t.py": "regular",
+    "ok.py": "regular"
+   }
+  },
+  "link_to_root": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "d": "symlink",
+    "ok.py": "regular"
+   }
+  },
+  "long_in_string": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "many_files": {
+   "compile": {
+    "compiled_ok": 2001
+   },
+   "entries": {
+    "entries": 2001
+   }
+  },
+  "mixed_newlines": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "ne_in_string": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "nesting_1000": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: too many nested parentheses"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "nesting_20": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "non_ascii_no_cookie": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: (unicode error) 'utf-8' codec can't decode byte 0xe9 in posi"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "octal_zero": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "only_shebang": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "pkg_named_py": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "pkg.py": "dir"
+   }
+  },
+  "print_single": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "print_tuple": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "pyc_only": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "m.pyc": "regular",
+    "ok.py": "regular"
+   }
+  },
+  "raise_three": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: invalid syntax"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "socket_py": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "socket"
+   }
+  },
+  "symlink_chain": {
+   "compile": {
+    "a60.py": "ok",
+    "ok.py": "ok"
+   },
+   "entries": {
+    "a1.py": "symlink",
+    "a10.py": "symlink",
+    "a11.py": "symlink",
+    "a12.py": "symlink",
+    "a13.py": "symlink",
+    "a14.py": "symlink",
+    "a15.py": "symlink",
+    "a16.py": "symlink",
+    "a17.py": "symlink",
+    "a18.py": "symlink",
+    "a19.py": "symlink",
+    "a2.py": "symlink",
+    "a20.py": "symlink",
+    "a21.py": "symlink",
+    "a22.py": "symlink",
+    "a23.py": "symlink",
+    "a24.py": "symlink",
+    "a25.py": "symlink",
+    "a26.py": "symlink",
+    "a27.py": "symlink",
+    "a28.py": "symlink",
+    "a29.py": "symlink",
+    "a3.py": "symlink",
+    "a30.py": "symlink",
+    "a31.py": "symlink",
+    "a32.py": "symlink",
+    "a33.py": "symlink",
+    "a34.py": "symlink",
+    "a35.py": "symlink",
+    "a36.py": "symlink",
+    "a37.py": "symlink",
+    "a38.py": "symlink",
+    "a39.py": "symlink",
+    "a4.py": "symlink",
+    "a40.py": "symlink",
+    "a41.py": "symlink",
+    "a42.py": "symlink",
+    "a43.py": "symlink",
+    "a44.py": "symlink",
+    "a45.py": "symlink",
+    "a46.py": "symlink",
+    "a47.py": "symlink",
+    "a48.py": "symlink",
+    "a49.py": "symlink",
+    "a5.py": "symlink",
+    "a50.py": "symlink",
+    "a51.py": "symlink",
+    "a52.py": "symlink",
+    "a53.py": "symlink",
+    "a54.py": "symlink",
+    "a55.py": "symlink",
+    "a56.py": "symlink",
+    "a57.py": "symlink",
+    "a58.py": "symlink",
+    "a59.py": "symlink",
+    "a6.py": "symlink",
+    "a60.py": "regular",
+    "a7.py": "symlink",
+    "a8.py": "symlink",
+    "a9.py": "symlink",
+    "ok.py": "regular"
+   }
+  },
+  "tabs_only": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "trailing_space": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py ": "regular"
+   }
+  },
+  "unlistable_py": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "pkg.py": "dir"
+   }
+  },
+  "unterminated_triple": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: unterminated triple-quoted string literal (detected at line "
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "upper_ext": {
+   "compile": {
+    "ok.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.PY": "regular"
+   }
+  },
+  "ur_with_unicode_literals": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: invalid syntax"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "utf16_bom": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "SyntaxError: source code string cannot contain null bytes"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "utf8_sig_cookie": {
+   "compile": {
+    "ok.py": "ok",
+    "t.py": "ok"
+   },
+   "entries": {
+    "ok.py": "regular",
+    "t.py": "regular"
+   }
+  },
+  "very_deep_dirs": {
+   "compile": {
+    "compiled_ok": 1
+   },
+   "entries": {
+    "entries": 2
+   }
+  }
+ },
+ "version": "3.11.17"
+}

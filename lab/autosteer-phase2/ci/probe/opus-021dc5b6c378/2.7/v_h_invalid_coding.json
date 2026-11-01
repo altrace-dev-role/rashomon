@@ -1,0 +1,16 @@
+{
+  "files": 2,
+  "readiness": 50.0,
+  "rules": {
+    "PY3-PARSE": 1
+  },
+  "findings": [
+    {
+      "file": "t.py",
+      "line": 1,
+      "rule": "PY3-PARSE",
+      "severity": "blocker",
+      "message": "does not parse under Python 2.7: unknown encoding: no-such-codec"
+    }
+  ]
+}

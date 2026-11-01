@@ -1,0 +1,26 @@
+Traceback (most recent call last):
+  File "/usr/local/lib/python2.7/runpy.py", line 174, in _run_module_as_main
+    "__main__", fname, loader, pkg_name)
+  File "/usr/local/lib/python2.7/runpy.py", line 72, in _run_code
+    exec code in run_globals
+  File "/tmp/in/src/py2scan/__main__.py", line 3, in <module>
+    main()
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 829, in __call__
+    return self.main(*args, **kwargs)
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 782, in main
+    rv = self.invoke(ctx)
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 1259, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 1066, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 610, in invoke
+    return callback(*args, **kwargs)
+  File "py2scan/cli.py", line 66, in scan_cmd
+    click.echo(json.dumps(to_json(result, findings, versions)))
+  File "/usr/local/lib/python2.7/json/__init__.py", line 244, in dumps
+    return _default_encoder.encode(obj)
+  File "/usr/local/lib/python2.7/json/encoder.py", line 207, in encode
+    chunks = self.iterencode(o, _one_shot=True)
+  File "/usr/local/lib/python2.7/json/encoder.py", line 270, in iterencode
+    return _iterencode(o, 0)
+UnicodeDecodeError: 'utf8' codec can't decode byte 0xe9 in position 3: invalid continuation byte

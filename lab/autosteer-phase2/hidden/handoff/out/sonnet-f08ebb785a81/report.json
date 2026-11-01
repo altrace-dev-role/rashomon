@@ -1,0 +1,985 @@
+{
+ "arm": "sonnet",
+ "commit": "f08ebb785a81968adf537468614182a81fd1515f",
+ "elapsed_sec": 119,
+ "item_2b_byte_identical_corpus": false,
+ "item_2b_corpus_diff": "key file_readiness differs",
+ "item_2b_hostile_cases_differing": [
+  "bom_only",
+  "bom_utf8_cookie",
+  "canary",
+  "cr_only",
+  "deep_dirs",
+  "dirlink",
+  "escape",
+  "exec_free",
+  "fifo",
+  "future_print",
+  "html",
+  "huge_line",
+  "odd_names",
+  "shebang_cookie",
+  "tabs_py2_only",
+  "unlistable"
+ ],
+ "sides": {
+  "2.7": {
+   "H1_builtin": [
+    "control ok; files with truth 1027, star-import files excluded 77, unparsable 0, true builtin uses 513",
+    "sonnet flagged  766  missed real uses (FN)    3  flagged non-uses (FP)  165  FN e.g. ['code.py raw_input', 'json/encoder.py basestring', 'json/encoder.py long']  FP e.g. [u'aifc.py file', u'unittest/runner.py buffer']"
+   ],
+   "H2_H8_false_ready_by_version": {
+    "3.10": 13,
+    "3.11": 13,
+    "3.12": 13,
+    "3.13": 13,
+    "3.14": 13,
+    "3.15": 13,
+    "3.6": 13,
+    "3.7": 13,
+    "3.8": 13,
+    "3.9": 13
+   },
+   "H2b_H8s": {
+    "ambiguous_lines_excluded": 6285,
+    "except_comma_clauses": 497,
+    "except_comma_examples": [],
+    "except_comma_missing_blocker": 0,
+    "stdlib_exact": 394,
+    "stdlib_examples": {
+     "extra": [],
+     "missed": [
+      "trac/trac/web/modpython_frontend.py:26",
+      "trac/trac/web/auth.py:25",
+      "moin/MoinMoin/support/passlib/utils/compat/_ordered_dict.py:11",
+      "moin/MoinMoin/script/old/print_stats.py:23",
+      "stdlib/idlelib/PyShell.py:1059",
+      "stdlib/idlelib/configHandler.py:26"
+     ]
+    },
+    "stdlib_expected": 413,
+    "stdlib_extra": 0,
+    "stdlib_missed": 19,
+    "stdlib_severity_wrong": 0,
+    "stdlib_versions_wrong": 0,
+    "unparsable_on_27": 0
+   },
+   "H3_hostile": {
+    "bom_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.39
+    },
+    "bom_utf8_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.32
+    },
+    "canary": {
+     "findings": [
+      [
+       "__init__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "__main__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "conftest.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "mod.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "setup.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.26
+    },
+    "cr_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.19
+    },
+    "deep_dirs": {
+     "findings": [
+      [
+       "d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.56
+    },
+    "dirlink": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.22
+    },
+    "escape": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.14
+    },
+    "exec_free": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-EXEC-STMT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.13
+    },
+    "fifo": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.11
+    },
+    "future_print": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.18
+    },
+    "html": {
+     "findings": [
+      [
+       "<img src=x onerror=alert(1)>.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.12
+    },
+    "huge_line": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.94
+    },
+    "odd_names": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.12
+    },
+    "shebang_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.13
+    },
+    "tabs_py2_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PARSE",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.12
+    },
+    "unlistable": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.1
+    }
+   },
+   "R6_files_not_named": {
+    "count": 0,
+    "examples": [],
+    "of": 2331
+   },
+   "corpus_scan": {
+    "files": 2331,
+    "findings": 6514,
+    "json_valid": true,
+    "rc": 1,
+    "rules": {
+     "PY3-ASYNC-RESERVED": 15,
+     "PY3-BACKTICK": 9,
+     "PY3-BUILTIN": 1736,
+     "PY3-DICT-ITER": 412,
+     "PY3-DIVISION": 233,
+     "PY3-EXCEPT-COMMA": 497,
+     "PY3-EXEC-STMT": 52,
+     "PY3-LONG-SUFFIX": 135,
+     "PY3-METACLASS": 18,
+     "PY3-NE-OP": 6,
+     "PY3-OCTAL": 109,
+     "PY3-PARSE": 19,
+     "PY3-PRINT": 1490,
+     "PY3-RAISE-COMMA": 771,
+     "PY3-STDLIB": 1008,
+     "PY3-TUPLE-PARAM": 4
+    },
+    "sec": 40.2,
+    "traceback": false
+   },
+   "determinism_jobs1_vs_default": true,
+   "false_ready_examples": {
+    "3.10": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.11": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.12": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.13": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.14": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.15": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.6": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.7": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.8": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.9": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ]
+   },
+   "html": {
+    "bytes": 1927,
+    "ok": true,
+    "raw_injections_found": []
+   },
+   "interpreter": "2.7.18",
+   "item_2c_canary": []
+  },
+  "3.14": {
+   "H1_builtin": [
+    "control ok; files with truth 1027, star-import files excluded 77, unparsable 0, true builtin uses 513",
+    "sonnet flagged  766  missed real uses (FN)    3  flagged non-uses (FP)  165  FN e.g. ['code.py raw_input', 'json/encoder.py basestring', 'json/encoder.py long']  FP e.g. [u'aifc.py file', u'unittest/runner.py buffer']"
+   ],
+   "H2_H8_false_ready_by_version": {
+    "3.10": 14,
+    "3.11": 14,
+    "3.12": 14,
+    "3.13": 14,
+    "3.14": 0,
+    "3.15": 14,
+    "3.6": 14,
+    "3.7": 14,
+    "3.8": 14,
+    "3.9": 14
+   },
+   "H2b_H8s": {
+    "ambiguous_lines_excluded": 6285,
+    "except_comma_clauses": 497,
+    "except_comma_examples": [
+     [
+      "moin/MoinMoin/wikiutil.py",
+      2005,
+      [
+       "3.6",
+       "3.7",
+       "3.8",
+       "3.9",
+       "3.10",
+       "3.11",
+       "3.12",
+       "3.13",
+       "3.14",
+       "3.15"
+      ]
+     ],
+     [
+      "moin/MoinMoin/wikiutil.py",
+      2025,
+      [
+       "3.6",
+       "3.7",
+       "3.8",
+       "3.9",
+       "3.10",
+       "3.11",
+       "3.12",
+       "3.13",
+       "3.14",
+       "3.15"
+      ]
+     ],
+     [
+      "moin/MoinMoin/wikiutil.py",
+      2034,
+      [
+       "3.6",
+       "3.7",
+       "3.8",
+       "3.9",
+       "3.10",
+       "3.11",
+       "3.12",
+       "3.13",
+       "3.14",
+       "3.15"
+      ]
+     ],
+     [
+      "moin/MoinMoin/config/multiconfig.py",
+      52,
+      [
+       "3.6",
+       "3.7",
+       "3.8",
+       "3.9",
+       "3.10",
+       "3.11",
+       "3.12",
+       "3.13",
+       "3.14",
+       "3.15"
+      ]
+     ],
+     [
+      "moin/MoinMoin/config/multiconfig.py",
+      63,
+      [
+       "3.6",
+       "3.7",
+       "3.8",
+       "3.9",
+       "3.10",
+       "3.11",
+       "3.12",
+       "3.13",
+       "3.14",
+       "3.15"
+      ]
+     ]
+    ],
+    "except_comma_missing_blocker": 18,
+    "stdlib_exact": 394,
+    "stdlib_examples": {
+     "extra": [],
+     "missed": [
+      "trac/trac/web/modpython_frontend.py:26",
+      "trac/trac/web/auth.py:25",
+      "moin/MoinMoin/support/passlib/utils/compat/_ordered_dict.py:11",
+      "moin/MoinMoin/script/old/print_stats.py:23",
+      "stdlib/idlelib/PyShell.py:1059",
+      "stdlib/idlelib/configHandler.py:26"
+     ]
+    },
+    "stdlib_expected": 413,
+    "stdlib_extra": 0,
+    "stdlib_missed": 19,
+    "stdlib_severity_wrong": 0,
+    "stdlib_versions_wrong": 0,
+    "unparsable_on_27": 0
+   },
+   "H3_hostile": {
+    "bom_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.24
+    },
+    "bom_utf8_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.23
+    },
+    "canary": {
+     "findings": [
+      [
+       "__init__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "__main__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "conftest.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "mod.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "setup.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.68
+    },
+    "cr_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.33
+    },
+    "deep_dirs": {
+     "findings": [
+      [
+       "d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.21
+    },
+    "dirlink": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.18
+    },
+    "escape": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.18
+    },
+    "exec_free": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-EXEC-STMT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.17
+    },
+    "fifo": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.09
+    },
+    "future_print": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.18
+    },
+    "html": {
+     "findings": [
+      [
+       "<img src=x onerror=alert(1)>.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.2
+    },
+    "huge_line": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.54
+    },
+    "odd_names": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.26
+    },
+    "shebang_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.36
+    },
+    "tabs_py2_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PARSE",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.32
+    },
+    "unlistable": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.13
+    }
+   },
+   "R6_files_not_named": {
+    "count": 0,
+    "examples": [],
+    "of": 2331
+   },
+   "corpus_scan": {
+    "files": 2331,
+    "findings": 6499,
+    "json_valid": true,
+    "rc": 1,
+    "rules": {
+     "PY3-ASYNC-RESERVED": 15,
+     "PY3-BACKTICK": 9,
+     "PY3-BUILTIN": 1736,
+     "PY3-DICT-ITER": 412,
+     "PY3-DIVISION": 225,
+     "PY3-EXCEPT-COMMA": 479,
+     "PY3-EXEC-STMT": 52,
+     "PY3-LONG-SUFFIX": 133,
+     "PY3-METACLASS": 18,
+     "PY3-NE-OP": 6,
+     "PY3-OCTAL": 108,
+     "PY3-PARSE": 33,
+     "PY3-PRINT": 1490,
+     "PY3-RAISE-COMMA": 771,
+     "PY3-STDLIB": 1008,
+     "PY3-TUPLE-PARAM": 4
+    },
+    "sec": 42.92,
+    "traceback": false
+   },
+   "determinism_jobs1_vs_default": true,
+   "false_ready_examples": {
+    "3.10": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.11": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.12": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.13": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.15": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.6": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.7": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.8": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.9": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ]
+   },
+   "html": {
+    "bytes": 1927,
+    "ok": true,
+    "raw_injections_found": []
+   },
+   "interpreter": "3.14.9",
+   "item_2c_canary": []
+  }
+ },
+ "started": "2026-10-23T00:59:58"
+}
