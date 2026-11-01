@@ -78,13 +78,23 @@ Decided 2026-11-01 by Luis. "Merged" is as of the same date.
 | #184 | `detach` and `pause` refuse an agent session | G14 |
 | #198 + #201 | the RES-5 fuzz oracle | G4 (fuzz) |
 | #202 | `ra-1.sh` A2 can pass (a trusted spec; the never-typed case reads INCONCLUSIVE) | G7 |
+| #211 (on #202) | `ra-1.sh` rows A5 and A13, so G10 and G11 can run live; also A4's fix (it would have failed a good build) is on #202 | G9, G10, G11 |
+| #209 (on #184) | the README says `detach` and `pause` are refused from an agent session | G16 |
 
 **In** (planned for alpha.2; named as pending in the notes if left out):
 #179; #182 (merged); #183 + #186; #187 (merged); #178 + #181 (merged); #203
 (truth-table drift); #206 (`install.sh` without the GitHub API, which the
 maintainer marks a release blocker); and the CI changes #193 (macOS job cap)
 and #199 (sweep shards). #205 (`measure1.sh --reps`) is needed for G19, not
-for the tag.
+for the tag. #212 (per-platform cold-call rows) stops the darwin cold-call edge from
+reddening unrelated PRs (G4); the figure is the maintainer's budget call.
+
+**Built, post-alpha.2, awaiting review** (not in the tag unless the maintainer
+says so): #213 (a piped red run raises the regression note), #215 (lint,
+typecheck and scan runner tables; RulesVersion 12), #216 (SPEC-RULES1 1b),
+#218 (the done flag reaches the agent at the next prompt), #210 (a pytest
+oracle for measure1). Blocked on a ruling: #204 (LABEL-WRITER1) and #207
+(the edit-marks pattern table).
 
 **Everything else open is deferred** unless the release notes name it.
 
