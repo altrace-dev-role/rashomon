@@ -91,6 +91,15 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 			}
 			continue
 		}
+		if OrderSpecCase(c.ID) {
+			// The order rule's own row (SPEC-RULES1 1b, #216 ruling 5): the
+			// payload and entry of post.540B, a figure of its own, a basis
+			// that says where it came from, no slope.
+			if c.Basis == "" || c.SlopeMiBPerMiB != 0 || c.GatesFrom != "SR-1b" || c.Entry != "post" || c.PayloadBytes != 540 {
+				t.Errorf("rss case %s: an order-spec case carries a basis, no slope, the post entry at 540 bytes, and gates from SR-1b: %+v", c.ID, c)
+			}
+			continue
+		}
 		if want := round4(budget.RES28BudgetMiB(c.PayloadBytes, c.SlopeMiBPerMiB)); c.BudgetMiB != want {
 			t.Errorf("rss case %s: budget %v, its line gives %v", c.ID, c.BudgetMiB, want)
 		}

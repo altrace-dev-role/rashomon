@@ -124,6 +124,29 @@ func EditPost(total int, toolUseID string) ([]byte, error) {
 	return exact(total, build)
 }
 
+// BashPreAt is BashPre for a call whose cwd is dir: the declaration a call's
+// post is judged against under an order rule, which finds its own call's
+// declaration in the run.
+func BashPreAt(command, toolUseID, dir string) []byte {
+	in := must(map[string]string{"command": command, "description": "Show working tree status"})
+	e := head("PreToolUse")
+	e.CWD = dir
+	return must(toolPayload{envelope: e, ToolName: "Bash", ToolInput: in, ToolUseID: toolUseID})
+}
+
+// BashPostExactAt is BashPostExact for a call whose cwd is dir, padded so the
+// whole payload is still exactly total bytes: the shape of the 540 B class
+// in a project a spec can be found from (a cwd the spec's directory holds).
+func BashPostExactAt(total int, toolUseID, dir string) ([]byte, error) {
+	return exact(total, func(pad string) []byte {
+		in := must(map[string]string{"command": "git status --short", "description": "Show working tree status"})
+		resp := must(map[string]any{"stdout": pad, "stderr": "", "interrupted": false, "isImage": false})
+		e := head("PostToolUse")
+		e.CWD = dir
+		return must(toolPayload{envelope: e, ToolName: "Bash", ToolInput: in, ToolUseID: toolUseID, ToolResponse: resp})
+	})
+}
+
 // Stop is the Stop payload for a turn that ended with lastAssistantMessage.
 func Stop(lastAssistantMessage string) []byte {
 	return must(struct {

@@ -21,8 +21,10 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/budget"
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/test/perf/payload"
@@ -514,6 +516,22 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				}
 				return p
 			}
+			if OrderSpecCase(c.ID) {
+				dir := r.orderSpec(t)
+				// Each measured post is preceded by its call's PreToolUse, as a
+				// session's are: the order rule judges the post against the
+				// call's own declaration. The pre is not measured.
+				mk = func(i int) []byte {
+					id := fmt.Sprintf("toolu_%02d", i)
+					maxRSSMiB(t, payload.BashPreAt("git status --short", id, dir), r.env, r.args([]string{"hook"})...)
+					p, err := payload.BashPostExactAt(c.PayloadBytes, id, dir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return p
+				}
+				r.premise(t, mk(99))
+			}
 			if c.Entry == "recap" {
 				// The Stop's transcript scan (CE-1): the real recap entry on a
 				// seeded session, over a transcript of PayloadBytes, with a
@@ -540,6 +558,69 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				t.Errorf("%s: read %.2f MiB; %s", c.ID, got, why)
 			}
 		})
+	}
+}
+
+// orderSpecDoc is the spec of the order cases: one order rule whose then is
+// the payload's own command (git status), so the measured call is the Then
+// call of an order rule with no after_hit before it, the path that reads the
+// run and raises a finding. It is a rule the call matches, not a rule beside
+// it: the cost measured is the order rule's, not the spec's discovery alone.
+const orderSpecDoc = `{"rashomon_spec": 1, "rules": [{"id": "status-first", "kind": "order",
+ "then": {"argv": ["git", "status"]}, "after": {"argv": ["go", "test"]},
+ "why": "perf row: the Then call of an order rule", "hard_control": "CI"}]}`
+
+// orderSpec gives the rig a project whose repository spec is orderSpecDoc,
+// trusted in the rig's store as `rashomon spec trust` binds it, found through
+// CLAUDE_PROJECT_DIR, and returns the project's directory, the cwd of the
+// case's payloads (a payload's cwd must lie in the project for its spec to be
+// found). The directory is under /tmp, short, so the 540 B class is still
+// reachable: the fixed part of the payload grows with the cwd.
+func (r *rig) orderSpec(t *testing.T) string {
+	t.Helper()
+	made, err := os.MkdirTemp("/tmp", "rpo-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(made) })
+	dir, err := filepath.EvalSymlinks(made)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".claude", "rashomon", "spec.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(orderSpecDoc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, digest, err := spec.Parse([]byte(orderSpecDoc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &spec.Bindings{}
+	b.Bind(spec.Binding{ProjectRoot: hook.SpecProject(path), SpecPath: path, SpecDigest: digest, BoundAtMS: 1})
+	if err := hook.WriteSpecBindings(r.home, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteSteerDisclosureMarker(r.home, 2); err != nil {
+		t.Fatal(err)
+	}
+	r.env = append(append([]string(nil), r.env...), "CLAUDE_PROJECT_DIR="+dir, "AI_AGENT=claude-code_2-1-280_harness")
+	return dir
+}
+
+// premise checks, with one call of its own before anything is measured, that
+// the order case's call reaches the rule: the steer step raised the ordering
+// finding for it (the note is printed). The call is the session's first.
+func (r rig) premise(t *testing.T, in []byte) {
+	t.Helper()
+	_, out := maxRSSMiB(t, in, r.env, r.args([]string{"post"})...)
+	if !bytes.Contains(out, []byte("spec rule status-first")) {
+		t.Fatalf("the order case's premise call printed %q: it did not reach the order rule", out)
 	}
 }
 
