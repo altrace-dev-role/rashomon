@@ -61,7 +61,10 @@
 #       test (the verified line). The terminal is captured with script(1) when
 #       it exists; a line the capture misses is asked of you at the terminal
 #       and the verdict says it is your word. Saves A4/: transcripts, both
-#       `rashomon report --session <id>`, status.txt, verdict.txt.
+#       `rashomon report --session <id>`, status.txt, verdict.txt. The spec
+#       declares the gate and no rule: a protect_path rule over the file the
+#       session edits is a binding violation at Stop (SPEC-RULES1), which turns
+#       the verified turn into "N record finding(s)".
 #
 # RA_HEADLESS=1 runs A2 and A4 as one `claude -p` per session instead, with
 # AI_AGENT spoofed and, because claude -p is the SDK surface where notes are
@@ -521,7 +524,7 @@ row_A4() {
   A=$EVID/A4; rm -rf "$A"; mkdir -p "$A"
   setup_watch "$A/watch.txt"
   D=$T/a4; scratch_project "$D"
-  printf '{"rashomon_spec": 1, "gates": [{"id": "unit", "kind": "test", "argv": ["go", "test", "./..."]}], "rules": [{"id": "parse-owner", "kind": "protect_path", "why": "the parser belongs to the platform team", "hard_control": "code review by the platform team", "paths": ["internal/parse"]}]}\n' > "$D/.claude/rashomon/spec.json"
+  printf '{"rashomon_spec": 1, "gates": [{"id": "unit", "kind": "test", "argv": ["go", "test", "./..."]}]}\n' > "$D/.claude/rashomon/spec.json"
   echo "spec trust: answer y at the terminal."
   (cd "$D" && run_tee "$A/spec-trust.txt" "$REAL" spec trust .claude/rashomon/spec.json)
   RC=$(cat "$T/rc")
@@ -537,7 +540,7 @@ row_A4() {
   v=$A/verdict.txt; : > "$v"
   dl="rashomon: done was claimed; the record shows 1 file edited, no test or build run after the last edit."
   vl="rashomon: verified - go test passed after the last edit."
-  vl_re='rashomon: verified - go( test)? passed after the last edit\.'
+  vl_re='rashomon: verified - (go( test)?|'"'"'unit'"'"')( and [^ ]+)* passed after the last edit\.'
   attest "$SCREEN_DONE" "$dl"; d=$SEEN
   attest "$SCREEN_VER" "$vl" "$vl_re"; e=$SEEN
   crossd=no; grep -Eq -- "$vl_re" "$SCREEN_DONE" 2> /dev/null && crossd=yes

@@ -37,9 +37,10 @@ func ra1Pieces(t *testing.T) string {
 }
 
 // TestRA1_AttestAcceptsBothVerifiedForms: the A4 attestation of the verified
-// line takes the release RC's "go passed" (main plus #147) and the merged
-// tree's "go test passed" (#149 names the runner), and no other gate or
-// edit. Break: the script's fixed string for the older form only.
+// line takes the release RC's "go passed" (main plus #147), the merged
+// tree's "go test passed" (#149 names the runner) and a trusted spec's gate
+// by its id, 'unit' (#162, which A4's spec declares), and no other gate, edit
+// or a turn with a rule finding. Break: the script's fixed string for the older form only.
 func TestRA1_AttestAcceptsBothVerifiedForms(t *testing.T) {
 	pieces := ra1Pieces(t)
 	for _, tc := range []struct {
@@ -49,6 +50,9 @@ func TestRA1_AttestAcceptsBothVerifiedForms(t *testing.T) {
 		{"release form", "x\nrashomon: verified - go passed after the last edit.\n", "yes"},
 		{"merged form", "x\nrashomon: verified - go test passed after the last edit.\n", "yes"},
 		{"another gate", "x\nrashomon: verified - go build passed after the last edit.\n", "no"},
+		{"declared gate", "x\n\u203b rashomon: verified - 'unit' passed after the last edit.\n", "yes"},
+		{"declared gate beside a learned one", "x\nrashomon: verified - 'unit' and go passed after the last edit.\n", "yes"},
+		{"declared gate with a rule finding", "x\nrashomon: 1 file edited; 'unit' passed after the last edit; 1 record finding(s) in this turn.\n", "no"},
 		{"no line", "x\nrashomon: done was claimed; nothing ran.\n", "no"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
