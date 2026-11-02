@@ -3,11 +3,11 @@
   "owner": {
     "name": "Altrace"
   },
-  "description": "rashomon: records what a Claude Code session asks to run and what actually ran -- identifiers, shape (including a command's program name), the hostnames a call names (URL hosts and ssh/scp/sftp/rsync destinations), and the working directory and transcript path; no prompts, responses, file contents or other argument values.",
+  "description": "Records each Claude Code tool call on this machine, in every project, once enabled, including: the tool, the program a command runs (never its text), the paths it edits or may write and an edited file's SHA-256, the hosts it names, the directory it ran in, the project's root and the transcript path, and how it ended. Agent SDK programs that load it are recorded too. Adds short factual notes to the agent's context, such as a test that passed earlier and fails now; you see each one, and they go to your model provider with the conversation. Never stores your prompts, command text, tool output or file contents, and sends nothing itself. Ships disabled: enabling it is your consent to the above, and disabling it in /plugin stops both. Full list of what it keeps: https://github.com/altrace-dev-role/rashomon#what-it-records-and-what-it-never-stores",
   "plugins": [
     {
       "name": "rashomon",
-      "description": "Records what a Claude Code session asks to run, and what actually ran -- identifiers, shape (including a command's program name), the hostnames a call names (URL hosts and ssh/scp/sftp/rsync destinations), and the working directory and transcript path; no prompts, responses, file contents or other argument values. Ships disabled: installing it does not start recording, enabling it does.",
+      "description": "Records each Claude Code tool call on this machine, in every project, once enabled, including: the tool, the program a command runs (never its text), the paths it edits or may write and an edited file's SHA-256, the hosts it names, the directory it ran in, the project's root and the transcript path, and how it ended. Agent SDK programs that load it are recorded too. Adds short factual notes to the agent's context, such as a test that passed earlier and fails now; you see each one, and they go to your model provider with the conversation. Never stores your prompts, command text, tool output or file contents, and sends nothing itself. Ships disabled: enabling it is your consent to the above, and disabling it in /plugin stops both. Full list of what it keeps: https://github.com/altrace-dev-role/rashomon#what-it-records-and-what-it-never-stores",
       "source": {
         "source": "archive",
         "url": "https://github.com/altrace-dev-role/rashomon/releases/latest/download/rashomon-plugin.zip"
