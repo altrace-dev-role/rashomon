@@ -21,11 +21,12 @@ import (
 // non-interactive run, claude -p included, which is Claude Code, not a
 // program built on the SDK, so it records as before.
 
-// sdkgSession runs one whole session as entrypoint: start, a prompt, an
-// edit, the turn's end and the session's end, each exiting 0.
-func (e *env) sdkgSession(entrypoint string) {
+// sdkgSession runs one whole session as entrypoint, with extra in its
+// environment: start, a prompt, an edit, the turn's end and the session's
+// end, each exiting 0.
+func (e *env) sdkgSession(entrypoint string, extra ...string) {
 	e.t.Helper()
-	ep := []string{"CLAUDE_CODE_ENTRYPOINT=" + entrypoint}
+	ep := append([]string{"CLAUDE_CODE_ENTRYPOINT=" + entrypoint}, extra...)
 	for _, step := range []struct {
 		payload string
 		args    []string
@@ -44,6 +45,32 @@ func (e *env) sdkgSession(entrypoint string) {
 	}
 	if res := e.probe("end", testSession, ep...); res.exitCode != 0 {
 		e.t.Fatalf("probe end as %s: exit %d, stderr %q", entrypoint, res.exitCode, res.stderr)
+	}
+}
+
+// sdkgAnswer leaves the store as watch --yes does and then as answer says:
+// "n" keeps the "paused" an n writes, "" removes harnesses.json (no answer on
+// file), "y" writes the y.
+func (e *env) sdkgAnswer(answer string) {
+	e.t.Helper()
+	const onFile = `{"surfaces":{"sdk":{"record":"on","steer":"off"}},"version":1}` + "\n"
+	if res := e.watch(); res.exitCode != 0 {
+		e.t.Fatalf("watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	harnesses := filepath.Join(e.home, "harnesses.json")
+	switch answer {
+	case "n":
+		if got := e.sdkRecording(); got != "paused" {
+			e.t.Fatalf("premise: watch --yes left the Agent SDK answer %q, want paused", got)
+		}
+	case "":
+		if err := os.Remove(harnesses); err != nil {
+			e.t.Fatal(err)
+		}
+	case "y":
+		if err := os.WriteFile(harnesses, []byte(onFile), 0o600); err != nil {
+			e.t.Fatal(err)
+		}
 	}
 }
 
@@ -66,7 +93,6 @@ func (e *env) declared(id string) bool {
 // rows record; read no answer as y and the no-answer row records; close the
 // gate on any entrypoint, or on sdk-cli, and a control records nothing.
 func TestSDKG1_AnAgentSDKProgramIsRecordedOnlyAfterAY(t *testing.T) {
-	const onFile = `{"surfaces":{"sdk":{"record":"on","steer":"off"}},"version":1}` + "\n"
 	for _, tc := range []struct {
 		name, answer, entrypoint string
 		recorded                 bool
@@ -80,24 +106,7 @@ func TestSDKG1_AnAgentSDKProgramIsRecordedOnlyAfterAY(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
-			if res := e.watch(); res.exitCode != 0 {
-				t.Fatalf("watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
-			}
-			harnesses := filepath.Join(e.home, "harnesses.json")
-			switch tc.answer {
-			case "n":
-				if got := e.sdkRecording(); got != "paused" {
-					t.Fatalf("premise: watch --yes left the Agent SDK answer %q, want paused", got)
-				}
-			case "":
-				if err := os.Remove(harnesses); err != nil {
-					t.Fatal(err)
-				}
-			case "y":
-				if err := os.WriteFile(harnesses, []byte(onFile), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
+			e.sdkgAnswer(tc.answer)
 			before := e.machine()
 			e.sdkgSession(tc.entrypoint)
 			if !tc.recorded {
