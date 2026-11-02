@@ -90,14 +90,16 @@ type classified struct {
 // Project is the repository that one call ran in, so the latest one's is
 // not the turn's: a last `git -C b status` would move a's gates to b. ""
 // takes the latest declaration's (projectRoot, VER47), which only a caller
-// with no cwd, or Evaluate's learned rows alone, takes.
+// with no cwd, or Evaluate's learned rows alone, takes. A record that names
+// no project at all (v4 withholds it) keeps "": the snapshot, its steer
+// line and its checkpoint follow the record (A3, TestSTR43_).
 func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, inf *InferredGate, root string, pt Point, now time.Time, c *classified) Snapshot {
 	if run == nil {
 		run = &store.Run{}
 	}
 	at := pt.Seq
-	if root == "" {
-		root = projectRoot(run.Declarations, at)
+	if latest := projectRoot(run.Declarations, at); root == "" || latest == "" {
+		root = latest
 	}
 	snap := Snapshot{
 		VerifyVersion:   Version,

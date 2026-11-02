@@ -37,7 +37,7 @@ m("PR-1 git -C takes a variable's spelling", S,
 m("PR-1 git -C twice is read as once", S,
   "\t\tlen(rest) > 3 && rest[3].text == \"-C\" {\n", "\t\tfalse {\n", "TestPR1b_")
 m("PR-1 a directory proven outside under no .git is the cwd's", H,
-  "fi, err := os.Stat(own); err == nil && fi.IsDir() {", "fi, err := os.Stat(own); err == nil && false {", "TestPR1d_")
+  "fi, err := os.Stat(own); err == nil && fi.IsDir() {", "fi, err := os.Stat(own); err == nil && fi.IsDir() && false {", "TestPR1d_")
 m("PR-1 a directory not on disk is taken as proven outside", H,
   "fi, err := os.Stat(own); err == nil && fi.IsDir() {", "fi, err := os.Stat(own); err != nil || fi.IsDir() {", "TestPR1b_")
 m("PR-1 a directory inside the cwd under no .git is no project", H,
@@ -47,7 +47,7 @@ m("PR-1 a directory inside the cwd under no .git is no project", H,
 # symlink sends the path to be resolved, since its target may be another
 # repository's.
 m("PR-1 a file under the cwd is read as outside", H,
-  "\t\tif key, ok := underCWD(dir, spelled, physical, cwd); ok {\n", "\t\tif key, ok := underCWD(dir, spelled, physical, cwd); false {\n",
+  "\t\tif key, ok := underCWD(dir, spelled, physical, cwd); ok {\n", "\t\tif key, ok := underCWD(dir, spelled, physical, cwd); ok && false {\n",
   "TestPC1d_")
 m("PR-1 a repository under the cwd is not read", H, "\t\t\tnearest = step\n", "", "TestPR1_")
 m("PR-1 a symlink under the cwd is read as spelled", H,
@@ -59,8 +59,9 @@ m("PR-1 a repository under the cwd keeps the path's spelling", H,
 # one its spec and inferred gate were read from, the Stop's and the post's
 # cwd key, and the replay takes the one the Stop's checkpoint recorded.
 m("PR-1 evaluate takes the root from the declarations", E,
-  "\tif root == \"\" {\n\t\troot = projectRoot(run.Declarations, at)\n",
-  "\tif true {\n\t\troot = projectRoot(run.Declarations, at)\n", "TestPR1e_|TestPR1f_")
+  "root == \"\" || latest == \"\" {\n", "true {\n", "TestPR1e_|TestPR1f_")
+m("PR-1 a v4 record's judgment names the cwd's project", E,
+  "root == \"\" || latest == \"\" {\n", "root == \"\" {\n", "TestSTR43_")
 m("PR-1 the Stop passes no root", "cmd/rashomon/recap_stop.go",
   "Tail: []byte(p.LastMessageTail), Root: key,", "Tail: []byte(p.LastMessageTail),", "TestPR1e_")
 m("PR-1 the Stop view drops the root", "internal/verify/stop.go",
