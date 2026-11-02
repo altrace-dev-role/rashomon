@@ -52,7 +52,7 @@ func TestTRU4_ConsentFollowsWatchsTerminalRule(t *testing.T) {
 	noTerminal(cmd)
 	res := e.wait(cmd)
 	if res.exitCode != 1 || !strings.Contains(res.stderr, "consent needs a terminal to ask; nothing was written") ||
-		!strings.Contains(res.stdout, "1. HOOK ENTRIES") {
+		!strings.Contains(res.stdout, "NEVER STORED:") {
 		t.Errorf("consent with no terminal: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	e.requireUnchanged(before, "consent with no terminal")
@@ -67,7 +67,7 @@ func TestTRU4_ConsentFollowsWatchsTerminalRule(t *testing.T) {
 	e.requireUnchanged(before, "consent from an agent session")
 
 	show := e.run("", []string{"CLAUDECODE=1"}, "consent", "--show")
-	if show.exitCode != 0 || !strings.Contains(show.stdout, "5. WHAT YOU WILL SEE") {
+	if show.exitCode != 0 || !strings.Contains(show.stdout, "rashomon consent --full") {
 		t.Errorf("consent --show: exit %d, stdout %q", show.exitCode, show.stdout)
 	}
 	e.requireUnchanged(before, "consent --show")
