@@ -77,21 +77,29 @@ func impactWithin(ctx context.Context, root, logPath string, paths []string, lim
 // walk file names for the log: a log that hashes otherwise, read from the
 // same open file as it is decoded, is errNotVouched.
 func impactVouched(ctx context.Context, root, logPath string, paths []string, limit int64, want string) ([]Family, error) {
+	hook := recordHook
+	return inWorker(ctx, func() ([]Family, error) { return impact(ctx, root, logPath, paths, limit, want, hook) })
+}
+
+// inWorker runs f in a worker (safe.Go: a panic in it is an error, never the
+// process) and returns its result, or ctx's error as soon as ctx is done;
+// f is to look at ctx itself and exit at its next look.
+func inWorker[T any](ctx context.Context, f func() (T, error)) (T, error) {
 	type result struct {
-		fams []Family
-		err  error
+		v   T
+		err error
 	}
 	done := make(chan result, 1)
-	hook := recordHook
 	safe.Go(func() {
-		fams, err := impact(ctx, root, logPath, paths, limit, want, hook)
-		done <- result{fams, err}
-	}, func(err error) { done <- result{nil, err} })
+		v, err := f()
+		done <- result{v, err}
+	}, func(err error) { done <- result{err: err} })
 	select {
 	case r := <-done:
-		return r.fams, r.err
+		return r.v, r.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		var zero T
+		return zero, ctx.Err()
 	}
 }
 
@@ -108,25 +116,9 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
-	f, err := regfile.Open(logPath)
+	live, err := readLog(ctx, logPath, limit, want, hook, keepFor(wanted))
 	if err != nil {
 		return nil, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > limit {
-		return nil, ErrOverCap
-	}
-	h := sha256.New()
-	live, err := decode(ctx, io.TeeReader(f, h), hook, keepFor(wanted))
-	if err != nil {
-		return nil, err
-	}
-	if want != "" && hex.EncodeToString(h.Sum(nil)) != want {
-		return nil, errNotVouched
 	}
 	bySubject := map[string][]fact{}
 	for k := range live {
@@ -140,6 +132,34 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 		fams = append(fams, Family{Package: pkg, Hash: familyHash(bySubject, "pkg:"+pkg)})
 	}
 	return fams, nil
+}
+
+// readLog decodes the log at logPath, at most limit bytes, holding the
+// records keep keeps (decode). want, when not "", is the sha256 the walk
+// file names for the log: a log that hashes otherwise, read from the same
+// open file as it is decoded, is errNotVouched.
+func readLog(ctx context.Context, logPath string, limit int64, want string, hook func(), keep func(subject, object []byte) bool) (map[fact]struct{}, error) {
+	f, err := regfile.Open(logPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > limit {
+		return nil, ErrOverCap
+	}
+	h := sha256.New()
+	live, err := decode(ctx, io.TeeReader(f, h), hook, keep)
+	if err != nil {
+		return nil, err
+	}
+	if want != "" && hex.EncodeToString(h.Sum(nil)) != want {
+		return nil, errNotVouched
+	}
+	return live, nil
 }
 
 // keepFor is decode's keep for wanted's families: a subject that is a

@@ -14,7 +14,7 @@ m("PW1b-2 the fact is built before keep", D,
   "\t\tif keep != nil && !keep(c[1], c[3]) {\n\t\t\tcontinue\n\t\t}\n\t\tf := c.fact()",
   "\t\tf := c.fact()\n\t\tif keep != nil && !keep(c[1], c[3]) {\n\t\t\tcontinue\n\t\t}", "TestPW1b2_ADroppedRecord")
 m("PW1b-2 Impact passes no keep", P,
-  "decode(ctx, io.TeeReader(f, h), hook, keepFor(wanted))", "decode(ctx, io.TeeReader(f, h), hook, nil)",
+  "readLog(ctx, logPath, limit, want, hook, keepFor(wanted))", "readLog(ctx, logPath, limit, want, hook, nil)",
   "TestPW1b2_ImpactHolds")
 m("PW1b-2 keep is asked before the grammar", D,
   "\t\tc, assert, err := parseRecord(line)\n\t\tif err != nil {",
