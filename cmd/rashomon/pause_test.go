@@ -411,6 +411,16 @@ func TestCmdResume_RecoversTrueStartFromTheGapLedgerWhenTheMarkerCannotBeRead(t 
 	}
 	trueSince := before[0].FromUnixMS
 
+	// The window must be at least a millisecond wide before resume runs. The
+	// check below tells pause's instant from resume's now only at millisecond
+	// resolution, so a pause and resume in the same millisecond would pass with
+	// the ledger never read (H104-CLOCK1: a runner with fast fsync got there,
+	// and H-104's row read NOT DETECTED). Waiting for the clock to pass
+	// trueSince makes the two instants differ on every runner, in under 1 ms.
+	for time.Now().UnixMilli() <= trueSince {
+		time.Sleep(100 * time.Microsecond)
+	}
+
 	buf.Reset()
 	if err := cmdResume(&buf); err != nil {
 		t.Fatalf("cmdResume: %v", err)
