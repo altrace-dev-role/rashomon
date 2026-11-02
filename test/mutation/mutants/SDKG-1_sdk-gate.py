@@ -11,6 +11,6 @@ m("SDKG-1 recap records an SDK program after an n", H,
 m("SDKG-1 no answer on file reads as a y", C,
   "== nil && state == SDKRecordOn", "!= nil || state == SDKRecordOn", "TestSDKG1_")
 m("SDKG-1 the gate closes on any entrypoint", H,
-  "if !agentSDKEntrypoints[claudeEnv().Entrypoint] {", "if false {", "TestSDKG1_")
+  "if !agentSDKCall() {", "if false {", "TestSDKG1_")
 m("SDKG-1 claude -p counts as an SDK program", H,
-  "{\"sdk-ts\": true, \"sdk-py\": true}", "{\"sdk-ts\": true, \"sdk-py\": true, \"sdk-cli\": true}", "TestSDKG1_")
+  "{\"sdk-ts\": false, \"sdk-py\": false, \"sdk-cli\": true}", "{\"sdk-ts\": false, \"sdk-py\": false, \"sdk-cli\": false}", "TestSDKG1_")

@@ -32,7 +32,7 @@ import (
 
 const (
 	questionInstall = "Install? [y/N] "
-	questionSDK     = "Also record Agent SDK programs? claude -p is recorded either way. [y/N] "
+	questionSDK     = "Record Agent SDK programs? Your own claude -p is recorded anyway. [y/N] "
 )
 
 // tree is every file and directory under each of dirs, by path, with the
