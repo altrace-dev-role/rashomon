@@ -29,18 +29,40 @@ const (
 	cardRecurAt = 2
 )
 
+// `rashomon audit --keep`'s lines (KeptCard): its window is the days before
+// the install, and its last lines say whether the count was kept.
+const (
+	cardKeptHead = "rashomon audit: the %d days before AutoSteer, on this machine\n"
+	cardKeptNone = "rashomon audit: no sessions in the %d days before AutoSteer; nothing kept.\n"
+	cardKept     = "  Kept as your before count; nothing was sent, and it cost 0 tokens.\n"
+	cardStays    = "  Your kept count covers more sessions, so it stays as it was.\n"
+)
+
 // Card renders s over a window of days: what was read, the corrections by
 // kind, and at most cardMaxRows signatures seen in cardRecurAt or more
 // sessions. Counts and our words only: no path, name, command or text of the
 // person's reaches it (PF-AU2).
-func Card(s Summary, days int) string {
+func Card(s Summary, days int) string { return card(s, days, cardNone, cardHead, cardFoot) }
+
+// KeptCard is the card of `rashomon audit --keep`: s counts the days before
+// the install, and its last lines say whether it was kept or the count kept
+// before stays.
+func KeptCard(s Summary, days int, kept bool) string {
+	foot := cardKept
+	if !kept {
+		foot = cardStays + cardFoot
+	}
+	return card(s, days, cardKeptNone, cardKeptHead, foot)
+}
+
+func card(s Summary, days int, none, head, foot string) string {
 	var b strings.Builder
 	if s.Sessions == 0 {
-		fmt.Fprintf(&b, cardNone, days)
+		fmt.Fprintf(&b, none, days)
 		notRead(&b, s)
 		return b.String()
 	}
-	fmt.Fprintf(&b, cardHead, days)
+	fmt.Fprintf(&b, head, days)
 	fmt.Fprintf(&b, cardTotals, count(s.Sessions, "session", "sessions"), count(s.Projects, "project", "projects"),
 		count(s.Calls, "tool call", "tool calls"))
 	notRead(&b, s)
@@ -66,7 +88,7 @@ func Card(s Summary, days int) string {
 	if n == 0 {
 		b.WriteString(cardNoRows)
 	}
-	b.WriteString("\n" + cardFoot + cardLink)
+	b.WriteString("\n" + foot + cardLink)
 	return b.String()
 }
 
@@ -94,7 +116,8 @@ func plural(n int, one, many string) string {
 // card to them.
 func Vocabulary() []string {
 	texts := []string{cardNone, cardHead, cardTotals, cardStale, cardUnread, cardKinds, cardStopped, cardSaidNo,
-		cardPushed, cardBlocked, cardFailed, cardRows, cardRow, cardNoRows, cardFoot, cardLink, cardNouns}
+		cardPushed, cardBlocked, cardFailed, cardRows, cardRow, cardNoRows, cardFoot, cardLink, cardNouns,
+		cardKeptHead, cardKeptNone, cardKept, cardStays}
 	for k := kind(0); k < numKinds; k++ {
 		for c := class(0); c < numClasses; c++ {
 			texts = append(texts, rowText(k, c))

@@ -25,15 +25,18 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/gateinfer"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/seed"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // The kinds of a brief's facts, one line each, in the order Build gives them;
-// the spec trust line only under an unsigned bindings file (trustFact).
+// the spec trust line only under an unsigned bindings file (trustFact), the
+// history line only under a kept before count (historyFact).
 const (
 	KindInstructions = "instructions"
 	KindBuild        = "build"
@@ -43,6 +46,7 @@ const (
 	KindTask         = "task"
 	KindPackages     = "packages"
 	KindVerify       = "verify"
+	KindHistory      = "history"
 	// KindLastSession is the line that replaces the verify line at startup
 	// when the project's previous session was looked for (Brief.WithVerify).
 	KindLastSession = "last session"
@@ -140,8 +144,39 @@ func Build(root, storeRoot string, report Pointer, sp *spec.Compiled) Brief {
 	if f, ok := trustFact(storeRoot, sp); ok {
 		b.Facts = append(b.Facts, f)
 	}
-	b.Facts = append(b.Facts, taskFact(root, sp), packages, verifyFact(report))
+	b.Facts = append(b.Facts, taskFact(root, sp), packages)
+	if storeRoot != "" {
+		if f, ok := historyFact(root, storeRoot); ok {
+			b.Facts = append(b.Facts, f)
+		}
+	}
+	b.Facts = append(b.Facts, verifyFact(report))
 	return b
+}
+
+// historyFact is the kept before count (card SEED1-KEEP, PF-HD8): the
+// corrections `rashomon audit --keep` counted in the days before the install,
+// this project's among them, and the one that recurred most (seed.History),
+// the line naming its file as every line names its source. With none kept
+// there is no line, and the brief is as it was before the card. A record that
+// cannot be read is named, for the person to look at. The record's projects
+// are baseline.Key's, which root is from the hook, and Key of a key is
+// itself: called here, a caller's unresolved path still finds its project.
+func historyFact(root, storeRoot string) (Fact, bool) {
+	source := filepath.Join(storeRoot, seed.KeptFile)
+	k, ok, err := seed.ReadKept(storeRoot)
+	switch {
+	case err != nil:
+		f := newFact(KindHistory, "kept before count unreadable ("+seed.KeptFile+"):", source)
+		f.Next = source
+		return f, true
+	case !ok:
+		return Fact{}, false
+	}
+	text, next := seed.History(k, baseline.Key(root))
+	f := newFact(KindHistory, text+" ("+seed.KeptFile+")", source)
+	f.Next = next
+	return f, true
 }
 
 // WithVerify is b with its verify line, the last fact, replaced by f; a brief
@@ -598,69 +633,4 @@ func (b *Brief) packagesFact() Fact {
 		return newFact(KindPackages, "at least "+n+" (walk capped)", b.Root)
 	}
 	return newFact(KindPackages, n+" (walk)", b.Root)
-}
-
-// walkGo is the directories at most maxDepth below root that hold a .go
-// file, found breadth first, skipping what the go tool skips (names starting
-// with "." or "_", testdata) and vendor, and never following a symlink. It
-// stops, capped, at MaxWalkEntries entries read or once clock reads
-// WalkBudget past its first reading, checked before each read.
-func walkGo(root string, clock func() time.Time) (dirs []string, entries int, capped bool) {
-	start := clock()
-	over := func() bool { return clock().Sub(start) >= WalkBudget }
-	level := []string{root}
-	for depth := 0; depth <= maxDepth && len(level) > 0; depth++ {
-		var next []string
-		for _, dir := range level {
-			subs, hasGo, n, short := readGoDir(dir, MaxWalkEntries-entries, over)
-			entries += n
-			if hasGo {
-				dirs = append(dirs, dir)
-			}
-			if short {
-				return dirs, entries, true
-			}
-			next = append(next, subs...)
-		}
-		level = next
-	}
-	return dirs, entries, false
-}
-
-// readGoDir reads dir in chunks, at most left entries in all, asking over
-// before each chunk: dir's subdirectories to walk, whether it holds a .go
-// file, how many entries it read, and whether it stopped short of its end.
-// A directory that cannot be opened or read is read as far as it can be.
-func readGoDir(dir string, left int, over func() bool) (subs []string, hasGo bool, n int, short bool) {
-	f, err := os.Open(dir)
-	if err != nil {
-		return nil, false, 0, false
-	}
-	defer f.Close() //nolint:errcheck // read-only
-	for {
-		if n >= left {
-			// The cap is reached, not necessarily passed: the directory
-			// is short only if one more entry is there to read.
-			ents, _ := f.ReadDir(1)
-			return subs, hasGo, n, len(ents) > 0
-		}
-		if over() {
-			return subs, hasGo, n, true
-		}
-		ents, err := f.ReadDir(min(walkChunk, left-n))
-		n += len(ents)
-		for _, e := range ents {
-			name := e.Name()
-			switch {
-			case name[0] == '.' || name[0] == '_' || name == "testdata" || name == "vendor":
-			case e.IsDir():
-				subs = append(subs, filepath.Join(dir, name))
-			case e.Type().IsRegular() && strings.HasSuffix(name, ".go"):
-				hasGo = true
-			}
-		}
-		if err != nil {
-			return subs, hasGo, n, false
-		}
-	}
 }
