@@ -3,6 +3,7 @@ package hook
 import (
 	"encoding/json"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -203,7 +204,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	// three unless the consent on file says v5, and the caps bound them.
 	decl.CWD = nilIfEmpty(p.CWD)
 	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
-	decl.Project = nilIfEmpty(project(physical, own, decl.FilePath))
+	decl.Project = nilIfEmpty(project(p.CWD, physical, own, decl.FilePath))
 	// The files a Bash call's line may write, and whether they are all of
 	// them (shape.WrittenPaths): null and complete for any other tool, which
 	// names its one path in file_path. The gate and the caps below withhold
@@ -421,50 +422,120 @@ func ownDir(start string, d shape.Dirs) string {
 // yet (a Write makes it), so it is read at its nearest directory that is
 // (existingDir), resolved: the key is the one every layer compares, never a
 // second spelling of one repository.
-func project(physical, own string, path *string) string {
+//
+// The key costs a call only the steps it has to read (RES-28): a file at or
+// under the cwd, as the payload spells it (spelled) or as it is on disk, is
+// read from the cwd down to its directory (underCWD), and the cwd's own key,
+// which KeyOf has walked, answers from there up, so nothing is resolved;
+// any other path is resolved once, at its nearest directory on disk, and
+// walked up to the first .git, or to the cwd (walkUp).
+func project(spelled, physical, own string, path *string) string {
 	cwd := baseline.KeyOf(physical)
 	if own != "" {
-		if root := gitRoot(baseline.KeyOf(own)); root != "" {
-			return root
+		if key, ok := walkUp(own, physical, cwd); ok {
+			return key
 		}
 		// A directory not on disk proves nothing: the cd fails and the line
 		// runs nowhere new, so it keeps the cwd's key.
-		if fi, err := os.Stat(own); err == nil && fi.IsDir() && !inside(baseline.KeyOf(own), cwd) {
+		if fi, err := os.Stat(own); err == nil && fi.IsDir() {
 			return ""
 		}
 	} else if path != nil && filepath.IsAbs(*path) {
-		if dir := existingDir(filepath.Dir(*path)); dir != "" {
-			k := baseline.KeyOf(dir)
-			if gitRoot(k) != "" {
-				return k
-			}
-			if !inside(k, cwd) {
-				return ""
-			}
+		dir := filepath.Dir(*path)
+		if key, ok := underCWD(dir, spelled, physical, cwd); ok {
+			return key
+		}
+		if d, err := evalSymlinks(existingDir(dir)); err == nil {
+			key, _ := walkUp(d, physical, cwd)
+			return key
 		}
 	}
 	return cwd
 }
 
-// existingDir is the nearest directory at or above d that is on disk, its
-// symlinks resolved (/tmp is /private/tmp on macOS), "" where none resolves.
-// One EvalSymlinks per directory not yet made, and one for the first that is.
-func existingDir(d string) string {
+// walkUp is the project of d, a directory as it is on disk: the nearest
+// directory at or above it that holds a .git, or cwd, the cwd's key, where
+// the walk reaches physical or cwd first, since KeyOf has walked from there;
+// "" and false where it reaches the root with neither, so d is outside the
+// cwd and under no .git. It stops at the first .git.
+func walkUp(d, physical, cwd string) (string, bool) {
 	for {
-		if resolved, err := evalSymlinks(d); err == nil {
-			return resolved
+		if d == physical || d == cwd {
+			return cwd, true
+		}
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return d, true
 		}
 		up := filepath.Dir(d)
 		if up == d {
-			return ""
+			return "", false
 		}
 		d = up
 	}
 }
 
-// inside reports key at or under root, both project keys.
-func inside(key, root string) bool {
-	return key == root || strings.HasPrefix(key, strings.TrimSuffix(root, "/")+"/")
+// underCWD is the project of dir, a file's directory as the call spells it,
+// where dir is at or under the cwd, as spelled or as it is on disk: the
+// deepest directory from the cwd down to dir that holds a .git, on disk
+// (physical's spelling), else cwd, the cwd's key. Each step is a prefix of
+// dir, so only a step's .git path is built, and the walk ends at the first
+// step not on disk (a Write makes it) or not a directory. false where dir is
+// not under the cwd, the cwd is the root, or a step is a symlink, whose
+// target may be another repository: that path is resolved (project).
+func underCWD(dir, spelled, physical, cwd string) (string, bool) {
+	base := ""
+	for _, c := range [...]string{physical, spelled} {
+		if c = filepath.Clean(c); len(c) > 1 && strings.HasPrefix(dir, c) && (len(dir) == len(c) || os.IsPathSeparator(dir[len(c)])) {
+			base = c
+			break
+		}
+	}
+	if base == "" {
+		return "", false
+	}
+	nearest := ""
+	for i := len(base) + 1; i <= len(dir); i++ {
+		if i < len(dir) && !os.IsPathSeparator(dir[i]) {
+			continue
+		}
+		step := dir[:i]
+		fi, err := os.Lstat(step)
+		if err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return "", false
+		}
+		if err != nil || !fi.IsDir() {
+			break
+		}
+		if _, err := os.Lstat(filepath.Join(step, ".git")); err == nil {
+			nearest = step
+		}
+	}
+	if nearest == "" {
+		return cwd, true
+	}
+	return physical + nearest[len(base):], true
+}
+
+// existingDir is the nearest directory at or above d, a clean absolute path,
+// that is on disk: d, else the parent of the first of its prefixes from the
+// root that is not. One Stat for a directory on disk, and one per step from
+// the root for one a Write is about to make; each step is a prefix of d.
+func existingDir(d string) string {
+	if _, err := os.Stat(d); err == nil {
+		return d
+	}
+	root := len(filepath.VolumeName(d)) + 1
+	last := d[:root]
+	for i := root; i < len(d); i++ {
+		if !os.IsPathSeparator(d[i]) {
+			continue
+		}
+		if _, err := os.Stat(d[:i]); err != nil {
+			return last
+		}
+		last = d[:i]
+	}
+	return last
 }
 
 // evalSymlinks is filepath.EvalSymlinks; a test that pins the fold's rules

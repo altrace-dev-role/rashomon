@@ -13,15 +13,15 @@ m("PR-1 a file tool's path is not read", H,
   "\t} else if path != nil && filepath.IsAbs(*path) {\n",
   "\t} else if path != nil && false {\n", "TestPR1_")
 m("PR-1 a file's repository keeps the path's spelling", H,
-  "\t\tif resolved, err := evalSymlinks(d); err == nil {\n\t\t\treturn resolved\n",
-  "\t\tif _, err := evalSymlinks(d); err == nil {\n\t\t\treturn d\n", "TestPR1_")
+  "if d, err := evalSymlinks(existingDir(dir)); err == nil {",
+  "if d, err := existingDir(dir), error(nil); err == nil {", "TestPR1_")
 m("PR-1 a file's directory not on disk is not walked up", H,
-  "\t\td = up\n", "\t\treturn \"\"\n", "TestPR1_|TestPR1d_")
+  "\t\tlast = d[:i]\n", "", "TestPR1_|TestPR1d_")
 m("PR-1 a file proven outside under no .git is the cwd's", H,
-  "\t\t\tif !inside(k, cwd) {\n", "\t\t\tif false {\n", "TestPR1d_")
+  "\t\t\tkey, _ := walkUp(d, physical, cwd)\n\t\t\treturn key\n",
+  "\t\t\tif key, ok := walkUp(d, physical, cwd); ok {\n\t\t\t\treturn key\n\t\t\t}\n", "TestPR1d_")
 m("PR-1 a directory under no .git is taken for the project", H,
-  "if root := gitRoot(baseline.KeyOf(own)); root != \"\" {",
-  "if root := baseline.KeyOf(own); root != \"\" {", "TestPR1b_|TestPR1d_")
+  "\t\t\treturn \"\", false\n\t\t}\n\t\td = up\n", "\t\t\treturn d, true\n\t\t}\n\t\td = up\n", "TestPR1b_|TestPR1d_")
 m("PR-1 two roots in one line are one project", H,
   "\tcase d.Later || start == \"\":\n", "\tcase start == \"\":\n", "TestPR1b_")
 m("PR-1 git -C is not read", S,
@@ -37,14 +37,24 @@ m("PR-1 git -C takes a variable's spelling", S,
 m("PR-1 git -C twice is read as once", S,
   "\t\tlen(rest) > 3 && rest[3].text == \"-C\" {\n", "\t\tfalse {\n", "TestPR1b_")
 m("PR-1 a directory proven outside under no .git is the cwd's", H,
-  "err == nil && fi.IsDir() && !inside(baseline.KeyOf(own), cwd) {\n",
-  "err == nil && fi.IsDir() && false {\n", "TestPR1d_")
+  "fi, err := os.Stat(own); err == nil && fi.IsDir() {", "fi, err := os.Stat(own); err == nil && false {", "TestPR1d_")
 m("PR-1 a directory not on disk is taken as proven outside", H,
-  "err == nil && fi.IsDir() && !inside(baseline.KeyOf(own), cwd) {\n",
-  "(err != nil || fi.IsDir()) && !inside(baseline.KeyOf(own), cwd) {\n", "TestPR1b_")
+  "fi, err := os.Stat(own); err == nil && fi.IsDir() {", "fi, err := os.Stat(own); err != nil || fi.IsDir() {", "TestPR1b_")
 m("PR-1 a directory inside the cwd under no .git is no project", H,
-  "\treturn key == root || strings.HasPrefix(key, strings.TrimSuffix(root, \"/\")+\"/\")\n",
-  "\treturn key == root\n", "TestPR1b_|TestPR1d_")
+  "\t\tif d == physical || d == cwd {\n", "\t\tif false {\n", "TestPR1b_")
+# The cost (RES-28, manager 07:2x): a file under the cwd is read from the cwd
+# down, prefixes of its path, with no symlink resolved; a step that is a
+# symlink sends the path to be resolved, since its target may be another
+# repository's.
+m("PR-1 a file under the cwd is read as outside", H,
+  "\t\tif key, ok := underCWD(dir, spelled, physical, cwd); ok {\n", "\t\tif key, ok := underCWD(dir, spelled, physical, cwd); false {\n",
+  "TestPC1d_")
+m("PR-1 a repository under the cwd is not read", H, "\t\t\tnearest = step\n", "", "TestPR1_")
+m("PR-1 a symlink under the cwd is read as spelled", H,
+  "\t\tif err == nil && fi.Mode()&fs.ModeSymlink != 0 {\n\t\t\treturn \"\", false\n",
+  "\t\tif err == nil && fi.Mode()&fs.ModeSymlink != 0 && false {\n\t\t\treturn \"\", false\n", "TestPR1_")
+m("PR-1 a repository under the cwd keeps the path's spelling", H,
+  "\treturn physical + nearest[len(base):], true\n", "\treturn nearest, true\n", "TestPR1_")
 # The root (manager 07:4x, eng-2's finding): a judgment has one project, the
 # one its spec and inferred gate were read from, the Stop's and the post's
 # cwd key, and the replay takes the one the Stop's checkpoint recorded.

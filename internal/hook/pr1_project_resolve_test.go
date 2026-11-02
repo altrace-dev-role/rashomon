@@ -70,9 +70,18 @@ func pr1Edit(path string) map[string]any {
 // a file tool's path -- inside a repository records that repository as its
 // project, not the repository (or the home) its cwd is in. Each line is cut
 // from the replayed team sessions (se2/l1, MANIFEST-1101-0930), which ran
-// 295 of 9,207 calls this way, 54 of them from the home.
+// 295 of 9,207 calls this way, 54 of them from the home. Two more reach b
+// through a symlink, a link under the home into b's internal/ and a cwd
+// spelled through a link to the home: the walk from the cwd down, which
+// resolves nothing (RES-28), keeps b's key as it is on disk.
 func TestPR1_TheProjectIsTheRepositoryTheCallRanIn(t *testing.T) {
 	tr := newPR1Tree(t)
+	cfg, homeLink := filepath.Join(tr.home, "cfg"), filepath.Join(filepath.Dir(tr.home), "homelink")
+	for link, target := range map[string]string{cfg: filepath.Join(tr.b, "internal"), homeLink: tr.home} {
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// Premise: a call with nothing of its own is keyed on its cwd, a repo
 	// root and a directory under no .git alike.
 	if got := pr1Project(t, tr.b, "Bash", goTest); got != tr.b {
@@ -94,6 +103,8 @@ func TestPR1_TheProjectIsTheRepositoryTheCallRanIn(t *testing.T) {
 		{"Write into a new directory through the temp dir's spelling", tr.home, "Write",
 			map[string]any{"file_path": filepath.Join(tr.spelled, "home", "src", "b", "newdir", "new.go"), "content": "package b\n"}, tr.b},
 		{"qa-1: git -C from the home", tr.home, "Bash", map[string]any{"command": "git -C " + tr.b + " log --oneline -1"}, tr.b},
+		{"an Edit through a link under the home into b", tr.home, "Edit", pr1Edit(filepath.Join(cfg, "x.go")), tr.b},
+		{"an Edit in b from a cwd spelled through a link", homeLink, "Edit", pr1Edit(filepath.Join(homeLink, "src", "b", "internal", "x.go")), tr.b},
 	} {
 		if got := pr1Project(t, c.cwd, c.tool, c.input); got != c.want {
 			t.Errorf("%s: project %q, want %q, the repository the call ran in", c.name, got, c.want)
