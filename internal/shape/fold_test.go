@@ -261,7 +261,7 @@ func TestRubricTEST1_LeadingFoldSeeds(t *testing.T) {
 	}
 }
 
-// TestDeriveWithDirsUnread: DeriveWithDirs's fourth result is the
+// TestDeriveWithDirsUnread: DeriveWithDirs's Dirs.Unread is the
 // tokenizer's view of the leading cd steps the program search passes (each
 // token's text, a NUL, q for quoted or p, a NUL), for a line whose leading run
 // leadingCd does not read; "" where the run is read, past MaxLeadingCd steps
@@ -308,7 +308,8 @@ func TestDeriveWithDirsUnread(t *testing.T) {
 		{strings.Repeat("cd a && ", MaxLeadingCd+1) + "go test ./...", ""},
 		{strings.Repeat("cd $D && ", MaxLeadingCd+1) + "go test ./...", strings.Repeat(view("cd", "$D", "&&"), MaxLeadingCd+1)},
 	} {
-		_, _, dirs, unread := DeriveWithDirs("Bash", bashInput(t, tc.cmd), []byte("key"))
+		_, _, d := DeriveWithDirs("Bash", bashInput(t, tc.cmd), []byte("key"))
+		dirs, unread := d.Leading, d.Unread
 		if unread != tc.want || unread != "" && len(dirs) != 0 {
 			t.Errorf("%q: unread %q with %d directories; want %q", short(tc.cmd), short(unread), len(dirs), short(tc.want))
 		}

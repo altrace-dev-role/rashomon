@@ -40,6 +40,10 @@ type StopInput struct {
 	// for none. The Stop's caller sets it only while no spec declares a test
 	// gate.
 	Inferred *InferredGate
+	// Root is the project the Stop read its spec and inferred gate from,
+	// baseline.Key of the payload's cwd (card PROJECT-RESOLVE1), under
+	// which evaluate places every gate; "" for none (evaluate).
+	Root string
 }
 
 // InferredGate is a test command read from the project's own files: its
@@ -114,7 +118,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		run = &store.Run{}
 	}
 	var c classified
-	snap := evaluate(run, idx, sp, in.Key, in.Inferred, pt, now, &c)
+	snap := evaluate(run, idx, sp, in.Key, in.Inferred, in.Root, pt, now, &c)
 	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
