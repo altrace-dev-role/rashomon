@@ -34,7 +34,8 @@ m("PW1b-3 the log is not checked against the walk file", S,
 m("PW1b-3 the digests are not checked against the walk file", S,
   "\tif err != nil || dg.sum != vouched.digests {\n", "\tif err != nil {\n", "TestPW1b3_OnlyAVouched")
 m("PW1b-3 packageIn ignores the kind's shape", S,
-  "!listed || !fitsKind(kind, rest[i+1:])", "!listed", "TestPW1b3_PackageIn")
+  "!listed || !fitsKind(kind, rest[i+1:])", "!listed || !fitsKind(kind, rest[i+1:]) && false",
+  "TestPW1b3_PackageIn")
 m("PW1b-3 packageIn takes the longest prefix", S,
   "\t\tif found != \"\" {\n\t\t\treturn \"\"\n\t\t}\n", "\t\tif found != \"\" {\n\t\t\treturn found\n\t\t}\n",
   "TestPW1b3_PackageIn")

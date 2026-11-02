@@ -19,7 +19,8 @@ import (
 // symLog is a log over packages a, b, c and yaml.v3 (a path whose last
 // element holds a dot) of module example.com/m. F is called by a method of
 // a, by b and by c (once under each of two configs), and also by an
-// ALGORITHMIC record and a retracted one; T.M has only a may-call; Read is
+// ALGORITHMIC record and a retracted one; T.M has only a may-call, PROVEN
+// so that the predicate, not the tier, is what keeps it out; Read is
 // declared in three packages and Pair in two; b's HasF ends in F.
 func symLog() string {
 	const a, b, c, y = "example.com/m/a", "example.com/m/b", "example.com/m/c", "example.com/m/yaml.v3"
@@ -48,7 +49,7 @@ func symLog() string {
 		rec("+", "func:"+c+".K", "calls", "func:"+a+".F", tierAlgorithmic, cfg) +
 		rec("+", "func:"+b+".Old", "calls", "func:"+a+".F", tierProven, cfg) +
 		rec("-", "func:"+b+".Old", "calls", "func:"+a+".F", tierProven, cfg) +
-		rec("+", "func:"+b+".G", "may-call", "method:"+a+".T.M", tierAlgorithmic, cfg) +
+		rec("+", "func:"+b+".G", "may-call", "method:"+a+".T.M", tierProven, cfg) +
 		rec("+", "func:"+b+".G", "calls", "func:"+y+".Marshal", tierProven, cfg)
 }
 
