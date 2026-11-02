@@ -12,9 +12,10 @@ var frozenOrder = []ID{
 	"learned-fact", "platform-rule", "integrity", "identical-retry", "cred-spray",
 	"ordering-rule", "agent-interference", "subagent-claim", "model-switch",
 	"claim-vs-record", "masked-status", "sequence-risk",
-	// The seventeenth and eighteenth, by ruling after the spec's sixteen, in
-	// merge order (cards PREFLIGHT1, and STALE-NUDGE1 under D164).
-	"task-preflight", "stale-evidence",
+	// The seventeenth, eighteenth and nineteenth, by ruling after the spec's
+	// sixteen, in merge order (cards PREFLIGHT1, STALE-NUDGE1 under D164, and
+	// ARCH-INLINE1's A6).
+	"task-preflight", "stale-evidence", "blast-radius",
 }
 
 func sameIDs(got, want []ID) bool {
@@ -41,7 +42,7 @@ func sameStrings(got, want []string) bool {
 	return true
 }
 
-// TestDEL22_PatternIDSetEqualsTheFrozenList pins the eighteen ids, their
+// TestDEL22_PatternIDSetEqualsTheFrozenList pins the nineteen ids, their
 // order, and the closed kind list under each of the six that have one (the
 // frozen-set paragraph, decided 2026-10-13). A reorder, an addition, a
 // removal, a renamed id or a kind typo all fail here first.
@@ -121,6 +122,7 @@ func TestPriority_StepEightValues(t *testing.T) {
 		MaskedStatus:       45,
 		IdenticalRetry:     40,
 		OrderingRule:       30,
+		BlastRadius:        25,
 	}
 	for id, wantP := range want {
 		gotP, ok := Priority(id)
@@ -176,5 +178,30 @@ func TestPF1p_TaskPreflightIsAnIDWithNoKinds(t *testing.T) {
 	declared, _ := Priority(DeclaredFact)
 	if pre <= learned || pre >= declared {
 		t.Errorf("Priority(task-preflight) = %d, want above learned-fact's %d and below declared-fact's %d", pre, learned, declared)
+	}
+}
+
+// TestAI1_BlastRadiusReservesOneNote: blast-radius is the one id with a
+// reserve, 1, so its note leaves the prompt's last slot to a correction
+// (card ARCH-INLINE1, A8); every other id reserves nothing, so their budget
+// is the cap as before. Break: give blast-radius no reserve, or give
+// another id one, and this fails.
+func TestAI1_BlastRadiusReservesOneNote(t *testing.T) {
+	for _, id := range frozenOrder {
+		want := 0
+		if id == "blast-radius" {
+			want = 1
+		}
+		if got := Reserve(id); got != want {
+			t.Errorf("Reserve(%q) = %d, want %d", id, got, want)
+		}
+	}
+	if p, _ := Priority(BlastRadius); p != 25 {
+		t.Errorf("Priority(blast-radius) = %d, want 25, the lowest", p)
+	}
+	for _, id := range frozenOrder {
+		if p, ok := Priority(id); ok && id != BlastRadius && p <= 25 {
+			t.Errorf("Priority(%q) = %d, at or below blast-radius's 25", id, p)
+		}
 	}
 }

@@ -157,12 +157,14 @@ func TestSN1d_ForeignMoveIsNamedNotBlamed(t *testing.T) {
 }
 
 // TestSN1e_PatternIsFrozen: stale-evidence is the eighteenth frozen id,
-// after the spec's sixteen and task-preflight (merge order), with priority 78
+// after the spec's sixteen and task-preflight (merge order; blast-radius,
+// the nineteenth, came after it, and pattern's TestDEL22 pins the count),
+// with priority 78
 // under regression-location and no kinds; the mapper takes it at a
 // PostToolUse as a nudge keyed by the gate and refuses it at any other event.
 func TestSN1e_PatternIsFrozen(t *testing.T) {
 	all := pattern.All()
-	if len(all) != 18 || all[17] != pattern.StaleEvidence || pattern.Kinds(pattern.StaleEvidence) != nil {
+	if len(all) < 18 || all[17] != pattern.StaleEvidence || pattern.Kinds(pattern.StaleEvidence) != nil {
 		t.Fatalf("All() = %v, Kinds = %v; want stale-evidence eighteenth, with no kinds", all, pattern.Kinds(pattern.StaleEvidence))
 	}
 	if p, ok := pattern.Priority(pattern.StaleEvidence); !ok || p != 78 {
