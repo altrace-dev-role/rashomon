@@ -53,7 +53,15 @@ const (
 	// StaleEvidence names a required gate whose green this call's write left
 	// behind, at the write (card STALE-NUDGE1).
 	StaleEvidence ID = "stale-evidence"
+	// BlastRadius names the other packages the platform graph shows calling
+	// into the package a call edited, at the edit (card ARCH-INLINE1, PF-PL7).
+	BlastRadius ID = "blast-radius"
 )
+
+// Reserve is how many of the prompt's notes id leaves for others: a note of
+// id is charged only while the prompt has spent fewer than the cap less its
+// reserve.
+func Reserve(id ID) int { return 0 }
 
 // All returns the frozen pattern IDs in the spec's order. Callers that need a stable iteration order -- rendering a legend,
 // building an exhaustiveness test -- should use this rather than range over

@@ -154,6 +154,24 @@ type StaleEvidenceDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// BlastRadiusBinding is blast-radius's slots (card ARCH-INLINE1): how many
+// other packages the platform graph shows calling into the package the call
+// edited, a lower bound (PROVEN calls only, PF-PL11), their directories, and
+// how many of them hold a test file.
+type BlastRadiusBinding struct {
+	Count  slot.Count    `slot:"count"`
+	Dirs   slot.PathList `slot:"dirs"`
+	Tested slot.Count    `slot:"tested"`
+}
+
+// BlastRadiusDegradedBinding is blast-radius's no-paths form, for callers
+// whose every directory the deny list or the entropy test left out
+// (slot.ErrNoPathsLeft), or that sit at the module's root.
+type BlastRadiusDegradedBinding struct {
+	Count  slot.Count `slot:"count"`
+	Tested slot.Count `slot:"tested"`
+}
+
 // IntegrityStoreTouchedBinding is integrity/store-touched's user line
 // (archive 40.4.7; card P5B, 5.7): the path under .claude/rashomon the call
 // wrote, project-relative.
