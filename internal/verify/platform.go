@@ -15,8 +15,9 @@ import (
 // Stop with StopInput.Platform set: internal/platform reads the pgraph log at
 // the project root for the session's written Go files (that package imports
 // this one), and the ledger owes one platform_impact row per package they
-// belong to. The Stop hook itself reads no log and owes no such row: nothing
-// reads a Stop's platform rows until a line at Stop speaks of them.
+// belong to. The Stop hook sets it too (PW1b-ON-230 step 2), and its line
+// names the open and unmet rows (recap's platformLines); StopFailure and the
+// catch-up leave it nil.
 //
 // A row owes the package's `go test` (S4): a required test gate a trusted
 // spec declares, or the inferred one where the project's own files name it,

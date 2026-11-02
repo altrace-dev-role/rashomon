@@ -1,15 +1,19 @@
 package main
 
 import (
+	"time"
+
 	"github.com/altrace-dev-role/rashomon/internal/platform"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // platformRead is StopInput.Platform for the ledger verb's replay (card
-// PL-WIRE1), and for nothing else: the Stop hook reads no platform graph,
-// since nothing reads a Stop's platform rows yet, and the session report
-// passes none. It is internal/platform's Read of the pgraph log `pgraph sync
-// <root>` wrote under the project root; a project nobody synced reads as no
+// PL-WIRE1) and, through stopPlatformRead, for the Stop hook, whose line
+// names the changed packages whose go test has not run (PW1b-ON-230 step
+// 2); the session report and the catch-up pass none. It is
+// internal/platform's Read of the pgraph log `pgraph sync <root>`, or the
+// plugin's hook, wrote under the project root, taken only as the pair the
+// walk file vouches for; a project nobody synced reads as no
 // log, every family unknown, never as an unreadable one (platform.Read reads
 // a log that is not there as none). What it reads, a person running the verb
 // reads: the log, its digests, the go.mod files from each written file's
@@ -18,7 +22,22 @@ import (
 // listing (for a test file). It writes nothing: pgraph is a command of its
 // own that a person runs, and this binary starts no process (H-17).
 func platformRead(root string, written []string) verify.PlatformRead {
-	run := platform.RunView{Root: root, WrittenPaths: written}
+	return platformReadWithin(root, written, 0)
+}
+
+// stopPlatformGuard is the Stop's guard on its read, well inside the Stop
+// entry's 10 s timeout: a read that stalls reads LogTimedOut and the Stop
+// still prints its own line. This repository's 3 MB log decodes in 11 to
+// 17 ms (internal/platform's deadline note).
+const stopPlatformGuard = 2 * time.Second
+
+// stopPlatformRead is platformRead under the Stop's guard.
+func stopPlatformRead(root string, written []string) verify.PlatformRead {
+	return platformReadWithin(root, written, stopPlatformGuard)
+}
+
+func platformReadWithin(root string, written []string, guard time.Duration) verify.PlatformRead {
+	run := platform.RunView{Root: root, WrittenPaths: written, Deadline: guard}
 	if root != "" {
 		run.LogPath = platform.LogPath(root)
 	}

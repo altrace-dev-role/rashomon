@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"slices"
 	"time"
 
@@ -39,6 +40,9 @@ type RunView struct {
 	Root         string
 	WrittenPaths []string
 	LogPath      string
+	// Deadline, when set, replaces the crash guard for this read: the Stop
+	// hook's read passes one well inside its own entry's timeout.
+	Deadline time.Duration
 }
 
 // Family is one Go package a run's writes touched. Package is its import
@@ -65,6 +69,13 @@ func Impact(ctx context.Context, root, logPath string, paths []string) ([]Family
 }
 
 func impactWithin(ctx context.Context, root, logPath string, paths []string, limit int64) ([]Family, error) {
+	return impactVouched(ctx, root, logPath, paths, limit, "")
+}
+
+// impactVouched is impactWithin where want, when not "", is the sha256 the
+// walk file names for the log: a log that hashes otherwise, read from the
+// same open file as it is decoded, is errNotVouched.
+func impactVouched(ctx context.Context, root, logPath string, paths []string, limit int64, want string) ([]Family, error) {
 	type result struct {
 		fams []Family
 		err  error
@@ -72,7 +83,7 @@ func impactWithin(ctx context.Context, root, logPath string, paths []string, lim
 	done := make(chan result, 1)
 	hook := recordHook
 	safe.Go(func() {
-		fams, err := impact(ctx, root, logPath, paths, limit, hook)
+		fams, err := impact(ctx, root, logPath, paths, limit, want, hook)
 		done <- result{fams, err}
 	}, func(err error) { done <- result{nil, err} })
 	select {
@@ -85,7 +96,7 @@ func impactWithin(ctx context.Context, root, logPath string, paths []string, lim
 
 // impact resolves paths to packages, then decodes the log, at most limit
 // bytes, and builds each wanted package's family from its live facts.
-func impact(ctx context.Context, root, logPath string, paths []string, limit int64, hook func()) ([]Family, error) {
+func impact(ctx context.Context, root, logPath string, paths []string, limit int64, want string, hook func()) ([]Family, error) {
 	mods := map[string]goMod{}
 	var wanted []string
 	for _, p := range paths {
@@ -108,9 +119,13 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 	if info.Size() > limit {
 		return nil, ErrOverCap
 	}
-	live, err := decode(ctx, f, hook)
+	h := sha256.New()
+	live, err := decode(ctx, io.TeeReader(f, h), hook)
 	if err != nil {
 		return nil, err
+	}
+	if want != "" && hex.EncodeToString(h.Sum(nil)) != want {
+		return nil, errNotVouched
 	}
 	bySubject := map[string][]fact{}
 	for k := range live {
