@@ -9,6 +9,6 @@ m("H-7  edit drops every other top-level key", "internal/settings/document.go",
   "\t\t\td.members = []member{{key: hooksKey, raw: obj}}\n\t\t\td.canonical = true\n\t\t\treturn", "TestH06_DetachLeavesTheFileByteForByteAsFound|TestH7_DetachPreservesConcurrentEdits|TestH3_InstalledEntryReadBackInFull")
 m("H-7  removing a hook event drops every other top-level key", "internal/settings/document.go",
   "\tif len(kept) == 0 {\n\t\td.removeMember(hooksKey)\n\t\treturn nil\n\t}",
-  "\tif len(kept) == 0 {\n\t\td.members = nil\n\t\treturn nil\n\t}", "TestH06_DetachKeepsAForeignHookEventIntact")
+  "\tif len(kept) == 0 {\n\t\td.members = nil\n\t\treturn nil\n\t}", "TestH06_DetachLeavesTheFileByteForByteAsFound")
 m("H-7  detach never notices an edited entry", "internal/install/install.go",
   "func intact(raw json.RawMessage, event string) string {\n", "func intact(raw json.RawMessage, event string) string {\n\tif true {\n\t\treturn \"\"\n\t}\n", "TestH7_DetachSaysSoWhenItCannot")
