@@ -60,8 +60,8 @@ type Background struct {
 	ID                  string   `json:"id"`
 	Events              []string `json:"events"`
 	Command             []string `json:"command"`
-	CurrentMaxRSSMiBP50 float64  `json:"current_maxrss_mib_p50"`
-	CurrentWallMsP50    float64  `json:"current_wall_ms_p50"`
+	CurrentMaxRSSMiBP50 float64  `json:"maxrss_mib_p50"`
+	CurrentWallMsP50    float64  `json:"wall_ms_p50"`
 	Basis               string   `json:"basis"`
 }
 
