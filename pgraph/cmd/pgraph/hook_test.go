@@ -44,8 +44,8 @@ func hookRun(t *testing.T, in string, extra ...string) (int, string, string) {
 }
 
 // TestPW1b_TheHookWritesSilentlyAndAlwaysExitsZero (card PW1b-ON-230):
-// Claude Code runs `pgraph sync -hook` after each call that can change a
-// file, so whatever happens it exits 0 and prints nothing on stdout (a
+// Claude Code runs `pgraph sync -hook` at session start and after each
+// reply, so whatever happens it exits 0 and prints nothing on stdout (a
 // SessionStart hook's stdout goes to the model); a sync it cannot write is
 // one line on stderr and leaves the last pair as it was; a project with no
 // go.mod at its root, or no .git above the call, is left alone; and -hook
@@ -126,11 +126,55 @@ func TestPW1b_TheHookSyncsTheProjectTheCallRanIn(t *testing.T) {
 	}
 }
 
-// TestPW1b_AnUnchangedTreeIsNotLoadedAgain: the hook fires on every call
-// that can change a file, so a tree whose walk the walk file already holds
-// is not loaded: a README or a test file edit costs a walk, a Go edit a
-// load. A tree whose sync was refused is not loaded again until it changes,
-// so code that does not compile costs one load, not one per call. A pair
+// TestPW1b_ASyncRemovesWhatACutRunLeft: Claude Code ends a background hook
+// still running when the session exits (se1/pw1b-async-probe.txt), so a run
+// can stop inside writeAtomic and leave its temp file in .pgraph, three
+// megabytes for this repository's log. The next sync, which holds the root
+// lock so no live writer has one open, removes every such file and nothing
+// else. Break: drop the sweep, or widen it past writeAtomic's names, and
+// this fails.
+func TestPW1b_ASyncRemovesWhatACutRunLeft(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	root := repo(t, smallModule)
+	if code, _, errs := hookRun(t, payload(root)); code != 0 || errs != "" {
+		t.Fatalf("first hook: exit %d, stderr %q", code, errs)
+	}
+	dir := filepath.Join(root, ".pgraph")
+	cut := []string{".pgraph.log.tmp-123", ".pgraph.digests.tmp-9", ".pgraph.walk.tmp-77"}
+	kept := []string{"pgraph.log.tmp-1", ".pgraph.log.tmpx", "..gitignore.tmp-5", ".notes"}
+	for _, n := range append(append([]string(nil), cut...), kept...) {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("cut"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, ".pgraph.log.tmp-dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kept = append(kept, ".pgraph.log.tmp-dir")
+	if err := os.WriteFile(filepath.Join(root, "a", "c.go"), []byte("package a\n\nfunc C() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errs := hookRun(t, payload(root)); code != 0 || errs != "" {
+		t.Fatalf("hook after a Go edit: exit %d, stderr %q", code, errs)
+	}
+	for _, n := range cut {
+		if _, err := os.Lstat(filepath.Join(dir, n)); err == nil {
+			t.Errorf("%s, a cut run's temp file, is still in .pgraph after a sync", n)
+		}
+	}
+	for _, n := range kept {
+		if _, err := os.Lstat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("%s was removed: only writeAtomic's temp files go (%v)", n, err)
+		}
+	}
+}
+
+// TestPW1b_AnUnchangedTreeIsNotLoadedAgain: the hook fires after every
+// reply, most of which change no Go file, so a tree whose walk the walk
+// file already holds is not loaded: a README or a test file edit costs a
+// walk, a Go edit a load. A tree whose sync was refused is not loaded again
+// until it changes, so code that does not compile costs one load, not one
+// per reply. A pair
 // moved aside since is not current. A person's sync writes the walk file
 // too. Break: drop the fast path, count test files, or forget a refusal,
 // and the load count moves where it must not.
