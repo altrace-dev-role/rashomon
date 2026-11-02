@@ -193,6 +193,10 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	}
 	var b strings.Builder
 	b.WriteString(prefix + sentence + ".\n")
+	if v.Summary.Row == verify.RowNoGate && untrustedOnly(v) {
+		b.WriteString(continuation() + "The spec is not trusted; review it, then run rashomon spec trust.\n")
+	}
+	b.WriteString(unboundLines(v))
 	if c := clause(im); c != "" {
 		b.WriteString(continuation() + c + "\n")
 	}
@@ -200,12 +204,79 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	return b.String()
 }
 
+// unboundLines is two lines for each spec the session edited after the user
+// trusted it (verify.StopView.Unbound, SPEC-TRUST-DROP1): the spec, and the
+// verb that trusts it again, each within lineColumns. A repository names the
+// path, so it prints only as the path slot admits it, else as "the
+// repository spec".
+func unboundLines(v verify.StopView) string {
+	var b strings.Builder
+	for _, p := range v.Unbound {
+		name := "the repository spec"
+		if s := slot.Path(p); s.Validate() == nil {
+			name = s.Text()
+		}
+		b.WriteString(continuation() + name + " was edited after you trusted it, so it\n")
+		b.WriteString(continuation() + "no longer counts; review the edit, then run rashomon spec trust.\n")
+	}
+	return b.String()
+}
+
+// notCounted is the no-gate row's clause when a spec declares gates that
+// read untrusted (StopView.Untrusted, STOP-UNBOUND-FIRST). The brief named
+// them, so the line says they do not count, never that none is known; the
+// line below says why (ValueLine, or unboundLines for a spec the session
+// edited after a trust). At most k ids are named; short (fitted's last
+// resort past lineColumns), or an id the line cannot print, reads "the
+// spec's gates" instead.
+func notCounted(v verify.StopView, k int, short bool) string {
+	if len(v.Untrusted) == 0 {
+		return ""
+	}
+	var names []string
+	for _, u := range v.Untrusted {
+		id, ok := strings.CutPrefix(u.ID, specGatePrefix)
+		p := slot.Program(id)
+		if short || !ok || p.Validate() != nil {
+			names = nil
+			break
+		}
+		if !contains(names, p.Text()) {
+			names = append(names, p.Text())
+		}
+	}
+	s := "the spec's gates do not count"
+	switch {
+	case len(names) == 1:
+		s = names[0] + " does not count"
+	case len(names) > k:
+		s = strings.Join(names[:k], ", ") + " and " + strconv.Itoa(len(names)-k) + " more do not count"
+	case len(names) > 1:
+		s = joinNames(names) + " do not count"
+	}
+	return s
+}
+
+// untrustedOnly reports a gate of v.Untrusted in a spec no unbound line
+// names: the line under the value line then says the spec is not trusted,
+// and the step that counts its gates.
+func untrustedOnly(v verify.StopView) bool {
+	return slices.ContainsFunc(v.Untrusted, func(u verify.UntrustedGate) bool { return !slices.Contains(v.Unbound, u.Spec) })
+}
+
 // fitted is the row's sentence with as many gate names as fit after lead on
-// one line, down to one.
+// one line, down to one; past that, with a gate whose run had other arguments
+// named as name() names a gate without its id (maxIDName fits "passed", not
+// "ran with other arguments and passed"; GATE-BIND1, D-c).
 func fitted(v verify.StopView, lead string) string {
-	s := sentence(v, maxGateNames)
+	s := sentence(v, maxGateNames, false)
 	for k := maxGateNames - 1; k >= 1 && columns(lead+s+".") > lineColumns; k-- {
-		s = sentence(v, k)
+		s = sentence(v, k, false)
+	}
+	if columns(lead+s+".") > lineColumns {
+		if short := sentence(v, 1, true); columns(short) < columns(s) {
+			s = short
+		}
 	}
 	return s
 }
@@ -215,9 +286,10 @@ func columns(s string) int { return len([]rune(s)) }
 // sentence is the row's sentence (tech 2.2.11's table, first match won in
 // TurnSummary), naming at most k programs in a gate list, with "; advisory
 // only" when the row was read from advisory gates, and then the record
-// findings' count clause on a row other than findings that has any (D-f).
-func sentence(v verify.StopView, k int) string {
-	s := rowSentence(v, k)
+// findings' count clause on a row other than findings that has any (D-f);
+// short as gateSet's.
+func sentence(v verify.StopView, k int, short bool) string {
+	s := rowSentence(v, k, short)
 	if s != "" && v.Summary.Advisory() {
 		s += "; advisory only"
 	}
@@ -230,8 +302,9 @@ func sentence(v verify.StopView, k int) string {
 // rowSentence fills the row's template. <gate> is the first turn gate in the
 // row's state, <seq> its last run; <gates> are the green turn gates'
 // programs, and their <seq> the latest of their runs (D5, D6).
-func rowSentence(v verify.StopView, k int) string {
+func rowSentence(v verify.StopView, k int, short bool) string {
 	t := turnGates(v)
+	t.short = short
 	wrote := v.Turn.Writes > 0
 	files := filesEdited(v.Turn.PathsWritten)
 	switch v.Summary.Row {
@@ -283,21 +356,34 @@ func rowSentence(v verify.StopView, k int) string {
 			return t.name(g) + " moved to the background" + where + "; its result is not in the record"
 		}
 	case verify.RowRanOnly:
-		return "no edits; " + t.greens(k) + " passed (call " + t.greenSeq() + ")" + t.fromOutput()
+		greens, _ := t.passed(k)
+		return "no edits; " + greens + " (call " + t.greenSeq() + ")" + t.fromOutput()
 	case verify.RowUnverified:
 		return t.unverified(v, k, files)
 	case verify.RowNoGate:
+		if s := notCounted(v, k, short); s != "" {
+			return files + "; " + s
+		}
 		if v.Index != nil && len(v.Index.Entries) > 0 {
 			return files + "; no known test or build applies to these files"
 		}
 		return files + "; no test or build is known for this project yet"
 	case verify.RowUnnamedWrite:
-		return files + "; " + t.greens(k) + " passed (call " + t.greenSeq() + ")" + t.fromOutput() + "; call " +
+		greens, _ := t.passed(k)
+		return files + "; " + greens + " (call " + t.greenSeq() + ")" + t.fromOutput() + "; call " +
 			strconv.FormatInt(v.Turn.UnnamedWriteSeq, 10) + " may have written files after that"
 	case verify.RowVerified:
-		return "verified - " + t.greens(k) + " passed after the last edit" + t.fromOutput()
+		// The row is read only where the green runs follow the last edit, so
+		// "verified" says it; a run with other arguments takes the columns
+		// "after the last edit" held (GATE-BIND1, D-c).
+		greens, other := t.passed(k)
+		if !other {
+			greens += " after the last edit"
+		}
+		return "verified - " + greens + t.fromOutput()
 	case verify.RowFindings:
-		return files + "; " + t.greens(k) + " passed after the last edit" + t.fromOutput() + "; " + v.Summary.Sentence
+		greens, _ := t.passed(k)
+		return files + "; " + greens + " after the last edit" + t.fromOutput() + "; " + v.Summary.Sentence
 	}
 	return ""
 }
@@ -320,12 +406,16 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 			return t.name(g) + " ran on part of the project" + where + " (call " + seqOf(g) + ")"
 		}
 	}
-	greens := t.greens(k)
+	greens, _ := t.passed(k)
 	switch {
 	case g == nil && greens != "":
-		return files + "; " + greens + " passed after the last edit" + t.fromOutput()
+		return files + "; " + greens + " after the last edit" + t.fromOutput()
 	case g != nil && greens != "":
-		return files + "; " + greens + " passed after the last edit" + t.fromOutput() + ", " + t.name(g) + " not run after it"
+		return files + "; " + greens + " after the last edit" + t.fromOutput() + ", " + t.name(g) + " not run after it"
+	case g != nil && g.Source == verify.SourceInferred:
+		// The project's own command, which no rule names otherwise
+		// (GATE-INFER1, W4); a declared gate keeps the line below.
+		return files + ", " + t.name(g) + " not run after the last edit"
 	}
 	return files + ", no test or build run after the last edit"
 }
@@ -350,9 +440,12 @@ func when(v verify.StopView, g *verify.GateState) (where string, since bool) {
 }
 
 // gateSet is the turn gates of a view and the programs that name them.
+// short names a gate whose last run had other arguments without its id
+// (fitted's last step).
 type gateSet struct {
 	gates    []verify.GateState
 	programs map[string]string
+	short    bool
 }
 
 func turnGates(v verify.StopView) gateSet {
@@ -378,18 +471,29 @@ func (t gateSet) first(s verify.State) *verify.GateState {
 
 // name is the id of a gate a trusted spec declares, in the slot's quote;
 // else g's program word, else its kind: with no program word, or with a
-// prefix word in its place.
+// prefix word in its place. With short, a gate whose last run had other
+// arguments skips the id. The inferred gate's name is labelled while its
+// trust says the index has not seen a test run, unless short (GATE-INFER1,
+// W3', W4).
 func (t gateSet) name(g *verify.GateState) string {
-	if id, ok := strings.CutPrefix(g.Gate, specGatePrefix); ok && len(id) <= maxIDName {
+	if id, ok := strings.CutPrefix(g.Gate, specGatePrefix); ok && len(id) <= maxIDName && !(t.short && otherArgs(g)) {
 		if p := slot.Program(id); p.Validate() == nil {
 			return p.Text()
 		}
 	}
+	n := g.Kind
 	if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {
-		return p
+		n = p
 	}
-	return g.Kind
+	if g.Source == verify.SourceInferred && g.Trust == verify.SourceInferred && !t.short {
+		n += inferredLabel
+	}
+	return n
 }
+
+// inferredLabel follows the name of a gate read from the project's files
+// that the index has not yet seen run (GATE-INFER1).
+const inferredLabel = " (inferred)"
 
 // fromOutput is the provenance clause where a green turn gate's last run had
 // its outcome read from its output, else "". The sentence before it lists the
@@ -444,22 +548,44 @@ func droppingStage(r *verify.RunRef) string {
 	return "the pipe to " + r.MaskedBy.String()
 }
 
-// greens is the distinct programs of the green turn gates, in order, at most
-// k named and then `and <n> more`.
-func (t gateSet) greens(k int) string {
-	var names []string
+// passed is the green turn gates as the sentence says they passed, in
+// order: the distinct names of those whose last run was their own words, at
+// most k named and then `and <n> more`, with "passed"; then those bound at
+// their runner with other words (RunRef.OtherArgs) with "ran with other
+// arguments and passed", each named and never folded into the count, so no
+// line says the gate passed of a run that was not its own (GATE-BIND1, D-c).
+// other reports a gate of the second kind; "" with no green gate.
+func (t gateSet) passed(k int) (s string, other bool) {
+	var own, others []string
 	for i := range t.gates {
-		if n := t.name(&t.gates[i]); t.gates[i].State == verify.Green && !contains(names, n) {
-			names = append(names, n)
+		g := &t.gates[i]
+		if g.State != verify.Green {
+			continue
+		}
+		switch n := t.name(g); {
+		case otherArgs(g):
+			if !contains(others, n) {
+				others = append(others, n)
+			}
+		case !contains(own, n):
+			own = append(own, n)
 		}
 	}
-	switch {
-	case len(names) == 0:
-		return ""
-	case len(names) > k:
-		return strings.Join(names[:k], ", ") + " and " + strconv.Itoa(len(names)-k) + " more"
+	var parts []string
+	if k = max(k-len(others), 1); len(own) > k {
+		parts = append(parts, strings.Join(own[:k], ", ")+" and "+strconv.Itoa(len(own)-k)+" more passed")
+	} else if len(own) > 0 {
+		parts = append(parts, joinNames(own)+" passed")
 	}
-	return joinNames(names)
+	if len(others) > 0 {
+		parts = append(parts, joinNames(others)+" ran with other arguments and passed")
+	}
+	return strings.Join(parts, ", "), len(others) > 0
+}
+
+// otherArgs reports g's last run as bound with other arguments.
+func otherArgs(g *verify.GateState) bool {
+	return g.LastRun != nil && g.LastRun.OtherArgs
 }
 
 // joinNames is names as a list in words: "a", "a and b", "a, b and c".

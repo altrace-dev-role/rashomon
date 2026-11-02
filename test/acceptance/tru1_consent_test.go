@@ -253,8 +253,8 @@ func TestTRU1_WatchWritesNothingBeforeYes(t *testing.T) {
 		}
 		e.requireInstalled()
 		recs := e.consentRecords()
-		if len(recs) != 1 || recs[0]["via"] != "watch_tty" || recs[0]["tty"] != true || recs[0]["steer_disclosure"] != float64(2) {
-			t.Errorf("consent.json after a terminal y = %v, want one watch_tty record, tty true, steer_disclosure 2", recs)
+		if len(recs) != 1 || recs[0]["via"] != "watch_tty" || recs[0]["tty"] != true || recs[0]["steer_disclosure"] != float64(steer.DisclosureVersion) {
+			t.Errorf("consent.json after a terminal y = %v, want one watch_tty record, tty true, steer_disclosure %d", recs, steer.DisclosureVersion)
 		}
 		if got := e.sdkRecording(); got != "paused" {
 			t.Errorf("EOF at the Agent SDK question recorded %q, want paused", got)
@@ -495,9 +495,10 @@ func TestTRU1_AFailedWriteIsUndoneInReverse(t *testing.T) {
 	}
 }
 
-// TestTRU3_ShowIsTheScreenAndWritesNothing: --show prints the screen, the
-// same bytes each time, exits 0 and writes nothing -- also from an agent
-// session, which is where the root skill runs it.
+// TestTRU3_ShowIsTheScreenAndWritesNothing: --show prints the screen a yes
+// is asked under, the short one (CONSENT-SHORT1), the same bytes each time,
+// exits 0 and writes nothing -- also from an agent session, which is where
+// the root skill runs it.
 func TestTRU3_ShowIsTheScreenAndWritesNothing(t *testing.T) {
 	e := newEnv(t)
 	before := e.machine()
@@ -505,7 +506,7 @@ func TestTRU3_ShowIsTheScreenAndWritesNothing(t *testing.T) {
 	if first.exitCode != 0 {
 		t.Fatalf("watch --show: exit %d, stderr %q", first.exitCode, first.stderr)
 	}
-	for _, h := range []string{"1. HOOK ENTRIES", "2. WHAT IS RECORDED", "3. WHAT RASHOMON ADDS", "4. LESSONS", "5. WHAT YOU WILL SEE", "rashomon purge"} {
+	for _, h := range shortLandmarks {
 		if !strings.Contains(first.stdout, h) {
 			t.Errorf("watch --show does not print %q:\n%s", h, first.stdout)
 		}
@@ -535,7 +536,7 @@ func TestTRU4_NonInteractiveWatchNeedsYes(t *testing.T) {
 		if res.exitCode != 1 {
 			t.Fatalf("watch with no terminal: exit %d, want 1", res.exitCode)
 		}
-		if !strings.Contains(res.stdout, "1. HOOK ENTRIES") {
+		if !strings.Contains(res.stdout, "NEVER STORED:") {
 			t.Errorf("watch with no terminal did not print the screen:\n%s", res.stdout)
 		}
 		if !strings.Contains(res.stderr, "watch needs a terminal to ask; nothing was written") {
@@ -555,7 +556,7 @@ func TestTRU4_NonInteractiveWatchNeedsYes(t *testing.T) {
 		if res.exitCode != 0 {
 			t.Fatalf("watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		if !strings.Contains(res.stdout, "1. HOOK ENTRIES") {
+		if !strings.Contains(res.stdout, "NEVER STORED:") {
 			t.Error("watch --yes did not print the screen")
 		}
 		e.requireInstalled()
@@ -581,7 +582,7 @@ func TestTRU4_NonInteractiveWatchNeedsYes(t *testing.T) {
 			t.Fatal(err)
 		}
 		third := e.watch()
-		if third.exitCode != 0 || !strings.Contains(third.stdout, "1. HOOK ENTRIES") {
+		if third.exitCode != 0 || !strings.Contains(third.stdout, "NEVER STORED:") {
 			t.Errorf("watch with entries but no consent: exit %d, stdout %q; want the screen", third.exitCode, third.stdout)
 		}
 		if len(e.consentRecords()) != 1 {

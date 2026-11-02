@@ -33,5 +33,5 @@ m("TRU-48 the file is never compacted", "internal/consent/record.go",
   "info.Size()+int64(len(line))+1 > CapBytes {", "info.Size()+int64(len(line))+1 > 64*CapBytes {",
   "TestTRU48_CompactionKeepsEveryReadersAnswer")
 m("TRU-48 the disclosure version moves without a review", "internal/steer/disclosure.go",
-  "const DisclosureVersion = 2", "const DisclosureVersion = 3",
+  "const DisclosureVersion = 3", "const DisclosureVersion = 4",
   "TestTRU48_DisclosureVersionIsPinned")

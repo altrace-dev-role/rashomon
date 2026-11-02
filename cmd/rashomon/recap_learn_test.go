@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -532,6 +533,120 @@ func TestLRN17m_SupersededAtPromptNArrivesAtNPlus1(t *testing.T) {
 		if s := *l.PromptID + " " + l.State + " " + by; s != want[i] {
 			t.Errorf("line %d: %q, want %q", i, s, want[i])
 		}
+	}
+}
+
+const (
+	aGenLesson = "internal/a.go is generated from gen/a.tmpl"
+	aGenRide   = "lesson a-gen, approved for this project: 'internal/a.go is generated from gen/a.tmpl'"
+)
+
+// goFilesIn writes each of files, a path under dir, as a Go file.
+func goFilesIn(t *testing.T, dir string, files ...string) {
+	t.Helper()
+	for _, f := range files {
+		p := filepath.Join(dir, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("package internal\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// rodeLessons are the session's task-preflight lines that name a lesson in
+// their lesson slot, as "prompt state lesson", in order.
+func (e *lessonEnv) rodeLessons(sessionID string) []string {
+	e.t.Helper()
+	st, err := store.Open(e.root)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	raw, _, err := st.ReadSteer(sessionID)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		e.t.Fatal(err)
+	}
+	var out []string
+	for _, b := range raw {
+		var l struct {
+			PromptID *string `json:"prompt_id"`
+			Pattern  string  `json:"pattern"`
+			State    string  `json:"state"`
+			Slots    struct {
+				Lesson string `json:"lesson"`
+			} `json:"slots"`
+		}
+		if err := json.Unmarshal(b, &l); err != nil {
+			e.t.Fatal(err)
+		}
+		if l.Pattern == "task-preflight" && l.Slots.Lesson != "" && l.PromptID != nil {
+			out = append(out, *l.PromptID+" "+l.State+" "+l.Slots.Lesson)
+		}
+	}
+	return out
+}
+
+// TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout (LEARN-RIDE1, R13 D1):
+// a lesson whose text names a path the request names arrives on that prompt,
+// as the last line of its preflight note: one note, the one the prompt gets
+// with no lesson and the lesson's line after it, and one steer line, the
+// note's, which names the lesson. It is given then, so a later prompt that
+// names the path again carries no lesson, and no learned-fact line is
+// written for it. Break: route the lesson beside the note, which supersedes
+// it, and it arrives a prompt late or not at all.
+func TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout(t *testing.T) {
+	e := newLessonEnv(t)
+	goFilesIn(t, e.cwd, "internal/a.go", "internal/b.go")
+	plain := e.prompt("s-lrn17r-plain", "prompt-1", "fix internal/a.go").context
+	if strings.Count(plain, "\n") != 4 {
+		t.Fatalf("premise: a request naming a path gets the five-line note, got %q", plain)
+	}
+	e.ledger([][2]string{{"a-gen", aGenLesson}}, "a-gen")
+	e.start("s-lrn17r")
+	if out := e.prompt("s-lrn17r", "prompt-1", "fix internal/a.go"); out.context != plain+"\n"+aGenRide {
+		t.Errorf("prompt-1: additionalContext %q,\nwant the note it gets with no lesson and the lesson as its last line", out.context)
+	}
+	out := e.prompt("s-lrn17r", "prompt-2", "now fix internal/a.go and internal/b.go")
+	if out.context == "" || strings.Contains(out.context, "a-gen") {
+		t.Errorf("prompt-2: additionalContext %q, want a note for internal/b.go and no lesson: a-gen rode prompt-1", out.context)
+	}
+	if out := e.prompt("s-lrn17r", "prompt-3", "continue please"); strings.Contains(out.context, "a-gen") {
+		t.Errorf("prompt-3: additionalContext %q, want no lesson: a-gen was given on prompt-1", out.context)
+	}
+	if got := e.lessonLines("s-lrn17r"); len(got) != 0 {
+		t.Errorf("learned-fact lines %v, want none: the lesson rode the note", got)
+	}
+	if got, want := e.rodeLessons("s-lrn17r"), []string{"prompt-1 delivered a-gen"}; !slices.Equal(got, want) {
+		t.Errorf("task-preflight lines naming a lesson: %v, want %v", got, want)
+	}
+}
+
+// TestLRN17r_ALessonRidesNoPromptAboutAnotherFile (#197 F2, through
+// recapTurn): a lesson about cmd/domain.go does not ride a prompt that names
+// main.go, a name its path holds. That prompt gets the note it gets with no
+// lesson, and the lesson is not spent, so it rides the prompt that names
+// cmd/domain.go. Break: match a path by substring, and the main.go prompt
+// carries a line about another file and spends the lesson's once a session.
+func TestLRN17r_ALessonRidesNoPromptAboutAnotherFile(t *testing.T) {
+	const lesson = "cmd/domain.go is generated from gen/domain.tmpl"
+	e := newLessonEnv(t)
+	goFilesIn(t, e.cwd, "main.go", "cmd/domain.go")
+	plain := e.prompt("s-lrn17r-other-plain", "prompt-1", "fix main.go").context
+	if plain == "" {
+		t.Fatal("premise: a request naming main.go gets a note")
+	}
+	e.ledger([][2]string{{"dom-gen", lesson}}, "dom-gen")
+	e.start("s-lrn17r-other")
+	if out := e.prompt("s-lrn17r-other", "prompt-1", "fix main.go"); out.context != plain {
+		t.Errorf("prompt-1 names main.go: additionalContext %q,\nwant the note it gets with no lesson, %q", out.context, plain)
+	}
+	ride := "lesson dom-gen, approved for this project: '" + lesson + "'"
+	if out := e.prompt("s-lrn17r-other", "prompt-2", "fix cmd/domain.go"); !strings.HasSuffix(out.context, "\n"+ride) {
+		t.Errorf("prompt-2 names cmd/domain.go: additionalContext %q, want the lesson as the note's last line", out.context)
+	}
+	if got, want := e.rodeLessons("s-lrn17r-other"), []string{"prompt-2 delivered dom-gen"}; !slices.Equal(got, want) {
+		t.Errorf("task-preflight lines naming a lesson: %v, want %v", got, want)
 	}
 }
 

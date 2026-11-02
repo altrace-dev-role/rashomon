@@ -524,7 +524,7 @@ func TestSV1f_EveryVerbHasJSONWithClosedKeys(t *testing.T) {
 	if rows, _ := lessons["lessons"].([]any); len(rows) != 2 {
 		t.Errorf("lessons has %v, want two rows", lessons["lessons"])
 	} else {
-		check("lessons[0]", rows[0], "confirmed", "fires", "id", "refuted", "since_unix_ms", "text", "tier", "unresolved")
+		check("lessons[0]", rows[0], "approved_unix_ms", "confirmed", "fires", "id", "refuted", "since_unix_ms", "text", "tier", "unresolved")
 	}
 }
 

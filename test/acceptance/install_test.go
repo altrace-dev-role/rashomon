@@ -27,6 +27,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -135,6 +136,105 @@ func TestInstall_PlacesOnlyTheCLI(t *testing.T) {
 	})
 }
 
+// installRelease writes a release of version for this machine into a new
+// directory, as TestInstall_PlacesOnlyTheCLI's: the CLI's archive, a proxy
+// archive the installer must never ask for, and checksums.txt naming both.
+func installRelease(t *testing.T, version string) (release, cli, proxy string) {
+	t.Helper()
+	release = t.TempDir()
+	cli = fmt.Sprintf("rashomon_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
+	proxy = fmt.Sprintf("altrace_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
+	var sums strings.Builder
+	for name, member := range map[string]string{cli: "rashomon", proxy: "altrace"} {
+		sum := writeArchive(t, filepath.Join(release, name), member)
+		fmt.Fprintf(&sums, "%s  %s\n", sum, name)
+	}
+	if err := os.WriteFile(filepath.Join(release, "checksums.txt"), []byte(sums.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return release, cli, proxy
+}
+
+// TestInstall_TheLatestReleaseNeedsNoAPI (INSTALL-NOTOOLCHAIN1): with no
+// RASHOMON_VERSION, the path a stranger takes, the installer reads the
+// latest release's checksums.txt from the release host and takes the
+// version from the archive it names, under both fetchers. It never asks
+// api.github.com, which allows 60 unauthenticated requests an hour per
+// address: a shared office address on launch day would leave strangers
+// with no install. Break: resolve the tag through the API again.
+func TestInstall_TheLatestReleaseNeedsNoAPI(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh installs on macOS and Linux, amd64 and arm64")
+	}
+	release, cli, proxy := installRelease(t, "0.0.2")
+	shims := t.TempDir()
+	writeShim(t, shims, "curl", curlShim)
+	run := runInstaller(t, release, "", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+	assertOnlyTheCLI(t, run, cli, proxy)
+	want := []string{"https://github.com/altrace-dev-role/rashomon/releases/latest/download/checksums.txt",
+		"https://release.invalid/download/v0.0.2/" + cli}
+	for _, w := range want {
+		if !slices.Contains(run.requested, w) {
+			t.Errorf("the installer never asked for %s:\n%s", w, strings.Join(run.requested, "\n"))
+		}
+	}
+	for _, u := range run.requested {
+		if strings.Contains(u, "api.github.com") {
+			t.Errorf("the installer asked the API, %s", u)
+		}
+	}
+}
+
+// TestInstall_FailuresSayWhatToDoWithoutGo (INSTALL-NOTOOLCHAIN1): a latest
+// release the installer cannot read names a tag to set, never a toolchain
+// to install; and Windows (Git Bash, MSYS, Cygwin) is told it is not
+// supported yet and pointed at WSL, never that the release ships no Windows
+// archive, which it does. Every line fits 80 columns. Break: suggest
+// `go install` again, or let any uname outside macOS and Linux read alike.
+func TestInstall_FailuresSayWhatToDoWithoutGo(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("install.sh runs under a POSIX sh")
+	}
+	empty := t.TempDir()
+	for _, c := range []struct {
+		name, uname string
+		want, not   []string
+	}{
+		{"no latest release readable", "", []string{"RASHOMON_VERSION=<tag>", "github.com/altrace-dev-role/rashomon/releases"},
+			[]string{"go install"}},
+		{"Git Bash", "MINGW64_NT-10.0-22631", []string{"Windows is not supported yet", "WSL"},
+			[]string{"this release ships macOS and Linux"}},
+		{"Cygwin", "CYGWIN_NT-10.0-22631", []string{"Windows is not supported yet", "WSL"}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			shims := t.TempDir()
+			writeShim(t, shims, "curl", curlShim)
+			if c.uname != "" {
+				writeShim(t, shims, "uname", "#!/bin/sh\ncase \"$1\" in -s) echo "+c.uname+" ;; *) echo x86_64 ;; esac\n")
+			}
+			run, err := installer(t, empty, "", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+			if err == nil {
+				t.Fatalf("install.sh succeeded with nothing to install:\n%s", run.out)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(run.out, w) {
+					t.Errorf("the installer's output does not say %q:\n%s", w, run.out)
+				}
+			}
+			for _, n := range c.not {
+				if strings.Contains(run.out, n) {
+					t.Errorf("the installer's output says %q:\n%s", n, run.out)
+				}
+			}
+			for _, l := range strings.Split(run.out, "\n") {
+				if n := len([]rune(l)); n > 80 {
+					t.Errorf("a line is %d columns, want at most 80: %q", n, l)
+				}
+			}
+		})
+	}
+}
+
 // installRun is what one installer run left behind.
 type installRun struct {
 	out       string   // stdout and stderr together
@@ -145,6 +245,17 @@ type installRun struct {
 // runInstaller runs install.sh against the local release with the given PATH.
 func runInstaller(t *testing.T, release, version, pathEnv string) installRun {
 	t.Helper()
+	run, err := installer(t, release, version, pathEnv)
+	if err != nil {
+		t.Fatalf("install.sh failed: %v\n%s", err, run.out)
+	}
+	return run
+}
+
+// installer is runInstaller that hands back the installer's failure. An
+// empty version leaves RASHOMON_VERSION unset, the path a stranger takes.
+func installer(t *testing.T, release, version, pathEnv string) (installRun, error) {
+	t.Helper()
 	log := filepath.Join(t.TempDir(), "requests.log")
 	installDir := filepath.Join(t.TempDir(), "bin")
 
@@ -152,18 +263,20 @@ func runInstaller(t *testing.T, release, version, pathEnv string) installRun {
 	cmd.Env = append(os.Environ(),
 		"PATH="+pathEnv,
 		"HOME="+t.TempDir(),
-		"RASHOMON_VERSION=v"+version,
+		"RASHOMON_VERSION=",
 		"RASHOMON_BASE_URL=https://release.invalid/download",
 		"RASHOMON_INSTALL_DIR="+installDir,
 		"SHIM_RELEASE="+release,
 		"SHIM_LOG="+log,
 	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("install.sh failed: %v\n%s", err, out)
+	if version != "" {
+		cmd.Env = append(cmd.Env, "RASHOMON_VERSION=v"+version)
 	}
-
+	out, err := cmd.CombinedOutput()
 	run := installRun{out: string(out)}
+	if err != nil {
+		return run, err
+	}
 	entries, err := os.ReadDir(installDir)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +289,7 @@ func runInstaller(t *testing.T, release, version, pathEnv string) installRun {
 		t.Fatalf("the stand-in fetcher logged nothing, so it was not the one used: %v\n%s", err, out)
 	}
 	run.requested = strings.Fields(string(requested))
-	return run
+	return run, nil
 }
 
 // assertOnlyTheCLI holds one run to the alpha's installer contract.

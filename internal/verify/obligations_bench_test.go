@@ -12,7 +12,7 @@ import (
 // without the Stop view's other parts.
 func ledgerAt(r *store.Run, seq int64) []Obligation {
 	var c classified
-	snap := evaluate(r, nil, nil, nil, Point{Kind: PointStop, Seq: seq, SessionID: "s1"}, time.Time{}, &c)
+	snap := evaluate(r, nil, nil, nil, nil, Point{Kind: PointStop, Seq: seq, SessionID: "s1"}, time.Time{}, &c)
 	return ledgerOf(snap, &c, expected(snap, evidenceIn{atStop: true}))
 }
 

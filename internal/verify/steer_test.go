@@ -51,7 +51,7 @@ func callPoint(t *testing.T, r *store.Run, n int64) Point {
 func facts(t *testing.T, r *store.Run, n int64, pt Point) []Finding {
 	t.Helper()
 	var c classified
-	snap := evaluate(r, nil, nil, nil, pt, time.Time{}, &c)
+	snap := evaluate(r, nil, nil, nil, nil, pt, time.Time{}, &c)
 	return regressionLocations(snap, c.runs, c.writes, pt, stEvent, "t"+strconv.FormatInt(n, 10))
 }
 

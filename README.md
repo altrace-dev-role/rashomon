@@ -40,12 +40,18 @@ not in this build.
 Needs Claude Code 2.1.280 or later, macOS or Linux, and Go 1.25 or later. In a
 terminal, not inside a Claude Code session:
 
+    curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
+    rashomon watch
+
+That installs the latest release, v1.2.0-alpha.1. To build `main` instead,
+which is ahead of the release and has everything this README describes:
+
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
     rashomon watch
 
 `go install` puts `rashomon` in `$(go env GOPATH)/bin`, which must be on your
 `PATH`. `watch` shows what installing does and asks `Install? [y/N]`; answer `y`,
-then use `claude` as usual. The plugin and `curl` routes install v1.1.0 ([below](#other-install-routes)).
+then use `claude` as usual.
 
 ## What you'll see
 
@@ -97,9 +103,11 @@ holdout off with it.
 
 ## Other install routes
 
-These install the v1.1.0 release, which records and reports only: none of the
-notes, spec trust or declared gates in this README, until the next release.
-Use one route: `watch` refuses beside an enabled plugin.
+These install the v1.2.0-alpha.1 release: `rashomon version` prints
+`1.2.0-alpha.1`. Use one route: `watch` refuses beside an enabled plugin.
+This README describes `main`, which is ahead of that release: `rashomon steer`,
+`summary`, `scorecard`, `why`, `lessons`, `brief` and `measure` are in `main`
+only, until the next release.
 
     claude plugin marketplace add altrace-dev-role/rashomon
     claude plugin install rashomon@rashomon
@@ -131,12 +139,38 @@ not use; it does not guess why.
 ## What it records, and what it never stores
 
 The record is a folder on your machine: `$RASHOMON_HOME`, else
-`$XDG_STATE_HOME/rashomon`, else `~/.local/state/rashomon`. For each tool call
-it records the tool, the command's program name, an argument count and a keyed
-digest of the command (not its text), the hostnames the call names, the working
-directory, the transcript path, the file an edit or write names, the files a
-shell line may write, and how the call ended. At each turn's end it records the
-state of each test and build check, and it logs each note it gave the agent.
+`$XDG_STATE_HOME/rashomon`, else `~/.local/state/rashomon`. This is the full
+list of what it keeps, word for word as the install screen's full view
+(`rashomon consent --full`) prints it:
+
+> STORED ON THIS MACHINE, NEVER SENT BY RASHOMON: for each tool call, the tool;
+> which agent made it; the program a command runs, its argument count and a
+> keyed digest of its input (never its text); the hostnames it names; the
+> transcript path; the permission mode; at record scope v5, the one a yes here
+> records, the working directory, the project root, the file an edit names and
+> the files a shell line may write, in the clear, and the SHA-256 of the file an
+> edit names as the call left it (never its content), where `rashomon status`
+> shows the scope and this build has no setting that leaves these out; how it
+> ended (outcome, exit code, interrupted or not, duration); and the time each
+> hook event first ran in a session. For a test or build line: the runner it ran
+> in and the pipe stage that hid its exit status, each one word from a closed
+> list the binary ships (never a word of the command); for a gate run, one
+> closed word that classifies its output (a passing or failing summary, a
+> failure line, an empty run, the exit status the line printed for its runner as
+> pass or fail, or none found), and not the output, which is read in memory; one
+> bit, when true, that says the hook could not read where a shell line started
+> because a leading cd was one it does not read (never the directory it names);
+> in a note's steer line, where the outcome it rests on came from (the exit
+> status or the output's summary); and, when a prompt's preflight finds no spec,
+> one small hint that holds the turn's id and a keyed digest of the directory it
+> looked from, nothing else. At each turn end: the state of each test or build
+> check, a keyed digest of each claim sentence it checks in the agent's final
+> message (never the sentence), and the digest of the project spec
+> (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word
+> for word, except a request's preflight note at record scope v4, which keeps a
+> count of the paths it named and keyed digests of them. Your on and off
+> switches (config.json), and for a project's switch (summary_projects,
+> steer_projects) the project's directory.
 
 It never stores your prompts, the agent's messages, tool output or file
 contents. It reads each prompt in memory to write the preflight note and keeps
@@ -194,7 +228,9 @@ for pytest, `go test`, `cargo test`, jest and vitest. A pass from a piped `make`
 `npm run`, yarn or pnpm still reads as hidden, because a pass line in their output
 belongs to one step, not the whole command; their own failure markers (make's
 `***`, `npm ERR!`, yarn's `error Command failed`, pnpm's `ERR_PNPM`) do read as a
-failure. The Stop line then names the
+failure. A piped run read as failed this way, after an earlier green and edits
+between the two, raises the same regression note an unpiped failure does, at that
+call. The Stop line then names the
 runner and where the result came from, for example "python3 -m pytest passed
 after the last edit (read from its output; the pipe hid the exit status)". A run
 still reads as hidden when a later stage is any other command (`head`, `grep`,
@@ -229,8 +265,8 @@ rashomon report --nono-audit ~/.local/state/nono/audit/<nono session id>/audit-e
 The sandbox section has something to count only when nono filters the
 network. In v1.1.0, with nono's `claude` profile, which leaves the network
 unfiltered, the trail holds no network event at all, and the section reads
-`0 allowed, 0 denied` however many hosts the session reached. A build from
-`main` says `the trail holds no network events` instead. An allowed `http://`
+`0 allowed, 0 denied` however many hosts the session reached. From v1.2.0-alpha.1
+on, and in `main`, it says `the trail holds no network events` instead. An allowed `http://`
 request leaves nothing in the sandbox section. `--chain` still lists its host
 under the call if the command named it.
 
@@ -272,7 +308,7 @@ under the call if the command named it.
 
 ## Status
 
-Alpha. The latest release is v1.1.0, and `main` is ahead of it. Release
+Alpha. The latest release is v1.2.0-alpha.1, and `main` may be ahead of it. Release
 binaries are not signed, and there is no Homebrew formula. **Windows is not
 usable yet**: the release publishes Windows binaries, but `watch` quotes the
 installed command for a POSIX shell.

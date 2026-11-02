@@ -202,8 +202,9 @@ func TestLRN17g_ApprovalRefusesTextThatCannotArrive(t *testing.T) {
 }
 
 // TestLRN17k_ImportSaysWhenAnApprovedLessonIsSent: the import line says what
-// the consent screen says: an approved lesson is sent with a prompt that
-// carries no preflight note, and waits while one is sent.
+// the consent screen says: an approved lesson rides the preflight note of a
+// prompt that names a path it names (LEARN-RIDE1), and otherwise is sent with
+// the next prompt that carries no preflight note.
 func TestLRN17k_ImportSaysWhenAnApprovedLessonIsSent(t *testing.T) {
 	bodiesHere(t)
 	file := filepath.Join(t.TempDir(), "shared.json")
@@ -211,7 +212,9 @@ func TestLRN17k_ImportSaysWhenAnApprovedLessonIsSent(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, errOut := learnRun(t, "import", file)
-	if code != 0 || !strings.Contains(out, "sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session, and waits while a preflight note is sent") {
+	if code != 0 || !strings.Contains(out, "sent with a prompt, at most one per prompt and each lesson once a session: "+
+		"as the last line of that prompt's preflight note when the prompt names a path the lesson names, "+
+		"and otherwise with the next prompt that carries no preflight note; ") {
 		t.Errorf("import: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 }

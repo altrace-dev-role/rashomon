@@ -819,6 +819,108 @@ func TestStrict_NotJudgedFailsOnlyWithTheFlag(t *testing.T) {
 	}
 }
 
+// SWEEP-BASELINE1. A red baseline printed only the last 4000 bytes of go
+// test's output, so a package that failed early was cut whenever a later
+// failing package printed more than that: batch/1's shard 4 stopped on a red
+// baseline that named no package. Every "--- FAIL", "FAIL\t" and "panic:"
+// line, and the "running tests:" block of a timeout, is printed first, then
+// the tail. The fixture fails three times: a quietly; b by its 2s -timeout,
+// which prints no "--- FAIL" (its TestMain shortens its own -test.timeout,
+// so the sweep's go test command stays as it is); then c with 6000 bytes of
+// log, which alone fills the tail.
+func TestSWB1_ARedBaselineNamesEveryFailureBeforeTheTail(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	for _, d := range []string{"a", "b", "c", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(root, "a", "a.go"), "package a\n\nfunc A() int { return 1 }\n")
+	write(t, filepath.Join(root, "a", "a_test.go"),
+		"package a\n\nimport \"testing\"\n\nfunc TestFixtureQuiet_(t *testing.T) { t.Error(\"quiet failure\") }\n")
+	write(t, filepath.Join(root, "b", "b_test.go"), `package b
+
+import (
+	"flag"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	flag.Set("test.timeout", "2s")
+	os.Exit(m.Run())
+}
+
+func TestFixtureSlow_(t *testing.T) { time.Sleep(time.Minute) }
+`)
+	write(t, filepath.Join(root, "c", "c_test.go"),
+		"package c\n\nimport (\n\t\"strings\"\n\t\"testing\"\n)\n\n"+
+			"func TestFixtureLoud_(t *testing.T) { t.Log(strings.Repeat(\"loud \", 1200)); t.Error(\"loud failure\") }\n")
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant behind a red baseline", "a/a.go", "return 1", "return 2", "TestFixtureQuiet_"))
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code == 0 {
+		t.Fatalf("a red baseline exited 0:\n%s", out)
+	}
+	tail := strings.Index(out, "loud loud")
+	if tail < 0 {
+		t.Fatalf("premise: the loud package's log is not in the output, so nothing was cut:\n%s", out)
+	}
+	for _, want := range []string{
+		"--- FAIL: TestFixtureQuiet_", "FAIL\tfixture/a",
+		"panic: test timed out after 2s", "running tests:", "\t\tTestFixtureSlow_ (", "FAIL\tfixture/b",
+		"--- FAIL: TestFixtureLoud_", "FAIL\tfixture/c",
+	} {
+		i := strings.Index(out, want)
+		if i < 0 {
+			t.Errorf("the red baseline's output does not name %q", want)
+		} else if i > tail {
+			t.Errorf("%q is printed only after the tail, not before it", want)
+		}
+	}
+}
+
+// SWEEP-BASELINE1 (a). A package that fails to build prints no "--- FAIL":
+// its compiler errors are on stderr alone, and a red baseline printed only
+// the last 2000 bytes of it, so an early package's errors were cut whenever
+// a later package's own errors filled more than that on their own. The
+// fixture fails to build twice: a with one short, early error; z with one
+// error whose undefined name alone is 3000 bytes, filling the tail by
+// itself. A third package, ok, holds nothing but the judging test's name:
+// sweep.py's --check requires it to exist, even though the baseline check
+// returns before any mutant runs.
+func TestSWB1a_ARedBaselineThatFailsToBuildNamesTheCompilerErrorFirst(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	for _, d := range []string{"a", "z", "ok", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(root, "a", "a.go"), "package a\n\nfunc A() int { return undefinedEarly }\n")
+	loud := "undefinedLoud" + strings.Repeat("Z", 3000)
+	write(t, filepath.Join(root, "z", "z.go"), "package z\n\nfunc Z() { "+loud+"() }\n")
+	write(t, filepath.Join(root, "ok", "ok_test.go"),
+		"package ok\n\nimport \"testing\"\n\nfunc TestFixtureA_(t *testing.T) {}\n")
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant behind a baseline that does not build", "a/a.go", "undefinedEarly", "stillUndefinedEarly", "TestFixtureA_"))
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code == 0 {
+		t.Fatalf("a baseline that does not build exited 0:\n%s", out)
+	}
+	if !strings.Contains(out, strings.Repeat("Z", 50)) {
+		t.Fatalf("premise: z's own long error is not in the output at all, so nothing was cut by the 2000-byte stderr tail:\n%s", out)
+	}
+	if !strings.Contains(out, "# fixture/a") || !strings.Contains(out, "undefined: undefinedEarly") {
+		t.Errorf("the red baseline's output does not name a's compiler error, cut by z's own long one filling the stderr tail:\n%s", out)
+	}
+}
+
 // The sweep job runs only on a manual dispatch, so two dispatches share no
 // state; cancelling an older one when a newer dispatch starts costs nothing
 // and saves a runner's minutes.
