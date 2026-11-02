@@ -262,6 +262,7 @@ func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
 	if err := ignoreAll(dir); err != nil {
 		return synced{}, err
 	}
+	removeCut(dir)
 	if err := writeAtomic(logPath, enc); err != nil {
 		return synced{}, err
 	}
@@ -269,6 +270,25 @@ func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
 		return synced{}, err
 	}
 	return s, writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, enc, digests))
+}
+
+// removeCut removes from dir the temp files of a sync cut off inside
+// writeAtomic, which Claude Code does to a background hook still running
+// when the session exits: regular files named ".<name>.tmp-*" for each file
+// writeAtomic writes. The caller holds the root lock, so no live sync has
+// one open. A file it cannot remove stays for the next sync.
+func removeCut(dir string) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		for _, name := range []string{pgraph.LogFile, pgraph.DigestsFile, walkFile} {
+			if e.Type().IsRegular() && strings.HasPrefix(e.Name(), "."+name+".tmp-") {
+				_ = os.Remove(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
 }
 
 // readLog is the log at path, named name in an error, or an empty one where
