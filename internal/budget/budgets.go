@@ -42,6 +42,27 @@ type Budgets struct {
 	Benchmarks        []Benchmark         `json:"benchmarks"`
 	Growth            []Growth            `json:"growth"`
 	Disk              Disk                `json:"disk"`
+	Background        []Background        `json:"background"`
+}
+
+// Background is one process the plugin's hooks.json starts with async true:
+// pgraph sync -hook at SessionStart and Stop (PW1b-ON-230). Claude Code runs
+// it beside the reply and off every tool call, so the Entries rows, which
+// measure the rashomon binary, and INV-10's per-call figures never see it;
+// this row is its own. CurrentMaxRSSMiBP50 is the median peak RSS of nine
+// runs on a tree the last run already read, the run every reply without a Go
+// edit pays (a walk of the Go files, then exit), on test/perf's fixture
+// module; TestPW1b_TheBackgroundHookStaysWithinItsRow gates it under the
+// perf tag on the reference platform. CurrentWallMsP50 is information only.
+// A load's cost follows the code it loads, so a fixture figure says nothing
+// of a person's repository: Basis gives this repository's.
+type Background struct {
+	ID                  string   `json:"id"`
+	Events              []string `json:"events"`
+	Command             []string `json:"command"`
+	CurrentMaxRSSMiBP50 float64  `json:"current_maxrss_mib_p50"`
+	CurrentWallMsP50    float64  `json:"current_wall_ms_p50"`
+	Basis               string   `json:"basis"`
 }
 
 // Platform is one gated platform: what the figures were measured on, how a

@@ -120,6 +120,9 @@ func CaseGate(id string) string { return "case " + id }
 // distinct from EntryGate's warm RSS/alloc row for the same id.
 func ColdGate(id string) string { return "cold " + id }
 
+// BackgroundGate names a background row's gate (PW1b-ON-230).
+func BackgroundGate(id string) string { return "" }
+
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
 // 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
 // intake, both of which this tree carries.

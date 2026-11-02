@@ -109,6 +109,12 @@ func ToleranceNote(measured, budget, tolerance float64, until string, after floa
 	return ""
 }
 
+// backgroundBudget is entryBudget's decision for a background row, which no
+// platform has an override for yet.
+func backgroundBudget(plat string, r budget.Background) (budgetMiB float64, gated bool, why string) {
+	return 0, false, ""
+}
+
 func percent(f float64) string { return strconv.Itoa(int(f*100+0.5)) + "%" }
 
 // Median of xs; false with none.
