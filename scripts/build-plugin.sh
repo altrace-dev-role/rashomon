@@ -1,7 +1,9 @@
 #!/bin/sh
 # Builds the plugin's recorders -- one per platform, named the way
-# plugin/bin/rashomon looks for them -- and packs plugin/ into
-# dist/rashomon-plugin.zip, the archive .claude-plugin/marketplace.json installs.
+# plugin/bin/rashomon looks for them -- and the platform graph's writer the same
+# way for plugin/bin/pgraph (from the pgraph module, which rashomon never
+# imports), and packs plugin/ into dist/rashomon-plugin.zip, the archive
+# .claude-plugin/marketplace.json installs.
 #
 #   scripts/build-plugin.sh [version]
 #
@@ -11,7 +13,7 @@
 set -eu
 version=${1:-dev}
 cd "$(dirname "$0")/.."
-rm -f plugin/bin/rashomon-*
+rm -f plugin/bin/rashomon-* plugin/bin/pgraph-*
 for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
 	os=${target%/*}
 	arch=${target#*/}
@@ -19,6 +21,8 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
 	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
 		-ldflags "-s -w -X main.version=$version" \
 		-o "plugin/bin/rashomon-$os-$arch" ./cmd/rashomon
+	(cd pgraph && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+		-ldflags "-s -w" -o "../plugin/bin/pgraph-$os-$arch" ./cmd/pgraph)
 done
 mkdir -p dist
 rm -f dist/rashomon-plugin.zip
