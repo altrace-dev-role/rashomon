@@ -167,6 +167,18 @@ func TestWR1_AWrappedRunIsFoundByItsOutput(t *testing.T) {
 			[]string{"verified - go test (inferred) passed after the last edit."}, []string{notRun, unknown}, wr1Runs{1, 1, 0, 0}},
 		{"control: a log read with cat is no run", []wr1Call{{command: "cat test.log", stdout: wr1GoPass}},
 			[]string{"go test (inferred) not run after the last edit."}, []string{verified, unknown}, wr1Runs{0, 0, 0, 0}},
+		// Added after the L1 replay of 11-01 22:3x: a line that starts with
+		// date, echo or sleep is class execute, and its output was read; a
+		// status check that greps an old job log ("date; ...; grep -E
+		// 'FAIL|ok ' job.log", eng-4's transcript line 811) printed "go test
+		// failed in a wrapper (call N)" though no go test ran in it. A log is
+		// not a run whatever starts the line.
+		{"control: a log grepped after date is no run", []wr1Call{{command: "date; grep -E 'FAIL|ok ' job.log", stdout: wr1GoFail}},
+			[]string{"go test (inferred) not run after the last edit."}, []string{verified, unknown, "failed in a wrapper"}, wr1Runs{0, 0, 0, 0}},
+		{"control: a log tailed after echo is no run", []wr1Call{{command: "echo checking; tail -5 job.log", stdout: wr1GoPass}},
+			[]string{"go test (inferred) not run after the last edit."}, []string{verified, unknown, wrapped}, wr1Runs{0, 0, 0, 0}},
+		{"control: a log read after sleep is no run", []wr1Call{{command: "sleep 5; cat job.log", stdout: wr1GoPass}},
+			[]string{"go test (inferred) not run after the last edit."}, []string{verified, unknown, wrapped}, wr1Runs{0, 0, 0, 0}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			e := newSteerEnv(t)
