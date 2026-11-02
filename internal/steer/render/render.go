@@ -206,6 +206,29 @@ type ClaimVsRecordInferredUnnamedBinding struct {
 	Gate slot.Gate `slot:"gate"`
 }
 
+// ClaimVsRecordInferredPlatformBinding is the inferred command's note with
+// the changed Go packages the last turn end's platform read owed a go test
+// (PW1b-ON-230 step 3, ARCH-INLINE1 item 3, #218: they ride in the gate's
+// note).
+type ClaimVsRecordInferredPlatformBinding struct {
+	Gate     slot.Gate     `slot:"gate"`
+	Path     slot.Path     `slot:"path"`
+	Packages slot.PathList `slot:"packages"`
+}
+
+// ClaimVsRecordInferredUnnamedPlatformBinding is that note for a file the
+// path slot refuses.
+type ClaimVsRecordInferredUnnamedPlatformBinding struct {
+	Gate     slot.Gate     `slot:"gate"`
+	Packages slot.PathList `slot:"packages"`
+}
+
+// ClaimVsRecordPlatformBinding is the owed packages' note where no gate is
+// owed.
+type ClaimVsRecordPlatformBinding struct {
+	Packages slot.PathList `slot:"packages"`
+}
+
 // LearnedFactBinding is learned-fact's note at a prompt (LEARN-DELIVER1): an
 // approved lesson's id and its text, which renders in quotes.
 type LearnedFactBinding struct {
@@ -408,6 +431,7 @@ func templates() map[templateKey]template {
 		}
 		maps.Copy(templatesOnce.v, templatesLater())
 		maps.Copy(templatesOnce.v, templatesRide())
+		maps.Copy(templatesOnce.v, templatesSymbols())
 	})
 	return templatesOnce.v
 }
@@ -424,6 +448,18 @@ func templatesLater() map[templateKey]template {
 		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredUnnamedBinding{})}: {
 			id:     "claim-vs-record-inferred-unnamed/v1",
 			format: "rashomon record: gate {gate} was not run after the last edit.",
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredPlatformBinding{})}: {
+			id:     "claim-vs-record-inferred-platform/v1",
+			format: "rashomon record: gate {gate} (from {path}) was not run after the last edit." + owedPackages,
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredUnnamedPlatformBinding{})}: {
+			id:     "claim-vs-record-inferred-unnamed-platform/v1",
+			format: "rashomon record: gate {gate} was not run after the last edit." + owedPackages,
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordPlatformBinding{})}: {
+			id:     "claim-vs-record-platform/v1",
+			format: "rashomon record:" + owedPackages,
 		},
 		{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
 			id:     "learned-fact/v1",
@@ -444,9 +480,8 @@ func templatesLater() map[templateKey]template {
 			format: preflightHead + preflightLines,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
-			id: "task-preflight-first/v1",
-			format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
-				"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+			id:     "task-preflight-first/v1",
+			format: firstHead + preflightLines,
 		},
 		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
 			id:     "platform-rule-command/v1",
@@ -504,6 +539,14 @@ func templatesRide() map[templateKey]template {
 		},
 	}
 }
+
+// owedPackages is the sentence the owed packages take in a claim-vs-record
+// note at the next prompt: the Stop's platform line, to the model.
+const owedPackages = " Go packages the last reply changed with no passing go test since: {packages}."
+
+// firstHead is the first prompt's two header lines, the brief's.
+const firstHead = "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
+	"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n"
 
 // templatesOnce holds what templates returns, built on its first call and
 // never at init (RES-2).

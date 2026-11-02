@@ -220,7 +220,8 @@ func TestPW1b2_TheDoneFlagNamesThePackageToo(t *testing.T) {
 
 // TestPW1b2_TheReadIsDisclosed: the full screen's pgraph paragraph says the
 // recorder reads .pgraph at the end of each reply, and what it says from
-// it. Break: wire the read without the words.
+// it, to the person and then, at the next prompt, to the agent (step 3).
+// Break: wire the read without the words.
 func TestPW1b2_TheReadIsDisclosed(t *testing.T) {
 	inv, err := disclose.Default()
 	if err != nil {
@@ -232,7 +233,7 @@ func TestPW1b2_TheReadIsDisclosed(t *testing.T) {
 			text = p.Text
 		}
 	}
-	for _, w := range []string{"At the end of each reply rashomon reads .pgraph", "go test", "only to you"} {
+	for _, w := range []string{"At the end of each reply rashomon reads .pgraph", "go test", "tells you", "your next prompt's note tells the agent the same"} {
 		if !strings.Contains(text, w) {
 			t.Errorf("the full screen's pgraph paragraph does not say %q:\n%s", w, text)
 		}

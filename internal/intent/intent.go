@@ -74,6 +74,21 @@ type Project struct {
 	NowMS int64
 	// Lstat looks up a root-relative slash path; nil confines lookups to Root.
 	Lstat func(rel string) (fs.FileInfo, error)
+	// Symbols is what the project's platform graph proves of the names a
+	// request named, at most MaxSymbolNames of them (PW1b-ON-230 step 3);
+	// nil reads no graph.
+	Symbols func(names []string) []Symbol
+}
+
+// MaxSymbolNames is how many named identifiers a request looks up.
+const MaxSymbolNames = 4
+
+// Symbol is a symbol the request named as the platform graph proves it
+// (Project.Symbols): its spelling after its package, the directory of the
+// package that declares it, and its direct callers and their packages.
+type Symbol struct {
+	Name, Dir         string
+	Callers, Packages int
 }
 
 // Rule is a spec rule that applies to the request.
@@ -112,6 +127,10 @@ type Intent struct {
 	Truncated bool
 	// Named says the request named a path or an identifier, found or not.
 	Named bool
+	// Symbols is the named identifiers the platform graph proves, as
+	// Project.Symbols gave them: a request's word is kept only where the
+	// repository declares it, as a path is only where the project holds it.
+	Symbols []Symbol
 }
 
 // The unknown values Resolve and Finding say, from EnumPreflightUnknown.
