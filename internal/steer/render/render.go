@@ -388,6 +388,16 @@ func templates() map[templateKey]template {
 				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago); this call then wrote {count} files. " +
 					"No later run of the gate is recorded.",
 			},
+			{pattern.BlastRadius, reflect.TypeOf(BlastRadiusBinding{})}: {
+				id: "blast-radius/v1",
+				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
+					"(at least {count}): {dirs}; test files are in {tested} of them.",
+			},
+			{pattern.BlastRadius, reflect.TypeOf(BlastRadiusDegradedBinding{})}: {
+				id: "blast-radius-degraded/v1",
+				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
+					"(at least {count}); test files are in {tested} of them.",
+			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
 				id:     "integrity-store-touched/v1",
 				format: "rashomon record: this call wrote {path}, under .claude/rashomon, which holds the spec and the task file rashomon reads.",

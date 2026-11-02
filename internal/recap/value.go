@@ -59,6 +59,7 @@ func titles() map[string]string {
 			string(pattern.ClaimVsRecord):      "record check",
 			string(pattern.MaskedStatus):       "hidden-status note",
 			string(pattern.StaleEvidence):      "stale-gate note",
+			string(pattern.BlastRadius):        "callers note",
 		}
 	})
 	return titlesOnce.v
