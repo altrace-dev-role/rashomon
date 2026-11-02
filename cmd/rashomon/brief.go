@@ -64,17 +64,13 @@ func cmdBrief(args []string, stdout io.Writer) error {
 // clear or a payload with no source, it is the brief of the project holding
 // the payload's cwd, its verify line naming the report command of the entry
 // that ran it (briefFromPlugin); at resume, one line pointing at the verb; at
-// compact and any other source, nothing. It is one JSON object whose only key
-// is systemMessage, the channel the user reads and the model does not, as
-// recap_turn.go prints its line. A cwd that is not a directory this process
-// can read prints nothing (B7).
-func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout io.Writer) {
+// compact and any other source, nothing. lead, the plugin route's consent
+// line (pluginConsent), opens it whenever it is not "", the brief or none. It
+// is one JSON object whose only key is systemMessage, the channel the user
+// reads and the model does not, as recap_turn.go prints its line. A cwd that
+// is not a directory this process can read prints no brief (B7).
+func printBrief(args []string, payload *hookio.Payload, st *store.Store, lead string, stdout io.Writer) {
 	if len(args) == 0 || args[0] != store.PhaseStart || payload == nil {
-		return
-	}
-	var source, cwd, sessionID string
-	err := payload.Strs(hookio.Into(hookio.Source, &source), hookio.Into(hookio.CWD, &cwd), hookio.Into(hookio.SessionID, &sessionID))
-	if err != nil || cwd == "" {
 		return
 	}
 	// Arm off withholds every hook print (card MEASURE1, armOff), the
@@ -83,23 +79,39 @@ func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout 
 	if armOff(st.Root()) {
 		return
 	}
-	root, ok := briefRoot(cwd)
-	var msg string
-	switch {
-	case !ok:
-		return
-	case source == "" || source == "startup" || source == "clear":
-		plugin := briefFromPlugin(args)
-		b := buildBrief(cwd, root, st.Root(), brief.Pointer{Plugin: plugin, SessionID: sessionID})
-		msg = brief.Render(withLastSession(b, st, root, sessionID, plugin))
-	case source == "resume":
-		msg = brief.Resumed(root)
-	default:
+	msg := briefText(args, payload, st)
+	if lead != "" {
+		msg = strings.TrimSuffix(lead+"\n"+msg, "\n")
+	}
+	if msg == "" {
 		return
 	}
 	if b, err := json.Marshal(map[string]string{"systemMessage": msg}); err == nil {
 		_, _ = stdout.Write(b)
 	}
+}
+
+// briefText is printBrief's brief: the project's at startup, clear or no
+// source, the resume line at resume, and "" at any other source, for a
+// payload with no cwd, or a cwd this process cannot read.
+func briefText(args []string, payload *hookio.Payload, st *store.Store) string {
+	var source, cwd, sessionID string
+	err := payload.Strs(hookio.Into(hookio.Source, &source), hookio.Into(hookio.CWD, &cwd), hookio.Into(hookio.SessionID, &sessionID))
+	if err != nil || cwd == "" {
+		return ""
+	}
+	root, ok := briefRoot(cwd)
+	switch {
+	case !ok:
+		return ""
+	case source == "" || source == "startup" || source == "clear":
+		plugin := briefFromPlugin(args)
+		b := buildBrief(cwd, root, st.Root(), brief.Pointer{Plugin: plugin, SessionID: sessionID})
+		return brief.Render(withLastSession(b, st, root, sessionID, plugin))
+	case source == "resume":
+		return brief.Resumed(root)
+	}
+	return ""
 }
 
 // withLastSession replaces the brief's verify line with the line for the
