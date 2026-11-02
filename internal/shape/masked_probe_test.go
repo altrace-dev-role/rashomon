@@ -56,6 +56,8 @@ func TestFF1_PrintedStatus(t *testing.T) {
 		{"the variable assigned twice", `make check; rc=$?; rc=0; echo "rc=$rc"`, "rc=2\n", 0, false},
 		{"the variable set after a non-runner", `make check; git status; rc=$?; echo "rc=$rc"`, "rc=1\n", 0, false},
 		{"the run after ||", `cd a || make check; echo "EXIT=$?"`, "EXIT=0\n", 0, false},
+		{"the run after || with no cd", `git pull || make check; echo "EXIT=$?"`, "EXIT=0\n", 0, false},
+		{"the run after || true", `true || make check; echo "EXIT=$?"`, "EXIT=0\n", 0, false},
 		{"a negated run", `! make check; echo "EXIT=$?"`, "EXIT=0\n", 0, false},
 		{"a run in a subshell", `(make check); echo "EXIT=$?"`, "EXIT=2\n", 0, false},
 		{"a run in the background", `make check & echo "EXIT=$?"`, "EXIT=0\n", 0, false},

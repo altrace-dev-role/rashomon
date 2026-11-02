@@ -11,7 +11,7 @@ m("FF-1 $? reads a runner that is not its pipe's last stage", S,
 m("FF-1 zsh pipestatus counts from 0", S,
   "\t\t\tfrom = 1 // zsh counts from 1\n", "\t\t\tfrom = 0\n", P)
 m("FF-1 two different statuses read", S,
-  "\tif conflict || !seen {\n", "\tif !seen {\n", P)
+  "\tif conflict || !seen {\n", "\tif conflict && false || !seen {\n", P)
 m("FF-1 a line that holds the template in part reads", S,
   "\treturn got, len(line) == 0\n", "\treturn got, true\n", P)
 m("FF-1 leading zeros read", S,
@@ -20,10 +20,8 @@ m("FF-1 a status past 255 reads", S,
   "\t\tif v > 255 {\n", "\t\tif v > 1<<20 {\n", P)
 m("FF-1 a literal dollar reads", S,
   "\t\tif t.meta || t.ticks > 0 || t.litDollar {\n", "\t\tif t.meta || t.ticks > 0 {\n", P)
-m("FF-1 a run after || reads", S,
-  "\t\t\t\tif op != \"&&\" {\n", "\t\t\t\tif op == \"\" {\n", P)
 m("FF-1 a run with a hiding flag reads", S,
-  "\t\t\tif !isSimple || s.hides || it.bg", "\t\t\tif !isSimple || it.bg", P)
+  "\t\t\tif !isSimple || s.hides || it.bg", "\t\t\tif !isSimple || false && s.hides || it.bg", P)
 m("FF-1 a variable assigned twice reads", S,
   "\t\t\tif run >= 0 && rStage == rStages-1 && p.namedOnce(name) {\n", "\t\t\tif run >= 0 && rStage == rStages-1 {\n", P)
 m("FF-1 a redirected echo reads", S,

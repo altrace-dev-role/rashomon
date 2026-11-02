@@ -131,9 +131,11 @@ func (p *lineParser) printedLines(body list, g int) (lines []probeLine, last int
 
 // runIn reports whether the list item runs group g, and where it does, the
 // runner's stage in the item's last pipeline and that pipeline's length. ok
-// is false where g runs in the item anywhere but as a stage of the last
-// pipeline of an && chain, unnegated and in the foreground, or with a hiding
-// flag on it.
+// is false where g runs in the item anywhere but as a stage of its last
+// pipeline, unnegated and in the foreground, or with a hiding flag on it. An
+// and-or list before that pipeline takes no rule of its own here: maskedRun
+// already refuses a line whose runner a || before it can skip, as the three
+// || rows of TestFF1_PrintedStatus pin.
 func (p *lineParser) runIn(it listItem, g int) (stage, stages int, holds, ok bool) {
 	pipes := it.ao.pipes
 	for i, pl := range pipes {
@@ -144,11 +146,6 @@ func (p *lineParser) runIn(it listItem, g int) (stage, stages int, holds, ok boo
 			s, isSimple := c.(*simple)
 			if !isSimple || s.hides || it.bg || pl.neg || i != len(pipes)-1 || holds {
 				return 0, 0, false, false
-			}
-			for _, op := range it.ao.ops {
-				if op != "&&" {
-					return 0, 0, false, false
-				}
 			}
 			stage, stages, holds = k, len(pl.stages), true
 		}
