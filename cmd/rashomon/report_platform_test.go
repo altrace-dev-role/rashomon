@@ -48,31 +48,35 @@ func plwRow(t *testing.T, o lwOut) []string {
 	return nil
 }
 
-// TestPLW1s_TheLedgerVerbCarriesPlatformRowsAndTheStopReadsNone (card
-// PL-WIRE1 c, S1): over calls recorded through the hooks, the Stop's view
-// reads no platform graph and owes no platform row; `rashomon report
-// --ledger` reads the pgraph log at the project root and owes the edited
-// package's row, open with the edit as evidence, named by the package and
-// its hash, under a header naming what it read; after `go test ./pkg` the
-// row is met. Break: pass no reader to the verb's replay, and the ledger
-// holds no platform row.
-func TestPLW1s_TheLedgerVerbCarriesPlatformRowsAndTheStopReadsNone(t *testing.T) {
+// TestPLW1s_TheLedgerVerbAndTheStopOweTheSamePlatformRow (card PL-WIRE1
+// c; PW1b-ON-230 step 2 reverses its S1, the ledger verb alone reading the
+// graph): over calls recorded through the hooks, the Stop's view reads the
+// pgraph log at the project root and owes the edited package's row, open;
+// `rashomon report --ledger` reads it again and owes the same row, named by
+// the package and its hash, under a header naming what it read; after `go
+// test ./pkg` the row is met. Break: leave the Stop's reader unset, or pass
+// none to the verb's replay, and one of the two holds no platform row.
+func TestPLW1s_TheLedgerVerbAndTheStopOweTheSamePlatformRow(t *testing.T) {
 	f := plwProject(t, true)
 	f.land("toolu_e", "Edit", lwEdit(filepath.Join(f.cwd, "pkg", "a.go")), nil)
 	v := f.stop()
+	var stopRow []verify.Obligation
 	for _, o := range v.Obligations {
 		if o.Kind == verify.PlatformImpact {
-			t.Errorf("the Stop owes a platform row %+v; it reads no platform graph", o)
+			stopRow = append(stopRow, o)
 		}
 	}
-	if v.Platform.Families != nil {
-		t.Errorf("the Stop read %+v; it reads no platform graph", v.Platform)
+	if v.Platform.Log != verify.LogRead || len(stopRow) != 1 || stopRow[0].State != verify.ObligationOpen {
+		t.Fatalf("the Stop read %+v and owes %+v; want the log read and the package's one row open", v.Platform, stopRow)
 	}
 	o := f.out()
 	row := plwRow(t, o)
 	if row == nil || row[1] != verify.ScopeSession || row[3] != verify.SourcePlatform || row[4] != string(verify.ObligationOpen) ||
 		!strings.HasPrefix(row[6], "example.com/m/pkg@") || len(strings.TrimPrefix(row[6], "example.com/m/pkg@")) != 64 {
 		t.Fatalf("after the edit: row %q, want open in the session scope, source platform, family the package and its hash", row)
+	}
+	if row[0] != stopRow[0].ID {
+		t.Errorf("the ledger owes %s, the Stop %s: want the same row", row[0], stopRow[0].ID)
 	}
 	if o.head["platform"] != "read now, not at the Stop: pgraph log, digests, go.mod, Go files" {
 		t.Errorf("header platform %q", o.head["platform"])
