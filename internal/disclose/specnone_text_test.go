@@ -15,7 +15,7 @@ func TestSR1z_StoredNamesTheSpecNoneMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range inv.Paragraphs {
-		if strings.HasPrefix(p.Text, "STORED:") {
+		if strings.HasPrefix(p.Text, StoredHeading+" for each tool call") {
 			const want = "when a prompt's preflight finds no spec, one small hint that holds the turn's id and a keyed digest of the directory it looked from, nothing else"
 			if !strings.Contains(p.Text, want) {
 				t.Errorf("STORED does not say %q:\n%s", want, p.Text)
