@@ -5,6 +5,8 @@
 # Each break removes one rule and names the tests that hold it.
 H = "internal/hook/handle.go"
 S = "internal/shape/leading.go"
+E = "internal/verify/evaluate.go"
+LS = "cmd/rashomon/laststop.go"
 m("PR-1 a cd line keeps the cwd's project", H,
   "\tcase len(d.Leading) > 0:\n\t\treturn start\n", "", "TestPR1_|TestPR1c_")
 m("PR-1 a file tool's path is not read", H,
@@ -43,3 +45,20 @@ m("PR-1 a directory not on disk is taken as proven outside", H,
 m("PR-1 a directory inside the cwd under no .git is no project", H,
   "\treturn key == root || strings.HasPrefix(key, strings.TrimSuffix(root, \"/\")+\"/\")\n",
   "\treturn key == root\n", "TestPR1b_|TestPR1d_")
+# The root (manager 07:4x, eng-2's finding): a judgment has one project, the
+# one its spec and inferred gate were read from, the Stop's and the post's
+# cwd key, and the replay takes the one the Stop's checkpoint recorded.
+m("PR-1 evaluate takes the root from the declarations", E,
+  "\tif root == \"\" {\n\t\troot = projectRoot(run.Declarations, at)\n",
+  "\tif true {\n\t\troot = projectRoot(run.Declarations, at)\n", "TestPR1e_|TestPR1f_")
+m("PR-1 the Stop passes no root", "cmd/rashomon/recap_stop.go",
+  "Tail: []byte(p.LastMessageTail), Root: key,", "Tail: []byte(p.LastMessageTail),", "TestPR1e_")
+m("PR-1 the Stop view drops the root", "internal/verify/stop.go",
+  "in.Inferred, in.Root, pt, now, &c)", "in.Inferred, \"\", pt, now, &c)", "TestPR1e_")
+m("PR-1 the post passes no root", "internal/hook/steerstep.go",
+  "p.st.Key(), key, pt, env.Now,", "p.st.Key(), \"\", pt, env.Now,", "TestPR1f_")
+m("PR-1 the steer view drops the root", "internal/verify/steer.go",
+  "evaluate(run, idx, sp, key, nil, root, pt, now, &c)", "evaluate(run, idx, sp, key, nil, \"\", pt, now, &c)", "TestPR1f_")
+m("PR-1 the replay ignores the checkpoint's root", LS,
+  "\tif cp != nil {\n\t\troot = cp.ProjectRoot\n", "\tif false {\n\t\troot = cp.ProjectRoot\n", "TestPR1e_")
+m("PR-1 the replay judges under the declarations' root", LS, "\tin.Root = root\n", "", "TestPR1e_")
