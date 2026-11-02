@@ -197,7 +197,7 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 		}
-		wrapper := shape.WrapperRun(d.ToolName, runner, masked, d.Shape.VerbClass) ||
+		wrapper := shape.WrapperRun(d.ToolName, d.Shape.Program, runner, masked, d.Shape.VerbClass) ||
 			isGateRun(d, masked, runner) && gateout.Delegated(g.Program)
 		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest), wrapper: wrapper})
 	}

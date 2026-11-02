@@ -367,7 +367,7 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 func countWrapped(out *TestRuns, d store.Declaration, executed map[string][]store.Execution, denied map[string]bool) {
 	rec := outcomeRecord(executed[d.ToolUseID])
 	if rec == nil || rec.GateOutput == nil || !gateout.Runner(rec.GateOutput.Parser) ||
-		!shape.WrapperRun(d.ToolName, d.Shape.RunnerDigest, d.Shape.StatusMasked, d.Shape.VerbClass) {
+		!shape.WrapperRun(d.ToolName, d.Shape.Program, d.Shape.RunnerDigest, d.Shape.StatusMasked, d.Shape.VerbClass) {
 		return
 	}
 	switch o := testOutcome(d, executed, denied); {

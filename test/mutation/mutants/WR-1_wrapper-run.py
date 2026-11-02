@@ -50,9 +50,15 @@ m("WR-1 an empty stderr overwrites stdout's signed read", O,
 m("WR-1 the consent screen keeps a wrapper's word unnamed", "internal/disclose/paragraphs.go",
   "or another command whose output holds a line a test runner prints about its run, ", "",
   "TestWR1_TheDisclosureNamesTheWrapperRead")
-m("WR-1 a call of any class is read as a wrapper", S,
-  "verbClass == VerbExecute && ", "",
-  "TestGO1c_NonGateCallHasNoGateOutput")
+m("WR-1 a line of any program is read as a wrapper", S,
+  "toolName == \"Bash\" && wrapperProgram(program) && !GateRun(", "toolName == \"Bash\" && !GateRun(",
+  "TestWR1_AWrapperRunStartsWithAShellOrAScript")
+m("WR-1 a shell is no wrapper", S,
+  "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn true\n", "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn false\n",
+  "TestWR1_AWrapperRunStartsWithAShellOrAScript")
+m("WR-1 a script named by its extension is no wrapper", S,
+  "return strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\")", "return false",
+  "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 
 # verify: how a wrapped run is decided and bound.
 m("WR-1 a wrapped run is red by the wrapper's exit", V,

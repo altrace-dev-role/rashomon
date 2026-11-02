@@ -329,7 +329,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 			}
 		}
 		rec.GateOutput = &out
-	} else if shape.WrapperRun(pl.ToolName, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
+	} else if shape.WrapperRun(pl.ToolName, s.Program, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
 		if out := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(out.Parser) {
 			rec.GateOutput = &out
 		}
