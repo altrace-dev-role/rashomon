@@ -4,6 +4,8 @@ package perf
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -514,17 +516,37 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				}
 				return p
 			}
+			var control func()
 			if c.Entry == "recap" {
-				// The Stop's transcript scan (CE-1): the real recap entry on a
-				// seeded session, over a transcript of PayloadBytes, with a
-				// delivered note the transcript does not hold.
-				r.seed(t, Seed{Calls: recapSeedCalls})
-				mk = r.scanStop(t, c.PayloadBytes)
+				switch c.ID {
+				case pgraphCase:
+					// The Stop's platform read (PW1b-ON-230 step 2): a
+					// started session and one edit in a module whose .pgraph
+					// holds a log of PayloadBytes the walk file vouches for.
+					// Not the seeded session: its coverage sentence wins
+					// over the line the premise reads (recap.Line).
+					r.seed(t, Seed{ProbeStart: true})
+					mk, control = r.pgraphStop(t, c.PayloadBytes)
+				default:
+					// The Stop's transcript scan (CE-1): the real recap entry
+					// on a seeded session, over a transcript of PayloadBytes,
+					// with a delivered note the transcript does not hold.
+					r.seed(t, Seed{Calls: recapSeedCalls})
+					mk = r.scanStop(t, c.PayloadBytes)
+				}
 			}
 			got, attributable, floorWhy := r.medianRSS(t, []string{c.Entry}, mk)
 			if !attributable {
 				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, floorWhy)
 				return
+			}
+			if control != nil {
+				// The same Stop with no .pgraph, logged, so each platform's
+				// log says what the read adds, the figure its row is from.
+				control()
+				if base, ok, _ := r.medianRSS(t, []string{c.Entry}, mk); ok {
+					t.Logf("%s: %.2f MiB; the same Stop with no .pgraph: %.2f MiB; the read adds %.2f MiB", c.ID, got, base, got-base)
+				}
 			}
 			budgetMiB, gated, reportOnly, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)
 			switch {
@@ -629,6 +651,149 @@ func scanTranscript(size int, sessionID string, at time.Time) []byte {
 		out = append(out, line...)
 	}
 	return out
+}
+
+// pgraphCase is the Stop's platform read case (PW1b-ON-230 step 2), and
+// pgraphModule the module its log describes.
+const (
+	pgraphCase   = "recap.stop.pgraph3MiB"
+	pgraphModule = "example.com/perf/m"
+)
+
+// pgraphStop returns the payload builder of the pgraph case and its control.
+// It adds to the started session one Edit of a Go file, recorded through the
+// installed hook and post entries, in a module whose .pgraph holds a log of
+// exactly size bytes, its digests and a walk file vouching for both, as a
+// sync writes them (pgraphFiles): the Stop then takes that module as the
+// project, decodes the whole log and hashes the edited package's files. A
+// premise run checks the Stop names the package, so a case whose read stood
+// down fails rather than reads light; the measured Stops are that Stop
+// again. control moves .pgraph away: the same Stop with nothing to read, the
+// figure the row's delta is from.
+func (r rig) pgraphStop(t *testing.T, size int) (mk func(i int) []byte, control func()) {
+	t.Helper()
+	mod, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := map[string]string{
+		"go.mod":                   "module " + pgraphModule + "\n\ngo 1.25.0\n",
+		".github/workflows/ci.yml": "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n",
+		"internal/p000/f.go":       "package p000\n\nfunc Func0000() {}\n",
+		"internal/p000/f_test.go":  "package p000\n",
+	}
+	logb, digests := pgraphFiles(size, src)
+	state := filepath.Join(mod, ".pgraph")
+	files := map[string][]byte{
+		".git/HEAD":              []byte("ref: refs/heads/main\n"),
+		".pgraph/pgraph.log":     logb,
+		".pgraph/pgraph.digests": digests,
+		".pgraph/pgraph.walk": []byte("pgraph-walk v0\nwalk\t" + sha256Hex(append(append([]byte(nil), logb...), digests...)) +
+			"\nlog\t" + sha256Hex(logb) + "\ndigests\t" + sha256Hex(digests) + "\n"),
+		".pgraph/.gitignore": []byte("*\n"),
+	}
+	for name, body := range src {
+		files[name] = []byte(body)
+	}
+	for name, body := range files {
+		p := filepath.Join(mod, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
+	file := filepath.Join(mod, "internal", "p000", "f.go")
+	edit := map[string]any{"file_path": file, "old_string": "package", "new_string": "package", "replace_all": false}
+	for _, step := range []struct{ entry, event string }{{"hook", "PreToolUse"}, {"post", "PostToolUse"}} {
+		p := map[string]any{"hook_event_name": step.event, "session_id": payload.Session, "transcript_path": transcript,
+			"cwd": mod, "permission_mode": "default", "tool_name": "Edit", "tool_input": edit, "tool_use_id": "toolu_pgraph"}
+		if step.entry == "post" {
+			p["tool_response"] = map[string]any{"stdout": "ok\n", "stderr": "", "interrupted": false}
+		}
+		in, err := json.Marshal(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(rashomonBin, r.args([]string{step.entry})...)
+		cmd.Stdin, cmd.Env = bytes.NewReader(in), r.env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("recording the edit through %s: %v\n%s", step.entry, err, out)
+		}
+	}
+	stop, err := json.Marshal(map[string]any{"hook_event_name": "Stop", "session_id": payload.Session, "transcript_path": transcript,
+		"cwd": mod, "stop_hook_active": false, "last_assistant_message": payload.FinalMessage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(rashomonBin, r.args([]string{"recap"})...)
+	var stderr bytes.Buffer
+	cmd.Stdin, cmd.Env, cmd.Stderr = bytes.NewReader(stop), r.env, &stderr
+	out, err := cmd.Output()
+	if err != nil || !bytes.Contains(out, []byte("go test ./internal/p000/...")) {
+		rep := exec.Command(rashomonBin, "report", "--session", payload.Session)
+		rep.Env = r.env
+		report, _ := rep.CombinedOutput()
+		t.Fatalf("premise: the Stop does not name the edited package, so it read no log (%v):\n%s\nstderr: %s\nreport --session:\n%s", err, out, stderr.Bytes(), report)
+	}
+	return func(int) []byte { return stop }, func() {
+		if err := os.Rename(state, state+".off"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// pgraphFiles is a log of exactly size bytes and its digests, as a sync of a
+// module of 120 packages under pgraphModule writes them: each record is one
+// package declaring a function or one function calling another, the shape
+// and line length of this repository's own log (3.0 MB, 54 KB of digests),
+// every record an assertion, so the whole log is live. src's Go files are
+// listed under their own sha256, so the edited package reads fresh; the
+// other files are listed and not there, as nothing reads them.
+func pgraphFiles(size int, src map[string]string) (logb, digests []byte) {
+	const pkgs = 120
+	pkg := func(i int) string { return fmt.Sprintf("%s/internal/p%03d", pgraphModule, i) }
+	fn := func(i, k int) string { return fmt.Sprintf("func:%s.Func%04d", pkg(i), k) }
+	rec := func(subject, predicate, object string) string {
+		return "+\t" + subject + "\t" + predicate + "\t" + object + "\tPROVEN\tdarwin/arm64/cgo=0/tags=\t" +
+			strings.Repeat("c0ffee12", 5) + "\tgotypes@v2\n"
+	}
+	var b strings.Builder
+	b.WriteString("pgraph-log v0\n")
+	for k := 0; ; k++ {
+		i := k % pkgs
+		next := rec("pkg:"+pkg(i), "declares", fn(i, k)) + rec(fn(i, k), "calls", fn((i*7+3)%pkgs, k/2))
+		if b.Len()+len(next)+512 > size {
+			break
+		}
+		b.WriteString(next)
+	}
+	pad := rec("pkg:"+pkg(0), "declares", fn(0, 9999))
+	b.WriteString(rec("pkg:"+pkg(0), "declares", fn(0, 9999)+strings.Repeat("x", size-b.Len()-len(pad))))
+	var d strings.Builder
+	d.WriteString("pgraph-digests v0\n")
+	for i := 0; i < pkgs; i++ {
+		names := []string{"f.go", "f_test.go", "g.go", "h.go"}
+		if i == 0 {
+			names = names[:2] // the edited package: src's two files
+		}
+		for _, f := range names {
+			rel := fmt.Sprintf("internal/p%03d/%s", i, f)
+			body, ok := src[rel]
+			if !ok {
+				body = rel
+			}
+			d.WriteString(pkg(i) + "\t" + rel + "\t" + sha256Hex([]byte(body)) + "\n")
+		}
+	}
+	return []byte(b.String()), []byte(d.String())
+}
+
+func sha256Hex(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
 }
 
 // TestRES28b_EveryEntryStaysWithinItsRow: every entry row's peak-RSS p50
