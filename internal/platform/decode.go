@@ -2,6 +2,7 @@ package platform
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -73,8 +74,12 @@ type fact struct {
 // is not op and seven non-empty fields with a v0 predicate and tier, so an
 // answer is never built from a log this package cannot read whole. It looks
 // at ctx every checkEvery records and returns ctx's error, with nothing else,
-// once ctx is done. hook, when not nil, runs before each record.
-func decode(ctx context.Context, r io.Reader, hook func()) (map[fact]struct{}, error) {
+// once ctx is done. hook, when not nil, runs before each record. keep, when
+// not nil, is the subjects the set holds: every record is still read and
+// checked in place, and one whose subject keep refuses is dropped before
+// anything is allocated for it, so the set, and the memory a read takes,
+// follow keep's packages, not the size of the log.
+func decode(ctx context.Context, r io.Reader, hook func(), keep func(subject []byte) bool) (map[fact]struct{}, error) {
 	br := bufio.NewReaderSize(r, maxRecordBytes+1)
 	header, err := readLine(br)
 	if err != nil {
@@ -100,10 +105,14 @@ func decode(ctx context.Context, r io.Reader, hook func()) (map[fact]struct{}, e
 		if err != nil {
 			return nil, fmt.Errorf("platform: line %d: %w", n+1, err)
 		}
-		f, assert, err := parseRecord(line)
+		c, assert, err := parseRecord(line)
 		if err != nil {
 			return nil, fmt.Errorf("platform: line %d: %w", n+1, err)
 		}
+		if keep != nil && !keep(c[1]) {
+			continue
+		}
+		f := c.fact()
 		if assert {
 			live[f] = struct{}{}
 		} else {
@@ -130,44 +139,66 @@ func readLine(br *bufio.Reader) ([]byte, error) {
 	return nil, err
 }
 
+// record is a v0 record's eight fields, in place in the line they were read
+// from: valid only until the next read.
+type record [8][]byte
+
 // parseRecord reads "op subject predicate object tier config commit
-// extractor", tab-separated, op being + or -.
-func parseRecord(line []byte) (fact, bool, error) {
-	var c [8]string
-	rest := string(line)
+// extractor", tab-separated, op being + or -, without allocating.
+func parseRecord(line []byte) (record, bool, error) {
+	var c record
+	rest := line
 	for i := range c {
 		if i == len(c)-1 {
 			c[i] = rest
 			break
 		}
-		j := strings.IndexByte(rest, '\t')
+		j := bytes.IndexByte(rest, '\t')
 		if j < 0 {
-			return fact{}, false, fmt.Errorf("%d fields, want %d", i+1, len(c))
+			return record{}, false, fmt.Errorf("%d fields, want %d", i+1, len(c))
 		}
 		c[i], rest = rest[:j], rest[j+1:]
 	}
 	for i, s := range c[1:] {
-		if s == "" || len(s) > maxFieldBytes || strings.IndexByte(s, '\t') >= 0 {
-			return fact{}, false, fmt.Errorf("field %d is empty, over %d bytes or holds a tab", i+2, maxFieldBytes)
+		if len(s) == 0 || len(s) > maxFieldBytes || bytes.IndexByte(s, '\t') >= 0 {
+			return record{}, false, fmt.Errorf("field %d is empty, over %d bytes or holds a tab", i+2, maxFieldBytes)
 		}
 	}
 	var assert bool
-	switch c[0] {
+	switch string(c[0]) {
 	case "+":
 		assert = true
 	case "-":
 	default:
-		return fact{}, false, fmt.Errorf("unknown op %q", c[0])
+		return record{}, false, fmt.Errorf("unknown op %q", c[0])
 	}
-	switch c[2] {
+	switch string(c[2]) {
 	case predDeclares, predCalls, predEmbeds, predImplements, predImplPtr, predMayCall:
 	default:
-		return fact{}, false, fmt.Errorf("unknown predicate %q", c[2])
+		return record{}, false, fmt.Errorf("unknown predicate %q", c[2])
 	}
-	if tierRank(c[4]) == 0 {
-		return fact{}, false, fmt.Errorf("unknown tier %q", c[4])
+	switch string(c[4]) {
+	case tierProven, tierAlgorithmic, tierProposed:
+	default:
+		return record{}, false, fmt.Errorf("unknown tier %q", c[4])
 	}
-	return fact{subject: c[1], predicate: c[2], object: c[3], tier: c[4], config: c[5]}, assert, nil
+	return c, assert, nil
+}
+
+// fact is the record's statement in one allocation of the five fields it
+// keeps, so a held fact holds neither its commit nor its extractor.
+func (c *record) fact() fact {
+	var b strings.Builder
+	b.Grow(len(c[1]) + len(c[2]) + len(c[3]) + len(c[4]) + len(c[5]))
+	for _, f := range c[1:6] {
+		b.Write(f)
+	}
+	s := b.String()
+	var out [5]string
+	for i, f := range c[1:6] {
+		out[i], s = s[:len(f)], s[len(f):]
+	}
+	return fact{subject: out[0], predicate: out[1], object: out[2], tier: out[3], config: out[4]}
 }
 
 // tierRank is a tier's place in the view's order, PROVEN first; 0 for a

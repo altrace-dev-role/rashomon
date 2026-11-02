@@ -13,6 +13,7 @@
 package platform
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
@@ -120,7 +121,7 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 		return nil, ErrOverCap
 	}
 	h := sha256.New()
-	live, err := decode(ctx, io.TeeReader(f, h), hook)
+	live, err := decode(ctx, io.TeeReader(f, h), hook, keepFor(wanted))
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +140,32 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 		fams = append(fams, Family{Package: pkg, Hash: familyHash(bySubject, "pkg:"+pkg)})
 	}
 	return fams, nil
+}
+
+// keepFor is decode's keep for wanted's families: a subject that is a
+// wanted package ("pkg:" and its path) or a symbol of one (pgraph's
+// spelling: kind, ':', the declaring package's path, '.', the rest;
+// pgraph/identity.go id). Every member familyHash reads is a package's own
+// symbol, so the families are the ones the whole log gives; a path that is
+// another's prefix up to a dot (gopkg.in/yaml, gopkg.in/yaml.v3) holds a
+// few more facts, never fewer.
+func keepFor(wanted []string) func(subject []byte) bool {
+	return func(subject []byte) bool {
+		i := bytes.IndexByte(subject, ':')
+		if i < 0 {
+			return false
+		}
+		kind, rest := subject[:i], subject[i+1:]
+		for _, p := range wanted {
+			if len(rest) == len(p) && string(kind) == "pkg" && string(rest) == p {
+				return true
+			}
+			if len(rest) > len(p) && rest[len(p)] == '.' && string(rest[:len(p)]) == p {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // familyHash is the SHA-256 of the view lines whose subject is the package or

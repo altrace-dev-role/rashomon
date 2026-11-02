@@ -33,8 +33,9 @@ m("VER-6.1 any header is read as v0", D, '\tif string(header) != LogHeader {\n',
 m("VER-6.1 no byte cap", P, '\tif info.Size() > limit {\n', '\tif info.Size() > limit && false {\n', "TestPL8f_")
 m("VER-6.1 a log at the cap is refused", P, '\tif info.Size() > limit {\n', '\tif info.Size() >= limit {\n', "TestPL8f_")
 m("VER-6.1 an empty field is accepted", D,
-  '\t\tif s == "" || len(s) > maxFieldBytes ||', '\t\tif len(s) > maxFieldBytes ||', "TestPL8e2_")
-m("VER-6.1 an unknown tier is accepted", D, '\tif tierRank(c[4]) == 0 {\n', '\tif false {\n', "TestPL8e2_")
+  '\t\tif len(s) == 0 || len(s) > maxFieldBytes ||', '\t\tif len(s) > maxFieldBytes ||', "TestPL8e2_")
+m("VER-6.1 an unknown tier is accepted", D,
+  '\t\treturn record{}, false, fmt.Errorf("unknown tier %q", c[4])\n', '', "TestPL8e2_")
 m("VER-6.1 a torn last line is accepted", D,
   '\tcase err == io.EOF:\n\t\treturn nil, errors.New("the log lacks a final newline")\n',
   '\tcase err == io.EOF:\n\t\treturn line, nil\n', "TestPL8e2_")
