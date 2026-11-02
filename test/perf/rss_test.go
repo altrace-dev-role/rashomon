@@ -517,8 +517,16 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				return p
 			}
 			var control func()
+			command := []string{c.Entry}
 			if c.Entry == "recap" {
 				switch c.ID {
+				case pgraphPromptCase:
+					// The prompt's symbol read (PW1b-ON-230 step 3): the
+					// recap.pending row's session and a prompt naming a
+					// symbol the vouched 3 MiB log proves.
+					r.seed(t, Seed{Calls: pendingSeedCalls})
+					command = []string{"recap", "pending"}
+					mk, control = r.pgraphPrompt(t, c.PayloadBytes)
 				case pgraphCase:
 					// The Stop's platform read (PW1b-ON-230 step 2): a
 					// started session and one edit in a module whose .pgraph
@@ -535,17 +543,17 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 					mk = r.scanStop(t, c.PayloadBytes)
 				}
 			}
-			got, attributable, floorWhy := r.medianRSS(t, []string{c.Entry}, mk)
+			got, attributable, floorWhy := r.medianRSS(t, command, mk)
 			if !attributable {
 				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, floorWhy)
 				return
 			}
 			if control != nil {
-				// The same Stop with no .pgraph, logged, so each platform's
+				// The same run with no .pgraph, logged, so each platform's
 				// log says what the read adds, the figure its row is from.
 				control()
-				if base, ok, _ := r.medianRSS(t, []string{c.Entry}, mk); ok {
-					t.Logf("%s: %.2f MiB; the same Stop with no .pgraph: %.2f MiB; the read adds %.2f MiB", c.ID, got, base, got-base)
+				if base, ok, _ := r.medianRSS(t, command, mk); ok {
+					t.Logf("%s: %.2f MiB; the same run with no .pgraph: %.2f MiB; the read adds %.2f MiB", c.ID, got, base, got-base)
 				}
 			}
 			budgetMiB, gated, reportOnly, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)
@@ -566,8 +574,13 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 }
 
 // recapSeedCalls is the session size recap.stop's row is measured on
-// (BenchmarkRecap/100), so the scan case differs from it by the scan alone.
-const recapSeedCalls = 100
+// (BenchmarkRecap/100), so the scan case differs from it by the scan alone;
+// pendingSeedCalls is recap.pending's (BenchmarkRecapPending/10), so the
+// prompt's pgraph case differs from it by the read alone.
+const (
+	recapSeedCalls   = 100
+	pendingSeedCalls = 10
+)
 
 // scanStop returns the payload builder of the recap.stop scan case: a
 // transcript of exactly size bytes, of 2 KiB records with a 1 MiB line (held,
@@ -653,11 +666,13 @@ func scanTranscript(size int, sessionID string, at time.Time) []byte {
 	return out
 }
 
-// pgraphCase is the Stop's platform read case (PW1b-ON-230 step 2), and
-// pgraphModule the module its log describes.
+// pgraphCase is the Stop's platform read case (PW1b-ON-230 step 2),
+// pgraphPromptCase the prompt's symbol read case (step 3), and pgraphModule
+// the module their logs describe.
 const (
-	pgraphCase   = "recap.stop.pgraph3MiB"
-	pgraphModule = "example.com/perf/m"
+	pgraphCase       = "recap.stop.pgraph3MiB"
+	pgraphPromptCase = "recap.pending.pgraph3MiB"
+	pgraphModule     = "example.com/perf/m"
 )
 
 // pgraphStop returns the payload builder of the pgraph case and its control.
@@ -672,38 +687,13 @@ const (
 // figure the row's delta is from.
 func (r rig) pgraphStop(t *testing.T, size int) (mk func(i int) []byte, control func()) {
 	t.Helper()
-	mod, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
 	src := map[string]string{
 		"go.mod":                   "module " + pgraphModule + "\n\ngo 1.25.0\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n",
 		"internal/p000/f.go":       "package p000\n\nfunc Func0000() {}\n",
 		"internal/p000/f_test.go":  "package p000\n",
 	}
-	logb, digests := pgraphFiles(size, src)
-	state := filepath.Join(mod, ".pgraph")
-	files := map[string][]byte{
-		".git/HEAD":              []byte("ref: refs/heads/main\n"),
-		".pgraph/pgraph.log":     logb,
-		".pgraph/pgraph.digests": digests,
-		".pgraph/pgraph.walk": []byte("pgraph-walk v0\nwalk\t" + sha256Hex(append(append([]byte(nil), logb...), digests...)) +
-			"\nlog\t" + sha256Hex(logb) + "\ndigests\t" + sha256Hex(digests) + "\n"),
-		".pgraph/.gitignore": []byte("*\n"),
-	}
-	for name, body := range src {
-		files[name] = []byte(body)
-	}
-	for name, body := range files {
-		p := filepath.Join(mod, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, body, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	mod, state := pgraphTree(t, size, src, nil)
 	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
 	file := filepath.Join(mod, "internal", "p000", "f.go")
 	edit := map[string]any{"file_path": file, "old_string": "package", "new_string": "package", "replace_all": false}
@@ -745,14 +735,106 @@ func (r rig) pgraphStop(t *testing.T, size int) (mk func(i int) []byte, control 
 	}
 }
 
+// pgraphTree writes src under a new directory, with a .git and a .pgraph
+// holding a log of exactly size bytes, extra's records first, its digests
+// and a walk file vouching for both, as a sync writes them (pgraphFiles).
+// It returns the module's directory and its .pgraph.
+func pgraphTree(t *testing.T, size int, src map[string]string, extra [][3]string) (mod, state string) {
+	t.Helper()
+	mod, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	logb, digests := pgraphFiles(size, src, extra)
+	state = filepath.Join(mod, ".pgraph")
+	files := map[string][]byte{
+		".git/HEAD":              []byte("ref: refs/heads/main\n"),
+		".pgraph/pgraph.log":     logb,
+		".pgraph/pgraph.digests": digests,
+		".pgraph/pgraph.walk": []byte("pgraph-walk v0\nwalk\t" + sha256Hex(append(append([]byte(nil), logb...), digests...)) +
+			"\nlog\t" + sha256Hex(logb) + "\ndigests\t" + sha256Hex(digests) + "\n"),
+		".pgraph/.gitignore": []byte("*\n"),
+	}
+	for name, body := range src {
+		files[name] = []byte(body)
+	}
+	for name, body := range files {
+		p := filepath.Join(mod, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return mod, state
+}
+
+// pgraphPrompt returns the payload builder of the prompt's pgraph case and
+// its control. The prompt names CountRows, which the log has p000 declare
+// and p001 and p002 call, in a module whose .pgraph holds a log of exactly
+// size bytes in the Stop case's shape; the three packages' files are on
+// disk as the digests list them, so the read proves the symbol. The payload
+// is recap.pending's with this module as its cwd. A premise run checks the
+// steer log holds the symbols line, which only a proven symbol gives, so a
+// case whose read stood down fails rather than reads light. control moves
+// .pgraph away: the same prompt with nothing to read.
+func (r rig) pgraphPrompt(t *testing.T, size int) (mk func(i int) []byte, control func()) {
+	t.Helper()
+	src := map[string]string{
+		"go.mod":                  "module " + pgraphModule + "\n\ngo 1.25.0\n",
+		"internal/p000/f.go":      "package p000\n\nfunc CountRows() int { return 1 }\n",
+		"internal/p000/f_test.go": "package p000\n",
+	}
+	decl := "func:" + pgraphModule + "/internal/p000.CountRows"
+	extra := [][3]string{{"pkg:" + pgraphModule + "/internal/p000", "declares", decl}}
+	for i, caller := range []string{"SumRows", "Twice"} {
+		p := fmt.Sprintf("p%03d", i+1)
+		src["internal/"+p+"/f.go"] = "package " + p + "\n\nimport \"" + pgraphModule + "/internal/p000\"\n\nfunc " + caller + "() int { return p000.CountRows() }\n"
+		for _, f := range []string{"f_test.go", "g.go", "h.go"} {
+			src["internal/"+p+"/"+f] = "package " + p + "\n"
+		}
+		id := "func:" + pgraphModule + "/internal/" + p + "." + caller
+		extra = append(extra, [3]string{"pkg:" + pgraphModule + "/internal/" + p, "declares", id}, [3]string{id, "calls", decl})
+	}
+	mod, state := pgraphTree(t, size, src, extra)
+	var fields map[string]any
+	if err := json.Unmarshal(payload.Prompt("make CountRows return 2"), &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["cwd"] = mod
+	prompt, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(rashomonBin, r.args([]string{"recap", "pending"})...)
+	var stderr bytes.Buffer
+	cmd.Stdin, cmd.Env, cmd.Stderr = bytes.NewReader(prompt), r.env, &stderr
+	out, err := cmd.Output()
+	st, serr := store.Open(r.home)
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	steerLog, _ := os.ReadFile(filepath.Join(st.RunDir(payload.Session), store.FileSteer))
+	if err != nil || !bytes.Contains(steerLog, []byte("symbols named: ")) {
+		t.Fatalf("premise: the prompt's note holds no symbols line, so the read proved nothing (%v):\n%s\nstderr: %s", err, out, stderr.Bytes())
+	}
+	return func(int) []byte { return prompt }, func() {
+		if err := os.Rename(state, state+".off"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // pgraphFiles is a log of exactly size bytes and its digests, as a sync of a
-// module of 120 packages under pgraphModule writes them: each record is one
+// module of 120 packages under pgraphModule writes them, extra's records
+// (subject, predicate, object) first: each other record is one
 // package declaring a function or one function calling another, the shape
 // and line length of this repository's own log (3.0 MB, 54 KB of digests),
 // every record an assertion, so the whole log is live. src's Go files are
 // listed under their own sha256, so the edited package reads fresh; the
 // other files are listed and not there, as nothing reads them.
-func pgraphFiles(size int, src map[string]string) (logb, digests []byte) {
+func pgraphFiles(size int, src map[string]string, extra [][3]string) (logb, digests []byte) {
 	const pkgs = 120
 	pkg := func(i int) string { return fmt.Sprintf("%s/internal/p%03d", pgraphModule, i) }
 	fn := func(i, k int) string { return fmt.Sprintf("func:%s.Func%04d", pkg(i), k) }
@@ -762,6 +844,9 @@ func pgraphFiles(size int, src map[string]string) (logb, digests []byte) {
 	}
 	var b strings.Builder
 	b.WriteString("pgraph-log v0\n")
+	for _, e := range extra {
+		b.WriteString(rec(e[0], e[1], e[2]))
+	}
 	for k := 0; ; k++ {
 		i := k % pkgs
 		next := rec("pkg:"+pkg(i), "declares", fn(i, k)) + rec(fn(i, k), "calls", fn((i*7+3)%pkgs, k/2))
