@@ -106,8 +106,10 @@ func storeFiles() map[string]storeFile {
 	call := map[string][]string{"declaration": declarationKeys, "execution": slices.Concat(executionKeys, gateOutputKeys), "terminal": terminalKeys}
 	// records.ndjson also holds the Stop's verify checkpoint, an ordered
 	// record with a seq of its own (card 2.4 D92), and the post's spec_event
-	// (card SPEC-RULES-STOP1) and after_hit (card SPEC-RULES1 1b); the spill file holds neither.
-	records := map[string][]string{"verify": checkpointKeys, "spec_event": specEventKeys, "after_hit": afterHitKeys}
+	// (card SPEC-RULES-STOP1), after_hit (card SPEC-RULES1 1b) and then_check (card ORDER-LIVE1); the spill
+	// file holds none of them.
+	records := map[string][]string{"verify": checkpointKeys, "spec_event": specEventKeys, "after_hit": afterHitKeys,
+		"then_check": thenCheckKeys}
 	for k, v := range call {
 		records[k] = v
 	}

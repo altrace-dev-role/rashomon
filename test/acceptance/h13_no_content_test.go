@@ -196,6 +196,12 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"event", "rule_id", "source_digest", "landed_seq", "exit_code", "foreground", "cwd_digest", "maybe",
 	}
+	// thenCheckKeys are a then_check's keys (card ORDER-LIVE1): the rule's id,
+	// its spec file's digest, the seq and the verdict, never a command's text.
+	thenCheckKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"rule_id", "source_digest", "landed_seq", "then",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {

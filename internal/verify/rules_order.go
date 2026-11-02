@@ -71,6 +71,66 @@ func afterHits(run *store.Run, id, digest string, at int64) []afterHit {
 	return out
 }
 
+// thenChecks is the then_check verdicts of the rule id recorded while its
+// declaring file had digest, whose call landed at or before at, by their
+// call's declaration seq, as afterHits reads the rule's hits: an edit of the
+// file drops them, and a word other than yes or no reads maybe. Two checks
+// for one call that disagree read maybe. Cost: O(N + C) per order rule, the
+// landed-to-declaration index built once (hitSeq per check would be O(N*C),
+// and every Bash call under the rule leaves one); nothing for a run with no
+// checks.
+func thenChecks(run *store.Run, id, digest string, at int64) map[int64]tri {
+	if digest == "" || len(run.ThenChecks) == 0 {
+		return nil
+	}
+	decl := make(map[string]int64, len(run.Declarations))
+	for i := range run.Declarations {
+		if d := &run.Declarations[i]; decl[d.ToolUseID] == 0 {
+			decl[d.ToolUseID] = d.Seq
+		}
+	}
+	landed := make(map[int64]int64, len(run.Executions))
+	for i := range run.Executions {
+		if x := &run.Executions[i]; x.Seq != nil && landed[*x.Seq] == 0 && decl[x.ToolUseID] != 0 {
+			landed[*x.Seq] = decl[x.ToolUseID]
+		}
+	}
+	out := map[int64]tri{}
+	for i := range run.ThenChecks {
+		c := &run.ThenChecks[i]
+		if c.RuleID != id || c.SourceDigest != digest || c.LandedSeq <= 0 || c.LandedSeq > at {
+			continue
+		}
+		t := triMaybe
+		switch c.Then {
+		case store.ThenYes:
+			t = triYes
+		case store.ThenNo:
+			t = triNo
+		}
+		seq := c.LandedSeq
+		if d := landed[seq]; d != 0 {
+			seq = d
+		}
+		if old, ok := out[seq]; ok && old != t {
+			t = triMaybe
+		}
+		out[seq] = t
+	}
+	return out
+}
+
+// thenWord is a then_check's verdict for t.
+func thenWord(t tri) string {
+	switch t {
+	case triYes:
+		return store.ThenYes
+	case triNo:
+		return store.ThenNo
+	}
+	return store.ThenMaybe
+}
+
 // orderOver is an order rule over the Then lines at or before at and the
 // after_hits before each: a violation at each line its then command matches
 // for certain with no qualifying earlier hit (exit 0, foreground, the same
@@ -81,8 +141,11 @@ func afterHits(run *store.Run, id, digest string, at int64) []afterHit {
 // withheld shows nothing, so it adds no doubt), a hit that could not say it ran the after
 // (maybe), a hit or then with no known directory, a glob or an unnamed write
 // between, a line not read whole, and a rule with no then, after, or with an
-// after_gate or a same_run_key (not read yet) are undecided.
-func orderOver(r *spec.Rule, lines []ruleLine, hits []afterHit, c *classified, rels []projectRel, at int64) ruleRead {
+// after_gate or a same_run_key (not read yet) are undecided. A line not read
+// whole takes its then from the post's then_check where one landed (checks,
+// card ORDER-LIVE1), and an after in the same line from a hit at that call;
+// with no check it stays undecided.
+func orderOver(r *spec.Rule, lines []ruleLine, hits []afterHit, checks map[int64]tri, c *classified, rels []projectRel, at int64) ruleRead {
 	var out ruleRead
 	if r.Then == nil || len(r.Then.Argv) == 0 || r.After == nil || len(r.After.Argv) == 0 || len(r.SameRunKey) > 0 {
 		out.undecided = true
@@ -90,12 +153,15 @@ func orderOver(r *spec.Rule, lines []ruleLine, hits []afterHit, c *classified, r
 	}
 	for i := range lines {
 		l := &lines[i]
-		then := lineMatch(r.Then, l)
+		then, after := lineMatch(r.Then, l), lineMatch(r.After, l)
+		if t, ok := checks[l.seq]; ok && !l.whole {
+			then, after = t, triOf(false, hasHit(hits, l.seq))
+		}
 		if then == triNo {
 			continue
 		}
 		best := triNo
-		if lineMatch(r.After, l) != triNo {
+		if after != triNo {
 			best = triMaybe
 		}
 		for j := range hits {

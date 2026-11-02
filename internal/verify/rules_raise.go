@@ -130,6 +130,12 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 				view.AfterHits = append(view.AfterHits, AfterHit{RuleID: dr.ID, SourceDigest: sourceDigest(sp, dr.Source),
 					CWDDigest: call.cwdDigest(), Exit: call.Exit, Foreground: call.Foreground, Maybe: t == triMaybe})
 			}
+			// The call as a Then: its verdict, whatever it is, so the Stop reads
+			// a line the record holds no command for (card ORDER-LIVE1).
+			if read {
+				view.ThenChecks = append(view.ThenChecks, ThenCheck{RuleID: dr.ID, SourceDigest: sourceDigest(sp, dr.Source),
+					Then: thenWord(lineMatch(dr.Rule.Then, &ordLine))})
+			}
 			if call.Run == nil || !read {
 				continue
 			}
@@ -232,7 +238,9 @@ func (v *orderView) violates(r *spec.Rule, sp *spec.Compiled, dr *spec.DeclaredR
 	for i := range v.run.Declarations {
 		if d := &v.run.Declarations[i]; d.ToolUseID == id {
 			hits := afterHits(v.run, dr.ID, sourceDigest(sp, dr.Source), v.at)
-			return slices.Contains(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs, d.Seq)
+			// No then_checks: the call's own line is the payload's, and no
+			// other line's then bears on the verdict at its seq.
+			return slices.Contains(orderOver(r, v.lines, hits, nil, &v.c, v.rels, v.at).seqs, d.Seq)
 		}
 	}
 	return false
