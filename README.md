@@ -151,26 +151,27 @@ list of what it keeps, word for word as the install screen's full view
 > the files a shell line may write, in the clear, and the SHA-256 of the file an
 > edit names as the call left it (never its content), where `rashomon status`
 > shows the scope and this build has no setting that leaves these out; how it
-> ended (outcome, exit code, interrupted or not, duration); and the time each
-> hook event first ran in a session. For a test or build line: the runner it ran
-> in and the pipe stage that hid its exit status, each one word from a closed
-> list the binary ships (never a word of the command); for a gate run, one
-> closed word that classifies its output (a passing or failing summary, a
-> failure line, an empty run, the exit status the line printed for its runner as
-> pass or fail, or none found), and not the output, which is read in memory; one
-> bit, when true, that says the hook could not read where a shell line started
-> because a leading cd was one it does not read (never the directory it names);
-> in a note's steer line, where the outcome it rests on came from (the exit
-> status or the output's summary); and, when a prompt's preflight finds no spec,
-> one small hint that holds the turn's id and a keyed digest of the directory it
-> looked from, nothing else. At each turn end: the state of each test or build
-> check, a keyed digest of each claim sentence it checks in the agent's final
-> message (never the sentence), and the digest of the project spec
-> (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word
-> for word, except a request's preflight note at record scope v4, which keeps a
-> count of the paths it named and keyed digests of them. Your on and off
-> switches (config.json), and for a project's switch (summary_projects,
-> steer_projects) the project's directory.
+> ended (outcome, exit code, interrupted or not, duration); which spec rule a
+> call matched, by the rule's id and the spec file's digest, never the command;
+> and the time each hook event first ran in a session. For a test or build line:
+> the runner it ran in and the pipe stage that hid its exit status, each one
+> word from a closed list the binary ships (never a word of the command); for a
+> gate run, one closed word that classifies its output (a passing or failing
+> summary, a failure line, an empty run, the exit status the line printed for
+> its runner as pass or fail, or none found), and not the output, which is read
+> in memory; one bit, when true, that says the hook could not read where a shell
+> line started because a leading cd was one it does not read (never the
+> directory it names); in a note's steer line, where the outcome it rests on
+> came from (the exit status or the output's summary); and, when a prompt's
+> preflight finds no spec, one small hint that holds the turn's id and a keyed
+> digest of the directory it looked from, nothing else. At each turn end: the
+> state of each test or build check, a keyed digest of each claim sentence it
+> checks in the agent's final message (never the sentence), and the digest of
+> the project spec (.claude/rashomon/spec.json) whose rules it applied. Each
+> note it adds, word for word, except a request's preflight note at record scope
+> v4, which keeps a count of the paths it named and keyed digests of them. Your
+> on and off switches (config.json), and for a project's switch
+> (summary_projects, steer_projects) the project's directory.
 
 It never stores your prompts, the agent's messages, tool output or file
 contents. It reads each prompt in memory to write the preflight note and keeps

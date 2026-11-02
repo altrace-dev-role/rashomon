@@ -81,3 +81,30 @@ func TestTRU24_RecordsRowNamesTheAfterHit(t *testing.T) {
 		t.Errorf("%d rows hold the spec_event sentence, want 1", found)
 	}
 }
+
+// TestTRU24b_StoredParagraphNamesTheRuleMatch (card SPEC-RULES1 1b, #216
+// ruling 2): the screen's STORED paragraph says a call's matched spec rule is
+// kept, by the rule's id and the spec file's digest, never the command. The
+// screen's only other rule sentence is the spec digest at a turn end, so
+// without this clause a person agrees to a record they were never told of.
+// Text only: the disclosure version does not move (the D175 precedent).
+func TestTRU24b_StoredParagraphNamesTheRuleMatch(t *testing.T) {
+	const clause = "which spec rule a call matched, by the rule's id and the spec file's digest, never the command"
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := 0
+	for _, p := range inv.Paragraphs {
+		if !strings.HasPrefix(p.Text, StoredHeading) {
+			continue
+		}
+		said++
+		if !strings.Contains(p.Text, clause) {
+			t.Errorf("the STORED paragraph does not say %q", clause)
+		}
+	}
+	if said != 1 {
+		t.Errorf("%d paragraphs open with StoredHeading, want 1", said)
+	}
+}
