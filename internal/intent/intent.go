@@ -165,7 +165,7 @@ func Resolve(prompt []byte, cut bool, p Project) Intent {
 	if len(prompt) > MaxPromptBytes {
 		prompt = prompt[:MaxPromptBytes]
 	}
-	var named []string
+	var named, idents []string
 	symbols := false
 	scan(prompt, in.Truncated, func(tok []byte) {
 		switch {
@@ -173,6 +173,9 @@ func Resolve(prompt []byte, cut bool, p Project) Intent {
 			named = append(named, string(tok))
 		case identifierLike(tok):
 			symbols = true
+			if len(idents) < MaxSymbolNames && !slices.Contains(idents, string(tok)) {
+				idents = append(idents, string(tok))
+			}
 		case in.Verb == "":
 			in.Verb = verbOf(tok)
 		}
@@ -182,6 +185,9 @@ func Resolve(prompt []byte, cut bool, p Project) Intent {
 	}
 	in.Named = len(named) > 0 || symbols
 	in.Paths = resolvePaths(named, p)
+	if len(idents) > 0 && p.Symbols != nil {
+		in.Symbols = p.Symbols(idents)
+	}
 
 	sp := p.Spec
 	if sp != nil {
@@ -238,7 +244,7 @@ func Resolve(prompt []byte, cut bool, p Project) Intent {
 	say(sp != nil && slices.ContainsFunc(sp.Sources, func(s spec.Source) bool { return !trusted(s.Trust) }), unknownUntrusted)
 	say(sp != nil && len(sp.Errors) > 0, unknownSpecError)
 	say(p.Index == nil, unknownNoHistory)
-	say(symbols, unknownSymbols)
+	say(symbols && len(in.Symbols) == 0, unknownSymbols)
 	say(in.Truncated, unknownCut)
 	say(len(named) > 0 && len(in.Paths) == 0, unknownNoPath)
 	return in

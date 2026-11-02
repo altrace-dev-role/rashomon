@@ -109,7 +109,8 @@ m("GI-1 a superseded line counts as given", N,
 m("GI-1 an arm-off line is not given", N,
   " || scanText(b, sp[3]) == string(steer.SuppressedByArmOff))", ")", "TestGI1n_TheNextPrompt")
 m("GI-1 a refused file drops the note", N,
-  "\t\tm, err = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n", "",
+  "render.ClaimVsRecordInferredBinding{Gate: g, Path: f}, render.ClaimVsRecordInferredUnnamedBinding{Gate: g})",
+  "render.ClaimVsRecordInferredBinding{Gate: g, Path: f})",
   "TestGI1n_TheNextPrompt")
 m("GI-1 a seq past the decision's is noted", N,
   "if o.Seq <= 0 || o.Seq > afterSeq {", "if o.Seq <= 0 {", "TestGI1n_TheNextPrompt")

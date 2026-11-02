@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/platform"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -34,6 +36,27 @@ const stopPlatformGuard = 2 * time.Second
 // stopPlatformRead is platformRead under the Stop's guard.
 func stopPlatformRead(root string, written []string) verify.PlatformRead {
 	return platformReadWithin(root, written, stopPlatformGuard)
+}
+
+// promptPlatformGuard is the prompt's guard on its symbol read, well inside
+// the UserPromptSubmit entry's 10 s timeout, as the Stop's is inside its own.
+const promptPlatformGuard = 2 * time.Second
+
+// promptSymbols is intent's Project.Symbols for a prompt resolved against
+// root (PW1b-ON-230 step 3): platform.Symbols of the pair the walk file
+// vouches for under root, under promptPlatformGuard. What it reads, a person
+// running pgraph reads: the walk file, the log, the digests, and every file
+// the digests list for the packages its answer rests on. It writes nothing.
+func promptSymbols(root string) func(names []string) []intent.Symbol {
+	return func(names []string) []intent.Symbol {
+		ctx, cancel := context.WithTimeout(context.Background(), promptPlatformGuard)
+		defer cancel()
+		var out []intent.Symbol
+		for _, s := range platform.Symbols(ctx, root, names) {
+			out = append(out, intent.Symbol{Name: s.Name, Dir: s.Dir, Callers: s.Callers, Packages: s.CallerPackages})
+		}
+		return out
+	}
 }
 
 func platformReadWithin(root string, written []string, guard time.Duration) verify.PlatformRead {

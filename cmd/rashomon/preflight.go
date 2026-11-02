@@ -95,7 +95,8 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		if cwd != root {
 			cwd = resolvedDir(cwd)
 		}
-		resolved := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
+		resolved := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli(),
+			Symbols: promptSymbols(root)})
 		in = &resolved
 		// At record scope v4 the steer line holds each named path as a
 		// keyed digest and the delivered set compares digests; the note

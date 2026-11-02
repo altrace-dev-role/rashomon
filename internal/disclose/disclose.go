@@ -37,6 +37,11 @@ import (
 // fired-<event> marker, #148), says an approved lesson reaches the agent with
 // a prompt (#156), and names the on and off switches the record keeps in
 // config.json, with a project's directory for a project's switch (#160).
+// Unreleased, 5 covers the release, so a later card of the same release
+// names its content here and does not bump: the platform graph's facts the
+// agent's note now gives, a named symbol's package and direct callers at a
+// prompt and the untested changed packages at the next one (PW1b-ON-230
+// step 3).
 // Pinned by TRU-8.
 const ScopeVersion = 5
 

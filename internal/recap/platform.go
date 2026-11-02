@@ -18,25 +18,16 @@ const maxPlatformLines = 2
 // maxPlatformLines, then one line counting the rest. The rows pair with
 // v.Platform.Families in order (StopView.Platform); the unreadable log's
 // row and the cap's row have no family and print nothing. It is the
-// systemMessage, the person's channel: no line here reaches the model.
+// systemMessage, the person's channel: no line here reaches the model; the
+// next prompt's note gives it the same packages (OwedPackages).
 func platformLines(v verify.StopView, fromPlugin bool) string {
 	var lines []string
-	i := 0
-	for _, o := range v.Obligations {
-		if o.Kind != verify.PlatformImpact {
-			continue
+	for _, o := range owedFamilies(v) {
+		what := "not run since the edit"
+		if o.failed {
+			what = "failed after the edit"
 		}
-		if i >= len(v.Platform.Families) {
-			break
-		}
-		f := v.Platform.Families[i]
-		i++
-		switch o.State {
-		case verify.ObligationOpen:
-			lines = append(lines, platformLine(f, "not run since the edit"))
-		case verify.ObligationUnmet:
-			lines = append(lines, platformLine(f, "failed after the edit"))
-		}
+		lines = append(lines, platformLine(o.f, what))
 	}
 	if len(lines) == 0 {
 		return ""
@@ -53,6 +44,46 @@ func platformLines(v verify.StopView, fromPlugin bool) string {
 		b.WriteString(continuation() + "and " + strconv.Itoa(n) + " more" + where + "\n")
 	}
 	return b.String()
+}
+
+// owedFamily is a changed package the Stop's platform read owes a go test:
+// open (failed false) or unmet (failed true).
+type owedFamily struct {
+	f      verify.PlatformFamily
+	failed bool
+}
+
+// owedFamilies is the families whose platform_impact row is open or unmet,
+// the rows paired with v.Platform.Families in order (StopView.Platform).
+func owedFamilies(v verify.StopView) []owedFamily {
+	var out []owedFamily
+	i := 0
+	for _, o := range v.Obligations {
+		if o.Kind != verify.PlatformImpact {
+			continue
+		}
+		if i >= len(v.Platform.Families) {
+			break
+		}
+		f := v.Platform.Families[i]
+		i++
+		if o.State == verify.ObligationOpen || o.State == verify.ObligationUnmet {
+			out = append(out, owedFamily{f: f, failed: o.State == verify.ObligationUnmet})
+		}
+	}
+	return out
+}
+
+// OwedPackages is the project-relative directories of the changed packages
+// the Stop's platform read owes a go test, the ones platformLines names to
+// the person: what the turn end leaves the next prompt's note to give the
+// model (PW1b-ON-230 step 3, ARCH-INLINE1 item 3; Owed.Packages).
+func OwedPackages(v verify.StopView) []string {
+	var out []string
+	for _, o := range owedFamilies(v) {
+		out = append(out, o.f.Dir)
+	}
+	return out
 }
 
 // platformLine is one package's line: "platform: go test ./<dir>/... <what>",

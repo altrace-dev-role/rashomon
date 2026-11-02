@@ -11,8 +11,8 @@ PL = "internal/recap/platform.go"
 m("PW1b-2 the Stop reads no graph", "cmd/rashomon/recap_stop.go",
   "\t\tin.Platform = stopPlatformRead", "\t\t_ = stopPlatformRead", "TestPW1b2_TheStopNames")
 m("PW1b-2 met rows print too", PL,
-  '\t\tcase verify.ObligationOpen:\n\t\t\tlines = append(lines, platformLine(f, "not run since the edit"))',
-  '\t\tcase verify.ObligationOpen, verify.ObligationMet:\n\t\t\tlines = append(lines, platformLine(f, "not run since the edit"))',
+  "if o.State == verify.ObligationOpen || o.State == verify.ObligationUnmet {",
+  "if o.State == verify.ObligationOpen || o.State == verify.ObligationUnmet || o.State == verify.ObligationMet {",
   "TestPW1b2_ATestRunAfter")
 m("PW1b-2 no cap", PL,
   "const maxPlatformLines = 2", "const maxPlatformLines = 64", "TestPW1b2_TheStopNamesTwo")
