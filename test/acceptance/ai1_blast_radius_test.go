@@ -36,11 +36,28 @@ const ai1Prefix = "rashomon record: the platform graph names other packages with
 // ai1Note is the blast-radius note an edit of package a gives on ai1Files.
 const ai1Note = ai1Prefix + " (at least 2): 'b', 'c'; test files are in 1 of them."
 
-// ai1Edit edits dir's file, leaving its bytes as they are, and returns the
-// note the post gave the model, "" for none.
+// ai1Edit edits dir's file, leaving its bytes as they are, under prompt p1,
+// and returns the note the post gave the model, "" for none.
 func (e *env) ai1Edit(dir, id, file string) string {
 	e.t.Helper()
-	stdout := e.dghCall(dir, id, "Edit", pw1b2Edit(dir, file))
+	return e.ai1EditIn(dir, id, file, "p1")
+}
+
+// ai1EditIn is ai1Edit under prompt, as a call in a later turn is.
+func (e *env) ai1EditIn(dir, id, file, prompt string) string {
+	e.t.Helper()
+	envs := []string{stAgent, "CI="}
+	input := pw1b2Edit(dir, file)
+	pre := map[string]any{"cwd": dir, "prompt_id": prompt}
+	if res := e.hook(stPayload(e.t, "PreToolUse", id, "Edit", input, pre), envs...); res.exitCode != 0 || res.stdout != "" {
+		e.t.Fatalf("hook %s: exit %d, stdout %q, stderr %q", id, res.exitCode, res.stdout, res.stderr)
+	}
+	post := map[string]any{"cwd": dir, "prompt_id": prompt, "tool_response": map[string]any{"stdout": "ok\n", "stderr": "", "interrupted": false}}
+	res := e.post(stPayload(e.t, "PostToolUse", id, "Edit", input, post), envs...)
+	if res.exitCode != 0 {
+		e.t.Fatalf("post %s: exit %d, stderr %q", id, res.exitCode, res.stderr)
+	}
+	stdout := res.stdout
 	if stdout == "" {
 		return ""
 	}
@@ -79,8 +96,11 @@ func ai1Walk(t *testing.T, dir string) string {
 
 // TestAI1_AGoEditTellsTheCallersOnce: after a sync, an edit of a/a.go tells
 // the model that b and c call into its package, b holding a test file, as
-// a lower bound; the next edit of the package says nothing. Break: drop the
-// read marker, and the second edit repeats the note.
+// a lower bound; the next edit of the package says nothing. The log is read
+// once per package until the next sync (A2's read gate): c's file changed
+// since leaves the set the sync gave standing, so a third edit says nothing
+// either. Break: drop the read marker, and the third edit reads again and
+// names b alone (the print gate alone keeps the second edit silent).
 func TestAI1_AGoEditTellsTheCallersOnce(t *testing.T) {
 	e := newSteerEnv(t)
 	dir := gi1Project(t, ai1Files)
@@ -91,13 +111,18 @@ func TestAI1_AGoEditTellsTheCallersOnce(t *testing.T) {
 	if got := e.ai1Edit(dir, "toolu_e2", "a/a.go"); got != "" {
 		t.Errorf("the second edit of package a gave %q, want nothing", got)
 	}
+	ai1Write(t, dir, "c/c.go", "package c\n\nvar V = 3\n")
+	if got := e.ai1Edit(dir, "toolu_e3", "a/a.go"); got != "" {
+		t.Errorf("an edit after c changed, with no sync, gave %q, want nothing: the log was read again", got)
+	}
 }
 
 // TestAI1_AReSyncSaysOnlyANewCallerSet: a re-sync that leaves a's callers as
-// they were moves the log's sha256 and says nothing on the next edit (the
-// print gate, A2: the Stop re-syncs every turn); one that adds a caller
-// tells the new set. Break: key the note on the log's version alone, and the
-// re-sync repeats it.
+// they were moves the log's sha256 and says nothing on the next turn's edit
+// (the print gate, A2: the Stop re-syncs every turn); one that adds a caller
+// tells the new set. Each sync is followed by a new prompt, as the Stop's is,
+// since the router already dedupes a key within one prompt. Break: key the
+// note on the log's version alone, and the next turn repeats it.
 func TestAI1_AReSyncSaysOnlyANewCallerSet(t *testing.T) {
 	e := newSteerEnv(t)
 	dir := gi1Project(t, ai1Files)
@@ -111,13 +136,13 @@ func TestAI1_AReSyncSaysOnlyANewCallerSet(t *testing.T) {
 	if ai1Walk(t, dir) == before {
 		t.Fatal("premise: the re-sync left the walk file as it was")
 	}
-	if got := e.ai1Edit(dir, "toolu_e2", "a/a.go"); got != "" {
+	if got := e.ai1EditIn(dir, "toolu_e2", "a/a.go", "p2"); got != "" {
 		t.Errorf("an edit after a re-sync with the same callers gave %q, want nothing", got)
 	}
 	ai1Write(t, dir, "g/g.go", "package g\n\nimport \"example.com/m/a\"\n\nfunc K() int { return a.F() + 1 }\n")
 	h156Sync(t, dir)
 	want := ai1Prefix + " (at least 3): 'b', 'c', 'g'; test files are in 1 of them."
-	if got := e.ai1Edit(dir, "toolu_e3", "a/a.go"); got != want {
+	if got := e.ai1EditIn(dir, "toolu_e3", "a/a.go", "p3"); got != want {
 		t.Errorf("an edit after a caller was added gave %q\nwant %q", got, want)
 	}
 }
