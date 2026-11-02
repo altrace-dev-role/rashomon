@@ -535,17 +535,24 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 					mk = r.scanStop(t, c.PayloadBytes)
 				}
 			}
+			if c.ID == blastCase {
+				// The post's blast-radius read (ARCH-INLINE1): an Edit of a
+				// Go file in a module whose .pgraph holds a vouched log of
+				// PayloadBytes, in a session steering speaks to.
+				r.env = append(r.env, blastEnv...)
+				mk, control = r.blastPost(t, c.PayloadBytes)
+			}
 			got, attributable, floorWhy := r.medianRSS(t, []string{c.Entry}, mk)
 			if !attributable {
 				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, floorWhy)
 				return
 			}
 			if control != nil {
-				// The same Stop with no .pgraph, logged, so each platform's
+				// The same entry with no .pgraph, logged, so each platform's
 				// log says what the read adds, the figure its row is from.
 				control()
 				if base, ok, _ := r.medianRSS(t, []string{c.Entry}, mk); ok {
-					t.Logf("%s: %.2f MiB; the same Stop with no .pgraph: %.2f MiB; the read adds %.2f MiB", c.ID, got, base, got-base)
+					t.Logf("%s: %.2f MiB; the same %s with no .pgraph: %.2f MiB; the read adds %.2f MiB", c.ID, got, c.Entry, base, got-base)
 				}
 			}
 			budgetMiB, gated, reportOnly, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)
@@ -672,38 +679,14 @@ const (
 // figure the row's delta is from.
 func (r rig) pgraphStop(t *testing.T, size int) (mk func(i int) []byte, control func()) {
 	t.Helper()
-	mod, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
 	src := map[string]string{
 		"go.mod":                   "module " + pgraphModule + "\n\ngo 1.25.0\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n",
 		"internal/p000/f.go":       "package p000\n\nfunc Func0000() {}\n",
 		"internal/p000/f_test.go":  "package p000\n",
 	}
-	logb, digests := pgraphFiles(size, src)
+	mod := pgraphTree(t, size, src)
 	state := filepath.Join(mod, ".pgraph")
-	files := map[string][]byte{
-		".git/HEAD":              []byte("ref: refs/heads/main\n"),
-		".pgraph/pgraph.log":     logb,
-		".pgraph/pgraph.digests": digests,
-		".pgraph/pgraph.walk": []byte("pgraph-walk v0\nwalk\t" + sha256Hex(append(append([]byte(nil), logb...), digests...)) +
-			"\nlog\t" + sha256Hex(logb) + "\ndigests\t" + sha256Hex(digests) + "\n"),
-		".pgraph/.gitignore": []byte("*\n"),
-	}
-	for name, body := range src {
-		files[name] = []byte(body)
-	}
-	for name, body := range files {
-		p := filepath.Join(mod, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, body, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
 	file := filepath.Join(mod, "internal", "p000", "f.go")
 	edit := map[string]any{"file_path": file, "old_string": "package", "new_string": "package", "replace_all": false}
@@ -743,6 +726,40 @@ func (r rig) pgraphStop(t *testing.T, size int) (mk func(i int) []byte, control 
 			t.Fatal(err)
 		}
 	}
+}
+
+// pgraphTree writes src to a new module directory with a .pgraph holding a
+// log of exactly size bytes, its digests and a walk file vouching for both,
+// as a sync writes them (pgraphFiles), and returns the directory, its
+// symlinks resolved.
+func pgraphTree(t *testing.T, size int, src map[string]string) string {
+	t.Helper()
+	mod, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	logb, digests := pgraphFiles(size, src)
+	files := map[string][]byte{
+		".git/HEAD":              []byte("ref: refs/heads/main\n"),
+		".pgraph/pgraph.log":     logb,
+		".pgraph/pgraph.digests": digests,
+		".pgraph/pgraph.walk": []byte("pgraph-walk v0\nwalk\t" + sha256Hex(append(append([]byte(nil), logb...), digests...)) +
+			"\nlog\t" + sha256Hex(logb) + "\ndigests\t" + sha256Hex(digests) + "\n"),
+		".pgraph/.gitignore": []byte("*\n"),
+	}
+	for name, body := range src {
+		files[name] = []byte(body)
+	}
+	for name, body := range files {
+		p := filepath.Join(mod, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return mod
 }
 
 // pgraphFiles is a log of exactly size bytes and its digests, as a sync of a
