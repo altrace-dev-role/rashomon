@@ -180,6 +180,7 @@ func Default() (Inventory, error) {
 		Files: slices.Concat(
 			defaultFiles(),
 			firedFiles(),
+			blastReadFiles(),
 			learnFiles(),
 			specFiles(),
 			evidenceFiles(),
