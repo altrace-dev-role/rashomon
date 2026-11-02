@@ -11,8 +11,8 @@ m("VER-6.1 Deadline ignored", "internal/platform/read.go",
   '\t\tctx, cancel := context.WithTimeout(context.Background(), guard)\n',
   '\t\t_ = guard\n\t\tctx, cancel := context.WithCancel(context.Background())\n', "TestPL8c_")
 m("VER-6.1 a timed-out call waits for its worker", P,
-  '\tcase <-ctx.Done():\n\t\treturn nil, ctx.Err()\n',
-  '\tcase <-ctx.Done():\n\t\tr := <-done\n\t\treturn r.fams, r.err\n', "TestPL8c_")
+  '\tcase <-ctx.Done():\n\t\tvar zero T\n\t\treturn zero, ctx.Err()\n',
+  '\tcase <-ctx.Done():\n\t\tr := <-done\n\t\treturn r.v, r.err\n', "TestPL8c_")
 m("VER-6.1 a cancelled decode returns the facts read so far", D,
   '\t\t\tif err := ctx.Err(); err != nil {\n\t\t\t\treturn nil, err\n',
   '\t\t\tif err := ctx.Err(); err != nil {\n\t\t\t\treturn live, nil\n', "TestPL8c3_")
