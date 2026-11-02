@@ -401,7 +401,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// inventory, FileSpecNone in purge's run files).
 		// Moved 2026-10-31 (MEASURE1) to 33: lab.go's WriteLab ReplaceFile,
 		// the lab marker `measure --prepare` writes.
-		{"store", 33},
+		// Moved 2026-11-02 (ARCH-INLINE1) to 34: blastread.go's
+		// TakeBlastRead open, runs/<session>/blast-read-<16 hex>, the
+		// blast-radius read's marker per package and log (blastReadFiles in
+		// the inventory, IsBlastReadFile in purge's run files).
+		{"store", 34},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
