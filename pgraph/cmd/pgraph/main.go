@@ -55,6 +55,13 @@ const usage = "usage: pgraph sync [-timeout d] <root>\n" +
 // columns is the width every line pgraph prints is fitted to.
 const columns = 80
 
+// hookInput, loads and lockRoot are not written yet (card PW1b-ON-230, red).
+var hookInput io.Reader = os.Stdin
+
+var loads int
+
+func lockRoot(ctx context.Context, root string) (func(), error) { return func() {}, nil }
+
 // run is the command: 0 on a sync written, 1 on a sync that failed and wrote
 // nothing, 2 on a usage error.
 func run(args []string, stdout, stderr io.Writer) int {
