@@ -75,11 +75,12 @@ type fact struct {
 // answer is never built from a log this package cannot read whole. It looks
 // at ctx every checkEvery records and returns ctx's error, with nothing else,
 // once ctx is done. hook, when not nil, runs before each record. keep, when
-// not nil, is the subjects the set holds: every record is still read and
-// checked in place, and one whose subject keep refuses is dropped before
-// anything is allocated for it, so the set, and the memory a read takes,
-// follow keep's packages, not the size of the log.
-func decode(ctx context.Context, r io.Reader, hook func(), keep func(subject []byte) bool) (map[fact]struct{}, error) {
+// not nil, is the records the set holds, by subject and object (a symbol's
+// callers are the records whose object it is): every record is still read
+// and checked in place, and one keep refuses is dropped before anything is
+// allocated for it, so the set, and the memory a read takes, follow what
+// keep asks for, not the size of the log.
+func decode(ctx context.Context, r io.Reader, hook func(), keep func(subject, object []byte) bool) (map[fact]struct{}, error) {
 	br := bufio.NewReaderSize(r, maxRecordBytes+1)
 	header, err := readLine(br)
 	if err != nil {
@@ -109,7 +110,7 @@ func decode(ctx context.Context, r io.Reader, hook func(), keep func(subject []b
 		if err != nil {
 			return nil, fmt.Errorf("platform: line %d: %w", n+1, err)
 		}
-		if keep != nil && !keep(c[1]) {
+		if keep != nil && !keep(c[1], c[3]) {
 			continue
 		}
 		f := c.fact()

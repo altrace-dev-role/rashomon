@@ -100,13 +100,37 @@ func TestPW1b2_ARefusalUnderADroppedSubjectStillRefuses(t *testing.T) {
 	}
 }
 
+// TestPW1b3_KeepSeesTheObject (PW1b-ON-230 step 3, ARCH-INLINE1): decode
+// hands keep each record's object as well as its subject, so a read can hold
+// a symbol's callers, the records whose object it is. Over keepLog, a keep on
+// the object func:example.com/m/a.F holds exactly the records that declare
+// or call it, the retracted call dropped. Break: hand keep the subject
+// twice, and it holds none.
+func TestPW1b3_KeepSeesTheObject(t *testing.T) {
+	const f = "func:example.com/m/a.F"
+	live, err := decode(context.Background(), strings.NewReader(keepLog(tierProven)), nil,
+		func(_, object []byte) bool { return string(object) == f })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for k := range live {
+		got = append(got, k.subject+" "+k.predicate)
+	}
+	slices.Sort(got)
+	want := []string{"func:example.com/m/ab.G calls", "method:example.com/m/a.T.M calls", "pkg:example.com/m/a declares"}
+	if !slices.Equal(got, want) {
+		t.Errorf("the records whose object is %s: %q, want %q", f, got, want)
+	}
+}
+
 // TestPW1b2_ADroppedRecordAllocatesNothing: a decode that keeps no subject
 // allocates as much for 1,024 records as for 2 (its reader, its buffer and
 // the empty set), so the Stop's memory follows the written packages, not
 // the log. Break: build the fact before keep is asked, or copy the line to
 // a string to parse it, and the larger log allocates once a record.
 func TestPW1b2_ADroppedRecordAllocatesNothing(t *testing.T) {
-	none := func([]byte) bool { return false }
+	none := func([]byte, []byte) bool { return false }
 	allocs := func(n int) float64 {
 		b := synthLog(t, n)
 		return allocsNoGC(5, func() {

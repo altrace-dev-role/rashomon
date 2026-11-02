@@ -148,9 +148,9 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 // pgraph/identity.go id). Every member familyHash reads is a package's own
 // symbol, so the families are the ones the whole log gives; a path that is
 // another's prefix up to a dot (gopkg.in/yaml, gopkg.in/yaml.v3) holds a
-// few more facts, never fewer.
-func keepFor(wanted []string) func(subject []byte) bool {
-	return func(subject []byte) bool {
+// few more facts, never fewer. The object is not read.
+func keepFor(wanted []string) func(subject, object []byte) bool {
+	return func(subject, _ []byte) bool {
 		i := bytes.IndexByte(subject, ':')
 		if i < 0 {
 			return false

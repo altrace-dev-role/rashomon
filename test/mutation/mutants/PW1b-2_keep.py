@@ -11,12 +11,12 @@ m("PW1b-2 keep holds funcs only", P,
 m("PW1b-2 keep needs no dot after the path", P,
   KEEPIF, "\t\t\tif len(rest) > len(p) && string(rest[:len(p)]) == p {", "TestPW1b2_KeepGives")
 m("PW1b-2 the fact is built before keep", D,
-  "\t\tif keep != nil && !keep(c[1]) {\n\t\t\tcontinue\n\t\t}\n\t\tf := c.fact()",
-  "\t\tf := c.fact()\n\t\tif keep != nil && !keep(c[1]) {\n\t\t\tcontinue\n\t\t}", "TestPW1b2_ADroppedRecord")
+  "\t\tif keep != nil && !keep(c[1], c[3]) {\n\t\t\tcontinue\n\t\t}\n\t\tf := c.fact()",
+  "\t\tf := c.fact()\n\t\tif keep != nil && !keep(c[1], c[3]) {\n\t\t\tcontinue\n\t\t}", "TestPW1b2_ADroppedRecord")
 m("PW1b-2 Impact passes no keep", P,
   "decode(ctx, io.TeeReader(f, h), hook, keepFor(wanted))", "decode(ctx, io.TeeReader(f, h), hook, nil)",
   "TestPW1b2_ImpactHolds")
 m("PW1b-2 keep is asked before the grammar", D,
   "\t\tc, assert, err := parseRecord(line)\n\t\tif err != nil {",
-  "\t\tif keep != nil {\n\t\t\tif s, _, ok := bytes.Cut(line[min(2, len(line)):], []byte(\"\\t\")); ok && !keep(s) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t}\n\t\tc, assert, err := parseRecord(line)\n\t\tif err != nil {",
+  "\t\tif keep != nil {\n\t\t\tif s, _, ok := bytes.Cut(line[min(2, len(line)):], []byte(\"\\t\")); ok && !keep(s, nil) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t}\n\t\tc, assert, err := parseRecord(line)\n\t\tif err != nil {",
   "TestPW1b2_ARefusalUnder")
