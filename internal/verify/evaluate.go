@@ -73,6 +73,9 @@ type classified struct {
 	// learned is indexLearned's answer at the point, which stale-evidence
 	// reads: nothing raises it before a family is established.
 	learned bool
+	// inferred is the inferred gate's runner name from the derivation that
+	// keyed its row, which the Stop names the row by; "" for none.
+	inferred string
 }
 
 // evaluate is Evaluate, which also fills c, and joins the gates sp declares
@@ -115,8 +118,9 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
 	dgs := declaredGates(sp, key, snap.ProjectRoot)
-	if g, ok := inferredGate(inf, key, snap.ProjectRoot); ok {
+	if g, name, ok := inferredGate(inf, key, snap.ProjectRoot); ok {
 		dgs = append(dgs, g)
+		c.inferred = name
 	}
 	if len(dgs) > 0 {
 		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, at, pt.Tree)
