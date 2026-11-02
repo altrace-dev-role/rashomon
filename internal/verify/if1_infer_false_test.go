@@ -28,7 +28,7 @@ func TestIF1v_ThePythonModuleFormRunsTheInferredPytest(t *testing.T) {
 	r := runOf(t, gateCall(1, "pytest", store.ExecOK))
 	named(t, r, 1, fhvPytest)
 	ranIn(r, "/repo", "")
-	if g, ok := gateNamed(giStop(r, nil, pyprojectPytest).Snap.Gates, InferredGateID); !ok || g.State != Green || g.LastRun == nil || g.LastRun.Seq != declSeq(t, r, 1) {
+	if g, ok := gateNamed(giStop(r, nil, pyprojectPytest).Snap.Gates, InferredGateID); !ok || g.State != Green || g.LastRun == nil || g.LastRun.Seq != declSeq(r, 0) {
 		t.Errorf("turn 1: row %+v, want %s green from call 1", g, InferredGateID)
 	}
 
@@ -42,7 +42,7 @@ func TestIF1v_ThePythonModuleFormRunsTheInferredPytest(t *testing.T) {
 		t.Fatalf("turn 3: rows %+v, want the inferred row alone: the learned row of its runs is absorbed", v.Snap.Gates)
 	}
 	g := v.Snap.Gates[0]
-	if g.Gate != InferredGateID || g.State != Green || g.LastRun == nil || g.LastRun.Seq != declSeq(t, r, 4) || !g.LastRun.OtherArgs {
+	if g.Gate != InferredGateID || g.State != Green || g.LastRun == nil || g.LastRun.Seq != declSeq(r, 3) || !g.LastRun.OtherArgs {
 		t.Errorf("turn 3: row %+v, want %s green from call 4, after the last edit, its words other than `pytest`", g, InferredGateID)
 	}
 	if v.Summary.Row != RowVerified {
@@ -86,17 +86,4 @@ func TestIF1v_EveryFormOfOneToolRunsItsGate(t *testing.T) {
 			t.Errorf("gate %q, run %q: bound %v (row %+v), want %v", c.gate, c.line, got, g, c.want)
 		}
 	}
-}
-
-// declSeq is the Seq of call <call>'s declaration in r, the seq a gate's last
-// run names: runOf numbers records, not calls.
-func declSeq(t *testing.T, r *store.Run, call int64) int64 {
-	t.Helper()
-	for _, d := range r.Declarations {
-		if d.ToolUseID == callID(call) {
-			return d.Seq
-		}
-	}
-	t.Fatalf("no declaration for call %d", call)
-	return 0
 }
