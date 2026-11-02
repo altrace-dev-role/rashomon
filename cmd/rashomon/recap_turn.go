@@ -165,9 +165,6 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	payload := pp.recapPayload
 
 	id, down := recapHostGuard(payload.Harness, payload.OK)
-	if !down && sdkDeclined() {
-		return nil
-	}
 	if noteHarness(payload.SessionID, id, down) {
 		return nil
 	}

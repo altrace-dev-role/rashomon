@@ -181,8 +181,13 @@ func newHandler(st *store.Store, id harness.Identity) *hook.Handler {
 }
 
 // noteHarness is recapTurn's write half: it records a stand-down or an
-// Unknown detection and reports whether the caller must stand down.
+// Unknown detection and reports whether the caller must stand down. An Agent
+// SDK program the person did not say y to stands down before it, writing
+// nothing (SDK-GATE1), as claudeHostGuard has it for the other hook paths.
 func noteHarness(sessionID string, id harness.Identity, down bool) bool {
+	if !down && sdkDeclined() {
+		return true
+	}
 	if down || id.ID == harness.Unknown {
 		recordHarnessBestEffort(sessionID, id, down)
 	}
