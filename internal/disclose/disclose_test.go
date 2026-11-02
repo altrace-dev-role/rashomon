@@ -153,6 +153,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AppendSteer: %v", err)
 	}
+	if !s.TakeBlastRead(sessionID, store.FileBlastReadPrefix+"0123456789abcdef") {
+		t.Fatal("TakeBlastRead took no marker")
+	}
 	if _, err := store.RecordHarnessMismatch(root, "claude@cursor", sessionID, []string{"cursor_version"}, time.Now()); err != nil {
 		t.Fatalf("RecordHarnessMismatch: %v", err)
 	}

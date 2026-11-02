@@ -170,6 +170,9 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// scopeV5 is the call's record scope at v5, the one the blast-radius
+	// note may name directories at (card ARCH-INLINE1).
+	scopeV5 bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -320,6 +323,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	// tree a later gate run is bound to (card P5A, D140). A digest of content,
 	// so it is read only where record_scope v5 keeps it.
 	scope := recordScope(p.st)
+	p.scopeV5 = scope == store.RecordScopeV5
 	if scope == store.RecordScopeV5 {
 		rec.ContentSHA256 = writtenSHA(&pl)
 	}

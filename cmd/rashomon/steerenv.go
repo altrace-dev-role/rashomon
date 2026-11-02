@@ -28,6 +28,7 @@ import (
 //     is the hook path's view of it (D49, D84), which the SessionStart probe
 //     keeps in step.
 //   - ProjectDir and ManagedDir are specDirs'.
+//   - Blast is the blast-radius read's port (blastPort, card ARCH-INLINE1).
 func steerEnv(id harness.Identity, now time.Time, root string) hook.SteerEnv {
 	projectDir, managedDir := specDirs()
 	return hook.SteerEnv{
@@ -43,6 +44,7 @@ func steerEnv(id harness.Identity, now time.Time, root string) hook.SteerEnv {
 		Now:          now,
 		ProjectDir:   projectDir,
 		ManagedDir:   managedDir,
+		Blast:        blastPort(),
 	}
 }
 
