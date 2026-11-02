@@ -110,9 +110,15 @@ func ToleranceNote(measured, budget, tolerance float64, until string, after floa
 }
 
 // backgroundBudget is entryBudget's decision for a background row, which no
-// platform has an override for yet.
+// platform has an override for yet: the reference platform's row is its own
+// reading and gates; any other platform reports, since gating against the
+// reference row would assume that platform reads no higher.
 func backgroundBudget(plat string, r budget.Background) (budgetMiB float64, gated bool, why string) {
-	return 0, false, ""
+	if plat == referencePlatform {
+		return r.CurrentMaxRSSMiBP50, true, ""
+	}
+	return r.CurrentMaxRSSMiBP50, false, fmt.Sprintf(
+		"no %s reading of background row %s yet; gating against %s's would assume %s reads no higher", plat, r.ID, referencePlatform, plat)
 }
 
 func percent(f float64) string { return strconv.Itoa(int(f*100+0.5)) + "%" }

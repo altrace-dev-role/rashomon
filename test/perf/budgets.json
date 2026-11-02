@@ -117,5 +117,8 @@
     {"name": "BenchmarkProbeStart/previous_2000", "measured_bytes_per_op": 108882, "measured_allocs_per_op": 437, "bytes_per_op_max": 108882, "allocs_per_op_max": 437, "basis": "provisional, to be re-anchored from the CI artifacts (bench-macos) of the first run with this row: measured locally on Apple M1 Pro (a developer machine), go1.27.2, -benchtime 100x, one invocation, so not the CI runner's figure and not best-of-three; printBrief at startup with the previous session's pointer in a store that also holds 2,000 run directories of another project (card REPORT1b: the same cost as previous_hit); ns/op is ungated"}
   ],
   "growth": [],
-  "disk": {"bytes_per_call_max": 6000}
+  "disk": {"bytes_per_call_max": 6000},
+  "background": [
+    {"id": "pgraph.sync_hook", "events": ["SessionStart", "Stop"], "command": ["pgraph", "sync", "-hook"], "current_maxrss_mib_p50": 6.34, "current_wall_ms_p50": 4.5, "basis": "measured 2026-11-01 on the reference machine (Apple M3, 8 GB, go1.27.3, release flags; TestPW1b_TheBackgroundHookStaysWithinItsRow under the perf tag, its red run, evidence se1/pw230b-measure.log): the median of nine runs on the fixture its first run already read, 6.22 to 6.50 MiB, wall median 4.5 ms; the first run, a load of the fixture, 14.95 MiB and 360 ms. On this repository (a scratch export at dd9233f3, /usr/bin/time -l, se1/pw230a-check.log): no Go change 0.01 s and 15 MiB; a load 1.7 to 1.8 s and 908 to 954 MiB, the go tool's peak included, in the background and at most once per reply. The macOS runner read the entry rows 0.3 to 1.0 MiB above this machine (platforms.darwin/arm64.set_from): if Perf gates (macos) reads this row over, it is re-set from that run's median, as the entry rows were"}
+  ]
 }

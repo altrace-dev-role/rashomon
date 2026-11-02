@@ -121,7 +121,7 @@ func CaseGate(id string) string { return "case " + id }
 func ColdGate(id string) string { return "cold " + id }
 
 // BackgroundGate names a background row's gate (PW1b-ON-230).
-func BackgroundGate(id string) string { return "" }
+func BackgroundGate(id string) string { return "background " + id }
 
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
 // 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
@@ -130,10 +130,11 @@ func CaseGates(c budget.RSSCase) bool { return landed[c.GatesFrom] }
 
 // Ungated lists, sorted, every gate b owes on this tree that ran does not
 // hold: every entry row, every case CaseGates admits, every entry with a
-// measured cold_alloc_bytes_max (P-12), and the init budget. A required
-// perf run (RASHOMON_PERF_REQUIRE_ALL=1, as CI runs it) fails on any,
-// because `go test` passes a run in which everything skipped -- including a
-// -run pattern edited to no longer select TestColdAllocBudget.
+// measured cold_alloc_bytes_max (P-12), every background row (PW1b-ON-230)
+// and the init budget. A required perf run (RASHOMON_PERF_REQUIRE_ALL=1, as
+// CI runs it) fails on any, because `go test` passes a run in which
+// everything skipped -- including a -run pattern edited to no longer select
+// TestColdAllocBudget.
 func Ungated(b budget.Budgets, ran map[string]bool) []string {
 	owed := []string{InitGate}
 	for _, e := range b.Entries {
@@ -146,6 +147,9 @@ func Ungated(b budget.Budgets, ran map[string]bool) []string {
 		if CaseGates(c) {
 			owed = append(owed, CaseGate(c.ID))
 		}
+	}
+	for _, r := range b.Background {
+		owed = append(owed, BackgroundGate(r.ID))
 	}
 	var missing []string
 	for _, g := range owed {
