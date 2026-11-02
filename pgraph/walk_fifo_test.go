@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// TestPW1b_TheWalkNeverOpensAPipe: the walk runs in a hook on every call
-// that can change a file, so a named pipe called x.go must count by its
+// TestPW1b_TheWalkNeverOpensAPipe: the walk runs in a hook after every
+// reply, so a named pipe called x.go must count by its
 // name and never be opened: an open of a pipe with no writer waits forever.
 // Break: hash every file the names select, and this times out.
 func TestPW1b_TheWalkNeverOpensAPipe(t *testing.T) {

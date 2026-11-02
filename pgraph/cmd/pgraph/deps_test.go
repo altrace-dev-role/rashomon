@@ -11,7 +11,7 @@ import (
 )
 
 // TestPW1b_TheCommandLinksNoNetworkPackage (review item 6 on #230): a
-// Claude Code hook runs pgraph after each call that can change a file, so
+// Claude Code hook runs pgraph at session start and after each reply, so
 // it keeps rashomon's no-egress promise (H-17, TRU-40) in the one form a
 // program that must run go list can: no package on its import graph opens
 // a socket, and the go tool it runs is offline (LoaderEnv,
