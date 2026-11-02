@@ -884,6 +884,43 @@ func TestFixtureSlow_(t *testing.T) { time.Sleep(time.Minute) }
 	}
 }
 
+// SWEEP-BASELINE1 (a). A package that fails to build prints no "--- FAIL":
+// its compiler errors are on stderr alone, and a red baseline printed only
+// the last 2000 bytes of it, so an early package's errors were cut whenever
+// a later package's own errors filled more than that on their own. The
+// fixture fails to build twice: a with one short, early error; z with one
+// error whose undefined name alone is 3000 bytes, filling the tail by
+// itself. A third package, ok, holds nothing but the judging test's name:
+// sweep.py's --check requires it to exist, even though the baseline check
+// returns before any mutant runs.
+func TestSWB1a_ARedBaselineThatFailsToBuildNamesTheCompilerErrorFirst(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	for _, d := range []string{"a", "z", "ok", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(root, "a", "a.go"), "package a\n\nfunc A() int { return undefinedEarly }\n")
+	loud := "undefinedLoud" + strings.Repeat("Z", 3000)
+	write(t, filepath.Join(root, "z", "z.go"), "package z\n\nfunc Z() { "+loud+"() }\n")
+	write(t, filepath.Join(root, "ok", "ok_test.go"),
+		"package ok\n\nimport \"testing\"\n\nfunc TestFixtureA_(t *testing.T) {}\n")
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant behind a baseline that does not build", "a/a.go", "undefinedEarly", "stillUndefinedEarly", "TestFixtureA_"))
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code == 0 {
+		t.Fatalf("a baseline that does not build exited 0:\n%s", out)
+	}
+	if !strings.Contains(out, strings.Repeat("Z", 50)) {
+		t.Fatalf("premise: z's own long error is not in the output at all, so nothing was cut by the 2000-byte stderr tail:\n%s", out)
+	}
+	if !strings.Contains(out, "# fixture/a") || !strings.Contains(out, "undefined: undefinedEarly") {
+		t.Errorf("the red baseline's output does not name a's compiler error, cut by z's own long one filling the stderr tail:\n%s", out)
+	}
+}
+
 // The sweep job runs only on a manual dispatch, so two dispatches share no
 // state; cancelling an older one when a newer dispatch starts costs nothing
 // and saves a runner's minutes.

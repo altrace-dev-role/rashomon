@@ -646,6 +646,19 @@ def run_sweep(strict=False, trim_root=None):
                 print("   ", ln)
             print("\nthe last 4000 bytes of go test's output:")
         print(_baseline.stdout[-4000:])
+        # A package that fails to build never prints "--- FAIL"; its
+        # compiler errors are on stderr alone, as "# <package>" followed by
+        # "file.go:N:M: ...". The tail below cut an early package's errors
+        # the same way SWEEP-BASELINE1 cut stdout, whenever a later
+        # package's own errors filled more than 2000 bytes on their own
+        # (SWEEP-BASELINE1 (a)).
+        _named_err = [ln for ln in _baseline.stderr.splitlines()
+                      if ln.startswith("# ") or re.match(r"^\S+\.go:\d+:\d+:", ln)]
+        if _named_err:
+            print("\nfailing to build on the unmutated tree:")
+            for ln in _named_err:
+                print("   ", ln)
+            print("\nthe last 2000 bytes of go test's stderr:")
         print(_baseline.stderr[-2000:])
         return 1
     print("baseline: green\n")

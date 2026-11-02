@@ -28,8 +28,8 @@ func HarnessesPath(root string) string { return filepath.Join(root, store.FileHa
 // surface's steer state is set to "off" only where none is recorded yet. The
 // file is replaced by temporary file, sync and rename, at mode 0600.
 //
-// It records the answer only; what a paused surface records is the hook
-// layer's to enforce.
+// It records the answer only; the hook paths read it through SDKRecording
+// (SDK-GATE1).
 func WriteSDKAnswer(root string, record bool) error {
 	h, err := readHarnesses(root)
 	if err != nil {
@@ -55,6 +55,20 @@ func WriteSDKDefault(root string) error {
 		return nil
 	}
 	return h.write(SDKRecordPaused)
+}
+
+// SDKRecording is whether root's harnesses.json says to record Agent SDK
+// programs: true only for surfaces.sdk.record "on", which a y to the consent
+// screen's second question writes. No file, no answer, any other answer, or
+// a file that does not read is false: no answer is not a y (SDK-GATE1,
+// B309). It reads one small file, and only for a call an SDK program made.
+func SDKRecording(root string) bool {
+	h, err := readHarnesses(root)
+	if err != nil {
+		return false
+	}
+	var state string
+	return json.Unmarshal(h.sdk["record"], &state) == nil && state == SDKRecordOn
 }
 
 // harnesses is harnesses.json as read, down to surfaces.sdk, each level kept
