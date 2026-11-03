@@ -162,6 +162,39 @@ func TestAI1_ACallerEditedSinceTheSyncIsNotNamed(t *testing.T) {
 	}
 }
 
+// TestAI1_ANoteNamingNoPackageIsNotSaid: a caller at the module's root is
+// counted, never listed (a path slot holds no "."), so where the root is the
+// one fresh caller the note would name no package, and it is not said (the
+// DE's condition (a)); that log's answer stands until the next sync, as for
+// no caller. A set naming a package counts the root in "and 1 more". Break:
+// give the note a form with no list, and the first edit speaks; return the
+// read marker on silence, and the second edit reads again.
+func TestAI1_ANoteNamingNoPackageIsNotSaid(t *testing.T) {
+	e := newSteerEnv(t)
+	files := map[string]string{
+		"go.mod":  ai1Files["go.mod"],
+		"a/a.go":  ai1Files["a/a.go"],
+		"b/b.go":  ai1Files["b/b.go"],
+		"main.go": "package main\n\nimport \"example.com/m/a\"\n\nfunc main() { _ = a.F() }\n",
+	}
+	dir := gi1Project(t, files)
+	h156Sync(t, dir)
+	ai1Write(t, dir, "b/b.go", "package b\n")
+	if got := e.ai1Edit(dir, "toolu_e1", "a/a.go"); got != "" {
+		t.Errorf("an edit whose one fresh caller is the root gave %q, want nothing", got)
+	}
+	ai1Write(t, dir, "b/b.go", files["b/b.go"])
+	if got := e.ai1EditIn(dir, "toolu_e2", "a/a.go", "p2"); got != "" {
+		t.Errorf("an edit with no sync since gave %q, want nothing: the log was read again", got)
+	}
+	ai1Write(t, dir, "f/f.go", "package f\n\nfunc H() int { return 6 }\n")
+	h156Sync(t, dir)
+	want := ai1Prefix + " (at least 2): 'b' and 1 more; test files are in 0 of them."
+	if got := e.ai1EditIn(dir, "toolu_e3", "a/a.go", "p3"); got != want {
+		t.Errorf("an edit after a sync gave %q\nwant %q", got, want)
+	}
+}
+
 // TestAI1_SilenceWhereNothingIsProven: each case says nothing to the model,
 // never "no dependents": no sync; an edit of a test file; an edit of a
 // package nothing calls into; a walk file that vouches for another log (a
