@@ -5,6 +5,8 @@
 # killer_stem_problems() in sweep.py fails on any undeclared stem more than
 # one identity names.
 BR1
+# CSL1: ST-2.1's SessionStart-at-resume row is killed by TestCSL1_SessionStartOpensPerSource, which pins the per-source table COMPACT-SLOT1 keyed (#252).
+CSL1
 DEL22
 DG1
 DG2

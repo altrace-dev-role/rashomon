@@ -31,7 +31,8 @@ m("ST-2.1 PreToolUse given a floor without a probe", C,
 # the user's half on 2.1.280 and 2.1.316, so a floor there has no probe.
 m("ST-2.1 SessionStart at resume given a floor without a passing probe", C,
   '\t{event: string(EventSessionStart), source: "resume"}:  {},\n',
-  '\t{event: string(EventSessionStart), source: "resume"}:  {floor: "2.1.280"},\n', "TestCSL1_|TestVG1c_")
+  '\t{event: string(EventSessionStart), source: "resume"}:  {floor: "2.1.280"},\n',
+  "TestCSL1_SessionStartOpensPerSource|TestVG1c_")
 m("ST-2.1 the exempt row gated", F,
   '\tstring(EventUserPromptSubmit):   {context: true, exempt: true},\n',
   '\tstring(EventUserPromptSubmit):   {context: true},\n', "TestST4_")
