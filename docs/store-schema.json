@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/altrace-dev-role/rashomon/docs/store-schema.json",
   "title": "rashomon store records",
-  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq, and spec_event records among them; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. The one exception is a declaration's location_unread (schema 9), a bit that is present only when true: its absence is false, one spelling, as for a record before schema 9. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
+  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq, and spec_event and after_hit records among them; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. The one exception is a declaration's location_unread (schema 9), a bit that is present only when true: its absence is false, one spelling, as for a record before schema 9. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
   "oneOf": [
     {
       "$ref": "#/$defs/declaration"
@@ -24,6 +24,9 @@
     },
     {
       "$ref": "#/$defs/spec_event"
+    },
+    {
+      "$ref": "#/$defs/after_hit"
     }
   ],
   "$defs": {
@@ -1926,6 +1929,91 @@
         "landed_seq": {
           "description": "The seq of the matched call's execution record.",
           "type": "integer"
+        }
+      }
+    },
+    "after_hit": {
+      "title": "after_hit",
+      "description": "The post's record of a call that matched the After pattern of an order rule of the spec in force, in runs/<dir>/records.ndjson, ordered by seq among the call records, written at PostToolUse or PostToolUseFailure. The order judge reads these and never an After call's command line: a Then call with no earlier after_hit that qualifies (exit_code 0, foreground true, the same cwd_digest as the Then call's declaration, no write the rule's invalidated_by paths match between them) is a violation of the rule; an After the lexical read cannot say ran (maybe true), or an earlier call whose recorded command line the After pattern matches but that left no hit, leaves the Then undecided, never violated. It holds no command text. Written critical true. A reader that does not know this kind passes it over by its critical key, as it passes over a kind it does not read: true, or no key, counts it unreadable and the session unverified.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "critical",
+        "seq",
+        "recorded_at_unix_ms",
+        "session_id",
+        "event",
+        "rule_id",
+        "source_digest",
+        "landed_seq",
+        "exit_code",
+        "foreground",
+        "cwd_digest",
+        "maybe"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "after_hit"
+          ]
+        },
+        "schema_version": {
+          "description": "The event kinds' version; the kind first exists at 5.",
+          "type": "integer",
+          "enum": [
+            5
+          ]
+        },
+        "critical": {
+          "description": "true on every record this build writes, so a reader that cannot read the record reads the session with a gap rather than green past it.",
+          "type": "boolean"
+        },
+        "seq": {
+          "description": "The record's place in the run's order, allocated under the run's lock.",
+          "type": "integer"
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "event": {
+          "description": "The hook event of the post that matched: PostToolUse or PostToolUseFailure.",
+          "type": "string"
+        },
+        "rule_id": {
+          "description": "The order rule's id as the spec declares it, prefixed spec:. The spec owner's word, never the command's.",
+          "type": "string"
+        },
+        "source_digest": {
+          "description": "sha256: and the hex SHA-256 of the JCS form of the spec file that declared the rule, the value a trust binding holds. A semantic edit of that file changes it, and the judge then no longer reads this record.",
+          "type": "string"
+        },
+        "landed_seq": {
+          "description": "The seq of the matched call's execution record.",
+          "type": "integer"
+        },
+        "exit_code": {
+          "description": "The call's exit status: 0 at PostToolUse, the status parsed from the failure at PostToolUseFailure, null where none was stated or the call was interrupted.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "foreground": {
+          "description": "true when the call ended in the foreground, false for a command still running in the background when its PostToolUse fired.",
+          "type": "boolean"
+        },
+        "cwd_digest": {
+          "description": "The keyed digest of the directory the call started in, the value its declaration carries; the empty string where the directory is not known, which no other call's digest equals.",
+          "type": "string"
+        },
+        "maybe": {
+          "description": "true where the call's line may run the After program but the lexical read cannot say it does (an expanding word, a shell -c string, a wrapper, a here-document, a line not read whole). Such a hit decides nothing: a Then after it is undecided.",
+          "type": "boolean"
         }
       }
     }

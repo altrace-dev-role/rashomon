@@ -418,6 +418,12 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		g = t.first(verify.Absent)
 	}
 	if v.Turn.Writes == 0 && g != nil {
+		if g.LastRun == nil {
+			// No run of the gate is in the record, so no line says it ran
+			// and none says what it checked: silence over a false line
+			// (INFER-FALSE1, B303: "ran in an earlier turn ... (call 0)").
+			return ""
+		}
 		where, _ := when(v, g)
 		switch g.Reason {
 		case verify.EmptyRun:
