@@ -19,6 +19,8 @@ var frozenKindVersions = map[string]int{
 	"spec_event": 5,
 	// The second (card SPEC-RULES1 1b, #216 ruling 1).
 	"after_hit": 5,
+	// The third (card ORDER-LIVE1).
+	"then_check": 5,
 }
 
 func TestKindVersionsAreTheFrozenTable(t *testing.T) {
@@ -62,6 +64,7 @@ func TestAcceptsKindFollowsTheAcceptanceTable(t *testing.T) {
 		{"session", 5, true}, {"session", 4, false}, {"session", 6, false},
 		{"verify", 5, true}, {"write_observed", 5, true},
 		{"after_hit", 5, true}, {"after_hit", 4, false}, {"after_hit", 6, false},
+		{"then_check", 5, true}, {"then_check", 4, false}, {"then_check", 6, false},
 		{"steer", 1, false}, {"nothing", 5, false},
 	}
 	for _, c := range cases {

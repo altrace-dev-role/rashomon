@@ -30,6 +30,9 @@
     },
     {
       "$ref": "#/$defs/outcome_join"
+    },
+    {
+      "$ref": "#/$defs/then_check"
     }
   ],
   "$defs": {
@@ -2094,6 +2097,73 @@
         "parser_version": {
           "description": "The version of the read that produced the record; 1 for task_notification.",
           "type": "integer"
+        }
+      }
+    },
+    "then_check": {
+      "title": "then_check",
+      "description": "The post's verdict on whether a Bash call's line runs the Then of an order rule of the spec in force, in runs/<dir>/records.ndjson, ordered by seq among the call records, written at PostToolUse or PostToolUseFailure for every Bash call whose line the post read under the rule, whatever the verdict. The order judge reads the Then side of a call the record holds no command line for from it, as it reads the After side from an after_hit: a call with then yes and no earlier after_hit that qualifies is a violation of the rule; a call with no then_check (its post never landed, the record was lost) or then maybe leaves the rule undecided, never met. It holds no command text. Written critical true. A reader that does not know this kind passes it over by its critical key, as it passes over a kind it does not read: true, or no key, counts it unreadable and the session unverified.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "critical",
+        "seq",
+        "recorded_at_unix_ms",
+        "session_id",
+        "rule_id",
+        "source_digest",
+        "landed_seq",
+        "then"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "then_check"
+          ]
+        },
+        "schema_version": {
+          "description": "The event kinds' version; the kind first exists at 5.",
+          "type": "integer",
+          "enum": [
+            5
+          ]
+        },
+        "critical": {
+          "description": "true on every record this build writes, so a reader that cannot read the record reads the session with a gap rather than green past it.",
+          "type": "boolean"
+        },
+        "seq": {
+          "description": "The record's place in the run's order, allocated under the run's lock.",
+          "type": "integer"
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "rule_id": {
+          "description": "The order rule's id as the spec declares it, prefixed spec:. The spec owner's word, never the command's.",
+          "type": "string"
+        },
+        "source_digest": {
+          "description": "sha256: and the hex SHA-256 of the JCS form of the spec file that declared the rule, the value a trust binding holds. A semantic edit of that file changes it, and the judge then no longer reads this record.",
+          "type": "string"
+        },
+        "landed_seq": {
+          "description": "The seq of the call's execution record.",
+          "type": "integer"
+        },
+        "then": {
+          "description": "yes where one of the line's commands runs the rule's Then for certain; maybe where one may (an expanding word, a shell -c string, a wrapper, a here-document) or the line was not read whole; no otherwise.",
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "maybe"
+          ]
         }
       }
     }

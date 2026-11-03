@@ -349,14 +349,16 @@ func compare(texts []string, gates []GateState, wrote, cut bool) []candidate {
 }
 
 // mapGates is rule's verdict over the required gates of its kind, every
-// required gate for done but one that owes it nothing (owesNothing); ids are
-// theirs within the slot charset, sorted, at most MaxPaths, never nil. An id
-// outside the charset is a defect: it is dropped and its state still counts.
+// required gate for done but one that owes it nothing (owesNothing), and at
+// Stop only the turn's (offTurn, card F2): a claim made in one worktree does
+// not answer to a gate masked in another. ids are theirs within the slot
+// charset, sorted, at most MaxPaths, never nil. An id outside the charset is
+// a defect: it is dropped and its state still counts.
 func mapGates(r *claimRule, gates []GateState) mapping {
 	var states []State
 	ids := []SlotID{}
 	for _, g := range gates {
-		if !g.Required || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {
+		if !g.Required || g.offTurn || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {
 			continue
 		}
 		states = append(states, g.State)

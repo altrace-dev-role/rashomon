@@ -134,9 +134,17 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	p.armStale()
 	ctx, view, ok := p.judge(env)
 	if !ok {
+		// A call that raised nothing still leaves its then_checks: the Stop
+		// reads a line that is no Then from its "no" (card ORDER-LIVE1). No
+		// Flush: no note prints (REC-34 asks none), and the next sync of the
+		// file, the next call's own, carries the line; one a crash loses
+		// first reads maybe, never no.
+		if len(view.ThenChecks) > 0 {
+			p.keepHits(nil, nil, view.ThenChecks, env.Now)
+		}
 		return nil
 	}
-	p.keepHits(view.Hits, view.AfterHits, env.Now)
+	p.keepHits(view.Hits, view.AfterHits, view.ThenChecks, env.Now)
 	out := steer.Route(&ctx, view.Findings)
 	// The line is durable before its note prints (REC-34).
 	if err := fault.Fail(fault.PointSteerFlush); err != nil {
@@ -156,20 +164,24 @@ func (p *Post) Steer(env SteerEnv) []byte {
 
 // keepHits appends each forbid_command rule the call matched to the run as a
 // spec_event rule_hit (card SPEC-RULES-STOP1), and each order rule whose After
-// pattern it matched as an after_hit (#216 ruling 1), at either post event and
-// whatever Route then decides: the steer switch, the arm, the holdout,
+// pattern it matched as an after_hit (#216 ruling 1), and each order rule's
+// verdict on the line as a then_check (card ORDER-LIVE1), at either post
+// event and whatever Route then decides: the steer switch, the arm, the holdout,
 // consent and attendance do not reach it. It runs before Route, so Steer's
 // one Flush makes the hits durable before any note prints (REC-34); at a
 // failure, where Route writes no line, that Flush is the one sync the hits
 // add. A hit that does not land (a lock timeout, an append error) is lost,
 // and the Stop then reads that rule undecided, never clear.
-func (p *Post) keepHits(hits []verify.RuleHit, after []verify.AfterHit, now time.Time) {
+func (p *Post) keepHits(hits []verify.RuleHit, after []verify.AfterHit, checks []verify.ThenCheck, now time.Time) {
 	for _, h := range hits {
 		_ = p.st.AppendRecord(p.sessionID, store.NewRuleHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq, now.UnixMilli()))
 	}
 	for _, h := range after {
 		_ = p.st.AppendRecord(p.sessionID, store.NewAfterHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq,
 			h.Exit, h.Foreground, h.CWDDigest, h.Maybe, now.UnixMilli()))
+	}
+	for _, c := range checks {
+		_ = p.st.AppendRecord(p.sessionID, store.NewThenCheck(p.sessionID, c.RuleID, c.SourceDigest, p.landedSeq, c.Then, now.UnixMilli()))
 	}
 }
 
@@ -288,7 +300,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	rules := verify.RulesAtCall(p.sp, p.ruleCall(run), pt, p.event)
 	if run == nil {
 		if len(rules.Findings) == 0 && len(rules.Hits) == 0 && len(rules.AfterHits) == 0 {
-			return steer.Context{}, verify.SteerView{}, false
+			return steer.Context{}, verify.SteerView{ThenChecks: rules.ThenChecks}, false
 		}
 		return p.contextOf(env, rules), rules, true
 	}
@@ -301,7 +313,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), key, pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)
 	view.Dropped += rules.Dropped
-	view.Hits, view.AfterHits = rules.Hits, rules.AfterHits
+	view.Hits, view.AfterHits, view.ThenChecks = rules.Hits, rules.AfterHits, rules.ThenChecks
 	return p.contextOf(env, view), view, true
 }
 
