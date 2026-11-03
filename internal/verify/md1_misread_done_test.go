@@ -6,12 +6,13 @@ import (
 	"testing"
 )
 
-// Card MISREAD-DONE1: the claim comparator read three kinds of word, and a
-// table's header row, as a claim that none of them makes, and the Stop said
-// "done was claimed" for it. Each row is a sentence of the L1 corpus word for
-// word (the final message of a replay turn whose line was false), or a
-// control that must keep its claim. The fix narrows the reading at the word
-// and drops the header line; the lexicon's entries do not change.
+// Card MISREAD-DONE1: the claim comparator read three kinds of word, a
+// table's header row, a sentence on how a thing works and a plan as a claim
+// that none of them makes, and the Stop said "done was claimed" for it. Each
+// row is a sentence of the L1 corpus word for word (the final message of a
+// replay turn whose line was false), or a control that must keep its claim.
+// The fix narrows the reading at the word and the sentence and drops the
+// header line; the lexicon's entries do not change.
 type md1Row struct {
 	msg    string
 	class  ClaimClass
@@ -111,5 +112,52 @@ func TestMD1d_ATableHeaderIsNoClaim(t *testing.T) {
 		{msg: "Tests pass | see the log.\n---", class: ClaimTestsPass, strict: true, why: "control: a rule under prose is no delimiter row"},
 		{msg: "| Tests | pass |\n| | |", class: ClaimTestsPass, strict: true, why: "control: empty cells are no delimiter row"},
 		{msg: "All tests pass.\n|---|---|", class: ClaimTestsPass, strict: true, why: "control: a line with no bar heads no table"},
+	})
+}
+
+// TestMD1e_HowAThingWorksIsNoClaim: works or working followed by from,
+// through, by or off, or by as before a or an, says how a thing works (its
+// input, its role, what it is) or that work is under way, not that it does.
+// "works as expected", "works on linux" and "works like a charm" keep their
+// claims.
+func TestMD1e_HowAThingWorksIsNoClaim(t *testing.T) {
+	md1Run(t, []md1Row{
+		{msg: "- **QA-1** works through all four test batches without waiting for me. Its runs cost no meter tokens.",
+			why: "manager 624: QA-1's role"},
+		{msg: "The spec digest already works from the file's text.", why: "eng-1 1833: the digest's input"},
+		{msg: "The release plugin works as a plugin, but it never steers the agent, so the main AutoSteer feature is off on this route.",
+			why: "qa-2 4315: what the plugin is"},
+		{msg: "It works as an index over the runs.", why: "as before an"},
+		{msg: "The hook works by reading the spec file.", why: "by"},
+		{msg: "The replay works off the kept store.", why: "off"},
+		{msg: "I'm working through the review queue now.", why: "working: work under way"},
+
+		{msg: "It works as expected.", class: ClaimDone, strict: true, why: "control: as before no article"},
+		{msg: "The fix works on linux now.", class: ClaimDone, strict: true, why: "control: on"},
+		{msg: "Works like a charm.", class: ClaimDone, strict: true, why: "control: like"},
+		{msg: "It works now.", class: ClaimDone, strict: true, why: "control: works alone"},
+	})
+}
+
+// TestMD1f_APlanIsNoClaim: a sentence that opens with then, next, after that
+// or once, then I or we and a verb in the present, is a plan: what the writer
+// does next, not what is done. A past verb is a report, and so is a form of
+// be or have; an adverb before the verb is passed over. "we're" and "I'll"
+// are one word each, so no plan opens with them.
+func TestMD1f_APlanIsNoClaim(t *testing.T) {
+	md1Run(t, []md1Row{
+		{msg: "Then I apply the fix, run the tests green through the slot, and make two commits: tests first, then the fix. " +
+			"After that I send FIX BRANCH READY so eng-2 can review.", why: "eng-4 810: the steps after the red"},
+		{msg: "Next we merge the branch and the tests pass on main.", why: "next"},
+		{msg: "After that I push it and it is ready.", why: "after that"},
+		{msg: "Once we rebase, the build succeeds.", why: "once"},
+		{msg: "Then I just run the suite and it passes.", why: "an adverb before a verb in the present"},
+
+		{msg: "Then we're done.", class: ClaimDone, strict: true, why: "control: we're is one word"},
+		{msg: "Then we are done.", class: ClaimDone, strict: true, why: "control: a form of be"},
+		{msg: "Then I have fixed the parser.", class: ClaimDone, strict: true, why: "control: a form of have"},
+		{msg: "Then I ran the tests and they passed.", class: ClaimTestsPass, strict: true, why: "control: a past verb"},
+		{msg: "Then I fixed the parser.", class: ClaimDone, strict: true, why: "control: a past verb in ed"},
+		{msg: "Then I also fixed the parser.", class: ClaimDone, strict: true, why: "control: an adverb before a past verb"},
 	})
 }
