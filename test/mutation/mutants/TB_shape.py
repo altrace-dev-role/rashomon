@@ -1076,9 +1076,22 @@ m("WT complete is forced false", "internal/shape/writetargets.go",
   "\treturn w.targets, w.complete\n}\n", "\treturn w.targets, false\n}\n", "TestWT")
 m("WT a stage that may write and names nothing is complete", "internal/shape/writetargets.go",
   "\tif runs && !o.named {\n", "\tif false && runs && !o.named {\n", "TestWT6_")
+# Re-anchored when the guard joined the here-document checks (HEREDOC-PHANTOM1).
 m("WT the may_write guard is dropped", "internal/shape/writetargets.go",
-  "\tif w.targets == nil && w.complete && mayWrite(toks, i) {\n", "\tif false && w.targets == nil && w.complete && mayWrite(toks, i) {\n",
+  "\t\tcase w.targets == nil && (docs || mayWrite(toks, i)):\n", "\t\tcase w.targets == nil && docs:\n",
   "TestWT12_")
+m("WT a here-document's body is read as stages", "internal/shape/writetargets.go",
+  "\ttoks, err := tokenizeList(cmd)\n", "\ttoks, err := tokenizeProgram(cmd)\n", "TestWT14_")
+m("WT the reading past an uncertain body runs on into it", "internal/shape/writetargets.go",
+  "\t\t\t\treturn toks[:k], nil\n", "\t\t\t\treturn toks, nil\n", "TestWT14_")
+m("WT an unquoted delimiter's body is not expanded", "internal/shape/writetargets.go",
+  "\t\tif k := j + 1; k >= len(toks) || toks[k].meta || toks[k].quotedAt < 0 {\n",
+  "\t\tif k := j + 1; k >= len(toks) || toks[k].meta {\n", "TestWT14_")
+m("WT a here-document line naming nothing is complete", "internal/shape/writetargets.go",
+  "\t\tcase w.targets == nil && (docs || mayWrite(toks, i)):\n", "\t\tcase w.targets == nil && (false && docs || mayWrite(toks, i)):\n",
+  "TestWT14_")
+m("WT the reading cut at the first body is complete", "internal/shape/writetargets.go",
+  "\t\tcase short || expands:\n", "\t\tcase false && short || expands:\n", "TestWT14_")
 m("WT a relative target past a cd is recorded as written", "internal/shape/writetargets.go",
   "\t\tif dir != \"\" {\n\t\t\ttext = path.Join(dir, text)\n\t\t}\n", "\t\t_ = dir\n", "TestWT13_")
 m("WT an unread fold resolves", "internal/shape/writetargets.go",

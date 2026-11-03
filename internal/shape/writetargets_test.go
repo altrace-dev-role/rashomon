@@ -284,3 +284,34 @@ func TestWT13_LeadingCdFold(t *testing.T) {
 		{"touch a && cd sub && touch b", []string{"a"}, false},
 	})
 }
+
+// TestWT14_HereDocumentBodyIsNoStage: a here-document's body names nothing,
+// and a redirection on its operator's line still names its word. The first
+// row is qa-2 3049's line, whose body's `'<runner>' (from '` read as a write
+// to " (from ". Where the list reading cannot place a body (an expansion
+// before the operator, a body missing) the operator's line is read and the
+// list is incomplete; so is a line with an unquoted delimiter, whose body the
+// shell expands.
+func TestWT14_HereDocumentBodyIsNoStage(t *testing.T) {
+	rows := []wtRow{
+		{"F=/tmp/fhv.sh; python3 - $F <<'PY'\nimport sys\ns = '''gate '<runner>' (from '<file>') was'''\nPY\nbash -n $F && echo ok", nil, false},
+		{"cat <<'EOF'\nsee a > b.txt\nEOF", nil, false},
+		{"cat > out.txt <<'EOF'\nsee a > b.txt\nEOF", []string{"out.txt"}, true},
+		{"cat <<'EOF' > out.txt\nsee a > b.txt\nEOF", []string{"out.txt"}, true},
+		{"cat <<\\EOF > out.txt\nsee a > b.txt\nEOF", []string{"out.txt"}, true},
+		{"cat > out.txt <<EOF\nsee a > b.txt\nEOF", []string{"out.txt"}, false},
+		{"cat <<EOF\n$(touch a.go)\nEOF", nil, false},
+		{"cat <<'EOF'\nsee a > b.txt\nEOF\ncat a > c.log", []string{"c.log"}, true},
+		{"cat <<'A' <<'B' > out.txt\nx > y\nA\nz > w\nB", []string{"out.txt"}, true},
+		{"cat ${x} > out.txt <<'EOF'\nsee a > b.txt\nEOF", []string{"out.txt"}, false},
+		{"cat > out.txt <<'EOF'", []string{"out.txt"}, false},
+	}
+	checkWT(t, rows)
+	for _, r := range rows {
+		raw := bashInput(t, r.cmd)
+		got, complete := WrittenPaths("Bash", raw)
+		if Derive("Bash", raw, []byte("key")).MayWrite && complete && got == nil {
+			t.Errorf("%q: may_write true, and WrittenPaths reads complete with no targets", r.cmd)
+		}
+	}
+}
