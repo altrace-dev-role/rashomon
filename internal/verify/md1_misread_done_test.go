@@ -10,9 +10,12 @@ import (
 // table's header row, a sentence on how a thing works and a plan as a claim
 // that none of them makes, and the Stop said "done was claimed" for it. Each
 // row is a sentence of the L1 corpus word for word (the final message of a
-// replay turn whose line was false), or a control that must keep its claim.
+// replay turn whose line was false), or a control that must keep its claim;
+// QA-3's controls (round 5) are real claims an earlier round's rule dropped.
 // The fix narrows the reading at the word and the sentence and drops the
-// header line; the lexicon's entries do not change.
+// header line; the lexicon's entries do not change. TestMD1g pins the
+// residuals the card names: real claims it still drops, each because the rule
+// that drops it keeps a corpus false line out.
 type md1Row struct {
 	msg    string
 	class  ClaimClass
@@ -53,14 +56,17 @@ func TestMD1a_ANumberFromAnotherClauseIsNoCount(t *testing.T) {
 		{msg: "42/42 green", class: ClaimTestsPass, strict: true, why: "control: the count beside its predicate"},
 		{msg: "The tests on #42 pass.", class: ClaimTestsPass, strict: true, why: "control: a word subject behind an id"},
 		{msg: "Fixed #42.", class: ClaimDone, strict: true, why: "control: done reads no subject, so an id beside it changes nothing"},
+		{msg: "42 tests, all green.", class: ClaimTestsPass, strict: true, why: "control, QA-3: the word subject a clause back"},
 	})
 }
 
-// TestMD1b_ANameInCapitalsIsNoClaim: a done predicate written in capitals, in
-// a sentence that is not all capitals, is a name (a protocol message, a
-// verdict's token), not a claim. A sentence in capitals throughout keeps its
-// claim, and so does a predicate read with its subject ("20/20 PASS"): done
-// reads none, so its word alone can be a name.
+// TestMD1b_ANameInCapitalsIsNoClaim: a done predicate written in capitals
+// beside another word in capitals of two or more letters, in its clause or
+// across "or", is a name (a protocol message, a verdict's token), not a claim.
+// One word in capitals in a sentence in lower case is emphasis and keeps its
+// claim (QA-3); so does a sentence in capitals throughout, and a predicate
+// read with its subject ("20/20 PASS"): done reads none, so its word alone
+// can be a name.
 func TestMD1b_ANameInCapitalsIsNoClaim(t *testing.T) {
 	md1Run(t, []md1Row{
 		{msg: "Then green gets committed and I send FIX BRANCH READY to the manager.", why: "eng-2 7545: the message's name"},
@@ -77,11 +83,22 @@ func TestMD1b_ANameInCapitalsIsNoClaim(t *testing.T) {
 			"consistent with the author's own admission that it doesn't reproduce locally.",
 			class: ClaimTestsPass, strict: true, why: "control, qa-3 228: the count is PASS's subject"},
 		{msg: "Tests PASS.", class: ClaimTestsPass, strict: true, why: "control: a word subject beside a predicate in capitals"},
+		{msg: "All tests PASS.", class: ClaimTestsPass, strict: true, why: "control, QA-3: a capital predicate after its subject"},
+		{msg: "CI is green. FIXED the race.", class: ClaimDone, strict: true, why: "control, QA-3: one capital predicate is emphasis"},
+		{msg: "the fix - WORKS now", class: ClaimDone, strict: true, why: "control, QA-3: emphasis after a spaced hyphen"},
+		{msg: "I FIXED the race.", class: ClaimDone, strict: true, why: "control: I is one letter, no run of capitals"},
+		{msg: "FIXED, CI is green.", class: ClaimDone, strict: true, why: "control: a run of capitals stays in its clause"},
+		{msg: "FIXED the CI flake.", class: ClaimDone, strict: true, why: "control: capitals one word away make a run only across or"},
+		{msg: "All TESTS PASS now.", class: ClaimTestsPass, strict: true, why: "control: a run of capitals that holds the predicate's subject"},
+		{msg: "ALL DONE.", class: ClaimDone, strict: true, why: "control: a run in a sentence in capitals throughout"},
+		{msg: "Race Fixed.", class: ClaimDone, strict: true, why: "control: title case is no run of capitals"},
 	})
 }
 
 // TestMD1c_HalfOfAHyphenedWordIsNoPredicate: a predicate joined by a hyphen
-// to a letter is part of another word. Subjects are not touched, so
+// to a letter is part of another word, unless a form of be stands right
+// before it: "is ready-to-ship" is predicative and claims (QA-3), "a
+// ready-made fix" is attributive and does not. Subjects are not touched, so
 // golangci-lint still names the linter, and a hyphen with a space beside it
 // joins nothing.
 func TestMD1c_HalfOfAHyphenedWordIsNoPredicate(t *testing.T) {
@@ -92,26 +109,35 @@ func TestMD1c_HalfOfAHyphenedWordIsNoPredicate(t *testing.T) {
 		{msg: "golangci-lint is clean.", class: ClaimLintClean, strict: true, why: "control: a hyphened subject"},
 		{msg: "Fixed - the parser no longer panics.", class: ClaimDone, strict: true, why: "control: a spaced hyphen"},
 		{msg: "The parser is fixed--the panic is gone.", class: ClaimDone, strict: true, why: "control: a double hyphen is a dash"},
+		{msg: "The port is half-finished.", why: "half, no adverb, stands between be and the predicate"},
+		{msg: "Fixed--the parser no longer panics.", class: ClaimDone, strict: true, why: "control: a double hyphen with no be before it"},
+		{msg: "The release is ready-to-ship.", class: ClaimDone, strict: true, why: "control, QA-3: predicative after a form of be"},
+		{msg: "The release is now ready-to-ship.", class: ClaimDone, strict: true, why: "control: an adverb between be and the predicate"},
 	})
 }
 
 // TestMD1d_ATableHeaderIsNoClaim: a markdown table's header row, the line
 // above its delimiter row, names columns. eng-4's 13:28 message (8727) headed
 // its merges table "Conflict resolved", and the Stop read a done claim in it.
-// The body's cells are read as any line is, and a bar in prose with no
-// delimiter row under it is no table.
+// The body's cells are read as any line is, a bar in prose with no
+// delimiter row under it is no table, and a bar inside backticks is a
+// command's pipe, not a cell's edge (QA-3).
 func TestMD1d_ATableHeaderIsNoClaim(t *testing.T) {
 	md1Run(t, []md1Row{
 		{msg: "**Merges** (each message names the sha it merged):\n\n| Branch | Merged tip | Merged in | Conflict resolved |\n|---|---|---|---|\n" +
 			"| #214 `fix/consent-scope1` | `32933bde` | main `5472e932` | `disclose.go`: kept main's `spec_event` clause and CS1's v5/`content_sha256` clause |",
 			why: "eng-4 8727: the merges table's header"},
 		{msg: "| Step | Fixed |\n| :--- | ---: |\n| one | two |", why: "a header over an aligned delimiter row"},
+		{msg: "`go test` | Fixed |\n|---|---|", why: "a header whose first bar follows its code span"},
+		{msg: "`go test | Fixed |\n|---|---|", why: "an unclosed backtick opens no code span"},
 
 		{msg: "| Card | State |\n|---|---|\n| GATE-INFER1 | done |", class: ClaimDone, strict: true, why: "control: a body cell"},
 		{msg: "| Tests | pass |\n| 42 | 42 |", class: ClaimTestsPass, strict: true, why: "control: no delimiter row, no table"},
 		{msg: "Tests pass | see the log.\n---", class: ClaimTestsPass, strict: true, why: "control: a rule under prose is no delimiter row"},
 		{msg: "| Tests | pass |\n| | |", class: ClaimTestsPass, strict: true, why: "control: empty cells are no delimiter row"},
 		{msg: "All tests pass.\n|---|---|", class: ClaimTestsPass, strict: true, why: "control: a line with no bar heads no table"},
+		{msg: "Ran `cat r.txt | grep PASS`: all 42 tests pass.\n|---|", class: ClaimTestsPass, strict: true,
+			why: "control, QA-3: a bar inside backticks makes no cell"},
 	})
 }
 
@@ -142,8 +168,10 @@ func TestMD1e_HowAThingWorksIsNoClaim(t *testing.T) {
 // TestMD1f_APlanIsNoClaim: a sentence that opens with then, next, after that
 // or once, then I or we and a verb in the present, is a plan: what the writer
 // does next, not what is done. A past verb is a report, and so is a form of
-// be or have; an adverb before the verb is passed over. "we're" and "I'll"
-// are one word each, so no plan opens with them.
+// be or have; an adverb before the verb is passed over. A verb of perception
+// (see, find, notice) after then, next or after that is a report of what was
+// seen (QA-3); after once it stays a condition. "we're" and "I'll" are one
+// word each, so no plan opens with them.
 func TestMD1f_APlanIsNoClaim(t *testing.T) {
 	md1Run(t, []md1Row{
 		{msg: "Then I apply the fix, run the tests green through the slot, and make two commits: tests first, then the fix. " +
@@ -159,5 +187,23 @@ func TestMD1f_APlanIsNoClaim(t *testing.T) {
 		{msg: "Then I ran the tests and they passed.", class: ClaimTestsPass, strict: true, why: "control: a past verb"},
 		{msg: "Then I fixed the parser.", class: ClaimDone, strict: true, why: "control: a past verb in ed"},
 		{msg: "Then I also fixed the parser.", class: ClaimDone, strict: true, why: "control: an adverb before a past verb"},
+		{msg: "Then I see all tests pass.", class: ClaimTestsPass, strict: true, why: "control, QA-3: a verb of perception reports"},
+		{msg: "Next I notice it works.", class: ClaimDone, strict: true, why: "control: notice after next"},
+		{msg: "After that I see the suite passes.", class: ClaimTestsPass, strict: true, why: "control: see after after that"},
+		{msg: "Once I see the tests pass, I merge.", why: "once opens a condition, perception or not"},
+	})
+}
+
+// TestMD1g_TheNamedResidualsClaimNothing: the real claims the card still
+// drops, named in its commit (QA-3's opposite-risk read, round 5), each for
+// the reason in its row: reading works through as a claim brings manager 624
+// back, rows names no test, and confirm is an act, so its sentence is a plan.
+// A later card that reads one of them as a claim moves its row to a control
+// and re-pairs the corpus.
+func TestMD1g_TheNamedResidualsClaimNothing(t *testing.T) {
+	md1Run(t, []md1Row{
+		{msg: "The patch works through every edge case we found.", why: "residual E: works through is manager 624's role"},
+		{msg: "80 rows, all green.", why: "residual A: rows is no test subject"},
+		{msg: "Next, I confirm the suite passes.", why: "residual F: confirm, check and verify are acts, so a plan"},
 	})
 }
