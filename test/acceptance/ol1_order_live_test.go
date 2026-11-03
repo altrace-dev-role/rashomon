@@ -87,20 +87,22 @@ func TestOL1b_EveryCheckedCallLeavesItsVerdict(t *testing.T) {
 	}
 }
 
-// TestOL1c_ACallWithNoVerdictReadsUnknown: an After, then a Bash call whose
-// post never landed (its PreToolUse alone), then a qualifying Then: the call
-// in between has no then_check, so it may have been a Then with no After
+// TestOL1c_ACallWithNoVerdictReadsUnknown: a Bash call whose post never
+// landed (its PreToolUse alone), then an After, then a qualifying Then: the
+// first call has no then_check, so it may have been a Then with no After
 // before it, and the row reads unknown, never met. Break: read a missing
-// record as no (the row would read met).
+// record as no (the row would read met). The lost call comes first: one
+// after a qualifying After in its directory is met whatever it ran, so a
+// missing record there decides nothing.
 func TestOL1c_ACallWithNoVerdictReadsUnknown(t *testing.T) {
 	e, dir := spr1Project(t, true)
-	e.dghCall(dir, "toolu_a", "Bash", spr1Test)
 	envs := []string{stAgent, "CI="}
 	if res := e.hook(stPayload(t, "PreToolUse", "toolu_lost", "Bash", spr1Push, map[string]any{"cwd": dir}), envs...); res.exitCode != 0 {
 		t.Fatalf("hook: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
+	e.dghCall(dir, "toolu_a", "Bash", spr1Test)
 	e.dghCall(dir, "toolu_t", "Bash", spr1Push)
 	if got := ol1Row(e, dir); got != "unknown" {
-		t.Errorf("a Bash call with no then_check before the Stop: row %q, want unknown", got)
+		t.Errorf("a Bash call with no then_check before the After: row %q, want unknown", got)
 	}
 }
