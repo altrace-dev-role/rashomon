@@ -461,7 +461,9 @@ func (tru23Steer) CapText() bool { return false }
 
 // PREFLIGHT1b: at record scope v4 a request's preflight steer line stores a
 // count and keyed digests, not the note's text, so both places that say the
-// notes are stored as shown carry the exception (TRU-PF1b).
+// notes are stored as shown carry the exception (TRU-PF1b). The continuity
+// briefing's exception follows it in both; TestCSL1_TheScreenAndTheRowSay...
+// pins the whole of each.
 func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
@@ -479,7 +481,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	}
 	for _, f := range inv.Files {
 		if f.Pattern == "steer.ndjson" {
-			if !strings.Contains(f.Holds, "the message text shown ("+except+")") {
+			if !strings.Contains(f.Holds, "the message text shown ("+except) {
 				t.Errorf("steer.ndjson's Holds lacks the v4 exception: %q", f.Holds)
 			}
 			return

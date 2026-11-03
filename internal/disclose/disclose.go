@@ -37,6 +37,9 @@ import (
 // fired-<event> marker, #148), says an approved lesson reaches the agent with
 // a prompt (#156), and names the on and off switches the record keeps in
 // config.json, with a project's directory for a project's switch (#160).
+// alpha.1 shipped 4, so 5 also covers the briefing after a compaction, which
+// quotes the person's earlier instructions to the agent while the record keeps
+// only each quote's length and keyed digest (COMPACT-SLOT1).
 // Pinned by TRU-8.
 const ScopeVersion = 5
 
@@ -481,7 +484,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileSteer,
 			Mode:       "0600",
 			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
-			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them), each capped at 2,048 bytes",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them, and except the briefing after Claude Code compacts the conversation, which quotes your earlier instructions to the agent word for word; the record keeps only each quote's length and a keyed digest, never your words), each capped at 2,048 bytes",
 			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
 			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
 			Owner:      "store",
