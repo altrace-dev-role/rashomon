@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/consent"
@@ -26,9 +25,10 @@ func TestAGCO1_AnAgentSessionCannotWithdrawAConsentUnit(t *testing.T) {
 	for _, unit := range []string{"bodies", "share.outcomes"} {
 		var stdout, stderr bytes.Buffer
 		code := run([]string{"consent", unit, "off"}, nil, &stdout, &stderr)
-		if code != exitFail || stdout.Len() != 0 || !strings.Contains(stderr.String(), "agent session; nothing was written") || !strings.Contains(stderr.String(), "rashomon consent "+unit+" off") {
+		if code != exitFail || stdout.Len() != 0 {
 			t.Errorf("consent %s off in an agent session: exit %d, stdout %q, stderr %q", unit, code, stdout.String(), stderr.String())
 		}
+		wantRefusal(t, "consent "+unit+" off", stderr.String(), "consent "+unit+" off", "written")
 	}
 	if after, _ := os.ReadFile(consent.Path(root)); !bytes.Equal(after, before) {
 		t.Errorf("an agent session changed consent.json: %q, was %q", after, before)

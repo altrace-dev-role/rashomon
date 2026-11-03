@@ -37,7 +37,7 @@ m("VER-1.3 a red with writes after it ignores them", G,
 m("VER-1.3 a write before the red is a write after it", G,
   '\t\tif w.Seq > f.last.Seq {\n', '\t\tif w.Seq > 0 {\n', "TestVER12b_")
 m("VER-1.3 a red is never by output alone", G,
-  '\tif !failedByExit(f.last) {\n\t\treturn FailedOutput\n\t}\n', '', "TestVER12_")
+  '\tif f.last.Wrapped || !failedByExit(f.last) {\n\t\treturn FailedOutput\n\t}\n', '', "TestVER12_")
 m("VER-1.3 a masked success line is not read", G,
   '\tcase outSummaryPass:\n\t\treturn MaskedWithSuccessLine\n', '', "TestVER13b_")
 m("VER-1.3 a masked no_summary is unattributable", G,
