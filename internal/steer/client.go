@@ -59,6 +59,25 @@ type channelBasis struct {
 	excluded []string
 }
 
+// channelKey is one row's key in the probed-version table: the event, and
+// for SessionStart the source its call carries, since P-TRU-1 judges each
+// source on its own. keyOf is the only way a lookup builds one, so a
+// SessionStart call with no source reads a row the table never has (closed),
+// and no lookup by the event alone can open a source the probe failed.
+type channelKey struct {
+	event  string
+	source string
+}
+
+// keyOf is c's row key on event: the source c carries for SessionStart, none
+// for every other event, which ignores a source on its call.
+func keyOf(event string, c Client) channelKey {
+	if event == string(EventSessionStart) {
+		return channelKey{event: event, source: c.StartSource}
+	}
+	return channelKey{event: event}
+}
+
 // excludes reports whether v equals an excluded version by component.
 func (b channelBasis) excludes(v string) bool {
 	for _, x := range b.excluded {
@@ -85,31 +104,42 @@ func (b channelBasis) refusal() string {
 	return ""
 }
 
-// mirrorVerifiedOn is the compiled table, per event: on a verified version
-// the event's model-visible field reached the model while its systemMessage
-// mirror reached the user. A row with no entry, or with no floor, is gated
-// on every version, so a row added to outputKeys later fails closed. Exempt
-// rows (eventKeys.exempt) are not read here. Only a release changes this
-// table; test/live/p-tru-1.sh, the per-release canary, is what sets a floor
-// or adds an exclusion.
-func mirrorVerifiedOn() map[string]channelBasis {
+// mirrorVerifiedOn is the compiled table, per row (channelKey: the event, and
+// SessionStart's source): on a verified version the row's model-visible field
+// reached the model while its systemMessage mirror reached the user. A row
+// with no entry, or with no floor, is gated on every version, so a row added
+// to outputKeys later fails closed. Exempt rows (eventKeys.exempt) are not
+// read here. Only a release changes this table; test/live/p-tru-1.sh, the
+// per-release canary, is what sets a floor or adds an exclusion.
+func mirrorVerifiedOn() map[channelKey]channelBasis {
 	mirrorVerifiedOnOnce.Do(func() {
-		mirrorVerifiedOnOnce.v = map[string]channelBasis{
+		mirrorVerifiedOnOnce.v = map[channelKey]channelBasis{
 			// P-TRU-1, 2026-10-23, on 2.1.280: one PostToolUse output carrying
 			// both additionalContext and systemMessage (PRD PF-ST4).
-			string(EventPostToolUse): {floor: "2.1.280"},
+			{event: string(EventPostToolUse)}: {floor: "2.1.280"},
 			// P-TRU-1, 2026-10-30, on 2.1.304: PostToolUseFailure carrying both
 			// halves (same payload shape as PostToolUse is not enough; the
 			// event stayed closed until this probe). Logs under
 			// /tmp/rk-probe-g/p-tru-1-PostToolUseFailure-20261030T231317Z.log.
-			string(EventPostToolUseFailure): {floor: "2.1.304"},
+			{event: string(EventPostToolUseFailure)}: {floor: "2.1.304"},
+			// P-TRU-1, 2026-11-02, on 2.1.280 and 2.1.316 (COMPACT-SLOT1):
+			// SessionStart at a manual /compact carried both halves (logs
+			// p-tru-1-SessionStart-compact-20261103T054805Z.log and -054829Z.log
+			// under /tmp/rk-probe-g). An automatic compact fires the same source
+			// (281 on live 2.1.280 sessions, QA-2's SESSION-ID-MEASURE1); its
+			// channel is unprobed.
+			{event: string(EventSessionStart), source: "compact"}: {floor: "2.1.280"},
+			// The same runs: startup, resume and clear gave the additionalContext
+			// and no systemMessage on the stream, on both versions. Closed.
+			{event: string(EventSessionStart), source: "startup"}: {},
+			{event: string(EventSessionStart), source: "resume"}:  {},
+			{event: string(EventSessionStart), source: "clear"}:   {},
 			// Not probed; closed until test/live/p-tru-1.sh runs on them (:2019).
-			string(EventPostToolBatch): {},
-			string(EventSessionStart):  {},
-			string(EventSubagentStart): {},
+			{event: string(EventPostToolBatch)}: {},
+			{event: string(EventSubagentStart)}: {},
 			// permissionDecisionReason (G3); nonce A only, since the row has no
 			// additionalContext slot for nonce B; not probed.
-			string(EventPreToolUse): {},
+			{event: string(EventPreToolUse)}: {},
 		}
 		closeRefused(mirrorVerifiedOnOnce.v)
 	})
@@ -119,7 +149,7 @@ func mirrorVerifiedOn() map[string]channelBasis {
 // closeRefused replaces each row of table that refusal names with a closed
 // row: an invalid row can then never verify, the safe direction for this
 // table, and nothing on the hook path panics.
-func closeRefused(table map[string]channelBasis) {
+func closeRefused(table map[channelKey]channelBasis) {
 	for ev, b := range table {
 		if b.refusal() != "" {
 			table[ev] = channelBasis{}
@@ -131,7 +161,7 @@ func closeRefused(table map[string]channelBasis) {
 // call and never at init (RES-2).
 var mirrorVerifiedOnOnce struct {
 	sync.Once
-	v map[string]channelBasis
+	v map[channelKey]channelBasis
 }
 
 // A shutReason is why a row's model-visible field may not print for a
@@ -166,8 +196,8 @@ const (
 // table, or channelOpen: the row is exempt, or c is on the main agent with
 // its mirror verified and runs a version at or above the event's floor that
 // no exclusion names. A malformed version is never compared.
-func shutBy(keys eventKeys, event string, c Client, table map[string]channelBasis) shutReason {
-	b := table[event]
+func shutBy(keys eventKeys, event string, c Client, table map[channelKey]channelBasis) shutReason {
+	b := table[keyOf(event, c)]
 	switch {
 	case keys.exempt:
 		return channelOpen
@@ -191,7 +221,7 @@ func shutBy(keys eventKeys, event string, c Client, table map[string]channelBasi
 
 // verified reports whether event's model-visible field may print for c
 // under table: shutBy finds no reason it may not.
-func verified(keys eventKeys, event string, c Client, table map[string]channelBasis) bool {
+func verified(keys eventKeys, event string, c Client, table map[channelKey]channelBasis) bool {
 	return shutBy(keys, event, c, table) == channelOpen
 }
 
@@ -228,7 +258,7 @@ func ContextAllowed(event string, c Client) bool {
 
 // allowed is ContextAllowed over a given table, the seam a test reaches a
 // row's printing path through while the compiled table keeps it closed.
-func allowed(event string, c Client, table map[string]channelBasis) bool {
+func allowed(event string, c Client, table map[channelKey]channelBasis) bool {
 	keys, ok := outputKeys()[event]
 	return ok && keys.context && verified(keys, event, c, table)
 }

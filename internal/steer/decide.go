@@ -330,7 +330,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		}
 	}
 
-	basis := mirrorVerifiedOn()[string(ctx.Event)]
+	basis := mirrorVerifiedOn()[keyOf(string(ctx.Event), c)]
 	lines := make([]*Line, len(plans))
 	for i := range plans {
 		lines[i] = lineOf(ctx, arm, attendance, c.Version, basis, &plans[i], mint())

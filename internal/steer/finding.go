@@ -332,7 +332,7 @@ func (o Output) MarshalFor(event string, c Client) ([]byte, error) {
 
 // marshalFor is MarshalFor under table, the seam that lets a test reach a
 // gated row's printing path.
-func (o Output) marshalFor(event string, c Client, table map[string]channelBasis) ([]byte, error) {
+func (o Output) marshalFor(event string, c Client, table map[channelKey]channelBasis) ([]byte, error) {
 	keys, ok := outputKeys()[event]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownEvent, event)
