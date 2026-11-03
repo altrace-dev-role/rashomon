@@ -16,6 +16,7 @@ import (
 var res5Dirs = []string{
 	"internal/hook", "internal/shape", "internal/verify", "internal/steer",
 	"internal/harness", "internal/learn", "cmd/rashomon", "internal/intent", "internal/receipt",
+	"internal/directive",
 }
 
 // res5Allowed are the decodes a hook path may still make, named by package

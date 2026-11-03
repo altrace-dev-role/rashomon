@@ -456,9 +456,11 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := attendanceOf(p.event, env, p.permissionMode)
 	steerOff, unreadable := p.steerOff()
+	client := steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != "",
+		StartSource: p.startSource}
 	return steer.Context{
 		Event:            steer.Event(p.event),
-		Client:           steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != ""},
+		Client:           client,
 		Store:            p.st,
 		SessionID:        p.sessionID,
 		PromptID:         nilIfEmpty(p.promptID),

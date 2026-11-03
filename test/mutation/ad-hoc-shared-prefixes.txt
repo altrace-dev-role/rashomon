@@ -3,6 +3,7 @@
 # and confirmed against each file's own header comment, not a B343-class
 # collision. One identity per line. prefix_uniqueness_problems() in sweep.py
 # fails on any undeclared identity more than one file claims.
+CSL-1
 H-16
 H-17
 H-25

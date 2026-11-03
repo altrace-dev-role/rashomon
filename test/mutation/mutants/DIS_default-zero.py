@@ -9,7 +9,7 @@
 IMPORTS["DIS Default carries a scope version on an otherwise-empty inventory"] = ("internal/disclose/disclose.go",
   '\t"slices"\n', "")
 m("DIS Default carries a scope version on an otherwise-empty inventory", "internal/disclose/disclose.go",
-  "\t\tFiles: slices.Concat(\n\t\t\tdefaultFiles(),\n\t\t\tfiredFiles(),\n\t\t\tlearnFiles(),\n\t\t\tspecFiles(),\n\t\t\tevidenceFiles(),\n\t\t\tconfigFiles(),\n\t\t),\n",
+  "\t\tFiles: slices.Concat(\n\t\t\tdefaultFiles(),\n\t\t\tfiredFiles(),\n\t\t\tlearnFiles(),\n\t\t\tspecFiles(),\n\t\t\tevidenceFiles(),\n\t\t\tconfigFiles(),\n\t\t\tcontinuityFiles(),\n\t\t),\n",
   "", "TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory")
 m("DIS Default carries a scope version with no screen paragraphs", "internal/disclose/disclose.go",
   "\t\tParagraphs: defaultParagraphs(),\n",
