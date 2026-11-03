@@ -25,6 +25,10 @@ type Run struct {
 	// AfterHits are the run's after_hit records, in file order (card
 	// SPEC-RULES1 1b).
 	AfterHits []AfterHit
+	// OutcomeJoins are the run's outcome_join records, in file order: a
+	// call's outcome learned after its execution record, today a background
+	// command's end (card BG-OUTCOME phase 1).
+	OutcomeJoins []OutcomeJoin
 	// Skipped counts lines that did not parse, carried an unknown type, or
 	// carried a schema version this reader does not understand. They are
 	// counted rather than failed on so that one bad line cannot hide a run.
@@ -293,6 +297,8 @@ func readAccepted(run *Run, line []byte, kind string, version int) error {
 		return readSpecEvent(run, line, kind, version)
 	case TypeAfterHit:
 		return readAfterHit(run, line, kind, version)
+	case TypeOutcomeJoin:
+		return readOutcomeJoin(run, line, kind, version)
 	default:
 		// A kind introduced at 1.2.0, at its version. Its readers land
 		// with its writers; until then the record is checked to be the

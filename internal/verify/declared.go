@@ -163,13 +163,14 @@ func shellWord(w string) string {
 	return "'" + strings.ReplaceAll(w, "'", `'\''`) + "'"
 }
 
-// lineRuns is every Bash call with a picked execution, read as it ran
-// (newRun), in record order: what a declared gate matches, a line no runner
+// lineRuns is every Bash call with a picked execution, read as it ran and
+// as it ended (newRun), in record order: what a declared gate matches, a line no runner
 // names as well as classify's gate runs (G4). A rewritten line ran from a
 // location the record does not hold, as classify reads it, so no declared
 // gate takes it.
 func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 	var out []lineRun
+	ended := taskEnds(run)
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
 		e := picked[d.ToolUseID]
@@ -177,7 +178,7 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 			continue
 		}
 		masked, runner, _, _ := asRan(d, e)
-		g := newRun(d, e, masked, runner)
+		g := newRun(d, e, masked, runner, ended[d.ToolUseID])
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 		}
