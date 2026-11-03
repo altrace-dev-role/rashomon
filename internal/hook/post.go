@@ -29,8 +29,10 @@ import (
 // reads the output of a gate run, the call shape.GateRun names -- stdout,
 // then stderr where stdout gives no summary, or a failure event's error after
 // its first line -- decoded into a buffer local to that call, at most
-// gateout.MaxScanBytes of it, cleared before it returns. What survives is
-// gate_output's three closed words; no other call's output is read at all.
+// gateout.MaxScanBytes of it, cleared before it returns; and, where that line
+// hid its runner's status, printedOutput reads its stdout the same way for
+// the status the line printed (STATUS-PROBE). What survives is gate_output's
+// three closed words; no other call's output is read at all.
 //
 // tool_input IS held, as a subslice of the payload, for the executed digest:
 // the post-rewrite input is the only evidence a rewriting hook leaves
@@ -170,6 +172,12 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// exitCode and backgrounded are how the call ended, kept for the
+	// after_hit an order rule's After call leaves (ruleCall): the parsed
+	// status of a failure (nil where none was stated), and whether a success
+	// event's command was still running in the background.
+	exitCode     *int
+	backgrounded bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -315,6 +323,16 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if shape.GateRun(s.RunnerDigest, s.StatusMasked, s.VerbClass) {
 		out := gateOutput(payload, pl.HookEventName == FailureEvent, gateKind(&s), programOf(&s), start.Add(gateOutputBudget), p.now)
 		rec.GateOutput = &out
+		// A line that hid its runner's status and then printed it (`make
+		// check; echo "EXIT: $?"`): the printed status is the run's outcome,
+		// over anything a summary in the output said (STATUS-PROBE). Only on
+		// a success event in the foreground: a failure's exit is the line's
+		// own, and a backgrounded call's output is the launch's.
+		if pl.HookEventName != FailureEvent && !rec.Backgrounded && shape.StatusHidden(s.StatusMasked) {
+			if printed, ok := printedOutput(payload, pl.ToolName, pl.ToolInput, start.Add(gateOutputBudget), p.now); ok {
+				rec.GateOutput = &printed
+			}
+		}
 	}
 	// The content of the file a named write names, as the call left it: the
 	// tree a later gate run is bound to (card P5A, D140). A digest of content,
@@ -330,6 +348,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		p.withheld = true
 	}
 	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
+	p.exitCode, p.backgrounded = rec.ExitCode, rec.Backgrounded
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
 	p.landedRed = redRead(&rec)

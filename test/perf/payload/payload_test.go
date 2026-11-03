@@ -2,6 +2,7 @@ package payload
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,21 @@ func TestRES28f_PayloadSizesAreExact(t *testing.T) {
 	for _, p := range [][]byte{BashPre("git status", "t"), Stop("done"), Prompt("next"), SessionStart(), SessionEnd()} {
 		if !json.Valid(p) {
 			t.Errorf("invalid payload %s", p)
+		}
+	}
+}
+
+// TestBashPostExactAtIsExact: the order case's payloads, whose cwd is a
+// project directory under /tmp, are exactly the class's size, and a Pre of
+// the same cwd names the same directory.
+func TestBashPostExactAtIsExact(t *testing.T) {
+	for _, dir := range []string{"/tmp/rpo-1234567890", "/private/tmp/rpo-1234567890"} {
+		p, err := BashPostExactAt(540, "toolu_00", dir)
+		if err != nil || len(p) != 540 {
+			t.Fatalf("cwd %s: %d bytes, %v, want 540", dir, len(p), err)
+		}
+		if !strings.Contains(string(p), `"cwd":"`+dir+`"`) || !strings.Contains(string(BashPreAt("git status --short", "toolu_00", dir)), `"cwd":"`+dir+`"`) {
+			t.Errorf("cwd %s is not in the payloads", dir)
 		}
 	}
 }
