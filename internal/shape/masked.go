@@ -55,7 +55,10 @@ const (
 // (writeTargetPins); version 11 names the runner the line ran (RunnerName, the
 // row's own words from the lists above) and the stage of a pipe that hid its
 // result (MaskedBy, a closed word), which verify reads with the output's
-// summary to say whether a piped run passed (D229) --
+// summary to say whether a piped run passed (D229); version 12 reads the
+// exit status a line printed for the runner it hid (PrintedStatus,
+// STATUS-PROBE), from which verify takes the run's outcome, and the claim
+// comparator's done reading, versioned with it (verify's claimlex.go) --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -67,7 +70,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 11
+const RulesVersion = 12
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
@@ -172,48 +175,9 @@ const maxRunnerGroups = 64
 // pushd or popd past them, past MaxLeadingCd steps, or in a line the two
 // readings fold apart, displaces the runners after it (displace).
 func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKind, name, by *string) {
-	if controlByte(cmd) {
-		return nil, nil, nil, nil, nil
-	}
-	toks, err := tokenizeList(cmd)
-	if err != nil {
-		return nil, nil, nil, nil, nil
-	}
-	p := &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
-	body, ok := p.parseLine()
+	p, body, hidden, reach, ok := maskedRun(cmd, fold)
 	if !ok {
 		return nil, nil, nil, nil, nil
-	}
-	if len(p.runners) > maxRunnerGroups {
-		// Not sure: null. runShells below re-runs the whole parsed line for
-		// every group (twice, or four times where the line turns errexit
-		// on), so the cost is runners times line size -- a line of
-		// thousands of distinctly-named runners, each its own group because
-		// runnerWords keys a group by its exact words, made that the
-		// square of the payload: 16,000 `make tN;` groups took 4.5s and
-		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
-		// already past what a build or test script looks like.
-		return nil, nil, nil, nil, nil
-	}
-	p.displace(agreedFold(toks, fold))
-
-	var (
-		hidden []int
-		reach  = -1
-	)
-	for g := range p.runners {
-		f, pass, ran := p.runShells(body, g)
-		if f < 0 || pass < 0 || !ran {
-			// Not sure: null.
-			return nil, nil, nil, nil, nil
-		}
-		if f == 0 || f == pass {
-			hidden = append(hidden, g)
-			continue
-		}
-		if reach < 0 || p.runners[g].last > p.runners[reach].last {
-			reach = g
-		}
 	}
 	none := MaskedNone
 	switch {
@@ -241,6 +205,54 @@ func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKin
 		return &none, d, rk, p.runners[reach].name, nil
 	}
 	return &none, nil, nil, nil, nil
+}
+
+// maskedRun parses cmd and runs it in the abstract once per runner group, as
+// statusMasked describes: the parser, the parsed line, the groups whose
+// status the line hides, and of the others the one whose run comes last
+// (-1 for none). ok is false wherever statusMasked says nothing.
+func maskedRun(cmd string, fold []token) (p *lineParser, body list, hidden []int, reach int, ok bool) {
+	if controlByte(cmd) {
+		return nil, list{}, nil, -1, false
+	}
+	toks, err := tokenizeList(cmd)
+	if err != nil {
+		return nil, list{}, nil, -1, false
+	}
+	p = &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
+	body, ok = p.parseLine()
+	if !ok {
+		return nil, list{}, nil, -1, false
+	}
+	if len(p.runners) > maxRunnerGroups {
+		// Not sure: null. runShells below re-runs the whole parsed line for
+		// every group (twice, or four times where the line turns errexit
+		// on), so the cost is runners times line size -- a line of
+		// thousands of distinctly-named runners, each its own group because
+		// runnerWords keys a group by its exact words, made that the
+		// square of the payload: 16,000 `make tN;` groups took 4.5s and
+		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
+		// already past what a build or test script looks like.
+		return nil, list{}, nil, -1, false
+	}
+	p.displace(agreedFold(toks, fold))
+
+	reach = -1
+	for g := range p.runners {
+		f, pass, ran := p.runShells(body, g)
+		if f < 0 || pass < 0 || !ran {
+			// Not sure: null.
+			return nil, list{}, nil, -1, false
+		}
+		if f == 0 || f == pass {
+			hidden = append(hidden, g)
+			continue
+		}
+		if reach < 0 || p.runners[g].last > p.runners[reach].last {
+			reach = g
+		}
+	}
+	return p, body, hidden, reach, true
 }
 
 // runnerOf is runner group g's digest and kind, the one place either is

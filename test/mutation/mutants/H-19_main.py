@@ -24,6 +24,10 @@ m("status calls an enabled plugin with no store yet not installed", "cmd/rashomo
 m("status reports an entry present whatever it finds", "cmd/rashomon/main.go",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"absent\"\n\t}",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"present\"\n\t}", "TestStatus_")
+# The break removes main.go's only use of strings, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['status does not name the other installs sharing the file'] = ('cmd/rashomon/main.go',
+  '\t"strings"\n', '')
 m("status does not name the other installs sharing the file", "cmd/rashomon/main.go",
   "\t\tfmt.Fprintf(stdout, \"  %s: %s\\n\", label, strings.Join(others, \", \"))",
   "\t\tfmt.Fprintf(stdout, \"  %s: none\\n\", label)", "TestStatus_")

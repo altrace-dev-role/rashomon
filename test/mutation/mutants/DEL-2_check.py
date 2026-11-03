@@ -8,3 +8,16 @@ m("DEL-2 --check accepts a mutant that pins another row's test", "test/mutation/
   "                if False and (claimed, parent_test) not in shared:\n", "TestDEL2b_")
 m("DEL-2 --check accepts an import anchor that occurs more than once", "test/mutation/sweep.py",
   "        count = s.count(io_)\n        if count != 1:\n", "        count = s.count(io_)\n        if count < 1:\n", "TestDEL2_")
+# Import drift (MASKED-BUILD1): --check refuses a break that leaves an import
+# unused and an import edit that drops a package still used, reading uses
+# outside comments and literals and imports from the header alone.
+m("DEL-2 --check accepts a break that leaves an import unused", "test/mutation/sweep.py",
+  "            if used.get(pkg) and not used_after.get(pkg):\n", "            if False:\n", "TestDEL2g_")
+m("DEL-2 --check accepts an import edit that drops a package still used", "test/mutation/sweep.py",
+  "            if used_after.get(pkg):\n", "            if False:\n", "TestDEL2g_")
+m("DEL-2 --check reads a package named in a comment as a use", "test/mutation/sweep.py",
+  "GO_LEX = re.compile(r'//[^\\n]*|", "GO_LEX = re.compile(r'", "TestDEL2g_")
+m("DEL-2 --check reads a body's string literal as an import", "test/mutation/sweep.py",
+  "    head = src[:go_header(src)]\n", "    head = src\n", "TestDEL2g_")
+m("DEL-2 --check keeps the untouched imports after an import edit", "test/mutation/sweep.py",
+  " or s.index(old) <= pristine[f][2]\n", " or False\n", "TestDEL2g_")
