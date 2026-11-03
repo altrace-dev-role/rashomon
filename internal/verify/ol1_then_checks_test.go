@@ -24,8 +24,10 @@ func TestOL1e_TheThenChecksAreTheRulesAtTheirDeclaration(t *testing.T) {
 			{RuleID: "spec:r", SourceDigest: "d1", LandedSeq: 4, Then: store.ThenYes},
 			{RuleID: "spec:r", SourceDigest: "d1", LandedSeq: 4, Then: store.ThenNo},
 			{RuleID: "spec:r", SourceDigest: "d1", LandedSeq: 6, Then: "perhaps"},
-			{RuleID: "spec:r", SourceDigest: "d0", LandedSeq: 6, Then: store.ThenNo},
-			{RuleID: "spec:other", SourceDigest: "d1", LandedSeq: 6, Then: store.ThenNo},
+			// On a's call, which has a no of its own: counted, either one
+			// would make a pair that disagrees, and a maybe.
+			{RuleID: "spec:r", SourceDigest: "d0", LandedSeq: 2, Then: store.ThenYes},
+			{RuleID: "spec:other", SourceDigest: "d1", LandedSeq: 2, Then: store.ThenYes},
 			{RuleID: "spec:r", SourceDigest: "d1", LandedSeq: 8, Then: store.ThenYes},
 		},
 	}

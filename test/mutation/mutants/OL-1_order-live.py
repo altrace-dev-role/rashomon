@@ -36,7 +36,7 @@ m("OL-1 the early return drops the checks", HK,
   "verify.SteerView{ThenChecks: rules.ThenChecks}, false", "verify.SteerView{}, false", "TestOL1b_")
 m("OL-1 a stepped post drops the checks", HK,
   "\tview.Hits, view.AfterHits, view.ThenChecks = rules.Hits, rules.AfterHits, rules.ThenChecks\n",
-  "\tview.Hits, view.AfterHits = rules.Hits, rules.AfterHits\n", "TestOL1a_")
+  "\tview.Hits, view.AfterHits = rules.Hits, rules.AfterHits\n", "TestOL1a_|TestOL1f_")
 m("OL-1 the hook writes no then_check", HK,
   "\tfor _, c := range checks {\n", "\tfor _, c := range checks[:0] {\n", "TestOL1a_|TestOL1b_")
 m("OL-1 the then_check kind is not in the version table", "internal/store/kinds.go",

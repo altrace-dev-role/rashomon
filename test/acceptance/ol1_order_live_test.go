@@ -106,3 +106,22 @@ func TestOL1c_ACallWithNoVerdictReadsUnknown(t *testing.T) {
 		t.Errorf("a Bash call with no then_check before the After: row %q, want unknown", got)
 	}
 }
+
+// TestOL1f_ACallWhosePostStepsKeepsItsVerdict: a call that names the store
+// makes its post step (read the run and judge it, steps' inStore), and the
+// stepped path keeps the call's then_check like the early return does: a
+// "no" for a line that is not the Then, so a later After and Then read met.
+// Break: drop the then_checks from the stepped view (the line would read
+// maybe with no After before it, and the row unknown).
+func TestOL1f_ACallWhosePostStepsKeepsItsVerdict(t *testing.T) {
+	e, dir := spr1Project(t, true)
+	e.dghCall(dir, "toolu_s", "Bash", map[string]any{"command": "cat .claude/rashomon/spec.json"})
+	if checks := ol1Checks(e); len(checks) != 1 || checks[0]["then"] != "no" {
+		t.Fatalf("premise: a stepped post's then_checks %v, want one no", checks)
+	}
+	e.dghCall(dir, "toolu_a", "Bash", spr1Test)
+	e.dghCall(dir, "toolu_t", "Bash", spr1Push)
+	if got := ol1Row(e, dir); got != "met" {
+		t.Errorf("a stepped call that is no Then, then an After and a Then: row %q, want met", got)
+	}
+}
