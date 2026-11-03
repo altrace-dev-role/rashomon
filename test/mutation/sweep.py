@@ -60,6 +60,83 @@ ROW_NAME = re.compile(r"^(" + "|".join(ROW_PREFIXES) + r")-(\d+)$")
 # anchor -- is reported instead of silently matching nothing.
 ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 
+# A mutant file's own row identity, the "XX-n" (optionally "n.m" or "n.ml")
+# before its first underscore: CS-1, H-17, ST-2.3b. ROW_PREFIXES identities
+# are already pinned self-consistently by the check above (a row's test must
+# name its own file's identity, or a declared shared-tests.txt pair); nothing
+# looks at the rest (the docstring at ROW_PREFIXES says so). PREFIX-UNIQUE1
+# is that missing check, for every other prefix.
+AD_HOC_ROW_FILE = re.compile(r"^([A-Za-z]+)-(\d+(?:\.\d+)?[a-z]?)_")
+AD_HOC_SHARED = HERE / "ad-hoc-shared-prefixes.txt"
+
+
+def prefix_uniqueness_problems(allow_file=AD_HOC_SHARED):
+    """An ad-hoc identity (outside ROW_PREFIXES) claimed by more than one
+    mutant file is the B343 class: COMPACT-SLOT1 picked CS-1, a prefix
+    CS-1_cwd-symlink.py already claimed, so each card's killers would have
+    run the other's tests too, undetected (no checker looked outside
+    ROW_PREFIXES). One card legitimately spanning several files (H-17, MS-1,
+    PF-1, STC-1, ...) declares the identity in allow_file, the same shape as
+    shared-tests.txt's declared pairs; an undeclared identity shared by more
+    than one file fails, naming every file that claims it.
+    """
+    allowed = set(read_list(allow_file))
+    by_id = {}
+    for path in sorted({rel(ORIGIN[name]) for name, *_rest in M}):
+        found = AD_HOC_ROW_FILE.match(os.path.basename(path))
+        if not found or found.group(1) in ROW_PREFIXES:
+            continue
+        by_id.setdefault(f"{found.group(1)}-{found.group(2)}", set()).add(path)
+    out = []
+    for ident, files in sorted(by_id.items()):
+        if len(files) > 1 and ident not in allowed:
+            out.append(f"{ident} is a mutant-file prefix outside ROW_PREFIXES, claimed by more than one file: "
+                        + ", ".join(sorted(files)) + f"; declare it in {rel(allow_file)} if one card splits it on purpose")
+    return out
+
+
+# A mutant file's identity whatever its prefix, ROW_PREFIXES included -- used
+# only to group rows for killer_stem_problems(), never to decide whether a
+# file's own rows are self-consistent (check()'s ROW_FILE/ROW_TEST pass, and
+# prefix_uniqueness_problems() above, already do that).
+FILE_IDENTITY = AD_HOC_ROW_FILE
+
+# A killer test's stem, suffix letter dropped: TestCS1_, TestREC52f_ and
+# TestREC52g_ are all stem CS1, REC52. B343's actual harm was at this level,
+# not the row's: two different IDENTITIES naming the same stem means each
+# identity's -run regex would also run the other's test, so a row can read
+# killed by a test that has nothing to do with it, even when both files'
+# own row prefixes are unique (prefix_uniqueness_problems does not see this;
+# a stem is a different, coarser identity than the row it is derived from).
+KILLER_STEM = re.compile(r"Test([A-Za-z]+?)(\d+)[a-z]?_")
+KILLER_STEM_SHARED = HERE / "killer-stem-shared.txt"
+
+
+def killer_stem_problems(allow_file=KILLER_STEM_SHARED):
+    """A killer-test stem named by rows from more than one mutant-file
+    identity is declared in allow_file (one stem per line, e.g. TRU23) when
+    many features are legitimately caught by the same broad test; undeclared,
+    it fails and names every identity and file that names the stem.
+    """
+    allowed = set(read_list(allow_file))
+    stem_idents = {}
+    for name, _f, _old, _new, test, _platform in M:
+        found = FILE_IDENTITY.match(os.path.basename(ORIGIN[name]))
+        if not found:
+            continue
+        ident = f"{found.group(1)}-{found.group(2)}"
+        for mo in KILLER_STEM.finditer(test):
+            stem = f"{mo.group(1)}{mo.group(2)}"
+            stem_idents.setdefault(stem, {}).setdefault(ident, set()).add(rel(ORIGIN[name]))
+    out = []
+    for stem, idents in sorted(stem_idents.items()):
+        if len(idents) > 1 and stem not in allowed:
+            files = sorted({f for fs in idents.values() for f in fs})
+            out.append(f"Test{stem}_ is a killer-test stem named by rows of more than one identity "
+                        f"({', '.join(sorted(idents))}): " + ", ".join(files) +
+                        f"; declare the stem in {rel(allow_file)} if it is shared on purpose")
+    return out
+
 # A top-level Go test function, for checking that a mutant's judging test
 # names something real -- a typo only showed up as NOT DETECTED in the next
 # manual sweep, and push/pull_request no longer run one.
@@ -641,6 +718,8 @@ def check(complete, shared_tests=SHARED_TESTS):
         count = s.count(io_)
         if count != 1:
             problems.append(f"IMPORTS[{name!r}]: import anchor occurs {count} times in {f} after the mutation, not exactly once")
+    problems += prefix_uniqueness_problems()
+    problems += killer_stem_problems()
     pristine = {}
     for name, f, old, new, _test, _platform in M:
         if outside_cwd(f) or (name in IMPORTS and outside_cwd(IMPORTS[name][0])):

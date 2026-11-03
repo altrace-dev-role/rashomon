@@ -57,12 +57,15 @@ type SteerEnv struct {
 // digest, the one call that can raise regression-location (a success event
 // is outcome ok, D61), or at a success event when the call's output read red
 // through a pipe that hid the exit (redRead, MASKED-OUTCOME1: the outcome a
-// failure event would have carried), or at either post event when the call's input names
+// failure event would have carried), or at a success event when the call's
+// line hid its runner's status (hidden, MASKED-AT-ACT1: masked-status is said
+// at that call), or at either post event when the call's input names
 // .claude/rashomon, the one call that can raise integrity/store-touched
 // (D-B7). Every other call costs these branches and storeNamed's scan.
-func steps(event string, landedSeq int64, runner, redRead, inStore bool) bool {
+func steps(event string, landedSeq int64, runner, redRead, hidden, inStore bool) bool {
 	failure := event == FailureEvent
-	return landedSeq > 0 && (failure && runner || redRead && event == string(steer.EventPostToolUse) || inStore && (failure || event == string(steer.EventPostToolUse)))
+	return landedSeq > 0 && (failure && runner || redRead && event == string(steer.EventPostToolUse) ||
+		hidden && event == string(steer.EventPostToolUse) || inStore && (failure || event == string(steer.EventPostToolUse)))
 }
 
 // storeNamed reports a tool input whose raw bytes name .claude/rashomon, its
@@ -255,7 +258,7 @@ func ruled(event string, landedSeq int64, toolName string) bool {
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	var key string
 	var indexless bool
-	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore)
+	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedHidden, p.landedStore)
 	if !stepped {
 		var took bool
 		if key, took, indexless = p.staleWrite(); took {
