@@ -50,7 +50,7 @@ m("FF-1 a printed 0 is recorded as a fail", "internal/hook/gateoutput.go",
   "TestFF1_F1_EveryStatusCapturedAndPrinted")
 V = "internal/verify/gates.go"
 m("FF-1 a printed run stays masked in verify", V,
-  "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted\n", "\treturn statusHidden(r) && !r.FromOutput\n",
+  "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted && !r.Wrapped\n", "\treturn statusHidden(r) && !r.FromOutput && !r.Wrapped\n",
   "TestFF1_APrintedFailureIsTheRunsOutcome")
 m("FF-1 a printed failure is not red", V,
   "\t\tr.FromPrinted && r.Output.Kind == outPrintedFail ||\n", "",
