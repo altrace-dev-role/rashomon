@@ -27,6 +27,11 @@ const (
 	EnumEvidenceSource
 	// EnumPreflightUnknown is what a preflight could not read or count.
 	EnumPreflightUnknown
+	// EnumMaskStage is what hid a run's exit status in a masked-status note
+	// (card MASKED-AT-ACT1): the pipe to each stage shape.MaskedByWords
+	// names, a pipe it does not ("other"), or the line where the record
+	// names no stage.
+	EnumMaskStage
 )
 
 // enumTables is every Enum table. Nothing writes to it after this
@@ -41,6 +46,10 @@ var enumTables = map[EnumTable][]string{
 		"symbols not matched, no platform graph log", "request over 16 KiB, the rest not read",
 		"no named path exists in the project", "no go.mod, packages not counted",
 		"package walk capped, count is a lower bound",
+	},
+	EnumMaskStage: {
+		"the pipe to tail", "the pipe to tee", "the pipe to cat", "the pipe to head", "the pipe to grep",
+		"the pipe to wc", "the pipe to sort", "the pipe to cut", "a pipe", "its line",
 	},
 }
 

@@ -64,6 +64,21 @@ func readTwoPass(run *Run, line []byte) {
 				run.Skipped++
 			}
 		}
+	case TypeAfterHit:
+		var rec AfterHit
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.AfterHits = append(run.AfterHits, rec)
+		}
+	case TypeThenCheck:
+		var rec ThenCheck
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.ThenChecks = append(run.ThenChecks, rec)
+		}
+	case TypeOutcomeJoin:
+		var rec OutcomeJoin
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.OutcomeJoins = append(run.OutcomeJoins, rec)
+		}
 	default:
 		var rec EventHeader
 		err = json.Unmarshal(line, &rec)
@@ -94,6 +109,19 @@ func writerRecord(kind string, version int) any {
 		return Gap{Type: kind, SchemaVersion: version, RecordedAtMS: at, SessionID: onePassSession, Reason: "forget"}
 	case TypeSpecEvent:
 		e := NewRuleHit(onePassSession, "PostToolUse", "spec:no-force", "sha256:1p", 6, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeAfterHit:
+		zero := 0
+		e := NewAfterHit(onePassSession, "PostToolUse", "spec:test-first", "sha256:1p", 6, &zero, true, "cwd:1p", false, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeThenCheck:
+		e := NewThenCheck(onePassSession, "spec:test-first", "sha256:1p", 6, ThenNo, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeOutcomeJoin:
+		e := NewOutcomeJoin(onePassSession, "toolu_1p", ExecFailed, 1, SourceTaskNotification, ParserTaskNotification, at)
 		e.SchemaVersion, e.Seq = version, &seq
 		return *e
 	}

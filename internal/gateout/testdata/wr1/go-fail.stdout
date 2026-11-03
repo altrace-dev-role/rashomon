@@ -1,0 +1,6 @@
+--- FAIL: TestA (0.00s)
+    a_test.go:7: got 5, want 4
+FAIL
+FAIL	m	0.145s
+?   	m/b	[no test files]
+FAIL

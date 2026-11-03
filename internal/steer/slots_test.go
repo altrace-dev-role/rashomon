@@ -81,6 +81,9 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"SymbolFacts": slot.NewSymbolFacts([]slot.SymbolFact{
 			{Name: "CountRows", Dir: "internal/a", Callers: 2, Packages: 2},
 		}, 1),
+		// The record form: the plain form, the person's words, is refused
+		// (TestCSL1_ALineRecordsTheKeyedFormAndNeverTheWords).
+		"Said": slot.NewSaidDigest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 57, "", 0),
 	}
 	want := map[string]string{
 		"Program": `"aws"`, "Gate": `"go test"`, "Mechanism": `"AWS_PROFILE"`, "Approved": `"use the staging profile"`,
@@ -93,6 +96,7 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"EnumList":    `["cross_check","judgment_disclosed"]`,
 		"LessonID":    `"go-test-cwd"`,
 		"SymbolFacts": `{"callers":[2],"dirs":["internal/a"],"more":1,"names":["CountRows"],"packages":[2]}`,
+		"Said":        `{"bytes":57,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","restates_bytes":0,"restates_digest":""}`,
 	}
 	for _, name := range slotTypes(t) {
 		v, ok := samples[name]

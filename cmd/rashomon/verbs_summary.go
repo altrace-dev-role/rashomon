@@ -57,7 +57,7 @@ func cmdSummary(args []string, stdout io.Writer) error {
 	// the Stop line off could hide the verification it carries. A bare query
 	// writes nothing and is allowed.
 	if s := selfguard.AgentSignal(os.Getenv); s != "" && len(words) == 1 {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon summary %s` in your own terminal.", s, steerVerb(words[0] == "off", project))
+		return selfguard.Refusal(s, "the summary switch sets whether the end-of-turn line prints its value line", "summary "+steerVerb(words[0] == "off", project), "written")
 	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {

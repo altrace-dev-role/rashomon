@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -213,4 +214,57 @@ func printDiff(w io.Writer, edit settingsEdit) {
 	for _, line := range settings.ValuesFreeDiff(edit.before, edit.after) {
 		fmt.Fprintln(w, line)
 	}
+}
+
+// detachTarget resolves which entries a detach removes: the install named on
+// the command line, every install that left a marker, or -- for a plain detach
+// -- the one this machine's store records. Once the arguments read, and
+// before the store is, an agent session is refused (R31): detach is how the
+// person stops the recording, so the agent being recorded cannot run it.
+func detachTarget(args []string) (installID string, all, force bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--install":
+			if i+1 >= len(args) {
+				return "", false, false, errors.New("--install needs a value")
+			}
+			installID = args[i+1]
+			i++
+		case "--all":
+			all = true
+		case "--force":
+			// The way out of an entry someone edited. Without it, one edited
+			// value left every entry installed and no supported way to
+			// remove them.
+			force = true
+		default:
+			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
+		}
+	}
+	if all && installID != "" {
+		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
+	}
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return "", false, false, selfguard.Refusal(s, "detach removes the hooks that record your sessions", detachCommand(installID, all, force), "written")
+	}
+	if all || installID != "" {
+		return installID, all, force, nil
+	}
+	installID, err = storedInstallID()
+	return installID, false, force, err
+}
+
+// detachCommand is the detach line a refusal names, built from what was
+// parsed rather than echoed, so the person reads a command that runs.
+func detachCommand(installID string, all, force bool) string {
+	c := "detach"
+	if all {
+		c += " --all"
+	} else if installID != "" {
+		c += " --install " + shellWord(installID)
+	}
+	if force {
+		c += " --force"
+	}
+	return c
 }

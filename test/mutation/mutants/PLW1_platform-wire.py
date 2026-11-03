@@ -127,17 +127,18 @@ m("PLW1 a file that is no .go file names a package", P,
 m("PLW1 no cap on the families", P,
   '\tif len(pkgs) > MaxFamilies {\n', '\tif false {\n', "TestPLW1w_")
 m("PLW1 a stale package keeps its hash", P,
-  '\t\t\tcase fresh(run.Root, dg, pkg, written[pkg], &hashed):\n', '\t\t\tcase true:\n', "TestPLW1i_|TestH156b_")
+  '\t\t\tcase fresh(run.Root, dg, pkg, written[pkg], &hashed):\n',
+  '\t\t\tcase true || fresh(run.Root, dg, pkg, written[pkg], &hashed):\n', "TestPLW1i_|TestH156b_")
 m("PLW1 every package has a test file", P,
   '\t\t\tf.Tests = hasTests(run.Root, l.dir)\n', '\t\t\tf.Tests = true\n', "TestPLW1w_")
 m("PLW1 any Go file is a test file", P,
   'strings.HasSuffix(e.Name(), "_test.go")', 'strings.HasSuffix(e.Name(), ".go")', "TestPLW1w_")
 m("PLW1 an edited file is not compared", D,
-  ' || got != dg.files[rel] {\n', ' {\n', "TestPLW1i_|TestH156b_")
+  ' || got != dg.files[rel] {\n', ' || false && got != dg.files[rel] {\n', "TestPLW1i_|TestH156b_")
 m("PLW1 only the files the session wrote are hashed", D,
   '\tfor _, rel := range dg.byPkg[pkg] {\n', '\tfor _, rel := range written {\n', "TestPLW1i_")
 m("PLW1 a written file the digests do not list passes", D,
-  '; !listed && !strings.HasSuffix(rel, "_test.go") {\n', '; false {\n', "TestPLW1i_")
+  '; !listed && !strings.HasSuffix(rel, "_test.go") {\n', '; false && !listed && !strings.HasSuffix(rel, "_test.go") {\n', "TestPLW1i_")
 m("PLW1 a test file the session wrote makes its package stale", D,
   '; !listed && !strings.HasSuffix(rel, "_test.go") {\n', '; !listed {\n', "TestPLW1i_")
 m("PLW1 no cap on the files hashed", D,
@@ -161,7 +162,9 @@ IMPORTS["PLW1 a written file is hashed through os.Open"] = (D, '\t"io"\n', '\t"i
 m("PLW1 a package's directory is listed through os.Open", P,
   '\td, err := regfile.OpenDir(filepath.Join(root, filepath.FromSlash(dir)))\n',
   '\td, err := os.Open(filepath.Join(root, filepath.FromSlash(dir)))\n', "TestPLW1y_")
-IMPORTS["PLW1 a package's directory is listed through os.Open"] = (P, '\t"io/fs"\n', '\t"io/fs"\n\t"os"\n')
+IMPORTS["PLW1 a package's directory is listed through os.Open"] = (P,
+  '\t"io/fs"\n\t"path/filepath"\n\t"slices"\n\t"strings"\n\n\t"github.com/altrace-dev-role/rashomon/internal/regfile"\n',
+  '\t"io/fs"\n\t"os"\n\t"path/filepath"\n\t"slices"\n\t"strings"\n\n')
 
 # The ledger verb's wiring (N1, S1).
 m("PLW1 the verb's replay reads no platform graph", LR,

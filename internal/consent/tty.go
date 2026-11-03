@@ -11,7 +11,7 @@ import (
 // stdin (Technical spec 7.2.3 step 5).
 const (
 	QuestionInstall = "Install? [y/N] "
-	QuestionSDK     = "Also record Agent SDK programs? claude -p is recorded either way. [y/N] "
+	QuestionSDK     = "Record Agent SDK programs? Your own claude -p is recorded anyway. [y/N] "
 	QuestionConsent = "Agree to what this screen describes? [y/N] "
 )
 

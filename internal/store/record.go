@@ -152,6 +152,10 @@ const (
 	// FileStaleArmed is the stale trigger's hint (ArmStale): empty, and like
 	// probe and lockwait a note about the run, not a record.
 	FileStaleArmed = "stale-armed"
+	// FileBriefingArmed is the continuity briefing's resume marker
+	// (ArmBriefing): empty, present from a resumed session's start until its
+	// next prompt takes it.
+	FileBriefingArmed = "briefing-armed"
 	// FileSpecNone is the no-spec marker (NoteNoSpec): the turn's id and a
 	// keyed digest of the directory the preflight found no spec from.
 	FileSpecNone = "spec-none"
