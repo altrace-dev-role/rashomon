@@ -382,6 +382,22 @@ def build_broken(r):
                for ln in (r.stdout + r.stderr).splitlines())
 
 
+def masked_by_build(r):
+    """Report a red that only a broken build explains (MASKED-BUILD1).
+
+    test/acceptance's TestMain builds the binary before any test runs and
+    exits 1 when it cannot, so a mutant that left a package acceptance does
+    not import unbuildable (package main above all) prints FAIL<TAB>pkg<TAB>time
+    for acceptance with no test on record, and test_failed reads that as a red
+    test: a mutant that never compiled was reported caught (13 rows on main
+    1a281ecd). A package [build failed] in the same run with no "--- FAIL"
+    anywhere means nothing judged the mutant. A real "--- FAIL" beside a build
+    failure elsewhere stays red (DEL-1d's both).
+    """
+    return build_broken(r) and not any(ln.lstrip().startswith("--- FAIL")
+                                       for ln in (r.stdout + r.stderr).splitlines())
+
+
 def test_failed(r):
     """Report positive evidence that a test ran and failed.
 
@@ -495,6 +511,98 @@ def rubric_problems(name, origin, test):
                             f"not TestRubric{claimed}_")
     if claimed not in pinned:
         problems.append(f"{name!r} in {rel(origin)}: names no TestRubric{claimed}_ test of its own entry")
+    return problems
+
+
+# Import drift (MASKED-BUILD1). A break that removes a package's last use in a
+# Go file leaves its import unused, and an import edit that drops a package the
+# file still uses leaves the name undefined. Either way the mutant does not
+# build, which the sweep learns hours into a dispatch, and which a harness that
+# builds the binary in its TestMain once printed as a red. Both show in the
+# text, so --check names the row before any Go runs. GO_LEX matches comments
+# and literals leftmost-first, as Go's scanner reads them, so a package named
+# only inside one (a doc comment, a message) never counts as a use.
+GO_LEX = re.compile(r'//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'', re.S)
+GO_DECL = re.compile(r"(?m)^(?:func|type|var|const)\b")
+GO_IMPORT = re.compile(r'(?m)^[ \t]*(?:import[ \t]+)?(?:([A-Za-z_.]\w*)[ \t]+)?"([^"\n]+)"')
+GO_SELECTOR = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\.")
+GO_MAJOR = re.compile(r"v\d+")
+
+
+def go_header(src):
+    """Where src's header ends: the offset of its first top-level declaration.
+
+    Found with every comment and literal blanked to its own length, so an
+    offset here is an offset in src, and a `func` inside a comment is not one.
+    """
+    end = GO_DECL.search(GO_LEX.sub(lambda t: re.sub(r"[^\n]", " ", t.group(0)), src))
+    return end.start() if end else len(src)
+
+
+def go_imports(src):
+    """The package names src imports, read from its header.
+
+    The header is the text before the first top-level declaration, the only
+    place Go allows an import, so a string literal further down is never read
+    as one. A path's name is its last element, or the one before a /vN major
+    version, less a .vN suffix; a name guessed wrong is never used in the code,
+    so its count never changes and it is never judged.
+    """
+    head = src[:go_header(src)]
+    names = set()
+    for alias, path in GO_IMPORT.findall(GO_LEX.sub(lambda t: t.group(0) if t.group(0)[0] in "\"`" else " ", head)):
+        if alias in ("_", "."):
+            continue
+        parts = path.split("/")
+        last = parts[-2] if len(parts) > 1 and GO_MAJOR.fullmatch(parts[-1]) else parts[-1]
+        names.add(alias or re.sub(r"\.v\d+$", "", last))
+    return names
+
+
+def go_uses(src):
+    """How often the code of src selects from each name: pkg.X outside comments and literals."""
+    counts = {}
+    for name in GO_SELECTOR.findall(GO_LEX.sub(" ", src)):
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def import_drift(name, edits, text, pristine):
+    """The import problems of one break, its edits applied in the sweep's order.
+
+    Judged per Go file, and only for names whose use count the edits change: a
+    package the file used and no longer does while still importing it, and a
+    package the file no longer imports while still using it. An edit whose
+    anchor is not unique is skipped here, since check() reports it already.
+    `pristine` caches each untouched file's (imports, uses, header end); a file
+    whose header no edit reaches keeps its imports, so only its uses are read
+    again.
+    """
+    after, in_header = {}, {}
+    for f, old, new in edits:
+        s = after.get(f, text(f))
+        if s is None or s.count(old) != 1:
+            return []
+        if f.endswith(".go"):
+            if f not in pristine:
+                src = text(f)
+                pristine[f] = (go_imports(src), go_uses(src), go_header(src))
+            in_header[f] = in_header.get(f, False) or s.index(old) <= pristine[f][2]
+        after[f] = s.replace(old, new, 1)
+    problems = []
+    for f, s in after.items():
+        if not f.endswith(".go"):
+            continue
+        imported, used, _end = pristine[f]
+        imported_after, used_after = (go_imports(s) if in_header[f] else imported), go_uses(s)
+        for pkg in sorted(imported_after):
+            if used.get(pkg) and not used_after.get(pkg):
+                problems.append(f"{name!r}: the break removes the last use of {pkg} in {f}, so its import is left "
+                                f"unused and the mutant does not build; add IMPORTS[{name!r}] dropping it")
+        for pkg in sorted(imported - imported_after):
+            if used_after.get(pkg):
+                problems.append(f"{name!r}: the edits drop the import of {pkg} from {f}, which still uses it, so "
+                                f"the mutant does not build; keep the import")
     return problems
 
 
@@ -612,6 +720,11 @@ def check(complete, shared_tests=SHARED_TESTS):
             problems.append(f"IMPORTS[{name!r}]: import anchor occurs {count} times in {f} after the mutation, not exactly once")
     problems += prefix_uniqueness_problems()
     problems += killer_stem_problems()
+    pristine = {}
+    for name, f, old, new, _test, _platform in M:
+        if outside_cwd(f) or (name in IMPORTS and outside_cwd(IMPORTS[name][0])):
+            continue
+        problems += import_drift(name, [(f, old, new)] + ([IMPORTS[name]] if name in IMPORTS else []), text, pristine)
     return problems
 
 
@@ -807,7 +920,7 @@ def run_sweep(strict=False, trim_root=None):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
-            elif test_failed(r):
+            elif test_failed(r) and not masked_by_build(r):
                 # A red test on record is positive evidence the mutant was
                 # caught, even when the same `go test ./...` run also failed
                 # to build an unrelated package: that package's failure is
@@ -926,7 +1039,8 @@ def main(argv):
     problems += check(complete=not args.files, shared_tests=shared_tests)
     if args.check:
         if not problems:
-            print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once")
+            print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once; "
+                  "no break leaves an import unused or a used one dropped")
         return report(problems)
     if problems:
         print("refusing to sweep: the static checks fail", file=sys.stderr)

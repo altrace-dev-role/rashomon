@@ -46,7 +46,10 @@ func (s *tbSession) gateOutputKinds() []string {
 // fires: the status is on the record now, so "not recorded" would be false
 // (M-2's expected row, changed by owner ruling mgr 09:2x condition 3, its
 // wording the existing template by mgr 11:17; M-2 itself prints no status line
-// and keeps its row). make's gate is named make, whatever its target.
+// and keeps its row). make's gate is named make, whatever its target. The
+// third wrapper's only write is its own log, /tmp/integ.log: outside the
+// project, it is no edit a gate checks (card STALE-COVER1), so its row reads
+// as the other two do, never "1 file edited; make failed after the last edit".
 func TestFF1_APrintedFailureIsTheRunsOutcome(t *testing.T) {
 	for _, tc := range []struct{ cmd, out, row string }{
 		{"go test ./... ; echo $?",
@@ -54,7 +57,7 @@ func TestFF1_APrintedFailureIsTheRunsOutcome(t *testing.T) {
 		{"make check 2>&1; echo \"EXIT: $?\"",
 			"cc -o calc calc.c\n./calc_test\nFAIL: add(2, 2) = 5, want 4\nmake: *** [check] Error 1\nEXIT: 2\n", "make failed in this turn (call 1)"},
 		{"make integration > /tmp/integ.log 2>&1; echo \"EXIT=$?\"; tail -30 /tmp/integ.log",
-			"EXIT=2\n./integration_test\nFAIL: store round trip\nmake: *** [integration] Error 1\n", "1 file edited; make failed after the last edit (call 1)"},
+			"EXIT=2\n./integration_test\nFAIL: store round trip\nmake: *** [integration] Error 1\n", "make failed in this turn (call 1)"},
 	} {
 		t.Run(tc.cmd, func(t *testing.T) {
 			s := newTBSession(t)

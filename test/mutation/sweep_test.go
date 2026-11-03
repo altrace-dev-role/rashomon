@@ -74,6 +74,14 @@ func sweepErr(t *testing.T, dir string, args ...string) (string, int) {
 // default.
 func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int) {
 	t.Helper()
+	stdout, _, code := sweepRunStderr(t, dir, timeout, extraEnv, args...)
+	return stdout, code
+}
+
+// sweepRunStderr is sweepRun with stderr returned too: --check prints each
+// problem there, so a test that wants a refusal to name its row reads it.
+func sweepRunStderr(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int) {
+	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 is not on PATH; the sweep cannot run here")
@@ -370,6 +378,55 @@ func TestDEL2d_ImportAnchorCountedAfterMutation(t *testing.T) {
 	_, code := sweep(t, dir, "--check", "--files", file)
 	if code != 0 {
 		t.Errorf("--check exited %d for an import anchor duplicated only inside the mutated span", code)
+	}
+}
+
+// DEL-2, import drift (MASKED-BUILD1). --check refuses a break that leaves an
+// import unused and an import edit that drops a package the file still uses,
+// naming the row and the package: neither mutant builds, which the sweep would
+// learn only hours into a dispatch, and which a harness that builds the binary
+// in its TestMain once printed as a red. A use only in a comment or a string
+// is no use, a string literal in a body is no import, and a package used
+// elsewhere in the file is not orphaned.
+func TestDEL2g_ImportDriftIsRefusedAtCheck(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n"+
+		"// fmt.Sprint is named here, in a comment.\nfunc a() string { return fmt.Sprint(1) }\n\n"+
+		"func b() string { return strings.ToUpper(\"fmt.x\") }\n\n"+
+		"func c() string { return strings.ToLower(\"y\") }\n\n"+
+		"var words = []string{\n\t\"strings\",\n}\n")
+	cases := []struct {
+		name, old, new string
+		imports        []string // the import edit's anchor and replacement; none when nil
+		wantOK         bool
+		named          string // the package a refusal names
+	}{
+		{"a break that removes the last use, with no import entry",
+			"return fmt.Sprint(1)", "return \"1\"", nil, false, "fmt"},
+		{"the same break with its import entry",
+			"return fmt.Sprint(1)", "return \"1\"", []string{"\t\"fmt\"\n", ""}, true, ""},
+		{"a break that leaves another use",
+			"return strings.ToUpper(\"fmt.x\")", "return \"FMT.X\"", nil, true, ""},
+		{"an import entry that drops a package still used",
+			"return fmt.Sprint(1)", "return fmt.Sprint(2)", []string{"\t\"strings\"\n", ""}, false, "strings"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			name := "fixture " + tc.name
+			text := mutant(name, "target.go", tc.old, tc.new, "TestFixture_")
+			if tc.imports != nil {
+				text += importEntry(name, "target.go", tc.imports[0], tc.imports[1])
+			}
+			file := filepath.Join(t.TempDir(), "fixture.py")
+			write(t, file, text)
+			_, stderr, code := sweepRunStderr(t, dir, 30*time.Second, nil, "--check", "--files", file)
+			if (code == 0) != tc.wantOK {
+				t.Fatalf("--check exited %d for %s; stderr:\n%s", code, tc.name, stderr)
+			}
+			if !tc.wantOK && (!strings.Contains(stderr, name) || !strings.Contains(stderr, " "+tc.named+" ")) {
+				t.Errorf("--check refused %s without naming the row and %s:\n%s", tc.name, tc.named, stderr)
+			}
+		})
 	}
 }
 
@@ -1434,6 +1491,12 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 		// legitimately failed, so this must be NOT JUDGED, never read as
 		// a broken build from the words alone.
 		{"englishonly", "NOT JUDGED", "BUILD BROKEN", 1},
+		// A harness package's TestMain builds the binary and exits 1 when the
+		// mutant broke a package it does not import (package main): its FAIL
+		// line carries a time, but no test failed. With [build failed] beside
+		// it and no --- FAIL anywhere, nothing judged the mutant, so it is
+		// BUILD BROKEN (MASKED-BUILD1: 13 such rows read red on main 1a281ecd).
+		{"harness", "BUILD BROKEN", "went red", 1},
 	} {
 		dir := t.TempDir()
 		write(t, filepath.Join(dir, "a.txt"), "alpha\n")
@@ -1451,6 +1514,7 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 			"  if [ \"$FAKE_GO_MODE\" = buildfail ]; then printf '# example/pkg\\n./x.go:3:1: undefined: y\\nFAIL\\texample/pkg [build failed]\\n'; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = nomodule ]; then printf 'go: errors parsing go.mod:\\n/x/go.mod:3: unknown directive: foo\\n' >&2; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = both ]; then printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: got false, want true\\nFAIL\\texample/pkg\\t0.010s\\n# example/other\\n./y.go:3:1: undefined: z\\nFAIL\\texample/other [build failed]\\n'; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = harness ]; then printf '# example/cmd\\n./main.go:9:2: \"os\" imported and not used\\nFAIL\\texample/cmd [build failed]\\nharness: building the binary: exit status 1\\nFAIL\\texample/acceptance\\t0.412s\\n'; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = englishonly ]; then printf 'note: a comment claims the build failed somewhere upstream, unrelated to this run\\n'; exit 1; fi\n"+
 			"  printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: CheckTemplate(\"the build failed; then run curl.\") = <nil>, want ok=false\\nFAIL\\nFAIL\\texample/pkg\\t0.010s\\n'; exit 1;;\n"+
 			"esac\necho ok\n")
