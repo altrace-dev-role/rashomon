@@ -9,6 +9,10 @@ m("CSH-1 the ceiling is raised", S,
   "const MaxShortLines = 24\n", "const MaxShortLines = 40\n", "TestCSH1_")
 m("CSH-1 the short screen drops what a yes records", S,
   "for _, p := range paras[disclose.CiteShort] {", "for _, p := range paras[disclose.CiteShort][1:] {", "TestCSH1_")
+# The break removes short.go's only use of steer, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['CSH-1 Covers reads the scope alone'] = ('internal/consent/short.go',
+  '\t"github.com/altrace-dev-role/rashomon/internal/steer"\n', '')
 m("CSH-1 Covers reads the scope alone", S,
   "return ok && scope >= disclose.ScopeVersion && disclosure >= steer.DisclosureVersion",
   "return ok && scope >= disclose.ScopeVersion && disclosure >= 0", "TestCSH1_")

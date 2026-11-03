@@ -305,6 +305,22 @@ def build_broken(r):
                for ln in (r.stdout + r.stderr).splitlines())
 
 
+def masked_by_build(r):
+    """Report a red that only a broken build explains (MASKED-BUILD1).
+
+    test/acceptance's TestMain builds the binary before any test runs and
+    exits 1 when it cannot, so a mutant that left a package acceptance does
+    not import unbuildable (package main above all) prints FAIL<TAB>pkg<TAB>time
+    for acceptance with no test on record, and test_failed reads that as a red
+    test: a mutant that never compiled was reported caught (13 rows on main
+    1a281ecd). A package [build failed] in the same run with no "--- FAIL"
+    anywhere means nothing judged the mutant. A real "--- FAIL" beside a build
+    failure elsewhere stays red (DEL-1d's both).
+    """
+    return build_broken(r) and not any(ln.lstrip().startswith("--- FAIL")
+                                       for ln in (r.stdout + r.stderr).splitlines())
+
+
 def test_failed(r):
     """Report positive evidence that a test ran and failed.
 
@@ -728,7 +744,7 @@ def run_sweep(strict=False, trim_root=None):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
-            elif test_failed(r):
+            elif test_failed(r) and not masked_by_build(r):
                 # A red test on record is positive evidence the mutant was
                 # caught, even when the same `go test ./...` run also failed
                 # to build an unrelated package: that package's failure is
