@@ -225,8 +225,10 @@ func recordGreenOf(snap *Snapshot) (bool, *int64) {
 // component at 1, PF-IV3, and no spec violation, PF-PG8), at least
 // one required gate, and every required gate Green; and then the latest
 // LastGreen among them, else nil. A gate that is not required is reported
-// with its state and never blocks. Green with no LastGreen is a gate
-// gateStates never builds, and it fails closed, as TurnSummary reads it.
+// with its state and never blocks; nor does one not the Stop's turn's
+// (offTurn, card F2), which only TurnSummary's read meets. Green with no
+// LastGreen is a gate gateStates never builds, and it fails closed, as
+// TurnSummary reads it.
 func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
 	if unresolved > 0 {
 		return false, nil
@@ -234,7 +236,7 @@ func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
 	var at int64
 	n := 0
 	for _, g := range gates {
-		if !g.Required {
+		if !g.Required || g.offTurn {
 			continue
 		}
 		if g.State != Green || g.LastGreen == nil {
@@ -350,10 +352,12 @@ func Advisory(gates []GateState) bool {
 }
 
 // TurnGate reports whether g is a turn gate as TurnSummary reads one: a
-// required gate, or, when the gates are advisory, a learned one. The value
-// line names its gates by the same rule.
+// required gate, or, when the gates are advisory, a learned one; and at
+// Stop, one a call of the turn ran in the project of (offTurn, card F2), so
+// a gate masked in another worktree hours before names no row here. The
+// value line names its gates by the same rule.
 func TurnGate(g GateState, advisory bool) bool {
-	return g.Required || advisory && g.Source == sourceLearned
+	return !g.offTurn && (g.Required || advisory && g.Source == sourceLearned)
 }
 
 // Advisory reports whether the row was read from advisory gates alone, which
@@ -436,6 +440,12 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		}
 	}
 	worst, ok := Worst(states)
+	// The record-green point the row reads is over the turn's gates (card
+	// F2): the snapshot's, over every gate, until one is not the turn's.
+	green := snap.RecordGreen
+	if slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.offTurn }) {
+		green, _ = recordGreen(snap.Gates, k)
+	}
 	var row Row
 	switch {
 	case !ok && !defect && turn.Writes == 0:
@@ -452,7 +462,7 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		row = RowUnverified // the cap: an advisory green never verifies
 	case turn.UnnamedWriteSeq > earliestGreen:
 		row = RowUnnamedWrite
-	case snap.RecordGreen:
+	case green:
 		row = RowVerified
 	default:
 		row = RowFindings
