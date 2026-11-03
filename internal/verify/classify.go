@@ -82,19 +82,38 @@ func (g gateRun) family() (familyKey, bool) {
 // write is one path a call wrote, or one call that may have written a path
 // the record cannot name (Path nil, no Class).
 type write struct {
-	Seq     int64
-	AgentID *string
-	Path    *string // project-relative (relativise); nil when the target is unknown
-	Class   PathClass
-	Tool    string
+	Seq int64
+	// decl is the call that made the write, read in place for its agent
+	// (agent) and the project the write is read in (project, card
+	// STALE-COVER1): a pointer into the run, so the write stays 64 bytes
+	// and copies nothing. nil in a write built without one, whose agent and
+	// project are not known.
+	decl  *store.Declaration
+	Path  *string // project-relative (relativise); nil when the target is unknown
+	Class PathClass
+	Tool  string
 	// SHA is the sha256 the post recorded for the file a non-Bash named
 	// write names, as the call left it (ContentSHA256); nil where it has
 	// none, and for every other write (P5A).
 	SHA *string
-	// Project is the project the write is read in (projectOf): its call's
-	// key, noProject where the hook proved the call in none, nil where the
-	// record does not say. covers reads it beside Path (STALE-COVER1).
-	Project *string
+}
+
+// agent is the id of the subagent whose call made w; nil for the main agent,
+// or where w has no call.
+func (w *write) agent() *string {
+	if w.decl == nil {
+		return nil
+	}
+	return w.decl.AgentID
+}
+
+// project is the project w is read in (projectOf); nil, not known, where w
+// has no call.
+func (w *write) project() *string {
+	if w.decl == nil {
+		return nil
+	}
+	return projectOf(w.decl)
 }
 
 // classify turns a run's calls into the two things the gate state reads: the
@@ -326,10 +345,10 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 	file, shell := writeTargets(d)
 	named := func(p string) {
 		rel := relativise(p, d.Project, d.CWD)
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName, Project: projectOf(d)})
+		writes = append(writes, write{Seq: d.Seq, decl: d, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName})
 	}
 	blind := func() {
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Tool: d.ToolName})
+		writes = append(writes, write{Seq: d.Seq, decl: d, Tool: d.ToolName})
 		unnamed = append(unnamed, d.Seq)
 	}
 	switch {

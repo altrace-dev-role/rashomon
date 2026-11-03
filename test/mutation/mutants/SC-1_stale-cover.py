@@ -14,7 +14,7 @@ V = "internal/verify/steer.go"
 O = "internal/verify/obligations.go"
 T = "internal/verify/tree.go"
 m("SC-1 every write is covered", C,
-  "\tif root == \"\" || w.Project == nil {\n\t\treturn true\n", "\tif true {\n\t\treturn true\n", "TestSC1")
+  "\tif root == \"\" || project == nil {\n\t\treturn true\n", "\tif true {\n\t\treturn true\n", "TestSC1")
 m("SC-1 an absolute path is covered anywhere", C,
   "\t\t_, in := under(p, root)\n\t\treturn in\n", "\t\treturn true\n", "TestSC1a_|TestSC1b_")
 m("SC-1 a path that climbs out is placed in its call's project", C,

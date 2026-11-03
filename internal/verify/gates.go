@@ -383,7 +383,7 @@ func lastWrite(counted []write) *WriteRef {
 	if last == nil {
 		return nil
 	}
-	return &WriteRef{Seq: last.Seq, AgentID: last.AgentID, Path: last.Path, Tool: last.Tool}
+	return &WriteRef{Seq: last.Seq, AgentID: last.agent(), Path: last.Path, Tool: last.Tool}
 }
 
 // writers counts the counted writes per agent, in the order of each agent's
@@ -397,9 +397,9 @@ func writers(counted []write) (list []AgentCount, omitted int) {
 	}
 	var as []agent
 	for _, w := range counted {
-		i := slices.IndexFunc(as, func(a agent) bool { return sameAgent(a.id, w.AgentID) })
+		i := slices.IndexFunc(as, func(a agent) bool { return sameAgent(a.id, w.agent()) })
 		if i < 0 {
-			as = append(as, agent{id: w.AgentID, first: w.Seq})
+			as = append(as, agent{id: w.agent(), first: w.Seq})
 			i = len(as) - 1
 		}
 		as[i].n++

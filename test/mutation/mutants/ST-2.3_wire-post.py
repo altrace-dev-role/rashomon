@@ -95,7 +95,7 @@ m("ST-2.3 a program outside its charset is kept", V,
   "\t\tif p := Program(programOf(runs, last)); p.Valid() {\n", "\t\tif p := Program(programOf(runs, last)); true {\n",
   "TestST_ProgramFallsBackToTheKind")
 m("ST-2.3 other agents counted as the point's own", V,
-  "\t\tif !sameAgent(w.AgentID, agent) {\n", "\t\tif sameAgent(w.AgentID, agent) {\n", "TestSTR43e_")
+  "\t\tif !sameAgent(w.agent(), agent) {\n", "\t\tif sameAgent(w.agent(), agent) {\n", "TestSTR43e_")
 
 # The renderer (R7, D85).
 m("ST-2.3 the degraded row is never chosen", V,

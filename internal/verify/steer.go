@@ -284,7 +284,7 @@ func between(f *GateFact, writes []write, agent *string, root string) {
 			continue
 		}
 		f.WritesSince++
-		if !sameAgent(w.AgentID, agent) {
+		if !sameAgent(w.agent(), agent) {
 			f.OtherAgents++
 		}
 		if w.Path == nil {

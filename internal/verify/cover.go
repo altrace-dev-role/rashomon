@@ -42,7 +42,8 @@ func projectOf(d *store.Declaration) *string {
 // covered. Fail closed: a gate with no root, or a write whose project the
 // record does not say, is covered, as every write was before the card.
 func covers(root string, w *write) bool {
-	if root == "" || w.Project == nil {
+	project := w.project()
+	if root == "" || project == nil {
 		return true
 	}
 	p, root := *w.Path, slashed(root)
@@ -50,7 +51,7 @@ func covers(root string, w *write) bool {
 		_, in := under(p, root)
 		return in
 	}
-	proj := slashed(*w.Project)
+	proj := slashed(*project)
 	if proj == "" || p == ".." || strings.HasPrefix(p, "../") {
 		return false
 	}
