@@ -78,6 +78,9 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"GateRefs": slot.NewGateRefs([]slot.GateRef{{Words: "go test", Trust: slot.NewEnum(slot.EnumTrust, "trusted")}}, 0, 2),
 		"EnumList": slot.NewEnumList(slot.EnumEvidenceKinds, []string{"cross_check", "judgment_disclosed"}),
 		"LessonID": slot.LessonID("go-test-cwd"),
+		// The record form: the plain form, the person's words, is refused
+		// (TestCSL1_ALineRecordsTheKeyedFormAndNeverTheWords).
+		"Said": slot.NewSaidDigest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 57, "", 0),
 	}
 	want := map[string]string{
 		"Program": `"aws"`, "Gate": `"go test"`, "Mechanism": `"AWS_PROFILE"`, "Approved": `"use the staging profile"`,
@@ -89,6 +92,7 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"GateRefs": `{"gates":["go test"],"learned":2,"more":0,"trust":["trusted"]}`,
 		"EnumList": `["cross_check","judgment_disclosed"]`,
 		"LessonID": `"go-test-cwd"`,
+		"Said":     `{"bytes":57,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","restates_bytes":0,"restates_digest":""}`,
 	}
 	for _, name := range slotTypes(t) {
 		v, ok := samples[name]

@@ -29,8 +29,11 @@ func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, boo
 	}
 	s := noRunSentence
 	if v.Summary.Row != verify.RowNone && v.Summary.Row != verify.RowNoGate {
-		if f := fitted(v, prefix+doneLead); f != "" {
-			s = f
+		// A row whose sentence is silent says nothing here either: "no
+		// test or build run" is the no-gate rows' sentence, false on a turn
+		// that ran one no gate bound (INFER-FALSE1, B303).
+		if s = fitted(v, prefix+doneLead); s == "" {
+			return "", false
 		}
 	}
 	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + unboundLines(v) + pointer(sessionID, fromPlugin), true

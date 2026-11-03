@@ -68,13 +68,16 @@ type promptProject struct {
 // with no brief on this branch it can have no note.
 // proj is the caller's read (readPromptProject). A session's first prompt
 // finds its run empty, so the note decides at after_seq 0, which CheckOn
-// admits at UserPromptSubmit only.
+// admits at UserPromptSubmit and SessionStart only. The first prompt after
+// a resume its start armed also routes the continuity briefing
+// (resumeBriefing, D-c), which takes the call's note on its own channel.
 func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj promptProject, id harness.Identity, now time.Time) (steer.Output, steer.Client) {
 	if run == nil || p.CWD == "" {
 		return steer.Output{}, steer.Client{}
 	}
 	named := intent.Names(p.Prompt, p.PromptCut)
-	if !named && !proj.lessons.Any() && p.owed.Seq <= 0 {
+	brief, briefed := resumeBriefing(st, run, p.SessionID, p.Harness.TranscriptPath)
+	if !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
@@ -108,6 +111,9 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
 	if f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {
 		found = append(found, f)
+	}
+	if briefed {
+		found = append(found, brief)
 	}
 	if len(found) == 0 {
 		return steer.Output{}, steer.Client{}

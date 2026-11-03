@@ -28,7 +28,9 @@ m("ST-2.4 the done flag on a green verdict", DN,
 
 # The value line and the clause (R6, R8).
 m("ST-2.4 and <k> more at four", VL, 'const maxGateNames = 3\n', 'const maxGateNames = 4\n', "TestVER65_ValueLineRowsRender")
-IMPORTS["ST-2.4 a prefix word names the gate"] = (VL, '\t"slices"\n', '')
+# No IMPORTS entry: value.go uses slices beyond this line (the untrusted-gate
+# read), so the import stays. The entry that dropped it broke the build once
+# that use landed (BUILD BROKEN, main dispatch run 41521646555).
 m("ST-2.4 a prefix word names the gate", VL,
   'if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {\n', 'if p := t.programs[g.Gate]; p != "" {\n', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the no-write variant dropped", VL,
@@ -84,7 +86,7 @@ m("ST-2.4 the done flag loses to the value line", RS,
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {\n',
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok && recap.ValueLine(s.view, s.impact, sessionID, fromPlugin) == "" {\n',
   "TestFUN14b_")
-m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOnFor(project)\n', '\treturn false\n', "TestFUN16_")
+m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOnFor(project)\n', "\treturn false && (err != nil || c.SummaryOnFor(project))\n", "TestFUN16_")
 m("ST-2.4 the Flush barrier dropped before print", RT,
   '\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n',
   '', "TestSTOP_FlushFailurePrintsNothing")

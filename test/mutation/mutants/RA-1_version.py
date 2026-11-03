@@ -1,9 +1,17 @@
 # VERSION-BUILDINFO: resolveVersion's three branches and the one consumer that
 # prints it. Each break fails TestVersion_ResolveVersion.
+# The break removes version.go's only use of strings, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['a go install of a tag still prints dev'] = ('cmd/rashomon/version.go',
+  '\t"strings"\n', '')
 m("a go install of a tag still prints dev", "cmd/rashomon/version.go",
   "\t\t\treturn strings.TrimPrefix(v, \"v\")\n",
   "\t\t\t_ = v\n",
   "TestVersion_ResolveVersion")
+# The break removes version.go's only use of strings, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['the module version keeps its leading v'] = ('cmd/rashomon/version.go',
+  '\t"strings"\n', '')
 m("the module version keeps its leading v", "cmd/rashomon/version.go",
   "\t\t\treturn strings.TrimPrefix(v, \"v\")\n",
   "\t\t\treturn v\n",

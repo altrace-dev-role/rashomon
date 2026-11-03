@@ -83,7 +83,14 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 	pt.Tree = hook.TreeShas(verify.TreeTargets(run))
 	r := stopReplay{Checkpoint: cp}
 	var idx *verify.ProjectIndex
-	if root := verify.ProjectRoot(run, pt.Seq); root != "" {
+	// The root the live Stop judged under, from its checkpoint; with none,
+	// the latest declaration's (PROJECT-RESOLVE1).
+	root := verify.ProjectRoot(run, pt.Seq)
+	if cp != nil {
+		root = cp.ProjectRoot
+	}
+	in.Root = root
+	if root != "" {
 		if key := baseline.Key(root); cp == nil && key != "" {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
 		}

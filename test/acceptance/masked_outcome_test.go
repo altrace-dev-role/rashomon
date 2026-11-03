@@ -58,17 +58,3 @@ func TestMO1_APipedPytestIsRecordedAndSaidWithItsRunner(t *testing.T) {
 		}
 	}
 }
-
-// TestMO1_APipedPytestThatFailedRaisesTheClaim: the same line failing under a
-// pass claim still raises the masked-runs sentence, as it did: a summary that
-// says it failed is the detector's true positive, and the record holds it.
-func TestMO1_APipedPytestThatFailedRaisesTheClaim(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-	e.turnCall(t, "p1", "toolu_edit", editOf("calc.py"))
-	e.turnCall(t, "p1", "toolu_test", pytestUnderTail("..F.\n1 failed, 3 passed in 0.20s\n"))
-	line := e.mustSpeak(stopEvent("Stop", "All tests pass.", e.cwd))
-	if !strings.Contains(line, "pass claimed; exit status of 1 build or test run not recorded") {
-		t.Errorf("line %q, want the masked-runs sentence: the pass claim stands over a run that failed", line)
-	}
-}

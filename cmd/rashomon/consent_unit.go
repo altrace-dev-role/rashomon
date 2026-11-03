@@ -32,9 +32,12 @@ func cmdConsentUnit(unit string, args []string, stdout io.Writer) error {
 		return fmt.Errorf("no command in this release uses %s; nothing to agree to", unit)
 	}
 	off := slices.Contains(args, "off")
-	yes, show, err := consentFlags(slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "off" }))
+	yes, show, full, err := consentFlags(slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "off" }))
 	if err != nil {
 		return err
+	}
+	if full {
+		return errors.New("a unit's screen is whole; --full is for the install screen (rashomon consent --full)")
 	}
 	if off && (yes || show) {
 		return errors.New("off asks nothing and shows one line, so it takes no --yes or --show")
@@ -45,7 +48,7 @@ func cmdConsentUnit(unit string, args []string, stdout io.Writer) error {
 	// agent that could would stop what was agreed to, before a record is
 	// appended or a lock taken.
 	if s := selfguard.AgentSignal(os.Getenv); off && s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon consent %s off` in your own terminal.", s, unit)
+		return selfguard.Refusal(s, "withdrawing consent stops what you agreed to", "consent "+unit+" off", "written")
 	}
 	gate := startSignalGate(os.Stderr)
 	defer gate.stop()

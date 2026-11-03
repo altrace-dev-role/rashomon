@@ -17,32 +17,46 @@ import (
 // this surface, on the main agent.
 var verifiedClient = Client{Version: "2.1.280", Source: VersionSourceEnv, MirrorInBand: true}
 
-// tableVerifying gives every event the floor v, so marshalFor reaches each
-// row's printing path while the compiled table keeps most rows closed.
-func tableVerifying(v string) map[string]channelBasis {
-	table := make(map[string]channelBasis, len(AllEvents()))
+// startSources is every source a SessionStart call carries.
+var startSources = []string{"startup", "resume", "clear", "compact"}
+
+// tableVerifying gives every event the floor v, SessionStart under each source
+// and under none, so marshalFor reaches each row's printing path while the
+// compiled table keeps most rows closed.
+func tableVerifying(v string) map[channelKey]channelBasis {
+	table := make(map[channelKey]channelBasis, len(AllEvents())+len(startSources))
 	for _, ev := range AllEvents() {
-		table[string(ev)] = channelBasis{floor: v}
+		table[channelKey{event: string(ev)}] = channelBasis{floor: v}
+	}
+	for _, src := range startSources {
+		table[channelKey{event: string(EventSessionStart), source: src}] = channelBasis{floor: v}
 	}
 	return table
 }
 
 // probedFloors is the compiled table written out here, not read from
-// mirrorVerifiedOn, so the two are checked against each other: the only
-// floor a live P-TRU-1 run has set (2026-10-23, on 2.1.280), and no
-// exclusion. A canary run that sets a floor or excludes a version changes
-// both.
-var probedFloors = map[Event]channelBasis{
-	EventPostToolUse:        {floor: "2.1.280"},
-	EventPostToolUseFailure: {floor: "2.1.304"},
+// mirrorVerifiedOn, so the two are checked against each other: the floors
+// live P-TRU-1 runs set (PostToolUse 2026-10-23 on 2.1.280, PostToolUseFailure
+// 2026-10-30 on 2.1.304, SessionStart at compact 2026-11-02 on 2.1.280 and
+// 2.1.316), and no exclusion. A canary run that sets a floor or excludes a
+// version changes both.
+var probedFloors = map[channelKey]channelBasis{
+	{event: string(EventPostToolUse)}:                     {floor: "2.1.280"},
+	{event: string(EventPostToolUseFailure)}:              {floor: "2.1.304"},
+	{event: string(EventSessionStart), source: "compact"}: {floor: "2.1.280"},
 }
 
 // openFor is whether probedFloors verifies c on ev, written without
-// compareVersions so the test does not share the code it checks: the floor
-// and exclusions here are all 2.1.x, so a 2.1.x client compares on its last
-// component, and the other clients the tests use are listed by hand.
+// compareVersions or keyOf so the test does not share the code it checks:
+// SessionStart's row is the source c carries, every other event's has none;
+// the floor and exclusions here are all 2.1.x, so a 2.1.x client compares on
+// its last component, and the other clients the tests use are listed by hand.
 func openFor(ev Event, c Client) bool {
-	b, probed := probedFloors[ev]
+	k := channelKey{event: string(ev)}
+	if ev == EventSessionStart {
+		k.source = c.StartSource
+	}
+	b, probed := probedFloors[k]
 	if !probed || !c.MirrorInBand || c.Subagent {
 		return false
 	}
@@ -108,7 +122,7 @@ func TestST4_PostToolUseContextAllowedOnlyWhenTheChannelIsVerified(t *testing.T)
 		name  string
 		event Event
 		c     Client
-		table map[string]channelBasis // nil: the compiled table, through MarshalFor
+		table map[channelKey]channelBasis // nil: the compiled table, through MarshalFor
 		o     Output
 		want  error // nil: printed
 	}{
@@ -127,7 +141,7 @@ func TestST4_PostToolUseContextAllowedOnlyWhenTheChannelIsVerified(t *testing.T)
 		{"one component, above the floor if it were compared", EventPostToolUse, version("3"), nil, ctx, ErrUnverifiedChannel},
 		{"a version with a suffix", EventPostToolUse, version("2.1.300-beta"), nil, ctx, ErrUnverifiedChannel},
 		{"an empty version with the mirror verified", EventPostToolUse, version(""), nil, ctx, ErrUnverifiedChannel},
-		{"an excluded version", EventPostToolUse, verifiedClient, map[string]channelBasis{string(EventPostToolUse): {floor: "2.1.280", excluded: []string{"2.1.280"}}}, ctx, ErrUnverifiedChannel},
+		{"an excluded version", EventPostToolUse, verifiedClient, map[channelKey]channelBasis{{event: string(EventPostToolUse)}: {floor: "2.1.280", excluded: []string{"2.1.280"}}}, ctx, ErrUnverifiedChannel},
 		{"a subagent's call", EventPostToolUse, with(func(c *Client) { c.Subagent = true }), nil, ctx, ErrUnverifiedChannel},
 		{"the mirror unverified on this surface", EventPostToolUse, with(func(c *Client) { c.MirrorInBand = false }), nil, ctx, ErrUnverifiedChannel},
 		{"the zero Client", EventPostToolUse, Client{}, nil, ctx, ErrUnverifiedChannel},
@@ -142,7 +156,7 @@ func TestST4_PostToolUseContextAllowedOnlyWhenTheChannelIsVerified(t *testing.T)
 		{"a PreToolUse decision under the zero Client", EventPreToolUse, Client{}, nil, decision, ErrUnverifiedChannel},
 		{"a PreToolUse decision on 2.1.280, never probed", EventPreToolUse, verifiedClient, nil, decision, ErrUnverifiedChannel},
 		{"a PreToolUse decision where the table lists the version", EventPreToolUse, verifiedClient, tableVerifying("2.1.280"), decision, nil},
-		{"a table without the row reads gated", EventPostToolUse, verifiedClient, map[string]channelBasis{}, ctx, ErrUnverifiedChannel},
+		{"a table without the row reads gated", EventPostToolUse, verifiedClient, map[channelKey]channelBasis{}, ctx, ErrUnverifiedChannel},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := string(tc.event)
@@ -170,7 +184,8 @@ func TestST4_PostToolUseContextAllowedOnlyWhenTheChannelIsVerified(t *testing.T)
 // TestTRU12_UnknownClientVersionShipsInShadow: the zero Client, which is
 // what an unreadable version gives, opens no gated row; across clients,
 // ContextAllowed is true, and MarshalFor prints a model-visible field, only
-// on the events probedFloors gives a floor, for a version at or above it,
+// on the rows probedFloors gives a floor (SessionStart's by the source the
+// call carries), for a version at or above it,
 // with the mirror verified and no subagent, and the predicate and the
 // marshal never disagree.
 func TestTRU12_UnknownClientVersionShipsInShadow(t *testing.T) {
@@ -195,6 +210,13 @@ func TestTRU12_UnknownClientVersionShipsInShadow(t *testing.T) {
 		{Version: "2.0.999", Source: VersionSourceEnv, MirrorInBand: true},
 		{Version: "2.1.x", Source: VersionSourceEnv, MirrorInBand: true},
 		{Version: "3", Source: VersionSourceEnv, MirrorInBand: true},
+		{Version: "2.1.280", Source: VersionSourceEnv, MirrorInBand: true, StartSource: "compact"},
+		{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, StartSource: "compact"},
+		{Version: "2.1.279", Source: VersionSourceEnv, MirrorInBand: true, StartSource: "compact"},
+		{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, StartSource: "resume"},
+		{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, StartSource: "startup"},
+		{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, StartSource: "clear"},
+		{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, Subagent: true, StartSource: "compact"},
 	}
 	ctx := Output{AdditionalContext: "ctx"}
 	decision := Output{Decision: &PreDecision{Reason: "r"}}
@@ -331,11 +353,12 @@ func TestVG1a_VersionsCompareByComponent(t *testing.T) {
 // exclusions, by component; an event the table does not name is closed. Each
 // refusal names its reason (shutBy), the reason the notice prints.
 func TestVG1b_FloorAndExclusionPerEvent(t *testing.T) {
-	table := map[string]channelBasis{
-		string(EventPostToolUse):  {floor: "2.1.280", excluded: []string{"2.1.300"}},
-		string(EventSessionStart): {floor: "2.1.300"},
+	table := map[channelKey]channelBasis{
+		{event: string(EventPostToolUse)}:                     {floor: "2.1.280", excluded: []string{"2.1.300"}},
+		{event: string(EventSessionStart), source: "compact"}: {floor: "2.1.300"},
 	}
 	at := func(v string) Client { return Client{Version: v, Source: VersionSourceEnv, MirrorInBand: true} }
+	from := func(src string, c Client) Client { c.StartSource = src; return c }
 	for _, tc := range []struct {
 		event Event
 		c     Client
@@ -348,8 +371,11 @@ func TestVG1b_FloorAndExclusionPerEvent(t *testing.T) {
 		{EventPostToolUse, at("2.1.300.0"), shutExcluded},
 		{EventPostToolUse, at("2.1.301"), channelOpen},
 		{EventPostToolUse, at("2.1.279"), shutBelowFloor},
-		{EventSessionStart, at("2.1.299"), shutBelowFloor},
-		{EventSessionStart, at("2.1.300"), channelOpen},
+		{EventSessionStart, from("compact", at("2.1.299")), shutBelowFloor},
+		{EventSessionStart, from("compact", at("2.1.300")), channelOpen},
+		{EventSessionStart, at("2.1.300"), shutEventClosed},
+		{EventSessionStart, from("resume", at("2.1.300")), shutEventClosed},
+		{EventPostToolUse, from("resume", at("2.1.301")), channelOpen},
 		{EventPostToolUseFailure, at("2.1.300"), shutEventClosed},
 		{EventPostToolUse, at(""), shutUnknownVersion},
 		{EventPostToolUse, at("2.1.x"), shutUnknownVersion},
@@ -371,44 +397,68 @@ func TestVG1b_FloorAndExclusionPerEvent(t *testing.T) {
 
 // TestVG1c_TheCompiledTableIsTheProbedOne: mirrorVerifiedOn is probedFloors
 // exactly on every gated row, so a floor or an exclusion moves only with this
-// file; SessionStart, SubagentStart, PostToolBatch and PreToolUse stay closed
-// with no exclusion, on any version; every floor and exclusion is a version
+// file; SessionStart with no source or at startup, resume, clear or a source
+// never probed, SubagentStart, PostToolBatch and PreToolUse stay closed with
+// no exclusion, on any version; every floor and exclusion is a version
 // ClientVersion could return, and every exclusion is at or above its floor,
 // since one below it excludes nothing.
 func TestVG1c_TheCompiledTableIsTheProbedOne(t *testing.T) {
 	table := mirrorVerifiedOn()
+	rows := map[channelKey]bool{}
+	for k := range table {
+		rows[k] = true
+	}
+	for k := range probedFloors {
+		rows[k] = true
+	}
 	for _, ev := range AllEvents() {
-		keys := outputKeys()[string(ev)]
+		rows[channelKey{event: string(ev)}] = true
+	}
+	for _, src := range startSources {
+		rows[channelKey{event: string(EventSessionStart), source: src}] = true
+	}
+	for k := range rows {
+		keys := outputKeys()[k.event]
 		if keys.exempt || !keys.context && !keys.decision {
 			continue
 		}
-		got, want := table[string(ev)], probedFloors[ev]
+		got, want := table[k], probedFloors[k]
 		if got.floor != want.floor || !reflect.DeepEqual(slices.Clip(got.excluded), slices.Clip(want.excluded)) && len(got.excluded)+len(want.excluded) > 0 {
-			t.Errorf("%s: compiled %+v, probed %+v", ev, got, want)
+			t.Errorf("%+v: compiled %+v, probed %+v", k, got, want)
 		}
 	}
-	for _, ev := range []Event{EventSessionStart, EventSubagentStart, EventPostToolBatch, EventPreToolUse} {
-		if b := table[string(ev)]; b.floor != "" || len(b.excluded) != 0 {
-			t.Errorf("%s: %+v, want closed with no exclusion", ev, b)
+	for _, k := range []channelKey{
+		{event: string(EventSessionStart)},
+		{event: string(EventSessionStart), source: "startup"},
+		{event: string(EventSessionStart), source: "resume"},
+		{event: string(EventSessionStart), source: "clear"},
+		{event: string(EventSessionStart), source: "fork"},
+		{event: string(EventSubagentStart)},
+		{event: string(EventPostToolBatch)},
+		{event: string(EventPreToolUse)},
+	} {
+		if b := table[k]; b.floor != "" || len(b.excluded) != 0 {
+			t.Errorf("%+v: %+v, want closed with no exclusion", k, b)
 		}
-		if c := (Client{Version: "99.99.99", Source: VersionSourceEnv, MirrorInBand: true}); shutBy(outputKeys()[string(ev)], string(ev), c, table) != shutEventClosed {
-			t.Errorf("%s opens on 99.99.99", ev)
+		c := Client{Version: "99.99.99", Source: VersionSourceEnv, MirrorInBand: true, StartSource: k.source}
+		if shutBy(outputKeys()[k.event], k.event, c, table) != shutEventClosed {
+			t.Errorf("%+v opens on 99.99.99", k)
 		}
 	}
-	for ev, b := range table {
+	for k, b := range table {
 		if b.floor == "" && len(b.excluded) > 0 {
-			t.Errorf("%s: exclusions %v on a closed row", ev, b.excluded)
+			t.Errorf("%+v: exclusions %v on a closed row", k, b.excluded)
 		}
 		if b.floor != "" && !digitRuns(b.floor, '.') {
-			t.Errorf("%s: floor %q is not a dotted version", ev, b.floor)
+			t.Errorf("%+v: floor %q is not a dotted version", k, b.floor)
 		}
 		for _, x := range b.excluded {
 			if !digitRuns(x, '.') {
-				t.Errorf("%s: exclusion %q is malformed", ev, x)
+				t.Errorf("%+v: exclusion %q is malformed", k, x)
 			}
 		}
 		if r := b.refusal(); r != "" {
-			t.Errorf("%s: %s", ev, r)
+			t.Errorf("%+v: %s", k, r)
 		}
 	}
 }
@@ -447,16 +497,17 @@ func TestVG1o_AnExclusionBelowItsFloorIsRefused(t *testing.T) {
 // compile step closed, so it verifies on no version; a sound row is kept.
 func TestVG1q_ARefusedRowReadsAsClosed(t *testing.T) {
 	e := string(EventPostToolUse)
-	table := map[string]channelBasis{
-		e:                         {floor: "2.1.280", excluded: []string{"2.1.100"}},
-		string(EventSessionStart): {floor: "2.1.280", excluded: []string{"2.1.290"}},
+	start := channelKey{event: string(EventSessionStart), source: "compact"}
+	table := map[channelKey]channelBasis{
+		{event: e}: {floor: "2.1.280", excluded: []string{"2.1.100"}},
+		start:      {floor: "2.1.280", excluded: []string{"2.1.290"}},
 	}
 	closeRefused(table)
 	c := Client{Version: "99.0.0", Source: VersionSourceEnv, MirrorInBand: true}
 	if got := shutBy(outputKeys()[e], e, c, table); got != shutEventClosed {
 		t.Errorf("refused row: shutBy = %d, want shutEventClosed", got)
 	}
-	if b := table[string(EventSessionStart)]; b.floor != "2.1.280" || len(b.excluded) != 1 {
+	if b := table[start]; b.floor != "2.1.280" || len(b.excluded) != 1 {
 		t.Errorf("sound row changed: %+v", b)
 	}
 }
@@ -465,8 +516,8 @@ func TestVG1q_ARefusedRowReadsAsClosed(t *testing.T) {
 // version that is both at the floor and excluded fails the delivery check
 // (shutExcluded); it is not "older" (shutBelowFloor).
 func TestVG1p_AnExcludedVersionAtTheFloorSaysExcluded(t *testing.T) {
-	table := map[string]channelBasis{
-		string(EventPostToolUse): {floor: "2.1.280", excluded: []string{"2.1.280"}},
+	table := map[channelKey]channelBasis{
+		{event: string(EventPostToolUse)}: {floor: "2.1.280", excluded: []string{"2.1.280"}},
 	}
 	e := string(EventPostToolUse)
 	at := func(v string) Client { return Client{Version: v, Source: VersionSourceEnv, MirrorInBand: true} }
@@ -481,6 +532,45 @@ func TestVG1p_AnExcludedVersionAtTheFloorSaysExcluded(t *testing.T) {
 	} {
 		if got := shutBy(outputKeys()[e], e, at(tc.v), table); got != tc.want {
 			t.Errorf("shutBy(%s) = %d, want %d", tc.v, got, tc.want)
+		}
+	}
+}
+
+// TestCSL1_SessionStartOpensPerSource: SessionStart's row is keyed by the
+// source its call carries (COMPACT-SLOT1; P-TRU-1 2026-11-02 on 2.1.280 and
+// 2.1.316, at a manual /compact). compact opens at and above 2.1.280, where
+// the probe saw both halves; startup, resume and clear stay closed, since
+// their systemMessage was not on the stream; a call with no source, or a
+// source the probe never ran, reads closed, so an event-only lookup cannot
+// open a source by accident. Another event's row ignores a source on its
+// call. Break: key the row by the event alone, open another source, or move
+// the floor, and this fails.
+func TestCSL1_SessionStartOpensPerSource(t *testing.T) {
+	at := func(v, src string) Client {
+		return Client{Version: v, Source: VersionSourceEnv, MirrorInBand: true, StartSource: src}
+	}
+	for _, tc := range []struct {
+		event Event
+		c     Client
+		want  bool
+	}{
+		{EventSessionStart, at("2.1.280", "compact"), true},
+		{EventSessionStart, at("2.1.316", "compact"), true},
+		{EventSessionStart, at("2.1.279", "compact"), false},
+		{EventSessionStart, at("2.1.316", "resume"), false},
+		{EventSessionStart, at("2.1.316", "startup"), false},
+		{EventSessionStart, at("2.1.316", "clear"), false},
+		{EventSessionStart, at("2.1.316", ""), false},
+		{EventSessionStart, at("2.1.316", "fork"), false},
+		{EventSessionStart, Client{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, Subagent: true, StartSource: "compact"}, false},
+		{EventPostToolUse, at("2.1.280", "compact"), true},
+		{EventPostToolUse, at("2.1.280", "resume"), true},
+		{EventPostToolUseFailure, at("2.1.304", "compact"), true},
+		{EventPostToolUseFailure, at("2.1.303", ""), false},
+	} {
+		if got := ContextAllowed(string(tc.event), tc.c); got != tc.want {
+			t.Errorf("ContextAllowed(%s, version %s, source %q, subagent %v) = %v, want %v",
+				tc.event, tc.c.Version, tc.c.StartSource, tc.c.Subagent, got, tc.want)
 		}
 	}
 }

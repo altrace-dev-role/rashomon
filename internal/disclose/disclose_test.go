@@ -133,6 +133,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.ArmStale(sessionID); err != nil {
 		t.Fatalf("ArmStale: %v", err)
 	}
+	if err := s.ArmBriefing(sessionID); err != nil {
+		t.Fatalf("ArmBriefing: %v", err)
+	}
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
 	}
@@ -398,7 +401,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// inventory, FileSpecNone in purge's run files).
 		// Moved 2026-10-31 (MEASURE1) to 33: lab.go's WriteLab ReplaceFile,
 		// the lab marker `measure --prepare` writes.
-		{"store", 33},
+		// Moved 2026-11-02 (COMPACT-SLOT1, D-c) to 34: briefingarm.go's
+		// ArmBriefing open, runs/<session>/briefing-armed, the continuity
+		// briefing's empty resume marker (continuityFiles in the inventory,
+		// FileBriefingArmed in purge's run files).
+		{"store", 34},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -461,7 +468,9 @@ func (tru23Steer) CapText() bool { return false }
 
 // PREFLIGHT1b: at record scope v4 a request's preflight steer line stores a
 // count and keyed digests, not the note's text, so both places that say the
-// notes are stored as shown carry the exception (TRU-PF1b).
+// notes are stored as shown carry the exception (TRU-PF1b). The continuity
+// briefing's exception follows it in both; TestCSL1_TheScreenAndTheRowSay...
+// pins the whole of each.
 func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
@@ -470,7 +479,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	const except = "except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them"
 	var stored string
 	for _, p := range inv.Paragraphs {
-		if strings.HasPrefix(p.Text, "STORED: for each tool call") {
+		if strings.HasPrefix(p.Text, StoredHeading+" for each tool call") {
 			stored = p.Text
 		}
 	}
@@ -479,7 +488,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	}
 	for _, f := range inv.Files {
 		if f.Pattern == "steer.ndjson" {
-			if !strings.Contains(f.Holds, "the message text shown ("+except+")") {
+			if !strings.Contains(f.Holds, "the message text shown ("+except) {
 				t.Errorf("steer.ndjson's Holds lacks the v4 exception: %q", f.Holds)
 			}
 			return

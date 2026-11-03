@@ -76,6 +76,7 @@ session demo-1
   autosteer
     delivered: 1 note (1 regression location) at #9 with prompt p1
     findings: 1 regression location at #7 (go), resolved by #21 green
+    mistakes against intent: 1 caught at the act (at #7), 0 reached the person, 0 missed; found later unknown (no trace is recorded)
     checks: none expected
     lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session
     unknown: none
