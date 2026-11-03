@@ -200,7 +200,7 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 		}
 		wrapper := shape.WrapperRun(d.ToolName, d.Shape.Program, runner, masked, d.Shape.VerbClass) ||
 			isGateRun(d, masked, runner) && gateout.Delegated(g.Program)
-		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest), wrapper: wrapper})
+		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest), wrapper: wrapper, background: e.Backgrounded})
 	}
 	return out
 }
@@ -213,10 +213,14 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 // every run by a string and every runs slice with it, as D173d's raw did).
 // wrapper: the line may have run a gate it does not name, and the post hook
 // read its output for one (shape.WrapperRun, or a delegate's run: make, npm).
+// background: the call was launched in the background (its execution's
+// backgrounded, before any end joined it), so its post saw no output at all
+// (BG-OUTCOME phase 2a); in the padding wrapper leaves.
 type lineRun struct {
 	gateRun
-	digest  string
-	wrapper bool
+	digest     string
+	wrapper    bool
+	background bool
 }
 
 // matches: the run is where the gate binds it, never at another location,
@@ -277,7 +281,10 @@ func nameOf(name *string) string {
 // would read absent or stale, the gate is Unknown, OutcomeUnknown, and its
 // last run is that call, marked unread: the call may have run the gate and
 // its output does not say, so "not run" would be a guess (WRAPPER-RUN1, D5).
-func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
+// A call launched in the background is marked background instead: its post
+// saw no output, so the line names the call and says nothing of an output
+// (BG-OUTCOME phase 2a).
+func (g *declaredGate) state(fr []gateRun, unread *lineRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	var s GateState
 	if len(fr) > 0 {
 		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, root, at, tree)
@@ -293,8 +300,11 @@ func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unna
 		}
 	}
 	if unread != nil && (s.State == Absent || s.State == Stale) && s.LastWrite != nil && unread.Seq > s.LastWrite.Seq {
-		s.State, s.Reason, s.LastRun = Unknown, OutcomeUnknown, runRef(unread)
+		s.State, s.Reason, s.LastRun = Unknown, OutcomeUnknown, runRef(&unread.gateRun)
 		s.LastRun.Wrapped = WrapUnread
+		if unread.background {
+			s.LastRun.Wrapped = WrapBackground
+		}
 	}
 	return s
 }
@@ -336,7 +346,7 @@ func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs [
 	matched := map[int64]bool{}
 	for i := range dgs {
 		var fr []gateRun
-		var unread *gateRun
+		var unread *lineRun
 		for j := range cands {
 			c := &cands[j]
 			if s, _ := landed(c.gateRun); s > at {
@@ -349,7 +359,7 @@ func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs [
 				fr = append(fr, wrapped(c.gateRun))
 			default:
 				if c.wrapper && (unread == nil || c.Seq > unread.Seq) {
-					unread = &c.gateRun
+					unread = c
 				}
 				continue
 			}
