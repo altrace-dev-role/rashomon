@@ -86,8 +86,17 @@ func givenBrief() intent.Delivered {
 	return intent.Delivered{BriefGiven: true}
 }
 
-// noteOf resolves prompt and returns the finding's text, failing when none.
+// noteOf resolves prompt and returns the finding's text, the model's,
+// failing when there is no finding.
 func noteOf(t *testing.T, prompt string, p intent.Project, d intent.Delivered, b *intent.Brief) string {
+	t.Helper()
+	text, _ := noteParts(t, prompt, p, d, b)
+	return text
+}
+
+// noteParts is noteOf's text and the finding's aside, the lines the person
+// reads and the model is not sent (TOKEN-BUDGET1).
+func noteParts(t *testing.T, prompt string, p intent.Project, d intent.Delivered, b *intent.Brief) (text, aside string) {
 	t.Helper()
 	f, ok := intent.Finding(intent.Resolve([]byte(prompt), false, p), d, b, 1)
 	if !ok {
@@ -96,14 +105,14 @@ func noteOf(t *testing.T, prompt string, p intent.Project, d intent.Delivered, b
 	if err := f.Check(); err != nil {
 		t.Fatalf("finding fails its contract: %v", err)
 	}
-	return f.Message.Text()
+	return f.Message.Text(), f.Message.Aside()
 }
 
 // TestPF1_RequestNamingAPathGetsItsRulesAndGate: a request naming a file
 // gets the spec rules whose paths cover it plus every require_evidence rule,
 // the trusted spec's required test gate with the count of test families
-// earlier sessions made required, and the fix class's expected evidence;
-// nothing the project does not hold is named.
+// earlier sessions made required, and, in the person's aside, the fix
+// class's expected evidence; nothing the project does not hold is named.
 func TestPF1_RequestNamingAPathGetsItsRulesAndGate(t *testing.T) {
 	root := projectTree(t)
 	p := projectOf(root, specOf(root, spec.Trusted), indexOf())
@@ -111,14 +120,13 @@ func TestPF1_RequestNamingAPathGetsItsRulesAndGate(t *testing.T) {
 	if in.Verb != intent.VerbFix || !slices.Equal(in.Paths, []string{"internal/verify/stop.go"}) {
 		t.Errorf("Resolve = verb %q, paths %q; want fix, the one named path", in.Verb, in.Paths)
 	}
-	got := noteOf(t, "fix the nil check in internal/verify/stop.go before lunch", p, givenBrief(), nil)
+	got, aside := noteParts(t, "fix the nil check in internal/verify/stop.go before lunch", p, givenBrief(), nil)
 	want := "rashomon record: preflight for this request from the repository; the request text is not kept.\n" +
 		"paths named: 'internal/verify/stop.go'\n" +
 		"spec rules that apply: 'conv-errors' (trusted) 'errors are wrapped with the package name'; 'proof' (trusted) 'a done claim carries a test run'\n" +
-		"gates before done: 'go test' (trusted); 1 learned from earlier sessions; evidence for a done claim (inferred from the request): judgment_disclosed\n" +
-		"unknown: none"
-	if got != want {
-		t.Errorf("note =\n%s\nwant\n%s", got, want)
+		"gates before done: 'go test' (trusted); 1 learned from earlier sessions"
+	if got != want || aside != "evidence for a done claim (inferred from the request): judgment_disclosed" {
+		t.Errorf("note =\n%s\naside\n%s\nwant\n%s\nand the evidence aside", got, aside, want)
 	}
 }
 
@@ -319,31 +327,29 @@ func TestPF1d_IntentKeepsNoPromptWords(t *testing.T) {
 // the unknown line says the spec is present and untrusted.
 func TestPF1e_UntrustedSpecIsNamedNotQuoted(t *testing.T) {
 	root := projectTree(t)
-	text := noteOf(t, "fix internal/verify/stop.go", projectOf(root, specOf(root, spec.Untrusted), indexOf()), givenBrief(), nil)
+	text, aside := noteParts(t, "fix internal/verify/stop.go", projectOf(root, specOf(root, spec.Untrusted), indexOf()), givenBrief(), nil)
 	for _, leak := range []string{"conv-errors", "wrapped", "proof", "go test", "golangci"} {
-		if strings.Contains(text, leak) {
-			t.Errorf("untrusted spec text %q in the note:\n%s", leak, text)
+		if strings.Contains(text+aside, leak) {
+			t.Errorf("untrusted spec text %q in the note:\n%s\n%s", leak, text, aside)
 		}
 	}
-	for _, want := range []string{"spec rules that apply: 2 not shown, spec untrusted\n", "spec present, untrusted"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("note lacks %q:\n%s", want, text)
-		}
+	// The withheld rules are a count, which tells the model nothing it can
+	// act on (TOKEN-BUDGET1); the person's aside says the spec is untrusted.
+	if strings.Contains(text, "spec rules that apply") || !strings.Contains(aside, "spec present, untrusted") {
+		t.Errorf("note %q, aside %q; want no rules line and the untrusted spec in the aside", text, aside)
 	}
 }
 
 // TestPF1f_NothingInventedWithoutASource: with no spec, no index and no such
-// file, every line is in its unknown form and only the class table, which
-// the line names as inferred, contributes.
+// file, nothing is proven, so the model is sent nothing (TOKEN-BUDGET1), and
+// the person's aside holds the class table's evidence, which the line names
+// as inferred, and every unknown.
 func TestPF1f_NothingInventedWithoutASource(t *testing.T) {
-	got := noteOf(t, "fix the parser in internal/parse/lexer.go", projectOf(t.TempDir(), nil, nil), givenBrief(), nil)
-	want := "rashomon record: preflight for this request from the repository; the request text is not kept.\n" +
-		"paths named: none\n" +
-		"spec rules that apply: none\n" +
-		"gates before done: none; evidence for a done claim (inferred from the request): judgment_disclosed\n" +
+	got, aside := noteParts(t, "fix the parser in internal/parse/lexer.go", projectOf(t.TempDir(), nil, nil), givenBrief(), nil)
+	want := "evidence for a done claim (inferred from the request): judgment_disclosed\n" +
 		"unknown: no spec found; no gate history for this project; no named path exists in the project"
-	if got != want {
-		t.Errorf("note =\n%s\nwant\n%s", got, want)
+	if got != "" || aside != want {
+		t.Errorf("note %q, aside =\n%s\nwant no note and\n%s", got, aside, want)
 	}
 }
 
@@ -461,15 +467,16 @@ func TestPF1h_EvidenceKindsAreTheSpecs(t *testing.T) {
 	root := projectTree(t)
 	sp := specOf(root, spec.Trusted)
 	sp.Task = &spec.Task{ID: "t1", ExpectedEvidence: []string{"real_data_run", "cross_check"}}
-	text := noteOf(t, "fix internal/verify/stop.go", projectOf(root, sp, indexOf()), givenBrief(), nil)
-	if !strings.Contains(text, "evidence for a done claim (task file): real_data_run; cross_check\n") {
-		t.Errorf("note does not carry the task file's evidence:\n%s", text)
+	text, aside := noteParts(t, "fix internal/verify/stop.go", projectOf(root, sp, indexOf()), givenBrief(), nil)
+	if !strings.Contains(aside, "evidence for a done claim (task file): real_data_run; cross_check") || strings.Contains(text, "real_data_run") {
+		t.Errorf("note %q, aside %q; want the task file's evidence in the aside only", text, aside)
 	}
 }
 
 // TestPF1i_FirstPromptCarriesTheBrief: the session's first note is the
-// first-prompt row, which carries the project line, even for a request that
-// names nothing; once delivered, later notes take the plain row; a project
+// first-prompt row, which carries the project line in the person's aside,
+// even for a request that names nothing, so the model is sent nothing
+// (TOKEN-BUDGET1); once delivered, later notes take the plain row; a project
 // with nothing to brief and a request naming nothing gets no note.
 func TestPF1i_FirstPromptCarriesTheBrief(t *testing.T) {
 	root := projectTree(t)
@@ -479,9 +486,9 @@ func TestPF1i_FirstPromptCarriesTheBrief(t *testing.T) {
 	if !ok {
 		t.Fatal("the first prompt got no brief")
 	}
-	if f.Pattern != pattern.TaskPreflight || f.Key != "brief" ||
-		!strings.Contains(f.Message.Text(), "\nproject files: 'CLAUDE.md'; manifests: 'go.mod'; directories with Go files: 3\n") {
-		t.Errorf("first note = %s/%s\n%s", f.Pattern, f.Key, f.Message.Text())
+	if f.Pattern != pattern.TaskPreflight || f.Key != "brief" || f.Message.Text() != "" ||
+		!strings.HasPrefix(f.Message.Aside(), "project files: 'CLAUDE.md'; manifests: 'go.mod'; directories with Go files: 3") {
+		t.Errorf("first note = %s/%s %q, aside\n%s", f.Pattern, f.Key, f.Message.Text(), f.Message.Aside())
 	}
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -493,19 +500,19 @@ func TestPF1i_FirstPromptCarriesTheBrief(t *testing.T) {
 		t.Fatal("the delivered brief is not read back as given")
 	}
 	next := mustFinding(t, "fix internal/verify/stop.go", p, d)
-	if next.Key != "note" || strings.Contains(next.Message.Text(), "project files:") {
-		t.Errorf("a later note carries the brief again:\n%s", next.Message.Text())
+	if next.Key != "note" || strings.Contains(next.Message.Text()+next.Message.Aside(), "project files:") {
+		t.Errorf("a later note carries the brief again:\n%s\n%s", next.Message.Text(), next.Message.Aside())
 	}
 	if _, ok := intent.Finding(intent.Resolve([]byte("continue"), false, p), intent.Delivered{}, &intent.Brief{}, 1); ok {
 		t.Error("an empty brief and a request naming nothing got a note")
 	}
 	f, _ = intent.Finding(intent.Resolve([]byte("continue"), false, p), intent.Delivered{}, &intent.Brief{GoDirs: 2000, WalkCapped: true}, 1)
-	if !strings.Contains(f.Message.Text(), "package walk capped, count is a lower bound") {
-		t.Errorf("a capped walk is not said so:\n%s", f.Message.Text())
+	if !strings.Contains(f.Message.Aside(), "package walk capped, count is a lower bound") {
+		t.Errorf("a capped walk is not said so:\n%s", f.Message.Aside())
 	}
 	f, _ = intent.Finding(intent.Resolve([]byte("continue"), false, p), intent.Delivered{}, &intent.Brief{Instructions: []string{"CLAUDE.md"}}, 1)
-	if !strings.Contains(f.Message.Text(), "no go.mod, packages not counted") {
-		t.Errorf("a project with no go.mod is not said so:\n%s", f.Message.Text())
+	if !strings.Contains(f.Message.Aside(), "no go.mod, packages not counted") {
+		t.Errorf("a project with no go.mod is not said so:\n%s", f.Message.Aside())
 	}
 }
 
@@ -521,8 +528,8 @@ func TestPF1j_Over16KiBPromptIsTruncatedAndSaidSo(t *testing.T) {
 		t.Errorf("Resolve = truncated %v, paths %q; want truncated, the path past 16 KiB unread", in.Truncated, in.Paths)
 	}
 	f, ok := intent.Finding(in, givenBrief(), nil, 1)
-	if !ok || !strings.Contains(f.Message.Text(), "request over 16 KiB, the rest not read") {
-		t.Errorf("the cut is not said:\n%s", f.Message.Text())
+	if !ok || !strings.Contains(f.Message.Aside(), "request over 16 KiB, the rest not read") {
+		t.Errorf("the cut is not said:\n%s", f.Message.Aside())
 	}
 	if !intent.Resolve([]byte("fix internal/verify/stop.go"), true, p).Truncated {
 		t.Error("a request the reader cut does not read as truncated")
@@ -594,8 +601,9 @@ func TestPF1_NoRegexpInIntent(t *testing.T) {
 
 // TestPF1t_FirstPromptOfAnEmptyRunIsDelivered: at a session's first prompt
 // the run holds no record, so the preflight decides at after_seq 0. The
-// first-prompt note is delivered there on UserPromptSubmit, brief included;
-// the same finding routed on PostToolUse is refused and writes no line.
+// first-prompt note is delivered there on UserPromptSubmit, its brief in the
+// person's aside; the same finding routed on PostToolUse is refused and
+// writes no line.
 // Break: Check's after_seq floor of 1 on every event, and the brief never
 // prints on prompt 1.
 func TestPF1t_FirstPromptOfAnEmptyRunIsDelivered(t *testing.T) {
@@ -611,8 +619,9 @@ func TestPF1t_FirstPromptOfAnEmptyRunIsDelivered(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := routeAt(t, st, "p1", false, f)
-	if !strings.Contains(out.AdditionalContext, "project files: 'CLAUDE.md'") || !delivered(t, st).BriefGiven {
-		t.Errorf("prompt 1 of an empty run: additionalContext %q, want the brief delivered", out.AdditionalContext)
+	if !strings.Contains(out.AdditionalContext, "'internal/verify/stop.go'") || !strings.Contains(out.SystemMessage, "project files: 'CLAUDE.md'") ||
+		!delivered(t, st).BriefGiven {
+		t.Errorf("prompt 1 of an empty run: %+v, want the note delivered and the brief shown", out)
 	}
 
 	other, err := store.Open(t.TempDir())

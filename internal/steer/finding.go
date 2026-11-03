@@ -124,11 +124,11 @@ func (f Finding) Check() error {
 		return fmt.Errorf("%w: level %d or stop form %q is outside its vocabulary", ErrFinding, f.MaxLevel, f.StopForm)
 	case f.StopForm != StopFormNone && f.MaxLevel != LevelStop:
 		return fmt.Errorf("%w: stop form %q below the stop level", ErrFinding, f.StopForm)
-	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
+	case f.Message.Template() != "" && f.Message.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
 	case f.OutcomeFrom != "" && f.OutcomeFrom != OutcomeFromOutputSummary:
 		return fmt.Errorf("%w: outcome_from is outside its vocabulary", ErrFinding)
-	case f.Record.Text() != "" && f.Record.Pattern() != f.Pattern:
+	case f.Record.Template() != "" && f.Record.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q record message on a %q finding", ErrFinding, f.Record.Pattern(), f.Pattern)
 	}
 	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
