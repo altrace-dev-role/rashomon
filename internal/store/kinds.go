@@ -43,9 +43,14 @@ const (
 // EventSchemaVersion and, unlike the 1.2.0 kinds, critical.
 const TypeSpecEvent = "spec_event"
 
+// TypeAfterHit is the second kind added after the freeze (card SPEC-RULES1
+// 1b, #216 ruling 1): the post's record of an order rule's After call
+// (afterhit.go), at EventSchemaVersion and critical.
+const TypeAfterHit = "after_hit"
+
 // kindVersion is the version each writer stamps on its kind (REC-1): call
 // kinds at 9, coverage and gaps unchanged at 3, every new kind at 5, the
-// spec_event added after the freeze included. It is
+// spec_event and after_hit added after the freeze included. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{
@@ -69,6 +74,7 @@ var kindVersion = map[string]int{
 	TypeOutcomeJoin:   EventSchemaVersion,
 	TypeWriteObserved: EventSchemaVersion,
 	TypeSpecEvent:     EventSchemaVersion,
+	TypeAfterHit:      EventSchemaVersion,
 }
 
 // KindVersion returns the version a writer stamps on kind, and whether kind
