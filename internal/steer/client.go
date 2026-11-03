@@ -32,6 +32,12 @@ type Client struct {
 	// probe or newer Claude Code has cleared it (card CHANNEL-EVIDENCE1).
 	// Route sets it; it never makes a closed row open.
 	EvidenceAbsent bool
+	// StartSource is the source a SessionStart call carries (startup,
+	// resume, clear or compact), the second half of that event's row key:
+	// P-TRU-1 judges each source on its own, since one Claude Code version
+	// gives the two halves differently by source. Empty on any other event,
+	// whose rows have no source.
+	StartSource string
 }
 
 // The two values of Client.Source.

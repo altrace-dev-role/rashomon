@@ -484,3 +484,42 @@ func TestVG1p_AnExcludedVersionAtTheFloorSaysExcluded(t *testing.T) {
 		}
 	}
 }
+
+// TestCSL1_SessionStartOpensPerSource: SessionStart's row is keyed by the
+// source its call carries (COMPACT-SLOT1; P-TRU-1 2026-11-02 on 2.1.280 and
+// 2.1.316, at a manual /compact). compact opens at and above 2.1.280, where
+// the probe saw both halves; startup, resume and clear stay closed, since
+// their systemMessage was not on the stream; a call with no source, or a
+// source the probe never ran, reads closed, so an event-only lookup cannot
+// open a source by accident. Another event's row ignores a source on its
+// call. Break: key the row by the event alone, open another source, or move
+// the floor, and this fails.
+func TestCSL1_SessionStartOpensPerSource(t *testing.T) {
+	at := func(v, src string) Client {
+		return Client{Version: v, Source: VersionSourceEnv, MirrorInBand: true, StartSource: src}
+	}
+	for _, tc := range []struct {
+		event Event
+		c     Client
+		want  bool
+	}{
+		{EventSessionStart, at("2.1.280", "compact"), true},
+		{EventSessionStart, at("2.1.316", "compact"), true},
+		{EventSessionStart, at("2.1.279", "compact"), false},
+		{EventSessionStart, at("2.1.316", "resume"), false},
+		{EventSessionStart, at("2.1.316", "startup"), false},
+		{EventSessionStart, at("2.1.316", "clear"), false},
+		{EventSessionStart, at("2.1.316", ""), false},
+		{EventSessionStart, at("2.1.316", "fork"), false},
+		{EventSessionStart, Client{Version: "2.1.316", Source: VersionSourceEnv, MirrorInBand: true, Subagent: true, StartSource: "compact"}, false},
+		{EventPostToolUse, at("2.1.280", "compact"), true},
+		{EventPostToolUse, at("2.1.280", "resume"), true},
+		{EventPostToolUseFailure, at("2.1.304", "compact"), true},
+		{EventPostToolUseFailure, at("2.1.303", ""), false},
+	} {
+		if got := ContextAllowed(string(tc.event), tc.c); got != tc.want {
+			t.Errorf("ContextAllowed(%s, version %s, source %q, subagent %v) = %v, want %v",
+				tc.event, tc.c.Version, tc.c.StartSource, tc.c.Subagent, got, tc.want)
+		}
+	}
+}
