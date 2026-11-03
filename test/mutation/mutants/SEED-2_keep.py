@@ -41,7 +41,7 @@ m("SEED-2 a record of another version is read", P,
 # Only grows; never in an agent session; never a count of nothing.
 m("SEED-2 a smaller recount replaces the kept count", A,
   "\tkept := s.Sessions > 0 && (!had || s.Sessions >= old.All.Sessions)\n",
-  "\tkept := s.Sessions > 0\n", "TestSEED2c_")
+  "\tkept := s.Sessions > 0\n\t_, _ = had, old\n", "TestSEED2c_")
 m("SEED-2 a count of no sessions is kept", A,
   "\tkept := s.Sessions > 0 && (!had || s.Sessions >= old.All.Sessions)\n",
   "\tkept := !had || s.Sessions >= old.All.Sessions\n", "TestSEED2c_")
@@ -63,9 +63,9 @@ m("SEED-2 the brief has no history line", B,
   "\tif storeRoot != \"\" {\n\t\tif f, ok := historyFact(root, storeRoot); ok {\n",
   "\tif false {\n\t\tif f, ok := historyFact(root, storeRoot); ok {\n", "TestSEED2e_")
 m("SEED-2 the brief has a history line with nothing kept", B,
-  "\tcase !ok:\n\t\treturn Fact{}, false\n", "", "TestSEED2e_")
+  "\tcase !ok:\n\t\treturn Fact{}, false\n", "\tcase !ok && false:\n\t\treturn Fact{}, false\n", "TestSEED2e_")
 m("SEED-2 an unreadable record is passed over in silence", B,
-  "\tcase err != nil:\n\t\tf := newFact(KindHistory", "\tcase false:\n\t\tf := newFact(KindHistory", "TestSEED2e_")
+  "\tcase err != nil:\n\t\tf := newFact(KindHistory", "\tcase err != nil && false:\n\t\tf := newFact(KindHistory", "TestSEED2e_")
 
 # Purge.
 m("SEED-2 purge leaves the kept count", G,

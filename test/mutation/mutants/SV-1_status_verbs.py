@@ -16,7 +16,7 @@ m("SV-1 an event that never fired is not named", "cmd/rashomon/verbs_status.go",
   "TestSV1_StatusNamesAnEventThatNeverFired")
 m("SV-1 Stop and SessionEnd are judged with the newest session in", "cmd/rashomon/verbs_status.go",
   "\t\t\tif len(r.Fired) == 0 || earlierOnly && r.name == newest.name {\n",
-  "\t\t\tif len(r.Fired) == 0 {\n",
+  "\t\t\tif len(r.Fired) == 0 || false && earlierOnly && r.name == newest.name {\n",
   "TestSV1_StatusNamesAnEventThatNeverFired|TestSV1b_StatusCountsPerEvent")
 m("SV-1 the 7-day window is ignored", "cmd/rashomon/verbs_status.go",
   "\t\tif now.Sub(a.LastAt) <= statusWindow {\n", "\t\tif true {\n", "TestSV1b_StatusCountsPerEvent")
@@ -68,5 +68,5 @@ m("SV-1 OpenReadOnly quarantines on disk", "internal/learn/ledger.go",
 m("SV-1 status says nothing of the steer hold", "cmd/rashomon/verbs_status.go",
   "\tcase c.notesHeld:\n", "\tcase false:\n", "TestSV1p_StatusNamesTheSteerHold")
 m("SV-1 status reads the hold from the last record", "cmd/rashomon/verbs_status.go",
-  "\t\tnotesHeld: !steerCurrent,\n", "\t\tnotesHeld: rec.SteerDisclosure < steer.DisclosureVersion,\n",
+  "\t\tnotesHeld: !steerCurrent,\n", "\t\tnotesHeld: rec.SteerDisclosure < steer.DisclosureVersion || steerCurrent && false,\n",
   "TestSV1p_StatusNamesTheSteerHold")
