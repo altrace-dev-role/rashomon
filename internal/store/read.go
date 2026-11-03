@@ -22,6 +22,9 @@ type Run struct {
 	// SpecEvents are the run's spec_event records of a reason this reader
 	// knows, in file order (card SPEC-RULES-STOP1).
 	SpecEvents []SpecEvent
+	// AfterHits are the run's after_hit records, in file order (card
+	// SPEC-RULES1 1b).
+	AfterHits []AfterHit
 	// Skipped counts lines that did not parse, carried an unknown type, or
 	// carried a schema version this reader does not understand. They are
 	// counted rather than failed on so that one bad line cannot hide a run.
@@ -288,6 +291,8 @@ func readAccepted(run *Run, line []byte, kind string, version int) error {
 		run.Coverage = append(run.Coverage, rec)
 	case TypeSpecEvent:
 		return readSpecEvent(run, line, kind, version)
+	case TypeAfterHit:
+		return readAfterHit(run, line, kind, version)
 	default:
 		// A kind introduced at 1.2.0, at its version. Its readers land
 		// with its writers; until then the record is checked to be the
