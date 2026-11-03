@@ -22,8 +22,10 @@ m("MD-1 a predicate in capitals is a name beside its subject", C,
   "\t\tif m&markJoined != 0 || m&markUpper != 0 && !s.loud {\n", "TestMD1b_")
 m("MD-1 every rule reads bare", C,
   "!s.misspelt(p, n, r.class == ClaimDone)", "!s.misspelt(p, n, true)", "TestMD1b_")
+# The break starts the sentence quiet, so the loop's `s.loud && ...` keeps it
+# so; breaking the loop's body instead leaves its m unused, which does not build.
 m("MD-1 a sentence in capitals throughout loses its claim", C,
-  "\t\ts.loud = s.loud && m&markLower == 0\n", "\t\ts.loud = false\n", "TestMD1b_")
+  "\ts.loud = true\n\tfor _, m := range s.marks {\n", "\ts.loud = false\n\tfor _, m := range s.marks {\n", "TestMD1b_")
 m("MD-1 a word's case is read from its first letter", T,
   "\t\t\tupper, lower = upper || unicode.IsUpper(r), lower || unicode.IsLower(r)\n", "", "TestMD1b_")
 m("MD-1 a hyphened predicate is a predicate", T,
