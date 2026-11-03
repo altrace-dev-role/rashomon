@@ -92,6 +92,15 @@ type Shape struct {
 	// MayWrite's padding, so a shape is no larger.
 	Launch bool `json:"-"`
 
+	// Probe reports a shell line of nothing but probes, each asking whether
+	// programs are installed and running none (probes; issue #52): which or
+	// type with a name, or command -v or -V with one, so `which pytest` and
+	// `which jq; type -P yq` are probes and `which pytest && pytest -q`,
+	// whose exit is pytest's, is not. One bit, read from the words and
+	// dropped. json:"-": the declaration carries it as its own key, probe,
+	// present only when true (call schema 10), beside launch.
+	Probe bool `json:"-"`
+
 	// StatusMasked says whether a recognised build or test runner on a shell
 	// line has an exit status the line does not return (see statusMasked):
 	// the line exits 0 when the runner fails, or the same either way.

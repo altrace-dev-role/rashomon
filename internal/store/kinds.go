@@ -13,7 +13,7 @@ const EventSchemaVersion = 5
 // the declaration's shape and the execution, at 7 store_named on the
 // declaration (D173b), and at 8 runner_name and masked_by on the execution
 // (D229), at 9 location_unread on the declaration (5.14b), and at 10 launch
-// on the declaration (LAUNCH-ANY1). A new key gets a version of
+// and probe on the declaration (LAUNCH-ANY1, #52). A new key gets a version of
 // its own and never joins an existing one, whose records are already on disk
 // without it (D11). SchemaVersion is the same number under the name the
 // writers use.
