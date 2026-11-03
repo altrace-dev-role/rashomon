@@ -65,8 +65,8 @@ m("VER-1.7 the number subject dropped", L,
 m("VER-1.7 the subject window is unbounded", C,
   '\tfor s := p - 1; s >= max(0, p-4); s-- {\n', '\tfor s := p - 1; s >= 0; s-- {\n', "TestVER55_")
 m("VER-1.7 the subject may follow the predicate", C,
-  '\tfor s := p - 1; s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s+len(sub) <= p && phraseAt(ws, s, sub) {\n',
-  '\tfor s := min(len(ws)-1, p+4); s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s != p && phraseAt(ws, s, sub) {\n',
+  '\tfor s := p - 1; s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s+len(sub) <= p && phraseAt(ws, s, sub) {\n',
+  '\tfor s := min(len(ws)-1, p+4); s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s != p && phraseAt(ws, s, sub) {\n',
   "TestVER55_")
 m("VER-1.7 done in any clause", C, ' && s.clauses[p] != 0 {\n\t\t\t\tbreak', ' && s.clauses[p] < 0 {\n\t\t\t\tbreak', "TestVER55_")
 m("VER-1.7 one verdict per sentence and class dropped", C,

@@ -19,14 +19,15 @@ const maxQuotedRunes = 200
 const claimClauseBreaks = ".,;:!?()\n"
 
 // wordMark is what appendWords keeps of a word's spelling beside its
-// lower-cased form (card MISREAD-DONE1): its case, and whether a hyphen
-// joins it to another word.
+// lower-cased form (card MISREAD-DONE1): its case, whether a hyphen joins it
+// to another word, and whether '#' opens it.
 type wordMark uint8
 
 const (
 	markUpper  wordMark = 1 << iota // a letter, every letter upper case
 	markLower                       // a lower-case letter
 	markJoined                      // a hyphen between it and a word rune
+	markID                          // '#' just before it: an id ("#194"), never a count
 )
 
 // capWindow is b cut to MaxClaimMessageBytes on a rune boundary, and whether
@@ -292,6 +293,9 @@ func appendWords(ws []string, cs []int, ms []wordMark, s string) ([]string, []in
 			}
 			if joined(s, i, j) {
 				m |= markJoined
+			}
+			if i > 0 && s[i-1] == '#' {
+				m |= markID
 			}
 			ws, cs, ms = append(ws, w), append(cs, clause), append(ms, m)
 		}

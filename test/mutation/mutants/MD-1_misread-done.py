@@ -1,15 +1,27 @@
 # MD-1: a name, an item number, half a word or a table's header is no claim
-# (card MISREAD-DONE1): a number is a count only in its predicate's clause; a
-# predicate in capitals in a sentence that is not is a name; a predicate
+# (card MISREAD-DONE1): a number is a count only in its predicate's clause and
+# never after '#'; a done predicate in capitals in a sentence that is not is a
+# name, and a predicate read with its subject is not; a predicate
 # joined by a hyphen to a word rune is part of another word; a line with a bar
 # over a delimiter row names columns. Each break removes one reading and names
 # the tests that hold it.
 C = "internal/verify/claims.go"
 T = "internal/verify/claimtext.go"
 m("MD-1 a number from another clause is a count", C,
-  "\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] {\n", "\t\tif r.number && isNumber(ws[s]) {\n", "TestMD1a_")
+  "\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {\n",
+  "\t\tif r.number && isNumber(ws[s]) && ms[s]&markID == 0 {\n", "TestMD1a_")
+m("MD-1 an id is a count", C,
+  "\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {\n",
+  "\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] {\n", "TestMD1a_")
+m("MD-1 no word is marked an id", T,
+  "\t\t\tif i > 0 && s[i-1] == '#' {\n", "\t\t\tif false {\n", "TestMD1a_")
 m("MD-1 a predicate in capitals is a claim", C,
-  "\t\tif m&markJoined != 0 || m&markUpper != 0 && !s.loud {\n", "\t\tif m&markJoined != 0 {\n", "TestMD1b_")
+  "\t\tif m&markJoined != 0 || bare && m&markUpper != 0 && !s.loud {\n", "\t\tif m&markJoined != 0 {\n", "TestMD1b_")
+m("MD-1 a predicate in capitals is a name beside its subject", C,
+  "\t\tif m&markJoined != 0 || bare && m&markUpper != 0 && !s.loud {\n",
+  "\t\tif m&markJoined != 0 || m&markUpper != 0 && !s.loud {\n", "TestMD1b_")
+m("MD-1 every rule reads bare", C,
+  "!s.misspelt(p, n, r.class == ClaimDone)", "!s.misspelt(p, n, true)", "TestMD1b_")
 m("MD-1 a sentence in capitals throughout loses its claim", C,
   "\t\ts.loud = s.loud && m&markLower == 0\n", "\t\ts.loud = false\n", "TestMD1b_")
 m("MD-1 a word's case is read from its first letter", T,

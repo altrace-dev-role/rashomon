@@ -225,21 +225,22 @@ func (r *claimRule) admits(s *sentence, p, n int) bool {
 	sFrom, sTo := p, p
 	if r.class != ClaimDone {
 		var ok bool
-		if sFrom, sTo, ok = r.subject(ws, s.clauses, p); !ok {
+		if sFrom, sTo, ok = r.subject(ws, s.clauses, s.marks, p); !ok {
 			return false
 		}
 	}
-	return !s.negated[p] && !s.misspelt(p, n) && !modalBefore(ws, p, sFrom, sTo) && !slices.Contains(ws[p+n:min(len(ws), p+n+2)], "yet")
+	return !s.negated[p] && !s.misspelt(p, n, r.class == ClaimDone) && !modalBefore(ws, p, sFrom, sTo) && !slices.Contains(ws[p+n:min(len(ws), p+n+2)], "yet")
 }
 
 // misspelt reports a predicate s.words[p:p+n] spelled as part of something
 // else (card MISREAD-DONE1): a word of it joined by a hyphen to another
-// ("a ready-made fix"), or in capitals in a sentence that is not, a name
-// ("I send FIX BRANCH READY") rather than a claim. A sentence in capitals
-// throughout ("DONE.") keeps its claim.
-func (s *sentence) misspelt(p, n int) bool {
+// ("a ready-made fix"), or, where the rule reads no subject (bare: done), in
+// capitals in a sentence that is not, a name ("I send FIX BRANCH READY")
+// rather than a claim. A sentence in capitals throughout ("DONE.") keeps its
+// claim, and so does a predicate read with its subject ("20/20 PASS").
+func (s *sentence) misspelt(p, n int, bare bool) bool {
 	for _, m := range s.marks[p : p+n] {
-		if m&markJoined != 0 || m&markUpper != 0 && !s.loud {
+		if m&markJoined != 0 || bare && m&markUpper != 0 && !s.loud {
 			return true
 		}
 	}
@@ -248,11 +249,12 @@ func (s *sentence) misspelt(p, n int) bool {
 
 // subject is the nearest subject that ends at or before ws[p] and starts
 // within the four words before it (one-sided, Gate A Q4); a number stands as
-// a count only in ws[p]'s own clause (cs), so an item number or an ordinal a
-// clause back is none (card MISREAD-DONE1).
-func (r *claimRule) subject(ws []string, cs []int, p int) (from, to int, ok bool) {
+// a count only in ws[p]'s own clause (cs), and never as an id (ms, "#170"),
+// so an item number, a pull request or an ordinal a clause back is none
+// (card MISREAD-DONE1).
+func (r *claimRule) subject(ws []string, cs []int, ms []wordMark, p int) (from, to int, ok bool) {
 	for s := p - 1; s >= max(0, p-4); s-- {
-		if r.number && isNumber(ws[s]) && cs[s] == cs[p] {
+		if r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {
 			return s, s + 1, true
 		}
 		for _, sub := range r.subjects {
