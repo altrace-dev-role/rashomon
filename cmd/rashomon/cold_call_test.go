@@ -50,6 +50,8 @@ func TestColdCall(t *testing.T) {
 			// it (85.3.8, test/perf/gate.go), and no rashomon code reads
 			// GOMAXPROCS or NumCPU.
 			defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+			var g0 runtime.MemStats
+			runtime.ReadMemStats(&g0)
 			_, installID := benchStarted(t)
 			in := newBenchInput(t, c.payload(t))
 			args := []string{install.Marker, installID}
@@ -68,6 +70,12 @@ func TestColdCall(t *testing.T) {
 
 			delta := m1.TotalAlloc - m0.TotalAlloc
 			fmt.Printf("COLD %s %d\n", c.id, delta)
+			// The GC cycles that began in setup and in the call, and the
+			// heap against its goal before the call (PERF-EDGE1 probe): a
+			// GC start moves sync.Pool's primary cache to its victim cache
+			// and a second drops it, so two between setup's Put and the
+			// call's Get send json/v2's decoder Get to New.
+			fmt.Printf("COLDGC %s setup=%d call=%d heap=%d next=%d\n", c.id, m0.NumGC-g0.NumGC, m1.NumGC-m0.NumGC, m0.HeapAlloc, m0.NextGC)
 		})
 	}
 }
