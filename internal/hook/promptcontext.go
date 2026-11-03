@@ -29,6 +29,15 @@ func PromptContextAt(st *store.Store, sp *spec.Compiled, sessionID, promptID, cw
 	return p.contextOf(env, verify.SteerView{ProjectRoot: project})
 }
 
+// StartContextAt is Route's context for a note made at SessionStart, the
+// continuity briefing at a compaction (card COMPACT-SLOT1). Red: the source
+// is not carried.
+func StartContextAt(st *store.Store, sp *spec.Compiled, sessionID, cwd, project, permissionMode, source string, env SteerEnv) steer.Context {
+	p := &Post{st: st, sp: sp, sessionID: sessionID, cwd: cwd, permissionMode: permissionMode,
+		event: string(steer.EventSessionStart)}
+	return p.contextOf(env, verify.SteerView{ProjectRoot: project})
+}
+
 // PromptRecordScope is the record scope the prompt path files its line
 // under: the marker the post path reads (recordScope), v4 when it is absent
 // or unreadable, so an unknown scope withholds.

@@ -36,9 +36,13 @@ func TestCSL1_ALineRecordsTheKeyedFormAndNeverTheWords(t *testing.T) {
 // TestCSL1_TheBriefingIsAdmittedOnItsOwnEventAlone: continuity-briefing, an
 // own-channel pattern with no step 8 number, is admitted at priority 0 at
 // SessionStart and nowhere else, at no other priority, and with Check's every
-// other rule (after_seq's floor of 1 among them); model-switch, the other
-// own-channel id, is not admitted at SessionStart. Break: admit it on every
-// event, at any priority, or skip the seq floor, and this fails.
+// other rule; model-switch, the other own-channel id, is not admitted at
+// SessionStart. SessionStart, like UserPromptSubmit, can have no call before
+// it (a session that compacts before its first tool call), so there the
+// briefing stands at after_seq 0, citing nothing, while a negative after_seq
+// or evidence past it is refused. Break: admit it on every event, at any
+// priority, keep the floor of 1 at SessionStart, or skip the seq check, and
+// this fails.
 func TestCSL1_TheBriefingIsAdmittedOnItsOwnEventAlone(t *testing.T) {
 	brief := Finding{Pattern: pattern.ContinuityBriefing, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 3}
 	if err := brief.CheckOn(EventSessionStart); err != nil {
@@ -52,18 +56,87 @@ func TestCSL1_TheBriefingIsAdmittedOnItsOwnEventAlone(t *testing.T) {
 	if brief.Check() == nil {
 		t.Error("Check, with no event, admitted the briefing")
 	}
+	first := brief
+	first.AfterSeq = 0
+	if err := first.CheckOn(EventSessionStart); err != nil {
+		t.Errorf("the briefing at after_seq 0, a compaction before any call: %v, want admitted", err)
+	}
 	numbered := brief
 	numbered.Priority = 5
 	floor := brief
-	floor.AfterSeq = 0
+	floor.AfterSeq = -1
+	past := brief
+	past.Evidence = []int64{4}
 	stop := brief
 	stop.StopForm = StopFormDeny
 	other := brief
 	other.Pattern = pattern.ModelSwitch
-	for name, f := range map[string]Finding{"priority 5": numbered, "after_seq 0": floor, "a stop form on a nudge": stop,
+	for name, f := range map[string]Finding{"priority 5": numbered, "after_seq -1": floor, "evidence past after_seq": past, "a stop form on a nudge": stop,
 		"model-switch": other} {
 		if f.CheckOn(EventSessionStart) == nil {
 			t.Errorf("%s was admitted at SessionStart", name)
+		}
+	}
+}
+
+// TestCSL1_TheBriefingIsDirectOutsideThePromptBudget: SessionStart has no
+// prompt, and the briefing is outside the prompt budget (tech 4.2.5: "1
+// briefing per SessionStart or SubagentStart ... outside the prompt
+// budget"; 4.2.13: "direct"). On its own event it is a nudge with no prompt
+// and past a spent note cap, while a key already delivered is still
+// budget_pattern and every other clamp still bites; any other finding with
+// no prompt stays a flag, at SessionStart or on any other event, and so does
+// the briefing on another event (the skip is narrow, mgr 11-02). Break: clamp
+// the briefing for its missing prompt, charge it to the prompt's cap, skip
+// the same-key check, or widen ownChannel to every pattern or every event,
+// and this fails.
+func TestCSL1_TheBriefingIsDirectOutsideThePromptBudget(t *testing.T) {
+	m, err := render.New(pattern.ContinuityBriefing, render.ContinuitySaid1Binding{Said1: slot.NewSaid("they go vertical, we go horizontal", "")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := render.New(pattern.ContinuityBriefing, render.ContinuitySaid1Binding{Said1: slot.NewSaidDigest(strings.Repeat("a", 64), 34, "", 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	brief := Finding{Pattern: pattern.ContinuityBriefing, Key: "b-1", MaxLevel: LevelNudge, StopForm: StopFormNone, Message: m, Record: rec}
+	c := verifiedClient
+	c.StartSource = "compact"
+	start := func() *Context {
+		ctx := routerContext(t)
+		ctx.Event, ctx.PromptID = EventSessionStart, nil
+		return ctx
+	}
+	n := 0
+	mint := func() string { n++; return strings.Repeat("0", 31) + string(rune('0'+n%10)) }
+	spent := counts{notes: maxNotes, flags: maxFlags}
+
+	out, lines := decide(start(), c, []Finding{brief}, spent, mint)
+	if out.AdditionalContext != m.Text() || len(lines) != 1 || lines[0].State != LineStateDelivered || lines[0].Level != LevelNudge.String() {
+		t.Errorf("the briefing at SessionStart, no prompt, the cap spent: %+v, %+v; want it delivered to the model", out, lines)
+	}
+	given := counts{keys: map[findingKey]bool{{string(pattern.ContinuityBriefing), "", "b-1"}: true}}
+	if out, lines := decide(start(), c, []Finding{brief}, given, mint); out != (Output{}) || lines[0].SuppressedBy == nil ||
+		*lines[0].SuppressedBy != SuppressedByBudgetPattern {
+		t.Errorf("the briefing under a key already delivered: %+v, %+v; want budget_pattern", out, lines)
+	}
+	noConsent := start()
+	noConsent.Consent = false
+	if out, lines := decide(noConsent, c, []Finding{brief}, counts{}, mint); out.AdditionalContext != "" || lines[0].SuppressedBy == nil ||
+		*lines[0].SuppressedBy != SuppressedByConsentMissing {
+		t.Errorf("the briefing with no consent: %+v, %+v; want the consent clamp", out, lines)
+	}
+	post := start()
+	post.Event = EventPostToolUse
+	other := regressionNote(t, "go test", 5, "a", LevelNudge)
+	for name, ev := range map[string]struct {
+		ctx *Context
+		f   Finding
+	}{"another pattern at SessionStart": {start(), other}, "another pattern on PostToolUse": {post, other},
+		"the briefing on PostToolUse": {post, brief}} {
+		if out, lines := decide(ev.ctx, c, []Finding{ev.f}, counts{}, mint); out.AdditionalContext != "" || lines[0].SuppressedBy == nil ||
+			*lines[0].SuppressedBy != SuppressedByBudgetPrompt {
+			t.Errorf("%s with no prompt: %+v, %+v; want a flag, budget_prompt", name, out, lines)
 		}
 	}
 }
