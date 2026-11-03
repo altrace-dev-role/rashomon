@@ -9,9 +9,9 @@ import (
 )
 
 // matched is a binding rule's verdict as StopView.Violations holds it: the
-// rule id, its kind, and the turn's seqs.
+// rule id as discovery prefixes it, its kind, and the turn's seqs.
 func matched(id string, kind spec.RuleKind, seqs ...int64) verify.RuleVerdict {
-	return verify.RuleVerdict{Rule: verify.SlotID(id), Kind: kind, Verdict: verify.Violation, Seqs: seqs}
+	return verify.RuleVerdict{Rule: verify.SlotID(specPrefix + id), Kind: kind, Verdict: verify.Violation, Seqs: seqs}
 }
 
 // TestRC15d_TheStopNamesEachRuleTheTurnMatched (card RECALL-15): the value
@@ -42,7 +42,7 @@ func TestRC15d_TheStopNamesEachRuleTheTurnMatched(t *testing.T) {
 		{"a protected path", []verify.RuleVerdict{matched("frozen-api", spec.ProtectPath, 4)},
 			indent + "spec rule frozen-api protects a path call 4 wrote\n"},
 		{"evidence at the Stop", []verify.RuleVerdict{matched("tests-at-done", spec.RequireEvidence, 11)},
-			indent + "spec rule tests-at-done requires evidence that is not green at the Stop\n"},
+			indent + "spec rule tests-at-done has evidence not green at the Stop\n"},
 		{"an id the slot refuses", []verify.RuleVerdict{matched("Bad Rule", spec.ForbidCommand, 3)},
 			indent + "a spec rule matched call 3\n"},
 		{"three rules", []verify.RuleVerdict{matched("no-fetch-all", spec.ForbidCommand, 2),

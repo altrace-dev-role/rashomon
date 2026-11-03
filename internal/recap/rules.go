@@ -51,12 +51,13 @@ func RuleLine(v verify.StopView, sessionID string, fromPlugin bool) string {
 	return prefix + head + ".\n" + ruleLines(v) + pointer(sessionID, fromPlugin)
 }
 
-// ruleLine is one rule's line: "spec rule <id> <what>", the id as the rule
-// id slot admits it, else "a spec rule". Past lineColumns, what goes on a
+// ruleLine is one rule's line: "spec rule <id> <what>", the id without its
+// specPrefix as the rule id slot admits it, as the post note names it
+// (verify.renderRule), else "a spec rule". Past lineColumns, what goes on a
 // line of its own, and past that it prints whole (D86).
 func ruleLine(r verify.RuleVerdict) string {
 	name := "a spec rule"
-	if id := slot.RuleID(r.Rule); id.Validate() == nil {
+	if id := slot.RuleID(strings.TrimPrefix(string(r.Rule), specPrefix)); id.Validate() == nil {
 		name = "spec rule " + id.Text()
 	}
 	what := ruleWhat(r)
@@ -69,13 +70,13 @@ func ruleLine(r verify.RuleVerdict) string {
 
 // ruleWhat is what the record holds of a rule's kind: the calls a command
 // matched, the calls that wrote a path it protects, or evidence it requires
-// that is not green at the Stop, whose seq is the Stop's and no call's.
+// not green at the Stop, whose seq is the Stop's and no call's.
 func ruleWhat(r verify.RuleVerdict) string {
 	switch r.Kind {
 	case spec.ProtectPath:
 		return "protects a path " + calls(r.Seqs) + " wrote"
 	case spec.RequireEvidence:
-		return "requires evidence that is not green at the Stop"
+		return "has evidence not green at the Stop"
 	}
 	return "matched " + calls(r.Seqs)
 }

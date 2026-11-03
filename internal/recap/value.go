@@ -30,8 +30,9 @@ const lineColumns = 80
 // sentence, the one the id lengthens most, still fits lineColumns.
 const maxIDName = 24
 
-// specGatePrefix leads the id of a gate a trusted spec declares.
-const specGatePrefix = "spec:"
+// specPrefix leads the id of each gate and rule a spec declares
+// (spec/discover.go).
+const specPrefix = "spec:"
 
 // maxGateNames is how many programs a gate list names before `and <k> more`.
 const maxGateNames = 3
@@ -237,7 +238,7 @@ func notCounted(v verify.StopView, k int, short bool) string {
 	}
 	var names []string
 	for _, u := range v.Untrusted {
-		id, ok := strings.CutPrefix(u.ID, specGatePrefix)
+		id, ok := strings.CutPrefix(u.ID, specPrefix)
 		p := slot.Program(id)
 		if short || !ok || p.Validate() != nil {
 			names = nil
@@ -478,7 +479,7 @@ func (t gateSet) first(s verify.State) *verify.GateState {
 // trust says the index has not seen a test run, unless short (GATE-INFER1,
 // W3', W4).
 func (t gateSet) name(g *verify.GateState) string {
-	if id, ok := strings.CutPrefix(g.Gate, specGatePrefix); ok && len(id) <= maxIDName && !(t.short && otherArgs(g)) {
+	if id, ok := strings.CutPrefix(g.Gate, specPrefix); ok && len(id) <= maxIDName && !(t.short && otherArgs(g)) {
 		if p := slot.Program(id); p.Validate() == nil {
 			return p.Text()
 		}

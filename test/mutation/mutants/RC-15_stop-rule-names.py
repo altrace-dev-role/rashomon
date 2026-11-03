@@ -29,7 +29,9 @@ m("RC-15 the done flag names no rule", "internal/recap/done.go",
 m("RC-15 no cap", RR,
   "const maxRuleLines = 2", "const maxRuleLines = 64", "TestRC15d_")
 m("RC-15 a refused id prints", RR,
-  "if id := slot.RuleID(r.Rule); id.Validate() == nil {", "if id := slot.RuleID(r.Rule); true {", "TestRC15d_")
+  "; id.Validate() == nil {", "; true {", "TestRC15d_")
+m("RC-15 the id keeps its spec: prefix", RR,
+  "slot.RuleID(strings.TrimPrefix(string(r.Rule), specPrefix))", "slot.RuleID(string(r.Rule))", "TestRC15d_|TestRC15_")
 m("RC-15 a protected path reads as a command", RR,
   "\tcase spec.ProtectPath:\n\t\treturn \"protects a path \" + calls(r.Seqs) + \" wrote\"\n", "", "TestRC15d_")
 m("RC-15 no width rule", RR,
