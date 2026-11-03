@@ -74,7 +74,7 @@ m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked_
 m("MS a shell's -c line is read as a word", "internal/shape/masked_simple.go",
   "w[1] != '-' && strings.ContainsRune(w, 'c') {", "w[1] != '-' && strings.ContainsRune(w, 'c') && false {", SH)
 m("MS a line the run is not sure of is none", "internal/shape/masked.go",
-  "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil, nil, nil, nil\n", "\t\t\tcontinue\n", SH)
+  "\t\t\t// Not sure: null.\n\t\t\treturn nil, list{}, nil, -1, false\n", "\t\t\tcontinue\n", SH)
 m("MS a runner the run never reaches is judged", "internal/shape/masked.go",
   "\t\tif f < 0 || pass < 0 || !ran {", "\t\tif f < 0 || pass < 0 || !ran && false {", SH)
 m("MS an exit 0 after || keeps the failure", "internal/shape/masked_eval.go",

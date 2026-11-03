@@ -121,9 +121,9 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 		return snap
 	}
 	picked := pickExecutions(run)
-	runs, writes, unnamed, rewritten := classifyWith(run, picked)
+	runs, writes, unnamed, rewritten, keys := classifyWith(run, picked)
 	c.runs, c.writes, c.unnamed, c.rewritten = runs, writes, unnamed, rewritten
-	snap.Gates = gateStates(runs, writes, unnamed, at, pt.Tree)
+	snap.Gates = gateStates(runs, writes, unnamed, keys, at, pt.Tree)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
 	c.learned = learned
@@ -136,7 +136,7 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 		c.inferred = name
 	}
 	if len(dgs) > 0 {
-		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, at, pt.Tree)
+		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, snap.ProjectRoot, at, pt.Tree)
 	}
 	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)
 	snap.SpecVerdicts = ruleVerdicts(sp, run, picked, c, &snap, sp != nil && wroteIn(writes, at))

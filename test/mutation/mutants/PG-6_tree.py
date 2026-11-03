@@ -19,7 +19,7 @@ PG6c = "TestPG6c_PostRecordsTheWrittenFilesSHA"
 PG6d = "TestPG6d_TreeShasReadsEachTarget"
 PG6e = "TestPG6e_StopBindsTheTree"
 CONC1 = "TestCONC1_ForeignEditIsUnknownNotUnmet"
-m("PG-6 the run's tree holds a docs path", T, "\t\tif w.Path != nil && Relevant(w.Class) {\n\t\t\trun[*w.Path] = w.SHA\n", "\t\tif w.Path != nil {\n\t\t\trun[*w.Path] = w.SHA\n", PG6a)
+m("PG-6 the run's tree holds a docs path", T, "\t\tif w.Path != nil && Relevant(w.Class) && covers(root, &w) {\n\t\t\trun[*w.Path] = w.SHA\n", "\t\tif w.Path != nil && covers(root, &w) {\n\t\t\trun[*w.Path] = w.SHA\n", PG6a)
 m("PG-6 the first write before the run is the tree", T, "\t\t\trun[*w.Path] = w.SHA\n", "\t\t\tif _, ok := run[*w.Path]; !ok {\n\t\t\t\trun[*w.Path] = w.SHA\n\t\t\t}\n", PG6a)
 m("PG-6 a gone file reads unchanged", T, "case now == nil || *now != *sha:", "case now != nil && *now != *sha:", CONC1)
 m("PG-6 a mismatch reads met", T, "\t\t\tmoved = true\n", "\t\t\tmoved = false\n", CONC1)

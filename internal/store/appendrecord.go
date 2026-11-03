@@ -25,8 +25,12 @@ type SeqRecord interface {
 // would place nothing. Every record written here is derivable from the
 // records before it, so losing one loses no fact, except a spec_event's
 // rule_hit, the call's verdict at the post, which the record at v4 cannot
-// derive. Losing one of those still fails safe: the Stop reads that rule
-// undecided, never clear (card SPEC-RULES-STOP1).
+// derive, and an after_hit, the same for an order rule's After call. Losing
+// one of those still fails safe where a line shows it: the Stop reads a
+// forbid_command rule undecided, never clear (card SPEC-RULES-STOP1), and an
+// order rule's Then reads undecided where the After's line is recorded (v5).
+// Where lines are withheld (v4) a lost after_hit leaves the Then with none to
+// qualify it, a violation the rule's nudge or flag names; no block rests on it.
 func (s *Store) AppendRecord(sessionID string, rec SeqRecord) error {
 	if kind, version := rec.Kind(); !AcceptsKind(kind, version) {
 		return ErrUnknownKind
