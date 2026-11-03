@@ -30,6 +30,23 @@ type SteerView struct {
 	// event (RulesAtCall), which the hook keeps as spec_event rule_hit
 	// records before Route (card SPEC-RULES-STOP1).
 	Hits []RuleHit
+	// AfterHits are the order rules whose After pattern the call matched,
+	// which the hook keeps as spec_event after_hit records (#216 ruling 1).
+	AfterHits []AfterHit
+}
+
+// AfterHit is an order rule's After call, as the post records it: the rule's
+// id, its declaring file's content digest, the call's directory digest (its
+// declaration's, "" where the run was not read), its exit status (nil where
+// none was stated) and foreground flag, and Maybe where the line may run the
+// After program but does not show it.
+type AfterHit struct {
+	RuleID       string
+	SourceDigest string
+	CWDDigest    string
+	Exit         *int
+	Foreground   bool
+	Maybe        bool
 }
 
 // RuleHit is a forbid_command rule a call matched: the rule's declared id
