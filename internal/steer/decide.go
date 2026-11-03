@@ -101,6 +101,25 @@ func rank(findings []Finding) []Finding {
 	return findings
 }
 
+// ownFirst moves the findings on their own channel (ownChannel) ahead of
+// the ranked candidates, stably, in place. An own-channel pattern injects
+// directly and never competes (pattern.priority's doc), though it stands at
+// priority 0, below every candidate: at a resumed session's first prompt the
+// briefing takes the call's note, and a candidate note of the same call is
+// superseded, budget_batch, its line kept (D-c, mgr 11-02).
+func ownFirst(findings []Finding, event Event) []Finding {
+	slices.SortStableFunc(findings, func(a, b Finding) int {
+		switch own := ownChannel(a.Pattern, event); {
+		case own == ownChannel(b.Pattern, event):
+			return 0
+		case own:
+			return -1
+		}
+		return 1
+	})
+	return findings
+}
+
 // newID is a line id when the Context mints none: 32 hex characters from
 // crypto/rand, the invocation id's form.
 func newID() string {
@@ -260,7 +279,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 	rule := ruleOf(ctx.Event)
 	plans := make([]plan, 0, len(admitted))
 	claimed := make(map[findingKey]bool, len(admitted))
-	for _, f := range rank(admitted) {
+	for _, f := range ownFirst(rank(admitted), ctx.Event) {
 		level := f.MaxLevel
 		if level == LevelOff {
 			continue // dropped: no line, no charge (step 5)

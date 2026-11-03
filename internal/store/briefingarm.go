@@ -1,5 +1,10 @@
 package store
 
+import (
+	"os"
+	"path/filepath"
+)
+
 // The continuity briefing's resume marker (card COMPACT-SLOT1, D-c). A
 // resumed session's start has no channel that reaches the person (startup,
 // resume and clear failed the user half), so when the transcript's last
@@ -12,12 +17,19 @@ package store
 
 // ArmBriefing arms the session's next prompt to give the continuity briefing.
 func (s *Store) ArmBriefing(sessionID string) error {
-	return nil
+	if err := s.opened(); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(s.RunDir(sessionID), FileBriefingArmed), os.O_CREATE|os.O_WRONLY, fileMode)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // TakeBriefingArm disarms the session's briefing marker and reports whether
 // this call is the one that did, so of two prompts that race for one arm
 // only one gives the briefing.
 func (s *Store) TakeBriefingArm(sessionID string) bool {
-	return false
+	return os.Remove(filepath.Join(s.RunDir(sessionID), FileBriefingArmed)) == nil
 }

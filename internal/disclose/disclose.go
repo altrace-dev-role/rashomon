@@ -187,6 +187,7 @@ func Default() (Inventory, error) {
 			specFiles(),
 			evidenceFiles(),
 			configFiles(),
+			continuityFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),

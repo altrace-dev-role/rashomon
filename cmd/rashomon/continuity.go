@@ -30,10 +30,13 @@ var readDirectives = directive.Read
 // additionalContext with its mirror to the person, lead, the plugin route's
 // consent line, opening the mirror. It reports whether it printed; when it
 // did not, the brief prints as before (printBrief, which at compact is the
-// lead alone).
-//   - Only at source compact, on a transcript at most continuityCap.
+// lead alone, and at resume the resume line).
+//   - Only at source compact, on a transcript at most continuityCap; at
+//     source resume, whose channel is closed, a briefing owed is armed for
+//     the session's next prompt (ArmBriefing, resumeBriefing; D-c) and
+//     nothing is read or printed.
 //   - The transcript's last compact_boundary keys the briefing, and one given
-//     for it already is not given again (directive.Given, D-b).
+//     for it already is not given again (owedBoundary, D-b).
 //   - The words are Read here, at delivery, and never stored: the steer line
 //     holds each quote's keyed digest (intent.SaidDigest) and byte length
 //     (D160, D-a).
@@ -47,15 +50,15 @@ func printContinuity(args []string, payload *hookio.Payload, st *store.Store, le
 	var source, sessionID, cwd, transcript, mode string
 	err := payload.Strs(hookio.Into(hookio.Source, &source), hookio.Into(hookio.SessionID, &sessionID), hookio.Into(hookio.CWD, &cwd),
 		hookio.Into(hookio.TranscriptPath, &transcript), hookio.Into(hookio.PermissionMode, &mode))
-	if err != nil || source != "compact" || sessionID == "" || cwd == "" || transcript == "" {
+	if err != nil || source != "compact" && source != "resume" || sessionID == "" || cwd == "" || transcript == "" {
 		return false
 	}
-	b, ok, err := directive.LastBoundary(transcript, continuityCap)
-	if err != nil || !ok {
+	b, ok := owedBoundary(st, sessionID, transcript)
+	if !ok {
 		return false
 	}
-	lines, _, _ := st.ReadSteer(sessionID)
-	if directive.Given(lines, b.UUID, "") {
+	if source == "resume" {
+		_ = st.ArmBriefing(sessionID) // a failed arm is a briefing not given, as before D-c
 		return false
 	}
 	ds, err := readDirectives(transcript, continuityCap)
@@ -66,8 +69,7 @@ func printContinuity(args []string, payload *hookio.Payload, st *store.Store, le
 	if err != nil {
 		return false
 	}
-	key := st.Key()
-	f, ok := directive.Briefing(ds, b, func(w string) string { return intent.SaidDigest(key, w) }, run.LastSeq())
+	f, ok := briefingOf(st, ds, b, run.LastSeq())
 	if !ok {
 		return false
 	}
@@ -101,4 +103,43 @@ func printContinuity(args []string, payload *hookio.Payload, st *store.Store, le
 	}
 	_, _ = stdout.Write(p)
 	return true
+}
+
+// owedBoundary is the transcript's last compact_boundary when the session's
+// main agent has not been given its briefing (directive.Given, D-b): one
+// forward pass over a transcript at most continuityCap, and the steer log.
+func owedBoundary(st *store.Store, sessionID, transcript string) (directive.Boundary, bool) {
+	b, ok, err := directive.LastBoundary(transcript, continuityCap)
+	if err != nil || !ok {
+		return directive.Boundary{}, false
+	}
+	lines, _, _ := st.ReadSteer(sessionID)
+	return b, !directive.Given(lines, b.UUID, "")
+}
+
+// briefingOf is the briefing finding for ds before b, its record keyed
+// under the store's key (intent.SaidDigest; D160, D-a).
+func briefingOf(st *store.Store, ds []directive.Directive, b directive.Boundary, afterSeq int64) (steer.Finding, bool) {
+	key := st.Key()
+	return directive.Briefing(ds, b, func(w string) string { return intent.SaidDigest(key, w) }, afterSeq)
+}
+
+// resumeBriefing is the briefing a resumed session's start armed (D-c),
+// for the prompt path to route beside its own notes: it takes the arm
+// first, so of two prompts only one reads, and whatever the route then
+// decides, the arm is spent and later prompts pay one failed remove. A
+// boundary given since the arm, or no quote before it, is no briefing.
+func resumeBriefing(st *store.Store, run *store.Run, sessionID, transcript string) (steer.Finding, bool) {
+	if sessionID == "" || transcript == "" || !st.TakeBriefingArm(sessionID) {
+		return steer.Finding{}, false
+	}
+	b, ok := owedBoundary(st, sessionID, transcript)
+	if !ok {
+		return steer.Finding{}, false
+	}
+	ds, err := readDirectives(transcript, continuityCap)
+	if err != nil || len(ds) == 0 {
+		return steer.Finding{}, false
+	}
+	return briefingOf(st, ds, b, run.LastSeq())
 }

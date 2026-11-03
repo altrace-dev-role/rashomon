@@ -401,7 +401,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// inventory, FileSpecNone in purge's run files).
 		// Moved 2026-10-31 (MEASURE1) to 33: lab.go's WriteLab ReplaceFile,
 		// the lab marker `measure --prepare` writes.
-		{"store", 33},
+		// Moved 2026-11-02 (COMPACT-SLOT1, D-c) to 34: briefingarm.go's
+		// ArmBriefing open, runs/<session>/briefing-armed, the continuity
+		// briefing's empty resume marker (continuityFiles in the inventory,
+		// FileBriefingArmed in purge's run files).
+		{"store", 34},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

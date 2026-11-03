@@ -151,7 +151,7 @@ func (f Finding) check(own bool) error {
 // prompt, or a compaction before its first tool call, the run holds no record
 // and the last seq the decision saw is 0, so there a finding may stand at
 // after_seq 0, citing nothing. Every other event keeps Check's floor of 1.
-// An own-channel pattern is admitted on its own event alone (ownChannel).
+// An own-channel pattern is admitted on its own events alone (ownChannel).
 func (f Finding) CheckOn(event Event) error {
 	own := ownChannel(f.Pattern, event)
 	if event != EventUserPromptSubmit && event != EventSessionStart || f.AfterSeq != 0 {
@@ -165,10 +165,12 @@ func (f Finding) CheckOn(event Event) error {
 
 // ownChannel reports p on its own channel's event, the one place an
 // own-channel pattern is routed: the continuity briefing at SessionStart
-// (tech 4.2.4 :1255, "direct"; STR-46; COMPACT-SLOT1). model-switch, the
-// other, has none here.
+// (tech 4.2.4 :1255, "direct"; STR-46; COMPACT-SLOT1), and at
+// UserPromptSubmit, where a resumed session's first prompt gives the
+// briefing its start could not (D-c). model-switch, the other, has none
+// here.
 func ownChannel(p PatternID, event Event) bool {
-	return p == pattern.ContinuityBriefing && event == EventSessionStart
+	return p == pattern.ContinuityBriefing && (event == EventSessionStart || event == EventUserPromptSubmit)
 }
 
 // errAfterSeq is Check's after_seq floor alone, so CheckOn can lower that
