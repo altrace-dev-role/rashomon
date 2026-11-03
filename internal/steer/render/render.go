@@ -135,6 +135,14 @@ type StaleEvidenceOutputDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// MaskedStatusBinding is masked-status's slots at the act (card
+// MASKED-AT-ACT1): the gate whose run this call was, and what hid the run's
+// exit status, from slot.EnumMaskStage's closed table.
+type MaskedStatusBinding struct {
+	Gate  slot.Gate `slot:"gate"`
+	Stage slot.Enum `slot:"stage"`
+}
+
 // StaleEvidenceBinding is stale-evidence's slots (card STALE-NUDGE1): the
 // gate, how long ago its green run exited 0, and the files this call wrote
 // after it. Only this call's files: a write another call declared beside it
@@ -336,6 +344,18 @@ type IntegrityFrozenPathBinding struct {
 // rule id its slot refuses.
 type IntegrityFrozenPathUnnamedBinding struct{}
 
+// OrderingRuleThenBinding is ordering-rule's line: the program of the call
+// that ran before the earlier step an order rule requires, and the id of the
+// rule.
+type OrderingRuleThenBinding struct {
+	Program slot.Program `slot:"program"`
+	Rule    slot.RuleID  `slot:"rule_id"`
+}
+
+// OrderingRuleThenUnnamedBinding is that line for a program or a rule id its
+// slot refuses.
+type OrderingRuleThenUnnamedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -350,7 +370,10 @@ type IntegrityFrozenPathUnnamedBinding struct{}
 // so no model text exists for them. stale-evidence/v1 states the green and
 // the write after it and stops there: the card's "Run it again before
 // claiming done" is an order, which STR-14 refuses, and the last sentence
-// says the same as a fact. learned-fact/v1 is a lesson a person approved at a
+// says the same as a fact. masked-status/v1 is said at the call whose run
+// it names (MASKED-AT-ACT1): the run, what hid its status, and that the
+// record holds no outcome, with no order to run it again (STR-14).
+// learned-fact/v1 is a lesson a person approved at a
 // terminal, its text in quotes (LEARN-DELIVER1, L7); its two flags say why a
 // ledger gave none.
 // claim-vs-record-inferred/v1 is the next prompt's note for the project's
@@ -408,6 +431,10 @@ func templates() map[templateKey]template {
 				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
 					"(at least {count}): {dirs}; test files are in {tested} of them.",
 			},
+			{pattern.MaskedStatus, reflect.TypeOf(MaskedStatusBinding{})}: {
+				id:     "masked-status/v1",
+				format: "rashomon record: gate {gate} ran in this call and {stage} hid its exit status; no outcome of this run is recorded.",
+			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
 				id:     "integrity-store-touched/v1",
 				format: "rashomon record: this call wrote {path}, under .claude/rashomon, which holds the spec and the task file rashomon reads.",
@@ -447,6 +474,7 @@ func templates() map[templateKey]template {
 		maps.Copy(templatesOnce.v, templatesLater())
 		maps.Copy(templatesOnce.v, templatesRide())
 		maps.Copy(templatesOnce.v, templatesSymbols())
+		maps.Copy(templatesOnce.v, templatesContinuity())
 	})
 	return templatesOnce.v
 }
@@ -509,6 +537,14 @@ func templatesLater() map[templateKey]template {
 		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
 			id:     "platform-rule-command-unnamed/v1",
 			format: "rashomon record: this call matched a spec rule.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenBinding{})}: {
+			id:     "ordering-rule-then/v1",
+			format: "rashomon record: this {program} call ran before the earlier step spec rule {rule_id} requires.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenUnnamedBinding{})}: {
+			id:     "ordering-rule-then-unnamed/v1",
+			format: "rashomon record: this call ran before the earlier step a spec rule requires.",
 		},
 		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
 			id:     "integrity-frozen-path/v1",

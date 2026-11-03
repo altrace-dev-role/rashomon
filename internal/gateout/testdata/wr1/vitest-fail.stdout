@@ -1,0 +1,12 @@
+
+ RUN  v1.6.1 /private/tmp/rk-se3/wr1-fx/proj/vt-fail
+
+ ❯ a.test.mjs  (2 tests | 1 failed) 3ms
+   ❯ a.test.mjs > subtracts
+     → expected 1 to be +0 // Object.is equality
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  08:57:07
+   Duration  164ms (transform 7ms, setup 0ms, collect 4ms, tests 3ms, environment 0ms, prepare 33ms)
+

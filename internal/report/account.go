@@ -533,14 +533,17 @@ func sessionMaskedRuns(run *store.Run, acct Account) *MaskedRuns {
 	return &m
 }
 
-// readFromSummary reports a masked run whose output's summary says it passed:
-// a record at call schema 8 under rules version 11 or later, whose masking
-// stage keeps the summary (shape.MaskedByKeeps) and whose runner's table read a
-// summary_pass. That is verify's rule for a green read from output
-// (verify.readsOutput). Only a pass is left out: a pass claim over a pass the
-// record shows is no alarm, while a summary_fail under a pass claim is the
-// detector's true positive, and a fail line, an empty run and every other word
-// leave the run as masked as it was.
+// readFromSummary reports a masked run whose outcome its output's summary
+// decided: a record at call schema 8 under rules version 11 or later, whose
+// masking stage keeps the summary (shape.MaskedByKeeps) and whose runner's
+// table read a summary_pass, or a summary_fail for any runner. That is
+// verify's rule for an outcome read from output (verify.readsOutput). Such a
+// run is no masked run: its outcome is on the record, and verify's line names
+// the runner and says it was read from the output, so a pass claim over a
+// pass is no alarm and one over a failure is raised there, as "done was
+// claimed", and not as an exit status "not recorded" (MASKED-FAIL-LINE1). A
+// fail line, an empty run and every other word leave the run as masked as it
+// was.
 func readFromSummary(e *store.Execution) bool {
 	if e == nil || e.SchemaVersion < 8 || e.RulesVersion < shape.OutputOutcomeRulesVersion ||
 		e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) || e.GateOutput == nil {
@@ -551,12 +554,29 @@ func readFromSummary(e *store.Execution) bool {
 	if e.Backgrounded {
 		return false
 	}
-	// A delegate's pass line is one step's, so verify does not read it
-	// (gateout.Delegated); the run stays counted.
-	if e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor("", *e.RunnerName)) {
+	switch e.GateOutput.Kind {
+	case "summary_fail":
+		// A failure is read for every runner, a delegate's included: its
+		// failure markers are its own (gateout.Delegated).
+		return true
+	case "summary_pass":
+		// A delegate's pass line is one step's, so verify does not read it
+		// (gateout.Delegated); the run stays counted.
+		return e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor("", *e.RunnerName))
+	}
+	return false
+}
+
+// readFromPrinted reports a masked run whose line printed its runner's exit
+// status (shape.PrintedStatus): gate_output printed_pass or printed_fail under
+// rules version 12 or later, on a call in the foreground. That is verify's
+// rule (verify.readsPrinted), for a fail as for a pass: the status is on the
+// record either way.
+func readFromPrinted(e *store.Execution) bool {
+	if e == nil || e.RulesVersion < shape.PrintedStatusRulesVersion || e.Backgrounded || e.GateOutput == nil {
 		return false
 	}
-	return e.GateOutput.Kind == "summary_pass"
+	return e.GateOutput.Kind == gateout.KindPrintedPass || e.GateOutput.Kind == gateout.KindPrintedFail
 }
 
 // BuildMaskedRuns counts run's masked runs that no later plain run of the
@@ -605,8 +625,14 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 		}
 		if readFromSummary(outcomeRecord(executed[d.ToolUseID])) {
 			// The pipe hid the exit status but kept the runner's summary,
-			// which says it passed: the record backs the claim, and verify's
-			// line says where the pass was read from (D229).
+			// which decided the outcome: the record holds it, and verify's
+			// line says where it was read from (D229, MASKED-FAIL-LINE1).
+			continue
+		}
+		if readFromPrinted(outcomeRecord(executed[d.ToolUseID])) {
+			// The line printed the runner's exit status, pass or fail: it is
+			// recorded, so "not recorded" would be false, and verify's line
+			// says how the run ended (STATUS-PROBE).
 			continue
 		}
 		if r := d.Shape.RunnerDigest; r != nil {

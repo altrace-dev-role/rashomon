@@ -10,7 +10,9 @@ import (
 // GATE-BIND1): every launcherRows entry is a row of buildCommands, so the
 // launcher test compares names the lists produce. A gate's argv and a run of
 // the same work-naming row with other words share a key, the row's name; a
-// launcher row keys by its words, so `make build` is not `make lint`; a run
+// launcher row keys by its words, so `make build` is not `make lint`; two
+// rows that run one tool share the tool's key (sameWork, INFER-FALSE1:
+// `pytest` is `python3 -m pytest`), and another tool keeps its own; a run
 // with no runner_name (before call schema 8) keys by its words; no runner,
 // no key.
 // Break: drop a launcher, key a launcher by its name, or let an argument
@@ -48,7 +50,8 @@ func TestGB1e_RunnerKeyIsTheRowForWorkAndTheWordsForALauncher(t *testing.T) {
 		{"npm test", "npm test -- --watch=false", true},
 		{"cargo test", "cargo +nightly test --release", true},
 		{"make test", "make -j4 test", true},
-		{"pytest", "python3 -m pytest", false},
+		{"pytest", "python3 -m pytest", true},
+		{"pytest", "python3 -m unittest", false},
 		{"make lint", "make build", false},
 		{"npm run lint", "npm run build", false},
 		{"mvn verify", "mvn package", false},

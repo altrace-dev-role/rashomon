@@ -34,7 +34,7 @@ func steerEnv(id harness.Identity, now time.Time, root string) hook.SteerEnv {
 	return hook.SteerEnv{
 		HarnessID:    string(id.ID),
 		Surface:      string(id.Surface),
-		MirrorInBand: harness.Caps(id.ID, id.Surface)[harness.CapMirrorInBand] == harness.Yes,
+		MirrorInBand: harness.Cap(id.ID, id.Surface, harness.CapMirrorInBand) == harness.Yes,
 		AIAgent:      os.Getenv("AI_AGENT"),
 		CI:           os.Getenv("CI") != "",
 		HoldoutOff:   hook.HoldoutOff(os.Getenv(hook.EnvHoldout)),

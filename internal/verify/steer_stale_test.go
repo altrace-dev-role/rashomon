@@ -46,7 +46,7 @@ func snRun(t *testing.T, calls ...call) *store.Run {
 // staleAt is SteerAt at call n's own point at its post, under idx.
 func staleAt(t *testing.T, r *store.Run, n int64, idx *ProjectIndex) SteerView {
 	t.Helper()
-	return SteerAt(r, idx, nil, nil, callPoint(t, r, n), snNow, snEvent, "t"+strconv.FormatInt(n, 10))
+	return SteerAt(r, idx, nil, nil, "", callPoint(t, r, n), snNow, snEvent, "t"+strconv.FormatInt(n, 10))
 }
 
 // staleFindings is the view's stale-evidence candidates.

@@ -133,6 +133,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.ArmStale(sessionID); err != nil {
 		t.Fatalf("ArmStale: %v", err)
 	}
+	if err := s.ArmBriefing(sessionID); err != nil {
+		t.Fatalf("ArmBriefing: %v", err)
+	}
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
 	}
@@ -401,11 +404,15 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// inventory, FileSpecNone in purge's run files).
 		// Moved 2026-10-31 (MEASURE1) to 33: lab.go's WriteLab ReplaceFile,
 		// the lab marker `measure --prepare` writes.
-		// Moved 2026-11-02 (ARCH-INLINE1) to 34: blastread.go's
+		// Moved 2026-11-02 (COMPACT-SLOT1, D-c) to 34: briefingarm.go's
+		// ArmBriefing open, runs/<session>/briefing-armed, the continuity
+		// briefing's empty resume marker (continuityFiles in the inventory,
+		// FileBriefingArmed in purge's run files).
+		// Moved 2026-11-02 (ARCH-INLINE1) to 35: blastread.go's
 		// TakeBlastRead open, runs/<session>/blast-read-<16 hex>, the
 		// blast-radius read's marker per package and log (blastReadFiles in
 		// the inventory, IsBlastReadFile in purge's run files).
-		{"store", 34},
+		{"store", 35},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -468,7 +475,9 @@ func (tru23Steer) CapText() bool { return false }
 
 // PREFLIGHT1b: at record scope v4 a request's preflight steer line stores a
 // count and keyed digests, not the note's text, so both places that say the
-// notes are stored as shown carry the exception (TRU-PF1b).
+// notes are stored as shown carry the exception (TRU-PF1b). The continuity
+// briefing's exception follows it in both; TestCSL1_TheScreenAndTheRowSay...
+// pins the whole of each.
 func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
@@ -486,7 +495,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	}
 	for _, f := range inv.Files {
 		if f.Pattern == "steer.ndjson" {
-			if !strings.Contains(f.Holds, "the message text shown ("+except+")") {
+			if !strings.Contains(f.Holds, "the message text shown ("+except) {
 				t.Errorf("steer.ndjson's Holds lacks the v4 exception: %q", f.Holds)
 			}
 			return

@@ -45,8 +45,9 @@ func TestRES28i_ToleranceScheduleIsTheSpecs(t *testing.T) {
 // and post at 540 B (a PostToolUse envelope's fixed part is 467 bytes), both
 // at 40 KB, 1, 4 and 8 MiB; the small and 40 KB cases gate from P-08 and the
 // rest from P-10, and this tree carries both, so every case gates. Dropping a
-// case or moving one to a later PR is a change to what is gated. One case is
-// not RES-28's: the Stop's transcript scan, CHANNEL-EVIDENCE1's own row (Q11).
+// case or moving one to a later PR is a change to what is gated. Two cases are
+// not RES-28's: the Stop's transcript scan, CHANNEL-EVIDENCE1's own row (Q11),
+// and the order rule's Then call, SPEC-RULES1 1b's (#216 ruling 5).
 // Nor are the Stop's read of a 3 MiB pgraph log (PW1b-ON-230 step 2), the
 // prompt's read of one for a named symbol (step 3) and the post's read of
 // one after a Go edit (ARCH-INLINE1), whose costs grow with the
@@ -70,6 +71,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"recap.pending.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
 		// The post's blast-radius read (ARCH-INLINE1): the real post entry after a Go edit, over the same log.
 		"post.edit.pgraph3MiB": {"post", 3 << 20, "PW1b"},
+		// The order rule's Then call (SPEC-RULES1 1b, #216 ruling 5): post.540B's payload under a trusted spec of one order rule.
+		"post.540B.order": {"post", 540, "SR-1b"},
 	}
 	b := loadBudgets(t)
 	seen := map[string]bool{}

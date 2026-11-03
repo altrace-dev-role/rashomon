@@ -144,6 +144,20 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// markLive marks the event fired for the session and keeps the background
+// task ends the new prompt states, unless the store is paused. prompt is nil
+// but for `recap pending`. A prompt that is a background task's end
+// notification keeps the end's closed fields before the prompt is cleared,
+// whichever turn it arrives in and whether or not the catch-up speaks (card
+// BG-OUTCOME phase 1); recapTurn's run read, after this, sees it.
+func markLive(st *store.Store, root, event, sessionID string, prompt []byte, now time.Time) {
+	if paused, _, perr := store.Paused(root); perr != nil || paused {
+		return
+	}
+	markFired(st, sessionID, event)
+	keepTaskEnds(st, sessionID, prompt, now)
+}
+
 // recapTurn is cmdRecap's body. An error it returns has already been recorded
 // for status where it could be (recap.RecordFailure), or is the failure to
 // record it; cmdRecap drops both.
@@ -196,13 +210,13 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if standsDown(args, st, stderr) {
 		return nil
 	}
-	if paused, _, perr := store.Paused(root); perr == nil && !paused {
-		markFired(st, payload.SessionID, recapEvent(args, payload.Harness.HookEventName))
-	}
+	markLive(st, root, recapEvent(args, payload.Harness.HookEventName), payload.SessionID, pp.Prompt, now)
 
 	// `recap pending` runs on UserPromptSubmit, before the new prompt has
 	// made a single call, so the newest turn in the store is the one that
-	// just ended. It speaks only when no recap reached that turn: saying
+	// just ended -- unless the prompt was taken into the running turn, which
+	// the catch-up below checks by prompt_id. It speaks only when no recap
+	// reached that turn: saying
 	// No at a permission prompt interrupts the turn and Claude Code fires
 	// no Stop after an interrupt, so without this a refused call -- the
 	// case the line exists for -- could never be shown at all.
@@ -259,6 +273,13 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	unchecked := false
 	if pending {
 		note, client, unchecked = promptNotes(st, run, &pp, root, d, id, now)
+		// A prompt taken into the running turn (a peer message, a task
+		// notification, text typed while busy) fires UserPromptSubmit with
+		// that turn's prompt_id: the newest turn has not ended, and its own
+		// Stop speaks for it (REC-MIDTURN1). A payload with no prompt_id
+		// cannot tell, and keeps the catch-up (Turn is false for an empty
+		// d.PromptID).
+		unchecked = unchecked && pp.PromptID != d.PromptID
 	}
 	if pending && !unchecked {
 		return printTurn(st, stdout, note, client, "")

@@ -1,0 +1,21 @@
+rashomon audit: the last 14 days of Claude Code on this machine
+  10 sessions in 3 projects, 62 tool calls
+
+  You stopped or overruled your agent 14 times:
+       4  stopped it mid-turn
+       5  said no to a tool call
+       5  pushed back in a reply
+  Your own rules blocked it 3 times.
+  It hit a tool error and tried the same tool again 9 times.
+
+  What keeps coming back (times, sessions):
+       7     6  an edit whose text was not in the file, then tried again
+       4     4  you said no to a version-control command
+       4     4  you stopped it after a test run
+       3     3  you pushed back after an edit to a test file
+       3     3  your rules blocked a write to a secrets file
+       2     2  a write to a file it had not read, then tried again
+       2     2  you pushed back after a reply
+
+  Counted here: nothing was sent or stored, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon

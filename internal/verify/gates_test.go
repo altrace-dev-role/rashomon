@@ -29,7 +29,7 @@ func statesAt(t *testing.T, at int64, calls ...call) []GateState {
 func statesOf(t *testing.T, r *store.Run, at int64) []GateState {
 	t.Helper()
 	runs, writes, unnamed, _ := classify(r)
-	got := gateStates(runs, writes, unnamed, at, nil)
+	got := gateStates(runs, writes, unnamed, nil, at, nil)
 	for _, g := range got {
 		if g.Source != "learned" || g.Trust != "builtin" || !g.Required || g.PartialRunsSince != 0 {
 			t.Fatalf("%s: source %q trust %q required %t partial %d, want learned, builtin, true, 0", g.Gate, g.Source, g.Trust, g.Required, g.PartialRunsSince)
@@ -342,7 +342,7 @@ func TestVER14_BackgroundedAndNoFamily(t *testing.T) {
 	bg.bg = true
 	wantState(t, one(t, statesAt(t, 2, bg)), Backgrounded, BackgroundLaunch)
 
-	got := gateStates(nil, nil, nil, 10, nil)
+	got := gateStates(nil, nil, nil, nil, 10, nil)
 	b, err := json.Marshal(got)
 	if err != nil || got == nil || string(b) != "[]" {
 		t.Fatalf("no family: %v encodes as %s (err %v), want a made empty slice encoding as []", got, b, err)
@@ -430,9 +430,9 @@ func encodedUnderShuffles(t *testing.T, r *store.Run, at int64, dgs ...declaredG
 	runs, writes, unnamed, _ := classify(r)
 	cands := lineRuns(r, pickExecutions(r))
 	rows := func() []GateState {
-		g := gateStates(runs, writes, unnamed, at, nil)
+		g := gateStates(runs, writes, unnamed, nil, at, nil)
 		if len(dgs) > 0 {
-			g = withDeclared(g, dgs, cands, runs, writes, unnamed, at, nil)
+			g = withDeclared(g, dgs, cands, runs, writes, unnamed, "", at, nil)
 		}
 		return g
 	}
@@ -707,12 +707,35 @@ func BenchmarkGateStates(b *testing.B) {
 	}
 	runs, writes, unnamed, _ := classify(runOf(b, calls...))
 	at := 2 * seq
-	if got := gateStates(runs, writes, unnamed, at, nil); len(got) != 2 || got[0].WritesSinceGreen != 10 {
+	if got := gateStates(runs, writes, unnamed, nil, at, nil); len(got) != 2 || got[0].WritesSinceGreen != 10 {
 		b.Fatalf("the fixture gives %+v, want two families with ten writes since green", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gateStates(runs, writes, unnamed, at, nil)
+		gateStates(runs, writes, unnamed, nil, at, nil)
+	}
+}
+
+// TestC8_ALintRunIsALearnedGateOfKindLint: a run whose record carries
+// runner_kind lint (or typecheck or scan) is a learned gate of that kind, its
+// id names the kind, and it is a family of its own beside the test gate of the
+// same location.
+func TestC8_ALintRunIsALearnedGateOfKindLint(t *testing.T) {
+	for _, kind := range []string{shape.RunnerLint, shape.RunnerTypecheck, shape.RunnerScan} {
+		check := call{seq: 3, tool: "Bash", prog: "tool", class: shape.VerbExecute, runner: "tool-run", kind: kind, masked: shape.MaskedNone, outcome: store.ExecOK, loc: "d:repo"}
+		r := runOf(t, gateCall(1, "go-test", store.ExecOK), check)
+		got := statesOf(t, r, 14)
+		want := "learned:" + kind + ":r:tool-run@d:repo"
+		found, tests := false, 0
+		for _, g := range got {
+			found = found || g.Gate == want && g.Kind == kind
+			if g.Kind == "test" {
+				tests++
+			}
+		}
+		if len(got) != 2 || !found || tests != 1 {
+			t.Errorf("%s: rows %+v, want the %s gate (%s) and the test gate", kind, got, kind, want)
+		}
 	}
 }

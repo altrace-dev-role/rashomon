@@ -123,6 +123,13 @@ func ColdGate(id string) string { return "cold " + id }
 // BackgroundGate names a background row's gate (PW1b-ON-230).
 func BackgroundGate(id string) string { return "background " + id }
 
+// OrderSpecCase reports a RES-28 case measured under a trusted spec that
+// declares one order rule (SPEC-RULES1 1b, #216 ruling 5). Its payload is the
+// unaffected case's, post.540B, so the two differ by the spec alone; it is
+// not RES-28's line, which says nothing of an order rule's run read, so its
+// row is its own figure and its basis says where the figure came from.
+func OrderSpecCase(id string) bool { return id == "post.540B.order" }
+
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
 // 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
 // intake, both of which this tree carries.
