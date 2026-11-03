@@ -114,7 +114,12 @@ var ErrFinding = errors.New("steer: finding outside the contract")
 // decision saw; and a rendered Message belongs to the Finding's own
 // pattern, so a briefing's multi-line text cannot ride another pattern's
 // single-line channel (output rule G4, tech 7.2.5, is the backstop).
-func (f Finding) Check() error {
+func (f Finding) Check() error { return f.check(false) }
+
+// check is Check with own, ownChannel's report on the event the finding is
+// routed on: there an own-channel pattern, which has no step 8 number (tech
+// 4.2.4, TestSTR16), stands at priority 0. Every other rule holds as Check's.
+func (f Finding) check(own bool) error {
 	switch {
 	case !pattern.KindValid(f.Pattern, string(f.Kind)):
 		return fmt.Errorf("%w: %q is not a frozen kind of %q", ErrFinding, f.Kind, f.Pattern)
@@ -131,6 +136,9 @@ func (f Finding) Check() error {
 	case f.Record.Text() != "" && f.Record.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q record message on a %q finding", ErrFinding, f.Record.Pattern(), f.Pattern)
 	}
+	if _, numbered := pattern.Priority(f.Pattern); own && !numbered && f.Priority == 0 {
+		return f.checkSeqs(1)
+	}
 	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
 		return fmt.Errorf("%w: %s does not carry its own-channel or table priority", ErrFinding, f.Pattern)
 	}
@@ -142,14 +150,24 @@ func (f Finding) Check() error {
 // with no call before it: at a session's first prompt the run holds no record
 // and the last seq the decision saw is 0, so there a finding may stand at
 // after_seq 0, citing nothing. Every other event keeps Check's floor of 1.
+// An own-channel pattern is admitted on its own event alone (ownChannel).
 func (f Finding) CheckOn(event Event) error {
+	own := ownChannel(f.Pattern, event)
 	if event != EventUserPromptSubmit || f.AfterSeq != 0 {
-		return f.Check()
+		return f.check(own)
 	}
-	if err := f.Check(); err == nil || !errors.Is(err, errAfterSeq) {
+	if err := f.check(own); err == nil || !errors.Is(err, errAfterSeq) {
 		return err
 	}
 	return f.checkSeqs(0)
+}
+
+// ownChannel reports p on its own channel's event, the one place an
+// own-channel pattern is routed: the continuity briefing at SessionStart
+// (tech 4.2.4 :1255, "direct"; STR-46; COMPACT-SLOT1). model-switch, the
+// other, has none here.
+func ownChannel(p PatternID, event Event) bool {
+	return p == pattern.ContinuityBriefing && event == EventSessionStart
 }
 
 // errAfterSeq is Check's after_seq floor alone, so CheckOn can lower that

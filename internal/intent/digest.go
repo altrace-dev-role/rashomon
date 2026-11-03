@@ -24,6 +24,20 @@ func PathDigest(key []byte, path string) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// saidDomain is the domain of a quote's keyed digest, apart from pathDomain,
+// so one string never digests the same as a path and as a quote.
+const saidDomain = "\x00continuity-said"
+
 // SaidDigest is the keyed digest of the person's words a continuity briefing
-// quoted (COMPACT-SLOT1). Red: not built.
-func SaidDigest(key []byte, words string) string { return "" }
+// quoted (COMPACT-SLOT1): PathDigest's HMAC-SHA256 under the store's
+// per-install key, in a domain of its own. Typed words are low in entropy,
+// and a plain hash of a short phrase is reversed by guessing the phrase;
+// under the key it is not, and the steer line holds this in place of the
+// words at every record scope (D160).
+func SaidDigest(key []byte, words string) string {
+	h := hmac.New(sha256.New, key)
+	h.Write([]byte(saidDomain))
+	h.Write([]byte{0})
+	h.Write([]byte(words))
+	return hex.EncodeToString(h.Sum(nil))
+}
