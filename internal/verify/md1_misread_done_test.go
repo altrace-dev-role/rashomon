@@ -33,26 +33,33 @@ func md1Run(t *testing.T, rows []md1Row) {
 }
 
 // TestMD1a_ANumberFromAnotherClauseIsNoCount: a number stands as the count
-// of a test claim only in the predicate's own clause. An item number or a
-// commit's ordinal a clause back is not one; a word subject still reaches
-// across, as Q4 reads it.
+// of a test claim only in the predicate's own clause, and never with '#'
+// before it, which makes it an id (a pull request's number). An item number
+// or a commit's ordinal a clause back is not one; a word subject still
+// reaches across, as Q4 reads it, and past an id.
 func TestMD1a_ANumberFromAnotherClauseIsNoCount(t *testing.T) {
 	md1Run(t, []md1Row{
 		{msg: "That control belonged in the red commit (TEAM-BAR 5), and the green commit message will say it came in late.",
 			why: "eng-2 6537: TEAM-BAR's item 5, two clause breaks back; green is the commit's"},
 		{msg: "- **452b8395** hook (commit 3, green)", why: "eng-2 4149: commit 3, a clause back"},
 		{msg: "**#179, commit 43b56303:** the green run passed (459 s, rc 0).", why: "eng-4 3262: #179, two clauses back"},
+		{msg: "- **#170 is green but not merged yet.**", why: "manager 3418: #170 is a pull request, in the predicate's clause"},
+		{msg: "I recorded the manager's ruling in `gates/PR-194.txt`: `TestSRS1d4_` is a deliberate pin, so #194 stays GREEN.",
+			why: "qa-1 4687: #194 is a pull request, and GREEN its grade"},
 
 		{msg: "Tests: 42 passed.", class: ClaimTestsPass, strict: true, why: "control: the count in the predicate's clause"},
 		{msg: "The tests, all 42, pass.", class: ClaimTestsPass, strict: true, why: "control: the word subject reaches across"},
 		{msg: "42/42 green", class: ClaimTestsPass, strict: true, why: "control: the count beside its predicate"},
+		{msg: "The tests on #42 pass.", class: ClaimTestsPass, strict: true, why: "control: a word subject behind an id"},
+		{msg: "Fixed #42.", class: ClaimDone, strict: true, why: "control: done reads no subject, so an id beside it changes nothing"},
 	})
 }
 
-// TestMD1b_ANameInCapitalsIsNoClaim: a predicate written in capitals, in a
-// sentence that is not all capitals, is a name (a protocol message, a
-// verdict's token), not a claim. A sentence in capitals throughout keeps
-// its claim.
+// TestMD1b_ANameInCapitalsIsNoClaim: a done predicate written in capitals, in
+// a sentence that is not all capitals, is a name (a protocol message, a
+// verdict's token), not a claim. A sentence in capitals throughout keeps its
+// claim, and so does a predicate read with its subject ("20/20 PASS"): done
+// reads none, so its word alone can be a name.
 func TestMD1b_ANameInCapitalsIsNoClaim(t *testing.T) {
 	md1Run(t, []md1Row{
 		{msg: "Then green gets committed and I send FIX BRANCH READY to the manager.", why: "eng-2 7545: the message's name"},
@@ -65,6 +72,10 @@ func TestMD1b_ANameInCapitalsIsNoClaim(t *testing.T) {
 		{msg: "ALL TESTS PASS.", class: ClaimTestsPass, strict: true, why: "control: capitals throughout"},
 		{msg: "It is ready.", class: ClaimDone, strict: true, why: "control: the word in lower case"},
 		{msg: "Fixed the parser; CI is green.", class: ClaimDone, strict: true, why: "control: a capital opens the word"},
+		{msg: "Ran the named test 20x on PR head (809bd58c) and 20x on main (5472e932) under goslot: 20/20 PASS both sides, " +
+			"consistent with the author's own admission that it doesn't reproduce locally.",
+			class: ClaimTestsPass, strict: true, why: "control, qa-3 228: the count is PASS's subject"},
+		{msg: "Tests PASS.", class: ClaimTestsPass, strict: true, why: "control: a word subject beside a predicate in capitals"},
 	})
 }
 
