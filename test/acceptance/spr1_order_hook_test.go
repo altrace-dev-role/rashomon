@@ -46,8 +46,8 @@ func spr1Hits(e *env) []map[string]any { return e.recordsOfType("after_hit") }
 // TestSPR1a_AnAfterCallLeavesAHitAndAThenWithOneIsMet: the After's post
 // writes one after_hit: the rule's id, exit 0, foreground, the call's
 // directory digest and no command text. A later Then raises nothing. (The
-// Stop's row reads unknown live: this build records no command line, so the
-// Stop cannot see the Then; the judge's Stop reading is the verify tests'.)
+// Stop's row live is ORDER-LIVE1's: it reads the Then from the then_check
+// each post keeps, TestOL1a_.)
 func TestSPR1a_AnAfterCallLeavesAHitAndAThenWithOneIsMet(t *testing.T) {
 	e, dir := spr1Project(t, true)
 	e.dghCall(dir, "toolu_a", "Bash", spr1Test)

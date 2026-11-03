@@ -134,8 +134,8 @@ m("sr1b order fires on a then the line does not show", "internal/verify/rules_or
   "\t\tcase best == triMaybe:\n",
   "TestSR1ai_")
 m("sr1b order reads an after and a then in one line as ordered", "internal/verify/rules_order.go",
-  "\t\tif lineMatch(r.After, l) != triNo {\n\t\t\tbest = triMaybe\n\t\t}\n",
-  "\t\tif lineMatch(r.After, l) != triNo {\n\t\t\tbest = triYes\n\t\t}\n",
+  "\t\tif after != triNo {\n\t\t\tbest = triMaybe\n\t\t}\n",
+  "\t\tif after != triNo {\n\t\t\tbest = triYes\n\t\t}\n",
   "TestSR1ai_")
 m("sr1b forbid_code reads an applicable write as violated", "internal/verify/rules_order.go",
   "\treturn ruleRead{undecided: true, reason: ReasonContentNotRead}\n",
@@ -146,8 +146,8 @@ m("sr1b forbid_code is undecided at a write elsewhere", "internal/verify/rules_o
   "\tif false && len(w.seqs) == 0 && !w.undecided {\n\t\treturn ruleRead{}\n\t}\n",
   "TestSR1ak_")
 m("sr1b the post raises an order at a call that is not the then", "internal/verify/rules_raise.go",
-  "\t\t\treturn slices.Contains(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs, d.Seq)\n",
-  "\t\t\treturn len(orderOver(r, v.lines, hits, &v.c, v.rels, v.at).seqs) > 0\n",
+  "\t\t\treturn slices.Contains(orderOver(r, v.lines, hits, nil, &v.c, v.rels, v.at).seqs, d.Seq)\n",
+  "\t\t\treturn len(orderOver(r, v.lines, hits, nil, &v.c, v.rels, v.at).seqs) > 0\n",
   "TestSR1p_")
 IMPORTS["sr1b the post raises an order at a call that is not the then"] = ("internal/verify/rules_raise.go", '\t"slices"\n', "")
 m("sr1b the post raises an order with no run read", "internal/verify/rules_raise.go",
