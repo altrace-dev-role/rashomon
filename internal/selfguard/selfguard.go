@@ -4,8 +4,9 @@
 //
 // The commands that refuse an agent session: watch and consent (an
 // expansion, and consent <unit> off), spec trust and untrust, steer on and
-// off, summary on and off, bodies on and off, purge, detach and pause. Each
-// reads AgentSignal before it opens or writes anything, and returns Refusal.
+// off, summary on and off, bodies on and off, purge, detach, pause and
+// audit --keep. Each reads AgentSignal before it opens or writes anything,
+// and returns Refusal.
 //
 // It detects and announces; it does not prevent. A process running as the
 // user can still edit rashomon's files directly.

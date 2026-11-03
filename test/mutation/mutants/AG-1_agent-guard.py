@@ -43,6 +43,12 @@ m("AG-1 pause writes its own refusal text", MN,
   "\t\treturn fmt.Errorf(\"pause stops the recording of your sessions until you resume it, so only you can run it, in %s: `rashomon pause`. Nothing was written. (%s is set here: Claude Code sets it for every command it runs, a `!` line included.)\", selfguard.Place, s)\n",
   "TestAGRF1_")
 
+AU = "cmd/rashomon/audit.go"
+m("AG-1 audit --keep writes its own refusal text", AU,
+  "\t\treturn selfguard.Refusal(s, \"the before count is what your later sessions are measured against\", \"audit --keep\", \"kept\")\n",
+  "\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was kept. Run `rashomon audit --keep` in your own terminal.\", s)\n",
+  "TestAGRF1_|TestSEED2c_")
+
 # #177 review T1: the root's file list alone missed a step before the refusal
 # that changes settings.json, as purge's detach does.
 m("AG-1 purge changes settings.json before it refuses", PU,

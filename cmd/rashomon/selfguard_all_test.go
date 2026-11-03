@@ -158,8 +158,9 @@ func TestAGRF1_EveryGuardReturnsTheOneRefusal(t *testing.T) {
 		})
 	}
 	// steer on|off and --repair, summary, bodies, consent off, spec trust and
-	// untrust, purge, detach, pause, and watch's and consent's askConsent.
-	if guards != 11 {
-		t.Errorf("found %d agent-signal checks, want 11; a guard added or removed changes this count and selfguard's package comment together", guards)
+	// untrust, purge, detach, pause, audit --keep, and watch's and consent's
+	// askConsent.
+	if guards != 12 {
+		t.Errorf("found %d agent-signal checks, want 12; a guard added or removed changes this count and selfguard's package comment together", guards)
 	}
 }
