@@ -30,7 +30,7 @@ m("RP-1 the summary switch is ignored", "cmd/rashomon/recap_stop.go",
   "TestRP1c_SummaryOffSilencesTheClauseNotTheDoneFlag")
 m("RP-1 session last reads another directory's project", "cmd/rashomon/report_impact.go",
   "receipt.Latest(st, baseline.Key(cwd))",
-  "receipt.Latest(st, baseline.Key(os.TempDir()))",
+  "receipt.Latest(st, baseline.Key(os.TempDir()+cwd[:0]))",
   "TestRP1h_SessionLast")
 m("RP-1 an unknown check is counted met", "internal/recap/impact.go",
   "\t\tcase verify.ObligationUnknown:\n\t\t\tunknown++",

@@ -14,7 +14,7 @@ m("PC-1 a settings entry's start consents too", P,
 m("PC-1 every session consents again", P,
   "if err != nil || consent.Covers(recs) {", "if err != nil {", "TestPC1_")
 m("PC-1 a watch consent makes the enable an upgrade", P,
-  "ok && last.Via == consent.ViaPluginEnable {", "ok {", "TestPC1_")
+  "ok && last.Via == consent.ViaPluginEnable {", "ok && (last.Via == consent.ViaPluginEnable || true) {", "TestPC1_")
 m("PC-1 a plugin update is a fresh enable", P,
   "via = consent.ViaUpgradeNotice", "via = consent.ViaPluginEnable", "TestPC1_")
 m("PC-1 the record hashes the line, not the description", P,
