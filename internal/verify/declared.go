@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -37,12 +38,15 @@ const (
 // whole-line digests of those matched exactly or naming no runner (G4, G5).
 // location is the CWDDigest a run must carry: the project root joined with
 // the gate's Dir, the root itself where Dir is empty (D158); "" where no root
-// is known, which matches no run (G7).
+// is known, which matches no run (G7). program is the table word of the
+// runner its first argv matched by prefix names (gateout.ProgramFor), the
+// parser whose read of a wrapper's output binds the run to the gate (readBy);
+// "" where no runner row names one, as for make test, which binds none.
 type declaredGate struct {
 	id, kind, source, trust string
 	required                bool
 	runners, words, lines   map[string]bool
-	location                string
+	location, program       string
 }
 
 // declaredGates is sp's gates whose source is trusted or managed, each argv
@@ -79,6 +83,7 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 			if k, ok := shape.RunnerKey(nameOf(s.RunnerName), s.RunnerDigest); d.Gate.Match != "exact" && ok {
 				g.runners[k] = true
 				g.words[*s.RunnerDigest] = true
+				g.program = cmp.Or(g.program, runnerProgram(s))
 			} else {
 				g.lines[s.Digest] = true
 			}
@@ -86,6 +91,16 @@ func declaredGates(sp *spec.Compiled, key []byte, root string) []declaredGate {
 		out = append(out, g)
 	}
 	return out
+}
+
+// runnerProgram is the table word of the runner s names, where it is a runner
+// row's (gateout.Runner): go for `go test ./...`, pytest for `python3 -m
+// pytest`; "" for a delegate's (make test, npm test) and for none.
+func runnerProgram(s shape.Shape) string {
+	if p := gateout.ProgramFor("", nameOf(s.RunnerName)); gateout.Runner(p) {
+		return p
+	}
+	return ""
 }
 
 // inferredGate is inf as the gate InferredGateID (card GATE-INFER1, W1):
@@ -111,6 +126,7 @@ func inferredGate(inf *InferredGate, key []byte, root string) (g declaredGate, n
 	if k, ok := shape.RunnerKey(nameOf(s.RunnerName), s.RunnerDigest); ok {
 		g.runners[k] = true
 		g.words[*s.RunnerDigest] = true
+		g.program = runnerProgram(s)
 	} else {
 		g.lines[s.Digest] = true
 	}
@@ -182,7 +198,9 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 		}
-		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest)})
+		wrapper := shape.WrapperRun(d.ToolName, d.Shape.Program, runner, masked, d.Shape.VerbClass) ||
+			isGateRun(d, masked, runner) && gateout.Delegated(g.Program)
+		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest), wrapper: wrapper})
 	}
 	return out
 }
@@ -193,9 +211,12 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 // here, built only where a trusted spec declares gates, not on gateRun,
 // which every evaluation builds for every gate run (D209: a field there grew
 // every run by a string and every runs slice with it, as D173d's raw did).
+// wrapper: the line may have run a gate it does not name, and the post hook
+// read its output for one (shape.WrapperRun, or a delegate's run: make, npm).
 type lineRun struct {
 	gateRun
-	digest string
+	digest  string
+	wrapper bool
 }
 
 // matches: the run is where the gate binds it, never at another location,
@@ -212,6 +233,29 @@ func (g *declaredGate) matches(r *lineRun) bool {
 	return ok && (g.runners[k] || g.words[*r.Runner]) || r.digest != "" && g.lines[r.digest]
 }
 
+// readBy: a wrapper's run (lineRun.wrapper) at the gate's location whose
+// output the gate's runner's row read (WRAPPER-RUN1): the runner signed it,
+// so it ran there, though no word of the line names it. A gate with no
+// runner row binds none, and neither does another location (D6).
+func (g *declaredGate) readBy(r *lineRun) bool {
+	return r.wrapper && g.program != "" && g.location != "" && r.Location == g.location &&
+		r.Output != nil && r.Output.Parser == g.program
+}
+
+// wrapped is r as the run of the gate its output was read by (readBy): its
+// outcome is the output's where the summary said passed, failed or ran
+// nothing (FromOutput), and not known otherwise (gates.go).
+func wrapped(r gateRun) gateRun {
+	r.Wrapped = true
+	switch r.Output.Kind {
+	case outSummaryPass, outSummaryFail, outEmptyRun:
+		r.FromOutput = true
+	default:
+		r.FromOutput = false
+	}
+	return r
+}
+
 // nameOf is a shape's RunnerName, "" for none.
 func nameOf(name *string) string {
 	if name == nil {
@@ -224,9 +268,16 @@ func nameOf(name *string) string {
 // the learned table's (stateOf), or Absent with none, under the gate's own
 // words. Its last run is marked OtherArgs where that run was bound at its
 // runner with words none of the gate's argv has, so no line says the gate
-// passed of a run that was not the gate's own (GATE-BIND1, D-c). root is
-// the project it is placed in, whose files it covers (STALE-COVER1).
-func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
+// passed of a run that was not the gate's own (GATE-BIND1, D-c); a wrapped
+// run carries Wrapped instead. root is the project it is placed in, whose
+// files it covers (STALE-COVER1).
+//
+// unread is the last wrapper call at the point the gate bound nothing of, nil
+// with none. Where it follows the last edit the state counts and the gate
+// would read absent or stale, the gate is Unknown, OutcomeUnknown, and its
+// last run is that call, marked unread: the call may have run the gate and
+// its output does not say, so "not run" would be a guess (WRAPPER-RUN1, D5).
+func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	var s GateState
 	if len(fr) > 0 {
 		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, root, at, tree)
@@ -236,10 +287,14 @@ func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, root
 	s.Gate, s.Kind, s.Family, s.Source, s.Trust, s.Required = g.id, g.kind, familyDeclared, g.source, g.trust, g.required
 	if s.LastRun != nil {
 		for i := range fr {
-			if r := &fr[i]; r.Seq == s.LastRun.Seq && r.Runner != nil && len(g.words) > 0 && !g.words[*r.Runner] {
+			if r := &fr[i]; r.Seq == s.LastRun.Seq && !r.Wrapped && r.Runner != nil && len(g.words) > 0 && !g.words[*r.Runner] {
 				s.LastRun.OtherArgs = true
 			}
 		}
+	}
+	if unread != nil && (s.State == Absent || s.State == Stale) && s.LastWrite != nil && unread.Seq > s.LastWrite.Seq {
+		s.State, s.Reason, s.LastRun = Unknown, OutcomeUnknown, runRef(unread)
+		s.LastRun.Wrapped = WrapUnread
 	}
 	return s
 }
@@ -281,14 +336,27 @@ func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs [
 	matched := map[int64]bool{}
 	for i := range dgs {
 		var fr []gateRun
+		var unread *gateRun
 		for j := range cands {
-			if s, _ := landed(cands[j].gateRun); s <= at && dgs[i].matches(&cands[j]) {
-				fr = append(fr, cands[j].gateRun)
-				matched[cands[j].Seq] = true
+			c := &cands[j]
+			if s, _ := landed(c.gateRun); s > at {
+				continue
 			}
+			switch {
+			case dgs[i].matches(c):
+				fr = append(fr, c.gateRun)
+			case dgs[i].readBy(c):
+				fr = append(fr, wrapped(c.gateRun))
+			default:
+				if c.wrapper && (unread == nil || c.Seq > unread.Seq) {
+					unread = &c.gateRun
+				}
+				continue
+			}
+			matched[c.Seq] = true
 		}
 		slices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })
-		gates = append(gates, dgs[i].state(fr, writes, unnamed, root, at, tree))
+		gates = append(gates, dgs[i].state(fr, unread, writes, unnamed, root, at, tree))
 	}
 	open := map[string]bool{}
 	for _, r := range runs {

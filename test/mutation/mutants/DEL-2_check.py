@@ -21,3 +21,18 @@ m("DEL-2 --check reads a body's string literal as an import", "test/mutation/swe
   "    head = src[:go_header(src)]\n", "    head = src\n", "TestDEL2g_")
 m("DEL-2 --check keeps the untouched imports after an import edit", "test/mutation/sweep.py",
   " or s.index(old) <= pristine[f][2]\n", " or False\n", "TestDEL2g_")
+# Changed rows build (MASKED-BUILD2): buildchanged.py compiles every row a
+# change adds or edits, its IMPORTS entry included, refuses one that does not
+# build, judges no row the change leaves alone, and puts each target back.
+B = "test/mutation/buildchanged.py"
+m("DEL-2 a changed row that does not build passes", B,
+  "    return 1 if bad else 0\n", "    return 0\n", "TestDEL2h_")
+m("DEL-2 an IMPORTS entry alone is no change", B,
+  "(rows[n], imports.get(n)) != (brows.get(n), bimports.get(n))", "rows[n] != brows.get(n)", "TestDEL2h_")
+m("DEL-2 every row is compiled, changed or not", B,
+  "if (rows[n], imports.get(n)) != (brows.get(n), bimports.get(n))\n", "if True\n", "TestDEL2h_")
+m("DEL-2 a target is not put back", B,
+  "            subprocess.run([\"git\", \"checkout\", \"-q\", \"--\", *sorted(set(touched))])\n", "            pass\n",
+  "TestDEL2h_")
+m("DEL-2 a target with changes is edited anyway", B,
+  "    if targets and dirty.strip():\n", "    if False:\n", "TestDEL2i_")

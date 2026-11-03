@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_x (test_u.T.test_x)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/rk-se3/wr1-fx/proj/ut/test_u.py", line 5, in test_x
+    self.assertEqual(1, 2)
+AssertionError: 1 != 2
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
