@@ -276,11 +276,13 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	// recap.Line's sentences win; the done flag and the value line speak
 	// only where none does (card 2.4 R12). The sentences carry the turn's
-	// platform lines, so a failure count also names the package it left
-	// unmet (STOP-PRECEDENCE1). StopFailure's view reads no platform graph
-	// (stopView), so there the sentences name none (tech 2.2.11 condition 4).
+	// rule and platform lines, so a failure count also names the rule the
+	// turn matched and the package it left unmet (STOP-PRECEDENCE1,
+	// RECALL-15). StopFailure's view reads no platform graph (stopView), and
+	// it names no rule (stopTurn.rules), so there the sentences name neither
+	// (tech 2.2.11 condition 4).
 	fromPlugin := recapFromPlugin(args)
-	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, recap.PlatformLines(stop.view, fromPlugin))
+	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, stop.rules()+recap.PlatformLines(stop.view, fromPlugin))
 	clause := ""
 	if !wantSpeak {
 		line, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)

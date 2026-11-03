@@ -108,6 +108,11 @@ type StopView struct {
 	// platform_impact rows were built from, in their order; its Families nil
 	// where nothing was read.
 	Platform PlatformRead
+	// Violations is each trusted or managed rule's violation in this turn,
+	// its Seqs cut to the turn's (turnViolations), in spec order: the Stop
+	// names them, where Summary's k counts the session's and names none
+	// (D40; 1.8 Gate B F1; card RECALL-15). Nil for none.
+	Violations []RuleVerdict
 }
 
 // UntrustedGate is a gate a spec declares while the spec reads untrusted:
@@ -133,7 +138,8 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten = classifyWith(run, pickExecutions(run))
 	}
 	turn := countTurn(run, counted, in.PromptID, pt.Seq)
-	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
+	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx,
+		Violations: turnViolations(snap.SpecVerdicts, turn.FirstSeq)}
 	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {
 		v.Index = &ProjectIndex{ProjectKey: in.ProjectKey}

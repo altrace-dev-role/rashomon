@@ -227,9 +227,12 @@ func summaryOn(root, project string) bool {
 }
 
 // line is what speaks when recap.Line has no sentence (card 2.4 R12): the
-// done flag, else the value line while the summary switch is on. clause is
-// the fingerprint of the AutoSteer clause the line carries, "" with none:
-// the clause prints only when the counts differ from the last one printed.
+// done flag, else the value line while the summary switch is on, else the
+// line naming the spec rules the turn matched (recap.RuleLine, RECALL-15),
+// which, like the done flag, speaks with the switch off: the person declared
+// the rule. clause is the fingerprint of the AutoSteer clause the line
+// carries, "" with none: the clause prints only when the counts differ from
+// the last one printed.
 func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool, clause string) {
 	if !s.speaks {
 		return "", false, ""
@@ -238,7 +241,8 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 		return flag, true, ""
 	}
 	if !s.summary {
-		return "", false, ""
+		l := recap.RuleLine(s.view, sessionID, fromPlugin)
+		return l, l != "", ""
 	}
 	im := s.impact
 	if fp := im.Fingerprint(); fp == s.shown || im.Empty() {
@@ -248,9 +252,19 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 	}
 	l := recap.ValueLine(s.view, im, sessionID, fromPlugin)
 	if l == "" {
-		clause = ""
+		l, clause = recap.RuleLine(s.view, sessionID, fromPlugin), ""
 	}
 	return l, l != "", clause
+}
+
+// rules is the turn's rule lines for recap.Line's sentences to carry, where
+// the turn speaks: StopFailure names no rule, as it prints no value line
+// (tech 2.2.11 condition 4).
+func (s stopTurn) rules() string {
+	if !s.speaks {
+		return ""
+	}
+	return recap.RuleLines(s.view)
 }
 
 // modelTexts is each note's model text, the lines the claim scan strips

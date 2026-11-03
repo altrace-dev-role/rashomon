@@ -8,10 +8,10 @@ RS = "cmd/rashomon/recap_stop.go"
 RC = "internal/recap/recap.go"
 
 m("STP-1 the failure count drops the platform line", RT,
-  "recap.LineWith(d, d.SessionID, fromPlugin, recap.PlatformLines(stop.view, fromPlugin))\n", "recap.LineWith(d, d.SessionID, fromPlugin, \"\")\n",
+  "stop.rules()+recap.PlatformLines(stop.view, fromPlugin))\n", "stop.rules())\n",
   "TestSTP1_AFailureCountCarriesThePlatformLine")
 m("STP-1 the platform line after the pointer", RC,
-  "\".\\n\" + platform + pointer(sessionID, fromPlugin), true\n", "\".\\n\" + pointer(sessionID, fromPlugin) + platform, true\n",
+  "\".\\n\" + lines + pointer(sessionID, fromPlugin), true\n", "\".\\n\" + pointer(sessionID, fromPlugin) + lines, true\n",
   "TestSTP1_AFailureCountCarriesThePlatformLine")
 m("STP-1 StopFailure reads the platform graph", RS,
   "\tif event == install.EventStop {\n\t\t// The Stop alone reads the platform graph", "\tif writes {\n\t\t// The Stop alone reads the platform graph",

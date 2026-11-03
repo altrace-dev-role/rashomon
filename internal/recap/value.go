@@ -196,6 +196,7 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	if v.Summary.Row == verify.RowNoGate && untrustedOnly(v) {
 		b.WriteString(continuation() + "The spec is not trusted; review it, then run rashomon spec trust.\n")
 	}
+	b.WriteString(ruleLines(v))
 	b.WriteString(unboundLines(v))
 	b.WriteString(platformLines(v, fromPlugin))
 	if c := clause(im); c != "" {

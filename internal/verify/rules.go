@@ -168,6 +168,28 @@ func bindingViolations(vs []RuleVerdict) int {
 	return n
 }
 
+// turnViolations is each binding rule's violation with a seq at or after
+// from, the turn's first declaration (TurnCounts.FirstSeq), its Seqs cut to
+// those, in spec order: the rules the Stop names (StopView.Violations, card
+// RECALL-15). Seqs are sorted (ruleVerdicts), so the cut is a search. from 0,
+// a turn with no declaration, names none.
+func turnViolations(vs []RuleVerdict, from int64) []RuleVerdict {
+	if from <= 0 {
+		return nil
+	}
+	var out []RuleVerdict
+	for _, v := range vs {
+		if v.Verdict != Violation || !binding(v.trust) {
+			continue
+		}
+		if i, _ := slices.BinarySearch(v.Seqs, from); i < len(v.Seqs) {
+			v.Seqs = v.Seqs[i:]
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // wroteIn reports a named relevant write at or before at: WroteRelevant over
 // writes classify already built.
 func wroteIn(writes []write, at int64) bool {
