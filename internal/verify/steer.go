@@ -3,7 +3,6 @@ package verify
 import (
 	"errors"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -63,8 +62,9 @@ type RuleHit struct {
 // the same classification, beside the Stop view and its ledger. key is the
 // install key the gates sp declares are digested under (evaluate); root is
 // the project sp was discovered in, the post's cwd key (evaluate). Its facts
-// are regression-location's, stale-evidence's and the one-way doors this
-// call opened (integrityRaises, card P5B). stale-evidence is raised at a
+// are regression-location's, stale-evidence's, masked-status's at the masked
+// run's own post (card MASKED-AT-ACT1) and the one-way doors this call opened
+// (integrityRaises, card P5B). stale-evidence is raised at a
 // PostToolUse only, under an index that has established a family (D164):
 // the call's declaration seq, which its writes carry, is looked up only
 // then.
@@ -77,6 +77,7 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, r
 		decl = declSeqAt(run, toolUseID, pt.Seq)
 	}
 	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, !c.learned, pt, event)...)
+	facts = append(facts, maskedStatus(snap, c.runs, pt, event, toolUseID)...)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
 	found, dropped := mapFacts(run, facts, pt, decl)
 	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
@@ -85,8 +86,8 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, r
 // mapFacts maps each fact to its steer candidate through ToSteer and renders
 // its Message from the record: an integrity fact by renderIntegrity, a
 // stale-evidence fact by renderStale against this call's declaration at
-// decl, and any other gate fact by renderRegression. A fact ToSteer refuses
-// is counted in dropped.
+// decl, a masked-status fact by renderMasked, and any other gate fact by
+// renderRegression. A fact ToSteer refuses is counted in dropped.
 func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []steer.Finding, dropped int) {
 	if len(facts) == 0 {
 		return nil, 0
@@ -107,6 +108,8 @@ func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []st
 			sf.Message = renderIntegrity(f)
 		case f.Pattern == pattern.StaleEvidence:
 			sf.Message = renderStale(&times, f, decl)
+		case f.Pattern == pattern.MaskedStatus:
+			sf.Message = renderMasked(run, f)
 		default:
 			sf.Message = renderRegression(run, &times, f)
 		}
@@ -422,14 +425,7 @@ func renderStale(times *declTimes, f Finding, decl int64) render.Message {
 		return render.Message{}
 	}
 	minutes := slot.Minutes(max(0, (wrote-green)/60_000))
-	word := slot.Gate(g.Program)
-	if g.Program == "" {
-		word = slot.Gate(kindOfGateID(string(g.GateID)))
-	}
-	if id, ok := strings.CutPrefix(string(g.GateID), "spec:"); ok && slot.Gate(id).Validate() == nil {
-		// A declared gate is named by its id, the word its spec gave it (D222).
-		word = slot.Gate(id)
-	}
+	word := factGate(g, "")
 	fromOutput := g.OutcomeFrom == OutcomeFromOutput
 	if len(g.Paths) > 0 {
 		paths := make([]slot.Path, len(g.Paths))
