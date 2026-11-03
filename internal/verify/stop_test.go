@@ -56,7 +56,7 @@ func stopOf(r *store.Run, idx *ProjectIndex, session string, in StopInput) StopV
 // card 2.4 adds.
 func classifiedOf(r *store.Run) classified {
 	var c classified
-	c.runs, c.writes, c.unnamed, c.rewritten = classifyWith(r, pickExecutions(r))
+	c.runs, c.writes, c.unnamed, c.rewritten, _ = classifyWith(r, pickExecutions(r))
 	return c
 }
 
@@ -215,16 +215,16 @@ func TestVER67_CountTurnMatchesDigestsWindow(t *testing.T) {
 	c := classifiedOf(read)
 	at := lastSeqOf(read)
 	want := TurnCounts{Writes: 2, PathsWritten: 2, LastWriteSeq: 9, FirstSeq: 7}
-	if got := countTurn(read, c, "", at); got != want {
+	if got := countTurn(read, c, "", at, nil); got != want {
 		t.Errorf("countTurn with no prompt named = %+v, want prompt-c's %+v", got, want)
 	}
-	if got, named := countTurn(read, c, "", at), countTurn(read, c, d.PromptID, at); got != named {
+	if got, named := countTurn(read, c, "", at, nil), countTurn(read, c, d.PromptID, at, nil); got != named {
 		t.Errorf("countTurn with no prompt named = %+v, with digest's choice named = %+v: the two windows differ", got, named)
 	}
-	if got, want := countTurn(read, c, "prompt-b", at), (TurnCounts{Writes: 2, PathsWritten: 2, GateRuns: 1, LastWriteSeq: 11, FirstSeq: 3}); got != want {
+	if got, want := countTurn(read, c, "prompt-b", at, nil), (TurnCounts{Writes: 2, PathsWritten: 2, GateRuns: 1, LastWriteSeq: 11, FirstSeq: 3}); got != want {
 		t.Errorf("countTurn for prompt-b = %+v, want %+v: its late declaration is in its window", got, want)
 	}
-	if got, want := countTurn(read, c, "", 8), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7, FirstSeq: 7}); got != want {
+	if got, want := countTurn(read, c, "", 8, nil), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7, FirstSeq: 7}); got != want {
 		t.Errorf("countTurn at seq 8 = %+v, want %+v: nothing after the point counts", got, want)
 	}
 }
@@ -238,14 +238,14 @@ func TestVER67b_NoPromptIdsIsAnEmptyWindow(t *testing.T) {
 	r.Declarations[3].PromptID = ptr("p1")
 	c := classifiedOf(r)
 	at := lastSeqOf(r)
-	if got, want := countTurn(r, c, "", at), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7, FirstSeq: 7}); got != want {
+	if got, want := countTurn(r, c, "", at, nil), (TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 7, FirstSeq: 7}); got != want {
 		t.Errorf("countTurn = %+v, want only p1's write %+v: a nil or empty prompt id is in no window", got, want)
 	}
 
 	r = runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK))
 	c = classifiedOf(r)
 	for _, id := range []string{"", "p1"} {
-		if got := countTurn(r, c, id, lastSeqOf(r)); got != (TurnCounts{}) {
+		if got := countTurn(r, c, id, lastSeqOf(r), nil); got != (TurnCounts{}) {
 			t.Errorf("countTurn(%q) over a run with no prompt id = %+v, want nothing counted", id, got)
 		}
 	}

@@ -100,6 +100,12 @@ func TestPR1_TheProjectIsTheRepositoryTheCallRanIn(t *testing.T) {
 		{"de: a relative cd from a directory under no .git", filepath.Join(tr.home, "src"), "Bash", map[string]any{"command": "cd b && go vet ./..."}, tr.b},
 		{"eng-3: Edit in a repository from the home", tr.home, "Edit", pr1Edit(filepath.Join(tr.b, "internal", "x.go")), tr.b},
 		{"Write in another repository", tr.a, "Write", map[string]any{"file_path": filepath.Join(tr.b, "new.go"), "content": "package b\n"}, tr.b},
+		// Not under the cwd on any platform, so the new directory is walked up
+		// from its nearest one on disk; the case after it gets there only where
+		// the temp dir's spelling is a symlink (macOS), and on linux the walk
+		// from the cwd answers first.
+		{"Write into a new directory in another repository", tr.a, "Write",
+			map[string]any{"file_path": filepath.Join(tr.b, "newdir", "new.go"), "content": "package b\n"}, tr.b},
 		{"Write into a new directory through the temp dir's spelling", tr.home, "Write",
 			map[string]any{"file_path": filepath.Join(tr.spelled, "home", "src", "b", "newdir", "new.go"), "content": "package b\n"}, tr.b},
 		{"qa-1: git -C from the home", tr.home, "Bash", map[string]any{"command": "git -C " + tr.b + " log --oneline -1"}, tr.b},
