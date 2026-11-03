@@ -10,7 +10,9 @@ import "testing"
 
 // TestGZ1_AZeroCountOrALogLineIsNotAFailure: each output is a run that
 // passed. Break: unanchor pytest's fail form, or let its count be 0 (the
-// "in 12 files" row).
+// "in 12 files" rows). Under make, WRAPPER-RUN1's signatures already keep an
+// unsigned pytest line from counting, so the zero count is held where pytest
+// reads its own output.
 func TestGZ1_AZeroCountOrALogLineIsNotAFailure(t *testing.T) {
 	for _, tc := range []struct{ name, program, output, kind, parser string }{
 		{"cargo's green summary under make", "make",
@@ -19,6 +21,8 @@ func TestGZ1_AZeroCountOrALogLineIsNotAFailure(t *testing.T) {
 		{"a checker's clean line under npm", "npm", "svelte-check found 0 errors and 0 warnings\n", "no_summary", "npm"},
 		{"a type checker's clean summary under make", "make", "0 errors, 0 warnings, 0 informations\n", "no_summary", "make"},
 		{"a zero count with a pytest-like tail under make", "make", "0 errors in 12 files\n", "no_summary", "make"},
+		{"a zero count with a pytest-like tail under pytest", "pytest",
+			"0 errors in 12 files\n========== 3 passed in 0.12s ==========\n", "summary_pass", "pytest"},
 		{"a test's own log under pytest", "pytest",
 			"retry: 2 failed attempts\n2 failed attempts, giving up on the mirror\n========== 3 passed in 0.12s ==========\n",
 			"summary_pass", "pytest"},
