@@ -86,16 +86,9 @@ func givenBrief() intent.Delivered {
 	return intent.Delivered{BriefGiven: true}
 }
 
-// noteOf resolves prompt and returns the finding's text, the model's,
-// failing when there is no finding.
-func noteOf(t *testing.T, prompt string, p intent.Project, d intent.Delivered, b *intent.Brief) string {
-	t.Helper()
-	text, _ := noteParts(t, prompt, p, d, b)
-	return text
-}
-
-// noteParts is noteOf's text and the finding's aside, the lines the person
-// reads and the model is not sent (TOKEN-BUDGET1).
+// noteParts resolves prompt and returns the finding's text, the model's,
+// and its aside, the lines the person reads and the model is not sent
+// (TOKEN-BUDGET1), failing when there is no finding.
 func noteParts(t *testing.T, prompt string, p intent.Project, d intent.Delivered, b *intent.Brief) (text, aside string) {
 	t.Helper()
 	f, ok := intent.Finding(intent.Resolve([]byte(prompt), false, p), d, b, 1)

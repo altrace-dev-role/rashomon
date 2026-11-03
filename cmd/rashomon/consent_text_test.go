@@ -26,7 +26,7 @@ var bareCommand = regexp.MustCompile(`rashomon ([a-z][a-z.-]*)`)
 // word fails TestTRU2c_ until it is added here, so a verb main lacks cannot
 // pass as prose.
 var proseAfterRashomon = map[string]bool{
-	"adds": true, "binary": true, "copy": true, "does": true, "gave": true, "is": true,
+	"adds": true, "binary": true, "copy": true, "could": true, "does": true, "gave": true, "is": true,
 	"itself": true, "keeps": true, "never": true, "reads": true, "record": true, "records": true,
 	"sends": true, "told": true,
 }
