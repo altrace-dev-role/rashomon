@@ -84,3 +84,75 @@ m("CSL-1 the quote digest unkeyed", D,
   "\th := hmac.New(sha256.New, key)\n", "\th := hmac.New(sha256.New, nil)\n", "TestCSL1_SaidDigestIsKeyedAndApartFromPaths")
 m("CSL-1 the quote digest in the path domain", D,
   "\th.Write([]byte(saidDomain))\n", "\th.Write([]byte(pathDomain))\n", "TestCSL1_SaidDigestIsKeyedAndApartFromPaths")
+
+# COMPACT-SLOT1 B: the briefing printed at a compact start. Route's context
+# carries the start's source and attends as a prompt (D-e); the briefing is
+# direct, outside the prompt budget (tech 4.2.5), and the skip is narrow (mgr
+# 11-02: a widened ownChannel dies by the budget test); SessionStart admits
+# after_seq 0; one briefing per session, agent and compaction (D-b); only at
+# source compact; the lead opens the mirror.
+HC = "internal/hook/promptcontext.go"
+HS = "internal/hook/steerstep.go"
+DC = "internal/steer/decide.go"
+G = "internal/directive/given.go"
+C = "cmd/rashomon/continuity.go"
+
+m("CSL-1 the start's source not carried", HC,
+  "event: string(steer.EventSessionStart), startSource: source}", "event: string(steer.EventSessionStart)}",
+  "TestCSL1_StartContextCarriesItsSourceToTheChannelRow")
+m("CSL-1 the context drops the start's source", HS,
+  "\t\tStartSource: p.startSource}\n", "\t\tStartSource: \"\"}\n", "TestCSL1_StartContextCarriesItsSourceToTheChannelRow")
+m("CSL-1 a compact start attends as a post", HC,
+  " || event == string(steer.EventSessionStart) {\n", " {\n", "TestCSL1_StartAttendsAsThePromptDoes")
+m("CSL-1 a compaction before any call is refused", F,
+  " && event != EventSessionStart || f.AfterSeq != 0 {\n", " || f.AfterSeq != 0 {\n",
+  "TestCSL1_TheBriefingIsAdmittedOnItsOwnEventAlone")
+m("CSL-1 the briefing clamped for its missing prompt", DC,
+  "\tcase ctx.PromptID == nil && !direct:\n", "\tcase ctx.PromptID == nil:\n",
+  "TestCSL1_TheBriefingIsDirectOutsideThePromptBudget")
+m("CSL-1 every pattern is direct at SessionStart", F,
+  "\treturn p == pattern.ContinuityBriefing && event == EventSessionStart\n", "\treturn event == EventSessionStart\n",
+  "TestCSL1_TheBriefingIsDirectOutsideThePromptBudget")
+m("CSL-1 the briefing charged to the prompt's cap", DC,
+  "\t\tcase p.direct && note < 0:\n\t\t\tp.state, p.decide, note = LineStateDelivered, false, i\n", "",
+  "TestCSL1_TheBriefingIsDirectOutsideThePromptBudget")
+m("CSL-1 a briefing whose key was delivered is given again", DC,
+  "\t\tcase have.keys[p.key]:\n\t\t\tp.suppress(SuppressedByBudgetPattern)\n\t\tcase p.direct && note < 0:\n",
+  "\t\tcase p.direct && note < 0:\n\t\t\tp.state, p.decide, note = LineStateDelivered, false, i\n"
+  "\t\tcase have.keys[p.key]:\n\t\t\tp.suppress(SuppressedByBudgetPattern)\n\t\tcase false:\n",
+  "TestCSL1_TheBriefingIsDirectOutsideThePromptBudget")
+m("CSL-1 another compaction's briefing counts as given", G,
+  "\t\t\ttext(b, out[gkKey]) != key || text(b, out[gkAgent]) != agent {\n", "\t\t\ttext(b, out[gkAgent]) != agent {\n",
+  "TestCSL1_GivenIsOneBriefingPerSessionAgentAndCompaction")
+m("CSL-1 a subagent's briefing counts as the main agent's", G,
+  "\t\t\ttext(b, out[gkKey]) != key || text(b, out[gkAgent]) != agent {\n", "\t\t\ttext(b, out[gkKey]) != key {\n",
+  "TestCSL1_GivenIsOneBriefingPerSessionAgentAndCompaction")
+m("CSL-1 another pattern's line counts as given", G,
+  " || text(b, out[gkPattern]) != string(pattern.ContinuityBriefing) ||\n",
+  " || text(b, out[gkPattern]) != string(pattern.ContinuityBriefing) && false ||\n",
+  "TestCSL1_GivenIsOneBriefingPerSessionAgentAndCompaction")
+m("CSL-1 a briefing suppressed on its way counts as given", G,
+  "\t\tif text(b, out[gkState]) == string(steer.LineStateDelivered) ||",
+  "\t\tif true || text(b, out[gkState]) == string(steer.LineStateDelivered) ||",
+  "TestCSL1_GivenIsOneBriefingPerSessionAgentAndCompaction")
+m("CSL-1 an arm-off briefing is given again", G,
+  " || text(b, out[gkSuppressedBy]) == string(steer.SuppressedByArmOff) {\n",
+  " || false && text(b, out[gkSuppressedBy]) == string(steer.SuppressedByArmOff) {\n",
+  "TestCSL1_GivenIsOneBriefingPerSessionAgentAndCompaction")
+m("CSL-1 the briefing at every start source", C,
+  "source != \"compact\" || ", "false || ", "TestCSL1_NoBriefingWithoutABoundaryOrAQuote")
+m("CSL-1 a briefing given twice for one compaction", C,
+  "\tif directive.Given(lines, b.UUID, \"\") {\n\t\treturn false\n\t}\n", "\t_ = lines\n",
+  "TestCSL1_OneBriefingPerCompaction")
+m("CSL-1 the briefing's mirror drops the lead", C,
+  "\t\tout.SystemMessage = lead + \"\\n\" + out.SystemMessage\n", "", "TestCSL1_TheLeadOpensTheBriefingsMirror")
+m("CSL-1 the lead closes the briefing's mirror", C,
+  "\t\tout.SystemMessage = lead + \"\\n\" + out.SystemMessage\n", "\t\tout.SystemMessage += \"\\n\" + lead\n",
+  "TestCSL1_TheLeadOpensTheBriefingsMirror")
+m("CSL-1 the compact start routed as a startup", C,
+  "mode, source, env)\n", "mode, \"startup\", env)\n", "TestCSL1_ACompactStartQuotesThePersonsWordsAndKeepsNone")
+m("CSL-1 the quotes recorded by their words", C,
+  "func(w string) string { return intent.SaidDigest(key, w) }", "func(w string) string { _, _ = key, intent.SaidDigest; return w }",
+  "TestCSL1_ACompactStartQuotesThePersonsWordsAndKeepsNone")
+m("CSL-1 the briefing's line filed under no project at v5", C,
+  "\t\tproject = baseline.Key(cwd)\n", "\t\tproject, _ = \"\", baseline.Key\n", "TestCSL1_ACompactStartQuotesThePersonsWordsAndKeepsNone")

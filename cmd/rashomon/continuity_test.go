@@ -10,7 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/directive"
+	"github.com/altrace-dev-role/rashomon/internal/harness"
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -89,6 +92,7 @@ func (e *lessonEnv) startAt(sessionID, transcript, source string) []byte {
 type briefingLine struct {
 	Pattern      string                     `json:"pattern"`
 	Key          string                     `json:"key"`
+	Project      string                     `json:"project"`
 	Event        string                     `json:"event"`
 	State        string                     `json:"state"`
 	SuppressedBy *string                    `json:"suppressed_by"`
@@ -195,6 +199,9 @@ func TestCSL1_ACompactStartQuotesThePersonsWordsAndKeepsNone(t *testing.T) {
 	if len(lines) != 1 || lines[0].Key != "b-cmd-1" || lines[0].Event != "SessionStart" || lines[0].State != "delivered" {
 		t.Fatalf("briefing lines = %+v; want one delivered at SessionStart under b-cmd-1", lines)
 	}
+	if want := baseline.Key(e.cwd); lines[0].Project != want {
+		t.Errorf("line project %q, want the cwd's key %q (record scope v5)", lines[0].Project, want)
+	}
 	if !strings.Contains(lines[0].ModelText, "a quote of 41 bytes, restating a quote of 36 bytes") || len(lines[0].Slots["said1"]) == 0 {
 		t.Errorf("line text %q, slots %v; want the record form, the quotes' byte counts and digests", lines[0].ModelText, lines[0].Slots)
 	}
@@ -291,5 +298,51 @@ func TestCSL1_NoBriefingWithoutABoundaryOrAQuote(t *testing.T) {
 	}
 	if lines := e.briefingLines(session); len(lines) != 0 {
 		t.Errorf("briefing lines = %+v, want none", lines)
+	}
+}
+
+// TestCSL1_TheLeadOpensTheBriefingsMirror: the plugin route's consent line,
+// when there is one, opens the briefing's mirror to the person, as it opens
+// the brief, and never reaches the model; with none the mirror is the
+// briefing's alone. Break: drop the lead, put it after the mirror, or give it
+// to the model, and this fails.
+func TestCSL1_TheLeadOpensTheBriefingsMirror(t *testing.T) {
+	e := newLessonEnv(t)
+	t.Setenv("AI_AGENT", "claude-code_2-1-316_harness")
+	standInRead(t)
+	const session = "sess-csl1-lead"
+	e.start(session)
+	tr := compactTranscript(t, filepath.Join(t.TempDir(), session+".jsonl"), "b-cmd-1", "b-cmd-2")
+	st, err := store.Open(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := harness.Identity{ID: harness.ClaudeCode, Surface: harness.SurfaceCLI}
+	args := []string{"start", install.Marker, e.installID}
+	const lead = "rashomon: the plugin's consent line"
+	var outs [2]startOutput
+	for i, l := range []string{lead, ""} {
+		p, err := hookio.IntakeBytes(benchJSON(t, struct {
+			benchHead
+			Source string `json:"source"`
+		}{benchHead{session, tr, e.cwd, "default", "SessionStart"}, "compact"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			compactTranscript(t, tr, "b-cmd-1", "b-cmd-2", "b-cmd-3")
+		}
+		var stdout bytes.Buffer
+		if !printContinuity(args, p, st, l, id, &stdout) || json.Unmarshal(stdout.Bytes(), &outs[i]) != nil {
+			t.Fatalf("lead %q: printed %q, want the briefing", l, stdout.String())
+		}
+	}
+	with, without := outs[0], outs[1]
+	if with.SystemMessage != lead+"\n"+without.SystemMessage || strings.Contains(with.HookSpecificOutput.AdditionalContext, lead) {
+		t.Errorf("with the lead: systemMessage %q, model %q; want the lead, a line feed, then the mirror %q, and the model without it",
+			with.SystemMessage, with.HookSpecificOutput.AdditionalContext, without.SystemMessage)
+	}
+	if without.SystemMessage == "" || strings.Contains(without.SystemMessage, lead) {
+		t.Errorf("without the lead: systemMessage %q, want the mirror alone", without.SystemMessage)
 	}
 }
