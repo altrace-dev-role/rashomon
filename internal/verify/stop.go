@@ -125,6 +125,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
 	}
 	turn := countTurn(run, counted, in.PromptID, pt.Seq, gateRoots(&snap))
+	if snap.Recording == Complete {
+		markTurn(snap.Gates, turnProjects(run, in.PromptID, pt.Seq))
+	}
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
 	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {

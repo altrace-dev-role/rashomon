@@ -190,6 +190,11 @@ type GateState struct {
 	// is green (bind), which the evidence_bound row reads; unknown with no
 	// tree. Not a key: the archive's GateState has none for it (P5A).
 	bound treeBind
+	// offTurn marks a gate no call of the Stop's turn ran in the project of
+	// (markTurn, card F2): the row, the done verdict and the turn's
+	// record-green point pass over it, and its state stays. Not a key: set
+	// at Stop only, after every reader of the whole snapshot.
+	offTurn bool
 	// root is the project whose files the gate covers (covers), "" for
 	// every file: a learned family's last run's, a declared or inferred
 	// gate's the snapshot's (card STALE-COVER1). Not a key, as bound is not:

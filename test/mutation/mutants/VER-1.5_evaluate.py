@@ -44,7 +44,7 @@ m("VER-1.5 RecordGreenAtSeq is the smallest", E,
   '\t\tif n == 0 || g.LastGreen.Seq > at {\n', '\t\tif n == 0 || g.LastGreen.Seq < at {\n', "TestVER40_")
 
 # Required: the index's word on a learned project, every gate otherwise (D38).
-m("VER-1.5 a gate not required blocks", E, '\t\tif !g.Required {\n\t\t\tcontinue\n\t\t}\n', '', "TestVER46_")
+m("VER-1.5 a gate not required blocks", E, '\t\tif !g.Required || g.offTurn {\n', '\t\tif g.offTurn {\n', "TestVER46_")
 m("VER-1.5 no index requires nothing", E,
   '\tif idx == nil {\n\t\treturn false\n\t}\n', '\tif idx == nil {\n\t\treturn true\n\t}\n', "TestVER46_")
 m("VER-1.5 the clock in seconds", E, '\tnowMS := now.UnixMilli()\n', '\tnowMS := now.Unix()\n', "TestVER46_")
@@ -70,7 +70,7 @@ m("VER-1.5 advisory gates never reach the row", E,
 for name in ("VER-1.5 every row is advisory", "VER-1.5 advisory gates never reach the row"):
     IMPORTS[name] = (E, '\t"slices"\n\t"strconv"\n', '\t"strconv"\n')
 m("VER-1.5 the advisory set takes every non-required gate", E,
-  '\treturn g.Required || advisory && g.Source == sourceLearned\n', '\treturn g.Required || advisory\n', "TestVER65c_")
+  '\treturn !g.offTurn && (g.Required || advisory && g.Source == sourceLearned)\n', '\treturn !g.offTurn && (g.Required || advisory)\n', "TestVER65c_")
 m("VER-1.5 an advisory green reads verified", E,
   '\t\trow = RowUnverified // the cap', '\t\trow = RowVerified // the cap', "TestVER46_")
 m("VER-1.5 an advisory green with no write is unverified", E,
