@@ -66,9 +66,8 @@ m("VER-1.5 every row is advisory", E,
 m("VER-1.5 advisory gates never reach the row", E,
   '\treturn !slices.ContainsFunc(gates, func(g GateState) bool { return g.Required })\n',
   '\treturn false\n', "TestVER46_")
-# The advisory line is evaluate.go's one use of slices.
-for name in ("VER-1.5 every row is advisory", "VER-1.5 advisory gates never reach the row"):
-    IMPORTS[name] = (E, '\t"slices"\n\t"strconv"\n', '\t"strconv"\n')
+# The advisory line is no longer evaluate.go's one use of slices (F2's
+# TurnSummary asks with it whether a gate is off the turn), so the import stays.
 m("VER-1.5 the advisory set takes every non-required gate", E,
   '\treturn !g.offTurn && (g.Required || advisory && g.Source == sourceLearned)\n', '\treturn !g.offTurn && (g.Required || advisory)\n', "TestVER65c_")
 m("VER-1.5 an advisory green reads verified", E,
