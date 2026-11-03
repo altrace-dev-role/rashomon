@@ -226,7 +226,7 @@ func TestVER55b_TablesAreWrittenAsWordsSplitsThem(t *testing.T) {
 	for _, w := range claimModals {
 		phrases = append(phrases, []string{w})
 	}
-	for _, ws := range [][]string{claimAdverbs[:], claimAuxiliaries[:], claimPast[:]} {
+	for _, ws := range [][]string{claimAdverbs[:], claimAuxiliaries[:], claimPast[:], claimPerceptions[:], claimBe[:]} {
 		for _, w := range ws {
 			phrases = append(phrases, []string{w})
 		}

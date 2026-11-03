@@ -84,7 +84,8 @@ var claimManners = [...][]string{
 // and a verb in the present follow (card MISREAD-DONE1): "Then I apply the
 // fix, run the tests green". A verb in claimPast or ending ed, or in
 // claimAuxiliaries, makes the sentence a report ("Then I ran the tests",
-// "Then we are done").
+// "Then we are done"), and so does one in claimPerceptions after any opening
+// but once, which opens a condition.
 var claimPlans = [...][]string{{"then"}, {"next"}, {"after", "that"}, {"once"}}
 
 // claimAdverbs are passed over between "i" or "we" and a plan's verb: "Then I
@@ -94,6 +95,16 @@ var claimAdverbs = [...]string{"also", "just", "now", "still", "already", "again
 // claimAuxiliaries are the forms of be and have that make a plan's opening a
 // report: "Then we are done", "Then I have fixed it".
 var claimAuxiliaries = [...]string{"am", "is", "are", "be", "have", "has"}
+
+// claimPerceptions are the verbs of perception that make a plan's opening a
+// report (QA-3): "Then I see all tests pass" says what was seen. confirm,
+// check and verify are acts, so "Next, I confirm the suite passes" stays a
+// plan (a named residual).
+var claimPerceptions = [...]string{"see", "find", "notice"}
+
+// claimBe are the forms of be after which a hyphened predicate is
+// predicative, a claim (QA-3): "The release is ready-to-ship".
+var claimBe = [...]string{"am", "is", "are", "was", "were", "be", "been"}
 
 // claimPast are the past forms that do not end in ed. A word that is both
 // present and past ("read", "set") is here, so its sentence keeps its claim.

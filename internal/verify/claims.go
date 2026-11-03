@@ -8,6 +8,7 @@ import (
 	"hash"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -198,8 +199,9 @@ func skipped(text string, ws []string) bool {
 
 // planned reports a sentence that opens with a plan's word (claimPlans),
 // then "i" or "we", then, past any claimAdverbs, a verb in the present: not
-// in claimPast, not ending ed, not in claimAuxiliaries (card MISREAD-DONE1).
-// "we're" and "i'll" are one word each, so neither opens a plan.
+// in claimPast, not ending ed, not in claimAuxiliaries (card MISREAD-DONE1),
+// and, but after once, not in claimPerceptions. "we're" and "i'll" are one
+// word each, so neither opens a plan.
 func planned(ws []string) bool {
 	for _, op := range claimPlans {
 		if !phraseAt(ws, 0, op) {
@@ -214,7 +216,7 @@ func planned(ws []string) bool {
 			k++
 		}
 		return k < len(ws) && !strings.HasSuffix(ws[k], "ed") && !slices.Contains(claimPast[:], ws[k]) &&
-			!slices.Contains(claimAuxiliaries[:], ws[k])
+			!slices.Contains(claimAuxiliaries[:], ws[k]) && (op[0] == "once" || !slices.Contains(claimPerceptions[:], ws[k]))
 	}
 	return false
 }
@@ -263,13 +265,45 @@ func (r *claimRule) admits(s *sentence, p, n int) bool {
 
 // misspelt reports a predicate s.words[p:p+n] spelled as part of something
 // else (card MISREAD-DONE1): a word of it joined by a hyphen to another
-// ("a ready-made fix"), or, where the rule reads no subject (bare: done), in
-// capitals in a sentence that is not, a name ("I send FIX BRANCH READY")
-// rather than a claim. A sentence in capitals throughout ("DONE.") keeps its
-// claim, and so does a predicate read with its subject ("20/20 PASS").
+// ("a ready-made fix") but one read as predicative (predicative), or, where
+// the rule reads no subject (bare: done), in capitals in a run of them
+// (named), a name ("I send FIX BRANCH READY") rather than a claim. One
+// predicate in capitals in a sentence in lower case is emphasis ("FIXED the
+// race", QA-3) and keeps its claim; so does a sentence in capitals throughout
+// ("DONE."), and a predicate read with its subject ("20/20 PASS").
 func (s *sentence) misspelt(p, n int, bare bool) bool {
-	for _, m := range s.marks[p : p+n] {
-		if m&markJoined != 0 || bare && m&markUpper != 0 && !s.loud {
+	for i, m := range s.marks[p : p+n] {
+		if m&markJoined != 0 && !s.predicative(p) || bare && m&markUpper != 0 && !s.loud && s.named(p+i) {
+			return true
+		}
+	}
+	return false
+}
+
+// predicative reports a hyphened predicate s.words[p] right after a form of
+// be (claimBe), past any claimAdverbs: "The release is ready-to-ship" claims
+// (QA-3), and so does "is now ready-to-ship". "a ready-made fix" is
+// attributive, and in "is half-finished" half, no adverb, stands between:
+// neither claims.
+func (s *sentence) predicative(p int) bool {
+	k := p - 1
+	for k >= 0 && slices.Contains(claimAdverbs[:], s.words[k]) {
+		k--
+	}
+	return k >= 0 && slices.Contains(claimBe[:], s.words[k])
+}
+
+// named reports a word in capitals s.words[k] in a run of them: a word in
+// capitals of two letters or more beside it in its clause, or one word away
+// with "or" between. "FIX BRANCH READY", "GATE-BIND1" and "READY or RED" are
+// names; I and A, one letter each, make no run ("I FIXED the race").
+func (s *sentence) named(k int) bool {
+	for _, d := range [...]int{-2, -1, 1, 2} {
+		j := k + d
+		if j < 0 || j >= len(s.words) || s.clauses[j] != s.clauses[k] || (d == -2 || d == 2) && s.words[k+d/2] != "or" {
+			continue
+		}
+		if s.marks[j]&markUpper != 0 && utf8.RuneCountInString(s.words[j]) > 1 {
 			return true
 		}
 	}

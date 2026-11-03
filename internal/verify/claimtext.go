@@ -94,18 +94,40 @@ func stripWindow(b []byte, delivered [][]byte) []byte {
 }
 
 // tableHeader reports whether line heads a markdown table: it holds a cell
-// bar, and the next line of rest is the table's delimiter row. A header names
-// its columns and claims nothing (eng-4 8727's "| Branch | Merged tip | Merged
-// in | Conflict resolved |", card MISREAD-DONE1); the body's cells are read
-// as any line is. rest is read, never written: stripWindow's out trails it.
+// bar (cellBar), and the next line of rest is the table's delimiter row. A
+// header names its columns and claims nothing (eng-4 8727's "| Branch |
+// Merged tip | Merged in | Conflict resolved |", card MISREAD-DONE1); the
+// body's cells are read as any line is. rest is read, never written:
+// stripWindow's out trails it.
 func tableHeader(line, rest []byte) bool {
-	if bytes.IndexByte(line, '|') < 0 {
+	if !cellBar(line) {
 		return false
 	}
 	if i := bytes.IndexByte(rest, '\n'); i >= 0 {
 		rest = rest[:i]
 	}
 	return delimiterRow(rest)
+}
+
+// cellBar reports a '|' in line outside its inline code spans, each read as
+// cutSpans reads one: from a backtick to the next, an unclosed backtick
+// opening none. A bar inside backticks is a command's pipe, not a cell's edge
+// ("Ran `cat r.txt | grep PASS`: all 42 tests pass.", QA-3).
+func cellBar(line []byte) bool {
+	for {
+		i := bytes.IndexAny(line, "|`")
+		if i < 0 {
+			return false
+		}
+		if line[i] == '|' {
+			return true
+		}
+		end := bytes.IndexByte(line[i+1:], '`')
+		if end < 0 {
+			return bytes.IndexByte(line[i+1:], '|') >= 0
+		}
+		line = line[i+1+end+1:]
+	}
 }
 
 // delimiterRow reports a markdown table's delimiter row: cells split by '|',
