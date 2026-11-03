@@ -169,9 +169,12 @@ list of what it keeps, word for word as the install screen's full view
 > message (never the sentence), and the digest of the project spec
 > (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word
 > for word, except a request's preflight note at record scope v4, which keeps a
-> count of the paths it named and keyed digests of them. Your on and off
-> switches (config.json), and for a project's switch (summary_projects,
-> steer_projects) the project's directory.
+> count of the paths it named and keyed digests of them, and except the briefing
+> after Claude Code compacts the conversation, which quotes your earlier
+> instructions to the agent word for word; the record keeps only each quote's
+> length and a keyed digest, never your words. Your on and off switches
+> (config.json), and for a project's switch (summary_projects, steer_projects)
+> the project's directory.
 
 It never stores your prompts, the agent's messages, tool output or file
 contents. It reads each prompt in memory to write the preflight note and keeps

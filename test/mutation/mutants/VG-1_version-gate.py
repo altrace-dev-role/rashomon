@@ -37,7 +37,8 @@ m("VG-1 a malformed version is printed", N,
 m("VG-1 the line carries no basis", D,
   "\t\tClientVersion: version, VerifiedFloor: basis.floor, Excluded: slices.Clip(basis.excluded),\n", "", "TestVG1g_")
 m("VG-1 the line carries another event's row", D,
-  "\tbasis := mirrorVerifiedOn()[string(ctx.Event)]\n", "\tbasis := mirrorVerifiedOn()[string(EventPostToolUse)]\n",
+  "\tbasis := mirrorVerifiedOn()[keyOf(string(ctx.Event), c)]\n",
+  "\tbasis := mirrorVerifiedOn()[channelKey{event: string(EventPostToolUse)}]\n",
   "TestVG1l_")
 
 # The holdout: opt-in for the alpha.
@@ -65,10 +66,26 @@ m("VG-1 the probe's exit loses a failure", P, "    1) worst=1 ;;\n", "    1) ;;\
 m("VG-1 an inconclusive event outranks a failure", P,
   '    3) [ "$worst" = 1 ] || worst=3 ;;\n', "    3) worst=3 ;;\n", "TestVG1n_")
 m("VG-1 the probe runs over a settings file", P,
-  'if [ -e "$CFG/settings.json" ]; then\n', "if false; then\n", "TestVG1n_")
+  'if [ -e "$CFG/settings.json" ] && !', 'if false && !', "TestVG1n_")
+m("VG-1 the probe refuses a settings file with no hooks", P,
+  'sys.exit(0 if isinstance(d, dict) and "hooks" not in d else 1)', 'sys.exit(1)', "TestVG1n_")
 m("VG-1 the probe runs in the user's own configuration", P,
   "CFG=${CLAUDE_CONFIG_DIR:-$HOME/.claude-probe}\n", "CFG=${CLAUDE_CONFIG_DIR:-$HOME/.claude}\n", "TestVG1n_")
 m("VG-1 PostToolUseFailure's session runs a command that succeeds", P,
   "  if [ \"$ev\" = PostToolUseFailure ]; then cmd=false; fi\n", "", "TestVG1n_")
 m("VG-1 the probe keeps the session's transcript", P,
-  '      rm -rf "$f" "${f%.jsonl}"; rmdir "$(dirname "$f")" 2> /dev/null\n', "      :\n", "TestVG1n_")
+  '        rm -rf "$g" "${g%.jsonl}"; rmdir "$CFG/session-env/$(basename "$g" .jsonl)" 2> /dev/null\n', "        :\n",
+  "TestVG1n_")
+# SessionStart per source (COMPACT-SLOT1): the clear read on its new session's
+# transcript, every session under --setting-sources project, and each log
+# naming the configuration whose login answered.
+m("VG-1 the clear judged on the first session's transcript", P,
+  '    if [ "$src" = clear ]; then tr=$(beside "$S"); fi\n', "", "TestVG1n_")
+m("VG-1 a SessionStart source reads the configuration's settings", P,
+  '--settings "$D/settings.json" --setting-sources project --model haiku --max-turns 2',
+  '--settings "$D/settings.json" --model haiku --max-turns 2', "TestVG1n_")
+m("VG-1 a tool event's session reads the configuration's settings", P,
+  '--settings "$D/settings.json" --setting-sources project --allowedTools', '--settings "$D/settings.json" --allowedTools',
+  "TestVG1n_")
+m("VG-1 a SessionStart log names no configuration", P, '      echo "config dir: $SHOWN"\n', "", "TestVG1n_")
+m("VG-1 a tool event's log names no configuration", P, '\n    echo "config dir: $SHOWN"\n', "\n", "TestVG1n_")

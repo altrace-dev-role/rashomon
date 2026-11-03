@@ -177,6 +177,10 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// startSource is a SessionStart call's source (startup, resume, clear or
+	// compact), the second half of that event's channel row (StartContextAt);
+	// "" on every other event.
+	startSource string
 	// exitCode and backgrounded are how the call ended, kept for the
 	// after_hit an order rule's After call leaves (ruleCall): the parsed
 	// status of a failure (nil where none was stated), and whether a success

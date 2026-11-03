@@ -23,22 +23,33 @@ import (
 // stream. The verdict passes an event only on both, under that event; fails it
 // on a missing half; and calls it inconclusive when the hook never ran (no
 // login), which must never read as a pass or as a failure of the channel. It
-// keeps no nonce in what it prints or logs, refuses a configuration with a
-// settings file before claude runs, and leaves the configuration directory as
-// it found it.
+// keeps no nonce in what it prints or logs, names in each log the
+// configuration whose login answered, refuses a configuration whose settings
+// file declares hooks before claude runs, runs every session with
+// --setting-sources project so no other settings file is read, and leaves the
+// configuration directory as it found it.
+//
+// SessionStart is judged per source (startup, resume, compact, clear), each on
+// its own nonce pair in its own log, since Claude Code delivers the two halves
+// differently by source on one version and steer's floor is keyed by event and
+// source.
 //
 // Break: the verdict reading one half only, an attachment of another event, or
 // a hook that never ran as a failure; the exit code losing a failure or
 // letting an inconclusive event outrank one; the refusal, the probe's own
 // configuration directory, the command each event runs, or the transcript's
-// removal dropped.
+// removal dropped; one verdict for SessionStart's four sources.
 
 // ptruStub is the stand-in claude. $PTRU_STUB_<event> picks what it records
-// for the session of that event: pass (both halves), noctx, nosm, otherevent
-// (the additionalContext attachment under the other event) or nohook (the hook
-// never runs, as with no login).
+// for the session of that event, and $PTRU_STUB_SessionStart_<source> for one
+// SessionStart source: pass (both halves), noctx, nosm, otherevent (the
+// additionalContext attachment under another event) or nohook (the hook never
+// runs, as with no login). SessionStart's calls run as Claude Code's do:
+// --session-id starts a session (startup); --resume of it fires resume, then
+// compact for /compact or clear for /clear, whose attachments land in a new
+// session's transcript.
 const ptruStub = `#!/usr/bin/env python3
-import json, os, subprocess, sys
+import json, os, subprocess, sys, uuid
 args = sys.argv[1:]
 with open(os.environ["PTRU_STUB_LOG"], "a") as f:
     f.write(json.dumps(args) + "\n")
@@ -46,32 +57,51 @@ if args[:1] == ["--version"]:
     print("0.0.0-stub (P-TRU-1)")
     sys.exit(0)
 def flag(name):
-    return args[args.index(name) + 1]
-sid = flag("--session-id")
+    return args[args.index(name) + 1] if name in args else None
 with open(flag("--settings")) as f:
     (event, groups), = json.load(f)["hooks"].items()
 cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.environ["HOME"], ".claude")
 proj = os.path.join(cfg, "projects", os.getcwd().replace("/", "-"))
 os.makedirs(proj, exist_ok=True)
-os.makedirs(os.path.join(cfg, "session-env", sid), exist_ok=True)
-mode = os.environ.get("PTRU_STUB_" + event, "pass")
-stream, recs = [], []
-if mode == "nohook":
-    stream.append({"type": "result", "subtype": "success", "is_error": True, "result": "Not logged in"})
-else:
-    cmd = groups[0]["hooks"][0]["command"]
-    out = json.loads(subprocess.run(cmd, shell=True, input=b"{}", capture_output=True).stdout)
+stream = []
+def session(sid):
+    os.makedirs(os.path.join(cfg, "session-env", sid), exist_ok=True)
+    t = os.path.join(proj, sid + ".jsonl")
+    open(t, "a").close()
+    return t
+def fire(group, mode, transcript):
+    if mode == "nohook":
+        return None
+    out = json.loads(subprocess.run(group["hooks"][0]["command"], shell=True, input=b"{}", capture_output=True).stdout)
     ctx, sm = out["hookSpecificOutput"]["additionalContext"], out["systemMessage"]
+    recs = []
     if mode != "noctx":
         on = "PostToolUse" if mode == "otherevent" else event
         recs.append({"type": "attachment", "attachment": {"type": "hook_additional_context", "content": [ctx], "hookEvent": on}})
     recs.append({"type": "attachment", "attachment": {"type": "hook_system_message", "content": sm, "hookEvent": event}})
+    with open(transcript, "a") as f:
+        for r in recs:
+            f.write(json.dumps(r) + "\n")
     if mode != "nosm":
         stream.append({"type": "system", "subtype": "informational", "content": sm})
-    stream.append({"type": "result", "subtype": "success", "result": ctx})
-with open(os.path.join(proj, sid + ".jsonl"), "w") as f:
-    for r in recs:
-        f.write(json.dumps(r) + "\n")
+    return ctx
+if event == "SessionStart":
+    by = {g["matcher"]: g for g in groups}
+    if flag("--session-id"):
+        sid, fires = flag("--session-id"), ["startup"]
+    else:
+        sid, fires = flag("--resume"), ["resume"] + [c[1:] for c in ("/compact", "/clear") if c in args]
+    t, said = session(sid), []
+    for src in fires:
+        if src == "clear":
+            t = session(str(uuid.uuid4()))
+        said.append(fire(by[src], os.environ.get("PTRU_STUB_SessionStart_" + src, "pass"), t))
+else:
+    said = [fire(groups[0], os.environ.get("PTRU_STUB_" + event, "pass"), session(flag("--session-id")))]
+if said[0] is not None:
+    stream.append({"type": "result", "subtype": "success", "result": " ".join(c for c in said if c)})
+else:
+    stream.append({"type": "result", "subtype": "success", "is_error": True, "result": "Not logged in"})
 for e in stream:
     print(json.dumps(e))
 `
@@ -186,6 +216,7 @@ func TestVG1n_TheProbePassesOnlyWhenBothHalvesLand(t *testing.T) {
 			for _, body := range logs {
 				all += body
 				assertHas(t, "a log", body, "claude --version: 0.0.0-stub (P-TRU-1)")
+				assertHas(t, "a log", body, "config dir: ~/.claude-probe")
 			}
 			if strings.Contains(all, "PTRU1-CTX-") || strings.Contains(all, "PTRU1-SM-") {
 				t.Errorf("a nonce was printed or logged:\n%s", all)
@@ -208,19 +239,147 @@ func TestVG1n_TheProbePassesOnlyWhenBothHalvesLand(t *testing.T) {
 	}
 }
 
-func TestVG1n_TheProbeRefusesASettingsFile(t *testing.T) {
+// TestVG1n_TheProbeRefusesASettingsFileWithHooks: a settings file in the
+// probe's configuration that declares hooks, or that cannot be read, is
+// refused before claude runs, so a user-level hook can never answer for the
+// probe's; one that declares none (a model, a theme) is the configuration's
+// own and is never read, as every session runs with --setting-sources
+// project, and the run leaves its bytes as they were. An event the probe
+// does not drive is refused too. Break: drop the refusal, refuse every
+// settings file, or drop --setting-sources from a call, and this fails.
+func TestVG1n_TheProbeRefusesASettingsFileWithHooks(t *testing.T) {
+	for _, body := range []string{`{"hooks": {}}` + "\n", `{"model": "opus", "hooks": {"SessionStart": []}}` + "\n", "{\n"} {
+		home := ptruHome(t)
+		writeFile(t, filepath.Join(home, ".claude-probe", "settings.json"), body)
+		res, asked, logs := ptruRun(t, home, nil)
+		if res.exitCode != 2 || !strings.Contains(res.stderr, "refusing") {
+			t.Errorf("settings %q: exit %d, stderr %q; want 2 and a refusal", body, res.exitCode, res.stderr)
+		}
+		if len(asked) != 0 || len(logs) != 0 {
+			t.Errorf("settings %q: claude was asked %v and logs %v were written before the refusal", body, asked, logs)
+		}
+	}
 	home := ptruHome(t)
 	settings := filepath.Join(home, ".claude-probe", "settings.json")
-	writeFile(t, settings, `{"hooks": {}}`+"\n")
-	res, asked, logs := ptruRun(t, home, nil)
-	if res.exitCode != 2 || !strings.Contains(res.stderr, "refusing") {
-		t.Errorf("exit %d, stderr %q; want 2 and a refusal", res.exitCode, res.stderr)
+	const plain = `{"model": "opus", "theme": "dark"}` + "\n"
+	writeFile(t, settings, plain)
+	res, asked, _ := ptruRun(t, home, nil, "PostToolUse")
+	if res.exitCode != 0 {
+		t.Errorf("a settings file with no hooks: exit %d, want 0:\n%s%s", res.exitCode, res.stdout, res.stderr)
 	}
-	if len(asked) != 0 || len(logs) != 0 {
-		t.Errorf("claude was asked %v and logs %v were written before the refusal", asked, logs)
+	sessions := 0
+	for _, a := range asked {
+		if !slices.Contains(a, "-p") {
+			continue
+		}
+		sessions++
+		if i := slices.Index(a, "--setting-sources"); i < 0 || i+1 >= len(a) || a[i+1] != "project" {
+			t.Errorf("a session ran without --setting-sources project: %q", a)
+		}
 	}
-	res, asked, _ = ptruRun(t, ptruHome(t), nil, "SessionStart")
+	if sessions != 1 {
+		t.Errorf("claude ran %d sessions, want 1", sessions)
+	}
+	if b, err := os.ReadFile(settings); err != nil || string(b) != plain {
+		t.Errorf("the settings file holds %q after the run (%v), want it as it was", b, err)
+	}
+	res, asked, _ = ptruRun(t, ptruHome(t), nil, "Stop")
 	if res.exitCode != 2 || len(asked) != 0 {
 		t.Errorf("an event the probe does not drive: exit %d, claude asked %v; want 2 and nothing asked", res.exitCode, asked)
+	}
+}
+
+// TestVG1n_SessionStartIsJudgedPerSource: SessionStart runs as one session
+// through its four sources, startup with a new id and then resume, /compact
+// and /clear each on --resume of that id, and each source is judged on its
+// own nonce pair in its own log, so a pass at one source never stands for
+// another. /clear's attachments land in the new session's transcript, which
+// the verdict reads and the cleanup removes with its session-env directory.
+// Break: one nonce pair or one verdict for the event, the clear judged on the
+// old transcript, a source run without --setting-sources project, or the new
+// session left in the configuration, and this fails.
+func TestVG1n_SessionStartIsJudgedPerSource(t *testing.T) {
+	const inconclusive = "inconclusive: no login, or the model did not run the command"
+	sources := []string{"startup", "resume", "compact", "clear"}
+	every := func(v string) map[string]string {
+		return map[string]string{"startup": v, "resume": v, "compact": v, "clear": v}
+	}
+	for _, tc := range []struct {
+		name  string
+		modes map[string]string
+		exit  int
+		want  map[string]string
+	}{
+		{"every source lands both halves", nil, 0, every("pass")},
+		{"the stream half at compact alone, as 2.1.280 and 2.1.316 give it",
+			map[string]string{"SessionStart_startup": "nosm", "SessionStart_resume": "nosm", "SessionStart_clear": "nosm"}, 1,
+			map[string]string{"startup": "fail", "resume": "fail", "compact": "pass", "clear": "fail"}},
+		{"compact's attachment under another event", map[string]string{"SessionStart_compact": "otherevent"}, 1,
+			map[string]string{"startup": "pass", "resume": "pass", "compact": "fail", "clear": "pass"}},
+		{"no additionalContext at clear", map[string]string{"SessionStart_clear": "noctx"}, 1,
+			map[string]string{"startup": "pass", "resume": "pass", "compact": "pass", "clear": "fail"}},
+		{"no login", map[string]string{"SessionStart_startup": "nohook", "SessionStart_resume": "nohook",
+			"SessionStart_compact": "nohook", "SessionStart_clear": "nohook"}, 3, every(inconclusive)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := ptruHome(t)
+			cfg := filepath.Join(home, ".claude-probe")
+			before := filesUnder(t, cfg)
+			res, asked, logs := ptruRun(t, home, tc.modes, "SessionStart")
+			if res.exitCode != tc.exit {
+				t.Errorf("exit %d, want %d:\n%s%s", res.exitCode, tc.exit, res.stdout, res.stderr)
+			}
+			for _, src := range sources {
+				if got := verdictOf(t, logs, "SessionStart-"+src); got != tc.want[src] {
+					t.Errorf("SessionStart %s verdict %q, want %q", src, got, tc.want[src])
+				}
+			}
+			if len(logs) != len(sources) {
+				t.Errorf("%d logs, want one per source", len(logs))
+			}
+			all := res.stdout + res.stderr
+			for _, body := range logs {
+				all += body
+				assertHas(t, "a log", body, "claude --version: 0.0.0-stub (P-TRU-1)")
+				assertHas(t, "a log", body, "config dir: ~/.claude-probe")
+			}
+			if strings.Contains(all, "PTRU1-CTX-") || strings.Contains(all, "PTRU1-SM-") {
+				t.Errorf("a nonce was printed or logged:\n%s", all)
+			}
+			var calls [][]string
+			for _, a := range asked {
+				if slices.Contains(a, "-p") {
+					calls = append(calls, a)
+				}
+			}
+			if len(calls) != len(sources) {
+				t.Fatalf("claude ran %d sessions, want %d: %q", len(calls), len(sources), calls)
+			}
+			sid := ""
+			if i := slices.Index(calls[0], "--session-id"); i >= 0 && i+1 < len(calls[0]) && !slices.Contains(calls[0], "--resume") {
+				sid = calls[0][i+1]
+			} else {
+				t.Errorf("the first session %q does not start a new id", calls[0])
+			}
+			for n, want := range []string{"", "/compact", "/clear"} {
+				a := calls[n+1]
+				if i := slices.Index(a, "--resume"); i < 0 || i+1 >= len(a) || a[i+1] != sid {
+					t.Errorf("session %d %q does not resume %q", n+2, a, sid)
+				}
+				for _, c := range []string{"/compact", "/clear"} {
+					if slices.Contains(a, c) != (c == want) {
+						t.Errorf("session %d %q: %s present %v, want %v", n+2, a, c, slices.Contains(a, c), c == want)
+					}
+				}
+			}
+			for _, a := range calls {
+				if i := slices.Index(a, "--setting-sources"); i < 0 || i+1 >= len(a) || a[i+1] != "project" {
+					t.Errorf("a session ran without --setting-sources project: %q", a)
+				}
+			}
+			if after := filesUnder(t, cfg); !slices.Equal(after, before) {
+				t.Errorf("the probe configuration holds %v after the run, want %v", after, before)
+			}
+		})
 	}
 }
