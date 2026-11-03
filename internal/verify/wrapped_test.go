@@ -156,7 +156,7 @@ func TestWR1_AWrapperBindsOnlyByItsRunnerAtTheGatesLocation(t *testing.T) {
 // TestWR1_TheWrapWordKeepsItsJSON: wrapped marshals as its word, is left out
 // as none, and reads back.
 func TestWR1_TheWrapWordKeepsItsJSON(t *testing.T) {
-	for _, w := range []WrapWord{WrapRead, WrapUnread} {
+	for _, w := range []WrapWord{WrapRead, WrapUnread, WrapBackground} {
 		b, err := json.Marshal(RunRef{Wrapped: w})
 		if err != nil {
 			t.Fatal(err)

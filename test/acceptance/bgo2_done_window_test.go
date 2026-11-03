@@ -9,6 +9,7 @@ package acceptance
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -46,7 +47,10 @@ func bgo2First(t *testing.T) (*env, string) {
 	return e, dir
 }
 
-const bgo2Unknown = "'unit' unknown: it ran inside background call "
+// bgo2Unknown is the background wrapper's sentence (the manager's ruling of
+// 11-03 09:3x): the record cannot show the gate ran in the call, so it says
+// the call may have run it, as the unread wrapper's hedge does.
+var bgo2Unknown = regexp.MustCompile(`'unit' unknown: background call \d+ may have run it`)
 
 // TestBGO2a_ALaterTurnsDoneClaimNamesTheBackgroundRun: turn p2 only reads the
 // background job's output file and claims done. The edit and the launch are
@@ -60,8 +64,8 @@ func TestBGO2a_ALaterTurnsDoneClaimNamesTheBackgroundRun(t *testing.T) {
 	e, dir := bgo2First(t)
 	e.bgo2Call(dir, "p2", "toolu_r", "Bash", bgo2Read, bgo2Quiet)
 	line := e.dghStop(dir)
-	if !strings.Contains(line, bgo2Unknown) {
-		t.Errorf("a later turn's done claim after a background run: Stop line %q, want %q", line, bgo2Unknown)
+	if !bgo2Unknown.MatchString(line) {
+		t.Errorf("a later turn's done claim after a background run: Stop line %q, want %s", line, bgo2Unknown)
 	}
 	for _, deny := range []string{"no test or build run", "not read", "not run"} {
 		if strings.Contains(line, deny) {
@@ -97,8 +101,8 @@ func TestBGO2c_AnEditInAnotherWorktreeOpensNoWindow(t *testing.T) {
 	e.bgo2Call(dir, "p2", "toolu_o", "Edit", map[string]any{"file_path": other, "old_string": "a", "new_string": "b"},
 		map[string]any{"filePath": other})
 	line := e.dghStop(dir)
-	if !strings.Contains(line, bgo2Unknown) || strings.Contains(line, "no test or build run") {
-		t.Errorf("an edit outside the project after a background run: Stop line %q, want %q", line, bgo2Unknown)
+	if !bgo2Unknown.MatchString(line) || strings.Contains(line, "no test or build run") {
+		t.Errorf("an edit outside the project after a background run: Stop line %q, want %s", line, bgo2Unknown)
 	}
 }
 
