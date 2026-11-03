@@ -45,7 +45,7 @@ func TestWR1_AWrappedRunIsDecidedByItsOutput(t *testing.T) {
 			if c.wrap {
 				r = wrapped(r)
 			}
-			g := stateOf(familyKey{runner: InferredGateID}, "test", []gateRun{r}, nil, nil, 10, nil)
+			g := stateOf(familyKey{runner: InferredGateID}, "test", []gateRun{r}, nil, nil, "", 10, nil)
 			if g.State != c.state || g.Reason != c.reason {
 				t.Errorf("state %s %s, want %s %s", g.State, g.Reason, c.state, c.reason)
 			}
@@ -92,7 +92,7 @@ func TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown(t *testing.T) {
 		{"control: red stays red", []gateRun{run(3, outSummaryFail)}, unreadCall(4), []write{edit(2)}, Red, FailedOutput, WrapNone},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			s := g.state(c.fr, c.unread, c.writes, nil, 10, nil)
+			s := g.state(c.fr, c.unread, c.writes, nil, "", 10, nil)
 			if s.State != c.state || s.Reason != c.reason {
 				t.Errorf("state %s %s, want %s %s", s.State, s.Reason, c.state, c.reason)
 			}
@@ -139,7 +139,7 @@ func TestWR1_AWrapperBindsOnlyByItsRunnerAtTheGatesLocation(t *testing.T) {
 	make := "make-words"
 	exec := int64(5)
 	r := wrapped(gateRun{Seq: 4, ExecSeq: &exec, Runner: &make, Outcome: store.ExecOK, Output: &store.GateOutput{Kind: outSummaryPass, Parser: "go"}})
-	s := g.state([]gateRun{r}, nil, nil, nil, 10, nil)
+	s := g.state([]gateRun{r}, nil, nil, nil, "", 10, nil)
 	if s.LastRun == nil || s.LastRun.OtherArgs || s.LastRun.Wrapped != WrapRead {
 		t.Errorf("wrapped last run %+v, want wrapped read and no other_args", s.LastRun)
 	}
