@@ -18,7 +18,7 @@ m("ST-4.1b on lists the project twice", CB,
   "TestRC14i_BodiesOnOffStatus")
 m("ST-4.1b --max-bytes is ignored", CB,
   '\t\tset.MaxBytes = cmp.Or(maxBytes, set.MaxBytes, store.DefaultBodiesMaxBytes)\n',
-  '\t\tset.MaxBytes = cmp.Or(set.MaxBytes, store.DefaultBodiesMaxBytes)\n',
+  "\t\t_ = maxBytes\n\t\tset.MaxBytes = cmp.Or(set.MaxBytes, store.DefaultBodiesMaxBytes)\n",
   "TestRC14i_BodiesOnOffStatus")
 m("ST-4.1b status counts the temporary files", SB,
   ' || path == except || !strings.HasSuffix(e.Name(), ".jsonl") {\n',
@@ -30,7 +30,7 @@ m("ST-4.1b the kind count accepts two", CF,
   "TestRC14j_ForgetOneKindOnly")
 m("ST-4.1b forget --bodies takes another project's copies", CB,
   '\tn, err := st.ForgetBodies(dir)\n',
-  '\tn, err := st.ForgetBodies("other-project")\n',
+  "\t_ = dir\n\tn, err := st.ForgetBodies(\"other-project\")\n",
   "TestRC14j_ForgetOneKindOnly")
 m("ST-4.1b status has no bodies line", "cmd/rashomon/verbs_status.go",
   '\t\tfmt.Fprintf(stdout, "  %s\\n", bodiesLine(st))\n',

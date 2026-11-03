@@ -17,7 +17,9 @@ m("DG-2 a declared required gate does not open the raise", V,
 m("DG-2 the learned-only filter reads the index backwards", V,
   "staleEvidence(snap, c.runs, c.writes, decl, !c.learned, pt, event)",
   "staleEvidence(snap, c.runs, c.writes, decl, c.learned, pt, event)", "TestDG2_|TestDG2b_|TestSN1_")
-m("DG-2 the note names the gate by its program", V,
+# factGate holds the spec id rule since MASKED-AT-ACT1, for every note that
+# names a gate fact's gate.
+m("DG-2 the note names the gate by its program", "internal/verify/steer_masked.go",
   "ok && slot.Gate(id).Validate() == nil {", "ok && false && slot.Gate(id).Validate() == nil {", "TestDG2_")
 m("DG-2 an untrusted spec opens the trigger", D,
   "(tr == spec.Trusted || tr == spec.Managed) && (d.Gate.Required == nil",

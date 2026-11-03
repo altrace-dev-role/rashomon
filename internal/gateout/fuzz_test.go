@@ -5,6 +5,7 @@ import "testing"
 func FuzzClassify(f *testing.F) {
 	f.Add("test", "go", []byte("ok\tpkg\t0.01s"))
 	f.Add("test", "make", []byte("Tests: 1 passed"))
+	f.Add("test", "wrapper", []byte("ok  \tm\t0.004s\n1..2\nok 1 - adds\n"))
 	f.Add("build", "go", []byte("anything"))
 	f.Fuzz(func(t *testing.T, kind, program string, input []byte) {
 		got := Classify(kind, program, input)

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 )
 
 // budgetChunk is how much of the steer log one read takes, newest first.
@@ -196,7 +197,12 @@ func (s *budgetScan) line(b []byte) {
 	case s.is(b, s.out[bkLevel], LevelFlag.String()):
 		s.c.flags++
 	case s.is(b, s.out[bkLevel], LevelNudge.String()), s.is(b, s.out[bkLevel], LevelStop.String()):
-		s.c.notes++
+		// The briefing is outside the prompt budget (tech 4.2.5): given at a
+		// resumed session's first prompt (D-c), it charges none of the
+		// prompt's notes, and its key still answers a second one.
+		if !s.is(b, s.out[bkPattern], string(pattern.ContinuityBriefing)) {
+			s.c.notes++
+		}
 		k := findingKey{s.text(b, s.out[bkPattern]), s.text(b, s.out[bkKind]), s.text(b, s.out[bkKey])}
 		if s.c.keys == nil {
 			s.c.keys = make(map[findingKey]bool, 3)

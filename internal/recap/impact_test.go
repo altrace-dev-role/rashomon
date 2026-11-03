@@ -286,3 +286,23 @@ func TestLRN17s_TheRecapCountsAStampZeroApprovalAsProposed(t *testing.T) {
 		t.Errorf("lessonCounts = %+v, want %+v", got, want)
 	}
 }
+
+// TestMA1i_AMaskedNoteIsResolvedByItsOwnGate (card MASKED-AT-ACT1): the note
+// names its gate by the runner's words, "go vet", which no gate's program
+// word is, so the line's key, the gate's id, is what settles it: a later
+// green of that gate resolves it, and another gate's green does not. Break:
+// leave masked-status out of gateKey, and the note reads open whatever runs.
+func TestMA1i_AMaskedNoteIsResolvedByItsOwnGate(t *testing.T) {
+	v := goView(gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil),
+		gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
+	im := ImpactOf(v, [][]byte{keyed(t, "a", "masked-status", "go vet", "learned:go-build", 10)}, nil)
+	if len(im.Findings) != 1 || im.Findings[0].State != FindingResolved || im.Findings[0].ResolvedBy != 20 {
+		t.Errorf("findings %+v, want one resolved by its own gate's green at 20", im.Findings)
+	}
+	red := goView(gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil),
+		gateAt("learned:go-build", "build", verify.MaskedInconclusive, verify.MaskedNoSuccessLine, 20, nil))
+	im = ImpactOf(red, [][]byte{keyed(t, "a", "masked-status", "go vet", "learned:go-build", 10)}, nil)
+	if len(im.Findings) != 1 || im.Findings[0].State != FindingOpen {
+		t.Errorf("findings %+v, want one open: go test's green is another gate's", im.Findings)
+	}
+}

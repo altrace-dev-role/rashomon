@@ -125,6 +125,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
 	}
 	turn := countTurn(run, counted, in.PromptID, pt.Seq, gateRoots(&snap))
+	if snap.Recording == Complete {
+		markTurn(snap.Gates, turnProjects(run, in.PromptID, pt.Seq))
+	}
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
 	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {
@@ -165,7 +168,7 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 // launched (call schema 8) is named by it, in the binary's own words --
 // `python3 -m pytest`, not the interpreter `python3` the line starts with
 // (D229); an older record's is the line's program word. The inferred gate
-// with no run is named by inferredProgram.
+// with no run, or a wrapped one, is named by inferredProgram.
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
@@ -173,7 +176,9 @@ func programs(gates []GateState, runs []gateRun) map[string]string {
 	}
 	out := make(map[string]string, len(gates))
 	for _, g := range gates {
-		if g.LastRun != nil {
+		// A wrapped last run's line is the wrapper's (make, bash), never the
+		// gate's runner, so it names no gate (WRAPPER-RUN1).
+		if g.LastRun != nil && g.LastRun.Wrapped == WrapNone {
 			out[g.Gate] = bySeq[g.LastRun.Seq]
 		}
 	}
