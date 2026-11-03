@@ -32,6 +32,19 @@ type SteerView struct {
 	// AfterHits are the order rules whose After pattern the call matched,
 	// which the hook keeps as spec_event after_hit records (#216 ruling 1).
 	AfterHits []AfterHit
+	// ThenChecks are the post's verdicts on whether the call's line runs the
+	// Then of each order rule it was read under, which the hook keeps as
+	// then_check records (card ORDER-LIVE1), whatever the call raised.
+	ThenChecks []ThenCheck
+}
+
+// ThenCheck is an order rule's verdict on one Bash call's line, as the post
+// records it: the rule's id, its declaring file's content digest, and
+// store.ThenYes, ThenNo or ThenMaybe for whether the line runs the Then.
+type ThenCheck struct {
+	RuleID       string
+	SourceDigest string
+	Then         string
 }
 
 // AfterHit is an order rule's After call, as the post records it: the rule's
