@@ -73,7 +73,7 @@ var claimSkips = [...][]string{{"please"}, {"run"}, {"try"}, {"you", "can"}, {"y
 // claimDisclosures loosen a claim when one is in its sentence or the next
 // (step 8): report's failureVocabulary, every entry, then the spec's fourteen
 // phrases. A one-word entry matches any word it opens, "fail" in "failures"
-// as report's substring match would (Gate A Q7); a phrase matches whole
+// as report's namesFailure does (Gate A Q7); a phrase matches whole
 // words. The words of an accepted predicate, "no errors" say, are none (Q3,
 // Q8). TestVER60b pins that every report.FailureVocabulary entry is one here
 // and loosens a claim.
