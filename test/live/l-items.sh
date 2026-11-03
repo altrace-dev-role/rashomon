@@ -16,6 +16,12 @@ export RASHOMON_HOME=$LIVE/store
 if [ -e "$HOME/.claude/settings.json" ]; then
   echo "refusing: $HOME/.claude/settings.json exists; move it aside first" >&2; exit 1
 fi
+# watch, and the detach L-3 and the exit trap run, refuse an agent session,
+# and a `!` line typed into Claude Code is one; so refuse here, before
+# anything is written, rather than at watch with settings.json half set up.
+if [ -n "${CLAUDECODE:-}" ]; then
+  echo "refusing: CLAUDECODE is set, so this is inside Claude Code, where watch and detach refuse to run; run it in a terminal outside Claude Code" >&2; exit 1
+fi
 rm -rf "$LIVE"; mkdir -p "$LIVE/work"
 go build -o "$BIN" ./cmd/rashomon
 trap 'touch "$LIVE/l3.go"; "$BIN" detach >/dev/null 2>&1 || true; rm -f "$HOME/.claude/settings.json"; claude mcp remove -s user rashomon-ping >/dev/null 2>&1 || true' EXIT

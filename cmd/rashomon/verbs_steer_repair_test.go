@@ -93,8 +93,10 @@ func TestSTC1o_RepairReplacesAnUnparseableConfigAfterAsking(t *testing.T) {
 	}
 	t.Setenv("CLAUDECODE", "1")
 	before := asked
-	if err := steerRepair(io.Discard, false, say(true, nil)); err == nil || !strings.Contains(err.Error(), "agent session") || asked != before {
+	if err := steerRepair(io.Discard, false, say(true, nil)); err == nil || asked != before {
 		t.Errorf("in an agent session: err %v, asked %d times", err, asked-before)
+	} else {
+		wantRefusal(t, "steer on --repair", err.Error(), "steer on --repair", "written")
 	}
 	if b, _ := os.ReadFile(p); string(b) != `{"steer_user":` {
 		t.Errorf("an agent session changed the file: %q", b)

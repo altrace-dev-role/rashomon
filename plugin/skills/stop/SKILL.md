@@ -13,17 +13,26 @@ description: 'Stop recording: remove the rashomon hook entries, keeping the stor
    Tell the user to disable the plugin instead of running `detach` in that
    case.
 
-3. Otherwise, run `$RASHOMON detach`. It removes only this install's eight
-   settings entries and leaves every other entry in `~/.claude/settings.json`
-   with its value as found (indentation may change). The store and its history survive — completed
+3. Otherwise the user runs `detach`, not you: it refuses an agent session,
+   and a `!` line typed into Claude Code counts as one. Tell the user to run
+   this in a terminal outside Claude Code, with `$RASHOMON` written out as
+   the full path you set it to:
+
+       $RASHOMON detach
+
+   It removes only this install's eight settings entries and leaves every
+   other entry in `~/.claude/settings.json` with its value as found
+   (indentation may change). The store and its history survive — completed
    runs still render their true coverage afterwards.
 
-4. If `detach` refuses because the store is gone or the id is unknown, use
-   the forms it names rather than editing the file:
+4. If `detach` refuses there because the store is gone or the id is
+   unknown, the user runs the form it names, in that same terminal, rather
+   than editing the file:
    - `$RASHOMON detach --install <id>` with the id printed at install time
    - `$RASHOMON detach --all` when the store (and the id with it) is gone
 
-5. Confirm with `$RASHOMON status`. After a plain `detach` the eight settings
+5. Once the user says it ran, confirm with `$RASHOMON status`, which only
+   reads and so runs here. After a plain `detach` the eight settings
    entries read `absent`; after `detach --all` with the store deleted they
    read `unknown` — with no install id nothing can be called ours, so
    `unknown` is the expected confirmation there, not a failure.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -26,13 +27,16 @@ import (
 // the response's span. Two things are read from it, and neither is held:
 // backgroundedCall reads, for Bash only, whether two keys are present, as
 // bits on their spans, so the task id is never a value here; and gateOutput
-// reads the output of a gate run, the call shape.GateRun names -- stdout,
-// then stderr where stdout gives no summary, or a failure event's error after
-// its first line -- decoded into a buffer local to that call, at most
-// gateout.MaxScanBytes of it, cleared before it returns; and, where that line
-// hid its runner's status, printedOutput reads its stdout the same way for
-// the status the line printed (STATUS-PROBE). What survives is gate_output's
-// three closed words; no other call's output is read at all.
+// reads the output of a gate run, the call shape.GateRun names, and of a
+// wrapper's call, the one shape.WrapperRun names, for a runner's signature
+// (WRAPPER-RUN1) -- stdout, then stderr where stdout gives no summary, or a
+// failure event's error after its first line -- decoded into a buffer local
+// to that call, at most gateout.MaxScanBytes of it, cleared before it
+// returns; and, where a gate run's line hid its runner's status,
+// printedOutput reads its stdout the same way for the status the line
+// printed (STATUS-PROBE). What survives is gate_output's three closed words,
+// for a wrapper only where a runner's row read it; no other call's output is
+// read at all.
 //
 // tool_input IS held, as a subslice of the payload, for the executed digest:
 // the post-rewrite input is the only evidence a rewriting hook leaves
@@ -193,8 +197,8 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 //
 // stdin is bounded exactly as the declaration path bounds it. Of the response
 // only the presence of backgroundTaskId and backgroundedByUser is read, for a
-// Bash call (backgroundedCall), and a gate run's output, bounded and dropped
-// (gateOutput), but the whole of it does arrive: an
+// Bash call (backgroundedCall), and a gate run's or a wrapper's output,
+// bounded and dropped (gateOutput), but the whole of it does arrive: an
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
@@ -319,10 +323,21 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
 	// A gate run's output, read, classified and dropped: three closed words
-	// survive (card GATEOUT-WIRE1). Every other call's output is never read,
-	// and its gate_output stays null.
+	// survive (card GATEOUT-WIRE1). A line that names no runner and may run
+	// one -- a script, a shell, or a launcher's build target (`make check`,
+	// `npm run test:unit`), whose output a build kind never reads -- is read
+	// the same way for a runner's signature, and its words are kept only
+	// where a runner's row read it (WRAPPER-RUN1). Every other call's output
+	// is never read, and its gate_output stays null.
+	failure, deadline := pl.HookEventName == FailureEvent, start.Add(gateOutputBudget)
 	if shape.GateRun(s.RunnerDigest, s.StatusMasked, s.VerbClass) {
-		out := gateOutput(payload, pl.HookEventName == FailureEvent, gateKind(&s), programOf(&s), start.Add(gateOutputBudget), p.now)
+		kind, program := gateKind(&s), programOf(&s)
+		out := gateOutput(payload, failure, kind, program, deadline, p.now)
+		if kind == shape.RunnerBuild && gateout.Delegated(program) {
+			if w := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(w.Parser) {
+				out = w
+			}
+		}
 		rec.GateOutput = &out
 		// A line that hid its runner's status and then printed it (`make
 		// check; echo "EXIT: $?"`): the printed status is the run's outcome,
@@ -333,6 +348,10 @@ func (p *Post) capture(payload *hookio.Payload) error {
 			if printed, ok := printedOutput(payload, pl.ToolName, pl.ToolInput, start.Add(gateOutputBudget), p.now); ok {
 				rec.GateOutput = &printed
 			}
+		}
+	} else if shape.WrapperRun(pl.ToolName, s.Program, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
+		if out := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(out.Parser) {
+			rec.GateOutput = &out
 		}
 	}
 	// The content of the file a named write names, as the call left it: the
@@ -391,9 +410,9 @@ func hiddenRun(rec *store.Execution) bool {
 //
 // It reads two presence bits on spans, true when a key carries anything but
 // null or false, and the task id is never copied. stdout and stderr are not
-// touched here: the one reader of those is gateOutput, for a gate run only. A
-// response that is not an object is a foreground call: the flag is set only
-// on evidence.
+// touched here: the one reader of those is gateOutput, for a gate run or a
+// wrapper (WRAPPER-RUN1) only. A response that is not an object is a
+// foreground call: the flag is set only on evidence.
 func backgroundedCall(in *hookio.Payload) bool {
 	var bits [2]jsonscan.Span
 	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], backgroundKeys, bits[:]) != nil {
