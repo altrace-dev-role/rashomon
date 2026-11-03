@@ -164,14 +164,6 @@ type BlastRadiusBinding struct {
 	Tested slot.Count    `slot:"tested"`
 }
 
-// BlastRadiusDegradedBinding is blast-radius's no-paths form, for callers
-// whose every directory the deny list or the entropy test left out
-// (slot.ErrNoPathsLeft), or that sit at the module's root.
-type BlastRadiusDegradedBinding struct {
-	Count  slot.Count `slot:"count"`
-	Tested slot.Count `slot:"tested"`
-}
-
 // IntegrityStoreTouchedBinding is integrity/store-touched's user line
 // (archive 40.4.7; card P5B, 5.7): the path under .claude/rashomon the call
 // wrote, project-relative.
@@ -415,11 +407,6 @@ func templates() map[templateKey]template {
 				id: "blast-radius/v1",
 				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
 					"(at least {count}): {dirs}; test files are in {tested} of them.",
-			},
-			{pattern.BlastRadius, reflect.TypeOf(BlastRadiusDegradedBinding{})}: {
-				id: "blast-radius-degraded/v1",
-				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
-					"(at least {count}); test files are in {tested} of them.",
 			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
 				id:     "integrity-store-touched/v1",

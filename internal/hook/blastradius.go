@@ -71,8 +71,8 @@ type blastDraft struct {
 // from contextOf when the judge built none (ok false). A context whose note
 // could reach no one (steering off, no consent, no prompt) reads nothing.
 // The read marker is kept when the read answers nothing new (an error, no
-// caller, the callers last given): that log's answer stands until the next
-// sync.
+// caller, none it can name, the callers last given): that log's answer
+// stands until the next sync.
 func (p *Post) blast(env SteerEnv, ctx *steer.Context, ok bool) (blastDraft, bool) {
 	if env.Blast.Locate == nil || env.Blast.Callers == nil || !p.scopeV5 || p.landedSeq <= 0 ||
 		p.event != string(steer.EventPostToolUse) || !editTool(p.toolName) {
@@ -159,9 +159,11 @@ func callersDigest(callers []BlastCaller) string {
 
 // blastMessage is the note for callers: the count, the directories as a
 // path list (a caller at the root is counted, never listed, since a path
-// slot holds no "."), and how many hold a test file; the degraded row where
-// no directory is left to list. The zero Message for a render the gate
-// refuses.
+// slot holds no "."), and how many hold a test file. The zero Message for a
+// render the gate refuses, and where no directory is left to list
+// (slot.ErrNoPathsLeft: every caller at the root, or left out by the deny
+// list or the entropy test): a note naming no package is not said (the DE's
+// condition (a)).
 func blastMessage(callers []BlastCaller) render.Message {
 	var dirs []slot.Path
 	unlisted, tested := 0, 0
@@ -175,14 +177,8 @@ func blastMessage(callers []BlastCaller) render.Message {
 		}
 		dirs = append(dirs, slot.Path(c.Dir))
 	}
-	if len(dirs) > 0 {
-		m, err := render.New(pattern.BlastRadius, render.BlastRadiusBinding{
-			Count: slot.Count(len(callers)), Dirs: slot.NewPathList(dirs, unlisted), Tested: slot.Count(tested)})
-		if err == nil {
-			return m
-		}
-	}
-	m, _ := render.New(pattern.BlastRadius, render.BlastRadiusDegradedBinding{Count: slot.Count(len(callers)), Tested: slot.Count(tested)})
+	m, _ := render.New(pattern.BlastRadius, render.BlastRadiusBinding{
+		Count: slot.Count(len(callers)), Dirs: slot.NewPathList(dirs, unlisted), Tested: slot.Count(tested)})
 	return m
 }
 

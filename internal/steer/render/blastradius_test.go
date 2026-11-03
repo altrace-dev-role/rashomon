@@ -8,13 +8,15 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
-// TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder: blast-radius's two rows
-// (card ARCH-INLINE1) render the count as a lower bound ("at least": PROVEN
+// TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder: blast-radius's row
+// (card ARCH-INLINE1) renders the count as a lower bound ("at least": PROVEN
 // calls only, PF-PL11), the callers' directories as a path list, and how
 // many hold a test file, as a statement of fact with no "run" in it (the DE
-// directive: an edit-time note never says "run Y" unless Y is bound). The
-// degraded row is the full row without the list. Break: drop "at least", or
-// word the note as an order, and this fails.
+// directive: an edit-time note never says "run Y" unless Y is bound). It has
+// no no-paths form: a list with no directory left is refused, so a note
+// naming no package is not said (the DE's condition (a)). Break: drop "at
+// least", word the note as an order, or let an empty list render, and this
+// fails.
 func TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder(t *testing.T) {
 	cases := []struct {
 		binding  any
@@ -27,12 +29,6 @@ func TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder(t *testing.T) {
 			"blast-radius/v1", []string{"count", "dirs", "tested"},
 			"rashomon record: the platform graph names other packages with code calling into the package this call edited " +
 				"(at least 5): 'internal/verify', 'cmd/rashomon', 'internal/hook' and 2 more; test files are in 4 of them.",
-		},
-		{
-			BlastRadiusDegradedBinding{Count: 1, Tested: 0},
-			"blast-radius-degraded/v1", []string{"count", "tested"},
-			"rashomon record: the platform graph names other packages with code calling into the package this call edited " +
-				"(at least 1); test files are in 0 of them.",
 		},
 	}
 	for _, c := range cases {
@@ -55,6 +51,6 @@ func TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder(t *testing.T) {
 		}
 	}
 	if _, err := New(pattern.BlastRadius, BlastRadiusBinding{Count: 1, Dirs: slot.NewPathList(nil, 1), Tested: 0}); err == nil {
-		t.Error("a list with no directory rendered; want slot.ErrNoPathsLeft, the degraded row's case")
+		t.Error("a list with no directory rendered; want slot.ErrNoPathsLeft, so a note naming no package is not said")
 	}
 }
