@@ -28,7 +28,7 @@ m("RP-2 a lesson counts as approved without its tier", G,
 
 # The scan (RP2g, RP2h, RP2s, RP2r).
 m("RP-2 Previous stops at the first match", R, "\t\tif sc.Found && r.at < best.RecordedAtUnixMS {\n", "\t\tif sc.Found {\n", "TestRP2g_")
-m("RP-2 Previous does not skip the current session", R, "\t\tif r.name == skip {\n\t\t\tcontinue\n\t\t}\n", "", "TestRP2g_")
+m("RP-2 Previous does not skip the current session", R, "\t\tif r.name == skip {\n\t\t\tcontinue\n\t\t}\n", "\t\tif r.name == skip && false {\n\t\t\tcontinue\n\t\t}\n", "TestRP2g_")
 m("RP-2 the 16-run bound is removed", R, "\t\tif q.MaxRuns > 0 && read >= q.MaxRuns {\n", "\t\tif false {\n", "TestRP2h_")
 m("RP-2 the fallback reads the whole file, not the budget left", R, "\t\tleft = q.MaxBytes - spent\n", "\t\tleft = r.size\n", "TestRP2h_")
 m("RP-2 the before bound is ignored", R, "p.RecordedAtUnixMS < q.Before && ", "", "TestRP2h_")

@@ -31,7 +31,7 @@ m("GI-1 npm's placeholder test is a test script", G,
 m("GI-1 pnpm's lockfile is not read", G,
   "\tcase exists(root, \"pnpm-lock.yaml\"):\n", "\tcase false:\n", "TestGI1_EachEcosystemItsOwnTestCommand")
 m("GI-1 a Makefile variable named test is a target", G,
-  " && !strings.HasPrefix(rest, \"=\"))", ")", "TestGI1_AMakefileVariableIsNoTarget")
+  " && !strings.HasPrefix(rest, \"=\"))", " && (!strings.HasPrefix(rest, \"=\") || true))", "TestGI1_AMakefileVariableIsNoTarget")
 m("GI-1 pytest's own config is a convention", G,
   "{file: \"pytest.ini\", argv: []string{\"pytest\"}, declared: true},", "{file: \"pytest.ini\", argv: []string{\"pytest\"}},",
   "TestGI1_DeclaredOnlyWhereTheProjectSaysSo")
