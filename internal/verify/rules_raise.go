@@ -209,7 +209,7 @@ type orderView struct {
 func orderRead(call RuleCall, own ruleLine) orderView {
 	picked := pickExecutions(call.Run)
 	v := orderView{run: call.Run, at: call.Seq}
-	runs, writes, unnamed, _ := classifyWith(call.Run, picked)
+	runs, writes, unnamed, _, _ := classifyWith(call.Run, picked)
 	v.c = classified{runs: runs, writes: writes, unnamed: unnamed}
 	for _, l := range ruleLines(call.Run, picked, call.Seq) {
 		if l.id == call.ToolUseID {
