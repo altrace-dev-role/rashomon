@@ -97,8 +97,9 @@ const (
 // moved path decides; else a path the run's tree has no sha for, or the
 // point has no entry for (unreadable, or no file to open), is unknown. A
 // move beside an unnamed write in (ref, at] is the session's own, else
-// foreign; writes the session named are writtenSince's, above this.
-func bind(writes []write, unnamed []int64, ref, at int64, tree map[string]*string) treeBind {
+// foreign; writes the session named are writtenSince's, above this. The
+// run's tree is the files it covers, root's (covers, STALE-COVER1).
+func bind(writes []write, unnamed []int64, root string, ref, at int64, tree map[string]*string) treeBind {
 	if tree == nil {
 		return boundUnknown
 	}
@@ -107,7 +108,7 @@ func bind(writes []write, unnamed []int64, ref, at int64, tree map[string]*strin
 		if w.Seq >= ref {
 			break
 		}
-		if w.Path != nil && Relevant(w.Class) {
+		if w.Path != nil && Relevant(w.Class) && covers(root, &w) {
 			run[*w.Path] = w.SHA
 		}
 	}

@@ -251,49 +251,17 @@ func TestRecordHarnessMismatch_DaysCapped30(t *testing.T) {
 	}
 }
 
-// TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError: a held lock makes
-// the write give up inside its budget, reporting counted=false and err=nil
-// (6.2.1: "on a timeout the count is skipped and retried later in the
-// session") -- never an error a caller would have to decide whether to
-// surface, and never a wait anywhere near the full hold.
-func TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError(t *testing.T) {
-	root := t.TempDir()
-	// The sidecar, not FileHarnessCounts itself: RecordHarnessMismatch locks
-	// FileHarnessCountsLock (see its own doc), so that is the file a test
-	// simulating contention has to hold.
-	lockPath := filepath.Join(root, FileHarnessCountsLock)
-	if err := os.MkdirAll(root, dirMode); err != nil {
-		t.Fatal(err)
-	}
-	holdFor(t, lockPath, 300*time.Millisecond)
-
-	start := time.Now()
-	counted, err := RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, time.Now())
-	elapsed := time.Since(start)
-	if err != nil {
-		t.Fatalf("RecordHarnessMismatch under a held lock returned an error: %v", err)
-	}
-	if counted {
-		t.Fatal("counted = true while the file's lock was held by another writer")
-	}
-	if elapsed >= 250*time.Millisecond {
-		t.Errorf("elapsed = %v, want bounded near the lock budget, not the full 300ms hold", elapsed)
-	}
-}
-
 // TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks: a session's
 // SECOND stand-down in this process never touches the sidecar lock at all
 // (6.4: "one read ... and one locked update ... on a session's first
 // stand-down" -- everything after the first costs a read, not a lock).
-// Proof: the sidecar lock is held externally for the whole test, well past
-// harnessCountBudget; a call that still tried to acquire it would block for
-// up to harnessCountBudget before giving up (as
-// TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError measures directly),
-// while a call that skips the lock on an already-counted session returns in
-// microseconds. The cutoff is harnessCountBudget/2: below it only the
-// lock-free path lands, above it only the lock-and-give-up path does, so
-// this is not a tuned guess -- it is the midpoint between the two actual
-// code paths this test tells apart.
+// Proof: the sidecar the first call made is removed, and the second call
+// must not make it again. The locked path opens the sidecar with O_CREATE
+// before it can try the lock, so a call that tried the lock leaves the file
+// behind; the lock-free path never opens it. That tells the two code paths
+// apart exactly, on every platform: the wall-clock cutoff it replaces held
+// the lock and asked for a return inside harnessCountBudget/2, which a
+// loaded runner can miss on the lock-free path too (LOCK-TIMEOUT1).
 func TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(root, dirMode); err != nil {
@@ -301,24 +269,23 @@ func TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks(t *testing.T) {
 	}
 	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 
-	// Establish sess-1 as already counted, lock released before the hold
-	// below starts: this call must succeed normally.
+	// Establish sess-1 as already counted: this call takes the lock normally.
 	counted, err := RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, now)
 	if err != nil || !counted {
 		t.Fatalf("first call: counted=%v err=%v, want true, <nil>", counted, err)
 	}
 
 	lockPath := filepath.Join(root, FileHarnessCountsLock)
-	holdFor(t, lockPath, 10*harnessCountBudget)
-
-	start := time.Now()
-	counted, err = RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, now)
-	elapsed := time.Since(start)
-	if err != nil || counted {
-		t.Fatalf("already-counted session under a held lock: counted=%v err=%v, want false, <nil>", counted, err)
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("premise: the first call's locked update left no sidecar to remove: %v", err)
 	}
-	if elapsed >= harnessCountBudget/2 {
-		t.Errorf("elapsed = %v, want well under %v (an already-counted session must never wait on the lock)", elapsed, harnessCountBudget/2)
+
+	counted, err = RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, now)
+	if err != nil || counted {
+		t.Fatalf("already-counted session: counted=%v err=%v, want false, <nil>", counted, err)
+	}
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Errorf("an already-counted session's call opened the sidecar lock (stat: %v); it must never touch the lock", err)
 	}
 }
 

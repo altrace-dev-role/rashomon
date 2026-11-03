@@ -161,7 +161,9 @@ IMPORTS["PLW1 a written file is hashed through os.Open"] = (D, '\t"io"\n', '\t"i
 m("PLW1 a package's directory is listed through os.Open", P,
   '\td, err := regfile.OpenDir(filepath.Join(root, filepath.FromSlash(dir)))\n',
   '\td, err := os.Open(filepath.Join(root, filepath.FromSlash(dir)))\n', "TestPLW1y_")
-IMPORTS["PLW1 a package's directory is listed through os.Open"] = (P, '\t"io/fs"\n', '\t"io/fs"\n\t"os"\n')
+IMPORTS["PLW1 a package's directory is listed through os.Open"] = (P,
+  '\t"io/fs"\n\t"path/filepath"\n\t"slices"\n\t"strings"\n\n\t"github.com/altrace-dev-role/rashomon/internal/regfile"\n',
+  '\t"io/fs"\n\t"os"\n\t"path/filepath"\n\t"slices"\n\t"strings"\n\n')
 
 # The ledger verb's wiring (N1, S1).
 m("PLW1 the verb's replay reads no platform graph", LR,

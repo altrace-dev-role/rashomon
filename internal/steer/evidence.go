@@ -259,9 +259,9 @@ func priorStreaks(lines [][]byte, sessionID string) map[string]int {
 // removes the marker and is not shadowed, so a release the Stop never judged
 // is trusted again on the floor's word. A marker with no readable version
 // stays until a probe pass removes it.
-func evidenceShadow(ctx *Context, c Client, table map[string]channelBasis) bool {
+func evidenceShadow(ctx *Context, c Client, table map[channelKey]channelBasis) bool {
 	event := string(ctx.Event)
-	if table[event].floor == "" {
+	if table[keyOf(event, c)].floor == "" {
 		return false
 	}
 	marked, ok := ctx.Store.ChannelEvidence(event)

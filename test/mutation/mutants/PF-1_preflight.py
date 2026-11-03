@@ -30,7 +30,7 @@ m("PF-1 Names reads every request as naming nothing", "internal/intent/intent.go
 m("PF-1 the first prompt's brief is never given", "internal/intent/note.go",
   "\tfirst := !d.BriefGiven && b.has()\n", "\tfirst := false\n", "TestPF1i_")
 m("PF-1 CheckOn admits after_seq 0 on every event", "internal/steer/finding.go",
-  "\tif event != EventUserPromptSubmit || f.AfterSeq != 0 {\n", "\tif f.AfterSeq != 0 {\n",
+  "\tif event != EventUserPromptSubmit && event != EventSessionStart || f.AfterSeq != 0 {\n", "\tif f.AfterSeq != 0 {\n",
   "TestPF1t_SeqZeroIsAdmittedOnAPromptOnly")
 m("PF-1 the steer line cannot record a preflight slot", "internal/steer/slots.go",
   "\t\tcase slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:\n\t\t\terr = putJSON(put, s.Name, preflightJSON(v))\n",
@@ -55,6 +55,6 @@ m("PF-1 the screen still says a prompt's text is not examined", "internal/disclo
 m("PF-1 task-preflight ranks below learned-fact", "internal/steer/pattern/pattern.go",
   "\t\t\tTaskPreflight:      72,\n", "\t\t\tTaskPreflight:      20,\n", "TestPF1p_|TestPriority_StepEightValues")
 m("PF-1 the steer environment is built before the Names guard", "cmd/rashomon/preflight.go",
-  "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tenv := steerEnv(id, now, st.Root())\n",
-  "\tenv := steerEnv(id, now, st.Root())\n\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
+  "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tenv := steerEnv(id, now, st.Root())\n",
+  "\tenv := steerEnv(id, now, st.Root())\n\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
   "TestPF1v_")

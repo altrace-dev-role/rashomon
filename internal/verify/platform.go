@@ -274,7 +274,9 @@ func (p *platformJudge) judge(f PlatformFamily) (ObligationState, []int64) {
 	case slices.ContainsFunc(p.c.unnamed, func(s int64) bool { return s > cov.Seq && s <= at }):
 		return ObligationUnknown, []int64{}
 	}
-	if b := bind(touched, p.c.unnamed, cov.Seq, at, p.snap.Point.Tree); b == boundOwn || b == boundForeign {
+	// touched is f's writes alone (writeTouches), so no gate root narrows
+	// them: "" covers every one (covers, STALE-COVER1).
+	if b := bind(touched, p.c.unnamed, "", cov.Seq, at, p.snap.Point.Tree); b == boundOwn || b == boundForeign {
 		return ObligationUnknown, []int64{}
 	}
 	switch {

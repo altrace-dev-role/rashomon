@@ -43,7 +43,7 @@ m("TRU-1 undoing the settings edit leaves the edit", "cmd/rashomon/watch.go",
   "TestTRU1_AFailedWriteIsUndoneInReverse")
 m("TRU-1 undoing a new file leaves it", "cmd/rashomon/watch.go",
   "\t\tif !existed {\n\t\t\tif err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {",
-  "\t\tif false {\n\t\t\tif err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {",
+  "\t\tif !existed && false {\n\t\t\tif err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {",
   "TestTRU1_AFailedWriteIsUndoneInReverse")
 m("TRU-1 a failure does not name its step", "cmd/rashomon/watch.go",
   "\tmsg := fmt.Sprintf(\"%s failed: %v\", step, err)\n", "\tmsg := fmt.Sprintf(\"a write failed: %v\", err)\n",
