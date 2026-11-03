@@ -82,7 +82,7 @@ func (p *Post) blast(env SteerEnv, ctx *steer.Context, ok bool) (blastDraft, boo
 	if file == nil || !strings.HasSuffix(*file, ".go") {
 		return blastDraft{}, false
 	}
-	root := gitRoot(baseline.Key(p.cwd))
+	root := blastRoot(p.cwd)
 	if root == "" {
 		return blastDraft{}, false
 	}
@@ -117,6 +117,22 @@ func (p *Post) blast(env SteerEnv, ctx *steer.Context, ok bool) (blastDraft, boo
 		StopForm: steer.StopFormNone, Message: m, AfterSeq: p.landedSeq, AgentID: p.agentID}
 	f.Priority, _ = pattern.Priority(pattern.BlastRadius)
 	return blastDraft{f: f, marker: marker}, true
+}
+
+// blastRoot is the Git root the read looks under, "" for none: baseline.Key
+// of cwd, with cwd resolved here so that a cwd not on disk, which holds no
+// sync to read, stops before KeyOf walks up to / for a .git. Through
+// baseline.Key, that walk was 33 of the step's 35 allocations a call on the
+// BenchmarkRunPost/edit_314k row, whose cwd is not on disk (se3-j10).
+func blastRoot(cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	dir, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return ""
+	}
+	return gitRoot(baseline.KeyOf(dir))
 }
 
 // editTool reports the tools whose input names the one file they change,
