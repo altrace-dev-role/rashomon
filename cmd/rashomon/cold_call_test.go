@@ -41,6 +41,15 @@ func TestColdCall(t *testing.T) {
 		{"post.edit_314k", postEntry, benchEdit314kPost},
 	} {
 		t.Run(c.id, func(t *testing.T) {
+			// One P for the whole subtest, its setup included (PERF-EDGE1):
+			// json/v2 keeps its decoders in a sync.Pool, whose private slot is
+			// per P, so a call that ran on another P than its setup missed the
+			// pool and read a second level 5 to 8K above the first
+			// (test/perf's TestPE1_ColdCallIsOneLevel). The pin is the
+			// measurement's: hook and post leave GOMAXPROCS as the runtime set
+			// it (85.3.8, test/perf/gate.go), and no rashomon code reads
+			// GOMAXPROCS or NumCPU.
+			defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 			_, installID := benchStarted(t)
 			in := newBenchInput(t, c.payload(t))
 			args := []string{install.Marker, installID}

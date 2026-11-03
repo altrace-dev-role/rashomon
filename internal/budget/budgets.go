@@ -100,7 +100,8 @@ type RSS struct {
 // is deliberately warmed (P-12) precisely so it excludes the one-time cost
 // this field exists to capture. Gated at +10% (test/perf's cold gate)
 // against runtime.MemStats.TotalAlloc of exactly one call in a fresh test
-// process. It is 0, not measured, for every entry with no benchmark row and
+// process, at one P (cmd/rashomon's TestColdCall pins GOMAXPROCS(1),
+// PERF-EDGE1). It is 0, not measured, for every entry with no benchmark row and
 // for recap.* and probe.*, which a fresh-process cold call has not yet been
 // built for (P-12); 0 there is the existing convention AllocBytesMax already
 // uses for probe.*, not a claim of zero cost.
