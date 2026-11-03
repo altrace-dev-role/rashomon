@@ -70,7 +70,7 @@ var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.Di
 // and runTempPrefixes the temporary names its atomic writes leave.
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
-	store.FileNoticeHoldout, fold.FileName, fold.MidFileName}
+	store.FileNoticeHoldout, fold.FileName, fold.MidFileName, store.FileBriefingArmed}
 
 var runTempPrefixes = []string{fold.TempPrefix}
 

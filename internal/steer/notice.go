@@ -75,9 +75,9 @@ func notice(ctx *Context, c Client, lines []*Line) (Output, string) {
 // Claude Code version, the event and its floor, that the note was built and
 // not sent to the agent, and why (shutBy). Nothing of the note itself. A
 // version that is not dotted digits is not printed.
-func channelNotice(event Event, c Client, surface string, table map[string]channelBasis) string {
+func channelNotice(event Event, c Client, surface string, table map[channelKey]channelBasis) string {
 	e := string(event)
-	b := table[e]
+	b := table[keyOf(e, c)]
 	version := "Claude Code " + c.Version
 	if !digitRuns(c.Version, '.') {
 		version = "Claude Code, version unreadable"
