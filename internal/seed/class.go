@@ -181,10 +181,10 @@ func classOf(name string, input json.RawMessage) class {
 func shellClass(input json.RawMessage) class {
 	s, _ := shape.DeriveCut("Bash", input, nil)
 	if s.RunnerKind != nil {
-		if *s.RunnerKind == shape.RunnerBuild {
-			return cBuildRun
+		if *s.RunnerKind == shape.RunnerTest {
+			return cTestRun
 		}
-		return cTestRun
+		return cBuildRun
 	}
 	switch s.VerbClass {
 	case shape.VerbRead:
