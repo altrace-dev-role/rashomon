@@ -296,8 +296,8 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
 // it is invoked by Claude Code and it always succeeds. At start it prints the
-// continuity briefing at a compaction (printContinuity) or else the project
-// brief to the user (printBrief), its one write to stdout.
+// continuity briefing at a compaction or else the project brief to the user
+// (printStart), its one write to stdout.
 func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook: signal watching and the
 	// phase check included. They ran ahead of the barrier, under this same
@@ -350,9 +350,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
-		if !printContinuity(args, payload, st, lead, id, stdout) {
-			printBrief(args, payload, st, lead, stdout)
-		}
+		printStart(args, payload, st, lead, id, stdout)
 		markFired(st, sessionOf(payload), probeEvent(phase))
 		return nil
 	})

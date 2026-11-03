@@ -24,6 +24,14 @@ const continuityCap = 256 << 20
 // in for it until that row's body lands.
 var readDirectives = directive.Read
 
+// printStart is probe start's one write to stdout: the continuity briefing
+// at a compaction (printContinuity), else the project brief (printBrief).
+func printStart(args []string, payload *hookio.Payload, st *store.Store, lead string, id harness.Identity, stdout io.Writer) {
+	if !printContinuity(args, payload, st, lead, id, stdout) {
+		printBrief(args, payload, st, lead, stdout)
+	}
+}
+
 // printContinuity is probe start's print at a compaction (card COMPACT-SLOT1,
 // tech 4.2.4 :1255): the continuity briefing, the person's words the last
 // compaction removed (directive.Briefing), as SessionStart's
