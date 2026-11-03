@@ -29,6 +29,7 @@ var locationPins = map[int]string{
 	10: "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // RulesVersion 10 named a Bash line's write targets; the cwd rule is unchanged
 	11: "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // RulesVersion 11 named the runner and the stage that hid its status; the cwd rule is unchanged
 	12: "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // RulesVersion 12 reads a hidden runner's printed exit status (STATUS-PROBE); the cwd rule is unchanged
+	13: "b67bdc7531ebeb98a863c1cdada63a92a2b4eac03964a5bc0754100190807057", // shape.RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); the cwd rule is unchanged
 }
 
 // locationCorpus is the (line, payload cwd) pairs locationPins digests, a

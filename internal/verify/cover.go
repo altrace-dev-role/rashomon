@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -98,11 +99,12 @@ func gateRoots(snap *Snapshot) []string {
 }
 
 // turnProjects is the projects the calls of the turn ran in (card F2), over
-// the window countTurn reads: each declaration's (projectOf: a file tool's
-// file's repository, a shell line's where it ran), distinct, in record order.
-// nil reads every gate as the turn's: a call whose project the record does
-// not say, more than maxProjectKeys, or no call in any project (a turn only
-// under /tmp or home reads the session's gates, as before the card, D40).
+// the window countTurn reads: each declaration's that acts (projectOf: a file
+// tool's file's repository, a shell line's where it ran), distinct, in record
+// order. nil reads every gate as the turn's: a call that acts whose project
+// the record does not say, more than maxProjectKeys, or no call in any
+// project (a turn only under /tmp or home reads the session's gates, as
+// before the card, D40).
 func turnProjects(run *store.Run, promptID string, at int64) []string {
 	if promptID == "" {
 		promptID = latestPrompt(run.Declarations)
@@ -110,7 +112,7 @@ func turnProjects(run *store.Run, promptID string, at int64) []string {
 	var ps []string
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
-		if d.PromptID == nil || *d.PromptID == "" || *d.PromptID != promptID || d.Seq > at {
+		if d.PromptID == nil || *d.PromptID == "" || *d.PromptID != promptID || d.Seq > at || !acts(d) {
 			continue
 		}
 		switch p := projectOf(d); {
@@ -124,6 +126,16 @@ func turnProjects(run *store.Run, promptID string, at int64) []string {
 		}
 	}
 	return ps
+}
+
+// acts reports a call that may act on the files of the project it ran in
+// (card F2c): one that writes or executes. A call whose class is read and
+// whose line may write nothing only looked (a Read, Glob or Grep; a shell
+// line every stage of which reads or prints, shape's mayWrite), and acts on
+// no project. Fail closed: a record before may_write (schema 3, record.go)
+// cannot say its line writes nothing, and acts.
+func acts(d *store.Declaration) bool {
+	return d.SchemaVersion < 3 || d.Shape.VerbClass != shape.VerbRead || d.Shape.MayWrite
 }
 
 // touches reports whether a call in one of projects may act on the files of

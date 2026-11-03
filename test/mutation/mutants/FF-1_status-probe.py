@@ -32,7 +32,7 @@ m("FF-1 a line that hides two runners reads", S,
   "\tif !ok || len(hidden) != 1 {\n", "\tif !ok || len(hidden) == 0 {\n", P)
 
 m("FF-1 the rules version stays at 11 when a printed status is read", "internal/shape/masked.go",
-  "const RulesVersion = 12\n", "const RulesVersion = 11\n", "TestFF1_PrintedStatusRulesVersion")
+  "const RulesVersion = 13\n", "const RulesVersion = 11\n", "TestFF1_PrintedStatusRulesVersion")
 
 # The lexer's literal dollars.
 T = "internal/shape/tokenize.go"
