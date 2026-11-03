@@ -32,6 +32,8 @@ RES2
 RP2
 RS1
 SC1
+# SEED2: AG-1's audit --keep refusal row is killed by TestSEED2c_, which pins that refusal's text (#184).
+SEED2
 SN1
 SP15
 SR1
