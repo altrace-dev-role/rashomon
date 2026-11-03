@@ -56,7 +56,7 @@ func (r rig) blastPost(t *testing.T, size int) (mk func(i int) []byte, control f
 		rel := "internal/p051/" + f
 		src[rel] = rel // pgraphFiles lists a file src lacks under the sha256 of its name
 	}
-	mod := pgraphTree(t, size, src)
+	mod, state := pgraphTree(t, size, src, nil)
 	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
 	edit := map[string]any{"file_path": filepath.Join(mod, "internal", "p000", "f.go"), "old_string": "package",
 		"new_string": "package", "replace_all": false}
@@ -112,7 +112,6 @@ func (r rig) blastPost(t *testing.T, size int) (mk func(i int) []byte, control f
 				t.Fatalf("measured post %d gave no blast-radius note, so it read no log", i)
 			}
 		}
-		state := filepath.Join(mod, ".pgraph")
 		if err := os.Rename(state, state+".off"); err != nil {
 			t.Fatal(err)
 		}

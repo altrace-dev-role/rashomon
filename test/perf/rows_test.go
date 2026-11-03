@@ -47,9 +47,10 @@ func TestRES28i_ToleranceScheduleIsTheSpecs(t *testing.T) {
 // rest from P-10, and this tree carries both, so every case gates. Dropping a
 // case or moving one to a later PR is a change to what is gated. One case is
 // not RES-28's: the Stop's transcript scan, CHANNEL-EVIDENCE1's own row (Q11).
-// Another is not either: the Stop's read of a 3 MiB pgraph log (PW1b-ON-230
-// step 2), whose cost grows with the repository's graph, not the payload; nor
-// is the post's read of the same log after a Go edit (ARCH-INLINE1).
+// Nor are the Stop's read of a 3 MiB pgraph log (PW1b-ON-230 step 2), the
+// prompt's read of one for a named symbol (step 3) and the post's read of
+// one after a Go edit (ARCH-INLINE1), whose costs grow with the
+// repository's graph, not the payload.
 func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 	type c struct {
 		entry string
@@ -65,6 +66,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"recap.stop.scan16MiB": {"recap", 16 << 20, "CE-1"},
 		// The Stop's platform read (PW1b-ON-230 step 2): the real recap entry over a vouched 3 MiB pgraph log.
 		"recap.stop.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
+		// The prompt's symbol read (PW1b-ON-230 step 3): the recap pending entry over a vouched 3 MiB pgraph log.
+		"recap.pending.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
 		// The post's blast-radius read (ARCH-INLINE1): the real post entry after a Go edit, over the same log.
 		"post.edit.pgraph3MiB": {"post", 3 << 20, "PW1b"},
 	}
