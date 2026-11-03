@@ -7,7 +7,8 @@
 # "(silent)", then the session's report.
 #
 # Turn 1 runs go test green, edits calc.go and runs go test red: the post
-# flags the regression and the Stop names the recorded failure. Turn 2 edits
+# tells the agent of the regression, shows you what it was told, and the Stop
+# names the recorded failure. Turn 2 edits
 # two files and claims a pass with no run: the done flag carries turn 1's red
 # forward. Turn 3 edits and runs go test green: verified. Each beat appends
 # what Claude Code would to the session's transcript, at its transcript_path,
@@ -43,9 +44,14 @@ SID=demo-1
 : > "$TR"
 export HOME=$T/user RASHOMON_HOME=$T/home CLAUDE_CONFIG_DIR=$T/config \
   RASHOMON_MANAGED_SETTINGS_PATH=$T/config/managed-settings.json \
-  CLAUDE_CODE_ENTRYPOINT=cli AI_AGENT=claude-code_2-1-280_harness CI= \
+  CLAUDE_CODE_ENTRYPOINT=cli AI_AGENT=claude-code_2-1-304_harness CI= \
   PYTHONIOENCODING=utf-8 PYTHONDONTWRITEBYTECODE=1
 ID=
+
+# The session runs as Claude Code 2.1.304 (AI_AGENT here, version in every
+# transcript line): the first version a note after a failed call is sent on
+# (steer's mirrorVerifiedOn). On an older one the red's note is built and not
+# sent, and the line says so once, as README describes.
 
 # say prints its argument with the run's own values masked. Each pattern is a
 # variable: bash 3.2 misparses a quoted pattern that opens with a slash. The
@@ -85,15 +91,21 @@ say() {
   printf '%s\n' "$s"
 }
 
-# unwrap is a hook's stdout as a person reads it: a lone systemMessage's text,
-# indented under its beat; anything else verbatim.
+# unwrap is a hook's stdout as a person reads it: the systemMessage's text,
+# indented under its beat, when it is alone or beside a note to the agent
+# (hookSpecificOutput holding only hookEventName and additionalContext, which
+# the systemMessage mirrors); anything else verbatim.
 unwrap() {
   python3 -c '
 import json, sys
 raw = sys.stdin.read()
 try:
     d = json.loads(raw)
-    text = d["systemMessage"] if isinstance(d, dict) and list(d) == ["systemMessage"] else None
+    hso = d.get("hookSpecificOutput", {}) if isinstance(d, dict) else None
+    shown = (isinstance(d, dict) and "systemMessage" in d
+             and set(d) <= {"systemMessage", "hookSpecificOutput"}
+             and isinstance(hso, dict) and set(hso) <= {"hookEventName", "additionalContext"})
+    text = d["systemMessage"] if shown else None
 except ValueError:
     text = None
 for line in (text if text is not None else raw.rstrip("\n")).split("\n"):
@@ -154,7 +166,7 @@ tx() {
   local n prev=null
   n=$(( $(wc -l < "$TR") + 1 ))
   [ $n -gt 1 ] && prev=$(printf '"00000000-0000-4000-8000-%012d"' $((n - 1)))
-  printf '{"parentUuid":%s,"isSidechain":false,%s"type":"%s","message":%s,"uuid":"00000000-0000-4000-8000-%012d","timestamp":"2026-10-28T10:%02d:00.000Z","sessionId":"%s","cwd":"%s","version":"2.1.280"}\n' \
+  printf '{"parentUuid":%s,"isSidechain":false,%s"type":"%s","message":%s,"uuid":"00000000-0000-4000-8000-%012d","timestamp":"2026-10-28T10:%02d:00.000Z","sessionId":"%s","cwd":"%s","version":"2.1.304"}\n' \
     "$prev" "${2:+\"promptId\":\"$2\",}" "$1" "$3" $n $n "$SID" "$P" >> "$TR"
 }
 # said PROMPT TEXT, asked ID TOOL INPUT, got PROMPT ID TEXT IS_ERROR and

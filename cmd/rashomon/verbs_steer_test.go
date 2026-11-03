@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,9 +18,12 @@ import (
 )
 
 // stcStore is a store at a fresh root, with the working directory moved to a
-// fresh project directory, which it returns beside the store.
+// fresh project directory, which it returns beside the store. The agent
+// signal is cleared, since steer on and off refuse an agent session and a
+// test run from one inherits it.
 func stcStore(t *testing.T) (*store.Store, string) {
 	t.Helper()
+	t.Setenv("CLAUDECODE", "")
 	root := t.TempDir()
 	benchSetenv(t, root, t.TempDir())
 	proj := t.TempDir()
@@ -109,12 +113,71 @@ func TestSTC1_SteerRefusesWhatItDoesNotKnow(t *testing.T) {
 	}
 }
 
+// The steered agent must not turn its own notes off: steer on and off, either
+// scope, refuse an agent session as repair does, and write nothing. The seed
+// is not in writeConfig's form, so even a write that changes no switch would
+// show.
+func TestSTC1q_AnAgentSessionCannotSetTheSteerSwitch(t *testing.T) {
+	st, _ := stcStore(t)
+	p := filepath.Join(st.Root(), store.FileConfig)
+	seed := "{ \"steer_user\": \"off\" }\n"
+	if err := os.WriteFile(p, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDECODE", "1")
+	for _, c := range []struct{ args, run string }{
+		{"off", "off --user"}, {"off --user", "off --user"}, {"off --project", "off --project"},
+		{"on", "on --user"}, {"on --user", "on --user"}, {"on --project", "on --project"},
+	} {
+		err := cmdSteer(strings.Fields(c.args), io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "Run `rashomon steer "+c.run+"` in your own terminal") {
+			t.Errorf("steer %s in an agent session = %v, want a refusal naming `rashomon steer %s`", c.args, err, c.run)
+		}
+	}
+	if b, _ := os.ReadFile(p); string(b) != seed {
+		t.Errorf("an agent session changed config.json: %q", b)
+	}
+	if _, err := os.Lstat(filepath.Join(st.Root(), store.FileConfigLock)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("an agent session took the config lock: %v", err)
+	}
+}
+
+// The Stop line's verification must not be hidden by the agent it checks:
+// summary on and off, either scope, refuse an agent session and write nothing,
+// while a bare summary still says the state.
+func TestAGSM1_AnAgentSessionCannotSetTheSummarySwitch(t *testing.T) {
+	st, _ := stcStore(t)
+	p := filepath.Join(st.Root(), store.FileConfig)
+	seed := "{ \"summary\": false }\n"
+	if err := os.WriteFile(p, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDECODE", "1")
+	for _, args := range [][]string{{"off"}, {"off", "--project"}, {"on"}, {"on", "--project"}} {
+		err := cmdSummary(args, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "rashomon summary "+strings.Join(args, " ")) {
+			t.Errorf("summary %v in an agent session = %v, want a refusal naming the command to run", args, err)
+		}
+	}
+	if b, _ := os.ReadFile(p); string(b) != seed {
+		t.Errorf("an agent session changed config.json: %q", b)
+	}
+	if _, err := os.Lstat(filepath.Join(st.Root(), store.FileConfigLock)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("an agent session took the config lock: %v", err)
+	}
+	var out bytes.Buffer
+	if err := cmdSummary(nil, &out); err != nil || !strings.HasPrefix(out.String(), "summary: off (you: off") {
+		t.Errorf("a bare summary in an agent session = %q, %v; want the state", out.String(), err)
+	}
+}
+
 func TestSTC1_NoStoreHoldsNoSwitch(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "none")
 	benchSetenv(t, root, t.TempDir())
 	t.Chdir(t.TempDir())
-	if err := cmdSteer([]string{"off"}, io.Discard); err == nil {
-		t.Error("steer off with no store was accepted")
+	t.Setenv("CLAUDECODE", "") // the no-store branch, not the agent-session refusal
+	if err := cmdSteer([]string{"off"}, io.Discard); err == nil || !strings.Contains(err.Error(), "nothing has been recorded here yet") {
+		t.Errorf("steer off with no store = %v, want the no-store refusal", err)
 	}
 	for _, verb := range []func([]string, io.Writer) error{cmdSteer, cmdScorecard} {
 		if out := stcRun(t, verb); out == "" {

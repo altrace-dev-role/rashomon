@@ -45,6 +45,21 @@ func ciWorkflow(t *testing.T) string {
 	return string(data)
 }
 
+// fuzzJob returns the fuzz job's lines, from its key to the cross-build job's.
+func fuzzJob(t *testing.T, doc string) string {
+	t.Helper()
+	i := strings.Index(doc, "\n  fuzz:\n")
+	if i < 0 {
+		t.Fatal("ci.yaml: no fuzz job")
+	}
+	job := doc[i:]
+	j := strings.Index(job[1:], "\n  cross-build:")
+	if j < 0 {
+		t.Fatal("ci.yaml: no cross-build job after the fuzz job")
+	}
+	return job[:j+1]
+}
+
 // TestRubricTEST1_FuzzJobBoundsMinimization: every new interesting input is
 // minimized before the fuzzer moves on, for up to a minute by default. On
 // FuzzTranscriptLines, whose inputs each write a file a line, one such input
@@ -77,13 +92,16 @@ func TestRubricTEST1_FuzzJobBoundsMinimization(t *testing.T) {
 	}
 }
 
-// TestRubricTEST1_FuzzJobFloorIsTheTreeCount: the job fails if it fuzzes
+// TestRubricTEST1_FuzzJobFloorIsTheTreeCount: the job fails if it lists
 // fewer targets than its floor, which only means something while the floor
 // is the number the tree holds. A floor left behind when targets are added
-// lets the job lose that many unnoticed. The tree's count is the targets go
-// test would run on the job's runner (fuzzTargets), not lines that read
-// "func Fuzz": a file a build tag leaves out of linux, or a function with the
-// name and not the signature, is no target.
+// lets the job lose that many unnoticed. Every shard lists the whole tree to
+// find its own targets, so each holds the floor over the whole count, and
+// TestRubricTEST1_FuzzJobRunsEveryShard holds that the shards between them
+// fuzz all of it. The tree's count is the targets go test would run on the
+// job's runner (fuzzTargets), not lines that read "func Fuzz": a file a build
+// tag leaves out of linux, or a function with the name and not the
+// signature, is no target.
 func TestRubricTEST1_FuzzJobFloorIsTheTreeCount(t *testing.T) {
 	m := regexp.MustCompile(`(?m)^\s*test "\$found" -ge (\d+)\s*$`).FindStringSubmatch(ciWorkflow(t))
 	if m == nil {
@@ -217,9 +235,7 @@ func (x) FuzzMethod(f *testing.F) {}
 // only from a corpus directory that exists, and keeps the inputs as an
 // artifact when it fails.
 func TestRubricTEST1_FuzzJobRunsEveryTargetAndKeepsItsFailures(t *testing.T) {
-	doc := ciWorkflow(t)
-	job := doc[strings.Index(doc, "\n  fuzz:\n"):]
-	job = job[:strings.Index(job[1:], "\n  cross-build:")+1]
+	job := fuzzJob(t, ciWorkflow(t))
 	for _, want := range []string{
 		`go test "$pkg" -list '^Fuzz'`,
 		`grep -q '^fuzz: elapsed' "$log"`,
@@ -237,8 +253,51 @@ func TestRubricTEST1_FuzzJobRunsEveryTargetAndKeepsItsFailures(t *testing.T) {
 	if strings.Contains(job, "^func Fuzz") {
 		t.Error("the fuzz job finds its targets by grep")
 	}
-	loop := job[strings.Index(job, "for pkg in"):strings.Index(job, `echo "fuzzed ${found} targets"`)]
-	if strings.Contains(loop, "exit") {
+	start, end := strings.Index(job, "for pkg in"), strings.Index(job, `echo "fuzzed `)
+	if start < 0 || end < start {
+		t.Fatal(`the fuzz job has no "for pkg in" loop ending before its "fuzzed" line`)
+	}
+	if strings.Contains(job[start:end], "exit") {
 		t.Error("the fuzz job exits inside its loop, so one failing target stops the rest")
+	}
+}
+
+// TestRubricTEST1_FuzzJobRunsEveryShard: the fuzz job is a matrix of shards
+// (CI-PERF-SPLIT1; one job took 18m10s for 32 targets in run 41224871717,
+// about 20 of DEL-17's 25 minutes at 35). Every shard lists every target and
+// fuzzes the ones whose index, from 1 in go list's and -list's order, falls to
+// it: the shards are disjoint and their union is the tree. The matrix runs
+// shards 1 to n, the job's name and SHARDS say n, and each shard checks it
+// ran its share, so no shard's targets go unrun. Each keeps its failing
+// inputs under its own artifact name: a second upload under one name in a
+// run is refused, and that shard's inputs would be lost.
+func TestRubricTEST1_FuzzJobRunsEveryShard(t *testing.T) {
+	job := fuzzJob(t, ciWorkflow(t))
+	m := regexp.MustCompile(`(?m)^\s+shard: \[([0-9, ]+)\]$`).FindStringSubmatch(job)
+	if m == nil {
+		t.Fatal("the fuzz job has no matrix of shards")
+	}
+	n := 0
+	for _, f := range strings.Split(m[1], ",") {
+		n++
+		if got, _ := strconv.Atoi(strings.TrimSpace(f)); got != n {
+			t.Fatalf("fuzz matrix shard %d is %q, want %d", n, f, n)
+		}
+	}
+	if n < 2 {
+		t.Errorf("the fuzz matrix runs %d shard: one job fuzzes every target", n)
+	}
+	for _, want := range []string{
+		"name: Fuzz (shard ${{ matrix.shard }}/" + strconv.Itoa(n) + ")\n",
+		"fail-fast: false\n",
+		"SHARD: ${{ matrix.shard }}\n",
+		"SHARDS: ${{ strategy.job-total }}\n",
+		`if [ $(( (found - 1) % SHARDS + 1 )) -ne "$SHARD" ]; then`,
+		`test "$ran" -ge $((found / SHARDS))`,
+		"name: fuzz-failing-inputs-${{ matrix.shard }}\n",
+	} {
+		if !strings.Contains(job, want) {
+			t.Errorf("the fuzz job does not hold %s", want)
+		}
 	}
 }

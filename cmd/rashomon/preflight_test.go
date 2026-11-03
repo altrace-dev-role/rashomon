@@ -72,7 +72,7 @@ func TestPF1k_OnlyThePendingReadTakesThePrompt(t *testing.T) {
 // no session_id has no run (recapTurn leaves it nil, H-107), so the
 // preflight must not ask it for a last seq. recapTurn returns without a
 // panic and prints nothing: no note, since there is no session to log it
-// under, and no catch-up, since recap.Pending answers false without one.
+// under, and no catch-up, since recap.Turn answers false without one.
 // cmdRecap's guard would swallow a panic and print the same nothing, so this
 // calls recapTurn itself. A guard more than a red: it passes before the
 // preflight is wired, and its break is the wired step calling LastSeq on the

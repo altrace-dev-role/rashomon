@@ -1,8 +1,8 @@
 # TRU-4: no terminal, no install without --yes; --yes records watch_yes at
-# steer_disclosure 0; an agent session is refused with or without --yes, and
-# the refusal never names --yes.
-m("TRU-4 a --yes consent counts as shown to a person", "cmd/rashomon/watch.go",
-  "\tif !ans.tty {\n\t\tdisclosure = 0\n", "\tif false {\n\t\tdisclosure = 0\n",
+# this build's steer disclosure (STEER-DISCLOSE-YES1, R32); an agent session
+# is refused with or without --yes, and the refusal never names --yes.
+m("TRU-4 a --yes consent holds every note", "cmd/rashomon/watch.go",
+  "\t\tSteerDisclosure: steer.DisclosureVersion,\n", "\t\tSteerDisclosure: 0,\n",
   "TestTRU4_")
 m("TRU-4 the agent signal is ignored", "cmd/rashomon/watch.go",
   "\tif signal := selfguard.AgentSignal(os.Getenv); signal != \"\" {\n",

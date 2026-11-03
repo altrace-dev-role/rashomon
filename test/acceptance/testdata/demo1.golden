@@ -28,7 +28,7 @@ turn 1, prompt p1: "Add the discount to calc.go and run the tests."
   Bash go test ./... -> ok                    (silent)
   Edit calc.go                                (silent)
   Bash go test ./... -> exit 1
-      rashomon record: gate 'go' exited 0 earlier in this session (0 min ago) and exited 1 on this run. Files written between the two runs: 'calc.go'.
+      ※ rashomon told the agent: "rashomon record: gate 'go' exited 0 earlier in this session (0 min ago) and exited 1 on this run. Files written between the two runs: 'calc.go'."
   Stop: "Added the discount to calc.go; go test exits 1 in TestDiscount."
       ※ rashomon: 1 recorded failure.
                   → rashomon report --session demo-1
@@ -47,7 +47,7 @@ turn 3, prompt p3: "Run the tests."
   Bash go test ./... -> ok                    (silent)
   Stop: "go test passes after the util.go edit."
       ※ rashomon: verified - go test passed after the last edit.
-                  AutoSteer: 1 finding, resolved at #21.
+                  AutoSteer: 1 note given; 1 finding, resolved at #21.
                   → rashomon report --session demo-1
 
 session end
@@ -63,7 +63,7 @@ session demo-1
   story
     last Stop: verified - go test passed after the last edit (call 23)
     record: 7 executions; 1 failed call; 3 test runs (2 ok, 1 failed)
-    autosteer: 1 finding, resolved at #21
+    autosteer: 1 regression location given at the failure; 1 finding, resolved at #21
     gates: go test green at #21
     account: the final message uses none of the 43 failure words, and 1 call failed
     details below: the account, then the tables; the numbers are call seqs
@@ -74,7 +74,7 @@ session demo-1
     the final message contains none of these 43 words: fail, failed, failing, error, errors, couldn't, could not, unable, not able, didn't, did not, blocked and 31 more of 43 (--json lists them all)
   test runs: 3 (2 ok, 1 failed)
   autosteer
-    delivered: none
+    delivered: 1 note (1 regression location) at #9 with prompt p1
     findings: 1 regression location at #7 (go), resolved by #21 green
     checks: none expected
     lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session

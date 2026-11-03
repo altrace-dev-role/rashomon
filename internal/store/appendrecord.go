@@ -21,9 +21,12 @@ type SeqRecord interface {
 // record: the seq is allocated and set inside the critical section, and
 // fitLine's caps and the degraded rule apply to it as to every record. A kind
 // AcceptsKind refuses is ErrUnknownKind, and nothing is written. A lock
-// timeout is ErrLockTimeout and spills nothing: every record written here is
-// derivable from the records before it, so losing one loses no fact, and a
-// spilled copy without a seq would place nothing.
+// timeout is ErrLockTimeout and spills nothing: a spilled copy without a seq
+// would place nothing. Every record written here is derivable from the
+// records before it, so losing one loses no fact, except a spec_event's
+// rule_hit, the call's verdict at the post, which the record at v4 cannot
+// derive. Losing one of those still fails safe: the Stop reads that rule
+// undecided, never clear (card SPEC-RULES-STOP1).
 func (s *Store) AppendRecord(sessionID string, rec SeqRecord) error {
 	if kind, version := rec.Kind(); !AcceptsKind(kind, version) {
 		return ErrUnknownKind

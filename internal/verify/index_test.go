@@ -327,9 +327,9 @@ func wantMode(t *testing.T, path string, perm fs.FileMode) {
 }
 
 // TestIDX5_ReadIndexAbsentMalformedAndOverCap (PF-PG1): no file is no index and
-// no error; a file over MaxIndexBytes, or not the index's closed shape, is an
-// error, which the caller reads as no index (every family required). A file
-// of exactly MaxIndexBytes reads.
+// no error; a file over MaxIndexBytes, or not one index value with its entries
+// in order, is an error, which the caller reads as no index (every family
+// required). A file of exactly MaxIndexBytes reads.
 func TestIDX5_ReadIndexAbsentMalformedAndOverCap(t *testing.T) {
 	dir := t.TempDir()
 	if idx, err := ReadIndex(filepath.Join(dir, "absent.json")); idx != nil || err != nil {
@@ -342,7 +342,6 @@ func TestIDX5_ReadIndexAbsentMalformedAndOverCap(t *testing.T) {
 	for _, c := range []struct{ name, body string }{
 		{"unterminated", "{"},
 		{"over_the_cap", padded(MaxIndexBytes + 1)},
-		{"an_unknown_field", `{"project_key":"/p","entries":[],"extra":1}`},
 		{"a_second_value", `{"project_key":"/p","entries":[]} {}`},
 		{"out_of_order", `{"project_key":"/p","entries":[{"family":"b"},{"family":"a"}]}`},
 		{"a_family_twice", `{"project_key":"/p","entries":[{"family":"a"},{"family":"a"}]}`},
@@ -364,6 +363,34 @@ func TestIDX5_ReadIndexAbsentMalformedAndOverCap(t *testing.T) {
 	}
 	if idx, err := ReadIndex(path); err != nil || idx == nil || idx.ProjectKey != "/p" {
 		t.Errorf("ReadIndex of exactly MaxIndexBytes = %+v, %v; want /p", idx, err)
+	}
+}
+
+// TestIDX5t_AnUnknownKeyReadsAndTheEntriesStay (INDEX-TOLERANT1, #171 D1): a
+// key this build does not name, at the top or in an entry, is one a later
+// build wrote. It reads with every entry kept, so this build's next Stop
+// writes back the learned history it found, not a fresh index over it; the
+// rewrite drops only the key this build does not know.
+func TestIDX5t_AnUnknownKeyReadsAndTheEntriesStay(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct{ name, body string }{
+		{"at_the_top", `{"project_key":"/p","entries":[{"family":"a","sessions":2},{"family":"b","sessions":3}],"later":{"seq":7}}`},
+		{"in_an_entry", `{"project_key":"/p","entries":[{"family":"a","sessions":2,"later":true},{"family":"b","sessions":3}]}`},
+	} {
+		path := filepath.Join(dir, c.name+".json")
+		if err := os.WriteFile(path, []byte(c.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		idx, err := ReadIndex(path)
+		if err != nil || idx == nil || idx.ProjectKey != "/p" || len(idx.Entries) != 2 || idx.Entries[0].Sessions != 2 || idx.Entries[1].Sessions != 3 {
+			t.Fatalf("%s: ReadIndex = %+v, %v; want /p with both entries", c.name, idx, err)
+		}
+		if _, err := WriteIndex(path, idx); err != nil {
+			t.Fatal(err)
+		}
+		if again, err := ReadIndex(path); err != nil || again == nil || len(again.Entries) != 2 || again.Entries[1].Sessions != 3 {
+			t.Errorf("%s: after the rewrite ReadIndex = %+v, %v; want both entries", c.name, again, err)
+		}
 	}
 }
 
