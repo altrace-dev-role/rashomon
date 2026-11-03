@@ -38,14 +38,14 @@ func benchTranscript(size int) (out []byte, last Boundary) {
 	return out, last
 }
 
-// BenchmarkLastBoundary is a compact start's boundary pass (COMPACT-SLOT1;
+// BenchmarkBoundary is a compact start's boundary pass (COMPACT-SLOT1;
 // mgr 11-02: measured, not assumed) over a 40 MiB transcript shaped as the
 // longest one on this machine (benchTranscript): one forward read, a line at
 // a time through the 64 KiB reader. The file was just written, so it reads
 // from the page cache, as a transcript Claude Code has just appended to does.
 // Its ns/op is the pass's wall time, which no gate reads (RES-36); its B/op
 // and allocs/op are its row.
-func BenchmarkLastBoundary(b *testing.B) {
+func BenchmarkBoundary(b *testing.B) {
 	b.Run("40MiB", func(b *testing.B) {
 		data, want := benchTranscript(40 << 20)
 		p := filepath.Join(b.TempDir(), "s.jsonl")

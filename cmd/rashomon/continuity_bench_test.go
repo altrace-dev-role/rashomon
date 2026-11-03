@@ -17,7 +17,7 @@ import (
 )
 
 // benchCompactTranscript writes size bytes of transcript shaped as
-// internal/directive's BenchmarkLastBoundary reads (37a15912 on 11-02: about
+// internal/directive's BenchmarkBoundary reads (37a15912 on 11-02: about
 // 2 KiB a line, one line over 64 KiB, 15 compact boundaries) and returns its
 // path: 2 KiB user records, a 66 KiB line every 8 MiB and a boundary every
 // size/16 bytes.
@@ -49,7 +49,7 @@ func benchCompactTranscript(b *testing.B, size int) string {
 	return p
 }
 
-// BenchmarkProbeCompact is probe start at a compaction (COMPACT-SLOT1; mgr
+// BenchmarkCompact is probe start at a compaction (COMPACT-SLOT1; mgr
 // 11-02: the 256 MiB cap's condition, measured, not assumed) on a 40 MiB
 // transcript: the boundary pass, the dedupe's steer-log read, a stand-in
 // Read of five directives (DIRECTIVE-KEEP1's body is not here, and its own
@@ -58,7 +58,7 @@ func benchCompactTranscript(b *testing.B, size int) string {
 // before each call, so every call gives the compaction's briefing. Its ns/op
 // is the compact start's wall time in process, which no gate reads (RES-36);
 // its B/op and allocs/op are its row.
-func BenchmarkProbeCompact(b *testing.B) {
+func BenchmarkCompact(b *testing.B) {
 	b.Run("40MiB", func(b *testing.B) {
 		root, installID := benchStarted(b)
 		benchSteerPins(b)
