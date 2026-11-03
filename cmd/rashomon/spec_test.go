@@ -140,8 +140,10 @@ func TestST1_TrustBindsTheDigest(t *testing.T) {
 	agent := &person{answer: right}
 	atSpecTerminal(t, agent, nil)
 	t.Setenv(selfguard.EnvClaudeCode, "1")
-	if code, out, errOut := specRun(t, right, "trust"); code != 1 || out != "" || !strings.Contains(errOut, "agent session") || agent.read {
+	if code, out, errOut := specRun(t, right, "trust"); code != 1 || out != "" || agent.read {
 		t.Errorf("trust under an agent signal: exit %d, stdout %q, stderr %q, terminal read %v", code, out, errOut, agent.read)
+	} else {
+		wantRefusal(t, "spec trust", errOut, "spec trust "+shellWord(p.path), "written")
 	}
 	t.Setenv(selfguard.EnvClaudeCode, "")
 	atSpecTerminal(t, &person{answer: "00000000"}, nil)
@@ -234,24 +236,30 @@ func TestST1c_UntrustRemovesTheBinding(t *testing.T) {
 
 // An agent session cannot take a spec's trust away: untrust stops the spec's
 // rules being nudges to the agent, so it is refused as trust is, naming the
-// command to run in a terminal, and writes nothing (the bindings and the key
-// stay as they were).
+// command to run in a terminal, and writes nothing (the bindings file's bytes
+// and the key stay as they were).
 func TestAGSU1_AnAgentSessionCannotUntrustASpec(t *testing.T) {
 	p := newSpecProject(t, specUnit)
 	atSpecTerminal(t, &person{answer: typedPrefix(t, specUnit)}, nil)
 	if code, out, errOut := specRun(t, "", "trust"); code != 0 {
 		t.Fatalf("trust: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
-	before, key := p.bindings(), p.readKey()
+	bindingsFile := filepath.Join(p.root, spec.TrustFile)
+	before, err := os.ReadFile(bindingsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := p.readKey()
 	t.Setenv(selfguard.EnvClaudeCode, "1")
 	for _, args := range [][]string{{"untrust"}, {"untrust", p.path}} {
 		code, out, errOut := specRun(t, "", args...)
-		if code != 1 || out != "" || !strings.Contains(errOut, "agent session; nothing was written") || !strings.Contains(errOut, "rashomon spec untrust "+shellWord(p.path)) {
+		if code != 1 || out != "" {
 			t.Errorf("%v in an agent session: exit %d, stdout %q, stderr %q", args, code, out, errOut)
 		}
+		wantRefusal(t, strings.Join(args, " "), errOut, "spec untrust "+shellWord(p.path), "written")
 	}
-	if got := p.bindings(); len(got) != len(before) || got[0] != before[0] {
-		t.Errorf("an agent session changed the bindings: %+v, was %+v", got, before)
+	if after, _ := os.ReadFile(bindingsFile); !bytes.Equal(after, before) {
+		t.Errorf("an agent session changed %s: %q, was %q", spec.TrustFile, after, before)
 	}
 	if again := p.readKey(); !bytes.Equal(again, key) {
 		t.Error("an agent session changed the key")

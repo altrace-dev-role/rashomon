@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -298,8 +299,58 @@ func BenchmarkPostSteer(b *testing.B) {
 	// appends no line.
 	w, wf := newBenchWrite(b, 6000)
 	env = wf.env()
-	b.Run("write_6000_unarmed", wf.writeRow(w, env, false))
-	b.Run("write_6000_armed", wf.writeRow(w, env, true))
+	b.Run("write_6000_unarmed", wf.writeRow(w, env, false, false))
+	b.Run("write_6000_armed", wf.writeRow(w, env, true, true))
+	// write_6000_armed_noindex and write_6000_armed_noindex_spec are the armed
+	// write in a project with no learned index (card STALE-NOINDEX1, D222),
+	// which every new project is. With no spec file where discovery looks, the
+	// step takes the arm and stops at the candidates' Lstats; with a trusted
+	// spec whose required gate no call runs, it reads the run and judges it,
+	// the cost D222 adds once per runner-then-write cycle, and raises nothing.
+	nw, nf := newBenchWriteNoIndex(b, 6000, false)
+	b.Run("write_6000_armed_noindex", nf.writeRow(nw, nf.env(), true, false))
+	sw, sf := newBenchWriteNoIndex(b, 6000, true)
+	b.Run("write_6000_armed_noindex_spec", sf.writeRow(sw, sf.env(), true, true))
+}
+
+// newBenchWriteNoIndex is newBenchWrite's record and Edit in a project with
+// no learned index. With withSpec the project is a git root whose spec,
+// bound as trusted, declares one required gate no call of the record runs.
+func newBenchWriteNoIndex(b *testing.B, n int, withSpec bool) (*Post, *benchSteer) {
+	b.Helper()
+	f := newBenchSteer(b, n)
+	dir, err := filepath.EvalSymlinks(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	if withSpec {
+		const doc = `{"rashomon_spec": 1, "gates": [{"id": "unit", "kind": "test", "argv": ["make", "check-unit"]}]}`
+		sdir := filepath.Join(dir, ".claude", "rashomon")
+		for _, d := range []string{sdir, filepath.Join(dir, ".git")} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				b.Fatal(err)
+			}
+		}
+		path := filepath.Join(sdir, "spec.json")
+		if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+			b.Fatal(err)
+		}
+		_, digest, err := spec.Parse([]byte(doc))
+		if err != nil {
+			b.Fatal(err)
+		}
+		bound := spec.Bindings{Bindings: []spec.Binding{{ProjectRoot: SpecProject(path), SpecPath: path, SpecDigest: digest, BoundAtMS: 1}}}
+		if err := WriteSpecBindings(f.st.Root(), &bound); err != nil {
+			b.Fatal(err)
+		}
+	}
+	edit := map[string]any{"file_path": filepath.Join(dir, "pkg", "a.go"), "old_string": "a", "new_string": "b"}
+	w := f.call(b, n+2, "Edit", edit, 0)
+	w.cwd = dir
+	if err := w.Flush(); err != nil {
+		b.Fatal(err)
+	}
+	return w, f
 }
 
 // newBenchWrite is newBenchSteer's record at n with an Edit of a file under a
@@ -338,9 +389,10 @@ func newBenchWrite(b *testing.B, n int) (*Post, *benchSteer) {
 }
 
 // writeRow is a write row: the whole step on w's post per iteration, armed
-// first outside the timer when armed is set. The check after it, outside the
-// timer too, reads what the step must leave: no arm, and no steer line.
-func (f *benchSteer) writeRow(w *Post, env SteerEnv, armed bool) func(*testing.B) {
+// first outside the timer when armed is set, and judged when judged is set.
+// The check after it, outside the timer too, reads what the step must leave:
+// no arm, and no steer line.
+func (f *benchSteer) writeRow(w *Post, env SteerEnv, armed, judged bool) func(*testing.B) {
 	return func(b *testing.B) {
 		before := len(f.lines(b))
 		if !armed {
@@ -350,7 +402,7 @@ func (f *benchSteer) writeRow(w *Post, env SteerEnv, armed bool) func(*testing.B
 			w.promptID = "p1"
 			NoteSpecFound(f.st, benchSteerSession, w.promptID, w.cwd, env.ProjectDir, env.ManagedDir, nil)
 		}
-		f.writePremise(b, w, env, armed)
+		f.writePremise(b, w, env, armed, judged)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
@@ -375,9 +427,10 @@ func (f *benchSteer) writeRow(w *Post, env SteerEnv, armed bool) func(*testing.B
 }
 
 // writePremise fails the row unless judge does what the row claims: an
-// unarmed write is not judged, and an armed one is, and takes the arm, with
-// no finding.
-func (f *benchSteer) writePremise(b *testing.B, w *Post, env SteerEnv, armed bool) {
+// unarmed write is not judged; an armed one takes the arm and is judged when
+// judged is set (an index, or a spec declaring a required gate); and no
+// finding is raised.
+func (f *benchSteer) writePremise(b *testing.B, w *Post, env SteerEnv, armed, judged bool) {
 	b.Helper()
 	if armed {
 		if err := f.st.ArmStale(benchSteerSession); err != nil {
@@ -385,8 +438,8 @@ func (f *benchSteer) writePremise(b *testing.B, w *Post, env SteerEnv, armed boo
 		}
 	}
 	_, view, ok := w.judge(env)
-	if ok != armed || len(view.Findings) != 0 {
-		b.Fatalf("judge = %v with %d findings, want %v with none", ok, len(view.Findings), armed)
+	if ok != judged || len(view.Findings) != 0 {
+		b.Fatalf("judge = %v with %d findings, want %v with none", ok, len(view.Findings), judged)
 	}
 	if on, err := f.st.StaleArmed(benchSteerSession); err != nil || on {
 		b.Fatalf("after judge the trigger is armed (%v, %v)", on, err)
