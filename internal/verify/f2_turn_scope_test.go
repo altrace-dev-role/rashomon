@@ -45,11 +45,12 @@ func f2Unkeyed(t *testing.T, r *store.Run, seq int64) {
 }
 
 // f2Vet is the view's go vet row, which must be the masked one, or the test
-// proves nothing.
+// proves nothing. A learned row is found by its family's runner: its id ends
+// in the family's location ("learned:test:r:go-vet@d:repo").
 func f2Vet(t *testing.T, v StopView) GateState {
 	t.Helper()
 	for _, g := range v.Snap.Gates {
-		if strings.HasSuffix(g.Gate, "go-vet") {
+		if strings.HasPrefix(g.Family, "r:go-vet@") {
 			if g.State != MaskedInconclusive {
 				t.Fatalf("premise: go vet is %s %s, want masked", g.State, g.Reason)
 			}
