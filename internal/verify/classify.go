@@ -57,6 +57,12 @@ type gateRun struct {
 	// read back where they are named (shape.RunnerNameOf, shape.MaskedByOf).
 	RunnerID   uint8
 	MaskedByID uint8
+	// ProjectID is the project the run's declaration names, as its place
+	// in the run's projectKeys plus one, 0 for none known (card
+	// STALE-COVER1): a learned family's root, the files it covers. A byte in
+	// the padding the flags leave, as RunnerID and MaskedByID are, so the
+	// run costs no byte more (TestMO1_TheRunStructsDidNotGrow).
+	ProjectID uint8
 }
 
 // familyKey is a gate's identity: the same runner at the same location.
@@ -85,6 +91,10 @@ type write struct {
 	// write names, as the call left it (ContentSHA256); nil where it has
 	// none, and for every other write (P5A).
 	SHA *string
+	// Project is the project the write is read in (projectOf): its call's
+	// key, noProject where the hook proved the call in none, nil where the
+	// record does not say. covers reads it beside Path (STALE-COVER1).
+	Project *string
 }
 
 // classify turns a run's calls into the two things the gate state reads: the
@@ -140,7 +150,8 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 	if run == nil {
 		return nil, nil, nil, nil
 	}
-	return classifyWith(run, pickExecutions(run))
+	runs, writes, unnamed, rewritten, _ = classifyWith(run, pickExecutions(run))
+	return runs, writes, unnamed, rewritten
 }
 
 // pickExecutions is the execution each call is judged on, by ToolUseID:
@@ -158,8 +169,9 @@ func pickExecutions(run *store.Run) map[string]*store.Execution {
 	return picked
 }
 
-// classifyWith is classify over picked, pickExecutions(run); run is not nil.
-func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64) {
+// classifyWith is classify over picked, pickExecutions(run), and keys, the
+// projects its gate runs name (ProjectID); run is not nil.
+func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64, keys projectKeys) {
 	var pending []int // indexes into runs whose kind waits on the inference
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
@@ -177,6 +189,7 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 			continue
 		}
 		g := newRun(d, e, masked, runner)
+		g.ProjectID = keys.id(d.Project)
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 			rewritten = append(rewritten, d.Seq)
@@ -197,7 +210,7 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 	sort.SliceStable(writes, func(i, j int) bool { return writes[i].Seq < writes[j].Seq })
 	slices.Sort(unnamed)
 	slices.Sort(rewritten)
-	return runs, writes, unnamed, rewritten
+	return runs, writes, unnamed, rewritten, keys
 }
 
 // outranks reports whether cur, the execution picked so far for a call, wins
@@ -313,7 +326,7 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 	file, shell := writeTargets(d)
 	named := func(p string) {
 		rel := relativise(p, d.Project, d.CWD)
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName})
+		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName, Project: projectOf(d)})
 	}
 	blind := func() {
 		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Tool: d.ToolName})

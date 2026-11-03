@@ -122,7 +122,7 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 		if p := Program(programOf(runs, last)); p.Valid() {
 			fact.Program = p
 		}
-		between(&fact, writes, pt.AgentID)
+		between(&fact, writes, pt.AgentID, g.root)
 		if fact.WritesSince == 0 {
 			continue
 		}
@@ -187,7 +187,7 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, de
 		if p := Program(programOf(runs, green)); p.Valid() {
 			fact.Program = p
 		}
-		own(&fact, writes, decl)
+		own(&fact, writes, decl, g.root)
 		prompt := ""
 		if pt.PromptID != nil {
 			prompt = *pt.PromptID
@@ -211,7 +211,7 @@ func staleHere(g *GateState, writes []write, decl int64) bool {
 	}
 	lo := g.LastGreen.Seq
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo }); i < len(writes); i++ {
-		if w := &writes[i]; w.Path != nil && Relevant(w.Class) {
+		if w := &writes[i]; w.Path != nil && Relevant(w.Class) && covers(g.root, w) {
 			return w.Seq == decl
 		}
 	}
@@ -242,16 +242,17 @@ func declSeqAt(run *store.Run, toolUseID string, at int64) int64 {
 	return seq
 }
 
-// own fills f's write counts from this call's relevant writes, those
-// declared at decl: the distinct named paths, first first, at most MaxPaths,
-// and PathsOmitted the rest or those outside the slot's charset. A write
-// another call declared beside this one, by this agent or another, is not
-// this call's and is never named in its sentence (INV-2).
-func own(f *GateFact, writes []write, decl int64) {
+// own fills f's write counts from this call's relevant writes the gate
+// covers, root's, those declared at decl: the distinct named paths, first
+// first, at most MaxPaths, and PathsOmitted the rest or those outside the
+// slot's charset. A write another call declared beside this one, by this
+// agent or another, is not this call's and is never named in its sentence
+// (INV-2).
+func own(f *GateFact, writes []write, decl int64, root string) {
 	seen := map[PathSlot]bool{}
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq >= decl }); i < len(writes) && writes[i].Seq == decl; i++ {
 		w := &writes[i]
-		if w.Path == nil || !Relevant(w.Class) {
+		if w.Path == nil || !Relevant(w.Class) || !covers(root, w) {
 			continue
 		}
 		f.WritesSince++
@@ -269,16 +270,17 @@ func own(f *GateFact, writes []write, decl int64) {
 }
 
 // between fills f's write counts from the relevant writes strictly between
-// its two runs: a binary search for the first past the green, a scan to the
-// red. Paths are the distinct named paths, first write first, at most
-// MaxPaths; PathsOmitted the distinct ones past that or outside the slot's
-// charset; OtherAgents the writes by an agent other than the point's.
-func between(f *GateFact, writes []write, agent *string) {
+// its two runs that the gate covers, root's, or whose target is not named: a
+// binary search for the first past the green, a scan to the red. Paths are
+// the distinct named paths, first write first, at most MaxPaths;
+// PathsOmitted the distinct ones past that or outside the slot's charset;
+// OtherAgents the writes by an agent other than the point's.
+func between(f *GateFact, writes []write, agent *string, root string) {
 	lo, hi := *f.LastGreenSeq, *f.LastRunSeq
 	seen := map[PathSlot]bool{}
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo }); i < len(writes) && writes[i].Seq < hi; i++ {
 		w := &writes[i]
-		if !Relevant(w.Class) {
+		if !Relevant(w.Class) || w.Path != nil && !covers(root, w) {
 			continue
 		}
 		f.WritesSince++

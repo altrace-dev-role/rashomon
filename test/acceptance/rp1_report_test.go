@@ -98,9 +98,14 @@ func (e *env) rpCall(t *testing.T, prompt, id string, c fixtureCall) {
 	}
 }
 
+// rpGreen edits a file in the session's own directory, the project the Stop's
+// gate covers (card STALE-COVER1: a write outside it is not counted), then
+// runs the gate green.
 func (e *env) rpGreen(t *testing.T, prompt string) {
 	t.Helper()
-	e.rpCall(t, prompt, "toolu_"+prompt+"_edit", editOf("main.go"))
+	edit := editOf("main.go")
+	edit.Input["file_path"] = filepath.Join(e.cwd, "main.go")
+	e.rpCall(t, prompt, "toolu_"+prompt+"_edit", edit)
 	e.rpCall(t, prompt, "toolu_"+prompt+"_test", goTestRun("ok"))
 }
 

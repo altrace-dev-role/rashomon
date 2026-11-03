@@ -64,10 +64,14 @@ const (
 // green last run whose tree moved since, by the session's unnamed write or by
 // no write of its own, is Stale (bind, tree.go).
 //
+// keys is classify's: a family's root, the project whose files it covers, is
+// its last run's at the point (card STALE-COVER1); a write outside it counts
+// against the family nowhere (covers).
+//
 // Cost: one pass to bucket the runs, a sort per family, and one pass over the
 // writes and the unnamed per family, then with a tree one more over the
 // writes before the green run: O(R log R + F(W + U)).
-func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) []GateState {
+func gateStates(runs []gateRun, writes []write, unnamed []int64, keys projectKeys, at int64, tree map[string]*string) []GateState {
 	byFamily := make(map[familyKey][]gateRun)
 	for _, r := range runs {
 		if k, ok := r.family(); ok {
@@ -82,7 +86,7 @@ func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64, tree 
 		if len(fr) == 0 {
 			continue
 		}
-		out = append(out, stateOf(k, kind, fr, writes, unnamed, at, tree))
+		out = append(out, stateOf(k, kind, fr, writes, unnamed, keys.key(fr[len(fr)-1].ProjectID), at, tree))
 	}
 	slices.SortFunc(out, func(a, b GateState) int {
 		return cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))
@@ -278,8 +282,9 @@ func redReason(f *fam) Reason {
 }
 
 // stateOf is one family's GateState; fr is its runs at the point, in Seq
-// order, at least one, and kind is the family's.
-func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
+// order, at least one, kind is the family's, and root the project whose
+// files it covers, "" for every file (covers).
+func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	f := fam{last: &fr[len(fr)-1]}
 	for i := len(fr) - 1; i >= 0; i-- {
 		if green(&fr[i]) {
@@ -289,12 +294,12 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 	}
 	f.ref = cmp.Or(f.green, f.last)
 	for _, w := range writes {
-		if w.Path != nil && Relevant(w.Class) && w.Seq > f.ref.Seq && w.Seq <= at {
+		if w.Path != nil && Relevant(w.Class) && w.Seq > f.ref.Seq && w.Seq <= at && covers(root, &w) {
 			f.counted = append(f.counted, w)
 		}
 	}
 	if f.green == f.last {
-		f.bound = bind(writes, unnamed, f.green.Seq, at, tree)
+		f.bound = bind(writes, unnamed, root, f.green.Seq, at, tree)
 	}
 	g := GateState{
 		Gate:             learnedGateID(kind, k),
@@ -308,6 +313,7 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 		LastRun:          runRef(f.last),
 		WritesSinceGreen: len(f.counted),
 		bound:            f.bound,
+		root:             root,
 	}
 	for _, r := range gateTable {
 		if r.when(&f) {

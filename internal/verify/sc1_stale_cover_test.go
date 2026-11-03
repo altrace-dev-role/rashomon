@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -158,8 +159,10 @@ func TestSC1b_AScriptUnderTmpAfterAGreenLeavesItGreen(t *testing.T) {
 // back as a third commit, 31239230." The hook keys the Write by its file's
 // repository, the other worktree, so the first worktree's go test covers
 // nothing written after its pass. Control: the same file in the first
-// worktree is a covered write after the pass. Break: take a learned gate's
-// root from anything but its last run's project.
+// worktree is a covered write after the pass. A shell line in the first
+// worktree naming the other by "../" is not placed in the first. Break: take
+// a learned gate's root from anything but its last run's project, or read a
+// path that climbs out of its call's project as inside it.
 func TestSC1c_AWriteInAnotherWorktreeLeavesThisOnesTestGreen(t *testing.T) {
 	const said = "The F1 fix for STEER-DISCLOSE-YES1 is done and handed back as a third commit, 31239230."
 	for _, c := range []struct {
@@ -168,10 +171,15 @@ func TestSC1c_AWriteInAnotherWorktreeLeavesThisOnesTestGreen(t *testing.T) {
 		state               State
 	}{
 		{"another worktree", "/wt/rv-se4-189/test/zz_scratch_review_test.go", "/wt/rv-se4-189", false, Green},
+		{"another worktree by ../", "../rv-se4-189/test/zz_scratch_review_test.go", "/wt/rv-se4-sdy", false, Green},
 		{"control: this worktree", "/wt/rv-se4-sdy/test/zz_scratch_review_test.go", "/wt/rv-se4-sdy", true, Stale},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := runOf(t, gateCall(1, "go-test", store.ExecOK), scWrite(2, c.path))
+			second := scWrite(2, c.path)
+			if !filepath.IsAbs(c.path) {
+				second = bashWrite(2, c.path)
+			}
+			r := runOf(t, gateCall(1, "go-test", store.ExecOK), second)
 			scAt(t, r, 1, "/wt/rv-se4-sdy", "/wt/rv-se4-sdy")
 			scAt(t, r, 2, c.project, "/wt/rv-se4-sdy")
 			v := scStop(inPrompt(r, "p1"), "p1", said, "/wt/rv-se4-sdy", nil)
@@ -346,5 +354,32 @@ func TestSC1j_AMovedFileTheGateDoesNotCoverLeavesItsTreeBound(t *testing.T) {
 				t.Errorf("%s %s, want %s", g.State, g.Reason, c.state)
 			}
 		})
+	}
+}
+
+// TestSC1k_ARecordThatCannotPlaceAGateCountsEveryWrite: fail closed where the
+// record does not say what a gate covers. A go test the hook placed in no
+// project (a leading cd into a directory under no .git, outside the cwd)
+// covers every write, so a note outside after its pass leaves it stale and
+// the turn counts the note; an incomplete record counts every write the turn
+// made, and its row is unknown, never none (D80). Break: drop a gate with no
+// root from the turn's roots, or count an incomplete turn's writes by root.
+func TestSC1k_ARecordThatCannotPlaceAGateCountsEveryWrite(t *testing.T) {
+	r := runOf(t, gateCall(1, "go-test", store.ExecOK), scWrite(2, "/ev/notes.txt"), scRead(3))
+	scAt(t, r, 1, "", "/repo")
+	scAt(t, r, 2, "", "/repo")
+	scAt(t, r, 3, "/repo", "/repo")
+	v := scStop(inPrompt(r, "p1"), "p1", "The fix is done.", "/repo", nil)
+	if g := scLearned(t, v); g.State != Stale || v.Turn.Writes != 1 {
+		t.Errorf("a gate placed in no project: %s %s, turn writes %d; want stale, 1", g.State, g.Reason, v.Turn.Writes)
+	}
+
+	r = runOf(t, scRead(1), scWrite(2, "/ev/notes.txt"))
+	ranIn(r, "/repo", "")
+	scAt(t, r, 2, "", "/repo")
+	r.Skipped = 1
+	v = scStop(inPrompt(r, "p1"), "p1", "The fix is done.", "/repo", goTestAll)
+	if v.Turn.Writes != 1 || v.Summary.Row != RowUnknown {
+		t.Errorf("an incomplete record: turn writes %d, row %s; want 1, unknown", v.Turn.Writes, v.Summary.Row)
 	}
 }

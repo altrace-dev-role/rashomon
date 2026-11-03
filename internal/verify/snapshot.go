@@ -9,9 +9,11 @@ import (
 // Versions stamped on every snapshot and checkpoint (2.2.10; archive 20.2.7
 // and 20.2.14). RulesVersion is shape.RulesVersion, the one counter that
 // names the lists a build decides with; VERIFY carries no second one.
-// PracticeVersion is 1 by the spec (2.2.8).
+// PracticeVersion is 1 by the spec (2.2.8). Version is 2 from card
+// STALE-COVER1, when a gate began to count only the writes it covers: one
+// record reads to other states under 1 and 2.
 const (
-	Version         = 1
+	Version         = 2
 	RulesVersion    = shape.RulesVersion
 	PracticeVersion = 1
 )
@@ -188,6 +190,11 @@ type GateState struct {
 	// is green (bind), which the evidence_bound row reads; unknown with no
 	// tree. Not a key: the archive's GateState has none for it (P5A).
 	bound treeBind
+	// root is the project whose files the gate covers (covers), "" for
+	// every file: a learned family's last run's, a declared or inferred
+	// gate's the snapshot's (card STALE-COVER1). Not a key, as bound is not:
+	// the stale nudge, the watched row and the turn's counts read it.
+	root string
 }
 
 // Recording is whether the window's record is complete; incomplete recording
