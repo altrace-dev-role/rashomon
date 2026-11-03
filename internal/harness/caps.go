@@ -70,6 +70,11 @@ func Caps(id ID, s Surface) CapSet {
 	return out
 }
 
+// Cap is Caps(id, s)[c].
+func Cap(id ID, s Surface, c Capability) CapState {
+	return Caps(id, s)[c]
+}
+
 // blindOf returns the capability names in caps whose state is not Yes,
 // sorted. allCapabilities is already in a fixed order, so the result is
 // sorted without an extra pass.
