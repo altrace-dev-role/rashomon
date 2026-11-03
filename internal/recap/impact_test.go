@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -247,5 +248,41 @@ func TestRP1j_ARunnerWordAnywhereInItsNameSettlesAKeylessFinding(t *testing.T) {
 	both := runnerView(gateAt("learned:go-test", "test", verify.Green, verify.OK, 30, nil), gateAt("learned:go-build", "build", verify.Green, verify.OK, 20, nil))
 	if im := ImpactOf(both, goLine, nil); im.Findings[0].State != FindingOpen {
 		t.Errorf("go test and go build both hold the word go: %+v, want open", im.Findings)
+	}
+}
+
+// TestRP1k_AStoreTouchedEntryCountsLikeTheStopsRecordFinding (FINDINGS-AGREE1):
+// the Stop's end-of-turn sentence counts snap.Integrity.Unresolved among its
+// record findings (verify.recordFindings, evaluate.go); the same entry's
+// steer line, pattern "integrity", must count as one of report's findings
+// too, or the two surfaces say different things about the same turn. Before
+// this card, findingPatterns() (impact.go) left pattern.Integrity out of its
+// closed set, so this read zero while the Stop read one.
+func TestRP1k_AStoreTouchedEntryCountsLikeTheStopsRecordFinding(t *testing.T) {
+	v := viewOf(verify.RowVerified, wrote)
+	v.Snap.Integrity.Unresolved = []verify.IntegrityEntry{{Check: verify.StoreTouched, Seq: 9}}
+	line := [][]byte{finding(t, "store1", "integrity", "", 9, "")}
+	im := ImpactOf(v, line, nil)
+	if got, want := len(im.Findings), len(v.Snap.Integrity.Unresolved); got != want {
+		t.Errorf("report's findings %d, the Stop's record findings %d: a store-touched entry disagrees between the two surfaces", got, want)
+	}
+}
+
+// TestLRN17s_TheRecapCountsAStampZeroApprovalAsProposed (LEARN-DX1 F2): a
+// proven or probation lesson with no approval time, which a build before
+// the stamp approved and Pick never sends, is not counted approved: it
+// awaits approval, as learn and lessons say under it, so it is counted
+// proposed.
+func TestLRN17s_TheRecapCountsAStampZeroApprovalAsProposed(t *testing.T) {
+	got := lessonCounts([]learn.Lesson{
+		{ID: "a", Tier: learn.TierProven, ApprovedUnixMS: 1},
+		{ID: "b", Tier: learn.TierProbation, ApprovedUnixMS: 1},
+		{ID: "c", Tier: learn.TierProbation},
+		{ID: "d", Tier: learn.TierProven},
+		{ID: "e", Tier: learn.TierProposed},
+		{ID: "f", Tier: learn.TierDemoted, ApprovedUnixMS: 1},
+	})
+	if want := (LessonCounts{Read: true, Approved: 2, Proposed: 3, Demoted: 1}); got != want {
+		t.Errorf("lessonCounts = %+v, want %+v", got, want)
 	}
 }

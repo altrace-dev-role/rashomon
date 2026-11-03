@@ -13,7 +13,7 @@ import (
 func dgStale(t *testing.T, r *store.Run, n int64, sp *spec.Compiled) SteerView {
 	t.Helper()
 	ranIn(r, "/repo", "")
-	return SteerAt(r, nil, sp, dgKey, callPoint(t, r, n), snNow, snEvent, "t"+strconv.FormatInt(n, 10))
+	return SteerAt(r, nil, sp, dgKey, "", callPoint(t, r, n), snNow, snEvent, "t"+strconv.FormatInt(n, 10))
 }
 
 // TestDG2_ADeclaredGateStalesWithNoIndex (card D222): a trusted spec's

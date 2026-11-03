@@ -52,7 +52,8 @@ func (r ruleRead) verdict() RuleVerdictValue {
 // ruleVerdicts is the spec's rules judged over the record up to the point
 // (archive 20.2.8's evaluation table), one verdict per rule that applies, in
 // spec order, each with its rule's own trust (TrustOf). forbid_command reads
-// the command lines a Bash call recorded, each read once for every rule;
+// the command lines a Bash call recorded, each read once for every rule, and
+// the rule_hits the post wrote of it (ruleHitSeqs);
 // protect_path the writes classify named; require_evidence the snapshot's
 // gates, at a point its at list names, done read at Stop and only when the
 // window holds a relevant write (wrote). A rule missing the field its kind
@@ -78,6 +79,7 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 				lines, read = ruleLines(run, picked, at), true
 			}
 			r = forbidOver(dr.Rule.Command, lines)
+			r.seqs = append(r.seqs, ruleHitSeqs(run, dr.ID, sourceDigest(sp, dr.Source), at)...)
 		case spec.ProtectPath:
 			if rels == nil {
 				rels = projectRels(c.writes)
@@ -97,6 +99,56 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 			HardControl: dr.Rule.HardControl, trust: sp.TrustOf(dr.Source)})
 	}
 	return out
+}
+
+// ruleHitSeqs is the seqs a forbid_command rule's hits cite (card
+// SPEC-RULES-STOP1): each spec_event rule_hit of the rule's id whose call
+// landed at or before at, recorded while the rule's declaring file had
+// digest, the content digest it has at this point and the value its trust
+// binding holds, so an edit of that file drops its earlier hits to the lines'
+// reading, never to clear. Each cites its call's declaration seq, as a line
+// does (hitSeq). No hit adds nothing: the lines still decide. Cost: O(H) per
+// rule, and a lookup per counted hit.
+func ruleHitSeqs(run *store.Run, id, digest string, at int64) []int64 {
+	if digest == "" {
+		return nil
+	}
+	var out []int64
+	for i := range run.SpecEvents {
+		h := &run.SpecEvents[i]
+		if h.Reason == store.SpecEventRuleHit && h.RuleID == id && h.SourceDigest == digest && h.LandedSeq > 0 && h.LandedSeq <= at {
+			out = append(out, hitSeq(run, h.LandedSeq))
+		}
+	}
+	return out
+}
+
+// hitSeq is the declaration seq of the call whose execution landed at
+// landed, found by the execution's tool_use_id; with no such execution or
+// declaration, landed itself.
+func hitSeq(run *store.Run, landed int64) int64 {
+	for i := range run.Executions {
+		x := &run.Executions[i]
+		if x.Seq == nil || *x.Seq != landed {
+			continue
+		}
+		for j := range run.Declarations {
+			if run.Declarations[j].ToolUseID == x.ToolUseID {
+				return run.Declarations[j].Seq
+			}
+		}
+		break
+	}
+	return landed
+}
+
+// sourceDigest is the content digest of sp's source src, "" for a source
+// outside Sources (the implied task-file rule's, or a hand-built Compiled).
+func sourceDigest(sp *spec.Compiled, src int) string {
+	if src < 0 || src >= len(sp.Sources) {
+		return ""
+	}
+	return sp.Sources[src].Digest
 }
 
 // binding reports a trust whose rules bind the record: trusted or managed.

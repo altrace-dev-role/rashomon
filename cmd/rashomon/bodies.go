@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -57,6 +58,12 @@ func cmdBodies(args []string, stdout io.Writer) error {
 		}
 		fmt.Fprintln(stdout, bodiesLine(st))
 		return nil
+	}
+	// on and off are the person's switch for what is copied of their
+	// transcripts: refused in an agent session either way, before the store
+	// is opened or bodies.json written.
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Run `rashomon bodies %s` in your own terminal.", s, strings.Join(args, " "))
 	}
 	st, err := openStore()
 	if err != nil {

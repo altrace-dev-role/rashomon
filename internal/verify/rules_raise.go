@@ -27,10 +27,12 @@ type RuleCall struct {
 }
 
 // RulesAtCall is the spec's rules raised at a post from the call alone, no
-// run read: at PostToolUse, each forbid_command rule one of the line's
-// commands matches raises platform-rule/command, a nudge for a trusted or
-// managed rule and a user flag otherwise (the card raises platform-rule at
-// that event alone, so a call that failed is the record's, judged at Stop);
+// run read: at either post event, each forbid_command rule one of the line's
+// commands matches is a hit (view.Hits), which the hook keeps in the record
+// for the Stop to count (card SPEC-RULES-STOP1); at PostToolUse it also
+// raises platform-rule/command, a nudge for a trusted or managed rule and a
+// user flag otherwise (the card raises platform-rule at that event alone, so
+// a call that failed is the record's, judged at Stop from its hit);
 // at either post event, each protect_path rule whose paths the file tool's
 // path falls in, in a mode the rule lists, raises integrity/frozen-path, a
 // user flag. One matcher reads the line and the path as ruleVerdicts reads
@@ -64,8 +66,7 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 		f := Finding{Event: event, UserOnly: !binding(fact.Trust), Rule: &fact}
 		switch fact.Kind {
 		case spec.ForbidCommand:
-			if event != string(steer.EventPostToolUse) || call.ToolName != "Bash" || call.Command == "" ||
-				dr.Rule.Command == nil || len(dr.Rule.Command.Argv) == 0 {
+			if call.ToolName != "Bash" || call.Command == "" || dr.Rule.Command == nil || len(dr.Rule.Command.Argv) == 0 {
 				continue
 			}
 			if !read {
@@ -74,6 +75,10 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 			}
 			prog, ok := matchedProgram(dr.Rule.Command, cmds)
 			if !ok {
+				continue
+			}
+			view.Hits = append(view.Hits, RuleHit{RuleID: dr.ID, SourceDigest: sourceDigest(sp, dr.Source)})
+			if event != string(steer.EventPostToolUse) {
 				continue
 			}
 			if p := Program(prog); p.Valid() {

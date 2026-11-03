@@ -638,6 +638,10 @@ func isInstallID(s string) bool {
 	return true
 }
 
+// ShellQuote is shellQuote for a path a person copies into a shell: the
+// plugin's binary in its first session's lines (PLUGIN-CONSENT1).
+func ShellQuote(s string) string { return shellQuote(s) }
+
 // shellQuote quotes a path for the shell Claude Code runs hook commands
 // through. Paths made of safe characters are left bare so the common case
 // reads plainly in the file.

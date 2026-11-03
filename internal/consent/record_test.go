@@ -267,7 +267,7 @@ func TestTRU48_CompactionKeepsEveryReadersAnswer(t *testing.T) {
 // TestTRU48_DisclosureVersionIsPinned: a bump holds every note until the
 // user is shown the new text, so it is deliberate.
 func TestTRU48_DisclosureVersionIsPinned(t *testing.T) {
-	if steer.DisclosureVersion != 2 {
+	if steer.DisclosureVersion != 3 {
 		t.Errorf("steer.DisclosureVersion = %d; a bump holds every note and must be deliberate", steer.DisclosureVersion)
 	}
 }
