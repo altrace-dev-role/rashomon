@@ -9,6 +9,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -148,4 +149,20 @@ func noteOf(fs []steer.Finding) string {
 		return ""
 	}
 	return fs[0].Message.Text()
+}
+
+// TestMA1d_EveryStageIsInTheNotesTable: every masked_by word the binary can
+// record, an unknown word and none map to a phrase in the note's closed
+// table (slot.EnumMaskStage), so a stage shape learns later cannot leave a
+// masked run with a note the renderer refuses.
+func TestMA1d_EveryStageIsInTheNotesTable(t *testing.T) {
+	for _, w := range append(shape.MaskedByWords(), "", "not-a-stage") {
+		var by *string
+		if w != "" {
+			by = &w
+		}
+		if err := slot.NewEnum(slot.EnumMaskStage, maskedStage(by)).Validate(); err != nil {
+			t.Errorf("masked_by %q: phrase %q: %v", w, maskedStage(by), err)
+		}
+	}
 }

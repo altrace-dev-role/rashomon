@@ -165,6 +165,7 @@ type Post struct {
 	landedSeq      int64
 	landedRunner   bool
 	landedRed      bool
+	landedHidden   bool
 	landedStore    bool
 	landedWrite    writtenCall
 	// toolName and toolInput are the call's, kept for the spec's rules
@@ -349,6 +350,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	}
 	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
 	p.exitCode, p.backgrounded = rec.ExitCode, rec.Backgrounded
+	p.landedHidden = hiddenRun(&rec)
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
 	p.landedRed = redRead(&rec)
@@ -366,6 +368,15 @@ func redRead(rec *store.Execution) bool {
 	}
 	k := rec.GateOutput.Kind
 	return k == "summary_fail" || k == "fail_line"
+}
+
+// hiddenRun reports a success-event runner call in the foreground whose line
+// hid the runner's status (shape.StatusHidden), the call masked-status is
+// said at (MASKED-AT-ACT1). A hint, as redRead is: verify's masked() decides,
+// so a run whose output's summary or printed status says how it ended raises
+// nothing and costs the run's read, as a failure event's post does.
+func hiddenRun(rec *store.Execution) bool {
+	return rec.Outcome == store.ExecOK && rec.RunnerDigest != nil && !rec.Backgrounded && shape.StatusHidden(rec.StatusMasked)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

@@ -19,7 +19,7 @@ func scan(root, rel string, each func(line string) bool) bool {
 		return false
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(io.LimitReader(f, MaxRead))
+	sc := [redacted] MaxRead))
 	sc.Buffer(make([]byte, 0, 4<<10), MaxLine)
 	for sc.Scan() {
 		if !each(sc.Text()) {
@@ -37,7 +37,7 @@ func scan(root, rel string, each func(line string) bool) (stopped, ok bool) {
 		return false, false
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(io.LimitReader(f, MaxRead))
+	sc := [redacted] MaxRead))
 	sc.Buffer(make([]byte, 0, 4<<10), MaxLine)
 	for sc.Scan() {
 		if !each(sc.Text()) {

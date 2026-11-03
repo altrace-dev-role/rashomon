@@ -47,8 +47,8 @@ m("RP-1 a slot two gates share resolves its finding", "internal/recap/impact.go"
   "if n == 0 || match.LastGreen == nil",
   "TestRP1i_ASlotTwoGatesShareReadsOpen|TestRP1i_AGreenBuildDoesNotResolveATestFinding")
 m("RP-1 the line's gate id is not read, so the true resolution is lost", "internal/recap/impact.go",
-  "\tcase string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):\n\t\treturn key",
-  "\tcase string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):\n\t\treturn \"\"",
+  "\t\tstring(pattern.SubtaskGate):\n\t\treturn key",
+  "\t\tstring(pattern.SubtaskGate):\n\t\treturn \"\"",
   "TestRP1i_TheSameGateGoingGreenResolves")
 
 # The Stop view names a gate by its runner's whole name ("go test"), the slot
