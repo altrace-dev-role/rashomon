@@ -53,10 +53,13 @@ var overLimit = map[string]int{
 // watch.go moved 545 to 541 with STEER-DISCLOSE-YES1 (the --yes clamp removed),
 // and 541 to 531 with CONSENT-SHORT1, consentFlags to consent.go; main.go 930
 // to 927 with it, printVersion to version.go.
+// SELFGUARD-ALL1, merged onto that: main.go 927 to 905, detachTarget to
+// detach.go beside detach's self-check, with pause's guard added; watch.go
+// 531 to 530, its agent refusal now selfguard.Refusal.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    927,
+	"cmd/rashomon/main.go":    905,
 	"internal/store/store.go": 549,
-	"cmd/rashomon/watch.go":   531,
+	"cmd/rashomon/watch.go":   530,
 }
 
 // codeLines counts the lines strictly between lbrace and rbrace (1-indexed,
