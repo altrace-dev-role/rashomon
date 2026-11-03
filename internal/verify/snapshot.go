@@ -87,6 +87,53 @@ type RunRef struct {
 	// with other arguments and never that the gate passed (GATE-BIND1, D-c).
 	// Absent everywhere else. The checkpoint keeps only the run's seq.
 	OtherArgs bool `json:"other_args,omitempty"`
+	// Wrapped is set on a declared gate's last run where no word of the
+	// call's line named the gate's runner (WRAPPER-RUN1): read, the call's
+	// output carried the summary of the gate's runner, which decides the
+	// run's outcome, never the wrapper's exit status; unread, the call may
+	// have run the gate (a script, a delegate) after the last edit and its
+	// output names no run of it, or its record keeps only the exit status
+	// the line printed (STATUS-PROBE), so the gate is unknown, not unrun. One
+	// byte in padding, as the words above. Absent everywhere else.
+	Wrapped WrapWord `json:"wrapped,omitempty"`
+}
+
+// WrapWord is how a declared gate's last run was bound by a call whose line
+// does not name the gate's runner (RunRef.Wrapped): WrapNone, the zero, for
+// a run its line named, which is the word absent.
+type WrapWord uint8
+
+const (
+	WrapNone WrapWord = iota
+	WrapRead
+	WrapUnread
+)
+
+// String is the wrapped word: "read", "unread", or "" for none.
+func (w WrapWord) String() string {
+	switch w {
+	case WrapRead:
+		return "read"
+	case WrapUnread:
+		return "unread"
+	}
+	return ""
+}
+
+// MarshalText writes the word; omitempty leaves the zero out.
+func (w WrapWord) MarshalText() ([]byte, error) { return []byte(w.String()), nil }
+
+// UnmarshalText reads the word back; a word that is none reads WrapNone.
+func (w *WrapWord) UnmarshalText(b []byte) error {
+	switch string(b) {
+	case "read":
+		*w = WrapRead
+	case "unread":
+		*w = WrapUnread
+	default:
+		*w = WrapNone
+	}
+	return nil
 }
 
 // OutcomeSource says where a run's outcome was read from: SourceExit, the

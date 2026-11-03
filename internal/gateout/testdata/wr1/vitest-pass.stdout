@@ -1,0 +1,10 @@
+
+ RUN  v1.6.1 /private/tmp/rk-se3/wr1-fx/proj/vt-pass
+
+ ✓ a.test.mjs  (2 tests) 1ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  08:57:07
+   Duration  184ms (transform 9ms, setup 0ms, collect 2ms, tests 1ms, environment 0ms, prepare 45ms)
+

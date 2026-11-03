@@ -67,7 +67,7 @@ m("ST-2.3 LandExecution reports a spilled execution as landed", S,
 m("ST-2.3 a red that did not run the gate (126, 127) still locates", V,
   "\treturn code != 126 && code != 127\n", "\t_ = code\n\treturn true\n", "TestSTR44_")
 m("ST-2.3 a red of another call is taken as this run", V,
-  " || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {\n", " || g.LastRun == nil {\n",
+  " || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID ||\n", " || g.LastRun == nil ||\n",
   "TestSTR43i_")
 m("ST-2.3 any red reason is a candidate", V,
   "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == SourceOutput\n\t}\n\treturn false\n", "\tcase FailedOutput:\n\t\treturn g.LastRun.OutcomeFrom == SourceOutput\n\t}\n\treturn true\n",
