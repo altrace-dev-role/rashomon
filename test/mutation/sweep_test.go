@@ -37,7 +37,8 @@ import (
 // outlive it.
 func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
-	return sweepRun(t, dir, 30*time.Second, nil, args...)
+	out, _, code := sweepRun(t, dir, 30*time.Second, nil, args...)
+	return out, code
 }
 
 // sweepTimeout is sweep with an explicit bound. TestStrict_ is the one
@@ -46,19 +47,32 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 // module, and a cold build cache can make that slower than 30s has room for.
 func sweepTimeout(t *testing.T, dir string, timeout time.Duration, args ...string) (string, int) {
 	t.Helper()
-	return sweepRun(t, dir, timeout, nil, args...)
+	out, _, code := sweepRun(t, dir, timeout, nil, args...)
+	return out, code
 }
 
 // sweepEnv is sweep with extra environment entries, so a test can put a fake
 // go on PATH.
 func sweepEnv(t *testing.T, dir string, extraEnv []string, args ...string) (string, int) {
 	t.Helper()
-	return sweepRun(t, dir, 30*time.Second, extraEnv, args...)
+	out, _, code := sweepRun(t, dir, 30*time.Second, extraEnv, args...)
+	return out, code
 }
 
-// sweepRun is what sweep, sweepTimeout and sweepEnv share: an explicit bound
-// and extra environment entries, either of which may be the default.
-func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, int) {
+// sweepErr is sweep, but returns stderr instead of stdout: report() (the
+// --check problem printer) writes every problem line to stderr, never
+// stdout, so a test asserting on a problem's own text (not just the exit
+// code) needs this, not sweep.
+func sweepErr(t *testing.T, dir string, args ...string) (string, int) {
+	t.Helper()
+	_, errOut, code := sweepRun(t, dir, 30*time.Second, nil, args...)
+	return errOut, code
+}
+
+// sweepRun is what sweep, sweepTimeout, sweepEnv and sweepErr share: an
+// explicit bound and extra environment entries, either of which may be the
+// default.
+func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int) {
 	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
@@ -99,9 +113,9 @@ func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string
 			t.Fatalf("sweep.py %s: %v", strings.Join(args, " "), err)
 		}
 		t.Logf("sweep.py %s exited %d; stderr:\n%s", strings.Join(args, " "), exit.ExitCode(), stderr.String())
-		return stdout.String(), exit.ExitCode()
+		return stdout.String(), stderr.String(), exit.ExitCode()
 	}
-	return stdout.String(), 0
+	return stdout.String(), stderr.String(), 0
 }
 
 func moduleRoot(t *testing.T) string {
@@ -1740,5 +1754,121 @@ func TestSweepJobRunsEveryShard(t *testing.T) {
 	want := "--shard ${{ matrix.shard }}/" + strconv.Itoa(n)
 	if !strings.Contains(job, "sweep.py --strict "+want) {
 		t.Errorf("the sweep step does not run `sweep.py --strict %s`", want)
+	}
+}
+
+// PREFIX-UNIQUE1 (B343). A mutant-file identity outside ROW_PREFIXES -- the
+// "XX-n" before its first underscore -- is pinned self-consistently inside
+// its own file today (DEL-2's row check, extended by ROW_FILE's prefix list),
+// but nothing stops a second, unrelated file from claiming the same identity:
+// COMPACT-SLOT1 picked CS-1, which CS-1_cwd-symlink.py already claimed, so
+// each card's killers would have run the other's tests. Two files sharing an
+// undeclared identity fail, naming both; a declared one (one card's own
+// topic split, test/mutation/ad-hoc-shared-prefixes.txt) passes.
+func TestPU1_AnUndeclaredAdHocIdentityClaimedByTwoFilesFails(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "ZZ-9_first-fixture.py")
+	second := filepath.Join(fixtures, "ZZ-9_second-fixture.py")
+	write(t, first, mutant("fixture ZZ-9 first", "target.go", "return 1", "return 2", "TestZZ9_"))
+	write(t, second, mutant("fixture ZZ-9 second", "target.go", "return 1", "return 2", "TestZZ9_"))
+
+	out, code := sweepErr(t, dir, "--check", "--files", first, "--files", second)
+	if code == 0 {
+		t.Fatalf("--check exited 0 with two files both claiming ZZ-9, undeclared:\n%s", out)
+	}
+	for _, want := range []string{"ZZ-9", filepath.Base(first), filepath.Base(second)} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the problem does not name %q:\n%s", want, out)
+		}
+	}
+}
+
+// A single file claiming ZZ-9 has nothing to collide with.
+func TestPU1a_OneFileClaimingAnIdentityPasses(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	file := filepath.Join(t.TempDir(), "ZZ-9_only-fixture.py")
+	write(t, file, mutant("fixture ZZ-9 only", "target.go", "return 1", "return 2", "TestZZ9_"))
+
+	_, code := sweep(t, dir, "--check", "--files", file)
+	if code != 0 {
+		t.Errorf("--check exited %d for one file claiming ZZ-9", code)
+	}
+}
+
+// Two files sharing an identity declared in ad-hoc-shared-prefixes.txt (H-17
+// is a real entry there, one card's own topic split) pass: the allow-list is
+// read from its real path regardless of --files, since it names cards, not
+// targets.
+func TestPU1b_ADeclaredIdentityIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "H-17_fixture-a.py")
+	second := filepath.Join(fixtures, "H-17_fixture-b.py")
+	write(t, first, mutant("fixture H-17 a", "target.go", "return 1", "return 2", "TestH17Fixture_"))
+	write(t, second, mutant("fixture H-17 b", "target.go", "return 1", "return 2", "TestH17Fixture_"))
+
+	out, code := sweep(t, dir, "--check", "--files", first, "--files", second)
+	if code != 0 {
+		t.Errorf("--check exited %d for H-17, a declared identity:\n%s", code, out)
+	}
+}
+
+// The real tree, as main stands, has no undeclared ad-hoc identity collision,
+// and no undeclared killer-stem collision either (killer_stem_problems runs
+// in the same check() call).
+func TestPU1c_TheRealTreeHasNoUndeclaredDuplicate(t *testing.T) {
+	root := moduleRoot(t)
+	out, code := sweep(t, root, "--check")
+	if code != 0 {
+		t.Errorf("--check exited %d on the real tree:\n%s", code, out)
+	}
+}
+
+// PREFIX-UNIQUE1, killer-stem side (mgr follow-up to B343): two mutant files
+// can each have a unique row identity and still collide at the killer-test
+// level -- a suffix letter does not change which real test's -run regex
+// matches, so TestZY1_ and TestZY1a_ are the same stem (ZY1), and if two
+// different identities both name it, each identity's killer would also run
+// the other's test. prefix_uniqueness_problems (the row side) does not see
+// this; killer_stem_problems does.
+func TestPU1d_AStemClaimedByTwoIdentitiesFails(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "ZY-1_first-fixture.py")
+	second := filepath.Join(fixtures, "ZY-2_second-fixture.py")
+	write(t, first, mutant("fixture ZY-1", "target.go", "return 1", "return 2", "TestZY1_"))
+	write(t, second, mutant("fixture ZY-2", "target.go", "return 1", "return 2", "TestZY1a_"))
+
+	out, code := sweepErr(t, dir, "--check", "--files", first, "--files", second)
+	if code == 0 {
+		t.Fatalf("--check exited 0 with stem ZY1 claimed by two identities (ZY-1, ZY-2):\n%s", out)
+	}
+	for _, want := range []string{"ZY1", "ZY-1", "ZY-2"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the problem does not name %q:\n%s", want, out)
+		}
+	}
+}
+
+// A stem declared in killer-stem-shared.txt (TRU23 is a real entry, several
+// features genuinely caught by the same broad test) is allowed even when two
+// fixture identities both name it.
+func TestPU1e_ADeclaredStemIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "ZX-1_first-fixture.py")
+	second := filepath.Join(fixtures, "ZX-2_second-fixture.py")
+	write(t, first, mutant("fixture ZX-1 shares TRU23", "target.go", "return 1", "return 2", "TestTRU23_"))
+	write(t, second, mutant("fixture ZX-2 shares TRU23", "target.go", "return 1", "return 2", "TestTRU23_"))
+
+	out, code := sweep(t, dir, "--check", "--files", first, "--files", second)
+	if code != 0 {
+		t.Errorf("--check exited %d for TRU23, a declared stem:\n%s", code, out)
 	}
 }
