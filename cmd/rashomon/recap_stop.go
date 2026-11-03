@@ -89,7 +89,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	notes := recap.DeliveredNotes(lines, d.PromptID)
 	in := verify.StopInput{
 		PromptID: d.PromptID, Key: st.Key(), Delivered: modelTexts(notes),
-		Head: []byte(p.LastAssistantMessage), Tail: []byte(p.LastMessageTail),
+		Head: []byte(p.LastAssistantMessage), Tail: []byte(p.LastMessageTail), Root: key,
 	}
 	if writes {
 		in.ProjectKey = key

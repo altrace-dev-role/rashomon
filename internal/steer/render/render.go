@@ -39,6 +39,7 @@ type Message struct {
 	template string
 	slots    []Slot
 	text     string
+	aside    string
 }
 
 // Pattern is the pattern whose template made the message.
@@ -51,7 +52,9 @@ func (m Message) Template() string { return m.template }
 // order: what the steer line's `slots` key records.
 func (m Message) Slots() []Slot { return slices.Clone(m.slots) }
 
-// Text is the rendered string, which passed the whole-string check.
+// Text is the rendered string the model is sent, which passed the
+// whole-string check; "" for a sparse message with no line for the model,
+// whose Aside alone prints (aside.go).
 func (m Message) Text() string { return m.text }
 
 // Slot is one bound slot: the name its template gives it and its value as
@@ -62,10 +65,14 @@ type Slot struct {
 }
 
 // template is one fixed message form: an id and the text, with a {name}
-// placeholder for each slot.
+// placeholder for each slot, and, for a note with lines the model is not
+// sent (aside.go), the person's lines and whether lines that list nothing
+// are left out.
 type template struct {
 	id     string
 	format string
+	aside  string
+	sparse bool
 }
 
 // templateKey selects a template by pattern and binding struct type, so a
@@ -78,8 +85,10 @@ type templateKey struct {
 // Version is the renderer's version, written on every steer line as
 // renderer_version (tech 4.2.3; its example writes 1). A suppressed line
 // keeps its slots and this version and is re-rendered on read (RES-32), so
-// a change to a row's text is a version change.
-const Version = 1
+// a change to a row's text is a version change. 2: task-preflight's rows
+// send the model only the lines that list something and print the rest to
+// the person (TOKEN-BUDGET1).
+const Version = 2
 
 // RegressionLocationBinding is regression-location's slots (archive
 // 40.4.2): the gate, how long ago it last exited 0, its exit on this run, and
@@ -135,6 +144,14 @@ type StaleEvidenceOutputDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// MaskedStatusBinding is masked-status's slots at the act (card
+// MASKED-AT-ACT1): the gate whose run this call was, and what hid the run's
+// exit status, from slot.EnumMaskStage's closed table.
+type MaskedStatusBinding struct {
+	Gate  slot.Gate `slot:"gate"`
+	Stage slot.Enum `slot:"stage"`
+}
+
 // StaleEvidenceBinding is stale-evidence's slots (card STALE-NUDGE1): the
 // gate, how long ago its green run exited 0, and the files this call wrote
 // after it. Only this call's files: a write another call declared beside it
@@ -152,6 +169,16 @@ type StaleEvidenceDegradedBinding struct {
 	Gate    slot.Gate    `slot:"gate"`
 	Minutes slot.Minutes `slot:"minutes"`
 	Count   slot.Count   `slot:"count"`
+}
+
+// BlastRadiusBinding is blast-radius's slots (card ARCH-INLINE1): how many
+// other packages the platform graph shows calling into the package the call
+// edited, a lower bound (PROVEN calls only, PF-PL11), their directories, and
+// how many of them hold a test file.
+type BlastRadiusBinding struct {
+	Count  slot.Count    `slot:"count"`
+	Dirs   slot.PathList `slot:"dirs"`
+	Tested slot.Count    `slot:"tested"`
 }
 
 // IntegrityStoreTouchedBinding is integrity/store-touched's user line
@@ -326,6 +353,18 @@ type IntegrityFrozenPathBinding struct {
 // rule id its slot refuses.
 type IntegrityFrozenPathUnnamedBinding struct{}
 
+// OrderingRuleThenBinding is ordering-rule's line: the program of the call
+// that ran before the earlier step an order rule requires, and the id of the
+// rule.
+type OrderingRuleThenBinding struct {
+	Program slot.Program `slot:"program"`
+	Rule    slot.RuleID  `slot:"rule_id"`
+}
+
+// OrderingRuleThenUnnamedBinding is that line for a program or a rule id its
+// slot refuses.
+type OrderingRuleThenUnnamedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -340,7 +379,10 @@ type IntegrityFrozenPathUnnamedBinding struct{}
 // so no model text exists for them. stale-evidence/v1 states the green and
 // the write after it and stops there: the card's "Run it again before
 // claiming done" is an order, which STR-14 refuses, and the last sentence
-// says the same as a fact. learned-fact/v1 is a lesson a person approved at a
+// says the same as a fact. masked-status/v1 is said at the call whose run
+// it names (MASKED-AT-ACT1): the run, what hid its status, and that the
+// record holds no outcome, with no order to run it again (STR-14).
+// learned-fact/v1 is a lesson a person approved at a
 // terminal, its text in quotes (LEARN-DELIVER1, L7); its two flags say why a
 // ledger gave none.
 // claim-vs-record-inferred/v1 is the next prompt's note for the project's
@@ -393,6 +435,15 @@ func templates() map[templateKey]template {
 				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago); this call then wrote {count} files. " +
 					"No later run of the gate is recorded.",
 			},
+			{pattern.BlastRadius, reflect.TypeOf(BlastRadiusBinding{})}: {
+				id: "blast-radius/v1",
+				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
+					"(at least {count}): {dirs}; test files are in {tested} of them.",
+			},
+			{pattern.MaskedStatus, reflect.TypeOf(MaskedStatusBinding{})}: {
+				id:     "masked-status/v1",
+				format: "rashomon record: gate {gate} ran in this call and {stage} hid its exit status; no outcome of this run is recorded.",
+			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
 				id:     "integrity-store-touched/v1",
 				format: "rashomon record: this call wrote {path}, under .claude/rashomon, which holds the spec and the task file rashomon reads.",
@@ -432,6 +483,7 @@ func templates() map[templateKey]template {
 		maps.Copy(templatesOnce.v, templatesLater())
 		maps.Copy(templatesOnce.v, templatesRide())
 		maps.Copy(templatesOnce.v, templatesSymbols())
+		maps.Copy(templatesOnce.v, templatesContinuity())
 	})
 	return templatesOnce.v
 }
@@ -476,12 +528,16 @@ func templatesLater() map[templateKey]template {
 				"so no lesson was given to the agent; rashomon learn lists them.",
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightBinding{})}: {
-			id:     "task-preflight/v1",
-			format: preflightHead + preflightLines,
+			id:     "task-preflight/v2",
+			format: preflightHead + preflightKnown,
+			aside:  preflightEvidence + preflightUnknown,
+			sparse: true,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
-			id:     "task-preflight-first/v1",
-			format: firstHead + preflightLines,
+			id:     "task-preflight-first/v2",
+			format: preflightHead + preflightKnown,
+			aside:  firstBrief + preflightEvidence + preflightUnknown,
+			sparse: true,
 		},
 		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandBinding{})}: {
 			id:     "platform-rule-command/v1",
@@ -495,6 +551,14 @@ func templatesLater() map[templateKey]template {
 			id:     "platform-rule-command-unnamed/v1",
 			format: "rashomon record: this call matched a spec rule.",
 		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenBinding{})}: {
+			id:     "ordering-rule-then/v1",
+			format: "rashomon record: this {program} call ran before the earlier step spec rule {rule_id} requires.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenUnnamedBinding{})}: {
+			id:     "ordering-rule-then-unnamed/v1",
+			format: "rashomon record: this call ran before the earlier step a spec rule requires.",
+		},
 		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
 			id:     "integrity-frozen-path/v1",
 			format: "rashomon record: this call wrote {path}, which spec rule {rule_id} protects.",
@@ -506,16 +570,22 @@ func templatesLater() map[templateKey]template {
 	}
 }
 
-// preflightLines are the four lines both task-preflight rows end with: what
-// the request named, the spec rules over it, the gates and the evidence a
-// done claim needs (preflightKnown), and what the preflight could not read.
-const preflightLines = preflightKnown + "\nunknown: {unknown}"
-
-// preflightKnown is preflightLines without the unknowns line, the line a
-// note that carries a lesson drops first to fit its cap (LEARN-RIDE1).
+// preflightKnown is a task-preflight note's lines for the model: what the
+// request named, the spec rules over it and the gates before done, each left
+// out when it lists nothing (TOKEN-BUDGET1).
 const preflightKnown = "paths named: {paths}\n" +
 	"spec rules that apply: {rules}\n" +
-	"gates before done: {gates}; evidence for a done claim ({source}): {evidence}"
+	"gates before done: {gates}"
+
+// preflightEvidence and preflightUnknown are a task-preflight note's aside,
+// the person's lines and never the model's: the evidence a done claim needs,
+// inferred from the request's words and so not proven, and what the
+// preflight could not read. A note that carries a lesson drops the unknowns
+// line first to fit its cap (LEARN-RIDE1).
+const (
+	preflightEvidence = "evidence for a done claim ({source}): {evidence}"
+	preflightUnknown  = "\nunknown: {unknown}"
+)
 
 // preflightHead is the later prompts' task-preflight header line.
 const preflightHead = "rashomon record: preflight for this request from the repository; the request text is not kept.\n"
@@ -530,12 +600,16 @@ const lessonRide = "\nlesson {lesson}, approved for this project: {text}"
 func templatesRide() map[templateKey]template {
 	return map[templateKey]template{
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightLessonBinding{})}: {
-			id:     "task-preflight-lesson/v1",
-			format: preflightHead + preflightLines + lessonRide,
+			id:     "task-preflight-lesson/v2",
+			format: preflightHead + preflightKnown + lessonRide,
+			aside:  preflightEvidence + preflightUnknown,
+			sparse: true,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightLessonKnownBinding{})}: {
-			id:     "task-preflight-lesson-known/v1",
+			id:     "task-preflight-lesson-known/v2",
 			format: preflightHead + preflightKnown + lessonRide,
+			aside:  preflightEvidence,
+			sparse: true,
 		},
 	}
 }
@@ -544,9 +618,10 @@ func templatesRide() map[templateKey]template {
 // note at the next prompt: the Stop's platform line, to the model.
 const owedPackages = " Go packages the last reply changed with no passing go test since: {packages}."
 
-// firstHead is the first prompt's two header lines, the brief's.
-const firstHead = "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
-	"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n"
+// firstBrief is the first prompt's project line, the first line of its
+// aside: the project's own files, which the agent's harness loads itself, so
+// the line is the person's (TOKEN-BUDGET1).
+const firstBrief = "project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n"
 
 // templatesOnce holds what templates returns, built on its first call and
 // never at init (RES-2).
@@ -592,13 +667,23 @@ func newMessage(table map[templateKey]template, p pattern.ID, binding any) (Mess
 	if err != nil {
 		return Message{}, err
 	}
-	text, err := fill(tmpl.format, slots)
-	if err != nil {
-		return Message{}, err
-	}
 	check := Validate
 	if p == pattern.ContinuityBriefing || p == pattern.TaskPreflight {
 		check = ValidateBriefing
+	}
+	if tmpl.sparse || tmpl.aside != "" {
+		text, aside, err := fillSplit(tmpl, slots)
+		if err == nil {
+			err = validateSplit(text, aside, check)
+		}
+		if err != nil {
+			return Message{}, err
+		}
+		return Message{pattern: p, template: tmpl.id, slots: slots, text: text, aside: aside}, nil
+	}
+	text, err := fill(tmpl.format, slots)
+	if err != nil {
+		return Message{}, err
 	}
 	if err := check(text); err != nil {
 		return Message{}, err
@@ -664,30 +749,42 @@ func hasSlot(slots []Slot, name string) bool {
 func fill(format string, slots []Slot) (string, error) {
 	var b strings.Builder
 	used := make(map[string]bool, len(slots))
-	for i := 0; i < len(format); {
-		switch c := format[i]; c {
-		case '{':
-			end := strings.IndexAny(format[i+1:], "{}")
-			if end < 0 || format[i+1+end] != '}' {
-				return "", fmt.Errorf("%w: an unclosed placeholder", ErrTemplate)
-			}
-			name := format[i+1 : i+1+end]
-			at := slices.IndexFunc(slots, func(s Slot) bool { return s.Name == name })
-			if at < 0 {
-				return "", fmt.Errorf("%w: placeholder %q has no slot", ErrTemplate, name)
-			}
-			b.WriteString(slots[at].Value.Text())
-			used[name] = true
-			i += end + 2
-		case '}':
-			return "", fmt.Errorf("%w: a stray '}'", ErrTemplate)
-		default:
-			b.WriteByte(c)
-			i++
-		}
+	if _, err := fillInto(&b, format, slots, used); err != nil {
+		return "", err
 	}
 	if len(used) != len(slots) {
 		return "", fmt.Errorf("%w: a bound slot has no placeholder", ErrTemplate)
 	}
 	return b.String(), nil
+}
+
+// fillInto writes format to b with each {name} replaced by the named slot's
+// text, marks each name used and returns the names in the order format holds
+// them: fill's pass, and fillLines' for one line.
+func fillInto(b *strings.Builder, format string, slots []Slot, used map[string]bool) ([]string, error) {
+	var names []string
+	for i := 0; i < len(format); {
+		switch c := format[i]; c {
+		case '{':
+			end := strings.IndexAny(format[i+1:], "{}")
+			if end < 0 || format[i+1+end] != '}' {
+				return nil, fmt.Errorf("%w: an unclosed placeholder", ErrTemplate)
+			}
+			name := format[i+1 : i+1+end]
+			at := slices.IndexFunc(slots, func(s Slot) bool { return s.Name == name })
+			if at < 0 {
+				return nil, fmt.Errorf("%w: placeholder %q has no slot", ErrTemplate, name)
+			}
+			b.WriteString(slots[at].Value.Text())
+			used[name] = true
+			names = append(names, name)
+			i += end + 2
+		case '}':
+			return nil, fmt.Errorf("%w: a stray '}'", ErrTemplate)
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return names, nil
 }

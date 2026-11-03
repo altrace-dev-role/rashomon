@@ -9,21 +9,47 @@ import (
 type table struct {
 	program                     string
 	pass, fail, failLine, empty []*regexp.Regexp
-	delegate                    bool
+	// sig is lines only this runner prints, each anchored at both ends. In a
+	// delegate's or a wrapper's output, which may hold any program's lines,
+	// the row's other lines count only where one of them is there too: the
+	// runner ran in it (WRAPPER-RUN1). A row with none counts in a delegate's
+	// output as it did before signatures, and never in a wrapper's.
+	sig      []*regexp.Regexp
+	delegate bool
 }
+
+// pytestOutcomes are the words pytest's summary counts, in its terminal
+// reporter's order; pytestSummary is the summary's body, a count of each
+// outcome, then the time, and past a minute the time again as h:mm:ss.
+const (
+	pytestOutcomes = `(failed|passed|skipped|deselected|xfailed|xpassed|warnings?|errors?|rerun)`
+	pytestSummary  = `(\d+ ` + pytestOutcomes + `, )*\d+ ` + pytestOutcomes + ` in \d+(\.\d+)?s( \(\d+:\d\d:\d\d\))?`
+)
 
 // tables returns the runner tables, compiled on the first call and never at
 // init (RES-2): the post hook links this package and runs on every tool call,
-// and only a gate run's output is classified. Source patterns are fixed and
-// are validated against spec's RE2 bounds by TestGO10_TablesPinned.
+// and only a gate run's or a wrapper's output is classified. Source patterns are fixed and
+// are validated against spec's RE2 bounds by TestGO10_TablesPinned. Each
+// signature is a line of a run recorded on this machine (TestWR1_Signatures
+// names the run).
+//
+// pytest's fail forms are its summary line, as its pass forms are, with a
+// count of at least 1: a delegated run is matched against every table, so a
+// bare count read another tool's "0 failed" or "0 errors", or a test's own log
+// line, as a failure, and the gate went red over a run that passed
+// (GATEOUT-ZERO1).
 func tables() []table {
 	rowsOnce.Do(func() {
 		rowsOnce.v = []table{
-			{program: "go", pass: compile(`^ok\s`), fail: compile(`^FAIL\s`, `^FAIL$`), failLine: compile(`^--- FAIL`), empty: compile(`\[no test files\]`, `\[no tests to run\]`)},
+			{program: "go", pass: compile(`^ok\s`), fail: compile(`^FAIL\s`, `^FAIL$`), failLine: compile(`^--- FAIL`), empty: compile(`\[no test files\]`, `\[no tests to run\]`),
+				sig: compile(`^(ok|FAIL)\s+\S+\s+(\(cached\)|\d+(\.\d+)?s)(\s.*)?$`, `^FAIL\s+\S+ \[(build|setup) failed\]$`, `^\?\s+\S+\s+\[no test files\]$`, `^--- (FAIL|PASS|SKIP): \S+ \(\d+(\.\d+)?s\)$`)},
 			{program: "jest", pass: compile(`^Tests:.*\d+ passed`), fail: compile(`^Tests:.*\d+ failed`)},
-			{program: "vitest", pass: compile(`^Tests\s+.*\d+ passed`), fail: compile(`^Tests\s+.*\d+ failed`)},
-			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`\d+ (failed|error)`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`)},
-			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \d+ targets? failed`)},
+			{program: "vitest", pass: compile(`^\s*Tests\s+.*\d+ passed`), fail: compile(`^\s*Tests\s+.*\d+ failed`),
+				sig: compile(`^\s*Test Files\s+(\d+ \w+ \| )*\d+ \w+ \(\d+\)$`, `^\s*Tests\s+(\d+ \w+ \| )*\d+ \w+ \(\d+\)$`)},
+			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`^(\d+ \w+, )*[1-9]\d* (failed|errors?)(, [^=]*)? in \d`, `^=+ .*[1-9]\d* (failed|errors?).* in \d[\d.]*s.* =+$`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`),
+				sig: compile(`^=+ test session starts =+$`, `^=+ `+pytestSummary+` =+$`, `^=+ no tests ran in \d+(\.\d+)?s =+$`, `^`+pytestSummary+`$`)},
+			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \d+ targets? failed`),
+				sig: compile(`^test result: (ok|FAILED)\. \d+ passed; \d+ failed; `)},
 			{program: "make", delegate: true, fail: compile(`^make(\[\d+\])?: \*\*\*`)},
 			{program: "npm", delegate: true, fail: compile(`^npm (ERR!|error)`, `ELIFECYCLE`)},
 			{program: "yarn", delegate: true, fail: compile(`^error Command failed`)},
@@ -99,6 +125,13 @@ func ProgramFor(program, runner string) string {
 func Delegated(program string) bool {
 	row := findProgram(program)
 	return row != nil && row.delegate
+}
+
+// Runner reports whether program is a runner row's word, a parser a wrapper's
+// output can be read by: not a delegate's, not Wrapper, not "".
+func Runner(program string) bool {
+	row := findProgram(program)
+	return row != nil && !row.delegate
 }
 
 // FailLineDecides reports whether a bare fail line is all the table has to

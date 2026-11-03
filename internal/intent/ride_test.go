@@ -22,9 +22,11 @@ func plainNote(t *testing.T, in intent.Intent, b *intent.Brief) string {
 // TestLRN17r_ALessonRidesInsideTheNotesCap (LEARN-RIDE1, R13 D1): a later
 // prompt's note carries the lesson as its last line, the note otherwise as
 // it is; at record scope v4 the line holds the paths as digests and the
-// lesson's line as it printed. The first prompt's note is at its six-line
-// cap and carries none, and a lesson the note cannot carry leaves the note
-// as it is: rode is false either way, so the lesson waits.
+// lesson's line as it printed. The unknowns are the person's aside
+// (TOKEN-BUDGET1), so the model's text is the header, the path and the
+// lesson. The first prompt's note has no lesson row and carries none, and a
+// lesson the note cannot carry leaves the note as it is: rode is false
+// either way, so the lesson waits.
 func TestLRN17r_ALessonRidesInsideTheNotesCap(t *testing.T) {
 	ride := &intent.Ride{ID: "a-gen", Text: "internal/a.go is generated from gen/a.tmpl"}
 	line := "\nlesson a-gen, approved for this project: 'internal/a.go is generated from gen/a.tmpl'"
@@ -32,13 +34,13 @@ func TestLRN17r_ALessonRidesInsideTheNotesCap(t *testing.T) {
 	plain := plainNote(t, in, nil)
 
 	f, ok, rode := intent.FindingRiding(in, intent.Delivered{}, nil, 3, nil, ride)
-	if !ok || !rode || f.Message.Text() != plain+line || f.Message.Template() != "task-preflight-lesson/v1" || f.Key != "note" || f.AfterSeq != 3 {
+	if !ok || !rode || f.Message.Text() != plain+line || f.Message.Template() != "task-preflight-lesson/v2" || f.Key != "note" || f.AfterSeq != 3 {
 		t.Errorf("ride: ok %v rode %v key %q template %q\n%s\nwant the note, then the lesson's line", ok, rode, f.Key, f.Message.Template(), f.Message.Text())
 	}
 
 	f, _, _ = intent.FindingRiding(in, intent.Delivered{}, nil, 3, keyedWith([]byte("k")), ride)
 	rec := strings.Split(f.Record.Text(), "\n")
-	if len(rec) != 6 || strings.Contains(rec[1], "internal/a.go") || "\n"+rec[5] != line {
+	if len(rec) != 3 || strings.Contains(rec[1], "internal/a.go") || "\n"+rec[2] != line {
 		t.Errorf("v4 record:\n%s\nwant the paths as digests and the lesson's line as it printed", f.Record.Text())
 	}
 
@@ -68,7 +70,8 @@ func TestLRN17r_ALessonNeverStepsTheNoteDown(t *testing.T) {
 	why := strings.Repeat("keep ", 31) + "kept"
 	// The fixture, found as eng-4's search found 1421: trusted rules and
 	// paths long enough that the note alone prints every why and, even
-	// without its unknowns line, has no room for the lesson.
+	// without the unknowns line its aside holds, has no room for the lesson
+	// under the cap the note and its aside share.
 	var in intent.Intent
 	var plain string
 	for n := 1; n <= 6 && plain == ""; n++ {
@@ -86,9 +89,8 @@ func TestLRN17r_ALessonNeverStepsTheNoteDown(t *testing.T) {
 				if !ok {
 					continue
 				}
-				p := f.Message.Text()
-				cut := strings.LastIndex(p, "\nunknown: ")
-				if strings.Count(p, why) == n && cut > 0 && cut+len(line) > render.MaxBriefingMessageBytes {
+				p, aside := f.Message.Text(), f.Message.Aside()
+				if strings.Count(p, why) == n && strings.HasPrefix(aside, "unknown: ") && len(p)+len(line) > render.MaxBriefingMessageBytes {
 					plain = p
 				}
 			}
@@ -106,7 +108,8 @@ func TestLRN17r_ALessonNeverStepsTheNoteDown(t *testing.T) {
 // TestLRN17r_TheUnknownsLineGoesFirst (LEARN-RIDE1): a note that holds its
 // lesson only without its unknowns line drops that line and keeps the rest
 // as it is, the rules' whys included: the unknowns line goes before anything
-// else is cut.
+// else is cut. The line is the aside's (TOKEN-BUDGET1), and the note and its
+// aside share the cap.
 func TestLRN17r_TheUnknownsLineGoesFirst(t *testing.T) {
 	text := strings.TrimSpace(strings.Repeat("keep the generated file in step with its template ", 4)[:160])
 	ride := &intent.Ride{ID: "a-gen", Text: text}
@@ -126,10 +129,13 @@ func TestLRN17r_TheUnknownsLineGoesFirst(t *testing.T) {
 			for i := range extra {
 				in.Paths = append(in.Paths, strings.Repeat("d", 120)+"/"+strings.Repeat(string(rune('a'+i)), 120)+".go")
 			}
-			p := plainNote(t, in, nil)
-			cut := strings.LastIndex(p, "\nunknown: ")
-			if strings.Contains(p, why) && cut > 0 && len(p)+len(line) > render.MaxBriefingMessageBytes &&
-				cut+len(line) <= render.MaxBriefingMessageBytes {
+			f, ok := intent.FindingKeyed(in, intent.Delivered{}, nil, 0, nil)
+			if !ok {
+				t.Fatalf("premise: no note for %+v", in)
+			}
+			p, aside := f.Message.Text(), f.Message.Aside()
+			if strings.Contains(p, why) && strings.HasPrefix(aside, "unknown: ") &&
+				len(p)+len(aside)+len(line) > render.MaxBriefingMessageBytes && len(p)+len(line) <= render.MaxBriefingMessageBytes {
 				plain = p
 			}
 		}
@@ -138,8 +144,8 @@ func TestLRN17r_TheUnknownsLineGoesFirst(t *testing.T) {
 		t.Fatal("premise: no fixture fits the note with its unknowns line and the lesson only without it")
 	}
 	f, ok, rode := intent.FindingRiding(in, intent.Delivered{}, nil, 0, nil, ride)
-	want := plain[:strings.LastIndex(plain, "\nunknown: ")] + line
-	if !ok || !rode || f.Message.Text() != want || f.Message.Template() != "task-preflight-lesson-known/v1" {
-		t.Errorf("ok %v rode %v template %q\n%s\nwant\n%s", ok, rode, f.Message.Template(), f.Message.Text(), want)
+	want := plain + line
+	if !ok || !rode || f.Message.Text() != want || f.Message.Aside() != "" || f.Message.Template() != "task-preflight-lesson-known/v2" {
+		t.Errorf("ok %v rode %v template %q\n%s\naside %q\nwant\n%s", ok, rode, f.Message.Template(), f.Message.Text(), f.Message.Aside(), want)
 	}
 }

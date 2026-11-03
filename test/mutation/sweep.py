@@ -60,6 +60,83 @@ ROW_NAME = re.compile(r"^(" + "|".join(ROW_PREFIXES) + r")-(\d+)$")
 # anchor -- is reported instead of silently matching nothing.
 ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 
+# A mutant file's own row identity, the "XX-n" (optionally "n.m" or "n.ml")
+# before its first underscore: CS-1, H-17, ST-2.3b. ROW_PREFIXES identities
+# are already pinned self-consistently by the check above (a row's test must
+# name its own file's identity, or a declared shared-tests.txt pair); nothing
+# looks at the rest (the docstring at ROW_PREFIXES says so). PREFIX-UNIQUE1
+# is that missing check, for every other prefix.
+AD_HOC_ROW_FILE = re.compile(r"^([A-Za-z]+)-(\d+(?:\.\d+)?[a-z]?)_")
+AD_HOC_SHARED = HERE / "ad-hoc-shared-prefixes.txt"
+
+
+def prefix_uniqueness_problems(allow_file=AD_HOC_SHARED):
+    """An ad-hoc identity (outside ROW_PREFIXES) claimed by more than one
+    mutant file is the B343 class: COMPACT-SLOT1 picked CS-1, a prefix
+    CS-1_cwd-symlink.py already claimed, so each card's killers would have
+    run the other's tests too, undetected (no checker looked outside
+    ROW_PREFIXES). One card legitimately spanning several files (H-17, MS-1,
+    PF-1, STC-1, ...) declares the identity in allow_file, the same shape as
+    shared-tests.txt's declared pairs; an undeclared identity shared by more
+    than one file fails, naming every file that claims it.
+    """
+    allowed = set(read_list(allow_file))
+    by_id = {}
+    for path in sorted({rel(ORIGIN[name]) for name, *_rest in M}):
+        found = AD_HOC_ROW_FILE.match(os.path.basename(path))
+        if not found or found.group(1) in ROW_PREFIXES:
+            continue
+        by_id.setdefault(f"{found.group(1)}-{found.group(2)}", set()).add(path)
+    out = []
+    for ident, files in sorted(by_id.items()):
+        if len(files) > 1 and ident not in allowed:
+            out.append(f"{ident} is a mutant-file prefix outside ROW_PREFIXES, claimed by more than one file: "
+                        + ", ".join(sorted(files)) + f"; declare it in {rel(allow_file)} if one card splits it on purpose")
+    return out
+
+
+# A mutant file's identity whatever its prefix, ROW_PREFIXES included -- used
+# only to group rows for killer_stem_problems(), never to decide whether a
+# file's own rows are self-consistent (check()'s ROW_FILE/ROW_TEST pass, and
+# prefix_uniqueness_problems() above, already do that).
+FILE_IDENTITY = AD_HOC_ROW_FILE
+
+# A killer test's stem, suffix letter dropped: TestCS1_, TestREC52f_ and
+# TestREC52g_ are all stem CS1, REC52. B343's actual harm was at this level,
+# not the row's: two different IDENTITIES naming the same stem means each
+# identity's -run regex would also run the other's test, so a row can read
+# killed by a test that has nothing to do with it, even when both files'
+# own row prefixes are unique (prefix_uniqueness_problems does not see this;
+# a stem is a different, coarser identity than the row it is derived from).
+KILLER_STEM = re.compile(r"Test([A-Za-z]+?)(\d+)[a-z]?_")
+KILLER_STEM_SHARED = HERE / "killer-stem-shared.txt"
+
+
+def killer_stem_problems(allow_file=KILLER_STEM_SHARED):
+    """A killer-test stem named by rows from more than one mutant-file
+    identity is declared in allow_file (one stem per line, e.g. TRU23) when
+    many features are legitimately caught by the same broad test; undeclared,
+    it fails and names every identity and file that names the stem.
+    """
+    allowed = set(read_list(allow_file))
+    stem_idents = {}
+    for name, _f, _old, _new, test, _platform in M:
+        found = FILE_IDENTITY.match(os.path.basename(ORIGIN[name]))
+        if not found:
+            continue
+        ident = f"{found.group(1)}-{found.group(2)}"
+        for mo in KILLER_STEM.finditer(test):
+            stem = f"{mo.group(1)}{mo.group(2)}"
+            stem_idents.setdefault(stem, {}).setdefault(ident, set()).add(rel(ORIGIN[name]))
+    out = []
+    for stem, idents in sorted(stem_idents.items()):
+        if len(idents) > 1 and stem not in allowed:
+            files = sorted({f for fs in idents.values() for f in fs})
+            out.append(f"Test{stem}_ is a killer-test stem named by rows of more than one identity "
+                        f"({', '.join(sorted(idents))}): " + ", ".join(files) +
+                        f"; declare the stem in {rel(allow_file)} if it is shared on purpose")
+    return out
+
 # A top-level Go test function, for checking that a mutant's judging test
 # names something real -- a typo only showed up as NOT DETECTED in the next
 # manual sweep, and push/pull_request no longer run one.
@@ -305,6 +382,22 @@ def build_broken(r):
                for ln in (r.stdout + r.stderr).splitlines())
 
 
+def masked_by_build(r):
+    """Report a red that only a broken build explains (MASKED-BUILD1).
+
+    test/acceptance's TestMain builds the binary before any test runs and
+    exits 1 when it cannot, so a mutant that left a package acceptance does
+    not import unbuildable (package main above all) prints FAIL<TAB>pkg<TAB>time
+    for acceptance with no test on record, and test_failed reads that as a red
+    test: a mutant that never compiled was reported caught (13 rows on main
+    1a281ecd). A package [build failed] in the same run with no "--- FAIL"
+    anywhere means nothing judged the mutant. A real "--- FAIL" beside a build
+    failure elsewhere stays red (DEL-1d's both).
+    """
+    return build_broken(r) and not any(ln.lstrip().startswith("--- FAIL")
+                                       for ln in (r.stdout + r.stderr).splitlines())
+
+
 def test_failed(r):
     """Report positive evidence that a test ran and failed.
 
@@ -421,6 +514,98 @@ def rubric_problems(name, origin, test):
     return problems
 
 
+# Import drift (MASKED-BUILD1). A break that removes a package's last use in a
+# Go file leaves its import unused, and an import edit that drops a package the
+# file still uses leaves the name undefined. Either way the mutant does not
+# build, which the sweep learns hours into a dispatch, and which a harness that
+# builds the binary in its TestMain once printed as a red. Both show in the
+# text, so --check names the row before any Go runs. GO_LEX matches comments
+# and literals leftmost-first, as Go's scanner reads them, so a package named
+# only inside one (a doc comment, a message) never counts as a use.
+GO_LEX = re.compile(r'//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'', re.S)
+GO_DECL = re.compile(r"(?m)^(?:func|type|var|const)\b")
+GO_IMPORT = re.compile(r'(?m)^[ \t]*(?:import[ \t]+)?(?:([A-Za-z_.]\w*)[ \t]+)?"([^"\n]+)"')
+GO_SELECTOR = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\.")
+GO_MAJOR = re.compile(r"v\d+")
+
+
+def go_header(src):
+    """Where src's header ends: the offset of its first top-level declaration.
+
+    Found with every comment and literal blanked to its own length, so an
+    offset here is an offset in src, and a `func` inside a comment is not one.
+    """
+    end = GO_DECL.search(GO_LEX.sub(lambda t: re.sub(r"[^\n]", " ", t.group(0)), src))
+    return end.start() if end else len(src)
+
+
+def go_imports(src):
+    """The package names src imports, read from its header.
+
+    The header is the text before the first top-level declaration, the only
+    place Go allows an import, so a string literal further down is never read
+    as one. A path's name is its last element, or the one before a /vN major
+    version, less a .vN suffix; a name guessed wrong is never used in the code,
+    so its count never changes and it is never judged.
+    """
+    head = src[:go_header(src)]
+    names = set()
+    for alias, path in GO_IMPORT.findall(GO_LEX.sub(lambda t: t.group(0) if t.group(0)[0] in "\"`" else " ", head)):
+        if alias in ("_", "."):
+            continue
+        parts = path.split("/")
+        last = parts[-2] if len(parts) > 1 and GO_MAJOR.fullmatch(parts[-1]) else parts[-1]
+        names.add(alias or re.sub(r"\.v\d+$", "", last))
+    return names
+
+
+def go_uses(src):
+    """How often the code of src selects from each name: pkg.X outside comments and literals."""
+    counts = {}
+    for name in GO_SELECTOR.findall(GO_LEX.sub(" ", src)):
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def import_drift(name, edits, text, pristine):
+    """The import problems of one break, its edits applied in the sweep's order.
+
+    Judged per Go file, and only for names whose use count the edits change: a
+    package the file used and no longer does while still importing it, and a
+    package the file no longer imports while still using it. An edit whose
+    anchor is not unique is skipped here, since check() reports it already.
+    `pristine` caches each untouched file's (imports, uses, header end); a file
+    whose header no edit reaches keeps its imports, so only its uses are read
+    again.
+    """
+    after, in_header = {}, {}
+    for f, old, new in edits:
+        s = after.get(f, text(f))
+        if s is None or s.count(old) != 1:
+            return []
+        if f.endswith(".go"):
+            if f not in pristine:
+                src = text(f)
+                pristine[f] = (go_imports(src), go_uses(src), go_header(src))
+            in_header[f] = in_header.get(f, False) or s.index(old) <= pristine[f][2]
+        after[f] = s.replace(old, new, 1)
+    problems = []
+    for f, s in after.items():
+        if not f.endswith(".go"):
+            continue
+        imported, used, _end = pristine[f]
+        imported_after, used_after = (go_imports(s) if in_header[f] else imported), go_uses(s)
+        for pkg in sorted(imported_after):
+            if used.get(pkg) and not used_after.get(pkg):
+                problems.append(f"{name!r}: the break removes the last use of {pkg} in {f}, so its import is left "
+                                f"unused and the mutant does not build; add IMPORTS[{name!r}] dropping it")
+        for pkg in sorted(imported - imported_after):
+            if used_after.get(pkg):
+                problems.append(f"{name!r}: the edits drop the import of {pkg} from {f}, which still uses it, so "
+                                f"the mutant does not build; keep the import")
+    return problems
+
+
 def check(complete, shared_tests=SHARED_TESTS):
     """The static checks. Returns the problems found.
 
@@ -533,6 +718,13 @@ def check(complete, shared_tests=SHARED_TESTS):
         count = s.count(io_)
         if count != 1:
             problems.append(f"IMPORTS[{name!r}]: import anchor occurs {count} times in {f} after the mutation, not exactly once")
+    problems += prefix_uniqueness_problems()
+    problems += killer_stem_problems()
+    pristine = {}
+    for name, f, old, new, _test, _platform in M:
+        if outside_cwd(f) or (name in IMPORTS and outside_cwd(IMPORTS[name][0])):
+            continue
+        problems += import_drift(name, [(f, old, new)] + ([IMPORTS[name]] if name in IMPORTS else []), text, pristine)
     return problems
 
 
@@ -728,7 +920,7 @@ def run_sweep(strict=False, trim_root=None):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
-            elif test_failed(r):
+            elif test_failed(r) and not masked_by_build(r):
                 # A red test on record is positive evidence the mutant was
                 # caught, even when the same `go test ./...` run also failed
                 # to build an unrelated package: that package's failure is
@@ -847,7 +1039,8 @@ def main(argv):
     problems += check(complete=not args.files, shared_tests=shared_tests)
     if args.check:
         if not problems:
-            print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once")
+            print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once; "
+                  "no break leaves an import unused or a used one dropped")
         return report(problems)
     if problems:
         print("refusing to sweep: the static checks fail", file=sys.stderr)

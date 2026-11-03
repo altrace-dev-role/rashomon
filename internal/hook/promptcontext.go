@@ -29,6 +29,18 @@ func PromptContextAt(st *store.Store, sp *spec.Compiled, sessionID, promptID, cw
 	return p.contextOf(env, verify.SteerView{ProjectRoot: project})
 }
 
+// StartContextAt is Route's context for a note made at SessionStart, the
+// continuity briefing at a compaction (card COMPACT-SLOT1): PromptContextAt's
+// with no prompt and the start's source. The source is the second half of
+// SessionStart's channel row (steer's keyOf), so a compact start reads the
+// row P-TRU-1 opened for compact and no other; it attends as a prompt does
+// (attendanceOf).
+func StartContextAt(st *store.Store, sp *spec.Compiled, sessionID, cwd, project, permissionMode, source string, env SteerEnv) steer.Context {
+	p := &Post{st: st, sp: sp, sessionID: sessionID, cwd: cwd, permissionMode: permissionMode,
+		event: string(steer.EventSessionStart), startSource: source}
+	return p.contextOf(env, verify.SteerView{ProjectRoot: project})
+}
+
 // PromptRecordScope is the record scope the prompt path files its line
 // under: the marker the post path reads (recordScope), v4 when it is absent
 // or unreadable, so an unknown scope withholds.
@@ -44,12 +56,14 @@ func PromptRecordScope(st *store.Store) string {
 // silence it, and only a surface Caps says no one is at (No: an SDK
 // program, or a harness Caps claims nothing for) does (PREFLIGHT-CLOUD1).
 // Claude Code on the web and the GitHub Action are attended. dontAsk stays
-// unattended on both paths. It runs once per prompt that routes a note,
-// so the table Caps builds costs one map there and nothing on a post.
+// unattended on both paths. SessionStart's follows the prompt path's: its
+// one note, the continuity briefing (COMPACT-SLOT1), quotes what a person
+// typed back to the model. harness.Cap reads the one capability without
+// building Caps' table.
 func attendanceOf(event string, env SteerEnv, permissionMode string) steer.Attendance {
 	unattended := env.CI
-	if event == string(steer.EventUserPromptSubmit) {
-		unattended = harness.Caps(harness.ID(env.HarnessID), harness.Surface(env.Surface))[harness.CapPersonAtPrompt] == harness.No
+	if event == string(steer.EventUserPromptSubmit) || event == string(steer.EventSessionStart) {
+		unattended = harness.Cap(harness.ID(env.HarnessID), harness.Surface(env.Surface), harness.CapPersonAtPrompt) == harness.No
 	}
 	if unattended || permissionMode == "dontAsk" {
 		return steer.AttendanceUnattended

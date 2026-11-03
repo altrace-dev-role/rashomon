@@ -21,6 +21,10 @@ m("H-111 probe does not ignore SIGPIPE", "cmd/rashomon/main.go",
   "\t\thook.IgnoreBrokenPipe()\n\t\tfault.Inject(fault.PointProbeStart)\n",
   "\t\tfault.Inject(fault.PointProbeStart)\n",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^probe$")
+# The break removes recap_turn.go's only use of hook, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['H-111 recap does not ignore SIGPIPE'] = ('cmd/rashomon/recap_turn.go',
+  '\t"github.com/altrace-dev-role/rashomon/internal/hook"\n', '')
 m("H-111 recap does not ignore SIGPIPE", "cmd/rashomon/recap_turn.go",
   "\thook.IgnoreBrokenPipe()\n\tfault.Inject(fault.PointRecapStart)\n",
   "\tfault.Inject(fault.PointRecapStart)\n",

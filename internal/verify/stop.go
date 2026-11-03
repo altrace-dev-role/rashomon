@@ -40,6 +40,10 @@ type StopInput struct {
 	// for none. The Stop's caller sets it only while no spec declares a test
 	// gate.
 	Inferred *InferredGate
+	// Root is the project the Stop read its spec and inferred gate from,
+	// baseline.Key of the payload's cwd (card PROJECT-RESOLVE1), under
+	// which evaluate places every gate; "" for none (evaluate).
+	Root string
 	// Platform reads the pgraph log under root, the snapshot's project root,
 	// for written, the session's relevant .go writes, project-relative (card
 	// PL-WIRE1): the ledger verb's replay and the Stop hook (PW1b-ON-230
@@ -77,9 +81,14 @@ type InferredGate struct {
 // next prompt reads (D90); an incomplete record speaks no verdict (2.2.5,
 // Silence).
 type StopView struct {
-	Snap     Snapshot
-	Summary  Summary
-	Turn     TurnCounts
+	Snap    Snapshot
+	Summary Summary
+	Turn    TurnCounts
+	// Done is the window the done flag reads where it is more than the turn
+	// (doneWindow, BG-OUTCOME phase 2a): the turns since the last edit in the
+	// gates' projects; nil where the turn holds that edit, or the session
+	// made none.
+	Done     *DoneWindow
 	Programs map[string]string
 	Index    *ProjectIndex
 	Scan     ClaimScan
@@ -131,15 +140,22 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		run = &store.Run{}
 	}
 	var c classified
-	snap := evaluate(run, idx, sp, in.Key, in.Inferred, pt, now, &c)
+	snap := evaluate(run, idx, sp, in.Key, in.Inferred, in.Root, pt, now, &c)
 	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
-		counted.runs, counted.writes, counted.unnamed, counted.rewritten = classifyWith(run, pickExecutions(run))
+		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
 	}
-	turn := countTurn(run, counted, in.PromptID, pt.Seq)
+	if snap.Recording == Complete {
+		markTurn(snap.Gates, turnProjects(run, in.PromptID, pt.Seq))
+	}
+	roots := gateRoots(&snap)
+	turn := countTurn(run, counted, in.PromptID, pt.Seq, roots)
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx,
 		Violations: turnViolations(snap.SpecVerdicts, turn.FirstSeq)}
+	if w, ok := doneWindow(run, counted, turn, pt.Seq, onTurnRoots(&snap, roots)); ok {
+		v.Done = &DoneWindow{Turn: w, Summary: TurnSummary(snap, w)}
+	}
 	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {
 		v.Index = &ProjectIndex{ProjectKey: in.ProjectKey}
@@ -183,7 +199,7 @@ func pinRequired(snap *Snapshot, pins map[string]bool) {
 // launched (call schema 8) is named by it, in the binary's own words --
 // `python3 -m pytest`, not the interpreter `python3` the line starts with
 // (D229); an older record's is the line's program word. The inferred gate
-// with no run is named by inferredProgram.
+// with no run, or a wrapped one, is named by inferredProgram.
 func programs(gates []GateState, runs []gateRun) map[string]string {
 	bySeq := make(map[int64]string, len(runs))
 	for _, r := range runs {
@@ -191,7 +207,9 @@ func programs(gates []GateState, runs []gateRun) map[string]string {
 	}
 	out := make(map[string]string, len(gates))
 	for _, g := range gates {
-		if g.LastRun != nil {
+		// A wrapped last run's line is the wrapper's (make, bash), never the
+		// gate's runner, so it names no gate (WRAPPER-RUN1).
+		if g.LastRun != nil && g.LastRun.Wrapped == WrapNone {
 			out[g.Gate] = bySeq[g.LastRun.Seq]
 		}
 	}
@@ -216,9 +234,11 @@ func inferredProgram(programs map[string]string, name string) {
 // selects the prompt digest's selectTurn selects, the one whose first
 // declaration is latest (D72); a run with no prompt id has an empty window,
 // never the whole run. Writes are the relevant named writes, as gateStates
-// counts them. Cost: one pass over the declarations, then one over each
-// classified slice, O(D + R + W + U).
-func countTurn(run *store.Run, c classified, promptID string, at int64) TurnCounts {
+// counts them: those a gate of roots covers (gateRoots; nil counts every
+// one), so a turn that wrote only outside its project edited nothing a gate
+// checks (card STALE-COVER1). Cost: one pass over the declarations, then one
+// over each classified slice, O(D + R + W x G + U).
+func countTurn(run *store.Run, c classified, promptID string, at int64, roots []string) TurnCounts {
 	if promptID == "" {
 		promptID = latestPrompt(run.Declarations)
 	}
@@ -235,9 +255,18 @@ func countTurn(run *store.Run, c classified, promptID string, at int64) TurnCoun
 	if len(window) == 0 {
 		return t
 	}
+	n := countIn(c, window, roots)
+	n.FirstSeq = t.FirstSeq
+	return n
+}
+
+// countIn counts c's records whose declaration's seq is in window, as
+// countTurn counts a turn; FirstSeq is the caller's.
+func countIn(c classified, window map[int64]bool, roots []string) TurnCounts {
+	var t TurnCounts
 	paths := map[string]bool{}
 	for _, w := range c.writes {
-		if w.Path != nil && Relevant(w.Class) && window[w.Seq] {
+		if w.Path != nil && Relevant(w.Class) && window[w.Seq] && coveredByAny(roots, &w) {
 			t.Writes++
 			paths[*w.Path] = true
 			t.LastWriteSeq = max(t.LastWriteSeq, w.Seq)
@@ -260,6 +289,59 @@ func countTurn(run *store.Run, c classified, promptID string, at int64) TurnCoun
 		}
 	}
 	return t
+}
+
+// DoneWindow is the turns a done claim answers to where they are more than
+// its own (doneWindow): their counts, and the row they read.
+type DoneWindow struct {
+	Turn    TurnCounts
+	Summary Summary
+}
+
+// doneWindow is the window the done flag reads (BG-OUTCOME phase 2a, the
+// manager's ruling of 11-03): the turns from the one holding the session's
+// last relevant write a gate of roots covers, through at. A done claim is
+// judged by the evidence since the last edit in the gates' projects, as the
+// gates' states are, never by its turn alone; an edit no gate covers opens
+// nothing (coveredByAny, as the turn counts it), and the Stop's roots are
+// its turn's gates' (onTurnRoots). ok is false where the turn
+// holds a covered write itself, or the session has none: the turn is the
+// window, and the line is the turn's. Cost: three passes over the
+// declarations and one over the writes, only for a turn that wrote nothing.
+func doneWindow(run *store.Run, c classified, turn TurnCounts, at int64, roots []string) (TurnCounts, bool) {
+	if turn.Writes > 0 {
+		return TurnCounts{}, false
+	}
+	var last int64
+	for i := range c.writes {
+		if w := &c.writes[i]; w.Path != nil && Relevant(w.Class) && w.Seq <= at && w.Seq > last && coveredByAny(roots, w) {
+			last = w.Seq
+		}
+	}
+	prompt := ""
+	for i := range run.Declarations {
+		if d := &run.Declarations[i]; d.Seq == last && d.PromptID != nil {
+			prompt = *d.PromptID
+		}
+	}
+	if last == 0 || prompt == "" {
+		return TurnCounts{}, false
+	}
+	from := last
+	for i := range run.Declarations {
+		if d := &run.Declarations[i]; d.PromptID != nil && *d.PromptID == prompt && d.Seq < from {
+			from = d.Seq
+		}
+	}
+	window := map[int64]bool{}
+	for i := range run.Declarations {
+		if s := run.Declarations[i].Seq; s >= from && s <= at {
+			window[s] = true
+		}
+	}
+	t := countIn(c, window, roots)
+	t.FirstSeq = from
+	return t, true
 }
 
 // latestPrompt is the prompt id whose first declaration has the greatest

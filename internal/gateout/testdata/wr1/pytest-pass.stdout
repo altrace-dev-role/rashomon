@@ -1,0 +1,10 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /private/tmp/rk-se3/wr1-fx/proj/py-pass
+plugins: respx-0.22.0, asyncio-1.4.0, anyio-4.8.0, mock-3.11.1, langsmith-0.9.7
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+test_a.py ..                                                             [100%]
+
+============================== 2 passed in 0.01s ===============================
