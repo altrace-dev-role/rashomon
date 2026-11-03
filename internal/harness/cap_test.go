@@ -1,6 +1,9 @@
 package harness
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // TestPE1_CapIsCapsWithoutTheTable (card PERF-EDGE1): Cap reads one
 // capability as Caps' table holds it, for every harness, surface and
@@ -36,5 +39,28 @@ func TestPE1_ACapReadAllocatesNothing(t *testing.T) {
 	}
 	if got != Unverified {
 		t.Errorf("premise: Cap(claude_code, sdk, mirror_in_band) = %q, want unverified", got)
+	}
+}
+
+// TestPE1_NoEntrypointLeavesBothUnverified pins the unknown surface's
+// column, which no test read before PE-1's rows found it: a Claude Code
+// with no entrypoint has a mirror nobody is known to read (Archive 60.2.9)
+// and a prompt nobody is known to be at, unverified on both and neither the
+// sdk's no nor yes, so its identity is blind to exactly those two. Break:
+// either reads yes, and a session with no entrypoint claims a reader
+// nothing says is there.
+func TestPE1_NoEntrypointLeavesBothUnverified(t *testing.T) {
+	got := Detect(intake(t, `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/home/u/.claude/projects/p1/s.jsonl"}`),
+		Env{ConfigDir: claudeConfigDir})
+	if got.ID != ClaudeCodePresumed || got.Surface != SurfaceUnknown {
+		t.Fatalf("premise: Detect = %s on %s, want claude_code_presumed on unknown", got.ID, got.Surface)
+	}
+	for _, c := range []Capability{CapMirrorInBand, CapPersonAtPrompt} {
+		if s := Cap(got.ID, got.Surface, c); s != Unverified {
+			t.Errorf("Cap(claude_code_presumed, unknown, %s) = %q, want unverified", c, s)
+		}
+	}
+	if want := []string{string(CapMirrorInBand), string(CapPersonAtPrompt)}; !slices.Equal(got.Blind, want) {
+		t.Errorf("Blind = %v, want exactly %v on the unknown surface", got.Blind, want)
 	}
 }
