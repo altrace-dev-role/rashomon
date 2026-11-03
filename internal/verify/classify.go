@@ -200,6 +200,7 @@ func pickExecutions(run *store.Run) map[string]*store.Execution {
 // projects its gate runs name (ProjectID); run is not nil.
 func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64, keys projectKeys) {
 	var pending []int // indexes into runs whose kind waits on the inference
+	ended := taskEnds(run)
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
 		n := len(writes)
@@ -215,7 +216,7 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 		if !isGateRun(d, masked, runner) {
 			continue
 		}
-		g := newRun(d, e, masked, runner)
+		g := newRun(d, e, masked, runner, ended[d.ToolUseID])
 		g.ProjectID = keys.id(d.Project)
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
@@ -263,14 +264,19 @@ func execSeq(e *store.Execution) int64 {
 }
 
 // newRun is the run d and e record, read as the line ran (masked and runner
-// are asRan's). Its location is the declaration's; the caller clears it
-// where the line was rewritten. The line's digest is lineRun's, not the
-// run's (D209).
-func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) gateRun {
+// are asRan's), and judged by end, the call's outcome_join (taskEnds), where
+// it was moved to the background: classify's gate runs and a declared gate's
+// line runs are built here, so both read the same end (card BG-OUTCOME phase
+// 1). Its location is the declaration's; the caller clears it where the line
+// was rewritten. The line's digest is lineRun's, not the run's (D209).
+func newRun(d *store.Declaration, e *store.Execution, masked, runner *string, end *store.OutcomeJoin) gateRun {
 	g := gateRun{
 		Seq: d.Seq, ExecSeq: e.Seq, ToolUseID: d.ToolUseID, AgentID: d.AgentID,
 		Runner: runner, Location: d.CWDDigest, Masked: masked,
 		Outcome: e.Outcome, ExitCode: e.ExitCode, Output: e.GateOutput, Backgrounded: e.Backgrounded,
+	}
+	if end != nil && g.Backgrounded {
+		g.endedBy(end)
 	}
 	if d.Shape.Program != nil {
 		g.Program = *d.Shape.Program
@@ -291,6 +297,29 @@ func newRun(d *store.Declaration, e *store.Execution, masked, runner *string) ga
 	g.FromOutput = readsOutput(&g, e.RulesVersion)
 	g.FromPrinted = readsPrinted(&g, e.RulesVersion)
 	return g
+}
+
+// taskEnds is run's outcome_join records by the call's id, the first for an
+// id (card BG-OUTCOME phase 1); nil when it has none, which allocates
+// nothing.
+func taskEnds(run *store.Run) map[string]*store.OutcomeJoin {
+	if len(run.OutcomeJoins) == 0 {
+		return nil
+	}
+	ended := make(map[string]*store.OutcomeJoin, len(run.OutcomeJoins))
+	for i := range run.OutcomeJoins {
+		if j := &run.OutcomeJoins[i]; ended[j.ToolUseID] == nil {
+			ended[j.ToolUseID] = j
+		}
+	}
+	return ended
+}
+
+// endedBy is a background run judged by its end: the join's outcome and exit
+// code, as a post reads PostToolUse and PostToolUseFailure. The run keeps its
+// launch's seq and location: what it tested is the tree it was launched over.
+func (g *gateRun) endedBy(end *store.OutcomeJoin) {
+	g.Outcome, g.ExitCode, g.Backgrounded = end.Outcome, end.ExitCode, false
 }
 
 // asRan is a Bash call's masking and runner as the line ran, the rule
