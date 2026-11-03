@@ -54,3 +54,5 @@ VER65
 VER67
 VER9
 VG1
+# WR1: BGO-2's background-wrapper row is killed by TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown, which BG-OUTCOME 2a extends to a background wrapper.
+WR1
