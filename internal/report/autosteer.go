@@ -23,6 +23,9 @@ type Autosteer struct {
 	Checks    []AutosteerCheck   `json:"checks"`
 	Lessons   *AutosteerLessons  `json:"lessons"`
 	Unknown   []AutosteerUnknown `json:"unknown"`
+	// Mistakes is the findings as mistakes against intent (card
+	// REPORT-REQS1), null with no Stop replayed.
+	Mistakes *AutosteerMistakes `json:"mistakes"`
 }
 
 // AutosteerStop is the last Stop: its point seq, the row of verify's table it
@@ -101,4 +104,37 @@ type AutosteerLessons struct {
 type AutosteerUnknown struct {
 	Kind string `json:"kind"`
 	Seq  int64  `json:"seq"`
+}
+
+// AutosteerMistakes is the count line's records (card REPORT-REQS1,
+// INTENT-MISTAKES): every finding line the session recorded, delivered or
+// withheld, in exactly one list. recap.MistakesOf classifies them:
+//   - Caught: told to the agent at a call or a prompt, then resolved by a
+//     green run of its gate;
+//   - Reached: got to the person (delivered at a Stop; told, open at the
+//     last Stop and counted by the last printed clause; or flagged to the
+//     person alone and open);
+//   - Missed: open at the last Stop, never told or never shown;
+//   - Unsettled: names no gate, so no run settles it;
+//   - FixedUnprompted: never told, then resolved; never counted as caught.
+//
+// Later is the mistakes found after the session. Nothing records a later
+// find yet (LOOP-TRACE1), so it is null, which is unknown and never zero.
+type AutosteerMistakes struct {
+	Caught          []AutosteerMistake `json:"caught"`
+	Reached         []AutosteerMistake `json:"reached"`
+	Missed          []AutosteerMistake `json:"missed"`
+	Unsettled       []AutosteerMistake `json:"unsettled"`
+	FixedUnprompted []AutosteerMistake `json:"fixed_unprompted"`
+	Later           []AutosteerMistake `json:"later"`
+}
+
+// AutosteerMistake is one finding in a list: its steer line's id and seq, the
+// green run that resolved it (0 unless resolved), and, in Reached, why it
+// reached the person ("stop", "open" or "flag"; "" elsewhere).
+type AutosteerMistake struct {
+	ID         string `json:"id"`
+	Seq        int64  `json:"seq"`
+	ResolvedBy int64  `json:"resolved_by"`
+	Why        string `json:"why"`
 }

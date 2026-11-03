@@ -1,6 +1,10 @@
 # TRU-4: no terminal, no install without --yes; --yes records watch_yes at
 # this build's steer disclosure (STEER-DISCLOSE-YES1, R32); an agent session
 # is refused with or without --yes, and the refusal never names --yes.
+# The break removes watch.go's only use of steer, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['TRU-4 a --yes consent holds every note'] = ('cmd/rashomon/watch.go',
+  '\t"github.com/altrace-dev-role/rashomon/internal/steer"\n', '')
 m("TRU-4 a --yes consent holds every note", "cmd/rashomon/watch.go",
   "\t\tSteerDisclosure: steer.DisclosureVersion,\n", "\t\tSteerDisclosure: 0,\n",
   "TestTRU4_")
