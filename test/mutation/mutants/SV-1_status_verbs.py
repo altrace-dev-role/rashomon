@@ -45,8 +45,8 @@ m("SV-1 the hook entry marks nothing", "cmd/rashomon/main.go",
 m("SV-1 post marks PostToolUse for both events", "cmd/rashomon/fired.go",
   "name == \"PostToolUseFailure\" {", "false {", "TestSV1i_EachEntryMarksItsEvent")
 m("SV-1 recap marks while paused", "cmd/rashomon/recap_turn.go",
-  "\tif paused, _, perr := store.Paused(root); perr == nil && !paused {\n",
-  "\tif _, _, perr := store.Paused(root); perr == nil {\n", "TestSV1i_EachEntryMarksItsEvent")
+  "\tif paused, _, perr := store.Paused(root); perr != nil || paused {\n",
+  "\tif _, _, perr := store.Paused(root); perr != nil {\n", "TestSV1i_EachEntryMarksItsEvent")
 m("SV-1 sessions with no marker count toward an event", "cmd/rashomon/verbs_status.go",
   "\t\t\tif len(r.Fired) == 0 || earlierOnly && r.name == newest.name {\n",
   "\t\t\tif earlierOnly && r.name == newest.name {\n", "TestSV1p_UpgradeIsNotNotFiring")
