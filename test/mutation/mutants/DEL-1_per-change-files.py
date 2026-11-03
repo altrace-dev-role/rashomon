@@ -16,4 +16,9 @@ m("DEL-1 a failing test that prints build failed reads as a broken build", "test
 # Red needs evidence that a test ran and failed; a non-zero exit from a tool
 # that ran nothing is not detection.
 m("DEL-1 a non-zero exit with no test failure on record reads as red", "test/mutation/sweep.py",
-  "            elif test_failed(r):\n", "            elif True:\n", "TestDEL1d_")
+  "            elif test_failed(r) and not masked_by_build(r):\n", "            elif True:\n", "TestDEL1d_")
+# A harness package's FAIL line beside a broken build is not a red test: with
+# no "--- FAIL" anywhere, nothing judged the mutant (MASKED-BUILD1).
+m("DEL-1 a harness FAIL beside a broken build reads as red", "test/mutation/sweep.py",
+  "    return build_broken(r) and not any(ln.lstrip().startswith(\"--- FAIL\")\n",
+  "    return False and not any(ln.lstrip().startswith(\"--- FAIL\")\n", "TestDEL1d_")

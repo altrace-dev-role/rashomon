@@ -114,6 +114,9 @@ func writeAutosteer(b *bytes.Buffer, a *Autosteer) {
 	fmt.Fprintln(b, "  autosteer")
 	fmt.Fprintf(b, "    delivered: %s\n", deliveredText(a.Delivered))
 	writeFindings(b, a.Findings)
+	if a.Mistakes != nil {
+		fmt.Fprintf(b, "    mistakes against intent: %s\n", mistakesText(a.Mistakes))
+	}
 	fmt.Fprintf(b, "    checks: %s\n", checksText(a.Checks))
 	fmt.Fprintf(b, "    lessons: %s\n", lessonsText(a))
 	fmt.Fprintf(b, "    unknown: %s\n", unknownText(a.Unknown))
@@ -211,6 +214,41 @@ func findingText(f AutosteerFinding) string {
 		return s + ", not resolved: no green run of it after"
 	}
 	return s + ", no gate named, so no run settles it"
+}
+
+// mistakesText is the owner's count line with the record seq each finding
+// cites (two findings may cite one record): `1 caught at the act (at #7), 0
+// reached the person, 0 missed; found later unknown (no trace is
+// recorded)`, then `; 1 not settled (at #9)` and `; 1 fixed with no line (at
+// #8)` when any. Missed prints at 0, since it is the miss count, and found
+// later is never dropped, so an absent term never reads as zero.
+func mistakesText(m *AutosteerMistakes) string {
+	s := fmt.Sprintf("%d caught at the act%s, %d reached the person%s, %d missed%s; ", len(m.Caught), mistakeSeqs(m.Caught),
+		len(m.Reached), mistakeSeqs(m.Reached), len(m.Missed), mistakeSeqs(m.Missed))
+	if m.Later == nil {
+		s += "found later unknown (no trace is recorded)"
+	} else {
+		s += fmt.Sprintf("%d found later%s", len(m.Later), mistakeSeqs(m.Later))
+	}
+	if len(m.Unsettled) > 0 {
+		s += fmt.Sprintf("; %d not settled%s", len(m.Unsettled), mistakeSeqs(m.Unsettled))
+	}
+	if len(m.FixedUnprompted) > 0 {
+		s += fmt.Sprintf("; %d fixed with no line%s", len(m.FixedUnprompted), mistakeSeqs(m.FixedUnprompted))
+	}
+	return s
+}
+
+// mistakeSeqs is ` (at #1, #99)`, or "" for none.
+func mistakeSeqs(ms []AutosteerMistake) string {
+	if len(ms) == 0 {
+		return ""
+	}
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		parts[i] = "#" + strconv.FormatInt(m.Seq, 10)
+	}
+	return " (at " + strings.Join(parts, ", ") + ")"
 }
 
 // checksText is each expected evidence row with its state and the seq or the

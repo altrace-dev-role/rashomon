@@ -118,10 +118,8 @@ m("MO-1 a delegate row's markers are not matched", "internal/gateout/gateout.go"
 m("MO-1 a delegated run's summary_pass is read", V,
   "\t\treturn !gateout.Delegated(r.Program)\n", "\t\treturn true\n",
   "TestMO1_ADelegatedRunIsReadOnlyWhereItIsRed")
-# The row's target line is account.go's only use of gateout, so the break drops
-# the import beside it; without it the mutant does not build (BUILD BROKEN).
-IMPORTS["MO-1 a delegated summary_pass is a summary read"] = (R,
-  '\t"github.com/altrace-dev-role/rashomon/internal/gateout"\n', "")
+# The break leaves account.go's other uses of gateout (the printed-status
+# kinds, FALSE-FIRE1), so the import stays and no IMPORTS entry drops it.
 m("MO-1 a delegated summary_pass is a summary read", R,
   "\t\treturn e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName))\n",
   "\t\treturn e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) || true\n",

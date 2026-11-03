@@ -28,7 +28,9 @@ m("ST-2.4 the done flag on a green verdict", DN,
 
 # The value line and the clause (R6, R8).
 m("ST-2.4 and <k> more at four", VL, 'const maxGateNames = 3\n', 'const maxGateNames = 4\n', "TestVER65_ValueLineRowsRender")
-IMPORTS["ST-2.4 a prefix word names the gate"] = (VL, '\t"slices"\n', '')
+# No IMPORTS entry: value.go uses slices beyond this line (the untrusted-gate
+# read), so the import stays. The entry that dropped it broke the build once
+# that use landed (BUILD BROKEN, main dispatch run 41521646555).
 m("ST-2.4 a prefix word names the gate", VL,
   'if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {\n', 'if p := t.programs[g.Gate]; p != "" {\n', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the no-write variant dropped", VL,
