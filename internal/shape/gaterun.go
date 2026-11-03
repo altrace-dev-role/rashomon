@@ -14,15 +14,16 @@ func GateRun(runnerDigest, statusMasked *string, verbClass string) bool {
 		verbClass == VerbTest
 }
 
-// WrapperRun reports a Bash line that may run a gate no list names: one whose
-// program (the shape's, past a leading cd and assignments) is a wrapper's
-// (wrapperProgram, each of class execute) and that is no gate run. Its output
-// is read only for a runner's signature (WRAPPER-RUN1), by the same two
-// readers GateRun has; any other line -- cat of a log, a git or network
-// command, date or echo before a log read -- is never read, since an old log
-// is not a run.
-func WrapperRun(toolName string, program, runnerDigest, statusMasked *string, verbClass string) bool {
-	return toolName == "Bash" && wrapperProgram(program) && !GateRun(runnerDigest, statusMasked, verbClass)
+// WrapperRun reports a Bash line that may run a gate no list names: one that
+// launches, in any of its commands (launch: the shape's Launch, or for a
+// record before the bit RecordedLaunch's reading of its program), and that
+// is no gate run. Its output is read only for a runner's signature
+// (WRAPPER-RUN1), by the same two readers GateRun has; any other line -- cat
+// of a log, a git or network command, date or echo before a log read, a
+// syntax check, a script asked for its status -- is never read, since an
+// old log is not a run.
+func WrapperRun(toolName string, launch bool, runnerDigest, statusMasked *string, verbClass string) bool {
+	return toolName == "Bash" && launch && !GateRun(runnerDigest, statusMasked, verbClass)
 }
 
 // wrapperProgram reports a program a wrapper run starts with: a shell, which

@@ -37,15 +37,19 @@ func TestWR1_AWrapperRunStartsWithAShellOrAScript(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := Derive("Bash", in, []byte("k"))
-		if got := WrapperRun("Bash", s.Program, s.RunnerDigest, s.StatusMasked, s.VerbClass); got != c.want {
+		if got := WrapperRun("Bash", s.Launch, s.RunnerDigest, s.StatusMasked, s.VerbClass); got != c.want {
 			t.Errorf("%q (program %v, class %s): wrapper %v, want %v", c.command, deref(s.Program), s.VerbClass, got, c.want)
 		}
+		// A record before call schema 10 has no launch bit, and is read by
+		// its first program, which on each of these lines says the same.
+		if got := WrapperRun("Bash", RecordedLaunch(s.Program, false, false), s.RunnerDigest, s.StatusMasked, s.VerbClass); got != c.want {
+			t.Errorf("%q (program %v) read as a record before the bit: wrapper %v, want %v", c.command, deref(s.Program), got, c.want)
+		}
 	}
-	if WrapperRun("Bash", nil, nil, nil, VerbExecute) {
+	if WrapperRun("Bash", RecordedLaunch(nil, false, false), nil, nil, VerbExecute) {
 		t.Error("a line whose program is unknown is read as a wrapper's")
 	}
-	sh := "bash"
-	if WrapperRun("Write", &sh, nil, nil, VerbExecute) {
+	if WrapperRun("Write", true, nil, nil, VerbExecute) {
 		t.Error("a Write call is read as a wrapper's")
 	}
 }

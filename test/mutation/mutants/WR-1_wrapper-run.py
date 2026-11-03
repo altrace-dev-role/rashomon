@@ -52,7 +52,7 @@ m("WR-1 the consent screen keeps a wrapper's word unnamed", "internal/disclose/p
   "or another command whose output holds a line a test runner prints about its run, ", "",
   "TestWR1_TheDisclosureNamesTheWrapperRead")
 m("WR-1 a line of any program is read as a wrapper", S,
-  "toolName == \"Bash\" && wrapperProgram(program) && !GateRun(", "toolName == \"Bash\" && !GateRun(",
+  "toolName == \"Bash\" && launch && !GateRun(", "toolName == \"Bash\" && !GateRun(",
   "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 m("WR-1 a shell is no wrapper", S,
   "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn true\n", "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn false\n",

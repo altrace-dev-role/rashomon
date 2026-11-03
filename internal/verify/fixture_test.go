@@ -150,6 +150,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - A terminal's outcome is one of the Terminal outcomes (record.go).
 //   - The session id is its own run directory name (the store's DirName method, over segment): the builder does not digest. DirName reads no Store field (store.go:453, segment), which is what lets a zero Store answer; no test pins that.
 //   - A location is "", or "d:" or "u:" and a name: the two digest domains hook.Locate writes, on any tool, since it locates every call.
+//   - From call schema 10 a Bash call's launch bit is its program's reading (shape.RecordedLaunch), as the hook's is for a line of that one program: a call literal is one command, never a list (LAUNCH-ANY1).
 //   - The run carries one coverage record, PhasePost and verified, as a hook writes one when its entry and its probe both resolve (hook.BuildCoverage); every real run has one. A test that needs others sets r.Coverage.
 //
 // The cap functions guarantee caps and nothing else. The derived fields
@@ -310,6 +311,12 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if c.prog != "" {
 			p := c.prog
 			d.Shape.Program = &p
+		}
+		if c.tool == "Bash" && schema >= store.LaunchSchemaVersion {
+			// A call literal is one command, so from call schema 10 its
+			// launch bit is its program's reading, as the hook's is for a
+			// line of that one program (shape.RecordedLaunch).
+			d.Launch = shape.RecordedLaunch(d.Shape.Program, false, false)
 		}
 		if c.tool == "Bash" {
 			// statusMasked gives a word on every line it parses, none when
