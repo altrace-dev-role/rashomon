@@ -21,7 +21,7 @@ REP = "internal/report/testbending.go"
 m("WR-1 a wrapper's output counts the rows with no signature", G,
   "\t\tcase !wrapper:\n", "\t\tdefault:\n", "TestWR1_AnOutputNoRunnerSignedIsNoRun")
 m("WR-1 every runner row reads as signed", G,
-  "if open&(1<<i) != 0 && matches(rows[i].sig, line) {", "if open&(1<<i) != 0 {",
+  "if open&(1<<i) != 0 && matches(rows[i].sig, line) {", "if open&(1<<i) != 0 && (matches(rows[i].sig, line) || true) {",
   "TestWR1_AnOutputNoRunnerSignedIsNoRun|TestWR1_ADelegateCountsARunnerOnlyWhereItSigned")
 m("WR-1 a delegate counts a runner it never signed (D3)", G,
   "\t\tcase len(rows[i].sig) > 0:\n", "\t\tcase wrapper && len(rows[i].sig) > 0:\n",
@@ -57,7 +57,8 @@ m("WR-1 a shell is no wrapper", S,
   "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn true\n", "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn false\n",
   "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 m("WR-1 a script named by its extension is no wrapper", S,
-  "return strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\")", "return false",
+  "return strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\")",
+  "return false && (strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\"))",
   "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 
 # verify: how a wrapped run is decided and bound.
@@ -65,7 +66,7 @@ m("WR-1 a wrapped run is red by the wrapper's exit", V,
   "\tif r.Wrapped {\n\t\treturn r.Output.Kind == outSummaryFail", "\tif false {\n\t\treturn r.Output.Kind == outSummaryFail",
   "TestWR1_AWrappedRunIsDecidedByItsOutput")
 m("WR-1 a masked line hides a wrapped run", V,
-  "!r.FromOutput && !r.Wrapped", "!r.FromOutput",
+  "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted && !r.Wrapped\n", "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted\n",
   "TestWR1_AWrappedRunIsDecidedByItsOutput")
 m("WR-1 a wrapped run whose output did not say is green", V,
   " || r.Wrapped && !r.FromOutput", "",
