@@ -1,5 +1,7 @@
 package harness
 
+import "slices"
+
 // CapsVersion is the version of the table Caps reads. Identity.CapsVersion
 // is stamped with this constant so a stored record can be read against the
 // table that produced it even after this table changes. 2 adds
@@ -48,35 +50,43 @@ const CapsVersion = 2
 //     is talking to, so it claims nothing.
 func Caps(id ID, s Surface) CapSet {
 	out := make(CapSet, len(allCapabilities))
-	switch id {
-	case ClaudeCode, ClaudeCodePresumed:
-		for _, c := range allCapabilities {
-			out[c] = Yes
-		}
-		if s == SurfaceSDK || s == SurfaceUnknown {
-			out[CapMirrorInBand] = Unverified
-		}
-		switch s {
-		case SurfaceSDK:
-			out[CapPersonAtPrompt] = No
-		case SurfaceUnknown:
-			out[CapPersonAtPrompt] = Unverified
-		}
-	default: // Cursor, Codex, Unknown, and any future value
-		for _, c := range allCapabilities {
-			out[c] = No
-		}
+	for _, c := range allCapabilities {
+		out[c] = Cap(id, s, c)
 	}
 	return out
 }
 
-// blindOf returns the capability names in caps whose state is not Yes,
+// Cap is Caps(id, s)[c], read from the rule without building the table: a
+// caller that reads one capability on every call pays no map for it
+// (PERF-EDGE1). Caps is built from it, so the two cannot disagree.
+func Cap(id ID, s Surface, c Capability) CapState {
+	if !slices.Contains(allCapabilities, c) {
+		return "" // not a key of the table
+	}
+	switch id {
+	case ClaudeCode, ClaudeCodePresumed:
+	default: // Cursor, Codex, Unknown, and any future value
+		return No
+	}
+	switch {
+	case c == CapMirrorInBand && (s == SurfaceSDK || s == SurfaceUnknown):
+		return Unverified
+	case c == CapPersonAtPrompt && s == SurfaceSDK:
+		return No
+	case c == CapPersonAtPrompt && s == SurfaceUnknown:
+		return Unverified
+	}
+	return Yes
+}
+
+// blindOf returns the capability names Caps(id, s) holds as other than Yes,
+// read one at a time with Cap so no table is built for them (PERF-EDGE1),
 // sorted. allCapabilities is already in a fixed order, so the result is
 // sorted without an extra pass.
-func blindOf(caps CapSet) []string {
+func blindOf(id ID, s Surface) []string {
 	var blind []string
 	for _, c := range allCapabilities {
-		if caps[c] != Yes {
+		if Cap(id, s, c) != Yes {
 			blind = append(blind, string(c))
 		}
 	}
