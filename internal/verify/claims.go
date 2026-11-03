@@ -133,13 +133,15 @@ func WroteRelevant(run *store.Run, at int64) bool {
 // one repeated claim stays linear. compare holds two at a time, the claim's
 // sentence and the next, and reuses their slices for the next pair.
 type sentence struct {
-	text    string   // as split and trimmed: what the quote digests
-	words   []string // words(text)
-	clauses []int    // clauses[i] is the index of the first word of word i's clause
-	negated []bool   // negated[i]: a negation stands before word i in its clause
-	covered []bool   // covered[i]: word i is in an accepted predicate
-	spans   []span   // the accepted predicates, lexicon order; none when skipped
-	disc    int8     // memo of disclosed: 0 unread, 1 no, 2 yes
+	text    string     // as split and trimmed: what the quote digests
+	words   []string   // words(text)
+	clauses []int      // clauses[i] is the index of the first word of word i's clause
+	negated []bool     // negated[i]: a negation stands before word i in its clause
+	marks   []wordMark // marks[i]: word i's case and hyphen join (appendWords)
+	loud    bool       // no word holds a lower-case letter: capitals throughout
+	covered []bool     // covered[i]: word i is in an accepted predicate
+	spans   []span     // the accepted predicates, lexicon order; none when skipped
+	disc    int8       // memo of disclosed: 0 unread, 1 no, 2 yes
 }
 
 // span is one accepted predicate: its lexicon row and the words it covers.
@@ -149,7 +151,11 @@ type span struct{ rule, from, to int }
 // predicates (steps 3 to 5).
 func (s *sentence) read(text string, wrote bool) {
 	s.text, s.disc = text, 0
-	s.words, s.clauses = appendWords(s.words[:0], s.clauses[:0], text)
+	s.words, s.clauses, s.marks = appendWords(s.words[:0], s.clauses[:0], s.marks[:0], text)
+	s.loud = true
+	for _, m := range s.marks {
+		s.loud = s.loud && m&markLower == 0
+	}
 	s.negated = appendNegations(s.negated[:0], s.words, s.clauses)
 	s.covered = append(s.covered[:0], make([]bool, len(s.words))...)
 	s.spans = s.spans[:0]
@@ -219,18 +225,34 @@ func (r *claimRule) admits(s *sentence, p, n int) bool {
 	sFrom, sTo := p, p
 	if r.class != ClaimDone {
 		var ok bool
-		if sFrom, sTo, ok = r.subject(ws, p); !ok {
+		if sFrom, sTo, ok = r.subject(ws, s.clauses, p); !ok {
 			return false
 		}
 	}
-	return !s.negated[p] && !modalBefore(ws, p, sFrom, sTo) && !slices.Contains(ws[p+n:min(len(ws), p+n+2)], "yet")
+	return !s.negated[p] && !s.misspelt(p, n) && !modalBefore(ws, p, sFrom, sTo) && !slices.Contains(ws[p+n:min(len(ws), p+n+2)], "yet")
+}
+
+// misspelt reports a predicate s.words[p:p+n] spelled as part of something
+// else (card MISREAD-DONE1): a word of it joined by a hyphen to another
+// ("a ready-made fix"), or in capitals in a sentence that is not, a name
+// ("I send FIX BRANCH READY") rather than a claim. A sentence in capitals
+// throughout ("DONE.") keeps its claim.
+func (s *sentence) misspelt(p, n int) bool {
+	for _, m := range s.marks[p : p+n] {
+		if m&markJoined != 0 || m&markUpper != 0 && !s.loud {
+			return true
+		}
+	}
+	return false
 }
 
 // subject is the nearest subject that ends at or before ws[p] and starts
-// within the four words before it (one-sided, Gate A Q4).
-func (r *claimRule) subject(ws []string, p int) (from, to int, ok bool) {
+// within the four words before it (one-sided, Gate A Q4); a number stands as
+// a count only in ws[p]'s own clause (cs), so an item number or an ordinal a
+// clause back is none (card MISREAD-DONE1).
+func (r *claimRule) subject(ws []string, cs []int, p int) (from, to int, ok bool) {
 	for s := p - 1; s >= max(0, p-4); s-- {
-		if r.number && isNumber(ws[s]) {
+		if r.number && isNumber(ws[s]) && cs[s] == cs[p] {
 			return s, s + 1, true
 		}
 		for _, sub := range r.subjects {

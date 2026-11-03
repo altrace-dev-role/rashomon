@@ -18,6 +18,17 @@ const maxQuotedRunes = 200
 // claimClauseBreaks end a clause, and with it a negation (claimsPass's list).
 const claimClauseBreaks = ".,;:!?()\n"
 
+// wordMark is what appendWords keeps of a word's spelling beside its
+// lower-cased form (card MISREAD-DONE1): its case, and whether a hyphen
+// joins it to another word.
+type wordMark uint8
+
+const (
+	markUpper  wordMark = 1 << iota // a letter, every letter upper case
+	markLower                       // a lower-case letter
+	markJoined                      // a hyphen between it and a word rune
+)
+
 // capWindow is b cut to MaxClaimMessageBytes on a rune boundary, and whether
 // it was cut.
 func capWindow(b []byte) ([]byte, bool) {
@@ -70,7 +81,7 @@ func stripWindow(b []byte, delivered [][]byte) []byte {
 		switch {
 		case bytes.HasPrefix(lead, []byte("```")):
 			fenced = !fenced
-		case fenced, bytes.HasPrefix(lead, []byte(">")), isDelivered(lead, delivered):
+		case fenced, bytes.HasPrefix(lead, []byte(">")), isDelivered(lead, delivered), tableHeader(lead, b):
 		default:
 			n := len(out)
 			out = append(out, line...) // never past line's own bytes: out trails b
@@ -79,6 +90,45 @@ func stripWindow(b []byte, delivered [][]byte) []byte {
 		out = append(out, '\n')
 	}
 	return out
+}
+
+// tableHeader reports whether line heads a markdown table: it holds a cell
+// bar, and the next line of rest is the table's delimiter row. A header names
+// its columns and claims nothing (eng-4 8727's "| Branch | Merged tip | Merged
+// in | Conflict resolved |", card MISREAD-DONE1); the body's cells are read
+// as any line is. rest is read, never written: stripWindow's out trails it.
+func tableHeader(line, rest []byte) bool {
+	if bytes.IndexByte(line, '|') < 0 {
+		return false
+	}
+	if i := bytes.IndexByte(rest, '\n'); i >= 0 {
+		rest = rest[:i]
+	}
+	return delimiterRow(rest)
+}
+
+// delimiterRow reports a markdown table's delimiter row: cells split by '|',
+// at least one bar, each cell one or more '-' with an optional ':' at either
+// end (`|---|:--:|`), spaces around a cell allowed. No allocation.
+func delimiterRow(l []byte) bool {
+	l = bytes.TrimSpace(l)
+	if bytes.IndexByte(l, '|') < 0 {
+		return false
+	}
+	l = bytes.TrimSuffix(bytes.TrimPrefix(l, []byte("|")), []byte("|"))
+	for {
+		cell, more := l, false
+		if i := bytes.IndexByte(l, '|'); i >= 0 {
+			cell, l, more = l[:i], l[i+1:], true
+		}
+		cell = bytes.TrimSuffix(bytes.TrimPrefix(bytes.TrimSpace(cell), []byte(":")), []byte(":"))
+		if len(cell) == 0 || len(bytes.Trim(cell, "-")) != 0 {
+			return false
+		}
+		if !more {
+			return true
+		}
+	}
 }
 
 // isDelivered reports whether a line, past its leading spaces and an
@@ -199,13 +249,14 @@ func appendSentences(dst []string, s string) []string {
 // claimsPass's rule, with digits and '/' kept so "42/42" is one word (Gate B
 // item 1).
 func words(s string) []string {
-	ws, _ := appendWords(nil, nil, s)
+	ws, _, _ := appendWords(nil, nil, nil, s)
 	return ws
 }
 
 // appendWords appends s's words to ws and, for each, to cs the clause start
-// counted from the first word s appends (claimClauseBreaks).
-func appendWords(ws []string, cs []int, s string) ([]string, []int) {
+// counted from the first word s appends (claimClauseBreaks) and to ms its
+// marks.
+func appendWords(ws []string, cs []int, ms []wordMark, s string) ([]string, []int, []wordMark) {
 	base := len(ws)
 	clause := 0
 	for i := 0; i < len(s); {
@@ -218,23 +269,52 @@ func appendWords(ws []string, cs []int, s string) ([]string, []int) {
 			continue
 		}
 		j, ascii := i+n, r < utf8.RuneSelf
+		upper, lower := unicode.IsUpper(r), unicode.IsLower(r)
 		for j < len(s) {
 			r, n := utf8.DecodeRuneInString(s[j:])
 			if !wordRune(r) {
 				break
 			}
 			j, ascii = j+n, ascii && r < utf8.RuneSelf
+			upper, lower = upper || unicode.IsUpper(r), lower || unicode.IsLower(r)
 		}
 		w := strings.ToLower(s[i:j])
 		if !ascii {
 			w = strings.ReplaceAll(w, "’", "'")
 		}
 		if w = strings.Trim(w, "'"); w != "" {
-			ws, cs = append(ws, w), append(cs, clause)
+			var m wordMark
+			switch {
+			case lower:
+				m = markLower
+			case upper:
+				m = markUpper
+			}
+			if joined(s, i, j) {
+				m |= markJoined
+			}
+			ws, cs, ms = append(ws, w), append(cs, clause), append(ms, m)
 		}
 		i = j
 	}
-	return ws, cs
+	return ws, cs, ms
+}
+
+// joined reports a hyphen between s[i:j] and a word rune beside it: "ready"
+// in "ready-made", "finished" in "half-finished"; a hyphen with a space
+// beside it joins nothing.
+func joined(s string, i, j int) bool {
+	if i >= 2 && s[i-1] == '-' {
+		if r, _ := utf8.DecodeLastRuneInString(s[:i-1]); wordRune(r) {
+			return true
+		}
+	}
+	if j+1 < len(s) && s[j] == '-' {
+		if r, _ := utf8.DecodeRuneInString(s[j+1:]); wordRune(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func wordRune(r rune) bool {
