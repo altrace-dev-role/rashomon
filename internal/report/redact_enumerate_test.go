@@ -72,6 +72,20 @@ var hostBearing = map[string]bool{
 	"autosteer.stop.row":              false,
 	"autosteer.stop.sentence":         true,
 	"autosteer.unknown[].kind":        false,
+	// The mistakes lists (REPORT-REQS1): steer line ids and the closed reach
+	// words "stop", "open" and "flag".
+	"autosteer.mistakes.caught[].id":            false,
+	"autosteer.mistakes.caught[].why":           false,
+	"autosteer.mistakes.fixed_unprompted[].id":  false,
+	"autosteer.mistakes.fixed_unprompted[].why": false,
+	"autosteer.mistakes.later[].id":             false,
+	"autosteer.mistakes.later[].why":            false,
+	"autosteer.mistakes.missed[].id":            false,
+	"autosteer.mistakes.missed[].why":           false,
+	"autosteer.mistakes.reached[].id":           false,
+	"autosteer.mistakes.reached[].why":          false,
+	"autosteer.mistakes.unsettled[].id":         false,
+	"autosteer.mistakes.unsettled[].why":        false,
 	// The knowledge block (REPORT1b): the project root and each bound spec's
 	// path are the two names it holds (true, above). The rest are session
 	// ids, gate names, lesson ids and tiers, trust words, digests, the
