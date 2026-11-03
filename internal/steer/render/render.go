@@ -39,6 +39,7 @@ type Message struct {
 	template string
 	slots    []Slot
 	text     string
+	aside    string
 }
 
 // Pattern is the pattern whose template made the message.
