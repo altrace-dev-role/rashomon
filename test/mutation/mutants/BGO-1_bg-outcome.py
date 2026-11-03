@@ -9,7 +9,7 @@ TE = "cmd/rashomon/taskend.go"
 VC = "internal/verify/classify.go"
 VD = "internal/verify/declared.go"
 m("BGO-1 the catch-up keeps no end", RT,
-  "\t\t\tkeepTaskEnds(st, payload.SessionID, pp.Prompt, now)\n", "", "TestBGO1a_|TestBGO1c_")
+  "\tkeepTaskEnds(st, sessionID, prompt, now)\n", "", "TestBGO1a_|TestBGO1c_")
 m("BGO-1 no run takes its end", VC,
   "\tif end != nil && g.Backgrounded {\n", "\tif end != nil && false {\n", "TestBGO1a_|TestBGO1b_|TestBGO1g_")
 m("BGO-1 a foreground run takes an end", VC,

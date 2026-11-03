@@ -144,6 +144,20 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// markLive marks the event fired for the session and keeps the background
+// task ends the new prompt states, unless the store is paused. prompt is nil
+// but for `recap pending`. A prompt that is a background task's end
+// notification keeps the end's closed fields before the prompt is cleared,
+// whichever turn it arrives in and whether or not the catch-up speaks (card
+// BG-OUTCOME phase 1); recapTurn's run read, after this, sees it.
+func markLive(st *store.Store, root, event, sessionID string, prompt []byte, now time.Time) {
+	if paused, _, perr := store.Paused(root); perr != nil || paused {
+		return
+	}
+	markFired(st, sessionID, event)
+	keepTaskEnds(st, sessionID, prompt, now)
+}
+
 // recapTurn is cmdRecap's body. An error it returns has already been recorded
 // for status where it could be (recap.RecordFailure), or is the failure to
 // record it; cmdRecap drops both.
@@ -196,16 +210,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if standsDown(args, st, stderr) {
 		return nil
 	}
-	if paused, _, perr := store.Paused(root); perr == nil && !paused {
-		markFired(st, payload.SessionID, recapEvent(args, payload.Harness.HookEventName))
-		// A prompt that is a background task's end notification keeps the
-		// end's closed fields before the prompt is cleared, whichever turn
-		// it arrives in and whether or not the catch-up speaks (card
-		// BG-OUTCOME phase 1). The run read below sees it.
-		if pending {
-			keepTaskEnds(st, payload.SessionID, pp.Prompt, now)
-		}
-	}
+	markLive(st, root, recapEvent(args, payload.Harness.HookEventName), payload.SessionID, pp.Prompt, now)
 
 	// `recap pending` runs on UserPromptSubmit, before the new prompt has
 	// made a single call, so the newest turn in the store is the one that
