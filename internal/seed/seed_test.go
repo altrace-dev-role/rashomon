@@ -218,6 +218,21 @@ func TestSEED1a_PushbackWords(t *testing.T) {
 	}
 }
 
+// TestSEED1a_OnlyATestRunnerIsATestRun: a runner on the lint, typecheck or
+// scan list (C8) is a build run, as a check runner's hidden status is
+// recorded as build; only a runner on the test list is a test run.
+func TestSEED1a_OnlyATestRunnerIsATestRun(t *testing.T) {
+	for cmd, want := range map[string]class{
+		"go test ./...": cTestRun, "make": cBuildRun, "go vet ./...": cBuildRun,
+		"golangci-lint run": cBuildRun, "mypy .": cBuildRun, "pip-audit": cBuildRun,
+	} {
+		in, _ := json.Marshal(map[string]any{"command": cmd})
+		if got := classOf("Bash", in); got != want {
+			t.Errorf("%q is %q, want %q", cmd, got.text(), want.text())
+		}
+	}
+}
+
 // TestSEED1b_TheCardCarriesOnlyOurWords is PF-AU2: a canary in every field a
 // transcript has (paths, a command with a token-shaped secret, the person's
 // words, an MCP tool's name, a hook's message, the cwd, the session id) never

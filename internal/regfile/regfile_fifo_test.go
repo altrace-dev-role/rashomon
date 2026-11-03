@@ -40,3 +40,38 @@ func TestSRR1_OpenRefusesANamedPipeAtOnce(t *testing.T) {
 		t.Errorf("Open = %v, want %v", err, ErrNotRegular)
 	}
 }
+
+// OpenDir refuses a named pipe at once, as Open does, and opens a directory.
+// Break: open the path blocking, and a pipe holds the listing until the test
+// gives up.
+func TestSRR1_OpenDirRefusesANamedPipeAtOnce(t *testing.T) {
+	pipe := filepath.Join(t.TempDir(), "pipe")
+	if err := syscall.Mkfifo(pipe, 0o600); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+	t.Cleanup(func() {
+		if w, err := os.OpenFile(pipe, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+			w.Close() //nolint:errcheck // only wakes a waiting reader
+		}
+	})
+	var f *os.File
+	var err error
+	done := make(chan struct{})
+	go func() { f, err = OpenDir(pipe); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("OpenDir had not returned after 2s")
+	}
+	if f != nil || !errors.Is(err, ErrNotDir) {
+		t.Errorf("OpenDir(pipe) = %v, %v; want ErrNotDir", f, err)
+	}
+	d, err := OpenDir(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenDir(a directory) = %v", err)
+	}
+	d.Close() //nolint:errcheck // read-only
+	if _, err := OpenDir(filepath.Join(t.TempDir(), "missing")); err == nil || errors.Is(err, ErrNotDir) {
+		t.Errorf("OpenDir(missing) = %v, want the open's own error", err)
+	}
+}
