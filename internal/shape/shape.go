@@ -304,6 +304,7 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	}
 	s.StatusMasked, s.RunnerDigest, s.RunnerKind, s.RunnerName, s.MaskedBy = statusMasked(cmd, key, pshaped[:leadingFold(pshaped, uncertain)])
 	s.Launch = launches(cmd)
+	s.Probe = probes(cmd)
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
 	return s, cut, d
 }

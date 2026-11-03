@@ -334,8 +334,9 @@ func attemptsLine(a ExtraAttempts) string {
 }
 
 // lookupsAside is the exception every "none found" carries: a turn whose only
-// failed calls are lookups is not judged, so "none" says nothing of it.
-var lookupsAside = "a failed " + report.LookupToolNames() + " alone is not counted"
+// failed calls are lookups or missing programs (report.SilentFailures) is not
+// judged, so "none" says nothing of it.
+var lookupsAside = "a failed " + report.LookupToolNames() + ", or a missing program, alone is not counted"
 
 // silentLine is the only-we-can line. Its two unknown cases say WHY they are
 // unknown, and neither prints a figure: a machine with no store, and a store
