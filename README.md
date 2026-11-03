@@ -154,8 +154,9 @@ list of what it keeps, word for word as the install screen's full view
 > ended (outcome, exit code, interrupted or not, duration); and the time each
 > hook event first ran in a session. For a test or build line: the runner it ran
 > in and the pipe stage that hid its exit status, each one word from a closed
-> list the binary ships (never a word of the command); for a gate run, one
-> closed word that classifies its output (a passing or failing summary, a
+> list the binary ships (never a word of the command); for a gate run, or
+> another command whose output holds a line a test runner prints about its run,
+> one closed word that classifies its output (a passing or failing summary, a
 > failure line, an empty run, the exit status the line printed for its runner as
 > pass or fail, or none found), and not the output, which is read in memory; one
 > bit, when true, that says the hook could not read where a shell line started

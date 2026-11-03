@@ -175,9 +175,10 @@ const OutcomeFromOutput = steer.OutcomeFromOutputSummary
 // masked: the line hid a runner's status, so its outcome is not the gate's --
 // unless the stage that hid it kept the runner's summary and the output said
 // how the run ended (readsOutput), or the line printed the runner's status
-// (readsPrinted), which is then the outcome.
+// (readsPrinted), which is then the outcome. A wrapped run's outcome is its
+// output's whatever its line hid (wrapped).
 func masked(r *gateRun) bool {
-	return statusHidden(r) && !r.FromOutput && !r.FromPrinted
+	return statusHidden(r) && !r.FromOutput && !r.FromPrinted && !r.Wrapped
 }
 
 // readsPrinted reports a masked run whose outcome is the exit status its line
@@ -240,8 +241,13 @@ func emptyRun(r *gateRun) bool {
 }
 
 // failed: the run failed by its exit or said so in its output. An interrupt
-// with a code is red; one without a code says nothing and falls through.
+// with a code is red; one without a code says nothing and falls through. A
+// wrapped run failed only where its runner's summary said so: the exit is the
+// wrapper's, and a fail line is a substring the wrapper kept, as a pipe's is.
 func failed(r *gateRun) bool {
+	if r.Wrapped {
+		return r.Output.Kind == outSummaryFail
+	}
 	return failedByExit(r) || r.Output != nil && (r.Output.Kind == outSummaryFail || r.Output.Kind == outFailLine)
 }
 
@@ -252,9 +258,10 @@ func failedByExit(r *gateRun) bool {
 }
 
 // outcomeNotKnown: a run no row above matched that did not end ok, or whose
-// output was not read. Either way nobody saw it pass.
+// output was not read, or a wrapped run whose output did not say how it
+// ended. Either way nobody saw it pass.
 func outcomeNotKnown(r *gateRun) bool {
-	return r.Outcome != store.ExecOK || r.Output != nil && r.Output.Kind == outUnread
+	return r.Outcome != store.ExecOK || r.Output != nil && r.Output.Kind == outUnread || r.Wrapped && !r.FromOutput
 }
 
 // orderNotKnown: the run's execution was spilled, so when its outcome
@@ -291,7 +298,7 @@ func redReason(f *fam) Reason {
 			return RedThenWrites
 		}
 	}
-	if !failedByExit(f.last) {
+	if f.last.Wrapped || !failedByExit(f.last) {
 		return FailedOutput
 	}
 	return FailedExit
@@ -382,6 +389,9 @@ func runRef(r *gateRun) *RunRef {
 		MaskedBy: StageWord(r.MaskedByID), RunnerName: RunnerWord(r.RunnerID)}
 	if r.FromOutput {
 		ref.OutcomeFrom = SourceOutput
+	}
+	if r.Wrapped {
+		ref.Wrapped = WrapRead
 	}
 	return ref
 }
