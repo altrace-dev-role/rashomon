@@ -130,5 +130,12 @@ func CommandLine(toolName string, toolInput json.RawMessage, max int) (string, b
 	if !ok || s.Kind != jsonscan.String || int(s.Len)-2 > max {
 		return "", false
 	}
-	return stringValue(toolInput, s)
+	// The encoded length bounds the read only roughly: decoding can grow the
+	// text, an invalid byte becoming U+FFFD's three, so the cap is held again
+	// on what was decoded.
+	line, ok := stringValue(toolInput, s)
+	if !ok || len(line) > max {
+		return "", false
+	}
+	return line, true
 }

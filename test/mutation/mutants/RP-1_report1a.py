@@ -18,7 +18,7 @@ m("RP-1 the report's finding is counted without its seqs", "internal/report/text
   "TestRP1d_ReportBlockMatchesTheClause")
 m("RP-1 the clause's count carries no seq", "internal/recap/clause.go",
   "\t\tat = append(at, \"#\"+strconv.FormatInt(f.ResolvedBy, 10))",
-  "\t\tat = append(at, \"#0\")",
+  "\t\tat = append(at, \"#\"+strconv.FormatInt(f.ResolvedBy*0, 10))",
   "TestRP1_|TestRP1_ClauseCountsDeliveredFindingsResolvedChecks")
 m("RP-1 the clause repeats when the counts did not change", "cmd/rashomon/recap_stop.go",
   "if fp := im.Fingerprint(); fp == s.shown || im.Empty() {",
@@ -33,8 +33,8 @@ m("RP-1 session last reads another directory's project", "cmd/rashomon/report_im
   "receipt.Latest(st, baseline.Key(os.TempDir()))",
   "TestRP1h_SessionLast")
 m("RP-1 an unknown check is counted met", "internal/recap/impact.go",
-  "\t\tcase verify.ObligationMet:\n\t\t\tmet++",
-  "\t\tcase verify.ObligationMet, verify.ObligationUnknown:\n\t\t\tmet++",
+  "\t\tcase verify.ObligationUnknown:\n\t\t\tunknown++",
+  "\t\tcase verify.ObligationUnknown:\n\t\t\tmet++",
   "TestRP1g_UnknownIsNotMet")
 # The review's blocker: a finding is settled by its own gate, never by a
 # program or a kind another gate shares.
@@ -56,7 +56,7 @@ m("RP-1 the line's gate id is not read, so the true resolution is lost", "intern
 # gates share settles nothing.
 m("RP-1 the runner name is not split into words, so go test never matches go", "internal/recap/impact.go",
   "slices.Contains(strings.Fields(v.Programs[g.Gate]), f.Gate)",
-  "v.Programs[g.Gate] == f.Gate",
+  "v.Programs[g.Gate] == f.Gate && len(strings.Fields(\"\")) == 0",
   "TestRP1i_ARunnerNameIsComparedByItsProgramWord")
 m("RP-1 a first word two gates share resolves its finding", "internal/recap/impact.go",
   "\tif n != 1 || match.LastGreen == nil || match.LastGreen.Seq <= f.Seq",

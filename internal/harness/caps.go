@@ -2,8 +2,9 @@ package harness
 
 // CapsVersion is the version of the table Caps reads. Identity.CapsVersion
 // is stamped with this constant so a stored record can be read against the
-// table that produced it even after this table changes.
-const CapsVersion = 1
+// table that produced it even after this table changes. 2 adds
+// CapPersonAtPrompt (PREFLIGHT-CLOUD1).
+const CapsVersion = 2
 
 // Caps returns the capability table for one (ID, Surface) pair.
 //
@@ -19,8 +20,22 @@ const CapsVersion = 1
 //     to render SDKInformationalMessage, which rashomon cannot observe, and a
 //     presumed identity with no entrypoint carries the same uncertainty
 //     (Archive 60.2.9: "Caps(claude_code_presumed, unknown) treats
-//     mirror_in_band as unverified"). Nothing else about Claude Code's
-//     levers depends on surface.
+//     mirror_in_band as unverified"). Apart from CapPersonAtPrompt, below,
+//     nothing else about Claude Code's levers depends on surface.
+//   - CapPersonAtPrompt is whether a person reads the session at its
+//     prompt: No on SurfaceSDK, Unverified on SurfaceUnknown, Yes on cli,
+//     ide, desktop and cloud. It stops at sdk because an SDK entrypoint
+//     names a program driving Claude Code, the one surface that says no one
+//     is there; a presumed Claude Code with no entrypoint says nothing
+//     either way. It is a column apart from CapMirrorInBand because ED-9
+//     withholds a nudge when the mirror has no reader (steer/decide.go,
+//     SuppressedByNoMirror, D51): that is a question about a person, not
+//     about the channel, and the mirror's Unverified cannot tell an SDK
+//     program from an unknown surface. The prompt path reads it for
+//     attendance (hook.attendanceOf, PREFLIGHT-CLOUD1). Caps is keyed by
+//     surface, so the GitHub Action is Yes with the rest of cloud: an
+//     Action run gets a note nobody reads live, at the cost of one log
+//     line, until a reason splits it from Claude Code on the web.
 //   - Cursor and Codex get "no" for every capability, on every surface, for
 //     a verifiable reason rather than a guess: neither adapter exists in
 //     this tree (no internal/adapter package). A table that said "yes" for a
@@ -40,6 +55,12 @@ func Caps(id ID, s Surface) CapSet {
 		}
 		if s == SurfaceSDK || s == SurfaceUnknown {
 			out[CapMirrorInBand] = Unverified
+		}
+		switch s {
+		case SurfaceSDK:
+			out[CapPersonAtPrompt] = No
+		case SurfaceUnknown:
+			out[CapPersonAtPrompt] = Unverified
 		}
 	default: // Cursor, Codex, Unknown, and any future value
 		for _, c := range allCapabilities {

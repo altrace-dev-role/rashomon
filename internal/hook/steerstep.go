@@ -55,12 +55,14 @@ type SteerEnv struct {
 // steps is the trigger (card 2.3 R3; card P5B, 5.7): an execution that
 // landed in the ordered stream, at a failure event that carried a runner
 // digest, the one call that can raise regression-location (a success event
-// is outcome ok, D61), or at either post event when the call's input names
+// is outcome ok, D61), or at a success event when the call's output read red
+// through a pipe that hid the exit (redRead, MASKED-OUTCOME1: the outcome a
+// failure event would have carried), or at either post event when the call's input names
 // .claude/rashomon, the one call that can raise integrity/store-touched
 // (D-B7). Every other call costs these branches and storeNamed's scan.
-func steps(event string, landedSeq int64, runner, inStore bool) bool {
+func steps(event string, landedSeq int64, runner, redRead, inStore bool) bool {
 	failure := event == FailureEvent
-	return landedSeq > 0 && (failure && runner || inStore && (failure || event == string(steer.EventPostToolUse)))
+	return landedSeq > 0 && (failure && runner || redRead && event == string(steer.EventPostToolUse) || inStore && (failure || event == string(steer.EventPostToolUse)))
 }
 
 // storeNamed reports a tool input whose raw bytes name .claude/rashomon, its
@@ -131,6 +133,7 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if !ok {
 		return nil
 	}
+	p.keepHits(view.Hits, env.Now)
 	out := steer.Route(&ctx, view.Findings)
 	// The line is durable before its note prints (REC-34).
 	if err := fault.Fail(fault.PointSteerFlush); err != nil {
@@ -146,6 +149,20 @@ func (p *Post) Steer(env SteerEnv) []byte {
 		return nil
 	}
 	return b
+}
+
+// keepHits appends each forbid_command rule the call matched to the run as a
+// spec_event rule_hit (card SPEC-RULES-STOP1), at either post event and
+// whatever Route then decides: the steer switch, the arm, the holdout,
+// consent and attendance do not reach it. It runs before Route, so Steer's
+// one Flush makes the hits durable before any note prints (REC-34); at a
+// failure, where Route writes no line, that Flush is the one sync the hits
+// add. A hit that does not land (a lock timeout, an append error) is lost,
+// and the Stop then reads that rule undecided, never clear.
+func (p *Post) keepHits(hits []verify.RuleHit, now time.Time) {
+	for _, h := range hits {
+		_ = p.st.AppendRecord(p.sessionID, store.NewRuleHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq, now.UnixMilli()))
+	}
 }
 
 // armStale arms the session's stale trigger at the post of a gate run: a
@@ -214,13 +231,14 @@ func ruled(event string, landedSeq int64, toolName string) bool {
 // never the run, so a run that could not be read drops the step's findings
 // and keeps theirs. An index that cannot be read, or is over its cap, reads
 // as none (ReadIndex). ok is false when neither trigger fires, or when no run
-// was read and the rules raised nothing. It writes nothing but the stale
-// trigger's disarm, so BenchmarkPostSteer's eval rows measure it apart from
-// the append and the sync.
+// was read and the rules neither raised nor hit anything. It writes nothing
+// but the stale trigger's disarm, so BenchmarkPostSteer's eval rows measure
+// it apart from the append and the sync; the view's hits are Steer's to
+// keep.
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	var key string
 	var indexless bool
-	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedStore)
+	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore)
 	if !stepped {
 		var took bool
 		if key, took, indexless = p.staleWrite(); took {
@@ -258,7 +276,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 		StoreRoot: root}
 	rules := verify.RulesAtCall(p.sp, p.ruleCall(), pt, p.event)
 	if run == nil {
-		if len(rules.Findings) == 0 {
+		if len(rules.Findings) == 0 && len(rules.Hits) == 0 {
 			return steer.Context{}, verify.SteerView{}, false
 		}
 		return p.contextOf(env, rules), rules, true
@@ -267,9 +285,12 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	if key != "" {
 		idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))
 	}
-	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
+	// The root is key, the cwd's, where p.sp was discovered: never this
+	// call's own Project, which may be another repository's (PROJECT-RESOLVE1).
+	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), key, pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)
 	view.Dropped += rules.Dropped
+	view.Hits = rules.Hits
 	return p.contextOf(env, view), view, true
 }
 

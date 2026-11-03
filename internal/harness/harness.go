@@ -86,6 +86,7 @@ const (
 	CapNudgeBatch           Capability = "nudge_batch"
 	CapUserOnlyChannel      Capability = "user_only_channel"
 	CapMirrorInBand         Capability = "mirror_in_band"
+	CapPersonAtPrompt       Capability = "person_at_prompt" // a person reads the session at its prompt (caps.go)
 	CapDeny                 Capability = "deny"
 )
 
@@ -95,7 +96,8 @@ var allCapabilities = []Capability{
 	CapDeclarationBeforeRun, CapExitCode, CapFailureEvent, CapFinalMessage,
 	CapTurnKey, CapWritePaths, CapSubagentIdentity, CapMCPProvenance,
 	CapBackgroundState, CapNudgePost, CapNudgeFailure, CapNudgeSessionStart,
-	CapNudgeBatch, CapUserOnlyChannel, CapMirrorInBand, CapDeny,
+	CapNudgeBatch, CapUserOnlyChannel, CapMirrorInBand, CapPersonAtPrompt,
+	CapDeny,
 }
 
 // CapState is whether a capability is live.

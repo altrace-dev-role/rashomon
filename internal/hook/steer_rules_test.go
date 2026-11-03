@@ -186,9 +186,16 @@ func TestSR1x_APostRaisesItsRulesFromTheCallAlone(t *testing.T) {
 					t.Fatalf("printed %q with %d steer lines, want nothing", b, len(lines))
 				}
 				// No trigger read the run, so the call ends before any
-				// context is built.
-				if _, _, ok := p.judge(stEnv(0)); ok {
-					t.Error("judge is ok for a call that raised nothing and read no run")
+				// context is built, unless it hit a rule: the failed forced
+				// push raises nothing and its hit is still kept (card
+				// SPEC-RULES-STOP1), which judge hands Steer as ok.
+				_, view, ok := p.judge(stEnv(0))
+				wantHits := 0
+				if c.name == "a forced push that failed" {
+					wantHits = 1
+				}
+				if len(view.Hits) != wantHits || ok != (wantHits > 0) || len(view.Findings) != 0 {
+					t.Errorf("judge = %v with %d hits and %d findings, want %v with %d hits and none", ok, len(view.Hits), len(view.Findings), wantHits > 0, wantHits)
 				}
 				return
 			}
@@ -243,7 +250,7 @@ func TestSR1y_TheStepAndTheRulesShareOnePost(t *testing.T) {
 		t.Helper()
 		f := newSRFix(t, doc)
 		p := f.call("toolu_b", "Bash", both, 0)
-		if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
+		if !steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore) {
 			t.Fatal("premise: the step does not fire for a line naming .claude/rashomon")
 		}
 		_, view, ok := p.judge(stEnv(0))
@@ -269,7 +276,7 @@ func TestSR1y_TheStepAndTheRulesShareOnePost(t *testing.T) {
 	edit := map[string]any{"file_path": filepath.Join(g.cwd, "db", "migrations", "001.sql"),
 		"old_string": "a", "new_string": "see .claude/rashomon/spec.json"}
 	p := g.call("toolu_m", "Edit", edit, 0)
-	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedStore) {
+	if !steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore) {
 		t.Fatal("premise: the step does not fire for an input naming .claude/rashomon")
 	}
 	records := filepath.Join(g.st.RunDir(stSession), store.FileRecords)

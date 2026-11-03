@@ -30,6 +30,10 @@ import (
 //     stay; the task file it carries is outside the checkpoint's spec_digest;
 //   - the tree is the files' content now (hook.TreeShas, as the Stop reads
 //     it), so a file changed since the Stop reads stale;
+//   - the inferred test gate (GATE-INFER1) is read from the project's files
+//     now, and only where the checkpoint names it, so a CI file changed
+//     since names the command it holds now, and with no index read its line
+//     keeps the "(inferred)" label the Stop may have dropped;
 //   - the final message is not in the record, so what is read from it is
 //     unknown (StopInput.MessageUnread);
 //   - a gate the checkpoint's cut omitted (GatesOmitted, greens first) has no
@@ -79,12 +83,20 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 	pt.Tree = hook.TreeShas(verify.TreeTargets(run))
 	r := stopReplay{Checkpoint: cp}
 	var idx *verify.ProjectIndex
-	if root := verify.ProjectRoot(run, pt.Seq); root != "" {
+	// The root the live Stop judged under, from its checkpoint; with none,
+	// the latest declaration's (PROJECT-RESOLVE1).
+	root := verify.ProjectRoot(run, pt.Seq)
+	if cp != nil {
+		root = cp.ProjectRoot
+	}
+	in.Root = root
+	if root != "" {
 		if key := baseline.Key(root); cp == nil && key != "" {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
 		}
 		projectDir, managedDir := specDirs()
 		r.Spec = hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustRoot(run, st.Root(), pt.Seq))
+		in.Inferred = replayInferred(root, r.Spec, idx, in.Required)
 	}
 	r.View = verify.EvaluateStop(run, idx, r.Spec, pt, now, in)
 	return r, nil

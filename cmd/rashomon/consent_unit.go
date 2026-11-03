@@ -32,9 +32,12 @@ func cmdConsentUnit(unit string, args []string, stdout io.Writer) error {
 		return fmt.Errorf("no command in this release uses %s; nothing to agree to", unit)
 	}
 	off := slices.Contains(args, "off")
-	yes, show, err := consentFlags(slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "off" }))
+	yes, show, full, err := consentFlags(slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "off" }))
 	if err != nil {
 		return err
+	}
+	if full {
+		return errors.New("a unit's screen is whole; --full is for the install screen (rashomon consent --full)")
 	}
 	if off && (yes || show) {
 		return errors.New("off asks nothing and shows one line, so it takes no --yes or --show")

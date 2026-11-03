@@ -9,47 +9,62 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// TestTRU23_IndexRowNamesTheCheckpoints: the project index the Stop writes
-// holds the last and prior checkpoints (session id, point seq, when recorded)
-// beside its command families, so the one row that covers the file says so in
-// its Holds; the written bytes are the proof it holds them.
-func TestTRU23_IndexRowNamesTheCheckpoints(t *testing.T) {
+// TestTRU23_TheCheckpointsHaveARowOfTheirOwn (INDEX-POINTER-FILE1): the
+// project's last and prior checkpoints (session id, point seq, when
+// recorded) are a file of their own beside the project index, so one row
+// covers that file and says so in its Holds, and the index's row no longer
+// claims them; the written bytes are the proof of where each lives. Break:
+// drop the checkpoints from their row's Holds.
+func TestTRU23_TheCheckpointsHaveARowOfTheirOwn(t *testing.T) {
 	root := t.TempDir()
 	const key = "/tru23/checkpoint-project"
-	idx := &verify.ProjectIndex{ProjectKey: key}
-	idx.NoteCheckpoint("s1", 4, 100)
-	idx.NoteCheckpoint("s2", 9, 200)
-	path := verify.IndexPath(root, key)
-	if _, err := verify.WriteIndex(path, idx); err != nil {
+	var c verify.Checkpoints
+	c.NoteCheckpoint("s1", 4, 100)
+	c.NoteCheckpoint("s2", 9, 200)
+	path := verify.CheckpointsPath(root, key)
+	if err := verify.WriteCheckpoints(path, &c); err != nil {
+		t.Fatalf("verify.WriteCheckpoints: %v", err)
+	}
+	index := verify.IndexPath(root, key)
+	if _, err := verify.WriteIndex(index, &verify.ProjectIndex{ProjectKey: key}); err != nil {
 		t.Fatalf("verify.WriteIndex: %v", err)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{`"last":`, `"prior":`, `"s1"`, `"s2"`} {
-		if !strings.Contains(string(raw), want) {
-			t.Fatalf("premise: the index file lacks %s: %s", want, raw)
-		}
 	}
 	inv, err := Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		t.Fatal(err)
+	holds := func(p string) (string, string) {
+		t.Helper()
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []FileRule
+		for _, r := range inv.Files {
+			if matchesAFileRule(rel, []FileRule{r}) {
+				rows = append(rows, r)
+			}
+		}
+		if len(rows) != 1 {
+			t.Fatalf("%d rows cover %s, want one", len(rows), rel)
+		}
+		return string(raw), rows[0].Holds
 	}
-	var rows []FileRule
-	for _, r := range inv.Files {
-		if matchesAFileRule(rel, []FileRule{r}) {
-			rows = append(rows, r)
+	raw, h := holds(path)
+	for _, want := range []string{`"last":`, `"prior":`, `"s1"`, `"s2"`} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("premise: the checkpoint file lacks %s: %s", want, raw)
 		}
 	}
-	if len(rows) != 1 {
-		t.Fatalf("%d rows cover %s, want one", len(rows), rel)
+	if !strings.Contains(h, "checkpoint") || !strings.Contains(h, "session id") || !strings.Contains(h, "point seq") {
+		t.Errorf("the checkpoint file's row does not name what it holds: %q", h)
 	}
-	if h := rows[0].Holds; !strings.Contains(h, "checkpoint") || !strings.Contains(h, "session id") || !strings.Contains(h, "point seq") {
-		t.Errorf("the index row's Holds does not name the checkpoints it holds: %q", h)
+	raw, h = holds(index)
+	if strings.Contains(raw, `"last"`) || strings.Contains(h, "checkpoint") {
+		t.Errorf("the index holds or claims the checkpoints: %s / %q", raw, h)
 	}
 }

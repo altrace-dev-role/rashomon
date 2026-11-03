@@ -42,5 +42,5 @@ m("ST-4.1b the over-cap line is dropped", MG,
   "TestRC14l_OverCapPrintsOneLine")
 m("ST-4.1b the probe drops the over-cap refusal", HP,
   '\t\tif errors.Is(err, store.ErrBodyOverCap) {\n\t\t\toverCap = err\n\t\t}\n',
-  '',
+  '\t\t_ = err\n',
   "TestRC14l_OverCapPrintsOneLine")
