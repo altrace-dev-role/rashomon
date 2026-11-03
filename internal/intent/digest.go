@@ -23,3 +23,7 @@ func PathDigest(key []byte, path string) string {
 	m.Write([]byte(path))
 	return hex.EncodeToString(m.Sum(nil))
 }
+
+// SaidDigest is the keyed digest of the person's words a continuity briefing
+// quoted (COMPACT-SLOT1). Red: not built.
+func SaidDigest(key []byte, words string) string { return "" }
