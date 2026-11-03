@@ -86,14 +86,16 @@ func TestGO9_CapBoundary(t *testing.T) {
 // lines are matched in), and the scan bound MaxScanBytes.
 //
 // 10 is v1.2.0-alpha.1's tables (949d6aca, pin 21b4d3f8 before the bound
-// joined the digest). 11 carries GATEOUT-ZERO1's anchored pytest fail forms
-// over #149's tables: 11 was never released, so no user's store holds a record
-// the earlier 11 tables judged (D232's reasoning). If a build at 11 is
-// released before GATEOUT-ZERO1 merges, 12 is forced, with 11 pinned at the
-// earlier tables' 3c9478c2.
+// joined the digest). 11 is #149's tables, which main's builds at 11 and at 12
+// shipped before GATEOUT-ZERO1 merged. 12 carries GATEOUT-ZERO1's anchored
+// pytest fail forms over them: 12 was never released, so no user's store holds
+// a record the earlier 12 tables judged (D232's reasoning, as GATEOUT-ZERO1
+// rode 11 before #229 moved main to 12). If a build at 12 is released before
+// GATEOUT-ZERO1 merges, 13 is forced, with 12 pinned at 11's tables.
 var tablePins = map[int]string{
 	10: "10c0ad3b221731500b5c9d8e0c235dc329e35d8c71314aa147a92f5e6a61415b",
-	11: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
+	11: "3c9478c2bfcd31f8fcf82ea7804559ea89326bd856e2a1e0e69fbb521915a09a",
+	12: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
 }
 
 func TestGO10_TablesPinned(t *testing.T) {

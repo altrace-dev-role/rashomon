@@ -25,5 +25,5 @@ m("GZ-1 a table changes with no new RulesVersion", T,
   "pass: compile(`^test result: ok`)", "pass: compile(`^test result: ok\\b`)",
   "TestGO10_TablesPinned")
 m("GZ-1 RulesVersion moves with no table pin", "internal/shape/masked.go",
-  "const RulesVersion = 11\n", "const RulesVersion = 12\n",
+  "const RulesVersion = 12\n", "const RulesVersion = 13\n",
   "TestGO10_TablesPinned")
