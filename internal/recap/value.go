@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -323,6 +324,14 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 		// output did not say how it ended (WRAPPER-RUN1).
 		switch wrap(g) {
 		case verify.WrapUnread:
+			if printedStatus(g.LastRun) {
+				// The call printed its runner's exit status, which the record
+				// keeps as the call's outcome over any summary in its output
+				// (STATUS-PROBE): its output was not read for the gate's run,
+				// so the line says only the status was, never that the output
+				// named no run (#234, a make that ran go test).
+				return t.name(g) + " unknown: only call " + seqOf(g) + "'s exit status was read"
+			}
 			return t.name(g) + " unknown: call " + seqOf(g) + "'s output names no run"
 		case verify.WrapRead:
 			return t.name(g) + " ran in a wrapper (call " + seqOf(g) + "); its result is not in the record"
@@ -658,6 +667,13 @@ func (t gateSet) greenSeq() string {
 		}
 	}
 	return strconv.FormatInt(at, 10)
+}
+
+// printedStatus reports a run whose record keeps the exit status its line
+// printed (gate_output printed_pass or printed_fail, shape.PrintedStatus).
+func printedStatus(r *verify.RunRef) bool {
+	return r != nil && r.GateOutput != nil &&
+		(r.GateOutput.Kind == gateout.KindPrintedPass || r.GateOutput.Kind == gateout.KindPrintedFail)
 }
 
 func seqOf(g *verify.GateState) string {

@@ -109,6 +109,12 @@ m("WR-1 a wrapped green reads passed after the last edit", R,
 m("WR-1 an unread wrapper reads as a run whose result is lost", R,
   "\t\tswitch wrap(g) {\n", "\t\tswitch verify.WrapNone {\n",
   "TestWR1_AWrappedRunIsFoundByItsOutput")
+# #234 ruling (a): a delegate line that printed its status keeps that status,
+# not the go summary inside it, so the gate's line says only the status was
+# read, never that the output named no run.
+m("WR-1 a printed status reads as an output that names no run", R,
+  "\t\t\tif printedStatus(g.LastRun) {\n", "\t\t\tif false {\n",
+  "TestWR1_APrintedStatusOutranksTheWrapperRead")
 m("WR-1 a wrapped red reads as the wrapper's exit", R,
   "if wrap(g) == verify.WrapRead {", "if false {",
   "TestWR1_AWrappedRunIsFoundByItsOutput")

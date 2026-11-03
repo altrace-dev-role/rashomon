@@ -92,8 +92,9 @@ type RunRef struct {
 	// output carried the summary of the gate's runner, which decides the
 	// run's outcome, never the wrapper's exit status; unread, the call may
 	// have run the gate (a script, a delegate) after the last edit and its
-	// output names no run of it, so the gate is unknown, not unrun. One byte
-	// in padding, as the words above. Absent everywhere else.
+	// output names no run of it, or its record keeps only the exit status
+	// the line printed (STATUS-PROBE), so the gate is unknown, not unrun. One
+	// byte in padding, as the words above. Absent everywhere else.
 	Wrapped WrapWord `json:"wrapped,omitempty"`
 }
 
