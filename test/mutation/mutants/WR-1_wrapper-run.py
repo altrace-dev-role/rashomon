@@ -15,6 +15,7 @@ D = "internal/verify/declared.go"
 STOP = "internal/verify/stop.go"
 SV = "internal/verify/steer.go"
 R = "internal/recap/value.go"
+RW = "internal/recap/wrapped.go"  # the unknown row's wrapper wording (LAW10: value.go stays under 500)
 REP = "internal/report/testbending.go"
 
 # gateout: the signature rule.
@@ -106,14 +107,14 @@ m("WR-1 a wrapped run names its gate by the wrapper", STOP,
 m("WR-1 a wrapped green reads passed after the last edit", R,
   "case wrap(g) == verify.WrapRead:", "case false:",
   "TestWR1_AWrappedRunIsFoundByItsOutput")
-m("WR-1 an unread wrapper reads as a run whose result is lost", R,
-  "\t\tswitch wrap(g) {\n", "\t\tswitch verify.WrapNone {\n",
+m("WR-1 an unread wrapper reads as a run whose result is lost", RW,
+  "\tswitch wrap(g) {\n", "\tswitch verify.WrapNone {\n",
   "TestWR1_AWrappedRunIsFoundByItsOutput")
 # #234 ruling (a): a delegate line that printed its status keeps that status,
 # not the go summary inside it, so the gate's line says only the status was
 # read, never that the output named no run.
-m("WR-1 a printed status reads as an output that names no run", R,
-  "\t\t\tif printedStatus(g.LastRun) {\n", "\t\t\tif false {\n",
+m("WR-1 a printed status reads as an output that names no run", RW,
+  "\t\tif printedStatus(g.LastRun) {\n", "\t\tif false {\n",
   "TestWR1_APrintedStatusOutranksTheWrapperRead")
 m("WR-1 a wrapped red reads as the wrapper's exit", R,
   "if wrap(g) == verify.WrapRead {", "if false {",
