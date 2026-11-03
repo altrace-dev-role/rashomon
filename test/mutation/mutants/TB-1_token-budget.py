@@ -6,13 +6,14 @@ A = "internal/steer/render/aside.go"
 
 m("TB-1 a line that lists nothing is sent", A,
   "\t\tif sparse && !(head && i == 0) && listsNothing(names, slots) {\n",
-  "\t\tif sparse && !(head && i == 0) && false {\n", "TestTB1_AModelLine")
+  "\t\tif sparse && !(head && i == 0) && listsNothing(names, slots) && false {\n", "TestTB1_AModelLine")
 m("TB-1 the header alone is sent", A,
   "\tif sparse && head && len(kept) == 1 {\n", "\tif false {\n", "TestTB1_AModelLine")
 m("TB-1 a line that lists is left out", A,
-  "\t\t\tif l.Lists() {\n\t\t\t\treturn false\n", "\t\t\tif false {\n\t\t\t\treturn false\n", "TestTB1_AModelLine")
+  "\t\t\tif l.Lists() {\n\t\t\t\treturn false\n", "\t\t\tif l.Lists() && false {\n\t\t\t\treturn false\n",
+  "TestTB1_AModelLine")
 m("TB-1 a line with no list is left out", A,
-  "\treturn lists\n", "\treturn true\n", "TestTB1_AModelLine")
+  "\treturn lists\n", "\treturn lists || true\n", "TestTB1_AModelLine")
 m("TB-1 the aside goes to the model", A,
   "\treturn text, aside, nil\n", "\treturn text + \"\\n\" + aside, aside, nil\n", "TestTB1_TheModelText")
 m("TB-1 a note with no line at all prints", A,

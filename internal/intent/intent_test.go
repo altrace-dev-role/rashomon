@@ -475,7 +475,7 @@ func TestPF1h_EvidenceKindsAreTheSpecs(t *testing.T) {
 
 // TestPF1i_FirstPromptCarriesTheBrief: the session's first note is the
 // first-prompt row, which carries the project line in the person's aside,
-// even for a request that names nothing, so the model is sent nothing
+// even for a request that names nothing, and never in the model's text
 // (TOKEN-BUDGET1); once delivered, later notes take the plain row; a project
 // with nothing to brief and a request naming nothing gets no note.
 func TestPF1i_FirstPromptCarriesTheBrief(t *testing.T) {
@@ -486,7 +486,7 @@ func TestPF1i_FirstPromptCarriesTheBrief(t *testing.T) {
 	if !ok {
 		t.Fatal("the first prompt got no brief")
 	}
-	if f.Pattern != pattern.TaskPreflight || f.Key != "brief" || f.Message.Text() != "" ||
+	if f.Pattern != pattern.TaskPreflight || f.Key != "brief" || strings.Contains(f.Message.Text(), "project files:") ||
 		!strings.HasPrefix(f.Message.Aside(), "project files: 'CLAUDE.md'; manifests: 'go.mod'; directories with Go files: 3") {
 		t.Errorf("first note = %s/%s %q, aside\n%s", f.Pattern, f.Key, f.Message.Text(), f.Message.Aside())
 	}
