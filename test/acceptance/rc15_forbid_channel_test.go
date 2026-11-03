@@ -19,9 +19,9 @@ import (
 const rc15Spec = `{"rashomon_spec": 1,
  "gates": [{"id": "unit", "kind": "test", "argv": ["go", "test", "./..."]}],
  "rules": [{"id": "no-fetch-all", "kind": "forbid_command", "command": {"argv": ["git", "fetch"]},
-            "why": "a lane fetches only the ref it was given"},
+            "why": "a lane fetches only the ref it was given", "hard_control": "none; review only"},
            {"id": "no-rm-glob", "kind": "forbid_command", "command": {"argv": ["rm"], "flags": ["-rf", "-fr"]},
-            "why": "a glob delete stalls an unattended lane on its prompt"}]}`
+            "why": "a glob delete stalls an unattended lane on its prompt", "hard_control": "the permission prompt"}]}`
 
 func TestRC15_ALedgerRowsRuleIsNamedAtTheCallAndAtTheStop(t *testing.T) {
 	outside := t.TempDir() // on disk, under no .git
