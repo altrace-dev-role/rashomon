@@ -91,3 +91,9 @@ m("AI-1 the count is no lower bound", "internal/steer/render/render.go",
 m("AI-1 a note naming no package speaks", "internal/steer/render/slot/path.go",
   "\tif len(kept) == 0 {\n\t\treturn nil, ErrNoPathsLeft\n\t}\n", "",
   "TestAI1_ANoteNamingNoPackageIsNotSaid|TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder")
+
+# The DE's condition (b): the consent screen's read-in-memory list names the
+# platform graph read after an edit.
+m("AI-1 the screen omits the read after an edit", "internal/disclose/paragraphs.go",
+  "; after an edit, the platform graph file pgraph wrote in the project, to name the packages that call the edited one", "",
+  "TestAI1_ScreenSaysTheGraphIsReadAfterAnEdit")
