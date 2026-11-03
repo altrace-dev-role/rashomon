@@ -12,7 +12,8 @@ import (
 
 // unknownWrapped is the unknown row's sentence for a gate whose last run a
 // wrapper's call bound by its runner's read (WrapRead), or one the gate may
-// have run in that bound nothing of it (WrapUnread); ok is false for any
+// have run in that bound nothing of it (WrapUnread, or WrapBackground where
+// that call was launched in the background); ok is false for any
 // other last run, whose sentence is the row's own.
 func unknownWrapped(t gateSet, g *verify.GateState) (s string, ok bool) {
 	switch wrap(g) {
@@ -28,6 +29,12 @@ func unknownWrapped(t gateSet, g *verify.GateState) (s string, ok bool) {
 		return t.name(g) + " unknown: call " + seqOf(g) + "'s output names no run", true
 	case verify.WrapRead:
 		return t.name(g) + " ran in a wrapper (call " + seqOf(g) + "); its result is not in the record", true
+	case verify.WrapBackground:
+		// Launched in the background, the call's post saw no output, and the
+		// record holds no read of it the hook can show: the line names the
+		// call and says nothing of its output (BG-OUTCOME phase 2a, the
+		// manager's ruling of 11-03: never "not read" unless shown).
+		return t.name(g) + " unknown: it ran inside background call " + seqOf(g), true
 	}
 	return "", false
 }

@@ -107,15 +107,20 @@ const (
 	WrapNone WrapWord = iota
 	WrapRead
 	WrapUnread
+	// WrapBackground is WrapUnread for a call launched in the background
+	// (BG-OUTCOME phase 2a): its output was never the post's to read.
+	WrapBackground
 )
 
-// String is the wrapped word: "read", "unread", or "" for none.
+// String is the wrapped word: "read", "unread", "background", or "" for none.
 func (w WrapWord) String() string {
 	switch w {
 	case WrapRead:
 		return "read"
 	case WrapUnread:
 		return "unread"
+	case WrapBackground:
+		return "background"
 	}
 	return ""
 }
@@ -130,6 +135,8 @@ func (w *WrapWord) UnmarshalText(b []byte) error {
 		*w = WrapRead
 	case "unread":
 		*w = WrapUnread
+	case "background":
+		*w = WrapBackground
 	default:
 		*w = WrapNone
 	}
