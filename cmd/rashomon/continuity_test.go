@@ -397,14 +397,15 @@ func (e *lessonEnv) armed(sessionID string) bool {
 // TestCSL1_AResumeBriefsAtItsFirstPrompt: a resumed session whose last
 // compaction's briefing was never given (its compact row was closed, 2.1.279)
 // gets it at its first prompt on a Claude Code whose prompt channel is open
-// (D-c). The resume start prints no briefing, reads no quote and leaves an
-// empty marker; the first prompt quotes the person's words to the model with
+// (D-c). A prompt before the resume reads nothing and briefs nothing: the
+// briefing waits for the arm. The resume start prints no briefing, reads no
+// quote and leaves an empty marker; the first prompt quotes the person's words to the model with
 // the mirror to the person, logs the line delivered at UserPromptSubmit
 // under the boundary's uuid, and takes the marker; the next prompt reads
 // nothing and briefs nothing; a second resume at the same boundary arms
 // nothing. No file under the store holds the words. Break: brief at the
-// resume start, leave the marker, read at every prompt, or arm a boundary
-// already given, and this fails.
+// resume start, leave the marker, read at every prompt or brief without the
+// arm, or arm a boundary already given, and this fails.
 func TestCSL1_AResumeBriefsAtItsFirstPrompt(t *testing.T) {
 	e := newLessonEnv(t)
 	t.Setenv("AI_AGENT", "claude-code_2-1-279_harness")
@@ -417,6 +418,9 @@ func TestCSL1_AResumeBriefsAtItsFirstPrompt(t *testing.T) {
 	}
 	t.Setenv("AI_AGENT", "claude-code_2-1-316_harness")
 	was := *calls
+	if p := e.promptAt(session, "p0", "carry on", tr); strings.Contains(p.stdout, saidSplit) || *calls != was {
+		t.Errorf("a prompt before the resume printed %q and called Read %d times; want no briefing and no Read", p.stdout, *calls-was)
+	}
 	if out := e.startAt(session, tr, "resume"); bytes.Contains(out, []byte("additionalContext")) || *calls != was {
 		t.Errorf("the resume start printed %s and called Read %d times; want no briefing and no Read", out, *calls-was)
 	}

@@ -37,7 +37,8 @@ m("CSL-1 a steer line records the person's words", L,
   "\tif !v.Keyed() {\n\t\treturn fmt.Errorf(\"%w: %q holds the person's words, not their keyed digest\", errSlot, name)\n\t}\n", "",
   "TestCSL1_ALineRecordsTheKeyedFormAndNeverTheWords")
 m("CSL-1 the briefing admitted on every event", F,
-  "\treturn p == pattern.ContinuityBriefing && event == EventSessionStart\n", "\treturn p == pattern.ContinuityBriefing\n",
+  "\treturn p == pattern.ContinuityBriefing && (event == EventSessionStart || event == EventUserPromptSubmit)\n",
+  "\treturn p == pattern.ContinuityBriefing\n",
   "TestCSL1_TheBriefingIsAdmittedOnItsOwnEventAlone")
 m("CSL-1 an own-channel pattern admitted at any priority", F,
   "own && !numbered && f.Priority == 0 {\n", "own && !numbered {\n",
@@ -111,7 +112,8 @@ m("CSL-1 the briefing clamped for its missing prompt", DC,
   "\tcase ctx.PromptID == nil && !direct:\n", "\tcase ctx.PromptID == nil:\n",
   "TestCSL1_TheBriefingIsDirectOutsideThePromptBudget")
 m("CSL-1 every pattern is direct at SessionStart", F,
-  "\treturn p == pattern.ContinuityBriefing && event == EventSessionStart\n", "\treturn event == EventSessionStart\n",
+  "\treturn p == pattern.ContinuityBriefing && (event == EventSessionStart || event == EventUserPromptSubmit)\n",
+  "\treturn event == EventSessionStart || event == EventUserPromptSubmit\n",
   "TestCSL1_TheBriefingIsDirectOutsideThePromptBudget")
 m("CSL-1 the briefing charged to the prompt's cap", DC,
   "\t\tcase p.direct && note < 0:\n\t\t\tp.state, p.decide, note = LineStateDelivered, false, i\n", "",
@@ -140,10 +142,10 @@ m("CSL-1 an arm-off briefing is given again", G,
   " || false && text(b, out[gkSuppressedBy]) == string(steer.SuppressedByArmOff) {\n",
   "TestCSL1_GivenIsOneBriefingPerSessionAgentAndCompaction")
 m("CSL-1 the briefing at every start source", C,
-  "source != \"compact\" || ", "false || ", "TestCSL1_NoBriefingWithoutABoundaryOrAQuote")
+  "source != \"compact\" && source != \"resume\" || ", "false || ", "TestCSL1_NoBriefingWithoutABoundaryOrAQuote")
 m("CSL-1 a briefing given twice for one compaction", C,
-  "\tif directive.Given(lines, b.UUID, \"\") {\n\t\treturn false\n\t}\n", "\t_ = lines\n",
-  "TestCSL1_OneBriefingPerCompaction")
+  "\treturn b, !directive.Given(lines, b.UUID, \"\")\n", "\t_ = lines\n\treturn b, true\n",
+  "TestCSL1_OneBriefingPerCompaction|TestCSL1_AResumeArmsOnlyAnOwedBoundary")
 m("CSL-1 the briefing's mirror drops the lead", C,
   "\t\tout.SystemMessage = lead + \"\\n\" + out.SystemMessage\n", "", "TestCSL1_TheLeadOpensTheBriefingsMirror")
 m("CSL-1 the lead closes the briefing's mirror", C,
@@ -156,3 +158,58 @@ m("CSL-1 the quotes recorded by their words", C,
   "TestCSL1_ACompactStartQuotesThePersonsWordsAndKeepsNone")
 m("CSL-1 the briefing's line filed under no project at v5", C,
   "\t\tproject = baseline.Key(cwd)\n", "\t\tproject, _ = \"\", baseline.Key\n", "TestCSL1_ACompactStartQuotesThePersonsWordsAndKeepsNone")
+
+# COMPACT-SLOT1 C: a resume arms the briefing its compaction did not give,
+# and the next prompt gives it (D-c): the empty marker, taken once; the
+# resume start reads and prints nothing; the prompt reads only when armed;
+# the briefing admitted at UserPromptSubmit, ahead of the ranked candidates,
+# outside the prompt's notes; the screen and the inventory say what the
+# briefing keeps and what the marker holds.
+BA = "internal/store/briefingarm.go"
+P = "cmd/rashomon/preflight.go"
+BU = "internal/steer/budget.go"
+PG = "internal/disclose/paragraphs.go"
+DS = "internal/disclose/disclose.go"
+
+m("CSL-1 the resume marker never written", BA,
+  "\tf, err := os.OpenFile(filepath.Join(s.RunDir(sessionID), FileBriefingArmed), os.O_CREATE|os.O_WRONLY, fileMode)\n",
+  "\tf, err := os.Open(filepath.Join(s.RunDir(sessionID), FileBriefingArmed))\n\t_ = fileMode\n",
+  "TestCSL1_TheBriefingMarkerIsEmptyAndTakenOnce|TestCSL1_AResumeBriefsAtItsFirstPrompt")
+m("CSL-1 the marker taken by every prompt", BA,
+  "FileBriefingArmed)) == nil\n", "FileBriefingArmed)) == nil || true\n",
+  "TestCSL1_TheBriefingMarkerIsEmptyAndTakenOnce|TestCSL1_AResumeBriefsAtItsFirstPrompt")
+m("CSL-1 a resume arms nothing", C,
+  "\t\t_ = st.ArmBriefing(sessionID)", "\t\t_ = st.ArmBriefing",
+  "TestCSL1_AResumeBriefsAtItsFirstPrompt|TestCSL1_AResumeArmsOnlyAnOwedBoundary")
+m("CSL-1 a resume briefs at its start", C,
+  "\tif source == \"resume\" {\n", "\tif false {\n",
+  "TestCSL1_AResumeBriefsAtItsFirstPrompt|TestCSL1_AResumeArmsOnlyAnOwedBoundary")
+m("CSL-1 every prompt reads for a briefing", C,
+  " || !st.TakeBriefingArm(sessionID) {\n", " || !st.TakeBriefingArm(sessionID) && false {\n",
+  "TestCSL1_AResumeBriefsAtItsFirstPrompt")
+m("CSL-1 the armed briefing not routed", P,
+  "\tif briefed {\n\t\tfound = append(found, brief)\n\t}\n", "\t_ = brief\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
+m("CSL-1 a prompt naming nothing drops the armed briefing", P,
+  " && p.owed.Seq <= 0 && !briefed {\n", " && p.owed.Seq <= 0 {\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
+m("CSL-1 the prompt's transcript not read", P,
+  "p.SessionID, p.Harness.TranscriptPath)\n", "p.SessionID, \"\")\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
+m("CSL-1 the briefing refused at the prompt", F,
+  " || event == EventUserPromptSubmit)\n", ")\n",
+  "TestCSL1_TheBriefingIsAdmittedOnItsOwnEventAlone|TestCSL1_AfterAResumeTheBriefingTakesThePromptsNote")
+m("CSL-1 the briefing ranked by its priority", DC,
+  "\tfor _, f := range ownFirst(rank(admitted), ctx.Event) {\n", "\tfor _, f := range rank(admitted) {\n",
+  "TestCSL1_AfterAResumeTheBriefingTakesThePromptsNote")
+m("CSL-1 own-channel findings ranked last", DC,
+  "\t\tcase own:\n\t\t\treturn -1\n", "\t\tcase own:\n\t\t\treturn 1\n", "TestCSL1_AfterAResumeTheBriefingTakesThePromptsNote")
+m("CSL-1 the briefing charged to the prompt's notes", BU,
+  "\t\tif !s.is(b, s.out[bkPattern], string(pattern.ContinuityBriefing)) {\n",
+  "\t\tif true || !s.is(b, s.out[bkPattern], string(pattern.ContinuityBriefing)) {\n",
+  "TestCSL1_AfterAResumeTheBriefingTakesThePromptsNote")
+m("CSL-1 the screen keeps the briefing's words unsaid", PG,
+  ", and except the briefing after Claude Code compacts the conversation, which quotes your earlier instructions to the agent word for word; the record keeps only each quote's length and a keyed digest, never your words.",
+  ".", "TestCSL1_TheScreenAndTheRowSayTheBriefingKeepsNoWords")
+m("CSL-1 steer.ndjson's row keeps the briefing's words unsaid", DS,
+  ", and except the briefing after Claude Code compacts the conversation, which quotes your earlier instructions to the agent word for word; the record keeps only each quote's length and a keyed digest, never your words)",
+  ")", "TestCSL1_TheScreenAndTheRowSayTheBriefingKeepsNoWords")
+m("CSL-1 the resume marker missing from the inventory", DS,
+  "\t\t\tcontinuityFiles(),\n", "", "TestTRU23_EveryWrittenPathIsInTheInventory")
