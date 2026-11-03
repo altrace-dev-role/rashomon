@@ -346,3 +346,147 @@ func TestCSL1_TheLeadOpensTheBriefingsMirror(t *testing.T) {
 		t.Errorf("without the lead: systemMessage %q, want the mirror alone", without.SystemMessage)
 	}
 }
+
+// promptAt is recap pending on the session's prompt, as lessonEnv.prompt
+// runs it, with the payload's transcript_path at transcript.
+func (e *lessonEnv) promptAt(sessionID, promptID, text, transcript string) promptOut {
+	e.t.Helper()
+	in, err := json.Marshal(map[string]any{
+		"session_id": sessionID, "hook_event_name": "UserPromptSubmit", "transcript_path": transcript,
+		"cwd": e.cwd, "permission_mode": "default", "prompt": text, "prompt_id": promptID,
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := recapTurn([]string{"pending", install.Marker, e.installID}, bytes.NewReader(in), &stdout, &stderr); err != nil {
+		e.t.Fatalf("recap pending %s %s: %v (stderr %q)", sessionID, promptID, err, stderr.String())
+	}
+	out := promptOut{stdout: stdout.String()}
+	if out.stdout == "" {
+		return out
+	}
+	var o startOutput
+	if err := json.Unmarshal(stdout.Bytes(), &o); err != nil {
+		e.t.Fatalf("recap pending printed %q, not one JSON object: %v", out.stdout, err)
+	}
+	out.system, out.context = o.SystemMessage, o.HookSpecificOutput.AdditionalContext
+	return out
+}
+
+// briefingMarker is the session's resume marker's path.
+func (e *lessonEnv) briefingMarker(sessionID string) string {
+	e.t.Helper()
+	st, err := store.Open(e.root)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return filepath.Join(st.RunDir(sessionID), store.FileBriefingArmed)
+}
+
+// armed reports whether the session's resume marker is present.
+func (e *lessonEnv) armed(sessionID string) bool {
+	e.t.Helper()
+	_, err := os.Lstat(e.briefingMarker(sessionID))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		e.t.Fatal(err)
+	}
+	return err == nil
+}
+
+// TestCSL1_AResumeBriefsAtItsFirstPrompt: a resumed session whose last
+// compaction's briefing was never given (its compact row was closed, 2.1.279)
+// gets it at its first prompt on a Claude Code whose prompt channel is open
+// (D-c). The resume start prints no briefing, reads no quote and leaves an
+// empty marker; the first prompt quotes the person's words to the model with
+// the mirror to the person, logs the line delivered at UserPromptSubmit
+// under the boundary's uuid, and takes the marker; the next prompt reads
+// nothing and briefs nothing; a second resume at the same boundary arms
+// nothing. No file under the store holds the words. Break: brief at the
+// resume start, leave the marker, read at every prompt, or arm a boundary
+// already given, and this fails.
+func TestCSL1_AResumeBriefsAtItsFirstPrompt(t *testing.T) {
+	e := newLessonEnv(t)
+	t.Setenv("AI_AGENT", "claude-code_2-1-279_harness")
+	calls := standInRead(t)
+	const session = "sess-csl1-resume"
+	e.start(session)
+	tr := compactTranscript(t, filepath.Join(t.TempDir(), session+".jsonl"), "b-cmd-1")
+	if out := e.compactStart(session, tr); bytes.Contains(out, []byte("additionalContext")) {
+		t.Fatalf("premise: the closed compact row printed %s", out)
+	}
+	t.Setenv("AI_AGENT", "claude-code_2-1-316_harness")
+	was := *calls
+	if out := e.startAt(session, tr, "resume"); bytes.Contains(out, []byte("additionalContext")) || *calls != was {
+		t.Errorf("the resume start printed %s and called Read %d times; want no briefing and no Read", out, *calls-was)
+	}
+	if fi, err := os.Lstat(e.briefingMarker(session)); err != nil || fi.Size() != 0 {
+		t.Fatalf("the marker after the resume start: %v, %v; want an empty file", fi, err)
+	}
+	p := e.promptAt(session, "p1", "carry on", tr)
+	if !strings.HasPrefix(p.context, "rashomon record: the person's words") || !strings.Contains(p.context, saidSplit) ||
+		!strings.Contains(p.system, saidSplit) {
+		t.Errorf("the first prompt printed %q; want the briefing to the model and its mirror", p.stdout)
+	}
+	if e.armed(session) {
+		t.Error("the first prompt left the marker")
+	}
+	was = *calls
+	if p := e.promptAt(session, "p2", "and then", tr); strings.Contains(p.stdout, saidSplit) || *calls != was {
+		t.Errorf("the second prompt printed %q and called Read %d times; want no briefing and no Read", p.stdout, *calls-was)
+	}
+	e.startAt(session, tr, "resume")
+	if e.armed(session) {
+		t.Error("a second resume at a boundary already given armed the marker")
+	}
+	lines := e.briefingLines(session)
+	if len(lines) != 2 || lines[1].Event != "UserPromptSubmit" || lines[1].State != "delivered" || lines[1].Key != "b-cmd-1" {
+		t.Errorf("briefing lines = %+v; want the compact start's suppressed line, then one delivered at the prompt under b-cmd-1", lines)
+	}
+	if hits := storeHolding(t, e.root, saidSplit, saidFollowUp, saidSame, saidAfter); len(hits) > 0 {
+		t.Errorf("the store holds the person's words: %v", hits)
+	}
+}
+
+// TestCSL1_AResumeArmsOnlyAnOwedBoundary: the resume start arms the marker
+// only for a transcript whose last compaction's briefing has not been given:
+// not with no boundary or no transcript, not after the compact start gave
+// it, and never from startup or clear; a later compaction's boundary, owed,
+// arms it. Read is the compact start's alone. Break: arm on every resume,
+// on any source, or past the dedupe, and this fails.
+func TestCSL1_AResumeArmsOnlyAnOwedBoundary(t *testing.T) {
+	e := newLessonEnv(t)
+	t.Setenv("AI_AGENT", "claude-code_2-1-316_harness")
+	calls := standInRead(t)
+	const session = "sess-csl1-owed"
+	e.start(session)
+	dir := t.TempDir()
+	none := filepath.Join(dir, "none.jsonl")
+	if err := os.WriteFile(none, []byte(`{"type":"user","uuid":"u1","message":{"role":"user","content":"one"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tr := range []string{none, filepath.Join(dir, "gone.jsonl")} {
+		if e.startAt(session, tr, "resume"); e.armed(session) {
+			t.Errorf("%s: a resume with no boundary armed the marker", filepath.Base(tr))
+		}
+	}
+	tr := compactTranscript(t, filepath.Join(dir, "s.jsonl"), "b-cmd-1")
+	if out := e.compactStart(session, tr); !bytes.Contains(out, []byte("additionalContext")) {
+		t.Fatalf("premise: the compact start printed %q, want the briefing", out)
+	}
+	if e.startAt(session, tr, "resume"); e.armed(session) {
+		t.Error("a resume at a boundary the compact start briefed armed the marker")
+	}
+	compactTranscript(t, tr, "b-cmd-1", "b-cmd-2")
+	for _, source := range []string{"startup", "clear"} {
+		if e.startAt(session, tr, source); e.armed(session) {
+			t.Errorf("a start from %s armed the marker", source)
+		}
+	}
+	if e.startAt(session, tr, "resume"); !e.armed(session) {
+		t.Error("a resume after a compaction whose briefing was not given left no marker")
+	}
+	if *calls != 1 {
+		t.Errorf("Read called %d times, want 1, the compact start's", *calls)
+	}
+}

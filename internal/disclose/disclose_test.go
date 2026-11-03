@@ -133,6 +133,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.ArmStale(sessionID); err != nil {
 		t.Fatalf("ArmStale: %v", err)
 	}
+	if err := s.ArmBriefing(sessionID); err != nil {
+		t.Fatalf("ArmBriefing: %v", err)
+	}
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
 	}
