@@ -24,6 +24,16 @@ func mo1Word(p *string) string {
 	return *p
 }
 
+// TestMO1_RulesVersionIsEleven: the version the runner's name and the masking
+// stage are decided at. A literal, not a comparison with the pins' own key;
+// a later version keeps them, so the build's own is at least it.
+func TestMO1_RulesVersionIsEleven(t *testing.T) {
+	if OutputOutcomeRulesVersion != 11 || RulesVersion < OutputOutcomeRulesVersion {
+		t.Errorf("OutputOutcomeRulesVersion = %d, RulesVersion = %d, want 11 and at least 11 (MASKED-OUTCOME1: runner_name and masked_by)",
+			OutputOutcomeRulesVersion, RulesVersion)
+	}
+}
+
 // TestMO1_RulesVersionIsTwelve: the version the lint, typecheck and scan lists
 // (C8) are decided at, after eleven named the runner and the masking stage
 // (MASKED-OUTCOME1: runner_name and masked_by; OutputOutcomeRulesVersion).

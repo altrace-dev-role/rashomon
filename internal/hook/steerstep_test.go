@@ -151,28 +151,42 @@ func printsFlag(t *testing.T, b []byte) bool {
 
 // TestST_StepsIsTheTriggerTable: the step runs only on an execution that
 // landed in the ordered stream, at a failure event that carried a runner
-// (card 2.3 R3) or at either post event when the call's input names
+// (card 2.3 R3), at a success event whose runner's status a pipe hid and
+// whose output read red (MASKED-OUTCOME1) or whose line hid it at all
+// (MASKED-AT-ACT1), or at either post event when the call's input names
 // .claude/rashomon (card P5B, 5.7, D-B7).
 func TestST_StepsIsTheTriggerTable(t *testing.T) {
 	for _, tc := range []struct {
 		event  string
 		seq    int64
 		runner bool
+		red    bool
+		hidden bool
 		store  bool
 		want   bool
 	}{
-		{FailureEvent, 7, true, false, true},
-		{"PostToolUse", 7, true, false, false},
-		{FailureEvent, 0, true, false, false},
-		{FailureEvent, 7, false, false, false},
-		{"", 7, true, false, false},
-		{"PostToolUse", 7, false, true, true},
-		{FailureEvent, 7, false, true, true},
-		{"PostToolUse", 0, false, true, false},
-		{"", 7, false, true, false},
+		{FailureEvent, 7, true, false, false, false, true},
+		{"PostToolUse", 7, true, false, false, false, false},
+		{FailureEvent, 0, true, false, false, false, false},
+		{FailureEvent, 7, false, false, false, false, false},
+		{"", 7, true, false, false, false, false},
+		{"PostToolUse", 7, false, false, false, true, true},
+		{FailureEvent, 7, false, false, false, true, true},
+		{"PostToolUse", 0, false, false, false, true, false},
+		{"", 7, false, false, false, true, false},
+		// a piped runner whose output read red steps at PostToolUse alone.
+		{"PostToolUse", 7, true, true, false, false, true},
+		{"PostToolUse", 0, true, true, false, false, false},
+		{"", 7, true, true, false, false, false},
+		// a runner whose line hid its status steps at PostToolUse alone,
+		// where masked-status is said (MASKED-AT-ACT1).
+		{"PostToolUse", 7, true, false, true, false, true},
+		{"PostToolUse", 0, true, false, true, false, false},
+		{FailureEvent, 7, false, false, true, false, false},
+		{"", 7, true, false, true, false, false},
 	} {
-		if got := steps(tc.event, tc.seq, tc.runner, tc.store); got != tc.want {
-			t.Errorf("steps(%q, %d, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.store, got, tc.want)
+		if got := steps(tc.event, tc.seq, tc.runner, tc.red, tc.hidden, tc.store); got != tc.want {
+			t.Errorf("steps(%q, %d, %v, %v, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.red, tc.hidden, tc.store, got, tc.want)
 		}
 	}
 }

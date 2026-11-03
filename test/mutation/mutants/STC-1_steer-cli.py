@@ -19,7 +19,7 @@ SCREEN = "internal/consent/screen.go"
 
 # The hook reads the switch.
 m("STC-1 the config is ignored at the hook", H,
-  "\t\tSteerOff:         steerOff,\n", "\t\tSteerOff:         false,\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
+  "\tsteerOff, unreadable := p.steerOff()\n", "\t_, unreadable := p.steerOff()\n\tsteerOff := false\n", "TestH145_|TestSTC1b_|TestSTC1g_|TestSTC1h_")
 m("STC-1 the user's key is ignored", H,
   "\tif c.SteerOffUser() {\n\t\treturn true, false\n\t}\n", "", "TestH145_|TestSTC1h_")
 m("STC-1 the project's key is ignored", H,
@@ -75,13 +75,13 @@ m("STC-1 steer explain says nothing of an unreadable config", S,
 m("STC-1 steer on an unreadable file gives the raw error", S,
   "\tif errors.Is(err, store.ErrConfigUnreadable) {\n\t\treturn unreadableConfigText(", "\tif false {\n\t\treturn unreadableConfigText(", "TestSTC1o_")
 m("STC-1 --repair works in an agent session", S,
-  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer on --repair`",
-  "\tif s := \"\"; s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer on --repair`", "TestSTC1o_")
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n\t\treturn selfguard.Refusal(s, \"repair replaces",
+  "\tif s := \"\"; s != \"\" {\n\t\treturn selfguard.Refusal(s, \"repair replaces", "TestSTC1o_")
 m("STC-1 steer on and off work in an agent session", S,
-  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s`",
-  "\tif s := \"\"; s != \"\" {\n\t\treturn fmt.Errorf(\"%s is set, so this is an agent session; nothing was written. Run `rashomon steer %s`", "TestSTC1q_")
+  "\tif s := selfguard.AgentSignal(os.Getenv); s != \"\" {\n\t\treturn selfguard.Refusal(s, \"the steer switch",
+  "\tif s := \"\"; s != \"\" {\n\t\treturn selfguard.Refusal(s, \"the steer switch", "TestSTC1q_")
 m("STC-1 --repair replaces without the person saying yes", S,
-  "\tif !ok {\n\t\treturn errors.New(\"nothing was written\")\n\t}\n", "", "TestSTC1o_")
+  "\tif !ok {\n\t\treturn errors.New(\"nothing was written\")\n\t}\n", "\t_ = ok\n", "TestSTC1o_")
 m("STC-1 --repair asks about a file that reads", S,
   "\tif err == nil {\n\t\treturn steerSet(stdout, false, project)\n\t}\n", "", "TestSTC1o_")
 m("STC-1 --repair is taken with off", S,
@@ -99,7 +99,7 @@ m("STC-1 steer log --json drops the level", S,
 m("STC-1 steer log prints a value outside its vocabulary", S,
   "\treturn \"?\"\n}\n\n// vocab", "\treturn v\n}\n\n// vocab", "TestSTC1c_SteerLogPrintsClosedFields")
 m("STC-1 steer log prints every decision, not the last twenty", S,
-  "\tif !all && len(rows) > logTail {\n", "\tif false {\n", "TestSTC1c_SteerLogIsTheLastTwentyUnlessAll")
+  "\tif !all && len(rows) > logTail {\n", "\tif false && !all && len(rows) > logTail {\n", "TestSTC1c_SteerLogIsTheLastTwentyUnlessAll")
 m("STC-1 steer explain names the oldest decision", S,
   "\tr := rows[len(rows)-1]\n", "\tr := rows[0]\n", "TestSTC1e_ExplainNamesTheLastDecision")
 m("STC-1 a suppressed_by reason has no sentence", S,

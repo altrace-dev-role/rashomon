@@ -7,7 +7,7 @@ m("SV-1 status --json drops not_firing", "cmd/rashomon/verbs_status.go",
   "\tNotFiring     bool   `json:\"not_firing\"`\n", "\tNotFiring     bool   `json:\"-\"`\n",
   "TestSV1f_EveryVerbHasJSONWithClosedKeys")
 m("SV-1 lessons --json drops since_unix_ms", "cmd/rashomon/verbs_lessons.go",
-  "\tSinceUnixMS int64      `json:\"since_unix_ms\"`\n", "\tSinceUnixMS int64      `json:\"-\"`\n",
+  "\tSinceUnixMS    int64      `json:\"since_unix_ms\"`\n", "\tSinceUnixMS    int64      `json:\"-\"`\n",
   "TestSV1f_EveryVerbHasJSONWithClosedKeys")
 m("SV-1 lessons is left out of the verb table", "cmd/rashomon/verbs.go",
   "\tcase \"lessons\":\n\t\treturn cmdLessons\n", "", "TestSV1f_EveryVerbHasJSONWithClosedKeys")
@@ -16,7 +16,7 @@ m("SV-1 an event that never fired is not named", "cmd/rashomon/verbs_status.go",
   "TestSV1_StatusNamesAnEventThatNeverFired")
 m("SV-1 Stop and SessionEnd are judged with the newest session in", "cmd/rashomon/verbs_status.go",
   "\t\t\tif len(r.Fired) == 0 || earlierOnly && r.name == newest.name {\n",
-  "\t\t\tif len(r.Fired) == 0 {\n",
+  "\t\t\tif len(r.Fired) == 0 || false && earlierOnly && r.name == newest.name {\n",
   "TestSV1_StatusNamesAnEventThatNeverFired|TestSV1b_StatusCountsPerEvent")
 m("SV-1 the 7-day window is ignored", "cmd/rashomon/verbs_status.go",
   "\t\tif now.Sub(a.LastAt) <= statusWindow {\n", "\t\tif true {\n", "TestSV1b_StatusCountsPerEvent")
@@ -45,8 +45,8 @@ m("SV-1 the hook entry marks nothing", "cmd/rashomon/main.go",
 m("SV-1 post marks PostToolUse for both events", "cmd/rashomon/fired.go",
   "name == \"PostToolUseFailure\" {", "false {", "TestSV1i_EachEntryMarksItsEvent")
 m("SV-1 recap marks while paused", "cmd/rashomon/recap_turn.go",
-  "\tif paused, _, perr := store.Paused(root); perr == nil && !paused {\n",
-  "\tif _, _, perr := store.Paused(root); perr == nil {\n", "TestSV1i_EachEntryMarksItsEvent")
+  "\tif paused, _, perr := store.Paused(root); perr != nil || paused {\n",
+  "\tif _, _, perr := store.Paused(root); perr != nil {\n", "TestSV1i_EachEntryMarksItsEvent")
 m("SV-1 sessions with no marker count toward an event", "cmd/rashomon/verbs_status.go",
   "\t\t\tif len(r.Fired) == 0 || earlierOnly && r.name == newest.name {\n",
   "\t\t\tif earlierOnly && r.name == newest.name {\n", "TestSV1p_UpgradeIsNotNotFiring")
@@ -63,3 +63,10 @@ m("SV-1 lessons opens the ledger for writing", "cmd/rashomon/verbs_lessons.go",
   "\tl, err := openLedgerReadOnly()\n", "\tl, err := openLedger()\n", "TestSV1o_LessonsWritesNothing")
 m("SV-1 OpenReadOnly quarantines on disk", "internal/learn/ledger.go",
   "\tif !write {\n\t\treturn l, nil\n\t}\n", "", "TestRP2q_OpenReadOnlyNeverWrites")
+# STEER-DISCLOSE-YES1 (R32): status names the steer hold, read as the hook
+# reads it, from the highest steer disclosure on file.
+m("SV-1 status says nothing of the steer hold", "cmd/rashomon/verbs_status.go",
+  "\tcase c.notesHeld:\n", "\tcase false:\n", "TestSV1p_StatusNamesTheSteerHold")
+m("SV-1 status reads the hold from the last record", "cmd/rashomon/verbs_status.go",
+  "\t\tnotesHeld: !steerCurrent,\n", "\t\tnotesHeld: rec.SteerDisclosure < steer.DisclosureVersion || steerCurrent && false,\n",
+  "TestSV1p_StatusNamesTheSteerHold")

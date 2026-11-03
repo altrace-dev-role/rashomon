@@ -29,7 +29,7 @@ func statesAt(t *testing.T, at int64, calls ...call) []GateState {
 func statesOf(t *testing.T, r *store.Run, at int64) []GateState {
 	t.Helper()
 	runs, writes, unnamed, _ := classify(r)
-	got := gateStates(runs, writes, unnamed, at, nil)
+	got := gateStates(runs, writes, unnamed, nil, at, nil)
 	for _, g := range got {
 		if g.Source != "learned" || g.Trust != "builtin" || !g.Required || g.PartialRunsSince != 0 {
 			t.Fatalf("%s: source %q trust %q required %t partial %d, want learned, builtin, true, 0", g.Gate, g.Source, g.Trust, g.Required, g.PartialRunsSince)
@@ -342,7 +342,7 @@ func TestVER14_BackgroundedAndNoFamily(t *testing.T) {
 	bg.bg = true
 	wantState(t, one(t, statesAt(t, 2, bg)), Backgrounded, BackgroundLaunch)
 
-	got := gateStates(nil, nil, nil, 10, nil)
+	got := gateStates(nil, nil, nil, nil, 10, nil)
 	b, err := json.Marshal(got)
 	if err != nil || got == nil || string(b) != "[]" {
 		t.Fatalf("no family: %v encodes as %s (err %v), want a made empty slice encoding as []", got, b, err)
@@ -430,9 +430,9 @@ func encodedUnderShuffles(t *testing.T, r *store.Run, at int64, dgs ...declaredG
 	runs, writes, unnamed, _ := classify(r)
 	cands := lineRuns(r, pickExecutions(r))
 	rows := func() []GateState {
-		g := gateStates(runs, writes, unnamed, at, nil)
+		g := gateStates(runs, writes, unnamed, nil, at, nil)
 		if len(dgs) > 0 {
-			g = withDeclared(g, dgs, cands, runs, writes, unnamed, at, nil)
+			g = withDeclared(g, dgs, cands, runs, writes, unnamed, "", at, nil)
 		}
 		return g
 	}
@@ -707,13 +707,13 @@ func BenchmarkGateStates(b *testing.B) {
 	}
 	runs, writes, unnamed, _ := classify(runOf(b, calls...))
 	at := 2 * seq
-	if got := gateStates(runs, writes, unnamed, at, nil); len(got) != 2 || got[0].WritesSinceGreen != 10 {
+	if got := gateStates(runs, writes, unnamed, nil, at, nil); len(got) != 2 || got[0].WritesSinceGreen != 10 {
 		b.Fatalf("the fixture gives %+v, want two families with ten writes since green", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gateStates(runs, writes, unnamed, at, nil)
+		gateStates(runs, writes, unnamed, nil, at, nil)
 	}
 }
 

@@ -27,32 +27,16 @@ import (
 // a person's answer.
 const ttyPath = "/dev/tty"
 
-// The refusals watch and consent print after the screen. Neither names
-// --yes: an agent told how to get past a refusal would use it.
+// The refusals watch and consent print after the screen, the agent
+// session's among them (askConsent). None names --yes: an agent told how to
+// get past a refusal would use it.
 const (
-	refuseAgent    = "%s was run from an agent session; nothing was written. Read the screen above, then run rashomon %s in your own terminal."
 	refuseNoTTY    = "%s needs a terminal to ask; nothing was written. Read the screen above, then run it in your own terminal."
 	nothingWritten = "nothing was written"
 	// refuseWorkTreeYes is --yes with the store root inside a git work
 	// tree: confirming that takes the person typing the tree's name.
 	refuseWorkTreeYes = "the store root %s is inside the git work tree %s, which has to be confirmed by typing its name; nothing was written. Run rashomon %s in your own terminal, without --yes."
 )
-
-// consentFlags parses watch's and consent's flags: --yes and --show, and
-// nothing else.
-func consentFlags(args []string) (yes, show bool, err error) {
-	for _, a := range args {
-		switch a {
-		case "--yes":
-			yes = true
-		case "--show":
-			show = true
-		default:
-			return false, false, fmt.Errorf("unknown argument %q", a)
-		}
-	}
-	return yes, show, nil
-}
 
 // watchPlan is what steps 1 and 2 found: everything step 6 needs, read
 // without writing anything.
@@ -68,11 +52,15 @@ type watchPlan struct {
 	prior     *consent.Record
 }
 
-// cmdWatch is `rashomon watch [--yes] [--show]` (Technical spec 7.2.3).
+// cmdWatch is `rashomon watch [--yes] [--show] [--full]` (Technical spec
+// 7.2.3).
 func cmdWatch(args []string, stdout io.Writer) error {
-	yes, show, err := consentFlags(args)
+	yes, show, full, err := consentFlags(args)
 	if err != nil {
 		return err
+	}
+	if full {
+		return printFull(stdout)
 	}
 	gate := startSignalGate(os.Stderr)
 	defer gate.stop()
@@ -92,7 +80,7 @@ func cmdWatch(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	screen, err := consent.Screen(inv, plan.screenInput())
+	screen, err := consent.Short(inv, plan.screenInput())
 	if err != nil {
 		return err
 	}
@@ -180,7 +168,7 @@ func askConsent(verb string, screen []byte, yes, show bool, wt workTreeQuestion,
 		if _, err := stdout.Write(screen); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf(refuseAgent, verb, verb)
+		return nil, selfguard.Refusal(signal, "the screen above is yours to agree to", verb, "written")
 	}
 	viaYes, viaTTY := consent.ViaWatchYes, consent.ViaWatchTTY
 	if verb == "consent" {
@@ -376,23 +364,24 @@ func (p *watchPlan) screenInput() consent.ScreenInput {
 	}
 }
 
-// record is the consent line step 6 appends. A --yes record carries
-// steer_disclosure 0: the screen went to a script, not a person, so notes
-// wait until it has been shown in an attended session.
+// record is the consent line step 6 appends. A --yes record carries this
+// build's steer disclosure as a terminal answer does: the screen, which says
+// what a note is, went to stdout, and a record at 0 held every note until a
+// terminal answer that a script never gives and Windows, with no /dev/tty,
+// never can (STEER-DISCLOSE-YES1, R32: a recorded departure from PF-TR3's
+// "a headless run is never consent", under R9). An agent session's --yes is
+// refused before this (askConsent), and the record keeps tty false and
+// via *_yes, so a --yes consent stays told apart from a typed one.
 func (p *watchPlan) record(screen []byte, ans *answers) (consent.Record, error) {
 	inv, err := consent.NewInvocationID()
 	if err != nil {
 		return consent.Record{}, err
 	}
-	disclosure := steer.DisclosureVersion
-	if !ans.tty {
-		disclosure = 0
-	}
 	return consent.Record{
 		V:               consent.RecordVersion,
 		ScopeVersion:    disclose.ScopeVersion,
 		RecordScope:     consent.RecordScopeV5,
-		SteerDisclosure: disclosure,
+		SteerDisclosure: steer.DisclosureVersion,
 		Steer:           consent.SteerOn,
 		TextSHA256:      consent.TextSHA256(screen),
 		BinaryVersion:   buildVersion(),

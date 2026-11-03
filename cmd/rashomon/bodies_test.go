@@ -221,9 +221,10 @@ func TestAGBO1_AnAgentSessionCannotSetTheBodiesSwitch(t *testing.T) {
 	}
 	t.Setenv("CLAUDECODE", "1")
 	for _, args := range [][]string{{"off"}, {"on"}, {"on", "--max-bytes", "9"}} {
-		err := cmdBodies(args, io.Discard)
-		if err == nil || !strings.Contains(err.Error(), "agent session; nothing was written") || !strings.Contains(err.Error(), "rashomon bodies "+strings.Join(args, " ")) {
-			t.Errorf("bodies %v in an agent session = %v, want a refusal naming the command to run", args, err)
+		if err := cmdBodies(args, io.Discard); err == nil {
+			t.Errorf("bodies %v in an agent session = nil, want a refusal naming the command to run", args)
+		} else {
+			wantRefusal(t, "bodies "+strings.Join(args, " "), err.Error(), "bodies "+strings.Join(args, " "), "written")
 		}
 	}
 	if b, _ := os.ReadFile(p); string(b) != seed {

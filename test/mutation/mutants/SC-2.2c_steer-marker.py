@@ -46,6 +46,9 @@ m("SC-2.2c a failed steer write wrapped as the record scope's", R,
 m("SC-2.2c the steer sync writes when equal", H,
   '\tif have == want && (err == nil || errors.Is(err, fs.ErrNotExist)) {\n',
   '\tif have == want && (err == nil || errors.Is(err, fs.ErrNotExist)) && false {\n', "TestSC4_")
+m("SC-2.2c the steer sync only raises the marker", H,
+  '\tif have == want && (err == nil || errors.Is(err, fs.ErrNotExist)) {\n',
+  '\tif have >= want && (err == nil || errors.Is(err, fs.ErrNotExist)) {\n', "TestSC6_")
 m("SC-2.2c a reader error leaves the stale marker in place", H,
   '\tif err != nil || want < 0 {\n\t\t_ = store.RemoveSteerDisclosureMarker(root)\n\t\treturn false\n\t}\n',
   '\tif err != nil || want < 0 {\n\t\treturn false\n\t}\n', "TestSC4_")

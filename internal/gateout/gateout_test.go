@@ -56,8 +56,11 @@ func TestGO7_Delegates(t *testing.T) {
 	for _, tc := range []struct{ program, output, kind, parser string }{
 		{"make", "ok\tpkg\t0.01s", "summary_pass", "go"},
 		{"npm", "Tests: 4 passed, 4 total", "summary_pass", "jest"},
-		{"yarn", "Tests 1 passed", "summary_pass", "vitest"},
-		{"yarn", "Tests 1 failed | 2 passed", "summary_fail", "vitest"},
+		// vitest 1.6.1's summary lines as recorded (testdata/wr1/vitest-*.stdout):
+		// a delegate's output counts vitest's lines where vitest signed it (D3).
+		{"yarn", " Test Files  1 passed (1)\n      Tests  2 passed (2)", "summary_pass", "vitest"},
+		{"yarn", " Test Files  1 failed (1)\n      Tests  1 failed | 1 passed (2)", "summary_fail", "vitest"},
+		{"yarn", "Tests 1 passed", "no_summary", "yarn"},
 		{"pnpm", "no recognizable result", "no_summary", "pnpm"},
 	} {
 		want(t, Classify("test", tc.program, []byte(tc.output)), tc.kind, tc.parser, nil)
@@ -82,21 +85,26 @@ func TestGO9_CapBoundary(t *testing.T) {
 // with no new version and pin fails here, and so does a RulesVersion bump with
 // no pin for the tables it ships. The digest covers every list Classify
 // decides with: each row's program word, its delegate flag and its pass, fail,
-// fail-line and empty patterns, in row order (the order a delegated run's
-// lines are matched in), and the scan bound MaxScanBytes.
+// fail-line, empty and signature patterns, in row order (the order a delegated
+// run's lines are matched in), and the scan bound MaxScanBytes.
 //
-// 10 is v1.2.0-alpha.1's tables (949d6aca, pin 21b4d3f8 before the bound
-// joined the digest). 11 carries GATEOUT-ZERO1's anchored pytest fail forms
-// over #149's tables: 11 was never released, so no user's store holds a record
-// the earlier 11 tables judged (D232's reasoning). If a build at 11 is
-// released before GATEOUT-ZERO1 merges, 12 is forced, with 11 pinned at the
-// earlier tables' 3c9478c2. 12 is c8's bump (the lint, typecheck and scan
-// runner lists and check kinds read as no_summary); it ships the tables 11
-// pinned, so its digest is 11's: tableDigest covers only Classify's lists.
+// 10 is v1.2.0-alpha.1's tables (949d6aca; pin 21b4d3f8 before the bound
+// joined the digest, 10c0ad3b before the signatures did). 11 is #149's
+// tables, which main's builds at 11 and at 12 shipped before GATEOUT-ZERO1
+// merged (3c9478c2 before the signatures joined). 12 carries GATEOUT-ZERO1's
+// anchored pytest fail forms over them, and WRAPPER-RUN1's signatures and
+// vitest's indented summary: 12 was never released, so no user's store holds
+// a record the earlier 12 tables judged (D232's reasoning, as GATEOUT-ZERO1
+// rode 11 before #229 moved main to 12; main's builds at 12 between the two
+// merges read 946d253c, 8ad8fc2f with the signatures). If a build at 12 is
+// released before WRAPPER-RUN1 merges, 13 is forced, with 12 pinned at
+// 8ad8fc2f. 12 also carries C8's lint, typecheck and scan runner lists, whose
+// check kinds Classify reads as no_summary; no table changed, and tableDigest
+// covers only Classify's lists.
 var tablePins = map[int]string{
-	10: "10c0ad3b221731500b5c9d8e0c235dc329e35d8c71314aa147a92f5e6a61415b",
-	11: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
-	12: "946d253c62d877921aa0559d76ac910e3fe004e381fe4d0aef1fc4507d0869a4",
+	10: "9491d497d9ba44407067b6ae5c519106a0603d64940285f3942bf6af9f0e7962",
+	11: "5ca3da77d4411c55988c6c1988ea83cc5ee9558bcbf65f926a53acf8ebccd344",
+	12: "e92aa6a92377227eb9310bc8b28a7ae30af094d7709645085f2e48ebd917f596",
 }
 
 func TestGO10_TablesPinned(t *testing.T) {
@@ -109,7 +117,7 @@ func TestGO10_TablesPinned(t *testing.T) {
 		t.Fatalf("table digest %s at RulesVersion %d, want %s: a table change takes a new RulesVersion and pin", got, shape.RulesVersion, pin)
 	}
 	for _, row := range tables() {
-		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
+		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty, row.sig} {
 			for _, pattern := range group {
 				if _, reason, _ := spec.CheckRegex(pattern.String()); reason != "" {
 					t.Errorf("%s pattern %q rejected: %s", row.program, pattern, reason)
@@ -226,7 +234,7 @@ func tableDigest() string {
 	h := sha256.New()
 	for _, row := range tables() {
 		fmt.Fprintf(h, "%s\x00%t\x00", row.program, row.delegate)
-		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty} {
+		for _, group := range [][]*regexp.Regexp{row.pass, row.fail, row.failLine, row.empty, row.sig} {
 			for _, pattern := range group {
 				fmt.Fprintf(h, "%s\x00", pattern.String())
 			}

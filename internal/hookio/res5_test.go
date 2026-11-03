@@ -16,6 +16,7 @@ import (
 var res5Dirs = []string{
 	"internal/hook", "internal/shape", "internal/verify", "internal/steer",
 	"internal/harness", "internal/learn", "cmd/rashomon", "internal/intent", "internal/receipt",
+	"internal/directive",
 }
 
 // res5Allowed are the decodes a hook path may still make, named by package
@@ -41,8 +42,12 @@ var res5Dirs = []string{
 // CheckpointMaxBytes, for the startup line SessionStart prints (REPORT1b):
 // the same ground as verify.ReadIndex, a file rashomon wrote, capped, in a
 // closed shape. It is receipt's one decode.
+// verify.ReadCheckpoints reads the project's checkpoint file, which the Stop
+// writes beside the index (INDEX-POINTER-FILE1): the same ground again, a
+// file rashomon wrote, capped at MaxCheckpointsBytes (4 KiB), read once by
+// each Stop that cuts a checkpoint and once by SessionStart's brief.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
-	"internal/learn.decode": true, "internal/learn.decodeActive": true,
+	"internal/verify.ReadCheckpoints": true, "internal/learn.decode": true, "internal/learn.decodeActive": true,
 	"cmd/rashomon.steerRows": true, "internal/receipt.decodeHead": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in

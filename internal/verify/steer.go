@@ -3,7 +3,6 @@ package verify
 import (
 	"errors"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -26,6 +25,47 @@ type SteerView struct {
 	ProjectRoot string
 	Dropped     int
 	Spec        *SpecInfo
+	// Hits are the forbid_command rules the call matched at either post
+	// event (RulesAtCall), which the hook keeps as spec_event rule_hit
+	// records before Route (card SPEC-RULES-STOP1).
+	Hits []RuleHit
+	// AfterHits are the order rules whose After pattern the call matched,
+	// which the hook keeps as spec_event after_hit records (#216 ruling 1).
+	AfterHits []AfterHit
+	// ThenChecks are the post's verdicts on whether the call's line runs the
+	// Then of each order rule it was read under, which the hook keeps as
+	// then_check records (card ORDER-LIVE1), whatever the call raised.
+	ThenChecks []ThenCheck
+}
+
+// ThenCheck is an order rule's verdict on one Bash call's line, as the post
+// records it: the rule's id, its declaring file's content digest, and
+// store.ThenYes, ThenNo or ThenMaybe for whether the line runs the Then.
+type ThenCheck struct {
+	RuleID       string
+	SourceDigest string
+	Then         string
+}
+
+// AfterHit is an order rule's After call, as the post records it: the rule's
+// id, its declaring file's content digest, the call's directory digest (its
+// declaration's, "" where the run was not read), its exit status (nil where
+// none was stated) and foreground flag, and Maybe where the line may run the
+// After program but does not show it.
+type AfterHit struct {
+	RuleID       string
+	SourceDigest string
+	CWDDigest    string
+	Exit         *int
+	Foreground   bool
+	Maybe        bool
+}
+
+// RuleHit is a forbid_command rule a call matched: the rule's declared id
+// and the content digest of the spec file that declared it.
+type RuleHit struct {
+	RuleID       string
+	SourceDigest string
 }
 
 // SteerAt evaluates run at pt once and returns the steer view of the call
@@ -33,21 +73,24 @@ type SteerView struct {
 // both records store (store.CapID), so a call whose payload id is over the
 // cap still matches its own run. Evaluate is untouched: this is a view of
 // the same classification, beside the Stop view and its ledger. key is the
-// install key the gates sp declares are digested under (evaluate). Its facts
-// are regression-location's, stale-evidence's and the one-way doors this
-// call opened (integrityRaises, card P5B). stale-evidence is raised at a
+// install key the gates sp declares are digested under (evaluate); root is
+// the project sp was discovered in, the post's cwd key (evaluate). Its facts
+// are regression-location's, stale-evidence's, masked-status's at the masked
+// run's own post (card MASKED-AT-ACT1) and the one-way doors this call opened
+// (integrityRaises, card P5B). stale-evidence is raised at a
 // PostToolUse only, under an index that has established a family (D164):
 // the call's declaration seq, which its writes carry, is looked up only
 // then.
-func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, event, toolUseID string) SteerView {
+func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, root string, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
-	snap := evaluate(run, idx, sp, key, pt, now, &c)
+	snap := evaluate(run, idx, sp, key, nil, root, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	var decl int64
 	if (c.learned || hasDeclaredRequired(snap)) && event == string(steer.EventPostToolUse) {
 		decl = declSeqAt(run, toolUseID, pt.Seq)
 	}
 	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, !c.learned, pt, event)...)
+	facts = append(facts, maskedStatus(snap, c.runs, pt, event, toolUseID)...)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
 	found, dropped := mapFacts(run, facts, pt, decl)
 	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
@@ -56,8 +99,8 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, p
 // mapFacts maps each fact to its steer candidate through ToSteer and renders
 // its Message from the record: an integrity fact by renderIntegrity, a
 // stale-evidence fact by renderStale against this call's declaration at
-// decl, and any other gate fact by renderRegression. A fact ToSteer refuses
-// is counted in dropped.
+// decl, a masked-status fact by renderMasked, and any other gate fact by
+// renderRegression. A fact ToSteer refuses is counted in dropped.
 func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []steer.Finding, dropped int) {
 	if len(facts) == 0 {
 		return nil, 0
@@ -78,6 +121,8 @@ func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []st
 			sf.Message = renderIntegrity(f)
 		case f.Pattern == pattern.StaleEvidence:
 			sf.Message = renderStale(&times, f, decl)
+		case f.Pattern == pattern.MaskedStatus:
+			sf.Message = renderMasked(run, f)
 		default:
 			sf.Message = renderRegression(run, &times, f)
 		}
@@ -110,7 +155,7 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 		if p := Program(programOf(runs, last)); p.Valid() {
 			fact.Program = p
 		}
-		between(&fact, writes, pt.AgentID)
+		between(&fact, writes, pt.AgentID, g.root)
 		if fact.WritesSince == 0 {
 			continue
 		}
@@ -132,9 +177,13 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 // the exit status (outcome_from output_summary, D229): readsOutput let in
 // only summary_fail, or a fail line for a runner whose table has no summary
 // form, so a FAIL substring a pipe happened to keep is never one. The run's
-// exit status is then the pipe's own and no code is named.
+// exit status is then the pipe's own and no code is named. A run read in a
+// wrapper (WRAPPER-RUN1), red or green, is neither: the output rows say a
+// pipe hid the status and the exit rows would give the gate the wrapper's
+// exit, and no row says it ran in a wrapper (WRAPPER-RED-STEP1 adds one).
 func regressedHere(g *GateState, toolUseID string) bool {
-	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {
+	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID ||
+		g.LastRun.Wrapped != WrapNone || g.LastGreen.Wrapped != WrapNone {
 		return false
 	}
 	switch g.Reason {
@@ -175,7 +224,7 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, de
 		if p := Program(programOf(runs, green)); p.Valid() {
 			fact.Program = p
 		}
-		own(&fact, writes, decl)
+		own(&fact, writes, decl, g.root)
 		prompt := ""
 		if pt.PromptID != nil {
 			prompt = *pt.PromptID
@@ -192,14 +241,15 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, de
 // that left the green behind raises it, and the writes after it are quiet.
 // A write carries its declaration's seq (appendWrites), never the point's,
 // which is the execution's, so the call is matched by its declaration. A
-// moved tree is no reason here: a per-call point carries no Tree.
+// moved tree is no reason here: a per-call point carries no Tree. A green
+// read in a wrapper raises none, as in regressedHere (WRAPPER-RUN1).
 func staleHere(g *GateState, writes []write, decl int64) bool {
-	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil {
+	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil || g.LastGreen.Wrapped != WrapNone {
 		return false
 	}
 	lo := g.LastGreen.Seq
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo }); i < len(writes); i++ {
-		if w := &writes[i]; w.Path != nil && Relevant(w.Class) {
+		if w := &writes[i]; w.Path != nil && Relevant(w.Class) && covers(g.root, w) {
 			return w.Seq == decl
 		}
 	}
@@ -230,16 +280,17 @@ func declSeqAt(run *store.Run, toolUseID string, at int64) int64 {
 	return seq
 }
 
-// own fills f's write counts from this call's relevant writes, those
-// declared at decl: the distinct named paths, first first, at most MaxPaths,
-// and PathsOmitted the rest or those outside the slot's charset. A write
-// another call declared beside this one, by this agent or another, is not
-// this call's and is never named in its sentence (INV-2).
-func own(f *GateFact, writes []write, decl int64) {
+// own fills f's write counts from this call's relevant writes the gate
+// covers, root's, those declared at decl: the distinct named paths, first
+// first, at most MaxPaths, and PathsOmitted the rest or those outside the
+// slot's charset. A write another call declared beside this one, by this
+// agent or another, is not this call's and is never named in its sentence
+// (INV-2).
+func own(f *GateFact, writes []write, decl int64, root string) {
 	seen := map[PathSlot]bool{}
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq >= decl }); i < len(writes) && writes[i].Seq == decl; i++ {
 		w := &writes[i]
-		if w.Path == nil || !Relevant(w.Class) {
+		if w.Path == nil || !Relevant(w.Class) || !covers(root, w) {
 			continue
 		}
 		f.WritesSince++
@@ -257,20 +308,21 @@ func own(f *GateFact, writes []write, decl int64) {
 }
 
 // between fills f's write counts from the relevant writes strictly between
-// its two runs: a binary search for the first past the green, a scan to the
-// red. Paths are the distinct named paths, first write first, at most
-// MaxPaths; PathsOmitted the distinct ones past that or outside the slot's
-// charset; OtherAgents the writes by an agent other than the point's.
-func between(f *GateFact, writes []write, agent *string) {
+// its two runs that the gate covers, root's, or whose target is not named: a
+// binary search for the first past the green, a scan to the red. Paths are
+// the distinct named paths, first write first, at most MaxPaths;
+// PathsOmitted the distinct ones past that or outside the slot's charset;
+// OtherAgents the writes by an agent other than the point's.
+func between(f *GateFact, writes []write, agent *string, root string) {
 	lo, hi := *f.LastGreenSeq, *f.LastRunSeq
 	seen := map[PathSlot]bool{}
 	for i := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo }); i < len(writes) && writes[i].Seq < hi; i++ {
 		w := &writes[i]
-		if !Relevant(w.Class) {
+		if !Relevant(w.Class) || w.Path != nil && !covers(root, w) {
 			continue
 		}
 		f.WritesSince++
-		if !sameAgent(w.AgentID, agent) {
+		if !sameAgent(w.agent(), agent) {
 			f.OtherAgents++
 		}
 		if w.Path == nil {
@@ -386,14 +438,7 @@ func renderStale(times *declTimes, f Finding, decl int64) render.Message {
 		return render.Message{}
 	}
 	minutes := slot.Minutes(max(0, (wrote-green)/60_000))
-	word := slot.Gate(g.Program)
-	if g.Program == "" {
-		word = slot.Gate(kindOfGateID(string(g.GateID)))
-	}
-	if id, ok := strings.CutPrefix(string(g.GateID), "spec:"); ok && slot.Gate(id).Validate() == nil {
-		// A declared gate is named by its id, the word its spec gave it (D222).
-		word = slot.Gate(id)
-	}
+	word := factGate(g, "")
 	fromOutput := g.OutcomeFrom == OutcomeFromOutput
 	if len(g.Paths) > 0 {
 		paths := make([]slot.Path, len(g.Paths))

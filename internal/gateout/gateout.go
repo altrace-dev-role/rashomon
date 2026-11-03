@@ -12,10 +12,38 @@ import (
 // MaxScanBytes bounds the runner output scanned for a gate result (D22).
 const MaxScanBytes = 1 << 20
 
+// Wrapper is the program Classify reads a call's output as where its line
+// names no runner: a script, a shell, a program no list knows (WRAPPER-RUN1).
+// It is read as a delegate's output is, by every runner row, and a row counts
+// only where its signature is in the output; no delegate's marker counts, and
+// no table is keyed by the word. A result no row decided names Wrapper as its
+// parser, or the first row signed in it.
+const Wrapper = "wrapper"
+
+// The gate_output kinds a masked runner's printed exit status gives
+// (STATUS-PROBE): the status the line printed was 0, or was not. They are not
+// Classify's, whose words read a summary; the post hook writes them where
+// shape.PrintedStatus reads a status, with ParserExitStatus as the parser.
+const (
+	KindPrintedPass  = "printed_pass"
+	KindPrintedFail  = "printed_fail"
+	ParserExitStatus = "exit_status"
+)
+
+// Kinds is the closed vocabulary of gate_output.kind (store.GateOutput), every
+// word any writer gives it: Classify's, unread, and the printed pair. Each is
+// disclosed in the consent text's STORED paragraph (TestFF1_EveryGateOutputKindIsDisclosed).
+func Kinds() []string {
+	return []string{"summary_pass", "summary_fail", "fail_line", "empty_run", "no_summary", "unattributable", "unread",
+		KindPrintedPass, KindPrintedFail}
+}
+
 // Classify reports the table-driven result of test runner output. Build,
 // lint, typecheck and scan runners, which have no table of their own, and
-// unknown programs do not scan text. The scan is O(len(text))
-// with no per-line allocation; inputs over MaxScanBytes are unread.
+// unknown programs do not scan text. The scan is O(len(text)) with no
+// per-line allocation; inputs over MaxScanBytes are unread. A
+// delegate's or a wrapper's output is scanned twice: once for the rows whose
+// signature it holds, then by those rows.
 func Classify(kind, program string, text []byte) store.GateOutput {
 	switch kind {
 	case "test", "build", "lint", "typecheck", "scan":
@@ -30,13 +58,17 @@ func Classify(kind, program string, text []byte) store.GateOutput {
 		return store.GateOutput{Kind: "unread", Reason: &reason}
 	}
 
+	wrapper := program == Wrapper
 	row := findProgram(program)
-	if row == nil {
+	if row == nil && !wrapper {
 		return store.GateOutput{Kind: "unattributable"}
 	}
-	delegate := row.delegate
-	if delegate {
-		row = nil
+	var counted uint32 // the rows a delegated line may match, by index
+	if wrapper || row.delegate {
+		row, counted = nil, signedRows(text, wrapper)
+		if wrapper && counted == 0 {
+			return store.GateOutput{Kind: "no_summary", Parser: program}
+		}
 	}
 
 	var pass, fail, failLine, empty bool
@@ -50,7 +82,7 @@ func Classify(kind, program string, text []byte) store.GateOutput {
 		}
 		parser, result := matchLine(line, row)
 		if row == nil {
-			parser, result = matchDelegatedLine(line)
+			parser, result = matchDelegatedLine(line, counted)
 		}
 		switch result {
 		case "empty":
@@ -88,7 +120,49 @@ func Classify(kind, program string, text []byte) store.GateOutput {
 	if empty {
 		return store.GateOutput{Kind: "empty_run", Parser: fallback(emptyParser, program)}
 	}
+	if wrapper {
+		// A runner signed the output and printed no outcome line: it ran here,
+		// and how it ended is not in what the wrapper kept.
+		rows := tables()
+		for i := range rows {
+			if counted&(1<<i) != 0 {
+				return store.GateOutput{Kind: "no_summary", Parser: rows[i].program}
+			}
+		}
+	}
 	return store.GateOutput{Kind: "no_summary", Parser: program}
+}
+
+// signedRows is the set of rows, as bits by index, whose lines count in a
+// delegate's or, with wrapper, a wrapper's output: each runner row with a
+// signature line in text; for a delegate, also every row with no signature,
+// its own markers among them, as before signatures (WRAPPER-RUN1, D3). One
+// pass, which ends once every signed row is found.
+func signedRows(text []byte, wrapper bool) uint32 {
+	rows := tables()
+	var counted, open uint32
+	for i := range rows {
+		switch {
+		case len(rows[i].sig) > 0:
+			open |= 1 << i
+		case !wrapper:
+			counted |= 1 << i
+		}
+	}
+	for len(text) > 0 && open != 0 {
+		line := text
+		if i := bytes.IndexByte(text, '\n'); i >= 0 {
+			line, text = text[:i], text[i+1:]
+		} else {
+			text = nil
+		}
+		for i := range rows {
+			if open&(1<<i) != 0 && matches(rows[i].sig, line) {
+				counted, open = counted|1<<i, open&^(1<<i)
+			}
+		}
+	}
+	return counted
 }
 
 func fallback(parser, program string) string {
@@ -117,9 +191,14 @@ func matchLine(line []byte, row *table) (string, string) {
 	return "", ""
 }
 
-func matchDelegatedLine(line []byte) (string, string) {
+// matchDelegatedLine is the first row of counted (signedRows) that matches
+// line, and its result.
+func matchDelegatedLine(line []byte, counted uint32) (string, string) {
 	rows := tables()
 	for i := range rows {
+		if counted&(1<<i) == 0 {
+			continue
+		}
 		candidate := &rows[i]
 		// A delegate row has only fail patterns: the delegate's own failure
 		// markers, which apply to a run of any delegate (make runs npm).

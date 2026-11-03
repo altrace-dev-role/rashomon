@@ -72,6 +72,7 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/gap/properties/reason", "the store's gap reasons (store.Gap*)",
 				[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap, store.GapPaused}, false},
 			{"/$defs/terminal/properties/reason", "terminalReasons (the terminal writers)", terminal, true},
+			{"/$defs/spec_event/properties/reason", "store.SpecEventReasons()", store.SpecEventReasons(), false},
 		}},
 		{"report_reason", []enumRow{
 			{"/$defs/report_reason", "report.Reasons()", report.Reasons(), false},
@@ -83,10 +84,16 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/forgotten_host/properties/type", "store.TypeForgottenHost", []string{store.TypeForgottenHost}, false},
 			{"/$defs/gap/properties/type", "store.TypeGap", []string{store.TypeGap}, false},
 			{"/$defs/terminal/properties/type", "store.TypeTerminal", []string{store.TypeTerminal}, false},
+			{"/$defs/spec_event/properties/type", "store.TypeSpecEvent", []string{store.TypeSpecEvent}, false},
+			{"/$defs/after_hit/properties/type", "store.TypeAfterHit", []string{store.TypeAfterHit}, false},
+			{"/$defs/then_check/properties/type", "store.TypeThenCheck", []string{store.TypeThenCheck}, false},
+			{"/$defs/outcome_join/properties/type", "store.TypeOutcomeJoin", []string{store.TypeOutcomeJoin}, false},
 		}},
 		{"outcome", []enumRow{
 			{"/$defs/execution/properties/outcome", "store.Exec*",
 				[]string{store.ExecOK, store.ExecFailed, store.ExecInterrupted}, false},
+			{"/$defs/outcome_join/properties/outcome", "store.ExecOK and store.ExecFailed, the words a task notification's status names",
+				[]string{store.ExecOK, store.ExecFailed}, false},
 			{"/$defs/terminal/properties/outcome", "store.Outcome*",
 				[]string{store.OutcomeOK, store.OutcomeError, store.OutcomeSignal}, false},
 		}},
@@ -109,6 +116,17 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 				[]string{strconv.Itoa(store.SessionSchemaVersion)}, false},
 			{"/$defs/gap/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeGap), false},
 			{"/$defs/terminal/properties/schema_version", callRange, acceptedVersions(t, store.TypeTerminal), false},
+			{"/$defs/spec_event/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for spec_event",
+				eventVersions(t, store.TypeSpecEvent), false},
+			{"/$defs/after_hit/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for after_hit",
+				eventVersions(t, store.TypeAfterHit), false},
+			{"/$defs/then_check/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for then_check",
+				eventVersions(t, store.TypeThenCheck), false},
+			{"/$defs/outcome_join/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for outcome_join",
+				eventVersions(t, store.TypeOutcomeJoin), false},
+		}},
+		{"then", []enumRow{
+			{"/$defs/then_check/properties/then", "store.Then*", []string{store.ThenYes, store.ThenNo, store.ThenMaybe}, false},
 		}},
 		{"hook_entry", []enumRow{
 			// EntryPresent has no live writer and stays for the version 2
@@ -152,6 +170,22 @@ func acceptedVersions(t *testing.T, kind string) []string {
 	return got
 }
 
+// eventVersions is every schema_version store.AcceptsKind reads for an
+// event kind, which it reads at EventSchemaVersion alone.
+func eventVersions(t *testing.T, kind string) []string {
+	t.Helper()
+	var got []string
+	for v := 0; v <= 64; v++ {
+		if store.AcceptsKind(kind, v) {
+			got = append(got, strconv.Itoa(v))
+		}
+	}
+	if want := []string{strconv.Itoa(store.EventSchemaVersion)}; !slices.Equal(got, want) {
+		t.Errorf("store.AcceptsKind reads %s at %v, want %v", kind, got, want)
+	}
+	return got
+}
+
 // TestStoreSchemaEnumsAreTheirCodeLists: every record vocabulary, one
 // subtest per name and one row per enum, each compared both ways against its
 // own code list, and its null against the row and the store field behind it
@@ -164,6 +198,27 @@ func TestStoreSchemaEnumsAreTheirCodeLists(t *testing.T) {
 			assertEnumsPerPath(t, v.name, v.rows)
 		})
 	}
+}
+
+// TestStoreSchemaOutcomeJoinSourceIsItsCodeList: the outcome_join's
+// outcome_source enum is its writer's one word, store.SourceTaskNotification,
+// and admits no null. It has no row in schemaVocabularies, whose rows for a
+// name are every property of that name: the execution's outcome_source, a
+// schema 5 field no writer sets, publishes no enum to compare.
+func TestStoreSchemaOutcomeJoinSourceIsItsCodeList(t *testing.T) {
+	const path = "/$defs/outcome_join/properties/outcome_source"
+	want := map[string]bool{store.SourceTaskNotification: true}
+	for _, e := range namedEnums(readSchema(t), "outcome_source") {
+		if e.path != path {
+			continue
+		}
+		if !maps.Equal(e.words, want) || e.null || e.typeNull {
+			t.Errorf("the outcome_source enum at %s in %s offers %v, null %v, want %v alone",
+				path, schemaPath, slices.Sorted(maps.Keys(e.words)), e.null || e.typeNull, slices.Sorted(maps.Keys(want)))
+		}
+		return
+	}
+	t.Errorf("%s publishes no outcome_source at %s", schemaPath, path)
 }
 
 // TestStoreSchemaReasonEnumsAreTheirCodeLists holds what the pooled reason

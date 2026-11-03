@@ -22,12 +22,16 @@ type lessonsView struct {
 	Lessons             []lessonRow `json:"lessons"`
 }
 
-// lessonRow is one lesson with its tally's counts.
+// lessonRow is one lesson with its tally's counts. ApprovedUnixMS is when a
+// person last approved it at a terminal, 0 for never: a row past proposed
+// at 0 is an approval a build before the stamp made, and is not sent
+// (LEARN-DX1 F2).
 type lessonRow struct {
-	ID          string     `json:"id"`
-	Tier        learn.Tier `json:"tier"`
-	Text        string     `json:"text"`
-	SinceUnixMS int64      `json:"since_unix_ms"`
+	ID             string     `json:"id"`
+	Tier           learn.Tier `json:"tier"`
+	Text           string     `json:"text"`
+	SinceUnixMS    int64      `json:"since_unix_ms"`
+	ApprovedUnixMS int64      `json:"approved_unix_ms"`
 	learn.Tally
 }
 
@@ -67,7 +71,7 @@ func cmdLessons(args []string, stdout io.Writer) error {
 		for _, ls := range l.Lessons() {
 			if ls.Tier == tier {
 				view.Lessons = append(view.Lessons, lessonRow{ID: ls.ID, Tier: ls.Tier, Text: ls.Text,
-					SinceUnixMS: ls.SinceUnixMS, Tally: l.Tally(ls.ID)})
+					SinceUnixMS: ls.SinceUnixMS, ApprovedUnixMS: ls.ApprovedUnixMS, Tally: l.Tally(ls.ID)})
 			}
 		}
 	}
@@ -78,7 +82,8 @@ func cmdLessons(args []string, stdout io.Writer) error {
 	return err
 }
 
-// text is lessons as a person reads it: a tier with none says none.
+// text is lessons as a person reads it: a tier with none says none, and a
+// lesson that is not sent says why under its row, as learn's listing does.
 func (v lessonsView) text(quarantined time.Time) string {
 	var b strings.Builder
 	if !v.Quarantined {
@@ -94,6 +99,7 @@ func (v lessonsView) text(quarantined time.Time) string {
 			if ls.Tier == tier {
 				fmt.Fprintf(&rows, "  %s since %s, %d fires: %s\n", ls.ID,
 					time.UnixMilli(ls.SinceUnixMS).UTC().Format(time.DateOnly), ls.Fires, ls.Text)
+				rows.WriteString(notSentLine(learn.Lesson{ID: ls.ID, Tier: ls.Tier, Text: ls.Text, ApprovedUnixMS: ls.ApprovedUnixMS}))
 			}
 		}
 		if rows.Len() == 0 {

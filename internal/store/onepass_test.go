@@ -52,6 +52,33 @@ func readTwoPass(run *Run, line []byte) {
 		if err = json.Unmarshal(line, &rec); err == nil {
 			run.Coverage = append(run.Coverage, rec)
 		}
+	case TypeSpecEvent:
+		var rec SpecEvent
+		if err = json.Unmarshal(line, &rec); err == nil {
+			switch {
+			case rec.Reason == SpecEventRuleHit:
+				run.SpecEvents = append(run.SpecEvents, rec)
+			case head.Critical != nil && !*head.Critical:
+				run.Ignored++
+			default:
+				run.Skipped++
+			}
+		}
+	case TypeAfterHit:
+		var rec AfterHit
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.AfterHits = append(run.AfterHits, rec)
+		}
+	case TypeThenCheck:
+		var rec ThenCheck
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.ThenChecks = append(run.ThenChecks, rec)
+		}
+	case TypeOutcomeJoin:
+		var rec OutcomeJoin
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.OutcomeJoins = append(run.OutcomeJoins, rec)
+		}
 	default:
 		var rec EventHeader
 		err = json.Unmarshal(line, &rec)
@@ -65,7 +92,8 @@ const onePassSession = "sess-1p"
 
 // writerRecord is a record of kind at version, in the type the store writes
 // that kind as: the call records, coverage and gaps in their own structs,
-// every kind of 1.2.0 as the header each of them starts with.
+// the spec_event as a rule_hit, every other kind of 1.2.0 as the header each
+// of them starts with.
 func writerRecord(kind string, version int) any {
 	seq, at := int64(7), int64(1_800_000_000_000)
 	switch kind {
@@ -79,6 +107,23 @@ func writerRecord(kind string, version int) any {
 		return Coverage{Type: kind, SchemaVersion: version, RecordedAtMS: at, SessionID: onePassSession, Phase: PhasePost}
 	case TypeGap:
 		return Gap{Type: kind, SchemaVersion: version, RecordedAtMS: at, SessionID: onePassSession, Reason: "forget"}
+	case TypeSpecEvent:
+		e := NewRuleHit(onePassSession, "PostToolUse", "spec:no-force", "sha256:1p", 6, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeAfterHit:
+		zero := 0
+		e := NewAfterHit(onePassSession, "PostToolUse", "spec:test-first", "sha256:1p", 6, &zero, true, "cwd:1p", false, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeThenCheck:
+		e := NewThenCheck(onePassSession, "spec:test-first", "sha256:1p", 6, ThenNo, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeOutcomeJoin:
+		e := NewOutcomeJoin(onePassSession, "toolu_1p", ExecFailed, 1, SourceTaskNotification, ParserTaskNotification, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
 	}
 	return EventHeader{Type: kind, SchemaVersion: version, Seq: &seq, RecordedAtMS: at, SessionID: onePassSession}
 }
@@ -168,6 +213,7 @@ func onePassFixture(t testing.TB) []onePassCase {
 		{name: "trailing_bytes", line: append(append([]byte(nil), decl...), " x"...)},
 		{name: "dup_type", differs: diffPair, line: withKey(decl, `"type":"terminal"`)},
 		{name: "dup_version", differs: diffPair, line: []byte(`{"type":"declaration","schema_version":9,"critical":false,"seq":1,"schema_version":6}`)},
+		{name: "dup_refused", differs: diffPair, line: []byte(`{"type":"declaration","schema_version":99,"critical":false,"type":"terminal"}`)},
 		{name: "dup_default", differs: diffPair, line: []byte(`{"type":"turn_end","schema_version":5,"critical":false,"type":"prompt"}`)},
 		{name: "case_type", differs: diffPair, line: withKey(decl, `"Type":"terminal"`)},
 		{name: "crit_not_bool", differs: diffCritical, line: withKey(decl, `"critical":"no"`)},

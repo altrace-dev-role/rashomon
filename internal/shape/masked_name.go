@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"slices"
 	"strings"
 	"sync"
 )
@@ -105,6 +106,46 @@ func RunnerNameOf(id uint8) string {
 		i -= len(l.names())
 	}
 	return ""
+}
+
+// RunnerKey is the key a gate matched at its runner (match:default) and a run
+// meet at, the one function both sides call (card GATE-BIND1, R47-R49): the
+// runner's row name where the row names the work, so no argument enters it
+// (`go test -count=1 ./...` is "go test"), else digest, the keyed digest of
+// the runner's exact words, for a launcher row (launcherRows) and for a run
+// recorded before call schema 8, which names no runner. name is RunnerName,
+// "" for none; digest is RunnerDigest; ok is false where there is no runner.
+// The two forms never collide: a digest is hex, a name key starts with a NUL.
+// RunnerDigest itself keeps the words: it is the learned families' key, and
+// `go test ./a` red then `go test ./b` green must stay two families (D-e).
+// Two rows that run the same work meet at one name (sameWork): a gate read
+// as `pytest` binds `python3 -m pytest tests/x.py` (INFER-FALSE1, B302).
+func RunnerKey(name string, digest *string) (key string, ok bool) {
+	switch {
+	case digest == nil:
+		return "", false
+	case name != "" && !slices.Contains(launcherRows, name):
+		for _, w := range sameWork {
+			if w[0] == name {
+				name = w[1]
+			}
+		}
+		return "\x00" + name, true
+	}
+	return *digest, true
+}
+
+// sameWork pairs a test row with the row that runs the same tool on the same
+// tests and passes its exit status through: the interpreter's -m form, a
+// launcher's run or exec form, a project's own wrapper, npm's alias. The left
+// is never a right, so one pass maps every row (TestIF1_SameWorkIsRows).
+var sameWork = [][2]string{
+	{"python -m pytest", "pytest"}, {"python3 -m pytest", "pytest"},
+	{"uv run pytest", "pytest"}, {"poetry run pytest", "pytest"},
+	{"python -m unittest", "python3 -m unittest"},
+	{"npx jest", "jest"}, {"npx vitest", "vitest"}, {"bundle exec rspec", "rspec"},
+	{"npm t", "npm test"}, {"npm run test", "npm test"},
+	{"mvnw test", "mvn test"}, {"gradlew test", "gradle test"},
 }
 
 // MaskedByID is the place of a masked_by word among MaskedByWords, counted

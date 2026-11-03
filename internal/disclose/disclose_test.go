@@ -133,6 +133,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.ArmStale(sessionID); err != nil {
 		t.Fatalf("ArmStale: %v", err)
 	}
+	if err := s.ArmBriefing(sessionID); err != nil {
+		t.Fatalf("ArmBriefing: %v", err)
+	}
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
 	}
@@ -203,10 +206,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if _, err := verify.WriteIndex(index, &verify.ProjectIndex{ProjectKey: "/tru23/project"}); err != nil {
 		t.Fatalf("verify.WriteIndex: %v", err)
 	}
-	if tmp, err := os.CreateTemp(filepath.Dir(index), "."+filepath.Base(index)+".tmp-*"); err != nil {
-		t.Fatal(err)
-	} else if err := tmp.Close(); err != nil {
-		t.Fatal(err)
+	checkpoints := verify.CheckpointsPath(root, "/tru23/project")
+	if err := verify.WriteCheckpoints(checkpoints, &verify.Checkpoints{Last: &verify.LastCheckpoint{SessionID: sessionID, PointSeq: 1}}); err != nil {
+		t.Fatalf("verify.WriteCheckpoints: %v", err)
+	}
+	for _, p := range []string{index, checkpoints} {
+		if tmp, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp-*"); err != nil {
+			t.Fatal(err)
+		} else if err := tmp.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// hook.WriteSpecBindings' two writes, which this package's tests cannot
 	// import: the trust key and the encoding signed under it, each through
@@ -392,7 +401,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// inventory, FileSpecNone in purge's run files).
 		// Moved 2026-10-31 (MEASURE1) to 33: lab.go's WriteLab ReplaceFile,
 		// the lab marker `measure --prepare` writes.
-		{"store", 33},
+		// Moved 2026-11-02 (COMPACT-SLOT1, D-c) to 34: briefingarm.go's
+		// ArmBriefing open, runs/<session>/briefing-armed, the continuity
+		// briefing's empty resume marker (continuityFiles in the inventory,
+		// FileBriefingArmed in purge's run files).
+		{"store", 34},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -407,7 +420,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// the Stop hook's recap reads and writes since 2.4 (indexFiles in the
 		// inventory, verify's tree in purge's plan). store's 22 was unchanged
 		// by the export, since the pattern follows replaceFile to ReplaceFile.
-		{"verify", 1},
+		// Moved 2026-10-31 (INDEX-POINTER-FILE1) to 2: index_pointer.go's
+		// WriteCheckpoints, one store.ReplaceFile, verify/checkpoints/<name>.json,
+		// the project's last two checkpoints, which left the index so alpha.1's
+		// strict reader still reads it (indexFiles in the inventory, verify's
+		// tree in purge's plan).
+		{"verify", 2},
 		// Pinned 2026-10-29 (P6): internal/learn/ledger.go's AppendLabel
 		// open (labels.ndjson), Save's two store.ReplaceFile calls
 		// (lessons.json and active.json in one loop, state.sum) and
@@ -424,6 +442,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// made on the first trust (specFiles, topFiles).
 		{"spec", 0},
 		{"hook", 2},
+		// Pinned 2026-10-31 (STORE-READ-REGULAR1, #179 F2): regfile.go's
+		// Open, one os.OpenFile, the O_RDONLY|O_NONBLOCK read moved out of
+		// internal/store so store's count stays a count of writes. regfile
+		// writes no file: a second site here is a write with no inventory
+		// row.
+		{"regfile", 1},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))
@@ -444,7 +468,9 @@ func (tru23Steer) CapText() bool { return false }
 
 // PREFLIGHT1b: at record scope v4 a request's preflight steer line stores a
 // count and keyed digests, not the note's text, so both places that say the
-// notes are stored as shown carry the exception (TRU-PF1b).
+// notes are stored as shown carry the exception (TRU-PF1b). The continuity
+// briefing's exception follows it in both; TestCSL1_TheScreenAndTheRowSay...
+// pins the whole of each.
 func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
@@ -453,7 +479,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	const except = "except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them"
 	var stored string
 	for _, p := range inv.Paragraphs {
-		if strings.HasPrefix(p.Text, "STORED: for each tool call") {
+		if strings.HasPrefix(p.Text, StoredHeading+" for each tool call") {
 			stored = p.Text
 		}
 	}
@@ -462,7 +488,7 @@ func TestTRU_PF1b_NoteTextClaimsNameTheV4Exception(t *testing.T) {
 	}
 	for _, f := range inv.Files {
 		if f.Pattern == "steer.ndjson" {
-			if !strings.Contains(f.Holds, "the message text shown ("+except+")") {
+			if !strings.Contains(f.Holds, "the message text shown ("+except) {
 				t.Errorf("steer.ndjson's Holds lacks the v4 exception: %q", f.Holds)
 			}
 			return

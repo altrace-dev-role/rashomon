@@ -52,6 +52,8 @@ var (
 //     a masked run with a failure line (40.4.2); no stop form.
 //   - stale-evidence: nudge at the PostToolUse of the write that left a
 //     required gate's green behind (card STALE-NUDGE1); no stop form.
+//   - masked-status: nudge at the PostToolUse of the run whose line hid its
+//     status (card MASKED-AT-ACT1); no stop form.
 //   - platform-rule: nudge at PostToolUse, no stop form (40.4.6;
 //     4.2.12: "`stop` with no stop form is `nudge`").
 //   - ordering-rule: nudge after the call; ask on PreToolUse of the Bash
@@ -101,6 +103,8 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceili
 		return nudge, true
 	case id == pattern.StaleEvidence && event == post:
 		return nudge, true
+	case id == pattern.MaskedStatus && event == post:
+		return nudge, true
 	case id == pattern.PlatformRule && event == post:
 		return nudge, true
 	case id == pattern.OrderingRule && event == post:
@@ -128,6 +132,9 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceili
 //   - stale-evidence: the gate id too (card STALE-NUDGE1: once per gate per
 //     prompt), so a green rerun and a second write in one prompt are told
 //     once.
+//   - masked-status: the gate id (card MASKED-AT-ACT1: once per gate per
+//     prompt), so a second masked run of the gate in one prompt is not told
+//     again.
 //   - platform-rule and integrity/frozen-path: "<rule>|<path>" for a
 //     forbid_code or protect_path rule, which always names its file, and
 //     the rule alone for a forbid_command rule, which never does
@@ -153,6 +160,8 @@ func keyFor(f Finding, kind steer.Kind, at Point) (string, string) {
 	case pattern.RegressionLocation:
 		return string(f.Gate.GateID), ""
 	case pattern.StaleEvidence:
+		return string(f.Gate.GateID), ""
+	case pattern.MaskedStatus:
 		return string(f.Gate.GateID), ""
 	case pattern.PlatformRule, pattern.OrderingRule, pattern.Integrity:
 		if f.Rule == nil {
