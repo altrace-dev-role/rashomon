@@ -80,13 +80,13 @@ func Cap(id ID, s Surface, c Capability) CapState {
 }
 
 // blindOf returns the capability names Caps(id, s) holds as other than Yes,
+// read one at a time with Cap so no table is built for them (PERF-EDGE1),
 // sorted. allCapabilities is already in a fixed order, so the result is
 // sorted without an extra pass.
 func blindOf(id ID, s Surface) []string {
-	caps := Caps(id, s)
 	var blind []string
 	for _, c := range allCapabilities {
-		if caps[c] != Yes {
+		if Cap(id, s, c) != Yes {
 			blind = append(blind, string(c))
 		}
 	}
