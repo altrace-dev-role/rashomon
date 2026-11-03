@@ -132,9 +132,9 @@ func TestVG1l_TheLineCarriesItsEventsRow(t *testing.T) {
 // the note was built and not sent, and gives the reason shutBy finds, one
 // text per reason. claude -p and the SDKs read as by design.
 func TestVG1h_TheNoticeNamesVersionEventFloorAndWhy(t *testing.T) {
-	table := map[string]channelBasis{
-		string(EventPostToolUse):        {floor: "2.1.280", excluded: []string{"2.1.300"}},
-		string(EventPostToolUseFailure): {floor: "2.1.304"},
+	table := map[channelKey]channelBasis{
+		{event: string(EventPostToolUse)}:        {floor: "2.1.280", excluded: []string{"2.1.300"}},
+		{event: string(EventPostToolUseFailure)}: {floor: "2.1.304"},
 	}
 	const head = "rashomon: a note was built and not sent to the agent ("
 	const tail = ". Shown once per session."

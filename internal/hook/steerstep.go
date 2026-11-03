@@ -57,12 +57,15 @@ type SteerEnv struct {
 // digest, the one call that can raise regression-location (a success event
 // is outcome ok, D61), or at a success event when the call's output read red
 // through a pipe that hid the exit (redRead, MASKED-OUTCOME1: the outcome a
-// failure event would have carried), or at either post event when the call's input names
+// failure event would have carried), or at a success event when the call's
+// line hid its runner's status (hidden, MASKED-AT-ACT1: masked-status is said
+// at that call), or at either post event when the call's input names
 // .claude/rashomon, the one call that can raise integrity/store-touched
 // (D-B7). Every other call costs these branches and storeNamed's scan.
-func steps(event string, landedSeq int64, runner, redRead, inStore bool) bool {
+func steps(event string, landedSeq int64, runner, redRead, hidden, inStore bool) bool {
 	failure := event == FailureEvent
-	return landedSeq > 0 && (failure && runner || redRead && event == string(steer.EventPostToolUse) || inStore && (failure || event == string(steer.EventPostToolUse)))
+	return landedSeq > 0 && (failure && runner || redRead && event == string(steer.EventPostToolUse) ||
+		hidden && event == string(steer.EventPostToolUse) || inStore && (failure || event == string(steer.EventPostToolUse)))
 }
 
 // storeNamed reports a tool input whose raw bytes name .claude/rashomon, its
@@ -131,9 +134,17 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	p.armStale()
 	ctx, view, ok := p.judge(env)
 	if !ok {
+		// A call that raised nothing still leaves its then_checks: the Stop
+		// reads a line that is no Then from its "no" (card ORDER-LIVE1). No
+		// Flush: no note prints (REC-34 asks none), and the next sync of the
+		// file, the next call's own, carries the line; one a crash loses
+		// first reads maybe, never no.
+		if len(view.ThenChecks) > 0 {
+			p.keepHits(nil, nil, view.ThenChecks, env.Now)
+		}
 		return nil
 	}
-	p.keepHits(view.Hits, view.AfterHits, env.Now)
+	p.keepHits(view.Hits, view.AfterHits, view.ThenChecks, env.Now)
 	out := steer.Route(&ctx, view.Findings)
 	// The line is durable before its note prints (REC-34).
 	if err := fault.Fail(fault.PointSteerFlush); err != nil {
@@ -153,20 +164,24 @@ func (p *Post) Steer(env SteerEnv) []byte {
 
 // keepHits appends each forbid_command rule the call matched to the run as a
 // spec_event rule_hit (card SPEC-RULES-STOP1), and each order rule whose After
-// pattern it matched as an after_hit (#216 ruling 1), at either post event and
-// whatever Route then decides: the steer switch, the arm, the holdout,
+// pattern it matched as an after_hit (#216 ruling 1), and each order rule's
+// verdict on the line as a then_check (card ORDER-LIVE1), at either post
+// event and whatever Route then decides: the steer switch, the arm, the holdout,
 // consent and attendance do not reach it. It runs before Route, so Steer's
 // one Flush makes the hits durable before any note prints (REC-34); at a
 // failure, where Route writes no line, that Flush is the one sync the hits
 // add. A hit that does not land (a lock timeout, an append error) is lost,
 // and the Stop then reads that rule undecided, never clear.
-func (p *Post) keepHits(hits []verify.RuleHit, after []verify.AfterHit, now time.Time) {
+func (p *Post) keepHits(hits []verify.RuleHit, after []verify.AfterHit, checks []verify.ThenCheck, now time.Time) {
 	for _, h := range hits {
 		_ = p.st.AppendRecord(p.sessionID, store.NewRuleHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq, now.UnixMilli()))
 	}
 	for _, h := range after {
 		_ = p.st.AppendRecord(p.sessionID, store.NewAfterHit(p.sessionID, p.event, h.RuleID, h.SourceDigest, p.landedSeq,
 			h.Exit, h.Foreground, h.CWDDigest, h.Maybe, now.UnixMilli()))
+	}
+	for _, c := range checks {
+		_ = p.st.AppendRecord(p.sessionID, store.NewThenCheck(p.sessionID, c.RuleID, c.SourceDigest, p.landedSeq, c.Then, now.UnixMilli()))
 	}
 }
 
@@ -243,7 +258,7 @@ func ruled(event string, landedSeq int64, toolName string) bool {
 func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	var key string
 	var indexless bool
-	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedStore)
+	stepped := steps(p.event, p.landedSeq, p.landedRunner, p.landedRed, p.landedHidden, p.landedStore)
 	if !stepped {
 		var took bool
 		if key, took, indexless = p.staleWrite(); took {
@@ -285,7 +300,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	rules := verify.RulesAtCall(p.sp, p.ruleCall(run), pt, p.event)
 	if run == nil {
 		if len(rules.Findings) == 0 && len(rules.Hits) == 0 && len(rules.AfterHits) == 0 {
-			return steer.Context{}, verify.SteerView{}, false
+			return steer.Context{}, verify.SteerView{ThenChecks: rules.ThenChecks}, false
 		}
 		return p.contextOf(env, rules), rules, true
 	}
@@ -298,7 +313,7 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), key, pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)
 	view.Dropped += rules.Dropped
-	view.Hits, view.AfterHits = rules.Hits, rules.AfterHits
+	view.Hits, view.AfterHits, view.ThenChecks = rules.Hits, rules.AfterHits, rules.ThenChecks
 	return p.contextOf(env, view), view, true
 }
 
@@ -441,9 +456,11 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := attendanceOf(p.event, env, p.permissionMode)
 	steerOff, unreadable := p.steerOff()
+	client := steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != "",
+		StartSource: p.startSource}
 	return steer.Context{
 		Event:            steer.Event(p.event),
-		Client:           steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != ""},
+		Client:           client,
 		Store:            p.st,
 		SessionID:        p.sessionID,
 		PromptID:         nilIfEmpty(p.promptID),

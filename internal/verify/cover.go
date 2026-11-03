@@ -97,6 +97,68 @@ func gateRoots(snap *Snapshot) []string {
 	return roots
 }
 
+// turnProjects is the projects the calls of the turn ran in (card F2), over
+// the window countTurn reads: each declaration's (projectOf: a file tool's
+// file's repository, a shell line's where it ran), distinct, in record order.
+// nil reads every gate as the turn's: a call whose project the record does
+// not say, more than maxProjectKeys, or no call in any project (a turn only
+// under /tmp or home reads the session's gates, as before the card, D40).
+func turnProjects(run *store.Run, promptID string, at int64) []string {
+	if promptID == "" {
+		promptID = latestPrompt(run.Declarations)
+	}
+	var ps []string
+	for i := range run.Declarations {
+		d := &run.Declarations[i]
+		if d.PromptID == nil || *d.PromptID == "" || *d.PromptID != promptID || d.Seq > at {
+			continue
+		}
+		switch p := projectOf(d); {
+		case p == nil:
+			return nil
+		case *p == noProject || slices.Contains(ps, *p):
+		case len(ps) == maxProjectKeys:
+			return nil
+		default:
+			ps = append(ps, *p)
+		}
+	}
+	return ps
+}
+
+// touches reports whether a call in one of projects may act on the files of
+// a gate whose root is root (card F2): the call's project is root, inside it,
+// or holds it (a session in the directory above its worktrees). Fail closed:
+// nil projects, or a gate with no root, touches every gate.
+func touches(projects []string, root string) bool {
+	if projects == nil || root == "" {
+		return true
+	}
+	root = slashed(root)
+	for _, p := range projects {
+		p = slashed(p)
+		if _, in := under(p, root); in || p == root {
+			return true
+		}
+		if _, in := under(root, p); in {
+			return true
+		}
+	}
+	return false
+}
+
+// markTurn marks each gate no call of the turn ran in the project of
+// (touches): the row, the done verdict and the turn's record-green point pass
+// over it, so one masked call in one worktree is not read into every later
+// turn in another (card F2; eng-4's call 3060, 14 lines over seven hours).
+// The gate keeps its state for the report and the next turn in its project.
+// O(G x P), P bounded by maxProjectKeys.
+func markTurn(gates []GateState, projects []string) {
+	for i := range gates {
+		gates[i].offTurn = !touches(projects, gates[i].root)
+	}
+}
+
 // maxProjectKeys bounds projectKeys: a run whose gate runs name more
 // projects reads the rest's as not known, whose gates cover every write.
 const maxProjectKeys = 255

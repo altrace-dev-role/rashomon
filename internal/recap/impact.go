@@ -264,10 +264,13 @@ func lessonCounts(lessons []learn.Lesson) LessonCounts {
 // gateKey is the gate id a line's dedupe key names: the gate patterns key
 // their line by the gate's id (verify.keyFor), so that key tells two gates
 // of one program apart where the gate slot cannot. "" for any other
-// pattern, and for a subtask-gate line keyed by a task.
+// pattern, and for a subtask-gate line keyed by a task. A masked-status
+// note names its gate by the runner's words ("go vet"), which no program
+// word matches, so without its key it would never read resolved.
 func gateKey(pat, key string) string {
 	switch pat {
-	case string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):
+	case string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.MaskedStatus),
+		string(pattern.SubtaskGate):
 		return key
 	}
 	return ""

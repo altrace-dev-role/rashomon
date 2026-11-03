@@ -86,6 +86,7 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/terminal/properties/type", "store.TypeTerminal", []string{store.TypeTerminal}, false},
 			{"/$defs/spec_event/properties/type", "store.TypeSpecEvent", []string{store.TypeSpecEvent}, false},
 			{"/$defs/after_hit/properties/type", "store.TypeAfterHit", []string{store.TypeAfterHit}, false},
+			{"/$defs/then_check/properties/type", "store.TypeThenCheck", []string{store.TypeThenCheck}, false},
 			{"/$defs/outcome_join/properties/type", "store.TypeOutcomeJoin", []string{store.TypeOutcomeJoin}, false},
 		}},
 		{"outcome", []enumRow{
@@ -119,8 +120,13 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 				eventVersions(t, store.TypeSpecEvent), false},
 			{"/$defs/after_hit/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for after_hit",
 				eventVersions(t, store.TypeAfterHit), false},
+			{"/$defs/then_check/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for then_check",
+				eventVersions(t, store.TypeThenCheck), false},
 			{"/$defs/outcome_join/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for outcome_join",
 				eventVersions(t, store.TypeOutcomeJoin), false},
+		}},
+		{"then", []enumRow{
+			{"/$defs/then_check/properties/then", "store.Then*", []string{store.ThenYes, store.ThenNo, store.ThenMaybe}, false},
 		}},
 		{"hook_entry", []enumRow{
 			// EntryPresent has no live writer and stays for the version 2

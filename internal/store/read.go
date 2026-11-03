@@ -25,6 +25,9 @@ type Run struct {
 	// AfterHits are the run's after_hit records, in file order (card
 	// SPEC-RULES1 1b).
 	AfterHits []AfterHit
+	// ThenChecks are the run's then_check records, in file order (card
+	// ORDER-LIVE1).
+	ThenChecks []ThenCheck
 	// OutcomeJoins are the run's outcome_join records, in file order: a
 	// call's outcome learned after its execution record, today a background
 	// command's end (card BG-OUTCOME phase 1).
@@ -297,6 +300,8 @@ func readAccepted(run *Run, line []byte, kind string, version int) error {
 		return readSpecEvent(run, line, kind, version)
 	case TypeAfterHit:
 		return readAfterHit(run, line, kind, version)
+	case TypeThenCheck:
+		return readThenCheck(run, line, kind, version)
 	case TypeOutcomeJoin:
 		return readOutcomeJoin(run, line, kind, version)
 	default:

@@ -48,9 +48,14 @@ const TypeSpecEvent = "spec_event"
 // (afterhit.go), at EventSchemaVersion and critical.
 const TypeAfterHit = "after_hit"
 
+// TypeThenCheck is the third kind added after the freeze (card ORDER-LIVE1):
+// the post's verdict on whether a Bash call ran an order rule's Then
+// (thencheck.go), at EventSchemaVersion and critical.
+const TypeThenCheck = "then_check"
+
 // kindVersion is the version each writer stamps on its kind (REC-1): call
 // kinds at 9, coverage and gaps unchanged at 3, every new kind at 5, the
-// spec_event and after_hit added after the freeze included. It is
+// spec_event, after_hit and then_check added after the freeze included. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{
@@ -75,6 +80,7 @@ var kindVersion = map[string]int{
 	TypeWriteObserved: EventSchemaVersion,
 	TypeSpecEvent:     EventSchemaVersion,
 	TypeAfterHit:      EventSchemaVersion,
+	TypeThenCheck:     EventSchemaVersion,
 }
 
 // KindVersion returns the version a writer stamps on kind, and whether kind
