@@ -161,6 +161,20 @@ jobs:
       - name: Mutation sweep static checks
         run: python3 test/mutation/sweep.py --check
 
+      # Every mutant row a pull request adds or edits builds (MASKED-BUILD2).
+      # A row that does not compile is judged BUILD BROKEN, never run against
+      # its tests; --check above sees an import left unused, and the compiler
+      # sees the rest (a local left unused, a call left short). Only the
+      # rows the pull request changes are compiled, one package each, so this
+      # costs seconds per row; the sweep judges every row.
+      - name: Changed mutant rows build
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          python3 test/mutation/buildchanged.py "$BASE"
+
       # Dead code fails the build (rubric docs-7): an unused function keeps a
       # contract nobody runs -- a doc comment two releases stale described
       # one that had no caller left. staticcheck's U1000 check alone, pinned
