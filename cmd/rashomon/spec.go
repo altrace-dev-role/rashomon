@@ -44,6 +44,12 @@ func cmdSpec(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// untrust takes a spec's trust away, so its rules stop being nudges to
+	// the agent: it is refused in an agent session as trust is, and writes
+	// nothing.
+	if s := selfguard.AgentSignal(os.Getenv); s != "" && args[0] == "untrust" {
+		return selfguard.Refusal(s, "untrusting a spec stops its rules reaching your agent", "spec untrust "+shellWord(path), "written")
+	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) && args[0] == "untrust" {
 		_, err = fmt.Fprintf(stdout, "%s was not trusted\n", path)
@@ -129,7 +135,7 @@ func specPath(args []string) (string, error) {
 // repository's), so its bytes never reach the terminal raw.
 func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was written. Trust a spec in your own terminal.", s)
+		return selfguard.Refusal(s, "a trusted spec's rules become notes to your agent", "spec trust "+shellWord(path), "written")
 	}
 	data, err := spec.OSFS{}.ReadFile(path)
 	if err != nil {
@@ -145,7 +151,7 @@ func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	}
 	defer closeTTY()
 	project, typed := hook.SpecProject(path), strings.TrimPrefix(digest, spec.DigestPrefix)[:8]
-	fmt.Fprintf(out, "%q in %q\n  digest %s  now untrusted: flags to you only\n  once trusted, these count:\n", path, project, digest)
+	fmt.Fprintf(out, "%q in %q\n  digest %s  %s\n", path, project, digest, trustState(b, project, path, digest))
 	for _, g := range f.Gates {
 		fmt.Fprintf(out, "    gate  %q  %q\n", g.ID, g.Argv)
 	}
@@ -169,6 +175,21 @@ func trustSpec(b *spec.Bindings, root, path string, stdout io.Writer) error {
 	}
 	_, err = fmt.Fprintf(stdout, "trusted %s at digest %s; an edit to the file untrusts it\n  undo: rashomon spec untrust %s\n", path, typed, shellWord(path))
 	return err
+}
+
+// trustState is the trust screen's word on the spec as the bindings file
+// holds it, and the heading of the list after it (#153 D1, D221 item 2): a
+// binding of this digest is trusted; a binding of another is an edit since
+// the spec was trusted; no binding is never trusted.
+func trustState(b *spec.Bindings, project, path, digest string) string {
+	x, ok := b.Of(project, path)
+	switch {
+	case ok && x.SpecDigest == digest:
+		return "now trusted\n  these count:"
+	case ok:
+		return "now untrusted: edited since it was trusted, so it does not count\n  once trusted again, these count:"
+	}
+	return "now untrusted: flags to you only\n  once trusted, these count:"
 }
 
 // shellWord is s as one shell word: bare when it holds only safe characters,

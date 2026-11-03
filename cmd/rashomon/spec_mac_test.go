@@ -98,17 +98,19 @@ func TestST1n_TheVerbsOwnBindingReadsTrusted(t *testing.T) {
 // refuses on (selfguard.AgentSignal), `spec trust` exits 1 with the reason
 // on stderr, the CLI's refusal channel, saying nothing was written as
 // watch's refusal does, and writes nothing: no bindings file and no key.
-// `spec untrust` stays allowed there, a reduction (tech spec 7.2.4): it
-// removes that one binding and re-signs the rest, which still verify under
-// the same key.
+// `spec untrust` is refused there too (TestAGSU1_), since an untrusted spec
+// stops nudging the agent; in a terminal it removes that one binding and
+// re-signs the rest, which still verify under the same key.
 func TestST1o_TrustRefusesAnAgentSession(t *testing.T) {
 	p := newSpecProject(t, specUnit)
 	agent := &person{answer: typedPrefix(t, specUnit)}
 	atSpecTerminal(t, agent, nil)
 	t.Setenv(selfguard.EnvClaudeCode, "1")
-	if code, out, errOut := specRun(t, "", "trust"); code != 1 || out != "" || !strings.Contains(errOut, "agent session; nothing was written") || agent.read {
+	code, out, errOut := specRun(t, "", "trust")
+	if code != 1 || out != "" || agent.read {
 		t.Errorf("trust under an agent signal: exit %d, stdout %q, stderr %q, terminal read %v", code, out, errOut, agent.read)
 	}
+	wantRefusal(t, "spec trust", errOut, "spec trust "+shellWord(p.path), "written")
 	for _, f := range []string{spec.TrustFile, spec.TrustKeyFile} {
 		if _, err := os.Lstat(filepath.Join(p.root, f)); err == nil {
 			t.Errorf("trust under an agent signal wrote %s", f)
@@ -130,9 +132,8 @@ func TestST1o_TrustRefusesAnAgentSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := p.readKey()
-	t.Setenv(selfguard.EnvClaudeCode, "1")
 	if code, out, errOut := specRun(t, "", "untrust"); code != 0 || !strings.HasPrefix(out, "untrusted "+p.path) {
-		t.Fatalf("untrust under an agent signal: exit %d, stdout %q, stderr %q", code, out, errOut)
+		t.Fatalf("untrust: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 	if got := p.bindings(); len(got) != 1 || got[0] != other {
 		t.Errorf("bindings after untrust %+v; want the other project's alone", got)

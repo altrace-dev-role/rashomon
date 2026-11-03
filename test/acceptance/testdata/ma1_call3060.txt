@@ -1,0 +1,64 @@
+cd {{dir}} && python3 - <<'EOF'
+p='internal/gateinfer/gateinfer.go'
+s=open(p).read()
+def rep(old,new):
+    global s
+    assert s.count(old)==1, old[:70]
+    s=s.replace(old,new)
+rep('''	"bufio"
+	"bytes"
+''','''	"bufio"
+''')
+rep('''// scan feeds each line of the regular file root/rel, of its first MaxRead
+// bytes, to each until each returns false. It reports false for no such
+// file, a read error or a line over MaxLine, and else whether each stopped
+// it: true, for a reader that always asks for more, when the file was read.
+func scan(root, rel string, each func(line string) bool) bool {
+	f, ok := open(root, rel)
+	if !ok {
+		return false
+	}
+	defer f.Close()
+	sc := [redacted] MaxRead))
+	sc.Buffer(make([]byte, 0, 4<<10), MaxLine)
+	for sc.Scan() {
+		if !each(sc.Text()) {
+			return true
+		}
+	}
+	return false
+}''','''// scan feeds each line of the regular file root/rel, of its first MaxRead
+// bytes, to each until each returns false: stopped says it did, and ok that
+// the lines each saw were read, false for no such file, a read error or a
+// line over MaxLine.
+func scan(root, rel string, each func(line string) bool) (stopped, ok bool) {
+	f, ok := open(root, rel)
+	if !ok {
+		return false, false
+	}
+	defer f.Close()
+	sc := [redacted] MaxRead))
+	sc.Buffer(make([]byte, 0, 4<<10), MaxLine)
+	for sc.Scan() {
+		if !each(sc.Text()) {
+			return true, true
+		}
+	}
+	return false, sc.Err() == nil
+}''')
+rep('''		var r runLines
+		if scan(root, f, r.line) && len(r.out) > 0 {''','''		var r runLines
+		if _, ok := scan(root, f, r.line); ok && len(r.out) > 0 {''')
+rep('''	if scan(root, "Makefile", makeTest()) {''','''	if found, _ := scan(root, "Makefile", makeTest()); found {''')
+rep('''	return scan(root, rel, func(line string) bool {
+		return !slices.ContainsFunc(marks, func(m string) bool { return strings.Contains(line, m) })
+	})''','''	found, _ := scan(root, rel, func(line string) bool {
+		return !slices.ContainsFunc(marks, func(m string) bool { return strings.Contains(line, m) })
+	})
+	return found''')
+rep('''// makeTest is a line reader that stops at a Makefile line declaring a test
+// target: scan reports true only for a file that has one.''','''// makeTest is a line reader that stops at a Makefile line declaring a test
+// target, so scan says stopped only for a file that has one.''')
+open(p,'w').write(s)
+EOF
+gofmt -l internal/gateinfer; go vet ./internal/gateinfer 2>&1 | head -3; echo "vet is not allowed directly"; 

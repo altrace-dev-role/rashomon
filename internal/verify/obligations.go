@@ -261,7 +261,7 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 			l.fromTable(g, source, GateAfterWrite, gateAfterWriteTable)
 		}
 		if w, ok := reds[g.Family]; ok {
-			state, ev, n := watchedRow(w, writes)
+			state, ev, n := watchedRow(w, writes, g.root)
 			l.add(g, source, WatchedRedThenGreen, state, ev[:n]...)
 		}
 		if g.LastRun != nil && owed {
@@ -280,14 +280,14 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 }
 
 // obligationSource is a gate's source as a row carries it, and whether it is
-// one of the three GateState.Source names (snapshot.go); another is carried
-// as given.
+// one of the four GateState.Source names (snapshot.go); another is carried
+// as given. An inferred gate's rows carry its own word (GATE-INFER1).
 func obligationSource(s string) (string, bool) {
 	switch s {
 	case "declared", "ci_commands":
 		return obligationSourceSpec, true
-	case sourceLearned:
-		return sourceLearned, true
+	case sourceLearned, SourceInferred:
+		return s, true
 	}
 	return s, false
 }
@@ -417,15 +417,16 @@ func watches(runs []gateRun, at int64) map[string]watch {
 // not a response to it, so it never meets the row (Q4: the mirror of D31).
 // The red is the last one, so a fix followed by a flake passed by re-run is
 // unmet (Q5): stricter than the PRD's "was red, then green after a write" at
-// some point, and closed on a late flake.
-func watchedRow(w watch, writes []write) (ObligationState, [3]int64, int) {
+// some point, and closed on a late flake. A write the gate does not cover,
+// root's, is no fix of it (covers, STALE-COVER1).
+func watchedRow(w watch, writes []write, root string) (ObligationState, [3]int64, int) {
 	if w.green == nil {
 		return ObligationOpen, [3]int64{w.red.Seq}, 1
 	}
 	lo, _ := landed(*w.red)
 	hi, _ := slices.BinarySearchFunc(writes, w.green.Seq, func(x write, seq int64) int { return cmp.Compare(x.Seq, seq) })
 	for i := hi - 1; i >= 0 && writes[i].Seq > lo; i-- {
-		if x := &writes[i]; x.Path != nil && Relevant(x.Class) {
+		if x := &writes[i]; x.Path != nil && Relevant(x.Class) && covers(root, x) {
 			return ObligationMet, [3]int64{w.red.Seq, x.Seq, w.green.Seq}, 3
 		}
 	}

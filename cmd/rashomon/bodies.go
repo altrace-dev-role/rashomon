@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -57,6 +58,12 @@ func cmdBodies(args []string, stdout io.Writer) error {
 		}
 		fmt.Fprintln(stdout, bodiesLine(st))
 		return nil
+	}
+	// on and off are the person's switch for what is copied of their
+	// transcripts: refused in an agent session either way, before the store
+	// is opened or bodies.json written.
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return selfguard.Refusal(s, "the bodies switch sets what is copied of your transcripts", "bodies "+strings.Join(args, " "), "written")
 	}
 	st, err := openStore()
 	if err != nil {

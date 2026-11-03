@@ -16,6 +16,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/receipt"
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // briefUsage is the usage screen's brief entry, joined as receiptUsage is, so
@@ -63,17 +64,15 @@ func cmdBrief(args []string, stdout io.Writer) error {
 // clear or a payload with no source, it is the brief of the project holding
 // the payload's cwd, its verify line naming the report command of the entry
 // that ran it (briefFromPlugin); at resume, one line pointing at the verb; at
-// compact and any other source, nothing. It is one JSON object whose only key
-// is systemMessage, the channel the user reads and the model does not, as
-// recap_turn.go prints its line. A cwd that is not a directory this process
-// can read prints nothing (B7).
-func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout io.Writer) {
+// compact and any other source, nothing (a compaction's print is the
+// continuity briefing's, printContinuity, which runs first). lead, the plugin
+// route's consent line (pluginConsent), opens it whenever it is not "", the
+// brief or none. It
+// is one JSON object whose only key is systemMessage, the channel the user
+// reads and the model does not, as recap_turn.go prints its line. A cwd that
+// is not a directory this process can read prints no brief (B7).
+func printBrief(args []string, payload *hookio.Payload, st *store.Store, lead string, stdout io.Writer) {
 	if len(args) == 0 || args[0] != store.PhaseStart || payload == nil {
-		return
-	}
-	var source, cwd, sessionID string
-	err := payload.Strs(hookio.Into(hookio.Source, &source), hookio.Into(hookio.CWD, &cwd), hookio.Into(hookio.SessionID, &sessionID))
-	if err != nil || cwd == "" {
 		return
 	}
 	// Arm off withholds every hook print (card MEASURE1, armOff), the
@@ -82,18 +81,11 @@ func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout 
 	if armOff(st.Root()) {
 		return
 	}
-	root, ok := briefRoot(cwd)
-	var msg string
-	switch {
-	case !ok:
-		return
-	case source == "" || source == "startup" || source == "clear":
-		plugin := briefFromPlugin(args)
-		b := buildBrief(cwd, root, st.Root(), brief.Pointer{Plugin: plugin, SessionID: sessionID})
-		msg = brief.Render(withLastSession(b, st, root, sessionID, plugin))
-	case source == "resume":
-		msg = brief.Resumed(root)
-	default:
+	msg := briefText(args, payload, st)
+	if lead != "" {
+		msg = strings.TrimSuffix(lead+"\n"+msg, "\n")
+	}
+	if msg == "" {
 		return
 	}
 	if b, err := json.Marshal(map[string]string{"systemMessage": msg}); err == nil {
@@ -101,17 +93,40 @@ func printBrief(args []string, payload *hookio.Payload, st *store.Store, stdout 
 	}
 }
 
+// briefText is printBrief's brief: the project's at startup, clear or no
+// source, the resume line at resume, and "" at any other source, for a
+// payload with no cwd, or a cwd this process cannot read.
+func briefText(args []string, payload *hookio.Payload, st *store.Store) string {
+	var source, cwd, sessionID string
+	err := payload.Strs(hookio.Into(hookio.Source, &source), hookio.Into(hookio.CWD, &cwd), hookio.Into(hookio.SessionID, &sessionID))
+	if err != nil || cwd == "" {
+		return ""
+	}
+	root, ok := briefRoot(cwd)
+	switch {
+	case !ok:
+		return ""
+	case source == "" || source == "startup" || source == "clear":
+		plugin := briefFromPlugin(args)
+		b := buildBrief(cwd, root, st.Root(), brief.Pointer{Plugin: plugin, SessionID: sessionID})
+		return brief.Render(withLastSession(b, st, root, sessionID, plugin))
+	case source == "resume":
+		return brief.Resumed(root)
+	}
+	return ""
+}
+
 // withLastSession replaces the brief's verify line with the line for the
 // project's previous session (card REPORT1b): its time, one reason and the
-// report command its origin has. One more small read and no walk, whatever
-// the store holds: the project index (already read for the brief), which the
-// Stop that cut each checkpoint also wrote its last two into
-// (ProjectIndex.Last and Prior), names the one checkpoint read. An index with no pointer for an earlier session (a
-// first session, or an index written before the pointer), a pointer to a
-// checkpoint that is not the one named, or any error leaves the verify line,
-// and a pointer to a run that is gone says so.
+// report command its origin has. Two small reads and no walk, whatever the
+// store holds: the project's checkpoint file, into which the Stop that cut
+// each checkpoint wrote the last two (verify.Checkpoints), names the one
+// checkpoint read. No file, one with no pointer for an earlier session (a
+// first session), a pointer to a checkpoint that is not the one named, or any
+// error leaves the verify line, and a pointer to a run that is gone says so.
 func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plugin bool) brief.Brief {
-	ptr := b.Index.PreviousOf(sessionID)
+	c, _ := verify.ReadCheckpoints(verify.CheckpointsPath(st.Root(), root))
+	ptr := c.PreviousOf(sessionID)
 	if ptr == nil {
 		return b
 	}
@@ -123,11 +138,11 @@ func withLastSession(b brief.Brief, st *store.Store, root, sessionID string, plu
 	if plugin {
 		pointer = brief.PluginReport
 	}
-	source := "the project index's last checkpoint of an earlier session"
+	source := "the project's checkpoint file, whose last checkpoint is of an earlier session"
 	if !scan.Found {
-		source = "the project index, whose last checkpoint is gone"
+		source = "the project's checkpoint file, whose last checkpoint is gone"
 		if scan.Bound == receipt.BoundTail {
-			source = "the project index, whose last checkpoint was not in the end of its run"
+			source = "the project's checkpoint file, whose last checkpoint was not in the end of its run"
 		}
 	}
 	text := strings.TrimPrefix(receipt.PreviousLine(last, scan, pointer), brief.LastSessionLead)

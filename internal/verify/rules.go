@@ -37,6 +37,8 @@ func triOf(all, some bool) tri {
 type ruleRead struct {
 	seqs      []int64
 	undecided bool
+	// reason is the fixed reason an undecided read has, "" where none.
+	reason string
 }
 
 func (r ruleRead) verdict() RuleVerdictValue {
@@ -52,12 +54,14 @@ func (r ruleRead) verdict() RuleVerdictValue {
 // ruleVerdicts is the spec's rules judged over the record up to the point
 // (archive 20.2.8's evaluation table), one verdict per rule that applies, in
 // spec order, each with its rule's own trust (TrustOf). forbid_command reads
-// the command lines a Bash call recorded, each read once for every rule;
+// the command lines a Bash call recorded, each read once for every rule, and
+// the rule_hits the post wrote of it (ruleHitSeqs);
 // protect_path the writes classify named; require_evidence the snapshot's
 // gates, at a point its at list names, done read at Stop and only when the
 // window holds a relevant write (wrote). A rule missing the field its kind
-// reads is undecided (spec/file.go, Rule). forbid_code and order are not
-// judged yet and have no entry. insufficient is the 30-day window's and
+// reads is undecided (spec/file.go, Rule). order reads the Bash lines (its Then), the
+// then_checks (thenChecks) and after_hits (afterHits) the posts wrote and the writes (orderOver); forbid_code reads the writes and is undecided at every
+// applicable one until an edit's content is read (codeOver). insufficient is the 30-day window's and
 // never read at a point.
 func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Execution, c *classified, snap *Snapshot, wrote bool) []RuleVerdict {
 	out := []RuleVerdict{}
@@ -78,11 +82,27 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 				lines, read = ruleLines(run, picked, at), true
 			}
 			r = forbidOver(dr.Rule.Command, lines)
+			r.seqs = append(r.seqs, ruleHitSeqs(run, dr.ID, sourceDigest(sp, dr.Source), at)...)
 		case spec.ProtectPath:
 			if rels == nil {
 				rels = projectRels(c.writes)
 			}
 			r = protectOver(&dr.Rule, c, rels, at)
+		case spec.ForbidCode:
+			if rels == nil {
+				rels = projectRels(c.writes)
+			}
+			r = codeOver(&dr.Rule, c, rels, at)
+		case spec.Order:
+			if !read {
+				lines = ruleLines(run, picked, at)
+				read = true
+			}
+			if rels == nil {
+				rels = projectRels(c.writes)
+			}
+			d := sourceDigest(sp, dr.Source)
+			r = orderOver(&dr.Rule, lines, afterHits(run, dr.ID, d, at), thenChecks(run, dr.ID, d, at), c, rels, at)
 		case spec.RequireEvidence:
 			var ok bool
 			if r, ok = evidenceAt(&dr.Rule, snap, wrote); !ok {
@@ -94,9 +114,59 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 		slices.Sort(r.seqs)
 		seqs := append([]int64{}, slices.Compact(r.seqs)...)
 		out = append(out, RuleVerdict{Rule: SlotID(dr.ID), Kind: kind, Verdict: r.verdict(), Seqs: seqs,
-			HardControl: dr.Rule.HardControl, trust: sp.TrustOf(dr.Source)})
+			HardControl: dr.Rule.HardControl, trust: sp.TrustOf(dr.Source), reason: r.reason})
 	}
 	return out
+}
+
+// ruleHitSeqs is the seqs a forbid_command rule's hits cite (card
+// SPEC-RULES-STOP1): each spec_event rule_hit of the rule's id whose call
+// landed at or before at, recorded while the rule's declaring file had
+// digest, the content digest it has at this point and the value its trust
+// binding holds, so an edit of that file drops its earlier hits to the lines'
+// reading, never to clear. Each cites its call's declaration seq, as a line
+// does (hitSeq). No hit adds nothing: the lines still decide. Cost: O(H) per
+// rule, and a lookup per counted hit.
+func ruleHitSeqs(run *store.Run, id, digest string, at int64) []int64 {
+	if digest == "" {
+		return nil
+	}
+	var out []int64
+	for i := range run.SpecEvents {
+		h := &run.SpecEvents[i]
+		if h.Reason == store.SpecEventRuleHit && h.RuleID == id && h.SourceDigest == digest && h.LandedSeq > 0 && h.LandedSeq <= at {
+			out = append(out, hitSeq(run, h.LandedSeq))
+		}
+	}
+	return out
+}
+
+// hitSeq is the declaration seq of the call whose execution landed at
+// landed, found by the execution's tool_use_id; with no such execution or
+// declaration, landed itself.
+func hitSeq(run *store.Run, landed int64) int64 {
+	for i := range run.Executions {
+		x := &run.Executions[i]
+		if x.Seq == nil || *x.Seq != landed {
+			continue
+		}
+		for j := range run.Declarations {
+			if run.Declarations[j].ToolUseID == x.ToolUseID {
+				return run.Declarations[j].Seq
+			}
+		}
+		break
+	}
+	return landed
+}
+
+// sourceDigest is the content digest of sp's source src, "" for a source
+// outside Sources (the implied task-file rule's, or a hand-built Compiled).
+func sourceDigest(sp *spec.Compiled, src int) string {
+	if src < 0 || src >= len(sp.Sources) {
+		return ""
+	}
+	return sp.Sources[src].Digest
 }
 
 // binding reports a trust whose rules bind the record: trusted or managed.
@@ -135,6 +205,9 @@ type ruleLine struct {
 	seq   int64
 	cmds  []shape.Command
 	whole bool
+	// id and cwd are the call's tool_use_id and the directory digest it
+	// started in, which an order rule pairs and compares.
+	id, cwd string
 }
 
 // ruleLines is every Bash call's line declared at or before at, and the line
@@ -147,25 +220,27 @@ func ruleLines(run *store.Run, picked map[string]*store.Execution, at int64) []r
 		if d.Seq > at || d.ToolName != "Bash" {
 			continue
 		}
-		out = append(out, lineOf(d.Seq, d.Command, d.CommandCut != nil, len(d.Masked) > 0))
+		out = append(out, lineOf(d, d.Command, d.CommandCut != nil, len(d.Masked) > 0))
 		e := picked[d.ToolUseID]
 		switch {
 		case e == nil:
 		case e.ExecutedCommand != nil:
-			out = append(out, lineOf(d.Seq, e.ExecutedCommand, e.ExecutedCommandCut != nil, len(e.ExecutedMasked) > 0))
+			out = append(out, lineOf(d, e.ExecutedCommand, e.ExecutedCommandCut != nil, len(e.ExecutedMasked) > 0))
 		case e.ExecutedCommandWithheld != nil:
-			out = append(out, ruleLine{seq: d.Seq})
+			out = append(out, ruleLine{seq: d.Seq, id: d.ToolUseID, cwd: d.CWDDigest})
 		}
 	}
 	return out
 }
 
-func lineOf(seq int64, line *string, cut, masked bool) ruleLine {
+func lineOf(d *store.Declaration, line *string, cut, masked bool) ruleLine {
+	l := ruleLine{seq: d.Seq, id: d.ToolUseID, cwd: d.CWDDigest}
 	if line == nil || cut {
-		return ruleLine{seq: seq}
+		return l
 	}
 	cmds, ok := shape.Commands(*line)
-	return ruleLine{seq: seq, cmds: cmds, whole: ok && !masked}
+	l.cmds, l.whole = cmds, ok && !masked
+	return l
 }
 
 // forbidOver is a forbid_command rule over the lines: a violation at each

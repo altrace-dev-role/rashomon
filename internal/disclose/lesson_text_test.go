@@ -9,7 +9,9 @@ import (
 // agent an approved lesson with a prompt (LEARN-DELIVER1), so the learn
 // section of the consent screen says so, and no longer says that no lesson
 // reaches the agent. The screen's scope was bumped for it (TestTRU8b_), so
-// an earlier yes does not stand for model-visible lesson text.
+// an earlier yes does not stand for model-visible lesson text. A lesson about
+// a path the prompt names rides that prompt's preflight note as its last line
+// (LEARN-RIDE1), so the screen says that, and when the rest wait.
 func TestLRN17k_ConsentSaysApprovedLessonsReachTheAgent(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
@@ -26,11 +28,13 @@ func TestLRN17k_ConsentSaysApprovedLessonsReachTheAgent(t *testing.T) {
 		if strings.Contains(p.Text, "below the note") {
 			t.Errorf("the screen puts a lesson below the preflight note, which supersedes it: %q", p.Text)
 		}
-		said = strings.Contains(p.Text, "An approved lesson is sent with a prompt that carries no preflight note, at most one per prompt and each lesson once a session; it waits while a preflight note is sent.") &&
+		said = strings.Contains(p.Text, "An approved lesson is sent with a prompt, at most one per prompt and each lesson once a session: "+
+			"as the last line of that prompt's preflight note when your prompt names a path the lesson names, "+
+			"and otherwise with the next prompt that carries no preflight note.") &&
 			strings.Contains(p.Text, "If steering is off or you have not agreed to steering notes, it is shown to you and not sent.")
 	}
 	if !said {
-		t.Error("the learn section does not say when an approved lesson is sent: with a prompt that has no preflight note, once a session, and only with steering on")
+		t.Error("the learn section does not say when an approved lesson is sent: on the preflight note of a prompt naming its path, else with a prompt that has no note, once a session, and only with steering on")
 	}
 }
 

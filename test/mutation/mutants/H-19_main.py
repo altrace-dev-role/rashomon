@@ -24,6 +24,10 @@ m("status calls an enabled plugin with no store yet not installed", "cmd/rashomo
 m("status reports an entry present whatever it finds", "cmd/rashomon/main.go",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"absent\"\n\t}",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"present\"\n\t}", "TestStatus_")
+# The break removes main.go's only use of strings, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['status does not name the other installs sharing the file'] = ('cmd/rashomon/main.go',
+  '\t"strings"\n', '')
 m("status does not name the other installs sharing the file", "cmd/rashomon/main.go",
   "\t\tfmt.Fprintf(stdout, \"  %s: %s\\n\", label, strings.Join(others, \", \"))",
   "\t\tfmt.Fprintf(stdout, \"  %s: none\\n\", label)", "TestStatus_")
@@ -40,8 +44,8 @@ m("a command that takes no arguments runs whatever follows it", "cmd/rashomon/ma
 m("the no-argument refusal is worded unlike every other command's", "cmd/rashomon/main.go",
   "\t\t\treturn fmt.Errorf(\"unknown argument %q\", args[0])",
   "\t\t\treturn fmt.Errorf(\"takes no arguments, got %q\", args[0])", "TestArguments_EveryListedCommandRefusesHelp")
-m("watch --help installs the recorders", "cmd/rashomon/watch.go",
-  "\t\tdefault:\n\t\t\treturn false, false, fmt.Errorf(\"unknown argument %q\", a)",
+m("watch --help installs the recorders", "cmd/rashomon/consent.go",
+  "\t\tdefault:\n\t\t\treturn false, false, false, fmt.Errorf(\"unknown argument %q\", a)",
   "\t\tdefault:\n\t\t\tcontinue", "TestArguments_Watch")
 m("pause --help pauses recording", "cmd/rashomon/main.go",
   "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdPause))",

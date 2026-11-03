@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -26,11 +27,16 @@ import (
 // the response's span. Two things are read from it, and neither is held:
 // backgroundedCall reads, for Bash only, whether two keys are present, as
 // bits on their spans, so the task id is never a value here; and gateOutput
-// reads the output of a gate run, the call shape.GateRun names -- stdout,
-// then stderr where stdout gives no summary, or a failure event's error after
-// its first line -- decoded into a buffer local to that call, at most
-// gateout.MaxScanBytes of it, cleared before it returns. What survives is
-// gate_output's three closed words; no other call's output is read at all.
+// reads the output of a gate run, the call shape.GateRun names, and of a
+// wrapper's call, the one shape.WrapperRun names, for a runner's signature
+// (WRAPPER-RUN1) -- stdout, then stderr where stdout gives no summary, or a
+// failure event's error after its first line -- decoded into a buffer local
+// to that call, at most gateout.MaxScanBytes of it, cleared before it
+// returns; and, where a gate run's line hid its runner's status,
+// printedOutput reads its stdout the same way for the status the line
+// printed (STATUS-PROBE). What survives is gate_output's three closed words,
+// for a wrapper only where a runner's row read it; no other call's output is
+// read at all.
 //
 // tool_input IS held, as a subslice of the payload, for the executed digest:
 // the post-rewrite input is the only evidence a rewriting hook leaves
@@ -162,6 +168,8 @@ type Post struct {
 	event          string
 	landedSeq      int64
 	landedRunner   bool
+	landedRed      bool
+	landedHidden   bool
 	landedStore    bool
 	landedWrite    writtenCall
 	// toolName and toolInput are the call's, kept for the spec's rules
@@ -169,6 +177,16 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// startSource is a SessionStart call's source (startup, resume, clear or
+	// compact), the second half of that event's channel row (StartContextAt);
+	// "" on every other event.
+	startSource string
+	// exitCode and backgrounded are how the call ended, kept for the
+	// after_hit an order rule's After call leaves (ruleCall): the parsed
+	// status of a failure (nil where none was stated), and whether a success
+	// event's command was still running in the background.
+	exitCode     *int
+	backgrounded bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -183,8 +201,8 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 //
 // stdin is bounded exactly as the declaration path bounds it. Of the response
 // only the presence of backgroundTaskId and backgroundedByUser is read, for a
-// Bash call (backgroundedCall), and a gate run's output, bounded and dropped
-// (gateOutput), but the whole of it does arrive: an
+// Bash call (backgroundedCall), and a gate run's or a wrapper's output,
+// bounded and dropped (gateOutput), but the whole of it does arrive: an
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
@@ -309,11 +327,36 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
 	// A gate run's output, read, classified and dropped: three closed words
-	// survive (card GATEOUT-WIRE1). Every other call's output is never read,
-	// and its gate_output stays null.
+	// survive (card GATEOUT-WIRE1). A line that names no runner and may run
+	// one -- a script, a shell, or a launcher's build target (`make check`,
+	// `npm run test:unit`), whose output a build kind never reads -- is read
+	// the same way for a runner's signature, and its words are kept only
+	// where a runner's row read it (WRAPPER-RUN1). Every other call's output
+	// is never read, and its gate_output stays null.
+	failure, deadline := pl.HookEventName == FailureEvent, start.Add(gateOutputBudget)
 	if shape.GateRun(s.RunnerDigest, s.StatusMasked, s.VerbClass) {
-		out := gateOutput(payload, pl.HookEventName == FailureEvent, gateKind(&s), programOf(&s), start.Add(gateOutputBudget), p.now)
+		kind, program := gateKind(&s), programOf(&s)
+		out := gateOutput(payload, failure, kind, program, deadline, p.now)
+		if kind == shape.RunnerBuild && gateout.Delegated(program) {
+			if w := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(w.Parser) {
+				out = w
+			}
+		}
 		rec.GateOutput = &out
+		// A line that hid its runner's status and then printed it (`make
+		// check; echo "EXIT: $?"`): the printed status is the run's outcome,
+		// over anything a summary in the output said (STATUS-PROBE). Only on
+		// a success event in the foreground: a failure's exit is the line's
+		// own, and a backgrounded call's output is the launch's.
+		if pl.HookEventName != FailureEvent && !rec.Backgrounded && shape.StatusHidden(s.StatusMasked) {
+			if printed, ok := printedOutput(payload, pl.ToolName, pl.ToolInput, start.Add(gateOutputBudget), p.now); ok {
+				rec.GateOutput = &printed
+			}
+		}
+	} else if shape.WrapperRun(pl.ToolName, s.Program, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
+		if out := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(out.Parser) {
+			rec.GateOutput = &out
+		}
 	}
 	// The content of the file a named write names, as the call left it: the
 	// tree a later gate run is bound to (card P5A, D140). A digest of content,
@@ -329,9 +372,34 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		p.withheld = true
 	}
 	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
+	p.exitCode, p.backgrounded = rec.ExitCode, rec.Backgrounded
+	p.landedHidden = hiddenRun(&rec)
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
+	p.landedRed = redRead(&rec)
 	return landed(err, &p.withheld)
+}
+
+// redRead reports a success-event runner call whose status a pipe hid and
+// whose output read red (summary_fail, or a fail_line), the call the steer
+// step treats as a failure event's (MASKED-OUTCOME1). It is a hint: verify's
+// readsOutput and regressedHere decide whether the red counts, so a kind the
+// table reads but verify does not decide on raises nothing.
+func redRead(rec *store.Execution) bool {
+	if rec.Outcome != store.ExecOK || rec.RunnerDigest == nil || rec.StatusMasked == nil || rec.GateOutput == nil {
+		return false
+	}
+	k := rec.GateOutput.Kind
+	return k == "summary_fail" || k == "fail_line"
+}
+
+// hiddenRun reports a success-event runner call in the foreground whose line
+// hid the runner's status (shape.StatusHidden), the call masked-status is
+// said at (MASKED-AT-ACT1). A hint, as redRead is: verify's masked() decides,
+// so a run whose output's summary or printed status says how it ended raises
+// nothing and costs the run's read, as a failure event's post does.
+func hiddenRun(rec *store.Execution) bool {
+	return rec.Outcome == store.ExecOK && rec.RunnerDigest != nil && !rec.Backgrounded && shape.StatusHidden(rec.StatusMasked)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the
@@ -346,9 +414,9 @@ func (p *Post) capture(payload *hookio.Payload) error {
 //
 // It reads two presence bits on spans, true when a key carries anything but
 // null or false, and the task id is never copied. stdout and stderr are not
-// touched here: the one reader of those is gateOutput, for a gate run only. A
-// response that is not an object is a foreground call: the flag is set only
-// on evidence.
+// touched here: the one reader of those is gateOutput, for a gate run or a
+// wrapper (WRAPPER-RUN1) only. A response that is not an object is a
+// foreground call: the flag is set only on evidence.
 func backgroundedCall(in *hookio.Payload) bool {
 	var bits [2]jsonscan.Span
 	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], backgroundKeys, bits[:]) != nil {

@@ -37,6 +37,9 @@ import (
 // fired-<event> marker, #148), says an approved lesson reaches the agent with
 // a prompt (#156), and names the on and off switches the record keeps in
 // config.json, with a project's directory for a project's switch (#160).
+// alpha.1 shipped 4, so 5 also covers the briefing after a compaction, which
+// quotes the person's earlier instructions to the agent while the record keeps
+// only each quote's length and keyed digest (COMPACT-SLOT1).
 // Pinned by TRU-8.
 const ScopeVersion = 5
 
@@ -114,8 +117,10 @@ type Forbidden struct {
 }
 
 // Switch is one user-settable switch, with the command that sets it, where
-// it is stored, and whether it ratchets (an expansion needs a terminal; a
-// reduction does not, 7.2.4).
+// it is stored, and whether it ratchets. Tech spec 7.2.4 had an expansion
+// need a terminal and a reduction not; the owner reversed that for
+// reductions (R33, 2026-10-31), so setting a switch either way refuses an
+// agent session (internal/selfguard). No inventory row sets Ratchet today.
 type Switch struct {
 	Name    string `json:"name"`
 	Default string `json:"default"`
@@ -184,6 +189,7 @@ func Default() (Inventory, error) {
 			specFiles(),
 			evidenceFiles(),
 			configFiles(),
+			continuityFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),
@@ -269,8 +275,8 @@ func defaultFiles() []FileRule {
 			Base:       "",
 			Pattern:    recap.StateFileName,
 			Mode:       "0600",
-			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice",
-			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids -- never a tool call's content",
+			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice; and, for a session whose last turn edited files without running the project's test command, what the next prompt's note says",
+			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids; for such a session, the turn end's record seq, the test runner's name and the name of the file the command was read from -- never a tool call's content",
 			NeverHolds: "a tool call's content",
 			RemovedBy:  "purge",
 			Owner:      "recap",
@@ -461,7 +467,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), whether the hook could not read where its line started because of a leading cd it does not read (location_unread, one bit, present only when true), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; at record scope v5 only, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, which record scope v4, the default, withholds",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), whether the hook could not read where its line started because of a leading cd it does not read (location_unread, one bit, present only when true), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; where a call matched a forbid_command rule of the spec it was judged against, a spec_event with the rule's id, the content digest of the spec file that declared it, the hook event and the seq the call's execution landed at; where a call matched the after pattern of an order rule of that spec, an after_hit with the same four, its exit status, whether it ran in the foreground, the keyed digest of its working directory and one bit for a line that may run the after program but does not show it, no command text; where a Bash call's line was read for an order rule of that spec, a then_check with the rule's id, the content digest of the spec file that declared it, the seq the call's execution landed at and one word for whether the line runs the rule's then (yes, no or maybe), no command text; for a command run in the background, an outcome_join when its end is announced: the call's id, ok or failed and its exit code, never the announcement's description or output path; at record scope v5 only, the scope every consent from this build records, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, and the SHA-256 of the file an edit names as the call left it (content_sha256), which record scope v4, a store with no consent from this build, withholds",
 			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text (this build leaves the command field null at every record scope)",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
@@ -481,7 +487,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileSteer,
 			Mode:       "0600",
 			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
-			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them), each capped at 2,048 bytes",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them, and except the briefing after Claude Code compacts the conversation, which quotes your earlier instructions to the agent word for word; the record keeps only each quote's length and a keyed digest, never your words), each capped at 2,048 bytes",
 			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
 			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
 			Owner:      "store",
@@ -545,17 +551,18 @@ func runSegmentFiles() []FileRule {
 }
 
 // indexFiles is the inventory's rows for the project index the Stop hook's
-// recap reads and writes (verify.IndexPath, card 2.4), and its replacement.
-// Like recordScopeFiles, they sit apart from defaultFiles for Law 10.
+// recap reads and writes (verify.IndexPath, card 2.4), and its replacement,
+// then the checkpoint file's (checkpointFiles). Like recordScopeFiles, they
+// sit apart from defaultFiles for Law 10.
 func indexFiles() []FileRule {
 	const base = verify.DirName + "/" + verify.ProjectsDir
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       base,
 			Pattern:    baseline.FilePattern,
 			Mode:       "0600",
 			Purpose:    "one project's index of the test and build commands its sessions have run, so a command two sessions ran in thirty days is required before a turn reads verified",
-			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen; and the last and prior checkpoints (last, prior), each the session id, the point seq and when it was recorded, written at every Stop",
+			Holds:      "the project's directory in the clear and, per command family, its runner, a keyed digest of the directory it ran in, its kind, how many sessions ran it, the last of them by session id, and when it was first and last seen",
 			NeverHolds: "a command's arguments or output, or anything about a call beyond its family",
 			RemovedBy:  "eviction of the least recently seen families at 64 KiB; purge",
 			Owner:      "verify",
@@ -570,7 +577,7 @@ func indexFiles() []FileRule {
 			RemovedBy:  "the write that made it (renamed over the index); purge",
 			Owner:      "verify",
 		},
-	}
+	}, checkpointFiles()...)
 }
 
 // recordScopeFiles is the inventory's rows for the record_scope marker and

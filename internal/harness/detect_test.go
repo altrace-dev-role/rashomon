@@ -3,6 +3,7 @@ package harness
 import (
 	"bufio"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -507,8 +508,8 @@ func TestBRD1b_BlindTracksCaps(t *testing.T) {
 	if sdk.ID != ClaudeCode || sdk.Surface != SurfaceSDK {
 		t.Fatalf("setup: sdk = %+v", sdk)
 	}
-	if len(sdk.Blind) != 1 || sdk.Blind[0] != string(CapMirrorInBand) {
-		t.Fatalf("Blind = %v, want exactly [%s] on the sdk surface", sdk.Blind, CapMirrorInBand)
+	if want := []string{string(CapMirrorInBand), string(CapPersonAtPrompt)}; !slices.Equal(sdk.Blind, want) {
+		t.Fatalf("Blind = %v, want exactly %v on the sdk surface", sdk.Blind, want)
 	}
 }
 

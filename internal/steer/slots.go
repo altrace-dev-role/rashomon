@@ -85,6 +85,8 @@ func slotsFrom(slots []render.Slot) (map[string]json.RawMessage, error) {
 			err = putJSON(put, s.Name, string(v))
 		case slot.Enum:
 			err = putJSON(put, s.Name, v.Text())
+		case slot.Said:
+			err = saidJSON(put, s.Name, v)
 		case slot.FactValue:
 			err = putJSON(put, s.Name, v.Value)
 		case slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:
@@ -97,6 +99,27 @@ func slotsFrom(slots []render.Slot) (map[string]json.RawMessage, error) {
 		}
 	}
 	return out, nil
+}
+
+// saidJSON is a quote of the person's words as its line records it: the
+// record form's keyed digests and byte lengths (COMPACT-SLOT1, D160). The
+// words are refused, so a finding that rendered them without a Record is
+// render_refused and its line never holds them.
+func saidJSON(put func(string, json.RawMessage) error, name string, v slot.Said) error {
+	if !v.Keyed() {
+		return fmt.Errorf("%w: %q holds the person's words, not their keyed digest", errSlot, name)
+	}
+	return putJSON(put, name, saidLine{Bytes: v.Bytes(), Digest: v.Digest(), RestatesBytes: v.RestatesBytes(),
+		RestatesDigest: v.RestatesDigest()})
+}
+
+// saidLine is saidJSON's form, keys in sorted order as the preflight
+// lists' are.
+type saidLine struct {
+	Bytes          int    `json:"bytes"`
+	Digest         string `json:"digest"`
+	RestatesBytes  int    `json:"restates_bytes"`
+	RestatesDigest string `json:"restates_digest"`
 }
 
 // putJSON writes v's JSON encoding under name.

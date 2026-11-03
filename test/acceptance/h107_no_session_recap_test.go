@@ -161,7 +161,7 @@ func TestH107_AStopThatNamesNoSessionSaysSoAndDescribesNoOtherSession(t *testing
 // TestH107_TheCatchUpThatNamesNoSessionReportsNoOtherTurn: the
 // UserPromptSubmit catch-up had the same fallback. It speaks only for a turn
 // it can show no Stop reached (H-106), and with no session id it can show
-// nothing -- recap.Pending's own rule answers false when there is nothing to
+// nothing -- recap.Turn's own rule answers false when there is nothing to
 // say which turn was checked, because catching up could then only repeat a
 // line. So it prints nothing, and in particular not the refused turn of
 // whichever session happened to write last. The no_session_id statement is

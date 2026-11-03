@@ -567,6 +567,18 @@ func readFromSummary(e *store.Execution) bool {
 	return false
 }
 
+// readFromPrinted reports a masked run whose line printed its runner's exit
+// status (shape.PrintedStatus): gate_output printed_pass or printed_fail under
+// rules version 12 or later, on a call in the foreground. That is verify's
+// rule (verify.readsPrinted), for a fail as for a pass: the status is on the
+// record either way.
+func readFromPrinted(e *store.Execution) bool {
+	if e == nil || e.RulesVersion < shape.PrintedStatusRulesVersion || e.Backgrounded || e.GateOutput == nil {
+		return false
+	}
+	return e.GateOutput.Kind == gateout.KindPrintedPass || e.GateOutput.Kind == gateout.KindPrintedFail
+}
+
 // BuildMaskedRuns counts run's masked runs that no later plain run of the
 // same runner followed up (MaskedRuns.Runs), and compares the count against
 // the final message. Exported so digest can call it with a turn-scoped run,
@@ -615,6 +627,12 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 			// The pipe hid the exit status but kept the runner's summary,
 			// which decided the outcome: the record holds it, and verify's
 			// line says where it was read from (D229, MASKED-FAIL-LINE1).
+			continue
+		}
+		if readFromPrinted(outcomeRecord(executed[d.ToolUseID])) {
+			// The line printed the runner's exit status, pass or fail: it is
+			// recorded, so "not recorded" would be false, and verify's line
+			// says how the run ended (STATUS-PROBE).
 			continue
 		}
 		if r := d.Shape.RunnerDigest; r != nil {

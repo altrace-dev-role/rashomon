@@ -136,6 +136,22 @@ func (b *Bindings) Holds(projectRoot, specPath, digest string) bool {
 	})
 }
 
+// Of is the binding of the project and the path whatever digest it names,
+// and whether there is one, so a reader can tell a spec never trusted from
+// one edited since it was (SPEC-TRUST-DROP1). A nil Bindings has none.
+func (b *Bindings) Of(projectRoot, specPath string) (Binding, bool) {
+	if b == nil {
+		return Binding{}, false
+	}
+	i := slices.IndexFunc(b.Bindings, func(x Binding) bool {
+		return x.ProjectRoot == projectRoot && x.SpecPath == specPath
+	})
+	if i < 0 {
+		return Binding{}, false
+	}
+	return b.Bindings[i], true
+}
+
 // Bind adds x, replacing any binding of its project and path.
 func (b *Bindings) Bind(x Binding) {
 	b.Unbind(x.ProjectRoot, x.SpecPath)

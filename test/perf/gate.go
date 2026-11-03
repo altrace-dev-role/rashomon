@@ -412,4 +412,4 @@ func LineHolds(id string, measuredMiB, lineMiB float64) error {
 // landed names the PRs this tree carries: their rss cases are switched on,
 // and no budget basis may still read "until" one of them. gates_from stays
 // in budgets.json as the record of which PR switched each case on.
-var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true}
+var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "SR-1b": true}
