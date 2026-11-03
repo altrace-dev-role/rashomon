@@ -1,3 +1,8 @@
+//go:build !windows
+
+// buildchanged.py's tests use sweep_test.go's helpers (write, mutant,
+// importEntry), so they build where it does: every GOOS but windows, whose
+// vet and staticcheck runs would otherwise find the helpers undefined.
 package mutation
 
 import (
