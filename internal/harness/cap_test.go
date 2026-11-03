@@ -42,6 +42,22 @@ func TestPE1_ACapReadAllocatesNothing(t *testing.T) {
 	}
 }
 
+// TestPE1_BlindBuildsNoTable: every post's identity carries Blind, the
+// capabilities not "yes", and finish built Caps' table of seventeen to
+// list them, the second table a post paid for (harness.Caps 54832 B under
+// cmdPost over 23 calls, half under finish, in pe1-cienv's profile).
+// Claude Code on cli is blind to nothing, so reading its Blind allocates
+// nothing. Break: blindOf built from Caps' table.
+func TestPE1_BlindBuildsNoTable(t *testing.T) {
+	var got []string
+	if n := testing.AllocsPerRun(100, func() { got = blindOf(ClaudeCode, SurfaceCLI) }); n != 0 {
+		t.Errorf("blindOf allocates %v times, want 0", n)
+	}
+	if got != nil {
+		t.Errorf("premise: blindOf(claude_code, cli) = %v, want nothing blind", got)
+	}
+}
+
 // TestPE1_NoEntrypointLeavesBothUnverified pins the unknown surface's
 // column, which no test read before PE-1's rows found it: a Claude Code
 // with no entrypoint has a mirror nobody is known to read (Archive 60.2.9)

@@ -79,10 +79,11 @@ func Cap(id ID, s Surface, c Capability) CapState {
 	return Yes
 }
 
-// blindOf returns the capability names in caps whose state is not Yes,
+// blindOf returns the capability names Caps(id, s) holds as other than Yes,
 // sorted. allCapabilities is already in a fixed order, so the result is
 // sorted without an extra pass.
-func blindOf(caps CapSet) []string {
+func blindOf(id ID, s Surface) []string {
+	caps := Caps(id, s)
 	var blind []string
 	for _, c := range allCapabilities {
 		if caps[c] != Yes {
