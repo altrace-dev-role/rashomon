@@ -21,11 +21,12 @@ func writeTranscript(t *testing.T, lines ...string) string {
 
 // TestCSL1_LastBoundaryIsTheLastCompactRecord: the boundary is the last
 // top-level system record whose subtype is compact_boundary, with its uuid
-// and its line counted from 1. The word inside a message, a nested record, a
-// line too long to be a boundary record and a line that is not JSON are
-// passed over; a transcript with none says so, one over the cap is not read,
-// and a missing one is an error. Break: count from 0, take the first
-// boundary, match the word anywhere, or read past the cap, and this fails.
+// and its line counted from 1. The word inside a message, a nested record,
+// a record of another type with the subtype, a line too long to be a
+// boundary record and a line that is not JSON are passed over; a transcript
+// with none says so, one over the cap is not read, and a missing one is an
+// error. Break: count from 0, take the first boundary, match the word
+// anywhere or under any type, or read past the cap, and this fails.
 func TestCSL1_LastBoundaryIsTheLastCompactRecord(t *testing.T) {
 	long := `{"type":"system","subtype":"compact_boundary","uuid":"b-long","pad":"` + strings.Repeat("x", maxBoundaryLine) + `"}`
 	p := writeTranscript(t,
@@ -34,6 +35,7 @@ func TestCSL1_LastBoundaryIsTheLastCompactRecord(t *testing.T) {
 		`{"type":"assistant","uuid":"a1","message":{"content":[{"type":"text","text":"the \"compact_boundary\" record"}]}}`,
 		`{"type":"system","subtype":"compact_boundary","uuid":"b-2","content":"Conversation compacted"}`,
 		`{"type":"assistant","data":{"type":"system","subtype":"compact_boundary","uuid":"b-nested"}}`,
+		`{"type":"user","subtype":"compact_boundary","uuid":"b-user"}`,
 		long,
 		`{"type":"system","subtype":"compact_boundary","uuid":"b-broken"`,
 		`{"type":"user","uuid":"u2","message":{"role":"user","content":"after"}}`,
