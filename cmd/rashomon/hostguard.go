@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
@@ -91,6 +92,9 @@ func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io
 	}
 
 	payload, id, down := hostguard.EvaluateRaw(raw, rerr, claudeEnv(), hostguard.FamilyClaude)
+	if !down && sdkDeclined() {
+		return nil, replay, true, id
+	}
 	if !down && id.ID != harness.Unknown {
 		return payload, replay, false, id
 	}
@@ -100,6 +104,41 @@ func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io
 		return payload, replay, false, id
 	}
 	return nil, replay, true, id
+}
+
+// agentSDKEntrypoints is the DE's rule (SDK-GATE2): each
+// CLAUDE_CODE_ENTRYPOINT value an Agent SDK program's call can carry, and
+// whether it is one only with CLAUDE_AGENT_SDK_VERSION set as well. The
+// TypeScript and Python SDKs set sdk-ts and sdk-py. Claude Code 2.1.280 sets
+// sdk-cli for every non-interactive run, claude -p included, and a
+// TypeScript SDK program started where CLAUDE_CODE_ENTRYPOINT is already set
+// (from a Claude Code session's Bash tool) arrives as sdk-cli too; the SDK's
+// version variable, which a person's claude -p does not carry, tells them
+// apart. cli is not here: a person's own session started from inside a
+// program inherits the variable and is still Claude Code's.
+var agentSDKEntrypoints = map[string]bool{"sdk-ts": false, "sdk-py": false, "sdk-cli": true}
+
+// agentSDKCall is whether this process's environment is an Agent SDK
+// program's call, by agentSDKEntrypoints.
+func agentSDKCall() bool {
+	needsVersion, ok := agentSDKEntrypoints[claudeEnv().Entrypoint]
+	return ok && (!needsVersion || os.Getenv("CLAUDE_AGENT_SDK_VERSION") != "")
+}
+
+// sdkDeclined is SDK-GATE1 (B309): whether this call came from an Agent SDK
+// program on a machine whose harnesses.json holds no y to the consent
+// screen's second question, which the full screen promises it is not
+// recorded without. Every hook path then stands down before it writes
+// anything, the harness count a stand-down keeps included. Only a positive
+// detection closes it, agentSDKCall; any other call is Claude Code's and
+// records as before. No answer on file, the plugin route's case, is not a
+// y. A store root that does not resolve records nothing either.
+func sdkDeclined() bool {
+	if !agentSDKCall() {
+		return false
+	}
+	root, err := store.DefaultRoot()
+	return err != nil || !consent.SDKRecording(root)
 }
 
 // harnessSessionKey picks the field the DETECTED family (id.ID, never
@@ -154,8 +193,13 @@ func newHandler(st *store.Store, id harness.Identity) *hook.Handler {
 }
 
 // noteHarness is recapTurn's write half: it records a stand-down or an
-// Unknown detection and reports whether the caller must stand down.
+// Unknown detection and reports whether the caller must stand down. An Agent
+// SDK program the person did not say y to stands down before it, writing
+// nothing (SDK-GATE1), as claudeHostGuard has it for the other hook paths.
 func noteHarness(sessionID string, id harness.Identity, down bool) bool {
+	if !down && sdkDeclined() {
+		return true
+	}
 	if down || id.ID == harness.Unknown {
 		recordHarnessBestEffort(sessionID, id, down)
 	}

@@ -46,4 +46,4 @@ m("SEED-1 audit drops the stale count", A,
 m("SEED-1 audit accepts a zero window", A,
   "if err != nil || n < 1 || n > spend.MaxDays {", "if err != nil || n > spend.MaxDays {", "TestSEED1d_")
 m("SEED-1 audit ignores the window", A,
-  "spend.Discover(configDir, spend.WindowStart(time.Now(), days))", "spend.Discover(configDir, time.Time{})", "TestSEED1d_")
+  "spend.Discover(configDir, spend.WindowStart(end, days))", "spend.Discover(configDir, time.Time{})", "TestSEED1d_")

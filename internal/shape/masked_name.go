@@ -108,14 +108,34 @@ func RunnerNameOf(id uint8) string {
 // The two forms never collide: a digest is hex, a name key starts with a NUL.
 // RunnerDigest itself keeps the words: it is the learned families' key, and
 // `go test ./a` red then `go test ./b` green must stay two families (D-e).
+// Two rows that run the same work meet at one name (sameWork): a gate read
+// as `pytest` binds `python3 -m pytest tests/x.py` (INFER-FALSE1, B302).
 func RunnerKey(name string, digest *string) (key string, ok bool) {
 	switch {
 	case digest == nil:
 		return "", false
 	case name != "" && !slices.Contains(launcherRows, name):
+		for _, w := range sameWork {
+			if w[0] == name {
+				name = w[1]
+			}
+		}
 		return "\x00" + name, true
 	}
 	return *digest, true
+}
+
+// sameWork pairs a test row with the row that runs the same tool on the same
+// tests and passes its exit status through: the interpreter's -m form, a
+// launcher's run or exec form, a project's own wrapper, npm's alias. The left
+// is never a right, so one pass maps every row (TestIF1_SameWorkIsRows).
+var sameWork = [][2]string{
+	{"python -m pytest", "pytest"}, {"python3 -m pytest", "pytest"},
+	{"uv run pytest", "pytest"}, {"poetry run pytest", "pytest"},
+	{"python -m unittest", "python3 -m unittest"},
+	{"npx jest", "jest"}, {"npx vitest", "vitest"}, {"bundle exec rspec", "rspec"},
+	{"npm t", "npm test"}, {"npm run test", "npm test"},
+	{"mvnw test", "mvn test"}, {"gradlew test", "gradle test"},
 }
 
 // MaskedByID is the place of a masked_by word among MaskedByWords, counted

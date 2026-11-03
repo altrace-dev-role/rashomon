@@ -38,7 +38,7 @@ func TestCSCOPE1a_StoredSaysWhatRecordScopeV5Keeps(t *testing.T) {
 	}
 	var stored string
 	for _, p := range inv.Paragraphs {
-		if strings.HasPrefix(p.Text, "STORED: for each tool call") {
+		if strings.HasPrefix(p.Text, StoredHeading+" for each tool call") {
 			stored = p.Text
 		}
 	}
