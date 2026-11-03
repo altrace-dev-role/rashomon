@@ -82,13 +82,23 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 		}
 	}
 	for _, c := range b.RSSCases {
-		if c.Entry == "recap" {
-			// The Stop's transcript scan (CE-1) and its platform read (PW1b)
-			// are no hook or post payload, so RES-28's line does not describe
-			// them: each row is its own figure, and its basis says where the
-			// figure came from.
+		if c.Entry == "recap" || c.ID == "post.edit.pgraph3MiB" {
+			// The Stop's transcript scan (CE-1) and its platform read (PW1b),
+			// and the post's read of the same log (ARCH-INLINE1), cost what
+			// they read, not the hook or post payload, so RES-28's line does
+			// not describe them: each row is its own figure, and its basis
+			// says where the figure came from.
 			if c.Basis == "" || c.SlopeMiBPerMiB != 0 || (c.GatesFrom != "CE-1" && c.GatesFrom != "PW1b") {
-				t.Errorf("rss case %s: a recap case carries a basis, no slope, and gates from CE-1 or PW1b: %+v", c.ID, c)
+				t.Errorf("rss case %s: a case off RES-28's line carries a basis, no slope, and gates from CE-1 or PW1b: %+v", c.ID, c)
+			}
+			continue
+		}
+		if OrderSpecCase(c.ID) {
+			// The order rule's own row (SPEC-RULES1 1b, #216 ruling 5): the
+			// payload and entry of post.540B, a figure of its own, a basis
+			// that says where it came from, no slope.
+			if c.Basis == "" || c.SlopeMiBPerMiB != 0 || c.GatesFrom != "SR-1b" || c.Entry != "post" || c.PayloadBytes != 540 {
+				t.Errorf("rss case %s: an order-spec case carries a basis, no slope, the post entry at 540 bytes, and gates from SR-1b: %+v", c.ID, c)
 			}
 			continue
 		}

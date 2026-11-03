@@ -59,6 +59,7 @@ func titles() map[string]string {
 			string(pattern.ClaimVsRecord):      "record check",
 			string(pattern.MaskedStatus):       "hidden-status note",
 			string(pattern.StaleEvidence):      "stale-gate note",
+			string(pattern.BlastRadius):        "callers note",
 		}
 	})
 	return titlesOnce.v
@@ -320,12 +321,29 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 		if g.Reason == verify.OrderUnknown {
 			return "the record does not order every " + t.name(g) + " run and edit in this turn; verification state unknown"
 		}
+		// A call the gate may have run in, and one its runner ran in whose
+		// output did not say how it ended (WRAPPER-RUN1).
+		if s, ok := unknownWrapped(t, g); ok {
+			return s
+		}
 		where, _ := when(v, g)
 		return t.name(g) + " ran" + where + " (call " + seqOf(g) + "); its result is not in the record"
 	case verify.RowRed:
 		g := t.first(verify.Red)
 		if g == nil {
 			return ""
+		}
+		if wrap(g) == verify.WrapRead {
+			// Its runner's summary said failed, whatever the wrapper exited.
+			_, since := when(v, g)
+			s := t.name(g) + " failed in a wrapper (call " + seqOf(g) + ")"
+			if since {
+				s += " and has not run since"
+			}
+			if wrote {
+				s = files + "; " + s
+			}
+			return s
 		}
 		verb := "failed"
 		if g.LastRun != nil && g.LastRun.ExitCode != nil {
@@ -399,6 +417,12 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		g = t.first(verify.Absent)
 	}
 	if v.Turn.Writes == 0 && g != nil {
+		if g.LastRun == nil {
+			// No run of the gate is in the record, so no line says it ran
+			// and none says what it checked: silence over a false line
+			// (INFER-FALSE1, B303: "ran in an earlier turn ... (call 0)").
+			return ""
+		}
 		where, _ := when(v, g)
 		switch g.Reason {
 		case verify.EmptyRun:
@@ -505,7 +529,8 @@ func (t gateSet) fromOutput() string {
 	var read, all []string
 	for i := range t.gates {
 		g := &t.gates[i]
-		if g.State != verify.Green {
+		if g.State != verify.Green || wrap(g) != verify.WrapNone {
+			// A wrapped green says where it was read in its own words.
 			continue
 		}
 		n := t.name(g)
@@ -554,16 +579,23 @@ func droppingStage(r *verify.RunRef) string {
 // most k named and then `and <n> more`, with "passed"; then those bound at
 // their runner with other words (RunRef.OtherArgs) with "ran with other
 // arguments and passed", each named and never folded into the count, so no
-// line says the gate passed of a run that was not its own (GATE-BIND1, D-c).
-// other reports a gate of the second kind; "" with no green gate.
+// line says the gate passed of a run that was not its own (GATE-BIND1, D-c);
+// then each read from a wrapper's output (RunRef.Wrapped) with "ran in a
+// wrapper (call N) and passed" (WRAPPER-RUN1). other reports a gate of the
+// second or third kind, whose words place its run in place of "after the
+// last edit"; "" with no green gate.
 func (t gateSet) passed(k int) (s string, other bool) {
-	var own, others []string
+	var own, others, wrapped []string
 	for i := range t.gates {
 		g := &t.gates[i]
 		if g.State != verify.Green {
 			continue
 		}
 		switch n := t.name(g); {
+		case wrap(g) == verify.WrapRead:
+			if w := n + " ran in a wrapper (call " + seqOf(g) + ") and passed"; !contains(wrapped, w) {
+				wrapped = append(wrapped, w)
+			}
 		case otherArgs(g):
 			if !contains(others, n) {
 				others = append(others, n)
@@ -573,7 +605,7 @@ func (t gateSet) passed(k int) (s string, other bool) {
 		}
 	}
 	var parts []string
-	if k = max(k-len(others), 1); len(own) > k {
+	if k = max(k-len(others)-len(wrapped), 1); len(own) > k {
 		parts = append(parts, strings.Join(own[:k], ", ")+" and "+strconv.Itoa(len(own)-k)+" more passed")
 	} else if len(own) > 0 {
 		parts = append(parts, joinNames(own)+" passed")
@@ -581,7 +613,8 @@ func (t gateSet) passed(k int) (s string, other bool) {
 	if len(others) > 0 {
 		parts = append(parts, joinNames(others)+" ran with other arguments and passed")
 	}
-	return strings.Join(parts, ", "), len(others) > 0
+	parts = append(parts, wrapped...)
+	return strings.Join(parts, ", "), len(others) > 0 || len(wrapped) > 0
 }
 
 // otherArgs reports g's last run as bound with other arguments.

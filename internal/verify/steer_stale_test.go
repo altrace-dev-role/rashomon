@@ -46,7 +46,7 @@ func snRun(t *testing.T, calls ...call) *store.Run {
 // staleAt is SteerAt at call n's own point at its post, under idx.
 func staleAt(t *testing.T, r *store.Run, n int64, idx *ProjectIndex) SteerView {
 	t.Helper()
-	return SteerAt(r, idx, nil, nil, callPoint(t, r, n), snNow, snEvent, "t"+strconv.FormatInt(n, 10))
+	return SteerAt(r, idx, nil, nil, "", callPoint(t, r, n), snNow, snEvent, "t"+strconv.FormatInt(n, 10))
 }
 
 // staleFindings is the view's stale-evidence candidates.
@@ -157,12 +157,14 @@ func TestSN1d_ForeignMoveIsNamedNotBlamed(t *testing.T) {
 }
 
 // TestSN1e_PatternIsFrozen: stale-evidence is the eighteenth frozen id,
-// after the spec's sixteen and task-preflight (merge order), with priority 78
+// after the spec's sixteen and task-preflight (merge order; blast-radius,
+// the nineteenth, came after it, and pattern's TestDEL22 pins the count),
+// with priority 78
 // under regression-location and no kinds; the mapper takes it at a
 // PostToolUse as a nudge keyed by the gate and refuses it at any other event.
 func TestSN1e_PatternIsFrozen(t *testing.T) {
 	all := pattern.All()
-	if len(all) != 18 || all[17] != pattern.StaleEvidence || pattern.Kinds(pattern.StaleEvidence) != nil {
+	if len(all) < 18 || all[17] != pattern.StaleEvidence || pattern.Kinds(pattern.StaleEvidence) != nil {
 		t.Fatalf("All() = %v, Kinds = %v; want stale-evidence eighteenth, with no kinds", all, pattern.Kinds(pattern.StaleEvidence))
 	}
 	if p, ok := pattern.Priority(pattern.StaleEvidence); !ok || p != 78 {

@@ -8,7 +8,7 @@ B = "internal/spec/trust.go"
 
 # The trust screen.
 m("STD-1 the screen says untrusted at the digest already bound", S,
-  "\tcase ok && x.SpecDigest == digest:\n", "\tcase false:\n", "TestSTD1_")
+  "\tcase ok && x.SpecDigest == digest:\n", "\tcase ok && x.SpecDigest == digest && false:\n", "TestSTD1_")
 m("STD-1 the screen says never trusted after an edit", S,
   "\tcase ok:\n\t\treturn \"now untrusted: edited", "\tcase false:\n\t\treturn \"now untrusted: edited", "TestSTD1_")
 
