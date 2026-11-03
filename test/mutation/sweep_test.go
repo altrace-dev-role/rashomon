@@ -37,8 +37,7 @@ import (
 // outlive it.
 func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
-	out, _, code := sweepRun(t, dir, 30*time.Second, nil, args...)
-	return out, code
+	return sweepRun(t, dir, 30*time.Second, nil, args...)
 }
 
 // sweepTimeout is sweep with an explicit bound. TestStrict_ is the one
@@ -47,16 +46,14 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 // module, and a cold build cache can make that slower than 30s has room for.
 func sweepTimeout(t *testing.T, dir string, timeout time.Duration, args ...string) (string, int) {
 	t.Helper()
-	out, _, code := sweepRun(t, dir, timeout, nil, args...)
-	return out, code
+	return sweepRun(t, dir, timeout, nil, args...)
 }
 
 // sweepEnv is sweep with extra environment entries, so a test can put a fake
 // go on PATH.
 func sweepEnv(t *testing.T, dir string, extraEnv []string, args ...string) (string, int) {
 	t.Helper()
-	out, _, code := sweepRun(t, dir, 30*time.Second, extraEnv, args...)
-	return out, code
+	return sweepRun(t, dir, 30*time.Second, extraEnv, args...)
 }
 
 // sweepErr is sweep, but returns stderr instead of stdout: report() (the
@@ -65,14 +62,13 @@ func sweepEnv(t *testing.T, dir string, extraEnv []string, args ...string) (stri
 // code) needs this, not sweep.
 func sweepErr(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
-	_, errOut, code := sweepRun(t, dir, 30*time.Second, nil, args...)
+	_, errOut, code := sweepRunStderr(t, dir, 30*time.Second, nil, args...)
 	return errOut, code
 }
 
-// sweepRun is what sweep, sweepTimeout, sweepEnv and sweepErr share: an
-// explicit bound and extra environment entries, either of which may be the
-// default.
-func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int) {
+// sweepRun is what sweep, sweepTimeout and sweepEnv share: an explicit bound
+// and extra environment entries, either of which may be the default.
+func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, int) {
 	t.Helper()
 	stdout, _, code := sweepRunStderr(t, dir, timeout, extraEnv, args...)
 	return stdout, code
