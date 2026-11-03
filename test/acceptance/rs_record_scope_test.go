@@ -19,15 +19,18 @@ import (
 
 // scopeCalls drives the same three hook calls on e: an Edit inside a
 // repository, a Bash call that names a host, and that call's failure. It
-// returns the Edit's declaration, the Bash call's and the execution.
-func scopeCalls(t *testing.T, e *env) (edit, bash, exec record) {
+// returns the Edit's declaration, the Bash call's and the execution, and the
+// path the Edit names: under the cwd, so its project is the cwd's (a file
+// outside the cwd under no .git has none, PROJECT-RESOLVE1).
+func scopeCalls(t *testing.T, e *env) (edit, bash, exec record, path string) {
 	t.Helper()
 	_, inner := gitRepo(t, resolvedTempDir(t))
 	p := defaultPayload()
 	p.CWD = inner
 	p.ToolName = "Edit"
 	p.ToolUseID = "tu-edit"
-	p.ToolInput = map[string]any{"file_path": "/home/u/proj/internal/x.go", "old_string": "a", "new_string": "b"}
+	path = filepath.Join(inner, "internal", "x.go")
+	p.ToolInput = map[string]any{"file_path": path, "old_string": "a", "new_string": "b"}
 	e.mustHook(p.build(t))
 
 	p = defaultPayload()
@@ -52,7 +55,7 @@ func scopeCalls(t *testing.T, e *env) (edit, bash, exec record) {
 	if len(execs) != 1 {
 		t.Fatalf("premise: read %d executions, want 1", len(execs))
 	}
-	return edit, bash, execs[0]
+	return edit, bash, execs[0], path
 }
 
 // wantRecordedAnyway checks what the v4 record carries at every scope: the
@@ -94,7 +97,7 @@ func wantNullUnstamped(t *testing.T, r record, withheld string, keys ...string) 
 // fields, which have no producer, null with nothing stamped.
 func TestRS1_NoConsentWithholdsEveryContentField(t *testing.T) {
 	e := newEnv(t)
-	edit, bash, exec := scopeCalls(t, e)
+	edit, bash, exec, _ := scopeCalls(t, e)
 	if _, err := os.Stat(filepath.Join(e.home, "record_scope")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("premise: a store nobody consented on has a record_scope marker (%v)", err)
 	}
@@ -155,7 +158,7 @@ func TestRS1b_NoConsentComesBeforeOversize(t *testing.T) {
 		if oversize != watched {
 			t.Errorf("watched %v: the call's coverage claims record_oversize %v, want %v", watched, oversize, watched)
 		}
-		d, _ = call(t, watched, over, "/home/u/proj/x.go")
+		d, _ = call(t, watched, over, over+"/x.go")
 		wantNoPath(t, d, "cwd", want)
 		wantNoPath(t, d, "project", want)
 	}
@@ -170,7 +173,7 @@ func TestRS2_V5RecordsThem(t *testing.T) {
 	if err != nil || string(b) != "v5\n" {
 		t.Fatalf("after watch the marker holds %q (%v), want \"v5\\n\"", b, err)
 	}
-	edit, bash, exec := scopeCalls(t, e)
+	edit, bash, exec, path := scopeCalls(t, e)
 	for _, d := range []record{edit, bash} {
 		if _, ok := pathValue(t, d, "cwd"); !ok {
 			t.Errorf("declaration %s: cwd is null at v5", d.str("tool_use_id"))
@@ -184,7 +187,7 @@ func TestRS2_V5RecordsThem(t *testing.T) {
 			}
 		}
 	}
-	wantPath(t, edit, "file_path", "/home/u/proj/internal/x.go")
+	wantPath(t, edit, "file_path", path)
 	wantRecordedAnyway(t, edit, bash, exec)
 }
 

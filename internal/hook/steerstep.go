@@ -302,7 +302,9 @@ func (p *Post) judge(env SteerEnv) (steer.Context, verify.SteerView, bool) {
 	if key != "" {
 		idx, _ = verify.ReadIndex(verify.IndexPath(p.st.Root(), key))
 	}
-	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), pt, env.Now, p.event, p.toolUseID)
+	// The root is key, the cwd's, where p.sp was discovered: never this
+	// call's own Project, which may be another repository's (PROJECT-RESOLVE1).
+	view := verify.SteerAt(run, idx, p.sp, p.st.Key(), key, pt, env.Now, p.event, p.toolUseID)
 	view.Findings = append(view.Findings, rules.Findings...)
 	view.Dropped += rules.Dropped
 	view.Hits, view.AfterHits, view.ThenChecks = rules.Hits, rules.AfterHits, rules.ThenChecks

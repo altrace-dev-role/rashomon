@@ -74,15 +74,16 @@ type RuleHit struct {
 // both records store (store.CapID), so a call whose payload id is over the
 // cap still matches its own run. Evaluate is untouched: this is a view of
 // the same classification, beside the Stop view and its ledger. key is the
-// install key the gates sp declares are digested under (evaluate). Its facts
+// install key the gates sp declares are digested under (evaluate); root is
+// the project sp was discovered in, the post's cwd key (evaluate). Its facts
 // are regression-location's, stale-evidence's and the one-way doors this
 // call opened (integrityRaises, card P5B). stale-evidence is raised at a
 // PostToolUse only, under an index that has established a family (D164):
 // the call's declaration seq, which its writes carry, is looked up only
 // then.
-func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, event, toolUseID string) SteerView {
+func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, root string, pt Point, now time.Time, event, toolUseID string) SteerView {
 	var c classified
-	snap := evaluate(run, idx, sp, key, nil, pt, now, &c)
+	snap := evaluate(run, idx, sp, key, nil, root, pt, now, &c)
 	facts := regressionLocations(snap, c.runs, c.writes, pt, event, toolUseID)
 	var decl int64
 	if (c.learned || hasDeclaredRequired(snap)) && event == string(steer.EventPostToolUse) {
