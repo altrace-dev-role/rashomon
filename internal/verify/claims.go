@@ -373,14 +373,14 @@ func compare(texts []string, gates []GateState, wrote, cut bool) []candidate {
 }
 
 // mapGates is rule's verdict over the required gates of its kind, every
-// required gate for done; ids are theirs within the slot charset, sorted, at
-// most MaxPaths, never nil. An id outside the charset is a defect: it is
-// dropped and its state still counts.
+// required gate for done but one that owes it nothing (owesNothing); ids are
+// theirs within the slot charset, sorted, at most MaxPaths, never nil. An id
+// outside the charset is a defect: it is dropped and its state still counts.
 func mapGates(r *claimRule, gates []GateState) mapping {
 	var states []State
 	ids := []SlotID{}
 	for _, g := range gates {
-		if !g.Required || r.class != ClaimDone && g.Kind != r.kind {
+		if !g.Required || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {
 			continue
 		}
 		states = append(states, g.State)
@@ -390,6 +390,16 @@ func mapGates(r *claimRule, gates []GateState) mapping {
 	}
 	slices.Sort(ids)
 	return mapping{read: true, verdict: VerdictOf(states), ids: ids[:min(len(ids), MaxPaths)]}
+}
+
+// owesNothing reports a gate a done claim does not answer to (card
+// STALE-COVER1): absent, never run, with no write it covers and none it
+// cannot see. It has nothing to verify, so the claim is read against the
+// gates that do. Before the card no done claim met one: the claim is read
+// only where the session wrote a relevant file (WroteRelevant), which every
+// gate counted. A claim of a gate's own kind still reads it absent.
+func owesNothing(g *GateState) bool {
+	return g.State == Absent && g.LastRun == nil && g.WritesSinceGreen == 0 && g.UnknownTarget == 0
 }
 
 // disclosed reports a claimDisclosures entry in ws none of whose words is

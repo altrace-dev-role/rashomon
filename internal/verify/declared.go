@@ -163,13 +163,14 @@ func shellWord(w string) string {
 	return "'" + strings.ReplaceAll(w, "'", `'\''`) + "'"
 }
 
-// lineRuns is every Bash call with a picked execution, read as it ran
-// (newRun), in record order: what a declared gate matches, a line no runner
+// lineRuns is every Bash call with a picked execution, read as it ran and
+// as it ended (newRun), in record order: what a declared gate matches, a line no runner
 // names as well as classify's gate runs (G4). A rewritten line ran from a
 // location the record does not hold, as classify reads it, so no declared
 // gate takes it.
 func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 	var out []lineRun
+	ended := taskEnds(run)
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
 		e := picked[d.ToolUseID]
@@ -177,7 +178,7 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 			continue
 		}
 		masked, runner, _, _ := asRan(d, e)
-		g := newRun(d, e, masked, runner)
+		g := newRun(d, e, masked, runner, ended[d.ToolUseID])
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 		}
@@ -223,13 +224,14 @@ func nameOf(name *string) string {
 // the learned table's (stateOf), or Absent with none, under the gate's own
 // words. Its last run is marked OtherArgs where that run was bound at its
 // runner with words none of the gate's argv has, so no line says the gate
-// passed of a run that was not the gate's own (GATE-BIND1, D-c).
-func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
+// passed of a run that was not the gate's own (GATE-BIND1, D-c). root is
+// the project it is placed in, whose files it covers (STALE-COVER1).
+func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	var s GateState
 	if len(fr) > 0 {
-		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, at, tree)
+		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, root, at, tree)
 	} else {
-		s = absentState(writes, unnamed, at)
+		s = absentState(writes, unnamed, root, at)
 	}
 	s.Gate, s.Kind, s.Family, s.Source, s.Trust, s.Required = g.id, g.kind, familyDeclared, g.source, g.trust, g.required
 	if s.LastRun != nil {
@@ -243,16 +245,17 @@ func (g *declaredGate) state(fr []gateRun, writes []write, unnamed []int64, at i
 }
 
 // absentState is a declared gate's row with no run at the point (G8):
-// Absent, never_run_after_write where a relevant named write is at or before
-// at, every one counted as after a green that never was, else empty_run.
-func absentState(writes []write, unnamed []int64, at int64) GateState {
+// Absent, never_run_after_write where a relevant named write root covers is
+// at or before at, every one counted as after a green that never was, else
+// empty_run.
+func absentState(writes []write, unnamed []int64, root string, at int64) GateState {
 	var counted []write
 	for _, w := range writes {
-		if w.Path != nil && Relevant(w.Class) && w.Seq <= at {
+		if w.Path != nil && Relevant(w.Class) && w.Seq <= at && covers(root, &w) {
 			counted = append(counted, w)
 		}
 	}
-	g := GateState{State: Absent, Reason: EmptyRun, WritesSinceGreen: len(counted), LastWrite: lastWrite(counted)}
+	g := GateState{State: Absent, Reason: EmptyRun, WritesSinceGreen: len(counted), LastWrite: lastWrite(counted), root: root}
 	if len(counted) > 0 {
 		g.Reason = NeverRunAfterWrite
 	}
@@ -271,9 +274,10 @@ func absentState(writes []write, unnamed []int64, at int64) GateState {
 // unmatched run keeps its row. cands is lineRuns', runs classify's; a run
 // counts at the point when it landed at or before at, as in gateStates, and
 // a gate's runs are read in Seq order, so the result depends on the order of
-// no input; it is sorted by Gate then Family. Cost: O(G x R) over the
+// no input; it is sorted by Gate then Family. root is the project every
+// declared gate is placed in (declaredGates' root). Cost: O(G x R) over the
 // candidates, and a sort of each gate's runs.
-func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) []GateState {
+func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) []GateState {
 	matched := map[int64]bool{}
 	for i := range dgs {
 		var fr []gateRun
@@ -284,7 +288,7 @@ func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs [
 			}
 		}
 		slices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })
-		gates = append(gates, dgs[i].state(fr, writes, unnamed, at, tree))
+		gates = append(gates, dgs[i].state(fr, writes, unnamed, root, at, tree))
 	}
 	open := map[string]bool{}
 	for _, r := range runs {

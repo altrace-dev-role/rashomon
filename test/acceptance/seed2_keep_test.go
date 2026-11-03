@@ -59,7 +59,7 @@ func TestSEED2c_KeepCountsTheBeforeAndOnlyGrows(t *testing.T) {
 	writeSessionTranscript(t, e.configDir, "sess-2", stampedAt(seedSession(t, "sess-2"), installed.Add(-2*time.Hour))...)
 	writeSessionTranscript(t, e.configDir, "sess-3", stampedAt(seedSession(t, "sess-3"), installed.Add(time.Minute))...)
 
-	if res := e.run("", []string{"CLAUDECODE=1"}, "audit", "--keep"); res.exitCode == 0 || !strings.Contains(res.stderr, "agent session") {
+	if res := e.run("", []string{"CLAUDECODE=1"}, "audit", "--keep"); res.exitCode == 0 || !strings.Contains(res.stderr, "so only you can run it, in a terminal outside Claude Code: `rashomon audit --keep`. Nothing was kept.") {
 		t.Errorf("--keep in an agent session: exit %d stderr %q, want a refusal", res.exitCode, res.stderr)
 	}
 	if _, err := os.Lstat(filepath.Join(e.home, seed.KeptFile)); err == nil {

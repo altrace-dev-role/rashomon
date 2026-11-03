@@ -91,9 +91,11 @@ m("VER-1.7 the yet window is three words", C,
 m("VER-1.7 done fires without a write", C,
   '\t\tif r.class == ClaimDone && !wrote {\n\t\t\tcontinue\n\t\t}\n', '', "TestVER55_|TestVER59_")
 m("VER-1.7 a non-required gate counts", C,
-  '\t\tif !g.Required || r.class != ClaimDone && g.Kind != r.kind {\n', '\t\tif r.class != ClaimDone && g.Kind != r.kind {\n', "TestVER58_")
+  '\t\tif !g.Required || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n',
+  '\t\tif r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n', "TestVER58_")
 m("VER-1.7 done maps to its own kind", C,
-  '\t\tif !g.Required || r.class != ClaimDone && g.Kind != r.kind {\n', '\t\tif !g.Required || g.Kind != r.kind {\n', "TestVER55_|TestVER58_")
+  '\t\tif !g.Required || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n',
+  '\t\tif !g.Required || g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n', "TestVER55_|TestVER58_")
 m("VER-1.7 unknown never reaches the verdict", C,
   '\t\tstates = append(states, g.State)\n', '\t\tif g.State != Unknown {\n\t\t\tstates = append(states, g.State)\n\t\t}\n', "TestVER58_")
 m("VER-1.7 no_gate_known reads as green", C,

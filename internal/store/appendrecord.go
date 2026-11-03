@@ -31,6 +31,9 @@ type SeqRecord interface {
 // order rule's Then reads undecided where the After's line is recorded (v5).
 // Where lines are withheld (v4) a lost after_hit leaves the Then with none to
 // qualify it, a violation the rule's nudge or flag names; no block rests on it.
+// An outcome_join is a background command's end, which no other record
+// holds: losing one leaves the run as launched, moved to the background, as
+// before its writer (card BG-OUTCOME phase 1).
 func (s *Store) AppendRecord(sessionID string, rec SeqRecord) error {
 	if kind, version := rec.Kind(); !AcceptsKind(kind, version) {
 		return ErrUnknownKind
