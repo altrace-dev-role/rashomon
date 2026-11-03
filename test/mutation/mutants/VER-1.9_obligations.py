@@ -46,7 +46,8 @@ m("VER-1.9 a source outside the three keeps a met row", O,
 m("VER-1.9 watched met without the write between", O,
   '\treturn ObligationUnmet, [3]int64{w.red.Seq, w.green.Seq}, 2\n', '\treturn ObligationMet, [3]int64{w.red.Seq, w.green.Seq}, 2\n', "TestPG7b_")
 m("VER-1.9 watched met by a docs write", O,
-  '\t\tif x := &writes[i]; x.Path != nil && Relevant(x.Class) {\n', '\t\tif x := &writes[i]; x.Path != nil {\n', "TestPG7b_")
+  '\t\tif x := &writes[i]; x.Path != nil && Relevant(x.Class) && covers(root, x) {\n',
+  '\t\tif x := &writes[i]; x.Path != nil && covers(root, x) {\n', "TestPG7b_")
 m("VER-1.9 watched met by an in-flight write", O,
   '\tfor i := hi - 1; i >= 0 && writes[i].Seq > lo; i-- {\n', '\tfor i := hi - 1; i >= 0 && writes[i].Seq > min(lo, w.red.Seq); i-- {\n', "TestPG7b_")
 m("VER-1.9 watched row from another family's red", O,

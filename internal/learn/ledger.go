@@ -59,7 +59,8 @@ func Owns(name string, inProject bool) bool {
 
 // ErrActiveOverCap is Save's refusal: active.json would pass ActiveMaxBytes
 // with every demoted row dropped. Nothing is written; the old files stand.
-// ErrReadOnly is Save on a ledger OpenReadOnly returned: it never writes.
+// ErrReadOnly is Save or AppendLabel on a ledger OpenReadOnly returned: it
+// never writes.
 var ErrReadOnly = errors.New("learn: the ledger was opened read-only; nothing was written")
 
 var ErrActiveOverCap = errors.New("learn: active.json would pass 64 KiB with every demoted row dropped; nothing was written")
@@ -74,6 +75,13 @@ type Lesson struct {
 	// 0 for never. A quarantine sends the tier back to proposed and keeps it,
 	// so "approved now" reads the tier as well.
 	ApprovedUnixMS int64 `json:"approved_unix_ms,omitempty"`
+}
+
+// AwaitsApproval reports whether a person has yet to approve the lesson for
+// this build: it is proposed, or it holds an approved tier with no stamp,
+// which a build before the stamp wrote and Pick never sends (#156 D2).
+func (ls Lesson) AwaitsApproval() bool {
+	return ls.Tier == TierProposed || ls.ApprovedUnixMS == 0
 }
 
 // Label is one row of labels.ndjson: one fire of a lesson and what it came
@@ -348,15 +356,16 @@ func (l *Ledger) index(id string) int {
 	return slices.IndexFunc(l.file.Lessons, func(ls Lesson) bool { return ls.ID == id })
 }
 
-// Approve moves a proposed lesson to the tier its tally gives an approved
-// one and stamps now as its approval time. The caller has had a person type
+// Approve moves a lesson that awaits approval to the tier its tally gives an
+// approved one and stamps now as its approval time: a proposed lesson, or
+// one a build before the stamp approved. The caller has had a person type
 // the one-time code; this does not ask. The caller saves.
 func (l *Ledger) Approve(id string, now time.Time) error {
 	i := l.index(id)
 	if i < 0 {
 		return fmt.Errorf("no lesson %q", id)
 	}
-	if l.file.Lessons[i].Tier != TierProposed {
+	if !l.file.Lessons[i].AwaitsApproval() {
 		return fmt.Errorf("lesson %q is %s, not proposed; nothing to approve", id, l.file.Lessons[i].Tier)
 	}
 	l.file.Lessons[i].Tier = TierProbation.Next(l.tallies[id])
@@ -365,8 +374,30 @@ func (l *Ledger) Approve(id string, now time.Time) error {
 	return nil
 }
 
+// Withdraw sends an approved lesson back to proposed and clears its stamp,
+// so it leaves active.json and reaches the agent again only once a person
+// approves it (#156 D3). The caller has had a person type the one-time
+// code; the caller saves.
+func (l *Ledger) Withdraw(id string) error {
+	i := l.index(id)
+	if i < 0 {
+		return fmt.Errorf("no lesson %q", id)
+	}
+	if l.file.Lessons[i].Tier == TierProposed {
+		return fmt.Errorf("lesson %q is proposed; nothing to withdraw", id)
+	}
+	l.file.Lessons[i].Tier = TierProposed
+	l.file.Lessons[i].ApprovedUnixMS = 0
+	return nil
+}
+
 // AppendLabel appends one label row and saves: LABEL-WRITER1's entry.
 func (l *Ledger) AppendLabel(lb Label) error {
+	// Before labels.ndjson is opened: the row would land unsigned, Save would
+	// then refuse, and the next Open would quarantine every lesson.
+	if l.readOnly {
+		return ErrReadOnly
+	}
 	if l.index(lb.LessonID) < 0 || !slices.Contains(steer.AllLabels(), lb.Label) {
 		return fmt.Errorf("learn: label %q for lesson %q is not one this ledger takes", lb.Label, lb.LessonID)
 	}

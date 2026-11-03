@@ -1,0 +1,4 @@
+go test fuzz v1
+string("")
+[]byte("{\"command\": \"git push --force or\xff\x00in main\"}")
+uint16(29)

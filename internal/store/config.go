@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 const (
@@ -106,15 +108,12 @@ func ConfigReason(err error) string {
 }
 
 // ReadConfig reads root's config. An absent file is the zero Config and no
-// error, at the cost of one Lstat: the Stop hook and every post call this,
-// and most installs have none. A file that does not parse is an error, which
-// the caller decides how to read.
+// error, at the cost of one open that fails ENOENT (regfile.Open): the Stop
+// hook and every post call this, and most installs have none. A file that is
+// not a regular one, or does not parse, is an error, which the caller
+// decides how to read.
 func ReadConfig(root string) (Config, error) {
-	path := filepath.Join(root, FileConfig)
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		return Config{}, nil
-	}
-	f, err := os.Open(path)
+	f, err := regfile.Open(filepath.Join(root, FileConfig))
 	if errors.Is(err, fs.ErrNotExist) {
 		return Config{}, nil
 	}

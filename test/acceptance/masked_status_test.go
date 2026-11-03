@@ -99,6 +99,9 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 }
 
 // M-2: the benchmark's other wrappers, each under the same false summary.
+// Their output here prints no status line, so nothing is read from it and the
+// row stands; where the line prints the status it hid, the row is the run's
+// outcome (TestFF1_APrintedFailureIsTheRunsOutcome, STATUS-PROBE).
 func TestMasked_TheBenchmarksWrappersAreFlagged(t *testing.T) {
 	for _, cmd := range []string{
 		"go test ./... ; echo $?",

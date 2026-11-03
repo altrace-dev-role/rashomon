@@ -326,17 +326,17 @@ func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 // TestH31_ASilentTrailLeavesTheNamedHostInTheChain backs, whitespace-folded.
 //
 // The second claim names the v1.1.0 rendering ("0 allowed, 0 denied") and
-// says so, as the README does; the third names what a build from main
-// prints (see writeNono in internal/report/text.go), which the test above
+// says so, as the README does; the third names what v1.2.0-alpha.1 and main
+// print (see writeNono in internal/report/text.go), which the test above
 // asserts. The README scopes each reading to its version, so a claim that
 // drops the scope would pin a sentence true only of v1.1.0. When a release
-// ships the new wording, the README and these claims change together.
+// changes the wording again, the README and these claims change together.
 var readmeSilentTrailClaims = []string{
 	"The sandbox section has something to count only when nono filters the network.",
 	"In v1.1.0, with nono's `claude` profile, which leaves the network " +
 		"unfiltered, the trail holds no network event at all, and the section " +
 		"reads `0 allowed, 0 denied` however many hosts the session reached.",
-	"A build from `main` says `the trail holds no network events` instead.",
+	"From v1.2.0-alpha.1 on, and in `main`, it says `the trail holds no network events` instead.",
 	"An allowed `http://` request leaves nothing in the sandbox section.",
 	"`--chain` still lists its host under the call if the command named it",
 }

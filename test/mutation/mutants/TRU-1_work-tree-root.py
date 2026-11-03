@@ -6,7 +6,7 @@ m("TRU-1 the third question is never asked", "cmd/rashomon/watch.go",
   "TestTRU1_AStoreRoot")
 m("TRU-1 EOF after the name confirms it", "cmd/rashomon/watch.go",
   "\t\tif eof || strings.TrimSpace(reply) != filepath.Base(wt.top) {\n",
-  "\t\tif strings.TrimSpace(reply) != filepath.Base(wt.top) {\n",
+  "\t\tif eof && false || strings.TrimSpace(reply) != filepath.Base(wt.top) {\n",
   "TestTRU1_AStoreRoot")
 m("TRU-1 the name is matched without case", "cmd/rashomon/watch.go",
   "\t\tif eof || strings.TrimSpace(reply) != filepath.Base(wt.top) {\n",
@@ -44,7 +44,7 @@ m("TRU-1 SetRootInWorkTree creates a missing install.json", "internal/store/inst
   "\tb, err := os.ReadFile(path)\n\tif errors.Is(err, os.ErrNotExist) {\n\t\tb, err = []byte(`{\"install_id\":\"x\"}`), nil\n\t}\n",
   "TestTRU1_")
 m("TRU-1 a work tree confirmed before is asked about again", "cmd/rashomon/watch.go",
-  "\t\tif recorded == plan.workTree {\n", "\t\tif false {\n",
+  "\t\tif recorded == plan.workTree {\n", "\t\tif recorded == plan.workTree && false {\n",
   "TestTRU1_AStoreRoot")
 m("TRU-1 any recorded work tree counts as this one", "cmd/rashomon/watch.go",
   "\t\tif recorded == plan.workTree {\n", "\t\tif recorded != \"\" {\n",

@@ -25,10 +25,12 @@ func mo1Word(p *string) string {
 }
 
 // TestMO1_RulesVersionIsEleven: the version the runner's name and the masking
-// stage are decided at. A literal, not a comparison with the pins' own key.
+// stage are decided at. A literal, not a comparison with the pins' own key;
+// a later version keeps them, so the build's own is at least it.
 func TestMO1_RulesVersionIsEleven(t *testing.T) {
-	if RulesVersion != 11 {
-		t.Errorf("RulesVersion = %d, want 11 (MASKED-OUTCOME1: runner_name and masked_by)", RulesVersion)
+	if OutputOutcomeRulesVersion != 11 || RulesVersion < OutputOutcomeRulesVersion {
+		t.Errorf("OutputOutcomeRulesVersion = %d, RulesVersion = %d, want 11 and at least 11 (MASKED-OUTCOME1: runner_name and masked_by)",
+			OutputOutcomeRulesVersion, RulesVersion)
 	}
 }
 

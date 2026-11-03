@@ -20,7 +20,8 @@ m("FF the separator after cd is found without the command-end scan", "internal/s
 # Removed by 5.15 (RulesVersion 9): the program stream holds no comment token (lex), so the branch it broke was
 # dead and is deleted: "FF a separator in a comment after cd is followed" (directoryChanges).
 m("FF a refused turn is never reported", "internal/recap/state.go",
-  "\treturn s.Checked[sessionID] != promptID", "\treturn s.Checked[sessionID] != promptID && false",
+  "\treturn promptID != \"\" && s.Checked[sessionID] != promptID, s.Owed[sessionID]",
+  "\treturn promptID != \"\" && s.Checked[sessionID] != promptID && false, s.Owed[sessionID]",
   "TestH106_")
 m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
   "\t\ts.Checked[sessionID] = promptID\n", "\t\t_ = promptID\n",

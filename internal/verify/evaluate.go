@@ -13,25 +13,15 @@ import (
 // IndexPath's, and index.go reads, observes and writes it. Entries is sorted
 // by Family, and never null in the encoding.
 //
-// Last and Prior are the project's last two checkpoints by session, which
-// the Stop that cuts one notes in the same write: Last the newest, Prior the
-// newest of a different session. SessionStart reads them to name the
-// previous session in one small read instead of walking the store (card
-// REPORT1b); a file written before they existed has neither, and a reader
-// that finds none falls back, never guesses.
+// Its keys, here and in IndexEntry, are v1.2.0-alpha.1's and no other:
+// alpha.1 reads the index with DisallowUnknownFields and its Stop writes a
+// fresh one over a file it cannot read, so a key added here costs a person
+// who goes back to alpha.1 the project's learned gates. A new key goes in a
+// file of its own, as the last two checkpoints did (Checkpoints,
+// INDEX-POINTER-FILE1).
 type ProjectIndex struct {
-	ProjectKey string          `json:"project_key"`
-	Entries    []IndexEntry    `json:"entries"`
-	Last       *LastCheckpoint `json:"last,omitempty"`
-	Prior      *LastCheckpoint `json:"prior,omitempty"`
-}
-
-// LastCheckpoint names a checkpoint record: its session, its point seq and
-// when it was recorded.
-type LastCheckpoint struct {
-	SessionID string `json:"session_id"`
-	PointSeq  int64  `json:"point_seq"`
-	AtMS      int64  `json:"at_unix_ms"`
+	ProjectKey string       `json:"project_key"`
+	Entries    []IndexEntry `json:"entries"`
 }
 
 // Evaluate is the evaluator of 2.2.4: a pure fold from the record, the index,
@@ -68,7 +58,7 @@ type LastCheckpoint struct {
 // learned ones alone. EvaluateStop and SteerAt take the key and join them
 // (card DECLARED-GATES1).
 func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, now time.Time) Snapshot {
-	return evaluate(run, idx, sp, nil, pt, now, &classified{})
+	return evaluate(run, idx, sp, nil, nil, "", pt, now, &classified{})
 }
 
 // classified is what evaluate classified beside the snapshot, for the Stop
@@ -83,23 +73,40 @@ type classified struct {
 	// learned is indexLearned's answer at the point, which stale-evidence
 	// reads: nothing raises it before a family is established.
 	learned bool
+	// inferred is the inferred gate's runner name from the derivation that
+	// keyed its row, which the Stop names the row by; "" for none.
+	inferred string
 }
 
 // evaluate is Evaluate, which also fills c, and joins the gates sp declares
-// under key, the install key (declaredGates), to the learned rows after the
-// index has set theirs required or not: a declared row's Required is its
-// spec's (G2).
-func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, pt Point, now time.Time, c *classified) Snapshot {
+// under key, the install key (declaredGates), and the inferred gate inf
+// (inferredGate; nil for none, as every caller but the Stop's passes), to
+// the learned rows after the index has set theirs required or not: a
+// declared row's Required is its spec's (G2), and the inferred row's true.
+//
+// root is the project the caller read sp and inf from, the Stop's and the
+// post's cwd key (card PROJECT-RESOLVE1): the snapshot's ProjectRoot, and
+// so where every declared and inferred gate is placed. A declaration's
+// Project is the repository that one call ran in, so the latest one's is
+// not the turn's: a last `git -C b status` would move a's gates to b. ""
+// takes the latest declaration's (projectRoot, VER47), which only a caller
+// with no cwd, or Evaluate's learned rows alone, takes. A record that names
+// no project at all (v4 withholds it) keeps "": the snapshot, its steer
+// line and its checkpoint follow the record (A3, TestSTR43_).
+func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, inf *InferredGate, root string, pt Point, now time.Time, c *classified) Snapshot {
 	if run == nil {
 		run = &store.Run{}
 	}
 	at := pt.Seq
+	if latest := projectRoot(run.Declarations, at); root == "" || latest == "" {
+		root = latest
+	}
 	snap := Snapshot{
 		VerifyVersion:   Version,
 		RulesVersion:    RulesVersion,
 		PracticeVersion: PracticeVersion,
 		Point:           pt,
-		ProjectRoot:     projectRoot(run.Declarations, at),
+		ProjectRoot:     root,
 		Spec:            specInfo(sp),
 		Gates:           []GateState{},
 		Claims:          []ClaimVerdict{},
@@ -114,21 +121,26 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 		return snap
 	}
 	picked := pickExecutions(run)
-	runs, writes, unnamed, rewritten := classifyWith(run, picked)
+	runs, writes, unnamed, rewritten, keys := classifyWith(run, picked)
 	c.runs, c.writes, c.unnamed, c.rewritten = runs, writes, unnamed, rewritten
-	snap.Gates = gateStates(runs, writes, unnamed, at, pt.Tree)
+	snap.Gates = gateStates(runs, writes, unnamed, keys, at, pt.Tree)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
 	c.learned = learned
 	for i := range snap.Gates {
 		snap.Gates[i].Required = !learned || idx.Required(snap.Gates[i].Family, nowMS)
 	}
-	if dgs := declaredGates(sp, key, snap.ProjectRoot); len(dgs) > 0 {
-		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, at, pt.Tree)
+	dgs := declaredGates(sp, key, snap.ProjectRoot)
+	if g, name, ok := inferredGate(inf, key, snap.ProjectRoot); ok {
+		dgs = append(dgs, g)
+		c.inferred = name
+	}
+	if len(dgs) > 0 {
+		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, snap.ProjectRoot, at, pt.Tree)
 	}
 	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)
 	snap.SpecVerdicts = ruleVerdicts(sp, run, picked, c, &snap, sp != nil && wroteIn(writes, at))
-	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreen(snap.Gates, len(snap.Integrity.Unresolved)+bindingViolations(snap.SpecVerdicts))
+	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreenOf(&snap)
 	return snap
 }
 
@@ -192,14 +204,31 @@ func projectRoot(decls []store.Declaration, at int64) string {
 	return *root
 }
 
+// recordFindings is the snapshot's record findings: its unresolved integrity
+// checks and its binding rules' violations, the k of the findings row and
+// the count recordGreen takes.
+func recordFindings(snap *Snapshot) int {
+	return len(snap.Integrity.Unresolved) + bindingViolations(snap.SpecVerdicts)
+}
+
+// recordGreenOf is recordGreen over the snapshot's gates and its record
+// findings: the one reading evaluate and pinRequired (the replay's pinned
+// Required) both take, so the live Stop and the ledger count the same thing
+// (#173 F4, card SPEC-RULES-STOP1).
+func recordGreenOf(snap *Snapshot) (bool, *int64) {
+	return recordGreen(snap.Gates, recordFindings(snap))
+}
+
 // recordGreen is whether the record backs a "done" at the point (D36): no
 // integrity check unresolved and no binding rule violated (unresolved is
 // their count; archive 20.2.4's record-green point needs the integrity
 // component at 1, PF-IV3, and no spec violation, PF-PG8), at least
 // one required gate, and every required gate Green; and then the latest
 // LastGreen among them, else nil. A gate that is not required is reported
-// with its state and never blocks. Green with no LastGreen is a gate
-// gateStates never builds, and it fails closed, as TurnSummary reads it.
+// with its state and never blocks; nor does one not the Stop's turn's
+// (offTurn, card F2), which only TurnSummary's read meets. Green with no
+// LastGreen is a gate gateStates never builds, and it fails closed, as
+// TurnSummary reads it.
 func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
 	if unresolved > 0 {
 		return false, nil
@@ -207,7 +236,7 @@ func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
 	var at int64
 	n := 0
 	for _, g := range gates {
-		if !g.Required {
+		if !g.Required || g.offTurn {
 			continue
 		}
 		if g.State != Green || g.LastGreen == nil {
@@ -276,6 +305,12 @@ const SummaryMaxBytes = 16 << 10
 type Summary struct {
 	Row      Row
 	Sentence string
+	// Findings is k, the record findings at the point (recordFindings). The
+	// findings row's Sentence counts them, and every other row that prints
+	// ends with the same clause when k > 0 (FindingsClause; card
+	// SPEC-RULES-STOP1, D-f), so a recorded violation the turn's gates did
+	// not reach still reads on the line.
+	Findings int
 }
 
 const sentenceRecordingIncomplete = "recording incomplete for this turn; verification state unknown"
@@ -317,15 +352,30 @@ func Advisory(gates []GateState) bool {
 }
 
 // TurnGate reports whether g is a turn gate as TurnSummary reads one: a
-// required gate, or, when the gates are advisory, a learned one. The value
-// line names its gates by the same rule.
+// required gate, or, when the gates are advisory, a learned one; and at
+// Stop, one a call of the turn ran in the project of (offTurn, card F2), so
+// a gate masked in another worktree hours before names no row here. The
+// value line names its gates by the same rule.
 func TurnGate(g GateState, advisory bool) bool {
-	return g.Required || advisory && g.Source == sourceLearned
+	return !g.offTurn && (g.Required || advisory && g.Source == sourceLearned)
 }
 
 // Advisory reports whether the row was read from advisory gates alone, which
 // its rendered sentence says (D38).
 func (s Summary) Advisory() bool { return s.Sentence == sentenceAdvisoryOnly }
+
+// FindingsClause is the count clause a row other than findings ends with when
+// the record holds k > 0 findings (D-f): a trusted protect_path write in a
+// project with no gate, or a forbidden call beside a red gate, is counted on
+// the line its row prints. The findings row's Sentence is that clause
+// already. TurnSummary returns the row with no line before it counts k, and
+// verified never carries one: record-green needs k = 0.
+func (s Summary) FindingsClause() string {
+	if s.Findings == 0 || s.Row == RowFindings {
+		return ""
+	}
+	return findingsSentence(s.Findings)
+}
 
 // TurnSummary picks the value line's row from the turn gates by the one Order
 // (VER-65; VER 11 (a)). P-07 builds the row choice over the snapshot's
@@ -348,13 +398,15 @@ func (s Summary) Advisory() bool { return s.Sentence == sentenceAdvisoryOnly }
 // sentence counts them, k = len(Integrity.Unresolved) plus the violations of
 // trusted and managed rules (findingsSentence, bindingViolations). While the
 // window is the run (D40), k counts the session's, not only this turn's,
-// until 1.8w.
+// until 1.8w. Every row that prints carries k as Findings, and a row other
+// than findings ends with its clause when k > 0 (FindingsClause, D-f).
 func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	if turn.Writes == 0 && turn.GateRuns == 0 {
 		return Summary{Row: RowNone}
 	}
+	k := recordFindings(&snap)
 	if snap.Recording != Complete {
-		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete}
+		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete, Findings: k}
 	}
 	advisory := Advisory(snap.Gates)
 	var states []State
@@ -388,12 +440,18 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		}
 	}
 	worst, ok := Worst(states)
+	// The record-green point the row reads is over the turn's gates (card
+	// F2): the snapshot's, over every gate, until one is not the turn's.
+	green := snap.RecordGreen
+	if slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.offTurn }) {
+		green, _ = recordGreen(snap.Gates, k)
+	}
 	var row Row
 	switch {
 	case !ok && !defect && turn.Writes == 0:
 		return Summary{Row: RowNone}
 	case !ok && !defect:
-		return Summary{Row: RowNoGate}
+		return Summary{Row: RowNoGate, Findings: k}
 	case ok && worst != Green:
 		row = rowFor(worst)
 	case defect:
@@ -404,17 +462,17 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		row = RowUnverified // the cap: an advisory green never verifies
 	case turn.UnnamedWriteSeq > earliestGreen:
 		row = RowUnnamedWrite
-	case snap.RecordGreen:
+	case green:
 		row = RowVerified
 	default:
 		row = RowFindings
 	}
-	s := Summary{Row: row}
+	s := Summary{Row: row, Findings: k}
 	switch {
 	case advisory:
 		s.Sentence = sentenceAdvisoryOnly
 	case row == RowFindings:
-		s.Sentence = findingsSentence(len(snap.Integrity.Unresolved) + bindingViolations(snap.SpecVerdicts))
+		s.Sentence = findingsSentence(k)
 	}
 	return s
 }
