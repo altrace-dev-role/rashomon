@@ -87,6 +87,11 @@ type token struct {
 	// one word to zsh only because nothing separates its pieces. The text of
 	// neither token says which. False for a line's first token.
 	glued bool
+	// litDollar: a $ in the text is one the shell prints as it is -- inside
+	// single quotes or a $'...' string, or escaped by a backslash -- so the
+	// text's $? or $NAME there is no expansion (PrintedStatus). Beside the
+	// other flags, in their word of padding.
+	litDollar bool
 	// ticks: how many backticks in the word open or close a command
 	// substitution -- unquoted or inside double quotes, and not escaped. An
 	// odd count leaves one open at the word's end. '`' and \` are in the
@@ -113,6 +118,8 @@ type word struct {
 	quotedAt int // token.quotedAt: -1 until quoting touches the word
 	opaque   bool
 	ticks    int
+	// litDollar: token.litDollar.
+	litDollar bool
 }
 
 // newWord is the state before a word's first byte.
@@ -388,7 +395,7 @@ func (l *lexer) unterminated() error {
 // flush emits the current word, if one was started.
 func (l *lexer) flush() {
 	if w := &l.w; w.started {
-		l.toks = append(l.toks, token{text: w.string(l.s), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: l.sawNL, glued: w.glued, ticks: w.ticks})
+		l.toks = append(l.toks, token{text: w.string(l.s), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: l.sawNL, glued: w.glued, ticks: w.ticks, litDollar: w.litDollar})
 		l.expanded = l.expanded || w.opaque
 		l.sawNL, l.gap = false, false
 		w.reset()
@@ -445,6 +452,7 @@ func (l *lexer) backslash(i int) (int, error) {
 	if l.s[i] != '\n' { // a backslash-newline is a line continuation
 		l.begin()
 		l.markQuoted()
+		l.w.litDollar = l.w.litDollar || l.s[i] == '$'
 		l.w.add(l.s, i, i+1)
 	}
 	return i, nil
@@ -468,6 +476,7 @@ func (l *lexer) single(i int) (int, error) {
 	}
 	l.begin()
 	l.markQuoted()
+	l.w.litDollar = l.w.litDollar || strings.IndexByte(s[i+1:i+1+j], '$') >= 0
 	l.w.add(s, i+1, i+1+j)
 	return i + j + 1, nil
 }
@@ -491,6 +500,7 @@ func (l *lexer) double(i int) (int, error) {
 		if s[i] == '\\' && i+1 < len(s) {
 			switch n := s[i+1]; n {
 			case '"', '\\', '$', '`':
+				w.litDollar = w.litDollar || n == '$'
 				w.add(s, i+1, i+2)
 				i++
 				continue

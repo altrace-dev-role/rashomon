@@ -325,7 +325,7 @@ func TestSR1z_ACallIsReadOnlyAsFarAsARuleReadsIt(t *testing.T) {
 			}
 			p := f.call("toolu_r", c.tool, input, 0)
 			p.sp = DiscoverSpec(p.cwd, "", "", TrustedRoot{})
-			got := p.ruleCall()
+			got := p.ruleCall(nil)
 			if (got.Command != "") != c.command || (got.FilePath != "") != c.path || (got.Project != "") != c.key {
 				t.Errorf("ruleCall read command %q, path %q, project %q; want command %v, path %v, project %v",
 					got.Command, got.FilePath, got.Project, c.command, c.path, c.key)
@@ -337,7 +337,73 @@ func TestSR1z_ACallIsReadOnlyAsFarAsARuleReadsIt(t *testing.T) {
 	}
 	f := newSRFix(t, srSpec(srNoForce))
 	p := f.call("toolu_r", "Bash", push, 0)
-	if got := p.ruleCall(); got.Command != "" {
+	if got := p.ruleCall(nil); got.Command != "" {
 		t.Errorf("with no spec discovered, ruleCall read %q", got.Command)
+	}
+}
+
+// srTestFirst forbids a git push with no earlier green go test.
+const srTestFirst = `{"id": "test-first", "kind": "order", "then": {"argv": ["git", "push"]}, "after": {"argv": ["go", "test"]}, "invalidated_by": ["**/*.go"], "why": "push only tested code", "hard_control": "CI"}`
+
+// TestSR1ah_AnOrderRuleReadsTheRunAtItsThenCall (card SPEC-RULES1 1b, #216
+// ruling 1): a Bash call of a spec that declares an order rule carries its
+// tool_use_id, its line read once and, where the line may run the rule's
+// then or its after, the run (read for the rule where no step read one): the
+// Then to be judged against the after_hit records, the After for its hit's
+// directory. A call that touches neither, a file tool's, and a call of a spec
+// without an order rule carry none. A git push with no after_hit before it is
+// a finding though the record holds no command line (the call's own line is
+// the payload's); one with a hit is not; and a run that cannot be read
+// raises nothing, never a finding on what the record does not show.
+func TestSR1ah_AnOrderRuleReadsTheRunAtItsThenCall(t *testing.T) {
+	push := map[string]any{"command": "git push origin main"}
+	f := newSRFix(t, srSpec(srTestFirst))
+	a := f.call("toolu_a", "Bash", map[string]any{"command": "go build ./..."}, 0)
+	a.sp = DiscoverSpec(a.cwd, "", "", TrustedRoot{})
+	if got := a.ruleCall(nil); got.Run != nil || !got.CmdsRead {
+		t.Errorf("a call that is neither the then nor the after carried run %v, cmds read %v, want no run and its line read", got.Run, got.CmdsRead)
+	}
+	p := f.call("toolu_b", "Bash", push, 0)
+	p.sp = DiscoverSpec(p.cwd, "", "", TrustedRoot{})
+	got := p.ruleCall(nil)
+	if got.Run == nil || got.ToolUseID != "toolu_b" || len(got.Run.Declarations) != 2 {
+		t.Fatalf("ruleCall carried run %v and id %q, want the two-call run and toolu_b", got.Run, got.ToolUseID)
+	}
+	if _, view, _ := p.judge(stEnv(2)); len(view.Findings) != 1 {
+		t.Errorf("a push with no hit before it: findings %+v, want one", view.Findings)
+	}
+	g := newSRFix(t, srSpec(srTestFirst))
+	tst := g.call("toolu_a", "Bash", map[string]any{"command": "go test ./..."}, 0)
+	tst.sp = DiscoverSpec(tst.cwd, "", "", TrustedRoot{})
+	if tst.ruleCall(nil).Run == nil {
+		t.Error("an after call carried no run, so its hit has no directory")
+	}
+	tst.Steer(stEnv(2))
+	q := g.call("toolu_b", "Bash", push, 0)
+	if _, view, _ := q.judge(stEnv(2)); len(view.Findings) != 0 {
+		t.Errorf("a push after a go test's hit raised %+v", view.Findings)
+	}
+	edit := f.call("toolu_c", "Edit", map[string]any{"file_path": filepath.Join(f.cwd, "a.go"), "old_string": "a", "new_string": "b"}, 0)
+	edit.sp = p.sp
+	if edit.ruleCall(nil).Run != nil {
+		t.Error("a file tool's call carried a run")
+	}
+	n := newSRFix(t, srSpec(srNoForce))
+	nq := n.call("toolu_a", "Bash", push, 0)
+	nq.sp = DiscoverSpec(nq.cwd, "", "", TrustedRoot{})
+	if nq.ruleCall(nil).Run != nil {
+		t.Error("a spec with no order rule carried a run")
+	}
+	h := newSRFix(t, srSpec(srTestFirst))
+	r := h.call("toolu_a", "Bash", push, 0)
+	dir := h.st.RunDir(stSession)
+	if err := os.Rename(dir, dir+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, view, _ := r.judge(stEnv(0)); len(view.Findings) != 0 {
+		t.Errorf("judge over an unreadable run raised %+v", view.Findings)
 	}
 }
