@@ -268,19 +268,20 @@ func nameOf(name *string) string {
 // words. Its last run is marked OtherArgs where that run was bound at its
 // runner with words none of the gate's argv has, so no line says the gate
 // passed of a run that was not the gate's own (GATE-BIND1, D-c); a wrapped
-// run carries Wrapped instead.
+// run carries Wrapped instead. root is the project it is placed in, whose
+// files it covers (STALE-COVER1).
 //
 // unread is the last wrapper call at the point the gate bound nothing of, nil
 // with none. Where it follows the last edit the state counts and the gate
 // would read absent or stale, the gate is Unknown, OutcomeUnknown, and its
 // last run is that call, marked unread: the call may have run the gate and
 // its output does not say, so "not run" would be a guess (WRAPPER-RUN1, D5).
-func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
+func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	var s GateState
 	if len(fr) > 0 {
-		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, at, tree)
+		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, root, at, tree)
 	} else {
-		s = absentState(writes, unnamed, at)
+		s = absentState(writes, unnamed, root, at)
 	}
 	s.Gate, s.Kind, s.Family, s.Source, s.Trust, s.Required = g.id, g.kind, familyDeclared, g.source, g.trust, g.required
 	if s.LastRun != nil {
@@ -298,16 +299,17 @@ func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unna
 }
 
 // absentState is a declared gate's row with no run at the point (G8):
-// Absent, never_run_after_write where a relevant named write is at or before
-// at, every one counted as after a green that never was, else empty_run.
-func absentState(writes []write, unnamed []int64, at int64) GateState {
+// Absent, never_run_after_write where a relevant named write root covers is
+// at or before at, every one counted as after a green that never was, else
+// empty_run.
+func absentState(writes []write, unnamed []int64, root string, at int64) GateState {
 	var counted []write
 	for _, w := range writes {
-		if w.Path != nil && Relevant(w.Class) && w.Seq <= at {
+		if w.Path != nil && Relevant(w.Class) && w.Seq <= at && covers(root, &w) {
 			counted = append(counted, w)
 		}
 	}
-	g := GateState{State: Absent, Reason: EmptyRun, WritesSinceGreen: len(counted), LastWrite: lastWrite(counted)}
+	g := GateState{State: Absent, Reason: EmptyRun, WritesSinceGreen: len(counted), LastWrite: lastWrite(counted), root: root}
 	if len(counted) > 0 {
 		g.Reason = NeverRunAfterWrite
 	}
@@ -326,9 +328,10 @@ func absentState(writes []write, unnamed []int64, at int64) GateState {
 // unmatched run keeps its row. cands is lineRuns', runs classify's; a run
 // counts at the point when it landed at or before at, as in gateStates, and
 // a gate's runs are read in Seq order, so the result depends on the order of
-// no input; it is sorted by Gate then Family. Cost: O(G x R) over the
+// no input; it is sorted by Gate then Family. root is the project every
+// declared gate is placed in (declaredGates' root). Cost: O(G x R) over the
 // candidates, and a sort of each gate's runs.
-func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) []GateState {
+func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) []GateState {
 	matched := map[int64]bool{}
 	for i := range dgs {
 		var fr []gateRun
@@ -352,7 +355,7 @@ func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs [
 			matched[c.Seq] = true
 		}
 		slices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })
-		gates = append(gates, dgs[i].state(fr, unread, writes, unnamed, at, tree))
+		gates = append(gates, dgs[i].state(fr, unread, writes, unnamed, root, at, tree))
 	}
 	open := map[string]bool{}
 	for _, r := range runs {

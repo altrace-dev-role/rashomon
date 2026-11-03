@@ -32,8 +32,11 @@ import (
 // (WRAPPER-RUN1) -- stdout, then stderr where stdout gives no summary, or a
 // failure event's error after its first line -- decoded into a buffer local
 // to that call, at most gateout.MaxScanBytes of it, cleared before it
-// returns. What survives is gate_output's three closed words, for a wrapper
-// only where a runner's row read it; no other call's output is read at all.
+// returns; and, where a gate run's line hid its runner's status,
+// printedOutput reads its stdout the same way for the status the line
+// printed (STATUS-PROBE). What survives is gate_output's three closed words,
+// for a wrapper only where a runner's row read it; no other call's output is
+// read at all.
 //
 // tool_input IS held, as a subslice of the payload, for the executed digest:
 // the post-rewrite input is the only evidence a rewriting hook leaves
@@ -335,6 +338,16 @@ func (p *Post) capture(payload *hookio.Payload) error {
 			}
 		}
 		rec.GateOutput = &out
+		// A line that hid its runner's status and then printed it (`make
+		// check; echo "EXIT: $?"`): the printed status is the run's outcome,
+		// over anything a summary in the output said (STATUS-PROBE). Only on
+		// a success event in the foreground: a failure's exit is the line's
+		// own, and a backgrounded call's output is the launch's.
+		if pl.HookEventName != FailureEvent && !rec.Backgrounded && shape.StatusHidden(s.StatusMasked) {
+			if printed, ok := printedOutput(payload, pl.ToolName, pl.ToolInput, start.Add(gateOutputBudget), p.now); ok {
+				rec.GateOutput = &printed
+			}
+		}
 	} else if shape.WrapperRun(pl.ToolName, s.Program, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
 		if out := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(out.Parser) {
 			rec.GateOutput = &out

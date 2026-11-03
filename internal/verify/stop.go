@@ -122,9 +122,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
-		counted.runs, counted.writes, counted.unnamed, counted.rewritten = classifyWith(run, pickExecutions(run))
+		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
 	}
-	turn := countTurn(run, counted, in.PromptID, pt.Seq)
+	turn := countTurn(run, counted, in.PromptID, pt.Seq, gateRoots(&snap))
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
 	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {
@@ -200,9 +200,11 @@ func inferredProgram(programs map[string]string, name string) {
 // selects the prompt digest's selectTurn selects, the one whose first
 // declaration is latest (D72); a run with no prompt id has an empty window,
 // never the whole run. Writes are the relevant named writes, as gateStates
-// counts them. Cost: one pass over the declarations, then one over each
-// classified slice, O(D + R + W + U).
-func countTurn(run *store.Run, c classified, promptID string, at int64) TurnCounts {
+// counts them: those a gate of roots covers (gateRoots; nil counts every
+// one), so a turn that wrote only outside its project edited nothing a gate
+// checks (card STALE-COVER1). Cost: one pass over the declarations, then one
+// over each classified slice, O(D + R + W x G + U).
+func countTurn(run *store.Run, c classified, promptID string, at int64, roots []string) TurnCounts {
 	if promptID == "" {
 		promptID = latestPrompt(run.Declarations)
 	}
@@ -221,7 +223,7 @@ func countTurn(run *store.Run, c classified, promptID string, at int64) TurnCoun
 	}
 	paths := map[string]bool{}
 	for _, w := range c.writes {
-		if w.Path != nil && Relevant(w.Class) && window[w.Seq] {
+		if w.Path != nil && Relevant(w.Class) && window[w.Seq] && coveredByAny(roots, &w) {
 			t.Writes++
 			paths[*w.Path] = true
 			t.LastWriteSeq = max(t.LastWriteSeq, w.Seq)

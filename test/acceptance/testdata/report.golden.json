@@ -299,7 +299,8 @@
         "findings": [],
         "checks": [],
         "lessons": null,
-        "unknown": []
+        "unknown": [],
+        "mistakes": null
       },
       "knowledge": null
     }
