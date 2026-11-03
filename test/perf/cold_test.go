@@ -80,9 +80,11 @@ const (
 // cache, so at GOMAXPROCS=3 eleven of twenty runs read 153.3K to 154.7K and
 // nine read 158.4K to 161.5K (pe1-gmp; CI macos read [163256 156312
 // 156152]), and TestColdAllocBudget's minimum of three went red whenever all
-// three drew the high level. TestColdCall pins one P for its subtest, so ten
-// fresh runs sit within coldLevelSpreadBytes. Break: the pin dropped, and
-// ten runs draw both levels.
+// three drew the high level. TestColdCall pins one P for its subtest and
+// coldCallAllocOnce starts its process at one P, so ten fresh runs sit
+// within coldLevelSpreadBytes. Break: both pins dropped, and ten runs draw
+// both levels; the subtest's pin alone still drew one high run in ten at
+// eight P (pe1-cold2: 160784 beside nine at 155144 to 155976).
 func TestPE1_ColdCallIsOneLevel(t *testing.T) {
 	const id = "post.bash_short"
 	all := make([]int64, coldLevelRuns)
@@ -117,10 +119,16 @@ func coldCallAlloc(t *testing.T, id string) (int64, []int64) {
 
 // coldCallAllocOnce runs cmd/rashomon's TestColdCall/<id> subtest in its
 // own `go test` process and returns the one TotalAlloc delta it printed.
+// The process starts at one P (PERF-EDGE1): TestColdCall's pin holds from
+// its subtest's first line, but the runtime and the testing package start at
+// every P the machine has, and a start at one P, GOMAXPROCS=1 in the
+// environment, drew no high run in thirty (pe1-gmp, pe1-cold2). -exec starts
+// the test binary through env, so the go command still builds at the
+// machine's P.
 func coldCallAllocOnce(t *testing.T, id string) int64 {
 	t.Helper()
 	pattern := "TestColdCall/" + regexp.QuoteMeta(id)
-	cmd := exec.Command("go", "test", "-run", pattern, "-v", "-count=1", "./cmd/rashomon")
+	cmd := exec.Command("go", "test", "-exec", "env GOMAXPROCS=1", "-run", pattern, "-v", "-count=1", "./cmd/rashomon")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
