@@ -85,6 +85,7 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/gap/properties/type", "store.TypeGap", []string{store.TypeGap}, false},
 			{"/$defs/terminal/properties/type", "store.TypeTerminal", []string{store.TypeTerminal}, false},
 			{"/$defs/spec_event/properties/type", "store.TypeSpecEvent", []string{store.TypeSpecEvent}, false},
+			{"/$defs/after_hit/properties/type", "store.TypeAfterHit", []string{store.TypeAfterHit}, false},
 		}},
 		{"outcome", []enumRow{
 			{"/$defs/execution/properties/outcome", "store.Exec*",
@@ -113,6 +114,8 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/terminal/properties/schema_version", callRange, acceptedVersions(t, store.TypeTerminal), false},
 			{"/$defs/spec_event/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for spec_event",
 				eventVersions(t, store.TypeSpecEvent), false},
+			{"/$defs/after_hit/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for after_hit",
+				eventVersions(t, store.TypeAfterHit), false},
 		}},
 		{"hook_entry", []enumRow{
 			// EntryPresent has no live writer and stays for the version 2

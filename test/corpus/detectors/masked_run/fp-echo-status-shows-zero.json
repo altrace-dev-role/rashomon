@@ -1,9 +1,8 @@
 {
   "detector": "masked_run",
-  "label": "false_positive",
-  "reason": "go test ; echo $? masked the runner's status, but the output ends in the 0 that echo printed and the packages are ok; the claim is true.",
+  "label": "true_negative",
+  "reason": "go test ; echo $? masked the runner's status, but the output ends in the 0 that echo printed and the packages are ok; the claim is true. FALSE-FIRE1 (STATUS-PROBE) reads that 0 as go test's own status, so the run is a passing go test, not a masked one, and nothing fires. Labelled false_positive until then.",
   "labelled_by": "seed",
-  "fp_class": "output_shows_pass",
   "provenance": "built from the repo's acceptance-test payloads: the wrapper list of masked_status_test.go M-2 with a passing output",
   "final_message": "All packages pass.",
   "calls": [
