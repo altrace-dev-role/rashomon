@@ -12,6 +12,24 @@ import (
 // MaxScanBytes bounds the runner output scanned for a gate result (D22).
 const MaxScanBytes = 1 << 20
 
+// The gate_output kinds a masked runner's printed exit status gives
+// (STATUS-PROBE): the status the line printed was 0, or was not. They are not
+// Classify's, whose words read a summary; the post hook writes them where
+// shape.PrintedStatus reads a status, with ParserExitStatus as the parser.
+const (
+	KindPrintedPass  = "printed_pass"
+	KindPrintedFail  = "printed_fail"
+	ParserExitStatus = "exit_status"
+)
+
+// Kinds is the closed vocabulary of gate_output.kind (store.GateOutput), every
+// word any writer gives it: Classify's, unread, and the printed pair. Each is
+// disclosed in the consent text's STORED paragraph (TestFF1_EveryGateOutputKindIsDisclosed).
+func Kinds() []string {
+	return []string{"summary_pass", "summary_fail", "fail_line", "empty_run", "no_summary", "unattributable", "unread",
+		KindPrintedPass, KindPrintedFail}
+}
+
 // Classify reports the table-driven result of test runner output. Build
 // runners and unknown programs do not scan text. The scan is O(len(text))
 // with no per-line allocation; inputs over MaxScanBytes are unread.
