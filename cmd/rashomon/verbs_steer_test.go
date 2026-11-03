@@ -129,9 +129,10 @@ func TestSTC1q_AnAgentSessionCannotSetTheSteerSwitch(t *testing.T) {
 		{"off", "off --user"}, {"off --user", "off --user"}, {"off --project", "off --project"},
 		{"on", "on --user"}, {"on --user", "on --user"}, {"on --project", "on --project"},
 	} {
-		err := cmdSteer(strings.Fields(c.args), io.Discard)
-		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "Run `rashomon steer "+c.run+"` in your own terminal") {
-			t.Errorf("steer %s in an agent session = %v, want a refusal naming `rashomon steer %s`", c.args, err, c.run)
+		if err := cmdSteer(strings.Fields(c.args), io.Discard); err == nil {
+			t.Errorf("steer %s in an agent session = nil, want a refusal naming `rashomon steer %s`", c.args, c.run)
+		} else {
+			wantRefusal(t, "steer "+c.args, err.Error(), "steer "+c.run, "written")
 		}
 	}
 	if b, _ := os.ReadFile(p); string(b) != seed {
@@ -153,10 +154,13 @@ func TestAGSM1_AnAgentSessionCannotSetTheSummarySwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLAUDECODE", "1")
-	for _, args := range [][]string{{"off"}, {"off", "--project"}, {"on"}, {"on", "--project"}} {
-		err := cmdSummary(args, io.Discard)
-		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "rashomon summary "+strings.Join(args, " ")) {
-			t.Errorf("summary %v in an agent session = %v, want a refusal naming the command to run", args, err)
+	for _, c := range []struct{ args, run string }{
+		{"off", "off --user"}, {"off --project", "off --project"}, {"on", "on --user"}, {"on --project", "on --project"},
+	} {
+		if err := cmdSummary(strings.Fields(c.args), io.Discard); err == nil {
+			t.Errorf("summary %s in an agent session = nil, want a refusal naming `rashomon summary %s`", c.args, c.run)
+		} else {
+			wantRefusal(t, "summary "+c.args, err.Error(), "summary "+c.run, "written")
 		}
 	}
 	if b, _ := os.ReadFile(p); string(b) != seed {
