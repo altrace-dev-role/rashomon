@@ -44,12 +44,12 @@ func PromptRecordScope(st *store.Store) string {
 // silence it, and only a surface Caps says no one is at (No: an SDK
 // program, or a harness Caps claims nothing for) does (PREFLIGHT-CLOUD1).
 // Claude Code on the web and the GitHub Action are attended. dontAsk stays
-// unattended on both paths. It runs once per prompt that routes a note,
-// so the table Caps builds costs one map there and nothing on a post.
+// unattended on both paths. harness.Cap reads the one capability without
+// building Caps' table.
 func attendanceOf(event string, env SteerEnv, permissionMode string) steer.Attendance {
 	unattended := env.CI
 	if event == string(steer.EventUserPromptSubmit) {
-		unattended = harness.Caps(harness.ID(env.HarnessID), harness.Surface(env.Surface))[harness.CapPersonAtPrompt] == harness.No
+		unattended = harness.Cap(harness.ID(env.HarnessID), harness.Surface(env.Surface), harness.CapPersonAtPrompt) == harness.No
 	}
 	if unattended || permissionMode == "dontAsk" {
 		return steer.AttendanceUnattended

@@ -15,7 +15,7 @@ func TestPE1_CapIsCapsWithoutTheTable(t *testing.T) {
 	for _, id := range ids {
 		for _, s := range surfaces {
 			table := Caps(id, s)
-			for _, c := range allCapabilities {
+			for _, c := range append(allCapabilities[:len(allCapabilities):len(allCapabilities)], Capability("made_up")) {
 				if got := Cap(id, s, c); got != table[c] {
 					t.Errorf("Cap(%s, %s, %s) = %q, Caps holds %q", id, s, c, got, table[c])
 				}
