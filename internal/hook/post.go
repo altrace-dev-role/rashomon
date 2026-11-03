@@ -170,6 +170,10 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// startSource is a SessionStart call's source (startup, resume, clear or
+	// compact), the second half of that event's channel row (StartContextAt);
+	// "" on every other event.
+	startSource string
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on

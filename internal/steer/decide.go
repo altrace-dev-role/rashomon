@@ -177,8 +177,10 @@ func (p *plan) recordTexts() {
 // clampReason is the first clamp to flag that bites, in step order (tech
 // 4.2.4 steps 2, 5 and 6; card 2.2 R3): steering off, consent not current,
 // no prompt to charge (4.2.5: a missing budget counts as spent), and a Stop
-// whose hook is already active.
-func clampReason(ctx *Context) *SuppressedBy {
+// whose hook is already active. A direct finding, the briefing on its own
+// event, is outside the prompt budget (4.2.5), so no prompt does not clamp
+// it.
+func clampReason(ctx *Context, direct bool) *SuppressedBy {
 	switch {
 	case ctx.ConfigUnreadable:
 		return reason(SuppressedByConfigUnreadable)
@@ -186,7 +188,7 @@ func clampReason(ctx *Context) *SuppressedBy {
 		return reason(SuppressedBySteerOff)
 	case !ctx.Consent:
 		return reason(SuppressedByConsentMissing)
-	case ctx.PromptID == nil:
+	case ctx.PromptID == nil && !direct:
 		return reason(SuppressedByBudgetPrompt)
 	case ctx.Event == EventStop && ctx.StopHookActive:
 		return reason(SuppressedByStopHookActive)
@@ -209,6 +211,10 @@ type plan struct {
 	recModel, recUser string
 	decide            bool // still to be decided by the budget passes
 	holdout           bool // held out: neither side got the note
+	// direct: an own-channel pattern on its own event (ownChannel), the
+	// continuity briefing at SessionStart, which tech 4.2.5 puts outside the
+	// prompt budget: "1 briefing per SessionStart or SubagentStart".
+	direct bool
 }
 
 func (p *plan) suppress(r SuppressedBy) {
@@ -262,9 +268,10 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if level == LevelStop {
 			level = LevelNudge // stop needs a project stop setting, and no config exists (STR-20)
 		}
-		p := plan{f: f, key: findingKey{string(f.Pattern), string(f.Kind), f.Key}, level: level, decide: true}
+		p := plan{f: f, key: findingKey{string(f.Pattern), string(f.Kind), f.Key}, level: level, decide: true,
+			direct: ownChannel(f.Pattern, ctx.Event)}
 		if p.level == LevelNudge {
-			if by := clampReason(ctx); by != nil {
+			if by := clampReason(ctx, p.direct); by != nil {
 				p.level, p.by = LevelFlag, by
 			}
 		}
@@ -354,8 +361,9 @@ func armOff(plans []plan) (note, flag int) {
 
 // charge is the budget's two passes over the plans still to decide, in rank
 // order (card 2.2 R6): a note whose key the prompt already delivered is
-// budget_pattern, the first note the prompt can afford delivers, and a later
-// one in the same call is superseded (budget_batch); a flag delivers only in
+// budget_pattern, a direct note (the briefing, outside the prompt budget)
+// or else the first note the prompt can afford delivers, and a later one in
+// the same call is superseded (budget_batch); a flag delivers only in
 // a call where no note did, one per call under the prompt's cap, and every
 // other flag is a candidate for the turn-end line. It returns the indexes
 // that print, -1 for none.
@@ -369,6 +377,8 @@ func charge(plans []plan, have counts) (note, flag int) {
 		switch {
 		case have.keys[p.key]:
 			p.suppress(SuppressedByBudgetPattern)
+		case p.direct && note < 0:
+			p.state, p.decide, note = LineStateDelivered, false, i
 		case note >= 0:
 			p.state, p.by, p.decide = LineStateSuperseded, reason(SuppressedByBudgetBatch), false
 		case have.notes >= maxNotes:

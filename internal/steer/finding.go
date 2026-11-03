@@ -146,14 +146,15 @@ func (f Finding) check(own bool) error {
 }
 
 // CheckOn is Check for a finding routed on event, which admit takes from the
-// hook's Context, never from the finding. UserPromptSubmit is the one event
-// with no call before it: at a session's first prompt the run holds no record
+// hook's Context, never from the finding. UserPromptSubmit and SessionStart
+// are the events that can have no call before them: at a session's first
+// prompt, or a compaction before its first tool call, the run holds no record
 // and the last seq the decision saw is 0, so there a finding may stand at
 // after_seq 0, citing nothing. Every other event keeps Check's floor of 1.
 // An own-channel pattern is admitted on its own event alone (ownChannel).
 func (f Finding) CheckOn(event Event) error {
 	own := ownChannel(f.Pattern, event)
-	if event != EventUserPromptSubmit || f.AfterSeq != 0 {
+	if event != EventUserPromptSubmit && event != EventSessionStart || f.AfterSeq != 0 {
 		return f.check(own)
 	}
 	if err := f.check(own); err == nil || !errors.Is(err, errAfterSeq) {

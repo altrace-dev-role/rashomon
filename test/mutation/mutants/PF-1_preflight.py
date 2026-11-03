@@ -30,7 +30,7 @@ m("PF-1 Names reads every request as naming nothing", "internal/intent/intent.go
 m("PF-1 the first prompt's brief is never given", "internal/intent/note.go",
   "\tfirst := !d.BriefGiven && b.has()\n", "\tfirst := false\n", "TestPF1i_")
 m("PF-1 CheckOn admits after_seq 0 on every event", "internal/steer/finding.go",
-  "\tif event != EventUserPromptSubmit || f.AfterSeq != 0 {\n", "\tif f.AfterSeq != 0 {\n",
+  "\tif event != EventUserPromptSubmit && event != EventSessionStart || f.AfterSeq != 0 {\n", "\tif f.AfterSeq != 0 {\n",
   "TestPF1t_SeqZeroIsAdmittedOnAPromptOnly")
 m("PF-1 the steer line cannot record a preflight slot", "internal/steer/slots.go",
   "\t\tcase slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:\n\t\t\terr = putJSON(put, s.Name, preflightJSON(v))\n",
