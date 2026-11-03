@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -62,6 +63,38 @@ func TestColdAllocBudget(t *testing.T) {
 			t.Logf("%s: cold call allocated %d bytes (runs %v) against budget %d (+%.0f%%)", e.ID, measured, all, e.ColdAllocBytesMax, coldToleranceFraction*100)
 		})
 	}
+}
+
+// coldLevelRuns is how many fresh processes TestPE1_ColdCallIsOneLevel
+// spawns, and coldLevelSpreadBytes how far apart their figures may sit. At
+// one P, twenty fresh post.bash_short calls spread 1440 B (152640 to 154080,
+// pe1-gmp); the two levels an unpinned process draws sit 3.7K or more apart.
+const (
+	coldLevelRuns        = 10
+	coldLevelSpreadBytes = 2048
+)
+
+// TestPE1_ColdCallIsOneLevel (card PERF-EDGE1): the cold figure is one
+// level, not two. A fresh process's post call either found json/v2's pooled
+// decoder on the P it ran on or missed it and paid a new decoder's string
+// cache, so at GOMAXPROCS=3 eleven of twenty runs read 153.3K to 154.7K and
+// nine read 158.4K to 161.5K (pe1-gmp; CI macos read [163256 156312
+// 156152]), and TestColdAllocBudget's minimum of three went red whenever all
+// three drew the high level. TestColdCall pins one P for its subtest, so ten
+// fresh runs sit within coldLevelSpreadBytes. Break: the pin dropped, and
+// ten runs draw both levels.
+func TestPE1_ColdCallIsOneLevel(t *testing.T) {
+	const id = "post.bash_short"
+	all := make([]int64, coldLevelRuns)
+	for i := range all {
+		all[i] = coldCallAllocOnce(t, id)
+	}
+	lo, hi := slices.Min(all), slices.Max(all)
+	if hi-lo > coldLevelSpreadBytes {
+		t.Errorf("%s: %d fresh cold calls spread %d bytes (%d to %d, runs %v), want within %d: the cold figure has more than one level", id, len(all), hi-lo, lo, hi, all, coldLevelSpreadBytes)
+		return
+	}
+	t.Logf("%s: %d fresh cold calls within %d bytes (%d to %d, runs %v)", id, len(all), hi-lo, lo, hi, all)
 }
 
 // coldCallAlloc runs cmd/rashomon's TestColdCall/<id> subtest in coldRuns
