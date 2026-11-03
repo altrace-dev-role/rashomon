@@ -5,7 +5,9 @@
 # or without the screen paragraphs that joined them.
 m("DIS Default carries a scope version on an otherwise-empty inventory", "internal/disclose/disclose.go",
   "\t\tFiles: slices.Concat(\n\t\t\tdefaultFiles(),\n\t\t\tfiredFiles(),\n\t\t\tlearnFiles(),\n\t\t\tspecFiles(),\n\t\t\tevidenceFiles(),\n\t\t\tconfigFiles(),\n\t\t\tcontinuityFiles(),\n\t\t),\n",
-  "", "TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory")
+  # An empty Concat, not a deleted field: the field is slices' only use in
+  # the file, so deleting it broke the build and the row never ran.
+  "\t\tFiles: slices.Concat[[]FileRule](),\n", "TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory")
 m("DIS Default carries a scope version with no screen paragraphs", "internal/disclose/disclose.go",
   "\t\tParagraphs: defaultParagraphs(),\n",
   "", "TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory")
