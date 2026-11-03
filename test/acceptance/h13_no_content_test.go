@@ -196,6 +196,12 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"event", "rule_id", "source_digest", "landed_seq", "exit_code", "foreground", "cwd_digest", "maybe",
 	}
+	// outcomeJoinKeys are an outcome_join's keys (card BG-OUTCOME phase 1):
+	// a background call's id and how it ended, never the notification's text.
+	outcomeJoinKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"tool_use_id", "outcome", "exit_code", "outcome_source", "parser_version",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {

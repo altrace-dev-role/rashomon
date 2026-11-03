@@ -198,6 +198,13 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	if paused, _, perr := store.Paused(root); perr == nil && !paused {
 		markFired(st, payload.SessionID, recapEvent(args, payload.Harness.HookEventName))
+		// A prompt that is a background task's end notification keeps the
+		// end's closed fields before the prompt is cleared, whichever turn
+		// it arrives in and whether or not the catch-up speaks (card
+		// BG-OUTCOME phase 1). The run read below sees it.
+		if pending {
+			keepTaskEnds(st, payload.SessionID, pp.Prompt, now)
+		}
 	}
 
 	// `recap pending` runs on UserPromptSubmit, before the new prompt has
