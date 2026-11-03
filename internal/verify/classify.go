@@ -60,6 +60,12 @@ type gateRun struct {
 	// read back where they are named (shape.RunnerNameOf, shape.MaskedByOf).
 	RunnerID   uint8
 	MaskedByID uint8
+	// ProjectID is the project the run's declaration names, as its place
+	// in the run's projectKeys plus one, 0 for none known (card
+	// STALE-COVER1): a learned family's root, the files it covers. A byte in
+	// the padding the flags leave, as RunnerID and MaskedByID are, so the
+	// run costs no byte more (TestMO1_TheRunStructsDidNotGrow).
+	ProjectID uint8
 }
 
 // familyKey is a gate's identity: the same runner at the same location.
@@ -79,15 +85,38 @@ func (g gateRun) family() (familyKey, bool) {
 // write is one path a call wrote, or one call that may have written a path
 // the record cannot name (Path nil, no Class).
 type write struct {
-	Seq     int64
-	AgentID *string
-	Path    *string // project-relative (relativise); nil when the target is unknown
-	Class   PathClass
-	Tool    string
+	Seq int64
+	// decl is the call that made the write, read in place for its agent
+	// (agent) and the project the write is read in (project, card
+	// STALE-COVER1): a pointer into the run, so the write stays 64 bytes
+	// and copies nothing. nil in a write built without one, whose agent and
+	// project are not known.
+	decl  *store.Declaration
+	Path  *string // project-relative (relativise); nil when the target is unknown
+	Class PathClass
+	Tool  string
 	// SHA is the sha256 the post recorded for the file a non-Bash named
 	// write names, as the call left it (ContentSHA256); nil where it has
 	// none, and for every other write (P5A).
 	SHA *string
+}
+
+// agent is the id of the subagent whose call made w; nil for the main agent,
+// or where w has no call.
+func (w *write) agent() *string {
+	if w.decl == nil {
+		return nil
+	}
+	return w.decl.AgentID
+}
+
+// project is the project w is read in (projectOf); nil, not known, where w
+// has no call.
+func (w *write) project() *string {
+	if w.decl == nil {
+		return nil
+	}
+	return projectOf(w.decl)
 }
 
 // classify turns a run's calls into the two things the gate state reads: the
@@ -143,7 +172,8 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 	if run == nil {
 		return nil, nil, nil, nil
 	}
-	return classifyWith(run, pickExecutions(run))
+	runs, writes, unnamed, rewritten, _ = classifyWith(run, pickExecutions(run))
+	return runs, writes, unnamed, rewritten
 }
 
 // pickExecutions is the execution each call is judged on, by ToolUseID:
@@ -161,8 +191,9 @@ func pickExecutions(run *store.Run) map[string]*store.Execution {
 	return picked
 }
 
-// classifyWith is classify over picked, pickExecutions(run); run is not nil.
-func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64) {
+// classifyWith is classify over picked, pickExecutions(run), and keys, the
+// projects its gate runs name (ProjectID); run is not nil.
+func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64, keys projectKeys) {
 	var pending []int // indexes into runs whose kind waits on the inference
 	ended := taskEnds(run)
 	for i := range run.Declarations {
@@ -181,6 +212,7 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 			continue
 		}
 		g := newRun(d, e, masked, runner, ended[d.ToolUseID])
+		g.ProjectID = keys.id(d.Project)
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 			rewritten = append(rewritten, d.Seq)
@@ -201,7 +233,7 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 	sort.SliceStable(writes, func(i, j int) bool { return writes[i].Seq < writes[j].Seq })
 	slices.Sort(unnamed)
 	slices.Sort(rewritten)
-	return runs, writes, unnamed, rewritten
+	return runs, writes, unnamed, rewritten, keys
 }
 
 // outranks reports whether cur, the execution picked so far for a call, wins
@@ -346,10 +378,10 @@ func appendWrites(writes []write, unnamed []int64, d *store.Declaration) ([]writ
 	file, shell := writeTargets(d)
 	named := func(p string) {
 		rel := relativise(p, d.Project, d.CWD)
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName})
+		writes = append(writes, write{Seq: d.Seq, decl: d, Path: &rel, Class: ClassOf(rel), Tool: d.ToolName})
 	}
 	blind := func() {
-		writes = append(writes, write{Seq: d.Seq, AgentID: d.AgentID, Tool: d.ToolName})
+		writes = append(writes, write{Seq: d.Seq, decl: d, Tool: d.ToolName})
 		unnamed = append(unnamed, d.Seq)
 	}
 	switch {

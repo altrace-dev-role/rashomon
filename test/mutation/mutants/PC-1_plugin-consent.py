@@ -19,6 +19,10 @@ m("PC-1 a plugin update is a fresh enable", P,
   "via = consent.ViaUpgradeNotice", "via = consent.ViaPluginEnable", "TestPC1_")
 m("PC-1 the record hashes the line, not the description", P,
   "consent.TextSHA256([]byte(disclose.PluginDescription))", "consent.TextSHA256([]byte(disclose.PluginOnLine))", "TestPC1_")
+# The break removes plugin_consent.go's only use of filepath, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['PC-1 the lines name a rashomon on PATH'] = ('cmd/rashomon/plugin_consent.go',
+  '\t"path/filepath"\n', '')
 m("PC-1 the lines name a rashomon on PATH", P,
   "bin := filepath.Join(filepath.Dir(exe), install.PluginName)", "bin := install.PluginName", "TestPC1_|TestPC1b_")
 m("PC-1 a quoted path takes a ~", P,
