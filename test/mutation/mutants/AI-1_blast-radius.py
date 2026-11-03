@@ -84,3 +84,10 @@ m("AI-1 blast-radius outranks a correction", "internal/steer/pattern/pattern.go"
 m("AI-1 the count is no lower bound", "internal/steer/render/render.go",
   '"(at least {count}): {dirs}; test files', '"({count}): {dirs}; test files',
   "TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder")
+
+# The DE's condition (a): a note naming no package is not said. blast-radius
+# has no no-paths form, so the path list's refusal of an empty list is the
+# guard (every caller at the root, or every directory left out).
+m("AI-1 a note naming no package speaks", "internal/steer/render/slot/path.go",
+  "\tif len(kept) == 0 {\n\t\treturn nil, ErrNoPathsLeft\n\t}\n", "",
+  "TestAI1_ANoteNamingNoPackageIsNotSaid|TestAI1_BlastRadiusRowsSayALowerBoundAndNoOrder")
