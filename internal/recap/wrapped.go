@@ -33,8 +33,10 @@ func unknownWrapped(t gateSet, g *verify.GateState) (s string, ok bool) {
 		// Launched in the background, the call's post saw no output, and the
 		// record holds no read of it the hook can show: the line names the
 		// call and says nothing of its output (BG-OUTCOME phase 2a, the
-		// manager's ruling of 11-03: never "not read" unless shown).
-		return t.name(g) + " unknown: it ran inside background call " + seqOf(g), true
+		// manager's ruling of 11-03: never "not read" unless shown). Nor
+		// can the record show the gate ran in it, so the call may have run
+		// it, WrapUnread's hedge (the ruling of 11-03 09:3x).
+		return t.name(g) + " unknown: background call " + seqOf(g) + " may have run it", true
 	}
 	return "", false
 }

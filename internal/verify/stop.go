@@ -129,13 +129,13 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	if snap.Recording != Complete {
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
 	}
-	roots := gateRoots(&snap)
-	turn := countTurn(run, counted, in.PromptID, pt.Seq, roots)
 	if snap.Recording == Complete {
 		markTurn(snap.Gates, turnProjects(run, in.PromptID, pt.Seq))
 	}
+	roots := gateRoots(&snap)
+	turn := countTurn(run, counted, in.PromptID, pt.Seq, roots)
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
-	if w, ok := doneWindow(run, counted, turn, pt.Seq, roots); ok {
+	if w, ok := doneWindow(run, counted, turn, pt.Seq, onTurnRoots(&snap, roots)); ok {
 		v.Done = &DoneWindow{Turn: w, Summary: TurnSummary(snap, w)}
 	}
 	inferredProgram(v.Programs, c.inferred)
@@ -281,7 +281,8 @@ type DoneWindow struct {
 // last relevant write a gate of roots covers, through at. A done claim is
 // judged by the evidence since the last edit in the gates' projects, as the
 // gates' states are, never by its turn alone; an edit no gate covers opens
-// nothing (coveredByAny, as the turn counts it). ok is false where the turn
+// nothing (coveredByAny, as the turn counts it), and the Stop's roots are
+// its turn's gates' (onTurnRoots). ok is false where the turn
 // holds a covered write itself, or the session has none: the turn is the
 // window, and the line is the turn's. Cost: three passes over the
 // declarations and one over the writes, only for a turn that wrote nothing.
