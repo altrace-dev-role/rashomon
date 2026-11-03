@@ -133,7 +133,7 @@ func findingPatterns() map[string]bool {
 	findingPatternsOnce.Do(func() {
 		findingPatternsOnce.v = map[string]bool{}
 		for _, p := range []pattern.ID{pattern.RegressionLocation, pattern.SubtaskGate, pattern.ClaimVsRecord,
-			pattern.MaskedStatus, pattern.OrderingRule, pattern.IdenticalRetry, pattern.StaleEvidence} {
+			pattern.MaskedStatus, pattern.OrderingRule, pattern.IdenticalRetry, pattern.StaleEvidence, pattern.Integrity} {
 			findingPatternsOnce.v[string(p)] = true
 		}
 	})

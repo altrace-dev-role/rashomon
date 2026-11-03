@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -43,4 +45,10 @@ func resolveVersion(ldflags string, bi *debug.BuildInfo, ok bool) string {
 		}
 	}
 	return "dev"
+}
+
+// printVersion is version's whole body, in the shape noArgs takes.
+func printVersion(stdout io.Writer) error {
+	fmt.Fprintln(stdout, buildVersion())
+	return nil
 }
