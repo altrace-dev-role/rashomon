@@ -2,6 +2,8 @@ package hook
 
 import (
 	"crypto/rand"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -145,6 +147,26 @@ func specLocationsAt(cwd, key, projectDir string) []string {
 	}
 	cwd = resolved(cwd)
 	return spec.Locations(cwd, spec.WalkRoot(cwd, git, resolved(projectDir)))
+}
+
+// specFileAt reports whether a spec file is where discoverSpecAt looks for one
+// (specLocationsAt, then managedDir/rashomon/spec.json): an Lstat each, no read
+// and no parse. A location that cannot be checked reads as present, so the
+// caller reads the spec as it did before (card STALE-NOINDEX1).
+func specFileAt(cwd, key, projectDir, managedDir string) bool {
+	if cwd == "" {
+		return false
+	}
+	present := func(p string) bool {
+		_, err := os.Lstat(p)
+		return err == nil || !errors.Is(err, fs.ErrNotExist)
+	}
+	for _, p := range specLocationsAt(cwd, key, projectDir) {
+		if present(p) {
+			return true
+		}
+	}
+	return managedDir != "" && present(filepath.Join(managedDir, "rashomon", "spec.json"))
 }
 
 // SpecProject is the project of the repository spec at path, the
