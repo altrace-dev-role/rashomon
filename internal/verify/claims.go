@@ -182,7 +182,8 @@ func (s *sentence) disclosed() bool {
 	return s.disc == 2
 }
 
-// skipped reports a sentence that is no claim: a question, or advice.
+// skipped reports a sentence that is no claim: a question, advice, or a
+// plan.
 func skipped(text string, ws []string) bool {
 	if strings.HasSuffix(text, "?") {
 		return true
@@ -191,6 +192,29 @@ func skipped(text string, ws []string) bool {
 		if phraseAt(ws, 0, sk) {
 			return true
 		}
+	}
+	return planned(ws)
+}
+
+// planned reports a sentence that opens with a plan's word (claimPlans),
+// then "i" or "we", then, past any claimAdverbs, a verb in the present: not
+// in claimPast, not ending ed, not in claimAuxiliaries (card MISREAD-DONE1).
+// "we're" and "i'll" are one word each, so neither opens a plan.
+func planned(ws []string) bool {
+	for _, op := range claimPlans {
+		if !phraseAt(ws, 0, op) {
+			continue
+		}
+		k := len(op)
+		if k == len(ws) || ws[k] != "i" && ws[k] != "we" {
+			return false
+		}
+		k++
+		for k < len(ws) && slices.Contains(claimAdverbs[:], ws[k]) {
+			k++
+		}
+		return k < len(ws) && !strings.HasSuffix(ws[k], "ed") && !slices.Contains(claimPast[:], ws[k]) &&
+			!slices.Contains(claimAuxiliaries[:], ws[k])
 	}
 	return false
 }
@@ -227,6 +251,11 @@ func (r *claimRule) admits(s *sentence, p, n int) bool {
 		var ok bool
 		if sFrom, sTo, ok = r.subject(ws, s.clauses, s.marks, p); !ok {
 			return false
+		}
+	}
+	for _, mn := range claimManners {
+		if phraseAt(ws, p, mn) {
+			return false // how a thing works, not that it does (card MISREAD-DONE1)
 		}
 	}
 	return !s.negated[p] && !s.misspelt(p, n, r.class == ClaimDone) && !modalBefore(ws, p, sFrom, sTo) && !slices.Contains(ws[p+n:min(len(ws), p+n+2)], "yet")

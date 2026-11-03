@@ -219,11 +219,17 @@ func TestVER55b_TablesAreWrittenAsWordsSplitsThem(t *testing.T) {
 		phrases = append(append(phrases, r.subjects...), r.predicates...)
 	}
 	phrases = append(append(phrases, claimSkips[:]...), claimDisclosures[:]...)
+	phrases = append(append(phrases, claimManners[:]...), claimPlans[:]...)
 	for _, w := range claimNegators {
 		phrases = append(phrases, []string{w})
 	}
 	for _, w := range claimModals {
 		phrases = append(phrases, []string{w})
+	}
+	for _, ws := range [][]string{claimAdverbs[:], claimAuxiliaries[:], claimPast[:]} {
+		for _, w := range ws {
+			phrases = append(phrases, []string{w})
+		}
 	}
 	for _, p := range phrases {
 		if got := words(strings.Join(p, " ")); !slices.Equal(got, p) {

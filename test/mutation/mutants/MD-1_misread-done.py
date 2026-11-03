@@ -51,3 +51,24 @@ m("MD-1 an aligned delimiter cell is none", T,
   "\t\tcell = bytes.TrimSpace(cell)\n", "TestMD1d_")
 m("MD-1 a closing bar is a cell", T,
   "\tl = bytes.TrimSuffix(bytes.TrimPrefix(l, []byte(\"|\")), []byte(\"|\"))\n", "\tl = bytes.TrimPrefix(l, []byte(\"|\"))\n", "TestMD1d_")
+# How a thing works (works from, through, by, off, as a) and a plan (then, next,
+# after that, once; i or we; a verb in the present) are no claim.
+L = "internal/verify/claimlex.go"
+m("MD-1 how a thing works is a claim", C,
+  "\tfor _, mn := range claimManners {\n\t\tif phraseAt(ws, p, mn) {\n\t\t\treturn false // how a thing works, not that it does (card MISREAD-DONE1)\n\t\t}\n\t}\n",
+  "", "TestMD1e_")
+m("MD-1 as with no article is a manner", L,
+  '{"works", "as", "a"}, {"works", "as", "an"},\n', '{"works", "as"},\n', "TestMD1e_")
+m("MD-1 working says nothing of how", L,
+  '\t{"working", "from"}, {"working", "through"}, {"working", "by"}, {"working", "off"}, {"working", "as", "a"}, {"working", "as", "an"},\n',
+  "", "TestMD1e_")
+m("MD-1 a plan is a claim", C, "\treturn planned(ws)\n", "\treturn false\n", "TestMD1f_")
+m("MD-1 after that opens no plan", L, '{"next"}, {"after", "that"}, {"once"}}', '{"next"}, {"once"}}', "TestMD1f_")
+m("MD-1 a plan's opening needs no i or we", C,
+  '\t\tif k == len(ws) || ws[k] != "i" && ws[k] != "we" {\n', "\t\tif k == len(ws) {\n", "TestMD1f_")
+m("MD-1 an adverb is a plan's verb", C,
+  "\t\tfor k < len(ws) && slices.Contains(claimAdverbs[:], ws[k]) {\n\t\t\tk++\n\t\t}\n", "", "TestMD1f_")
+m("MD-1 a past verb in ed opens a plan", C,
+  'k < len(ws) && !strings.HasSuffix(ws[k], "ed") && !slices', "k < len(ws) && !slices", "TestMD1f_")
+m("MD-1 an irregular past verb opens a plan", C, " && !slices.Contains(claimPast[:], ws[k])", "", "TestMD1f_")
+m("MD-1 be or have opens a plan", C, " &&\n\t\t\t!slices.Contains(claimAuxiliaries[:], ws[k])", "", "TestMD1f_")
