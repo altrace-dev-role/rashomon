@@ -68,7 +68,7 @@ func cmdAudit(args []string, stdout io.Writer) error {
 // count) and with no store, which it never makes.
 func auditKeep(days int, stdout io.Writer) error {
 	if s := selfguard.AgentSignal(os.Getenv); s != "" {
-		return fmt.Errorf("%s is set, so this is an agent session; nothing was kept. Run `rashomon audit --keep` in your own terminal.", s)
+		return selfguard.Refusal(s, "the before count is what your later sessions are measured against", "audit --keep", "kept")
 	}
 	root, err := store.DefaultRoot()
 	if err != nil {
