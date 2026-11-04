@@ -32,6 +32,18 @@ func ColdAllocConsistent(coldAllocBytesMax, allocBytesMax int64) string {
 	return ""
 }
 
+// ColdBudget is the cold_alloc_bytes_max TestColdAllocBudget gates e against
+// on one platform: that platform's own figure from budgets.json's
+// platforms.<plat>.cold_alloc_bytes_max (overrides, by entry id, the way the
+// RSS rows' Entries are) when it has one, else e's single top-level figure,
+// the fallback for a platform that has measured none of its own.
+func ColdBudget(e budget.Entry, overrides map[string]int64) int64 {
+	if v, ok := overrides[e.ID]; ok {
+		return v
+	}
+	return e.ColdAllocBytesMax
+}
+
 // PerProcessColdAllocBytes is a hook-entry process's total allocation
 // budget, the figure neither field alone is (P-12): e's cold_alloc_bytes_max
 // covers the one hook/post call the process makes, and InitBudgetBytes

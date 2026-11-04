@@ -84,7 +84,8 @@ func TestPW1b3_APromptNamingASymbolGivesItsPackageAndDirectCallers(t *testing.T)
 // the gate is owed (no go test since the edit; the Stop names a to the
 // person), else as its own note (go test ./a ran red: the gate is not owed,
 // and a red line that names a alone makes its row unmet; the Stop's
-// recorded failure outranks the platform line). A red go test ./a/... is
+// recorded failure carries the platform line, STOP-PRECEDENCE1, which
+// TestSTP1_AFailureCountCarriesThePlatformLine pins). A red go test ./a/... is
 // not that case: it names many packages, so a's row reads unknown (verify
 // M4). The Stop owes a package only under a declared go test gate (verify's
 // goTestGate), so the fixture declares one. Control: go test ./a/...
