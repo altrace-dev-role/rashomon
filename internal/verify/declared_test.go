@@ -28,7 +28,7 @@ func recorded(t *testing.T, r *store.Run, seq int64, line string) {
 	id, n := callID(seq), 0
 	for i := range r.Declarations {
 		if d := &r.Declarations[i]; d.ToolUseID == id && d.ToolName == "Bash" {
-			d.Shape = s
+			d.Shape, d.Launch = s, s.Launch
 			n++
 		}
 	}

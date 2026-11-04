@@ -85,20 +85,29 @@ func (c Config) validate() error {
 // the caller's so a stray -mod=mod cannot make the go tool edit go.mod or
 // fetch; GOWORK and GOENV keep a workspace file or a user env file from
 // changing what a scan root resolves to; GOPACKAGESDRIVER keeps go/packages
-// from delegating to an external program.
+// from delegating to an external program. GO_TELEMETRY_CHILD=2 keeps the go
+// tool from starting its telemetry sidecar, the child that posts counters to
+// telemetry.go.dev when the user's telemetry mode is "on", and a caller's "1"
+// from turning go list into that child. GOTELEMETRY cannot do this: cmd/go
+// never reads it from the environment, and the mode is a file under the
+// user's config directory (x/telemetry Start and parent, read in go1.25.6 and
+// go1.27.3, where any value but "", "1" and "2" is fatal to the go tool). The
+// go tool still writes its own counters there; that write is local.
 func forced(c Config) []string {
 	c = c.canon()
 	return []string{
 		"GOPROXY=off", "GOTOOLCHAIN=local", "GOSUMDB=off",
 		"GOFLAGS=-mod=readonly", "GOWORK=off", "GOENV=off", "GO111MODULE=on",
-		"GOPACKAGESDRIVER=off", "CGO_ENABLED=0", "GOOS=" + c.GOOS, "GOARCH=" + c.GOARCH,
+		"GOPACKAGESDRIVER=off", "GO_TELEMETRY_CHILD=2",
+		"CGO_ENABLED=0", "GOOS=" + c.GOOS, "GOARCH=" + c.GOARCH,
 	}
 }
 
 // LoaderEnv returns base with the loader's pinned variables replacing any the
 // caller had set: GOPROXY=off, GOTOOLCHAIN=local and GOSUMDB=off, so the go
-// tool cannot reach the network to fetch a module, a toolchain or a checksum.
-// Everything else passes through in order.
+// tool cannot reach the network to fetch a module, a toolchain or a checksum,
+// and GO_TELEMETRY_CHILD=2, so it starts no telemetry child that could upload,
+// whatever the user's telemetry mode. Everything else passes through in order.
 func LoaderEnv(base []string, c Config) []string {
 	pin := forced(c)
 	drop := make(map[string]bool, len(pin))

@@ -39,15 +39,17 @@ func installedEntryCount(t *testing.T, e *env) int {
 	return n
 }
 
-// TestTRU44_DetachSelfCheckFiresOnALossyEdit: a settings file laid out in a
-// way the editor does not render back -- compact, with no final newline --
-// is unchanged between watch and detach, so the result has to equal the
-// pre-image, and it does not. Detach still removes the entries and exits 0,
+// TestTRU44_DetachSelfCheckFiresOnALossyEdit: a settings file whose own
+// layout the editor cannot give back -- an event the user left as an empty
+// array, which detach removes along with the key watch's entry emptied -- is
+// unchanged between watch and detach, so the result has to equal the
+// pre-image, and it does not. (Layouts the editor splices around, such as a
+// compact file with no final newline, are restored exactly: A8.) Detach still removes the entries and exits 0,
 // prints the bug line, and its diff names no value the file holds.
 func TestTRU44_DetachSelfCheckFiresOnALossyEdit(t *testing.T) {
 	e := newEnv(t)
 	const secret = "Bash(deploy-with-token-s3cr3t:*)"
-	e.writeSettings(`{"permissions":{"allow":["` + secret + `"]},"model":"opus"}`)
+	e.writeSettings(`{"permissions":{"allow":["` + secret + `"]},"hooks":{"PreToolUse":[]},"model":"opus"}`)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
