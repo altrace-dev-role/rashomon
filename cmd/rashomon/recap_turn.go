@@ -366,6 +366,7 @@ func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root strin
 	pp.owed = owed
 	note, client := preflightNote(st, run, pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
 	noteTurnSpec(st, run, pp)
+	note = withContext(note, graphBriefFor(st.Root(), pp.CWD, pp.SessionID, pp.PromptID, pp.Prompt))
 	return note, client, unchecked
 }
 

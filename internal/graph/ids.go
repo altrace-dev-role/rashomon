@@ -150,3 +150,7 @@ func splitContract(id ID) (ckind, scope, canonical string, ok bool) {
 	}
 	return ckind, skind + ":" + sname, canonical, true
 }
+
+// TableID is a database table's node id: tbl:<schema.name> as the code
+// spells it.
+func TableID(name string) ID { return ID("tbl:" + name) }

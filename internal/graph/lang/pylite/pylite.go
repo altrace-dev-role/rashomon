@@ -152,6 +152,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 				Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 		}
 	}
+	recs = append(recs, r.extras(f, src, file, local, rev, defConf, algo)...)
 	for _, c := range f.calls {
 		callee, ok := r.callee(c.name, local, f.imports)
 		if !ok {
@@ -225,4 +226,45 @@ func balanced(src string) bool {
 		}
 	}
 	return depth == 0
+}
+
+// extras are the records beyond defs, consts, imports and calls: a
+// references edge from the file to every name a from-import brings in
+// from a known unit (a const when the name is upper case, a function
+// otherwise: the lite extractor's one guess), and the table nodes with
+// the reads and writes edges of the SQL literals in the file.
+func (r Resolver) extras(f fileScan, src string, file graph.ID, local map[string]graph.ID, rev graph.Rev, conf float64, algo graph.Prov) []graph.Record {
+	var recs []graph.Record
+	for _, im := range f.imports {
+		if im.attr == "" {
+			continue
+		}
+		up, known := r.Modules[strings.SplitN(im.module, ".", 2)[0]]
+		if !known {
+			continue
+		}
+		kind := "func"
+		if strings.ToUpper(im.attr) == im.attr {
+			kind = "const"
+		}
+		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.References, Dst: graph.SymID(Lang, up, kind, im.module+"."+im.attr),
+			Tier: graph.Algorithmic, Conf: conf, Rev: rev, Prov: algo}})
+	}
+	for _, q := range scanSQL(src, f.defs) {
+		tbl := graph.TableID(q.table)
+		src := file
+		if q.caller != "" {
+			src = local[q.caller]
+		}
+		pred := graph.Reads
+		if q.write {
+			pred = graph.Writes
+		}
+		recs = append(recs,
+			graph.Record{Node: &graph.Node{ID: tbl, Kind: "table", Tier: graph.Algorithmic, Conf: 0.9, Rev: rev, Prov: algo,
+				Attrs: map[string]string{"name": q.table}}},
+			graph.Record{Edge: &graph.Edge{Src: src, Pred: pred, Dst: tbl, Tier: graph.Algorithmic, Conf: 0.9, Rev: rev, Prov: algo,
+				Attrs: map[string]string{"line": strconv.Itoa(q.line), "cols": strings.Join(q.cols, ",")}}})
+	}
+	return recs
 }

@@ -44,7 +44,7 @@ func traversed() []graph.Pred {
 	return []graph.Pred{
 		graph.Calls, graph.MayCall, graph.References, graph.Reads, graph.Writes,
 		graph.Exposes, graph.Consumes, graph.ResolvesTo, graph.Imports, graph.Declares,
-		graph.CoChangedWith, graph.DuplicatesValue, graph.Crosses,
+		graph.CoChangedWith, graph.DuplicatesValue, graph.Crosses, graph.AppliesTo,
 	}
 }
 

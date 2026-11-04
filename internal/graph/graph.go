@@ -41,6 +41,7 @@ const (
 	CoChangedWith   Pred = "co_changed_with"
 	DuplicatesValue Pred = "duplicates_value"
 	Crosses         Pred = "crosses"
+	AppliesTo       Pred = "applies_to"
 )
 
 // Tier is how a record was produced.
@@ -278,4 +279,26 @@ func wanted(p Pred, preds []Pred) bool {
 		}
 	}
 	return false
+}
+
+// Nodes is every node asserted at rev, ordered by id.
+func (s *Store) Nodes(at Rev) []Node {
+	out := make([]Node, 0, len(s.nodes))
+	for id := range s.nodes {
+		if n, ok := s.Node(id, at); ok {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Edges is every edge asserted at rev, ordered by key.
+func (s *Store) Edges(at Rev) []Edge {
+	keys := make([]string, 0, len(s.edges))
+	for k := range s.edges {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return s.pick(keys, at, nil)
 }
