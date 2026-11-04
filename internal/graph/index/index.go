@@ -44,7 +44,11 @@ type Knowledge struct {
 	Title     string   `json:"title"`
 	AppliesTo []string `json:"applies_to"`
 	Text      string   `json:"text"`
-	Source    string   `json:"source"`
+	// Clause is the one sentence the brief carries for the record, under
+	// the approved-text rules (slot.Approved): ASCII, 160 bytes, no
+	// double quote; Text is the record's full words, kept for the person.
+	Clause string `json:"clause"`
+	Source string `json:"source"`
 }
 
 // ReadConfig reads root's configuration.
@@ -140,7 +144,7 @@ func knowledge(c Config, rev graph.Rev) []graph.Record {
 		}
 		id := graph.ID(k.ID)
 		recs = append(recs, graph.Record{Node: &graph.Node{ID: id, Kind: k.Kind, Tier: graph.Declared, Conf: 1.0, Rev: rev,
-			Attrs: map[string]string{"title": k.Title, "text": k.Text, "source": k.Source}}})
+			Attrs: map[string]string{"title": k.Title, "text": k.Text, "clause": k.Clause, "source": k.Source}}})
 		for _, t := range k.AppliesTo {
 			recs = append(recs, graph.Record{Edge: &graph.Edge{Src: id, Pred: graph.AppliesTo, Dst: graph.ID(t), Tier: graph.Declared, Conf: 1.0, Rev: rev}})
 		}

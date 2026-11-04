@@ -2,18 +2,20 @@ package engine
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // Depth is how many hops the neighborhood reaches from the seeds.
 const Depth = 2
 
 // Brief is the pipeline's whole result for one prompt: what seeded, what
-// was reached, how it ranked, what was kept, and the text delivered.
+// was reached, how it ranked, what was kept, and the message delivered.
 type Brief struct {
 	Rev          graph.Rev
 	Prompt       string
@@ -26,10 +28,36 @@ type Brief struct {
 	Candidates   []Candidate
 	Lines        []Line
 	Decisions    []Decision
-	Elapsed      time.Duration
+	// Message is the brief as the model receives it: the task-preflight
+	// graph template over the lines' slots (GRAPH-SLOT1), rendered under
+	// the briefing cap; the zero Message when no line rendered.
+	Message render.Message
+	// Kept is how many lines Message carries, in Lines' order.
+	Kept    int
+	Elapsed time.Duration
 }
 
-// Build runs Scope, Traverse, Rank and Select over g at rev for prompt.
+// Options selects the scorer and the path form. IDF weights each prompt
+// token by ln((N+1)/df), N the nodes scored and df the nodes holding the
+// token, so a word on half the graph counts for little; off, every token
+// weighs 1. Rel maps a path as the graph holds it, relative to the index
+// root, to the form the brief prints, relative to the hook's cwd; nil
+// prints the graph's form.
+type Options struct {
+	IDF bool
+	Rel func(string) string
+}
+
+func (o Options) rel() func(string) string {
+	if o.Rel == nil {
+		return func(p string) string { return p }
+	}
+	return o.Rel
+}
+
+// Build runs Scope, Traverse, Rank and Select over g at rev for prompt,
+// binds each selected line's facts into its slot, and renders the brief,
+// dropping the last line until the message fits the briefing cap.
 func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	start := time.Now()
 	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(prompt)), Scorer: "tf"}
@@ -49,204 +77,82 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	for _, c := range b.Candidates {
 		byID[c.ID] = c
 	}
+	rel := opt.rel()
 	for i := range b.Lines {
-		b.Lines[i].Text = lineText(g, rev, b.Lines[i], byID)
+		b.Lines[i].Slot = lineFact(g, rev, b.Lines[i], byID, rel)
 	}
+	b.bind()
+	b.deliver()
 	b.Elapsed = time.Since(start)
 	return b
 }
 
-// Empty is whether nothing was selected.
-func (b Brief) Empty() bool { return len(b.Lines) == 0 }
+// bind binds each line's slot; a line the slot refuses is dropped with a
+// decision naming the refusal, and the lines that bound close up.
+func (b *Brief) bind() {
+	kept := b.Lines[:0]
+	for i, l := range b.Lines {
+		v, err := slot.Bind(l.Slot)
+		if err != nil {
+			b.Decisions = append(b.Decisions, Decision{ID: l.Key, Line: i + 1, Why: "refused: " + err.Error()})
+			continue
+		}
+		l.Slot = v.(slot.GraphLine)
+		l.Text = v.Text()
+		kept = append(kept, l)
+	}
+	b.Lines = kept
+}
+
+// deliver renders the bound lines through the task-preflight graph
+// template, from all of them down to one, and keeps the first that
+// renders; a line the ladder stepped past is dropped with a decision.
+func (b *Brief) deliver() {
+	for n := len(b.Lines); n > 0; n-- {
+		m, err := render.New(pattern.TaskPreflight, b.binding(n, nil))
+		if err != nil {
+			continue
+		}
+		b.Message, b.Kept = m, n
+		break
+	}
+	for i := b.Kept; i < len(b.Lines); i++ {
+		b.Decisions = append(b.Decisions, Decision{ID: b.Lines[i].Key, Line: i + 1, Why: "dropped: over the brief's cap"})
+	}
+}
+
+// binding is the graph template's binding over the first n lines, in their
+// record form when digest is set.
+func (b Brief) binding(n int, digest func(string) string) render.TaskPreflightGraphBinding {
+	lines := make([]slot.GraphLine, 0, n)
+	for _, l := range b.Lines[:n] {
+		if digest != nil {
+			lines = append(lines, l.Slot.Record(digest))
+		} else {
+			lines = append(lines, l.Slot)
+		}
+	}
+	return render.NewGraphBinding(slot.Revision(b.Rev.String()), slot.Count(len(b.Seeds)), slot.Count(b.Neighborhood), lines)
+}
+
+// Record is the message the steer line records at record scope v4: the
+// kept lines in their record form, paths and sources as keyed digests and
+// lists as counts, rendered through the same template.
+func (b Brief) Record(digest func(string) string) (render.Message, error) {
+	if b.Empty() {
+		return render.Message{}, render.ErrNothing
+	}
+	return render.New(pattern.TaskPreflight, b.binding(b.Kept, digest))
+}
+
+// Empty is whether nothing rendered.
+func (b Brief) Empty() bool { return b.Kept == 0 }
 
 // Text is what the model receives.
-func (b Brief) Text() string {
-	if b.Empty() {
-		return ""
-	}
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "rashomon graph (rev %s): the code your request touches, by the repository's dependency graph. %d node(s) matched, %d reached, %d line(s) kept.\n",
-		b.Rev, len(b.Seeds), b.Neighborhood, len(b.Lines))
-	for _, l := range b.Lines {
-		sb.WriteString("- " + l.Text + "\n")
-	}
-	return strings.TrimRight(sb.String(), "\n")
-}
-
-// lineText renders one line: the path or table, then each member with its
-// relations, then the knowledge that applies.
-func lineText(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate) string {
-	var parts []string
-	know := map[graph.ID]bool{}
-	var knowIDs []graph.ID
-	for _, m := range l.Members {
-		c := byID[m]
-		if t := memberText(g, rev, c); t != "" {
-			parts = append(parts, t)
-		}
-		for _, k := range c.Knowledge {
-			if !know[k] {
-				know[k] = true
-				knowIDs = append(knowIDs, k)
-			}
-		}
-	}
-	if n, ok := g.Node(l.Key, rev); ok && IsKnowledge(n.Kind) {
-		return knowledgeText(g, rev, n)
-	}
-	head := display(l.Key)
-	text := head + ": " + strings.Join(parts, "; ")
-	if len(parts) == 0 {
-		text = head
-	}
-	var names []string
-	for _, k := range knowIDs {
-		if n, ok := g.Node(k, rev); ok {
-			names = append(names, strings.TrimPrefix(string(k), n.Kind+":"))
-		}
-	}
-	if len(names) > 0 {
-		text += " (see " + strings.Join(names, ", ") + ")"
-	}
-	if len(text) > MaxLineBytes {
-		text = text[:MaxLineBytes-3] + "..."
-	}
-	return text
-}
-
-// knowledgeText is a lesson's or decision's own line: its words, then
-// what it applies to.
-func knowledgeText(g Reader, rev graph.Rev, n graph.Node) string {
-	name := strings.TrimPrefix(string(n.ID), n.Kind+":")
-	words := n.Attrs["text"]
-	if !strings.HasPrefix(words, name) {
-		words = name + ": " + words
-	}
-	var to []string
-	for _, e := range g.Out(n.ID, rev, graph.AppliesTo) {
-		to = append(to, qualified(e.Dst))
-	}
-	if len(to) > 0 {
-		words += " [applies to " + strings.Join(to, ", ") + "]"
-	}
-	return words
-}
-
-// memberText is one candidate's words on its line.
-func memberText(g Reader, rev graph.Rev, c Candidate) string {
-	n, ok := g.Node(c.ID, rev)
-	if !ok {
-		return ""
-	}
-	switch c.Kind {
-	case "sym":
-		if n.Attrs["symkind"] == "const" {
-			return short(c.ID) + "=" + n.Attrs["value"]
-		}
-		if rel := relations(g, rev, c.ID); rel != "" {
-			return short(c.ID) + n.Attrs["sig"] + " " + rel
-		}
-		return short(c.ID) + n.Attrs["sig"]
-	case "file":
-		return relations(g, rev, c.ID)
-	case "table":
-		return tableText(g, rev, c.ID)
-	}
-	return ""
-}
-
-// relations are a node's outgoing calls, reads, writes and references, as
-// " calls a, b; writes t (cols)".
-func relations(g Reader, rev graph.Rev, id graph.ID) string {
-	groups := map[graph.Pred][]string{}
-	for _, e := range g.Out(id, rev, graph.Calls, graph.Reads, graph.Writes, graph.References) {
-		s := short(e.Dst)
-		if cols := e.Attrs["cols"]; cols != "" && (e.Pred == graph.Reads || e.Pred == graph.Writes) {
-			s += " (" + cols + ")"
-		}
-		if e.Pred == graph.References {
-			s += " from " + module(e.Dst)
-		}
-		groups[e.Pred] = append(groups[e.Pred], s)
-	}
-	var parts []string
-	for _, p := range []graph.Pred{graph.Calls, graph.Writes, graph.Reads, graph.References} {
-		if len(groups[p]) > 0 {
-			word := string(p)
-			if p == graph.References {
-				word = "imports"
-			}
-			parts = append(parts, word+" "+strings.Join(groups[p], ", "))
-		}
-	}
-	return strings.Join(parts, "; ")
-}
-
-// tableText names who writes and reads a table.
-func tableText(g Reader, rev graph.Rev, id graph.ID) string {
-	var w, r []string
-	for _, e := range g.In(id, rev, graph.Writes, graph.Reads) {
-		s := qualified(e.Src)
-		if e.Pred == graph.Writes {
-			w = append(w, s)
-		} else {
-			r = append(r, s)
-		}
-	}
-	sort.Strings(w)
-	sort.Strings(r)
-	var parts []string
-	if len(w) > 0 {
-		parts = append(parts, "written by "+strings.Join(w, ", "))
-	}
-	if len(r) > 0 {
-		parts = append(parts, "read by "+strings.Join(r, ", "))
-	}
-	return strings.Join(parts, "; ")
-}
-
-// display is a line head: a file's path, a table's name.
-func display(id graph.ID) string {
-	s := string(id)
-	switch {
-	case strings.HasPrefix(s, "file:"):
-		return strings.TrimPrefix(s, "file:")
-	case strings.HasPrefix(s, "tbl:"):
-		return "table " + strings.TrimPrefix(s, "tbl:")
-	}
-	return s
-}
-
-// qualified is a symbol's dotted name, a file's path, a table's name.
-func qualified(id graph.ID) string {
-	s := string(id)
-	if strings.HasPrefix(s, "sym:") {
-		parts := strings.Split(s, ":")
-		return parts[len(parts)-1]
-	}
-	return display(id)
-}
-
-// short is a symbol's last name segment.
-func short(id graph.ID) string {
-	q := qualified(id)
-	if i := strings.LastIndex(q, "."); i >= 0 && strings.HasPrefix(string(id), "sym:") {
-		return q[i+1:]
-	}
-	return q
-}
-
-// module is the dotted module of a symbol.
-func module(id graph.ID) string {
-	q := qualified(id)
-	if i := strings.LastIndex(q, "."); i >= 0 {
-		return q[:i]
-	}
-	return q
-}
+func (b Brief) Text() string { return b.Message.Text() }
 
 // Explain is the evidence tables: tokens, scope rows, candidates with
-// every term, and the budget decisions.
+// every term, the budget decisions and each line's sentence.
 func (b Brief) Explain() string {
 	var sb strings.Builder
 	var toks []string
@@ -266,9 +172,17 @@ func (b Brief) Explain() string {
 	for _, c := range b.Candidates {
 		fmt.Fprintf(&sb, "%6.2f  d=%d base=%.2f lex=%.2f know=%d  %-8s %s  via %s\n", c.Score, c.Distance, c.Base, c.Lex, len(c.Knowledge), c.Kind, c.ID, c.Via)
 	}
-	fmt.Fprintf(&sb, "\nselect (budget %d lines x %d bytes):\n", MaxLines, MaxLineBytes)
+	fmt.Fprintf(&sb, "\nselect (budget %d lines):\n", MaxLines)
 	for _, d := range b.Decisions {
 		fmt.Fprintf(&sb, "line %d  %-22s %s\n", d.Line, d.Why, d.ID)
+	}
+	fmt.Fprintf(&sb, "\nrender (%d of %d lines kept, %d bytes, template %s):\n", b.Kept, len(b.Lines), len(b.Text()), b.Message.Template())
+	for i, l := range b.Lines {
+		mark := " "
+		if i >= b.Kept {
+			mark = "-"
+		}
+		fmt.Fprintf(&sb, "%s line %d  %s  (%s)\n", mark, i+1, l.Text, l.Key)
 	}
 	return sb.String()
 }

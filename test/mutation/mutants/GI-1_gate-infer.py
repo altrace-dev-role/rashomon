@@ -119,7 +119,7 @@ m("GI-1 the Stop owes nothing", R,
 m("GI-1 the prompt reads nothing owed", T,
   "\tpp.owed = owed\n", "\t_ = owed\n", "TestGI1na_")
 m("GI-1 the prompt stops before the owed note", P,
-  " && p.owed.Seq <= 0 && !briefed {", " && !briefed {", "TestGI1na_")
+  " && p.owed.Seq <= 0 && !briefed && !graphed {", " && !briefed && !graphed {", "TestGI1na_")
 m("GI-1 the owed note is not routed", P,
   "\tif f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {\n", "\tif f, ok := owedFinding(p.owed, run.LastSeq(), lines); false && ok {\n",
   "TestGI1na_")

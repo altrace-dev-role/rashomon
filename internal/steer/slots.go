@@ -91,6 +91,16 @@ func slotsFrom(slots []render.Slot) (map[string]json.RawMessage, error) {
 			err = putJSON(put, s.Name, v.Value)
 		case slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList, slot.SymbolFacts:
 			err = putJSON(put, s.Name, preflightJSON(v))
+		case slot.RelPath:
+			err = putJSON(put, s.Name, string(v))
+		case slot.Ident:
+			err = putJSON(put, s.Name, string(v))
+		case slot.KnowledgeID:
+			err = putJSON(put, s.Name, string(v))
+		case slot.Revision:
+			err = putJSON(put, s.Name, string(v))
+		case slot.GraphLine:
+			err = putJSON(put, s.Name, graphLineForm(v))
 		default:
 			err = fmt.Errorf("%w: %q holds %T", errSlot, s.Name, s.Value)
 		}

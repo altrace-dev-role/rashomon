@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
@@ -123,8 +124,11 @@ func TestPF1v_ARequestNamingNothingBuildsNoSteerEnv(t *testing.T) {
 	}
 	id, now := harness.Identity{ID: harness.ClaudeCode}, time.Now()
 	names := testing.AllocsPerRun(100, func() { intent.Names(pp.Prompt, false) })
+	// The repository graph is looked up under the cwd on every prompt
+	// (GRAPH-SLOT1): the one read a request naming nothing pays.
+	find := testing.AllocsPerRun(100, func() { graph.FindIndex(pp.CWD) })
 	note := testing.AllocsPerRun(100, func() { preflightNote(nil, &store.Run{}, &pp, promptProject{}, id, now) })
-	if note != names {
-		t.Errorf("preflightNote on a request naming nothing: %v allocations a call, want intent.Names' %v", note, names)
+	if note != names+find {
+		t.Errorf("preflightNote on a request naming nothing: %v allocations a call, want intent.Names' %v and the index lookup's %v", note, names, find)
 	}
 }

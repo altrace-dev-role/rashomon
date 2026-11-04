@@ -62,10 +62,13 @@ type promptProject struct {
 // and what the last turn end owes this prompt (owedFinding, card
 // GATE-INFER1, W5), which ranks above both (claim-vs-record). The zero
 // Output when there is no run to log it under (no session_id, H-107), no cwd
-// to resolve against, or nothing new to say. A request that names no path
-// and no identifier, with no lesson to give and nothing owed, stops at
-// intent.Names, before any read and before the steer environment is built:
-// with no brief on this branch it can have no note.
+// to resolve against, or nothing new to say. The repository graph's brief
+// (graphBrief, GRAPH-SLOT1) is read first, so a request whose words select
+// code has a note whatever else it names; it routes as a task-preflight
+// finding of its own (graphFinding). A request that names no path and no
+// identifier, with no lesson to give, nothing owed and no graph under its
+// cwd, stops after that one index lookup, before any other read and before
+// the steer environment is built.
 // proj is the caller's read (readPromptProject). A session's first prompt
 // finds its run empty, so the note decides at after_seq 0, which CheckOn
 // admits at UserPromptSubmit and SessionStart only. The first prompt after
@@ -77,7 +80,12 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	}
 	named := intent.Names(p.Prompt, p.PromptCut)
 	brief, briefed := resumeBriefing(st, run, p.SessionID, p.Harness.TranscriptPath)
-	if !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {
+	storeRoot := ""
+	if st != nil {
+		storeRoot = st.Root()
+	}
+	gb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)
+	if !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
@@ -88,6 +96,14 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	var in *intent.Intent
 	var digest func(string) string
 	scope := hook.PromptRecordScope(st)
+	// At record scope v4 the steer line holds each named path as a keyed
+	// digest and the delivered set compares digests; the note that prints
+	// is the same at either scope. The graph brief's record form follows
+	// the same rule.
+	if scope != store.RecordScopeV5 && (named || graphed) {
+		key := st.Key()
+		digest = func(path string) string { return intent.PathDigest(key, path) }
+	}
 	if named {
 		var idx *verify.ProjectIndex
 		if proj.key != "" {
@@ -101,15 +117,11 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		resolved := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli(),
 			Symbols: promptSymbols(root)})
 		in = &resolved
-		// At record scope v4 the steer line holds each named path as a
-		// keyed digest and the delivered set compares digests; the note
-		// that prints is the same at either scope.
-		if scope != store.RecordScopeV5 {
-			key := st.Key()
-			digest = func(path string) string { return intent.PathDigest(key, path) }
-		}
 	}
 	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
+	if f, ok := graphFinding(gb, run.LastSeq(), digest); graphed && ok {
+		found = append(found, f)
+	}
 	if f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {
 		found = append(found, f)
 	}

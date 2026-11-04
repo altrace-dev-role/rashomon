@@ -203,14 +203,7 @@ type ScopeRow struct {
 	Seed  bool
 }
 
-// Options selects the scorer: IDF weights each prompt token by
-// ln((N+1)/df), N the nodes scored and df the nodes holding the token, so
-// a word on half the graph counts for little; off, every token weighs 1.
-type Options struct {
-	IDF bool
-}
-
-// Scope scores every node at rev against the prompt and returns the seeds
+// Scope scores every code node at rev against the prompt and returns the seeds
 // (at most MaxSeeds, each at or over SeedFloor), every row that scored,
 // and the weight each prompt token carried.
 func Scope(g *graph.Store, rev graph.Rev, prompt string, opt Options) ([]Seed, []ScopeRow, map[string]float64) {
@@ -219,7 +212,10 @@ func Scope(g *graph.Store, rev graph.Rev, prompt string, opt Options) ([]Seed, [
 	var fields []Fields
 	df := map[string]int{}
 	for _, n := range g.Nodes(rev) {
-		if n.Kind == "unit" || n.Kind == "mod" {
+		// A lesson or decision never seeds: it reaches the brief only by
+		// applying to code the request's words selected, so its own words
+		// cannot vote for it (the B' confound, GRAPH-SLOT1).
+		if n.Kind == "unit" || n.Kind == "mod" || IsKnowledge(n.Kind) {
 			continue
 		}
 		f := FieldsOf(n)

@@ -14,13 +14,18 @@ func withKnowledge(sp *graphtest.Specimen) {
 	rev := graph.RevCommit(graphtest.Commit)
 	les := graph.ID("les:INC-212")
 	sp.Store.AssertNode(graph.Node{ID: les, Kind: "lesson", Tier: graph.Declared, Conf: 1.0, Rev: rev, Attrs: map[string]string{
-		"title": "INC-212 session purge raced the TTL",
-		"text":  "INC-212: the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS; any change to session lifetime must change the purge predicate too, or live sessions are deleted (2025-08)."}})
+		"title":  "INC-212 session purge raced the TTL",
+		"text":   "INC-212: the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS; any change to session lifetime must change the purge predicate too, or live sessions are deleted (2025-08).",
+		"clause": "the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too",
+		"source": "incidents/INC-212.md"}})
 	sp.Store.AssertEdge(graph.Edge{Src: les, Pred: graph.AppliesTo, Dst: graph.TableID("public.sessions"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
+	sp.Store.AssertEdge(graph.Edge{Src: les, Pred: graph.AppliesTo, Dst: graph.FileID("jobs/purge_sessions.py"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
 	dec := graph.ID("dec:ADR-0007")
 	sp.Store.AssertNode(graph.Node{ID: dec, Kind: "decision", Tier: graph.Declared, Conf: 1.0, Rev: rev, Attrs: map[string]string{
-		"title": "ADR-0007 auth reads org settings through orgs.settings",
-		"text":  "ADR-0007: auth reads org values only through orgs.settings.get_org_settings(org_id); it never imports orgs.models."}})
+		"title":  "ADR-0007 auth reads org settings through orgs.settings",
+		"text":   "ADR-0007: auth reads org values only through orgs.settings.get_org_settings(org_id); it never imports orgs.models.",
+		"clause": "auth reads org values only through orgs.settings.get_org_settings(org_id) and never imports orgs.models",
+		"source": "docs/adr/0007.md"}})
 	sp.Store.AssertEdge(graph.Edge{Src: dec, Pred: graph.AppliesTo, Dst: graphtest.Sym("services/orgs", "orgs.settings.get_org_settings"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
 }
 

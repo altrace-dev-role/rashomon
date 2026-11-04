@@ -13,12 +13,14 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // cmdGraph is the repository graph's person-typed entry:
 //
 //	rashomon graph index [DIR]              build DIR/.rashomon/graph.jsonl from DIR/.rashomon/graph.json
-//	rashomon graph brief --prompt P [DIR]   the brief the hook would deliver for P, with its explanation
+//	rashomon graph brief --prompt P [DIR]   the brief the hook would deliver for P from DIR, with its explanation
 func cmdGraph(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("graph takes index or brief")
@@ -56,6 +58,14 @@ func graphIndex(args []string, stdout io.Writer) error {
 		return err
 	}
 	rev := graph.RevCommit(headCommit(root))
+	for _, k := range cfg.Knowledge {
+		switch err := slot.Approved(k.Clause).Validate(); {
+		case k.Clause == "":
+			fmt.Fprintf(stdout, "warning: %s declares no clause; its line carries none\n", k.ID)
+		case err != nil:
+			fmt.Fprintf(stdout, "warning: %s clause refused, its line carries none: %v\n", k.ID, err)
+		}
+	}
 	_, err = fmt.Fprintf(stdout, "indexed %d file(s): %d node(s), %d edge(s) at %s in %s -> %s\n",
 		files, len(s.Nodes(rev)), len(s.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile)
 	return err
@@ -87,6 +97,7 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	start := time.Now()
+	cwd := root
 	if at := graph.FindIndex(root); at != "" {
 		root = at
 	}
@@ -95,6 +106,7 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	loaded := time.Since(start)
+	opt.Rel = relTo(cwd, root)
 	b := engine.Build(s, graph.RevCommit(h.Commit), prompt, opt)
 	fmt.Fprintf(stdout, "load: %d record(s) in %s; pipeline: %s\n\n", h.Records, loaded, b.Elapsed)
 	fmt.Fprintln(stdout, b.Explain())
@@ -157,25 +169,65 @@ func cmdBriefOrGraph(name string, args []string, stdout io.Writer) error {
 	return cmdBrief(args, stdout)
 }
 
-// graphBriefFor is the hook path: the brief for the prompt over the graph
-// indexed under cwd, or "" when cwd has no index or nothing was selected.
-// Every run, empty or not, leaves its explanation under the store root at
-// graph/<session>-<prompt>.txt so the run can be read back.
-func graphBriefFor(storeRoot, cwd, sessionID, promptID string, prompt []byte) string {
+// graphBrief is the hook path: the brief for the prompt over the graph
+// indexed under cwd, each path relative to cwd, read before the preflight
+// decides whether the prompt has anything to say (GRAPH-SLOT1). ok is
+// whether a message rendered. Every run that found an index leaves its
+// explanation under the store root at graph/<session>-<prompt>.txt.
+func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (engine.Brief, bool) {
 	if cwd == "" || len(prompt) == 0 {
-		return ""
+		return engine.Brief{}, false
 	}
 	root := graph.FindIndex(cwd)
 	if root == "" {
-		return ""
+		return engine.Brief{}, false
 	}
 	s, h, err := graph.LoadFile(root)
 	if err != nil {
-		return ""
+		return engine.Brief{}, false
 	}
-	b := engine.Build(s, graph.RevCommit(h.Commit), string(prompt), hookScorer())
+	opt := hookScorer()
+	opt.Rel = relTo(cwd, root)
+	b := engine.Build(s, graph.RevCommit(h.Commit), string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
-	return b.Text()
+	return b, !b.Empty()
+}
+
+// relTo maps a path as the graph holds it, relative to root, to its form
+// relative to cwd, slashed: the path the agent opens from where it runs.
+func relTo(cwd, root string) func(string) string {
+	return func(p string) string {
+		r, err := filepath.Rel(cwd, filepath.Join(root, filepath.FromSlash(p)))
+		if err != nil {
+			return p
+		}
+		return filepath.ToSlash(r)
+	}
+}
+
+// keyGraph is the graph brief's key among the prompt's task-preflight
+// findings, beside the request's note (intent's note and brief keys).
+const keyGraph = "graph"
+
+// graphFinding is the brief as the prompt's task-preflight finding, routed
+// in preflightNote's one Route call beside the request's note: a nudge
+// with no stop form, its record form (Brief.Record) where the record scope
+// keeps digests (digest set), the message itself where it keeps paths.
+func graphFinding(b engine.Brief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
+	if b.Empty() {
+		return steer.Finding{}, false
+	}
+	prio, _ := pattern.Priority(pattern.TaskPreflight)
+	f := steer.Finding{Pattern: pattern.TaskPreflight, Key: keyGraph, Priority: prio, MaxLevel: steer.LevelNudge,
+		StopForm: steer.StopFormNone, Message: b.Message, AfterSeq: afterSeq}
+	if digest != nil {
+		rec, err := b.Record(digest)
+		if err != nil {
+			return steer.Finding{}, false
+		}
+		f.Record = rec
+	}
+	return f, true
 }
 
 func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
@@ -192,19 +244,6 @@ func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
 	}
 	text := b.Explain() + "\nbrief:\n" + b.Text() + "\n"
 	_ = os.WriteFile(filepath.Join(dir, name+".txt"), []byte(text), 0o600)
-}
-
-// withContext appends text to the note's model-visible context.
-func withContext(note steer.Output, text string) steer.Output {
-	if text == "" {
-		return note
-	}
-	if note.AdditionalContext == "" {
-		note.AdditionalContext = text
-	} else {
-		note.AdditionalContext += "\n" + text
-	}
-	return note
 }
 
 // hookScorer is the scorer the hook path uses: the inverse-document-

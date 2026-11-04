@@ -92,12 +92,14 @@ func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 		if err := CheckTemplate(tmpl.format); err != nil {
 			t.Errorf("%s: %v", tmpl.id, err)
 		}
-		if err := CheckTemplate(tmpl.aside); tmpl.aside == "" || err != nil {
+		// The graph row's lines are all the model's, so it has no aside
+		// (GRAPH-SLOT1); every preflight note has one.
+		if err := CheckTemplate(tmpl.aside); tmpl.aside == "" && tmpl.id != "task-preflight-graph/v1" || err != nil {
 			t.Errorf("%s: aside %q: %v", tmpl.id, tmpl.aside, err)
 		}
 	}
-	if n != 8 {
-		t.Errorf("task-preflight has %d rows, want 8", n)
+	if n != 9 {
+		t.Errorf("task-preflight has %d rows, want 9", n)
 	}
 	long := make([]slot.Path, 3)
 	for i := range long {

@@ -25,7 +25,7 @@ m("PF-1 the steer line's text is the printed text, not its record form", "intern
   "\t\t\tl.ModelText, l.UserText = p.recModel, p.recUser\n", "",
   "TestPF1w_")
 m("PF-1 the line is recorded in the clear at v4", "cmd/rashomon/preflight.go",
-  "\t\tif scope != store.RecordScopeV5 {\n", "\t\tif false {\n",
+  "\tif scope != store.RecordScopeV5 && (named || graphed) {\n", "\tif false {\n",
   "TestPF1w_")
 m("PF-1 the line's project is filed at v4", "cmd/rashomon/preflight.go",
   "\tif scope == store.RecordScopeV5 {\n\t\tproject = ", "\tif true {\n\t\tproject = ",

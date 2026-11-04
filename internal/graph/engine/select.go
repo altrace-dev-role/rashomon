@@ -7,20 +7,25 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
-// The delivery budget: lines in the brief and bytes per line.
-const (
-	MaxLines     = 6
-	MaxLineBytes = 240
-)
+// MaxLines is the delivery budget: the lines the brief holds under its
+// header, one slot each (render.GraphLineSlots); the bytes are the briefing
+// cap's, which the ladder in Build keeps by dropping lines.
+const MaxLines = 5
 
-// Line is one delivered line: the file or table it stands for, the
-// candidates it carries, and its score (the best member's).
+// Line is one delivered line: the file, table, lesson or decision it
+// stands for, the candidates it carries, its score (the best member's), and
+// for a lesson or decision the file line it anchors to, the best-scored
+// line it applies to. Slot is its facts as the slot holds them and Text the
+// sentence the slot rendered, both set by Build.
 type Line struct {
 	Key     graph.ID
 	Score   float64
 	Members []graph.ID
+	Anchor  graph.ID
+	Slot    slot.GraphLine
 	Text    string
 }
 
@@ -64,9 +69,15 @@ func Select(g Reader, rev graph.Rev, cands []Candidate) ([]Line, []Decision) {
 			continue
 		}
 		l := &Line{Key: c.ID, Members: []graph.ID{c.ID}, Score: c.Score}
+		anchorScore := 0.0
 		for _, m := range cands {
-			if key, ok := member[m.ID]; ok && slices.Contains(m.Knowledge, c.ID) && groups[key].Score > l.Score {
-				l.Score = groups[key].Score
+			key, ok := member[m.ID]
+			if !ok || !slices.Contains(m.Knowledge, c.ID) {
+				continue
+			}
+			l.Score = max(l.Score, groups[key].Score)
+			if anchors(key, groups[key].Score, l.Anchor, anchorScore) {
+				l.Anchor, anchorScore = key, groups[key].Score
 			}
 		}
 		groups[c.ID] = l
@@ -101,6 +112,22 @@ func Select(g Reader, rev graph.Rev, cands []Candidate) ([]Line, []Decision) {
 		}
 	}
 	return lines, decisions
+}
+
+// anchors is whether key, at score, is a better anchor than cur at
+// curScore: a file line over a table line, then the higher score, then the
+// lower id.
+func anchors(key graph.ID, score float64, cur graph.ID, curScore float64) bool {
+	file, curFile := strings.HasPrefix(string(key), "file:"), strings.HasPrefix(string(cur), "file:")
+	switch {
+	case cur == "":
+		return true
+	case file != curFile:
+		return file
+	case score != curScore:
+		return score > curScore
+	}
+	return key < cur
 }
 
 // dropRepeatedHubs gives a table line's slot to the best writer or reader
