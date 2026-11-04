@@ -121,6 +121,18 @@ func ToleranceNote(measured, budget, tolerance float64, until string, after floa
 	return ""
 }
 
+// backgroundBudget is entryBudget's decision for a background row, which no
+// platform has an override for yet: the reference platform's row is its own
+// reading and gates; any other platform reports, since gating against the
+// reference row would assume that platform reads no higher.
+func backgroundBudget(plat string, r budget.Background) (budgetMiB float64, gated bool, why string) {
+	if plat == referencePlatform {
+		return r.CurrentMaxRSSMiBP50, true, ""
+	}
+	return r.CurrentMaxRSSMiBP50, false, fmt.Sprintf(
+		"no %s reading of background row %s yet; gating against %s's would assume %s reads no higher", plat, r.ID, referencePlatform, plat)
+}
+
 func percent(f float64) string { return strconv.Itoa(int(f*100+0.5)) + "%" }
 
 // Median of xs; false with none.
@@ -424,4 +436,4 @@ func LineHolds(id string, measuredMiB, lineMiB float64) error {
 // landed names the PRs this tree carries: their rss cases are switched on,
 // and no budget basis may still read "until" one of them. gates_from stays
 // in budgets.json as the record of which PR switched each case on.
-var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "SR-1b": true}
+var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "PW1b": true, "SR-1b": true}

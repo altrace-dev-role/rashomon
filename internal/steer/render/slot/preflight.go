@@ -385,3 +385,122 @@ func (l EnumList) Text() string {
 }
 
 func (l EnumList) bind() (Value, error) { return checked(l, l.Validate()) }
+
+// SymbolFact is one symbol a preflight line names (PW1b-ON-230 step 3): its
+// spelling after its package (F, T, or T.M), the directory of the package
+// that declares it, and its direct callers and the packages they are in,
+// all from a platform graph read that proves them (internal/platform
+// Symbols).
+type SymbolFact struct {
+	Name     string
+	Dir      Path
+	Callers  int
+	Packages int
+}
+
+var symbolNameRE = &lazyRegexp{pattern: `^[A-Za-z_][A-Za-z0-9_]{0,63}(\.[A-Za-z_][A-Za-z0-9_]{0,63})?$`}
+
+// check is the fact's every rule: a Go identifier, or two joined by a dot,
+// screened like a path; Dir a Path; counts in range, and packages only
+// where there are callers, never more of them.
+func (f SymbolFact) check() error {
+	if err := charset("symbol", f.Name, symbolNameRE); err != nil {
+		return err
+	}
+	if err := denied("symbol", f.Name); err != nil {
+		return err
+	}
+	if len(f.Name) >= entropyMinRun && highEntropy(f.Name) {
+		return fmt.Errorf("%w: a symbol fails the entropy test", ErrSecretShaped)
+	}
+	if err := inRange("callers", f.Callers, 0, maxCount); err != nil {
+		return err
+	}
+	if f.Packages < 0 || f.Packages > f.Callers || f.Callers > 0 && f.Packages == 0 {
+		return errors.New("slot: symbol caller packages do not fit its callers")
+	}
+	return f.Dir.Validate()
+}
+
+func (f SymbolFact) text() string {
+	s := quoted(f.Name) + " declared in " + f.Dir.Text()
+	if f.Callers == 0 {
+		return s + ", no direct callers"
+	}
+	pkgs := " packages"
+	if f.Packages == 1 {
+		pkgs = " package"
+	}
+	return s + ", direct callers " + strconv.Itoa(f.Callers) + " in " + strconv.Itoa(f.Packages) + pkgs
+}
+
+// SymbolFacts is the symbols a preflight line names, at most three listed,
+// one that fails a check left out and counted. Its record form (Counted) is
+// the count alone: the names are the request's words, so at record scope
+// v4 the steer line holds none of them.
+type SymbolFacts struct {
+	items   []SymbolFact
+	more    int
+	counted bool
+}
+
+// NewSymbolFacts lists items, with more the symbols beyond them.
+func NewSymbolFacts(items []SymbolFact, more int) SymbolFacts {
+	return SymbolFacts{items: slices.Clone(items), more: more}
+}
+
+// Counted is s's record form: the count of its symbols, no name or path.
+func (s SymbolFacts) Counted() SymbolFacts {
+	return SymbolFacts{more: len(s.items) + s.more, counted: true}
+}
+
+func (s SymbolFacts) Items() []SymbolFact { return slices.Clone(s.items) }
+func (s SymbolFacts) More() int           { return s.more }
+
+func (s SymbolFacts) Validate() error {
+	if err := negative("symbol facts", s.more); err != nil {
+		return err
+	}
+	if s.counted && len(s.items) > 0 {
+		return errors.New("slot: counted symbol facts hold a symbol")
+	}
+	for _, it := range s.items {
+		if err := it.check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s SymbolFacts) Text() string {
+	if s.counted {
+		return listText(nil, "; ", 0, countTail(s.more, "from the platform graph"))
+	}
+	shown, more := cut(s.items, s.more)
+	texts := make([]string, len(shown))
+	for i, it := range shown {
+		texts[i] = it.text()
+	}
+	return listText(texts, "; ", more)
+}
+
+// bind leaves out and counts a symbol that fails a check: its name is the
+// request's and its directory the repository's.
+func (s SymbolFacts) bind() (Value, error) {
+	if s.counted {
+		return checked(s, s.Validate())
+	}
+	if err := negative("symbol facts", s.more); err != nil {
+		return nil, err
+	}
+	kept, more := make([]SymbolFact, 0, len(s.items)), s.more
+	for _, it := range s.items {
+		if it.check() != nil {
+			more++
+			continue
+		}
+		kept = append(kept, it)
+	}
+	kept, more = cut(kept, more)
+	return SymbolFacts{items: kept, more: more}, nil
+}

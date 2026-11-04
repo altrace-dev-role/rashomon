@@ -13,10 +13,12 @@
 package platform
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"slices"
 	"time"
 
@@ -39,6 +41,9 @@ type RunView struct {
 	Root         string
 	WrittenPaths []string
 	LogPath      string
+	// Deadline, when set, replaces the crash guard for this read: the Stop
+	// hook's read passes one well inside its own entry's timeout.
+	Deadline time.Duration
 }
 
 // Family is one Go package a run's writes touched. Package is its import
@@ -65,27 +70,42 @@ func Impact(ctx context.Context, root, logPath string, paths []string) ([]Family
 }
 
 func impactWithin(ctx context.Context, root, logPath string, paths []string, limit int64) ([]Family, error) {
+	return impactVouched(ctx, root, logPath, paths, limit, "")
+}
+
+// impactVouched is impactWithin where want, when not "", is the sha256 the
+// walk file names for the log: a log that hashes otherwise, read from the
+// same open file as it is decoded, is errNotVouched.
+func impactVouched(ctx context.Context, root, logPath string, paths []string, limit int64, want string) ([]Family, error) {
+	hook := recordHook
+	return inWorker(ctx, func() ([]Family, error) { return impact(ctx, root, logPath, paths, limit, want, hook) })
+}
+
+// inWorker runs f in a worker (safe.Go: a panic in it is an error, never the
+// process) and returns its result, or ctx's error as soon as ctx is done;
+// f is to look at ctx itself and exit at its next look.
+func inWorker[T any](ctx context.Context, f func() (T, error)) (T, error) {
 	type result struct {
-		fams []Family
-		err  error
+		v   T
+		err error
 	}
 	done := make(chan result, 1)
-	hook := recordHook
 	safe.Go(func() {
-		fams, err := impact(ctx, root, logPath, paths, limit, hook)
-		done <- result{fams, err}
-	}, func(err error) { done <- result{nil, err} })
+		v, err := f()
+		done <- result{v, err}
+	}, func(err error) { done <- result{err: err} })
 	select {
 	case r := <-done:
-		return r.fams, r.err
+		return r.v, r.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		var zero T
+		return zero, ctx.Err()
 	}
 }
 
 // impact resolves paths to packages, then decodes the log, at most limit
 // bytes, and builds each wanted package's family from its live facts.
-func impact(ctx context.Context, root, logPath string, paths []string, limit int64, hook func()) ([]Family, error) {
+func impact(ctx context.Context, root, logPath string, paths []string, limit int64, want string, hook func()) ([]Family, error) {
 	mods := map[string]goMod{}
 	var wanted []string
 	for _, p := range paths {
@@ -96,19 +116,7 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
-	f, err := regfile.Open(logPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > limit {
-		return nil, ErrOverCap
-	}
-	live, err := decode(ctx, f, hook)
+	live, err := readLog(ctx, logPath, limit, want, hook, keepFor(wanted))
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +132,60 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 		fams = append(fams, Family{Package: pkg, Hash: familyHash(bySubject, "pkg:"+pkg)})
 	}
 	return fams, nil
+}
+
+// readLog decodes the log at logPath, at most limit bytes, holding the
+// records keep keeps (decode). want, when not "", is the sha256 the walk
+// file names for the log: a log that hashes otherwise, read from the same
+// open file as it is decoded, is errNotVouched.
+func readLog(ctx context.Context, logPath string, limit int64, want string, hook func(), keep func(subject, object []byte) bool) (map[fact]struct{}, error) {
+	f, err := regfile.Open(logPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > limit {
+		return nil, ErrOverCap
+	}
+	h := sha256.New()
+	live, err := decode(ctx, io.TeeReader(f, h), hook, keep)
+	if err != nil {
+		return nil, err
+	}
+	if want != "" && hex.EncodeToString(h.Sum(nil)) != want {
+		return nil, errNotVouched
+	}
+	return live, nil
+}
+
+// keepFor is decode's keep for wanted's families: a subject that is a
+// wanted package ("pkg:" and its path) or a symbol of one (pgraph's
+// spelling: kind, ':', the declaring package's path, '.', the rest;
+// pgraph/identity.go id). Every member familyHash reads is a package's own
+// symbol, so the families are the ones the whole log gives; a path that is
+// another's prefix up to a dot (gopkg.in/yaml, gopkg.in/yaml.v3) holds a
+// few more facts, never fewer. The object is not read.
+func keepFor(wanted []string) func(subject, object []byte) bool {
+	return func(subject, _ []byte) bool {
+		i := bytes.IndexByte(subject, ':')
+		if i < 0 {
+			return false
+		}
+		kind, rest := subject[:i], subject[i+1:]
+		for _, p := range wanted {
+			if len(rest) == len(p) && string(kind) == "pkg" && string(rest) == p {
+				return true
+			}
+			if len(rest) > len(p) && rest[len(p)] == '.' && string(rest[:len(p)]) == p {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // familyHash is the SHA-256 of the view lines whose subject is the package or

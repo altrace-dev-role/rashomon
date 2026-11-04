@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/budget"
 )
 
 // workflowSteps reads a workflow by its lines into job name -> step texts: a
@@ -134,5 +136,82 @@ func TestRES29_CIChecksTheRSSBoundPastARedGate(t *testing.T) {
 	}
 	if !found {
 		t.Error("perf-linux: no step runs TestRES29_PathologicalInputsStayBounded")
+	}
+}
+
+// owedGateTests is the test that marks each kind of gate Ungated owes (the
+// gate's name up to its first space): the test a perf run must select, or
+// RequireAllEnv fails the run with that gate unrun.
+var owedGateTests = map[string]string{
+	"init":       "TestRES2_InitBudget",
+	"entry":      "TestRES28b_EveryEntryStaysWithinItsRow",
+	"case":       "TestRES28_MaxRSSFollowsThePayloadBudget",
+	"cold":       "TestColdAllocBudget",
+	"background": "TestPW1b_TheBackgroundHookStaysWithinItsRow",
+}
+
+// TestRES36i_EveryPerfRunSelectsEveryOwedGatesTest: every kind of gate
+// Ungated can owe (one budgets row of each kind) has its test in
+// owedGateTests, that test is declared in this package, and every perf job's
+// RSS step selects it with its -run pattern. The background row (PW1b-ON-230
+// 1b) was owed and never selected, so CI's Perf gate failed with "1 owed
+// gates did not run: background pgraph.sync_hook" while every local run
+// named the test in its own -run (B329). Break: add a gate kind with no
+// test here, or drop a test from a job's -run, and this fails.
+func TestRES36i_EveryPerfRunSelectsEveryOwedGatesTest(t *testing.T) {
+	b := budget.Budgets{
+		Entries:    []budget.Entry{{ID: "e", ColdAllocBytesMax: 1}},
+		RSSCases:   []budget.RSSCase{{ID: "c", GatesFrom: "P-08"}},
+		Background: []budget.Background{{ID: "b"}},
+	}
+	tests := map[string]bool{}
+	for _, g := range Ungated(b, nil) {
+		kind, _, _ := strings.Cut(g, " ")
+		name, ok := owedGateTests[kind]
+		if !ok {
+			t.Errorf("gate %q: its kind %q has no test in owedGateTests", g, kind)
+			continue
+		}
+		tests[name] = true
+	}
+	src, err := filepath.Glob(filepath.Join(moduleRoot(t), "test", "perf", "*_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var all strings.Builder
+	for _, f := range src {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all.Write(raw)
+	}
+	for name := range tests {
+		if !strings.Contains(all.String(), "\nfunc "+name+"(t *testing.T) {") {
+			t.Errorf("%s: owedGateTests names it and no file in test/perf declares it", name)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runRE := regexp.MustCompile(`-tags perf \./test/perf -run '([^']+)'`)
+	for job, steps := range workflowSteps(string(raw)) {
+		for _, s := range steps {
+			m := runRE.FindStringSubmatch(s)
+			if m == nil {
+				continue
+			}
+			re, err := regexp.Compile(m[1])
+			if err != nil {
+				t.Errorf("%s: -run %q: %v", job, m[1], err)
+				continue
+			}
+			for name := range tests {
+				if !re.MatchString(name) {
+					t.Errorf("%s: -run %q does not select %s, so its gate never runs", job, m[1], name)
+				}
+			}
+		}
 	}
 }

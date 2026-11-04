@@ -48,6 +48,10 @@ func TestRES28i_ToleranceScheduleIsTheSpecs(t *testing.T) {
 // case or moving one to a later PR is a change to what is gated. Two cases are
 // not RES-28's: the Stop's transcript scan, CHANNEL-EVIDENCE1's own row (Q11),
 // and the order rule's Then call, SPEC-RULES1 1b's (#216 ruling 5).
+// Nor are the Stop's read of a 3 MiB pgraph log (PW1b-ON-230 step 2), the
+// prompt's read of one for a named symbol (step 3) and the post's read of
+// one after a Go edit (ARCH-INLINE1), whose costs grow with the
+// repository's graph, not the payload.
 func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 	type c struct {
 		entry string
@@ -61,6 +65,12 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"post.1MiB": {"post", 1 << 20, "P-10"}, "post.4MiB": {"post", 4 << 20, "P-10"}, "post.8MiB": {"post", 8 << 20, "P-10"},
 		// The Stop's transcript scan (CHANNEL-EVIDENCE1, Q11): the real recap entry over a transcript at the scan's 16 MiB bound.
 		"recap.stop.scan16MiB": {"recap", 16 << 20, "CE-1"},
+		// The Stop's platform read (PW1b-ON-230 step 2): the real recap entry over a vouched 3 MiB pgraph log.
+		"recap.stop.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
+		// The prompt's symbol read (PW1b-ON-230 step 3): the recap pending entry over a vouched 3 MiB pgraph log.
+		"recap.pending.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
+		// The post's blast-radius read (ARCH-INLINE1): the real post entry after a Go edit, over the same log.
+		"post.edit.pgraph3MiB": {"post", 3 << 20, "PW1b"},
 		// The order rule's Then call (SPEC-RULES1 1b, #216 ruling 5): post.540B's payload under a trusted spec of one order rule.
 		"post.540B.order": {"post", 540, "SR-1b"},
 	}

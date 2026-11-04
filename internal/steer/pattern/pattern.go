@@ -14,13 +14,13 @@ import (
 	"sync"
 )
 
-// ID names one of the eighteen frozen STEER patterns. The set is closed:
+// ID names one of the nineteen frozen STEER patterns. The set is closed:
 // the review that gates this package checks the constants below against the
 // spec's list verbatim, so adding or renaming one is a contract change, not
 // a local edit. The spec's list froze sixteen; task-preflight (card
-// PREFLIGHT1) is the seventeenth and stale-evidence (card STALE-NUDGE1, D164)
-// the eighteenth, each added by ruling after them in merge order, so their
-// order holds.
+// PREFLIGHT1) is the seventeenth, stale-evidence (card STALE-NUDGE1, D164)
+// the eighteenth and blast-radius (card ARCH-INLINE1, A6) the nineteenth,
+// each added by ruling after them in merge order, so their order holds.
 type ID string
 
 // The frozen pattern IDs, in the order the frozen-set paragraph lists them
@@ -53,7 +53,24 @@ const (
 	// StaleEvidence names a required gate whose green this call's write left
 	// behind, at the write (card STALE-NUDGE1).
 	StaleEvidence ID = "stale-evidence"
+	// BlastRadius names the other packages the platform graph shows calling
+	// into the package a call edited, at the edit (card ARCH-INLINE1, PF-PL7).
+	BlastRadius ID = "blast-radius"
 )
+
+// Reserve is how many of the prompt's notes id leaves for others (card
+// ARCH-INLINE1, A8, a rule under tech 4.2.5's cap): a note of id is charged
+// only while the prompt has spent fewer than the cap less its reserve. The
+// cap is spent in delivery order across calls, where priority orders only
+// the notes of one call, so a context note given early could otherwise take
+// the slot a later correction needs. blast-radius reserves one; every other
+// id none, so its budget is the cap.
+func Reserve(id ID) int {
+	if id == BlastRadius {
+		return 1
+	}
+	return 0
+}
 
 // All returns the frozen pattern IDs in the spec's order. Callers that need a stable iteration order -- rendering a legend,
 // building an exhaustiveness test -- should use this rather than range over
@@ -64,6 +81,7 @@ func All() []ID {
 		LearnedFact, PlatformRule, Integrity, IdenticalRetry, CredSpray,
 		OrderingRule, AgentInterference, SubagentClaim, ModelSwitch,
 		ClaimVsRecord, MaskedStatus, SequenceRisk, TaskPreflight, StaleEvidence,
+		BlastRadius,
 	}
 }
 
@@ -110,9 +128,9 @@ var kindsOnce struct {
 // and this package does not enumerate it. Every other id with no entry
 // (regression-location, continuity-briefing, identical-retry, cred-spray,
 // ordering-rule, agent-interference, subagent-claim, model-switch,
-// masked-status, stale-evidence) has no sub-kind taxonomy: the frozen-set
-// paragraph gives kinds to exactly seven ids, and silence for the rest is
-// read here as "Kind is empty on a Finding of this pattern."
+// masked-status, stale-evidence, blast-radius) has no sub-kind taxonomy: the
+// frozen-set paragraph gives kinds to exactly seven ids, and silence for the
+// rest is read here as "Kind is empty on a Finding of this pattern."
 func Kinds(id ID) []string {
 	return slices.Clone(kinds()[id])
 }
@@ -151,7 +169,7 @@ func classForm(s string) bool {
 	return true
 }
 
-// Valid reports whether id is one of the eighteen frozen patterns.
+// Valid reports whether id is one of the nineteen frozen patterns.
 func Valid(id ID) bool {
 	for _, known := range All() {
 		if known == id {
@@ -174,7 +192,10 @@ func Valid(id ID) bool {
 // the two meet only at UserPromptSubmit, and a prompt that carries a lesson
 // keeps its preflight note. stale-evidence takes 78, below
 // regression-location: a red the call caused outranks a green it left behind
-// (card STALE-NUDGE1). TestSTR16_EveryCandidatePatternHasAPriority pins the
+// (card STALE-NUDGE1). blast-radius takes 25, the lowest: which packages call
+// into an edited one is context, never a finding against the agent, so every
+// gate-, rule- or claim-bound note on the same call goes first (card
+// ARCH-INLINE1, A5). TestSTR16_EveryCandidatePatternHasAPriority pins the
 // split so a change to it is a reviewed decision, not a drift.
 func priority() map[ID]int {
 	priorityOnce.Do(func() {
@@ -195,6 +216,7 @@ func priority() map[ID]int {
 			MaskedStatus:       45,
 			IdenticalRetry:     40,
 			OrderingRule:       30,
+			BlastRadius:        25,
 		}
 	})
 	return priorityOnce.v
