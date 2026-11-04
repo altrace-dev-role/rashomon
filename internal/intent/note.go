@@ -18,8 +18,10 @@ const (
 // request has nothing new to say. The first note of a session carries the
 // brief when b has anything in it, whatever the request names. Otherwise a
 // request that named no path and no identifier gets none, and one that did
-// gets a note only when a path, rule, gate or evidence kind is new to the
-// session or the request was cut. Paths and rules given earlier are counted;
+// gets a note only when a path, rule, gate, symbol or evidence kind is new
+// to the session or the request was cut. The model is sent only the lines
+// that list something; the brief, the evidence and the unknowns print to the
+// person (TOKEN-BUDGET1). Paths and rules given earlier are counted;
 // gates and evidence print in full. The note steps down to fit the briefing
 // cap: whys dropped first, then one item per list.
 func Finding(in Intent, d Delivered, b *Brief, afterSeq int64) (steer.Finding, bool) {
@@ -51,8 +53,8 @@ type Ride struct{ ID, Text string }
 // rides at the step the note alone prints at, dropping the unknowns line if
 // it must; a note that cannot hold it there is the note alone, and rode is
 // false, so the lesson waits for a prompt that carries no note. A lesson
-// never steps the note down (#197 F1, R55). The first prompt's note is at
-// its six-line cap and carries none. At record scope v4 the line is kept as
+// never steps the note down (#197 F1, R55). The first prompt's note has no
+// lesson form and carries none. At record scope v4 the line is kept as
 // it printed: the lesson's text is the ledger's, not the request's.
 func FindingRiding(in Intent, d Delivered, b *Brief, afterSeq int64, digest func(string) string, lesson *Ride) (f steer.Finding, ok, rode bool) {
 	first := !d.BriefGiven && b.has()

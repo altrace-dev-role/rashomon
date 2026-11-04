@@ -43,6 +43,12 @@ type Document struct {
 	// and column are counted in.
 	path string
 	src  []byte
+	// buf is src with the edits made so far spliced in, so the bytes of
+	// everything not edited, and the layout around it, are the file's own.
+	// It is nil until the first edit. canonical is set when an edit could not
+	// be spliced; the document is then rendered from its members.
+	buf       []byte
+	canonical bool
 }
 
 // Load reads a settings file. An absent file and an empty one are both an
@@ -130,6 +136,9 @@ func (d *Document) Empty() bool { return len(d.members) == 0 }
 
 // Bytes renders the document. Values not edited are emitted as they were read.
 func (d *Document) Bytes() []byte {
+	if d.buf != nil {
+		return bytes.Clone(d.buf)
+	}
 	return append(writeObject(d.members, 0), '\n')
 }
 
@@ -173,26 +182,117 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 		return err
 	}
 
-	arr := writeArray(entries, 2)
-	replaced := false
+	h := d.find(hooksKey)
+	ei := -1
 	for i := range events {
 		if events[i].key == event {
-			events[i].raw = arr
-			replaced = true
+			ei = i
 			break
 		}
 	}
-	if !replaced {
-		events = append(events, member{key: event, raw: arr})
+	if ei < 0 {
+		arr := writeArray(entries, 2)
+		key, _ := json.Marshal(event)
+		if h != nil && len(events) == 0 && !isNull(h.raw) {
+			// A hooks object the user left empty: only its {} is replaced, the
+			// entries indented to the column it sits at.
+			col := d.memberIndent(hooksKey)
+			obj := []byte("{\n" + col + "  " + string(key) + ": " + string(renderArrayAt(entries, col+"  ")) + "\n" + col + "}")
+			d.setHooks(obj)
+			return nil
+		}
+		if h != nil && !isNull(h.raw) {
+			if obj, ok := spliceAppend(h.raw, true, key, arr); ok {
+				d.setHooks(obj)
+				return nil
+			}
+		}
+		d.setHooks(writeObject(append(events, member{key: event, raw: arr}), 1))
+		return nil
 	}
 
-	obj := writeObject(events, 1)
-	if h := d.find(hooksKey); h != nil {
-		h.set(obj)
+	var arr []byte
+	if old, _ := parseArray(event, events[ei].raw); len(old) == 0 && len(entries) > 0 {
+		// An event the user left as an empty array: only its [] is replaced.
+		arr = renderArrayAt(entries, d.eventIndent(h.raw, ei))
 	} else {
-		d.members = append(d.members, member{key: hooksKey, raw: obj})
+		arr = spliceEntries(events[ei].raw, entries)
 	}
+	if obj, ok := spliceReplace(h.raw, ei, arr); ok {
+		d.setHooks(obj)
+		return nil
+	}
+	events[ei].raw = arr
+	d.setHooks(writeObject(events, 1))
 	return nil
+}
+
+// spliceEntries is the array old with its entries changed to entries, by
+// taking out the old ones entries lacks and putting the ones it adds after the
+// last, so the bytes of every entry that stays, and the layout between them,
+// are the ones the file had. An array that cannot be spliced that way is
+// rendered whole.
+func spliceEntries(old []byte, entries []json.RawMessage) []byte {
+	oldEntries, err := parseArray("", old)
+	if err != nil || len(oldEntries) == 0 {
+		return writeArray(entries, 2)
+	}
+	var removed []int
+	j := 0
+	for i, o := range oldEntries {
+		if j < len(entries) && bytes.Equal(o, entries[j]) {
+			j++
+		} else {
+			removed = append(removed, i)
+		}
+	}
+	out := old
+	for _, e := range entries[j:] {
+		var ok bool
+		if out, ok = spliceAppend(out, false, nil, e); !ok {
+			return writeArray(entries, 2)
+		}
+	}
+	for k := len(removed) - 1; k >= 0; k-- {
+		var ok bool
+		if out, ok = spliceRemove(out, false, removed[k]); !ok {
+			return writeArray(entries, 2)
+		}
+	}
+	return out
+}
+
+// setHooks replaces the value of the top-level hooks member, or adds the
+// member when the document has none, in the document's own bytes when it can.
+func (d *Document) setHooks(obj []byte) {
+	for i := range d.members {
+		if d.members[i].key == hooksKey {
+			d.members[i].set(obj)
+			d.edit(func(buf []byte) ([]byte, bool) { return spliceReplace(buf, i, obj) })
+			return
+		}
+	}
+	d.members = append(d.members, member{key: hooksKey, raw: obj})
+	d.edit(func(buf []byte) ([]byte, bool) { return spliceAppend(buf, true, []byte(`"hooks"`), obj) })
+}
+
+// edit applies a splice to the document's own bytes, which a document starts
+// editing as a copy of what it was read as. When there is nothing to splice
+// into, or the splice cannot be made, the document is from then on rendered
+// from its members.
+func (d *Document) edit(splice func(buf []byte) ([]byte, bool)) {
+	if d.canonical {
+		return
+	}
+	if d.buf == nil {
+		d.buf = bytes.Clone(d.src)
+	}
+	out, ok := splice(d.buf)
+	if !ok {
+		d.canonical, d.buf = true, nil
+		return
+	}
+	d.buf = out
 }
 
 // RemoveHookEvent deletes one event key from the hooks object, and the hooks
@@ -240,7 +340,15 @@ func (d *Document) RemoveHookEvent(event string) error {
 		d.removeMember(hooksKey)
 		return nil
 	}
-	h.set(writeObject(kept, 1))
+	for i := range events {
+		if events[i].key == event {
+			if obj, ok := spliceRemove(h.raw, true, i); ok {
+				d.setHooks(obj)
+				return nil
+			}
+		}
+	}
+	d.setHooks(writeObject(kept, 1))
 	return nil
 }
 
@@ -256,6 +364,7 @@ func (d *Document) removeMember(key string) {
 	for i := range d.members {
 		if d.members[i].key == key {
 			d.members = append(d.members[:i], d.members[i+1:]...)
+			d.edit(func(buf []byte) ([]byte, bool) { return spliceRemove(buf, true, i) })
 			return
 		}
 	}
@@ -435,3 +544,60 @@ func writeArray(items []json.RawMessage, depth int) []byte {
 func Indent(depth int) string { return indent(depth) }
 
 func indent(depth int) string { return strings.Repeat("  ", depth) }
+
+// memberIndent is the indentation of the line the top-level member key starts
+// on in the document as it stands, or the editor's own for a document with no
+// bytes to ask.
+func (d *Document) memberIndent(key string) string {
+	cur := d.src
+	if d.buf != nil {
+		cur = d.buf
+	}
+	for i := range d.members {
+		if d.members[i].key != key {
+			continue
+		}
+		if spans, ok := spansOf(cur, true); ok && i < len(spans) {
+			return lineIndent(cur, spans[i].start)
+		}
+	}
+	return indent(1)
+}
+
+// eventIndent is the indentation of the line event ei starts on in the hooks
+// object raw, or that of the hooks member when raw is written on one line.
+func (d *Document) eventIndent(raw []byte, ei int) string {
+	spans, ok := spansOf(raw, true)
+	if ok && ei < len(spans) && bytes.IndexByte(raw[:spans[ei].start], '\n') >= 0 {
+		return lineIndent(raw, spans[ei].start)
+	}
+	return d.memberIndent(hooksKey)
+}
+
+// lineIndent is the run of spaces and tabs at the start of the line that holds
+// offset at.
+func lineIndent(b []byte, at int) string {
+	start := bytes.LastIndexByte(b[:at], '\n') + 1
+	end := start
+	for end < at && (b[end] == ' ' || b[end] == '\t') {
+		end++
+	}
+	return string(b[start:end])
+}
+
+// renderArrayAt renders entries as a multi-line array whose closing bracket is
+// at base.
+func renderArrayAt(entries []json.RawMessage, base string) []byte {
+	var b bytes.Buffer
+	b.WriteString("[\n")
+	for i, e := range entries {
+		b.WriteString(base + "  ")
+		b.Write(e)
+		if i < len(entries)-1 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString(base + "]")
+	return b.Bytes()
+}

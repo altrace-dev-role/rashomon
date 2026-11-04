@@ -12,11 +12,12 @@ const EventSchemaVersion = 5
 // terminal) are written at: the v5 keys (record_v5.go), at 6 runner_kind on
 // the declaration's shape and the execution, at 7 store_named on the
 // declaration (D173b), and at 8 runner_name and masked_by on the execution
-// (D229), and at 9 location_unread on the declaration (5.14b). A new key gets a version of
+// (D229), at 9 location_unread on the declaration (5.14b), and at 10 launch
+// on the declaration (LAUNCH-ANY1). A new key gets a version of
 // its own and never joins an existing one, whose records are already on disk
 // without it (D11). SchemaVersion is the same number under the name the
 // writers use.
-const CallSchemaVersion = 9
+const CallSchemaVersion = 10
 
 // The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
 // STEER's lines live in their own side file, runs/<dir>/steer.ndjson.
@@ -54,7 +55,7 @@ const TypeAfterHit = "after_hit"
 const TypeThenCheck = "then_check"
 
 // kindVersion is the version each writer stamps on its kind (REC-1): call
-// kinds at 9, coverage and gaps unchanged at 3, every new kind at 5, the
+// kinds at 10, coverage and gaps unchanged at 3, every new kind at 5, the
 // spec_event, after_hit and then_check added after the freeze included. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.

@@ -43,7 +43,7 @@ func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, boo
 			return "", false
 		}
 	}
-	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + unboundLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true
+	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + ruleLines(v) + unboundLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true
 }
 
 // unbacked reports whether a strict claim's verdict is a state other than
