@@ -232,8 +232,9 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 			t.Fatalf("runOf: call %d has runner kind %q and no runner (shape: RunnerKind is set exactly when RunnerDigest is)", i, c.kind)
 		}
 		if c.runner != "" && c.kind != "" && c.masked != shape.MaskedNone &&
-			!(c.masked == shape.MaskedTest && c.kind == shape.RunnerTest) && !(c.masked == shape.MaskedBuild && c.kind == shape.RunnerBuild) {
-			t.Fatalf("runOf: call %d masked %q with runner kind %q: with a runner the masked word is none or the runner's own kind (shape: statusMasked and runnerOf take both from one runner group)", i, c.masked, c.kind)
+			!(c.masked == shape.MaskedTest && c.kind == shape.RunnerTest) &&
+			!(c.masked == shape.MaskedBuild && c.kind != shape.RunnerTest && slices.Contains(shape.RunnerKinds(), c.kind)) {
+			t.Fatalf("runOf: call %d masked %q with runner kind %q: with a runner the masked word is none, test for a test runner, or build for any other listed kind (shape: runnerLists gives each list its masked word, and statusMasked and runnerOf take both from one runner group)", i, c.masked, c.kind)
 		}
 		// Both refusals below follow from one invariant of Derive, not from a
 		// list of cases: the class is test only when the line, past the
