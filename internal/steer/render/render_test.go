@@ -174,8 +174,8 @@ func TestSTR43a_RegressionLocationTemplateIsTheArchivesText(t *testing.T) {
 	if l, ok := m.Slots()[3].Value.(slot.PathList); !ok || l.More() != 0 || len(l.Paths()) != 2 {
 		t.Errorf("the paths slot = %#v, want the two listed paths and 0 more", m.Slots()[3].Value)
 	}
-	if Version != 1 {
-		t.Errorf("Version = %d, want 1 (the spec example's renderer_version)", Version)
+	if Version != 2 {
+		t.Errorf("Version = %d, want 2 (the spec example's 1, then TOKEN-BUDGET1's task-preflight rows)", Version)
 	}
 }
 

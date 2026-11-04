@@ -28,7 +28,7 @@ m("DEL-22 any kind passes as a frozen kind", "internal/steer/pattern/pattern.go"
 m("DEL-22 the masked claim may be model-visible", "internal/steer/finding.go",
   '\treturn f.Pattern == pattern.ClaimVsRecord && f.Kind == "masked"\n', "\treturn false\n", "TestDEL22e_")
 m("DEL-22 a message rides another pattern's finding", "internal/steer/finding.go",
-  "\tcase f.Message.Text() != \"\" && f.Message.Pattern() != f.Pattern:\n", "\tcase false:\n", "TestDEL22e_")
+  "\tcase f.Message.Template() != \"\" && f.Message.Pattern() != f.Pattern:\n", "\tcase false:\n", "TestDEL22e_")
 m("DEL-22 evidence may repeat or follow after_seq", "internal/steer/finding.go",
   "\t\tif seq < 1 || seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {\n", "\t\tif seq < 1 || i > 0 && seq < f.Evidence[i-1] {\n", "TestDEL22e_")
 m("DEL-22 a stop form rides below the stop level", "internal/steer/finding.go",
