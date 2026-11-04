@@ -31,12 +31,22 @@ func go1Payload(t *testing.T, event, command string, extra map[string]any) []byt
 	return raw
 }
 
-// go1Post lands the post of one Bash call and returns its execution.
+// go1Post lands the post of one Bash call and returns its execution. Its
+// clock stands still, as go1gGate's does, so the read is never past the
+// budget however long the capture takes under load; the budget is pinned on
+// its own clock (TestGO1i).
 func go1Post(t *testing.T, event, command string, extra map[string]any) store.Execution {
+	t.Helper()
+	now := time.Now()
+	return go1PostAt(t, func() time.Time { return now }, event, command, extra)
+}
+
+// go1PostAt is go1Post on the post's clock now.
+func go1PostAt(t *testing.T, now func() time.Time, event, command string, extra map[string]any) store.Execution {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	st := mustOpen(t)
-	p := NewPost(st, time.Now)
+	p := NewPost(st, now)
 	p.Close(&Signals{}, p.Capture(bytes.NewReader(go1Payload(t, event, command, extra))))
 	run, err := st.ReadRun("s")
 	if err != nil {
@@ -337,5 +347,39 @@ func TestGO1h_TheBufferIsClearedBeforeReturn(t *testing.T) {
 	}
 	if bytes.Contains(buf[:cap(buf)], []byte("SENTINEL")) {
 		t.Error("the buffer still holds the output after readOutput returned")
+	}
+}
+
+// TestGO1i_TheReadStopsAtTheBudget: a gate run's output is read until 50 ms
+// after its capture starts, the tech spec's figure (2.2.3), and not after.
+// The post's clock reads the capture's start first and then a later instant
+// on every read: at the budget's end the run is classified, and a printed
+// status is the outcome; a nanosecond past it the run is unread, budget, and
+// the printed status is not read either. The clock is the post's own
+// (NewPost), so no load moves the result. Break: drop either read's deadline
+// check, or move the budget off 50 ms.
+func TestGO1i_TheReadStopsAtTheBudget(t *testing.T) {
+	const budget = 50 * time.Millisecond
+	const pass, printed = "ok  \tpkg\t0.01s\n", "--- FAIL: TestAdd (0.00s)\nFAIL\nFAIL\tpkg\t0.012s\nFAIL\n2\n"
+	for _, tc := range []struct {
+		name, cmd, out       string
+		after                time.Duration
+		kind, parser, reason string
+	}{
+		{"at the budget", "go test ./...", pass, budget, "summary_pass", "go", ""},
+		{"past the budget", "go test ./...", pass, budget + time.Nanosecond, "unread", "", "budget"},
+		{"a printed status at the budget", "go test ./... ; echo $?", printed, budget, gateout.KindPrintedFail, gateout.ParserExitStatus, ""},
+		{"a printed status past the budget", "go test ./... ; echo $?", printed, budget + time.Nanosecond, "unread", "", "budget"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			start, reads := time.Now(), 0
+			clock := func() time.Time {
+				if reads++; reads == 1 {
+					return start
+				}
+				return start.Add(tc.after)
+			}
+			wantGateOutput(t, go1PostAt(t, clock, "PostToolUse", tc.cmd, streams(tc.out, "")), tc.kind, tc.parser, tc.reason)
+		})
 	}
 }

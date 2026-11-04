@@ -33,6 +33,9 @@ m("SEED-1 no problem counts as a pushback", C,
 # The classes.
 m("SEED-1 a shell call is not read for its runner", C,
   "\tcase \"Bash\":\n\t\treturn shellClass(input)\n", "\tcase \"Bash\":\n\t\treturn cShell\n", "TestSEED1a_")
+m("SEED-1 a check runner is a test run", C,
+  "\t\tif *s.RunnerKind == shape.RunnerTest {\n", "\t\tif *s.RunnerKind != shape.RunnerBuild {\n",
+  "TestSEED1a_OnlyATestRunnerIsATestRun")
 m("SEED-1 a test file is not told apart", C,
   "\tcase shape.LabelTestFile:\n", "\tcase \"never\":\n", "TestSEED1b_")
 

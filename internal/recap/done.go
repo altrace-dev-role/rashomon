@@ -23,6 +23,13 @@ const noRunSentence = "no test or build run is recorded for this turn"
 // claim with an expected evidence kind unmet fires it too, on any row (card
 // 3.3, Gate B 1), and each unmet kind's sentence follows the row's.
 func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, bool) {
+	if v.Done != nil {
+		// A done claim answers to the evidence since the last edit in the
+		// gates' projects, whichever turn holds it, on every branch below
+		// (BG-OUTCOME phase 2a): a turn that only read a background job's
+		// log is judged with the edit and the run it rests on.
+		v.Summary, v.Turn = v.Done.Summary, v.Done.Turn
+	}
 	unmet := unmetExpected(v)
 	if (v.Summary.Row == verify.RowVerified || !unbacked(v.Scan.Claims)) && len(unmet) == 0 {
 		return "", false
@@ -36,7 +43,7 @@ func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, boo
 			return "", false
 		}
 	}
-	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + unboundLines(v) + pointer(sessionID, fromPlugin), true
+	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + unboundLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true
 }
 
 // unbacked reports whether a strict claim's verdict is a state other than

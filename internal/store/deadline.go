@@ -2,6 +2,13 @@ package store
 
 import "time"
 
+// pollNow is the clock a read's lock waits run on: lockFileWait's polls on
+// unix (lock_unix.go, beside pollSleep) and ReadRunConsistent's one deadline
+// across its files, so a test drives the read and each of its waits on one
+// clock it owns (TestRubricPERF1_TheBudgetCoversTheWholeReadOnAnExactClock).
+// It is declared for every platform, as read.go is.
+var pollNow = time.Now
+
 // LimitLockWaits gives every lock wait this Store makes from now on one
 // deadline, total from now: each wait is its own budget or the time left,
 // whichever is shorter, and a wait with no time left tries its lock once.

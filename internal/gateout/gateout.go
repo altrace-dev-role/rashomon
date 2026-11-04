@@ -38,16 +38,19 @@ func Kinds() []string {
 		KindPrintedPass, KindPrintedFail}
 }
 
-// Classify reports the table-driven result of test runner output. Build
-// runners and unknown programs do not scan text. The scan is O(len(text))
-// with no per-line allocation; inputs over MaxScanBytes are unread. A
+// Classify reports the table-driven result of test runner output. Build,
+// lint, typecheck and scan runners, which have no table of their own, and
+// unknown programs do not scan text. The scan is O(len(text)) with no
+// per-line allocation; inputs over MaxScanBytes are unread. A
 // delegate's or a wrapper's output is scanned twice: once for the rows whose
 // signature it holds, then by those rows.
 func Classify(kind, program string, text []byte) store.GateOutput {
-	if kind != "test" && kind != "build" {
+	switch kind {
+	case "test", "build", "lint", "typecheck", "scan":
+	default:
 		return store.GateOutput{Kind: "unattributable"}
 	}
-	if kind == "build" {
+	if kind != "test" {
 		return store.GateOutput{Kind: "no_summary", Parser: program}
 	}
 	if len(text) > MaxScanBytes {

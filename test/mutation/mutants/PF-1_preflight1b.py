@@ -41,21 +41,22 @@ m("PF-1 the note does not print before a stopView error returns", "cmd/rashomon/
   "\t\treturn serr\n",
   "TestPF1y_")
 m("PF-1 the screen drops the v4 clause", "internal/disclose/paragraphs.go",
-  ", or only their count and keyed digests at v4 (`rashomon status` shows the scope)", "",
+  ", or only their counts and the paths' keyed digests at v4 (`rashomon status` shows the scope)", "",
   "TestPF1n_")
 m("PF-1 the prompt path reads CI for attendance again", "internal/hook/promptcontext.go",
-  "\t\tunattended = harness.Caps(",
-  "\t\tunattended = env.CI || harness.Caps(",
+  "\t\tunattended = harness.Cap(",
+  "\t\tunattended = env.CI || harness.Cap(",
   "TestPF1z_")
 # PREFLIGHT-CLOUD1 (DE 16:2x, option b): Caps' person column decides.
 m("PF-1 the prompt path counts sdk-cli as attended", "internal/harness/caps.go",
-  "\t\t\tout[CapPersonAtPrompt] = No\n", "\t\t\tout[CapPersonAtPrompt] = Unverified\n",
+  "\tcase c == CapPersonAtPrompt && s == SurfaceSDK:\n\t\treturn No\n",
+  "\tcase c == CapPersonAtPrompt && s == SurfaceSDK:\n\t\treturn Unverified\n",
   "TestPF1z_")
 m("PF-1 the prompt path withholds what Caps leaves unverified", "internal/hook/promptcontext.go",
-  "[harness.CapPersonAtPrompt] == harness.No\n", "[harness.CapPersonAtPrompt] != harness.Yes\n",
+  ", harness.CapPersonAtPrompt) == harness.No\n", ", harness.CapPersonAtPrompt) != harness.Yes\n",
   "TestPF1z_")
 m("PF-1 the prompt path reads the mirror column for a person", "internal/hook/promptcontext.go",
-  "[harness.CapPersonAtPrompt] == harness.No\n", "[harness.CapMirrorInBand] == harness.No\n",
+  ", harness.CapPersonAtPrompt) == harness.No\n", ", harness.CapMirrorInBand) == harness.No\n",
   "TestPF1z_")
 m("PF-1 the record form steps the note down", "internal/intent/note.go",
   "\t\t\tds[i] = digest(string(p))\n", "\t\t\tds[i] = string(p)\n",

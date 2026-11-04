@@ -63,9 +63,11 @@ func TestPF1r_PreflightRowsRenderUnderTheBriefingCheck(t *testing.T) {
 // TestPF1r_PreflightRowsAreStatementsOfFact: every row passes the template
 // check STR-14 runs over the table, and a filled row over 1,600 bytes is
 // refused, never cut, so the caller's ladder sees the error. The rows are
-// the later prompts' and the first prompt's, and two that carry a lesson as
+// the later prompts' and the first prompt's, two that carry a lesson as
 // their last line (LEARN-RIDE1): the later note with its unknowns line and
-// without it. The first prompt's six lines are the cap, so it carries none.
+// without it, and four with the symbols line (PW1b-ON-230 step 3): later,
+// later without unknowns, later with a lesson, and the first prompt's. The
+// first prompt's six lines are the cap, so it carries no lesson.
 func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 	n := 0
 	for k, tmpl := range templates() {
@@ -77,8 +79,8 @@ func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 			t.Errorf("%s: %v", tmpl.id, err)
 		}
 	}
-	if n != 4 {
-		t.Errorf("task-preflight has %d rows, want 4", n)
+	if n != 8 {
+		t.Errorf("task-preflight has %d rows, want 8", n)
 	}
 	long := make([]slot.Path, 3)
 	for i := range long {
