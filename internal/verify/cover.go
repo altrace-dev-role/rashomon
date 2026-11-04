@@ -101,31 +101,45 @@ func gateRoots(snap *Snapshot) []string {
 // turnProjects is the projects the calls of the turn ran in (card F2), over
 // the window countTurn reads: each declaration's that acts (projectOf: a file
 // tool's file's repository, a shell line's where it ran), distinct, in record
-// order. nil reads every gate as the turn's: a call that acts whose project
-// the record does not say, more than maxProjectKeys, or no call in any
+// order. A turn none of whose calls acts in a project is in the projects its
+// calls only looked in, as before card F2c: a turn that only read in one
+// worktree is that worktree's, not every one's. nil reads every gate as the
+// turn's: a call whose project the record does not say (one that acts, or in
+// a turn that only looked), more than maxProjectKeys, or no call in any
 // project (a turn only under /tmp or home reads the session's gates, as
 // before the card, D40).
 func turnProjects(run *store.Run, promptID string, at int64) []string {
 	if promptID == "" {
 		promptID = latestPrompt(run.Declarations)
 	}
-	var ps []string
+	ps, ok := projectsOf(run, promptID, at, true)
+	if ok && ps == nil {
+		ps, _ = projectsOf(run, promptID, at, false)
+	}
+	return ps
+}
+
+// projectsOf is turnProjects' walk over the turn's calls at or before at,
+// only those that act where acting: their projects, distinct, in record
+// order. ok is false, and ps nil, where one's project the record does not say
+// or there are more than maxProjectKeys.
+func projectsOf(run *store.Run, promptID string, at int64, acting bool) (ps []string, ok bool) {
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
-		if d.PromptID == nil || *d.PromptID == "" || *d.PromptID != promptID || d.Seq > at || !acts(d) {
+		if d.PromptID == nil || *d.PromptID == "" || *d.PromptID != promptID || d.Seq > at || acting && !acts(d) {
 			continue
 		}
 		switch p := projectOf(d); {
 		case p == nil:
-			return nil
+			return nil, false
 		case *p == noProject || slices.Contains(ps, *p):
 		case len(ps) == maxProjectKeys:
-			return nil
+			return nil, false
 		default:
 			ps = append(ps, *p)
 		}
 	}
-	return ps
+	return ps, true
 }
 
 // acts reports a call that may act on the files of the project it ran in

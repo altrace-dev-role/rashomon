@@ -293,7 +293,8 @@ func orderNotKnown(r *gateRun) bool {
 	return !known
 }
 
-// green: no row before Stale matches the run.
+// green: no row before the writes-after-green Stale row matches the run. The
+// masked-then-written row above it matches only a masked run (card F2c).
 func green(r *gateRun) bool {
 	return !r.Backgrounded && !masked(r) && !emptyRun(r) && !failed(r) && !outcomeNotKnown(r) && !orderNotKnown(r)
 }

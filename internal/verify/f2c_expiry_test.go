@@ -162,13 +162,72 @@ func TestF2e_ACallThatOnlyReadsActsOnNothing(t *testing.T) {
 			scAt(t, r, 2, f2Vetted, f2Vetted)
 			scAt(t, r, 3, c.project, c.project)
 			scAt(t, r, 4, f2Other, f2Other)
-			if c.schema > 0 {
+			if c.schema != 0 {
 				for i := range r.Declarations {
 					if d := &r.Declarations[i]; d.ToolUseID == callID(3) {
 						d.SchemaVersion = c.schema
 					}
 				}
 				f2Unkeyed(t, r, 3)
+			}
+			scPrompt(r, "p1", 1, 2)
+			scPrompt(r, "p2", 3, 4)
+			v := scStop(r, "p2", f2Said, f2Other, nil)
+			if v.Snap.Recording != Complete {
+				t.Fatalf("premise: recording %s, want complete", v.Snap.Recording)
+			}
+			g := f2Vet(t, v)
+			if got := !g.offTurn; got != c.turns {
+				t.Errorf("vet in rv-se4-gi1w is the turn's: %t; want %t", got, c.turns)
+			}
+			if got := scFlagged(t, v); got != c.turns {
+				t.Errorf("flagged %t (row %s, claims %+v); want %t", got, v.Summary.Row, v.Scan.Claims, c.turns)
+			}
+		})
+	}
+}
+
+// TestF2f_ATurnThatOnlyReadIsInTheProjectsItReadIn (BGO2e's third turn, CI on
+// #274): turn 1 edited rv-se4-gi1w and ran vet there behind a pipe; turn 2
+// made no call that acts in a project and said 8449's first sentence. Where
+// no call of the turn acts in a project, the turn is in the projects its
+// calls only looked in, as before F2c (turnProjects): two reads in
+// rv-se4-gi1w5-red keep vet in gi1w off the turn, where F2c alone read every
+// gate as the turn's, the very line F2 removed. The same for a write under
+// /tmp beside the read. Controls, each the turn's: the reads were in gi1w; a
+// read whose project the record does not say; reads in no project (the
+// session's gates, D40); a write whose project the record does not say, which
+// fails closed before any read is looked at. Break: read every gate where no
+// call acts in a project, or fall back to the reads past an act the record
+// does not place.
+func TestF2f_ATurnThatOnlyReadIsInTheProjectsItReadIn(t *testing.T) {
+	for _, c := range []struct {
+		name              string
+		third             call
+		thirdAt, fourthAt string // each call's project and cwd; "" for none, run from home
+		unkeyed           int64  // a call whose project the record does not say; 0 for none
+		turns             bool
+	}{
+		{"two reads in another worktree", scRead(3), f2Other, f2Other, 0, false},
+		{"control: two reads in the vetted worktree", scRead(3), f2Vetted, f2Vetted, 0, true},
+		{"control: a read the record does not place", scRead(3), f2Other, f2Other, 3, true},
+		{"control: two reads in no project", scRead(3), "", "", 0, true},
+		{"a write under /tmp and a read in another worktree", scWrite(3, "/tmp/rk-se4-w5/msg-w5.txt"), "", f2Other, 0, false},
+		{"control: a write the record does not place", bashWrite(3, "/tmp/rk-se4-w5/msg-w5.txt"), f2Other, f2Other, 3, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := runOf(t, scWrite(1, f2Vetted+"/internal/gateinfer/gateinfer.go"), f2MaskedVet(2), c.third, scRead(4))
+			scAt(t, r, 1, f2Vetted, f2Vetted)
+			scAt(t, r, 2, f2Vetted, f2Vetted)
+			for s, at := range map[int64]string{3: c.thirdAt, 4: c.fourthAt} {
+				if at == "" {
+					scAt(t, r, s, "", "/home/u")
+				} else {
+					scAt(t, r, s, at, at)
+				}
+			}
+			if c.unkeyed > 0 {
+				f2Unkeyed(t, r, c.unkeyed)
 			}
 			scPrompt(r, "p1", 1, 2)
 			scPrompt(r, "p2", 3, 4)

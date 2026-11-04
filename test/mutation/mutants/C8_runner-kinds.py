@@ -55,4 +55,4 @@ m("C8 gateout reads a lint run's output as a test's", "internal/gateout/gateout.
 m("C8 the runner lists change without a rules version bump", M,
   "{\"pip-audit\"}, {\"npm\", \"audit\"}, {\"cargo\", \"audit\"},\n", "{\"pip-audit\"}, {\"npm\", \"audit\"}, {\"cargo\", \"audit\"}, {\"trivy\"},\n", "TestRulesVersion_RunnerLists")
 m("C8 the rules version is not bumped", M,
-  "const RulesVersion = 13\n", "const RulesVersion = 11\n", "TestMO1_RulesVersionIsTwelve|TestRulesVersion_")
+  "const RulesVersion = 13\n", "const RulesVersion = 11\n", "TestMO1_RulesVersionIsThirteen|TestRulesVersion_")
