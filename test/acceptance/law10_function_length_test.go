@@ -55,9 +55,11 @@ var overLimit = map[string]int{
 // to 927 with it, printVersion to version.go.
 // SELFGUARD-ALL1, merged onto that: main.go 927 to 905, detachTarget to
 // detach.go beside detach's self-check, with pause's guard added; watch.go
-// 531 to 530, its agent refusal now selfguard.Refusal.
+// 531 to 530, its agent refusal now selfguard.Refusal. DETACH-BYTE-EXACT,
+// merged onto that: main.go 905 to 904 (editSettings writes through
+// writeChecked).
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    905,
+	"cmd/rashomon/main.go":    904,
 	"internal/store/store.go": 549,
 	"cmd/rashomon/watch.go":   530,
 }
