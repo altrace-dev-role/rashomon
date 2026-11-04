@@ -22,31 +22,32 @@ func symIntent() intent.Intent {
 func lines(s string) []string { return strings.Split(s, "\n") }
 
 // TestPW1b3_TheNoteGivesTheSymbolsBeforeItsUnknowns: a later prompt's note
-// carries the symbols line after the gates and before the unknowns; the
-// first prompt's, at its six-line cap, in the unknowns' place; beside a
-// lesson, the lesson takes the unknowns' place. Break: render the symbols
-// on no row, or on the first prompt's beside the unknowns (seven lines,
-// refused, and the note falls back to no symbols), and this fails.
+// carries the symbols line after the gates, the unknowns in the person's
+// aside (TOKEN-BUDGET1); the first prompt's carries it too, its aside the
+// project line; beside a lesson, the lesson follows it. The rules and gates
+// list nothing here, so the model's text is the header, the path and the
+// symbols. Break: render the symbols on no row, and this fails.
 func TestPW1b3_TheNoteGivesTheSymbolsBeforeItsUnknowns(t *testing.T) {
 	in := symIntent()
 	f, ok := intent.FindingKeyed(in, intent.Delivered{}, nil, 0, nil)
 	got := lines(f.Message.Text())
-	if !ok || f.Message.Template() != "task-preflight-symbols/v1" || len(got) != 6 || got[4] != symLine || got[5] != "unknown: no spec found" {
-		t.Errorf("later note (%s):\n%s\nwant the symbols line fifth, then the unknowns", f.Message.Template(), f.Message.Text())
+	if !ok || f.Message.Template() != "task-preflight-symbols/v2" || len(got) != 3 || got[2] != symLine || f.Message.Aside() != "unknown: no spec found" {
+		t.Errorf("later note (%s):\n%s\naside %q\nwant the symbols line third, and the unknowns aside", f.Message.Template(), f.Message.Text(), f.Message.Aside())
 	}
 
 	b := &intent.Brief{Manifests: []string{"go.mod"}, Module: "example.com/m", GoDirs: 1}
 	f, ok = intent.FindingKeyed(in, intent.Delivered{}, b, 0, nil)
 	got = lines(f.Message.Text())
-	if !ok || f.Message.Template() != "task-preflight-first-symbols/v1" || len(got) != 6 || got[5] != symLine {
-		t.Errorf("first note (%s):\n%s\nwant the symbols line last, in the unknowns' place", f.Message.Template(), f.Message.Text())
+	if !ok || f.Message.Template() != "task-preflight-first-symbols/v2" || len(got) != 3 || got[2] != symLine ||
+		!strings.HasPrefix(f.Message.Aside(), "project files: none; manifests: 'go.mod'") {
+		t.Errorf("first note (%s):\n%s\naside %q\nwant the symbols line last, and the project line aside", f.Message.Template(), f.Message.Text(), f.Message.Aside())
 	}
 
 	ride := &intent.Ride{ID: "a-gen", Text: "internal/a.go is generated from gen/a.tmpl"}
 	f, ok, rode := intent.FindingRiding(in, intent.Delivered{}, nil, 0, nil, ride)
 	got = lines(f.Message.Text())
-	if !ok || !rode || f.Message.Template() != "task-preflight-symbols-lesson/v1" || len(got) != 6 || got[4] != symLine ||
-		!strings.HasPrefix(got[5], "lesson a-gen,") {
+	if !ok || !rode || f.Message.Template() != "task-preflight-symbols-lesson/v2" || len(got) != 4 || got[2] != symLine ||
+		!strings.HasPrefix(got[3], "lesson a-gen,") {
 		t.Errorf("with a lesson (%s, rode %v):\n%s\nwant the symbols line, then the lesson", f.Message.Template(), rode, f.Message.Text())
 	}
 }
@@ -74,7 +75,7 @@ func TestPW1b3_ASymbolIsNewToTheSession(t *testing.T) {
 func TestPW1b3_TheV4RecordCountsTheSymbols(t *testing.T) {
 	f, _ := intent.FindingKeyed(symIntent(), intent.Delivered{}, nil, 0, keyedWith([]byte("k")))
 	rec := f.Record.Text()
-	if !strings.Contains(rec, "\nsymbols named: 1 from the platform graph\n") || strings.Contains(rec, "CountRows") || strings.Contains(rec, "internal/a'") {
+	if !strings.HasSuffix(rec, "\nsymbols named: 1 from the platform graph") || strings.Contains(rec, "CountRows") || strings.Contains(rec, "internal/a'") {
 		t.Errorf("v4 record:\n%s\nwant the symbols as their count, no name or directory", rec)
 	}
 	if !strings.Contains(f.Message.Text(), symLine) {

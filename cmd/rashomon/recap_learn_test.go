@@ -599,8 +599,8 @@ func TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout(t *testing.T) {
 	e := newLessonEnv(t)
 	goFilesIn(t, e.cwd, "internal/a.go", "internal/b.go")
 	plain := e.prompt("s-lrn17r-plain", "prompt-1", "fix internal/a.go").context
-	if strings.Count(plain, "\n") != 4 {
-		t.Fatalf("premise: a request naming a path gets the five-line note, got %q", plain)
+	if !strings.HasSuffix(plain, "\npaths named: 'internal/a.go'") {
+		t.Fatalf("premise: a request naming a path gets a note that ends naming it, got %q", plain)
 	}
 	e.ledger([][2]string{{"a-gen", aGenLesson}}, "a-gen")
 	e.start("s-lrn17r")
