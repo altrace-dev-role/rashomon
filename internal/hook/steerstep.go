@@ -50,6 +50,9 @@ type SteerEnv struct {
 	Now                time.Time
 	ProjectDir         string
 	ManagedDir         string
+	// Blast is the blast-radius read's port (card ARCH-INLINE1), cmd's
+	// internal/platform; the zero port reads nothing.
+	Blast BlastPort
 }
 
 // steps is the trigger (card 2.3 R3; card P5B, 5.7): an execution that
@@ -129,10 +132,16 @@ type writtenCall struct {
 // bytes to print, or nil. It returns no error: each exit before Route prints
 // nothing (no trigger, an unreadable run with no rule raised), and every
 // exit after Route has its line in the steer log. A gate run's post arms the
-// stale trigger first (armStale), whatever the step then does.
+// stale trigger first (armStale), whatever the step then does. A Go edit's
+// blast-radius note joins the judged findings (blast), and its read marker is
+// settled once Route has decided (settleBlast).
 func (p *Post) Steer(env SteerEnv) []byte {
 	p.armStale()
 	ctx, view, ok := p.judge(env)
+	draft, blasted := p.blast(env, &ctx, ok)
+	if blasted {
+		view.Findings, ok = append(view.Findings, draft.f), true
+	}
 	if !ok {
 		// A call that raised nothing still leaves its then_checks: the Stop
 		// reads a line that is no Then from its "no" (card ORDER-LIVE1). No
@@ -146,6 +155,9 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	}
 	p.keepHits(view.Hits, view.AfterHits, view.ThenChecks, env.Now)
 	out := steer.Route(&ctx, view.Findings)
+	if blasted {
+		p.settleBlast(draft, &ctx, out)
+	}
 	// The line is durable before its note prints (REC-34).
 	if err := fault.Fail(fault.PointSteerFlush); err != nil {
 		return nil

@@ -1,43 +1,49 @@
-// Package platform turns a pgraph fact log into the obligations a run's
-// writes owe (PRD 1.5, PF-PL8): the Go packages whose files the run wrote,
-// each a family the evaluator can hold a gate against.
+// Package platform reads a pgraph fact log for the ledger verb's replay of a
+// Stop (PRD 1.5, PF-PL8): the Go packages whose files a run wrote, each a
+// family the ledger owes a platform_impact row and holds the package's go
+// test against (verify/platform.go), and whether the log's facts about each
+// still hold (digests.go).
 //
 // Boundary. pgraph is a separate module that the rashomon module never
 // imports (pgraph/doc.go); the crossing is a file in the format pgraph's
 // (*Log).Encode writes, versioned by its header line. This package reads it
 // with its own decoder, the header and the record grammar alone, never through
 // pgraph.DecodeLog. A header it does not know, a log over its cap, a malformed
-// line or a decode past Deadline is unknown, never a guess (INV-14).
+// line or a decode past the crash guard is unknown, never a guess (INV-14).
 package platform
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
+	"io"
 	"slices"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
-	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// Deadline bounds one Obligations call (PF-PL8). Past it the answer is one
-// unknown row and no family.
-const Deadline = 20 * time.Millisecond
+// deadline is a crash guard on one Read's decode of the log, not a budget:
+// the answer must be the same for the same files (INV-11), and a decode
+// within MaxLogBytes is milliseconds (11 to 17 ms for this repository's 3 MB
+// log), so only a read that has stalled reaches it, and it reads
+// LogTimedOut. A variable so a test can hold a decode past it.
+var deadline = 10 * time.Second
 
-// SourcePlatform is the Source of every row Obligations returns.
-const SourcePlatform = "platform"
-
-// RunView is what Obligations reads of a run: the project root, the paths the
-// run wrote (relative to Root, or absolute under it) and the pgraph log to
-// read. LogPath is filled by nothing yet: the first card that gives the hook a
-// log path (pgraph sync) wires it; until then the one caller is a test.
+// RunView is what Read reads of a run: the project root, the paths the run
+// wrote (relative to Root, or absolute under it) and the pgraph log to read.
+// The ledger verb fills LogPath with LogPath(Root) where that file exists
+// (cmd's platformRead, card PL-WIRE1), else leaves it "".
 type RunView struct {
 	Root         string
 	WrittenPaths []string
 	LogPath      string
+	// Deadline, when set, replaces the crash guard for this read: the Stop
+	// hook's read passes one well inside its own entry's timeout.
+	Deadline time.Duration
 }
 
 // Family is one Go package a run's writes touched. Package is its import
@@ -53,34 +59,6 @@ type Family struct {
 	Hash    string
 }
 
-// Obligations is one platform_impact row per family the run's writes touched,
-// each open, its family the package and its Hash, so a package whose facts
-// change owes a new row. A run with no writes or no log owes none. When the
-// log cannot be read whole within Deadline, or is unknown to this package, it
-// is one unknown row with no family: never a partial answer.
-func Obligations(run RunView) []verify.Obligation {
-	if run.LogPath == "" || len(run.WrittenPaths) == 0 {
-		return []verify.Obligation{}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), Deadline)
-	defer cancel()
-	fams, err := Impact(ctx, run.Root, run.LogPath, run.WrittenPaths)
-	if err != nil {
-		return []verify.Obligation{platformRow("", verify.ObligationUnknown)}
-	}
-	out := make([]verify.Obligation, 0, len(fams))
-	for _, f := range fams {
-		out = append(out, platformRow(f.Package+"@"+f.Hash, verify.ObligationOpen))
-	}
-	return out
-}
-
-func platformRow(family string, state verify.ObligationState) verify.Obligation {
-	return verify.Obligation{ID: verify.ObligationID(verify.ScopeSession, verify.PlatformImpact, family),
-		Scope: verify.ScopeSession, Kind: verify.PlatformImpact, Source: SourcePlatform, State: state,
-		Evidence: []int64{}}
-}
-
 // Impact is the families of the packages paths belong to, read from the log at
 // logPath, sorted by Package. A path's package is Go's own rule (packageOf);
 // a package the log holds no "pkg:" subject for has no family. The decode
@@ -92,27 +70,42 @@ func Impact(ctx context.Context, root, logPath string, paths []string) ([]Family
 }
 
 func impactWithin(ctx context.Context, root, logPath string, paths []string, limit int64) ([]Family, error) {
+	return impactVouched(ctx, root, logPath, paths, limit, "")
+}
+
+// impactVouched is impactWithin where want, when not "", is the sha256 the
+// walk file names for the log: a log that hashes otherwise, read from the
+// same open file as it is decoded, is errNotVouched.
+func impactVouched(ctx context.Context, root, logPath string, paths []string, limit int64, want string) ([]Family, error) {
+	hook := recordHook
+	return inWorker(ctx, func() ([]Family, error) { return impact(ctx, root, logPath, paths, limit, want, hook) })
+}
+
+// inWorker runs f in a worker (safe.Go: a panic in it is an error, never the
+// process) and returns its result, or ctx's error as soon as ctx is done;
+// f is to look at ctx itself and exit at its next look.
+func inWorker[T any](ctx context.Context, f func() (T, error)) (T, error) {
 	type result struct {
-		fams []Family
-		err  error
+		v   T
+		err error
 	}
 	done := make(chan result, 1)
-	hook := recordHook
 	safe.Go(func() {
-		fams, err := impact(ctx, root, logPath, paths, limit, hook)
-		done <- result{fams, err}
-	}, func(err error) { done <- result{nil, err} })
+		v, err := f()
+		done <- result{v, err}
+	}, func(err error) { done <- result{err: err} })
 	select {
 	case r := <-done:
-		return r.fams, r.err
+		return r.v, r.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		var zero T
+		return zero, ctx.Err()
 	}
 }
 
 // impact resolves paths to packages, then decodes the log, at most limit
 // bytes, and builds each wanted package's family from its live facts.
-func impact(ctx context.Context, root, logPath string, paths []string, limit int64, hook func()) ([]Family, error) {
+func impact(ctx context.Context, root, logPath string, paths []string, limit int64, want string, hook func()) ([]Family, error) {
 	mods := map[string]goMod{}
 	var wanted []string
 	for _, p := range paths {
@@ -123,19 +116,7 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
-	f, err := os.Open(logPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > limit {
-		return nil, ErrOverCap
-	}
-	live, err := decode(ctx, f, hook)
+	live, err := readLog(ctx, logPath, limit, want, hook, keepFor(wanted))
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +132,60 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 		fams = append(fams, Family{Package: pkg, Hash: familyHash(bySubject, "pkg:"+pkg)})
 	}
 	return fams, nil
+}
+
+// readLog decodes the log at logPath, at most limit bytes, holding the
+// records keep keeps (decode). want, when not "", is the sha256 the walk
+// file names for the log: a log that hashes otherwise, read from the same
+// open file as it is decoded, is errNotVouched.
+func readLog(ctx context.Context, logPath string, limit int64, want string, hook func(), keep func(subject, object []byte) bool) (map[fact]struct{}, error) {
+	f, err := regfile.Open(logPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > limit {
+		return nil, ErrOverCap
+	}
+	h := sha256.New()
+	live, err := decode(ctx, io.TeeReader(f, h), hook, keep)
+	if err != nil {
+		return nil, err
+	}
+	if want != "" && hex.EncodeToString(h.Sum(nil)) != want {
+		return nil, errNotVouched
+	}
+	return live, nil
+}
+
+// keepFor is decode's keep for wanted's families: a subject that is a
+// wanted package ("pkg:" and its path) or a symbol of one (pgraph's
+// spelling: kind, ':', the declaring package's path, '.', the rest;
+// pgraph/identity.go id). Every member familyHash reads is a package's own
+// symbol, so the families are the ones the whole log gives; a path that is
+// another's prefix up to a dot (gopkg.in/yaml, gopkg.in/yaml.v3) holds a
+// few more facts, never fewer. The object is not read.
+func keepFor(wanted []string) func(subject, object []byte) bool {
+	return func(subject, _ []byte) bool {
+		i := bytes.IndexByte(subject, ':')
+		if i < 0 {
+			return false
+		}
+		kind, rest := subject[:i], subject[i+1:]
+		for _, p := range wanted {
+			if len(rest) == len(p) && string(kind) == "pkg" && string(rest) == p {
+				return true
+			}
+			if len(rest) > len(p) && rest[len(p)] == '.' && string(rest[:len(p)]) == p {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // familyHash is the SHA-256 of the view lines whose subject is the package or

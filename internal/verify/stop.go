@@ -44,6 +44,14 @@ type StopInput struct {
 	// baseline.Key of the payload's cwd (card PROJECT-RESOLVE1), under
 	// which evaluate places every gate; "" for none (evaluate).
 	Root string
+	// Platform reads the pgraph log under root, the snapshot's project root,
+	// for written, the session's relevant .go writes, project-relative (card
+	// PL-WIRE1): the ledger verb's replay and the Stop hook (PW1b-ON-230
+	// step 2) set it to internal/platform's Read, which imports this
+	// package; StopFailure and the catch-up leave it nil. EvaluateStop
+	// calls it once, after classifying, only where the session wrote a Go
+	// file; nil reads no log and owes no platform row.
+	Platform func(root string, written []string) PlatformRead
 }
 
 // InferredGate is a test command read from the project's own files: its
@@ -105,6 +113,10 @@ type StopView struct {
 	// nil after a session write under the store root, when no trust holds
 	// for the rest of the session (hook.TrustRoot, D173).
 	Untrusted []UntrustedGate
+	// Platform is what StopInput.Platform read, the families Obligations'
+	// platform_impact rows were built from, in their order; its Families nil
+	// where nothing was read.
+	Platform PlatformRead
 }
 
 // UntrustedGate is a gate a spec declares while the spec reads untrusted:
@@ -149,6 +161,10 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
 	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})
 	v.Obligations = ledgerOf(snap, &c, v.Expected)
+	if written := platformPaths(in.Platform, c.writes, pt.Seq); len(written) > 0 {
+		v.Platform = in.Platform(snap.ProjectRoot, written)
+		v.Obligations = append(v.Obligations, platformObligations(snap, &c, run, in.Key, v.Platform)...)
+	}
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims
 	}

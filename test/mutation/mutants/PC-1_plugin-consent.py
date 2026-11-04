@@ -28,4 +28,4 @@ m("PC-1 the lines name a rashomon on PATH", P,
 m("PC-1 a quoted path takes a ~", P,
   "err == nil && shown == bin && strings.HasPrefix", "err == nil && strings.HasPrefix", "TestPC1b_")
 m("PC-1 plugin.json says less than the disclosure", J,
-  "disabling it in /plugin stops both.", "disabling it in /plugin stops recording.", "TestPC1c_")
+  "disabling it in /plugin stops all of it.", "disabling it in /plugin stops recording.", "TestPC1c_")
