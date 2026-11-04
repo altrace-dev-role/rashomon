@@ -186,6 +186,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	physical := baseline.Resolve(p.CWD)
 	var own string
 	decl.Shape, decl.CWDDigest, decl.LocationUnread, own = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
+	decl.Launch = decl.Shape.Launch
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
