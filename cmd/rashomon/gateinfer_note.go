@@ -37,10 +37,14 @@ func owedNote(v verify.StopView, inf *verify.InferredGate) recap.Owed {
 // stale, at nudge, keyed by the Stop point's seq so each turn end gives it
 // once (lines, the session's steer log, hold the keys given), naming the
 // runner and the file, or the runner alone where the path slot refuses the
-// file. None for no owed note, one past afterSeq, or a name the gate slot
-// refuses.
+// file. None for no owed note (no seq, or no runner's name, which owedNote
+// never owes) or one past afterSeq. A name the gate slot refuses still gives
+// the finding, its Message zero, which Route logs as render_refused: the
+// note was owed and the log says why it was not said, never a silent drop
+// (GATE-INFER2). That line counts as given (owedGiven), so the trace is
+// written once per turn end, as the note would be.
 func owedFinding(o recap.Owed, afterSeq int64, lines [][]byte) (steer.Finding, bool) {
-	if o.Seq <= 0 || o.Seq > afterSeq {
+	if o.Seq <= 0 || o.Seq > afterSeq || o.Gate == "" {
 		return steer.Finding{}, false
 	}
 	key := verify.InferredGateID + "@" + strconv.FormatInt(o.Seq, 10)
@@ -49,10 +53,7 @@ func owedFinding(o recap.Owed, afterSeq int64, lines [][]byte) (steer.Finding, b
 	}
 	m, err := render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredBinding{Gate: slot.Gate(o.Gate), Path: slot.Path(o.From)})
 	if err != nil {
-		m, err = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})
-	}
-	if err != nil {
-		return steer.Finding{}, false
+		m, _ = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})
 	}
 	f := steer.Finding{Pattern: pattern.ClaimVsRecord, Kind: "absent", Key: key, MaxLevel: steer.LevelNudge,
 		StopForm: steer.StopFormNone, Message: m, AfterSeq: afterSeq}
@@ -65,13 +66,16 @@ func owedFinding(o recap.Owed, afterSeq int64, lines [][]byte) (steer.Finding, b
 
 // owedGiven reports a claim-vs-record line under key in state delivered, or
 // withheld by arm off, whose shadow decision gave it, as learn.Delivered
-// reads a lesson's; a superseded line is not given. Lines are located with
-// jsonscan, never decoded (RES-5).
+// reads a lesson's, or refused at render, the trace owedFinding leaves for a
+// name the gate slot refuses, which the next prompt would refuse again; a
+// superseded line is not given. Lines are located with jsonscan, never
+// decoded (RES-5).
 func owedGiven(lines [][]byte, key string) bool {
 	var sp [4]jsonscan.Span
 	for _, b := range lines {
 		if jsonscan.Top(b, owedKeys(), sp[:]) == nil && scanText(b, sp[0]) == string(pattern.ClaimVsRecord) && scanText(b, sp[2]) == key &&
-			(scanText(b, sp[1]) == string(steer.LineStateDelivered) || scanText(b, sp[3]) == string(steer.SuppressedByArmOff)) {
+			(scanText(b, sp[1]) == string(steer.LineStateDelivered) || scanText(b, sp[3]) == string(steer.SuppressedByArmOff) ||
+				scanText(b, sp[3]) == string(steer.SuppressedByRenderRefused)) {
 			return true
 		}
 	}

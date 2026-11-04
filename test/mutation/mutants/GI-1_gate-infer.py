@@ -107,12 +107,12 @@ m("GI-1 the note is given every prompt", N,
 m("GI-1 a superseded line counts as given", N,
   "(scanText(b, sp[1]) == string(steer.LineStateDelivered) ||", "(scanText(b, sp[1]) != \"\" ||", "TestGI1n_TheNextPrompt")
 m("GI-1 an arm-off line is not given", N,
-  " || scanText(b, sp[3]) == string(steer.SuppressedByArmOff))", ")", "TestGI1n_TheNextPrompt")
+  " || scanText(b, sp[3]) == string(steer.SuppressedByArmOff) ||", " ||", "TestGI1n_TheNextPrompt")
 m("GI-1 a refused file drops the note", N,
-  "\t\tm, err = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n", "",
+  "\t\tm, _ = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n", "",
   "TestGI1n_TheNextPrompt")
 m("GI-1 a seq past the decision's is noted", N,
-  "if o.Seq <= 0 || o.Seq > afterSeq {", "if o.Seq <= 0 {", "TestGI1n_TheNextPrompt")
+  "if o.Seq <= 0 || o.Seq > afterSeq ||", "if o.Seq <= 0 ||", "TestGI1n_TheNextPrompt")
 m("GI-1 the Stop owes nothing", R,
   ", owed: owedNote(v, in.Inferred)}", "}", "TestGI1na_")
 m("GI-1 the prompt reads nothing owed", T,
