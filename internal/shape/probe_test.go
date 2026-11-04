@@ -10,8 +10,10 @@ import (
 // runs none: which or type with a name, or command -v or -V with one. A line
 // with any other command is none, since its exit may be that command's:
 // `which pytest && pytest -q` exits 1 when a test failed. A line the parse
-// cannot read whole is none. Break: read the first command only, accept a
-// bare which or `command` without -v, or read a line in part.
+// cannot read whole is none, and so is a line of no command: `# which
+// pytest` holds the words the byte scan looks for and runs nothing. Break:
+// read the first command only, accept a bare which or `command` without -v,
+// read a line in part, or take a line of no command for all probes.
 func TestH52_AProbeIsReadFromEveryCommand(t *testing.T) {
 	for _, c := range []struct {
 		command string
@@ -30,6 +32,7 @@ func TestH52_AProbeIsReadFromEveryCommand(t *testing.T) {
 		{"command -v", false},
 		{"which", false},
 		{"", false},
+		{"# which pytest", false},
 		{"make test", false},
 		{"bash -c 'which x'", false},
 	} {
