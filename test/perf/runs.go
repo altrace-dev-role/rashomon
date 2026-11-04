@@ -120,6 +120,9 @@ func CaseGate(id string) string { return "case " + id }
 // distinct from EntryGate's warm RSS/alloc row for the same id.
 func ColdGate(id string) string { return "cold " + id }
 
+// BackgroundGate names a background row's gate (PW1b-ON-230).
+func BackgroundGate(id string) string { return "background " + id }
+
 // OrderSpecCase reports a RES-28 case measured under a trusted spec that
 // declares one order rule (SPEC-RULES1 1b, #216 ruling 5). Its payload is the
 // unaffected case's, post.540B, so the two differ by the spec alone; it is
@@ -134,10 +137,11 @@ func CaseGates(c budget.RSSCase) bool { return landed[c.GatesFrom] }
 
 // Ungated lists, sorted, every gate b owes on this tree that ran does not
 // hold: every entry row, every case CaseGates admits, every entry with a
-// measured cold_alloc_bytes_max (P-12), and the init budget. A required
-// perf run (RASHOMON_PERF_REQUIRE_ALL=1, as CI runs it) fails on any,
-// because `go test` passes a run in which everything skipped -- including a
-// -run pattern edited to no longer select TestColdAllocBudget.
+// measured cold_alloc_bytes_max (P-12), every background row (PW1b-ON-230)
+// and the init budget. A required perf run (RASHOMON_PERF_REQUIRE_ALL=1, as
+// CI runs it) fails on any, because `go test` passes a run in which
+// everything skipped -- including a -run pattern edited to no longer select
+// TestColdAllocBudget.
 func Ungated(b budget.Budgets, ran map[string]bool) []string {
 	owed := []string{InitGate}
 	for _, e := range b.Entries {
@@ -150,6 +154,9 @@ func Ungated(b budget.Budgets, ran map[string]bool) []string {
 		if CaseGates(c) {
 			owed = append(owed, CaseGate(c.ID))
 		}
+	}
+	for _, r := range b.Background {
+		owed = append(owed, BackgroundGate(r.ID))
 	}
 	var missing []string
 	for _, g := range owed {

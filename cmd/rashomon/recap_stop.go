@@ -94,6 +94,11 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	if writes {
 		in.ProjectKey = key
 	}
+	if event == install.EventStop {
+		// The Stop alone reads the platform graph, for the line it prints:
+		// StopFailure prints none, and the catch-up runs at the next prompt.
+		in.Platform = stopPlatformRead
+	}
 	projectDir, managedDir := specDirs()
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	in.Inferred = inferredGate(key, sp, idx)

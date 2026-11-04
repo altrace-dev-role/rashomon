@@ -381,11 +381,12 @@ func armOff(plans []plan) (note, flag int) {
 // charge is the budget's two passes over the plans still to decide, in rank
 // order (card 2.2 R6): a note whose key the prompt already delivered is
 // budget_pattern, a direct note (the briefing, outside the prompt budget)
-// or else the first note the prompt can afford delivers, and a later one in
-// the same call is superseded (budget_batch); a flag delivers only in
-// a call where no note did, one per call under the prompt's cap, and every
-// other flag is a candidate for the turn-end line. It returns the indexes
-// that print, -1 for none.
+// or else the first note the prompt can afford delivers (affording its
+// pattern's reserve, pattern.Reserve), and a later one in the same call
+// is superseded (budget_batch); a flag delivers only in a call where no
+// note did, one per call under the prompt's cap, and every other flag is
+// a candidate for the turn-end line. It returns the indexes that print, -1
+// for none.
 func charge(plans []plan, have counts) (note, flag int) {
 	note, flag = -1, -1
 	for i := range plans {
@@ -400,7 +401,7 @@ func charge(plans []plan, have counts) (note, flag int) {
 			p.state, p.decide, note = LineStateDelivered, false, i
 		case note >= 0:
 			p.state, p.by, p.decide = LineStateSuperseded, reason(SuppressedByBudgetBatch), false
-		case have.notes >= maxNotes:
+		case have.notes+pattern.Reserve(p.f.Pattern) >= maxNotes:
 			p.suppress(SuppressedByBudgetPrompt)
 		default:
 			p.state, p.decide, note = LineStateDelivered, false, i

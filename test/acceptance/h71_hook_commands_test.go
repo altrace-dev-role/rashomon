@@ -26,9 +26,21 @@ var (
 
 // TestH71_PluginHooksRunOnlyTheRecorder: every hook the plugin declares is a
 // command, runs the plugin's own rashomon binary, and runs one of its hook
-// subcommands -- nothing else, and no key that could carry a prompt.
+// subcommands -- nothing else, and no key that could carry a prompt. The one
+// other hook allowed is the platform graph's writer exactly as
+// TestPW1b_ThePluginRunsTheWriterInTheBackground pins it (PW1b-ON-230): the
+// plugin's own pgraph launcher, `sync -hook`, in the background; async is a
+// key Claude Code acts on, so it is allowed on that hook alone.
 func TestH71_PluginHooksRunOnlyTheRecorder(t *testing.T) {
 	events := pluginHookEvents(t, func(event string, h map[string]any) {
+		if h["command"] == pgraphHook["command"] {
+			hb, _ := json.Marshal(h)
+			wb, _ := json.Marshal(pgraphHook)
+			if string(hb) != string(wb) {
+				t.Errorf("%s: the plugin runs pgraph as %s, want exactly %s", event, hb, wb)
+			}
+			return
+		}
 		for k := range h {
 			if !pluginHookKeys[k] {
 				t.Errorf("%s: a plugin hook carries %q, a key this test does not know; "+

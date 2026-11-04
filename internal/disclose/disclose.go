@@ -40,6 +40,12 @@ import (
 // alpha.1 shipped 4, so 5 also covers the briefing after a compaction, which
 // quotes the person's earlier instructions to the agent while the record keeps
 // only each quote's length and keyed digest (COMPACT-SLOT1).
+// Unreleased, 5 covers the release, so a later card of the same release
+// names its content here and does not bump: the platform graph's facts the
+// agent's note now gives, a named symbol's package and direct callers at a
+// prompt and the untested changed packages at the next one (PW1b-ON-230
+// step 3); after an edit, the packages that call the edited one, read in
+// memory from the platform graph file (ARCH-INLINE1).
 // Pinned by TRU-8.
 const ScopeVersion = 5
 
@@ -185,6 +191,7 @@ func Default() (Inventory, error) {
 		Files: slices.Concat(
 			defaultFiles(),
 			firedFiles(),
+			blastReadFiles(),
 			learnFiles(),
 			specFiles(),
 			evidenceFiles(),

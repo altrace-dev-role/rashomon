@@ -41,7 +41,7 @@ m("PF-1 the note does not print before a stopView error returns", "cmd/rashomon/
   "\t\treturn serr\n",
   "TestPF1y_")
 m("PF-1 the screen drops the v4 clause", "internal/disclose/paragraphs.go",
-  ", or only their count and keyed digests at v4 (`rashomon status` shows the scope)", "",
+  ", or only their counts and the paths' keyed digests at v4 (`rashomon status` shows the scope)", "",
   "TestPF1n_")
 m("PF-1 the prompt path reads CI for attendance again", "internal/hook/promptcontext.go",
   "\t\tunattended = harness.Cap(",

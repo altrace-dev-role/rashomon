@@ -33,7 +33,7 @@ m("PF-1 CheckOn admits after_seq 0 on every event", "internal/steer/finding.go",
   "\tif event != EventUserPromptSubmit && event != EventSessionStart || f.AfterSeq != 0 {\n", "\tif f.AfterSeq != 0 {\n",
   "TestPF1t_SeqZeroIsAdmittedOnAPromptOnly")
 m("PF-1 the steer line cannot record a preflight slot", "internal/steer/slots.go",
-  "\t\tcase slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:\n\t\t\terr = putJSON(put, s.Name, preflightJSON(v))\n",
+  "\t\tcase slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList, slot.SymbolFacts:\n\t\t\terr = putJSON(put, s.Name, preflightJSON(v))\n",
   "", "TestPF1r_PreflightNoteIsMirroredAcrossItsLines|TestSlotsOf_EverySlotTypeHasARow")
 m("PF-1 ** matches within one segment", "internal/spec/match.go",
   "\t\tif head != \"**\" {\n", "\t\tif true {\n", "TestPF1l_MatchPathClauses")
@@ -49,7 +49,7 @@ m("PF-1 the catch-up asks a nil run for its last seq", "cmd/rashomon/preflight.g
 m("PF-1 clearPrompt drops the prompt without zeroing it", "cmd/rashomon/preflight.go",
   "\tclear(p.Prompt)\n\tp.Prompt = nil\n", "\tp.Prompt = nil\n", "TestPF1k_")
 m("PF-1 the screen still says a prompt's text is not examined", "internal/disclose/paragraphs.go",
-  "Your prompts are never stored: rashomon reads each in memory to pick project facts for a note and keeps only, in the note's steer line, the project paths it names at record scope v5, or only their count and keyed digests at v4 (`rashomon status` shows the scope).",
+  "Your prompts are never stored: rashomon reads each in memory to pick project facts for a note and keeps only, in the note's steer line, the project paths and Go symbols it names at record scope v5, or only their counts and the paths' keyed digests at v4 (`rashomon status` shows the scope).",
   "Your prompts are never stored; rashomon records only each prompt's length and does not examine its text.",
   "TestPF1n_")
 m("PF-1 task-preflight ranks below learned-fact", "internal/steer/pattern/pattern.go",

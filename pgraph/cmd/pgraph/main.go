@@ -2,6 +2,7 @@
 // ledger verb reads it (card PL-WIRE1):
 //
 //	pgraph sync [-timeout d] <root>
+//	pgraph sync -hook [-timeout d]
 //
 // loads every Go module at or under root (pgraph.ScanRoots) offline
 // (pgraph.LoaderEnv), extracts the PROVEN facts and the ALGORITHMIC dispatch
@@ -13,7 +14,11 @@
 //
 // It is a command of its own, not a rashomon verb: the rashomon binary links
 // no package that starts a process (H-17, TRU-40), so it cannot run this one;
-// a person runs it, and `rashomon report --ledger` reads what it wrote.
+// a person runs it, or Claude Code does from a hook entry (-hook, card
+// PW1b-ON-230), and `rashomon report --ledger` reads what it wrote. Every
+// sync holds a lock on the root while it reads and writes, and writes a walk
+// file last, the digest of the tree it read, which lets a hook skip a tree
+// that has not changed since.
 //
 // What it prints a person fits 80 columns and names no absolute path: the
 // root reads as ".", the home directory as "~" and the Go root as $GOROOT. The
@@ -50,13 +55,25 @@ func main() {
 }
 
 const usage = "usage: pgraph sync [-timeout d] <root>\n" +
-	"writes <root>/.pgraph, its graph and file digests; deleting it forgets them\n"
+	"writes <root>/.pgraph, its graph and file digests; deleting it forgets them\n" +
+	"       pgraph sync -hook [-timeout d]: the same, as a Claude Code hook\n"
 
 // columns is the width every line pgraph prints is fitted to.
 const columns = 80
 
+// hookInput is what -hook reads Claude Code's payload from.
+var hookInput io.Reader = os.Stdin
+
+// loads counts the syncs that went on to load the tree; tests read it to
+// tell a sync that loaded from one the walk file let go.
+var loads int
+
+// errLocked is a sync that could not take the root's lock before its
+// timeout: another sync of the same root is running.
+var errLocked = errors.New("another sync of this root is still running; nothing was written")
+
 // run is the command: 0 on a sync written, 1 on a sync that failed and wrote
-// nothing, 2 on a usage error.
+// nothing, 2 on a usage error. With -hook it is 0 whatever the sync does.
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "sync" {
 		fmt.Fprint(stderr, usage)
@@ -65,12 +82,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fl := flag.NewFlagSet("pgraph sync", flag.ContinueOnError)
 	fl.SetOutput(stderr)
 	timeout := fl.Duration("timeout", defaultTimeout, "the most the loads of one sync may take")
-	if err := fl.Parse(args[1:]); err != nil || fl.NArg() != 1 || *timeout <= 0 {
+	hook := fl.Bool("hook", false, "run as a Claude Code hook: the project the call ran in, nothing on stdout, exit 0")
+	roots := 1
+	err := fl.Parse(args[1:])
+	if *hook {
+		roots = 0
+	}
+	if err != nil || fl.NArg() != roots || *timeout <= 0 {
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
+	if *hook {
+		if root, err := hookSync(ctx, hookStart(hookInput)); err != nil {
+			line, _, _ := strings.Cut(fitted(sanitize(err.Error(), root, root)), "\n")
+			fmt.Fprintln(stderr, line)
+		}
+		return 0
+	}
 	root, err := filepath.Abs(fl.Arg(0))
 	if err == nil {
 		root, err = filepath.EvalSymlinks(root)
@@ -170,12 +200,30 @@ type synced struct {
 	proven, algorithmic pgraph.Delta
 }
 
-// syncRoot loads the modules of abs, a root made absolute and
-// symlink-resolved, reconciles the log and writes the log, then the digests.
-// In that order: between the two writes the digests are the last sync's, so
-// a file changed since reads stale and its package's facts unknown; the
-// other order would let new digests vouch for old facts.
+// syncRoot is a person's sync of abs, a root made absolute and
+// symlink-resolved: under the root's lock, the walk, then the sync.
 func syncRoot(ctx context.Context, abs string) (synced, error) {
+	unlock, err := lockRoot(ctx, abs)
+	if err != nil {
+		return synced{}, err
+	}
+	defer unlock()
+	walk, err := pgraph.WalkDigest(ctx, abs)
+	if err != nil {
+		return synced{}, err
+	}
+	return syncLocked(ctx, abs, walk)
+}
+
+// syncLocked loads the modules of abs, whose lock the caller holds and whose
+// tree walked to walk before the load, reconciles the log and writes the
+// log, then the digests, then the walk file. In that order: between the
+// first two writes the digests are the last sync's, so a file changed since
+// reads stale and its package's facts unknown; the other order would let
+// new digests vouch for old facts. The walk file is last, since it vouches
+// for both.
+func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
+	loads++
 	mods, err := pgraph.ScanRoots(abs)
 	if err != nil {
 		return synced{}, err
@@ -214,10 +262,33 @@ func syncRoot(ctx context.Context, abs string) (synced, error) {
 	if err := ignoreAll(dir); err != nil {
 		return synced{}, err
 	}
+	removeCut(dir)
 	if err := writeAtomic(logPath, enc); err != nil {
 		return synced{}, err
 	}
-	return s, writeAtomic(filepath.Join(dir, pgraph.DigestsFile), digests)
+	if err := writeAtomic(filepath.Join(dir, pgraph.DigestsFile), digests); err != nil {
+		return synced{}, err
+	}
+	return s, writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, enc, digests))
+}
+
+// removeCut removes from dir the temp files of a sync cut off inside
+// writeAtomic, which Claude Code does to a background hook still running
+// when the session exits: regular files named ".<name>.tmp-*" for each file
+// writeAtomic writes. The caller holds the root lock, so no live sync has
+// one open. A file it cannot remove stays for the next sync.
+func removeCut(dir string) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		for _, name := range []string{pgraph.LogFile, pgraph.DigestsFile, walkFile} {
+			if e.Type().IsRegular() && strings.HasPrefix(e.Name(), "."+name+".tmp-") {
+				_ = os.Remove(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
 }
 
 // readLog is the log at path, named name in an error, or an empty one where
