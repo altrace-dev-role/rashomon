@@ -23,7 +23,10 @@ type Candidate struct {
 	Lex float64
 	// Knowledge is the lessons and decisions that apply to the node.
 	Knowledge []graph.ID
-	Score     float64
+	// Reach is whether the node lies outside the hook's working directory
+	// (Outside), the code the agent cannot read on demand.
+	Reach bool
+	Score float64
 	// Via is the predicate and nearer node this one was reached through.
 	Via string
 }
@@ -47,10 +50,11 @@ func TierWeight(t graph.Tier) float64 {
 func IsKnowledge(kind string) bool { return kind == "lesson" || kind == "decision" }
 
 // Rank scores the neighborhood: score = w(tier)*conf/(1+distance) +
-// KnowledgeBonus when knowledge applies; order by score, then lexical
+// KnowledgeBonus when knowledge applies + ReachBonus when outside says the
+// agent cannot read the node on demand; order by score, then lexical
 // score, then id. Knowledge nodes rank with the rest but attach to lines
 // rather than taking them.
-func Rank(g Reader, nb Neighborhood, seeds []Seed) []Candidate {
+func Rank(g Reader, nb Neighborhood, seeds []Seed, outside func(graph.ID) bool) []Candidate {
 	lex := map[graph.ID]float64{}
 	for _, s := range seeds {
 		lex[s.ID] = s.Score
@@ -67,6 +71,9 @@ func Rank(g Reader, nb Neighborhood, seeds []Seed) []Candidate {
 		c.Score = c.Base
 		if len(c.Knowledge) > 0 {
 			c.Score += KnowledgeBonus
+		}
+		if c.Reach = outside(id); c.Reach {
+			c.Score += ReachBonus
 		}
 		c.Via = via(g, id, d, nb)
 		out = append(out, c)

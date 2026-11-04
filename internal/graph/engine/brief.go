@@ -46,6 +46,9 @@ type Brief struct {
 type Options struct {
 	IDF bool
 	Rel func(string) string
+	// Lessons is the ablation arm (buildLessons): knowledge nodes matched
+	// by the prompt's words alone, no traversal, no rank.
+	Lessons bool
 }
 
 func (o Options) rel() func(string) string {
@@ -59,6 +62,9 @@ func (o Options) rel() func(string) string {
 // binds each selected line's facts into its slot, and renders the brief,
 // dropping the last line until the message fits the briefing cap.
 func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
+	if opt.Lessons {
+		return buildLessons(g, rev, prompt, opt)
+	}
 	start := time.Now()
 	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(prompt)), Scorer: "tf"}
 	if opt.IDF {
@@ -71,13 +77,13 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	}
 	nb := Traverse(g, ids, Depth, rev)
 	b.Neighborhood = len(nb.Distance)
-	b.Candidates = Rank(g, nb, b.Seeds)
+	rel := opt.rel()
+	b.Candidates = Rank(g, nb, b.Seeds, Outside(g, rev, rel))
 	b.Lines, b.Decisions = Select(g, rev, b.Candidates)
 	byID := map[graph.ID]Candidate{}
 	for _, c := range b.Candidates {
 		byID[c.ID] = c
 	}
-	rel := opt.rel()
 	for i := range b.Lines {
 		b.Lines[i].Slot = lineFact(g, rev, b.Lines[i], byID, rel)
 	}
@@ -170,7 +176,11 @@ func (b Brief) Explain() string {
 	}
 	fmt.Fprintf(&sb, "\nrank (%d reached at depth %d):\n", b.Neighborhood, Depth)
 	for _, c := range b.Candidates {
-		fmt.Fprintf(&sb, "%6.2f  d=%d base=%.2f lex=%.2f know=%d  %-8s %s  via %s\n", c.Score, c.Distance, c.Base, c.Lex, len(c.Knowledge), c.Kind, c.ID, c.Via)
+		reach := 0
+		if c.Reach {
+			reach = 1
+		}
+		fmt.Fprintf(&sb, "%6.2f  d=%d base=%.2f lex=%.2f know=%d reach=%d  %-8s %s  via %s\n", c.Score, c.Distance, c.Base, c.Lex, len(c.Knowledge), reach, c.Kind, c.ID, c.Via)
 	}
 	fmt.Fprintf(&sb, "\nselect (budget %d lines):\n", MaxLines)
 	for _, d := range b.Decisions {

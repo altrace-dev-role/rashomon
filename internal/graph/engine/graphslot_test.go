@@ -103,3 +103,42 @@ func TestGS6_ALineTheSlotRefusesIsDroppedWithADecision(t *testing.T) {
 		}
 	}
 }
+
+// TestGS7_LessonsOnlyMatchesKnowledgeByItsWordsAlone (card GRAPH-ABL1): the
+// ablation arm matches the prompt's words against the knowledge records
+// alone and renders them as knowledge lines through the same slot and
+// template; it traverses nothing, so no file, table or symbol line exists,
+// its neighborhood is its matches, and a prompt whose words hit no record
+// gives no brief.
+func TestGS7_LessonsOnlyMatchesKnowledgeByItsWordsAlone(t *testing.T) {
+	sp := graphtest.New(t)
+	withKnowledge(sp)
+	g, rev := sp.Store, graph.RevCommit(graphtest.Commit)
+	opt := Options{IDF: true, Lessons: true, Rel: func(p string) string { return "../../" + p }}
+	b := Build(g, rev, "make session expiry respect the org-level timeout override.", opt)
+	if b.Scorer != "lessons" || b.Empty() {
+		t.Fatalf("scorer %q empty %v", b.Scorer, b.Empty())
+	}
+	for _, r := range b.Rows {
+		if !IsKnowledge(r.Kind) {
+			t.Errorf("a %s node scored: %s", r.Kind, r.ID)
+		}
+	}
+	if b.Neighborhood != len(b.Seeds) || len(b.Candidates) != 0 {
+		t.Errorf("neighborhood %d seeds %d candidates %d: the arm traversed", b.Neighborhood, len(b.Seeds), len(b.Candidates))
+	}
+	for _, l := range b.Lines {
+		if _, ok := l.Slot.Knowledge(); !ok {
+			t.Errorf("a line that is not a knowledge line: %s", l.Key)
+		}
+	}
+	if !strings.Contains(b.Text(), "lesson INC-212 applies to '../../jobs/purge_sessions.py'") {
+		t.Errorf("the lesson line lacks its declared file:\n%s", b.Text())
+	}
+	if full := Build(g, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true, Rel: opt.Rel}); full.Scorer != "idf" || len(full.Candidates) == 0 {
+		t.Errorf("the full arm changed: scorer %q candidates %d", full.Scorer, len(full.Candidates))
+	}
+	if none := Build(g, rev, "rotate the signing keys.", opt); !none.Empty() {
+		t.Errorf("a prompt hitting no record gave a brief:\n%s", none.Text())
+	}
+}

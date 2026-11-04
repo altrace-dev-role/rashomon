@@ -21,6 +21,7 @@ import (
 //
 //	rashomon graph index [DIR]              build DIR/.rashomon/graph.jsonl from DIR/.rashomon/graph.json
 //	rashomon graph brief --prompt P [DIR]   the brief the hook would deliver for P from DIR, with its explanation
+//	                                        (--tf, --idf, --lessons select the scorer; the hook reads RASHOMON_GRAPH_SCORER)
 func cmdGraph(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("graph takes index or brief")
@@ -83,6 +84,8 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 			opt.IDF = true
 		case args[i] == "--tf":
 			opt.IDF = false
+		case args[i] == "--lessons":
+			opt.Lessons = true
 		case strings.HasPrefix(args[i], "-"):
 			return fmt.Errorf("unknown argument %q", args[i])
 		default:
@@ -250,5 +253,6 @@ func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
 // frequency weights, unless RASHOMON_GRAPH_SCORER=tf asks for the plain
 // count. The variable exists for the comparison runs.
 func hookScorer() engine.Options {
-	return engine.Options{IDF: os.Getenv("RASHOMON_GRAPH_SCORER") != "tf"}
+	scorer := os.Getenv("RASHOMON_GRAPH_SCORER")
+	return engine.Options{IDF: scorer != "tf", Lessons: scorer == "lessons"}
 }
