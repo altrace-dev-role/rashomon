@@ -21,8 +21,8 @@ func TestPF1x_SubdirectoryCwdResolvesFromTheRoot(t *testing.T) {
 		}
 		_, out := e.prompt(filepath.Join(e.cwd, sub), "fix the nil check in "+pf1bPath, "prompt-2")
 		notes[i] = out.HookSpecificOutput.AdditionalContext
-		if !strings.Contains(notes[i], "'"+pf1bPath+"'") || strings.Contains(notes[i], "no named path exists") {
-			t.Errorf("cwd %q: the note does not resolve the path from the project root:\n%s", sub, notes[i])
+		if !strings.Contains(notes[i], "'"+pf1bPath+"'") || strings.Contains(out.SystemMessage, "no named path exists") {
+			t.Errorf("cwd %q: the note does not resolve the path from the project root:\n%s\n%s", sub, notes[i], out.SystemMessage)
 		}
 	}
 	if notes[0] != notes[1] {

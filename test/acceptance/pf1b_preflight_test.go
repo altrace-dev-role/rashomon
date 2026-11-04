@@ -126,7 +126,7 @@ func TestPF1w_V4LineKeepsNoPath(t *testing.T) {
 		if len(items) != 1 || !pf1bHex64.MatchString(items[0]) {
 			t.Errorf("path slot %q, want one 64-hex keyed digest", items)
 		}
-		if l.str("state") != "delivered" || !strings.Contains(l.str("model_text"), "paths named: 1\n") {
+		if l.str("state") != "delivered" || !strings.Contains(l.str("model_text"), "\npaths named: 1") {
 			t.Errorf("line state %q, model_text %q, want delivered with the count form", l.str("state"), l.str("model_text"))
 		}
 		cwds := []string{e.cwd}
