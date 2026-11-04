@@ -17,7 +17,7 @@ func TestDONE1g_TakeUnverifiedIsOncePerFlaggedStop(t *testing.T) {
 	now := time.Now()
 	claim := func(session, prompt string, flagged bool) {
 		t.Helper()
-		if _, err := ClaimTurn(root, session, prompt, now, true, "", flagged); err != nil {
+		if _, err := ClaimTurn(root, session, prompt, now, true, "", Owed{}, flagged); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -80,7 +80,7 @@ func TestDONE1i_UnverifiedIsCappedWithTheOtherMaps(t *testing.T) {
 	root := t.TempDir()
 	markInstalled(t, root)
 	for i := 0; i < maxTrackedSessions+10; i++ {
-		if _, err := ClaimTurn(root, fmt.Sprintf("s%03d", i), "p", time.Now(), true, "", true); err != nil {
+		if _, err := ClaimTurn(root, fmt.Sprintf("s%03d", i), "p", time.Now(), true, "", Owed{}, true); err != nil {
 			t.Fatal(err)
 		}
 		TakeUnverified(root, fmt.Sprintf("s%03d", i))

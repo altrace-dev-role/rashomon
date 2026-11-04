@@ -79,6 +79,7 @@ session demo-1
     findings: 2
       regression location at #7 (go), resolved by #21 green
       record check at #16, no gate named, so no run settles it
+    mistakes against intent: 1 caught at the act (at #7), 0 reached the person, 0 missed; found later unknown (no trace is recorded); 1 not settled (at #16)
     checks: none expected
     lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session
     unknown: none

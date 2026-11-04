@@ -1,0 +1,27 @@
+#!/bin/sh
+# Two hook entries in hooks.json run this file, in the background: at
+# session start and when Claude finishes a reply (Stop). It picks the platform
+# graph's writer, pgraph, built for this machine, and replaces itself with
+# it, so pgraph reads the payload Claude Code sent on stdin. The rashomon
+# binary never starts it (it starts no process); Claude Code does, and the
+# rashomon verbs read the files it writes under the repository's .pgraph.
+#
+# The release ships one binary per platform beside this launcher
+# (scripts/build-plugin.sh). A platform with no binary here exits 0 with a
+# note on stderr: a missing writer leaves the graph unknown, never a hook
+# error.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 0
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case $(uname -m) in
+	x86_64 | amd64) arch=amd64 ;;
+	arm64 | aarch64) arch=arm64 ;;
+	*) arch=$(uname -m) ;;
+esac
+bin="$dir/pgraph-$os-$arch"
+if [ ! -f "$bin" ]; then
+	echo "pgraph: this plugin has no build for $os-$arch, so no graph is written" >&2
+	exit 0
+fi
+# An archive install is not documented to keep executable bits.
+[ -x "$bin" ] || chmod +x "$bin" 2>/dev/null
+exec "$bin" "$@"

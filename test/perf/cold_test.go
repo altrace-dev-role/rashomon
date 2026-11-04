@@ -14,8 +14,11 @@ import (
 
 // coldToleranceFraction is the margin ColdAllocBytesMax is gated at, the same
 // flat ten percent AllocBytesMax's benchmark rows use (TestRES36f_); unlike
-// the RSS rows, this is not a per-platform figure yet, because it has not
-// been measured on a second platform.
+// the RSS rows, the figure may be per-platform: an entry carries its own
+// platform's figure in budgets.json's platforms.<plat>.cold_alloc_bytes_max
+// (ColdBudget) where that platform reads away from the top-level one, which
+// stays the fallback for a platform with no figure of its own. The tolerance
+// itself is the same flat ten percent on every platform.
 const coldToleranceFraction = 0.10
 
 // coldRuns is how many fresh processes coldCallAlloc spawns per entry
@@ -47,19 +50,21 @@ const coldRuns = 3
 // TestColdCall's own comment in cmd/rashomon/cold_call_test.go).
 func TestColdAllocBudget(t *testing.T) {
 	bud := loadBudgets(t)
+	overrides := bud.Platforms[platform()].ColdAllocBytesMax
 	for _, e := range bud.Entries {
 		if e.ColdAllocBytesMax <= 0 {
 			continue
 		}
 		e := e
+		budgetBytes := ColdBudget(e, overrides)
 		t.Run(e.ID, func(t *testing.T) {
 			ran[ColdGate(e.ID)] = true
 			measured, all := coldCallAlloc(t, e.ID)
-			if OverBudget(float64(measured), float64(e.ColdAllocBytesMax), coldToleranceFraction) {
-				t.Errorf("%s: cold call allocated %d bytes (runs %v), over budget %d (+%.0f%%)", e.ID, measured, all, e.ColdAllocBytesMax, coldToleranceFraction*100)
+			if OverBudget(float64(measured), float64(budgetBytes), coldToleranceFraction) {
+				t.Errorf("%s: cold call allocated %d bytes (runs %v), over budget %d (+%.0f%%)", e.ID, measured, all, budgetBytes, coldToleranceFraction*100)
 				return
 			}
-			t.Logf("%s: cold call allocated %d bytes (runs %v) against budget %d (+%.0f%%)", e.ID, measured, all, e.ColdAllocBytesMax, coldToleranceFraction*100)
+			t.Logf("%s: cold call allocated %d bytes (runs %v) against budget %d (+%.0f%%)", e.ID, measured, all, budgetBytes, coldToleranceFraction*100)
 		})
 	}
 }

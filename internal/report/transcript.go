@@ -73,6 +73,12 @@ func resultText(raw json.RawMessage) string {
 	return ""
 }
 
+// UserRejected is whether a denied result's text is the person saying no at
+// the prompt, rather than a rule, a hook or auto mode refusing the call: for
+// a reader of a transcript line written before Claude Code named the kind
+// (toolDenialKind, 2.1.280), card SEED1.
+func UserRejected(text string) bool { return strings.HasPrefix(text, deniedPrefix) }
+
 // ResultClass is collectIDs' reading of one tool_result block, for a reader
 // that replays a transcript (the backtest, card P6): its text, whether it is
 // the user denying the call, and whether it has the shape of a call Claude

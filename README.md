@@ -40,12 +40,18 @@ not in this build.
 Needs Claude Code 2.1.280 or later, macOS or Linux, and Go 1.25 or later. In a
 terminal, not inside a Claude Code session:
 
+    curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
+    rashomon watch
+
+That installs the latest release, v1.2.0-alpha.1. To build `main` instead,
+which is ahead of the release and has everything this README describes:
+
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
     rashomon watch
 
 `go install` puts `rashomon` in `$(go env GOPATH)/bin`, which must be on your
 `PATH`. `watch` shows what installing does and asks `Install? [y/N]`; answer `y`,
-then use `claude` as usual. The plugin and `curl` routes install v1.1.0 ([below](#other-install-routes)).
+then use `claude` as usual.
 
 ## What you'll see
 
@@ -97,9 +103,11 @@ holdout off with it.
 
 ## Other install routes
 
-These install the v1.1.0 release, which records and reports only: none of the
-notes, spec trust or declared gates in this README, until the next release.
-Use one route: `watch` refuses beside an enabled plugin.
+These install the v1.2.0-alpha.1 release: `rashomon version` prints
+`1.2.0-alpha.1`. Use one route: `watch` refuses beside an enabled plugin.
+This README describes `main`, which is ahead of that release: `rashomon steer`,
+`summary`, `scorecard`, `why`, `lessons`, `brief` and `measure` are in `main`
+only, until the next release.
 
     claude plugin marketplace add altrace-dev-role/rashomon
     claude plugin install rashomon@rashomon
@@ -131,12 +139,42 @@ not use; it does not guess why.
 ## What it records, and what it never stores
 
 The record is a folder on your machine: `$RASHOMON_HOME`, else
-`$XDG_STATE_HOME/rashomon`, else `~/.local/state/rashomon`. For each tool call
-it records the tool, the command's program name, an argument count and a keyed
-digest of the command (not its text), the hostnames the call names, the working
-directory, the transcript path, the file an edit or write names, the files a
-shell line may write, and how the call ended. At each turn's end it records the
-state of each test and build check, and it logs each note it gave the agent.
+`$XDG_STATE_HOME/rashomon`, else `~/.local/state/rashomon`. This is the full
+list of what it keeps, word for word as the install screen's full view
+(`rashomon consent --full`) prints it:
+
+> STORED ON THIS MACHINE, NEVER SENT BY RASHOMON: for each tool call, the tool;
+> which agent made it; the program a command runs, its argument count and a
+> keyed digest of its input (never its text); the hostnames it names; the
+> transcript path; the permission mode; at record scope v5, the one a yes here
+> records, the working directory, the project root, the file an edit names and
+> the files a shell line may write, in the clear, and the SHA-256 of the file an
+> edit names as the call left it (never its content), where `rashomon status`
+> shows the scope and this build has no setting that leaves these out; how it
+> ended (outcome, exit code, interrupted or not, duration); and the time each
+> hook event first ran in a session. For a test or build line: the runner it ran
+> in and the pipe stage that hid its exit status, each one word from a closed
+> list the binary ships (never a word of the command); for a gate run, or
+> another command whose output holds a line a test runner prints about its run,
+> one closed word that classifies its output (a passing or failing summary, a
+> failure line, an empty run, the exit status the line printed for its runner as
+> pass or fail, or none found), and not the output, which is read in memory; one
+> bit, when true, that says the hook could not read where a shell line started
+> because a leading cd was one it does not read (never the directory it names);
+> in a note's steer line, where the outcome it rests on came from (the exit
+> status or the output's summary); and, when a prompt's preflight finds no spec,
+> one small hint that holds the turn's id and a keyed digest of the directory it
+> looked from, nothing else. At each turn end: the state of each test or build
+> check, a keyed digest of each claim sentence it checks in the agent's final
+> message (never the sentence), and the digest of the project spec
+> (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word
+> for word, except a request's preflight note at record scope v4, which keeps a
+> count of the paths it named and keyed digests of them, and except the briefing
+> after Claude Code compacts the conversation, which quotes your earlier
+> instructions to the agent word for word; the record keeps only each quote's
+> length and a keyed digest, never your words. Your on and off switches
+> (config.json), and for a project's switch (summary_projects, steer_projects)
+> the project's directory.
 
 It never stores your prompts, the agent's messages, tool output or file
 contents. It reads each prompt in memory to write the preflight note and keeps
@@ -194,7 +232,9 @@ for pytest, `go test`, `cargo test`, jest and vitest. A pass from a piped `make`
 `npm run`, yarn or pnpm still reads as hidden, because a pass line in their output
 belongs to one step, not the whole command; their own failure markers (make's
 `***`, `npm ERR!`, yarn's `error Command failed`, pnpm's `ERR_PNPM`) do read as a
-failure. The Stop line then names the
+failure. A piped run read as failed this way, after an earlier green and edits
+between the two, raises the same regression note an unpiped failure does, at that
+call. The Stop line then names the
 runner and where the result came from, for example "python3 -m pytest passed
 after the last edit (read from its output; the pipe hid the exit status)". A run
 still reads as hidden when a later stage is any other command (`head`, `grep`,
@@ -208,8 +248,9 @@ rest.
 **Is it a sandbox or a security tool?** No. It does not stop or contain the
 agent, and it cannot stop a determined agent from changing its records.
 
-**How do I turn it off?** `rashomon detach` removes the hook entries;
-`rashomon purge` also removes the store. With the plugin, use `/plugin`.
+**How do I turn it off?** In a terminal outside Claude Code, `rashomon detach`
+removes the hook entries and `rashomon purge` also removes the store; both are
+refused from an agent session. With the plugin, use `/plugin`.
 
 **How much disk does it use?** At most 512 MiB of runs by default; the oldest
 runs go first, each leaving a gap record. `RASHOMON_STORE_CAP_BYTES` sets the
@@ -229,8 +270,8 @@ rashomon report --nono-audit ~/.local/state/nono/audit/<nono session id>/audit-e
 The sandbox section has something to count only when nono filters the
 network. In v1.1.0, with nono's `claude` profile, which leaves the network
 unfiltered, the trail holds no network event at all, and the section reads
-`0 allowed, 0 denied` however many hosts the session reached. A build from
-`main` says `the trail holds no network events` instead. An allowed `http://`
+`0 allowed, 0 denied` however many hosts the session reached. From v1.2.0-alpha.1
+on, and in `main`, it says `the trail holds no network events` instead. An allowed `http://`
 request leaves nothing in the sandbox section. `--chain` still lists its host
 under the call if the command named it.
 
@@ -258,13 +299,13 @@ under the call if the command named it.
 | `rashomon learn approve ID` | Show lesson ID and a one-time code on the terminal; the lesson may reach the agent only once that code is typed back there |
 | `rashomon learn import FILE` | Add a shared lessons file's rows at `proposed` |
 | `rashomon consent [UNIT [off]]` | Show the install screen again and record consent; UNIT is `bodies` or `share.outcomes`; refused from an agent session, `off` included |
-| `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
+| `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change; `pause` is refused from an agent session, `resume` is not |
 | `rashomon forget --host H \| --since T \| --before T \| --bodies` | Erase the calls that named a host, records by time, or this project's transcript copies |
 | `rashomon bodies on \| off \| status` | Copy this project's transcripts into the store at session end, stop, or count the copies; on and off are refused from an agent session |
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices; writes nothing |
 | `rashomon receipt on \| trailer \| note DIGEST` | Print the git hooks that put a receipt on each commit, the trailer naming the latest checkpoint, or that checkpoint; runs no git |
 | `rashomon share build outcomes --out FILE` | Write counts of the notes given to the agent, by pattern; needs `rashomon consent share.outcomes` |
-| `rashomon detach` | Remove the hook entries, leaving everything else as found |
+| `rashomon detach` | Remove the hook entries, leaving everything else as found; refused from an agent session |
 | `rashomon purge [--yes] [--binary]` | Detach, then remove the store and the directories `watch` created; refused from an agent session |
 | `rashomon version` | Print the version: the module version for a `go install` build (for example `1.2.0-alpha.1`), the release version for a release binary, `dev` for a local `go build` |
 
@@ -272,7 +313,7 @@ under the call if the command named it.
 
 ## Status
 
-Alpha. The latest release is v1.1.0, and `main` is ahead of it. Release
+Alpha. The latest release is v1.2.0-alpha.1, and `main` may be ahead of it. Release
 binaries are not signed, and there is no Homebrew formula. **Windows is not
 usable yet**: the release publishes Windows binaries, but `watch` quotes the
 installed command for a POSIX shell.

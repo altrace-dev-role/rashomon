@@ -30,6 +30,14 @@ import (
 //     stay; the task file it carries is outside the checkpoint's spec_digest;
 //   - the tree is the files' content now (hook.TreeShas, as the Stop reads
 //     it), so a file changed since the Stop reads stale;
+//   - the inferred test gate (GATE-INFER1) is read from the project's files
+//     now, and only where the checkpoint names it, so a CI file changed
+//     since names the command it holds now, and with no index read its line
+//     keeps the "(inferred)" label the Stop may have dropped;
+//   - where the caller passes a platform reader (the ledger verb passes
+//     platformRead; the session report passes none), the pgraph log, its
+//     digests, the go.mod files and the written Go files are read now, so a
+//     sync or an edit since the Stop moves the platform rows' families;
 //   - the final message is not in the record, so what is read from it is
 //     unknown (StopInput.MessageUnread);
 //   - a gate the checkpoint's cut omitted (GatesOmitted, greens first) has no
@@ -49,9 +57,10 @@ type stopReplay struct {
 	Spec       *spec.Compiled
 }
 
-// replayLastStop replays sessionID's last Stop from st. A session with no
-// records in st is errNoRecords, never an empty view.
-func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
+// replayLastStop replays sessionID's last Stop from st, reading the platform
+// graph through platform, nil for none. A session with no records in st is
+// errNoRecords, never an empty view.
+func replayLastStop(st *store.Store, sessionID string, platform func(string, []string) verify.PlatformRead) (stopReplay, error) {
 	run, err := digest.ReadRun(st, sessionID)
 	if err != nil {
 		return stopReplay{}, err
@@ -66,6 +75,7 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 	pt := verify.Point{Kind: verify.PointStop, Seq: run.LastSeq(), SessionID: sessionID}
 	now := time.Now()
 	in := verify.StopInput{Key: st.Key(), MessageUnread: true}
+	in.Platform = platform
 	if cp != nil {
 		pt.Seq, pt.PromptID, now = cp.PointSeq, cp.PromptID, time.UnixMilli(cp.RecordedAtUnixMS)
 		if cp.PromptID != nil {
@@ -79,12 +89,20 @@ func replayLastStop(st *store.Store, sessionID string) (stopReplay, error) {
 	pt.Tree = hook.TreeShas(verify.TreeTargets(run))
 	r := stopReplay{Checkpoint: cp}
 	var idx *verify.ProjectIndex
-	if root := verify.ProjectRoot(run, pt.Seq); root != "" {
+	// The root the live Stop judged under, from its checkpoint; with none,
+	// the latest declaration's (PROJECT-RESOLVE1).
+	root := verify.ProjectRoot(run, pt.Seq)
+	if cp != nil {
+		root = cp.ProjectRoot
+	}
+	in.Root = root
+	if root != "" {
 		if key := baseline.Key(root); cp == nil && key != "" {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
 		}
 		projectDir, managedDir := specDirs()
 		r.Spec = hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustRoot(run, st.Root(), pt.Seq))
+		in.Inferred = replayInferred(root, r.Spec, idx, in.Required)
 	}
 	r.View = verify.EvaluateStop(run, idx, r.Spec, pt, now, in)
 	return r, nil

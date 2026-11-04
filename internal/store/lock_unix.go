@@ -9,14 +9,11 @@ import (
 	"time"
 )
 
-// pollNow and pollSleep are lockFileWait's clock and its polling sleep, held
-// in variables so a test can drive the wait on a clock it owns: the real one
-// overshoots under load, and an overshoot that crosses the deadline hides a
-// last sleep that was not cut (SWEEP-FINISH1).
-var (
-	pollNow   = time.Now
-	pollSleep = time.Sleep
-)
+// pollNow (deadline.go) and pollSleep are lockFileWait's clock and its
+// polling sleep, held in variables so a test can drive the wait on a clock it
+// owns: the real one overshoots under load, and an overshoot that crosses the
+// deadline hides a last sleep that was not cut (SWEEP-FINISH1).
+var pollSleep = time.Sleep
 
 // lockFileWait takes an exclusive advisory lock on f, polling so the wait can be
 // bounded. A blocking LOCK_EX cannot be interrupted on a deadline without

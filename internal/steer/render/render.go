@@ -135,6 +135,14 @@ type StaleEvidenceOutputDegradedBinding struct {
 	Count   slot.Count   `slot:"count"`
 }
 
+// MaskedStatusBinding is masked-status's slots at the act (card
+// MASKED-AT-ACT1): the gate whose run this call was, and what hid the run's
+// exit status, from slot.EnumMaskStage's closed table.
+type MaskedStatusBinding struct {
+	Gate  slot.Gate `slot:"gate"`
+	Stage slot.Enum `slot:"stage"`
+}
+
 // StaleEvidenceBinding is stale-evidence's slots (card STALE-NUDGE1): the
 // gate, how long ago its green run exited 0, and the files this call wrote
 // after it. Only this call's files: a write another call declared beside it
@@ -152,6 +160,16 @@ type StaleEvidenceDegradedBinding struct {
 	Gate    slot.Gate    `slot:"gate"`
 	Minutes slot.Minutes `slot:"minutes"`
 	Count   slot.Count   `slot:"count"`
+}
+
+// BlastRadiusBinding is blast-radius's slots (card ARCH-INLINE1): how many
+// other packages the platform graph shows calling into the package the call
+// edited, a lower bound (PROVEN calls only, PF-PL11), their directories, and
+// how many of them hold a test file.
+type BlastRadiusBinding struct {
+	Count  slot.Count    `slot:"count"`
+	Dirs   slot.PathList `slot:"dirs"`
+	Tested slot.Count    `slot:"tested"`
 }
 
 // IntegrityStoreTouchedBinding is integrity/store-touched's user line
@@ -190,6 +208,44 @@ type IntegrityTestRemovedBinding struct{}
 type IntegrityGateWeakenedBinding struct{}
 
 type IntegrityGateConfigEditedBinding struct{}
+
+// ClaimVsRecordInferredBinding is claim-vs-record's next-prompt note for
+// the project's inferred test command left unrun after the last edit (card
+// GATE-INFER1, W5): the runner's name, as the Stop's line gives it, and the
+// project-relative file the command was read from.
+type ClaimVsRecordInferredBinding struct {
+	Gate slot.Gate `slot:"gate"`
+	Path slot.Path `slot:"path"`
+}
+
+// ClaimVsRecordInferredUnnamedBinding is that note's form for a file the
+// path slot refuses.
+type ClaimVsRecordInferredUnnamedBinding struct {
+	Gate slot.Gate `slot:"gate"`
+}
+
+// ClaimVsRecordInferredPlatformBinding is the inferred command's note with
+// the changed Go packages the last turn end's platform read owed a go test
+// (PW1b-ON-230 step 3, ARCH-INLINE1 item 3, #218: they ride in the gate's
+// note).
+type ClaimVsRecordInferredPlatformBinding struct {
+	Gate     slot.Gate     `slot:"gate"`
+	Path     slot.Path     `slot:"path"`
+	Packages slot.PathList `slot:"packages"`
+}
+
+// ClaimVsRecordInferredUnnamedPlatformBinding is that note for a file the
+// path slot refuses.
+type ClaimVsRecordInferredUnnamedPlatformBinding struct {
+	Gate     slot.Gate     `slot:"gate"`
+	Packages slot.PathList `slot:"packages"`
+}
+
+// ClaimVsRecordPlatformBinding is the owed packages' note where no gate is
+// owed.
+type ClaimVsRecordPlatformBinding struct {
+	Packages slot.PathList `slot:"packages"`
+}
 
 // LearnedFactBinding is learned-fact's note at a prompt (LEARN-DELIVER1): an
 // approved lesson's id and its text, which renders in quotes.
@@ -293,6 +349,18 @@ type IntegrityFrozenPathBinding struct {
 // rule id its slot refuses.
 type IntegrityFrozenPathUnnamedBinding struct{}
 
+// OrderingRuleThenBinding is ordering-rule's line: the program of the call
+// that ran before the earlier step an order rule requires, and the id of the
+// rule.
+type OrderingRuleThenBinding struct {
+	Program slot.Program `slot:"program"`
+	Rule    slot.RuleID  `slot:"rule_id"`
+}
+
+// OrderingRuleThenUnnamedBinding is that line for a program or a rule id its
+// slot refuses.
+type OrderingRuleThenUnnamedBinding struct{}
+
 // templates is the closed template table. Each pattern's PR adds its rows;
 // New refuses a binding that has none.
 //
@@ -307,9 +375,16 @@ type IntegrityFrozenPathUnnamedBinding struct{}
 // so no model text exists for them. stale-evidence/v1 states the green and
 // the write after it and stops there: the card's "Run it again before
 // claiming done" is an order, which STR-14 refuses, and the last sentence
-// says the same as a fact. learned-fact/v1 is a lesson a person approved at a
+// says the same as a fact. masked-status/v1 is said at the call whose run
+// it names (MASKED-AT-ACT1): the run, what hid its status, and that the
+// record holds no outcome, with no order to run it again (STR-14).
+// learned-fact/v1 is a lesson a person approved at a
 // terminal, its text in quotes (LEARN-DELIVER1, L7); its two flags say why a
 // ledger gave none.
+// claim-vs-record-inferred/v1 is the next prompt's note for the project's
+// inferred test command a turn left unrun after its last edit (card
+// GATE-INFER1, W5): the runner's name, never the command's arguments, and
+// the file it was read from.
 // The platform-rule rows state which rule a command matched, never its why;
 // the frozen-path rows are user lines, as every integrity row is. Each has a
 // row without its named slots for a value a slot refuses.
@@ -356,6 +431,15 @@ func templates() map[templateKey]template {
 				format: "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago); this call then wrote {count} files. " +
 					"No later run of the gate is recorded.",
 			},
+			{pattern.BlastRadius, reflect.TypeOf(BlastRadiusBinding{})}: {
+				id: "blast-radius/v1",
+				format: "rashomon record: the platform graph names other packages with code calling into the package this call edited " +
+					"(at least {count}): {dirs}; test files are in {tested} of them.",
+			},
+			{pattern.MaskedStatus, reflect.TypeOf(MaskedStatusBinding{})}: {
+				id:     "masked-status/v1",
+				format: "rashomon record: gate {gate} ran in this call and {stage} hid its exit status; no outcome of this run is recorded.",
+			},
 			{pattern.Integrity, reflect.TypeOf(IntegrityStoreTouchedBinding{})}: {
 				id:     "integrity-store-touched/v1",
 				format: "rashomon record: this call wrote {path}, under .claude/rashomon, which holds the spec and the task file rashomon reads.",
@@ -394,15 +478,37 @@ func templates() map[templateKey]template {
 		}
 		maps.Copy(templatesOnce.v, templatesLater())
 		maps.Copy(templatesOnce.v, templatesRide())
+		maps.Copy(templatesOnce.v, templatesSymbols())
+		maps.Copy(templatesOnce.v, templatesContinuity())
 	})
 	return templatesOnce.v
 }
 
-// templatesLater is the rows templates adds to its own map: the lesson,
-// task-preflight, platform-rule and frozen-path rows, split out so each function stays inside Law 10 as the
+// templatesLater is the rows templates adds to its own map: the inferred
+// command's note, the lesson, task-preflight, platform-rule and frozen-path rows, split out so each function stays inside Law 10 as the
 // rows of several cards accumulate.
 func templatesLater() map[templateKey]template {
 	return map[templateKey]template{
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredBinding{})}: {
+			id:     "claim-vs-record-inferred/v1",
+			format: "rashomon record: gate {gate} (from {path}) was not run after the last edit.",
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredUnnamedBinding{})}: {
+			id:     "claim-vs-record-inferred-unnamed/v1",
+			format: "rashomon record: gate {gate} was not run after the last edit.",
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredPlatformBinding{})}: {
+			id:     "claim-vs-record-inferred-platform/v1",
+			format: "rashomon record: gate {gate} (from {path}) was not run after the last edit." + owedPackages,
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordInferredUnnamedPlatformBinding{})}: {
+			id:     "claim-vs-record-inferred-unnamed-platform/v1",
+			format: "rashomon record: gate {gate} was not run after the last edit." + owedPackages,
+		},
+		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordPlatformBinding{})}: {
+			id:     "claim-vs-record-platform/v1",
+			format: "rashomon record:" + owedPackages,
+		},
 		{pattern.LearnedFact, reflect.TypeOf(LearnedFactBinding{})}: {
 			id:     "learned-fact/v1",
 			format: "rashomon record: lesson {lesson}, approved for this project: {text}.",
@@ -422,9 +528,8 @@ func templatesLater() map[templateKey]template {
 			format: preflightHead + preflightLines,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstBinding{})}: {
-			id: "task-preflight-first/v1",
-			format: "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
-				"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n" + preflightLines,
+			id:     "task-preflight-first/v1",
+			format: firstHead + preflightLines,
 		},
 		{pattern.ClaimVsRecord, reflect.TypeOf(ClaimVsRecordDoneUnverifiedBinding{})}: {
 			id: "claim-vs-record-done-unverified/v1",
@@ -442,6 +547,14 @@ func templatesLater() map[templateKey]template {
 		{pattern.PlatformRule, reflect.TypeOf(PlatformRuleCommandUnnamedBinding{})}: {
 			id:     "platform-rule-command-unnamed/v1",
 			format: "rashomon record: this call matched a spec rule.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenBinding{})}: {
+			id:     "ordering-rule-then/v1",
+			format: "rashomon record: this {program} call ran before the earlier step spec rule {rule_id} requires.",
+		},
+		{pattern.OrderingRule, reflect.TypeOf(OrderingRuleThenUnnamedBinding{})}: {
+			id:     "ordering-rule-then-unnamed/v1",
+			format: "rashomon record: this call ran before the earlier step a spec rule requires.",
 		},
 		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathBinding{})}: {
 			id:     "integrity-frozen-path/v1",
@@ -487,6 +600,14 @@ func templatesRide() map[templateKey]template {
 		},
 	}
 }
+
+// owedPackages is the sentence the owed packages take in a claim-vs-record
+// note at the next prompt: the Stop's platform line, to the model.
+const owedPackages = " Go packages the last reply changed with no passing go test since: {packages}."
+
+// firstHead is the first prompt's two header lines, the brief's.
+const firstHead = "rashomon record: project brief and preflight for this request from the repository; the request text is not kept.\n" +
+	"project files: {instructions}; manifests: {manifests}; directories with Go files: {go_dirs}\n"
 
 // templatesOnce holds what templates returns, built on its first call and
 // never at init (RES-2).

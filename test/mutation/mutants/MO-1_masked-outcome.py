@@ -87,13 +87,17 @@ m("MO-1 a summary read ignores the stage", R,
   "e.MaskedBy == nil || !shape.MaskedByKeeps(*e.MaskedBy) ||", "e.MaskedBy == nil ||",
   "TestMO1_ASummaryReadMaskedRunIsNotCounted")
 m("MO-1 a fail line is a summary read", R,
-  "return e.GateOutput.Kind == \"summary_pass\"",
-  "return e.GateOutput.Kind == \"summary_pass\" || e.GateOutput.Kind == \"fail_line\"",
+  "\tcase \"summary_fail\":\n", "\tcase \"summary_fail\", \"fail_line\":\n",
   "TestMO1_ASummaryReadMaskedRunIsNotCounted")
-m("MO-1 a summary_fail is a summary read", R,
-  "return e.GateOutput.Kind == \"summary_pass\"",
-  "return e.GateOutput.Kind == \"summary_pass\" || e.GateOutput.Kind == \"summary_fail\"",
-  "TestMO1_ASummaryReadMaskedRunIsNotCounted")
+# MASKED-FAIL-LINE1: a summary_fail is read for every runner, so the claim
+# over it is raised as "done was claimed" and never as a status not recorded.
+m("MFL-1 a summary_fail is not a summary read", R,
+  "\tcase \"summary_fail\":\n", "\tcase \"summary_fail_unread\":\n",
+  "TestMFL1_AFailureReadFromItsOutputIsNotAMaskedRun|TestMFL1_APipedPytestThatFailedSaysItFailed")
+m("MFL-1 a delegate's failure is not a summary read", R,
+  "\tcase \"summary_fail\":\n",
+  "\tcase \"summary_fail\":\n\t\tif e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) {\n\t\t\treturn false\n\t\t}\n",
+  "TestMFL1_AFailureReadFromItsOutputIsNotAMaskedRun")
 
 # A delegate (make, npm, yarn, pnpm) runs other runners: any step's pass line
 # is no verdict, so its own failure markers decide and a pass is never read.
@@ -114,9 +118,11 @@ m("MO-1 a delegate row's markers are not matched", "internal/gateout/gateout.go"
 m("MO-1 a delegated run's summary_pass is read", V,
   "\t\treturn !gateout.Delegated(r.Program)\n", "\t\treturn true\n",
   "TestMO1_ADelegatedRunIsReadOnlyWhereItIsRed")
+# The break leaves account.go's other uses of gateout (the printed-status
+# kinds, FALSE-FIRE1), so the import stays and no IMPORTS entry drops it.
 m("MO-1 a delegated summary_pass is a summary read", R,
-  "\tif e.RunnerName != nil && gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) {\n",
-  "\tif false {\n",
+  "\t\treturn e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName))\n",
+  "\t\treturn e.RunnerName == nil || !gateout.Delegated(gateout.ProgramFor(\"\", *e.RunnerName)) || true\n",
   "TestMO1_ADelegatedSummaryIsNotASummaryRead")
 
 # pytest's pass is its summary line, not "N passed" inside another line.
@@ -143,3 +149,12 @@ m("MO-1 the clause names the gates of an exit-status green", "internal/recap/val
 m("MO-1 a gate read from output is not named in the clause", "internal/recap/value.go",
   "return \" (\" + joinNames(read) + \" \" + strings.TrimPrefix(readFromOutput, \" (\")", "return readFromOutput",
   "TestMO1_TheProvenanceIsAttachedToTheGatesReadFromOutput")
+
+# hook: a piped runner whose output read red steps at PostToolUse, so
+# regression-location fires where the pipe hid the exit (card c3).
+m("MO-1 a piped red runner does not step at PostToolUse", "internal/hook/steerstep.go",
+  " || redRead && event == string(steer.EventPostToolUse)", "",
+  "TestPR_APipedRedRunnerStepsAtPostToolUse")
+m("MO-1 the landed call is never read for a red output", "internal/hook/post.go",
+  "\tp.landedRed = redRead(&rec)\n", "",
+  "TestPR_APipedRedRunnerStepsAtPostToolUse")

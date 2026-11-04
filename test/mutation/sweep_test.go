@@ -56,9 +56,27 @@ func sweepEnv(t *testing.T, dir string, extraEnv []string, args ...string) (stri
 	return sweepRun(t, dir, 30*time.Second, extraEnv, args...)
 }
 
+// sweepErr is sweep, but returns stderr instead of stdout: report() (the
+// --check problem printer) writes every problem line to stderr, never
+// stdout, so a test asserting on a problem's own text (not just the exit
+// code) needs this, not sweep.
+func sweepErr(t *testing.T, dir string, args ...string) (string, int) {
+	t.Helper()
+	_, errOut, code := sweepRunStderr(t, dir, 30*time.Second, nil, args...)
+	return errOut, code
+}
+
 // sweepRun is what sweep, sweepTimeout and sweepEnv share: an explicit bound
 // and extra environment entries, either of which may be the default.
 func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, int) {
+	t.Helper()
+	stdout, _, code := sweepRunStderr(t, dir, timeout, extraEnv, args...)
+	return stdout, code
+}
+
+// sweepRunStderr is sweepRun with stderr returned too: --check prints each
+// problem there, so a test that wants a refusal to name its row reads it.
+func sweepRunStderr(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int) {
 	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
@@ -99,9 +117,9 @@ func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string
 			t.Fatalf("sweep.py %s: %v", strings.Join(args, " "), err)
 		}
 		t.Logf("sweep.py %s exited %d; stderr:\n%s", strings.Join(args, " "), exit.ExitCode(), stderr.String())
-		return stdout.String(), exit.ExitCode()
+		return stdout.String(), stderr.String(), exit.ExitCode()
 	}
-	return stdout.String(), 0
+	return stdout.String(), stderr.String(), 0
 }
 
 func moduleRoot(t *testing.T) string {
@@ -356,6 +374,55 @@ func TestDEL2d_ImportAnchorCountedAfterMutation(t *testing.T) {
 	_, code := sweep(t, dir, "--check", "--files", file)
 	if code != 0 {
 		t.Errorf("--check exited %d for an import anchor duplicated only inside the mutated span", code)
+	}
+}
+
+// DEL-2, import drift (MASKED-BUILD1). --check refuses a break that leaves an
+// import unused and an import edit that drops a package the file still uses,
+// naming the row and the package: neither mutant builds, which the sweep would
+// learn only hours into a dispatch, and which a harness that builds the binary
+// in its TestMain once printed as a red. A use only in a comment or a string
+// is no use, a string literal in a body is no import, and a package used
+// elsewhere in the file is not orphaned.
+func TestDEL2g_ImportDriftIsRefusedAtCheck(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n"+
+		"// fmt.Sprint is named here, in a comment.\nfunc a() string { return fmt.Sprint(1) }\n\n"+
+		"func b() string { return strings.ToUpper(\"fmt.x\") }\n\n"+
+		"func c() string { return strings.ToLower(\"y\") }\n\n"+
+		"var words = []string{\n\t\"strings\",\n}\n")
+	cases := []struct {
+		name, old, new string
+		imports        []string // the import edit's anchor and replacement; none when nil
+		wantOK         bool
+		named          string // the package a refusal names
+	}{
+		{"a break that removes the last use, with no import entry",
+			"return fmt.Sprint(1)", "return \"1\"", nil, false, "fmt"},
+		{"the same break with its import entry",
+			"return fmt.Sprint(1)", "return \"1\"", []string{"\t\"fmt\"\n", ""}, true, ""},
+		{"a break that leaves another use",
+			"return strings.ToUpper(\"fmt.x\")", "return \"FMT.X\"", nil, true, ""},
+		{"an import entry that drops a package still used",
+			"return fmt.Sprint(1)", "return fmt.Sprint(2)", []string{"\t\"strings\"\n", ""}, false, "strings"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			name := "fixture " + tc.name
+			text := mutant(name, "target.go", tc.old, tc.new, "TestFixture_")
+			if tc.imports != nil {
+				text += importEntry(name, "target.go", tc.imports[0], tc.imports[1])
+			}
+			file := filepath.Join(t.TempDir(), "fixture.py")
+			write(t, file, text)
+			_, stderr, code := sweepRunStderr(t, dir, 30*time.Second, nil, "--check", "--files", file)
+			if (code == 0) != tc.wantOK {
+				t.Fatalf("--check exited %d for %s; stderr:\n%s", code, tc.name, stderr)
+			}
+			if !tc.wantOK && (!strings.Contains(stderr, name) || !strings.Contains(stderr, " "+tc.named+" ")) {
+				t.Errorf("--check refused %s without naming the row and %s:\n%s", tc.name, tc.named, stderr)
+			}
+		})
 	}
 }
 
@@ -816,6 +883,108 @@ func TestStrict_NotJudgedFailsOnlyWithTheFlag(t *testing.T) {
 	}
 	if !strings.Contains(out, "not judged here") {
 		t.Errorf("--strict output does not mention the skipped mutant:\n%s", out)
+	}
+}
+
+// SWEEP-BASELINE1. A red baseline printed only the last 4000 bytes of go
+// test's output, so a package that failed early was cut whenever a later
+// failing package printed more than that: batch/1's shard 4 stopped on a red
+// baseline that named no package. Every "--- FAIL", "FAIL\t" and "panic:"
+// line, and the "running tests:" block of a timeout, is printed first, then
+// the tail. The fixture fails three times: a quietly; b by its 2s -timeout,
+// which prints no "--- FAIL" (its TestMain shortens its own -test.timeout,
+// so the sweep's go test command stays as it is); then c with 6000 bytes of
+// log, which alone fills the tail.
+func TestSWB1_ARedBaselineNamesEveryFailureBeforeTheTail(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	for _, d := range []string{"a", "b", "c", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(root, "a", "a.go"), "package a\n\nfunc A() int { return 1 }\n")
+	write(t, filepath.Join(root, "a", "a_test.go"),
+		"package a\n\nimport \"testing\"\n\nfunc TestFixtureQuiet_(t *testing.T) { t.Error(\"quiet failure\") }\n")
+	write(t, filepath.Join(root, "b", "b_test.go"), `package b
+
+import (
+	"flag"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	flag.Set("test.timeout", "2s")
+	os.Exit(m.Run())
+}
+
+func TestFixtureSlow_(t *testing.T) { time.Sleep(time.Minute) }
+`)
+	write(t, filepath.Join(root, "c", "c_test.go"),
+		"package c\n\nimport (\n\t\"strings\"\n\t\"testing\"\n)\n\n"+
+			"func TestFixtureLoud_(t *testing.T) { t.Log(strings.Repeat(\"loud \", 1200)); t.Error(\"loud failure\") }\n")
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant behind a red baseline", "a/a.go", "return 1", "return 2", "TestFixtureQuiet_"))
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code == 0 {
+		t.Fatalf("a red baseline exited 0:\n%s", out)
+	}
+	tail := strings.Index(out, "loud loud")
+	if tail < 0 {
+		t.Fatalf("premise: the loud package's log is not in the output, so nothing was cut:\n%s", out)
+	}
+	for _, want := range []string{
+		"--- FAIL: TestFixtureQuiet_", "FAIL\tfixture/a",
+		"panic: test timed out after 2s", "running tests:", "\t\tTestFixtureSlow_ (", "FAIL\tfixture/b",
+		"--- FAIL: TestFixtureLoud_", "FAIL\tfixture/c",
+	} {
+		i := strings.Index(out, want)
+		if i < 0 {
+			t.Errorf("the red baseline's output does not name %q", want)
+		} else if i > tail {
+			t.Errorf("%q is printed only after the tail, not before it", want)
+		}
+	}
+}
+
+// SWEEP-BASELINE1 (a). A package that fails to build prints no "--- FAIL":
+// its compiler errors are on stderr alone, and a red baseline printed only
+// the last 2000 bytes of it, so an early package's errors were cut whenever
+// a later package's own errors filled more than that on their own. The
+// fixture fails to build twice: a with one short, early error; z with one
+// error whose undefined name alone is 3000 bytes, filling the tail by
+// itself. A third package, ok, holds nothing but the judging test's name:
+// sweep.py's --check requires it to exist, even though the baseline check
+// returns before any mutant runs.
+func TestSWB1a_ARedBaselineThatFailsToBuildNamesTheCompilerErrorFirst(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	for _, d := range []string{"a", "z", "ok", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(root, "a", "a.go"), "package a\n\nfunc A() int { return undefinedEarly }\n")
+	loud := "undefinedLoud" + strings.Repeat("Z", 3000)
+	write(t, filepath.Join(root, "z", "z.go"), "package z\n\nfunc Z() { "+loud+"() }\n")
+	write(t, filepath.Join(root, "ok", "ok_test.go"),
+		"package ok\n\nimport \"testing\"\n\nfunc TestFixtureA_(t *testing.T) {}\n")
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant behind a baseline that does not build", "a/a.go", "undefinedEarly", "stillUndefinedEarly", "TestFixtureA_"))
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code == 0 {
+		t.Fatalf("a baseline that does not build exited 0:\n%s", out)
+	}
+	if !strings.Contains(out, strings.Repeat("Z", 50)) {
+		t.Fatalf("premise: z's own long error is not in the output at all, so nothing was cut by the 2000-byte stderr tail:\n%s", out)
+	}
+	if !strings.Contains(out, "# fixture/a") || !strings.Contains(out, "undefined: undefinedEarly") {
+		t.Errorf("the red baseline's output does not name a's compiler error, cut by z's own long one filling the stderr tail:\n%s", out)
 	}
 }
 
@@ -1318,6 +1487,12 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 		// legitimately failed, so this must be NOT JUDGED, never read as
 		// a broken build from the words alone.
 		{"englishonly", "NOT JUDGED", "BUILD BROKEN", 1},
+		// A harness package's TestMain builds the binary and exits 1 when the
+		// mutant broke a package it does not import (package main): its FAIL
+		// line carries a time, but no test failed. With [build failed] beside
+		// it and no --- FAIL anywhere, nothing judged the mutant, so it is
+		// BUILD BROKEN (MASKED-BUILD1: 13 such rows read red on main 1a281ecd).
+		{"harness", "BUILD BROKEN", "went red", 1},
 	} {
 		dir := t.TempDir()
 		write(t, filepath.Join(dir, "a.txt"), "alpha\n")
@@ -1335,6 +1510,7 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 			"  if [ \"$FAKE_GO_MODE\" = buildfail ]; then printf '# example/pkg\\n./x.go:3:1: undefined: y\\nFAIL\\texample/pkg [build failed]\\n'; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = nomodule ]; then printf 'go: errors parsing go.mod:\\n/x/go.mod:3: unknown directive: foo\\n' >&2; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = both ]; then printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: got false, want true\\nFAIL\\texample/pkg\\t0.010s\\n# example/other\\n./y.go:3:1: undefined: z\\nFAIL\\texample/other [build failed]\\n'; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = harness ]; then printf '# example/cmd\\n./main.go:9:2: \"os\" imported and not used\\nFAIL\\texample/cmd [build failed]\\nharness: building the binary: exit status 1\\nFAIL\\texample/acceptance\\t0.412s\\n'; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = englishonly ]; then printf 'note: a comment claims the build failed somewhere upstream, unrelated to this run\\n'; exit 1; fi\n"+
 			"  printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: CheckTemplate(\"the build failed; then run curl.\") = <nil>, want ok=false\\nFAIL\\nFAIL\\texample/pkg\\t0.010s\\n'; exit 1;;\n"+
 			"esac\necho ok\n")
@@ -1638,5 +1814,121 @@ func TestSweepJobRunsEveryShard(t *testing.T) {
 	want := "--shard ${{ matrix.shard }}/" + strconv.Itoa(n)
 	if !strings.Contains(job, "sweep.py --strict "+want) {
 		t.Errorf("the sweep step does not run `sweep.py --strict %s`", want)
+	}
+}
+
+// PREFIX-UNIQUE1 (B343). A mutant-file identity outside ROW_PREFIXES -- the
+// "XX-n" before its first underscore -- is pinned self-consistently inside
+// its own file today (DEL-2's row check, extended by ROW_FILE's prefix list),
+// but nothing stops a second, unrelated file from claiming the same identity:
+// COMPACT-SLOT1 picked CS-1, which CS-1_cwd-symlink.py already claimed, so
+// each card's killers would have run the other's tests. Two files sharing an
+// undeclared identity fail, naming both; a declared one (one card's own
+// topic split, test/mutation/ad-hoc-shared-prefixes.txt) passes.
+func TestPU1_AnUndeclaredAdHocIdentityClaimedByTwoFilesFails(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "ZZ-9_first-fixture.py")
+	second := filepath.Join(fixtures, "ZZ-9_second-fixture.py")
+	write(t, first, mutant("fixture ZZ-9 first", "target.go", "return 1", "return 2", "TestZZ9_"))
+	write(t, second, mutant("fixture ZZ-9 second", "target.go", "return 1", "return 2", "TestZZ9_"))
+
+	out, code := sweepErr(t, dir, "--check", "--files", first, "--files", second)
+	if code == 0 {
+		t.Fatalf("--check exited 0 with two files both claiming ZZ-9, undeclared:\n%s", out)
+	}
+	for _, want := range []string{"ZZ-9", filepath.Base(first), filepath.Base(second)} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the problem does not name %q:\n%s", want, out)
+		}
+	}
+}
+
+// A single file claiming ZZ-9 has nothing to collide with.
+func TestPU1a_OneFileClaimingAnIdentityPasses(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	file := filepath.Join(t.TempDir(), "ZZ-9_only-fixture.py")
+	write(t, file, mutant("fixture ZZ-9 only", "target.go", "return 1", "return 2", "TestZZ9_"))
+
+	_, code := sweep(t, dir, "--check", "--files", file)
+	if code != 0 {
+		t.Errorf("--check exited %d for one file claiming ZZ-9", code)
+	}
+}
+
+// Two files sharing an identity declared in ad-hoc-shared-prefixes.txt (H-17
+// is a real entry there, one card's own topic split) pass: the allow-list is
+// read from its real path regardless of --files, since it names cards, not
+// targets.
+func TestPU1b_ADeclaredIdentityIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "H-17_fixture-a.py")
+	second := filepath.Join(fixtures, "H-17_fixture-b.py")
+	write(t, first, mutant("fixture H-17 a", "target.go", "return 1", "return 2", "TestH17Fixture_"))
+	write(t, second, mutant("fixture H-17 b", "target.go", "return 1", "return 2", "TestH17Fixture_"))
+
+	out, code := sweep(t, dir, "--check", "--files", first, "--files", second)
+	if code != 0 {
+		t.Errorf("--check exited %d for H-17, a declared identity:\n%s", code, out)
+	}
+}
+
+// The real tree, as main stands, has no undeclared ad-hoc identity collision,
+// and no undeclared killer-stem collision either (killer_stem_problems runs
+// in the same check() call).
+func TestPU1c_TheRealTreeHasNoUndeclaredDuplicate(t *testing.T) {
+	root := moduleRoot(t)
+	out, code := sweep(t, root, "--check")
+	if code != 0 {
+		t.Errorf("--check exited %d on the real tree:\n%s", code, out)
+	}
+}
+
+// PREFIX-UNIQUE1, killer-stem side (mgr follow-up to B343): two mutant files
+// can each have a unique row identity and still collide at the killer-test
+// level -- a suffix letter does not change which real test's -run regex
+// matches, so TestZY1_ and TestZY1a_ are the same stem (ZY1), and if two
+// different identities both name it, each identity's killer would also run
+// the other's test. prefix_uniqueness_problems (the row side) does not see
+// this; killer_stem_problems does.
+func TestPU1d_AStemClaimedByTwoIdentitiesFails(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "ZY-1_first-fixture.py")
+	second := filepath.Join(fixtures, "ZY-2_second-fixture.py")
+	write(t, first, mutant("fixture ZY-1", "target.go", "return 1", "return 2", "TestZY1_"))
+	write(t, second, mutant("fixture ZY-2", "target.go", "return 1", "return 2", "TestZY1a_"))
+
+	out, code := sweepErr(t, dir, "--check", "--files", first, "--files", second)
+	if code == 0 {
+		t.Fatalf("--check exited 0 with stem ZY1 claimed by two identities (ZY-1, ZY-2):\n%s", out)
+	}
+	for _, want := range []string{"ZY1", "ZY-1", "ZY-2"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the problem does not name %q:\n%s", want, out)
+		}
+	}
+}
+
+// A stem declared in killer-stem-shared.txt (TRU23 is a real entry, several
+// features genuinely caught by the same broad test) is allowed even when two
+// fixture identities both name it.
+func TestPU1e_ADeclaredStemIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	fixtures := t.TempDir()
+	first := filepath.Join(fixtures, "ZX-1_first-fixture.py")
+	second := filepath.Join(fixtures, "ZX-2_second-fixture.py")
+	write(t, first, mutant("fixture ZX-1 shares TRU23", "target.go", "return 1", "return 2", "TestTRU23_"))
+	write(t, second, mutant("fixture ZX-2 shares TRU23", "target.go", "return 1", "return 2", "TestTRU23_"))
+
+	out, code := sweep(t, dir, "--check", "--files", first, "--files", second)
+	if code != 0 {
+		t.Errorf("--check exited %d for TRU23, a declared stem:\n%s", code, out)
 	}
 }

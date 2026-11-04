@@ -28,7 +28,9 @@ m("ST-2.4 the done flag on a green verdict", DN,
 
 # The value line and the clause (R6, R8).
 m("ST-2.4 and <k> more at four", VL, 'const maxGateNames = 3\n', 'const maxGateNames = 4\n', "TestVER65_ValueLineRowsRender")
-IMPORTS["ST-2.4 a prefix word names the gate"] = (VL, '\t"slices"\n', '')
+# No IMPORTS entry: value.go uses slices beyond this line (the untrusted-gate
+# read), so the import stays. The entry that dropped it broke the build once
+# that use landed (BUILD BROKEN, main dispatch run 41521646555).
 m("ST-2.4 a prefix word names the gate", VL,
   'if p := t.programs[g.Gate]; p != "" && !slices.Contains(prefixWords, p) {\n', 'if p := t.programs[g.Gate]; p != "" {\n', "TestVER65_ValueLineRowsRender")
 m("ST-2.4 the no-write variant dropped", VL,
@@ -74,7 +76,7 @@ m("ST-2.4 the catch-up writes", RS,
   '\twrites := event == install.EventStop || event == install.EventStopFailure\n',
   '\twrites := event == install.EventStop || event == install.EventStopFailure || pending\n', "TestSTOP_PendingAppendsNoCheckpoint")
 m("ST-2.4 StopFailure prints the value line", RS,
-  'speaks: event == install.EventStop || pending}', 'speaks: true}', "TestSTOP_StopFailureWritesNoLine")
+  'speaks: event == install.EventStop || pending,', 'speaks: true,', "TestSTOP_StopFailureWritesNoLine")
 
 # Precedence, the switch, the barrier and the one key (R12, R2b).
 m("ST-2.4 the value line printed when a recap sentence speaks", RT,
@@ -84,7 +86,7 @@ m("ST-2.4 the done flag loses to the value line", RS,
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {\n',
   '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok && recap.ValueLine(s.view, s.impact, sessionID, fromPlugin) == "" {\n',
   "TestFUN14b_")
-m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOnFor(project)\n', '\treturn false\n', "TestFUN16_")
+m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOnFor(project)\n', "\treturn false && (err != nil || c.SummaryOnFor(project))\n", "TestFUN16_")
 m("ST-2.4 the Flush barrier dropped before print", RT,
   '\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n',
   '', "TestSTOP_FlushFailurePrintsNothing")
@@ -92,8 +94,8 @@ m("ST-2.4 Claim before the Flush barrier", RT,
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n"
   "\t// Claim's own error is intentionally ignored: recap.json is\n\t// bookkeeping, not evidence, and a failure to persist it must cost at\n"
   "\t// most a future duplicate or a stale health timestamp, never a\n\t// missing line and never a hook error (see Claim's doc).\n"
-  "\tspeak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, !pending && stop.unverified(d.SessionID, fromPlugin))\n",
-  "\tspeak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, !pending && stop.unverified(d.SessionID, fromPlugin))\n"
+  "\tspeak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))\n",
+  "\tspeak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))\n"
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n",
   "TestSTOP_FlushFailurePrintsNothing")
 m("ST-2.4 a second systemMessage key", RT,

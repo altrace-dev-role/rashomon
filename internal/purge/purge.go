@@ -24,6 +24,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/fold"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
+	"github.com/altrace-dev-role/rashomon/internal/seed"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -55,6 +56,7 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 	spec.TrustKeyFile,
 	store.FileRecordScope, store.FileSteerDisclosure,
 	store.FileLab,
+	seed.KeptFile,
 	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}
 
 // topDirs are the directories under the store root that rashomon writes
@@ -68,7 +70,7 @@ var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.Di
 // and runTempPrefixes the temporary names its atomic writes leave.
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
-	store.FileNoticeHoldout, fold.FileName, fold.MidFileName}
+	store.FileNoticeHoldout, fold.FileName, fold.MidFileName, store.FileBriefingArmed}
 
 var runTempPrefixes = []string{fold.TempPrefix}
 
@@ -82,6 +84,7 @@ var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tm
 	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",
 	"." + spec.TrustFile + ".tmp-",
 	"." + spec.TrustKeyFile + ".tmp-",
+	"." + seed.KeptFile + ".tmp-",
 	"." + store.FileHarnessCounts + ".rashomon-", recap.StateTempPrefix, "." + store.FileBodies + ".tmp-", "." + store.FileConfig + ".tmp-", "." + store.FileLab + ".tmp-"}
 
 // ownName reports whether a name directly under the store root is one
@@ -343,7 +346,7 @@ func ownTreeFile(name string, isRuns bool, level int) bool {
 	if level != 1 {
 		return false
 	}
-	if slices.Contains(runFiles, name) || store.IsFiredFile(name) {
+	if slices.Contains(runFiles, name) || store.IsFiredFile(name) || store.IsBlastReadFile(name) {
 		return true
 	}
 	for _, p := range runTempPrefixes {

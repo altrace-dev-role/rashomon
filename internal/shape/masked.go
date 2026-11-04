@@ -12,8 +12,9 @@ const (
 	// and the line exits 0 when it fails, or with the same status whether it
 	// fails or passes.
 	MaskedTest = "test"
-	// MaskedBuild: the same for a recognised build runner (buildCommands),
-	// and no test runner's status is hidden.
+	// MaskedBuild: the same for a recognised build runner (buildCommands) or
+	// check runner (lintCommands, typecheckCommands, scanCommands: the kind
+	// they have is runner_kind's), and no test runner's status is hidden.
 	MaskedBuild = "build"
 )
 
@@ -21,7 +22,8 @@ const (
 // with (verb_class, status_masked, runner_kind, may_write, written_paths and
 // written_paths_complete), and the matchers that read them, and the rule that
 // decides a declaration's cwd_digest, and moves whenever one of them changes. The tables are the test runners
-// (testCommands) and the build runners (buildCommands), with the arguments
+// (testCommands), the build runners (buildCommands) and the lint, typecheck
+// and scan runners (lintCommands, typecheckCommands, scanCommands), with the arguments
 // that refuse one (notARun, notARunAny) and the flags that may stand before
 // its words (leadingFlags), which set verb_class, status_masked and
 // runner_kind; the in-place tables (inPlaceEditors, checkOnly, shortClusters),
@@ -55,7 +57,14 @@ const (
 // (writeTargetPins); version 11 names the runner the line ran (RunnerName, the
 // row's own words from the lists above) and the stage of a pipe that hid its
 // result (MaskedBy, a closed word), which verify reads with the output's
-// summary to say whether a piped run passed (D229) --
+// summary to say whether a piped run passed (D229); version 12 reads the
+// exit status a line printed for the runner it hid (PrintedStatus,
+// STATUS-PROBE), from which verify takes the run's outcome, and the claim
+// comparator's done reading, versioned with it (verify's claimlex.go), and
+// adds the lint, typecheck and scan lists (lintCommands, typecheckCommands,
+// scanCommands), which give a runner on them its own runner_kind, and moves go
+// vet and cargo clippy off buildCommands to lint and cargo check to typecheck;
+// 12 was never released, so both changes ride it (D232's reasoning) --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -67,7 +76,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 11
+const RulesVersion = 12
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
@@ -84,12 +93,54 @@ const (
 	RunnerTest = "test"
 	// RunnerBuild: the runner is on buildCommands and not on testCommands.
 	RunnerBuild = "build"
+	// RunnerLint: the runner is on lintCommands.
+	RunnerLint = "lint"
+	// RunnerTypecheck: the runner is on typecheckCommands.
+	RunnerTypecheck = "typecheck"
+	// RunnerScan: the runner is on scanCommands.
+	RunnerScan = "scan"
 )
 
 // RunnerKinds is the vocabulary of runner_kind, for the schema enum test.
 func RunnerKinds() []string {
-	return []string{RunnerTest, RunnerBuild}
+	return []string{RunnerTest, RunnerBuild, RunnerLint, RunnerTypecheck, RunnerScan}
 }
+
+// lintCommands, typecheckCommands and scanCommands are the check runners a
+// live gate's kind can name besides test and build, in buildCommands' form: the
+// program, as path.Base names it, then the plain words that must follow it.
+// Each row is on one list only (TestC8_TheRunnerListsAreDisjoint), so a
+// runner's kind and its name never depend on the order the lists are read in.
+// A runner on one of them is recorded as one that hid its status with
+// status_masked build, the word of a runner that is not a test run: the kind
+// is runner_kind's, and the masked word says only that a status was hidden.
+// The arguments that make a runner do something other than run (--help,
+// --version, `go vet -n`) refuse a row as they refuse a test run
+// (notARun, notARunAny).
+//
+// Only the spellings written here are read: `tsc --noEmit` is a typecheck and
+// a bare `tsc`, which emits, is a build (buildCommands); `tsc -p . --noEmit`,
+// with a flag between, is read as the build row and not as a check, the
+// under-claim a later row moves. `npm run lint` is npm run's, a build: the
+// script's tool is the package's to say. A runner not listed here, or on none
+// of the lists, is not recognised, and its kind is custom.
+var (
+	lintCommands = [][]string{
+		{"golangci-lint", "run"}, {"go", "vet"}, {"staticcheck"},
+		{"ruff", "check"}, {"flake8"}, {"pylint"},
+		{"eslint"}, {"npx", "eslint"},
+		{"cargo", "clippy"}, {"rubocop"},
+	}
+	typecheckCommands = [][]string{
+		{"mypy"}, {"python", "-m", "mypy"}, {"python3", "-m", "mypy"}, {"pyright"},
+		{"tsc", "--noEmit"}, {"npx", "tsc", "--noEmit"},
+		{"cargo", "check"},
+	}
+	scanCommands = [][]string{
+		{"semgrep"}, {"bandit"}, {"gosec"}, {"govulncheck"}, {"gitleaks", "detect"},
+		{"pip-audit"}, {"npm", "audit"}, {"cargo", "audit"},
+	}
+)
 
 // buildCommands are the build and check runners status_masked recognises
 // besides testCommands, in the same form: the program, as path.Base names it,
@@ -103,11 +154,39 @@ func RunnerKinds() []string {
 // test run.
 var buildCommands = [][]string{
 	{"make"}, {"gmake"},
-	{"go", "build"}, {"go", "vet"}, {"cargo", "build"}, {"cargo", "check"}, {"cargo", "clippy"},
+	{"go", "build"}, {"cargo", "build"},
 	{"npm", "run"}, {"yarn", "run"}, {"yarn", "build"}, {"pnpm", "run"}, {"pnpm", "build"},
 	{"tsc"}, {"npx", "tsc"}, {"mvn"}, {"mvnw"}, {"gradle"}, {"gradlew"},
 	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"},
 }
+
+// runnerList is one list of runner rows with the kind it gives a runner on it
+// (runner_kind), the status_masked word a hidden status of its runner is
+// recorded as, and the rows' names.
+type runnerList struct {
+	kind   string
+	masked string
+	rows   [][]string
+	names  func() []string
+}
+
+// runnerLists are the lists a line's first command is read against, in the
+// order they are tried: the first to name its words decides the runner's kind.
+var runnerLists = []runnerList{
+	{RunnerTest, MaskedTest, testCommands, testCommandNames},
+	{RunnerLint, MaskedBuild, lintCommands, lintCommandNames},
+	{RunnerTypecheck, MaskedBuild, typecheckCommands, typecheckCommandNames},
+	{RunnerScan, MaskedBuild, scanCommands, scanCommandNames},
+	{RunnerBuild, MaskedBuild, buildCommands, buildCommandNames},
+}
+
+// launcherRows are the rows of buildCommands, by their words, that name a
+// launcher and not the work: the word after them does (`make lint`, `npm run
+// build`, `mvn verify`, `gradle check`, `ninja docs`), and no record holds
+// that word. A gate keyed by such a row's name would be bound by the launcher
+// running other work, so RunnerKey keys these by their exact words (card
+// GATE-BIND1, D-b). Each entry is a row (TestGB1e_).
+var launcherRows = []string{"make", "gmake", "npm run", "yarn run", "pnpm run", "mvn", "mvnw", "gradle", "gradlew", "ninja"}
 
 // maxRunnerGroups bounds how many distinctly-worded runners statusMasked
 // will re-run the line for. See the check inside statusMasked for why: past
@@ -164,48 +243,9 @@ const maxRunnerGroups = 64
 // pushd or popd past them, past MaxLeadingCd steps, or in a line the two
 // readings fold apart, displaces the runners after it (displace).
 func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKind, name, by *string) {
-	if controlByte(cmd) {
-		return nil, nil, nil, nil, nil
-	}
-	toks, err := tokenizeList(cmd)
-	if err != nil {
-		return nil, nil, nil, nil, nil
-	}
-	p := &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
-	body, ok := p.parseLine()
+	p, body, hidden, reach, ok := maskedRun(cmd, fold)
 	if !ok {
 		return nil, nil, nil, nil, nil
-	}
-	if len(p.runners) > maxRunnerGroups {
-		// Not sure: null. runShells below re-runs the whole parsed line for
-		// every group (twice, or four times where the line turns errexit
-		// on), so the cost is runners times line size -- a line of
-		// thousands of distinctly-named runners, each its own group because
-		// runnerWords keys a group by its exact words, made that the
-		// square of the payload: 16,000 `make tN;` groups took 4.5s and
-		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
-		// already past what a build or test script looks like.
-		return nil, nil, nil, nil, nil
-	}
-	p.displace(agreedFold(toks, fold))
-
-	var (
-		hidden []int
-		reach  = -1
-	)
-	for g := range p.runners {
-		f, pass, ran := p.runShells(body, g)
-		if f < 0 || pass < 0 || !ran {
-			// Not sure: null.
-			return nil, nil, nil, nil, nil
-		}
-		if f == 0 || f == pass {
-			hidden = append(hidden, g)
-			continue
-		}
-		if reach < 0 || p.runners[g].last > p.runners[reach].last {
-			reach = g
-		}
 	}
 	none := MaskedNone
 	switch {
@@ -235,6 +275,54 @@ func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKin
 	return &none, nil, nil, nil, nil
 }
 
+// maskedRun parses cmd and runs it in the abstract once per runner group, as
+// statusMasked describes: the parser, the parsed line, the groups whose
+// status the line hides, and of the others the one whose run comes last
+// (-1 for none). ok is false wherever statusMasked says nothing.
+func maskedRun(cmd string, fold []token) (p *lineParser, body list, hidden []int, reach int, ok bool) {
+	if controlByte(cmd) {
+		return nil, list{}, nil, -1, false
+	}
+	toks, err := tokenizeList(cmd)
+	if err != nil {
+		return nil, list{}, nil, -1, false
+	}
+	p = &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
+	body, ok = p.parseLine()
+	if !ok {
+		return nil, list{}, nil, -1, false
+	}
+	if len(p.runners) > maxRunnerGroups {
+		// Not sure: null. runShells below re-runs the whole parsed line for
+		// every group (twice, or four times where the line turns errexit
+		// on), so the cost is runners times line size -- a line of
+		// thousands of distinctly-named runners, each its own group because
+		// runnerWords keys a group by its exact words, made that the
+		// square of the payload: 16,000 `make tN;` groups took 4.5s and
+		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
+		// already past what a build or test script looks like.
+		return nil, list{}, nil, -1, false
+	}
+	p.displace(agreedFold(toks, fold))
+
+	reach = -1
+	for g := range p.runners {
+		f, pass, ran := p.runShells(body, g)
+		if f < 0 || pass < 0 || !ran {
+			// Not sure: null.
+			return nil, list{}, nil, -1, false
+		}
+		if f == 0 || f == pass {
+			hidden = append(hidden, g)
+			continue
+		}
+		if reach < 0 || p.runners[g].last > p.runners[reach].last {
+			reach = g
+		}
+	}
+	return p, body, hidden, reach, true
+}
+
 // runnerOf is runner group g's digest and kind, the one place either is
 // decided: the kind is set exactly when the digest is, and names the list
 // of the runner the digest is of (D9), so the two never disagree.
@@ -243,10 +331,7 @@ func (p *lineParser) runnerOf(g int, key []byte) (digest, kind *string) {
 	if d == nil {
 		return nil, nil
 	}
-	k := RunnerBuild
-	if p.runners[g].kind == MaskedTest {
-		k = RunnerTest
-	}
+	k := p.runners[g].list
 	return d, &k
 }
 
@@ -337,8 +422,9 @@ const (
 // they appear, and its kind.
 type runnerGroup struct {
 	key       string // the words runnerDigest digests
-	kind      string
-	starts    []int // the first token of each command that runs it
+	kind      string // the status_masked word of a hidden status: MaskedTest or MaskedBuild
+	list      string // the runner_kind of the list the runner is on
+	starts    []int  // the first token of each command that runs it
 	last      int
 	displaced bool    // a cd, pushd or popd past the leading fold ran before it
 	name      *string // the runner's row in its list (runnerNames), never the line's words

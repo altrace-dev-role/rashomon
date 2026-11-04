@@ -133,10 +133,11 @@ func TestPG1c_RunnerKindIsSetExactlyWhenRunnerDigestIs(t *testing.T) {
 	}
 }
 
-// TestPG1c_RunnerKindsAreTheListsWords: the vocabulary is the two lists'
-// names, in this order, for the schema enum test.
+// TestPG1c_RunnerKindsAreTheListsWords: the vocabulary opens with the test and
+// build lists' names, in this order, for the schema enum test; the lint,
+// typecheck and scan words follow (TestC8_RunnerKindsAreTheFiveLists).
 func TestPG1c_RunnerKindsAreTheListsWords(t *testing.T) {
-	if got, want := RunnerKinds(), []string{"test", "build"}; !slices.Equal(got, want) {
+	if got, want := RunnerKinds()[:2], []string{"test", "build"}; !slices.Equal(got, want) {
 		t.Fatalf("RunnerKinds() = %q, want %q", got, want)
 	}
 }
@@ -237,7 +238,8 @@ func TestS2_PushdFoldsAsCd(t *testing.T) {
 		{"cd /a && popd && go test ./...", VerbExecute, "popd", nil, true, false},
 	} {
 		raw, _ := json.Marshal(map[string]string{"command": tc.cmd})
-		sh, _, dirs, unread := DeriveWithDirs("Bash", raw, []byte("key"))
+		sh, _, d := DeriveWithDirs("Bash", raw, []byte("key"))
+		dirs, unread := d.Leading, d.Unread
 		kind := "<nil>"
 		if tc.digest {
 			kind = RunnerTest

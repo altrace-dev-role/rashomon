@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
@@ -30,12 +31,22 @@ func go1Payload(t *testing.T, event, command string, extra map[string]any) []byt
 	return raw
 }
 
-// go1Post lands the post of one Bash call and returns its execution.
+// go1Post lands the post of one Bash call and returns its execution. Its
+// clock stands still, as go1gGate's does, so the read is never past the
+// budget however long the capture takes under load; the budget is pinned on
+// its own clock (TestGO1i).
 func go1Post(t *testing.T, event, command string, extra map[string]any) store.Execution {
+	t.Helper()
+	now := time.Now()
+	return go1PostAt(t, func() time.Time { return now }, event, command, extra)
+}
+
+// go1PostAt is go1Post on the post's clock now.
+func go1PostAt(t *testing.T, now func() time.Time, event, command string, extra map[string]any) store.Execution {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	st := mustOpen(t)
-	p := NewPost(st, time.Now)
+	p := NewPost(st, now)
 	p.Close(&Signals{}, p.Capture(bytes.NewReader(go1Payload(t, event, command, extra))))
 	run, err := st.ReadRun("s")
 	if err != nil {
@@ -97,6 +108,69 @@ func TestGO1c_NonGateCallHasNoGateOutput(t *testing.T) {
 	x := go1Post(t, "PostToolUse", "cat notes.txt", streams("--- FAIL: TestX (0.00s)\nok  \tpkg\t0.01s\n", ""))
 	if x.GateOutput != nil {
 		t.Errorf("gate_output %+v on a cat, want nil", *x.GateOutput)
+	}
+}
+
+// TestWR1_AWrapperCallKeepsOnlyARunnersRead: a call of class execute that is
+// no gate run (a script, a shell) is read for a runner's signature, and its
+// gate_output is kept only where a runner's row read it; a launcher's build
+// target (make check), whose kind reads nothing, is read the same way and
+// keeps today's no_summary where no runner signed it. The go lines are
+// go1.27.3's as recorded in gateout's testdata/wr1. Controls: a cat of the
+// same output (TestGO1c), and a script whose output no runner signed: TAP's
+// "ok 1 - adds", make's own marker. Break: drop the wrapper read, keep an
+// unsigned read, or let a delegate's marker through a wrapper.
+func TestWR1_AWrapperCallKeepsOnlyARunnersRead(t *testing.T) {
+	const goPass, goFail = "ok  \tm\t0.004s\n", "--- FAIL: TestA (0.00s)\nFAIL\nFAIL\tm\t0.004s\nFAIL\n"
+	for _, tc := range []struct{ name, cmd, stdout, kind, parser string }{
+		{"script, go passed", "bash scripts/test.sh", goPass, "summary_pass", "go"},
+		{"script, go failed, piped", "bash scripts/test.sh | tail -20", goFail, "summary_fail", "go"},
+		{"./script, go passed", "./scripts/test.sh", goPass, "summary_pass", "go"},
+		// go signed stdout and printed no outcome; an empty stderr read
+		// after it leaves stdout's words, not the wrapper's.
+		{"script, go ran, its summary cut", "bash scripts/test.sh", "=== RUN   TestA\n--- PASS: TestA (0.00s)\n", "no_summary", "go"},
+		{"make check, go passed", "make check", "go test ./...\n" + goPass, "summary_pass", "go"},
+		{"make check, nothing signed", "make check", "gofmt -l .\n", "no_summary", "make"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantGateOutput(t, go1Post(t, "PostToolUse", tc.cmd, streams(tc.stdout, "")), tc.kind, tc.parser, "")
+		})
+	}
+	fail := map[string]any{"error": "Exit code 1\n" + goFail, "is_interrupt": false}
+	wantGateOutput(t, go1Post(t, FailureEvent, "bash scripts/test.sh", fail), "summary_fail", "go", "")
+	for _, out := range []string{"done\n", "1..2\nok 1 - adds\nok 2 - subtracts\n", "make: *** [test] Error 2\n"} {
+		if x := go1Post(t, "PostToolUse", "bash scripts/test.sh", streams(out, "")); x.GateOutput != nil {
+			t.Errorf("gate_output %+v on a script that printed %q, want nil", *x.GateOutput, out)
+		}
+	}
+}
+
+// TestWR1_TheDisclosureNamesTheWrapperRead (D4): the consent screen says the
+// output of a command rashomon does not recognize is read in memory to find a
+// runner's summary, the read TestWR1_AWrapperCallKeepsOnlyARunnersRead pins
+// (the words are CONSENT-SHORT1's, 6737784c), and that such a command keeps
+// gate_output's closed word where a runner's line is in its output, with or
+// without a summary: that test's "summary cut" case keeps no_summary, its
+// unsigned cases keep nothing. The STORED paragraph is found by
+// disclose.StoredHeading, and a paragraph not found fails the test.
+// Break: ship the read or the kept word without its words.
+func TestWR1_TheDisclosureNamesTheWrapperRead(t *testing.T) {
+	inv, err := disclose.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ owner, head, clause string }{
+		{disclose.OwnerVerify, "READ IN MEMORY, NEVER STORED: ", "and of a command rashomon does not recognize, to find a test runner's summary in it"},
+		{disclose.OwnerRecord, disclose.StoredHeading, "for a gate run, or another command whose output holds a line a test runner prints about its run, one closed word that classifies its output (a passing or failing summary, a failure line, an empty run, "},
+		{disclose.OwnerRecord, disclose.StoredHeading, "or none found), and not the output, which is read in memory"},
+	} {
+		found := false
+		for _, p := range inv.Paragraphs {
+			found = found || p.Owner == c.owner && strings.HasPrefix(p.Text, c.head) && strings.Contains(p.Text, c.clause)
+		}
+		if !found {
+			t.Errorf("no %s paragraph says %s... %q", c.owner, c.head, c.clause)
+		}
 	}
 }
 
@@ -273,5 +347,39 @@ func TestGO1h_TheBufferIsClearedBeforeReturn(t *testing.T) {
 	}
 	if bytes.Contains(buf[:cap(buf)], []byte("SENTINEL")) {
 		t.Error("the buffer still holds the output after readOutput returned")
+	}
+}
+
+// TestGO1i_TheReadStopsAtTheBudget: a gate run's output is read until 50 ms
+// after its capture starts, the tech spec's figure (2.2.3), and not after.
+// The post's clock reads the capture's start first and then a later instant
+// on every read: at the budget's end the run is classified, and a printed
+// status is the outcome; a nanosecond past it the run is unread, budget, and
+// the printed status is not read either. The clock is the post's own
+// (NewPost), so no load moves the result. Break: drop either read's deadline
+// check, or move the budget off 50 ms.
+func TestGO1i_TheReadStopsAtTheBudget(t *testing.T) {
+	const budget = 50 * time.Millisecond
+	const pass, printed = "ok  \tpkg\t0.01s\n", "--- FAIL: TestAdd (0.00s)\nFAIL\nFAIL\tpkg\t0.012s\nFAIL\n2\n"
+	for _, tc := range []struct {
+		name, cmd, out       string
+		after                time.Duration
+		kind, parser, reason string
+	}{
+		{"at the budget", "go test ./...", pass, budget, "summary_pass", "go", ""},
+		{"past the budget", "go test ./...", pass, budget + time.Nanosecond, "unread", "", "budget"},
+		{"a printed status at the budget", "go test ./... ; echo $?", printed, budget, gateout.KindPrintedFail, gateout.ParserExitStatus, ""},
+		{"a printed status past the budget", "go test ./... ; echo $?", printed, budget + time.Nanosecond, "unread", "", "budget"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			start, reads := time.Now(), 0
+			clock := func() time.Time {
+				if reads++; reads == 1 {
+					return start
+				}
+				return start.Add(tc.after)
+			}
+			wantGateOutput(t, go1PostAt(t, clock, "PostToolUse", tc.cmd, streams(tc.out, "")), tc.kind, tc.parser, tc.reason)
+		})
 	}
 }

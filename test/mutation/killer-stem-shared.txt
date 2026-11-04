@@ -1,0 +1,60 @@
+# PREFIX-UNIQUE1 (B343, killer-stem side): a killer-test stem (TestXXn_,
+# suffix letter dropped) that rows of more than one mutant-file identity
+# legitimately name -- a broad test several features are genuinely caught
+# by, not an accidental B343-class collision. One stem per line.
+# killer_stem_problems() in sweep.py fails on any undeclared stem more than
+# one identity names.
+BR1
+# CSL1: ST-2.1's SessionStart-at-resume row is killed by TestCSL1_SessionStartOpensPerSource, which pins the per-source table COMPACT-SLOT1 keyed (#252).
+CSL1
+DEL22
+DG1
+DG2
+GB1
+GO1
+H113
+H16
+H18
+H3
+H4
+H44
+H45
+H46
+IPF1
+IV3
+LRN17
+MO1
+MS5
+P6
+PC1
+R2
+RC14
+REC1
+RES2
+RP2
+RS1
+SC1
+# SEED2: AG-1's audit --keep refusal row is killed by TestSEED2c_, which pins that refusal's text (#184).
+SEED2
+SN1
+SP15
+SR1
+ST1
+ST4
+STR43
+TRU12
+TRU23
+TRU28
+TRU3
+TRU44
+VER11
+VER18
+VER41
+VER52
+VER54
+VER65
+VER67
+VER9
+VG1
+# WR1: BGO-2's background-wrapper row is killed by TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown, which BG-OUTCOME 2a extends to a background wrapper.
+WR1

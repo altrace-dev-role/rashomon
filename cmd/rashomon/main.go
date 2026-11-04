@@ -26,6 +26,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -220,12 +221,6 @@ func noArgs(args []string, stdout io.Writer, cmd func(io.Writer) error) func() e
 	}
 }
 
-// printVersion is version's whole body, in the shape noArgs takes.
-func printVersion(stdout io.Writer) error {
-	fmt.Fprintln(stdout, buildVersion())
-	return nil
-}
-
 // cmdHook handles one PreToolUse invocation and always succeeds.
 //
 // Every failure below is swallowed into exit 0 on purpose. There is no failure
@@ -302,7 +297,8 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
 // it is invoked by Claude Code and it always succeeds. At start it prints the
-// project brief to the user (printBrief), its one write to stdout.
+// continuity briefing at a compaction or else the project brief to the user
+// (printStart), its one write to stdout.
 func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook: signal watching and the
 	// phase check included. They ran ahead of the barrier, under this same
@@ -324,7 +320,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 
-		payload, in, standDown, _ := claudeHostGuard(stdin)
+		payload, in, standDown, id := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -339,6 +335,9 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if standsDown(args, st, stderr) {
 			return nil
 		}
+		// The plugin route's consent lands before the probe syncs the
+		// markers from consent.json (PLUGIN-CONSENT1).
+		lead := pluginConsent(phase, payload, args, st.Root())
 		// See cmdHook's own comment on payload != nil.
 		var runErr error
 		if payload != nil {
@@ -352,7 +351,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
-		printBrief(args, payload, st, stdout)
+		printStart(args, payload, st, lead, id, stdout)
 		markFired(st, sessionOf(payload), probeEvent(phase))
 		return nil
 	})
@@ -621,39 +620,6 @@ func cmdDetach(args []string, stdout io.Writer) error {
 	return nil
 }
 
-// detachTarget resolves which entries a detach removes: the install named on
-// the command line, every install that left a marker, or -- for a plain detach
-// -- the one this machine's store records.
-func detachTarget(args []string) (installID string, all, force bool, err error) {
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--install":
-			if i+1 >= len(args) {
-				return "", false, false, errors.New("--install needs a value")
-			}
-			installID = args[i+1]
-			i++
-		case "--all":
-			all = true
-		case "--force":
-			// The way out of an entry someone edited. Without it, one edited
-			// value left every entry installed and no supported way to
-			// remove them.
-			force = true
-		default:
-			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
-		}
-	}
-	if all && installID != "" {
-		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
-	}
-	if all || installID != "" {
-		return installID, all, force, nil
-	}
-	installID, err = storedInstallID()
-	return installID, false, force, err
-}
-
 // pausedCoverageNote completes pause's line where a store exists: that a
 // paused call still leaves a coverage record, so the window it falls in
 // shows in the report rather than reading as silence.
@@ -675,7 +641,14 @@ const pausedCoverageNote = "; each one still writes a coverage record " +
 // gets the marker file pause reads back -- that is what lets status answer
 // "paused, no store recorded here yet" truthfully -- but nothing that would
 // mint an install identity.
+//
+// An agent session is refused before anything is read (R31): pause is how
+// the person stops the recording, so the agent being recorded cannot run it.
+// That announces rather than prevents, as above: the marker is a file.
 func cmdPause(stdout io.Writer) error {
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return selfguard.Refusal(s, "pause stops the recording of your sessions until you resume it", "pause", "written")
+	}
 	root, err := store.DefaultRoot()
 	if err != nil {
 		return err
@@ -1251,15 +1224,15 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
 usage:
-  rashomon watch [--yes] [--show]
+  rashomon watch [--yes] [--show] [--full]
                                show what installing does, then, after y on
                                the terminal, install the PreToolUse,
                                PostToolUse and PostToolUseFailure recorders,
                                the SessionStart/SessionEnd liveness probe, the
                                Stop/StopFailure exception-only recap, and its
                                UserPromptSubmit catch-up; --show prints that
-                               screen and writes nothing, --yes installs
-                               without asking (never from an agent session)
+                               screen, --full every detail, writing nothing;
+                               --yes installs unasked (never from an agent)
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
@@ -1269,7 +1242,7 @@ usage:
                                directories watch created; prints every path
                                first and asks on the terminal unless --yes;
                                --binary also removes this binary
-  rashomon consent [UNIT [off]] [--yes] [--show]
+  rashomon consent [UNIT [off]] [--yes] [--show] [--full]
                                show the screen again, opening with what
                                changed since you last agreed, and record your
                                consent after y; UNIT (bodies, share.outcomes)

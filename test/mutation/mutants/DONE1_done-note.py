@@ -15,7 +15,7 @@ R = "internal/recap/state.go"
 m("DONE1 the delivery dropped", P,
   "ok && done && !withheld(&ctx) {\n", "ok && false && !withheld(&ctx) {\n", "TestDONE1_")
 m("DONE1 a prompt naming nothing carries no note", P,
-  "\tif !named && !proj.lessons.Any() && !done {\n", "\tif !named && !proj.lessons.Any() {\n", "TestDONE1_")
+  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n", "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {\n", "TestDONE1_")
 m("DONE1 the note is a flag, not a note", D,
   "MaxLevel: steer.LevelNudge,", "MaxLevel: steer.LevelFlag,", "TestDONE1_")
 m("DONE1 the note carries another kind", D,
@@ -32,7 +32,7 @@ m("DONE1 no consent does not withhold", D,
 m("DONE1 every Stop is flagged", S,
   "\t_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)\n\treturn ok\n", "\treturn true\n", "TestDONE1b_")
 m("DONE1 the Stop's verdict not kept", T,
-  "clause, !pending && stop.unverified(d.SessionID, fromPlugin))", "clause, false)", "TestDONE1_")
+  "clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))", "clause, stop.owed, false)", "TestDONE1_")
 m("DONE1 the prompt takes nothing", T,
   "pp.unverified = recap.TakeUnverified(st.Root(), pp.SessionID)", "pp.unverified = false", "TestDONE1_")
 m("DONE1 the take not written before it answers", R,

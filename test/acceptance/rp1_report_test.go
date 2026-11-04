@@ -98,9 +98,17 @@ func (e *env) rpCall(t *testing.T, prompt, id string, c fixtureCall) {
 	}
 }
 
+// rpEdit is an edit of name in the session's own directory, the project the
+// Stop's gate covers (card STALE-COVER1: a write outside it is not counted).
+func (e *env) rpEdit(name string) fixtureCall {
+	c := editOf(name)
+	c.Input["file_path"] = filepath.Join(e.cwd, name)
+	return c
+}
+
 func (e *env) rpGreen(t *testing.T, prompt string) {
 	t.Helper()
-	e.rpCall(t, prompt, "toolu_"+prompt+"_edit", editOf("main.go"))
+	e.rpCall(t, prompt, "toolu_"+prompt+"_edit", e.rpEdit("main.go"))
 	e.rpCall(t, prompt, "toolu_"+prompt+"_test", goTestRun("ok"))
 }
 
@@ -168,7 +176,7 @@ func TestRP1c_SummaryOffSilencesTheClauseNotTheDoneFlag(t *testing.T) {
 	}
 	// The done flag is not the summary: a claim over a gate that did not run
 	// after the last edit still speaks.
-	e.rpCall(t, "prompt-3", "toolu_edit", editOf("util.go"))
+	e.rpCall(t, "prompt-3", "toolu_edit", e.rpEdit("util.go"))
 	if line := e.mustSpeak(stopEvent("Stop", "All 42 tests pass.", e.cwd)); !strings.Contains(line, "done was claimed") {
 		t.Errorf("with summary off a done claim printed %q, want the done flag", line)
 	}

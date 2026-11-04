@@ -457,8 +457,8 @@ func TestLeadingFlagsAreNotRefusals(t *testing.T) {
 		words = append(words, list...)
 	}
 	for prog := range leadingFlags {
-		for _, rows := range [][][]string{testCommands, buildCommands} {
-			for _, c := range rows {
+		for _, l := range runnerLists {
+			for _, c := range l.rows {
 				if c[0] != prog {
 					continue
 				}
@@ -846,7 +846,8 @@ func TestLeadingDirectory(t *testing.T) {
 		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {
 			t.Errorf("%q: LeadingDirectory = %q, %v; want %q", tc.cmd, got, ok, tc.want)
 		}
-		_, cut, dirs, _ := DeriveWithDirs("Bash", in, []byte("key"))
+		_, cut, d := DeriveWithDirs("Bash", in, []byte("key"))
+		dirs := d.Leading
 		if !slices.Equal(dirs, tc.want) {
 			t.Errorf("%q: DeriveWithDirs dirs = %q; want %q, as LeadingDirectory", tc.cmd, dirs, tc.want)
 		}
