@@ -45,7 +45,7 @@ func TestH52_AMissingProgramAloneStaysSilent(t *testing.T) {
 		{"which", "which pytest", "Exit code 1"},
 		{"command -v", "command -v pytest >/dev/null 2>&1", "Exit code 1"},
 		{"type", "type pytest", "Exit code 1\nbash: type: pytest: not found"},
-		{"not found", "pytest -q", "Exit code 127\nbash: pytest: command not found"},
+		{"not found", "jq . package.json", "Exit code 127\nbash: jq: command not found"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -65,6 +65,25 @@ func TestH52_AMissingProgramAloneStaysSilent(t *testing.T) {
 				t.Errorf("the report does not show the missing program:\n%s", out)
 			}
 		})
+	}
+}
+
+// Issue #52, for a missing test runner: pytest that the shell could not find
+// is set aside from the recorded-failure line like any missing program, but it
+// is still the turn's only test run, and it failed, so "All 9 tests pass."
+// rests on no passing run. The Stop's other line speaks where the
+// recorded-failure sentence does not (card 2.4 R12), so the turn is not
+// silent, and AloneStaysSilent's exit-127 case is a program no gate reads.
+// Break: count the missing runner, and the line is "1 recorded failure".
+func TestH52_AMissingTestRunnerLeavesTheClaimToTheStopLine(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	failedBash(t, e, "toolu_pytest", "pytest -q", "Exit code 127\nbash: pytest: command not found")
+
+	line, ok := e.recapLine(stopPayload(testSession, "All 9 tests pass.", false))
+	t.Logf("line = %q (printed %v)", line, ok)
+	if !ok || strings.Contains(line, "recorded failure") {
+		t.Errorf("line = %q (printed %v), want a line, and not the recorded-failure sentence", line, ok)
 	}
 }
 
