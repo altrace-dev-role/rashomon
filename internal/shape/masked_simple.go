@@ -132,20 +132,28 @@ func (p *lineParser) runner(c *simple, s, i, e int, prog string) (command, bool)
 	if !ok {
 		return c, true
 	}
-	kind, names := MaskedTest, testCommandNames()
-	row, hides := runnerRow(toks, ri, name, e, testCommands)
-	if row < 0 {
-		kind, names = MaskedBuild, buildCommandNames()
-		if row, hides = runnerRow(toks, ri, name, e, buildCommands); row < 0 {
-			return c, true
+	var (
+		l    *runnerList
+		row  int
+		hide bool
+	)
+	for n := range runnerLists {
+		if r, h := runnerRow(toks, ri, name, e, runnerLists[n].rows); r >= 0 {
+			l, row, hide = &runnerLists[n], r, h
+			break
 		}
 	}
+	if l == nil {
+		return c, true
+	}
+	hides := hide
+	names := l.names()
 	key := p.runnerWords(ri, e)
 	g, seen := p.groups[key]
 	if !seen {
 		g = len(p.runners)
 		p.groups[key] = g
-		p.runners = append(p.runners, runnerGroup{key: key, kind: kind, name: &names[row]})
+		p.runners = append(p.runners, runnerGroup{key: key, kind: l.masked, list: l.kind, name: &names[row]})
 	}
 	p.runners[g].starts = append(p.runners[g].starts, s)
 	p.runners[g].last = s

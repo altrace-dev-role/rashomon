@@ -44,6 +44,14 @@ type StopInput struct {
 	// baseline.Key of the payload's cwd (card PROJECT-RESOLVE1), under
 	// which evaluate places every gate; "" for none (evaluate).
 	Root string
+	// Platform reads the pgraph log under root, the snapshot's project root,
+	// for written, the session's relevant .go writes, project-relative (card
+	// PL-WIRE1): the ledger verb's replay sets it to internal/platform's
+	// Read, which imports this package; the Stop hook leaves it nil, since
+	// nothing reads a Stop's platform rows yet. EvaluateStop calls it once,
+	// after classifying, only where the session wrote a Go file; nil reads
+	// no log and owes no platform row.
+	Platform func(root string, written []string) PlatformRead
 }
 
 // InferredGate is a test command read from the project's own files: its
@@ -73,9 +81,14 @@ type InferredGate struct {
 // next prompt reads (D90); an incomplete record speaks no verdict (2.2.5,
 // Silence).
 type StopView struct {
-	Snap     Snapshot
-	Summary  Summary
-	Turn     TurnCounts
+	Snap    Snapshot
+	Summary Summary
+	Turn    TurnCounts
+	// Done is the window the done flag reads where it is more than the turn
+	// (doneWindow, BG-OUTCOME phase 2a): the turns since the last edit in the
+	// gates' projects; nil where the turn holds that edit, or the session
+	// made none.
+	Done     *DoneWindow
 	Programs map[string]string
 	Index    *ProjectIndex
 	Scan     ClaimScan
@@ -100,6 +113,10 @@ type StopView struct {
 	// nil after a session write under the store root, when no trust holds
 	// for the rest of the session (hook.TrustRoot, D173).
 	Untrusted []UntrustedGate
+	// Platform is what StopInput.Platform read, the families Obligations'
+	// platform_impact rows were built from, in their order; its Families nil
+	// where nothing was read.
+	Platform PlatformRead
 }
 
 // UntrustedGate is a gate a spec declares while the spec reads untrusted:
@@ -124,11 +141,15 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	if snap.Recording != Complete {
 		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
 	}
-	turn := countTurn(run, counted, in.PromptID, pt.Seq, gateRoots(&snap))
 	if snap.Recording == Complete {
 		markTurn(snap.Gates, turnProjects(run, in.PromptID, pt.Seq))
 	}
+	roots := gateRoots(&snap)
+	turn := countTurn(run, counted, in.PromptID, pt.Seq, roots)
 	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
+	if w, ok := doneWindow(run, counted, turn, pt.Seq, onTurnRoots(&snap, roots)); ok {
+		v.Done = &DoneWindow{Turn: w, Summary: TurnSummary(snap, w)}
+	}
 	inferredProgram(v.Programs, c.inferred)
 	if v.Index == nil {
 		v.Index = &ProjectIndex{ProjectKey: in.ProjectKey}
@@ -140,6 +161,10 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
 	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})
 	v.Obligations = ledgerOf(snap, &c, v.Expected)
+	if written := platformPaths(in.Platform, c.writes, pt.Seq); len(written) > 0 {
+		v.Platform = in.Platform(snap.ProjectRoot, written)
+		v.Obligations = append(v.Obligations, platformObligations(snap, &c, run, in.Key, v.Platform)...)
+	}
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims
 	}
@@ -224,6 +249,15 @@ func countTurn(run *store.Run, c classified, promptID string, at int64, roots []
 	if len(window) == 0 {
 		return t
 	}
+	n := countIn(c, window, roots)
+	n.FirstSeq = t.FirstSeq
+	return n
+}
+
+// countIn counts c's records whose declaration's seq is in window, as
+// countTurn counts a turn; FirstSeq is the caller's.
+func countIn(c classified, window map[int64]bool, roots []string) TurnCounts {
+	var t TurnCounts
 	paths := map[string]bool{}
 	for _, w := range c.writes {
 		if w.Path != nil && Relevant(w.Class) && window[w.Seq] && coveredByAny(roots, &w) {
@@ -249,6 +283,59 @@ func countTurn(run *store.Run, c classified, promptID string, at int64, roots []
 		}
 	}
 	return t
+}
+
+// DoneWindow is the turns a done claim answers to where they are more than
+// its own (doneWindow): their counts, and the row they read.
+type DoneWindow struct {
+	Turn    TurnCounts
+	Summary Summary
+}
+
+// doneWindow is the window the done flag reads (BG-OUTCOME phase 2a, the
+// manager's ruling of 11-03): the turns from the one holding the session's
+// last relevant write a gate of roots covers, through at. A done claim is
+// judged by the evidence since the last edit in the gates' projects, as the
+// gates' states are, never by its turn alone; an edit no gate covers opens
+// nothing (coveredByAny, as the turn counts it), and the Stop's roots are
+// its turn's gates' (onTurnRoots). ok is false where the turn
+// holds a covered write itself, or the session has none: the turn is the
+// window, and the line is the turn's. Cost: three passes over the
+// declarations and one over the writes, only for a turn that wrote nothing.
+func doneWindow(run *store.Run, c classified, turn TurnCounts, at int64, roots []string) (TurnCounts, bool) {
+	if turn.Writes > 0 {
+		return TurnCounts{}, false
+	}
+	var last int64
+	for i := range c.writes {
+		if w := &c.writes[i]; w.Path != nil && Relevant(w.Class) && w.Seq <= at && w.Seq > last && coveredByAny(roots, w) {
+			last = w.Seq
+		}
+	}
+	prompt := ""
+	for i := range run.Declarations {
+		if d := &run.Declarations[i]; d.Seq == last && d.PromptID != nil {
+			prompt = *d.PromptID
+		}
+	}
+	if last == 0 || prompt == "" {
+		return TurnCounts{}, false
+	}
+	from := last
+	for i := range run.Declarations {
+		if d := &run.Declarations[i]; d.PromptID != nil && *d.PromptID == prompt && d.Seq < from {
+			from = d.Seq
+		}
+	}
+	window := map[int64]bool{}
+	for i := range run.Declarations {
+		if s := run.Declarations[i].Seq; s >= from && s <= at {
+			window[s] = true
+		}
+	}
+	t := countIn(c, window, roots)
+	t.FirstSeq = from
+	return t, true
 }
 
 // latestPrompt is the prompt id whose first declaration has the greatest

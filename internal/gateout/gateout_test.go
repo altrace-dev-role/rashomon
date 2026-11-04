@@ -98,7 +98,9 @@ func TestGO9_CapBoundary(t *testing.T) {
 // rode 11 before #229 moved main to 12; main's builds at 12 between the two
 // merges read 946d253c, 8ad8fc2f with the signatures). If a build at 12 is
 // released before WRAPPER-RUN1 merges, 13 is forced, with 12 pinned at
-// 8ad8fc2f.
+// 8ad8fc2f. 12 also carries C8's lint, typecheck and scan runner lists, whose
+// check kinds Classify reads as no_summary; no table changed, and tableDigest
+// covers only Classify's lists.
 var tablePins = map[int]string{
 	10: "9491d497d9ba44407067b6ae5c519106a0603d64940285f3942bf6af9f0e7962",
 	11: "5ca3da77d4411c55988c6c1988ea83cc5ee9558bcbf65f926a53acf8ebccd344",
@@ -397,5 +399,18 @@ func TestMO1_PytestPassIsItsSummaryLine(t *testing.T) {
 		if got.Kind != tc.kind {
 			t.Errorf("%s: %s, want %s", tc.name, got.Kind, tc.kind)
 		}
+	}
+}
+
+// TestC8_CheckKindsAreNoSummary: a lint, typecheck or scan run is attributable
+// like a build: its output is not scanned, the word is no_summary and the
+// parser is the program. Any other kind is still unattributable (custom, "").
+func TestC8_CheckKindsAreNoSummary(t *testing.T) {
+	for _, kind := range []string{"lint", "typecheck", "scan"} {
+		want(t, Classify(kind, "ruff", []byte("All checks passed!")), "no_summary", "ruff", nil)
+		want(t, Classify(kind, "ruff", nil), "no_summary", "ruff", nil)
+	}
+	for _, kind := range []string{"custom", "", "Lint"} {
+		want(t, Classify(kind, "ruff", nil), "unattributable", "", nil)
 	}
 }

@@ -13,7 +13,11 @@ IMPORTS entry differs from BASE's is applied with its IMPORTS entry, its
 target's package is compiled with its tests (go test -run '^$', with the vet
 checks go test runs, as the sweep's own go test does), and the file is put
 back. A target excluded from this GOOS by its build tags compiles nowhere
-here, so its row is not judged.
+here, so its row is not judged. A target in a nested module (pgraph/, its
+own go.mod) is compiled from that module's root: from this one go test
+refuses its package as one the main module does not contain, and the sweep
+reaches such a row only through a test that builds the nested module's
+binary, which reads a mutant that does not compile as a kill.
 
 Run from the module root on a tree with no changes to the files it edits, so
 putting a target back loses nothing. Exits 1 naming each row that does not
@@ -43,6 +47,17 @@ def load(sources):
         rows.update(found)
         imports.update(entries)
     return rows, imports
+
+
+def module_of(target):
+    """The root of the module target's package is in, the nearest directory
+    at or above it with a go.mod ("." for this one), and the package's path
+    relative to that root."""
+    d = os.path.dirname(target)
+    while d and not os.path.isfile(os.path.join(d, "go.mod")):
+        d = os.path.dirname(d)
+    mod = d or "."
+    return mod, "./" + (os.path.relpath(os.path.dirname(target) or ".", mod))
 
 
 def at_base(base):
@@ -89,8 +104,8 @@ def main():
             p.write_text(s.replace(old, new, 1))
             touched.append(path)
         if note is None:
-            pkg = "./" + (os.path.dirname(target) or ".")
-            r = subprocess.run(["go", "test", "-count=1", "-run", "^$", pkg], capture_output=True, text=True)
+            mod, pkg = module_of(target)
+            r = subprocess.run(["go", "test", "-count=1", "-run", "^$", pkg], capture_output=True, text=True, cwd=mod)
             errs = [l.strip() for l in (r.stdout + r.stderr).splitlines() if re.search(r"\.go:\d+:\d+: ", l)]
             if r.returncode != 0:
                 note = "does not build: " + (" | ".join(errs[:2]) or (r.stdout + r.stderr).strip()[-300:])

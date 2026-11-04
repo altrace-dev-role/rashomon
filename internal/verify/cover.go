@@ -159,6 +159,25 @@ func markTurn(gates []GateState, projects []string) {
 	}
 }
 
+// onTurnRoots is the done window's roots (doneWindow): those of the gates a
+// call of the turn ran in the project of (markTurn, card F2), so an edit only
+// a gate off the turn covers opens no window, and a masked call in another
+// worktree is not read into the turn's done line through one (the manager's
+// ruling of 11-03 09:3x; eng-4 9420). all is gateRoots': nil, every write,
+// stays nil; no gate of the turn is no root, so no write opens a window.
+func onTurnRoots(snap *Snapshot, all []string) []string {
+	if all == nil {
+		return nil
+	}
+	roots := []string{}
+	for i := range snap.Gates {
+		if g := &snap.Gates[i]; !g.offTurn && !slices.Contains(roots, g.root) {
+			roots = append(roots, g.root)
+		}
+	}
+	return roots
+}
+
 // maxProjectKeys bounds projectKeys: a run whose gate runs name more
 // projects reads the rest's as not known, whose gates cover every write.
 const maxProjectKeys = 255

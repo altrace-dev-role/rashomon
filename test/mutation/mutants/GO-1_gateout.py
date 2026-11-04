@@ -21,3 +21,18 @@ m("GO-1 gateout's tables are compiled at init", "internal/gateout/tables.go",
   "var rowsOnce struct {\n\tsync.Once\n\tv []table\n}\n",
   "var rowsOnce = struct {\n\tsync.Once\n\tv []table\n}{v: []table{{program: \"go\", pass: compile(`^ok\\s`)}}}\n",
   "TestRES2_NoPackageLevelRegexpCompile")
+# The budget (card GATE-BUDGET-SEAM1): both reads stop 50 ms after the
+# capture starts, on the post's own clock, and a read at the budget's last
+# instant still classifies.
+m("GO-1 a gate run's output is read past the budget", G,
+  "\tif now().After(deadline) {\n\t\treturn unread(unreadBudget)\n", "\tif false {\n\t\treturn unread(unreadBudget)\n",
+  "TestGO1i_TheReadStopsAtTheBudget")
+m("GO-1 a printed status is read past the budget", G,
+  "\tif now().After(deadline) {\n\t\treturn store.GateOutput{}, false\n", "\tif false {\n\t\treturn store.GateOutput{}, false\n",
+  "TestGO1i_TheReadStopsAtTheBudget")
+m("GO-1 the budget is widened", G,
+  "const gateOutputBudget = 50 * time.Millisecond\n", "const gateOutputBudget = 51 * time.Millisecond\n",
+  "TestGO1i_TheReadStopsAtTheBudget")
+m("GO-1 the budget's last instant is unread", G,
+  "\tif now().After(deadline) {\n\t\treturn unread(unreadBudget)\n", "\tif !now().Before(deadline) {\n\t\treturn unread(unreadBudget)\n",
+  "TestGO1i_TheReadStopsAtTheBudget")
