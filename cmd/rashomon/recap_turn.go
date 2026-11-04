@@ -272,7 +272,6 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	var client steer.Client
 	unchecked := false
 	if pending {
-		pp.unverified = recap.TakeUnverified(st.Root(), pp.SessionID)
 		note, client, unchecked = promptNotes(st, run, &pp, root, d, id, now)
 		// A prompt taken into the running turn (a peer message, a task
 		// notification, text typed while busy) fires UserPromptSubmit with
@@ -361,10 +360,14 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 // promptNotes is the catch-up's prompt half: one read of recap's
 // bookkeeping (recap.Turn), whose owed note rides pp to preflightNote, then
 // the note and the turn's spec note (noteTurnSpec). unchecked is Turn's
-// pending answer: no recap reached the turn d chose.
+// pending answer: no recap reached the turn d chose. Where Turn saw a flagged
+// Stop not yet taken, the take (recap.TakeUnverified) is written before the
+// preflight answers it, keyed as the Stop that flagged it (ClaimTurn's
+// d.SessionID); a prompt with none pays no second read (#279).
 func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
-	unchecked, owed := recap.Turn(root, d.SessionID, d.PromptID)
+	unchecked, owed, flagged := recap.Turn(root, d.SessionID, d.PromptID)
 	pp.owed = owed
+	pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID)
 	note, client := preflightNote(st, run, pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
 	noteTurnSpec(st, run, pp)
 	return note, client, unchecked

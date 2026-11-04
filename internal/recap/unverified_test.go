@@ -93,3 +93,53 @@ func TestDONE1i_UnverifiedIsCappedWithTheOtherMaps(t *testing.T) {
 		t.Errorf("unverified %d, noted %d sessions, want at most %d", len(s.Unverified), len(s.Noted), maxTrackedSessions)
 	}
 }
+
+// TestDONE1j_TurnSeesTheFlagTheTakeWouldTake: Turn's flagged answer is the
+// take's own condition, from the prompt's one read, so a prompt with no flag
+// to take pays no second read (#279): false before any flag, for another
+// session, once taken and for a replayed Stop; true for each flagged turn
+// until it is taken. A file written before the flag existed (no unverified or
+// noted key) reads as none flagged, and a Stop and a take still write into it.
+func TestDONE1j_TurnSeesTheFlagTheTakeWouldTake(t *testing.T) {
+	root := t.TempDir()
+	markInstalled(t, root)
+	now := time.Now()
+	if err := os.WriteFile(statePath(root), []byte(`{"spoken":{},"checked":{"s1":"p0"},"shown":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flagged := func(session string) bool {
+		t.Helper()
+		_, _, f := Turn(root, session, "next")
+		return f
+	}
+	claim := func(session, prompt string, flag bool) {
+		t.Helper()
+		if _, err := ClaimTurn(root, session, prompt, now, true, "", Owed{}, flag); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if flagged("s1") {
+		t.Error("a file from before the flag: flagged")
+	}
+	claim("s1", "p1", true)
+	if flagged("s2") {
+		t.Error("another session sees s1's flag")
+	}
+	if !flagged("s1") {
+		t.Fatal("a flagged Stop not seen by Turn")
+	}
+	if !TakeUnverified(root, "s1") {
+		t.Fatal("the flag Turn saw was not taken")
+	}
+	if flagged("s1") {
+		t.Error("a taken flag is still seen, so every later prompt pays the take's read")
+	}
+	claim("s1", "p1", true) // the Stop replayed for the same turn
+	if flagged("s1") {
+		t.Error("a replayed Stop seen as a new flag")
+	}
+	claim("s1", "p2", true)
+	if !flagged("s1") {
+		t.Error("a later flagged turn not seen")
+	}
+}

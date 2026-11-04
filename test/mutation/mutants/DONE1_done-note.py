@@ -1,7 +1,7 @@
 # DONE1: a Stop whose done flag fired reaches the agent once, at the next
 # prompt of the same session (card c4, PF-PG9). The Stop keeps the verdict in
 # recap.json beside its claim; the prompt takes it once, before the preflight,
-# and routes it as claim-vs-record/done-unverified; steering off (an unreadable
+# where its one read of recap.json (Turn) saw it, and routes it as claim-vs-record/done-unverified; steering off (an unreadable
 # config reads as off) and no consent drop it before Route and still consume it. The kill row
 # is the named test's.
 P = "cmd/rashomon/preflight.go"
@@ -34,7 +34,18 @@ m("DONE1 every Stop is flagged", S,
 m("DONE1 the Stop's verdict not kept", T,
   "clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))", "clause, stop.owed, false)", "TestDONE1_")
 m("DONE1 the prompt takes nothing", T,
-  "pp.unverified = recap.TakeUnverified(st.Root(), pp.SessionID)", "pp.unverified = false", "TestDONE1_")
+  "pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID)", "pp.unverified = flagged && false", "TestDONE1_")
+# The prompt's one read (#279): Turn says whether there is a flag to take, so
+# the take, which reads again and writes, runs only then.
+m("DONE1 Turn sees no flag to take", R,
+  "u != \"\" && u != s.Noted[sessionID]", "u != \"\" && false", "TestDONE1_|TestDONE1j_")
+m("DONE1 Turn sees a taken flag again", R,
+  "u != \"\" && u != s.Noted[sessionID]", "u != \"\"", "TestDONE1j_")
+# Both maps are nil until their one write, as Owed is: the write makes them.
+m("DONE1 a Stop flags into a nil map", R,
+  "\t\tif s.Unverified == nil {\n\t\t\ts.Unverified = map[string]string{}\n\t\t}\n", "", "TestDONE1g_|TestDONE1j_")
+m("DONE1 the take writes into a nil map", R,
+  "\tif s.Noted == nil {\n\t\ts.Noted = map[string]string{}\n\t}\n", "", "TestDONE1g_|TestDONE1j_")
 m("DONE1 the take not written before it answers", R,
   "\ts.Noted[sessionID] = flagged\n\treturn writeState(path, s, sessionID) == nil\n", "\treturn true\n", "TestDONE1g_")
 m("DONE1 a taken Stop taken again", R,

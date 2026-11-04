@@ -30,7 +30,7 @@ type pendingPayload struct {
 	// no-spec note (hook.NoteSpecFound), so noteTurnSpec makes no second one.
 	specNoted bool
 	// unverified is the previous Stop's done verdict, taken from recap.json by
-	// recapTurn before the preflight (recap.TakeUnverified): true once per
+	// promptNotes before the preflight (recap.TakeUnverified): true once per
 	// flagged Stop of this session, so a prompt that routes nothing still
 	// consumes it, and the note is not read for at every prompt (card c4).
 	unverified bool

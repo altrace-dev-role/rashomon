@@ -84,11 +84,13 @@ type state struct {
 	// done flag fired (DoneFlag): a strict claim the record does not back. The
 	// next prompt of that session tells the agent once (TakeUnverified). A
 	// prompt id and no content, like the maps above; absent in a file written
-	// before it, which reads as none flagged (card c4, PF-PG9).
+	// before it, which reads as none flagged (card c4, PF-PG9). Nil until a
+	// Stop flags one, as Owed is, so the prompt's read allocates no map.
 	Unverified map[string]string `json:"unverified"`
 	// Noted maps a session id to the Unverified prompt id the prompt path has
 	// taken, delivered or withheld: what makes the note once per flagged Stop,
-	// so a Stop replayed for the same turn does not raise it again.
+	// so a Stop replayed for the same turn does not raise it again. Nil until
+	// the first take.
 	Noted map[string]string `json:"noted"`
 	// Owed maps a session id to what its last turn end owes the next
 	// prompt (Owed): a record seq, a runner's name and a file name, no
@@ -98,8 +100,7 @@ type state struct {
 }
 
 func newState() state {
-	return state{Spoken: map[string]string{}, Checked: map[string]string{}, Shown: map[string]string{},
-		Unverified: map[string]string{}, Noted: map[string]string{}}
+	return state{Spoken: map[string]string{}, Checked: map[string]string{}, Shown: map[string]string{}}
 }
 
 func statePath(root string) string {
@@ -161,12 +162,6 @@ func readState(path string) (state, error) {
 	}
 	if s.Shown == nil {
 		s.Shown = map[string]string{}
-	}
-	if s.Unverified == nil {
-		s.Unverified = map[string]string{}
-	}
-	if s.Noted == nil {
-		s.Noted = map[string]string{}
 	}
 	return s, nil
 }
@@ -330,6 +325,9 @@ func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 		s.Shown[sessionID] = shown
 	}
 	if unverified && sessionID != "" && promptID != "" {
+		if s.Unverified == nil {
+			s.Unverified = map[string]string{}
+		}
 		s.Unverified[sessionID] = promptID
 	}
 	switch {
@@ -347,7 +345,8 @@ func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 }
 
 // TakeUnverified reports whether sessionID's last flagged Stop has not been
-// taken, and takes it: the prompt path calls it once per prompt, and the
+// taken, and takes it: the prompt path calls it where Turn's read saw one to
+// take, the take reads again and checks again before it writes, and the
 // answer is true once per flagged Stop, whatever the prompt then does with it
 // (a switch that withholds the note consumes it, so turning steering on later
 // does not deliver a stale one). A missing or unreadable file, a write that
@@ -366,6 +365,9 @@ func TakeUnverified(root, sessionID string) bool {
 	flagged := s.Unverified[sessionID]
 	if flagged == "" || flagged == s.Noted[sessionID] {
 		return false
+	}
+	if s.Noted == nil {
+		s.Noted = map[string]string{}
 	}
 	s.Noted[sessionID] = flagged
 	return writeState(path, s, sessionID) == nil
@@ -419,20 +421,23 @@ func Status(root string) (evaluated bool, lastAt time.Time, healthy bool, err er
 // Turn reads the file once for the catch-up. pending reports whether
 // promptID is a turn in sessionID that no recap has checked yet -- the turn a
 // refused permission prompt interrupted before its Stop could fire. owed is
-// what the session's last turn end owes its next prompt (Owed). A missing or
-// unreadable bookkeeping file answers false and none: with nothing to say
-// which turns were checked, catching up could only repeat a line Stop
-// already printed, and a duplicate is the failure this file exists to
-// prevent.
-func Turn(root, sessionID, promptID string) (pending bool, owed Owed) {
+// what the session's last turn end owes its next prompt (Owed). flagged
+// reports whether the session's last flagged Stop is not yet taken, so the
+// prompt calls TakeUnverified, which writes, only where there is one to take
+// and pays no second read where there is none. A missing or unreadable
+// bookkeeping file answers false, none and false: with nothing to say which
+// turns were checked, catching up could only repeat a line Stop already
+// printed, and a duplicate is the failure this file exists to prevent.
+func Turn(root, sessionID, promptID string) (pending bool, owed Owed, flagged bool) {
 	if sessionID == "" || !storeExists(root) {
-		return false, Owed{}
+		return false, Owed{}, false
 	}
 	s, err := readState(statePath(root))
 	if err != nil {
-		return false, Owed{}
+		return false, Owed{}, false
 	}
-	return promptID != "" && s.Checked[sessionID] != promptID, s.Owed[sessionID]
+	u := s.Unverified[sessionID]
+	return promptID != "" && s.Checked[sessionID] != promptID, s.Owed[sessionID], u != "" && u != s.Noted[sessionID]
 }
 
 // ImpactShown is the fingerprint of the counts the last printed clause of
