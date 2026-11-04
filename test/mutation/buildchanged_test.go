@@ -158,3 +158,46 @@ func TestDEL2i_ATargetWithChangesIsRefused(t *testing.T) {
 		t.Errorf("the edit to x.go was lost:\n%s", got)
 	}
 }
+
+// TestDEL2j_ANestedModulesTargetCompilesInIt: a target under a directory
+// with its own go.mod (pgraph/) is in that module, so go test run from this
+// module's root refuses its package as one the main module does not contain,
+// a refusal that would read every such row as one that does not build. The
+// row is compiled from the nested module's root: one that builds passes, and
+// a local left unused is refused like any other.
+func TestDEL2j_ANestedModulesTargetCompilesInIt(t *testing.T) {
+	builds := mutant("T-1 at base, builds", "x.go", "return w", "return w - 1", "TestFixture_")
+	cases := []struct {
+		name, row string
+		wantCode  int
+		words     string // in the output: the row's builds line, or the compiler's refusal
+	}{
+		{"a nested row that builds",
+			mutant("T-1 nested, builds", "sub/y.go", "return w", "return w + 1", "TestFixture_"),
+			0, "builds <- T-1 nested, builds"},
+		{"a nested row that leaves a local unused",
+			mutant("T-1 nested, unused", "sub/y.go", "return w", "return v", "TestFixture_"),
+			1, "declared and not used"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _ := buildchangedFixture(t, builds)
+			if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(dir, "sub", "go.mod"), "module fixture/sub\n\ngo 1.25\n")
+			write(t, filepath.Join(dir, "sub", "y.go"), "package sub\n\nfunc H(v int) int {\n\tw := v + 1\n\treturn w\n}\n")
+			fixtureGit(t, dir, "add", "-A")
+			fixtureGit(t, dir, "commit", "-q", "-m", "a nested module")
+			base := strings.TrimSpace(fixtureGit(t, dir, "rev-parse", "HEAD"))
+			write(t, filepath.Join(dir, "test", "mutation", "mutants", "T-1_fixture.py"), builds+tc.row)
+			stdout, stderr, code := buildchanged(t, dir, base)
+			if code != tc.wantCode || !strings.Contains(stdout+stderr, tc.words) {
+				t.Fatalf("exit %d, want %d with %q\nstdout:\n%s\nstderr:\n%s", code, tc.wantCode, tc.words, stdout, stderr)
+			}
+			if tree := fixtureGit(t, dir, "status", "--porcelain", "--", "sub/y.go"); tree != "" {
+				t.Errorf("sub/y.go was not put back: %q", tree)
+			}
+		})
+	}
+}

@@ -178,10 +178,10 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 	name := segment(sessionID)
 	dir := filepath.Join(s.root, DirRuns, name)
 	run := presizeRun(dir, name)
-	deadline := time.Now().Add(budget)
+	deadline := pollNow().Add(budget)
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
-		left := max(0, time.Until(deadline))
+		left := max(0, deadline.Sub(pollNow()))
 		err := eachLineTryLock(filepath.Join(dir, fname), left, s.refusal(), func(line []byte) { classifyRunLine(run, line) })
 		if err != nil {
 			return nil, err

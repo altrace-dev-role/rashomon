@@ -130,6 +130,9 @@ type Program struct {
 	// deps says the dependencies of pkgs were type-checked from source and
 	// carry syntax, so SSA can be built for their bodies (Dispatch needs it).
 	deps bool
+	// root is the scan root, absolute and symlink-resolved: what files'
+	// paths are relative to, which EncodeDigests re-roots at a sync root.
+	root string
 }
 
 func (p *Program) Config() Config { return p.cfg }
@@ -258,7 +261,7 @@ func load(ctx context.Context, root string, cfg Config, deps bool) (*Program, er
 		return nil, &LoadError{msgs}
 	}
 	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].PkgPath < pkgs[j].PkgPath })
-	prog := &Program{cfg: cfg, pkgs: pkgs, fset: token.NewFileSet(), deps: deps}
+	prog := &Program{cfg: cfg, pkgs: pkgs, fset: token.NewFileSet(), deps: deps, root: abs}
 	if len(pkgs) > 0 {
 		prog.fset = pkgs[0].Fset
 	}

@@ -1,13 +1,15 @@
-// Package platform turns a pgraph fact log into the obligations a run's
-// writes owe (PRD 1.5, PF-PL8): the Go packages whose files the run wrote,
-// each a family the evaluator can hold a gate against.
+// Package platform reads a pgraph fact log for the ledger verb's replay of a
+// Stop (PRD 1.5, PF-PL8): the Go packages whose files a run wrote, each a
+// family the ledger owes a platform_impact row and holds the package's go
+// test against (verify/platform.go), and whether the log's facts about each
+// still hold (digests.go).
 //
 // Boundary. pgraph is a separate module that the rashomon module never
 // imports (pgraph/doc.go); the crossing is a file in the format pgraph's
 // (*Log).Encode writes, versioned by its header line. This package reads it
 // with its own decoder, the header and the record grammar alone, never through
 // pgraph.DecodeLog. A header it does not know, a log over its cap, a malformed
-// line or a decode past Deadline is unknown, never a guess (INV-14).
+// line or a decode past the crash guard is unknown, never a guess (INV-14).
 package platform
 
 import (
@@ -15,25 +17,24 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
 	"slices"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
-	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// Deadline bounds one Obligations call (PF-PL8). Past it the answer is one
-// unknown row and no family.
-const Deadline = 20 * time.Millisecond
+// deadline is a crash guard on one Read's decode of the log, not a budget:
+// the answer must be the same for the same files (INV-11), and a decode
+// within MaxLogBytes is milliseconds (11 to 17 ms for this repository's 3 MB
+// log), so only a read that has stalled reaches it, and it reads
+// LogTimedOut. A variable so a test can hold a decode past it.
+var deadline = 10 * time.Second
 
-// SourcePlatform is the Source of every row Obligations returns.
-const SourcePlatform = "platform"
-
-// RunView is what Obligations reads of a run: the project root, the paths the
-// run wrote (relative to Root, or absolute under it) and the pgraph log to
-// read. LogPath is filled by nothing yet: the first card that gives the hook a
-// log path (pgraph sync) wires it; until then the one caller is a test.
+// RunView is what Read reads of a run: the project root, the paths the run
+// wrote (relative to Root, or absolute under it) and the pgraph log to read.
+// The ledger verb fills LogPath with LogPath(Root) where that file exists
+// (cmd's platformRead, card PL-WIRE1), else leaves it "".
 type RunView struct {
 	Root         string
 	WrittenPaths []string
@@ -51,34 +52,6 @@ type RunView struct {
 type Family struct {
 	Package string
 	Hash    string
-}
-
-// Obligations is one platform_impact row per family the run's writes touched,
-// each open, its family the package and its Hash, so a package whose facts
-// change owes a new row. A run with no writes or no log owes none. When the
-// log cannot be read whole within Deadline, or is unknown to this package, it
-// is one unknown row with no family: never a partial answer.
-func Obligations(run RunView) []verify.Obligation {
-	if run.LogPath == "" || len(run.WrittenPaths) == 0 {
-		return []verify.Obligation{}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), Deadline)
-	defer cancel()
-	fams, err := Impact(ctx, run.Root, run.LogPath, run.WrittenPaths)
-	if err != nil {
-		return []verify.Obligation{platformRow("", verify.ObligationUnknown)}
-	}
-	out := make([]verify.Obligation, 0, len(fams))
-	for _, f := range fams {
-		out = append(out, platformRow(f.Package+"@"+f.Hash, verify.ObligationOpen))
-	}
-	return out
-}
-
-func platformRow(family string, state verify.ObligationState) verify.Obligation {
-	return verify.Obligation{ID: verify.ObligationID(verify.ScopeSession, verify.PlatformImpact, family),
-		Scope: verify.ScopeSession, Kind: verify.PlatformImpact, Source: SourcePlatform, State: state,
-		Evidence: []int64{}}
 }
 
 // Impact is the families of the packages paths belong to, read from the log at
@@ -123,7 +96,7 @@ func impact(ctx context.Context, root, logPath string, paths []string, limit int
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
-	f, err := os.Open(logPath)
+	f, err := regfile.Open(logPath)
 	if err != nil {
 		return nil, err
 	}

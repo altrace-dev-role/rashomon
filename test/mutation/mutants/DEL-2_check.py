@@ -36,3 +36,5 @@ m("DEL-2 a target is not put back", B,
   "TestDEL2h_")
 m("DEL-2 a target with changes is edited anyway", B,
   "    if targets and dirty.strip():\n", "    if False:\n", "TestDEL2i_")
+m("DEL-2 a nested module's target compiles from this module's root", B,
+  '    mod = d or "."\n', '    mod = "."\n', "TestDEL2j_")
