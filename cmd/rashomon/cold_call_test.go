@@ -56,17 +56,20 @@ func TestColdCall(t *testing.T) {
 			defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 			var g0 runtime.MemStats
 			runtime.ReadMemStats(&g0)
+			ms0, _ := runtime.ThreadCreateProfile(nil)
 			root, installID := benchStarted(t)
 			in := newBenchInput(t, c.payload(t))
 			args := []string{install.Marker, installID}
 			var stderr benchSink
 
 			var m0, m1 runtime.MemStats
+			ms1, _ := runtime.ThreadCreateProfile(nil)
 			runtime.ReadMemStats(&m0)
 			if code := c.entry(args, in.next(0), &stderr); code != exitOK {
 				t.Fatalf("entry exited %d", code)
 			}
 			runtime.ReadMemStats(&m1)
+			ms2, _ := runtime.ThreadCreateProfile(nil)
 
 			if stderr.writes != 0 {
 				t.Fatalf("stderr: %q", stderr.lastWrite())
@@ -74,6 +77,14 @@ func TestColdCall(t *testing.T) {
 
 			delta := m1.TotalAlloc - m0.TotalAlloc
 			fmt.Printf("COLD %s %d\n", c.id, delta)
+			// The OS threads the runtime started in setup and in the call
+			// (PERF-EDGE1). At one P, sysmon hands the P of a syscall that
+			// outlasts its tick to another M, and when none is idle the
+			// runtime allocates one: on darwin/arm64 5320 bytes (its m, g0
+			// and gsignal, two profiling stacks, a weak pointer), the
+			// macOS runner's second level. The harness reruns a call that
+			// started one (test/perf's coldCallAllocOnce).
+			fmt.Printf("COLDTHREADS %s setup=%d call=%d\n", c.id, ms1-ms0, ms2-ms1)
 			// The GC cycles that began in setup and in the call, and the
 			// heap against its goal before the call (PERF-EDGE1 probe): a
 			// GC start moves sync.Pool's primary cache to its victim cache
