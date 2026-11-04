@@ -20,27 +20,39 @@ func preflightNone() TaskPreflightBinding {
 }
 
 // TestPF1r_PreflightRowsRenderUnderTheBriefingCheck: task-preflight's two
-// rows, the later prompts' (header and four lines) and the first prompt's
-// (header, the project line and the same four), render line by line and pass
-// ValidateBriefing, the multi-line check (R3), with every slot's "none".
+// rows, the later prompts' and the first prompt's, render line by line and
+// pass ValidateBriefing, the multi-line check (R3). The model's text is the
+// header and the lines that list something; the aside, the person's, holds
+// the first prompt's project line, the evidence and the unknowns, each left
+// out when it lists nothing (TOKEN-BUDGET1). With nothing listed for the
+// model, its text is "" and the aside alone prints.
 func TestPF1r_PreflightRowsRenderUnderTheBriefingCheck(t *testing.T) {
+	const head = "rashomon record: preflight for this request from the repository; the request text is not kept."
 	m, err := New(pattern.TaskPreflight, preflightNone())
 	if err != nil {
-		t.Fatalf("New(later row): %v", err)
+		t.Fatalf("New(later row, nothing listed): %v", err)
 	}
-	want := "rashomon record: preflight for this request from the repository; the request text is not kept.\n" +
-		"paths named: none\n" +
-		"spec rules that apply: none\n" +
-		"gates before done: none; evidence for a done claim (inferred from the request): none\n" +
-		"unknown: no spec found"
-	if m.Text() != want {
-		t.Errorf("later row = %q,\nwant %q", m.Text(), want)
+	if m.Text() != "" || m.Aside() != "unknown: no spec found" {
+		t.Errorf("later row with nothing listed = %q, aside %q; want no model text and the unknowns", m.Text(), m.Aside())
 	}
-	if m.Template() != "task-preflight/v1" {
-		t.Errorf("Template() = %q, want task-preflight/v1", m.Template())
+	if m.Template() != "task-preflight/v2" {
+		t.Errorf("Template() = %q, want task-preflight/v2", m.Template())
 	}
 
 	b := preflightNone()
+	b.Paths = slot.NewPathSet([]slot.Path{"a.go"}, 0, 0)
+	b.Evidence = slot.NewEnumList(slot.EnumEvidenceKinds, []string{"judgment_disclosed"})
+	m, err = New(pattern.TaskPreflight, b)
+	if err != nil {
+		t.Fatalf("New(later row): %v", err)
+	}
+	if want := head + "\npaths named: 'a.go'"; m.Text() != want {
+		t.Errorf("later row = %q,\nwant %q", m.Text(), want)
+	}
+	if want := "evidence for a done claim (inferred from the request): judgment_disclosed\nunknown: no spec found"; m.Aside() != want {
+		t.Errorf("later row's aside = %q,\nwant %q", m.Aside(), want)
+	}
+
 	first := TaskPreflightFirstBinding{
 		Instructions: slot.NewPathSet([]slot.Path{"CLAUDE.md"}, 0, 0),
 		Manifests:    slot.NewPathSet([]slot.Path{"go.mod"}, 0, 0),
@@ -51,21 +63,25 @@ func TestPF1r_PreflightRowsRenderUnderTheBriefingCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New(first row): %v", err)
 	}
-	lines := strings.Split(m.Text(), "\n")
-	if len(lines) != 6 || lines[1] != "project files: 'CLAUDE.md'; manifests: 'go.mod'; directories with Go files: 3" {
-		t.Errorf("first row = %q, want six lines, the second the project line", m.Text())
+	lines := strings.Split(m.Aside(), "\n")
+	if m.Text() != head+"\npaths named: 'a.go'" || len(lines) != 3 ||
+		lines[0] != "project files: 'CLAUDE.md'; manifests: 'go.mod'; directories with Go files: 3" {
+		t.Errorf("first row = %q, aside %q; want the later row's text and three aside lines, the first the project line", m.Text(), m.Aside())
 	}
-	if m.Template() != "task-preflight-first/v1" {
-		t.Errorf("Template() = %q, want task-preflight-first/v1", m.Template())
+	if m.Template() != "task-preflight-first/v2" {
+		t.Errorf("Template() = %q, want task-preflight-first/v2", m.Template())
 	}
 }
 
-// TestPF1r_PreflightRowsAreStatementsOfFact: every row passes the template
-// check STR-14 runs over the table, and a filled row over 1,600 bytes is
-// refused, never cut, so the caller's ladder sees the error. The rows are
-// the later prompts' and the first prompt's, and two that carry a lesson as
+// TestPF1r_PreflightRowsAreStatementsOfFact: every row's format and aside
+// pass the template check STR-14 runs over the table, and a filled row whose
+// model text and aside are over 1,600 bytes together is refused, never cut,
+// so the caller's ladder sees the error. The rows are
+// the later prompts' and the first prompt's, two that carry a lesson as
 // their last line (LEARN-RIDE1): the later note with its unknowns line and
-// without it. The first prompt's six lines are the cap, so it carries none.
+// without it, and four with the symbols line (PW1b-ON-230 step 3): later,
+// later without unknowns, later with a lesson, and the first prompt's. The
+// first prompt's six lines are the cap, so it carries no lesson.
 func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 	n := 0
 	for k, tmpl := range templates() {
@@ -76,9 +92,12 @@ func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 		if err := CheckTemplate(tmpl.format); err != nil {
 			t.Errorf("%s: %v", tmpl.id, err)
 		}
+		if err := CheckTemplate(tmpl.aside); tmpl.aside == "" || err != nil {
+			t.Errorf("%s: aside %q: %v", tmpl.id, tmpl.aside, err)
+		}
 	}
-	if n != 4 {
-		t.Errorf("task-preflight has %d rows, want 4", n)
+	if n != 8 {
+		t.Errorf("task-preflight has %d rows, want 8", n)
 	}
 	long := make([]slot.Path, 3)
 	for i := range long {
@@ -93,12 +112,21 @@ func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 		{ID: "r2", Trust: slot.NewEnum(slot.EnumTrust, "trusted"), Why: slot.Approved(strings.Repeat("text ", 31) + "texts")},
 		{ID: "r3", Trust: slot.NewEnum(slot.EnumTrust, "trusted"), Why: slot.Approved(strings.Repeat("more ", 31) + "mores")},
 	}, 0, 0, 0)
+	b.Evidence = slot.NewEnumList(slot.EnumEvidenceKinds, []string{"real_data_run", "hostile_input_run", "cross_check",
+		"judgment_disclosed", "mechanism_stated"})
 	small := b
 	small.Paths = slot.NewPathSet(long[:1], 0, 0)
 	if _, err := New(pattern.TaskPreflight, small); err != nil {
 		t.Fatalf("premise: the same note with one path renders: %v", err)
 	}
+	// The model's lines alone are under the cap; with the aside they are
+	// over it, and the cap counts both, as it did the whole note.
+	known := b
+	known.Evidence, known.Unknown = slot.NewEnumList(slot.EnumEvidenceKinds, nil), slot.NewEnumList(slot.EnumPreflightUnknown, nil)
+	if _, err := New(pattern.TaskPreflight, known); err != nil {
+		t.Fatalf("premise: the model's lines alone render: %v", err)
+	}
 	if m, err := New(pattern.TaskPreflight, b); err == nil {
-		t.Errorf("a %d-byte preflight rendered, want the 1,600-byte refusal", len(m.Text()))
+		t.Errorf("a %d-byte preflight with a %d-byte aside rendered, want the 1,600-byte refusal", len(m.Text()), len(m.Aside()))
 	}
 }

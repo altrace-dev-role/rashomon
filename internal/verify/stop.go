@@ -46,11 +46,11 @@ type StopInput struct {
 	Root string
 	// Platform reads the pgraph log under root, the snapshot's project root,
 	// for written, the session's relevant .go writes, project-relative (card
-	// PL-WIRE1): the ledger verb's replay sets it to internal/platform's
-	// Read, which imports this package; the Stop hook leaves it nil, since
-	// nothing reads a Stop's platform rows yet. EvaluateStop calls it once,
-	// after classifying, only where the session wrote a Go file; nil reads
-	// no log and owes no platform row.
+	// PL-WIRE1): the ledger verb's replay and the Stop hook (PW1b-ON-230
+	// step 2) set it to internal/platform's Read, which imports this
+	// package; StopFailure and the catch-up leave it nil. EvaluateStop
+	// calls it once, after classifying, only where the session wrote a Go
+	// file; nil reads no log and owes no platform row.
 	Platform func(root string, written []string) PlatformRead
 }
 
@@ -117,6 +117,11 @@ type StopView struct {
 	// platform_impact rows were built from, in their order; its Families nil
 	// where nothing was read.
 	Platform PlatformRead
+	// Violations is each trusted or managed rule's violation in this turn,
+	// its Seqs cut to the turn's (turnViolations), in spec order: the Stop
+	// names them, where Summary's k counts the session's and names none
+	// (D40; 1.8 Gate B F1; card RECALL-15). Nil for none.
+	Violations []RuleVerdict
 }
 
 // UntrustedGate is a gate a spec declares while the spec reads untrusted:
@@ -146,7 +151,8 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	roots := gateRoots(&snap)
 	turn := countTurn(run, counted, in.PromptID, pt.Seq, roots)
-	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx}
+	v := StopView{Snap: snap, Summary: TurnSummary(snap, turn), Turn: turn, Programs: programs(snap.Gates, c.runs), Index: idx,
+		Violations: turnViolations(snap.SpecVerdicts, turn.FirstSeq)}
 	if w, ok := doneWindow(run, counted, turn, pt.Seq, onTurnRoots(&snap, roots)); ok {
 		v.Done = &DoneWindow{Turn: w, Summary: TurnSummary(snap, w)}
 	}

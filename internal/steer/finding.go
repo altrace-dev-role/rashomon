@@ -45,7 +45,7 @@ type PreDecision struct {
 // render.Message, which only render.New builds, so a Finding cannot carry
 // text that skipped the renderer's checks.
 type Finding struct {
-	// Pattern is which of the eighteen frozen patterns produced this
+	// Pattern is which of the nineteen frozen patterns produced this
 	// Finding.
 	Pattern PatternID
 	// Kind is Pattern's sub-category, or empty if Pattern has none.
@@ -129,11 +129,11 @@ func (f Finding) check(own bool) error {
 		return fmt.Errorf("%w: level %d or stop form %q is outside its vocabulary", ErrFinding, f.MaxLevel, f.StopForm)
 	case f.StopForm != StopFormNone && f.MaxLevel != LevelStop:
 		return fmt.Errorf("%w: stop form %q below the stop level", ErrFinding, f.StopForm)
-	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
+	case f.Message.Template() != "" && f.Message.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
 	case f.OutcomeFrom != "" && f.OutcomeFrom != OutcomeFromOutputSummary:
 		return fmt.Errorf("%w: outcome_from is outside its vocabulary", ErrFinding)
-	case f.Record.Text() != "" && f.Record.Pattern() != f.Pattern:
+	case f.Record.Template() != "" && f.Record.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q record message on a %q finding", ErrFinding, f.Record.Pattern(), f.Pattern)
 	}
 	if _, numbered := pattern.Priority(f.Pattern); own && !numbered && f.Priority == 0 {

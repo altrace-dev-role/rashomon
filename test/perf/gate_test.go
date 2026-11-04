@@ -440,3 +440,54 @@ func TestRES30_ParseFootprintReadsTimeL(t *testing.T) {
 		t.Error("a report with no footprint line parsed as one")
 	}
 }
+
+// TestCOLDPLATFORM1_ColdBudgetIsThePlatformsOwnFigureElseTheTopLevelOne: a
+// cold entry is gated against its platform's own cold_alloc_bytes_max
+// (platforms.<plat>.cold_alloc_bytes_max, by entry id, as the RSS rows'
+// entries are) where the platform has one, and against the entry's single
+// top-level figure everywhere else -- another entry of the same platform
+// with no figure of its own, and a platform with none at all.
+func TestCOLDPLATFORM1_ColdBudgetIsThePlatformsOwnFigureElseTheTopLevelOne(t *testing.T) {
+	e := budget.Entry{ID: "post.bash_short", ColdAllocBytesMax: 146672}
+	own := map[string]int64{"post.bash_short": 162744}
+	if got := ColdBudget(e, own); got != 162744 {
+		t.Errorf("own figure: ColdBudget = %d, want 162744", got)
+	}
+	if got := ColdBudget(e, nil); got != 146672 {
+		t.Errorf("platform with no figure: ColdBudget = %d, want the top-level 146672", got)
+	}
+	other := budget.Entry{ID: "hook.bash_short", ColdAllocBytesMax: 171136}
+	if got := ColdBudget(other, own); got != 171136 {
+		t.Errorf("entry the platform names no figure for: ColdBudget = %d, want the top-level 171136", got)
+	}
+	if got := ColdBudget(e, map[string]int64{"post.edit_314k": 1}); got != 146672 {
+		t.Errorf("another entry's figure leaked: ColdBudget = %d, want 146672", got)
+	}
+}
+
+// TestCOLDPLATFORM1_PlatformColdFiguresNameMeasuredEntriesAndHoldTheWarmRow:
+// every per-platform cold figure in budgets.json names an entry that has a
+// cold gate (a nonzero top-level figure, or the override is dead text), and
+// is itself consistent with that entry's warm row (ColdAllocConsistent).
+func TestCOLDPLATFORM1_PlatformColdFiguresNameMeasuredEntriesAndHoldTheWarmRow(t *testing.T) {
+	b := loadBudgets(t)
+	byID := map[string]budget.Entry{}
+	for _, e := range b.Entries {
+		byID[e.ID] = e
+	}
+	for plat, p := range b.Platforms {
+		for id, v := range p.ColdAllocBytesMax {
+			e, ok := byID[id]
+			if !ok || e.ColdAllocBytesMax <= 0 {
+				t.Errorf("%s: cold_alloc_bytes_max names %q, which is no entry with a cold gate", plat, id)
+				continue
+			}
+			if v <= 0 {
+				t.Errorf("%s: cold_alloc_bytes_max for %s is %d; an override is a measured figure, never 0", plat, id, v)
+			}
+			if why := ColdAllocConsistent(v, e.AllocBytesMax); why != "" {
+				t.Errorf("%s: %s: %s", plat, id, why)
+			}
+		}
+	}
+}

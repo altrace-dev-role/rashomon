@@ -53,28 +53,28 @@ func TestST1_HighestPriorityWins(t *testing.T) {
 // withheld (output_gate, G2); a text Validate refuses is render_refused.
 func TestST_NoteTextsRefuses(t *testing.T) {
 	ok := "rashomon record: gate 'go test' exited 1 on this run."
-	model, user, refused := noteTexts(ok, false)
+	model, user, refused := noteTexts(ok, "", false)
 	if refused != nil || model != ok || user != render.MirrorPrefix+ok+render.MirrorSuffix {
 		t.Errorf("noteTexts(valid) = %q, %q, %v", model, user, refused)
 	}
 	over := render.MessagePrefix + strings.Repeat("a", store.MaxSteerTextBytes)
-	if _, _, refused := noteTexts(over, false); refused == nil || *refused != SuppressedByOutputGate {
+	if _, _, refused := noteTexts(over, "", false); refused == nil || *refused != SuppressedByOutputGate {
 		t.Errorf("an over-cap note is %v, want output_gate", refused)
 	}
-	if _, _, refused := noteTexts("rashomon record: you must run it.", false); refused == nil || *refused != SuppressedByRenderRefused {
+	if _, _, refused := noteTexts("rashomon record: you must run it.", "", false); refused == nil || *refused != SuppressedByRenderRefused {
 		t.Errorf("a note Validate refuses is %v, want render_refused", refused)
 	}
 	briefing := render.MessagePrefix + "state of this session:\n- gate 'go test': last run exited 1."
-	if _, user, refused := noteTexts(briefing, true); refused != nil || !strings.Contains(user, "\n") {
+	if _, user, refused := noteTexts(briefing, "", true); refused != nil || !strings.Contains(user, "\n") {
 		t.Errorf("a briefing mirrors as %q, %v, want its lines kept", user, refused)
 	}
-	if _, _, refused := noteTexts(briefing, false); refused == nil || *refused != SuppressedByRenderRefused {
+	if _, _, refused := noteTexts(briefing, "", false); refused == nil || *refused != SuppressedByRenderRefused {
 		t.Errorf("a multi-line text outside a briefing is %v, want render_refused", refused)
 	}
-	if user, refused := flagText(ok); refused != nil || user != ok {
+	if user, refused := flagText(ok, ""); refused != nil || user != ok {
 		t.Errorf("flagText(valid) = %q, %v, want the bare text: a flag never says the agent was told", user, refused)
 	}
-	if _, refused := flagText(over); refused == nil || *refused != SuppressedByOutputGate {
+	if _, refused := flagText(over, ""); refused == nil || *refused != SuppressedByOutputGate {
 		t.Errorf("an over-cap flag is %v, want output_gate", refused)
 	}
 }

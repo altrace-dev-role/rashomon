@@ -105,8 +105,13 @@ func TestPLW1e_SyncWritesTheLogTheDigestsAndAnIgnore(t *testing.T) {
 	if code, _, errs := sync(root); code != 0 || string(read(t, filepath.Join(dir, ".gitignore"))) != "pgraph.log\n" {
 		t.Errorf("a second sync: exit %d (%s), and the person's .gitignore was rewritten", code, errs)
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 3 {
-		t.Errorf("%s holds %d entries, want the log, the digests and .gitignore (no temp file left)", dir, len(entries))
+	listed, _ := os.ReadDir(dir)
+	var names []string
+	for _, e := range listed {
+		names = append(names, e.Name())
+	}
+	if got := strings.Join(names, " "); got != ".gitignore pgraph.digests pgraph.log pgraph.walk" {
+		t.Errorf("%s holds %s, want .gitignore, the digests, the log and the walk file (no temp file left)", dir, got)
 	}
 }
 
