@@ -3815,6 +3815,45 @@ and 8.2 names the next experiment for each; none should move before n=10 is meas
   the harness store's consent.json gained a v5 record by `consent --yes`.
 - Meter at the end: weekly 93, five-hour 73 (ceiling 95).
 
+### 14.9 Why the steered runs cost more (asked after 14.4)
+
+Not the brief's tokens. From the result files, Sonnet list prices (cache write 1.25x input, cache read 0.1x), the
+component sums land within a cent of the actual deltas:
+
+| mean per run | pure steered | pure baseline | cross-repo full | cross-repo lessons | cross-repo baseline (same prompt, n=2) |
+|---|---|---|---|---|---|
+| cost | $0.472 | $0.386 | $0.382 | $0.380 | $0.305 |
+| turns | 40.4 | 34.6 | 34.2 | 32.4 | 32.5 |
+| tool calls | 39.4 | 33.6 | 33.2 | 31.4 | 31.5 |
+| tool calls into acme-ops | 6.2 | 0 | 5.8 | 4.6 | 0 |
+| edits | 5.0 | 4.0 | 3.8 | 3.2 | 3.0 |
+| fresh input tokens | 47 | 40 | 38 | 40 | 33 |
+| cache-write tokens | 35,750 | 29,852 | 30,732 | 29,087 | 26,532 |
+| cache-read tokens | 1,023,267 | 827,356 | 803,357 | 820,930 | 647,544 |
+| output tokens | 12,458 | 10,142 | 9,873 | 9,903 | 6,896 |
+
+Pure steered minus pure baseline: actual +$0.086; by component cache read +$0.039, output +$0.023, cache write
++$0.015, input +$0.000 (sum +$0.077). Cross-repo full minus same-prompt baseline: actual +$0.078; cache read
++$0.031, output +$0.030, cache write +$0.010 (sum +$0.071). Full minus lessons only: actual +$0.003; every
+component within $0.004 of zero, although the full brief is twice the lessons brief's size.
+
+The cost model: a run costs about the sum over turns of context size times the cache-read price, plus output.
+Each extra tool call adds a turn and adds its output to every later turn's context. A steered run on these
+fixtures reads two or three sibling files, edits one, reruns its checks and writes a longer summary: about six
+extra tool calls and six extra turns, each re-reading a megabyte of cached context. The brief itself is about 250
+tokens, cached once and read back at a tenth of the price: under a cent.
+
+Two cautions. The per-run spread overlaps: pure steered runs range $0.42 to $0.55, baselines $0.28 to $0.52, and
+the most expensive single run was a baseline (C-baseline-r3, 43 turns, 1.26M cache reads). The steered miss
+(C-steered-r4) cost $0.473 at 29 turns because its context per turn was larger, from the shell output of its
+sandbox probing. At n=5 the mean difference sits inside that noise.
+
+The fair comparison is cost per correct outcome: baseline $0.386 for 0 of 5 right on the sibling dependency,
+steered $0.472 for 4 of 5. The lever left on cost is the planned column: 1 of 5 steered runs named the sibling
+file before its first edit, so the models still explored the tree before acting on the brief. A brief that moves
+the agent straight to the named file cuts turns; that is where a token saving would come from, not from the
+brief's size.
+
 ## Appendix G: tool calls and diffs for the ablation, pure-fixture and gate-loop runs
 
 The full-arm runs A3-steered-r1 to r3 are in Appendix F.
