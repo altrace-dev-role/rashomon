@@ -64,7 +64,7 @@ func TestST2_LastStopReadsTrustPastAStoreWrite(t *testing.T) {
 	}
 	replayTrust := func() spec.Trust {
 		t.Helper()
-		r, err := replayLastStop(st, session)
+		r, err := replayLastStop(st, session, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

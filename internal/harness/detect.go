@@ -281,7 +281,7 @@ func finish(id ID, surface Surface, version *string, evidence []Evidence) Identi
 		Evidence:    sortedEvidence(evidence),
 		Version:     version,
 		CapsVersion: CapsVersion,
-		Blind:       blindOf(Caps(id, surface)),
+		Blind:       blindOf(id, surface),
 	}
 }
 

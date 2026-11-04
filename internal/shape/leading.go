@@ -113,16 +113,49 @@ func leadingCd(toks []token) (string, bool) {
 	if cd.text != "cd" && cd.text != "pushd" || cd.quotedAt >= 0 || cd.opaque {
 		return "", false
 	}
-	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore ||
-		dir.text == "" || strings.HasPrefix(dir.text, "-") || cd.text == "pushd" && strings.HasPrefix(dir.text, "+") ||
-		strings.HasPrefix(dir.text, "~") && dir.text != "~" && !strings.HasPrefix(dir.text, "~/") ||
-		strings.ContainsAny(dir.text, "$`*?[{\\") {
+	if !dirWord(dir) || cd.text == "pushd" && strings.HasPrefix(dir.text, "+") {
 		return "", false
 	}
 	if !and.meta || and.text != "&&" || and.nlBefore {
 		return "", false
 	}
 	return dir.text, true
+}
+
+// dirWord reports a directory word LeadingDirectory reads: one the shell
+// takes as it stands, or the home as `~` or `~/...`, and not an option.
+func dirWord(dir token) bool {
+	return !(dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore ||
+		dir.text == "" || strings.HasPrefix(dir.text, "-") ||
+		strings.HasPrefix(dir.text, "~") && dir.text != "~" && !strings.HasPrefix(dir.text, "~/") ||
+		strings.ContainsAny(dir.text, "$`*?[{\\"))
+}
+
+// pastLeadingRun reads a line past its leading run of n `cd DIR &&` steps
+// (leadingRun's, three tokens each) for where the rest of it runs: the DIR of
+// a `git -C DIR` that is the first command there, by dirWord, with no second
+// -C; and later, whether the line may move to a second directory -- a cd,
+// pushd or popd word anywhere past the run, quoted or not (the shell runs a
+// quoted command name too), or a line the program search read only in part
+// or uncertainly, err, whose rest is unknown. A word that only looks like a
+// directory change, `echo cd`, reads as one: the fail-safe side, which keeps
+// the cwd's project rather than form a pair that is not there.
+func pastLeadingRun(toks []token, n int, err error) (gitC string, later bool) {
+	if err != nil || 3*n > len(toks) {
+		return "", true
+	}
+	rest := toks[3*n:]
+	for _, t := range rest {
+		if t.text == "cd" || t.text == "pushd" || t.text == "popd" {
+			return "", true
+		}
+	}
+	if len(rest) < 3 || rest[0].text != "git" || rest[0].quotedAt >= 0 || rest[0].opaque ||
+		rest[1].text != "-C" || rest[1].quotedAt >= 0 || !dirWord(rest[2]) ||
+		len(rest) > 3 && rest[3].text == "-C" {
+		return "", false
+	}
+	return rest[2].text, false
 }
 
 // unreadFold is the tokenizer's view of the leading cd steps the program

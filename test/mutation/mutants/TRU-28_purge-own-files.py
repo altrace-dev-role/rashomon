@@ -18,7 +18,7 @@ m("TRU-28 a directory that holds a foreign path is still planned for removal", "
   "TestTRU28_")
 m("TRU-28 a runs or baseline that is a symlink is walked", "internal/purge/purge.go",
   "\tif !info.IsDir() {\n\t\treturn nil, []string{top}, nil\n",
-  "\tif false {\n\t\treturn nil, []string{top}, nil\n",
+  "\tif !info.IsDir() && false {\n\t\treturn nil, []string{top}, nil\n",
   "TestTRU28_")
 m("TRU-28 a link or directory at the name of a file rashomon writes is planned for removal", "internal/purge/purge.go",
   "\t\tcase ownName(name) && ent.Type().IsRegular():\n",

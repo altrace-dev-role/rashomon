@@ -4,6 +4,11 @@ m("TRU-40 the report imports net/http", "internal/report/report.go",
   '\t"sort"\n', '\t_ "net/http"\n\t"sort"\n', "TestTRU40_BinaryHasNoNetworkingPackage")
 m("TRU-40 the report imports os/exec with nothing sanctioning it", "internal/report/report.go",
   '\t"sort"\n', '\t_ "os/exec"\n\t"sort"\n', "TestTRU40_OsExecEntersOnlyThroughSanctionedImporters")
+# NO-EGRESS1: the ban loses net while the consent screen still promises no
+# network connection (README.md rewritten to match would pass its own pin).
+m("TRU-40 the ban drops net under the consent screen's promise", "test/acceptance/h17_no_egress_test.go",
+  '\t"net":                "opens sockets",\n', '',
+  "TestTRU40_ConsentScreensNetworkPromiseHasTheBanBehindIt")
 # Every release target, as .goreleaser.yml builds it. Each of these lists a
 # build the release does not ship, where a _windows.go file or one built
 # only without cgo can import net and pass.

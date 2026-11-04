@@ -45,11 +45,12 @@ const (
 
 // FindingRef is one finding a steer line raised. Seq is the line's last
 // evidence seq (its after_seq with none); ResolvedBy is the seq of the green
-// run that resolved it, 0 unless the state is resolved.
+// run that resolved it, 0 unless the state is resolved. Event is the hook
+// event that carried the line (MistakesOf reads it).
 type FindingRef struct {
-	ID, Pattern, Gate string
-	Seq, ResolvedBy   int64
-	State             FindingState
+	ID, Pattern, Gate, Event string
+	Seq, ResolvedBy          int64
+	State                    FindingState
 }
 
 // CheckRef is one expected evidence row of the task at the Stop: its kind,
@@ -133,7 +134,7 @@ func findingPatterns() map[string]bool {
 	findingPatternsOnce.Do(func() {
 		findingPatternsOnce.v = map[string]bool{}
 		for _, p := range []pattern.ID{pattern.RegressionLocation, pattern.SubtaskGate, pattern.ClaimVsRecord,
-			pattern.MaskedStatus, pattern.OrderingRule, pattern.IdenticalRetry, pattern.StaleEvidence} {
+			pattern.MaskedStatus, pattern.OrderingRule, pattern.IdenticalRetry, pattern.StaleEvidence, pattern.Integrity} {
 			findingPatternsOnce.v[string(p)] = true
 		}
 	})
@@ -149,7 +150,7 @@ var findingPatternsOnce struct {
 func lineKeys() *jsonscan.KeySet {
 	lineKeysOnce.Do(func() {
 		lineKeysOnce.v = jsonscan.NewKeySet("id", "state", "prompt_id", "event", "pattern", "model_text",
-			"after_seq", "evidence_seqs", "slots", "key")
+			"after_seq", "evidence_seqs", "slots", "key", "user_text")
 	})
 	return lineKeysOnce.v
 }
@@ -170,6 +171,7 @@ const (
 	lkEvidence
 	lkSlots
 	lkKey
+	lkUserText
 	lkCount
 )
 
@@ -200,11 +202,7 @@ func ImpactOf(v verify.StopView, lines [][]byte, ls *learn.Ledger) Impact {
 		if !findingPatterns()[pat] {
 			continue
 		}
-		f := FindingRef{ID: id, Pattern: pat, Seq: after, Gate: slotGate(b, out[lkSlots])}
-		if ev := seqs(b, out[lkEvidence]); len(ev) > 0 {
-			f.Seq = slices.Max(ev)
-		}
-		f.State, f.ResolvedBy = resolution(v, f, gateKey(pat, text(b, out[lkKey])))
+		f := findingOf(v, b, out[:], id, pat)
 		im.Findings = append(im.Findings, f)
 		if pat == string(pattern.MaskedStatus) {
 			im.Unknown = append(im.Unknown, UnknownRef{Kind: UnknownMasked, Seq: f.Seq})
@@ -226,6 +224,19 @@ func ImpactOf(v verify.StopView, lines [][]byte, ls *learn.Ledger) Impact {
 		im.Lessons = lessonCounts(ls.Lessons())
 	}
 	return im
+}
+
+// findingOf is the finding line b, read with lineKeys into out, as ImpactOf
+// and MistakesOf read one: its seq the line's last evidence seq (its
+// after_seq with none), its gate the gate slot, its state settled against
+// v's gates (resolution).
+func findingOf(v verify.StopView, b []byte, out []jsonscan.Span, id, pat string) FindingRef {
+	f := FindingRef{ID: id, Pattern: pat, Seq: number(b, out[lkAfter]), Gate: slotGate(b, out[lkSlots]), Event: text(b, out[lkEvent])}
+	if ev := seqs(b, out[lkEvidence]); len(ev) > 0 {
+		f.Seq = slices.Max(ev)
+	}
+	f.State, f.ResolvedBy = resolution(v, f, gateKey(pat, text(b, out[lkKey])))
+	return f
 }
 
 // lessonCounts is lessons by tier, read. A proven or probation row with no
@@ -253,10 +264,13 @@ func lessonCounts(lessons []learn.Lesson) LessonCounts {
 // gateKey is the gate id a line's dedupe key names: the gate patterns key
 // their line by the gate's id (verify.keyFor), so that key tells two gates
 // of one program apart where the gate slot cannot. "" for any other
-// pattern, and for a subtask-gate line keyed by a task.
+// pattern, and for a subtask-gate line keyed by a task. A masked-status
+// note names its gate by the runner's words ("go vet"), which no program
+// word matches, so without its key it would never read resolved.
 func gateKey(pat, key string) string {
 	switch pat {
-	case string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.SubtaskGate):
+	case string(pattern.RegressionLocation), string(pattern.StaleEvidence), string(pattern.MaskedStatus),
+		string(pattern.SubtaskGate):
 		return key
 	}
 	return ""

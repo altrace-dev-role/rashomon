@@ -65,6 +65,9 @@ type call struct {
 	// unread one (shape.UnreadCWDDigest), the two domains no digest of one
 	// equals in the other; "" is a location not known.
 	loc string
+	// line is the Bash call's command line, which withLines records on its
+	// declaration; the builder itself ignores it.
+	line string
 	// agent is the subagent the call ran in: AgentID, with AgentType beside it,
 	// both present only inside a subagent call (record.go, Declaration); ""
 	// is the main agent, both nil.
@@ -726,7 +729,7 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"bg on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, bg: true, paths: []string{"a.go"}}}, "every tool but a shell"},
 		{"mayWrite on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, mayWrite: true, paths: []string{"a.go"}}}, "shell-line"},
 		{"runner with bad masked", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, outcome: store.ExecOK}}, "masked \"\" is not one of"},
-		{"runner with bad kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "lint", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"lint\" is not one of"},
+		{"runner with bad kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "deploy", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"deploy\" is not one of"},
 		{"kind without runner", "s1", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, kind: shape.RunnerTest, outcome: store.ExecOK}}, "and no runner"},
 		{"paths on read", "s1", []call{call{seq: 1, tool: "Read", class: shape.VerbRead, outcome: store.ExecOK, paths: []string{"a.go"}}}, "names paths"},
 

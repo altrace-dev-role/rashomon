@@ -23,14 +23,24 @@ const noRunSentence = "no test or build run is recorded for this turn"
 // claim with an expected evidence kind unmet fires it too, on any row (card
 // 3.3, Gate B 1), and each unmet kind's sentence follows the row's.
 func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, bool) {
+	if v.Done != nil {
+		// A done claim answers to the evidence since the last edit in the
+		// gates' projects, whichever turn holds it, on every branch below
+		// (BG-OUTCOME phase 2a): a turn that only read a background job's
+		// log is judged with the edit and the run it rests on.
+		v.Summary, v.Turn = v.Done.Summary, v.Done.Turn
+	}
 	unmet := unmetExpected(v)
 	if (v.Summary.Row == verify.RowVerified || !unbacked(v.Scan.Claims)) && len(unmet) == 0 {
 		return "", false
 	}
 	s := noRunSentence
 	if v.Summary.Row != verify.RowNone && v.Summary.Row != verify.RowNoGate {
-		if f := fitted(v, prefix+doneLead); f != "" {
-			s = f
+		// A row whose sentence is silent says nothing here either: "no
+		// test or build run" is the no-gate rows' sentence, false on a turn
+		// that ran one no gate bound (INFER-FALSE1, B303).
+		if s = fitted(v, prefix+doneLead); s == "" {
+			return "", false
 		}
 	}
 	return prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + unboundLines(v) + pointer(sessionID, fromPlugin), true

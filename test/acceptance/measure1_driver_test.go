@@ -56,6 +56,12 @@ type m1Rig struct {
 
 func newM1Rig(t *testing.T, knobs map[string]any, base string) *m1Rig {
 	t.Helper()
+	return newM1RigWith(t, knobs, func(r *m1Rig) { r.buildTask(base) })
+}
+
+// newM1RigWith is newM1Rig with the task built by build.
+func newM1RigWith(t *testing.T, knobs map[string]any, build func(*m1Rig)) *m1Rig {
+	t.Helper()
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("measure1.sh is a bash script for macOS and Linux")
 	}
@@ -91,7 +97,7 @@ func newM1Rig(t *testing.T, knobs map[string]any, base string) *m1Rig {
 		}
 		r.write(filepath.Join(r.stubs, "stub.json"), string(b), 0o600)
 	}
-	r.buildTask(base)
+	build(r)
 	r.prepare()
 	return r
 }
@@ -175,9 +181,9 @@ func (r *m1Rig) run(limit string, extraEnv ...string) m1Result {
 	return r.script(extraEnv, "run", r.m, "--task", r.task, "--limit", limit)
 }
 
-// buildTask makes the task directory: a repository whose base holds base as
-// calc.go and whose fix commit makes Add add and adds TestAdd.
-func (r *m1Rig) buildTask(base string) {
+// taskRepo makes the task's repo/ directory and returns its git and commit
+// helpers (a commit writes its files, adds everything and returns the id).
+func (r *m1Rig) taskRepo() (func(args ...string) string, func(msg string, files map[string]string) string) {
 	r.t.Helper()
 	repo := filepath.Join(r.task, "repo")
 	if err := os.MkdirAll(repo, 0o700); err != nil {
@@ -197,12 +203,24 @@ func (r *m1Rig) buildTask(base string) {
 	commit := func(msg string, files map[string]string) string {
 		r.t.Helper()
 		for name, body := range files {
-			r.write(filepath.Join(repo, name), body, 0o600)
+			path := filepath.Join(repo, name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				r.t.Fatal(err)
+			}
+			r.write(path, body, 0o600)
 		}
 		git("add", "-A")
 		git("commit", "-q", "-m", msg)
 		return git("rev-parse", "HEAD")
 	}
+	return git, commit
+}
+
+// buildTask makes the task directory: a repository whose base holds base as
+// calc.go and whose fix commit makes Add add and adds TestAdd.
+func (r *m1Rig) buildTask(base string) {
+	r.t.Helper()
+	git, commit := r.taskRepo()
 	git("init", "-q")
 	baseID := commit("base", map[string]string{"go.mod": "module example.invalid/task\n\ngo 1.25\n",
 		"calc.go": "package task\n\n" + base + "\n"})
@@ -872,5 +890,285 @@ func TestMS1zf_ControlReadsTheTwinPair(t *testing.T) {
 		if code != c.want || !strings.Contains(out, c.out) {
 			t.Errorf("%s: exit %d, output %q; want exit %d holding %q", c.name, code, out, c.want, c.out)
 		}
+	}
+}
+
+// TestMS1zl_RepsReportEveryPair: --reps K runs K seeded pairs of sessions and
+// reports each pair, not only the last (c10: SID_<arm> was overwritten in the
+// report's loop, so a 3-rep run printed one `measure pair`). Each rep's
+// sensors run on its own two sessions, its pair is written to pair-N.txt and
+// pair-N.json holding that rep's two session ids and no other, and pairs.txt
+// lists every rep. A single rep keeps pair.txt and pair.json as before.
+func TestMS1zl_RepsReportEveryPair(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, nil, m1Red)
+	res := r.script(nil, "run", r.m, "--task", r.task, "--limit", "20", "--reps", "2")
+	if res.code != 0 {
+		t.Errorf("exit %d, want the two-rep run to finish", res.code)
+	}
+	sid := map[string]string{}
+	for n := 1; n <= 4; n++ {
+		for _, arm := range []string{"off", "steer"} {
+			if s := strings.TrimSpace(r.out("arm-" + strconv.Itoa(n) + "-" + arm + ".session")); s != "" {
+				sid[strconv.Itoa(n)+arm] = s
+			}
+		}
+	}
+	if len(sid) != 4 {
+		t.Fatalf("premise: two reps should leave four arm sessions, found %v", sid)
+	}
+	// the seeded order puts each rep's two arms side by side: arms 1,2 then 3,4
+	repSIDs := func(rep int) []string {
+		var out []string
+		for k, v := range sid {
+			if n, _ := strconv.Atoi(k[:1]); (n+1)/2 == rep {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	for rep := 1; rep <= 2; rep++ {
+		name := "pair-" + strconv.Itoa(rep)
+		raw := r.out(name + ".json")
+		if !json.Valid([]byte(raw)) {
+			t.Errorf("%s.json is not valid JSON (absent or damaged): %q", name, raw)
+			continue
+		}
+		if r.out(name+".txt") == "" {
+			t.Errorf("%s.txt is empty or absent", name)
+		}
+		for _, s := range repSIDs(rep) {
+			if !strings.Contains(raw, s) {
+				t.Errorf("%s.json does not hold rep %d's session %s", name, rep, s)
+			}
+		}
+		for _, s := range repSIDs(3 - rep) {
+			if strings.Contains(raw, s) {
+				t.Errorf("%s.json holds the other rep's session %s", name, s)
+			}
+		}
+		if !strings.Contains(r.out("pairs.txt"), "rep "+strconv.Itoa(rep)+": ") {
+			t.Errorf("pairs.txt does not list rep %d: %q", rep, r.out("pairs.txt"))
+		}
+	}
+	for _, l := range []string{"measure1: S1 off arm: ", "measure1: S1 steer arm: "} {
+		if n := strings.Count(res.out, l); n != 2 {
+			t.Errorf("the driver's output holds %q %d times, want once per rep (2)", l, n)
+		}
+	}
+	if r.out("pair.json") != "" {
+		t.Errorf("pair.json exists for a two-rep run; only a single rep keeps that name")
+	}
+}
+
+// TestMS1zm_OneRepKeepsThePairFiles: a single rep still writes pair.txt and
+// pair.json, beside pair-1.txt and pair-1.json and the one-line pairs.txt.
+func TestMS1zm_OneRepKeepsThePairFiles(t *testing.T) {
+	t.Parallel()
+	r := newM1Rig(t, nil, m1Red)
+	res := r.run("20")
+	if res.code != 0 {
+		t.Fatalf("exit %d\n%s", res.code, res.out)
+	}
+	if !json.Valid([]byte(r.out("pair.json"))) || r.out("pair.txt") == "" {
+		t.Errorf("a one-rep run lacks pair.json or pair.txt")
+	}
+	if r.out("pair.json") != r.out("pair-1.json") || r.out("pair.txt") != r.out("pair-1.txt") {
+		t.Errorf("pair.* differ from pair-1.*")
+	}
+	if !strings.Contains(r.out("pairs.txt"), "rep 1: ") || strings.Contains(r.out("pairs.txt"), "rep 2: ") {
+		t.Errorf("pairs.txt reads %q, want rep 1 alone", r.out("pairs.txt"))
+	}
+}
+
+// A pytest task (card c9): the task directory's RUNNER file says pytest, its
+// FAIL_TO_PASS and PASS_TO_PASS lines are node ids, and the oracle is
+// pytest --junitxml read into the shape go test -json gives check's oracle.
+// The tests write the Python project themselves, in the rig's temp directory.
+const (
+	m1PyBroken = "def add(a, b):\n    return a - b\n\n\ndef sub(a, b):\n    return a - b\n"
+	m1PyFixed  = "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n"
+	m1PyUnimp  = "def add(a, b)\n    return a - b\n"
+)
+
+// m1NeedPytest skips the test unless python3 on PATH has pytest, saying
+// what is missing.
+func m1NeedPytest(t *testing.T) {
+	t.Helper()
+	out, err := exec.Command("python3", "-m", "pytest", "--version").CombinedOutput()
+	if err != nil {
+		t.Skipf("pytest is not installed for the python3 on PATH (python3 -m pytest --version: %v: %s); the pytest runner cannot be exercised", err, strings.TrimSpace(string(out)))
+	}
+}
+
+// buildPyTask makes a pytest task: at base calc.py's add subtracts and
+// tests/test_calc.py holds one passing test, test_zero; tests/test_other.py
+// (not importing calc) passes. The fix repairs add, extends test_calc.py
+// with test_add (which needs a fixture from the fix's own conftest.py) and
+// so the existing test_zero is the PASS_TO_PASS that stays green.
+func (r *m1Rig) buildPyTask(calc string) {
+	r.t.Helper()
+	git, commit := r.taskRepo()
+	git("init", "-q")
+	baseID := commit("base", map[string]string{
+		"calc.py":             "" + calc,
+		"tests/test_calc.py":  "from calc import add\n\n\ndef test_zero():\n    assert add(0, 0) == 0\n",
+		"tests/test_other.py": "def test_sub():\n    assert 3 - 1 == 2\n",
+	})
+	fixID := commit("fix", map[string]string{
+		"calc.py":           m1PyFixed,
+		"tests/conftest.py": "import pytest\n\n\n@pytest.fixture\ndef pair():\n    return (1, 2)\n",
+		"tests/test_calc.py": "from calc import add\n\n\ndef test_zero():\n    assert add(0, 0) == 0\n\n\n" +
+			"def test_add(pair):\n    assert add(*pair) == 3\n",
+	})
+	for name, body := range map[string]string{"base": baseID + "\n", "fix": fixID + "\n", "RUNNER": "pytest\n",
+		"issue.txt": "add subtracts.\n", "FAIL_TO_PASS": "tests/test_calc.py::test_add\n",
+		"PASS_TO_PASS": "tests/test_calc.py::test_zero\ntests/test_other.py::test_sub\n"} {
+		r.write(filepath.Join(r.task, name), body, 0o600)
+	}
+}
+
+func (r *m1Rig) g2(task string) m1Result {
+	r.t.Helper()
+	return r.script(nil, "task", r.m, "--task", task)
+}
+
+// TestMS1zi_PytestTaskHoldsAtG2: a Python task whose fix repairs add passes
+// G2 on pytest's junit result; the run's output names the python3 and pytest
+// it used, and the oracle files are in go test -json's event shape.
+func TestMS1zi_PytestTaskHoldsAtG2(t *testing.T) {
+	t.Parallel()
+	m1NeedPytest(t)
+	r := newM1RigWith(t, nil, func(r *m1Rig) { r.buildPyTask(m1PyBroken) })
+	res := r.g2(r.task)
+	if res.code != 0 {
+		t.Errorf("exit %d, want G2 to hold", res.code)
+	}
+	r.want(res, "oracle FAIL_TO_PASS 0/1 passed, 1 failed on their assertions; PASS_TO_PASS 0 failing apart from them; 0 package(s) did not build",
+		"oracle FAIL_TO_PASS 1/1 passed, 0 failed on their assertions; PASS_TO_PASS 0 failing apart from them; 0 package(s) did not build",
+		"G2 runner pytest: python ", "pytest ", "G2 the task holds")
+	// The red run saw the fix's conftest.py (test_add's fixture): its test
+	// failed on its assertion rather than erroring for a missing fixture.
+	red := r.out("red.json")
+	for _, want := range []string{`"Action": "fail"`, `"Test": "test_add"`, `"Package": "tests/test_calc.py"`} {
+		if !strings.Contains(strings.ReplaceAll(red, `":"`, `": "`), want) {
+			t.Errorf("red.json lacks %s:\n%s", want, red)
+		}
+	}
+}
+
+// TestMS1zj_PytestTaskRefusals: a base whose module does not import is
+// refused as one that did not collect, not as tests that failed; a base
+// already green is refused as such; a RUNNER the driver does not know is
+// refused before anything runs.
+func TestMS1zj_PytestTaskRefusals(t *testing.T) {
+	t.Parallel()
+	m1NeedPytest(t)
+	t.Run("base does not import", func(t *testing.T) {
+		t.Parallel()
+		r := newM1RigWith(t, nil, func(r *m1Rig) { r.buildPyTask(m1PyUnimp) })
+		res := r.g2(r.task)
+		if res.code == 0 {
+			t.Errorf("exit 0, want G2's rejection")
+		}
+		r.want(res, "G2: on base 0 of 1 FAIL_TO_PASS tests fail on their own assertions; tests/test_calc.py did not build, so its tests never ran; the task is rejected")
+		if strings.Contains(res.out, "G2 the task holds") {
+			t.Errorf("the task was accepted")
+		}
+	})
+	t.Run("base already green", func(t *testing.T) {
+		t.Parallel()
+		r := newM1RigWith(t, nil, func(r *m1Rig) { r.buildPyTask(m1PyFixed) })
+		res := r.g2(r.task)
+		if res.code == 0 {
+			t.Errorf("exit 0, want G2's rejection")
+		}
+		r.want(res, "G2: on base 0 of 1 FAIL_TO_PASS tests fail on their own assertions; the task is rejected")
+		if strings.Contains(res.out, "did not build") && !strings.Contains(res.out, "0 package(s) did not build") {
+			t.Errorf("a green base was reported as not collecting:\n%s", res.out)
+		}
+	})
+	t.Run("unknown runner", func(t *testing.T) {
+		t.Parallel()
+		r := newM1RigWith(t, nil, func(r *m1Rig) { r.buildPyTask(m1PyBroken) })
+		r.write(filepath.Join(r.task, "RUNNER"), "unittest\n", 0o600)
+		res := r.g2(r.task)
+		if res.code == 0 {
+			t.Errorf("exit 0, want a refusal")
+		}
+		r.want(res, "RUNNER is unittest: go or pytest")
+	})
+}
+
+// TestMS1zk_PyOracleMapsJunitToEvents: the junit-to-event mapping on junit
+// results of pytest's shapes, with no pytest needed: a failure is the test's
+// fail, a collection error is its file's failed build, a skip is a skip, a
+// test's own error (setup) is the file's failed build as well, and class and
+// parametrised ids keep their node-id tails.
+func TestMS1zk_PyOracleMapsJunitToEvents(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, f := range []string{"tests/test_a.py", "tests/test_b.py", "tests/test_c.py"} {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(f)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	xml := `<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="2" failures="1" skipped="1" tests="6">
+<testcase classname="tests.test_a" name="test_ok" time="0.0"/>
+<testcase classname="tests.test_a.TestK" name="test_bad[x y]" time="0.0"><failure message="assert 1 == 2">trace</failure></testcase>
+<testcase classname="tests.test_a" name="test_sk" time="0.0"><skipped type="pytest.skip" message="s"/></testcase>
+<testcase classname="" name="tests.test_b" time="0.0"><error message="collection failure">ImportError</error></testcase>
+<testcase classname="tests.test_c" name="test_fx" time="0.0"><error message="failed on setup with fixture not found">E</error></testcase>
+</testsuite></testsuites>`
+	if err := os.WriteFile(filepath.Join(dir, "r.xml"), []byte(xml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := m1Check(t, "pyoracle", filepath.Join(dir, "r.xml"), dir)
+	if code != 0 {
+		t.Fatalf("pyoracle exit %d: %s", code, out)
+	}
+	type ev struct {
+		Action, Package, Test string
+		FailedBuild           bool
+	}
+	var got []ev
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		var e ev
+		if err := json.Unmarshal([]byte(l), &e); err != nil {
+			t.Fatalf("not an event line %q: %v", l, err)
+		}
+		got = append(got, e)
+	}
+	want := []ev{
+		{"pass", "tests/test_a.py", "test_ok", false},
+		{"fail", "tests/test_a.py", "TestK::test_bad[x_y]", false},
+		{"skip", "tests/test_a.py", "test_sk", false},
+		{"fail", "tests/test_b.py", "", true},
+		{"fail", "tests/test_c.py", "", true},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("events %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("event %d: %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	// the F2P/P2P spec for check: node ids as "<file> <tail>" and files
+	for name, body := range map[string]string{"f2p": "tests/test_a.py::TestK::test_bad[x y]\n", "p2p": "tests/test_a.py::test_ok\ntests/test_b.py\ntests/test_a.py::test_sk\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name+".txt"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for kind, want := range map[string]string{"f2p": "tests/test_a.py TestK::test_bad[x_y]\n", "p2p": "tests/test_a.py\ntests/test_b.py\n"} {
+		if code, out := m1Check(t, "pyspec", kind, filepath.Join(dir, kind+".txt")); code != 0 || out != want {
+			t.Errorf("pyspec %s: exit %d, %q, want %q", kind, code, out, want)
+		}
+	}
+	if code, _ := m1Check(t, "pyspec", "f2p", filepath.Join(dir, "p2p.txt")); code == 0 {
+		t.Errorf("pyspec f2p accepted a file that is not a node id")
 	}
 }

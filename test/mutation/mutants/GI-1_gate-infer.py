@@ -31,7 +31,7 @@ m("GI-1 npm's placeholder test is a test script", G,
 m("GI-1 pnpm's lockfile is not read", G,
   "\tcase exists(root, \"pnpm-lock.yaml\"):\n", "\tcase false:\n", "TestGI1_EachEcosystemItsOwnTestCommand")
 m("GI-1 a Makefile variable named test is a target", G,
-  " && !strings.HasPrefix(rest, \"=\"))", ")", "TestGI1_AMakefileVariableIsNoTarget")
+  " && !strings.HasPrefix(rest, \"=\"))", " && (!strings.HasPrefix(rest, \"=\") || true))", "TestGI1_AMakefileVariableIsNoTarget")
 m("GI-1 pytest's own config is a convention", G,
   "{file: \"pytest.ini\", argv: []string{\"pytest\"}, declared: true},", "{file: \"pytest.ini\", argv: []string{\"pytest\"}},",
   "TestGI1_DeclaredOnlyWhereTheProjectSaysSo")
@@ -118,7 +118,7 @@ m("GI-1 the Stop owes nothing", R,
 m("GI-1 the prompt reads nothing owed", T,
   "\tpp.owed = owed\n", "\t_ = owed\n", "TestGI1na_")
 m("GI-1 the prompt stops before the owed note", P,
-  " && p.owed.Seq <= 0 {", " {", "TestGI1na_")
+  " && p.owed.Seq <= 0 && !briefed {", " && !briefed {", "TestGI1na_")
 m("GI-1 the owed note is not routed", P,
   "\tif f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {\n", "\tif f, ok := owedFinding(p.owed, run.LastSeq(), lines); false && ok {\n",
   "TestGI1na_")
