@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// TestH52_TheProbeBitIsOmittedWhenFalse (issue #52): probe is absent where
-// its fact is false, as launch is, so a line that is no probe costs no byte,
-// and a record before schema 10, which has no such key, reads false and its
-// probe counts as any failure does; the shape itself never carries it.
-// Break: drop omitempty, rename the key, or write the shape's copy.
+// TestH52_TheProbeBitIsOmittedWhenFalse (issue #52): probe_only is absent
+// where its fact is false, as launch is, so a line that is no probe costs no
+// byte, and a record before schema 10, which has no such key, reads false
+// and its probe counts as any failure does; the shape itself never carries
+// it. Break: drop omitempty, rename the key, or write the shape's copy.
 func TestH52_TheProbeBitIsOmittedWhenFalse(t *testing.T) {
 	plain, err := json.Marshal(Declaration{})
 	if err != nil {
@@ -25,7 +25,7 @@ func TestH52_TheProbeBitIsOmittedWhenFalse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(probed), `"probe":true`) != 1 {
+	if strings.Count(string(probed), `"probe_only":true`) != 1 {
 		t.Errorf("a probe is not recorded once, as the declaration's key: %s", probed)
 	}
 	var back Declaration

@@ -33,7 +33,21 @@ m("MP a line of no command is all probes", P,
   "\tif !ok || len(cmds) == 0 {", "\tif !ok {",
   D)
 m("MP a line read in part is all probes", P,
-  "\tif !ok || len(cmds) == 0 {", "\tif len(cmds) == 0 {",
+  "\tif !ok || len(cmds) == 0 {", "\tif _ = ok; len(cmds) == 0 {",
+  D)
+# The byte scan before the reading: a line holding none of the three words
+# costs no tokenize, and each word lets its probes through.
+m("MP the probe reading tokenizes every line", P,
+  "\tif !strings.Contains(line, \"which\") && ", "\tif false && !strings.Contains(line, \"which\") && ",
+  "TestRES29_DeriveReadsTheLineThreeTimes")
+m("MP the byte scan misses which", P,
+  "!strings.Contains(line, \"which\") && !strings.Contains(line, \"type\")", "!strings.Contains(line, \"type\")",
+  D)
+m("MP the byte scan misses type", P,
+  " && !strings.Contains(line, \"type\")", "",
+  D + "|TestH52_AMissingProgramAloneStaysSilent")
+m("MP the byte scan misses command", P,
+  " && !strings.Contains(line, \"command\")", "",
   D)
 m("MP a probe is read off the line's first command", P,
   "\tfor _, c := range cmds {\n\t\tif !probe(c.Words) {", "\tfor _, c := range cmds[:1] {\n\t\tif !probe(c.Words) {",
@@ -54,10 +68,10 @@ m("MP command -v without a name is a probe", P,
   D)
 # The bit is one key, present only when true, and the schema names it.
 m("MP the probe bit is written false", "internal/store/record.go",
-  "`json:\"probe,omitempty\"`", "`json:\"probe\"`",
+  "`json:\"probe_only,omitempty\"`", "`json:\"probe_only\"`",
   "TestH52_TheProbeBitIsOmittedWhenFalse|TestH52_TheDeclarationRecordsAProbe")
-m("MP the schema names no probe key", "docs/store-schema.json",
-  "        \"probe\": {\n          \"description\": \"Schema 10 (#52).",
+m("MP the schema names no probe_only key", "docs/store-schema.json",
+  "        \"probe_only\": {\n          \"description\": \"Schema 10 (#52).",
   "        \"probed\": {\n          \"description\": \"Schema 10 (#52).",
   "TestStoreSchemaMatchesTheAllowlists")
 # The line and the report name what was set aside, so the numbers add up.

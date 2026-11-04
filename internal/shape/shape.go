@@ -97,8 +97,8 @@ type Shape struct {
 	// type with a name, or command -v or -V with one, so `which pytest` and
 	// `which jq; type -P yq` are probes and `which pytest && pytest -q`,
 	// whose exit is pytest's, is not. One bit, read from the words and
-	// dropped. json:"-": the declaration carries it as its own key, probe,
-	// present only when true (call schema 10), beside launch.
+	// dropped. json:"-": the declaration carries it as its own key,
+	// probe_only, present only when true (call schema 10), beside launch.
 	Probe bool `json:"-"`
 
 	// StatusMasked says whether a recognised build or test runner on a shell

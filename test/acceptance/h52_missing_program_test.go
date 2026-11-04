@@ -112,11 +112,11 @@ func TestH52_AProbeBesideAnotherCommandStillCounts(t *testing.T) {
 }
 
 // TestH52_TheDeclarationRecordsAProbe: the declaration of a line of nothing
-// but probes carries probe, true, and a line with another command omits the
-// key, as launch is omitted (call schema 10). The bit is read from the words
-// at the hook and the words dropped, so a record that holds no command, as
-// the hook writes none, still sets the probe aside. Break: drop the key,
-// write it false, or set it on a probe beside another command.
+// but probes carries probe_only, true, and a line with another command
+// omits the key, as launch is omitted (call schema 10). The bit is read from
+// the words at the hook and the words dropped, so a record that holds no
+// command, as the hook writes none, still sets the probe aside. Break: drop
+// the key, write it false, or set it on a probe beside another command.
 func TestH52_TheDeclarationRecordsAProbe(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -124,7 +124,7 @@ func TestH52_TheDeclarationRecordsAProbe(t *testing.T) {
 	failedBash(t, e, "toolu_both", "which pytest && pytest -q", "Exit code 1")
 	var got []any
 	for _, d := range e.declarations(testSession) {
-		v, ok := d.fields["probe"]
+		v, ok := d.fields["probe_only"]
 		if !ok {
 			v = "absent"
 		}
@@ -134,6 +134,6 @@ func TestH52_TheDeclarationRecordsAProbe(t *testing.T) {
 		}
 	}
 	if len(got) != 2 || got[0] != true || got[1] != "absent" {
-		t.Errorf("probe per Bash declaration %v, want [true absent]", got)
+		t.Errorf("probe_only per Bash declaration %v, want [true absent]", got)
 	}
 }

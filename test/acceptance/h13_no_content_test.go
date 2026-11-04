@@ -69,11 +69,11 @@ var (
 	}
 	// omittedWhenFalseKeys are the declaration keys that are present only when
 	// true: location_unread (call schema 9, 5.14b), a bit about the parse, and
-	// launch and probe (call schema 10, LAUNCH-ANY1 and #52), bits about the
+	// launch and probe_only (call schema 10, LAUNCH-ANY1 and #52), bits about the
 	// words. The places a key is absent where the fact is false, so the key
 	// sets above stay the ones every record carries, and these are allowed
 	// beside them.
-	omittedWhenFalseKeys = []string{"location_unread", "launch", "probe"}
+	omittedWhenFalseKeys = []string{"location_unread", "launch", "probe_only"}
 
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

@@ -1,12 +1,23 @@
 package shape
 
+import "strings"
+
 // probes reports a shell line every one of whose commands, as Commands reads
 // them, asks whether programs are installed and runs none (probe): `which
 // pytest`, `which jq; type -P yq` (issue #52). A line with any other command
 // is none, since its exit may be that command's: `which pytest && pytest -q`
 // exits 1 when a test failed. A line the reading stops on, or one of no
 // command, is none, so a line read in part never sets a failure aside.
+//
+// Cost: a byte scan, as launchWord is launches': a line all probes holds
+// which, type or command, so a line holding none of the three is none and
+// costs no tokenize (RES-29). A program word spelled apart by a quote or
+// an escape, `wh\ich`, is therefore no probe, and its failure counts as any
+// does.
 func probes(line string) bool {
+	if !strings.Contains(line, "which") && !strings.Contains(line, "type") && !strings.Contains(line, "command") {
+		return false
+	}
 	cmds, ok := Commands(line)
 	if !ok || len(cmds) == 0 {
 		return false

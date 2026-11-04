@@ -71,8 +71,8 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // script or a shell, past its first program too (shape.Shape.Launch,
 // LAUNCH-ANY1). Omitted when false, as location_unread is; a record before
 // v10 has no such key, and a reader takes the line's launch from its first
-// program instead (shape.RecordedLaunch). It gained probe too, one bit set
-// where the line is nothing but which, type and command -v probes
+// program instead (shape.RecordedLaunch). It gained probe_only too, one bit
+// set where the line is nothing but which, type and command -v probes
 // (shape.Shape.Probe, issue #52), omitted when false and read false before
 // v10: one version for both, as no released build writes 10. The execution
 // and the terminal gained nothing and are written at 10 with their
@@ -324,7 +324,7 @@ type Declaration struct {
 	// false, as Launch is; a record before v10 has no such key and reads
 	// false, so its probe counts as any failure does. A fact about the
 	// words, never a word of the command.
-	Probe bool `json:"probe,omitempty"`
+	Probe bool `json:"probe_only,omitempty"`
 
 	// HostSource says where each entry of Hosts came from, positionally (v3).
 	// "structured" is a host read from a field whose value is a URL, so the
