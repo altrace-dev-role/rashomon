@@ -136,7 +136,7 @@ func newID() string {
 // reachable through Route -- a Message comes only from render.New, already
 // validated under 1,200 bytes, and its mirror is at most 1,229 bytes -- so
 // both are tested here, by string (card 2.2 R7, A8).
-func noteTexts(text string, briefing bool) (model, user string, refused *SuppressedBy) {
+func noteTexts(text, aside string, briefing bool) (model, user string, refused *SuppressedBy) {
 	if len(text) > store.MaxSteerTextBytes {
 		return "", "", reason(SuppressedByOutputGate)
 	}
@@ -148,6 +148,7 @@ func noteTexts(text string, briefing bool) (model, user string, refused *Suppres
 	if err != nil {
 		return "", "", reason(SuppressedByRenderRefused)
 	}
+	user = withAside(user, aside)
 	if len(user) > store.MaxSteerTextBytes {
 		return "", "", reason(SuppressedByOutputGate)
 	}
@@ -155,13 +156,27 @@ func noteTexts(text string, briefing bool) (model, user string, refused *Suppres
 }
 
 // flagText is a flag's user text: the rendered text itself, never the
-// mirror wrapper, which says the agent was told (card 2.2 R7, D50); over
-// the cap it is withheld (output_gate).
-func flagText(text string) (user string, refused *SuppressedBy) {
-	if len(text) > store.MaxSteerTextBytes {
+// mirror wrapper, which says the agent was told (card 2.2 R7, D50), with
+// the message's aside after it; over the cap it is withheld (output_gate).
+func flagText(text, aside string) (user string, refused *SuppressedBy) {
+	user = withAside(text, aside)
+	if len(user) > store.MaxSteerTextBytes {
 		return "", reason(SuppressedByOutputGate)
 	}
-	return text, nil
+	return user, nil
+}
+
+// withAside is user with a message's aside, the lines the model is never
+// sent (TOKEN-BUDGET1), after it on their own line, or the aside alone when
+// user is "".
+func withAside(user, aside string) string {
+	switch {
+	case aside == "":
+		return user
+	case user == "":
+		return render.AsidePrefix + aside
+	}
+	return user + "\n" + render.AsidePrefix + aside
 }
 
 func reason(r SuppressedBy) *SuppressedBy { return &r }
@@ -169,7 +184,7 @@ func reason(r SuppressedBy) *SuppressedBy { return &r }
 // recorded is the message the finding's steer line holds: Record when the
 // producer set one, else the message that prints.
 func (f Finding) recorded() render.Message {
-	if f.Record.Text() != "" {
+	if f.Record.Template() != "" {
 		return f.Record
 	}
 	return f.Message
@@ -179,14 +194,14 @@ func (f Finding) recorded() render.Message {
 // (PREFLIGHT1b): the printed texts are decided, and a record form that does
 // not fit the cap suppresses the line like any text over it.
 func (p *plan) recordTexts() {
-	if p.f.Record.Text() == "" {
+	if p.f.Record.Template() == "" {
 		return
 	}
 	var refused *SuppressedBy
 	if p.level == LevelNudge {
-		p.recModel, p.recUser, refused = noteTexts(p.f.Record.Text(), briefing(p.f.Pattern))
+		p.recModel, p.recUser, refused = noteTexts(p.f.Record.Text(), p.f.Record.Aside(), briefing(p.f.Pattern))
 	} else {
-		p.recUser, refused = flagText(p.f.Record.Text())
+		p.recUser, refused = flagText(p.f.Record.Text(), p.f.Record.Aside())
 	}
 	if refused != nil {
 		p.suppress(*refused)
@@ -297,6 +312,9 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if p.level == LevelNudge && rule == ruleFlagOnly {
 			p.level = LevelFlag // the event has no model channel; the event says why (D50)
 		}
+		if p.level == LevelNudge && f.Message.Text() == "" {
+			p.level = LevelFlag // nothing proven for the model: the aside prints alone (TOKEN-BUDGET1)
+		}
 		slots, slotErr := slotsOf(f.recorded())
 		p.slots = slots
 		switch {
@@ -304,7 +322,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 			p.suppress(SuppressedByNoChannel)
 		case claimed[p.key]:
 			p.suppress(SuppressedByBudgetPattern)
-		case f.Message.Text() == "" || slotErr != nil:
+		case f.Message.Text() == "" && f.Message.Aside() == "" || slotErr != nil:
 			p.suppress(SuppressedByRenderRefused)
 		case p.level == LevelNudge && !ContextAllowed(string(ctx.Event), c):
 			p.suppress(SuppressedByUnverifiedChannel)
@@ -315,9 +333,9 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if p.decide {
 			var refused *SuppressedBy
 			if p.level == LevelNudge {
-				p.model, p.user, refused = noteTexts(f.Message.Text(), briefing(f.Pattern))
+				p.model, p.user, refused = noteTexts(f.Message.Text(), f.Message.Aside(), briefing(f.Pattern))
 			} else {
-				p.user, refused = flagText(f.Message.Text())
+				p.user, refused = flagText(f.Message.Text(), f.Message.Aside())
 			}
 			if refused != nil {
 				p.suppress(*refused)
@@ -458,7 +476,7 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, version string, basis 
 	}
 	if p.state == LineStateDelivered && !p.holdout {
 		l.ModelText, l.UserText = p.model, p.user
-		if p.f.Record.Text() != "" {
+		if p.f.Record.Template() != "" {
 			l.ModelText, l.UserText = p.recModel, p.recUser
 		}
 		l.Mirror, l.MirroredToUser = MirrorSystemMessage, true

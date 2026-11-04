@@ -27,6 +27,8 @@ MO1
 MS5
 P6
 PC1
+# PF1: TB-1's brief and aside rows are killed by TestPF1i_FirstPromptCarriesTheBrief and TestPF1r_, PREFLIGHT1's tests of the brief that TOKEN-BUDGET1 splits into text and aside (#251).
+PF1
 R2
 RC14
 REC1

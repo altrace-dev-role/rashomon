@@ -66,29 +66,38 @@ type TaskPreflightFirstSymbolsBinding struct {
 }
 
 // symbolsLine is the line the symbols the request named take, after the
-// gates and before the unknowns (PW1b-ON-230 step 3, WED-SLICE row 1(c)).
+// gates (PW1b-ON-230 step 3, WED-SLICE row 1(c)).
 const symbolsLine = "\nsymbols named: {symbols}"
 
 // templatesSymbols is the four task-preflight rows that carry the symbols
-// line: the later prompts' note with and without its unknowns, with a lesson
-// in the unknowns' place, and the first prompt's in the unknowns' place.
+// line: the later prompts' note with and without the unknowns in its aside,
+// with a lesson and no unknowns, and the first prompt's, whose aside holds
+// the project line and no unknowns.
 func templatesSymbols() map[templateKey]template {
 	return map[templateKey]template{
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightSymbolsBinding{})}: {
-			id:     "task-preflight-symbols/v1",
-			format: preflightHead + preflightKnown + symbolsLine + "\nunknown: {unknown}",
+			id:     "task-preflight-symbols/v2",
+			format: preflightHead + preflightKnown + symbolsLine,
+			aside:  preflightEvidence + preflightUnknown,
+			sparse: true,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightSymbolsKnownBinding{})}: {
-			id:     "task-preflight-symbols-known/v1",
+			id:     "task-preflight-symbols-known/v2",
 			format: preflightHead + preflightKnown + symbolsLine,
+			aside:  preflightEvidence,
+			sparse: true,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightSymbolsLessonBinding{})}: {
-			id:     "task-preflight-symbols-lesson/v1",
+			id:     "task-preflight-symbols-lesson/v2",
 			format: preflightHead + preflightKnown + symbolsLine + lessonRide,
+			aside:  preflightEvidence,
+			sparse: true,
 		},
 		{pattern.TaskPreflight, reflect.TypeOf(TaskPreflightFirstSymbolsBinding{})}: {
-			id:     "task-preflight-first-symbols/v1",
-			format: firstHead + preflightKnown + symbolsLine,
+			id:     "task-preflight-first-symbols/v2",
+			format: preflightHead + preflightKnown + symbolsLine,
+			aside:  firstBrief + preflightEvidence,
+			sparse: true,
 		},
 	}
 }

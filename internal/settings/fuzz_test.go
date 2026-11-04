@@ -43,6 +43,10 @@ var roundTripSeeds = []string{
 	"{\"bad utf8 \xff\": \"\xfe\"}",
 	`[1]`,
 	`"settings"`,
+	" \n{\"\":{}}",
+	" \n{\"a\":1}",
+	"\n\n{\"model\":\"opus\"}",
+	"\r\n{\"model\":\"opus\"}",
 	`{"a": {"b": [{"c": "` + strings.Repeat("d", 300) + `"}]}}`,
 }
 
