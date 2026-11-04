@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -202,5 +203,22 @@ func TestPLW1l_DigestsParserRefusesWhatItCannotReadWhole(t *testing.T) {
 	}
 	if got, err := parseDigests(strings.NewReader(DigestsHeader + "\np\ta.go\t" + sum + "\n")); err != nil || got.files["a.go"] != sum {
 		t.Errorf("one good line: %v, %v", got, err)
+	}
+}
+
+// TestPW1b2_TheStopsGuardReplacesTheCrashGuard: a RunView's Deadline cuts
+// a held decode at its own bound, not the crash guard's (PW1b-ON-230 step
+// 2: the Stop passes 2 s inside its entry's 10 s timeout). With the crash
+// guard at 10 s and the run's at 20 ms, Read is timed out within a second.
+// Break: ignore run.Deadline, and Read waits out the 2 s hold and reads the
+// log.
+func TestPW1b2_TheStopsGuardReplacesTheCrashGuard(t *testing.T) {
+	root, lp := project(t, synthLog(t, 5000))
+	hang(t)
+	deadline = 10 * time.Second // hang's guard restores it
+	start := time.Now()
+	r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp, Deadline: 20 * time.Millisecond})
+	if elapsed := time.Since(start); r.Log != verify.LogTimedOut || elapsed > time.Second {
+		t.Errorf("a held decode under a 20 ms Deadline: %v after %v, want timed out within a second", r.Log, elapsed)
 	}
 }

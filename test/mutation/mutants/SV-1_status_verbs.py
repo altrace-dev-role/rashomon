@@ -38,7 +38,8 @@ m("SV-1 IsFiredFile matches the prefix alone", "internal/store/fired.go",
   "\treturn ok && slices.Contains(firedEvents[:], event)\n", "\t_ = event\n\treturn ok\n",
   "TestSV1h_IsFiredFileNamesTheEightMarkersOnly")
 m("SV-1 purge leaves the fired markers", "internal/purge/purge.go",
-  "\tif slices.Contains(runFiles, name) || store.IsFiredFile(name) {\n", "\tif slices.Contains(runFiles, name) {\n",
+  "\tif slices.Contains(runFiles, name) || store.IsFiredFile(name) || store.IsBlastReadFile(name) {\n",
+  "\tif slices.Contains(runFiles, name) || store.IsBlastReadFile(name) {\n",
   "TestSV1k_PurgeTakesTheFiredMarkers|TestTRU28_PurgeListsEveryNameItsWritersExport")
 m("SV-1 the hook entry marks nothing", "cmd/rashomon/main.go",
   "\t\tmarkFired(st, sessionOf(payload), \"PreToolUse\")\n", "", "TestSV1i_EachEntryMarksItsEvent")

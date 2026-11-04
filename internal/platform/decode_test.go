@@ -73,11 +73,11 @@ func TestPL8e2_MalformedLogIsRefused(t *testing.T) {
 		"empty":     strings.Replace(good, "func:p.F", "", 1) + "\n",
 		"long":      strings.Replace(good, "func:p.F", strings.Repeat("x", maxRecordBytes), 1) + "\n",
 	} {
-		if live, err := decode(context.Background(), strings.NewReader(LogHeader+"\n"+body), nil); err == nil {
+		if live, err := decode(context.Background(), strings.NewReader(LogHeader+"\n"+body), nil, nil); err == nil {
 			t.Errorf("%s: decoded to %v, want refused", name, live)
 		}
 	}
-	if live, err := decode(context.Background(), strings.NewReader(LogHeader+"\n"+good+"\n"), nil); err != nil || len(live) != 1 {
+	if live, err := decode(context.Background(), strings.NewReader(LogHeader+"\n"+good+"\n"), nil, nil); err != nil || len(live) != 1 {
 		t.Errorf("one good record: %v, %v; want one live fact", live, err)
 	}
 }
@@ -87,7 +87,7 @@ func TestPL8e2_MalformedLogIsRefused(t *testing.T) {
 func TestPL8c3_CancelledDecodeReturnsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if live, err := decode(ctx, bytes.NewReader(synthLog(t, 2*checkEvery)), nil); !errors.Is(err, context.Canceled) || live != nil {
+	if live, err := decode(ctx, bytes.NewReader(synthLog(t, 2*checkEvery)), nil, nil); !errors.Is(err, context.Canceled) || live != nil {
 		t.Errorf("a cancelled decode of %d records: %d facts, %v; want context.Canceled and none", 2*checkEvery, len(live), err)
 	}
 }
@@ -115,7 +115,7 @@ func FuzzDecode(f *testing.F) {
 				}
 			}
 		}
-		live, err := decode(context.Background(), bytes.NewReader(b), nil)
+		live, err := decode(context.Background(), bytes.NewReader(b), nil, nil)
 		if err != nil {
 			return
 		}

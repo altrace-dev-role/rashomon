@@ -23,10 +23,8 @@ m("GI-2 a row is matched with its case folded", S,
 m("GI-2 a row is matched with its spaces collapsed", S,
   "shape.RunnerNameID(s) == 0 {", "shape.RunnerNameID(strings.Join(strings.Fields(s), \" \")) == 0 {", "TestGI2s_")
 m("GI-2 a refused name drops silently", N,
-  "\t\tm, _ = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n\t}\n",
-  "\t\tm, _ = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n\t}\n"
-  "\tif m.Text() == \"\" {\n\t\treturn steer.Finding{}, false\n\t}\n", "TestGI2n_ARefused")
+  "if err != nil && o.Gate == \"\" {", "if err != nil {", "TestGI2n_ARefused")
 m("GI-2 an unnamed owed note leaves a trace", N,
-  "afterSeq || o.Gate == \"\" {", "afterSeq {", "TestGI2n_ARefused")
+  "if err != nil && o.Gate == \"\" {", "if err != nil && false {", "TestGI2n_ARefused")
 m("GI-2 a refused line is not given", N,
   " ||\n\t\t\t\tscanText(b, sp[3]) == string(steer.SuppressedByRenderRefused))", ")", "TestGI2n_ARefused")

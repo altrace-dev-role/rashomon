@@ -30,8 +30,8 @@ func TestGI2n_TheNoteNamesAMultiWordRunner(t *testing.T) {
 // says the note was owed and not said, never a silent drop (GATE-INFER2).
 // A render_refused line under its key ends it as a delivered one does, so
 // the trace is written once per turn end; another key's does not. Control:
-// an owed note with no runner's name, which owedNote never writes, gives
-// none. Break: drop a refused name, give an unnamed note, or count no
+// an owed note with no runner's name and no packages, nothing to say, gives
+// none. Break: drop a refused name, give an empty unnamed note, or count no
 // refused line as given.
 func TestGI2n_ARefusedNameLeavesATraceOncePerCheckpoint(t *testing.T) {
 	line := func(key string) []byte {
@@ -56,6 +56,6 @@ func TestGI2n_ARefusedNameLeavesATraceOncePerCheckpoint(t *testing.T) {
 		}
 	}
 	if _, ok := owedFinding(recap.Owed{Seq: 12, From: "Makefile"}, 14, nil); ok {
-		t.Error("control, no runner's name: a finding, want none")
+		t.Error("control, no runner's name and no packages: a finding, want none")
 	}
 }

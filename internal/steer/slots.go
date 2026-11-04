@@ -89,7 +89,7 @@ func slotsFrom(slots []render.Slot) (map[string]json.RawMessage, error) {
 			err = saidJSON(put, s.Name, v)
 		case slot.FactValue:
 			err = putJSON(put, s.Name, v.Value)
-		case slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList:
+		case slot.PathSet, slot.RuleRefs, slot.GateRefs, slot.EnumList, slot.SymbolFacts:
 			err = putJSON(put, s.Name, preflightJSON(v))
 		default:
 			err = fmt.Errorf("%w: %q holds %T", errSlot, s.Name, s.Value)
@@ -154,6 +154,15 @@ type (
 		More    int      `json:"more"`
 		Trust   []string `json:"trust"`
 	}
+	// symbolFactsJSON is the symbols line's form: the record's (Counted,
+	// record scope v4) holds the count in more and no name or directory.
+	symbolFactsJSON struct {
+		Callers  []int    `json:"callers"`
+		Dirs     []string `json:"dirs"`
+		More     int      `json:"more"`
+		Names    []string `json:"names"`
+		Packages []int    `json:"packages"`
+	}
 )
 
 // preflightJSON is one preflight list as its line records it.
@@ -180,6 +189,13 @@ func preflightJSON(v slot.Value) any {
 		return out
 	case slot.EnumList:
 		return append([]string{}, v.Values()...)
+	case slot.SymbolFacts:
+		out := symbolFactsJSON{Callers: []int{}, Dirs: []string{}, More: v.More(), Names: []string{}, Packages: []int{}}
+		for _, f := range v.Items() {
+			out.Names, out.Dirs = append(out.Names, f.Name), append(out.Dirs, string(f.Dir))
+			out.Callers, out.Packages = append(out.Callers, f.Callers), append(out.Packages, f.Packages)
+		}
+		return out
 	}
 	return nil
 }

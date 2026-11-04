@@ -46,11 +46,11 @@ type StopInput struct {
 	Root string
 	// Platform reads the pgraph log under root, the snapshot's project root,
 	// for written, the session's relevant .go writes, project-relative (card
-	// PL-WIRE1): the ledger verb's replay sets it to internal/platform's
-	// Read, which imports this package; the Stop hook leaves it nil, since
-	// nothing reads a Stop's platform rows yet. EvaluateStop calls it once,
-	// after classifying, only where the session wrote a Go file; nil reads
-	// no log and owes no platform row.
+	// PL-WIRE1): the ledger verb's replay and the Stop hook (PW1b-ON-230
+	// step 2) set it to internal/platform's Read, which imports this
+	// package; StopFailure and the catch-up leave it nil. EvaluateStop
+	// calls it once, after classifying, only where the session wrote a Go
+	// file; nil reads no log and owes no platform row.
 	Platform func(root string, written []string) PlatformRead
 }
 
