@@ -29,6 +29,8 @@ func TestLA1_ALaunchIsReadInEveryCommand(t *testing.T) {
 		{"bash -lc 'cd sub && ./run-tests.sh'", true},
 		{"sh -c 'go test ./...'", true},
 		{"bash -o pipefail -c 'make test | tail'", true},
+		{"bash -c 'golangci-lint run ./...'", true},
+		{"bash -c 'golangci-lint --version'", false},
 		{"sh -c 'bash -c \"./t.sh\"'", true},
 		{"bash", true},
 		{"./t.sh build", true},

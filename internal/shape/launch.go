@@ -112,10 +112,11 @@ func shellLaunch(args []string, depth int) bool {
 	return !cline
 }
 
-// namesRunner reports a line one of whose commands is a test or build
-// runner on the runner lists, as statusMasked's parser marks them: `sh -c
-// 'go test ./...'` runs one, which the outer line's parser does not look
-// into (runsShellLine).
+// namesRunner reports a line one of whose commands is a runner on the runner
+// lists, test, build or check (runnerLists), as statusMasked's parser marks
+// them: `sh -c 'go test ./...'` runs one, which the outer line's parser does
+// not look into (runsShellLine). A check runner is a gate's run as a build
+// runner is: `sh -c 'golangci-lint run'` may run a lint gate.
 func namesRunner(line string) bool {
 	if controlByte(line) {
 		return false
