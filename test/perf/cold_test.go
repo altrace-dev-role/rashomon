@@ -138,22 +138,23 @@ func coldCallAllocOnce(t *testing.T, id string) int64 {
 	if !found {
 		t.Fatalf("go test -run %s ./cmd/rashomon printed no %q line:\n%s", pattern, "COLD "+id, out)
 	}
-	t.Logf("cold %s: %d bytes; %s", id, n, coldGCLine(out, id))
+	t.Logf("cold %s: %d bytes; %s; %s", id, n, coldProbeLine(out, "COLDGC", id), coldProbeLine(out, "COLDSIZE", id))
 	return n
 }
 
-// coldGCLine returns the "COLDGC <id> ..." line TestColdCall prints for id
-// beside its COLD line (PERF-EDGE1 probe), so each figure is logged with the
-// GC cycles that began around it.
-func coldGCLine(out []byte, id string) string {
-	prefix := "COLDGC " + id + " "
+// coldProbeLine returns the "<tag> <id> ..." line TestColdCall prints for id
+// beside its COLD line (PERF-EDGE1 probe: COLDGC, the GC cycles that began
+// around the call; COLDSIZE, its objects by size class), so each figure is
+// logged with them.
+func coldProbeLine(out []byte, tag, id string) string {
+	prefix := tag + " " + id + " "
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	for sc.Scan() {
 		if line := sc.Text(); strings.HasPrefix(line, prefix) {
 			return line
 		}
 	}
-	return "no COLDGC line"
+	return "no " + tag + " line"
 }
 
 // parseColdLine finds the one "COLD <id> <bytes>" line TestColdCall prints

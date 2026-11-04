@@ -3,10 +3,14 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestColdCall measures the allocation of exactly one hook or post call in a
@@ -52,7 +56,7 @@ func TestColdCall(t *testing.T) {
 			defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 			var g0 runtime.MemStats
 			runtime.ReadMemStats(&g0)
-			_, installID := benchStarted(t)
+			root, installID := benchStarted(t)
 			in := newBenchInput(t, c.payload(t))
 			args := []string{install.Marker, installID}
 			var stderr benchSink
@@ -76,6 +80,53 @@ func TestColdCall(t *testing.T) {
 			// and a second drops it, so two between setup's Put and the
 			// call's Get send json/v2's decoder Get to New.
 			fmt.Printf("COLDGC %s setup=%d call=%d heap=%d next=%d\n", c.id, m0.NumGC-g0.NumGC, m1.NumGC-m0.NumGC, m0.HeapAlloc, m0.NextGC)
+			// The call's objects by size class, and the run's lock-wait
+			// note (PERF-EDGE1 probe): a retry inside the call reads as a
+			// few small objects that add up to the step, a fresh buffer as
+			// one object of about its size, and an append that polled for
+			// its lock as a note (store's noteLockWait).
+			classes, rest, small := coldSizeClasses(&m0, &m1)
+			fmt.Printf("COLDSIZE %s mallocs=%d tiny+large=%d largebytes=%d lockwait=%s classes=%s\n", c.id, m1.Mallocs-m0.Mallocs, rest, int64(delta)-int64(small), coldLockWait(root), classes)
 		})
 	}
+}
+
+// coldSizeClasses is the call's mallocs by size class, m1 against m0: size:count
+// for every class whose count moved, the mallocs no class counts (tiny objects,
+// which share 16-byte blocks, and objects over the largest class), and the
+// bytes the classes account for, so TotalAlloc's delta less them is the large
+// objects' bytes.
+func coldSizeClasses(m0, m1 *runtime.MemStats) (classes string, rest, small uint64) {
+	var b strings.Builder
+	var n uint64
+	for i := range m1.BySize {
+		d := m1.BySize[i].Mallocs - m0.BySize[i].Mallocs
+		if d == 0 {
+			continue
+		}
+		n += d
+		small += d * uint64(m1.BySize[i].Size)
+		fmt.Fprintf(&b, " %d:%d", m1.BySize[i].Size, d)
+	}
+	return strings.TrimSpace(b.String()), m1.Mallocs - m0.Mallocs - n, small
+}
+
+// coldLockWait is the lock-wait note of each run under root, the milliseconds
+// its appends waited for their locks, which an append writes only when it
+// waited; "none" when no run has one.
+func coldLockWait(root string) string {
+	notes, _ := filepath.Glob(filepath.Join(root, store.DirRuns, "*", store.FileLockWait))
+	var got []string
+	for _, p := range notes {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			got = append(got, "unread")
+			continue
+		}
+		got = append(got, strings.TrimSpace(string(b)))
+	}
+	if len(got) == 0 {
+		return "none"
+	}
+	return strings.Join(got, ",")
 }
