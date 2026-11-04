@@ -156,6 +156,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AppendSteer: %v", err)
 	}
+	if !s.TakeBlastRead(sessionID, store.FileBlastReadPrefix+"0123456789abcdef") {
+		t.Fatal("TakeBlastRead took no marker")
+	}
 	if _, err := store.RecordHarnessMismatch(root, "claude@cursor", sessionID, []string{"cursor_version"}, time.Now()); err != nil {
 		t.Fatalf("RecordHarnessMismatch: %v", err)
 	}
@@ -405,7 +408,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// ArmBriefing open, runs/<session>/briefing-armed, the continuity
 		// briefing's empty resume marker (continuityFiles in the inventory,
 		// FileBriefingArmed in purge's run files).
-		{"store", 34},
+		// Moved 2026-11-02 (ARCH-INLINE1) to 35: blastread.go's
+		// TakeBlastRead open, runs/<session>/blast-read-<16 hex>, the
+		// blast-radius read's marker per package and log (blastReadFiles in
+		// the inventory, IsBlastReadFile in purge's run files).
+		{"store", 35},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

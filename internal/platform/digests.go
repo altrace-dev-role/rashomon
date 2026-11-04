@@ -55,6 +55,8 @@ const (
 type digests struct {
 	files map[string]string
 	byPkg map[string][]string
+	// sum is the file's sha256, which the walk file vouches for.
+	sum string
 }
 
 // readDigests is the digests file at p, refused whole over MaxDigestsBytes,
@@ -72,7 +74,13 @@ func readDigests(p string) (*digests, error) {
 	if info.Size() > MaxDigestsBytes {
 		return nil, fmt.Errorf("platform: the digests are over %d bytes", MaxDigestsBytes)
 	}
-	return parseDigests(f)
+	h := sha256.New()
+	dg, err := parseDigests(io.TeeReader(f, h))
+	if err != nil {
+		return nil, err
+	}
+	dg.sum = hex.EncodeToString(h.Sum(nil))
+	return dg, nil
 }
 
 // parseDigests reads a v0 digests file. It refuses another header, a line
