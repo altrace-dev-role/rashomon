@@ -31,6 +31,14 @@ type Command struct {
 // reading the tokenizer cannot vouch for, a program it cannot name or a
 // program word the shell expands.
 func Commands(line string) ([]Command, bool) {
+	return commands(line, false)
+}
+
+// commands is Commands; pastAssignments reads on past a stage of
+// assignments alone (`d=~/e;`), which names no program and so runs none,
+// where Commands stops at it as a program it cannot name. The launch rule
+// reads past them (launchesIn): R67's slot lines set a directory first.
+func commands(line string, pastAssignments bool) ([]Command, bool) {
 	if controlByte(line) {
 		return nil, false
 	}
@@ -47,6 +55,10 @@ func Commands(line string) ([]Command, bool) {
 		}
 		if b < e && hasWord(toks[b:e]) {
 			p, ok := programToken(toks[b:e], false)
+			if !ok && pastAssignments && assignmentsOnly(toks[b:e]) {
+				s = next
+				continue
+			}
 			if !ok || expands(toks[b+p]) {
 				return out, false
 			}
@@ -55,6 +67,18 @@ func Commands(line string) ([]Command, bool) {
 		s = next
 	}
 	return out, true
+}
+
+// assignmentsOnly reports a stage of shell assignments and nothing else: an
+// operator, a redirect or an array's `(` is no assignment, and neither is a
+// word the tokenizer cannot vouch for.
+func assignmentsOnly(toks []token) bool {
+	for _, t := range toks {
+		if t.opaque || !isShellAssignment(t) {
+			return false
+		}
+	}
+	return len(toks) > 0
 }
 
 // commandOf is the command whose program is toks[p], its stage ending at e.

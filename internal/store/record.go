@@ -66,11 +66,24 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // before v9 has no such key and a reader reads it false. The execution and
 // the terminal gained nothing and are written at 9 with their declaration.
 //
+// v10 is additive over v9: the declaration gained launch, one bit set where
+// one of the line's commands may start a gate's run no runner list names, a
+// script or a shell, past its first program too (shape.Shape.Launch,
+// LAUNCH-ANY1). Omitted when false, as location_unread is; a record before
+// v10 has no such key, and a reader takes the line's launch from its first
+// program instead (shape.RecordedLaunch). The execution and the terminal
+// gained nothing and are written at 10 with their declaration.
+//
 // SchemaVersion is the version of a call's ordinary records: its
 // declaration, the terminal that actually closes it, and its execution,
 // KindVersion's entry for each. Coverage and gap records are written at
 // SessionSchemaVersion instead.
 const SchemaVersion = CallSchemaVersion
+
+// LaunchSchemaVersion is the call schema from which a declaration carries
+// launch (card LAUNCH-ANY1): from it a reader takes the bit, before it the
+// line's first program (shape.RecordedLaunch).
+const LaunchSchemaVersion = 10
 
 // FlushFailedSchemaVersion is the version the flush_failed marker is written
 // at (REC-34). A literal, not SchemaVersion: the two are independent facts
@@ -285,6 +298,18 @@ type Declaration struct {
 	// false, and so does a record before v9. It is a fact about the parse and
 	// never a word of the command.
 	LocationUnread bool `json:"location_unread,omitempty"`
+
+	// Launch is one bit (v10, card LAUNCH-ANY1): one of the line's commands
+	// may start a gate's run no runner list names -- a script, or a shell
+	// running a script or a line -- past its first program too
+	// (shape.Shape.Launch): `mkdir -p out && ./run-tests.sh` sets it, and
+	// `goslot.sh status` and `bash -n x.sh` do not. Program names the line's
+	// first program only, so before this a reader took the line's launch
+	// from it, and still does for a record before v10 (shape.RecordedLaunch).
+	// Omitted when false, as LocationUnread is: a line that launches nothing
+	// costs no byte, and a reader reads an absent key false. A fact about the
+	// words, never a word of the command.
+	Launch bool `json:"launch,omitempty"`
 
 	// HostSource says where each entry of Hosts came from, positionally (v3).
 	// "structured" is a host read from a field whose value is a URL, so the

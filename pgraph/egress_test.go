@@ -23,16 +23,24 @@ func TestPL9_LoaderEnvForced(t *testing.T) {
 		"PATH=/usr/bin", "HOME=/h",
 		"GOPROXY=https://proxy.golang.org,direct", "GOTOOLCHAIN=auto", "GOSUMDB=sum.golang.org",
 		"GOFLAGS=-mod=mod", "GOWORK=/x/go.work", "GONOSUMDB=", "GOENV=/e", "CGO_ENABLED=1",
-		"GOOS=plan9", "GOARCH=386", "GOPROXY=direct",
+		"GOOS=plan9", "GOARCH=386", "GOPROXY=direct", "GO111MODULE=off", "GOPACKAGESDRIVER=/x/driver",
+		"GO_TELEMETRY_CHILD=1", "GO_TELEMETRY_CHILD_UPLOAD=1",
 	}
-	m, _ := envMap(LoaderEnv(hostile, Config{GOOS: "linux", GOARCH: "amd64"}))
-	for k, v := range map[string]string{
+	cfg := Config{GOOS: "linux", GOARCH: "amd64"}
+	m, _ := envMap(LoaderEnv(hostile, cfg))
+	want := map[string]string{
 		"GOPROXY": "off", "GOTOOLCHAIN": "local", "GOSUMDB": "off", "GOFLAGS": "-mod=readonly",
 		"GOWORK": "off", "GOENV": "off", "CGO_ENABLED": "0", "GOOS": "linux", "GOARCH": "amd64", "GO111MODULE": "on",
-	} {
+		"GOPACKAGESDRIVER": "off", "GO_TELEMETRY_CHILD": "2",
+	}
+	for k, v := range want {
 		if len(m[k]) != 1 || m[k][0] != v {
 			t.Errorf("%s = %v; want exactly [%s]", k, m[k], v)
 		}
+	}
+	// Every pin is named above, so a pin added later without a want fails here.
+	if n := len(forced(cfg)); n != len(want) {
+		t.Errorf("forced pins %d variables and this test names %d", n, len(want))
 	}
 	// Negative: unrelated variables survive.
 	if m["PATH"][0] != "/usr/bin" || m["HOME"][0] != "/h" {
@@ -40,6 +48,49 @@ func TestPL9_LoaderEnvForced(t *testing.T) {
 	}
 	if _, ok := m["GONOSUMDB"]; !ok {
 		t.Error("variables outside the forced set must pass through")
+	}
+}
+
+// The go tool run in the loader's environment starts no telemetry sidecar,
+// the child that uploads when the user's telemetry mode is "on". Only
+// x/telemetry's parent() writes local/upload.token, just before it starts
+// that child (go1.25.6 and go1.27.3). A fresh config home has no mode file,
+// so the mode is the default "local", whose sidecar posts nothing: the red is
+// offline too. The local directory, which the go tool's counters create, is
+// the witness that its telemetry ran in this home at all. Break: drop
+// GO_TELEMETRY_CHILD from forced.
+func TestPL9_NoTelemetrySidecar(t *testing.T) {
+	home := t.TempDir()
+	var base []string
+	for _, kv := range os.Environ() {
+		switch k, _, _ := strings.Cut(kv, "="); k {
+		case "HOME", "XDG_CONFIG_HOME", "TEST_TELEMETRY_DIR", "GO_TELEMETRY_CHILD", "GO_TELEMETRY_CHILD_UPLOAD":
+		default:
+			base = append(base, kv)
+		}
+	}
+	env := LoaderEnv(append(base, "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, "config")), Config{})
+	run := func(args ...string) string {
+		cmd := exec.CommandContext(t.Context(), "go", args...)
+		cmd.Dir, cmd.Env = home, env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	dir := run("env", "GOTELEMETRYDIR")
+	run("version")
+	if !strings.HasPrefix(dir, home) {
+		t.Fatalf("premise: GOTELEMETRYDIR %q is not under the test's home %q", dir, home)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "local")); err != nil {
+		t.Fatalf("premise: the go tool's telemetry did not run in this home: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "local", "upload.token")); err == nil {
+		t.Error("the go tool took an upload token, so it started its telemetry sidecar")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
 	}
 }
 

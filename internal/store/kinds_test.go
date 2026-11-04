@@ -10,7 +10,7 @@ import (
 // names list in the technical spec. A kind added without a version, or a
 // version moved, is a contract change and shows up here.
 var frozenKindVersions = map[string]int{
-	"declaration": 9, "execution": 9, "terminal": 9,
+	"declaration": 10, "execution": 10, "terminal": 10,
 	"coverage": 3, "gap": 3,
 	"session": 5, "prompt": 5, "turn_end": 5, "turn_cost": 5, "human": 5, "subagent": 5,
 	"batch": 5, "task": 5, "compact": 5, "instructions": 5, "model": 5,
@@ -74,10 +74,10 @@ func TestAcceptsKindFollowsTheAcceptanceTable(t *testing.T) {
 	}
 }
 
-// TestREC1_WriterStampsTheCallKindsAtNine: the call records are written at
+// TestREC1_WriterStampsTheCallKindsAtTen: the call records are written at
 // CallSchemaVersion, which is KindVersion's entry for each of them, and the
 // session records stay at 3, so an older reader keeps every session (1.2.2).
-func TestREC1_WriterStampsTheCallKindsAtNine(t *testing.T) {
+func TestREC1_WriterStampsTheCallKindsAtTen(t *testing.T) {
 	if SchemaVersion != CallSchemaVersion {
 		t.Errorf("SchemaVersion = %d, want CallSchemaVersion %d", SchemaVersion, CallSchemaVersion)
 	}
@@ -89,7 +89,7 @@ func TestREC1_WriterStampsTheCallKindsAtNine(t *testing.T) {
 	if FlushFailedSchemaVersion != 5 {
 		t.Errorf("FlushFailedSchemaVersion = %d; REC-34's flush_failed marker is written at 5", FlushFailedSchemaVersion)
 	}
-	if CallSchemaVersion != 9 || EventSchemaVersion != 5 || SessionSchemaVersion != 3 {
+	if CallSchemaVersion != 10 || EventSchemaVersion != 5 || SessionSchemaVersion != 3 {
 		t.Errorf("version constants moved: call %d event %d session %d", CallSchemaVersion, EventSchemaVersion, SessionSchemaVersion)
 	}
 }

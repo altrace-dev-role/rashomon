@@ -82,6 +82,16 @@ type Shape struct {
 	// does, and on a record written before v3, which could not say.
 	MayWrite bool `json:"may_write"`
 
+	// Launch reports a shell line one of whose commands may start a gate's
+	// run that no runner list names: a script, or a shell running a script
+	// or a line (launches; card LAUNCH-ANY1), past the line's first program
+	// too, so `mkdir -p out && ./run-tests.sh` launches and `goslot.sh
+	// status` and `bash -n x.sh` do not. One bit, read from the words and
+	// dropped. json:"-": the declaration carries it as its own key, launch,
+	// present only when true (call schema 10), beside location_unread. In
+	// MayWrite's padding, so a shape is no larger.
+	Launch bool `json:"-"`
+
 	// StatusMasked says whether a recognised build or test runner on a shell
 	// line has an exit status the line does not return (see statusMasked):
 	// the line exits 0 when the runner fails, or the same either way.
@@ -284,6 +294,7 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 		d.GitC, d.Later = pastLeadingRun(pshaped, len(dirs), perr)
 	}
 	s.StatusMasked, s.RunnerDigest, s.RunnerKind, s.RunnerName, s.MaskedBy = statusMasked(cmd, key, pshaped[:leadingFold(pshaped, uncertain)])
+	s.Launch = launches(cmd)
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
 	return s, cut, d
 }

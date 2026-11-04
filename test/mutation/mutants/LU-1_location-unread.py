@@ -37,7 +37,7 @@ m("LU-1 the key is renamed", R,
   "`json:\"location_not_read,omitempty\"`",
   "TestLU1_TheBitIsOmitted")
 m("LU-1 the call version stays at 8", K,
-  "const CallSchemaVersion = 9",
+  "const CallSchemaVersion = 10",
   "const CallSchemaVersion = 8",
   "TestREC1_|TestAcceptsKind")
 m("LU-1 the report counts every uncredited run", A,
