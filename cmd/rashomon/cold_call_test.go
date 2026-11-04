@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/install"
@@ -61,6 +62,7 @@ func TestColdCall(t *testing.T) {
 			in := newBenchInput(t, c.payload(t))
 			args := []string{install.Marker, installID}
 			var stderr benchSink
+			coldWarmThreads(coldIdleThreads)
 
 			var m0, m1 runtime.MemStats
 			ms1, _ := runtime.ThreadCreateProfile(nil)
@@ -77,13 +79,9 @@ func TestColdCall(t *testing.T) {
 
 			delta := m1.TotalAlloc - m0.TotalAlloc
 			fmt.Printf("COLD %s %d\n", c.id, delta)
-			// The OS threads the runtime started in setup and in the call
-			// (PERF-EDGE1). At one P, sysmon hands the P of a syscall that
-			// outlasts its tick to another M, and when none is idle the
-			// runtime allocates one: on darwin/arm64 5320 bytes (its m, g0
-			// and gsignal, two profiling stacks, a weak pointer), the
-			// macOS runner's second level. The harness reruns a call that
-			// started one (test/perf's coldCallAllocOnce).
+			// The OS threads the runtime started in setup and in the call,
+			// the witness of coldWarmThreads: test/perf's
+			// TestPE1_ColdCallIsOneLevel requires call=0.
 			fmt.Printf("COLDTHREADS %s setup=%d call=%d\n", c.id, ms1-ms0, ms2-ms1)
 			// The GC cycles that began in setup and in the call, and the
 			// heap against its goal before the call (PERF-EDGE1 probe): a
@@ -100,6 +98,37 @@ func TestColdCall(t *testing.T) {
 			fmt.Printf("COLDSIZE %s mallocs=%d tiny+large=%d largebytes=%d lockwait=%s classes=%s\n", c.id, m1.Mallocs-m0.Mallocs, rest, int64(delta)-int64(small), coldLockWait(root), classes)
 		})
 	}
+}
+
+// coldIdleThreads is how many goroutines coldWarmThreads locks to threads at
+// once: the macOS runner's calls started one or two Ms (PERF-EDGE1 probes).
+const coldIdleThreads = 3
+
+// coldWarmThreads leaves the runtime idle Ms for the call (PERF-EDGE1), as
+// setup's probe start leaves json/v2's decoder in its pool. At one P, sysmon
+// hands the P of a syscall that outlasts its tick to another M, and when
+// none is idle the runtime allocates one: on darwin/arm64 5320 bytes (its m,
+// g0 and gsignal, two profiling stacks, a weak pointer), the macOS runner's
+// second level. n goroutines hold n threads at once, then unlock and return;
+// their Ms park idle, the runtime frees no idle M, and a handoff in the call
+// takes one instead of allocating.
+func coldWarmThreads(n int) {
+	var locked, done sync.WaitGroup
+	release := make(chan struct{})
+	locked.Add(n)
+	done.Add(n)
+	for range n {
+		go func() {
+			defer done.Done()
+			runtime.LockOSThread()
+			locked.Done()
+			<-release
+			runtime.UnlockOSThread()
+		}()
+	}
+	locked.Wait()
+	close(release)
+	done.Wait()
 }
 
 // coldSizeClasses is the call's mallocs by size class, m1 against m0: size:count

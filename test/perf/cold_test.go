@@ -82,16 +82,22 @@ const (
 // nine read 158.4K to 161.5K (pe1-gmp; CI macos read [163256 156312
 // 156152]), and TestColdAllocBudget's minimum of three went red whenever all
 // three drew the high level. TestColdCall pins one P for its subtest and
-// coldCallAllocOnce starts its process at one P and reruns a call during which
-// the runtime started an OS thread (coldThreadTries), so ten fresh runs sit
+// coldCallAllocOnce starts its process at one P, so ten fresh runs sit
 // within coldLevelSpreadBytes. Break: both pins dropped, and ten runs draw
 // both levels; the subtest's pin alone still drew one high run in ten at
-// eight P (pe1-cold2: 160784 beside nine at 155144 to 155976).
+// eight P (pe1-cold2: 160784 beside nine at 155144 to 155976). A call during
+// which the runtime started an OS thread read 5.3K or 10.6K over the rest on
+// the macOS runner (5320 bytes per new M), so TestColdCall's setup leaves
+// idle Ms (coldWarmThreads) and this test requires the call to start none.
 func TestPE1_ColdCallIsOneLevel(t *testing.T) {
 	const id = "post.bash_short"
 	all := make([]int64, coldLevelRuns)
+	threads := make([]int, coldLevelRuns)
 	for i := range all {
-		all[i] = coldCallAllocOnce(t, id)
+		all[i], threads[i] = coldCallAllocOnce(t, id)
+	}
+	if slices.Max(threads) > 0 {
+		t.Errorf("%s: the runtime started OS threads inside the call (runs %v, threads %v), want none: TestColdCall's setup leaves idle Ms (coldWarmThreads)", id, all, threads)
 	}
 	lo, hi := slices.Min(all), slices.Max(all)
 	if hi-lo > coldLevelSpreadBytes {
@@ -108,7 +114,7 @@ func coldCallAlloc(t *testing.T, id string) (int64, []int64) {
 	t.Helper()
 	all := make([]int64, coldRuns)
 	for i := range all {
-		all[i] = coldCallAllocOnce(t, id)
+		all[i], _ = coldCallAllocOnce(t, id)
 	}
 	min := all[0]
 	for _, n := range all[1:] {
@@ -119,52 +125,35 @@ func coldCallAlloc(t *testing.T, id string) (int64, []int64) {
 	return min, all
 }
 
-// coldThreadTries bounds the fresh processes coldCallAllocOnce starts for one
-// figure. A call during which the runtime started an OS thread carries that
-// thread's own objects (5320 bytes on darwin/arm64), which no rashomon code
-// allocates; the macOS runner's calls read one or two such steps in 5 of 44
-// (PERF-EDGE1 probes).
-// The rerun is chosen by the thread count, never by the figure, so a change
-// that allocates more in rashomon reads in every run.
-const coldThreadTries = 10
-
 // coldCallAllocOnce runs cmd/rashomon's TestColdCall/<id> subtest in its
-// own `go test` process and returns the one TotalAlloc delta it printed,
-// from the first of coldThreadTries processes whose call started no OS
-// thread (COLDTHREADS call=0).
+// own `go test` process and returns the one TotalAlloc delta it printed and
+// the OS threads the runtime started inside the call (COLDTHREADS call=).
 // The process starts at one P (PERF-EDGE1): TestColdCall's pin holds from
 // its subtest's first line, but the runtime and the testing package start at
 // every P the machine has, and a start at one P, GOMAXPROCS=1 in the
 // environment, drew no high run in thirty (pe1-gmp, pe1-cold2). -exec starts
 // the test binary through env, so the go command still builds at the
 // machine's P.
-func coldCallAllocOnce(t *testing.T, id string) int64 {
+func coldCallAllocOnce(t *testing.T, id string) (int64, int) {
 	t.Helper()
 	pattern := "TestColdCall/" + regexp.QuoteMeta(id)
-	for try := 1; ; try++ {
-		cmd := exec.Command("go", "test", "-exec", "env GOMAXPROCS=1", "-run", pattern, "-v", "-count=1", "./cmd/rashomon")
-		cmd.Dir = root
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("go test -run %s ./cmd/rashomon: %v\n%s", pattern, err, out)
-		}
-		n, found := parseColdLine(out, id)
-		if !found {
-			t.Fatalf("go test -run %s ./cmd/rashomon printed no %q line:\n%s", pattern, "COLD "+id, out)
-		}
-		threads := coldProbeLine(out, "COLDTHREADS", id)
-		t.Logf("cold %s: %d bytes; %s; %s; %s", id, n, threads, coldProbeLine(out, "COLDGC", id), coldProbeLine(out, "COLDSIZE", id))
-		var setup, call int
-		if _, err := fmt.Sscanf(threads, "COLDTHREADS "+id+" setup=%d call=%d", &setup, &call); err != nil {
-			t.Fatalf("%s: %q: %v", id, threads, err)
-		}
-		if call == 0 {
-			return n
-		}
-		if try == coldThreadTries {
-			t.Fatalf("%s: the runtime started an OS thread inside the call in all %d fresh runs, so none measured the call alone", id, try)
-		}
+	cmd := exec.Command("go", "test", "-exec", "env GOMAXPROCS=1", "-run", pattern, "-v", "-count=1", "./cmd/rashomon")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go test -run %s ./cmd/rashomon: %v\n%s", pattern, err, out)
 	}
+	n, found := parseColdLine(out, id)
+	if !found {
+		t.Fatalf("go test -run %s ./cmd/rashomon printed no %q line:\n%s", pattern, "COLD "+id, out)
+	}
+	threads := coldProbeLine(out, "COLDTHREADS", id)
+	t.Logf("cold %s: %d bytes; %s; %s; %s", id, n, threads, coldProbeLine(out, "COLDGC", id), coldProbeLine(out, "COLDSIZE", id))
+	var setup, call int
+	if _, err := fmt.Sscanf(threads, "COLDTHREADS "+id+" setup=%d call=%d", &setup, &call); err != nil {
+		t.Fatalf("%s: %q: %v", id, threads, err)
+	}
+	return n, call
 }
 
 // coldProbeLine returns the "<tag> <id> ..." line TestColdCall prints for id
