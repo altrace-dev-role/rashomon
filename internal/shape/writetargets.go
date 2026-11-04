@@ -30,13 +30,23 @@ import (
 // that names no one file (name). A relative target past the leading `cd DIR
 // &&` run is joined to where the run leads (leadingFoldDir).
 //
+// A here-document's body is no stage. The line is read as tokenizeList
+// reads it, which skips each body, so the text of a quoted one -- a Python
+// script's `'<runner>' (from '<file>')` -- names nothing, and a redirection
+// on the operator's own line still names its word. Where that reading cannot
+// place a body, the walk reads the line as the program search does, up to
+// the first body (toFirstBody), and the list is incomplete. An unquoted
+// delimiter's body is expanded, and a substitution in it runs where no stage
+// stands, so a line holding one is incomplete too (hereDocs).
+//
 // The targets are in line order. A line mayWrite says may write that names
 // nothing is incomplete even where no stage here may write, since mayWrite
-// reads the line as one span (its comment): the record never says "writes
-// nothing" of a line may_write says may write.
+// reads the line as one span (its comment), and a body as words: the record
+// never says "writes nothing" of a line may_write says may write.
 //
-// Cost: one tokenize, as Hosts pays, and one walk over the stages; a line no
-// stage of which may write allocates nothing more.
+// Cost: one tokenize, as Hosts pays, a second only where the list reading
+// cannot place a body, and one walk over the stages; a line no stage of
+// which may write allocates nothing more.
 //
 // This is one of the four places a substring of a tool input leaves this
 // package (see the package comment): each target is a word of the line, or
@@ -52,7 +62,12 @@ func WrittenPaths(toolName string, toolInput json.RawMessage) (targets []string,
 	if controlByte(cmd) {
 		return nil, false
 	}
-	toks, err := tokenizeProgram(cmd)
+	toks, err := tokenizeList(cmd)
+	short := false
+	if err == errUncertain {
+		toks, err = toFirstBody(cmd)
+		short = true
+	}
 	if err != nil {
 		return nil, false
 	}
@@ -69,10 +84,55 @@ func WrittenPaths(toolName string, toolInput json.RawMessage) (targets []string,
 		w.stage(s, e)
 		s = next
 	}
-	if w.targets == nil && w.complete && mayWrite(toks, i) {
-		w.complete = false
+	if w.complete {
+		docs, expands := hereDocs(toks)
+		switch {
+		case short || expands:
+			w.complete = false
+		case w.targets == nil && (docs || mayWrite(toks, i)):
+			w.complete = false
+		}
 	}
 	return w.targets, w.complete
+}
+
+// toFirstBody is the line as the program search reads it (tokenizeProgram),
+// up to the first here-document's body: the tokens before the first one past
+// an unquoted newline after the operator. The program search reads a body
+// as words, so a word there is body text; the operator's own line and those
+// before it hold every redirection the walk can name. A lex error past the
+// cut is in what the walk does not read. Without a cut it is the whole
+// reading, error and all.
+func toFirstBody(cmd string) ([]token, error) {
+	toks, err := tokenizeProgram(cmd)
+	for j := range toks {
+		if !hereDoc(toks, j) {
+			continue
+		}
+		for k := j + 1; k < len(toks); k++ {
+			if toks[k].nlBefore {
+				return toks[:k], nil
+			}
+		}
+		break
+	}
+	return toks, err
+}
+
+// hereDocs reports whether toks hold a here-document operator, and whether
+// one of them has an unquoted delimiter -- no quote or backslash in the word
+// after it, or no word -- whose body the shell expands.
+func hereDocs(toks []token) (docs, expands bool) {
+	for j := range toks {
+		if !hereDoc(toks, j) {
+			continue
+		}
+		docs = true
+		if k := j + 1; k >= len(toks) || toks[k].meta || toks[k].quotedAt < 0 {
+			return true, true
+		}
+	}
+	return docs, false
 }
 
 // stageEnd is the end of the stage that starts at s -- the index of its
