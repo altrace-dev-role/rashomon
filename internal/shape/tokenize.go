@@ -239,10 +239,11 @@ func tokenizeProgram(s string) ([]token, error) {
 	return bounded(lex(joinLines(s, true), true, false))
 }
 
-// tokenizeList is tokenizeProgram for the walk over a line's whole list of
-// commands (statusMasked), which has to read past a here-document to the
-// commands after it: python3 - <<'E', a script, E, and then `make test |
-// tail` is how agents write a line that edits and then checks. One thing
+// tokenizeList is tokenizeProgram for the walks over a line's whole list of
+// commands (statusMasked, and WrittenPaths' stages), which have to read past
+// a here-document to the commands after it: python3 - <<'E', a script, E, and
+// then `make test | tail` is how agents write a line that edits and then
+// checks, and a `>` in the script is no redirection. One thing
 // differs, and only there: a here-document's body is skipped, from the
 // newline after its operator to its delimiter line, found by the same reading
 // comsubEnd follows one with (heredocDelim, bodiesEnd). Where that reading is

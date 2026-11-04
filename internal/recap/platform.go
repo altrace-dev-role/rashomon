@@ -46,6 +46,10 @@ func platformLines(v verify.StopView, fromPlugin bool) string {
 	return b.String()
 }
 
+// PlatformLines is platformLines for a caller outside this package:
+// recapTurn hands them to LineWith for recap.Line's sentences to carry.
+func PlatformLines(v verify.StopView, fromPlugin bool) string { return platformLines(v, fromPlugin) }
+
 // owedFamily is a changed package the Stop's platform read owes a go test:
 // open (failed false) or unmet (failed true).
 type owedFamily struct {
