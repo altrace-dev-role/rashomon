@@ -3,17 +3,25 @@
 # pytest`, `uv run pytest`, `npm run test`): the gate slot admits a row of
 # the binary's runner lists, and nothing else its one-or-two-word rule
 # refuses. An owed note whose name the slot still refuses is a render_refused
-# steer line, once per turn end, never a silent drop.
+# steer line, once per turn end, never a silent drop. DE R87: the name is
+# compared with the row's exact string, and three words no list writes stay
+# refused; a masked run's note names its gate by the row too (TestGI2v_).
 S = "internal/steer/render/slot/slot.go"
 N = "cmd/rashomon/gateinfer_note.go"
 
 m("GI-2 Gate refuses a runner's row", S,
   "err != nil && shape.RunnerNameID(s) == 0 {", "err != nil && (shape.RunnerNameID(s) == 0 || true) {",
-  "TestGI2s_|TestGI2n_TheNote|TestGI2na_")
+  "TestGI2s_|TestGI2n_TheNote|TestGI2na_|TestGI2v_")
 m("GI-2 Gate admits whatever its words refuse", S,
   "err != nil && shape.RunnerNameID(s) == 0 {", "err != nil && shape.RunnerNameID(s) == 0 && false {", "TestGI2s_")
+m("GI-2 Gate admits a three-word name no list writes", S,
+  "\tif len(words) > 2 {\n", "\tif len(words) > 3 {\n", "TestGI2s_")
 m("GI-2 a row is looked up by its first word", S,
   "shape.RunnerNameID(s) == 0 {", "shape.RunnerNameID(strings.SplitN(s, \" \", 2)[0]) == 0 {", "TestGI2s_")
+m("GI-2 a row is matched with its case folded", S,
+  "shape.RunnerNameID(s) == 0 {", "shape.RunnerNameID(strings.ToLower(s)) == 0 {", "TestGI2s_")
+m("GI-2 a row is matched with its spaces collapsed", S,
+  "shape.RunnerNameID(s) == 0 {", "shape.RunnerNameID(strings.Join(strings.Fields(s), \" \")) == 0 {", "TestGI2s_")
 m("GI-2 a refused name drops silently", N,
   "\t\tm, _ = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n\t}\n",
   "\t\tm, _ = render.New(pattern.ClaimVsRecord, render.ClaimVsRecordInferredUnnamedBinding{Gate: slot.Gate(o.Gate)})\n\t}\n"
