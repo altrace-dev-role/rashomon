@@ -64,7 +64,7 @@ func TestGI1l_TheReplayJudgesTheInferredGateTheStopJudged(t *testing.T) {
 	if g, ok := gi1Row(v.Snap.Gates); !ok || g.State != verify.Absent || !g.Required {
 		t.Fatalf("Stop rows %+v, want %s absent and required", v.Snap.Gates, verify.InferredGateID)
 	}
-	r, err := replayLastStop(f.st, "s")
+	r, err := replayLastStop(f.st, "s", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -401,10 +401,15 @@ func ImpactShown(root, sessionID string) string {
 // project's inferred test command not run after the turn's last edit,
 // whether it had run before that edit (stale) or not at all, the runner's
 // name the Stop's line gives it, and the project-relative file it was read
-// from. The zero Owed is none.
+// from. Packages is the project-relative directories of the changed Go
+// packages the Stop's platform read owed a go test (OwedPackages), which the
+// next prompt's note gives the model with the gate's, or alone where no gate
+// is owed (PW1b-ON-230 step 3, #218); Gate is then "". The zero Owed is
+// none.
 type Owed struct {
-	Seq   int64  `json:"seq"`
-	Stale bool   `json:"stale,omitempty"`
-	Gate  string `json:"gate"`
-	From  string `json:"from"`
+	Seq      int64    `json:"seq"`
+	Stale    bool     `json:"stale,omitempty"`
+	Gate     string   `json:"gate"`
+	From     string   `json:"from"`
+	Packages []string `json:"packages,omitempty"`
 }

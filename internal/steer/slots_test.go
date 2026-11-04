@@ -78,6 +78,9 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"GateRefs": slot.NewGateRefs([]slot.GateRef{{Words: "go test", Trust: slot.NewEnum(slot.EnumTrust, "trusted")}}, 0, 2),
 		"EnumList": slot.NewEnumList(slot.EnumEvidenceKinds, []string{"cross_check", "judgment_disclosed"}),
 		"LessonID": slot.LessonID("go-test-cwd"),
+		"SymbolFacts": slot.NewSymbolFacts([]slot.SymbolFact{
+			{Name: "CountRows", Dir: "internal/a", Callers: 2, Packages: 2},
+		}, 1),
 		// The record form: the plain form, the person's words, is refused
 		// (TestCSL1_ALineRecordsTheKeyedFormAndNeverTheWords).
 		"Said": slot.NewSaidDigest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 57, "", 0),
@@ -87,12 +90,13 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"Count": `3`, "Exit": `-2`, "Minutes": `6`, "TaskID": `"7"`, "AgentType": `"reviewer"`, "RuleID": `"no-shell-true"`,
 		"Model": `"claude-sonnet-5[1m]"`, "USD": `1.50`, "Date": `"2026-10-27"`, "Path": `"internal/a.go"`,
 		"PathList": `["a.go"]`, "Enum": `"test, build or lint"`, "FactValue": `"us-east-1"`,
-		"PathSet":  `{"earlier":1,"items":["a.go"],"more":2}`,
-		"RuleRefs": `{"earlier":2,"ids":["conv-errors","no-init"],"more":0,"trust":["trusted","managed"],"why":["errors are wrapped",""],"withheld":1}`,
-		"GateRefs": `{"gates":["go test"],"learned":2,"more":0,"trust":["trusted"]}`,
-		"EnumList": `["cross_check","judgment_disclosed"]`,
-		"LessonID": `"go-test-cwd"`,
-		"Said":     `{"bytes":57,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","restates_bytes":0,"restates_digest":""}`,
+		"PathSet":     `{"earlier":1,"items":["a.go"],"more":2}`,
+		"RuleRefs":    `{"earlier":2,"ids":["conv-errors","no-init"],"more":0,"trust":["trusted","managed"],"why":["errors are wrapped",""],"withheld":1}`,
+		"GateRefs":    `{"gates":["go test"],"learned":2,"more":0,"trust":["trusted"]}`,
+		"EnumList":    `["cross_check","judgment_disclosed"]`,
+		"LessonID":    `"go-test-cwd"`,
+		"SymbolFacts": `{"callers":[2],"dirs":["internal/a"],"more":1,"names":["CountRows"],"packages":[2]}`,
+		"Said":        `{"bytes":57,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","restates_bytes":0,"restates_digest":""}`,
 	}
 	for _, name := range slotTypes(t) {
 		v, ok := samples[name]
@@ -158,4 +162,19 @@ func slotTypes(t *testing.T) []string {
 		t.Fatalf("found %d slot types, want at least the 17 this test knows: %v", len(names), names)
 	}
 	return names
+}
+
+// TestPW1b3_TheLineHoldsCountedSymbolsAsACount: at record scope v4 the steer
+// line's symbols slot is the record form (Counted), so it holds the count
+// and no name or directory: the names are the request's words. Break: write
+// the items of a counted slot, or drop more.
+func TestPW1b3_TheLineHoldsCountedSymbolsAsACount(t *testing.T) {
+	sf := slot.NewSymbolFacts([]slot.SymbolFact{{Name: "CountRows", Dir: "internal/a", Callers: 2, Packages: 2}}, 1)
+	got, err := slotsFrom([]render.Slot{{Name: "symbols", Value: sf.Counted()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"callers":[],"dirs":[],"more":2,"names":[],"packages":[]}`; string(got["symbols"]) != want {
+		t.Errorf("the counted symbols write %s, want %s", got["symbols"], want)
+	}
 }
