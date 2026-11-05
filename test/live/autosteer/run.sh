@@ -1,10 +1,10 @@
 #!/bin/sh
 # run.sh ARM NAME: one claude -p session of slice T1 in a fresh scratch worktree of the pinned tree.
-#   ARM  U (unaided) | R (runtime: RK_BIN_R) | G (AutoSteer: RK_BIN_G, RK_PGRAPH, RK_KNOWLEDGE)
+#   ARM  U (unaided) | R (runtime: RK_BIN_R, RK_PGRAPH) | G (AutoSteer: RK_BIN_G, RK_PGRAPH_G, RK_KNOWLEDGE)
 #   NAME a new run name; the run directory is $RK_RUNS/NAME (default /tmp/rk-autosteer/runs/NAME)
 # Environment: RK_CONFIG_DIR (required; logged in; no CLAUDE.md), RK_REPO (default: this repository),
 # RK_RUNS, RK_GOCACHE (shared by concurrent runs), RK_MAX_TURNS and RK_BUDGET_USD (defaults in t1/pins.env),
-# RK_GO_TOOLCHAIN_BIN (G: a go >= 1.26 bin dir for pgraph sync, which pins GOTOOLCHAIN=local).
+# RK_GO_TOOLCHAIN_BIN (R, G: a go >= 1.26 bin dir for pgraph sync, which pins GOTOOLCHAIN=local).
 # The Claude Code marker variables (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT, AI_AGENT) are cleared for every child, so a
 # run launched from inside a Claude Code session behaves as one launched from a terminal; watch --yes refuses otherwise.
 set -u
@@ -37,8 +37,14 @@ if [ -n "$BIN" ]; then
   sh "$HERE/wrap.sh" install || exit 1
   trap 'sh "$HERE/wrap.sh" restore' EXIT
 fi
+# R and G both sync the platform graph before the session, as the shipped plugin does at SessionStart (hooks.json runs
+# pgraph sync -hook; rashomon watch installs no such entry). R syncs with the pinned pgraph (RK_PGRAPH, T1_PGRAPH_SHA);
+# G with the arm's own pgraph (RK_PGRAPH_G, T1_G_PGRAPH_SHA), whose sidecars its binary reads.
+if [ "$ARM" = R ] || [ "$ARM" = G ]; then
+  PG=${RK_PGRAPH:?RK_PGRAPH}; [ "$ARM" = G ] && PG=${RK_PGRAPH_G:-$RK_PGRAPH}
+  ( PATH=${RK_GO_TOOLCHAIN_BIN:-/nonexistent}:$PATH "$PG" sync "$D/tree" ) > "$D/pgraph-sync.txt" 2>&1 || { echo "run.sh: pgraph sync failed" >&2; exit 1; }
+fi
 if [ "$ARM" = G ]; then
-  ( PATH=${RK_GO_TOOLCHAIN_BIN:-/nonexistent}:$PATH "${RK_PGRAPH:?RK_PGRAPH}" sync "$D/tree" ) > "$D/pgraph-sync.txt" 2>&1 || { echo "run.sh: pgraph sync failed" >&2; exit 1; }
   mkdir -p "$D/tree/.rashomon"; cp "$HERE/t1/graph.json" "$D/tree/.rashomon/graph.json"
   "$BIN" graph index "$D/tree" > "$D/index.txt" 2>&1 || { echo "run.sh: graph index failed" >&2; exit 1; }
   if [ -n "${RK_KNOWLEDGE:-}" ]; then

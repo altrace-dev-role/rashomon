@@ -68,3 +68,6 @@ Facts verified while building the harness (2026-11-04, Claude Code 2.1.280, rash
   names other packages with code calling into the package this call edited (at least 1): 'app'; test files are in 1 of
   them." at PostToolUse, and the Stop prints "platform: go test ./shape/... not run since the edit". Neither names a
   symbol or two numbers, so the pinned tree reads A3 neither, as pre-registered.
+- pgraph is run by the shipped plugin's hooks.json (SessionStart and Stop, background), not by rashomon watch, so a
+  watch-installed arm never syncs on its own. run.sh syncs R's tree with the pinned pgraph and G's with the arm's own
+  pgraph before the session, so both arms carry the platform read the plugin gives a developer; U has no sidecars.

@@ -6,6 +6,16 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-04 23:5x to 2026-11-05 00:0x: W-M1.1 done. pgraph writes .pgraph/pgraph.symbols (id, package, file, line, doc
+  first sentence) chained to the digests file by sha256; the walk file names all three; the rashomon platform reader
+  accepts the symbols line and still reads the older four-line form. Red first (undefined names), then green on the
+  whole pgraph module, its CLI tests and internal/platform (TestSymbols_* three, TestReadVouch_SymbolsLine), vet clean
+  in both modules; a real sync of pgraph/testdata/dispatch with the branch binary wrote 38 rows for 38 declares rows
+  with the chain matching and a second sync stable. One fixture error caught by the red run: a file at d/d.go under
+  module example.com/d has package path example.com/d/d, so the doc fixture moved to the module root. Harness
+  adjustment before any run: run.sh now syncs arm R's tree with the pinned pgraph and arm G's with its own (RK_PGRAPH_G,
+  pins.env T1_G_PGRAPH_SHA, filled at W-M1.9), because rashomon watch installs no pgraph hook and the plugin does;
+  PLAN.md section 7.3 rows R and G carry the note. No run has happened. Next: W-M1.2 (platform.ReadSnapshot).
 - 2026-11-04 23:3x: W-M1.0 harness written into test/live/autosteer (run.sh, wrap.sh, hook.sh, cleanup.sh, judge/common.py) and the T1
   pre-registration (t1/prompt.txt frozen as section 7.2; pins.env: tree and arm R at 5f851724, baseline pgraph.log sha pinned, caps;
   consumers.txt; oracle-symbols.txt with four shapes verified against pgraph; testdata/dispatch-reflect; judge a1, a2, a3 (A3 to A5),
