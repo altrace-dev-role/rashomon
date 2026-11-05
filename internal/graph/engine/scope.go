@@ -35,7 +35,10 @@ type Seed struct {
 
 // Tokens is the prompt's and the node's shared vocabulary: lower case,
 // split on punctuation, underscores and case changes, stemmed, with stop
-// words and single characters dropped.
+// words and single characters dropped. An initialism (HTTPServer, HMACKey)
+// is a word of its own: the last capital of a run of two or more starts
+// the next word, except a lower-case s that ends the run (URLs), which is
+// its plural (W-M1.5).
 func Tokens(s string) []string {
 	var out []string
 	var cur []byte
@@ -47,26 +50,41 @@ func Tokens(s string) []string {
 			cur = cur[:0]
 		}
 	}
-	prevLower := false
+	prevLower, upperRun := false, 0
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
-		case c >= 'a' && c <= 'z' || c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'z':
+			if upperRun > 1 && !pluralS(s, i) {
+				last := cur[len(cur)-1]
+				cur = cur[:len(cur)-1]
+				flush()
+				cur = append(cur, last)
+			}
 			cur = append(cur, c)
-			prevLower = c >= 'a'
+			prevLower, upperRun = true, 0
+		case c >= '0' && c <= '9':
+			cur = append(cur, c)
+			prevLower, upperRun = false, 0
 		case c >= 'A' && c <= 'Z':
 			if prevLower {
 				flush()
 			}
 			cur = append(cur, c)
-			prevLower = false
+			prevLower, upperRun = false, upperRun+1
 		default:
 			flush()
-			prevLower = false
+			prevLower, upperRun = false, 0
 		}
 	}
 	flush()
 	return out
+}
+
+// pluralS is s[i] as the lower-case s that ends an initialism (URLs, IDs):
+// no lower-case letter follows it.
+func pluralS(s string, i int) bool {
+	return s[i] == 's' && (i+1 == len(s) || s[i+1] < 'a' || s[i+1] > 'z')
 }
 
 var stopWords = map[string]bool{
@@ -124,7 +142,8 @@ type Fields struct {
 
 // FieldsOf reads a node's fields from its id and attributes. The id
 // grammar is graph's (ids.go); the engine reads it without naming a
-// language.
+// language. Summary is the sig, value, text, cols and doc attributes, so a
+// symbol's doc sentence meets the prompt at the summary's weight (W-M1.5).
 func FieldsOf(n graph.Node) Fields {
 	var f Fields
 	id := string(n.ID)
@@ -154,7 +173,7 @@ func FieldsOf(n graph.Node) Fields {
 		f.Name = Tokens(n.Attrs["title"])
 		f.Path = Tokens(rest)
 	}
-	for _, k := range []string{"sig", "value", "text", "cols"} {
+	for _, k := range []string{"sig", "value", "text", "cols", "doc"} {
 		f.Summary = append(f.Summary, Tokens(n.Attrs[k])...)
 	}
 	return f

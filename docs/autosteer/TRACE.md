@@ -6,6 +6,13 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 00:4x: W-M1.5 done. engine.Tokens splits an initialism from the word after it (HTTPServer -> http, server) and keeps
+  a plural s on it (URLs); FieldsOf reads the doc attribute into Summary. Verified at task open: the lower-to-upper split
+  already existed (PlatformRead passed before the change), so the task closed the initialism and doc gaps only. Tests:
+  TestTokens_CamelCase, TestScope_DocMatches; whole engine package, internal/graph/..., cmd graph path, TestRubricLAW10_
+  green through the slot. No new read, no disclosure change. Next: W-M1.6 knowledge importer (internal/graph/knowledge;
+  TestImport_LedgerRow, TestImport_DecisionLine, TestImport_ClauseValidates, TestImport_AppliesToResolved,
+  TestImport_Idempotent).
 - 2026-11-05 00:3x: W-M1.4 done. internal/graph/index runs the resolver of each language the configuration declares (index.Unit.Lang,
   required: gopg.Lang, pylite.Lang) over the files under that language's units, asserts the repo:<rid> node and returns
   index.Result{Store, Header, Files}; the store header is {schema, repo, rev{commit}, producers, records} (PLAN B6) and
