@@ -127,10 +127,12 @@ type RSS struct {
 // is deliberately warmed (P-12) precisely so it excludes the one-time cost
 // this field exists to capture. Gated at +10% (test/perf's cold gate)
 // against runtime.MemStats.TotalAlloc of exactly one call in a fresh test
-// process. It is 0, not measured, for every entry with no benchmark row and
-// for recap.* and probe.*, which a fresh-process cold call has not yet been
-// built for (P-12); 0 there is the existing convention AllocBytesMax already
-// uses for probe.*, not a claim of zero cost.
+// process, a call during which the runtime starts no OS thread, at one P
+// (cmd/rashomon's TestColdCall ends its setup with coldWarmThreads and pins
+// GOMAXPROCS(1), PERF-EDGE1). It is 0, not measured, for every entry with no
+// benchmark row and for recap.* and probe.*, which a fresh-process cold call
+// has not yet been built for (P-12); 0 there is the existing convention
+// AllocBytesMax already uses for probe.*, not a claim of zero cost.
 //
 // Neither ColdAllocBytesMax nor RES-2's init budget (test/perf.InitBudgetBytes,
 // 64 KiB) is, on its own, what a hook-entry process allocates from exec to
