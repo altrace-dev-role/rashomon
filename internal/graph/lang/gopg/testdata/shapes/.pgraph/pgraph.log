@@ -1,0 +1,16 @@
+pgraph-log v0
++	func:example.com/shapes/app.Run	calls	func:example.com/shapes/shape.Sum	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	func:example.com/shapes/app.Run	calls	func:strconv.Itoa	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	func:example.com/shapes/shape.Sum	calls	method:example.com/shapes/shape.Shape.Area	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/app	declares	func:example.com/shapes/app.Run	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/app	declares	type:example.com/shapes/app.Holder	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/app	declares	var:example.com/shapes/app.Default	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/shape	declares	const:example.com/shapes/shape.Max	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/shape	declares	func:example.com/shapes/shape.Sum	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/shape	declares	type:example.com/shapes/shape.Shape	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	pkg:example.com/shapes/shape	declares	type:example.com/shapes/shape.Square	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	type:example.com/shapes/app.Holder	embeds	type:example.com/shapes/shape.Shape	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	type:example.com/shapes/app.Holder	implements	type:example.com/shapes/shape.Shape	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	type:example.com/shapes/shape.Square	declares	method:example.com/shapes/shape.Square.Area	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	type:example.com/shapes/shape.Square	implements-via-pointer	type:example.com/shapes/shape.Shape	PROVEN	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	gotypes@v2
++	func:example.com/shapes/shape.Sum	may-call	method:example.com/shapes/shape.Square.Area	ALGORITHMIC	darwin/arm64/cgo=0/tags=	tree:a73911fee673cfce	cha@v1

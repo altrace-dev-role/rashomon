@@ -88,6 +88,13 @@ func TestReadSnapshot_Vouched(t *testing.T) {
 	if !reflect.DeepEqual(s.Files, want) {
 		t.Errorf("files = %v; want %v", s.Files, want)
 	}
+	digests := map[string]string{}
+	for rel, src := range symSources {
+		digests[rel] = sumOf(src)
+	}
+	if !reflect.DeepEqual(s.Digests, digests) {
+		t.Errorf("digests = %v; want the digests rows %v", s.Digests, digests)
+	}
 }
 
 // TestReadSnapshot_RefusesStaleSymbols (W-M1.2): one byte of the symbols
@@ -198,5 +205,11 @@ func TestReadSnapshot_ReadsWhatPgraphWrote(t *testing.T) {
 	}
 	if !reflect.DeepEqual(s.Files, map[string][]string{"example.com/snap/a": {"a/a.go"}, "example.com/snap/b": {"b/b.go"}}) {
 		t.Errorf("files = %v", s.Files)
+	}
+	for _, rel := range []string{"a/a.go", "b/b.go"} {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil || s.Digests[rel] != sumOf(string(b)) {
+			t.Errorf("digest of %s = %q; want the file's sha256 (%v)", rel, s.Digests[rel], err)
+		}
 	}
 }

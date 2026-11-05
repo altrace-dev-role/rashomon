@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -82,14 +83,16 @@ type Place struct {
 
 // Snapshot is the whole of what one pgraph sync wrote under a root, read as
 // one: every live Fact in subject, predicate, object, tier, config order;
-// every Place in id order; and Files, each package path's files under the
-// root in path order, from the digests. It is the Go producer's whole read
-// (W-M1.2): the resolver that builds graph records from it reads nothing
-// else of pgraph's.
+// every Place in id order; Files, each package path's files under the root
+// in path order; and Digests, each such file's sha256 as the digests file
+// records it (the content pgraph read, which may differ from the file now).
+// It is the Go producer's whole read (W-M1.2): the resolver that builds
+// graph records from it reads nothing else of pgraph's.
 type Snapshot struct {
-	Facts  []Fact
-	Places []Place
-	Files  map[string][]string
+	Facts   []Fact
+	Places  []Place
+	Files   map[string][]string
+	Digests map[string]string
 }
 
 // ReadSnapshot reads the sync under root whole, or refuses it whole. The
@@ -146,7 +149,7 @@ func snapshot(ctx context.Context, root string, v vouch, hook func()) (Snapshot,
 	for pkg, ps := range dg.byPkg {
 		files[pkg] = slices.Clone(ps)
 	}
-	return Snapshot{Facts: facts, Places: places, Files: files}, nil
+	return Snapshot{Facts: facts, Places: places, Files: files, Digests: maps.Clone(dg.files)}, nil
 }
 
 // readSymbols is the symbols file at p, refused whole over MaxSymbolsBytes,

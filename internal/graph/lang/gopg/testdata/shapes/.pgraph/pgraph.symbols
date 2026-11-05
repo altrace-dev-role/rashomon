@@ -1,0 +1,10 @@
+pgraph-symbols v0
+digests	b00a528e8af0f463e639a8582708bf44e49c14c79db0235b83e464f45bacbd2f
+const:example.com/shapes/shape.Max	example.com/shapes/shape	shape/shape.go	22	Max is the largest side.
+func:example.com/shapes/app.Run	example.com/shapes/app	app/app.go	13	Run builds a square and sums it.
+func:example.com/shapes/shape.Sum	example.com/shapes/shape	shape/shape.go	13	Sum adds the areas.
+method:example.com/shapes/shape.Square.Area	example.com/shapes/shape	shape/shape.go	10	Area is the square's area.
+type:example.com/shapes/app.Holder	example.com/shapes/app	app/app.go	10	Holder embeds a Shape.
+type:example.com/shapes/shape.Shape	example.com/shapes/shape	shape/shape.go	4	Shape is a thing with an area.
+type:example.com/shapes/shape.Square	example.com/shapes/shape	shape/shape.go	7	Square is a square.
+var:example.com/shapes/app.Default	example.com/shapes/app	app/app.go	17	

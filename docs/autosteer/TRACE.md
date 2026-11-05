@@ -6,6 +6,17 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 00:1x: W-M1.3 done. internal/graph/lang/gopg is the Go lang.Resolver over platform.ReadSnapshot: a unit node per
+  package directory (unit:go:<dir>), a file node per digests row carrying pgraph's digest, a sym node per symbols row
+  (sym:go:<dir>:<kind>:<qualified>, attrs name, symkind, pkg, line, doc) declared by its file, an unplaced sym for an
+  interface method the facts name, and edges calls->Calls (PROVEN, certain in the store), may-call->MayCall
+  (ALGORITHMIC, conf 0.5, never certain), implements and implements-via-pointer->ResolvesTo (via=pointer), embeds->
+  References, a type's declares->Declares; a callee outside the sync (strconv.Itoa) is dropped; two build configs of one
+  fact are one edge; Overlay is nil, nil (admitted without overlays) until W-M2.5. Fixture gopg/testdata/shapes synced by
+  the branch pgraph (sidecars committed). Red first (undefined Resolver), then green TestGopg_* five, internal/platform
+  whole (Snapshot gained Digests), TestEngine_NoLanguageLiterals, vet and gofmt clean. Not yet registered in index.Build
+  (W-M1.4 reshapes it per language). No run has happened. Next: W-M1.4 (index per language, store header, repo node,
+  GlobalID/SplitGlobal, rashomon's .rashomon/graph.json).
 - 2026-11-05 00:0x: W-M1.2 done. platform.ReadSnapshot(ctx, root) reads one sync whole under the walk file's vouch chain:
   the log (live facts, exported as Fact with the v0 predicate and tier spellings), the digests (Files per package) and the
   symbols file (Place rows: id, package, file, line, doc), refusing whole on a flipped byte, a file the walk does not name,
