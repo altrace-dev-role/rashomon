@@ -23,8 +23,11 @@
 // corpus.
 //
 // cmd/pgraph's `pgraph sync <root>` is the producer: ScanRoots, Load,
-// SyncPrograms and EncodeDigests write root/.pgraph/pgraph.log and the
-// per-file digests the rashomon ledger verb reads to tell a package's facts stale
-// (syncroot.go). Debounced CHA, blast radius, strict identifier resolution,
-// unknown fan-in and the untracked-configuration warning are later slices.
+// SyncPrograms, EncodeDigests and EncodeSymbols write root/.pgraph/pgraph.log,
+// the per-file digests the rashomon ledger verb reads to tell a package's facts
+// stale (syncroot.go), and the symbols sidecar that places every declared
+// symbol at a file and line with the first sentence of its doc comment,
+// chained to the digests it was written beside (symbols.go). Debounced CHA,
+// blast radius, strict identifier resolution, unknown fan-in and the
+// untracked-configuration warning are later slices.
 package pgraph

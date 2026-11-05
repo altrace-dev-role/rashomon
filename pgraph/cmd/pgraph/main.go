@@ -256,6 +256,10 @@ func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
 	if err != nil {
 		return synced{}, err
 	}
+	symbols, err := pgraph.EncodeSymbols(abs, progs, digests)
+	if err != nil {
+		return synced{}, err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return synced{}, err
 	}
@@ -269,7 +273,10 @@ func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
 	if err := writeAtomic(filepath.Join(dir, pgraph.DigestsFile), digests); err != nil {
 		return synced{}, err
 	}
-	return s, writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, enc, digests))
+	if err := writeAtomic(filepath.Join(dir, pgraph.SymbolsFile), symbols); err != nil {
+		return synced{}, err
+	}
+	return s, writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, enc, digests, symbols))
 }
 
 // removeCut removes from dir the temp files of a sync cut off inside
@@ -283,7 +290,7 @@ func removeCut(dir string) {
 		return
 	}
 	for _, e := range ents {
-		for _, name := range []string{pgraph.LogFile, pgraph.DigestsFile, walkFile} {
+		for _, name := range []string{pgraph.LogFile, pgraph.DigestsFile, pgraph.SymbolsFile, walkFile} {
 			if e.Type().IsRegular() && strings.HasPrefix(e.Name(), "."+name+".tmp-") {
 				_ = os.Remove(filepath.Join(dir, e.Name()))
 			}

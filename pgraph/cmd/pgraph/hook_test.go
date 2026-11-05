@@ -140,7 +140,7 @@ func TestPW1b_ASyncRemovesWhatACutRunLeft(t *testing.T) {
 		t.Fatalf("first hook: exit %d, stderr %q", code, errs)
 	}
 	dir := filepath.Join(root, ".pgraph")
-	cut := []string{".pgraph.log.tmp-123", ".pgraph.digests.tmp-9", ".pgraph.walk.tmp-77"}
+	cut := []string{".pgraph.log.tmp-123", ".pgraph.digests.tmp-9", ".pgraph.symbols.tmp-4", ".pgraph.walk.tmp-77"}
 	kept := []string{"pgraph.log.tmp-1", ".pgraph.log.tmpx", "..gitignore.tmp-5", ".notes"}
 	for _, n := range append(append([]string(nil), cut...), kept...) {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("cut"), 0o644); err != nil {
