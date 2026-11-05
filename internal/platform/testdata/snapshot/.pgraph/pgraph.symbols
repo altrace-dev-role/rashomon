@@ -1,0 +1,4 @@
+pgraph-symbols v0
+digests	c2b4435391a66d8e0067042cf67802dd86efb80af9b856448c3ab66a493925d6
+func:example.com/snap/a.F	example.com/snap/a	a/a.go	4	F is one.
+func:example.com/snap/b.G	example.com/snap/b	b/b.go	6	G calls F.

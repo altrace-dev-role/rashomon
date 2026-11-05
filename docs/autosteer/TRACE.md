@@ -6,6 +6,18 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 00:0x: W-M1.2 done. platform.ReadSnapshot(ctx, root) reads one sync whole under the walk file's vouch chain:
+  the log (live facts, exported as Fact with the v0 predicate and tier spellings), the digests (Files per package) and the
+  symbols file (Place rows: id, package, file, line, doc), refusing whole on a flipped byte, a file the walk does not name,
+  a symbols file chained to other digests (ErrUnvouched), a malformed row (its own error), and saying ErrNotSynced for no
+  walk file or a four-line one. Red first (undefined names, implementation moved aside), then green: TestReadSnapshot_*
+  five (one over internal/platform/testdata/snapshot, a sidecar set the real pgraph wrote), internal/platform and
+  internal/disclose whole, TestH156d_SnapshotReadsWhatSyncWrote in test/acceptance over a real sync, vet and gofmt clean.
+  Disclosure: the pgraph paragraph now says each symbol's file, line and doc sentence is written (TestAI2_); no scope
+  bump (a pgraph write beside what the screen names, no new read of user data until W-M1.9 wires graph index).
+  Intentional change (principal's call pending the owner's word): the row type is Place, not Symbol, because
+  platform.Symbol already exists; no Vouched field (a Snapshot is returned only when vouched); PLAN.md updated in place.
+  No run has happened. Next: W-M1.3 (lang/gopg resolver over Snapshot).
 - 2026-11-04 23:5x to 2026-11-05 00:0x: W-M1.1 done. pgraph writes .pgraph/pgraph.symbols (id, package, file, line, doc
   first sentence) chained to the digests file by sha256; the walk file names all three; the rashomon platform reader
   accepts the symbols line and still reads the older four-line form. Red first (undefined names), then green on the

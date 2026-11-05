@@ -32,3 +32,31 @@ func TestAI1_ScreenSaysTheGraphIsReadAfterAnEdit(t *testing.T) {
 		t.Errorf("%d paragraphs name the platform graph read after an edit, want 1", said)
 	}
 }
+
+// TestAI2_ScreenSaysPgraphWritesEachSymbolsPlace (W-M1.2): pgraph writes a
+// third file under .pgraph, each declared symbol's file, line and doc
+// sentence, that rashomon reads with the log and the digests
+// (platform.ReadSnapshot). It is code the user owns, written beside what the
+// screen already names, so the pgraph paragraph says it and the scope
+// version stays. Break: drop the clause, and a file is written in the
+// project that the screen does not name.
+func TestAI2_ScreenSaysPgraphWritesEachSymbolsPlace(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const clause = "the file and line that declares it with the first sentence of its doc comment"
+	said := 0
+	for _, p := range inv.Paragraphs {
+		if !strings.Contains(p.Text, clause) {
+			continue
+		}
+		said++
+		if p.Owner != OwnerRecord || p.Cite != CiteSection2 || !strings.HasPrefix(p.Text, "With the plugin,") {
+			t.Errorf("the clause is in %s/%s %q, want the pgraph paragraph (%s/%s)", p.Owner, p.Cite, p.Text, OwnerRecord, CiteSection2)
+		}
+	}
+	if said != 1 {
+		t.Errorf("%d paragraphs say pgraph writes each symbol's place, want 1", said)
+	}
+}
