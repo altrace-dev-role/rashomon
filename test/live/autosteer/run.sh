@@ -3,14 +3,14 @@
 #   ARM  U (unaided) | R (runtime: RK_BIN_R, RK_PGRAPH) | G (AutoSteer: RK_BIN_G, RK_PGRAPH_G, RK_KNOWLEDGE)
 #   NAME a new run name; the run directory is $RK_RUNS/NAME (default /tmp/rk-autosteer/runs/NAME)
 # Environment: RK_CONFIG_DIR (required; logged in; no CLAUDE.md), RK_REPO (default: this repository),
-# RK_RUNS, RK_GOCACHE (shared by concurrent runs), RK_MAX_TURNS and RK_BUDGET_USD (defaults in t1/pins.env),
+# RK_RUNS, RK_GOCACHE (shared by concurrent runs), RK_MAX_TURNS and RK_BUDGET_USD (defaults in t1/pins.txt),
 # RK_GO_TOOLCHAIN_BIN (R, G: a go >= 1.26 bin dir for pgraph sync, which pins GOTOOLCHAIN=local).
 # The Claude Code marker variables (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT, AI_AGENT) are cleared for every child, so a
 # run launched from inside a Claude Code session behaves as one launched from a terminal; watch --yes refuses otherwise.
 set -u
 ARM=${1:?ARM}; NAME=${2:?NAME}
 HERE=$(cd "$(dirname "$0")" && pwd)
-. "$HERE/t1/pins.env"
+. "$HERE/t1/pins.txt"
 RK_REPO=${RK_REPO:-$(cd "$HERE/../../.." && pwd)}
 RK_RUNS=${RK_RUNS:-/tmp/rk-autosteer/runs}
 RK_GOCACHE=${RK_GOCACHE:-/tmp/rk-autosteer/gocache}

@@ -7,12 +7,12 @@
 #      and no parallel implementation: no function new against the pinned log outside internal/platform and pgraph
 #          calls pgraph.DecodeLog, and no non-platform hunk of the diff adds a ".pgraph" or "pgraph.log" literal.
 # Environment: RK_PGRAPH (the pinned pgraph binary), RK_BASELINE_LOG (the pinned tree's pgraph.log; its sha256 must
-# equal T1_BASELINE_LOG_SHA256 in pins.env), RK_GOSLOT (optional slot wrapper for the sync), RK_GO_TOOLCHAIN_BIN
+# equal T1_BASELINE_LOG_SHA256 in pins.txt), RK_GOSLOT (optional slot wrapper for the sync), RK_GO_TOOLCHAIN_BIN
 # (a go >= 1.26 first on PATH: pgraph pins GOTOOLCHAIN=local, so the PATH go must satisfy pgraph/go.mod).
 set -u
 D=${1:?RUNDIR}; D=${D%/}
 HERE=$(cd "$(dirname "$0")" && pwd)
-. "$HERE/../pins.env"
+. "$HERE/../pins.txt"
 : "${RK_PGRAPH:?RK_PGRAPH}"; : "${RK_BASELINE_LOG:?RK_BASELINE_LOG}"
 mkdir -p "$D/judge"
 got=$(shasum -a 256 "$RK_BASELINE_LOG" | cut -c1-64)

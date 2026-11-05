@@ -21,7 +21,7 @@ D=${1:?RUNDIR}; D=${D%/}
 HERE=$(cd "$(dirname "$0")" && pwd)
 : "${RK_PGRAPH:?RK_PGRAPH}"; : "${RK_FIXTURES:?RK_FIXTURES}"
 RK_AI_AGENT=${RK_AI_AGENT:-claude-code_${RK_CLAUDE_VERSION:-2-1-280}_harness}
-. "$HERE/../pins.env"
+. "$HERE/../pins.txt"
 J=$D/judge; mkdir -p "$J"
 BIN=${RK_A3_BIN:-}
 if [ -z "$BIN" ]; then

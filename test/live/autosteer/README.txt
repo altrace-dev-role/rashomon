@@ -25,7 +25,7 @@ Layout.
   hook.sh     the hook entry the installed commands are prefixed with: logs verb, exit code, stdout, ms
   cleanup.sh  removes a run's scratch worktree by exact path (git worktree remove), never rm -rf a glob
   judge/common.py   the transcript, result and hook-log parsers every judge shares
-  t1/         slice T1: prompt.txt (frozen), pins.env (tree and binary shas, caps), consumers.txt, graph.json
+  t1/         slice T1: prompt.txt (frozen), pins.txt (tree and binary shas, caps, sourced by the scripts), consumers.txt, graph.json
               (the G arm's index config), judge/ (the pre-registered checks A1 to A8 and judge.sh)
 
 What a run directory holds. tree/ (the worktree at the pinned sha, kept until judged), store/ (R and G: the
@@ -45,7 +45,7 @@ Facts verified while building the harness (2026-11-04, Claude Code 2.1.280, rash
 - watch writes the executable's real path into settings.json (/tmp is /private/tmp on macOS); wrap.sh matches both.
 - pgraph pins GOTOOLCHAIN=local for its loader, so the `go` first on PATH must satisfy pgraph/go.mod (go 1.26.0);
   a 1.25 go on PATH fails the sync of this repository with "go.mod requires go >= 1.26.0". RK_GO_TOOLCHAIN_BIN names a
-  bin dir such as $(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go1.27.3.darwin-arm64/bin.
+  bin dir such as the bin directory of the go1.27.3 toolchain module under $(go env GOMODCACHE)/golang.org/.
 - The platform read appears on the pinned tree in the PostToolUse blast line (internal/hook/blastradius.go), the Stop's
   platform line (internal/recap/platform.go) and the prompt's symbols line (internal/intent/note.go); `rashomon report`
   has no platform section. A3 therefore reads the PostToolUse and Stop renderers and keeps the report as information.
