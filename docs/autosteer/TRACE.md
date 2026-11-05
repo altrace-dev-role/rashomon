@@ -6,6 +6,20 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 01:1x: W-M1.6 done. internal/graph/knowledge: row schema v1 (lifecycle fields present and empty), parsers for
+  ledger rows (nine-field and prose forms), decision lines and headings, and ADR directories; clauses sanitized to
+  slot.Approved or title only with the reason reported; applies_to resolved against the index's file and unit nodes and
+  written as global ids; one file per source under .rashomon/knowledge/; index.Build reads the directory;
+  `rashomon graph knowledge import FILE...` writes and indexes again; IsKnowledge covers the seven kinds; the graph index
+  paragraph names the new reads and writes (TestAI3_); the usage screen carries the graph verb's lines (TRU2c). Measured on
+  rashomon's own ledger and notes at 8ff5f0aa: 213 lessons (94 percent with a clause), 152 decisions (95 percent), applies_to
+  39 and 64 ids, a second import byte-identical (AC-M1.3's conditions hold on this corpus). Drift repaired: TRU2c was red
+  from c9cef2b2 (W-M1.4's paragraph named `rashomon graph index` with no usage line) because the W-M1.4 and W-M1.5 gates
+  ran the cmd package's named tests only; the whole cmd package is in every gate from here. Deviations pending the owner's
+  word: Import takes the saved store, rid and rev; the prose ledger row form; the ADR reader with no corpus here;
+  .rashomon/knowledge/ ignored in this repository. Tests by name in PLAN W-M1.6 as built. Next: W-M1.7 contract types
+  (events.Event, graph.Predicates + TestPredicates_Closed, steer.Finding{Kind, Source, Unit}, engine.Options.Lexicon,
+  TestCore_NoAgentKeys as a ratchet).
 - 2026-11-05 00:4x: W-M1.5 done. engine.Tokens splits an initialism from the word after it (HTTPServer -> http, server) and keeps
   a plural s on it (URLs); FieldsOf reads the doc attribute into Summary. Verified at task open: the lower-to-upper split
   already existed (PlatformRead passed before the change), so the task closed the initialism and doc gaps only. Tests:
