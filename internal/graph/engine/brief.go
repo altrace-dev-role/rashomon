@@ -162,22 +162,45 @@ func (b Brief) Empty() bool { return b.Kept == 0 }
 // Text is what the model receives.
 func (b Brief) Text() string { return b.Message.Text() }
 
-// Explain is the evidence tables: tokens, scope rows, candidates with
-// every term, the budget decisions and each line's sentence.
+// Explain is the evidence tables for the person who typed the prompt: the
+// prompt, its tokens with their weights, the scope rows with the words
+// each matched, the candidates with every term, the budget decisions and
+// each line's sentence. The typed verb prints it; the hook path writes
+// Evidence.
 func (b Brief) Explain() string {
-	var sb strings.Builder
 	var toks []string
 	for _, t := range b.Tokens {
 		toks = append(toks, fmt.Sprintf("%s(%.2f)", t, b.Weights[t]))
 	}
-	fmt.Fprintf(&sb, "prompt: %q\nscorer: %s  tokens: %s\nrev: %s  elapsed: %s\n", b.Prompt, b.Scorer, strings.Join(toks, " "), b.Rev, b.Elapsed)
+	return fmt.Sprintf("prompt: %q\nscorer: %s  tokens: %s\n", b.Prompt, b.Scorer, strings.Join(toks, " ")) + b.tables(true)
+}
+
+// Evidence is Explain with nothing of the prompt: no prompt line, no
+// token and no matched word on a scope row, only their counts. D160 reads
+// the prompt in memory and stores it nowhere, so what the hook path writes
+// under the store is the selection alone: the ids scored, reached, chosen
+// and rendered, which the steer line carries too.
+func (b Brief) Evidence() string {
+	return fmt.Sprintf("scorer: %s  tokens: %d\n", b.Scorer, len(b.Tokens)) + b.tables(false)
+}
+
+// tables is the rev line and the scope, rank, select and render tables;
+// hits says whether a scope row names the prompt words it matched or
+// counts them.
+func (b Brief) tables(hits bool) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "rev: %s  elapsed: %s\n", b.Rev, b.Elapsed)
 	fmt.Fprintf(&sb, "\nscope (%d scored, %d seeds; floor %.2f, max %d):\n", len(b.Rows), len(b.Seeds), SeedFloor, MaxSeeds)
 	for _, r := range b.Rows {
 		mark := " "
 		if r.Seed {
 			mark = "*"
 		}
-		fmt.Fprintf(&sb, "%s %6.2f  %-8s %s  [%s]\n", mark, r.Score, r.Kind, r.ID, strings.Join(r.Hits, " "))
+		if hits {
+			fmt.Fprintf(&sb, "%s %6.2f  %-8s %s  [%s]\n", mark, r.Score, r.Kind, r.ID, strings.Join(r.Hits, " "))
+		} else {
+			fmt.Fprintf(&sb, "%s %6.2f  %-8s %s  %d\n", mark, r.Score, r.Kind, r.ID, len(r.Hits))
+		}
 	}
 	fmt.Fprintf(&sb, "\nrank (%d reached at depth %d):\n", b.Neighborhood, Depth)
 	for _, c := range b.Candidates {

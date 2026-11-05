@@ -331,6 +331,13 @@ func TestPF1e_UntrustedSpecIsNamedNotQuoted(t *testing.T) {
 	if strings.Contains(text, "spec rules that apply") || !strings.Contains(aside, "spec present, untrusted") {
 		t.Errorf("note %q, aside %q; want no rules line and the untrusted spec in the aside", text, aside)
 	}
+	// The withheld rules are still counted, though no line carries the
+	// count to the model: the two that reach the path (conv-errors by its
+	// paths, proof as require_evidence) are Withheld, and none is named.
+	in := intent.Resolve([]byte("fix internal/verify/stop.go"), false, projectOf(root, specOf(root, spec.Untrusted), indexOf()))
+	if in.Withheld != 2 || len(in.Rules) != 0 {
+		t.Errorf("Withheld = %d, Rules = %v; want 2 and none", in.Withheld, in.Rules)
+	}
 }
 
 // TestPF1f_NothingInventedWithoutASource: with no spec, no index and no such

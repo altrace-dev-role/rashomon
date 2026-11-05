@@ -893,18 +893,38 @@
         {
           "file": "pgraph/cha_test.go",
           "symbol": "TestPL3_AgreesWithRederivation"
+        },
+        {
+          "file": "pgraph/symbols.go",
+          "symbol": "Symbols"
+        },
+        {
+          "file": "internal/platform/snapshot.go",
+          "symbol": "ReadSnapshot"
+        },
+        {
+          "file": "internal/graph/lang/gopg/gopg.go",
+          "symbol": "Extract"
+        },
+        {
+          "file": "cmd/rashomon/graph.go",
+          "symbol": "graphBrief"
         }
       ],
       "id": "PF-PL2",
-      "implementation": "Extract reads calls, declarations, embeds and interface satisfaction from go/types at tier PROVEN, and an independent re-derivation oracle agrees with it.",
+      "implementation": "Extract reads calls, declarations, embeds and interface satisfaction from go/types at tier PROVEN, and an independent re-derivation oracle agrees with it. The sync also places every declaration in its file and line with the first sentence of its doc (pgraph/symbols.go); platform.ReadSnapshot reads the log, the digests and the symbols under the walk file's vouch; gopg.Resolver maps them to the repository graph (unit, file and sym nodes; Calls PROVEN, MayCall ALGORITHMIC, ResolvesTo, References), which the prompt-time brief (graphBrief) reads to name units, files, symbols and lessons.",
       "integration": [
         {
           "event": "verb",
           "handler": "pgraph/cmd/pgraph/main.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/graph.go"
         }
       ],
       "missing": [
-        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
+        "the facts reach the brief through an index written out of band (pgraph sync, rashomon graph index); an edit after the index lands at the next index, not as an overlay (W-M2.5)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1098,10 +1118,18 @@
       "evidence": [
         {
           "file": "pgraph/doc.go"
+        },
+        {
+          "file": "internal/platform/callers.go",
+          "symbol": "Locate"
+        },
+        {
+          "file": "internal/platform/callers.go",
+          "symbol": "Callers"
         }
       ],
       "id": "PF-PL7",
-      "implementation": "pgraph's package doc names blast radius as a later slice, and no fan-in, fan-out or reverse-reachability code exists.",
+      "implementation": "pgraph's package doc names blast radius as a later slice. internal/platform/callers.go holds a package-level PROVEN callers read (Locate, Callers) behind the prompt note's direct-caller count; no fan-in, fan-out or reverse-reachability count exists, and the two numbers are slice T1's task (docs/autosteer/PLAN.md section 7).",
       "integration": [
         {
           "event": "none",
@@ -1109,7 +1137,8 @@
         }
       ],
       "missing": [
-        "a reverse-reachability query over the live log, reported as two numbers, PROVEN-only and ALGORITHMIC-inclusive"
+        "a reverse-reachability query over the live log, reported as two numbers, PROVEN-only and ALGORITHMIC-inclusive",
+        "the package-level read counts the direct callers of one symbol in one package, not reachability"
       ],
       "planned_pr": "",
       "session_proof": "",

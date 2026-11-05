@@ -22,8 +22,8 @@ m("GS-4 the delivered set skips the graph lines", "internal/learn/deliver.go",
   "\t\t\tids = append(ids, graphKnowledge(b, sp[dkSlots])...)\n", "", "TestGS4_")
 P = "cmd/rashomon/preflight.go"
 m("GS-5 the brief is read after the early return", P,
-  "\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed && !graphed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
-  "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n",
+  "\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
+  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n",
   "TestGS5_")
 m("GS-5 the graph finding is not routed", P,
   "\tif f, ok := graphFinding(gb, run.LastSeq(), digest); graphed && ok {\n",
@@ -37,6 +37,8 @@ m("GS-6 a lesson's words seed it", "internal/graph/engine/scope.go",
 m("GS-6 the declared file target is ignored", "internal/graph/engine/facts.go",
   "\t\tif strings.HasPrefix(string(e.Dst), \"file:\") && (target == anchor || e.Dst < target) {\n", "\t\tif false {\n",
   "TestGS6_EachLineIsASlotRenderedByTheGraphTemplate")
+# `_ = i` keeps the loop index in use: the decision was its only reader, so
+# dropping the line outright left i declared and unused (BUILD BROKEN, W-M1.9).
 m("GS-6 a refused line leaves no decision", "internal/graph/engine/brief.go",
-  "\t\t\tb.Decisions = append(b.Decisions, Decision{ID: l.Key, Line: i + 1, Why: \"refused: \" + err.Error()})\n", "",
+  "\t\t\tb.Decisions = append(b.Decisions, Decision{ID: l.Key, Line: i + 1, Why: \"refused: \" + err.Error()})\n", "\t\t\t_ = i\n",
   "TestGS6_ALineTheSlotRefusesIsDroppedWithADecision")

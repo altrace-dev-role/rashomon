@@ -348,7 +348,7 @@ func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
 	if promptID == "" {
 		name = sessionID + "-" + time.Now().UTC().Format("20060102T150405.000")
 	}
-	text := b.Explain() + "\nbrief:\n" + b.Text() + "\n"
+	text := b.Evidence() + "\nbrief:\n" + b.Text() + "\n"
 	_ = os.WriteFile(filepath.Join(dir, name+".txt"), []byte(text), 0o600)
 }
 

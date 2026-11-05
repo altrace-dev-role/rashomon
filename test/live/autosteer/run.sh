@@ -48,6 +48,11 @@ if [ "$ARM" = G ]; then
   mkdir -p "$D/tree/.rashomon"; cp "$HERE/t1/graph.json" "$D/tree/.rashomon/graph.json"
   "$BIN" graph index "$D/tree" > "$D/index.txt" 2>&1 || { echo "run.sh: graph index failed" >&2; exit 1; }
   if [ -n "${RK_KNOWLEDGE:-}" ]; then
+    # Every knowledge file must be at a pinned digest (T1_KNOWLEDGE_*_SHA256), so the rows arm G imports are the frozen ones.
+    for k in $RK_KNOWLEDGE; do
+      sum=$(shasum -a 256 "$k" | cut -d' ' -f1)
+      [ "$sum" = "$T1_KNOWLEDGE_LEDGER_SHA256" ] || [ "$sum" = "$T1_KNOWLEDGE_NOTES_SHA256" ] || { echo "run.sh: $k is at digest $sum, not a pinned one" >&2; exit 1; }
+    done
     (cd "$D/tree" && "$BIN" graph knowledge import $RK_KNOWLEDGE) > "$D/knowledge.txt" 2>&1 || { echo "run.sh: knowledge import failed" >&2; exit 1; }
   fi
 fi

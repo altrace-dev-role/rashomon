@@ -4,7 +4,9 @@ T1_TREE_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
 T1_R_BIN_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
 # The arm G binary: the autosteer/contracts-v2 head that closes W-M1.9; filled before the first G run.
 T1_G_BIN_SHA=
-# The judge's pgraph binary is built from T1_TREE_SHA's pgraph module (pgraph is identical on main and the branch).
+# Arm G syncs with the branch's pgraph at T1_G_PGRAPH_SHA (its symbols sidecar, W-M1.1, is what the G binary reads;
+# pgraph has differed between main and the branch since W-M1.1). The judge's pgraph, and arm R's, is built from
+# T1_TREE_SHA's module (T1_PGRAPH_SHA).
 T1_G_PGRAPH_SHA=
 T1_PGRAPH_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
 # The pinned tree's own pgraph.log (pgraph sync at T1_TREE_SHA, 17236 rows): A2 counts new symbols against it.
@@ -16,6 +18,7 @@ T1_BUDGET_USD=10
 T1_N3_MEAN_CEILING_USD=2.50
 T1_ALLOWED_TOOLS="Read,Grep,Glob,Edit,Write,LS,Bash"
 # Knowledge for arm G: imported at pinned digests from the owner's ledger and notes (outside git; digests pinned
-# here before the first G run so the import is reproducible).
-T1_KNOWLEDGE_LEDGER_SHA256=
-T1_KNOWLEDGE_NOTES_SHA256=
+# here before the first G run so the import is reproducible). Pinned 2026-11-05 at 270 and 1073 lines; the frozen
+# copies live in ~/altrace-backups/t1-knowledge/ and run.sh refuses a file at any other digest.
+T1_KNOWLEDGE_LEDGER_SHA256=e7c6cb7a8808b49e4b24a2ebe192bcbb2cdeefbde9c192632a44e15871a616cc
+T1_KNOWLEDGE_NOTES_SHA256=0ebdd0633809e26f87fb21447f401d99821134cce2f46a30748d363cbf42a031

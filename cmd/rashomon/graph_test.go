@@ -243,3 +243,82 @@ func TestHeadCommit_ReadsThroughAWorktree(t *testing.T) {
 		}
 	}
 }
+
+// TestGraphBrief_EvidenceFileHoldsNoWordOfThePrompt (W-M1.9, D160): the
+// file the prompt hook writes under the store's graph directory holds the
+// selection and the brief, and no word of the prompt: not the prompt line,
+// not a token with its weight, not the words a scope row matched.
+func TestGraphBrief_EvidenceFileHoldsNoWordOfThePrompt(t *testing.T) {
+	dir := t.TempDir()
+	graphProject(t, dir)
+	storeRoot := t.TempDir()
+	gb, ok := graphBrief(storeRoot, filepath.Join(dir, "services", "auth"), "s1", "p1", []byte("purging the sessions"))
+	if !ok {
+		t.Fatal("no brief")
+	}
+	b, err := os.ReadFile(filepath.Join(storeRoot, "graph", "s1-p1.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	for _, word := range []string{"purging", "prompt:", "purg("} {
+		if strings.Contains(text, word) {
+			t.Errorf("the evidence file holds %q:\n%s", word, text)
+		}
+	}
+	for _, r := range gb.Rows {
+		if len(r.Hits) > 0 && strings.Contains(text, "["+strings.Join(r.Hits, " ")+"]") {
+			t.Errorf("the evidence file names the words %s matched: %v", r.ID, r.Hits)
+		}
+	}
+	if !strings.Contains(text, "\nbrief:\n"+gb.Text()) || !strings.Contains(text, string(gb.Lines[0].Key)) {
+		t.Errorf("the evidence file lacks the brief or its first node:\n%s", text)
+	}
+}
+
+// TestUnitOf_WalksContainingDeclaringAndAppliesToEdges (W-M1.7, AD19): a
+// finding's unit is reached from the node its first line is keyed on
+// through the edges that contain or declare it, or the file a lesson
+// applies to, within four nodes; a unit is its own; a node the store
+// lacks, or one four hops from its unit, has none.
+func TestUnitOf_WalksContainingDeclaringAndAppliesToEdges(t *testing.T) {
+	s := graph.NewStore()
+	rev := graph.RevCommit("c1")
+	node := func(id graph.ID, kind string) {
+		s.AssertNode(graph.Node{ID: id, Kind: kind, Tier: graph.Declared, Conf: 1.0, Rev: rev})
+	}
+	edge := func(src graph.ID, p graph.Pred, dst graph.ID) {
+		s.AssertEdge(graph.Edge{Src: src, Pred: p, Dst: dst, Tier: graph.Declared, Conf: 1.0, Rev: rev})
+	}
+	unit, file := graph.UnitID("py", "jobs"), graph.FileID("jobs/purge.py")
+	node(unit, "unit")
+	node(file, "file")
+	edge(unit, graph.Contains, file)
+	syms := []graph.ID{
+		graph.SymID("py", "jobs", "type", "jobs.purge.Job"),
+		graph.SymID("py", "jobs", "method", "jobs.purge.Job.run"),
+		graph.SymID("py", "jobs", "func", "jobs.purge.Job.run.inner"),
+	}
+	prev := file
+	for _, id := range syms {
+		node(id, "sym")
+		edge(prev, graph.Declares, id)
+		prev = id
+	}
+	lesson := graph.ID("les:INC-1")
+	node(lesson, "lesson")
+	edge(lesson, graph.AppliesTo, file)
+	for name, tc := range map[string]struct{ from, want graph.ID }{
+		"the unit itself":               {unit, unit},
+		"a file":                        {file, unit},
+		"a symbol the file declares":    {syms[0], unit},
+		"three hops from the unit":      {syms[1], unit},
+		"four hops from the unit":       {syms[2], ""},
+		"a lesson applying to the file": {lesson, unit},
+		"a node the store lacks":        {graph.FileID("jobs/none.py"), ""},
+	} {
+		if got := unitOf(s, rev, tc.from); got != tc.want {
+			t.Errorf("%s: unitOf(%s) = %q, want %q", name, tc.from, got, tc.want)
+		}
+	}
+}
