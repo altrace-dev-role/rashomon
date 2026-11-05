@@ -35,7 +35,7 @@ m("VER-1.3 an outcome not ok is known", G,
 m("VER-1.3 a red with writes after it ignores them", G,
   '\tfor _, w := range f.counted {\n\t\tif w.Seq > f.last.Seq {\n\t\t\treturn RedThenWrites\n\t\t}\n\t}\n', '', "TestVER12b_")
 m("VER-1.3 a write before the red is a write after it", G,
-  '\t\tif w.Seq > f.last.Seq {\n', '\t\tif w.Seq > 0 {\n', "TestVER12b_")
+  '\t\tif w.Seq > f.last.Seq {\n\t\t\treturn RedThenWrites\n', '\t\tif w.Seq > 0 {\n\t\t\treturn RedThenWrites\n', "TestVER12b_")
 m("VER-1.3 a red is never by output alone", G,
   '\tif f.last.Wrapped || !failedByExit(f.last) {\n\t\treturn FailedOutput\n\t}\n', '', "TestVER12_")
 m("VER-1.3 a masked success line is not read", G,

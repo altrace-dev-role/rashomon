@@ -137,9 +137,12 @@ type gateRow struct {
 
 // gateTable is the decision table of 2.2.4 as data, first match wins. The last
 // row matches every family; the Unknown after the loop is the fail-closed
-// answer for a table missing it, never reached.
+// answer for a table missing it, never reached. A masked last run with a
+// covered write after it is stale before it is masked (card F2c), as a red
+// run with writes after it is red_then_writes (redReason).
 var gateTable = []gateRow{
 	{lastBackgrounded, Backgrounded, func(*fam) Reason { return BackgroundLaunch }},
+	{maskedThenWritten, Stale, func(*fam) Reason { return MaskedThenWrites }},
 	{lastMasked, MaskedInconclusive, maskedReason},
 	{lastEmptyRun, Absent, func(*fam) Reason { return EmptyRun }},
 	{lastFailed, Red, redReason},
@@ -160,6 +163,24 @@ func lastOrderNotKnown(f *fam) bool   { return orderNotKnown(f.last) }
 func writtenSince(f *fam) bool        { return len(f.counted) > 0 }
 func treeMovedOwn(f *fam) bool        { return f.bound == boundOwn }
 func treeMovedForeign(f *fam) bool    { return f.bound == boundForeign }
+
+// maskedThenWritten: the last run is masked and a write the gate covers came
+// after it (card F2c), as redReason reads a red run's. The run said nothing of
+// the files as they now are, so the gate is stale, not masked; its last run
+// stays its last run, and exit_unmasked still reads it (exitUnmasked). A write
+// before the masked run leaves it masked: the classic catch, an edit and then
+// a run whose pipe hid its status.
+func maskedThenWritten(f *fam) bool {
+	if !masked(f.last) {
+		return false
+	}
+	for _, w := range f.counted {
+		if w.Seq > f.last.Seq {
+			return true
+		}
+	}
+	return false
+}
 
 // maskedFromRulesVersion is the rules version from which masked_by is read as
 // the stage that hid a status (MASKED-OUTCOME1, D229): a record written before
@@ -272,7 +293,8 @@ func orderNotKnown(r *gateRun) bool {
 	return !known
 }
 
-// green: no row before Stale matches the run.
+// green: no row before the writes-after-green Stale row matches the run. The
+// masked-then-written row above it matches only a masked run (card F2c).
 func green(r *gateRun) bool {
 	return !r.Backgrounded && !masked(r) && !emptyRun(r) && !failed(r) && !outcomeNotKnown(r) && !orderNotKnown(r)
 }

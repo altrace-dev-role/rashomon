@@ -105,6 +105,7 @@ func reasonState() map[Reason]State {
 			PartialAfterRed:       Red,
 			PartialOnly:           Absent,
 			RedThenWrites:         Stale,
+			MaskedThenWrites:      Stale,
 			WritesAfterGreen:      Stale,
 			WriteDuringRun:        Stale,
 			StaleForeign:          Stale,

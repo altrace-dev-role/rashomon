@@ -28,7 +28,7 @@ import (
 //   - watched_red_then_green (PF-PG7), from classify's runs and writes
 //     (watchedRow): no row without a red run.
 //   - exit_unmasked, from the state, where the gate has a last run and owes
-//     a row (exitUnmaskedTable).
+//     a row (exitUnmasked): unmet on a masked last run, stale or not.
 //   - evidence_bound, where gate_after_write has a row (evidenceBound): met
 //     where the green run's tree is the point's, unmet where the session
 //     wrote since it, unknown otherwise (card P5A; Q6).
@@ -199,6 +199,19 @@ var exitUnmaskedTable = []obRow{
 	{Unknown, ObligationUnknown, citeRun},
 }
 
+// exitUnmasked is the exit_unmasked row's table for g: a pipe hid the status
+// of a stale gate's last run where a write came after that masked run
+// (masked_then_writes, card F2c), so the row is unmet, citing the run, as
+// on a masked gate; every other gate reads exitUnmaskedTable.
+func exitUnmasked(g *GateState) []obRow {
+	if g.Reason == MaskedThenWrites {
+		return exitUnmaskedHidden
+	}
+	return exitUnmaskedTable
+}
+
+var exitUnmaskedHidden = []obRow{{Stale, ObligationUnmet, citeRun}}
+
 // evidenceBound is the evidence_bound row's table for g (PF-PG6, INV-14):
 // met, citing the green run, where its tree reads as it did at the point;
 // unmet where the session wrote since that run, named or unnamed beside a
@@ -267,7 +280,7 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 			l.add(g, source, WatchedRedThenGreen, state, ev[:n]...)
 		}
 		if g.LastRun != nil && owed {
-			l.fromTable(g, source, ExitUnmasked, exitUnmaskedTable)
+			l.fromTable(g, source, ExitUnmasked, exitUnmasked(g))
 		}
 		if owed {
 			l.fromTable(g, source, EvidenceBound, evidenceBound(g))
