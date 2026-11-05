@@ -55,7 +55,12 @@ const owedPlatformKey = "platform"
 // runner and the file, or the runner alone where the path slot refuses the
 // file, and then the owed packages where any is owed and the path list
 // takes one; with no gate owed, the packages alone, absent. None for no
-// owed note, one past afterSeq, or nothing the slots take.
+// owed note, one past afterSeq, or, with no gate owed, packages the slots
+// refuse. A gate name the slot refuses still gives the finding, its Message
+// zero, which Route logs as render_refused: the note was owed and the log
+// says why it was not said, never a silent drop (GATE-INFER2). That line
+// counts as given (owedGiven), so the trace is written once per turn end,
+// as the note would be.
 func owedFinding(o recap.Owed, afterSeq int64, lines [][]byte) (steer.Finding, bool) {
 	if o.Seq <= 0 || o.Seq > afterSeq {
 		return steer.Finding{}, false
@@ -69,7 +74,7 @@ func owedFinding(o recap.Owed, afterSeq int64, lines [][]byte) (steer.Finding, b
 		return steer.Finding{}, false
 	}
 	m, err := owedMessage(o)
-	if err != nil {
+	if err != nil && o.Gate == "" {
 		return steer.Finding{}, false
 	}
 	f := steer.Finding{Pattern: pattern.ClaimVsRecord, Kind: "absent", Key: key, MaxLevel: steer.LevelNudge,
@@ -117,13 +122,16 @@ func owedMessage(o recap.Owed) (render.Message, error) {
 
 // owedGiven reports a claim-vs-record line under key in state delivered, or
 // withheld by arm off, whose shadow decision gave it, as learn.Delivered
-// reads a lesson's; a superseded line is not given. Lines are located with
-// jsonscan, never decoded (RES-5).
+// reads a lesson's, or refused at render, the trace owedFinding leaves for a
+// name the gate slot refuses, which the next prompt would refuse again; a
+// superseded line is not given. Lines are located with jsonscan, never
+// decoded (RES-5).
 func owedGiven(lines [][]byte, key string) bool {
 	var sp [4]jsonscan.Span
 	for _, b := range lines {
 		if jsonscan.Top(b, owedKeys(), sp[:]) == nil && scanText(b, sp[0]) == string(pattern.ClaimVsRecord) && scanText(b, sp[2]) == key &&
-			(scanText(b, sp[1]) == string(steer.LineStateDelivered) || scanText(b, sp[3]) == string(steer.SuppressedByArmOff)) {
+			(scanText(b, sp[1]) == string(steer.LineStateDelivered) || scanText(b, sp[3]) == string(steer.SuppressedByArmOff) ||
+				scanText(b, sp[3]) == string(steer.SuppressedByRenderRefused)) {
 			return true
 		}
 	}
