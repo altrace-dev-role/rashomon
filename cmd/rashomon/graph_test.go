@@ -202,3 +202,44 @@ func TestGraphFinding_CarriesSourceAndUnit(t *testing.T) {
 		t.Errorf("unit = %q; want this repository's unit:py:... containing %s", f.Unit, gb.Lines[0].Key)
 	}
 }
+
+// TestHeadCommit_ReadsThroughAWorktree (W-M1.8; a W-M1.4 defect): the index
+// header's commit is HEAD, read without git: a branch ref resolved under the
+// common dir's refs or its packed-refs (a worktree's HEAD sits in its own
+// git dir and the refs in the common dir), or a detached HEAD's own hash;
+// C1 outside a repository. Before this, every worktree indexed as C1, so no
+// row's rev named a commit and no freshness check could.
+func TestHeadCommit_ReadsThroughAWorktree(t *testing.T) {
+	a, b, c := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	main := t.TempDir()
+	gitdir := filepath.Join(main, ".git")
+	write(filepath.Join(gitdir, "HEAD"), "ref: refs/heads/main\n")
+	write(filepath.Join(gitdir, "refs", "heads", "main"), a+"\n")
+	write(filepath.Join(gitdir, "packed-refs"), "# pack-refs with: peeled fully-peeled sorted\n"+b+" refs/heads/feature\n")
+	wt := t.TempDir()
+	wtgit := filepath.Join(gitdir, "worktrees", "wt")
+	write(filepath.Join(wtgit, "commondir"), "../..\n")
+	write(filepath.Join(wtgit, "HEAD"), "ref: refs/heads/feature\n")
+	write(filepath.Join(wt, ".git"), "gitdir: "+wtgit+"\n")
+	detached := t.TempDir()
+	write(filepath.Join(detached, ".git", "HEAD"), c+"\n")
+	for name, tc := range map[string]struct{ dir, want string }{
+		"main repository, loose ref":             {main, a[:12]},
+		"worktree, packed ref in the common dir": {wt, b[:12]},
+		"detached HEAD":                          {detached, c[:12]},
+		"no repository":                          {t.TempDir(), "C1"},
+	} {
+		if got := headCommit(tc.dir); got != tc.want {
+			t.Errorf("%s: headCommit = %q, want %q", name, got, tc.want)
+		}
+	}
+}

@@ -99,3 +99,37 @@ func put(t *testing.T, path, text string) {
 		t.Fatal(err)
 	}
 }
+
+// TestGitDirs_ResolvesThePointerAndTheCommonDir (W-M1.8): a .git directory
+// is its own git dir and common dir; a worktree's .git file points at its
+// git dir, relative to the root or absolute, and that dir's commondir file
+// names the common dir, relative to it or absolute; a directory with no
+// .git, a .git file that is no pointer, and "" are no repository.
+func TestGitDirs_ResolvesThePointerAndTheCommonDir(t *testing.T) {
+	main := t.TempDir()
+	gitdir := filepath.Join(main, ".git")
+	put(t, filepath.Join(gitdir, "HEAD"), "ref: refs/heads/main\n")
+	if g, c, ok := GitDirs(main); !ok || g != gitdir || c != gitdir {
+		t.Errorf("main: GitDirs = %q, %q, %v; want %q twice, true", g, c, ok, gitdir)
+	}
+	wt := t.TempDir()
+	wtgit := filepath.Join(gitdir, "worktrees", "wt")
+	put(t, filepath.Join(wtgit, "commondir"), "../..\n")
+	put(t, filepath.Join(wt, ".git"), "gitdir: "+wtgit+"\n")
+	if g, c, ok := GitDirs(wt); !ok || g != wtgit || c != gitdir {
+		t.Errorf("worktree: GitDirs = %q, %q, %v; want %q, %q, true", g, c, ok, wtgit, gitdir)
+	}
+	rel := t.TempDir()
+	put(t, filepath.Join(rel, ".git"), "gitdir: .gitdir\n")
+	put(t, filepath.Join(rel, ".gitdir", "commondir"), gitdir+"\n")
+	if g, c, ok := GitDirs(rel); !ok || g != filepath.Join(rel, ".gitdir") || c != gitdir {
+		t.Errorf("relative pointer, absolute commondir: GitDirs = %q, %q, %v", g, c, ok)
+	}
+	none := t.TempDir()
+	put(t, filepath.Join(none, ".git"), "not a pointer\n")
+	for name, dir := range map[string]string{"no .git": t.TempDir(), "no pointer": none, "empty": ""} {
+		if g, c, ok := GitDirs(dir); ok {
+			t.Errorf("%s: GitDirs = %q, %q, true; want no repository", name, g, c)
+		}
+	}
+}

@@ -32,30 +32,58 @@ func RepoID(root string) (rid string, ephemeral bool) {
 	return "path:" + hex.EncodeToString(sum[:]), true
 }
 
-// originURL is the url of the remote named origin in the config of the
-// repository at key, read through a worktree's gitdir pointer and its
-// commondir file; false with no .git, no config or no such remote. include
-// and includeIf directives are not followed.
-func originURL(key string) (string, bool) {
-	dir := filepath.Join(key, ".git")
-	if b, err := os.ReadFile(dir); err == nil {
+// GitDirs is the git directory of the repository at root and its common
+// directory, found without running git (H-17): the .git directory itself,
+// or for a worktree the directory its .git file points to (gitdir: path,
+// relative to root or absolute) and the one that directory's commondir
+// file names (relative to the git directory or absolute), the git
+// directory again when there is no commondir file. HEAD is read from the
+// git directory; config, the branch refs and packed-refs from the common
+// one, which is where git keeps them for every worktree. false with no
+// .git, or a .git file that is no pointer.
+func GitDirs(root string) (gitDir, commonDir string, ok bool) {
+	if root == "" {
+		return "", "", false
+	}
+	dir := filepath.Join(root, ".git")
+	st, err := os.Stat(dir)
+	if err != nil {
+		return "", "", false
+	}
+	if !st.IsDir() {
+		b, err := os.ReadFile(dir)
+		if err != nil {
+			return "", "", false
+		}
 		rest, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
 		if !ok {
-			return "", false
+			return "", "", false
 		}
 		dir = rest
 		if !filepath.IsAbs(dir) {
-			dir = filepath.Join(key, dir)
+			dir = filepath.Join(root, dir)
 		}
 	}
+	common := dir
 	if b, err := os.ReadFile(filepath.Join(dir, "commondir")); err == nil {
-		common := strings.TrimSpace(string(b))
+		common = strings.TrimSpace(string(b))
 		if !filepath.IsAbs(common) {
 			common = filepath.Join(dir, common)
 		}
-		dir = common
 	}
-	b, err := os.ReadFile(filepath.Join(dir, "config"))
+	return dir, common, true
+}
+
+// originURL is the url of the remote named origin in the config of the
+// repository at key (GitDirs' common directory); false with no repository,
+// no config or no such remote. include and includeIf directives are not
+// followed.
+func originURL(key string) (string, bool) {
+	_, common, ok := GitDirs(key)
+	if !ok {
+		return "", false
+	}
+	b, err := os.ReadFile(filepath.Join(common, "config"))
 	if err != nil {
 		return "", false
 	}

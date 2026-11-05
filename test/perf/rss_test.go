@@ -538,6 +538,13 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 			}
 			if c.Entry == "recap" {
 				switch c.ID {
+				case graphPromptCase:
+					// The prompt's graph read (W-M1.8): the recap.pending
+					// row's session and a prompt in the vocabulary of a
+					// synthetic index of PayloadBytes.
+					r.seed(t, Seed{Calls: pendingSeedCalls})
+					command = []string{"recap", "pending"}
+					mk, control = r.graphPrompt(t, c.PayloadBytes)
 				case pgraphPromptCase:
 					// The prompt's symbol read (PW1b-ON-230 step 3): the
 					// recap.pending row's session and a prompt naming a
@@ -574,11 +581,11 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				return
 			}
 			if control != nil {
-				// The same run with no .pgraph, logged, so each platform's
+				// The same run with nothing to read, logged, so each platform's
 				// log says what the read adds, the figure its row is from.
 				control()
 				if base, ok, _ := r.medianRSS(t, command, mk); ok {
-					t.Logf("%s: %.2f MiB; the same run with no .pgraph: %.2f MiB; the read adds %.2f MiB", c.ID, got, base, got-base)
+					t.Logf("%s: %.2f MiB; the same run with nothing to read: %.2f MiB; the read adds %.2f MiB", c.ID, got, base, got-base)
 				}
 			}
 			budgetMiB, gated, reportOnly, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
@@ -177,24 +178,24 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 }
 
 // headCommit is the repository's HEAD, short, read from .git without
-// running git; C1 when root is not a repository.
+// running git: HEAD from the git directory, a branch ref from the common
+// directory's refs or packed-refs, so a worktree names its own branch's
+// commit (W-M1.8); C1 when root is not a repository.
 func headCommit(root string) string {
-	dir := filepath.Join(root, ".git")
-	if b, err := os.ReadFile(dir); err == nil {
-		if rest, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: "); ok {
-			dir = rest
-		}
+	gitDir, commonDir, ok := baseline.GitDirs(root)
+	if !ok {
+		return "C1"
 	}
-	head, err := os.ReadFile(filepath.Join(dir, "HEAD"))
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
 	if err != nil {
 		return "C1"
 	}
 	h := strings.TrimSpace(string(head))
 	if ref, ok := strings.CutPrefix(h, "ref: "); ok {
-		if b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(ref))); err == nil {
+		if b, err := os.ReadFile(filepath.Join(commonDir, filepath.FromSlash(ref))); err == nil {
 			h = strings.TrimSpace(string(b))
 		} else {
-			h = packedRef(filepath.Join(dir, "packed-refs"), ref)
+			h = packedRef(filepath.Join(commonDir, "packed-refs"), ref)
 		}
 	}
 	if len(h) < 12 {
