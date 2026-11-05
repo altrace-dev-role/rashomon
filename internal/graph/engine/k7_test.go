@@ -81,7 +81,7 @@ func TestK7_HookPathLatency(t *testing.T) {
 	dir := t.TempDir()
 	s := synthetic(records)
 	rev := graph.RevCommit("C1")
-	if err := graph.SaveFile(dir, s, "C1"); err != nil {
+	if err := graph.SaveFile(dir, s, graph.Header{Repo: "k7", Rev: graph.HeaderRev{Commit: "C1"}}); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := os.Stat(filepath.Join(dir, filepath.FromSlash(graph.GraphFile)))
@@ -96,7 +96,7 @@ func TestK7_HookPathLatency(t *testing.T) {
 			t.Fatal(err)
 		}
 		t1 := time.Now()
-		last = Build(g, graph.RevCommit(h.Commit), prompt, Options{IDF: true})
+		last = Build(g, graph.RevCommit(h.Rev.Commit), prompt, Options{IDF: true})
 		t2 := time.Now()
 		load, build, total = append(load, t1.Sub(t0)), append(build, t2.Sub(t1)), append(total, t2.Sub(t0))
 	}

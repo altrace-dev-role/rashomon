@@ -51,14 +51,14 @@ func graphIndex(args []string, stdout io.Writer) error {
 		return err
 	}
 	start := time.Now()
-	s, files, err := index.Build(root, headCommit(root), cfg)
+	r, err := index.Build(root, headCommit(root), cfg)
 	if err != nil {
 		return err
 	}
-	if err := graph.SaveFile(root, s, headCommit(root)); err != nil {
+	if err := graph.SaveFile(root, r.Store, r.Header); err != nil {
 		return err
 	}
-	rev := graph.RevCommit(headCommit(root))
+	rev := graph.RevCommit(r.Header.Rev.Commit)
 	for _, k := range cfg.Knowledge {
 		switch err := slot.Approved(k.Clause).Validate(); {
 		case k.Clause == "":
@@ -67,8 +67,8 @@ func graphIndex(args []string, stdout io.Writer) error {
 			fmt.Fprintf(stdout, "warning: %s clause refused, its line carries none: %v\n", k.ID, err)
 		}
 	}
-	_, err = fmt.Fprintf(stdout, "indexed %d file(s): %d node(s), %d edge(s) at %s in %s -> %s\n",
-		files, len(s.Nodes(rev)), len(s.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile)
+	_, err = fmt.Fprintf(stdout, "indexed %d file(s): %d node(s), %d edge(s) at %s in %s -> %s; repo %s\n",
+		r.Files, len(r.Store.Nodes(rev)), len(r.Store.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile, r.Header.Repo)
 	return err
 }
 
@@ -110,7 +110,7 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 	}
 	loaded := time.Since(start)
 	opt.Rel = relTo(cwd, root)
-	b := engine.Build(s, graph.RevCommit(h.Commit), prompt, opt)
+	b := engine.Build(s, graph.RevCommit(h.Rev.Commit), prompt, opt)
 	fmt.Fprintf(stdout, "load: %d record(s) in %s; pipeline: %s\n\n", h.Records, loaded, b.Elapsed)
 	fmt.Fprintln(stdout, b.Explain())
 	fmt.Fprintln(stdout, "brief:")
@@ -191,7 +191,7 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (engi
 	}
 	opt := hookScorer()
 	opt.Rel = relTo(cwd, root)
-	b := engine.Build(s, graph.RevCommit(h.Commit), string(prompt), opt)
+	b := engine.Build(s, graph.RevCommit(h.Rev.Commit), string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
 	return b, !b.Empty()
 }

@@ -60,3 +60,35 @@ func TestAI2_ScreenSaysPgraphWritesEachSymbolsPlace(t *testing.T) {
 		t.Errorf("%d paragraphs say pgraph writes each symbol's place, want 1", said)
 	}
 }
+
+// TestAI3_ScreenSaysGraphIndexReadsTheOrigin (W-M1.4): the screen names the
+// repository graph's reads and writes: `rashomon graph index` reads the
+// configuration, the units' files, the pgraph sidecars and the origin url
+// from .git/config, writes .rashomon/graph.jsonl headed by that url as the
+// repository's id; each prompt reads the graph in memory and the selection
+// lands under the store's graph directory. One paragraph says so.
+func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const clause = "the url of the git remote named origin from .git/config"
+	said := 0
+	for _, p := range inv.Paragraphs {
+		if !strings.Contains(p.Text, clause) {
+			continue
+		}
+		said++
+		if p.Owner != OwnerRecord || p.Cite != CiteSection2 || !strings.HasPrefix(p.Text, "With `rashomon graph index") {
+			t.Errorf("the clause is in %s/%s %q, want the graph index paragraph (%s/%s)", p.Owner, p.Cite, p.Text, OwnerRecord, CiteSection2)
+		}
+		for _, also := range []string{".rashomon/graph.jsonl", "At each prompt", "the prompt words it matched"} {
+			if !strings.Contains(p.Text, also) {
+				t.Errorf("the graph index paragraph does not say %q", also)
+			}
+		}
+	}
+	if said != 1 {
+		t.Errorf("%d paragraphs say the index reads the origin url, want 1", said)
+	}
+}

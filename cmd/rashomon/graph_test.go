@@ -23,12 +23,12 @@ func graphProject(t *testing.T, dir string) {
 	}
 	cfg := map[string]any{
 		"units": []map[string]any{
-			{"path": "services/auth", "mod_root": "services/auth", "modules": []string{"auth"}},
-			{"path": "services/orgs", "mod_root": "services/orgs", "modules": []string{"orgs"}},
-			{"path": "services/api", "mod_root": "services/api", "modules": []string{"api"}},
-			{"path": "jobs", "mod_root": "", "modules": []string{"jobs"}},
-			{"path": "tests", "mod_root": "", "modules": []string{"tests"}},
-			{"path": "reports", "mod_root": "", "modules": []string{"reports"}},
+			{"path": "services/auth", "mod_root": "services/auth", "modules": []string{"auth"}, "lang": "py"},
+			{"path": "services/orgs", "mod_root": "services/orgs", "modules": []string{"orgs"}, "lang": "py"},
+			{"path": "services/api", "mod_root": "services/api", "modules": []string{"api"}, "lang": "py"},
+			{"path": "jobs", "mod_root": "", "modules": []string{"jobs"}, "lang": "py"},
+			{"path": "tests", "mod_root": "", "modules": []string{"tests"}, "lang": "py"},
+			{"path": "reports", "mod_root": "", "modules": []string{"reports"}, "lang": "py"},
 		},
 		"service_map": map[string]string{"auth": "services/auth", "orgs": "services/orgs", "api": "services/api"},
 		"knowledge": []map[string]any{{

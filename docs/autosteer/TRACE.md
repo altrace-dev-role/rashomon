@@ -6,6 +6,18 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 00:3x: W-M1.4 done. internal/graph/index runs the resolver of each language the configuration declares (index.Unit.Lang,
+  required: gopg.Lang, pylite.Lang) over the files under that language's units, asserts the repo:<rid> node and returns
+  index.Result{Store, Header, Files}; the store header is {schema, repo, rev{commit}, producers, records} (PLAN B6) and
+  graph.Load refuses another schema; graph.GlobalID, SplitGlobal and RepoNodeID hold g:<rid>#<local> (AD14); baseline.RepoID
+  reads the origin url from .git/config without git, through a worktree, normalizes it (NormalizeOrigin), else an ephemeral
+  path: form (no local:<root-commit> form: packed objects, see PLAN W-M1.4 as built). rashomon's own .rashomon/graph.json
+  lists . and pgraph as Go units; .rashomon/graph.jsonl is ignored. The consent screen names the index's reads and the
+  prompt-time read of the graph (TestAI3_). Tests by name in PLAN W-M1.4 as built; all green through the slot with build,
+  vet, gofmt, TestGS5 (cmd), TestRubricLAW10_, TestH156d. Deviations pending the owner's word: no root-commit rid form;
+  the disclosure paragraph pulled forward from W-M1.9; open question for W-M1.9: the brief evidence file stores matched
+  prompt tokens (D160). Not yet run on rashomon itself (W-M1.8 syncs and indexes it). No run has happened. Next: W-M1.5
+  (Tokens CamelCase split; FieldsOf reads doc).
 - 2026-11-05 00:1x: W-M1.3 done. internal/graph/lang/gopg is the Go lang.Resolver over platform.ReadSnapshot: a unit node per
   package directory (unit:go:<dir>), a file node per digests row carrying pgraph's digest, a sym node per symbols row
   (sym:go:<dir>:<kind>:<qualified>, attrs name, symkind, pkg, line, doc) declared by its file, an unplaced sym for an
