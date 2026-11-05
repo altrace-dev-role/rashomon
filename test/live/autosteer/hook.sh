@@ -4,13 +4,17 @@
 # hook-ms.log (perl's clock; the two perl starts cost the session a few ms each and are outside the interval),
 # then prints the stdout for Claude Code.
 # Harness identity: rashomon's steer step reads CLAUDE_CODE_ENTRYPOINT and AI_AGENT ("claude-code_<v>_harness") to
-# name the client and its version; a note with no readable version is built and not sent. Whether Claude Code sets
-# them for hook commands is recorded once per run in hook-env.txt (so the first R run settles it); when absent they
-# are exported here from RK_CLAUDE_VERSION (default 2-1-280), the parity the 11-04 evidence runs used.
+# name the client and its version; a note with no readable version is built and not sent. What Claude Code set for
+# the hook command is recorded once per run in hook-env.txt, before anything here changes it.
+# Claude Code 2.1.280 sets CLAUDE_CODE_ENTRYPOINT=sdk-cli for the hooks of a `claude -p` session (every T1 pilot run's
+# hook-env.txt), and rashomon reads sdk-cli as an SDK session, whose notes it suppresses by design (no person at the
+# prompt: no_mirror). The harness stands in for a terminal session, so cli is exported always, never only when unset
+# (B448: the pilot's hooks all ran as sdk-cli and no note reached any agent). AI_AGENT is exported from
+# RK_CLAUDE_VERSION (default 2-1-280) only when Claude Code leaves it unset: the value it sets is the one read.
 if [ -n "${RK_RUN_DIR:-}" ] && [ ! -f "$RK_RUN_DIR/hook-env.txt" ]; then
   { echo "CLAUDECODE=${CLAUDECODE:-<unset>}"; echo "CLAUDE_CODE_ENTRYPOINT=${CLAUDE_CODE_ENTRYPOINT:-<unset>}"; echo "AI_AGENT=${AI_AGENT:-<unset>}"; echo "CLAUDE_PROJECT_DIR=${CLAUDE_PROJECT_DIR:-<unset>}"; } > "$RK_RUN_DIR/hook-env.txt"
 fi
-[ -n "${CLAUDE_CODE_ENTRYPOINT:-}" ] || export CLAUDE_CODE_ENTRYPOINT=cli
+export CLAUDE_CODE_ENTRYPOINT=cli
 [ -n "${AI_AGENT:-}" ] || export AI_AGENT="claude-code_${RK_CLAUDE_VERSION:-2-1-280}_harness"
 if [ -n "${RK_RUN_DIR:-}" ]; then
   t0=$(perl -MTime::HiRes=time -e 'print int(time*1000)')

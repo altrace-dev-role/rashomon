@@ -71,3 +71,28 @@ Facts verified while building the harness (2026-11-04, Claude Code 2.1.280, rash
 - pgraph is run by the shipped plugin's hooks.json (SessionStart and Stop, background), not by rashomon watch, so a
   watch-installed arm never syncs on its own. run.sh syncs R's tree with the pinned pgraph and G's with the arm's own
   pgraph before the session, so both arms carry the platform read the plugin gives a developer; U has no sidecars.
+
+T1b (2026-11-05): slice T1 under the corrected harness. The pilot (nine runs, 06:53 to 10:41 PST, rows in the
+execution record) found three defects in the harness and none in the product (ledger B448 to B450; held down by
+test/acceptance/t1b_live_harness_test.go):
+- B448: Claude Code 2.1.280 sets CLAUDE_CODE_ENTRYPOINT=sdk-cli for the hooks of a `claude -p` session (hook-env.txt of
+  every R and G run); hook.sh exported cli only when the variable was unset, so every note was built for an sdk session
+  and suppressed by design (no_mirror for the brief and the claim-vs-record line, unverified_channel for the blast and
+  masked-status notes). hook.sh now exports cli always, after recording what Claude Code set. Reproduced and fixed by
+  replay of the frozen prompt through the G binary before any paid run (zero bytes and a no_mirror row under sdk-cli;
+  the brief delivered under cli), evidence under docs-out/plans/evidence-2026-11-05/b448-replay.
+- B449: the batch driver's PATH held no go; a3's build, a6's vet and tests and a7's go test exited 127 on all nine runs.
+  t1b/judge/judge.sh refuses (exit 3, no row) without go, gofmt, python3, perl and git on PATH; t1b/batch.sh puts
+  RK_GO_TOOLCHAIN_BIN first on PATH and checks every tool before the first run.
+- B450: a6 read gofmt's output alone, so a missing gofmt printed pass; t1b/judge/a6.sh reads the exit status too.
+t1b/ holds its own pins.txt (the same tree, binaries, prompt, caps, knowledge digests and baseline log as T1), judge/
+(T1's bytes with the two repairs and its own rows file t1b-rows.txt), batch.sh (the driver; RK_T1B_GO=yes only on the
+owner's word; stops on a sanity, channel or judge failure), smoke.sh with smoke-prompt.txt (the channel smoke: one
+haiku turn through the G hooks, a few cents, run before any paid run) and channel.py (the per-run channel check: what
+Claude Code set recorded, no no_mirror or unverified_channel row, and for G the prompt hook's additionalContext and
+its transcript attachment). run.sh takes RK_SLICE (t1 or t1b), RK_PROMPT_FILE and RK_MODEL; batch.sh clears the last
+two so every batch run uses the frozen prompt and model, and the run directory records slice, model and prompt.
+The T1 slice's files stay frozen at 158c7a29 (TestT1B_TheT1SliceIsFrozen holds their digests); the T1 judge, re-run
+unchanged over the nine pilot trees under a PATH with go, gives the pilot's A3 to A7 readings. Open for the owner
+before the T1b batch: the turn cap (seven of nine pilot runs ended at 80 turns; T1b keeps 80 so its rows compare with
+the pilot's nine readings) and the cost gate (ruling 12: every pilot arm's n=3 mean was above 2.50 USD).

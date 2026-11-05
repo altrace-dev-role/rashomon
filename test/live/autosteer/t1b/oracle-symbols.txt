@@ -1,0 +1,9 @@
+# A4 and A5 symbols (section 7.4). Numbers are computed by judge/oracle.py from the fixture's .pgraph/pgraph.log at
+# judge time; the shapes below were verified on 2026-11-04 against pgraph at T1_PGRAPH_SHA and are what is pre-registered.
+# fixture<TAB>pgraph id<TAB>file the replay edits<TAB>shape
+# shape: proven_only = proven == inclusive > 0; differ = proven < inclusive; none = 0 and 0;
+#        reflect = a reflect.Value.MethodByName call in the symbol's package: the inclusive number must not print as a bare 0.
+dispatch	method:example.test/dispatch/shape.Circle.Area	shape/shape.go	differ
+dispatch	func:example.test/dispatch/app.Total	app/app.go	proven_only
+dispatch	method:example.test/dispatch/extra.Rect.seal	extra/extra.go	none
+dispatch-reflect	method:example.test/dispatch/extra.Rect.Perimeter	extra/byname.go	reflect
