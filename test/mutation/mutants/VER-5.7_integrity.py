@@ -50,9 +50,9 @@ m("VER-5.7 no gate-config-edited row", T,
 
 # The trigger.
 m("VER-5.7 a store call does not step", H,
-  " || inStore && (failure || event == string(steer.EventPostToolUse)))\n", ")\n", "TestSTR58_")
+  " || inStore && (failure || post))\n", ")\n", "TestSTR58_")
 m("VER-5.7 a failed store call does not step", H,
-  "inStore && (failure || event == string(steer.EventPostToolUse))", "inStore && event == string(steer.EventPostToolUse)", "TestSTR58_")
+  "inStore && (failure || post)", "inStore && post", "TestSTR58_")
 m("VER-5.7 the plain store name is not scanned", H,
   '\treturn bytes.Contains(input, []byte(".claude/rashomon")) || ', "\treturn ", "TestSTR58_")
 m("VER-5.7 the escaped store name is not scanned", H,
