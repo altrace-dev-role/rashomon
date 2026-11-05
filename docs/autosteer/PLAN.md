@@ -1,0 +1,1123 @@
+# AutoSteer Engineering Blueprint (planning deliverable, 2026-11-04)
+
+> **For agentic workers:** this is the canonical engineering plan for AutoSteer. Recover it at the start of every development session before any engineering decision. Execute against section 6 (backlog) and section 7 (first vertical slice) only after the owner approves section 13 (decisions owed). Steps use checkbox syntax for tracking once execution starts.
+
+**Goal:** Build AutoSteer, an agent-independent, language-agnostic engineering intelligence and active steering system, from rashomon's current state to the complete product vision, with every requirement traced to code, tests and live evidence.
+
+**Architecture:** One logical knowledge system over three physical stores by epistemic class (structure, evidence, judgment) joined by a language-free identity model, with session state as a persisted fold over the record; one task-aware engine (Scope, Traverse, Rank, Check Conflicts, Select Guidance) that reads indexes written out of band by language extractors and delivers deltas through the agent's verified context channel at four moments (prompt, first write in a unit, boundary, Stop); independent verification and evidence-backed learning close the loop. G (known), A (reached the agent), D (done) stay distinct in every record.
+
+**Tech Stack:** Go (single static binary `rashomon`, hooks and CLI); `pgraph` (Go, go/packages, separate module, subprocess producer); language extractors as separate producers writing files; Claude Code hooks (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop, StopFailure, SessionEnd); JSON and NDJSON stores under the project root and the install store; no database, no network.
+
+**Spec:** the governing documents, in precedence order: `~/autosteer_vision.md` (2026-11-04), `~/Downloads/autosteer_end_state_vision.md` (2026-10-31), `docs-out/autosteer-master-directive-2026-10-29.md`, `docs-out/autosteer-prd-2026-10-21.md` (44 rows PF-PG1..13, PF-PL1..14, PF-HD1..17; families PF-ST, PF-IV, PF-SP also bind), `docs-out/research-2026-11-03-autosteer-architecture.md`, `docs-out/research-2026-11-04-autosteer-contracts-v2.md`, `docs-out/research-2026-11-04-autosteer-pipeline-evidence.md`, the reset directive of 2026-11-04 (session 28d65377). The vision is stable unless the owner authorizes a change in writing.
+
+## Global Constraints
+
+- Sole authorship; no Co-Authored-By; no push without the owner's word; no .md committed (section 13 asks for one explicit exception).
+- No model call inside a hook (D160). Deterministic sources steer; inferred sources propose.
+- No fan-out: work inline; any agent is Sonnet or Haiku, proposed with count, model and cost first.
+- Every Go command through `docs-out/plans/slot/goslot2.sh`; `GOTOOLCHAIN=go1.27.3` matches CI.
+- Tripwires on every change: LAW10 (100 lines per function, 500 per file; fix by extraction), RES-2 (no package-level regexp), D161 (every PR carries its truth-table rows), disclosure paragraphs name every read, `test/perf/budgets.json` rows for hook-path changes, sweep anchors.
+- Hook budgets (PRD 6.8; hooks.json): rashomon hooks 5 s (Stop and prompt 10 s) timeouts; per tool call at most 379 MiB.ms, 32 MiB summed peak, 6 process creations; engine read at prompt p95 <= 300 ms, PreToolUse <= 150 ms on a 50K-record graph (contracts-v2 K7).
+- Briefing text: ValidateBriefing (1,600 bytes, five lines, ASCII, no double quote, banned words, clause <= 160 bytes).
+- Progress is reported as capability, code path, real agent interaction, independently verified outcome, baseline comparison, limitations, unfinished requirements. Never as commit counts, lines, tests added or tickets.
+
+---
+
+## Part A. Executive summary
+
+AutoSteer's intelligence (the graph engine) exists only on an unmerged branch and has never indexed a Go repository, never run across a compaction, and never checked a plan or an edit against a constraint. Rashomon's recording, verification and delivery runtime is on main and live. The product is the join of the two, and the join is what has not been built. The recommended architecture keeps every one-way door already ruled (unit identity as a language-free path, symbol ids without positions, triple logs with tier and provenance, no model in hooks, content-free judgment rows) and adds the five missing mechanisms, in dependency order: (1) a Go producer into the engine's graph through pgraph's existing sidecars, (2) a knowledge importer from the repository's own written history, (3) Check Conflicts wired to the diff at post-act and Stop as obligations, (4) a persisted session frontier re-delivered at every boundary, (5) the label writer run in production so delivered guidance is judged by what the agent did.
+
+Build order: M1 (repository and task intelligence on rashomon itself, Go) -> M2 (architecture-aware planning: Check Conflicts, first-write delivery, reuse guidance) -> M3 (process intelligence: unit-scoped obligations from platform facts, verification against independent criteria) -> M4 (session graph persisted across compaction, resume, subagents) -> M5 (learning: labels in production, lifecycle, invalidation) -> M6 (TypeScript and Python PROVEN producers, cross-repository contracts, scale) -> M7 (adapters, install, reporting, operational readiness). M4 and M5 can start their foundations in parallel with M2 and M3 because they share no code paths, but each milestone's exit is a live demonstration, never a package.
+
+The first integrated slice is a real PRD row (PF-PL7 blast radius) implemented by a Sonnet agent in a scratch worktree of rashomon, baseline against steered, judged by pre-registered scripts the agent never sees.
+
+---
+
+## 1. Current implementation baseline and repository status (confirmed facts, read 2026-11-04 21:30 to 22:40 PST)
+
+### 1.1 Repository, branches, worktrees
+
+| Fact | Value |
+|---|---|
+| Main checkout | `/Users/karthik/src/rashomon-wt/main` (detached HEAD at `4ab00fc0`, behind `origin/main`; do not read "main" from it), `origin/main` = `69fac961` (merge of #280); the merged branch worktree `contracts-v2` at `70597cf0` holds main's tree plus the graph work and is the tree every path in this plan was verified against |
+| Graph branch | `autosteer/contracts-v2`, worktree `/Users/karthik/src/rashomon-wt/contracts-v2`; `origin/autosteer/contracts-v2` = `f4804fe9` (pushed 11-04); local HEAD now `70597cf0` (see 1.5) |
+| Branch adds over main | 82 files, +13,497 / -40 lines: `internal/graph/{graph.go,ids.go,overlay.go,persist.go}`, `internal/graph/engine` (15 files), `internal/graph/session` (8), `internal/graph/graphtest` (12), `internal/graph/index`, `internal/graph/lang/{lang.go,pylite}`, `internal/steer/slots_graph.go`, `internal/steer/render/*` graph slots, `internal/learn/{given.go,labels.go,ledger.go}` additions, `cmd/rashomon/{graph.go,preflight.go graphBrief,learn_label.go}` |
+| Worktrees | 221 registered. Dirty ones relevant to AutoSteer: `autosteer-55` (feat/autosteer-55, 3 modified + 10 untracked: `cmd/rashomon/receipt.go`, `internal/receipt/`), `brief1` (feat/brief1, 12 modified + 5 untracked), `brief1-mac` (detached, 81 modified + 23 untracked). None was touched; their contents are reported, not judged. |
+| Remote branches with graph or AutoSteer work | `autosteer/contracts-v2`, `feat/autosteer-foundation`, `feat/autosteer-lane1b|2|2b|3`, `feat/autosteer-merge4`, `lab/autosteer-phase2`, `lane-p/pgraph-v0`, `lane-p/pgraph-cha-identity`, `contracts`, `ci/brief1`, four `claude/autosteer-*`, `codex/autosteer-2-2p` |
+| Open PRs | #281 `fix/wrapper-red-step1` (draft, all checks green, held for the owner's word); #30 `windows-native-support` (old, external) |
+| Merged since 10-21 | 191 PRs: 126 under the owner's account (includes carriers for Luis), 64 by `lutic1`, 1 dependabot |
+| Usage meter | `~/.claude/rate-limits.json` holds no rate_limits block at 22:33 PST; the meter could not be read. The last known reading earlier today was 3 percent weekly. |
+
+### 1.2 What is implemented, by subsystem (status vocabulary: `live` = exercised in a real Claude Code session with evidence; `built` = merged on main with tests, not exercised live for this purpose; `experimental` = branch only; `none`)
+
+| Subsystem | Status | Where | What exists | What is missing for the product |
+|---|---|---|---|---|
+| Record (evidence store) | live | `internal/store` (8,668 lines), `internal/hook` (3,441), `internal/hookio`, `docs/store-schema.json` | Declarations, executions, terminals, coverage, spec events, after-hits, outcome joins; schema v5 with critical bit; caps; consent-gated shape | Nothing for M1; M4 needs boundary events (compact, resume, subagent) which the hook set does not subscribe to today (no PreCompact, SubagentStart/Stop in `internal/install` or `plugin/hooks/hooks.json`) |
+| Process graph (gates, obligations, claims, Stop verdict) | live | `internal/verify` (10,151), `internal/recap` (2,468), `internal/gateinfer`, `internal/spec` (2,261), `internal/shape` (8,201) | Gate families, masked output, evaluator, claims comparator, obligation ledger, tree digest, done flag, value line, integrity markers, spec rules (forbid_code, forbid_command, protect_path, require_evidence), gate inference from CI and manifests | Unit scope on obligations (PF-PG13 none); architecture rule kinds over the diff; obligations derived from platform facts (consumers to verify); business-process templates (none) |
+| Platform graph, Go | built | `pgraph/` (separate module, go 1.26.0; `pgraph sync`, `-hook` at SessionStart and Stop with 90 s timeouts), `internal/platform` (1,333: Locate, Callers, Read, Impact, Symbols by name) | PROVEN declares, calls, embeds, implements; ALGORITHMIC may-call (CHA); stable identity with fingerprints; digests and walk-file vouching; no egress | pgraph's facts never enter the engine's graph; no symbol place (file, line, doc) sidecar; blast radius as two numbers (PF-PL7 none); unknown-never-zero (PF-PL11 none); untracked config warning (PF-PL12 none) |
+| Platform graph, Python | experimental | `internal/graph/lang/pylite` (673 lines) | Files, symbols, imports, calls, references, SQL table reads and writes | Not on main; Python only; no PROVEN tier |
+| Graph store and engine | experimental | `internal/graph` (764), `internal/graph/engine` (1,239), `internal/graph/index` (156) | Node, Edge with Tier, Conf, Rev (commit or overlay), Prov, Certain; 14 predicates; Scope (stemmed tokens, name 3 / summary 1 / path 1, idf), Traverse (BFS depth 2), Rank (tier weight, distance, knowledge and reach bonuses), Select (five lines, hub drop), brief through `slot.GraphLine` and ValidateBriefing, delivered as a task-preflight finding at UserPromptSubmit by `cmd/rashomon/preflight.go graphBrief`; overlays per edit (`ApplyOverlay`); `conflicts.go` computes arity conflicts (tests only); lessons-only scorer | Check Conflicts unwired; one language; index wired to pylite only (`index.Build`); no first-write delivery; no Go; `FieldsOf` reads no doc attribute |
+| Knowledge DAG | experimental | `index.Config.Knowledge` (hand-written `.rashomon/graph.json`), `internal/learn` (1,218: lessons, tally, Wilson, ledger, labels, Judge) | Lesson and decision nodes with applies_to edges, clause, source; learn ledger with labels and tiers | No importer (ADR, incidents, decisions, failure ledger); no supersession, exception, invalidation edges; Judge confirms by written path only and misreads decision lines (evidence 14.3); `AppendLabel` has no runtime caller (only the `learn label` CLI verb on the branch) |
+| Session graph | experimental | `internal/graph/session` (734: Session, Know, Req, Gate, Touch, Decision, Ret, Verdict, BoundaryBrief) | Types and a boundary brief by reference; verdicts with Basis edges | No persistence (`New` only), no fold from the record, no boundary subscription, no live run (K1c, K5 not measured) |
+| Task understanding | live | `internal/intent` (1,000: Resolve, Names, Finding) | Prompt read in memory, paths and rules named, gates, unknowns | Ambiguous prompts with no path resolve to nothing; the engine's Scope is the only name-free path and it is experimental |
+| Delivery | live | `internal/steer` (3,472), `render`, `slot`, `pattern`; `plugin/` (hooks.json, skills: forget, report, status, stop, watch) | Router, levels, HMAC steer log, budget, mirror, patterns, task-preflight; plugin ships with releases (disabled by default) | Graph verbs not in any release; `/autosteer:why` none; report has no knowledge section (REPORT1b) |
+| Measurement and harness | built | `test/acceptance` (200 entries), `test/perf` (budgets.json, 21 entries), `test/prd/truth_table.json` (44 rows, machine-checked), `test/mutation`, `test/live`; `/tmp/rk-cv2-live/{run6.sh,g1wrap6.sh,hook.sh,planned.py}` (outside the repo) | Live harness drives `claude -p` Sonnet sessions with the full hook set under a config dir; judged by scripts | The harness is in /tmp (must move into `test/live` or `eval/`); no hidden-test suite; no blinded precision reader; no compaction run |
+
+Measured evidence that exists (pipeline-evidence section 14, all n <= 5, no lift claimed): cross-repo fixture steered 5/5 edited the unnamed consumer vs baseline 0/5; pure-graph sibling-repo 4/5 vs 0/5; single-repo conformance no lift; loop closed live once (G1-loop-r4); K7 prompt path p95 224 ms at 18,450 nodes; steered runs cost more per run (turns into the sibling repo), not the brief.
+
+### 1.3 The truth table today (test/prd/truth_table.json, 44 rows)
+
+built 9 (PG4, PG6, PL1, PL2, PL3, PL4, PL5, PL9, PL10); partial 22; none 13 (PG13, PL6, PL7, PL11, PL12, PL14, HD3, HD4, HD8, HD13, HD14, HD15, HD17). Three rows read stale against main (PL7 reads none while `internal/platform/callers.go` holds a package-level callers read; PL11 partly honored by `PlatformRead` unknown lines). Section 2 maps every row.
+
+### 1.4 The fourteen days in numbers (established 11-04 from transcript statistics, `/tmp/rk-14d/stats.txt`)
+
+540 transcripts since 10-21; 389 compactions; 439 failure-ledger rows by sessions with 15 caught by tooling; the engine's 1,859 non-test lines were written in one day (11-04) on a branch; zero `internal/graph` files on main; five deadline resets by the owner (10-24, 10-26, 10-28, 10-29, 10-31). The diagnosis delivered 11-04 17:14 stands: the work optimized for merged PRs and component completion, not for the loop.
+
+### 1.5 Work in progress at the moment of the planning directive (preserved, reported, not judged)
+
+- The merge of `origin/main` (69fac961) into `autosteer/contracts-v2` was committed locally as `70597cf0` at 21:5x PST, before the directive arrived. Three conflicts resolved (`cmd/rashomon/preflight.go` guard keeps `!done` from main and `!graphed` from the branch; the two mutant anchors updated to match). Gate: `go build ./...`, `go vet ./...`, `pgraph` build, all exit 0 through the slot. Not pushed. Reversible by `git reset --hard f4804fe9` on the branch; recommendation in section 13 (keep).
+- `docs-out/plans/AUTOSTEER-EXECUTION-RECORD.md` written 22:0x PST (outside git) as the first cut of the execution record. This blueprint supersedes it; the record becomes the per-session state file described in section 10.4.
+- No production code was modified after the merge commit. The Go resolver, the symbols sidecar and the knowledge importer were designed (section 7) and not written.
+- Debt not on the critical path: PR #281 (green, held); three surviving mutants in its files (MA-1 one, MO-1 two) needing side-effect rows; dirty worktrees `autosteer-55`, `brief1`, `brief1-mac` with uncommitted receipt, intake and hostguard work from 10-23 to 10-29.
+
+### 1.6 Facts that were not available (named, not invented)
+
+- The usage meter (rate_limits block empty at read time).
+- Whether `go/doc.Package.Synopsis` on a zero `Package` behaves as the deprecated `doc.Synopsis` (to verify when the symbols sidecar is written).
+- Luis's current in-flight branches and their contents (not fetched; `LUIS-SLATE-2026-11-03.txt` names the plan).
+- Licensing of external candidates (section 9) is stated from memory and marked "verify at adoption".
+- Whether Claude Code 2.1.280's `SessionStart` with `source=compact` carries enough of the pre-compaction state for a fallback-free frontier re-delivery (INTENT-GRAPH 11-02 measured with 2.1.280 and a 2.1.316 probe; the fallback through the first UserPromptSubmit is ruled).
+
+---
+
+## 2. Requirements-to-code traceability matrix
+
+Status column: `live`, `built`, `experimental`, `none` as defined in 1.2; `stale` means the truth table disagrees with main. Work-item ids (W-M1.1 etc.) refer to section 6. Acceptance ids (AC-...) refer to section 8. Evidence to mark complete is always: the code path, a passing behavioral test by name, and a live session record (steer log seq, record seq) where the row has runtime behavior.
+
+### 2.1 The nine capabilities of the vision (reset directive section 2) and the loop
+
+| Cap | Behavior AutoSteer must demonstrate | Status | Code involved | Gap | Work items | Acceptance |
+|---|---|---|---|---|---|---|
+| C1 Understand an ambiguous objective | A prompt naming no file resolves to units, symbols and obligations | experimental | `engine/scope.go` (Scope, FieldsOf, Tokens), `intent.Resolve` | FieldsOf reads sig/value/text/cols only; no doc; Go absent | W-M1.3, W-M1.5 | AC-M1.1 |
+| C2 Identify relevant architecture unnamed by the user | The brief names the owning unit and its neighbors before the first edit | experimental | `engine/traverse.go`, `rank.go`, `select.go` | Python fixture only | W-M1.1..M1.6 | AC-M1.1, AC-M1.2 |
+| C3 Discover existing abstractions and non-local dependencies across files, services, repos | Reuse target and consumers named; cross-repo through contract ids (`ContractID`, `ServiceMap`, `ResolveConsumers`) | experimental (cross-repo measured 5/5 at n=5 on a fixture) | `graph/ids.go`, `engine/rank.go ReachBonus` | Go, TypeScript absent; consumers in other repos need both repos indexed | W-M1.*, W-M2.3, W-M6.* | AC-M1.2, AC-M6.3 |
+| C4 Applicable decisions, conventions, workflows, constraints | Decision and convention lines scoped to the touched unit, with source | experimental (hand-written knowledge) | `index.knowledge`, `engine/facts.go knowledgeFact`, `spec` rules | No importer; no scope beyond applies_to; no supersession | W-M1.4, W-M2.1, W-M5.2 | AC-M1.3, AC-M2.2 |
+| C5 Plans consistent with that knowledge | A plan that crosses a boundary or ignores a decision gets a plan-time line | none | `engine/conflicts.go` (arity only, tests only) | Check Conflicts unwired; no plan reader | W-M2.1, W-M2.2 | AC-M2.1 |
+| C6 Guidance while implementing | First write in a unit delivers that unit's rules, decisions, importers, lessons | none | `cmd/rashomon/post*.go`, `steer.Route` | No first-write trigger; PreToolUse has no context field (hook channel fact) | W-M2.3 | AC-M2.3 |
+| C7 Preserve goals, decisions, progress across compaction and handoffs | The frontier (intents, requirements, decisions, touched, obligations, delivered) survives compact, resume, clear, subagent | experimental (types only) | `graph/session/*` | No persistence, no fold, no boundary subscription | W-M4.1..M4.5 | AC-M4.1..4 |
+| C8 Independent verification against objective and architecture | Stop verdict names unmet obligations, failed hidden criteria, architecture conflicts; never the agent's claim | live for gates; none for architecture and objective | `verify/*`, `recap/*`, `engine/conflicts.go` | Architecture rules over the diff; requirement predicates at Stop | W-M3.1..M3.4 | AC-M3.1..3 |
+| C9 Learn from validated outcomes | Delivered lines labeled by compliance predicates; lessons promoted or retired by evidence; nothing promoted unsupported | built (ledger), none (runtime) | `learn/ledger.go AppendLabel` (CLI only), `learn/given.go Judge` | Label writer not in production; Judge too weak; no lifecycle edges | W-M5.1..M5.5 | AC-M5.1..4 |
+| G/A/D | Every record says which of G, A, D it is | partly ruled (contracts-v2 section 4) | `session/verdict.go Delivered, Followed, Outcome`, steer log HMAC | Not enforced in reports; labels conflate | W-M4.4, W-M5.1, W-M7.3 | AC-X.1 |
+
+### 2.2 The twelve functional scenarios (vision section 6)
+
+| Scenario | Must understand | Evidence sources | Graph classes | Status | Missing | Milestone |
+|---|---|---|---|---|---|---|
+| S1 Unknown architectural dependency | touched unit, its importers and consumers | structure (calls, imports, contracts) | structure | experimental (Python fixture 5/5 at n=5) | Go, scale, precision measured | M1 |
+| S2 Existing functionality | a symbol whose name and doc match the task exists elsewhere | structure (symbol doc, name), judgment (decision "reuse X") | structure, judgment | none (no doc field, no reuse line) | reuse line kind; duplicate detection | M1, M2 |
+| S3 Cross-repository change | consumers in another repo through a contract id | structure with ServiceMap | structure | experimental (fixture) | second language PROVEN; repo discovery; refresh | M6 |
+| S4 Architectural convention conflict | the diff crosses a declared boundary or contradicts a decision in scope | judgment rules, structure edges, evidence diff | all three | none | rule kinds, diff reader, plan reader | M2, M3 |
+| S5 Business process impact | a change to a unit touches a flow (sync call, event, table, job) | structure (exposes, consumes, reads, writes), process templates | structure, process | none (table edges exist in pylite only) | process templates (declared), flow traversal | M3 |
+| S6 Long-running session | requirements and decisions survive compactions | evidence (record), session fold | session | none | W-M4 | M4 |
+| S7 Multiple agents | a subagent or a peer continues with the frontier | evidence (agent id), session | session | none | subagent boundary events | M4 |
+| S8 Historical engineering knowledge | an incident or rejected approach influences a plan | judgment (lesson, decision, supersedes) | judgment | experimental (hand-written lesson 5/5 vs 0/5 at n=5) | importer, lifecycle | M1 (importer), M5 |
+| S9 Evolving repository | reasoning over uncommitted edits | overlays (rev commit+ovN) | structure | experimental (TestOverlay 6/6; live not measured) | Go overlay; K6 live | M2 |
+| S10 Incomplete or conflicting knowledge | uncertain, stale, contradicted facts are said as such | tiers, Certain, freshness keys, supersedes | all | partly built (tiers, Certain, vouch refusal) | contradiction edges; stale detection in briefs | M5, M6 |
+| S11 Enterprise-scale system | partial index, many languages, monorepo | unit-level ALGORITHMIC producers, incremental sync | structure | none | in-binary import parsers, incremental index, size budgets | M6 |
+| S12 Cost and efficiency | when context reduces exploration and when it rightly adds work | harness measures (turns, tool calls, cost, correctness) | measurement | built (instrument), no claim | cost per correct outcome row | every milestone's AC |
+
+### 2.3 The 44 PRD rows (test/prd/truth_table.json), each with the behavior, status, code, gap, work and acceptance
+
+Process graph PF-PG:
+
+| Row | Behavior | Status | Code | Gap (from the truth table, verified) | Work | Acceptance |
+|---|---|---|---|---|---|---|
+| PG1 Gate families | every runner kind classified | partial | `shape/runner.go` | wrapper-hidden lint, typecheck, scan | W-M3.5 | AC-M3.4 |
+| PG2 Masked-output classifier | a piped or wrapped red run is read red | partial | `shape/masked.go` | pass read from the last summary line under pipelines; PR #281 covers wrappers | W-DEBT.1 | AC-M3.4 |
+| PG3 Gate evaluator | gate state per family from the record | partial | `verify/evaluate.go` | run scope on the record | W-M3.1 | AC-M3.1 |
+| PG4 Claim comparator | a claim without a run is contradicted | built | `verify/claims.go` | lint, typecheck, scan claims read no_gate_known | W-M3.5 | AC-M3.4 |
+| PG5 Obligation ledger | obligations with state and seqs | partial | `verify/obligations.go` | ledger verb replays from the record; unit scope | W-M3.1 | AC-M3.1 |
+| PG6 Tree digest | tree sha at points | built | `hook/treesha.go` | under scope v4 without consent no sha | none (consent design) | n/a |
+| PG7 Watched red then green | a red gate owes a green after the write | partial | `verify/obligations.go` | change scope is the session | W-M3.1 | AC-M3.1 |
+| PG8 Record-green point | the point a checkpoint is green | partial | `verify/evaluate.go` | forbid_code undecided (content not read) | W-M3.2 | AC-M3.2 |
+| PG9 Done flag | done with evidence or named as unbacked | partial | `recap/done.go` | W1 precision measurement | W-M3.6 | AC-M3.5 |
+| PG10 Value line | end-of-turn line | partial | `recap/value.go` | (none listed) | W-M7.3 | AC-M7.2 |
+| PG11 Contradiction-first report | report leads with contradictions | partial | `report/text.go` | checkpoint claim verdicts; live quote match | W-M7.3 | AC-M7.2 |
+| PG12 Integrity markers | user-only flags for test removal, skips, assertion edits | partial | `verify/integrity.go` | edit-marks writer (1.8p) | W-M3.7 | AC-M3.6 |
+| PG13 Scopes | turn, subtask, commit, push, PR windows | none | `verify/obligations.go` | all windows and evaluation points | W-M3.1 (unit and turn scope), W-M3.8 (commit, push, PR) | AC-M3.1 |
+
+Platform graph PF-PL:
+
+| Row | Behavior | Status | Code | Gap | Work | Acceptance |
+|---|---|---|---|---|---|---|
+| PL1 Ingest | load a module without egress | built | `pgraph/ingest.go` | rashomon never runs the producer itself | W-M1.1 (index runs sync when absent) | AC-M1.0 |
+| PL2 PROVEN facts | declares, calls, implements | built | `pgraph/extract.go` | no reader beyond family hash | W-M1.2 (engine reads them) | AC-M1.0 |
+| PL3 ALGORITHMIC dispatch | may-call by CHA | built | `pgraph/cha.go` | same | W-M1.2 | AC-M1.0 |
+| PL4 Trust tiers | tier is identity, never upgrades | built | `pgraph/tier.go` | same | W-M1.2 maps tiers | AC-M1.0 |
+| PL5 Fact log | append-only reconciled log | built | `pgraph/log.go` | no compaction | W-M6.4 | AC-M6.4 |
+| PL6 Two-speed invalidation | content-hash gate before re-extraction | none | `pgraph/syncroot.go` | per-package hash gate | W-M6.4 | AC-M6.4 |
+| PL7 Blast radius | fan-in, fan-out, bounded reverse reachability as two numbers | stale (package-level callers exist in `platform/callers.go`; two numbers none) | `platform/callers.go` | reverse reachability; two numbers; symbol level | this is the first slice's task T1 (section 7), done by the agent under steering | AC-M1.1..3 |
+| PL8 Impact and Obligations | strict identifier resolution | partial | `platform/read.go`, `symbols.go` | exact id or qualified name or refusal naming candidates | W-M3.3 | AC-M3.3 |
+| PL9 No egress | loader env forced | built | `pgraph/ingest.go` | CI job under unshare -n | W-DEBT.2 | n/a |
+| PL10 Stable identity | fingerprints link renames | built | `pgraph/identity.go`, `link.go` | a caller that links across commits | W-M6.4 | AC-M6.4 |
+| PL11 Unknown never zero | reflection and cgo boundaries attach unknown fan-in | stale (PlatformRead prints unknown lines; detector none) | `platform/read.go` | fan-in (PL7); boundary detector | T1 carries the first; W-M3.3 the detector | AC-M1.3 |
+| PL12 Untracked build config warning | a changed file outside every tracked config warns | none | `pgraph/doc.go` | detector | W-M3.3 | AC-M3.3 |
+| PL13 Accuracy publication | precision and recall of dispatch published | partial | `pgraph/accuracy.go` | eval command | W-M6.5 | AC-M6.5 |
+| PL14 Read-only demo | proposed | none | none | design | W-M7.4 | AC-M7.1 |
+
+History and learning PF-HD:
+
+| Row | Behavior | Status | Code | Gap | Work | Acceptance |
+|---|---|---|---|---|---|---|
+| HD1 History from day one | every delivered line has an outcome | partial | `steer/line.go` | label writer in runtime | W-M5.1 | AC-M5.1 |
+| HD2 Lessons are hypotheses | tally and holdout per lesson | partial | `learn/learn.go` | per-lesson holdout comparison | W-M5.4 | AC-M5.3 |
+| HD3 Episode mining | candidates from recurring failure signatures | none | `learn/learn.go Candidate` | the miner | W-M5.2 | AC-M5.2 |
+| HD4 Typed deltas and refusals | five delta kinds, seven refusals | none | `learn/ledger.go` | the kinds | W-M5.2 | AC-M5.2 |
+| HD5 Fact lifecycle with approval | observation to approval to reuse to retirement | partial | `learn/learn.go` | miner; mismatch seen at the next prompt | W-M5.2, W-M5.3 | AC-M5.2 |
+| HD6 Delivery of learned facts | lessons delivered at the trigger, not only at the prompt | partial | `learn/ledger.go`, preflight | failure-time trigger | W-M2.3, W-M5.3 | AC-M5.3 |
+| HD7 Team packs through git | pinned, expiring packs | partial | `cmd/rashomon/learn.go` | sha256 pins, 90-day expiry, org tier | W-M7.5 | AC-M7.3 |
+| HD8 Human-correction counts | corrections mined and counted | none | none | miner | W-M5.2 | AC-M5.2 |
+| HD9 Instruction-load report | which instruction files loaded | partial | `install/install.go` | capture of what Claude Code loaded | W-M7.3 | AC-M7.2 |
+| HD10 Storage bounds and quarantine | caps enforced | partial | `learn/ledger.go` | 16 MiB and 64 MiB caps | W-M5.5 | AC-M5.4 |
+| HD11 Scope key | normalized origin | partial | `baseline/baseline.go` | origin as key | W-M4.1 (repo node identity) | AC-M4.1 |
+| HD12 Promotion needs a person | tiers personal, repository, organisation; taint | partial | `learn/ledger.go` | tiers and taint | W-M5.3 | AC-M5.2 |
+| HD13 Earned, scoped autonomy | design once ED-9 decided | none | none | owner decision ED-9 | deferred (section 11) | n/a |
+| HD14 Relax only through a holdout | every raise checked against holdout | none | `learn/ledger.go` | holdout record | W-M5.4 | AC-M5.3 |
+| HD15 Slice 0 and E1 | backtest miner | none | `cmd/rashomon/backtest.go` | miner | W-M5.2 | AC-M5.2 |
+| HD16 Learner reads content | miner reads bodies under consent | partial | `learn/ledger.go` | content miner | W-M5.2 | AC-M5.2 |
+| HD17 Seed from existing sessions | seed command over audit's read path | none | `disclose/paragraphs.go` | seed command | W-M5.2 | AC-M5.2 |
+
+### 2.4 PRD families that bind AutoSteer beyond the 44 rows (mapped at family level; their rows stay Luis's vertical ownership unless re-assigned in section 10)
+
+| Family | Rows | Relevance | Status | Work |
+|---|---|---|---|---|
+| PF-ST Steer (router, levels, renderer, mirror, log, budget, timing, attendance, consent clamp, agent may only lower, CLI, continuity briefing, fault silence, patterns ST14..17, degradation) | 18 | the delivery channel every milestone uses | live (router, levels, log, budget, patterns); ST12 continuity briefing partial | W-M2.3 (first-write pattern), W-M4.3 (boundary pattern), W-M7.1 |
+| PF-IV Intervention (off-track signals, fact ceiling, one-way doors list, ask form, deny is owner's, unattended, measured) | 7 | Check Conflicts' delivery level and the never-block rule (R2) | none beyond R2 | W-M2.4 (conflict lines at nudge level), W-M3.8 (one-way door list at commit, push) |
+| PF-SP Spec and rule packs (spec.json, trust, managed, compile-bomb guard, declared facts, init, packs, convention stubs) | 8 | DECLARED tier for rules and decisions | built (spec.json, trust, kinds) | W-M2.1 (boundary and decision rule kinds), W-M5.3 (approval writes DECLARED rows) |
+| PF-TR Trust and control (consent, disclose, status, detach, purge, never-write, selfguard, tamper, release, terminal safety, host stand-down, UX contract, hook cost) | 15 | every new read must appear in disclosure; hook cost rows | live | each work item that adds a read adds its paragraph (tripwire) |
+| PF-MS Measure (detector precision, labels, demotion, holdout assigner, unbacked-done rate, scorecard, lab) | 14 | the measurement discipline M5 and every AC rely on | partial (labels, Wilson, holdout arm exist) | W-M5.4, W-M8 (eval harness in repo) |
+| PF-RC, PF-FD, PF-RG, PF-AU, PF-SH, PF-BR, PF-DL | 61 | rashomon base: record, foundation, receipts, audit, sharing, breadth, delivery | live or Luis's | out of this plan's critical path; PF-BR (Cursor, Codex, SDK) is M7's adapter work; PF-SH is M7.5 |
+
+### 2.5 What this matrix says
+
+Nothing is `live` for the product's intelligence. The runtime (record, verify, steer) is live and reusable as the evidence store, the obligation engine and the delivery channel. The engine and the session graph are experimental and single-language. The gaps cluster into five mechanisms: a second-language producer into the graph (Go via pgraph), a knowledge importer, Check Conflicts wired to the diff, a persisted session frontier, and the label writer in production. Those five, integrated in that order and demonstrated live, are the product.
+
+---
+
+## 3. Target architecture and component interfaces
+
+### 3.1 The reframing (confirmed as the ruling, from the 11-03 architecture note; adopted here)
+
+Three epistemic classes, three physical stores, one logical graph, one identity model:
+
+| Class | Store | Writer | Invalidation | Tiers |
+|---|---|---|---|---|
+| Structure (re-derivable from code) | `.rashomon/graph.jsonl` (engine store, on the branch) fed by producer sidecars (`.pgraph/*` for Go; `tools/index/py_extract.py` for Python today) | extractors, out of band (`rashomon graph index`, `pgraph sync`) and in-process overlays at edits | content hash per file and unit; refuse when unvouched | PROVEN, ALGORITHMIC |
+| Evidence (observed, never re-derivable) | `records.ndjson`, `steer.ndjson`, fold and checkpoint under the install store | hooks, append-only | never; retention and purge | OBSERVED |
+| Judgment (asserted) | `.rashomon/knowledge/*.json` (imported decisions, lessons, incidents, conventions), `spec.json` (rules), `learn/` ledger (lessons, labels, tallies) | humans, importer, approval, earned tallies, offline proposers | scope gone, spec digest changed, tally refutes, superseded | DECLARED, INFERRED, EARNED |
+| Session (judgment with session retention) | `sessions/<id>/frontier.json` under the install store, plus the record | hook fold at every event; rebuilt from the record at any boundary | session end plus retention window | OBSERVED (acts), DECLARED (intents from prompts, content-free) |
+
+The "four graphs" of the vision are responsibilities over these stores; the session graph is a fourth node family (intent) with its own survival rules, not a fourth database.
+
+### 3.2 Identity contracts (one-way doors; the grammar in `internal/graph/ids.go` is kept)
+
+- `unit:<lang>:<repo-relative dir>` (Go: the package directory; Python: the package directory; TypeScript: nearest package.json directory with the sub-directory kept). Proposed change: `internal/platform` continues to speak Go import paths internally; the Go resolver maps import path to directory using the digests sidecar (`pkg -> files`), so no consumer of `platform` changes in M1. The import-path identity in `platform` is retired in M6 (W-M6.4).
+- `file:<repo-relative path>`; `sym:<lang>:<unit>:<symkind>:<qualified>` with no positions; `comp:<name>`; `contract:<ckind>:<scope>:<canonical>` (http, rpc, table); `tbl:<name>`; `repo:<normalized origin>` (new, W-M4.1); knowledge ids are the source's own ids (`B227`, `D161`, `ADR-0007`, `INC-212`).
+- Revisions: `Rev{commit}` or `Rev{commit, seq}` for overlays. Every node and edge carries Tier, Conf, Status, Rev, Prov{Extractor, Version, Evidence}; edges carry Certain.
+- Content rule: judgment and session rows hold pointers and keyed digests (HMAC-SHA256 under the install key, `intent/digest.go PathDigest, SaidDigest`), never prompt text; structure rows hold code identifiers and doc sentences (code the user owns, local only); evidence holds shape and digests (INV-1).
+
+### 3.3 Subsystems: responsibilities, inputs and outputs, interfaces, reuse, proposed changes
+
+#### 3.3.1 Producers (language extractors)
+
+- Responsibility: emit structure records for one language without the core linking a toolchain.
+- Interface (exists, `internal/graph/lang/lang.go`): `Resolver{Lang, Claims, Unit, Extract(root, files, rev) ([]graph.Record, error), Overlay(rel, content, base, seq) ([]graph.Record, error)}` registered in `lang.Registry`. Extract may start a process; Overlay may not.
+- Reuse: pgraph as the Go PROVEN producer (sync, identity, CHA, digests, walk vouch); pylite as Python ALGORITHMIC.
+- Proposed change (M1): pgraph writes a third sidecar `.pgraph/pgraph.symbols` (header `pgraph-symbols v0`, second line `digests\t<sha256 of the digests bytes>`, rows `id \t package \t file \t line \t doc-first-sentence`); `internal/platform.ReadSnapshot(ctx, root) (Snapshot, error)` reads log, digests and symbols under the walk-file vouch chain; `internal/graph/lang/gopg` maps a Snapshot to records (file nodes with digest and module attrs; sym nodes with symkind, line, doc; Declares, Calls PROVEN, MayCall ALGORITHMIC, ResolvesTo for implements, References for embeds). Go Overlay (M2): go/parser declarations only, conf 0.8.
+- Failure modes: no sync (error names `pgraph sync`); unvouched sidecar (refused, never read half); file outside root (unplaced symbol, kept without path).
+- Performance: index is out of band; the sidecar read is bounded by `MaxLogBytes`.
+
+#### 3.3.2 Structure store and index
+
+- Responsibility: hold nodes and edges at revisions; answer Out, In, Node at a rev; persist and load; apply overlays.
+- Interface (exists): `graph.Store{AssertNode, AssertEdge, RetractNode, RetractEdge, Node, Out, In, Edge, Nodes, Edges, ApplyOverlay, Overlays}`, `graph.SaveFile/LoadFile/FindIndex`, `index.ReadConfig/Build`.
+- Proposed change (M1): `index.Unit` gains `lang`; `index.Build` runs every registered resolver over the files it claims; `.rashomon/graph.json` lists units per language; `index` also reads `.rashomon/knowledge/*.json`.
+- Update events: `rashomon graph index` on demand and from `pgraph -hook` (SessionStart, Stop); overlays at PreToolUse (declared edit) and PostToolUse (landed). M6 adds incremental re-index by changed units.
+- Performance: load p95 159 ms at 18,450 nodes (K7); M6 adds a binary cache if the 50K-record read exceeds 300 ms.
+
+#### 3.3.3 Judgment store and the knowledge importer
+
+- Responsibility: decisions, conventions, lessons, incidents, exceptions with scope, provenance, lifecycle.
+- Data model (extends `index.Knowledge`): `{id, kind (decision|lesson|incident|convention|exception), title, clause, text, source {file, row, digest}, applies_to [ids], scope {paths, languages}, status (candidate|approved|retired|superseded), supersedes [ids], contradicts [ids], evidence [refs], tier (DECLARED|INFERRED|EARNED), tally {k, n}}`.
+- Interface (new, M1): `rashomon graph knowledge import FILE...` (ledger rows `B\d+`, decision lines `D\d+`, ADR directories, incident files) writing `.rashomon/knowledge/<source>.json`; applies_to resolved against the index (file and symbol nodes) and the tree; clauses sanitized to pass `slot.Approved.Validate`, else the row keeps title only and the importer reports it.
+- Proposed change (M5): lifecycle verbs (`learn approve|retire|supersede`), invalidation by scope existence and spec digest, contradiction edges, EARNED from tallies through the label writer.
+- Trust: imported rows are INFERRED until approved (a person's `approve` or a spec digest); DECLARED when the source is spec.json or an approved ADR; never steer above nudge.
+
+#### 3.3.4 Engine (Scope, Traverse, Rank, Check Conflicts, Select)
+
+- Interface (exists): `engine.Build(store, rev, prompt, Options) Brief`; `Scope`, `Traverse(g, seeds, depth, rev)`, `Rank`, `Select`, `Brief.Record/Text/Explain`; `ArityConflicts`, `CallerConflicts`.
+- Proposed changes: M1 `FieldsOf` reads `doc`; M2 `Conflicts(g, rev, diff Diff, rules []Rule) []Conflict` with kinds boundary_cross, decision_contradicted, signature_mismatch, protected_path, duplicate_abstraction; `Deltas(prev, cur Brief) []Line` so repeated moments deliver only what is new; M2 `UnitBrief(g, rev, unit, touched)` for the first-write moment; M3 `Obligations(g, rev, touched) []Obligation` (consumers to verify, tests covering, gates configured).
+- Neutrality: `TestEngine_NoLanguageLiterals` (contracts-v2 section 7) stays; the engine never names a language or an agent.
+- Performance: K7 rows per moment; PreToolUse path <= 150 ms.
+
+#### 3.3.5 Delivery (runtime integration)
+
+- Interface (exists): `steer.Route(ctx, findings) Output`; patterns (`pattern.TaskPreflight`); slots with ValidateBriefing; the steer log with HMAC (A is recorded here); the plugin's hooks.json.
+- Moments (ruled by the 11-03 note, adopted): prompt (touched set, obligations, brief delta); first write in a unit (unit brief: rules, decisions, owners, importers, lessons); boundary (frontier re-delivery at SessionStart compact or resume, fallback the first UserPromptSubmit); Stop (obligation state and verdict). PreToolUse carries no context field in Claude Code: the pre-act lever is the previous post-act note.
+- Budget: three notes per prompt (exists), dedupe by finding key, hold the rest for Stop.
+- Agent independence: a canonical event schema and capability table (M7.1) with `hookio` as the Claude Code adapter; core code reading a Claude Code key is a defect (lint test).
+
+#### 3.3.6 Process graph and verification
+
+- Interface (exists): `verify.Evaluate(run, idx, spec, point, now) Snapshot`, `Claims`, obligations ledger, `recap.DoneFlag`, `gateinfer.Infer`, spec rules.
+- Proposed changes (M3): unit scope on obligations (PG13 first window); obligation producers from the structure store (consumers to verify after a contract or signature change; tests covering a unit; generated artifacts after schema change); architecture rule evaluation over the diff at post-act and Stop as `spec_rule` obligations; requirement predicates (session Req.Pred) evaluated at Stop; process templates as declared flows (M3.9, DECLARED) for S5.
+- Independence: verification reads the record and the tree, never the agent's text, except to contradict claims.
+
+#### 3.3.7 Session graph
+
+- Data model (exists in types): `Session{ID, Store, Commit, Goal *Ret, Reqs []*Req{ID, Words, Tier, Conf, Text, Pred}, Decisions []Decision{Words, Names}, Touch, Gate, Know{ID, Fact, Via, AtSeq, State}, conflicts}`; `Ret` holds words by reference (transcript digest, offset) with a retention class.
+- Proposed (M4): `session.Fold(record, steerLog, graph) Frontier` (deterministic, incremental equals full, INV-11); `Frontier` derived at every event from the record and the steer log, content-free (ids, digests, seqs, predicates by name), with a cache file only if the fold exceeds the hook budget (Part C5); `session.BoundaryBrief` delivered at compact and resume; subagent start delivers the parent's frontier read-only; clear starts a new session linked by `continues` to the old; `Req` predicates checked at Stop (K1c); mistakes-against-intent counter (INTENT-MISTAKES plan) as the headline metric.
+- Drift prevention (not only loss): intents and requirements carry a `stated_at` seq and a `status` (open, met, dropped, superseded by a later prompt); a later prompt that narrows the goal does not drop earlier requirements without a `dropped` record naming the prompt; at Stop the verdict names open requirements by id. That makes a silent narrowing visible in the record and in the Stop line.
+
+#### 3.3.8 Learning
+
+- Interface (exists): `learn.Ledger{AppendLabel}`, `Judge(given, written)`, `Wilson95`, `Candidate`, holdout arm (`internal/arm`).
+- Proposed (M5): label writer at SessionEnd and at the next prompt (the compliance predicate per pattern: gate notes by a green run after the seq; rule and importer notes by the diff; lesson notes by the predicate the lesson declares); Judge extended to decision lines (a decision honored when its named paths were left alone or its predicate held); candidate miner from failure signatures (three episodes, three sessions, two days); promotion needs a person or an EARNED tally with a holdout; invalidation by scope and digest; the report's knowledge section.
+
+### 3.4 Task lifecycle, end to end (the trace every milestone extends)
+
+1. Session start: `pgraph -hook` syncs; `rashomon probe start` loads the frontier of a resumed session, nothing delivered at startup except after compact or resume (frontier re-delivery).
+2. Prompt: `intent.Resolve` names paths and rules; `engine.Build` scopes the prompt against the index (and the frontier's touched set), traverses, ranks, selects; the task-preflight finding delivers up to five lines: owning unit, reuse target, consumers, decisions, obligations; the steer log records A; the frontier records intents and requirements (content-free).
+3. Plan (when the agent writes a plan message or EnterPlanMode): Check Conflicts over the plan's named units against boundaries and decisions; a plan-time line at nudge level.
+4. Pre-act: overlay from the declared edit (Resolver.Overlay); conflicts computed at the overlay rev; recorded; no context field.
+5. Post-act: the write lands; first write in a unit triggers the unit brief; rule violations over the diff become `spec_rule` obligations; stale gates after writes; masked status; lesson triggers. Three notes per prompt.
+6. Compaction or resume: the frontier is re-delivered by reference; nothing is re-read from the transcript except quoted words at the moment a line needs them.
+7. Stop: gates, claims, obligations (unit-scoped), rule checks, requirement predicates; the verdict to the model as a nudge and to the person as the line; done flag named as backed or unbacked.
+8. Session end: labels by compliance predicates and outcomes; the frontier persisted; candidate lessons proposed; the report (what was supplied, caught, resolved, verified, retained).
+9. Next session: approved and earned lessons deliver at their triggers; superseded or refuted rows do not.
+
+Committed code versus working tree: the index is at a commit rev; every edit lands as an overlay rev (commit+ovN) applied to the file's declarations and outgoing edges; the brief at any moment reads the latest overlay rev; freshness is the file's content digest against the index's; an edit to an unindexed file yields unknown lines, never silence.
+
+Knowledge acquisition, maintenance, retrieval, invalidation: acquired by producers (structure), importer (judgment from written history), hooks (evidence), labels and miners (earned); maintained by re-index on sync and overlays at edits; retrieved by Scope and Traverse with knowledge bonus and applies_to edges; invalidated by content hash (structure), scope existence and spec digest (rules, decisions), tally and supersession (lessons), retention (evidence, session).
+
+### 3.5 Foundational decisions (ruled or recommended; the owner approves the recommended ones in section 13)
+
+| Id | Decision | Status | If wrong |
+|---|---|---|---|
+| AD1 | Three stores by epistemic class, one logical graph, session as a fold | ruled 11-03, adopted | stores drift apart; joins become ad hoc |
+| AD2 | Unit identity = language + repo-relative directory; symbol ids without positions | ruled (one-way door); `platform` still speaks import paths internally, mapped by the Go resolver until M6 | every store naming a unit is wrong forever |
+| AD3 | Producers are separate processes writing files; the core reads sidecars; the engine never names a language | ruled; pgraph precedent | the core links a toolchain; extractors cannot be swapped |
+| AD4 | Five tiers (PROVEN, ALGORITHMIC, INFERRED, DECLARED, OBSERVED) plus EARNED for tallies; a note always says its tier | ruled | honesty about depth is lost |
+| AD5 | No model in the hook path; offline model proposals opt-in at INFERRED, zero tokens by default | ruled (D160) for hooks; the offline proposer needs the owner's word | budgets, determinism and trust break |
+| AD6 | Four delivery moments (prompt, first write in a unit, boundary, Stop); deltas only; three notes per prompt | recommended (11-03 note) | flooding or silence |
+| AD7 | Session frontier persisted content-free and rebuilt from the record at any boundary; fallback delivery through the first prompt after a boundary | ruled 11-02 (INTENT-GRAPH identity ruling), recommended here as M4's contract | compaction losses continue (389 in 14 days) |
+| AD8 | G, A, D as three record kinds (graph row; steer line with HMAC and `opened` evidence; record plus compliance predicate), never one field | ruled (contracts-v2 section 4) | reports conflate exposure with action |
+| AD9 | Canonical event schema and capability table now; adapters in M7; Claude Code the only shipped agent until then | recommended; reconciles the 10-29 "Claude Code only" ruling with the vision | adapters leak agent keys into the core |
+| AD10 | Knowledge lifecycle: observation, candidate (INFERRED), validation, approval (DECLARED or EARNED), reuse, revalidation, retirement; supersedes and contradicts edges | recommended | incorrect knowledge accumulates |
+| AD11 | Check Conflicts = deterministic rule kinds over the diff and the graph, each violation an obligation with unit scope, delivered at nudge level (R2) | recommended | AutoSteer plans instead of constraining; or blocks |
+| AD12 | The Go producer path is pgraph's sidecars read by the core, not a pgraph import into the main module | recommended (keeps go.mod at 1.25, no x/tools in the hook binary) | binary growth and toolchain coupling in the hook path |
+| AD13 | The eval harness lives in the repository (`test/live` or `eval/`), fixtures pinned by sha, acceptance scripts pre-registered per experiment | recommended | evidence stays in /tmp and is lost |
+| AD14 | Global identity `g:<rid>#<local id>`: rid is the normalized origin, else the root-commit form; judgment and session rows key on global ids from M1; units and symbols never join across repositories; contracts join only under a declared shared scope (Part B2) | ruled by the 11-04 review | identical paths in two repositories collide in persistent rows |
+| AD15 | A closed, versioned predicate vocabulary that already includes the process predicates (exposes, consumes, publishes, subscribes, schedules, migrates, reads, writes) and the `flow:` node kind; process intelligence is a path query over ordinary edges and contract nodes, never a new graph model (Part B4) | ruled by the 11-04 review | a fifth store or a schema fork in M3 |
+| AD16 | Semantic reasoning is a proposer layer: a model runs only out of hook, opt-in, at index or import time, writing INFERRED rows and a deterministic lexicon that the hook path reads as data; the hook path never calls a model or an embedding (Part B1) | ruled by the 11-04 review; evaluation gated by ruling 9 | latency, privacy and determinism contracts break |
+| AD17 | Intent content under consent levels `intent: off`, `local`, `share`; structural handles (requirement ids and predicates, decisions by named ids, touched units, obligations, delivered line ids) are content-free and recoverable from the record without a transcript (Part B3) | ruled by the 11-04 review | recovery depends on a transcript that is purged, moved or cleared |
+| AD18 | Objective nodes with declared scope and predicates; drift signals are deterministic counters over the record, evaluated at prompt and Stop, delivered at nudge, calibrated on recorded sessions independently of compaction (Part B3) | ruled by the 11-04 review | locally reasonable work that misses the objective stays invisible |
+| AD19 | The canonical event type `events.Event` and the finding schema `steer.Finding{Kind, Source, Unit}` exist from M1; every new code path consumes and produces them; legacy paths migrate in M7 (Part B6) | ruled by the 11-04 review | M5 labels and M7 adapters rewrite M1 to M4 code |
+
+Unresolved technical risks are in section 4.
+
+---
+
+## 4. Foundational technical risks and unresolved decisions
+
+### 4.1 Risks (ranked by expected damage = likelihood times cost to reverse)
+
+| Id | Risk | Likelihood | Why it matters | Mitigation in this plan | Trigger to re-rank |
+|---|---|---|---|---|---|
+| R1 | Unit identity split: `internal/platform` speaks Go import paths, the graph speaks `unit:go:<dir>`; two stores naming one unit two ways | certain today | AD2 is a one-way door; every judgment row keyed to the wrong form is wrong forever | the Go resolver (W-M1.3) maps import path to directory from the digests sidecar; no judgment row is keyed to an import path from M1 on; `platform` retires its form in W-M6.4 | any new store keyed on an import path |
+| R2 | Hook budget: the engine load at every prompt on rashomon's own graph (size unmeasured; K7 says 224 ms p95 at 18,450 nodes, budget 300 ms) | medium | a slow prompt hook is felt by the developer at every message; the 5 s timeout drops the brief silently | W-M1.8 measures rashomon's graph size and the K7 rows before the brief is wired; a binary cache (W-M6.6) only if the measured p95 crosses 300 ms | p95 > 300 ms on rashomon |
+| R3 | Scope precision on Go: `engine.Tokens` stems prompt words and matches snake_case names; Go identifiers are CamelCase (`PlatformRead`, `readVouch`) | high | an ambiguous prompt resolves to nothing or to hubs (false positives, readiness B) | W-M1.5 splits CamelCase in Tokens (language-free rule, applies to every producer) and adds the doc attribute; T1's A1 measures discovery directly | A1 < 2 of 3 at n=3 |
+| R4 | Knowledge importer noise: a failure-ledger row names many paths; applies_to fans out; KnowledgeBonus promotes irrelevant lessons into the five lines | high | the five-line budget is the product's attention; wrong lines cost trust faster than silence | W-M1.6 caps applies_to at the paths the row names that exist in the index, scores knowledge only when its applies_to overlaps the touched set, keeps title-only rows out of briefs; A1 scoring counts a wrong knowledge line as a miss | a brief with 2 or more knowledge lines off-task at n=3 |
+| R5 | PreToolUse carries no context field in Claude Code (verified 2.1.280): first-write guidance reaches the agent after the first write lands | certain | C6 is "guidance while implementing", and the first write in a unit is the moment; we can only shape the second write | first-write delivery at PostToolUse (W-M2.3); plan-time check at the ExitPlanMode tool call (W-M2.6) catches the unit before any write; measure the "second write conforms" rate | Claude Code adds a PreToolUse context field |
+| R6 | Compaction is observable only as `SessionStart` with `source=compact`; neither the installer nor the plugin subscribes to it; PreCompact, SubagentStart and SubagentStop are not subscribed | certain | 389 compactions in 14 days with no re-delivery is the single largest measured loss | W-M4.3 subscribes SessionStart matchers compact, resume, clear and the subagent events; fallback re-delivery at the first UserPromptSubmit after a boundary (ruled 11-02) | the harness cannot trigger a compaction (then W-M4.7 forces one by context size) |
+| R7 | Label predicates confirm falsely (`learn.Judge` confirms by written path; a decision line that names a path to leave alone is misread, evidence 14.3) | high | EARNED tiers built on false confirms accumulate wrong knowledge (readiness F) | W-M5.1 per-pattern compliance predicates; W-M5.6 blinded precision sample (PF-MS); no promotion without a holdout (W-M5.4) | precision sample below 0.9 |
+| R8 | Home-turf confound: rashomon's own CLAUDE.md and docs name some conventions, so the baseline agent can read them | medium | a null result on T1 would be misread as "AutoSteer adds nothing" | both arms run the same tree and CLAUDE.md; A1 to A3 score only dependencies absent from CLAUDE.md and the prompt (section 7.3 lists them and the check that they are absent) | a scored dependency is found in CLAUDE.md at pre-registration |
+| R9 | Live-run cost: n=10 per arm per slice, Sonnet, with steered runs costing more turns | medium | the meter is the binding constraint on everything else | n=3 before n=10; per-run cost read from the result json before n=10 is authorized; ablation arm only after signal | n=3 cost above the authorized figure |
+| R10 | The 14-day pattern: component work without a consumer, PR count as progress, deadline resets | certain unless structurally prevented | this is the risk the plan exists for | section 14: milestone exit is a live demonstration; no task without a requirement and an acceptance id; no PR to main between demonstration gates; no date | any task opened that is not in section 6 |
+| R11 | Branch divergence: `autosteer/contracts-v2` was 59 commits behind main before the 70597cf0 merge; Luis's PR train keeps main moving | high | each merge resolves conflicts in the preflight guard and mutant anchors by hand | merge main into the integration branch at every task boundary with the build and vet gate (section 10.3); PR to main at milestone gates | a merge with more than three conflicts |
+| R12 | Agent-key leakage: core packages reading Claude Code field names make the adapter work in M7 a rewrite | medium | agent independence is a product requirement, not a port | W-M7.1's lint test is written in M1 as a tripwire (`TestCore_NoAgentKeys` over `internal/graph`, `internal/verify`, `internal/learn`), failing on `tool_input`, `transcript_path`, `hook_event_name` outside `internal/hookio` and `cmd/` | the test cannot pass on main today (then it starts as a ratchet with a baseline count) |
+| R13 | Harness in /tmp (`/tmp/rk-cv2-live`) is lost at reboot; fixtures and judge scripts are not pinned | certain | evidence that cannot be rerun is not evidence | W-M1.0 moves the harness into `test/live/autosteer/` (scripts, not .md) with fixtures by sha | n/a |
+| R14 | `go/doc` synopsis behaviour and `go/packages` doc availability for the symbols sidecar are unverified on go1.27 | low | wrong doc sentences reduce Scope precision, not correctness | W-M1.1 step 1 writes the test against a fixture with doc comments before the writer | n/a |
+| R15 | Luis's vertical lanes collide with the milestone sequence (the 10-29 split: all 44 rows are Luis's end to end) | medium | two owners on one row produce two implementations | section 10.2 re-sequences his rows into milestone sets; the owner tells him; carriers land his PRs at task boundaries | a Luis PR touching `internal/graph` or `internal/platform` without a section 6 id |
+| R16 | False contract joins across repositories (two unrelated repositories both with a table named `users`) | medium | a wrong cross-repository consumer line is worse than silence | contracts join only under a declared shared scope (AD14); without a declared scope a contract is repository-scoped | a cross-repository line to a repository the workspace does not declare |
+| R17 | Proposer privacy: symbol names, signatures, doc comments and knowledge prose leave the machine when enrichment is enabled | certain when enabled | the trust model is local-only by default | explicit verb, consent screen naming every byte class sent, provider configurable (local allowed), zero tokens by default, never record, transcript or session content, never reachable from a hook (AD16) | any enrichment path reachable from a hook |
+| R18 | Drift detector false positives (a legitimate detour read as drift) | medium | a wrong drift line teaches the developer to ignore the Stop line | nudge only; thresholds pre-registered and calibrated on recorded sessions before any live use (AC-M4.5) | precision below 0.8 on the recorded set |
+
+### 4.2 Unresolved foundational decisions (recommendation first; the owner rules in section 13)
+
+| Id | Question | Recommendation | Why | Alternative rejected |
+|---|---|---|---|---|
+| U1 | Where does the authoritative plan live, given the no-commit-docs rule? | commit `docs/autosteer/PLAN.md` and `docs/autosteer/TRACE.md` to the repository as the single explicit exception, with the record file `docs-out/plans/AUTOSTEER-EXECUTION-RECORD.md` staying outside git for per-session state | the owner asked for a version-controlled plan; the rule exists to keep research and notes out of history; a two-file exception with the owner's written word keeps the rule meaningful | keep the plan in `~/.claude/plans` only (not version-controlled, lost to the repo's readers) |
+| U2 | Keep or undo the local merge 70597cf0 | keep | it is the X4 decision executed (main merged before any PR), gated green, and reverting re-does the same three conflicts later | reset to f4804fe9 |
+| U3 | Baseline arm for T1 | no rashomon hooks at all (the unaided agent), with an ablation arm (rashomon main without graph) only after signal at n=3 | the product question is "with AutoSteer versus without"; the ablation answers "which part" | rashomon-without-graph as the only baseline |
+| U4 | Go facts into the engine: read pgraph's sidecars (AD12) or import pgraph | sidecars | keeps `golang.org/x/tools` out of the hook binary and go.mod at 1.25; pgraph stays a producer like every future language | import pgraph (binary growth, toolchain coupling, breaks AD3) |
+| U5 | Agent independence timing | canonical event schema and the core lint now (M1 tripwire), adapters in M7 | the 10-29 "Claude Code only" ruling was about shipping, not about leaking agent keys into the core | adapters now (no consumer, no evidence) |
+| U6 | Offline model-assisted knowledge proposer | not before M5, opt-in, INFERRED tier, zero tokens by default, never in a hook | D160 forbids models in hooks; the vision's section 8 leaves the indexer open; the importer from written history (W-M1.6) covers the first corpus deterministically | a model summarizer in the importer now |
+| U7 | Luis's lane after this plan | rows re-sequenced into milestone sets (section 10.2); he keeps vertical ownership inside a set; carriers unchanged | one owner per row, one integration owner | pause Luis until M1 |
+| U8 | Unit identity migration in `internal/platform` | M6 (W-M6.4), not M1 | nothing keyed on the import-path form is written to a judgment store from M1 on, so the cost of waiting is zero and M1 stays small | migrate in M1 |
+
+---
+
+## 5. Milestone dependency graph and per-milestone definition
+
+### 5.1 Dependency graph
+
+```
+M1 repository and task intelligence (Go producer, importer, index, brief on rashomon, slice T1)
+ |-> M2 architecture-aware planning and steering (rule kinds, Conflicts, first-write, plan-time, Go overlay, slice T2)
+ |     |-> M3 process intelligence and verification (unit-scoped obligations, structure-derived obligations, requirement predicates, process templates, slice T3)
+ |           |-> M5 validated knowledge and learning (labels in production need M2's line kinds and M3's predicates; miner; lifecycle; slice T5)
+ |-> M4 continuous session graph (fold, frontier, boundary delivery, subagents, drift line; slice T4)  [independent of M2; needs M1's unit ids only]
+ |-> M6 multi-language and multi-repository (TypeScript PROVEN, breadth producer, workspace, incremental index, identity retirement, slice T6)  [independent of M2..M5; needs M1's Resolver path proven]
+M2..M6 -> M7 integration, developer experience, operational readiness (canonical events, adapters, install, report, packs, release)
+```
+
+Parallelism that is safe: M4 and M6 share no files with M2, M3, M5 (session and lang packages versus engine, spec, verify, learn). They may run interleaved with M2 and M3 in the same principal session, never as a second implementer unless the owner opens one. M5 cannot start before M2's line kinds exist (a label needs a line kind and its compliance predicate).
+
+Effort assumptions for every range below: one principal session; Go cycles through the slot at three to eight minutes each; a live slice at n=3 then n=10 per arm is eight to twelve hours including judge scripts and reading; no agents; hours are engineering hours, not calendar. These are traditional estimates with no measured basis; Part C2 re-estimates each milestone on the measured single-session rate and Part C4 replaces hours with milestone cycles as the forecast unit. The task lists, interfaces and gates below are unchanged by that re-estimate.
+
+### 5.2 Milestone definitions
+
+#### M1 Repository and task intelligence
+
+- Objective: on rashomon itself, from a prompt that names no file, the brief at UserPromptSubmit names the unit that owns the task, the abstraction to reuse, the non-local consumers, and the decisions and conventions that apply, through the real hook channel, and the agent's edits reflect them more often than the unaided agent's.
+- Ordered tasks: W-M1.0 harness into the repo; W-M1.1 pgraph symbols sidecar; W-M1.2 `platform.ReadSnapshot`; W-M1.3 `lang/gopg` resolver; W-M1.4 index per-language resolvers and rashomon's `.rashomon/graph.json`; W-M1.5 Tokens CamelCase and `doc` field; W-M1.6 knowledge importer; W-M1.7 agent-key tripwire; W-M1.8 index rashomon and measure K7 rows; W-M1.9 disclosure, truth-table rows, budgets rows, sweep anchors; W-M1.10 slice T1 (section 7); W-M1.11 milestone PR.
+- Files and packages: `pgraph/symbols.go`, `pgraph/syncroot.go`, `pgraph/cmd/pgraph/main.go`; `internal/platform/snapshot.go`; `internal/graph/lang/gopg/`; `internal/graph/index/index.go`; `internal/graph/engine/scope.go`; `internal/graph/knowledge/` (new) and `cmd/rashomon/graph.go`; `internal/disclose/paragraphs.go`; `test/prd/truth_table.json`; `test/perf/budgets.json`; `test/live/autosteer/`.
+- Interfaces produced: `pgraph.Symbol{ID, Pkg, File, Line, Doc}`; `platform.Snapshot{Facts, Symbols, Files map[pkg][]file, Vouched}`; `lang.Resolver` implementation `gopg.Resolver`; `index.Unit.Lang`; `knowledge.Import(index, files) (Report, error)` and `.rashomon/knowledge/<name>.json`.
+- Dependencies: pgraph sync works on rashomon (it does: `pgraph -hook` runs at every SessionStart); the branch binary; the harness.
+- Integration steps: build the branch binary; `pgraph sync` on a scratch worktree of main; `rashomon graph index .`; `rashomon graph knowledge import docs-out/plans/FAILURE-LEDGER.txt docs-out/plans/APPROACH-NOTES.md`; `rashomon graph brief --prompt "<T1 prompt>"` prints the five lines; the live harness delivers them through UserPromptSubmit.
+- Tests and acceptance: AC-M1.0 to AC-M1.4 (section 8).
+- Risks: R1 to R4, R8, R9.
+- Effort: 40 to 60 hours (raised by the 11-04 review: the identity contract, the contract types, the three-arm T1).
+- Demonstration gate: the T1 experiment at n=10 per arm with the pre-registered judge; the brief's lines quoted from the hook log; the baseline and steered rows side by side; the limitations named.
+
+#### M2 Architecture-aware planning and active steering
+
+- Objective: a plan or an edit that crosses a declared boundary, contradicts a decision in scope, re-implements an existing abstraction, or changes a signature with consumers is named at plan time or at the first write in the unit, as a nudge with the rule's source, never a block.
+- Ordered tasks: W-M2.1 rule kinds (`boundary`, `decision`, `reuse`) in `internal/spec` and compilation of approved knowledge rows into rules; W-M2.2 `engine.Conflicts` over a `Diff` (record declarations and overlay records) with kinds boundary_cross, decision_contradicted, signature_mismatch, duplicate_abstraction, protected_path; W-M2.3 first-write moment (`pattern.UnitBrief`, `engine.UnitBrief`, dedupe by unit, three-note budget); W-M2.4 conflict findings as unit-scoped obligations at nudge level; W-M2.5 Go overlay (`gopg.Overlay` via `go/parser`, declarations only, Conf 0.8, Certain false); W-M2.6 plan-time check at the `ExitPlanMode` tool call (adapter-specific hook, core sees a canonical `plan` event); W-M2.7 import-boundary config readers (depguard YAML for Go) as DECLARED rules; W-M2.8 slice T2.
+- Files: `internal/spec/kinds.go`, `internal/spec/compile.go`; `internal/graph/engine/conflicts.go`, `diff.go`, `unitbrief.go`; `internal/steer/pattern/unitbrief.go`; `cmd/rashomon/post.go` (first-write trigger), `cmd/rashomon/plan.go`; `internal/graph/lang/gopg/overlay.go`; `internal/verify/obligations.go` (Unit field).
+- Interfaces: `spec.Rule{Kind: boundary|decision|reuse, From, To, Predicate, AppliesTo}`; `engine.Diff{Touched []unit, Decls []Record, Removed []Record}`; `engine.Conflict{Kind, Unit, RuleID, Subject, Evidence}`; `engine.UnitBrief(g, rev, unit, touched) Brief`; `verify.Obligation.Unit`.
+- Dependencies: M1 (Go records with units; knowledge rows with applies_to).
+- Integration: a conflict at post-act becomes a `spec_rule` obligation row and a nudge; at Stop the verdict names unresolved conflicts by rule id.
+- Acceptance: AC-M2.1 to AC-M2.4.
+- Risks: R5, R4.
+- Effort: 36 to 54 hours.
+- Demonstration gate: T2 at n=10: a task that tempts a boundary cross or a duplicate abstraction in rashomon; steered arm's conflicts named before Stop; baseline arm's violations at Stop; both arms' rubric results (LAW10, RES-2, boundary test).
+
+#### M3 Process intelligence and independent verification
+
+- Objective: obligations are scoped to units and derived from structure (consumers to verify, tests covering, generated artifacts, untracked config), architecture rules are evaluated over the diff, requirement predicates are evaluated at Stop, and the verdict never relies on the agent's claim.
+- Ordered tasks: W-M3.1 unit and turn scope on obligations (PG13 first windows, PG3, PG5, PG7); W-M3.2 forbid_code over content under consent (PG8); W-M3.3 structure-derived obligation producers and detectors (consumers-to-verify after a signature change; tests-covering; PL11 boundary detector for reflect, cgo, go:linkname, plugin; PL12 untracked build config; PL8 strict resolution); W-M3.4 requirement predicates at Stop (`session.Req.Pred`: file_exists, symbol_exists, gate_green, test_named); W-M3.5 wrapper-hidden gate families (PG1, PG4; #281 is step 1); W-M3.6 PG9 done-flag precision measurement; W-M3.7 PG12 edit-marks writer; W-M3.8 commit, push, PR windows and the one-way-door list (PG13, PF-IV); W-M3.9 process templates as knowledge rows of kind `flow` (Part B4: steps as `step` edges to contract and unit nodes, DECLARED; validation states declared-only, inferred-only, confirmed, observed) and the "touches flow" line (S5); W-M3.10 slice T3.
+- Files: `internal/verify/obligations.go`, `evaluate.go`, `producers.go` (new), `rules.go` (new); `internal/platform/boundary.go` (new), `config.go` (new); `internal/graph/session/req.go`; `internal/shape/runner.go`, `masked.go`; `internal/verify/integrity.go`; `internal/graph/knowledge/flow.go` (new; no `internal/process` package, withdrawn in Part C5); `cmd/rashomon/stop.go`.
+- Interfaces: `verify.Producer func(g, rev, touched) []Obligation`; `platform.Boundaries(snapshot, unit) []Boundary`; `knowledge.FlowsTouching(g, rev, touched) []FlowHit{FlowID, Step, State}` over the `step` edges.
+- Dependencies: M2 (Conflicts, Diff, unit scope on obligations).
+- Integration: Stop verdict lines in order: contradictions, unmet obligations by unit, rule conflicts, open requirements, flows touched.
+- Acceptance: AC-M3.1 to AC-M3.6.
+- Risks: R7 (predicates), the content read under consent (PF-TR rows).
+- Effort: 40 to 60 hours.
+- Demonstration gate: T3 at n=10: a signature change in `internal/platform` with consumers in `internal/verify` and `cmd/rashomon`; steered arm's Stop verdict names unverified consumers; the "consumer updated before Stop" rate per arm; the done-flag precision sample.
+
+#### M4 Continuous session graph
+
+- Objective: intents, requirements, decisions, touched units, obligations and delivered lines survive compaction, resume, clear and subagent hand-off, and a silent narrowing of the goal is visible in the record and in the Stop line.
+- Ordered tasks: W-M4.1 repo and session identity (`repo:<origin>`, `continues` edge); W-M4.2 `session.Fold` and the persisted `frontier.json` (incremental equals full); W-M4.3 boundary subscription (SessionStart matchers compact, resume, clear; SubagentStart and SubagentStop; installer and plugin hooks.json) with the first-prompt fallback; W-M4.4 `pattern.Boundary` delivery, content-free, words by reference resolved at delivery; W-M4.5 subagent frontier (parent's frontier read-only; child's touched set folded back); W-M4.6 requirement status (open, met, dropped, superseded) and the drift line at Stop; W-M4.7 slice T4.
+- Files: `internal/graph/session/fold.go`, `frontier.go`, `persist.go`; `internal/install/install.go` (matchers); `plugin/hooks/hooks.json`; `internal/steer/pattern/boundary.go`; `cmd/rashomon/start.go`, `preflight.go`, `stop.go`; `internal/store` (boundary event kinds).
+- Interfaces: `session.Frontier{SessionID, Repo, Commit, Intents []IntentRef, Reqs []ReqState, Decisions, Touched []unit, Obligations []ObligationRef, Delivered []LineRef, LastBoundary seq}`; `session.Fold(run store.Run, lines []steer.Line, g graph.Store) Frontier`; `session.Boundary{Kind: compact|resume|clear|subagent_start|subagent_stop, Seq}`.
+- Dependencies: M1 (unit ids for Touched); the hook-channel facts (verify SubagentStart and SubagentStop payloads at task open).
+- Integration: at a boundary, the brief delivers open requirements by id and the touched set; at Stop the verdict names requirements still open.
+- Acceptance: AC-M4.1 to AC-M4.4.
+- Risks: R6.
+- Effort: 30 to 45 hours.
+- Demonstration gate: T4 at n=10: a two-requirement task run under a forced compaction (context pressure in the harness); the rate at which the second requirement is met after compaction, steered against baseline; the mistakes-against-intent count per arm.
+
+#### M5 Validated knowledge and learning
+
+- Objective: every delivered line is labeled by a compliance predicate and an outcome; lessons are candidates until a person approves or a holdout-backed tally earns them; wrong knowledge is invalidated by scope, digest, tally or supersession; the report shows what was supplied, caught, resolved, verified and retained.
+- Ordered tasks: W-M5.1 label writer in the runtime (SessionEnd and next prompt, per-pattern predicates; HD1); W-M5.2 candidate miner (failure signatures across three episodes, three sessions, two days; HD3), typed deltas and refusals (HD4), human corrections (HD8), seed and backtest over the audit read path (HD15, HD17, HD16); W-M5.3 lifecycle verbs `learn approve|retire|supersede`, tiers personal, repository, organisation, taint, DECLARED rows from approval (HD5, HD12); W-M5.4 per-lesson holdout, Wilson bound, demotion, raise only through a holdout (HD2, HD14); W-M5.5 storage bounds and quarantine (HD10); W-M5.6 Judge for decision lines and the blinded precision sample (PF-MS); W-M5.7 report knowledge section and `/autosteer:why`; W-M5.8 slice T5.
+- Files: `internal/learn/labels.go`, `writer.go` (new), `miner.go` (new), `lifecycle.go` (new), `holdout.go`; `internal/graph/knowledge/lifecycle.go`; `cmd/rashomon/learn.go`, `why.go`; `internal/report/knowledge.go`; `plugin/skills/why`.
+- Interfaces: `learn.Predicate func(line steer.Line, run store.Run, diff engine.Diff) Label`; `learn.Candidate{Signature, Episodes, Sessions, Span}`; `knowledge.Transition(id, from, to, by, evidence)`.
+- Dependencies: M2 (line kinds), M3 (predicates over obligations), M4 (session ids for episodes).
+- Acceptance: AC-M5.1 to AC-M5.4.
+- Risks: R7.
+- Effort: 40 to 60 hours.
+- Demonstration gate: T5: the same task class run in two sessions; the second session's steered arm receives an EARNED lesson from the first session's labels; the repeated-mistake rate per arm at n=10 (the owner's value proposition of 10-26: measurably fewer repeated mistakes).
+
+#### M6 Multi-language and multi-repository robustness
+
+- Objective: a second PROVEN producer (TypeScript), a breadth producer for declarations and imports in languages without a PROVEN indexer, workspace discovery of sibling repositories, incremental indexing, identity retirement in `platform`, and published accuracy.
+- Ordered tasks: W-M6.1 TypeScript PROVEN producer through SCIP (`scip-typescript` out of band, a Go SCIP reader in `internal/graph/lang/scip`); W-M6.2 breadth producer (tree-sitter CLI out of band, declarations and imports, ALGORITHMIC); W-M6.3 workspace file `.rashomon/workspace.json` and ServiceMap refresh for cross-repo contracts; W-M6.4 incremental index by changed unit, PL5 log compaction, PL6 two-speed invalidation, PL10 cross-commit linking, retirement of the import-path identity in `internal/platform`; W-M6.5 PL13 accuracy publication on pinned fixtures; W-M6.6 monorepo units by nearest manifest, partial index, size budgets, binary cache if K7 fails at 50K records; W-M6.7 slice T6.
+- Files: `internal/graph/lang/scip/`, `internal/graph/lang/tsbreadth/` (or a generic `treesit/`), `internal/graph/index/workspace.go`, `incremental.go`; `pgraph/compact.go`, `pgraph/link.go`; `internal/platform/*` (identity); `test/live/autosteer/fixtures/`.
+- Interfaces: unchanged `lang.Resolver`; `index.Workspace{Repos []{Path, Origin, Lang}}`.
+- Dependencies: M1 (Resolver path proven on Go).
+- Acceptance: AC-M6.1 to AC-M6.5.
+- Risks: licensing and indexer availability (section 9), R2 at scale.
+- Effort: 60 to 100 hours.
+- Demonstration gate: T6: a cross-repository task on two real repositories with a contract between them (candidates in section 7.6; chosen with the owner); the consumer-edited rate per arm at n=10; accuracy rows published.
+
+#### M7 Integration, developer experience, operational readiness
+
+- Objective: one install path, graph verbs shipped in the plugin, the nine-line experience of the master directive, canonical events with Claude Code as the first adapter, reports with G, A and D sections, team packs, a release.
+- Ordered tasks: W-M7.1 canonical event schema and capability table, `hookio` as the Claude Code adapter, the core lint from W-M1.7 made strict; W-M7.2 install (`rashomon watch` runs `graph index`; plugin ships graph verbs; P0 nine lines); W-M7.3 `/autosteer:report` with G, A, D, contradiction-first, instruction-load (HD9, PG10, PG11); W-M7.4 PL14 read-only demo; W-M7.5 team packs pinned and expiring (HD7, PF-SH); W-M7.6 budgets rows, release tag, README, troubleshooting, degradation paths; W-M7.7 adapters for a second agent only on a prospect trigger (PF-BR; section 11).
+- Files: `internal/events/` (new), `internal/hookio/`, `internal/install/`, `plugin/`, `internal/report/`, `cmd/rashomon/report.go`, `.goreleaser.yaml`.
+- Acceptance: AC-M7.1 to AC-M7.3 and the readiness definition (section 12).
+- Effort: 40 to 60 hours.
+- Demonstration gate: a fresh machine, nine lines, a real task on rashomon, the report; a second developer (Luis or a club volunteer) repeats it on their repository.
+
+Total: 286 to 439 engineering hours under the stated assumptions. Part C2 puts the code at 28 to 55 hours on the measured rate and Part C9 gives the calendar; the difference between the two totals is the cost of estimating without data, and it is recorded here so the T1 checkpoint can judge both.
+
+---
+
+## 6. Ordered backlog (every task carries requirement ids and an acceptance id; status column starts `open`)
+
+Columns: Id, Deliverable, Files, Requirement ids, Acceptance, Depends on, Effort (h), Risk, Owner. Owner is the principal session unless named. Debt rows are listed last and are not on the critical path.
+
+### 6.1 M1 (step-level detail; these are the next tasks to open on approval)
+
+| Id | Deliverable | Files | Req | AC | Depends | h | Risk |
+|---|---|---|---|---|---|---|---|
+| W-M1.0 | Harness in the repo: `test/live/autosteer/run.sh` (arms, n, result json), `hook.sh`, `wrap.sh`, `judge/common.py`; fixtures by sha; `README` as a `.txt` (no .md) | `test/live/autosteer/*` | readiness C, H | AC-M1.4 | none | 3-5 | low |
+| W-M1.1 | pgraph symbols sidecar | `pgraph/symbols.go`, `pgraph/symbols_test.go`, `pgraph/syncroot.go`, `pgraph/cmd/pgraph/main.go` | PL2, C1, C2 | AC-M1.0 | none | 4-6 | R14 |
+| W-M1.2 | `platform.ReadSnapshot` under the vouch chain | `internal/platform/snapshot.go`, `snapshot_test.go` | PL2, PL4, TR (disclosure) | AC-M1.0 | W-M1.1 | 3-4 | low |
+| W-M1.3 | `lang/gopg` resolver | `internal/graph/lang/gopg/gopg.go`, `gopg_test.go` | C1-C3, S1, S2 | AC-M1.0 | W-M1.2 | 6-8 | R1 |
+| W-M1.4 | index runs every registered resolver; `Unit.Lang`; the store header `{schema, repo, rev, producers}` and the `repo:` node with the rid; `graph.GlobalID` and `graph.SplitGlobal`; rid normalization reusing `internal/baseline`'s origin key (HD11) extended to the Part B2 rule; rashomon's `.rashomon/graph.json` | `internal/graph/index/index.go`, `index_test.go`, `internal/graph/ids.go`, `persist.go`, `internal/baseline/baseline.go`, `cmd/rashomon/graph.go` | C1, AD14, HD11, readiness A | AC-M1.0, AC-X.4 | W-M1.3 | 4-6 | AD14 one-way door |
+| W-M1.5 | Tokens CamelCase split; `FieldsOf` reads `doc` | `internal/graph/engine/scope.go`, `scope_test.go` | C1, S2 | AC-M1.1 | none | 2 | R3 |
+| W-M1.6 | Knowledge importer (ledger rows, decision lines, ADR directory) with sanitized clauses and resolved applies_to written as global ids; the full knowledge row schema v1 of Part B6 (lifecycle fields present and empty) | `internal/graph/knowledge/import.go`, `ledger.go`, `decisions.go`, `schema.go`, `import_test.go`; `cmd/rashomon/graph_knowledge.go`; `internal/graph/index/index.go` (reads the knowledge dir) | C4, S8, HD5 (candidate tier), AD14 | AC-M1.3 | W-M1.4 | 6-8 | R4 |
+| W-M1.7 | Foundational contract types with no behaviour (Part B6): `events.Event` and its kinds; `graph.Predicates` as the closed list with the test that every edge predicate in every store is listed; `Kind`, `Source` and `Unit` on graph findings; `engine.Options.Lexicon` (empty); the agent-key tripwire test (ratchet if it cannot pass on main) | `internal/events/event.go`, `internal/graph/predicates.go`, `internal/steer/finding.go`, `internal/graph/engine/options.go`, `internal/graph/graphtest/agentkeys_test.go` | AD9, AD15, AD16, AD19, readiness I | AC-X.2, AC-X.5 | none | 4-6 | R12 |
+| W-M1.8 | Index rashomon; K7 rows on rashomon's graph (load, Build, prompt path p95); budgets row | `test/perf/budgets.json`, `internal/graph/engine/perf_test.go` | 6.8 budgets, readiness H | AC-M1.2 | W-M1.4 | 2-3 | R2 |
+| W-M1.9 | Disclosure paragraphs for the symbols and knowledge reads; truth-table rows touched by M1 (PL2 "engine reads", PL7 stale note); sweep anchors for changed guards | `internal/disclose/paragraphs.go`, `test/prd/truth_table.json`, `test/mutation/mutants/*` | PF-TR, D161 | AC-X.3 | W-M1.6 | 2 | low |
+| W-M1.10 | Slice T1 (section 7, arms U, R, G): pre-registration commit, n=3 per arm, read, n=10 per arm, the attribution table | `test/live/autosteer/t1/*` | C1-C4, C8, PL7 | AC-M1.4 | W-M1.0..M1.9 | 12-16 | R8, R9 |
+| W-M1.11 | Milestone PR of `autosteer/contracts-v2` to main with the evidence section; owner's word to merge | PR body | D161 | gate | W-M1.10 | 2 | R11 |
+
+Step-level detail for W-M1.1 to W-M1.6 follows the same shape (test first, run through the slot and watch it fail, implement, run, commit on the branch); the first three are written out here because they fix interfaces the rest consume.
+
+**W-M1.1 pgraph symbols sidecar.** Interfaces produced: `type Symbol struct{ ID, Pkg, File string; Line int; Doc string }`; `func Symbols(p *Program) []Symbol` (sorted by ID; File repo-relative; Doc the first sentence of the doc comment, ASCII-folded, at most 160 bytes, empty when none); `func EncodeSymbols(syms []Symbol, digestsSum string) []byte` (header line `pgraph-symbols v0`, second line `digests\t<sha256 hex of pgraph.digests bytes>`, then one tab-separated row per symbol); written by `SyncRoot` next to `pgraph.digests`; the walk file's line set grows by one entry for the symbols file so the vouch chain covers it.
+- [ ] Step 1: in `pgraph/symbols_test.go` write `TestSymbols_PlacesEveryDeclared` (load `pgraph/testdata`, assert every `declares` object in `Extract` has a Symbol with a non-empty File and Line > 0), `TestSymbols_DocFirstSentence` (a fixture function with a two-sentence doc yields the first sentence only), `TestSymbols_EncodeChainsToDigests` (second line equals `digests\t` plus the sha256 of the digests bytes passed in).
+- [ ] Step 2: run through the slot: `docs-out/plans/slot/goslot2.sh 'cd pgraph && GOTOOLCHAIN=go1.27.3 go test ./ -run TestSymbols_ -count=1'`; expect FAIL with undefined `Symbols`.
+- [ ] Step 3: implement `Symbols` over `p.pkgs` using `go/packages` syntax and `TypesInfo.Defs` with the existing namer from `identity.go`; `Doc` from the `ast.FuncDecl.Doc` or `GenDecl.Doc` first sentence (`go/doc.Synopsis` replacement verified at this step, R14); implement `EncodeSymbols`; call both from `SyncRoot` after digests are written; add the symbols path to the walk file writer.
+- [ ] Step 4: rerun Step 2; expect PASS; run `go vet ./...` in `pgraph`.
+- [ ] Step 5: `git add pgraph/symbols.go pgraph/symbols_test.go pgraph/syncroot.go && git commit -m "pgraph: symbols sidecar chained to digests (W-M1.1)"`.
+
+**W-M1.2 `platform.ReadSnapshot`.** Interface: `type Snapshot struct{ Facts []Fact; Symbols []Symbol; Files map[string][]string; Vouched bool }` where `Fact` is the exported form of the existing `fact{subject, predicate, object, tier, config}` and `Files` maps a package path to its repo-relative files from the digests sidecar; `func ReadSnapshot(ctx context.Context, root string) (Snapshot, error)` reads walk, digests, log and symbols; refuses with `ErrUnvouched` when the walk digest or the symbols' chained digest does not match; bounded by `MaxLogBytes`.
+- [ ] Step 1: `internal/platform/snapshot_test.go`: `TestReadSnapshot_Vouched` (a sidecar set written by the real pgraph on `pgraph/testdata` reads with Vouched true and the symbol count equal to the declares count), `TestReadSnapshot_RefusesStaleSymbols` (flip one byte in the symbols file; expect `ErrUnvouched` and an empty Snapshot).
+- [ ] Step 2: run through the slot; expect FAIL on undefined `ReadSnapshot`.
+- [ ] Step 3: implement by composing `readVouch`, `readDigests`, `readLog` (nil hook and keep) and a new `readSymbols`; export `Fact`.
+- [ ] Step 4: PASS; add the disclosure paragraph in `internal/disclose/paragraphs.go` naming the symbols file as a read.
+- [ ] Step 5: commit.
+
+**W-M1.3 `lang/gopg` resolver.** Interface: `type Resolver struct{ Root string }`; `Lang() = "go"`; `Claims(rel) = strings.HasSuffix(rel, ".go")`; `Unit(rel) = "unit:go:" + path.Dir(rel)`; `Extract(root, files, rev)`: calls `platform.ReadSnapshot`, errors with "run pgraph sync" when the sidecars are absent, then maps: each file to a `file:` node with `digest` and `lang` attrs and a `Contains` edge from its unit; each Symbol to `sym:go:<unit>:<symkind>:<qualified>` with attrs `name`, `symkind`, `line`, `doc`, and a `Declares` edge from the file; `calls` to `Calls` (PROVEN, Certain true), `may-call` to `MayCall` (ALGORITHMIC, Certain false), `implements` and `implements-via-pointer` to `ResolvesTo`, `embeds` to `References`; the package-to-directory map from `Snapshot.Files` resolves pgraph's `PKG.Name` ids to units; symbols outside the index root are kept without a file (unplaced). `Overlay` returns `ErrNotSupported` in M1 (W-M2.5 adds it).
+- [ ] Step 1: `gopg_test.go` over `pgraph/testdata` sidecars: `TestGopg_UnitIsDirectory`, `TestGopg_RecordsForFixture` (counts of file, sym nodes and Calls, MayCall edges equal the sidecar's), `TestGopg_TiersPreserved` (no PROVEN edge from a may-call row), `TestGopg_ErrorsWithoutSync`.
+- [ ] Step 2: FAIL; Step 3: implement; register in `lang.Registry` from `index`; Step 4: PASS, `TestEngine_NoLanguageLiterals` still passes (the engine is untouched); Step 5: commit.
+
+**W-M1.4 to W-M1.6** follow the same five steps; their tests by name: `TestBuild_TwoLanguages`, `TestBuild_UnitLangRequired`; `TestTokens_CamelCase` (`PlatformRead` yields `platform`, `read`), `TestScope_DocMatches` (a prompt word in a symbol's doc scores the symbol); `TestImport_LedgerRow` (a nine-field row yields id `B227`, kind lesson, clause within 160 bytes, source file and row), `TestImport_DecisionLine` (`- D161 ...` yields kind decision), `TestImport_ClauseValidates` (every clause passes `slot.Approved.Validate`, else title-only and reported), `TestImport_AppliesToResolved` (paths the row names that exist in the index become applies_to; others are dropped and counted), `TestImport_Idempotent` (a second import changes nothing).
+
+### 6.2 M2 to M7 (task level; step-level detail is written when the milestone opens, after the previous slice's evidence is read, so that measured results shape the detail rather than guesses)
+
+| Id | Deliverable | Files | Req | AC | Depends | h | Risk |
+|---|---|---|---|---|---|---|---|
+| W-M2.1 | Rule kinds boundary, decision, reuse; compile approved knowledge rows to rules | `internal/spec/kinds.go`, `compile.go` | C4, C5, S4, PF-SP | AC-M2.1 | M1 | 4-6 | low |
+| W-M2.2 | `engine.Conflicts` over `Diff`; five conflict kinds | `internal/graph/engine/conflicts.go`, `diff.go` | C5, C8, S4, S9 | AC-M2.1 | W-M2.1 | 8-12 | R4 |
+| W-M2.3 | First-write moment: `engine.UnitBrief`, `pattern.UnitBrief`, dedupe by unit | `engine/unitbrief.go`, `steer/pattern/unitbrief.go`, `cmd/rashomon/post.go` | C6, HD6, PF-ST | AC-M2.3 | W-M2.2 | 5-8 | R5 |
+| W-M2.4 | Conflicts as unit-scoped obligations at nudge level | `internal/verify/obligations.go` | C8, PF-IV (R2) | AC-M2.2 | W-M2.2 | 3-5 | low |
+| W-M2.5 | Go overlay via `go/parser` | `internal/graph/lang/gopg/overlay.go` | S9 | AC-M2.4 | W-M1.3 | 4-6 | low |
+| W-M2.6 | Plan-time check at the ExitPlanMode call (canonical `plan` event) | `cmd/rashomon/plan.go`, `internal/hookio` | C5 | AC-M2.1 | W-M2.2 | 3-5 | adapter-specific |
+| W-M2.7 | depguard config reader as DECLARED boundary rules | `internal/spec/depguard.go` | PF-SP, S4 | AC-M2.1 | W-M2.1 | 2-3 | low |
+| W-M2.8 | Slice T2 | `test/live/autosteer/t2/*` | C5, C6 | AC-M2.x | all M2 | 8-12 | R9 |
+| W-M3.1 | Unit and turn scope on obligations (PG13 first windows; PG3, PG5, PG7) | `internal/verify/obligations.go`, `evaluate.go` | PG3, PG5, PG7, PG13 | AC-M3.1 | W-M2.4 | 6-8 | low |
+| W-M3.2 | forbid_code over content under consent | `internal/verify/evaluate.go` | PG8 | AC-M3.2 | W-M3.1 | 3-4 | PF-TR |
+| W-M3.3 | Structure-derived producers and detectors (consumers, tests-covering, PL11, PL12, PL8) | `internal/verify/producers.go`, `internal/platform/boundary.go`, `config.go` | PL8, PL11, PL12, C8 | AC-M3.3 | W-M3.1 | 8-12 | low |
+| W-M3.4 | Requirement predicates at Stop | `internal/graph/session/req.go`, `cmd/rashomon/stop.go` | C8, S6 | AC-M3.1 | W-M3.1 | 4-6 | low |
+| W-M3.5 | Wrapper-hidden gate families (PG1, PG4; #281 step 1) | `internal/shape/runner.go`, `masked.go` | PG1, PG2, PG4 | AC-M3.4 | #281 | 4-6 | low |
+| W-M3.6 | Done-flag precision measurement (W1) | `test/live/autosteer/judge/done.py` | PG9, PF-MS | AC-M3.5 | W-M1.0 | 2-3 | low |
+| W-M3.7 | Edit-marks writer | `internal/verify/integrity.go` | PG12 | AC-M3.6 | none | 3-4 | low |
+| W-M3.8 | Commit, push, PR windows; one-way-door list | `internal/verify/windows.go` | PG13, PF-IV | AC-M3.1 | W-M3.1 | 5-8 | low |
+| W-M3.9 | Process templates as `flow` knowledge rows and the flow line (Part B4) | `internal/graph/knowledge/flow.go`, `flow_test.go` on the acme fixtures | S5, AD15 | AC-M3.3 | W-M3.3 | 4-6 | low (no new store) |
+| W-M3.10 | Slice T3 | `test/live/autosteer/t3/*` | C8 | AC-M3.x | all M3 | 8-12 | R9 |
+| W-M4.1 | Repo and session identity | `internal/graph/ids.go`, `session/session.go` | HD11, S7 | AC-M4.1 | M1 | 2-3 | one-way door |
+| W-M4.2 | `session.Fold` over the record and the steer log (frontier v1 of Part B6 derived at every event; a cache file only if the fold exceeds the hook budget, Part C5) | `session/fold.go`, `fold_test.go` on 20 recorded sessions | C7, S6, AD17 | AC-M4.1, AC-M4.1b | W-M4.1 | 8-12 | low |
+| W-M4.3 | Boundary subscription and fallback | `internal/install/install.go`, `plugin/hooks/hooks.json`, `cmd/rashomon/start.go` | C7, S6 | AC-M4.2 | W-M4.2 | 4-6 | R6 |
+| W-M4.4 | Boundary delivery by extending ST12 `resumeBriefing` in `cmd/rashomon/preflight.go` (no new pattern, Part C5), words by reference | `cmd/rashomon/preflight.go`, `session/brief.go` | C7, PF-ST12 | AC-M4.2 | W-M4.3 | 3-5 | low |
+| W-M4.5 | Subagent frontier | `cmd/rashomon/subagent.go` | S7 | AC-M4.3 | W-M4.3 | 4-6 | payload unverified |
+| W-M4.6 | Requirement status and the drift line | `session/req.go`, `cmd/rashomon/stop.go` | C7, objective drift | AC-M4.4 | W-M4.2 | 3-5 | low |
+| W-M4.7 | Slice T4 | `test/live/autosteer/t4/*` | C7 | AC-M4.x | all M4 | 8-12 | R6, R9 |
+| W-M5.1 | Label writer in the runtime | `internal/learn/writer.go`, `cmd/rashomon/end.go`, `preflight.go` | HD1, C9 | AC-M5.1 | M2, M3 | 6-8 | R7 |
+| W-M5.2 | Miner, deltas, refusals, corrections, seed, backtest | `internal/learn/miner.go`, `cmd/rashomon/backtest.go`, `seed.go` | HD3, HD4, HD8, HD15, HD16, HD17 | AC-M5.2 | W-M5.1 | 12-16 | R7 |
+| W-M5.3 | Lifecycle verbs, tiers, taint, DECLARED from approval | `internal/learn/lifecycle.go`, `internal/graph/knowledge/lifecycle.go` | HD5, HD12, AD10 | AC-M5.2 | W-M5.1 | 6-8 | low |
+| W-M5.4 | Holdout, Wilson, demotion, raise-through-holdout | `internal/learn/holdout.go` | HD2, HD14, PF-MS | AC-M5.3 | W-M5.1 | 5-8 | low |
+| W-M5.5 | Storage bounds and quarantine | `internal/learn/ledger.go` | HD10 | AC-M5.4 | none | 2-3 | low |
+| W-M5.6 | Judge for decision lines; blinded precision sample | `internal/learn/given.go`, `test/live/autosteer/judge/precision.py` | PF-MS, C9 | AC-M5.1 | W-M5.1 | 4-6 | R7 |
+| W-M5.7 | Report knowledge section; `/autosteer:why` | `internal/report/knowledge.go`, `cmd/rashomon/why.go`, `plugin/skills/why` | REPORT1b, vision why | AC-M5.4 | W-M5.3 | 5-8 | low |
+| W-M5.8 | Slice T5 | `test/live/autosteer/t5/*` | C9 | AC-M5.x | all M5 | 10-14 | R9 |
+| W-M6.1 | TypeScript PROVEN via SCIP | `internal/graph/lang/scip/*` | readiness G, S3 | AC-M6.1 | M1 | 16-24 | license verify |
+| W-M6.2 | Breadth producer (tree-sitter CLI) | `internal/graph/lang/treesit/*` | S11, readiness G | AC-M6.2 | M1 | 12-18 | license verify |
+| W-M6.3 | Workspace and ServiceMap refresh | `internal/graph/index/workspace.go` | S3, C3 | AC-M6.3 | W-M6.1 | 6-8 | low |
+| W-M6.4 | Incremental index, log compaction, two-speed, cross-commit link, identity retirement | `index/incremental.go`, `pgraph/compact.go`, `pgraph/link.go`, `internal/platform/*` | PL5, PL6, PL10, AD2 | AC-M6.4 | M1 | 12-20 | R1 |
+| W-M6.5 | Accuracy publication | `pgraph/accuracy.go`, `cmd/rashomon/graph_eval.go` | PL13 | AC-M6.5 | W-M6.1 | 4-6 | low |
+| W-M6.6 | Monorepo units, partial index, size budgets, binary cache | `index/*`, `graph/persist.go` | S11, readiness H | AC-M6.4 | W-M6.4 | 8-12 | R2 |
+| W-M6.7 | Slice T6 | `test/live/autosteer/t6/*` | S3 | AC-M6.x | all M6 | 10-14 | fixture choice |
+| W-M7.1 | Canonical events, capability table, strict core lint | `internal/events/*`, `internal/hookio/*` | AD9, readiness I | AC-M7.1 | W-M1.7 | 8-12 | R12 |
+| W-M7.2 | Install and plugin ship graph verbs; nine lines | `internal/install/*`, `plugin/*`, `cmd/rashomon/watch.go` | P0, readiness J | AC-M7.1 | M1 | 6-8 | low |
+| W-M7.3 | `/autosteer:report` with G, A, D | `internal/report/*`, `plugin/skills/report` | PG10, PG11, HD9, AD8 | AC-M7.2 | M5 | 6-8 | low |
+| W-M7.4 | Read-only demo | `cmd/rashomon/demo.go` | PL14 | AC-M7.1 | W-M7.2 | 3-4 | low |
+| W-M7.5 | Team packs | `cmd/rashomon/learn.go`, `internal/learn/pack.go` | HD7, PF-SH | AC-M7.3 | M5 | 5-8 | low |
+| W-M7.6 | Budgets rows, release, README, troubleshooting, degradation | `.goreleaser.yaml`, `README.md` (allowed: product doc, not a plan), `test/perf/budgets.json` | readiness H, I, J | AC-M7.1 | all | 6-10 | low |
+| W-M7.7 | Second-agent adapter (trigger-gated) | `internal/events/adapters/*` | PF-BR | deferred | prospect | 12-20 | deferred |
+
+### 6.3 Debt (tracked; opened only when it unblocks a critical-path task)
+
+| Id | Item | Severity | Unblocks |
+|---|---|---|---|
+| W-DEBT.1 | PR #281 merge (owner's word) and the three surviving mutants (MA-1 one, MO-1 two: side-effect rows) | medium | W-M3.5 |
+| W-DEBT.2 | PL9 CI job under `unshare -n` | low | nothing |
+| W-DEBT.3 | Dirty worktrees `autosteer-55` (receipts), `brief1`, `brief1-mac` (intake, hostguard): inventory, WIP-commit on their branches, report; no judgment in this plan | low | nothing; owner decides |
+| W-DEBT.4 | Stale truth-table rows PL7, PL11 against main | low | fixed by T1's PR |
+| W-DEBT.5 | `docs-out/plans/AUTOSTEER-EXECUTION-RECORD.md` sections 3.1 to 3.3 (frozen prompt, checks, runs) move into `test/live/autosteer/t1/` as scripts and a `.txt` | low | W-M1.10 |
+| W-DEBT.6 | Mutation sweeps over `internal/graph` (never run) | medium | milestone gate M1 (not a task gate) |
+
+---
+
+## 7. First vertical slice: T1 on rashomon itself (and the slice sequence T2 to T6)
+
+### 7.1 Why PF-PL7
+
+- It is a PRD row at `none`, so the agent must build, not touch up.
+- Main holds a partial implementation to reuse: `internal/platform/callers.go` (package-level PROVEN callers, `Locate`, `Callers`); a parallel implementation elsewhere is the classic miss (S2).
+- Its consumers are non-local and unnamed by any prompt: `internal/verify` (`PlatformRead`, `platformObligations`), `cmd/rashomon/report_platform.go`, `cmd/rashomon/laststop.go` (all verified present at 70597cf0).
+- Four conventions bind it that no file in the tree states as instructions: PF-PL11 (unknown never zero), LAW10 (100 lines per function, 500 per file), RES-2 (no package-level regexp), D161 (the truth-table row travels with the change), plus the disclosure paragraph for any new read. Verified: the repository tracks no `CLAUDE.md`, `AGENTS.md` or `.claude/` directory, and the harness runs under its own `CLAUDE_CONFIG_DIR`, so the owner's global instructions are not loaded in either arm. The only way these reach the agent is the steered arm's brief (from the imported ledger and decision rows) or the agent's own reading of `docs-out`, which is outside git and therefore absent from a scratch worktree.
+- It exercises the slice requirements the owner listed: ambiguous intent (no file named), architectural discovery (the owning unit), unnamed dependency and abstraction (callers.go, the three consumers), the real channel (UserPromptSubmit through the hook set), measurable planning and implementation change (A1 to A3), obligations (D161, tests), independent verification (hidden oracle, rubric tests), persistent task state (the record and the Stop verdict in the steered arm).
+
+### 7.2 Frozen prompt (proposed; frozen by the pre-registration commit and never edited after a run)
+
+```
+Add blast radius to the platform read. For every Go symbol an edit touches, report two numbers: how many callers are proven, and how many are proven or possible. Show the numbers wherever the platform read already appears. Keep the existing tests green and add tests for the new numbers.
+```
+
+The prompt names no file, no package, no convention, and does not say "unknown".
+
+### 7.3 Arms and environment (revised by the 11-04 review, Part B5: three arms so the agent, the existing runtime and the graph intelligence are measured apart)
+
+| Arm | Tree | Binary and hooks | Knowledge | Runs |
+|---|---|---|---|---|
+| U unaided | scratch worktree of `origin/main` at a pinned sha (`git worktree add`, never `cp -r`), no `.rashomon/` | none | none | 3 then 10 |
+| R runtime | same sha | the main binary at 69fac961 with hooks installed into the harness config dir: record, intent preflight, gates, obligations, Stop verdict; no graph verbs, no `.rashomon/graph.json` | none | 3 then 10 |
+| G AutoSteer | same sha | the branch binary from 70597cf0 plus M1, the same hooks; `pgraph sync`; `rashomon graph index .` with `.rashomon/graph.json` listing `.` and `pgraph` as Go units | `.rashomon/knowledge/*.json` imported from `docs-out/plans/FAILURE-LEDGER.txt` and `APPROACH-NOTES.md` at pinned digests | 3 then 10 |
+
+Attribution per metric: runtime effect = R minus U; graph effect = G minus R; total = G minus U. The former ablation arm (G minus knowledge) runs only if G differs from R on the primary outcome and the owner asks which part. Model: Sonnet through `claude -p` with the harness's turn cap and timeout; a fresh config dir per run, logged in once before the batch. Cost: at the 2.50 USD ceiling, three arms at n=3 then n=10 are at most 39 runs, about 98 USD on the meter (ruling 12 set the per-run ceiling; the per-slice total is stated here for the record).
+
+### 7.4 Pre-registered acceptance checks (scripts in `test/live/autosteer/t1/judge/`, committed before the first run; the agent never sees them; the judge runs on each arm's final tree and hook log)
+
+| Id | Measures (all arms unless stated) | Source | Rule |
+|---|---|---|---|
+| A1a discovery by behaviour | before its first edit the agent opened `internal/platform/callers.go` and each consumer file (`internal/verify`'s PlatformRead file, `cmd/rashomon/report_platform.go`, `cmd/rashomon/laststop.go`); one row per item | the harness's tool-call log (Read, Grep, Bash with paths), the instrument the 11-04 evidence used for "read before first edit" | per item opened or not; rates compared across U, R, G |
+| A1b discovery in the plan | the agent's text before its first edit names `Callers` or `callers.go` and at least one consumer file | transcript text before the first edit | present or absent |
+| A1c channel (G, and R for its preflight) | the first UserPromptSubmit's additionalContext names the unit, the reuse target, a consumer and a knowledge line (PL11, LAW10, RES-2 or D161); an off-task knowledge line counts minus one | hook log, steer log seq (A), graph row ids (G) | per line; reported as the G, A, D chain beside A1a and A2, never as discovery itself |
+| A2 reuse by structure | on the arm's final tree, `pgraph sync` then a judge query over `.pgraph/pgraph.log`: a new function in `internal/platform` exists whose PROVEN callers include a symbol in `cmd/rashomon` or `internal/verify`, and no new function outside `internal/platform` and `pgraph` has a `calls` edge to `readLog`, `readDigests` or `DecodeLog` | pgraph on the final tree, the same instrument for every arm | pass or fail |
+| A3 consumers by behaviour | the judge replays the hook sequence (SessionStart, UserPromptSubmit, PostToolUse Edit on `pgraph/testdata/dispatch/app/app.go`, Stop) against the arm's binary with a fresh install store, then runs `rashomon report`; for the edited symbol two integers (or an integer and an unknown marker) appear on the symbol's line in both the Stop output and the report text | arm binary driven by recorded events | both, one or neither renderer; unparsed rows go to a blinded human read |
+| A4 correctness (hidden oracle) | `judge/oracle.py` computes from the fixture's `.pgraph/pgraph.log`: proven fan-in = distinct subjects of `calls` to the symbol; inclusive = proven plus subjects of `may-call`; three symbols pre-registered with distinct shapes (proven only; proven and possible so the two numbers differ; none); the numbers parsed in A3 must equal the oracle | oracle script, A3 output | match, mismatch, unparsed |
+| A5 unknown never zero (hidden) | a copy of the dispatch fixture adds one file importing `reflect` and calling a method by name (pgraph's fixtures hold no such boundary today, verified); the inclusive number for the affected symbol must not print as a bare zero | A3 replay on the fixture copy | pass, fail, unparsed |
+| A6 architecture compliance | `gofmt -l` empty; `go vet ./...`; `TestRubricLAW10_` by name; the RES-2 test; the truth-table test with the PL7 row moved off `none` (D161); the disclosure test for any new read | arm tree through the slot | each pass or fail |
+| A7 verification | the judge's `go test ./internal/platform ./internal/verify ./cmd/rashomon` on the final tree (all arms); for R and G: the Stop verdict's claims comparison (no contradicted done) and the obligation ledger state | slot run, record | green or red; contradicted or not |
+| A8 cost and latency | cost USD, turns, duration, tool calls from the result json (all arms); hook latency per event from the record (R, G); the prompt-path timing of the graph brief (G) | result json, record | reported; cost per A4-match run; p95 per hook event |
+
+Primary outcome (pre-registered): A2 and A3 and A4 all pass. Secondary: A1a and A1b rates, A5, A6, A7, A8. The attribution table reports U, R, G and the two differences per metric. Stop rule: n=3 per arm, read, then n=10 per arm unless the n=3 mean cost per run exceeds 2.50 USD. No change to the engine, the knowledge rows, the prompt or the judge after any run; a change opens T1b with its own rows. No lift language below n=10; "signal" at best. The T1 task is preserved: none of the changes above found a problem with it.
+
+### 7.5 Evidence rows (one per run; the record file and the milestone PR body carry them)
+
+`arm | run | sha | A1 lines quoted | A2 | A3 | A4 | A5 | A6 | A7 | cost | turns | notes`
+
+### 7.6 The slice sequence after T1 (each on rashomon, each with its own pre-registration; task candidates named now, frozen when the milestone opens)
+
+| Slice | Milestone | Task candidate on rashomon | What it tests |
+|---|---|---|---|
+| T2 | M2 | PF-PL12 untracked build config warning (touches `pgraph/doc.go` and `internal/platform`; tempts a regexp at package level and a second config walker) | plan-time conflict, first-write unit brief, duplicate-abstraction line |
+| T3 | M3 | a signature change in `internal/platform` with the three consumers; the agent is told to "make the read take a context" | consumers-to-verify obligations, Stop verdict independence, done-flag precision |
+| T4 | M4 | a two-requirement task (PG12 edit marks plus its report line) under forced compaction (harness context pressure) | frontier re-delivery, requirement status, mistakes against intent |
+| T5 | M5 | the T1 task class repeated in a second session after the first session's labels | EARNED lesson delivery, repeated-mistake rate |
+| T6 | M6 | two real repositories with a contract between them; candidates: rashomon and its plugin marketplace repository (release contract), or a club volunteer's pair (owner's choice; "Rashomon only" rules out Altrace) | cross-repo consumer edit rate, workspace discovery |
+
+---
+
+## 8. Acceptance tests and readiness gates
+
+Every acceptance id names the readiness category of the vision's section 10 (A structural correctness, B task intelligence, C behavioral improvement, D execution continuity, E independent verification, F learning reliability, G language and repository coverage, H performance and cost, I security and operational reliability, J developer experience).
+
+| Id | Category | Gate (objective, scripted where possible) | Environment |
+|---|---|---|---|
+| AC-M1.0 | A | `rashomon graph index .` on rashomon yields a unit node per Go package directory pgraph synced; sym nodes equal the symbols sidecar rows; Calls PROVEN edges equal the log's `calls` rows; the store header carries `{schema: 1, repo: <rid>}` and a `repo:` node; every knowledge applies_to is a global id; `TestGopg_*`, `TestReadSnapshot_*`, `TestSymbols_*`, `TestGlobalID_*` pass; a flipped sidecar byte refuses the whole read | rashomon tree, pgraph fixtures |
+| AC-M1.1 | B | five pre-registered ambiguous prompts over rashomon (T1's and prompts for PL12, PG12, HD9, ST12): the unit line names the unit the owner pre-named in at least four; at most one off-task line per brief | `rashomon graph brief --prompt` |
+| AC-M1.2 | H | K7 rows on rashomon's graph: prompt path p95 at or under 300 ms, load and Build split reported; hooks.json timeouts unchanged; a budgets row added and green in CI | `TestK7` with `RASHOMON_K7=1` through the slot |
+| AC-M1.3 | A, F | the importer over the ledger and notes: at least 80 percent of rows carry a validating clause; every applies_to resolves to an existing node; a second import changes nothing; the report counts dropped paths | `rashomon graph knowledge import` |
+| AC-M1.4 | C, H | T1 with arms U, R, G at n=10 each and the section 7.4 judge; the attribution table (U, R, G, R minus U, G minus R) for the primary outcome, A1a, A1b, A6, A7, cost per correct run and hook latency; limitations; no lift claim | harness |
+| AC-X.1 | E | every evidence row carries G (graph row id), A (steer log seq, HMAC verified), D (record seq and predicate name) as three fields | all slices |
+| AC-X.2 | I | `TestCore_NoAgentKeys` passes, or ratchets from a recorded baseline count that never rises | CI |
+| AC-X.3 | I | disclosure paragraphs name every new read; the truth-table test is green with the touched rows updated | CI |
+| AC-X.4 | A | identity: two fixture repositories with identical paths and symbol names index to distinct global ids; a table contract joins across them only when both declare the same scope in the workspace (`TestIdentity_TwoRepos`, `TestContract_ScopeJoin`) | fixtures |
+| AC-X.5 | A, I | the closed predicate list covers every edge predicate in every store (`TestPredicates_Closed`); every new finding carries Kind, Source and Unit (`TestFinding_Schema`); `events.Event` kinds cover every hook event the installer subscribes to (`TestEvents_CoverHooks`) | CI |
+| AC-M2.1 | B, E | `engine.Conflicts` unit tests per kind; on rashomon a declared boundary (chosen at task open from the real import graph) fires on a synthetic diff and not on main's tree; a plan-time line is delivered at the ExitPlanMode call in a live run | fixtures, live |
+| AC-M2.2 | E, I | a conflict becomes an obligation row with a unit; the Stop verdict names it by rule id; hook exit code stays 0 and level stays nudge in every run (R2) | live |
+| AC-M2.3 | B | the unit brief appears once per unit per session (dedupe) within the three-note budget in ten live runs | live |
+| AC-M2.4 | A, H | declarations in an unsaved edit appear at `commit+ov1`; K7 PreToolUse path p95 at or under 150 ms | `TestOverlay_*`, K7 |
+| AC-M3.1 | E | obligations evaluated per unit and per turn window; the ledger replays from the record to the same state (`TestLedger_Replay`) | fixtures |
+| AC-M3.2 | E, I | forbid_code decided under consent and undecided without, both stated in the verdict | fixtures |
+| AC-M3.3 | E, A | after a signature change the consumers-to-verify list equals the In-edge callers; the PL11 detector flags reflect, cgo, linkname and plugin boundaries in a fixture; the PL12 detector flags a file outside every tracked config | fixtures |
+| AC-M3.4 | E | the wrapper-hidden gate fixture set (from #281) classified; PG4 claims for lint, typecheck, scan compared | fixtures |
+| AC-M3.5 | E | done-flag precision at or above 0.9 on a 30-sample blinded read | live records |
+| AC-M3.6 | E | edit marks written for test removal, skip insertion and assertion edits | fixtures |
+| AC-M4.1 | D, I | `session.Fold` incremental equals full on 20 recorded sessions; the frontier file holds no prompt bytes (a test greps for the prompt's words) | recorded sessions |
+| AC-M4.1b | D | recovery without a transcript: with the transcript path unreadable and `intent: off`, the boundary brief still carries every open requirement id with its predicate, every decision by its named ids, the touched units and the owed obligations; with `intent: local` it also quotes the goal words from the local intent file (`TestFold_NoTranscript`) | recorded sessions |
+| AC-M4.2 | D | a forced compaction in the harness yields a boundary brief in the next prompt's additionalContext naming open requirement ids | live |
+| AC-M4.3 | D | the parent frontier reaches a subagent at SubagentStart (payload verified at task open) | live |
+| AC-M4.4 | D, E | a narrowing prompt leaves requirement 1 open; the Stop line names it | live |
+| AC-M4.5 | D, E | objective drift: on a pre-registered set of 40 recorded sessions (20 the owner labels as drifted, 20 not), the six drift signals with pre-registered thresholds reach precision at or above 0.8 and recall at or above 0.6 before any live use; T4b live: a prompt inviting a tangent while R1 is open yields the drift line at Stop in the steered arm | recorded sessions, live |
+| AC-M5.1 | F | every delivered line in ten live sessions carries a label with a predicate name and an evidence seq; blinded precision at or above 0.9 | live |
+| AC-M5.2 | F | the miner proposes only at three episodes across three sessions within two days; every refusal kind exercised by a fixture; seed runs over the audit read path | fixtures, records |
+| AC-M5.3 | F | no tier raise without a holdout row; demotion on a refuting tally (`TestHoldout_*`) | fixtures |
+| AC-M5.4 | F, J | caps enforced; the report lists supplied, caught, resolved, verified, retained with counts that reconcile to the ledger | live |
+| AC-P1 | B, I | proposer evaluation (gated by ruling 9): on 20 pre-registered ambiguous prompts over rashomon with owner-named target units, the lexicon arm (offline enrichment, hook path unchanged) against the lexical arm on unit-line precision; adopted only if it adds at least two correct unit lines of twenty with no added off-task line; the consent screen names every byte class sent; K7 rows unchanged with the lexicon loaded | `rashomon graph brief`, K7 |
+| AC-M6.1 | G | a TypeScript fixture yields PROVEN records through SCIP with units by nearest manifest | fixture |
+| AC-M6.2 | G | the breadth producer yields declarations and imports on three languages | fixtures |
+| AC-M6.3 | G, C | a two-repo workspace resolves a contract join; T6 at n=10 | fixtures, live |
+| AC-M6.4 | A, H | a one-unit change re-indexes one unit; no store holds an import-path key (`TestIdentity_NoImportPaths`); 50K-record load within budget | fixtures, K7 |
+| AC-M6.5 | A | may-call precision and recall published per fixture | `rashomon graph eval` |
+| AC-M7.1 | J, I | nine lines on a fresh config dir install, index and run; graph verbs in the plugin; the core lint strict | fresh machine |
+| AC-M7.2 | J, E | the report shows G, A, D sections, contradiction-first, instruction-load | live |
+| AC-M7.3 | I | packs pinned by sha256, expiring, org tier | fixtures |
+
+Maturity stages (vision section 10, last paragraph): synthetic fixture success (exists, 11-04); real-repository experiment (T1 is the first); reliable developer preview (M1 to M4 gates on rashomon plus one external repository); alpha (M5 and the nine-line install, two developers repeating a run); beta (M6, three languages, five repositories); production (section 12).
+
+---
+
+## 9. Reuse decisions (licenses stated from memory; every one marked "verify at adoption")
+
+| Candidate | Replaces | Cannot provide | Costs (integration, license, maintenance, performance) | Decision | Task |
+|---|---|---|---|---|---|
+| SCIP (`scip-go`, `scip-typescript`, `scip-python`; protobuf index) | a custom PROVEN producer per language | CHA may-call, tiers, overlays, fingerprint identity, knowledge | the language toolchain and the indexer binary at index time (out of band, acceptable under AD3); a Go protobuf reader (`scip` Go bindings, Apache-2.0, verify); indexer version drift | adopt for TypeScript PROVEN; pgraph stays for Go (it exceeds SCIP on CHA and identity) | W-M6.1 |
+| Tree-sitter (CLI or Go binding) | a breadth parser for declarations and imports in languages without a PROVEN producer | cross-file resolution, types | cgo binding in the hook binary rejected (static binary, hook path); CLI out of band accepted; MIT (verify); grammar maintenance per language | adopt as the ALGORITHMIC breadth producer, out of band | W-M6.2 |
+| graphify (local skill: folder to knowledge graph with INFERRED edges, update, Neo4j export) | nothing in structure (inferred edges may not steer, AD4); a candidate front-end for the offline knowledge proposer over ADR and incident corpora | determinism, tiers, provenance by source row | model tokens; output must be tagged INFERRED; license of the skill (verify) | not in the core; evaluate as an opt-in proposer after M5 under U6 | section 11 |
+| Joern (code property graphs, dataflow) | nothing today | hook-path use (JVM, seconds to minutes) | heavy runtime; Apache-2.0 (verify) | reject for now; revisit for taint and dataflow lines on a customer scenario | section 11 |
+| Graphiti (temporal knowledge graph, LLM extraction, Neo4j) | the judgment store | local, deterministic, no-database, tiers | a database and a model in the loop | reject; borrow bi-temporal validity (`valid_from`, `invalid_at`) on knowledge rows | W-M5.3 |
+| Aider repo-map (PageRank over tree-sitter tags) | Rank | tiers, knowledge, conflicts | Python; Apache-2.0 (verify) | borrow the algorithm (personalized PageRank from the touched set) as a Rank alternative if Select precision fails AC-M1.1 at scale; no dependency | W-M6.6 (conditional) |
+| OpenHands | nothing as a component | n/a | n/a | reference for the canonical event schema and as an adapter target | W-M7.1, W-M7.7 |
+| OPA and Rego | spec rule kinds | a closed, auditable rule set; small binary | tens of megabytes linked into the hook binary; Rego authoring cost; Apache-2.0 (verify) | reject for the core; rule kinds stay a closed enum; revisit if a customer brings Rego policies | section 11 |
+| Import-boundary linters (depguard, go-arch-lint, dependency-cruiser, import-linter) | hand-written boundary rules | n/a | read their config files only, no linking | adopt their configs as DECLARED boundary sources, Go first | W-M2.7 |
+| `go/packages`, `go/doc`, `go/parser` (stdlib and x/tools, already in pgraph) | n/a | n/a | none new | keep | W-M1.1, W-M2.5 |
+
+What AutoSteer owns because it is the differentiated intelligence: the tiered, provenance-carrying graph with overlays; Scope, Traverse, Rank, Check Conflicts, Select; the delivery moments and budgets; the record-based verification; the session fold; the labeled learning loop. Everything in the table above is a producer or a borrowed algorithm behind the Resolver interface.
+
+---
+
+## 10. Engineering ownership, integration and reporting
+
+### 10.1 Agents
+
+- One principal session (this one, Opus) owns the plan, the backlog, integration, merges and every live experiment. It implements the spine inline (contract types, index, knowledge, engine, `cmd` wiring, every slice).
+- Under strategy B (Part C8): two Sonnet implementer lanes with disjoint package ownership (lane P producers; lane S session fold and learning), delivering frozen patches with tests that the principal reviews and commits; one Sonnet QA pass per PR. Each lane is proposed with count, model and estimated cost, the meter read twice, and launched only on the owner's yes; no workflows; no swarm. Strategy A (no lanes) is the fallback at any time.
+- Luis: vertical owner of the PRD rows inside the milestone sets of section 2.3; his PRs land through carriers at task boundaries; the owner communicates the re-sequencing (U7).
+
+### 10.2 Luis's rows by milestone set
+
+M1: PL2, PL7 (through T1), PL11 (first half). M2: PF-SP rows, PF-IV rows. M3: PG1 to PG13, PL8, PL12. M4: ST12 continuity, HD11. M5: HD1 to HD17 except HD13. M6: PL5, PL6, PL10, PL13. M7: HD7, HD9, PL14, PF-BR, PF-SH. Any Luis PR touching `internal/graph`, `internal/platform` or `internal/graph/session` names a section 6 id in its body.
+
+### 10.3 Branches and worktrees
+
+- Integration branch: `autosteer/contracts-v2` (worktree `contracts-v2`). Task branches `as/m1-<task>` from it; merged back by fast-forward or merge commit after the task gate.
+- Merge `origin/main` into the integration branch at every task boundary, gated by `go build ./...`, `go vet ./...`, the pgraph build and the changed packages' tests through the slot; more than three conflicts triggers a review of Luis's set.
+- PR to main only at a milestone's demonstration gate, carrying the evidence rows; merge on the owner's word; push only on the owner's word.
+- Scratch worktrees for live runs: `git worktree add` at a pinned sha, removed by exact path after the judge runs; never `cp -r`; never a bare stash.
+- The three dirty worktrees (`autosteer-55`, `brief1`, `brief1-mac`) are inventoried under W-DEBT.3 and untouched until the owner rules.
+
+### 10.4 Quality gates
+
+- Per task: tests by name through the slot; `gofmt`, `go vet`; LAW10 and RES-2 tests; the disclosure paragraph; the truth-table rows (D161); a budgets row when the hook path changes; sweep anchors updated when a guard moves.
+- Per milestone: the live slice at n=10 pre-registered; K7 rows; AC rows green; QA review; the record file's evidence section updated before the PR is opened; `set -uo pipefail` and `ls-remote == sha` before any GitHub write.
+
+### 10.5 Reporting
+
+- The per-session state file `docs-out/plans/AUTOSTEER-EXECUTION-RECORD.md` (outside git) keeps a state line, the open task id, the slot order and the evidence rows; this plan (versioned under U1) keeps the objective, matrix, decisions, backlog and status.
+- Progress to the owner in the seven-item form only: capability, code path, real agent interaction, independently verified outcome, baseline comparison, limitations, unfinished requirements. Never commit or line counts.
+- Any conflict between work and this plan is flagged in the state line as either "intentional change (owner's word, date)" or "drift (reverted)". There is no third category.
+
+---
+
+## 11. Deferred list with re-entry triggers
+
+| Item | Trigger |
+|---|---|
+| HD13 earned, scoped autonomy | the owner decides ED-9 |
+| Second-agent adapters (Cursor, Codex, SDK; PF-BR) | a prospect or volunteer on that agent, after W-M7.1 |
+| Offline model-assisted knowledge proposer (graphify or other) | the owner's word under U6, after M5 |
+| Joern dataflow lines | a customer scenario needing taint |
+| OPA or Rego policy import | a customer bringing Rego |
+| Java and further languages | a club volunteer's repository in that language, after M6's Resolver path is proven twice |
+| Mutation sweeps over `internal/graph` | the M1 demonstration gate (not a task gate) |
+| PR #30 windows-native-support | the owner's word |
+| Receipts, intake and hostguard work in the dirty worktrees | the owner's ruling after W-DEBT.3's inventory |
+| Neo4j or graph-database export | a customer asks; never a runtime dependency |
+| Business-process templates beyond declared flows (mined from traces) | S5 fixtures from a volunteer with a real flow |
+
+---
+
+## 12. Definition of product readiness (production-grade, vision section 10)
+
+AutoSteer is ready when all of the following hold at once, each with evidence rows a reader can rerun:
+
+1. C1 to C9 demonstrated live on rashomon and on at least one external repository, each at n=10 or more per arm with pre-registered judges, with the measured difference reported in signal language and the cost per correct outcome.
+2. All 44 truth-table rows `built` or deferred by the owner's written word; every row's evidence names the code path, the test and a live seq.
+3. The twelve scenarios each have a recorded, replayable run with a judge script.
+4. Readiness A to J gates green per section 8, including K7 rows at 50K records, the hook budgets, and a blinded precision at or above 0.9 for done flags and labels.
+5. Two PROVEN languages and one breadth producer; a two-repository workspace; a monorepo with partial index.
+6. No model call in any hook; every note names its tier; every record says G, A or D; disclosure names every read; consent gates content.
+7. Install in nine lines on a fresh machine; `/autosteer:report` and `/autosteer:why` ship in the plugin; troubleshooting and degradation paths documented; a tagged release.
+8. The learning loop has promoted at least one EARNED lesson through a holdout and retired at least one refuted lesson, in production records.
+9. The plan's status section reads the same as the tree: no `experimental` status remains.
+
+---
+
+## 13. Rulings (owner, 2026-11-04, on the twelve decisions; the two left to the principal are marked "picked")
+
+1. Plan location: `docs/autosteer/PLAN.md`, `docs/autosteer/TRACE.md` and `docs/autosteer/VISION.md` are committed as the single exception to the no-commit-docs rule. VISION.md is the 11-04 vision verbatim (`~/autosteer_vision.md`), read at every session start; the 10-31 end-state vision stays referenced from PLAN.md's Spec line. Nothing else under `docs/` or `docs-out/` is exempt.
+2. Keep 70597cf0.
+3. PR #281: merge now (picked). Reason: it is green and mergeable, W-M3.5 builds on it, and every week it waits is another merge of Luis's train through its six files. The three surviving mutants are coverage debt (W-DEBT.1), not behaviour, and stay tracked. The merge is a GitHub write: `set -uo pipefail`, `ls-remote` equals the PR head sha, then `gh pr merge`; never a force-push.
+4. T1 baseline is the unaided agent; ablation only after signal at n=3.
+5. Go facts enter through pgraph's sidecars; no pgraph import (AD12).
+6. Identity migration in `internal/platform` in M6 (W-M6.4).
+7. Agent-key lint tripwire in M1 (W-M1.7); adapters in M7 (W-M7.1, W-M7.7).
+8. Luis re-sequenced into milestone sets (section 10.2); the owner tells him.
+9. The model-assisted proposer stays closed until after M5, with the owner's reservation: if AC-M1.1 fails (the brief's unit line misses on the five pre-registered prompts), the resolver is the next experiment and this ruling is reopened. Recorded as the trigger in section 11.
+10. The harness moves into `test/live/autosteer/` with fixtures by sha (AD13).
+11. The T1 prompt (section 7.2) and the judge rules (section 7.4) are approved as written; the pre-registration commit freezes them before the first run.
+12. n=3 cost ceiling: 2.50 USD mean per run (picked). Basis: the Python fixtures measured 0.305 to 0.472 USD per run; rashomon is a larger Go tree where Sonnet reads eight to fourteen files before its first edit and must run `go test`, so two to five times that is the expected band. Above 2.50 mean at n=3, n=10 waits for the owner's word. At the ceiling, T1 costs at most 20 runs times 2.50 plus 5 ablation runs, about 62 USD on the meter.
+13. The T6 fixture (section 7.6) is decided when M6 opens, not now.
+
+Execution order on exit from planning: (1) merge #281; (2) copy this plan to `docs/autosteer/PLAN.md`, the vision to `docs/autosteer/VISION.md`, start `docs/autosteer/TRACE.md` with the section 2 matrix and the section 13 rulings, commit on `autosteer/contracts-v2`; (3) W-M1.0 and the T1 pre-registration commit; (4) W-M1.1 onward in section 6.1 order; no push until the owner's word.
+
+---
+
+## 16. Schedule projection (asked for 2026-11-04; superseded the same day by Part C9, kept for the record)
+
+This table was the first answer to "what is the delivery date". It converts section 5's traditional hour estimates by an assumed hours-per-week figure, and the owner's concern with it was right: the hours were not measured, and the unit is wrong, because the measured constraint is verification wall time, integration and attention per milestone, not code hours (Part C1 to C4). Part C9 is the forecast that stands. The table stays so the two can be compared when T1's evidence lands.
+
+The only unknown here was hours per week of principal-session time. Effort is section 5's ranges, sequential, from 2026-11-05.
+
+| Cumulative through | Hours | At 20 h/week | At 35 h/week | At 50 h/week |
+|---|---|---|---|---|
+| M1 (T1 evidence at n=10) | 40-60 | 11-19 to 11-26 | 11-13 to 11-17 | 11-10 to 11-13 |
+| M2 | 68-102 | 11-28 to 12-10 | 11-19 to 11-25 | 11-14 to 11-19 |
+| M3 | 108-162 | 12-12 to 01-01 | 11-26 to 12-07 | 11-20 to 11-27 |
+| M4 | 138-207 | 12-23 to 01-16 | 12-02 to 12-16 | 11-24 to 12-03 |
+| M5 (alpha gate with M7.2) | 178-267 | 01-06 to 02-06 | 12-10 to 12-28 | 11-30 to 12-12 |
+| M6 | 238-367 | 01-27 to 03-13 | 12-22 to 01-17 | 12-08 to 12-26 |
+| M7 (readiness, section 12) | 278-427 | 02-10 to 04-03 | 12-30 to 01-29 | 12-14 to 01-04 |
+
+The 11-04 review added 8 to 12 hours to M1; every later row shifts by that amount (one to four days depending on the column). Two constraints the table does not model: the weekly usage meter (six live slices at up to about 62 USD each plus QA reviews, all on the meter; 5 percent used at 22:5x PST on 11-04) and the owner's available hours. The owner names the hours-per-week figure; the plan's answer to "what is the delivery date" is the row for that figure, and the first checkpoint that tests the projection is M1's T1 evidence.
+
+## 17. On `/batch` (asked 2026-11-04)
+
+Verified in this install (Claude Code 2.1.280): no skill or command named `batch` is installed under `~/.claude/skills`, `~/.claude/commands` or the plugin caches. `/batch` is Claude Code's built-in fan-out: one instruction sharded across many subagents in isolated worktrees. It is the same thing as a workflow for the meter and for the no-fan-out rule, so it runs on Sonnet or Haiku only and only after a proposal with count, model and cost.
+
+Where it cannot speed this plan: M1's critical path is a dependency chain (symbols sidecar, then Snapshot, then resolver, then index, then importer, then the slice), where each task fixes an interface the next consumes; a shard cannot start before its predecessor's interface exists. The live slice's runs are `claude -p` processes the harness already runs without agents.
+
+Where it fits, later and only by proposal: mechanical, independent, shardable edits such as sweep-anchor updates across the mutant files after a guard moves, disclosure paragraphs across many reads in M7, or the breadth producer's per-language fixtures in M6. The real speedups available now are structural: merge #281 today, two tasks per Go slot window (M4's reading and design while M1's Go runs), and writing the T1 judge scripts while the n=3 batch runs. Part C supersedes this paragraph's framing with a measured topology.
+
+---
+
+# Part B. Review addendum (owner's six issues, 2026-11-04)
+
+## B1. Task intelligence beyond lexical matching
+
+Where deterministic lexical matching is insufficient, with the failure on rashomon itself:
+
+| Need | Lexical limit | Concrete miss |
+|---|---|---|
+| Ambiguous task understanding | prompt vocabulary differs from code vocabulary; verb class (add, fix, migrate) changes which neighbours matter | T1 says "possible callers"; the code says `may-call` and ALGORITHMIC; stemming reaches `Callers` from "callers" and nothing from "possible" |
+| Abstraction reuse | functional similarity is not token overlap | "dependents" never reaches `Impact`; "fan-in" never reaches `Callers` |
+| Business-process discovery | producers and consumers name the same thing differently; runbooks are prose | a publisher of `order.created` and a subscriber of `OrderCreated`; a cron job described only in a README |
+| Knowledge acquisition | ledger rows and ADRs are prose; references are paraphrased; supersession and contradiction are implicit | "the masked classifier" means `shape/masked.go`; D161 restates D12 without naming it |
+
+Design (AD16): a proposer layer. The principle is model at index or import time, data at hook time.
+
+- Artifacts the proposer may write, all INFERRED with `Prov{Extractor: "proposer", Version: <model id>+<prompt digest>, Evidence: <input digests>}`: (1) `.rashomon/lexicon.json` entries `{term, expands_to: [tokens], conf, prov}`; (2) a `summary` attribute on symbol nodes (one sentence); (3) knowledge candidates with proposed `applies_to`, `supersedes`, `contradicts` (status candidate); (4) process-edge candidates (`publishes`, `subscribes`, `schedules`) with evidence references.
+- How the hook path uses them without a model: `engine.Options.Lexicon` expands prompt tokens deterministically (at most three expansions per term, weight 0.5 of a direct hit, bounded at 2,000 entries loaded with the index); `FieldsOf` reads `summary` at the weight of `doc`; candidate rows deliver at nudge only and never create obligations; process candidates deliver only as "possible" lines.
+- Invocation: an explicit verb `rashomon graph enrich` (never from `index` without `--enrich`, never from a hook; a test asserts no call path from any hook command). A consent screen names every byte class sent (symbol names, signatures, doc comments, file paths; knowledge prose only with `--knowledge`), never record, transcript or session content; the provider is configurable and a local model is allowed; zero tokens by default.
+- Trust and lifecycle: INFERRED rows become DECLARED only by a person's `learn approve` or EARNED through labels and a holdout (M5); an input digest change marks the row stale and drops it from briefs until re-proposed. Embeddings are rejected for the hook path (a query embedding needs a model call at prompt time or a model inside the binary); they are allowed inside `enrich` to rank lexicon proposals.
+- Evaluation protocol (AC-P1), gated by ruling 9: twenty pre-registered ambiguous prompts over rashomon with owner-named target units; lexical arm against lexicon arm on unit-line precision; adoption only at plus two correct of twenty with no added off-task line; K7 rows re-measured with the lexicon loaded. Not implemented now; the only M1 cost is the empty `Lexicon` option (W-M1.7).
+
+## B2. Cross-repository identity contract (AD14)
+
+- Repository id `rid`: the normalized origin when a remote named `origin` exists: scheme and user stripped, host lowercased, `git@host:` and `ssh://git@host/` both become `host/`, a trailing `.git` and slash stripped, the path's case preserved (`github.com/karthik/rashomon`). Without a remote: `local:<root-commit sha>`. Without a commit: `path:<sha256 of the absolute path>`, marked ephemeral; rows written under an ephemeral rid are re-keyed through an `aliases` entry in `.rashomon/workspace.json` at the first commit. The normalization reuses `internal/baseline`'s origin scope key (HD11) and extends it to this rule, with tests for each form.
+- Global id: `g:<rid>#<local id>`, where the local id keeps today's grammar (`unit:<lang>:<dir>`, `file:<path>`, `sym:<lang>:<unit>:<symkind>:<qualified>`, `comp:`, `tbl:`). `graph.GlobalID(rid, local)` and `graph.SplitGlobal(id)` are the only constructors. A repository's own `graph.jsonl` stores local ids and carries `rid` in its header; every row that outlives a session or leaves the repository (knowledge `applies_to`, labels, frontier `touched`, workspace edges, reports) stores global ids from M1 on.
+- Collisions: two repositories with identical paths and symbol names produce distinct global ids and never join (`TestIdentity_TwoRepos`). Units and symbols have no cross-repository edges except `same_as` (fingerprint link, INFERRED, proposed by W-M6.4) and never by name.
+- Contracts: `contract:<ckind>:<scope>:<canonical>` is intentionally repository-free; it is the join. The scope is mandatory and comes from the workspace's `service_map` (declared). Without a declared scope the scope is the rid itself, so an undeclared repository never joins (`TestContract_ScopeJoin`, R16). Identical table names in unrelated repositories therefore stay apart until someone declares a shared scope.
+- Languages: `unit` is the language's own module boundary mapped to a directory: Go the package directory; Python the package directory; TypeScript the nearest `package.json` directory with the sub-directory kept; Java the module directory plus the package path (M6+). Symbol qualification is per language and position-free.
+- Revisions: `Rev{Commit, Seq}` is per repository; a workspace snapshot is a map `rid -> Rev`; judgment rows record `at: {rid: commit}` for every repository they reference. A rename links old and new ids by `same_as` with a `Rev`; the engine carries knowledge forward across the link (M6).
+- What M1 writes (W-M1.4, W-M1.6): the header, the `repo:` node, the two constructors, global ids in knowledge rows. No persistent judgment row is created before this lands.
+
+## B3. Session and objective continuity (AD17, AD18)
+
+Recovery without a transcript. The frontier is a fold over the record and the steer log only; the transcript is consulted solely to quote words, never to rebuild state. Structural handles are always content-free and always recoverable: requirement ids with their predicates (`file_exists path`, `symbol_exists gid`, `gate_green family`, `test_named name`, derived from `intent.Resolve`'s paths, rules and gates, from the brief's unit and reuse lines, from a plan's named files, and from tests the agent named); decisions as (named ids, action: leave_alone, use, avoid); touched units; obligations; delivered line ids; verdicts. With the transcript unreadable the boundary brief still says, for example: "open R2 symbol_exists g:...#sym:go:internal/platform:func:Blast; decision: leave internal/verify/claims.go alone; touched 3 units; owed go test ./internal/platform". `TestFold_NoTranscript` (AC-M4.1b) deletes the transcript before the fold and asserts every handle survives.
+
+Retention and consent for semantic intent. A consent level `intent` with values `off` (digests only, the default until `rashomon consent`), `local` (the goal and requirement sentences are stored in `sessions/<id>/intent.json` under the install store, mode 0600, covered by `purge`, excluded from `share` and report bodies, quoted back only to the same session's agent) and `share` (included in shared reports). Retention: session end plus 30 days by default, then purged with the session. Requirements with no deterministic predicate are kept as `words-only` with a digest and `Pred: none`, and are the first candidates for the proposer (B1) when it opens.
+
+Objective drift detection, independent of compaction. Objectives are knowledge rows of kind `objective` (`.rashomon/knowledge/objectives.json`, or imported from PLAN.md's task and acceptance ids, which makes AutoSteer's own development the first user): `{id, title, scope: {units, paths}, predicates, parent}`. A session goal links to an objective by `advances` when the prompt names an objective id or when the prompt's named paths fall inside an objective's scope; otherwise the goal is `unlinked` and only the within-session signals run. Six deterministic signals, computed from the record at every prompt and at Stop, pre-registered thresholds in parentheses, calibrated on recorded sessions before any live use (AC-M4.5): (1) scope divergence: touched units outside the objective's scope for k consecutive turns with edits (k=3); (2) requirement stagnation: no predicate transitions to met across N turns with at least M tool calls (N=8, M=40); (3) requirement displacement: a new requirement whose scope does not overlap the objective appears while open requirements exist and none was marked dropped; (4) component without consumer: a new unit or file with no In edge from the touched set or the objective scope by Stop (the fourteen-day failure in one signal); (5) gate substitution: tool-call classes dominated by infrastructure (CI, sweeps, scripts) while objective predicates stay open (share above 0.6 over 20 calls); (6) plan-objective mismatch: a plan at the ExitPlanMode call names no file inside the objective's scope. Delivery: one Stop line at nudge ("drift: 3 turns outside W-M1.3's scope; R1 open since seq 40") and a report section; never a block. Implementation reuses `recap.ImpactOf` and `recap.MistakesOf` for the counters; the drift test set is 40 recorded sessions the owner labels, drawn from the 540 transcripts of the last fourteen days.
+
+## B4. Technical and business process intelligence (AD15)
+
+Three sources, one model:
+
+| Source | Tier | Where it lives | Example |
+|---|---|---|---|
+| Declared templates | DECLARED | knowledge rows of kind `flow`: `{id, name, steps: [{kind: api, table, event, job, service, queue; ref: contract or unit global id; direction: produces, consumes, reads, writes, schedules}], invariants: [{kind: ordering, idempotency, schema_compat, retention; text}], owner}`; `step` edges from the `flow:` node carry `order` and `direction` | "session purge: jobs.purge_sessions writes public.sessions nightly; reports.daily reads it; invariant: retention 30 d" |
+| Statically inferred | PROVEN or ALGORITHMIC by the producer | ordinary edges from producers using the closed predicate set: `exposes` (route handler to `contract:http`), `consumes` (client call), `reads` and `writes` (SQL to `contract:table`), `publishes` and `subscribes` (topic literal to `contract:event:<scope>:<name>`), `schedules` (cron or job registration to a unit), `migrates` (migration file to a table) | pylite already emits reads and writes; gopg adds route and SQL literals in M3; SCIP and the breadth producer add theirs in M6 |
+| Dynamically observed | OBSERVED | the record: commands run (migrations applied, tests that exercised an endpoint), test names covering a flow, CI outputs; later, trace ingestion (OpenTelemetry span names mapped to contract ids) as an importer with a trigger in section 11 | "pytest tests/test_purge.py ran green after the write at seq 61" |
+
+Validation states per flow step: declared-only (template names a step no producer found: stale template or missing producer, said as such, S10), inferred-only (a path the graph sees that no template declares: a candidate flow), confirmed (declared and inferred agree), observed (the record shows the step exercised). Obligations derive from flows the same way they derive from calls: a schema change on a table owes its readers across repositories; an event payload change owes its subscribers; an API change owes its clients; an async consumer carries the idempotency invariant line; a background job carries schedule and retention lines; a migration owes the consumers of the migrated table. Cross-service reach is the contract join of B2. Nothing here needs a new store or node model: flows are knowledge rows, steps are edges, inference is producer output, observation is the record. The fixtures already exist (acme-auth and acme-ops: `db.py` writes `public.sessions`, the purge job, the daily report), so M3.9 tests run on them before any Go producer emits process edges. The `internal/process` package proposed earlier is withdrawn (Part C5).
+
+## B5. T1 evaluation
+
+Section 7.3 and 7.4 are rewritten in place: three arms (unaided U, runtime R, AutoSteer G) so the agent, the existing runtime and the graph intelligence are measured apart; discovery measured by behaviour in every arm (files opened before the first edit, names in the plan text), with the channel chain (G, A, D) reported beside it rather than as discovery; reuse judged by pgraph's PROVEN call graph on the final tree instead of grep; consumers judged by driving the arm's binary through the recorded hook sequence and reading both renderers' output; correctness by a hidden oracle over three symbols with distinct shapes plus the reflect fixture; latency per hook event from the record. The task is preserved.
+
+## B6. Cross-cutting contracts fixed now (specified fully; implemented where marked)
+
+| Contract | Specification | Written in M1 | Why now |
+|---|---|---|---|
+| Store header | first line of `.rashomon/graph.jsonl`: `{"schema":1,"repo":"<rid>","rev":{"commit":"..."},"producers":{"go":"pgraph/<ver>","py":"pylite/<ver>"}}` | yes (W-M1.4) | every reader must know the rid and producer versions |
+| Global id | `g:<rid>#<local>`; `graph.GlobalID`, `graph.SplitGlobal` | yes (W-M1.4) | one-way door (B2) |
+| Predicates | `graph.Predicates`: today's set plus `Exposes, Consumes, Publishes, Subscribes, Schedules, Migrates, SameAs, Supersedes, Contradicts, Advances, Step`; `TestPredicates_Closed` | yes (W-M1.7) | producers written in M3 and M6 emit against it |
+| Knowledge row v1 | `{schema:1, id, kind: decision, lesson, incident, convention, exception, flow, objective; title, clause, text, source{file,row,digest}, applies_to[gid], scope{paths,languages}, status: candidate, approved, retired, superseded; supersedes[], contradicts[], evidence[], tier, tally{k,n}, valid_from, invalid_at, steps[], invariants[], predicates[]}` | yes, fields present and empty (W-M1.6) | M3 flows, M4 objectives and M5 lifecycle write into it without a migration |
+| Finding schema | `steer.Finding` gains `Kind` (unit, reuse, consumer, decision, lesson, conflict, obligation, boundary, drift, flow), `Source{kind: graph, knowledge, spec, record, proposer; id; tier}`, `Unit` (gid); each Kind names its compliance predicate (unit: opened_unit; reuse: called_symbol; consumer: edited_or_verified; decision: paths_untouched or symbol_present; lesson: its own; conflict: resolved_by_stop; obligation: met; boundary: none; drift: returned_to_scope; flow: consumers_verified) | yes, on graph findings (W-M1.7) | M5 labels read Kind and Source from the steer log; without them M1 to M4 lines are unlabelable |
+| Event type | `events.Event{Kind, Seq, Session, Agent{Name, Version}, At, Repo, Payload}`; kinds: session_start{source}, prompt, plan, act_declared, act_landed, act_failed, stop, stop_failed, session_end, boundary{compact, resume, clear, subagent_start, subagent_stop}; `hookio` is the only producer; `TestCore_NoAgentKeys` | type and lint only (W-M1.7); new code paths consume it; legacy paths migrate in M7 | adapters and the boundary work read one type |
+| Frontier v1 | `{schema:1, session, repo, commit, intents[{id, digest, stated_at, status}], reqs[{id, pred, status, stated_at}], decisions[{ids, action}], touched[gid], obligations[ref], delivered[line id], verdicts[], drift{signals}}`; derived from the record at every event; a cache file is an optimization, not a store | specified; implemented in M4 | the fold's output shape is what M5 and M7 consume |
+| Consent `intent` level | `off`, `local`, `share` in the consent file; `purge` covers `sessions/` | specified; implemented in M4 | retention is a trust contract |
+| Workspace | `.rashomon/workspace.json`: `{schema:1, repos:[{rid, path, origin, root_commit, lang}], service_map, aliases}` | optional single-repo form in M1; full in M6 | the rid source and the contract scope source |
+| Rev per repo | `Rev{Commit, Seq}` per rid; snapshots as `rid -> Rev` | exists for one repo | nothing changes until M6 |
+
+## B7. Change log against the blueprint (what moved, exactly)
+
+- Decisions: AD14 to AD19 added (section 3.5); U1 to U8 ruled (section 13, rulings 1 to 13).
+- Interfaces: `graph.GlobalID`, `graph.SplitGlobal`, the store header, `graph.Predicates`, `steer.Finding{Kind, Source, Unit}`, `events.Event`, `engine.Options.Lexicon`, knowledge row v1, frontier v1, workspace v1, consent `intent` (B6).
+- Risks: R16 (false contract joins), R17 (proposer privacy), R18 (drift false positives) added (section 4.1).
+- Acceptance: AC-M1.0 and AC-M1.4 modified; AC-X.4, AC-X.5, AC-M4.1b, AC-M4.5, AC-P1 added (section 8).
+- Backlog: W-M1.4, W-M1.6, W-M1.7, W-M1.10 modified (section 6.1); M1 effort raised; `internal/process` withdrawn (Part C5); W-M4.1's repo node pulled into W-M1.4.
+- T1: section 7.3 and 7.4 rewritten (three arms, behavioural discovery, structural reuse judge, replayed renderers, oracle shapes, latency).
+- Section 16's hour-based projection is superseded by Part C's throughput model.
+
+## B8. Remaining unresolved architectural assumptions (named, with the check that closes each)
+
+1. Claude Code's `SessionStart` source values and the SubagentStart and SubagentStop payloads carry what the boundary brief needs (closed at W-M4.3 open by a probe session; fallback through the first prompt is ruled).
+2. Go producers can read route, SQL and topic literals cheaply from `go/packages` syntax for the process predicates (closed at W-M3.3 open on rashomon's own `net/http` and SQL-free code, then on a fixture).
+3. The drift thresholds are guesses until calibrated on the 40 labelled sessions (closed by AC-M4.5 before any live use).
+4. The proposer's value is unmeasured by design until ruling 9's trigger (closed by AC-P1).
+5. `go/doc` synopsis behaviour on go1.27 (closed at W-M1.1 step 1).
+6. SCIP and tree-sitter licensing and indexer availability (closed at W-M6.1 and W-M6.2 open).
+
+## B9. Recommendation
+
+M1 is ready for approval with the amended W-M1.4, W-M1.6, W-M1.7 and W-M1.10. None of the six issues changes M1's critical path; the identity contract and the contract types are additive and small, and the three-arm T1 adds cost but no risk. The authoritative plan becomes version-controlled at execution step 2 (section 13), through the normal branch, review and approval path, with no push until the owner's word.
+
+---
+
+# Part C. Execution strategy reassessment (owner's ten points, 2026-11-04)
+
+## C1. Measured throughput of the last fourteen days (evidence, not forecast)
+
+| Measure | Value | Source |
+|---|---|---|
+| Hours with assistant activity | 249 over 15 days (16.6 per day); hours with a typed owner prompt 224 (14.9 per day) | transcript timestamps, all sessions since 10-21 (1.2 GB scanned) |
+| Prompts and turns | 2,173 owner prompts; 138,249 assistant turns; prompts at every hour, peaks 08-10 and 16-18 PT | same |
+| Merged to main | 1,175 commits, 191 PRs; Go production +78,005 / -9,317 lines; Go tests +125,143 / -6,234; 1,290 Go files now | `git diff --shortstat 9b8d8cce..origin/main` |
+| PR cycle | open-to-merge p50 11.0 h, mean 35 h, p90 114 h; CI run p50 24.2 min, 8 of the last 60 red | `gh pr list`, `gh run list` |
+| One session, one new well-specified package | `internal/graph`: 3,740 production and 1,405 test lines, five commits between 08:08 and 14:05 on 11-04 (about 860 lines per hour) | branch log |
+| Live runs | 73 to 136 s and 0.25 to 0.70 USD per run on the Python fixtures | evidence section 3 |
+| Integration failures | 216 failure rows in four days under the four-lane topology (manager, DE, four lanes); 389 compactions across 540 sessions | FAILURE-LEDGER, stats |
+| Capability landed | truth table 9 built, 22 partial, 13 none; zero engine lines on main | section 1.3 |
+
+Reading: production rate was never the constraint. Across all contributors the fortnight merged 313 production Go lines per active hour; a single session produced a complete package at 860 lines per hour. What the fortnight did not produce was integrated capability, because work optimized for merged PRs and for components, and because four lanes plus a manager generated 54 failure rows a day. The plan's job is to convert the measured production rate into integrated capability by fixing direction, interfaces and verification, not by adding hours.
+
+## C2. Effort validation per milestone (lines are forecasts from the task lists; rates are measured)
+
+| Milestone | New engineering (lines, prod + tests) | Integration of existing code | Library reuse | Testing and slices | Avoidable infrastructure (removed) | Code hours at the measured single-session rate | Evidence |
+|---|---|---|---|---|---|---|---|
+| M1 | 1.5K + 1.5K (symbols, snapshot, gopg, index, importer, contract types) | pgraph sidecars, `internal/platform` readers, `index`, `engine`, `slot`, preflight, `baseline` origin key | `go/doc`, `go/packages` (in pgraph) | judges 600 lines; 39 runs | none | 4 to 7 h | branch day: 5.1K lines in 6 h |
+| M2 | 1.6K + 1.6K (rule kinds, Conflicts, Diff, UnitBrief, plan event, depguard reader, Go overlay) | `spec` rules, `verify` obligations, `steer` patterns, `post` path | `go/parser`, depguard config format | judges 400; T2 | none | 4 to 8 h | same rate |
+| M3 | 1.6K + 1.6K (scopes, producers, detectors, requirement predicates, flows as knowledge rows) | `verify` evaluator and ledger, `shape`, `recap`, `platform` | none new | T3; done-flag sample | `internal/process` package (withdrawn); PG12, PG13 windows, wrapper gates move to Luis's lane | 4 to 8 h | same |
+| M4 | 1.2K + 1.2K (fold, boundary matchers, boundary brief by extending `resumeBriefing`, requirement status, drift counters) | `store.Run`, `recap.ImpactOf`, `recap.MistakesOf`, ST12 `resumeBriefing`, `intent` digests | none | T4; 40-session calibration | separate frontier persistence subsystem (cache only); `pattern.Boundary` (extend ST12) | 3 to 6 h | same |
+| M5 | 1.6K + 1.6K (label writer, miner, lifecycle, holdout, Judge for decisions, report section, why) | `learn` ledger, `Wilson95`, `Candidate`, holdout arm, `backtest`, `report.Assemble` | none | T5 (reuses T1 runs as session one); precision sample | none | 4 to 8 h | same |
+| M6 | 2.4K + 2.4K (SCIP reader, breadth producer glue, workspace, incremental index, identity retirement, accuracy) | `lang.Resolver`, pgraph identity and link | SCIP protobuf bindings, `scip-typescript`, tree-sitter CLI | T6; fixture accuracy | binary cache unless K7 fails; no TypeScript parser of our own | 6 to 12 h | same; indexer integration unmeasured |
+| M7 | 1.4K + 1.4K (event adapter, install, report sections, demo, release) | `install`, `plugin`, `report`, `goreleaser` | none | fresh-machine run | second-agent adapters (trigger-gated); packs and demo move to Luis's lane | 3 to 6 h | same |
+| Total | about 11K + 11K, plus 3K of judges and fixtures | | | six slices | | 28 to 55 code hours | |
+
+The 286 to 439 engineering hours of section 5 were a traditional estimate with no measured basis; the measured basis says the code is two to four weeks of code hours at most and that the calendar is governed by verification wall time, integration and attention, which Part C4 models.
+
+## C3. The actual critical path
+
+Hard technical dependencies (an arrow means the target consumes an interface the source defines):
+
+```
+W-M1.7 contract types (0.5 day)  ->  everything that writes a finding, a knowledge row or a global id
+W-M1.1 symbols sidecar -> W-M1.2 ReadSnapshot -> W-M1.3 gopg -> W-M1.4 index on rashomon -> W-M1.8 K7 on rashomon -> T1 (G arm)
+W-M1.6 importer (parsers and schema need nothing; applies_to resolution needs W-M1.4)
+T1 evidence -> M2 engine design detail (what the brief missed decides Conflicts' first kinds) -> T2 -> T3 -> T5
+M4 fold needs recorded sessions only (540 exist) and W-M1.7's Finding kinds; T4 needs W-M4.3 hooks
+M6 producers need lang.Resolver (exists) and W-M1.7's predicates; T6 needs W-M6.3 workspace
+M7 needs the verbs it ships; the report needs M5's labels
+```
+
+Independent sets (no shared files, no interface wait beyond W-M1.7): {producers: W-M1.1 to W-M1.3, W-M2.5, W-M6.1, W-M6.2, W-M6.4}, {session and learning: W-M4.1 to W-M4.6 against recorded sessions, then W-M5.1 to W-M5.6}, {harness and judges: W-M1.0, T1 to T6 scripts, oracles, fixtures}, {PRD runtime rows: W-M3.5, W-M3.7, W-M3.8, W-M7.4, W-M7.5 (Luis)}, {principal: W-M1.7, W-M1.4 to W-M1.6, W-M1.8, W-M1.9, engine and `cmd` wiring in M2 and M3, every slice, every merge}.
+
+The serial spine is therefore: contract types, the Go producer chain, T1, then one slice per milestone with the principal's wiring between slices. Everything else runs beside the spine. The spine's length is set by three wall-time items, not by code: the Go slot (package tests one to five minutes, `./...` ten to twenty, CI 24 min), the live runs (39 per slice, five to fifteen minutes each on rashomon, three to five concurrent), and the owner's reading and rulings between slices.
+
+## C4. Three execution strategies (forecasts; the measured inputs are C1)
+
+Common to all three: the owner's attention at the measured 12 to 15 attended hours per day; the Go slot as one lane for tests with private GOCACHE per lane; live runs three to five concurrent; the meter held at or under 90 percent weekly; no date moves a gate.
+
+| | A conservative | B balanced | C accelerated |
+|---|---|---|---|
+| Agents | principal (Opus) only; Luis on PRD rows; one Sonnet QA pass per milestone PR | principal plus two Sonnet implementers with package ownership (lane P producers; lane S session and learning); Luis; Sonnet QA per PR | principal plus three Sonnet implementers (P, S, and lane X: M3 producers and detectors, then M7 install and report); Luis; Haiku QA for mechanical checks, Sonnet for design; judge test matrices on CI Linux runners beside the Mac slot |
+| Critical path | the spine plus every parallelizable task done by the principal in sequence | the spine; lanes deliver producers, fold and labels before the principal needs them | the spine with slices overlapped (T4 runs while M3 wiring proceeds; T6 fixtures built during M2) |
+| Code hours | 28 to 55 principal | 12 to 22 principal; 16 to 33 lanes | 10 to 18 principal; 20 to 40 lanes |
+| Verification wall time | six slices at 4 to 10 h each (judges, pilots, runs, reading): 24 to 60 h | same per slice; judges pre-built by the harness lane: 20 to 48 h | slices overlapped and judged on CI: 16 to 36 h |
+| Integration overhead (measured basis: 3 conflicts per main merge, p50 11 h PR wait, 13 percent red CI, 54 failure rows a day under four lanes) | factor 1.3 on the spine | factor 1.4 (two lanes, ownership, daily merge, interface freeze first) | factor 1.6 (three lanes; the topology that produced the 216 rows, with the mitigations) |
+| Meter | Opus principal only; lowest | plus two Sonnet lanes at roughly a fifth of Opus cost per token (list prices) | plus three lanes and overlapped slices; highest; the 10-20 burst (weekly 0 to 30 percent in a day) was Opus agents, not Sonnet |
+| Per-milestone cycle (days) | 4.5 to 7.5 | 3.5 to 6 | 3 to 5, plus 1 to 3 days of failure-row resolution across the run |
+| Calendar to T1 evidence at n=10 (first integrated delivery) | 11-10 to 11-13 | 11-09 to 11-12 | 11-09 to 11-12 (M1 is serial; lanes cannot shorten it below the chain) |
+| Calendar to M5 plus the nine-line install (alpha gate) | 11-28 to 12-13 | 11-20 to 12-01 | 11-19 to 11-29 |
+| Calendar to M7 readiness (section 12) | 12-06 to 12-27 | 11-25 to 12-08 | 11-23 to 12-07 |
+| Main integration risk | the principal's context and attention (389 compactions); slower, but the fewest moving parts | lane interface drift; mitigated by W-M1.7 first, package ownership, frozen patches reviewed by the principal, daily merge | the measured failure class returns at scale; the meter binds first; degrade to B at 85 percent weekly or at ten unresolved failure rows in a day |
+
+The unit of the forecast is the milestone cycle, because every milestone ends in the same sequence of wall-time steps, and each step has a measured or bounded duration:
+
+| Step in one milestone cycle | B balanced | Basis |
+|---|---|---|
+| Spine code lands (principal, lane patches arriving) | 1 to 2 days (M1: 1.5 to 2.5, six chained tasks) | 860 lines per hour measured on 11-04; 3K to 5K lines per milestone (C2) |
+| Gate: slot tests, vet, main merge, conflict resolution | 0.5 day | three hand-resolved conflicts per merge; CI p50 24 min; `./...` 10 to 20 min |
+| Slice pilot n=3 per arm (nine runs, three concurrent) and the read | 0.5 day | runs 73 to 136 s on the Python fixtures; rashomon runs budgeted at 5 to 15 min each (unmeasured until T1) |
+| Owner's ruling on the pilot | 0.5 day | prompts arrive at every hour of the day (C1); rulings in this fortnight came within hours |
+| n=10 per arm (30 runs), judge, evidence rows | 0.5 to 1 day | same run budget; judges pre-built |
+| Milestone PR, QA pass, owner's merge word | 0.5 to 1 day | PR open-to-merge p50 11 h |
+| Total | 3.5 to 6 days | |
+
+Spine under B: five full cycles (M1, M2, M3, M5, M7, the last without a live slice but with the fresh-machine run) plus T4 and T6 interleaved at 1 to 1.5 principal days each while their code arrives from lane S and lane P: 19.5 to 33 days from 11-05, which is 11-25 to 12-08. A adds 1 to 1.5 days per cycle (the principal writes the lane code) and runs M4 and M6 serially: seven cycles, 31.5 to 52.5 days. C shortens the cycle by 0.5 to 1 day (slices judged on CI, pilots overlapped) and adds 1 to 3 days of failure-row resolution across the run: 18 to 32 days. The finding the owner should read from this: C is one to three days faster than B at best, because the spine is verification wall time and the owner's attention, not code, and a third lane adds to neither.
+
+Slip check, from the fortnight's own record: three consecutive targets (Thursday 10-29, Saturday 10-31, Wednesday 11-04) were set two to three days out and each was missed by the whole window, a measured slip factor of two to three under the previous topology. The mechanisms of section 14 target the causes, and the first checkpoint tests whether the slip persists: if T1 evidence at n=10 lands after 11-14 under B, multiply every remaining duration by 1.5 (the B M7 row becomes 12-06 to 12-23) and name the step that overran before opening M2.
+
+Recommendation: B. It is the smallest topology that takes the producers and the session fold off the principal's plate, which is where the spine's code hours are, and it reuses the ownership and frozen-patch discipline that worked on 10-23 (director, implementer, QA) rather than the four-lane manager topology that produced the 216 rows. C is available as an escalation once B has landed M1 and the meter's weekly reading is known, not before.
+
+## C5. Overengineering review and custom-engineering challenge (per subsystem or contract)
+
+| Item | Required for the complete product | Existing implementation that satisfies it | Decision |
+|---|---|---|---|
+| Symbols sidecar, `ReadSnapshot`, `gopg` | yes (Go into the engine) | pgraph has the AST and identity; `platform` has the vouched readers | build the thin mapping only; no second Go analyzer |
+| Knowledge importer | yes (judgment from written history) | `learn` ledger parser for its own rows; `slot.Approved.Validate` for clauses | build parsers for two formats; reuse the validator |
+| Contract types (W-M1.7) | yes (one-way doors) | none | build; type-only, no behaviour |
+| `engine.Conflicts` | yes (C5, C8) | `spec` rule evaluation, `verify` obligations | build the diff reader and rule kinds; deliver through existing obligations |
+| First-write and plan-time delivery | yes (C6) | `post` path, `steer.Route`, pattern renderer | extend; no new channel |
+| PL11 boundary detector | yes | pgraph sees `reflect`, cgo, linkname at extraction | one more column in the digests sidecar from pgraph, not a new reader in `platform` |
+| `internal/process` | the capability yes; the package no | knowledge rows of kind `flow` plus the closed predicates (B4) | withdrawn |
+| Session frontier persistence | the capability yes; a store no | `store.Run` plus the steer log are the store; the fold is a function | derive at every event; a cache file only if the fold exceeds the budget |
+| `pattern.Boundary` | the moment yes | ST12 `resumeBriefing` in `preflight.go` (partial on main) | extend `resumeBriefing`; no new pattern |
+| Objective nodes | yes (drift) | knowledge rows | kind `objective`, no new type |
+| Drift counters | yes | `recap.ImpactOf`, `recap.MistakesOf` | extend |
+| Lexicon | reserved | index config | one optional field now; no code until AC-P1 |
+| `events.Event` migration of legacy paths | eventually | `hookio` already centralizes parsing | type and lint now; migration in M7 only where an adapter needs it |
+| Binary graph cache | only if K7 fails at 50K | `graph.LoadFile` at 159 ms for 18K nodes | conditional |
+| TypeScript and Python PROVEN | yes | SCIP indexers | reuse; never a parser of our own |
+| Breadth producer | yes (S11) | tree-sitter CLI | reuse, out of band |
+| Boundary rules | yes | depguard and dependency-cruiser configs | read their files; no rule language of our own |
+| Report, install, release | yes | `report.Assemble`, `install`, goreleaser | extend |
+| PG12, PG13 windows, wrapper gates, packs, demo | yes (PRD rows) | partial on main | Luis's lane, off the intelligence spine |
+| `TRACE.md` | ruled by the owner | PLAN.md sections 2 and 13 | kept per ruling 1 as the machine-checkable status file; the matrix is not duplicated, it moves there |
+
+## C6. First integrated delivery
+
+The earliest point where AutoSteer demonstrates engineering intelligence end to end is T1's G arm at n=10 with the pre-registered judge: a prompt naming no file, the brief naming the owning unit, the reuse target, the consumers and the conventions (G), the agent opening and editing them (A, D), the hidden oracle confirming the numbers, the Stop verdict checked against the record, and each delivered line labelled through the existing `learn label` verb. Forecast 11-09 to 11-13 under any strategy (M1's chain is serial under all three). It is not alpha: no first-write delivery, no conflicts, no boundary recovery, no label writer in the runtime, one language. It is the first row of evidence the rest of the plan builds on, and the complete system keeps developing beside it.
+
+## C7. The five largest schedule drivers and the engineering change for each
+
+1. Serial verification wall time (one Go slot; CI p50 24 min; 39 runs per slice). Changes: package-scoped test runs with a private GOCACHE per lane; the judges' `go test` matrices on CI Linux runners (the docker-tar path already exists for Linux-only cases); three to five concurrent `claude -p` runs; judges written before the code they judge; the n=3 pilot of the next slice interleaved with the current milestone's wiring.
+2. Integration and merge overhead (1,175 commits in fourteen days; three hand-resolved conflicts per main merge; p90 PR wait 114 h; 13 percent red CI). Changes: W-M1.7 first so every lane writes against frozen types; package ownership with no shared files; main merged into the integration branch daily; Luis's rows grouped by milestone set; PRs to main only at gates; one QA pass per PR instead of re-reviews.
+3. Principal context loss (389 compactions; 1.2 GB of transcripts; the fortnight's re-derivation). Changes: PLAN.md and the record file as the first read; one task per session where a task fits; a state line written before every long Go run; AutoSteer's own M4 fold is the permanent fix and is dogfooded on this project first.
+4. Assumptions discovered mid-task (hook payloads, `go/doc`, licenses, fixture shapes). Change: the section 15 verification batch runs in the first hour of each milestone, not when a task trips over it; T1's fixture facts were verified in this review for that reason.
+5. The usage meter as the hard ceiling (weekly reset 11-10; prior burst 0 to 30 percent in a day). Changes: Sonnet lanes and Haiku mechanical QA; token-light lane briefs (frozen patches and slot tokens, not conversation); cost per task recorded in the record file; T1's runs reused as T5's first session; the meter read twice before any batch and reported after.
+
+## C8. Resource allocation (strategy B)
+
+| Owner | Scope and files | Deliverable shape | Never |
+|---|---|---|---|
+| Principal (this session, Opus) | plan, contract types, `internal/graph/index`, `knowledge`, `engine`, `cmd/rashomon`, `steer` patterns, hooks.json, every slice, every merge, every PR | commits on the integration branch; evidence rows; rulings asked in one line | implements producer or fold code that a lane owns |
+| Lane P (Sonnet) | `pgraph/symbols.go`, `internal/platform/snapshot.go`, `internal/graph/lang/gopg`, later `lang/scip`, `lang/treesit`, `index/workspace.go`, `index/incremental.go` | frozen patches with tests, reviewed and committed by the principal | touches `engine`, `cmd`, `steer`, `verify` |
+| Lane S (Sonnet) | `internal/graph/session` (fold, drift counters), `internal/learn` (writer, miner, lifecycle, holdout) against recorded sessions and fixtures | frozen patches with tests | touches hooks, `cmd`, delivery |
+| Luis | PRD rows in the milestone sets of section 10.2 (wrapper gates, windows, marks, packs, demo, report rows) | PRs through carriers | `internal/graph`, `internal/platform` without a section 6 id |
+| QA (Sonnet, one pass per PR) | review against the task's AC and the tripwires | a findings list | re-reviews without a material change |
+
+Lane proposals follow the standing rule: count, model and estimated cost stated, the meter read twice, and the owner's yes before the first launch. Lane P is proposed at M1 open for W-M1.1 to W-M1.3 (one Sonnet session, roughly a day, estimated 30 to 60 USD at list); lane S at M1 open for W-M4.2's fold against recorded sessions (same shape).
+
+## C9. Revised forecast (replaces section 16's table)
+
+Cumulative from a 11-05 start; each row adds one milestone cycle (C4's cycle table) to the row above, with T4 and T6 interleaved under B and C and serial under A.
+
+| Gate | A conservative | B balanced (recommended) | C accelerated |
+|---|---|---|---|
+| T1 evidence at n=10 (first integrated delivery) | 11-10 to 11-13 | 11-09 to 11-12 | 11-09 to 11-12 |
+| M2 demonstration (T2) | 11-14 to 11-20 | 11-13 to 11-18 | 11-12 to 11-17 |
+| M3 demonstration (T3) | 11-19 to 11-28 | 11-16 to 11-24 | 11-15 to 11-22 |
+| M4 demonstration (T4) | 11-23 to 12-05 | 11-17 to 11-26 (interleaved) | 11-16 to 11-23 (interleaved) |
+| M5 demonstration (T5) and alpha gate (with the nine-line install) | 11-28 to 12-13 | 11-20 to 12-01 | 11-19 to 11-29 |
+| M6 demonstration (T6) | 12-02 to 12-20 | 11-21 to 12-03 (interleaved) | 11-20 to 12-01 (interleaved) |
+| M7 readiness (section 12) | 12-06 to 12-27 | 11-25 to 12-08 | 11-23 to 12-07 |
+
+Measured inputs: the production rates, the Python-fixture run times, the PR and CI cycle, the conflict count per merge, the failure-row rate, the attended hours, the slip on the fortnight's three targets. Forecast inputs: the line counts per milestone, the slice wall times on rashomon (first measured at T1's pilot), the cycle step durations, the lane overheads. The first checkpoint that tests the model is T1's pilot: its per-run time and cost, and the days from W-M1.1's first test to the G arm's first n=10 row, replace the forecast inputs before M2 opens, and the slip check in C4 applies. The meter is a constraint on all three columns, not a term in them: at 90 percent weekly the column pauses until the reset. No gate, acceptance criterion or scope item changed to produce these dates.
+
+---
+
+## 14. How this plan prevents the drift of the last fourteen days
+
+| Failure of 10-21 to 11-04 (from the diagnosis delivered 11-04 17:14 and section 1.4) | Mechanism in this plan |
+|---|---|
+| Components built without a consumer (1,859 engine lines in one day; zero on main) | a milestone exits only on a live demonstration on rashomon with a pre-registered judge; a task without a requirement id and an acceptance id cannot be opened (section 6 columns are mandatory) |
+| Progress reported as PRs merged (191) | reporting is the seven-item form; PR to main only at demonstration gates |
+| Five deadline resets | no date anywhere in the plan; effort in hours with assumptions; the owner asked for none |
+| Compaction losses (389) re-deriving state | the record file's state line and this plan are the first read of every session; AutoSteer's own M4 is the same mechanism for the agent |
+| Context swings between owner directives (cross-repo, single-repo, clubs, strategy) | section 2 is the fixed requirement set; a new directive enters as a flagged "intentional change" with a date or it is drift |
+| Evidence in /tmp, unrepeatable | AD13: harness, fixtures and judges in the repository |
+| Rules known in prose but not enforced (D160, D161, LAW10, agent keys) | tripwire tests per gate (section 10.4) including the new `TestCore_NoAgentKeys` |
+| Eight-agent swarms and usage burn | one principal; at most two Sonnet lanes with package ownership and one Sonnet QA pass per PR (Part C8); every lane proposed and meter-gated; a third lane needs the owner's word and buys one to three days at best (Part C4) |
+| Three missed targets in a week (10-29, 10-31, 11-04) | the forecast unit is the milestone cycle with measured steps (Part C4); the first checkpoint is T1 at n=10 with a pre-registered slip rule, not a new date |
+| Integration branch 59 commits behind main | merge main at every task boundary with the build gate |
+
+---
+
+## 15. Verification ledger (what was verified before any implementation, and what is verified at task open)
+
+The owner's directive listed twelve kinds of verification; the exact list was compacted out of this session's context, so this ledger is reconstructed from the plan's own claims. The owner should check it against the list and name any kind missing.
+
+Verified by reading the tree at 70597cf0 and the documents (this session, 11-04):
+
+- Branch, worktree, PR and remote state (section 1.1); the local merge and its gate (1.5).
+- Package inventory, line counts and the status of every subsystem (1.2); the truth table's 44 rows and the three stale rows (1.3).
+- The Resolver interface, the index wiring (pylite only), the engine's stages and attributes read by `FieldsOf`, `conflicts.go`'s test-only status, the session package's lack of persistence, the label writer's single CLI caller.
+- pgraph's sidecars (log, digests, walk), the vouch chain, `internal/platform`'s readers, that pgraph is a subprocess and identical on branch and main; that `pgraph/testdata` exists (dispatch, idrepo, mod) and holds no reflect, cgo or linkname boundary.
+- The hook set in `internal/hookio`, `internal/install` and `plugin/hooks/hooks.json`: eight events, no PreCompact, SubagentStart or SubagentStop; PreToolUse has no context field (memory, verified 2.1.280).
+- The three T1 consumers and `callers.go` exist; no `CLAUDE.md`, `AGENTS.md` or `.claude/` is tracked in the repository.
+- The hook budgets (per tool call 379 MiB.ms, 32 MiB, 6 process creations), K7 rows and per-run costs (evidence section 14).
+- The identity rulings (unit as language-free path; symbols without positions; content-free judgment rows) and the kill criteria.
+
+To verify at task open (named, not assumed):
+
+- W-M1.1: `go/doc` synopsis behaviour on go1.27 for the symbols sidecar (R14); the walk-file writer's line format before adding the symbols entry.
+- W-M1.8: rashomon's own graph size and the K7 numbers on it (R2).
+- W-M2.6: the ExitPlanMode tool call payload at PreToolUse (plan text location).
+- W-M4.3, W-M4.5: SessionStart `source` values and the SubagentStart and SubagentStop payloads in the installed Claude Code version; whether the harness can force a compaction.
+- W-M6.1, W-M6.2: SCIP and tree-sitter licenses and indexer availability.
+- Every cost figure: read from the n=3 result json before n=10.
+- The usage meter: two readings twenty seconds apart before any agent or batch (unreadable at 22:33 PST today).
+
+
