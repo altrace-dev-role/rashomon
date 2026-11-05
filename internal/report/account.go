@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/gateout"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -140,8 +141,9 @@ type SilentFailures struct {
 	// is the honest answer.
 	Unobserved int `json:"outcome_unobserved"`
 	// AbsentWords is the exact list of failure words missing from the final
-	// message, which is what makes the line checkable by the reader rather
-	// than a conclusion they have to accept.
+	// message as words (namesFailure: "bug" is missing beside "debug"), which
+	// is what makes the line checkable by the reader rather than a conclusion
+	// they have to accept.
 	AbsentWords []string `json:"absent_words"`
 	// FinalMessageAvailable distinguishes "the summary mentions no failure"
 	// from "there was no summary to read".
@@ -155,6 +157,8 @@ type SilentFailures struct {
 // false positive is the expensive error and breadth is the defence against it.
 // Measured on 78 sessions with a list of this shape, 14% of sessions ended with
 // a final message containing none of these words -- a floor, not a headline.
+// An entry counts where it opens a word (namesFailure): "fail" in "failures"
+// is one, "bug" in "debug" is none.
 var failureVocabulary = []string{
 	"fail", "failed", "failing", "error", "errors", "couldn't", "could not",
 	"unable", "not able", "didn't", "did not", "blocked", "denied", "timed out",
@@ -184,6 +188,31 @@ var failureVocabulary = []string{
 // verify's disclosure superset pin reads it: every word this package reads as
 // acknowledging a failure loosens a claim in verify's comparator (TestVER60b).
 func FailureVocabulary() []string { return slices.Clone(failureVocabulary) }
+
+// namesFailure reports w, a failureVocabulary entry, in lower, the message
+// lower-cased, where no Latin letter stands right before it: where it opens
+// a word, as a disclosure does in verify ("fail" in "failures", Gate A Q7).
+// "bug" in "debug", "fail" in "StopFailure" or "pipefail" and "blocked" in
+// "unblocked" name no failure (issue #102). A digit, a quote or a hyphen
+// before it ends the word before ("2errors", "'failed'", "re-failed"), and
+// so does a letter of another script, as no English word goes on through a
+// Han one ("测试fail了"): the line's costly error is a fire on a message
+// that named its failure, so a rune that may end a word is read as ending
+// one.
+func namesFailure(lower, w string) bool {
+	for i := 0; ; {
+		k := strings.Index(lower[i:], w)
+		if k < 0 {
+			return false
+		}
+		k += i
+		// At the message's start the decode is utf8.RuneError, no letter.
+		if r, _ := utf8.DecodeLastRuneInString(lower[:k]); !unicode.Is(unicode.Latin, r) {
+			return true
+		}
+		i = k + 1 // a match never starts inside a rune, so one byte on is safe
+	}
+}
 
 // buildAccount is the agent's summary for a run: the final assistant message
 // the read step read from the first transcript, in declaration order, that
@@ -247,7 +276,7 @@ const messageCap = 64 << 10
 // message itself. It is still sanitised before that comparison runs: the
 // message is attacker-influenceable (a poisoned page or repo can end up
 // quoted back by the model), so control and other non-graphic runes are
-// stripped first. strings.Contains cannot be corrupted by a crafted byte
+// stripped first. namesFailure cannot be corrupted by a crafted byte
 // sequence, but stripping keeps this function's OWN behaviour independent of
 // bytes it did not choose to accept, which is the same posture the rest of
 // this package takes toward content it is handed rather than content it
@@ -415,7 +444,7 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 	lower := strings.ToLower(acct.analysed())
 	var present bool
 	for _, w := range failureVocabulary {
-		if acct.Available && strings.Contains(lower, w) {
+		if acct.Available && namesFailure(lower, w) {
 			present = true
 			continue
 		}
@@ -502,7 +531,7 @@ const clauseBreaks = ".,;:!?()\n"
 // Clauses split at clauseBreaks; words are runs of letters and apostrophes,
 // lower-cased, with a typographic apostrophe read as '. A conditional ("If
 // the tests pass, merge it.") still counts as a claim. Failure words are
-// matched as they always were, as substrings.
+// read where they open a word (namesFailure), not as whole words.
 func claimsPass(msg string) bool {
 	msg = strings.ReplaceAll(strings.ToLower(msg), "\u2019", "'")
 	for _, clause := range strings.FieldsFunc(msg, func(r rune) bool { return strings.ContainsRune(clauseBreaks, r) }) {
@@ -657,7 +686,7 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 	out.PassClaimed = claimsPass(acct.analysed())
 	failure := false
 	for _, w := range failureVocabulary {
-		if strings.Contains(lower, w) {
+		if namesFailure(lower, w) {
 			failure = true
 		}
 	}
