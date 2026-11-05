@@ -36,3 +36,7 @@ coverage.html
 # The repository graph `rashomon graph index .` writes beside its committed
 # configuration .rashomon/graph.json (docs/autosteer/PLAN.md, W-M1.4).
 /.rashomon/graph.jsonl
+
+# Rows `rashomon graph knowledge import` writes from sources outside git
+# (docs-out ledgers and notes); hand-written knowledge stays in graph.json.
+/.rashomon/knowledge/

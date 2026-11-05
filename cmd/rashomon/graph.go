@@ -12,25 +12,49 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
+	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
-// cmdGraph is the repository graph's person-typed entry:
-//
-//	rashomon graph index [DIR]              build DIR/.rashomon/graph.jsonl from DIR/.rashomon/graph.json
-//	rashomon graph brief --prompt P [DIR]   the brief the hook would deliver for P from DIR, with its explanation
-//	                                        (--tf, --idf, --lessons select the scorer; the hook reads RASHOMON_GRAPH_SCORER)
+// graphUsage is the graph verb's lines on the usage screen (TRU2c: every
+// sub-command and flag a disclosure paragraph names is a word here).
+const graphUsage = `  rashomon graph index [DIR]     build DIR/.rashomon/graph.jsonl (default the
+                               working directory) from DIR/.rashomon/graph.json:
+                               the units' files through each language's
+                               producer, the declared knowledge, and the rows
+                               under DIR/.rashomon/knowledge/
+  rashomon graph brief --prompt TEXT [--tf|--idf|--lessons] [DIR]
+                               print the brief the prompt hook would deliver
+                               for TEXT from DIR, with its explanation; the
+                               flag picks the scorer (the hook reads
+                               RASHOMON_GRAPH_SCORER)
+  rashomon graph knowledge import FILE...
+                               write the decisions and lessons FILE... hold
+                               (a failure ledger, decision lines, a directory
+                               of decision records) under .rashomon/knowledge/
+                               of the index at or above the working directory,
+                               each row keyed to this repository, then index
+                               again
+
+`
+
+// cmdGraph is the repository graph's person-typed entry (graphUsage).
 func cmdGraph(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("graph takes index or brief")
+		return errors.New("graph takes index, brief or knowledge")
+	}
+	if strings.HasPrefix(args[0], "-") {
+		return fmt.Errorf("unknown argument %q", args[0])
 	}
 	switch args[0] {
 	case "index":
 		return graphIndex(args[1:], stdout)
 	case "brief":
 		return graphBriefCmd(args[1:], stdout)
+	case "knowledge":
+		return graphKnowledge(args[1:], stdout)
 	}
 	return fmt.Errorf("unknown graph command %q", args[0])
 }
@@ -70,6 +94,36 @@ func graphIndex(args []string, stdout io.Writer) error {
 	_, err = fmt.Fprintf(stdout, "indexed %d file(s): %d node(s), %d edge(s) at %s in %s -> %s; repo %s\n",
 		r.Files, len(r.Store.Nodes(rev)), len(r.Store.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile, r.Header.Repo)
 	return err
+}
+
+// graphKnowledge imports FILE... into the index at or above the working
+// directory: the rows are resolved against the saved graph and keyed to its
+// repository, written under .rashomon/knowledge/, and the graph is built
+// again so they are in it.
+func graphKnowledge(args []string, stdout io.Writer) error {
+	if len(args) < 2 || args[0] != "import" {
+		return errors.New("graph knowledge takes import FILE...")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	root := graph.FindIndex(cwd)
+	if root == "" {
+		return errors.New("graph knowledge import: no " + graph.GraphFile + " at or above the working directory; run rashomon graph index first")
+	}
+	s, h, err := graph.LoadFile(root)
+	if err != nil {
+		return err
+	}
+	rep, err := knowledge.Import(root, args[1:], s, h.Repo, graph.RevCommit(h.Rev.Commit))
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(stdout, rep.String()); err != nil {
+		return err
+	}
+	return graphIndex([]string{root}, stdout)
 }
 
 func graphBriefCmd(args []string, stdout io.Writer) error {

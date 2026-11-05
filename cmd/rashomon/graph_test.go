@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -127,5 +129,44 @@ func TestGS5_TheGraphBriefRoutesAsAPreflightFinding(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(e.root, "graph", "s1-p1.txt")); err != nil {
 		t.Errorf("evidence file: %v", err)
+	}
+}
+
+// TestGraphKnowledgeImport_RowsReachTheIndex (W-M1.6, AC-M1.3): the verb,
+// run from a directory under an indexed repository, writes the ledger's
+// rows under .rashomon/knowledge/ with applies_to as global ids under the
+// index's repository, prints the report, and indexes again, so the graph
+// holds the lesson with its clause and its edge to the file the row named.
+func TestGraphKnowledgeImport_RowsReachTheIndex(t *testing.T) {
+	dir := t.TempDir()
+	graphProject(t, dir)
+	src := filepath.Join(t.TempDir(), "LEDGER.txt")
+	if err := os.WriteFile(src, []byte("id | when | who | what | layer | evidence | catcher | today | gap\n"+
+		"B1 | 11-01 | me | changed the session ttl without jobs/purge_sessions.py | purge / DETECT | run 3 | me | no | the nightly purge must change with session lifetime\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(dir, "services", "auth"))
+	var out strings.Builder
+	if err := cmdGraph([]string{"knowledge", "import", src}, &out); err != nil {
+		t.Fatalf("graph knowledge import: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "LEDGER.txt: 1 row(s), 1 with a clause, 0 title only, 0 unparsed; applies_to 1 resolved, 0 path(s) not in the index -> ") || !strings.Contains(out.String(), "indexed ") {
+		t.Errorf("output = %q", out.String())
+	}
+	s, h, err := graph.LoadFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := graph.RevCommit(h.Rev.Commit)
+	n, ok := s.Node("les:B1", rev)
+	if !ok || n.Attrs["clause"] != "the nightly purge must change with session lifetime" || n.Tier != graph.Inferred {
+		t.Errorf("les:B1 = %+v, %v; want the inferred lesson with its clause", n, ok)
+	}
+	if e := s.Out("les:B1", rev, graph.AppliesTo); len(e) != 1 || e[0].Dst != "file:jobs/purge_sessions.py" {
+		t.Errorf("les:B1 applies_to = %+v; want the purge job", e)
+	}
+	rows, err := knowledge.ReadDir(dir)
+	if err != nil || len(rows) != 1 || len(rows[0].AppliesTo) != 1 || rows[0].AppliesTo[0] != "g:"+h.Repo+"#file:jobs/purge_sessions.py" {
+		t.Errorf("knowledge rows = %+v, %v; want one row keyed to this repository", rows, err)
 	}
 }

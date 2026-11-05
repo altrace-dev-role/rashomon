@@ -10,6 +10,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/platform"
@@ -172,5 +173,46 @@ func TestIdentity_TwoRepos(t *testing.T) {
 	}
 	if rid, l, ok := graph.SplitGlobal(ga); !ok || rid != ra.Header.Repo || l != local {
 		t.Errorf("SplitGlobal(%s) = %q, %q, %v", ga, rid, l, ok)
+	}
+}
+
+// TestBuild_ReadsKnowledgeDir (W-M1.6, AD14): the rows under
+// .rashomon/knowledge/ are in the store as nodes at their tier, with an
+// applies_to edge for every global id under this repository's rid and none
+// for another repository's; a file under another schema fails the build.
+func TestBuild_ReadsKnowledgeDir(t *testing.T) {
+	root := shapes(t)
+	rid, _ := baseline.RepoID(root)
+	mine := string(graph.GlobalID(rid, "file:shape/shape.go"))
+	other := string(graph.GlobalID("github.com/x/other", "file:shape/shape.go"))
+	if _, err := knowledge.WriteFile(root, "ledger", []knowledge.Row{
+		{ID: "B1", Kind: knowledge.KindLesson, Title: "t", Clause: "c", Text: "x", Source: knowledge.Source{File: "L.txt", Row: "B1"},
+			AppliesTo: []string{mine, other}, Status: knowledge.StatusCandidate, Tier: knowledge.TierInferred},
+		{ID: "ADR-0001", Kind: knowledge.KindDecision, Title: "d", Status: knowledge.StatusApproved, Tier: knowledge.TierDeclared},
+		{ID: "B9", Kind: knowledge.KindLesson, Title: "gone", Status: knowledge.StatusRetired, Tier: knowledge.TierInferred},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Build(root, "c1", twoLangs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := graph.RevCommit("c1")
+	n, ok := r.Store.Node("les:B1", rev)
+	if !ok || n.Kind != "lesson" || n.Tier != graph.Inferred || n.Attrs["clause"] != "c" || n.Attrs["source"] != "L.txt" {
+		t.Errorf("les:B1 = %+v, %v; want an inferred lesson with its clause and source", n, ok)
+	}
+	if out := r.Store.Out("les:B1", rev, graph.AppliesTo); len(out) != 1 || out[0].Dst != "file:shape/shape.go" {
+		t.Errorf("les:B1 applies_to = %+v; want one local edge to the file, none for the other repository", out)
+	}
+	if d, ok := r.Store.Node("dec:ADR-0001", rev); !ok || d.Tier != graph.Declared {
+		t.Errorf("dec:ADR-0001 = %+v, %v; want a declared decision", d, ok)
+	}
+	if _, ok := r.Store.Node("les:B9", rev); ok {
+		t.Errorf("a retired row is in the store")
+	}
+	put(t, filepath.Join(root, knowledge.Dir, "zz.json"), `{"schema":2,"rows":[]}`)
+	if _, err := Build(root, "c1", twoLangs); err == nil || !strings.Contains(err.Error(), "schema 2") {
+		t.Errorf("a schema-2 knowledge file built: %v", err)
 	}
 }

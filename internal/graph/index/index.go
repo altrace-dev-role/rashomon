@@ -1,6 +1,7 @@
 // Package index builds a repository's graph: each declared language's
 // extractor over the files under its units, the repository node, and the
-// knowledge records and service map from .rashomon/graph.json.
+// knowledge records and service map from .rashomon/graph.json, and the
+// imported rows under .rashomon/knowledge/.
 package index
 
 import (
@@ -15,6 +16,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
@@ -112,7 +114,12 @@ func Build(root, commit string, c Config) (Result, error) {
 		}
 		apply(s, recs)
 	}
-	apply(s, knowledge(c, rev))
+	apply(s, declared(c, rev))
+	rows, err := knowledge.ReadDir(root)
+	if err != nil {
+		return Result{}, err
+	}
+	apply(s, knowledge.Records(rows, rid, rev))
 	h := graph.Header{Schema: graph.Schema, Repo: rid, Rev: graph.HeaderRev{Commit: commit}, Producers: wrote}
 	return Result{Store: s, Header: h, Files: total}, nil
 }
@@ -264,7 +271,7 @@ func apply(s *graph.Store, recs []graph.Record) {
 
 // knowledge is the records of the configuration's lessons and decisions:
 // a declared node each, and an applies_to edge to every target.
-func knowledge(c Config, rev graph.Rev) []graph.Record {
+func declared(c Config, rev graph.Rev) []graph.Record {
 	var recs []graph.Record
 	for _, k := range c.Knowledge {
 		if k.ID == "" || k.Kind == "" {

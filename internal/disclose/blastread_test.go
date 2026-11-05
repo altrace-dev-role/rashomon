@@ -82,7 +82,7 @@ func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
 		if p.Owner != OwnerRecord || p.Cite != CiteSection2 || !strings.HasPrefix(p.Text, "With `rashomon graph index") {
 			t.Errorf("the clause is in %s/%s %q, want the graph index paragraph (%s/%s)", p.Owner, p.Cite, p.Text, OwnerRecord, CiteSection2)
 		}
-		for _, also := range []string{".rashomon/graph.jsonl", "At each prompt", "the prompt words it matched"} {
+		for _, also := range []string{".rashomon/graph.jsonl", "At each prompt", "the prompt words it matched", "rashomon graph knowledge import", ".rashomon/knowledge/"} {
 			if !strings.Contains(p.Text, also) {
 				t.Errorf("the graph index paragraph does not say %q", also)
 			}

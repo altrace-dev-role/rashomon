@@ -47,7 +47,13 @@ func TierWeight(t graph.Tier) float64 {
 }
 
 // IsKnowledge is whether a node is a lesson or a decision.
-func IsKnowledge(kind string) bool { return kind == "lesson" || kind == "decision" }
+func IsKnowledge(kind string) bool {
+	switch kind {
+	case "lesson", "decision", "incident", "convention", "exception", "flow", "objective":
+		return true
+	}
+	return false
+}
 
 // Rank scores the neighborhood: score = w(tier)*conf/(1+distance) +
 // KnowledgeBonus when knowledge applies + ReachBonus when outside says the
