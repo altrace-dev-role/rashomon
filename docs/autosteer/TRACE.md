@@ -6,6 +6,24 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 01:4x: W-M1.7 done. Contract types only, no hook-path behaviour: internal/events (Event, ten kinds, five boundary
+  forms, Known) with hookio.EventKind as the one adapter mapping (SessionStart compact|resume|clear -> boundary; subagent
+  events mapped ahead of W-M4.3; plan produced by nothing until W-M2.6); graph.Predicates (25, closed; TestPredicates_Closed
+  reads the constants by go/ast; TestPredicates_EveryStoreEdgeListed over pylite, gopg and knowledge records); steer.Finding
+  gains Source{Kind, ID, Tier} and Unit, checked by Finding.Check (global ids, five source kinds); the ten graph line kinds
+  and their compliance predicates (steer.GraphKinds, steer.Compliance); the brief's finding carries Source and Unit
+  (indexBrief, unitOf); engine.Options.Lexicon reserved and unread; TestCore_NoAgentKeys strict (baseline zero). Deviations
+  pending the owner's word: Form is one qualifier field; the brief's finding carries no line kind (TaskPreflight has no
+  frozen kinds; per-line findings are M2's); the steer line carries no Source or Unit until W-M5.1 (AC-X.1 open end);
+  Lexicon lives in brief.go; the tripwire lives in graphtest/contracts_test.go. Sweep anchors for the new Check guards and
+  unitOf owed to W-M1.9. Tests by name in PLAN W-M1.7 as built. Code a72b10db. Drift repaired in 502542f4: the whole
+  acceptance package, run for the first time in an M1 gate, was red on PW1b and PW1b2 (they read the last paragraph naming
+  .pgraph; W-M1.4's graph index paragraph sat after the plugin's from c9cef2b2; the order is swapped, no words changed) and
+  on H113 fixture hygiene (the pgraph sidecars under the snapshot and shapes fixtures excused by exact path with reasons; the
+  harness README's toolchain path and consumers.txt's format line rewritten as prose; pins.env renamed pins.txt, sourced by
+  run.sh and the judges, excused by path: a pre-registration adjustment before any T1 run, no pin or rule changed). Cause:
+  every M1 gate to 8593061d ran named acceptance tests only; the whole acceptance package is in every gate from here. Next:
+  W-M1.8 (K7 rows on rashomon's graph, budgets row).
 - 2026-11-05 01:1x: W-M1.6 done. internal/graph/knowledge: row schema v1 (lifecycle fields present and empty), parsers for
   ledger rows (nine-field and prose forms), decision lines and headings, and ADR directories; clauses sanitized to
   slot.Approved or title only with the reason reported; applies_to resolved against the index's file and unit nodes and
