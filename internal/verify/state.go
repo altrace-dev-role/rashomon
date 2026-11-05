@@ -87,6 +87,7 @@ const (
 	PartialAfterRed       Reason = "partial_after_red"
 	PartialOnly           Reason = "partial_only"
 	RedThenWrites         Reason = "red_then_writes"
+	MaskedThenWrites      Reason = "masked_then_writes" // a covered write after the masked last run (F2c)
 	WritesAfterGreen      Reason = "writes_after_green"
 	WriteDuringRun        Reason = "write_during_run"
 	StaleForeign          Reason = "stale_foreign" // the green run's tree moved with no write of the session's (P5A)
@@ -104,7 +105,7 @@ var Reasons = []Reason{
 	FailedExit, FailedOutput,
 	MaskedWithSuccessLine, MaskedNoSuccessLine, MaskedUnattributable,
 	EmptyRun, PartialAfterRed, PartialOnly,
-	RedThenWrites, WritesAfterGreen, WriteDuringRun, StaleForeign, NeverRunAfterWrite,
+	RedThenWrites, MaskedThenWrites, WritesAfterGreen, WriteDuringRun, StaleForeign, NeverRunAfterWrite,
 	BackgroundLaunch, OrderUnknown, OutcomeUnknown, RecordingIncomplete,
 	Budget, OK,
 }

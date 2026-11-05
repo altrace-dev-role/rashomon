@@ -45,13 +45,15 @@ func f2Unkeyed(t *testing.T, r *store.Run, seq int64) {
 }
 
 // f2Vet is the view's go vet row, which must be the masked one, or the test
-// proves nothing. A learned row is found by its family's runner: its id ends
-// in the family's location ("learned:test:r:go-vet@d:repo").
+// proves nothing: masked, or stale where a write it covers came after the
+// masked run (F2c, masked_then_writes). A learned row is found by its
+// family's runner: its id ends in the family's location
+// ("learned:test:r:go-vet@d:repo").
 func f2Vet(t *testing.T, v StopView) GateState {
 	t.Helper()
 	for _, g := range v.Snap.Gates {
 		if strings.HasPrefix(g.Family, "r:go-vet@") {
-			if g.State != MaskedInconclusive {
+			if g.State != MaskedInconclusive && (g.State != Stale || g.Reason != f2cExpired) {
 				t.Fatalf("premise: go vet is %s %s, want masked", g.State, g.Reason)
 			}
 			return g
@@ -67,25 +69,27 @@ func f2Vet(t *testing.T, v StopView) GateState {
 // first sentence. No call of turn 2 is in rv-se4-gi1w, so its done claim does
 // not answer to vet there, and the Stop names no call of turn 1. Controls,
 // each still flagged: turn 2 ran in the vetted worktree; no call of turn 2
-// is in a project (the session's gates, as before the card); a call of turn
-// 2 whose project the record does not say; the gate's own project not known;
-// a call in the directory that holds the worktree; a call in a repository
-// inside it. Break: read a gate in a turn none of whose calls is in its
-// project, or drop any of the fail-closed arms.
+// is in a project (the session's gates, as before the card); a shell call of
+// turn 2 whose project the record does not say; the gate's own project not
+// known; a call in the directory that holds the worktree; a call in a
+// repository inside it. A Read whose project the record does not say acts on
+// nothing (F2c), so it reads no gate as the turn's. Break: read a gate in a
+// turn none of whose calls is in its project, or drop any of the fail-closed
+// arms.
 func TestF2a_AMaskedRunInAnotherWorktreeIsNotThisTurns(t *testing.T) {
 	for _, c := range []struct {
 		name, project, cwd string
-		unkeyedVet         bool
-		unkeyedCall        bool
+		unkeyed            int64 // a call whose project the record does not say; 0 for none
 		flagged            bool
 	}{
-		{"turn 2 in another worktree", f2Other, f2Other, false, false, false},
-		{"control: turn 2 in the vetted worktree", f2Vetted, f2Vetted, false, false, true},
-		{"control: no call of turn 2 in a project", "", "/home/u", false, false, true},
-		{"control: a call of turn 2 not keyed", f2Other, f2Other, false, true, true},
-		{"control: the vet run's project not known", f2Other, f2Other, true, false, true},
-		{"control: a call in the directory holding the worktree", "/wt", "/wt", false, false, true},
-		{"control: a call in a repository inside the worktree", f2Vetted + "/third_party/x", f2Vetted + "/third_party/x", false, false, true},
+		{"turn 2 in another worktree", f2Other, f2Other, 0, false},
+		{"control: turn 2 in the vetted worktree", f2Vetted, f2Vetted, 0, true},
+		{"control: no call of turn 2 in a project", "", "/home/u", 0, true},
+		{"control: a call of turn 2 not keyed", f2Other, f2Other, 3, true},
+		{"a Read of turn 2 not keyed", f2Other, f2Other, 4, false},
+		{"control: the vet run's project not known", f2Other, f2Other, 2, true},
+		{"control: a call in the directory holding the worktree", "/wt", "/wt", 0, true},
+		{"control: a call in a repository inside the worktree", f2Vetted + "/third_party/x", f2Vetted + "/third_party/x", 0, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, scWrite(1, f2Vetted+"/internal/gateinfer/gateinfer.go"), f2MaskedVet(2),
@@ -94,11 +98,8 @@ func TestF2a_AMaskedRunInAnotherWorktreeIsNotThisTurns(t *testing.T) {
 			scAt(t, r, 2, f2Vetted, f2Vetted)
 			scAt(t, r, 3, c.project, c.cwd)
 			scAt(t, r, 4, c.project, c.cwd)
-			if c.unkeyedVet {
-				f2Unkeyed(t, r, 2)
-			}
-			if c.unkeyedCall {
-				f2Unkeyed(t, r, 4)
+			if c.unkeyed > 0 {
+				f2Unkeyed(t, r, c.unkeyed)
 			}
 			scPrompt(r, "p1", 1, 2)
 			scPrompt(r, "p2", 3, 4)
@@ -115,15 +116,17 @@ func TestF2a_AMaskedRunInAnotherWorktreeIsNotThisTurns(t *testing.T) {
 // edited rv-se4-rps alone, and the row was masked by vet in rv-se4-gi1w:
 // "go vet ran before the last edit, but the pipe to head hid its result
 // (call 3060)". The edit is not vet's, nor is the turn, so the row is not
-// masked. Control: the same edit in rv-se4-gi1w keeps the masked row.
-// Break: choose the row from a gate whose project no call of the turn is in.
+// masked. Control: the same edit in rv-se4-gi1w is the turn's, and comes
+// after vet's masked run there, which it leaves stale (F2c): the row is
+// unverified. Break: choose the row from a gate whose project no call of the
+// turn is in.
 func TestF2b_EditsInAnotherWorktreeReadNoMaskedRow(t *testing.T) {
 	for _, c := range []struct {
 		name, root string
 		row        Row
 	}{
 		{"an edit in rv-se4-rps", "/wt/rv-se4-rps", RowNoGate},
-		{"control: an edit in rv-se4-gi1w", f2Vetted, RowMasked},
+		{"control: an edit in rv-se4-gi1w", f2Vetted, RowUnverified},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, scWrite(1, f2Vetted+"/internal/gateinfer/gateinfer.go"), f2MaskedVet(2),
@@ -146,15 +149,16 @@ func TestF2b_EditsInAnotherWorktreeReadNoMaskedRow(t *testing.T) {
 // rv-se4-gi1w5-red and ran go test green there after the edit; vet stays
 // masked in rv-se4-gi1w, which turn 2 never ran in. The turn is verified by
 // its own gate, not a findings row with nothing found. Control: the same
-// turn in rv-se4-gi1w reads vet's mask. Break: read the record-green point
-// over every gate while the row reads the turn's.
+// turn in rv-se4-gi1w reads vet, stale since the turn's edit came after its
+// masked run (F2c). Break: read the record-green point over every gate while
+// the row reads the turn's.
 func TestF2c_ATurnsOwnGreenVerifiesBesideAnotherWorktreesMask(t *testing.T) {
 	for _, c := range []struct {
 		name, root string
 		row        Row
 	}{
 		{"turn 2 in another worktree", f2Other, RowVerified},
-		{"control: turn 2 in the vetted worktree", f2Vetted, RowMasked},
+		{"control: turn 2 in the vetted worktree", f2Vetted, RowUnverified},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, scWrite(1, f2Vetted+"/internal/gateinfer/gateinfer.go"), f2MaskedVet(2),

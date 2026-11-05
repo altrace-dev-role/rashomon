@@ -4,8 +4,10 @@
 # and evidence; a family's facts state and test file; which gate the rows
 # owe, which runs cover a package and which might have; which writes undo a
 # cover; that no read waits on a named pipe; the verb's wiring; and, through
-# the real pgraph binary H-156 builds, where pgraph writes. The pgraph
-# module's own tests run in its CI job, not here: the sweep tests this module.
+# the real pgraph binary H-156 builds, where pgraph writes. Those last rows
+# mutate pgraph/ and the root module's tests judge them; a row the pgraph
+# module's own tests judge runs there, from a file that declares
+# MODULE = "pgraph" (PL-9_loader-env.py).
 V = "internal/verify/platform.go"
 C = "internal/verify/platform_cover.go"
 P = "internal/platform/read.go"

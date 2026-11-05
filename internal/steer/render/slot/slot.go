@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 )
 
 // Value is a slot value: one of this package's types and nothing else. The
@@ -116,7 +118,13 @@ func (p Program) bind() (Value, error) { return checked(p, p.Validate()) }
 // "one or two `Program`-charset words, at most 40 bytes (e.g. `go test`,
 // `npm test`, `make test`)"; "never arguments"). A word count alone does not
 // keep arguments out, so a word that reads as a flag (a leading '-') or is
-// made only of dots is refused too.
+// made only of dots is refused too. The one exception is a runner's row as
+// the binary's lists write it (shape.RunnerNames), the name the Stop gives a
+// gate (D229): `python3 -m pytest`, `uv run pytest`, `npm run test`. A row
+// is the binary's own words, never a line's, so it holds no argument
+// however many words it has or whether one is the interpreter's -m, and it
+// passes on membership alone (GATE-INFER2). Membership is looked up only for
+// a name the words refuse, so a two-word gate builds no lookup.
 type Gate string
 
 const maxGateBytes = 40
@@ -126,6 +134,15 @@ func (g Gate) Validate() error {
 	if len(s) > maxGateBytes {
 		return fmt.Errorf("slot: gate is over %d bytes", maxGateBytes)
 	}
+	if err := gateWords(s); err != nil && shape.RunnerNameID(s) == 0 {
+		return err
+	}
+	return nil
+}
+
+// gateWords is Gate's rule for a name no runner row gives: one or two
+// Program words, neither argument-shaped.
+func gateWords(s string) error {
 	words := strings.Split(s, " ")
 	if len(words) > 2 {
 		return errors.New("slot: gate has more than two words")

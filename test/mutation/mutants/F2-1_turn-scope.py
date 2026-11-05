@@ -12,10 +12,10 @@ S = "internal/verify/stop.go"
 m("F2-1 every gate is the turn's", S,
   "\tif snap.Recording == Complete {\n\t\tmarkTurn(", "\tif false {\n\t\tmarkTurn(", "TestF2")
 m("F2-1 a turn in no project reads none of the session's gates", C,
-  "\t\t\tps = append(ps, *p)\n\t\t}\n\t}\n\treturn ps\n",
-  "\t\t\tps = append(ps, *p)\n\t\t}\n\t}\n\tif ps == nil {\n\t\tps = []string{}\n\t}\n\treturn ps\n", "TestF2a_")
+  "\t\t\tps = append(ps, *p)\n\t\t}\n\t}\n\treturn ps, true\n",
+  "\t\t\tps = append(ps, *p)\n\t\t}\n\t}\n\tif ps == nil {\n\t\tps = []string{}\n\t}\n\treturn ps, true\n", "TestF2a_")
 m("F2-1 a call the record cannot place is in no project", C,
-  "\t\tcase p == nil:\n\t\t\treturn nil\n", "\t\tcase p == nil:\n", "TestF2a_")
+  "\t\tcase p == nil:\n\t\t\treturn nil, false\n", "\t\tcase p == nil:\n", "TestF2a_")
 m("F2-1 a gate with no root is no turn's", C,
   "\tif projects == nil || root == \"\" {\n", "\tif projects == nil {\n", "TestF2a_")
 m("F2-1 a call in the gate's own project is not in it", C,

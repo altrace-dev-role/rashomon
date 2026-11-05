@@ -80,6 +80,18 @@ type state struct {
 	// Counts and no content, like the two maps above; absent in a file written
 	// before it, which reads as nothing shown.
 	Shown map[string]string `json:"shown"`
+	// Unverified maps a session id to the prompt id of the last Stop whose
+	// done flag fired (DoneFlag): a strict claim the record does not back. The
+	// next prompt of that session tells the agent once (TakeUnverified). A
+	// prompt id and no content, like the maps above; absent in a file written
+	// before it, which reads as none flagged (card c4, PF-PG9). Nil until a
+	// Stop flags one, as Owed is, so the prompt's read allocates no map.
+	Unverified map[string]string `json:"unverified"`
+	// Noted maps a session id to the Unverified prompt id the prompt path has
+	// taken, delivered or withheld: what makes the note once per flagged Stop,
+	// so a Stop replayed for the same turn does not raise it again. Nil until
+	// the first take.
+	Noted map[string]string `json:"noted"`
 	// Owed maps a session id to what its last turn end owes the next
 	// prompt (Owed): a record seq, a runner's name and a file name, no
 	// content. Absent in a file written before it, which reads as none; nil
@@ -173,7 +185,7 @@ func readState(path string) (state, error) {
 // current is the session this write claims for, "" for none; the cap never
 // drops it (capSessions).
 func writeState(path string, s state, current string) error {
-	for _, m := range []map[string]string{s.Spoken, s.Checked, s.Shown} {
+	for _, m := range []map[string]string{s.Spoken, s.Checked, s.Shown, s.Unverified, s.Noted} {
 		capSessions(m, current)
 	}
 	capSessions(s.Owed, current)
@@ -278,6 +290,14 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 // (the prompt's note is the agent's, not the line's), and the zero Owed
 // clears what an earlier turn end left.
 func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed) (speak bool, err error) {
+	return ClaimTurn(root, sessionID, promptID, now, wantSpeak, shown, owed, false)
+}
+
+// ClaimTurn is ClaimShown for a Stop that also says whether its done flag
+// fired: unverified keeps promptID as the session's flagged Stop, whether or
+// not a line printed, for the next prompt's note (TakeUnverified). It is
+// written with the claim, so a Stop adds no write of its own.
+func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed, unverified bool) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
 	}
@@ -304,6 +324,12 @@ func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool,
 	if speak && sessionID != "" && shown != "" {
 		s.Shown[sessionID] = shown
 	}
+	if unverified && sessionID != "" && promptID != "" {
+		if s.Unverified == nil {
+			s.Unverified = map[string]string{}
+		}
+		s.Unverified[sessionID] = promptID
+	}
 	switch {
 	case sessionID == "":
 	case owed.Seq > 0:
@@ -316,6 +342,35 @@ func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool,
 		delete(s.Owed, sessionID)
 	}
 	return speak, writeState(path, s, sessionID)
+}
+
+// TakeUnverified reports whether sessionID's last flagged Stop has not been
+// taken, and takes it: the prompt path calls it where Turn's read saw one to
+// take, the take reads again and checks again before it writes, and the
+// answer is true once per flagged Stop, whatever the prompt then does with it
+// (a switch that withholds the note consumes it, so turning steering on later
+// does not deliver a stale one). A missing or unreadable file, a write that
+// fails, or no flagged Stop answers false: a note lost costs one sentence, a
+// note repeated costs the agent's trust, so the take is written before it is
+// answered.
+func TakeUnverified(root, sessionID string) bool {
+	if sessionID == "" || !storeExists(root) {
+		return false
+	}
+	path := statePath(root)
+	s, err := readState(path)
+	if err != nil {
+		return false
+	}
+	flagged := s.Unverified[sessionID]
+	if flagged == "" || flagged == s.Noted[sessionID] {
+		return false
+	}
+	if s.Noted == nil {
+		s.Noted = map[string]string{}
+	}
+	s.Noted[sessionID] = flagged
+	return writeState(path, s, sessionID) == nil
 }
 
 // RecordFailure marks this evaluation as unhealthy, for the one path where
@@ -366,20 +421,23 @@ func Status(root string) (evaluated bool, lastAt time.Time, healthy bool, err er
 // Turn reads the file once for the catch-up. pending reports whether
 // promptID is a turn in sessionID that no recap has checked yet -- the turn a
 // refused permission prompt interrupted before its Stop could fire. owed is
-// what the session's last turn end owes its next prompt (Owed). A missing or
-// unreadable bookkeeping file answers false and none: with nothing to say
-// which turns were checked, catching up could only repeat a line Stop
-// already printed, and a duplicate is the failure this file exists to
-// prevent.
-func Turn(root, sessionID, promptID string) (pending bool, owed Owed) {
+// what the session's last turn end owes its next prompt (Owed). flagged
+// reports whether the session's last flagged Stop is not yet taken, so the
+// prompt calls TakeUnverified, which writes, only where there is one to take
+// and pays no second read where there is none. A missing or unreadable
+// bookkeeping file answers false, none and false: with nothing to say which
+// turns were checked, catching up could only repeat a line Stop already
+// printed, and a duplicate is the failure this file exists to prevent.
+func Turn(root, sessionID, promptID string) (pending bool, owed Owed, flagged bool) {
 	if sessionID == "" || !storeExists(root) {
-		return false, Owed{}
+		return false, Owed{}, false
 	}
 	s, err := readState(statePath(root))
 	if err != nil {
-		return false, Owed{}
+		return false, Owed{}, false
 	}
-	return promptID != "" && s.Checked[sessionID] != promptID, s.Owed[sessionID]
+	u := s.Unverified[sessionID]
+	return promptID != "" && s.Checked[sessionID] != promptID, s.Owed[sessionID], u != "" && u != s.Noted[sessionID]
 }
 
 // ImpactShown is the fingerprint of the counts the last printed clause of

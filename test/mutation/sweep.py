@@ -14,6 +14,12 @@ defines or overwrite another one's import edit. A change adds a file; it never
 appends to a shared list, which is what ended the merge conflicts the one big
 list used to produce.
 
+A file whose rows a nested module's own tests judge (pgraph/, with a go.mod
+of its own, which `go test ./...` from the root never enters) declares
+MODULE = "<dir>". Its rows run in that directory, behind a green baseline of
+that module's own, and --check finds each row's test among that module's tests
+alone. Targets stay relative to the root.
+
 Run from the module root:
 
     python3 test/mutation/sweep.py                 the sweep
@@ -155,6 +161,7 @@ RUBRIC_TEST = re.compile(r"TestRubric([A-Z]+)(\d+)[a-z]?_")
 M = []  # (name, file, old, new, test regex)
 IMPORTS = {}  # name -> (file, import block as it is, import block with the extra line)
 ORIGIN = {}  # name -> the mutant file that declared it
+MODULE_OF = {}  # name -> the module directory whose go test judges it; "." is the root
 
 
 def rel(path):
@@ -335,6 +342,14 @@ def load(patterns):
             problems.append(f"{rel(path)}: {type(e).__name__}: {e}")
         if len(M) == before:
             problems.append(f"{rel(path)}: declares no mutant")
+        # Every row of a file runs in the module the file names, the root's
+        # when it names none; check() refuses a directory that is not one.
+        module = ns.get("MODULE", ".")
+        if isinstance(module, str) and module:
+            for row in M[before:]:
+                MODULE_OF[row[0]] = os.path.normpath(module)
+        else:
+            problems.append(f"{rel(path)}: MODULE is {module!r}, not a directory relative to the module root")
         # A file that writes `IMPORTS = {...}` rebinds the name in its own
         # namespace instead of updating the dict passed in, so `declared`
         # never sees the edit -- silently, since nothing else notices. Reading
@@ -356,15 +371,16 @@ def load(patterns):
     return problems
 
 
-def run_go_test(argv):
-    """Run go test and return its result with stdout and stderr as text.
+def run_go_test(argv, cwd="."):
+    """Run go test in cwd, a module's directory, and return its result with
+    stdout and stderr as text.
 
     The output is decoded with undecodable bytes replaced: a test that prints
     the raw bytes it fed the code under test (invalid UTF-8 among them) must
     not stop the sweep mid-run, which would leave every later mutant
     unjudged (the finally clause still restores the tree).
     """
-    r = subprocess.run(argv, capture_output=True)
+    r = subprocess.run(argv, capture_output=True, cwd=cwd)
     r.stdout = r.stdout.decode("utf-8", errors="replace")
     r.stderr = r.stderr.decode("utf-8", errors="replace")
     return r
@@ -482,15 +498,83 @@ def outside_cwd(path):
     return False
 
 
+def module_tests(root):
+    """The top-level func Test names `go test ./...` run in root reaches, and
+    the nested modules it stops at.
+
+    ./... skips testdata, vendor, and every directory or file whose name
+    starts with . or _, and it stops at a directory holding a go.mod of its
+    own: that is another module, which a go test run in root never enters.
+    Reading every *_test.go under root passed a row whose test only pgraph/
+    defines, and the sweep then printed it NOT DETECTED (SWEEP-MODULE1).
+    """
+    names, nested = set(), []
+    for d, dirs, files in os.walk(root):
+        walk = []
+        for x in sorted(dirs):
+            if x.startswith((".", "_")) or x in ("testdata", "vendor"):
+                continue
+            if os.path.isfile(os.path.join(d, x, "go.mod")):
+                nested.append(os.path.normpath(os.path.join(d, x)))
+            else:
+                walk.append(x)
+        dirs[:] = walk
+        for f in files:
+            if f.endswith("_test.go") and not f.startswith((".", "_")):
+                try:
+                    names.update(GO_TEST_FUNC.findall(pathlib.Path(d, f).read_text()))
+                except OSError:
+                    pass
+    return names, nested
+
+
 def go_test_names():
-    """Every top-level func Test name under the current directory."""
-    names = set()
-    for gofile in pathlib.Path(".").rglob("*_test.go"):
-        try:
-            names.update(GO_TEST_FUNC.findall(gofile.read_text()))
-        except OSError:
-            pass
-    return names
+    """Every top-level func Test name under the current directory, by module:
+    "." for the root, and each nested module under its own directory."""
+    by_module, todo = {}, ["."]
+    while todo:
+        module = todo.pop()
+        by_module[module], nested = module_tests(module)
+        todo += nested
+    return by_module
+
+
+def missing_test(name, test, rx, module, go_tests):
+    """The problem of a row whose test regex matches no test in its module,
+    naming the other modules it would match in and the line that fixes it."""
+    def called(m):
+        return "the root module" if m == "." else f"module {m}"
+    msg = f"{name!r}: test regex {test!r} matches no func Test in {called(module)}, whose go test judges it"
+    elsewhere = sorted(m for m, names in go_tests.items() if m != module and any(rx.search(n) for n in names))
+    if elsewhere:
+        fix = "drop its MODULE line" if elsewhere[0] == "." else f'declare MODULE = "{elsewhere[0]}"'
+        msg += (f"; it matches one in {', '.join(map(called, elsewhere))}, which a go test run in "
+                f"{called(module)} never enters: {fix} in {rel(ORIGIN[name])}")
+    return msg
+
+
+def module_problems(go_tests):
+    """A declared MODULE must be a directory under the current one holding a
+    go.mod, or no go test can run there. Returns the problems and the bad
+    modules, whose rows check() then judges no further. A module ./... does
+    not reach from the root (one under testdata) gets its tests read here."""
+    files = {}
+    for name, module in MODULE_OF.items():
+        if module != ".":
+            files.setdefault(module, set()).add(rel(ORIGIN[name]))
+    problems, bad = [], set()
+    for module, where in sorted(files.items()):
+        if outside_cwd(module):
+            problems.append(f"MODULE {module!r} in {', '.join(sorted(where))} is outside the current directory")
+        elif not os.path.isfile(os.path.join(module, "go.mod")):
+            problems.append(f"MODULE {module!r} in {', '.join(sorted(where))} has no go.mod, "
+                            "so no go test runs there as a module of its own")
+        else:
+            if go_tests is not None and module not in go_tests:
+                go_tests[module] = module_tests(module)[0]
+            continue
+        bad.add(module)
+    return problems, bad
 
 
 def rubric_problems(name, origin, test):
@@ -614,9 +698,11 @@ def check(complete, shared_tests=SHARED_TESTS):
     mutant in a row's file names only that row's tests, or a declared shared
     pair, and a mutant in a rubric entry's file names its own entry's test and
     no other entry's (rubric_problems). `complete` says the whole set was
-    loaded, which is when a test regex can be checked against every real func
-    Test. `shared_tests` is the file declaring shared pairs; a test points it
-    at a fixture instead of writing to the real one.
+    loaded, which is when a test regex can be checked against the real func
+    Tests of the module that runs it. A declared MODULE is a directory holding
+    a go.mod, whether or not the set is complete. `shared_tests` is the file
+    declaring shared pairs; a test points it at a fixture instead of writing to
+    the real one.
     """
     problems = []
     shared = set()
@@ -642,7 +728,12 @@ def check(complete, shared_tests=SHARED_TESTS):
         return texts[f]
 
     go_tests = go_test_names() if complete else None
+    found, bad_modules = module_problems(go_tests)
+    problems += found
     for name, f, old, new, test, _platform in M:
+        module = MODULE_OF.get(name, ".")
+        # The tests of the module whose go test runs this row, and no other's.
+        own = go_tests[module] if go_tests is not None and module not in bad_modules else None
         top = test.split("/", 1)[0]
         rx = None
         try:
@@ -650,8 +741,8 @@ def check(complete, shared_tests=SHARED_TESTS):
         except re.error as e:
             problems.append(f"{name!r}: test regex {test!r} does not compile: {e}")
         else:
-            if go_tests is not None and not any(rx.search(n) for n in go_tests):
-                problems.append(f"{name!r}: test regex {test!r} matches no func Test under the current directory")
+            if own is not None and not any(rx.search(n) for n in own):
+                problems.append(missing_test(name, test, rx, module, go_tests))
         if outside_cwd(f):
             problems.append(f"{name!r}: target {f} is outside the current directory")
             continue
@@ -688,8 +779,8 @@ def check(complete, shared_tests=SHARED_TESTS):
             # a regex can match a real test no literal scan of its own text
             # can name, and matching it against the corpus is the only way to
             # know which row it actually pins.
-            if go_tests is not None and rx is not None:
-                for real_name in go_tests:
+            if own is not None and rx is not None:
+                for real_name in own:
                     rm = ROW_TEST.match(real_name)
                     if rm is None or not rx.search(real_name):
                         continue
@@ -776,45 +867,21 @@ def _dirty_targets():
     return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
 
 
-def run_sweep(strict=False, trim_root=None):
-    for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
-        signal.signal(_sig, _restore_and_reraise)
+def green_baseline(module):
+    """Run the whole suite of module, a directory, unmutated; True if it is
+    green, and if not, print why and return False.
 
-    _dirty = _dirty_targets()
-    if _dirty:
-        # A WARNING, not a refusal. The first version of this refused to start, and
-        # it was wrong: it conflated two states that need opposite treatment.
-        #
-        # A developer's own uncommitted work in a mutated file is SAFE. The backup
-        # is taken at startup, so their version is what gets restored -- mutate,
-        # test, put it back exactly as it was. Refusing there blocks the normal way
-        # of working on this repository, which is how this was found: it fired on
-        # the very next commit's work-in-progress.
-        #
-        # Residue from a killed run is the dangerous state, and the GREEN BASELINE
-        # CHECK below already catches it: a file left holding a deliberate break
-        # makes the suite red, and the sweep stops there and says so. That check is
-        # the guard; this is a note, because a developer who does not know why a
-        # tracked file is modified should be told which ones and how to undo it.
-        print("NOTE: files this sweep mutates are already modified:\n")
-        for f in _dirty:
-            print("   ", f)
-        print("\nIf that is your own work in progress, this is fine -- the sweep backs up what\n"
-              "is there now and restores exactly that. If it is residue from a run killed with\n"
-              "SIGKILL (which no signal handler can catch), undo it first:\n"
-              "    git checkout -- " + " ".join(_dirty) + "\n"
-              "Residue would also have failed the green-baseline check below, which is the\n"
-              "real guard.\n")
-
-    # GREEN BASELINE, before the first mutation.
-    #
-    # The sweep decides "the test went red" from a non-zero exit. With a
-    # pre-existing failure anywhere the filter happens to match, every mutation
-    # reports as detected and the sweep certifies a suite it never exercised --
-    # the tool whose job is guarding premises, not guarding its own. Found by a
-    # review that noticed the tree was red while the sweep would have passed.
-    print("baseline: the suite must be green before anything is mutated")
-    _baseline = run_go_test(["go", "test", "./...", "-count=1"])
+    The sweep decides "the test went red" from a non-zero exit. With a
+    pre-existing failure anywhere the filter happens to match, every mutation
+    reports as detected and the sweep certifies a suite it never exercised --
+    the tool whose job is guarding premises, not guarding its own. Found by a
+    review that noticed the tree was red while the sweep would have passed. A
+    nested module's baseline is its own: the root's `go test ./...` never
+    enters it (SWEEP-MODULE1).
+    """
+    where = "" if module == "." else f" in {module}"
+    print(f"baseline{where}: the suite must be green before anything is mutated")
+    _baseline = run_go_test(["go", "test", "./...", "-count=1"], cwd=module)
     if _baseline.returncode != 0:
         print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
               "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
@@ -852,8 +919,46 @@ def run_sweep(strict=False, trim_root=None):
                 print("   ", ln)
             print("\nthe last 2000 bytes of go test's stderr:")
         print(_baseline.stderr[-2000:])
-        return 1
-    print("baseline: green\n")
+        return False
+    print(f"baseline{where}: green\n")
+    return True
+
+
+def run_sweep(strict=False, trim_root=None):
+    for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
+        signal.signal(_sig, _restore_and_reraise)
+
+    _dirty = _dirty_targets()
+    if _dirty:
+        # A WARNING, not a refusal. The first version of this refused to start, and
+        # it was wrong: it conflated two states that need opposite treatment.
+        #
+        # A developer's own uncommitted work in a mutated file is SAFE. The backup
+        # is taken at startup, so their version is what gets restored -- mutate,
+        # test, put it back exactly as it was. Refusing there blocks the normal way
+        # of working on this repository, which is how this was found: it fired on
+        # the very next commit's work-in-progress.
+        #
+        # Residue from a killed run is the dangerous state, and the GREEN BASELINE
+        # CHECK below already catches it: a file left holding a deliberate break
+        # makes the suite red, and the sweep stops there and says so. That check is
+        # the guard; this is a note, because a developer who does not know why a
+        # tracked file is modified should be told which ones and how to undo it.
+        print("NOTE: files this sweep mutates are already modified:\n")
+        for f in _dirty:
+            print("   ", f)
+        print("\nIf that is your own work in progress, this is fine -- the sweep backs up what\n"
+              "is there now and restores exactly that. If it is residue from a run killed with\n"
+              "SIGKILL (which no signal handler can catch), undo it first:\n"
+              "    git checkout -- " + " ".join(_dirty) + "\n"
+              "Residue would also have failed the green-baseline check below, which is the\n"
+              "real guard.\n")
+
+    # GREEN BASELINE, before the first mutation, in each module this run's rows
+    # run in: the root's alone when none of them declares a MODULE, or none is left.
+    for module in sorted({MODULE_OF.get(x[0], ".") for x in M}) or ["."]:
+        if not green_baseline(module):
+            return 1
     if trim_root:
         pathlib.Path(trim_root, TRIM_MARKER).touch()
 
@@ -898,7 +1003,7 @@ def run_sweep(strict=False, trim_root=None):
                     # way a missing anchor on the main mutation is.
                     print(f"  IMPORT ANCHOR MISSING <- {name}"); undetected.append(name); restore(); continue
                 pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
-            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"])
+            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"], cwd=MODULE_OF.get(name, "."))
             judged = r.stdout + r.stderr
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
             # `go test ./... -run <regex>`, so every package without a matching

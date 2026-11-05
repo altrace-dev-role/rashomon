@@ -537,6 +537,106 @@ func TestCheckValidatesJudgingTestExists(t *testing.T) {
 	}
 }
 
+// swm1Fixture is a root module holding a nested module, sub, with a go.mod of
+// its own; each has one function and the test that pins it. Beside them are a
+// test under testdata, which `go test ./...` never runs, and notmod, a
+// directory with no go.mod.
+func swm1Fixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, d := range []string{"sub", "testdata", "notmod", "mutants"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(dir, "go.mod"), "module fixture\n\ngo 1.21\n")
+	write(t, filepath.Join(dir, "root.go"), "package fixture\n\nfunc R() int { return 1 }\n")
+	write(t, filepath.Join(dir, "root_test.go"), "package fixture\n\nimport \"testing\"\n\n"+
+		"func TestFixtureRoot_(t *testing.T) {\n\tif R() != 1 {\n\t\tt.Fatal(R())\n\t}\n}\n")
+	write(t, filepath.Join(dir, "testdata", "t_test.go"),
+		"package t\n\nimport \"testing\"\n\nfunc TestFixtureTestdata_(t *testing.T) {}\n")
+	write(t, filepath.Join(dir, "sub", "go.mod"), "module fixture/sub\n\ngo 1.21\n")
+	write(t, filepath.Join(dir, "sub", "s.go"), "package sub\n\nfunc S() int { return 1 }\n")
+	write(t, filepath.Join(dir, "sub", "s_test.go"), "package sub\n\nimport \"testing\"\n\n"+
+		"func TestFixtureSub_(t *testing.T) {\n\tif S() != 1 {\n\t\tt.Fatal(S())\n\t}\n}\n")
+	return dir
+}
+
+// SWEEP-MODULE1. A directory with a go.mod of its own is a module apart:
+// `go test ./...` from the root stops at it, so a row judged by a test that
+// only that module defines prints NOT DETECTED in the sweep, while --check,
+// which read every *_test.go under the current directory, passed it. A mutant
+// file names the module that runs its rows with MODULE = "<dir>", and --check
+// matches each row's test against that module's tests alone (the root's when
+// the file names none), read as ./... reads them: no testdata, no directory
+// starting with . or _, and no nested module. The module is the test's, not
+// the target's: a root test may judge a file inside a nested module through a
+// binary it builds (PLW1's pgraph/syncroot.go rows).
+func TestSWM1_CheckRefusesATestOutsideTheModuleThatRunsIt(t *testing.T) {
+	cases := []struct {
+		name, decl, file, test string
+		wantErr                string // "" when --check passes
+	}{
+		{"a nested module's test with no MODULE", "", "sub/s.go", "TestFixtureSub_", `declare MODULE = "sub"`},
+		{"the same row declaring its module", `MODULE = "sub"`, "sub/s.go", "TestFixtureSub_", ""},
+		{"a module row naming a root test", `MODULE = "sub"`, "sub/s.go", "TestFixtureRoot_", "no func Test in module sub"},
+		{"a root row naming a root test", "", "root.go", "TestFixtureRoot_", ""},
+		{"a root test judging a nested module's file", "", "sub/s.go", "TestFixtureRoot_", ""},
+		{"a test defined only under testdata", "", "root.go", "TestFixtureTestdata_", "no func Test in the root module"},
+		{"MODULE names a directory with no go.mod", `MODULE = "notmod"`, "root.go", "TestFixtureRoot_", "has no go.mod"},
+		{"MODULE outside the current directory", `MODULE = "../sub"`, "sub/s.go", "TestFixtureSub_", "outside the current directory"},
+		{"MODULE that is not a string", `MODULE = 1`, "root.go", "TestFixtureRoot_", "MODULE is 1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := swm1Fixture(t)
+			write(t, filepath.Join(dir, "mutants", "x.py"),
+				tc.decl+"\n"+mutant("fixture "+tc.name, tc.file, "return 1", "return 2", tc.test))
+			errOut, code := sweepErr(t, dir, "--check")
+			switch {
+			case tc.wantErr == "" && code != 0:
+				t.Errorf("--check exited %d; want 0:\n%s", code, errOut)
+			case tc.wantErr != "" && code == 0:
+				t.Errorf("--check exited 0; want a refusal naming %q", tc.wantErr)
+			case tc.wantErr != "" && !strings.Contains(errOut, tc.wantErr):
+				t.Errorf("--check refused, but not with %q:\n%s", tc.wantErr, errOut)
+			}
+		})
+	}
+}
+
+// SWEEP-MODULE1 (b). The sweep runs a MODULE row's go test with that module as
+// the working directory, behind a green baseline of the module's own. The
+// root's baseline never enters the module, so a test already red there would
+// make each of its rows read as detected; the sweep stops on it instead. The
+// target path stays relative to the root, and the tree is restored after.
+func TestSWM1b_AModuleRowRunsInItsModuleBehindItsOwnBaseline(t *testing.T) {
+	for _, red := range []bool{false, true} {
+		t.Run(fmt.Sprintf("module baseline red %v", red), func(t *testing.T) {
+			dir := swm1Fixture(t)
+			if red {
+				write(t, filepath.Join(dir, "sub", "red_test.go"), "package sub\n\nimport \"testing\"\n\n"+
+					"func TestFixtureSubRed_(t *testing.T) { t.Error(\"red before any mutation\") }\n")
+			}
+			write(t, filepath.Join(dir, "mutants", "x.py"),
+				"MODULE = \"sub\"\n"+mutant("sub row", "sub/s.go", "return 1", "return 2", "TestFixtureSub_"))
+			out, code := sweepTimeout(t, dir, 90*time.Second)
+			if red {
+				if code == 0 || !strings.Contains(out, "BASELINE NOT GREEN") || !strings.Contains(out, "--- FAIL: TestFixtureSubRed_") {
+					t.Errorf("a red baseline in sub exited %d without stopping on it by name:\n%s", code, out)
+				}
+				return
+			}
+			if code != 0 || !strings.Contains(out, "baseline in sub: green") || !strings.Contains(out, "went red       <- sub row") {
+				t.Errorf("the sub row exited %d without going red in sub behind sub's own baseline:\n%s", code, out)
+			}
+			if got := readFile(t, filepath.Join(dir, "sub", "s.go")); got != "package sub\n\nfunc S() int { return 1 }\n" {
+				t.Errorf("sub/s.go was not restored:\n%s", got)
+			}
+		})
+	}
+}
+
 // workflows is every workflow file, and there must be some.
 func workflows(t *testing.T, root string) []string {
 	t.Helper()

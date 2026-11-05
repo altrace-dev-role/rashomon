@@ -38,6 +38,9 @@ type stopTurn struct {
 	shown   string
 	summary bool
 	speaks  bool
+	// stops is the view of a Stop event itself, the one that records the
+	// done verdict for the next prompt.
+	stops bool
 	// owed is what the turn end leaves the session's next prompt (card
 	// GATE-INFER1, W5).
 	owed recap.Owed
@@ -125,7 +128,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		}
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
-		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending, owed: owedNote(v, in.Inferred)}, nil
+		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending, owed: owedNote(v, in.Inferred)}, nil
 }
 
 // unboundSpecs is each repository spec in sp, project-relative, that the
@@ -255,6 +258,17 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 		l, clause = recap.RuleLine(s.view, sessionID, fromPlugin), ""
 	}
 	return l, l != "", clause
+}
+
+// unverified is the Stop's done verdict as the next prompt's note reads it
+// (card c4): the done flag fired, the same decision line prints, on a Stop
+// and not on the catch-up, whose turn a Stop did not reach.
+func (s stopTurn) unverified(sessionID string, fromPlugin bool) bool {
+	if !s.stops {
+		return false
+	}
+	_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)
+	return ok
 }
 
 // rules is the turn's rule lines for recap.Line's sentences to carry, where

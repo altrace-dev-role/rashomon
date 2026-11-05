@@ -107,7 +107,7 @@ m("GI-1 the note is given every prompt", N,
 m("GI-1 a superseded line counts as given", N,
   "(scanText(b, sp[1]) == string(steer.LineStateDelivered) ||", "(scanText(b, sp[1]) != \"\" ||", "TestGI1n_TheNextPrompt")
 m("GI-1 an arm-off line is not given", N,
-  " || scanText(b, sp[3]) == string(steer.SuppressedByArmOff))", ")", "TestGI1n_TheNextPrompt")
+  " || scanText(b, sp[3]) == string(steer.SuppressedByArmOff) ||", " ||", "TestGI1n_TheNextPrompt")
 m("GI-1 a refused file drops the note", N,
   "render.ClaimVsRecordInferredBinding{Gate: g, Path: f}, render.ClaimVsRecordInferredUnnamedBinding{Gate: g})",
   "render.ClaimVsRecordInferredBinding{Gate: g, Path: f})",

@@ -105,6 +105,7 @@ var tablePins = map[int]string{
 	10: "9491d497d9ba44407067b6ae5c519106a0603d64940285f3942bf6af9f0e7962",
 	11: "5ca3da77d4411c55988c6c1988ea83cc5ee9558bcbf65f926a53acf8ebccd344",
 	12: "e92aa6a92377227eb9310bc8b28a7ae30af094d7709645085f2e48ebd917f596",
+	13: "e92aa6a92377227eb9310bc8b28a7ae30af094d7709645085f2e48ebd917f596", // shape.RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); the tables are unchanged
 }
 
 func TestGO10_TablesPinned(t *testing.T) {

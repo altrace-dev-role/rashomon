@@ -5,6 +5,6 @@
 # is the only way to catch that a mutant pins a different row than the one it
 # claims, and it needs the complete set, so dropping it gives the bypass back.
 m("the row check matches obfuscated regexes against real tests", "test/mutation/sweep.py",
-  "            if go_tests is not None and rx is not None:\n",
-  "            if go_tests is not None and rx is not None and False:\n",
+  "            if own is not None and rx is not None:\n",
+  "            if own is not None and rx is not None and False:\n",
   "TestDEL2f_")

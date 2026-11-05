@@ -33,6 +33,8 @@ R2
 RC14
 REC1
 RES2
+# RES29: MP-1's byte-scan row is killed by TestRES29_DeriveReadsTheLineThreeTimes, the bound on Derive's readings that the probe bit's byte scan keeps (#52).
+RES29
 RP2
 RS1
 SC1

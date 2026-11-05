@@ -295,15 +295,17 @@ func TestVER13e_StateOrderAndVocabularyUnchanged(t *testing.T) {
 // test, over every run the rows above Stale read: backgrounded or not,
 // masked by test, build or not at all, each outcome (an interrupt with a code
 // and one without), no output or each of the seven kinds, and landed in
-// order or spilled. green(r) holds exactly when no row before Stale matches a
-// family whose last run is r, so a row added above Stale without its term in
-// green() fails here (D47). The enumeration varies f.last only; counted stays
-// empty, so a row above Stale that reads f.counted or any other fam field
-// needs its own test.
+// order or spilled. green(r) holds exactly when no row before the
+// writes-after-green Stale row matches a family whose last run is r, so a row
+// added above it without its term in green() fails here (D47). The
+// enumeration varies f.last only; counted stays empty, so a row above it that
+// reads f.counted or any other fam field needs its own test: the
+// masked-then-written row (card F2c) matches only a masked run, which green()
+// already refuses, and TestF2d holds it.
 func TestVER13f_GreenIsTheNegationOfTheRowsAboveStale(t *testing.T) {
-	stale := slices.IndexFunc(gateTable, func(r gateRow) bool { return r.state == Stale })
+	stale := slices.IndexFunc(gateTable, func(r gateRow) bool { return r.state == Stale && r.reason(&fam{}) == WritesAfterGreen })
 	if stale < 1 {
-		t.Fatalf("the Stale row is at %d, want a row after the first", stale)
+		t.Fatalf("the writes-after-green Stale row is at %d, want a row after the first", stale)
 	}
 	one := 1
 	type outcome struct {

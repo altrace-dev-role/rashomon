@@ -1,11 +1,11 @@
 # A failed lookup (a Read of a directory) fired the silent-failure line on
 # its own: 5 of 7 Haiku false alarms on the 100-run benchmark.
 m("LK every failed lookup counts toward the line", "internal/report/account.go",
-  "\t\t\tif IsLookup(x.ToolName) {\n\t\t\t\tsf.FailedLookups++", "\t\t\tif false {\n\t\t\t\tsf.FailedLookups++",
+  "\t\t\tcase IsLookup(x.ToolName):\n\t\t\t\tsf.FailedLookups++", "\t\t\tcase false:\n\t\t\t\tsf.FailedLookups++",
   "TestSilentFailures_AFailedLookupAloneDoesNotFire|TestH91_AFailedLookupAloneStaysSilent")
 m("LK a failed lookup is dropped from the failed count", "internal/report/account.go",
-  "\t\t\tsf.Failed++\n\t\t\tif IsLookup(x.ToolName) {\n\t\t\t\tsf.FailedLookups++\n\t\t\t}",
-  "\t\t\tif IsLookup(x.ToolName) {\n\t\t\t\tsf.FailedLookups++\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tsf.Failed++",
+  "\t\t\tsf.Failed++\n\t\t\tswitch {\n\t\t\tcase IsLookup(x.ToolName):",
+  "\t\t\tif !IsLookup(x.ToolName) {\n\t\t\t\tsf.Failed++\n\t\t\t}\n\t\t\tswitch {\n\t\t\tcase IsLookup(x.ToolName):",
   "TestSilentFailures_AFailedLookupAloneDoesNotFire|TestH91_AFailedLookupAloneStaysSilent")
 m("LK every tool that is not a shell is a lookup", "internal/report/account.go",
   "return shape.ToolVerb(toolName) == shape.VerbRead }", "return shape.ToolVerb(toolName) != shape.VerbExecute }",
@@ -62,5 +62,5 @@ m("LK the report names fewer tools than it sets aside", "internal/report/account
 # many it set aside so the two add up to the turn's count (the report counts
 # the whole session).
 m("LK the end-of-turn line does not say lookups were set aside", "internal/recap/recap.go",
-  "\t\tif sf.FailedLookups > 0 {\n\t\t\ts += ", "\t\tif false {\n\t\t\ts += ",
+  "\t\tif sf.FailedLookups > 0 {\n\t\t\taside = append(", "\t\tif false {\n\t\t\taside = append(",
   "TestLineCountsOnlyTheFailuresThatFire|TestH91_AFailedLookupBesideARealFailureIsNotCounted")

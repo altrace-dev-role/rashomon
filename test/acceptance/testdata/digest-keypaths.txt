@@ -38,6 +38,7 @@ silent_failures.failed: int
 silent_failures.failed_lookups: int
 silent_failures.final_message_available: bool
 silent_failures.fires: bool
+silent_failures.missing_programs: int
 silent_failures.outcome_unobserved: int
 skipped_records: int
 subagents.declarations: int

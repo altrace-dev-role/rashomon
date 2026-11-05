@@ -30,22 +30,22 @@ func TestGI1s_TheTurnEndKeepsWhatItOwesTheNextPrompt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if pending, got := Turn(root, "s1", "p2"); !pending || !reflect.DeepEqual(got, ci) {
+	if pending, got, _ := Turn(root, "s1", "p2"); !pending || !reflect.DeepEqual(got, ci) {
 		t.Fatalf("Turn(s1, p2) = %v, %+v, want pending and %+v", pending, got, ci)
 	}
-	if pending, got := Turn(root, "s1", "p1"); pending || !reflect.DeepEqual(got, ci) {
+	if pending, got, _ := Turn(root, "s1", "p1"); pending || !reflect.DeepEqual(got, ci) {
 		t.Errorf("Turn(s1, p1) = %v, %+v, want the checked prompt not pending, the owed note kept per session", pending, got)
 	}
 	if _, err := ClaimShown(root, "s1", "p2", now, false, "", Owed{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, got := Turn(root, "s1", "p3"); !reflect.DeepEqual(got, Owed{}) {
+	if _, got, _ := Turn(root, "s1", "p3"); !reflect.DeepEqual(got, Owed{}) {
 		t.Errorf("after a turn end that owes nothing: %+v, want none", got)
 	}
-	if _, got := Turn(root, "s2", "p2"); !reflect.DeepEqual(got, mk) {
+	if _, got, _ := Turn(root, "s2", "p2"); !reflect.DeepEqual(got, mk) {
 		t.Errorf("another session's: %+v, want %+v kept", got, mk)
 	}
-	if pending, got := Turn(root, "", "p2"); pending || !reflect.DeepEqual(got, Owed{}) {
+	if pending, got, _ := Turn(root, "", "p2"); pending || !reflect.DeepEqual(got, Owed{}) {
 		t.Errorf("no session id: %v, %+v, want nothing", pending, got)
 	}
 
@@ -55,7 +55,7 @@ func TestGI1s_TheTurnEndKeepsWhatItOwesTheNextPrompt(t *testing.T) {
 		}
 	}
 	last := fmt.Sprintf("x%02d", maxTrackedSessions+5)
-	if _, got := Turn(root, last, "p2"); !reflect.DeepEqual(got, mk) {
+	if _, got, _ := Turn(root, last, "p2"); !reflect.DeepEqual(got, mk) {
 		t.Errorf("the session just claimed: %+v, want %+v kept by the cap", got, mk)
 	}
 	s, err := readState(statePath(root))
