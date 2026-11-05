@@ -6,6 +6,19 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-05 02:5x: W-M1.8 done. This repository indexed at 91b34d6d after a fresh sync: 7,571 nodes, 14,623 edges,
+  22,194 records, 8.5 MB. K7 rows on it, 30 runs, reference machine, go1.27.3: engine load p95 62.6 ms, pipeline p95
+  31.8 ms, total p95 94.3 ms; the hook's whole prompt path (graphBrief) p95 83 to 96.6 ms; both tests fail above 300
+  ms (AC-M1.2). Budgets row recap.pending.graph8MiB: the prompt hook over a synthetic index of at least 8 MiB reads
+  39.1 to 39.4 MiB against 8.75 with nothing to read (the decoded store adds about 30 MiB); lines darwin 42, linux
+  41.5, provisional until anchored from CI. R2 finding: latency is a third of the budget, memory is the cost; the
+  lever is a store that decodes less, a design question for M2, not acted on. hooks.json unchanged. Defect of W-M1.4
+  repaired: headCommit read a worktree's branch ref in the wrong directory, so a worktree's index said C1;
+  baseline.GitDirs resolves gitdir and commondir once for originURL and headCommit. Tests by name in PLAN W-M1.8 as
+  built; whole packages and the whole acceptance package green through the slot. Code 903e6bc2. Next:
+  W-M1.9 (disclosure check, truth-table rows PL2 and PL7, sweep anchors, D160 ruling on the brief evidence file,
+  T1_G_* pins).
+
 - 2026-11-05 01:4x: W-M1.7 done. Contract types only, no hook-path behaviour: internal/events (Event, ten kinds, five boundary
   forms, Known) with hookio.EventKind as the one adapter mapping (SessionStart compact|resume|clear -> boundary; subagent
   events mapped ahead of W-M4.3; plan produced by nothing until W-M2.6); graph.Predicates (25, closed; TestPredicates_Closed
