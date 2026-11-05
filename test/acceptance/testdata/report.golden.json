@@ -109,6 +109,7 @@
         "fires": false,
         "failed": 0,
         "failed_lookups": 0,
+        "missing_programs": 0,
         "outcome_unobserved": 0,
         "absent_words": [],
         "final_message_available": false

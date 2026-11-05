@@ -504,6 +504,7 @@ type digestOutput struct {
 		Fires                 bool     `json:"fires"`
 		Failed                int      `json:"failed"`
 		FailedLookups         int      `json:"failed_lookups"`
+		MissingPrograms       int      `json:"missing_programs"`
 		Unobserved            int      `json:"outcome_unobserved"`
 		AbsentWords           []string `json:"absent_words"`
 		FinalMessageAvailable bool     `json:"final_message_available"`

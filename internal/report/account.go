@@ -96,9 +96,9 @@ type SubagentSummary struct {
 // message mentions failure at all.
 //
 // It is a fact about TEXT and never about intent. The end-of-turn line
-// prints the turn's count less the lookups, and how many it set aside; the
-// report prints "failed calls" with the lookups included and lists the absent
-// words. Neither says the agent
+// prints the turn's count less the lookups and the missing programs, and how
+// many it set aside; the report prints "failed calls" with both included and
+// lists the absent words. Neither says the agent
 // concealed anything, because this program cannot know that and a tool that
 // guesses at it would be worth less than one that does not. A test greps this
 // package for the words that would cross that line.
@@ -134,6 +134,20 @@ type SilentFailures struct {
 	// it stopped at one and reported success -- a review of a file it never
 	// read -- though the report still lists the call.
 	FailedLookups int `json:"failed_lookups"`
+	// MissingPrograms counts the other calls among Failed that only found a
+	// program missing (issue #52): a Bash line of nothing but which, type and
+	// command -v or -V probes (the declaration's probe bit, v10, read from
+	// the words at the hook), or a Bash call the shell ended with 127,
+	// command not found, which the execution holds at any version. Like the
+	// lookups they stay in Failed and in the report, and never make the line
+	// fire by themselves, nor count in Counted. A line with any other command
+	// counts: `which pytest && pytest -q` exits 1 when a test failed. A record
+	// before v10 has no bit, so a probe there counts.
+	//
+	// The cost, as for the lookups: a turn whose only failure is a missing
+	// test runner does not fire even when it reported success, though the
+	// report still lists the call.
+	MissingPrograms int `json:"missing_programs"`
 	// Unobserved counts executions with no outcome at all -- v1 records, or a
 	// PostToolUse invocation that never ran -- and executions moved to the
 	// background (Backgrounded), whose PostToolUse fired before the command
@@ -398,8 +412,18 @@ func orList(names []string) string {
 func IsLookup(toolName string) bool { return shape.ToolVerb(toolName) == shape.VerbRead }
 
 // Counted is the number of failed calls the line is about: Failed less the
-// lookups. It is what fires the line and what the end-of-turn line prints.
-func (sf SilentFailures) Counted() int { return sf.Failed - sf.FailedLookups }
+// lookups and the missing programs. It is what fires the line and what the
+// end-of-turn line prints.
+func (sf SilentFailures) Counted() int { return sf.Failed - sf.FailedLookups - sf.MissingPrograms }
+
+// missingProgram reports a failed Bash call that only found a program
+// missing (SilentFailures.MissingPrograms): one the shell ended with 127, or
+// one whose declaration carries the probe bit, a line of nothing but probes
+// (shape.Shape.Probe). A call with no declaration, or a record before v10,
+// has no bit to read.
+func missingProgram(x store.Execution, d *store.Declaration) bool {
+	return x.ExitCode != nil && *x.ExitCode == 127 || d != nil && d.Probe
+}
 
 // BuildSilentFailures compares the failure count against the final message.
 //
@@ -414,6 +438,17 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 		AbsentWords:           []string{},
 		FinalMessageAvailable: acct.Available,
 	}
+	// The declarations by call, indexed only when a Bash call failed.
+	var decls map[string]*store.Declaration
+	declOf := func(id string) *store.Declaration {
+		if decls == nil {
+			decls = make(map[string]*store.Declaration, len(run.Declarations))
+			for i := range run.Declarations {
+				decls[run.Declarations[i].ToolUseID] = &run.Declarations[i]
+			}
+		}
+		return decls[id]
+	}
 	for _, x := range run.Executions {
 		if x.Backgrounded {
 			// Recorded ok when Claude Code moved it to the background, before
@@ -424,8 +459,11 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 		switch x.Outcome {
 		case store.ExecFailed:
 			sf.Failed++
-			if IsLookup(x.ToolName) {
+			switch {
+			case IsLookup(x.ToolName):
 				sf.FailedLookups++
+			case x.ToolName == "Bash" && missingProgram(x, declOf(x.ToolUseID)):
+				sf.MissingPrograms++
 			}
 		case "":
 			// A v1 record, or an invocation that recorded no ending. Neither a
@@ -436,7 +474,8 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 	}
 	if sf.Counted() == 0 {
 		// Nothing the line is about failed, so the message is not compared:
-		// a failed lookup alone leaves no word to look for.
+		// a failed lookup or a missing program alone leaves no word to look
+		// for.
 		return sf
 	}
 
