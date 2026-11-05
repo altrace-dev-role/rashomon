@@ -1,0 +1,6 @@
+# A1a and A1b items: the reuse target and the non-local consumers the prompt does not name (section 7.1).
+# One per line: kind<TAB>repo-relative path<TAB>symbol names the plan text may use instead of the path.
+reuse	internal/platform/callers.go	Callers Locate callers.go
+consumer	internal/verify/platform.go	PlatformRead platformObligations
+consumer	cmd/rashomon/report_platform.go	platformRead platformReadWithin report_platform.go
+consumer	cmd/rashomon/laststop.go	laststop.go

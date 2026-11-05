@@ -6,6 +6,18 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-04 23:3x: W-M1.0 harness written into test/live/autosteer (run.sh, wrap.sh, hook.sh, cleanup.sh, judge/common.py) and the T1
+  pre-registration (t1/prompt.txt frozen as section 7.2; pins.env: tree and arm R at 5f851724, baseline pgraph.log sha pinned, caps;
+  consumers.txt; oracle-symbols.txt with four shapes verified against pgraph; testdata/dispatch-reflect; judge a1, a2, a3 (A3 to A5),
+  a6, a7, a8, oracle.py, judge.sh). A3 rule corrected before any run: the renderers judged are the PostToolUse blast line and the
+  Stop platform line; rashomon report has no platform section. Arm G binary sha and knowledge digests stay empty until W-M1.9.
+  23:5x, still before any run: the A3 replay was smoke-tested against the arm R binary on the pinned tree and three
+  preconditions it needs were found and pre-registered (one symbol per session because the Stop prints two package lines
+  at most; the fixture copies carry a CI step naming go test and an empty test file per package, which the Stop's
+  platform row requires; AI_AGENT in the claude-code_<v>_harness form, which the blast note's delivery requires). The
+  fixture extraction depth in a3.sh was wrong (module nested one level) and is fixed; oracle shapes re-verified
+  unchanged. On the pinned tree both renderers fire and name no symbol: A3 neither, as expected. No run has happened.
+  Next: W-M1.1 (pgraph symbols sidecar).
 
 - 2026-11-04: plan approved by the owner (Parts A, B, C). Execution step 1 (PR #281 merge) and step 2 (this
   commit) done. Next: W-M1.0 (harness into test/live/autosteer) and the T1 pre-registration commit.
