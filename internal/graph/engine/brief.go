@@ -49,6 +49,11 @@ type Options struct {
 	// Lessons is the ablation arm (buildLessons): knowledge nodes matched
 	// by the prompt's words alone, no traversal, no rank.
 	Lessons bool
+	// Lexicon is reserved for the proposer layer (AD16, Part B1): a term's
+	// expansions, written out of hook by `rashomon graph enrich` and read
+	// here as data. Build reads none of it until AC-P1 adopts it
+	// (TestOptions_LexiconIsReserved).
+	Lexicon map[string][]string
 }
 
 func (o Options) rel() func(string) string {

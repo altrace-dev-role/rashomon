@@ -231,23 +231,68 @@ func cmdBriefOrGraph(name string, args []string, stdout io.Writer) error {
 // decides whether the prompt has anything to say (GRAPH-SLOT1). ok is
 // whether a message rendered. Every run that found an index leaves its
 // explanation under the store root at graph/<session>-<prompt>.txt.
-func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (engine.Brief, bool) {
+func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
-		return engine.Brief{}, false
+		return indexBrief{}, false
 	}
 	root := graph.FindIndex(cwd)
 	if root == "" {
-		return engine.Brief{}, false
+		return indexBrief{}, false
 	}
 	s, h, err := graph.LoadFile(root)
 	if err != nil {
-		return engine.Brief{}, false
+		return indexBrief{}, false
 	}
 	opt := hookScorer()
 	opt.Rel = relTo(cwd, root)
-	b := engine.Build(s, graph.RevCommit(h.Rev.Commit), string(prompt), opt)
+	rev := graph.RevCommit(h.Rev.Commit)
+	b := engine.Build(s, rev, string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
-	return b, !b.Empty()
+	ib := indexBrief{Brief: b, Repo: h.Repo}
+	if len(b.Lines) > 0 {
+		first := b.Lines[0].Key
+		n, _ := s.Node(first, rev)
+		ib.First, ib.Tier = graph.GlobalID(h.Repo, first), n.Tier
+		if u := unitOf(s, rev, first); u != "" {
+			ib.Unit = graph.GlobalID(h.Repo, u)
+		}
+	}
+	return ib, !b.Empty()
+}
+
+// indexBrief is the brief with what names it (W-M1.7, AD19): the
+// repository id the index's header carries, the global id and tier of the
+// node the brief's first line is keyed on, and the global id of the unit
+// that contains that node, "" when none does.
+type indexBrief struct {
+	engine.Brief
+	Repo  string
+	First graph.ID
+	Tier  graph.Tier
+	Unit  graph.ID
+}
+
+// unitOf is the unit that contains id, found by walking up the containing
+// and declaring edges, or, for a knowledge node, through the first node it
+// applies to; "" when no unit is reached within four steps.
+func unitOf(s *graph.Store, rev graph.Rev, id graph.ID) graph.ID {
+	for step := 0; step < 4 && id != ""; step++ {
+		n, ok := s.Node(id, rev)
+		if !ok {
+			return ""
+		}
+		if n.Kind == "unit" {
+			return id
+		}
+		next := graph.ID("")
+		if in := s.In(id, rev, graph.Contains, graph.Declares); len(in) > 0 {
+			next = in[0].Src
+		} else if out := s.Out(id, rev, graph.AppliesTo); len(out) > 0 {
+			next = out[0].Dst
+		}
+		id = next
+	}
+	return ""
 }
 
 // relTo maps a path as the graph holds it, relative to root, to its form
@@ -269,14 +314,17 @@ const keyGraph = "graph"
 // graphFinding is the brief as the prompt's task-preflight finding, routed
 // in preflightNote's one Route call beside the request's note: a nudge
 // with no stop form, its record form (Brief.Record) where the record scope
-// keeps digests (digest set), the message itself where it keeps paths.
-func graphFinding(b engine.Brief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
+// keeps digests (digest set), the message itself where it keeps paths; its
+// source the graph row its first line is keyed on and its unit that row's
+// unit (AD19).
+func graphFinding(b indexBrief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	if b.Empty() {
 		return steer.Finding{}, false
 	}
 	prio, _ := pattern.Priority(pattern.TaskPreflight)
 	f := steer.Finding{Pattern: pattern.TaskPreflight, Key: keyGraph, Priority: prio, MaxLevel: steer.LevelNudge,
-		StopForm: steer.StopFormNone, Message: b.Message, AfterSeq: afterSeq}
+		StopForm: steer.StopFormNone, Message: b.Message, AfterSeq: afterSeq, Unit: string(b.Unit),
+		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
 	if digest != nil {
 		rec, err := b.Record(digest)
 		if err != nil {

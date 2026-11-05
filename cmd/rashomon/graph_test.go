@@ -12,6 +12,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -168,5 +169,36 @@ func TestGraphKnowledgeImport_RowsReachTheIndex(t *testing.T) {
 	rows, err := knowledge.ReadDir(dir)
 	if err != nil || len(rows) != 1 || len(rows[0].AppliesTo) != 1 || rows[0].AppliesTo[0] != "g:"+h.Repo+"#file:jobs/purge_sessions.py" {
 		t.Errorf("knowledge rows = %+v, %v; want one row keyed to this repository", rows, err)
+	}
+}
+
+// TestGraphFinding_CarriesSourceAndUnit (W-M1.7, AD19, AC-X.5): the brief's
+// finding names where its claim came from and what it is about: the store
+// class, the global id of the node its first line is keyed on, and the unit
+// that contains that node, all under the index's repository id.
+func TestGraphFinding_CarriesSourceAndUnit(t *testing.T) {
+	dir := t.TempDir()
+	graphProject(t, dir)
+	_, h, err := graph.LoadFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gb, ok := graphBrief("", filepath.Join(dir, "services", "auth"), "s1", "p1", []byte("purge sessions"))
+	if !ok || gb.Repo != h.Repo || gb.Unit == "" {
+		t.Fatalf("graphBrief = repo %q unit %q, %v; want repo %q and a unit", gb.Repo, gb.Unit, ok, h.Repo)
+	}
+	f, ok := graphFinding(gb, 9, nil)
+	if !ok {
+		t.Fatal("no finding")
+	}
+	if err := f.Check(); err != nil {
+		t.Errorf("Check: %v", err)
+	}
+	first := graph.GlobalID(h.Repo, gb.Lines[0].Key)
+	if f.Source.Kind != steer.SourceGraph || f.Source.ID != string(first) || f.Source.Tier == "" {
+		t.Errorf("source = %+v; want graph, %s, the node's tier", f.Source, first)
+	}
+	if _, local, ok := graph.SplitGlobal(graph.ID(f.Unit)); !ok || !strings.HasPrefix(string(local), "unit:py:") || f.Unit != string(gb.Unit) {
+		t.Errorf("unit = %q; want this repository's unit:py:... containing %s", f.Unit, gb.Lines[0].Key)
 	}
 }
