@@ -68,7 +68,7 @@ func TestVER54c_FindingCarriesTheSpecsFields(t *testing.T) {
 	if reflect.TypeOf(Finding{}).Field(0).Type != reflect.TypeOf(pattern.ID("")) {
 		t.Errorf("Finding.Pattern is %s, want pattern.ID", reflect.TypeOf(Finding{}).Field(0).Type)
 	}
-	if got, want := fields(GateFact{}), "GateID,Program,State,Reason,LastGreenSeq,LastRunSeq,ExitCode,WritesSince,Paths,PathsOmitted,OtherAgents,PartialRuns,OutcomeFrom"; got != want {
+	if got, want := fields(GateFact{}), "GateID,Program,State,Reason,LastGreenSeq,LastRunSeq,ExitCode,WritesSince,Paths,PathsOmitted,OtherAgents,PartialRuns,OutcomeFrom,RedWrapped,GreenWrapped"; got != want {
 		t.Errorf("GateFact fields %s, want %s", got, want)
 	}
 	if got, want := fields(ClaimFact{}), "Class,Source,Strict,Verdict,Gates,GatesOmitted,QuoteHMAC,UnrecoveredFailures"; got != want {

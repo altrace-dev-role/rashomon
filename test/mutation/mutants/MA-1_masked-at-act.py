@@ -22,9 +22,9 @@ m("MA-1 a status in view is a hidden run", H,
   "\treturn rec.Outcome == store.ExecOK && rec.RunnerDigest != nil && !rec.Backgrounded && rec.StatusMasked != nil\n",
   "TestMA1h_")
 m("MA-1 a hidden run does not step", "internal/hook/steerstep.go",
-  " ||\n\t\thidden && event == string(steer.EventPostToolUse)", "", "TestST_StepsIsTheTriggerTable")
+  " ||\n\t\thidden && post", "", "TestST_StepsIsTheTriggerTable")
 m("MA-1 a hidden run steps at its failure event too", "internal/hook/steerstep.go",
-  "\t\thidden && event == string(steer.EventPostToolUse)", "\t\thidden", "TestST_StepsIsTheTriggerTable")
+  "\t\thidden && post", "\t\thidden", "TestST_StepsIsTheTriggerTable")
 m("MA-1 masked status is raised at a failure event", V,
   "\tif event != string(steer.EventPostToolUse) {\n\t\treturn nil\n\t}\n\tvar out []Finding\n", "\tvar out []Finding\n",
   "TestMA1b_")

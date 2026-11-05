@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // pipedRun lands one Bash call at PostToolUse (exit 0, as a pipe leaves it)
@@ -76,5 +77,37 @@ func TestPR_APipedRedRunnerKeepsThePostToolUseFloor(t *testing.T) {
 	below.AIAgent = "claude-code_2-1-279_harness"
 	if out := string(pipedAfterGreenEnv(t, red, below)); strings.Contains(out, "hookSpecificOutput") {
 		t.Errorf("below the floor the note is model-visible: %q", out)
+	}
+}
+
+// TestRS1_RedReadIsAWrappersFailingSummary: a call with no runner whose
+// gate_output was kept (WRAPPER-RUN1 keeps one only where a runner signed
+// the output) reads red on its runner's failing summary, at either event's
+// outcome but an interrupt; a fail line, a pass, no summary, or no kept read
+// is not red. Controls: a runner's record keeps MASKED-OUTCOME1's rule
+// (ended ok, status masked, summary_fail or fail_line). Break: read a
+// wrapper's red from a fail line or its exit, or step only on a runner.
+func TestRS1_RedReadIsAWrappersFailingSummary(t *testing.T) {
+	digest, masked := "d", "masked_test"
+	out := func(kind string) *store.GateOutput { return &store.GateOutput{Kind: kind, Parser: "go"} }
+	for _, c := range []struct {
+		name string
+		rec  store.Execution
+		want bool
+	}{
+		{"wrapper, summary_fail, ok", store.Execution{Outcome: store.ExecOK, ExecutionV5: store.ExecutionV5{GateOutput: out("summary_fail")}}, true},
+		{"wrapper, summary_fail, failed", store.Execution{Outcome: store.ExecFailed, ExecutionV5: store.ExecutionV5{GateOutput: out("summary_fail")}}, true},
+		{"wrapper, summary_fail, interrupted", store.Execution{Outcome: store.ExecInterrupted, ExecutionV5: store.ExecutionV5{GateOutput: out("summary_fail")}}, false},
+		{"wrapper, fail_line", store.Execution{Outcome: store.ExecFailed, ExecutionV5: store.ExecutionV5{GateOutput: out("fail_line")}}, false},
+		{"wrapper, summary_pass", store.Execution{Outcome: store.ExecFailed, ExecutionV5: store.ExecutionV5{GateOutput: out("summary_pass")}}, false},
+		{"wrapper, no_summary", store.Execution{Outcome: store.ExecFailed, ExecutionV5: store.ExecutionV5{GateOutput: out("no_summary")}}, false},
+		{"wrapper, no kept read", store.Execution{Outcome: store.ExecFailed}, false},
+		{"control: runner, masked, ok, fail_line", store.Execution{Outcome: store.ExecOK, RunnerDigest: &digest, StatusMasked: &masked, ExecutionV5: store.ExecutionV5{GateOutput: out("fail_line")}}, true},
+		{"control: runner, failed, summary_fail", store.Execution{Outcome: store.ExecFailed, RunnerDigest: &digest, StatusMasked: &masked, ExecutionV5: store.ExecutionV5{GateOutput: out("summary_fail")}}, false},
+		{"control: runner, unmasked, ok, summary_fail", store.Execution{Outcome: store.ExecOK, RunnerDigest: &digest, ExecutionV5: store.ExecutionV5{GateOutput: out("summary_fail")}}, false},
+	} {
+		if got := redRead(&c.rec); got != c.want {
+			t.Errorf("%s: redRead = %v, want %v", c.name, got, c.want)
+		}
 	}
 }

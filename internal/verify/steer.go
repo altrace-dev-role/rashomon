@@ -147,12 +147,19 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 		green, last := g.LastGreen.Seq, g.LastRun.Seq
 		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
 			LastGreenSeq: &green, LastRunSeq: &last, PartialRuns: g.PartialRunsSince,
-			OutcomeFrom: OutcomeFrom(g.LastRun.OutcomeFrom.String())}
+			OutcomeFrom: OutcomeFrom(g.LastRun.OutcomeFrom.String()),
+			RedWrapped:  g.LastRun.Wrapped == WrapRead, GreenWrapped: g.LastGreen.Wrapped == WrapRead}
 		if g.LastRun.ExitCode != nil && g.LastRun.OutcomeFrom == SourceExit {
 			exit := *g.LastRun.ExitCode
 			fact.ExitCode = &exit
 		}
-		if p := Program(programOf(runs, last)); p.Valid() {
+		p := Program(programOf(runs, last))
+		if fact.RedWrapped && g.LastRun.GateOutput != nil {
+			// The run's program is the wrapper's; the gate's is the runner
+			// whose table read it, a word of gateout's (WRAPPER-RED-STEP1).
+			p = Program(g.LastRun.GateOutput.Parser)
+		}
+		if p.Valid() {
 			fact.Program = p
 		}
 		between(&fact, writes, pt.AgentID, g.root)
@@ -178,12 +185,10 @@ func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point
 // only summary_fail, or a fail line for a runner whose table has no summary
 // form, so a FAIL substring a pipe happened to keep is never one. The run's
 // exit status is then the pipe's own and no code is named. A run read in a
-// wrapper (WRAPPER-RUN1), red or green, is neither: the output rows say a
-// pipe hid the status and the exit rows would give the gate the wrapper's
-// exit, and no row says it ran in a wrapper (WRAPPER-RED-STEP1 adds one).
+// wrapper (WRAPPER-RUN1) is read from its output too, and its note says it
+// ran inside another command (GateFact.RedWrapped, WRAPPER-RED-STEP1).
 func regressedHere(g *GateState, toolUseID string) bool {
-	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID ||
-		g.LastRun.Wrapped != WrapNone || g.LastGreen.Wrapped != WrapNone {
+	if g.State != Red || g.LastGreen == nil || g.LastRun == nil || g.LastRun.ToolUseID != toolUseID {
 		return false
 	}
 	switch g.Reason {
@@ -220,7 +225,7 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, de
 		green := g.LastGreen.Seq
 		fact := GateFact{GateID: SlotID(g.Gate), State: g.State, Reason: g.Reason,
 			LastGreenSeq: &green, LastRunSeq: &green, PartialRuns: g.PartialRunsSince,
-			OutcomeFrom: OutcomeFrom(g.LastGreen.OutcomeFrom.String())}
+			OutcomeFrom: OutcomeFrom(g.LastGreen.OutcomeFrom.String()), GreenWrapped: g.LastGreen.Wrapped == WrapRead}
 		if p := Program(programOf(runs, green)); p.Valid() {
 			fact.Program = p
 		}
@@ -241,10 +246,9 @@ func staleEvidence(snap Snapshot, runs []gateRun, writes []write, decl int64, de
 // that left the green behind raises it, and the writes after it are quiet.
 // A write carries its declaration's seq (appendWrites), never the point's,
 // which is the execution's, so the call is matched by its declaration. A
-// moved tree is no reason here: a per-call point carries no Tree. A green
-// read in a wrapper raises none, as in regressedHere (WRAPPER-RUN1).
+// moved tree is no reason here: a per-call point carries no Tree.
 func staleHere(g *GateState, writes []write, decl int64) bool {
-	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil || g.LastGreen.Wrapped != WrapNone {
+	if !g.Required || g.State != Stale || g.Reason != WritesAfterGreen || g.LastGreen == nil {
 		return false
 	}
 	lo := g.LastGreen.Seq
@@ -401,27 +405,47 @@ func renderRegression(run *store.Run, times *declTimes, f Finding) render.Messag
 			paths[i] = slot.Path(p)
 		}
 		unlisted := g.PathsOmitted + unnamedBetween(run.Declarations, *g.LastGreenSeq, *g.LastRunSeq)
+		list := slot.NewPathList(paths, unlisted)
 		var m render.Message
 		var err error
-		if fromOutput {
+		switch {
+		case fromOutput && g.RedWrapped:
+			// Read from the output of the command that ran the gate inside
+			// it: the note says so, and names no pipe (WRAPPER-RED-STEP1).
+			m, err = render.New(pattern.RegressionLocation, render.RegressionLocationWrappedBinding{
+				Gate: word, Minutes: minutes, Paths: list})
+		case fromOutput:
 			// The run's outcome is its output's: the note says so (D229).
 			m, err = render.New(pattern.RegressionLocation, render.RegressionLocationOutputBinding{
-				Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, unlisted)})
-		} else {
+				Gate: word, Minutes: minutes, Paths: list})
+		case g.GreenWrapped:
+			// A green read in a wrapper is not said to have exited 0.
+			m, err = render.New(pattern.RegressionLocation, render.RegressionLocationWrappedGreenBinding{
+				Gate: word, Minutes: minutes, Exit: exit, Paths: list})
+		default:
 			m, err = render.New(pattern.RegressionLocation, render.RegressionLocationBinding{
-				Gate: word, Minutes: minutes, Exit: exit, Paths: slot.NewPathList(paths, unlisted)})
+				Gate: word, Minutes: minutes, Exit: exit, Paths: list})
 		}
 		if !errors.Is(err, slot.ErrNoPathsLeft) {
 			return m
 		}
 	}
-	if fromOutput {
-		m, _ := render.New(pattern.RegressionLocation, render.RegressionLocationOutputDegradedBinding{
-			Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})
-		return m
+	count := slot.Count(g.WritesSince)
+	var m render.Message
+	switch {
+	case fromOutput && g.RedWrapped:
+		m, _ = render.New(pattern.RegressionLocation, render.RegressionLocationWrappedDegradedBinding{
+			Gate: word, Minutes: minutes, Count: count})
+	case fromOutput:
+		m, _ = render.New(pattern.RegressionLocation, render.RegressionLocationOutputDegradedBinding{
+			Gate: word, Minutes: minutes, Count: count})
+	case g.GreenWrapped:
+		m, _ = render.New(pattern.RegressionLocation, render.RegressionLocationWrappedGreenDegradedBinding{
+			Gate: word, Minutes: minutes, Exit: exit, Count: count})
+	default:
+		m, _ = render.New(pattern.RegressionLocation, render.RegressionLocationDegradedBinding{
+			Gate: word, Minutes: minutes, Exit: exit, Count: count})
 	}
-	m, _ := render.New(pattern.RegressionLocation, render.RegressionLocationDegradedBinding{
-		Gate: word, Minutes: minutes, Exit: exit, Count: slot.Count(g.WritesSince)})
 	return m
 }
 
@@ -445,27 +469,40 @@ func renderStale(times *declTimes, f Finding, decl int64) render.Message {
 		for i, p := range g.Paths {
 			paths[i] = slot.Path(p)
 		}
+		list := slot.NewPathList(paths, g.PathsOmitted)
 		var m render.Message
 		var err error
-		if fromOutput {
+		switch {
+		case fromOutput && g.GreenWrapped:
+			// Read from the output of the command that ran the gate inside
+			// it: the note says so, and names no pipe (WRAPPER-RED-STEP1).
+			m, err = render.New(pattern.StaleEvidence, render.StaleEvidenceWrappedBinding{
+				Gate: word, Minutes: minutes, Paths: list})
+		case fromOutput:
 			// The green is the run's output's: the note says so (D229).
 			m, err = render.New(pattern.StaleEvidence, render.StaleEvidenceOutputBinding{
-				Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, g.PathsOmitted)})
-		} else {
+				Gate: word, Minutes: minutes, Paths: list})
+		default:
 			m, err = render.New(pattern.StaleEvidence, render.StaleEvidenceBinding{
-				Gate: word, Minutes: minutes, Paths: slot.NewPathList(paths, g.PathsOmitted)})
+				Gate: word, Minutes: minutes, Paths: list})
 		}
 		if !errors.Is(err, slot.ErrNoPathsLeft) {
 			return m
 		}
 	}
-	if fromOutput {
-		m, _ := render.New(pattern.StaleEvidence, render.StaleEvidenceOutputDegradedBinding{
-			Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})
-		return m
+	count := slot.Count(g.WritesSince)
+	var m render.Message
+	switch {
+	case fromOutput && g.GreenWrapped:
+		m, _ = render.New(pattern.StaleEvidence, render.StaleEvidenceWrappedDegradedBinding{
+			Gate: word, Minutes: minutes, Count: count})
+	case fromOutput:
+		m, _ = render.New(pattern.StaleEvidence, render.StaleEvidenceOutputDegradedBinding{
+			Gate: word, Minutes: minutes, Count: count})
+	default:
+		m, _ = render.New(pattern.StaleEvidence, render.StaleEvidenceDegradedBinding{
+			Gate: word, Minutes: minutes, Count: count})
 	}
-	m, _ := render.New(pattern.StaleEvidence, render.StaleEvidenceDegradedBinding{
-		Gate: word, Minutes: minutes, Count: slot.Count(g.WritesSince)})
 	return m
 }
 
