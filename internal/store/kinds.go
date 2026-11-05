@@ -12,11 +12,12 @@ const EventSchemaVersion = 5
 // terminal) are written at: the v5 keys (record_v5.go), at 6 runner_kind on
 // the declaration's shape and the execution, at 7 store_named on the
 // declaration (D173b), and at 8 runner_name and masked_by on the execution
-// (D229), and at 9 location_unread on the declaration (5.14b). A new key gets a version of
-// its own and never joins an existing one, whose records are already on disk
-// without it (D11). SchemaVersion is the same number under the name the
-// writers use.
-const CallSchemaVersion = 9
+// (D229), at 9 location_unread on the declaration (5.14b), and at 10 launch
+// and probe_only on the declaration (LAUNCH-ANY1, #52). A new key gets a
+// version of its own and never joins an existing one, whose records are
+// already on disk without it (D11). SchemaVersion is the same number under
+// the name the writers use.
+const CallSchemaVersion = 10
 
 // The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
 // STEER's lines live in their own side file, runs/<dir>/steer.ndjson.
@@ -43,9 +44,19 @@ const (
 // EventSchemaVersion and, unlike the 1.2.0 kinds, critical.
 const TypeSpecEvent = "spec_event"
 
+// TypeAfterHit is the second kind added after the freeze (card SPEC-RULES1
+// 1b, #216 ruling 1): the post's record of an order rule's After call
+// (afterhit.go), at EventSchemaVersion and critical.
+const TypeAfterHit = "after_hit"
+
+// TypeThenCheck is the third kind added after the freeze (card ORDER-LIVE1):
+// the post's verdict on whether a Bash call ran an order rule's Then
+// (thencheck.go), at EventSchemaVersion and critical.
+const TypeThenCheck = "then_check"
+
 // kindVersion is the version each writer stamps on its kind (REC-1): call
-// kinds at 9, coverage and gaps unchanged at 3, every new kind at 5, the
-// spec_event added after the freeze included. It is
+// kinds at 10, coverage and gaps unchanged at 3, every new kind at 5, the
+// spec_event, after_hit and then_check added after the freeze included. It is
 // unexported so that only KindVersion can read it: an importer that could
 // write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{
@@ -69,6 +80,8 @@ var kindVersion = map[string]int{
 	TypeOutcomeJoin:   EventSchemaVersion,
 	TypeWriteObserved: EventSchemaVersion,
 	TypeSpecEvent:     EventSchemaVersion,
+	TypeAfterHit:      EventSchemaVersion,
+	TypeThenCheck:     EventSchemaVersion,
 }
 
 // KindVersion returns the version a writer stamps on kind, and whether kind

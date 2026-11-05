@@ -9,9 +9,11 @@ import (
 // Versions stamped on every snapshot and checkpoint (2.2.10; archive 20.2.7
 // and 20.2.14). RulesVersion is shape.RulesVersion, the one counter that
 // names the lists a build decides with; VERIFY carries no second one.
-// PracticeVersion is 1 by the spec (2.2.8).
+// PracticeVersion is 1 by the spec (2.2.8). Version is 2 from card
+// STALE-COVER1, when a gate began to count only the writes it covers: one
+// record reads to other states under 1 and 2.
 const (
-	Version         = 1
+	Version         = 2
 	RulesVersion    = shape.RulesVersion
 	PracticeVersion = 1
 )
@@ -90,8 +92,9 @@ type RunRef struct {
 	// output carried the summary of the gate's runner, which decides the
 	// run's outcome, never the wrapper's exit status; unread, the call may
 	// have run the gate (a script, a delegate) after the last edit and its
-	// output names no run of it, so the gate is unknown, not unrun. One byte
-	// in padding, as the words above. Absent everywhere else.
+	// output names no run of it, or its record keeps only the exit status
+	// the line printed (STATUS-PROBE), so the gate is unknown, not unrun. One
+	// byte in padding, as the words above. Absent everywhere else.
 	Wrapped WrapWord `json:"wrapped,omitempty"`
 }
 
@@ -104,15 +107,20 @@ const (
 	WrapNone WrapWord = iota
 	WrapRead
 	WrapUnread
+	// WrapBackground is WrapUnread for a call launched in the background
+	// (BG-OUTCOME phase 2a): its output was never the post's to read.
+	WrapBackground
 )
 
-// String is the wrapped word: "read", "unread", or "" for none.
+// String is the wrapped word: "read", "unread", "background", or "" for none.
 func (w WrapWord) String() string {
 	switch w {
 	case WrapRead:
 		return "read"
 	case WrapUnread:
 		return "unread"
+	case WrapBackground:
+		return "background"
 	}
 	return ""
 }
@@ -127,6 +135,8 @@ func (w *WrapWord) UnmarshalText(b []byte) error {
 		*w = WrapRead
 	case "unread":
 		*w = WrapUnread
+	case "background":
+		*w = WrapBackground
 	default:
 		*w = WrapNone
 	}
@@ -234,6 +244,16 @@ type GateState struct {
 	// is green (bind), which the evidence_bound row reads; unknown with no
 	// tree. Not a key: the archive's GateState has none for it (P5A).
 	bound treeBind
+	// offTurn marks a gate no call of the Stop's turn ran in the project of
+	// (markTurn, card F2): the row, the done verdict and the turn's
+	// record-green point pass over it, and its state stays. Not a key: set
+	// at Stop only, after every reader of the whole snapshot.
+	offTurn bool
+	// root is the project whose files the gate covers (covers), "" for
+	// every file: a learned family's last run's, a declared or inferred
+	// gate's the snapshot's (card STALE-COVER1). Not a key, as bound is not:
+	// the stale nudge, the watched row and the turn's counts read it.
+	root string
 }
 
 // Recording is whether the window's record is complete; incomplete recording
@@ -324,7 +344,16 @@ type RuleVerdict struct {
 	// record-green false. Unexported, so the encoding is unchanged, like
 	// GateState's bound.
 	trust spec.Trust
+	// reason says why an undecided verdict is, where the rule's kind has one
+	// fixed reason (ReasonContentNotRead). Unexported and unpersisted, so the
+	// snapshot's and the checkpoint's encoding is unchanged.
+	reason string
 }
+
+// ReasonContentNotRead is the reason a forbid_code verdict is undecided:
+// the record holds no edit content to match the pattern against (EditMarks'
+// pre-read, EDITMARKS-WIRE1), so the kind never reads violated.
+const ReasonContentNotRead = "content not read"
 
 // CheckpointRuleVerdict is a rule verdict as the checkpoint keeps it
 // (archive 20.2.14's example: rule, kind, verdict, seqs): RuleVerdict

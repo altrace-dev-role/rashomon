@@ -6,19 +6,24 @@ package disclose
 // D160), so it says what a yes on the short screen says: what is recorded,
 // what never is, the notes and where they go, and how to turn it off. Its
 // list says "including:", so it ends with where the full one is: the README
-// section that quotes the full screen's STORED paragraph (TestPC1e). The
-// plugin route asks no Agent SDK question, so it says SDK programs that load
-// the plugin are recorded too. plugin/.claude-plugin/plugin.json and
+// section that quotes the full screen's STORED paragraph (TestPC1e). It says
+// nothing of Agent SDK programs: the plugin route asks no SDK question, so it
+// records none (SDK-GATE1). It names the platform graph's writer the plugin
+// runs in the background in a Go repository, and what it writes there
+// (PW1b-ON-230). plugin/.claude-plugin/plugin.json and
 // .claude-plugin/marketplace.json carry it byte for byte (TestPC1c), and a
 // plugin_enable record's text_sha256 is its hash.
 const PluginDescription = "Records each Claude Code tool call on this machine, in every project, once enabled, including: " +
 	"the tool, the program a command runs (never its text), the paths it edits or may write and an edited " +
 	"file's SHA-256, the hosts it names, the directory it ran in, the project's root and the transcript " +
-	"path, and how it ended. Agent SDK programs that load it are recorded too. Adds short factual notes " +
+	"path, and how it ended. In a Git repository whose root holds go.mod, it also runs pgraph in the " +
+	"background at session start and each time Claude finishes a reply: the go tool, offline, loads the Go code, and the names of its " +
+	"packages, functions and calls, with each file's SHA-256, go to .pgraph/ there (git-ignored; delete it to " +
+	"forget them). Adds short factual notes " +
 	"to the agent's context, such as a test that passed earlier and fails now; you see each one, and they go " +
 	"to your model provider with the conversation. Never stores your prompts, command text, tool output or " +
 	"file contents, and sends nothing itself. Ships disabled: enabling it is your consent to the above, and " +
-	"disabling it in /plugin stops both. Full list of what it keeps: " +
+	"disabling it in /plugin stops all of it. Full list of what it keeps: " +
 	"https://github.com/altrace-dev-role/rashomon#what-it-records-and-what-it-never-stores"
 
 // PluginOnLine is the line the plugin's first session after an enable, or

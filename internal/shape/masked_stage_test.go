@@ -25,10 +25,27 @@ func mo1Word(p *string) string {
 }
 
 // TestMO1_RulesVersionIsEleven: the version the runner's name and the masking
-// stage are decided at. A literal, not a comparison with the pins' own key.
+// stage are decided at. A literal, not a comparison with the pins' own key;
+// a later version keeps them, so the build's own is at least it.
 func TestMO1_RulesVersionIsEleven(t *testing.T) {
-	if RulesVersion != 11 {
-		t.Errorf("RulesVersion = %d, want 11 (MASKED-OUTCOME1: runner_name and masked_by)", RulesVersion)
+	if OutputOutcomeRulesVersion != 11 || RulesVersion < OutputOutcomeRulesVersion {
+		t.Errorf("OutputOutcomeRulesVersion = %d, RulesVersion = %d, want 11 and at least 11 (MASKED-OUTCOME1: runner_name and masked_by)",
+			OutputOutcomeRulesVersion, RulesVersion)
+	}
+}
+
+// TestMO1_RulesVersionIsThirteen: the build's rules version, a literal and
+// not a comparison with the pins' own key, so a bump is made here by hand.
+// Eleven named the runner and the masking stage (MASKED-OUTCOME1: runner_name
+// and masked_by; OutputOutcomeRulesVersion), twelve added the lint, typecheck
+// and scan lists (C8), and thirteen reads a stage that only prints as writing
+// nothing (card F2c: printOnly), keeping C8's lists.
+func TestMO1_RulesVersionIsThirteen(t *testing.T) {
+	if RulesVersion != 13 {
+		t.Errorf("RulesVersion = %d, want 13 (F2c: a stage that only prints writes nothing)", RulesVersion)
+	}
+	if OutputOutcomeRulesVersion != 11 {
+		t.Errorf("OutputOutcomeRulesVersion = %d, want 11: records written at 11 already carry masked_by", OutputOutcomeRulesVersion)
 	}
 }
 
@@ -180,7 +197,8 @@ func TestMO1_RowNamesAreTheRows(t *testing.T) {
 	for _, c := range []struct {
 		names []string
 		rows  [][]string
-	}{{testCommandNames(), testCommands}, {buildCommandNames(), buildCommands}} {
+	}{{testCommandNames(), testCommands}, {buildCommandNames(), buildCommands}, {lintCommandNames(), lintCommands},
+		{typecheckCommandNames(), typecheckCommands}, {scanCommandNames(), scanCommands}} {
 		if len(c.names) != len(c.rows) {
 			t.Fatalf("%d names for %d rows", len(c.names), len(c.rows))
 		}
@@ -270,6 +288,9 @@ func TestMO1_TheListsFitAOneByteId(t *testing.T) {
 	}{
 		{"testCommandNames", testCommandNames()},
 		{"buildCommandNames", buildCommandNames()},
+		{"lintCommandNames", lintCommandNames()},
+		{"typecheckCommandNames", typecheckCommandNames()},
+		{"scanCommandNames", scanCommandNames()},
 		{"RunnerNames", RunnerNames()},
 		{"MaskedByWords", MaskedByWords()},
 	} {
@@ -277,7 +298,11 @@ func TestMO1_TheListsFitAOneByteId(t *testing.T) {
 			t.Errorf("%s has %d words, want at most 254 for a one-byte id", l.name, len(l.words))
 		}
 	}
-	if got, want := len(RunnerNames()), len(testCommandNames())+len(buildCommandNames()); got != want {
-		t.Errorf("RunnerNames has %d words, want the two lists' %d", got, want)
+	want := 0
+	for _, l := range runnerLists {
+		want += len(l.names())
+	}
+	if got := len(RunnerNames()); got != want {
+		t.Errorf("RunnerNames has %d words, want the lists' %d", got, want)
 	}
 }

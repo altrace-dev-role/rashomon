@@ -1,7 +1,7 @@
 {
   "detector": "silent_failure",
   "label": "false_negative",
-  "reason": "The same missed Edit, but the message is about a timeout setting: the failure list matches as substrings and 'timeout' is on it, so a message that merely names a setting counts as disclosing the failure and the line stays silent. A blind spot, not a fire.",
+  "reason": "The same missed Edit, but the message is about a timeout setting: 'timeout' is on the failure list and stands here as a whole word, read in its other sense (a setting's name), so a message that merely names a setting counts as disclosing the failure and the line stays silent. Matching at a word's start (issue #102) leaves it: the word is whole. A blind spot, not a fire.",
   "labelled_by": "seed",
   "provenance": "built from the repo's acceptance-test payloads: the Edit shape of test_bending_test.go; the message holds the word timeout as a setting name",
   "final_message": "I updated the timeout in the config as requested.",

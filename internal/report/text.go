@@ -494,6 +494,9 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 	if sf.FailedLookups > 0 {
 		fmt.Fprintf(b, "    lookups among them: %d (%s, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n", sf.FailedLookups, lookupToolNames)
 	}
+	if sf.MissingPrograms > 0 {
+		fmt.Fprintf(b, "    missing programs among them: %d (a which, type or command -v probe that found nothing, or a command the shell could not find, exit 127), not set against the final message\n", sf.MissingPrograms)
+	}
 	if sf.Counted() == 0 {
 		return
 	}

@@ -15,19 +15,24 @@ m("ST-2.1 PostToolUse prints additionalContext ungated", F,
 m("ST-2.1 the decision gate dropped", F,
   '\tif o.Decision != nil && !verified(keys, event, c, table) {\n', '\tif false {\n', "TestST4_")
 m("ST-2.1 PostToolUse's floor dropped", C,
-  '\tstring(EventPostToolUse): {floor: "2.1.280"},\n', '\tstring(EventPostToolUse): {},\n', "TestST4_")
+  '\t{event: string(EventPostToolUse)}: {floor: "2.1.280"},\n', '\t{event: string(EventPostToolUse)}: {},\n', "TestST4_")
 # PostToolUseFailure's floor is the version its own P-TRU-1 run passed on,
 # 2.1.304. PostToolUse's 2.1.280, on the strength of the same payload shape,
 # is a floor without a probe (D226).
 m("ST-2.1 PostToolUseFailure's floor dropped", C,
-  '\tstring(EventPostToolUseFailure): {floor: "2.1.304"},\n', '\tstring(EventPostToolUseFailure): {},\n', "TestST4_")
+  '\t{event: string(EventPostToolUseFailure)}: {floor: "2.1.304"},\n', '\t{event: string(EventPostToolUseFailure)}: {},\n',
+  "TestST4_")
 m("ST-2.1 PostToolUseFailure given PostToolUse's floor without its own probe", C,
-  '\tstring(EventPostToolUseFailure): {floor: "2.1.304"},\n',
-  '\tstring(EventPostToolUseFailure): {floor: "2.1.280"},\n', "TestST4_")
+  '\t{event: string(EventPostToolUseFailure)}: {floor: "2.1.304"},\n',
+  '\t{event: string(EventPostToolUseFailure)}: {floor: "2.1.280"},\n', "TestST4_")
 m("ST-2.1 PreToolUse given a floor without a probe", C,
-  '\tstring(EventPreToolUse): {},\n', '\tstring(EventPreToolUse): {floor: "2.1.280"},\n', "TestST4_")
-m("ST-2.1 SessionStart given a floor without a probe", C,
-  '\tstring(EventSessionStart):  {},\n', '\tstring(EventSessionStart):  {floor: "2.1.280"},\n', "TestST4_")
+  '\t{event: string(EventPreToolUse)}: {},\n', '\t{event: string(EventPreToolUse)}: {floor: "2.1.280"},\n', "TestST4_")
+# SessionStart's rows are per source (COMPACT-SLOT1): resume's probe failed
+# the user's half on 2.1.280 and 2.1.316, so a floor there has no probe.
+m("ST-2.1 SessionStart at resume given a floor without a passing probe", C,
+  '\t{event: string(EventSessionStart), source: "resume"}:  {},\n',
+  '\t{event: string(EventSessionStart), source: "resume"}:  {floor: "2.1.280"},\n',
+  "TestCSL1_SessionStartOpensPerSource|TestVG1c_")
 m("ST-2.1 the exempt row gated", F,
   '\tstring(EventUserPromptSubmit):   {context: true, exempt: true},\n',
   '\tstring(EventUserPromptSubmit):   {context: true},\n', "TestST4_")
@@ -72,8 +77,8 @@ m("ST-2.1 Marshal calls MarshalFor with a verified Client", F,
   "TestST4b_")
 m("ST-2.1 ContextAllowed reads another table than MarshalFor", C,
   '\treturn allowed(event, c, mirrorVerifiedOn())\n',
-  '\treturn allowed(event, c, map[string]channelBasis{string(EventPostToolUse): {floor: "2.1.280"}, '
-  'string(EventSessionStart): {floor: "2.1.280"}})\n', "TestTRU12_")
+  '\treturn allowed(event, c, map[channelKey]channelBasis{{event: string(EventPostToolUse)}: {floor: "2.1.280"}, '
+  '{event: string(EventSessionStart), source: "resume"}: {floor: "2.1.280"}})\n', "TestTRU12_")
 
 # The comparison (compareVersions).
 m("ST-2.1 a component's leading zeros kept", C,

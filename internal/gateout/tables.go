@@ -32,6 +32,12 @@ const (
 // are validated against spec's RE2 bounds by TestGO10_TablesPinned. Each
 // signature is a line of a run recorded on this machine (TestWR1_Signatures
 // names the run).
+//
+// pytest's fail forms are its summary line, as its pass forms are, with a
+// count of at least 1: a delegated run is matched against every table, so a
+// bare count read another tool's "0 failed" or "0 errors", or a test's own log
+// line, as a failure, and the gate went red over a run that passed
+// (GATEOUT-ZERO1).
 func tables() []table {
 	rowsOnce.Do(func() {
 		rowsOnce.v = []table{
@@ -40,7 +46,7 @@ func tables() []table {
 			{program: "jest", pass: compile(`^Tests:.*\d+ passed`), fail: compile(`^Tests:.*\d+ failed`)},
 			{program: "vitest", pass: compile(`^\s*Tests\s+.*\d+ passed`), fail: compile(`^\s*Tests\s+.*\d+ failed`),
 				sig: compile(`^\s*Test Files\s+(\d+ \w+ \| )*\d+ \w+ \(\d+\)$`, `^\s*Tests\s+(\d+ \w+ \| )*\d+ \w+ \(\d+\)$`)},
-			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`\d+ (failed|error)`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`),
+			{program: "pytest", pass: compile(`^(\d+ \w+, )*\d+ passed(, [^=]*)? in \d`, `^=+ .*\d+ passed.* in \d[\d.]*s.* =+$`), fail: compile(`^(\d+ \w+, )*[1-9]\d* (failed|errors?)(, [^=]*)? in \d`, `^=+ .*[1-9]\d* (failed|errors?).* in \d[\d.]*s.* =+$`, `Fatal Python error`, `^Killed`), empty: compile(`no tests ran`),
 				sig: compile(`^=+ test session starts =+$`, `^=+ `+pytestSummary+` =+$`, `^=+ no tests ran in \d+(\.\d+)?s =+$`, `^`+pytestSummary+`$`)},
 			{program: "cargo", pass: compile(`^test result: ok`), fail: compile(`^test result: FAILED`, `^error: test failed`, `^error: \d+ targets? failed`),
 				sig: compile(`^test result: (ok|FAILED)\. \d+ passed; \d+ failed; `)},

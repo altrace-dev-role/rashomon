@@ -46,7 +46,7 @@ func TestWR1_AWrappedRunIsDecidedByItsOutput(t *testing.T) {
 			if c.wrap {
 				r = wrapped(r)
 			}
-			g := stateOf(familyKey{runner: InferredGateID}, "test", []gateRun{r}, nil, nil, 10, nil)
+			g := stateOf(familyKey{runner: InferredGateID}, "test", []gateRun{r}, nil, nil, "", 10, nil)
 			if g.State != c.state || g.Reason != c.reason {
 				t.Errorf("state %s %s, want %s %s", g.State, g.Reason, c.state, c.reason)
 			}
@@ -61,7 +61,9 @@ func TestWR1_AWrappedRunIsDecidedByItsOutput(t *testing.T) {
 // stale whose last relevant edit a wrapper call follows, a call that bound
 // nothing to it, is Unknown with that call as its last run, marked unread;
 // an edit after the call, or a run of the gate after it, leaves the gate as
-// it was. Break: drop the unread rule, or let it override a green.
+// it was. A call launched in the background is marked background instead
+// (BG-OUTCOME phase 2a). Break: drop the unread rule, let it override a
+// green, or mark a background call unread.
 func TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown(t *testing.T) {
 	path := "internal/a.go"
 	edit := func(seq int64) write { return write{Seq: seq, Path: &path, Class: ClassSource, Tool: "Edit"} }
@@ -70,15 +72,20 @@ func TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown(t *testing.T) {
 		return gateRun{Seq: seq, ExecSeq: &exec, ToolUseID: "toolu_r", Outcome: store.ExecOK,
 			Output: &store.GateOutput{Kind: kind, Parser: "go"}}
 	}
-	unreadCall := func(seq int64) *gateRun {
+	unreadCall := func(seq int64) *lineRun {
 		exec := seq + 1
-		return &gateRun{Seq: seq, ExecSeq: &exec, ToolUseID: "toolu_u", Outcome: store.ExecOK}
+		return &lineRun{gateRun: gateRun{Seq: seq, ExecSeq: &exec, ToolUseID: "toolu_u", Outcome: store.ExecOK}, wrapper: true}
+	}
+	bgCall := func(seq int64) *lineRun {
+		c := unreadCall(seq)
+		c.background = true
+		return c
 	}
 	g := declaredGate{id: InferredGateID, kind: "test", program: "go"}
 	for _, c := range []struct {
 		name   string
 		fr     []gateRun
-		unread *gateRun
+		unread *lineRun
 		writes []write
 		state  State
 		reason Reason
@@ -86,6 +93,7 @@ func TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown(t *testing.T) {
 	}{
 		{"no run, call after the edit", nil, unreadCall(4), []write{edit(2)}, Unknown, OutcomeUnknown, WrapUnread},
 		{"green, edit, call after it", []gateRun{run(1, outSummaryPass)}, unreadCall(4), []write{edit(3)}, Unknown, OutcomeUnknown, WrapUnread},
+		{"no run, a background call after the edit", nil, bgCall(4), []write{edit(2)}, Unknown, OutcomeUnknown, WrapBackground},
 		{"control: no call", nil, nil, []write{edit(2)}, Absent, NeverRunAfterWrite, WrapNone},
 		{"control: call before the edit", nil, unreadCall(2), []write{edit(3)}, Absent, NeverRunAfterWrite, WrapNone},
 		{"control: a run of the gate after the call", []gateRun{run(5, outSummaryPass)}, unreadCall(4), []write{edit(2)}, Green, OK, WrapNone},
@@ -93,7 +101,7 @@ func TestWR1_AnUnreadWrapperAfterTheLastEditIsUnknown(t *testing.T) {
 		{"control: red stays red", []gateRun{run(3, outSummaryFail)}, unreadCall(4), []write{edit(2)}, Red, FailedOutput, WrapNone},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			s := g.state(c.fr, c.unread, c.writes, nil, 10, nil)
+			s := g.state(c.fr, c.unread, c.writes, nil, "", 10, nil)
 			if s.State != c.state || s.Reason != c.reason {
 				t.Errorf("state %s %s, want %s %s", s.State, s.Reason, c.state, c.reason)
 			}
@@ -140,7 +148,7 @@ func TestWR1_AWrapperBindsOnlyByItsRunnerAtTheGatesLocation(t *testing.T) {
 	make := "make-words"
 	exec := int64(5)
 	r := wrapped(gateRun{Seq: 4, ExecSeq: &exec, Runner: &make, Outcome: store.ExecOK, Output: &store.GateOutput{Kind: outSummaryPass, Parser: "go"}})
-	s := g.state([]gateRun{r}, nil, nil, nil, 10, nil)
+	s := g.state([]gateRun{r}, nil, nil, nil, "", 10, nil)
 	if s.LastRun == nil || s.LastRun.OtherArgs || s.LastRun.Wrapped != WrapRead {
 		t.Errorf("wrapped last run %+v, want wrapped read and no other_args", s.LastRun)
 	}
@@ -149,7 +157,7 @@ func TestWR1_AWrapperBindsOnlyByItsRunnerAtTheGatesLocation(t *testing.T) {
 // TestWR1_TheWrapWordKeepsItsJSON: wrapped marshals as its word, is left out
 // as none, and reads back.
 func TestWR1_TheWrapWordKeepsItsJSON(t *testing.T) {
-	for _, w := range []WrapWord{WrapRead, WrapUnread} {
+	for _, w := range []WrapWord{WrapRead, WrapUnread, WrapBackground} {
 		b, err := json.Marshal(RunRef{Wrapped: w})
 		if err != nil {
 			t.Fatal(err)

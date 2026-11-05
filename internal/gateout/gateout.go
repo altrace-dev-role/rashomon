@@ -20,16 +20,37 @@ const MaxScanBytes = 1 << 20
 // parser, or the first row signed in it.
 const Wrapper = "wrapper"
 
-// Classify reports the table-driven result of test runner output. Build
-// runners and unknown programs do not scan text. The scan is O(len(text))
-// with no per-line allocation; inputs over MaxScanBytes are unread. A
+// The gate_output kinds a masked runner's printed exit status gives
+// (STATUS-PROBE): the status the line printed was 0, or was not. They are not
+// Classify's, whose words read a summary; the post hook writes them where
+// shape.PrintedStatus reads a status, with ParserExitStatus as the parser.
+const (
+	KindPrintedPass  = "printed_pass"
+	KindPrintedFail  = "printed_fail"
+	ParserExitStatus = "exit_status"
+)
+
+// Kinds is the closed vocabulary of gate_output.kind (store.GateOutput), every
+// word any writer gives it: Classify's, unread, and the printed pair. Each is
+// disclosed in the consent text's STORED paragraph (TestFF1_EveryGateOutputKindIsDisclosed).
+func Kinds() []string {
+	return []string{"summary_pass", "summary_fail", "fail_line", "empty_run", "no_summary", "unattributable", "unread",
+		KindPrintedPass, KindPrintedFail}
+}
+
+// Classify reports the table-driven result of test runner output. Build,
+// lint, typecheck and scan runners, which have no table of their own, and
+// unknown programs do not scan text. The scan is O(len(text)) with no
+// per-line allocation; inputs over MaxScanBytes are unread. A
 // delegate's or a wrapper's output is scanned twice: once for the rows whose
 // signature it holds, then by those rows.
 func Classify(kind, program string, text []byte) store.GateOutput {
-	if kind != "test" && kind != "build" {
+	switch kind {
+	case "test", "build", "lint", "typecheck", "scan":
+	default:
 		return store.GateOutput{Kind: "unattributable"}
 	}
-	if kind == "build" {
+	if kind != "test" {
 		return store.GateOutput{Kind: "no_summary", Parser: program}
 	}
 	if len(text) > MaxScanBytes {

@@ -14,14 +14,18 @@ m("PC-1 a settings entry's start consents too", P,
 m("PC-1 every session consents again", P,
   "if err != nil || consent.Covers(recs) {", "if err != nil {", "TestPC1_")
 m("PC-1 a watch consent makes the enable an upgrade", P,
-  "ok && last.Via == consent.ViaPluginEnable {", "ok {", "TestPC1_")
+  "ok && last.Via == consent.ViaPluginEnable {", "ok && (last.Via == consent.ViaPluginEnable || true) {", "TestPC1_")
 m("PC-1 a plugin update is a fresh enable", P,
   "via = consent.ViaUpgradeNotice", "via = consent.ViaPluginEnable", "TestPC1_")
 m("PC-1 the record hashes the line, not the description", P,
   "consent.TextSHA256([]byte(disclose.PluginDescription))", "consent.TextSHA256([]byte(disclose.PluginOnLine))", "TestPC1_")
+# The break removes plugin_consent.go's only use of filepath, so it drops the import
+# beside it; without it the mutant does not build, which sweep.py read as red (MASKED-BUILD1).
+IMPORTS['PC-1 the lines name a rashomon on PATH'] = ('cmd/rashomon/plugin_consent.go',
+  '\t"path/filepath"\n', '')
 m("PC-1 the lines name a rashomon on PATH", P,
   "bin := filepath.Join(filepath.Dir(exe), install.PluginName)", "bin := install.PluginName", "TestPC1_|TestPC1b_")
 m("PC-1 a quoted path takes a ~", P,
   "err == nil && shown == bin && strings.HasPrefix", "err == nil && strings.HasPrefix", "TestPC1b_")
 m("PC-1 plugin.json says less than the disclosure", J,
-  "disabling it in /plugin stops both.", "disabling it in /plugin stops recording.", "TestPC1c_")
+  "disabling it in /plugin stops all of it.", "disabling it in /plugin stops recording.", "TestPC1c_")

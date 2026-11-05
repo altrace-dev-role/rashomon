@@ -63,7 +63,7 @@ m("ST-2.2 the foreign-batch skip dropped", B,
 m("ST-2.2 the mirror is not Mirror's", D,
   '\treturn text, user, nil\n', '\treturn text, text, nil\n', "TestST4d_")
 m("ST-2.2 a flag given the mirror wrapper", D,
-  '\treturn text, nil\n', '\treturn render.MirrorPrefix + text + render.MirrorSuffix, nil\n', "TestR2_")
+  '\tuser = withAside(text, aside)\n', '\tuser = withAside(render.MirrorPrefix+text+render.MirrorSuffix, aside)\n', "TestR2_")
 m("ST-2.2 Stop sets StopContinue", D,
   '\t\tout = Output{SystemMessage: plans[flag].user}\n',
   '\t\tout = Output{SystemMessage: plans[flag].user, StopContinue: plans[flag].user}\n', "TestR2_")

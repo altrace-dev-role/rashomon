@@ -91,7 +91,7 @@ func attachImpact(st *store.Store, rep *report.Report, sessionID string) {
 // does not check, and a report must not write the learning state): a ledger
 // that does not check says so, and its lessons all read proposed.
 func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
-	r, err := replayLastStop(st, sessionID)
+	r, err := replayLastStop(st, sessionID, nil)
 	if err != nil {
 		return nil
 	}
@@ -127,6 +127,7 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 		a.Findings = append(a.Findings, report.AutosteerFinding{ID: f.ID, Pattern: f.Pattern, Title: recap.TitleOf(f.Pattern),
 			Gate: f.Gate, Seq: f.Seq, State: string(f.State), ResolvedBy: f.ResolvedBy})
 	}
+	a.Mistakes = mistakesOf(recap.MistakesOf(v, lines, im, recap.ImpactShown(st.Root(), sessionID)))
 	for _, c := range im.Checks {
 		reason := c.Reason
 		if c.State == verify.ObligationUnknown && c.Kind == "judgment_disclosed" {
@@ -138,6 +139,24 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 		a.Unknown = append(a.Unknown, report.AutosteerUnknown{Kind: u.Kind, Seq: u.Seq})
 	}
 	return a
+}
+
+// mistakesOf is m in the report's shape: every list non-null, and Later
+// null, since nothing records a mistake found after the session.
+func mistakesOf(m recap.Mistakes) *report.AutosteerMistakes {
+	refs := func(fs []recap.FindingRef) []report.AutosteerMistake {
+		out := []report.AutosteerMistake{}
+		for _, f := range fs {
+			out = append(out, report.AutosteerMistake{ID: f.ID, Seq: f.Seq, ResolvedBy: f.ResolvedBy})
+		}
+		return out
+	}
+	out := &report.AutosteerMistakes{Caught: refs(m.Caught), Reached: []report.AutosteerMistake{}, Missed: refs(m.Missed),
+		Unsettled: refs(m.Unsettled), FixedUnprompted: refs(m.Fixed)}
+	for _, f := range m.Reached {
+		out.Reached = append(out.Reached, report.AutosteerMistake{ID: f.ID, Seq: f.Seq, ResolvedBy: f.ResolvedBy, Why: string(f.Why)})
+	}
+	return out
 }
 
 // sessionArg is --session's value with `last` resolved to a session id.

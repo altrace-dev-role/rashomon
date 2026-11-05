@@ -28,7 +28,7 @@ import (
 //   - watched_red_then_green (PF-PG7), from classify's runs and writes
 //     (watchedRow): no row without a red run.
 //   - exit_unmasked, from the state, where the gate has a last run and owes
-//     a row (exitUnmaskedTable).
+//     a row (exitUnmasked): unmet on a masked last run, stale or not.
 //   - evidence_bound, where gate_after_write has a row (evidenceBound): met
 //     where the green run's tree is the point's, unmet where the session
 //     wrote since it, unknown otherwise (card P5A; Q6).
@@ -40,8 +40,10 @@ import (
 // The scope is the session at every point (Q1). The other kinds have their
 // own sources: spec_rule rows come from the snapshot's rule verdicts
 // (specObligations), expected_evidence rows from the task file (evidence.go,
-// card 3.3) and platform_impact rows from internal/platform (6.1); no
-// proposed_check row is emitted yet.
+// card 3.3) and platform_impact rows from the pgraph log internal/platform
+// reads, judged against the record's runs (platform.go, card PL-WIRE1),
+// which EvaluateStop appends after ledgerOf's; no proposed_check row is
+// emitted yet.
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string
@@ -197,6 +199,19 @@ var exitUnmaskedTable = []obRow{
 	{Unknown, ObligationUnknown, citeRun},
 }
 
+// exitUnmasked is the exit_unmasked row's table for g: a pipe hid the status
+// of a stale gate's last run where a write came after that masked run
+// (masked_then_writes, card F2c), so the row is unmet, citing the run, as
+// on a masked gate; every other gate reads exitUnmaskedTable.
+func exitUnmasked(g *GateState) []obRow {
+	if g.Reason == MaskedThenWrites {
+		return exitUnmaskedHidden
+	}
+	return exitUnmaskedTable
+}
+
+var exitUnmaskedHidden = []obRow{{Stale, ObligationUnmet, citeRun}}
+
 // evidenceBound is the evidence_bound row's table for g (PF-PG6, INV-14):
 // met, citing the green run, where its tree reads as it did at the point;
 // unmet where the session wrote since that run, named or unnamed beside a
@@ -261,11 +276,11 @@ func obligations(snap Snapshot, runs []gateRun, writes []write) []Obligation {
 			l.fromTable(g, source, GateAfterWrite, gateAfterWriteTable)
 		}
 		if w, ok := reds[g.Family]; ok {
-			state, ev, n := watchedRow(w, writes)
+			state, ev, n := watchedRow(w, writes, g.root)
 			l.add(g, source, WatchedRedThenGreen, state, ev[:n]...)
 		}
 		if g.LastRun != nil && owed {
-			l.fromTable(g, source, ExitUnmasked, exitUnmaskedTable)
+			l.fromTable(g, source, ExitUnmasked, exitUnmasked(g))
 		}
 		if owed {
 			l.fromTable(g, source, EvidenceBound, evidenceBound(g))
@@ -417,15 +432,16 @@ func watches(runs []gateRun, at int64) map[string]watch {
 // not a response to it, so it never meets the row (Q4: the mirror of D31).
 // The red is the last one, so a fix followed by a flake passed by re-run is
 // unmet (Q5): stricter than the PRD's "was red, then green after a write" at
-// some point, and closed on a late flake.
-func watchedRow(w watch, writes []write) (ObligationState, [3]int64, int) {
+// some point, and closed on a late flake. A write the gate does not cover,
+// root's, is no fix of it (covers, STALE-COVER1).
+func watchedRow(w watch, writes []write, root string) (ObligationState, [3]int64, int) {
 	if w.green == nil {
 		return ObligationOpen, [3]int64{w.red.Seq}, 1
 	}
 	lo, _ := landed(*w.red)
 	hi, _ := slices.BinarySearchFunc(writes, w.green.Seq, func(x write, seq int64) int { return cmp.Compare(x.Seq, seq) })
 	for i := hi - 1; i >= 0 && writes[i].Seq > lo; i-- {
-		if x := &writes[i]; x.Path != nil && Relevant(x.Class) {
+		if x := &writes[i]; x.Path != nil && Relevant(x.Class) && covers(root, x) {
 			return ObligationMet, [3]int64{w.red.Seq, x.Seq, w.green.Seq}, 3
 		}
 	}

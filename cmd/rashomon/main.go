@@ -26,6 +26,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/selfguard"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -296,7 +297,8 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
 // it is invoked by Claude Code and it always succeeds. At start it prints the
-// project brief to the user (printBrief), its one write to stdout.
+// continuity briefing at a compaction or else the project brief to the user
+// (printStart), its one write to stdout.
 func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook: signal watching and the
 	// phase check included. They ran ahead of the barrier, under this same
@@ -318,7 +320,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 
-		payload, in, standDown, _ := claudeHostGuard(stdin)
+		payload, in, standDown, id := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -349,7 +351,7 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if errors.Is(runErr, hook.ErrEvictIncomplete) {
 			fmt.Fprintln(stderr, evictionLine)
 		}
-		printBrief(args, payload, st, lead, stdout)
+		printStart(args, payload, st, lead, id, stdout)
 		markFired(st, sessionOf(payload), probeEvent(phase))
 		return nil
 	})
@@ -555,8 +557,7 @@ func editSettings(path string, edit func(*settings.Document) (bool, error), remo
 			res.after, res.removed = nil, true
 			err = settings.Remove(path, original)
 		} else {
-			res.after = doc.Bytes()
-			err = settings.Write(path, original, res.after)
+			res.after, err = writeChecked(path, original, doc)
 		}
 		if errors.Is(err, settings.ErrChanged) {
 			continue
@@ -618,39 +619,6 @@ func cmdDetach(args []string, stdout io.Writer) error {
 	return nil
 }
 
-// detachTarget resolves which entries a detach removes: the install named on
-// the command line, every install that left a marker, or -- for a plain detach
-// -- the one this machine's store records.
-func detachTarget(args []string) (installID string, all, force bool, err error) {
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--install":
-			if i+1 >= len(args) {
-				return "", false, false, errors.New("--install needs a value")
-			}
-			installID = args[i+1]
-			i++
-		case "--all":
-			all = true
-		case "--force":
-			// The way out of an entry someone edited. Without it, one edited
-			// value left every entry installed and no supported way to
-			// remove them.
-			force = true
-		default:
-			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
-		}
-	}
-	if all && installID != "" {
-		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
-	}
-	if all || installID != "" {
-		return installID, all, force, nil
-	}
-	installID, err = storedInstallID()
-	return installID, false, force, err
-}
-
 // pausedCoverageNote completes pause's line where a store exists: that a
 // paused call still leaves a coverage record, so the window it falls in
 // shows in the report rather than reading as silence.
@@ -672,7 +640,14 @@ const pausedCoverageNote = "; each one still writes a coverage record " +
 // gets the marker file pause reads back -- that is what lets status answer
 // "paused, no store recorded here yet" truthfully -- but nothing that would
 // mint an install identity.
+//
+// An agent session is refused before anything is read (R31): pause is how
+// the person stops the recording, so the agent being recorded cannot run it.
+// That announces rather than prevents, as above: the marker is a file.
 func cmdPause(stdout io.Writer) error {
+	if s := selfguard.AgentSignal(os.Getenv); s != "" {
+		return selfguard.Refusal(s, "pause stops the recording of your sessions until you resume it", "pause", "written")
+	}
 	root, err := store.DefaultRoot()
 	if err != nil {
 		return err

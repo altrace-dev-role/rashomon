@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -142,20 +143,31 @@ func synthLog(t testing.TB, n int) []byte {
 	return []byte(b.String())
 }
 
+// guard sets the crash guard to 20 ms for the test, so a held decode
+// reaches it in a test's time.
+func guard(t *testing.T) {
+	t.Helper()
+	was := deadline
+	deadline = 20 * time.Millisecond
+	t.Cleanup(func() { deadline = was })
+}
+
 // stall makes every record cost a millisecond, so a 5,000-record decode takes
-// seconds against a 20 ms Deadline; the hook does not look at any context, so
+// seconds against a 20 ms guard; the hook does not look at any context, so
 // only the decoder's own looks can stop it.
 func stall(t *testing.T) {
 	t.Helper()
+	guard(t)
 	recordHook = func() { time.Sleep(time.Millisecond) }
 	t.Cleanup(func() { recordHook = nil })
 }
 
 // hang makes the first record wait two seconds, or until the test ends, so a
-// decode past Deadline is one only the caller's deadline can cut short: an
-// Obligations that waits for its worker returns after two seconds.
+// decode past the guard is one only the caller's guard can cut short: a Read
+// that waits for its worker returns after two seconds.
 func hang(t *testing.T) {
 	t.Helper()
+	guard(t)
 	release := make(chan struct{})
 	timer := time.AfterFunc(2*time.Second, func() { close(release) })
 	recordHook = func() { <-release }
@@ -167,22 +179,21 @@ func hang(t *testing.T) {
 	})
 }
 
-// TestPL8c_DeadlineYieldsUnknownNotPartial: a decode held past Deadline is
-// one unknown platform_impact row and no family, returned at the deadline,
-// not when the decode would have finished.
+// TestPL8c_DeadlineYieldsUnknownNotPartial: a decode held past the crash
+// guard is a timed-out log and no family (the ledger's one unknown
+// platform_impact row, verify's TestPLW1p_), returned at the guard, not when
+// the decode would have finished.
 func TestPL8c_DeadlineYieldsUnknownNotPartial(t *testing.T) {
 	root, lp := project(t, synthLog(t, 5000))
 	hang(t)
 	start := time.Now()
-	rows := Obligations(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp})
+	r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp})
 	elapsed := time.Since(start)
-	want := verify.Obligation{ID: verify.ObligationID(verify.ScopeSession, verify.PlatformImpact, ""), Scope: verify.ScopeSession,
-		Kind: verify.PlatformImpact, Source: SourcePlatform, State: verify.ObligationUnknown}
-	if len(rows) != 1 || rows[0].ID != want.ID || rows[0].State != want.State || rows[0].Kind != want.Kind || len(rows[0].Evidence) != 0 {
-		t.Errorf("a stalled decode: %+v, want the one unknown row %+v", rows, want)
+	if r.Log != verify.LogTimedOut || r.Families == nil || len(r.Families) != 0 {
+		t.Errorf("a stalled decode: %+v, want timed out and no family", r)
 	}
 	if elapsed > time.Second {
-		t.Errorf("Obligations returned after %v; Deadline is %v", elapsed, Deadline)
+		t.Errorf("Read returned after %v; the guard is %v", elapsed, deadline)
 	}
 }
 
@@ -194,8 +205,8 @@ func TestPL8c2_DeadlineCancelsTheWork(t *testing.T) {
 	stall(t)
 	before := runtime.NumGoroutine()
 	for i := 0; i < 50; i++ {
-		if rows := Obligations(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); len(rows) != 1 || rows[0].State != verify.ObligationUnknown {
-			t.Fatalf("timeout %d: %+v, want one unknown row", i, rows)
+		if r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp}); r.Log != verify.LogTimedOut {
+			t.Fatalf("timeout %d: %+v, want timed out", i, r)
 		}
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -207,27 +218,49 @@ func TestPL8c2_DeadlineCancelsTheWork(t *testing.T) {
 	}
 }
 
-// TestPL8d_ObligationsCarryPlatformImpactKindOnly: each family is one open
-// platform_impact row in the session scope, source platform, no evidence (an
-// empty list, never null), its id the verify ledger's over the package and
-// its Hash; no writes, or no log, owe no row.
-func TestPL8d_ObligationsCarryPlatformImpactKindOnly(t *testing.T) {
-	root, lp := project(t, fixtureLog(t))
-	rows := Obligations(RunView{Root: root, WrittenPaths: []string{"b/b.go", "a/a.go"}, LogPath: lp})
-	want := []string{pkgA + "@" + hashA, pkgB + "@" + hashB}
-	if len(rows) != len(want) {
-		t.Fatalf("rows %+v, want %d", rows, len(want))
+// TestPLW1w_ReadNamesEachWrittenPackagesFamily (card PL-WIRE1): each written
+// .go file's package is one family, sorted by package, with its directory,
+// its go.mod's directory (a nested module's own), whether a test file is in
+// it, and, the log holding it and the digests vouching for its files, its
+// Hash; a package the log does not hold is new (S3); a write of no .go file,
+// or none, is no family (an empty list, never null); with no log every
+// package is unknown, never dropped (PF-PL11). Break: drop a package the log
+// does not hold, as Impact does, and the new package c owes nothing.
+func TestPLW1w_ReadNamesEachWrittenPackagesFamily(t *testing.T) {
+	root, lp := synced(t)
+	put(t, filepath.Join(root, "sub", "go.mod"), []byte("module example.com/s\n"))
+	put(t, filepath.Join(root, "sub", "q", "q.go"), []byte("package q\n"))
+	got := Read(RunView{Root: root, WrittenPaths: []string{"b/b.go", "a/a.go", "c/c.go", "a/notes.txt", "sub/q/q.go"}, LogPath: lp})
+	want := []verify.PlatformFamily{
+		{Package: pkgA, Dir: "a", ModuleDir: ".", Facts: verify.FactsKnown, Hash: hashA, Tests: true},
+		{Package: pkgB, Dir: "b", ModuleDir: ".", Facts: verify.FactsKnown, Hash: hashB},
+		{Package: "example.com/m/c", Dir: "c", ModuleDir: ".", Facts: verify.FactsNew},
+		{Package: "example.com/s/q", Dir: "sub/q", ModuleDir: "sub", Facts: verify.FactsNew},
 	}
-	for i, r := range rows {
-		if r.Kind != verify.PlatformImpact || r.Scope != verify.ScopeSession || r.Source != SourcePlatform || r.State != verify.ObligationOpen ||
-			r.Evidence == nil || len(r.Evidence) != 0 || r.ID != verify.ObligationID(verify.ScopeSession, verify.PlatformImpact, want[i]) {
-			t.Errorf("row %d is %+v, want an open platform_impact row for %s", i, r, want[i])
+	if got.Log != verify.LogRead || !slices.Equal(got.Families, want) {
+		t.Errorf("Read = %+v\nwant %+v", got, want)
+	}
+	for _, run := range []RunView{{Root: root, LogPath: lp}, {Root: root, WrittenPaths: []string{"README.md", "a/testdata/x.go"}, LogPath: lp}} {
+		if r := Read(run); r.Families == nil || len(r.Families) != 0 {
+			t.Errorf("Read(%+v) = %+v, want no family (an empty list)", run, r)
 		}
 	}
-	for _, run := range []RunView{{Root: root, LogPath: lp}, {Root: root, WrittenPaths: []string{"a/a.go"}}} {
-		if rows := Obligations(run); rows == nil || len(rows) != 0 {
-			t.Errorf("Obligations(%+v) = %+v, want none (an empty list)", run, rows)
+	for _, lp := range []string{"", filepath.Join(root, "gone.log")} {
+		r := Read(RunView{Root: root, WrittenPaths: []string{"a/a.go"}, LogPath: lp})
+		if r.Log != verify.LogNone || len(r.Families) != 1 || r.Families[0].Facts != verify.FactsUnknown || r.Families[0].Hash != "" {
+			t.Errorf("no log (LogPath %q): %+v, want a's family unknown, not an unreadable log", lp, r)
 		}
+	}
+	var many []string
+	for i := 0; i <= MaxFamilies; i++ {
+		many = append(many, fmt.Sprintf("p%02d/x.go", i))
+	}
+	if r := Read(RunView{Root: root, WrittenPaths: many}); len(r.Families) != MaxFamilies || r.More != 1 {
+		t.Errorf("%d packages: %d families and %d more, want %d and 1", len(many), len(r.Families), r.More, MaxFamilies)
+	}
+	t.Chdir(root)
+	if r := Read(RunView{WrittenPaths: []string{"a/a.go"}, LogPath: lp}); r.Log != verify.LogNone || len(r.Families) != 0 {
+		t.Errorf("no root, run where a module is: %+v, want nothing read", r)
 	}
 }
 

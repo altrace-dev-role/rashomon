@@ -437,14 +437,15 @@ func TestVER54l_ToSteerRefusesValuesOutsideTheirVocabularies(t *testing.T) {
 // accepted beside that state and refused beside every other, and a reason
 // outside the list is refused as such, not as a state mismatch.
 func TestVER54m_EveryGateReasonExplainsOneState(t *testing.T) {
-	// Frozen from archive 20.2.4 steps 1 to 6 and tech 2.2.4, not read
-	// from reasonState, so a wrong entry there cannot move the expectation.
+	// Frozen from archive 20.2.4 steps 1 to 6 and tech 2.2.4 (card F2c's
+	// masked_then_writes beside red_then_writes), not read from
+	// reasonState, so a wrong entry there cannot move the expectation.
 	frozen := map[Reason]State{
 		FailedExit: Red, FailedOutput: Red, PartialAfterRed: Red,
 		MaskedWithSuccessLine: Green, OK: Green,
 		MaskedNoSuccessLine: MaskedInconclusive, MaskedUnattributable: MaskedInconclusive,
 		EmptyRun: Absent, PartialOnly: Absent, NeverRunAfterWrite: Absent,
-		RedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale, StaleForeign: Stale,
+		RedThenWrites: Stale, MaskedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale, StaleForeign: Stale,
 		BackgroundLaunch: Backgrounded,
 		OrderUnknown:     Unknown, OutcomeUnknown: Unknown, RecordingIncomplete: Unknown, Budget: Unknown,
 	}

@@ -14,6 +14,12 @@ defines or overwrite another one's import edit. A change adds a file; it never
 appends to a shared list, which is what ended the merge conflicts the one big
 list used to produce.
 
+A file whose rows a nested module's own tests judge (pgraph/, with a go.mod
+of its own, which `go test ./...` from the root never enters) declares
+MODULE = "<dir>". Its rows run in that directory, behind a green baseline of
+that module's own, and --check finds each row's test among that module's tests
+alone. Targets stay relative to the root.
+
 Run from the module root:
 
     python3 test/mutation/sweep.py                 the sweep
@@ -60,6 +66,83 @@ ROW_NAME = re.compile(r"^(" + "|".join(ROW_PREFIXES) + r")-(\d+)$")
 # anchor -- is reported instead of silently matching nothing.
 ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 
+# A mutant file's own row identity, the "XX-n" (optionally "n.m" or "n.ml")
+# before its first underscore: CS-1, H-17, ST-2.3b. ROW_PREFIXES identities
+# are already pinned self-consistently by the check above (a row's test must
+# name its own file's identity, or a declared shared-tests.txt pair); nothing
+# looks at the rest (the docstring at ROW_PREFIXES says so). PREFIX-UNIQUE1
+# is that missing check, for every other prefix.
+AD_HOC_ROW_FILE = re.compile(r"^([A-Za-z]+)-(\d+(?:\.\d+)?[a-z]?)_")
+AD_HOC_SHARED = HERE / "ad-hoc-shared-prefixes.txt"
+
+
+def prefix_uniqueness_problems(allow_file=AD_HOC_SHARED):
+    """An ad-hoc identity (outside ROW_PREFIXES) claimed by more than one
+    mutant file is the B343 class: COMPACT-SLOT1 picked CS-1, a prefix
+    CS-1_cwd-symlink.py already claimed, so each card's killers would have
+    run the other's tests too, undetected (no checker looked outside
+    ROW_PREFIXES). One card legitimately spanning several files (H-17, MS-1,
+    PF-1, STC-1, ...) declares the identity in allow_file, the same shape as
+    shared-tests.txt's declared pairs; an undeclared identity shared by more
+    than one file fails, naming every file that claims it.
+    """
+    allowed = set(read_list(allow_file))
+    by_id = {}
+    for path in sorted({rel(ORIGIN[name]) for name, *_rest in M}):
+        found = AD_HOC_ROW_FILE.match(os.path.basename(path))
+        if not found or found.group(1) in ROW_PREFIXES:
+            continue
+        by_id.setdefault(f"{found.group(1)}-{found.group(2)}", set()).add(path)
+    out = []
+    for ident, files in sorted(by_id.items()):
+        if len(files) > 1 and ident not in allowed:
+            out.append(f"{ident} is a mutant-file prefix outside ROW_PREFIXES, claimed by more than one file: "
+                        + ", ".join(sorted(files)) + f"; declare it in {rel(allow_file)} if one card splits it on purpose")
+    return out
+
+
+# A mutant file's identity whatever its prefix, ROW_PREFIXES included -- used
+# only to group rows for killer_stem_problems(), never to decide whether a
+# file's own rows are self-consistent (check()'s ROW_FILE/ROW_TEST pass, and
+# prefix_uniqueness_problems() above, already do that).
+FILE_IDENTITY = AD_HOC_ROW_FILE
+
+# A killer test's stem, suffix letter dropped: TestCS1_, TestREC52f_ and
+# TestREC52g_ are all stem CS1, REC52. B343's actual harm was at this level,
+# not the row's: two different IDENTITIES naming the same stem means each
+# identity's -run regex would also run the other's test, so a row can read
+# killed by a test that has nothing to do with it, even when both files'
+# own row prefixes are unique (prefix_uniqueness_problems does not see this;
+# a stem is a different, coarser identity than the row it is derived from).
+KILLER_STEM = re.compile(r"Test([A-Za-z]+?)(\d+)[a-z]?_")
+KILLER_STEM_SHARED = HERE / "killer-stem-shared.txt"
+
+
+def killer_stem_problems(allow_file=KILLER_STEM_SHARED):
+    """A killer-test stem named by rows from more than one mutant-file
+    identity is declared in allow_file (one stem per line, e.g. TRU23) when
+    many features are legitimately caught by the same broad test; undeclared,
+    it fails and names every identity and file that names the stem.
+    """
+    allowed = set(read_list(allow_file))
+    stem_idents = {}
+    for name, _f, _old, _new, test, _platform in M:
+        found = FILE_IDENTITY.match(os.path.basename(ORIGIN[name]))
+        if not found:
+            continue
+        ident = f"{found.group(1)}-{found.group(2)}"
+        for mo in KILLER_STEM.finditer(test):
+            stem = f"{mo.group(1)}{mo.group(2)}"
+            stem_idents.setdefault(stem, {}).setdefault(ident, set()).add(rel(ORIGIN[name]))
+    out = []
+    for stem, idents in sorted(stem_idents.items()):
+        if len(idents) > 1 and stem not in allowed:
+            files = sorted({f for fs in idents.values() for f in fs})
+            out.append(f"Test{stem}_ is a killer-test stem named by rows of more than one identity "
+                        f"({', '.join(sorted(idents))}): " + ", ".join(files) +
+                        f"; declare the stem in {rel(allow_file)} if it is shared on purpose")
+    return out
+
 # A top-level Go test function, for checking that a mutant's judging test
 # names something real -- a typo only showed up as NOT DETECTED in the next
 # manual sweep, and push/pull_request no longer run one.
@@ -78,6 +161,7 @@ RUBRIC_TEST = re.compile(r"TestRubric([A-Z]+)(\d+)[a-z]?_")
 M = []  # (name, file, old, new, test regex)
 IMPORTS = {}  # name -> (file, import block as it is, import block with the extra line)
 ORIGIN = {}  # name -> the mutant file that declared it
+MODULE_OF = {}  # name -> the module directory whose go test judges it; "." is the root
 
 
 def rel(path):
@@ -258,6 +342,14 @@ def load(patterns):
             problems.append(f"{rel(path)}: {type(e).__name__}: {e}")
         if len(M) == before:
             problems.append(f"{rel(path)}: declares no mutant")
+        # Every row of a file runs in the module the file names, the root's
+        # when it names none; check() refuses a directory that is not one.
+        module = ns.get("MODULE", ".")
+        if isinstance(module, str) and module:
+            for row in M[before:]:
+                MODULE_OF[row[0]] = os.path.normpath(module)
+        else:
+            problems.append(f"{rel(path)}: MODULE is {module!r}, not a directory relative to the module root")
         # A file that writes `IMPORTS = {...}` rebinds the name in its own
         # namespace instead of updating the dict passed in, so `declared`
         # never sees the edit -- silently, since nothing else notices. Reading
@@ -279,15 +371,16 @@ def load(patterns):
     return problems
 
 
-def run_go_test(argv):
-    """Run go test and return its result with stdout and stderr as text.
+def run_go_test(argv, cwd="."):
+    """Run go test in cwd, a module's directory, and return its result with
+    stdout and stderr as text.
 
     The output is decoded with undecodable bytes replaced: a test that prints
     the raw bytes it fed the code under test (invalid UTF-8 among them) must
     not stop the sweep mid-run, which would leave every later mutant
     unjudged (the finally clause still restores the tree).
     """
-    r = subprocess.run(argv, capture_output=True)
+    r = subprocess.run(argv, capture_output=True, cwd=cwd)
     r.stdout = r.stdout.decode("utf-8", errors="replace")
     r.stderr = r.stderr.decode("utf-8", errors="replace")
     return r
@@ -303,6 +396,22 @@ def build_broken(r):
     """
     return any(ln.startswith("FAIL") and ("[build failed]" in ln or "[setup failed]" in ln)
                for ln in (r.stdout + r.stderr).splitlines())
+
+
+def masked_by_build(r):
+    """Report a red that only a broken build explains (MASKED-BUILD1).
+
+    test/acceptance's TestMain builds the binary before any test runs and
+    exits 1 when it cannot, so a mutant that left a package acceptance does
+    not import unbuildable (package main above all) prints FAIL<TAB>pkg<TAB>time
+    for acceptance with no test on record, and test_failed reads that as a red
+    test: a mutant that never compiled was reported caught (13 rows on main
+    1a281ecd). A package [build failed] in the same run with no "--- FAIL"
+    anywhere means nothing judged the mutant. A real "--- FAIL" beside a build
+    failure elsewhere stays red (DEL-1d's both).
+    """
+    return build_broken(r) and not any(ln.lstrip().startswith("--- FAIL")
+                                       for ln in (r.stdout + r.stderr).splitlines())
 
 
 def test_failed(r):
@@ -389,15 +498,83 @@ def outside_cwd(path):
     return False
 
 
+def module_tests(root):
+    """The top-level func Test names `go test ./...` run in root reaches, and
+    the nested modules it stops at.
+
+    ./... skips testdata, vendor, and every directory or file whose name
+    starts with . or _, and it stops at a directory holding a go.mod of its
+    own: that is another module, which a go test run in root never enters.
+    Reading every *_test.go under root passed a row whose test only pgraph/
+    defines, and the sweep then printed it NOT DETECTED (SWEEP-MODULE1).
+    """
+    names, nested = set(), []
+    for d, dirs, files in os.walk(root):
+        walk = []
+        for x in sorted(dirs):
+            if x.startswith((".", "_")) or x in ("testdata", "vendor"):
+                continue
+            if os.path.isfile(os.path.join(d, x, "go.mod")):
+                nested.append(os.path.normpath(os.path.join(d, x)))
+            else:
+                walk.append(x)
+        dirs[:] = walk
+        for f in files:
+            if f.endswith("_test.go") and not f.startswith((".", "_")):
+                try:
+                    names.update(GO_TEST_FUNC.findall(pathlib.Path(d, f).read_text()))
+                except OSError:
+                    pass
+    return names, nested
+
+
 def go_test_names():
-    """Every top-level func Test name under the current directory."""
-    names = set()
-    for gofile in pathlib.Path(".").rglob("*_test.go"):
-        try:
-            names.update(GO_TEST_FUNC.findall(gofile.read_text()))
-        except OSError:
-            pass
-    return names
+    """Every top-level func Test name under the current directory, by module:
+    "." for the root, and each nested module under its own directory."""
+    by_module, todo = {}, ["."]
+    while todo:
+        module = todo.pop()
+        by_module[module], nested = module_tests(module)
+        todo += nested
+    return by_module
+
+
+def missing_test(name, test, rx, module, go_tests):
+    """The problem of a row whose test regex matches no test in its module,
+    naming the other modules it would match in and the line that fixes it."""
+    def called(m):
+        return "the root module" if m == "." else f"module {m}"
+    msg = f"{name!r}: test regex {test!r} matches no func Test in {called(module)}, whose go test judges it"
+    elsewhere = sorted(m for m, names in go_tests.items() if m != module and any(rx.search(n) for n in names))
+    if elsewhere:
+        fix = "drop its MODULE line" if elsewhere[0] == "." else f'declare MODULE = "{elsewhere[0]}"'
+        msg += (f"; it matches one in {', '.join(map(called, elsewhere))}, which a go test run in "
+                f"{called(module)} never enters: {fix} in {rel(ORIGIN[name])}")
+    return msg
+
+
+def module_problems(go_tests):
+    """A declared MODULE must be a directory under the current one holding a
+    go.mod, or no go test can run there. Returns the problems and the bad
+    modules, whose rows check() then judges no further. A module ./... does
+    not reach from the root (one under testdata) gets its tests read here."""
+    files = {}
+    for name, module in MODULE_OF.items():
+        if module != ".":
+            files.setdefault(module, set()).add(rel(ORIGIN[name]))
+    problems, bad = [], set()
+    for module, where in sorted(files.items()):
+        if outside_cwd(module):
+            problems.append(f"MODULE {module!r} in {', '.join(sorted(where))} is outside the current directory")
+        elif not os.path.isfile(os.path.join(module, "go.mod")):
+            problems.append(f"MODULE {module!r} in {', '.join(sorted(where))} has no go.mod, "
+                            "so no go test runs there as a module of its own")
+        else:
+            if go_tests is not None and module not in go_tests:
+                go_tests[module] = module_tests(module)[0]
+            continue
+        bad.add(module)
+    return problems, bad
 
 
 def rubric_problems(name, origin, test):
@@ -421,6 +598,98 @@ def rubric_problems(name, origin, test):
     return problems
 
 
+# Import drift (MASKED-BUILD1). A break that removes a package's last use in a
+# Go file leaves its import unused, and an import edit that drops a package the
+# file still uses leaves the name undefined. Either way the mutant does not
+# build, which the sweep learns hours into a dispatch, and which a harness that
+# builds the binary in its TestMain once printed as a red. Both show in the
+# text, so --check names the row before any Go runs. GO_LEX matches comments
+# and literals leftmost-first, as Go's scanner reads them, so a package named
+# only inside one (a doc comment, a message) never counts as a use.
+GO_LEX = re.compile(r'//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'', re.S)
+GO_DECL = re.compile(r"(?m)^(?:func|type|var|const)\b")
+GO_IMPORT = re.compile(r'(?m)^[ \t]*(?:import[ \t]+)?(?:([A-Za-z_.]\w*)[ \t]+)?"([^"\n]+)"')
+GO_SELECTOR = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\.")
+GO_MAJOR = re.compile(r"v\d+")
+
+
+def go_header(src):
+    """Where src's header ends: the offset of its first top-level declaration.
+
+    Found with every comment and literal blanked to its own length, so an
+    offset here is an offset in src, and a `func` inside a comment is not one.
+    """
+    end = GO_DECL.search(GO_LEX.sub(lambda t: re.sub(r"[^\n]", " ", t.group(0)), src))
+    return end.start() if end else len(src)
+
+
+def go_imports(src):
+    """The package names src imports, read from its header.
+
+    The header is the text before the first top-level declaration, the only
+    place Go allows an import, so a string literal further down is never read
+    as one. A path's name is its last element, or the one before a /vN major
+    version, less a .vN suffix; a name guessed wrong is never used in the code,
+    so its count never changes and it is never judged.
+    """
+    head = src[:go_header(src)]
+    names = set()
+    for alias, path in GO_IMPORT.findall(GO_LEX.sub(lambda t: t.group(0) if t.group(0)[0] in "\"`" else " ", head)):
+        if alias in ("_", "."):
+            continue
+        parts = path.split("/")
+        last = parts[-2] if len(parts) > 1 and GO_MAJOR.fullmatch(parts[-1]) else parts[-1]
+        names.add(alias or re.sub(r"\.v\d+$", "", last))
+    return names
+
+
+def go_uses(src):
+    """How often the code of src selects from each name: pkg.X outside comments and literals."""
+    counts = {}
+    for name in GO_SELECTOR.findall(GO_LEX.sub(" ", src)):
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def import_drift(name, edits, text, pristine):
+    """The import problems of one break, its edits applied in the sweep's order.
+
+    Judged per Go file, and only for names whose use count the edits change: a
+    package the file used and no longer does while still importing it, and a
+    package the file no longer imports while still using it. An edit whose
+    anchor is not unique is skipped here, since check() reports it already.
+    `pristine` caches each untouched file's (imports, uses, header end); a file
+    whose header no edit reaches keeps its imports, so only its uses are read
+    again.
+    """
+    after, in_header = {}, {}
+    for f, old, new in edits:
+        s = after.get(f, text(f))
+        if s is None or s.count(old) != 1:
+            return []
+        if f.endswith(".go"):
+            if f not in pristine:
+                src = text(f)
+                pristine[f] = (go_imports(src), go_uses(src), go_header(src))
+            in_header[f] = in_header.get(f, False) or s.index(old) <= pristine[f][2]
+        after[f] = s.replace(old, new, 1)
+    problems = []
+    for f, s in after.items():
+        if not f.endswith(".go"):
+            continue
+        imported, used, _end = pristine[f]
+        imported_after, used_after = (go_imports(s) if in_header[f] else imported), go_uses(s)
+        for pkg in sorted(imported_after):
+            if used.get(pkg) and not used_after.get(pkg):
+                problems.append(f"{name!r}: the break removes the last use of {pkg} in {f}, so its import is left "
+                                f"unused and the mutant does not build; add IMPORTS[{name!r}] dropping it")
+        for pkg in sorted(imported - imported_after):
+            if used_after.get(pkg):
+                problems.append(f"{name!r}: the edits drop the import of {pkg} from {f}, which still uses it, so "
+                                f"the mutant does not build; keep the import")
+    return problems
+
+
 def check(complete, shared_tests=SHARED_TESTS):
     """The static checks. Returns the problems found.
 
@@ -429,9 +698,11 @@ def check(complete, shared_tests=SHARED_TESTS):
     mutant in a row's file names only that row's tests, or a declared shared
     pair, and a mutant in a rubric entry's file names its own entry's test and
     no other entry's (rubric_problems). `complete` says the whole set was
-    loaded, which is when a test regex can be checked against every real func
-    Test. `shared_tests` is the file declaring shared pairs; a test points it
-    at a fixture instead of writing to the real one.
+    loaded, which is when a test regex can be checked against the real func
+    Tests of the module that runs it. A declared MODULE is a directory holding
+    a go.mod, whether or not the set is complete. `shared_tests` is the file
+    declaring shared pairs; a test points it at a fixture instead of writing to
+    the real one.
     """
     problems = []
     shared = set()
@@ -457,7 +728,12 @@ def check(complete, shared_tests=SHARED_TESTS):
         return texts[f]
 
     go_tests = go_test_names() if complete else None
+    found, bad_modules = module_problems(go_tests)
+    problems += found
     for name, f, old, new, test, _platform in M:
+        module = MODULE_OF.get(name, ".")
+        # The tests of the module whose go test runs this row, and no other's.
+        own = go_tests[module] if go_tests is not None and module not in bad_modules else None
         top = test.split("/", 1)[0]
         rx = None
         try:
@@ -465,8 +741,8 @@ def check(complete, shared_tests=SHARED_TESTS):
         except re.error as e:
             problems.append(f"{name!r}: test regex {test!r} does not compile: {e}")
         else:
-            if go_tests is not None and not any(rx.search(n) for n in go_tests):
-                problems.append(f"{name!r}: test regex {test!r} matches no func Test under the current directory")
+            if own is not None and not any(rx.search(n) for n in own):
+                problems.append(missing_test(name, test, rx, module, go_tests))
         if outside_cwd(f):
             problems.append(f"{name!r}: target {f} is outside the current directory")
             continue
@@ -503,8 +779,8 @@ def check(complete, shared_tests=SHARED_TESTS):
             # a regex can match a real test no literal scan of its own text
             # can name, and matching it against the corpus is the only way to
             # know which row it actually pins.
-            if go_tests is not None and rx is not None:
-                for real_name in go_tests:
+            if own is not None and rx is not None:
+                for real_name in own:
                     rm = ROW_TEST.match(real_name)
                     if rm is None or not rx.search(real_name):
                         continue
@@ -533,6 +809,13 @@ def check(complete, shared_tests=SHARED_TESTS):
         count = s.count(io_)
         if count != 1:
             problems.append(f"IMPORTS[{name!r}]: import anchor occurs {count} times in {f} after the mutation, not exactly once")
+    problems += prefix_uniqueness_problems()
+    problems += killer_stem_problems()
+    pristine = {}
+    for name, f, old, new, _test, _platform in M:
+        if outside_cwd(f) or (name in IMPORTS and outside_cwd(IMPORTS[name][0])):
+            continue
+        problems += import_drift(name, [(f, old, new)] + ([IMPORTS[name]] if name in IMPORTS else []), text, pristine)
     return problems
 
 
@@ -584,6 +867,63 @@ def _dirty_targets():
     return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
 
 
+def green_baseline(module):
+    """Run the whole suite of module, a directory, unmutated; True if it is
+    green, and if not, print why and return False.
+
+    The sweep decides "the test went red" from a non-zero exit. With a
+    pre-existing failure anywhere the filter happens to match, every mutation
+    reports as detected and the sweep certifies a suite it never exercised --
+    the tool whose job is guarding premises, not guarding its own. Found by a
+    review that noticed the tree was red while the sweep would have passed. A
+    nested module's baseline is its own: the root's `go test ./...` never
+    enters it (SWEEP-MODULE1).
+    """
+    where = "" if module == "." else f" in {module}"
+    print(f"baseline{where}: the suite must be green before anything is mutated")
+    _baseline = run_go_test(["go", "test", "./...", "-count=1"], cwd=module)
+    if _baseline.returncode != 0:
+        print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
+              "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
+              "failure first; the sweep proves nothing until then.\n")
+        # Every failing test and package first, then the tail: the tail alone
+        # cut a package that failed early whenever a later failing package
+        # printed more than 4000 bytes (SWEEP-BASELINE1, batch/1's shard 4).
+        # A test killed by -timeout prints no "--- FAIL"; its name is only in
+        # the tab-indented "running tests:" block under "panic: test timed out".
+        _named, _running = [], False
+        for ln in _baseline.stdout.splitlines():
+            if _running and ln.startswith("\t"):
+                _named.append(ln)
+                continue
+            _running = ln.startswith("panic: test timed out")
+            if ln.startswith("panic:") or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
+                _named.append(ln)
+        if _named:
+            print("failing on the unmutated tree:")
+            for ln in _named:
+                print("   ", ln)
+            print("\nthe last 4000 bytes of go test's output:")
+        print(_baseline.stdout[-4000:])
+        # A package that fails to build never prints "--- FAIL"; its
+        # compiler errors are on stderr alone, as "# <package>" followed by
+        # "file.go:N:M: ...". The tail below cut an early package's errors
+        # the same way SWEEP-BASELINE1 cut stdout, whenever a later
+        # package's own errors filled more than 2000 bytes on their own
+        # (SWEEP-BASELINE1 (a)).
+        _named_err = [ln for ln in _baseline.stderr.splitlines()
+                      if ln.startswith("# ") or re.match(r"^\S+\.go:\d+:\d+:", ln)]
+        if _named_err:
+            print("\nfailing to build on the unmutated tree:")
+            for ln in _named_err:
+                print("   ", ln)
+            print("\nthe last 2000 bytes of go test's stderr:")
+        print(_baseline.stderr[-2000:])
+        return False
+    print(f"baseline{where}: green\n")
+    return True
+
+
 def run_sweep(strict=False, trim_root=None):
     for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
         signal.signal(_sig, _restore_and_reraise)
@@ -614,41 +954,11 @@ def run_sweep(strict=False, trim_root=None):
               "Residue would also have failed the green-baseline check below, which is the\n"
               "real guard.\n")
 
-    # GREEN BASELINE, before the first mutation.
-    #
-    # The sweep decides "the test went red" from a non-zero exit. With a
-    # pre-existing failure anywhere the filter happens to match, every mutation
-    # reports as detected and the sweep certifies a suite it never exercised --
-    # the tool whose job is guarding premises, not guarding its own. Found by a
-    # review that noticed the tree was red while the sweep would have passed.
-    print("baseline: the suite must be green before anything is mutated")
-    _baseline = run_go_test(["go", "test", "./...", "-count=1"])
-    if _baseline.returncode != 0:
-        print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
-              "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
-              "failure first; the sweep proves nothing until then.\n")
-        # Every failing test and package first, then the tail: the tail alone
-        # cut a package that failed early whenever a later failing package
-        # printed more than 4000 bytes (SWEEP-BASELINE1, batch/1's shard 4).
-        # A test killed by -timeout prints no "--- FAIL"; its name is only in
-        # the tab-indented "running tests:" block under "panic: test timed out".
-        _named, _running = [], False
-        for ln in _baseline.stdout.splitlines():
-            if _running and ln.startswith("\t"):
-                _named.append(ln)
-                continue
-            _running = ln.startswith("panic: test timed out")
-            if ln.startswith("panic:") or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
-                _named.append(ln)
-        if _named:
-            print("failing on the unmutated tree:")
-            for ln in _named:
-                print("   ", ln)
-            print("\nthe last 4000 bytes of go test's output:")
-        print(_baseline.stdout[-4000:])
-        print(_baseline.stderr[-2000:])
-        return 1
-    print("baseline: green\n")
+    # GREEN BASELINE, before the first mutation, in each module this run's rows
+    # run in: the root's alone when none of them declares a MODULE, or none is left.
+    for module in sorted({MODULE_OF.get(x[0], ".") for x in M}) or ["."]:
+        if not green_baseline(module):
+            return 1
     if trim_root:
         pathlib.Path(trim_root, TRIM_MARKER).touch()
 
@@ -693,7 +1003,7 @@ def run_sweep(strict=False, trim_root=None):
                     # way a missing anchor on the main mutation is.
                     print(f"  IMPORT ANCHOR MISSING <- {name}"); undetected.append(name); restore(); continue
                 pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
-            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"])
+            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"], cwd=MODULE_OF.get(name, "."))
             judged = r.stdout + r.stderr
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
             # `go test ./... -run <regex>`, so every package without a matching
@@ -715,7 +1025,7 @@ def run_sweep(strict=False, trim_root=None):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
-            elif test_failed(r):
+            elif test_failed(r) and not masked_by_build(r):
                 # A red test on record is positive evidence the mutant was
                 # caught, even when the same `go test ./...` run also failed
                 # to build an unrelated package: that package's failure is
@@ -834,7 +1144,8 @@ def main(argv):
     problems += check(complete=not args.files, shared_tests=shared_tests)
     if args.check:
         if not problems:
-            print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once")
+            print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once; "
+                  "no break leaves an import unused or a used one dropped")
         return report(problems)
     if problems:
         print("refusing to sweep: the static checks fail", file=sys.stderr)

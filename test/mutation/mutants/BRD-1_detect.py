@@ -67,14 +67,14 @@ m("BRD-1 the step-3 override does not reach the Cursor step, only Codex's",
 
 m("BRD-1 Caps grants mirror_in_band on the sdk surface",
   "internal/harness/caps.go",
-  "\t\tif s == SurfaceSDK || s == SurfaceUnknown {\n\t\t\tout[CapMirrorInBand] = Unverified\n\t\t}",
-  "\t\tif false {\n\t\t\tout[CapMirrorInBand] = Unverified\n\t\t}",
+  "\tcase c == CapMirrorInBand && (s == SurfaceSDK || s == SurfaceUnknown):\n",
+  "\tcase false:\n",
   "TestBRD1b_")
 
 m("BRD-1 Cursor and Codex get every capability by default",
   "internal/harness/caps.go",
-  "\tdefault: // Cursor, Codex, Unknown, and any future value\n\t\tfor _, c := range allCapabilities {\n\t\t\tout[c] = No\n\t\t}",
-  "\tdefault: // Cursor, Codex, Unknown, and any future value\n\t\tfor _, c := range allCapabilities {\n\t\t\tout[c] = Yes\n\t\t}",
+  "\tdefault: // Cursor, Codex, Unknown, and any future value\n\t\treturn No\n",
+  "\tdefault: // Cursor, Codex, Unknown, and any future value\n\t\treturn Yes\n",
   "TestBRD1b_")
 
 m("BRD-1 a too-long cursor_version is still stored",

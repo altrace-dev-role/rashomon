@@ -13,20 +13,20 @@ m("LU-1 an unread fold with a cwd is not recorded unread", H,
   "return s, shape.UnreadCWDDigest(key, cwd, unread), false",
   "TestLU1_|TestH155_")
 m("LU-1 an unread fold with no cwd is not recorded unread", H,
-  "			return s, \"\", true\n",
-  "			return s, \"\", false\n",
+  "			return s, \"\", true, \"\"\n",
+  "			return s, \"\", false, \"\"\n",
   "TestLU1_")
 m("LU-1 a read fold is recorded unread", H,
-  "return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), false",
-  "return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), true",
+  "return s, shape.CWDDigest(key, start), false",
+  "return s, shape.CWDDigest(key, start), true",
   "TestLU1_|TestH155_")
 m("LU-1 a line with no cd is recorded unread", H,
   "return s, shape.CWDDigest(key, physical), false",
   "return s, shape.CWDDigest(key, physical), true",
   "TestLU1_|TestH155_")
 m("LU-1 Capture drops the bit", H,
-  "decl.Shape, decl.CWDDigest, decl.LocationUnread = locate(",
-  "decl.Shape, decl.CWDDigest, _ = locate(",
+  "decl.Shape, decl.CWDDigest, decl.LocationUnread, own = locate(",
+  "decl.Shape, decl.CWDDigest, _, own = locate(",
   "TestLU1_|TestH155_")
 m("LU-1 the key is written when false", R,
   "`json:\"location_unread,omitempty\"`",
@@ -37,7 +37,7 @@ m("LU-1 the key is renamed", R,
   "`json:\"location_not_read,omitempty\"`",
   "TestLU1_TheBitIsOmitted")
 m("LU-1 the call version stays at 8", K,
-  "const CallSchemaVersion = 9",
+  "const CallSchemaVersion = 10",
   "const CallSchemaVersion = 8",
   "TestREC1_|TestAcceptsKind")
 m("LU-1 the report counts every uncredited run", A,

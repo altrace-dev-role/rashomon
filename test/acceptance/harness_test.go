@@ -163,6 +163,13 @@ func (e *env) environ(extra ...string) []string {
 		if name == "CLAUDE_PROJECT_DIR" {
 			continue
 		}
+		// CLAUDE_AGENT_SDK_VERSION is the variable that tells an Agent SDK
+		// program's sdk-cli from claude -p (SDK-GATE2), and a suite run from
+		// inside an SDK program would carry it into every claude -p row.
+		// Tests that want it set it.
+		if name == "CLAUDE_AGENT_SDK_VERSION" {
+			continue
+		}
 		base = append(base, kv)
 	}
 	base = append(base,
@@ -497,6 +504,7 @@ type digestOutput struct {
 		Fires                 bool     `json:"fires"`
 		Failed                int      `json:"failed"`
 		FailedLookups         int      `json:"failed_lookups"`
+		MissingPrograms       int      `json:"missing_programs"`
 		Unobserved            int      `json:"outcome_unobserved"`
 		AbsentWords           []string `json:"absent_words"`
 		FinalMessageAvailable bool     `json:"final_message_available"`

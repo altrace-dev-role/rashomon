@@ -27,3 +27,18 @@ m("SN-1 a write is judged without taking the arm", H,
   "return key, p.st.TakeStaleArm(p.sessionID), false", "return key, true, false", "TestSN1g_OnlyAnArmedRelevantWriteIsJudged")
 m("SN-1 the spec walks from a key that is not the project's", H,
   "p.sp = p.discoverFor(env, key,", "p.sp = p.discoverFor(env, p.cwd,", "TestSP15_HookDiscoversTheNearestSpec")
+
+# STALE-NOINDEX1: an index-less armed write reads the run only where a spec
+# file is (specFileAt, an Lstat per discovery candidate).
+m("SN-1 an index-less arm reads the run with no spec file", H,
+  "readRun := stepped || tookIndexless && specFileAt(p.cwd, key, env.ProjectDir, env.ManagedDir)\n",
+  "readRun := stepped || tookIndexless\n", "TestSN1j_AnArmedWriteWithNoIndexAndNoSpecReadsNoRun")
+m("SN-1 a spec file is never seen", "internal/hook/specdiscover.go",
+  "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist)\n", "\t\treturn (err == nil || !errors.Is(err, fs.ErrNotExist)) && false\n",
+  "TestSN1j2_|TestDG2d_")
+m("SN-1 every location reads as present", "internal/hook/specdiscover.go",
+  "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist)\n", "\t\treturn err == nil || !errors.Is(err, fs.ErrNotExist) || true\n",
+  "TestSN1j2_|TestSN1j_")
+m("SN-1 the managed spec file is not looked for", "internal/hook/specdiscover.go",
+  "\treturn managedDir != \"\" && present(filepath.Join(managedDir, \"rashomon\", \"spec.json\"))\n",
+  "\treturn false\n", "TestSN1j2_")

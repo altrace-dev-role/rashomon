@@ -179,13 +179,14 @@ func shellWord(w string) string {
 	return "'" + strings.ReplaceAll(w, "'", `'\''`) + "'"
 }
 
-// lineRuns is every Bash call with a picked execution, read as it ran
-// (newRun), in record order: what a declared gate matches, a line no runner
+// lineRuns is every Bash call with a picked execution, read as it ran and
+// as it ended (newRun), in record order: what a declared gate matches, a line no runner
 // names as well as classify's gate runs (G4). A rewritten line ran from a
 // location the record does not hold, as classify reads it, so no declared
 // gate takes it.
 func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 	var out []lineRun
+	ended := taskEnds(run)
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
 		e := picked[d.ToolUseID]
@@ -193,13 +194,14 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 			continue
 		}
 		masked, runner, _, _ := asRan(d, e)
-		g := newRun(d, e, masked, runner)
+		g := newRun(d, e, masked, runner, ended[d.ToolUseID])
 		if e.ExecutedDigest != "" && e.ExecutedDigest != d.Shape.Digest {
 			g.Location = ""
 		}
-		wrapper := shape.WrapperRun(d.ToolName, d.Shape.Program, runner, masked, d.Shape.VerbClass) ||
+		wrapper := shape.WrapperRun(d.ToolName, shape.RecordedLaunch(d.Shape.Program, d.Launch, d.SchemaVersion >= store.LaunchSchemaVersion),
+			runner, masked, d.Shape.VerbClass) ||
 			isGateRun(d, masked, runner) && gateout.Delegated(g.Program)
-		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest), wrapper: wrapper})
+		out = append(out, lineRun{gateRun: g, digest: cmp.Or(e.ExecutedDigest, d.Shape.Digest), wrapper: wrapper, background: e.Backgrounded})
 	}
 	return out
 }
@@ -212,10 +214,14 @@ func lineRuns(run *store.Run, picked map[string]*store.Execution) []lineRun {
 // every run by a string and every runs slice with it, as D173d's raw did).
 // wrapper: the line may have run a gate it does not name, and the post hook
 // read its output for one (shape.WrapperRun, or a delegate's run: make, npm).
+// background: the call was launched in the background (its execution's
+// backgrounded, before any end joined it), so its post saw no output at all
+// (BG-OUTCOME phase 2a); in the padding wrapper leaves.
 type lineRun struct {
 	gateRun
-	digest  string
-	wrapper bool
+	digest     string
+	wrapper    bool
+	background bool
 }
 
 // matches: the run is where the gate binds it, never at another location,
@@ -268,19 +274,23 @@ func nameOf(name *string) string {
 // words. Its last run is marked OtherArgs where that run was bound at its
 // runner with words none of the gate's argv has, so no line says the gate
 // passed of a run that was not the gate's own (GATE-BIND1, D-c); a wrapped
-// run carries Wrapped instead.
+// run carries Wrapped instead. root is the project it is placed in, whose
+// files it covers (STALE-COVER1).
 //
 // unread is the last wrapper call at the point the gate bound nothing of, nil
 // with none. Where it follows the last edit the state counts and the gate
 // would read absent or stale, the gate is Unknown, OutcomeUnknown, and its
 // last run is that call, marked unread: the call may have run the gate and
 // its output does not say, so "not run" would be a guess (WRAPPER-RUN1, D5).
-func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
+// A call launched in the background is marked background instead: its post
+// saw no output, so the line names the call and says nothing of an output
+// (BG-OUTCOME phase 2a).
+func (g *declaredGate) state(fr []gateRun, unread *lineRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	var s GateState
 	if len(fr) > 0 {
-		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, at, tree)
+		s = stateOf(familyKey{runner: g.id}, g.kind, fr, writes, unnamed, root, at, tree)
 	} else {
-		s = absentState(writes, unnamed, at)
+		s = absentState(writes, unnamed, root, at)
 	}
 	s.Gate, s.Kind, s.Family, s.Source, s.Trust, s.Required = g.id, g.kind, familyDeclared, g.source, g.trust, g.required
 	if s.LastRun != nil {
@@ -291,23 +301,27 @@ func (g *declaredGate) state(fr []gateRun, unread *gateRun, writes []write, unna
 		}
 	}
 	if unread != nil && (s.State == Absent || s.State == Stale) && s.LastWrite != nil && unread.Seq > s.LastWrite.Seq {
-		s.State, s.Reason, s.LastRun = Unknown, OutcomeUnknown, runRef(unread)
+		s.State, s.Reason, s.LastRun = Unknown, OutcomeUnknown, runRef(&unread.gateRun)
 		s.LastRun.Wrapped = WrapUnread
+		if unread.background {
+			s.LastRun.Wrapped = WrapBackground
+		}
 	}
 	return s
 }
 
 // absentState is a declared gate's row with no run at the point (G8):
-// Absent, never_run_after_write where a relevant named write is at or before
-// at, every one counted as after a green that never was, else empty_run.
-func absentState(writes []write, unnamed []int64, at int64) GateState {
+// Absent, never_run_after_write where a relevant named write root covers is
+// at or before at, every one counted as after a green that never was, else
+// empty_run.
+func absentState(writes []write, unnamed []int64, root string, at int64) GateState {
 	var counted []write
 	for _, w := range writes {
-		if w.Path != nil && Relevant(w.Class) && w.Seq <= at {
+		if w.Path != nil && Relevant(w.Class) && w.Seq <= at && covers(root, &w) {
 			counted = append(counted, w)
 		}
 	}
-	g := GateState{State: Absent, Reason: EmptyRun, WritesSinceGreen: len(counted), LastWrite: lastWrite(counted)}
+	g := GateState{State: Absent, Reason: EmptyRun, WritesSinceGreen: len(counted), LastWrite: lastWrite(counted), root: root}
 	if len(counted) > 0 {
 		g.Reason = NeverRunAfterWrite
 	}
@@ -326,13 +340,14 @@ func absentState(writes []write, unnamed []int64, at int64) GateState {
 // unmatched run keeps its row. cands is lineRuns', runs classify's; a run
 // counts at the point when it landed at or before at, as in gateStates, and
 // a gate's runs are read in Seq order, so the result depends on the order of
-// no input; it is sorted by Gate then Family. Cost: O(G x R) over the
+// no input; it is sorted by Gate then Family. root is the project every
+// declared gate is placed in (declaredGates' root). Cost: O(G x R) over the
 // candidates, and a sort of each gate's runs.
-func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) []GateState {
+func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) []GateState {
 	matched := map[int64]bool{}
 	for i := range dgs {
 		var fr []gateRun
-		var unread *gateRun
+		var unread *lineRun
 		for j := range cands {
 			c := &cands[j]
 			if s, _ := landed(c.gateRun); s > at {
@@ -345,14 +360,14 @@ func withDeclared(gates []GateState, dgs []declaredGate, cands []lineRun, runs [
 				fr = append(fr, wrapped(c.gateRun))
 			default:
 				if c.wrapper && (unread == nil || c.Seq > unread.Seq) {
-					unread = &c.gateRun
+					unread = c
 				}
 				continue
 			}
 			matched[c.Seq] = true
 		}
 		slices.SortFunc(fr, func(a, b gateRun) int { return cmp.Compare(a.Seq, b.Seq) })
-		gates = append(gates, dgs[i].state(fr, unread, writes, unnamed, at, tree))
+		gates = append(gates, dgs[i].state(fr, unread, writes, unnamed, root, at, tree))
 	}
 	open := map[string]bool{}
 	for _, r := range runs {

@@ -53,7 +53,7 @@
         }
       ],
       "id": "PF-PG1",
-      "implementation": "Gates are runner families from closed test and build runner tables, required after two sessions within 30 days or all required while no index has learned one, and a trusted or managed spec's declared gates join the snapshot at the steer step and at Stop, each bound to the project root and its dir and matched by runner or whole-line digest, absorbing the learned family whose runs it took, but lint, typecheck and scan have no runner table.",
+      "implementation": "Gates are runner families from closed test, build, lint, typecheck and scan runner tables (rules version 12: a runner's kind is the list its row is on, and a live gate's kind is test, build, lint, typecheck, scan or custom), required after two sessions within 30 days or all required while no index has learned one, and a trusted or managed spec's declared gates join the snapshot at the steer step and at Stop, each bound to the project root and its dir and matched by runner or whole-line digest, absorbing the learned family whose runs it took, but no check runner's output has a summary table, so a lint, typecheck or scan run's output is classified no_summary and never read.",
       "integration": [
         {
           "event": "PreToolUse",
@@ -73,7 +73,8 @@
         }
       ],
       "missing": [
-        "lint, typecheck and scan runner tables: a live gate's kind is test, build or custom"
+        "lint, typecheck and scan runs behind a wrapper (npm run lint, make lint, tox -e lint, pre-commit run) or with a flag before the word the row names (tsc -p . --noEmit) are still read as build or custom, since the tables name only the tool's own words",
+        "no gateout summary table for a lint, typecheck or scan runner: its output is classified no_summary, so a piped one stays masked_inconclusive"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -141,7 +142,7 @@
         }
       ],
       "id": "PF-PG2",
-      "implementation": "The hook records the runner (runner_name, a row of the binary's own list) and the stage of the pipe that hid its exit status (masked_by); the post reads a gate run's output, at most 1 MiB, in memory, classifies it with gateout's tables keyed by the runner's table word and writes gate_output. From call schema 8 (schema 9 adds location_unread) and rules version 11, a masked run whose every later stage is tail without -c, tee or a bare cat, that ended ok and was not backgrounded, takes its outcome from the runner's own summary line: summary_pass is green (not for make, npm, yarn or pnpm, whose output holds every step's lines: their pass stays masked), summary_fail is red, empty_run is absent, each carrying outcome_from output_summary into the steer line and the Stop line, which names the runner and says it was read from its output. A bare fail line decides only for a runner whose table has no summary form (none now). Every other masked run is never green: a run behind head, grep, wc, sort, cut or an unlisted stage, an output with no summary line, a runner no table names, an older record, and a status hidden by something that is not a pipe (|| true, ; echo $?) stay in the masked_inconclusive state. pytest's pass is anchored to its summary line, a crash (Fatal Python error, Killed) is red, the delegate runners' own failure markers (make ***, npm ERR!, yarn error Command failed, ERR_PNPM) are red, and a gate word for a runner no table names stays the line's first word.",
+      "implementation": "The hook records the runner (runner_name, a row of the binary's own list) and the stage of the pipe that hid its exit status (masked_by); the post reads a gate run's output, at most 1 MiB, in memory, classifies it with gateout's tables keyed by the runner's table word and writes gate_output. From call schema 8 (schema 9 adds location_unread) and rules version 11, a masked run whose every later stage is tail without -c, tee or a bare cat, that ended ok and was not backgrounded, takes its outcome from the runner's own summary line: summary_pass is green (not for make, npm, yarn or pnpm, whose output holds every step's lines: their pass stays masked), summary_fail is red, empty_run is absent, each carrying outcome_from output_summary into the steer line and the Stop line, which names the runner and says it was read from its output. A bare fail line decides only for a runner whose table has no summary form (none now). Every other masked run is never green: a run behind head, grep, wc, sort, cut or an unlisted stage, an output with no summary line, a runner no table names, an older record, and a status hidden by something that is not a pipe (|| true, ; echo $?) stay in the masked_inconclusive state. pytest's pass and fail are anchored to its summary line, a fail with a count of at least 1, so a line of another tool's in a delegated run's output that counts 0 failed or 0 errors, and a test's own log line, are not a failure (GATEOUT-ZERO1), a crash (Fatal Python error, Killed) is red, the delegate runners' own failure markers (make ***, npm ERR!, yarn error Command failed, ERR_PNPM) are red, and a gate word for a runner no table names stays the line's first word.",
       "integration": [
         {
           "event": "PreToolUse",
@@ -262,7 +263,7 @@
         }
       ],
       "missing": [
-        "no live gate has kind lint, typecheck or scan, so those claim classes read no_gate_known (PF-PG1)",
+        "a lint, typecheck or scan claim reads no_gate_known unless a run of a tool on the check lists is recorded: wrapped and flag-first spellings are not (PF-PG1)",
         "no claim verdict becomes a steer finding for the agent"
       ],
       "planned_pr": "",
@@ -340,10 +341,14 @@
         {
           "file": "internal/verify/rules_test.go",
           "symbol": "TestSR1k_VerdictsAndRowsUnderShuffledRecords"
+        },
+        {
+          "file": "internal/verify/platform.go",
+          "symbol": "platformObligations"
         }
       ],
       "id": "PF-PG5",
-      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path and require_evidence rule (violation unmet, no recorded violation met, undecided unknown), but it emits no proposed_check row, and its scope is the session at every point.",
+      "implementation": "ledgerOf folds the snapshot into stable, replayable rows that read unknown rather than met on missing evidence, on every Stop (EvaluateStop is its one caller), and a declared gate's rows carry source spec under ids of their own; the done flag's clause reads its expected_evidence rows and `rashomon report --ledger` replays the last Stop's ledger from the record, with one spec_rule row per trusted or managed forbid_command, protect_path, require_evidence, order and forbid_code rule (violation unmet, no recorded violation met, undecided unknown; a forbid_code rule with an applicable write is always unknown, reason content not read), and, in the ledger verb's replay only, one platform_impact row per written Go package judged against the project's go test gate (PL-WIRE1), but it emits no proposed_check row, and its scope is the session at every point.",
       "integration": [
         {
           "event": "Stop",
@@ -356,10 +361,10 @@
       ],
       "missing": [
         "the ledger verb replays from the record: the tree is read now and the final message is not held, so a file changed since the Stop reads its rows stale and judgment_disclosed reads unknown",
-        "spec_rule rows for forbid_code and order rules: ruleVerdicts skips both kinds (SPEC-RULES1 1b)",
+        "forbid_code reads unknown at every applicable write until an edit's content is read (EditMarks' pre-read, EDITMARKS-WIRE1, issue #207); the reason content not read is not persisted on the row",
         "proposed_check rows",
         "watched_red_then_green for a declared gate: watches keys reds by learned family, so a declared row has none (DECLARED-GATES1 G13)",
-        "platform_impact wiring: internal/platform has no runtime caller (6.1)"
+        "the ledger verb reads files at replay, not at the Stop: the pgraph log, its digests, go.mod and the written Go files as they are when a person runs it"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -495,6 +500,26 @@
           "symbol": "ruleHitSeqs"
         },
         {
+          "file": "internal/verify/rules_order.go",
+          "symbol": "afterHits"
+        },
+        {
+          "file": "internal/verify/rules_order_test.go",
+          "symbol": "TestSR1am_TheJudgeReadsHitsNotAfterLines"
+        },
+        {
+          "file": "internal/verify/rules_order.go",
+          "symbol": "thenChecks"
+        },
+        {
+          "file": "test/acceptance/ol1_order_live_test.go",
+          "symbol": "TestOL1a_TheStopRowAgreesWithTheCallTimeNudge"
+        },
+        {
+          "file": "test/acceptance/spr1_order_hook_test.go",
+          "symbol": "TestSPR1a_AnAfterCallLeavesAHitAndAThenWithOneIsMet"
+        },
+        {
           "file": "internal/verify/evaluate.go",
           "symbol": "recordGreenOf"
         },
@@ -516,7 +541,7 @@
         }
       ],
       "id": "PF-PG8",
-      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path or require_evidence rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
+      "implementation": "recordGreen needs a complete record, no unresolved integrity entry, no violated forbid_command, protect_path, require_evidence or order rule of a trusted or managed spec, and every required gate green. forbid_command is judged from the spec_event rule_hit the post keeps at either post event, since the record keeps no command line, and an order rule from the after_hit records the post keeps of its After calls (exit status, foreground flag, directory digest, no command text) and the then_check records it keeps of every Bash call read under the rule (yes, no or maybe, no command text), never a call's line; the live Stop and the ledger replay read one count (recordGreenOf), and every Stop row that prints counts the findings. Stop appends the snapshot cut to an 8 KiB checkpoint in a fixed order.",
       "integration": [
         {
           "event": "Stop",
@@ -524,7 +549,8 @@
         }
       ],
       "missing": [
-        "forbid_code and order rules are not evaluated, so neither can block record-green (SPEC-RULES1 1b)",
+        "forbid_code is undecided (content not read), so it cannot block record-green until an edit's content is read (EDITMARKS-WIRE1, issue #207)",
+        "a Bash call with no then_check (its post never landed, the record was lost) leaves its order rule unknown at the Stop, never met (ORDER-LIVE1); an After whose after_hit was lost reads undecided only where its line is recorded, and a Then with no hit under withheld lines is a violation at the post and at the Stop",
         "the ledger's all-met state (PF-PG5)"
       ],
       "planned_pr": "",
@@ -574,10 +600,26 @@
         {
           "file": "internal/recap/evidence_done_test.go",
           "symbol": "TestLW1k_DoneClauseReadsTheLedger"
+        },
+        {
+          "file": "cmd/rashomon/preflight_done.go",
+          "symbol": "doneFinding"
+        },
+        {
+          "file": "internal/recap/state.go",
+          "symbol": "TakeUnverified"
+        },
+        {
+          "file": "test/acceptance/done_note_test.go",
+          "symbol": "TestDONE1_FlaggedStopIsNotedOnceAtTheNextPrompt"
+        },
+        {
+          "file": "test/acceptance/done_note_test.go",
+          "symbol": "TestDONE1d_OffArmDecidesAndWithholds"
         }
       ],
       "id": "PF-PG9",
-      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit, but the agent is not told at the next prompt.",
+      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit. The same decision is kept in recap.json at the Stop, and the session's next prompt carries one claim-vs-record/done-unverified note to the agent, once per flagged Stop, through the prompt's own Route call (steer off, no consent and the off arm withhold it; a prompt that also carries a preflight note gets this one and the preflight waits for the next).",
       "integration": [
         {
           "event": "Stop",
@@ -586,10 +628,13 @@
         {
           "event": "UserPromptSubmit",
           "handler": "cmd/rashomon/recap_stop.go"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "handler": "cmd/rashomon/preflight_done.go"
         }
       ],
       "missing": [
-        "the next-prompt note to the agent: recap prints systemMessage only",
         "W1 precision measurement"
       ],
       "planned_pr": "",
@@ -801,18 +846,22 @@
         {
           "file": "pgraph/ingest_test.go",
           "symbol": "TestPL1_ResolvedSetEqualsGoList"
+        },
+        {
+          "file": "pgraph/syncroot.go",
+          "symbol": "ScanRoots"
         }
       ],
       "id": "PF-PL1",
       "implementation": "Load and LoadScanRoot resolve Go modules through go/packages under a canonical Config, keying files by normalised path and content sha256, never mtime.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a caller in cmd/rashomon or a hook that runs Load and writes a log a hook can read: the rashomon module does not require pgraph"
+        "the producer is pgraph's own command, which a person runs: the rashomon binary starts no process (H-17, TRU-40), so no hook or rashomon verb runs a sync"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -850,12 +899,12 @@
       "implementation": "Extract reads calls, declarations, embeds and interface satisfaction from go/types at tier PROVEN, and an independent re-derivation oracle agrees with it.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a hook-reachable producer (as PF-PL1)"
+        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -890,12 +939,12 @@
       "implementation": "Dispatch and SyncCHA run CHA over whole-program SSA and write only may-call facts at tier ALGORITHMIC, and a test reproduces the published precision and recall on the real corpus.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a hook-reachable producer (as PF-PL1)"
+        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -934,12 +983,12 @@
       "implementation": "The tier is a property of the producer, fixed at construction, only pgraph can mint a PROVEN or ALGORITHMIC producer, and a may-call fact is refused at PROVEN on write and on decode.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a hook-reachable producer (as PF-PL1)"
+        "no reader uses these facts beyond a package's family hash on the Stop's platform_impact row: the symbol line and the blast radius are later cards (PL-WIRE2, PF-PL7)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -980,18 +1029,26 @@
         {
           "file": "pgraph/sync_test.go",
           "symbol": "TestPL5_TwoTiersIncrementalViewByteIdenticalToFull"
+        },
+        {
+          "file": "pgraph/syncroot.go",
+          "symbol": "SyncPrograms"
+        },
+        {
+          "file": "pgraph/cmd/pgraph/main_test.go",
+          "symbol": "TestPLW1f_ResyncOnlyAppends"
         }
       ],
       "id": "PF-PL5",
       "implementation": "An append-only log of assert and retract records over triples with tier, configuration, commit and extractor encodes and decodes deterministically, and an incremental view is byte-identical to a full rebuild.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a producer that runs Sync or SyncCHA from cmd/rashomon or a hook and writes a log internal/platform can read"
+        "no compaction: the log only grows; pgraph refuses to write one over 256 MiB (MaxLogBytes), and the ledger verb reads one of at most 64 MiB, so a log between the two reads unknown there"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1002,20 +1059,34 @@
       "e2e_verified": false,
       "evidence": [
         {
-          "file": "pgraph/doc.go"
+          "file": "pgraph/syncroot.go",
+          "symbol": "EncodeDigests"
+        },
+        {
+          "file": "internal/platform/digests.go",
+          "symbol": "fresh"
+        },
+        {
+          "file": "internal/platform/read_test.go",
+          "symbol": "TestPLW1i_AFileTheDigestsDoNotVouchForMakesItsPackageStale"
         }
       ],
       "id": "PF-PL6",
-      "implementation": "pgraph's package doc names per-package invalidation as a later slice, and Sync and SyncCHA always recompute.",
+      "implementation": "Staleness detection exists, not invalidation: pgraph sync writes the sha256 of every Go file it read beside the log, and the ledger verb withholds a package's hash where a file the digests list for it reads otherwise now; every sync still re-extracts both tiers whole, and no timing is published.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
+        },
+        {
+          "event": "verb",
+          "handler": "cmd/rashomon/report_ledger.go"
         }
       ],
       "missing": [
-        "a per-package content-hash gate before PROVEN re-extraction",
-        "a debounce before CHA re-sync"
+        "a per-package content-hash gate before PROVEN re-extraction: every sync re-extracts every package",
+        "a debounce before CHA re-sync",
+        "the two timings published separately"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1049,8 +1120,8 @@
       "e2e_verified": false,
       "evidence": [
         {
-          "file": "internal/platform/platform.go",
-          "symbol": "Obligations"
+          "file": "internal/platform/read.go",
+          "symbol": "Read"
         },
         {
           "file": "internal/platform/platform.go",
@@ -1065,30 +1136,53 @@
           "symbol": "decode"
         },
         {
-          "file": "internal/platform/decode.go",
-          "symbol": "parseRecord"
+          "file": "internal/platform/resolve.go",
+          "symbol": "locate"
         },
         {
-          "file": "internal/platform/resolve.go",
-          "symbol": "packageOf"
+          "file": "internal/verify/platform.go",
+          "symbol": "platformObligations"
+        },
+        {
+          "file": "internal/verify/platform_cover.go",
+          "symbol": "coverLines"
+        },
+        {
+          "file": "cmd/rashomon/report_platform.go",
+          "symbol": "platformRead"
         },
         {
           "file": "pgraph/platform_fixture_test.go",
           "symbol": "TestPL8h_FixturePinned"
+        },
+        {
+          "file": "internal/verify/platform_test.go",
+          "symbol": "TestPLW1m_PlatformRowsKnownAnswers"
+        },
+        {
+          "file": "test/acceptance/h156_platform_wire_test.go",
+          "symbol": "TestH156_ASyncedPackageOwesItsTestUntilAGoTestNamesIt"
         }
       ],
       "id": "PF-PL8",
-      "implementation": "internal/platform's Impact and Obligations decode a pgraph log with their own decoder, resolve written paths to packages and emit one obligation per touched package, one unknown row on any error, but nothing fills RunView.LogPath outside a test and no strict identifier resolution exists.",
+      "implementation": "`rashomon report --ledger` replays the last Stop with internal/platform's Read of the log pgraph sync writes at the project root (the Stop hook itself reads none); the session's written .go files resolve to packages, and the ledger owes one platform_impact row per package against a go test gate the project declares or its CI names: met where the last go test after the package's last write names it by a line the record's whole-line digest matches and is green, unmet where that run is red and names the package alone, open where none ran, unknown with no log, no test file, a run that might have tested it with other words, or an unnamed write after it; one unknown row on a log it cannot read whole. No strict identifier resolution exists.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "cmd/rashomon/report_ledger.go"
+        },
+        {
+          "event": "verb",
+          "handler": "pgraph/cmd/pgraph/main.go"
         }
       ],
       "missing": [
-        "a pgraph-log producer wired into a real hook (SessionStart or PostToolUse)",
-        "a LogPath setter reachable from that hook",
-        "strict identifier resolution: an exact id, an exact qualified name, or a refusal naming every candidate"
+        "strict identifier resolution: an exact id, an exact qualified name, or a refusal naming every candidate",
+        "no line at Stop: the Stop reads no platform graph, and only `rashomon report --ledger` shows a row",
+        "the record holds no run's words (the hook records no command): a run covers a package only where its whole line is one of the go test lines that name it, bare or with one common flag, so an env prefix, an export, a wrapper, a cd or a pipe ahead of it reads unknown",
+        "per-package outcome: a red go test over many packages does not say which failed, so it reads unknown for each",
+        "a make or npm test gate owes no platform row: only a go test gate does",
+        "a recorded session showing the row (e2e)"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1175,20 +1269,26 @@
       "e2e_verified": false,
       "evidence": [
         {
-          "file": "pgraph/doc.go"
+          "file": "internal/platform/read.go",
+          "symbol": "Read"
+        },
+        {
+          "file": "test/acceptance/h156_platform_wire_test.go",
+          "symbol": "TestH156c_NoLogOrACorruptOneIsUnknown"
         }
       ],
       "id": "PF-PL11",
-      "implementation": "pgraph's package doc lists unknown fan-in as a later slice, and no reflection or cgo boundary detection exists.",
+      "implementation": "No reflection or cgo fan-in exists. The ledger verb reads a written Go package unknown when there is no pgraph log, rather than owing it nothing, but a write the record cannot name owes no row.",
       "integration": [
         {
-          "event": "none",
-          "handler": ""
+          "event": "verb",
+          "handler": "cmd/rashomon/report_ledger.go"
         }
       ],
       "missing": [
         "fan-in itself (PF-PL7)",
-        "a reflection and cgo call-boundary detector"
+        "a reflection and cgo call-boundary detector",
+        "an unnamed write owes no platform row"
       ],
       "planned_pr": "",
       "session_proof": "",
@@ -1514,7 +1614,7 @@
         }
       ],
       "missing": [
-        "the PRD's failure-time trigger (LEARN-DELIVER2): lessons carry no failure key and PostToolUseFailure's channel is not probed",
+        "the PRD's failure-time trigger (LEARN-DELIVER2): lessons carry no failure key and no handler delivers one at PostToolUseFailure, whose channel is probed (floor 2.1.304, #147)",
         "LABEL-WRITER1: no label is written, so no lesson is ever demoted and the one demotion rule has nothing to act on",
         "the pack kind (PF-HD7)"
       ],

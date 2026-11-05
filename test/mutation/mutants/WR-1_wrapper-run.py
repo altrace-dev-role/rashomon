@@ -14,13 +14,14 @@ V = "internal/verify/gates.go"
 D = "internal/verify/declared.go"
 STOP = "internal/verify/stop.go"
 R = "internal/recap/value.go"
+RW = "internal/recap/wrapped.go"  # the unknown row's wrapper wording (LAW10: value.go stays under 500)
 REP = "internal/report/testbending.go"
 
 # gateout: the signature rule.
 m("WR-1 a wrapper's output counts the rows with no signature", G,
   "\t\tcase !wrapper:\n", "\t\tdefault:\n", "TestWR1_AnOutputNoRunnerSignedIsNoRun")
 m("WR-1 every runner row reads as signed", G,
-  "if open&(1<<i) != 0 && matches(rows[i].sig, line) {", "if open&(1<<i) != 0 {",
+  "if open&(1<<i) != 0 && matches(rows[i].sig, line) {", "if open&(1<<i) != 0 && (matches(rows[i].sig, line) || true) {",
   "TestWR1_AnOutputNoRunnerSignedIsNoRun|TestWR1_ADelegateCountsARunnerOnlyWhereItSigned")
 m("WR-1 a delegate counts a runner it never signed (D3)", G,
   "\t\tcase len(rows[i].sig) > 0:\n", "\t\tcase wrapper && len(rows[i].sig) > 0:\n",
@@ -50,13 +51,14 @@ m("WR-1 the consent screen keeps a wrapper's word unnamed", "internal/disclose/p
   "or another command whose output holds a line a test runner prints about its run, ", "",
   "TestWR1_TheDisclosureNamesTheWrapperRead")
 m("WR-1 a line of any program is read as a wrapper", S,
-  "toolName == \"Bash\" && wrapperProgram(program) && !GateRun(", "toolName == \"Bash\" && !GateRun(",
+  "toolName == \"Bash\" && launch && !GateRun(", "toolName == \"Bash\" && !GateRun(",
   "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 m("WR-1 a shell is no wrapper", S,
   "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn true\n", "\tcase \"bash\", \"sh\", \"zsh\", \"dash\", \"ksh\":\n\t\treturn false\n",
   "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 m("WR-1 a script named by its extension is no wrapper", S,
-  "return strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\")", "return false",
+  "return strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\")",
+  "return false && (strings.HasSuffix(p, \".sh\") || strings.HasSuffix(p, \".bash\"))",
   "TestWR1_AWrapperRunStartsWithAShellOrAScript")
 
 # verify: how a wrapped run is decided and bound.
@@ -64,7 +66,7 @@ m("WR-1 a wrapped run is red by the wrapper's exit", V,
   "\tif r.Wrapped {\n\t\treturn r.Output.Kind == outSummaryFail", "\tif false {\n\t\treturn r.Output.Kind == outSummaryFail",
   "TestWR1_AWrappedRunIsDecidedByItsOutput")
 m("WR-1 a masked line hides a wrapped run", V,
-  "!r.FromOutput && !r.Wrapped", "!r.FromOutput",
+  "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted && !r.Wrapped\n", "\treturn statusHidden(r) && !r.FromOutput && !r.FromPrinted\n",
   "TestWR1_AWrappedRunIsDecidedByItsOutput")
 m("WR-1 a wrapped run whose output did not say is green", V,
   " || r.Wrapped && !r.FromOutput", "",
@@ -95,9 +97,15 @@ m("WR-1 a wrapped run names its gate by the wrapper", STOP,
 m("WR-1 a wrapped green reads passed after the last edit", R,
   "case wrap(g) == verify.WrapRead:", "case false:",
   "TestWR1_AWrappedRunIsFoundByItsOutput")
-m("WR-1 an unread wrapper reads as a run whose result is lost", R,
-  "\t\tswitch wrap(g) {\n", "\t\tswitch verify.WrapNone {\n",
+m("WR-1 an unread wrapper reads as a run whose result is lost", RW,
+  "\tswitch wrap(g) {\n", "\tswitch verify.WrapNone {\n",
   "TestWR1_AWrappedRunIsFoundByItsOutput")
+# #234 ruling (a): a delegate line that printed its status keeps that status,
+# not the go summary inside it, so the gate's line says only the status was
+# read, never that the output named no run.
+m("WR-1 a printed status reads as an output that names no run", RW,
+  "\t\tif printedStatus(g.LastRun) {\n", "\t\tif false {\n",
+  "TestWR1_APrintedStatusOutranksTheWrapperRead")
 m("WR-1 a wrapped red reads as the wrapper's exit", R,
   "if wrap(g) == verify.WrapRead {", "if false {",
   "TestWR1_AWrappedRunIsFoundByItsOutput")

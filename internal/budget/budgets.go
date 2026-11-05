@@ -42,6 +42,27 @@ type Budgets struct {
 	Benchmarks        []Benchmark         `json:"benchmarks"`
 	Growth            []Growth            `json:"growth"`
 	Disk              Disk                `json:"disk"`
+	Background        []Background        `json:"background"`
+}
+
+// Background is one process the plugin's hooks.json starts with async true:
+// pgraph sync -hook at SessionStart and Stop (PW1b-ON-230). Claude Code runs
+// it beside the reply and off every tool call, so the Entries rows, which
+// measure the rashomon binary, and INV-10's per-call figures never see it;
+// this row is its own. CurrentMaxRSSMiBP50 is the median peak RSS of nine
+// runs on a tree the last run already read, the run every reply without a Go
+// edit pays (a walk of the Go files, then exit), on test/perf's fixture
+// module; TestPW1b_TheBackgroundHookStaysWithinItsRow gates it under the
+// perf tag on the reference platform. CurrentWallMsP50 is information only.
+// A load's cost follows the code it loads, so a fixture figure says nothing
+// of a person's repository: Basis gives this repository's.
+type Background struct {
+	ID                  string   `json:"id"`
+	Events              []string `json:"events"`
+	Command             []string `json:"command"`
+	CurrentMaxRSSMiBP50 float64  `json:"maxrss_mib_p50"`
+	CurrentWallMsP50    float64  `json:"wall_ms_p50"`
+	Basis               string   `json:"basis"`
 }
 
 // Platform is one gated platform: what the figures were measured on, how a
@@ -74,6 +95,12 @@ type Platform struct {
 	Entries        map[string]RSS     `json:"entries"`
 	CaseBudgets    map[string]float64 `json:"case_budgets,omitempty"`
 	Benchmarks     []Benchmark        `json:"benchmarks,omitempty"`
+	// ColdAllocBytesMax is this platform's own cold_alloc_bytes_max, by entry
+	// id, the same shape as Entries: an entry named here is gated against
+	// this figure on this platform, and an entry absent from it is gated
+	// against Entry.ColdAllocBytesMax, so a platform with no figure of its
+	// own keeps the single top-level one (test/perf's ColdBudget).
+	ColdAllocBytesMax map[string]int64 `json:"cold_alloc_bytes_max,omitempty"`
 }
 
 // RSS is a peak-RSS budget pair in MiB.
@@ -100,10 +127,12 @@ type RSS struct {
 // is deliberately warmed (P-12) precisely so it excludes the one-time cost
 // this field exists to capture. Gated at +10% (test/perf's cold gate)
 // against runtime.MemStats.TotalAlloc of exactly one call in a fresh test
-// process. It is 0, not measured, for every entry with no benchmark row and
-// for recap.* and probe.*, which a fresh-process cold call has not yet been
-// built for (P-12); 0 there is the existing convention AllocBytesMax already
-// uses for probe.*, not a claim of zero cost.
+// process, a call during which the runtime starts no OS thread, at one P
+// (cmd/rashomon's TestColdCall ends its setup with coldWarmThreads and pins
+// GOMAXPROCS(1), PERF-EDGE1). It is 0, not measured, for every entry with no
+// benchmark row and for recap.* and probe.*, which a fresh-process cold call
+// has not yet been built for (P-12); 0 there is the existing convention
+// AllocBytesMax already uses for probe.*, not a claim of zero cost.
 //
 // Neither ColdAllocBytesMax nor RES-2's init budget (test/perf.InitBudgetBytes,
 // 64 KiB) is, on its own, what a hook-entry process allocates from exec to

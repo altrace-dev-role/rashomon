@@ -3,6 +3,7 @@ package hook
 import (
 	"encoding/json"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,9 +181,13 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	}
 	// The cwd is resolved once (baseline.Resolve) and shared: the project key
 	// below walks up from it, and Locate digests it as the run's location when
-	// no cd step moves the line away from it.
+	// no cd step moves the line away from it. own is the directory the call
+	// names for itself, where locate reads one.
 	physical := baseline.Resolve(p.CWD)
-	decl.Shape, decl.CWDDigest, decl.LocationUnread = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
+	var own string
+	decl.Shape, decl.CWDDigest, decl.LocationUnread, own = locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD, physical)
+	decl.Launch = decl.Shape.Launch
+	decl.Probe = decl.Shape.Probe
 	decl.Writer = Writer
 	decl.HarnessID = nilIfEmpty(h.HarnessID)
 	// Hostnames are metadata and are stored verbatim, because the report
@@ -191,17 +196,17 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	// file-changing tool names (DeclaredPath, below), and shape is still the
 	// only package that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
-	// Where the call ran and what file it changes, as the harness said them:
-	// the cwd as written, its project key (the one every layer shares:
-	// symlinks resolved, then the nearest .git, else the directory itself),
-	// and the path an Edit, Write, MultiEdit or NotebookEdit input names.
-	// None is normalised here; resolving is the reader's. Key answers "" for
-	// an empty cwd, so a payload without one leaves both null. The record-scope
-	// gate below withholds all three unless the consent on file says v5, and
-	// the caps bound them.
+	// Where the call ran and what file it changes: the cwd as the harness
+	// said it, the project key of the repository the call ran in (project:
+	// the one key every layer shares, symlinks resolved, then the nearest
+	// .git, else the directory itself), and the path an Edit, Write,
+	// MultiEdit or NotebookEdit input names, as written. Key answers "" for
+	// an empty cwd, so a payload without one, which names no directory of
+	// its own, leaves both null. The record-scope gate below withholds all
+	// three unless the consent on file says v5, and the caps bound them.
 	decl.CWD = nilIfEmpty(p.CWD)
-	decl.Project = nilIfEmpty(baseline.KeyOf(physical))
 	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
+	decl.Project = nilIfEmpty(project(p.CWD, physical, own, decl.FilePath))
 	// The files a Bash call's line may write, and whether they are all of
 	// them (shape.WrittenPaths): null and complete for any other tool, which
 	// names its one path in file_path. The gate and the caps below withhold
@@ -359,24 +364,180 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 // as it is on disk (physicalDir), so a project reached through a symlink has
 // one location, the declared gate's.
 func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) (shape.Shape, string, bool) {
-	return locate(key, toolName, toolInput, cwd, baseline.Resolve(cwd))
+	s, digest, unread, _ := locate(key, toolName, toolInput, cwd, baseline.Resolve(cwd))
+	return s, digest, unread
 }
 
 // locate is Locate given physical, baseline.Resolve(cwd), which the caller has
 // already made: a line with no cd step starts in cwd and uses it as it is, and
 // only a fold resolves its own directory.
-func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string, bool) {
-	s, _, dirs, unread := shape.DeriveWithDirs(toolName, toolInput, key)
+//
+// The fourth result, own, is the directory the line names for itself, as it
+// is on disk, for its project (card PROJECT-RESOLVE1): the fold's, carried on
+// to a `git -C DIR` that is its first command past the fold (shape.Dirs.GitC),
+// where git runs. "" where the line names none, where the fold is unread or
+// unknown, and where the line may move on to a second directory
+// (shape.Dirs.Later): two roots in one line are not one project.
+func locate(key []byte, toolName string, toolInput json.RawMessage, cwd, physical string) (shape.Shape, string, bool, string) {
+	s, _, d := shape.DeriveWithDirs(toolName, toolInput, key)
+	dirs, unread := d.Leading, d.Unread
 	if unread != "" {
 		if cwd == "" {
-			return s, "", true
+			return s, "", true, ""
 		}
-		return s, shape.UnreadCWDDigest(key, cwd, unread), true
+		return s, shape.UnreadCWDDigest(key, cwd, unread), true, ""
 	}
 	if len(dirs) == 0 {
-		return s, shape.CWDDigest(key, physical), false
+		return s, shape.CWDDigest(key, physical), false, ownDir(physical, d)
 	}
-	return s, shape.CWDDigest(key, physicalDir(startDirectory(cwd, dirs))), false
+	start := physicalDir(startDirectory(cwd, dirs))
+	return s, shape.CWDDigest(key, start), false, ownDir(start, d)
+}
+
+// ownDir is locate's own: from start, the directory the line starts in as it
+// is on disk, the directory the line names for itself.
+func ownDir(start string, d shape.Dirs) string {
+	switch {
+	case d.Later || start == "":
+		return ""
+	case d.GitC != "":
+		return physicalDir(startDirectory(start, []string{d.GitC}))
+	case len(d.Leading) > 0:
+		return start
+	}
+	return ""
+}
+
+// project is the call's project key: the repository the call ran in where
+// the call names a directory of its own inside one -- own (locate), else the
+// directory of a file tool's absolute path -- and the cwd's key otherwise.
+// A directory of its own under no .git keeps the cwd's key when it is inside
+// the cwd, and gets no key at all when it is outside (B305: `cd /tmp/fixture
+// && go test ./...` from repository a was counted as a's test run), whether
+// the call is a Bash line or a file tool: one write, one project. Only a
+// repository found there is taken over where the cwd is, never a directory
+// on a guess. Without it, `cd ~/src/b && go test ./...` run from repository
+// a, or from the home, recorded a while its location folded onto b, so b's
+// declared gate, located under the project root, never met the run.
+//
+// own is already as it is on disk. A file's directory may not be on disk
+// yet (a Write makes it), so it is read at its nearest directory that is
+// (existingDir), resolved: the key is the one every layer compares, never a
+// second spelling of one repository.
+//
+// The key costs a call only the steps it has to read (RES-28): a file at or
+// under the cwd, as the payload spells it (spelled) or as it is on disk, is
+// read from the cwd down to its directory (underCWD), and the cwd's own key,
+// which KeyOf has walked, answers from there up, so nothing is resolved;
+// any other path is resolved once, at its nearest directory on disk, and
+// walked up to the first .git, or to the cwd (walkUp).
+func project(spelled, physical, own string, path *string) string {
+	cwd := baseline.KeyOf(physical)
+	if own != "" {
+		if key, ok := walkUp(own, physical, cwd); ok {
+			return key
+		}
+		// A directory not on disk proves nothing: the cd fails and the line
+		// runs nowhere new, so it keeps the cwd's key.
+		if fi, err := os.Stat(own); err == nil && fi.IsDir() {
+			return ""
+		}
+	} else if path != nil && filepath.IsAbs(*path) {
+		dir := filepath.Dir(*path)
+		if key, ok := underCWD(dir, spelled, physical, cwd); ok {
+			return key
+		}
+		if d, err := evalSymlinks(existingDir(dir)); err == nil {
+			key, _ := walkUp(d, physical, cwd)
+			return key
+		}
+	}
+	return cwd
+}
+
+// walkUp is the project of d, a directory as it is on disk: the nearest
+// directory at or above it that holds a .git, or cwd, the cwd's key, where
+// the walk reaches physical or cwd first, since KeyOf has walked from there;
+// "" and false where it reaches the root with neither, so d is outside the
+// cwd and under no .git. It stops at the first .git.
+func walkUp(d, physical, cwd string) (string, bool) {
+	for {
+		if d == physical || d == cwd {
+			return cwd, true
+		}
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return d, true
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return "", false
+		}
+		d = up
+	}
+}
+
+// underCWD is the project of dir, a file's directory as the call spells it,
+// where dir is at or under the cwd, as spelled or as it is on disk: the
+// deepest directory from the cwd down to dir that holds a .git, on disk
+// (physical's spelling), else cwd, the cwd's key. Each step is a prefix of
+// dir, so only a step's .git path is built, and the walk ends at the first
+// step not on disk (a Write makes it) or not a directory. false where dir is
+// not under the cwd, the cwd is the root, or a step is a symlink, whose
+// target may be another repository: that path is resolved (project).
+func underCWD(dir, spelled, physical, cwd string) (string, bool) {
+	base := ""
+	for _, c := range [...]string{physical, spelled} {
+		if c = filepath.Clean(c); len(c) > 1 && strings.HasPrefix(dir, c) && (len(dir) == len(c) || os.IsPathSeparator(dir[len(c)])) {
+			base = c
+			break
+		}
+	}
+	if base == "" {
+		return "", false
+	}
+	nearest := ""
+	for i := len(base) + 1; i <= len(dir); i++ {
+		if i < len(dir) && !os.IsPathSeparator(dir[i]) {
+			continue
+		}
+		step := dir[:i]
+		fi, err := os.Lstat(step)
+		if err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return "", false
+		}
+		if err != nil || !fi.IsDir() {
+			break
+		}
+		if _, err := os.Lstat(filepath.Join(step, ".git")); err == nil {
+			nearest = step
+		}
+	}
+	if nearest == "" {
+		return cwd, true
+	}
+	return physical + nearest[len(base):], true
+}
+
+// existingDir is the nearest directory at or above d, a clean absolute path,
+// that is on disk: d, else the parent of the first of its prefixes from the
+// root that is not. One Stat for a directory on disk, and one per step from
+// the root for one a Write is about to make; each step is a prefix of d.
+func existingDir(d string) string {
+	if _, err := os.Stat(d); err == nil {
+		return d
+	}
+	root := len(filepath.VolumeName(d)) + 1
+	last := d[:root]
+	for i := root; i < len(d); i++ {
+		if !os.IsPathSeparator(d[i]) {
+			continue
+		}
+		if _, err := os.Stat(d[:i]); err != nil {
+			return last
+		}
+		last = d[:i]
+	}
+	return last
 }
 
 // evalSymlinks is filepath.EvalSymlinks; a test that pins the fold's rules
@@ -438,7 +599,7 @@ func physicalDir(dir string) string {
 // which holds while the stores are dev stores with nothing older to read.
 //
 // dirs, not toolName and toolInput: the caller already has
-// shape.DeriveWithDirs's dirs, from the SAME read of the program search
+// shape.DeriveWithDirs's Dirs.Leading, from the SAME read of the program search
 // Derive makes for every other field of the shape. Decoding the command and
 // tokenizing it again here, as a toolName/toolInput signature would need to
 // call shape.LeadingDirectory on its own, was a second and a third reading

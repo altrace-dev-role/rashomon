@@ -68,7 +68,8 @@ var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent}
 // run"; a masked run with a failure line is red, 2.2.4 step 5); the card
 // cites "this red" run, so a red state with no run seq is refused rather
 // than cited by its green alone; for stale-evidence a stale state whose last
-// run is its green (card STALE-NUDGE1); beside a claim, the gate
+// run is its green (card STALE-NUDGE1); for masked-status a masked state
+// citing the run (card MASKED-AT-ACT1); beside a claim, the gate
 // whose state set the verdict (Finding's comment). factsFit has already
 // paired the gate with one of these patterns.
 func gateFits(f Finding) bool {
@@ -80,6 +81,8 @@ func gateFits(f Finding) bool {
 		return g.State == Red && g.LastGreenSeq != nil && g.LastRunSeq != nil && *g.LastGreenSeq < *g.LastRunSeq
 	case pattern.StaleEvidence:
 		return g.State == Stale && g.LastGreenSeq != nil && g.LastRunSeq != nil && *g.LastGreenSeq == *g.LastRunSeq
+	case pattern.MaskedStatus:
+		return g.State == MaskedInconclusive && g.LastRunSeq != nil
 	}
 	return f.Claim != nil && g.State == State(f.Claim.Verdict)
 }
@@ -102,6 +105,7 @@ func reasonState() map[Reason]State {
 			PartialAfterRed:       Red,
 			PartialOnly:           Absent,
 			RedThenWrites:         Stale,
+			MaskedThenWrites:      Stale,
 			WritesAfterGreen:      Stale,
 			WriteDuringRun:        Stale,
 			StaleForeign:          Stale,

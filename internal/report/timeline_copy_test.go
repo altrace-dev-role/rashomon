@@ -23,7 +23,7 @@ var (
 		"FailureWithheld", "OutputEvidenceWithheld", "EditMarksWithheld", "HeadAfterWithheld", "HarnessID",
 		"HarnessToolName", "DeclaredVia", "OutcomeSource", "FailureType", "MCPServerSource", "ContentSHA256",
 		"RunnerName", "MaskedBy"}
-	maskingWithheld = []string{"Program", "VerbClass", "Argc", "Digest", "RunnerName", "MaskedBy", "MayWrite"}
+	maskingWithheld = []string{"Program", "VerbClass", "Argc", "Digest", "RunnerName", "MaskedBy", "Launch", "Probe", "MayWrite"}
 )
 
 // TestB39_MaskingAsRanCopiesTheTriple: MaskingAsRan sets a declaration's

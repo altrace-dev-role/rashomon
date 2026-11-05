@@ -417,7 +417,8 @@ var runInBackgroundKey = jsonscan.NewFoldKeySet("run_in_background")
 // --output, --remote-name, or a run of short flags that reaches o or O, with
 // or without the file attached); a command or process substitution, whose
 // command is not looked into; or a later pipeline or list stage whose program
-// is outside the read class, or cannot be named.
+// is outside the read class and does not only print (printOnly), or cannot be
+// named.
 //
 // The words are compared wherever they stand, quoted or not, and not parsed
 // as the program would parse them: `grep -rn xargs .` sets the bit. That is
@@ -452,12 +453,28 @@ func mayWrite(toks []token, i int) bool {
 			break
 		}
 		k, ok := programToken(toks[start:], false)
-		if !ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead {
+		if !ok || !readsOrPrints(path.Base(toks[start+k].text)) {
 			return true
 		}
 	}
 	return false
 }
+
+// readsOrPrints reports a later stage's program that writes no file of
+// itself: one of the read class, or one that only prints (printOnly).
+func readsOrPrints(prog string) bool {
+	return verbForProgram(prog) == VerbRead || slices.Contains(printOnly, prog)
+}
+
+// printOnly are the programs a later stage may run and write no file of
+// itself (card F2c): echo prints its words, date the time. What makes such a
+// stage write is a redirect, a substitution or a writer word, which
+// stageMayWrite reads over the whole line; a pipe into a program that may
+// write is that program's stage. They stay execute as a line's program (its
+// class is its first program's). The list is the two call 9325 ran, printf
+// not among them; a word added is a rules change (flagTablePins). `date -s`
+// sets the clock, not a file.
+var printOnly = []string{"echo", "date"}
 
 // stageMayWrite reports words in toks[s:e] that may write a file whatever
 // program they belong to: any of stageWrites' sources.

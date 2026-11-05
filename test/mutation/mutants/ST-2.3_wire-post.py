@@ -83,7 +83,8 @@ m("ST-2.3 the red run's own writes are between", V,
 m("ST-2.3 a red with nothing written between locates", V,
   "\t\tif fact.WritesSince == 0 {\n\t\t\tcontinue\n\t\t}\n", "", "TestSTR43c_")
 m("ST-2.3 an irrelevant write counts as between", V,
-  "\t\tif !Relevant(w.Class) {\n\t\t\tcontinue\n\t\t}\n", "", "TestSTR43c_")
+  "\t\tif !Relevant(w.Class) || w.Path != nil && !covers(root, w) {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif w.Path != nil && !covers(root, w) {\n\t\t\tcontinue\n\t\t}\n", "TestSTR43c_")
 m("ST-2.3 a path written twice is named twice", V,
   "\t\t\tcontinue\n\t\t}\n\t\tp := PathSlot(*w.Path)\n\t\tif seen[p] {\n\t\t\tcontinue\n\t\t}\n",
   "\t\t\tcontinue\n\t\t}\n\t\tp := PathSlot(*w.Path)\n", "TestSTR43b_")
@@ -94,7 +95,7 @@ m("ST-2.3 a program outside its charset is kept", V,
   "\t\tif p.Valid() {\n", "\t\tif true {\n",
   "TestST_ProgramFallsBackToTheKind")
 m("ST-2.3 other agents counted as the point's own", V,
-  "\t\tif !sameAgent(w.AgentID, agent) {\n", "\t\tif sameAgent(w.AgentID, agent) {\n", "TestSTR43e_")
+  "\t\tif !sameAgent(w.agent(), agent) {\n", "\t\tif sameAgent(w.agent(), agent) {\n", "TestSTR43e_")
 
 # The renderer (R7, D85).
 m("ST-2.3 the degraded row is never chosen", V,

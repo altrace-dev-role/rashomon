@@ -101,6 +101,25 @@ func rank(findings []Finding) []Finding {
 	return findings
 }
 
+// ownFirst moves the findings on their own channel (ownChannel) ahead of
+// the ranked candidates, stably, in place. An own-channel pattern injects
+// directly and never competes (pattern.priority's doc), though it stands at
+// priority 0, below every candidate: at a resumed session's first prompt the
+// briefing takes the call's note, and a candidate note of the same call is
+// superseded, budget_batch, its line kept (D-c, mgr 11-02).
+func ownFirst(findings []Finding, event Event) []Finding {
+	slices.SortStableFunc(findings, func(a, b Finding) int {
+		switch own := ownChannel(a.Pattern, event); {
+		case own == ownChannel(b.Pattern, event):
+			return 0
+		case own:
+			return -1
+		}
+		return 1
+	})
+	return findings
+}
+
 // newID is a line id when the Context mints none: 32 hex characters from
 // crypto/rand, the invocation id's form.
 func newID() string {
@@ -117,7 +136,7 @@ func newID() string {
 // reachable through Route -- a Message comes only from render.New, already
 // validated under 1,200 bytes, and its mirror is at most 1,229 bytes -- so
 // both are tested here, by string (card 2.2 R7, A8).
-func noteTexts(text string, briefing bool) (model, user string, refused *SuppressedBy) {
+func noteTexts(text, aside string, briefing bool) (model, user string, refused *SuppressedBy) {
 	if len(text) > store.MaxSteerTextBytes {
 		return "", "", reason(SuppressedByOutputGate)
 	}
@@ -129,6 +148,7 @@ func noteTexts(text string, briefing bool) (model, user string, refused *Suppres
 	if err != nil {
 		return "", "", reason(SuppressedByRenderRefused)
 	}
+	user = withAside(user, aside)
 	if len(user) > store.MaxSteerTextBytes {
 		return "", "", reason(SuppressedByOutputGate)
 	}
@@ -136,13 +156,27 @@ func noteTexts(text string, briefing bool) (model, user string, refused *Suppres
 }
 
 // flagText is a flag's user text: the rendered text itself, never the
-// mirror wrapper, which says the agent was told (card 2.2 R7, D50); over
-// the cap it is withheld (output_gate).
-func flagText(text string) (user string, refused *SuppressedBy) {
-	if len(text) > store.MaxSteerTextBytes {
+// mirror wrapper, which says the agent was told (card 2.2 R7, D50), with
+// the message's aside after it; over the cap it is withheld (output_gate).
+func flagText(text, aside string) (user string, refused *SuppressedBy) {
+	user = withAside(text, aside)
+	if len(user) > store.MaxSteerTextBytes {
 		return "", reason(SuppressedByOutputGate)
 	}
-	return text, nil
+	return user, nil
+}
+
+// withAside is user with a message's aside, the lines the model is never
+// sent (TOKEN-BUDGET1), after it on their own line, or the aside alone when
+// user is "".
+func withAside(user, aside string) string {
+	switch {
+	case aside == "":
+		return user
+	case user == "":
+		return render.AsidePrefix + aside
+	}
+	return user + "\n" + render.AsidePrefix + aside
 }
 
 func reason(r SuppressedBy) *SuppressedBy { return &r }
@@ -150,7 +184,7 @@ func reason(r SuppressedBy) *SuppressedBy { return &r }
 // recorded is the message the finding's steer line holds: Record when the
 // producer set one, else the message that prints.
 func (f Finding) recorded() render.Message {
-	if f.Record.Text() != "" {
+	if f.Record.Template() != "" {
 		return f.Record
 	}
 	return f.Message
@@ -160,14 +194,14 @@ func (f Finding) recorded() render.Message {
 // (PREFLIGHT1b): the printed texts are decided, and a record form that does
 // not fit the cap suppresses the line like any text over it.
 func (p *plan) recordTexts() {
-	if p.f.Record.Text() == "" {
+	if p.f.Record.Template() == "" {
 		return
 	}
 	var refused *SuppressedBy
 	if p.level == LevelNudge {
-		p.recModel, p.recUser, refused = noteTexts(p.f.Record.Text(), briefing(p.f.Pattern))
+		p.recModel, p.recUser, refused = noteTexts(p.f.Record.Text(), p.f.Record.Aside(), briefing(p.f.Pattern))
 	} else {
-		p.recUser, refused = flagText(p.f.Record.Text())
+		p.recUser, refused = flagText(p.f.Record.Text(), p.f.Record.Aside())
 	}
 	if refused != nil {
 		p.suppress(*refused)
@@ -177,8 +211,10 @@ func (p *plan) recordTexts() {
 // clampReason is the first clamp to flag that bites, in step order (tech
 // 4.2.4 steps 2, 5 and 6; card 2.2 R3): steering off, consent not current,
 // no prompt to charge (4.2.5: a missing budget counts as spent), and a Stop
-// whose hook is already active.
-func clampReason(ctx *Context) *SuppressedBy {
+// whose hook is already active. A direct finding, the briefing on its own
+// event, is outside the prompt budget (4.2.5), so no prompt does not clamp
+// it.
+func clampReason(ctx *Context, direct bool) *SuppressedBy {
 	switch {
 	case ctx.ConfigUnreadable:
 		return reason(SuppressedByConfigUnreadable)
@@ -186,7 +222,7 @@ func clampReason(ctx *Context) *SuppressedBy {
 		return reason(SuppressedBySteerOff)
 	case !ctx.Consent:
 		return reason(SuppressedByConsentMissing)
-	case ctx.PromptID == nil:
+	case ctx.PromptID == nil && !direct:
 		return reason(SuppressedByBudgetPrompt)
 	case ctx.Event == EventStop && ctx.StopHookActive:
 		return reason(SuppressedByStopHookActive)
@@ -209,6 +245,10 @@ type plan struct {
 	recModel, recUser string
 	decide            bool // still to be decided by the budget passes
 	holdout           bool // held out: neither side got the note
+	// direct: an own-channel pattern on its own event (ownChannel), the
+	// continuity briefing at SessionStart, which tech 4.2.5 puts outside the
+	// prompt budget: "1 briefing per SessionStart or SubagentStart".
+	direct bool
 }
 
 func (p *plan) suppress(r SuppressedBy) {
@@ -254,7 +294,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 	rule := ruleOf(ctx.Event)
 	plans := make([]plan, 0, len(admitted))
 	claimed := make(map[findingKey]bool, len(admitted))
-	for _, f := range rank(admitted) {
+	for _, f := range ownFirst(rank(admitted), ctx.Event) {
 		level := f.MaxLevel
 		if level == LevelOff {
 			continue // dropped: no line, no charge (step 5)
@@ -262,14 +302,18 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if level == LevelStop {
 			level = LevelNudge // stop needs a project stop setting, and no config exists (STR-20)
 		}
-		p := plan{f: f, key: findingKey{string(f.Pattern), string(f.Kind), f.Key}, level: level, decide: true}
+		p := plan{f: f, key: findingKey{string(f.Pattern), string(f.Kind), f.Key}, level: level, decide: true,
+			direct: ownChannel(f.Pattern, ctx.Event)}
 		if p.level == LevelNudge {
-			if by := clampReason(ctx); by != nil {
+			if by := clampReason(ctx, p.direct); by != nil {
 				p.level, p.by = LevelFlag, by
 			}
 		}
 		if p.level == LevelNudge && rule == ruleFlagOnly {
 			p.level = LevelFlag // the event has no model channel; the event says why (D50)
+		}
+		if p.level == LevelNudge && f.Message.Text() == "" {
+			p.level = LevelFlag // nothing proven for the model: the aside prints alone (TOKEN-BUDGET1)
 		}
 		slots, slotErr := slotsOf(f.recorded())
 		p.slots = slots
@@ -278,7 +322,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 			p.suppress(SuppressedByNoChannel)
 		case claimed[p.key]:
 			p.suppress(SuppressedByBudgetPattern)
-		case f.Message.Text() == "" || slotErr != nil:
+		case f.Message.Text() == "" && f.Message.Aside() == "" || slotErr != nil:
 			p.suppress(SuppressedByRenderRefused)
 		case p.level == LevelNudge && !ContextAllowed(string(ctx.Event), c):
 			p.suppress(SuppressedByUnverifiedChannel)
@@ -289,9 +333,9 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if p.decide {
 			var refused *SuppressedBy
 			if p.level == LevelNudge {
-				p.model, p.user, refused = noteTexts(f.Message.Text(), briefing(f.Pattern))
+				p.model, p.user, refused = noteTexts(f.Message.Text(), f.Message.Aside(), briefing(f.Pattern))
 			} else {
-				p.user, refused = flagText(f.Message.Text())
+				p.user, refused = flagText(f.Message.Text(), f.Message.Aside())
 			}
 			if refused != nil {
 				p.suppress(*refused)
@@ -330,7 +374,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		}
 	}
 
-	basis := mirrorVerifiedOn()[string(ctx.Event)]
+	basis := mirrorVerifiedOn()[keyOf(string(ctx.Event), c)]
 	lines := make([]*Line, len(plans))
 	for i := range plans {
 		lines[i] = lineOf(ctx, arm, attendance, c.Version, basis, &plans[i], mint())
@@ -354,11 +398,13 @@ func armOff(plans []plan) (note, flag int) {
 
 // charge is the budget's two passes over the plans still to decide, in rank
 // order (card 2.2 R6): a note whose key the prompt already delivered is
-// budget_pattern, the first note the prompt can afford delivers, and a later
-// one in the same call is superseded (budget_batch); a flag delivers only in
-// a call where no note did, one per call under the prompt's cap, and every
-// other flag is a candidate for the turn-end line. It returns the indexes
-// that print, -1 for none.
+// budget_pattern, a direct note (the briefing, outside the prompt budget)
+// or else the first note the prompt can afford delivers (affording its
+// pattern's reserve, pattern.Reserve), and a later one in the same call
+// is superseded (budget_batch); a flag delivers only in a call where no
+// note did, one per call under the prompt's cap, and every other flag is
+// a candidate for the turn-end line. It returns the indexes that print, -1
+// for none.
 func charge(plans []plan, have counts) (note, flag int) {
 	note, flag = -1, -1
 	for i := range plans {
@@ -369,9 +415,11 @@ func charge(plans []plan, have counts) (note, flag int) {
 		switch {
 		case have.keys[p.key]:
 			p.suppress(SuppressedByBudgetPattern)
+		case p.direct && note < 0:
+			p.state, p.decide, note = LineStateDelivered, false, i
 		case note >= 0:
 			p.state, p.by, p.decide = LineStateSuperseded, reason(SuppressedByBudgetBatch), false
-		case have.notes >= maxNotes:
+		case have.notes+pattern.Reserve(p.f.Pattern) >= maxNotes:
 			p.suppress(SuppressedByBudgetPrompt)
 		default:
 			p.state, p.decide, note = LineStateDelivered, false, i
@@ -428,7 +476,7 @@ func lineOf(ctx *Context, arm Arm, attendance Attendance, version string, basis 
 	}
 	if p.state == LineStateDelivered && !p.holdout {
 		l.ModelText, l.UserText = p.model, p.user
-		if p.f.Record.Text() != "" {
+		if p.f.Record.Template() != "" {
 			l.ModelText, l.UserText = p.recModel, p.recUser
 		}
 		l.Mirror, l.MirroredToUser = MirrorSystemMessage, true

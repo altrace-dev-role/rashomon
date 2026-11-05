@@ -68,10 +68,12 @@ var (
 		"harness_id", "harness_tool_name", "declared_via",
 	}
 	// omittedWhenFalseKeys are the declaration keys that are present only when
-	// true (call schema 9, 5.14b): location_unread, a bit about the parse. The
-	// one place a key is absent where the fact is false, so the key sets above
-	// stay the ones every record carries, and these are allowed beside them.
-	omittedWhenFalseKeys = []string{"location_unread"}
+	// true: location_unread (call schema 9, 5.14b), a bit about the parse, and
+	// launch and probe_only (call schema 10, LAUNCH-ANY1 and #52), bits about the
+	// words. The places a key is absent where the fact is false, so the key
+	// sets above stay the ones every record carries, and these are allowed
+	// beside them.
+	omittedWhenFalseKeys = []string{"location_unread", "launch", "probe_only"}
 
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -188,6 +190,25 @@ var (
 	specEventKeys = []string{
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"reason", "event", "rule_id", "source_digest", "landed_seq",
+	}
+	// afterHitKeys are an after_hit's keys (card SPEC-RULES1 1b, #216 ruling
+	// 1): the rule's id and its spec file's digest, how the After call
+	// ended and where, never a command's text.
+	afterHitKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"event", "rule_id", "source_digest", "landed_seq", "exit_code", "foreground", "cwd_digest", "maybe",
+	}
+	// thenCheckKeys are a then_check's keys (card ORDER-LIVE1): the rule's id,
+	// its spec file's digest, the seq and the verdict, never a command's text.
+	thenCheckKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"rule_id", "source_digest", "landed_seq", "then",
+	}
+	// outcomeJoinKeys are an outcome_join's keys (card BG-OUTCOME phase 1):
+	// a background call's id and how it ended, never the notification's text.
+	outcomeJoinKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"tool_use_id", "outcome", "exit_code", "outcome_source", "parser_version",
 	}
 )
 

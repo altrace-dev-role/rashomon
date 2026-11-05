@@ -4,8 +4,9 @@
 # reads.
 B = "internal/brief/brief.go"
 C = "cmd/rashomon/brief.go"
+W = "internal/brief/walk.go"
 
-m("BR-1 the walk reads past its entry cap", B, "ReadDir(min(walkChunk, left-n))", "ReadDir(walkChunk)", "TestBR1c_")
+m("BR-1 the walk reads past its entry cap", W, "ReadDir(min(walkChunk, left-n))", "ReadDir(walkChunk)", "TestBR1c_")
 m("BR-1 Go packages are counted without go.mod (a guess from file extensions)", B,
   '\tcase !slices.Contains(b.Manifests, "go.mod"):\n\t\treturn newFact(KindPackages, "not read (no go.mod)", b.Root)\n', "",
   "TestBR1b_")
@@ -67,5 +68,5 @@ m("BR-1 an unsafe binary path is mangled, not withheld", B,
   "\tif false {\n", "TestBR1m_")
 m("BR-1 a path that is not UTF-8 is shown", B,
   "\tif !utf8.ValidString(exe) || strings.IndexFunc(", "\tif strings.IndexFunc(", "TestBR1m_")
-m("BR-1 a walk of exactly the entry cap reads capped", B,
+m("BR-1 a walk of exactly the entry cap reads capped", W,
   "\t\t\treturn subs, hasGo, n, len(ents) > 0\n", "\t\t\t_ = ents\n\t\t\treturn subs, hasGo, n, true\n", "TestBR1p_")

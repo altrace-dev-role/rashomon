@@ -30,8 +30,9 @@ const lineColumns = 80
 // sentence, the one the id lengthens most, still fits lineColumns.
 const maxIDName = 24
 
-// specGatePrefix leads the id of a gate a trusted spec declares.
-const specGatePrefix = "spec:"
+// specPrefix leads the id of each gate and rule a spec declares
+// (spec/discover.go).
+const specPrefix = "spec:"
 
 // maxGateNames is how many programs a gate list names before `and <k> more`.
 const maxGateNames = 3
@@ -59,6 +60,7 @@ func titles() map[string]string {
 			string(pattern.ClaimVsRecord):      "record check",
 			string(pattern.MaskedStatus):       "hidden-status note",
 			string(pattern.StaleEvidence):      "stale-gate note",
+			string(pattern.BlastRadius):        "callers note",
 		}
 	})
 	return titlesOnce.v
@@ -196,7 +198,9 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	if v.Summary.Row == verify.RowNoGate && untrustedOnly(v) {
 		b.WriteString(continuation() + "The spec is not trusted; review it, then run rashomon spec trust.\n")
 	}
+	b.WriteString(ruleLines(v))
 	b.WriteString(unboundLines(v))
+	b.WriteString(platformLines(v, fromPlugin))
 	if c := clause(im); c != "" {
 		b.WriteString(continuation() + c + "\n")
 	}
@@ -235,7 +239,7 @@ func notCounted(v verify.StopView, k int, short bool) string {
 	}
 	var names []string
 	for _, u := range v.Untrusted {
-		id, ok := strings.CutPrefix(u.ID, specGatePrefix)
+		id, ok := strings.CutPrefix(u.ID, specPrefix)
 		p := slot.Program(id)
 		if short || !ok || p.Validate() != nil {
 			names = nil
@@ -321,11 +325,8 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 		}
 		// A call the gate may have run in, and one its runner ran in whose
 		// output did not say how it ended (WRAPPER-RUN1).
-		switch wrap(g) {
-		case verify.WrapUnread:
-			return t.name(g) + " unknown: call " + seqOf(g) + "'s output names no run"
-		case verify.WrapRead:
-			return t.name(g) + " ran in a wrapper (call " + seqOf(g) + "); its result is not in the record"
+		if s, ok := unknownWrapped(t, g); ok {
+			return s
 		}
 		where, _ := when(v, g)
 		return t.name(g) + " ran" + where + " (call " + seqOf(g) + "); its result is not in the record"
@@ -418,6 +419,12 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		g = t.first(verify.Absent)
 	}
 	if v.Turn.Writes == 0 && g != nil {
+		if g.LastRun == nil {
+			// No run of the gate is in the record, so no line says it ran
+			// and none says what it checked: silence over a false line
+			// (INFER-FALSE1, B303: "ran in an earlier turn ... (call 0)").
+			return ""
+		}
 		where, _ := when(v, g)
 		switch g.Reason {
 		case verify.EmptyRun:
@@ -496,7 +503,7 @@ func (t gateSet) first(s verify.State) *verify.GateState {
 // trust says the index has not seen a test run, unless short (GATE-INFER1,
 // W3', W4).
 func (t gateSet) name(g *verify.GateState) string {
-	if id, ok := strings.CutPrefix(g.Gate, specGatePrefix); ok && len(id) <= maxIDName && !(t.short && otherArgs(g)) {
+	if id, ok := strings.CutPrefix(g.Gate, specPrefix); ok && len(id) <= maxIDName && !(t.short && otherArgs(g)) {
 		if p := slot.Program(id); p.Validate() == nil {
 			return p.Text()
 		}
@@ -615,15 +622,6 @@ func (t gateSet) passed(k int) (s string, other bool) {
 // otherArgs reports g's last run as bound with other arguments.
 func otherArgs(g *verify.GateState) bool {
 	return g.LastRun != nil && g.LastRun.OtherArgs
-}
-
-// wrap is how g's last run was bound by a wrapper's call (RunRef.Wrapped),
-// WrapNone with no last run.
-func wrap(g *verify.GateState) verify.WrapWord {
-	if g.LastRun == nil {
-		return verify.WrapNone
-	}
-	return g.LastRun.Wrapped
 }
 
 // joinNames is names as a list in words: "a", "a and b", "a, b and c".

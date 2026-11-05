@@ -64,6 +64,43 @@ func TestTRU40_ReadmeNetworkSentenceMatchesTheTest(t *testing.T) {
 	}
 }
 
+// NO-EGRESS1. The consent screens promise that rashomon itself makes no network
+// connection and that nothing is sent anywhere. The README's sentence is pinned
+// to forbiddenImports above; the screens' were pinned to nothing, so dropping
+// net from the ban and rewriting the README to match left a screen promising
+// what no test checked. While any screen a person reads before or after a yes
+// carries the promise, the ban keeps the packages that open a connection. Both
+// screens are read as the binary prints them, not as the source spells them:
+// `watch --show`, the screen a y is asked under, and `watch --full`, every
+// detail it sums up (CONSENT-SHORT1 moved the promises there). A promise on
+// either one needs the ban behind it.
+func TestTRU40_ConsentScreensNetworkPromiseHasTheBanBehindIt(t *testing.T) {
+	e := newEnv(t)
+	var screens []string
+	for _, flag := range []string{"--show", "--full"} {
+		r := e.run("", []string{"CLAUDECODE=1"}, "watch", flag)
+		if r.exitCode != 0 {
+			t.Fatalf("watch %s: exit %d, stderr %q", flag, r.exitCode, r.stderr)
+		}
+		// The screens wrap their paragraphs; each promise is one sentence.
+		screens = append(screens, strings.Join(strings.Fields(r.stdout), " "))
+	}
+	for _, promise := range []string{"rashomon itself makes no network connection", "Nothing is sent anywhere."} {
+		shown := false
+		for _, screen := range screens {
+			shown = shown || strings.Contains(screen, promise)
+		}
+		if !shown {
+			t.Fatalf("premise: the consent screen no longer says %q, on neither watch --show nor watch --full; if the promise was withdrawn on purpose, this test goes with it", promise)
+		}
+	}
+	for _, pkg := range []string{"net", "net/http", "crypto/tls"} {
+		if _, banned := forbiddenImports[pkg]; !banned {
+			t.Errorf("the consent screen promises no network connection, but %s is not in the ban TestTRU40_BinaryHasNoNetworkingPackage enforces", pkg)
+		}
+	}
+}
+
 // networkSentence is the README's claim, rendered from the banned set.
 func networkSentence() string {
 	pkgs := make([]string, 0, len(forbiddenImports))

@@ -24,8 +24,8 @@ m("VER-1.7 the sanitiser's ASCII path keeps a control", T,
 # Step 2: the strip.
 m("VER-1.7 the code-fence strip dropped", T, '\t\t\tfenced = !fenced\n', '\t\t\tfenced = false\n', "TestVER55_")
 m("VER-1.7 the quote-line strip dropped", T,
-  '\t\tcase fenced, bytes.HasPrefix(lead, []byte(">")), isDelivered(lead, delivered):\n',
-  '\t\tcase fenced, isDelivered(lead, delivered):\n', "TestVER55_")
+  '\t\tcase fenced, bytes.HasPrefix(lead, []byte(">")), isDelivered(lead, delivered), tableHeader(lead, b):\n',
+  '\t\tcase fenced, isDelivered(lead, delivered), tableHeader(lead, b):\n', "TestVER55_")
 m("VER-1.7 the inline-code strip dropped", T,
   "cutURLs(cutSpans(cutSpans(out[n:], '`', 0), '\"', maxQuotedRunes))",
   "cutURLs(cutSpans(out[n:], '\"', maxQuotedRunes))", "TestVER55_")
@@ -65,8 +65,8 @@ m("VER-1.7 the number subject dropped", L,
 m("VER-1.7 the subject window is unbounded", C,
   '\tfor s := p - 1; s >= max(0, p-4); s-- {\n', '\tfor s := p - 1; s >= 0; s-- {\n', "TestVER55_")
 m("VER-1.7 the subject may follow the predicate", C,
-  '\tfor s := p - 1; s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s+len(sub) <= p && phraseAt(ws, s, sub) {\n',
-  '\tfor s := min(len(ws)-1, p+4); s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s != p && phraseAt(ws, s, sub) {\n',
+  '\tfor s := p - 1; s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s+len(sub) <= p && phraseAt(ws, s, sub) {\n',
+  '\tfor s := min(len(ws)-1, p+4); s >= max(0, p-4); s-- {\n\t\tif r.number && isNumber(ws[s]) && cs[s] == cs[p] && ms[s]&markID == 0 {\n\t\t\treturn s, s + 1, true\n\t\t}\n\t\tfor _, sub := range r.subjects {\n\t\t\tif s != p && phraseAt(ws, s, sub) {\n',
   "TestVER55_")
 m("VER-1.7 done in any clause", C, ' && s.clauses[p] != 0 {\n\t\t\t\tbreak', ' && s.clauses[p] < 0 {\n\t\t\t\tbreak', "TestVER55_")
 m("VER-1.7 one verdict per sentence and class dropped", C,
@@ -91,9 +91,11 @@ m("VER-1.7 the yet window is three words", C,
 m("VER-1.7 done fires without a write", C,
   '\t\tif r.class == ClaimDone && !wrote {\n\t\t\tcontinue\n\t\t}\n', '', "TestVER55_|TestVER59_")
 m("VER-1.7 a non-required gate counts", C,
-  '\t\tif !g.Required || r.class != ClaimDone && g.Kind != r.kind {\n', '\t\tif r.class != ClaimDone && g.Kind != r.kind {\n', "TestVER58_")
+  '\t\tif !g.Required || g.offTurn || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n',
+  '\t\tif g.offTurn || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n', "TestVER58_")
 m("VER-1.7 done maps to its own kind", C,
-  '\t\tif !g.Required || r.class != ClaimDone && g.Kind != r.kind {\n', '\t\tif !g.Required || g.Kind != r.kind {\n', "TestVER55_|TestVER58_")
+  '\t\tif !g.Required || g.offTurn || r.class != ClaimDone && g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n',
+  '\t\tif !g.Required || g.offTurn || g.Kind != r.kind || r.class == ClaimDone && owesNothing(&g) {\n', "TestVER55_|TestVER58_")
 m("VER-1.7 unknown never reaches the verdict", C,
   '\t\tstates = append(states, g.State)\n', '\t\tif g.State != Unknown {\n\t\t\tstates = append(states, g.State)\n\t\t}\n', "TestVER58_")
 m("VER-1.7 no_gate_known reads as green", C,

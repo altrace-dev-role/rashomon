@@ -45,7 +45,7 @@ type PreDecision struct {
 // render.Message, which only render.New builds, so a Finding cannot carry
 // text that skipped the renderer's checks.
 type Finding struct {
-	// Pattern is which of the eighteen frozen patterns produced this
+	// Pattern is which of the nineteen frozen patterns produced this
 	// Finding.
 	Pattern PatternID
 	// Kind is Pattern's sub-category, or empty if Pattern has none.
@@ -114,7 +114,12 @@ var ErrFinding = errors.New("steer: finding outside the contract")
 // decision saw; and a rendered Message belongs to the Finding's own
 // pattern, so a briefing's multi-line text cannot ride another pattern's
 // single-line channel (output rule G4, tech 7.2.5, is the backstop).
-func (f Finding) Check() error {
+func (f Finding) Check() error { return f.check(false) }
+
+// check is Check with own, ownChannel's report on the event the finding is
+// routed on: there an own-channel pattern, which has no step 8 number (tech
+// 4.2.4, TestSTR16), stands at priority 0. Every other rule holds as Check's.
+func (f Finding) check(own bool) error {
 	switch {
 	case !pattern.KindValid(f.Pattern, string(f.Kind)):
 		return fmt.Errorf("%w: %q is not a frozen kind of %q", ErrFinding, f.Kind, f.Pattern)
@@ -124,12 +129,15 @@ func (f Finding) Check() error {
 		return fmt.Errorf("%w: level %d or stop form %q is outside its vocabulary", ErrFinding, f.MaxLevel, f.StopForm)
 	case f.StopForm != StopFormNone && f.MaxLevel != LevelStop:
 		return fmt.Errorf("%w: stop form %q below the stop level", ErrFinding, f.StopForm)
-	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
+	case f.Message.Template() != "" && f.Message.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
 	case f.OutcomeFrom != "" && f.OutcomeFrom != OutcomeFromOutputSummary:
 		return fmt.Errorf("%w: outcome_from is outside its vocabulary", ErrFinding)
-	case f.Record.Text() != "" && f.Record.Pattern() != f.Pattern:
+	case f.Record.Template() != "" && f.Record.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q record message on a %q finding", ErrFinding, f.Record.Pattern(), f.Pattern)
+	}
+	if _, numbered := pattern.Priority(f.Pattern); own && !numbered && f.Priority == 0 {
+		return f.checkSeqs(1)
 	}
 	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
 		return fmt.Errorf("%w: %s does not carry its own-channel or table priority", ErrFinding, f.Pattern)
@@ -138,18 +146,31 @@ func (f Finding) Check() error {
 }
 
 // CheckOn is Check for a finding routed on event, which admit takes from the
-// hook's Context, never from the finding. UserPromptSubmit is the one event
-// with no call before it: at a session's first prompt the run holds no record
+// hook's Context, never from the finding. UserPromptSubmit and SessionStart
+// are the events that can have no call before them: at a session's first
+// prompt, or a compaction before its first tool call, the run holds no record
 // and the last seq the decision saw is 0, so there a finding may stand at
 // after_seq 0, citing nothing. Every other event keeps Check's floor of 1.
+// An own-channel pattern is admitted on its own events alone (ownChannel).
 func (f Finding) CheckOn(event Event) error {
-	if event != EventUserPromptSubmit || f.AfterSeq != 0 {
-		return f.Check()
+	own := ownChannel(f.Pattern, event)
+	if event != EventUserPromptSubmit && event != EventSessionStart || f.AfterSeq != 0 {
+		return f.check(own)
 	}
-	if err := f.Check(); err == nil || !errors.Is(err, errAfterSeq) {
+	if err := f.check(own); err == nil || !errors.Is(err, errAfterSeq) {
 		return err
 	}
 	return f.checkSeqs(0)
+}
+
+// ownChannel reports p on its own channel's event, the one place an
+// own-channel pattern is routed: the continuity briefing at SessionStart
+// (tech 4.2.4 :1255, "direct"; STR-46; COMPACT-SLOT1), and at
+// UserPromptSubmit, where a resumed session's first prompt gives the
+// briefing its start could not (D-c). model-switch, the other, has none
+// here.
+func ownChannel(p PatternID, event Event) bool {
+	return p == pattern.ContinuityBriefing && (event == EventSessionStart || event == EventUserPromptSubmit)
 }
 
 // errAfterSeq is Check's after_seq floor alone, so CheckOn can lower that
@@ -332,7 +353,7 @@ func (o Output) MarshalFor(event string, c Client) ([]byte, error) {
 
 // marshalFor is MarshalFor under table, the seam that lets a test reach a
 // gated row's printing path.
-func (o Output) marshalFor(event string, c Client, table map[string]channelBasis) ([]byte, error) {
+func (o Output) marshalFor(event string, c Client, table map[channelKey]channelBasis) ([]byte, error) {
 	keys, ok := outputKeys()[event]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownEvent, event)

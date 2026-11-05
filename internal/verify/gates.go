@@ -27,6 +27,8 @@ const (
 	outNoSummary   = "no_summary"
 	outEmptyRun    = "empty_run"
 	outUnread      = "unread"
+	outPrintedPass = gateout.KindPrintedPass
+	outPrintedFail = gateout.KindPrintedFail
 )
 
 // gateStates is the state of every gate family present at the point at
@@ -64,10 +66,14 @@ const (
 // green last run whose tree moved since, by the session's unnamed write or by
 // no write of its own, is Stale (bind, tree.go).
 //
+// keys is classify's: a family's root, the project whose files it covers, is
+// its last run's at the point (card STALE-COVER1); a write outside it counts
+// against the family nowhere (covers).
+//
 // Cost: one pass to bucket the runs, a sort per family, and one pass over the
 // writes and the unnamed per family, then with a tree one more over the
 // writes before the green run: O(R log R + F(W + U)).
-func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) []GateState {
+func gateStates(runs []gateRun, writes []write, unnamed []int64, keys projectKeys, at int64, tree map[string]*string) []GateState {
 	byFamily := make(map[familyKey][]gateRun)
 	for _, r := range runs {
 		if k, ok := r.family(); ok {
@@ -82,7 +88,7 @@ func gateStates(runs []gateRun, writes []write, unnamed []int64, at int64, tree 
 		if len(fr) == 0 {
 			continue
 		}
-		out = append(out, stateOf(k, kind, fr, writes, unnamed, at, tree))
+		out = append(out, stateOf(k, kind, fr, writes, unnamed, keys.key(fr[len(fr)-1].ProjectID), at, tree))
 	}
 	slices.SortFunc(out, func(a, b GateState) int {
 		return cmp.Or(cmp.Compare(a.Gate, b.Gate), cmp.Compare(a.Family, b.Family))
@@ -131,9 +137,12 @@ type gateRow struct {
 
 // gateTable is the decision table of 2.2.4 as data, first match wins. The last
 // row matches every family; the Unknown after the loop is the fail-closed
-// answer for a table missing it, never reached.
+// answer for a table missing it, never reached. A masked last run with a
+// covered write after it is stale before it is masked (card F2c), as a red
+// run with writes after it is red_then_writes (redReason).
 var gateTable = []gateRow{
 	{lastBackgrounded, Backgrounded, func(*fam) Reason { return BackgroundLaunch }},
+	{maskedThenWritten, Stale, func(*fam) Reason { return MaskedThenWrites }},
 	{lastMasked, MaskedInconclusive, maskedReason},
 	{lastEmptyRun, Absent, func(*fam) Reason { return EmptyRun }},
 	{lastFailed, Red, redReason},
@@ -155,6 +164,24 @@ func writtenSince(f *fam) bool        { return len(f.counted) > 0 }
 func treeMovedOwn(f *fam) bool        { return f.bound == boundOwn }
 func treeMovedForeign(f *fam) bool    { return f.bound == boundForeign }
 
+// maskedThenWritten: the last run is masked and a write the gate covers came
+// after it (card F2c), as redReason reads a red run's. The run said nothing of
+// the files as they now are, so the gate is stale, not masked; its last run
+// stays its last run, and exit_unmasked still reads it (exitUnmasked). A write
+// before the masked run leaves it masked: the classic catch, an edit and then
+// a run whose pipe hid its status.
+func maskedThenWritten(f *fam) bool {
+	if !masked(f.last) {
+		return false
+	}
+	for _, w := range f.counted {
+		if w.Seq > f.last.Seq {
+			return true
+		}
+	}
+	return false
+}
+
 // maskedFromRulesVersion is the rules version from which masked_by is read as
 // the stage that hid a status (MASKED-OUTCOME1, D229): a record written before
 // it holds no such word, and a masked run on it stays masked.
@@ -168,10 +195,23 @@ const OutcomeFromOutput = steer.OutcomeFromOutputSummary
 
 // masked: the line hid a runner's status, so its outcome is not the gate's --
 // unless the stage that hid it kept the runner's summary and the output said
-// how the run ended (readsOutput), which is then the outcome. A wrapped run's
-// outcome is its output's whatever its line hid (wrapped).
+// how the run ended (readsOutput), or the line printed the runner's status
+// (readsPrinted), which is then the outcome. A wrapped run's outcome is its
+// output's whatever its line hid (wrapped).
 func masked(r *gateRun) bool {
-	return statusHidden(r) && !r.FromOutput && !r.Wrapped
+	return statusHidden(r) && !r.FromOutput && !r.FromPrinted && !r.Wrapped
+}
+
+// readsPrinted reports a masked run whose outcome is the exit status its line
+// printed for it (STATUS-PROBE, shape.PrintedStatus): gate_output printed_pass
+// or printed_fail, on a record whose rules know the words (version 12 or
+// later), a call that ended ok and was not backgrounded. The status is the
+// runner's own, so neither the stage that hid it nor a delegate program
+// matters, as they do for a summary (readsOutput); the outcome is read from the
+// exit status, and no clause says it came from the output.
+func readsPrinted(r *gateRun, rulesVersion int) bool {
+	return statusHidden(r) && rulesVersion >= shape.PrintedStatusRulesVersion && r.Outcome == store.ExecOK &&
+		!r.Backgrounded && r.Output != nil && (r.Output.Kind == outPrintedPass || r.Output.Kind == outPrintedFail)
 }
 
 // statusHidden: the line's status_masked says a runner's status is not the
@@ -234,6 +274,7 @@ func failed(r *gateRun) bool {
 
 func failedByExit(r *gateRun) bool {
 	return r.Outcome == store.ExecFailed ||
+		r.FromPrinted && r.Output.Kind == outPrintedFail ||
 		r.Outcome == store.ExecInterrupted && r.ExitCode != nil && *r.ExitCode != 0
 }
 
@@ -252,7 +293,8 @@ func orderNotKnown(r *gateRun) bool {
 	return !known
 }
 
-// green: no row before Stale matches the run.
+// green: no row before the writes-after-green Stale row matches the run. The
+// masked-then-written row above it matches only a masked run (card F2c).
 func green(r *gateRun) bool {
 	return !r.Backgrounded && !masked(r) && !emptyRun(r) && !failed(r) && !outcomeNotKnown(r) && !orderNotKnown(r)
 }
@@ -285,8 +327,9 @@ func redReason(f *fam) Reason {
 }
 
 // stateOf is one family's GateState; fr is its runs at the point, in Seq
-// order, at least one, and kind is the family's.
-func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, at int64, tree map[string]*string) GateState {
+// order, at least one, kind is the family's, and root the project whose
+// files it covers, "" for every file (covers).
+func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []int64, root string, at int64, tree map[string]*string) GateState {
 	f := fam{last: &fr[len(fr)-1]}
 	for i := len(fr) - 1; i >= 0; i-- {
 		if green(&fr[i]) {
@@ -296,12 +339,12 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 	}
 	f.ref = cmp.Or(f.green, f.last)
 	for _, w := range writes {
-		if w.Path != nil && Relevant(w.Class) && w.Seq > f.ref.Seq && w.Seq <= at {
+		if w.Path != nil && Relevant(w.Class) && w.Seq > f.ref.Seq && w.Seq <= at && covers(root, &w) {
 			f.counted = append(f.counted, w)
 		}
 	}
 	if f.green == f.last {
-		f.bound = bind(writes, unnamed, f.green.Seq, at, tree)
+		f.bound = bind(writes, unnamed, root, f.green.Seq, at, tree)
 	}
 	g := GateState{
 		Gate:             learnedGateID(kind, k),
@@ -315,6 +358,7 @@ func stateOf(k familyKey, kind string, fr []gateRun, writes []write, unnamed []i
 		LastRun:          runRef(f.last),
 		WritesSinceGreen: len(f.counted),
 		bound:            f.bound,
+		root:             root,
 	}
 	for _, r := range gateTable {
 		if r.when(&f) {
@@ -387,7 +431,7 @@ func lastWrite(counted []write) *WriteRef {
 	if last == nil {
 		return nil
 	}
-	return &WriteRef{Seq: last.Seq, AgentID: last.AgentID, Path: last.Path, Tool: last.Tool}
+	return &WriteRef{Seq: last.Seq, AgentID: last.agent(), Path: last.Path, Tool: last.Tool}
 }
 
 // writers counts the counted writes per agent, in the order of each agent's
@@ -401,9 +445,9 @@ func writers(counted []write) (list []AgentCount, omitted int) {
 	}
 	var as []agent
 	for _, w := range counted {
-		i := slices.IndexFunc(as, func(a agent) bool { return sameAgent(a.id, w.AgentID) })
+		i := slices.IndexFunc(as, func(a agent) bool { return sameAgent(a.id, w.agent()) })
 		if i < 0 {
-			as = append(as, agent{id: w.AgentID, first: w.Seq})
+			as = append(as, agent{id: w.agent(), first: w.Seq})
 			i = len(as) - 1
 		}
 		as[i].n++

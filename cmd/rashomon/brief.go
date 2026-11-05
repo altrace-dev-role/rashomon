@@ -64,8 +64,10 @@ func cmdBrief(args []string, stdout io.Writer) error {
 // clear or a payload with no source, it is the brief of the project holding
 // the payload's cwd, its verify line naming the report command of the entry
 // that ran it (briefFromPlugin); at resume, one line pointing at the verb; at
-// compact and any other source, nothing. lead, the plugin route's consent
-// line (pluginConsent), opens it whenever it is not "", the brief or none. It
+// compact and any other source, nothing (a compaction's print is the
+// continuity briefing's, printContinuity, which runs first). lead, the plugin
+// route's consent line (pluginConsent), opens it whenever it is not "", the
+// brief or none. It
 // is one JSON object whose only key is systemMessage, the channel the user
 // reads and the model does not, as recap_turn.go prints its line. A cwd that
 // is not a directory this process can read prints no brief (B7).

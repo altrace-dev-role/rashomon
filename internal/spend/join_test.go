@@ -280,7 +280,7 @@ func TestJoin_ACoveredZeroIsAZero(t *testing.T) {
 	}
 	// And the text says so plainly: "at least none across 0 turns" is a
 	// floor of nothing over nothing.
-	if !strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead alone is not counted)\n") ||
+	if !strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead, or a missing program, alone is not counted)\n") ||
 		strings.Contains(txt, "at least") || strings.Contains(txt, "could not be checked") ||
 		strings.Contains(txt, "is a floor") {
 		t.Errorf("a covered, clean record is not rendered as a plain none:\n%s", txt)
@@ -1263,7 +1263,7 @@ func TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(txt, "never mentioned: none found in the turns that could be checked (a failed Read, Glob, Grep or NotebookRead alone is not counted)\n") || !strings.Contains(txt, tc.said) {
+			if !strings.Contains(txt, "never mentioned: none found in the turns that could be checked (a failed Read, Glob, Grep or NotebookRead, or a missing program, alone is not counted)\n") || !strings.Contains(txt, tc.said) {
 				t.Errorf("an undeclared failed call is rendered as a checked none:\n%s", txt)
 			}
 		})
@@ -1585,7 +1585,7 @@ func TestJoin_AWatchedSessionWithNoCallIsRecorded(t *testing.T) {
 	for _, want := range []string{
 		"sess-q $0.80 (main $0.80, subagents none)\n",
 		"sess-u $0.40 (main $0.40, subagents none), not recorded by rashomon\n",
-		"never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead alone is not counted)\n",
+		"never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead, or a missing program, alone is not counted)\n",
 		"(from rashomon's record; 1 of 2 transcripts was recorded, so this covers only those; $0.40 in the other 1 is not covered)\n",
 	} {
 		if !strings.Contains(txt, want) {
@@ -1929,7 +1929,7 @@ func TestJoin_AFailedLookupIsNoTurnToJudge(t *testing.T) {
 // reads the second; a failed Bash alone fires, as the control. Break: put
 // back either old sentence without the exception.
 func TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted(t *testing.T) {
-	const aside = "a failed Read, Glob, Grep or NotebookRead alone is not counted"
+	const aside = "a failed Read, Glob, Grep or NotebookRead, or a missing program, alone is not counted"
 	for _, tc := range []struct {
 		name  string
 		calls []struct{ tool, prompt string }

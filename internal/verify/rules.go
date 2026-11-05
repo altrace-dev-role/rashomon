@@ -37,6 +37,8 @@ func triOf(all, some bool) tri {
 type ruleRead struct {
 	seqs      []int64
 	undecided bool
+	// reason is the fixed reason an undecided read has, "" where none.
+	reason string
 }
 
 func (r ruleRead) verdict() RuleVerdictValue {
@@ -57,8 +59,9 @@ func (r ruleRead) verdict() RuleVerdictValue {
 // protect_path the writes classify named; require_evidence the snapshot's
 // gates, at a point its at list names, done read at Stop and only when the
 // window holds a relevant write (wrote). A rule missing the field its kind
-// reads is undecided (spec/file.go, Rule). forbid_code and order are not
-// judged yet and have no entry. insufficient is the 30-day window's and
+// reads is undecided (spec/file.go, Rule). order reads the Bash lines (its Then), the
+// then_checks (thenChecks) and after_hits (afterHits) the posts wrote and the writes (orderOver); forbid_code reads the writes and is undecided at every
+// applicable one until an edit's content is read (codeOver). insufficient is the 30-day window's and
 // never read at a point.
 func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Execution, c *classified, snap *Snapshot, wrote bool) []RuleVerdict {
 	out := []RuleVerdict{}
@@ -85,6 +88,21 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 				rels = projectRels(c.writes)
 			}
 			r = protectOver(&dr.Rule, c, rels, at)
+		case spec.ForbidCode:
+			if rels == nil {
+				rels = projectRels(c.writes)
+			}
+			r = codeOver(&dr.Rule, c, rels, at)
+		case spec.Order:
+			if !read {
+				lines = ruleLines(run, picked, at)
+				read = true
+			}
+			if rels == nil {
+				rels = projectRels(c.writes)
+			}
+			d := sourceDigest(sp, dr.Source)
+			r = orderOver(&dr.Rule, lines, afterHits(run, dr.ID, d, at), thenChecks(run, dr.ID, d, at), c, rels, at)
 		case spec.RequireEvidence:
 			var ok bool
 			if r, ok = evidenceAt(&dr.Rule, snap, wrote); !ok {
@@ -96,7 +114,7 @@ func ruleVerdicts(sp *spec.Compiled, run *store.Run, picked map[string]*store.Ex
 		slices.Sort(r.seqs)
 		seqs := append([]int64{}, slices.Compact(r.seqs)...)
 		out = append(out, RuleVerdict{Rule: SlotID(dr.ID), Kind: kind, Verdict: r.verdict(), Seqs: seqs,
-			HardControl: dr.Rule.HardControl, trust: sp.TrustOf(dr.Source)})
+			HardControl: dr.Rule.HardControl, trust: sp.TrustOf(dr.Source), reason: r.reason})
 	}
 	return out
 }
@@ -168,6 +186,28 @@ func bindingViolations(vs []RuleVerdict) int {
 	return n
 }
 
+// turnViolations is each binding rule's violation with a seq at or after
+// from, the turn's first declaration (TurnCounts.FirstSeq), its Seqs cut to
+// those, in spec order: the rules the Stop names (StopView.Violations, card
+// RECALL-15). Seqs are sorted (ruleVerdicts), so the cut is a search. from 0,
+// a turn with no declaration, names none.
+func turnViolations(vs []RuleVerdict, from int64) []RuleVerdict {
+	if from <= 0 {
+		return nil
+	}
+	var out []RuleVerdict
+	for _, v := range vs {
+		if v.Verdict != Violation || !binding(v.trust) {
+			continue
+		}
+		if i, _ := slices.BinarySearch(v.Seqs, from); i < len(v.Seqs) {
+			v.Seqs = v.Seqs[i:]
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // wroteIn reports a named relevant write at or before at: WroteRelevant over
 // writes classify already built.
 func wroteIn(writes []write, at int64) bool {
@@ -187,6 +227,9 @@ type ruleLine struct {
 	seq   int64
 	cmds  []shape.Command
 	whole bool
+	// id and cwd are the call's tool_use_id and the directory digest it
+	// started in, which an order rule pairs and compares.
+	id, cwd string
 }
 
 // ruleLines is every Bash call's line declared at or before at, and the line
@@ -199,25 +242,27 @@ func ruleLines(run *store.Run, picked map[string]*store.Execution, at int64) []r
 		if d.Seq > at || d.ToolName != "Bash" {
 			continue
 		}
-		out = append(out, lineOf(d.Seq, d.Command, d.CommandCut != nil, len(d.Masked) > 0))
+		out = append(out, lineOf(d, d.Command, d.CommandCut != nil, len(d.Masked) > 0))
 		e := picked[d.ToolUseID]
 		switch {
 		case e == nil:
 		case e.ExecutedCommand != nil:
-			out = append(out, lineOf(d.Seq, e.ExecutedCommand, e.ExecutedCommandCut != nil, len(e.ExecutedMasked) > 0))
+			out = append(out, lineOf(d, e.ExecutedCommand, e.ExecutedCommandCut != nil, len(e.ExecutedMasked) > 0))
 		case e.ExecutedCommandWithheld != nil:
-			out = append(out, ruleLine{seq: d.Seq})
+			out = append(out, ruleLine{seq: d.Seq, id: d.ToolUseID, cwd: d.CWDDigest})
 		}
 	}
 	return out
 }
 
-func lineOf(seq int64, line *string, cut, masked bool) ruleLine {
+func lineOf(d *store.Declaration, line *string, cut, masked bool) ruleLine {
+	l := ruleLine{seq: d.Seq, id: d.ToolUseID, cwd: d.CWDDigest}
 	if line == nil || cut {
-		return ruleLine{seq: seq}
+		return l
 	}
 	cmds, ok := shape.Commands(*line)
-	return ruleLine{seq: seq, cmds: cmds, whole: ok && !masked}
+	l.cmds, l.whole = cmds, ok && !masked
+	return l
 }
 
 // forbidOver is a forbid_command rule over the lines: a violation at each

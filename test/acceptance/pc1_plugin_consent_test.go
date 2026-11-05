@@ -268,10 +268,11 @@ func TestPC1_OnlyAPluginEnableIsConsent(t *testing.T) {
 // top-level and the plugin's entry, is disclose.PluginDescription, the text
 // a plugin_enable record hashes, never a longer or a different one (the DE's
 // condition 3). It names what is kept in the clear at v5 that no plugin user
-// saw before (the project's root, the transcript path), and that an Agent SDK
-// program loading the plugin is recorded too: the plugin route asks no SDK
-// question (the DE's #228 verdict). Break: edit one manifest's description
-// alone, or drop either clause, and this fails.
+// saw before (the project's root, the transcript path), and nothing of Agent
+// SDK programs: the plugin route asks no SDK question, so it records none
+// (SDK-GATE1, TestSDKG1_ThePluginRouteRecordsNoAgentSDKProgram). Break: edit
+// one manifest's description alone, drop the clause, or say SDK programs are
+// recorded, and this fails.
 func TestPC1c_TheManifestsCarryTheDisclosureByteForByte(t *testing.T) {
 	read := func(rel string) map[string]any {
 		t.Helper()
@@ -306,9 +307,12 @@ func TestPC1c_TheManifestsCarryTheDisclosureByteForByte(t *testing.T) {
 		t.Errorf("the plugin's first-session line is %d columns", n)
 	}
 	for _, w := range []string{"in every project", "never its text", "the project's root and the transcript path",
-		"Agent SDK programs that load it are recorded too", "model provider", "Never stores", "/plugin"} {
+		"model provider", "Never stores", "/plugin"} {
 		if !strings.Contains(disclose.PluginDescription, w) {
 			t.Errorf("the plugin description does not say %q", w)
 		}
+	}
+	if strings.Contains(disclose.PluginDescription, "Agent SDK") {
+		t.Error("the plugin description speaks of Agent SDK programs, which the plugin route never records (SDK-GATE1)")
 	}
 }

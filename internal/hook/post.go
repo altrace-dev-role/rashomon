@@ -32,8 +32,11 @@ import (
 // (WRAPPER-RUN1) -- stdout, then stderr where stdout gives no summary, or a
 // failure event's error after its first line -- decoded into a buffer local
 // to that call, at most gateout.MaxScanBytes of it, cleared before it
-// returns. What survives is gate_output's three closed words, for a wrapper
-// only where a runner's row read it; no other call's output is read at all.
+// returns; and, where a gate run's line hid its runner's status,
+// printedOutput reads its stdout the same way for the status the line
+// printed (STATUS-PROBE). What survives is gate_output's three closed words,
+// for a wrapper only where a runner's row read it; no other call's output is
+// read at all.
 //
 // tool_input IS held, as a subslice of the payload, for the executed digest:
 // the post-rewrite input is the only evidence a rewriting hook leaves
@@ -166,6 +169,7 @@ type Post struct {
 	landedSeq      int64
 	landedRunner   bool
 	landedRed      bool
+	landedHidden   bool
 	landedStore    bool
 	landedWrite    writtenCall
 	// toolName and toolInput are the call's, kept for the spec's rules
@@ -173,6 +177,19 @@ type Post struct {
 	// what it names.
 	toolName  string
 	toolInput json.RawMessage
+	// scopeV5 is the call's record scope at v5, the one the blast-radius
+	// note may name directories at (card ARCH-INLINE1).
+	scopeV5 bool
+	// startSource is a SessionStart call's source (startup, resume, clear or
+	// compact), the second half of that event's channel row (StartContextAt);
+	// "" on every other event.
+	startSource string
+	// exitCode and backgrounded are how the call ended, kept for the
+	// after_hit an order rule's After call leaves (ruleCall): the parsed
+	// status of a failure (nil where none was stated), and whether a success
+	// event's command was still running in the background.
+	exitCode     *int
+	backgrounded bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -329,7 +346,17 @@ func (p *Post) capture(payload *hookio.Payload) error {
 			}
 		}
 		rec.GateOutput = &out
-	} else if shape.WrapperRun(pl.ToolName, s.Program, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
+		// A line that hid its runner's status and then printed it (`make
+		// check; echo "EXIT: $?"`): the printed status is the run's outcome,
+		// over anything a summary in the output said (STATUS-PROBE). Only on
+		// a success event in the foreground: a failure's exit is the line's
+		// own, and a backgrounded call's output is the launch's.
+		if pl.HookEventName != FailureEvent && !rec.Backgrounded && shape.StatusHidden(s.StatusMasked) {
+			if printed, ok := printedOutput(payload, pl.ToolName, pl.ToolInput, start.Add(gateOutputBudget), p.now); ok {
+				rec.GateOutput = &printed
+			}
+		}
+	} else if shape.WrapperRun(pl.ToolName, s.Launch, s.RunnerDigest, s.StatusMasked, s.VerbClass) {
 		if out := gateOutput(payload, failure, shape.RunnerTest, gateout.Wrapper, deadline, p.now); gateout.Runner(out.Parser) {
 			rec.GateOutput = &out
 		}
@@ -338,6 +365,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	// tree a later gate run is bound to (card P5A, D140). A digest of content,
 	// so it is read only where record_scope v5 keeps it.
 	scope := recordScope(p.st)
+	p.scopeV5 = scope == store.RecordScopeV5
 	if scope == store.RecordScopeV5 {
 		rec.ContentSHA256 = writtenSHA(&pl)
 	}
@@ -348,6 +376,8 @@ func (p *Post) capture(payload *hookio.Payload) error {
 		p.withheld = true
 	}
 	p.toolName, p.toolInput = pl.ToolName, pl.ToolInput
+	p.exitCode, p.backgrounded = rec.ExitCode, rec.Backgrounded
+	p.landedHidden = hiddenRun(&rec)
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
 	p.landedRed = redRead(&rec)
@@ -373,6 +403,15 @@ func redRead(rec *store.Execution) bool {
 		return k == "summary_fail" && rec.Outcome != store.ExecInterrupted
 	}
 	return rec.Outcome == store.ExecOK && rec.StatusMasked != nil && (k == "summary_fail" || k == "fail_line")
+}
+
+// hiddenRun reports a success-event runner call in the foreground whose line
+// hid the runner's status (shape.StatusHidden), the call masked-status is
+// said at (MASKED-AT-ACT1). A hint, as redRead is: verify's masked() decides,
+// so a run whose output's summary or printed status says how it ended raises
+// nothing and costs the run's read, as a failure event's post does.
+func hiddenRun(rec *store.Execution) bool {
+	return rec.Outcome == store.ExecOK && rec.RunnerDigest != nil && !rec.Backgrounded && shape.StatusHidden(rec.StatusMasked)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

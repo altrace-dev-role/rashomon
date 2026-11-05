@@ -55,13 +55,12 @@ func TestPR_APipedRedRunnerStepsAtPostToolUse(t *testing.T) {
 	}
 }
 
-// TestPR_ANonRedPipedRunStepsNothing: a green summary, a no_summary output
-// and an unread one raise nothing.
+// TestPR_ANonRedPipedRunStepsNothing: a green summary raises nothing. A
+// no_summary output and an unread one leave the run's status hidden, which
+// masked-status says at the act (TestMA1p_).
 func TestPR_ANonRedPipedRunStepsNothing(t *testing.T) {
-	for name, stdout := range map[string]string{"green": "3 passed in 0.12s\n", "no_summary": "collecting ...\n", "empty_stdout": ""} {
-		if out := pipedAfterGreen(t, stdout); len(out) != 0 {
-			t.Errorf("%s: printed %q", name, out)
-		}
+	if out := pipedAfterGreen(t, "3 passed in 0.12s\n"); len(out) != 0 {
+		t.Errorf("green: printed %q", out)
 	}
 }
 

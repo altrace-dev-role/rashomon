@@ -22,7 +22,7 @@ import (
 // store.Execution goes in one of them, here, before this test passes again.
 var (
 	postCarried    = []string{"StatusMasked", "RunnerDigest", "RunnerKind", "RunnerName", "MaskedBy", "ExecutedDigest=Digest"}
-	postNotCarried = []string{"Program", "VerbClass", "Argc", "MayWrite"}
+	postNotCarried = []string{"Program", "VerbClass", "Argc", "Launch", "Probe", "MayWrite"}
 	postWithheld   = []string{"Type", "SchemaVersion", "Seq", "RecordedAtMS", "ToolUseID", "SessionID", "ToolName",
 		"Outcome", "ExitCode", "IsInterrupt", "DurationMS", "RuleMatch", "Backgrounded", "RulesVersion",
 		"Writer", "ExecutedCommand", "ExecutedCommandReason", "ExecutedCommandBytes", "ExecutedCommandCut", "ExecutedMasked",

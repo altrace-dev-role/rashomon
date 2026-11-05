@@ -10,8 +10,9 @@
 //
 // It renders records, never inferences. Every sentence Line produces is
 // either a count read off the digest (the recorded failures are
-// SilentFailures.Counted, Failed less the failed lookups, and the lookups set
-// aside are named beside them, so the two add up to the turn's failed calls;
+// SilentFailures.Counted, Failed less the failed lookups and the missing
+// programs, and those set aside are named beside them, so the numbers add up
+// to the turn's failed calls;
 // the report counts the whole session, so it reads higher when an earlier
 // turn also failed a call), one of the store's
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
@@ -84,6 +85,17 @@ var prefix = mark + " rashomon: "
 // sits under the plugin's own directory rather than on PATH. Pointing either
 // user at the other's command sends them to one that is not there.
 func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
+	return LineWith(d, sessionID, fromPlugin, "")
+}
+
+// LineWith is Line with lines, the Stop's rule lines (RuleLines) and platform
+// lines (PlatformLines), set after the sentences and before the pointer, so a
+// line whose sentence counts a failure also names the rule the turn matched
+// and the package it left unmet (STOP-PRECEDENCE1, mgr 11-02 ruling (a); card
+// RECALL-15). lines never speak alone: with no sentence there is no line, and
+// the done flag, the value line or RuleLine, which carry them themselves,
+// speak instead (card 2.4 R12).
+func LineWith(d *digest.Digest, sessionID string, fromPlugin bool, lines string) (string, bool) {
 	var sentences []string
 
 	switch {
@@ -97,13 +109,20 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	}
 	if sf := d.SilentFailures; d.Fired(report.DetectorSilentFailure) {
 		// The count is the failures that fired the line, in this turn only.
-		// When lookups were set aside the line says how many, so its numbers
-		// add up to the turn's failed calls. The report's "failed calls"
-		// counts the whole session, lookups included, so it reads higher when
-		// an earlier turn also failed a call.
+		// When lookups or missing programs were set aside the line says how
+		// many, so its numbers add up to the turn's failed calls. The
+		// report's "failed calls" counts the whole session, both included, so
+		// it reads higher when an earlier turn also failed a call.
 		s := fmt.Sprintf("%d recorded failure%s", sf.Counted(), plural(sf.Counted()))
+		var aside []string
 		if sf.FailedLookups > 0 {
-			s += fmt.Sprintf(", besides %d failed lookup%s", sf.FailedLookups, plural(sf.FailedLookups))
+			aside = append(aside, fmt.Sprintf("%d failed lookup%s", sf.FailedLookups, plural(sf.FailedLookups)))
+		}
+		if sf.MissingPrograms > 0 {
+			aside = append(aside, fmt.Sprintf("%d missing program%s", sf.MissingPrograms, plural(sf.MissingPrograms)))
+		}
+		if len(aside) > 0 {
+			s += ", besides " + strings.Join(aside, " and ")
 		}
 		sentences = append(sentences, s)
 	}
@@ -140,7 +159,7 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		return "", false
 	}
 
-	return prefix + strings.Join(sentences, ". ") + ".\n" + pointer(sessionID, fromPlugin), true
+	return prefix + strings.Join(sentences, ". ") + ".\n" + lines + pointer(sessionID, fromPlugin), true
 }
 
 // continuation is the lead of every line after the first: spaces as wide as

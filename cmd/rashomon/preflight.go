@@ -29,6 +29,11 @@ type pendingPayload struct {
 	// specNoted is set by preflightNote when its discovery made the turn's
 	// no-spec note (hook.NoteSpecFound), so noteTurnSpec makes no second one.
 	specNoted bool
+	// unverified is the previous Stop's done verdict, taken from recap.json by
+	// promptNotes before the preflight (recap.TakeUnverified): true once per
+	// flagged Stop of this session, so a prompt that routes nothing still
+	// consumes it, and the note is not read for at every prompt (card c4).
+	unverified bool
 	// owed is what the session's last turn end owes this prompt
 	// (recap.Turn), which preflightNote routes beside its note.
 	owed recap.Owed
@@ -68,13 +73,17 @@ type promptProject struct {
 // with no brief on this branch it can have no note.
 // proj is the caller's read (readPromptProject). A session's first prompt
 // finds its run empty, so the note decides at after_seq 0, which CheckOn
-// admits at UserPromptSubmit only.
+// admits at UserPromptSubmit and SessionStart only. The first prompt after
+// a resume its start armed also routes the continuity briefing
+// (resumeBriefing, D-c), which takes the call's note on its own channel.
 func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj promptProject, id harness.Identity, now time.Time) (steer.Output, steer.Client) {
 	if run == nil || p.CWD == "" {
 		return steer.Output{}, steer.Client{}
 	}
 	named := intent.Names(p.Prompt, p.PromptCut)
-	if !named && !proj.lessons.Any() && p.owed.Seq <= 0 {
+	done := p.unverified
+	brief, briefed := resumeBriefing(st, run, p.SessionID, p.Harness.TranscriptPath)
+	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
@@ -95,7 +104,8 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		if cwd != root {
 			cwd = resolvedDir(cwd)
 		}
-		resolved := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli()})
+		resolved := intent.Resolve(p.Prompt, p.PromptCut, intent.Project{Root: root, Cwd: cwd, Spec: sp, Index: idx, NowMS: env.Now.UnixMilli(),
+			Symbols: promptSymbols(root)})
 		in = &resolved
 		// At record scope v4 the steer line holds each named path as a
 		// keyed digest and the delivered set compares digests; the note
@@ -109,7 +119,10 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	if f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {
 		found = append(found, f)
 	}
-	if len(found) == 0 {
+	if briefed {
+		found = append(found, brief)
+	}
+	if len(found) == 0 && !done {
 		return steer.Output{}, steer.Client{}
 	}
 	// The line's project follows the record scope as a post's does: the
@@ -122,6 +135,12 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		}
 	}
 	ctx := hook.PromptContextAt(st, sp, p.SessionID, p.PromptID, p.CWD, project, p.PermissionMode, env)
+	if f, ok := doneFinding(run.LastSeq()); ok && done && !withheld(&ctx) {
+		found = append(found, f)
+	}
+	if len(found) == 0 {
+		return steer.Output{}, steer.Client{}
+	}
 	return steer.Route(&ctx, found), ctx.Client
 }
 

@@ -37,6 +37,15 @@ import (
 // fired-<event> marker, #148), says an approved lesson reaches the agent with
 // a prompt (#156), and names the on and off switches the record keeps in
 // config.json, with a project's directory for a project's switch (#160).
+// alpha.1 shipped 4, so 5 also covers the briefing after a compaction, which
+// quotes the person's earlier instructions to the agent while the record keeps
+// only each quote's length and keyed digest (COMPACT-SLOT1).
+// Unreleased, 5 covers the release, so a later card of the same release
+// names its content here and does not bump: the platform graph's facts the
+// agent's note now gives, a named symbol's package and direct callers at a
+// prompt and the untested changed packages at the next one (PW1b-ON-230
+// step 3); after an edit, the packages that call the edited one, read in
+// memory from the platform graph file (ARCH-INLINE1).
 // Pinned by TRU-8.
 const ScopeVersion = 5
 
@@ -114,8 +123,10 @@ type Forbidden struct {
 }
 
 // Switch is one user-settable switch, with the command that sets it, where
-// it is stored, and whether it ratchets (an expansion needs a terminal; a
-// reduction does not, 7.2.4).
+// it is stored, and whether it ratchets. Tech spec 7.2.4 had an expansion
+// need a terminal and a reduction not; the owner reversed that for
+// reductions (R33, 2026-10-31), so setting a switch either way refuses an
+// agent session (internal/selfguard). No inventory row sets Ratchet today.
 type Switch struct {
 	Name    string `json:"name"`
 	Default string `json:"default"`
@@ -180,10 +191,12 @@ func Default() (Inventory, error) {
 		Files: slices.Concat(
 			defaultFiles(),
 			firedFiles(),
+			blastReadFiles(),
 			learnFiles(),
 			specFiles(),
 			evidenceFiles(),
 			configFiles(),
+			continuityFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),
@@ -269,7 +282,7 @@ func defaultFiles() []FileRule {
 			Base:       "",
 			Pattern:    recap.StateFileName,
 			Mode:       "0600",
-			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice; and, for a session whose last turn edited files without running the project's test command, what the next prompt's note says",
+			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice; the prompt of a session's last turn end that raised the done flag, so the next prompt can tell the agent once; and, for a session whose last turn edited files without running the project's test command, what the next prompt's note says",
 			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids; for such a session, the turn end's record seq, the test runner's name and the name of the file the command was read from -- never a tool call's content",
 			NeverHolds: "a tool call's content",
 			RemovedBy:  "purge",
@@ -461,7 +474,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), whether the hook could not read where its line started because of a leading cd it does not read (location_unread, one bit, present only when true), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; where a call matched a forbid_command rule of the spec it was judged against, a spec_event with the rule's id, the content digest of the spec file that declared it, the hook event and the seq the call's execution landed at; at record scope v5 only, the scope every consent from this build records, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, and the SHA-256 of the file an edit names as the call left it (content_sha256), which record scope v4, a store with no consent from this build, withholds",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, the runner a test or build line ran in the words of the binary's own list (runner_name) and the stage of its pipe that hid the exit status (masked_by), each one of a closed set of words the binary ships and never a word of the command, transcript path, permission mode, agent type, file label, whether the call named rashomon's store root (one bit, D173b), whether the hook could not read where its line started because of a leading cd it does not read (location_unread, one bit, present only when true), whether one of its line's commands launches a script or a shell that may run a test (launch, one bit, present only when true), rule match, outcome, exit code and timing, and keyed digests of its working directory and its shape; where a call matched a forbid_command rule of the spec it was judged against, a spec_event with the rule's id, the content digest of the spec file that declared it, the hook event and the seq the call's execution landed at; where a call matched the after pattern of an order rule of that spec, an after_hit with the same four, its exit status, whether it ran in the foreground, the keyed digest of its working directory and one bit for a line that may run the after program but does not show it, no command text; where a Bash call's line was read for an order rule of that spec, a then_check with the rule's id, the content digest of the spec file that declared it, the seq the call's execution landed at and one word for whether the line runs the rule's then (yes, no or maybe), no command text; for a command run in the background, an outcome_join when its end is announced: the call's id, ok or failed and its exit code, never the announcement's description or output path; at record scope v5 only, the scope every consent from this build records, its working directory, its project root, the file path an edit names and the files a shell line may write (written_paths), in the clear, and the SHA-256 of the file an edit names as the call left it (content_sha256), which record scope v4, a store with no consent from this build, withholds",
 			NeverHolds: "file contents, prompts, any part of a tool response or other tool output, a call's other arguments in the clear, or a Bash command's text (this build leaves the command field null at every record scope)",
 			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
@@ -481,7 +494,7 @@ func runSegmentFiles() []FileRule {
 			Pattern:    store.FileSteer,
 			Mode:       "0600",
 			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
-			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them), each capped at 2,048 bytes",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the Claude Code version and the channel's verified floor and exclusions, the once-per-session notice the line printed, if any, and, on a later line of its own, whether Claude Code's transcript showed a delivered note (seen, absent or unreadable; never the transcript's content), the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown (except a request's preflight note at record scope v4, which keeps a count of the paths it named and keyed digests of them, and except the briefing after Claude Code compacts the conversation, which quotes your earlier instructions to the agent word for word; the record keeps only each quote's length and a keyed digest, never your words), each capped at 2,048 bytes",
 			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
 			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
 			Owner:      "store",

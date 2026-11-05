@@ -65,6 +65,9 @@ type call struct {
 	// unread one (shape.UnreadCWDDigest), the two domains no digest of one
 	// equals in the other; "" is a location not known.
 	loc string
+	// line is the Bash call's command line, which withLines records on its
+	// declaration; the builder itself ignores it.
+	line string
 	// agent is the subagent the call ran in: AgentID, with AgentType beside it,
 	// both present only inside a subagent call (record.go, Declaration); ""
 	// is the main agent, both nil.
@@ -134,7 +137,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite (deriveCut derives the runner and mayWrite only for a tool whose class is execute and whose input carries a command field, shape.go:158-163; of the three execute tools, verb.go:39, only Bash carries one; post.go reads Backgrounded for Bash alone).
 //   - A call that is not Bash, Edit or Write names no paths. The builder models those three: the hook records a file_path for MultiEdit and NotebookEdit too, which no evaluator test builds yet.
 //   - Every record of a call is stamped at a schema from 5 to store.CallSchemaVersion (store.AcceptsKind reads 1 to store.CallSchemaVersion; no evaluator test needs another yet). At 6 a runner's kind is set, at 5 it is not: runner_kind is a schema 6 key (store.CallSchemaVersion), so a record before it has a runner digest and no kind (record.go, Execution.RunnerKind).
-//   - A runner's masked word is one of shape.MaskedKinds and, at schema 6, its kind one of shape.RunnerKinds; with a runner the word is none or the runner's own kind where it has one (statusMasked and runnerOf take both from the runner group); a runner-less Bash call carries its word, none unless the line hid two runners or a displaced one (masked.go:177-178; runnerDigest, masked_eval.go:34-39); a tool that is not Bash carries no word (deriveCut returns before statusMasked). A line statusMasked could not parse (StatusMasked nil on a shell call) is not built: no evaluator test needs it yet.
+//   - A runner's masked word is one of shape.MaskedKinds and, at schema 6, its kind one of shape.RunnerKinds; with a runner the word is none, test for a test runner, or build for any other listed kind (shape's runnerLists gives each list its masked word, and statusMasked and runnerOf take both from one runner group); a runner-less Bash call carries its word, none unless the line hid two runners or a displaced one (masked.go:177-178; runnerDigest, masked_eval.go:34-39); a tool that is not Bash carries no word (deriveCut returns before statusMasked). A line statusMasked could not parse (StatusMasked nil on a shell call) is not built: no evaluator test needs it yet.
 //   - A call classed test has masked none and, when it names a kind, a test kind: Derive reclasses a shell line test only through runsTests, which no route to a hidden status reaches (the checks say why).
 //   - The execution's runner fields mirror the declaration's (post.go copies them from the shape it derives).
 //   - The outcome is one of the Execution outcomes (record.go). A backgrounded call's outcome is ok: post.go reads Backgrounded on the success event only.
@@ -147,6 +150,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - A terminal's outcome is one of the Terminal outcomes (record.go).
 //   - The session id is its own run directory name (the store's DirName method, over segment): the builder does not digest. DirName reads no Store field (store.go:453, segment), which is what lets a zero Store answer; no test pins that.
 //   - A location is "", or "d:" or "u:" and a name: the two digest domains hook.Locate writes, on any tool, since it locates every call.
+//   - From call schema 10 a Bash call's launch bit is its program's reading (shape.RecordedLaunch), as the hook's is for a line of that one program: a call literal is one command, never a list (LAUNCH-ANY1).
 //   - The run carries one coverage record, PhasePost and verified, as a hook writes one when its entry and its probe both resolve (hook.BuildCoverage); every real run has one. A test that needs others sets r.Coverage.
 //
 // The cap functions guarantee caps and nothing else. The derived fields
@@ -229,8 +233,9 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 			t.Fatalf("runOf: call %d has runner kind %q and no runner (shape: RunnerKind is set exactly when RunnerDigest is)", i, c.kind)
 		}
 		if c.runner != "" && c.kind != "" && c.masked != shape.MaskedNone &&
-			!(c.masked == shape.MaskedTest && c.kind == shape.RunnerTest) && !(c.masked == shape.MaskedBuild && c.kind == shape.RunnerBuild) {
-			t.Fatalf("runOf: call %d masked %q with runner kind %q: with a runner the masked word is none or the runner's own kind (shape: statusMasked and runnerOf take both from one runner group)", i, c.masked, c.kind)
+			!(c.masked == shape.MaskedTest && c.kind == shape.RunnerTest) &&
+			!(c.masked == shape.MaskedBuild && c.kind != shape.RunnerTest && slices.Contains(shape.RunnerKinds(), c.kind)) {
+			t.Fatalf("runOf: call %d masked %q with runner kind %q: with a runner the masked word is none, test for a test runner, or build for any other listed kind (shape: runnerLists gives each list its masked word, and statusMasked and runnerOf take both from one runner group)", i, c.masked, c.kind)
 		}
 		// Both refusals below follow from one invariant of Derive, not from a
 		// list of cases: the class is test only when the line, past the
@@ -307,6 +312,12 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if c.prog != "" {
 			p := c.prog
 			d.Shape.Program = &p
+		}
+		if c.tool == "Bash" && schema >= store.LaunchSchemaVersion {
+			// A call literal is one command, so from call schema 10 its
+			// launch bit is its program's reading, as the hook's is for a
+			// line of that one program (shape.RecordedLaunch).
+			d.Launch = shape.RecordedLaunch(d.Shape.Program, false, false)
 		}
 		if c.tool == "Bash" {
 			// statusMasked gives a word on every line it parses, none when
@@ -726,7 +737,7 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"bg on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, bg: true, paths: []string{"a.go"}}}, "every tool but a shell"},
 		{"mayWrite on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, mayWrite: true, paths: []string{"a.go"}}}, "shell-line"},
 		{"runner with bad masked", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, outcome: store.ExecOK}}, "masked \"\" is not one of"},
-		{"runner with bad kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "lint", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"lint\" is not one of"},
+		{"runner with bad kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "deploy", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"deploy\" is not one of"},
 		{"kind without runner", "s1", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, kind: shape.RunnerTest, outcome: store.ExecOK}}, "and no runner"},
 		{"paths on read", "s1", []call{call{seq: 1, tool: "Read", class: shape.VerbRead, outcome: store.ExecOK, paths: []string{"a.go"}}}, "names paths"},
 
@@ -758,7 +769,7 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		// The pairings the hook keeps between fields, each with its accepted twin.
 		// A hidden status keeps go's base class, package (a stage after the
 		// runner is never reclassed test).
-		{"masked test on a build runner", "s1", []call{gate(shape.VerbPackage, shape.MaskedTest, shape.RunnerBuild, store.ExecOK, 0, false)}, "the runner's own kind"},
+		{"masked test on a build runner", "s1", []call{gate(shape.VerbPackage, shape.MaskedTest, shape.RunnerBuild, store.ExecOK, 0, false)}, "masked \"test\" with runner kind \"build\""},
 		{"masked build on a build runner", "s1", []call{gate(shape.VerbPackage, shape.MaskedBuild, shape.RunnerBuild, store.ExecOK, 0, false)}, ""},
 		{"backgrounded failure", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecFailed, 0, true)}, "backgrounded"},
 		{"backgrounded success", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecOK, 0, true)}, ""},

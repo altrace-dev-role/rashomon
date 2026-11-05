@@ -36,7 +36,7 @@ func TestAcceptsAdmitsSchema3(t *testing.T) {
 		kind  string
 		newer int
 	}{
-		{store.TypeDeclaration, 9}, {store.TypeExecution, 9}, {store.TypeTerminal, 9},
+		{store.TypeDeclaration, 10}, {store.TypeExecution, 10}, {store.TypeTerminal, 10},
 		{store.TypeCoverage, 3}, {store.TypeGap, 3},
 	} {
 		for v := 1; v <= c.newer; v++ {
@@ -266,8 +266,8 @@ func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
 			t.Fatalf("no %s record written", c.def)
 		}
 		for _, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(9) {
-				t.Errorf("%s written at schema_version %v, want 9", c.def, got)
+			if got := r.fields["schema_version"]; got != float64(10) {
+				t.Errorf("%s written at schema_version %v, want 10", c.def, got)
 			}
 			for _, k := range gated {
 				if _, ok := nested(r, k); !ok {

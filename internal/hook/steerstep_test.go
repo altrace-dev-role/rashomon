@@ -153,7 +153,8 @@ func printsFlag(t *testing.T, b []byte) bool {
 // landed in the ordered stream, at a failure event that carried a runner
 // (card 2.3 R3), at a post whose output read red (a piped runner's at
 // PostToolUse, MASKED-OUTCOME1; a wrapper's at either event,
-// WRAPPER-RED-STEP1), or at either post event when the call's input names
+// WRAPPER-RED-STEP1), at a success event whose line hid its runner's status
+// (MASKED-AT-ACT1), or at either post event when the call's input names
 // .claude/rashomon (card P5B, 5.7, D-B7).
 func TestST_StepsIsTheTriggerTable(t *testing.T) {
 	for _, tc := range []struct {
@@ -161,29 +162,36 @@ func TestST_StepsIsTheTriggerTable(t *testing.T) {
 		seq    int64
 		runner bool
 		red    bool
+		hidden bool
 		store  bool
 		want   bool
 	}{
-		{FailureEvent, 7, true, false, false, true},
-		{"PostToolUse", 7, true, false, false, false},
-		{FailureEvent, 0, true, false, false, false},
-		{FailureEvent, 7, false, false, false, false},
-		{"", 7, true, false, false, false},
-		{"PostToolUse", 7, false, false, true, true},
-		{FailureEvent, 7, false, false, true, true},
-		{"PostToolUse", 0, false, false, true, false},
-		{"", 7, false, false, true, false},
+		{FailureEvent, 7, true, false, false, false, true},
+		{"PostToolUse", 7, true, false, false, false, false},
+		{FailureEvent, 0, true, false, false, false, false},
+		{FailureEvent, 7, false, false, false, false, false},
+		{"", 7, true, false, false, false, false},
+		{"PostToolUse", 7, false, false, false, true, true},
+		{FailureEvent, 7, false, false, false, true, true},
+		{"PostToolUse", 0, false, false, false, true, false},
+		{"", 7, false, false, false, true, false},
 		// a piped runner whose output read red steps at PostToolUse alone.
-		{"PostToolUse", 7, true, true, false, true},
-		{"PostToolUse", 0, true, true, false, false},
-		{"", 7, true, true, false, false},
+		{"PostToolUse", 7, true, true, false, false, true},
+		{"PostToolUse", 0, true, true, false, false, false},
+		{"", 7, true, true, false, false, false},
+		// a runner whose line hid its status steps at PostToolUse alone,
+		// where masked-status is said (MASKED-AT-ACT1).
+		{"PostToolUse", 7, true, false, true, false, true},
+		{"PostToolUse", 0, true, false, true, false, false},
+		{FailureEvent, 7, false, false, true, false, false},
+		{"", 7, true, false, true, false, false},
 		// a wrapper whose output read red (no runner) steps at either event.
-		{FailureEvent, 7, false, true, false, true},
-		{"PostToolUse", 7, false, true, false, true},
-		{FailureEvent, 0, false, true, false, false},
+		{FailureEvent, 7, false, true, false, false, true},
+		{"PostToolUse", 7, false, true, false, false, true},
+		{FailureEvent, 0, false, true, false, false, false},
 	} {
-		if got := steps(tc.event, tc.seq, tc.runner, tc.red, tc.store); got != tc.want {
-			t.Errorf("steps(%q, %d, %v, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.red, tc.store, got, tc.want)
+		if got := steps(tc.event, tc.seq, tc.runner, tc.red, tc.hidden, tc.store); got != tc.want {
+			t.Errorf("steps(%q, %d, %v, %v, %v, %v) = %v, want %v", tc.event, tc.seq, tc.runner, tc.red, tc.hidden, tc.store, got, tc.want)
 		}
 	}
 }

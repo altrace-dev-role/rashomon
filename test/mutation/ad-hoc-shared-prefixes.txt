@@ -1,0 +1,15 @@
+# PREFIX-UNIQUE1: ad-hoc mutant-file identities (outside ROW_PREFIXES) that
+# more than one file claims on purpose -- one card's own topic split, read
+# and confirmed against each file's own header comment, not a B343-class
+# collision. One identity per line. prefix_uniqueness_problems() in sweep.py
+# fails on any undeclared identity more than one file claims.
+CSL-1
+H-16
+H-17
+H-25
+H-5
+MS-1
+PF-1
+STC-1
+SWP-rowtoken
+SWP-sharedtests

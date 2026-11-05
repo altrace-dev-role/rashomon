@@ -32,7 +32,7 @@ import (
 
 const (
 	questionInstall = "Install? [y/N] "
-	questionSDK     = "Also record Agent SDK programs on this machine? [y/N] "
+	questionSDK     = "Record Agent SDK programs? Your own claude -p is recorded anyway. [y/N] "
 )
 
 // tree is every file and directory under each of dirs, by path, with the
@@ -603,7 +603,7 @@ func TestTRU4_NonInteractiveWatchNeedsYes(t *testing.T) {
 			if res.exitCode != 1 {
 				t.Fatalf("%v from an agent session: exit %d, want 1", args, res.exitCode)
 			}
-			if !strings.Contains(res.stderr, "watch was run from an agent session; nothing was written") {
+			if !strings.Contains(res.stderr, "so only you can run it, in a terminal outside Claude Code: `rashomon watch`. Nothing was written.") {
 				t.Errorf("%v from an agent session: stderr %q", args, res.stderr)
 			}
 			if i := strings.Index(res.stderr+res.stdout, "--yes"); i >= 0 {

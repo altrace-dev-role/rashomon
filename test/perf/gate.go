@@ -32,6 +32,18 @@ func ColdAllocConsistent(coldAllocBytesMax, allocBytesMax int64) string {
 	return ""
 }
 
+// ColdBudget is the cold_alloc_bytes_max TestColdAllocBudget gates e against
+// on one platform: that platform's own figure from budgets.json's
+// platforms.<plat>.cold_alloc_bytes_max (overrides, by entry id, the way the
+// RSS rows' Entries are) when it has one, else e's single top-level figure,
+// the fallback for a platform that has measured none of its own.
+func ColdBudget(e budget.Entry, overrides map[string]int64) int64 {
+	if v, ok := overrides[e.ID]; ok {
+		return v
+	}
+	return e.ColdAllocBytesMax
+}
+
 // PerProcessColdAllocBytes is a hook-entry process's total allocation
 // budget, the figure neither field alone is (P-12): e's cold_alloc_bytes_max
 // covers the one hook/post call the process makes, and InitBudgetBytes
@@ -107,6 +119,18 @@ func ToleranceNote(measured, budget, tolerance float64, until string, after floa
 		return "tolerance tightened per budgets.json tolerance_until " + until + " (" + percent(tolerance) + " to " + percent(after) + ")"
 	}
 	return ""
+}
+
+// backgroundBudget is entryBudget's decision for a background row, which no
+// platform has an override for yet: the reference platform's row is its own
+// reading and gates; any other platform reports, since gating against the
+// reference row would assume that platform reads no higher.
+func backgroundBudget(plat string, r budget.Background) (budgetMiB float64, gated bool, why string) {
+	if plat == referencePlatform {
+		return r.CurrentMaxRSSMiBP50, true, ""
+	}
+	return r.CurrentMaxRSSMiBP50, false, fmt.Sprintf(
+		"no %s reading of background row %s yet; gating against %s's would assume %s reads no higher", plat, r.ID, referencePlatform, plat)
 }
 
 func percent(f float64) string { return strconv.Itoa(int(f*100+0.5)) + "%" }
@@ -412,4 +436,4 @@ func LineHolds(id string, measuredMiB, lineMiB float64) error {
 // landed names the PRs this tree carries: their rss cases are switched on,
 // and no budget basis may still read "until" one of them. gates_from stays
 // in budgets.json as the record of which PR switched each case on.
-var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true}
+var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "PW1b": true, "SR-1b": true}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -45,7 +46,7 @@ func TestGI1n_TheStopOwesTheNoteForADeclaredOrLearnedCommandLeftUnrun(t *testing
 		{"control: no inferred gate", view(verify.Absent, 1, 1, "pytest"), nil, recap.Owed{}},
 		{"control: no runner's name", view(verify.Absent, 1, 1, ""), declared, recap.Owed{}},
 	} {
-		if got := owedNote(c.v, c.inf); got != c.want {
+		if got := owedNote(c.v, c.inf); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
 		}
 	}

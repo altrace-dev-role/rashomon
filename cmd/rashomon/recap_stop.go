@@ -38,6 +38,9 @@ type stopTurn struct {
 	shown   string
 	summary bool
 	speaks  bool
+	// stops is the view of a Stop event itself, the one that records the
+	// done verdict for the next prompt.
+	stops bool
 	// owed is what the turn end leaves the session's next prompt (card
 	// GATE-INFER1, W5).
 	owed recap.Owed
@@ -89,10 +92,15 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	notes := recap.DeliveredNotes(lines, d.PromptID)
 	in := verify.StopInput{
 		PromptID: d.PromptID, Key: st.Key(), Delivered: modelTexts(notes),
-		Head: []byte(p.LastAssistantMessage), Tail: []byte(p.LastMessageTail),
+		Head: []byte(p.LastAssistantMessage), Tail: []byte(p.LastMessageTail), Root: key,
 	}
 	if writes {
 		in.ProjectKey = key
+	}
+	if event == install.EventStop {
+		// The Stop alone reads the platform graph, for the line it prints:
+		// StopFailure prints none, and the catch-up runs at the next prompt.
+		in.Platform = stopPlatformRead
 	}
 	projectDir, managedDir := specDirs()
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
@@ -120,7 +128,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 		}
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
-		summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending, owed: owedNote(v, in.Inferred)}, nil
+		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending, owed: owedNote(v, in.Inferred)}, nil
 }
 
 // unboundSpecs is each repository spec in sp, project-relative, that the
@@ -222,9 +230,12 @@ func summaryOn(root, project string) bool {
 }
 
 // line is what speaks when recap.Line has no sentence (card 2.4 R12): the
-// done flag, else the value line while the summary switch is on. clause is
-// the fingerprint of the AutoSteer clause the line carries, "" with none:
-// the clause prints only when the counts differ from the last one printed.
+// done flag, else the value line while the summary switch is on, else the
+// line naming the spec rules the turn matched (recap.RuleLine, RECALL-15),
+// which, like the done flag, speaks with the switch off: the person declared
+// the rule. clause is the fingerprint of the AutoSteer clause the line
+// carries, "" with none: the clause prints only when the counts differ from
+// the last one printed.
 func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool, clause string) {
 	if !s.speaks {
 		return "", false, ""
@@ -233,7 +244,8 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 		return flag, true, ""
 	}
 	if !s.summary {
-		return "", false, ""
+		l := recap.RuleLine(s.view, sessionID, fromPlugin)
+		return l, l != "", ""
 	}
 	im := s.impact
 	if fp := im.Fingerprint(); fp == s.shown || im.Empty() {
@@ -243,9 +255,30 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 	}
 	l := recap.ValueLine(s.view, im, sessionID, fromPlugin)
 	if l == "" {
-		clause = ""
+		l, clause = recap.RuleLine(s.view, sessionID, fromPlugin), ""
 	}
 	return l, l != "", clause
+}
+
+// unverified is the Stop's done verdict as the next prompt's note reads it
+// (card c4): the done flag fired, the same decision line prints, on a Stop
+// and not on the catch-up, whose turn a Stop did not reach.
+func (s stopTurn) unverified(sessionID string, fromPlugin bool) bool {
+	if !s.stops {
+		return false
+	}
+	_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)
+	return ok
+}
+
+// rules is the turn's rule lines for recap.Line's sentences to carry, where
+// the turn speaks: StopFailure names no rule, as it prints no value line
+// (tech 2.2.11 condition 4).
+func (s stopTurn) rules() string {
+	if !s.speaks {
+		return ""
+	}
+	return recap.RuleLines(s.view)
 }
 
 // modelTexts is each note's model text, the lines the claim scan strips

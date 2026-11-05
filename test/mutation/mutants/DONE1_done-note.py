@@ -1,0 +1,56 @@
+# DONE1: a Stop whose done flag fired reaches the agent once, at the next
+# prompt of the same session (card c4, PF-PG9). The Stop keeps the verdict in
+# recap.json beside its claim; the prompt takes it once, before the preflight,
+# where its one read of recap.json (Turn) saw it, and routes it as claim-vs-record/done-unverified; steering off (an unreadable
+# config reads as off) and no consent drop it before Route and still consume it. The kill row
+# is the named test's.
+P = "cmd/rashomon/preflight.go"
+D = "cmd/rashomon/preflight_done.go"
+T = "cmd/rashomon/recap_turn.go"
+S = "cmd/rashomon/recap_stop.go"
+R = "internal/recap/state.go"
+
+# The delivery: routed beside the preflight, and a prompt that names nothing
+# still carries it.
+m("DONE1 the delivery dropped", P,
+  "ok && done && !withheld(&ctx) {\n", "ok && false && !withheld(&ctx) {\n", "TestDONE1_")
+m("DONE1 a prompt naming nothing carries no note", P,
+  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n", "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {\n", "TestDONE1_")
+m("DONE1 the note is a flag, not a note", D,
+  "MaxLevel: steer.LevelNudge,", "MaxLevel: steer.LevelFlag,", "TestDONE1_")
+m("DONE1 the note carries another kind", D,
+  "Kind: \"done-unverified\"", "Kind: \"absent\"", "TestDONE1_")
+
+# The switches: dropped before Route, so nothing prints as a flag.
+m("DONE1 steer off does not withhold", D,
+  "return ctx.SteerOff || !ctx.Consent\n", "return !ctx.Consent\n", "TestDONE1c_")
+m("DONE1 no consent does not withhold", D,
+  "return ctx.SteerOff || !ctx.Consent\n", "return ctx.SteerOff\n", "TestDONE1c_")
+
+# The Stop's side: only a Stop that raised the flag keeps it, and the prompt
+# takes it once.
+m("DONE1 every Stop is flagged", S,
+  "\t_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)\n\treturn ok\n", "\treturn true\n", "TestDONE1b_")
+m("DONE1 the Stop's verdict not kept", T,
+  "clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))", "clause, stop.owed, false)", "TestDONE1_")
+m("DONE1 the prompt takes nothing", T,
+  "pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID)", "pp.unverified = flagged && false", "TestDONE1_")
+# The prompt's one read (#279): Turn says whether there is a flag to take, so
+# the take, which reads again and writes, runs only then.
+m("DONE1 Turn sees no flag to take", R,
+  "u != \"\" && u != s.Noted[sessionID]", "u != \"\" && false", "TestDONE1_|TestDONE1j_")
+m("DONE1 Turn sees a taken flag again", R,
+  "u != \"\" && u != s.Noted[sessionID]", "u != \"\"", "TestDONE1j_")
+# Both maps are nil until their one write, as Owed is: the write makes them.
+m("DONE1 a Stop flags into a nil map", R,
+  "\t\tif s.Unverified == nil {\n\t\t\ts.Unverified = map[string]string{}\n\t\t}\n", "", "TestDONE1g_|TestDONE1j_")
+m("DONE1 the take writes into a nil map", R,
+  "\tif s.Noted == nil {\n\t\ts.Noted = map[string]string{}\n\t}\n", "", "TestDONE1g_|TestDONE1j_")
+m("DONE1 the take not written before it answers", R,
+  "\ts.Noted[sessionID] = flagged\n\treturn writeState(path, s, sessionID) == nil\n", "\treturn true\n", "TestDONE1g_")
+m("DONE1 a taken Stop taken again", R,
+  "\tif flagged == \"\" || flagged == s.Noted[sessionID] {\n", "\tif flagged == \"\" {\n", "TestDONE1_")
+m("DONE1 the take reads another session's flag", R,
+  "\tflagged := s.Unverified[sessionID]\n", "\tflagged := \"\"\n\tfor _, v := range s.Unverified {\n\t\tflagged = v\n\t}\n", "TestDONE1b_")
+m("DONE1 the unverified map not capped", R,
+  "[]map[string]string{s.Spoken, s.Checked, s.Shown, s.Unverified, s.Noted}", "[]map[string]string{s.Spoken, s.Checked, s.Shown}", "TestDONE1i_")

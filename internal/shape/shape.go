@@ -82,6 +82,25 @@ type Shape struct {
 	// does, and on a record written before v3, which could not say.
 	MayWrite bool `json:"may_write"`
 
+	// Launch reports a shell line one of whose commands may start a gate's
+	// run that no runner list names: a script, or a shell running a script
+	// or a line (launches; card LAUNCH-ANY1), past the line's first program
+	// too, so `mkdir -p out && ./run-tests.sh` launches and `goslot.sh
+	// status` and `bash -n x.sh` do not. One bit, read from the words and
+	// dropped. json:"-": the declaration carries it as its own key, launch,
+	// present only when true (call schema 10), beside location_unread. In
+	// MayWrite's padding, so a shape is no larger.
+	Launch bool `json:"-"`
+
+	// Probe reports a shell line of nothing but probes, each asking whether
+	// programs are installed and running none (probes; issue #52): which or
+	// type with a name, or command -v or -V with one, so `which pytest` and
+	// `which jq; type -P yq` are probes and `which pytest && pytest -q`,
+	// whose exit is pytest's, is not. One bit, read from the words and
+	// dropped. json:"-": the declaration carries it as its own key,
+	// probe_only, present only when true (call schema 10), beside launch.
+	Probe bool `json:"-"`
+
 	// StatusMasked says whether a recognised build or test runner on a shell
 	// line has an exit status the line does not return (see statusMasked):
 	// the line exits 0 when the runner fails, or the same either way.
@@ -169,26 +188,42 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 // 85.3.10, "Token or cd bound"), which P-11 serialises; a v4 record does not
 // carry it. Always false for a tool that is not a shell.
 func DeriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool) {
-	s, cut, _, _ := deriveCut(toolName, toolInput, key)
+	s, cut, _ := deriveCut(toolName, toolInput, key)
 	return s, cut
 }
 
-// DeriveWithDirs is DeriveCut, plus the leading `cd DIR &&` directories
-// (LeadingDirectory's own answer) this already read while deriving the
-// shape, and unread, the view of the leading cd steps the program search
-// steps over where leadingRun reads none of them (unreadFold): "" where the
-// steps are read, past MaxLeadingCd or not, and where there are none.
-// shape.go's own reading of the program search (pshaped, perr) is exactly
-// LeadingDirectory's starting point, so a caller that wants both -- the
-// hook's Locate, the only one -- does not tokenize the program search a
-// second time just to get what this function already held. A fifth result
-// would make these a struct.
-func DeriveWithDirs(toolName string, toolInput json.RawMessage, key []byte) (s Shape, cut bool, dirs []string, unread string) {
+// Dirs is what a reading of a shell line holds about the directories it
+// runs in, beside its shape (DeriveWithDirs).
+type Dirs struct {
+	// Leading is the leading `cd DIR &&` directories, LeadingDirectory's own
+	// answer.
+	Leading []string
+	// Unread is the view of the leading cd steps the program search steps
+	// over where leadingRun reads none of them (unreadFold): "" where the
+	// steps are read, past MaxLeadingCd or not, and where there are none.
+	Unread string
+	// GitC is the DIR of a `git -C DIR` that is the first command past the
+	// leading run, read by LeadingDirectory's word rules: git runs there,
+	// not where the line started. "" otherwise.
+	GitC string
+	// Later reports a line that may run in a second directory past where it
+	// starts: a cd, pushd or popd word anywhere past the leading run, or a
+	// line read only in part or uncertainly, whose rest is unknown.
+	Later bool
+}
+
+// DeriveWithDirs is DeriveCut, plus Dirs, which this already read while
+// deriving the shape. shape.go's own reading of the program search
+// (pshaped, perr) is exactly LeadingDirectory's starting point, so a caller
+// that wants both -- the hook's Locate, the only one -- does not tokenize
+// the program search a second time just to get what this function already
+// held.
+func DeriveWithDirs(toolName string, toolInput json.RawMessage, key []byte) (s Shape, cut bool, d Dirs) {
 	return deriveCut(toolName, toolInput, key)
 }
 
 // deriveCut is DeriveCut and DeriveWithDirs's shared body.
-func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, []string, string) {
+func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, Dirs) {
 	s := Shape{VerbClass: verbForTool(toolName)}
 
 	// Only a shell tool's input carries a command line. An MCP tool or a
@@ -204,7 +239,7 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	}
 	if !isShell {
 		s.Digest = canonicalDigest(key, toolName, toolInput)
-		return s, false, nil, ""
+		return s, false, Dirs{}
 	}
 
 	// A shell tool digests its command line and nothing else. Claude Code
@@ -251,8 +286,8 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	// A line holding a control byte names no directory, as LeadingDirectory
 	// says: the shell does not split it where the tokenizer does, so `cd
 	// /repo\r` never enters /repo, and it has no unread fold either, since
-	// the program search does not read it. Where the line cannot be read,
-	// dirs is empty too.
+	// the program search does not read it, and no git -C either. Where the
+	// line cannot be read, dirs is empty too.
 	var dirs []string
 	if !ctl {
 		dirs, _ = leadingRun(pshaped, perr)
@@ -263,9 +298,15 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	if !ctl && len(dirs) == 0 {
 		unread = unreadFold(pshaped, uncertain)
 	}
+	d := Dirs{Leading: dirs, Unread: unread}
+	if !ctl {
+		d.GitC, d.Later = pastLeadingRun(pshaped, len(dirs), perr)
+	}
 	s.StatusMasked, s.RunnerDigest, s.RunnerKind, s.RunnerName, s.MaskedBy = statusMasked(cmd, key, pshaped[:leadingFold(pshaped, uncertain)])
+	s.Launch = launches(cmd)
+	s.Probe = probes(cmd)
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
-	return s, cut, dirs, unread
+	return s, cut, d
 }
 
 // controlByte reports a line holding a control byte, in which no word can be

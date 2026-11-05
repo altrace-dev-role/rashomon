@@ -46,8 +46,8 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 	if got, _ := nested(decls[0], "shape.runner_digest"); got == nil {
 		t.Error("runner_digest is null")
 	}
-	if got := decls[0].fields["schema_version"]; got != float64(9) {
-		t.Errorf("schema_version = %v, want 9, the call version: runner_kind landed at 6, store_named at 7, runner_name and masked_by at 8, location_unread at 9", got)
+	if got := decls[0].fields["schema_version"]; got != float64(10) {
+		t.Errorf("schema_version = %v, want 10, the call version: runner_kind landed at 6, store_named at 7, runner_name and masked_by at 8, location_unread at 9, launch at 10", got)
 	}
 	for _, r := range s.e.records(testSession) {
 		for _, leak := range []string{"tail", "-40", "2>&1"} {
@@ -99,6 +99,9 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 }
 
 // M-2: the benchmark's other wrappers, each under the same false summary.
+// Their output here prints no status line, so nothing is read from it and the
+// row stands; where the line prints the status it hid, the row is the run's
+// outcome (TestFF1_APrintedFailureIsTheRunsOutcome, STATUS-PROBE).
 func TestMasked_TheBenchmarksWrappersAreFlagged(t *testing.T) {
 	for _, cmd := range []string{
 		"go test ./... ; echo $?",

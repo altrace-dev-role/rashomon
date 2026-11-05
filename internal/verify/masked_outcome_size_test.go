@@ -20,6 +20,12 @@ func TestMO1_TheRunStructsDidNotGrow(t *testing.T) {
 	if got, want := unsafe.Sizeof(RunRef{}), uintptr(96); got != want {
 		t.Errorf("RunRef is %d bytes, want %d (its size class before call schema 8)", got, want)
 	}
+	// STALE-COVER1: a write reads its agent and project through its call,
+	// so placing a write in a project costs no byte; a Project field took
+	// 64 to 72 and every Evaluate 12% more B/op (run 41589266256).
+	if got, want := unsafe.Sizeof(write{}), uintptr(64); got != want {
+		t.Errorf("write is %d bytes, want %d (its size before STALE-COVER1)", got, want)
+	}
 }
 
 // TestMO1_RunWordsKeepTheirJSON: the three one-byte words marshal as the

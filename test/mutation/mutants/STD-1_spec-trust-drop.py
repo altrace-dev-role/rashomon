@@ -8,7 +8,7 @@ B = "internal/spec/trust.go"
 
 # The trust screen.
 m("STD-1 the screen says untrusted at the digest already bound", S,
-  "\tcase ok && x.SpecDigest == digest:\n", "\tcase false:\n", "TestSTD1_")
+  "\tcase ok && x.SpecDigest == digest:\n", "\tcase ok && x.SpecDigest == digest && false:\n", "TestSTD1_")
 m("STD-1 the screen says never trusted after an edit", S,
   "\tcase ok:\n\t\treturn \"now untrusted: edited", "\tcase false:\n\t\treturn \"now untrusted: edited", "TestSTD1_")
 
@@ -39,7 +39,8 @@ m("STD-1 the Stop names a spec after a store write", R,
 m("STD-1 the value line leaves the spec out", "internal/recap/value.go",
   "\tb.WriteString(unboundLines(v))\n", "", "TestSTD1c_")
 m("STD-1 the done flag leaves the spec out", "internal/recap/done.go",
-  "\"\\n\" + unboundLines(v) + pointer(sessionID, fromPlugin), true", "\"\\n\" + pointer(sessionID, fromPlugin), true",
+  "+ ruleLines(v) + unboundLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true",
+  "+ ruleLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true",
   "TestSTD1c_")
 m("STD-1 the line prints a path the slot refuses", "internal/recap/value.go",
   "if s := slot.Path(p); s.Validate() == nil {", "if s := slot.Path(p); true {", "TestSTD1c_")
