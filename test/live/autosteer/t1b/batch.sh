@@ -7,7 +7,11 @@
 # (B448: a steer row suppressed by no_mirror or unverified_channel, or for G no additionalContext from the prompt hook);
 # a judge that refused (exit 3: a tool missing, B449) or wrote no row. PATH gets RK_GO_TOOLCHAIN_BIN first, so the
 # judges' go is the toolchain's (B449: the pilot's driver PATH held no go), and every tool is checked before the first
-# run. Required environment, none defaulted here so a batch is reproducible from its launch line: RK_CONFIG_DIR,
+# run. A run that the API refused is void and stops the batch before the channel check and the judge (B453: t1b-g1 ended
+# at turn 1 with is_error true under HTTP 429 seven_day and was judged as a row): is_error true, num_turns under 2, or a
+# limit text in the result. The configuration directory's account (oauthAccount email and accountUuid) is logged at
+# start beside the meter, because the meter file is the main configuration's account and the run's may differ (B454).
+# Required environment, none defaulted here so a batch is reproducible from its launch line: RK_CONFIG_DIR,
 # RK_RUNS, RK_GOCACHE, RK_BIN_R, RK_BIN_G, RK_PGRAPH, RK_PGRAPH_G, RK_KNOWLEDGE, RK_GO_TOOLCHAIN_BIN, RK_GOSLOT,
 # RK_FIXTURES, RK_BASELINE_LOG; RK_METER_FILE (optional, the usage meter json to log at start and end). The run.sh
 # overrides RK_PROMPT_FILE, RK_MODEL, RK_MAX_TURNS and RK_BUDGET_USD are cleared, so every run uses the frozen prompt,
@@ -28,7 +32,8 @@ LOG=$RK_RUNS/t1b-batch.log
 mkdir -p "$RK_RUNS"
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"; }
 meter() { if [ -n "${RK_METER_FILE:-}" ] && [ -f "$RK_METER_FILE" ]; then python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("ts"), d.get("rate_limits"))' "$RK_METER_FILE" 2>&1; else echo "no meter file"; fi; }
-say "=== t1b batch start; $(go version); claude $(claude --version 2>&1 | head -1); meter $(meter); config $RK_CONFIG_DIR; harness $(git -C "$H" rev-parse --short HEAD 2>/dev/null)"
+account() { python3 -c 'import json,sys; a=(json.load(open(sys.argv[1])).get("oauthAccount") or {}); print(a.get("emailAddress"), a.get("accountUuid"))' "$RK_CONFIG_DIR/.claude.json" 2>&1; }
+say "=== t1b batch start; $(go version); claude $(claude --version 2>&1 | head -1); meter $(meter) (the main configuration's account; see B454); config $RK_CONFIG_DIR account $(account); harness $(git -C "$H" rev-parse --short HEAD 2>/dev/null)"
 for f in "$RK_BIN_R" "$RK_BIN_G" "$RK_PGRAPH" "$RK_PGRAPH_G" "$RK_BASELINE_LOG"; do [ -e "$f" ] || { say "missing $f"; exit 2; }; done
 [ "$(shasum -a 256 "$RK_BASELINE_LOG" | cut -d' ' -f1)" = "$T1_BASELINE_LOG_SHA256" ] || { say "baseline log digest moved"; exit 2; }
 [ -f "$RK_CONFIG_DIR/CLAUDE.md" ] && { say "$RK_CONFIG_DIR holds a CLAUDE.md"; exit 2; }
@@ -49,13 +54,16 @@ for spec in $ORDER; do
   say "start $name ($arm)"
   sh "$H/run.sh" "$arm" "$name" > "$RK_RUNS/$name.launch.txt" 2>&1; rc=$?
   say "end $name rc=$rc: $(tail -1 "$RK_RUNS/$name.launch.txt")"
-  python3 - "$D" "$arm" <<'PY' >> "$LOG" 2>&1 || { say "SANITY FAIL $name; batch stopped"; exit 3; }
+  python3 - "$D" "$arm" <<'PY' >> "$LOG" 2>&1 || { say "SANITY FAIL $name (the run is void; never rerun its name); batch stopped"; exit 3; }
 import json, os, sys
 D, arm = sys.argv[1:3]
 r = json.load(open(os.path.join(D, "result.json")))
 assert r.get("type") == "result", r
 print("  result: subtype %s is_error %s turns %s cost %s duration_ms %s" % (r.get("subtype"), r.get("is_error"), r.get("num_turns"), r.get("total_cost_usd"), r.get("duration_ms")))
 assert "Not logged in" not in str(r.get("result")), "not logged in"
+assert not r.get("is_error"), "is_error true: %s" % str(r.get("result"))[:200]
+assert (r.get("num_turns") or 0) >= 2, "num_turns %s: the API refused the run" % r.get("num_turns")
+assert not any(w in str(r.get("result")).lower() for w in ("hit your weekly limit", "hit your 5-hour limit", "rate_limit", "rate limit")), "a limit text in the result: %s" % str(r.get("result"))[:200]
 assert os.path.exists(os.path.join(D, "transcript.jsonl")), "no transcript"
 if arm in ("R", "G"):
     assert os.path.exists(os.path.join(D, "hooks.log")), "no hooks.log"
