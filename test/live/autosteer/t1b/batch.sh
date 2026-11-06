@@ -33,7 +33,10 @@ for f in "$RK_BIN_R" "$RK_BIN_G" "$RK_PGRAPH" "$RK_PGRAPH_G" "$RK_BASELINE_LOG";
 [ "$(shasum -a 256 "$RK_BASELINE_LOG" | cut -d' ' -f1)" = "$T1_BASELINE_LOG_SHA256" ] || { say "baseline log digest moved"; exit 2; }
 [ -f "$RK_CONFIG_DIR/CLAUDE.md" ] && { say "$RK_CONFIG_DIR holds a CLAUDE.md"; exit 2; }
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(1 if d.get("hooks") else 0)' "$RK_CONFIG_DIR/settings.json" || { say "$RK_CONFIG_DIR/settings.json already holds hooks; arm U would not be unaided"; exit 2; }
-ORDER="U:t1b-u1 R:t1b-r1 G:t1b-g1 U:t1b-u2 R:t1b-r2 G:t1b-g2 U:t1b-u3 R:t1b-r3 G:t1b-g3"
+# RK_T1B_ORDER (the owner's word 2026-11-05 15:5x: spend less than the full nine when the first triple says the design
+# cannot vary) names the ARM:NAME pairs of one launch; the default is the whole n=3. A later launch over the remaining
+# names appends to the same log and rows file, and the means at the end read every judged t1b-* run.
+ORDER=${RK_T1B_ORDER:-"U:t1b-u1 R:t1b-r1 G:t1b-g1 U:t1b-u2 R:t1b-r2 G:t1b-g2 U:t1b-u3 R:t1b-r3 G:t1b-g3"}
 for spec in $ORDER; do [ -e "$RK_RUNS/${spec#*:}" ] && { say "$RK_RUNS/${spec#*:} exists"; exit 2; }; done
 if [ "${RK_T1B_SKIP_SMOKE:-}" != yes ]; then
   smoke=t1b-smoke-$(date -u +%H%M%S); say "smoke $smoke"

@@ -75,7 +75,7 @@ Facts verified while building the harness (2026-11-04, Claude Code 2.1.280, rash
 T1b (2026-11-05): slice T1 under the corrected harness. The pilot (nine runs, 06:53 to 10:41 PST, rows in the
 execution record) found three defects in the harness and none in the product (ledger B448 to B450; held down by
 test/acceptance/t1b_live_harness_test.go):
-- B448: Claude Code 2.1.280 sets CLAUDE_CODE_ENTRYPOINT=sdk-cli for the hooks of a `claude -p` session (hook-env.txt of
+- B448: Claude Code 2.1.280 sets the entrypoint variable to sdk-cli for the hooks of a `claude -p` session (hook-env.txt of
   every R and G run); hook.sh exported cli only when the variable was unset, so every note was built for an sdk session
   and suppressed by design (no_mirror for the brief and the claim-vs-record line, unverified_channel for the blast and
   masked-status notes). hook.sh now exports cli always, after recording what Claude Code set. Reproduced and fixed by
@@ -92,7 +92,9 @@ haiku turn through the G hooks, a few cents, run before any paid run) and channe
 Claude Code set recorded, no no_mirror or unverified_channel row, and for G the prompt hook's additionalContext and
 its transcript attachment). run.sh takes RK_SLICE (t1 or t1b), RK_PROMPT_FILE and RK_MODEL; batch.sh clears the last
 two so every batch run uses the frozen prompt and model, and the run directory records slice, model and prompt.
-The T1 slice's files stay frozen at 158c7a29 (TestT1B_TheT1SliceIsFrozen holds their digests); the T1 judge, re-run
-unchanged over the nine pilot trees under a PATH with go, gives the pilot's A3 to A7 readings. Open for the owner
-before the T1b batch: the turn cap (seven of nine pilot runs ended at 80 turns; T1b keeps 80 so its rows compare with
-the pilot's nine readings) and the cost gate (ruling 12: every pilot arm's n=3 mean was above 2.50 USD).
+The T1 slice's files stay frozen at 158c7a29 (the freeze test in t1b_live_harness_test.go holds their digests); the T1 judge, re-run
+unchanged over the nine pilot trees under a PATH with go, gives the pilot's A3 to A7 readings. The owner's word
+(2026-11-05 15:5x PST, before any T1b run): the smoke and the n=3 batch; the turn cap raised to 150 turns and a 15 USD
+cap in t1b/pins.txt (seven of nine pilot runs ended at 80 with partial trees, so the primary could not vary; A1a and
+A1b stay comparable with the pilot); runs serial through one directory; the nine pilot trees kept for a blinded A3
+read. The cost gate stays closed (ruling 12: every pilot arm's n=3 mean was above 2.50 USD), so n=10 waits for a word.
