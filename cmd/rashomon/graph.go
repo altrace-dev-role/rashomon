@@ -32,9 +32,10 @@ const graphUsage = `  rashomon graph index [DIR]     build DIR/.rashomon/graph.j
                                flag picks the scorer (the hook reads
                                RASHOMON_GRAPH_SCORER)
   rashomon graph knowledge import FILE...
-                               write the decisions and lessons FILE... hold
-                               (a failure ledger, decision lines, a directory
-                               of decision records) under .rashomon/knowledge/
+                               write the decisions, lessons and requirements
+                               FILE... hold (a failure ledger, decision lines,
+                               a directory of decision records, a truth table)
+                               under .rashomon/knowledge/
                                of the index at or above the working directory,
                                each row keyed to this repository, then index
                                again
@@ -278,12 +279,11 @@ type indexBrief struct {
 // applies to; "" when no unit is reached within four steps.
 func unitOf(s *graph.Store, rev graph.Rev, id graph.ID) graph.ID {
 	for step := 0; step < 4 && id != ""; step++ {
-		n, ok := s.Node(id, rev)
-		if !ok {
-			return ""
-		}
-		if n.Kind == "unit" {
+		if strings.HasPrefix(string(id), "unit:") {
 			return id
+		}
+		if _, ok := s.Node(id, rev); !ok {
+			return ""
 		}
 		next := graph.ID("")
 		if in := s.In(id, rev, graph.Contains, graph.Declares); len(in) > 0 {

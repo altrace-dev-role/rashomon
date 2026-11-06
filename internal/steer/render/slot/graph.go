@@ -126,9 +126,12 @@ type ConstFact struct {
 }
 
 // CodeFact is a file of the brief: what it declares, what that code calls,
-// writes, reads and imports, and the knowledge that applies to it.
+// writes, reads and imports, and the knowledge that applies to it. Role is
+// the part it plays in the request (RoleReuse, RoleConsumer) or "" for the
+// target's own file and a related file.
 type CodeFact struct {
 	Path    RelPath
+	Role    string
 	Names   []Ident
 	Consts  []ConstFact
 	Calls   []Ident
@@ -167,7 +170,7 @@ const (
 // left out by a check or cut at the list's cap; in the record form, every
 // item, since the record lists none.
 type Counts struct {
-	Names, Consts, Calls, Writes, Reads, Imports, Lessons, Writers, Readers int
+	Names, Consts, Calls, Writes, Reads, Imports, Lessons, Writers, Readers, Consumers int
 }
 
 // The list caps of one line: three names, callers or applying records, two
@@ -180,13 +183,15 @@ const (
 	maxLineCols    = 3
 )
 
-// GraphLine is one line of the brief: a code, table or knowledge fact, or
-// nothing, which a sparse template leaves out. Build one with NewCodeLine,
-// NewTableLine or NewKnowledgeLine; Record is its record form.
+// GraphLine is one line of the brief: a code, table, knowledge or unit
+// fact, or nothing, which a sparse template leaves out. Build one with
+// NewCodeLine, NewTableLine, NewKnowledgeLine or NewUnitLine; Record is its
+// record form.
 type GraphLine struct {
 	code  *CodeFact
 	table *TableFact
 	know  *KnowledgeFact
+	unit  *UnitFact
 	more  Counts
 	// The record form (record scope v4): the path's and the source's keyed
 	// digests and every list as its count.
@@ -228,8 +233,8 @@ func (l GraphLine) Knowledge() (KnowledgeFact, bool) {
 	return *l.know, true
 }
 
-// Kind is the line's kind: code, table, the knowledge kind, or "" for an
-// empty line.
+// Kind is the line's kind: code, table, unit, the knowledge kind, or ""
+// for an empty line.
 func (l GraphLine) Kind() string {
 	switch {
 	case l.code != nil:
@@ -238,6 +243,8 @@ func (l GraphLine) Kind() string {
 		return "table"
 	case l.know != nil:
 		return l.know.Kind
+	case l.unit != nil:
+		return "unit"
 	}
 	return ""
 }
@@ -252,7 +259,9 @@ func (l GraphLine) Digest() string       { return l.digest }
 func (l GraphLine) SourceDigest() string { return l.sourceDigest }
 
 // Lists reports a line that stands for anything.
-func (l GraphLine) Lists() bool { return l.code != nil || l.table != nil || l.know != nil }
+func (l GraphLine) Lists() bool {
+	return l.code != nil || l.table != nil || l.know != nil || l.unit != nil
+}
 
 // Validate checks the line as it is: at most one fact, every item passing
 // its check, counts at or above zero, and a record form that lists nothing.
@@ -260,8 +269,7 @@ func (l GraphLine) Validate() error {
 	if err := l.oneFact(); err != nil {
 		return err
 	}
-	m := l.more
-	if err := negative("graph line", m.Names, m.Consts, m.Calls, m.Writes, m.Reads, m.Imports, m.Lessons, m.Writers, m.Readers); err != nil {
+	if err := l.more.validate(); err != nil {
 		return err
 	}
 	if l.keyed {
@@ -274,14 +282,20 @@ func (l GraphLine) Validate() error {
 		return l.table.validate()
 	case l.know != nil:
 		return l.know.validate()
+	case l.unit != nil:
+		return l.unit.validate()
 	}
 	return nil
+}
+
+func (m Counts) validate() error {
+	return negative("graph line", m.Names, m.Consts, m.Calls, m.Writes, m.Reads, m.Imports, m.Lessons, m.Writers, m.Readers, m.Consumers)
 }
 
 // oneFact refuses a line holding two facts.
 func (l GraphLine) oneFact() error {
 	n := 0
-	for _, set := range []bool{l.code != nil, l.table != nil, l.know != nil} {
+	for _, set := range []bool{l.code != nil, l.table != nil, l.know != nil, l.unit != nil} {
 		if set {
 			n++
 		}
@@ -317,6 +331,12 @@ func (l GraphLine) validateKeyed() error {
 			return errors.New("slot: keyed graph line holds a path")
 		}
 		return k.validate()
+	case l.unit != nil:
+		u := *l.unit
+		if u.Path != "" || len(u.Names)+len(u.Consumers) > 0 {
+			return errors.New("slot: keyed graph line holds a path or a name")
+		}
+		return validIDs(u.Lessons)
 	}
 	return nil
 }
@@ -341,6 +361,9 @@ func validIdents(items []Ident) error {
 
 func (f CodeFact) validate() error {
 	if err := f.Path.Validate(); err != nil {
+		return err
+	}
+	if err := validRole(f.Role); err != nil {
 		return err
 	}
 	for _, c := range f.Consts {
@@ -376,8 +399,8 @@ func (f TableFact) validate() error {
 }
 
 func (f KnowledgeFact) validate() error {
-	if f.Kind != KnowledgeLesson && f.Kind != KnowledgeDecision {
-		return errors.New("slot: knowledge line has a kind outside lesson and decision")
+	if !knowledgeKind(f.Kind) {
+		return errors.New("slot: knowledge line has a kind outside lesson, decision and requirement")
 	}
 	if err := f.ID.Validate(); err != nil {
 		return err
@@ -410,13 +433,18 @@ func (l GraphLine) bind() (Value, error) {
 		return nil, err
 	}
 	m := l.more
-	if err := negative("graph line", m.Names, m.Consts, m.Calls, m.Writes, m.Reads, m.Imports, m.Lessons, m.Writers, m.Readers); err != nil {
+	if err := m.validate(); err != nil {
 		return nil, err
 	}
 	switch {
+	case l.unit != nil:
+		return l.bindUnit()
 	case l.code != nil:
 		c := *l.code
 		if err := c.Path.Validate(); err != nil {
+			return nil, err
+		}
+		if err := validRole(c.Role); err != nil {
 			return nil, err
 		}
 		c.Names, m.Names = keptIdents(c.Names, m.Names, maxLineIdents)
@@ -438,8 +466,8 @@ func (l GraphLine) bind() (Value, error) {
 		return GraphLine{table: &t, more: m}, nil
 	}
 	k := *l.know
-	if k.Kind != KnowledgeLesson && k.Kind != KnowledgeDecision {
-		return nil, errors.New("slot: knowledge line has a kind outside lesson and decision")
+	if !knowledgeKind(k.Kind) {
+		return nil, errors.New("slot: knowledge line has a kind outside lesson, decision and requirement")
 	}
 	if err := k.ID.Validate(); err != nil {
 		return nil, err
@@ -519,8 +547,9 @@ func keptTables(items []TableRef, more int) ([]TableRef, int) {
 
 // Record is l's record form: every list as its count, the path and the
 // source as their keyed digests (digest, intent's PathDigest), the knowledge
-// ids and the clause kept, since those are the repository's declared
-// records and never the request's words. It is built from the bound line,
+// ids, the clause and a code line's role kept, since those are the
+// repository's declared records and the engine's reading, never the
+// request's words. It is built from the bound line,
 // so the counts are what the printed line listed, left out and cut.
 func (l GraphLine) Record(digest func(string) string) GraphLine {
 	out := GraphLine{keyed: true}
@@ -535,7 +564,7 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 		m.Reads += len(c.Reads)
 		m.Imports += len(c.Imports)
 		out.digest = digest(string(c.Path))
-		out.code = &CodeFact{Lessons: slices.Clone(c.Lessons)}
+		out.code = &CodeFact{Role: c.Role, Lessons: slices.Clone(c.Lessons)}
 	case l.table != nil:
 		t := *l.table
 		m.Writers += len(t.Writers)
@@ -550,6 +579,12 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 			out.sourceDigest = digest(string(k.Source))
 		}
 		out.know = &KnowledgeFact{Kind: k.Kind, ID: k.ID, Clause: k.Clause}
+	case l.unit != nil:
+		u := *l.unit
+		m.Names += len(u.Names)
+		m.Consumers += len(u.Consumers)
+		out.digest = digest(string(u.Path))
+		out.unit = &UnitFact{Lessons: slices.Clone(u.Lessons)}
 	default:
 		return GraphLine{}
 	}

@@ -8,10 +8,13 @@ import "github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 // (RES-5). The record form (record scope v4) writes the path and the
 // source as their keyed digests, each list as its count and no name; the
 // columns a write names and a constant's value are rendered and not
-// recorded: the brief's text is what the line holds them in.
+// recorded: the brief's text is what the line holds them in. A unit line
+// (W-M1.12) holds its path, names, consumer files and lessons; a code line
+// its role word (slot.RoleReuse, slot.RoleConsumer) or none.
 type graphLineJSON struct {
 	Calls        []string        `json:"calls"`
 	Clause       string          `json:"clause"`
+	Consumers    []string        `json:"consumers"`
 	Counts       graphCountsJSON `json:"counts"`
 	Digest       string          `json:"digest"`
 	ID           string          `json:"id"`
@@ -22,6 +25,7 @@ type graphLineJSON struct {
 	Path         string          `json:"path"`
 	Readers      []string        `json:"readers"`
 	Reads        []string        `json:"reads"`
+	Role         string          `json:"role"`
 	Source       string          `json:"source"`
 	SourceDigest string          `json:"source_digest"`
 	Table        string          `json:"table"`
@@ -31,31 +35,38 @@ type graphLineJSON struct {
 
 // graphCountsJSON is each list's count beyond the listed items.
 type graphCountsJSON struct {
-	Calls   int `json:"calls"`
-	Consts  int `json:"consts"`
-	Imports int `json:"imports"`
-	Lessons int `json:"lessons"`
-	Names   int `json:"names"`
-	Readers int `json:"readers"`
-	Reads   int `json:"reads"`
-	Writers int `json:"writers"`
-	Writes  int `json:"writes"`
+	Calls     int `json:"calls"`
+	Consts    int `json:"consts"`
+	Consumers int `json:"consumers"`
+	Imports   int `json:"imports"`
+	Lessons   int `json:"lessons"`
+	Names     int `json:"names"`
+	Readers   int `json:"readers"`
+	Reads     int `json:"reads"`
+	Writers   int `json:"writers"`
+	Writes    int `json:"writes"`
 }
 
 // graphLineForm is one graph line as its steer line records it.
 func graphLineForm(l slot.GraphLine) graphLineJSON {
 	m := l.More()
 	out := graphLineJSON{
-		Calls: []string{}, Imports: []string{}, Lessons: []string{}, Names: []string{}, Readers: []string{},
+		Calls: []string{}, Consumers: []string{}, Imports: []string{}, Lessons: []string{}, Names: []string{}, Readers: []string{},
 		Reads: []string{}, Writers: []string{}, Writes: []string{},
-		Counts: graphCountsJSON{Calls: m.Calls, Consts: m.Consts, Imports: m.Imports, Lessons: m.Lessons, Names: m.Names,
+		Counts: graphCountsJSON{Calls: m.Calls, Consts: m.Consts, Consumers: m.Consumers, Imports: m.Imports, Lessons: m.Lessons, Names: m.Names,
 			Readers: m.Readers, Reads: m.Reads, Writers: m.Writers, Writes: m.Writes},
 		Digest: l.Digest(), Kind: l.Kind(), SourceDigest: l.SourceDigest(),
 	}
 	switch {
+	case l.Kind() == string(KindUnit):
+		u, _ := l.Unit()
+		out.Path, out.Names, out.Lessons = string(u.Path), identStrings(u.Names), idStrings(u.Lessons)
+		for _, c := range u.Consumers {
+			out.Consumers = append(out.Consumers, string(c))
+		}
 	case l.Kind() == "code":
 		c, _ := l.Code()
-		out.Path = string(c.Path)
+		out.Path, out.Role = string(c.Path), c.Role
 		out.Names = identStrings(c.Names)
 		for _, k := range c.Consts {
 			out.Names = append(out.Names, string(k.Name))

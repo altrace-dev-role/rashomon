@@ -83,16 +83,19 @@ func importOne(root, src string, idx *resolver, rid string) (SourceReport, error
 		r.Clause = c
 		var dropped int
 		r.AppliesTo, dropped = idx.resolve(r.Title+" "+r.Text, rid)
+		refs, missed := idx.resolveRefs(r.Evidence, rid)
+		r.AppliesTo = union(r.AppliesTo, refs)
 		sr.Resolved += len(r.AppliesTo)
-		sr.Dropped += dropped
+		sr.Dropped += dropped + missed
 	}
 	sr.Written, err = WriteFile(root, fileName(src), rows)
 	return sr, err
 }
 
-// parse reads src by its shape: a directory is decision records; a file
-// with at least one ledger row is a ledger; any other file holds decision
-// lines (a prose line that starts with a row id does not make a ledger).
+// parse reads src by its shape: a directory is decision records; a JSON
+// object with a rows list is a truth table; a file with at least one
+// ledger row is a ledger; any other file holds decision lines (a prose
+// line that starts with a row id does not make a ledger).
 func parse(src string) ([]Row, int, error) {
 	info, err := os.Stat(src)
 	if err != nil {
@@ -109,7 +112,11 @@ func parse(src string) ([]Row, int, error) {
 	file := filepath.Base(src)
 	rows, unparsed := ParseLedger(file, b)
 	if len(rows) == 0 {
-		rows, unparsed = ParseDecisions(file, b)
+		if tt, ok := ParseTruthTable(file, b); ok {
+			rows = tt
+		} else {
+			rows, unparsed = ParseDecisions(file, b)
+		}
 	}
 	for i := range rows {
 		rows[i].Source.Digest = hex.EncodeToString(sum[:])
@@ -205,16 +212,19 @@ func cut(s string, max int) string {
 	return strings.TrimRight(s, " ,;:-(")
 }
 
-// resolver is the index's files by relative path and by base name, and
-// its units by path, the targets a row's words can name.
+// resolver is the index's files by relative path and by base name, its
+// units by path, and its symbols by declaring file and short name
+// ("internal/platform/read.go#Read"): the targets a row's words and a
+// truth table's evidence can name.
 type resolver struct {
 	files map[string]graph.ID
 	bases map[string][]graph.ID
 	units map[string]graph.ID
+	syms  map[string][]graph.ID
 }
 
 func newResolver(g *graph.Store, rev graph.Rev) *resolver {
-	r := &resolver{files: map[string]graph.ID{}, bases: map[string][]graph.ID{}, units: map[string]graph.ID{}}
+	r := &resolver{files: map[string]graph.ID{}, bases: map[string][]graph.ID{}, units: map[string]graph.ID{}, syms: map[string][]graph.ID{}}
 	for _, n := range g.Nodes(rev) {
 		switch n.Kind {
 		case "file":
@@ -225,9 +235,64 @@ func newResolver(g *graph.Store, rev graph.Rev) *resolver {
 			if _, p, ok := strings.Cut(strings.TrimPrefix(string(n.ID), "unit:"), ":"); ok {
 				r.units[p] = n.ID
 			}
+		case "sym":
+			for _, e := range g.In(n.ID, rev, graph.Declares) {
+				key := strings.TrimPrefix(string(e.Src), "file:") + "#" + shortName(n.ID)
+				r.syms[key] = append(r.syms[key], n.ID)
+			}
 		}
 	}
 	return r
+}
+
+// shortName is a symbol's own name: the last dotted segment of its id's
+// last field (auth.sessions.is_expired is is_expired; Read is Read).
+func shortName(id graph.ID) string {
+	s := string(id)
+	s = s[strings.LastIndexByte(s, ':')+1:]
+	return s[strings.LastIndexByte(s, '.')+1:]
+}
+
+// resolveRefs is the global ids of evidence references, "file" or
+// "file#symbol", that the index holds, sorted and unique, and the count
+// it does not: a symbol reference applies to the symbol and to its file,
+// so a reader keyed by either finds the row.
+func (r *resolver) resolveRefs(refs []string, rid string) ([]string, int) {
+	ids := map[graph.ID]bool{}
+	missed := 0
+	for _, ref := range refs {
+		file, sym, hasSym := strings.Cut(ref, "#")
+		found := false
+		if id, ok := r.files[file]; ok {
+			ids[id], found = true, true
+		}
+		for _, id := range r.syms[file+"#"+sym] {
+			ids[id], found = true, true
+		}
+		if !found || hasSym && len(r.syms[file+"#"+sym]) == 0 {
+			missed++
+		}
+	}
+	out := make([]string, 0, len(ids))
+	for id := range ids {
+		out = append(out, string(graph.GlobalID(rid, id)))
+	}
+	sort.Strings(out)
+	return out, missed
+}
+
+// union is a and b sorted and unique.
+func union(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range append(append([]string{}, a...), b...) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // resolve is the global ids, sorted and unique, of the paths text names

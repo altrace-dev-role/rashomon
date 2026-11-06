@@ -15,18 +15,22 @@ import (
 // cap's, which the ladder in Build keeps by dropping lines.
 const MaxLines = 5
 
-// Line is one delivered line: the file, table, lesson or decision it
+// Line is one delivered line: the unit, file, table, lesson or decision it
 // stands for, the candidates it carries, its score (the best member's), and
 // for a lesson or decision the file line it anchors to, the best-scored
-// line it applies to. Slot is its facts as the slot holds them and Text the
-// sentence the slot rendered, both set by Build.
+// line it applies to. Role is the role the line holds (roles.go) or "" for
+// a related line Select kept; Consumers is the unit line's consumer files.
+// Slot is its facts as the slot holds them and Text the sentence the slot
+// rendered, both set by Build.
 type Line struct {
-	Key     graph.ID
-	Score   float64
-	Members []graph.ID
-	Anchor  graph.ID
-	Slot    slot.GraphLine
-	Text    string
+	Key       graph.ID
+	Score     float64
+	Members   []graph.ID
+	Anchor    graph.ID
+	Role      string
+	Consumers []graph.ID
+	Slot      slot.GraphLine
+	Text      string
 }
 
 // Decision is what Select did with one candidate.

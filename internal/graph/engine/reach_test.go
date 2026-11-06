@@ -11,23 +11,29 @@ import (
 
 // TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead (card GRAPH-REACH1):
 // from services/auth, the purge job in jobs/ and the table it writes lie
-// outside the working directory, so they gain ReachBonus and the purge
-// file takes a line above the files the agent can open by name; from the
-// index root nothing is outside, nothing gains, and the brief is the one
-// built before the term existed. No lesson or decision is in the store:
-// the first clause of the product statement tested alone.
+// outside the working directory, so they gain ReachBonus among the
+// candidates; from the index root nothing is outside and nothing gains.
+// On the role lines (W-M1.12) the clause is the consumer order: the unit
+// has two consumers outside it, the purge job and the test file, so the
+// first consumer line from jobs/ names the test file the agent cannot
+// open by name, from tests/ the purge job, and from the root, where both
+// are in reach, the one the prompt's words reach.
+// No lesson or decision is in the store: the first clause of the product
+// statement tested alone.
 func TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead(t *testing.T) {
 	sp := graphtest.New(t)
 	g, rev := sp.Store, graph.RevCommit(graphtest.Commit)
 	prompt := "make session expiry respect the org-level timeout override."
-	fromAuth := func(p string) string {
-		r, err := filepath.Rel("services/auth", p)
-		if err != nil {
-			t.Fatal(err)
+	from := func(dir string) func(string) string {
+		return func(p string) string {
+			r, err := filepath.Rel(dir, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return filepath.ToSlash(r)
 		}
-		return filepath.ToSlash(r)
 	}
-	cwd := Build(g, rev, prompt, Options{IDF: true, Rel: fromAuth})
+	cwd := Build(g, rev, prompt, Options{IDF: true, Rel: from("services/auth")})
 	root := Build(g, rev, prompt, Options{IDF: true})
 	t.Logf("from services/auth:\n%s\nbrief:\n%s", cwd.Explain(), cwd.Text())
 	t.Logf("from the root:\n%s\nbrief:\n%s", root.Explain(), root.Text())
@@ -54,25 +60,29 @@ func TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead(t *testing.T) {
 			t.Errorf("from the root %s = %+v, want nothing out of reach", c.ID, c)
 		}
 	}
-	// The purge file's line is in the brief and above every file line the
-	// agent can open by name; from the root it is cut.
-	at := func(b Brief, id graph.ID) int {
-		for i, l := range b.Lines[:b.Kept] {
-			if l.Key == id {
-				return i
+	// The first consumer line names what the agent cannot open by name.
+	consumerLine := func(b Brief) string {
+		for _, l := range b.Lines[:b.Kept] {
+			if l.Role == RoleConsumer {
+				return l.Text
 			}
 		}
-		return -1
+		return ""
 	}
-	if i := at(cwd, purge); i < 0 || !strings.HasPrefix(cwd.Lines[i].Text, "'../../jobs/purge_sessions.py'") {
-		t.Fatalf("from services/auth the purge file is line %d of\n%s", i+1, cwd.Text())
+	cases := []struct{ dir, want string }{
+		{"services/auth", "consumer '../../jobs/purge_sessions.py'"},
+		{"jobs", "consumer '../tests/unit/test_sessions.py'"},
+		{"tests", "consumer '../jobs/purge_sessions.py'"},
+		{"", "consumer 'jobs/purge_sessions.py'"},
 	}
-	for i, l := range cwd.Lines[:at(cwd, purge)] {
-		if strings.HasPrefix(string(l.Key), "file:") && !strings.HasPrefix(l.Text, "'../") {
-			t.Errorf("line %d %q is in reach yet above the purge file", i+1, l.Text)
+	for _, tc := range cases {
+		opt := Options{IDF: true}
+		if tc.dir != "" {
+			opt.Rel = from(tc.dir)
 		}
-	}
-	if i := at(root, purge); i >= 0 {
-		t.Errorf("from the root the purge file is line %d; the as-built rank cut it", i+1)
+		b := Build(g, rev, prompt, opt)
+		if got := consumerLine(b); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("from %q the first consumer line is %q, want prefix %q\n%s", tc.dir, got, tc.want, b.Text())
+		}
 	}
 }

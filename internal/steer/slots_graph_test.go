@@ -40,20 +40,20 @@ func TestGS3_TheLineRecordsAGraphLineAsFlatArrays(t *testing.T) {
 	for _, name := range []string{"line1", "line2"} {
 		t.Logf("slot record %s: %s", name, got[name])
 	}
-	wantCode := `{"calls":[],"clause":"","counts":{"calls":0,"consts":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"writers":0,"writes":0},` +
+	wantCode := `{"calls":[],"clause":"","consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"writers":0,"writes":0},` +
 		`"digest":"","id":"","imports":["auth.sessions"],"kind":"code","lessons":["les:INC-212"],"names":["run","BATCH"],` +
-		`"path":"../acme-ops/jobs/purge_sessions.py","readers":[],"reads":[],"source":"","source_digest":"","table":"","writers":[],"writes":["public.sessions"]}`
+		`"path":"../acme-ops/jobs/purge_sessions.py","readers":[],"reads":[],"role":"","source":"","source_digest":"","table":"","writers":[],"writes":["public.sessions"]}`
 	if string(got["line1"]) != wantCode {
 		t.Errorf("line1 = %s\nwant %s", got["line1"], wantCode)
 	}
 	wantKnow := `{"calls":[],"clause":"the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too",` +
-		`"counts":{"calls":0,"consts":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"writers":0,"writes":0},` +
+		`"consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"writers":0,"writes":0},` +
 		`"digest":"","id":"les:INC-212","imports":[],"kind":"lesson","lessons":[],"names":[],"path":"../acme-ops/jobs/purge_sessions.py",` +
-		`"readers":[],"reads":[],"source":"incidents/INC-212.md","source_digest":"","table":"","writers":[],"writes":[]}`
+		`"readers":[],"reads":[],"role":"","source":"incidents/INC-212.md","source_digest":"","table":"","writers":[],"writes":[]}`
 	if string(got["line2"]) != wantKnow {
 		t.Errorf("line2 = %s\nwant %s", got["line2"], wantKnow)
 	}
-	if string(got["line3"]) != string(got["line5"]) || !strings.HasPrefix(string(got["line3"]), `{"calls":[],"clause":"","counts":`) {
+	if string(got["line3"]) != string(got["line5"]) || !strings.HasPrefix(string(got["line3"]), `{"calls":[],"clause":"","consumers":[],"counts":`) {
 		t.Errorf("an empty line slot = %s", got["line3"])
 	}
 	if string(got["rev"]) != `"C1"` || string(got["matched"]) != "2" || string(got["reached"]) != "9" {

@@ -1,0 +1,12 @@
+# AC-M1.1 (PLAN section 8): five ambiguous prompts over rashomon, none naming a file, each with the unit the
+# brief's unit line must name and the paths a line may name without being off-task (the unit's own files are
+# always on task). Columns: id, unit, allow (comma-separated path prefixes), prompt.
+# The units are read from the truth table's evidence and PLAN 6.1 (PL12: pgraph tracks the build configuration,
+# pgraph/doc.go names the warning as a later slice; PG12: internal/verify/integrity.go; HD9: internal/brief
+# instructionsFact; ST12: cmd/rashomon/continuity.go resumeBriefing). Proposed 2026-11-06; the owner confirms or
+# corrects them before AC-M1.1 is called passed. Judged by TestACM11_ (internal/graph/engine/acm11_test.go).
+T1	internal/platform	cmd/rashomon/report_platform.go,cmd/rashomon/laststop.go,cmd/rashomon/blast.go,internal/verify/platform.go,test/prd/truth_table.json	Add blast radius to the platform read. For every Go symbol an edit touches, report two numbers: how many callers are proven, and how many are proven or possible. Show the numbers wherever the platform read already appears. Keep the existing tests green and add tests for the new numbers.
+PL12	pgraph	internal/platform/,cmd/rashomon/report_platform.go,test/prd/truth_table.json	Warn when an edit changes a file that no tracked build configuration covers. The warning must never report zero obligations. Show it wherever the platform obligations already appear and add tests for the untracked case.
+PG12	internal/verify	cmd/rashomon/,internal/hook/,test/prd/truth_table.json	Record an edit mark whenever a test is removed, a skip is added or an assertion is deleted, as user-only integrity flags, and show them in the integrity report. Keep the existing integrity tests green.
+HD9	internal/brief	cmd/rashomon/brief.go,internal/install/install.go,test/prd/truth_table.json	Report which instruction files were actually loaded this session, not just the ones present in the tree, in the brief that already lists the instruction facts.
+ST12	cmd/rashomon	internal/store/,internal/steer/,internal/intent/,test/prd/truth_table.json	When a session resumes after a compaction, the continuity briefing should name the requirements still open and the units touched so far, and keep the existing resume tests green.

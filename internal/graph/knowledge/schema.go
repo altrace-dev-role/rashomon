@@ -33,6 +33,9 @@ const (
 	KindException  = "exception"
 	KindFlow       = "flow"
 	KindObjective  = "objective"
+	// KindRequirement is a row of the repository's truth table (W-M1.12):
+	// a product requirement with its status and what is missing.
+	KindRequirement = "requirement"
 )
 
 // The lifecycle statuses: a row is a candidate until a person approves it.
@@ -127,7 +130,7 @@ type File struct {
 }
 
 // prefixes key a node id by kind.
-var prefixes = map[string]string{KindDecision: "dec", KindLesson: "les", KindIncident: "inc", KindConvention: "conv", KindException: "exc", KindFlow: "flow", KindObjective: "obj"}
+var prefixes = map[string]string{KindDecision: "dec", KindLesson: "les", KindIncident: "inc", KindConvention: "conv", KindException: "exc", KindFlow: "flow", KindObjective: "obj", KindRequirement: "req"}
 
 // NodeID is the store's id for a row: the kind's prefix and the source's
 // own id (les:B227, dec:D161).

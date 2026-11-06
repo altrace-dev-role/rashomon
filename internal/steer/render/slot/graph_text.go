@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// The graph line as one sentence (card GRAPH-SLOT1): Text and the three
-// renderers it dispatches to, one per fact kind, split from graph.go for
-// Law 10. Every repository name renders inside a quote (quoted); an item
+// The graph line as one sentence (card GRAPH-SLOT1): Text and the
+// renderers it dispatches to, one per fact kind (the unit's in
+// graph_unit.go), split from graph.go for Law 10. A code line with a role
+// opens with the role's word. Every repository name renders inside a quote (quoted); an item
 // left out by bind is reported as its count.
 
 // Text is the line as one sentence; "none" for an empty line, which a
@@ -20,6 +21,8 @@ func (l GraphLine) Text() string {
 		return l.tableText()
 	case l.know != nil:
 		return l.knowText()
+	case l.unit != nil:
+		return l.unitText()
 	}
 	return "none"
 }
@@ -29,6 +32,9 @@ func (l GraphLine) codeText() string {
 	head := c.Path.Text()
 	if l.keyed {
 		head = "a file on record"
+	}
+	if c.Role != "" {
+		head = c.Role + " " + head
 	}
 	var parts []string
 	if p := phrase("declares", identTexts(c.Names), m.Names, "names"); p != "" {

@@ -222,45 +222,114 @@ type ScopeRow struct {
 	Seed  bool
 }
 
+// corpus is every code node at a revision with its fields, the unit each
+// belongs to, and the document frequency of each token over the nodes
+// (df, any field) and over their names and paths alone (nameDF): one pass
+// over the store serves Scope and Units.
+type corpus struct {
+	rev    graph.Rev
+	nodes  []graph.Node
+	fields []Fields
+	units  []string
+	index  map[graph.ID]int
+	unitID map[string]graph.ID
+	df     map[string]int
+	nameDF map[string]int
+}
+
+// scan reads the corpus at rev. A lesson or decision is not in it: it
+// reaches the brief only by applying to code the request's words selected,
+// so its own words cannot vote for it (the B' confound, GRAPH-SLOT1); a
+// unit is not scored but is recorded, since Units resolves to one.
+func scan(g *graph.Store, rev graph.Rev) corpus {
+	c := corpus{rev: rev, index: map[graph.ID]int{}, unitID: map[string]graph.ID{}, df: map[string]int{}, nameDF: map[string]int{}}
+	for _, n := range g.Nodes(rev) {
+		if n.Kind == "unit" {
+			c.unitID[unitPath(n.ID)] = n.ID
+			continue
+		}
+		if n.Kind == "mod" || IsKnowledge(n.Kind) {
+			continue
+		}
+		f := FieldsOf(n)
+		c.index[n.ID] = len(c.nodes)
+		u, uid := unitOf(g, rev, n)
+		if u != "" {
+			c.unitID[u] = uid
+		}
+		c.nodes, c.fields, c.units = append(c.nodes, n), append(c.fields, f), append(c.units, u)
+		seen := map[string]bool{}
+		for _, t := range slices.Concat(f.Name, f.Path) {
+			if !seen[t] {
+				seen[t] = true
+				c.nameDF[t]++
+				c.df[t]++
+			}
+		}
+		for _, t := range f.Summary {
+			if !seen[t] {
+				seen[t] = true
+				c.df[t]++
+			}
+		}
+	}
+	return c
+}
+
+// unitPath is the path a unit id names, after its language.
+func unitPath(id graph.ID) string {
+	_, p, _ := strings.Cut(strings.TrimPrefix(string(id), "unit:"), ":")
+	return p
+}
+
+// unitOf is the path and id of the unit holding n: a symbol's from its
+// id (the grammar is graph's, ids.go), a file's through the containing
+// edge, none for the rest. The unit need not be a node of its own: an
+// index that asserts the containing edges alone still names it.
+func unitOf(g Reader, rev graph.Rev, n graph.Node) (string, graph.ID) {
+	s := string(n.ID)
+	switch {
+	case strings.HasPrefix(s, "sym:"):
+		if parts := strings.Split(s, ":"); len(parts) > 2 {
+			return parts[2], graph.UnitID(parts[1], parts[2])
+		}
+	case strings.HasPrefix(s, "file:"):
+		for _, e := range g.In(n.ID, rev, graph.Contains) {
+			return unitPath(e.Src), e.Src
+		}
+	}
+	return "", ""
+}
+
+// weights is each prompt token's weight: ln((N+1)/df) under idf, 1 otherwise.
+func (c corpus) weights(toks []string, idf bool) map[string]float64 {
+	w := map[string]float64{}
+	for _, t := range toks {
+		w[t] = 1
+		if idf {
+			w[t] = 0
+			if c.df[t] > 0 {
+				w[t] = math.Log(float64(len(c.nodes)+1) / float64(c.df[t]))
+			}
+		}
+	}
+	return w
+}
+
 // Scope scores every code node at rev against the prompt and returns the seeds
 // (at most MaxSeeds, each at or over SeedFloor), every row that scored,
 // and the weight each prompt token carried.
 func Scope(g *graph.Store, rev graph.Rev, prompt string, opt Options) ([]Seed, []ScopeRow, map[string]float64) {
+	return scan(g, rev).scope(prompt, opt)
+}
+
+func (c corpus) scope(prompt string, opt Options) ([]Seed, []ScopeRow, map[string]float64) {
 	toks := uniq(Tokens(prompt))
-	var nodes []graph.Node
-	var fields []Fields
-	df := map[string]int{}
-	for _, n := range g.Nodes(rev) {
-		// A lesson or decision never seeds: it reaches the brief only by
-		// applying to code the request's words selected, so its own words
-		// cannot vote for it (the B' confound, GRAPH-SLOT1).
-		if n.Kind == "unit" || n.Kind == "mod" || IsKnowledge(n.Kind) {
-			continue
-		}
-		f := FieldsOf(n)
-		nodes, fields = append(nodes, n), append(fields, f)
-		seen := map[string]bool{}
-		for _, t := range slices.Concat(f.Name, f.Summary, f.Path) {
-			if !seen[t] {
-				seen[t] = true
-				df[t]++
-			}
-		}
-	}
-	weights := map[string]float64{}
-	for _, t := range toks {
-		weights[t] = 1
-		if opt.IDF {
-			weights[t] = 0
-			if df[t] > 0 {
-				weights[t] = math.Log(float64(len(nodes)+1) / float64(df[t]))
-			}
-		}
-	}
+	weights := c.weights(toks, opt.IDF)
 	weight := func(t string) float64 { return weights[t] }
 	var rows []ScopeRow
-	for i, n := range nodes {
-		s, hits := Score(toks, fields[i], weight)
+	for i, n := range c.nodes {
+		s, hits := Score(toks, c.fields[i], weight)
 		if s > 0 {
 			rows = append(rows, ScopeRow{ID: n.ID, Kind: n.Kind, Score: s, Hits: hits})
 		}

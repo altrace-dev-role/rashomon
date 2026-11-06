@@ -46,10 +46,10 @@ func TierWeight(t graph.Tier) float64 {
 	return 0.5
 }
 
-// IsKnowledge is whether a node is a lesson or a decision.
+// IsKnowledge is whether a node is a lesson, a decision or a requirement.
 func IsKnowledge(kind string) bool {
 	switch kind {
-	case "lesson", "decision", "incident", "convention", "exception", "flow", "objective":
+	case "lesson", "decision", "incident", "convention", "exception", "flow", "objective", "requirement":
 		return true
 	}
 	return false

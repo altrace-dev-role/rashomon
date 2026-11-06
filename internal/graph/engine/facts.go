@@ -17,17 +17,43 @@ func lineFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel 
 	if n, ok := g.Node(l.Key, rev); ok && IsKnowledge(n.Kind) {
 		return slot.NewKnowledgeLine(knowledgeFact(g, rev, n, l.Anchor, rel))
 	}
+	if strings.HasPrefix(string(l.Key), "unit:") {
+		return slot.NewUnitLine(unitFact(g, rev, l, rel))
+	}
 	if strings.HasPrefix(string(l.Key), "tbl:") {
 		return slot.NewTableLine(tableFact(g, rev, l, byID))
 	}
 	return slot.NewCodeLine(codeFact(g, rev, l, byID, rel))
 }
 
+// unitFact is a unit line's facts: its path, the target symbols it
+// declares (the line's members), the files outside it that consume it,
+// and the knowledge that applies to the unit itself.
+func unitFact(g Reader, rev graph.Rev, l Line, rel func(string) string) slot.UnitFact {
+	f := slot.UnitFact{Path: slot.RelPath(rel(unitPath(l.Key)))}
+	for _, m := range l.Members {
+		if strings.HasPrefix(string(m), "sym:") {
+			f.Names = appendIdent(f.Names, short(m))
+		}
+	}
+	for _, c := range l.Consumers {
+		f.Consumers = append(f.Consumers, slot.RelPath(rel(strings.TrimPrefix(string(c), "file:"))))
+	}
+	f.Lessons = appendKnowledge(f.Lessons, knowledgeOf(g, l.Key, rev))
+	return f
+}
+
 // codeFact is a file line's facts: the members declared in it, their
-// relations in the order calls, writes, reads, imports, and the knowledge
-// that applies to any member.
+// relations in the order calls, writes, reads, imports, the knowledge
+// that applies to any member, and the role the line holds.
 func codeFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel func(string) string) slot.CodeFact {
 	f := slot.CodeFact{Path: slot.RelPath(rel(strings.TrimPrefix(string(l.Key), "file:")))}
+	switch l.Role {
+	case RoleReuse:
+		f.Role = slot.RoleReuse
+	case RoleConsumer:
+		f.Role = slot.RoleConsumer
+	}
 	for _, m := range l.Members {
 		c := byID[m]
 		n, ok := g.Node(m, rev)
@@ -77,13 +103,19 @@ func tableFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate) slo
 
 // knowledgeFact is a lesson's or decision's own line: its id, its path,
 // the one clause the record declares (attr clause) and its source
-// document. The path is the file the record declares it applies to (the
-// first file among its applies_to targets), else the best-scored file line
-// it reached through a table or a symbol (Line.Anchor), else none.
+// document. The path is the line's anchor (the file the line was found
+// through: a role file, or the best-scored file line reached through a
+// table or a symbol) when the record applies to it or to a symbol it
+// declares, else the first file among its applies_to targets, else the
+// anchor, else none.
 func knowledgeFact(g Reader, rev graph.Rev, n graph.Node, anchor graph.ID, rel func(string) string) slot.KnowledgeFact {
 	f := slot.KnowledgeFact{Kind: n.Kind, ID: slot.KnowledgeID(n.ID), Clause: slot.Approved(n.Attrs["clause"]), Source: slot.Path(n.Attrs["source"])}
 	target := anchor
 	for _, e := range g.Out(n.ID, rev, graph.AppliesTo) {
+		if anchor != "" && declaring(g, rev, e.Dst) == anchor {
+			target = anchor
+			break
+		}
 		if strings.HasPrefix(string(e.Dst), "file:") && (target == anchor || e.Dst < target) {
 			target = e.Dst
 		}

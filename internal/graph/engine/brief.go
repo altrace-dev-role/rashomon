@@ -24,6 +24,7 @@ type Brief struct {
 	Scorer       string
 	Seeds        []Seed
 	Rows         []ScopeRow
+	Roles        Roles
 	Neighborhood int
 	Candidates   []Candidate
 	Lines        []Line
@@ -63,9 +64,11 @@ func (o Options) rel() func(string) string {
 	return o.Rel
 }
 
-// Build runs Scope, Traverse, Rank and Select over g at rev for prompt,
-// binds each selected line's facts into its slot, and renders the brief,
-// dropping the last line until the message fits the briefing cap.
+// Build runs Scope, the roles stage (Parse, FindRoles), Traverse, Rank
+// and Select over g at rev for prompt, puts the role lines before the
+// related lines Select kept, binds each line's facts into its slot, and
+// renders the brief, dropping the last line until the message fits the
+// briefing cap.
 func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	if opt.Lessons {
 		return buildLessons(g, rev, prompt, opt)
@@ -75,20 +78,24 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	if opt.IDF {
 		b.Scorer = "idf"
 	}
-	b.Seeds, b.Rows, b.Weights = Scope(g, rev, prompt, opt)
+	c := scan(g, rev)
+	b.Seeds, b.Rows, b.Weights = c.scope(prompt, opt)
+	rel := opt.rel()
+	outside := Outside(g, rev, rel)
+	b.Roles = FindRoles(g, c, b.Rows, b.Weights, Parse(prompt), b.Tokens, outside)
 	ids := make([]graph.ID, len(b.Seeds))
 	for i, s := range b.Seeds {
 		ids[i] = s.ID
 	}
 	nb := Traverse(g, ids, Depth, rev)
 	b.Neighborhood = len(nb.Distance)
-	rel := opt.rel()
-	b.Candidates = Rank(g, nb, b.Seeds, Outside(g, rev, rel))
-	b.Lines, b.Decisions = Select(g, rev, b.Candidates)
+	b.Candidates = Rank(g, nb, b.Seeds, outside)
+	related, decisions := Select(g, rev, b.Candidates)
 	byID := map[graph.ID]Candidate{}
 	for _, c := range b.Candidates {
 		byID[c.ID] = c
 	}
+	b.Lines, b.Decisions = merge(g, rev, b.Roles, related, decisions, byID)
 	for i := range b.Lines {
 		b.Lines[i].Slot = lineFact(g, rev, b.Lines[i], byID, rel)
 	}
@@ -175,6 +182,70 @@ func (b Brief) Explain() string {
 	return fmt.Sprintf("prompt: %q\nscorer: %s  tokens: %s\n", b.Prompt, b.Scorer, strings.Join(toks, " ")) + b.tables(true)
 }
 
+// roles is the frame and the unit claims, with the phrases' words when
+// hits is set and their counts otherwise, then the roles by id.
+func (b Brief) roles(hits bool) string {
+	r := b.Roles
+	var sb strings.Builder
+	if hits {
+		fmt.Fprintf(&sb, "\nframe: targets %s; additions %s; constraints %s; uses %s; verbs %s\n", phrases(r.Frame.Targets), phrases(r.Frame.Additions), phrases(r.Frame.Constraints), phrases(r.Frame.Uses), r.Frame.Verbs)
+		fmt.Fprintf(&sb, "units (phrase [%s], fallback %v; floor %.2f):\n", strings.Join(r.Target, " "), r.Fallback, UnitFloor)
+	} else {
+		fmt.Fprintf(&sb, "\nframe: targets %d; additions %d; constraints %d; uses %d; verbs %d\n", len(r.Frame.Targets), len(r.Frame.Additions), len(r.Frame.Constraints), len(r.Frame.Uses), len(r.Frame.Verbs))
+		fmt.Fprintf(&sb, "units (phrase of %d tokens, fallback %v; floor %.2f):\n", len(r.Target), r.Fallback, UnitFloor)
+	}
+	for _, p := range r.Picks {
+		kind := "label"
+		if p.Callable {
+			kind = "callable"
+		}
+		fmt.Fprintf(&sb, "  %-10s %5.2f of %5.2f  %-32s nodes %-3d %-8s prec %.2f mass %5.2f  %s\n", p.Class, p.Covered, p.Of, p.Path, len(p.Nodes), kind, p.Precision, p.Mass, p.Refused)
+	}
+	if n := len(r.ReuseClaims); n > 0 {
+		fmt.Fprintf(&sb, "reuse claims (%d; use, add, mass; via the addition's code; in unit; called outside):\n", n)
+	}
+	for i, cl := range r.ReuseClaims {
+		if i == 8 {
+			fmt.Fprintf(&sb, "  ... %d more\n", len(r.ReuseClaims)-i)
+			break
+		}
+		fmt.Fprintf(&sb, "  use %6.2f add %6.2f mass %6.2f  via %-5v in %-5v out %-5v nodes %-3d %s\n", cl.Use, cl.Add, cl.Mass, cl.ViaAdd, cl.In, cl.Reused, cl.Nodes, cl.File)
+	}
+	fmt.Fprintf(&sb, "roles (%s): unit %s; file %s; targets %d; reuse %s; consumers %s; knowledge %s\n",
+		r.Why, r.Unit, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
+	return sb.String()
+}
+
+func phrases(ps []Phrase) string {
+	if len(ps) == 0 {
+		return "none"
+	}
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.String()
+	}
+	return strings.Join(out, " ")
+}
+
+func roleFiles(rfs []RoleFile) string {
+	ids := make([]graph.ID, len(rfs))
+	for i, rf := range rfs {
+		ids[i] = rf.File
+	}
+	return joinIDs(ids)
+}
+
+func joinIDs(ids []graph.ID) string {
+	if len(ids) == 0 {
+		return "none"
+	}
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = string(id)
+	}
+	return strings.Join(out, ", ")
+}
+
 // Evidence is Explain with nothing of the prompt: no prompt line, no
 // token and no matched word on a scope row, only their counts. D160 reads
 // the prompt in memory and stores it nowhere, so what the hook path writes
@@ -202,6 +273,7 @@ func (b Brief) tables(hits bool) string {
 			fmt.Fprintf(&sb, "%s %6.2f  %-8s %s  %d\n", mark, r.Score, r.Kind, r.ID, len(r.Hits))
 		}
 	}
+	sb.WriteString(b.roles(hits))
 	fmt.Fprintf(&sb, "\nrank (%d reached at depth %d):\n", b.Neighborhood, Depth)
 	for _, c := range b.Candidates {
 		reach := 0
