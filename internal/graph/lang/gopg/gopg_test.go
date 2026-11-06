@@ -219,6 +219,21 @@ func TestGopg_FilesRestrict(t *testing.T) {
 	if _, ok := edges[key("sym:go:shape:func:Sum", graph.MayCall, "sym:go:shape:method:Square.Area")]; !ok {
 		t.Errorf("the kept package's may_call missing")
 	}
+	// The other end: with app kept and shape not, app's edges into shape
+	// (Run calls Sum, Holder embeds and implements Shape) are dropped too.
+	recs, err = Resolver{}.Extract(shapes(t), []string{"app/app.go"}, graph.RevCommit("c1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes, edges = split(recs)
+	if _, ok := nodes["sym:go:app:func:Run"]; !ok {
+		t.Errorf("Run missing from the kept package")
+	}
+	for k := range edges {
+		if strings.Contains(k, ":shape") {
+			t.Errorf("edge %q reaches into the unkept package", strings.ReplaceAll(k, "\x00", " "))
+		}
+	}
 }
 
 // TestGopg_ErrorsWithoutSync (W-M1.3): a root with no sync is an error

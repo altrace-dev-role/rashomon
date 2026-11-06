@@ -216,3 +216,27 @@ func TestBuild_ReadsKnowledgeDir(t *testing.T) {
 		t.Errorf("a schema-2 knowledge file built: %v", err)
 	}
 }
+
+// TestBuild_SkipsDotAndVendorDirs (W-DEBT.6): a dot directory, node_modules
+// and __pycache__ are never walked, whatever files they hold; the claimed
+// count and the store are the same as without them.
+func TestBuild_SkipsDotAndVendorDirs(t *testing.T) {
+	root := shapes(t)
+	for _, p := range []string{"py/.cache/x.py", "py/node_modules/y.py", "py/__pycache__/z.py", ".hidden/h.py"} {
+		put(t, filepath.Join(root, p), "def hidden():\n    return 0\n")
+	}
+	r, err := Build(root, "c1", twoLangs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Files != 3 {
+		t.Errorf("files = %d; want the two Go files and the one Python file, none under a skipped directory", r.Files)
+	}
+	for _, n := range r.Store.Nodes(graph.RevCommit("c1")) {
+		for _, bad := range []string{".cache/", "node_modules/", "__pycache__/", ".hidden/"} {
+			if strings.Contains(string(n.ID), bad) {
+				t.Errorf("node %s is under a skipped directory", n.ID)
+			}
+		}
+	}
+}
