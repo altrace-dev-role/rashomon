@@ -208,13 +208,17 @@ func alnum(c byte) bool {
 }
 
 // cut is s within max bytes: at its last sentence end past 40 bytes, else
-// its last space, with trailing punctuation dropped.
+// its last clause end ("; ") past 40 bytes, else its last space, with
+// trailing punctuation dropped, so a cut rule or failure reads whole.
 func cut(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
 	if i := strings.LastIndex(s[:max], ". "); i >= 40 {
 		return s[:i+1]
+	}
+	if i := strings.LastIndex(s[:max], "; "); i >= 40 {
+		return s[:i]
 	}
 	if j := strings.LastIndexByte(s[:max], ' '); j > 0 {
 		s = s[:j]

@@ -218,7 +218,8 @@ func TestImport_ADRDirectory(t *testing.T) {
 // TestImport_ClauseValidates (W-M1.6): every written clause passes the
 // approved-text rules or is empty; a clause the rules refuse (a banned
 // word, a quote that is no apostrophe) leaves the row title-only and the
-// report says so; a long clause is cut at a sentence or word boundary.
+// report says so; a long clause is cut at a sentence, clause ("; ") or
+// word boundary.
 func TestImport_ClauseValidates(t *testing.T) {
 	root := t.TempDir()
 	long := strings.Repeat("a changed package reruns every test that names it ", 5)
@@ -227,7 +228,8 @@ func TestImport_ClauseValidates(t *testing.T) {
 		"B2 | t | w | url row | p | e | c | no | see https://example.com/x for the rule\n"+
 		"B3 | t | w | long row | p | e | c | no | "+long+"\n"+
 		"B4 | t | w | unicode and symbols row | p | e | c | no | the `claims` comparator [sees] a done’s run — or none\n"+
-		"B5 | t | w | quote row | p | e | c | no | a 'quoted' word\n")
+		"B5 | t | w | quote row | p | e | c | no | a 'quoted' word\n"+
+		"B6 | t | w | clause row | p | e | c | no | a test of a wall-clock budget injects its clock or its budget, so it reads the logic, never the machine; a local gate that runs packages in parallel is the second place a budget meets the machine\n")
 	rep, err := Import(root, []string{src}, indexed(), rid, rev)
 	if err != nil {
 		t.Fatal(err)
@@ -253,8 +255,11 @@ func TestImport_ClauseValidates(t *testing.T) {
 	if c := rows[3].Clause; c != "the claims comparator sees a dones run or none" {
 		t.Errorf("B4 clause = %q; want symbols and non-ASCII folded away", c)
 	}
-	if rep.Sources[0].Rows != 5 || rep.Sources[0].TitleOnly != 2 || rep.Sources[0].Clauses != 3 || len(rep.Sources[0].Notes) != 2 || !strings.Contains(rep.Sources[0].Notes[0], "B1") {
-		t.Errorf("report = %+v; want 5 rows, 2 title-only with a note each, 3 with a clause", rep.Sources[0])
+	if c := rows[5].Clause; c != "a test of a wall-clock budget injects its clock or its budget, so it reads the logic, never the machine" {
+		t.Errorf("B6 clause = %q; want the cut at the clause end, so the rule reads whole", c)
+	}
+	if rep.Sources[0].Rows != 6 || rep.Sources[0].TitleOnly != 2 || rep.Sources[0].Clauses != 4 || len(rep.Sources[0].Notes) != 2 || !strings.Contains(rep.Sources[0].Notes[0], "B1") {
+		t.Errorf("report = %+v; want 6 rows, 2 title-only with a note each, 4 with a clause", rep.Sources[0])
 	}
 }
 
