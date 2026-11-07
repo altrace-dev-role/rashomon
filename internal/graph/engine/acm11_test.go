@@ -50,6 +50,11 @@ func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 			got := briefUnit(g, rev, b)
 			basis, runner, has := unitDisclosure(b)
 			ok := slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
+			if os.Getenv("RASHOMON_ACM11_DUMP") != "" {
+				for _, l := range b.Lines {
+					t.Logf("DUMP %s\t%s\t%s\t%s", r[0], l.Role, l.Key, strings.ReplaceAll(l.Text, "\n", " "))
+				}
+			}
 			if ok {
 				hits++
 			}
