@@ -243,14 +243,39 @@ func TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak(t *testing.T) {
 // what the code holds moves, not a change in when the runtime frees it.
 // Darwin is left as it was: its rows are the reference machine's and
 // Karthik re-measures them (budgets.json, platforms.darwin/arm64). GODEBUG is
-// stripped from the rig's env (newRig), so this is the only GODEBUG a
-// measured child has.
+// stripped from the rig's env (newRig), so the only other GODEBUG a measured
+// child has is concurrentGCEnv, which a concurrentGCCases row sets itself and
+// which measuredEnv leaves in place of gcstoptheworld=2.
 func measuredEnv(env []string, goos string) []string {
 	if goos != "linux" {
 		return env
 	}
-	return append(append([]string(nil), env...), "GOMAXPROCS=1", "GODEBUG=gcstoptheworld=2")
+	out := append(append([]string(nil), env...), "GOMAXPROCS=1")
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "GODEBUG=") {
+			return out
+		}
+	}
+	return append(out, "GODEBUG=gcstoptheworld=2")
 }
+
+// concurrentGCCases are the rows whose Linux reading is taken at GOMAXPROCS=1
+// with the collector left concurrent (concurrentGCEnv). The one row is the
+// prompt's graph read: the prompt entry runs under the hook's 32 MiB soft
+// limit (applyHookRuntimeLimits) and the store it loads is 16.9 MiB live on
+// the synthetic index, so the heap goal sits at the live heap. The runtime's
+// GC CPU limiter keeps such a process moving by skipping mark assists
+// (runtime/mgcmark.go), but gcstoptheworld=2 runs every cycle with the world
+// stopped, so there are no assists to skip and each new span starts another
+// full cycle: one reading ran past three minutes and was killed, where the
+// concurrent collector at one P reads it in 0.25 s. Users run the concurrent
+// collector. The compact read model (PLAN, M2) fits the load in the limit's
+// headroom, and the row leaves this list with it.
+var concurrentGCCases = map[string]bool{graphPromptCase: true}
+
+// concurrentGCEnv names the default collector, so measuredEnv adds no
+// gcstoptheworld=2 to a concurrentGCCases row.
+const concurrentGCEnv = "GODEBUG=gcstoptheworld=0"
 
 // runOnce runs the binary once with stdin and env and returns its peak RSS
 // in MiB, what it printed, what it wrote to stderr, and the reaper's error,
@@ -469,8 +494,11 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) (m
 // TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly: every Linux reading is taken
 // under GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2 (measuredEnv), the
 // caller's own environment is not altered, and darwin's is exactly what the
-// caller passed, since its rows are the reference machine's. Break: set them on
-// every platform, or drop either, and this fails.
+// caller passed, since its rows are the reference machine's. The one
+// exception is pinned by name: a concurrentGCCases row keeps GOMAXPROCS=1 and
+// its own concurrentGCEnv, and recap.pending.graph8MiB is the only such row.
+// Break: set them on every platform, drop either, let a row's GODEBUG lose
+// GOMAXPROCS=1, or add a row to the exception, and this fails.
 func TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly(t *testing.T) {
 	in := make([]string, 1, 4) // spare capacity: an append in place would show in in[:2]
 	in[0] = "A=1"
@@ -483,6 +511,13 @@ func TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly(t *testing.T) {
 	}
 	if got := measuredEnv(in, "darwin"); len(got) != 1 || got[0] != "A=1" {
 		t.Errorf("darwin env = %q, want it untouched", got)
+	}
+	got = measuredEnv([]string{"A=1", concurrentGCEnv}, "linux")
+	if len(got) != 3 || got[1] != concurrentGCEnv || got[2] != "GOMAXPROCS=1" {
+		t.Errorf("concurrent-GC linux env = %q, want A=1, %s and GOMAXPROCS=1, no gcstoptheworld=2", got, concurrentGCEnv)
+	}
+	if len(concurrentGCCases) != 1 || !concurrentGCCases[graphPromptCase] {
+		t.Errorf("concurrent-GC rows = %v, want %s alone", concurrentGCCases, graphPromptCase)
 	}
 }
 
@@ -574,6 +609,9 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				// PayloadBytes, in a session steering speaks to.
 				r.env = append(r.env, blastEnv...)
 				mk, control = r.blastPost(t, c.PayloadBytes)
+			}
+			if concurrentGCCases[c.ID] {
+				r.env = append(r.env, concurrentGCEnv)
 			}
 			got, attributable, floorWhy := r.medianRSS(t, command, mk)
 			if !attributable {
