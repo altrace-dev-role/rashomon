@@ -172,12 +172,14 @@ func TestUnits_ASameTokenTieGoesToPrecisionThenMass(t *testing.T) {
 	}
 }
 
-// A symbol outside the unit is the thing to reuse only when the unit
-// already calls it, when its name holds a word of what the request says
-// to use, or when its name claims the addition (the HD9 shape: the
-// instruction loader in store claims "instruction files loaded"; a doc
-// that mentions the words, or a name holding one lesser word of the
-// phrase, is a neighbour and never a reuse).
+// A symbol outside the unit is a reuse claim when the unit already
+// calls it, when its name holds a word of what the request says to use,
+// or when its name claims the addition (the HD9 shape: the instruction
+// loader in store claims "instruction files loaded"; a doc that mentions
+// the words, or a name holding one lesser word of the phrase, is a
+// neighbour and never a claim). The line goes to the claim with a basis
+// alone (W-M1.22): the dependency the unit already calls, hit on one
+// lesser word, ranks as a claim for Explain and is no line.
 func TestReuse_OutsideTheUnitNeedsAUseAClaimOrADependency(t *testing.T) {
 	g := synth(t, []synFile{
 		{"brief", "brief/brief.py", []synSym{fn("brief")}},
@@ -191,8 +193,11 @@ func TestReuse_OutsideTheUnitNeedsAUseAClaimOrADependency(t *testing.T) {
 		t.Fatalf("roles %+v", r)
 	}
 	want := []graph.ID{graph.FileID("store/record.py"), graph.FileID("store/reader.py")}
-	if !sameIDs(files(r.Reuse), want) {
-		t.Errorf("reuse %v, want %v (the claim, then the dependency)", files(r.Reuse), want)
+	if !sameIDs(files(r.Reuse), want[:1]) {
+		t.Errorf("reuse %v, want %v (the claim alone; the dependency has no basis)", files(r.Reuse), want[:1])
+	}
+	if len(r.ReuseClaims) != 2 || r.ReuseClaims[0].File != want[0] || r.ReuseClaims[1].File != want[1] {
+		t.Errorf("claims %+v, want the claim, then the dependency", r.ReuseClaims)
 	}
 	for _, cl := range r.ReuseClaims {
 		switch cl.File {

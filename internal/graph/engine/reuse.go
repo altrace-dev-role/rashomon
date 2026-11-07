@@ -19,7 +19,7 @@ import (
 // are spent; a doc's word counts when it names code somewhere), among
 // the scope rows at or over SeedFloor, never the target file or a
 // consumer. A file inside the unit, or one the unit already calls,
-// counts on any hit. A file elsewhere counts when a symbol's name holds a
+// is a claim on any hit; a file elsewhere when a symbol's name holds a
 // word of what the request says to use (a use phrase: what the request
 // presumes exists) or names at least ReuseFloor of an addition phrase's
 // mass among the tokens that name code, as a unit claims a target: a
@@ -27,6 +27,13 @@ import (
 // that names most of it is the thing to take up, and a doc that mentions
 // the word is neither. A constant or variable adds its hits to its
 // file's claim but never carries it; a file's claim is its best symbol's.
+// A claim becomes a reuse line only on a stated basis (W-M1.22,
+// AC-M1.5): a use-phrase hit, an addition claim, or a call from the
+// addition's existing code. A hit inside the unit, or on a symbol the
+// unit calls, with none of the three ranks the claim for Explain and is
+// no line: a symptom or a question names no thing to take up, and on the
+// W-M1.19 set 81 of 117 such lines stood against a '-' truth while the
+// basis rule kept 59 of 72 development rows right against 21.
 // Files are ranked by their mass on the use phrases (a name hit weighs
 // WeightName, a doc hit WeightSummary, as in Scope), then a symbol the
 // addition's existing code calls (what names the addition elsewhere,
@@ -108,7 +115,7 @@ func reuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]floa
 	for _, f := range order {
 		cl := found[f]
 		claims = append(claims, ReuseClaim{File: f, Use: cl.use, Add: cl.add, Mass: cl.mass, ViaAdd: cl.viaAdd, In: cl.in, Reused: cl.reused, Nodes: len(cl.nodes)})
-		if cl.called && len(out) < MaxReuse {
+		if cl.called && cl.basis() && len(out) < MaxReuse {
 			out = append(out, RoleFile{File: f, Members: cl.nodes})
 		}
 	}
@@ -132,6 +139,12 @@ type reuseClaim struct {
 	in, viaAdd, reused, called bool
 	nodes                      []graph.ID
 }
+
+// basis reports whether the claim can state why its file is the thing
+// to reuse: a use-phrase hit, an addition claim, or a call from the
+// addition's existing code. Membership of the unit and a call from the
+// unit rank a claim and never carry a line.
+func (cl reuseClaim) basis() bool { return cl.use > 0 || cl.add > 0 || cl.viaAdd }
 
 // take folds one symbol's hit into the claim.
 func (cl *reuseClaim) take(id graph.ID, h reuseHit, reused bool) {
