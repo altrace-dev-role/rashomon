@@ -112,7 +112,9 @@ var particleWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{"up": true, "off": true, "out": true, "down": true, "back": true, "away": true, "over": true}
 }}
 
-var testWords = &lazySet[bool]{f: func() map[string]bool { return map[string]bool{"test": true, "tests": true, "coverage": true} }}
+var testWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"test": true, "tests": true, "coverage": true, "benchmark": true, "benchmarks": true}
+}}
 
 // testLinkWords join a test clause to the thing under test.
 var testLinkWords = &lazySet[bool]{f: func() map[string]bool {

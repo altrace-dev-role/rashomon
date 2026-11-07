@@ -37,6 +37,9 @@ const (
 	NamedIdent     = "identifier"
 	NamedKnowledge = "knowledge"
 	NamedTag       = "tag"
+	// NamedTest is a test name read as the unit its first word names: a
+	// guess, which any word the index resolves outranks.
+	NamedTest = "test"
 )
 
 // NamedWord is one prompt word in name form: the word as written, its
@@ -66,6 +69,8 @@ type Named struct {
 	Knowledge     []graph.ID
 	KnowledgeUnit string
 	Unknown       []NamedWord
+	// kind is the kind of the word Unit came from, for the rank.
+	kind string
 }
 
 // Names reads the prompt's named words against the corpus. toks and
@@ -141,11 +146,23 @@ func (n *Named) add(g Reader, c corpus, w NamedWord) {
 		} else {
 			n.KnowledgeUnit = "?"
 		}
-	case w.Unit != "" && n.Unit == "":
-		n.Unit, n.Node = w.Unit, w.Node
+	case w.Unit != "" && (n.Unit == "" || namedRank(w.Kind) < namedRank(n.kind)):
+		n.Unit, n.Node, n.kind = w.Unit, w.Node, w.Kind
 	case w.Unit == "" && (w.Kind == NamedPath || w.Refuses):
 		n.Unknown = append(n.Unknown, w)
 	}
+}
+
+// namedRank orders the words that can set the unit: a path, a qualified
+// name, a declared identifier and a tag are the prompt's own naming (rank
+// 0, the first in the prompt wins); a test name's unit is a guess from its
+// first word (rank 1) and yields to any of them, wherever the paste puts
+// it (W-M1.31, P9: TestFold_TooManyHosts beside baseline's ErrTooManyHosts).
+func namedRank(kind string) int {
+	if kind == NamedTest {
+		return 1
+	}
+	return 0
 }
 
 // excludedClause is a clause that names what to leave alone.
@@ -230,7 +247,7 @@ func (c corpus) resolveTest(w string) (NamedWord, bool) {
 	if !ok {
 		return NamedWord{}, false
 	}
-	return NamedWord{Word: w, Kind: NamedIdent, Unit: unit, Node: c.unitID[unit], Why: "a test of " + unit}, true
+	return NamedWord{Word: w, Kind: NamedTest, Unit: unit, Node: c.unitID[unit], Why: "a test of " + unit}, true
 }
 
 // resolveOwner reads a possessive in capitals (the README's section, the

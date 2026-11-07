@@ -75,12 +75,16 @@ func nameClaims(picks []UnitPick, u string, toks, target []string) bool {
 	return classRank(picks[0].Class) > classRank(ClassSingle)
 }
 
-// unitNamed is the one unit whose own name the phrase holds: its last
-// path segment as the phrase's words, or as two adjacent words run
-// together ("gate output" names gateout, "budgets gen" budgetsgen).
-// Among several, the one named by more of the phrase's words, then the
-// one whose other segments the phrase also names; a tie is the ladder's
-// to settle.
+// unitNamed is the unit whose own name the phrase holds: its last path
+// segment as the phrase's words, or as two adjacent words run together
+// ("gate output" names gateout, "budgets gen" budgetsgen). Among several,
+// the one named by more of the phrase's words, then the one whose other
+// segments the phrase also names. Two still tied where one is the
+// phrase's head and the other the word before it are a compound of unit
+// names ("the spend report", W-M1.31 K9): the modifier claims and the
+// head is the kind of thing, as a lone unit name claims as a modifier,
+// and no third unit takes the phrase for the word beside them. Any other
+// tie is the ladder's to settle.
 func (c corpus) unitNamed(target []string) (string, []string, bool) {
 	type hit struct {
 		unit string
@@ -114,10 +118,30 @@ func (c corpus) unitNamed(target []string) (string, []string, bool) {
 		}
 		return hits[i].unit < hits[j].unit
 	})
-	if len(hits) > 1 && len(hits[0].toks) == len(hits[1].toks) && hits[0].more == hits[1].more {
+	n := 1
+	for n < len(hits) && len(hits[n].toks) == len(hits[0].toks) && hits[n].more == hits[0].more {
+		n++
+	}
+	if n == 1 {
+		return hits[0].unit, hits[0].toks, true
+	}
+	if len(target) < 2 {
 		return "", nil, false
 	}
-	return hits[0].unit, hits[0].toks, true
+	head, before := target[len(target)-1], target[len(target)-2]
+	var kind, modifier []int
+	for i := 0; i < n; i++ {
+		switch {
+		case hasToken(hits[i].toks, head):
+			kind = append(kind, i)
+		case hasToken(hits[i].toks, before):
+			modifier = append(modifier, i)
+		}
+	}
+	if len(kind) != 1 || len(modifier) != 1 {
+		return "", nil, false
+	}
+	return hits[modifier[0]].unit, hits[modifier[0]].toks, true
 }
 
 // holds is the words of target that are seg: seg's tokens in a row, or
