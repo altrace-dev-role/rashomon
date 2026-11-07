@@ -352,18 +352,20 @@ func (c corpus) derive(target []string, into map[string]string) ([]string, map[s
 // inflection: a suffix word, or a tail of one or two letters the
 // tokenizer's stemming leaves (classif beside classifi). Anything longer
 // outside the list is another word.
-func inflects(rest string) bool { return len(rest) <= 2 || suffixWords[rest] }
+func inflects(rest string) bool { return len(rest) <= 2 || suffixWords.get()[rest] }
 
 // suffixWords is what an inflected or derived form adds to its stem, as
 // the tokenizer leaves it: the agent (installer, generator), the act
 // (isation, ment), the quality (ness, ity), the participle and the
 // adjective. A remainder outside the list is another word.
-var suffixWords = map[string]bool{
-	"er": true, "or": true, "ers": true, "ors": true, "ier": true, "iers": true, "ar": true, "ant": true, "ent": true,
-	"ance": true, "ence": true, "ion": true, "ions": true, "ation": true, "ations": true, "isation": true, "ization": true,
-	"ment": true, "ments": true, "ness": true, "ist": true, "ists": true, "ity": true, "al": true, "ive": true, "ic": true,
-	"ful": true, "less": true, "able": true, "ible": true, "ing": true, "ed": true, "ly": true, "s": true, "es": true, "ies": true,
-}
+var suffixWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"er": true, "or": true, "ers": true, "ors": true, "ier": true, "iers": true, "ar": true, "ant": true, "ent": true,
+		"ance": true, "ence": true, "ion": true, "ions": true, "ation": true, "ations": true, "isation": true, "ization": true,
+		"ment": true, "ments": true, "ness": true, "ist": true, "ists": true, "ity": true, "al": true, "ive": true, "ic": true,
+		"ful": true, "less": true, "able": true, "ible": true, "ing": true, "ed": true, "ly": true, "s": true, "es": true, "ies": true,
+	}
+}}
 
 // weighDerived gives each derived name the weight the scorer would give
 // it as a prompt word (its idf, or one), in a copy of weights: the

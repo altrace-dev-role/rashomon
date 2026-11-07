@@ -87,20 +87,22 @@ func pluralS(s string, i int) bool {
 	return s[i] == 's' && (i+1 == len(s) || s[i+1] < 'a' || s[i+1] > 'z')
 }
 
-var stopWords = map[string]bool{
-	"only": true, "same": true, "own": true, "just": true, "also": true, "please": true, "still": true, "yet": true,
-	"the": true, "a": true, "an": true, "and": true, "or": true, "of": true, "to": true, "in": true, "on": true, "for": true,
-	"it": true, "its": true, "is": true, "be": true, "by": true, "with": true, "when": true, "once": true, "has": true, "have": true,
-	"make": true, "add": true, "fix": true, "respect": true, "so": true, "that": true, "this": true, "src": true,
-	"too": true, "many": true, "new": true, "level": true, "should": true, "must": true, "we": true, "our": true, "at": true,
-	"from": true, "into": true, "if": true, "not": true, "no": true, "as": true, "all": true, "any": true, "each": true, "every": true,
-}
+var stopWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"only": true, "same": true, "own": true, "just": true, "also": true, "please": true, "still": true, "yet": true,
+		"the": true, "a": true, "an": true, "and": true, "or": true, "of": true, "to": true, "in": true, "on": true, "for": true,
+		"it": true, "its": true, "is": true, "be": true, "by": true, "with": true, "when": true, "once": true, "has": true, "have": true,
+		"make": true, "add": true, "fix": true, "respect": true, "so": true, "that": true, "this": true, "src": true,
+		"too": true, "many": true, "new": true, "level": true, "should": true, "must": true, "we": true, "our": true, "at": true,
+		"from": true, "into": true, "if": true, "not": true, "no": true, "as": true, "all": true, "any": true, "each": true, "every": true,
+	}
+}}
 
 // stem is a small suffix stripper, the same on both sides of a match:
 // sessions and session, expiry, expires and expired, settings and setting
 // agree.
 func stem(w string) string {
-	if len(w) < 2 || stopWords[w] {
+	if len(w) < 2 || stopWords.get()[w] {
 		return ""
 	}
 	if _, err := parseDigits(w); err == nil {
@@ -117,7 +119,7 @@ func stem(w string) string {
 	if len(w) > 4 && (strings.HasSuffix(w, "y") || strings.HasSuffix(w, "e")) {
 		w = w[:len(w)-1]
 	}
-	if stopWords[w] {
+	if stopWords.get()[w] {
 		return ""
 	}
 	return w

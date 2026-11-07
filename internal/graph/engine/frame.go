@@ -168,11 +168,11 @@ func parseSentence(s string) clauses {
 			continue
 		}
 		head := low(cl[0])
-		if useWords[head] {
+		if useWords.get()[head] {
 			c.uses = addPhrase(c.uses, phraseOf(cl[1:]))
 			continue
 		}
-		if cls := verbClass[head]; cls != "" {
+		if cls := verbClass.get()[head]; cls != "" {
 			last = cls
 			c.verbs = append(c.verbs, head)
 			rest, use := splitUse(cl[1:])
@@ -181,7 +181,7 @@ func parseSentence(s string) clauses {
 				c.targets = addPhrases(c.targets, subjectOf(under))
 				continue
 			}
-			if causativeWords[head] {
+			if causativeWords.get()[head] {
 				rest = rest[:bareVerbAt(rest)]
 			}
 			thing, place := splitPlace(rest, cls)
@@ -236,10 +236,10 @@ func (c clauses) empty() bool {
 // question's after its question word and auxiliary ("where is the
 // deadline enforced" names the deadline).
 func subjectOf(cl []string) []Phrase {
-	question := len(cl) > 0 && questionWords[low(cl[0])]
+	question := len(cl) > 0 && questionWords.get()[low(cl[0])]
 	if question {
 		cl = cl[1:]
-		if len(cl) > 0 && auxiliaryWords[low(cl[0])] {
+		if len(cl) > 0 && auxiliaryWords.get()[low(cl[0])] {
 			cl = cl[1:]
 		}
 	}
@@ -260,11 +260,11 @@ func predicateAt(cl []string, question bool) int {
 		if i == 0 {
 			continue
 		}
-		if auxiliaryWords[lw] || modalWords[lw] || question && verbClass[lw] != "" && !determinerWords[low(cl[i-1])] {
+		if auxiliaryWords.get()[lw] || modalWords.get()[lw] || question && verbClass.get()[lw] != "" && !determinerWords.get()[low(cl[i-1])] {
 			return i
 		}
 		third := i+1 < len(cl) && strings.HasSuffix(lw, "s") && !strings.HasSuffix(lw, "ss")
-		if third && (objectWords[low(cl[i+1])] || verbClass[singular(lw)] != "") {
+		if third && (objectWords.get()[low(cl[i+1])] || verbClass.get()[singular(lw)] != "") {
 			return i
 		}
 	}
@@ -292,11 +292,11 @@ func testClause(words []string) ([]string, bool) {
 		if i > 3 {
 			break
 		}
-		if !testWords[low(w)] {
+		if !testWords.get()[low(w)] {
 			continue
 		}
 		for j := i + 1; j < len(words); j++ {
-			if testLinkWords[low(words[j])] {
+			if testLinkWords.get()[low(words[j])] {
 				return words[j+1:], true
 			}
 		}
@@ -309,7 +309,7 @@ func testClause(words []string) ([]string, bool) {
 // before it, and the phrase after it as what the change takes up.
 func splitUse(words []string) ([]string, Phrase) {
 	for i, w := range words {
-		if useWords[low(w)] {
+		if useWords.get()[low(w)] {
 			return words[:i], phraseOf(words[i+1:])
 		}
 	}
@@ -327,8 +327,8 @@ func afterModal(words []string) (string, string, Phrase) {
 			keep = true
 			continue
 		}
-		cls := verbClass[w]
-		if useWords[w] {
+		cls := verbClass.get()[w]
+		if useWords.get()[w] {
 			cls = "use"
 		}
 		if cls != "" {
@@ -368,12 +368,12 @@ func clausesOf(s string) [][]string {
 	close()
 	var split [][]string
 	for _, cl := range out {
-		for len(cl) > 0 && joinWords[low(cl[0])] {
+		for len(cl) > 0 && joinWords.get()[low(cl[0])] {
 			cl = cl[1:]
 		}
 		start := 0
 		for i := 1; i+1 < len(cl); i++ {
-			if joinWords[low(cl[i])] && (verbClass[low(cl[i+1])] != "" || placeWords[low(cl[i+1])]) {
+			if joinWords.get()[low(cl[i])] && (verbClass.get()[low(cl[i+1])] != "" || placeWords.get()[low(cl[i+1])]) {
 				split = append(split, cl[start:i])
 				start = i + 1
 			}
@@ -391,7 +391,7 @@ func clausesOf(s string) [][]string {
 func splitPlace(words []string, cls string) (thing, place []Phrase) {
 	p := -1
 	for i, w := range words {
-		if conditionWords[low(w)] || clauseOpeners[low(w)] {
+		if conditionWords.get()[low(w)] || clauseOpeners.get()[low(w)] {
 			break
 		}
 		if isPlace(low(w), cls) {
@@ -411,10 +411,10 @@ func splitPlace(words []string, cls string) (thing, place []Phrase) {
 // determiner is a noun ("the stop line").
 func bareVerbAt(words []string) int {
 	for i := 2; i < len(words); i++ {
-		if verbClass[low(words[i])] != "" && !determinerWords[low(words[i-1])] && !boundaryWords[low(words[i-1])] {
+		if verbClass.get()[low(words[i])] != "" && !determinerWords.get()[low(words[i-1])] && !boundaryWords.get()[low(words[i-1])] {
 			return i
 		}
-		if boundaryWords[low(words[i])] {
+		if boundaryWords.get()[low(words[i])] {
 			break
 		}
 	}
@@ -462,12 +462,12 @@ func possessive(w string) (string, bool) {
 	return w, false
 }
 
-func isPlace(w, cls string) bool { return placeWords[w] || (w == "to" && cls == "add") }
+func isPlace(w, cls string) bool { return placeWords.get()[w] || (w == "to" && cls == "add") }
 
 // modalAt is the index of the clause's modal when its subject precedes it.
 func modalAt(cl []string) int {
 	for i, w := range cl {
-		if modalWords[low(w)] {
+		if modalWords.get()[low(w)] {
 			return i
 		}
 	}
@@ -480,17 +480,17 @@ func modalAt(cl []string) int {
 // existing-surface word; none when they open with a condition word, and
 // an infinitive ("to name") or a particle ("up") ends it.
 func phraseOf(words []string) Phrase {
-	for len(words) > 0 && (boundaryWords[low(words[0])] || pronounWords[low(words[0])]) {
-		if conditionWords[low(words[0])] {
+	for len(words) > 0 && (boundaryWords.get()[low(words[0])] || pronounWords.get()[low(words[0])]) {
+		if conditionWords.get()[low(words[0])] {
 			return Phrase{}
 		}
 		words = words[1:]
 	}
-	if len(words) > 0 && clauseWords[low(words[0])] {
+	if len(words) > 0 && clauseWords.get()[low(words[0])] {
 		return Phrase{}
 	}
 	first := 0
-	for first < len(words) && stopWords[low(words[first])] && !determinerWords[low(words[first])] {
+	for first < len(words) && stopWords.get()[low(words[first])] && !determinerWords.get()[low(words[first])] {
 		first++
 	}
 	if first == len(words) {
@@ -499,16 +499,16 @@ func phraseOf(words []string) Phrase {
 	end := len(words)
 	for i, w := range words {
 		lw := low(w)
-		if boundaryWords[lw] || placeWords[lw] || joinWords[lw] || (lw == "to" && i+1 < len(words) && verbClass[low(words[i+1])] != "") {
+		if boundaryWords.get()[lw] || placeWords.get()[lw] || joinWords.get()[lw] || (lw == "to" && i+1 < len(words) && verbClass.get()[low(words[i+1])] != "") {
 			end = i
 			break
 		}
-		if i > first && determinerWords[lw] && determinerWords[low(words[first])] && len(Tokens(strings.Join(words[:i], " "))) > 0 {
+		if i > first && determinerWords.get()[lw] && determinerWords.get()[low(words[first])] && len(Tokens(strings.Join(words[:i], " "))) > 0 {
 			end = i
 			break
 		}
 	}
-	for end > 0 && particleWords[low(words[end-1])] {
+	for end > 0 && particleWords.get()[low(words[end-1])] {
 		end--
 	}
 	if end == 0 {
@@ -524,8 +524,8 @@ func phraseOf(words []string) Phrase {
 		}
 	}
 	already := end < len(words) && low(words[end]) == "already"
-	p.Definite = definiteWords[low(words[first])] || already
-	p.Anchor = (p.Definite && already) || anchorWords[low(words[first])]
+	p.Definite = definiteWords.get()[low(words[first])] || already
+	p.Anchor = (p.Definite && already) || anchorWords.get()[low(words[first])]
 	return p
 }
 

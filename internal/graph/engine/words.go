@@ -8,115 +8,149 @@ package engine
 // The verb classes: what a clause opening with the verb does with its
 // object. An add adds the object somewhere, an edit changes the object, a
 // show reports the object somewhere, a keep leaves the object as it is.
-var verbClass = map[string]string{
-	"say": "show", "mention": "show", "tell": "show", "carry": "show", "yield": "show",
-	"produce": "show", "note": "show", "reflect": "show", "decide": "edit", "hold": "edit",
-	"add": "add", "wire": "add", "support": "add", "extend": "add", "expose": "add", "introduce": "add", "attach": "add",
-	"implement": "add", "create": "add", "build": "add", "write": "add", "record": "add", "warn": "add", "emit": "add",
-	"include": "add", "provide": "add", "integrate": "add", "register": "add", "install": "add", "give": "add",
-	"fix": "edit", "change": "edit", "update": "edit", "refactor": "edit", "rename": "edit", "move": "edit", "remove": "edit",
-	"replace": "edit", "make": "edit", "let": "edit", "ensure": "edit", "drop": "edit", "delete": "edit", "split": "edit",
-	"merge": "edit", "stop": "edit", "allow": "edit", "refuse": "edit", "teach": "edit", "tighten": "edit", "clean": "edit",
-	"harden": "edit", "migrate": "edit", "rewrite": "edit", "simplify": "edit", "correct": "edit", "handle": "edit",
-	"use": "edit", "convert": "edit", "switch": "edit", "turn": "edit", "set": "edit", "reset": "edit", "restore": "edit",
-	"read": "edit", "load": "edit", "parse": "edit", "route": "edit", "pass": "edit", "run": "edit", "check": "edit",
-	"validate": "edit", "verify": "edit", "resolve": "edit", "bind": "edit", "cut": "edit", "fold": "edit", "retire": "edit",
-	"reduce": "edit", "lower": "edit", "shrink": "edit", "speed": "edit", "trim": "edit", "optimise": "edit", "optimize": "edit",
-	"improve": "edit", "cache": "edit", "bump": "edit", "upgrade": "edit", "downgrade": "edit", "pin": "edit", "unpin": "edit",
-	"enable": "edit", "disable": "edit", "guard": "edit", "cap": "edit", "limit": "edit", "bound": "edit", "skip": "edit",
-	"audit": "edit", "review": "edit", "land": "edit", "rebase": "edit", "port": "edit", "extract": "edit", "inline": "edit",
-	"hoist": "edit", "dedupe": "edit", "deduplicate": "edit", "unify": "edit", "consolidate": "edit", "wrap": "edit",
-	"unwrap": "edit", "patch": "edit", "tune": "edit", "align": "edit", "prevent": "edit", "gate": "edit", "enforce": "edit",
-	"require": "edit", "stub": "edit", "mock": "edit", "retry": "edit", "batch": "edit", "throttle": "edit", "sort": "edit",
-	"filter": "edit", "dedup": "edit", "rework": "edit", "redo": "edit", "address": "edit", "investigate": "edit",
-	"debug": "edit", "diagnose": "edit", "trace": "edit", "profile": "edit", "measure": "edit", "benchmark": "edit",
-	"test": "edit", "cover": "edit", "document": "edit", "describe": "edit", "explain": "edit", "summarize": "edit",
-	"summarise": "edit", "inspect": "edit", "examine": "edit", "revisit": "edit", "tidy": "edit", "finish": "edit",
-	"complete": "edit", "continue": "edit", "resume": "edit", "repair": "edit", "restructure": "edit", "reorganize": "edit",
-	"report": "show", "show": "show", "print": "show", "surface": "show", "display": "show", "render": "show", "name": "show",
-	"list": "show", "log": "show", "count": "show", "deliver": "show", "return": "show",
-	"keep": "keep", "preserve": "keep", "leave": "keep", "maintain": "keep", "retain": "keep", "never": "keep", "do": "keep",
-}
+var verbClass = &lazySet[string]{f: func() map[string]string {
+	return map[string]string{
+		"say": "show", "mention": "show", "tell": "show", "carry": "show", "yield": "show",
+		"produce": "show", "note": "show", "reflect": "show", "decide": "edit", "hold": "edit",
+		"add": "add", "wire": "add", "support": "add", "extend": "add", "expose": "add", "introduce": "add", "attach": "add",
+		"implement": "add", "create": "add", "build": "add", "write": "add", "record": "add", "warn": "add", "emit": "add",
+		"include": "add", "provide": "add", "integrate": "add", "register": "add", "install": "add", "give": "add",
+		"fix": "edit", "change": "edit", "update": "edit", "refactor": "edit", "rename": "edit", "move": "edit", "remove": "edit",
+		"replace": "edit", "make": "edit", "let": "edit", "ensure": "edit", "drop": "edit", "delete": "edit", "split": "edit",
+		"merge": "edit", "stop": "edit", "allow": "edit", "refuse": "edit", "teach": "edit", "tighten": "edit", "clean": "edit",
+		"harden": "edit", "migrate": "edit", "rewrite": "edit", "simplify": "edit", "correct": "edit", "handle": "edit",
+		"use": "edit", "convert": "edit", "switch": "edit", "turn": "edit", "set": "edit", "reset": "edit", "restore": "edit",
+		"read": "edit", "load": "edit", "parse": "edit", "route": "edit", "pass": "edit", "run": "edit", "check": "edit",
+		"validate": "edit", "verify": "edit", "resolve": "edit", "bind": "edit", "cut": "edit", "fold": "edit", "retire": "edit",
+		"reduce": "edit", "lower": "edit", "shrink": "edit", "speed": "edit", "trim": "edit", "optimise": "edit", "optimize": "edit",
+		"improve": "edit", "cache": "edit", "bump": "edit", "upgrade": "edit", "downgrade": "edit", "pin": "edit", "unpin": "edit",
+		"enable": "edit", "disable": "edit", "guard": "edit", "cap": "edit", "limit": "edit", "bound": "edit", "skip": "edit",
+		"audit": "edit", "review": "edit", "land": "edit", "rebase": "edit", "port": "edit", "extract": "edit", "inline": "edit",
+		"hoist": "edit", "dedupe": "edit", "deduplicate": "edit", "unify": "edit", "consolidate": "edit", "wrap": "edit",
+		"unwrap": "edit", "patch": "edit", "tune": "edit", "align": "edit", "prevent": "edit", "gate": "edit", "enforce": "edit",
+		"require": "edit", "stub": "edit", "mock": "edit", "retry": "edit", "batch": "edit", "throttle": "edit", "sort": "edit",
+		"filter": "edit", "dedup": "edit", "rework": "edit", "redo": "edit", "address": "edit", "investigate": "edit",
+		"debug": "edit", "diagnose": "edit", "trace": "edit", "profile": "edit", "measure": "edit", "benchmark": "edit",
+		"test": "edit", "cover": "edit", "document": "edit", "describe": "edit", "explain": "edit", "summarize": "edit",
+		"summarise": "edit", "inspect": "edit", "examine": "edit", "revisit": "edit", "tidy": "edit", "finish": "edit",
+		"complete": "edit", "continue": "edit", "resume": "edit", "repair": "edit", "restructure": "edit", "reorganize": "edit",
+		"report": "show", "show": "show", "print": "show", "surface": "show", "display": "show", "render": "show", "name": "show",
+		"list": "show", "log": "show", "count": "show", "deliver": "show", "return": "show",
+		"keep": "keep", "preserve": "keep", "leave": "keep", "maintain": "keep", "retain": "keep", "never": "keep", "do": "keep",
+	}
+}}
 
 // placeWords open the phrase that names where the change lands; "to" only
 // after an add (add X to Y), since elsewhere it opens an infinitive.
-var placeWords = map[string]bool{
-	"in": true, "into": true, "on": true, "onto": true, "under": true, "inside": true, "within": true, "at": true,
-	"through": true, "across": true, "wherever": true, "where": true, "beside": true, "alongside": true, "next": true,
-}
+var placeWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"in": true, "into": true, "on": true, "onto": true, "under": true, "inside": true, "within": true, "at": true,
+		"through": true, "across": true, "wherever": true, "where": true, "beside": true, "alongside": true, "next": true,
+	}
+}}
 
 // boundaryWords end a phrase; the conditionWords among them open a
 // condition (when, if, unless), so a phrase that would start with one is
 // no phrase: "warn when an edit changes a file" adds no "edit changes a
 // file", it says when to warn.
-var boundaryWords = map[string]bool{
-	"that": true, "which": true, "when": true, "whenever": true, "already": true, "so": true, "because": true,
-	"unless": true, "until": true, "if": true, "with": true, "using": true, "as": true, "not": true, "but": true,
-	"before": true, "after": true, "instead": true, "rather": true, "once": true, "while": true, "covering": true,
-	"including": true, "excluding": true, "regarding": true, "about": true, "without": true, "whose": true, "than": true,
-}
+var boundaryWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"that": true, "which": true, "when": true, "whenever": true, "already": true, "so": true, "because": true,
+		"unless": true, "until": true, "if": true, "with": true, "using": true, "as": true, "not": true, "but": true,
+		"before": true, "after": true, "instead": true, "rather": true, "once": true, "while": true, "covering": true,
+		"including": true, "excluding": true, "regarding": true, "about": true, "without": true, "whose": true, "than": true,
+	}
+}}
 
-var conditionWords = map[string]bool{
-	"when": true, "whenever": true, "if": true, "unless": true, "until": true, "once": true, "while": true,
-	"because": true, "before": true, "after": true, "where": true, "how": true, "whether": true,
-}
+var conditionWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"when": true, "whenever": true, "if": true, "unless": true, "until": true, "once": true, "while": true,
+		"because": true, "before": true, "after": true, "where": true, "how": true, "whether": true,
+	}
+}}
 
 // joinWords join clauses; pronounWords stand for a thing another clause names.
-var joinWords = map[string]bool{"and": true, "then": true, "also": true, "or": true}
+var joinWords = &lazySet[bool]{f: func() map[string]bool { return map[string]bool{"and": true, "then": true, "also": true, "or": true} }}
 
-var pronounWords = map[string]bool{"it": true, "them": true, "these": true, "those": true, "which": true, "what": true}
+var pronounWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"it": true, "them": true, "these": true, "those": true, "which": true, "what": true}
+}}
 
 // useWords open the phrase naming what the change takes up: the thing to
 // reuse, which the request presumes exists.
-var useWords = map[string]bool{
-	"respect": true, "respecting": true, "honor": true, "honour": true, "honoring": true, "honouring": true,
-	"consult": true, "consulting": true, "obey": true, "reuse": true, "reusing": true, "leverage": true,
-	"via": true, "using": true, "invoke": true, "invoking": true, "follow": true, "following": true,
-}
+var useWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"respect": true, "respecting": true, "honor": true, "honour": true, "honoring": true, "honouring": true,
+		"consult": true, "consulting": true, "obey": true, "reuse": true, "reusing": true, "leverage": true,
+		"via": true, "using": true, "invoke": true, "invoking": true, "follow": true, "following": true,
+	}
+}}
 
-var modalWords = map[string]bool{"should": true, "must": true, "shall": true, "needs": true, "has": true, "ought": true}
+var modalWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"should": true, "must": true, "shall": true, "needs": true, "has": true, "ought": true}
+}}
 
-var definiteWords = map[string]bool{"the": true, "existing": true, "current": true, "its": true, "our": true, "this": true, "these": true, "those": true}
+var definiteWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"the": true, "existing": true, "current": true, "its": true, "our": true, "this": true, "these": true, "those": true}
+}}
 
 // anchorWords mark a definite phrase as the surface the change lands on.
-var anchorWords = map[string]bool{"existing": true, "current": true}
+var anchorWords = &lazySet[bool]{f: func() map[string]bool { return map[string]bool{"existing": true, "current": true} }}
 
 // questionWords open a question; the words after them (and an auxiliary)
 // are its subject. particleWords are verb particles ("clean up"), no
 // thing of their own. testWords open a test clause.
-var questionWords = map[string]bool{"how": true, "what": true, "where": true, "why": true, "who": true, "which": true, "when": true, "does": true, "is": true, "are": true, "can": true, "could": true, "will": true, "would": true, "did": true}
+var questionWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"how": true, "what": true, "where": true, "why": true, "who": true, "which": true, "when": true, "does": true, "is": true, "are": true, "can": true, "could": true, "will": true, "would": true, "did": true}
+}}
 
-var auxiliaryWords = map[string]bool{"does": true, "do": true, "did": true, "is": true, "are": true, "was": true, "were": true, "can": true, "could": true, "should": true, "would": true, "will": true}
+var auxiliaryWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"does": true, "do": true, "did": true, "is": true, "are": true, "was": true, "were": true, "can": true, "could": true, "should": true, "would": true, "will": true}
+}}
 
-var particleWords = map[string]bool{"up": true, "off": true, "out": true, "down": true, "back": true, "away": true, "over": true}
+var particleWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"up": true, "off": true, "out": true, "down": true, "back": true, "away": true, "over": true}
+}}
 
-var testWords = map[string]bool{"test": true, "tests": true, "coverage": true}
+var testWords = &lazySet[bool]{f: func() map[string]bool { return map[string]bool{"test": true, "tests": true, "coverage": true} }}
 
 // testLinkWords join a test clause to the thing under test.
-var testLinkWords = map[string]bool{"for": true, "that": true, "of": true, "covering": true, "over": true, "on": true, "against": true, "proving": true, "showing": true}
+var testLinkWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"for": true, "that": true, "of": true, "covering": true, "over": true, "on": true, "against": true, "proving": true, "showing": true}
+}}
 
 // determinerWords open a noun phrase; a second one inside a phrase that
 // opened with one opens another ("the digest carry the turn's time" ends
 // at the second "the"); a phrase that opened without one is a verb
 // phrase and stays whole ("purging the sessions").
-var determinerWords = map[string]bool{
-	"the": true, "a": true, "an": true, "its": true, "their": true, "our": true, "this": true, "these": true, "those": true,
-	"every": true, "each": true, "any": true, "some": true, "no": true, "zero": true,
-}
+var determinerWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"the": true, "a": true, "an": true, "its": true, "their": true, "our": true, "this": true, "these": true, "those": true,
+		"every": true, "each": true, "any": true, "some": true, "no": true, "zero": true,
+	}
+}}
 
 // objectWords open a verb's object: determiners and object pronouns.
-var objectWords = map[string]bool{
-	"the": true, "a": true, "an": true, "its": true, "their": true, "our": true, "this": true, "these": true, "those": true,
-	"each": true, "every": true, "no": true, "all": true, "any": true, "some": true, "zero": true, "it": true, "them": true,
-	"us": true, "me": true, "one": true, "two": true, "three": true, "more": true, "fewer": true, "nothing": true,
-}
+var objectWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"the": true, "a": true, "an": true, "its": true, "their": true, "our": true, "this": true, "these": true, "those": true,
+		"each": true, "every": true, "no": true, "all": true, "any": true, "some": true, "zero": true, "it": true, "them": true,
+		"us": true, "me": true, "one": true, "two": true, "three": true, "more": true, "fewer": true, "nothing": true,
+	}
+}}
 
 // clauseOpeners open a clause about the thing, not a place of the change.
-var clauseOpeners = map[string]bool{"so": true, "that": true, "which": true, "whose": true, "instead": true, "rather": true}
+var clauseOpeners = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"so": true, "that": true, "which": true, "whose": true, "instead": true, "rather": true}
+}}
 
 // causativeWords take an object and a bare verb for what it should do.
-var causativeWords = map[string]bool{"make": true, "let": true, "have": true, "ensure": true, "force": true, "allow": true, "teach": true, "help": true, "keep": true, "get": true, "stop": true}
+var causativeWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"make": true, "let": true, "have": true, "ensure": true, "force": true, "allow": true, "teach": true, "help": true, "keep": true, "get": true, "stop": true}
+}}
 
 // clauseWords open a clause, not a thing: a subject pronoun ("where we
 // left off" names no code).
-var clauseWords = map[string]bool{"we": true, "i": true, "you": true, "he": true, "she": true, "they": true, "someone": true, "anyone": true, "everyone": true, "nobody": true}
+var clauseWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"we": true, "i": true, "you": true, "he": true, "she": true, "they": true, "someone": true, "anyone": true, "everyone": true, "nobody": true}
+}}

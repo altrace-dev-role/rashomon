@@ -154,17 +154,21 @@ func excludedClause(cl []string) bool {
 		return false
 	}
 	head := low(cl[0])
-	return verbClass[head] == "keep" || excludeWords[head] || (head == "do" && len(cl) > 1 && low(cl[1]) == "not")
+	return verbClass.get()[head] == "keep" || excludeWords.get()[head] || (head == "do" && len(cl) > 1 && low(cl[1]) == "not")
 }
 
-var excludeWords = map[string]bool{"don't": true, "dont": true, "never": true, "without": true, "not": true, "avoid": true, "except": true, "excluding": true, "skip": true, "ignore": true}
+var excludeWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"don't": true, "dont": true, "never": true, "without": true, "not": true, "avoid": true, "except": true, "excluding": true, "skip": true, "ignore": true}
+}}
 
-var tagWords = map[string]bool{"package": true, "pkg": true, "module": true, "unit": true, "directory": true, "dir": true, "folder": true, "subsystem": true}
+var tagWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"package": true, "pkg": true, "module": true, "unit": true, "directory": true, "dir": true, "folder": true, "subsystem": true}
+}}
 
 // nameOf reads the word as a name, in the order path, qualified,
 // knowledge id, scope tag, identifier, test name, owner.
 func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map[string]float64) (NamedWord, bool) {
-	if placeWords[at.prev] && fileLike(w) {
+	if placeWords.get()[at.prev] && fileLike(w) {
 		nw := c.resolvePath(w)
 		nw.Refuses = nw.Unit == "" && nw.Node == ""
 		return nw, true
@@ -184,7 +188,7 @@ func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map
 			}
 		}
 	}
-	if tagWords[at.next] || tagWords[at.prev] {
+	if tagWords.get()[at.next] || tagWords.get()[at.prev] {
 		return c.resolveTag(w), true
 	}
 	if identForm(w, at) {

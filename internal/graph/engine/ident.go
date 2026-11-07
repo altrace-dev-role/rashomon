@@ -44,16 +44,18 @@ func identForm(w string, at wordAt) bool {
 	if at.initial || !lower || w[0] < 'A' || w[0] > 'Z' {
 		return false
 	}
-	return kindWords[at.prev]
+	return kindWords.get()[at.prev]
 }
 
 // kindWords say what kind of thing the next word names.
-var kindWords = map[string]bool{
-	"function": true, "func": true, "method": true, "type": true, "struct": true, "interface": true, "const": true,
-	"constant": true, "var": true, "variable": true, "field": true, "class": true, "helper": true, "handler": true,
-	"symbol": true, "routine": true, "def": true, "enum": true, "trait": true, "property": true, "attribute": true,
-	"member": true, "identifier": true, "command": true, "subcommand": true, "flag": true, "option": true,
-}
+var kindWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"function": true, "func": true, "method": true, "type": true, "struct": true, "interface": true, "const": true,
+		"constant": true, "var": true, "variable": true, "field": true, "class": true, "helper": true, "handler": true,
+		"symbol": true, "routine": true, "def": true, "enum": true, "trait": true, "property": true, "attribute": true,
+		"member": true, "identifier": true, "command": true, "subcommand": true, "flag": true, "option": true,
+	}
+}}
 
 func identChars(w string) bool {
 	for i := 0; i < len(w); i++ {
@@ -107,9 +109,9 @@ func (c corpus) resolveIdent(w string, at wordAt, toks []string, weights map[str
 func ofKind(ids []graph.ID, kindWord string) []graph.ID {
 	want := map[string]bool{}
 	switch {
-	case callKinds[kindWord]:
+	case callKinds.get()[kindWord]:
 		want = map[string]bool{"func": true, "method": true}
-	case typeKinds[kindWord]:
+	case typeKinds.get()[kindWord]:
 		want = map[string]bool{"type": true, "class": true, "struct": true, "interface": true, "enum": true, "trait": true}
 	default:
 		return ids
@@ -126,6 +128,10 @@ func ofKind(ids []graph.ID, kindWord string) []graph.ID {
 	return out
 }
 
-var callKinds = map[string]bool{"function": true, "func": true, "method": true, "helper": true, "handler": true, "routine": true, "def": true, "command": true, "subcommand": true}
+var callKinds = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"function": true, "func": true, "method": true, "helper": true, "handler": true, "routine": true, "def": true, "command": true, "subcommand": true}
+}}
 
-var typeKinds = map[string]bool{"type": true, "struct": true, "interface": true, "class": true, "enum": true, "trait": true}
+var typeKinds = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"type": true, "struct": true, "interface": true, "class": true, "enum": true, "trait": true}
+}}
