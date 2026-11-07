@@ -54,3 +54,19 @@ func TestKnowledge_TheUnitsOwnRecordIsTheLine(t *testing.T) {
 		t.Errorf("the reuse's record became a knowledge line:\n%s", b.Text())
 	}
 }
+
+// TestKnowledge_ALessonLineNamesTheFailureAndTheRule (W-M1.25): the
+// knowledge line states the record's standing by kind, as fact: Task A's
+// lesson names the failure it was drawn from (the record's title) and the
+// rule (its clause), through the renderer's statement-of-fact check
+// (LUI-11), which refused the imperative form on this very brief.
+func TestKnowledge_ALessonLineNamesTheFailureAndTheRule(t *testing.T) {
+	sp := graphtest.New(t)
+	withKnowledge(sp)
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
+	want := "lesson INC-212 applies to 'jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
+	if !strings.Contains(b.Text(), want) {
+		t.Errorf("brief lacks the lesson's polarity line\nwant %q\n%s", want, b.Text())
+	}
+}

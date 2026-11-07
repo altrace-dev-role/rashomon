@@ -152,13 +152,15 @@ type TableFact struct {
 	Lessons []KnowledgeID
 }
 
-// KnowledgeFact is a lesson or decision of the brief: its id, the file it
-// points the agent at, its one clause, and the document it came from. Path,
-// Clause and Source may each be empty.
+// KnowledgeFact is a lesson, decision or requirement of the brief: its id,
+// the file it points the agent at, its title (for a lesson, the failure it
+// was drawn from), its one clause (the rule), and the document it came
+// from. Path, Title, Clause and Source may each be empty.
 type KnowledgeFact struct {
 	Kind   string
 	ID     KnowledgeID
 	Path   RelPath
+	Title  Approved
 	Clause Approved
 	Source Path
 }
@@ -422,9 +424,11 @@ func (f KnowledgeFact) validate() error {
 			return err
 		}
 	}
-	if f.Clause != "" {
-		if err := f.Clause.Validate(); err != nil {
-			return err
+	for _, a := range []Approved{f.Title, f.Clause} {
+		if a != "" {
+			if err := a.Validate(); err != nil {
+				return err
+			}
 		}
 	}
 	if f.Source != "" {
@@ -489,6 +493,9 @@ func (l GraphLine) bind() (Value, error) {
 	}
 	if k.Path.Validate() != nil {
 		k.Path = ""
+	}
+	if k.Title.Validate() != nil {
+		k.Title = ""
 	}
 	if k.Clause.Validate() != nil {
 		k.Clause = ""
@@ -562,9 +569,9 @@ func keptTables(items []TableRef, more int) ([]TableRef, int) {
 
 // Record is l's record form: every list as its count, the path and the
 // source as their keyed digests (digest, intent's PathDigest), the knowledge
-// ids, the clause and a code line's role and basis kept, since those are
-// the repository's declared records and the engine's reading, never the
-// request's words. It is built from the bound line,
+// ids, the title, the clause and a code line's role and basis kept, since
+// those are the repository's declared records and the engine's reading,
+// never the request's words. It is built from the bound line,
 // so the counts are what the printed line listed, left out and cut.
 func (l GraphLine) Record(digest func(string) string) GraphLine {
 	out := GraphLine{keyed: true}
@@ -593,7 +600,7 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 		if k.Source != "" {
 			out.sourceDigest = digest(string(k.Source))
 		}
-		out.know = &KnowledgeFact{Kind: k.Kind, ID: k.ID, Clause: k.Clause}
+		out.know = &KnowledgeFact{Kind: k.Kind, ID: k.ID, Title: k.Title, Clause: k.Clause}
 	case l.unit != nil:
 		u := *l.unit
 		m.Names += len(u.Names)

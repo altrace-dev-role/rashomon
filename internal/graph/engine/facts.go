@@ -106,15 +106,16 @@ func tableFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate) slo
 	return f
 }
 
-// knowledgeFact is a lesson's or decision's own line: its id, its path,
-// the one clause the record declares (attr clause) and its source
-// document. The path is the line's anchor (the file the line was found
+// knowledgeFact is a lesson's, decision's or requirement's own line: its
+// id, its path, the title and the one clause the record declares (attrs
+// title and clause; the slot renders them by the kind's polarity) and its
+// source document. The path is the line's anchor (the file the line was found
 // through: a role file, or the best-scored file line reached through a
 // table or a symbol) when the record applies to it or to a symbol it
 // declares, else the first file among its applies_to targets, else the
 // anchor, else none.
 func knowledgeFact(g Reader, rev graph.Rev, n graph.Node, anchor graph.ID, rel func(string) string) slot.KnowledgeFact {
-	f := slot.KnowledgeFact{Kind: n.Kind, ID: slot.KnowledgeID(n.ID), Clause: slot.Approved(n.Attrs["clause"]), Source: slot.Path(n.Attrs["source"])}
+	f := slot.KnowledgeFact{Kind: n.Kind, ID: slot.KnowledgeID(n.ID), Title: slot.Approved(n.Attrs["title"]), Clause: slot.Approved(n.Attrs["clause"]), Source: slot.Path(n.Attrs["source"])}
 	target := anchor
 	for _, e := range g.Out(n.ID, rev, graph.AppliesTo) {
 		if anchor != "" && declaring(g, rev, e.Dst) == anchor {

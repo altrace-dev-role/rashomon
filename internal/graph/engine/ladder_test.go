@@ -359,4 +359,11 @@ func TestKnowledge_ALineNamesTheFileItWasFoundThrough(t *testing.T) {
 	if strings.Contains(b.Text(), "PF-HD1 applies to 'hook/steerstep.py'") {
 		t.Errorf("the reuse's record is reported on a file it was not found through:\n%s", b.Text())
 	}
+	if want := "requirement PF-HD1 applies to 'ledger/ledger.py': owed 'the clause of req:PF-HD1'"; !strings.Contains(b.Text(), want) {
+		t.Errorf("the requirement line lacks its polarity (W-M1.25), want %q:\n%s", want, b.Text())
+	}
+	bd := Build(build(true), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true})
+	if want := "decision D155 applies to 'cmd/storeopen.py': decided 'the clause of dec:D155'"; !strings.Contains(bd.Text(), want) {
+		t.Errorf("the decision line lacks its polarity (W-M1.25), want %q:\n%s", want, bd.Text())
+	}
 }

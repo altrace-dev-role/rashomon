@@ -85,9 +85,9 @@ func TestGS1_LinesRenderAsOneSentenceEach(t *testing.T) {
 			Readers: []Ident{"sessions.is_expired"}, Lessons: []KnowledgeID{"les:INC-212"}}),
 			"table 'public.sessions' is written by 'purge_sessions.run', 'sessions.create_session'; is read by 'sessions.is_expired'; INC-212 applies"},
 		{"knowledge", NewKnowledgeLine(inc212()),
-			"lesson INC-212 applies to '../acme-ops/jobs/purge_sessions.py': 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"},
+			"lesson INC-212 applies to '../acme-ops/jobs/purge_sessions.py': rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"},
 		{"knowledge without path or source", NewKnowledgeLine(KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:ADR-0007", Clause: "auth reads org values through get_org_settings"}),
-			"decision ADR-0007: 'auth reads org values through get_org_settings'"},
+			"decision ADR-0007: decided 'auth reads org values through get_org_settings'"},
 		{"empty", GraphLine{}, "none"},
 	} {
 		v, err := Bind(c.line)
@@ -180,7 +180,7 @@ func TestGS1_RecordFormHoldsDigestsCountsAndIds(t *testing.T) {
 	if kr.Digest() == "" || kr.SourceDigest() == "" {
 		t.Errorf("knowledge record digests = %q %q", kr.Digest(), kr.SourceDigest())
 	}
-	if got := kr.Text(); !strings.HasPrefix(got, "lesson INC-212 applies to a file on record: 'the nightly") || !strings.HasSuffix(got, "; source on record") {
+	if got := kr.Text(); !strings.HasPrefix(got, "lesson INC-212 applies to a file on record: rule 'the nightly") || !strings.HasSuffix(got, "; source on record") {
 		t.Errorf("knowledge record text = %q", got)
 	}
 	bad := GraphLine{keyed: true, code: &CodeFact{Path: "a.py"}}

@@ -101,8 +101,8 @@ func (l GraphLine) knowText() string {
 	case k.Path != "":
 		s += " applies to " + k.Path.Text()
 	}
-	if k.Clause != "" {
-		s += ": " + k.Clause.Text()
+	if p := polarity(k); p != "" {
+		s += ": " + p
 	}
 	switch {
 	case l.keyed && l.sourceDigest != "":
@@ -111,6 +111,38 @@ func (l GraphLine) knowText() string {
 		s += "; source " + k.Source.Text()
 	}
 	return s
+}
+
+// polarity is the record's standing by kind (W-M1.25), stated as fact,
+// never as an order (the brief is statements of fact, LUI-11; "do not
+// repeat", "follow" and "meet" are imperatives, the first refused by the
+// renderer today and the others only not yet on its list): a lesson's
+// title is the failure it was drawn from and its clause the rule; a
+// decision's clause is what was decided; a requirement's clause is what
+// the repository owes. The clause carries the rule and the title stands
+// in when the record has none that passed a check.
+func polarity(k KnowledgeFact) string {
+	if k.Kind == KnowledgeLesson {
+		var parts []string
+		if k.Title != "" {
+			parts = append(parts, "failure "+k.Title.Text())
+		}
+		if k.Clause != "" {
+			parts = append(parts, "rule "+k.Clause.Text())
+		}
+		return strings.Join(parts, "; ")
+	}
+	word := "decided"
+	if k.Kind == KnowledgeRequirement {
+		word = "owed"
+	}
+	switch {
+	case k.Clause != "":
+		return word + " " + k.Clause.Text()
+	case k.Title != "":
+		return word + " " + k.Title.Text()
+	}
+	return ""
 }
 
 // phrase is "verb a, b and 2 more", "verb 2 nouns" for a list with nothing

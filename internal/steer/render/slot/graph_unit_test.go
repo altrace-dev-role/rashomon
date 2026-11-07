@@ -32,7 +32,7 @@ func TestGU1_AUnitLineAndARoledCodeLineRenderAsOneSentenceEach(t *testing.T) {
 			"consumer 'cmd/rashomon/report_platform.go' declares 'platformReadWithin'; calls 'Read', 'LogPath'", "code"},
 		{"requirement", NewKnowledgeLine(KnowledgeFact{Kind: KnowledgeRequirement, ID: "req:PF-PL11", Path: "internal/platform/read.go",
 			Clause: "Unknown, never zero; status none; missing: fan-in itself (PF-PL7)", Source: "truth_table.json"}),
-			"requirement PF-PL11 applies to 'internal/platform/read.go': 'Unknown, never zero; status none; missing: fan-in itself (PF-PL7)'; source 'truth_table.json'", "requirement"},
+			"requirement PF-PL11 applies to 'internal/platform/read.go': owed 'Unknown, never zero; status none; missing: fan-in itself (PF-PL7)'; source 'truth_table.json'", "requirement"},
 	} {
 		v, err := Bind(c.line)
 		if err != nil {
@@ -218,5 +218,73 @@ func TestGU3_AReuseLineStatesItsBasis(t *testing.T) {
 	}
 	if _, err := Bind(GraphLine{keyed: true, code: &CodeFact{Role: RoleReuse, Basis: "guess"}}); err == nil {
 		t.Error("a record form with a basis outside the three words was bound")
+	}
+}
+
+// TestGU4_AKnowledgeLineStatesItsPolarityByKind (W-M1.25, AC-M1.5): a
+// knowledge line states the record's standing by kind, as fact and never
+// as an order (LUI-11): a lesson's title is the failure it was drawn from
+// and its clause the rule, a decision's clause is what was decided, a
+// requirement's clause is what is owed; the clause carries the rule and
+// the title stands in when the record has no clause; a title that fails
+// a check is left out and the line renders as without one; the record
+// form keeps the title, and a record form whose title fails a check is
+// refused.
+func TestGU4_AKnowledgeLineStatesItsPolarityByKind(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fact KnowledgeFact
+		want string
+	}{
+		{"lesson with title and clause", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B227", Path: "internal/safe/guard.go",
+			Title: "closed a row by reading the dispatch sha, not the head", Clause: "a claim whose last read names a sha other than the head is unbacked", Source: "FAILURE-LEDGER.txt"},
+			"lesson B227 applies to 'internal/safe/guard.go': failure 'closed a row by reading the dispatch sha, not the head'; rule 'a claim whose last read names a sha other than the head is unbacked'; source 'FAILURE-LEDGER.txt'"},
+		{"lesson with title alone", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B228", Title: "ruled pacing on a cap the owner had raised"},
+			"lesson B228: failure 'ruled pacing on a cap the owner had raised'"},
+		{"lesson with clause alone", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:INC-212", Clause: "a session-lifetime change changes the purge predicate too"},
+			"lesson INC-212: rule 'a session-lifetime change changes the purge predicate too'"},
+		{"decision with title and clause", KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:D100", Title: "the flush guard lives in the judge",
+			Clause: "the post step's flush guard lives in hook.judge and reads the store's sticky error"},
+			"decision D100: decided 'the post step's flush guard lives in hook.judge and reads the store's sticky error'"},
+		{"decision with title alone", KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:D101", Title: "DOCS9 carded", Source: "docs/DECISIONS.md"},
+			"decision D101: decided 'DOCS9 carded'; source 'docs/DECISIONS.md'"},
+		{"requirement with title and clause", KnowledgeFact{Kind: KnowledgeRequirement, ID: "req:PF-HD1", Path: "internal/ledger/ledger.go",
+			Title: "History from day one", Clause: "History from day one; status partial; missing: AppendLabel has no writer"},
+			"requirement PF-HD1 applies to 'internal/ledger/ledger.go': owed 'History from day one; status partial; missing: AppendLabel has no writer'"},
+		{"requirement with title alone", KnowledgeFact{Kind: KnowledgeRequirement, ID: "req:PF-HD10", Title: "Storage bounds and quarantine"},
+			"requirement PF-HD10: owed 'Storage bounds and quarantine'"},
+		{"nothing to state", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B229", Path: "a.go"}, "lesson B229 applies to 'a.go'"},
+		{"title fails the length check", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B230", Title: Approved(strings.Repeat("x", 161)), Clause: "the rule"},
+			"lesson B230: rule 'the rule'"},
+		{"title holds a URL", KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:D102", Title: "see https://example.com/x", Clause: "the design"},
+			"decision D102: decided 'the design'"},
+	} {
+		v, err := Bind(NewKnowledgeLine(c.fact))
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(NewKnowledgeLine(KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B227", Path: "internal/safe/guard.go",
+		Title: "closed a row by reading the dispatch sha, not the head", Clause: "a claim whose last read names a sha other than the head is unbacked", Source: "FAILURE-LEDGER.txt"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := v.(GraphLine).Record(digest)
+	if k, ok := rec.Knowledge(); !ok || k.Title != "closed a row by reading the dispatch sha, not the head" || k.Path != "" || k.Source != "" {
+		t.Errorf("record form knowledge %+v (want the title kept, no path, no source)", k)
+	}
+	rv, err := Bind(rec)
+	if err != nil {
+		t.Fatalf("Bind(record): %v", err)
+	}
+	if want := "lesson B227 applies to a file on record: failure 'closed a row by reading the dispatch sha, not the head'; rule 'a claim whose last read names a sha other than the head is unbacked'; source on record"; rv.Text() != want {
+		t.Errorf("record text\n got %q\nwant %q", rv.Text(), want)
+	}
+	if _, err := Bind(GraphLine{keyed: true, know: &KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B230", Title: Approved(strings.Repeat("x", 161))}}); err == nil {
+		t.Error("a record form whose title fails a check was bound")
 	}
 }

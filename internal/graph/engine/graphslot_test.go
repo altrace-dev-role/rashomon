@@ -48,7 +48,7 @@ func TestGS6_EachLineIsASlotRenderedByTheGraphTemplate(t *testing.T) {
 	if b.Message.Template() != "task-preflight-graph/v1" {
 		t.Errorf("template %q", b.Message.Template())
 	}
-	want := "lesson INC-212 applies to '../../jobs/purge_sessions.py': 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
+	want := "lesson INC-212 applies to '../../jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
 	if !strings.Contains(b.Text(), want) {
 		t.Errorf("the lesson line is not\n%s\nin\n%s", want, b.Text())
 	}

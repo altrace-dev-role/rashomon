@@ -35,7 +35,7 @@ func TestGS2_GraphRowRendersUnderTheBriefingCheck(t *testing.T) {
 	t.Logf("rendered:\n%s", m.Text())
 	want := "rashomon record: the code this request touches, read from the repository graph at rev C1: 4 node(s) matched, 23 reached.\n" +
 		"'../acme-ops/jobs/purge_sessions.py' declares 'run'; writes 'public.sessions' ('created_at'); INC-212 applies\n" +
-		"lesson INC-212 applies to '../acme-ops/jobs/purge_sessions.py': 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'\n" +
+		"lesson INC-212 applies to '../acme-ops/jobs/purge_sessions.py': rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'\n" +
 		"'services/auth/auth/sessions.py' declares 'create_session', 'is_expired'; 'SESSION_TTL_SECONDS' is 3600; calls 'insert_session'"
 	if m.Text() != want {
 		t.Errorf("text\n got %q\nwant %q", m.Text(), want)

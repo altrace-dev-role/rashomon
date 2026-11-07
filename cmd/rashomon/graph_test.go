@@ -78,7 +78,7 @@ func TestGS5_TheGraphBriefRoutesAsAPreflightFinding(t *testing.T) {
 	if !strings.Contains(out.context, "rashomon record: the code this request touches, read from the repository graph at rev ") {
 		t.Fatalf("the prompt's context has no graph brief:\n%s", out.context)
 	}
-	want := "lesson INC-212 applies to '../../jobs/purge_sessions.py': 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
+	want := "lesson INC-212 applies to '../../jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
 	if !strings.Contains(out.context, want) {
 		t.Errorf("the lesson line is not\n%s\nin\n%s", want, out.context)
 	}
