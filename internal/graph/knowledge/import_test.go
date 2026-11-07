@@ -48,6 +48,7 @@ B354 11-03 00:15 PST manager: hand-retyped commit ids twice in 4 minutes. The se
 B355 11-03 00:29 PST manager: merged #229 (FALSE-FIRE1, 20f38b62) on CI green and the R67 pair without judging the mutant rows on the merged tree with ` + "`sweep.py --check`" + `; B351's class again, one hour after quoting B351. Caught by: QA-1. Intent missed: main is always sweep-clean, and a merge proves its rows, not only its tests. Fix: until #241 lands, the manager runs sweep.py --check on each merge-tree.
 B440 11-04 10:05 PST eng-2: a test of a git read passed in a plain directory and failed in the harness. Lesson: a test of a git read runs in a worktree too, because every scratch tree the harness makes is one.
 B250 | 11-01 12:30 | eng-1 | ran the gate on a stale base | stale-evidence / DETECT | merges.log | DONE | no | 
+B347 | 11-02 22:1x | manager | cited a green from a gate whose log was never read | evidence / DETECT | gate3 log | QA-1 | no | fixed at 94c2451e, gate3 queued; rule: a green is cited only with its log's exit line
 `
 
 // TestImport_LedgerRow (W-M1.6): a nine-field row yields a lesson keyed by
@@ -57,10 +58,12 @@ B250 | 11-01 12:30 | eng-1 | ran the gate on a stale base | stale-evidence / DET
 // one with its first sentence as title; a line that starts as a row and is
 // neither is counted unparsed. What happened is never the clause (W-M1.26):
 // a prose row's clause is the sentence after "Intent missed: ", "Rule: "
-// or "Lesson: ", and a row with no rule written (a prose row with no mark,
-// a nine-field row with an empty gap) is title only. The title passes the
-// clause's rules: a narrative with '#' and backticks over 160 bytes is
-// written plain and cut at a word, so a brief can carry the failure.
+// or "Lesson: ", a gap field that writes the repair first gives the
+// sentence after its "rule: " (B347), and a row with no rule written (a
+// prose row with no mark, a nine-field row with an empty gap) is title
+// only. The title passes the clause's rules: a narrative with '#' and
+// backticks over 160 bytes is written plain and cut at a word, so a brief
+// can carry the failure.
 func TestImport_LedgerRow(t *testing.T) {
 	root := t.TempDir()
 	src := put(t, filepath.Join(root, "notes", "FAILURE-LEDGER.txt"), ledgerText)
@@ -72,8 +75,8 @@ func TestImport_LedgerRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 7 || len(rep.Sources) != 1 || rep.Sources[0].Rows != 7 || rep.Sources[0].Unparsed != 1 {
-		t.Fatalf("rows %d, report %+v; want 7 rows and 1 unparsed", len(rows), rep.Sources)
+	if len(rows) != 8 || len(rep.Sources) != 1 || rep.Sources[0].Rows != 8 || rep.Sources[0].Unparsed != 1 {
+		t.Fatalf("rows %d, report %+v; want 8 rows and 1 unparsed", len(rows), rep.Sources)
 	}
 	if p := rows[3]; p.ID != "B354" || p.Kind != KindLesson || p.Title != "hand-retyped commit ids twice in 4 minutes." || p.Clause != "" || !strings.Contains(p.Text, "second sentence") || p.Source.Row != "B354" {
 		t.Errorf("prose row = %+v; want its first sentence as title, no clause (no rule written) and the line as text", p)
@@ -96,8 +99,11 @@ func TestImport_LedgerRow(t *testing.T) {
 	if p := rows[2]; p.ID != "B233" || !strings.Contains(p.Title, "cmd/rashomon/graph.go's package; see MANAGER-NOTES.md:350") {
 		t.Errorf("B233 title %q; want it as written: it holds a banned word", p.Title)
 	}
-	if s := rep.Sources[0]; s.Clauses != 5 || s.TitleOnly != 2 || s.Titles != 5 || len(s.Notes) != 0 {
-		t.Errorf("report %+v; want 5 with a clause, 2 title only with no refusal note, 5 titles a brief can carry (B231's and B233's hold a banned word)", s)
+	if p := rows[7]; p.ID != "B347" || p.Clause != "a green is cited only with its log's exit line" {
+		t.Errorf("B347 clause %q; want the rule its author marked after the repair, not the repair", p.Clause)
+	}
+	if s := rep.Sources[0]; s.Clauses != 6 || s.TitleOnly != 2 || s.Titles != 6 || len(s.Notes) != 0 {
+		t.Errorf("report %+v; want 6 with a clause, 2 title only with no refusal note, 6 titles a brief can carry (B231's and B233's hold a banned word)", s)
 	}
 	r := rows[0]
 	if r.Schema != Schema || r.ID != "B227" || r.Kind != KindLesson || r.Status != StatusCandidate || r.Tier != TierInferred {
@@ -325,7 +331,7 @@ func TestImport_Idempotent(t *testing.T) {
 		t.Errorf("second import changed the files or the report")
 	}
 	var f File
-	if err := json.Unmarshal(first["failure-ledger.json"], &f); err != nil || f.Schema != Schema || len(f.Rows) != 7 {
+	if err := json.Unmarshal(first["failure-ledger.json"], &f); err != nil || f.Schema != Schema || len(f.Rows) != 8 {
 		t.Errorf("file = %+v, %v", f, err)
 	}
 }
