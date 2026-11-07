@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"slices"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // AC-M1.1 (PLAN section 8): over an indexed tree, the brief's unit line
@@ -16,40 +18,96 @@ import (
 // share, rounded up, when the file holds more rows) and no brief whose
 // unit line is right holds more than one off-task line (W-M1.17: a brief
 // on the wrong unit fails clause 1, and its lines are not read twice).
-// RASHOMON_ACM11_DIR is the indexed root
-// (its .rashomon/graph.jsonl), RASHOMON_ACM11_PROMPTS the prompt file
-// (test/live/autosteer/acm11/prompts.tsv), and the test skips without
-// them. The unit the brief names is the unit line's when there is one,
-// else the unit containing the first line's key (what the hook reports as
-// the finding's Unit today), so the reading before the roles stage and
-// after it is one number. Zero model cost; the prompts stay fixed.
+// Clause 3 (S3): every unit line states its basis (named, unit-name or
+// coverage) and a claim by word coverage names the ladder's runner-up when
+// it had one, so no wrong unit line is delivered as a bare fact; the
+// right and wrong counts per basis are logged (the disclosure
+// calibration). RASHOMON_ACM11_DIR is the indexed root (its
+// .rashomon/graph.jsonl), RASHOMON_ACM11_PROMPTS one or more prompt files
+// separated by ':' (test/live/autosteer/acm11/prompts.tsv, edge.tsv),
+// each gated on its own, and the test skips without them. A unit of
+// 'a;b' is any of them, '-' is right when the brief holds no unit line
+// (the fallback below is not read for it); an allow of '*' leaves
+// clause 2 unjudged for the row (no allow list was pre-registered); a
+// '\n' in a prompt is a newline. The unit the brief names is the unit
+// line's when there is one, else the unit containing the first line's key
+// (what the hook reports as the finding's Unit today), so the reading
+// before the roles stage and after it is one number. Zero model cost;
+// the prompts stay fixed.
 func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 	root, prompts := os.Getenv("RASHOMON_ACM11_DIR"), os.Getenv("RASHOMON_ACM11_PROMPTS")
 	if root == "" || prompts == "" {
 		t.Skip("RASHOMON_ACM11_DIR and RASHOMON_ACM11_PROMPTS not set")
 	}
 	g, rev := loadACM11(t, root)
-	rows := readTSV(t, prompts, 4)
-	hits, offTaskBriefs := 0, 0
-	for _, r := range rows {
-		id, unit, allow, prompt := r[0], r[1], strings.Split(r[2], ","), r[3]
-		b := Build(g, rev, prompt, Options{IDF: true})
-		got := briefUnit(g, rev, b)
-		off := offTask(b, unit, allow)
-		ok := got == unit
-		if ok {
-			hits++
+	calib := map[string]*[2]int{}
+	for _, path := range strings.Split(prompts, ":") {
+		rows := readTSV(t, path, 4)
+		hits, offTaskBriefs, undisclosed := 0, 0, 0
+		for _, r := range rows {
+			id, want, allow, prompt := r[0], strings.Split(r[1], ";"), strings.Split(r[2], ","), strings.ReplaceAll(r[3], "\\n", "\n")
+			b := Build(g, rev, prompt, Options{IDF: true})
+			got := briefUnit(g, rev, b)
+			basis, runner, has := unitDisclosure(b)
+			ok := slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
+			if ok {
+				hits++
+			}
+			var off []string
+			if ok && got != "" && r[2] != "*" {
+				off = offTask(b, got, allow)
+				if len(off) > 1 {
+					offTaskBriefs++
+				}
+			}
+			if has {
+				if basis == "" || basis == slot.BasisCoverage && runner == "" && ladderRunnerUp(b.Roles) {
+					undisclosed++
+				}
+				if calib[basis] == nil {
+					calib[basis] = &[2]int{}
+				}
+				if ok {
+					calib[basis][0]++
+				} else {
+					calib[basis][1]++
+				}
+			}
+			t.Logf("%s: unit %q want %q %v; basis %q runner-up %q; off-task %d %v\n%s\n%s", id, got, r[1], ok, basis, runner, len(off), off, b.Text(), b.Explain())
 		}
-		if ok && len(off) > 1 {
-			offTaskBriefs++
+		gate := (len(rows)*4 + 4) / 5
+		t.Logf("AC-M1.1 %s: unit line correct %d of %d (gate %d); briefs with the unit right and more than one off-task line %d (gate 0); unit lines without a basis or a coverage claim without its runner-up %d (gate 0)", path, hits, len(rows), gate, offTaskBriefs, undisclosed)
+		if hits < gate || offTaskBriefs > 0 || undisclosed > 0 {
+			t.Errorf("AC-M1.1 not met on %s: %d of %d units, %d briefs over the off-task line, %d undisclosed unit lines", path, hits, len(rows), offTaskBriefs, undisclosed)
 		}
-		t.Logf("%s: unit %q want %q %v; off-task %d %v\n%s\n%s", id, got, unit, ok, len(off), off, b.Text(), b.Explain())
 	}
-	gate := (len(rows)*4 + 4) / 5
-	t.Logf("AC-M1.1: unit line correct %d of %d (gate %d); briefs with the unit right and more than one off-task line %d (gate 0)", hits, len(rows), gate, offTaskBriefs)
-	if hits < gate || offTaskBriefs > 0 {
-		t.Errorf("AC-M1.1 not met: %d of %d units, %d briefs over the off-task line", hits, len(rows), offTaskBriefs)
+	keys := make([]string, 0, len(calib))
+	for k := range calib {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
+	var sb strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&sb, "  %-10s right %3d wrong %3d\n", k, calib[k][0], calib[k][1])
+	}
+	t.Logf("disclosure calibration (unit lines, right and wrong by basis):\n%s", sb.String())
+}
+
+// unitDisclosure is the kept unit line's basis and runner-up, and whether
+// the brief holds a unit line.
+func unitDisclosure(b Brief) (basis, runner string, has bool) {
+	for _, l := range b.Lines[:b.Kept] {
+		if u, ok := l.Slot.Unit(); ok {
+			return u.Basis, string(u.RunnerUp), true
+		}
+	}
+	return "", "", false
+}
+
+// ladderRunnerUp is whether the ladder held a second, unrefused pick on
+// another unit than the one it settled on.
+func ladderRunnerUp(r Roles) bool {
+	return len(r.Picks) > 1 && r.Picks[1].Refused == "" && r.Picks[1].ID != r.Picks[0].ID
 }
 
 // TestACM11_Replay is the development set (test/live/autosteer/acm11/

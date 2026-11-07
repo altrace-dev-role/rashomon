@@ -1,0 +1,62 @@
+# AC-M1.1 edge set (PLAN section 8, S3 close-out 2026-11-07): 54 prompts over rashomon pre-registered on
+# 2026-11-07 02:4x before any T1c engine change, seventeen prompt classes (feature-add, bug-symptom, refactor,
+# question, vague, multi-task, tests-only, performance, delete, cross-cutting, pasted-error, non-go, negation,
+# knowledge-id, named-name, named-path, greenfield). Columns: id, unit, allow, prompt. unit: ';' separates the
+# units any of which is right, '-' means no unit line is right; allow '*' leaves clause 2 (off-task lines)
+# unjudged, no allow list was pre-registered for these rows; '\n' in a prompt is a newline. The truths have one
+# author (the 11-07 session) read against the tree; a second read is owed (TRACE, M1 close). The class of each
+# row is kept as a comment column in docs-out's copy, not here.
+A1	internal/steer/render	*	Add a per-session count of refused lines to the steer render gate, next to the existing kept count.
+A2	internal/verify	*	Let the obligation ledger carry the turn window each obligation was opened in.
+A3	internal/consent	*	Teach the consent screen to name the knowledge files it reads.
+A4	internal/hookio;internal/harness	*	Emit the harness version in the hook payload intake so a reader can tell which Claude Code wrote the record.
+B1	internal/report	*	The report prints a timeline row twice when two tool calls share a tool_use_id.
+B2	internal/shape	*	A masked test run, piped to tail, is recorded with no pattern input.
+B3	internal/spend	*	The spend estimate over-counts cache reads on days with more than one session.
+B4	test/perf/peakrss	*	Peak RSS reads zero on linux when the child exits before the first sample.
+C1	internal/recap	*	Rename the recap decision so it is called by the turn it judges, and update every caller.
+C2	internal/install	*	Split the installer so the hook entries table lives in its own file.
+C3	internal/host;internal/hook	*	Move the hostname canonicalisation out of the hook into the host package.
+C4	internal/linescan	*	Merge the two record readers that both walk newline-delimited files into the line scanner.
+D1	internal/fault	*	Remove the fault injector and every call site that still references it.
+D2	internal/backtest;cmd/rashomon	*	Drop the backtest verb; nothing has used it since the body store moved.
+D3	internal/seed;internal/secretshape	*	Delete the seed counter's duplicate of the secret-shape check and call the shared one.
+E1	internal/safe	*	Add a test that the panic barrier records the panic value before exiting.
+E2	internal/hook	*	The flaky test in the hook package fails under -race; make it deterministic.
+E3	internal/gateout	*	Write a table-driven test for the gate output classifier covering truncated runner output.
+F1	internal/intent	*	The intent preflight is over budget on long prompts; cut the identifier scan's allocations.
+F2	internal/store;internal/verify	*	Reduce the peak RSS of the Stop hook when the store holds fifty thousand records.
+F3	scripts/budgetsgen	*	Make the budgets generator skip packages whose benchmarks did not change.
+G1	-	*	Update the README's install section to mention the plugin.
+G2	-;test/perf	*	Fix the CI workflow so the perf-tagged tests run on linux only.
+G3	-	*	Bump the Go version in go.mod and the toolchain line in the workflow.
+G4	-	*	Rewrite the mutation sweep script so it clears its own cache per batch.
+H1	internal/harness	*	How does the harness decide which agent fired a hook?
+H2	internal/verify;internal/shape;internal/gateout	*	Why does the Stop verdict say unknown when the test command was piped?
+H3	internal/budget	*	Where is the five-second hook deadline enforced?
+H4	internal/fold	*	What writes the fold.json file and who reads it?
+I1	internal/consent	*	Three things: (1) land the consent text change in internal/consent, (2) re-run the slot gate, (3) write the TRACE status line. Start with (1).
+I2	internal/share	*	Card SV1a: add the share bundle's manifest digest (internal/share/bundle.go), then wire the merge guard check in scripts/mergeguard, then the disclosure paragraph. QA reads after.
+I3	internal/verify	*	Review PR #134 (STALE-NUDGE1): verify the write-that-leaves-a-green nudge in internal/verify and the hook's PostToolUse path; check the six benchmark rows; do not touch cmd.
+I4	internal/spec	*	Director note: lane 3 holds the slot; after it frees, rebase pr/declared-gates1 onto main, run gofmt and vet, then add the budgets row for the declared gates in internal/spec.
+J1	internal/hook	*	Fix internal/hook/hook_test.go so the race detector passes.
+J2	internal/verify	*	platformRow double counts when two facts share a config; fix it.
+J3	internal/verify	*	verify.EvaluateStop should report the elapsed time of the fold step separately.
+J4	internal/steer/render/slot	*	In `internal/steer/render/slot/graph_unit.go`, cap the consumers list at three.
+J5	internal/platform	*	The function Impact drops facts whose config is empty; keep them.
+K1	-	*	fix it
+K2	-	*	continue where we left off
+K3	internal/digest	*	same as before but for the digest
+K4	-	*	clean up
+L1	-;internal/verify	*	Add a new package internal/flow that reads process templates as knowledge rows; the ledger's obligation producers will consume it.
+M1	cmd/rashomon;internal/hook;internal/budget	*	Add a context parameter to every hook entry so the budget deadline is passed in instead of read from a global.
+M2	internal/store;internal/verify	*	Replace every fmt.Errorf with the error wrapping helper across the store and verify packages.
+M3	internal/jsonscan	*	Move all JSON field reads onto the streaming scanner.
+N1	pgraph;internal/verify	*	Implement PF-PL12.
+N2	internal/verify	*	Address B386 in the ledger.
+N3	cmd/rashomon;internal/intent	*	Per D160 the prompt must never be stored; audit the preflight's writes.
+O1	internal/steer/render	*	Do not touch the store; change only the render so the kept count shows in the Stop line.
+O2	internal/digest	*	Without changing the record schema, make the digest carry the turn's elapsed time.
+P1	internal/verify	*	internal/verify/stop_test.go:214: EvaluateStop() verdict = unknown, want green
+P2	internal/gateout	*	panic: runtime error: index out of range [3] with length 3\n\ngithub.com/altrace-dev-role/rashomon/internal/gateout.classify(...)
+P3	internal/install	*	--- FAIL: TestInstall_Events (0.00s)\n    install_test.go:88: events differ

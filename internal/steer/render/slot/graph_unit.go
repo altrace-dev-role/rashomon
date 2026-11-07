@@ -13,15 +13,30 @@ import (
 // words equal steer's graph kinds (source.go), pinned there since slot
 // cannot import steer.
 
-// UnitFact is the unit that owns the task: its path, the symbols of it the
-// request names, the files outside it that consume them, and the knowledge
-// that applies to the unit as a whole.
+// UnitFact is the unit that owns the task: its path, how the unit was
+// claimed (Basis, one of the three words below; empty renders as before),
+// the runner-up unit when the claim is by word coverage, the symbols of it
+// the request names, the files outside it that consume them, and the
+// knowledge that applies to the unit as a whole.
 type UnitFact struct {
 	Path      RelPath
+	Basis     string
+	RunnerUp  RelPath
 	Names     []Ident
 	Consumers []RelPath
 	Lessons   []KnowledgeID
 }
+
+// The basis of a unit claim (S3, AC-M1.1 clause 3), so a unit line is
+// never a bare fact: the request named the unit's path, a name declared
+// in it or a knowledge id that applies to it; the request held the unit's
+// own name; or the unit's words covered the request's target phrase, the
+// claim the ladder settles by score, whose line names the runner-up.
+const (
+	BasisNamed    = "named"
+	BasisUnitName = "unit-name"
+	BasisCoverage = "coverage"
+)
 
 // The roles a code line carries beside none.
 const (
@@ -65,6 +80,9 @@ func (f UnitFact) validate() error {
 	if err := f.Path.Validate(); err != nil {
 		return err
 	}
+	if err := f.validDisclosure(); err != nil {
+		return err
+	}
 	if err := validIdents(f.Names); err != nil {
 		return err
 	}
@@ -76,11 +94,27 @@ func (f UnitFact) validate() error {
 	return validIDs(f.Lessons)
 }
 
+// validDisclosure is whether the basis is one of the three words or empty
+// and the runner-up, when named, passes the path check.
+func (f UnitFact) validDisclosure() error {
+	if f.Basis != "" && f.Basis != BasisNamed && f.Basis != BasisUnitName && f.Basis != BasisCoverage {
+		return errors.New("slot: unit line has a basis outside named, unit-name and coverage")
+	}
+	if f.RunnerUp != "" {
+		return f.RunnerUp.Validate()
+	}
+	return nil
+}
+
 // bindUnit leaves out and counts what a check refuses and cuts each list
-// at its cap; the unit's path refuses the line.
+// at its cap; the unit's path, a basis outside the three words and a
+// runner-up path that fails a check refuse the line.
 func (l GraphLine) bindUnit() (Value, error) {
 	u, m := *l.unit, l.more
 	if err := u.Path.Validate(); err != nil {
+		return nil, err
+	}
+	if err := u.validDisclosure(); err != nil {
 		return nil, err
 	}
 	u.Names, m.Names = keptIdents(u.Names, m.Names, maxLineIdents)
@@ -104,12 +138,17 @@ func keptPaths(items []RelPath, more, cap int) ([]RelPath, int) {
 	return kept, more
 }
 
-// unitText is "unit 'internal/platform' declares 'Read', 'Callers'; is
-// consumed by 'cmd/rashomon/report_platform.go'; D145 applies", or "a unit
-// on record" with counts in the record form.
+// unitText is "unit 'internal/platform' (by word coverage; runner-up
+// 'internal/verify') declares 'Read', 'Callers'; is consumed by
+// 'cmd/rashomon/report_platform.go'; D145 applies", the basis clause in
+// one of its three forms or absent, or "a unit on record" with counts in
+// the record form.
 func (l GraphLine) unitText() string {
 	u, m := *l.unit, l.more
 	head := "unit " + u.Path.Text()
+	if b := basisText(u.Basis, u.RunnerUp); b != "" {
+		head += " " + b
+	}
 	if l.keyed {
 		head = "a unit on record"
 	}
@@ -127,6 +166,24 @@ func (l GraphLine) unitText() string {
 		return head
 	}
 	return head + " " + strings.Join(parts, "; ")
+}
+
+// basisText is the unit line's disclosure clause: how the unit was
+// claimed, and for a claim by word coverage the runner-up when there was
+// one.
+func basisText(basis string, runnerUp RelPath) string {
+	switch basis {
+	case BasisNamed:
+		return "(named in the request)"
+	case BasisUnitName:
+		return "(by its name)"
+	case BasisCoverage:
+		if runnerUp != "" {
+			return "(by word coverage; runner-up " + runnerUp.Text() + ")"
+		}
+		return "(by word coverage)"
+	}
+	return ""
 }
 
 func pathTexts(items []RelPath) []string {

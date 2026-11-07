@@ -217,8 +217,8 @@ func (b Brief) roles(hits bool) string {
 		}
 		fmt.Fprintf(&sb, "  use %6.2f add %6.2f mass %6.2f  via %-5v in %-5v out %-5v nodes %-3d %s\n", cl.Use, cl.Add, cl.Mass, cl.ViaAdd, cl.In, cl.Reused, cl.Nodes, cl.File)
 	}
-	fmt.Fprintf(&sb, "roles (%s): unit %s; file %s; targets %d; reuse %s; consumers %s; knowledge %s\n",
-		r.Why, r.Unit, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
+	fmt.Fprintf(&sb, "roles (%s): unit %s; basis %s; runner-up %s; file %s; targets %d; reuse %s; consumers %s; knowledge %s\n",
+		r.Why, r.Unit, r.Basis, r.RunnerUp, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
 	return sb.String()
 }
 

@@ -100,3 +100,60 @@ func TestGU1_TheUnitRecordFormHoldsItsDigestCountsAndIds(t *testing.T) {
 		t.Error("a line holding a code and a unit fact was bound")
 	}
 }
+
+// TestGU2_TheUnitLineStatesItsBasisAndNamesTheRunnerUp (S3, AC-M1.1
+// clause 3): a unit line says how the unit was claimed, in one of three
+// words, and a claim by word coverage names the runner-up unit when the
+// ladder had one, so a wrong unit line is never delivered as a bare fact;
+// a basis outside the three words and a runner-up path that fails a check
+// refuse the line; a line with no basis renders as before; the record
+// form keeps the basis word and never the runner-up's path.
+func TestGU2_TheUnitLineStatesItsBasisAndNamesTheRunnerUp(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fact UnitFact
+		want string
+	}{
+		{"named", UnitFact{Path: "internal/safe", Basis: BasisNamed, Names: []Ident{"Guard"}},
+			"unit 'internal/safe' (named in the request) declares 'Guard'"},
+		{"unit-name", UnitFact{Path: "internal/hook", Basis: BasisUnitName},
+			"unit 'internal/hook' (by its name)"},
+		{"coverage with runner-up", UnitFact{Path: "internal/store", Basis: BasisCoverage, RunnerUp: "internal/safe", Names: []Ident{"barrierSync"}},
+			"unit 'internal/store' (by word coverage; runner-up 'internal/safe') declares 'barrierSync'"},
+		{"coverage alone", UnitFact{Path: "internal/store", Basis: BasisCoverage},
+			"unit 'internal/store' (by word coverage)"},
+		{"no basis", UnitFact{Path: "pgraph"}, "unit 'pgraph'"},
+	} {
+		v, err := Bind(NewUnitLine(c.fact))
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		fact UnitFact
+	}{
+		{"basis outside the three words", UnitFact{Path: "internal/store", Basis: "guess"}},
+		{"runner-up path fails a check", UnitFact{Path: "internal/store", Basis: BasisCoverage, RunnerUp: "/etc/passwd"}},
+	} {
+		if _, err := Bind(NewUnitLine(c.fact)); err == nil {
+			t.Errorf("%s: bound", c.name)
+		}
+	}
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(NewUnitLine(UnitFact{Path: "internal/store", Basis: BasisCoverage, RunnerUp: "internal/safe"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := v.(GraphLine).Record(digest)
+	u, ok := rec.Unit()
+	if !ok || u.Basis != BasisCoverage || u.RunnerUp != "" {
+		t.Errorf("record form unit %+v (want the basis kept and no runner-up path)", u)
+	}
+	if got := rec.Text(); got != "a unit on record" {
+		t.Errorf("record text %q", got)
+	}
+}

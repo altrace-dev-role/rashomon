@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // The roles stage (PLAN 5.2, W-M1.12): from the prompt's frame the brief
@@ -26,6 +27,16 @@ const (
 	RoleReuse     = "reuse"
 	RoleConsumer  = "consumer"
 	RoleKnowledge = "knowledge"
+)
+
+// The basis words of a unit claim, the slot's (graph_unit.go): Named for
+// a claim by a path, a declared name or a knowledge id the request held,
+// UnitName for the unit's own name in the request, Coverage for a claim
+// the ladder settled by word coverage (full, partial, qualified, single).
+const (
+	BasisNamed    = slot.BasisNamed
+	BasisUnitName = slot.BasisUnitName
+	BasisCoverage = slot.BasisCoverage
 )
 
 // RoleFile is a file in a role with the symbols of it the role rests on.
@@ -50,7 +61,9 @@ type ReuseClaim struct {
 // whole prompt when the frame named no target), every unit's claim on it,
 // and the roles around the settled unit; KnowledgeVia is the file each
 // knowledge id was found through, the file its line names. Why names the
-// claim's class or the refusal.
+// claim's class or the refusal; Basis is the claim's basis word and
+// RunnerUp the ladder's next unrefused pick on another unit, both on the
+// unit line (S3).
 type Roles struct {
 	Frame         Frame
 	Named         Named
@@ -69,6 +82,28 @@ type Roles struct {
 	Knowledge     []graph.ID
 	KnowledgeVia  map[graph.ID]graph.ID
 	Why           string
+	Basis         string
+	RunnerUp      graph.ID
+}
+
+// basisOf is the basis word of a claim of class c.
+func basisOf(c string) string {
+	switch c {
+	case ClassNamed:
+		return BasisNamed
+	case ClassUnit:
+		return BasisUnitName
+	}
+	return BasisCoverage
+}
+
+// runnerUp is the ladder's second pick when it is unrefused and on
+// another unit than the first, else none.
+func runnerUp(picks []UnitPick) graph.ID {
+	if len(picks) > 1 && picks[1].Refused == "" && picks[1].ID != "" && picks[1].ID != picks[0].ID {
+		return picks[1].ID
+	}
+	return ""
 }
 
 // Found is whether a unit was settled on.
@@ -85,6 +120,7 @@ func FindRoles(g Reader, c corpus, rows []ScopeRow, weights map[string]float64, 
 	}
 	pick := r.Picks[0]
 	r.Unit, r.Path = pick.ID, pick.Path
+	r.Basis, r.RunnerUp = basisOf(pick.Class), runnerUp(r.Picks)
 	r.File, r.Targets = targetFile(g, c, pick)
 	r.Consumers, r.UnitConsumers = consumers(g, c, r, rows, outside)
 	r.Reuse, r.ReuseClaims = reuse(g, c, rows, r, weights)

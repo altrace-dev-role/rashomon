@@ -6,6 +6,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/graphtest"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // TestRoles_TaskANamesTheFourRoles (W-M1.12, AC-M1.1's shape): for Task A
@@ -57,7 +58,7 @@ func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	}
 	lines := strings.Split(b.Text(), "\n")[1:]
 	wants := []string{
-		"unit 'services/auth' declares 'is_expired', 'create_session', 'SESSION_TTL_SECONDS'; is consumed by 'jobs/purge_sessions.py', 'tests/unit/test_sessions.py' and 1 more",
+		"unit 'services/auth' (by word coverage; runner-up '" + r.Picks[1].Path + "') declares 'is_expired', 'create_session', 'SESSION_TTL_SECONDS'; is consumed by 'jobs/purge_sessions.py', 'tests/unit/test_sessions.py' and 1 more",
 		"'services/auth/auth/sessions.py' declares",
 		"reuse 'services/orgs/orgs/settings.py' declares 'get_org_settings'",
 		"consumer 'jobs/purge_sessions.py'",
@@ -104,4 +105,44 @@ func containsID(ids []graph.ID, id graph.ID) bool {
 		}
 	}
 	return false
+}
+
+// TestRoles_TheUnitLineCarriesTheClaimsBasisAndRunnerUp (S3, AC-M1.1
+// clause 3): the unit line the roles stage delivers says how the unit was
+// claimed: Task A's unit is claimed by word coverage, so its line carries
+// the coverage basis and names the ladder's runner-up, the next unit by
+// score; a request that names the unit's path is claimed by name, so its
+// line carries the named basis and no runner-up. The basis and the
+// runner-up travel on the engine's Line and into the slot's fact.
+func TestRoles_TheUnitLineCarriesTheClaimsBasisAndRunnerUp(t *testing.T) {
+	sp := graphtest.New(t)
+	withKnowledge(sp)
+	rev := graph.RevCommit(graphtest.Commit)
+	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	t.Logf("\n%s", b.Explain())
+	r := b.Roles
+	if r.Why != ClassFull || len(r.Picks) < 2 {
+		t.Fatalf("Task A: why %q, picks %d", r.Why, len(r.Picks))
+	}
+	if r.Basis != BasisCoverage || r.RunnerUp != r.Picks[1].ID {
+		t.Errorf("roles basis %q runner-up %q; want %q and %q", r.Basis, r.RunnerUp, BasisCoverage, r.Picks[1].ID)
+	}
+	if l := b.Lines[0]; l.Role != RoleUnit || l.Basis != BasisCoverage || l.RunnerUp != r.Picks[1].ID {
+		t.Errorf("unit line basis %q runner-up %q", l.Basis, l.RunnerUp)
+	}
+	u, ok := b.Lines[0].Slot.Unit()
+	if !ok || u.Basis != slot.BasisCoverage || string(u.RunnerUp) != r.Picks[1].Path {
+		t.Errorf("slot unit fact %+v; want coverage and runner-up %q", u, r.Picks[1].Path)
+	}
+	if !strings.Contains(b.Text(), "unit 'services/auth' (by word coverage; runner-up '"+r.Picks[1].Path+"')") {
+		t.Errorf("brief text lacks the disclosure:\n%s", b.Text())
+	}
+	b = Build(sp.Store, rev, "in services/auth, make session expiry respect the org-level timeout override.", Options{IDF: true})
+	t.Logf("\n%s", b.Explain())
+	if b.Roles.Why != ClassNamed || b.Roles.Basis != BasisNamed || b.Roles.RunnerUp != "" {
+		t.Fatalf("named: why %q basis %q runner-up %q", b.Roles.Why, b.Roles.Basis, b.Roles.RunnerUp)
+	}
+	if !strings.Contains(b.Text(), "unit 'services/auth' (named in the request)") {
+		t.Errorf("named brief text lacks the disclosure:\n%s", b.Text())
+	}
 }

@@ -9,8 +9,8 @@ m("GS-1 a line holding two facts is bound", S,
   "\tif err := l.oneFact(); err != nil {\n\t\treturn nil, err\n\t}\n\tm := l.more\n", "\tm := l.more\n",
   "TestGS1_BindLeavesOutAndCountsWhatAChecksRefuses")
 m("GS-1 the record form keeps the path", S,
-  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Lessons: slices.Clone(c.Lessons)}\n",
-  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Path: c.Path, Lessons: slices.Clone(c.Lessons)}\n",
+  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Role: c.Role, Lessons: slices.Clone(c.Lessons)}\n",
+  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Path: c.Path, Role: c.Role, Lessons: slices.Clone(c.Lessons)}\n",
   "TestGS1_RecordFormHoldsDigestsCountsAndIds")
 m("GS-1 a refused name reaches the line", S,
   "\t\tc.Names, m.Names = keptIdents(c.Names, m.Names, maxLineIdents)\n", "\t\tc.Names, m.Names = c.Names, m.Names\n",
@@ -32,7 +32,7 @@ m("GS-5 paths print from the index root", "cmd/rashomon/graph.go",
   "\t\tr, err := filepath.Rel(cwd, filepath.Join(root, filepath.FromSlash(p)))\n\t\tif err != nil {\n\t\t\treturn p\n\t\t}\n\t\treturn filepath.ToSlash(r)\n",
   "\t\treturn p\n", "TestGS5_")
 m("GS-6 a lesson's words seed it", "internal/graph/engine/scope.go",
-  "\t\tif n.Kind == \"unit\" || n.Kind == \"mod\" || IsKnowledge(n.Kind) {\n", "\t\tif n.Kind == \"unit\" || n.Kind == \"mod\" {\n",
+  "\t\tif n.Kind == \"mod\" || IsKnowledge(n.Kind) {\n", "\t\tif n.Kind == \"mod\" {\n",
   "TestGS6_AKnowledgeNodeNeverSeeds")
 m("GS-6 the declared file target is ignored", "internal/graph/engine/facts.go",
   "\t\tif strings.HasPrefix(string(e.Dst), \"file:\") && (target == anchor || e.Dst < target) {\n", "\t\tif false {\n",

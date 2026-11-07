@@ -584,7 +584,7 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 		m.Names += len(u.Names)
 		m.Consumers += len(u.Consumers)
 		out.digest = digest(string(u.Path))
-		out.unit = &UnitFact{Lessons: slices.Clone(u.Lessons)}
+		out.unit = &UnitFact{Basis: u.Basis, Lessons: slices.Clone(u.Lessons)}
 	default:
 		return GraphLine{}
 	}

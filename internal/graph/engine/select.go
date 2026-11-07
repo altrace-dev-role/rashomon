@@ -28,6 +28,8 @@ type Line struct {
 	Members   []graph.ID
 	Anchor    graph.ID
 	Role      string
+	Basis     string
+	RunnerUp  graph.ID
 	Consumers []graph.ID
 	Slot      slot.GraphLine
 	Text      string

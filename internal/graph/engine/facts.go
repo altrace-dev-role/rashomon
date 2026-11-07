@@ -26,11 +26,15 @@ func lineFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel 
 	return slot.NewCodeLine(codeFact(g, rev, l, byID, rel))
 }
 
-// unitFact is a unit line's facts: its path, the target symbols it
-// declares (the line's members), the files outside it that consume it,
-// and the knowledge that applies to the unit itself.
+// unitFact is a unit line's facts: its path, the claim's basis and the
+// runner-up unit (S3), the target symbols it declares (the line's
+// members), the files outside it that consume it, and the knowledge that
+// applies to the unit itself.
 func unitFact(g Reader, rev graph.Rev, l Line, rel func(string) string) slot.UnitFact {
-	f := slot.UnitFact{Path: slot.RelPath(rel(unitPath(l.Key)))}
+	f := slot.UnitFact{Path: slot.RelPath(rel(unitPath(l.Key))), Basis: l.Basis}
+	if l.RunnerUp != "" {
+		f.RunnerUp = slot.RelPath(rel(unitPath(l.RunnerUp)))
+	}
 	for _, m := range l.Members {
 		if strings.HasPrefix(string(m), "sym:") {
 			f.Names = appendIdent(f.Names, short(m))

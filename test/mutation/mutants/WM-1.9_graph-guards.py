@@ -15,7 +15,7 @@ m("WM-1.9 a finding's unit is not checked", F,
   "TestFinding_Schema")
 G = "cmd/rashomon/graph.go"
 m("WM-1.9 the unit reached is not returned", G,
-  "\t\tif n.Kind == \"unit\" {\n\t\t\treturn id\n\t\t}\n", "\t\tif n.Kind == \"unit\" {\n\t\t\treturn \"\"\n\t\t}\n",
+  "\t\tif strings.HasPrefix(string(id), \"unit:\") {\n\t\t\treturn id\n\t\t}\n", "\t\tif strings.HasPrefix(string(id), \"unit:\") {\n\t\t\treturn \"\"\n\t\t}\n",
   "TestUnitOf_WalksContainingDeclaringAndAppliesToEdges")
 m("WM-1.9 the unit walk stops after two nodes", G,
   "\tfor step := 0; step < 4 && id != \"\"; step++ {\n", "\tfor step := 0; step < 2 && id != \"\"; step++ {\n",
