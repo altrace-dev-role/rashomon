@@ -17,9 +17,9 @@ import (
 // and are spent, so insert_session rests on a doc mention alone and
 // ranks after it; the daily report's doc mention of org_id outside the
 // unit is no reuse), the consumer outside the unit, and the knowledge
-// that applies, the lesson on the consumer before the decision on the
-// reuse; the decision is found and cut at the budget with a decision
-// saying so.
+// that applies: the unit's own lesson, reached through the table its db
+// module writes (W-M1.23); the decision on the reuse is the reuse line's
+// to show, never a knowledge line.
 func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
@@ -44,7 +44,7 @@ func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	if !containsID(r.UnitConsumers, graph.FileID("tests/unit/test_sessions.py")) {
 		t.Errorf("unit consumers %v lack the test", r.UnitConsumers)
 	}
-	if len(r.Knowledge) != 2 || r.Knowledge[0] != "les:INC-212" || r.Knowledge[1] != "dec:ADR-0007" {
+	if len(r.Knowledge) != 1 || r.Knowledge[0] != "les:INC-212" {
 		t.Errorf("knowledge %v", r.Knowledge)
 	}
 	roles := []string{RoleUnit, RoleTarget, RoleReuse, RoleConsumer, RoleKnowledge}
@@ -60,7 +60,7 @@ func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	wants := []string{
 		"unit 'services/auth' (by word coverage; runner-up '" + r.Picks[1].Path + "') declares 'is_expired', 'create_session', 'SESSION_TTL_SECONDS'; is consumed by 'jobs/purge_sessions.py', 'tests/unit/test_sessions.py' and 1 more",
 		"'services/auth/auth/sessions.py' declares",
-		"reuse 'services/orgs/orgs/settings.py' declares 'get_org_settings'",
+		"reuse 'services/orgs/orgs/settings.py' declares 'get_org_settings'; imports 'orgs.models'; ADR-0007 applies",
 		"consumer 'jobs/purge_sessions.py'",
 		"lesson INC-212 applies to 'jobs/purge_sessions.py'",
 	}
@@ -69,12 +69,10 @@ func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 			t.Errorf("line %d\n got %q\nwant prefix %q", i+1, lines[i], want)
 		}
 	}
-	cut := false
 	for _, d := range b.Decisions {
-		cut = cut || d.ID == "dec:ADR-0007" && d.Why == "cut: budget (role knowledge)"
-	}
-	if !cut {
-		t.Errorf("no cut decision for ADR-0007:\n%+v", b.Decisions)
+		if d.ID == "dec:ADR-0007" && strings.HasPrefix(d.Why, "role:") {
+			t.Errorf("the reuse's record holds a role line: %+v", d)
+		}
 	}
 }
 

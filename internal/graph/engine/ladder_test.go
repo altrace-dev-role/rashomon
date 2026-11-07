@@ -310,11 +310,12 @@ func TestFrame_AConditionOpensNoPhrase(t *testing.T) {
 	}
 }
 
-// A knowledge line names the file it was found through: the requirement
-// found through the reuse file's member is reported on that file, not on
-// the alphabetically first file the record also applies to (ST12's
-// shape: PF-HD1 on ledger.go was reported on steerstep.go). Within a step
-// a requirement still comes before a decision.
+// A knowledge line names the file it was found through: the decision
+// found through the unit's other file is reported on that file. A record
+// on a reuse outside the unit is the reuse line's to show ("PF-HD1
+// applies" on ledger.py) and no knowledge line (W-M1.23), so it is never
+// reported on the alphabetically first file it also applies to (ST12's
+// shape: PF-HD1 on ledger.go was reported on steerstep.go).
 func TestKnowledge_ALineNamesTheFileItWasFoundThrough(t *testing.T) {
 	build := func(withDecision bool) *graph.Store {
 		s := synth(t, []synFile{
@@ -338,15 +339,18 @@ func TestKnowledge_ALineNamesTheFileItWasFoundThrough(t *testing.T) {
 	if r.Path != "cmd" || !sameIDs(files(r.Reuse), want) {
 		t.Fatalf("roles %+v", r)
 	}
-	if len(r.Knowledge) != 2 || r.Knowledge[0] != "req:PF-HD1" || r.Knowledge[1] != "dec:D155" {
-		t.Fatalf("knowledge %v, want the requirement then the decision", r.Knowledge)
+	if len(r.Knowledge) != 1 || r.Knowledge[0] != "dec:D155" {
+		t.Fatalf("knowledge %v, want the unit's own decision alone", r.Knowledge)
 	}
-	if r.KnowledgeVia["req:PF-HD1"] != graph.FileID("ledger/ledger.py") || r.KnowledgeVia["dec:D155"] != graph.FileID("cmd/storeopen.py") {
+	if r.KnowledgeVia["dec:D155"] != graph.FileID("cmd/storeopen.py") {
 		t.Errorf("via %v", r.KnowledgeVia)
 	}
 	b := Build(build(false), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true})
-	line := "requirement PF-HD1 applies to 'ledger/ledger.py'"
+	line := "reuse 'ledger/ledger.py' declares 'open_ledger'; PF-HD1 applies"
 	if !strings.Contains(b.Text(), line) {
 		t.Errorf("brief lacks %q:\n%s", line, b.Text())
+	}
+	if strings.Contains(b.Text(), "PF-HD1 applies to 'hook/steerstep.py'") {
+		t.Errorf("the reuse's record is reported on a file it was not found through:\n%s", b.Text())
 	}
 }

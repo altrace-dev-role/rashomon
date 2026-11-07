@@ -563,12 +563,18 @@ func contains(ids []graph.ID, id graph.ID) bool {
 	return false
 }
 
-// roleKnowledge is the knowledge applying to the roles, the most specific
-// first: on the target symbols and file, then on the reuse and consumer
-// files and their members, then on the unit; within a step a requirement
-// before a lesson before a decision, then by id. Each id maps to the file
-// it was found through (the target file for the unit's own), so its line
-// names that file and not another the record applies to.
+// roleKnowledge is the unit's own knowledge, the most specific first: on
+// the target symbols and file, then on the unit's other files and the
+// symbols they declare (each through its file), then on the unit node;
+// within a step a requirement before a lesson before a decision, then by
+// id. A record on a reuse or consumer file is that line's to show ("X
+// applies" on the code line) and never a knowledge line (W-M1.23,
+// AC-M1.5): a unit with no record of its own gets none, and a
+// neighbour's record is not the unit's. On the W-M1.19 set 25 of 160
+// knowledge lines stood on a unit with no record and 36 on a neighbour's.
+// Each id maps to the file it was found through (the target file for the
+// unit's own), so its line names that file and not another the record
+// applies to.
 func roleKnowledge(g Reader, c corpus, r Roles) ([]graph.ID, map[graph.ID]graph.ID) {
 	seen := map[graph.ID]bool{}
 	via := map[graph.ID]graph.ID{}
@@ -592,19 +598,34 @@ func roleKnowledge(g Reader, c corpus, r Roles) ([]graph.ID, map[graph.ID]graph.
 		})
 		out = append(out, found...)
 	}
-	var first, hop [][2]graph.ID
+	var first, own [][2]graph.ID
 	for _, id := range append(append([]graph.ID{}, r.Targets...), r.File) {
 		first = append(first, [2]graph.ID{id, r.File})
 	}
 	step(first...)
-	for _, rf := range append(append([]RoleFile{}, r.Reuse...), r.Consumers...) {
-		for _, id := range append([]graph.ID{rf.File}, rf.Members...) {
-			hop = append(hop, [2]graph.ID{id, rf.File})
+	for _, f := range unitFiles(g, c.rev, r.Unit) {
+		if f == r.File {
+			continue
+		}
+		own = append(own, [2]graph.ID{f, f})
+		for _, e := range g.Out(f, c.rev, graph.Declares) {
+			own = append(own, [2]graph.ID{e.Dst, f})
 		}
 	}
-	step(hop...)
+	step(own...)
 	step([2]graph.ID{r.Unit, r.File})
 	return out, via
+}
+
+// unitFiles is the files a unit contains, by id, so a record two of them
+// carry is found through the same one on every run.
+func unitFiles(g Reader, rev graph.Rev, unit graph.ID) []graph.ID {
+	var files []graph.ID
+	for _, e := range g.Out(unit, rev, graph.Contains) {
+		files = append(files, e.Dst)
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i] < files[j] })
+	return files
 }
 
 // kindRank orders knowledge kinds for one step: requirement, lesson,
