@@ -151,7 +151,7 @@ func TestGraphKnowledgeImport_RowsReachTheIndex(t *testing.T) {
 	if err := cmdGraph([]string{"knowledge", "import", src}, &out); err != nil {
 		t.Fatalf("graph knowledge import: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "LEDGER.txt: 1 row(s), 1 with a clause, 0 title only, 0 unparsed; applies_to 1 resolved, 0 path(s) not in the index -> ") || !strings.Contains(out.String(), "indexed ") {
+	if !strings.Contains(out.String(), "LEDGER.txt: 1 row(s), 1 with a clause, 0 title only, 0 unparsed; 1 title(s) a brief can carry; applies_to 1 resolved, 0 path(s) not in the index -> ") || !strings.Contains(out.String(), "indexed ") {
 		t.Errorf("output = %q", out.String())
 	}
 	s, h, err := graph.LoadFile(dir)

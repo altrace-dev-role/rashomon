@@ -22,21 +22,22 @@ type Report struct {
 }
 
 // SourceReport counts one source's rows: those with a clause under the
-// approved-text rules, those title only (with a note naming the refusal),
-// the lines that started as a row and did not parse, the applies_to ids
+// approved-text rules, those title only (no clause written, or one refused,
+// with a note naming the refusal), the titles under the same rules, the
+// lines that started as a row and did not parse, the applies_to ids
 // resolved against the index and the path-like words it did not hold.
 type SourceReport struct {
-	File, Written                                         string
-	Rows, Clauses, TitleOnly, Unparsed, Resolved, Dropped int
-	Notes                                                 []string
+	File, Written                                                 string
+	Rows, Clauses, TitleOnly, Titles, Unparsed, Resolved, Dropped int
+	Notes                                                         []string
 }
 
 // String is the report as the verb prints it.
 func (r Report) String() string {
 	var b strings.Builder
 	for _, s := range r.Sources {
-		fmt.Fprintf(&b, "%s: %d row(s), %d with a clause, %d title only, %d unparsed; applies_to %d resolved, %d path(s) not in the index -> %s\n",
-			s.File, s.Rows, s.Clauses, s.TitleOnly, s.Unparsed, s.Resolved, s.Dropped, s.Written)
+		fmt.Fprintf(&b, "%s: %d row(s), %d with a clause, %d title only, %d unparsed; %d title(s) a brief can carry; applies_to %d resolved, %d path(s) not in the index -> %s\n",
+			s.File, s.Rows, s.Clauses, s.TitleOnly, s.Unparsed, s.Titles, s.Resolved, s.Dropped, s.Written)
 		for _, n := range s.Notes {
 			fmt.Fprintf(&b, "  %s\n", n)
 		}
@@ -73,11 +74,14 @@ func importOne(root, src string, idx *resolver, rid string) (SourceReport, error
 	for i := range rows {
 		r := &rows[i]
 		c, err := clause(r.Clause)
-		if err != nil {
+		switch {
+		case r.Clause == "":
+			sr.TitleOnly++
+		case err != nil:
 			sr.TitleOnly++
 			sr.Notes = append(sr.Notes, fmt.Sprintf("%s: clause refused, title only: %v", r.ID, err))
 			c = ""
-		} else {
+		default:
 			sr.Clauses++
 		}
 		r.Clause = c
@@ -87,6 +91,14 @@ func importOne(root, src string, idx *resolver, rid string) (SourceReport, error
 		r.AppliesTo = union(r.AppliesTo, refs)
 		sr.Resolved += len(r.AppliesTo)
 		sr.Dropped += dropped + missed
+		// The title is a lesson's failure and any row's fallback line, so it
+		// passes the clause's rules too, after applies_to is read from the
+		// raw words; a title they refuse stays as written and no brief
+		// carries it.
+		if t, err := clause(r.Title); err == nil {
+			r.Title = t
+			sr.Titles++
+		}
 	}
 	sr.Written, err = WriteFile(root, fileName(src), rows)
 	return sr, err

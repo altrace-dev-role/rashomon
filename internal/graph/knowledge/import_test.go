@@ -45,14 +45,22 @@ B231 | 11-01 11:02 | lane 2 | ran rashomon audit --keep through an unquoted here
 B233 | 11-01 12:10 | eng-2 | edited internal/verify/claims.go:12 without rerunning TestVER47 in cmd/rashomon/graph.go's package; see MANAGER-NOTES.md:350 | gate-subset / DETECT | merges.log | QA-2 | partial | GATE-ALL1: a changed package reruns every test that names it before "done" is said, under the whole internal/verify unit
 B240 11-02 prose row with no separators, left as text
 B354 11-03 00:15 PST manager: hand-retyped commit ids twice in 4 minutes. The second sentence stays in the text.
+B355 11-03 00:29 PST manager: merged #229 (FALSE-FIRE1, 20f38b62) on CI green and the R67 pair without judging the mutant rows on the merged tree with ` + "`sweep.py --check`" + `; B351's class again, one hour after quoting B351. Caught by: QA-1. Intent missed: main is always sweep-clean, and a merge proves its rows, not only its tests. Fix: until #241 lands, the manager runs sweep.py --check on each merge-tree.
+B440 11-04 10:05 PST eng-2: a test of a git read passed in a plain directory and failed in the harness. Lesson: a test of a git read runs in a worktree too, because every scratch tree the harness makes is one.
+B250 | 11-01 12:30 | eng-1 | ran the gate on a stale base | stale-evidence / DETECT | merges.log | DONE | no | 
 `
 
 // TestImport_LedgerRow (W-M1.6): a nine-field row yields a lesson keyed by
 // the ledger's own id, titled by what happened, with the gap field as its
 // clause within 160 bytes, the row as its text, and the source's file,
 // row and digest; a prose row (id, a date, a who, a colon, the text) yields
-// one with its first sentence as title and clause; a line that starts as a
-// row and is neither is counted unparsed.
+// one with its first sentence as title; a line that starts as a row and is
+// neither is counted unparsed. What happened is never the clause (W-M1.26):
+// a prose row's clause is the sentence after "Intent missed: ", "Rule: "
+// or "Lesson: ", and a row with no rule written (a prose row with no mark,
+// a nine-field row with an empty gap) is title only. The title passes the
+// clause's rules: a narrative with '#' and backticks over 160 bytes is
+// written plain and cut at a word, so a brief can carry the failure.
 func TestImport_LedgerRow(t *testing.T) {
 	root := t.TempDir()
 	src := put(t, filepath.Join(root, "notes", "FAILURE-LEDGER.txt"), ledgerText)
@@ -64,11 +72,32 @@ func TestImport_LedgerRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 4 || len(rep.Sources) != 1 || rep.Sources[0].Rows != 4 || rep.Sources[0].Unparsed != 1 {
-		t.Fatalf("rows %d, report %+v; want 4 rows and 1 unparsed", len(rows), rep.Sources)
+	if len(rows) != 7 || len(rep.Sources) != 1 || rep.Sources[0].Rows != 7 || rep.Sources[0].Unparsed != 1 {
+		t.Fatalf("rows %d, report %+v; want 7 rows and 1 unparsed", len(rows), rep.Sources)
 	}
-	if p := rows[3]; p.ID != "B354" || p.Kind != KindLesson || p.Title != "hand-retyped commit ids twice in 4 minutes." || p.Clause != p.Title || !strings.Contains(p.Text, "second sentence") || p.Source.Row != "B354" {
-		t.Errorf("prose row = %+v; want its first sentence as title and clause and the line as text", p)
+	if p := rows[3]; p.ID != "B354" || p.Kind != KindLesson || p.Title != "hand-retyped commit ids twice in 4 minutes." || p.Clause != "" || !strings.Contains(p.Text, "second sentence") || p.Source.Row != "B354" {
+		t.Errorf("prose row = %+v; want its first sentence as title, no clause (no rule written) and the line as text", p)
+	}
+	if p := rows[4]; p.Clause != "main is always sweep-clean, and a merge proves its rows, not only its tests." || !strings.HasPrefix(p.Title, "merged 229 (FALSE-FIRE1, 20f38b62) on CI green") ||
+		strings.ContainsAny(p.Title, "#`") || len(p.Title) > 160 || slot.Approved(p.Title).Validate() != nil || !strings.Contains(p.Text, "#229") {
+		t.Errorf("B355 title %q (%d bytes), clause %q; want the failure plain within 160 bytes, the intent missed as the rule, the raw line as text", p.Title, len(p.Title), p.Clause)
+	}
+	if p := rows[5]; p.Clause != "a test of a git read runs in a worktree too, because every scratch tree the harness makes is one." || p.Title != "a test of a git read passed in a plain directory and failed in the harness." {
+		t.Errorf("B440 title %q, clause %q; want the failure and the lesson", p.Title, p.Clause)
+	}
+	if p := rows[6]; p.ID != "B250" || p.Title != "ran the gate on a stale base" || p.Clause != "" {
+		t.Errorf("B250 title %q, clause %q; want title only: an empty gap is no rule", p.Title, p.Clause)
+	}
+	// B231 names the tool and B233 a path under cmd/rashomon: a banned word
+	// either way, so each title stays as written and no brief carries it.
+	if p := rows[1]; p.ID != "B231" || p.Title != "ran rashomon audit --keep through an unquoted heredoc" || slot.Approved(p.Title).Validate() == nil {
+		t.Errorf("B231 title %q; want it as written: it holds a banned word", p.Title)
+	}
+	if p := rows[2]; p.ID != "B233" || !strings.Contains(p.Title, "cmd/rashomon/graph.go's package; see MANAGER-NOTES.md:350") {
+		t.Errorf("B233 title %q; want it as written: it holds a banned word", p.Title)
+	}
+	if s := rep.Sources[0]; s.Clauses != 5 || s.TitleOnly != 2 || s.Titles != 5 || len(s.Notes) != 0 {
+		t.Errorf("report %+v; want 5 with a clause, 2 title only with no refusal note, 5 titles a brief can carry (B231's and B233's hold a banned word)", s)
 	}
 	r := rows[0]
 	if r.Schema != Schema || r.ID != "B227" || r.Kind != KindLesson || r.Status != StatusCandidate || r.Tier != TierInferred {
@@ -296,7 +325,7 @@ func TestImport_Idempotent(t *testing.T) {
 		t.Errorf("second import changed the files or the report")
 	}
 	var f File
-	if err := json.Unmarshal(first["failure-ledger.json"], &f); err != nil || f.Schema != Schema || len(f.Rows) != 4 {
+	if err := json.Unmarshal(first["failure-ledger.json"], &f); err != nil || f.Schema != Schema || len(f.Rows) != 7 {
 		t.Errorf("file = %+v, %v", f, err)
 	}
 }
