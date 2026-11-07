@@ -13,103 +13,143 @@ import (
 // or a clause that opens with one, gives the place; a clause with a modal
 // (should, must) names its subject as the target; a use word (respect,
 // honor, via, using) opens the thing the change must take up, which is
-// what the request names as existing elsewhere. The frame lives in memory
-// and Explain alone prints its words (D160).
+// what the request names as existing elsewhere. A test clause ("add a
+// test that X", "write tests for X") names X as the target, not the test
+// as an addition (T1c: PL12's off-task reuse came from the test phrase).
+// A sentence with no verb of a known class names its subject: a symptom
+// ("the report prints a row twice when...") or a question ("where is the
+// deadline enforced?") names the thing before its first boundary. Words
+// keep their case so an identifier's tokens split (EvaluateStop is two
+// tokens, not one unknown word); the word lists are read in lower case.
+// The frame lives in memory and Explain alone prints its words (D160).
 
 // Phrase is a run of the prompt's words as one thing it names: its tokens
 // (Tokens), whether the prompt marks it as existing (the, existing,
-// current, its, our, this, or "already" after it), and how many sentences
-// name it.
+// current, its, our, this, or "already" after it), whether it marks it as
+// the surface the change lands on (an anchor: "wherever X already
+// appear", "the existing X"; W-M1.14 R1), and how many sentences name it.
 type Phrase struct {
 	Tokens   []string
 	Definite bool
+	Anchor   bool
+	Owner    bool
 	Count    int
+	// Adverb is the phrase's last token when its word has an adverb's
+	// form ("lazily", "weekly") and the phrase has another: the verb's
+	// manner, not the thing's head, unless a name holds it (the roles
+	// stage decides, by the index: "the message assembly" keeps its head
+	// where assembly is a name).
+	Adverb string
 }
 
-// Frame is what the prompt asks: the places it names as the target of the
-// change, best first (named by most sentences, then definite, then first
-// named), the things it adds or shows, what it keeps, what it says to use,
-// and the verbs it used to say so (as tokens: what the prompt does, not a
-// thing it names).
+// Frame is what the prompt asks: the places it names as the target of
+// the change, best first (named by most sentences, then definite, then
+// first named), the things it adds or shows, what it keeps, what it says
+// to use, and the verbs it used to say so (as tokens: what the prompt
+// does, not a thing it names).
 type Frame struct {
 	Targets, Additions, Constraints, Uses []Phrase
 	Verbs                                 []string
 }
 
-// Parse reads the frame of prompt.
+// Parse reads the frame of prompt. A sentence with no verb clause is a
+// symptom, and its subject is the target when the verb sentences name
+// nothing ("Note: the budget store drops rows. Fix it."); a label
+// sentence ("Part 2", "Phase B") names nothing.
 func Parse(prompt string) Frame {
 	var f Frame
 	var verbs []string
-	for _, sentence := range strings.FieldsFunc(prompt, func(r rune) bool { return strings.ContainsRune(".!?;:\n", r) }) {
+	var symptoms []Phrase
+	for _, sentence := range sentencesOf(prompt) {
+		if isLabel(sentence) {
+			continue
+		}
 		c := parseSentence(sentence)
+		if c.empty() {
+			symptoms = addPhrases(symptoms, firstSubject(sentence))
+		}
 		f.Targets = addPhrases(f.Targets, c.targets)
 		f.Additions = addPhrases(f.Additions, c.additions)
 		f.Constraints = addPhrases(f.Constraints, c.constraints)
 		f.Uses = addPhrases(f.Uses, c.uses)
 		verbs = append(verbs, c.verbs...)
 	}
+	if len(f.Targets) == 0 && len(f.Additions) == 0 {
+		if len(verbs) == 0 {
+			f.Targets = addPhrases(f.Targets, firstSubject(prompt))
+		} else {
+			f.Targets = addPhrases(f.Targets, symptoms)
+		}
+	}
 	orderPhrases(f.Targets)
 	f.Verbs = uniq(Tokens(strings.Join(verbs, " ")))
 	return f
 }
 
-// The verb classes: what a clause opening with the verb does with its
-// object. An add adds the object somewhere, an edit changes the object, a
-// show reports the object somewhere, a keep leaves the object as it is.
-var verbClass = map[string]string{
-	"add": "add", "wire": "add", "support": "add", "extend": "add", "expose": "add", "introduce": "add", "attach": "add",
-	"implement": "add", "create": "add", "build": "add", "write": "add", "record": "add", "warn": "add", "emit": "add",
-	"include": "add", "provide": "add", "integrate": "add", "register": "add", "install": "add", "give": "add",
-	"fix": "edit", "change": "edit", "update": "edit", "refactor": "edit", "rename": "edit", "move": "edit", "remove": "edit",
-	"replace": "edit", "make": "edit", "let": "edit", "ensure": "edit", "drop": "edit", "delete": "edit", "split": "edit",
-	"merge": "edit", "stop": "edit", "allow": "edit", "refuse": "edit", "teach": "edit", "tighten": "edit", "clean": "edit",
-	"harden": "edit", "migrate": "edit", "rewrite": "edit", "simplify": "edit", "correct": "edit", "handle": "edit",
-	"use": "edit", "convert": "edit", "switch": "edit", "turn": "edit", "set": "edit", "reset": "edit", "restore": "edit",
-	"read": "edit", "load": "edit", "parse": "edit", "route": "edit", "pass": "edit", "run": "edit", "check": "edit",
-	"validate": "edit", "verify": "edit", "resolve": "edit", "bind": "edit", "cut": "edit", "fold": "edit", "retire": "edit",
-	"report": "show", "show": "show", "print": "show", "surface": "show", "display": "show", "render": "show", "name": "show",
-	"list": "show", "log": "show", "count": "show", "deliver": "show", "return": "show",
-	"keep": "keep", "preserve": "keep", "leave": "keep", "maintain": "keep", "retain": "keep", "never": "keep", "do": "keep",
+// firstSubject is the subject of the prompt's first clause, the target
+// when no sentence has a verb clause or a modal: a symptom ("platformRow
+// double counts a row when..."), a question ("Why does the Stop verdict
+// say unknown..."), a fragment ("purging the sessions"). The subject is
+// what the sentence is about; the words after its verb are the symptom.
+func firstSubject(prompt string) []Phrase {
+	for _, sentence := range sentencesOf(prompt) {
+		if isLabel(sentence) {
+			continue
+		}
+		for _, cl := range clausesOf(sentence) {
+			if len(cl) > 0 {
+				return subjectOf(cl)
+			}
+		}
+	}
+	return nil
 }
 
-// placeWords open the phrase that names where the change lands; "to" only
-// after an add (add X to Y), since elsewhere it opens an infinitive.
-var placeWords = map[string]bool{
-	"in": true, "into": true, "on": true, "onto": true, "under": true, "inside": true, "within": true, "at": true,
-	"through": true, "across": true, "wherever": true, "where": true, "beside": true, "alongside": true, "next": true,
+// sentencesOf splits the prompt at sentence ends: a newline, "!", "?",
+// ";", and "." or ":" followed by white space or the end, so a path
+// (internal/x/y.go), a qualified name (verify.EvaluateStop) and a line
+// reference (stop.go:214) stay whole.
+func sentencesOf(prompt string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(prompt); i++ {
+		c := prompt[i]
+		end := c == '\n' || c == '!' || c == '?' || c == ';'
+		if (c == '.' || c == ':') && (i+1 == len(prompt) || prompt[i+1] == ' ' || prompt[i+1] == '\t' || prompt[i+1] == '\n') {
+			end = true
+		}
+		if end {
+			if s := strings.TrimSpace(prompt[start:i]); s != "" {
+				out = append(out, s)
+			}
+			start = i + 1
+		}
+	}
+	if s := strings.TrimSpace(prompt[start:]); s != "" {
+		out = append(out, s)
+	}
+	return out
 }
 
-// boundaryWords end a phrase; the conditionWords among them open a
-// condition (when, if, unless), so a phrase that would start with one is
-// no phrase: "warn when an edit changes a file" adds no "edit changes a
-// file", it says when to warn.
-var boundaryWords = map[string]bool{
-	"that": true, "which": true, "when": true, "whenever": true, "already": true, "so": true, "because": true,
-	"unless": true, "until": true, "if": true, "with": true, "using": true, "as": true, "not": true, "but": true,
-	"before": true, "after": true, "instead": true, "rather": true, "once": true, "while": true,
+// isLabel is whether a sentence is a heading, not a thing: a word and an
+// enumerator ("Part 2", "Phase B", "Step iv"), the kind a prompt numbers
+// its parts with.
+func isLabel(sentence string) bool {
+	words := strings.Fields(sentence)
+	if len(words) != 2 {
+		return false
+	}
+	e := strings.TrimRight(low(words[1]), ".:)")
+	digits, roman := e != "", e != ""
+	for _, r := range e {
+		digits = digits && r >= '0' && r <= '9'
+		roman = roman && strings.ContainsRune("ivx", r)
+	}
+	return digits || roman || len(e) == 1
 }
 
-var conditionWords = map[string]bool{
-	"when": true, "whenever": true, "if": true, "unless": true, "until": true, "once": true, "while": true,
-	"because": true, "before": true, "after": true,
-}
-
-// joinWords join clauses; pronounWords stand for a thing another clause names.
-var joinWords = map[string]bool{"and": true, "then": true, "also": true, "or": true}
-
-var pronounWords = map[string]bool{"it": true, "them": true, "they": true, "these": true, "those": true, "which": true, "what": true}
-
-// useWords open the phrase naming what the change takes up: the thing to
-// reuse, which the request presumes exists.
-var useWords = map[string]bool{
-	"respect": true, "respecting": true, "honor": true, "honour": true, "honoring": true, "honouring": true,
-	"consult": true, "consulting": true, "obey": true, "reuse": true, "reusing": true, "leverage": true,
-	"via": true, "using": true, "invoke": true, "invoking": true, "follow": true, "following": true,
-}
-
-var modalWords = map[string]bool{"should": true, "must": true, "shall": true, "needs": true, "has": true, "ought": true}
-
-var definiteWords = map[string]bool{"the": true, "existing": true, "current": true, "its": true, "our": true, "this": true, "these": true, "those": true}
+// low is the word as the word lists hold it.
+func low(w string) string { return strings.ToLower(w) }
 
 // clauses is one sentence's phrases by class; verbs is the verb-class
 // words that opened a clause or followed its modal.
@@ -122,38 +162,50 @@ type clauses struct {
 func parseSentence(s string) clauses {
 	var c clauses
 	last := ""
-	for _, cl := range clausesOf(s) {
+	all := clausesOf(s)
+	for _, cl := range all {
 		if len(cl) == 0 {
 			continue
 		}
-		if useWords[cl[0]] {
+		head := low(cl[0])
+		if useWords[head] {
 			c.uses = addPhrase(c.uses, phraseOf(cl[1:]))
 			continue
 		}
-		if cls := verbClass[cl[0]]; cls != "" {
+		if cls := verbClass[head]; cls != "" {
 			last = cls
-			c.verbs = append(c.verbs, cl[0])
+			c.verbs = append(c.verbs, head)
 			rest, use := splitUse(cl[1:])
 			c.uses = addPhrase(c.uses, use)
+			if under, ok := testClause(rest); ok && cls == "add" {
+				c.targets = addPhrases(c.targets, subjectOf(under))
+				continue
+			}
+			if causativeWords[head] {
+				rest = rest[:bareVerbAt(rest)]
+			}
 			thing, place := splitPlace(rest, cls)
 			switch cls {
 			case "add", "show":
-				c.additions, c.targets = addPhrase(c.additions, thing), addPhrase(c.targets, place)
+				c.additions, c.targets = addPhrases(c.additions, thing), addPhrases(c.targets, place)
 			case "edit":
-				c.targets = addPhrase(addPhrase(c.targets, thing), place)
+				c.targets = addPhrases(addPhrases(c.targets, thing), place)
 			case "keep":
-				c.constraints = addPhrase(c.constraints, thing)
+				c.constraints = addPhrases(c.constraints, thing)
 			}
 			continue
 		}
-		if last != "" && isPlace(cl[0], last) {
+		if last != "" && isPlace(head, last) {
 			rest, use := splitUse(cl[1:])
 			c.uses = addPhrase(c.uses, use)
-			c.targets = addPhrase(c.targets, phraseOf(rest))
+			for _, p := range phrasesOf(rest) {
+				p.Anchor = p.Anchor || (p.Definite && head == "wherever")
+				c.targets = addPhrase(c.targets, p)
+			}
 			continue
 		}
 		if k := modalAt(cl); k > 0 {
-			c.targets = addPhrase(c.targets, phraseOf(cl[:k]))
+			c.targets = addPhrases(c.targets, phrasesOf(cl[:k]))
 			cls, verb, obj := afterModal(cl[k+1:])
 			if verb != "" {
 				c.verbs = append(c.verbs, verb)
@@ -175,11 +227,89 @@ func parseSentence(s string) clauses {
 	return c
 }
 
+func (c clauses) empty() bool {
+	return len(c.targets)+len(c.additions)+len(c.constraints)+len(c.uses)+len(c.verbs) == 0
+}
+
+// subjectOf is the thing a verbless clause names: a symptom's subject
+// ("the report prints a row twice when" names the report printing), a
+// question's after its question word and auxiliary ("where is the
+// deadline enforced" names the deadline).
+func subjectOf(cl []string) []Phrase {
+	question := len(cl) > 0 && questionWords[low(cl[0])]
+	if question {
+		cl = cl[1:]
+		if len(cl) > 0 && auxiliaryWords[low(cl[0])] {
+			cl = cl[1:]
+		}
+	}
+	return phrasesOf(cl[:predicateAt(cl, question)])
+}
+
+// predicateAt is where a clause's subject ends: at an auxiliary or a
+// modal ("is over budget", "should report"), at a word in the third
+// person ("records", "counts", "drops") that a determiner or a pronoun
+// follows ("the panic barrier records the panic value") or that is a
+// verb of a known class with words after it ("the budget store drops
+// rows"), and in a question at the bare verb after the subject ("how
+// does the harness decide"), the subject being at least one word. A
+// clause with none is its subject whole.
+func predicateAt(cl []string, question bool) int {
+	for i, w := range cl {
+		lw := low(w)
+		if i == 0 {
+			continue
+		}
+		if auxiliaryWords[lw] || modalWords[lw] || question && verbClass[lw] != "" && !determinerWords[low(cl[i-1])] {
+			return i
+		}
+		third := i+1 < len(cl) && strings.HasSuffix(lw, "s") && !strings.HasSuffix(lw, "ss")
+		if third && (objectWords[low(cl[i+1])] || verbClass[singular(lw)] != "") {
+			return i
+		}
+	}
+	return len(cl)
+}
+
+// singular is a third-person verb's base form: reads, drops, fixes,
+// carries.
+func singular(w string) string {
+	switch {
+	case strings.HasSuffix(w, "ies"):
+		return w[:len(w)-3] + "y"
+	case strings.HasSuffix(w, "ches"), strings.HasSuffix(w, "shes"), strings.HasSuffix(w, "xes"), strings.HasSuffix(w, "sses"):
+		return w[:len(w)-2]
+	}
+	return strings.TrimSuffix(w, "s")
+}
+
+// testClause is the thing under test when words open with a test ("a
+// test that X", "tests for X", "a table-driven test covering X"): the
+// words after the first link word following a test word in the first
+// four words.
+func testClause(words []string) ([]string, bool) {
+	for i, w := range words {
+		if i > 3 {
+			break
+		}
+		if !testWords[low(w)] {
+			continue
+		}
+		for j := i + 1; j < len(words); j++ {
+			if testLinkWords[low(words[j])] {
+				return words[j+1:], true
+			}
+		}
+		return nil, true
+	}
+	return nil, false
+}
+
 // splitUse cuts a clause's words at their first use word: the words
 // before it, and the phrase after it as what the change takes up.
 func splitUse(words []string) ([]string, Phrase) {
 	for i, w := range words {
-		if useWords[w] {
+		if useWords[low(w)] {
 			return words[:i], phraseOf(words[i+1:])
 		}
 	}
@@ -192,6 +322,7 @@ func splitUse(words []string) ([]string, Phrase) {
 func afterModal(words []string) (string, string, Phrase) {
 	keep := false
 	for i, w := range words {
+		w = low(w)
 		if w == "never" || w == "not" {
 			keep = true
 			continue
@@ -210,7 +341,7 @@ func afterModal(words []string) (string, string, Phrase) {
 	return "", "", Phrase{}
 }
 
-// clausesOf is the sentence's clauses: its words, lower case, trimmed of
+// clausesOf is the sentence's clauses: its words as written, trimmed of
 // quotes and brackets, split at commas and before an "and", "then" or
 // "also" that a verb or a place word follows.
 func clausesOf(s string) [][]string {
@@ -222,8 +353,8 @@ func clausesOf(s string) [][]string {
 			cur = nil
 		}
 	}
-	for _, w := range strings.Fields(strings.ToLower(s)) {
-		w = strings.Trim(w, "\"'`()[]{}<>")
+	for _, w := range strings.Fields(s) {
+		w = strings.Trim(w, "\"'`()[]{}<>*")
 		comma := strings.HasSuffix(w, ",")
 		w = strings.TrimSuffix(w, ",")
 		if w == "" {
@@ -237,12 +368,12 @@ func clausesOf(s string) [][]string {
 	close()
 	var split [][]string
 	for _, cl := range out {
-		for len(cl) > 0 && joinWords[cl[0]] {
+		for len(cl) > 0 && joinWords[low(cl[0])] {
 			cl = cl[1:]
 		}
 		start := 0
 		for i := 1; i+1 < len(cl); i++ {
-			if joinWords[cl[i]] && (verbClass[cl[i+1]] != "" || placeWords[cl[i+1]]) {
+			if joinWords[low(cl[i])] && (verbClass[low(cl[i+1])] != "" || placeWords[low(cl[i+1])]) {
 				split = append(split, cl[start:i])
 				start = i + 1
 			}
@@ -253,19 +384,82 @@ func clausesOf(s string) [][]string {
 }
 
 // splitPlace is the clause's object as the thing it names and the place
-// it names: the words before and after the last place word, each cut at
-// its first boundary word.
-func splitPlace(words []string, cls string) (thing, place Phrase) {
+// it names: the words before and after the last place word ahead of the
+// first clause word (a place inside "so the count shows in the line" is
+// the consequence's, not the change's; one after "with" still is), each
+// cut at its first boundary word.
+func splitPlace(words []string, cls string) (thing, place []Phrase) {
 	p := -1
 	for i, w := range words {
-		if isPlace(w, cls) {
+		if conditionWords[low(w)] || clauseOpeners[low(w)] {
+			break
+		}
+		if isPlace(low(w), cls) {
 			p = i
 		}
 	}
 	if p < 0 {
-		return phraseOf(words), Phrase{}
+		return phrasesOf(words), nil
 	}
-	return phraseOf(words[:p]), phraseOf(words[p+1:])
+	return phrasesOf(words[:p]), phrasesOf(words[p+1:])
+}
+
+// bareVerbAt is where a causative's object ends: at the first verb-class
+// word after a noun phrase of two words or more that no determiner
+// opens ("let the obligation ledger carry the turn window", "make the
+// budgets generator skip packages"); a verb-class word after a
+// determiner is a noun ("the stop line").
+func bareVerbAt(words []string) int {
+	for i := 2; i < len(words); i++ {
+		if verbClass[low(words[i])] != "" && !determinerWords[low(words[i-1])] && !boundaryWords[low(words[i-1])] {
+			return i
+		}
+		if boundaryWords[low(words[i])] {
+			break
+		}
+	}
+	return len(words)
+}
+
+// phrasesOf is the words as phrases: one, or at a possessive ("the seed
+// counter's duplicate of the check") the owner first and the owned thing
+// after it, the owner marked. The owner is the thing the words are in;
+// the owned part says which of its parts.
+func phrasesOf(words []string) []Phrase {
+	for k, w := range words {
+		if k+1 >= len(words) {
+			break
+		}
+		if base, ok := possessive(w); ok {
+			owner := append(append([]string{}, words[:k]...), base)
+			first := phraseOf(owner)
+			if len(first.Tokens) == 0 {
+				continue
+			}
+			first.Owner = true
+			rest := phraseOf(words[k+1:])
+			rest.Definite = rest.Definite || first.Definite
+			if len(rest.Tokens) == 0 {
+				return []Phrase{first}
+			}
+			return []Phrase{first, rest}
+		}
+	}
+	p := phraseOf(words)
+	if len(p.Tokens) == 0 {
+		return nil
+	}
+	return []Phrase{p}
+}
+
+// possessive is the word without its possessive ending, when it has one.
+func possessive(w string) (string, bool) {
+	for _, end := range []string{"'s", "\u2019s", "s'"} {
+		if strings.HasSuffix(w, end) && len(w) > len(end)+1 {
+			return strings.TrimSuffix(w, end), true
+		}
+	}
+	return w, false
 }
 
 func isPlace(w, cls string) bool { return placeWords[w] || (w == "to" && cls == "add") }
@@ -273,7 +467,7 @@ func isPlace(w, cls string) bool { return placeWords[w] || (w == "to" && cls == 
 // modalAt is the index of the clause's modal when its subject precedes it.
 func modalAt(cl []string) int {
 	for i, w := range cl {
-		if modalWords[w] {
+		if modalWords[low(w)] {
 			return i
 		}
 	}
@@ -282,20 +476,40 @@ func modalAt(cl []string) int {
 
 // phraseOf is the words up to their first boundary word as a phrase:
 // definite when they open with a definite word or "already" follows them;
-// none when they open with a condition word.
+// an anchor when "already" follows a definite phrase or it opens with an
+// existing-surface word; none when they open with a condition word, and
+// an infinitive ("to name") or a particle ("up") ends it.
 func phraseOf(words []string) Phrase {
-	for len(words) > 0 && (boundaryWords[words[0]] || pronounWords[words[0]]) {
-		if conditionWords[words[0]] {
+	for len(words) > 0 && (boundaryWords[low(words[0])] || pronounWords[low(words[0])]) {
+		if conditionWords[low(words[0])] {
 			return Phrase{}
 		}
 		words = words[1:]
 	}
+	if len(words) > 0 && clauseWords[low(words[0])] {
+		return Phrase{}
+	}
+	first := 0
+	for first < len(words) && stopWords[low(words[first])] && !determinerWords[low(words[first])] {
+		first++
+	}
+	if first == len(words) {
+		return Phrase{}
+	}
 	end := len(words)
 	for i, w := range words {
-		if boundaryWords[w] || placeWords[w] || joinWords[w] {
+		lw := low(w)
+		if boundaryWords[lw] || placeWords[lw] || joinWords[lw] || (lw == "to" && i+1 < len(words) && verbClass[low(words[i+1])] != "") {
 			end = i
 			break
 		}
+		if i > first && determinerWords[lw] && determinerWords[low(words[first])] && len(Tokens(strings.Join(words[:i], " "))) > 0 {
+			end = i
+			break
+		}
+	}
+	for end > 0 && particleWords[low(words[end-1])] {
+		end--
 	}
 	if end == 0 {
 		return Phrase{}
@@ -304,7 +518,14 @@ func phraseOf(words []string) Phrase {
 	if len(p.Tokens) == 0 {
 		return Phrase{}
 	}
-	p.Definite = definiteWords[words[0]] || (end < len(words) && words[end] == "already")
+	if last := strings.TrimRight(low(words[end-1]), ".,:;!?'\")"); len(p.Tokens) > 1 && strings.HasSuffix(last, "ly") {
+		if t := Tokens(last); len(t) == 1 && t[0] == p.Tokens[len(p.Tokens)-1] {
+			p.Adverb = t[0]
+		}
+	}
+	already := end < len(words) && low(words[end]) == "already"
+	p.Definite = definiteWords[low(words[first])] || already
+	p.Anchor = (p.Definite && already) || anchorWords[low(words[first])]
 	return p
 }
 
@@ -315,6 +536,8 @@ func addPhrase(ps []Phrase, p Phrase) []Phrase {
 	for i := range ps {
 		if strings.Join(ps[i].Tokens, " ") == strings.Join(p.Tokens, " ") {
 			ps[i].Definite = ps[i].Definite || p.Definite
+			ps[i].Anchor = ps[i].Anchor || p.Anchor
+			ps[i].Owner = ps[i].Owner || p.Owner
 			return ps
 		}
 	}
@@ -330,6 +553,7 @@ func addPhrases(ps, add []Phrase) []Phrase {
 			if strings.Join(ps[i].Tokens, " ") == strings.Join(p.Tokens, " ") {
 				ps[i].Count++
 				ps[i].Definite = ps[i].Definite || p.Definite
+				ps[i].Anchor = ps[i].Anchor || p.Anchor
 				found = true
 			}
 		}
@@ -361,6 +585,12 @@ func (p Phrase) String() string {
 	s := "[" + strings.Join(p.Tokens, " ") + "]"
 	if p.Definite {
 		s += " definite"
+	}
+	if p.Owner {
+		s += " owner"
+	}
+	if p.Anchor {
+		s += " anchor"
 	}
 	if p.Count > 1 {
 		s += " x" + strconv.Itoa(p.Count)

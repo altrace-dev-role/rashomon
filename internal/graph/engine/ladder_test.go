@@ -141,9 +141,9 @@ func TestUnits_ALabelCoversButCompletesNoClaim(t *testing.T) {
 }
 
 // Two units whose callables cover the same token of the phrase (the PG12
-// shape: "integrity" named in verify and in render) are settled by the
-// precision of the covering name, then by how much of the rest of the
-// prompt the unit names; what still ties is refused.
+// shape: "integrity" named in verify and in render) are settled, for a
+// one-word phrase, by how much of the rest of the prompt the unit names,
+// then by the precision of the covering name; what still ties is refused.
 func TestUnits_ASameTokenTieGoesToPrecisionThenMass(t *testing.T) {
 	g := synth(t, []synFile{
 		{"verify", "verify/integrity.py", []synSym{fn("integrity"), fn("flags")}},
@@ -163,7 +163,11 @@ func TestUnits_ASameTokenTieGoesToPrecisionThenMass(t *testing.T) {
 		t.Errorf("ladder: %+v", picks)
 	}
 	picks, _ = units(t, g, "show the markers in the integrity report")
-	if len(picks) != 3 || picks[0].Refused != "ambiguous: 2 units tie" || picks[2].Path != "render" {
+	if len(picks) != 3 || picks[0].Refused != "" || picks[0].Path != "render" {
+		t.Fatalf("mass word in the loose name: picks %+v, want render by the marker it names", picks)
+	}
+	picks, _ = units(t, g, "fix the integrity report")
+	if len(picks) != 3 || picks[0].Refused != "ambiguous: 'integrit' names code in 2 units" || picks[2].Path != "render" {
 		t.Fatalf("no mass word: picks %+v, want the two precise names refused and render last", picks)
 	}
 }

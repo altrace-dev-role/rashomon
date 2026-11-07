@@ -12,8 +12,11 @@ import (
 )
 
 // AC-M1.1 (PLAN section 8): over an indexed tree, the brief's unit line
-// names the pre-named unit in at least four of five prompts and no brief
-// holds more than one off-task line. RASHOMON_ACM11_DIR is the indexed root
+// names the pre-named unit in at least four of five prompts (the same
+// share, rounded up, when the file holds more rows) and no brief whose
+// unit line is right holds more than one off-task line (W-M1.17: a brief
+// on the wrong unit fails clause 1, and its lines are not read twice).
+// RASHOMON_ACM11_DIR is the indexed root
 // (its .rashomon/graph.jsonl), RASHOMON_ACM11_PROMPTS the prompt file
 // (test/live/autosteer/acm11/prompts.tsv), and the test skips without
 // them. The unit the brief names is the unit line's when there is one,
@@ -37,13 +40,14 @@ func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 		if ok {
 			hits++
 		}
-		if len(off) > 1 {
+		if ok && len(off) > 1 {
 			offTaskBriefs++
 		}
 		t.Logf("%s: unit %q want %q %v; off-task %d %v\n%s\n%s", id, got, unit, ok, len(off), off, b.Text(), b.Explain())
 	}
-	t.Logf("AC-M1.1: unit line correct %d of %d (gate 4); briefs with more than one off-task line %d (gate 0)", hits, len(rows), offTaskBriefs)
-	if hits < 4 || offTaskBriefs > 0 {
+	gate := (len(rows)*4 + 4) / 5
+	t.Logf("AC-M1.1: unit line correct %d of %d (gate %d); briefs with the unit right and more than one off-task line %d (gate 0)", hits, len(rows), gate, offTaskBriefs)
+	if hits < gate || offTaskBriefs > 0 {
 		t.Errorf("AC-M1.1 not met: %d of %d units, %d briefs over the off-task line", hits, len(rows), offTaskBriefs)
 	}
 }

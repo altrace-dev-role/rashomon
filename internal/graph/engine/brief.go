@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -79,10 +80,11 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 		b.Scorer = "idf"
 	}
 	c := scan(g, rev)
+	c.idf = opt.IDF
 	b.Seeds, b.Rows, b.Weights = c.scope(prompt, opt)
 	rel := opt.rel()
 	outside := Outside(g, rev, rel)
-	b.Roles = FindRoles(g, c, b.Rows, b.Weights, Parse(prompt), b.Tokens, outside)
+	b.Roles = FindRoles(g, c, b.Rows, b.Weights, Parse(prompt), Names(g, c, prompt, b.Tokens, b.Weights), b.Tokens, outside)
 	ids := make([]graph.ID, len(b.Seeds))
 	for i, s := range b.Seeds {
 		ids[i] = s.ID
@@ -188,7 +190,11 @@ func (b Brief) roles(hits bool) string {
 	r := b.Roles
 	var sb strings.Builder
 	if hits {
-		fmt.Fprintf(&sb, "\nframe: targets %s; additions %s; constraints %s; uses %s; verbs %s\n", phrases(r.Frame.Targets), phrases(r.Frame.Additions), phrases(r.Frame.Constraints), phrases(r.Frame.Uses), r.Frame.Verbs)
+		fmt.Fprintf(&sb, "\nnames: %s\n", namedWords(r.Named))
+		if len(r.Derived) > 0 {
+			fmt.Fprintf(&sb, "derived: %s\n", derivedWords(r.Derived))
+		}
+		fmt.Fprintf(&sb, "frame: targets %s; additions %s; constraints %s; uses %s; verbs %s\n", phrases(r.Frame.Targets), phrases(r.Frame.Additions), phrases(r.Frame.Constraints), phrases(r.Frame.Uses), r.Frame.Verbs)
 		fmt.Fprintf(&sb, "units (phrase [%s], fallback %v; floor %.2f):\n", strings.Join(r.Target, " "), r.Fallback, UnitFloor)
 	} else {
 		fmt.Fprintf(&sb, "\nframe: targets %d; additions %d; constraints %d; uses %d; verbs %d\n", len(r.Frame.Targets), len(r.Frame.Additions), len(r.Frame.Constraints), len(r.Frame.Uses), len(r.Frame.Verbs))
@@ -214,6 +220,42 @@ func (b Brief) roles(hits bool) string {
 	fmt.Fprintf(&sb, "roles (%s): unit %s; file %s; targets %d; reuse %s; consumers %s; knowledge %s\n",
 		r.Why, r.Unit, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
 	return sb.String()
+}
+
+// namedWords is R0's reading for Explain: each word, its kind and what
+// it resolved to or why not.
+func namedWords(n Named) string {
+	if len(n.Words) == 0 {
+		return "none"
+	}
+	out := make([]string, len(n.Words))
+	for i, w := range n.Words {
+		s := w.Word + " (" + w.Kind + ")"
+		if w.Unit != "" {
+			s += " -> " + w.Unit
+		}
+		if w.Node != "" {
+			s += " " + string(w.Node)
+		}
+		if w.Why != "" {
+			s += ": " + w.Why
+		}
+		out[i] = s
+	}
+	return strings.Join(out, "; ")
+}
+
+// derivedWords is the S2 readings for Explain, token>name, in order.
+func derivedWords(d map[string]string) string {
+	keys := make([]string, 0, len(d))
+	for k := range d {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for i, k := range keys {
+		keys[i] = k + ">" + d[k]
+	}
+	return strings.Join(keys, " ")
 }
 
 func phrases(ps []Phrase) string {

@@ -88,6 +88,7 @@ func pluralS(s string, i int) bool {
 }
 
 var stopWords = map[string]bool{
+	"only": true, "same": true, "own": true, "just": true, "also": true, "please": true, "still": true, "yet": true,
 	"the": true, "a": true, "an": true, "and": true, "or": true, "of": true, "to": true, "in": true, "on": true, "for": true,
 	"it": true, "its": true, "is": true, "be": true, "by": true, "with": true, "when": true, "once": true, "has": true, "have": true,
 	"make": true, "add": true, "fix": true, "respect": true, "so": true, "that": true, "this": true, "src": true,
@@ -228,6 +229,7 @@ type ScopeRow struct {
 // over the store serves Scope and Units.
 type corpus struct {
 	rev    graph.Rev
+	idf    bool
 	nodes  []graph.Node
 	fields []Fields
 	units  []string
@@ -235,6 +237,12 @@ type corpus struct {
 	unitID map[string]graph.ID
 	df     map[string]int
 	nameDF map[string]int
+	// files, bases and syms are the exact-name indexes R0 reads (W-M1.13):
+	// a file by its path, files by their base name, symbols by their name.
+	files map[string]graph.ID
+	bases map[string][]graph.ID
+	syms  map[string][]graph.ID
+	exts  map[string]bool
 }
 
 // scan reads the corpus at rev. A lesson or decision is not in it: it
@@ -242,7 +250,8 @@ type corpus struct {
 // so its own words cannot vote for it (the B' confound, GRAPH-SLOT1); a
 // unit is not scored but is recorded, since Units resolves to one.
 func scan(g *graph.Store, rev graph.Rev) corpus {
-	c := corpus{rev: rev, index: map[graph.ID]int{}, unitID: map[string]graph.ID{}, df: map[string]int{}, nameDF: map[string]int{}}
+	c := corpus{rev: rev, index: map[graph.ID]int{}, unitID: map[string]graph.ID{}, df: map[string]int{}, nameDF: map[string]int{},
+		files: map[string]graph.ID{}, bases: map[string][]graph.ID{}, syms: map[string][]graph.ID{}, exts: map[string]bool{}}
 	for _, n := range g.Nodes(rev) {
 		if n.Kind == "unit" {
 			c.unitID[unitPath(n.ID)] = n.ID
@@ -258,6 +267,7 @@ func scan(g *graph.Store, rev graph.Rev) corpus {
 			c.unitID[u] = uid
 		}
 		c.nodes, c.fields, c.units = append(c.nodes, n), append(c.fields, f), append(c.units, u)
+		c.exact(n)
 		seen := map[string]bool{}
 		for _, t := range slices.Concat(f.Name, f.Path) {
 			if !seen[t] {
@@ -274,6 +284,26 @@ func scan(g *graph.Store, rev graph.Rev) corpus {
 		}
 	}
 	return c
+}
+
+// exact enters n in the exact-name indexes: a file by its path, its base
+// name (less the extension) and its extension, a symbol by the last
+// segment of its qualified name.
+func (c *corpus) exact(n graph.Node) {
+	s := string(n.ID)
+	switch {
+	case strings.HasPrefix(s, "file:"):
+		p := strings.TrimPrefix(s, "file:")
+		c.files[p] = n.ID
+		base := strings.TrimSuffix(path.Base(p), path.Ext(p))
+		c.bases[base] = append(c.bases[base], n.ID)
+		if ext := path.Ext(p); ext != "" {
+			c.exts[ext] = true
+		}
+	case strings.HasPrefix(s, "sym:"):
+		name := short(n.ID)
+		c.syms[name] = append(c.syms[name], n.ID)
+	}
 }
 
 // unitPath is the path a unit id names, after its language.

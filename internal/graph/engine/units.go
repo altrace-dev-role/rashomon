@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,6 +58,9 @@ type UnitPick struct {
 	Mass      float64
 	Nodes     []graph.ID
 	Refused   string
+	// Tied is how many picks from the front tie when the claim is refused
+	// as ambiguous, so a later signal can settle among them.
+	Tied int
 }
 
 type claimNode struct {
@@ -96,20 +100,34 @@ func classRank(c string) int {
 }
 
 // Units is every unit's claim on the target tokens, best first, the
-// first settled: tokens no name or path holds are left out of the phrase.
-// rest is the prompt's other tokens, weighed for the tie-break.
+// first settled: tokens no name or path holds, and tokens the scorer
+// gave no weight (a word in a path no unit owns, never scored), are left
+// out of the phrase: a word that weighs nothing names nothing. rest is
+// the prompt's other tokens, weighed for the tie-break.
 func Units(g Reader, c corpus, target, rest []string, weights map[string]float64) []UnitPick {
 	var T []string
-	of := 0.0
+	of, unknown, seen := 0.0, 0, 0.0
+	known := func(t string) bool { return c.nameDF[t] > 0 && weights[t] > 0 }
 	for _, t := range target {
-		if c.nameDF[t] > 0 {
+		switch {
+		case known(t):
 			T = append(T, t)
 			of += weights[t]
+		case weights[t] > 0:
+			seen += weights[t]
+		default:
+			unknown++
 		}
 	}
 	if len(T) == 0 {
 		return nil
 	}
+	// A word no name or path holds still weighs in what the phrase is of:
+	// at the scorer's weight when the tree mentions it ("workflow" in a
+	// doc sentence: a thing the tree has and no unit names), else at the
+	// mean of the known words. A phrase mostly of such words names a
+	// thing the index lacks, and the floor refuses it.
+	of += float64(unknown)*of/float64(len(T)) + seen
 	R := map[string]bool{}
 	for _, t := range rest {
 		R[t] = true
@@ -133,12 +151,16 @@ func Units(g Reader, c corpus, target, rest []string, weights map[string]float64
 		}
 		cl.add(n.ID, c.fields[i], T, weights)
 	}
+	head := target[len(target)-1]
 	var picks []UnitPick
 	for _, cl := range claims {
 		if len(cl.covered) == 0 {
 			continue
 		}
 		picks = append(picks, cl.pick(c.unitID[cl.path], of, weights))
+	}
+	if known(head) && !anyCovers(picks, head) {
+		return []UnitPick{{Class: ClassPartial, Of: of, Refused: "no unit names the head '" + head + "'"}}
 	}
 	sort.Slice(picks, func(i, j int) bool {
 		a, b := picks[i], picks[j]
@@ -150,7 +172,26 @@ func Units(g Reader, c corpus, target, rest []string, weights map[string]float64
 		}
 		return a.Path < b.Path
 	})
-	return settle(g, c, picks)
+	return settle(g, c, picks, len(T) == 1)
+}
+
+// anyCovers is whether any pick's tokens hold t.
+func anyCovers(picks []UnitPick, t string) bool {
+	for _, p := range picks {
+		if hasToken(p.Tokens, t) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToken(toks []string, t string) bool {
+	for _, x := range toks {
+		if x == t {
+			return true
+		}
+	}
+	return false
 }
 
 // claimant is whether a node can make a claim: a callable symbol or a
@@ -159,12 +200,12 @@ func claimant(id graph.ID) bool { return callable(id) || strings.HasPrefix(strin
 
 func newClaim(u string, T []string) *unitClaim {
 	cl := &unitClaim{path: u, size: len(T), need: map[string]bool{}, covered: map[string]bool{}, counted: map[string]bool{}}
-	path := map[string]bool{}
-	for _, t := range Tokens(u) {
-		path[t] = true
+	own := map[string]bool{}
+	for _, t := range Tokens(path.Base(u)) {
+		own[t] = true
 	}
 	for _, t := range T {
-		if path[t] {
+		if own[t] {
 			cl.covered[t] = true
 		} else {
 			cl.need[t] = true
@@ -285,7 +326,7 @@ func covers(have, need map[string]bool) bool {
 // tokens, by the claim's kind, the precision of its best name and the
 // rest of the prompt it names; then by the call direction, the one unit
 // the others call and that calls none of them; else refused as ambiguous.
-func settle(g Reader, c corpus, picks []UnitPick) []UnitPick {
+func settle(g Reader, c corpus, picks []UnitPick, single bool) []UnitPick {
 	if len(picks) == 0 {
 		return picks
 	}
@@ -300,28 +341,37 @@ func settle(g Reader, c corpus, picks []UnitPick) []UnitPick {
 	if n == 1 {
 		return picks
 	}
+	before := func(a, b UnitPick) bool { return nameBefore(a, b, single) }
 	if sameTokens(picks[:n]) {
-		sort.SliceStable(picks[:n], func(i, j int) bool { return nameBefore(picks[i], picks[j]) })
-		if nameBefore(picks[0], picks[1]) {
+		sort.SliceStable(picks[:n], func(i, j int) bool { return before(picks[i], picks[j]) })
+		if before(picks[0], picks[1]) {
 			return picks
 		}
-		for n = 1; n < len(picks) && !nameBefore(picks[0], picks[n]) && picks[n].Class == picks[0].Class && picks[n].Covered == picks[0].Covered; n++ {
+		for n = 1; n < len(picks) && !before(picks[0], picks[n]) && picks[n].Class == picks[0].Class && picks[n].Covered == picks[0].Covered; n++ {
 		}
 	}
 	if sink := calledUnit(g, c, picks[:n]); sink >= 0 {
 		picks[0], picks[sink] = picks[sink], picks[0]
 		return picks
 	}
-	picks[0].Refused = "ambiguous: " + strconv.Itoa(n) + " units tie"
+	picks[0].Refused, picks[0].Tied = "ambiguous: "+strconv.Itoa(n)+" units tie", n
+	if single {
+		picks[0].Refused = "ambiguous: '" + strings.Join(picks[0].Tokens, " ") + "' names code in " + strconv.Itoa(n) + " units"
+	}
 	return picks
 }
 
 // nameBefore is whether a's claim beats b's on the same tokens: a
 // callable or file over a label, then the more precise name, then the
-// more of the rest of the prompt named.
-func nameBefore(a, b UnitPick) bool {
+// more of the rest of the prompt named. A one-word phrase takes the
+// prompt's evidence first: which unit's name is the tidier says less
+// about what one word means than the rest of the prompt does.
+func nameBefore(a, b UnitPick, single bool) bool {
 	if a.Callable != b.Callable {
 		return a.Callable
+	}
+	if single && a.Mass != b.Mass {
+		return a.Mass > b.Mass
 	}
 	if a.Precision != b.Precision {
 		return a.Precision > b.Precision

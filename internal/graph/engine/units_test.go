@@ -81,3 +81,23 @@ func TestUnits_RefusesUnderTheFloorAndAnUnsettledTie(t *testing.T) {
 		t.Fatalf("a phrase no name holds claimed: %+v", picks)
 	}
 }
+
+// A name token the scorer gave no weight names nothing: a phrase of such
+// words claims no unit, and one among weighted words counts as a word
+// the ladder cannot read, at the mean (G2 shape: "ci" is a path word of a
+// file in no unit, which the scope corpus never scored).
+func TestUnits_AWeightlessTokenNamesNothing(t *testing.T) {
+	g := ladderFixture(t)
+	c := scan(g, graph.RevCommit(graphtest.Commit))
+	if c.nameDF["ci"] == 0 {
+		t.Fatal("fixture must hold ci as a name (the workflow file's path)")
+	}
+	if picks := Units(g, c, []string{"ci"}, nil, map[string]float64{}); picks != nil {
+		t.Fatalf("picks %v, want none: a word with no weight names nothing", picks)
+	}
+	deadline := Tokens("deadline")[0]
+	picks := Units(g, c, []string{"ci", deadline}, nil, map[string]float64{deadline: 1})
+	if len(picks) == 0 || picks[0].Path != "budget" || picks[0].Of != 2 || picks[0].Covered != 1 {
+		t.Fatalf("picks %+v, want budget 1 of 2: the weightless word weighs as an unknown one", picks)
+	}
+}

@@ -59,12 +59,22 @@ func TestFrame_ClauseShapesGiveTheFirstTarget(t *testing.T) {
 	}
 }
 
-// A prompt with no verb clause and no modal has no frame: the roles stage
-// falls back to the whole prompt, and Parse claims nothing.
-func TestFrame_NoVerbClauseGivesNoTarget(t *testing.T) {
+// A prompt with no verb clause and no modal has its first clause's
+// subject as the target (T1c, W-M1.14): a fragment is its own subject, a
+// symptom's subject ends at its verb, and the words after the verb are
+// the symptom, not the thing.
+func TestFrame_NoVerbClauseGivesTheSubject(t *testing.T) {
 	f := Parse("purging the sessions")
-	if len(f.Targets) != 0 || len(f.Additions) != 0 {
-		t.Fatalf("frame %+v, want empty", f)
+	if len(f.Targets) != 1 || words(f.Targets[0]) != tokensOf("purging the sessions") || len(f.Additions) != 0 {
+		t.Fatalf("frame %+v, want the fragment as the subject", f)
+	}
+	f = Parse("The intent preflight is over budget on long prompts; cut the identifier scan's allocations.")
+	if len(f.Targets) != 2 || words(f.Targets[0]) != tokensOf("identifier scan") || !f.Targets[0].Owner || words(f.Targets[1]) != tokensOf("allocations") {
+		t.Fatalf("targets %v, want the verb clause's object alone", f.Targets)
+	}
+	f = Parse("The panic barrier records the panic value after exiting.")
+	if len(f.Targets) != 1 || words(f.Targets[0]) != tokensOf("panic barrier") {
+		t.Fatalf("targets %v, want the subject cut at its verb", f.Targets)
 	}
 	// "must never" is a keep, not an addition; the modal's subject is the target.
 	f = Parse("The warning must never report zero obligations.")
@@ -89,6 +99,64 @@ func hasPhrase(ps []Phrase, want string) bool {
 // take up: the request presumes it exists, so it is the reuse's phrase,
 // never the target's; after a modal the use word governs the same way,
 // and a clause opening with one names nothing else.
+// A phrase's last word in an adverb's form, after another word, is
+// marked for the roles stage ("resolve the prompt root lazily": the
+// manner of resolving, unless a name holds it); a one-word phrase and a
+// stop word in that form ("only") are not.
+func TestFrame_ATrailingAdverbIsMarked(t *testing.T) {
+	f := Parse("resolve the prompt root lazily")
+	if len(f.Targets) != 1 || words(f.Targets[0]) != tokensOf("prompt root lazily") || f.Targets[0].Adverb != Tokens("lazily")[0] {
+		t.Fatalf("targets %+v, want the whole phrase with its adverb marked", f.Targets)
+	}
+	f = Parse("fix the message assembly")
+	if len(f.Targets) != 1 || f.Targets[0].Adverb != Tokens("assembly")[0] {
+		t.Fatalf("targets %+v, want assembly marked lexically; the index decides", f.Targets)
+	}
+	f = Parse("run the weekly")
+	if len(f.Targets) != 1 || f.Targets[0].Adverb != "" {
+		t.Fatalf("targets %+v, want a one-word phrase unmarked", f.Targets)
+	}
+	f = Parse("fix the store only")
+	if len(f.Targets) != 1 || f.Targets[0].Adverb != "" || words(f.Targets[0]) != tokensOf("store") {
+		t.Fatalf("targets %+v, want a stop word in the form unmarked", f.Targets)
+	}
+}
+
+// A symptom's subject ends at a third-person verb of a known class
+// ("the budget store drops rows"); a symptom sentence names the target
+// when the verb sentences name nothing ("Note: ... Fix it."); a label
+// sentence ("Part 2", "Phase B") is not a subject; a verb sentence's
+// target stands alone over a symptom.
+func TestFrame_SymptomSubjectsAndLabels(t *testing.T) {
+	for _, c := range []struct{ prompt, want string }{
+		{"The budget store drops rows.", "budget store"},
+		{"Note: the budget store drops rows. Fix it.", "budget store"},
+		{"The digest prints twice. Fix the recap store.", "recap store"},
+		{"Phase B: the recap line prints twice.", "recap line"},
+	} {
+		f := Parse(c.prompt)
+		if len(f.Targets) != 1 || words(f.Targets[0]) != tokensOf(c.want) {
+			t.Errorf("%q: targets %+v, want [%s]", c.prompt, f.Targets, c.want)
+		}
+	}
+	f := Parse("Part 2: recording state as a file, not a switch.")
+	for _, p := range f.Targets {
+		if words(p) == "part" {
+			t.Fatalf("targets %+v, want no label as a subject", f.Targets)
+		}
+	}
+	for _, s := range []string{"Part 2", "Phase B:", "Step iv", "Round 12."} {
+		if !isLabel(s) {
+			t.Errorf("%q, want a label", s)
+		}
+	}
+	for _, s := range []string{"schema lint", "the store", "Part", "V2 call", "run tests"} {
+		if isLabel(s) {
+			t.Errorf("%q, want no label", s)
+		}
+	}
+}
+
 func TestFrame_UseWordOpensTheThingToTakeUp(t *testing.T) {
 	cases := []struct{ name, prompt, target, use string }{
 		{"edit verb, use word inside the clause", "make session expiry respect the org-level timeout override", "session expiry", "org-level timeout override"},
