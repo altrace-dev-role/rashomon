@@ -16,7 +16,8 @@ import (
 // consumers, knowledge, allow, prompt); the test skips without them. The
 // unit line is judged as AC-M1.1 does (a unit of 'a;b' is any of them, '-'
 // is right when the brief holds no unit line). The reuse line is right
-// when a kept reuse line's path is one of the truth's; the consumer and
+// when a kept reuse line's path is one of the truth's, and no reuse line
+// is right when '-' is one of them; the consumer and
 // knowledge lines are right when every kept line of the role is in the
 // graph-derived set and at least one is kept, or when the set is '-' and
 // none is kept; '*' leaves a cell unjudged. When the brief holds no unit
@@ -144,16 +145,18 @@ type verdict struct {
 	Judged, Right bool
 }
 
-// judgeAny is the reuse rule: '*' unjudged; '-' met by no line; else met
-// when any of got is one of the truth's alternatives.
+// judgeAny is the reuse rule: '*' unjudged; else met when any of got is
+// one of the truth's alternatives, a '-' among them met by no line ('-'
+// alone only by no line, '-;a.go' by no line or by a.go: the reuse
+// re-read's R2 gains keep '-' beside the readers' file).
 func judgeAny(got []string, truth string) verdict {
-	switch truth {
-	case "*":
+	if truth == "*" {
 		return verdict{}
-	case "-":
-		return verdict{Judged: true, Right: len(got) == 0}
 	}
 	set := strings.Split(truth, ";")
+	if len(got) == 0 {
+		return verdict{Judged: true, Right: slices.Contains(set, "-")}
+	}
 	for _, p := range got {
 		if slices.Contains(set, p) {
 			return verdict{Judged: true, Right: true}

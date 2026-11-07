@@ -7,7 +7,7 @@ import (
 
 // The AC-M1.5 judge's rules, fixed at pre-registration (classes.tsv header):
 // a reuse truth is met when any kept reuse line's path is one of its
-// alternatives; a consumer or knowledge truth is met when every kept line
+// alternatives, or by no reuse line when '-' is one of them; a consumer or knowledge truth is met when every kept line
 // of the role is in the derived set and at least one is kept; '-' is met
 // by no line of the role; '*' is not judged.
 func TestACM15_JudgeAny(t *testing.T) {
@@ -23,6 +23,9 @@ func TestACM15_JudgeAny(t *testing.T) {
 		{[]string{"c.go", "b.go"}, "a.go;b.go", verdict{Judged: true, Right: true}},
 		{nil, "a.go", verdict{Judged: true, Right: false}},
 		{[]string{"c.go"}, "a.go", verdict{Judged: true, Right: false}},
+		{nil, "-;a.go", verdict{Judged: true, Right: true}},
+		{[]string{"a.go"}, "-;a.go", verdict{Judged: true, Right: true}},
+		{[]string{"b.go"}, "-;a.go", verdict{Judged: true, Right: false}},
 	}
 	for _, c := range cases {
 		if got := judgeAny(c.got, c.truth); got != c.want {
