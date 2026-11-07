@@ -4,8 +4,19 @@
 # knowledge-id, named-name, named-path, greenfield). Columns: id, unit, allow, prompt. unit: ';' separates the
 # units any of which is right, '-' means no unit line is right; allow '*' leaves clause 2 (off-task lines)
 # unjudged, no allow list was pre-registered for these rows; '\n' in a prompt is a newline. The truths have one
-# author (the 11-07 session) read against the tree; a second read is owed (TRACE, M1 close). The class of each
-# row is kept as a comment column in docs-out's copy, not here.
+# author (the 11-07 session) read against the tree. Second read 2026-11-07 11:35: three Sonnet readers per prompt,
+# blind to the engine and to the author (request text and the package list only); 49 of 59 unique prompts over this
+# file and prompts.tsv confirmed, 10 contested, Fleiss kappa 0.928. Three truths revised on tree facts: O1 to
+# internal/recap (the Stop line is composed in internal/recap/recap.go and clause.go over verify.StopView, printed by
+# cmd/rashomon/recap_stop.go; internal/recap imports nothing from internal/steer/render); N2 gains internal/recap
+# (les:B386 applies to both units in the graph); I4 gains '-' (the first task is a rebase that no unit owns). Seven
+# stand with the fact that settles each (PL12, A2, J2: platformRow, ObligationUnknown and the obligation ledger are
+# internal/verify/platform.go and obligations.go; B2: the piped-run shape is internal/shape/masked*.go; B4: the reaper
+# is a 13-line main calling peakrss.Reap; N1: req:PF-PL12 applies to pgraph/doc.go; ST12 in prompts.tsv: the readers
+# named internal/graph/session, which the indexed tree does not hold). The class of each row is the letter series
+# (A feature-add, B bug-symptom, C refactor, D delete, E tests-only, F performance, G non-go, H question, I multi-task,
+# J named-name J2 J3 J5 and named-path J1 J4, K vague, L greenfield, M cross-cutting, N knowledge-id, O negation,
+# P pasted-error); classes.tsv carries it as a column.
 A1	internal/steer/render	*	Add a per-session count of refused lines to the steer render gate, next to the existing kept count.
 A2	internal/verify	*	Let the obligation ledger carry the turn window each obligation was opened in.
 A3	internal/consent	*	Teach the consent screen to name the knowledge files it reads.
@@ -38,7 +49,7 @@ H4	internal/fold	*	What writes the fold.json file and who reads it?
 I1	internal/consent	*	Three things: (1) land the consent text change in internal/consent, (2) re-run the slot gate, (3) write the TRACE status line. Start with (1).
 I2	internal/share	*	Card SV1a: add the share bundle's manifest digest (internal/share/bundle.go), then wire the merge guard check in scripts/mergeguard, then the disclosure paragraph. QA reads after.
 I3	internal/verify	*	Review PR #134 (STALE-NUDGE1): verify the write-that-leaves-a-green nudge in internal/verify and the hook's PostToolUse path; check the six benchmark rows; do not touch cmd.
-I4	internal/spec	*	Director note: lane 3 holds the slot; after it frees, rebase pr/declared-gates1 onto main, run gofmt and vet, then add the budgets row for the declared gates in internal/spec.
+I4	internal/spec;-	*	Director note: lane 3 holds the slot; after it frees, rebase pr/declared-gates1 onto main, run gofmt and vet, then add the budgets row for the declared gates in internal/spec.
 J1	internal/hook	*	Fix internal/hook/hook_test.go so the race detector passes.
 J2	internal/verify	*	platformRow double counts when two facts share a config; fix it.
 J3	internal/verify	*	verify.EvaluateStop should report the elapsed time of the fold step separately.
@@ -53,9 +64,9 @@ M1	cmd/rashomon;internal/hook;internal/budget	*	Add a context parameter to every
 M2	internal/store;internal/verify	*	Replace every fmt.Errorf with the error wrapping helper across the store and verify packages.
 M3	internal/jsonscan	*	Move all JSON field reads onto the streaming scanner.
 N1	pgraph;internal/verify	*	Implement PF-PL12.
-N2	internal/verify	*	Address B386 in the ledger.
+N2	internal/verify;internal/recap	*	Address B386 in the ledger.
 N3	cmd/rashomon;internal/intent	*	Per D160 the prompt must never be stored; audit the preflight's writes.
-O1	internal/steer/render	*	Do not touch the store; change only the render so the kept count shows in the Stop line.
+O1	internal/recap	*	Do not touch the store; change only the render so the kept count shows in the Stop line.
 O2	internal/digest	*	Without changing the record schema, make the digest carry the turn's elapsed time.
 P1	internal/verify	*	internal/verify/stop_test.go:214: EvaluateStop() verdict = unknown, want green
 P2	internal/gateout	*	panic: runtime error: index out of range [3] with length 3\n\ngithub.com/altrace-dev-role/rashomon/internal/gateout.classify(...)
