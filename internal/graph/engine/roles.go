@@ -39,22 +39,12 @@ const (
 	BasisCoverage = slot.BasisCoverage
 )
 
-// RoleFile is a file in a role with the symbols of it the role rests on.
+// RoleFile is a file in a role with the symbols of it the role rests on;
+// a reuse file carries the basis word its line states.
 type RoleFile struct {
 	File    graph.ID
 	Members []graph.ID
-}
-
-// ReuseClaim is one file's claim on the reuse role, for Explain: its
-// best symbol's mass on the use phrases, on the addition phrases and on
-// every unspent token, whether the addition's existing code calls a hit
-// symbol of it, whether it is inside the unit and whether code outside
-// the unit already calls a hit symbol of it.
-type ReuseClaim struct {
-	File               graph.ID
-	Use, Add, Mass     float64
-	ViaAdd, In, Reused bool
-	Nodes              int
+	Basis   string
 }
 
 // Roles is what the stage found: the frame, the phrase it resolved (the

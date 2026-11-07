@@ -46,7 +46,8 @@ func TestReuse_ASymptomWithNoUsePhraseClaimsNoReuse(t *testing.T) {
 
 // TestReuse_AUsePhraseKeepsTheInUnitFile: the same unit, with a use word
 // naming the cache's ttl, keeps the cache module as the reuse: the basis
-// is the use phrase, not the unit membership.
+// is the use phrase, not the unit membership, and the line says so
+// (W-M1.25).
 func TestReuse_AUsePhraseKeepsTheInUnitFile(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
@@ -61,5 +62,11 @@ func TestReuse_AUsePhraseKeepsTheInUnitFile(t *testing.T) {
 	}
 	if len(r.ReuseClaims) == 0 || r.ReuseClaims[0].Use == 0 {
 		t.Errorf("claims %+v, want a use-phrase basis on the first", r.ReuseClaims)
+	}
+	if len(r.Reuse) == 0 || r.Reuse[0].Basis != ReuseByUse {
+		t.Errorf("reuse %+v, want the use word as its basis", r.Reuse)
+	}
+	if !strings.Contains(b.Text(), "reuse 'services/auth/auth/cache.py' (named to use) declares") {
+		t.Errorf("the reuse line does not state its basis:\n%s", b.Text())
 	}
 }

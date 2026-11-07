@@ -49,12 +49,13 @@ func unitFact(g Reader, rev graph.Rev, l Line, rel func(string) string) slot.Uni
 
 // codeFact is a file line's facts: the members declared in it, their
 // relations in the order calls, writes, reads, imports, the knowledge
-// that applies to any member, and the role the line holds.
+// that applies to any member, the role the line holds and, for a reuse,
+// the basis word the reuse stage settled.
 func codeFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel func(string) string) slot.CodeFact {
 	f := slot.CodeFact{Path: slot.RelPath(rel(strings.TrimPrefix(string(l.Key), "file:")))}
 	switch l.Role {
 	case RoleReuse:
-		f.Role = slot.RoleReuse
+		f.Role, f.Basis = slot.RoleReuse, l.Basis
 	case RoleConsumer:
 		f.Role = slot.RoleConsumer
 	}

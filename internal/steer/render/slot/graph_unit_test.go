@@ -157,3 +157,66 @@ func TestGU2_TheUnitLineStatesItsBasisAndNamesTheRunnerUp(t *testing.T) {
 		t.Errorf("record text %q", got)
 	}
 }
+
+// TestGU3_AReuseLineStatesItsBasis (W-M1.25, AC-M1.5): a reuse line says
+// why its file is the thing to reuse, in one of three words (the request
+// named it after a use word, it holds the code the addition names, or the
+// addition's existing code calls it), so a reuse line is never a bare
+// fact; a basis outside the three words, or one on a consumer line or a
+// line with no role, refuses the line; a reuse line with no basis renders
+// as before; the record form keeps the basis word.
+func TestGU3_AReuseLineStatesItsBasis(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fact CodeFact
+		want string
+	}{
+		{"use", CodeFact{Path: "services/auth/auth/cache.py", Role: RoleReuse, Basis: ReuseByUse, Names: []Ident{"cache_ttl"}},
+			"reuse 'services/auth/auth/cache.py' (named to use) declares 'cache_ttl'"},
+		{"addition", CodeFact{Path: "store/record.py", Role: RoleReuse, Basis: ReuseByAddition, Names: []Ident{"load_instructions"}},
+			"reuse 'store/record.py' (holds the addition's code) declares 'load_instructions'"},
+		{"call", CodeFact{Path: "platform/callers.py", Role: RoleReuse, Basis: ReuseByCall, Names: []Ident{"callers"}, Lessons: []KnowledgeID{"dec:D145"}},
+			"reuse 'platform/callers.py' (called by the addition's code) declares 'callers'; D145 applies"},
+		{"no basis", CodeFact{Path: "platform/callers.py", Role: RoleReuse, Names: []Ident{"callers"}},
+			"reuse 'platform/callers.py' declares 'callers'"},
+	} {
+		v, err := Bind(NewCodeLine(c.fact))
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		fact CodeFact
+	}{
+		{"basis outside the three words", CodeFact{Path: "a.py", Role: RoleReuse, Basis: "guess"}},
+		{"basis on a consumer", CodeFact{Path: "a.py", Role: RoleConsumer, Basis: ReuseByUse}},
+		{"basis with no role", CodeFact{Path: "a.py", Basis: ReuseByUse}},
+	} {
+		if _, err := Bind(NewCodeLine(c.fact)); err == nil {
+			t.Errorf("%s: bound", c.name)
+		}
+	}
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(NewCodeLine(CodeFact{Path: "services/auth/auth/cache.py", Role: RoleReuse, Basis: ReuseByUse, Names: []Ident{"cache_ttl"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := v.(GraphLine).Record(digest)
+	if f, ok := rec.Code(); !ok || f.Basis != ReuseByUse || f.Role != RoleReuse {
+		t.Errorf("record form code %+v (want the role and the basis kept)", f)
+	}
+	rv, err := Bind(rec)
+	if err != nil {
+		t.Fatalf("Bind(record): %v", err)
+	}
+	if got := rv.Text(); got != "reuse a file on record (named to use) declares 1 names" {
+		t.Errorf("record text %q", got)
+	}
+	if _, err := Bind(GraphLine{keyed: true, code: &CodeFact{Role: RoleReuse, Basis: "guess"}}); err == nil {
+		t.Error("a record form with a basis outside the three words was bound")
+	}
+}

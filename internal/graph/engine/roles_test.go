@@ -60,7 +60,7 @@ func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	wants := []string{
 		"unit 'services/auth' (by word coverage; runner-up '" + r.Picks[1].Path + "') declares 'is_expired', 'create_session', 'SESSION_TTL_SECONDS'; is consumed by 'jobs/purge_sessions.py', 'tests/unit/test_sessions.py' and 1 more",
 		"'services/auth/auth/sessions.py' declares",
-		"reuse 'services/orgs/orgs/settings.py' declares 'get_org_settings'; imports 'orgs.models'; ADR-0007 applies",
+		"reuse 'services/orgs/orgs/settings.py' (named to use) declares 'get_org_settings'; imports 'orgs.models'; ADR-0007 applies",
 		"consumer 'jobs/purge_sessions.py'",
 		"lesson INC-212 applies to 'jobs/purge_sessions.py'",
 	}

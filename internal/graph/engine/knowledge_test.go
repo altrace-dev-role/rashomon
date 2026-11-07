@@ -47,7 +47,7 @@ func TestKnowledge_TheUnitsOwnRecordIsTheLine(t *testing.T) {
 	if via := r.KnowledgeVia["les:INC-212"]; via != graph.FileID("services/auth/auth/db.py") {
 		t.Errorf("INC-212 found through %s, want the unit's db module", via)
 	}
-	if !strings.Contains(b.Text(), "reuse 'services/orgs/orgs/settings.py' declares 'get_org_settings'; imports 'orgs.models'; ADR-0007 applies") {
+	if !strings.Contains(b.Text(), "reuse 'services/orgs/orgs/settings.py' (named to use) declares 'get_org_settings'; imports 'orgs.models'; ADR-0007 applies") {
 		t.Errorf("the reuse line does not carry its record:\n%s", b.Text())
 	}
 	if strings.Contains(b.Text(), "decision ADR-0007") {

@@ -36,6 +36,9 @@ func (l GraphLine) codeText() string {
 	if c.Role != "" {
 		head = c.Role + " " + head
 	}
+	if b := reuseBasisText(c.Basis); b != "" {
+		head += " " + b
+	}
 	var parts []string
 	if p := phrase("declares", identTexts(c.Names), m.Names, "names"); p != "" {
 		parts = append(parts, p)

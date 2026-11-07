@@ -5,12 +5,35 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // The reuse role (PLAN 5.2, W-M1.12 and W-M1.16): the abstractions the
 // task should build on, claimed by symbols whose names the request's
 // addition and use phrases hold. Split from roles.go at LAW10's file
 // ceiling.
+
+// The basis words of a reuse claim (W-M1.25), the slot's: ByUse for a
+// file whose code the request named after a use word, ByAddition for the
+// file holding the code the addition phrase names, ByCall for a file the
+// addition's existing code calls.
+const (
+	ReuseByUse      = slot.ReuseByUse
+	ReuseByAddition = slot.ReuseByAddition
+	ReuseByCall     = slot.ReuseByCall
+)
+
+// ReuseClaim is one file's claim on the reuse role, for Explain: its
+// best symbol's mass on the use phrases, on the addition phrases and on
+// every unspent token, whether the addition's existing code calls a hit
+// symbol of it, whether it is inside the unit and whether code outside
+// the unit already calls a hit symbol of it.
+type ReuseClaim struct {
+	File               graph.ID
+	Use, Add, Mass     float64
+	ViaAdd, In, Reused bool
+	Nodes              int
+}
 
 // reuse is the abstraction to reuse: the files declaring callable
 // symbols (functions, methods, types) whose names or docs hold the
@@ -115,8 +138,8 @@ func reuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]floa
 	for _, f := range order {
 		cl := found[f]
 		claims = append(claims, ReuseClaim{File: f, Use: cl.use, Add: cl.add, Mass: cl.mass, ViaAdd: cl.viaAdd, In: cl.in, Reused: cl.reused, Nodes: len(cl.nodes)})
-		if cl.called && cl.basis() && len(out) < MaxReuse {
-			out = append(out, RoleFile{File: f, Members: cl.nodes})
+		if b := cl.basis(); cl.called && b != "" && len(out) < MaxReuse {
+			out = append(out, RoleFile{File: f, Members: cl.nodes, Basis: b})
 		}
 	}
 	return out, claims
@@ -140,11 +163,22 @@ type reuseClaim struct {
 	nodes                      []graph.ID
 }
 
-// basis reports whether the claim can state why its file is the thing
-// to reuse: a use-phrase hit, an addition claim, or a call from the
-// addition's existing code. Membership of the unit and a call from the
-// unit rank a claim and never carry a line.
-func (cl reuseClaim) basis() bool { return cl.use > 0 || cl.add > 0 || cl.viaAdd }
+// basis is the word the claim's line states for why its file is the
+// thing to reuse, the strongest of its grounds in the order the claims
+// rank: a use-phrase hit, a call from the addition's existing code, an
+// addition claim; or "" when it has none. Membership of the unit and a
+// call from the unit rank a claim and never carry a line.
+func (cl reuseClaim) basis() string {
+	switch {
+	case cl.use > 0:
+		return ReuseByUse
+	case cl.viaAdd:
+		return ReuseByCall
+	case cl.add > 0:
+		return ReuseByAddition
+	}
+	return ""
+}
 
 // take folds one symbol's hit into the claim.
 func (cl *reuseClaim) take(id graph.ID, h reuseHit, reused bool) {

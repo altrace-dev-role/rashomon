@@ -19,7 +19,7 @@ func roleLines(g Reader, rev graph.Rev, r Roles, byID map[graph.ID]Candidate) []
 		lines = append(lines, Line{Key: r.File, Role: RoleTarget, Members: append([]graph.ID{r.File}, r.Targets...)})
 	}
 	file := func(role string, rf RoleFile) Line {
-		return Line{Key: rf.File, Role: role, Members: append([]graph.ID{rf.File}, rf.Members...)}
+		return Line{Key: rf.File, Role: role, Basis: rf.Basis, Members: append([]graph.ID{rf.File}, rf.Members...)}
 	}
 	know := func(id graph.ID) Line {
 		anchor := r.KnowledgeVia[id]

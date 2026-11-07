@@ -44,6 +44,16 @@ const (
 	RoleConsumer = "consumer"
 )
 
+// The basis of a reuse claim (W-M1.25, AC-M1.5), so a reuse line is never
+// a bare fact: the request named the file's code after a use word; the
+// file holds the code the addition phrase names; or the addition's
+// existing code calls the file's code.
+const (
+	ReuseByUse      = "use"
+	ReuseByAddition = "addition"
+	ReuseByCall     = "call"
+)
+
 // KnowledgeRequirement is the kind of a product requirement row (the truth
 // table): what the repository declares it owes, applied to the code that
 // evidences it.
@@ -72,6 +82,21 @@ func knowledgeKind(k string) bool {
 func validRole(r string) error {
 	if r != "" && r != RoleReuse && r != RoleConsumer {
 		return errors.New("slot: code line has a role outside reuse and consumer")
+	}
+	return nil
+}
+
+// validBasis is whether b is empty or one of the three reuse words on a
+// reuse line.
+func validBasis(role, b string) error {
+	if b == "" {
+		return nil
+	}
+	if role != RoleReuse {
+		return errors.New("slot: a basis on a code line that is not a reuse")
+	}
+	if b != ReuseByUse && b != ReuseByAddition && b != ReuseByCall {
+		return errors.New("slot: reuse line has a basis outside use, addition and call")
 	}
 	return nil
 }
@@ -182,6 +207,20 @@ func basisText(basis string, runnerUp RelPath) string {
 			return "(by word coverage; runner-up " + runnerUp.Text() + ")"
 		}
 		return "(by word coverage)"
+	}
+	return ""
+}
+
+// reuseBasisText is the reuse line's disclosure clause: why its file is
+// the thing to reuse.
+func reuseBasisText(basis string) string {
+	switch basis {
+	case ReuseByUse:
+		return "(named to use)"
+	case ReuseByAddition:
+		return "(holds the addition's code)"
+	case ReuseByCall:
+		return "(called by the addition's code)"
 	}
 	return ""
 }

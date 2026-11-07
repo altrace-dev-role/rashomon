@@ -196,6 +196,9 @@ func TestReuse_OutsideTheUnitNeedsAUseAClaimOrADependency(t *testing.T) {
 	if !sameIDs(files(r.Reuse), want[:1]) {
 		t.Errorf("reuse %v, want %v (the claim alone; the dependency has no basis)", files(r.Reuse), want[:1])
 	}
+	if len(r.Reuse) == 0 || r.Reuse[0].Basis != ReuseByAddition {
+		t.Errorf("reuse %+v, want the addition claim as its basis", r.Reuse)
+	}
 	if len(r.ReuseClaims) != 2 || r.ReuseClaims[0].File != want[0] || r.ReuseClaims[1].File != want[1] {
 		t.Errorf("claims %+v, want the claim, then the dependency", r.ReuseClaims)
 	}
@@ -238,6 +241,9 @@ func TestReuse_TheAdditionsCodeRanksWhatItCallsFirst(t *testing.T) {
 	want := []graph.ID{graph.FileID("platform/callers.py"), graph.FileID("hook/blast.py"), graph.FileID("render/render.py")}
 	if !sameIDs(files(r.Reuse), want) {
 		t.Fatalf("reuse %v, want %v", files(r.Reuse), want)
+	}
+	if r.Reuse[0].Basis != ReuseByCall || r.Reuse[1].Basis != ReuseByAddition || r.Reuse[2].Basis != ReuseByAddition {
+		t.Errorf("bases %q %q %q, want call, addition, addition", r.Reuse[0].Basis, r.Reuse[1].Basis, r.Reuse[2].Basis)
 	}
 	cl := map[graph.ID]ReuseClaim{}
 	for _, c := range r.ReuseClaims {
@@ -346,7 +352,7 @@ func TestKnowledge_ALineNamesTheFileItWasFoundThrough(t *testing.T) {
 		t.Errorf("via %v", r.KnowledgeVia)
 	}
 	b := Build(build(false), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true})
-	line := "reuse 'ledger/ledger.py' declares 'open_ledger'; PF-HD1 applies"
+	line := "reuse 'ledger/ledger.py' (holds the addition's code) declares 'open_ledger'; PF-HD1 applies"
 	if !strings.Contains(b.Text(), line) {
 		t.Errorf("brief lacks %q:\n%s", line, b.Text())
 	}

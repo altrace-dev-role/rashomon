@@ -128,10 +128,13 @@ type ConstFact struct {
 // CodeFact is a file of the brief: what it declares, what that code calls,
 // writes, reads and imports, and the knowledge that applies to it. Role is
 // the part it plays in the request (RoleReuse, RoleConsumer) or "" for the
-// target's own file and a related file.
+// target's own file and a related file. Basis is why a reuse file is the
+// thing to reuse (one of the three ReuseBy words; empty renders as
+// before) and is refused on any other role.
 type CodeFact struct {
 	Path    RelPath
 	Role    string
+	Basis   string
 	Names   []Ident
 	Consts  []ConstFact
 	Calls   []Ident
@@ -318,6 +321,12 @@ func (l GraphLine) validateKeyed() error {
 		if c.Path != "" || len(c.Names)+len(c.Consts)+len(c.Calls)+len(c.Writes)+len(c.Reads)+len(c.Imports) > 0 {
 			return errors.New("slot: keyed graph line holds a path or a name")
 		}
+		if err := validRole(c.Role); err != nil {
+			return err
+		}
+		if err := validBasis(c.Role, c.Basis); err != nil {
+			return err
+		}
 		return validIDs(c.Lessons)
 	case l.table != nil:
 		t := *l.table
@@ -364,6 +373,9 @@ func (f CodeFact) validate() error {
 		return err
 	}
 	if err := validRole(f.Role); err != nil {
+		return err
+	}
+	if err := validBasis(f.Role, f.Basis); err != nil {
 		return err
 	}
 	for _, c := range f.Consts {
@@ -445,6 +457,9 @@ func (l GraphLine) bind() (Value, error) {
 			return nil, err
 		}
 		if err := validRole(c.Role); err != nil {
+			return nil, err
+		}
+		if err := validBasis(c.Role, c.Basis); err != nil {
 			return nil, err
 		}
 		c.Names, m.Names = keptIdents(c.Names, m.Names, maxLineIdents)
@@ -547,8 +562,8 @@ func keptTables(items []TableRef, more int) ([]TableRef, int) {
 
 // Record is l's record form: every list as its count, the path and the
 // source as their keyed digests (digest, intent's PathDigest), the knowledge
-// ids, the clause and a code line's role kept, since those are the
-// repository's declared records and the engine's reading, never the
+// ids, the clause and a code line's role and basis kept, since those are
+// the repository's declared records and the engine's reading, never the
 // request's words. It is built from the bound line,
 // so the counts are what the printed line listed, left out and cut.
 func (l GraphLine) Record(digest func(string) string) GraphLine {
@@ -564,7 +579,7 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 		m.Reads += len(c.Reads)
 		m.Imports += len(c.Imports)
 		out.digest = digest(string(c.Path))
-		out.code = &CodeFact{Role: c.Role, Lessons: slices.Clone(c.Lessons)}
+		out.code = &CodeFact{Role: c.Role, Basis: c.Basis, Lessons: slices.Clone(c.Lessons)}
 	case l.table != nil:
 		t := *l.table
 		m.Writers += len(t.Writers)
