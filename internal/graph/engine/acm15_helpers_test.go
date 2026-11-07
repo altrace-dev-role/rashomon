@@ -137,3 +137,28 @@ func TestACM15_HalfOf(t *testing.T) {
 		}
 	}
 }
+
+// TestACM15_HalfWanted: RASHOMON_ACM15_HALF unset or "development" builds
+// the development rows only (engine work never reads the acceptance
+// half); "acceptance" builds the acceptance rows only and reads the gates;
+// "all" builds both for information.
+func TestACM15_HalfWanted(t *testing.T) {
+	cases := []struct {
+		env, half string
+		want      bool
+	}{
+		{"", "development", true},
+		{"", "acceptance", false},
+		{"development", "development", true},
+		{"development", "acceptance", false},
+		{"acceptance", "acceptance", true},
+		{"acceptance", "development", false},
+		{"all", "development", true},
+		{"all", "acceptance", true},
+	}
+	for _, c := range cases {
+		if got := halfWanted(c.env, c.half); got != c.want {
+			t.Errorf("halfWanted(%q, %q) = %v, want %v", c.env, c.half, got, c.want)
+		}
+	}
+}

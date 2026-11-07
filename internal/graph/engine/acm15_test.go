@@ -33,7 +33,11 @@ import (
 // (declared 2026-11-07 after the set's first run and before any engine
 // change on it; the full-ten table is printed beside it for information
 // and claims nothing). Zero model cost; the prompts stay fixed;
-// RASHOMON_ACM11_DUMP prints each brief.
+// RASHOMON_ACM11_DUMP prints each brief. RASHOMON_ACM15_HALF picks the
+// half built: unset or "development" builds and prints the development
+// rows only, so engine work never reads the acceptance half;
+// "acceptance" builds the acceptance rows and reads the gates; "all"
+// builds both, for information.
 func TestACM15_ClassesTable(t *testing.T) {
 	root, path := os.Getenv("RASHOMON_ACM11_DIR"), os.Getenv("RASHOMON_ACM15_CLASSES")
 	if root == "" || path == "" {
@@ -46,8 +50,14 @@ func TestACM15_ClassesTable(t *testing.T) {
 	seen := map[string]int{}
 	var order []string
 	var all classScore
+	wantHalf := os.Getenv("RASHOMON_ACM15_HALF")
 	for _, r := range rows {
 		id, cls, want, reuse, consumers, knowledge := r[0], r[1], strings.Split(r[2], ";"), r[4], r[5], r[6]
+		half := halfOf(seen[cls])
+		seen[cls]++
+		if !halfWanted(wantHalf, half) {
+			continue
+		}
 		prompt := strings.ReplaceAll(r[8], "\\n", "\n")
 		b := Build(g, rev, prompt, Options{IDF: true})
 		got := briefUnit(g, rev, b)
@@ -62,8 +72,6 @@ func TestACM15_ClassesTable(t *testing.T) {
 			scores[cls] = &classScore{}
 			order = append(order, cls)
 		}
-		half := halfOf(seen[cls])
-		seen[cls]++
 		if halves[half][cls] == nil {
 			halves[half][cls] = &classScore{}
 		}
@@ -78,6 +86,9 @@ func TestACM15_ClassesTable(t *testing.T) {
 	}
 	var sb strings.Builder
 	for _, half := range []string{"acceptance", "development"} {
+		if !halfWanted(wantHalf, half) {
+			continue
+		}
 		fmt.Fprintf(&sb, "%s half:\n%-14s %3s  %-11s  %-19s  %-19s  %-19s  missed\n", half, "class", "n", "unit", "reuse (judged)", "consumers (judged)", "knowledge (judged)")
 		var sum classScore
 		for _, cls := range order {
@@ -94,12 +105,27 @@ func TestACM15_ClassesTable(t *testing.T) {
 		}
 		fmt.Fprintf(&sb, "%s\n\n", sum.row("all"))
 	}
-	fmt.Fprintf(&sb, "all rows (information):\n")
-	for _, cls := range order {
-		fmt.Fprintf(&sb, "%s  %s\n", scores[cls].row(cls), strings.Join(scores[cls].missed(), ","))
+	if halfWanted(wantHalf, "development") && halfWanted(wantHalf, "acceptance") {
+		fmt.Fprintf(&sb, "all rows (information):\n")
+		for _, cls := range order {
+			fmt.Fprintf(&sb, "%s  %s\n", scores[cls].row(cls), strings.Join(scores[cls].missed(), ","))
+		}
+		fmt.Fprintf(&sb, "%s\n", all.row("all"))
 	}
-	fmt.Fprintf(&sb, "%s\n", all.row("all"))
 	t.Logf("AC-M1.5 per-class table (right/n, then right/judged with the rate given the unit right in brackets; gates unit 4/5, reuse 3/5, consumers 4/5, knowledge 4/5 rounded up, read on the acceptance half):\n%s", sb.String())
+}
+
+// halfWanted is whether RASHOMON_ACM15_HALF (env) builds the rows of half:
+// unset or "development" the development rows only, "acceptance" the
+// acceptance rows only, "all" both.
+func halfWanted(env, half string) bool {
+	switch env {
+	case "", "development":
+		return half == "development"
+	case "acceptance":
+		return half == "acceptance"
+	}
+	return true
 }
 
 // halfOf is the half of the i-th row of its class in file order:
