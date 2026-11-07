@@ -52,13 +52,14 @@ def check_row(row, tree, units, files):
     for u in unit.split(";"):
         if u != "-" and u not in units:
             bad.append((id_, "unit not in graph", u))
-    for col, v in (("target", target), ("reuse", reuse)):
-        if v in ("-", "*"):
-            continue
-        if not os.path.isfile(os.path.join(tree, v)):
-            bad.append((id_, col + " not in tree", v))
-        elif v not in files:
-            bad.append((id_, col + " not a graph file", v))
+    for col, cell in (("target", target), ("reuse", reuse)):
+        for v in cell.split(";"):
+            if v in ("-", "*"):
+                continue
+            if not os.path.isfile(os.path.join(tree, v)):
+                bad.append((id_, col + " not in tree", v))
+            elif v not in files:
+                bad.append((id_, col + " not a graph file", v))
     if cls not in PATH_FREE and PATH_RE.search(prompt):
         bad.append((id_, "prompt names a path", prompt[:60]))
     if cls == "greenfield":

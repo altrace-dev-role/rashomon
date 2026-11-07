@@ -27,6 +27,13 @@ class Validate(unittest.TestCase):
     def test_unknown_unit_and_missing_target(self):
         self.assertEqual(self.check(row(unit="internal/zz", target="internal/a/zz.go")), ["unit not in graph", "target not in tree"])
 
+    def test_reuse_alternatives_are_checked_one_by_one(self):
+        os.makedirs(os.path.join(self.tree, "internal", "b"))
+        open(os.path.join(self.tree, "internal", "b", "b.go"), "w").close()
+        self.files.add("internal/b/b.go")
+        self.assertEqual(self.check(row(reuse="internal/a/a.go;internal/b/b.go")), [])
+        self.assertEqual(self.check(row(reuse="internal/a/a.go;internal/b/zz.go")), ["reuse not in tree"])
+
     def test_prompt_naming_a_path_outside_the_path_classes(self):
         self.assertEqual(self.check(row(prompt="Fix internal/a/a.go now.")), ["prompt names a path"])
         self.assertEqual(self.check(row(cls="named-path", prompt="Fix internal/a/a.go now.")), [])
