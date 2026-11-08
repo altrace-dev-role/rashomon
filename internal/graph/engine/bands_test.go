@@ -18,7 +18,8 @@ func stateAll(string, string) string { return BandStated }
 // calibration's cells give the table the ruling fixed, a role line capped
 // at its unit line's band (a consumer under a unit claimed by its name is
 // stated by its own cell, 62 of 76, and a candidate by the cap); the
-// floors are inclusive; a cell the calibration lacks states nothing; and
+// floors are inclusive; the brief with no unit claim is withheld by its
+// own cell (7 of 55) and a cell the calibration lacks states nothing; and
 // the engine's role words are the slot's words for what is not known, so
 // a unit line naming them binds.
 func TestBands_TheCalibrationBandsEachCellAsRuled(t *testing.T) {
@@ -54,7 +55,10 @@ func TestBands_TheCalibrationBandsEachCellAsRuled(t *testing.T) {
 			t.Errorf("tally %d of %d: %s, want %s", c.t.right, c.t.judged, got, c.want)
 		}
 	}
-	if b := calibrated(RoleUnit, ""); b != BandWithheld {
+	if c := calibration[[2]string{RoleUnit, BasisNone}]; c != (tally{7, 55}) || calibrated(RoleUnit, BasisNone) != BandWithheld {
+		t.Errorf("the brief with no unit claim: %d of %d, %s", c.right, c.judged, calibrated(RoleUnit, BasisNone))
+	}
+	if b := calibrated(RoleUnit, "guessed"); b != BandWithheld {
 		t.Errorf("a cell the calibration lacks: %s", b)
 	}
 	if lower(BandStated, BandCandidate) != BandCandidate || lower(BandCandidate, BandWithheld) != BandWithheld || lower(BandStated, BandStated) != BandStated {
@@ -76,7 +80,10 @@ func TestBands_TheCalibrationBandsEachCellAsRuled(t *testing.T) {
 // taken out says so and the rest are renumbered; a knowledge line found
 // through a file taken out is anchored to the unit; a related line keeps
 // no band; a unit withheld takes every role line and leaves the related
-// lines, anchored to nothing.
+// lines, anchored to nothing, behind a not-known line in the unit's slot
+// that names the unit and the kinds taken out; a unit the request names
+// no unit for (Roles.Unnamed) is withheld whatever its cell, and its
+// decision says so.
 func TestBands_AWithheldLineLeavesItsSlotAndSaysWhy(t *testing.T) {
 	unit, target, reuse, cons := graph.ID("unit:py:svc"), graph.ID("file:svc/a.py"), graph.ID("file:svc/b.py"), graph.ID("file:jobs/c.py")
 	lines := func() []Line {
@@ -141,9 +148,16 @@ func TestBands_AWithheldLineLeavesItsSlotAndSaysWhy(t *testing.T) {
 		}
 		return BandStated
 	}
+	all := []string{slot.UnknownUnit, RoleTarget, RoleReuse, RoleConsumer, RoleKnowledge}
 	kept, ds = withhold(lines(), decisions(), r, withholdUnit)
-	if len(kept) != 1 || kept[0].Role != "" || kept[0].Anchor != "" || ds[0] != (Decision{ID: unit, Why: "withheld: role unit"}) || ds[5].Line != 1 {
+	if len(kept) != 2 || kept[0].Role != RoleNotKnown || kept[0].Key != "" || !slices.Equal(kept[0].Unknown, all) ||
+		kept[1].Role != "" || kept[1].Anchor != "" || ds[0] != (Decision{ID: unit, Why: "withheld: role unit"}) || ds[5].Line != 2 {
 		t.Errorf("unit withheld: kept %+v decisions %+v", kept, ds)
+	}
+	kept, ds = withhold(lines(), decisions(), Roles{Unit: unit, Basis: BasisNamed, Unnamed: true}, stateAll)
+	if len(kept) != 2 || kept[0].Role != RoleNotKnown || !slices.Equal(kept[0].Unknown, all) || kept[1].Role != "" ||
+		ds[0] != (Decision{ID: unit, Why: "withheld: role unit: the request names no unit"}) || ds[1] != (Decision{ID: target, Why: "withheld: role target"}) || ds[5].Line != 2 {
+		t.Errorf("the request names no unit: kept %+v decisions %+v", kept, ds)
 	}
 	kept, ds = withhold(lines(), decisions(), r, stateAll)
 	if len(kept) != 6 || kept[0].Unknown != nil || !slices.Equal(ds, decisions()) {
@@ -258,5 +272,52 @@ func TestBands_ARecordFoundThroughAWithheldFileNamesTheUnit(t *testing.T) {
 		if f, _ := k.Slot.Knowledge(); string(f.Path) != c.path || f.Band != c.band {
 			t.Errorf("%s: INC-100 applies to %q in band %q, want %q in %q", c.name, f.Path, f.Band, c.path, c.band)
 		}
+	}
+}
+
+// TestBands_ABriefWithNoUnitClaimOpensWithTheNotKnownLine (W-M1.38): a
+// brief whose roles settled on no unit is read by its first line's unit,
+// a claim right on 7 of the 55 such briefs the calibration read, under
+// the floor; so the brief opens with the not-known line naming the unit
+// alone, the related lines follow it unbanded, the last one cut to the
+// budget with a decision saying why and the rest renumbered. Where that
+// cell is stated the brief is as before, and a brief with no line gets
+// no not-known line.
+func TestBands_ABriefWithNoUnitClaimOpensWithTheNotKnownLine(t *testing.T) {
+	keys := []graph.ID{"file:svc/a.py", "file:svc/b.py", "tbl:public.t", "sym:py:svc:func:svc.c.f", "les:INC-1"}
+	lines := func() []Line {
+		out := make([]Line, len(keys))
+		for i, k := range keys {
+			out[i] = Line{Key: k}
+		}
+		return out
+	}
+	decisions := func() []Decision {
+		out := []Decision{{ID: "file:svc/z.py", Why: "cut: budget (3 of 9)"}}
+		for i, k := range keys {
+			out = append(out, Decision{ID: k, Line: i + 1, Why: "related"})
+		}
+		return out
+	}
+	kept, ds := withhold(lines(), decisions(), Roles{}, calibrated)
+	if len(kept) != MaxLines || kept[0].Role != RoleNotKnown || kept[0].Key != "" || !slices.Equal(kept[0].Unknown, []string{slot.UnknownUnit}) {
+		t.Fatalf("kept %+v", kept)
+	}
+	for i, l := range kept[1:] {
+		if l.Key != keys[i] || l.Role != "" || l.Band != "" {
+			t.Errorf("line %d: %+v, want the related line %s unbanded", i+2, l, keys[i])
+		}
+	}
+	want := []Decision{{ID: "file:svc/z.py", Why: "cut: budget (3 of 9)"}, {ID: keys[0], Line: 2, Why: "related"}, {ID: keys[1], Line: 3, Why: "related"},
+		{ID: keys[2], Line: 4, Why: "related"}, {ID: keys[3], Line: 5, Why: "related"}, {ID: keys[4], Why: "cut: budget (not-known line)"}}
+	if !slices.Equal(ds, want) {
+		t.Errorf("decisions\n got %+v\nwant %+v", ds, want)
+	}
+	kept, ds = withhold(lines(), decisions(), Roles{}, stateAll)
+	if len(kept) != len(keys) || kept[0].Key != keys[0] || !slices.Equal(ds, decisions()) {
+		t.Errorf("the cell stated: kept %+v decisions %+v", kept, ds)
+	}
+	if kept, _ := withhold(nil, nil, Roles{}, calibrated); len(kept) != 0 {
+		t.Errorf("a brief with no line: %+v", kept)
 	}
 }

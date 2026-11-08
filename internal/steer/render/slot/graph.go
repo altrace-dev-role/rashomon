@@ -200,16 +200,17 @@ const (
 	maxLineCols    = 3
 )
 
-// GraphLine is one line of the brief: a code, table, knowledge or unit
-// fact, or nothing, which a sparse template leaves out. Build one with
-// NewCodeLine, NewTableLine, NewKnowledgeLine or NewUnitLine; Record is its
-// record form.
+// GraphLine is one line of the brief: a code, table, knowledge, unit or
+// not-known fact, or nothing, which a sparse template leaves out. Build
+// one with NewCodeLine, NewTableLine, NewKnowledgeLine, NewUnitLine or
+// NewNotKnownLine; Record is its record form.
 type GraphLine struct {
-	code  *CodeFact
-	table *TableFact
-	know  *KnowledgeFact
-	unit  *UnitFact
-	more  Counts
+	code    *CodeFact
+	table   *TableFact
+	know    *KnowledgeFact
+	unit    *UnitFact
+	unknown *NotKnownFact
+	more    Counts
 	// The record form (record scope v4): the path's and the source's keyed
 	// digests and every list as its count.
 	keyed        bool
@@ -250,8 +251,8 @@ func (l GraphLine) Knowledge() (KnowledgeFact, bool) {
 	return *l.know, true
 }
 
-// Kind is the line's kind: code, table, unit, the knowledge kind, or ""
-// for an empty line.
+// Kind is the line's kind: code, table, unit, not-known, the knowledge
+// kind, or "" for an empty line.
 func (l GraphLine) Kind() string {
 	switch {
 	case l.code != nil:
@@ -262,6 +263,8 @@ func (l GraphLine) Kind() string {
 		return l.know.Kind
 	case l.unit != nil:
 		return "unit"
+	case l.unknown != nil:
+		return KindNotKnown
 	}
 	return ""
 }
@@ -277,7 +280,7 @@ func (l GraphLine) SourceDigest() string { return l.sourceDigest }
 
 // Lists reports a line that stands for anything.
 func (l GraphLine) Lists() bool {
-	return l.code != nil || l.table != nil || l.know != nil || l.unit != nil
+	return l.code != nil || l.table != nil || l.know != nil || l.unit != nil || l.unknown != nil
 }
 
 // Validate checks the line as it is: at most one fact, every item passing
@@ -301,6 +304,8 @@ func (l GraphLine) Validate() error {
 		return l.know.validate()
 	case l.unit != nil:
 		return l.unit.validate()
+	case l.unknown != nil:
+		return l.unknown.validate()
 	}
 	return nil
 }
@@ -312,7 +317,7 @@ func (m Counts) validate() error {
 // oneFact refuses a line holding two facts.
 func (l GraphLine) oneFact() error {
 	n := 0
-	for _, set := range []bool{l.code != nil, l.table != nil, l.know != nil, l.unit != nil} {
+	for _, set := range []bool{l.code != nil, l.table != nil, l.know != nil, l.unit != nil, l.unknown != nil} {
 		if set {
 			n++
 		}
@@ -433,6 +438,12 @@ func (l GraphLine) bind() (Value, error) {
 	switch {
 	case l.unit != nil:
 		return l.bindUnit()
+	case l.unknown != nil:
+		u := NotKnownFact{Unknown: slices.Clone(l.unknown.Unknown)}
+		if err := u.validate(); err != nil {
+			return nil, err
+		}
+		return GraphLine{unknown: &u, more: m}, nil
 	case l.code != nil:
 		c := *l.code
 		if err := c.Path.Validate(); err != nil {

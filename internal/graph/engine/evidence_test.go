@@ -33,7 +33,10 @@ func TestEvidence_HoldsNoWordOfThePrompt(t *testing.T) {
 			t.Errorf("Evidence names the words %s matched: %v", r.ID, r.Hits)
 		}
 	}
-	for _, same := range []string{"scope (", "rank (", "select (", "render (", string(b.Lines[0].Key), "rev: "} {
+	if b.FirstKey() == "" {
+		t.Fatal("the brief has no keyed line")
+	}
+	for _, same := range []string{"scope (", "rank (", "select (", "render (", string(b.FirstKey()), "rev: "} {
 		if !strings.Contains(ev, same) {
 			t.Errorf("Evidence lacks %q:\n%s", same, ev)
 		}

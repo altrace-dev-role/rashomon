@@ -65,8 +65,10 @@ const (
 )
 
 // unknownWords is each Unknown kind as the line says it, in the order the
-// line lists them.
+// line lists them; the unit comes first and only a not-known line names
+// it (graph_notknown.go).
 var unknownWords = []struct{ kind, text string }{
+	{UnknownUnit, "the unit to change"},
 	{UnknownTarget, "the file to change"},
 	{UnknownReuse, "the code to reuse"},
 	{UnknownConsumer, "the consumers of the change"},
@@ -172,10 +174,8 @@ func (f UnitFact) validDisclosure() error {
 	if err := validBand(f.Band); err != nil {
 		return err
 	}
-	for i, k := range f.Unknown {
-		if unknownText(k) == "" || slices.Contains(f.Unknown[:i], k) {
-			return errors.New("slot: unit line names an unknown kind outside the four, or twice")
-		}
+	if err := validUnknown(f.Unknown); err != nil {
+		return err
 	}
 	if f.RunnerUp != "" {
 		return f.RunnerUp.Validate()
@@ -267,8 +267,19 @@ func notKnown(kinds []string) string {
 	return "not known: " + strings.Join(texts, ", ")
 }
 
-// unknownText is how a unit line says kind k is not known, or "" for a
-// kind outside the four.
+// validUnknown is whether each kind is one of the four role kinds and
+// named once: the kinds of role line a brief withheld.
+func validUnknown(kinds []string) error {
+	for i, k := range kinds {
+		if k == UnknownUnit || unknownText(k) == "" || slices.Contains(kinds[:i], k) {
+			return errors.New("slot: line names an unknown kind outside the four, or twice")
+		}
+	}
+	return nil
+}
+
+// unknownText is how a line says kind k is not known, or "" for a kind
+// outside the five.
 func unknownText(k string) string {
 	for _, w := range unknownWords {
 		if w.kind == k {

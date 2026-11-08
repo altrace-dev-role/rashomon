@@ -51,11 +51,14 @@ func (t tally) band() string {
 // kind under the basis of the unit line it hangs off, the granularity PLAN
 // W-M1.38 rules after the reading showed a kind's pooled precision mixes
 // lines under right units with lines under wrong ones (target 36 of 37
-// under a named unit, 94 of 195 pooled).
+// under a named unit, 94 of 195 pooled). BasisNone is the brief with no
+// unit claim whose lines the judge reads by the first line's unit (W-M1.38's
+// "no roles unit"): the same reading's fallback row, 7 of the 55 such briefs.
 var calibration = map[[2]string]tally{
 	{RoleUnit, BasisNamed}:         {71, 75},
 	{RoleUnit, BasisUnitName}:      {57, 81},
 	{RoleUnit, BasisCoverage}:      {56, 105},
+	{RoleUnit, BasisNone}:          {7, 55},
 	{RoleTarget, BasisNamed}:       {36, 37},
 	{RoleTarget, BasisUnitName}:    {21, 64},
 	{RoleTarget, BasisCoverage}:    {37, 94},
@@ -98,12 +101,23 @@ func lower(a, b string) string {
 // anchored to the unit instead, so a record names the unit where it
 // applies within it and that file only where the record itself applies to
 // it first (knowledgeFact). A decision on a line taken out says so; the
-// rest are renumbered to the lines kept. A unit withheld takes every role
-// line with it and leaves the related lines, with no unit line to name
-// what is not known (the calibration withholds no unit basis).
+// rest are renumbered to the lines kept. A unit withheld, by its cell or
+// because the request names no unit (Roles.Unnamed, the unit rule), takes
+// every role line with it and leaves the related lines; a not-known line
+// takes the unit line's slot and names the unit and the kinds taken out,
+// so no related line is read as the unit's. A brief with no unit claim
+// whose cell (BasisNone) is withheld opens with the not-known line too,
+// which takes the first slot and cuts the last line to the budget.
 func withhold(lines []Line, decisions []Decision, r Roles, band bandFunc) ([]Line, []Decision) {
 	unit := band(RoleUnit, r.Basis)
-	kept := make([]Line, 0, len(lines))
+	if r.Unnamed {
+		unit = BandWithheld
+	}
+	kept := make([]Line, 0, len(lines)+1)
+	opens := !r.Found() && unit == BandWithheld && len(lines) > 0
+	if opens {
+		kept = append(kept, Line{Role: RoleNotKnown})
+	}
 	at := make([]int, len(lines)+1)
 	why := make([]string, len(lines)+1)
 	gone := map[graph.ID]bool{}
@@ -119,7 +133,13 @@ func withhold(lines []Line, decisions []Decision, r Roles, band bandFunc) ([]Lin
 		if l.Band == BandWithheld {
 			gone[l.Key] = true
 			why[i+1] = "withheld: role " + l.Role
-			if l.Role != RoleUnit && !slices.Contains(unknown, l.Role) {
+			switch {
+			case l.Role == RoleUnit:
+				if r.Unnamed {
+					why[i+1] += ": the request names no unit"
+				}
+				kept = append(kept, Line{Role: RoleNotKnown})
+			case !slices.Contains(unknown, l.Role):
 				unknown = append(unknown, l.Role)
 			}
 			continue
@@ -127,13 +147,24 @@ func withhold(lines []Line, decisions []Decision, r Roles, band bandFunc) ([]Lin
 		kept = append(kept, l)
 		at[i+1] = len(kept)
 	}
+	if opens {
+		for i, n := range at {
+			if n > MaxLines {
+				at[i], why[i] = 0, "cut: budget (not-known line)"
+			}
+		}
+		kept = kept[:min(len(kept), MaxLines)]
+	}
 	anchor := r.Unit
 	if gone[r.Unit] {
 		anchor = ""
 	}
 	for i := range kept {
-		if kept[i].Role == RoleUnit {
+		switch kept[i].Role {
+		case RoleUnit:
 			kept[i].Unknown = unknown
+		case RoleNotKnown:
+			kept[i].Unknown = append([]string{slot.UnknownUnit}, unknown...)
 		}
 		if kept[i].Anchor != "" && gone[kept[i].Anchor] {
 			kept[i].Anchor = anchor

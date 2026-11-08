@@ -24,6 +24,8 @@ func (l GraphLine) Text() string {
 		return l.knowText()
 	case l.unit != nil:
 		return l.unitText()
+	case l.unknown != nil:
+		return l.notKnownText()
 	}
 	return "none"
 }

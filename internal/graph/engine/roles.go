@@ -20,13 +20,16 @@ const (
 	MaxConsumers = 3
 )
 
-// The role words a line carries, for the decisions and the record.
+// The role words a line carries, for the decisions and the record;
+// RoleNotKnown is the line that stands in the unit line's place when the
+// unit is withheld (bands.go).
 const (
 	RoleUnit      = "unit"
 	RoleTarget    = "target"
 	RoleReuse     = "reuse"
 	RoleConsumer  = "consumer"
 	RoleKnowledge = "knowledge"
+	RoleNotKnown  = "not-known"
 )
 
 // The basis words of a unit claim, the slot's (graph_unit.go): Named for
@@ -38,6 +41,11 @@ const (
 	BasisUnitName = slot.BasisUnitName
 	BasisCoverage = slot.BasisCoverage
 )
+
+// BasisNone is the basis of no unit claim: the roles stage settled on no
+// unit, so every line of the brief is a related one (roleLines), and a
+// reader takes the first line's unit for the brief's.
+const BasisNone = ""
 
 // RoleFile is a file in a role with the symbols of it the role rests on;
 // a reuse file carries the basis word its line states.
@@ -53,7 +61,8 @@ type RoleFile struct {
 // knowledge id was found through, the file its line names. Why names the
 // claim's class or the refusal; Basis is the claim's basis word and
 // RunnerUp the ladder's next unrefused pick on another unit, both on the
-// unit line (S3).
+// unit line (S3). Unnamed is the unit rule's reading that the request
+// names no unit, so the unit line is withheld (unnamed.go).
 type Roles struct {
 	Frame         Frame
 	Named         Named
@@ -74,6 +83,7 @@ type Roles struct {
 	Why           string
 	Basis         string
 	RunnerUp      graph.ID
+	Unnamed       bool
 }
 
 // basisOf is the basis word of a claim of class c.

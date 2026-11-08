@@ -2,6 +2,7 @@ package steer
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -87,6 +88,46 @@ func TestGS3_TheLineRecordsAGraphLineAsFlatArrays(t *testing.T) {
 	}
 	if !strings.Contains(string(recSlots["line2"]), `"path":""`) || !strings.Contains(string(recSlots["line2"]), `"source_digest":"`+strings.Repeat("0", 64)+`"`) {
 		t.Errorf("record form line2 = %s", recSlots["line2"])
+	}
+}
+
+// TestGS3_ANotKnownLineRecordsItsKindAlone (W-M1.38): the not-known line
+// names no path, name or record, so the steer line records its kind alone
+// in both forms, and it is no graph kind a compliance predicate judges:
+// it is a statement of what the brief does not know, owed no label.
+func TestGS3_ANotKnownLineRecordsItsKindAlone(t *testing.T) {
+	nk := slot.NewNotKnownLine(slot.NotKnownFact{Unknown: []string{slot.UnknownUnit, slot.UnknownTarget}})
+	code := slot.NewCodeLine(slot.CodeFact{Path: "jobs/purge_sessions.py", Names: []slot.Ident{"run"}})
+	if slices.Contains(GraphKinds(), Kind(slot.KindNotKnown)) {
+		t.Error("the not-known line is a graph kind")
+	}
+	if preds, ok := Compliance(Kind(slot.KindNotKnown)); ok {
+		t.Errorf("the not-known line has compliance predicates %v", preds)
+	}
+	want := `{"calls":[],"clause":"","consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"writers":0,"writes":0},` +
+		`"digest":"","id":"","imports":[],"kind":"not-known","lessons":[],"names":[],"path":"","readers":[],"reads":[],"role":"","source":"","source_digest":"","table":"","writers":[],"writes":[]}`
+	digest := func(string) string { return strings.Repeat("0", 64) }
+	for _, form := range []struct {
+		name  string
+		lines []slot.GraphLine
+	}{
+		{"text", []slot.GraphLine{nk, code}},
+		{"record", []slot.GraphLine{boundGraph(t, nk).Record(digest), boundGraph(t, code).Record(digest)}},
+	} {
+		m, err := render.New(pattern.TaskPreflight, render.NewGraphBinding("C1", 1, 2, form.lines))
+		if err != nil {
+			t.Fatalf("%s form: %v", form.name, err)
+		}
+		got, err := slotsOf(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got["line1"]) != want {
+			t.Errorf("%s form line1 = %s\nwant %s", form.name, got["line1"], want)
+		}
+		if lines := strings.Split(m.Text(), "\n"); len(lines) < 3 || lines[1] != "not known: the unit to change, the file to change" {
+			t.Errorf("%s form text %q", form.name, lines)
+		}
 	}
 }
 

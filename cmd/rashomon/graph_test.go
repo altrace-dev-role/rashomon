@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -247,12 +248,45 @@ func TestGraphFinding_CarriesSourceAndUnit(t *testing.T) {
 	if err := f.Check(); err != nil {
 		t.Errorf("Check: %v", err)
 	}
-	first := graph.GlobalID(h.Repo, gb.Lines[0].Key)
+	first := graph.GlobalID(h.Repo, gb.FirstKey())
 	if f.Source.Kind != steer.SourceGraph || f.Source.ID != string(first) || f.Source.Tier == "" {
 		t.Errorf("source = %+v; want graph, %s, the node's tier", f.Source, first)
 	}
 	if _, local, ok := graph.SplitGlobal(graph.ID(f.Unit)); !ok || !strings.HasPrefix(string(local), "unit:py:") || f.Unit != string(gb.Unit) {
-		t.Errorf("unit = %q; want this repository's unit:py:... containing %s", f.Unit, gb.Lines[0].Key)
+		t.Errorf("unit = %q; want this repository's unit:py:... containing %s", f.Unit, gb.FirstKey())
+	}
+}
+
+// TestGraphFinding_ABriefThatClaimsNoUnitPassesCheck (W-M1.38): a brief
+// that says its unit is not known opens with the not-known line, which is
+// keyed on no node; the hook path names the finding's source by the first
+// keyed line, claims no unit for it, and the finding passes Check with the
+// message and with its record form.
+func TestGraphFinding_ABriefThatClaimsNoUnitPassesCheck(t *testing.T) {
+	dir := t.TempDir()
+	graphProject(t, dir)
+	_, h, err := graph.LoadFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gb, ok := graphBrief("", dir, "s1", "p1", []byte("Update cleanup.py so the org settings section mentions the timeout."))
+	if !ok || len(gb.Lines) < 2 || gb.Lines[0].Role != engine.RoleNotKnown {
+		t.Fatalf("graphBrief = %v with %d lines; want a brief that opens with the not-known line\n%s", ok, len(gb.Lines), gb.Explain())
+	}
+	if gb.Unit != "" || gb.FirstKey() != gb.Lines[1].Key || gb.First != graph.GlobalID(h.Repo, gb.FirstKey()) {
+		t.Errorf("unit %q first %q (key %q); want no unit and line 2's node", gb.Unit, gb.First, gb.FirstKey())
+	}
+	for _, digest := range []func(string) string{nil, func(string) string { return strings.Repeat("0", 64) }} {
+		f, ok := graphFinding(gb, 9, digest)
+		if !ok {
+			t.Fatalf("no finding (record form %v)", digest != nil)
+		}
+		if err := f.Check(); err != nil {
+			t.Errorf("Check (record form %v): %v", digest != nil, err)
+		}
+		if f.Unit != "" || f.Source.Kind != steer.SourceGraph || f.Source.ID != string(gb.First) {
+			t.Errorf("finding unit %q source %+v; want no unit and %s", f.Unit, f.Source, gb.First)
+		}
 	}
 }
 
@@ -324,7 +358,7 @@ func TestGraphBrief_EvidenceFileHoldsNoWordOfThePrompt(t *testing.T) {
 			t.Errorf("the evidence file names the words %s matched: %v", r.ID, r.Hits)
 		}
 	}
-	if !strings.Contains(text, "\nbrief:\n"+gb.Text()) || !strings.Contains(text, string(gb.Lines[0].Key)) {
+	if !strings.Contains(text, "\nbrief:\n"+gb.Text()) || gb.FirstKey() == "" || !strings.Contains(text, string(gb.FirstKey())) {
 		t.Errorf("the evidence file lacks the brief or its first node:\n%s", text)
 	}
 }

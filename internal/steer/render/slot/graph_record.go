@@ -13,10 +13,11 @@ import (
 // Record is l's record form: every list as its count, the path and the
 // source as their keyed digests (digest, intent's PathDigest), the knowledge
 // ids, the title, the clause, a code line's role and basis, a unit line's
-// basis and the kinds it names as not known, and every line's band kept,
-// since those are the repository's declared records and the engine's
-// reading, never the request's words. It is built from the bound line,
-// so the counts are what the printed line listed, left out and cut.
+// basis and the kinds it or a not-known line names as not known, and
+// every line's band kept, since those are the repository's declared
+// records and the engine's reading, never the request's words. It is
+// built from the bound line, so the counts are what the printed line
+// listed, left out and cut.
 func (l GraphLine) Record(digest func(string) string) GraphLine {
 	out := GraphLine{keyed: true}
 	m := l.more
@@ -51,6 +52,8 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 		m.Consumers += len(u.Consumers)
 		out.digest = digest(string(u.Path))
 		out.unit = &UnitFact{Basis: u.Basis, Band: u.Band, Lessons: slices.Clone(u.Lessons), Unknown: slices.Clone(u.Unknown)}
+	case l.unknown != nil:
+		out.unknown = &NotKnownFact{Unknown: slices.Clone(l.unknown.Unknown)}
 	default:
 		return GraphLine{}
 	}
@@ -103,6 +106,8 @@ func (l GraphLine) validateKeyed() error {
 			return err
 		}
 		return validIDs(u.Lessons)
+	case l.unknown != nil:
+		return l.unknown.validate()
 	}
 	return nil
 }

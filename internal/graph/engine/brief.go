@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -59,6 +60,10 @@ type Options struct {
 	// bands is the band of each cell (bands.go), calibration's when nil; a
 	// test of how the roles become lines sets one that states every cell.
 	bands bandFunc
+	// unitRule is the rule that finds the request names no unit
+	// (unnamed.go), the shipped one when nil; the measurement of the
+	// registered rules sets each in turn.
+	unitRule unitRule
 }
 
 func (o Options) band() bandFunc {
@@ -68,6 +73,13 @@ func (o Options) band() bandFunc {
 	return o.bands
 }
 
+func (o Options) unit() unitRule {
+	if o.unitRule == nil {
+		return shippedUnitRule
+	}
+	return o.unitRule
+}
+
 func (o Options) rel() func(string) string {
 	if o.Rel == nil {
 		return func(p string) string { return p }
@@ -75,11 +87,11 @@ func (o Options) rel() func(string) string {
 	return o.Rel
 }
 
-// Build runs Scope, the roles stage (Parse, FindRoles), Traverse, Rank
-// and Select over g at rev for prompt, puts the role lines before the
-// related lines Select kept, bands them and takes out the withheld ones,
-// binds each line's facts into its slot, and renders the brief, dropping
-// the last line until the message fits the briefing cap.
+// Build runs Scope, the roles stage (Parse, FindRoles, the unit rule),
+// Traverse, Rank and Select over g at rev for prompt, puts the role lines
+// before the related lines Select kept, bands them and takes out the
+// withheld ones, binds each line's facts into its slot, and renders the
+// brief, dropping the last line until the message fits the briefing cap.
 func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	if opt.Lessons {
 		return buildLessons(g, rev, prompt, opt)
@@ -95,6 +107,7 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	rel := opt.rel()
 	outside := Outside(g, rev, rel)
 	b.Roles = FindRoles(g, c, b.Rows, b.Weights, Parse(prompt), Names(g, c, prompt, b.Tokens, b.Weights), b.Tokens, outside)
+	b.Roles.Unnamed = opt.unit()(c, b.Roles, prompt)
 	ids := make([]graph.ID, len(b.Seeds))
 	for i, s := range b.Seeds {
 		ids[i] = s.ID
@@ -136,7 +149,8 @@ func (b *Brief) bind() {
 
 // deliver renders the bound lines through the task-preflight graph
 // template, from all of them down to one, and keeps the first that
-// renders; a line the ladder stepped past is dropped with a decision.
+// renders; a line the ladder stepped past is dropped with a decision. A
+// brief none of whose kept lines is keyed on the graph is empty.
 func (b *Brief) deliver() {
 	for n := len(b.Lines); n > 0; n-- {
 		m, err := render.New(pattern.TaskPreflight, b.binding(n, nil))
@@ -149,6 +163,24 @@ func (b *Brief) deliver() {
 	for i := b.Kept; i < len(b.Lines); i++ {
 		b.Decisions = append(b.Decisions, Decision{ID: b.Lines[i].Key, Line: i + 1, Why: "dropped: over the brief's cap"})
 	}
+	if !slices.ContainsFunc(b.Lines[:b.Kept], keyed) {
+		b.Message, b.Kept = render.Message{}, 0
+	}
+}
+
+// keyed is whether a line is keyed on a node of the graph: every line but
+// the not-known line, so a brief that would say only what is not known is
+// not sent.
+func keyed(l Line) bool { return l.Key != "" }
+
+// FirstKey is the key of the brief's first line keyed on a node, the row
+// its finding names as its source (AD19); the not-known line is keyed on
+// none. "" when no line is.
+func (b Brief) FirstKey() graph.ID {
+	if i := slices.IndexFunc(b.Lines, keyed); i >= 0 {
+		return b.Lines[i].Key
+	}
+	return ""
 }
 
 // binding is the graph template's binding over the first n lines, in their

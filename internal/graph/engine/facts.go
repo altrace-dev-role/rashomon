@@ -12,8 +12,12 @@ import (
 // (GRAPH-SLOT1): a file's declarations, constants, calls, tables and
 // imports with the records that apply; a table's writers and readers; a
 // lesson's or decision's id, the path it anchors to, its clause and its
-// source. rel maps a graph path to the brief's form.
+// source; for the not-known line, the kinds withheld and nothing of the
+// graph. rel maps a graph path to the brief's form.
 func lineFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel func(string) string) slot.GraphLine {
+	if l.Role == RoleNotKnown {
+		return slot.NewNotKnownLine(slot.NotKnownFact{Unknown: l.Unknown})
+	}
 	if n, ok := g.Node(l.Key, rev); ok && IsKnowledge(n.Kind) {
 		f := knowledgeFact(g, rev, n, l.Anchor, rel)
 		f.Band = l.Band

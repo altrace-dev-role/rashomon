@@ -10,7 +10,8 @@ import "github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 // columns a write names and a constant's value are rendered and not
 // recorded: the brief's text is what the line holds them in. A unit line
 // (W-M1.12) holds its path, names, consumer files and lessons; a code line
-// its role word (slot.RoleReuse, slot.RoleConsumer) or none.
+// its role word (slot.RoleReuse, slot.RoleConsumer) or none; a not-known
+// line (W-M1.38) its kind alone.
 type graphLineJSON struct {
 	Calls        []string        `json:"calls"`
 	Clause       string          `json:"clause"`
@@ -82,6 +83,7 @@ func graphLineForm(l slot.GraphLine) graphLineJSON {
 		t, _ := l.Table()
 		out.Table = string(t.Table)
 		out.Writers, out.Readers, out.Lessons = identStrings(t.Writers), identStrings(t.Readers), idStrings(t.Lessons)
+	case l.Kind() == slot.KindNotKnown:
 	case l.Kind() != "":
 		k, _ := l.Knowledge()
 		out.ID, out.Path, out.Clause, out.Source = string(k.ID), string(k.Path), string(k.Clause), string(k.Source)

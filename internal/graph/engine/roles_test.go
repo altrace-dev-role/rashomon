@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,6 +79,10 @@ func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 
 // A prompt no unit claims delivers the related lines alone: no unit line
 // is faked, the decisions carry the refusal, and the brief still renders.
+// Such a brief is read by its first line's unit, a claim the calibration
+// withholds (W-M1.38, BasisNone), so the not-known line opens it in the
+// unit's slot and names the unit alone; the finding's source is the first
+// related line.
 func TestRoles_NoClaimDeliversTheRelatedLinesAlone(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
@@ -86,10 +91,20 @@ func TestRoles_NoClaimDeliversTheRelatedLinesAlone(t *testing.T) {
 	if b.Roles.Found() || !strings.HasPrefix(b.Roles.Why, "refused: ") {
 		t.Fatalf("roles %+v", b.Roles)
 	}
-	if b.Empty() {
-		t.Fatal("no brief")
+	if b.Empty() || len(b.Lines) < 2 {
+		t.Fatalf("no brief: %d lines, %d kept", len(b.Lines), b.Kept)
 	}
-	for _, l := range b.Lines {
+	nk, ok := b.Lines[0].Slot.NotKnown()
+	if b.Lines[0].Role != RoleNotKnown || !ok || !slices.Equal(nk.Unknown, []string{slot.UnknownUnit}) {
+		t.Errorf("line 1: %+v, want the not-known line naming the unit alone", b.Lines[0])
+	}
+	if lines := strings.Split(b.Text(), "\n"); len(lines) < 3 || lines[1] != "not known: the unit to change" {
+		t.Errorf("the brief's first line is not the not-known line: %q", lines)
+	}
+	if b.FirstKey() != b.Lines[1].Key || b.FirstKey() == "" {
+		t.Errorf("first key %q, want line 2's %q", b.FirstKey(), b.Lines[1].Key)
+	}
+	for _, l := range b.Lines[1:] {
 		if l.Role != "" {
 			t.Errorf("a role line without a unit: %s %s", l.Role, l.Key)
 		}

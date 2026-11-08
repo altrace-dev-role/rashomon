@@ -254,11 +254,10 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 	b := engine.Build(s, rev, string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
-	if len(b.Lines) > 0 {
-		first := b.Lines[0].Key
+	if first := b.FirstKey(); first != "" {
 		n, _ := s.Node(first, rev)
 		ib.First, ib.Tier = graph.GlobalID(h.Repo, first), n.Tier
-		if u := unitOf(s, rev, first); u != "" {
+		if u := unitOf(s, rev, first); u != "" && b.Lines[0].Role != engine.RoleNotKnown {
 			ib.Unit = graph.GlobalID(h.Repo, u)
 		}
 	}
@@ -267,8 +266,10 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 
 // indexBrief is the brief with what names it (W-M1.7, AD19): the
 // repository id the index's header carries, the global id and tier of the
-// node the brief's first line is keyed on, and the global id of the unit
-// that contains that node, "" when none does.
+// node the brief's first keyed line is keyed on (Brief.FirstKey), and the
+// global id of the unit that contains that node, "" when none does or
+// when the brief opens with the not-known line (W-M1.38), which claims no
+// unit.
 type indexBrief struct {
 	engine.Brief
 	Repo  string
@@ -319,8 +320,8 @@ const keyGraph = "graph"
 // in preflightNote's one Route call beside the request's note: a nudge
 // with no stop form, its record form (Brief.Record) where the record scope
 // keeps digests (digest set), the message itself where it keeps paths; its
-// source the graph row its first line is keyed on and its unit that row's
-// unit (AD19).
+// source the graph row its first keyed line is keyed on and its unit that
+// row's unit (AD19), none when the brief says its unit is not known.
 func graphFinding(b indexBrief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	if b.Empty() {
 		return steer.Finding{}, false
