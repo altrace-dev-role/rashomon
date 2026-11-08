@@ -34,9 +34,25 @@ var verbClass = &lazySet[string]{f: func() map[string]string {
 		"test": "edit", "cover": "edit", "document": "edit", "describe": "edit", "explain": "edit", "summarize": "edit",
 		"summarise": "edit", "inspect": "edit", "examine": "edit", "revisit": "edit", "tidy": "edit", "finish": "edit",
 		"complete": "edit", "continue": "edit", "resume": "edit", "repair": "edit", "restructure": "edit", "reorganize": "edit",
+		"swap": "edit", "relocate": "edit",
 		"report": "show", "show": "show", "print": "show", "surface": "show", "display": "show", "render": "show", "name": "show",
 		"list": "show", "log": "show", "count": "show", "deliver": "show", "return": "show",
 		"keep": "keep", "preserve": "keep", "leave": "keep", "maintain": "keep", "retain": "keep", "never": "keep", "do": "keep",
+	}
+}}
+
+// destinationWords are the closed list of constructions whose last phrase
+// names the existing thing the change takes its object onto (W-M1.28):
+// replace or swap X with Y; move, migrate, port or relocate X onto or to
+// Y; switch or convert X to use or read Y; consolidate, fold or merge X
+// into Y; route X through Y. Each verb maps to the words that open its
+// destination. The list is the construction, written before any reading
+// of the development sets, and no word joins it to fit a row.
+var destinationWords = &lazySet[[][]string]{f: func() map[string][][]string {
+	with, onto, to, into := [][]string{{"with"}}, [][]string{{"onto"}, {"to"}}, [][]string{{"to", "use"}, {"to", "read"}}, [][]string{{"into"}}
+	return map[string][][]string{
+		"replace": with, "swap": with, "move": onto, "migrate": onto, "port": onto, "relocate": onto,
+		"switch": to, "convert": to, "consolidate": into, "fold": into, "merge": into, "route": {{"through"}},
 	}
 }}
 

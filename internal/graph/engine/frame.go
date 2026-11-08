@@ -13,9 +13,11 @@ import (
 // or a clause that opens with one, gives the place; a clause with a modal
 // (should, must) names its subject as the target; a use word (respect,
 // honor, via, using) opens the thing the change must take up, which is
-// what the request names as existing elsewhere. A test clause ("add a
-// test that X", "write tests for X") names X as the target, not the test
-// as an addition (T1c: PL12's off-task reuse came from the test phrase).
+// what the request names as existing elsewhere, as does the destination
+// of a construction in a closed list ("replace X with Y", "fold X into
+// Y"; destinationWords, W-M1.28). A test clause ("add a test that X",
+// "write tests for X") names X as the target, not the test as an
+// addition (T1c: PL12's off-task reuse came from the test phrase).
 // A sentence with no verb of a known class names its subject: a symptom
 // ("the report prints a row twice when...") or a question ("where is the
 // deadline enforced?") names the thing before its first boundary. Words
@@ -52,6 +54,12 @@ type Phrase struct {
 	// kept thing ("keep the store tests green") is an invariant on the
 	// work and bars nothing (W-M1.34, W-M1.35).
 	Excluded bool
+	// Destination is whether a use phrase is the destination of a
+	// construction ("replace the readers with the line scanner",
+	// destinationWords) rather than a use word's object: the reuse role
+	// takes it only when a symbol's name resolves it (W-M1.28). A phrase
+	// a use word also names is a plain use.
+	Destination bool
 }
 
 // Frame is what the prompt asks: the places it names as the target of
@@ -206,6 +214,8 @@ func parseSentence(s string) clauses {
 			rest, cons, aside := splitExclusion(rest)
 			c.constraints = addPhrases(c.constraints, cons)
 			c.aside = append(c.aside, aside...)
+			rest, dest := splitDestination(head, rest)
+			c.uses = addPhrase(c.uses, dest)
 			if under, ok := testClause(rest); ok && cls == "add" {
 				c.targets = addPhrases(c.targets, subjectOf(under))
 				continue
@@ -300,6 +310,39 @@ func splitUse(words []string) ([]string, Phrase) {
 		}
 	}
 	return words, Phrase{}
+}
+
+// splitDestination cuts an imperative clause at the words that open its
+// verb's destination (destinationWords) after the object's first word:
+// the words before them, and the phrase after them as a destination, a
+// use and never a target, as splitUse cuts a use word's object (W-M1.28).
+// A "to" a verb follows is an infinitive and opens none.
+func splitDestination(head string, words []string) ([]string, Phrase) {
+	opens := destinationWords.get()[head]
+	for i := 1; i < len(words); i++ {
+		for _, open := range opens {
+			if i+len(open) >= len(words) || !opensAt(words[i:], open) {
+				continue
+			}
+			if len(open) == 1 && open[0] == "to" && verbClass.get()[low(words[i+1])] != "" {
+				continue
+			}
+			p := phraseOf(words[i+len(open):])
+			p.Destination = true
+			return words[:i], p
+		}
+	}
+	return words, Phrase{}
+}
+
+// opensAt is whether words open with the words of open, in lower case.
+func opensAt(words, open []string) bool {
+	for k, w := range open {
+		if low(words[k]) != w {
+			return false
+		}
+	}
+	return true
 }
 
 // afterModal is the class, word and object of the verb a modal governs:
@@ -537,6 +580,7 @@ func addPhrase(ps []Phrase, p Phrase) []Phrase {
 			ps[i].Definite = ps[i].Definite || p.Definite
 			ps[i].Anchor = ps[i].Anchor || p.Anchor
 			ps[i].Owner = ps[i].Owner || p.Owner
+			ps[i].Destination = ps[i].Destination && p.Destination
 			return ps
 		}
 	}
@@ -553,6 +597,7 @@ func addPhrases(ps, add []Phrase) []Phrase {
 				ps[i].Count++
 				ps[i].Definite = ps[i].Definite || p.Definite
 				ps[i].Anchor = ps[i].Anchor || p.Anchor
+				ps[i].Destination = ps[i].Destination && p.Destination
 				found = true
 			}
 		}
@@ -597,6 +642,9 @@ func (p Phrase) String() string {
 	}
 	if p.Anchor {
 		s += " anchor"
+	}
+	if p.Destination {
+		s += " destination"
 	}
 	if p.Count > 1 {
 		s += " x" + strconv.Itoa(p.Count)

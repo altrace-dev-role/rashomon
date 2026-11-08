@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -41,15 +42,17 @@ type ReuseClaim struct {
 // path, the target tokens its symbols' names hold and the frame's verbs
 // are spent; a doc's word counts when it names code somewhere), among
 // the scope rows at or over SeedFloor, never the target file or a
-// consumer. A file inside the unit, or one the unit already calls,
-// is a claim on any hit; a file elsewhere when a symbol's name holds a
-// word of what the request says to use (a use phrase: what the request
-// presumes exists) or names at least ReuseFloor of an addition phrase's
-// mass among the tokens that name code, as a unit claims a target: a
-// word in common with what the request adds is a neighbour, a symbol
-// that names most of it is the thing to take up, and a doc that mentions
-// the word is neither. A constant or variable adds its hits to its
-// file's claim but never carries it; a file's claim is its best symbol's.
+// consumer. A file inside the unit, or one the unit already calls, is a
+// claim on any hit; a file elsewhere when a symbol's name holds a word
+// of what the request says to use (a use phrase: what the request
+// presumes exists), resolves a construction's destination ("with the
+// line scanner"; resolve, W-M1.28) or names at least ReuseFloor of an
+// addition phrase's mass among the tokens that name code, as a unit
+// claims a target: a word in common with what the request adds is a
+// neighbour, a symbol that names most of it is the thing to take up,
+// and a doc that mentions the word is neither. A constant or variable
+// adds its hits to its file's claim but never carries it; a file's
+// claim is its best symbol's.
 // A claim becomes a reuse line only on a stated basis (W-M1.22,
 // AC-M1.5): a use-phrase hit, an addition claim, or a call from the
 // addition's existing code. A hit inside the unit, or on a symbol the
@@ -85,7 +88,8 @@ func reuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]floa
 			}
 		}
 	}
-	uses, adds := phraseTokens(r.Frame.Uses), phraseTokens(r.Frame.Additions)
+	plain, dests := destinations(r.Frame.Uses)
+	uses, adds := phraseTokens(plain), phraseTokens(r.Frame.Additions)
 	named := map[string]bool{}
 	for t := range weights {
 		named[t] = c.nameDF[t] > 0
@@ -103,6 +107,7 @@ func reuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]floa
 		}
 		h := reuseHits(c.fields[i], spent, uses, adds, named, weights)
 		claims := h.name && h.claims(c, r.Frame.Additions, weights)
+		h.resolve(c, c.fields[i], dests, spent, weights)
 		if claims {
 			viaAdd = append(viaAdd, row.ID)
 		}
@@ -259,6 +264,52 @@ func reuseHits(f Fields, spent, uses, adds, named map[string]bool, weights map[s
 	return h
 }
 
+// resolve adds to the hit the destinations its symbol's name resolves
+// (W-M1.28): the name holds the destination's head (its heaviest unspent
+// word that names code) and at least ReuseFloor of its mass over every
+// unspent word, each weighed as Units weighs a target's: a word that
+// names code, and a word the tree mentions and no name holds (a doc's
+// word the name lacks counts against it), at its weight; a word the
+// corpus never holds at the mean of the words that name code, so a
+// destination mostly of such words names a thing the index lacks and
+// the floor refuses it. The name's share is use mass, the basis a use
+// word's object has. A destination no name resolves adds nothing and
+// draws no line, the refusal W-M1.22 keeps for a claim with no basis.
+func (h *reuseHit) resolve(c corpus, f Fields, dests []Phrase, spent map[string]bool, weights map[string]float64) {
+	for _, p := range dests {
+		var of, seen, got, top float64
+		known, unknown := 0, 0
+		head := ""
+		for _, t := range p.Tokens {
+			switch {
+			case spent[t]:
+				continue
+			case c.nameDF[t] > 0 && weights[t] > 0:
+				known++
+				of += weights[t]
+				if weights[t] > top || weights[t] == top && t < head {
+					top, head = weights[t], t
+				}
+			case weights[t] > 0:
+				seen += weights[t]
+			default:
+				unknown++
+			}
+			if slices.Contains(f.Name, t) {
+				got += weights[t]
+			}
+		}
+		if head == "" {
+			continue
+		}
+		of += float64(unknown)*of/float64(known) + seen
+		if slices.Contains(f.Name, head) && got/of >= ReuseFloor {
+			h.use += got * WeightName
+			h.name = true
+		}
+	}
+}
+
 // claims is whether the hit holds some addition phrase's head (its
 // heaviest token that names code: the word that makes the phrase a
 // name) and at least ReuseFloor of the phrase's mass over those tokens.
@@ -280,6 +331,19 @@ func (h reuseHit) claims(c corpus, phrases []Phrase, weights map[string]float64)
 		}
 	}
 	return false
+}
+
+// destinations splits the use phrases into the plain uses, a use word's
+// objects, and the destinations of a construction (W-M1.28).
+func destinations(ps []Phrase) (plain, dests []Phrase) {
+	for _, p := range ps {
+		if p.Destination {
+			dests = append(dests, p)
+		} else {
+			plain = append(plain, p)
+		}
+	}
+	return plain, dests
 }
 
 // phraseTokens is the set of the phrases' tokens.

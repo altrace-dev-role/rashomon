@@ -142,7 +142,8 @@ func walkReuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]
 			}
 		}
 	}
-	uses, adds := phraseTokens(r.Frame.Uses), phraseTokens(r.Frame.Additions)
+	plain, dests := destinations(r.Frame.Uses)
+	uses, adds := phraseTokens(plain), phraseTokens(r.Frame.Additions)
 	named := map[string]bool{}
 	for t := range weights {
 		named[t] = c.nameDF[t] > 0
@@ -158,6 +159,7 @@ func walkReuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]
 		}
 		h := reuseHits(c.fields[i], spent, uses, adds, named, weights)
 		claims := h.name && h.claims(c, r.Frame.Additions, weights)
+		h.resolve(c, c.fields[i], dests, spent, weights)
 		if claims {
 			viaAdd = append(viaAdd, row.ID)
 		}
