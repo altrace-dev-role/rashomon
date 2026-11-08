@@ -16,6 +16,7 @@ import (
 // counter's ...") and the whole-prompt fallback claim by a unit's name
 // alone: the ladder's reading of their words is a guess.
 func (r *Roles) claim(g Reader, c corpus, p Phrase, prompt []string, weights map[string]float64) ([]UnitPick, string) {
+	c = c.without(r.barred(c))
 	picks := Units(g, c, r.Target, r.outside(prompt), weights)
 	if u, toks, ok := c.unitNamed(r.Target); ok && (r.Fallback || nameClaims(picks, u, toks, r.Target)) {
 		picks = unitFirst(c, picks, u, toks)
@@ -40,6 +41,39 @@ func (r *Roles) claim(g Reader, c corpus, p Phrase, prompt []string, weights map
 }
 
 func refused(why string) []UnitPick { return []UnitPick{{Class: ClassPartial, Refused: why}} }
+
+// barred is the units an exclusion names by their own name ("without
+// touching the store"): what the prompt leaves alone is no candidate on
+// any path, a filter before the pick and not a lighter weight, and the
+// ladder refuses rather than settle among what is left when only a
+// barred unit covered the head. A kept thing ("keep the store tests
+// green") and a property ("the spec file format") bar nothing
+// (W-M1.34).
+func (r Roles) barred(c corpus) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range r.Frame.Constraints {
+		if !p.Excluded || p.property() {
+			continue
+		}
+		if u, _, ok := c.unitNamed(p.Tokens); ok {
+			out[u] = true
+		}
+	}
+	return out
+}
+
+// without is the corpus with the barred units no claim or name may pick.
+func (c corpus) without(barred map[string]bool) corpus {
+	c.barred = barred
+	return c
+}
+
+// leftAlone is why a claim refuses when the one unit that would have
+// taken it is what the prompt leaves alone: the one place it forbids is
+// never a guess.
+func leftAlone(u string) string {
+	return "'" + u + "' is named only as what the change leaves alone"
+}
 
 // outside is the prompt's tokens less the target's, the constraints' and
 // the aside: a constraint names what the change leaves alone and the
@@ -110,7 +144,7 @@ func (c corpus) unitNamed(target []string) (string, []string, bool) {
 	for u := range c.unitID {
 		seg := Tokens(path.Base(u))
 		toks, ok := holds(target, seg)
-		if !ok {
+		if !ok || c.barred[u] {
 			continue
 		}
 		more := 0
@@ -175,7 +209,7 @@ func (c corpus) compoundNamed(target []string) (string, []string, bool) {
 	unit, word := "", ""
 	for u := range c.unitID {
 		seg := Tokens(path.Base(u))
-		if len(seg) != 1 || len(seg[0]) < 4 || !declaring[u] {
+		if c.barred[u] || len(seg) != 1 || len(seg[0]) < 4 || !declaring[u] {
 			continue
 		}
 		for _, t := range target[:len(target)-1] {

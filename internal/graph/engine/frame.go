@@ -46,6 +46,12 @@ type Phrase struct {
 	// so the roles stage claims nothing from them unless a name holds
 	// one (W-M1.32, K5).
 	Pronoun string
+	// Excluded is whether the phrase names what the change leaves alone
+	// ("without touching the store"): an exclusion, which the roles
+	// stage bars from the candidates, where a kept thing ("keep the
+	// store tests green") is an invariant on the work and bars nothing
+	// (W-M1.34).
+	Excluded bool
 }
 
 // Frame is what the prompt asks: the places it names as the target of
@@ -406,7 +412,11 @@ func splitExclusion(words []string) ([]string, []Phrase, []string) {
 		if len(tail) > 1 && strings.HasSuffix(low(tail[0]), "ing") {
 			tail, aside = tail[1:], words[i:i+2]
 		}
-		return words[:i], phrasesOf(tail), aside
+		cons := phrasesOf(tail)
+		for k := range cons {
+			cons[k].Excluded = true
+		}
+		return words[:i], cons, aside
 	}
 	return words, nil, nil
 }
@@ -575,6 +585,13 @@ func before(a, b Phrase) bool {
 		return a.Count > b.Count
 	}
 	return a.Definite && !b.Definite
+}
+
+// property is whether the phrase names a property of a thing rather than
+// the thing: its head is a property word and other words own it ("the
+// spec file format"; "the format" alone owns nothing) (W-M1.34).
+func (p Phrase) property() bool {
+	return len(p.Tokens) > 1 && propertyWords.get()[p.Tokens[len(p.Tokens)-1]]
 }
 
 // String is the phrase's tokens with its marks, for Explain.

@@ -245,6 +245,9 @@ type corpus struct {
 	bases map[string][]graph.ID
 	syms  map[string][]graph.ID
 	exts  map[string]bool
+	// barred is the units no claim or name read through this corpus may
+	// pick: what the prompt leaves alone (W-M1.34).
+	barred map[string]bool
 }
 
 // scan reads the corpus at rev. A lesson or decision is not in it: it

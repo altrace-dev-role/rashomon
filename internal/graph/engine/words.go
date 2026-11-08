@@ -77,8 +77,21 @@ var pronounWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{"it": true, "them": true, "these": true, "those": true, "which": true, "what": true}
 }}
 
-// useWords open the phrase naming what the change takes up: the thing to
-// reuse, which the request presumes exists.
+// propertyWords head a constraint that preserves a property of the thing
+// the work is on ("without changing the spec file format": the format
+// stays, the work is spec's), so the phrase's other words name where the
+// work is. A constraint headed by any other word names the thing left
+// alone. The stems of format, schema, output, layout, contract,
+// interface, api, behaviour, behavior, signature and encoding, written
+// as Tokens makes them and held to it by test (an initializer makes no
+// call, RES-2) (W-M1.34, O3).
+var propertyWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{
+		"format": true, "schema": true, "output": true, "layout": true, "contract": true, "interfac": true,
+		"api": true, "behaviour": true, "behavior": true, "signatur": true, "encod": true,
+	}
+}}
+
 // exclusionWords open what a change leaves alone ("without changing the
 // log format", "except the hook tests"): a constraint, at the sentence's
 // head or after the object (W-M1.33, O7).
@@ -86,6 +99,8 @@ var exclusionWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{"without": true, "except": true, "excluding": true}
 }}
 
+// useWords open the phrase naming what the change takes up: the thing to
+// reuse, which the request presumes exists.
 var useWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{
 		"respect": true, "respecting": true, "honor": true, "honour": true, "honoring": true, "honouring": true,

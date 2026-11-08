@@ -146,7 +146,7 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 	}
 	phrases := r.Frame.Targets
 	if len(phrases) == 0 {
-		phrases, r.Fallback = []Phrase{{Tokens: prompt}}, true
+		phrases, r.Fallback = []Phrase{{Tokens: r.things(prompt)}}, true
 	}
 	var first []UnitPick
 	firstWhy, over, pronoun := "", "", ""
@@ -187,9 +187,33 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 	if len(r.Picks) == 0 && pronoun != "" {
 		r.refuse(pronoun)
 	}
+	if r.Fallback && len(r.Picks) == 0 {
+		for _, u := range keys(r.barred(c)) {
+			r.refuse(leftAlone(u))
+			break
+		}
+	}
 	if len(named.Unknown) > 0 {
 		r.refuse("named '" + named.Unknown[0].Word + "': " + named.Unknown[0].Why)
 	}
+}
+
+// things is the prompt's tokens less what it does and what it leaves
+// alone: its verbs, the aside and every constraint that names a thing
+// ("without touching the store"); a constraint that names a property of
+// a thing ("the spec file format") keeps its words, the property's owner
+// being where the work is. For the fallback claim by a unit's name
+// ("report the line of a duplicate id" names no report, whatever unit is
+// called that) (W-M1.34, O3).
+func (r Roles) things(prompt []string) []string {
+	drop := append([]string{}, r.Frame.Verbs...)
+	drop = append(drop, r.Frame.Aside...)
+	for _, p := range r.Frame.Constraints {
+		if !p.property() {
+			drop = append(drop, p.Tokens...)
+		}
+	}
+	return except(prompt, drop)
 }
 
 // holdsAny is whether an index name holds one of the tokens.
@@ -228,7 +252,7 @@ func (r Roles) anchor(g Reader, c corpus, prompt []string, weights map[string]fl
 		if !p.Anchor {
 			continue
 		}
-		if picks := Units(g, c, p.Tokens, except(prompt, p.Tokens), weights); len(picks) > 0 && picks[0].Refused == "" {
+		if picks := Units(g, c.without(r.barred(c)), p.Tokens, except(prompt, p.Tokens), weights); len(picks) > 0 && picks[0].Refused == "" {
 			return picks[0], true
 		}
 	}

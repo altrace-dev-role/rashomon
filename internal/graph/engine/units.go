@@ -153,13 +153,23 @@ func Units(g Reader, c corpus, target, rest []string, weights map[string]float64
 	}
 	head := target[len(target)-1]
 	var picks []UnitPick
+	alone := ""
 	for _, cl := range claims {
 		if len(cl.covered) == 0 {
+			continue
+		}
+		if c.barred[cl.path] {
+			if cl.covered[head] && (alone == "" || cl.path < alone) {
+				alone = cl.path
+			}
 			continue
 		}
 		picks = append(picks, cl.pick(c.unitID[cl.path], of, weights))
 	}
 	if known(head) && !anyCovers(picks, head) {
+		if alone != "" {
+			return []UnitPick{{Class: ClassPartial, Of: of, Refused: leftAlone(alone)}}
+		}
 		return []UnitPick{{Class: ClassPartial, Of: of, Refused: "no unit names the head '" + head + "'"}}
 	}
 	sort.Slice(picks, func(i, j int) bool {
