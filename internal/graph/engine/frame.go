@@ -352,48 +352,6 @@ func negatedKeep(head string, rest []string) (string, []string, bool) {
 	return low(rest[i]), append(append([]string{}, rest[:i]...), rest[i+1:]...), true
 }
 
-// clausesOf is the sentence's clauses: its words as written, trimmed of
-// quotes and brackets, split at commas and before an "and", "then" or
-// "also" that a verb or a place word follows.
-func clausesOf(s string) [][]string {
-	var out [][]string
-	var cur []string
-	close := func() {
-		if len(cur) > 0 {
-			out = append(out, cur)
-			cur = nil
-		}
-	}
-	for _, w := range strings.Fields(s) {
-		w = strings.Trim(w, "\"'`()[]{}<>*")
-		comma := strings.HasSuffix(w, ",")
-		w = strings.TrimSuffix(w, ",")
-		if w == "" {
-			continue
-		}
-		cur = append(cur, w)
-		if comma {
-			close()
-		}
-	}
-	close()
-	var split [][]string
-	for _, cl := range out {
-		for len(cl) > 0 && joinWords.get()[low(cl[0])] {
-			cl = cl[1:]
-		}
-		start := 0
-		for i := 1; i+1 < len(cl); i++ {
-			if joinWords.get()[low(cl[i])] && (verbClass.get()[low(cl[i+1])] != "" || placeWords.get()[low(cl[i+1])]) {
-				split = append(split, cl[start:i])
-				start = i + 1
-			}
-		}
-		split = append(split, cl[start:])
-	}
-	return split
-}
-
 // splitPlace is the clause's object as the thing it names and the place
 // it names: the words before and after the last place word ahead of the
 // first clause word (a place inside "so the count shows in the line" is
