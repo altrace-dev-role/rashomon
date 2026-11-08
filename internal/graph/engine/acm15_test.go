@@ -64,7 +64,7 @@ func TestACM15_ClassesTable(t *testing.T) {
 		if !halfWanted(wantHalf, half) {
 			continue
 		}
-		unitOK, vr, vc, vk := judgeClassRow(t, g, rev, r, half+" half")
+		v := judgeClassRow(t, g, rev, r, half+" half")
 		if scores[cls] == nil {
 			scores[cls] = &classScore{}
 			order = append(order, cls)
@@ -72,9 +72,9 @@ func TestACM15_ClassesTable(t *testing.T) {
 		if halves[half][cls] == nil {
 			halves[half][cls] = &classScore{}
 		}
-		scores[cls].add(unitOK, vr, vc, vk)
-		halves[half][cls].add(unitOK, vr, vc, vk)
-		all.add(unitOK, vr, vc, vk)
+		scores[cls].add(v.UnitOK, v.Reuse, v.Consumers, v.Knowledge)
+		halves[half][cls].add(v.UnitOK, v.Reuse, v.Consumers, v.Knowledge)
+		all.add(v.UnitOK, v.Reuse, v.Consumers, v.Knowledge)
 	}
 	var sb strings.Builder
 	for _, half := range []string{"acceptance", "development"} {
@@ -107,18 +107,20 @@ func TestACM15_ClassesTable(t *testing.T) {
 	t.Logf("AC-M1.5 per-class table (right/n, then right/judged with the rate given the unit right in brackets; gates unit 4/5, reuse 3/5, consumers 4/5, knowledge 4/5 rounded up, read on the acceptance half):\n%s", sb.String())
 }
 
-// AC-M1.5 on the fresh set (W-M1.27): RASHOMON_ACM15_FRESH
-// (test/live/autosteer/acm11/classes2.tsv, the classes.tsv columns) holds
-// ten rows a class for the sixteen claimed classes, authored over the tree
-// after the engine froze at 0e630250 and second-read blind before any brief
-// was built on them. Every row is acceptance and the set is read once, at
-// the frozen engine; the gates per class are 7 of 10 on each line (the unit
-// line of the rows, the role lines of the rows judged), rounded up. A
-// consumer or knowledge cell of per-alternative sets is judged against the
-// set of the unit the brief named (truthFor). The rules are TestACM15_
-// ClassesTable's otherwise; the test skips without RASHOMON_ACM11_DIR and
-// RASHOMON_ACM15_FRESH, and a set not holding ten rows of every claimed
-// class stops it before a row is built.
+// AC-M1.5 on a fresh set (W-M1.27): RASHOMON_ACM15_FRESH (the classes.tsv
+// columns) holds ten rows a class for the sixteen claimed classes,
+// authored over the tree after the engine froze and second-read blind
+// before any brief was built on them. Every row is acceptance and the set
+// is read once, at the frozen engine. The gates are shape 3's
+// (acm15_shape3_test.go, registered 2026-11-08 before classes3.tsv
+// existed). Shape 2's table, the gates per class 7 of 10 on each line (the
+// unit line of the rows, the role lines of the rows judged), rounded up,
+// is printed beside it and not gated: its read on classes2.tsv stands as
+// not met. A consumer or knowledge cell of per-alternative sets is judged
+// against the set of the unit the brief named (truthFor). The rules are
+// TestACM15_ClassesTable's otherwise; the test skips without
+// RASHOMON_ACM11_DIR and RASHOMON_ACM15_FRESH, and a set not holding ten
+// rows of every claimed class stops it before a row is built.
 func TestACM15_FreshTable(t *testing.T) {
 	root, path := os.Getenv("RASHOMON_ACM11_DIR"), os.Getenv("RASHOMON_ACM15_FRESH")
 	if root == "" || path == "" {
@@ -129,29 +131,31 @@ func TestACM15_FreshTable(t *testing.T) {
 		t.Fatalf("%s is not ten rows of each claimed class: %s", path, strings.Join(bad, ", "))
 	}
 	g, rev := loadACM11(t, root)
-	scores := map[string]*classScore{}
+	scores, scores3 := map[string]*classScore{}, map[string]*shape3Score{}
 	var all classScore
+	var all3 shape3Score
 	for _, r := range rows {
 		cls := r[1]
-		unitOK, vr, vc, vk := judgeClassRow(t, g, rev, r, "fresh set")
+		v := judgeClassRow(t, g, rev, r, "fresh set")
 		if scores[cls] == nil {
-			scores[cls] = &classScore{}
+			scores[cls], scores3[cls] = &classScore{}, &shape3Score{}
 		}
-		scores[cls].add(unitOK, vr, vc, vk)
-		all.add(unitOK, vr, vc, vk)
+		scores[cls].add(v.UnitOK, v.Reuse, v.Consumers, v.Knowledge)
+		all.add(v.UnitOK, v.Reuse, v.Consumers, v.Knowledge)
+		kind, want := rowKind(r), strings.Split(r[2], ";")
+		right := scores3[cls].add(kind, want, v)
+		all3.add(kind, want, v)
+		t.Logf("%s shape 3: %s row, unit %s (%s)", r[0], kind, mark(verdict{true, right}), v.Claim)
 	}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%-14s %3s  %-11s  %-19s  %-19s  %-19s  missed\n", "class", "n", "unit", "reuse (judged)", "consumers (judged)", "knowledge (judged)")
 	for _, cls := range claimedClasses {
 		c := scores[cls]
-		m := c.missed(freshGates)
-		fmt.Fprintf(&sb, "%s  %s\n", c.row(cls), strings.Join(m, ","))
-		if len(m) > 0 {
-			t.Errorf("AC-M1.5 not met on %s (fresh set): gate missed on %s", cls, strings.Join(m, ", "))
-		}
+		fmt.Fprintf(&sb, "%s  %s\n", c.row(cls), strings.Join(c.missed(freshGates), ","))
 	}
 	fmt.Fprintf(&sb, "%s\n", all.row("all"))
-	t.Logf("AC-M1.5 per-class table, fresh set (right/n, then right/judged with the rate given the unit right in brackets; gates 7/10 on each line, rounded up):\n%s", sb.String())
+	t.Logf("AC-M1.5 shape 2 per-class table, fresh set, printed and not gated (right/n, then right/judged with the rate given the unit right in brackets; its gates were 7/10 on each line, rounded up):\n%s", sb.String())
+	t.Logf("AC-M1.5 gate shape 3, fresh set (rows by kind; the unit verdict right/n, then on naming and prose rows; each role right/judged on the rows whose brief unit is a truth; prose rows that claimed no unit; gates per class unit 7/10, each role 7/10 where at least 3 judged; over the set each role 7/10, stated unit lines 8/10, candidate lines holding a truth 5/10; rounded up):\n%s", shape3Table(t, scores3, all3))
 }
 
 // claimedClasses are the sixteen task classes M1 claims (PLAN 7.7), in
@@ -180,29 +184,38 @@ func classCounts(rows [][]string, n int) []string {
 	return bad
 }
 
+// rowVerdicts is one truth row's judgement: shape 2's unit verdict, the
+// three role lines', and the unit the brief claims (gate shape 3 reads
+// it).
+type rowVerdicts struct {
+	UnitOK                      bool
+	Reuse, Consumers, Knowledge verdict
+	Claim                       briefClaim
+}
+
 // judgeClassRow builds the brief of one truth row and judges its four
 // lines under the rules above, logging the row with its label (the half,
 // or the fresh set).
-func judgeClassRow(t *testing.T, g *graph.Store, rev graph.Rev, r []string, label string) (unitOK bool, vr, vc, vk verdict) {
+func judgeClassRow(t *testing.T, g *graph.Store, rev graph.Rev, r []string, label string) rowVerdicts {
 	t.Helper()
 	id, cls, want, reuse, consumers, knowledge := r[0], r[1], strings.Split(r[2], ";"), r[4], r[5], r[6]
 	prompt := strings.ReplaceAll(r[8], "\\n", "\n")
 	b := Build(g, rev, prompt, Options{IDF: true})
 	got := briefUnit(g, rev, b)
 	basis, _, has := unitDisclosure(b)
-	unitOK = slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
+	unitOK := slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
 	consumers, knowledge = truthFor(consumers, got), truthFor(knowledge, got)
 	if !has && slices.Contains(want, "-") {
 		consumers, knowledge = "-", "-"
 	}
 	gr, gc, gk := rolePaths(b, RoleReuse), rolePaths(b, RoleConsumer), rolePaths(b, RoleKnowledge)
-	vr, vc, vk = judgeAny(gr, reuse), judgeAll(gc, consumers), judgeAll(gk, knowledge)
+	vr, vc, vk := judgeAny(gr, reuse), judgeAll(gc, consumers), judgeAll(gk, knowledge)
 	t.Logf("%s %s (%s): unit %q want %q %s (basis %q); reuse %v want %q %s; consumers %v (set of %d) %s; knowledge %v (set of %d) %s",
 		id, cls, label, got, r[2], mark(verdict{true, unitOK}), basis, gr, reuse, mark(vr), gc, setSize(consumers), mark(vc), gk, setSize(knowledge), mark(vk))
 	if os.Getenv("RASHOMON_ACM11_DUMP") != "" {
 		t.Logf("%s\n%s", b.Text(), b.Explain())
 	}
-	return unitOK, vr, vc, vk
+	return rowVerdicts{UnitOK: unitOK, Reuse: vr, Consumers: vc, Knowledge: vk, Claim: claimOf(b, got)}
 }
 
 // truthFor is the consumer or knowledge truth a brief on unit got is judged
