@@ -235,3 +235,54 @@ func TestRoles_ANegatedKeepVerbIsNotAnExclusion(t *testing.T) {
 		t.Fatalf("picks %+v why %q, want lock: the lock file is the work", r.Picks, r.Why)
 	}
 }
+
+// A unit whose path holds one word of the phrase and whose function holds
+// the other claims it over a unit with one name holding both, at equal
+// coverage, though the runner-up holds more of the rest of the prompt
+// (T1: "Add blast radius to the platform read" is internal/platform's
+// Read, not cmd/rashomon's platformRead). Every claim but a partial one
+// covers the whole phrase, so the margin at coverage between the two is 0
+// by construction and the class is what decides. This is the case that
+// stops a coverage-only refusal from coming back (W-M1.24): a rule that
+// refused a pick for a small coverage gap over its runner-up would refuse
+// T1 and every claim the class settles.
+func TestUnits_AQualifiedClaimOverASingleAtEqualCoverageStands(t *testing.T) {
+	g := synth(t, []synFile{
+		{"platform", "platform/read.py", []synSym{fn("read")}},
+		{"cmd", "cmd/report.py", []synSym{fn("platform_read"), fn("blast_radius"), fn("caller_count")}},
+	}, nil, nil)
+	r := roles(t, g, "Add blast radius to the platform read.")
+	if r.Path != "platform" || r.Basis != BasisCoverage || len(r.Picks) < 2 {
+		t.Fatalf("unit %q basis %q picks %+v, want platform by coverage", r.Path, r.Basis, r.Picks)
+	}
+	p, q := r.Picks[0], r.Picks[1]
+	if p.Class != ClassQualified || p.Refused != "" || q.Path != "cmd" || q.Class != ClassSingle || p.Covered != q.Covered || p.Covered != p.Of {
+		t.Errorf("pick %+v over %+v, want a qualified claim over a single one, both covering the whole phrase", p, q)
+	}
+	if q.Mass <= p.Mass {
+		t.Errorf("runner-up mass %.2f, pick %.2f: the runner-up must lead on mass, so the class is what decides", q.Mass, p.Mass)
+	}
+	if r.RunnerUp != q.ID {
+		t.Errorf("runner-up %q, want %q", r.RunnerUp, q.ID)
+	}
+}
+
+// A phrase that holds a named record's id goes to the unit the record's
+// evidence lies in, over a claim on its other words (W-M1.24, N8: "Close
+// B400." is B400's syncroot, not the one unit that declares a close); a
+// claim by the unit's own name stands.
+func TestRoles_APhraseHoldingARecordsIDGoesToTheRecord(t *testing.T) {
+	g := synth(t, []synFile{
+		{"hook", "hook/run.py", []synSym{fn("close")}},
+		{"pgraph", "pgraph/syncroot.py", []synSym{fn("sync_root")}},
+	}, nil, nil)
+	record(t, g, "les:B400", "lesson", "pgraph/syncroot.py")
+	r := roles(t, g, "Close B400.")
+	if r.Path != "pgraph" || !strings.Contains(r.Why, "beside its id") {
+		t.Fatalf("unit %q why %q picks %+v, want pgraph over the claim beside the id", r.Path, r.Why, r.Picks)
+	}
+	r = roles(t, g, "Fix hook B400.")
+	if r.Path != "hook" || r.Basis != BasisUnitName {
+		t.Errorf("unit %q basis %q why %q, want hook by its own name", r.Path, r.Basis, r.Why)
+	}
+}
