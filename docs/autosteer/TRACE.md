@@ -6,6 +6,16 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 07:5x: AC-M1.5's read outcomes registered before any engine reads classes3.tsv; dogfood findings B479, B480; PLAN's update-events line corrected.
+  - Met on every term of gate shape 3: AC-M1.5 met, M1 closes on six rows quoted. Any term not met: recorded not met, the file never re-read or repaired, development data from then; the spec tension goes to a re-specification from VISION committed before any classes4.tsv row exists.
+  - The owner's hooks ran the 11-01 build; a newer build read its consent record as not agreed (record-only, no notice); the graph sat 85 commits behind HEAD. The owner's install now runs d4f5d05e, the graph is at af80c5e3, and a Stop hook refreshes it after each turn (3 to 6 s, detached). No engine change; the freeze stands.
+  - PLAN's update-events line said the index ran from `pgraph -hook`; it never did (pgraph refreshes .pgraph only). Cards (a) to (e) registered for after M1, each traced to VISION.
+  - T1c triple 4 relaunched on battery at the owner's word (floor 0 by a launcher argument, power and sleep lines still logged); smoke passed, t1c-g11 started 07:50 PST.
+- 2026-11-08 04:5x: T1c pins delta 7 (af80c5e3): the G arm moves to d4f5d05e before any run there; batch cap 225.
+  - T1_G_BIN_SHA d4f5d05e, T1_G_PGRAPH_SHA unchanged (no pgraph/ diff from 0e630250); G runs t1c-g11 to t1c-g20, interleaved G R U while U and R are under ten, then alone; G0 (t1c-g1 to t1c-g3) printed beside, never pooled; U and R keep their pins.
+  - Cap: 1.15 times the 33-run projection at the n=3 arm means (U 4.575, R 6.419, G0 6.283; 191.62 USD), rounded up to 5 USD; TestT1C_TheT1cSliceIsFrozen and the TestH113_ tests pass on the new digest.
+  - Triple 4 was stopped before any run (t1c-r4 and t1c-u4 never existed) and relaunches as G:t1c-g11 R:t1c-r4 U:t1c-u4 on the harness at af80c5e3; the G brief at the new pin was registered before t1c-g11 (3 lines; reuse, target and knowledge withheld).
+  - Byte counts: pins' "agent bytes" (899 at 0e630250, 590 at d4f5d05e) count the CLI output after its "brief:" line, its final newline included; the delivered brief is one byte shorter at both pins (898, 589).
 - 2026-11-08 04:4x: the not-known line lands (d4f5d05e); no unit rule ships; AC-M1.5 not read.
   - A brief with no unit claim (7 of 55 at the calibration reading, under the floor) opens with "not known: the unit to change"; a withheld unit becomes that line in place; a brief holding only it is not sent; the hook claims no unit for it.
   - Selection rule fixed at 04:16:35 PST before any reading: E1, E3 and E4 each lose guard rows against none (196, 115, 156) and each breaks AC-M1.1 as written (prompts 4, 7, 4 of 10; edge 38, 43, 38 of 54); none selected.
