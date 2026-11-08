@@ -59,6 +59,7 @@ var boundaryWords = &lazySet[bool]{f: func() map[string]bool {
 		"unless": true, "until": true, "if": true, "with": true, "using": true, "as": true, "not": true, "but": true,
 		"before": true, "after": true, "instead": true, "rather": true, "once": true, "while": true, "covering": true,
 		"including": true, "excluding": true, "regarding": true, "about": true, "without": true, "whose": true, "than": true,
+		"whether": true,
 	}
 }}
 

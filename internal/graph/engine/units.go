@@ -43,7 +43,9 @@ const (
 // phrase it covers out of the phrase's weight, the tokens it covers,
 // whether a callable or file covers one, the precision of its best
 // covering name (covered tokens over the name's tokens), the weight of
-// the rest of the prompt its callables and files name, the nodes whose
+// the rest of the prompt its names hold (every name: a constant named
+// for the prompt's words says what the unit is about as surely as a
+// function, W-M1.32), the nodes whose
 // names cover a token (best first), and why the claim was refused when it
 // was.
 type UnitPick struct {
@@ -141,12 +143,10 @@ func Units(g Reader, c corpus, target, rest []string, weights map[string]float64
 		if cl == nil {
 			continue
 		}
-		if claimant(n.ID) {
-			for _, t := range c.fields[i].Name {
-				if R[t] && !cl.counted[t] {
-					cl.counted[t] = true
-					cl.mass += weights[t]
-				}
+		for _, t := range c.fields[i].Name {
+			if R[t] && !cl.counted[t] {
+				cl.counted[t] = true
+				cl.mass += weights[t]
 			}
 		}
 		cl.add(n.ID, c.fields[i], T, weights)

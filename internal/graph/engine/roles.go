@@ -149,8 +149,12 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 		phrases, r.Fallback = []Phrase{{Tokens: prompt}}, true
 	}
 	var first []UnitPick
-	firstWhy, over := "", ""
+	firstWhy, over, pronoun := "", "", ""
 	for _, p := range phrases {
+		if p.Pronoun != "" && !c.holdsAny(p.Tokens) {
+			pronoun = "'" + p.Pronoun + "' stands for a thing no clause names, and no name holds '" + strings.Join(p.Tokens, " ") + "'"
+			continue
+		}
 		r.Target, r.Derived = c.derive(c.bare(p), r.Derived)
 		weights = c.weighDerived(weights, r.Derived)
 		r.Picks, r.Why = r.claim(g, c, p, prompt, weights)
@@ -180,9 +184,22 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 		return
 	}
 	r.Picks, r.Why = first, firstWhy
+	if len(r.Picks) == 0 && pronoun != "" {
+		r.refuse(pronoun)
+	}
 	if len(named.Unknown) > 0 {
 		r.refuse("named '" + named.Unknown[0].Word + "': " + named.Unknown[0].Why)
 	}
+}
+
+// holdsAny is whether an index name holds one of the tokens.
+func (c corpus) holdsAny(tokens []string) bool {
+	for _, t := range tokens {
+		if c.nameDF[t] > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // bare is the phrase's tokens less a trailing word in an adverb's form

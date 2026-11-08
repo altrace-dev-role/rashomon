@@ -40,6 +40,12 @@ type Phrase struct {
 	// stage decides, by the index: "the message assembly" keeps its head
 	// where assembly is a name).
 	Adverb string
+	// Pronoun is the pronoun the phrase opened with when no determiner
+	// followed it ("it faster"): the pronoun stands for a thing another
+	// clause names and the words after it say what the thing should be,
+	// so the roles stage claims nothing from them unless a name holds
+	// one (W-M1.32, K5).
+	Pronoun string
 }
 
 // Frame is what the prompt asks: the places it names as the target of
@@ -234,16 +240,49 @@ func (c clauses) empty() bool {
 // subjectOf is the thing a verbless clause names: a symptom's subject
 // ("the report prints a row twice when" names the report printing), a
 // question's after its question word and auxiliary ("where is the
-// deadline enforced" names the deadline).
+// deadline enforced" names the deadline), and when the question word is
+// the subject itself ("what decides whether a lesson is proven", "who
+// calls the installer") the verb's complement (W-M1.32, H7).
 func subjectOf(cl []string) []Phrase {
 	question := len(cl) > 0 && questionWords.get()[low(cl[0])]
 	if question {
+		alone := low(cl[0]) == "what" || low(cl[0]) == "who"
 		cl = cl[1:]
 		if len(cl) > 0 && auxiliaryWords.get()[low(cl[0])] {
-			cl = cl[1:]
+			cl, alone = cl[1:], false
+		}
+		if alone && len(cl) > 1 && thirdPerson(cl[0], cl[1]) {
+			return phrasesOf(complement(cl[1:]))
 		}
 	}
 	return phrasesOf(cl[:predicateAt(cl, question)])
+}
+
+// thirdPerson is whether w, with next after it, is a verb in the third
+// person: a known verb's -s form ("decides"), or an -s word an object or
+// a clause follows ("calls the", "owns whether").
+func thirdPerson(w, next string) bool {
+	lw, ln := low(w), low(next)
+	if !strings.HasSuffix(lw, "s") || strings.HasSuffix(lw, "ss") {
+		return false
+	}
+	return verbClass.get()[singular(lw)] != "" || objectWords.get()[ln] || conditionWords.get()[ln] || ln == "that"
+}
+
+// complement is what a verb is about, as the thing: its words less a
+// clause opener (whether, if, that) and the clause's own auxiliary
+// ("whether a lesson is proven" is the lesson proven).
+func complement(words []string) []string {
+	if len(words) > 0 && (conditionWords.get()[low(words[0])] || low(words[0]) == "that") {
+		words = words[1:]
+	}
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		if !auxiliaryWords.get()[low(w)] {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // predicateAt is where a clause's subject ends: at an auxiliary or a
@@ -480,9 +519,13 @@ func modalAt(cl []string) int {
 // existing-surface word; none when they open with a condition word, and
 // an infinitive ("to name") or a particle ("up") ends it.
 func phraseOf(words []string) Phrase {
+	pronoun := ""
 	for len(words) > 0 && (boundaryWords.get()[low(words[0])] || pronounWords.get()[low(words[0])]) {
 		if conditionWords.get()[low(words[0])] {
 			return Phrase{}
+		}
+		if pronounWords.get()[low(words[0])] {
+			pronoun = low(words[0])
 		}
 		words = words[1:]
 	}
@@ -495,6 +538,9 @@ func phraseOf(words []string) Phrase {
 	}
 	if first == len(words) {
 		return Phrase{}
+	}
+	if determinerWords.get()[low(words[first])] {
+		pronoun = ""
 	}
 	end := len(words)
 	for i, w := range words {
@@ -514,7 +560,7 @@ func phraseOf(words []string) Phrase {
 	if end == 0 {
 		return Phrase{}
 	}
-	p := Phrase{Tokens: uniq(Tokens(strings.Join(words[:end], " "))), Count: 1}
+	p := Phrase{Tokens: uniq(Tokens(strings.Join(words[:end], " "))), Count: 1, Pronoun: pronoun}
 	if len(p.Tokens) == 0 {
 		return Phrase{}
 	}

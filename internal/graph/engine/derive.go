@@ -67,6 +67,7 @@ var suffixWords = &lazySet[bool]{f: func() map[string]bool {
 		"ance": true, "ence": true, "ion": true, "ions": true, "ation": true, "ations": true, "isation": true, "ization": true,
 		"ment": true, "ments": true, "ness": true, "ist": true, "ists": true, "ity": true, "al": true, "ive": true, "ic": true,
 		"ful": true, "less": true, "able": true, "ible": true, "ing": true, "ed": true, "ly": true, "s": true, "es": true, "ies": true,
+		"ise": true, "ize": true, "ised": true, "ized": true, "ising": true, "izing": true, "iser": true, "izer": true, "isers": true, "izers": true,
 	}
 }}
 
