@@ -281,6 +281,59 @@ func TestReuse_ADestinationMostlyOfWordsTheCorpusLacksIsRefused(t *testing.T) {
 	}
 }
 
+// Two files whose names resolve a destination equally (each holds its
+// head and no other of its words that name code) tie, and the tie draws
+// no line (W-M1.28): the request names the line scanner no more in
+// scan/lines.py than in tools/walk.py. Both still claim, for Explain.
+func TestReuse_ADestinationTwoFilesResolveEquallyDrawsNoLine(t *testing.T) {
+	g := synth(t, []synFile{
+		{"report", "report/render.py", []synSym{
+			{"func", "renderReport", "Render the report from its input rows."},
+			{"func", "lineReader", "Read the report's input one line at a time, by hand."},
+		}},
+		{"scan", "scan/lines.py", []synSym{{"func", "LineScanner", "Scan a stream into lines."}}},
+		{"tools", "tools/walk.py", []synSym{{"func", "Scanner", "Walk the tree for files."}}},
+	}, [][2]string{{"report/render.py#renderReport", "report/render.py#lineReader"}}, nil)
+	r := roles(t, g, "Move the line reader in report onto the line scanner.")
+	var claimed []graph.ID
+	for _, cl := range r.ReuseClaims {
+		claimed = append(claimed, cl.File)
+	}
+	if !slices.Contains(claimed, graph.FileID("scan/lines.py")) || !slices.Contains(claimed, graph.FileID("tools/walk.py")) {
+		t.Fatalf("claims %v: want both names to resolve the destination", claimed)
+	}
+	if r.File != graph.FileID("report/render.py") || len(r.Reuse) != 0 {
+		t.Errorf("file %s, reuse %+v: want the tie refused", r.File, r.Reuse)
+	}
+}
+
+// Of two files whose names resolve a destination, the one whose name
+// holds more of its words that name code takes it (W-M1.28):
+// StreamScanner holds "stream" and "scanner", Scanner holds the head
+// alone. The premise is asserted: "scanner" is the head, and Scanner
+// holds ReuseFloor of the mass, so it resolves and only the count
+// leaves it without a line.
+func TestReuse_ADestinationGoesToTheNameHoldingMostOfItsWords(t *testing.T) {
+	g := synth(t, []synFile{
+		{"report", "report/render.py", []synSym{
+			{"func", "renderReport", "Render the report from its input rows."},
+			{"func", "lineReader", "Read the report's input one line at a time, by hand."},
+		}},
+		{"scan", "scan/stream.py", []synSym{{"func", "StreamScanner", "Split input into tokens."}}},
+		{"tools", "tools/walk.py", []synSym{{"func", "Scanner", "Walk the tree for files."}}},
+		{"io", "io/streams.py", []synSym{fn("openStream"), fn("closeStream")}},
+	}, [][2]string{{"report/render.py#renderReport", "report/render.py#lineReader"}}, nil)
+	w, toks := premise(g, "stream scanner")
+	stream, scanner := toks[0], toks[1]
+	if !(w[scanner] > w[stream] && w[stream] > 0 && w[scanner]/(w[scanner]+w[stream]) >= ReuseFloor) {
+		t.Fatalf("weights %v: want scanner the head and Scanner's share at or over %v", w, ReuseFloor)
+	}
+	r := roles(t, g, "Move the line reader in report onto the stream scanner.")
+	if r.File != graph.FileID("report/render.py") || len(r.Reuse) != 1 || r.Reuse[0].File != graph.FileID("scan/stream.py") || r.Reuse[0].Basis != ReuseByUse {
+		t.Errorf("file %s, reuse %+v: want scan/stream.py alone on the use basis", r.File, r.Reuse)
+	}
+}
+
 // The words after a destination are the clause's (W-M1.28): a place
 // after it is still the change's, and a consequence after it adds no
 // target. Before the rule the clause ended at the destination's opener,

@@ -46,7 +46,9 @@ type ReuseClaim struct {
 // claim on any hit; a file elsewhere when a symbol's name holds a word
 // of what the request says to use (a use phrase: what the request
 // presumes exists), resolves a construction's destination ("with the
-// line scanner"; resolve, W-M1.28) or names at least ReuseFloor of an
+// line scanner"; resolve and settleDestination, W-M1.28: the file whose
+// names hold the most of its words takes it, none on a tie) or names at
+// least ReuseFloor of an
 // addition phrase's mass among the tokens that name code, as a unit
 // claims a target: a word in common with what the request adds is a
 // neighbour, a symbol that names most of it is the thing to take up,
@@ -116,7 +118,7 @@ func reuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]floa
 			continue
 		}
 		in := c.units[i] == r.Path
-		if !in && !usedByUnit(g, c, row.ID, r.Path) && !(h.name && (h.use > 0 || claims)) {
+		if !in && !usedByUnit(g, c, row.ID, r.Path) && !(h.name && (h.use > 0 || claims || h.resolves())) {
 			continue
 		}
 		if !claims {
@@ -136,6 +138,9 @@ func reuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]floa
 				cl.viaAdd = true
 			}
 		}
+	}
+	for k := range dests {
+		settleDestination(found, order, k)
 	}
 	sort.SliceStable(order, func(i, j int) bool { return found[order[i]].before(*found[order[j]]) })
 	var out []RoleFile
@@ -159,13 +164,15 @@ const ReuseFloor = 0.5
 // reuseClaim is one file's claim on the reuse role while it is built:
 // the best of its symbols' masses, whether it is inside the unit, whether
 // the addition's existing code calls one of its symbols, whether code
-// outside the unit calls one, whether a callable carries it, and its hit
-// symbols, callables first.
+// outside the unit calls one, whether a callable carries it, its hit
+// symbols, callables first, and the best of its symbols' resolutions of
+// each destination.
 type reuseClaim struct {
 	file                       graph.ID
 	use, add, mass             float64
 	in, viaAdd, reused, called bool
 	nodes                      []graph.ID
+	resolved                   []resolution
 }
 
 // basis is the word the claim's line states for why its file is the
@@ -189,6 +196,12 @@ func (cl reuseClaim) basis() string {
 func (cl *reuseClaim) take(id graph.ID, h reuseHit, reused bool) {
 	cl.use, cl.add, cl.mass = max(cl.use, h.use), max(cl.add, h.add), max(cl.mass, h.mass*h.precision)
 	cl.reused = cl.reused || reused
+	if cl.resolved == nil {
+		cl.resolved = make([]resolution, len(h.resolved))
+	}
+	for k, r := range h.resolved {
+		cl.resolved[k] = resolution{held: max(cl.resolved[k].held, r.held), got: max(cl.resolved[k].got, r.got)}
+	}
 	if callable(id) {
 		cl.called = true
 		cl.nodes = append([]graph.ID{id}, cl.nodes...)
@@ -219,12 +232,23 @@ func (cl reuseClaim) before(o reuseClaim) bool {
 
 // reuseHit is one node's unspent mass: over every token, over the use
 // phrases' and over the addition phrases', with the tokens it named,
-// whether its name holds a token of those phrases, and the share of its
-// name's tokens the request's words hold.
+// whether its name holds a token of those phrases or resolves a
+// destination, the share of its name's tokens the request's words hold,
+// and how its name resolves each destination.
 type reuseHit struct {
 	mass, use, add, precision float64
 	name                      bool
 	named                     map[string]bool
+	resolved                  []resolution
+}
+
+// resolution is how a name resolves one destination: how many of the
+// destination's unspent words that name code it holds, and the mass of
+// the words it holds. The zero value resolves nothing: a name that
+// resolves the destination holds its head, a word that names code.
+type resolution struct {
+	held int
+	got  float64
 }
 
 // reuseHits is the node's idf mass on the unspent request tokens its
@@ -264,7 +288,7 @@ func reuseHits(f Fields, spent, uses, adds, named map[string]bool, weights map[s
 	return h
 }
 
-// resolve adds to the hit the destinations its symbol's name resolves
+// resolve records on the hit the destinations its symbol's name resolves
 // (W-M1.28): the name holds the destination's head (its heaviest unspent
 // word that names code) and at least ReuseFloor of its mass over every
 // unspent word, each weighed as Units weighs a target's: a word that
@@ -273,14 +297,17 @@ func reuseHits(f Fields, spent, uses, adds, named map[string]bool, weights map[s
 // corpus never holds at the mean of the words that name code, so a
 // destination mostly of such words names a thing the index lacks and
 // the floor refuses it. The name's share is use mass, the basis a use
-// word's object has. A destination no name resolves adds nothing and
-// draws no line, the refusal W-M1.22 keeps for a claim with no basis.
+// word's object has, once settleDestination gives the destination to the
+// name's file. A destination no name resolves adds nothing and draws no
+// line, the refusal W-M1.22 keeps for a claim with no basis.
 func (h *reuseHit) resolve(c corpus, f Fields, dests []Phrase, spent map[string]bool, weights map[string]float64) {
-	for _, p := range dests {
+	h.resolved = make([]resolution, len(dests))
+	for k, p := range dests {
 		var of, seen, got, top float64
-		known, unknown := 0, 0
+		known, unknown, held := 0, 0, 0
 		head := ""
 		for _, t := range p.Tokens {
+			holds := slices.Contains(f.Name, t)
 			switch {
 			case spent[t]:
 				continue
@@ -290,12 +317,15 @@ func (h *reuseHit) resolve(c corpus, f Fields, dests []Phrase, spent map[string]
 				if weights[t] > top || weights[t] == top && t < head {
 					top, head = weights[t], t
 				}
+				if holds {
+					held++
+				}
 			case weights[t] > 0:
 				seen += weights[t]
 			default:
 				unknown++
 			}
-			if slices.Contains(f.Name, t) {
+			if holds {
 				got += weights[t]
 			}
 		}
@@ -304,9 +334,40 @@ func (h *reuseHit) resolve(c corpus, f Fields, dests []Phrase, spent map[string]
 		}
 		of += float64(unknown)*of/float64(known) + seen
 		if slices.Contains(f.Name, head) && got/of >= ReuseFloor {
-			h.use += got * WeightName
+			h.resolved[k] = resolution{held: held, got: got}
 			h.name = true
 		}
+	}
+}
+
+// resolves is whether the hit's name resolves some destination.
+func (h reuseHit) resolves() bool {
+	return slices.ContainsFunc(h.resolved, func(r resolution) bool { return r.held > 0 })
+}
+
+// settleDestination gives destination k to the one file whose names hold
+// the most of its unspent words that name code, its use mass the best
+// resolving name's share (W-M1.28). When two or more files tie at the
+// top it gives it to none, the refusal the ladder's settle makes on a
+// tie: the request names the thing to build on no more in one file than
+// in another, and a guess between them is a line the request does not
+// ground. No count or threshold is tuned: the most words held wins, and
+// a tie refuses.
+func settleDestination(found map[graph.ID]*reuseClaim, order []graph.ID, k int) {
+	var top *reuseClaim
+	tied := false
+	for _, f := range order {
+		r := found[f].resolved[k]
+		switch {
+		case r.held == 0:
+		case top == nil || r.held > top.resolved[k].held:
+			top, tied = found[f], false
+		case r.held == top.resolved[k].held:
+			tied = true
+		}
+	}
+	if top != nil && !tied {
+		top.use = max(top.use, top.resolved[k].got*WeightName)
 	}
 }
 

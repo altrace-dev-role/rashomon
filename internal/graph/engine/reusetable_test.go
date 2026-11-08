@@ -173,7 +173,7 @@ func walkReuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]
 			drop = "no file"
 		case skip[file] != "":
 			drop = skip[file]
-		case !in && !usedByUnit(g, c, row.ID, r.Path) && !(h.name && (h.use > 0 || claims)):
+		case !in && !usedByUnit(g, c, row.ID, r.Path) && !(h.name && (h.use > 0 || claims || h.resolves())):
 			drop = "elsewhere, no name hit on a use or claimed addition"
 		}
 		w.hits[file] = append(w.hits[file], walkHit{id: row.ID, h: h, drop: drop})
@@ -197,6 +197,9 @@ func walkReuse(g Reader, c corpus, rows []ScopeRow, r Roles, weights map[string]
 				cl.viaAdd = true
 			}
 		}
+	}
+	for k := range dests {
+		settleDestination(w.files, w.order, k)
 	}
 	sort.SliceStable(w.order, func(i, j int) bool { return w.files[w.order[i]].before(*w.files[w.order[j]]) })
 	return w
