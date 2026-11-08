@@ -105,7 +105,13 @@ func lastItem(ws []string, comma []bool, i int) int {
 // there: an optional determiner, then one or two item words, ending at a
 // comma. A verb-class word is an item word only after the determiner
 // ("the log, the trace and the dump"); "on failure, log and retry" is
-// three clauses.
+// three clauses. A phrase after an item attaches by its preposition
+// (W-M1.28): "of" makes the noun's complement, so the item after it is
+// this item's own ("the handling of empty files" is one item, and no
+// clause goes on with "of empty files"), and an item whose complement
+// reads as no item opens none. A destination's preposition after the
+// last item is the verb's, so the clause goes on with it ("the lexer and
+// the handling of empty files with the line scanner"), as lastItem reads.
 func itemAt(ws []string, comma []bool, i int) int {
 	det := i < len(ws) && !comma[i] && determinerWords.get()[low(ws[i])]
 	j := i
@@ -119,6 +125,9 @@ func itemAt(ws []string, comma []bool, i int) int {
 	}
 	if j == i || det && j == i+1 {
 		return 0
+	}
+	if j < len(ws) && !comma[j-1] && low(ws[j]) == "of" {
+		return itemAt(ws, comma, j+1)
 	}
 	return j
 }

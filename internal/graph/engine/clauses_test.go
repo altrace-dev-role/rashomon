@@ -62,3 +62,28 @@ func TestClauses_ACommaBeforeAClauseStillEndsIt(t *testing.T) {
 		}
 	}
 }
+
+// A phrase after a list item attaches by its preposition (W-M1.28): an
+// "of" phrase is the item noun's complement and stays in the item. Before
+// the rule the clause went on with it after the list's last item, and
+// "Fix the parser, the lexer, and the handling of empty files" targeted
+// the parser of empty files. A destination after the list is still the
+// verb's, and an item with a complement is an item in any place.
+func TestClauses_AnOfPhraseStaysWithItsListItem(t *testing.T) {
+	for _, tc := range []struct{ prompt, dest string }{
+		{"Fix the parser, the lexer, and the handling of empty files.", ""},
+		{"Fix the parser, the handling of empty files, and the lexer.", ""},
+		{"Replace the parser, the lexer and the handling of empty files with the line scanner.", "line scanner"},
+	} {
+		f := Parse(tc.prompt)
+		if len(f.Targets) != 1 || words(f.Targets[0]) != tokensOf("parser") {
+			t.Errorf("%q: targets %v, want [parser]", tc.prompt, f.Targets)
+		}
+		if d, ok := destination(f); ok != (tc.dest != "") || ok && words(d) != tokensOf(tc.dest) {
+			t.Errorf("%q: destination %v (%v), want [%s]", tc.prompt, d, ok, tc.dest)
+		}
+		if cl := clausesOf(strings.TrimSuffix(tc.prompt, ".")); len(cl) != 1 {
+			t.Errorf("%q: clauses %q, want one", tc.prompt, cl)
+		}
+	}
+}
