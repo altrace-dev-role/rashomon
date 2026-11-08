@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 11:4x: W-M1.38 built (291803ea, picked from 3df223b9); the judge reads the band (bc4b8190); AC-M1.5 not read.
+  - Bands from a 15-cell calibration (kind under the unit basis, 320 development rows); no unit basis withheld (unit-name 57/81, coverage 56/105 candidates); RelPath accepts "." and ".." to four hops; TestGS5's INC-212 lesson line withheld. T1's G brief 899 to 590 bytes.
+  - Gate: suite 65 ok 0 FAIL, TestACM15_ 14 and tripwires 20 pass, prompts 9/10, edge 47/54, replay 248/513, K7 p95 279.6 ms.
+  - Development readings, shape 3, matched by an independent tally: classes2.tsv unit gate 6 of 16, prose 13/62, stated 32/36, candidate 40/87; classes.tsv unit gate 16 of 16, stated 39/39, candidate 85/99; both not met.
+  - Gap: briefs with no roles unit stay unbanded (7 of 35 pooled, under the floor). Next: a names-no-unit rule (E1, E3, E4) and its carrier; predicted unit gate misses on 5 classes2.tsv classes at the best rule. T1c's G arm waits for the frozen engine (delta 7, cap 225).
 - 2026-11-08 02:2x: AC-M1.5 gate shape 3 built in the judge (96cc5b40); W-M1.38's role-line bands ruled.
   - `TestACM15_FreshTable` gates on shape 3 and prints shape 2 beside it; `TestACM15_NamingSplit` pins the split (81/62/17, 58/84/18; with the naming classes 103/40/17, 80/62/18). A brief without a unit line that keeps a role line claims that line's unit (0 of 37 at 28ca31b9).
   - Development readings at 28ca31b9's engine, matched by an independent tally: classes2.tsv all gates on 3 of 16 classes, unit gate 6, prose 11/62 (0 withheld), stated 48/71, candidate 21/52; classes.tsv 11 of 16, unit gate 16, stated 82/89, candidate 42/49.
