@@ -19,14 +19,14 @@ import (
 // is marked by the phrase class that holds it (T target, A addition, U
 // use, C constraint, - none). RASHOMON_ACM11_REUSE=1 runs it over
 // RASHOMON_ACM15_CLASSES (both halves, the acceptance half spent); the
-// fresh set is refused by name. A reading, never a gate: it fails only
+// fresh set (freshSet) is refused by name. A reading, never a gate: it fails only
 // when its replay of the claim walk disagrees with the engine's claims.
 func TestReuse_ClaimTable(t *testing.T) {
 	root, path := os.Getenv("RASHOMON_ACM11_DIR"), os.Getenv("RASHOMON_ACM15_CLASSES")
 	if root == "" || path == "" || os.Getenv("RASHOMON_ACM11_REUSE") == "" {
 		t.Skip("RASHOMON_ACM11_DIR, RASHOMON_ACM15_CLASSES and RASHOMON_ACM11_REUSE not set")
 	}
-	if filepath.Base(path) == "classes2.tsv" {
+	if filepath.Base(path) == freshSet {
 		t.Fatalf("%s: the fresh set is read once, at the frozen engine (TestACM15_FreshTable), and is never development data", path)
 	}
 	g, rev := loadACM11(t, root)

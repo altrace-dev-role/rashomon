@@ -107,6 +107,12 @@ func TestACM15_ClassesTable(t *testing.T) {
 	t.Logf("AC-M1.5 per-class table (right/n, then right/judged with the rate given the unit right in brackets; gates unit 4/5, reuse 3/5, consumers 4/5, knowledge 4/5 rounded up, read on the acceptance half):\n%s", sb.String())
 }
 
+// freshSet is the base name of AC-M1.5's fresh set (W-M1.39), read once
+// at the frozen engine by TestACM15_FreshTable. The development tables
+// (TestLadder_MarginTable, TestReuse_ClaimTable) refuse it by this name;
+// classes.tsv and classes2.tsv, both read, are development data.
+const freshSet = "classes3.tsv"
+
 // AC-M1.5 on a fresh set (W-M1.27): RASHOMON_ACM15_FRESH (the classes.tsv
 // columns) holds ten rows a class for the sixteen claimed classes,
 // authored over the tree after the engine froze and second-read blind

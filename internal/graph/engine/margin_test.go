@@ -15,7 +15,7 @@ import (
 // runner-up, right and wrong units apart, and every unit the catch-all
 // cmd/rashomon took or was owed. RASHOMON_ACM11_MARGINS=1 runs it over
 // RASHOMON_ACM11_PROMPTS and RASHOMON_ACM15_CLASSES (both halves, the
-// acceptance half spent); the fresh set (classes2.tsv) is read once at the
+// acceptance half spent); the fresh set (freshSet) is read once at the
 // frozen engine and is refused here by name. A reading, never a gate.
 func TestLadder_MarginTable(t *testing.T) {
 	root := os.Getenv("RASHOMON_ACM11_DIR")
@@ -28,7 +28,7 @@ func TestLadder_MarginTable(t *testing.T) {
 		if p == "" {
 			continue
 		}
-		if filepath.Base(p) == "classes2.tsv" {
+		if filepath.Base(p) == freshSet {
 			t.Fatalf("%s: the fresh set is read once, at the frozen engine (TestACM15_FreshTable), and is never development data", p)
 		}
 		files = append(files, p)
