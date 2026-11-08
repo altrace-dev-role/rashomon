@@ -1,0 +1,55 @@
+# T1c pins: slice T1 re-run as T1c, design B: 30 fresh runs, n=10 per arm, in the order G R U ten times. Pre-registered
+# on the owner's word 2026-11-07 19:4x PST ("do all of it", answering the ask that named primary P1, design B, 30 runs,
+# 148.78 USD at the T1b means, the 185 USD cap, the 6.00 USD ceiling and RK_T1C_GO=yes). T1b's pins (t1b/pins.txt)
+# carry over verbatim except the deltas below, each made before any T1c run; the variable names keep the T1_ prefix
+# because they are the harness scripts' interface (run.sh, a2.sh, a3.sh). Frozen by the T1c pre-registration commit,
+# never edited after a run.
+#   1. The G arm runs the engine frozen at 0e630250 (W-M1.35, pushed on autosteer/contracts-v2): T1_G_BIN_SHA and
+#      T1_G_PGRAPH_SHA name it, and batch.sh refuses any binary whose embedded vcs.revision is not its pin.
+#   2. PRIMARY = A1a all-four: every consumers.txt item opened (a Read, or a Bash that reads the file) before the first
+#      edit tool call, judged by judge/a1.py unchanged from T1b (a run with no edit is read over its whole session, and
+#      the row prints first_edit so such a run is visible; the batch's end prints, as an ungated sensitivity line, the
+#      primary over the runs with an edit, per arm, beside the gated read). Grounding: W-M1.20 named A1a as the D-level test's primary
+#      before any T1b run existed. T1b's primary (A2, and A3 both, and A4 match) sits at the floor for any binary: the
+#      product renders callers per package (BlastCaller{Package, Dir, Tests}, internal/hook/blastradius.go) and the T1b
+#      parse rule keeps only lines naming a symbol (t1c-prep precheck 3e).
+#   3. Secondaries, reported and never gated: A3', A4', A5' (judge/a3v2.py) read the product's per-package callers note
+#      and the Stop's platform line against an oracle of PROVEN calls (precheck 3f); A1b, A1c, A2, A6, A7, A8 as in T1b.
+#      T1b's A3, A4 and A5 stay in judge/a3.json for the record and leave the row.
+#   4. The judge's dispatch fixture gains a cli package that imports app (testdata/dispatch-cli/cli/cli.go, the d2
+#      probe's fixture commit 8267c7d), so the app edit has a caller to name: a new fixture version, prepared under a
+#      fresh RK_FIXTURES, never an edit of T1b's.
+#   5. T1_MODEL names claude-sonnet-5, the model every T1b transcript records under the alias "sonnet", so the alias
+#      cannot move under the batch.
+#   6. Money. T1_N3_MEAN_CEILING_USD is 6.00 (185/30 = 6.17 is the bound that 30 runs at one mean put on the cap). It
+#      is read once, when every arm has three judged runs, over those nine runs pooled, with the per-arm means printed
+#      beside; above it the batch stops before the tenth run. T1_BATCH_CAP_USD 185 is read after every run, so the
+#      worst case passes it by at most one run's cap (a run that starts under 185 ends under 185 + 15).
+#      T1_BUDGET_USD 15 stays the per-run hard cap, and each run's cost is printed against it.
+#   Nothing else moves: tree, R binary, judge pgraph, prompt, turn cap, allowed tools, knowledge digests, baseline log.
+T1C_OF=t1b
+# The scratch tree every arm edits, and the arm R binary's source: origin/main after PR #281.
+T1_TREE_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
+T1_R_BIN_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
+# The arm G binary: the engine frozen by W-M1.35 (autosteer/contracts-v2; the docs commit c4e3e63a on top holds the
+# same code tree, and the pin names the engine commit).
+T1_G_BIN_SHA=0e630250068a56aa965bef220d7b170216415ed4
+# Arm G syncs with the branch's pgraph at T1_G_PGRAPH_SHA (its symbols sidecar, W-M1.1, is what the G binary reads).
+# The judge's pgraph, and arm R's, is built from T1_TREE_SHA's module (T1_PGRAPH_SHA).
+T1_G_PGRAPH_SHA=0e630250068a56aa965bef220d7b170216415ed4
+T1_PGRAPH_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
+# The pinned tree's own pgraph.log (pgraph sync at T1_TREE_SHA, 17236 rows): A2 counts new symbols against it.
+T1_BASELINE_LOG_SHA256=da436b5797596fc7491ecb7b54edacec7f5421a28dd85c9853759c43f542852d
+# Session caps (section 7.3; ruling 12) as T1b's; the money gates are delta 6 above.
+T1_MODEL=claude-sonnet-5
+T1_MAX_TURNS=150
+T1_BUDGET_USD=15
+T1_N3_MEAN_CEILING_USD=6.00
+T1_BATCH_CAP_USD=185
+T1_N_PER_ARM=10
+T1_ALLOWED_TOOLS="Read,Grep,Glob,Edit,Write,LS,Bash"
+# Knowledge for arm G: imported at pinned digests from the owner's ledger and notes (outside git; digests pinned
+# here before the first G run so the import is reproducible). Pinned 2026-11-05 at 270 and 1073 lines; the frozen
+# copies live in ~/altrace-backups/t1-knowledge/ and run.sh refuses a file at any other digest.
+T1_KNOWLEDGE_LEDGER_SHA256=e7c6cb7a8808b49e4b24a2ebe192bcbb2cdeefbde9c192632a44e15871a616cc
+T1_KNOWLEDGE_NOTES_SHA256=0ebdd0633809e26f87fb21447f401d99821134cce2f46a30748d363cbf42a031

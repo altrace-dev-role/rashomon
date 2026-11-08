@@ -98,3 +98,22 @@ unchanged over the nine pilot trees under a PATH with go, gives the pilot's A3 t
 cap in t1b/pins.txt (seven of nine pilot runs ended at 80 with partial trees, so the primary could not vary; A1a and
 A1b stay comparable with the pilot); runs serial through one directory; the nine pilot trees kept for a blinded A3
 read. The cost gate stays closed (ruling 12: every pilot arm's n=3 mean was above 2.50 USD), so n=10 waits for a word.
+
+T1c (2026-11-07): slice T1 re-registered on the owner's word (2026-11-07 19:4x PST): design B, 30 fresh runs, n=10 per
+arm, in the order G R U ten times so every stopping point holds equal n per arm. t1c/pins.txt names six deltas from
+T1b, each made before any T1c run:
+- the G arm runs the engine frozen at 0e630250, and batch.sh refuses a binary whose embedded vcs.revision is not its pin;
+- the primary is A1a all-four (W-M1.20 named A1a as the D-level test's primary before any T1b run): every consumers.txt
+  item opened before the first edit. A run with no edit is read over its whole session and its row says first_edit
+  none; the batch's end prints the primary over the runs with an edit beside the gated read, as a sensitivity line;
+- A3', A4', A5' (t1c/judge/a3v2.py) read the product's per-package callers note and the Stop's platform line against
+  an oracle of PROVEN calls. T1b's parse rule keeps only lines naming a symbol, which no binary prints (callers are
+  rendered per package), so its A3 to A5 stay in a3.json for the record and leave the row;
+- the judge's dispatch fixture gains testdata/dispatch-cli (a cli package that imports app), so the app edit has a
+  caller to name; a fixture prepared without the overlay is rebuilt, never reused;
+- T1_MODEL names claude-sonnet-5, the model behind every T1b transcript's alias;
+- money: each run's cost printed against the 15 USD per-run cap, the batch's spend against 185 USD after every run, and
+  the 6.00 USD n=3 ceiling read once over the first three judged runs of each arm, pooled.
+t1c/judge/row.py writes the row and exits 3 when the primary cannot be read; judge.sh keeps T1b's B449 refusal.
+batch.sh also refuses a configuration directory whose account is not the meter's (B454). The slice's files are frozen
+by test/acceptance/t1c_slice_frozen_test.go (their digests, and no file added or removed).
