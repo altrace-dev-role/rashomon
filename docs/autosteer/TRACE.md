@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-07 21:0x: T1c pre-registered and PE1 repaired.
+  - T1c's pre-registration lands as 3a5ace12 on autosteer/contracts-v2, so PR #283's CI runs its freeze and H-113 tests. The batch is held until W-M1.24's G-brief identity check (PLAN, T1c re-registration).
+  - PE1 now reads the largest step between sorted cold runs (022b5fe6). CI run 42447803644 read a 2064-byte range at 29ee28f9 on one level: sync.Map's trie nodes, whose count follows the process's random hash seed. The largest step was 944 bytes. Both breaks fail: the range for the step, and both GOMAXPROCS pins dropped (a 3840-byte step).
 - 2026-11-07 20:4x: W-M1.27 opened.
   - Gate shape 2 is written into AC-M1.5: ten fresh rows per claimed class, 7 of 10 per line, read once at the engine M1 closes on.
   - The judge's per-alternative fix is built and gated as 9dda5226 (test files only). The gate was gofmt, vet, nine TestACM15_ unit tests by name, 36 Python judge tests and tripwires 20 of 20. The `classes.tsv` development half is byte-identical to the 0e630250 gate, 80 rows of 80.
