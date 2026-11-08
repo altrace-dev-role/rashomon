@@ -12,8 +12,9 @@ import "strings"
 // report, seed and spend") is one constituent, so its commas end no
 // clause: the clause keeps the list's first item, as a phrase keeps the
 // first of two things an "and" joins, and goes on after its last item
-// ("Replace the readers in report, seed and spend with the scanner"
-// keeps "with the scanner" in the verb's clause) (W-M1.28).
+// with a phrase its verb takes ("Replace the readers in report, seed and
+// spend with the scanner" keeps "with the scanner" in the verb's clause)
+// (W-M1.28).
 func clausesOf(s string) [][]string {
 	var ws []string
 	var comma []bool
@@ -69,9 +70,10 @@ func clausesOf(s string) [][]string {
 // closed by commas, then "and" or "or" and the last item, or the last
 // item after the "and" of an Oxford comma once an item closed by a comma
 // came before it. The last item stands alone: the sentence ends, a comma
-// closes it or a word that is no item word follows it ("spend with the
-// scanner"). "update report, then fix the seed test" and "for every
-// symbol an edit touches, report two numbers" are two clauses each.
+// closes it or a word that opens a phrase the verb takes follows it
+// ("spend with the scanner"). "update report, then fix the seed test" and
+// "for every symbol an edit touches, report two numbers" are two clauses
+// each.
 func listEnd(ws []string, comma []bool, i int, inList bool) int {
 	if i < len(ws) && listJoin(ws[i]) {
 		if !inList {
@@ -92,13 +94,35 @@ func listEnd(ws []string, comma []bool, i int, inList bool) int {
 }
 
 // lastItem is the end of the list's last item at ws[i], or 0 when none
-// stands alone there.
+// stands alone there. A phrase after a coordination attaches to the verb
+// only as its argument (W-M1.28): any other word after the last item is
+// the item's own or opens a clause of its own ("the retry budget and the
+// pool size log", "the retry budget, and drain before close"), so the
+// list does not form and its commas end clauses as before the list rule.
 func lastItem(ws []string, comma []bool, i int) int {
 	j := itemAt(ws, comma, i)
-	if j == 0 || j < len(ws) && !comma[j-1] && itemWord(ws[j], false) {
+	if j == 0 || j < len(ws) && !comma[j-1] && !verbTakes(ws[j]) {
 		return 0
 	}
 	return j
+}
+
+// verbTakes is whether w opens a phrase a clause rule reads as the
+// verb's: a place, a use, an exclusion, or the first word of a
+// destination's construction (destinationWords).
+func verbTakes(w string) bool {
+	lw := low(w)
+	if placeWords.get()[lw] || useWords.get()[lw] || exclusionWords.get()[lw] {
+		return true
+	}
+	for _, opens := range destinationWords.get() {
+		for _, open := range opens {
+			if open[0] == lw {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // itemAt is the end of the list item at ws[i], or 0 when none opens

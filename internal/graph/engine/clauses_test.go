@@ -87,3 +87,29 @@ func TestClauses_AnOfPhraseStaysWithItsListItem(t *testing.T) {
 		}
 	}
 }
+
+// A clause goes on after a list's last item only with a phrase its verb
+// takes (W-M1.28): a place, a use, an exclusion or a destination. Any
+// other word after the last item is the item's own or opens a clause of
+// its own, so the list does not form and its commas end clauses as before
+// the list rule. Before the rule "dial timeouts, the retry budget, and
+// drain before close" read as the one clause "dial timeouts before
+// close", and the verb word ending "the pool size log" went onto the
+// list's first item.
+func TestClauses_AListGoesOnOnlyWithAPhraseItsVerbTakes(t *testing.T) {
+	for _, tc := range []struct{ sentence, want string }{
+		{"dial timeouts, the retry budget, and drain before close", "dial timeouts | the retry budget | drain before close"},
+		{"the dial timeout, the retry budget and the pool size log", "the dial timeout | the retry budget and the pool size log"},
+		{"Fix the parser, the lexer and the scanner in the report package", "Fix the parser in the report package"},
+		{"Fix the parser, the lexer and the scanner without changing the log format", "Fix the parser without changing the log format"},
+		{"Replace the parser, the lexer and the scanner with the line reader", "Replace the parser with the line reader"},
+	} {
+		var got []string
+		for _, cl := range clausesOf(tc.sentence) {
+			got = append(got, strings.Join(cl, " "))
+		}
+		if strings.Join(got, " | ") != tc.want {
+			t.Errorf("%q: clauses %q, want %q", tc.sentence, strings.Join(got, " | "), tc.want)
+		}
+	}
+}
