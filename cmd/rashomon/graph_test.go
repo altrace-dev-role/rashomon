@@ -172,6 +172,49 @@ func TestGraphKnowledgeImport_RowsReachTheIndex(t *testing.T) {
 	}
 }
 
+// TestGraphKnowledgeImport_AMovedTreeKeysRowsToTheIndexItWrites (W-M1.36):
+// a repository with no origin is keyed by its path, so a tree indexed in one
+// directory and imported into from another holds a saved graph under the
+// old key; the rows are keyed to the repository the verb indexes next, or
+// every applies_to names a repository the graph no longer holds and its
+// edge is never built.
+func TestGraphKnowledgeImport_AMovedTreeKeysRowsToTheIndexItWrites(t *testing.T) {
+	base := t.TempDir()
+	was, dir := filepath.Join(base, "was"), filepath.Join(base, "now")
+	graphProject(t, was)
+	_, before, err := graph.LoadFile(was)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(was, dir); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "LEDGER.txt")
+	if err := os.WriteFile(src, []byte("id | when | who | what | layer | evidence | catcher | today | gap\n"+
+		"B1 | 11-01 | me | changed the session ttl without jobs/purge_sessions.py | purge / DETECT | run 3 | me | no | the nightly purge must change with session lifetime\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	var out strings.Builder
+	if err := cmdGraph([]string{"knowledge", "import", src}, &out); err != nil {
+		t.Fatalf("graph knowledge import: %v\n%s", err, out.String())
+	}
+	s, h, err := graph.LoadFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Repo == before.Repo {
+		t.Fatalf("repo %q before and after the move; want a path key that moves with the tree", h.Repo)
+	}
+	rows, err := knowledge.ReadDir(dir)
+	if err != nil || len(rows) != 1 || len(rows[0].AppliesTo) != 1 || rows[0].AppliesTo[0] != "g:"+h.Repo+"#file:jobs/purge_sessions.py" {
+		t.Errorf("knowledge rows = %+v, %v; want one row keyed to %s, the repository indexed after the import", rows, err, h.Repo)
+	}
+	if e := s.Out("les:B1", graph.RevCommit(h.Rev.Commit), graph.AppliesTo); len(e) != 1 || e[0].Dst != "file:jobs/purge_sessions.py" {
+		t.Errorf("les:B1 applies_to = %+v; want the purge job's edge in the graph the verb wrote", e)
+	}
+}
+
 // TestGraphFinding_CarriesSourceAndUnit (W-M1.7, AD19, AC-X.5): the brief's
 // finding names where its claim came from and what it is about: the store
 // class, the global id of the node its first line is keyed on, and the unit

@@ -99,9 +99,11 @@ func graphIndex(args []string, stdout io.Writer) error {
 }
 
 // graphKnowledge imports FILE... into the index at or above the working
-// directory: the rows are resolved against the saved graph and keyed to its
-// repository, written under .rashomon/knowledge/, and the graph is built
-// again so they are in it.
+// directory: the rows are resolved against the saved graph, keyed to the
+// repository the graph is built under next (baseline.RepoID, as index.Build
+// keys it; the saved header's key is stale once a tree with no origin has
+// moved, W-M1.36), written under .rashomon/knowledge/, and the graph is
+// built again so they are in it.
 func graphKnowledge(args []string, stdout io.Writer) error {
 	if len(args) < 2 || args[0] != "import" {
 		return errors.New("graph knowledge takes import FILE...")
@@ -118,7 +120,8 @@ func graphKnowledge(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	rep, err := knowledge.Import(root, args[1:], s, h.Repo, graph.RevCommit(h.Rev.Commit))
+	rid, _ := baseline.RepoID(root)
+	rep, err := knowledge.Import(root, args[1:], s, rid, graph.RevCommit(h.Rev.Commit))
 	if err != nil {
 		return err
 	}
