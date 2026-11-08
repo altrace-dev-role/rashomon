@@ -6,6 +6,10 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 02:1x: W-M1.37 refused by its own registered rule; AC-M1.5 gate shape 3 registered before any classes3.tsv row exists.
+  - W-M1.37: 0 of 48 candidates eligible (best doc precision 12 of 22; every candidate loses a guarded row); the two best gain 5 of 146 behavior-only rows, 2 and 3 of the 129 that do not echo doc wording. Not built.
+  - Probes on the behavior-only classes2.tsv rows: package docs first on 22 of 84, top ten 54; commit subjects first on 8. Readers with the atlas agree with the authors on 135 of 160. Peer work orders name a path 96 of 112.
+  - Shape 3: M1 claims a unit where the request names it and claims to state nothing false on a prose request; per class 7 of 10 on the unit verdict, roles judged where the brief's unit is a truth, gate B (stated 0.8, candidate 0.5). Shape 2's classes2.tsv result stands as not met.
 - 2026-11-08 01:4x: AC-M1.1's edge count disclosed as in sample.
   - 19 of the 54 `edge.tsv` rows have an engine test written from their shape and named by row (from 259ce3b5): right 18 of 19. The other 35: right 29, 82.9 percent against the gate's 81.5, visible at every development reading. The row stands as registered; AC-M1.5 is the out-of-sample read.
 - 2026-11-08 01:1x: M1 acceptance read at 28ca31b9: AC-M1.5 not met, M1 is not closed; W-M1.29 built and not merged.
