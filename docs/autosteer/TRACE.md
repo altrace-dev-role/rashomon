@@ -6,6 +6,10 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 02:2x: AC-M1.5 gate shape 3 built in the judge (96cc5b40); W-M1.38's role-line bands ruled.
+  - `TestACM15_FreshTable` gates on shape 3 and prints shape 2 beside it; `TestACM15_NamingSplit` pins the split (81/62/17, 58/84/18; with the naming classes 103/40/17, 80/62/18). A brief without a unit line that keeps a role line claims that line's unit (0 of 37 at 28ca31b9).
+  - Development readings at 28ca31b9's engine, matched by an independent tally: classes2.tsv all gates on 3 of 16 classes, unit gate 6, prose 11/62 (0 withheld), stated 48/71, candidate 21/52; classes.tsv 11 of 16, unit gate 16, stated 82/89, candidate 42/49.
+  - Role-line bands per kind under the unit line's basis, capped at the unit line's band (post-hoc, recorded); floors unchanged.
 - 2026-11-08 02:1x: W-M1.37 refused by its own registered rule; AC-M1.5 gate shape 3 registered before any classes3.tsv row exists.
   - W-M1.37: 0 of 48 candidates eligible (best doc precision 12 of 22; every candidate loses a guarded row); the two best gain 5 of 146 behavior-only rows, 2 and 3 of the 129 that do not echo doc wording. Not built.
   - Probes on the behavior-only classes2.tsv rows: package docs first on 22 of 84, top ten 54; commit subjects first on 8. Readers with the atlas agree with the authors on 135 of 160. Peer work orders name a path 96 of 112.
