@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 04:4x: the not-known line lands (d4f5d05e); no unit rule ships; AC-M1.5 not read.
+  - A brief with no unit claim (7 of 55 at the calibration reading, under the floor) opens with "not known: the unit to change"; a withheld unit becomes that line in place; a brief holding only it is not sent; the hook claims no unit for it.
+  - Selection rule fixed at 04:16:35 PST before any reading: E1, E3 and E4 each lose guard rows against none (196, 115, 156) and each breaks AC-M1.1 as written (prompts 4, 7, 4 of 10; edge 38, 43, 38 of 54); none selected.
+  - Gate: suite 65 ok 0 FAIL, TestACM15_ 14, the change's 32 and tripwires 20 pass, prompts 9/10, edge 47/54, replay 220/513 (28 first-line fallbacks gone, right 28 of 98), K7 p95 269.2 ms, T1's G brief 590 bytes as F's.
+  - Development readings, shape 3, matched by an independent tally: classes2.tsv not met on 18 terms (unit gate on 9 of 16 classes, candidates 40/87), classes.tsv on 11; gate misses over both 33 to 29. Prediction for a fresh set at this engine: not met, the unit gate first.
 - 2026-11-08 03:4x: W-M1.38 built (291803ea, picked from 3df223b9); the judge reads the band (bc4b8190); AC-M1.5 not read.
   - Bands from a 15-cell calibration (kind under the unit basis, 320 development rows); no unit basis withheld (unit-name 57/81, coverage 56/105 candidates); RelPath accepts "." and ".." to four hops; TestGS5's INC-212 lesson line withheld. T1's G brief 899 to 590 bytes.
   - Gate: suite 65 ok 0 FAIL, TestACM15_ 14 and tripwires 20 pass, prompts 9/10, edge 47/54, replay 248/513, K7 p95 279.6 ms.
