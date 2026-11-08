@@ -36,11 +36,13 @@ func TestGS6_AKnowledgeNodeNeverSeeds(t *testing.T) {
 // (the hook's cwd), the lesson's path the file its record declares, and
 // the record form holds digests and counts in the lesson's and paths'
 // place. Explain names each line's sentence.
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestGS6_EachLineIsASlotRenderedByTheGraphTemplate(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
 	rel := func(p string) string { return "../../" + p }
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, Rel: rel, bands: stateAll})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, Rel: rel, bands: stateAll, unitRule: noUnitRule})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	if b.Empty() || b.Kept != len(b.Lines) || b.Kept > MaxLines {
 		t.Fatalf("kept %d of %d lines", b.Kept, len(b.Lines))

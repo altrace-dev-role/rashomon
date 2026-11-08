@@ -12,18 +12,20 @@ import (
 // a truth, inside the hook's budget. E1 and E3 were registered on 11-08
 // before any reading of them; E4 was proposed later that day, after a
 // simulation on the development dumps, so its reading there is not a
-// held-out one. The measurement selects one or none, and until it does
-// the brief withholds no unit by rule.
+// held-out one. E5 (W-M1.40, AC-M1.5 as re-specified from VISION) was
+// chosen after reading both untuned files, so classes4.tsv is its only
+// held-out read; it ships without its knowledge clause (W-M1.41).
 
 // unitRule is whether the request names no unit, read from the corpus,
 // the roles found and the request.
 type unitRule func(c corpus, r Roles, prompt string) bool
 
 // shippedUnitRule is the rule Build applies when Options sets none.
-var shippedUnitRule unitRule = noUnitRule
+var shippedUnitRule unitRule = unitRuleE5
 
 // noUnitRule finds every request names its unit: nothing is withheld by
-// rule.
+// rule. The tests that read the lines of a unit the shipped rule
+// withholds, Task A's among them, set it.
 func noUnitRule(corpus, Roles, string) bool { return false }
 
 // unitRuleE1 is E1: a unit was found, no unit was named and no claim is
@@ -54,6 +56,34 @@ func unitRuleE3(c corpus, r Roles, prompt string) bool {
 // read as the target still stands.
 func unitRuleE4(_ corpus, r Roles, prompt string) bool {
 	return r.Found() && r.Basis != BasisNamed && !namesUnit(strings.ToLower(prompt), r.Path)
+}
+
+// unitRuleE5 is E5 without its knowledge clause (W-M1.40): a unit stands
+// only on what the request names. A named basis stands (a path, a file, a
+// symbol, a knowledge id, a pasted error); so does a qualified claim that
+// covers the whole target phrase (the unit's path covers part of it and
+// one of its names the rest, T1's form), and a claim by the unit's own
+// name in a target phrase of at most two tokens. Every other claim is
+// withheld: on the two untuned files no margin on the ladder's scores
+// separated a right claim from a wrong one, and the forms withheld here
+// were right under half the time (PLAN 6.1).
+func unitRuleE5(_ corpus, r Roles, _ string) bool {
+	if !r.Found() || r.Basis == BasisNamed {
+		return false
+	}
+	if len(r.Picks) > 0 && r.Picks[0].Class == ClassQualified && coversWhole(r.Picks[0]) {
+		return false
+	}
+	return r.Basis != BasisUnitName || len(r.Target) > 2
+}
+
+// coversWhole is whether a pick covers its whole phrase. Covered sums the
+// covered tokens' weights in sorted order and Of the phrase's in its own
+// order, with the weight of words no name holds added, so two sums of the
+// same weights can differ in their last bits: within a relative 1e-9 they
+// are equal.
+func coversWhole(p UnitPick) bool {
+	return p.Of > 0 && p.Of-p.Covered <= 1e-9*p.Of
 }
 
 // holdsAName is whether the folded request p holds a unit's path or last

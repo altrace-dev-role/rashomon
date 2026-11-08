@@ -146,3 +146,89 @@ func TestUnnamed_AUnitTheRequestDoesNotNameIsNotKnown(t *testing.T) {
 		t.Errorf("a request naming the unit's path: unnamed %v, kept %d", b.Roles.Unnamed, b.Kept)
 	}
 }
+
+// TestUnnamed_E5KeepsWhatTheRequestNames (W-M1.40): E5 keeps a unit the
+// request names, a qualified claim covering its whole phrase and a claim
+// by the unit's own name in a phrase of at most two tokens, and withholds
+// every other claim, whatever its score. A phrase is covered whole within
+// a relative 1e-9, so the same weights summed in another order still
+// cover it either way, and a claim short by 2e-9 of the phrase does not.
+// The tolerance is pinned from both sides: a claim short by 0.5e-9 of the
+// phrase is whole and one short by 1.5e-9 is not (short by 2e-9 rounds to
+// just over 2e-9, so under a tolerance of 2e-9 it is not whole either).
+func TestUnnamed_E5KeepsWhatTheRequestNames(t *testing.T) {
+	x, y, z := 0.1, 0.2, 0.3
+	lo, hi := z+y+x, x+y+z
+	if lo == hi {
+		t.Fatalf("%v and %v are equal: the last-bit cases test nothing", lo, hi)
+	}
+	claim := func(basis, class string, covered, of float64, target ...string) Roles {
+		return Roles{Unit: "unit:go:internal/platform", Path: "internal/platform", Basis: basis, Target: target,
+			Picks: []UnitPick{{Class: class, Covered: covered, Of: of}, {Class: ClassPartial, Covered: of / 2, Of: of}}}
+	}
+	two, three := []string{"platform", "read"}, []string{"platform", "read", "path"}
+	for _, e := range []struct {
+		name string
+		r    Roles
+		want bool
+	}{
+		{"no unit found", Roles{}, false},
+		{"named, a long phrase", claim(BasisNamed, ClassNamed, 1, 1, three...), false},
+		{"qualified, whole (T1's form)", claim(BasisCoverage, ClassQualified, 5.72, 5.72, two...), false},
+		{"qualified, whole, a long phrase", claim(BasisCoverage, ClassQualified, 4, 4, three...), false},
+		{"qualified, under by the last bit", claim(BasisCoverage, ClassQualified, lo, hi, three...), false},
+		{"qualified, over by the last bit", claim(BasisCoverage, ClassQualified, hi, lo, three...), false},
+		{"qualified, short by 2e-9 of the phrase", claim(BasisCoverage, ClassQualified, 4-2e-9*4, 4, three...), true},
+		{"qualified, short by 1.5e-9 of the phrase", claim(BasisCoverage, ClassQualified, 4-1.5e-9*4, 4, three...), true},
+		{"qualified, short by 0.5e-9 of the phrase", claim(BasisCoverage, ClassQualified, 4-0.5e-9*4, 4, three...), false},
+		{"qualified, a word no name holds", claim(BasisCoverage, ClassQualified, 3, 4, three...), true},
+		{"qualified, a phrase of no weight", claim(BasisCoverage, ClassQualified, 0, 0, two...), true},
+		{"by its name, one token", claim(BasisUnitName, ClassUnit, 1, 1, "platform"), false},
+		{"by its name, two tokens", claim(BasisUnitName, ClassUnit, 2, 2, two...), false},
+		{"by its name, three tokens", claim(BasisUnitName, ClassUnit, 3, 3, three...), true},
+		{"one name, whole", claim(BasisCoverage, ClassSingle, 2, 2, two...), true},
+		{"two names, whole (Task A's form)", claim(BasisCoverage, ClassFull, 2, 2, two...), true},
+		{"partial", claim(BasisCoverage, ClassPartial, 1, 2, two...), true},
+	} {
+		if got := unitRuleE5(corpus{}, e.r, "make the read faster"); got != e.want {
+			t.Errorf("E5, %s: %v, want %v", e.name, got, e.want)
+		}
+	}
+}
+
+// TestUnnamed_TaskAIsSentWhenTheRequestNamesItsUnit (W-M1.40, PLAN 6.1):
+// under the shipped rule Task A as written is not sent: its unit is a
+// full claim, two of its names covering the phrase, and every line the
+// brief holds is a role line withheld with the unit. A request that names
+// the unit's path or a file of it claims the unit by name, and its brief
+// names the purge job, the consumer outside the unit, and the lesson that
+// applies to it.
+func TestUnnamed_TaskAIsSentWhenTheRequestNamesItsUnit(t *testing.T) {
+	sp := graphtest.New(t)
+	withKnowledge(sp)
+	rev := graph.RevCommit(graphtest.Commit)
+	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	if r := b.Roles; r.Why != ClassFull || r.Basis != BasisCoverage || !r.Unnamed || !b.Empty() || b.Kept != 0 {
+		t.Fatalf("Task A as written: why %q basis %q unnamed %v, kept %d of %d lines\n%s", r.Why, r.Basis, r.Unnamed, b.Kept, len(b.Lines), b.Explain())
+	}
+	for _, prompt := range []string{
+		"in services/auth, make session expiry respect the org-level timeout override.",
+		"make session expiry in sessions.py respect the org-level timeout override.",
+	} {
+		b := Build(sp.Store, rev, prompt, Options{IDF: true})
+		t.Logf("%s\nbrief:\n%s", prompt, b.Text())
+		if r := b.Roles; r.Path != "services/auth" || r.Basis != BasisNamed || r.Unnamed || b.Empty() {
+			t.Errorf("%q: unit %q basis %q unnamed %v, kept %d", prompt, r.Path, r.Basis, r.Unnamed, b.Kept)
+			continue
+		}
+		for _, want := range []string{
+			"\nunit 'services/auth' (named in the request) is consumed by 'jobs/purge_sessions.py'",
+			"\nconsumer 'jobs/purge_sessions.py' imports 'auth.sessions', 'auth.conn'; INC-212 applies\n",
+			"\nlesson INC-212 applies to 'jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule ",
+		} {
+			if !strings.Contains(b.Text(), want) {
+				t.Errorf("%q: the brief has no %q", prompt, want)
+			}
+		}
+	}
+}

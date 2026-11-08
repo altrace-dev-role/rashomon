@@ -20,6 +20,8 @@ import (
 // are in reach, the one the prompt's words reach.
 // No lesson or decision is in the store: the first clause of the product
 // statement tested alone.
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead(t *testing.T) {
 	sp := graphtest.New(t)
 	g, rev := sp.Store, graph.RevCommit(graphtest.Commit)
@@ -33,8 +35,8 @@ func TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead(t *testing.T) {
 			return filepath.ToSlash(r)
 		}
 	}
-	cwd := Build(g, rev, prompt, Options{IDF: true, Rel: from("services/auth")})
-	root := Build(g, rev, prompt, Options{IDF: true})
+	cwd := Build(g, rev, prompt, Options{IDF: true, Rel: from("services/auth"), unitRule: noUnitRule})
+	root := Build(g, rev, prompt, Options{IDF: true, unitRule: noUnitRule})
 	t.Logf("from services/auth:\n%s\nbrief:\n%s", cwd.Explain(), cwd.Text())
 	t.Logf("from the root:\n%s\nbrief:\n%s", root.Explain(), root.Text())
 	const purge, table, sessions = graph.ID("file:jobs/purge_sessions.py"), graph.ID("tbl:public.sessions"), graph.ID("file:services/auth/auth/sessions.py")
@@ -76,7 +78,7 @@ func TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead(t *testing.T) {
 		{"", "consumer 'jobs/purge_sessions.py'"},
 	}
 	for _, tc := range cases {
-		opt := Options{IDF: true}
+		opt := Options{IDF: true, unitRule: noUnitRule}
 		if tc.dir != "" {
 			opt.Rel = from(tc.dir)
 		}

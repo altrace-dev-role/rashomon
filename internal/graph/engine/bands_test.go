@@ -171,10 +171,12 @@ func TestBands_AWithheldLineLeavesItsSlotAndSaysWhy(t *testing.T) {
 // INC-212 fall below the floor, so the unit line says they are not known
 // and no related line moves up into their slots; the record form keeps
 // the bands and the kinds not known.
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestBands_TaskAIsACandidateUnitAndItsConsumer(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, unitRule: noUnitRule})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	r := b.Roles
 	if r.Basis != BasisCoverage || r.File == "" || len(r.Reuse) == 0 || len(r.Consumers) == 0 || len(r.Knowledge) == 0 || len(r.Picks) < 2 {
@@ -227,6 +229,8 @@ func TestBands_TaskAIsACandidateUnitAndItsConsumer(t *testing.T) {
 // applies within the unit names the unit, never the withheld file, nor
 // the file outside the unit it also applies to; its line carries its
 // band.
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestBands_ARecordFoundThroughAWithheldFileNamesTheUnit(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
@@ -258,7 +262,7 @@ func TestBands_ARecordFoundThroughAWithheldFileNamesTheUnit(t *testing.T) {
 			return BandStated
 		}, "services/auth", BandCandidate},
 	} {
-		b := Build(sp.Store, rev, prompt, Options{IDF: true, bands: c.bands})
+		b := Build(sp.Store, rev, prompt, Options{IDF: true, bands: c.bands, unitRule: noUnitRule})
 		t.Logf("%s:\n%s", c.name, b.Text())
 		var k *Line
 		for i := range b.Lines[:b.Kept] {

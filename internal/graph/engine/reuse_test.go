@@ -48,10 +48,12 @@ func TestReuse_ASymptomWithNoUsePhraseClaimsNoReuse(t *testing.T) {
 // naming the cache's ttl, keeps the cache module as the reuse: the basis
 // is the use phrase, not the unit membership, and the line says so
 // (W-M1.25).
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestReuse_AUsePhraseKeepsTheInUnitFile(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry honor the cache ttl.", Options{IDF: true, bands: stateAll})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry honor the cache ttl.", Options{IDF: true, bands: stateAll, unitRule: noUnitRule})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	r := b.Roles
 	if len(r.Frame.Uses) != 1 {

@@ -59,39 +59,38 @@ func graphProject(t *testing.T, dir string) {
 }
 
 // TestGS5_TheGraphBriefRoutesAsAPreflightFinding (card GRAPH-SLOT1): a
-// prompt whose words select code under an indexed repository gets the
-// graph brief as a task-preflight finding of its own, routed and logged
-// in the preflight's one Route call, so the steer line holds its slots
-// and model text, the learn loop's delivered set holds the knowledge its
-// lines named, and the Stop recap's delivered notes hold its model text;
-// paths print relative to the hook's cwd, here two directories under the
-// index root and in the unit, which the unit line names '.' (W-M1.38: it
-// was refused, and the line dropped). INC-212's own line is withheld, a
-// record under a unit claimed by word coverage, and the consumer line
-// still lists it, so the learn loop counts it given. The explanation is
-// on disk under the store's graph directory. The request names no path,
-// so with no graph under its cwd it would have had no note at all.
+// prompt that names a file under an indexed repository gets the graph
+// brief as a task-preflight finding of its own, routed and logged in the
+// preflight's one Route call, so the steer line holds its slots and model
+// text, the learn loop's delivered set holds the knowledge its lines
+// named, and the Stop recap's delivered notes hold its model text; paths
+// print relative to the hook's cwd, here two directories under the index
+// root and in the unit, which the unit line names '.' (W-M1.38: it was
+// refused, and the line dropped). The request names sessions.py, a file
+// of services/auth, so the unit is claimed by name and the brief carries
+// the consumer outside the unit, the purge job, with INC-212's own line
+// (W-M1.40: the shipped rule withholds Task A's unit as written, a claim
+// by word coverage on a unit the request does not name). The explanation
+// is on disk under the store's graph directory.
 func TestGS5_TheGraphBriefRoutesAsAPreflightFinding(t *testing.T) {
 	e := newLessonEnv(t)
 	root := e.cwd
 	graphProject(t, root)
 	e.cwd = filepath.Join(root, "services", "auth")
 	e.start("s1")
-	out := e.prompt("s1", "p1", "make session expiry respect the org-level timeout override.")
+	out := e.prompt("s1", "p1", "make session expiry in sessions.py respect the org-level timeout override.")
 	t.Logf("additionalContext:\n%s", out.context)
 	if !strings.Contains(out.context, "rashomon record: the code this request touches, read from the repository graph at rev ") {
 		t.Fatalf("the prompt's context has no graph brief:\n%s", out.context)
 	}
 	for _, want := range []string{
-		"\nunit '.' (a candidate by word coverage; runner-up '../../jobs') declares ",
-		"\nconsumer '../../jobs/purge_sessions.py' (a candidate) imports 'auth.sessions', 'auth.conn'; INC-212 applies",
+		"\nunit '.' (named in the request) is consumed by '../../jobs/purge_sessions.py'",
+		"\nconsumer '../../jobs/purge_sessions.py' imports 'auth.sessions', 'auth.conn'; INC-212 applies",
+		"\nlesson INC-212 applies to '../../jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule ",
 	} {
 		if !strings.Contains(out.context, want) {
 			t.Errorf("the brief has no line opening\n%s\nin\n%s", want, out.context)
 		}
-	}
-	if strings.Contains(out.context, "lesson INC-212") {
-		t.Errorf("INC-212's own line was delivered:\n%s", out.context)
 	}
 	st, err := store.Open(e.root)
 	if err != nil {
@@ -229,7 +228,10 @@ func TestGraphKnowledgeImport_AMovedTreeKeysRowsToTheIndexItWrites(t *testing.T)
 // TestGraphFinding_CarriesSourceAndUnit (W-M1.7, AD19, AC-X.5): the brief's
 // finding names where its claim came from and what it is about: the store
 // class, the global id of the node its first line is keyed on, and the unit
-// that contains that node, all under the index's repository id.
+// that contains that node, all under the index's repository id. The request
+// names the purge job's file (W-M1.40: "purge sessions" alone is a claim by
+// one name on a unit the request does not name, which the shipped rule
+// withholds, so its brief claims no unit).
 func TestGraphFinding_CarriesSourceAndUnit(t *testing.T) {
 	dir := t.TempDir()
 	graphProject(t, dir)
@@ -237,7 +239,7 @@ func TestGraphFinding_CarriesSourceAndUnit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gb, ok := graphBrief("", filepath.Join(dir, "services", "auth"), "s1", "p1", []byte("purge sessions"))
+	gb, ok := graphBrief("", filepath.Join(dir, "services", "auth"), "s1", "p1", []byte("purge expired sessions in purge_sessions.py"))
 	if !ok || gb.Repo != h.Repo || gb.Unit == "" {
 		t.Fatalf("graphBrief = repo %q unit %q, %v; want repo %q and a unit", gb.Repo, gb.Unit, ok, h.Repo)
 	}

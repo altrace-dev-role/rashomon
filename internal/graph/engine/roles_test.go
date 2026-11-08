@@ -21,10 +21,12 @@ import (
 // that applies: the unit's own lesson, reached through the table its db
 // module writes (W-M1.23); the decision on the reuse is the reuse line's
 // to show, never a knowledge line.
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll, unitRule: noUnitRule})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	r := b.Roles
 	auth := graph.UnitID("py", "services/auth")
@@ -127,11 +129,13 @@ func containsID(ids []graph.ID, id graph.ID) bool {
 // score; a request that names the unit's path is claimed by name, so its
 // line carries the named basis and no runner-up. The basis and the
 // runner-up travel on the engine's Line and into the slot's fact.
+// No unit rule applies here: the shipped one (W-M1.40) withholds a unit
+// the request does not name.
 func TestRoles_TheUnitLineCarriesTheClaimsBasisAndRunnerUp(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
 	rev := graph.RevCommit(graphtest.Commit)
-	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
+	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll, unitRule: noUnitRule})
 	t.Logf("\n%s", b.Explain())
 	r := b.Roles
 	if r.Why != ClassFull || len(r.Picks) < 2 {

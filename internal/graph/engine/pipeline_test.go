@@ -30,11 +30,14 @@ func withKnowledge(sp *graphtest.Specimen) {
 }
 
 // TestPipeline_TaskA: the brief for Task A names the purge job and carries
-// INC-212 before the agent reads a file.
+// INC-212 before the agent reads a file. No unit rule applies here: the
+// shipped one (W-M1.40) withholds a unit the request does not name and
+// sends this brief only when the request names services/auth or a file
+// of it (TestUnnamed_TaskAIsSentWhenTheRequestNamesItsUnit).
 func TestPipeline_TaskA(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	for _, opt := range []Options{{}, {IDF: true}} {
+	for _, opt := range []Options{{unitRule: noUnitRule}, {IDF: true, unitRule: noUnitRule}} {
 		b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", opt)
 		t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 		if !strings.Contains(b.Text(), "jobs/purge_sessions.py") {
