@@ -56,6 +56,11 @@ type Phrase struct {
 type Frame struct {
 	Targets, Additions, Constraints, Uses []Phrase
 	Verbs                                 []string
+	// Aside is the words that carry a constraint clause, its exclusion
+	// word and the gerund after it ("without changing"): they frame the
+	// thing left alone and name neither it nor the work, so no stage
+	// weighs them (W-M1.33, O7).
+	Aside []string
 }
 
 // Parse reads the frame of prompt. A sentence with no verb clause is a
@@ -64,7 +69,7 @@ type Frame struct {
 // sentence ("Part 2", "Phase B") names nothing.
 func Parse(prompt string) Frame {
 	var f Frame
-	var verbs []string
+	var verbs, aside []string
 	var symptoms []Phrase
 	for _, sentence := range sentencesOf(prompt) {
 		if isLabel(sentence) {
@@ -79,6 +84,7 @@ func Parse(prompt string) Frame {
 		f.Constraints = addPhrases(f.Constraints, c.constraints)
 		f.Uses = addPhrases(f.Uses, c.uses)
 		verbs = append(verbs, c.verbs...)
+		aside = append(aside, c.aside...)
 	}
 	if len(f.Targets) == 0 && len(f.Additions) == 0 {
 		if len(verbs) == 0 {
@@ -89,6 +95,7 @@ func Parse(prompt string) Frame {
 	}
 	orderPhrases(f.Targets)
 	f.Verbs = uniq(Tokens(strings.Join(verbs, " ")))
+	f.Aside = uniq(Tokens(strings.Join(aside, " ")))
 	return f
 }
 
@@ -158,10 +165,11 @@ func isLabel(sentence string) bool {
 func low(w string) string { return strings.ToLower(w) }
 
 // clauses is one sentence's phrases by class; verbs is the verb-class
-// words that opened a clause or followed its modal.
+// words that opened a clause or followed its modal; aside the words
+// that carried a constraint clause.
 type clauses struct {
 	targets, additions, constraints, uses []Phrase
-	verbs                                 []string
+	verbs, aside                          []string
 }
 
 // parseSentence reads one sentence's clauses.
@@ -174,6 +182,12 @@ func parseSentence(s string) clauses {
 			continue
 		}
 		head := low(cl[0])
+		if exclusionWords.get()[head] {
+			_, cons, aside := splitExclusion(cl)
+			c.constraints = addPhrases(c.constraints, cons)
+			c.aside = append(c.aside, aside...)
+			continue
+		}
 		if useWords.get()[head] {
 			c.uses = addPhrase(c.uses, phraseOf(cl[1:]))
 			continue
@@ -183,6 +197,9 @@ func parseSentence(s string) clauses {
 			c.verbs = append(c.verbs, head)
 			rest, use := splitUse(cl[1:])
 			c.uses = addPhrase(c.uses, use)
+			rest, cons, aside := splitExclusion(rest)
+			c.constraints = addPhrases(c.constraints, cons)
+			c.aside = append(c.aside, aside...)
 			if under, ok := testClause(rest); ok && cls == "add" {
 				c.targets = addPhrases(c.targets, subjectOf(under))
 				continue
@@ -235,91 +252,6 @@ func parseSentence(s string) clauses {
 
 func (c clauses) empty() bool {
 	return len(c.targets)+len(c.additions)+len(c.constraints)+len(c.uses)+len(c.verbs) == 0
-}
-
-// subjectOf is the thing a verbless clause names: a symptom's subject
-// ("the report prints a row twice when" names the report printing), a
-// question's after its question word and auxiliary ("where is the
-// deadline enforced" names the deadline), and when the question word is
-// the subject itself ("what decides whether a lesson is proven", "who
-// calls the installer") the verb's complement (W-M1.32, H7).
-func subjectOf(cl []string) []Phrase {
-	question := len(cl) > 0 && questionWords.get()[low(cl[0])]
-	if question {
-		alone := low(cl[0]) == "what" || low(cl[0]) == "who"
-		cl = cl[1:]
-		if len(cl) > 0 && auxiliaryWords.get()[low(cl[0])] {
-			cl, alone = cl[1:], false
-		}
-		if alone && len(cl) > 1 && thirdPerson(cl[0], cl[1]) {
-			return phrasesOf(complement(cl[1:]))
-		}
-	}
-	return phrasesOf(cl[:predicateAt(cl, question)])
-}
-
-// thirdPerson is whether w, with next after it, is a verb in the third
-// person: a known verb's -s form ("decides"), or an -s word an object or
-// a clause follows ("calls the", "owns whether").
-func thirdPerson(w, next string) bool {
-	lw, ln := low(w), low(next)
-	if !strings.HasSuffix(lw, "s") || strings.HasSuffix(lw, "ss") {
-		return false
-	}
-	return verbClass.get()[singular(lw)] != "" || objectWords.get()[ln] || conditionWords.get()[ln] || ln == "that"
-}
-
-// complement is what a verb is about, as the thing: its words less a
-// clause opener (whether, if, that) and the clause's own auxiliary
-// ("whether a lesson is proven" is the lesson proven).
-func complement(words []string) []string {
-	if len(words) > 0 && (conditionWords.get()[low(words[0])] || low(words[0]) == "that") {
-		words = words[1:]
-	}
-	out := make([]string, 0, len(words))
-	for _, w := range words {
-		if !auxiliaryWords.get()[low(w)] {
-			out = append(out, w)
-		}
-	}
-	return out
-}
-
-// predicateAt is where a clause's subject ends: at an auxiliary or a
-// modal ("is over budget", "should report"), at a word in the third
-// person ("records", "counts", "drops") that a determiner or a pronoun
-// follows ("the panic barrier records the panic value") or that is a
-// verb of a known class with words after it ("the budget store drops
-// rows"), and in a question at the bare verb after the subject ("how
-// does the harness decide"), the subject being at least one word. A
-// clause with none is its subject whole.
-func predicateAt(cl []string, question bool) int {
-	for i, w := range cl {
-		lw := low(w)
-		if i == 0 {
-			continue
-		}
-		if auxiliaryWords.get()[lw] || modalWords.get()[lw] || question && verbClass.get()[lw] != "" && !determinerWords.get()[low(cl[i-1])] {
-			return i
-		}
-		third := i+1 < len(cl) && strings.HasSuffix(lw, "s") && !strings.HasSuffix(lw, "ss")
-		if third && (objectWords.get()[low(cl[i+1])] || verbClass.get()[singular(lw)] != "") {
-			return i
-		}
-	}
-	return len(cl)
-}
-
-// singular is a third-person verb's base form: reads, drops, fixes,
-// carries.
-func singular(w string) string {
-	switch {
-	case strings.HasSuffix(w, "ies"):
-		return w[:len(w)-3] + "y"
-	case strings.HasSuffix(w, "ches"), strings.HasSuffix(w, "shes"), strings.HasSuffix(w, "xes"), strings.HasSuffix(w, "sses"):
-		return w[:len(w)-2]
-	}
-	return strings.TrimSuffix(w, "s")
 }
 
 // testClause is the thing under test when words open with a test ("a
@@ -458,6 +390,25 @@ func bareVerbAt(words []string) int {
 		}
 	}
 	return len(words)
+}
+
+// splitExclusion is the words before the first exclusion word; as
+// constraints, the thing after it less the gerund that carries it; and
+// the carrier words themselves: "without changing the log format" leaves
+// the log format alone and "without changing" is aside, while a word in
+// -ing with nothing after it is the thing ("without logging").
+func splitExclusion(words []string) ([]string, []Phrase, []string) {
+	for i, w := range words {
+		if !exclusionWords.get()[low(w)] {
+			continue
+		}
+		tail, aside := words[i+1:], words[i:i+1]
+		if len(tail) > 1 && strings.HasSuffix(low(tail[0]), "ing") {
+			tail, aside = tail[1:], words[i:i+2]
+		}
+		return words[:i], phrasesOf(tail), aside
+	}
+	return words, nil, nil
 }
 
 // phrasesOf is the words as phrases: one, or at a possessive ("the seed

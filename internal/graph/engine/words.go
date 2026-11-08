@@ -79,6 +79,13 @@ var pronounWords = &lazySet[bool]{f: func() map[string]bool {
 
 // useWords open the phrase naming what the change takes up: the thing to
 // reuse, which the request presumes exists.
+// exclusionWords open what a change leaves alone ("without changing the
+// log format", "except the hook tests"): a constraint, at the sentence's
+// head or after the object (W-M1.33, O7).
+var exclusionWords = &lazySet[bool]{f: func() map[string]bool {
+	return map[string]bool{"without": true, "except": true, "excluding": true}
+}}
+
 var useWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{
 		"respect": true, "respecting": true, "honor": true, "honour": true, "honoring": true, "honouring": true,

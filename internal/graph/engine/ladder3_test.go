@@ -39,3 +39,45 @@ func TestRoles_APronounPhraseOfUnknownWordsNamesNothing(t *testing.T) {
 		t.Fatalf("unit %q why %q, want host: the determiner opens a thing of its own", r.Unit, r.Why)
 	}
 }
+
+// A constraint clause's words weigh nothing in which unit the target is,
+// the exclusion word and its gerund included: they say what the change
+// leaves alone, so a unit named for them is where the work is not
+// ("without changing the log format, make the linker skip anonymous
+// receivers" is the linker's, whatever declares a change, a log format
+// or a without) (W-M1.33, O7).
+func TestRoles_AConstraintsWordsWeighNoUnit(t *testing.T) {
+	g := synth(t, []synFile{
+		{"report", "report/chains.py", []synSym{fn("build_link"), fn("without_change"), fn("change_log"), fn("skip_value")}},
+		{"pgraph", "pgraph/link.py", []synSym{fn("link_pairs"), fn("log_file"), {kind: "const", name: "max_anonymous_receiver_bytes"}}},
+	}, nil, nil)
+	r := roles(t, g, "Without changing the log format, make the linker skip anonymous receivers.")
+	if !r.Found() || r.Picks[0].Path != "pgraph" {
+		t.Fatalf("unit %q why %q, want pgraph: report's names hold the constraint's words and 'skip', pgraph's the predicate's", r.Unit, r.Why)
+	}
+}
+
+// A prompt word spelled from a unit's name and more ("hostname" from
+// host) names the unit when the unit also holds the phrase's head: "the
+// hostname canonicaliser" is host's where host declares Canonical,
+// however many other units declare a canonical of their own (W-M1.33,
+// E5). The spelling alone names nothing: "the performance counter" is
+// not perf's when perf holds no counter.
+func TestRoles_ACompoundWordOpensOnAUnitNameThatHoldsTheHead(t *testing.T) {
+	g := synth(t, []synFile{
+		{"host", "host/host.py", []synSym{fn("canonical"), fn("canonical_name"), fn("loopback")}},
+		{"shape", "shape/canon.py", []synSym{fn("canonical"), fn("canonical_digest"), fn("is_case"), fn("literal_word")}},
+	}, nil, nil)
+	r := roles(t, g, "Cover the hostname canonicaliser with IPv6 literal cases.")
+	if !r.Found() || r.Picks[0].Path != "host" {
+		t.Fatalf("unit %q why %q, want host: 'hostname' opens on host, which holds the head", r.Unit, r.Why)
+	}
+	g = synth(t, []synFile{
+		{"perf", "perf/gate.py", []synSym{fn("case_gate")}},
+		{"budget", "budget/counter.py", []synSym{fn("performance_counter")}},
+	}, nil, nil)
+	r = roles(t, g, "Fix the performance counter.")
+	if !r.Found() || r.Picks[0].Path != "budget" {
+		t.Fatalf("unit %q why %q, want budget: perf holds no counter, so the spelling names nothing", r.Unit, r.Why)
+	}
+}

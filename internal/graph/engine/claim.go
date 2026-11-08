@@ -16,7 +16,7 @@ import (
 // counter's ...") and the whole-prompt fallback claim by a unit's name
 // alone: the ladder's reading of their words is a guess.
 func (r *Roles) claim(g Reader, c corpus, p Phrase, prompt []string, weights map[string]float64) ([]UnitPick, string) {
-	picks := Units(g, c, r.Target, except(prompt, r.Target), weights)
+	picks := Units(g, c, r.Target, r.outside(prompt), weights)
 	if u, toks, ok := c.unitNamed(r.Target); ok && (r.Fallback || nameClaims(picks, u, toks, r.Target)) {
 		picks = unitFirst(c, picks, u, toks)
 		return picks, picks[0].Class
@@ -40,6 +40,19 @@ func (r *Roles) claim(g Reader, c corpus, p Phrase, prompt []string, weights map
 }
 
 func refused(why string) []UnitPick { return []UnitPick{{Class: ClassPartial, Refused: why}} }
+
+// outside is the prompt's tokens less the target's, the constraints' and
+// the aside: a constraint names what the change leaves alone and the
+// aside carries it, so their words say where the work is not and weigh
+// nothing in which unit the target is (W-M1.33, O7).
+func (r Roles) outside(prompt []string) []string {
+	drop := append([]string{}, r.Target...)
+	for _, p := range r.Frame.Constraints {
+		drop = append(drop, p.Tokens...)
+	}
+	drop = append(drop, r.Frame.Aside...)
+	return except(prompt, drop)
+}
 
 // nameClaims is whether the unit a phrase names by its own segment takes
 // the phrase over the ladder's reading. A directory name is one word of
@@ -84,7 +97,9 @@ func nameClaims(picks []UnitPick, u string, toks, target []string) bool {
 // names ("the spend report", W-M1.31 K9): the modifier claims and the
 // head is the kind of thing, as a lone unit name claims as a modifier,
 // and no third unit takes the phrase for the word beside them. Any other
-// tie is the ladder's to settle.
+// tie is the ladder's to settle. A word spelled from a unit's name and
+// more names the unit when the unit also declares the head
+// (compoundNamed, W-M1.33 E5).
 func (c corpus) unitNamed(target []string) (string, []string, bool) {
 	type hit struct {
 		unit string
@@ -107,7 +122,7 @@ func (c corpus) unitNamed(target []string) (string, []string, bool) {
 		hits = append(hits, hit{u, toks, more})
 	}
 	if len(hits) == 0 {
-		return "", nil, false
+		return c.compoundNamed(target)
 	}
 	sort.Slice(hits, func(i, j int) bool {
 		if len(hits[i].toks) != len(hits[j].toks) {
@@ -142,6 +157,52 @@ func (c corpus) unitNamed(target []string) (string, []string, bool) {
 		return "", nil, false
 	}
 	return hits[modifier[0]].unit, hits[modifier[0]].toks, true
+}
+
+// compoundNamed is the unit a word of the phrase is spelled from, the
+// unit's name and three letters or more ("hostname" from host), when
+// the unit also declares the phrase's head: the name accounts for the
+// modifier and the declaration for the head, so the unit is named by
+// the whole phrase (W-M1.33, E5). The spelling alone names nothing
+// ("the performance counter" is not perf's when perf declares no
+// counter), and two such units name nothing.
+func (c corpus) compoundNamed(target []string) (string, []string, bool) {
+	if len(target) < 2 {
+		return "", nil, false
+	}
+	head := target[len(target)-1]
+	declaring := c.unitsDeclaring(head)
+	unit, word := "", ""
+	for u := range c.unitID {
+		seg := Tokens(path.Base(u))
+		if len(seg) != 1 || len(seg[0]) < 4 || !declaring[u] {
+			continue
+		}
+		for _, t := range target[:len(target)-1] {
+			if len(t) < len(seg[0])+3 || !strings.HasPrefix(t, seg[0]) {
+				continue
+			}
+			if unit != "" && unit != u {
+				return "", nil, false
+			}
+			unit, word = u, t
+		}
+	}
+	if unit == "" {
+		return "", nil, false
+	}
+	return unit, []string{word, head}, true
+}
+
+// unitsDeclaring is the units with a name that holds the token.
+func (c corpus) unitsDeclaring(t string) map[string]bool {
+	out := map[string]bool{}
+	for i := range c.nodes {
+		if hasToken(c.fields[i].Name, t) {
+			out[c.units[i]] = true
+		}
+	}
+	return out
 }
 
 // holds is the words of target that are seg: seg's tokens in a row, or
