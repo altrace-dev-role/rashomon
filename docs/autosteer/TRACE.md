@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 11:3x: E5's cost recorded before it ships (PLAN 6.1, "What E5 costs").
+  - Task A (cross-repo fixture) is a full-form word-coverage claim with no cited record: under E5 its brief is not sent and the purge-job consumer line goes with it; the 11-04 cross-repo result is not evidence for the shipped engine.
+  - Doc-comment ranking, record agreement, R1 and request-anchored records simulated: none moves classes2.tsv by more than 3 rows or 1 class; the remaining errors are ranking errors, so W-M1.41/42 change ranking evidence. Owed with W-M1.40: Task A pinned both ways, TestGS5 on a prompt E5 keeps.
 - 2026-11-08 12:2x: AC-M1.5 re-specified from VISION before any classes4.tsv row exists (PLAN 6.1, "AC-M1.5 re-specified from VISION").
   - Unit rule E5: a unit is claimed only from what the request names (named basis, a cited record's applies_to, a qualified whole-phrase claim, the unit's name in a target phrase of at most two tokens); AC-M1.1 judged as shape 3 judges; gate B unchanged; T1c G inert only at T1 context sha256 7641dab9cde93040, pattern task-preflight, key graph.
   - Simulated at d4f5d05e: classes2.tsv unit 120 of 160, 12 of 16 classes, candidates 9 of 11; classes3.tsv (in-sample) 125, 14 of 16; AC-M1.1 under shape-3 judging 10 of 10 and 47 of 54. Prediction registered: not met on a fresh set at E5 plus the knowledge clause alone; classes4.tsv waits for W-M1.40 to W-M1.42 and every class at 8 of 10 on both development files.
