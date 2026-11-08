@@ -53,3 +53,19 @@ T1_ALLOWED_TOOLS="Read,Grep,Glob,Edit,Write,LS,Bash"
 # copies live in ~/altrace-backups/t1-knowledge/ and run.sh refuses a file at any other digest.
 T1_KNOWLEDGE_LEDGER_SHA256=e7c6cb7a8808b49e4b24a2ebe192bcbb2cdeefbde9c192632a44e15871a616cc
 T1_KNOWLEDGE_NOTES_SHA256=0ebdd0633809e26f87fb21447f401d99821134cce2f46a30748d363cbf42a031
+# Delta 7 (appended 2026-11-08 at the engine freeze, with triple 4 (t1c-r4, t1c-u4) not yet started, before any run at
+# the new pin; every line above is unchanged): the G arm moves to the engine M1 closes on.
+#   W-M1.38's bands and the not-known line, no unit rule shipped (d4f5d05e), move T1's G brief: its unit
+#   'internal/platform' is a candidate by word coverage with runner-up 'cmd/rashomon', the consumer
+#   'cmd/rashomon/report_platform.go' a candidate, and the target, reuse and knowledge lines are withheld, the unit
+#   line naming them as not known (agent bytes 899 at 0e630250, 590 at d4f5d05e). Delta 1's sequence holds: "if it
+#   moves after the batch, AC-M1.4 is read again at the engine M1 closes on". The G runs at 0e630250 (t1c-g1 to
+#   t1c-g3) are their own arm, G0, printed beside the table and never pooled; G at the new pin runs as t1c-g11 to
+#   t1c-g20, interleaved G R U while U and R are under ten, then alone. U and R keep their pins: their binaries, tree
+#   and judge do not move with an engine commit. The batch cap reads every judged t1c-* run, G0 included, so it moves
+#   to 1.15 times the 33-run projection (10 U, 10 R, 3 G0 and 10 G at G0's mean) at the arm means of the n=3 read
+#   (t1c-n3-read.txt, read once over t1c-g1 to t1c-u3: U 4.575, R 6.419, G0 6.283; 191.62 USD), rounded up to 5 USD.
+#   The per-run cap, the n=3 ceiling and everything else stand.
+T1_G_BIN_SHA=d4f5d05e72c1452506b42ac76a08cf2621e8d271
+# T1_G_PGRAPH_SHA stays: pgraph/ is unchanged from 0e630250 to the new pin.
+T1_BATCH_CAP_USD=225

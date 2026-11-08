@@ -40,7 +40,7 @@ func TestT1C_TheT1cSliceIsFrozen(t *testing.T) {
 		"t1c/judge/oracle.py":                           "f263d7526a6f0ff32d082280a36617c58abb994ec14307b6c0cb011fdda75e40",
 		"t1c/judge/row.py":                              "6fc7954e16552300aa3572bfc7501766c16f04c8d92d93e836c8c59c65b2a1a0",
 		"t1c/oracle-symbols.txt":                        "9bb974460b8ecabb10d69ec54accab9dd985ec3286cb0c607bf358d61c961082",
-		"t1c/pins.txt":                                  "c6737ae66149f7882cb4810873dfd40902bb453993b8bdd5d20f7be323d4ba8d",
+		"t1c/pins.txt":                                  "6bb9e27e978ade4113d5fabd41236cc17a9a42a4a6cacbce669575352d665272",
 		"t1c/prompt.txt":                                "304d88a2755a93e02a85ca5595568be4d4bf70796e756edd1c0adfe2c1e79865",
 		"t1c/smoke-prompt.txt":                          "80bab31400b11e5b7597cdbb2f0fa0417db14f0363c7bf83d928660552899960",
 		"t1c/smoke.sh":                                  "5c98a0f3dc729ab8d74c39dc64942ac93df0dff7ea45034ebebdccdb2b61ce3c",
