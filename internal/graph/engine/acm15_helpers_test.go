@@ -121,8 +121,13 @@ func TestACM15_ClassScore(t *testing.T) {
 	if c.Knowledge != (roleCount{}) {
 		t.Errorf("knowledge %+v", c.Knowledge)
 	}
-	if got := c.missed(); !reflect.DeepEqual(got, []string{"consumers"}) {
-		t.Errorf("missed = %v", got)
+	if got := c.missed(halfGates); !reflect.DeepEqual(got, []string{"consumers"}) {
+		t.Errorf("missed(halfGates) = %v", got)
+	}
+	// The fresh set's 7 of 10: the unit's 8 and the consumers' 7 pass, the
+	// reuse line's 3 of 5 judged is under ceil(3.5) = 4.
+	if got := c.missed(freshGates); !reflect.DeepEqual(got, []string{"reuse"}) {
+		t.Errorf("missed(freshGates) = %v", got)
 	}
 	if row := c.row("refactor"); row == "" {
 		t.Errorf("row is empty")
@@ -165,5 +170,52 @@ func TestACM15_HalfWanted(t *testing.T) {
 		if got := halfWanted(c.env, c.half); got != c.want {
 			t.Errorf("halfWanted(%q, %q) = %v, want %v", c.env, c.half, got, c.want)
 		}
+	}
+}
+
+// A per-alternative cell is judged on the set of the unit the brief named
+// ('-' when that unit's set is empty), on the union of the parts' sets when
+// the brief named none of them, and a plain cell is the union already.
+func TestACM15_TruthFor(t *testing.T) {
+	cell := "internal/a=x.go;y.go|internal/b=-|internal/c=y.go;z.go"
+	cases := []struct{ cell, got, want string }{
+		{cell, "internal/a", "x.go;y.go"},
+		{cell, "internal/b", "-"},
+		{cell, "internal/c", "y.go;z.go"},
+		{cell, "internal/zz", "x.go;y.go;z.go"},
+		{cell, "", "x.go;y.go;z.go"},
+		{"internal/a=-|internal/b=-", "internal/zz", "-"},
+		{"x.go;y.go", "internal/a", "x.go;y.go"},
+		{"-", "internal/a", "-"},
+		{"*", "internal/a", "*"},
+	}
+	for _, c := range cases {
+		if got := truthFor(c.cell, c.got); got != c.want {
+			t.Errorf("truthFor(%q, %q) = %q, want %q", c.cell, c.got, got, c.want)
+		}
+	}
+	// The case the union rule scored wrong (classes.tsv N10): a brief on an
+	// alternative whose sets are empty, keeping no role line, is right.
+	if v := judgeAll(nil, truthFor("internal/a=x.go|pgraph/cmd/pgraph=-", "pgraph/cmd/pgraph")); v != (verdict{true, true}) {
+		t.Errorf("empty alternative judged %+v", v)
+	}
+}
+
+// The fresh set is ten rows of each of the sixteen claimed classes; a short
+// class, a long one and an unclaimed one are each named.
+func TestACM15_ClassCounts(t *testing.T) {
+	var rows [][]string
+	for _, cls := range claimedClasses {
+		for i := 0; i < 10; i++ {
+			rows = append(rows, []string{"x", cls})
+		}
+	}
+	if bad := classCounts(rows, 10); len(bad) != 0 {
+		t.Fatalf("full set: %v", bad)
+	}
+	rows = append(rows[1:], []string{"x", "refactor"}, []string{"x", "multi-task"})
+	want := []string{"feature-add 9", "multi-task not claimed", "refactor 11"}
+	if bad := classCounts(rows, 10); !reflect.DeepEqual(bad, want) {
+		t.Errorf("classCounts = %v, want %v", bad, want)
 	}
 }

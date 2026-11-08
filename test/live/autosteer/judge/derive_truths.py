@@ -11,6 +11,8 @@ miss against it.
 
 Run from this directory: python3 derive_truths.py --graph <graph.jsonl> --tsv classes.tsv > classes.filled.tsv
 fills the consumers and knowledge columns of every row whose cell is empty and leaves filled cells alone.
+With --per-alternative (classes2.tsv, W-M1.27) a row with more than one unit alternative gets one set per
+alternative, 'unit=set' parts joined by '|', so the judge reads the set of the unit the brief named.
 """
 import argparse
 import collections
@@ -97,15 +99,23 @@ def knowledge_key(k):
     return (KIND_RANK.get(k.split(":")[0], 3), k)
 
 
-def fill_row(g, row):
+def fill_row(g, row, per_alternative=False):
     """A unit cell of 'a;b' accepts either unit, so the derived sets are the union over the alternatives
     (consumers in the first alternative's order, then the next's, duplicates dropped; knowledge re-sorted
-    by kind then id); a '-' alternative contributes nothing, and a cell of '-' alone derives '-'."""
+    by kind then id); a '-' alternative contributes nothing, and a cell of '-' alone derives '-'. With
+    per_alternative and two or more units, each cell is instead 'a=<a's set>|b=<b's set>' in the unit
+    cell's order: a brief on b is judged against b's set, not a's (W-M1.27)."""
     units = [u.strip() for u in row["unit"].split(";") if u.strip() != "-"]
     if not units:
         for k in ("consumers", "knowledge"):
             if not row[k]:
                 row[k] = "-"
+        return row
+    if per_alternative and len(units) > 1:
+        if not row["consumers"]:
+            row["consumers"] = "|".join("%s=%s" % (u, cell(consumers_of_unit(g, u))) for u in units)
+        if not row["knowledge"]:
+            row["knowledge"] = "|".join("%s=%s" % (u, cell(knowledge_of_unit(g, u))) for u in units)
         return row
     if not row["consumers"]:
         seen = []
@@ -129,6 +139,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--graph", required=True)
     ap.add_argument("--tsv", required=True)
+    ap.add_argument("--per-alternative", action="store_true", help="one set per unit alternative (classes2.tsv)")
     a = ap.parse_args(argv)
     g = load_graph(a.graph)
     for line in open(a.tsv, encoding="utf-8"):
@@ -139,7 +150,7 @@ def main(argv=None):
         if len(f) != len(COLUMNS):
             sys.exit("row with %d fields: %s" % (len(f), f[0]))
         row = dict(zip(COLUMNS, f))
-        fill_row(g, row)
+        fill_row(g, row, a.per_alternative)
         sys.stdout.write("\t".join(row[c] for c in COLUMNS) + "\n")
     return 0
 

@@ -88,6 +88,22 @@ class Derive(unittest.TestCase):
         dt.fill_row(self.g, row)
         self.assertEqual((row["consumers"], row["knowledge"]), ("-", "les:L1"))
 
+    def test_fill_row_per_alternative_keeps_each_units_set(self):
+        row = {"unit": "a;b", "consumers": "", "knowledge": ""}
+        dt.fill_row(self.g, row, per_alternative=True)
+        self.assertEqual(row["consumers"], "a=c/c.go;b/b.go|b=-")
+        self.assertEqual(row["knowledge"], "a=req:R1;dec:D1|b=les:L1")
+
+    def test_fill_row_per_alternative_one_unit_is_a_plain_cell(self):
+        row = {"unit": "-;a", "consumers": "", "knowledge": ""}
+        dt.fill_row(self.g, row, per_alternative=True)
+        self.assertEqual((row["consumers"], row["knowledge"]), ("c/c.go;b/b.go", "req:R1;dec:D1"))
+
+    def test_fill_row_per_alternative_leaves_filled_cells(self):
+        row = {"unit": "a;b", "consumers": "kept", "knowledge": ""}
+        dt.fill_row(self.g, row, per_alternative=True)
+        self.assertEqual(row["consumers"], "kept")
+
 
 if __name__ == "__main__":
     unittest.main()
