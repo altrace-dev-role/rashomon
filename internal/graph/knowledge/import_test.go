@@ -61,9 +61,11 @@ B347 | 11-02 22:1x | manager | cited a green from a gate whose log was never rea
 // or "Lesson: ", a gap field that writes the repair first gives the
 // sentence after its "rule: " (B347), and a row with no rule written (a
 // prose row with no mark, a nine-field row with an empty gap) is title
-// only. The title passes the clause's rules: a narrative with '#' and
-// backticks over 160 bytes is written plain and cut at a word, so a brief
-// can carry the failure.
+// only. An unmarked gap field gives its rule after the card label (B227)
+// and an imperative one gives none (B231; W-M1.30, the cases in
+// TestImport_GapFieldRuleStanding). The title passes the clause's rules: a
+// narrative with '#' and backticks over 160 bytes is written plain and cut
+// at a word, so a brief can carry the failure.
 func TestImport_LedgerRow(t *testing.T) {
 	root := t.TempDir()
 	src := put(t, filepath.Join(root, "notes", "FAILURE-LEDGER.txt"), ledgerText)
@@ -93,8 +95,8 @@ func TestImport_LedgerRow(t *testing.T) {
 	}
 	// B231 names the tool and B233 a path under cmd/rashomon: a banned word
 	// either way, so each title stays as written and no brief carries it.
-	if p := rows[1]; p.ID != "B231" || p.Title != "ran rashomon audit --keep through an unquoted heredoc" || slot.Approved(p.Title).Validate() == nil {
-		t.Errorf("B231 title %q; want it as written: it holds a banned word", p.Title)
+	if p := rows[1]; p.ID != "B231" || p.Title != "ran rashomon audit --keep through an unquoted heredoc" || slot.Approved(p.Title).Validate() == nil || p.Clause != "" {
+		t.Errorf("B231 title %q, clause %q; want the title as written (it holds a banned word) and no rule (an imperative)", p.Title, p.Clause)
 	}
 	if p := rows[2]; p.ID != "B233" || !strings.Contains(p.Title, "cmd/rashomon/graph.go's package; see MANAGER-NOTES.md:350") {
 		t.Errorf("B233 title %q; want it as written: it holds a banned word", p.Title)
@@ -102,8 +104,8 @@ func TestImport_LedgerRow(t *testing.T) {
 	if p := rows[7]; p.ID != "B347" || p.Clause != "a green is cited only with its log's exit line" {
 		t.Errorf("B347 clause %q; want the rule its author marked after the repair, not the repair", p.Clause)
 	}
-	if s := rep.Sources[0]; s.Clauses != 6 || s.TitleOnly != 2 || s.Titles != 6 || len(s.Notes) != 0 {
-		t.Errorf("report %+v; want 6 with a clause, 2 title only with no refusal note, 6 titles a brief can carry (B231's and B233's hold a banned word)", s)
+	if s := rep.Sources[0]; s.Clauses != 5 || s.TitleOnly != 3 || s.Titles != 6 || len(s.Notes) != 0 {
+		t.Errorf("report %+v; want 5 with a clause, 3 title only with no refusal note, 6 titles a brief can carry (B231's and B233's hold a banned word)", s)
 	}
 	r := rows[0]
 	if r.Schema != Schema || r.ID != "B227" || r.Kind != KindLesson || r.Status != StatusCandidate || r.Tier != TierInferred {
@@ -112,15 +114,133 @@ func TestImport_LedgerRow(t *testing.T) {
 	if !strings.HasPrefix(r.Title, "closed ROWS-195") || r.Text != strings.Split(ledgerText, "\n")[3] {
 		t.Errorf("title %q, text %q; want what happened and the whole row", r.Title, r.Text)
 	}
-	want := "EVIDENCE-AT-HEAD1: a claim whose last supporting read names a sha other than the current head is unbacked"
+	want := "a claim whose last supporting read names a sha other than the current head is unbacked"
 	if r.Clause != want || len(r.Clause) > 160 || slot.Approved(r.Clause).Validate() != nil {
-		t.Errorf("clause = %q; want the gap field, approved", r.Clause)
+		t.Errorf("clause = %q; want the gap field's rule after its card label, approved", r.Clause)
 	}
 	if r.Source.File != "FAILURE-LEDGER.txt" || r.Source.Row != "B227" || len(r.Source.Digest) != 64 {
 		t.Errorf("source = %+v; want the file's base name, the row id and a sha256", r.Source)
 	}
 	if rep.Sources[0].Written != filepath.Join(root, Dir, "failure-ledger.json") {
 		t.Errorf("written %q", rep.Sources[0].Written)
+	}
+}
+
+// TestImport_GapFieldRuleStanding (W-M1.30): an unmarked gap field gives
+// a rule only where its author stated one, read from gap fields two blind
+// readers classified (rule, repair, card, status): the first sentence of
+// the first clause ("; "), after a card label, that opens with an
+// indefinite or universal word or the precondition "before", or holds a
+// deontic modal, and names no incident (a row, card or lane id, a commit
+// id, a clock time, a date, an issue number). A repair, a card or a status
+// gives "", so the row is title only and a brief never states one
+// incident's fix as the rule.
+func TestImport_GapFieldRuleStanding(t *testing.T) {
+	for _, c := range []struct{ name, gap, want string }{
+		{"B227 rule after its card label", "EVIDENCE-AT-HEAD1: a claim whose last supporting read names a sha other than the current head is unbacked",
+			"a claim whose last supporting read names a sha other than the current head is unbacked"},
+		{"B305 card label with a word after the id", "PROJECT-RESOLVE1 amended: an own directory PROVEN outside the project root and under no .git belongs to no project",
+			"an own directory PROVEN outside the project root and under no .git belongs to no project"},
+		{"B238 rule in the second clause", "DONE-INTO-W5 covers code claims; a claim about a merge needs the merge-tree run in the record",
+			"a claim about a merge needs the merge-tree run in the record"},
+		{"B276 first sentence, the incident in the next", "a change to any file under test/ runs test/acceptance in full (the hygiene gates live there). Cause per eng-4 08:0x PST: H113 excuses reviewed values",
+			"a change to any file under test/ runs test/acceptance in full (the hygiene gates live there)."},
+		{"B286 a line range is no date", "TOKEN-BUDGET1: no note when nothing named resolves and no lesson applies (preflight.go:69-71 fires on a syntactic name); weigh a quieter path for prompts that carry a task-notification",
+			"no note when nothing named resolves and no lesson applies (preflight.go:69-71 fires on a syntactic name)"},
+		{"B285 precondition", "before a product card, read the host's own surface for the capability; SCOPE1 becomes the README's scope line",
+			"before a product card, read the host's own surface for the capability"},
+		{"deontic modal", "the nightly purge must change with session lifetime", "the nightly purge must change with session lifetime"},
+		{"B351 repair naming its commit", "cff9e14f routes audit --keep through Refusal + AG-1 row; QA-1 fixes the IMPORTS on whichever of #241/#184 lands second", ""},
+		{"B293 repair naming its tool", "train.sh v2 refuses on CHANGES_REQUESTED without --resolves; --admin only on the gh user's own PR", ""},
+		{"B289 imperative repair", "release workflow: add the plugin archive to checksums.txt", ""},
+		{"B261 card", "TOKEN-BUDGET1 (eng-4)", ""},
+		{"B248 card by row", "same card as B241", ""},
+		{"B242 status", "out of scope (pacing)", ""},
+		{"B264 status naming a card", "none yet (manager: PRINT-WIDTH1's line review or a brief card)", ""},
+		{"B280 observation after a card label", "PREFLIGHT-DELIVER1: QA-3 08:5x PST narrowed it: no lessons are imported (so the flag is false everywhere)", ""},
+		{"B352 rule-shaped opening naming an incident", "no (trigger: a Bash line in a lane worktree whose any pipeline stage is go test, vet, build or generate, not only the first word) | owned to the manager 11-02 23:3x PST", ""},
+	} {
+		if got := gapRule(c.gap); got != c.want {
+			t.Errorf("%s: gapRule(%q) = %q; want %q", c.name, c.gap, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		s    string
+		want bool
+	}{
+		{"a merge waits for #228", true}, {"a fix lands at cff9e14f", true}, {"a fix lands at cff9e14f.", true}, {"a merge at 08:5x", true},
+		{"a merge on 10-31", true}, {"a stamp of 10/24", true}, {"a merge on 2026-11-07", true},
+		{"a card goes to QA-3", true}, {"a card goes to eng-4", true}, {"a class as B259/B271", true}, {"a card CI-GATES-ALL1", true},
+		{"a range at preflight.go:69-71", false}, {"a sha256 of the file", false}, {"a TEAM-BAR rule", false},
+		{"a run of test/acceptance", false}, {"a score of 13-45", false}, {"a count of 1234567 rows", false},
+	} {
+		if got := incident(c.s); got != c.want {
+			t.Errorf("incident(%q) = %v; want %v", c.s, got, c.want)
+		}
+	}
+}
+
+// TestGapRule_ClassifiedFields is a reading, not a gate: gapRule over the
+// unmarked gap fields two blind readers classified (RASHOMON_GAPRULE_LABELS,
+// a JSON list of {id, gap, a, b}, each reader's {cls, rule_span}), against
+// the truth that both readers call the field a rule, and against the truth
+// that either does; it names every row stated as a rule against the truth
+// and every rule missed.
+func TestGapRule_ClassifiedFields(t *testing.T) {
+	p := os.Getenv("RASHOMON_GAPRULE_LABELS")
+	if p == "" {
+		t.Skip("RASHOMON_GAPRULE_LABELS unset")
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type read struct {
+		Cls  string `json:"cls"`
+		Span string `json:"rule_span"`
+	}
+	var rows []struct {
+		ID, Gap string
+		A, B    read
+	}
+	if err := json.Unmarshal(b, &rows); err != nil || len(rows) == 0 {
+		t.Fatalf("labels %s: %v, %d rows", p, err, len(rows))
+	}
+	type tally struct {
+		tp, fp, fn, span int
+		fps, fns         []string
+	}
+	var both, either tally
+	for _, r := range rows {
+		got := gapRule(r.Gap)
+		count := func(tl *tally, rule bool) {
+			switch {
+			case got != "" && rule:
+				tl.tp++
+				for _, s := range []string{r.A.Span, r.B.Span} {
+					if s != "" && (strings.Contains(got, s) || strings.Contains(s, strings.TrimSuffix(got, "."))) {
+						tl.span++
+						break
+					}
+				}
+			case got != "":
+				tl.fp++
+				tl.fps = append(tl.fps, r.ID)
+			case rule:
+				tl.fn++
+				tl.fns = append(tl.fns, r.ID)
+			}
+		}
+		count(&both, r.A.Cls == "rule" && r.B.Cls == "rule")
+		count(&either, r.A.Cls == "rule" || r.B.Cls == "rule")
+	}
+	for _, x := range []struct {
+		name string
+		tl   tally
+	}{{"both readers", both}, {"either reader", either}} {
+		tl := x.tl
+		t.Logf("gap rule against %s: %d rows; stated %d, right %d, against the truth %d %v, missed %d %v; precision %d/%d, recall %d/%d; span agrees with a reader on %d of %d",
+			x.name, len(rows), tl.tp+tl.fp, tl.tp, tl.fp, tl.fps, tl.fn, tl.fns, tl.tp, tl.tp+tl.fp, tl.tp, tl.tp+tl.fn, tl.span, tl.tp)
 	}
 }
 
@@ -219,17 +339,18 @@ func TestImport_ADRDirectory(t *testing.T) {
 // approved-text rules or is empty; a clause the rules refuse (a banned
 // word, a quote that is no apostrophe) leaves the row title-only and the
 // report says so; a long clause is cut at a sentence, clause ("; ") or
-// word boundary.
+// word boundary. B2, B4 and B6 mark their rule, so the field reaches the
+// rules as written whatever its opening word (W-M1.30).
 func TestImport_ClauseValidates(t *testing.T) {
 	root := t.TempDir()
 	long := strings.Repeat("a changed package reruns every test that names it ", 5)
 	src := put(t, filepath.Join(root, "L.txt"), "id | a | b | c | d | e | f | g | h\n"+
 		"B1 | t | w | banned word row | p | e | c | no | the rashomon binary must not be named\n"+
-		"B2 | t | w | url row | p | e | c | no | see https://example.com/x for the rule\n"+
+		"B2 | t | w | url row | p | e | c | no | rule: see https://example.com/x for the rule\n"+
 		"B3 | t | w | long row | p | e | c | no | "+long+"\n"+
-		"B4 | t | w | unicode and symbols row | p | e | c | no | the `claims` comparator [sees] a done’s run — or none\n"+
+		"B4 | t | w | unicode and symbols row | p | e | c | no | rule: the `claims` comparator [sees] a done’s run — or none\n"+
 		"B5 | t | w | quote row | p | e | c | no | a 'quoted' word\n"+
-		"B6 | t | w | clause row | p | e | c | no | a test of a wall-clock budget injects its clock or its budget, so it reads the logic, never the machine; a local gate that runs packages in parallel is the second place a budget meets the machine\n")
+		"B6 | t | w | clause row | p | e | c | no | rule: a test of a wall-clock budget injects its clock or its budget, so it reads the logic, never the machine; a local gate that runs packages in parallel is the second place a budget meets the machine\n")
 	rep, err := Import(root, []string{src}, indexed(), rid, rev)
 	if err != nil {
 		t.Fatal(err)
