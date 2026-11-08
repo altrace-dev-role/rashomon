@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 15:5x: W-M1.40 built: unit rule E5 ships without its knowledge clause (40b788ac; PLAN 6.1, "W-M1.40 as built").
+  - Readings equal the simulator on all 544 rows of the five files; AC-M1.1 under clause 2: prompts 10 of 10, edge 47 of 54; replay 64 of 513 (E5 only withholds; a regression guard); clause 4 met (T1 context 589 bytes, 7641dab9cde93040).
+  - Mutants at 678bf289: 62 rows, 61 red, the one undetected the registered equivalent (WM-1.40 row 8). The GS-5 brief-before-early-return row, undetected at 40b788ac, is held by TestGS5_TheBriefIsReadForARequestThatNamesNothing.
+  - RES-2 init gate reads the fewest of five processes (4c302d0a): one sample went red on seeded-trie noise (65744 against 65536, 64944 on the rerun).
+  - AC-M1.5 not read; W-M1.41 (resolve precedence, the knowledge clause) and W-M1.42 follow.
 - 2026-11-08 11:3x: E5's cost recorded before it ships (PLAN 6.1, "What E5 costs").
   - Task A (cross-repo fixture) is a full-form word-coverage claim with no cited record: under E5 its brief is not sent and the purge-job consumer line goes with it; the 11-04 cross-repo result is not evidence for the shipped engine.
   - Doc-comment ranking, record agreement, R1 and request-anchored records simulated: none moves classes2.tsv by more than 3 rows or 1 class; the remaining errors are ranking errors, so W-M1.41/42 change ranking evidence. Owed with W-M1.40: Task A pinned both ways, TestGS5 on a prompt E5 keeps.
