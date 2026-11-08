@@ -6,7 +6,7 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
-- 2026-11-08 11:4x: W-M1.38 built (291803ea, picked from 3df223b9); the judge reads the band (bc4b8190); AC-M1.5 not read.
+- 2026-11-08 03:4x: W-M1.38 built (291803ea, picked from 3df223b9); the judge reads the band (bc4b8190); AC-M1.5 not read.
   - Bands from a 15-cell calibration (kind under the unit basis, 320 development rows); no unit basis withheld (unit-name 57/81, coverage 56/105 candidates); RelPath accepts "." and ".." to four hops; TestGS5's INC-212 lesson line withheld. T1's G brief 899 to 590 bytes.
   - Gate: suite 65 ok 0 FAIL, TestACM15_ 14 and tripwires 20 pass, prompts 9/10, edge 47/54, replay 248/513, K7 p95 279.6 ms.
   - Development readings, shape 3, matched by an independent tally: classes2.tsv unit gate 6 of 16, prose 13/62, stated 32/36, candidate 40/87; classes.tsv unit gate 16 of 16, stated 39/39, candidate 85/99; both not met.
