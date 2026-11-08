@@ -72,12 +72,18 @@ func TestColdAllocBudget(t *testing.T) {
 }
 
 // coldLevelRuns is how many fresh processes TestPE1_ColdCallIsOneLevel
-// spawns, and coldLevelSpreadBytes how far apart their figures may sit. At
-// one P, twenty fresh post.bash_short calls spread 1440 B (152640 to 154080,
-// pe1-gmp); the two levels an unpinned process draws sit 3.7K or more apart.
+// spawns, and coldLevelGapBytes the largest step their sorted figures may
+// take (LevelGap). The two levels an unpinned process draws sit 3.7K or more
+// apart (pe1-gmp), and one high run read 4808 B over nine low ones
+// (pe1-cold2). The figure's own noise opens no step that wide but does widen
+// its range: at 29ee28f9, 120 fresh processes made 14 to 26 of sync.Map's
+// 160-byte trie nodes in the call while the rest of the figure took two
+// values 128 B apart, and over nineteen CI sets of ten the largest step read
+// 944 B while the range read up to 2064 B (run 42447803644, linux), so the
+// gate reads the step, not the range.
 const (
-	coldLevelRuns        = 10
-	coldLevelSpreadBytes = 2048
+	coldLevelRuns     = 10
+	coldLevelGapBytes = 2048
 )
 
 // TestPE1_ColdCallIsOneLevel (card PERF-EDGE1): the cold figure is one
@@ -87,8 +93,8 @@ const (
 // nine read 158.4K to 161.5K (pe1-gmp; CI macos read [163256 156312
 // 156152]), and TestColdAllocBudget's minimum of three went red whenever all
 // three drew the high level. TestColdCall pins one P for its subtest and
-// coldCallAllocOnce starts its process at one P, so ten fresh runs sit
-// within coldLevelSpreadBytes. Break: both pins dropped, and ten runs draw
+// coldCallAllocOnce starts its process at one P, so ten fresh runs take no
+// step over coldLevelGapBytes. Break: both pins dropped, and ten runs draw
 // both levels; the subtest's pin alone still drew one high run in ten at
 // eight P (pe1-cold2: 160784 beside nine at 155144 to 155976). A call during
 // which the runtime started an OS thread read 5.3K or 10.6K over the rest on
@@ -105,11 +111,12 @@ func TestPE1_ColdCallIsOneLevel(t *testing.T) {
 		t.Errorf("%s: the runtime started OS threads inside the call (runs %v, threads %v), want none: TestColdCall's setup leaves idle Ms (coldWarmThreads)", id, all, threads)
 	}
 	lo, hi := slices.Min(all), slices.Max(all)
-	if hi-lo > coldLevelSpreadBytes {
-		t.Errorf("%s: %d fresh cold calls spread %d bytes (%d to %d, runs %v), want within %d: the cold figure has more than one level", id, len(all), hi-lo, lo, hi, all, coldLevelSpreadBytes)
+	gap, below, above, _ := LevelGap(all)
+	if gap > coldLevelGapBytes {
+		t.Errorf("%s: %d fresh cold calls step %d bytes from %d to %d (range %d to %d, runs %v), want no step over %d: the cold figure has more than one level", id, len(all), gap, below, above, lo, hi, all, coldLevelGapBytes)
 		return
 	}
-	t.Logf("%s: %d fresh cold calls within %d bytes (%d to %d, runs %v)", id, len(all), hi-lo, lo, hi, all)
+	t.Logf("%s: %d fresh cold calls, largest step %d bytes (range %d to %d, runs %v)", id, len(all), gap, lo, hi, all)
 }
 
 // coldCallAlloc runs cmd/rashomon's TestColdCall/<id> subtest in coldRuns
