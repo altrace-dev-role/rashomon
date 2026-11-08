@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 12:2x: AC-M1.5 re-specified from VISION before any classes4.tsv row exists (PLAN 6.1, "AC-M1.5 re-specified from VISION").
+  - Unit rule E5: a unit is claimed only from what the request names (named basis, a cited record's applies_to, a qualified whole-phrase claim, the unit's name in a target phrase of at most two tokens); AC-M1.1 judged as shape 3 judges; gate B unchanged; T1c G inert only at T1 context sha256 7641dab9cde93040, pattern task-preflight, key graph.
+  - Simulated at d4f5d05e: classes2.tsv unit 120 of 160, 12 of 16 classes, candidates 9 of 11; classes3.tsv (in-sample) 125, 14 of 16; AC-M1.1 under shape-3 judging 10 of 10 and 47 of 54. Prediction registered: not met on a fresh set at E5 plus the knowledge clause alone; classes4.tsv waits for W-M1.40 to W-M1.42 and every class at 8 of 10 on both development files.
 - 2026-11-08 11:0x: AC-M1.5's one read on classes3.tsv at 52efe101 (engine d4f5d05e): not met; M1 not closed.
   - Gate shape 3: unit 92 of 160, the unit gate met on 6 of 16 classes, every term on 5; gate B stated 34 of 40 (met), candidate 21 of 71 (0.30, not met); naming rows 45 of 71; the independent tally agrees on every cell.
   - AC-M1.0 to AC-M1.3 met at the tip (TestACM10_ PASS; prompts 9 of 10, edge 47 of 54, replay 220 of 513; K7 prompt path p95 108.4 ms; ledger 90.3, notes 96.1 percent, second import byte-identical); T1's G brief byte-identical to delta 7's pin (590 bytes). AC-M1.4 open at G 2, R 5, U 5 of 10.
