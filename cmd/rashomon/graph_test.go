@@ -11,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
+	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -140,6 +141,34 @@ func TestGS5_TheGraphBriefRoutesAsAPreflightFinding(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(e.root, "graph", "s1-p1.txt")); err != nil {
 		t.Errorf("evidence file: %v", err)
+	}
+}
+
+// TestGS5_TheBriefIsReadForARequestThatNamesNothing (card GRAPH-SLOT1): a
+// request with no path and no identifier in it still gets the graph brief
+// when the unit rule keeps its unit, so the preflight reads the brief
+// before its early return. "auth expiry" is a qualified claim covering its
+// whole phrase (the unit's path covers 'auth', one of its names 'expiry'),
+// which E5 keeps. The request TestGS5_TheGraphBriefRoutesAsAPreflightFinding
+// sends names sessions.py, which passes the early return with or without a
+// brief, so it no longer holds this order (W-M1.40).
+func TestGS5_TheBriefIsReadForARequestThatNamesNothing(t *testing.T) {
+	const prompt = "make auth expiry respect the org-level timeout override."
+	if intent.Names([]byte(prompt), false) {
+		t.Fatalf("premise: %q names a path or an identifier", prompt)
+	}
+	e := newLessonEnv(t)
+	root := e.cwd
+	graphProject(t, root)
+	e.cwd = filepath.Join(root, "services", "auth")
+	e.start("s1")
+	out := e.prompt("s1", "p1", prompt)
+	t.Logf("additionalContext:\n%s", out.context)
+	if !strings.Contains(out.context, "rashomon record: the code this request touches, read from the repository graph at rev ") {
+		t.Fatalf("a request that names nothing, on a unit the rule keeps, has no graph brief:\n%s", out.context)
+	}
+	if !strings.Contains(out.context, "\nunit '.' ") {
+		t.Errorf("the brief has no unit line for services/auth:\n%s", out.context)
 	}
 }
 
