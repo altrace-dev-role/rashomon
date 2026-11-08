@@ -8,9 +8,9 @@ S = "internal/steer/render/slot/graph.go"
 m("GS-1 a line holding two facts is bound", S,
   "\tif err := l.oneFact(); err != nil {\n\t\treturn nil, err\n\t}\n\tm := l.more\n", "\tm := l.more\n",
   "TestGS1_BindLeavesOutAndCountsWhatAChecksRefuses")
-m("GS-1 the record form keeps the path", S,
-  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Role: c.Role, Basis: c.Basis, Lessons: slices.Clone(c.Lessons)}\n",
-  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Path: c.Path, Role: c.Role, Basis: c.Basis, Lessons: slices.Clone(c.Lessons)}\n",
+m("GS-1 the record form keeps the path", "internal/steer/render/slot/graph_record.go",
+  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Role: c.Role, Basis: c.Basis, Band: c.Band, Lessons: slices.Clone(c.Lessons)}\n",
+  "\t\tout.digest = digest(string(c.Path))\n\t\tout.code = &CodeFact{Path: c.Path, Role: c.Role, Basis: c.Basis, Band: c.Band, Lessons: slices.Clone(c.Lessons)}\n",
   "TestGS1_RecordFormHoldsDigestsCountsAndIds")
 m("GS-1 a refused name reaches the line", S,
   "\t\tc.Names, m.Names = keptIdents(c.Names, m.Names, maxLineIdents)\n", "\t\tc.Names, m.Names = c.Names, m.Names\n",

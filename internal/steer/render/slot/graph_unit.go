@@ -2,6 +2,7 @@ package slot
 
 import (
 	"errors"
+	"slices"
 	"strings"
 )
 
@@ -15,16 +16,21 @@ import (
 
 // UnitFact is the unit that owns the task: its path, how the unit was
 // claimed (Basis, one of the three words below; empty renders as before),
-// the runner-up unit when the claim is by word coverage, the symbols of it
-// the request names, the files outside it that consume them, and the
-// knowledge that applies to the unit as a whole.
+// the runner-up unit when the claim is by word coverage or a candidate's,
+// the symbols of it the request names, the files outside it that consume
+// them, and the knowledge that applies to the unit as a whole. Band is how
+// far the claim is stated (BandStated, BandCandidate; empty renders as
+// stated), and Unknown the kinds of role line the brief withheld, in the
+// Unknown words below.
 type UnitFact struct {
 	Path      RelPath
 	Basis     string
+	Band      string
 	RunnerUp  RelPath
 	Names     []Ident
 	Consumers []RelPath
 	Lessons   []KnowledgeID
+	Unknown   []string
 }
 
 // The basis of a unit claim (S3, AC-M1.1 clause 3), so a unit line is
@@ -37,6 +43,35 @@ const (
 	BasisUnitName = "unit-name"
 	BasisCoverage = "coverage"
 )
+
+// The bands a line is delivered in (W-M1.38, abstention by evidence): a
+// line of a kind whose delivered precision is at least 0.8 is stated, from
+// 0.5 a candidate, which a unit line says beside its runner-up; below 0.5
+// the line is withheld and never reaches a slot. Empty renders as stated.
+const (
+	BandStated    = "stated"
+	BandCandidate = "candidate"
+)
+
+// The kinds of role line a unit line names as not known: the target
+// file, the reuse, the consumers and the knowledge that applies. The
+// last two say "of the change" and "to the change", so the clause is not
+// read against the unit's own consumers and records the line lists.
+const (
+	UnknownTarget    = "target"
+	UnknownReuse     = RoleReuse
+	UnknownConsumer  = RoleConsumer
+	UnknownKnowledge = "knowledge"
+)
+
+// unknownWords is each Unknown kind as the line says it, in the order the
+// line lists them.
+var unknownWords = []struct{ kind, text string }{
+	{UnknownTarget, "the file to change"},
+	{UnknownReuse, "the code to reuse"},
+	{UnknownConsumer, "the consumers of the change"},
+	{UnknownKnowledge, "the records that apply to the change"},
+}
 
 // The roles a code line carries beside none.
 const (
@@ -101,6 +136,14 @@ func validBasis(role, b string) error {
 	return nil
 }
 
+// validBand is whether b is empty or one of the two band words.
+func validBand(b string) error {
+	if b != "" && b != BandStated && b != BandCandidate {
+		return errors.New("slot: line has a band outside stated and candidate")
+	}
+	return nil
+}
+
 func (f UnitFact) validate() error {
 	if err := f.Path.Validate(); err != nil {
 		return err
@@ -119,11 +162,20 @@ func (f UnitFact) validate() error {
 	return validIDs(f.Lessons)
 }
 
-// validDisclosure is whether the basis is one of the three words or empty
-// and the runner-up, when named, passes the path check.
+// validDisclosure is whether the basis is one of the three words or empty,
+// the band one of the two or empty, each unknown kind one of the four and
+// named once, and the runner-up, when named, passes the path check.
 func (f UnitFact) validDisclosure() error {
 	if f.Basis != "" && f.Basis != BasisNamed && f.Basis != BasisUnitName && f.Basis != BasisCoverage {
 		return errors.New("slot: unit line has a basis outside named, unit-name and coverage")
+	}
+	if err := validBand(f.Band); err != nil {
+		return err
+	}
+	for i, k := range f.Unknown {
+		if unknownText(k) == "" || slices.Contains(f.Unknown[:i], k) {
+			return errors.New("slot: unit line names an unknown kind outside the four, or twice")
+		}
 	}
 	if f.RunnerUp != "" {
 		return f.RunnerUp.Validate()
@@ -132,8 +184,9 @@ func (f UnitFact) validDisclosure() error {
 }
 
 // bindUnit leaves out and counts what a check refuses and cuts each list
-// at its cap; the unit's path, a basis outside the three words and a
-// runner-up path that fails a check refuse the line.
+// at its cap; the unit's path, a basis outside the three words, a band
+// outside the two, an unknown kind outside the four and a runner-up path
+// that fails a check refuse the line.
 func (l GraphLine) bindUnit() (Value, error) {
 	u, m := *l.unit, l.more
 	if err := u.Path.Validate(); err != nil {
@@ -165,13 +218,15 @@ func keptPaths(items []RelPath, more, cap int) ([]RelPath, int) {
 
 // unitText is "unit 'internal/platform' (by word coverage; runner-up
 // 'internal/verify') declares 'Read', 'Callers'; is consumed by
-// 'cmd/rashomon/report_platform.go'; D145 applies", the basis clause in
-// one of its three forms or absent, or "a unit on record" with counts in
-// the record form.
+// 'cmd/rashomon/report_platform.go'; D145 applies; not known: the code to
+// reuse", the basis clause in one of its forms or absent, or "a unit on
+// record" with counts in the record form; the kinds not known close it,
+// after a semicolon even when nothing else is listed, so the clause is
+// never read as the unit's own.
 func (l GraphLine) unitText() string {
 	u, m := *l.unit, l.more
 	head := "unit " + u.Path.Text()
-	if b := basisText(u.Basis, u.RunnerUp); b != "" {
+	if b := basisText(u.Basis, u.Band, u.RunnerUp); b != "" {
 		head += " " + b
 	}
 	if l.keyed {
@@ -187,16 +242,63 @@ func (l GraphLine) unitText() string {
 	if p := applies(u.Lessons, m.Lessons); p != "" {
 		parts = append(parts, p)
 	}
-	if len(parts) == 0 {
-		return head
+	text := head
+	if len(parts) > 0 {
+		text += " " + strings.Join(parts, "; ")
 	}
-	return head + " " + strings.Join(parts, "; ")
+	if p := notKnown(u.Unknown); p != "" {
+		text += "; " + p
+	}
+	return text
+}
+
+// notKnown is "not known: the file to change, the code to reuse" for the
+// kinds the brief withheld, in unknownWords' order, or "" for none.
+func notKnown(kinds []string) string {
+	var texts []string
+	for _, w := range unknownWords {
+		if slices.Contains(kinds, w.kind) {
+			texts = append(texts, w.text)
+		}
+	}
+	if len(texts) == 0 {
+		return ""
+	}
+	return "not known: " + strings.Join(texts, ", ")
+}
+
+// unknownText is how a unit line says kind k is not known, or "" for a
+// kind outside the four.
+func unknownText(k string) string {
+	for _, w := range unknownWords {
+		if w.kind == k {
+			return w.text
+		}
+	}
+	return ""
 }
 
 // basisText is the unit line's disclosure clause: how the unit was
 // claimed, and for a claim by word coverage the runner-up when there was
-// one.
-func basisText(basis string, runnerUp RelPath) string {
+// one. A candidate says so before its basis and always names its
+// runner-up, the pair the brief stands on: "(a candidate by its name;
+// runner-up 'internal/verify')".
+func basisText(basis, band string, runnerUp RelPath) string {
+	if band == BandCandidate {
+		s := "(a candidate"
+		switch basis {
+		case BasisNamed:
+			s += " named in the request"
+		case BasisUnitName:
+			s += " by its name"
+		case BasisCoverage:
+			s += " by word coverage"
+		}
+		if runnerUp != "" {
+			s += "; runner-up " + runnerUp.Text()
+		}
+		return s + ")"
+	}
 	switch basis {
 	case BasisNamed:
 		return "(named in the request)"
@@ -207,6 +309,22 @@ func basisText(basis string, runnerUp RelPath) string {
 			return "(by word coverage; runner-up " + runnerUp.Text() + ")"
 		}
 		return "(by word coverage)"
+	}
+	return ""
+}
+
+// codeClause is a code line's disclosure clause: "(a candidate)" for a
+// line in the candidate band, its reuse basis after it ("(a candidate;
+// named to use)"), or the reuse basis alone as before.
+func codeClause(band, basis string) string {
+	b := strings.TrimSuffix(strings.TrimPrefix(reuseBasisText(basis), "("), ")")
+	switch {
+	case band == BandCandidate && b != "":
+		return "(a candidate; " + b + ")"
+	case band == BandCandidate:
+		return "(a candidate)"
+	case b != "":
+		return "(" + b + ")"
 	}
 	return ""
 }

@@ -54,10 +54,11 @@ func roleLines(g Reader, rev graph.Rev, r Roles, byID map[graph.ID]Candidate) []
 
 // merge puts the role lines first and the related lines Select kept after
 // them, a related line a role line already stands for dropped, and cuts
-// at MaxLines. Select's decisions are renumbered to the merged order; a
-// related line the role lines displaced is cut with a decision saying so,
-// and each role line gets one naming its role.
-func merge(g Reader, rev graph.Rev, r Roles, related []Line, decisions []Decision, byID map[graph.ID]Candidate) ([]Line, []Decision) {
+// at MaxLines; then it bands the lines and takes out the withheld ones
+// (withhold, bands.go). Select's decisions are renumbered to the merged
+// order; a related line the role lines displaced is cut with a decision
+// saying so, and each role line gets one naming its role.
+func merge(g Reader, rev graph.Rev, r Roles, related []Line, decisions []Decision, byID map[graph.ID]Candidate, band bandFunc) ([]Line, []Decision) {
 	lines := roleLines(g, rev, r, byID)
 	at := map[graph.ID]int{}
 	var out []Decision
@@ -89,5 +90,5 @@ func merge(g Reader, rev graph.Rev, r Roles, related []Line, decisions []Decisio
 	if len(lines) > MaxLines {
 		lines = lines[:MaxLines]
 	}
-	return lines, out
+	return withhold(lines, out, r, band)
 }

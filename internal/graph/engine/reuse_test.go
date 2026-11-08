@@ -51,7 +51,7 @@ func TestReuse_ASymptomWithNoUsePhraseClaimsNoReuse(t *testing.T) {
 func TestReuse_AUsePhraseKeepsTheInUnitFile(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry honor the cache ttl.", Options{IDF: true})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry honor the cache ttl.", Options{IDF: true, bands: stateAll})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	r := b.Roles
 	if len(r.Frame.Uses) != 1 {

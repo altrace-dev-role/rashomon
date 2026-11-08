@@ -64,9 +64,12 @@ func graphProject(t *testing.T, dir string) {
 // and model text, the learn loop's delivered set holds the knowledge its
 // lines named, and the Stop recap's delivered notes hold its model text;
 // paths print relative to the hook's cwd, here two directories under the
-// index root. The explanation is on disk under the store's graph
-// directory. The request names no path, so with no graph under its cwd it
-// would have had no note at all.
+// index root and in the unit, which the unit line names '.' (W-M1.38: it
+// was refused, and the line dropped). INC-212's own line is withheld, a
+// record under a unit claimed by word coverage, and the consumer line
+// still lists it, so the learn loop counts it given. The explanation is
+// on disk under the store's graph directory. The request names no path,
+// so with no graph under its cwd it would have had no note at all.
 func TestGS5_TheGraphBriefRoutesAsAPreflightFinding(t *testing.T) {
 	e := newLessonEnv(t)
 	root := e.cwd
@@ -78,9 +81,16 @@ func TestGS5_TheGraphBriefRoutesAsAPreflightFinding(t *testing.T) {
 	if !strings.Contains(out.context, "rashomon record: the code this request touches, read from the repository graph at rev ") {
 		t.Fatalf("the prompt's context has no graph brief:\n%s", out.context)
 	}
-	want := "lesson INC-212 applies to '../../jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
-	if !strings.Contains(out.context, want) {
-		t.Errorf("the lesson line is not\n%s\nin\n%s", want, out.context)
+	for _, want := range []string{
+		"\nunit '.' (a candidate by word coverage; runner-up '../../jobs') declares ",
+		"\nconsumer '../../jobs/purge_sessions.py' (a candidate) imports 'auth.sessions', 'auth.conn'; INC-212 applies",
+	} {
+		if !strings.Contains(out.context, want) {
+			t.Errorf("the brief has no line opening\n%s\nin\n%s", want, out.context)
+		}
+	}
+	if strings.Contains(out.context, "lesson INC-212") {
+		t.Errorf("INC-212's own line was delivered:\n%s", out.context)
 	}
 	st, err := store.Open(e.root)
 	if err != nil {

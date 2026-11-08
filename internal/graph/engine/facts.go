@@ -15,7 +15,9 @@ import (
 // source. rel maps a graph path to the brief's form.
 func lineFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel func(string) string) slot.GraphLine {
 	if n, ok := g.Node(l.Key, rev); ok && IsKnowledge(n.Kind) {
-		return slot.NewKnowledgeLine(knowledgeFact(g, rev, n, l.Anchor, rel))
+		f := knowledgeFact(g, rev, n, l.Anchor, rel)
+		f.Band = l.Band
+		return slot.NewKnowledgeLine(f)
 	}
 	if strings.HasPrefix(string(l.Key), "unit:") {
 		return slot.NewUnitLine(unitFact(g, rev, l, rel))
@@ -26,12 +28,12 @@ func lineFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel 
 	return slot.NewCodeLine(codeFact(g, rev, l, byID, rel))
 }
 
-// unitFact is a unit line's facts: its path, the claim's basis and the
+// unitFact is a unit line's facts: its path, the claim's basis, band and
 // runner-up unit (S3), the target symbols it declares (the line's
-// members), the files outside it that consume it, and the knowledge that
-// applies to the unit itself.
+// members), the files outside it that consume it, the knowledge that
+// applies to the unit itself, and the kinds of role line withheld.
 func unitFact(g Reader, rev graph.Rev, l Line, rel func(string) string) slot.UnitFact {
-	f := slot.UnitFact{Path: slot.RelPath(rel(unitPath(l.Key))), Basis: l.Basis}
+	f := slot.UnitFact{Path: slot.RelPath(rel(unitPath(l.Key))), Basis: l.Basis, Band: l.Band, Unknown: l.Unknown}
 	if l.RunnerUp != "" {
 		f.RunnerUp = slot.RelPath(rel(unitPath(l.RunnerUp)))
 	}
@@ -49,10 +51,10 @@ func unitFact(g Reader, rev graph.Rev, l Line, rel func(string) string) slot.Uni
 
 // codeFact is a file line's facts: the members declared in it, their
 // relations in the order calls, writes, reads, imports, the knowledge
-// that applies to any member, the role the line holds and, for a reuse,
-// the basis word the reuse stage settled.
+// that applies to any member, the role the line holds, its band and, for
+// a reuse, the basis word the reuse stage settled.
 func codeFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel func(string) string) slot.CodeFact {
-	f := slot.CodeFact{Path: slot.RelPath(rel(strings.TrimPrefix(string(l.Key), "file:")))}
+	f := slot.CodeFact{Path: slot.RelPath(rel(strings.TrimPrefix(string(l.Key), "file:"))), Band: l.Band}
 	switch l.Role {
 	case RoleReuse:
 		f.Role, f.Basis = slot.RoleReuse, l.Basis
@@ -111,14 +113,16 @@ func tableFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate) slo
 // title and clause; the slot renders them by the kind's polarity) and its
 // source document. The path is the line's anchor (the file the line was found
 // through: a role file, or the best-scored file line reached through a
-// table or a symbol) when the record applies to it or to a symbol it
-// declares, else the first file among its applies_to targets, else the
+// table or a symbol; the unit when that file was withheld) when the record
+// applies to it or to a symbol it declares (for the unit, to anything it
+// holds), else the first file among its applies_to targets, else the
 // anchor, else none.
 func knowledgeFact(g Reader, rev graph.Rev, n graph.Node, anchor graph.ID, rel func(string) string) slot.KnowledgeFact {
 	f := slot.KnowledgeFact{Kind: n.Kind, ID: slot.KnowledgeID(n.ID), Title: slot.Approved(n.Attrs["title"]), Clause: slot.Approved(n.Attrs["clause"]), Source: slot.Path(n.Attrs["source"])}
+	unit := strings.HasPrefix(string(anchor), "unit:")
 	target := anchor
 	for _, e := range g.Out(n.ID, rev, graph.AppliesTo) {
-		if anchor != "" && declaring(g, rev, e.Dst) == anchor {
+		if anchor != "" && (declaring(g, rev, e.Dst) == anchor || unit && inUnit(g, rev, e.Dst, anchor)) {
 			target = anchor
 			break
 		}
@@ -128,8 +132,16 @@ func knowledgeFact(g Reader, rev graph.Rev, n graph.Node, anchor graph.ID, rel f
 	}
 	if p, ok := strings.CutPrefix(string(target), "file:"); ok {
 		f.Path = slot.RelPath(rel(p))
+	} else if strings.HasPrefix(string(target), "unit:") {
+		f.Path = slot.RelPath(rel(unitPath(target)))
 	}
 	return f
+}
+
+// inUnit is whether id is the unit u or a file or symbol it holds.
+func inUnit(g Reader, rev graph.Rev, id, u graph.ID) bool {
+	_, holder := unitOf(g, rev, graph.Node{ID: id})
+	return id == u || holder == u
 }
 
 // appendTable adds the table a reads or writes edge names, with its

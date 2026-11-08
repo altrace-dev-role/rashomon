@@ -38,7 +38,7 @@ func TestKnowledge_AConsumersRecordNeverExpandsOnAUnitWithNone(t *testing.T) {
 func TestKnowledge_TheUnitsOwnRecordIsTheLine(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	r := b.Roles
 	if len(r.Knowledge) != 1 || r.Knowledge[0] != "les:INC-212" {
@@ -63,7 +63,7 @@ func TestKnowledge_TheUnitsOwnRecordIsTheLine(t *testing.T) {
 func TestKnowledge_ALessonLineNamesTheFailureAndTheRule(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	want := "lesson INC-212 applies to 'jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
 	if !strings.Contains(b.Text(), want) {

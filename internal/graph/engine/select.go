@@ -20,8 +20,10 @@ const MaxLines = 5
 // for a lesson or decision the file line it anchors to, the best-scored
 // line it applies to. Role is the role the line holds (roles.go) or "" for
 // a related line Select kept; Consumers is the unit line's consumer files.
-// Slot is its facts as the slot holds them and Text the sentence the slot
-// rendered, both set by Build.
+// Band is a role line's band (bands.go), "" on a related line; Unknown is
+// the kinds of role line the unit line names as withheld. Slot is its
+// facts as the slot holds them and Text the sentence the slot rendered,
+// both set by Build.
 type Line struct {
 	Key       graph.ID
 	Score     float64
@@ -29,8 +31,10 @@ type Line struct {
 	Anchor    graph.ID
 	Role      string
 	Basis     string
+	Band      string
 	RunnerUp  graph.ID
 	Consumers []graph.ID
+	Unknown   []string
 	Slot      slot.GraphLine
 	Text      string
 }

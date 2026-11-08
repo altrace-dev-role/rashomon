@@ -56,6 +56,16 @@ type Options struct {
 	// here as data. Build reads none of it until AC-P1 adopts it
 	// (TestOptions_LexiconIsReserved).
 	Lexicon map[string][]string
+	// bands is the band of each cell (bands.go), calibration's when nil; a
+	// test of how the roles become lines sets one that states every cell.
+	bands bandFunc
+}
+
+func (o Options) band() bandFunc {
+	if o.bands == nil {
+		return calibrated
+	}
+	return o.bands
 }
 
 func (o Options) rel() func(string) string {
@@ -67,9 +77,9 @@ func (o Options) rel() func(string) string {
 
 // Build runs Scope, the roles stage (Parse, FindRoles), Traverse, Rank
 // and Select over g at rev for prompt, puts the role lines before the
-// related lines Select kept, binds each line's facts into its slot, and
-// renders the brief, dropping the last line until the message fits the
-// briefing cap.
+// related lines Select kept, bands them and takes out the withheld ones,
+// binds each line's facts into its slot, and renders the brief, dropping
+// the last line until the message fits the briefing cap.
 func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	if opt.Lessons {
 		return buildLessons(g, rev, prompt, opt)
@@ -97,7 +107,7 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	for _, c := range b.Candidates {
 		byID[c.ID] = c
 	}
-	b.Lines, b.Decisions = merge(g, rev, b.Roles, related, decisions, byID)
+	b.Lines, b.Decisions = merge(g, rev, b.Roles, related, decisions, byID, opt.band())
 	for i := range b.Lines {
 		b.Lines[i].Slot = lineFact(g, rev, b.Lines[i], byID, rel)
 	}

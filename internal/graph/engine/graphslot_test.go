@@ -40,7 +40,7 @@ func TestGS6_EachLineIsASlotRenderedByTheGraphTemplate(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
 	rel := func(p string) string { return "../../" + p }
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, Rel: rel})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, Rel: rel, bands: stateAll})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	if b.Empty() || b.Kept != len(b.Lines) || b.Kept > MaxLines {
 		t.Fatalf("kept %d of %d lines", b.Kept, len(b.Lines))

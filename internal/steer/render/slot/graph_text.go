@@ -8,7 +8,8 @@ import (
 // The graph line as one sentence (card GRAPH-SLOT1): Text and the
 // renderers it dispatches to, one per fact kind (the unit's in
 // graph_unit.go), split from graph.go for Law 10. A code line with a role
-// opens with the role's word. Every repository name renders inside a quote (quoted); an item
+// opens with the role's word, and a line in the candidate band says so
+// after its path or id. Every repository name renders inside a quote (quoted); an item
 // left out by bind is reported as its count.
 
 // Text is the line as one sentence; "none" for an empty line, which a
@@ -36,7 +37,7 @@ func (l GraphLine) codeText() string {
 	if c.Role != "" {
 		head = c.Role + " " + head
 	}
-	if b := reuseBasisText(c.Basis); b != "" {
+	if b := codeClause(c.Band, c.Basis); b != "" {
 		head += " " + b
 	}
 	var parts []string
@@ -95,6 +96,9 @@ func (l GraphLine) tableText() string {
 func (l GraphLine) knowText() string {
 	k := *l.know
 	s := k.Kind + " " + k.ID.Text()
+	if k.Band == BandCandidate {
+		s += " (a candidate)"
+	}
 	switch {
 	case l.keyed && l.digest != "":
 		s += " applies to a file on record"

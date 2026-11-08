@@ -23,7 +23,7 @@ import (
 func TestRoles_TaskANamesTheFourRoles(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
-	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	b := Build(sp.Store, graph.RevCommit(graphtest.Commit), "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
 	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
 	r := b.Roles
 	auth := graph.UnitID("py", "services/auth")
@@ -116,7 +116,7 @@ func TestRoles_TheUnitLineCarriesTheClaimsBasisAndRunnerUp(t *testing.T) {
 	sp := graphtest.New(t)
 	withKnowledge(sp)
 	rev := graph.RevCommit(graphtest.Commit)
-	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true})
+	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
 	t.Logf("\n%s", b.Explain())
 	r := b.Roles
 	if r.Why != ClassFull || len(r.Picks) < 2 {
@@ -135,7 +135,7 @@ func TestRoles_TheUnitLineCarriesTheClaimsBasisAndRunnerUp(t *testing.T) {
 	if !strings.Contains(b.Text(), "unit 'services/auth' (by word coverage; runner-up '"+r.Picks[1].Path+"')") {
 		t.Errorf("brief text lacks the disclosure:\n%s", b.Text())
 	}
-	b = Build(sp.Store, rev, "in services/auth, make session expiry respect the org-level timeout override.", Options{IDF: true})
+	b = Build(sp.Store, rev, "in services/auth, make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll})
 	t.Logf("\n%s", b.Explain())
 	if b.Roles.Why != ClassNamed || b.Roles.Basis != BasisNamed || b.Roles.RunnerUp != "" {
 		t.Fatalf("named: why %q basis %q runner-up %q", b.Roles.Why, b.Roles.Basis, b.Roles.RunnerUp)

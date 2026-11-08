@@ -351,7 +351,7 @@ func TestKnowledge_ALineNamesTheFileItWasFoundThrough(t *testing.T) {
 	if r.KnowledgeVia["dec:D155"] != graph.FileID("cmd/storeopen.py") {
 		t.Errorf("via %v", r.KnowledgeVia)
 	}
-	b := Build(build(false), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true})
+	b := Build(build(false), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true, bands: stateAll})
 	line := "reuse 'ledger/ledger.py' (holds the addition's code) declares 'open_ledger'; PF-HD1 applies"
 	if !strings.Contains(b.Text(), line) {
 		t.Errorf("brief lacks %q:\n%s", line, b.Text())
@@ -362,7 +362,7 @@ func TestKnowledge_ALineNamesTheFileItWasFoundThrough(t *testing.T) {
 	if want := "requirement PF-HD1 applies to 'ledger/ledger.py': owed 'the clause of req:PF-HD1'"; !strings.Contains(b.Text(), want) {
 		t.Errorf("the requirement line lacks its polarity (W-M1.25), want %q:\n%s", want, b.Text())
 	}
-	bd := Build(build(true), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true})
+	bd := Build(build(true), graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true, bands: stateAll})
 	if want := "decision D155 applies to 'cmd/storeopen.py': decided 'the clause of dec:D155'"; !strings.Contains(bd.Text(), want) {
 		t.Errorf("the decision line lacks its polarity (W-M1.25), want %q:\n%s", want, bd.Text())
 	}

@@ -17,22 +17,30 @@ import (
 // v4 the steer line carries no path and no name.
 
 // RelPath is a path relative to the hook's working directory: at most
-// maxParentHops leading "../" segments, then every Path rule. The brief
-// spans the repositories of one workspace, and a path the agent can open
-// from where it stands is the one it acts on (evidence 11-04: agents read a
-// path of another repository as outside their sandbox).
+// maxParentHops leading "../" segments, then every Path rule; or a
+// directory at or above the hook's own, "." or ".." joined by '/' at most
+// maxParentHops times, the forms filepath.Rel gives a unit's directory
+// there (the graph's root unit is ".", gopg). The brief spans the
+// repositories of one workspace, and a path the agent can open from where
+// it stands is the one it acts on (evidence 11-04: agents read a path of
+// another repository as outside their sandbox).
 type RelPath string
 
 const maxParentHops = 4
 
 func (p RelPath) Validate() error {
-	s := string(p)
-	hops := 0
+	s, hops := string(p), 0
 	for strings.HasPrefix(s, "../") {
 		s, hops = s[3:], hops+1
 	}
+	if s == ".." {
+		hops++
+	}
 	if hops > maxParentHops {
 		return fmt.Errorf("slot: relative path climbs more than %d directories", maxParentHops)
+	}
+	if s == ".." || (s == "." && hops == 0) {
+		return nil
 	}
 	return Path(s).Validate()
 }
@@ -130,11 +138,13 @@ type ConstFact struct {
 // the part it plays in the request (RoleReuse, RoleConsumer) or "" for the
 // target's own file and a related file. Basis is why a reuse file is the
 // thing to reuse (one of the three ReuseBy words; empty renders as
-// before) and is refused on any other role.
+// before) and is refused on any other role. Band is a role line's band
+// (BandStated, BandCandidate; empty renders as stated).
 type CodeFact struct {
 	Path    RelPath
 	Role    string
 	Basis   string
+	Band    string
 	Names   []Ident
 	Consts  []ConstFact
 	Calls   []Ident
@@ -155,10 +165,12 @@ type TableFact struct {
 // KnowledgeFact is a lesson, decision or requirement of the brief: its id,
 // the file it points the agent at, its title (for a lesson, the failure it
 // was drawn from), its one clause (the rule), and the document it came
-// from. Path, Title, Clause and Source may each be empty.
+// from. Path, Title, Clause and Source may each be empty. Band is a role
+// line's band (BandStated, BandCandidate; empty renders as stated).
 type KnowledgeFact struct {
 	Kind   string
 	ID     KnowledgeID
+	Band   string
 	Path   RelPath
 	Title  Approved
 	Clause Approved
@@ -311,47 +323,6 @@ func (l GraphLine) oneFact() error {
 	return nil
 }
 
-func (l GraphLine) validateKeyed() error {
-	for _, d := range []string{l.digest, l.sourceDigest} {
-		if d != "" && !digestShaped(d) {
-			return errors.New("slot: graph line digest is not 64 lowercase hex")
-		}
-	}
-	switch {
-	case l.code != nil:
-		c := *l.code
-		if c.Path != "" || len(c.Names)+len(c.Consts)+len(c.Calls)+len(c.Writes)+len(c.Reads)+len(c.Imports) > 0 {
-			return errors.New("slot: keyed graph line holds a path or a name")
-		}
-		if err := validRole(c.Role); err != nil {
-			return err
-		}
-		if err := validBasis(c.Role, c.Basis); err != nil {
-			return err
-		}
-		return validIDs(c.Lessons)
-	case l.table != nil:
-		t := *l.table
-		if t.Table != "" || len(t.Writers)+len(t.Readers) > 0 {
-			return errors.New("slot: keyed graph line holds a table or a name")
-		}
-		return validIDs(t.Lessons)
-	case l.know != nil:
-		k := *l.know
-		if k.Path != "" || k.Source != "" {
-			return errors.New("slot: keyed graph line holds a path")
-		}
-		return k.validate()
-	case l.unit != nil:
-		u := *l.unit
-		if u.Path != "" || len(u.Names)+len(u.Consumers) > 0 {
-			return errors.New("slot: keyed graph line holds a path or a name")
-		}
-		return validIDs(u.Lessons)
-	}
-	return nil
-}
-
 func validIDs(ids []KnowledgeID) error {
 	for _, id := range ids {
 		if err := id.Validate(); err != nil {
@@ -378,6 +349,9 @@ func (f CodeFact) validate() error {
 		return err
 	}
 	if err := validBasis(f.Role, f.Basis); err != nil {
+		return err
+	}
+	if err := validBand(f.Band); err != nil {
 		return err
 	}
 	for _, c := range f.Consts {
@@ -419,6 +393,9 @@ func (f KnowledgeFact) validate() error {
 	if err := f.ID.Validate(); err != nil {
 		return err
 	}
+	if err := validBand(f.Band); err != nil {
+		return err
+	}
 	if f.Path != "" {
 		if err := f.Path.Validate(); err != nil {
 			return err
@@ -438,9 +415,10 @@ func (f KnowledgeFact) validate() error {
 }
 
 // bind leaves out and counts an item a check refuses and cuts each list at
-// its cap; a path, a table or a knowledge id the line stands on refuses the
-// line, which the brief then drops. A knowledge line keeps its id when its
-// path, clause or source is refused: each is left out on its own.
+// its cap; a path, a table or a knowledge id the line stands on, or a band
+// outside the two, refuses the line, which the brief then drops. A
+// knowledge line keeps its id when its path, clause or source is refused:
+// each is left out on its own.
 func (l GraphLine) bind() (Value, error) {
 	if l.keyed || !l.Lists() {
 		return checked(l, l.Validate())
@@ -466,6 +444,9 @@ func (l GraphLine) bind() (Value, error) {
 		if err := validBasis(c.Role, c.Basis); err != nil {
 			return nil, err
 		}
+		if err := validBand(c.Band); err != nil {
+			return nil, err
+		}
 		c.Names, m.Names = keptIdents(c.Names, m.Names, maxLineIdents)
 		c.Consts, m.Consts = keptConsts(c.Consts, m.Consts)
 		c.Calls, m.Calls = keptIdents(c.Calls, m.Calls, maxLineIdents)
@@ -489,6 +470,9 @@ func (l GraphLine) bind() (Value, error) {
 		return nil, errors.New("slot: knowledge line has a kind outside lesson, decision and requirement")
 	}
 	if err := k.ID.Validate(); err != nil {
+		return nil, err
+	}
+	if err := validBand(k.Band); err != nil {
 		return nil, err
 	}
 	if k.Path.Validate() != nil {
@@ -565,51 +549,4 @@ func keptTables(items []TableRef, more int) ([]TableRef, int) {
 		return kept[:maxLineTables], more + len(kept) - maxLineTables
 	}
 	return kept, more
-}
-
-// Record is l's record form: every list as its count, the path and the
-// source as their keyed digests (digest, intent's PathDigest), the knowledge
-// ids, the title, the clause and a code line's role and basis kept, since
-// those are the repository's declared records and the engine's reading,
-// never the request's words. It is built from the bound line,
-// so the counts are what the printed line listed, left out and cut.
-func (l GraphLine) Record(digest func(string) string) GraphLine {
-	out := GraphLine{keyed: true}
-	m := l.more
-	switch {
-	case l.code != nil:
-		c := *l.code
-		m.Names += len(c.Names)
-		m.Consts += len(c.Consts)
-		m.Calls += len(c.Calls)
-		m.Writes += len(c.Writes)
-		m.Reads += len(c.Reads)
-		m.Imports += len(c.Imports)
-		out.digest = digest(string(c.Path))
-		out.code = &CodeFact{Role: c.Role, Basis: c.Basis, Lessons: slices.Clone(c.Lessons)}
-	case l.table != nil:
-		t := *l.table
-		m.Writers += len(t.Writers)
-		m.Readers += len(t.Readers)
-		out.table = &TableFact{Lessons: slices.Clone(t.Lessons)}
-	case l.know != nil:
-		k := *l.know
-		if k.Path != "" {
-			out.digest = digest(string(k.Path))
-		}
-		if k.Source != "" {
-			out.sourceDigest = digest(string(k.Source))
-		}
-		out.know = &KnowledgeFact{Kind: k.Kind, ID: k.ID, Title: k.Title, Clause: k.Clause}
-	case l.unit != nil:
-		u := *l.unit
-		m.Names += len(u.Names)
-		m.Consumers += len(u.Consumers)
-		out.digest = digest(string(u.Path))
-		out.unit = &UnitFact{Basis: u.Basis, Lessons: slices.Clone(u.Lessons)}
-	default:
-		return GraphLine{}
-	}
-	out.more = m
-	return out
 }

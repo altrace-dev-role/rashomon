@@ -7,15 +7,23 @@ import (
 
 // TestGS1_RelPathClimbsAtMostFourDirectories (card GRAPH-SLOT1): a graph
 // line's path is relative to the hook's cwd, so it may open with "../" up
-// to four times and then obeys every Path rule; a bare "..", a fifth hop,
-// an absolute path and a secret-shaped segment are refused.
+// to four times and then obeys every Path rule, or name the cwd itself or
+// a directory above it, "." or ".." up to four times (W-M1.38: the unit
+// line of a hook run in its unit, or under the root unit, was refused); a
+// fifth hop, a "." after a hop, a trailing '/', an absolute path and a
+// secret-shaped segment are refused, and a unit line binds at ".".
 func TestGS1_RelPathClimbsAtMostFourDirectories(t *testing.T) {
 	checkSlot(t,
-		[]RelPath{"jobs/purge_sessions.py", "../acme-ops/jobs/purge_sessions.py", "../../../../a.py", "a"},
-		[]RelPath{"", "..", "../", "../../../../../a.py", "/abs/a.py", "a/../b.py", "./a.py", "-x/a.py",
+		[]RelPath{"jobs/purge_sessions.py", "../acme-ops/jobs/purge_sessions.py", "../../../../a.py", "a",
+			".", "..", "../..", "../../../.."},
+		[]RelPath{"", "../", "../../../../../a.py", "../../../../..", "../.", "./", "a/..", "/abs/a.py", "a/../b.py", "./a.py", "-x/a.py",
 			RelPath("../x/" + strings.Repeat("deadbeef", 5) + ".py")})
 	if RelPath("../acme-ops/jobs/purge_sessions.py").Text() != "'../acme-ops/jobs/purge_sessions.py'" {
 		t.Error("a relative path renders outside a quote")
+	}
+	if v, err := Bind(NewUnitLine(UnitFact{Path: ".", Basis: BasisCoverage, RunnerUp: "../../jobs"})); err != nil ||
+		v.Text() != "unit '.' (by word coverage; runner-up '../../jobs')" {
+		t.Errorf("unit line at the cwd: %v %v", v, err)
 	}
 }
 
