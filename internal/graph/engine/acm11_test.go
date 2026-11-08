@@ -33,7 +33,10 @@ import (
 // line's when there is one, else the unit containing the first line's key
 // (what the hook reports as the finding's Unit today), so the reading
 // before the roles stage and after it is one number. Zero model cost;
-// the prompts stay fixed.
+// the prompts stay fixed. Since the 2026-11-08 re-specification (PLAN
+// 6.1, "AC-M1.5 re-specified from VISION") a row is judged as gate shape
+// 3 judges it (acm11Right): the pre-named unit is owed where the prompt
+// names it, and elsewhere the brief is right when it states no wrong unit.
 func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 	root, prompts := os.Getenv("RASHOMON_ACM11_DIR"), os.Getenv("RASHOMON_ACM11_PROMPTS")
 	if root == "" || prompts == "" {
@@ -49,7 +52,7 @@ func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 			b := Build(g, rev, prompt, Options{IDF: true})
 			got := briefUnit(g, rev, b)
 			basis, runner, has := unitDisclosure(b)
-			ok := slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
+			kind, ok := acm11Right(want, prompt, claimOf(b, got))
 			if os.Getenv("RASHOMON_ACM11_DUMP") != "" {
 				for _, l := range b.Lines {
 					t.Logf("DUMP %s\t%s\t%s\t%s", r[0], l.Role, l.Key, strings.ReplaceAll(l.Text, "\n", " "))
@@ -78,7 +81,7 @@ func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 					calib[basis][1]++
 				}
 			}
-			t.Logf("%s: unit %q want %q %v; basis %q runner-up %q; off-task %d %v\n%s\n%s", id, got, r[1], ok, basis, runner, len(off), off, b.Text(), b.Explain())
+			t.Logf("%s: unit %q want %q %v (%s row); basis %q runner-up %q; off-task %d %v\n%s\n%s", id, got, r[1], ok, kind, basis, runner, len(off), off, b.Text(), b.Explain())
 		}
 		gate := (len(rows)*4 + 4) / 5
 		t.Logf("AC-M1.1 %s: unit line correct %d of %d (gate %d); briefs with the unit right and more than one off-task line %d (gate 0); unit lines without a basis or a coverage claim without its runner-up %d (gate 0)", path, hits, len(rows), gate, offTaskBriefs, undisclosed)
@@ -96,6 +99,60 @@ func TestACM11_UnitLineNamesThePreNamedUnit(t *testing.T) {
 		fmt.Fprintf(&sb, "  %-10s right %3d wrong %3d\n", k, calib[k][0], calib[k][1])
 	}
 	t.Logf("disclosure calibration (unit lines, right and wrong by basis):\n%s", sb.String())
+}
+
+// acm11Right is a row's kind and unit verdict as gate shape 3 judges
+// them: a no-unit row when the truth is '-', a naming row when the prompt
+// names a truth unit (promptNames; AC-M1.1's files carry no target file),
+// a prose row otherwise; on a naming or no-unit row the brief names a
+// truth unit, or holds no unit line where '-' is allowed (the verdict as
+// written), and on a prose row it claims no unit or its claim holds a
+// truth (unitRight3).
+func acm11Right(want []string, prompt string, c briefClaim) (string, bool) {
+	kind := kindProse
+	switch {
+	case len(want) == 1 && want[0] == "-":
+		kind = kindNoUnit
+	case promptNames(prompt, want, nil):
+		kind = kindNaming
+	}
+	unitOK := c.Unit != "" && slices.Contains(want, c.Unit) || slices.Contains(want, "-") && !c.Line
+	return kind, unitRight3(kind, want, c, unitOK)
+}
+
+// TestACM11_RowsAreJudgedAsShape3 (PLAN 6.1, 2026-11-08): a prompt that
+// names its unit, by path or by its last segment as a word, owes it and
+// gets no credit for a runner-up; a prompt that names none is right with
+// no unit claimed or a claim holding a truth; a '-' row owes no unit line.
+// Break: judge a prose row by its unit alone, credit a naming row's
+// runner-up, or read "restore" as naming store.
+func TestACM11_RowsAreJudgedAsShape3(t *testing.T) {
+	store := []string{"internal/store"}
+	none := briefClaim{}
+	stated := func(u string) briefClaim { return briefClaim{Unit: u, Line: true} }
+	pair := func(u, r string) briefClaim { return briefClaim{Unit: u, Runner: r, Line: true, Candidate: true} }
+	for _, tc := range []struct {
+		name, prompt string
+		want         []string
+		c            briefClaim
+		kind         string
+		right        bool
+	}{
+		{"naming by word, none claimed", "Compact the store on close.", store, none, kindNaming, false},
+		{"naming by word, stated", "Compact the store on close.", store, stated("internal/store"), kindNaming, true},
+		{"naming by path, runner-up only", "Fix internal/store/compact.go.", store, pair("internal/report", "internal/store"), kindNaming, false},
+		{"prose, none claimed", "Restore the dropped rows on close.", store, none, kindProse, true},
+		{"prose, wrong stated", "Restore the dropped rows on close.", store, stated("internal/report"), kindProse, false},
+		{"prose, runner-up holds", "Restore the dropped rows on close.", store, pair("internal/report", "internal/store"), kindProse, true},
+		{"prose, candidate alone", "Restore the dropped rows on close.", store, pair("internal/report", ""), kindProse, false},
+		{"no-unit, no line", "Rename the changelog heading.", []string{"-"}, none, kindNoUnit, true},
+		{"no-unit, a line", "Rename the changelog heading.", []string{"-"}, stated("internal/report"), kindNoUnit, false},
+	} {
+		kind, right := acm11Right(tc.want, tc.prompt, tc.c)
+		if kind != tc.kind || right != tc.right {
+			t.Errorf("%s: %s row, right %v; want %s, %v", tc.name, kind, right, tc.kind, tc.right)
+		}
+	}
 }
 
 // unitDisclosure is the kept unit line's basis and runner-up, and whether

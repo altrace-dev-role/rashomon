@@ -58,15 +58,22 @@ func rowKind(r []string) string {
 // split, split.py's alnum mode: learn_test.go names learn, relearn does
 // not).
 func namesTruth(r []string) bool {
-	p := strings.ToLower(strings.ReplaceAll(r[8], "\\n", "\n"))
+	return promptNames(strings.ReplaceAll(r[8], "\\n", "\n"), strings.Split(r[2], ";"), strings.Split(r[3], ";"))
+}
+
+// promptNames is namesTruth over a prompt, its unit truths and its target
+// files ('-', '*' and empty entries name nothing), for the files whose
+// rows are not classes rows (AC-M1.1's, which carry no target file).
+func promptNames(prompt string, units, files []string) bool {
+	p := strings.ToLower(prompt)
 	var keys []string
-	for _, u := range strings.Split(r[2], ";") {
+	for _, u := range units {
 		if u != "-" && u != "*" {
 			u = strings.ToLower(u)
 			keys = append(keys, u, lastSegment(u))
 		}
 	}
-	for _, f := range strings.Split(r[3], ";") {
+	for _, f := range files {
 		if f != "-" && f != "*" && f != "" {
 			keys = append(keys, lastSegment(strings.ToLower(f)))
 		}
