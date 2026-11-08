@@ -44,6 +44,10 @@ func TestACM15_ClassesTable(t *testing.T) {
 	if root == "" || path == "" {
 		t.Skip("RASHOMON_ACM11_DIR and RASHOMON_ACM15_CLASSES not set")
 	}
+	wantHalf := os.Getenv("RASHOMON_ACM15_HALF")
+	if !knownHalf(wantHalf) {
+		t.Fatalf("RASHOMON_ACM15_HALF=%q: unset or development builds the development rows, acceptance the acceptance rows and the gates, all both; nothing else is read (B470)", wantHalf)
+	}
 	g, rev := loadACM11(t, root)
 	rows := readTSV(t, path, 9)
 	scores := map[string]*classScore{}
@@ -51,7 +55,6 @@ func TestACM15_ClassesTable(t *testing.T) {
 	seen := map[string]int{}
 	var order []string
 	var all classScore
-	wantHalf := os.Getenv("RASHOMON_ACM15_HALF")
 	for _, r := range rows {
 		id, cls, want, reuse, consumers, knowledge := r[0], r[1], strings.Split(r[2], ";"), r[4], r[5], r[6]
 		half := halfOf(seen[cls])
@@ -118,15 +121,28 @@ func TestACM15_ClassesTable(t *testing.T) {
 
 // halfWanted is whether RASHOMON_ACM15_HALF (env) builds the rows of half:
 // unset or "development" the development rows only, "acceptance" the
-// acceptance rows only, "all" both.
+// acceptance rows only, "all" both, any other value neither (B470: a
+// mistyped value once printed the held-out table; knownHalf refuses it
+// by name before a row is built).
 func halfWanted(env, half string) bool {
 	switch env {
 	case "", "development":
 		return half == "development"
 	case "acceptance":
 		return half == "acceptance"
+	case "all":
+		return true
 	}
-	return true
+	return false
+}
+
+// knownHalf is whether env is a value halfWanted reads.
+func knownHalf(env string) bool {
+	switch env {
+	case "", "development", "acceptance", "all":
+		return true
+	}
+	return false
 }
 
 // halfOf is the half of the i-th row of its class in file order:

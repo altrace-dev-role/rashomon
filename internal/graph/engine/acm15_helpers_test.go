@@ -158,6 +158,8 @@ func TestACM15_HalfWanted(t *testing.T) {
 		{"acceptance", "development", false},
 		{"all", "development", true},
 		{"all", "acceptance", true},
+		{"dev", "development", false},
+		{"dev", "acceptance", false},
 	}
 	for _, c := range cases {
 		if got := halfWanted(c.env, c.half); got != c.want {
