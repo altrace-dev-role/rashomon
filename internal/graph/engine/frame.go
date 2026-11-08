@@ -312,11 +312,13 @@ func splitUse(words []string) ([]string, Phrase) {
 	return words, Phrase{}
 }
 
-// splitDestination cuts an imperative clause at the words that open its
-// verb's destination (destinationWords) after the object's first word:
-// the words before them, and the phrase after them as a destination, a
-// use and never a target, as splitUse cuts a use word's object (W-M1.28).
-// A "to" a verb follows is an infinitive and opens none.
+// splitDestination cuts an imperative clause's destination out of it: the
+// words that open its verb's destination (destinationWords) after the
+// object's first word, and the phrase after them as a destination, a use
+// and never a target (W-M1.28). The clause is the words before the opener
+// and those after the phrase's end, so a place after the destination is
+// still the change's ("onto the scanner in the report package"). A "to" a
+// verb follows is an infinitive and opens none.
 func splitDestination(head string, words []string) ([]string, Phrase) {
 	opens := destinationWords.get()[head]
 	for i := 1; i < len(words); i++ {
@@ -327,9 +329,9 @@ func splitDestination(head string, words []string) ([]string, Phrase) {
 			if len(open) == 1 && open[0] == "to" && verbClass.get()[low(words[i+1])] != "" {
 				continue
 			}
-			p := phraseOf(words[i+len(open):])
+			p, n := phraseSpan(words[i+len(open):])
 			p.Destination = true
-			return words[:i], p
+			return append(words[:i:i], words[i+len(open)+n:]...), p
 		}
 	}
 	return words, Phrase{}
@@ -515,10 +517,18 @@ func modalAt(cl []string) int {
 // existing-surface word; none when they open with a condition word, and
 // an infinitive ("to name") or a particle ("up") ends it.
 func phraseOf(words []string) Phrase {
-	pronoun := ""
+	p, _ := phraseSpan(words)
+	return p
+}
+
+// phraseSpan is phraseOf and how many of the words the phrase spans from
+// the first, the words it trims ahead of it included; all of them when it
+// reads no phrase (W-M1.28).
+func phraseSpan(all []string) (Phrase, int) {
+	words, pronoun := all, ""
 	for len(words) > 0 && (boundaryWords.get()[low(words[0])] || pronounWords.get()[low(words[0])]) {
 		if conditionWords.get()[low(words[0])] {
-			return Phrase{}
+			return Phrase{}, len(all)
 		}
 		if pronounWords.get()[low(words[0])] {
 			pronoun = low(words[0])
@@ -526,14 +536,14 @@ func phraseOf(words []string) Phrase {
 		words = words[1:]
 	}
 	if len(words) > 0 && clauseWords.get()[low(words[0])] {
-		return Phrase{}
+		return Phrase{}, len(all)
 	}
 	first := 0
 	for first < len(words) && stopWords.get()[low(words[first])] && !determinerWords.get()[low(words[first])] {
 		first++
 	}
 	if first == len(words) {
-		return Phrase{}
+		return Phrase{}, len(all)
 	}
 	if determinerWords.get()[low(words[first])] {
 		pronoun = ""
@@ -554,11 +564,11 @@ func phraseOf(words []string) Phrase {
 		end--
 	}
 	if end == 0 {
-		return Phrase{}
+		return Phrase{}, len(all)
 	}
 	p := Phrase{Tokens: uniq(Tokens(strings.Join(words[:end], " "))), Count: 1, Pronoun: pronoun}
 	if len(p.Tokens) == 0 {
-		return Phrase{}
+		return Phrase{}, len(all)
 	}
 	if last := strings.TrimRight(low(words[end-1]), ".,:;!?'\")"); len(p.Tokens) > 1 && strings.HasSuffix(last, "ly") {
 		if t := Tokens(last); len(t) == 1 && t[0] == p.Tokens[len(p.Tokens)-1] {
@@ -568,7 +578,7 @@ func phraseOf(words []string) Phrase {
 	already := end < len(words) && low(words[end]) == "already"
 	p.Definite = definiteWords.get()[low(words[first])] || already
 	p.Anchor = (p.Definite && already) || anchorWords.get()[low(words[first])]
-	return p
+	return p, len(all) - len(words) + end
 }
 
 func addPhrase(ps []Phrase, p Phrase) []Phrase {

@@ -280,3 +280,34 @@ func TestReuse_ADestinationMostlyOfWordsTheCorpusLacksIsRefused(t *testing.T) {
 		t.Errorf("file %s, reuse %+v: want the destination refused, two of its three words unknown to the corpus", r.File, r.Reuse)
 	}
 }
+
+// The words after a destination are the clause's (W-M1.28): a place
+// after it is still the change's, and a consequence after it adds no
+// target. Before the rule the clause ended at the destination's opener,
+// so the place after the destination ("across report and seed", "in the
+// report package") was lost.
+func TestFrame_TheWordsAfterADestinationAreTheClauses(t *testing.T) {
+	for _, tc := range []struct {
+		prompt  string
+		targets []string
+	}{
+		{"Replace the line reader with the line scanner across report and seed.", []string{"line reader", "report"}},
+		{"Move the line reader onto the line scanner in the report package.", []string{"line reader", "report package"}},
+		{"Fold the line reader into the line scanner so the seed rows are read once.", []string{"line reader"}},
+	} {
+		f := Parse(tc.prompt)
+		if d, ok := destination(f); !ok || words(d) != tokensOf("line scanner") {
+			t.Errorf("%q: uses %v, want [line scanner] a destination", tc.prompt, f.Uses)
+		}
+		var got, want []string
+		for _, p := range f.Targets {
+			got = append(got, words(p))
+		}
+		for _, w := range tc.targets {
+			want = append(want, tokensOf(w))
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%q: targets %q, want %q", tc.prompt, got, want)
+		}
+	}
+}
