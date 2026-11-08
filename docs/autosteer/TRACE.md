@@ -6,6 +6,10 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-08 11:0x: AC-M1.5's one read on classes3.tsv at 52efe101 (engine d4f5d05e): not met; M1 not closed.
+  - Gate shape 3: unit 92 of 160, the unit gate met on 6 of 16 classes, every term on 5; gate B stated 34 of 40 (met), candidate 21 of 71 (0.30, not met); naming rows 45 of 71; the independent tally agrees on every cell.
+  - AC-M1.0 to AC-M1.3 met at the tip (TestACM10_ PASS; prompts 9 of 10, edge 47 of 54, replay 220 of 513; K7 prompt path p95 108.4 ms; ledger 90.3, notes 96.1 percent, second import byte-identical); T1's G brief byte-identical to delta 7's pin (590 bytes). AC-M1.4 open at G 2, R 5, U 5 of 10.
+  - classes3.tsv is development data from here; the re-specification from VISION is committed before any classes4.tsv row exists.
 - 2026-11-08 07:5x: AC-M1.5's read outcomes registered before any engine reads classes3.tsv; dogfood findings B479, B480; PLAN's update-events line corrected.
   - Met on every term of gate shape 3: AC-M1.5 met, M1 closes on six rows quoted. Any term not met: recorded not met, the file never re-read or repaired, development data from then; the spec tension goes to a re-specification from VISION committed before any classes4.tsv row exists.
   - The owner's hooks ran the 11-01 build; a newer build read its consent record as not agreed (record-only, no notice); the graph sat 85 commits behind HEAD. The owner's install now runs d4f5d05e, the graph is at af80c5e3, and a Stop hook refreshes it after each turn (3 to 6 s, detached). No engine change; the freeze stands.
