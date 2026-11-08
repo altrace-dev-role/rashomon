@@ -150,12 +150,15 @@ func TestUnnamed_AUnitTheRequestDoesNotNameIsNotKnown(t *testing.T) {
 // TestUnnamed_E5KeepsWhatTheRequestNames (W-M1.40): E5 keeps a unit the
 // request names, a qualified claim covering its whole phrase and a claim
 // by the unit's own name in a phrase of at most two tokens, and withholds
-// every other claim, whatever its score. A phrase is covered whole within
-// a relative 1e-9, so the same weights summed in another order still
-// cover it either way, and a claim short by 2e-9 of the phrase does not.
-// The tolerance is pinned from both sides: a claim short by 0.5e-9 of the
-// phrase is whole and one short by 1.5e-9 is not (short by 2e-9 rounds to
-// just over 2e-9, so under a tolerance of 2e-9 it is not whole either).
+// every other claim, whatever its score, unless a record the request
+// names has evidence in its unit (the knowledge clause, W-M1.41); a
+// record whose evidence lies elsewhere keeps nothing. A phrase is covered
+// whole within a relative 1e-9, so the same weights summed in another
+// order still cover it either way, and a claim short by 2e-9 of the
+// phrase does not. The tolerance is pinned from both sides: a claim short
+// by 0.5e-9 of the phrase is whole and one short by 1.5e-9 is not (short
+// by 2e-9 rounds to just over 2e-9, so under a tolerance of 2e-9 it is
+// not whole either).
 func TestUnnamed_E5KeepsWhatTheRequestNames(t *testing.T) {
 	x, y, z := 0.1, 0.2, 0.3
 	lo, hi := z+y+x, x+y+z
@@ -165,6 +168,10 @@ func TestUnnamed_E5KeepsWhatTheRequestNames(t *testing.T) {
 	claim := func(basis, class string, covered, of float64, target ...string) Roles {
 		return Roles{Unit: "unit:go:internal/platform", Path: "internal/platform", Basis: basis, Target: target,
 			Picks: []UnitPick{{Class: class, Covered: covered, Of: of}, {Class: ClassPartial, Covered: of / 2, Of: of}}}
+	}
+	cited := func(r Roles, units ...string) Roles {
+		r.Named.KnowledgeUnits = units
+		return r
 	}
 	two, three := []string{"platform", "read"}, []string{"platform", "read", "path"}
 	for _, e := range []struct {
@@ -189,6 +196,10 @@ func TestUnnamed_E5KeepsWhatTheRequestNames(t *testing.T) {
 		{"one name, whole", claim(BasisCoverage, ClassSingle, 2, 2, two...), true},
 		{"two names, whole (Task A's form)", claim(BasisCoverage, ClassFull, 2, 2, two...), true},
 		{"partial", claim(BasisCoverage, ClassPartial, 1, 2, two...), true},
+		{"one name, whole, a record's unit", cited(claim(BasisCoverage, ClassSingle, 2, 2, two...), "internal/platform"), false},
+		{"partial, one of a record's units", cited(claim(BasisCoverage, ClassPartial, 1, 2, two...), "internal/store", "internal/platform"), false},
+		{"by its name, three tokens, a record's unit", cited(claim(BasisUnitName, ClassUnit, 3, 3, three...), "internal/platform"), false},
+		{"one name, whole, another unit's record", cited(claim(BasisCoverage, ClassSingle, 2, 2, two...), "internal/store"), true},
 	} {
 		if got := unitRuleE5(corpus{}, e.r, "make the read faster"); got != e.want {
 			t.Errorf("E5, %s: %v, want %v", e.name, got, e.want)

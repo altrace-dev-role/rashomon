@@ -2,6 +2,7 @@ package engine
 
 import (
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,15 +61,16 @@ type NamedWord struct {
 
 // Named is R0's reading of the prompt: every word in name form in prompt
 // order; the first unit a path, name or tag resolved to, with its node;
-// the knowledge ids named, with the one unit their evidence lies in when
-// there is one; and the path forms that resolved to nothing.
+// the knowledge ids named, with every unit their evidence lies in, the
+// first met first (W-M1.41: a record that links several units names each
+// of them); and the path forms that resolved to nothing.
 type Named struct {
-	Words         []NamedWord
-	Unit          string
-	Node          graph.ID
-	Knowledge     []graph.ID
-	KnowledgeUnit string
-	Unknown       []NamedWord
+	Words          []NamedWord
+	Unit           string
+	Node           graph.ID
+	Knowledge      []graph.ID
+	KnowledgeUnits []string
+	Unknown        []NamedWord
 	// kind is the kind of the word Unit came from, for the rank.
 	kind string
 }
@@ -141,10 +143,10 @@ func (n *Named) add(g Reader, c corpus, w NamedWord) {
 	switch {
 	case w.Kind == NamedKnowledge:
 		n.Knowledge = append(n.Knowledge, w.Node)
-		if u := c.evidenceUnit(g, w.Node); n.KnowledgeUnit == "" || n.KnowledgeUnit == u {
-			n.KnowledgeUnit = u
-		} else {
-			n.KnowledgeUnit = "?"
+		for _, u := range c.evidenceUnits(g, w.Node) {
+			if !slices.Contains(n.KnowledgeUnits, u) {
+				n.KnowledgeUnits = append(n.KnowledgeUnits, u)
+			}
 		}
 	case w.Unit != "" && (n.Unit == "" || namedRank(w.Kind) < namedRank(n.kind)):
 		n.Unit, n.Node, n.kind = w.Unit, w.Node, w.Kind
@@ -520,20 +522,16 @@ func pathHits(prompt []string, f Fields, weights map[string]float64) float64 {
 	return s
 }
 
-// evidenceUnit is the one unit the record's evidence lies in, "" when
-// none or more than one.
-func (c corpus) evidenceUnit(g Reader, id graph.ID) string {
-	unit := ""
+// evidenceUnits is every unit the record's evidence lies in, in the
+// order of its edges.
+func (c corpus) evidenceUnits(g Reader, id graph.ID) []string {
+	var out []string
 	for _, e := range g.Out(id, c.rev, graph.AppliesTo) {
-		switch u := c.unitOf(e.Dst); {
-		case u == "":
-		case unit == "" || unit == u:
-			unit = u
-		default:
-			return ""
+		if u := c.unitOf(e.Dst); u != "" && !slices.Contains(out, u) {
+			out = append(out, u)
 		}
 	}
-	return unit
+	return out
 }
 
 // unitOf is the unit a node is in: a scanned node's, a unit node's own

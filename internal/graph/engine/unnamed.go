@@ -2,6 +2,7 @@ package engine
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -14,7 +15,8 @@ import (
 // simulation on the development dumps, so its reading there is not a
 // held-out one. E5 (W-M1.40, AC-M1.5 as re-specified from VISION) was
 // chosen after reading both untuned files, so classes4.tsv is its only
-// held-out read; it ships without its knowledge clause (W-M1.41).
+// held-out read. Its knowledge clause (W-M1.41) was chosen on
+// classes2.tsv, with the other two files read in-sample.
 
 // unitRule is whether the request names no unit, read from the corpus,
 // the roles found and the request.
@@ -58,17 +60,19 @@ func unitRuleE4(_ corpus, r Roles, prompt string) bool {
 	return r.Found() && r.Basis != BasisNamed && !namesUnit(strings.ToLower(prompt), r.Path)
 }
 
-// unitRuleE5 is E5 without its knowledge clause (W-M1.40): a unit stands
-// only on what the request names. A named basis stands (a path, a file, a
-// symbol, a knowledge id, a pasted error); so does a qualified claim that
-// covers the whole target phrase (the unit's path covers part of it and
-// one of its names the rest, T1's form), and a claim by the unit's own
-// name in a target phrase of at most two tokens. Every other claim is
-// withheld: on the two untuned files no margin on the ladder's scores
-// separated a right claim from a wrong one, and the forms withheld here
-// were right under half the time (PLAN 6.1).
+// unitRuleE5 is E5 (W-M1.40) with its knowledge clause (W-M1.41): a unit
+// stands only on what the request names. A named basis stands (a path, a
+// file, a symbol, a knowledge id, a pasted error); so does a claim on a
+// unit a named record's evidence lies in (the knowledge clause: the
+// request named the record, and the record names the unit), a qualified
+// claim that covers the whole target phrase (the unit's path covers part
+// of it and one of its names the rest, T1's form), and a claim by the
+// unit's own name in a target phrase of at most two tokens. Every other
+// claim is withheld: on the two untuned files no margin on the ladder's
+// scores separated a right claim from a wrong one, and the forms withheld
+// here were right under half the time (PLAN 6.1).
 func unitRuleE5(_ corpus, r Roles, _ string) bool {
-	if !r.Found() || r.Basis == BasisNamed {
+	if !r.Found() || r.Basis == BasisNamed || slices.Contains(r.Named.KnowledgeUnits, r.Path) {
 		return false
 	}
 	if len(r.Picks) > 0 && r.Picks[0].Class == ClassQualified && coversWhole(r.Picks[0]) {

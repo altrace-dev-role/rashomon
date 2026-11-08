@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -133,9 +134,8 @@ func FindRoles(g Reader, c corpus, rows []ScopeRow, weights map[string]float64, 
 // resolves elsewhere; a named place the index lacks refuses; else the
 // frame's targets in order, each by the unit it names or by the ladder,
 // the whole prompt when it named none; else the evidence of a named
-// record, which also outranks a partial claim on a phrase (W-M1.31, N7:
-// "B374 again; fix the root cause" is B374's unit, not the unit that
-// declares a Cause). A first phrase that failed keeps its reason, and an
+// record, which also outranks a claim by word coverage on a phrase
+// (overRecord). A first phrase that failed keeps its reason, and an
 // owner phrase that claims nothing ends the search: the owned part is
 // in it.
 func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]float64) {
@@ -181,12 +181,20 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 			break
 		}
 	}
-	if u := named.KnowledgeUnit; u != "" && u != "?" {
+	var ladder []UnitPick
+	if over != "" {
+		ladder = r.Picks
+	}
+	if u := r.recordUnit(ladder); u != "" {
 		pick := UnitPick{ID: c.unitID[u], Path: u, Class: ClassNamed, Covered: 1, Of: 1, Callable: true, Precision: 1}
+		by := ""
 		for _, k := range named.Knowledge {
+			if by == "" && slices.Contains(c.evidenceUnits(g, k), u) {
+				by = short(k)
+			}
 			pick.Nodes = append(pick.Nodes, c.evidenceIn(g, k, u)...)
 		}
-		r.Picks, r.Why = []UnitPick{pick}, "named '"+short(named.Knowledge[0])+"' applies to "+u
+		r.Picks, r.Why = []UnitPick{pick}, "named '"+by+"' applies to "+u
 		if over != "" {
 			r.Why += " over " + over
 		}
@@ -210,12 +218,16 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 // overRecord is why the unit a named record's evidence lies in takes the
 // phrase over the ladder's pick, else "": over a partial claim (W-M1.31,
 // N7: "B374 again; fix the root cause" is B374's unit, not the unit that
-// declares a Cause), and over any claim by coverage on a phrase that
-// holds the record's id, whose other words stand beside the record and
-// are not the thing (W-M1.24, N8: "Close B400." is B400's, not the
-// unit that declares a Close). A claim by the unit's own name stands.
+// declares a Cause), over any claim by coverage on a phrase that holds
+// the record's id, whose other words stand beside the record and are not
+// the thing (W-M1.24, N8: "Close B400." is B400's, not the unit that
+// declares a Close), and over every other claim by word coverage, one
+// name covering the whole phrase among them (W-M1.41: the request named
+// the record, and word coverage names nothing, E5). A claim by the unit's
+// own name stands, and so does a qualified claim that covers its whole
+// phrase.
 func (r Roles) overRecord(pick UnitPick) string {
-	if u := r.Named.KnowledgeUnit; u == "" || u == "?" || u == pick.Path {
+	if u := r.recordUnit(r.Picks); u == "" || u == pick.Path {
 		return ""
 	}
 	switch {
@@ -223,6 +235,25 @@ func (r Roles) overRecord(pick UnitPick) string {
 		return "a partial claim on " + pick.Path
 	case pick.Class != ClassUnit && holdsRecord(r.Target, r.Named):
 		return "a claim on " + pick.Path + " beside its id"
+	case basisOf(pick.Class) == BasisCoverage && (pick.Class != ClassQualified || !coversWhole(pick)):
+		return "a claim by coverage on " + pick.Path
+	}
+	return ""
+}
+
+// recordUnit is the unit the named records' evidence claims on the
+// ladder's picks: the one unit it lies in, else the first pick on a unit
+// it lies in, so a record that links several units claims the one the
+// ladder ranks first among them (W-M1.41); "" when none is.
+func (r Roles) recordUnit(picks []UnitPick) string {
+	us := r.Named.KnowledgeUnits
+	if len(us) == 1 {
+		return us[0]
+	}
+	for _, p := range picks {
+		if slices.Contains(us, p.Path) {
+			return p.Path
+		}
 	}
 	return ""
 }
