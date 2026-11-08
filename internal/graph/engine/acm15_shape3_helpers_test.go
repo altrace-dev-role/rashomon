@@ -71,9 +71,10 @@ func TestACM15_NamesTruth(t *testing.T) {
 	}
 }
 
-// A unit line that renders its runner-up is a candidate; a runner-up the
-// line does not render leaves it stated; a brief without a unit line
-// claims the unit briefUnit gave it; a line past Kept was not said.
+// A unit line in the candidate band is a candidate, with its runner-up or
+// without one; a line in the stated band is stated though it names a
+// runner-up; a brief without a unit line claims the unit briefUnit gave
+// it; a line past Kept was not said.
 func TestACM15_ClaimOf(t *testing.T) {
 	unitLine := func(f slot.UnitFact) Line {
 		v, err := slot.Bind(slot.NewUnitLine(f))
@@ -82,8 +83,9 @@ func TestACM15_ClaimOf(t *testing.T) {
 		}
 		return Line{Role: RoleUnit, Key: "unit:go:x", Slot: v.(slot.GraphLine), Text: v.Text()}
 	}
-	cover := unitLine(slot.UnitFact{Path: "internal/store", Basis: slot.BasisCoverage, RunnerUp: "internal/safe"})
-	byName := unitLine(slot.UnitFact{Path: "internal/hook", Basis: slot.BasisUnitName, RunnerUp: "internal/learn"})
+	cover := unitLine(slot.UnitFact{Path: "internal/store", Basis: slot.BasisCoverage, Band: slot.BandCandidate, RunnerUp: "internal/safe"})
+	byName := unitLine(slot.UnitFact{Path: "internal/hook", Basis: slot.BasisUnitName, Band: slot.BandCandidate})
+	stated := unitLine(slot.UnitFact{Path: "internal/hook", Basis: slot.BasisCoverage, Band: slot.BandStated, RunnerUp: "internal/learn"})
 	reuse := Line{Role: RoleReuse, Key: "file:internal/x/a.go"}
 	cases := []struct {
 		b    Brief
@@ -91,7 +93,8 @@ func TestACM15_ClaimOf(t *testing.T) {
 		want briefClaim
 	}{
 		{Brief{Lines: []Line{cover, reuse}, Kept: 2}, "internal/store", briefClaim{Unit: "internal/store", Runner: "internal/safe", Line: true, Candidate: true}},
-		{Brief{Lines: []Line{byName}, Kept: 1}, "internal/hook", briefClaim{Unit: "internal/hook", Runner: "internal/learn", Line: true}},
+		{Brief{Lines: []Line{byName}, Kept: 1}, "internal/hook", briefClaim{Unit: "internal/hook", Line: true, Candidate: true}},
+		{Brief{Lines: []Line{stated}, Kept: 1}, "internal/hook", briefClaim{Unit: "internal/hook", Runner: "internal/learn", Line: true}},
 		{Brief{Lines: []Line{reuse}, Kept: 1}, "internal/x", briefClaim{Unit: "internal/x"}},
 		{Brief{Lines: []Line{reuse, cover}, Kept: 1}, "internal/x", briefClaim{Unit: "internal/x"}},
 		{Brief{}, "", briefClaim{}},
@@ -120,6 +123,8 @@ func TestACM15_UnitRight3(t *testing.T) {
 		{kindProse, briefClaim{Unit: "internal/c", Line: true}, false, false},
 		{kindProse, pair, false, true},
 		{kindProse, briefClaim{Unit: "internal/c", Runner: "internal/b", Line: true}, false, false},
+		{kindProse, briefClaim{Unit: "internal/c", Line: true, Candidate: true}, false, false},
+		{kindProse, briefClaim{Unit: "internal/a", Line: true, Candidate: true}, true, true},
 		{kindProse, briefClaim{Unit: "internal/c"}, false, false},
 		{kindNaming, briefClaim{}, false, false},
 		{kindNaming, pair, false, false},

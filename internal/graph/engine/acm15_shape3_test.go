@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // AC-M1.5 gate shape 3 (PLAN 7.7, registered 2026-11-08 before any
@@ -110,7 +112,8 @@ func isAlnum(c byte) bool {
 // (briefUnit's: its unit line's, else the unit of its first kept line, so
 // a brief that withholds its unit line and keeps a role line still claims
 // that line's unit), whether it holds a unit line, and whether that line
-// is a candidate: it renders its runner-up, so the brief offers the pair.
+// is in the candidate band (W-M1.38), so the brief offers the unit and its
+// runner-up as a pair, or the unit alone when it names none.
 type briefClaim struct {
 	Unit, Runner    string
 	Line, Candidate bool
@@ -122,7 +125,7 @@ func claimOf(b Brief, unit string) briefClaim {
 	for _, l := range b.Lines[:b.Kept] {
 		if u, ok := l.Slot.Unit(); ok {
 			c.Line, c.Runner = true, string(u.RunnerUp)
-			c.Candidate = u.RunnerUp != "" && strings.Contains(l.Text, u.RunnerUp.Text())
+			c.Candidate = u.Band == slot.BandCandidate
 			break
 		}
 	}
@@ -130,17 +133,19 @@ func claimOf(b Brief, unit string) briefClaim {
 }
 
 // holds is whether the claim names one of want: its unit, or for a
-// candidate its runner-up.
+// candidate its runner-up when it names one.
 func (c briefClaim) holds(want []string) bool {
-	return c.Unit != "" && slices.Contains(want, c.Unit) || c.Candidate && slices.Contains(want, c.Runner)
+	return c.Unit != "" && slices.Contains(want, c.Unit) || c.Candidate && c.Runner != "" && slices.Contains(want, c.Runner)
 }
 
 func (c briefClaim) String() string {
 	switch {
 	case c.Unit == "":
 		return "claims no unit"
-	case c.Candidate:
+	case c.Candidate && c.Runner != "":
 		return fmt.Sprintf("candidate %q or %q", c.Unit, c.Runner)
+	case c.Candidate:
+		return fmt.Sprintf("candidate %q", c.Unit)
 	case c.Line:
 		return fmt.Sprintf("states %q", c.Unit)
 	}
