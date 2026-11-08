@@ -47,10 +47,10 @@ type Phrase struct {
 	// one (W-M1.32, K5).
 	Pronoun string
 	// Excluded is whether the phrase names what the change leaves alone
-	// ("without touching the store"): an exclusion, which the roles
-	// stage bars from the candidates, where a kept thing ("keep the
-	// store tests green") is an invariant on the work and bars nothing
-	// (W-M1.34).
+	// ("without touching the store", "do not touch the store"): an
+	// exclusion, which the roles stage bars from the candidates, where a
+	// kept thing ("keep the store tests green") is an invariant on the
+	// work and bars nothing (W-M1.34, W-M1.35).
 	Excluded bool
 }
 
@@ -213,6 +213,10 @@ func parseSentence(s string) clauses {
 			if causativeWords.get()[head] {
 				rest = rest[:bareVerbAt(rest)]
 			}
+			verb, rest, excluded := negatedKeep(head, rest)
+			if excluded {
+				c.verbs = append(c.verbs, verb)
+			}
 			thing, place := splitPlace(rest, cls)
 			switch cls {
 			case "add", "show":
@@ -220,6 +224,11 @@ func parseSentence(s string) clauses {
 			case "edit":
 				c.targets = addPhrases(addPhrases(c.targets, thing), place)
 			case "keep":
+				if excluded {
+					for k := range thing {
+						thing[k].Excluded = true
+					}
+				}
 				c.constraints = addPhrases(c.constraints, thing)
 			}
 			continue
@@ -295,7 +304,9 @@ func splitUse(words []string) ([]string, Phrase) {
 
 // afterModal is the class, word and object of the verb a modal governs:
 // the first verb-class or use word, "never" or "not" before it making it
-// a keep.
+// a keep of what the change leaves alone (the object Excluded, W-M1.35)
+// unless that verb is itself keep-class ("should not leave the lock file
+// behind"): the opposite, a kept thing that bars nothing.
 func afterModal(words []string) (string, string, Phrase) {
 	keep := false
 	for i, w := range words {
@@ -309,13 +320,36 @@ func afterModal(words []string) (string, string, Phrase) {
 			cls = "use"
 		}
 		if cls != "" {
-			if keep {
-				cls = "keep"
+			obj := phraseOf(words[i+1:])
+			if keep && cls != "keep" {
+				cls, obj.Excluded = "keep", true
 			}
-			return cls, w, phraseOf(words[i+1:])
+			return cls, w, obj
 		}
 	}
 	return "", "", Phrase{}
+}
+
+// negatedKeep reads a keep-class clause whose head negates the verb after
+// it ("never touch the store", "do not embed the summary"): that verb is a
+// verb of the clause, as after a modal, and the thing after it is left
+// alone, an exclusion. A negated keep-class verb ("do not keep the old
+// lock file", "never leave the lock file behind") means the opposite, work
+// on the thing, and keeps the class's shape, a kept thing that bars
+// nothing (W-M1.35). The verb, the rest without it, and whether the thing
+// is excluded.
+func negatedKeep(head string, rest []string) (string, []string, bool) {
+	i := -1
+	switch {
+	case head == "never":
+		i = 0
+	case head == "do" && len(rest) > 0 && low(rest[0]) == "not":
+		i = 1
+	}
+	if i < 0 || i >= len(rest) || verbClass.get()[low(rest[i])] == "keep" {
+		return "", rest, false
+	}
+	return low(rest[i]), append(append([]string{}, rest[:i]...), rest[i+1:]...), true
 }
 
 // clausesOf is the sentence's clauses: its words as written, trimmed of

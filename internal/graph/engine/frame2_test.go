@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -50,6 +51,64 @@ func TestFrame_AnExclusionPhraseIsAConstraint(t *testing.T) {
 		}
 		if got := strings.Join(f.Aside, " "); got != tokensOf(tc.aside) {
 			t.Fatalf("%q: aside %q, want %q", tc.prompt, got, tokensOf(tc.aside))
+		}
+	}
+}
+
+// A negated verb clause names what the change leaves alone ("do not
+// embed report.MaskedRuns", "it must not touch the store"): an
+// exclusion, as a "without" clause is, where a kept thing ("keep the
+// existing store tests green") is an invariant on the work (W-M1.35).
+func TestFrame_ANegatedVerbClauseIsAnExclusion(t *testing.T) {
+	for _, prompt := range []string{
+		"project masked_runs, do not embed report.MaskedRuns",
+		"Fix the duplicate id check, it should not change the store.",
+	} {
+		f := Parse(prompt)
+		if len(f.Constraints) != 1 || !f.Constraints[0].Excluded {
+			t.Errorf("%q: constraints %+v, want one, excluded", prompt, f.Constraints)
+		}
+	}
+	f := Parse("Fix the duplicate id check and keep the existing store tests green.")
+	if len(f.Constraints) != 1 || f.Constraints[0].Excluded {
+		t.Fatalf("constraints %+v, want one kept thing, not excluded", f.Constraints)
+	}
+}
+
+// A negated keep-class verb means the opposite of a keep: "do not keep the
+// old lock file" and "never leave the lock file behind" are work on the
+// lock file. The phrase is a kept thing as before, never an exclusion, so
+// it bars nothing (W-M1.35 amend, gate finding 1).
+func TestFrame_ANegatedKeepVerbIsNotAnExclusion(t *testing.T) {
+	for _, prompt := range []string{
+		"Fix the cleanup, do not keep the old lock file.",
+		"Fix the cleanup, it should not leave the lock file behind.",
+		"Fix the cleanup and never leave the lock file behind.",
+		"Do not keep the deprecated flag in the settings loader.",
+	} {
+		f := Parse(prompt)
+		if len(f.Constraints) != 1 || f.Constraints[0].Excluded {
+			t.Errorf("%q: constraints %+v, want one kept thing, not excluded", prompt, f.Constraints)
+		}
+	}
+}
+
+// The negated verb at a clause head is a verb, as it is after a modal: it
+// leaves the excluded thing's tokens and joins the frame's Verbs, so a unit
+// named by the verb's stem is not barred ("do not update the schema" bars
+// no update package) (W-M1.35 amend, gate finding 2).
+func TestFrame_ANegatedHeadVerbIsAVerb(t *testing.T) {
+	for _, tc := range []struct{ prompt, verb string }{
+		{"do not touch the store", "touch"},
+		{"Do not change the store", "change"},
+		{"never touch the store", "touch"},
+	} {
+		f := Parse(tc.prompt)
+		if len(f.Constraints) != 1 || !f.Constraints[0].Excluded || strings.Join(f.Constraints[0].Tokens, " ") != "stor" {
+			t.Errorf("%q: constraints %+v, want one excluded [stor]", tc.prompt, f.Constraints)
+		}
+		if want := Tokens(tc.verb)[0]; !slices.Contains(f.Verbs, want) {
+			t.Errorf("%q: verbs %v, want %q", tc.prompt, f.Verbs, want)
 		}
 	}
 }

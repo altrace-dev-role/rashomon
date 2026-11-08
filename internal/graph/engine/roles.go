@@ -204,14 +204,20 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 // a thing ("the spec file format") keeps its words, the property's owner
 // being where the work is. For the fallback claim by a unit's name
 // ("report the line of a duplicate id" names no report, whatever unit is
-// called that) (W-M1.34, O3).
+// called that) (W-M1.34, O3). A constraint is on a change: when the
+// frame names none, no target and no addition, a kept thing ("leave the
+// settings file byte for byte as found") is the work and keeps its
+// words; an excluded thing is left alone whatever the frame names
+// (W-M1.35).
 func (r Roles) things(prompt []string) []string {
 	drop := append([]string{}, r.Frame.Verbs...)
 	drop = append(drop, r.Frame.Aside...)
+	alone := len(r.Frame.Targets) == 0 && len(r.Frame.Additions) == 0
 	for _, p := range r.Frame.Constraints {
-		if !p.property() {
-			drop = append(drop, p.Tokens...)
+		if p.property() || (alone && !p.Excluded) {
+			continue
 		}
+		drop = append(drop, p.Tokens...)
 	}
 	return except(prompt, drop)
 }

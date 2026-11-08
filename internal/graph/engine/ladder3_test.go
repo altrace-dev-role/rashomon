@@ -185,3 +185,53 @@ func TestRoles_AKeptUnitStaysACandidate(t *testing.T) {
 		t.Fatalf("picks %v why %q, want store", r.Picks, r.Why)
 	}
 }
+
+// A negated verb clause bars the unit it names as a "without" clause
+// does: "do not touch the store" leaves the store alone (W-M1.35).
+func TestRoles_ANegatedClauseBarsTheUnitItNames(t *testing.T) {
+	g := synth(t, []synFile{
+		{"store", "store/open.py", []synSym{fn("open_store"), fn("duplicate_id_check")}},
+		{"spec", "spec/parse.py", []synSym{fn("parse_spec")}},
+	}, nil, nil)
+	r := roles(t, g, "Fix the duplicate id check, do not touch the store.")
+	if len(r.Picks) > 0 && r.Picks[0].Refused == "" && r.Picks[0].Path == "store" {
+		t.Fatalf("unit store why %q: the store is what the change leaves alone", r.Why)
+	}
+	if !strings.Contains(r.Why, "store") {
+		t.Fatalf("why %q, want the refusal to name the store", r.Why)
+	}
+}
+
+// A constraint is on a change. A frame that names none ("leave the
+// settings file byte for byte as found") has nothing for a kept thing to
+// be an invariant on: the kept thing is the work and its words stay in
+// the fallback bag, where an excluded thing is left alone whatever the
+// frame names (W-M1.35, commit replay 9f7b8ff3659f).
+func TestRoles_AKeptThingAloneIsTheWork(t *testing.T) {
+	g := synth(t, []synFile{
+		{"settings", "settings/file.py", []synSym{fn("read_settings"), fn("write_settings")}},
+		{"verify", "verify/run.py", []synSym{fn("verify_found")}},
+	}, nil, nil)
+	r := roles(t, g, "leave the settings file byte for byte as found")
+	if len(r.Picks) == 0 || r.Picks[0].Refused != "" || r.Picks[0].Path != "settings" {
+		t.Fatalf("picks %v why %q, want settings: the kept thing is the work", r.Picks, r.Why)
+	}
+	r = roles(t, g, "do not touch the settings file")
+	if len(r.Picks) > 0 && r.Picks[0].Refused == "" && r.Picks[0].Path == "settings" {
+		t.Fatalf("picks %v: an excluded thing is left alone", r.Picks)
+	}
+}
+
+// A negated keep-class verb is work on the thing it names: "do not keep
+// the old lock file" alone is a kept thing alone, the work, never an
+// exclusion that empties the bag (W-M1.35 amend, gate finding 1).
+func TestRoles_ANegatedKeepVerbIsNotAnExclusion(t *testing.T) {
+	g := synth(t, []synFile{
+		{"lock", "lock/file.py", []synSym{fn("write_lock_file"), fn("remove_lock_file")}},
+		{"cleanup", "cleanup/run.py", []synSym{fn("run_cleanup")}},
+	}, nil, nil)
+	r := roles(t, g, "Do not keep the old lock file.")
+	if len(r.Picks) == 0 || r.Picks[0].Refused != "" || r.Picks[0].Path != "lock" {
+		t.Fatalf("picks %+v why %q, want lock: the lock file is the work", r.Picks, r.Why)
+	}
+}
