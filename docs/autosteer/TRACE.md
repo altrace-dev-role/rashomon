@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 10:1x: T1c ruling: a run that ends at the turn cap is judged, not voided (PLAN 6.1, "T1c: a run that ends at the turn cap is judged"), registered before t1c-g15 is judged.
+  - t1c-g15 hit the 150-turn cap (error_max_turns, no 429, stderr empty); the sanity stop is a stop, and only an API death is void (t1b-g1).
+  - Rules: cap runs are rows judged by the batch's post-sanity steps at the boundary; API deaths stay void; A7 red on a cap tree is an outcome when go test ran; the read prints cap runs per arm.
 - 2026-11-09 09:4x: W-M1.42's control gate registered before W-M1.42 is built (adb6e6ec; PLAN 6.1, "W-M1.42's control gate").
   - control.tsv: 26 of the owner's short prompts with no task content and two harness notices; gate 0 briefs sent; 20 of 28 sent at 01b8ed4a.
   - AC-M1.1's vague rows leave off-task lines unjudged, so its pass says nothing about briefs on requests with no task; the blanket not-known rule is refused (six task rows with a unit truth would go silent unmeasured).
