@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 14:5x: W-M1.41b gated and landed on this branch as 7491a620; its gate ran at the identical patch on 15763518 (patch-id 0e883b5b on both; the trees differ only by the three documentation and control-set commits under it).
+  - Gate: go test ./... 65 packages ok, 0 FAIL lines; 41b's 12 new tests PASS by name; every registered row check met on the five files (moved rows are the 19 registered record claims); no claim on a barred unit; the barred count moves no row; mutation 120 of 121 red, 1 equivalent; clause 4 HOLDS (589 B, 7641dab9cde93040); K7 prompt path p95 169.9 ms, hook path p95 869.1 ms.
+  - The control gate stays as at its base, 21 of 29, W-M1.42's to build.
+  - W-M1.41c registered (PLAN 6.1): a named record that applies in the ladder's pick settles the claim; 10 rows, 7 saying "records not known" while the request named one.
+  - T1c triple 9: t1c-r9 judged pass (143 turns, 8.10 USD, result subtype success); R 2 of 9.
 - 2026-11-09 13:4x: W-M1.43 registered before it is built (PLAN 6.1, "W-M1.43: one reading of what a request excludes"): a clause led by "but" excludes nothing to the name reader, and the frame reads "leave X alone" as kept, so a brief can state the unit the request excludes.
   - Control row H3 added before W-M1.42 is built: the idle notice's newer form, which carries the peer session's last-turn summary, got a brief from the installed hook live; at c14b59f1 the engine sends a brief on 21 of the 29 control rows (TestACM11_ControlPromptsSendNoBrief, gate 0).
   - T1c triple 9: t1c-g16 judged pass (113 turns, 5.19 USD, result subtype success); G 2 of 6.

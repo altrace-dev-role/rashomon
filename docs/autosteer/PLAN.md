@@ -686,6 +686,34 @@ Acceptance:
 - T1's first-prompt context stays 589 bytes, sha256 7641dab9cde93040;
 - a mutant row for each branch of the predicate goes red.
 
+**W-M1.41c: a named record that applies in the ladder's pick settles the claim, registered before it is built (2026-11-09 14:5x PST; ordered after W-M1.42 and before W-M1.43 and `classes4`).** W-M1.41b makes a record claim only when the record's unit differs from the ladder's pick (`overRecord` returns "" when they are the same unit). When the request's words and its named record point at the same unit, the brief says less than when the record alone points there:
+- it reads "a candidate by word coverage" or "a candidate by its name", and never names the record as the reason;
+- on 7 rows it also says "not known: the records that apply to the change", although the request named one that applies in that unit.
+
+Counted at the W-M1.41b tree:
+- 10 rows have a claim on a named record's unit that is not a record claim, and all 10 claim a right unit:
+  - `classes.tsv` N2, N3 and N9;
+  - `classes2.tsv` KI01 and KI04;
+  - `classes3.tsv` KI11, KI13 and KI17;
+  - `edge.tsv` N2 and N3.
+- 7 of them say the records are not known: N2, N3, KI01, KI04 and KI11, and edge N2 and N3.
+
+The change: when a named record's evidence lies in the unit the ladder picked, the claim is a record claim on that unit, with the forms and bands of W-M1.41b.
+- One unit, form (a): stated in the named cell.
+- Several units, form (b): banded by the ladder pick's basis.
+
+Before code, the registration predicts each of the 10 rows: basis, band, the unit line's text and its byte length. It also predicts every move on the stated and candidate counts and on the calibration cells.
+
+Acceptance:
+- no unit moves;
+- the "records not known" lines go from 7 to 0 on these files;
+- every other row is byte-identical;
+- stated precision on each file stays at or above the stated floor (0.8);
+- T1's first-prompt context stays 589 bytes, sha256 7641dab9cde93040;
+- a mutant row for each branch goes red.
+
+All 10 rows are in-sample, so `classes4` is the held-out test of this rule.
+
 ### 6.2 M2 to M7 (task level; step-level detail is written when the milestone opens, after the previous slice's evidence is read, so that measured results shape the detail rather than guesses)
 
 | Id | Deliverable | Files | Req | AC | Depends | h | Risk |
