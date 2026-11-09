@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 13:4x: W-M1.43 registered before it is built (PLAN 6.1, "W-M1.43: one reading of what a request excludes"): a clause led by "but" excludes nothing to the name reader, and the frame reads "leave X alone" as kept, so a brief can state the unit the request excludes.
+  - Control row H3 added before W-M1.42 is built: the idle notice's newer form, which carries the peer session's last-turn summary, got a brief from the installed hook live; at c14b59f1 the engine sends a brief on 21 of the 29 control rows (TestACM11_ControlPromptsSendNoBrief, gate 0).
+  - T1c triple 9: t1c-g16 judged pass (113 turns, 5.19 USD, result subtype success); G 2 of 6.
 - 2026-11-09 11:5x: T1c triple 8 read at its boundary (t1c-read4.py 5c9fec38fac7da51): U 1 of 8, R 1 of 8, G 1 of 5 (G0 1 of 3 beside); n=10 not met; runs at the turn cap G 1 (t1c-g15), others 0; no lift claim.
   - W-M1.41 (08fd4bc6) and the three commits after it were pushed to autosteer/contracts-v2; CI runs 42674784860 and 42675328379 each 14 jobs green, 3 skipped by design.
   - Those three were written as adb6e6ec, 191389af and c81fed47 and rebased onto 08fd4bc6 with identical patches (git range-diff: =) as 5ca51b5c, 678e53be and 15763518; the two citations of adb6e6ec here and in PLAN 6.1 now read 5ca51b5c, and t1c-rows.txt carries the c81fed47 mapping as a comment line.
