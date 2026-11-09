@@ -6,10 +6,13 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 11:5x: T1c triple 8 read at its boundary (t1c-read4.py 5c9fec38fac7da51): U 1 of 8, R 1 of 8, G 1 of 5 (G0 1 of 3 beside); n=10 not met; runs at the turn cap G 1 (t1c-g15), others 0; no lift claim.
+  - W-M1.41 (08fd4bc6) and the three commits after it were pushed to autosteer/contracts-v2; CI runs 42674784860 and 42675328379 each 14 jobs green, 3 skipped by design.
+  - Those three were written as adb6e6ec, 191389af and c81fed47 and rebased onto 08fd4bc6 with identical patches (git range-diff: =) as 5ca51b5c, 678e53be and 15763518; the two citations of adb6e6ec here and in PLAN 6.1 now read 5ca51b5c, and t1c-rows.txt carries the c81fed47 mapping as a comment line.
 - 2026-11-09 10:1x: T1c ruling: a run that ends at the turn cap is judged, not voided (PLAN 6.1, "T1c: a run that ends at the turn cap is judged"), registered before t1c-g15 is judged.
   - t1c-g15 hit the 150-turn cap (error_max_turns, no 429, stderr empty); the sanity stop is a stop, and only an API death is void (t1b-g1).
   - Rules: cap runs are rows judged by the batch's post-sanity steps at the boundary; API deaths stay void; A7 red on a cap tree is an outcome when go test ran; the read prints cap runs per arm.
-- 2026-11-09 09:4x: W-M1.42's control gate registered before W-M1.42 is built (adb6e6ec; PLAN 6.1, "W-M1.42's control gate").
+- 2026-11-09 09:4x: W-M1.42's control gate registered before W-M1.42 is built (5ca51b5c; PLAN 6.1, "W-M1.42's control gate").
   - control.tsv: 26 of the owner's short prompts with no task content and two harness notices; gate 0 briefs sent; 20 of 28 sent at 01b8ed4a.
   - AC-M1.1's vague rows leave off-task lines unjudged, so its pass says nothing about briefs on requests with no task; the blanket not-known rule is refused (six task rows with a unit truth would go silent unmeasured).
 - 2026-11-08 15:5x: W-M1.40 built: unit rule E5 ships without its knowledge clause (40b788ac; PLAN 6.1, "W-M1.40 as built").
