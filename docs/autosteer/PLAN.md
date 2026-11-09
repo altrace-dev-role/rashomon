@@ -778,6 +778,7 @@ All 10 rows are in-sample, so `classes4` is the held-out test of this rule.
 | W-DEBT.4 | Stale truth-table rows PL7, PL11 against main | low | fixed by T1's PR |
 | W-DEBT.5 | `docs-out/plans/AUTOSTEER-EXECUTION-RECORD.md` sections 3.1 to 3.3 (frozen prompt, checks, runs) move into `test/live/autosteer/t1/` as scripts and a `.txt` | low | W-M1.10 |
 | W-DEBT.6 | Mutation sweeps over `internal/graph` (never run) | medium | milestone gate M1 (not a task gate) |
+| W-DEBT.7 | Two problems with the prompt-time record notes, seen 2026-11-09 on turns that changed no Go file. (1) The platform note says "Go packages the last reply changed" (`internal/steer/render/render.go`, `owedPackages`), but the packages come from every Go write in the session (`platformPaths`, session scope), so the sentence names the wrong span. (2) The record counts a gate run only when the Bash command's runner is `go test` (`goTestGate`, `platformJudge.judge`). A project that runs its tests through a wrapper script therefore always owes the go test, and the "claim of completion that the record does not back" note fires on the same missing evidence. Fix: word the note to its real scope, and let a project declare a wrapper as a runner of its go test gate. | medium: a note that fires every turn gets ignored, including when it is right | nothing on M1's path |
 
 ---
 
