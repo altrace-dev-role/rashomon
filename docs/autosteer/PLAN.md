@@ -656,6 +656,36 @@ Rule 1 without the knowledge clause, simulated: `classes2.tsv` unit 120 of 160, 
 3. A7 on a cap run's tree: a go test that ran and failed is the run's outcome; a judge step that failed to run (exit 127, a slot refusal) is a fault, rerun at no API cost.
 4. The read prints each arm's runs at the cap beside its rate, so the censoring this rule avoids stays visible.
 
+**W-M1.43: one reading of what a request excludes, registered before it is built (2026-11-09 13:4x PST; ordered after W-M1.42 and before `classes4`, so the held-out read measures the engine with it).** Two readers decide whether a clause excludes a unit, and they disagree.
+- The name reader (`excludedClause`, `internal/graph/engine/names.go`) looks only at the clause's first word: a keep-class verb, a negation or "do not".
+- The frame reads "leave" as keep (`words.go`), so "leave X alone" is a kept thing there. It bars nothing.
+
+Probed on the W-M1.41b tree with a fixture where B374's evidence lies only in `internal/spend`:
+- "B374 again, but do not touch internal/spend", "... but without touching ..." and "... but leave internal/spend alone": the clause's first word is "but", so no constraint is read. The name reader names `internal/spend`, and the brief states "unit 'internal/spend' (named in the request)".
+- "B374 again. Leave internal/spend alone.": a kept constraint and no bar. The record claim states `internal/spend` ("the request names B374, which applies here").
+- "B374 again, leave internal/spend alone": a candidate on `internal/spend` by its name.
+
+Each form states or proposes the one unit the user excluded. A stated wrong unit is the error gate B weighs worst.
+
+The change:
+1. One predicate, read by both the frame and the name reader.
+2. It looks past a leading conjunction (but, and, yet, though) to the clause's own first word.
+3. It reads "leave X alone", "leave X untouched" and "leave X as is" as excluding X.
+4. A plain keep stays a kept thing: "keep the API stable" preserves a behaviour and bars no unit. The registration writes this line with examples both ways before code.
+
+Before code, for each row the predicate could move, the registration records at the tip whether the row names a unit and what the brief states:
+- `classes.tsv` O5;
+- `classes2.tsv` NE05, RF07, TO04, CC08 and KI08;
+- `classes3.tsv` RF14, RF18, RF19, DL17 and TO18.
+
+It then predicts each row's move.
+
+Acceptance:
+- the rows move only as predicted;
+- no brief on any of the five files states or proposes a unit its request excludes;
+- T1's first-prompt context stays 589 bytes, sha256 7641dab9cde93040;
+- a mutant row for each branch of the predicate goes red.
+
 ### 6.2 M2 to M7 (task level; step-level detail is written when the milestone opens, after the previous slice's evidence is read, so that measured results shape the detail rather than guesses)
 
 | Id | Deliverable | Files | Req | AC | Depends | h | Risk |
