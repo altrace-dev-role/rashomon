@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 15:4x: T1c triple 9 read at its boundary (t1c-read5.py e5e6aefacedb7378, the read4 lines plus the AC-M1.4 attribution table): U 1 of 9, R 2 of 9, G 2 of 6 (G0 1 of 3 beside); cost per correct run U 41.54, R 25.95, G 18.33 USD; runs at the turn cap G 1 (t1c-g15), others 0; n=10 not met; no lift claim.
+  - t1c-u9 judged fail (131 turns, 6.24 USD, result subtype success).
+  - CI at 01b1527e (run 42716654419): 14 jobs green, 3 skipped by design.
 - 2026-11-09 14:5x: W-M1.41b gated and landed on this branch as 7491a620; its gate ran at the identical patch on 15763518 (patch-id 0e883b5b on both; the trees differ only by the three documentation and control-set commits under it).
   - Gate: go test ./... 65 packages ok, 0 FAIL lines; 41b's 12 new tests PASS by name; every registered row check met on the five files (moved rows are the 19 registered record claims); no claim on a barred unit; the barred count moves no row; mutation 120 of 121 red, 1 equivalent; clause 4 HOLDS (589 B, 7641dab9cde93040); K7 prompt path p95 169.9 ms, hook path p95 869.1 ms.
   - The control gate stays as at its base, 21 of 29, W-M1.42's to build.
