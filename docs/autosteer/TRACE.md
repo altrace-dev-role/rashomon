@@ -6,6 +6,10 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 15:5x: W-M1.42's word threshold read on a local list of the owner's short requests (163 distinct, not committed; 8 labelled as holding a repo target before any engine output on the list was read). Rows silenced at k = 1 to 5: 55, 82, 115, 121, 123.
+  - At k=3, the least k that silences the control set, 3 of the 8 labelled rows are silenced, against a prediction of none. Each names its target in a form the engine does not read (PLAN 6.3, W-DEBT.8). Each base brief was `not known: the unit to change` plus four files matched on one common word, so no line on the target is lost. k=3 stands.
+  - U1 silenced 13 rows, none of the 8; U3 silenced none (the list holds no notices).
+  - Triple 9's boundary read matched byte for byte on an independent second run (sha256 b859303b). T1c triple 10 launched 15:44 (t1c-g17, t1c-r10, t1c-u10) at meter 83 on two reads.
 - 2026-11-09 15:4x: T1c triple 9 read at its boundary (t1c-read5.py e5e6aefacedb7378, the read4 lines plus the AC-M1.4 attribution table): U 1 of 9, R 2 of 9, G 2 of 6 (G0 1 of 3 beside); cost per correct run U 41.54, R 25.95, G 18.33 USD; runs at the turn cap G 1 (t1c-g15), others 0; n=10 not met; no lift claim.
   - t1c-u9 judged fail (131 turns, 6.24 USD, result subtype success).
   - CI at 01b1527e (run 42716654419): 14 jobs green, 3 skipped by design.
