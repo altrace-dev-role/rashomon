@@ -13,11 +13,11 @@ import (
 // Record is l's record form: every list as its count, the path and the
 // source as their keyed digests (digest, intent's PathDigest), the knowledge
 // ids, the title, the clause, a code line's role and basis, a unit line's
-// basis and the kinds it or a not-known line names as not known, and
-// every line's band kept, since those are the repository's declared
-// records and the engine's reading, never the request's words. It is
-// built from the bound line, so the counts are what the printed line
-// listed, left out and cut.
+// basis, a record claim's records, unit counts and rank, and the kinds it
+// or a not-known line names as not known, and every line's band kept,
+// since those are the repository's declared records and the engine's
+// reading, never the request's words. It is built from the bound line,
+// so the counts are what the printed line listed, left out and cut.
 func (l GraphLine) Record(digest func(string) string) GraphLine {
 	out := GraphLine{keyed: true}
 	m := l.more
@@ -51,7 +51,8 @@ func (l GraphLine) Record(digest func(string) string) GraphLine {
 		m.Names += len(u.Names)
 		m.Consumers += len(u.Consumers)
 		out.digest = digest(string(u.Path))
-		out.unit = &UnitFact{Basis: u.Basis, Band: u.Band, Lessons: slices.Clone(u.Lessons), Unknown: slices.Clone(u.Unknown)}
+		out.unit = &UnitFact{Basis: u.Basis, Band: u.Band, Lessons: slices.Clone(u.Lessons), Unknown: slices.Clone(u.Unknown),
+			Records: slices.Clone(u.Records), Units: u.Units, Barred: u.Barred, First: u.First}
 	case l.unknown != nil:
 		out.unknown = &NotKnownFact{Unknown: slices.Clone(l.unknown.Unknown)}
 	default:
@@ -102,7 +103,10 @@ func (l GraphLine) validateKeyed() error {
 		if u.Path != "" || u.RunnerUp != "" || len(u.Names)+len(u.Consumers) > 0 {
 			return errors.New("slot: keyed graph line holds a path or a name")
 		}
-		if err := u.validDisclosure(); err != nil {
+		if err := u.validDisclosure(l.more.Records); err != nil {
+			return err
+		}
+		if err := validIDs(u.Records); err != nil {
 			return err
 		}
 		return validIDs(u.Lessons)

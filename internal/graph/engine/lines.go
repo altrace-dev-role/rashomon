@@ -14,7 +14,7 @@ func roleLines(g Reader, rev graph.Rev, r Roles, byID map[graph.ID]Candidate) []
 	if !r.Found() {
 		return nil
 	}
-	lines := []Line{{Key: r.Unit, Role: RoleUnit, Basis: r.Basis, RunnerUp: r.RunnerUp, Members: r.Targets, Consumers: r.UnitConsumers}}
+	lines := []Line{{Key: r.Unit, Role: RoleUnit, Basis: r.Basis, RunnerUp: r.RunnerUp, Record: r.Record, Members: r.Targets, Consumers: r.UnitConsumers}}
 	if r.File != "" {
 		lines = append(lines, Line{Key: r.File, Role: RoleTarget, Members: append([]graph.ID{r.File}, r.Targets...)})
 	}

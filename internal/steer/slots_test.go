@@ -107,8 +107,8 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"Ident":       `"public.sessions"`,
 		"KnowledgeID": `"les:INC-212"`,
 		"Revision":    `"C1+ov16"`,
-		"GraphLine": `{"calls":[],"clause":"","consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"writers":0,"writes":0},` +
-			`"digest":"","id":"","imports":[],"kind":"table","lessons":["les:INC-212"],"names":[],"path":"","readers":[],"reads":[],"role":"","source":"","source_digest":"","table":"public.sessions","writers":["purge.run"],"writes":[]}`,
+		"GraphLine": `{"calls":[],"clause":"","consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"records":0,"writers":0,"writes":0},` +
+			`"digest":"","id":"","imports":[],"kind":"table","lessons":["les:INC-212"],"names":[],"path":"","readers":[],"reads":[],"records":[],"role":"","source":"","source_digest":"","table":"public.sessions","writers":["purge.run"],"writes":[]}`,
 	}
 	for _, name := range slotTypes(t) {
 		v, ok := samples[name]

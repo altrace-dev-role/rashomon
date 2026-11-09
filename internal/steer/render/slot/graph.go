@@ -187,7 +187,7 @@ const (
 // left out by a check or cut at the list's cap; in the record form, every
 // item, since the record lists none.
 type Counts struct {
-	Names, Consts, Calls, Writes, Reads, Imports, Lessons, Writers, Readers, Consumers int
+	Names, Consts, Calls, Writes, Reads, Imports, Lessons, Writers, Readers, Consumers, Records int
 }
 
 // The list caps of one line: three names, callers or applying records, two
@@ -303,7 +303,7 @@ func (l GraphLine) Validate() error {
 	case l.know != nil:
 		return l.know.validate()
 	case l.unit != nil:
-		return l.unit.validate()
+		return l.unit.validate(l.more.Records)
 	case l.unknown != nil:
 		return l.unknown.validate()
 	}
@@ -311,7 +311,7 @@ func (l GraphLine) Validate() error {
 }
 
 func (m Counts) validate() error {
-	return negative("graph line", m.Names, m.Consts, m.Calls, m.Writes, m.Reads, m.Imports, m.Lessons, m.Writers, m.Readers, m.Consumers)
+	return negative("graph line", m.Names, m.Consts, m.Calls, m.Writes, m.Reads, m.Imports, m.Lessons, m.Writers, m.Readers, m.Consumers, m.Records)
 }
 
 // oneFact refuses a line holding two facts.

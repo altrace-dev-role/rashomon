@@ -33,11 +33,15 @@ func lineFact(g Reader, rev graph.Rev, l Line, byID map[graph.ID]Candidate, rel 
 }
 
 // unitFact is a unit line's facts: its path, the claim's basis, band and
-// runner-up unit (S3), the target symbols it declares (the line's
-// members), the files outside it that consume it, the knowledge that
-// applies to the unit itself, and the kinds of role line withheld.
+// runner-up unit (S3), a record claim's records, unit count, count of
+// barred units and rank (W-M1.41b), the target symbols it declares (the
+// line's members), the files outside it that consume it, the knowledge
+// that applies to the unit itself, and the kinds of role line withheld.
 func unitFact(g Reader, rev graph.Rev, l Line, rel func(string) string) slot.UnitFact {
 	f := slot.UnitFact{Path: slot.RelPath(rel(unitPath(l.Key))), Basis: l.Basis, Band: l.Band, Unknown: l.Unknown}
+	if l.Basis == BasisRecord {
+		f.Records, f.Units, f.Barred, f.First = appendKnowledge(nil, l.Record.IDs), l.Record.Units, l.Record.Barred, l.Record.First
+	}
 	if l.RunnerUp != "" {
 		f.RunnerUp = slot.RelPath(rel(unitPath(l.RunnerUp)))
 	}

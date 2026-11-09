@@ -47,4 +47,4 @@ func (f NotKnownFact) validate() error {
 }
 
 // notKnownText is "not known: the unit to change, the file to change".
-func (l GraphLine) notKnownText() string { return notKnown(l.unknown.Unknown) }
+func (l GraphLine) notKnownText() string { return notKnown(l.unknown.Unknown, false) }

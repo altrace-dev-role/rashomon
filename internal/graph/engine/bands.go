@@ -47,7 +47,8 @@ func (t tally) band() string {
 // engine 55fcef02 (the engine of 28ca31b9) over the kept lines of every row
 // of classes.tsv and classes2.tsv (320 rows; plain tree, Options{IDF:
 // true}), with the kinds and their right rules registered before the
-// reading ran. A unit line's cell is its own basis; a role line's is its
+// reading ran. A unit line's cell is its own basis (a record claim's, the
+// basis it rests on: Roles.cell); a role line's is its
 // kind under the basis of the unit line it hangs off, the granularity PLAN
 // W-M1.38 rules after the reading showed a kind's pooled precision mixes
 // lines under right units with lines under wrong ones (target 36 of 37
@@ -107,9 +108,11 @@ func lower(a, b string) string {
 // takes the unit line's slot and names the unit and the kinds taken out,
 // so no related line is read as the unit's. A brief with no unit claim
 // whose cell (BasisNone) is withheld opens with the not-known line too,
-// which takes the first slot and cuts the last line to the budget.
+// which takes the first slot and cuts the last line to the budget. A
+// record claim's unit line names no knowledge kind its records cover
+// (Roles.unitUnknown); the not-known line names every kind.
 func withhold(lines []Line, decisions []Decision, r Roles, band bandFunc) ([]Line, []Decision) {
-	unit := band(RoleUnit, r.Basis)
+	unit := band(RoleUnit, r.cell())
 	if r.Unnamed {
 		unit = BandWithheld
 	}
@@ -122,17 +125,21 @@ func withhold(lines []Line, decisions []Decision, r Roles, band bandFunc) ([]Lin
 	why := make([]string, len(lines)+1)
 	gone := map[graph.ID]bool{}
 	var unknown []string
+	var knows []graph.ID
 	for i, l := range lines {
 		switch l.Role {
 		case "":
 		case RoleUnit:
 			l.Band = unit
 		default:
-			l.Band = lower(band(l.Role, r.Basis), unit)
+			l.Band = lower(band(l.Role, r.cell()), unit)
 		}
 		if l.Band == BandWithheld {
 			gone[l.Key] = true
 			why[i+1] = "withheld: role " + l.Role
+			if l.Role == RoleKnowledge {
+				knows = append(knows, l.Key)
+			}
 			switch {
 			case l.Role == RoleUnit:
 				if r.Unnamed {
@@ -162,7 +169,7 @@ func withhold(lines []Line, decisions []Decision, r Roles, band bandFunc) ([]Lin
 	for i := range kept {
 		switch kept[i].Role {
 		case RoleUnit:
-			kept[i].Unknown = unknown
+			kept[i].Unknown = r.unitUnknown(unknown, knows)
 		case RoleNotKnown:
 			kept[i].Unknown = append([]string{slot.UnknownUnit}, unknown...)
 		}

@@ -3,6 +3,7 @@ package slot
 import (
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -15,13 +16,18 @@ import (
 // cannot import steer.
 
 // UnitFact is the unit that owns the task: its path, how the unit was
-// claimed (Basis, one of the three words below; empty renders as before),
-// the runner-up unit when the claim is by word coverage or a candidate's,
-// the symbols of it the request names, the files outside it that consume
-// them, and the knowledge that applies to the unit as a whole. Band is how
-// far the claim is stated (BandStated, BandCandidate; empty renders as
-// stated), and Unknown the kinds of role line the brief withheld, in the
-// Unknown words below.
+// claimed (Basis, one of the four words below; empty renders as before),
+// the runner-up unit when the claim is by word coverage, a candidate's or
+// a record's, the symbols of it the request names, the files outside it
+// that consume them, and the knowledge that applies to the unit as a
+// whole. Band is how far the claim is stated (BandStated, BandCandidate;
+// empty renders as stated), and Unknown the kinds of role line the brief
+// withheld, in the Unknown words below. A claim by the records the
+// request names (BasisRecord, W-M1.41b) lists them in Records, counts the
+// units their evidence lies in that the request does not bar as Units and
+// those it bars as Barred, and when Units is more than one, says by what
+// the ladder ranked this unit first among them as First (BasisUnitName,
+// BasisCoverage), the reading the line's band rests on.
 type UnitFact struct {
 	Path      RelPath
 	Basis     string
@@ -31,17 +37,23 @@ type UnitFact struct {
 	Consumers []RelPath
 	Lessons   []KnowledgeID
 	Unknown   []string
+	Records   []KnowledgeID
+	Units     int
+	Barred    int
+	First     string
 }
 
 // The basis of a unit claim (S3, AC-M1.1 clause 3), so a unit line is
-// never a bare fact: the request named the unit's path, a name declared
-// in it or a knowledge id that applies to it; the request held the unit's
-// own name; or the unit's words covered the request's target phrase, the
-// claim the ladder settles by score, whose line names the runner-up.
+// never a bare fact: the request named the unit's path or a name declared
+// in it; the request held the unit's own name; the unit's words covered
+// the request's target phrase, the claim the ladder settles by score,
+// whose line names the runner-up; or the request named records whose
+// evidence lies in the unit (W-M1.41b), which the line names.
 const (
 	BasisNamed    = "named"
 	BasisUnitName = "unit-name"
 	BasisCoverage = "coverage"
+	BasisRecord   = "record"
 )
 
 // The bands a line is delivered in (W-M1.38, abstention by evidence): a
@@ -146,11 +158,13 @@ func validBand(b string) error {
 	return nil
 }
 
-func (f UnitFact) validate() error {
+// validate checks the fact as it is; records is the line's count of the
+// claim's records beyond those listed (Counts.Records).
+func (f UnitFact) validate(records int) error {
 	if err := f.Path.Validate(); err != nil {
 		return err
 	}
-	if err := f.validDisclosure(); err != nil {
+	if err := f.validDisclosure(records); err != nil {
 		return err
 	}
 	if err := validIdents(f.Names); err != nil {
@@ -161,15 +175,29 @@ func (f UnitFact) validate() error {
 			return err
 		}
 	}
+	if err := validIDs(f.Records); err != nil {
+		return err
+	}
 	return validIDs(f.Lessons)
 }
 
-// validDisclosure is whether the basis is one of the three words or empty,
-// the band one of the two or empty, each unknown kind one of the four and
-// named once, and the runner-up, when named, passes the path check.
-func (f UnitFact) validDisclosure() error {
-	if f.Basis != "" && f.Basis != BasisNamed && f.Basis != BasisUnitName && f.Basis != BasisCoverage {
-		return errors.New("slot: unit line has a basis outside named, unit-name and coverage")
+// validDisclosure is whether the basis is one of the four words or empty,
+// a record claim's fields hold (validRecord) and no other claim carries
+// them, the band is one of the two or empty, each unknown kind one of the
+// four and named once, and the runner-up, when named, passes the path
+// check; records is the count of the claim's records beyond those listed.
+func (f UnitFact) validDisclosure(records int) error {
+	switch f.Basis {
+	case BasisRecord:
+		if err := f.validRecord(records); err != nil {
+			return err
+		}
+	case "", BasisNamed, BasisUnitName, BasisCoverage:
+		if len(f.Records) > 0 || records > 0 || f.Units != 0 || f.Barred != 0 || f.First != "" {
+			return errors.New("slot: unit line holds a record claim's fields on a basis that is not record")
+		}
+	default:
+		return errors.New("slot: unit line has a basis outside named, unit-name, coverage and record")
 	}
 	if err := validBand(f.Band); err != nil {
 		return err
@@ -183,21 +211,52 @@ func (f UnitFact) validDisclosure() error {
 	return nil
 }
 
+// validRecord is whether a record claim names at least one record,
+// listed or counted, its records apply in at least one unit the request
+// does not bar and in no fewer than none it bars, and it says by what the
+// ladder ranked the unit, its name or word coverage, exactly when they
+// apply in more than one it does not bar, the only claim that names a
+// runner-up among them. A record that fails its check is left out and
+// counted at bind, as on every list, so the unit line stands.
+func (f UnitFact) validRecord(records int) error {
+	if len(f.Records)+records == 0 {
+		return errors.New("slot: a record claim names no record")
+	}
+	if err := inRange("record claim units", f.Units, 1, maxCount); err != nil {
+		return err
+	}
+	if err := inRange("record claim barred units", f.Barred, 0, maxCount); err != nil {
+		return err
+	}
+	if (f.Units > 1) != (f.First != "") {
+		return errors.New("slot: a record claim ranks its unit when, and only when, its records apply in more than one")
+	}
+	if f.First != "" && f.First != BasisUnitName && f.First != BasisCoverage {
+		return errors.New("slot: a record claim ranks its unit by a basis outside unit-name and coverage")
+	}
+	if f.RunnerUp != "" && f.Units < 2 {
+		return errors.New("slot: a record claim names a runner-up when its records apply in one unit")
+	}
+	return nil
+}
+
 // bindUnit leaves out and counts what a check refuses and cuts each list
-// at its cap; the unit's path, a basis outside the three words, a band
-// outside the two, an unknown kind outside the four and a runner-up path
-// that fails a check refuse the line.
+// at its cap; the unit's path, a basis outside the four words, a record
+// claim's fields that do not hold, a band outside the two, an unknown kind
+// outside the four and a runner-up path that fails a check refuse the
+// line.
 func (l GraphLine) bindUnit() (Value, error) {
 	u, m := *l.unit, l.more
 	if err := u.Path.Validate(); err != nil {
 		return nil, err
 	}
-	if err := u.validDisclosure(); err != nil {
+	if err := u.validDisclosure(m.Records); err != nil {
 		return nil, err
 	}
 	u.Names, m.Names = keptIdents(u.Names, m.Names, maxLineIdents)
 	u.Consumers, m.Consumers = keptPaths(u.Consumers, m.Consumers, maxLineConsumers)
 	u.Lessons, m.Lessons = keptIDs(u.Lessons, m.Lessons)
+	u.Records, m.Records = keptIDs(u.Records, m.Records)
 	return GraphLine{unit: &u, more: m}, nil
 }
 
@@ -222,11 +281,12 @@ func keptPaths(items []RelPath, more, cap int) ([]RelPath, int) {
 // reuse", the basis clause in one of its forms or absent, or "a unit on
 // record" with counts in the record form; the kinds not known close it,
 // after a semicolon even when nothing else is listed, so the clause is
-// never read as the unit's own.
+// never read as the unit's own. A record claim's line says the records
+// it does not name are "other records" (notKnown).
 func (l GraphLine) unitText() string {
 	u, m := *l.unit, l.more
 	head := "unit " + u.Path.Text()
-	if b := basisText(u.Basis, u.Band, u.RunnerUp); b != "" {
+	if b := basisText(u, m.Records); b != "" {
 		head += " " + b
 	}
 	if l.keyed {
@@ -246,18 +306,29 @@ func (l GraphLine) unitText() string {
 	if len(parts) > 0 {
 		text += " " + strings.Join(parts, "; ")
 	}
-	if p := notKnown(u.Unknown); p != "" {
+	if p := notKnown(u.Unknown, u.Basis == BasisRecord); p != "" {
 		text += "; " + p
 	}
 	return text
 }
 
+// otherRecords is how a record claim's line says the knowledge kind is
+// not known: the records it names apply, and others may (W-M1.41b), so
+// the line never names a record as applying and then the records that
+// apply as not known.
+const otherRecords = "other records that apply to the change"
+
 // notKnown is "not known: the file to change, the code to reuse" for the
-// kinds the brief withheld, in unknownWords' order, or "" for none.
-func notKnown(kinds []string) string {
+// kinds the brief withheld, in unknownWords' order, or "" for none; on a
+// record claim's line (record) the knowledge kind is otherRecords.
+func notKnown(kinds []string, record bool) string {
 	var texts []string
 	for _, w := range unknownWords {
-		if slices.Contains(kinds, w.kind) {
+		switch {
+		case !slices.Contains(kinds, w.kind):
+		case record && w.kind == UnknownKnowledge:
+			texts = append(texts, otherRecords)
+		default:
 			texts = append(texts, w.text)
 		}
 	}
@@ -293,8 +364,13 @@ func unknownText(k string) string {
 // claimed, and for a claim by word coverage the runner-up when there was
 // one. A candidate says so before its basis and always names its
 // runner-up, the pair the brief stands on: "(a candidate by its name;
-// runner-up 'internal/verify')".
-func basisText(basis, band string, runnerUp RelPath) string {
+// runner-up 'internal/verify')". A record claim's is recordText; records
+// is the count of its records beyond those listed.
+func basisText(u UnitFact, records int) string {
+	if u.Basis == BasisRecord {
+		return recordText(u, records)
+	}
+	basis, band, runnerUp := u.Basis, u.Band, u.RunnerUp
 	if band == BandCandidate {
 		s := "(a candidate"
 		switch basis {
@@ -322,6 +398,79 @@ func basisText(basis, band string, runnerUp RelPath) string {
 		return "(by word coverage)"
 	}
 	return ""
+}
+
+// recordText is a record claim's clause (W-M1.41b): the records the
+// request names, "(the request names D124, which applies here)" when
+// their evidence lies in this unit alone; when it lies in several, how
+// many, by what the ladder ranked this one first among them and the next
+// one it ranked: "(a candidate: the request names D176 and D109, which
+// apply in 3 units; this one by word coverage; runner-up
+// 'internal/spend')". A candidate says so first. The units the request
+// bars are counted apart and never named, so each count is true of the
+// records: "which applies here and in 1 unit the request bars", "which
+// apply in 2 units the request does not bar; this one by word coverage".
+func recordText(u UnitFact, records int) string {
+	s := "the request names " + recordList(u.Records, records)
+	if len(u.Records)+records == 1 {
+		s += ", which applies"
+	} else {
+		s += ", which apply"
+	}
+	switch {
+	case u.Units > 1 && u.Barred > 0:
+		s += " in " + strconv.Itoa(u.Units) + " units the request does not bar; this one " + rankText(u.First)
+	case u.Units > 1:
+		s += " in " + strconv.Itoa(u.Units) + " units; this one " + rankText(u.First)
+	case u.Barred > 0:
+		s += " here and in " + unitCount(u.Barred) + " the request bars"
+	default:
+		s += " here"
+	}
+	if u.RunnerUp != "" {
+		s += "; runner-up " + u.RunnerUp.Text()
+	}
+	if u.Band == BandCandidate {
+		s = "a candidate: " + s
+	}
+	return "(" + s + ")"
+}
+
+// unitCount is "1 unit" or "n units".
+func unitCount(n int) string {
+	if n == 1 {
+		return "1 unit"
+	}
+	return strconv.Itoa(n) + " units"
+}
+
+// recordList is "D1", "D1 and D2", "D1, D2 and D3", "D1, D2, D3 and 2
+// more", or "2 records" for a count alone.
+func recordList(ids []KnowledgeID, more int) string {
+	texts := make([]string, len(ids))
+	for i, id := range ids {
+		texts[i] = id.Text()
+	}
+	switch {
+	case len(texts) == 0 && more == 1:
+		return "1 record"
+	case len(texts) == 0:
+		return strconv.Itoa(more) + " records"
+	case more > 0:
+		return strings.Join(texts, ", ") + " and " + strconv.Itoa(more) + " more"
+	case len(texts) == 1:
+		return texts[0]
+	}
+	return strings.Join(texts[:len(texts)-1], ", ") + " and " + texts[len(texts)-1]
+}
+
+// rankText is by what the ladder ranked a record claim's unit first among
+// the units its records apply in.
+func rankText(first string) string {
+	if first == BasisUnitName {
+		return "by its name"
+	}
+	return "by word coverage"
 }
 
 // codeClause is a code line's disclosure clause: "(a candidate)" for a

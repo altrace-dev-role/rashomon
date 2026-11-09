@@ -52,19 +52,21 @@ func unitRuleE3(c corpus, r Roles, prompt string) bool {
 	return unitRuleE1(c, r, prompt) && !c.holdsAName(strings.ToLower(prompt))
 }
 
-// unitRuleE4 is E4: a unit was found by a claim that is not by name, and
-// the request holds neither the claimed unit's path nor its last segment
-// (namesUnit), so a unit the request names in a phrase the ladder did not
-// read as the target still stands.
+// unitRuleE4 is E4: a unit was found by a claim that is not by name, the
+// request's or a named record's (BasisRecord since W-M1.41b, a named claim
+// when E4 was registered), and the request holds neither the claimed
+// unit's path nor its last segment (namesUnit), so a unit the request
+// names in a phrase the ladder did not read as the target still stands.
 func unitRuleE4(_ corpus, r Roles, prompt string) bool {
-	return r.Found() && r.Basis != BasisNamed && !namesUnit(strings.ToLower(prompt), r.Path)
+	return r.Found() && r.Basis != BasisNamed && r.Basis != BasisRecord && !namesUnit(strings.ToLower(prompt), r.Path)
 }
 
 // unitRuleE5 is E5 (W-M1.40) with its knowledge clause (W-M1.41): a unit
 // stands only on what the request names. A named basis stands (a path, a
-// file, a symbol, a knowledge id, a pasted error); so does a claim on a
-// unit a named record's evidence lies in (the knowledge clause: the
-// request named the record, and the record names the unit), a qualified
+// file, a symbol, a pasted error); so does a claim on a unit a named
+// record's evidence lies in (the knowledge clause: the request named the
+// record, and the record names the unit; a record claim's own basis is
+// BasisRecord since W-M1.41b, and this clause keeps it), a qualified
 // claim that covers the whole target phrase (the unit's path covers part
 // of it and one of its names the rest, T1's form), and a claim by the
 // unit's own name in a target phrase of at most two tokens. Every other

@@ -21,7 +21,8 @@ const MaxLines = 5
 // line it applies to. Role is the role the line holds (roles.go) or "" for
 // a related line Select kept; Consumers is the unit line's consumer files.
 // Band is a role line's band (bands.go), "" on a related line; Unknown is
-// the kinds of role line the unit line names as withheld. Slot is its
+// the kinds of role line the unit line names as withheld, and Record the
+// unit line's claim by the records the request names (record.go). Slot is its
 // facts as the slot holds them and Text the sentence the slot rendered,
 // both set by Build.
 type Line struct {
@@ -35,6 +36,7 @@ type Line struct {
 	RunnerUp  graph.ID
 	Consumers []graph.ID
 	Unknown   []string
+	Record    RecordClaim
 	Slot      slot.GraphLine
 	Text      string
 }

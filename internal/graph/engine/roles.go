@@ -34,13 +34,16 @@ const (
 )
 
 // The basis words of a unit claim, the slot's (graph_unit.go): Named for
-// a claim by a path, a declared name or a knowledge id the request held,
-// UnitName for the unit's own name in the request, Coverage for a claim
-// the ladder settled by word coverage (full, partial, qualified, single).
+// a claim by a path or a declared name the request held, UnitName for the
+// unit's own name in the request, Coverage for a claim the ladder settled
+// by word coverage (full, partial, qualified, single), Record for a claim
+// by the records the request names (W-M1.41b, record.go), whose unit line
+// names the records and never reads as one the request named itself.
 const (
 	BasisNamed    = slot.BasisNamed
 	BasisUnitName = slot.BasisUnitName
 	BasisCoverage = slot.BasisCoverage
+	BasisRecord   = slot.BasisRecord
 )
 
 // BasisNone is the basis of no unit claim: the roles stage settled on no
@@ -62,8 +65,10 @@ type RoleFile struct {
 // knowledge id was found through, the file its line names. Why names the
 // claim's class or the refusal; Basis is the claim's basis word and
 // RunnerUp the ladder's next unrefused pick on another unit, both on the
-// unit line (S3). Unnamed is the unit rule's reading that the request
-// names no unit, so the unit line is withheld (unnamed.go).
+// unit line (S3); Record is the claim by the records the request names
+// when they settled the unit (record.go). Unnamed is the unit rule's
+// reading that the request names no unit, so the unit line is withheld
+// (unnamed.go).
 type Roles struct {
 	Frame         Frame
 	Named         Named
@@ -84,6 +89,7 @@ type Roles struct {
 	Why           string
 	Basis         string
 	RunnerUp      graph.ID
+	Record        RecordClaim
 	Unnamed       bool
 }
 
@@ -121,7 +127,7 @@ func FindRoles(g Reader, c corpus, rows []ScopeRow, weights map[string]float64, 
 	}
 	pick := r.Picks[0]
 	r.Unit, r.Path = pick.ID, pick.Path
-	r.Basis, r.RunnerUp = basisOf(pick.Class), runnerUp(r.Picks)
+	r.Basis, r.RunnerUp = r.claimBasis(pick)
 	r.File, r.Targets = targetFile(g, c, pick)
 	r.Consumers, r.UnitConsumers = consumers(g, c, r, rows, outside)
 	r.Reuse, r.ReuseClaims = reuse(g, c, rows, r, weights)
@@ -169,7 +175,7 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 		weights = c.weighDerived(weights, r.Derived)
 		r.Picks, r.Why = r.claim(g, c, p, prompt, weights)
 		if len(r.Picks) > 0 && r.Picks[0].Refused == "" {
-			if over = r.overRecord(r.Picks[0]); over != "" {
+			if over = r.overRecord(c, r.Picks[0]); over != "" {
 				break
 			}
 			return
@@ -185,7 +191,7 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 	if over != "" {
 		ladder = r.Picks
 	}
-	if u := r.recordUnit(ladder); u != "" {
+	if u := r.recordUnit(c, ladder); u != "" {
 		pick := UnitPick{ID: c.unitID[u], Path: u, Class: ClassNamed, Covered: 1, Of: 1, Callable: true, Precision: 1}
 		by := ""
 		for _, k := range named.Knowledge {
@@ -198,6 +204,7 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 		if over != "" {
 			r.Why += " over " + over
 		}
+		r.Record = r.recordClaim(g, c, ladder, u)
 		return
 	}
 	r.Picks, r.Why = first, firstWhy
