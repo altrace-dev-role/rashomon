@@ -217,6 +217,36 @@ func TestACM11_Replay(t *testing.T) {
 	t.Logf("first misses:\n%s", strings.Join(misses, "\n"))
 }
 
+// TestACM11_ControlPromptsSendNoBrief (W-M1.42's gate, registered
+// 2026-11-09 before W-M1.42 is built): a request with no task in it ("stop",
+// "continue", "yes do it", a harness notice) gets no brief, since lines
+// matched by one common word cost the reader's trust and buy nothing (PLAN
+// risk R4). RASHOMON_ACM11_CONTROL names the file
+// (test/live/autosteer/acm11/control.tsv); every row's brief must be empty,
+// and each one sent is logged with its text. The sets AC-M1.1 reads stay
+// as they are: a brief this rule silences there is read row by row in the
+// gate, and a row whose truth names a unit is a loss.
+func TestACM11_ControlPromptsSendNoBrief(t *testing.T) {
+	root, control := os.Getenv("RASHOMON_ACM11_DIR"), os.Getenv("RASHOMON_ACM11_CONTROL")
+	if root == "" || control == "" {
+		t.Skip("RASHOMON_ACM11_DIR and RASHOMON_ACM11_CONTROL not set")
+	}
+	g, rev := loadACM11(t, root)
+	rows := readTSV(t, control, 4)
+	var sent []string
+	for _, r := range rows {
+		b := Build(g, rev, strings.ReplaceAll(r[3], "\\n", "\n"), Options{IDF: true})
+		if !b.Empty() {
+			sent = append(sent, r[0])
+			t.Logf("%s sent %d line(s) for %q:\n%s", r[0], b.Kept, r[3], b.Text())
+		}
+	}
+	t.Logf("control: %d of %d requests with no task sent a brief (gate 0): %v", len(sent), len(rows), sent)
+	if len(sent) > 0 {
+		t.Errorf("%d of %d control requests sent a brief: %v", len(sent), len(rows), sent)
+	}
+}
+
 func rate(a, b int) float64 {
 	if b == 0 {
 		return 0
