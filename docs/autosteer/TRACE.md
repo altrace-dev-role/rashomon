@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 09:4x: W-M1.42's control gate registered before W-M1.42 is built (adb6e6ec; PLAN 6.1, "W-M1.42's control gate").
+  - control.tsv: 26 of the owner's short prompts with no task content and two harness notices; gate 0 briefs sent; 20 of 28 sent at 01b8ed4a.
+  - AC-M1.1's vague rows leave off-task lines unjudged, so its pass says nothing about briefs on requests with no task; the blanket not-known rule is refused (six task rows with a unit truth would go silent unmeasured).
 - 2026-11-08 15:5x: W-M1.40 built: unit rule E5 ships without its knowledge clause (40b788ac; PLAN 6.1, "W-M1.40 as built").
   - Readings equal the simulator on all 544 rows of the five files; AC-M1.1 under clause 2: prompts 10 of 10, edge 47 of 54; replay 64 of 513 (E5 only withholds; a regression guard); clause 4 met (T1 context 589 bytes, 7641dab9cde93040).
   - Mutants at 678bf289: 62 rows, 61 red, the one undetected the registered equivalent (WM-1.40 row 8). The GS-5 brief-before-early-return row, undetected at 40b788ac, is held by TestGS5_TheBriefIsReadForARequestThatNamesNothing.
