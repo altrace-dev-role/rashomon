@@ -842,6 +842,8 @@ Acceptance:
 - a mutant that drops the possessive read turns that test red;
 - T1's context is unchanged.
 
+Amended 2026-11-10 10:05 PST, before any W-M1.44 code exists as a commit, as the director's reading, which an owner ruling replaces: the second acceptance bullet is read as 's and ’s (U+2019) each reading as its record through `Names` for a lesson, a decision and a requirement, and s' is a known limit pinned by a named test, because `cleanWord` (`names.go`) trims a trailing apostrophe as a closing quote before any possessive is tried.
+
 **W-M1.46: a program file the index does not hold names no unit by its stem, registered before it is built (2026-11-09 21:5x PST; ordered after W-M1.44 and before `classes4`).** `nameOf` (`names.go`) reads "install.sh" as a qualified name, unit `install` and symbol `sh`, so the brief states `internal/install` "(named in the request)" with its consumer and record lines, though install.sh is the release installer at the repository's root. "reanchor.sh", which lives in `scripts/` and not in `scripts/reanchor/`, reads as `scripts/reanchor` the same way, and "mix.exs" as a symbol named `mix` in `test/perf/payload`. On the option-1 read below, three of the six `classes2.tsv` rows under silence (FA06, NG01, NG08) and one of the five on `classes3.tsv` (NG15) are these readings.
 
 The change: a word whose extension is a program kind the corpus holds no file of (sh, bash, zsh, fish, ps1, psm1, bat, cmd, py, rb, pl, exs, js, mjs, cjs, ts, lua) reads as unit.symbol only when the unit declares the symbol. Otherwise it is a file name:
