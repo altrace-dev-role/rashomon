@@ -6,6 +6,12 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 21:3x: CI run 42759040584 green at cc4c5475: 14 jobs pass and the same 3 are skipped as on the run before.
+  - Test: 70 packages ok and no FAIL line. REC-34's group commit mutants: 55 went red, and none is undetected.
+  - The macOS perf step: --- PASS: TestRES2_NoPackageLevelRegexpCompile and --- PASS: TestRES30_ParallelHooksStayInBudget (1.23s).
+  - AC-M1.5's reuse term read against sources (PLAN 6.1). The path, base-name and record sources reach 6 of 9, 5 of 9 and 4 of 7 on the classes that miss, and the engine's own reuse source is right on none of 13 rows, so no lexical source closes the term. The symbols' doc comments are the lead, and a source is registered with predictions before any code.
+  - The reuse bullet's citation now names a script whose output prints every number it states. The bar on a fresh set now reads "worth reading", not "worth authoring".
+  - W-M1.43 addendum: running the predicate over all 1965 clauses of the six files found 42 rows the registration had not listed. Four rulings and per-row predictions are registered, and a stand-in brief check comes before any code.
 - 2026-11-09 20:5x: W-M1.41c built as 450b9db1: a named record that applies in the ladder's pick settles the claim (PLAN 6.1, as built).
   - 10 registered rows move and no unit moves; "the records that apply to the change" not known goes from 7 to 0; stated precision stays at or above 0.8 on every file; clause 4 holds through the hooks.
   - The mutant job for W-M1.41's rows failed on its first run: its `-run` predated the `TestRecord_` tests. Widened with no break changed, it goes 15 of 15. With that, 183 of 186 rows are red and the 3 undetected are registered equivalents.
