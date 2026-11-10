@@ -765,6 +765,25 @@ Acceptance:
 - a mutant that drops the possessive read turns that test red;
 - T1's context is unchanged.
 
+**AC-M1.5's ceiling under gate shape 3, read at W-M1.41c's tree (2026-11-09 20:5x PST; an input to the per-class gate ruling; no rule or truth changed).** Read on the three classes files' dumps at W-M1.41c's tree (sha256 a375b710761dc7db, cc047754de5dcc6e, 3d899fc245e57756), with simulators that reproduce the judge's per-row unit verdicts (`classes2.tsv` 123 of 160, `classes3.tsv` 130).
+- Where the misses are. In the eleven classes that do not name their unit by construction (greenfield aside), a naming row is one whose prompt holds a truth unit's path, its last segment as a word, or a target file's name. Three such rows are named by a path, and 2 are right. The rest are named only by the last segment as a word: on `classes2.tsv` 28 rows, 4 right, 23 withheld by E5; on `classes3.tsv` 22 rows, 2 right, 19 withheld. A withheld line is right on a prose row and wrong on a naming row. So in these classes the unit verdict cannot exceed the prose and no-unit rows plus the naming rows the engine claims rightly. With every segment row withheld, the most a class can reach is: on `classes2.tsv` feature-add 6, refactor 5, cross-cutting 5 and question 7; on `classes3.tsv` cross-cutting 6, refactor 7 and delete 7. Four of these miss the per-class gate of 7 and all seven miss the 8-of-10 bar for authoring `classes4.tsv`, whatever else is fixed.
+- What claiming them costs. The request's words do not tell the two kinds of row apart. A segment word in a request is the truth's on some rows and incidental on others, and only the truth decides which. The test rule claims the one unit a request names by word, on every row where the brief withholds and the prompt names exactly one unit, by path or by last segment as a word. On the two untuned files it is right on 25 of 71 claims (0.35):
+  - `classes2.tsv`: 10 rows gained, 23 lost, unit 123 to 110 (109 when the product name is read as naming no unit);
+  - `classes3.tsv`: 9 gained, 22 lost, 130 to 117;
+  - `classes.tsv`: 14 gained, 12 lost.
+
+  Kept to the ladder's pick (R1, refused above), it is right on 17 of 40 rows on the two files. No truth-free signal read on R1's 66 rows over the three files separates right from wrong:
+  - the segment word's idf: rare words lean right, but `safe` at 5.94 is wrong and `store` at 2.07 is right on four rows;
+  - the share of the word's symbols that lie in its unit: Go names do not repeat their package's name, so the share is 0 on 36 rows of both kinds;
+  - the ladder's form, coverage and ties: on the 32 rows whose phrase has a printed ladder, the claim is by the unit's name over the whole phrase with no tie on 15 of 16 wrong rows and 13 of 16 right rows, and the margins overlap (2.9 to 261 on wrong rows, 2.7 to 78 on right ones);
+  - the runner-up: a truth on 2 of 27 wrong rows.
+- What the gate then asks. On these rows shape 3 owes the unit exactly when the request's word happens to be the truth's. No policy over the request's words does better than the larger of the two shares, about 2 in 3 for withholding, and either choice fails a class gate. A reader of meaning answers these rows: given the atlas, the second read's readers agreed with the authors on 135 of 160 units. The hook path holds no evidence of meaning within its budget (W-M1.37; the three probes under "What E5 costs").
+- The ruling's options:
+  1. Judge a row named only by a segment word, in a class that does not name its unit by construction, as a prose row. This is a further post-hoc change to the gate, recorded as one, and it narrows M1's unit claim to the bases a request names. Prose recall moves to the milestone that builds section B1's proposer (model at index time, data at hook time), with these readings as its floor to beat.
+  2. Keep the gate and build B1's proposer inside M1. That needs a model at index time and R17's consent screen, and is days of work; its effect on these rows is unmeasured.
+  3. Keep both, and record AC-M1.5 as not met at close.
+- Recommended: option 1. As written, the gate owes on these rows what the request does not say. Withholding there meets outcome B ("avoid false-positive guidance"), and section B1's proposer is the design the plan already holds for prose recall. Option 3 leaves M1 open on a gate the hook path's word evidence cannot meet.
+
 **W-M1.41c: a named record that applies in the ladder's pick settles the claim, registered before it is built (2026-11-09 14:5x PST; ordered after W-M1.42 and before W-M1.43 and `classes4`).** W-M1.41b makes a record claim only when the record's unit differs from the ladder's pick (`overRecord` returns "" when they are the same unit). When the request's words and its named record point at the same unit, the brief says less than when the record alone points there:
 - it reads "a candidate by word coverage" or "a candidate by its name", and never names the record as the reason;
 - on 7 rows it also says "not known: the records that apply to the change", although the request named one that applies in that unit.
