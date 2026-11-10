@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 20:5x: W-M1.41c built as 450b9db1: a named record that applies in the ladder's pick settles the claim (PLAN 6.1, as built).
+  - 10 registered rows move and no unit moves; "the records that apply to the change" not known goes from 7 to 0; stated precision stays at or above 0.8 on every file; clause 4 holds through the hooks.
+  - The mutant job for W-M1.41's rows failed on its first run: its `-run` predated the `TestRecord_` tests. Widened with no break changed, it goes 15 of 15. With that, 183 of 186 rows are red and the 3 undetected are registered equivalents.
+  - The registration's per-row text prediction was not written before the first probe. KI13 now states a generated file (W-DEBT.11), and three render defects are tracked as W-DEBT.10.
+  - AC-M1.5 read beside silence under option 1 of the per-class ruling: every class meets the unit gate, the reuse term misses three class cells, and no brief sends a reuse line.
 - 2026-11-09 20:0x: T1c triple 12 read at its boundary (t1c-read5.py e5e6aefacedb7378, output sha256 6e99bfce641d75e7, the same on a second run): t1c-g19 fail (A1a 3 of 4, `cmd/rashomon/laststop.go` searched and not opened; 119 turns, 5.48 USD, ended on its own). Its first go build took 2.4 s and its first go test 2.8 s, with no other Go job in either window. U 1 of 10, R 2 of 10, G 4 of 9 (95 percent interval 0.19 to 0.73); no lift claim. One G run remains for n=10.
 - 2026-11-09 19:2x: CI run 42746833418 green at 9b3248ee (W-M1.42 landed): 14 jobs pass and the same 3 are skipped as on the run before.
   - The macOS perf step: --- PASS: TestRES2_NoPackageLevelRegexpCompile, and --- PASS: TestRES30_ParallelHooksStayInBudget (64 of 64 declarations, no spill or lock timeout). So RES-30's one failure in the full local gate was the machine's load.
