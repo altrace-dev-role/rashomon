@@ -6,6 +6,9 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 21:5x: W-M1.46 registered before it is built (PLAN 6.1): a program file the index does not hold (install.sh, reanchor.sh, mix.exs) names no unit by its stem.
+  - It was listed by running the word test over all 573 rows: 11 words on 11 rows. Four rows that state a wrong unit are predicted to turn right (NG01, NG08, NG15, FA06), and six to send the same bytes. NG20 keeps its unit as a candidate or withholds it, depending on a pick the dumps do not print.
+  - AC-M1.5's reuse term: the source that reads what code does is B1's proposer, which ruling 9 keeps closed. The recommendation is to record the term as not met at M1's close and owed by the proposer milestone.
 - 2026-11-09 21:3x: CI run 42759040584 green at cc4c5475: 14 jobs pass and the same 3 are skipped as on the run before.
   - Test: 70 packages ok and no FAIL line. REC-34's group commit mutants: 55 went red, and none is undetected.
   - The macOS perf step: --- PASS: TestRES2_NoPackageLevelRegexpCompile and --- PASS: TestRES30_ParallelHooksStayInBudget (1.23s).

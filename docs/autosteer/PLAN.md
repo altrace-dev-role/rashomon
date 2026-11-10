@@ -818,6 +818,46 @@ Acceptance:
 - a mutant that drops the possessive read turns that test red;
 - T1's context is unchanged.
 
+**W-M1.46: a program file the index does not hold names no unit by its stem, registered before it is built (2026-11-09 21:5x PST; ordered after W-M1.44 and before `classes4`).** `nameOf` (`names.go`) reads "install.sh" as a qualified name, unit `install` and symbol `sh`, so the brief states `internal/install` "(named in the request)" with its consumer and record lines, though install.sh is the release installer at the repository's root. "reanchor.sh", which lives in `scripts/` and not in `scripts/reanchor/`, reads as `scripts/reanchor` the same way, and "mix.exs" as a symbol named `mix` in `test/perf/payload`. On the option-1 read below, three of the six `classes2.tsv` rows under silence (FA06, NG01, NG08) and one of the five on `classes3.tsv` (NG15) are these readings.
+
+The change: a word whose extension is a program kind the corpus holds no file of (sh, bash, zsh, fish, ps1, psm1, bat, cmd, py, rb, pl, exs, js, mjs, cjs, ts, lua) reads as unit.symbol only when the unit declares the symbol. Otherwise it is a file name:
+  - a bare name names no Go file or unit by its stem, since a program in another language is not the Go file or unit that shares its stem;
+  - a name written with its directory names the unit that directory is, as now (`scripts/mergeguard/mergeguard.sh` is in `scripts/mergeguard`);
+  - unresolved, it is a path the index lacks: it refuses the ladder after a place word, as `fileLike` does now, and otherwise only when the ladder claims nothing, as any such path does.
+
+A data file keeps the stem reading ("fold.json", "spec.json" and "settings.json" are their units' by the truths). An extension the corpus holds (.go, or .py once the index holds Python) keeps the path reading it has now.
+
+Readings: the rows were listed by running the rule's word test over every word of the six files' 573 rows (`r46-list.py` sha256 d6f910da2e25908c, output 207226ad61566f35), not by hand; the declared-symbol guard can only keep a word's present reading, and none of these words names a declared symbol. It finds 11 words on 11 rows: ten non-go rows and FA06 (feature-add). It finds none in `classes.tsv`, `prompts.tsv`, `edge.tsv` or `control.tsv`, and none in T1's, T1b's or T1c's prompts. Of the 11, only NG05 is among W-M1.43's rows, by a bare "not" clause that W-M1.43 leaves reading as it does now.
+
+Predicted, read from the W-M1.41c dumps and the engine's source:
+- NG01: install.sh joins the unknown names. The ladder reads the target "sha against them". No unit is named "sha", so any claim it makes is by coverage and E5 withholds it. Line 1 becomes a not-known line, and the lines on `internal/install` go (its consumer `cmd/rashomon/watch.go`, PF-HD9, D149-addendum). The judge's unit, consumers and knowledge cells turn right.
+- NG08: install.sh joins the unknown names. That leaves "CONTRIBUTING's", which the index lacks and which refuses, to refuse the ladder. Line 1 becomes a not-known line; unit, consumers and knowledge turn right.
+- NG15: reanchor.sh joins the unknown names. The ladder's target is eight tokens, so E5 withholds a claim by `scripts/reanchor`'s name. Line 1 becomes a not-known line; unit turns right.
+- FA06: mix.exs joins the unknown names. No unit is named "infer" or "mix", so a claim on the target "infer mix" is by coverage and E5 withholds it. Line 1 becomes a not-known line; unit turns right, and consumers and knowledge stay wrong.
+- NG20: mergeguard.sh joins the unknown names. The target "mergeguard sh" holds the unit's name in two tokens, and which claim results depends on the ladder's first pick, which the dumps do not print (`nameClaims`):
+  - if that pick ranks below a single-node claim, the claim by the name stands under E5, and its cell (57 of 81) makes line 1 the candidate form ("a candidate by its name", with a runner-up if the ladder has one) in place of "(named in the request)";
+  - if it is a single-node claim, it is by coverage, E5 withholds it, and line 1 becomes a not-known line.
+
+  Lines 2 to 5 are byte-identical either way, and the unit stays right, since the truth is "-" or `scripts/mergeguard`. A line 1 of any other form is a miss.
+- NG05, NG06 and NG19: the program name, unread now, joins the unknown names. On NG05 the ladder's pick, withheld by E5, returns before the unknown names are read. On NG06 and NG19 the roles' refusal now names the program file, in place of "no unit names the target" and ".handoff/evidence". Sent lines are byte-identical on all three.
+- NG03, NG14 and NG17 read as now, names lines included: each is written with a directory that is no unit.
+- Every other row is byte-identical, debug lines included.
+
+Under option 1 as read below, `classes2.tsv` non-go goes from 7 to 9 and feature-add from 9 to 10, and `classes3.tsv` non-go from 8 to 9. NG07 and NG11 stay wrong, and neither is this reading. NG07 names a fuzz test in `internal/store` before the file to edit. NG11 reads `pgraph/go.mod` by its directory, but the edit is to the dependabot file. `classes2.tsv` named-name and `classes3.tsv` knowledge-id stay at 7.
+
+No stand-in. The reading lives in `names.go` alone, and a text rewrite that reaches it (a directory set before the name) adds a token to NG06's and NG20's target phrases. The check is the code's dump diff over the 573 rows against these predictions. A move not predicted is a prediction miss, recorded before the code is gated.
+
+Known limits:
+- A program named bare that lives in its unit's directory loses the named claim; NG20 keeps its unit, as a candidate by its name, only if its ladder's first pick lets the name's claim stand. Telling "mergeguard.sh in `scripts/mergeguard`" from "reanchor.sh beside `scripts/reanchor`" needs the tree's non-Go paths, which the index does not hold. That index is the complete fix, and it is not M1's.
+- A possessive is outside the rule: "rashomon-sessionstart.sh's" (NG04) reads as nothing, as now. Go paths behave the same way: "discover.go's" is read by its directory.
+- A data file that shares a unit's name by chance still reads as that unit.
+
+Acceptance:
+- the rows move as predicted, and no other row moves;
+- a unit test reads four words: "install.sh" as no unit; a program file with its directory as that directory's unit; a qualified word whose right part is a declared symbol of a program kind's spelling as that symbol; and "fold.json" as the fold unit;
+- each of two mutants turns that test red: one that drops the rule, and one that drops the declared-symbol guard;
+- T1's context is unchanged.
+
 **AC-M1.5's ceiling under gate shape 3, read at W-M1.41c's tree (2026-11-09 20:5x PST; an input to the per-class gate ruling; no rule or truth changed).** Read on the three classes files' dumps at W-M1.41c's tree (sha256 a375b710761dc7db, cc047754de5dcc6e, 3d899fc245e57756), with simulators that reproduce the judge's per-row unit verdicts (`classes2.tsv` 123 of 160, `classes3.tsv` 130).
 - Where the misses are. In the eleven classes that do not name their unit by construction (greenfield aside), a naming row is one whose prompt holds a truth unit's path, its last segment as a word, or a target file's name. Three such rows are named by a path, and 2 are right. The rest are named only by the last segment as a word: on `classes2.tsv` 28 rows, 4 right, 23 withheld by E5; on `classes3.tsv` 22 rows, 2 right, 19 withheld. A withheld line is right on a prose row and wrong on a naming row. So in these classes the unit verdict cannot exceed the prose and no-unit rows plus the naming rows the engine claims rightly. With every segment row withheld, the most a class can reach is: on `classes2.tsv` feature-add 6, refactor 5, cross-cutting 5 and question 7; on `classes3.tsv` cross-cutting 6, refactor 7 and delete 7. Four of these miss the per-class gate of 7 and all seven miss the 8-of-10 bar for authoring `classes4.tsv`, whatever else is fixed.
 - What claiming them costs. The request's words do not tell the two kinds of row apart. A segment word in a request is the truth's on some rows and incidental on others, and only the truth decides which. The test rule claims the one unit a request names by word, on every row where the brief withholds and the prompt names exactly one unit, by path or by last segment as a word. On the two untuned files it is right on 25 of 71 claims (0.35):
