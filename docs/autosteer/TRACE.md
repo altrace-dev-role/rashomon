@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 18:1x: T1c triple 10 read at its boundary (t1c-read5.py e5e6aefacedb7378): U 1 of 10, R 2 of 10, G 3 of 7 (G0 1 of 3 beside); cost per correct run U 45.76, R 29.86, G 14.14 USD; n=10 met for U and R, G at 7; no lift claim.
+  - Runs with a later task-notification brief (PLAN card (f)): R 3 of 10 (t1c-r5, t1c-r6, t1c-r10), G 0 of 7; R without them 2 of 7. Runs at the turn cap: G 1 (t1c-g15).
+  - t1c-g17 pass (114 turns, 5.77 USD); t1c-r10 fail (148 turns, 7.82 USD; one of the four consumers searched, not opened); t1c-u10 fail (98 turns, 4.22 USD; one consumer never reached).
+  - Meter 85 on two reads, under 87, so t1c-g18 to t1c-g20 run before the weekly reset.
+  - With free disk under its 5.0 GiB floor at the boundary, the runs' shared Go build cache was trimmed of 22990 entries (2296 MB) older than two hours whose modification time never moved past their creation. The last three G runs start on that cache; earlier runs did not.
 - 2026-11-09 15:5x: W-M1.42's word threshold read on a local list of the owner's short requests (163 distinct, not committed; 8 labelled as holding a repo target before any engine output on the list was read). Rows silenced at k = 1 to 5: 55, 82, 115, 121, 123.
   - At k=3, the least k that silences the control set, 3 of the 8 labelled rows are silenced, against a prediction of none. Each names its target in a form the engine does not read (PLAN 6.3, W-DEBT.8). Each base brief was `not known: the unit to change` plus four files matched on one common word, so no line on the target is lost. k=3 stands.
   - U1 silenced 13 rows, none of the 8; U3 silenced none (the list holds no notices).
