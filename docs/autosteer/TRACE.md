@@ -6,6 +6,7 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 20:0x: T1c triple 12 read at its boundary (t1c-read5.py e5e6aefacedb7378, output sha256 6e99bfce641d75e7, the same on a second run): t1c-g19 fail (A1a 3 of 4, `cmd/rashomon/laststop.go` searched and not opened; 119 turns, 5.48 USD, ended on its own). Its first go build took 2.4 s and its first go test 2.8 s, with no other Go job in either window. U 1 of 10, R 2 of 10, G 4 of 9 (95 percent interval 0.19 to 0.73); no lift claim. One G run remains for n=10.
 - 2026-11-09 19:2x: CI run 42746833418 green at 9b3248ee (W-M1.42 landed): 14 jobs pass and the same 3 are skipped as on the run before.
   - The macOS perf step: --- PASS: TestRES2_NoPackageLevelRegexpCompile, and --- PASS: TestRES30_ParallelHooksStayInBudget (64 of 64 declarations, no spill or lock timeout). So RES-30's one failure in the full local gate was the machine's load.
   - T1c triple 11 read at its boundary (t1c-read5.py e5e6aefacedb7378): t1c-g18 pass (126 turns, 6.17 USD; first go build 2.6 s on the trimmed cache, against 3.0 s at t1c-g16 and t1c-g17). U 1 of 10, R 2 of 10, G 4 of 8 (95 percent interval 0.22 to 0.78; R's 0.06 to 0.51); no lift claim.
