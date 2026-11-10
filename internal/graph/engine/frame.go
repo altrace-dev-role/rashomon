@@ -60,6 +60,11 @@ type Phrase struct {
 	// takes it only when a symbol's name resolves it (W-M1.28). A phrase
 	// a use word also names is a plain use.
 	Destination bool
+	// already is whether "already" follows the phrase. It makes the
+	// phrase definite, and an anchor only where a place word opens it
+	// (placed): elsewhere it marks a precedent the request points to, not
+	// where the change lands (W-M1.47, NN01 and NP09).
+	already bool
 }
 
 // Frame is what the prompt asks: the places it names as the target of
@@ -250,7 +255,7 @@ func parseSentence(s string) clauses {
 		if last != "" && isPlace(head, last) {
 			rest, use := splitUse(cl[1:])
 			c.uses = addPhrase(c.uses, use)
-			for _, p := range phrasesOf(rest) {
+			for _, p := range placed(phrasesOf(rest)) {
 				p.Anchor = p.Anchor || (p.Definite && head == "wherever")
 				c.targets = addPhrase(c.targets, p)
 			}
@@ -397,7 +402,17 @@ func splitPlace(words []string, cls string) (thing, place []Phrase) {
 	if p < 0 {
 		return phrasesOf(words), nil
 	}
-	return phrasesOf(words[:p]), phrasesOf(words[p+1:])
+	return phrasesOf(words[:p]), placed(phrasesOf(words[p+1:]))
+}
+
+// placed is phrases a place word opens: "already" after one marks the
+// surface the change lands on, an anchor ("wherever the platform
+// obligations already appear", PL12 and T1; W-M1.47).
+func placed(ps []Phrase) []Phrase {
+	for i := range ps {
+		ps[i].Anchor = ps[i].Anchor || ps[i].already
+	}
+	return ps
 }
 
 // bareVerbAt is where a causative's object ends: at the first verb-class
@@ -472,9 +487,10 @@ func modalAt(cl []string) int {
 
 // phraseOf is the words up to their first boundary word as a phrase:
 // definite when they open with a definite word or "already" follows them;
-// an anchor when "already" follows a definite phrase or it opens with an
-// existing-surface word; none when they open with a condition word, and
-// an infinitive ("to name") or a particle ("up") ends it.
+// an anchor when they open with an existing-surface word (where a place
+// word opens them, also when "already" follows them: placed); none when
+// they open with a condition word, and an infinitive ("to name") or a
+// particle ("up") ends it.
 func phraseOf(words []string) Phrase {
 	p, _ := phraseSpan(words)
 	return p
@@ -536,7 +552,7 @@ func phraseSpan(all []string) (Phrase, int) {
 	}
 	already := end < len(words) && low(words[end]) == "already"
 	p.Definite = definiteWords.get()[low(words[first])] || already
-	p.Anchor = (p.Definite && already) || anchorWords.get()[low(words[first])]
+	p.Anchor, p.already = anchorWords.get()[low(words[first])], already
 	return p, len(all) - len(words) + end
 }
 
