@@ -142,7 +142,10 @@ func (n *Named) add(g Reader, c corpus, w NamedWord) {
 	n.Words = append(n.Words, w)
 	switch {
 	case w.Kind == NamedKnowledge:
-		n.Knowledge = append(n.Knowledge, w.Node)
+		// One record named twice (D165's and D165) is one record (W-M1.44).
+		if !slices.Contains(n.Knowledge, w.Node) {
+			n.Knowledge = append(n.Knowledge, w.Node)
+		}
 		for _, u := range c.evidenceUnits(g, w.Node) {
 			if !slices.Contains(n.KnowledgeUnits, u) {
 				n.KnowledgeUnits = append(n.KnowledgeUnits, u)
@@ -187,10 +190,14 @@ func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map
 			return nw, true
 		}
 	}
-	if knowledgeForm(w) {
+	// A knowledge id in the possessive (D165's, D165’s) names its record,
+	// the word kept as the prompt wrote it (W-M1.44). An s' ending is not
+	// read: cleanWord trims the ASCII apostrophe before this sees the word,
+	// and possessive has no s’ ending (TestNames_KnownLimit_*).
+	if base, _ := possessive(w); knowledgeForm(base) {
 		for _, kind := range []string{"req:", "les:", "dec:"} {
-			if _, ok := g.Node(graph.ID(kind+w), c.rev); ok {
-				return NamedWord{Word: w, Kind: NamedKnowledge, Node: graph.ID(kind + w)}, true
+			if _, ok := g.Node(graph.ID(kind+base), c.rev); ok {
+				return NamedWord{Word: w, Kind: NamedKnowledge, Node: graph.ID(kind + base)}, true
 			}
 		}
 	}

@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/graphtest"
 )
 
 // The R0 ladder tests (W-M1.13): a prompt word in name form (a path, an
@@ -153,5 +155,95 @@ func TestFrame_AnIdentifierKeepsItsCase(t *testing.T) {
 	f := Parse("sessions.ExpireSession should report the fold step's time separately.")
 	if len(f.Targets) == 0 || strings.Join(f.Targets[0].Tokens, " ") != "session expir" {
 		t.Fatalf("targets %v, want [session expir]", f.Targets)
+	}
+}
+
+// possessiveFixture is namesFixture with a lesson and a decision beside
+// its requirement: one record of each kind a knowledge id can name.
+func possessiveFixture(t *testing.T) *graph.Store {
+	t.Helper()
+	g := namesFixture(t)
+	record(t, g, "les:L7", "lesson", "jobs/purge_sessions.py")
+	record(t, g, "dec:D7", "decision", "sessions/expiry.py")
+	return g
+}
+
+// A knowledge id in the possessive names its record as the bare id does,
+// with either apostrophe, the word kept as the prompt wrote it (W-M1.44,
+// KI08 shape: D165's). Before it the word was read as an owner's name,
+// never as its record.
+func TestNames_APossessiveKnowledgeIDNamesItsRecord(t *testing.T) {
+	g := possessiveFixture(t)
+	for _, tc := range []struct{ prompt, word, id string }{
+		{"Implement PF-X1's check.", "PF-X1's", "req:PF-X1"},
+		{"Implement PF-X1’s check.", "PF-X1’s", "req:PF-X1"},
+		{"Apply L7's fix to the purge.", "L7's", "les:L7"},
+		{"Apply L7’s fix to the purge.", "L7’s", "les:L7"},
+		{"Follow D7's ruling for the expiry.", "D7's", "dec:D7"},
+		{"Follow D7’s ruling for the expiry.", "D7’s", "dec:D7"},
+	} {
+		t.Run(tc.word, func(t *testing.T) {
+			r := roles(t, g, tc.prompt)
+			n := r.Named
+			if len(n.Knowledge) != 1 || string(n.Knowledge[0]) != tc.id || len(n.Unknown) != 0 {
+				t.Fatalf("knowledge %v unknown %+v, want %s alone and nothing refused", n.Knowledge, n.Unknown, tc.id)
+			}
+			i := slices.IndexFunc(n.Words, func(w NamedWord) bool { return w.Kind == NamedKnowledge })
+			if i < 0 || n.Words[i].Word != tc.word || string(n.Words[i].Node) != tc.id {
+				t.Errorf("words %+v, want %q read as %s", n.Words, tc.word, tc.id)
+			}
+			if len(r.Knowledge) == 0 || string(r.Knowledge[0]) != tc.id {
+				t.Errorf("knowledge role %v, want %s first", r.Knowledge, tc.id)
+			}
+		})
+	}
+}
+
+// The possessive read's known limit (W-M1.44): an s' ending names nothing.
+// The ASCII apostrophe is trimmed before the word is read, so D7s' arrives
+// as D7s, a knowledge id's form with no such record, and falls through
+// every other reading; D7s’ keeps its mark, which no reading takes. dec:D7
+// exists, yet the word names nothing and refuses nothing: the brief reads
+// the prompt as if the word were absent. A change that reads s' changes
+// this test.
+func TestNames_KnownLimit_AnSApostropheKnowledgeIDNamesNothing(t *testing.T) {
+	g := possessiveFixture(t)
+	for _, prompt := range []string{"Follow D7s' ruling for the expiry.", "Follow D7s’ ruling for the expiry."} {
+		n := roles(t, g, prompt).Named
+		if len(n.Words) != 0 || len(n.Knowledge) != 0 || len(n.Unknown) != 0 {
+			t.Errorf("%q: words %+v knowledge %v unknown %+v, want nothing named and nothing refused", prompt, n.Words, n.Knowledge, n.Unknown)
+		}
+	}
+}
+
+// One record named twice in a prompt, once in the possessive and once
+// bare, is one record: one id in the named knowledge and one knowledge
+// line in the brief (W-M1.44). The loop's seen key is the word as written,
+// so both words are read; the record is kept once where it is added.
+func TestNames_ARecordNamedTwiceIsOneRecord(t *testing.T) {
+	g := possessiveFixture(t)
+	b := Build(g, graph.RevCommit(graphtest.Commit), "Implement PF-X1's check as PF-X1 says.", Options{IDF: true})
+	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
+	n := b.Roles.Named
+	var words []string
+	for _, w := range n.Words {
+		if w.Kind == NamedKnowledge {
+			words = append(words, w.Word)
+		}
+	}
+	if strings.Join(words, " ") != "PF-X1's PF-X1" {
+		t.Fatalf("knowledge words %q, want both spellings read", words)
+	}
+	if len(n.Knowledge) != 1 || n.Knowledge[0] != "req:PF-X1" {
+		t.Errorf("named knowledge %v, want req:PF-X1 once", n.Knowledge)
+	}
+	lines := 0
+	for _, l := range b.Lines {
+		if l.Key == "req:PF-X1" {
+			lines++
+		}
+	}
+	if lines != 1 {
+		t.Errorf("%d brief lines for req:PF-X1, want 1", lines)
 	}
 }
