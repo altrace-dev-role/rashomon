@@ -6,6 +6,11 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 22:0x: W-M1.43's stand-in read and its misses recorded before the code (PLAN 6.1). It covers 573 rows, and the today build equals the W-M1.41c dumps on all 544 dumped rows.
+  - NE02 moves within its envelope, with two missed details: the withheld claim is internal/share, not internal/report, and the withheld consumer line costs line 5.
+  - NE11 was predicted byte-identical and sends nothing: a tie in the fallback phrase breaks, E5 withholds the claim, and the role lines spend the budget. The gate stays the stand-in's sent lines.
+  - W-DEBT.12: 177 of 544 briefs send nothing because withheld role lines spend the budget. That stays for now: related lines on not-known briefs lie in a truth unit on 89 of 445 lines.
+  - CI run 42762541561 at b15842f5: 13 jobs pass. Test was cancelled because apt-get update hung on the Ubuntu mirror (05:31 to 06:00Z) until the 30-minute timeout. The code tree equals cc4c5475's, whose Test job passed.
 - 2026-11-09 21:5x: W-M1.46 registered before it is built (PLAN 6.1): a program file the index does not hold (install.sh, reanchor.sh, mix.exs) names no unit by its stem.
   - It was listed by running the word test over all 573 rows: 11 words on 11 rows. Four rows that state a wrong unit are predicted to turn right (NG01, NG08, NG15, FA06), and six to send the same bytes. NG20 keeps its unit as a candidate or withholds it, depending on a pick the dumps do not print.
   - AC-M1.5's reuse term: the source that reads what code does is B1's proposer, which ruling 9 keeps closed. The recommendation is to record the term as not met at M1's close and owed by the proposer milestone.
