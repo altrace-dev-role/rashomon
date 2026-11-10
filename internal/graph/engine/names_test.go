@@ -247,3 +247,122 @@ func TestNames_ARecordNamedTwiceIsOneRecord(t *testing.T) {
 		t.Errorf("%d brief lines for req:PF-X1, want 1", lines)
 	}
 }
+
+// programFixture holds a unit named install that declares cmd, and one
+// named fold: a stem a program file and a data file can share.
+func programFixture(t *testing.T) *graph.Store {
+	t.Helper()
+	return synth(t, []synFile{
+		{"install", "install/install.py", []synSym{fn("install"), fn("cmd")}},
+		{"fold", "fold/fold.py", []synSym{fn("fold")}},
+	}, nil, nil)
+}
+
+// A program file the index does not hold names no unit by its stem
+// (W-M1.46, NG01 shape: install.sh, the release installer at the root, is
+// not internal/install); after a place word it refuses the ladder. Written
+// with its directory it names that directory's unit, as before; a qualified
+// word whose right part is a declared symbol reads as that symbol, though
+// the symbol is spelled as a program kind; a data file keeps its stem's
+// reading (fold.json), and so does a program kind the corpus holds files
+// of (install.py names the file install/install.py).
+func TestNames_AProgramFileTheIndexLacksNamesNoUnitByItsStem(t *testing.T) {
+	g := programFixture(t)
+	word := func(t *testing.T, prompt, w string) (Named, NamedWord) {
+		t.Helper()
+		n := roles(t, g, prompt).Named
+		for _, nw := range n.Words {
+			if nw.Word == w {
+				return n, nw
+			}
+		}
+		t.Fatalf("%q: no word %q in %+v", prompt, w, n.Words)
+		return n, NamedWord{}
+	}
+	t.Run("install.sh", func(t *testing.T) {
+		n, w := word(t, "Run install.sh before the deploy.", "install.sh")
+		if w.Kind != NamedPath || w.Unit != "" || w.Node != "" || w.Refuses || len(n.Unknown) != 1 {
+			t.Errorf("word %+v unknown %+v, want an unknown path that names no unit", w, n.Unknown)
+		}
+		if _, w := word(t, "Fix the check in install.sh.", "install.sh"); !w.Refuses || w.Unit != "" {
+			t.Errorf("after a place word %+v, want the ladder refused", w)
+		}
+	})
+	t.Run("install/install.sh", func(t *testing.T) {
+		if _, w := word(t, "Run install/install.sh before the deploy.", "install/install.sh"); w.Unit != "install" {
+			t.Errorf("word %+v, want the install unit by its directory", w)
+		}
+	})
+	t.Run("install.cmd", func(t *testing.T) {
+		if _, w := word(t, "Call install.cmd before the deploy.", "install.cmd"); w.Kind != NamedQualified || w.Unit != "install" || w.Node == "" {
+			t.Errorf("word %+v, want the declared symbol cmd in install", w)
+		}
+	})
+	t.Run("fold.json", func(t *testing.T) {
+		if _, w := word(t, "Update fold.json with the new key.", "fold.json"); w.Unit != "fold" {
+			t.Errorf("word %+v, want the fold unit by its stem", w)
+		}
+	})
+	t.Run("install.py", func(t *testing.T) {
+		if _, w := word(t, "Run install.py before the deploy.", "install.py"); w.Kind != NamedPath || w.Unit != "install" || string(w.Node) != "file:install/install.py" {
+			t.Errorf("word %+v, want the file install/install.py in install", w)
+		}
+	})
+}
+
+// The .js limit of W-M1.46: .js is a program kind, so a runtime spelled as
+// a file name (Node.js, Vue.js, D3.js) is a program file the index lacks.
+// Away from a place word it is an unknown path that names no unit: the
+// ladder's own claim stands, and only a ladder that claims nothing is
+// refused on it, as on any path the index lacks; after a place word ("in
+// Node.js") it refuses the ladder. Before W-M1.46 it named nothing. A unit named by its path in the same
+// request keeps its line in either order, because the named unit is read
+// before any refusal. A change that reads a runtime name changes this test.
+func TestNames_KnownLimit_ARuntimeSpelledAsAJSFileIsAProgramFile(t *testing.T) {
+	g := programFixture(t)
+	node := func(t *testing.T, r Roles) NamedWord {
+		t.Helper()
+		for _, nw := range r.Named.Words {
+			if nw.Word == "Node.js" {
+				return nw
+			}
+		}
+		t.Fatalf("no word Node.js in %+v", r.Named.Words)
+		return NamedWord{}
+	}
+	t.Run("away from a place word", func(t *testing.T) {
+		r := roles(t, g, "Port fold to Node.js.")
+		if w := node(t, r); w.Kind != NamedPath || w.Unit != "" || w.Node != "" || w.Refuses {
+			t.Errorf("word %+v, want an unknown path that names no unit and refuses nothing", w)
+		}
+		if r.Named.Unit != "" || len(r.Picks) == 0 || r.Picks[0].Path != "fold" || r.Picks[0].Refused != "" {
+			t.Errorf("named unit %q picks %+v, want the ladder's claim on fold to stand", r.Named.Unit, r.Picks)
+		}
+		r = roles(t, g, "Port the hook to Node.js.")
+		if len(r.Picks) == 0 || r.Picks[0].Refused != "named 'Node.js': Node.js is not in the index" {
+			t.Errorf("picks %+v, want the ladder, which claims nothing, refused on Node.js as on any unknown path", r.Picks)
+		}
+	})
+	t.Run("after a place word", func(t *testing.T) {
+		r := roles(t, g, "Run the hook in Node.js.")
+		if w := node(t, r); !w.Refuses || w.Unit != "" {
+			t.Errorf("word %+v, want it to refuse the ladder", w)
+		}
+		if len(r.Picks) == 0 || r.Picks[0].Refused != "named 'Node.js': Node.js is not in the index" {
+			t.Errorf("picks %+v, want the ladder refused on Node.js", r.Picks)
+		}
+	})
+	t.Run("beside a unit named by its path", func(t *testing.T) {
+		for _, prompt := range []string{"Fix the check in install/install.py in Node.js.", "In Node.js, fix the check in install/install.py."} {
+			b := Build(g, graph.RevCommit(graphtest.Commit), prompt, Options{IDF: true})
+			t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
+			if w := node(t, b.Roles); !w.Refuses {
+				t.Errorf("%q: word %+v, want Node.js read as refusing", prompt, w)
+			}
+			unit := slices.IndexFunc(b.Lines, func(l Line) bool { return l.Role == "unit" && l.Key == "unit:py:install" })
+			if b.Roles.Named.Unit != "install" || unit < 0 {
+				t.Errorf("%q: named unit %q lines %+v, want the install unit's line kept", prompt, b.Roles.Named.Unit, b.Lines)
+			}
+		}
+	})
+}

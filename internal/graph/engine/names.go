@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 )
 
 // R0 exact names (W-M1.13): a prompt word in name form claims the top of
@@ -174,9 +175,12 @@ var tagWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{"package": true, "pkg": true, "module": true, "unit": true, "directory": true, "dir": true, "folder": true, "subsystem": true}
 }}
 
-// nameOf reads the word as a name, in the order path, qualified,
-// knowledge id, scope tag, identifier, test name, owner.
+// nameOf reads the word as a name, in the order program file, path,
+// qualified, knowledge id, scope tag, identifier, test name, owner.
 func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map[string]float64) (NamedWord, bool) {
+	if c.programFile(w) {
+		return c.resolveProgram(w, at), true
+	}
 	if placeWords.get()[at.prev] && fileLike(w) {
 		nw := c.resolvePath(w)
 		nw.Refuses = nw.Unit == "" && nw.Node == ""
@@ -213,6 +217,29 @@ func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map
 		return nw, true
 	}
 	return c.resolveOwner(w)
+}
+
+// programFile is a bare word whose extension is a program kind
+// (lang.ProgramKind, W-M1.46) the corpus holds no file of (install.sh,
+// mix.exs): a program in another language, not the Go file or unit that
+// shares its stem. The engine names no kind; it asks package lang. The
+// corpus overrides the set: an extension the corpus holds keeps the path
+// reading. Written with its directory it is a path (resolvePath) as before.
+func (c corpus) programFile(w string) bool {
+	ext := path.Ext(lineless(w))
+	return !strings.Contains(w, "/") && lang.ProgramKind(ext) && !c.exts[ext]
+}
+
+// resolveProgram reads a program file: unit.symbol when the unit declares
+// the symbol, else a file the index lacks, which names no unit by its stem
+// and refuses the ladder after a place word, as fileLike's file does.
+func (c corpus) resolveProgram(w string, at wordAt) NamedWord {
+	if l, r, ok := qualifiedForm(w); ok {
+		if nw, ok := c.resolveQualified(w, l, r); ok && nw.Node != "" {
+			return nw
+		}
+	}
+	return NamedWord{Word: w, Kind: NamedPath, Why: w + " is not in the index", Refuses: placeWords.get()[at.prev]}
 }
 
 // fileLike is a bare file name of a kind the index need not hold: a

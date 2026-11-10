@@ -1,7 +1,8 @@
 // Package lang is the one interface a language implements to join the
 // platform graph (contracts-v2 section 6.2). The engine never names a
 // language; it reads records. A language names itself here and nowhere
-// else.
+// else. A program kind with no Resolver is named here too (ProgramKind),
+// as a file kind a request can name, not as a language the graph reads.
 package lang
 
 import "github.com/altrace-dev-role/rashomon/internal/graph"
