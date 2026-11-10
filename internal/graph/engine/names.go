@@ -84,7 +84,7 @@ func Names(g Reader, c corpus, prompt string, toks []string, weights map[string]
 	for _, sentence := range sentencesOf(prompt) {
 		quoted := quotedWords(sentence)
 		for ci, cl := range clausesOf(sentence) {
-			if excludedClause(cl) {
+			if st, _ := clauseStance(cl); st != stanceOpen {
 				continue
 			}
 			for i := 0; i < len(cl); i++ {
@@ -166,19 +166,6 @@ func namedRank(kind string) int {
 	}
 	return 0
 }
-
-// excludedClause is a clause that names what to leave alone.
-func excludedClause(cl []string) bool {
-	if len(cl) == 0 {
-		return false
-	}
-	head := low(cl[0])
-	return verbClass.get()[head] == "keep" || excludeWords.get()[head] || (head == "do" && len(cl) > 1 && low(cl[1]) == "not")
-}
-
-var excludeWords = &lazySet[bool]{f: func() map[string]bool {
-	return map[string]bool{"don't": true, "dont": true, "never": true, "without": true, "not": true, "avoid": true, "except": true, "excluding": true, "skip": true, "ignore": true}
-}}
 
 var tagWords = &lazySet[bool]{f: func() map[string]bool {
 	return map[string]bool{"package": true, "pkg": true, "module": true, "unit": true, "directory": true, "dir": true, "folder": true, "subsystem": true}

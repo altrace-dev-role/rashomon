@@ -195,9 +195,13 @@ func parseSentence(s string) clauses {
 		if len(cl) == 0 {
 			continue
 		}
+		st, at := clauseStance(cl)
+		if st != stanceOpen {
+			cl = cl[at:]
+		}
 		head := low(cl[0])
-		if exclusionWords.get()[head] {
-			_, cons, aside := splitExclusion(cl)
+		if exclusionWords.get()[head] || exclusionHeads.get()[head] {
+			cons, aside := exclusionOf(cl)
 			c.constraints = addPhrases(c.constraints, cons)
 			c.aside = append(c.aside, aside...)
 			continue
@@ -206,7 +210,7 @@ func parseSentence(s string) clauses {
 			c.uses = addPhrase(c.uses, phraseOf(cl[1:]))
 			continue
 		}
-		if cls := verbClass.get()[head]; cls != "" {
+		if cls := headClass(head); cls != "" {
 			last = cls
 			c.verbs = append(c.verbs, head)
 			rest, use := splitUse(cl[1:])
@@ -234,7 +238,7 @@ func parseSentence(s string) clauses {
 			case "edit":
 				c.targets = addPhrases(addPhrases(c.targets, thing), place)
 			case "keep":
-				if excluded {
+				if excluded || head == "leave" && st == stanceExcluded {
 					for k := range thing {
 						thing[k].Excluded = true
 					}
@@ -375,28 +379,6 @@ func afterModal(words []string) (string, string, Phrase) {
 	return "", "", Phrase{}
 }
 
-// negatedKeep reads a keep-class clause whose head negates the verb after
-// it ("never touch the store", "do not embed the summary"): that verb is a
-// verb of the clause, as after a modal, and the thing after it is left
-// alone, an exclusion. A negated keep-class verb ("do not keep the old
-// lock file", "never leave the lock file behind") means the opposite, work
-// on the thing, and keeps the class's shape, a kept thing that bars
-// nothing (W-M1.35). The verb, the rest without it, and whether the thing
-// is excluded.
-func negatedKeep(head string, rest []string) (string, []string, bool) {
-	i := -1
-	switch {
-	case head == "never":
-		i = 0
-	case head == "do" && len(rest) > 0 && low(rest[0]) == "not":
-		i = 1
-	}
-	if i < 0 || i >= len(rest) || verbClass.get()[low(rest[i])] == "keep" {
-		return "", rest, false
-	}
-	return low(rest[i]), append(append([]string{}, rest[:i]...), rest[i+1:]...), true
-}
-
 // splitPlace is the clause's object as the thing it names and the place
 // it names: the words before and after the last place word ahead of the
 // first clause word (a place inside "so the count shows in the line" is
@@ -433,29 +415,6 @@ func bareVerbAt(words []string) int {
 		}
 	}
 	return len(words)
-}
-
-// splitExclusion is the words before the first exclusion word; as
-// constraints, the thing after it less the gerund that carries it; and
-// the carrier words themselves: "without changing the log format" leaves
-// the log format alone and "without changing" is aside, while a word in
-// -ing with nothing after it is the thing ("without logging").
-func splitExclusion(words []string) ([]string, []Phrase, []string) {
-	for i, w := range words {
-		if !exclusionWords.get()[low(w)] {
-			continue
-		}
-		tail, aside := words[i+1:], words[i:i+1]
-		if len(tail) > 1 && strings.HasSuffix(low(tail[0]), "ing") {
-			tail, aside = tail[1:], words[i:i+2]
-		}
-		cons := phrasesOf(tail)
-		for k := range cons {
-			cons[k].Excluded = true
-		}
-		return words[:i], cons, aside
-	}
-	return words, nil, nil
 }
 
 // phrasesOf is the words as phrases: one, or at a possessive ("the seed
