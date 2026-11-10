@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"path"
 	"slices"
 	"strings"
 
@@ -66,6 +67,24 @@ func (r Roles) recordUnit(c corpus, picks []UnitPick) string {
 func (r Roles) recordUnits(c corpus) []string {
 	bar := r.barred(c)
 	return slices.DeleteFunc(slices.Clone(r.Named.KnowledgeUnits), func(u string) bool { return bar[u] })
+}
+
+// recordUnitNamed is the unit the request names by its own name among the
+// named records' units less the barred ones (recordUnits), for when the
+// ladder ranks none of them (W-M1.49): the one whose last segment the
+// request's things hold, the test unitNamed applies ("AutoSteer" holds
+// steer); "" when none or two or more are named so.
+func (r Roles) recordUnitNamed(c corpus, prompt []string) string {
+	units, things, got := r.recordUnits(c), r.things(prompt), ""
+	for _, u := range units {
+		if _, ok := holds(things, Tokens(path.Base(u))); ok {
+			if got != "" {
+				return ""
+			}
+			got = u
+		}
+	}
+	return got
 }
 
 // RecordClaim is a claim by the records the request names (W-M1.41b):
@@ -158,7 +177,8 @@ func (r Roles) cell() string {
 // claim on one unit ranks nothing, and one on several is ranked by its
 // pick on the ladder, which holds no pick by name (a named unit returns
 // before the phrases are read, and the record's own pick is made after
-// the ladder is taken).
+// the ladder is taken), or, when the ladder ranks none of them, by the
+// unit's name (recordUnitNamed, W-M1.49).
 func (rc RecordClaim) stated() bool {
 	switch {
 	case len(rc.IDs) == 0 || rc.Units < 1:

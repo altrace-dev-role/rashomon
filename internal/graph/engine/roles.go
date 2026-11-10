@@ -143,9 +143,12 @@ func FindRoles(g Reader, c corpus, rows []ScopeRow, weights map[string]float64, 
 // record, which also outranks a claim by word coverage on a phrase
 // (overRecord), and the ladder's pick on the unit a named record applies
 // in is a record claim on it, unless the records apply to none of its
-// evidence: then their own evidence claims the unit (ladderStands). A
-// first phrase that failed keeps its reason, and an owner phrase that
-// claims nothing ends the search: the owned part is in it.
+// evidence: then their own evidence claims the unit (ladderStands). When
+// the records apply in several units and the ladder ranks none of them,
+// they claim the one the request names by its own name, ranked first by
+// it (recordUnitNamed, W-M1.49). A first phrase that failed keeps its
+// reason, and an owner phrase that claims nothing ends the search: the
+// owned part is in it.
 func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]float64) {
 	named := r.Named
 	if named.Unit != "" {
@@ -193,7 +196,11 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 	if over != "" {
 		ladder = r.Picks
 	}
-	if u := r.recordUnit(c, ladder); u != "" {
+	u, byName := r.recordUnit(c, ladder), false
+	if u == "" {
+		u, byName = r.recordUnitNamed(c, prompt), true
+	}
+	if u != "" {
 		pick := UnitPick{ID: c.unitID[u], Path: u, Class: ClassNamed, Covered: 1, Of: 1, Callable: true, Precision: 1}
 		by := ""
 		for _, k := range named.Knowledge {
@@ -207,6 +214,10 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 			r.Why += " over " + over
 		}
 		r.Record = r.recordClaim(g, c, ladder, u)
+		if byName {
+			r.Record.First, r.Record.RunnerUp = BasisUnitName, ""
+			r.Why += ", which the request names by its name"
+		}
 		return
 	}
 	r.Picks, r.Why = first, firstWhy
