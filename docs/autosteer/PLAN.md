@@ -813,7 +813,18 @@ The hand-built list was a failure, now recorded. From now on, a predicate's regi
 
   Lost: today's line 4, `internal/directive/briefing.go`, which is in the truth unit. The judge line is unchanged (claims no unit). The term "a refused or not-known row stays so" holds for the unit line. It is breached for the not-known line, which is built and not sent.
 - Ruling: both are prediction misses. The code's gate stays the stand-in's sent lines on every row, NE11's silence included. That silence is the engine's own rule: a withheld unit takes its role lines with it, and they have already spent the budget. Today 177 of the 544 dumped briefs send nothing for that reason. The rule stands for now. On the 140 not-known briefs that do send related lines, 89 of 445 lines lie in a truth unit, and 55 of 140 rows hold one. Filling the freed slots would mostly send off-task lines (script `/tmp/rk-autosteer/w147/notknown-prec.py`). Tracked as W-DEBT.12; it is not part of W-M1.43.
-- The leave clause ("leave X alone"; `classes.tsv` O5, `classes2.tsv` GF10, `classes3.tsv` NE05) gets its own stand-in, read before the code under rule 4. NE05's prediction ("its fallback finds no unit, as now") turns on the same tie mechanism NE11 missed on.
+- The leave clause ("leave X alone"; `classes.tsv` O5, `classes2.tsv` GF10 and NE05) gets its own stand-in, read before the code under rule 4. NE05's prediction ("its fallback finds no unit, as now") turns on the same tie mechanism NE11 missed on.
+
+**W-M1.43's leave-clause stand-in read (2026-11-09 22:2x PST).** A second stand-in, on the same tree (b15842f5), marked Excluded the things the keep branch reads from each clause-initial "leave" clause the rule turns Excluded. It placed every such clause: none follows a conjunction, none holds a thing missing from the constraints, and no phrase spans two clauses. Three rows turn 4 things Excluded:
+- `classes.tsv` O5: "Leave the hook alone" bars `internal/hook`;
+- `classes2.tsv` GF10: "Leave the consent screen's wording alone for now" bars `internal/consent`;
+- `classes2.tsv` NE05: "Leave the before/after check ... alone" bars nothing.
+
+O9 ("Leave the render templates", no "alone"), RF07, DL06 (by the rest-of rule), RF14, RF18 and RF19 keep their reading. Sent lines equal the first stand-in's on all 573 rows. The leave rule alone, on today's build, sends today's lines on all 573. Debug moves on NE05 only; on O5 and GF10 the bar changes no printed score. The table's predictions hold as written.
+
+NE05's fallback phrase holds two unit names, before the change and after it: `settings` and `report`, one token each, with no directory segment. They tie, so no unit is named. Its silence rests on that tie, as NE11's claim rested on fold and budget. A later change that takes either word out lets the other claim, and E5 then withholds the claim. That is a note for `classes4`.
+
+The code's gate: its sent lines equal the second stand-in's (sha256 63d80b0ab4dbf3c4), which equal the first's on sent lines. The code records each head as typed ("don", "skip") among the verbs and the aside, where the stand-in had "do". Sent lines are the same either way. Debug is checked against that variant's, beside the gate.
 
 **W-M1.44: a record named in the possessive is that record, registered before it is built (2026-11-09 20:2x PST; ordered after W-M1.43 and before `classes4`).** `nameOf` (`names.go`) tests a word for a record id's form before it strips a possessive. "D165's" fails that test and reaches `resolveOwner`, which reads an all-capitals possessive ("the README's", "the CLI's") as a code name and looks it up among symbols, files and unit segments only. D165 is a record in the index: `classes3.tsv` DL17's brief states "D165 applies". Yet `classes2.tsv` KI08 ("D165's preflight rulings assumed ...") is refused with "named 'D165's': D165 is not in the index", and its brief names no unit.
 
@@ -870,6 +881,83 @@ Acceptance:
 - a unit test reads four words: "install.sh" as no unit; a program file with its directory as that directory's unit; a qualified word whose right part is a declared symbol of a program kind's spelling as that symbol; and "fold.json" as the fold unit;
 - each of two mutants turns that test red: one that drops the rule, and one that drops the declared-symbol guard;
 - T1's context is unchanged.
+
+**W-M1.47: "already" anchors the change only where a place word opens the phrase, registered before it is built (2026-11-09 22:2x PST; ordered after W-M1.46 and before `classes4`).** An anchor is the surface the change lands on (W-M1.14 R1), and a target phrase that is one overrides a named unit (`Roles.anchor`). `phraseOf` (`frame.go`) makes any phrase that "already" follows an anchor. It sets Definite from "already" first, so the definite condition its comment states is always met. The rule was built for the place form: "Show it wherever the platform obligations already appear" (PL12, T1). Elsewhere "already" marks a precedent the request points to, not where the change lands:
+- `classes2.tsv` NN01: "whatever install this machine's store already points to" overrides the named `cmd/rashomon` (detachTarget) with `internal/store`, a candidate by its name;
+- `classes2.tsv` NP09: "internal/store/capbytes.go already has a pattern for this" overrides the named `internal/baseline` (fold.go) with a coverage claim on `internal/store`, which E5 withholds.
+
+Both rows are wrong today, and those two are the only rows on which the override fires.
+
+The change: "already" after a phrase marks it an anchor only when a place word opens the phrase, as in the place part `splitPlace` cuts from a verb clause or a clause a place word heads. Elsewhere it marks the phrase Definite, as now. The openers "existing" and "current" anchor as now, and so does "wherever" before a definite phrase.
+
+Readings: the anchor phrases were listed from the frame lines of the W-M1.41c dumps, the 544 dumped rows (`anchor-scan.py` sha256 1bc2bc49d1554cd4, output b60d8b524d84c9ca), and `control.tsv` holds no "already". Fourteen rows carry an anchor, and every anchor among them comes from "already":
+- three are place phrases and keep it: PL12 in `classes.tsv` and `prompts.tsv`, and T1;
+- eleven lose it: NN01, NN08, NP01, NP08, NP09, KI03, KI04 and KI06 in `classes2.tsv`, and NN16, CC17 and KI14 in `classes3.tsv`.
+
+An anchor is read only when a name resolves a unit, and then only among the targets. Of the eleven, only NN01 and NP09 change their claim. On NN08 and NP01 the anchor's pick is the named unit or is refused, NP08, KI14 and NN16 hold theirs outside the targets, and KI03, KI04, KI06 and CC17 resolve no unit by name.
+
+Predicted:
+- NN01 claims `cmd/rashomon`, named: line 1 states it "(named in the request)", and the judge's unit turns right;
+- NP09 claims `internal/baseline`, named: line 1 states it, and the unit turns right;
+- the frame's debug line loses "anchor" on the eleven rows above, and on no other row;
+- sent lines on every other row are byte-identical, debug lines included apart from those frame lines.
+
+Known limit: a precedent written in the place form ("put it where the old retry loop already lives, but in the client") still anchors. No row holds one.
+
+Acceptance:
+- the rows move as predicted, and no other row moves;
+- a unit test reads "detachTarget falls back to whatever the store already points to" as the named unit, and `TestNames_TheAnchorWinsOverANameWithDisclosure` still passes;
+- each of two mutants turns a test red: one that anchors every phrase "already" follows, and one that anchors none;
+- T1's context is unchanged.
+
+**W-M1.48: an identifier that opens with an acronym is in identifier form, registered before it is built (2026-11-09 22:2x PST; ordered after W-M1.47 and before `classes4`).** `identForm` (`ident.go`) sees the form in an underscore inside a word or an upper-case letter after a lower-case one. "SDKRecording" has neither, since its capitals come before any lower case. At the start of a sentence it is then not a name. So `classes2.tsv` NN02 ("SDKRecording returns false whenever ...") names nothing: its ladder claims `internal/consent` by coverage, E5 withholds the claim, and line 1 is a not-known line. SDKRecording is declared in `internal/consent`.
+
+The change: a run of two or more capitals followed by a lower-case letter is the form itself, wherever the word stands (SDKRecording, HTTPServer). The exception is an acronym plural, capitals then "s" or "es" alone (IDs, URLs, APIs), which stays an acronym. A word in this form that no unit declares falls through to the test and owner readings, as any unresolved identifier does now.
+
+Readings: the rule's word test, run over every word of the six files' 573 rows (`ident-scan.py` sha256 245aae1ef9bb62ac, output 6e3026adec10667c; declared names from `decl.tsv`, 6079 names, an approximation of the index), finds 3 new words on 3 rows. SDKRecording (NN02) is declared. IPv6 (`classes.tsv` E5 and JN4) is not, so it reaches the same readings as now. P5's "TestCanonical_IPv6" is in the form today, by its underscore.
+
+Predicted:
+- NN02 claims `internal/consent`, named: line 1 states it "(named in the request)", and the unit turns right;
+- E5 and JN4 are byte-identical, debug lines included;
+- every other row is byte-identical, debug lines included.
+
+Known limit: a capitalised word off the sentence's start (NN05's "Canonical") is still a name only after a kind word. A wider rule was run over the same rows: it finds 136 words, 73 of them declared names, many of them English ("Code", "Go", "Stop", "Agent"), so it is not taken.
+
+Acceptance:
+- the rows move as predicted, and no other row moves;
+- a unit test reads "SDKRecording returns false" as the unit declaring it, "IDs are lost on restart" as no identifier where a unit declares IDs, and "IPv6 hosts fail" as no identifier when nothing declares it;
+- each of two mutants turns that test red: one that drops the rule, and one that drops the plural exception;
+- T1's context is unchanged.
+
+**W-M1.49: a record that applies in several units claims the one the request names by its own name, registered before it is built (2026-11-09 22:2x PST; ordered after W-M1.48 and before `classes4`).** A named record claims a unit when its evidence lies in one unit, or when the ladder ranks one of its units first (`recordUnit`, W-M1.41). When the records apply in several units and the ladder ranks none of them, the brief claims nothing, even when the request names one of those units by its own name:
+- `classes3.tsv` KI18: D181 applies in `cmd/rashomon`, `internal/harness` and `internal/steer`, and the request names `internal/steer` ("AutoSteer");
+- `classes3.tsv` KI19: PF-HD9 applies in `cmd/rashomon`, `internal/brief` and `internal/install`, and the request names `internal/brief` ("the brief and the probe").
+
+Both rows claim no unit today, and both are wrong.
+
+The change: in `resolve`, after `recordUnit` finds no unit, the records claim the one unit among their units (less the barred ones, `recordUnits`) whose last segment the request's things hold (`things`, the test `unitNamed` applies). The claim is the record claim's: the same pick, with the units counted and ranked first "by its name" (unit-name), and no runner-up. When no unit or two or more are named this way, nothing changes. `recordUnit` itself stays as it is, since `overRecord` and `ladderStands` read it.
+
+Readings: a probe ran the predicate over the 573 rows at 41819b62 (`p47_test.go` sha256 9ed156598f5fe966, "--- PASS: TestP47_RecordUnitsNamed", output b92dfb1029e98317). Three rows claim no unit while their records apply in two or more units. It fires on 2 of them, KI18 and KI19; the truths hold its unit on both. On `classes.tsv` N4 (`internal/learn`, `internal/steer/render`) the request names neither unit, and N4 stays as now. The predicate gives the same units over the request's tokens and over its things on all 573 rows. KI18 is one of W-M1.43's rows: that change excludes "anything" from its last clause and adds its head to the verbs, and "AutoSteer" stays among its things.
+
+Predicted:
+- KI18 claims `internal/steer`. Line 1 reads "(a candidate: the request names D181, which applies in 3 units; this one by its name)", in the unit-name cell (57 of 81). The unit turns right; truth `internal/harness;internal/steer`.
+- KI19 claims `internal/brief`, with the same line-1 form for PF-HD9. The unit turns right; truth `internal/install;cmd/rashomon;internal/brief`.
+- On both, role lines take the unit-name cell's bands: targets and reuse withheld, consumers stated, knowledge a candidate. Lines 2 to 5 may move, and the judge's consumer and knowledge cells may move with them.
+- Every other row is byte-identical, debug lines included.
+
+Known limit: "AutoSteer" holds `steer` as the product's name. On KI18 that unit is the truth's, and the claim is guarded by D181's applying there. A request about the product as a whole that names a record whose evidence lies partly in `internal/steer` would claim it the same way.
+
+Acceptance:
+- the rows move as predicted, and no other row moves;
+- a unit test, with a record applying in three units, reads: a request naming one unit by its name as a claim on that unit, ranked by its name; a request naming two as no claim; a request naming none as no claim; and a request barring the named unit as no claim;
+- each of three mutants turns that test red: one that drops the rule, one that claims the first unit named, and one that reads the records' units without the bar;
+- T1's context is unchanged.
+
+Under option 1 as read below, with W-M1.43, W-M1.44 and W-M1.46 as predicted:
+- `classes2.tsv`: named-name goes from 7 to 9 (NN01, NN02) and named-path from 9 to 10 (NP09);
+- `classes3.tsv`: knowledge-id goes from 7 to 9 (KI18, KI19).
+
+Every class on both development files would then stand at 8 of 10 or better: the bar for authoring `classes4.tsv`. NN05 and KI16 stay wrong. KI16's record, B271, applies in `cmd/rashomon` alone, so the brief states it, though the truth is the guard in `internal/selfguard`.
 
 **AC-M1.5's ceiling under gate shape 3, read at W-M1.41c's tree (2026-11-09 20:5x PST; an input to the per-class gate ruling; no rule or truth changed).** Read on the three classes files' dumps at W-M1.41c's tree (sha256 a375b710761dc7db, cc047754de5dcc6e, 3d899fc245e57756), with simulators that reproduce the judge's per-row unit verdicts (`classes2.tsv` 123 of 160, `classes3.tsv` 130).
 - Where the misses are. In the eleven classes that do not name their unit by construction (greenfield aside), a naming row is one whose prompt holds a truth unit's path, its last segment as a word, or a target file's name. Three such rows are named by a path, and 2 are right. The rest are named only by the last segment as a word: on `classes2.tsv` 28 rows, 4 right, 23 withheld by E5; on `classes3.tsv` 22 rows, 2 right, 19 withheld. A withheld line is right on a prose row and wrong on a naming row. So in these classes the unit verdict cannot exceed the prose and no-unit rows plus the naming rows the engine claims rightly. With every segment row withheld, the most a class can reach is: on `classes2.tsv` feature-add 6, refactor 5, cross-cutting 5 and question 7; on `classes3.tsv` cross-cutting 6, refactor 7 and delete 7. Four of these miss the per-class gate of 7 and all seven miss the 8-of-10 bar for authoring `classes4.tsv`, whatever else is fixed.
