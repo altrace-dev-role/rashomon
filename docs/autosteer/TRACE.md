@@ -6,6 +6,10 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-09 19:0x: W-M1.42 built as f8c7c86f: a request with no task is sent no brief (PLAN 6.1, as built).
+  - Control gate 0 of 29. The five files silence exactly the registered rows, with 0 losses. AC-M1.1 is unchanged at 10 of 10 and 47 of 54, and clause 4 holds.
+  - The full gate failed RES-2 on the word set's builder, a function literal the init scan reads as run at init. The literal is now a named function, and the scan's imprecision is tracked as W-DEBT.9. The reduced gate at the amend passes, its 736-row dump byte-identical to the full gate's and WM-1.42's 50 mutant rows red.
+  - RES-30 failed once under the full set's load and passed alone eight times at the amend and its parent; CI's macOS perf step is the verdict.
 - 2026-11-09 18:1x: T1c triple 10 read at its boundary (t1c-read5.py e5e6aefacedb7378): U 1 of 10, R 2 of 10, G 3 of 7 (G0 1 of 3 beside); cost per correct run U 45.76, R 29.86, G 14.14 USD; n=10 met for U and R, G at 7; no lift claim.
   - Runs with a later task-notification brief (PLAN card (f)): R 3 of 10 (t1c-r5, t1c-r6, t1c-r10), G 0 of 7; R without them 2 of 7. Runs at the turn cap: G 1 (t1c-g15).
   - t1c-g17 pass (114 turns, 5.77 USD); t1c-r10 fail (148 turns, 7.82 USD; one of the four consumers searched, not opened); t1c-u10 fail (98 turns, 4.22 USD; one consumer never reached).
