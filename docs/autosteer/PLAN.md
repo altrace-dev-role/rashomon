@@ -688,6 +688,83 @@ Acceptance:
 - T1's first-prompt context stays 589 bytes, sha256 7641dab9cde93040;
 - a mutant row for each branch of the predicate goes red.
 
+**W-M1.43 readings and predictions, written before any code (2026-11-09 20:2x PST).** Read at 9b3248ee from the five files' dumps and the engine's source; the W-M1.41c probe build's dumps agree on every row below.
+
+What the two readers do now:
+- The name reader (`clausesOf`, `clauses.go`) cuts a sentence at commas and before an and, then, also or or that a verb or a place word follows, and drops a leading and, then, also or or. `excludedClause` then skips a clause whose first word is keep-class (keep, preserve, leave, maintain, retain, never, do; `words.go`) or a negation, and reads no name from it. A leading "but" is not dropped.
+- The frame reads "never X" and "do not X" over a non-keep verb (`negatedKeep`, W-M1.35), a negation after a modal (`afterModal`) and "without X" (`splitExclusion`) as excluding X, and "leave X alone" as a kept X, which bars nothing.
+
+The predicate after has three answers, because the name reader skips a kept clause too ("keep internal/spend stable" must not name internal/spend as the unit to change):
+- Excluded: the frame bars a unit its object names (`barred`, through `unitNamed`), and the name reader reads no name from it.
+- Kept: no bar, and no name read from it.
+- Open: neither; the name reader reads its names.
+
+Its rules:
+- A leading but, and, yet or though is skipped before the head is read.
+- A bare "not" after a skipped conjunction opens nothing: the clause is Open. "but not for Maven" (`classes2.tsv` FA10), "but not which ones it missed" (FA08) and "but not enough to tell" (`classes3.tsv` NE15) each name the gap the request fills; reading them as Excluded would bar the unit to change.
+- Excluded when the head is a negation (don't, do not, never, not, without, avoid, except, excluding, skip, ignore), or "leave" with "alone", "untouched" or "as is" after its object.
+- Kept for any other keep-class head, and for "leave" over the rest of a thing ("the rest of", "everything else", "all else"): that rest stays in the unit the change edits.
+
+The keep line, both ways:
+- Kept, no bar:
+  - "keep the API stable";
+  - "Keep every verdict identical" and "leave the protected-path and evidence checks where they are" (`classes2.tsv` RF07);
+  - "Keep everything else about how the file parses exactly the same" (`classes3.tsv` DL17);
+  - "leave the file-format parsing where it is" (RF18), "leave the plan construction and execution where they are" (RF19), "leave the history file holding just the history job" (RF14) and "Leave the rest of detach's reporting alone" (`classes2.tsv` DL06).
+- Excluded:
+  - "leave internal/spend alone", "... untouched" and "... as is";
+  - "but do not touch internal/spend" and "but without touching internal/spend";
+  - "Leave the hook alone" (`classes.tsv` O5) and "Leave the consent screen's wording alone for now" (`classes2.tsv` GF10).
+
+Where an Excluded constraint reaches the claim (`claim.go`, `roles.go`):
+- `barred` bars a unit whose last path segment its object holds. Of the objects that turn Excluded, two do: O5's "hook" (`internal/hook`) and GF10's "consent" (`internal/consent`). DL06's "reporting" holds `internal/report`'s segment, and the rest-of rule keeps it Kept.
+- `outside` already drops every constraint's words from the ladder's context, kept or excluded; a constraint the frame did not read before takes its words out too.
+- `things` keeps a kept constraint's words in the fallback phrase when the frame has no target and no addition, and drops an excluded one's. NE05 is such a frame. Its constraint's words (before, after, check) hold no package's last segment among the repository's 100, so its fallback finds no unit, as now.
+
+The name reader changes on none of these rows: each clause it skips now it skips after, and every "but" clause among them stays Open. The frame changes on O5, NE05 and GF10 (a kept constraint turns Excluded) and may read a new Excluded constraint on DL17 and TO18 (`negatedKeep` over "don't require ..." and "never follow ..."). The frame's debug line does not print the Excluded mark (`Phrase.String`), so a unit test reads it.
+
+Predicted per row. "Brief" is the sent lines and the judge line.
+
+| Row | Brief now | What changes | Predicted |
+|---|---|---|---|
+| `classes.tsv` O5 | `internal/brief`, a candidate by its name, runner-up `cmd/rashomon` | "Leave the hook alone" turns Excluded; bars `internal/hook` | byte-identical: `internal/hook` is neither pick nor runner-up |
+| `classes2.tsv` GF10 | `internal/disclose`, a candidate by its name, runner-up `internal/brief` | the consent-screen clause turns Excluded; bars `internal/consent` | byte-identical: no line names `internal/consent` (`cmd/rashomon/consent.go` is a consumer in `cmd/rashomon`) |
+| `classes2.tsv` NE05 | "not known: the unit to change" | its "leave ... alone" turns Excluded; names no unit; its words leave the fallback phrase | byte-identical |
+| `classes2.tsv` DL06 | sends nothing; the ladder's `internal/store` withheld | none: "the rest of" is Kept (without the rule it would bar `internal/report`) | byte-identical |
+| `classes2.tsv` RF07 | sends nothing; the ladder's `internal/steer/render` withheld | none: both clauses Kept | byte-identical |
+| `classes3.tsv` RF14, RF18, RF19 | each sends nothing; the ladder's unit withheld | none: Kept | byte-identical |
+| `classes2.tsv` TO04 | "not known" for the unit, file, consumers and records, and one D173 line; the ladder's `internal/spend` withheld | none: "never falls back ..." is cut at its "and", skipped by the name reader now, and names no unit | byte-identical |
+| `classes2.tsv` CC08 | "not known: the unit to change" | none: after "but" the head is "the", Open | byte-identical |
+| `classes2.tsv` FA08 | "not known: the unit to change" and one D149-addendum line | none: bare "not" after "but" is Open | byte-identical |
+| `classes3.tsv` NE15 | sends nothing; the ladder's `internal/hook` withheld | none: bare "not" after "but" is Open | byte-identical |
+| `classes2.tsv` FA10 | "not known: the unit to change" and one D143-amended line (refused on "pass/fail", which the index lacks) | none: bare "not" after "but" is Open, and the row is refused before the frame | byte-identical |
+| `classes2.tsv` KI08 | "not known: the unit to change" and record lines (refused on "D165's", W-M1.44) | none | byte-identical |
+| `classes3.tsv` DL17 | `internal/spec` by coverage, runner-up `internal/disclose` | "and don't require the two fields to be set together" may become an Excluded constraint; names no unit; its words leave the ladder's context | unit, basis and band unchanged; only the runner-up and the lines under it may move |
+| `classes3.tsv` TO18 | "not known" for the unit, file, consumers and records, and one D173 line; `internal/brief`, read by its name, withheld | "and never follow a symlink ..." may become an Excluded constraint; names no unit | byte-identical; a withheld line turning sent is a miss |
+
+- Debug lines (frame, fallback phrase, ladder scores) may move on O5, GF10, NE05, DL17 and TO18, and on no other row.
+- No line of any other row of the 160 per file moves. `classes2.tsv` CC10's "but not another" is inside a clause (no comma before it), so no reader sees it as a head.
+- Known limits, each with a `classes4` row:
+  - a request that leaves a thing alone and then changes an aspect of it ("leave X alone, but when it comes back false, have it say which keys differ", NE05) bars X's unit when X names one;
+  - a negated behaviour ("never follow a symlink", "don't require the two fields") is an excluded object under W-M1.35's reading, so one whose object names the unit it changes ("never call internal/spend's lookup twice") bars that unit.
+- A row that moves other than as written above is a miss, read before the code is changed again.
+
+**W-M1.44: a record named in the possessive is that record, registered before it is built (2026-11-09 20:2x PST; ordered after W-M1.43 and before `classes4`).** `nameOf` (`names.go`) tests a word for a record id's form before it strips a possessive. "D165's" fails that test and reaches `resolveOwner`, which reads an all-capitals possessive ("the README's", "the CLI's") as a code name and looks it up among symbols, files and unit segments only. D165 is a record in the index: `classes3.tsv` DL17's brief states "D165 applies". Yet `classes2.tsv` KI08 ("D165's preflight rulings assumed ...") is refused with "named 'D165's': D165 is not in the index", and its brief names no unit.
+
+The change: the record-id step reads a possessive's base as well, and a base that is a record in the index names that record, kept as the prompt wrote it. Every other possessive takes its current path, so "the CLI's flags" reads as now.
+
+Readings: of the 480 rows, only KI08's prompt holds a possessive record id (every other match is in a comment line). T1's, T1b's and T1c's prompts hold none.
+
+Predicted: KI08 moves from refused to a record claim on `internal/spec`, because D165 applies there alone (`discover.go`, `match.go`): basis record, banded in the named cell, and the judge's unit cell turns right (want `internal/spec;internal/brief`). No other row of the 480 moves. T1's first-prompt context stays 589 bytes, sha256 7641dab9cde93040.
+
+Known limit: a possessive in a record id's form that the index lacks ("D999's") still refuses the ladder, while its bare form names nothing. They should read alike. They do not, because an all-capitals code name and a missing record id share one form.
+
+Acceptance:
+- KI08 moves as predicted, and no other row moves;
+- a unit test names a lesson, a decision and a requirement in each possessive form ('s, ’s, s') and reads each as its record;
+- a mutant that drops the possessive read turns that test red;
+- T1's context is unchanged.
+
 **W-M1.41c: a named record that applies in the ladder's pick settles the claim, registered before it is built (2026-11-09 14:5x PST; ordered after W-M1.42 and before W-M1.43 and `classes4`).** W-M1.41b makes a record claim only when the record's unit differs from the ladder's pick (`overRecord` returns "" when they are the same unit). When the request's words and its named record point at the same unit, the brief says less than when the record alone points there:
 - it reads "a candidate by word coverage" or "a candidate by its name", and never names the record as the reason;
 - on 7 rows it also says "not known: the records that apply to the change", although the request named one that applies in that unit.
