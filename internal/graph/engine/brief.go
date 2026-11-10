@@ -92,22 +92,31 @@ func (o Options) rel() func(string) string {
 // before the related lines Select kept, bands them and takes out the
 // withheld ones, binds each line's facts into its slot, and renders the
 // brief, dropping the last line until the message fits the briefing cap.
+// A harness notice is read off the prompt first, and a request that
+// carries no task (notask.go) is sent no brief.
 func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	if opt.Lessons {
 		return buildLessons(g, rev, prompt, opt)
 	}
 	start := time.Now()
-	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(prompt)), Scorer: "tf"}
+	req, held := notice(prompt)
+	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(req)), Scorer: "tf"}
 	if opt.IDF {
 		b.Scorer = "idf"
 	}
+	if held && strings.TrimSpace(req) == "" {
+		return b.unsent(ruleNotice, "a harness notice, no request after it", start)
+	}
 	c := scan(g, rev)
 	c.idf = opt.IDF
-	b.Seeds, b.Rows, b.Weights = c.scope(prompt, opt)
+	b.Seeds, b.Rows, b.Weights = c.scope(req, opt)
 	rel := opt.rel()
 	outside := Outside(g, rev, rel)
-	b.Roles = FindRoles(g, c, b.Rows, b.Weights, Parse(prompt), Names(g, c, prompt, b.Tokens, b.Weights), b.Tokens, outside)
-	b.Roles.Unnamed = opt.unit()(c, b.Roles, prompt)
+	b.Roles = FindRoles(g, c, b.Rows, b.Weights, Parse(req), Names(g, c, req, b.Tokens, b.Weights), b.Tokens, outside)
+	b.Roles.Unnamed = opt.unit()(c, b.Roles, req)
+	if rule, why := noTask(b.Roles, b.Tokens); rule != "" {
+		return b.unsent(rule, why, start)
+	}
 	ids := make([]graph.ID, len(b.Seeds))
 	for i, s := range b.Seeds {
 		ids[i] = s.ID
@@ -121,6 +130,9 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 		byID[c.ID] = c
 	}
 	b.Lines, b.Decisions = merge(g, rev, b.Roles, related, decisions, byID, opt.band())
+	if held {
+		b.Decisions = append([]Decision{{Why: noticeRead}}, b.Decisions...)
+	}
 	for i := range b.Lines {
 		b.Lines[i].Slot = lineFact(g, rev, b.Lines[i], byID, rel)
 	}
