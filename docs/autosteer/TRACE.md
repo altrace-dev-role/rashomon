@@ -6,6 +6,7 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-10 09:5x: Rulings for M1's close recorded (PLAN 6.1), the director's reading of the owner's 09:2x word, recorded as one: the per-class unit gate under option 1 as `opt1.py` (e42b0375b05f435a) reads it; the reuse term not met at close and owed by the proposer milestone (ruling 9 stands); `classes4.tsv` authored today, sealed and read once at the frozen engine by the instrument registered before the read; no further set for M1.
 - 2026-11-09 22:2x: W-M1.43's leave-clause stand-in read (PLAN 6.1): 3 rows turn 4 things Excluded (O5, GF10, NE05), sent lines equal the first stand-in's on all 573 rows, and debug moves on NE05 only. The predictions hold; the code's gate is unchanged. NE05 is a `classes2.tsv` row, corrected in the 22:0x record.
   - W-M1.47, W-M1.48 and W-M1.49 registered before they are built, each run over all 573 rows first. "already" anchors only a place phrase (NN01, NP09); an acronym-led identifier is in identifier form (NN02); a record that applies in several units claims the one the request names by its own name (KI18, KI19).
   - Predicted under option 1: `classes2.tsv` named-name 7 to 9 and named-path 9 to 10, `classes3.tsv` knowledge-id 7 to 9. With W-M1.43, W-M1.44 and W-M1.46, every class on both development files would stand at 8 of 10 or better. NN05 and KI16 stay wrong.
