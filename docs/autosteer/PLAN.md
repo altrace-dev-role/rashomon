@@ -884,6 +884,19 @@ Acceptance:
 - each of two mutants turns that test red: one that drops the rule, and one that drops the declared-symbol guard;
 - T1's context is unchanged.
 
+Amended 2026-11-10 10:48 PST, before any W-M1.46 code exists as a commit, as the director's reading, which an owner ruling replaces: the seventeen kinds live in package `lang` (`internal/graph/lang`), in one unexported table behind one exported predicate, and the engine asks that predicate; it holds no kind as a literal. The registration did not say where the list lives, and written as literals in `engine/names.go` it fails `TestEngine_NoLanguageLiterals` on ".py" (`nolang_test.go:31: names.go names a language: ".py"`, /tmp/rk-autosteer/m1i/g46/j46-eng.log). That test is unchanged and stays (section M1's neutrality line), and AD3 stands. The registered set, the routing, the predicted rows and their forms are unchanged. Known debt: the engine imports package `lang` for this predicate, where the Registry is wired by the caller. Caller-wiring is owed, and its placement is the owner's. The test's comment sentence "The one place a language name exists is its lang.Resolver" (`nolang_test.go:14`) is stale by this change and is fixed with that debt.
+
+Observed before the commit, and not predicted: the registration is silent on lines 2 to 5 for these rows. The implementer's pre-commit dump (ledger B521; /tmp/rk-autosteer/m1i/g46/code/code.txt sha256 fe023ec49405ca04, against g44/code/code.txt sha256 11debfb530a23e37) holds every prediction stated above, as the director read both dumps, and moves three rows' sent lines beyond them. The three are read here in both dumps:
+- FA06: kept 5 to kept 4. `internal/shape/masked_name.go` is cut by budget, because `merge` (`lines.go:61-93`) cuts at MaxLines before `withhold` folds the two withheld role lines into one not-known line. The cells are as predicted: unit right (shape 3, "claims no unit"), consumers and knowledge wrong.
+- NG01: kept 5 to kept 5. The lines on `internal/install` go as predicted, and ranked file lines refill the freed slots, one of them `internal/install/plugin.go`. Unit, consumers and knowledge are right.
+- NG08: kept 3 to kept 5, by the same refill. Unit, consumers and knowledge are right.
+
+The routing through package `lang` must reproduce that dump, sha256 fe023ec49405ca04: the implementer quotes it in the freeze note, and G-A checks it.
+
+Two more known debts:
+- Merge order: a brief with k withheld roles sends k-1 fewer lines than its budget allows (FA06 after W-M1.46). Whether NG10 shows it at the base is being confirmed.
+- Slot refill on rows owed no unit: on NG01 and NG08 the wrong claim is withdrawn, and the freed slots carry word-coverage file lines the request does not concern. The gate reads no file line, so both rows score right. This debt is tied to the file-line term owed with W-DEBT.11.
+
 **W-M1.47: "already" anchors the change only where a place word opens the phrase, registered before it is built (2026-11-09 22:2x PST; ordered after W-M1.46 and before `classes4`).** An anchor is the surface the change lands on (W-M1.14 R1), and a target phrase that is one overrides a named unit (`Roles.anchor`). `phraseOf` (`frame.go`) makes any phrase that "already" follows an anchor. It sets Definite from "already" first, so the definite condition its comment states is always met. The rule was built for the place form: "Show it wherever the platform obligations already appear" (PL12, T1). Elsewhere "already" marks a precedent the request points to, not where the change lands:
 - `classes2.tsv` NN01: "whatever install this machine's store already points to" overrides the named `cmd/rashomon` (detachTarget) with `internal/store`, a candidate by its name;
 - `classes2.tsv` NP09: "internal/store/capbytes.go already has a pattern for this" overrides the named `internal/baseline` (fold.go) with a coverage claim on `internal/store`, which E5 withholds.
