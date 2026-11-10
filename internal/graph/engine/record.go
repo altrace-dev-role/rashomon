@@ -2,6 +2,7 @@ package engine
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 )
@@ -189,6 +190,55 @@ func (r Roles) unitUnknown(unknown []string, out []graph.ID) []string {
 		}
 	}
 	return kept
+}
+
+// ladderStands is whether the ladder's pick on a phrase stands as the
+// claim when no named record outranks it (overRecord), and makes it a
+// record claim when a named record applies in its unit (W-M1.41c): the
+// pick stands as the ladder made it when the records' unit is another or
+// none; as their claim, banded in the ladder's cell, when they apply in
+// several units; and as their claim on the pick's evidence they apply to
+// (held) when they apply in its unit alone. It does not stand when they
+// apply to none of that evidence: their own evidence claims the unit
+// (resolve), since a claim on one unit is banded in the named cell and
+// no line it states may rest on the words alone.
+func (r *Roles) ladderStands(g Reader, c corpus) bool {
+	u := r.recordUnit(c, r.Picks)
+	if u == "" || u != r.Picks[0].Path {
+		return true
+	}
+	rc := r.recordClaim(g, c, r.Picks, u)
+	if rc.Units > 1 {
+		r.Record = rc
+		return true
+	}
+	if held := c.held(g, rc, r.Picks[0]); len(held) > 0 {
+		r.Picks[0].Nodes, r.Record = held, rc
+		return true
+	}
+	return false
+}
+
+// held is the evidence of the pick the ladder settled on a unit that a
+// record claim on that unit alone keeps (W-M1.41c), in the pick's order:
+// all of it when one of the claim's records applies to the unit as a
+// whole, else what lies in a file one of them applies to, a symbol's
+// declaring file or the file itself.
+func (c corpus) held(g Reader, rc RecordClaim, pick UnitPick) []graph.ID {
+	files := map[graph.ID]bool{}
+	for _, k := range rc.IDs {
+		for _, e := range g.Out(k, c.rev, graph.AppliesTo) {
+			if c.unitOf(e.Dst) != pick.Path {
+				continue
+			}
+			if strings.HasPrefix(string(e.Dst), "unit:") {
+				return pick.Nodes
+			}
+			files[declaring(g, c.rev, e.Dst)] = true
+		}
+	}
+	delete(files, "")
+	return slices.DeleteFunc(slices.Clone(pick.Nodes), func(n graph.ID) bool { return !files[declaring(g, c.rev, n)] })
 }
 
 // holdsRecord is whether the phrase holds a word that named a record, as

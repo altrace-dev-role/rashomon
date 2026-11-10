@@ -60,7 +60,8 @@ func TestNames_AKnowledgeIDOutranksAPartialClaim(t *testing.T) {
 // reason names a record whose evidence lies there; with no words to rank
 // them it claims none, while two records whose evidence lies in one unit
 // claim it, listed once. A claim on a unit the record's evidence lies in
-// stands, and the unit rule keeps it: the knowledge clause.
+// stands as the record's claim (W-M1.41c), and the unit rule keeps it:
+// the knowledge clause.
 func TestNames_ARecordOutranksAClaimByWordCoverage(t *testing.T) {
 	g := synth(t, []synFile{
 		{"xray", "xray/timer.py", []synSym{fn("session_purge_timer")}},
@@ -101,8 +102,8 @@ func TestNames_ARecordOutranksAClaimByWordCoverage(t *testing.T) {
 	if r := roles(t, g, "B3 and D2 again."); r.Path != "gamma" || r.Why != "named 'les:B3' applies to gamma" || !slices.Equal(r.Named.KnowledgeUnits, []string{"gamma"}) {
 		t.Errorf("two records on one unit: why %q path %q record units %v, want gamma, listed once, with no words to rank", r.Why, r.Path, r.Named.KnowledgeUnits)
 	}
-	if r := roles(t, g, "B4 again: fix the session purge timer."); r.Path != "xray" || r.Basis != BasisCoverage || r.Unnamed {
-		t.Errorf("record on the claim: why %q path %q basis %q unnamed %v, want xray by coverage, kept", r.Why, r.Path, r.Basis, r.Unnamed)
+	if r := roles(t, g, "B4 again: fix the session purge timer."); r.Path != "xray" || r.Basis != BasisRecord || r.Unnamed {
+		t.Errorf("record on the claim: why %q path %q basis %q unnamed %v, want xray on the record basis, kept", r.Why, r.Path, r.Basis, r.Unnamed)
 	}
 }
 

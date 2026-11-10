@@ -167,20 +167,26 @@ func TestRecord_ARecordClaimTheSlotRefusesIsWithheld(t *testing.T) {
 	}
 }
 
-// TestRecord_AClaimTheRecordsDidNotSettleKeepsItsBasis: a record on the
-// unit the ladder claimed (B4 on xray) leaves the claim by coverage as it
-// was, and a request that names no record makes no record claim; neither
-// line says the request names a record.
+// TestRecord_AClaimTheRecordsDidNotSettleKeepsItsBasis: a qualified claim
+// that covers its whole phrase stands against a named record whose
+// evidence lies in another unit (B4 on xray against alpha, overRecord),
+// and keeps its basis: the record's evidence lies in another unit, so it
+// does not settle the claim (ladderStands, W-M1.41c). A request that
+// names no record makes no record claim. Neither line says the request
+// names a record.
 func TestRecord_AClaimTheRecordsDidNotSettleKeepsItsBasis(t *testing.T) {
 	g := recordRepo(t)
-	for _, prompt := range []string{"B4 again: fix the session purge timer.", "Fix the session purge timer."} {
-		b, _ := recordBrief(t, g, prompt, noUnitRule)
+	for _, c := range []struct{ prompt, path string }{
+		{"B4 again: fix the alpha session purge.", "alpha"},
+		{"Fix the session purge timer.", "xray"},
+	} {
+		b, _ := recordBrief(t, g, c.prompt, noUnitRule)
 		r := b.Roles
-		if r.Path != "xray" || r.Basis != BasisCoverage || r.Record.Units != 0 || r.Record.IDs != nil || r.cell() != BasisCoverage {
-			t.Errorf("%q: path %q basis %q record %+v cell %q, want xray by coverage", prompt, r.Path, r.Basis, r.Record, r.cell())
+		if r.Path != c.path || r.Basis != BasisCoverage || r.Record.Units != 0 || r.Record.IDs != nil || r.cell() != BasisCoverage {
+			t.Errorf("%q: path %q basis %q record %+v cell %q, want %s by coverage", c.prompt, r.Path, r.Basis, r.Record, r.cell(), c.path)
 		}
 		if strings.Contains(b.Text(), "the request names") {
-			t.Errorf("%q: a claim by coverage reads as a record claim:\n%s", prompt, b.Text())
+			t.Errorf("%q: a claim by coverage reads as a record claim:\n%s", c.prompt, b.Text())
 		}
 	}
 }

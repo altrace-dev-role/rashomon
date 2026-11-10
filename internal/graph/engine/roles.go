@@ -141,9 +141,11 @@ func FindRoles(g Reader, c corpus, rows []ScopeRow, weights map[string]float64, 
 // frame's targets in order, each by the unit it names or by the ladder,
 // the whole prompt when it named none; else the evidence of a named
 // record, which also outranks a claim by word coverage on a phrase
-// (overRecord). A first phrase that failed keeps its reason, and an
-// owner phrase that claims nothing ends the search: the owned part is
-// in it.
+// (overRecord), and the ladder's pick on the unit a named record applies
+// in is a record claim on it, unless the records apply to none of its
+// evidence: then their own evidence claims the unit (ladderStands). A
+// first phrase that failed keeps its reason, and an owner phrase that
+// claims nothing ends the search: the owned part is in it.
 func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]float64) {
 	named := r.Named
 	if named.Unit != "" {
@@ -175,7 +177,7 @@ func (r *Roles) resolve(g Reader, c corpus, prompt []string, weights map[string]
 		weights = c.weighDerived(weights, r.Derived)
 		r.Picks, r.Why = r.claim(g, c, p, prompt, weights)
 		if len(r.Picks) > 0 && r.Picks[0].Refused == "" {
-			if over = r.overRecord(c, r.Picks[0]); over != "" {
+			if over = r.overRecord(c, r.Picks[0]); over != "" || !r.ladderStands(g, c) {
 				break
 			}
 			return
