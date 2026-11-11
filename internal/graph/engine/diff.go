@@ -11,13 +11,17 @@ import (
 // the knowledge graph's kinds with AppliesTo resolved to graph ids. Kind is
 // a spec rule kind; From and To are unit-id prefixes; Predicate is a
 // decision's check (paths_untouched, symbol_present); Source is the
-// knowledge row id the rule was compiled from.
+// knowledge row id the rule was compiled from. Paths are spec.MatchPath
+// patterns over project-relative file paths, for the rule kinds that guard
+// paths: a file in a diff that one matches is raised as if AppliesTo named
+// it, so a file the index does not hold yet is still covered.
 type Rule struct {
 	ID        string
 	Kind      string
 	From      []string
 	To        []string
 	Predicate string
+	Paths     []string
 	AppliesTo []graph.ID
 	Source    string
 }
