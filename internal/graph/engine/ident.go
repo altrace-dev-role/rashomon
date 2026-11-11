@@ -44,7 +44,41 @@ func identForm(w string, at wordAt) bool {
 	if at.initial || !lower || w[0] < 'A' || w[0] > 'Z' {
 		return false
 	}
-	return kindWords.get()[at.prev]
+	return kindWords.get()[at.prev] || !englishWord(low(w))
+}
+
+// englishWord is a word the engine's own word lists hold: a verb it reads
+// a clause by, or a closed-class word (determiner, auxiliary, place,
+// condition and their like). Capitalised off a kind word, it is English.
+func englishWord(lw string) bool {
+	if verbClass.get()[lw] != "" {
+		return true
+	}
+	for _, s := range []*lazySet[bool]{stopWords, determinerWords, auxiliaryWords, placeWords, causativeWords,
+		conditionWords, boundaryWords, clauseOpeners, clauseWords, definiteWords, joinWords, leadWords, modalWords,
+		objectWords, particleWords, testLinkWords} {
+		if s.get()[lw] {
+			return true
+		}
+	}
+	return false
+}
+
+// strongForm is the identifier form that needs no context: an underscore
+// inside the word or an upper-case letter after a lower-case one.
+func strongForm(w string) bool {
+	lower := false
+	for i := 0; i < len(w); i++ {
+		switch c := w[i]; {
+		case c == '_' && i > 0 && i+1 < len(w):
+			return true
+		case c >= 'a' && c <= 'z':
+			lower = true
+		case c >= 'A' && c <= 'Z' && lower:
+			return true
+		}
+	}
+	return false
 }
 
 // kindWords say what kind of thing the next word names.
@@ -74,7 +108,16 @@ func identChars(w string) bool {
 // says ("the function Impact" is the func, not the type), else disclosed
 // and unclaimed.
 func (c corpus) resolveIdent(w string, at wordAt, toks []string, weights map[string]float64) (NamedWord, bool) {
-	syms := c.syms[w]
+	var syms []graph.ID
+	for _, id := range c.syms[w] {
+		if strings.HasPrefix(c.units[c.index[id]], "test/") {
+			continue
+		}
+		if !at.quoted && !kindWords.get()[at.prev] && strings.HasPrefix(string(id), "sym:"+low(w)+":") {
+			continue
+		}
+		syms = append(syms, id)
+	}
 	if len(syms) == 0 {
 		return NamedWord{}, false
 	}
@@ -91,6 +134,9 @@ func (c corpus) resolveIdent(w string, at wordAt, toks []string, weights map[str
 		case s == best:
 			tied = append(tied, id)
 		}
+	}
+	if best <= 0 && !at.quoted && !kindWords.get()[at.prev] && !strongForm(w) {
+		return NamedWord{}, false
 	}
 	if len(tied) > 1 && len(units) > 1 {
 		tied = ofKind(tied, at.prev)
