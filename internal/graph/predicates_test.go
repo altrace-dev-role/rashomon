@@ -92,8 +92,16 @@ func TestPredicates_Closed(t *testing.T) {
 			t.Errorf("%q (Part B4/B6) not listed", p)
 		}
 	}
-	if len(Predicates()) != 25 || IsPredicate("may_calls") || IsPredicate("") {
-		t.Errorf("%d predicates, IsPredicate(may_calls)=%v; want 25 and false", len(Predicates()), IsPredicate("may_calls"))
+	for _, p := range []Pred{Asks, Acts, ReadsFile, Edits, Runs, Claims, EvidencedBy, Delivered, FollowedBy} {
+		if !listed[p] {
+			t.Errorf("%q (session predicate, W-M2.11) not listed", p)
+		}
+	}
+	if Reads == ReadsFile || ReadsFile != "reads_file" {
+		t.Errorf("the session read edge is %q; it must stay apart from Reads (engine walks read Reads)", ReadsFile)
+	}
+	if len(Predicates()) != 34 || IsPredicate("may_calls") || IsPredicate("") {
+		t.Errorf("%d predicates, IsPredicate(may_calls)=%v; want 34 and false", len(Predicates()), IsPredicate("may_calls"))
 	}
 	first := Predicates()
 	first[0] = "x"
