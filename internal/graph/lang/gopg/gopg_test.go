@@ -58,8 +58,10 @@ func TestGopg_UnitIsDirectory(t *testing.T) {
 	if !r.Claims("", "a/b.go") || r.Claims("", "a/b.py") || r.Claims("", "a/b.go.txt") || r.Lang() != "go" {
 		t.Errorf("Claims or Lang wrong")
 	}
-	if recs, err := r.Overlay("a/b.go", []byte("package b\n"), graph.RevCommit("c1"), 1); recs != nil || err != nil {
-		t.Errorf("Overlay = %v, %v; want nil, nil (admitted without overlays)", recs, err)
+	// Overlay was nil, nil in M1; W-M2.5 reads declarations (overlay_test.go).
+	// Content with no declarations is still the file node alone.
+	if recs, err := r.Overlay("a/b.go", []byte("package b\n"), graph.RevCommit("c1"), 1); err != nil || len(recs) != 1 || recs[0].Node == nil || recs[0].Node.ID != "file:a/b.go" {
+		t.Errorf("Overlay = %v, %v; want the file node alone", recs, err)
 	}
 }
 
