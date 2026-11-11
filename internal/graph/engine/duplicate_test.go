@@ -218,6 +218,51 @@ func TestConflicts_DuplicateFiresOnNameAndDocAtOverlayRev(t *testing.T) {
 	}
 }
 
+// TestConflicts_DuplicateSurvivesCallerFileOverlay: R2 across two edits.
+// At the commit Main calls ReadConfigFileUser. The first edit rewrites
+// Main's file under an extractor that carries Declares alone (the Go
+// overlay), so its silence on Main's call is unknown and the call stands;
+// the second edit adds ParseUserConfigFile in another file, and the old
+// function is still a called candidate: one conflict. The control is the
+// same first edit from an extractor that carries Calls and does not
+// produce the call: the call is retracted, the old function has no caller
+// at the overlay, and nothing fires.
+func TestConflicts_DuplicateSurvivesCallerFileOverlay(t *testing.T) {
+	mainFn := dupSym("x/callers", "func", "Main")
+	callerFile, newFile := graph.FileID("x/callers/main.go"), graph.FileID("a/new/new.go")
+	ov1, ov2 := graph.RevOverlay("c1", 1), graph.RevOverlay("c1", 2)
+	run := func(firstEdit graph.Carried) []Conflict {
+		t.Helper()
+		s := graph.NewStore()
+		for _, n := range []graph.Node{dupNode(dupOld, "func", ""), dupNode(mainFn, "func", "")} {
+			s.AssertNode(n)
+		}
+		for _, f := range []graph.ID{callerFile, newFile} {
+			s.AssertNode(graph.Node{ID: f, Kind: "file", Tier: graph.Proven, Conf: 1, Rev: dupRev})
+		}
+		s.AssertEdge(graph.Edge{Src: callerFile, Pred: graph.Declares, Dst: mainFn, Tier: graph.Proven, Conf: 1, Rev: dupRev})
+		s.AssertEdge(graph.Edge{Src: mainFn, Pred: graph.Calls, Dst: dupOld, Tier: graph.Proven, Conf: 1, Rev: dupRev})
+
+		mainAt := dupNode(mainFn, "func", "")
+		mainDecl := graph.Edge{Src: callerFile, Pred: graph.Declares, Dst: mainFn, Tier: graph.Proven, Conf: 1}
+		s.ApplyOverlay(callerFile, []byte("main edited"), []graph.Record{{Node: &mainAt}, {Edge: &mainDecl}}, ov1, firstEdit)
+
+		added := dupNode(dupAdded, "func", dupDoc)
+		addedDecl := graph.Edge{Src: newFile, Pred: graph.Declares, Dst: dupAdded, Tier: graph.Proven, Conf: 1}
+		s.ApplyOverlay(newFile, []byte("added"), []graph.Record{{Node: &added}, {Edge: &addedDecl}}, ov2, graph.Carried{graph.Declares})
+
+		return onlyKind(Conflicts(s, DiffOf(s, dupRev, ov2, []graph.ID{newFile}), nil), ConflictDuplicateAbstraction)
+	}
+	want := []Conflict{{Kind: ConflictDuplicateAbstraction, Unit: graph.UnitID("go", "a/new"), Subject: dupAdded,
+		Evidence: []graph.ID{dupAdded, dupOld}, Rev: ov2}}
+	if got := run(graph.Carried{graph.Declares}); !dupEqual(got, want) {
+		t.Errorf("caller's file edited under a Declares-only extractor: got %+v, want %+v", got, want)
+	}
+	if got := run(graph.Carried{graph.Declares, graph.Calls}); len(got) != 0 {
+		t.Errorf("control, the first edit carries Calls and drops Main's call: got %+v, want none", got)
+	}
+}
+
 func dupEqual(a, b []Conflict) bool {
 	return slices.EqualFunc(a, b, func(x, y Conflict) bool {
 		return x.Kind == y.Kind && x.Unit == y.Unit && x.RuleID == y.RuleID && x.Subject == y.Subject &&
