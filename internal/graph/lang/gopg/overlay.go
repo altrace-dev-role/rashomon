@@ -68,6 +68,14 @@ func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) (
 	return out, nil
 }
 
+// OverlayCarried is exactly the predicates Overlay emits: Declares, from the
+// file node to each declaration. Calls, imports and references are not read,
+// so an overlay is silent on them and the index's edges of those predicates
+// stand.
+func (Resolver) OverlayCarried() graph.Carried {
+	return graph.Carried{graph.Declares}
+}
+
 // funcDecl reports a function or a method. A method's qualified spelling is
 // Recv.Name with the pointer and the type parameters of the receiver
 // dropped, as pgraph spells it.
