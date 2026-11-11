@@ -27,7 +27,7 @@ func summaryRun(by *string, rules, schema int, kind string) *store.Run {
 // TestMO1_ASummaryReadMaskedRunIsNotCounted: under a pass claim, a masked run
 // whose tail kept a summary_pass or a summary_fail at rules version 11, call
 // schema 8, is not counted; every other masked run still is. Break: drop the
-// readFromSummary skip and the false alarm Rishi saw comes back; or drop its
+// readFromSummary skip and the false alarm seen comes back; or drop its
 // version, stage or kind conditions and a run the output did not decide stops
 // firing.
 func TestMO1_ASummaryReadMaskedRunIsNotCounted(t *testing.T) {

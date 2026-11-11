@@ -53,6 +53,9 @@ type SteerEnv struct {
 	// Blast is the blast-radius read's port (card ARCH-INLINE1), cmd's
 	// internal/platform; the zero port reads nothing.
 	Blast BlastPort
+	// Join is the findings cmd read for the call before the step (the unit
+	// brief), routed beside the blast draft; nil joins nothing.
+	Join []steer.Finding
 }
 
 // steps is the trigger (card 2.3 R3; card P5B, 5.7): an execution that

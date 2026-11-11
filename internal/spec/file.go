@@ -64,11 +64,15 @@ type Gate struct {
 	Supplies     []string          `json:"supplies,omitempty"`
 }
 
-// Rule is one rule of the five kinds in archive 20.2.8's table. Why and
-// HardControl are required, at most MaxWhyRunes runes each; Alternative is at
-// most MaxAlternativeRunes. Pattern is an RE2 expression. Parse does not check
-// that a kind carries the fields it needs: the archive is silent on that, and
-// the evaluator treats a missing field as undecided.
+// Rule is one rule of the eight kinds in RuleKinds: the five of archive
+// 20.2.8's table and the knowledge graph's boundary, decision and reuse. Why
+// and HardControl are required, at most MaxWhyRunes runes each; Alternative is
+// at most MaxAlternativeRunes. Pattern is an RE2 expression. From and To are
+// unit-id prefixes, AppliesTo global ids, Predicate a decision's check
+// (paths_untouched, symbol_present) and Source the knowledge row id the rule
+// was compiled from. Parse does not check that a kind carries
+// the fields it needs: the archive is silent on that, and the evaluator
+// treats a missing field as undecided.
 type Rule struct {
 	ID          string `json:"id"`
 	Kind        string `json:"kind"`
@@ -94,6 +98,12 @@ type Rule struct {
 	AfterGate     string        `json:"after_gate,omitempty"`
 	SameRunKey    []string      `json:"same_run_key,omitempty"`
 	InvalidatedBy []string      `json:"invalidated_by,omitempty"`
+
+	From      []string `json:"from,omitempty"`
+	To        []string `json:"to,omitempty"`
+	Predicate string   `json:"predicate,omitempty"`
+	AppliesTo []string `json:"applies_to,omitempty"`
+	Source    string   `json:"source,omitempty"`
 }
 
 // CommandMatch is a command at command position: its argv plus the flag and
