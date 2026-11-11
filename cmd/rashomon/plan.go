@@ -112,7 +112,7 @@ func PlanLines(plan []byte, cwd string, sp *spec.Compiled) ([]string, bool) {
 		return nil, false
 	}
 	rows, _ := knowledge.ReadDir(n.Root)
-	rules := PlanRules(sp, rows, n.Store, n.Repo, n.Diff.Rev)
+	rules := engine.RulesFor(sp, rows, n.Store, n.Repo, n.Diff.Rev)
 	byID := map[string]engine.Rule{}
 	for _, r := range rules {
 		byID[r.ID] = r
