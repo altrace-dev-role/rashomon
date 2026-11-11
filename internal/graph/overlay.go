@@ -50,6 +50,13 @@ func ContentDigest(content []byte) string {
 // are left standing; the conflict step reads them against the new
 // signatures. The Overlay record it returns is appended to the store.
 func (s *Store) ApplyOverlay(file ID, content []byte, recs []Record, rev Rev) Overlay {
+	return s.ApplyOverlayDigest(file, ContentDigest(content), recs, rev)
+}
+
+// ApplyOverlayDigest is ApplyOverlay for a caller that holds the content's
+// digest and not the content: a replay of the session log, whose file node
+// carries the digest. The two write the same records and the same Overlay.
+func (s *Store) ApplyOverlayDigest(file ID, digest string, recs []Record, rev Rev) Overlay {
 	prev := Rev{Kind: RevKindOverlay, Commit: rev.Commit, Seq: rev.Seq - 1}
 	kept := map[ID]bool{}
 	produced := map[string]bool{}
@@ -90,7 +97,7 @@ func (s *Store) ApplyOverlay(file ID, content []byte, recs []Record, rev Rev) Ov
 		}
 	}
 	ov := Overlay{ID: "ov:" + strconv.FormatInt(rev.Seq, 10), File: file, Base: rev.Commit, Seq: rev.Seq,
-		Digest: ContentDigest(content), State: OverlayLive, Records: len(recs)}
+		Digest: digest, State: OverlayLive, Records: len(recs)}
 	s.overlays = append(s.overlays, ov)
 	return ov
 }
