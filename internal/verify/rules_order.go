@@ -213,7 +213,8 @@ func afterRan(h *afterHit, then *ruleLine) tri {
 
 // untouched is whether no write the rule's invalidated_by paths match lies
 // strictly between the seqs: no where one does, maybe where a write between
-// may (a glob, a target the record could not name), else yes. A rule with no
+// may (a glob, a target the record could not name, a call that may have
+// written and did not end ok: heldBlocks), else yes. A rule with no
 // invalidated_by is never invalidated.
 func untouched(r *spec.Rule, c *classified, rels []projectRel, from, to, at int64) tri {
 	if len(r.InvalidatedBy) == 0 {
@@ -236,6 +237,9 @@ func untouched(r *spec.Rule, c *classified, rels []projectRel, from, to, at int6
 		case anyPath(r.InvalidatedBy, rel):
 			return triNo
 		}
+	}
+	if heldBlocks(c.held, r.InvalidatedBy, nil, nil, from, min(to, at+1)) {
+		t = triMaybe
 	}
 	return t
 }

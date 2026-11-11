@@ -11,9 +11,14 @@ import (
 // names the lists a build decides with; VERIFY carries no second one.
 // PracticeVersion is 1 by the spec (2.2.8). Version is 2 from card
 // STALE-COVER1, when a gate began to count only the writes it covers: one
-// record reads to other states under 1 and 2.
+// record reads to other states under 1 and 2. Version is 3 from the rule
+// that a write is an edit only where its call's execution ended ok
+// (classify): a gate's writes_since_green, last_write_seq, last_write,
+// writers_since_green and unknown_target_writes, and its state and reason
+// with them, count only such calls, so a record with a failed or unended
+// write reads to other states under 2 and 3.
 const (
-	Version         = 2
+	Version         = 3
 	RulesVersion    = shape.RulesVersion
 	PracticeVersion = 1
 )
@@ -254,6 +259,12 @@ type GateState struct {
 	// gate's the snapshot's (card STALE-COVER1). Not a key, as bound is not:
 	// the stale nudge, the watched row and the turn's counts read it.
 	root string
+	// heldSince is the last call after a green gate's last green run that
+	// may have written a file it covers and did not end ok (markHeld), 0
+	// for none: no edit, so the state stays green, but the record green
+	// point waits on it (recordGreenOf). Not a key: the state it would move
+	// is the archive's, and a held call moves none.
+	heldSince int64
 }
 
 // Recording is whether the window's record is complete; incomplete recording

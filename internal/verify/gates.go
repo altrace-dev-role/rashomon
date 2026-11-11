@@ -53,7 +53,9 @@ const (
 // execution: a write declared while the run was in flight may be one the run
 // never saw, and counting it stales the gate rather than crediting it (D31).
 // A write counts when it names a relevant path (Relevant); every write counts
-// against every family, since a write has no location. An unnamed write
+// against every family, since a write has no location. A write is an edit
+// whose call ended ok (classify): a held write, which did not end ok, counts
+// nowhere here, and the turn's row is where it is named (TurnSummary). An unnamed write
 // counts in UnknownTarget alone and changes no state (D30): the turn's row is
 // where it fails closed (TurnCounts.UnnamedWriteSeq).
 //

@@ -88,7 +88,7 @@ func stopPoint(r *store.Run) Point { return Point{Kind: PointStop, Seq: r.LastSe
 func specLedgerAt(r *store.Run, sp *spec.Compiled, pt Point) (Snapshot, []Obligation) {
 	var c classified
 	snap := evaluate(r, nil, sp, nil, nil, "", pt, time.Time{}, &c)
-	return snap, ledgerOf(snap, &c, expected(snap, evidenceIn{sp: sp, wrote: WroteRelevant(r, pt.Seq)}))
+	return snap, ledgerOf(snap, &c, expected(snap, evidenceIn{sp: sp, wrote: wroteIn(classifiedOf(r).writes, pt.Seq)}))
 }
 
 // specRows is the spec_rule rows of obs.
@@ -245,8 +245,14 @@ func TestSR1b_ProtectPathWriteInMode(t *testing.T) {
 		}
 	}
 	failed := RuleCall{Seq: 7, ToolName: "Edit", FilePath: "/repo/db/migrations/001.sql", Project: "/repo"}
-	if v := RulesAtCall(sp, failed, atPost(7), string(steer.EventPostToolUseFailure)); len(v.Findings) != 1 {
-		t.Errorf("an edit that failed raised %+v, want the flag: integrity is raised at either post event", v.Findings)
+	v := RulesAtCall(sp, failed, atPost(7), string(steer.EventPostToolUseFailure))
+	if len(v.Findings) != 1 {
+		t.Fatalf("an edit that failed raised %+v, want the flag: integrity is raised at either post event", v.Findings)
+	}
+	// At the failure event the call is named as targeting the path: a
+	// failed Edit applied nothing, and the Stop reads it as no write.
+	if got := v.Findings[0].Message.Text(); got != "rashomon record: this call targeted 'db/migrations/001.sql', which spec rule frozen-migrations protects." {
+		t.Errorf("the failed edit's line %q says what the record does not", got)
 	}
 }
 

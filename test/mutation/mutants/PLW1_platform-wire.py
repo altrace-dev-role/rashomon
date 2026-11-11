@@ -62,8 +62,8 @@ m("PLW1 an edit of go.mod does not reset it", V,
 m("PLW1 an edit of go.sum does not reset it", V,
   ' || p == path.Join(f.ModuleDir, "go.sum")\n', '\n', "TestPLW1x_")
 m("PLW1 an unnamed write after the cover is passed over", V,
-  '\tcase slices.ContainsFunc(p.c.unnamed, func(s int64) bool { return s > cov.Seq && s <= at }):\n',
-  '\tcase false:\n', "TestPLW1x_")
+  '\tcase slices.ContainsFunc(p.c.unnamed, func(s int64) bool { return s > cov.Seq && s <= at }) ||\n',
+  '\tcase false ||\n', "TestPLW1x_")
 m("PLW1 a file moved since the cover with no write is passed over", V,
   '; b == boundOwn || b == boundForeign {\n', '; b == boundOwn {\n', "TestPLW1x_")
 

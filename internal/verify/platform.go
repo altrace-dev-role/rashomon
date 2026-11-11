@@ -25,8 +25,9 @@ import (
 // a make or npm gate). It is
 //   - met, citing the write and the run, where the last go test run after the
 //     package's last write (writeTouches) covers the package (coverOf), is
-//     green, no unnamed write came after it, and the package's written files
-//     read as they did at the run (bind);
+//     green, no unnamed write came after it, nor a call that may have
+//     written its files and did not end ok (mayHaveTouched), and the
+//     package's written files read as they did at the run (bind);
 //   - unmet, citing both, where that run is red and named the package alone:
 //     a red run over many packages says only that one of them failed;
 //   - open, citing the write, where no go test run after the write covers it
@@ -34,7 +35,8 @@ import (
 //   - unknown, with no evidence, where there is no log, no go test gate, no
 //     test file in the package, a run after the write that might have tested
 //     it with words the record cannot show, a write the record cannot name
-//     after the cover, or a covering run whose outcome is not known; and
+//     or a call that may have written and did not end ok after the cover,
+//     or a covering run whose outcome is not known; and
 //   - one unknown row with no family where the log could not be read whole,
 //     and one more for the packages past the read's cap.
 //
@@ -272,7 +274,8 @@ func (p *platformJudge) judge(f PlatformFamily) (ObligationState, []int64) {
 		return ObligationUnknown, []int64{}
 	case cov == nil:
 		return ObligationOpen, []int64{last}
-	case slices.ContainsFunc(p.c.unnamed, func(s int64) bool { return s > cov.Seq && s <= at }):
+	case slices.ContainsFunc(p.c.unnamed, func(s int64) bool { return s > cov.Seq && s <= at }) ||
+		mayHaveTouched(p.c.held, f, cov.Seq, at):
 		return ObligationUnknown, []int64{}
 	}
 	// touched is f's writes alone (writeTouches), so no gate root narrows
@@ -287,6 +290,19 @@ func (p *platformJudge) judge(f PlatformFamily) (ObligationState, []int64) {
 		return ObligationUnmet, []int64{last, cov.Seq}
 	}
 	return ObligationUnknown, []int64{}
+}
+
+// mayHaveTouched reports a held write declared in (from, at] that may have
+// written f's files: a call that failed and may have written, or has no
+// recorded ending, naming one of them (writeTouches) or no path. A failed
+// file tool did not apply and is passed over. Such a call after the cover
+// is no edit the row names, and none it can rule out: the row is unknown,
+// as for a write the record cannot name. The cost: a failed sed that wrote
+// nothing, or an Edit refused after the run, turns a met row unknown.
+func mayHaveTouched(held []heldWrite, f PlatformFamily, from, at int64) bool {
+	return slices.ContainsFunc(held, func(w heldWrite) bool {
+		return w.Seq > from && w.Seq <= at && w.End != EndFailedEdit && (w.Path == nil || writeTouches(w.write, f))
+	})
 }
 
 // declaration is the declaration at seq, indexed once per judge.

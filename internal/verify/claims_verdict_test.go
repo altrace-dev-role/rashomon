@@ -178,8 +178,10 @@ func TestVER58_VerdictFollowsOrder(t *testing.T) {
 
 // TestVER59_DoneNeedsARelevantWrite: done fires only when the window holds a
 // relevant write, and then the record's red reads red, the core contradiction
-// (20.2.5 lexicon; Gate A Q1). WroteRelevant is gateStates' predicate.
+// (20.2.5 lexicon; Gate A Q1). wroteIn over classify's writes is gateStates'
+// predicate, as the Stop reads it.
 func TestVER59_DoneNeedsARelevantWrite(t *testing.T) {
+	wrote := func(r *store.Run, at int64) bool { return wroteIn(classifiedOf(r).writes, at) }
 	for _, c := range []struct {
 		name  string
 		calls []call
@@ -189,7 +191,7 @@ func TestVER59_DoneNeedsARelevantWrite(t *testing.T) {
 		{"edit, green, red re-run", []call{edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), gateCall(3, "go-test", store.ExecFailed)}, 6},
 	} {
 		r := runOf(t, c.calls...)
-		s := Claims([]byte("Done."), nil, claimKey, statesOf(t, r, c.at), WroteRelevant(r, c.at), SourceFinalMessage, nil)
+		s := Claims([]byte("Done."), nil, claimKey, statesOf(t, r, c.at), wrote(r, c.at), SourceFinalMessage, nil)
 		if len(s.Claims) != 1 || s.Claims[0].Class != ClaimDone || s.Claims[0].Verdict != Verdict(Red) {
 			t.Errorf("%s: claims %+v, want done red", c.name, s.Claims)
 		}
@@ -213,13 +215,14 @@ func TestVER59_DoneNeedsARelevantWrite(t *testing.T) {
 		{"a relevant write past the point", []call{edit(1, "README.md"), edit(2, "pkg/a.go")}, 2, false},
 		{"the same write at the point", []call{edit(1, "README.md"), edit(2, "pkg/a.go")}, 3, true},
 		{"no write", []call{gateCall(1, "go-test", store.ExecOK)}, 2, false},
+		{"a failed edit, which applied nothing", []call{failedEdit(1, "pkg/a.go")}, 2, false},
 	} {
-		if got := WroteRelevant(runOf(t, c.calls...), c.at); got != c.want {
-			t.Errorf("%s: WroteRelevant %t, want %t", c.name, got, c.want)
+		if got := wrote(runOf(t, c.calls...), c.at); got != c.want {
+			t.Errorf("%s: wrote %t, want %t", c.name, got, c.want)
 		}
 	}
-	if WroteRelevant(nil, 10) {
-		t.Error("a nil run wrote")
+	if wroteIn(nil, 10) {
+		t.Error("no writes wrote")
 	}
 }
 

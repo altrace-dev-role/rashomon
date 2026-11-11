@@ -1,0 +1,50 @@
+{
+  "reason": "The first turn edits and passes go test; the second turn's only call is a sed -i over two files that fails after rewriting the first. The second turn ran no test after a call that may have rewritten a file the first turn's run checked: its Stop must not be silent, and the record does not back a done, which the next session's start line reads.",
+  "provenance": "constructed from the review of the base fix (scenario b of the record-green finding): the control's first turn, then failed-shell-write-alone-makefile's sed in a go.mod project, prompt ids in the shape Claude Code sends",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "turns": [
+    {
+      "prompt_id": "00000000-0000-4000-8000-000000000201",
+      "final_message": "Edited internal/a.go; go test passes.",
+      "calls": [
+        {
+          "tool": "Edit",
+          "input": {
+            "file_path": "{project}/internal/a.go",
+            "old_string": "a",
+            "new_string": "b"
+          },
+          "outcome": "ok"
+        },
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "go test ./..."
+          },
+          "outcome": "ok",
+          "output": "ok  \tm\t0.004s\n"
+        }
+      ]
+    },
+    {
+      "prompt_id": "00000000-0000-4000-8000-000000000202",
+      "final_message": "sed rewrote internal/a.go, then could not read internal/b.go.",
+      "calls": [
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "sed -i 's/c/d/' internal/a.go internal/b.go"
+          },
+          "outcome": "failed",
+          "exit_code": 2,
+          "output": "sed: can't read internal/b.go: No such file or directory"
+        }
+      ]
+    }
+  ]
+}

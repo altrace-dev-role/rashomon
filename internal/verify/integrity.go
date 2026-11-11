@@ -83,9 +83,9 @@ var markerTableOnce struct {
 // integrity is the Integrity view of the window (from, at] (2.2.6, Unresolved
 // at a point; D39, D40): a pure fold over two sources, the edit marks the
 // record carries on a write's execution and the tests_only_then_green pairs
-// (testPairs, report's definition read over picked, D44). picked and writes
-// are classify's: its pick of each call's execution, and its writes,
-// project-relative and classed.
+// (testPairs, report's definition read over picked, D44). picked, writes and
+// held are classify's: its pick of each call's execution, and its writes and
+// held writes, project-relative and classed.
 //
 // Precondition: recording reads the record Complete at at, as evaluate
 // establishes by returning first when it does not. Its
@@ -124,8 +124,9 @@ var markerTableOnce struct {
 // and the task file, or is under storeRoot, rashomon's store (underStore),
 // whose trust bindings a write there could forge. Marker is "", Seq the
 // write's and Path its path. Every write the record names counts, whatever its
-// outcome: a failed shaped write may still have landed, and the entry
-// fails closed. It never resolves, and holds RecordGreen false as any
+// outcome, held's as writes' (D135): a failed shaped write may still have
+// landed, and the entry fails closed; it says the call targeted the path,
+// never that it wrote it. It never resolves, and holds RecordGreen false as any
 // entry does.
 //
 // Counts are counts, not verdicts (20.2.6): TestsDelta is the signed net of
@@ -153,7 +154,7 @@ var markerTableOnce struct {
 // for the store-root bit where the paths are withheld (D173b: an entry with
 // no path), and a sort of the entries; none for the lost-declaration guard,
 // which is recording's.
-func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, from, at int64, storeRoot string) Integrity {
+func integrity(run *store.Run, picked map[string]*store.Execution, writes []write, held []heldWrite, from, at int64, storeRoot string) Integrity {
 	out := Integrity{Unresolved: []IntegrityEntry{}}
 	nets := foldMarks(&out, marksByCall(run), writes, from, at)
 	tests := make(map[string]int)
@@ -181,6 +182,11 @@ func integrity(run *store.Run, picked map[string]*store.Execution, writes []writ
 	for _, w := range writes {
 		if w.Path != nil && w.Seq > from && w.Seq <= at && inStore(*w.Path) {
 			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: w.Seq, Path: *w.Path})
+		}
+	}
+	for i := range held {
+		if h := &held[i]; h.Path != nil && h.Seq > from && h.Seq <= at && inStore(*h.Path) {
+			out.Unresolved = append(out.Unresolved, IntegrityEntry{Check: StoreTouched, Seq: h.Seq, Path: *h.Path})
 		}
 	}
 	if run != nil {
@@ -310,13 +316,16 @@ func writesUnnamed(d *store.Declaration) bool {
 
 // marksByCall is the edit marks of each file-tool call (one whose declaration
 // names a FilePath) by its declaration's Seq, read from the execution
-// classify picks for it (outranks), and only when that execution's outcome is
-// ok: a failed Edit lands nothing, and its marks would make a net no later
-// edit can resolve, so a call whose pick is not ok is read no further and
-// counted nowhere (1.8p computes marks at PostToolUse only). A call with a
-// failed execution and an ok one, a retry under one tool_use_id, picks the
-// failed one, classify's pick, and so reads none. Only executions of a call
-// that carries marks somewhere are picked among.
+// classify picks for it (outranks), so the marks are those of the execution
+// whose ending classify judged. foldMarks reads them only for classify's
+// writes, which hold a call only where that pick ended ok (endOf): a failed
+// Edit lands nothing, and its marks would make a net no later edit can
+// resolve, so they are read no further and counted nowhere (1.8p computes
+// marks at PostToolUse only). The outcome is not read again here, which a
+// second test of it would only repeat. A call with a failed execution and an
+// ok one, a retry under one tool_use_id, picks the failed one and so reads
+// none. Only executions of a call that carries marks somewhere are picked
+// among.
 func marksByCall(run *store.Run) map[int64]*store.EditMarks {
 	marks := make(map[int64]*store.EditMarks)
 	if run == nil {
@@ -336,7 +345,7 @@ func marksByCall(run *store.Run) map[int64]*store.EditMarks {
 	}
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
-		if e := picked[d.ToolUseID]; e != nil && d.FilePath != nil && e.Outcome == store.ExecOK {
+		if e := picked[d.ToolUseID]; e != nil && d.FilePath != nil {
 			marks[d.Seq] = e.EditMarks
 		}
 	}

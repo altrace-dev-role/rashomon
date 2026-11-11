@@ -40,8 +40,8 @@ func TestTF10_AnAgentWriteToTheStoreIsAnIntegrityEntry(t *testing.T) {
 // with storeRoot, names a store_touched entry: the flag StoreWritten's trust
 // drop has to agree with.
 func storeTouchedAt(r *store.Run, storeRoot string, at int64) bool {
-	_, writes, _, _ := classify(r)
-	for _, e := range integrity(r, pickExecutions(r), writes, 0, at, storeRoot).Unresolved {
+	c := classifiedOf(r)
+	for _, e := range integrity(r, pickExecutions(r), c.writes, c.held, 0, at, storeRoot).Unresolved {
 		if e.Check == StoreTouched {
 			return true
 		}
@@ -105,12 +105,12 @@ func TestST1s_StoreWrittenNamesTheStoreTouchedWrites(t *testing.T) {
 	inside := runOf(t, writeCall(1, "/repo/.claude/rashomon/spec-trust.json"))
 	inside.Declarations[0].Project = &project
 	_, iw, _, _ := classify(inside)
-	if got := integrity(inside, pickExecutions(inside), iw, 0, 2, "/repo/.claude/rashomon").Unresolved; len(got) != 1 || got[0].Path != ".claude/rashomon/spec-trust.json" {
+	if got := integrity(inside, pickExecutions(inside), iw, nil, 0, 2, "/repo/.claude/rashomon").Unresolved; len(got) != 1 || got[0].Path != ".claude/rashomon/spec-trust.json" {
 		t.Errorf("a root under the project's .claude/rashomon: entries %+v, want one at .claude/rashomon/spec-trust.json", got)
 	}
 	past := runOf(t, writeCall(1, root+"/spec-trust.json"))
 	_, pw, _, _ := classify(past)
-	if got := integrity(past, pickExecutions(past), pw, 1, 2, root).Unresolved; len(got) != 0 {
+	if got := integrity(past, pickExecutions(past), pw, nil, 1, 2, root).Unresolved; len(got) != 0 {
 		t.Errorf("a root write at from: entries %+v, want none", got)
 	}
 	clean := runOf(t, edit(1, "pkg/a.go"), bashWrite(3, "/tmp/x"), writeCall(5, root+"/spec-trust.json"))
@@ -159,7 +159,7 @@ func TestST1v_TheStoreRootBitStandsForWithheldPaths(t *testing.T) {
 		t.Fatalf("the v4 Write's file_path %q is recorded; the gate withholds it", *r.Declarations[0].FilePath)
 	}
 	_, writes, _, _ := classify(r)
-	got := integrity(r, pickExecutions(r), writes, 0, 2, root).Unresolved
+	got := integrity(r, pickExecutions(r), writes, nil, 0, 2, root).Unresolved
 	if len(got) != 1 || got[0] != (IntegrityEntry{Check: StoreTouched, Seq: 1}) {
 		t.Errorf("the v4 Write's entries %+v, want one store_touched at seq 1 with no path", got)
 	}

@@ -32,6 +32,10 @@ func TestSR1r_SpecRuleRowsRender(t *testing.T) {
 			"rashomon record: this call wrote 'db/migrations/001.sql', which spec rule frozen-migrations protects."},
 		{pattern.Integrity, IntegrityFrozenPathUnnamedBinding{}, "integrity-frozen-path-unnamed/v1",
 			"rashomon record: this call wrote a file that a spec rule protects."},
+		{pattern.Integrity, IntegrityFrozenPathTargetedBinding{Path: "db/migrations/001.sql", Rule: "frozen-migrations"}, "integrity-frozen-path-targeted/v1",
+			"rashomon record: this call targeted 'db/migrations/001.sql', which spec rule frozen-migrations protects."},
+		{pattern.Integrity, IntegrityFrozenPathTargetedUnnamedBinding{}, "integrity-frozen-path-targeted-unnamed/v1",
+			"rashomon record: this call targeted a file that a spec rule protects."},
 	} {
 		m, err := New(c.p, c.binding)
 		if err != nil {

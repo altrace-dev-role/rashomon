@@ -63,12 +63,12 @@ func TestST1x_TheStoreRootBitStandsForUnnamedCalls(t *testing.T) {
 	// that and the bit's.
 	shown := build(true, store.RecordScopeV5, incomplete, bashWrite(1, root+"/spec-trust.json"))
 	_, sw, _, _ := classify(shown)
-	if got := integrity(shown, pickExecutions(shown), sw, 0, 2, root).Unresolved; len(got) != 1 || got[0].Path == "" {
+	if got := integrity(shown, pickExecutions(shown), sw, nil, 0, 2, root).Unresolved; len(got) != 1 || got[0].Path == "" {
 		t.Errorf("an incomplete list that shows the root: entries %+v, want one with its path", got)
 	}
 	r := build(true, store.RecordScopeV5, mcp, writeCall(1, "/tmp/x"))
 	_, writes, _, _ := classify(r)
-	if got := integrity(r, pickExecutions(r), writes, 0, 2, root).Unresolved; len(got) != 1 || got[0] != (IntegrityEntry{Check: StoreTouched, Seq: 1}) {
+	if got := integrity(r, pickExecutions(r), writes, nil, 0, 2, root).Unresolved; len(got) != 1 || got[0] != (IntegrityEntry{Check: StoreTouched, Seq: 1}) {
 		t.Errorf("the v5 MCP call's entries %+v, want one store_touched at seq 1 with no path", got)
 	}
 }

@@ -16,6 +16,10 @@ const (
 	eventSubagentStop  = "SubagentStop"
 )
 
+// eventPostFailure is PostToolUseFailure, where renderRule names a protected
+// path as one the call targeted rather than wrote.
+const eventPostFailure = string(steer.EventPostToolUseFailure)
+
 // ceiling is one card row: the highest level the pattern can use at the
 // event, and the shape that level takes at stop.
 type ceiling struct {

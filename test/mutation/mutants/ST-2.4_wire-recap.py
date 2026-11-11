@@ -51,7 +51,7 @@ m("ST-2.4 isDelivered requires the prefix again", CT,
 
 # The Stop view (R4, R5, D80, D90).
 m("ST-2.4 the incomplete-recording classification skipped", VS,
-  '\tif snap.Recording != Complete {\n\t\tcounted.runs', '\tif false {\n\t\tcounted.runs', "TestVER65e_")
+  '\tif snap.Recording != Complete {\n\t\tclassifyWith(run', '\tif false {\n\t\tclassifyWith(run', "TestVER65e_")
 m("ST-2.4 a nil prompt id dereferenced", VS,
   'if d.PromptID != nil && *d.PromptID != "" && *d.PromptID == promptID', 'if *d.PromptID != "" && *d.PromptID == promptID',
   "TestVER67b_")

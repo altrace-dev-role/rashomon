@@ -144,7 +144,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	pinRequired(&snap, in.Required)
 	counted := c
 	if snap.Recording != Complete {
-		counted.runs, counted.writes, counted.unnamed, counted.rewritten, _ = classifyWith(run, pickExecutions(run))
+		classifyWith(run, pickExecutions(run), &counted)
 	}
 	if snap.Recording == Complete {
 		markTurn(snap.Gates, turnProjects(run, in.PromptID, pt.Seq))
@@ -163,7 +163,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	if in.ProjectKey != "" {
 		v.Index.Observe(c.runs, pt.SessionID, now.UnixMilli())
 	}
-	wrote := WroteRelevant(run, pt.Seq)
+	// Over the writes already classified, counted's, which an incomplete
+	// record classifies too.
+	wrote := wroteIn(counted.writes, pt.Seq)
 	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
 	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})
 	v.Obligations = ledgerOf(snap, &c, v.Expected)
@@ -233,8 +235,9 @@ func inferredProgram(programs map[string]string, name string) {
 // declaration whose prompt id is nil or "" is in no window. promptID ""
 // selects the prompt digest's selectTurn selects, the one whose first
 // declaration is latest (D72); a run with no prompt id has an empty window,
-// never the whole run. Writes are the relevant named writes, as gateStates
-// counts them: those a gate of roots covers (gateRoots; nil counts every
+// never the whole run. Writes are the relevant named edits, as gateStates
+// counts them, and the held writes bear on the row the same way (countIn):
+// those a gate of roots covers (gateRoots; nil counts every
 // one), so a turn that wrote only outside its project edited nothing a gate
 // checks (card STALE-COVER1). Cost: one pass over the declarations, then one
 // over each classified slice, O(D + R + W x G + U).
@@ -286,6 +289,24 @@ func countIn(c classified, window map[int64]bool, roots []string) TurnCounts {
 	for _, s := range c.rewritten {
 		if window[s] {
 			t.RewrittenGateSeq = max(t.RewrittenGateSeq, s)
+		}
+	}
+	// A held write bears as an edit would have: a named one where it is
+	// relevant and a gate covers it, an unnamed one always.
+	for i := range c.held {
+		w := &c.held[i]
+		if !window[w.Seq] || w.Path != nil && !(Relevant(w.Class) && coveredByAny(roots, &w.write)) {
+			continue
+		}
+		// Each ending kept apart, so a failed edit, which applied nothing,
+		// never hides a call that may have written (unconfirmed).
+		switch {
+		case w.End == EndNone:
+			t.UnendedWriteSeq = max(t.UnendedWriteSeq, w.Seq)
+		case w.End == EndFailedEdit:
+			t.FailedEditSeq = max(t.FailedEditSeq, w.Seq)
+		case w.Seq > t.FailedWriteSeq:
+			t.FailedWriteSeq, t.FailedWriteEnd = w.Seq, w.End
 		}
 	}
 	return t

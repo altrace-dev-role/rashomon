@@ -149,6 +149,22 @@ func TestSTR43b_ProducerNamesDistinctPathsBetweenTheRuns(t *testing.T) {
 		t.Errorf("steer finding: text %q, key %q, after %d, evidence %v; want %q, %q, %d, the two run seqs",
 			sf.Message.Text(), sf.Key, sf.AfterSeq, sf.Evidence, want, gate, pt.Seq)
 	}
+
+	// Each run's own write is left out by the strict bounds alone. The red
+	// run above failed, so its redirect is a held write, no edit, and is in
+	// no writes between reads (classify): the bound at the red run is held
+	// here, on edits as between reads them, one at each run's own seq
+	// beside one strictly inside.
+	lo, hi := callDecl(t, r, 2), callDecl(t, r, 8)
+	own := GateFact{LastGreenSeq: &lo, LastRunSeq: &hi}
+	between(&own, []write{
+		{Seq: lo, Path: ptr("out.txt"), Class: ClassOf("out.txt"), Tool: "Bash"},
+		{Seq: lo + 1, Path: ptr("internal/a.go"), Class: ClassOf("internal/a.go"), Tool: "Edit"},
+		{Seq: hi, Path: ptr("out.txt"), Class: ClassOf("out.txt"), Tool: "Bash"},
+	}, nil, "")
+	if own.WritesSince != 1 || !slices.Equal(own.Paths, []PathSlot{"internal/a.go"}) {
+		t.Errorf("between over an edit at each run's seq: writes since %d, paths %q; want 1, [internal/a.go]", own.WritesSince, own.Paths)
+	}
 }
 
 // TestSTR43c_NoWritesBetweenIsNoFinding: a red after a green with no
@@ -372,7 +388,7 @@ func TestST_SteerAtDropsAnUnmappableFact(t *testing.T) {
 	g := *bad.Gate
 	g.GateID = "not a slot id"
 	bad.Gate = &g
-	got, dropped := mapFacts(r, []Finding{bad, good[0]}, pt, 0)
+	got, dropped := mapFacts(r, classifiedOf(r).writes, []Finding{bad, good[0]}, pt, 0)
 	if len(got) != 1 || dropped != 1 || got[0].Message.Text() == "" {
 		t.Errorf("mapFacts = %d findings, %d dropped; want the good one rendered and 1 dropped", len(got), dropped)
 	}

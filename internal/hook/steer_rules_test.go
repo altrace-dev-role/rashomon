@@ -22,6 +22,9 @@ const (
 	srNoGoTest  = `{"id": "no-go-test", "kind": "forbid_command", "command": {"argv": ["go", "test"]}, "why": "w", "hard_control": "h"}`
 	srForceLine = "rashomon record: this 'git' call matched spec rule no-force."
 	srPathLine  = "rashomon record: this call wrote 'db/migrations/001.sql', which spec rule frozen-migrations protects."
+	// srTargetLine is the line at PostToolUseFailure: the failed Edit applied
+	// nothing, so the call targeted the path and the line says no more.
+	srTargetLine = "rashomon record: this call targeted 'db/migrations/001.sql', which spec rule frozen-migrations protects."
 )
 
 // srSpec is a spec of rules, one JSON object each.
@@ -134,7 +137,8 @@ func TestSR1w_TheRulesTriggerIsABashOrFileToolCallThatLanded(t *testing.T) {
 
 // TestSR1x_APostRaisesItsRulesFromTheCallAlone: under an untrusted spec, a
 // forced push raises platform-rule/command at PostToolUse and an edit of a
-// protected path integrity/frozen-path at either post event, each a flag:
+// protected path integrity/frozen-path at either post event, each a flag
+// (at PostToolUseFailure naming the path the call targeted, not wrote):
 // the user's systemMessage carries the line, no model-visible key prints, and
 // the steer line is the pattern's flag. A forced push that failed (the card
 // raises platform-rule at PostToolUse alone; the record judges it at Stop),
@@ -161,7 +165,7 @@ func TestSR1x_APostRaisesItsRulesFromTheCallAlone(t *testing.T) {
 		}, 0, srPathLine, pattern.Integrity, "frozen-path", false},
 		{"an edit of a migration that failed", "Edit", func(base string) map[string]any {
 			return map[string]any{"file_path": filepath.Join(base, "db", "migrations", "001.sql"), "old_string": "a", "new_string": "b"}
-		}, 1, srPathLine, pattern.Integrity, "frozen-path", false},
+		}, 1, srTargetLine, pattern.Integrity, "frozen-path", false},
 		{"a forced push that failed", "Bash", func(string) map[string]any { return map[string]any{"command": "git push --force origin main"} },
 			1, "", "", "", true},
 		{"a relative write of a migration", "Write", func(string) map[string]any {

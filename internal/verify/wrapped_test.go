@@ -263,7 +263,7 @@ func TestRS1_TheRowSaysWhereTheRunWasRead(t *testing.T) {
 			"gate 'go' exited 0 earlier in this session (6 min ago) and exited 1 on this run." + between},
 	} {
 		f := fact(c.fact, c.named)
-		m := renderRegression(r, &declTimes{run: r}, Finding{Pattern: pattern.RegressionLocation, Gate: &f})
+		m := renderRegression(classifiedOf(r).writes, &declTimes{run: r}, Finding{Pattern: pattern.RegressionLocation, Gate: &f})
 		if got := m.Text(); got != "rashomon record: "+c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, "rashomon record: "+c.want)
 		}

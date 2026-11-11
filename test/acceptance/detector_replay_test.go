@@ -128,6 +128,14 @@ func (tr turnReplay) judged(t *testing.T) fixtureReplay {
 // normaliser for that machine's paths.
 func replayRun(t *testing.T, r fixtureRun) ([]turnReplay, replayNorm) {
 	t.Helper()
+	turns, norm, _ := replayRunEnv(t, r)
+	return turns, norm
+}
+
+// replayRunEnv is replayRun with the machine it replayed in, for an item
+// that reads the store the run left (a report) after the last prompt.
+func replayRunEnv(t *testing.T, r fixtureRun) ([]turnReplay, replayNorm, *env) {
+	t.Helper()
 	e := newEnv(t)
 	// HOME too is the test's own, so nothing a hook reads under a home
 	// directory comes from the machine running the suite.
@@ -139,7 +147,7 @@ func replayRun(t *testing.T, r fixtureRun) ([]turnReplay, replayNorm) {
 		e.home: "{store}", e.configDir: "{config}", e.cwd: "{cwd}", e.fakeHome: "{home}",
 	})
 	if r.Capture != "" {
-		return []turnReplay{e.replayCapture(t)}, norm
+		return []turnReplay{e.replayCapture(t)}, norm, e
 	}
 	dir := ""
 	if len(r.Files) > 0 {
@@ -178,7 +186,7 @@ func replayRun(t *testing.T, r fixtureRun) ([]turnReplay, replayNorm) {
 		tr.next = printed{label: "next prompt " + next, res: res}
 		out = append(out, tr)
 	}
-	return out, norm
+	return out, norm, e
 }
 
 // writeProject makes the run's project: a git work tree's root (an empty

@@ -110,5 +110,5 @@ m("ST-2.3 minutes over the slot's range are clamped", V,
   "\tminutes := slot.Minutes(max(0, (red-green)/60_000))\n",
   "\tminutes := slot.Minutes(min(10_080, max(0, (red-green)/60_000)))\n", "TestSTR43g_")
 m("ST-2.3 and k more leaves out the writes that name no path", V,
-  "\t\tunlisted := g.PathsOmitted + unnamedBetween(run.Declarations, *g.LastGreenSeq, *g.LastRunSeq)\n",
+  "\t\tunlisted := g.PathsOmitted + unnamedBetween(writes, *g.LastGreenSeq, *g.LastRunSeq)\n",
   "\t\tunlisted := g.PathsOmitted\n", "TestSTR43b_")

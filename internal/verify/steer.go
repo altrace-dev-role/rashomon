@@ -92,7 +92,7 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, r
 	facts = append(facts, staleEvidence(snap, c.runs, c.writes, decl, !c.learned, pt, event)...)
 	facts = append(facts, maskedStatus(snap, c.runs, pt, event, toolUseID)...)
 	facts = append(facts, integrityRaises(run, snap, c.runs, event, toolUseID)...)
-	found, dropped := mapFacts(run, facts, pt, decl)
+	found, dropped := mapFacts(run, c.writes, facts, pt, decl)
 	return SteerView{Findings: found, ProjectRoot: snap.ProjectRoot, Dropped: dropped, Spec: snap.Spec}
 }
 
@@ -100,8 +100,9 @@ func SteerAt(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, r
 // its Message from the record: an integrity fact by renderIntegrity, a
 // stale-evidence fact by renderStale against this call's declaration at
 // decl, a masked-status fact by renderMasked, and any other gate fact by
-// renderRegression. A fact ToSteer refuses is counted in dropped.
-func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []steer.Finding, dropped int) {
+// renderRegression over writes, classify's. A fact ToSteer refuses is
+// counted in dropped.
+func mapFacts(run *store.Run, writes []write, facts []Finding, pt Point, decl int64) (found []steer.Finding, dropped int) {
 	if len(facts) == 0 {
 		return nil, 0
 	}
@@ -124,7 +125,7 @@ func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []st
 		case f.Pattern == pattern.MaskedStatus:
 			sf.Message = renderMasked(run, f)
 		default:
-			sf.Message = renderRegression(run, &times, f)
+			sf.Message = renderRegression(writes, &times, f)
 		}
 		found = append(found, sf)
 	}
@@ -136,7 +137,15 @@ func mapFacts(run *store.Run, facts []Finding, pt Point, decl int64) (found []st
 // code (not 126 or 127: the gate did not run) after an earlier green, the
 // relevant writes strictly between the two runs. Strict bounds, because a
 // run line's own redirect shares the run's seq. A red with nothing written
-// between is not a located regression. writes are classify's, in seq order.
+// between is not a located regression. writes are classify's, in seq order:
+// a call that failed, was interrupted or has no recorded ending is held out
+// of them (held.go). The cost: where the only call between the two runs is
+// such a call (a redirect that failed after truncating its file, a sed that
+// failed part way, an interrupted Edit), the red raises no note, to the
+// model or in the report's findings, though the base named the file and was
+// right where the call did write. The note's templates say "files written",
+// which that call is not known to have done, and no template says "may have
+// written"; a call that wrote a completed edit beside it is still named.
 func regressionLocations(snap Snapshot, runs []gateRun, writes []write, pt Point, event, toolUseID string) []Finding {
 	var out []Finding
 	for i := range snap.Gates {
@@ -382,7 +391,7 @@ func (d *declTimes) of(seq int64) (int64, bool) {
 // no path (D85, the slot's own count). When there are no paths to list, or
 // the renderer left every one out, the degraded row states the count of
 // writes instead.
-func renderRegression(run *store.Run, times *declTimes, f Finding) render.Message {
+func renderRegression(writes []write, times *declTimes, f Finding) render.Message {
 	g := f.Gate
 	green, okGreen := times.of(*g.LastGreenSeq)
 	red, okRed := times.of(*g.LastRunSeq)
@@ -404,7 +413,7 @@ func renderRegression(run *store.Run, times *declTimes, f Finding) render.Messag
 		for i, p := range g.Paths {
 			paths[i] = slot.Path(p)
 		}
-		unlisted := g.PathsOmitted + unnamedBetween(run.Declarations, *g.LastGreenSeq, *g.LastRunSeq)
+		unlisted := g.PathsOmitted + unnamedBetween(writes, *g.LastGreenSeq, *g.LastRunSeq)
 		list := slot.NewPathList(paths, unlisted)
 		var m render.Message
 		var err error
@@ -507,22 +516,21 @@ func renderStale(times *declTimes, f Finding, decl int64) render.Message {
 }
 
 // unnamedBetween counts the writes declared strictly between two seqs that
-// name no path, read through appendWrites, the classifier's own reading of a
-// declaration. GateFact's fields are 2.2.9's (TestVER54c) and PathsOmitted
-// counts named paths only, so the rest of "and k more" comes from the
-// record. A write with no path has no class, which is relevant.
-func unnamedBetween(decls []store.Declaration, lo, hi int64) int {
+// name no path, among writes, classify's: the edits of calls that ended ok,
+// as between counts the named ones, so a call that failed or has no ending
+// is no write the note counts. GateFact's fields are 2.2.9's (TestVER54c)
+// and PathsOmitted counts named paths only, so the rest of "and k more"
+// comes from the record. A write with no path has no class, which is
+// relevant. A binary search for the first past lo, as between's.
+func unnamedBetween(writes []write, lo, hi int64) int {
 	n := 0
-	var ws []write
-	for i := range decls {
-		if decls[i].Seq <= lo || decls[i].Seq >= hi {
-			continue
+	first := sort.Search(len(writes), func(i int) bool { return writes[i].Seq > lo })
+	for _, w := range writes[first:] {
+		if w.Seq >= hi {
+			break
 		}
-		ws, _ = appendWrites(ws[:0], nil, &decls[i])
-		for _, w := range ws {
-			if w.Path == nil {
-				n++
-			}
+		if w.Path == nil {
+			n++
 		}
 	}
 	return n

@@ -158,7 +158,7 @@ func RulesAtCall(sp *spec.Compiled, call RuleCall, pt Point, event string) Steer
 			view.Dropped++
 			continue
 		}
-		sf.Message = renderRule(&fact, &dr.Rule)
+		sf.Message = renderRule(&fact, &dr.Rule, event)
 		view.Findings = append(view.Findings, sf)
 	}
 	return view
@@ -215,8 +215,7 @@ type orderView struct {
 func orderRead(call RuleCall, own ruleLine) orderView {
 	picked := pickExecutions(call.Run)
 	v := orderView{run: call.Run, at: call.Seq}
-	runs, writes, unnamed, _, _ := classifyWith(call.Run, picked)
-	v.c = classified{runs: runs, writes: writes, unnamed: unnamed}
+	classifyWith(call.Run, picked, &v.c)
 	for _, l := range ruleLines(call.Run, picked, call.Seq) {
 		if l.id == call.ToolUseID {
 			own.seq, own.id, own.cwd = l.seq, l.id, l.cwd
@@ -227,7 +226,7 @@ func orderRead(call RuleCall, own ruleLine) orderView {
 	if own.id != "" {
 		v.lines = append(v.lines, own)
 	}
-	v.rels = projectRels(writes)
+	v.rels = projectRels(v.c.writes)
 	return v
 }
 
@@ -269,9 +268,12 @@ func fileTool(name string) bool {
 // renderRule is a rule fact's line: platform-rule/command names the program
 // and the rule, and adds the rule's alternative where the rule binds and
 // the call was not rewritten; integrity/frozen-path names the path and the
-// rule. Where a slot refuses a value, the kind's row without its named
-// slots.
-func renderRule(f *RuleFact, r *spec.Rule) render.Message {
+// rule, as one the call wrote at PostToolUse and one it targeted at
+// PostToolUseFailure (event): a failed Edit applied nothing, an interrupted
+// one may have applied part, and neither is a write the line can state,
+// while the Stop reads the failed one as no write at all (classify). Where a
+// slot refuses a value, the kind's row without its named slots.
+func renderRule(f *RuleFact, r *spec.Rule, event string) render.Message {
 	id := slot.RuleID(strings.TrimPrefix(string(f.RuleID), "spec:"))
 	var p pattern.ID
 	var approved, full, unnamed any
@@ -289,6 +291,12 @@ func renderRule(f *RuleFact, r *spec.Rule) render.Message {
 		p, unnamed = pattern.Integrity, render.IntegrityFrozenPathUnnamedBinding{}
 		if f.Path != nil {
 			full = render.IntegrityFrozenPathBinding{Path: slot.Path(*f.Path), Rule: id}
+		}
+		if event == eventPostFailure {
+			unnamed = render.IntegrityFrozenPathTargetedUnnamedBinding{}
+			if f.Path != nil {
+				full = render.IntegrityFrozenPathTargetedBinding{Path: slot.Path(*f.Path), Rule: id}
+			}
 		}
 	case spec.Order:
 		p, unnamed = pattern.OrderingRule, render.OrderingRuleThenUnnamedBinding{}

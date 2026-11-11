@@ -63,12 +63,13 @@ func Evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point, no
 
 // classified is what evaluate classified beside the snapshot, for the Stop
 // view, its ledger and the steer view (EvaluateStop, SteerAt): classify's
-// four returns, in seq order; nil where the record is incomplete, which
-// classifies nothing.
+// four returns and its held writes, in seq order; nil where the record is
+// incomplete, which classifies nothing.
 type classified struct {
 	runs      []gateRun
 	writes    []write
 	unnamed   []int64
+	held      []heldWrite
 	rewritten []int64
 	// learned is indexLearned's answer at the point, which stale-evidence
 	// reads: nothing raises it before a family is established.
@@ -127,8 +128,8 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 		return snap
 	}
 	picked := pickExecutions(run)
-	runs, writes, unnamed, rewritten, keys := classifyWith(run, picked)
-	c.runs, c.writes, c.unnamed, c.rewritten = runs, writes, unnamed, rewritten
+	keys := classifyWith(run, picked, c)
+	runs, writes, unnamed := c.runs, c.writes, c.unnamed
 	snap.Gates = gateStates(runs, writes, unnamed, keys, at, pt.Tree)
 	nowMS := now.UnixMilli()
 	learned := indexLearned(idx, nowMS)
@@ -146,10 +147,45 @@ func evaluate(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, key []byte, 
 	if len(dgs) > 0 {
 		snap.Gates = withDeclared(snap.Gates, dgs, lineRuns(run, picked), runs, writes, unnamed, snap.ProjectRoot, at, pt.Tree)
 	}
-	snap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)
+	snap.Integrity = integrity(run, picked, writes, c.held, 0, at, pt.StoreRoot)
 	snap.SpecVerdicts = ruleVerdicts(sp, run, picked, c, &snap, sp != nil && wroteIn(writes, at))
+	markHeld(snap.Gates, c.held, at)
 	snap.RecordGreen, snap.RecordGreenAtSeq = recordGreenOf(&snap)
 	return snap
+}
+
+// markHeld sets each green gate's heldSince: the last held write at or
+// before at, declared after its last green run, that may have written a
+// file the gate covers (relevant and named under its root, as stateOf
+// counts an edit). Such a call stales no gate, since the record does not say
+// it wrote, and it does not leave the record backing a "done" either
+// (recordGreenOf). One that names no path is passed over, as an unnamed edit
+// is (D30): the turn's row is where that fails closed.
+//
+// One declared before the last green is passed over too, even with no
+// recorded ending, though the turn's row names such a call wherever it
+// stands (TurnCounts.unconfirmed): the row speaks for one turn, while the
+// point is the session's, and a call refused or whose post was lost long
+// before would hold it not green for the rest of the session. Whether a call
+// with no ending wrote after a green declared later is the question of calls
+// still in flight (a subagent's concurrent Edit), which this rule leaves to
+// its own. The cost: such a call, where it did write after the green, leaves
+// the point green, as it was before this rule, when it was read as an edit
+// before the green; the turn's row and the report's line name it, and the
+// next session's start line does not.
+func markHeld(gates []GateState, held []heldWrite, at int64) {
+	for i := range gates {
+		g := &gates[i]
+		if g.LastGreen == nil || g.State != Green {
+			continue
+		}
+		for j := range held {
+			w := &held[j]
+			if w.End.mayHaveWritten() && w.Path != nil && Relevant(w.Class) && w.Seq > g.LastGreen.Seq && w.Seq <= at && covers(g.root, &w.write) {
+				g.heldSince = max(g.heldSince, w.Seq)
+			}
+		}
+	}
 }
 
 // indexLearned reports whether idx requires any family at nowMS (D38). An
@@ -222,9 +258,20 @@ func recordFindings(snap *Snapshot) int {
 // recordGreenOf is recordGreen over the snapshot's gates and its record
 // findings: the one reading evaluate and pinRequired (the replay's pinned
 // Required) both take, so the live Stop and the ledger count the same thing
-// (#173 F4, card SPEC-RULES-STOP1).
+// (#173 F4, card SPEC-RULES-STOP1). A required gate green while a call that
+// may have written its files stands after its last green (markHeld) does not
+// back a "done": the checkpoint, and the next session's start line from it,
+// read not green, as they did when such a call staled the gate. The turn's
+// row reads recordGreen and not this (TurnSummary): it names the turn's own
+// such call, and an earlier turn's is no finding of this one. The cost: the
+// start line says "not green" with no reason it can name, since every gate
+// it counts is green.
 func recordGreenOf(snap *Snapshot) (bool, *int64) {
-	return recordGreen(snap.Gates, recordFindings(snap))
+	ok, at := recordGreen(snap.Gates, recordFindings(snap))
+	if ok && slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.Required && !g.offTurn && g.heldSince > 0 }) {
+		return false, nil
+	}
+	return ok, at
 }
 
 // recordGreen is whether the record backs a "done" at the point (D36): no
@@ -271,6 +318,16 @@ func recordGreen(gates []GateState, unresolved int) (bool, *int64) {
 // lowest seq in the turn's window, zero for none: a run before it is an earlier
 // turn's. Sound one way only: a window need not be contiguous (a subagent's late
 // call), so another prompt's run inside its span reads as this turn's (2.4r).
+//
+// Writes, PathsWritten, LastWriteSeq and UnnamedWriteSeq count edits: calls
+// whose execution ended ok (classify). Of the turn's held writes that bear
+// where an edit would (relevant and covered by a gate, or naming nothing:
+// countIn), FailedEditSeq is the last file tool that failed (EndFailedEdit,
+// which applied nothing); FailedWriteSeq the last call that failed or was
+// interrupted and may have written (EndFailedCall, EndInterrupted), and
+// FailedWriteEnd its ending; UnendedWriteSeq the last with no recorded
+// ending (EndNone). Zero means none. None of them is an edit: the row's
+// guard reads them (unconfirmed).
 type TurnCounts struct {
 	Writes           int
 	PathsWritten     int
@@ -279,6 +336,60 @@ type TurnCounts struct {
 	UnnamedWriteSeq  int64
 	RewrittenGateSeq int64
 	FirstSeq         int64
+	FailedEditSeq    int64
+	FailedWriteSeq   int64
+	UnendedWriteSeq  int64
+	FailedWriteEnd   WriteEnd
+}
+
+// mayHaveWritten reports a held call in the turn that may have written: one
+// that failed other than as a file tool, was interrupted, or has no ending.
+func (t TurnCounts) mayHaveWritten() bool { return t.FailedWriteSeq > 0 || t.UnendedWriteSeq > 0 }
+
+// unconfirmed is the call that bears on a row resting on green, the
+// earliest last green of the turn's gates, and its ending; seq 0 for none.
+// A call with no recorded ending bears wherever it stands in the window,
+// since it may have written after the green whenever it was declared. One
+// that failed or was interrupted and may have written bears where it was
+// declared after that green, since a green after it ran over whatever it
+// wrote; under ranOnly, the row that would say "no edits", it bears
+// wherever it stands, since that row speaks for the whole turn. A failed
+// edit bears where it was declared after the green: one before it, the
+// common fail-then-retry turn, leaves the run after it as it is. A call that
+// may have written is named before a failed edit, which applied nothing, so
+// the line never names the harmless call and leaves the other out; of two
+// that may have written, the later.
+//
+// The cost: where a failed edit and a call that may have written both bear,
+// the line names only the second.
+func (t TurnCounts) unconfirmed(green int64, ranOnly bool) (int64, WriteEnd) {
+	seq, end := int64(0), EndOK
+	if t.FailedWriteSeq > green || ranOnly && t.FailedWriteSeq > 0 {
+		seq, end = t.FailedWriteSeq, t.FailedWriteEnd
+	}
+	if t.UnendedWriteSeq > seq {
+		seq, end = t.UnendedWriteSeq, EndNone
+	}
+	if seq == 0 && t.FailedEditSeq > green {
+		seq, end = t.FailedEditSeq, EndFailedEdit
+	}
+	return seq, end
+}
+
+// WroteAfter is the call that may have written and bears on a run the line
+// places after the last edit, read as unconfirmed reads one against a green:
+// one that failed or was interrupted declared after run, or one with no
+// recorded ending anywhere in the turn; seq 0 for none. A failed edit
+// applied nothing, so the run still came after every change the turn made,
+// and it is left out. The red, unknown, masked and backgrounded rows, and
+// the unverified row's greens, read it (recap): "after the last edit" there
+// is placed by the edits alone, which a call that may have written after the
+// run does not change, so the line names it beside the run.
+func (t TurnCounts) WroteAfter(run int64) (int64, WriteEnd) {
+	if seq, end := t.unconfirmed(run, false); end != EndFailedEdit {
+		return seq, end
+	}
+	return 0, EndOK
 }
 
 // Row is the end-of-turn value line's state row (2.2.11, first match wins).
@@ -295,14 +406,20 @@ const (
 	RowUnverified   Row = "unverified"
 	RowNoGate       Row = "no_gate"
 	RowUnnamedWrite Row = "unnamed_write"
-	RowVerified     Row = "verified"
-	RowFindings     Row = "findings"
+	// RowUnconfirmedWrite is a row that would read verified or ran_only
+	// while a call that may write and did not end ok bears on its green
+	// (TurnCounts.unconfirmed), or a turn with no edit and no gate run whose
+	// call may have written, which would print nothing: the line says what
+	// was measured and names that call and its ending.
+	RowUnconfirmedWrite Row = "unconfirmed_write"
+	RowVerified         Row = "verified"
+	RowFindings         Row = "findings"
 )
 
 // Rows is the table's order.
 var Rows = []Row{
 	RowUnknown, RowRed, RowMasked, RowBackgrounded, RowRanOnly,
-	RowUnverified, RowNoGate, RowUnnamedWrite, RowVerified, RowFindings,
+	RowUnverified, RowNoGate, RowUnnamedWrite, RowUnconfirmedWrite, RowVerified, RowFindings,
 }
 
 // SummaryMaxBytes bounds the value line (VER-65).
@@ -319,6 +436,18 @@ type Summary struct {
 	// SPEC-RULES-STOP1, D-f), so a recorded violation the turn's gates did
 	// not reach still reads on the line.
 	Findings int
+	// Unconfirmed is the call the unconfirmed_write row names and Ending how
+	// the record holds its end (TurnCounts.unconfirmed); zero on every
+	// other row.
+	Unconfirmed int64
+	Ending      WriteEnd
+	// GreenSeq is the green run the unconfirmed_write and unnamed_write
+	// rows placed their call against: the earliest last green of the turn's
+	// gates. The line places the call by it, not by the latest green it
+	// names, which the call may stand before (two gates). Zero on the
+	// unconfirmed_write row of a turn that ran no gate, and on every other
+	// row.
+	GreenSeq int64
 }
 
 const sentenceRecordingIncomplete = "recording incomplete for this turn; verification state unknown"
@@ -409,12 +538,26 @@ func (s Summary) FindingsClause() string {
 // until 1.8w. Every row that prints carries k as Findings, and a row other
 // than findings ends with its clause when k > 0 (FindingsClause, D-f).
 func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
-	if turn.Writes == 0 && turn.GateRuns == 0 {
+	// An incomplete turn that may have written reads unknown, never none
+	// (D80), whether or not the call that may have written ended ok: the
+	// record that would say is the one with the gap.
+	held := turn.FailedEditSeq > 0 || turn.mayHaveWritten()
+	quiet := turn.Writes == 0 && turn.GateRuns == 0
+	if quiet && (snap.Recording == Complete && !turn.mayHaveWritten() || snap.Recording != Complete && !held) {
 		return Summary{Row: RowNone}
 	}
 	k := recordFindings(&snap)
 	if snap.Recording != Complete {
 		return Summary{Row: RowUnknown, Sentence: sentenceRecordingIncomplete, Findings: k}
+	}
+	// A complete turn with no edit and no gate run whose call may have
+	// written names that call: no line would read as a turn that changed
+	// nothing, which the record does not say (a failed sed -i may have
+	// rewritten its first file). A failed file tool alone applied nothing,
+	// and that turn has no line (above).
+	if quiet {
+		seq, end := turn.unconfirmed(0, true)
+		return Summary{Row: RowUnconfirmedWrite, Findings: k, Unconfirmed: seq, Ending: end}
 	}
 	advisory := Advisory(snap.Gates)
 	var states []State
@@ -449,11 +592,18 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 	}
 	worst, ok := Worst(states)
 	// The record-green point the row reads is over the turn's gates (card
-	// F2): the snapshot's, over every gate, until one is not the turn's.
+	// F2): the snapshot's, over every gate, until one is not the turn's. Nor
+	// does it wait on a held call after a green (recordGreenOf): the guard
+	// below names the turn's own, and an earlier turn's is no finding of
+	// this one, which the findings row would count as "0 record finding(s)".
 	green := snap.RecordGreen
-	if slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.offTurn }) {
+	if slices.ContainsFunc(snap.Gates, func(g GateState) bool { return g.offTurn || g.heldSince > 0 }) {
 		green, _ = recordGreen(snap.Gates, k)
 	}
+	// The guard on the green rows: a call that did not end ok and bears on
+	// the green names itself where the row would read verified or "no
+	// edits", which neither the record nor the call's ending measured.
+	unconfirmed, ending := turn.unconfirmed(max(earliestGreen, 0), turn.Writes == 0)
 	var row Row
 	switch {
 	case !ok && !defect && turn.Writes == 0:
@@ -464,18 +614,28 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 		row = rowFor(worst)
 	case defect:
 		row = RowUnknown
+	case turn.Writes == 0 && unconfirmed > 0:
+		row = RowUnconfirmedWrite
 	case turn.Writes == 0:
 		row = RowRanOnly
 	case advisory:
 		row = RowUnverified // the cap: an advisory green never verifies
 	case turn.UnnamedWriteSeq > earliestGreen:
 		row = RowUnnamedWrite
+	case unconfirmed > 0:
+		row = RowUnconfirmedWrite
 	case green:
 		row = RowVerified
 	default:
 		row = RowFindings
 	}
 	s := Summary{Row: row, Findings: k}
+	if row == RowUnconfirmedWrite {
+		s.Unconfirmed, s.Ending = unconfirmed, ending
+	}
+	if row == RowUnconfirmedWrite || row == RowUnnamedWrite {
+		s.GreenSeq = earliestGreen
+	}
 	switch {
 	case advisory:
 		s.Sentence = sentenceAdvisoryOnly

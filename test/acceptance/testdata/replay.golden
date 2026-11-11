@@ -132,9 +132,7 @@ session start:
     |   verify: rashomon report --session sess-1
 calls: 1; call events that printed: 0
 stop:
-  systemMessage:
-    | ※ rashomon: 1 file edited; no test or build is known for this project yet.
-    |             → rashomon report --session sess-1
+  nothing
 next prompt prompt-next:
   nothing
 
@@ -1299,6 +1297,160 @@ stop:
 next prompt prompt-next:
   nothing
 
+=== lines/fail-then-retry-green-test-done turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: verified - go test (inferred) passed after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/failed-shell-write-after-green turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; go test passed (call 4); call 7 failed and may have written files after that.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/failed-shell-write-alone-makefile turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: Makefile
+    |   tests: "make test" (inferred from Makefile)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read for this language (go.mod only)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: call 1 failed and may have written files; make test not run after it.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/failed-shell-write-then-failed-edit-after-green turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 4; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; go test passed (call 4); call 7 failed and may have written files after that.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/failed-shell-write-then-green turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: go test passed (call 4); call 1 failed and may have written files before that.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/interrupted-edit-after-green turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; go test passed (call 4); call 7 was interrupted and may have written files after that.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/red-then-failed-shell-write turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; go test exited 1 after the last edit (call 4); call 7 failed and may have written files after that.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
 === lines/t1-failed-edit-only-call turn 1 of 1
 prompt: prompt-1
 digest read: prompt-1
@@ -1315,9 +1467,7 @@ session start:
     |   verify: rashomon report --session sess-1
 calls: 1; call events that printed: 0
 stop:
-  systemMessage:
-    | ※ rashomon: 1 file edited; no test or build is known for this project yet.
-    |             → rashomon report --session sess-1
+  nothing
 next prompt prompt-next:
   nothing
 
@@ -1338,7 +1488,7 @@ session start:
 calls: 3; call events that printed: 0
 stop:
   systemMessage:
-    | ※ rashomon: 1 file edited, go test (inferred) not run after the last edit.
+    | ※ rashomon: 1 file edited; go test passed (call 4); call 7, an edit, failed after that.
     |             → rashomon report --session sess-1
 next prompt prompt-next:
   nothing
@@ -1360,7 +1510,7 @@ session start:
 calls: 3; call events that printed: 0
 stop:
   systemMessage:
-    | ※ rashomon: 1 file edited, no test or build run after the last edit.
+    | ※ rashomon: 1 file edited; go test passed (call 4); call 7, an edit, failed after that.
     |             → rashomon report --session sess-1
 next prompt prompt-next:
   nothing
@@ -1381,13 +1531,31 @@ session start:
     |   verify: rashomon report --session sess-1
 calls: 1; call events that printed: 0
 stop:
-  systemMessage:
-    | ※ rashomon: 1 file edited, go test (inferred) not run after the last edit.
-    |             → rashomon report --session sess-1
+  nothing
 next prompt prompt-next:
   nothing
 
 === lines/t9a-failed-edit-makefile turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: Makefile
+    |   tests: "make test" (inferred from Makefile)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read for this language (go.mod only)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== lines/t9a-twin-edit-makefile turn 1 of 1
 prompt: prompt-1
 digest read: prompt-1
 fired: none
@@ -1414,6 +1582,62 @@ next prompt prompt-next:
   systemMessage:
     | ※ rashomon told the agent: "rashomon record: gate 'make test' (from 'Makefile') was not run after the last edit."
 
+=== lines/two-gates-failed-edit-between-greens turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 4; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; go test and 1 more passed (call 10); call 7, an edit, failed after go test passed (call 4).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/two-turn-failed-shell-write-after-green turn 1 of 2
+prompt: 00000000-0000-4000-8000-000000000201
+digest read: 00000000-0000-4000-8000-000000000201
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: verified - go test (inferred) passed after the last edit.
+    |             → rashomon report --session sess-1
+next prompt 00000000-0000-4000-8000-000000000202:
+  nothing
+
+=== lines/two-turn-failed-shell-write-after-green turn 2 of 2
+prompt: 00000000-0000-4000-8000-000000000202
+digest read: 00000000-0000-4000-8000-000000000202
+fired: none
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: call 8 failed and may have written files; go test not run after it.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
 === lines/two-turn-unended-edit-then-done turn 1 of 2
 prompt: 00000000-0000-4000-8000-000000000101
 digest read: 00000000-0000-4000-8000-000000000101
@@ -1434,12 +1658,7 @@ stop:
     | ※ rashomon: 1 declaration without recorded execution.
     |             → rashomon report --session sess-1
 next prompt 00000000-0000-4000-8000-000000000102:
-  hookSpecificOutput.additionalContext:
-    | rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing).
-  hookSpecificOutput.hookEventName:
-    | UserPromptSubmit
-  systemMessage:
-    | ※ rashomon told the agent: "rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing)."
+  nothing
 
 === lines/two-turn-unended-edit-then-done turn 2 of 2
 prompt: 00000000-0000-4000-8000-000000000102
@@ -1449,12 +1668,7 @@ calls: 0; call events that printed: 0
 stop:
   nothing
 next prompt prompt-next:
-  hookSpecificOutput.additionalContext:
-    | rashomon record: gate 'go test' (from 'go.mod') was not run after the last edit.
-  hookSpecificOutput.hookEventName:
-    | UserPromptSubmit
-  systemMessage:
-    | ※ rashomon told the agent: "rashomon record: gate 'go test' (from 'go.mod') was not run after the last edit."
+  nothing
 
 === lines/unended-edit-after-green turn 1 of 1
 prompt: prompt-1
@@ -1476,12 +1690,7 @@ stop:
     | ※ rashomon: 1 declaration without recorded execution.
     |             → rashomon report --session sess-1
 next prompt prompt-next:
-  hookSpecificOutput.additionalContext:
-    | rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing).
-  hookSpecificOutput.hookEventName:
-    | UserPromptSubmit
-  systemMessage:
-    | ※ rashomon told the agent: "rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing)."
+  nothing
 
 === lines/unended-edit-only-call turn 1 of 1
 prompt: prompt-1

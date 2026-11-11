@@ -245,6 +245,36 @@ of a pipe. Running the tests unpiped, or asking the agent to in your CLAUDE.md,
 is no longer needed for the pipes above and still gives the exit status for the
 rest.
 
+**What counts as an edit?** A call the record shows ended ok. An Edit or Write
+that Claude Code reports as failed changed nothing: it is not counted, is not
+"the last edit", and owes no test. A shell line or MCP call that failed, a call
+that was interrupted, and any call with no recorded ending (still running,
+refused, or its ending lost) may have written: none is counted as an edit
+either. The end-of-turn line names such a call rather than saying verified or
+"no edits": where it, or an Edit that failed, came after the passing test the
+line rests on, for example
+"1 file edited; go test passed (call 4); call 7, an edit, failed after that";
+where the turn ran no test, for example
+"call 1 failed and may have written files; make test not run after it";
+and beside a test the line places after the last edit, where the call came
+after that run, for example
+"1 file edited; go test exited 1 after the last edit (call 4); call 7 failed
+and may have written files after that".
+A call with no recorded ending is named wherever it stands in the turn, but the
+end-of-turn line then shows "1 declaration without recorded execution" in its
+place, and `rashomon report --session <id>` shows the line that names it. The
+cost: an edit that did apply but whose ending was lost, or a shell line that
+wrote a file and then failed, no longer makes a test owed. The next prompt
+carries no note that the test was not run after the last edit, nor that a
+claim of completion is not backed; the end-of-turn line names the call instead,
+and where the call came after a passing test, the next session's start line
+does not say the record was green. A line that places no test against an edit,
+such as "1 file edited; no test or build is known for this project yet", counts
+the edits alone and does not name the call. And where the only call between a
+passing test and a later failing one failed or was interrupted (a redirect into
+a file, a `sed -i`), the agent is not told which files were written between the
+two runs: no file is known to have been.
+
 **Is it a sandbox or a security tool?** No. It does not stop or contain the
 agent, and it cannot stop a determined agent from changing its records.
 

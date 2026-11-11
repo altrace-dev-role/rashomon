@@ -75,8 +75,8 @@ m("VER-40 integrity names a store write twice", I, "relativise(p, d.Project, d.C
   "relativise(p, d.Project, d.CWD); rel != \"\" {", "TestST1s_")
 m("VER-40 integrity reads the root before from", I, "\t\t\tif d := &run.Declarations[i]; d.Seq > from && d.Seq <= at {\n",
   "\t\t\tif d := &run.Declarations[i]; d.Seq <= at {\n", "TestST1s_|TestST1v_")
-m("VER-40 Evaluate hands integrity no store root", E, "integrity(run, picked, writes, 0, at, pt.StoreRoot)",
-  "integrity(run, picked, writes, 0, at, \"\")", "TestST1m_")
+m("VER-40 Evaluate hands integrity no store root", E, "integrity(run, picked, writes, c.held, 0, at, pt.StoreRoot)",
+  "integrity(run, picked, writes, c.held, 0, at, \"\")", "TestST1m_")
 m("VER-40 the steer step's point names no store root", S, "\t\tStoreRoot: root}\n", "\t}\n\t_ = root\n", "TestST1m_AWrite|TestST1r_")
 m("VER-40 the Stop's point names no store root", R, ", StoreRoot: st.Root()}", "}", "TestST1m_TheStop")
 

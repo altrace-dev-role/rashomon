@@ -208,8 +208,10 @@ func turnViolations(vs []RuleVerdict, from int64) []RuleVerdict {
 	return out
 }
 
-// wroteIn reports a named relevant write at or before at: WroteRelevant over
-// writes classify already built.
+// wroteIn reports a named relevant write at or before at among writes,
+// classify's: a write gateStates counts against a gate, a path whose class
+// is Relevant (Gate A Q1) written by a call that ended ok. The Stop passes
+// it to Claims for the window, and the spec rules read it.
 func wroteIn(writes []write, at int64) bool {
 	for i := range writes {
 		if w := &writes[i]; w.Seq <= at && w.Path != nil && Relevant(w.Class) {
@@ -465,7 +467,10 @@ func foldIn(vals []string, s string) bool {
 // and a mode the record cannot tell are undecided; an MCP call is no write
 // a path rule reads. A path outside the project matches nothing; a symlink
 // is matched by the name written, not the file it reaches. rels is
-// projectRels(c.writes), cleaned once for every rule.
+// projectRels(c.writes), cleaned once for every rule. A call that ended other
+// than ok wrote nothing the rule can name as written: a failed file tool did
+// not apply, and one that may have written leaves the rule undecided where
+// it could match (heldBlocks).
 func protectOver(r *spec.Rule, c *classified, rels []projectRel, at int64) ruleRead {
 	var out ruleRead
 	if len(r.Paths) == 0 {
@@ -505,7 +510,7 @@ func protectOver(r *spec.Rule, c *classified, rels []projectRel, at int64) ruleR
 			unnamed++
 		}
 	}
-	out.undecided = out.undecided || unnamed > blind
+	out.undecided = out.undecided || unnamed > blind || heldBlocks(c.held, r.Paths, r.ExcludePaths, r.Modes, 0, at+1)
 	return out
 }
 

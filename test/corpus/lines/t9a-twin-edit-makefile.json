@@ -1,0 +1,22 @@
+{
+  "reason": "The positive twin of t9a-failed-edit-makefile: the same project, and the turn's only Edit applied. The edit happened and make test was not run after it, so the line and the next prompt's note that the gate is owed are both true here; the failed twin's absence of them is measured against this.",
+  "provenance": "constructed from t9a-failed-edit-makefile with the Edit's outcome ok (the completeness replays' T9 case b, with a source file in place of a README)",
+  "final_message": "Updated internal/a.go.",
+  "files": [
+    {
+      "path": "Makefile",
+      "content": "test:\n\tgo test ./...\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    }
+  ]
+}

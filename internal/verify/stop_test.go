@@ -56,7 +56,7 @@ func stopOf(r *store.Run, idx *ProjectIndex, session string, in StopInput) StopV
 // card 2.4 adds.
 func classifiedOf(r *store.Run) classified {
 	var c classified
-	c.runs, c.writes, c.unnamed, c.rewritten, _ = classifyWith(r, pickExecutions(r))
+	classifyWith(r, pickExecutions(r), &c)
 	return c
 }
 
@@ -85,6 +85,7 @@ func TestVER65_ValueLineRowsAreOneFunctionOverTheSnapshot(t *testing.T) {
 		{"unknown", []call{edit(1, "pkg/a.go"), interrupted}, RowUnknown},
 		{"no gate", []call{edit(1, "pkg/a.go")}, RowNoGate},
 		{"unnamed write", []call{edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), unnamedWrite(3)}, RowUnnamedWrite},
+		{"unconfirmed write", []call{edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecOK), failedEdit(3, "pkg/a.go")}, RowUnconfirmedWrite},
 		{"findings", []call{edit(1, testFile).marks(ids{"go.t_skip": 1}, nil), gateCall(2, "go-test", store.ExecOK)}, RowFindings},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

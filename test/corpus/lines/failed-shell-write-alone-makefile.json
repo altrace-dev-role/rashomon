@@ -1,0 +1,22 @@
+{
+  "reason": "The turn's only call is a sed -i over two files in a project whose Makefile has a test target; it failed with exit 2 after rewriting the first. No call ended ok as an edit, and no test ran: a Stop that prints nothing reads as a turn that changed nothing, which the record does not say. The line names the call and that make test was not run after it.",
+  "provenance": "constructed from the review of the base fix (fixture zz-s2-sed-fail-alone-makefile): t9a-failed-edit-makefile's project with a sed -i over two files in place of the Edit (GNU sed's own error text and exit status)",
+  "final_message": "sed rewrote internal/a.go, then could not read internal/b.go.",
+  "files": [
+    {
+      "path": "Makefile",
+      "content": "test:\n\tgo test ./...\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "sed -i 's/c/d/' internal/a.go internal/b.go"
+      },
+      "outcome": "failed",
+      "exit_code": 2,
+      "output": "sed: can't read internal/b.go: No such file or directory"
+    }
+  ]
+}

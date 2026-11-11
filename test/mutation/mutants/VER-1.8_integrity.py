@@ -20,8 +20,12 @@ m("VER-1.8 a pair after the point counts", P, " && d.Seq <= at {\n", " && d.Seq 
 # The marks: which calls carry them, and on which basis (D42).
 m("VER-1.8 nil marks are read", I, "\t\tif em == nil || w.Path == nil || ", "\t\tif w.Path == nil || ", "TestINT6_")
 m("VER-1.8 a write with no path is read", I, "\t\tif em == nil || w.Path == nil || ", "\t\tif em == nil || ", "TestINT6_")
-m("VER-1.8 marks on a shell line are folded", I, "e != nil && d.FilePath != nil && ", "e != nil && ", "TestINT6_")
-m("VER-1.8 a failed execution's marks are read", I, " && e.Outcome == store.ExecOK {\n", " {\n", "TestINT6_")
+m("VER-1.8 marks on a shell line are folded", I, "e != nil && d.FilePath != nil {\n", "e != nil {\n", "TestINT6_")
+# A failed execution's marks are left out by classify's rule that only an ok
+# ending is an edit (held.go endOf): marksByCall reads no outcome of its own.
+m("VER-1.8 a failed execution's marks are read", "internal/verify/held.go",
+  "\tcase e.Outcome == store.ExecOK:\n\t\treturn EndOK\n",
+  "\tcase e.Outcome == store.ExecOK || e.Outcome == store.ExecFailed:\n\t\treturn EndOK\n", "TestINT6_")
 m("VER-1.8 the pick ignores outranks", I,
   "ok && (cur == nil || !outranks(cur, e)) {\n", "ok && (cur == nil || cur != nil) {\n", "TestINT6_")
 m("VER-1.8 a nil run is read", I, "\tif run == nil {\n\t\treturn marks\n\t}\n", "", "TestINT6_")
@@ -99,9 +103,9 @@ m("VER-1.8 the marker is not a sort key", I,
 
 # Part two: Evaluate's wiring (PF-IV3, D39, D40) and the findings row (Gate B F1).
 E = "internal/verify/evaluate.go"
-m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)\n", "", "TestINT10_")
+m("VER-1.8 Evaluate does not fold integrity", E, "\tsnap.Integrity = integrity(run, picked, writes, c.held, 0, at, pt.StoreRoot)\n", "", "TestINT10_")
 m("VER-1.8 Evaluate's window starts at the point", E,
-  "integrity(run, picked, writes, 0, at, pt.StoreRoot)", "integrity(run, picked, writes, at, at, pt.StoreRoot)", "TestINT10_")
+  "integrity(run, picked, writes, c.held, 0, at, pt.StoreRoot)", "integrity(run, picked, writes, c.held, at, at, pt.StoreRoot)", "TestINT10_")
 m("VER-1.8 RecordGreen ignores integrity", E, "\tif unresolved > 0 {\n\t\treturn false, nil\n\t}\n", "", "TestINT10_")
 m("VER-1.8 the findings row is not taken", E,
   "\tdefault:\n\t\trow = RowFindings\n", "\tdefault:\n\t\trow = RowVerified\n", "TestINT10_")
@@ -114,7 +118,7 @@ m("VER-1.8 the count sentence is on every row", E, "\tcase row == RowFindings:\n
 # equal to report.DetectTestBending's on any record; its rows are each built
 # where a break would part the two.
 m("VER-1.8r Evaluate hands integrity no pick", E,
-  "integrity(run, picked, writes, 0, at, pt.StoreRoot)", "integrity(run, nil, writes, 0, at, pt.StoreRoot)", "TestINT15_")
+  "integrity(run, picked, writes, c.held, 0, at, pt.StoreRoot)", "integrity(run, nil, writes, c.held, 0, at, pt.StoreRoot)", "TestINT15_")
 m("VER-1.8r verify imports report again", I,
   '\t"github.com/altrace-dev-role/rashomon/internal/store"\n',
   '\t_ "github.com/altrace-dev-role/rashomon/internal/report"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n', "TestRES2d_")
@@ -178,9 +182,9 @@ m("VER-1.8r2 testPairs keeps the guard", P,
   "\t\t\tvisit(&run.Declarations[i])\n\t\t}\n\t}\n\tif len(pairs) > 0 && undeclared(run, at) {\n\t\treturn nil\n\t}\n\treturn pairs\n}\n",
   "TestINT19b_|TestINT19c_")
 m("VER-1.8r2 evaluate reads integrity before recording's return", E,
-  "\tif snap.Recording != Complete {\n\t\treturn snap\n\t}\n\tpicked := pickExecutions(run)\n\truns, writes, unnamed, rewritten, keys := classifyWith(run, picked)\n",
-  "\tpicked := pickExecutions(run)\n\truns, writes, unnamed, rewritten, keys := classifyWith(run, picked)\n"
-  "\tif snap.Recording != Complete {\n\t\tsnap.Integrity = integrity(run, picked, writes, 0, at, pt.StoreRoot)\n\t\treturn snap\n\t}\n",
+  "\tif snap.Recording != Complete {\n\t\treturn snap\n\t}\n\tpicked := pickExecutions(run)\n\tkeys := classifyWith(run, picked, c)\n",
+  "\tpicked := pickExecutions(run)\n\tkeys := classifyWith(run, picked, c)\n"
+  "\tif snap.Recording != Complete {\n\t\tsnap.Integrity = integrity(run, picked, c.writes, c.held, 0, at, pt.StoreRoot)\n\t\treturn snap\n\t}\n",
   "TestINT19b_")
 m("VER-1.8r2 undeclared finds no orphan", P,
   "func undeclared(run *store.Run, at int64) bool {\n",

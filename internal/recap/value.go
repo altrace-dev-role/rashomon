@@ -329,7 +329,7 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 			return s
 		}
 		where, _ := when(v, g)
-		return t.name(g) + " ran" + where + " (call " + seqOf(g) + "); its result is not in the record"
+		return t.name(g) + " ran" + where + " (call " + seqOf(g) + "); its result is not in the record" + t.heldPast(v, g, where, " after that run")
 	case verify.RowRed:
 		g := t.first(verify.Red)
 		if g == nil {
@@ -359,6 +359,7 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 		if since {
 			s += " and has not run since"
 		}
+		s += t.heldPast(v, g, where, " after that")
 		if wrote {
 			s = files + "; " + s
 		}
@@ -367,14 +368,14 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 		if g := t.first(verify.MaskedInconclusive); g != nil {
 			where, _ := when(v, g)
 			if stage := droppingStage(g.LastRun); stage != "" {
-				return t.name(g) + " ran" + where + ", but " + stage + " hid its result (call " + seqOf(g) + ")"
+				return t.name(g) + " ran" + where + ", but " + stage + " hid its result (call " + seqOf(g) + ")" + t.heldPast(v, g, where, " after that")
 			}
-			return t.name(g) + " ran" + where + "; its exit status was hidden by its line (call " + seqOf(g) + ")"
+			return t.name(g) + " ran" + where + "; its exit status was hidden by its line (call " + seqOf(g) + ")" + t.heldPast(v, g, where, " after that")
 		}
 	case verify.RowBackgrounded:
 		if g := t.first(verify.Backgrounded); g != nil {
 			where, _ := when(v, g)
-			return t.name(g) + " moved to the background" + where + "; its result is not in the record"
+			return t.name(g) + " moved to the background" + where + "; its result is not in the record" + t.heldPast(v, g, where, " after that run")
 		}
 	case verify.RowRanOnly:
 		greens, _ := t.passed(k)
@@ -392,7 +393,9 @@ func rowSentence(v verify.StopView, k int, short bool) string {
 	case verify.RowUnnamedWrite:
 		greens, _ := t.passed(k)
 		return files + "; " + greens + " (call " + t.greenSeq() + ")" + t.fromOutput() + "; call " +
-			strconv.FormatInt(v.Turn.UnnamedWriteSeq, 10) + " may have written files after that"
+			strconv.FormatInt(v.Turn.UnnamedWriteSeq, 10) + " may have written files" + t.placed(v.Turn.UnnamedWriteSeq, v.Summary.GreenSeq)
+	case verify.RowUnconfirmedWrite:
+		return t.unconfirmedRow(v, k, files)
 	case verify.RowVerified:
 		// The row is read only where the green runs follow the last edit, so
 		// "verified" says it; a run with other arguments takes the columns
@@ -434,11 +437,12 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 		}
 	}
 	greens, _ := t.passed(k)
+	held := t.wroteAfter(v, t.earliestGreen(), "")
 	switch {
 	case g == nil && greens != "":
-		return files + "; " + greens + " after the last edit" + t.fromOutput()
+		return files + "; " + greens + " after the last edit" + t.fromOutput() + held
 	case g != nil && greens != "":
-		return files + "; " + greens + " after the last edit" + t.fromOutput() + ", " + t.name(g) + " not run after it"
+		return files + "; " + greens + " after the last edit" + t.fromOutput() + ", " + t.name(g) + " not run after it" + held
 	case g != nil && g.Source == verify.SourceInferred:
 		// The project's own command, which no rule names otherwise
 		// (GATE-INFER1, W4); a declared gate keeps the line below.
@@ -446,6 +450,9 @@ func (t gateSet) unverified(v verify.StopView, k int, files string) string {
 	}
 	return files + ", no test or build run after the last edit"
 }
+
+// afterLastEdit is when's word for a run at or after the turn's last edit.
+const afterLastEdit = " after the last edit"
 
 // when places g's last run by seq (card 2.4r): after the turn's last edit, a
 // tie too (writes count strictly after a run, gates.go), or before it; with no
@@ -457,7 +464,7 @@ func when(v verify.StopView, g *verify.GateState) (where string, since bool) {
 	}
 	switch {
 	case v.Turn.Writes > 0 && seq >= v.Turn.LastWriteSeq:
-		return " after the last edit", false
+		return afterLastEdit, false
 	case v.Turn.Writes > 0:
 		return " before the last edit", true
 	case seq >= v.Turn.FirstSeq:
@@ -642,14 +649,17 @@ func contains(names []string, n string) bool {
 }
 
 // greenSeq is the latest last run among the green turn gates.
-func (t gateSet) greenSeq() string {
+func (t gateSet) greenSeq() string { return strconv.FormatInt(t.latestGreen(), 10) }
+
+// latestGreen is greenSeq's seq.
+func (t gateSet) latestGreen() int64 {
 	var at int64
 	for _, g := range t.gates {
 		if g.State == verify.Green && g.LastRun != nil {
 			at = max(at, g.LastRun.Seq)
 		}
 	}
-	return strconv.FormatInt(at, 10)
+	return at
 }
 
 func seqOf(g *verify.GateState) string {

@@ -1,0 +1,48 @@
+{
+  "reason": "Two gates pass in one turn, go test before a failed Edit and npm test after it. The line rests on both and names the later run's call; a sentence placing the failed Edit 'after that' would put it after npm test, which came after it. The line must place it after the run it did follow.",
+  "provenance": "constructed from the review of the base fix (scenario r2-two-gates-ack): the control's edit and pass, Claude Code's own error text for an Edit whose old string was not found, then an npm test run, in a go.mod project",
+  "final_message": "The tests pass; the last edit failed.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./..."
+      },
+      "outcome": "ok",
+      "output": "ok  \tm\t0.004s\n"
+    },
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "x",
+        "new_string": "y"
+      },
+      "outcome": "failed",
+      "output": "String to replace not found in file."
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "npm test"
+      },
+      "outcome": "ok",
+      "output": "1 passing\n"
+    }
+  ]
+}

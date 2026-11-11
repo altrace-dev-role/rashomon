@@ -269,10 +269,11 @@ func TestVER8_OutputIsSeqOrderedAndMapIndependent(t *testing.T) {
 		built.Declarations[i].Shape.Digest = "as-declared"
 		built.Executions[i].ExecutedDigest = "as-rewritten"
 	}
-	built.Executions = slices.Delete(built.Executions, 1, 2) // the Edit's: an unmatched declaration
+	built.Executions = slices.Delete(built.Executions, 1, 2) // the Edit's: an unmatched declaration, held
 	wantRuns, wantWrites, wantUnnamed, wantRewritten := classify(built)
-	if len(wantRuns) != 2 || len(wantWrites) != 3 || len(wantUnnamed) != 2 || len(wantRewritten) != 2 {
-		t.Fatalf("premise: runs %+v, writes %+v, unnamed %v, rewritten %v", wantRuns, wantWrites, wantUnnamed, wantRewritten)
+	wantHeld := classifiedOf(built).held
+	if len(wantRuns) != 2 || len(wantWrites) != 2 || len(wantUnnamed) != 2 || len(wantRewritten) != 2 || len(wantHeld) != 1 {
+		t.Fatalf("premise: runs %+v, writes %+v, unnamed %v, rewritten %v, held %+v", wantRuns, wantWrites, wantUnnamed, wantRewritten, wantHeld)
 	}
 	n := len(built.Declarations)
 	for shift := 0; shift < n; shift++ {
@@ -288,6 +289,9 @@ func TestVER8_OutputIsSeqOrderedAndMapIndependent(t *testing.T) {
 			r.Executions = slices.Clone(built.Executions)
 			slices.Reverse(r.Executions)
 			runs, writes, unnamed, rewritten := classify(r)
+			if held := classifiedOf(r).held; !reflect.DeepEqual(held, wantHeld) {
+				t.Fatalf("shift %d reverse %v: held %+v, want %+v", shift, reverse, held, wantHeld)
+			}
 			if !reflect.DeepEqual(runs, wantRuns) || !reflect.DeepEqual(writes, wantWrites) ||
 				!slices.Equal(unnamed, wantUnnamed) || !slices.Equal(rewritten, wantRewritten) {
 				t.Fatalf("shift %d reverse %v: runs %+v, writes %+v, unnamed %v, rewritten %v; want %+v, %+v, %v, %v",

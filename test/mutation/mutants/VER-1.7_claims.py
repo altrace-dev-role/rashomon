@@ -1,7 +1,7 @@
 # VER-1.7: the claim comparator (internal/verify/claims.go, claimtext.go,
 # claimlex.go). One break per rule of 20.2.5 and per Gate A ruling: the strip, the split, the
 # lexicon's windows and filters, the gates a class maps to and its verdict,
-# strictness, the cut, the quote, the MaxClaims selection, WroteRelevant and
+# strictness, the cut, the quote, the MaxClaims selection, wroteIn and
 # D43's charset. The kill row is the named test's.
 C = "internal/verify/claims.go"
 T = "internal/verify/claimtext.go"
@@ -141,10 +141,11 @@ m("VER-1.7 no_gate_known ranks worst", C, '\tif v == NoGateKnown {\n\t\treturn l
 m("VER-1.7 no_gate_known ranks with green", C,
   '\tif v == NoGateKnown {\n\t\treturn len(Order)\n', '\tif v == NoGateKnown {\n\t\treturn len(Order) - 1\n', "TestVER61_")
 
-# WroteRelevant (Gate A Q1): gateStates' own predicate.
-m("VER-1.7 WroteRelevant counts any class", C,
-  '\t\t\tif w.Path != nil && Relevant(w.Class) {\n', '\t\t\tif w.Path != nil {\n', "TestVER59_")
-m("VER-1.7 WroteRelevant counts a write it cannot name", C,
-  '\t\t\tif w.Path != nil && Relevant(w.Class) {\n', '\t\t\tif Relevant(w.Class) {\n', "TestVER59_")
-m("VER-1.7 WroteRelevant reads past the point", C,
-  '\t\tif d.Seq > at {\n\t\t\tcontinue\n\t\t}\n\t\tbuf, _ = appendWrites', '\t\tbuf, _ = appendWrites', "TestVER59_")
+# wroteIn (Gate A Q1): gateStates' own predicate over classify's writes, which
+# the Stop hands Claims for the window.
+m("VER-1.7 wroteIn counts any class", "internal/verify/rules.go",
+  'w.Seq <= at && w.Path != nil && Relevant(w.Class) {\n', 'w.Seq <= at && w.Path != nil {\n', "TestVER59_")
+m("VER-1.7 wroteIn counts a write it cannot name", "internal/verify/rules.go",
+  'w.Seq <= at && w.Path != nil && Relevant(w.Class) {\n', 'w.Seq <= at && Relevant(w.Class) {\n', "TestVER59_")
+m("VER-1.7 wroteIn reads past the point", "internal/verify/rules.go",
+  'w.Seq <= at && w.Path != nil && Relevant(w.Class) {\n', 'w.Path != nil && Relevant(w.Class) {\n', "TestVER59_")

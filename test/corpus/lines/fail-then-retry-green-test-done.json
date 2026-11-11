@@ -1,0 +1,40 @@
+{
+  "reason": "The common retry: an Edit fails (old string not found), the retried Edit applies, go test passes after it, and the message says so. The failed Edit precedes the green run the line rests on, which came after it, so the line reads verified as the control does.",
+  "provenance": "constructed: Claude Code's own error text for an Edit whose old string was not found, then the control's edit and pass, in a go.mod project",
+  "final_message": "The first edit failed (the old string was not found); the retried edit applied, and go test passes.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "x",
+        "new_string": "b"
+      },
+      "outcome": "failed",
+      "output": "String to replace not found in file."
+    },
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./..."
+      },
+      "outcome": "ok",
+      "output": "ok  \tm\t0.004s\n"
+    }
+  ]
+}

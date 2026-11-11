@@ -9,8 +9,6 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The claim comparator (spec 20.2.5; tech spec 2.2.5): the one place a claim
@@ -76,7 +74,7 @@ type ClaimScan struct {
 
 // Claims compares the claims of a message's head and tail windows with gates
 // (spec 20.2.5). wrote is whether the window holds a relevant write
-// (WroteRelevant): done fires only then. key is the install key the quotes
+// (wroteIn): done fires only then. key is the install key the quotes
 // are HMACed under; delivered are the steer lines delivered this session.
 func Claims(head, tail, key []byte, gates []GateState, wrote bool, source ClaimSource, delivered [][]byte) ClaimScan {
 	scan := ClaimScan{Claims: []ClaimVerdict{}, Cut: len(tail) > 0}
@@ -104,29 +102,6 @@ func Claims(head, tail, key []byte, gates []GateState, wrote bool, source ClaimS
 			Strict: c.strict, Verdict: c.verdict, Gates: slices.Clone(c.gates), QuoteHMAC: q})
 	}
 	return scan
-}
-
-// WroteRelevant reports whether run holds, at or before seq at, a write
-// gateStates counts against a gate: a classified write with a path whose
-// class is Relevant (Gate A Q1). 2.4 passes it to Claims for the window.
-func WroteRelevant(run *store.Run, at int64) bool {
-	if run == nil {
-		return false
-	}
-	var buf []write
-	for i := range run.Declarations {
-		d := &run.Declarations[i]
-		if d.Seq > at {
-			continue
-		}
-		buf, _ = appendWrites(buf[:0], nil, d)
-		for _, w := range buf {
-			if w.Path != nil && Relevant(w.Class) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // sentence is one sentence as the comparator reads it. The per-word slices
@@ -461,7 +436,7 @@ func mapGates(r *claimRule, gates []GateState) mapping {
 // STALE-COVER1): absent, never run, with no write it covers and none it
 // cannot see. It has nothing to verify, so the claim is read against the
 // gates that do. Before the card no done claim met one: the claim is read
-// only where the session wrote a relevant file (WroteRelevant), which every
+// only where the session wrote a relevant file (wroteIn), which every
 // gate counted. A claim of a gate's own kind still reads it absent.
 func owesNothing(g *GateState) bool {
 	return g.State == Absent && g.LastRun == nil && g.WritesSinceGreen == 0 && g.UnknownTarget == 0

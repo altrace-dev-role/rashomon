@@ -162,9 +162,41 @@ func (w *write) project() *string {
 // withheld; an MCP call, which the record cannot see into. Every family
 // counts it as an unknown-target write and changes no state for it
 // (gateStates); the turn's row is where it fails closed
-// (TurnCounts.UnnamedWriteSeq). A declaration without an
-// execution is still a write, since nothing says it did not write, and never
-// a gate run, which has no outcome without one.
+// (TurnCounts.UnnamedWriteSeq).
+//
+// A write is an edit only where the record holds its call's execution and it
+// ended ok (endOf, EndOK): only those are in writes and unnamed. A call that
+// may write and ended any other way is in held, one entry per path as above
+// and one with no path for a target it cannot name, with its ending: a file
+// tool that failed did not apply; a shell line or an MCP call that failed,
+// or any call interrupted, may have written; one with no execution may still
+// be running or have been refused. None of these is the last edit, stales a
+// gate or is counted as a file edited, and no note says it wrote. Before
+// this rule a declaration with no execution was a write, since nothing said
+// it did not write, and a failed Edit stood as the last edit a gate had not
+// run after (the replays T1, T2, T6 and T9a of the line corpus). The cost:
+// a call that did write and did not end ok (an Edit whose post was lost, a
+// sed -i that rewrote its first file and failed on the next, a redirect
+// whose command failed after truncating its file, an interrupted call) no
+// longer makes a gate stale. The turn's state line names it where it would
+// read verified or "no edits" (TurnSummary's guard), and beside a run it
+// places after the last edit when the call stands after that run (red,
+// unknown, masked and backgrounded rows, and the unverified row's greens:
+// TurnCounts.WroteAfter). A line that places no run against an edit, as
+// no_gate's "no test or build is known" and a red run "in this turn" with
+// no edit, counts the edits alone and does not name it: what it says of the
+// gates holds either way, and its count of files is short by what the call
+// may have written. Where the Stop prints a
+// detector's sentence in its place (a call with no ending fires
+// declaration_without_execution), `rashomon report` shows that line. The
+// next prompt carries no owed-gate note for it, and a claim of done on its
+// turn no done-unverified note: both say "after the last edit", an edit the
+// record does not hold. The record green point, which the next session's
+// start line reads, waits on one declared after a gate's last green
+// (recordGreenOf, markHeld, which says why not on one before), and its
+// tree, where the
+// Stop reads one, still moves the gate (bind). A declaration without an
+// execution is never a gate run, which has no outcome without one.
 //
 // Sources: classify reads a declaration's FilePath and WrittenPaths as paths,
 // both capped by store.CapDeclaration before the write, and no other field:
@@ -177,8 +209,9 @@ func classify(run *store.Run) (runs []gateRun, writes []write, unnamed []int64, 
 	if run == nil {
 		return nil, nil, nil, nil
 	}
-	runs, writes, unnamed, rewritten, _ = classifyWith(run, pickExecutions(run))
-	return runs, writes, unnamed, rewritten
+	var c classified
+	classifyWith(run, pickExecutions(run), &c)
+	return c.runs, c.writes, c.unnamed, c.rewritten
 }
 
 // pickExecutions is the execution each call is judged on, by ToolUseID:
@@ -196,18 +229,30 @@ func pickExecutions(run *store.Run) map[string]*store.Execution {
 	return picked
 }
 
-// classifyWith is classify over picked, pickExecutions(run), and keys, the
-// projects its gate runs name (ProjectID); run is not nil.
-func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []gateRun, writes []write, unnamed []int64, rewritten []int64, keys projectKeys) {
+// classifyWith is classify over picked, pickExecutions(run), into c's
+// runs, writes, unnamed, held and rewritten; it returns keys, the projects
+// its gate runs name (ProjectID). run is not nil.
+func classifyWith(run *store.Run, picked map[string]*store.Execution, c *classified) (keys projectKeys) {
+	var runs []gateRun
+	var writes, scratch []write
+	var unnamed, rewritten, blind []int64
+	var held []heldWrite
 	var pending []int // indexes into runs whose kind waits on the inference
 	ended := taskEnds(run)
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
-		n := len(writes)
-		writes, unnamed = appendWrites(writes, unnamed, d)
 		e := picked[d.ToolUseID]
-		if e != nil && hashed(d) {
-			writes[n].SHA = e.ContentSHA256
+		if end := endOf(d, e); end != EndOK {
+			scratch, blind = appendWrites(scratch[:0], blind[:0], d)
+			held = appendHeld(held, scratch, len(blind) > 0, d, end)
+		} else {
+			n := len(writes)
+			writes, unnamed = appendWrites(writes, unnamed, d)
+			// endOf gives EndOK only with an execution; the sha is read
+			// where one is held, so the pick and the ending stay apart.
+			if e != nil && hashed(d) {
+				writes[n].SHA = e.ContentSHA256
+			}
 		}
 		if e == nil || d.ToolName != "Bash" {
 			continue
@@ -236,9 +281,11 @@ func classifyWith(run *store.Run, picked map[string]*store.Execution) (runs []ga
 
 	sort.SliceStable(runs, func(i, j int) bool { return runs[i].Seq < runs[j].Seq })
 	sort.SliceStable(writes, func(i, j int) bool { return writes[i].Seq < writes[j].Seq })
+	sort.SliceStable(held, func(i, j int) bool { return held[i].Seq < held[j].Seq })
 	slices.Sort(unnamed)
 	slices.Sort(rewritten)
-	return runs, writes, unnamed, rewritten, keys
+	c.runs, c.writes, c.unnamed, c.held, c.rewritten = runs, writes, unnamed, held, rewritten
+	return keys
 }
 
 // outranks reports whether cur, the execution picked so far for a call, wins

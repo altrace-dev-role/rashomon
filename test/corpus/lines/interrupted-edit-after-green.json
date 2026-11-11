@@ -1,0 +1,39 @@
+{
+  "reason": "After a green go test, the person interrupts a second Edit. Whether it wrote is not in the record, so the line must not read verified; and nothing failed, so it must not say the call failed.",
+  "provenance": "constructed from the review of the base fix (fixture zz-s7-interrupted-edit-after-green): the control's edit and pass, then an Edit whose failure event carries is_interrupt, in a go.mod project",
+  "final_message": "The tests pass. You stopped my last edit.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./..."
+      },
+      "outcome": "ok",
+      "output": "ok  \tm\t0.004s\n"
+    },
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "c",
+        "new_string": "d"
+      },
+      "outcome": "interrupted"
+    }
+  ]
+}

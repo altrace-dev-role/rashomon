@@ -21,8 +21,8 @@ type ids = map[string]int
 // integrityOf is integrity over r for the window (from, at], from classify's
 // writes, as Evaluate will call it.
 func integrityOf(r *store.Run, from, at int64) Integrity {
-	_, writes, _, _ := classify(r)
-	return integrity(r, pickExecutions(r), writes, from, at, "")
+	c := classifiedOf(r)
+	return integrity(r, pickExecutions(r), c.writes, c.held, from, at, "")
 }
 
 // labelTest gives declaration i the test-file label the hook derives for a
@@ -212,6 +212,23 @@ func TestINT6_UnknownMarkerAndNilMarksAreIgnored(t *testing.T) {
 		r.Executions = []store.Execution{failed, r.Executions[0]}
 		wantIntegrity(t, integrityOf(r, 0, 2), IntegrityCounts{})
 	})
+	t.Run("two ok executions, the one read last with the lower seq", func(t *testing.T) {
+		// Both ended ok, so the call is an edit either way, and the marks
+		// are still the pick's (outranks: the higher seq), not the last
+		// read: a pick of its own would read marks of an execution classify
+		// did not judge.
+		r := runOf(t, edit(1, p).marks(ids{"go.t_skip": 1}, nil))
+		older := r.Executions[0]
+		if older.Seq == nil {
+			t.Fatal("premise: the execution has a seq")
+		}
+		s := *older.Seq - 1
+		older.Seq, older.EditMarks = &s, &store.EditMarks{Basis: "edit_delta", Version: 1}
+		r.Executions = append(r.Executions, older)
+		if got := integrityOf(r, 0, 2); got.Counts.SkipsAdded != 1 {
+			t.Errorf("counts %+v, want the higher seq's skip", got.Counts)
+		}
+	})
 	t.Run("a failed edit carrying marks", func(t *testing.T) {
 		// A failed Edit lands nothing: marks on it would make a net no later
 		// edit resolves, so they are read no further and counted nowhere,
@@ -225,7 +242,7 @@ func TestINT6_UnknownMarkerAndNilMarksAreIgnored(t *testing.T) {
 		}
 	})
 	t.Run("a nil run", func(t *testing.T) {
-		wantIntegrity(t, integrity(nil, nil, nil, 0, 10, ""), IntegrityCounts{})
+		wantIntegrity(t, integrity(nil, nil, nil, nil, 0, 10, ""), IntegrityCounts{})
 	})
 }
 
@@ -259,7 +276,7 @@ func int8Run(t *testing.T) *store.Run {
 func TestINT8_RecordOrderDoesNotChangeTheOutput(t *testing.T) {
 	r := int8Run(t)
 	_, writes, _, _ := classify(r)
-	got := integrity(r, pickExecutions(r), writes, 0, 12, "")
+	got := integrity(r, pickExecutions(r), writes, nil, 0, 12, "")
 	wantIntegrity(t, got, IntegrityCounts{TestsDelta: -2, SkipsAdded: 2, SuppressionsAdded: 2},
 		IntegrityEntry{Check: TestsOnlyThenGreen, Seq: 5},
 		IntegrityEntry{Check: TestRemoved, Marker: "go.test_def", Seq: 7},
@@ -278,7 +295,7 @@ func TestINT8_RecordOrderDoesNotChangeTheOutput(t *testing.T) {
 		rng.Shuffle(len(writes), func(i, j int) { writes[i], writes[j] = writes[j], writes[i] })
 		// picked points into r.Executions, which the shuffle moves: it is
 		// picked again over the shuffled record.
-		b, err := json.Marshal(integrity(r, pickExecutions(r), writes, 0, 12, ""))
+		b, err := json.Marshal(integrity(r, pickExecutions(r), writes, nil, 0, 12, ""))
 		if err != nil || !bytes.Equal(b, want) {
 			t.Fatalf("shuffle %d: %s, want %s", i, b, want)
 		}
@@ -457,13 +474,13 @@ func BenchmarkIntegrity(b *testing.B) {
 	r, at := benchIntegrityRun(b)
 	_, writes, _, _ := classify(r)
 	picked := pickExecutions(r)
-	if got := integrity(r, picked, writes, 0, at, ""); len(got.Unresolved) != 3 || got.Counts.TestsDelta != 50 {
+	if got := integrity(r, picked, writes, nil, 0, at, ""); len(got.Unresolved) != 3 || got.Counts.TestsDelta != 50 {
 		b.Fatalf("the fixture gives %+v, want three entries (the pair and two paths' assertions) and TestsDelta 50", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		integrity(r, picked, writes, 0, at, "")
+		integrity(r, picked, writes, nil, 0, at, "")
 	}
 	b.ReportMetric(float64(len(writes)), "writes")
 }

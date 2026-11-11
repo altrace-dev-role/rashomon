@@ -155,8 +155,8 @@ func judgmentRow(in evidenceIn) Expected {
 // task states no mechanism, unmet when a tool call targeted the task file
 // (3.2's StoreTouched entry on it: a mechanism an agent may have written is
 // not the person's, D-A3), and met otherwise. The entry is the declared
-// write, outcome-blind as the ledger's writes are (D135), so the reason says
-// the call targeted the file, never that it wrote it.
+// write, outcome-blind as store_touched's writes are (D135), so the reason
+// says the call targeted the file, never that it wrote it.
 func mechanismRow(snap Snapshot, in evidenceIn) Expected {
 	switch {
 	case !in.wrote:

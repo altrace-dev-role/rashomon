@@ -357,6 +357,19 @@ type IntegrityFrozenPathBinding struct {
 // rule id its slot refuses.
 type IntegrityFrozenPathUnnamedBinding struct{}
 
+// IntegrityFrozenPathTargetedBinding is the frozen-path line at a call that
+// failed or was interrupted: the path it targeted, which the record does not
+// say it wrote (a failed Edit applied nothing), and the rule's id. The words
+// are store_touched's for an outcome it cannot read (D135).
+type IntegrityFrozenPathTargetedBinding struct {
+	Path slot.Path   `slot:"path"`
+	Rule slot.RuleID `slot:"rule_id"`
+}
+
+// IntegrityFrozenPathTargetedUnnamedBinding is the targeted line for a path
+// or a rule id its slot refuses.
+type IntegrityFrozenPathTargetedUnnamedBinding struct{}
+
 // OrderingRuleThenBinding is ordering-rule's line: the program of the call
 // that ran before the earlier step an order rule requires, and the id of the
 // rule.
@@ -576,6 +589,14 @@ func templatesLater() map[templateKey]template {
 		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathUnnamedBinding{})}: {
 			id:     "integrity-frozen-path-unnamed/v1",
 			format: "rashomon record: this call wrote a file that a spec rule protects.",
+		},
+		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathTargetedBinding{})}: {
+			id:     "integrity-frozen-path-targeted/v1",
+			format: "rashomon record: this call targeted {path}, which spec rule {rule_id} protects.",
+		},
+		{pattern.Integrity, reflect.TypeOf(IntegrityFrozenPathTargetedUnnamedBinding{})}: {
+			id:     "integrity-frozen-path-targeted-unnamed/v1",
+			format: "rashomon record: this call targeted a file that a spec rule protects.",
 		},
 	}
 }

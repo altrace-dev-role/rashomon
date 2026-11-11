@@ -301,7 +301,7 @@ func TestFUN15b_TemplatesUseNoBannedWord(t *testing.T) {
 	}
 	// value.go, and the files the clause and the impact (card REPORT1a) put
 	// words in: every string literal in them is held to the list too.
-	for _, name := range []string{"value.go", "clause.go", "impact.go"} {
+	for _, name := range []string{"value.go", "unconfirmed.go", "clause.go", "impact.go"} {
 		fset := token.NewFileSet()
 		file, err := parser.ParseFile(fset, name, nil, 0)
 		if err != nil {
