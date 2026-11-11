@@ -110,8 +110,8 @@ func TestPLW1e_SyncWritesTheLogTheDigestsAndAnIgnore(t *testing.T) {
 	for _, e := range listed {
 		names = append(names, e.Name())
 	}
-	if got := strings.Join(names, " "); got != ".gitignore pgraph.digests pgraph.log pgraph.walk" {
-		t.Errorf("%s holds %s, want .gitignore, the digests, the log and the walk file (no temp file left)", dir, got)
+	if got := strings.Join(names, " "); got != ".gitignore pgraph.digests pgraph.log pgraph.symbols pgraph.walk" {
+		t.Errorf("%s holds %s, want .gitignore, the digests, the log, the symbols and the walk file (no temp file left)", dir, got)
 	}
 }
 

@@ -72,6 +72,30 @@ func TestRES28e_MedianOfNine(t *testing.T) {
 	}
 }
 
+// TestPE1b_LevelGapIsTheLargestStepNotTheRange (PERF-EDGE1): CI run
+// 42447803644 (linux) read ten fresh cold calls 2064 bytes apart that are
+// one level, the noise of sync.Map's seeded trie nodes, with no step over
+// 944; the same runs with the last moved 3700 bytes over the top (pe1-gmp's
+// nearest distance between the two levels) are two. Break: LevelGap returns
+// the range, and the first case reads 2064.
+func TestPE1b_LevelGapIsTheLargestStepNotTheRange(t *testing.T) {
+	one := []int64{146400, 147200, 148144, 146224, 146080, 146880, 146080, 146560, 146544, 147040}
+	if gap, below, above, ok := LevelGap(one); !ok || gap != 944 || below != 147200 || above != 148144 {
+		t.Errorf("one level: LevelGap = %d from %d to %d, %v; want 944 from 147200 to 148144", gap, below, above, ok)
+	}
+	two := append([]int64(nil), one...)
+	two[9] = 148144 + 3700
+	if gap, below, above, ok := LevelGap(two); !ok || gap != 3700 || below != 148144 || above != 151844 {
+		t.Errorf("two levels: LevelGap = %d from %d to %d, %v; want 3700 from 148144 to 151844", gap, below, above, ok)
+	}
+	if gap, _, _, ok := LevelGap([]int64{146080, 146080}); !ok || gap != 0 {
+		t.Errorf("equal runs: LevelGap = %d, %v; want 0, true", gap, ok)
+	}
+	if _, _, _, ok := LevelGap([]int64{146080}); ok {
+		t.Error("one run reported ok")
+	}
+}
+
 func TestRES2b_ParseInitTraceSumsAndFailsClosed(t *testing.T) {
 	trace := "init internal/bytealg @0.008 ms, 0.001 ms clock, 0 bytes, 0 allocs\n" +
 		"init runtime @0.017 ms, 0.016 ms clock, 0 bytes, 0 allocs\n" +

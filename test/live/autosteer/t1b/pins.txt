@@ -1,0 +1,32 @@
+# T1b pins: slice T1 re-run under the corrected harness (B448: the cli entrypoint exported always; B449: the judge
+# refuses without go; B450: gofmt by exit status). The same tree, binaries, pgraph, prompt, caps, knowledge digests and
+# baseline log as T1 (t1/pins.txt, frozen at 158c7a29); the variable names keep the T1_ prefix because they are the
+# harness scripts' interface (run.sh, a2.sh, a3.sh). Frozen by the T1b pre-registration commit, never edited after a
+# run. Pre-registration adjustment before the first T1b run (the owner's word, 2026-11-05 15:5x PST; PLAN section 7.4):
+# T1_MAX_TURNS 150 and T1_BUDGET_USD 15 in place of T1's 80 and 10, because seven of the nine pilot runs ended at 80 with
+# partial trees (A3 neither 9/9) and the primary outcome could not vary; A1a and A1b (read before the first edit) stay
+# comparable with the pilot, A3 to A8 are read against the cap difference. Nothing else moves.
+T1B_OF=t1
+# The scratch tree every arm edits, and the arm R binary's source: origin/main after PR #281.
+T1_TREE_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
+T1_R_BIN_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
+# The arm G binary: the autosteer/contracts-v2 head that closes W-M1.9; filled before the first G run.
+T1_G_BIN_SHA=1938fbc39b8f460cd5b8a8e3e815ece6643251f3
+# Arm G syncs with the branch's pgraph at T1_G_PGRAPH_SHA (its symbols sidecar, W-M1.1, is what the G binary reads;
+# pgraph has differed between main and the branch since W-M1.1). The judge's pgraph, and arm R's, is built from
+# T1_TREE_SHA's module (T1_PGRAPH_SHA).
+T1_G_PGRAPH_SHA=1938fbc39b8f460cd5b8a8e3e815ece6643251f3
+T1_PGRAPH_SHA=5f851724babce82d192e3917cd43ffcad123e9ae
+# The pinned tree's own pgraph.log (pgraph sync at T1_TREE_SHA, 17236 rows): A2 counts new symbols against it.
+T1_BASELINE_LOG_SHA256=da436b5797596fc7491ecb7b54edacec7f5421a28dd85c9853759c43f542852d
+# Session caps (section 7.3; ruling 12). The budget is the per-run hard cap; the n=10 gate is a 2.50 USD mean at n=3.
+T1_MODEL=sonnet
+T1_MAX_TURNS=150
+T1_BUDGET_USD=15
+T1_N3_MEAN_CEILING_USD=2.50
+T1_ALLOWED_TOOLS="Read,Grep,Glob,Edit,Write,LS,Bash"
+# Knowledge for arm G: imported at pinned digests from the owner's ledger and notes (outside git; digests pinned
+# here before the first G run so the import is reproducible). Pinned 2026-11-05 at 270 and 1073 lines; the frozen
+# copies live in ~/altrace-backups/t1-knowledge/ and run.sh refuses a file at any other digest.
+T1_KNOWLEDGE_LEDGER_SHA256=e7c6cb7a8808b49e4b24a2ebe192bcbb2cdeefbde9c192632a44e15871a616cc
+T1_KNOWLEDGE_NOTES_SHA256=0ebdd0633809e26f87fb21447f401d99821134cce2f46a30748d363cbf42a031

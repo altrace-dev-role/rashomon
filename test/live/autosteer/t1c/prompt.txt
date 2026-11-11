@@ -1,0 +1,1 @@
+Add blast radius to the platform read. For every Go symbol an edit touches, report two numbers: how many callers are proven, and how many are proven or possible. Show the numbers wherever the platform read already appears. Keep the existing tests green and add tests for the new numbers.

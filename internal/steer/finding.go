@@ -91,6 +91,13 @@ type Finding struct {
 	// (D229). "" for every other finding. A closed word, written on the
 	// line's facts and named in the note's text.
 	OutcomeFrom string
+	// Source is the store the claim came from and the row in it (AD19): a
+	// graph, knowledge, spec, record or proposer row by its global id and
+	// tier; the zero Source for a record-era pattern's finding.
+	Source Source
+	// Unit is the global id of the unit the finding is about (g:<rid>#unit:
+	// <lang>:<dir>), "" when the claim has no unit.
+	Unit string
 }
 
 // OutcomeFromOutputSummary is the one OutcomeFrom word a Finding carries:
@@ -113,13 +120,21 @@ var ErrFinding = errors.New("steer: finding outside the contract")
 // strictly and no evidence seq is after AfterSeq, the last record seq the
 // decision saw; and a rendered Message belongs to the Finding's own
 // pattern, so a briefing's multi-line text cannot ride another pattern's
-// single-line channel (output rule G4, tech 7.2.5, is the backstop).
+// single-line channel (output rule G4, tech 7.2.5, is the backstop); and a
+// Source is empty or a listed kind with a global id, and a Unit is empty
+// or a global unit id (AD19).
 func (f Finding) Check() error { return f.check(false) }
 
 // check is Check with own, ownChannel's report on the event the finding is
 // routed on: there an own-channel pattern, which has no step 8 number (tech
 // 4.2.4, TestSTR16), stands at priority 0. Every other rule holds as Check's.
 func (f Finding) check(own bool) error {
+	if err := f.Source.check(); err != nil {
+		return err
+	}
+	if f.Unit != "" && !isGlobal(f.Unit, "unit:") {
+		return fmt.Errorf("%w: unit is not a global unit id", ErrFinding)
+	}
 	switch {
 	case !pattern.KindValid(f.Pattern, string(f.Kind)):
 		return fmt.Errorf("%w: %q is not a frozen kind of %q", ErrFinding, f.Kind, f.Pattern)

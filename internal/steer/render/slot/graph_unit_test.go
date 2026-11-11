@@ -1,0 +1,290 @@
+package slot
+
+import (
+	"strings"
+	"testing"
+)
+
+func platformUnit() GraphLine {
+	return NewUnitLine(UnitFact{Path: "internal/platform", Names: []Ident{"Read", "Callers", "Locate", "LogPath"},
+		Consumers: []RelPath{"cmd/rashomon/report_platform.go", "cmd/rashomon/blast.go", "cmd/rashomon/laststop.go"},
+		Lessons:   []KnowledgeID{"dec:D145", "dec:D149-addendum"}})
+}
+
+// TestGU1_AUnitLineAndARoledCodeLineRenderAsOneSentenceEach: a unit line
+// is its path, the names the request touches, the files outside it that
+// consume them and the records that apply, each list cut at its cap; a
+// code line with a role opens with the role's word; a requirement is a
+// knowledge kind of its own.
+func TestGU1_AUnitLineAndARoledCodeLineRenderAsOneSentenceEach(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		line GraphLine
+		want string
+		kind string
+	}{
+		{"unit", platformUnit(),
+			"unit 'internal/platform' declares 'Read', 'Callers', 'Locate' and 1 more; is consumed by 'cmd/rashomon/report_platform.go', 'cmd/rashomon/blast.go' and 1 more; D145, D149-addendum apply", "unit"},
+		{"bare unit", NewUnitLine(UnitFact{Path: "pgraph"}), "unit 'pgraph'", "unit"},
+		{"reuse", NewCodeLine(CodeFact{Path: "internal/platform/callers.go", Role: RoleReuse, Names: []Ident{"Callers", "Locate"}}),
+			"reuse 'internal/platform/callers.go' declares 'Callers', 'Locate'", "code"},
+		{"consumer", NewCodeLine(CodeFact{Path: "cmd/rashomon/report_platform.go", Role: RoleConsumer, Names: []Ident{"platformReadWithin"}, Calls: []Ident{"Read", "LogPath"}}),
+			"consumer 'cmd/rashomon/report_platform.go' declares 'platformReadWithin'; calls 'Read', 'LogPath'", "code"},
+		{"requirement", NewKnowledgeLine(KnowledgeFact{Kind: KnowledgeRequirement, ID: "req:PF-PL11", Path: "internal/platform/read.go",
+			Clause: "Unknown, never zero; status none; missing: fan-in itself (PF-PL7)", Source: "truth_table.json"}),
+			"requirement PF-PL11 applies to 'internal/platform/read.go': owed 'Unknown, never zero; status none; missing: fan-in itself (PF-PL7)'; source 'truth_table.json'", "requirement"},
+	} {
+		v, err := Bind(c.line)
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+		if got := v.(GraphLine); got.Kind() != c.kind || !got.Lists() {
+			t.Errorf("%s: kind %q lists %v", c.name, got.Kind(), got.Lists())
+		}
+	}
+}
+
+// TestGU1_TheUnitRecordFormHoldsItsDigestCountsAndIds: the record form of
+// a unit line keys the path, counts the names and consumers and keeps the
+// ids; a code line's role survives into the record; a role outside the two
+// words, a unit path that fails a check and a record form naming a path
+// are refused; a consumer path that fails a check is left out and counted.
+func TestGU1_TheUnitRecordFormHoldsItsDigestCountsAndIds(t *testing.T) {
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(platformUnit())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := v.(GraphLine).Record(digest)
+	if !r.Keyed() || r.Digest() != strings.Repeat("ab", 32) || r.Kind() != "unit" {
+		t.Fatalf("record = keyed %v digest %q kind %q", r.Keyed(), r.Digest(), r.Kind())
+	}
+	if m := r.More(); m != (Counts{Names: 4, Consumers: 3}) {
+		t.Errorf("record counts = %+v", m)
+	}
+	if u, ok := r.Unit(); !ok || u.Path != "" || len(u.Names) != 0 || len(u.Consumers) != 0 || len(u.Lessons) != 2 {
+		t.Errorf("record unit fact = %+v %v", u, ok)
+	}
+	rv, err := Bind(r)
+	if err != nil {
+		t.Fatalf("Bind(record): %v", err)
+	}
+	if want := "a unit on record declares 4 names; is consumed by 3 files; D145, D149-addendum apply"; rv.Text() != want {
+		t.Errorf("record text\n got %q\nwant %q", rv.Text(), want)
+	}
+	cv, _ := Bind(NewCodeLine(CodeFact{Path: "a.go", Role: RoleConsumer, Names: []Ident{"f"}}))
+	cr, _ := Bind(cv.(GraphLine).Record(digest))
+	if want := "consumer a file on record declares 1 names"; cr.Text() != want {
+		t.Errorf("roled record text = %q", cr.Text())
+	}
+	if _, err := Bind(NewCodeLine(CodeFact{Path: "a.go", Role: "target"})); err == nil {
+		t.Error("a role outside reuse and consumer was bound")
+	}
+	if _, err := Bind(NewUnitLine(UnitFact{Path: "../../../../../far"})); err == nil {
+		t.Error("a unit path climbing five directories was bound")
+	}
+	if _, err := Bind(GraphLine{keyed: true, unit: &UnitFact{Path: "internal/platform"}}); err == nil {
+		t.Error("a record form holding a unit path was bound")
+	}
+	lv, err := Bind(NewUnitLine(UnitFact{Path: "internal/platform", Consumers: []RelPath{"ok.go", "/abs.go"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lv.Text(); got != "unit 'internal/platform' is consumed by 'ok.go' and 1 more" {
+		t.Errorf("a refused consumer: %q", got)
+	}
+	if _, err := Bind(GraphLine{code: &CodeFact{Path: "a.go"}, unit: &UnitFact{Path: "b"}}); err == nil {
+		t.Error("a line holding a code and a unit fact was bound")
+	}
+}
+
+// TestGU2_TheUnitLineStatesItsBasisAndNamesTheRunnerUp (S3, AC-M1.1
+// clause 3): a unit line says how the unit was claimed, in one of three
+// words, and a claim by word coverage names the runner-up unit when the
+// ladder had one, so a wrong unit line is never delivered as a bare fact;
+// a basis outside the three words and a runner-up path that fails a check
+// refuse the line; a line with no basis renders as before; the record
+// form keeps the basis word and never the runner-up's path.
+func TestGU2_TheUnitLineStatesItsBasisAndNamesTheRunnerUp(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fact UnitFact
+		want string
+	}{
+		{"named", UnitFact{Path: "internal/safe", Basis: BasisNamed, Names: []Ident{"Guard"}},
+			"unit 'internal/safe' (named in the request) declares 'Guard'"},
+		{"unit-name", UnitFact{Path: "internal/hook", Basis: BasisUnitName},
+			"unit 'internal/hook' (by its name)"},
+		{"coverage with runner-up", UnitFact{Path: "internal/store", Basis: BasisCoverage, RunnerUp: "internal/safe", Names: []Ident{"barrierSync"}},
+			"unit 'internal/store' (by word coverage; runner-up 'internal/safe') declares 'barrierSync'"},
+		{"coverage alone", UnitFact{Path: "internal/store", Basis: BasisCoverage},
+			"unit 'internal/store' (by word coverage)"},
+		{"no basis", UnitFact{Path: "pgraph"}, "unit 'pgraph'"},
+	} {
+		v, err := Bind(NewUnitLine(c.fact))
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		fact UnitFact
+	}{
+		{"basis outside the three words", UnitFact{Path: "internal/store", Basis: "guess"}},
+		{"runner-up path fails a check", UnitFact{Path: "internal/store", Basis: BasisCoverage, RunnerUp: "/etc/passwd"}},
+	} {
+		if _, err := Bind(NewUnitLine(c.fact)); err == nil {
+			t.Errorf("%s: bound", c.name)
+		}
+	}
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(NewUnitLine(UnitFact{Path: "internal/store", Basis: BasisCoverage, RunnerUp: "internal/safe"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := v.(GraphLine).Record(digest)
+	u, ok := rec.Unit()
+	if !ok || u.Basis != BasisCoverage || u.RunnerUp != "" {
+		t.Errorf("record form unit %+v (want the basis kept and no runner-up path)", u)
+	}
+	if got := rec.Text(); got != "a unit on record" {
+		t.Errorf("record text %q", got)
+	}
+}
+
+// TestGU3_AReuseLineStatesItsBasis (W-M1.25, AC-M1.5): a reuse line says
+// why its file is the thing to reuse, in one of three words (the request
+// named it after a use word, it holds the code the addition names, or the
+// addition's existing code calls it), so a reuse line is never a bare
+// fact; a basis outside the three words, or one on a consumer line or a
+// line with no role, refuses the line; a reuse line with no basis renders
+// as before; the record form keeps the basis word.
+func TestGU3_AReuseLineStatesItsBasis(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fact CodeFact
+		want string
+	}{
+		{"use", CodeFact{Path: "services/auth/auth/cache.py", Role: RoleReuse, Basis: ReuseByUse, Names: []Ident{"cache_ttl"}},
+			"reuse 'services/auth/auth/cache.py' (named to use) declares 'cache_ttl'"},
+		{"addition", CodeFact{Path: "store/record.py", Role: RoleReuse, Basis: ReuseByAddition, Names: []Ident{"load_instructions"}},
+			"reuse 'store/record.py' (holds the addition's code) declares 'load_instructions'"},
+		{"call", CodeFact{Path: "platform/callers.py", Role: RoleReuse, Basis: ReuseByCall, Names: []Ident{"callers"}, Lessons: []KnowledgeID{"dec:D145"}},
+			"reuse 'platform/callers.py' (called by the addition's code) declares 'callers'; D145 applies"},
+		{"no basis", CodeFact{Path: "platform/callers.py", Role: RoleReuse, Names: []Ident{"callers"}},
+			"reuse 'platform/callers.py' declares 'callers'"},
+	} {
+		v, err := Bind(NewCodeLine(c.fact))
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		fact CodeFact
+	}{
+		{"basis outside the three words", CodeFact{Path: "a.py", Role: RoleReuse, Basis: "guess"}},
+		{"basis on a consumer", CodeFact{Path: "a.py", Role: RoleConsumer, Basis: ReuseByUse}},
+		{"basis with no role", CodeFact{Path: "a.py", Basis: ReuseByUse}},
+	} {
+		if _, err := Bind(NewCodeLine(c.fact)); err == nil {
+			t.Errorf("%s: bound", c.name)
+		}
+	}
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(NewCodeLine(CodeFact{Path: "services/auth/auth/cache.py", Role: RoleReuse, Basis: ReuseByUse, Names: []Ident{"cache_ttl"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := v.(GraphLine).Record(digest)
+	if f, ok := rec.Code(); !ok || f.Basis != ReuseByUse || f.Role != RoleReuse {
+		t.Errorf("record form code %+v (want the role and the basis kept)", f)
+	}
+	rv, err := Bind(rec)
+	if err != nil {
+		t.Fatalf("Bind(record): %v", err)
+	}
+	if got := rv.Text(); got != "reuse a file on record (named to use) declares 1 names" {
+		t.Errorf("record text %q", got)
+	}
+	if _, err := Bind(GraphLine{keyed: true, code: &CodeFact{Role: RoleReuse, Basis: "guess"}}); err == nil {
+		t.Error("a record form with a basis outside the three words was bound")
+	}
+}
+
+// TestGU4_AKnowledgeLineStatesItsPolarityByKind (W-M1.25, AC-M1.5): a
+// knowledge line states the record's standing by kind, as fact and never
+// as an order (LUI-11): a lesson's title is the failure it was drawn from
+// and its clause the rule, a decision's clause is what was decided, a
+// requirement's clause is what is owed; the clause carries the rule and
+// the title stands in when the record has no clause; a title that fails
+// a check is left out and the line renders as without one; the record
+// form keeps the title, and a record form whose title fails a check is
+// refused.
+func TestGU4_AKnowledgeLineStatesItsPolarityByKind(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fact KnowledgeFact
+		want string
+	}{
+		{"lesson with title and clause", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B227", Path: "internal/safe/guard.go",
+			Title: "closed a row by reading the dispatch sha, not the head", Clause: "a claim whose last read names a sha other than the head is unbacked", Source: "FAILURE-LEDGER.txt"},
+			"lesson B227 applies to 'internal/safe/guard.go': failure 'closed a row by reading the dispatch sha, not the head'; rule 'a claim whose last read names a sha other than the head is unbacked'; source 'FAILURE-LEDGER.txt'"},
+		{"lesson with title alone", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B228", Title: "ruled pacing on a cap the owner had raised"},
+			"lesson B228: failure 'ruled pacing on a cap the owner had raised'"},
+		{"lesson with clause alone", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:INC-212", Clause: "a session-lifetime change changes the purge predicate too"},
+			"lesson INC-212: rule 'a session-lifetime change changes the purge predicate too'"},
+		{"decision with title and clause", KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:D100", Title: "the flush guard lives in the judge",
+			Clause: "the post step's flush guard lives in hook.judge and reads the store's sticky error"},
+			"decision D100: decided 'the post step's flush guard lives in hook.judge and reads the store's sticky error'"},
+		{"decision with title alone", KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:D101", Title: "DOCS9 carded", Source: "docs/DECISIONS.md"},
+			"decision D101: decided 'DOCS9 carded'; source 'docs/DECISIONS.md'"},
+		{"requirement with title and clause", KnowledgeFact{Kind: KnowledgeRequirement, ID: "req:PF-HD1", Path: "internal/ledger/ledger.go",
+			Title: "History from day one", Clause: "History from day one; status partial; missing: AppendLabel has no writer"},
+			"requirement PF-HD1 applies to 'internal/ledger/ledger.go': owed 'History from day one; status partial; missing: AppendLabel has no writer'"},
+		{"requirement with title alone", KnowledgeFact{Kind: KnowledgeRequirement, ID: "req:PF-HD10", Title: "Storage bounds and quarantine"},
+			"requirement PF-HD10: owed 'Storage bounds and quarantine'"},
+		{"nothing to state", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B229", Path: "a.go"}, "lesson B229 applies to 'a.go'"},
+		{"title fails the length check", KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B230", Title: Approved(strings.Repeat("x", 161)), Clause: "the rule"},
+			"lesson B230: rule 'the rule'"},
+		{"title holds a URL", KnowledgeFact{Kind: KnowledgeDecision, ID: "dec:D102", Title: "see https://example.com/x", Clause: "the design"},
+			"decision D102: decided 'the design'"},
+	} {
+		v, err := Bind(NewKnowledgeLine(c.fact))
+		if err != nil {
+			t.Fatalf("%s: Bind: %v", c.name, err)
+		}
+		if got := v.Text(); got != c.want {
+			t.Errorf("%s: text\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	digest := func(string) string { return strings.Repeat("ab", 32) }
+	v, err := Bind(NewKnowledgeLine(KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B227", Path: "internal/safe/guard.go",
+		Title: "closed a row by reading the dispatch sha, not the head", Clause: "a claim whose last read names a sha other than the head is unbacked", Source: "FAILURE-LEDGER.txt"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := v.(GraphLine).Record(digest)
+	if k, ok := rec.Knowledge(); !ok || k.Title != "closed a row by reading the dispatch sha, not the head" || k.Path != "" || k.Source != "" {
+		t.Errorf("record form knowledge %+v (want the title kept, no path, no source)", k)
+	}
+	rv, err := Bind(rec)
+	if err != nil {
+		t.Fatalf("Bind(record): %v", err)
+	}
+	if want := "lesson B227 applies to a file on record: failure 'closed a row by reading the dispatch sha, not the head'; rule 'a claim whose last read names a sha other than the head is unbacked'; source on record"; rv.Text() != want {
+		t.Errorf("record text\n got %q\nwant %q", rv.Text(), want)
+	}
+	if _, err := Bind(GraphLine{keyed: true, know: &KnowledgeFact{Kind: KnowledgeLesson, ID: "les:B230", Title: Approved(strings.Repeat("x", 161))}}); err == nil {
+		t.Error("a record form whose title fails a check was bound")
+	}
+}

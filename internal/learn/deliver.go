@@ -129,25 +129,56 @@ func Delivered(lines [][]byte) map[string]bool {
 			spanText(b, sp[dkState]) != string(steer.LineStateDelivered) && spanText(b, sp[dkSuppressedBy]) != string(steer.SuppressedByArmOff) {
 			continue
 		}
-		id := ""
+		var ids []string
 		switch spanText(b, sp[dkPattern]) {
 		case string(pattern.LearnedFact):
-			id = spanText(b, sp[dkKey])
+			ids = append(ids, spanText(b, sp[dkKey]))
 		case string(pattern.TaskPreflight):
 			if l, err := jsonscan.Lookup(b, sp[dkSlots], "lesson"); err == nil {
-				id = spanText(b, l)
+				ids = append(ids, spanText(b, l))
 			}
+			ids = append(ids, graphKnowledge(b, sp[dkSlots])...)
 		}
-		if id == "" {
-			continue
+		for _, id := range ids {
+			if id == "" {
+				continue
+			}
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[id] = true
 		}
-		if out == nil {
-			out = map[string]bool{}
-		}
-		out[id] = true
 	}
 	return out
 }
+
+// graphKnowledge is the knowledge ids a task-preflight line's graph brief
+// gave (card GRAPH-SLOT1): for each of its line slots, the id of a
+// knowledge line and the ids of the records applying to a code or table
+// line, so the learn loop counts a lesson the graph delivered as given.
+func graphKnowledge(b []byte, slots jsonscan.Span) []string {
+	var ids []string
+	for _, name := range graphLineSlots {
+		line, err := jsonscan.Lookup(b, slots, name)
+		if err != nil || line.Kind != jsonscan.Object {
+			continue
+		}
+		if id, err := jsonscan.Lookup(b, line, "id"); err == nil {
+			ids = append(ids, spanText(b, id))
+		}
+		if arr, err := jsonscan.Lookup(b, line, "lessons"); err == nil && arr.Kind == jsonscan.Array {
+			_ = jsonscan.Elements(b, arr, func(el jsonscan.Span) bool {
+				ids = append(ids, spanText(b, el))
+				return true
+			})
+		}
+	}
+	return ids
+}
+
+// graphLineSlots are the graph binding's line slot names
+// (render.TaskPreflightGraphBinding).
+var graphLineSlots = [...]string{"line1", "line2", "line3", "line4", "line5"}
 
 // deliveredKeys is the one KeySet a steer line is read with here.
 func deliveredKeys() *jsonscan.KeySet {

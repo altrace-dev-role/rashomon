@@ -28,6 +28,7 @@ const (
 	StateDir    = ".pgraph"
 	LogFile     = "pgraph.log"
 	DigestsFile = "pgraph.digests"
+	SymbolsFile = "pgraph.symbols" // symbols.go: where each symbol is and what its doc says
 )
 
 // DigestsHeader is the first line of a digests file: one line per Go file a

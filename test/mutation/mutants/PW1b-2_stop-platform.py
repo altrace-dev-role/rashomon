@@ -26,9 +26,13 @@ m("PW1b-2 the log is not checked", "internal/platform/platform.go",
 m("PW1b-2 the digests are not checked", R,
   "\t\t\tif vouched.on && (err != nil || dg.sum != vouched.digests) {",
   "\t\t\tif false && vouched.on && (err != nil || dg.sum != vouched.digests) {", "TestPW1b2_ATornPair")
+# A refused walk file is the sync's form with its log line replaced (the
+# test's "refused" case), which since W-M1.1's symbols line is five lines, a
+# count the reader admits; so the break keys on the missing log line, not on
+# a count (the former `len(lines) == 4` matched nothing and survived, W-M1.9).
 m("PW1b-2 a refused walk reads as none", "internal/platform/walk.go",
-  "\tif len(lines) != 5 || lines[0] != walkHeader",
-  "\tif len(lines) == 4 {\n\t\treturn vouch{}, nil\n\t}\n\tif len(lines) != 5 || lines[0] != walkHeader", "TestPW1b2_ATornPair")
+  "\tif (len(lines) != 5 && len(lines) != 6) || lines[0] != walkHeader",
+  "\tif len(lines) > 2 && !strings.HasPrefix(lines[2], \"log\\t\") {\n\t\treturn vouch{}, nil\n\t}\n\tif (len(lines) != 5 && len(lines) != 6) || lines[0] != walkHeader", "TestPW1b2_ATornPair")
 m("PW1b-2 a bad walk file is ignored", R,
   "\t\tcase err != nil || verr != nil:", "\t\tcase err != nil || errors.Is(verr, fs.ErrClosed):", "TestPW1b2_ATornPair")
 m("PW1b-2 the Stop's guard is ignored", R,

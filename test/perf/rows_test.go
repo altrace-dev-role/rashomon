@@ -69,6 +69,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"recap.stop.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
 		// The prompt's symbol read (PW1b-ON-230 step 3): the recap pending entry over a vouched 3 MiB pgraph log.
 		"recap.pending.pgraph3MiB": {"recap", 3 << 20, "PW1b"},
+		// The prompt's graph read (W-M1.8): the recap pending entry over a synthetic index the size of this repository's own.
+		"recap.pending.graph8MiB": {"recap", 8 << 20, "W-M1.8"},
 		// The post's blast-radius read (ARCH-INLINE1): the real post entry after a Go edit, over the same log.
 		"post.edit.pgraph3MiB": {"post", 3 << 20, "PW1b"},
 		// The order rule's Then call (SPEC-RULES1 1b, #216 ruling 5): post.540B's payload under a trusted spec of one order rule.

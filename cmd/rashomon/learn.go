@@ -27,6 +27,9 @@ const learnUsage = `  rashomon learn                 list this project's lessons
                                the code is typed back, it no longer reaches
                                the agent until it is approved again
   rashomon learn import FILE     add a shared lessons file's rows at proposed
+  rashomon learn label SESSION   label each lesson or decision the session's
+                               graph brief delivered by whether the session
+                               then wrote a path its line named
 
 `
 
@@ -42,7 +45,7 @@ func cmdLearn(args []string, stdout io.Writer) error {
 		return listLessons(stdout)
 	}
 	verb, rest := args[0], args[1:]
-	if verb != "approve" && verb != "withdraw" && verb != "import" {
+	if verb != "approve" && verb != "withdraw" && verb != "import" && verb != "label" {
 		return fmt.Errorf("unknown argument %q", verb)
 	}
 	if len(rest) != 1 {
@@ -55,6 +58,12 @@ func cmdLearn(args []string, stdout io.Writer) error {
 	switch verb {
 	case "import":
 		return importLessons(l, rest[0], stdout)
+	case "label":
+		st, err := openStoreForRead()
+		if err != nil {
+			return err
+		}
+		return labelSession(l, st, rest[0], time.Now(), stdout)
 	case "withdraw":
 		return withdrawLesson(l, rest[0], stdout)
 	}
@@ -99,13 +108,14 @@ func listLessons(stdout io.Writer) error {
 		return err
 	}
 	fmt.Fprint(stdout, quarantineLine(l.QuarantinedAt()))
-	printLessons(stdout, l.Lessons(), l.Tally)
+	printLessons(stdout, l.Lessons(), l.Tally, l.Last)
 	return nil
 }
 
-// printLessons is the listing's rows, each lesson with its tally, and under
-// it why an approved one is not sent (notSentLine).
-func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) learn.Tally) {
+// printLessons is the listing's rows, each lesson with its tally, its last
+// label where it has one (the session and the basis the writer judged on),
+// and under it why an approved one is not sent (notSentLine).
+func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) learn.Tally, last func(id string) (learn.Label, bool)) {
 	for _, ls := range lessons {
 		t := tally(ls.ID)
 		bound := "no bound"
@@ -114,6 +124,9 @@ func printLessons(w io.Writer, lessons []learn.Lesson, tally func(id string) lea
 		}
 		fmt.Fprintf(w, "%s %s: %d fires, %d confirmed, %d refuted, %d unresolved; %s\n    %s\n",
 			ls.ID, ls.Tier, t.Fires, t.Confirmed, t.Refuted, t.Unresolved, bound, ls.Text)
+		if lb, ok := last(ls.ID); ok && lb.Basis != "" {
+			fmt.Fprintf(w, "    last label %s in session %s: %s\n", lb.Label, lb.SessionID, lb.Basis)
+		}
 		fmt.Fprint(w, notSentLine(ls))
 	}
 }

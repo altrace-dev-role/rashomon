@@ -284,7 +284,7 @@ func TestLRN17s_TheListNamesAStampZeroApproval(t *testing.T) {
 		{ID: "go-test-cwd", Tier: learn.TierProbation, Text: "run go test from the module root", ApprovedUnixMS: 1},
 		{ID: "make-check", Tier: learn.TierProposed, Text: "make check before a push"},
 		{ID: "host-1", Tier: learn.TierProbation, Text: "push to build.example.com after tests"},
-	}, func(string) learn.Tally { return learn.Tally{} })
+	}, func(string) learn.Tally { return learn.Tally{} }, func(string) (learn.Label, bool) { return learn.Label{}, false })
 	line := "    approved before this build; approve again to send it: `rashomon learn approve "
 	if got := strings.Count(out.String(), line); got != 1 || !strings.Contains(out.String(), line+"npm-ci`\n") {
 		t.Errorf("the list says %q; want the line once, for npm-ci alone", out.String())

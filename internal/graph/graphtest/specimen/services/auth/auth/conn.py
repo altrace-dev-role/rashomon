@@ -1,0 +1,2 @@
+def connection():
+    return None

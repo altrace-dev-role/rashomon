@@ -15,7 +15,7 @@ R = "internal/recap/state.go"
 m("DONE1 the delivery dropped", P,
   "ok && done && !withheld(&ctx) {\n", "ok && false && !withheld(&ctx) {\n", "TestDONE1_")
 m("DONE1 a prompt naming nothing carries no note", P,
-  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n", "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed {\n", "TestDONE1_")
+  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {\n", "\tif !named && !proj.lessons.Any() && p.owed.Seq <= 0 && !briefed && !graphed {\n", "TestDONE1_")
 m("DONE1 the note is a flag, not a note", D,
   "MaxLevel: steer.LevelNudge,", "MaxLevel: steer.LevelFlag,", "TestDONE1_")
 m("DONE1 the note carries another kind", D,
@@ -48,9 +48,14 @@ m("DONE1 the take writes into a nil map", R,
   "\tif s.Noted == nil {\n\t\ts.Noted = map[string]string{}\n\t}\n", "", "TestDONE1g_|TestDONE1j_")
 m("DONE1 the take not written before it answers", R,
   "\ts.Noted[sessionID] = flagged\n\treturn writeState(path, s, sessionID) == nil\n", "\treturn true\n", "TestDONE1g_")
+# The two guards below are shadowed in the hook path: promptNotes takes only
+# where recap.Turn already found a flag not yet noted for this session
+# (u != "" && u != s.Noted[sessionID], TestDONE1j_), so the acceptance tests
+# cannot see the take's own checks. They are judged where the take is
+# observed directly (W-M1.9; both survived TestDONE1_ and TestDONE1b_).
 m("DONE1 a taken Stop taken again", R,
-  "\tif flagged == \"\" || flagged == s.Noted[sessionID] {\n", "\tif flagged == \"\" {\n", "TestDONE1_")
+  "\tif flagged == \"\" || flagged == s.Noted[sessionID] {\n", "\tif flagged == \"\" {\n", "TestDONE1g_")
 m("DONE1 the take reads another session's flag", R,
-  "\tflagged := s.Unverified[sessionID]\n", "\tflagged := \"\"\n\tfor _, v := range s.Unverified {\n\t\tflagged = v\n\t}\n", "TestDONE1b_")
+  "\tflagged := s.Unverified[sessionID]\n", "\tflagged := \"\"\n\tfor _, v := range s.Unverified {\n\t\tflagged = v\n\t}\n", "TestDONE1g_")
 m("DONE1 the unverified map not capped", R,
   "[]map[string]string{s.Spoken, s.Checked, s.Shown, s.Unverified, s.Noted}", "[]map[string]string{s.Spoken, s.Checked, s.Shown}", "TestDONE1i_")

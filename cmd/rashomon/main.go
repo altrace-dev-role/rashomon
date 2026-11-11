@@ -141,8 +141,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdSpec(rest, stdout) })
 	case "backtest":
 		return guarded(stderr, func() error { return cmdBacktest(rest, stdout) })
-	case "brief":
-		return guarded(stderr, func() error { return cmdBrief(rest, stdout) })
+	case "brief", "graph":
+		return guarded(stderr, func() error { return cmdBriefOrGraph(args[0], rest, stdout) })
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -1320,7 +1320,7 @@ usage:
                                needs rashomon consent share.outcomes
   rashomon version               print the version
 
-`+receiptUsage+learnUsage+specUsage+backtestUsage+briefUsage+verbUsage+hookUsage)
+`+receiptUsage+learnUsage+specUsage+backtestUsage+briefUsage+graphUsage+verbUsage+hookUsage)
 }
 
 // forgetHost removes every call that named a host, and the host's entry in the

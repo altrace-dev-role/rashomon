@@ -83,7 +83,13 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		}, 1),
 		// The record form: the plain form, the person's words, is refused
 		// (TestCSL1_ALineRecordsTheKeyedFormAndNeverTheWords).
-		"Said": slot.NewSaidDigest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 57, "", 0),
+		"Said":        slot.NewSaidDigest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 57, "", 0),
+		"RelPath":     slot.RelPath("../acme-ops/jobs/purge.py"),
+		"Ident":       slot.Ident("public.sessions"),
+		"KnowledgeID": slot.KnowledgeID("les:INC-212"),
+		"Revision":    slot.Revision("C1+ov16"),
+		"GraphLine": slot.NewTableLine(slot.TableFact{Table: "public.sessions", Writers: []slot.Ident{"purge.run"},
+			Lessons: []slot.KnowledgeID{"les:INC-212"}}),
 	}
 	want := map[string]string{
 		"Program": `"aws"`, "Gate": `"go test"`, "Mechanism": `"AWS_PROFILE"`, "Approved": `"use the staging profile"`,
@@ -97,6 +103,12 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"LessonID":    `"go-test-cwd"`,
 		"SymbolFacts": `{"callers":[2],"dirs":["internal/a"],"more":1,"names":["CountRows"],"packages":[2]}`,
 		"Said":        `{"bytes":57,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","restates_bytes":0,"restates_digest":""}`,
+		"RelPath":     `"../acme-ops/jobs/purge.py"`,
+		"Ident":       `"public.sessions"`,
+		"KnowledgeID": `"les:INC-212"`,
+		"Revision":    `"C1+ov16"`,
+		"GraphLine": `{"calls":[],"clause":"","consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"records":0,"writers":0,"writes":0},` +
+			`"digest":"","id":"","imports":[],"kind":"table","lessons":["les:INC-212"],"names":[],"path":"","readers":[],"reads":[],"records":[],"role":"","source":"","source_digest":"","table":"public.sessions","writers":["purge.run"],"writes":[]}`,
 	}
 	for _, name := range slotTypes(t) {
 		v, ok := samples[name]

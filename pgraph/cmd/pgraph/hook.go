@@ -13,11 +13,12 @@ import (
 	"github.com/altrace-dev-role/rashomon/pgraph"
 )
 
-// The walk file: pgraph's own, beside the log and the digests, which no
-// reader but this command reads. Its lines are walkHeader, "walk\t" and the
-// tree's WalkDigest, then either "log\t" and "digests\t" with the SHA-256 of
-// each file as the sync wrote it, or "refused" for a tree a hook's sync
-// could not write.
+// The walk file: pgraph's own, beside the log, the digests and the symbols,
+// which this command reads to skip an unchanged tree and the rashomon
+// platform reader reads to take the three files as one sync's. Its lines are
+// walkHeader, "walk\t" and the tree's WalkDigest, then either "log\t",
+// "digests\t" and "symbols\t" with the SHA-256 of each file as the sync
+// wrote it, or "refused" for a tree a hook's sync could not write.
 const (
 	walkFile   = "pgraph.walk"
 	walkHeader = "pgraph-walk v0"
@@ -82,7 +83,7 @@ func hookSync(ctx context.Context, start string) (root string, err error) {
 	}
 	if _, err = syncLocked(ctx, root, walk); err != nil {
 		if fi, serr := os.Lstat(dir); serr == nil && fi.IsDir() {
-			_ = writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, nil, nil))
+			_ = writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, nil, nil, nil))
 		}
 	}
 	return root, err
@@ -114,12 +115,12 @@ func projectRoot(start string) (root string, ok bool, err error) {
 
 // encodeWalk is the walk file for a tree that walked to walk: the sync that
 // wrote log and digests, or a refused one where both are nil.
-func encodeWalk(walk string, log, digests []byte) []byte {
+func encodeWalk(walk string, log, digests, symbols []byte) []byte {
 	head := walkHeader + "\nwalk\t" + walk + "\n"
 	if log == nil && digests == nil {
 		return []byte(head + "refused\n")
 	}
-	return []byte(head + "log\t" + sum(log) + "\ndigests\t" + sum(digests) + "\n")
+	return []byte(head + "log\t" + sum(log) + "\ndigests\t" + sum(digests) + "\nsymbols\t" + sum(symbols) + "\n")
 }
 
 // current is whether dir's walk file was written from a tree that walked to
@@ -139,15 +140,17 @@ func current(dir, walk string) bool {
 	if len(lines) == 3 {
 		return lines[2] == "refused"
 	}
-	if len(lines) != 4 {
+	if len(lines) != 5 {
 		return false
 	}
-	log, err := readCapped(filepath.Join(dir, pgraph.LogFile), pgraph.MaxLogBytes)
-	if err != nil || lines[2] != "log\t"+sum(log) {
-		return false
+	for i, f := range [...]string{"log\t" + pgraph.LogFile, "digests\t" + pgraph.DigestsFile, "symbols\t" + pgraph.SymbolsFile} {
+		key, name, _ := strings.Cut(f, "\t")
+		b, err := readCapped(filepath.Join(dir, name), pgraph.MaxLogBytes)
+		if err != nil || lines[2+i] != key+"\t"+sum(b) {
+			return false
+		}
 	}
-	digests, err := readCapped(filepath.Join(dir, pgraph.DigestsFile), pgraph.MaxLogBytes)
-	return err == nil && lines[3] == "digests\t"+sum(digests)
+	return true
 }
 
 // readCapped is the regular file at path, refused over max bytes.

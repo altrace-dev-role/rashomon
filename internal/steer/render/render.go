@@ -488,6 +488,7 @@ func templates() map[templateKey]template {
 		maps.Copy(templatesOnce.v, templatesRide())
 		maps.Copy(templatesOnce.v, templatesWrapped())
 		maps.Copy(templatesOnce.v, templatesSymbols())
+		maps.Copy(templatesOnce.v, templatesGraph())
 		maps.Copy(templatesOnce.v, templatesContinuity())
 	})
 	return templatesOnce.v

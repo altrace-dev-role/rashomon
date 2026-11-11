@@ -190,7 +190,7 @@ m("CSL-1 every prompt reads for a briefing", C,
 m("CSL-1 the armed briefing not routed", P,
   "\tif briefed {\n\t\tfound = append(found, brief)\n\t}\n", "\t_ = brief\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
 m("CSL-1 a prompt naming nothing drops the armed briefing", P,
-  " && p.owed.Seq <= 0 && !briefed {\n", " && p.owed.Seq <= 0 {\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
+  " && p.owed.Seq <= 0 && !briefed && !graphed {\n", " && p.owed.Seq <= 0 && !graphed {\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
 m("CSL-1 the prompt's transcript not read", P,
   "p.SessionID, p.Harness.TranscriptPath)\n", "p.SessionID, \"\")\n", "TestCSL1_AResumeBriefsAtItsFirstPrompt")
 m("CSL-1 the briefing refused at the prompt", F,

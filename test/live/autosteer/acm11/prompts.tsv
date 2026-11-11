@@ -1,0 +1,27 @@
+# AC-M1.1 (PLAN section 8): ambiguous prompts over rashomon, none naming a file, each with the unit the
+# brief's unit line must name and the paths a line may name without being off-task (the unit's own files are
+# always on task). Columns: id, unit, allow (comma-separated path prefixes), prompt.
+# The first five units are read from the truth table's evidence and PLAN 6.1 (T1: internal/platform;
+# PG12: internal/verify/integrity.go; HD9: internal/brief instructionsFact; ST12: cmd/rashomon/continuity.go
+# resumeBriefing). Proposed 2026-11-06. Post-hoc corrections, ruled 2026-11-07 with the repo facts in PLAN
+# paragraph W-M1.12 (second opinion): PL12's unit is internal/verify, not pgraph (pgraph imports nothing from
+# rashomon and the prompt's surface, the platform obligations, is internal/verify/platform.go, shown by
+# cmd/rashomon/report_ledger.go and internal/recap/platform.go; internal/platform/digests.go and decode.go are
+# its reuse), so its allow list gains internal/platform/, report_ledger.go and internal/recap/; HD9's allow list
+# gains internal/store/record_v5.go (Instructions is written at InstructionsLoaded, record_v5.go 503); ST12 is
+# unchanged. Rows 6 to 10 are the five fresh single-task prompts (W-M1.17), copied from the pre-registered
+# edge set (/tmp/rk-autosteer/acm11/edge/prompts.tsv rows A2, B1, C2, E1, J5, written 2026-11-07 before the
+# T1c engine change); their allow lists name the callers the tree shows (cmd/rashomon/report_ledger.go and
+# report_impact.go and internal/recap/ read the obligations; cmd/rashomon/report.go prints the timeline;
+# internal/hook/ and internal/fault/ sit on the panic path; internal/verify/platform.go reads Impact).
+# Judged by TestACM11_ (internal/graph/engine/acm11_test.go).
+T1	internal/platform	cmd/rashomon/report_platform.go,cmd/rashomon/laststop.go,cmd/rashomon/blast.go,internal/verify/platform.go,test/prd/truth_table.json	Add blast radius to the platform read. For every Go symbol an edit touches, report two numbers: how many callers are proven, and how many are proven or possible. Show the numbers wherever the platform read already appears. Keep the existing tests green and add tests for the new numbers.
+PL12	internal/verify	internal/platform/,cmd/rashomon/report_platform.go,cmd/rashomon/report_ledger.go,internal/recap/,test/prd/truth_table.json	Warn when an edit changes a file that no tracked build configuration covers. The warning must never report zero obligations. Show it wherever the platform obligations already appear and add tests for the untracked case.
+PG12	internal/verify	cmd/rashomon/,internal/hook/,test/prd/truth_table.json	Record an edit mark whenever a test is removed, a skip is added or an assertion is deleted, as user-only integrity flags, and show them in the integrity report. Keep the existing integrity tests green.
+HD9	internal/brief	cmd/rashomon/brief.go,internal/install/install.go,test/prd/truth_table.json,internal/store/record_v5.go	Report which instruction files were actually loaded this session, not just the ones present in the tree, in the brief that already lists the instruction facts.
+ST12	cmd/rashomon	internal/store/,internal/steer/,internal/intent/,test/prd/truth_table.json	When a session resumes after a compaction, the continuity briefing should name the requirements still open and the units touched so far, and keep the existing resume tests green.
+A2	internal/verify	cmd/rashomon/report_ledger.go,cmd/rashomon/report_impact.go,internal/recap/,test/prd/truth_table.json	Let the obligation ledger carry the turn window each obligation was opened in.
+B1	internal/report	cmd/rashomon/report.go,test/prd/truth_table.json	The report prints a timeline row twice when two tool calls share a tool_use_id.
+C2	internal/install	cmd/rashomon/,internal/hook/,test/prd/truth_table.json	Split the installer so the hook entries table lives in its own file.
+E1	internal/safe	internal/hook/,internal/fault/,test/prd/truth_table.json	Add a test that the panic barrier records the panic value before exiting.
+J5	internal/platform	cmd/rashomon/report_platform.go,cmd/rashomon/report_impact.go,internal/verify/platform.go,internal/recap/,test/prd/truth_table.json	The function Impact drops facts whose config is empty; keep them.

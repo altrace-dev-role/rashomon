@@ -1,0 +1,4 @@
+pgraph-log v0
++	func:example.com/snap/b.G	calls	func:example.com/snap/a.F	PROVEN	darwin/arm64/cgo=0/tags=	tree:0b8d11fc430201b6	gotypes@v2
++	pkg:example.com/snap/a	declares	func:example.com/snap/a.F	PROVEN	darwin/arm64/cgo=0/tags=	tree:0b8d11fc430201b6	gotypes@v2
++	pkg:example.com/snap/b	declares	func:example.com/snap/b.G	PROVEN	darwin/arm64/cgo=0/tags=	tree:0b8d11fc430201b6	gotypes@v2

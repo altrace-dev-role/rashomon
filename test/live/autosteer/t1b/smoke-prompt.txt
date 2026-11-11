@@ -1,0 +1,1 @@
+Add blast radius to the platform read. Before doing anything, reply with the single word ok and stop.

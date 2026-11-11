@@ -2,6 +2,7 @@ package learn
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -116,6 +117,39 @@ func TestLRN17r_DeliveredReadsALessonThatRodeTheNote(t *testing.T) {
 		line("learned-fact", "d-gen", "delivered", "", `{"lesson":"d-gen","text":"run go test from the module root"}`),
 	})
 	want := map[string]bool{"a-gen": true, "c-gen": true, "d-gen": true}
+	if len(got) != len(want) {
+		t.Fatalf("Delivered = %v, want %v", got, want)
+	}
+	for id := range want {
+		if !got[id] {
+			t.Errorf("Delivered = %v, want %s given", got, id)
+		}
+	}
+}
+
+// TestGS4_DeliveredReadsTheGraphBriefsKnowledge (card GRAPH-SLOT1): a
+// task-preflight line that carried the graph brief gave the knowledge its
+// line slots name, the id of a knowledge line and the records applying to a
+// code or table line, so the learn loop counts them as given this session
+// under the same delivered-or-arm-off rule; an empty line slot names none.
+func TestGS4_DeliveredReadsTheGraphBriefsKnowledge(t *testing.T) {
+	line := func(state, by, slots string) []byte {
+		b := "null"
+		if by != "" {
+			b = fmt.Sprintf("%q", by)
+		}
+		return []byte(fmt.Sprintf(`{"pattern":"task-preflight","key":"graph","state":%q,"suppressed_by":%s,"slots":%s}`, state, b, slots))
+	}
+	empty := `{"calls":[],"clause":"","counts":{"calls":0},"digest":"","id":"","imports":[],"kind":"","lessons":[],"names":[],"path":"","readers":[],"reads":[],"source":"","source_digest":"","table":"","writers":[],"writes":[]}`
+	brief := `{"rev":"C1","matched":2,"reached":9,` +
+		`"line1":{"calls":[],"clause":"","id":"","kind":"code","lessons":["les:INC-212","dec:ADR-0007"],"names":["run"],"path":"jobs/purge.py"},` +
+		`"line2":{"clause":"a clause","id":"les:INC-212","kind":"lesson","lessons":[],"path":"jobs/purge.py"},` +
+		`"line3":` + empty + `,"line4":` + empty + `,"line5":` + empty + `}`
+	got := Delivered([][]byte{
+		line("delivered", "", brief),
+		line("superseded", "budget_batch", strings.ReplaceAll(brief, "INC-212", "INC-999")),
+	})
+	want := map[string]bool{"les:INC-212": true, "dec:ADR-0007": true}
 	if len(got) != len(want) {
 		t.Fatalf("Delivered = %v, want %v", got, want)
 	}

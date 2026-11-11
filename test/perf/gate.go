@@ -149,6 +149,31 @@ func Median(xs []float64) (float64, bool) {
 	}
 }
 
+// LevelGap is the largest step between neighbouring runs once sorted, and
+// the runs either side of it; false with fewer than two (PERF-EDGE1). It is
+// the statistic that tells two levels from one: a second level (a decoder
+// the call found missing from its P's pool, an OS thread the call started)
+// leaves a hole between two clusters of runs, while noise that moves in
+// small steps widens the range and opens no hole. The cold call's own noise
+// is of that second kind: sync.Map's first fill of json/v2's arshaler cache
+// and reflect's pointer-type cache makes a number of 160-byte trie nodes
+// (internal/sync.newIndirectNode) that varies with the process's random hash
+// seed.
+func LevelGap(runs []int64) (gap, below, above int64, ok bool) {
+	if len(runs) < 2 {
+		return 0, 0, 0, false
+	}
+	s := append([]int64(nil), runs...)
+	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+	below, above = s[0], s[1]
+	for i := 1; i < len(s); i++ {
+		if d := s[i] - s[i-1]; d > gap {
+			gap, below, above = d, s[i-1], s[i]
+		}
+	}
+	return gap, below, above, true
+}
+
 // InitTrace is what GODEBUG=inittrace=1,gctrace=1 reported for a process:
 // the bytes and allocations of every package init summed, and whether the
 // runtime printed a GC line before main (RES-2).
@@ -436,4 +461,4 @@ func LineHolds(id string, measuredMiB, lineMiB float64) error {
 // landed names the PRs this tree carries: their rss cases are switched on,
 // and no budget basis may still read "until" one of them. gates_from stays
 // in budgets.json as the record of which PR switched each case on.
-var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "PW1b": true, "SR-1b": true}
+var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "PW1b": true, "SR-1b": true, "W-M1.8": true}

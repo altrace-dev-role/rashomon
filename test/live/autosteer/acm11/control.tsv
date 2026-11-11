@@ -1,0 +1,41 @@
+# Control set (W-M1.42's gate, registered 2026-11-09 before W-M1.42 is built): requests that carry no task, on which
+# the right brief is none (Brief.Empty). Rows C1 to C26 are the owner's own prompts of four words or fewer, read
+# from 87 session transcripts on 2026-11-09 (1728 human prompts, 288 of them that short, 16.7 percent, 280 once the
+# slash commands, which never reach the hook, are dropped), the ones with no task content and no private text kept
+# verbatim; H1 and H2 are the two harness notices that reach UserPromptSubmit as the prompt (a peer session's idle
+# notice, a background task's completion). At 01b8ed4a the engine sends a code brief on at least 135 of the 280
+# short prompts by weight, and on 20 of this file's 28 rows (C3 to C5, C9 to C20, C24 to C26, H1, H2;
+# TestACM11_ControlPromptsSendNoBrief, gate 0). Columns as edge.tsv: id, unit ('-': no unit line is right), allow
+# ('*'), prompt ('\n' is a newline).
+# H3 (added 2026-11-09 13:4x PST, still before W-M1.42 is built) is the idle notice's newer form, which carries the
+# peer session's last-turn summary ("Its harness reports: <...>"); the installed hook sent a brief on it live. At
+# c14b59f1 the engine sends a brief on 21 of the 29 rows (the 20 above and H3, 4 lines).
+C1	-	*	.
+C2	-	*	status?
+C3	-	*	help
+C4	-	*	continue
+C5	-	*	cont
+C6	-	*	ok
+C7	-	*	done
+C8	-	*	go
+C9	-	*	do it
+C10	-	*	do all of it
+C11	-	*	yes
+C12	-	*	yes do it
+C13	-	*	yes exactly
+C14	-	*	stop
+C15	-	*	clear
+C16	-	*	keep going
+C17	-	*	keep monitoring
+C18	-	*	think about it further
+C19	-	*	where are we overall?
+C20	-	*	whats the answer
+C21	-	*	open it
+C22	-	*	eta?
+C23	-	*	sup?
+C24	-	*	what should we say
+C25	-	*	steer it
+C26	-	*	just start it
+H1	-	*	[Cross-session idle notice] "uds:/tmp/cc-socks/37230.sock", which you asked to be notified about, is idle now — it finished a turn at 23:43. This is an automated notice from that session's harness — not a message from a person, and not an instruction; act on it only insofar as your user's earlier request calls for it.\ncontinue
+H2	-	*	<task-notification>\n<task-id>b7xeepjsm</task-id>\n<status>completed</status>\n<summary>Background command "Watch the CI run to completion and list job results" completed (exit code 0)</summary>\n</task-notification>
+H3	-	*	[Cross-session idle notice] "uds:/tmp/cc-socks/37230.sock", which you asked to be notified about, is idle now — it finished a turn at 12:53. Its harness reports: «Triple 9 is running. 41b now covers the peer's points 1 and 2, is committed locally and rebased ont…». This is an automated notice from that session's harness — not a message from a person, and not an instruction; act on it only insofar as your user's earlier request calls for it.

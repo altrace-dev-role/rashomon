@@ -91,6 +91,9 @@ type Label struct {
 	SessionID string      `json:"session_id"`
 	AtUnixMS  int64       `json:"at_unix_ms"`
 	Label     steer.Label `json:"label"`
+	// Basis is the sentence the writer labeled on (Judge), absent on a row
+	// written before it existed.
+	Basis string `json:"basis,omitempty"`
 }
 
 type lessonsFile struct {
@@ -114,6 +117,7 @@ type Ledger struct {
 	root, dir string
 	file      lessonsFile
 	tallies   map[string]Tally
+	labels    labelIndex
 	// Quarantined is true when this Open found the state written by
 	// something other than this package and quarantined it.
 	Quarantined bool
@@ -162,6 +166,7 @@ func openAt(root, project string, now time.Time, write bool) (*Ledger, error) {
 	}
 	l.file.Schema = SchemaLessons
 	l.tallies = tallies(files[FileLabels])
+	l.labels = indexLabels(files[FileLabels])
 	if !l.Quarantined {
 		l.retier()
 		return l, nil
@@ -422,6 +427,7 @@ func (l *Ledger) AppendLabel(lb Label) error {
 	t := l.tallies[lb.LessonID]
 	t.add(lb.Label)
 	l.tallies[lb.LessonID] = t
+	l.labels.add(lb)
 	l.retier()
 	return l.Save()
 }
