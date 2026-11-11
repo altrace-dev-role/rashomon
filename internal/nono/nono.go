@@ -1,4 +1,4 @@
-// Package nono reads the audit trail another sandbox wrote.
+// Package nono reads the audit trail written by another sandbox.
 //
 // It is a THIRD EVIDENCE SOURCE, beside the hook's declarations and the
 // transcript, and is read-only over a file another program owns: an absent or

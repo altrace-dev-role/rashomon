@@ -497,3 +497,31 @@ func TestPG5e_EveryListNonNilAndOnlyV0Kinds(t *testing.T) {
 		t.Fatalf("beyond the order the point cut's ledger differs from the prefix's:\n%s\n%s", a, b)
 	}
 }
+
+// TestObligation_UnitRoundTrips pins the row's unit: a row with one carries
+// it under "unit" and reads back to the same bytes, and a row without one
+// marshals as every row did before the field, with no "unit" key, so no
+// recorded ledger changes.
+func TestObligation_UnitRoundTrips(t *testing.T) {
+	row := Obligation{ID: "o1", Scope: ScopeSession, Kind: SpecRule, Source: obligationSourceSpec,
+		State: ObligationMet, Evidence: []int64{3}, Unit: "unit:go:internal/spec"}
+	b, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(`"unit":"unit:go:internal/spec"`)) {
+		t.Errorf("a row with a unit marshals %s; want its unit key", b)
+	}
+	var back Obligation
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	again, err := json.Marshal(back)
+	if err != nil || back.Unit != row.Unit || !bytes.Equal(again, b) {
+		t.Errorf("read back %s (unit %q, err %v); want %s", again, back.Unit, err, b)
+	}
+	row.Unit = ""
+	if b, err = json.Marshal(row); err != nil || bytes.Contains(b, []byte(`"unit"`)) {
+		t.Errorf("a row without a unit marshals %s (err %v); want no unit key", b, err)
+	}
+}

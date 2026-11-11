@@ -6,6 +6,7 @@ package perf
 import (
 	"bufio"
 	"fmt"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,16 +47,16 @@ func ColdBudget(e budget.Entry, overrides map[string]int64) int64 {
 
 // PerProcessColdAllocBytes is a hook-entry process's total allocation
 // budget, the figure neither field alone is (P-12): e's cold_alloc_bytes_max
-// covers the one hook/post call the process makes, and InitBudgetBytes
-// (RES-2) covers everything the Go runtime and this binary's own package
-// inits allocate before that call runs. Returns 0, meaning "not yet
-// measured", for an entry whose cold figure is 0 -- never InitBudgetBytes
+// covers the one hook/post call the process makes, and this platform's
+// InitBudget (RES-2) covers everything the Go runtime and this binary's own
+// package inits allocate before that call runs. Returns 0, meaning "not yet
+// measured", for an entry whose cold figure is 0 -- never the init budget
 // alone, which would misread as a real per-process figure.
 func PerProcessColdAllocBytes(e budget.Entry) int64 {
 	if e.ColdAllocBytesMax <= 0 {
 		return 0
 	}
-	return e.ColdAllocBytesMax + InitBudgetBytes
+	return e.ColdAllocBytesMax + InitBudget(runtime.GOOS)
 }
 
 // OverBudget reports whether measured exceeds budget by more than tolerance
@@ -222,6 +223,27 @@ func ParseInitTrace(stderr string) (InitTrace, error) {
 
 // InitBudgetBytes is RES-2's bound on process init: 64 KiB, and no GC cycle.
 const InitBudgetBytes = 64 << 10
+
+// initBudgetDarwinBytes is RES-2's bound on darwin since the hook path
+// parses Go in process (gopg's Overlay): go/token's keyword map (984 B at
+// init) and go/parser's stmtStart, declStart and exprEnd maps (464 B) come
+// with it, and no import can drop them. The Perf gates (macos) runner read
+// 65424 B over 54 packages before them (97fda320) and 66392 to 66712 B over
+// 56 packages with them (5b81eaec, five runs). internal/godebug's own init
+// moves in 160 B steps from run to run, so the bound is the highest of those
+// five readings, not the fewest: the gate keeps the fewest of five, and a
+// bound at the floor fails every set of five that misses it (one run in five
+// reached it). linux/amd64 reads 52456 B and keeps InitBudgetBytes.
+const initBudgetDarwinBytes = 66712
+
+// InitBudget is RES-2's bound on process init for goos: initBudgetDarwinBytes
+// on darwin, InitBudgetBytes everywhere else.
+func InitBudget(goos string) int64 {
+	if goos == "darwin" {
+		return initBudgetDarwinBytes
+	}
+	return InitBudgetBytes
+}
 
 // referencePlatform is the platform every entry row and RES-28 case was
 // measured or specified on. Its own Platform.Entries and CaseBudgets stay

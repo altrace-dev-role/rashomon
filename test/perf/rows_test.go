@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -225,11 +226,31 @@ func TestRES36o_PerProcessColdAllocBytesIsTheSumNotEitherField(t *testing.T) {
 		want int64
 	}{
 		{"unmeasured reads as unmeasured, not as the init budget alone", 0, 0},
-		{"measured adds the init budget", 138320, 138320 + InitBudgetBytes},
+		{"measured adds the init budget", 138320, 138320 + InitBudget(runtime.GOOS)},
 	} {
 		got := PerProcessColdAllocBytes(budget.Entry{ColdAllocBytesMax: c.cold})
 		if got != c.want {
 			t.Errorf("%s: PerProcessColdAllocBytes(cold=%d) = %d, want %d", c.name, c.cold, got, c.want)
+		}
+	}
+}
+
+// TestRES2p_InitBudgetIsPerPlatform: RES-2's 64 KiB holds everywhere but
+// darwin, whose bound moved to the measured cost of parsing Go in process
+// (initBudgetDarwinBytes). Each platform's CI reads only its own bound, so
+// this pins both from either: a darwin move that leaked to linux, or a lost
+// darwin move, fails here on every runner.
+func TestRES2p_InitBudgetIsPerPlatform(t *testing.T) {
+	for _, c := range []struct {
+		goos string
+		want int64
+	}{
+		{"linux", 64 << 10},
+		{"windows", 64 << 10},
+		{"darwin", 66712},
+	} {
+		if got := InitBudget(c.goos); got != c.want {
+			t.Errorf("InitBudget(%q) = %d, want %d", c.goos, got, c.want)
 		}
 	}
 }
