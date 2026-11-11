@@ -251,15 +251,21 @@ func TestRoles_ATrailingAdverbNoNameHoldsLeavesThePhrase(t *testing.T) {
 // thing itself: "the test harness" is harness's, though report's names
 // touch both words (testBending, harnessRow); it yields when another
 // unit's name is wholly in the phrase (the integrity report shape).
+// The ladder reads the lower-case "blind"; capitalised, "Blind" is an
+// identifier that names caps.Blind, so the named claim decides first.
 func TestLadder_AHeadNamedUnitKeepsThePhraseOverTouchingNames(t *testing.T) {
 	g := synth(t, []synFile{
 		{"harness", "harness/caps.go", []synSym{fn("Blind"), fn("identityTable")}},
 		{"report", "report/testbending.go", []synSym{fn("testBending"), fn("harnessRow"), fn("account")}},
 		{"consent", "consent/consent.go", []synSym{fn("testMode")}},
 	}, nil, nil)
-	r := roles(t, g, "The test harness builds no table for an identity's Blind.")
+	r := roles(t, g, "The test harness builds no table for an identity's blind.")
 	if r.Path != "harness" || r.Why != ClassUnit {
 		t.Fatalf("path %q why %q, want harness (unit): no name elsewhere is the thing", r.Path, r.Why)
+	}
+	r = roles(t, g, "The test harness builds no table for an identity's Blind.")
+	if r.Why != ClassNamed || r.Path != "harness" {
+		t.Fatalf("path %q why %q, want harness (named): Blind names caps.Blind", r.Path, r.Why)
 	}
 	g = synth(t, []synFile{
 		{"harness", "harness/caps.go", []synSym{fn("Blind")}},

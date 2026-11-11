@@ -128,7 +128,7 @@ func TestST4_PostToolUseContextAllowedOnlyWhenTheChannelIsVerified(t *testing.T)
 	}{
 		{"PostToolUse on the floor", EventPostToolUse, verifiedClient, nil, ctx, nil},
 		{"a newer patch", EventPostToolUse, version("2.1.281"), nil, ctx, nil},
-		{"the version Rishi ran, 2.1.314", EventPostToolUse, version("2.1.314"), nil, ctx, nil},
+		{"the version ran, 2.1.314", EventPostToolUse, version("2.1.314"), nil, ctx, nil},
 		{"a newer minor", EventPostToolUse, version("2.2.0"), nil, ctx, nil},
 		{"a newer major, two components", EventPostToolUse, version("3.0"), nil, ctx, nil},
 		{"the floor with a leading zero", EventPostToolUse, version("2.1.0280"), nil, ctx, nil},

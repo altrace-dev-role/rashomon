@@ -75,10 +75,11 @@ jobs:
           # module's code); the newest 1.25 patch, 1.25.14, still carries 13,
           # every one fixed only in 1.26.9 or later; go1.27.2 carried none
           # until GO-2026-6809 (crypto/x509, 2026-10-22), fixed in go1.27.3,
-          # which carries none.
+          # which carried none until GO-2026-6859 (net/http, 2026-11-11),
+          # fixed in go1.27.4, which carries none.
           # go.mod moves only when the module actually needs newer language
           # features.
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache: true
           # go.sum, not go.mod. This module declared no requirements when these
           # workflows were written and now depends on modernc.org/sqlite plus
@@ -336,7 +337,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -391,7 +392,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -466,7 +467,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -503,7 +504,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -561,12 +562,12 @@ jobs:
           # TestDEL21_GoVersionPinsAgree holds all pins in this file to one
           # version. pgraph/go.mod's `go 1.26.0` (and golang.org/x/tools
           # v0.52.0, which needs it) is a language minimum on a different
-          # line from the main module's `go 1.25.0`, and 1.27.3 satisfies
+          # line from the main module's `go 1.25.0`, and 1.27.4 satisfies
           # both. setup-go sets GOTOOLCHAIN=local for a pinned version (see
           # the goreleaser step of the test job), so `go` never switches to a
           # toolchain named by either go.mod. TestDEL21d compares the pins
           # with the root go.mod only; pgraph/go.mod's line is not checked.
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           # pgraph/go.sum, not the root's: the two modules' requirements
           # differ, and a cache keyed on the root's go.sum would not move
@@ -594,12 +595,18 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          # The rows in test/perf/budgets.json were measured under go1.27.2
-          # (its go_version), and allocation figures are the toolchain's:
-          # BenchmarkBuild/188 makes 21,660 allocations per op under 1.25.8
-          # and 6,832 under 1.27.2. benchgate and the harness refuse any other
+          # The benchmark rows in test/perf/budgets.json were measured under
+          # go1.27.3 (its benchmark_rows), and allocation figures are the
+          # toolchain's: BenchmarkBuild/188 makes 21,660 allocations per op
+          # under 1.25.8 and 6,832 under 1.27.2. The move to go1.27.4 for
+          # GO-2026-6859 changed go_version and no row. A patch-release move
+          # is made with a run of every gate under the new toolchain, each
+          # reading within its row, the form the 2026-10-22 move to go1.27.3
+          # took (budgets.json's darwin/arm64 reference records it); the perf
+          # jobs of the pull request that makes the move are that run.
+          # Between moves, benchgate and the harness refuse any other
           # toolchain, so this pin moves only with a remeasurement.
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -678,7 +685,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # Measured under it; see the perf-linux job.
+          go-version: "1.27.4"  # Measured under it; see the perf-linux job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -764,7 +771,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -791,7 +798,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # See the note in the test job.
+          go-version: "1.27.4"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -810,7 +817,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.3"  # Same pin as perf-linux; see the note in the test job.
+          go-version: "1.27.4"  # Same pin as perf-linux; see the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
