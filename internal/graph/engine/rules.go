@@ -47,7 +47,14 @@ func ruleSourceTrusted(sp *spec.Compiled, source int) bool {
 	if source != spec.SourceImplied && (source < 0 || source >= len(sp.Sources)) {
 		return false
 	}
-	switch sp.TrustOf(source) {
+	return RuleTrust(sp.TrustOf(source))
+}
+
+// RuleTrust is whether a declaration of trust t may reach a rule set: the
+// set internal/intent/intent.go:383-385 keeps (Trusted, Managed, Builtin).
+// TestTrusted_EqualsEngineRuleTrust pins the two against each other.
+func RuleTrust(t spec.Trust) bool {
+	switch t {
 	case spec.Trusted, spec.Managed, spec.Builtin:
 		return true
 	}
