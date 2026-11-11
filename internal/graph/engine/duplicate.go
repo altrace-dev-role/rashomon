@@ -2,6 +2,7 @@ package engine
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 )
@@ -25,20 +26,20 @@ var _ nodeLister = (*graph.Store)(nil)
 // whose id is not also removed) that shares at least DuplicateMinStems
 // distinct stems of name and doc with a func or method of another unit that
 // something calls at d.Rev: one conflict per added callable, against the
-// candidate with the most shared stems, ties to the smallest id. Output is
-// sorted by Subject. It lists candidates through nodeLister; a Reader
-// without it (anything but the store) yields nil.
+// candidate with the most shared stems, ties to the smallest id. P2 ruling
+// 7(b): a candidate the added callable calls is not one for it, by a Calls
+// or MayCall edge at d.Rev or by its short name in the added record's
+// calls attr (the overlay's witness, whose records carry no out-edges).
+// The exclusion is per candidate, so the callable still fires against
+// another; a same-named function elsewhere is excluded too, a miss on the
+// safe side. Output is sorted by Subject. It lists candidates through
+// nodeLister; a Reader without it (anything but the store) yields nil.
 func duplicateConflicts(g Reader, d Diff) []Conflict {
 	lister, ok := g.(nodeLister)
 	if !ok {
 		return nil
 	}
-	removed := map[graph.ID]bool{}
-	for _, r := range d.Removed {
-		if r.Node != nil {
-			removed[r.Node.ID] = true
-		}
-	}
+	removed := removedIDs(d)
 	added := map[graph.ID]graph.Node{}
 	for _, r := range d.Decls {
 		if n := r.Node; n != nil && isCallable(*n) && !removed[n.ID] {
@@ -74,9 +75,10 @@ func duplicateConflicts(g Reader, d Diff) []Conflict {
 		an := added[id]
 		_, au := unitOf(g, d.Rev, an)
 		mine := stemSet(an)
+		callees, names := callsOf(g, d.Rev, an)
 		best, bestN := graph.ID(""), 0
 		for _, c := range cands {
-			if c.unit == au {
+			if c.unit == au || callees[c.node.ID] || names[short(c.node.ID)] {
 				continue
 			}
 			shared := 0
@@ -95,6 +97,22 @@ func duplicateConflicts(g Reader, d Diff) []Conflict {
 		}
 	}
 	return out
+}
+
+// callsOf is what callable n calls at rev: the targets of its Calls and
+// MayCall edges, and the short names its calls attr lists, comma
+// separated (a capped list's "+N" tail names nothing).
+func callsOf(g Reader, rev graph.Rev, n graph.Node) (map[graph.ID]bool, map[string]bool) {
+	ids, names := map[graph.ID]bool{}, map[string]bool{}
+	for _, e := range g.Out(n.ID, rev, graph.Calls, graph.MayCall) {
+		ids[e.Dst] = true
+	}
+	for _, s := range strings.Split(n.Attrs["calls"], ",") {
+		if s != "" {
+			names[s] = true
+		}
+	}
+	return ids, names
 }
 
 // isCallable is a func or method symbol.

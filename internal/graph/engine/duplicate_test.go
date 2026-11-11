@@ -124,6 +124,100 @@ func TestConflicts_DuplicateAbstraction(t *testing.T) {
 	})
 }
 
+// dupAt is n at rev with the attrs given as key, value pairs added.
+func dupAt(n graph.Node, rev graph.Rev, kv ...string) graph.Node {
+	a := map[string]string{}
+	for k, v := range n.Attrs {
+		a[k] = v
+	}
+	for i := 0; i+1 < len(kv); i += 2 {
+		a[kv[i]] = kv[i+1]
+	}
+	n.Attrs, n.Rev = a, rev
+	return n
+}
+
+// TestConflicts_DuplicateSkipsCalledCandidate_CommitRev: P2 ruling 7(b).
+// An added callable is not compared against a candidate it calls: a Calls
+// or MayCall edge to it at d.Rev, or its calls attr naming the candidate's
+// short name. The exclusion is per candidate: the added callable still
+// fires against another candidate it does not call.
+func TestConflicts_DuplicateSkipsCalledCandidate_CommitRev(t *testing.T) {
+	addedN, oldN := dupNode(dupAdded, "func", dupDoc), dupNode(dupOld, "func", "")
+	unitA := graph.UnitID("go", "a/new")
+	run := func(name string, added graph.Node, edge graph.Pred, want []Conflict) {
+		t.Helper()
+		c := dupCase{nodes: []graph.Node{oldN, dupNode(dupOld2, "func", "")}, called: []graph.ID{dupOld, dupOld2}, decls: []graph.Node{added}}
+		s := dupStore(c)
+		if edge != "" {
+			s.AssertEdge(graph.Edge{Src: dupAdded, Pred: edge, Dst: dupOld, Tier: graph.Proven, Conf: 1, Rev: dupRev})
+		}
+		if got := duplicateConflicts(s, Diff{Rev: dupRev, Decls: dupRecords(c.decls)}); !dupEqual(got, want) {
+			t.Errorf("%s: got %+v, want %+v", name, got, want)
+		}
+	}
+	run("control, calls nothing: the smaller id of the tie", addedN, "", []Conflict{dupWant(dupAdded, dupOld, unitA)})
+	run("a Calls edge to the old one", addedN, graph.Calls, []Conflict{dupWant(dupAdded, dupOld2, unitA)})
+	run("a MayCall edge to the old one", addedN, graph.MayCall, []Conflict{dupWant(dupAdded, dupOld2, unitA)})
+	run("its calls attr names the old one", dupAt(addedN, dupRev, "calls", "Close,ReadConfigFileUser"), "",
+		[]Conflict{dupWant(dupAdded, dupOld2, unitA)})
+	run("it calls both", dupAt(addedN, dupRev, "calls", "LoadFileUserConfig"), graph.Calls, nil)
+}
+
+// TestConflicts_DuplicateSkipsCalledCandidate_OverlayRev: P2 ruling 7(b)
+// at an overlay revision, where an added callable has no out-edges (the
+// Go overlay carries Declares alone) and its calls attr is the only
+// witness. A same-named function elsewhere is excluded too: a miss, the
+// safe side.
+func TestConflicts_DuplicateSkipsCalledCandidate_OverlayRev(t *testing.T) {
+	ov := graph.RevOverlay("c1", 1)
+	unitA := graph.UnitID("go", "a/new")
+	oldN := dupNode(dupOld, "func", "")
+	for _, tc := range []struct {
+		name, calls string
+		want        []Conflict
+	}{
+		{"control, calls another name", "Close", []Conflict{{Kind: ConflictDuplicateAbstraction, Unit: unitA, Subject: dupAdded,
+			Evidence: []graph.ID{dupAdded, dupOld}, Rev: ov}}},
+		{"calls names the old one", "Close,ReadConfigFileUser", nil},
+		{"calls names it, meaning a function elsewhere", "ReadConfigFileUser", nil},
+	} {
+		added := dupAt(dupNode(dupAdded, "func", dupDoc), ov, "calls", tc.calls)
+		c := dupCase{nodes: []graph.Node{oldN}, called: []graph.ID{dupOld}, decls: []graph.Node{added}}
+		if tc.name == "calls names it, meaning a function elsewhere" {
+			other := dupSym("z/other", "func", "pkg.ReadConfigFileUser")
+			c.nodes, c.called = append(c.nodes, dupNode(other, "func", "")), append(c.called, other)
+		}
+		s := dupStore(c)
+		if got := duplicateConflicts(s, Diff{Rev: ov, Decls: dupRecords(c.decls)}); !dupEqual(got, tc.want) {
+			t.Errorf("%s: got %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestConflicts_DuplicateFiresOnNameAndDocAtOverlayRev: P2 ruling 7. At an
+// overlay revision the added callable's stems are its overlay record's name
+// and doc: a two-word name reaches k shared stems only with its doc. The
+// control is the same record with no doc.
+func TestConflicts_DuplicateFiresOnNameAndDocAtOverlayRev(t *testing.T) {
+	ov := graph.RevOverlay("c1", 1)
+	walk := dupSym("a/new", "func", "pkg.WalkConfig")
+	for _, tc := range []struct {
+		doc  string
+		want []Conflict
+	}{
+		{"walk the user config file", []Conflict{{Kind: ConflictDuplicateAbstraction, Unit: graph.UnitID("go", "a/new"), Subject: walk,
+			Evidence: []graph.ID{walk, dupOld}, Rev: ov}}},
+		{"", nil},
+	} {
+		added := dupAt(dupNode(walk, "func", tc.doc), ov, "name", "WalkConfig")
+		c := dupCase{nodes: []graph.Node{dupNode(dupOld, "func", "")}, called: []graph.ID{dupOld}, decls: []graph.Node{added}}
+		if got := duplicateConflicts(dupStore(c), Diff{Rev: ov, Decls: dupRecords(c.decls)}); !dupEqual(got, tc.want) {
+			t.Errorf("doc %q: got %+v, want %+v", tc.doc, got, tc.want)
+		}
+	}
+}
+
 func dupEqual(a, b []Conflict) bool {
 	return slices.EqualFunc(a, b, func(x, y Conflict) bool {
 		return x.Kind == y.Kind && x.Unit == y.Unit && x.RuleID == y.RuleID && x.Subject == y.Subject &&
