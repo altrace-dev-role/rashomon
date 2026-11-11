@@ -29,7 +29,8 @@ const (
 // Trusts is the closed list in the spec's declaration order.
 var Trusts = []Trust{Untrusted, Trusted, Managed}
 
-// RuleKind names the five rule kinds of 2.2.7's table.
+// RuleKind names the five rule kinds of 2.2.7's table and the three M2's
+// knowledge graph compiles to (Boundary, Decision, Reuse).
 type RuleKind string
 
 const (
@@ -38,10 +39,14 @@ const (
 	ProtectPath     RuleKind = "protect_path"
 	RequireEvidence RuleKind = "require_evidence"
 	Order           RuleKind = "order"
+	Boundary        RuleKind = "boundary"
+	Decision        RuleKind = "decision"
+	Reuse           RuleKind = "reuse"
 )
 
-// RuleKinds is the closed list in the table's order.
-var RuleKinds = []RuleKind{ForbidCode, ForbidCommand, ProtectPath, RequireEvidence, Order}
+// RuleKinds is the closed list: the table's five in its order, then the
+// knowledge graph's three. Parse accepts exactly these (ruleKindNames).
+var RuleKinds = []RuleKind{ForbidCode, ForbidCommand, ProtectPath, RequireEvidence, Order, Boundary, Decision, Reuse}
 
 // Limits of one spec file (2.2.7; archive 20.2.8, Schema): strict JSON, integers
 // only. MaxBytes is the file; MaxGates counts ci_commands entries too; the

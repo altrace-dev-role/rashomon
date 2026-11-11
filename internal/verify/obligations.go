@@ -110,7 +110,9 @@ var obligationScopesOnce struct {
 const obligationSourceSpec = "spec"
 
 // Obligation is one ledger row. ID is a stable digest (ObligationID);
-// Evidence is record seqs only, ascending, never null.
+// Evidence is record seqs only, ascending, never null. Unit is the row's
+// graph unit as a global id, a string so verify stays free of
+// internal/graph; empty, and omitted from the JSON, when the row has none.
 type Obligation struct {
 	ID       string          `json:"id"`
 	Scope    string          `json:"scope"`
@@ -118,6 +120,7 @@ type Obligation struct {
 	Source   string          `json:"source"`
 	State    ObligationState `json:"state"`
 	Evidence []int64         `json:"evidence"`
+	Unit     string          `json:"unit,omitempty"`
 }
 
 // ledgerOf is the ledger at snap's point: the gates' rows over c, the
