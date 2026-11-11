@@ -121,7 +121,7 @@ func (sp *Specimen) Overlay(rel, old, new string, seq int64) (graph.Overlay, err
 	if err != nil {
 		return graph.Overlay{}, err
 	}
-	ov := sp.Store.ApplyOverlay(graph.FileID(rel), content, recs, graph.RevOverlay(Commit, seq))
+	ov := sp.Store.ApplyOverlay(graph.FileID(rel), content, recs, graph.RevOverlay(Commit, seq), sp.Res.OverlayCarried())
 	sp.Files[rel] = content
 	return ov, nil
 }
