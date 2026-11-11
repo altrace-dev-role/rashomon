@@ -42,12 +42,6 @@ func (Resolver) Unit(_, rel string) (graph.ID, bool) {
 	return graph.UnitID(Lang, path.Dir(rel)), true
 }
 
-// Overlay is nil, nil: Go is admitted without overlays until W-M2.5 reads a
-// file's declarations with go/parser.
-func (Resolver) Overlay(string, []byte, graph.Rev, int64) ([]graph.Record, error) {
-	return nil, nil
-}
-
 // Extract reads the pgraph sync under root (platform.ReadSnapshot) and
 // returns its records at rev. With files non-empty, only those files, the
 // symbols placed in them and the edges between kept symbols are returned.
