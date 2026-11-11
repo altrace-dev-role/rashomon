@@ -103,12 +103,14 @@ func TestGopgOverlay_DeclarationsOnly(t *testing.T) {
 	if syms != len(want) {
 		t.Errorf("%d syms, want %d", syms, len(want))
 	}
-	if len(edges) != len(want) {
-		t.Errorf("%d edges, want only the %d Declares", len(edges), len(want))
+	if len(edges) != len(want)+1 {
+		t.Errorf("%d edges, want the %d Declares and the unit's one Contains", len(edges), len(want))
 	}
 	for _, e := range edges {
-		if e.Pred != graph.Declares || e.Src != file {
-			t.Errorf("edge %s %s %s: overlay edges are Declares from the file", e.Src, e.Pred, e.Dst)
+		isDeclares := e.Pred == graph.Declares && e.Src == file
+		isContains := e.Pred == graph.Contains && e.Src == "unit:go:shape" && e.Dst == file
+		if !isDeclares && !isContains {
+			t.Errorf("edge %s %s %s: overlay edges are Declares from the file and one Contains from the unit", e.Src, e.Pred, e.Dst)
 		}
 	}
 	if n := nodes["sym:go:shape:func:Sum"]; n.Attrs["sig"] != "func(ss []Shape, extra ...int) (t int)" {
