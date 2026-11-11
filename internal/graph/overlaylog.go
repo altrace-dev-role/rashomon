@@ -42,7 +42,11 @@ type OverlayGroup struct {
 	File                     ID
 	Digest, Commit           string
 	Seq, OfSeq               int64
-	Recs                     []Record
+	// Carried is the predicate set of the extractor that produced Recs. The
+	// marker records it and a replay passes it back unchanged, so a replay
+	// retracts what the live write retracted.
+	Carried Carried
+	Recs    []Record
 }
 
 // BuildOverlayGroup is g's records, capped at MaxOverlayRecords (the file
@@ -52,7 +56,7 @@ func BuildOverlayGroup(g OverlayGroup) []Record {
 	recs := capOverlay(g.Recs)
 	rev := RevOverlay(g.Commit, g.Seq)
 	a := map[string]string{"session_id": g.Session, "file": string(g.File), "kind": g.Kind, "seq": strconv.FormatInt(g.Seq, 10),
-		"tool_use_id": g.ToolUseID, "digest": g.Digest, "count": strconv.Itoa(len(recs))}
+		"tool_use_id": g.ToolUseID, "digest": g.Digest, "count": strconv.Itoa(len(recs)), "carried": g.Carried.String()}
 	if g.OfSeq > 0 {
 		a["of_seq"] = strconv.FormatInt(g.OfSeq, 10)
 	}
@@ -172,7 +176,7 @@ func (c *overlayCollector) take(r Record) bool {
 	seq, serr := strconv.ParseInt(a["seq"], 10, 64)
 	if cerr == nil && serr == nil && count >= 0 && count <= len(c.pending) {
 		g := OverlayGroup{Session: a["session_id"], ToolUseID: a["tool_use_id"], Kind: a["kind"], File: ID(a["file"]),
-			Digest: a["digest"], Commit: rev.Commit, Seq: seq}
+			Digest: a["digest"], Commit: rev.Commit, Seq: seq, Carried: ParseCarried(a["carried"])}
 		g.OfSeq, _ = strconv.ParseInt(a["of_seq"], 10, 64)
 		g.Recs = append([]Record(nil), c.pending[len(c.pending)-count:]...)
 		c.groups = append(c.groups, g)
@@ -214,12 +218,12 @@ func ReplayOverlays(s *Store, groups []OverlayGroup, session, commit string) int
 			if !ok || d.File != g.File {
 				continue
 			}
-			recs = d.Recs
+			recs, g.Carried = d.Recs, d.Carried
 		}
 		if len(recs) == 0 {
 			continue
 		}
-		s.ApplyOverlayDigest(g.File, g.Digest, recs, RevOverlay(commit, g.Seq))
+		s.ApplyOverlayDigest(g.File, g.Digest, recs, RevOverlay(commit, g.Seq), g.Carried)
 		applied++
 	}
 	return applied

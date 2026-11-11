@@ -92,6 +92,13 @@ func (r Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64)
 	return r.parse(rel, content, graph.RevOverlay(base.Commit, seq), 0.9, 0.7, false)
 }
 
+// OverlayCarried is exactly the predicates Overlay emits: declarations,
+// imports, calls, the references of from-imports, and the reads and writes of
+// SQL literals. Contains is index-time structure and is not among them.
+func (Resolver) OverlayCarried() graph.Carried {
+	return graph.Carried{graph.Declares, graph.Imports, graph.Calls, graph.References, graph.Reads, graph.Writes}
+}
+
 // module is rel's dotted module name within its unit.
 func module(u Unit, rel string) string {
 	m := strings.TrimSuffix(rel, ".py")

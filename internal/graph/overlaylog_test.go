@@ -207,10 +207,11 @@ func TestOverlayRecords_NeverInIndexFile(t *testing.T) {
 func TestOverlay_ReplayEqualsLive(t *testing.T) {
 	file := FileID("a/a.go")
 	g := ovGroup("s1", "t1", OverlayDeclared, 4, file, ContentDigest([]byte("src")), "f", "n")
+	g.Carried = Carried{Declares, Imports} // not every predicate: Calls is unknown to this extractor
 	rev := RevOverlay(ovCommit, 4)
 
 	live := ovIndex()
-	live.ApplyOverlay(file, []byte("src"), g.Recs, rev)
+	live.ApplyOverlay(file, []byte("src"), g.Recs, rev, g.Carried)
 
 	l, _ := testLog(t, true)
 	appendGroup(t, l, g)
@@ -228,6 +229,13 @@ func TestOverlay_ReplayEqualsLive(t *testing.T) {
 	if _, ok := replayed.Node(SymID("go", "a", "func", "g"), rev); ok {
 		t.Errorf("g was dropped by the edit and must be retracted at the overlay")
 	}
+	f := SymID("go", "a", "func", "f")
+	if es := replayed.Out(f, rev, Calls); len(es) != 1 || es[0].Dst != SymID("go", "a", "func", "g") {
+		t.Errorf("f's call is a predicate the extractor does not carry and must stand at the overlay: %+v", es)
+	}
+	if got := groups[0].Carried.String(); got != "declares,imports" {
+		t.Errorf("recorded carried set = %q", got)
+	}
 }
 
 // TestApplyOverlayDigest_EqualsApplyOverlay: the digest variant writes what
@@ -237,8 +245,9 @@ func TestApplyOverlayDigest_EqualsApplyOverlay(t *testing.T) {
 	recs := ovRecs(file, "x", "f")
 	a, b := ovIndex(), ovIndex()
 	rev := RevOverlay(ovCommit, 2)
-	oa := a.ApplyOverlay(file, []byte("src"), recs, rev)
-	ob := b.ApplyOverlayDigest(file, ContentDigest([]byte("src")), recs, rev)
+	carried := Carried{Declares, Calls}
+	oa := a.ApplyOverlay(file, []byte("src"), recs, rev, carried)
+	ob := b.ApplyOverlayDigest(file, ContentDigest([]byte("src")), recs, rev, carried)
 	if oa != ob || !reflect.DeepEqual(a.Nodes(rev), b.Nodes(rev)) || !reflect.DeepEqual(a.Edges(rev), b.Edges(rev)) {
 		t.Errorf("ApplyOverlayDigest differs: %+v vs %+v", oa, ob)
 	}
