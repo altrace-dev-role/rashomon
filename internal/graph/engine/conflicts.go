@@ -9,16 +9,27 @@ import (
 // ConflictKind is what a conflict is about.
 type ConflictKind string
 
-// The conflict kinds this slice computes. Boundary, decision and
-// requirement conflicts are the knowledge and session graphs' and come
-// after it.
+// The conflict kinds: arity, which ArityConflicts computes, and the five
+// the knowledge and session graphs' rules and a diff raise (W-M2.2 computes
+// them; W-M2.0 fixes their names).
 const (
-	ConflictArity ConflictKind = "arity"
+	ConflictArity                ConflictKind = "arity"
+	ConflictBoundaryCross        ConflictKind = "boundary_cross"
+	ConflictDecisionContradicted ConflictKind = "decision_contradicted"
+	ConflictSignatureMismatch    ConflictKind = "signature_mismatch"
+	ConflictDuplicateAbstraction ConflictKind = "duplicate_abstraction"
+	ConflictProtectedPath        ConflictKind = "protected_path"
 )
 
-// Conflict is one mismatch between a caller and a callee as the reader
-// sees them at Rev: the caller passes Got arguments, the callee's
-// signature at Rev admits Want.
+// ConflictKinds is the closed list: arity, then the five in the order above.
+var ConflictKinds = []ConflictKind{ConflictArity, ConflictBoundaryCross, ConflictDecisionContradicted,
+	ConflictSignatureMismatch, ConflictDuplicateAbstraction, ConflictProtectedPath}
+
+// Conflict is one mismatch as the reader sees it at Rev. An arity conflict
+// is between a caller and a callee: the caller passes Got arguments, the
+// callee's signature at Rev admits Want. The other kinds name the Unit the
+// conflict is in, the RuleID that raised it (empty when no rule did), the
+// Subject it is about and the Evidence ids that show it.
 type Conflict struct {
 	Kind   ConflictKind
 	Edge   graph.Edge
@@ -26,6 +37,11 @@ type Conflict struct {
 	Want   string
 	Got    int
 	Rev    graph.Rev
+
+	Unit     graph.ID
+	RuleID   string
+	Subject  graph.ID
+	Evidence []graph.ID
 }
 
 // Key is the conflict's identity across recomputations: the edge's.

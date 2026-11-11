@@ -142,7 +142,6 @@ func list[T any](r *reader, n *node, one func(*node) T) []T {
 var (
 	gateKinds   = []string{"test", "build", "lint", "typecheck", "scan", "custom"}
 	matchModes  = []string{"prefix", "exact"}
-	ruleKinds   = []string{"require_evidence", "forbid_code", "forbid_command", "protect_path", "order"}
 	pathModes   = []string{"modify", "delete", "create"}
 	atPoints    = []string{"commit", "push", "pr", "done", "subtask"}
 	factKinds   = []string{"aws_profile", "aws_region", "kube_context", "kube_namespace", "package_index_host", "env_var_name", "sign_in_step"}
@@ -150,7 +149,7 @@ var (
 	targetKinds = []string{"aws_account", "aws_region", "endpoint_host", "kube_context", "gcp_project", "azure_subscription"}
 	supplyKinds = []string{"real_data_run", "hostile_input_run", "cross_check"}
 	gateKeys    = []string{"id", "kind", "argv", "match", "aliases", "dir", "applies_to", "required", "partial_flags", "success_line", "failure_line", "empty_run_line", "exit_codes", "supplies"}
-	ruleKeys    = []string{"id", "kind", "why", "hard_control", "alternative", "pattern", "languages", "paths", "exclude_paths", "command", "modes", "at", "before", "evidence", "then", "after", "after_gate", "same_run_key", "invalidated_by"}
+	ruleKeys    = []string{"id", "kind", "why", "hard_control", "alternative", "pattern", "languages", "paths", "exclude_paths", "command", "modes", "at", "before", "evidence", "then", "after", "after_gate", "same_run_key", "invalidated_by", "from", "to", "predicate", "applies_to", "source"}
 	commandKeys = []string{"argv", "flags", "require_flags", "flag_values", "sql"}
 	factKeys    = []string{"id", "kind", "programs", "target", "classes", "value", "mechanism", "why"}
 	targetKeys  = []string{"kind", "id"}
@@ -475,7 +474,7 @@ func (r *reader) command(n *node) (c *CommandMatch) {
 func (r *reader) rule(n *node, seen map[string]struct{}) (x Rule) {
 	f := r.object(n, ruleKeys...)
 	x.ID = field(r, f, "id", true, r.id(seen))
-	x.Kind = field(r, f, "kind", true, r.oneOf(ruleKinds))
+	x.Kind = field(r, f, "kind", true, r.oneOf(ruleKindNames()))
 	x.Why = field(r, f, "why", true, r.why)
 	x.HardControl = field(r, f, "hard_control", true, r.why)
 	x.Alternative = field(r, f, "alternative", false, r.alt)
@@ -493,6 +492,7 @@ func (r *reader) rule(n *node, seen map[string]struct{}) (x Rule) {
 	x.AfterGate = field(r, f, "after_gate", false, r.id(nil))
 	x.SameRunKey = field(r, f, "same_run_key", false, r.words)
 	x.InvalidatedBy = field(r, f, "invalidated_by", false, r.words)
+	r.ruleRefs(f, &x)
 	if x.Kind == "protect_path" && x.Modes == nil {
 		x.Modes = slices.Clone(pathModes)
 	}
