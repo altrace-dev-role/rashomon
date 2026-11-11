@@ -15,7 +15,7 @@ import (
 )
 
 // fd2Created is the runtime's count of goroutines created since the process
-// started (runtime/metrics, go1.26 on; CI and the lane runs are go1.27.3).
+// started (runtime/metrics, go1.26 on; CI and the lane runs are go1.27).
 const fd2Created = "/sched/goroutines-created:goroutines"
 
 // fd2Spawned is how many goroutines fn started. By the creation count where
