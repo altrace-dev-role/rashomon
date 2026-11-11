@@ -1,0 +1,39 @@
+{
+  "reason": "An Edit, then go test passed, then a second Edit of the same file that was refused and never ran: its declaration has no ending. Whether that last write happened is not known to the record; the line and the next prompt's note show what is said about the gate after it.",
+  "provenance": "constructed: the edit and pass of control-edit-green-test-done followed by a PreToolUse with no ending (outcome denied: a permission rule refused it and the turn went on), in a go.mod project",
+  "final_message": "Done.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./..."
+      },
+      "outcome": "ok",
+      "output": "ok  \tm\t0.004s\n"
+    },
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "c",
+        "new_string": "d"
+      },
+      "outcome": "denied"
+    }
+  ]
+}

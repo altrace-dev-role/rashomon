@@ -1,0 +1,30 @@
+{
+  "reason": "The control: one Edit, then go test passed after it, and the message says Done. Every claim a line can make here is measured, so it is the run the others are read against.",
+  "provenance": "constructed from the completeness replays of the base code (the T9 and T10 controls), in a go.mod project with go test's own pass line",
+  "final_message": "Done.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./..."
+      },
+      "outcome": "ok",
+      "output": "ok  \tm\t0.004s\n"
+    }
+  ]
+}

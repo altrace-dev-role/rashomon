@@ -1,0 +1,22 @@
+{
+  "reason": "Nothing was written: the turn's only call, a Write, failed, and the final message says so. In a go.mod project, a line that counts a file edited and go test owed after it states what did not happen.",
+  "provenance": "constructed from the completeness replays of the base code (T6): a go.mod project, Claude Code's own error text for a Write to a file not read first",
+  "final_message": "Done. The write could not be applied because the file had not been read first, so nothing was changed.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Write",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "content": "package a\n"
+      },
+      "outcome": "failed",
+      "output": "File has not been read yet. Read it first before writing to it."
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "reason": "The last write that happened is the first Edit, and go test passed after it; the second Edit of the same file failed and wrote nothing, and the final message says so. In a go.mod project, a line saying go test was not run after the last edit counts the failed Edit as that edit.",
+  "provenance": "constructed from the completeness replays of the base code (T2, with go.mod): Claude Code's own error text for an Edit whose old string was not found, go test's own pass line",
+  "final_message": "Done. A last cosmetic edit failed to apply (string not found), so the file is as tested.",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./..."
+      },
+      "outcome": "ok",
+      "output": "ok  \tm\t0.004s\n"
+    },
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "c",
+        "new_string": "d"
+      },
+      "outcome": "failed",
+      "output": "String to replace not found in file."
+    }
+  ]
+}

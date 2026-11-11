@@ -1,0 +1,1506 @@
+# What rashomon printed on every replay of test/corpus/detectors and
+# test/corpus/lines, one block per fixture and turn, on the code that wrote it.
+# Rewrite it only for a change you mean, and read the diff:
+#   env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT go test -tags perf ./test/acceptance \
+#       -run '^TestDetectorPrecision_Table$' -count=1 -update
+# systemMessage is what Claude Code shows the person; additionalContext is
+# what it gives the model. fired is read from the digest, never the wording.
+# Paths: {store} the store, {config} Claude Code's configuration directory,
+# {home} HOME, {cwd} the hooks' directory, {project} the run's project.
+
+=== detectors/digest_unknown/fp-chat-only-turn-before-install turn 1 of 1
+prompt: prompt-1
+digest read: none
+fired: digest_unknown
+session start: not sent: probe_start is false
+calls: 0; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: digest unknown (probe_absent).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/digest_unknown/tn-chat-only-turn-after-probe turn 1 of 1
+prompt: prompt-1
+digest read: none
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 0; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/coverage_unverified/fp-session-predates-install-with-calls turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: coverage_unverified
+session start: not sent: probe_start is false
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: coverage unverified (probe_absent).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/coverage_unverified/tn-healthy-turn turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/digest_truncated/tn-small-digest turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/digest_truncated/tp-three-hundred-unended-calls turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: digest_truncated, declaration_without_execution
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 300; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: digest truncated (some fields were cut to stay under the size ceiling). 75 declarations without recorded execution.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fn-word-in-another-sense-timeout-setting turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; no test or build is known for this project yet.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-empty-search-grep-exit-1 turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-empty-search-rg-exit-1 turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-non-english-de-acknowledged turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-non-english-ja-acknowledged turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-non-english-zh-acknowledged turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-recovered-build turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-recovered-port-in-use turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure, flaky_pair
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure. same test command had both outcomes with no recorded file edit between (#1 failed, #4 passed).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-status-query-git-diff-quiet turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/fp-status-query-test-f turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tn-failed-read-of-directory turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tn-failure-acknowledged turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: go test exited 1 in this turn (call 1).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tn-grep-tool-no-match turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tn-nothing-failed turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tn-real-session-2.1.280 turn 1 of 1
+prompt: 00000000-0000-4000-8000-000000000002
+digest read: 00000000-0000-4000-8000-000000000002
+fired: declaration_without_execution
+session start:
+  nothing
+prompt 00000000-0000-4000-8000-000000000002 (it opens the turn):
+  nothing
+calls: 11; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session 00000000-0000-4000-8000-000000000001
+next prompt: not sent: the capture ends its session
+session end:
+  nothing
+
+=== detectors/silent_failure/tp-build-failed-never-rerun turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tp-edit-old-string-not-found turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tp-failure-word-inside-another-word turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tp-go-test-failed-never-rerun turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/silent_failure/tp-write-refused-claims-created turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/fn-non-english-pass-claim turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: make test failed in this turn (call 1) (read from its output; the pipe hid the exit status).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/fp-echo-status-shows-zero turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: no edits; go test passed (call 1).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/fp-instruction-not-claim turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/fp-output-shows-pass-tail turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/fp-pass-word-about-a-feature turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 1
+call 1 Bash PostToolUse:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'make' ran in this call and the pipe to tail hid its exit status; no outcome of this run is recorded.
+  hookSpecificOutput.hookEventName:
+    | PostToolUse
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'make' ran in this call and the pipe to tail hid its exit status; no outcome of this run is recorded."
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tn-and-chain-keeps-status turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: no edits; make test passed (call 1).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tn-later-plain-run turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: no edits; make test passed (call 4).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tn-message-names-failure turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: make test failed in this turn (call 1) (read from its output; the pipe hid the exit status).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tn-no-pass-claim turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: make test ran in this turn; its exit status was hidden by its line (call 1).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tn-pytest-tail-passes turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: no edits; python3 -m pytest passed (call 1) (read from its output; the pipe hid the exit status).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tp-failure-word-inside-another-word turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 1
+call 1 Bash PostToolUse:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'python3 -m unittest' ran in this call and the pipe to tail hid its exit status; no outcome of this run is recorded.
+  hookSpecificOutput.hookEventName:
+    | PostToolUse
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'python3 -m unittest' ran in this call and the pipe to tail hid its exit status; no outcome of this run is recorded."
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tp-go-test-echo-status turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: done was claimed; the record shows go test failed in this turn (call 1).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tp-npm-test-or-true turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 1
+call 1 Bash PostToolUse:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'npm test' ran in this call and its line hid its exit status; no outcome of this run is recorded.
+  hookSpecificOutput.hookEventName:
+    | PostToolUse
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'npm test' ran in this call and its line hid its exit status; no outcome of this run is recorded."
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tp-unittest-tail-hides-failure turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 1
+call 1 Bash PostToolUse:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'python3 -m unittest' ran in this call and the pipe to tail hid its exit status; no outcome of this run is recorded.
+  hookSpecificOutput.hookEventName:
+    | PostToolUse
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'python3 -m unittest' ran in this call and the pipe to tail hid its exit status; no outcome of this run is recorded."
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/masked_run/tp-unittest-tee turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: masked_run
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 1
+call 1 Bash PostToolUse:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'python3 -m unittest' ran in this call and the pipe to tee hid its exit status; no outcome of this run is recorded.
+  hookSpecificOutput.hookEventName:
+    | PostToolUse
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'python3 -m unittest' ran in this call and the pipe to tee hid its exit status; no outcome of this run is recorded."
+stop:
+  systemMessage:
+    | ※ rashomon: pass claimed; exit status of 1 build or test run not recorded.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/fp-test-file-had-a-compile-error turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure, tests_only_then_green
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure. test command failed, then the only recorded edits were to files named like tests, then it passed (#1 → #7).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/fp-test-file-had-a-syntax-error turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: silent_failure, tests_only_then_green
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 recorded failure. test command failed, then the only recorded edits were to files named like tests, then it passed (#1 → #7).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/tn-source-edited-too turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 4; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: verified - go test passed after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/tn-source-only-fix turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: verified - go test passed after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/tn-test-edited-still-failing turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; go test exited 1 after the last edit (call 7).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/tp-assertion-weakened turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: tests_only_then_green
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: test command failed, then the only recorded edits were to files named like tests, then it passed (#1 → #7).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/tests_only_then_green/tp-expectation-edited-to-match-output turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: tests_only_then_green
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: test command failed, then the only recorded edits were to files named like tests, then it passed (#1 → #7).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/flaky_pair/fp-service-started-outside-the-session turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: flaky_pair
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: same test command had both outcomes with no recorded file edit between (#1 failed, #4 passed).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/flaky_pair/tn-different-command turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: go test exited 1 in this turn (call 1).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/flaky_pair/tn-edit-between turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: verified - go test passed after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/flaky_pair/tn-two-failures turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: go test exited 1 in this turn (call 4).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/flaky_pair/tp-failed-then-passed-no-edit turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: flaky_pair
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: same test command had both outcomes with no recorded file edit between (#1 failed, #4 passed).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/flaky_pair/tp-passed-then-failed-no-edit turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: flaky_pair
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: same test command had both outcomes with no recorded file edit between (#1 passed, #4 failed).
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/declaration_without_execution/fp-real-session-refused-rm turn 1 of 1
+prompt: 00000000-0000-4000-8000-000000000002
+digest read: 00000000-0000-4000-8000-000000000002
+fired: declaration_without_execution
+session start:
+  nothing
+prompt 00000000-0000-4000-8000-000000000002 (it opens the turn):
+  nothing
+calls: 11; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session 00000000-0000-4000-8000-000000000001
+next prompt: not sent: the capture ends its session
+session end:
+  nothing
+
+=== detectors/declaration_without_execution/fp-user-denied-call turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: declaration_without_execution
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== detectors/declaration_without_execution/tn-every-call-executed turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  nothing
+
+=== detectors/declaration_without_execution/tp-call-started-never-ended turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: declaration_without_execution
+session start:
+  systemMessage:
+    | rashomon brief: {cwd}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/control-edit-green-test-done turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 2; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: verified - go test (inferred) passed after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/t1-failed-edit-only-call turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited; no test or build is known for this project yet.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/t2-failed-edit-after-green-go-mod turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited, go test (inferred) not run after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/t2-failed-edit-after-green-no-manifest turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: no manifest at the root (go.mod, package.json, ...)
+    |   tests: no spec gate; no test runner in the index yet
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read (no go.mod)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited, no test or build run after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/t6-failed-write-only-call turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited, go test (inferred) not run after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing
+
+=== lines/t9a-failed-edit-makefile turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: none
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: Makefile
+    |   tests: "make test" (inferred from Makefile)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: not read for this language (go.mod only)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 file edited, make test (inferred) not run after the last edit.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'make test' (from 'Makefile') was not run after the last edit.
+  hookSpecificOutput.hookEventName:
+    | UserPromptSubmit
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'make test' (from 'Makefile') was not run after the last edit."
+
+=== lines/two-turn-unended-edit-then-done turn 1 of 2
+prompt: 00000000-0000-4000-8000-000000000101
+digest read: 00000000-0000-4000-8000-000000000101
+fired: declaration_without_execution
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session sess-1
+next prompt 00000000-0000-4000-8000-000000000102:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing).
+  hookSpecificOutput.hookEventName:
+    | UserPromptSubmit
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing)."
+
+=== lines/two-turn-unended-edit-then-done turn 2 of 2
+prompt: 00000000-0000-4000-8000-000000000102
+digest read: 00000000-0000-4000-8000-000000000101
+fired: declaration_without_execution
+calls: 0; call events that printed: 0
+stop:
+  nothing
+next prompt prompt-next:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: gate 'go test' (from 'go.mod') was not run after the last edit.
+  hookSpecificOutput.hookEventName:
+    | UserPromptSubmit
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: gate 'go test' (from 'go.mod') was not run after the last edit."
+
+=== lines/unended-edit-after-green turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: declaration_without_execution
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 3; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  hookSpecificOutput.additionalContext:
+    | rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing).
+  hookSpecificOutput.hookEventName:
+    | UserPromptSubmit
+  systemMessage:
+    | ※ rashomon told the agent: "rashomon record: the previous turn ended with a claim of completion that the record does not back (no passing test or build run after its last edit, or expected evidence missing)."
+
+=== lines/unended-edit-only-call turn 1 of 1
+prompt: prompt-1
+digest read: prompt-1
+fired: declaration_without_execution
+session start:
+  systemMessage:
+    | rashomon brief: {project}
+    |   instructions: none (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, user CLAUDE.md)
+    |   build: go.mod (module m)
+    |   tests: "go test ./..." (inferred from go.mod)
+    |   spec: none (.claude/rashomon/spec.json)
+    |   task: none (task/current.json)
+    |   packages: 0 Go directories (walk)
+    |   verify: rashomon report --session sess-1
+calls: 1; call events that printed: 0
+stop:
+  systemMessage:
+    | ※ rashomon: 1 declaration without recorded execution.
+    |             → rashomon report --session sess-1
+next prompt prompt-next:
+  nothing

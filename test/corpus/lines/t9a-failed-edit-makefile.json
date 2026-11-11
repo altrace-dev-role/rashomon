@@ -1,0 +1,23 @@
+{
+  "reason": "Nothing was written: the turn's only call, an Edit, failed, and the final message says so. In a project whose Makefile has a test target, a line saying make test was not run after the last edit, and a next-prompt note telling the model the gate is owed, both state what did not happen.",
+  "provenance": "constructed from the completeness replays of the base code (T9 case a): a Makefile with a test target, Claude Code's own error text for an Edit whose old string was not found",
+  "final_message": "The edit failed: the string was not found, so nothing changed.",
+  "files": [
+    {
+      "path": "Makefile",
+      "content": "test:\n\tgo test ./...\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/internal/a.go",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "failed",
+      "output": "String to replace not found in file."
+    }
+  ]
+}

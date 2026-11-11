@@ -1,0 +1,48 @@
+{
+  "reason": "The first turn edits, passes go test, then begins a second Edit whose ending was never recorded; the second turn makes no call and says Done. What the second turn's Stop and the prompts after each turn say about that unknown write is what this run is for: the second turn did nothing the record could judge.",
+  "provenance": "constructed: unended-edit-after-green's first turn (outcome unrecorded) and a chat-only second turn, prompt ids in the shape Claude Code sends, in a go.mod project",
+  "files": [
+    {
+      "path": "go.mod",
+      "content": "module m\n"
+    }
+  ],
+  "turns": [
+    {
+      "prompt_id": "00000000-0000-4000-8000-000000000101",
+      "final_message": "The tests pass. I started one more edit to internal/a.go.",
+      "calls": [
+        {
+          "tool": "Edit",
+          "input": {
+            "file_path": "{project}/internal/a.go",
+            "old_string": "a",
+            "new_string": "b"
+          },
+          "outcome": "ok"
+        },
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "go test ./..."
+          },
+          "outcome": "ok",
+          "output": "ok  \tm\t0.004s\n"
+        },
+        {
+          "tool": "Edit",
+          "input": {
+            "file_path": "{project}/internal/a.go",
+            "old_string": "c",
+            "new_string": "d"
+          },
+          "outcome": "unrecorded"
+        }
+      ]
+    },
+    {
+      "prompt_id": "00000000-0000-4000-8000-000000000102",
+      "final_message": "Done."
+    }
+  ]
+}

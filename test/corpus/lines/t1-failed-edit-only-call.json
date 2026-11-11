@@ -1,0 +1,23 @@
+{
+  "reason": "Nothing was written: the turn's only call, an Edit, failed, and the final message says so. A line that counts a file edited, or says a test is owed after an edit, states what did not happen.",
+  "provenance": "constructed from the completeness replays of the base code (T1): a project with main.go and no test command, Claude Code's own error text for an Edit whose old string was not found",
+  "final_message": "The edit failed: the old string was not found in config.yaml, so nothing was changed.",
+  "files": [
+    {
+      "path": "main.go",
+      "content": "package main\n"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "{project}/config.yaml",
+        "old_string": "a",
+        "new_string": "b"
+      },
+      "outcome": "failed",
+      "output": "String to replace not found in file."
+    }
+  ]
+}

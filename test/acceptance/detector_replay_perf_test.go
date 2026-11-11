@@ -2,60 +2,33 @@
 
 package acceptance
 
-// The replay half of detector precision, built only with -tags perf.
+// The sweep over both corpora, built only with -tags perf.
 //
-// It replays every fixture of test/corpus/detectors through the real binary,
-// some 55 of them, one fresh machine each: about 5 s on a laptop without the
-// race detector, against the sub-second of everything else in this package
-// (CI's log prints a package's time, not a test's). That is too much for every
-// push of the Test job, so it is gated the way test/perf is: by the perf tag,
-// and the `perf-linux` job of ci.yaml runs it on every pull request.
+// It replays every fixture of test/corpus/detectors and test/corpus/lines
+// through the real binary, some 70 of them, one fresh machine each: about
+// 5 s on a laptop without the race detector, against the sub-second of
+// everything else in this package (CI's log prints a package's time, not a
+// test's). That is too much for every push of the Test job, so it is gated
+// the way test/perf is: by the perf tag, and the `perf-linux` job of
+// ci.yaml runs it on every pull request.
 //
 //	env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT go test -tags perf \
 //	    ./test/acceptance -run '^TestDetectorPrecision_Table$' -count=1 -v
 //
-// What stays in the default build is what needs no replay: the parsers, the
-// statistics, the label rules and the inventory (detector_stats_test.go,
-// detector_fixture_test.go, detector_precision_test.go).
+// That job runs this one test, so the snapshot of everything the replays
+// printed (detector_replay_test.go) is compared here, as its last subtest.
+// What stays in the default build is what needs no sweep: the parsers, the
+// statistics, the label rules, the inventory, and the replay of one fixture
+// (detector_stats_test.go, detector_fixture_test.go,
+// detector_precision_test.go, detector_replay_test.go).
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// loadDetectorFixtures reads every fixture of one detector, sorted by name.
-// A detector with no directory has none, which is not an error.
-func loadDetectorFixtures(t *testing.T, id string) (names []string, fixtures []detectorFixture) {
-	t.Helper()
-	dir := filepath.Join(detectorCorpus, id)
-	ents, err := os.ReadDir(dir)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ent := range ents {
-		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".json") {
-			t.Fatalf("%s/%s: a fixture directory holds .json fixtures and nothing else", id, ent.Name())
-		}
-		b, err := os.ReadFile(filepath.Join(dir, ent.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, err := parseFixture(id, b)
-		if err != nil {
-			t.Fatalf("%s/%s: %v", id, ent.Name(), err)
-		}
-		names = append(names, strings.TrimSuffix(ent.Name(), ".json"))
-		fixtures = append(fixtures, f)
-	}
-	return names, fixtures
-}
 
 // loadSheet reads the labelling sheet.
 func loadSheet(t *testing.T) []sheetRow {
@@ -71,168 +44,30 @@ func loadSheet(t *testing.T) []sheetRow {
 	return rows
 }
 
-// runFixture replays f in a fresh machine and reports what the Stop path
-// printed and what the digest says. Nothing is read from the store directly:
-// the fires are the binary's.
-func runFixture(t *testing.T, f detectorFixture) fixtureReplay {
-	t.Helper()
-	e := newEnv(t)
-	var out fixtureReplay
-	final := f.FinalMessage
-	if f.Capture != "" {
-		out.line, out.spoke, final = e.replayCapture(t)
-	} else {
-		if res := e.watch(); res.exitCode != 0 {
-			t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
-		}
-		if f.probeStart() {
-			if res := e.probe("start", testSession); res.exitCode != 0 {
-				t.Fatalf("probe start: exit %d, stderr %q", res.exitCode, res.stderr)
-			}
-		}
-		n := 0
-		for _, c := range f.Calls {
-			reps := c.Repeat
-			if reps == 0 {
-				reps = 1
-			}
-			for i := 0; i < reps; i++ {
-				n++
-				e.replayCall(t, fmt.Sprintf("toolu_fx%04d", n), c)
-			}
-		}
-		out.line, out.spoke = e.recapLine(stopPayload(testSession, f.FinalMessage, false))
-	}
-	session := testSession
-	if f.Capture != "" {
-		session = realSession
-	}
-	res := e.digestRaw("--session", session, "--last-assistant-message", final)
-	if res.exitCode != 0 {
-		t.Fatalf("digest: exit %d, stderr %q", res.exitCode, res.stderr)
-	}
-	out.rawJSON = res.stdout
-	if err := json.Unmarshal([]byte(res.stdout), &out.digest); err != nil {
-		t.Fatalf("digest is not JSON: %v\n%s", err, res.stdout)
-	}
-	return out
-}
-
-// replayCall feeds the binary one call as Claude Code would have: the
-// PreToolUse payload, then the PostToolUse or PostToolUseFailure that
-// answers it, or nothing for a call that has no ending.
-func (e *env) replayCall(t *testing.T, id string, c fixtureCall) {
-	t.Helper()
-	pre := defaultPayload()
-	pre.ToolUseID, pre.ToolName, pre.ToolInput = id, c.Tool, c.Input
-	e.mustHook(pre.build(t))
-	switch c.Outcome {
-	case "ok":
-		post := defaultPost()
-		post.ToolUseID, post.ToolName, post.ToolInput = id, c.Tool, c.Input
-		if c.Tool == "Bash" {
-			post.ToolResponse = map[string]any{"stdout": c.Output, "stderr": "", "interrupted": false}
-		} else {
-			post.ToolResponse = map[string]any{"output": c.Output}
-		}
-		e.mustPost(post.build(t))
-	case "failed":
-		// A shell call fails as Claude Code sends it: "Exit code N" and then the
-		// command's output. Another tool's error is its own text.
-		msg := c.Output
-		if c.Tool == "Bash" {
-			msg = fmt.Sprintf("Exit code %d", max(c.ExitCode, 1))
-			if c.Output != "" {
-				msg += "\n" + c.Output
-			}
-		} else if msg == "" {
-			msg = "tool failed"
-		}
-		b, err := json.Marshal(map[string]any{
-			"hook_event_name": "PostToolUseFailure",
-			"session_id":      testSession,
-			"transcript_path": "/tmp/transcripts/sess-1.jsonl",
-			"cwd":             "/tmp/project",
-			"permission_mode": "default",
-			"tool_name":       c.Tool,
-			"tool_input":      c.Input,
-			"tool_use_id":     id,
-			"error":           msg,
-			"is_interrupt":    false,
-			"duration_ms":     30,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		e.mustPost(string(b))
-	}
-}
-
-// replayCapture replays the committed Claude Code capture the way
-// replayReal does, except that the Stop payload's line is kept: replayReal
-// discards it, and a second Stop for the same turn is a duplicate that says
-// nothing. It returns that line and the Stop's final message.
-func (e *env) replayCapture(t *testing.T) (line string, spoke bool, final string) {
-	t.Helper()
-	if res := e.watch(); res.exitCode != 0 {
-		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
-	}
-	raw, err := os.ReadFile(filepath.Join(realFixtureDir, "transcript.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	transcript := filepath.Join(e.configDir, "projects", "-private-tmp-rashomon-fixture-wd", realSession+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(transcript), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(transcript, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	sub := map[string][]string{
-		"SessionStart": {"probe", "start"}, "SessionEnd": {"probe", "end"},
-		"PreToolUse": {"hook"}, "PostToolUse": {"post"}, "PostToolUseFailure": {"post"},
-		"Stop": {"recap"}, "UserPromptSubmit": {"recap", "pending"},
-	}
-	for _, p := range realPayloads(t, transcript) {
-		args, ok := sub[p.event]
-		if !ok {
-			t.Fatalf("no subcommand for captured event %q", p.event)
-		}
-		res := e.run(p.raw+"\n", nil, append(append([]string{}, args...), e.installArgs()...)...)
-		if res.exitCode != 0 {
-			t.Fatalf("%s (%s): exit %d, stderr %q", p.event, p.tool, res.exitCode, res.stderr)
-		}
-		if p.event != "Stop" {
-			continue
-		}
-		var s struct {
-			Message string `json:"last_assistant_message"`
-		}
-		if err := json.Unmarshal([]byte(p.raw), &s); err != nil {
-			t.Fatal(err)
-		}
-		final = s.Message
-		if res.stdout != "" {
-			var o recapOutput
-			if err := json.Unmarshal([]byte(res.stdout), &o); err != nil {
-				t.Fatalf("recap stdout is not JSON: %v", err)
-			}
-			line, spoke = o.SystemMessage, true
-		}
-	}
-	return line, spoke, final
+// sweepOutput is what the sweep collects beside the tallies: every block of
+// the snapshot in corpus order, the fires a fixture's label does not read,
+// and the whole line each false positive printed.
+type sweepOutput struct {
+	blocks   [][]string
+	fixtures int
+	others   []string
+	fpLines  []string
 }
 
 // TestDetectorPrecision_Table replays every fixture, holds each label to the
 // binary's behaviour, and prints one row per detector: N, precision, the
 // Wilson 95% interval and a status. Only labels a person confirmed count; a
 // detector below the floor is printed unmeasured, whatever its seeds say.
+// Beside the rows it lists the fires no label reads and each false
+// positive's whole line, and its last subtest holds everything the replays
+// printed to the committed snapshot.
 func TestDetectorPrecision_Table(t *testing.T) {
 	tallies := map[string]*fireTally{}
 	hasFixtures := map[string]bool{}
 	// reproduced is each false-positive class a fixture reproduced, with the
 	// fixtures that show it: what a fix would have to cover.
 	reproduced := map[string][]string{}
+	var out sweepOutput
 	for _, spec := range detectorInventory {
 		id := spec.name()
 		tallies[id] = &fireTally{}
@@ -242,12 +77,10 @@ func TestDetectorPrecision_Table(t *testing.T) {
 			t.Fatalf("%s is report-only: its fire condition is not in the digest the replay reads", id)
 		}
 		for i, f := range fixtures {
+			out.fixtures++
 			t.Run(id+"/"+names[i], func(t *testing.T) {
-				fired, problems := fixtureProblems(spec, f, runFixture(t, f))
-				for _, p := range problems {
-					t.Error(p)
-				}
-				if fired && len(problems) == 0 {
+				fired := out.replayDetectorFixture(t, spec, names[i], f)
+				if fired {
 					tallies[id].add(f.Label, f.LabelledBy)
 					if f.Label == labelFalsePositive {
 						reproduced[f.FPClass] = append(reproduced[f.FPClass], id+"/"+names[i])
@@ -256,14 +89,22 @@ func TestDetectorPrecision_Table(t *testing.T) {
 			})
 		}
 	}
+	names, lines := loadLineFixtures(t)
+	for i, f := range lines {
+		out.fixtures++
+		t.Run("lines/"+names[i], func(t *testing.T) {
+			turns, norm := replayRun(t, f.fixtureRun)
+			out.blocks = append(out.blocks, renderRun(t, "lines/"+names[i], turns, norm))
+		})
+	}
 	for _, row := range loadSheet(t) {
 		tallies[row.Detector].add(row.Label, row.LabelledBy)
 		hasFixtures[row.Detector] = true
 	}
 
-	var lines []string
+	var rows []string
 	for _, spec := range detectorInventory {
-		lines = append(lines, precisionRow{spec.name(), *tallies[spec.name()], hasFixtures[spec.name()]}.String())
+		rows = append(rows, precisionRow{spec.name(), *tallies[spec.name()], hasFixtures[spec.name()]}.String())
 	}
 	var classes []string
 	for _, c := range fpClasses {
@@ -272,6 +113,77 @@ func TestDetectorPrecision_Table(t *testing.T) {
 		}
 	}
 	t.Logf("false-positive classes reproduced (class, fixtures):\n%s", strings.Join(classes, "\n"))
+	t.Logf("fires no label reads (fixture turn: detectors other than the fixture's own):\n%s", orNone(strings.Join(out.others, "\n")))
+	t.Logf("false positives and the whole line each printed:\n%s", orNone(strings.Join(out.fpLines, "\n")))
 	t.Logf("detector precision (counted = confirmed by a person; seed labels are listed, never counted; floor %d)\n%s",
-		minLabelledFires, strings.Join(lines, "\n"))
+		minLabelledFires, strings.Join(rows, "\n"))
+
+	t.Run("snapshot", func(t *testing.T) { out.compare(t) })
+}
+
+// replayDetectorFixture replays one detector fixture, holds its label to its
+// label turn, and collects its blocks, the other detectors that fired on any
+// of its turns and, for a false positive, the whole line. It reports whether
+// the fixture's detector fired with nothing wrong.
+func (out *sweepOutput) replayDetectorFixture(t *testing.T, spec detectorSpec, name string, f detectorFixture) bool {
+	t.Helper()
+	full := "detectors/" + spec.name() + "/" + name
+	turns, norm := replayRun(t, f.fixtureRun)
+	out.blocks = append(out.blocks, renderRun(t, full, turns, norm))
+	for i, tr := range turns {
+		var others []string
+		for _, id := range tr.fired() {
+			if id != spec.name() {
+				others = append(others, id)
+			}
+		}
+		if len(others) > 0 {
+			out.others = append(out.others, fmt.Sprintf("%s turn %d: %s", full, i+1, strings.Join(others, ", ")))
+		}
+	}
+	judged := turns[f.labelTurn()].judged(t)
+	if f.Label == labelFalsePositive {
+		line := " the Stop printed nothing"
+		if judged.spoke {
+			line = "\n    | " + strings.ReplaceAll(norm.apply(judged.line), "\n", "\n    | ")
+		}
+		out.fpLines = append(out.fpLines, fmt.Sprintf("%s turn %d:%s", full, f.labelTurn()+1, line))
+	}
+	fired, problems := fixtureProblems(spec, f, judged)
+	for _, p := range problems {
+		t.Error(p)
+	}
+	return fired && len(problems) == 0
+}
+
+// compare holds the sweep's blocks to the committed snapshot, or with
+// -update rewrites it. Only a sweep that replayed every fixture may rewrite
+// it or call a committed block gone: one filtered with -run has not seen
+// the rest.
+func (out *sweepOutput) compare(t *testing.T) {
+	var got []string
+	for _, b := range out.blocks {
+		got = append(got, b...)
+	}
+	complete := len(out.blocks) == out.fixtures
+	if *updateGoldens {
+		if !complete {
+			t.Fatalf("-update needs every fixture replayed; %d of %d were", len(out.blocks), out.fixtures)
+		}
+		if err := os.WriteFile(replaySnapshot, []byte(formatSnapshot(got)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(got) == 0 {
+		// A -run filter that replayed no fixture compared nothing, and a
+		// pass would say the snapshot held: the absence shows as a skip.
+		t.Skipf("no fixture replayed (0 of %d); nothing was compared", out.fixtures)
+	}
+	problems := snapshotProblems(got, readSnapshot(t), complete)
+	for _, p := range problems {
+		t.Error(p)
+	}
+	if len(problems) > 0 {
+		t.Errorf("%d blocks differ from %s: rewrite it with -update only for a change you mean, and read the diff", len(problems), replaySnapshot)
+	}
 }
