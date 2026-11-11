@@ -1148,8 +1148,8 @@ func TestRES2_InitBudget(t *testing.T) {
 			low = tr
 		}
 	}
-	if low.Bytes > InitBudgetBytes {
-		t.Errorf("init allocated %d bytes over %d packages at the fewest of %d runs (runs %v), budget %d", low.Bytes, low.Packages, initRuns, all, InitBudgetBytes)
+	if bound := InitBudget(runtime.GOOS); low.Bytes > bound {
+		t.Errorf("init allocated %d bytes over %d packages at the fewest of %d runs (runs %v), budget %d", low.Bytes, low.Packages, initRuns, all, bound)
 	}
 	ran[InitGate] = true
 	t.Logf("init: %d packages, %d bytes at the fewest of %d runs (runs %v), %d allocs, %d gc lines", low.Packages, low.Bytes, initRuns, all, low.Allocs, low.GCLines)
