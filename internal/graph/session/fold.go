@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -65,6 +66,18 @@ type Event struct {
 	// are not boundaries (Frontier.LastBoundary). No writer exists before
 	// W-M4.3 and W-M4.4.
 	Boundary bool
+	// Checkpoint is true for a Stop's verify checkpoint record (type verify,
+	// point stop), which StopsWithoutVerdict holds until a ledger line's
+	// verdict names it.
+	Checkpoint bool
+	// Verdict is true for a ledger line that carried done_flagged, unmet and
+	// checkpoint_seq, all three, which DoneFlagged, Unmet and CheckpointSeq
+	// copy. A line without one adds no VerdictRef, never false or 0, and its
+	// rows still apply.
+	Verdict       bool
+	DoneFlagged   bool
+	Unmet         int
+	CheckpointSeq int64
 }
 
 // ledgerType is the record type of a ledger line, the verify ledger at a
@@ -73,6 +86,11 @@ type Event struct {
 // contract does (11:34, msg 71635d33); the writer's constant replaces this
 // one when it lands.
 const ledgerType = "ledger"
+
+// stopPoint is the point of a Stop's verify checkpoint record
+// (verify.PointStop). The fold imports no verify outside its tests, so it
+// names the point, and TestCheckpoint_PointIsVerifys ties the two.
+const stopPoint = "stop"
 
 // Before reports whether e sorts before o in the merged order (seq, record
 // before line, at_unix_ms, id). Record seqs are unique (nextSeq allocates
@@ -122,6 +140,13 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 		UnitRowsCut        int `json:"unit_rows_cut"`
 		// Source is a session record's SessionStart source.
 		Source *string `json:"source"`
+		// Point is a verify record's point kind.
+		Point *string `json:"point"`
+		// DoneFlagged, Unmet and CheckpointSeq are a ledger line's verdict,
+		// each a pointer so an absent or null key never reads as false or 0.
+		DoneFlagged   *bool  `json:"done_flagged"`
+		Unmet         *int   `json:"unmet"`
+		CheckpointSeq *int64 `json:"checkpoint_seq"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: record line: %w", err)
@@ -141,9 +166,16 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 			ev.Obligations = append(ev.Obligations, ObligationRef{ID: o.ID, Kind: o.Kind, Unit: o.Unit, State: o.State})
 		}
 		ev.ObligationsOmitted, ev.UnitRowsCut = h.ObligationsOmitted, h.UnitRowsCut
+		ev.Verdict = h.DoneFlagged != nil && h.Unmet != nil && h.CheckpointSeq != nil
+		if ev.Verdict {
+			ev.DoneFlagged, ev.Unmet, ev.CheckpointSeq = *h.DoneFlagged, *h.Unmet, *h.CheckpointSeq
+		}
 	}
 	if h.Type == store.TypeSession && h.Source != nil {
 		ev.Boundary = *h.Source == events.Compact || *h.Source == events.Resume
+	}
+	if h.Type == store.TypeVerify && h.Point != nil && *h.Point == stopPoint {
+		ev.Checkpoint = true
 	}
 	return ev, true, nil
 }
@@ -287,6 +319,32 @@ func Step(f *Frontier, ev Event) {
 	if ev.Boundary {
 		f.LastBoundary = ev.Seq
 	}
+	if ev.Checkpoint {
+		f.StopsWithoutVerdict = append(f.StopsWithoutVerdict, ev.Seq)
+	}
+	if ev.Verdict {
+		verdict(f, ev)
+	}
+}
+
+// verdict copies a ledger line's verdict as the VerdictRef of the checkpoint
+// its checkpoint_seq names, never computing one (rulings 12:03, 12:12). The
+// line binds by that seq, never by adjacency: a record can land between a
+// Stop's two appends. It binds only to a stop checkpoint read before it and
+// still in StopsWithoutVerdict, which the checkpoint then leaves. A line
+// naming none (no checkpoint at that seq, one not yet read, or one already
+// judged) adds no verdict, so of two lines naming one checkpoint the first
+// is kept; its rows apply either way (ledger). A checkpoint with no ledger
+// line gets none: obligations carry over to the next Stop (ledger condition
+// 4), a verdict belongs to one Stop. The list is cloned before the cut, so a
+// Frontier copied before the Step keeps its own.
+func verdict(f *Frontier, ev Event) {
+	i := slices.Index(f.StopsWithoutVerdict, ev.CheckpointSeq)
+	if i < 0 {
+		return
+	}
+	f.StopsWithoutVerdict = slices.Delete(slices.Clone(f.StopsWithoutVerdict), i, i+1)
+	f.Verdicts = append(f.Verdicts, VerdictRef{Seq: ev.CheckpointSeq, DoneFlagged: ev.DoneFlagged, Unmet: ev.Unmet})
 }
 
 // ledger makes a ledger line's rows the frontier's obligations, as of the

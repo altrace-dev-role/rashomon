@@ -192,6 +192,71 @@ func ledgerLineSynthetic(t *testing.T, seq int64, rows []verify.Obligation, tail
 	return []byte(`{"type":"ledger","seq":` + strconv.FormatInt(seq, 10) + `,"point":"stop","obligations":` + string(b) + tail + `}`)
 }
 
+// TestCheckpoint_PointIsVerifys (W-M4.2, ruling 12:03): the fold's Stop
+// point is verify's, named in the fold because it imports no verify
+// outside its tests.
+func TestCheckpoint_PointIsVerifys(t *testing.T) {
+	if stopPoint != verify.PointStop {
+		t.Fatalf("stopPoint %q, verify.PointStop %q", stopPoint, verify.PointStop)
+	}
+}
+
+// TestEvent_DecodeCheckpoint (W-M4.2, ruling 12:03): a verify record at
+// point stop is a Stop's checkpoint; a verify record at another point or
+// with none, and any other record carrying the key, are not.
+func TestEvent_DecodeCheckpoint(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"a stop checkpoint", `{"type":"verify","seq":12,"point":"stop","point_seq":11}`, true},
+		{"a subagent_stop checkpoint", `{"type":"verify","seq":12,"point":"` + verify.PointSubagentStop + `","point_seq":11}`, false},
+		{"no point", `{"type":"verify","seq":12}`, false},
+		{"a ledger line is no checkpoint", `{"type":"ledger","seq":12,"point":"stop","obligations":[]}`, false},
+		{"a declaration is no checkpoint", `{"type":"declaration","seq":12,"point":"stop"}`, false},
+	} {
+		ev, ok, err := RecordEvent([]byte(c.line))
+		if err != nil || !ok || ev.Checkpoint != c.want {
+			t.Errorf("%s: Checkpoint %v, %v, %v; want %v", c.name, ev.Checkpoint, ok, err, c.want)
+		}
+	}
+}
+
+// TestEvent_DecodeVerdictSynthetic (W-M4.2, rulings 12:03, 12:12): a ledger
+// line's done_flagged, unmet and checkpoint_seq decode as its verdict, a
+// present false or 0 as a value; a line without any one of the three, or
+// with one null, has no verdict, never false or 0. Only a ledger line
+// carries one. SYNTHETIC lines.
+func TestEvent_DecodeVerdictSynthetic(t *testing.T) {
+	rows := []verify.Obligation{{ID: "ob-a", Scope: verify.ScopeSession, Kind: verify.GateAfterWrite, Source: "spec", State: verify.ObligationOpen, Evidence: []int64{}}}
+	type verdictOf struct {
+		verdict, doneFlagged bool
+		unmet                int
+		at                   int64
+	}
+	for _, c := range []struct {
+		name string
+		line []byte
+		want verdictOf
+	}{
+		{"a verdict", ledgerLineSynthetic(t, 11, rows, `,"checkpoint_seq":10,"done_flagged":true,"unmet":2`), verdictOf{true, true, 2, 10}},
+		{"false and 0 are values", ledgerLineSynthetic(t, 11, rows, `,"checkpoint_seq":10,"done_flagged":false,"unmet":0`), verdictOf{true, false, 0, 10}},
+		{"no done_flagged", ledgerLineSynthetic(t, 11, rows, `,"checkpoint_seq":10,"unmet":2`), verdictOf{}},
+		{"no unmet", ledgerLineSynthetic(t, 11, rows, `,"checkpoint_seq":10,"done_flagged":true`), verdictOf{}},
+		{"done_flagged null", ledgerLineSynthetic(t, 11, rows, `,"checkpoint_seq":10,"done_flagged":null,"unmet":2`), verdictOf{}},
+		{"no checkpoint_seq", ledgerLineSynthetic(t, 11, rows, `,"done_flagged":true,"unmet":2`), verdictOf{}},
+		{"an older line", ledgerLineSynthetic(t, 11, rows, ""), verdictOf{}},
+		{"a verify record is no ledger line", []byte(`{"type":"verify","seq":11,"point":"stop","checkpoint_seq":10,"done_flagged":true,"unmet":2}`), verdictOf{}},
+	} {
+		ev, ok, err := RecordEvent(c.line)
+		got := verdictOf{ev.Verdict, ev.DoneFlagged, ev.Unmet, ev.CheckpointSeq}
+		if err != nil || !ok || got != c.want {
+			t.Errorf("%s: %+v, %v, %v; want %+v", c.name, got, ok, err, c.want)
+		}
+	}
+}
+
 // sessionLineSynthetic is a session record built by a test, never recorded:
 // no SessionStart writer exists before W-M4.3 and W-M4.4, so every session
 // record in this file is SYNTHETIC. It is a real store.Session marshalled
@@ -444,6 +509,120 @@ func TestStep_BoundarySynthetic(t *testing.T) {
 	}
 	if f.LastBoundary != 8 {
 		t.Fatalf("LastBoundary %d, want 8", f.LastBoundary)
+	}
+}
+
+// TestStep_VerdictSynthetic (W-M4.2, rulings 12:03, 12:12): each Stop
+// checkpoint is in StopsWithoutVerdict until a ledger line's verdict names
+// it; a verdict is copied as its checkpoint's VerdictRef, one per
+// checkpoint, the first kept; a ledger line with no verdict adds none; and
+// each checkpoint is in Verdicts or StopsWithoutVerdict (conservation).
+// SYNTHETIC events.
+func TestStep_VerdictSynthetic(t *testing.T) {
+	rows := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "open"}}
+	f := newFrontier("s1")
+	stops := 0
+	for _, ev := range []Event{
+		{Seq: 10, Type: "verify", Checkpoint: true},
+		{Seq: 11, Type: ledgerType, Ledger: true, Obligations: rows, Verdict: true, DoneFlagged: false, Unmet: 1, CheckpointSeq: 10},
+		{Seq: 20, Type: "verify", Checkpoint: true},
+		{Seq: 21, Type: ledgerType, Ledger: true, Obligations: rows},
+		{Seq: 30, Type: "verify", Checkpoint: true},
+		{Seq: 31, Type: ledgerType, Ledger: true, Obligations: rows, Verdict: true, DoneFlagged: true, Unmet: 0, CheckpointSeq: 30},
+		{Seq: 32, Type: ledgerType, Ledger: true, Obligations: rows, Verdict: true, DoneFlagged: false, Unmet: 5, CheckpointSeq: 30},
+		{Seq: 40, Type: "verify", Checkpoint: true},
+	} {
+		Step(&f, ev)
+		if ev.Checkpoint {
+			stops++
+		}
+	}
+	if len(f.Verdicts)+len(f.StopsWithoutVerdict) != stops {
+		t.Errorf("%d verdicts + %d without one, want %d stop checkpoints", len(f.Verdicts), len(f.StopsWithoutVerdict), stops)
+	}
+	want := []VerdictRef{{Seq: 10, DoneFlagged: false, Unmet: 1}, {Seq: 30, DoneFlagged: true, Unmet: 0}}
+	if !reflect.DeepEqual(f.Verdicts, want) || !reflect.DeepEqual(f.StopsWithoutVerdict, []int64{20, 40}) {
+		t.Fatalf("Verdicts %+v, without %v; want %+v, [20 40]", f.Verdicts, f.StopsWithoutVerdict, want)
+	}
+}
+
+// TestStep_VerdictBindsBySeqSynthetic (W-M4.2, ruling 12:12 3): a ledger
+// line binds to the checkpoint its checkpoint_seq names, not to the record
+// before it, since a record can land between a Stop's two appends: here a
+// write declaration and a subagent_stop checkpoint. SYNTHETIC events.
+func TestStep_VerdictBindsBySeqSynthetic(t *testing.T) {
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 10, Type: "verify", Checkpoint: true},
+		{Seq: 11, Type: "declaration"},
+		{Seq: 12, Type: "verify"},
+		{Seq: 13, Type: ledgerType, Ledger: true, Obligations: []ObligationRef{}, Verdict: true, DoneFlagged: true, Unmet: 2, CheckpointSeq: 10},
+	} {
+		Step(&f, ev)
+	}
+	if want := []VerdictRef{{Seq: 10, DoneFlagged: true, Unmet: 2}}; !reflect.DeepEqual(f.Verdicts, want) || len(f.StopsWithoutVerdict) != 0 {
+		t.Fatalf("Verdicts %+v, without %v; want %+v, none", f.Verdicts, f.StopsWithoutVerdict, want)
+	}
+}
+
+// TestStep_VerdictWithoutCheckpointSynthetic (W-M4.2, ruling 12:12 3): a
+// ledger line whose checkpoint_seq names no stop checkpoint read before it,
+// a verify record at another point or one at a later seq, adds no verdict,
+// and its rows still apply. SYNTHETIC events.
+func TestStep_VerdictWithoutCheckpointSynthetic(t *testing.T) {
+	rows := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "unmet"}}
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 5, Type: "verify"},
+		{Seq: 10, Type: ledgerType, Ledger: true, Obligations: rows, Verdict: true, DoneFlagged: true, Unmet: 1, CheckpointSeq: 5},
+		{Seq: 20, Type: ledgerType, Ledger: true, Obligations: rows, Verdict: true, DoneFlagged: true, Unmet: 1, CheckpointSeq: 21},
+		{Seq: 21, Type: "verify", Checkpoint: true},
+	} {
+		Step(&f, ev)
+	}
+	if len(f.Verdicts) != 0 || !reflect.DeepEqual(f.StopsWithoutVerdict, []int64{21}) {
+		t.Errorf("Verdicts %+v, without %v; want none, [21]", f.Verdicts, f.StopsWithoutVerdict)
+	}
+	if !reflect.DeepEqual(f.Obligations, rows) || f.ObligationsAt != 20 {
+		t.Errorf("Obligations %+v at %d; want %+v at 20: rows apply without a verdict", f.Obligations, f.ObligationsAt, rows)
+	}
+}
+
+// TestStep_VerdictLeavesCopies (W-M4.2): a verdict cuts its checkpoint from
+// StopsWithoutVerdict without writing into the list that a Frontier copied
+// before the Step still holds. SYNTHETIC events.
+func TestStep_VerdictLeavesCopies(t *testing.T) {
+	f := newFrontier("s1")
+	Step(&f, Event{Seq: 10, Type: "verify", Checkpoint: true})
+	Step(&f, Event{Seq: 20, Type: "verify", Checkpoint: true})
+	g := f
+	Step(&f, Event{Seq: 21, Type: ledgerType, Ledger: true, Obligations: []ObligationRef{}, Verdict: true, Unmet: 1, CheckpointSeq: 10})
+	if !reflect.DeepEqual(g.StopsWithoutVerdict, []int64{10, 20}) || !reflect.DeepEqual(f.StopsWithoutVerdict, []int64{20}) {
+		t.Errorf("copy %v, stepped %v; want [10 20], [20]", g.StopsWithoutVerdict, f.StopsWithoutVerdict)
+	}
+}
+
+// TestStep_CheckpointWithoutLedgerSynthetic (W-M4.2, rulings 12:03 3, 12:12
+// 5): a Stop whose checkpoint no ledger line follows (a kill, a lock
+// timeout) keeps the obligations of the Stop before, as of that line's seq
+// (ledger condition 4), but gets no verdict: a verdict belongs to one Stop,
+// and the Stop is in StopsWithoutVerdict, never read as not done.
+// SYNTHETIC events.
+func TestStep_CheckpointWithoutLedgerSynthetic(t *testing.T) {
+	rows := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "unmet"}}
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 10, Type: "verify", Checkpoint: true},
+		{Seq: 11, Type: ledgerType, Ledger: true, Obligations: rows, Verdict: true, DoneFlagged: false, Unmet: 1, CheckpointSeq: 10},
+		{Seq: 20, Type: "verify", Checkpoint: true},
+	} {
+		Step(&f, ev)
+	}
+	if !reflect.DeepEqual(f.Obligations, rows) || f.ObligationsAt != 11 {
+		t.Errorf("Obligations %+v at %d; want %+v at 11: they carry over", f.Obligations, f.ObligationsAt, rows)
+	}
+	if want := []VerdictRef{{Seq: 10, DoneFlagged: false, Unmet: 1}}; !reflect.DeepEqual(f.Verdicts, want) || !reflect.DeepEqual(f.StopsWithoutVerdict, []int64{20}) {
+		t.Errorf("Verdicts %+v, without %v; want %+v, [20]: a verdict does not carry over", f.Verdicts, f.StopsWithoutVerdict, want)
 	}
 }
 

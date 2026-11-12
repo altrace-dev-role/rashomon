@@ -38,7 +38,10 @@ const (
 // UnitRowsCut, verify's own cut of unit rows (ruling 11:37); Touched
 // holds files, not units, for the same reason (its doc); TouchedWithheld,
 // condition 3's cut rule applied to Touched, and TouchedOutside, the writes
-// Touched cannot place in the project (ruling 11:37).
+// Touched cannot place in the project (ruling 11:37); StopsWithoutVerdict,
+// the Stop checkpoints no verdict names (rulings 12:03, 12:12); and
+// VerdictRef's DoneFlagged and Unmet for PLAN 1487's Done and Owed, named
+// for what the writer decides (ruling 12:12, VerdictRef's doc).
 type Frontier struct {
 	Schema    int    `json:"schema"`
 	Session   string `json:"session"`
@@ -97,6 +100,17 @@ type Frontier struct {
 	UnitRowsCut        int             `json:"unit_rows_cut"`
 	Delivered          []LineRef       `json:"delivered"`
 	Verdicts           []VerdictRef    `json:"verdicts"`
+	// StopsWithoutVerdict are the seqs of the Stop checkpoints the record
+	// holds that Verdicts has no entry for: no ledger line followed (a kill,
+	// a lock timeout), or its line carried no verdict keys (an older line).
+	// The Stop was judged; its verdict was not logged, and nothing may read
+	// it as not done (ruling 12:12). A list, not a count: a ledger line binds
+	// by seq to a checkpoint read before it, and a Catch continuing a saved
+	// frontier must still know those checkpoints; the count is its length.
+	// Each checkpoint is in Verdicts or here, never both, so len(Verdicts) +
+	// len(StopsWithoutVerdict) is the record's Stop checkpoints. A Stop a
+	// Catch reads between its two appends is here until its line lands.
+	StopsWithoutVerdict []int64 `json:"stops_without_verdict"`
 	// LastBoundary is the seq of the last session record whose SessionStart
 	// source is compact or resume, where the session's context was rebuilt
 	// (W-M4.3, W-M4.4); 0 for none. Startup is no boundary, and neither is
@@ -149,11 +163,22 @@ type LineRef struct {
 	Seq  int64  `json:"seq"`
 }
 
-// VerdictRef is a Stop's verdict, by the seq of its checkpoint record.
+// VerdictRef is a Stop's verdict, by the seq of its checkpoint record: the
+// verify record at point stop, whose point_seq, the last call record it
+// judged, stays on that record. Both values are the ledger line's, copied,
+// never computed (rulings 12:03, 12:12); its writer evaluates each once.
+// DoneFlagged is recap.DoneFlag's second return at that Stop, the decision
+// the next prompt's note is given: true when the flag fired (a strict claim
+// the record does not back, or a strict done claim with an expected kind
+// unmet); false when it did not, which includes a Stop with no claim, so
+// false is never read as done or verified. Unmet counts the Stop's ledger
+// rows of scope session in state unmet, before any cut the line applies;
+// open and unknown rows are not counted (INV-2). PLAN 1487 names the two
+// Done and Owed; its names change with the M2 merge (ruling 12:12).
 type VerdictRef struct {
-	Seq  int64 `json:"seq"`
-	Done bool  `json:"done"`
-	Owed int   `json:"owed"`
+	Seq         int64 `json:"seq"`
+	DoneFlagged bool  `json:"done_flagged"`
+	Unmet       int   `json:"unmet"`
 }
 
 func newFrontier(sessionID string) Frontier {
@@ -199,6 +224,8 @@ func canon(f Frontier) Frontier {
 	})
 	g.Verdicts = append([]VerdictRef{}, f.Verdicts...)
 	sort.Slice(g.Verdicts, func(i, j int) bool { return g.Verdicts[i].Seq < g.Verdicts[j].Seq })
+	g.StopsWithoutVerdict = append([]int64{}, f.StopsWithoutVerdict...)
+	sort.Slice(g.StopsWithoutVerdict, func(i, j int) bool { return g.StopsWithoutVerdict[i] < g.StopsWithoutVerdict[j] })
 	return g
 }
 

@@ -43,7 +43,8 @@ func sampleFrontier() Frontier {
 	f.ObligationsOmitted = 2
 	f.UnitRowsCut = 5
 	f.Delivered = []LineRef{{ID: "l2", Key: "unit:b", Kind: "unit", Unit: "b", Seq: 41}, {ID: "l1", Key: "unit:a", Kind: "unit", Unit: "a", Seq: 4}}
-	f.Verdicts = []VerdictRef{{Seq: 30, Done: false, Owed: 1}, {Seq: 12, Done: true}}
+	f.Verdicts = []VerdictRef{{Seq: 30, DoneFlagged: false, Unmet: 1}, {Seq: 12, DoneFlagged: true}}
+	f.StopsWithoutVerdict = []int64{50, 40}
 	f.LastBoundary = 20
 	return f
 }
@@ -147,6 +148,19 @@ func TestFrontier_BoundaryKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := `"last_boundary":20}`; !bytes.Contains(b, []byte(want)) {
+		t.Errorf("frontier does not hold %s:\n%s", want, b)
+	}
+}
+
+// TestFrontier_VerdictKeys (W-M4.2, rulings 12:03, 12:12): the verdicts, in
+// checkpoint order, under done_flagged and unmet, are followed by the Stop
+// checkpoints no verdict names, in seq order, under their own key.
+func TestFrontier_VerdictKeys(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"verdicts":[{"seq":12,"done_flagged":true,"unmet":0},{"seq":30,"done_flagged":false,"unmet":1}],"stops_without_verdict":[40,50],"last_boundary":20}`; !bytes.Contains(b, []byte(want)) {
 		t.Errorf("frontier does not hold %s:\n%s", want, b)
 	}
 }
