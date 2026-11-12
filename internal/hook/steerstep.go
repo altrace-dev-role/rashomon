@@ -53,6 +53,9 @@ type SteerEnv struct {
 	// Blast is the blast-radius read's port (card ARCH-INLINE1), cmd's
 	// internal/platform; the zero port reads nothing.
 	Blast BlastPort
+	// Plan is the plan-check read's port (W-M2.6), cmd's PlanFacts; the zero
+	// port reads nothing.
+	Plan PlanPort
 	// Join is the findings cmd read for the call before the step (the unit
 	// brief), routed beside the blast draft; nil joins nothing.
 	Join []steer.Finding
@@ -146,6 +149,9 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	draft, blasted := p.blast(env, &ctx, ok)
 	if blasted {
 		view.Findings, ok = append(view.Findings, draft.f), true
+	}
+	if pf, planned := p.plan(env, &ctx, ok); planned {
+		view.Findings, ok = append(view.Findings, pf), true
 	}
 	if !ok {
 		// A call that raised nothing still leaves its then_checks: the Stop
