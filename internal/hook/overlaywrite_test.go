@@ -346,11 +346,15 @@ func counted(t *testing.T) (read, header, resolve *int) {
 	t.Helper()
 	r, h, s := 0, 0, 0
 	or, oh, os_ := overlayReadFile, overlayReadHeader, overlayResolve
+	inner := os_
+	if inner == nil {
+		inner = goOverlay
+	}
 	overlayReadFile = func(p string) ([]byte, error) { r++; return or(p) }
 	overlayReadHeader = func(p string) (graph.Header, error) { h++; return oh(p) }
 	overlayResolve = func(rel string, c []byte, b graph.Rev, q int64) ([]graph.Record, error) {
 		s++
-		return os_(rel, c, b, q)
+		return inner(rel, c, b, q)
 	}
 	t.Cleanup(func() { overlayReadFile, overlayReadHeader, overlayResolve = or, oh, os_ })
 	return &r, &h, &s

@@ -69,11 +69,26 @@ var (
 	overlayReadFile = readOverlayFile
 	// overlayReadHeader reads the index file's header line.
 	overlayReadHeader = graph.ReadIndexHeader
-	// overlayResolve is the Go resolver's Overlay.
-	overlayResolve = func(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
-		return gopg.Resolver{}.Overlay(rel, content, base, seq)
-	}
+	// overlayResolve stands in for the Go resolver's Overlay in a test and is
+	// nil in the binary (resolveOverlay). It has no initialiser: RES-2's scan
+	// walks a var initialiser and every call it reaches, by name, and the name
+	// Overlay reaches pylite's regexps (TestRES2_NoPackageLevelRegexpCompile).
+	overlayResolve func(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error)
 )
+
+// resolveOverlay is a test's overlayResolve when one is set, else goOverlay.
+func resolveOverlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
+	if overlayResolve != nil {
+		return overlayResolve(rel, content, base, seq)
+	}
+	return goOverlay(rel, content, base, seq)
+}
+
+// goOverlay is the Go resolver's Overlay; a test's overlayResolve that wraps
+// the default calls it, since the seam itself is nil.
+func goOverlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
+	return gopg.Resolver{}.Overlay(rel, content, base, seq)
+}
 
 // overlayContentError is a constant error, which costs no init allocation
 // (RES-2) as a package-level errors.New does.
@@ -222,12 +237,19 @@ type overlayCall struct {
 	seq  int64
 }
 
+// overlayTool reports a tool whose input names a file the overlay may read.
+func overlayTool(tool string) bool {
+	switch tool {
+	case "Write", "Edit", "MultiEdit":
+		return true
+	}
+	return false
+}
+
 // overlayPath is the absolute path of the file a Write, Edit or MultiEdit
 // names when the Go resolver takes it, else "".
 func overlayPath(tool string, input json.RawMessage, cwd string) string {
-	switch tool {
-	case "Write", "Edit", "MultiEdit":
-	default:
+	if !overlayTool(tool) {
 		return ""
 	}
 	p := shape.DeclaredPath(tool, input)
@@ -292,11 +314,18 @@ func (c overlayCall) content(path string) ([]byte, bool) {
 
 // write appends the group, if every check holds. It never reports a failure:
 // the caller has nothing to do with one, and a panic is recovered here so the
-// hook's own work is untouched.
+// hook's own work is untouched. The checks run cheapest first: a session with
+// no session-content marker, every session that never consented to it, pays
+// one marker read on an edit and decodes no input and walks no directory
+// (the hook's allocation budgets, test/perf/budgets.json).
 func (c overlayCall) write() {
 	defer func() { _ = recover() }()
+	if !overlayTool(c.tool) || c.seq <= 0 || c.session == store.UnattributedSession ||
+		!store.SessionContentMarker(c.st.Root()) {
+		return
+	}
 	path := overlayPath(c.tool, c.input, c.cwd)
-	if path == "" || c.seq <= 0 || c.session == store.UnattributedSession {
+	if path == "" {
 		return
 	}
 	root := graph.FindIndex(c.cwd)
@@ -307,9 +336,6 @@ func (c overlayCall) write() {
 	if !ok {
 		return
 	}
-	if !store.SessionContentMarker(c.st.Root()) {
-		return
-	}
 	content, ok := c.content(path)
 	if !ok {
 		return
@@ -318,7 +344,7 @@ func (c overlayCall) write() {
 	if err != nil || hdr.Rev.Commit == "" {
 		return
 	}
-	recs, err := overlayResolve(rel, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
+	recs, err := resolveOverlay(rel, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
 	if err != nil || len(recs) == 0 {
 		return
 	}
