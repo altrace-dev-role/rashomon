@@ -43,6 +43,11 @@ type Event struct {
 	// which the Touched rule reads (wrote). Every other record and every
 	// steer line leave it nil.
 	Wrote []string
+	// WroteWithheld is true for a declaration whose write path the record
+	// withheld (file_path_withheld or written_paths_withheld set: no_consent
+	// below record scope v5, oversize, switched_off), which TouchedWithheld
+	// counts. A withheld cwd or project alone is no write.
+	WroteWithheld bool
 }
 
 // Before reports whether e sorts before o in the merged order (seq, record
@@ -75,6 +80,10 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 		WrittenPaths []string `json:"written_paths"`
 		Project      *string  `json:"project"`
 		CWD          *string  `json:"cwd"`
+		// FileWithheld and WrittenWithheld are the two write paths'
+		// withheld reasons; WroteWithheld reads only whether one is set.
+		FileWithheld    *string `json:"file_path_withheld"`
+		WrittenWithheld *string `json:"written_paths_withheld"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: record line: %w", err)
@@ -85,6 +94,7 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 	ev = Event{Seq: *h.Seq, Type: h.Type}
 	if h.Type == store.TypeDeclaration {
 		ev.Wrote = wrote(h.FilePath, h.WrittenPaths, h.Project, h.CWD)
+		ev.WroteWithheld = h.FileWithheld != nil || h.WrittenWithheld != nil
 	}
 	return ev, true, nil
 }
@@ -204,6 +214,9 @@ func Step(f *Frontier, ev Event) {
 	}
 	for _, p := range ev.Wrote {
 		touch(f, p)
+	}
+	if ev.WroteWithheld {
+		f.TouchedWithheld++
 	}
 }
 

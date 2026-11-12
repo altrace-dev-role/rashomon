@@ -32,6 +32,7 @@ func sampleFrontier() Frontier {
 	}
 	f.Decisions = []DecisionRef{{IDs: []string{"n2", "n1"}, Action: "leave_alone"}, {IDs: []string{"n0"}, Action: "use"}}
 	f.Touched = []string{"file:z.go", "file:a.go"}
+	f.TouchedWithheld = 3
 	f.Obligations = []ObligationRef{{ID: "ob2", Kind: "gate", Unit: "unit:a", State: "owed"}, {ID: "ob1", Kind: "gate", Unit: "unit:z", State: "met"}}
 	f.ObligationsAt = 30
 	f.ObligationsOmitted = 2

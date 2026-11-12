@@ -117,6 +117,33 @@ func TestEvent_DecodeWrites(t *testing.T) {
 	}
 }
 
+// TestEvent_DecodeWithheld (W-M4.2, D1): a declaration whose write path the
+// record withheld is marked, whatever the reason, so the frontier can say
+// Touched is cut. A withheld cwd or project alone (a Read below record scope
+// v5) is no write, and only a declaration's paths are writes. Below v5 a
+// shell line's list is keyed withheld only when it named a path
+// (store.GateDeclaration), so one that named none is not marked.
+func TestEvent_DecodeWithheld(t *testing.T) {
+	for _, c := range []struct {
+		name, line string
+		want       bool
+		wrote      []string
+	}{
+		{"a file tool below v5", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":null,"file_path_withheld":"no_consent","project":null,"project_withheld":"no_consent","cwd":null,"cwd_withheld":"no_consent"}`, true, nil},
+		{"a shell list below v5", `{"type":"declaration","seq":3,"tool_name":"Bash","written_paths":null,"written_paths_complete":false,"written_paths_withheld":"no_consent","project":null,"project_withheld":"no_consent"}`, true, nil},
+		{"a shell line with no list below v5", `{"type":"declaration","seq":3,"tool_name":"Bash","command":null,"command_withheld":"no_consent","written_paths":null,"written_paths_complete":false,"project":null,"project_withheld":"no_consent","cwd":null,"cwd_withheld":"no_consent"}`, false, nil},
+		{"an oversize path", `{"type":"declaration","seq":3,"tool_name":"Write","file_path":null,"file_path_withheld":"oversize","project":"/w/p","cwd":"/w/p"}`, true, nil},
+		{"a path in clear", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/x.go","file_path_withheld":null,"project":"/w/p","cwd":"/w/p"}`, false, []string{"x.go"}},
+		{"a read below v5", `{"type":"declaration","seq":3,"tool_name":"Read","project":null,"project_withheld":"no_consent","cwd":null,"cwd_withheld":"no_consent"}`, false, nil},
+		{"an instructions file", `{"type":"instructions","seq":3,"file_path":null,"file_path_withheld":"oversize"}`, false, nil},
+	} {
+		ev, ok, err := RecordEvent([]byte(c.line))
+		if err != nil || !ok || ev.WroteWithheld != c.want || !reflect.DeepEqual(ev.Wrote, c.wrote) {
+			t.Errorf("%s: WroteWithheld %v, Wrote %q, %v, %v; want %v and %q", c.name, ev.WroteWithheld, ev.Wrote, ok, err, c.want, c.wrote)
+		}
+	}
+}
+
 // TestEvent_HoldsNoWords (W-M4.2, AC-M4.1): an event keeps the order key and
 // the fields a rule reads, never a line's words (model_text, user_text). A
 // string field not named here fails by name.
@@ -222,5 +249,24 @@ func TestStep_Touched(t *testing.T) {
 			t.Fatalf("round %d: Touched\n got %q\nwant %q", round, f.Touched, want)
 		}
 		r.Shuffle(len(evs), func(i, j int) { evs[i], evs[j] = evs[j], evs[i] })
+	}
+}
+
+// TestStep_TouchedWithheld (W-M4.2, D1): each declaration whose write path
+// was withheld counts once, so a frontier below record scope v5 says its
+// empty Touched is cut, not that the session wrote nothing.
+func TestStep_TouchedWithheld(t *testing.T) {
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 1, Type: "declaration", WroteWithheld: true},
+		{Seq: 2, Type: "declaration"},
+		{Seq: 2, Steer: true, AtUnixMS: 1, ID: "d1", Type: "steer", State: "delivered", Key: "k"},
+		{Seq: 3, Type: "declaration", WroteWithheld: true},
+		{Seq: 4, Type: "declaration", Wrote: []string{"a.go"}},
+	} {
+		Step(&f, ev)
+	}
+	if f.TouchedWithheld != 2 || !reflect.DeepEqual(f.Touched, []string{string(graph.FileID("a.go"))}) {
+		t.Fatalf("TouchedWithheld %d, Touched %q; want 2 and [file:a.go]", f.TouchedWithheld, f.Touched)
 	}
 }

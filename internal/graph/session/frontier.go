@@ -35,7 +35,8 @@ const (
 // commit, and a field the record cannot give breaks C1; no Drift until
 // W-M4.6, which adds it under a fold_version bump; ObligationsAt and
 // ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53); Touched
-// holds files, not units, for the same reason (its doc).
+// holds files, not units, for the same reason (its doc); TouchedWithheld,
+// condition 3's cut rule applied to Touched.
 type Frontier struct {
 	Schema    int    `json:"schema"`
 	Session   string `json:"session"`
@@ -45,14 +46,27 @@ type Frontier struct {
 	Intents   []IntentRef   `json:"intents"`
 	Reqs      []ReqState    `json:"reqs"`
 	Decisions []DecisionRef `json:"decisions"`
-	// Touched are the files the session's calls named as written, each the
-	// graph.FileID of its project-relative path, sorted, unique (D1). Files,
-	// not units: a unit id needs the language's resolver, and pylite's units
-	// come from the index, not the record (C1); a reader holding the
-	// lang.Registry maps a file to its unit, and with the repo id to the
-	// global form (graph.GlobalID). Written, not opened: the record names a
-	// path only for a file-changing call (shape.DeclaredPath).
+	// Touched are file ids: the graph.FileID of each project-relative path
+	// the session's calls named as written, sorted, unique (D1). Written
+	// only, never a read: the record names a path only for a file-changing
+	// call (shape.DeclaredPath) or a shell line's written_paths. Files, not
+	// units: a unit id needs the language's resolver, and pylite's units
+	// come from the index, not the record (C1). The unit form and the global
+	// form are the reader's, made at read time: lang.Registry maps a file to
+	// its unit, and the repo id makes the global id (graph.GlobalID).
 	Touched []string `json:"touched"`
+	// TouchedWithheld counts write declarations, not files: each declaration
+	// whose write path the record withheld counts once (Event.WroteWithheld),
+	// whatever the reason (no_consent below record scope v5, oversize,
+	// switched_off). Below v5 the gate nulls a shell line's written_paths
+	// whole and keys it no_consent only when the line named a path
+	// (store.GateDeclaration), so a Bash line that named three paths counts
+	// 1, and one that named none holds no key and counts 0. When it is above
+	// zero Touched is not every file the calls named, and nothing built from
+	// it may say every. Touched is never every file written in any case: a
+	// shell line that may write names no path when its written_paths list is
+	// incomplete (verify's unnamed writes).
+	TouchedWithheld int `json:"touched_withheld"`
 	// Obligations are copied from the last ledger line, as of its seq
 	// (ObligationsAt); the fold never computes one. ObligationsOmitted is
 	// the ledger line's own cut count: when it is above zero the list is not
