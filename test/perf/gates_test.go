@@ -101,6 +101,15 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 			}
 			continue
 		}
+		if UnitBriefCase(c.ID) {
+			// The post's unit-brief read (W-M2.3 hook half): the post entry
+			// at its padded 2048 bytes, a figure of its own, a basis, no
+			// slope.
+			if c.Basis == "" || c.SlopeMiBPerMiB != 0 || c.GatesFrom != "W-M2.3" || c.Entry != "post" || c.PayloadBytes != 2048 {
+				t.Errorf("rss case %s: the unit-brief case carries a basis, no slope, the post entry at 2048 bytes, and gates from W-M2.3: %+v", c.ID, c)
+			}
+			continue
+		}
 		if OrderSpecCase(c.ID) {
 			// The order rule's own row (SPEC-RULES1 1b, #216 ruling 5): the
 			// payload and entry of post.540B, a figure of its own, a basis

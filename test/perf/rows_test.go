@@ -78,6 +78,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"post.540B.order": {"post", 540, "SR-1b"},
 		// The PreToolUse overlay writer (W-M2.5c, 5c-2): the real hook entry on a 40000 B Edit of a Go file under an index, marker present.
 		"hook.edit.overlay": {"hook", 40000, "W-M2.5"},
+		// The post's unit-brief read (W-M2.3 hook half): the real post entry on a 2048 B Edit post of a Go file in a unit the prompt named, its brief held.
+		"post.edit.unitbrief": {"post", 2048, "W-M2.3"},
 	}
 	b := loadBudgets(t)
 	seen := map[string]bool{}
