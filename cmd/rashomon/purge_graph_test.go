@@ -66,7 +66,7 @@ func TestPurge_RemovesPromptTextFromSessionLog(t *testing.T) {
 // TestPurge_EveryWriterFileIsOwned (W-M2.11 1d; the guard): a store built
 // through the real writers where one exists (the evidence file at record
 // scope v5 and, with
-// session_content written first by name (no writer yet), each unit's brief
+// session_content written first by name (as consent writes it), each unit's brief
 // through graphBrief; the session log through OpenSessionLog; seed.json
 // through seed.WriteKept), and every row of disclose's file inventory
 // materialised, has nothing purge calls foreign. A row a new writer adds

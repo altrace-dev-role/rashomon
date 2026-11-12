@@ -206,6 +206,7 @@ func Default() (Inventory, error) {
 			continuityFiles(),
 			overlayRunFiles(),
 			unitBriefFiles(),
+			sessionContentFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),

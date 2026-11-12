@@ -16,9 +16,10 @@ import (
 
 // RunProbe handles a SessionStart or SessionEnd invocation.
 //
-// At start it marks the session as probed, sets the record-scope and
-// steer-disclosure markers from consent.json (syncRecordScope and
-// syncSteerDisclosure: the only reads of consent.json by any hook, at
+// At start it marks the session as probed, sets the record-scope,
+// steer-disclosure and session-content markers from consent.json
+// (syncRecordScope, syncSteerDisclosure and syncSessionContent: the only
+// reads of consent.json by any hook, at
 // SessionStart only) and records the resolved config state. At end it records it again, this time having read the run's records
 // to see whether every declaration was closed -- so that a handler killed
 // mid-flight is written into the run's own coverage while the run is still
@@ -83,15 +84,17 @@ func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in
 			if err := st.MarkProbe(sessionID, now()); err != nil {
 				return err
 			}
-			// The record scope the session's calls apply, and the steer
-			// disclosure they check consent against, set from consent.json
-			// once here so that no call has to read it (syncRecordScope,
-			// syncSteerDisclosure). Each runs whatever the other did; only
-			// the record scope's failure names a reason.
+			// The record scope the session's calls apply, the steer
+			// disclosure they check consent against, and whether the
+			// session's content is kept, set from consent.json once here so
+			// that no call has to read it (syncRecordScope,
+			// syncSteerDisclosure, syncSessionContent). Each runs whatever
+			// the others did; only the record scope's failure names a reason.
 			if !syncRecordScope(st.Root()) {
 				reason = store.ReasonRecordScopeUnresolved
 			}
 			syncSteerDisclosure(st.Root())
+			syncSessionContent(st.Root())
 			return nil
 		case store.PhaseEnd:
 			// Read here alone, and a path that is not a string is no copy:

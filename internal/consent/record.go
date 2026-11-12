@@ -14,10 +14,15 @@
 //   - ScopeCovered: does the consent on file cover this build's capability
 //     classes, so watch can say "already watching" instead of asking again?
 //
+// SessionContent reads the two facts RecordScope and ScopeCovered read, the
+// latest record scope and the highest scope_version, for a fourth question:
+// may the hook keep the session's content (W-M2.11 step 1d)?
+//
 // The hook reads none of them on a tool call: it reads the record-scope
-// marker (store.FileRecordScope) and the steer-disclosure marker
-// (store.FileSteerDisclosure), which every Append keeps equal to RecordScope's
-// and SteerDisclosure's answers.
+// marker (store.FileRecordScope), the steer-disclosure marker
+// (store.FileSteerDisclosure) and the session-content marker
+// (store.FileSessionContent), which every Append keeps equal to RecordScope's,
+// SteerDisclosure's and SessionContent's answers.
 package consent
 
 import (
@@ -288,15 +293,17 @@ var writeSteerMarker = store.WriteSteerDisclosureMarker
 // instead of swallowing this record. When the append would take the file past
 // CapBytes the file is compacted first (compact).
 //
-// It keeps the store's two markers, record scope (store.FileRecordScope) and
-// steer disclosure (store.FileSteerDisclosure), views of the file: it removes
-// both before it touches consent.json, compaction included, and writes each
-// again from consent.json's own answer once the line is durable. A marker
-// lags and never leads: a crash anywhere in between leaves it absent, which
-// the hook reads as v4 or as 0, and so withholds, whichever way this record
-// moved it. The two are independent: each is written whatever the other's
-// write did. An error wrapping ErrScopeMarker or ErrSteerMarker means the
-// line is on file and that marker is not; both can be joined in one error.
+// It keeps the store's three markers, record scope (store.FileRecordScope),
+// steer disclosure (store.FileSteerDisclosure) and session content
+// (store.FileSessionContent), views of the file: it removes all three before
+// it touches consent.json, compaction included, and writes each again from
+// consent.json's own answer once the line is durable. A marker lags and
+// never leads: a crash anywhere in between leaves it absent, which the hook
+// reads as v4, as 0 or as no session content, and so withholds, whichever
+// way this record moved it. The three are independent: each is written
+// whatever the others' writes did. An error wrapping ErrScopeMarker,
+// ErrSteerMarker or ErrSessionContentMarker means the line is on file and
+// that marker is not; more than one can be joined in one error.
 func Append(root string, rec Record) error {
 	if !rec.parses() {
 		return fmt.Errorf("consent: refusing to append a record no reader would count (v %d, via %q)", rec.V, rec.Via)
@@ -313,17 +320,23 @@ func Append(root string, rec Record) error {
 	if err := store.RemoveSteerDisclosureMarker(root); err != nil {
 		return err
 	}
+	if err := store.RemoveSessionContentMarker(root); err != nil {
+		return err
+	}
 	if err := appendRecord(root, line); err != nil {
 		return err
 	}
-	var scopeErr, steerErr error
+	var scopeErr, steerErr, contentErr error
 	if err := syncMarker(root); err != nil {
 		scopeErr = fmt.Errorf("%w: %w", ErrScopeMarker, err)
 	}
 	if err := syncSteerMarker(root); err != nil {
 		steerErr = fmt.Errorf("%w: %w", ErrSteerMarker, err)
 	}
-	return errors.Join(scopeErr, steerErr)
+	if err := syncSessionContentMarker(root); err != nil {
+		contentErr = fmt.Errorf("%w: %w", ErrSessionContentMarker, err)
+	}
+	return errors.Join(scopeErr, steerErr, contentErr)
 }
 
 // syncSteerMarker writes root's steer-disclosure marker from consent.json's

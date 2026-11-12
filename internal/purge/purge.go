@@ -79,13 +79,15 @@ var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, 
 var runTempPrefixes = []string{fold.TempPrefix}
 
 // tempPrefixes are the names of an anchor's, consent.json's, record_scope's,
-// steer_disclosure's, harnesses.json's, harness_counts.json's,
-// recap.json's, bodies.json's, spec-trust.json's, spec-trust.key's and lab's
+// steer_disclosure's, session_content's, harnesses.json's,
+// harness_counts.json's, recap.json's, bodies.json's, spec-trust.json's,
+// spec-trust.key's and lab's
 // temporary file, left by a process that died between writing and renaming
 // it.
 var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tmp-",
 	"." + store.FileConsent + ".tmp-", "." + store.FileRecordScope + ".tmp-",
-	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",
+	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileSessionContent + ".tmp-",
+	"." + store.FileHarnesses + ".tmp-",
 	"." + spec.TrustFile + ".tmp-",
 	"." + spec.TrustKeyFile + ".tmp-",
 	"." + seed.KeptFile + ".tmp-",

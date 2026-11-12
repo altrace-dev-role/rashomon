@@ -70,7 +70,8 @@ func pluginConsent(phase string, payload *hookio.Payload, args []string, root st
 	})
 	// A line on file with a marker unwritten is consent all the same; the
 	// probe's own sync writes the marker from it next.
-	if err != nil && !errors.Is(err, consent.ErrScopeMarker) && !errors.Is(err, consent.ErrSteerMarker) {
+	if err != nil && !errors.Is(err, consent.ErrScopeMarker) && !errors.Is(err, consent.ErrSteerMarker) &&
+		!errors.Is(err, consent.ErrSessionContentMarker) {
 		return ""
 	}
 	return pluginLead(exe)

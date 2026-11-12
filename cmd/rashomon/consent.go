@@ -109,28 +109,31 @@ func printFull(stdout io.Writer) error {
 	return err
 }
 
-// wireConsentViews hands the hook package consent.json's three readers,
+// wireConsentViews hands the hook package consent.json's four readers,
 // which it cannot import without a cycle: the SessionStart probe syncs the
-// record_scope and steer_disclosure markers through two, and SessionEnd asks
-// the third whether the bodies unit is granted. main calls it before any
-// hook runs.
+// record_scope, steer_disclosure and session_content markers through three,
+// and SessionEnd asks the fourth whether the bodies unit is granted. main
+// calls it before any hook runs.
 func wireConsentViews() {
 	hook.ConsentRecordScope = consent.RecordScope
 	hook.ConsentSteerDisclosure = consent.SteerDisclosure
+	hook.ConsentSessionContent = consent.SessionContent
 	hook.ConsentHas = consent.Has
 }
 
 // consentAppendError is the consent command's message for an Append error.
 // A line on file whose marker after it was not written says the record is
 // held and what the missing marker withholds; only an Append that wrote
-// nothing says nothing was written. With both markers unwritten, the record
-// scope's consequence is named and the error names both.
+// nothing says nothing was written. With more than one marker unwritten,
+// the first one's consequence below is named and the error names each.
 func consentAppendError(root string, err error) error {
 	switch {
 	case errors.Is(err, consent.ErrScopeMarker):
 		return fmt.Errorf("%s: %s holds the record, but %w; recording keeps the v4 shape until it is", stepConsent, consent.Path(root), err)
 	case errors.Is(err, consent.ErrSteerMarker):
 		return fmt.Errorf("%s: %s holds the record, but %w; notes reach the agent as flags until it is", stepConsent, consent.Path(root), err)
+	case errors.Is(err, consent.ErrSessionContentMarker):
+		return fmt.Errorf("%s: %s holds the record, but %w; the session's content is not kept until it is", stepConsent, consent.Path(root), err)
 	}
 	return fmt.Errorf("%s failed: %w; nothing was written", stepConsent, err)
 }

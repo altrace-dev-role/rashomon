@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -183,6 +184,23 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.WriteSteerDisclosureMarker(root, 2); err != nil {
 		t.Fatalf("store.WriteSteerDisclosureMarker: %v", err)
 	}
+	if err := store.WriteSessionContentMarker(root); err != nil {
+		t.Fatalf("store.WriteSessionContentMarker: %v", err)
+	}
+	// The session log and the evidence file at the top of the store's graph
+	// directory (sessionContentFiles): the log through its writer, the
+	// evidence file, which cmd/rashomon writes, by its name.
+	group := graph.BuildOverlayGroup(graph.OverlayGroup{Session: sessionID, ToolUseID: "tu-1", Kind: "post",
+		File: "file:a.go", Digest: "d", Commit: "c0ffee", Seq: 1})
+	if err := graph.OpenSessionLog(root, "tru23-repo", graph.RevCommit("c0ffee"), true).Append(group...); err != nil {
+		t.Fatalf("graph session log: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, graph.StoreDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, graph.StoreDir, graph.EvidenceFileName(sessionID, "prompt-1", time.Now())), []byte("x"), 0o600); err != nil {
+		t.Fatalf("evidence file: %v", err)
+	}
 	if err := store.WriteLab(root); err != nil {
 		t.Fatalf("store.WriteLab: %v", err)
 	}
@@ -192,7 +210,8 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*",
+		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*",
+		"." + store.FileSessionContent + ".tmp-*", recap.StateTempPrefix + "*",
 		"." + spec.TrustFile + ".tmp-*", "." + spec.TrustKeyFile + ".tmp-*", "." + store.FileLab + ".tmp-*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
@@ -426,7 +445,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// overlayreserve.go:65, the OpenFile of records.ndjson that takes its
 		// lock (writes nothing), :100 the writeSmall of overlay-bytes, and
 		// :107 the O_EXCL OpenFile of overlay-full.
-		{"store", 38},
+		// Moved 2026-11-12 (W-M2.11 1d) to 39: sessioncontent.go's
+		// WriteSessionContentMarker ReplaceFile, session_content, the third
+		// view of consent.json (sessionContentFiles in the inventory, its
+		// temp prefix in purge).
+		{"store", 39},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

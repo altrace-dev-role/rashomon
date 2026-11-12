@@ -26,8 +26,8 @@ import (
 const ubPostTitle = "a reload dropped rows"
 
 // ubPostSession is a consented plan session whose store keeps the session's
-// content. The marker is written by hand: nothing in this tree writes it
-// until W-M2.11 step 1d.
+// content. The marker is written by hand, as consent.Append writes it from
+// a consent at scope 6 or later at record scope v5 (W-M2.11 step 1d).
 func ubPostSession(t *testing.T, scope string) *planSession {
 	t.Helper()
 	s := newPlanSession(t, scope)
@@ -257,7 +257,7 @@ func TestPost_UnitBriefNeedsTheKeptContentMarker(t *testing.T) {
 	if out := s.edit("toolu_ub_1"); strings.Contains(out, ubPostTitle) || len(s.briefLines()) != 0 {
 		t.Fatalf("without the marker the edit printed %q and left %d lines, want none", out, len(s.briefLines()))
 	}
-	// By hand, as ubPostSession: no writer until W-M2.11 step 1d.
+	// By hand, as ubPostSession.
 	if err := os.WriteFile(filepath.Join(s.root, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
