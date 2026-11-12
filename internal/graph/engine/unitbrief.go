@@ -76,6 +76,19 @@ func UnitBrief(g Reader, rev graph.Rev, unit graph.ID, prompt Brief, opt Options
 	return b
 }
 
+// Rebind is the brief at rev over lines read back from where a brief was
+// stored: each a key and a slot rebuilt from its bound fact with its counts
+// (slot.GraphLine.WithMore), through the same bind and deliver as Build and
+// UnitBrief, so the message read back is the one that was stored and no
+// caller renders a copy (W-M2.3 hook half, D11). Rebinding a bound line is
+// idempotent; a line that no longer binds is refused, as at Build.
+func Rebind(rev graph.Rev, lines []Line) Brief {
+	b := Brief{Rev: rev, Lines: lines}
+	b.bind()
+	b.deliver()
+	return b
+}
+
 // Deltas is the lines of cur whose key is not a key of prev: the set
 // difference on line keys, in cur's order, so a unit brief never repeats a
 // line the prompt brief delivered. A keyless line dedups nothing: it seeds
