@@ -137,6 +137,14 @@ func OrderSpecCase(id string) bool { return id == "post.540B.order" }
 // figure and its basis says where the figure came from.
 func OverlayCase(id string) bool { return id == "hook.edit.overlay" }
 
+// UnitBriefCase reports the post's unit-brief read case (W-M2.3 hook half):
+// the post entry on an Edit of a Go file in a unit the session's prompt
+// named, its brief held, the post payload padded to a fixed size. Like the
+// overlay case it is not RES-28's line, which says nothing of an index
+// header, a brief file and a steer log read, so its row is its own figure
+// and its basis says where the figure came from.
+func UnitBriefCase(id string) bool { return id == "post.edit.unitbrief" }
+
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
 // 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
 // intake, both of which this tree carries.

@@ -394,6 +394,12 @@ func benchNoteNoSpec(b *testing.B, root string, body []byte) {
 // iteration-independent (archive 85.3.13, P-12).
 func benchToolCalls(b *testing.B, entry func([]string, io.Reader, io.Writer) int, body []byte, declares bool) {
 	root, installID := benchStarted(b)
+	benchToolCallsIn(b, root, installID, entry, body, declares)
+}
+
+// benchToolCallsIn is benchToolCalls against a store the caller started
+// (benchStarted) and laid out first.
+func benchToolCallsIn(b *testing.B, root, installID string, entry func([]string, io.Reader, io.Writer) int, body []byte, declares bool) {
 	in := newBenchInput(b, body)
 	args := []string{install.Marker, installID}
 	var stderr benchSink
@@ -449,6 +455,13 @@ func BenchmarkRunPost(b *testing.B) {
 		defer func() { benchNoNote = false }()
 		benchToolCalls(b, postEntry, benchBashShortPost(b), false)
 	})
+	// The post of a consented Go edit in an indexed unit, in a store that
+	// keeps the session's content (W-M2.3 hook half, ruling 04:58 C): the
+	// same payload in each, the store apart (benchUnitBriefPost). none is
+	// the plain consented row unitbrief_off is read beside.
+	b.Run("unitbrief_none", func(b *testing.B) { benchUnitBriefPost(b, "", false) })
+	b.Run("unitbrief_off", func(b *testing.B) { benchUnitBriefPost(b, "c1", true) })
+	b.Run("unitbrief_stale", func(b *testing.B) { benchUnitBriefPost(b, "c0", false) })
 }
 
 // postEntry is cmdPost with its stdout discarded, in the entry shape cmdHook

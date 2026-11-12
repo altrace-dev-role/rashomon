@@ -64,27 +64,34 @@ func TestPurge_RemovesPromptTextFromSessionLog(t *testing.T) {
 }
 
 // TestPurge_EveryWriterFileIsOwned (W-M2.11 1d; the guard): a store built
-// through the real writers where one exists (the evidence file through
-// graphBrief, the session log through OpenSessionLog, seed.json through
-// seed.WriteKept), session_content by name (no writer yet), and every row
-// of disclose's file inventory materialised, has nothing purge calls
-// foreign. A row a new writer adds with no purge owner fails here.
+// through the real writers where one exists (the evidence file and, with
+// session_content written first by name (no writer yet), each unit's brief
+// through graphBrief; the session log through OpenSessionLog; seed.json
+// through seed.WriteKept), and every row of disclose's file inventory
+// materialised, has nothing purge calls foreign. A row a new writer adds
+// with no purge owner fails here. Witness: the prompt claims a unit, so at
+// least one unit brief is on disk (W-M2.3 hook half, D8; a not-known
+// prompt writes none and the guard would not reach that writer).
 func TestPurge_EveryWriterFileIsOwned(t *testing.T) {
 	root := t.TempDir()
 	writeAnchors(t, root)
+	if err := os.WriteFile(filepath.Join(root, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	proj := t.TempDir()
 	graphProject(t, proj)
-	if _, ok := graphBrief(root, filepath.Join(proj, "services", "auth"), "s1", "p1", []byte("purging the sessions")); !ok {
+	const prompt = "make session expiry in sessions.py respect the org-level timeout override."
+	if _, ok := graphBrief(root, filepath.Join(proj, "services", "auth"), "s1", "p1", []byte(prompt)); !ok {
 		t.Fatal("no brief")
+	}
+	if briefs, _ := filepath.Glob(filepath.Join(root, graph.StoreDir, graph.UnitBriefSubdir, "*", "*.json")); len(briefs) == 0 {
+		t.Fatal("witness: the prompt wrote no unit brief, so the guard does not reach that writer")
 	}
 	l := graph.OpenSessionLog(root, "github.com/x/y", graph.RevCommit("c1"), true)
 	if err := l.Append(l.Session("s1")); err != nil {
 		t.Fatal(err)
 	}
 	if err := seed.WriteKept(root, seed.Kept{Version: 1, KeptAt: time.Now()}); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, store.FileSessionContent), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	assertOwned(t, root)
@@ -97,8 +104,9 @@ func TestPurge_EveryWriterFileIsOwned(t *testing.T) {
 		t.Fatalf("the inventory has %d rows, fewer than expected: the read is broken", len(inv.Files))
 	}
 	// A "*" stands for a name its writer chooses: a hex id, a fired event, a
-	// baseline key and digest, a learner file. One fill per kind of name.
-	fills := append([]string{"0123456789abcdef", "x1", "proj-0123456789ab", learn.FileKey, learn.FileSum}, store.FiredEvents()...)
+	// baseline key and digest, a learner file, a unit brief's 32-hex digest.
+	// One fill per kind of name.
+	fills := append([]string{"0123456789abcdef", "x1", "proj-0123456789ab", learn.FileKey, learn.FileSum, "0123456789abcdef0123456789abcdef"}, store.FiredEvents()...)
 	for _, r := range inv.Files {
 		rel := r.Pattern
 		if r.Base != "" {

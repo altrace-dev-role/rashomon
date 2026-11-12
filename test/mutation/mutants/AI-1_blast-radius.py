@@ -47,15 +47,17 @@ m("AI-1 no read gate", H,
   "\tif !p.st.TakeBlastRead(p.sessionID, marker) {\n\t\treturn blastDraft{}, false\n\t}\n",
   "\tp.st.TakeBlastRead(p.sessionID, marker)\n", "TestAI1_AGoEditTellsTheCallersOnce")
 m("AI-1 no print gate", H,
-  "if lastGiven(lines, site.Package) == digest {", "if lastGiven(lines, site.Package) == digest && false {",
+  "if last == digest {", "if last == digest && false {",
   "TestAI1_AReSyncSaysOnlyANewCallerSet")
 m("AI-1 no caller still speaks", H,
   "if err != nil || len(callers) == 0 {", "if err != nil {", "TestAI1_SilenceWhereNothingIsProven")
 m("AI-1 a yielded note keeps its marker", H,
   "\tp.st.ReturnBlastRead(p.sessionID, d.marker)\n", "", "TestAI1_AYieldedNoteComesWithTheNextEdit")
-m("AI-1 a suppressed line counts as given", H,
-  "if state != string(steer.LineStateDelivered) && by != string(steer.SuppressedByArmOff) {",
-  "if state != string(steer.LineStateDelivered) && by != string(steer.SuppressedByArmOff) && false {",
+# The given rule is hook.Given (internal/hook/given.go), the one walk blast,
+# the plan check and the unit brief share.
+m("AI-1 a suppressed line counts as given", "internal/hook/given.go",
+  "\t\tif spanText(b, sp[1]) == string(steer.LineStateDelivered) ||\n",
+  "\t\tif true || spanText(b, sp[1]) == string(steer.LineStateDelivered) ||\n",
   "TestAI1_AYieldedNoteComesWithTheNextEdit")
 
 # The read marker (internal/store/blastread.go): taken once, O_EXCL, and

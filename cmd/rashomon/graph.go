@@ -16,6 +16,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
@@ -253,6 +254,7 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
+	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
 	if first := b.FirstKey(); first != "" {
 		n, _ := s.Node(first, rev)
@@ -316,28 +318,37 @@ func relTo(cwd, root string) func(string) string {
 // findings, beside the request's note (intent's note and brief keys).
 const keyGraph = "graph"
 
-// graphFinding is the brief as the prompt's task-preflight finding, routed
-// in preflightNote's one Route call beside the request's note: a nudge
-// with no stop form, its record form (Brief.Record) where the record scope
-// keeps digests (digest set), the message itself where it keeps paths; its
-// source the graph row its first keyed line is keyed on and its unit that
-// row's unit (AD19), none when the brief says its unit is not known.
-func graphFinding(b indexBrief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
+// graphFinding is the prompt's graph brief as a task-preflight finding
+// under key (keyGraph), routed in preflightNote's one Route call beside the
+// request's note: its message, and its record form (Brief.Record) where the
+// record scope keeps digests (digest set).
+func graphFinding(b indexBrief, key string, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	if b.Empty() {
 		return steer.Finding{}, false
 	}
-	prio, _ := pattern.Priority(pattern.TaskPreflight)
-	f := steer.Finding{Pattern: pattern.TaskPreflight, Key: keyGraph, Priority: prio, MaxLevel: steer.LevelNudge,
-		StopForm: steer.StopFormNone, Message: b.Message, AfterSeq: afterSeq, Unit: string(b.Unit),
-		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
+	var rec render.Message
 	if digest != nil {
-		rec, err := b.Record(digest)
+		r, err := b.Record(digest)
 		if err != nil {
 			return steer.Finding{}, false
 		}
-		f.Record = rec
+		rec = r
 	}
-	return f, true
+	return briefFinding(b, b.Message, rec, key, afterSeq), true
+}
+
+// briefFinding is a brief's message as a task-preflight finding under key:
+// the prompt's graph brief (graphFinding) and a unit's brief at the post of
+// an edit in it (unitBriefJoin, under the unit's head). A nudge with no stop
+// form, rec its record form where the record scope keeps digests (the
+// message itself where rec is empty); its source the graph row its first
+// keyed line is keyed on and its unit that row's unit (AD19), none when the
+// brief says its unit is not known.
+func briefFinding(b indexBrief, m, rec render.Message, key string, afterSeq int64) steer.Finding {
+	prio, _ := pattern.Priority(pattern.TaskPreflight)
+	return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
+		StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq, Unit: string(b.Unit),
+		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
 }
 
 func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {

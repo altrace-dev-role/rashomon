@@ -153,6 +153,9 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if pf, planned := p.plan(env, &ctx, ok); planned {
 		view.Findings, ok = append(view.Findings, pf), true
 	}
+	if joined := p.join(env, &ctx, ok); len(joined) > 0 {
+		view.Findings, ok = append(view.Findings, joined...), true
+	}
 	if !ok {
 		// A call that raised nothing still leaves its then_checks: the Stop
 		// reads a line that is no Then from its "no" (card ORDER-LIVE1). No
@@ -183,6 +186,39 @@ func (p *Post) Steer(env SteerEnv) []byte {
 		return nil
 	}
 	return b
+}
+
+// join is env.Join, the findings cmd read for the call (the unit brief),
+// under the gate blast and plan pass: ctx built from contextOf when the
+// judge built none (ok false), and nothing joined where the note could
+// reach no one (steering off, no consent, no prompt). A finding dropped here
+// leaves no line, so a once-per-key note is offered again at the next call.
+func (p *Post) join(env SteerEnv, ctx *steer.Context, ok bool) []steer.Finding {
+	if len(env.Join) == 0 {
+		return nil
+	}
+	if !ok {
+		*ctx = p.contextOf(env, verify.SteerView{ProjectRoot: blastRoot(p.cwd)})
+	}
+	if unheard(*ctx) {
+		return nil
+	}
+	return env.Join
+}
+
+// heard is the four fields of Route's context that say whether a note could
+// reach anyone, as contextOf sets them: the prompt, consent, and the user's
+// switch (steerOff). contextOf takes them from here, so the join's gate and
+// Post.Unheard, read before the context is built, cannot part.
+func (p *Post) heard(env SteerEnv) steer.Context {
+	off, unreadable := p.steerOff()
+	return steer.Context{PromptID: nilIfEmpty(p.promptID), Consent: consented(env.Consent, p.st.Root()),
+		SteerOff: off, ConfigUnreadable: unreadable}
+}
+
+// unheard is the join's gate: a note under ctx reaches no one.
+func unheard(ctx steer.Context) bool {
+	return ctx.SteerOff || ctx.ConfigUnreadable || !ctx.Consent || ctx.PromptID == nil
 }
 
 // keepHits appends each forbid_command rule the call matched to the run as a
@@ -478,7 +514,7 @@ func ruleReads(sp *spec.Compiled) (command, path bool) {
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := attendanceOf(p.event, env, p.permissionMode)
-	steerOff, unreadable := p.steerOff()
+	h := p.heard(env)
 	client := steer.Client{Version: version, Source: source, MirrorInBand: env.MirrorInBand, Subagent: p.agentID != "",
 		StartSource: p.startSource}
 	return steer.Context{
@@ -486,15 +522,15 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		Client:           client,
 		Store:            p.st,
 		SessionID:        p.sessionID,
-		PromptID:         nilIfEmpty(p.promptID),
+		PromptID:         h.PromptID,
 		AgentID:          p.agentID,
 		Project:          view.ProjectRoot,
 		HarnessID:        env.HarnessID,
 		Surface:          env.Surface,
 		NowUnixMS:        env.Now.UnixMilli(),
-		Consent:          consented(env.Consent, p.st.Root()),
-		SteerOff:         steerOff,
-		ConfigUnreadable: unreadable,
+		Consent:          h.Consent,
+		SteerOff:         h.SteerOff,
+		ConfigUnreadable: h.ConfigUnreadable,
 		Arm:              armOf(env),
 		Attendance:       attendance,
 		Holdout:          p.heldOut(env),

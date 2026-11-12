@@ -49,7 +49,10 @@ import (
 // pgraph writes beside its log, each symbol's file, line and doc sentence
 // (W-M1.2), and the repository graph `rashomon graph index` writes from the
 // sidecars and the origin url in .git/config and each prompt reads in
-// memory (W-M1.4; docs/autosteer/PLAN.md).
+// memory (W-M1.4; docs/autosteer/PLAN.md); and, where the session's content
+// is kept, the brief for the first edit in each unit a prompt's selection
+// lies in, written under the store's graph directory with no word of the
+// prompt (W-M2.3 hook half, D12).
 // Pinned by TRU-8.
 const ScopeVersion = 5
 
@@ -202,6 +205,7 @@ func Default() (Inventory, error) {
 			configFiles(),
 			continuityFiles(),
 			overlayRunFiles(),
+			unitBriefFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),

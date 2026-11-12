@@ -46,9 +46,17 @@ var res5Dirs = []string{
 // writes beside the index (INDEX-POINTER-FILE1): the same ground again, a
 // file rashomon wrote, capped at MaxCheckpointsBytes (4 KiB), read once by
 // each Stop that cuts a checkpoint and once by SessionStart's brief.
+// cmd/rashomon.decodeUnitBrief reads a unit-brief file (W-M2.3 hook half,
+// card m2-unitbrief-hook1 D2): the same ground as ReadCheckpoints, a file
+// the prompt hook wrote under the store root, capped at maxUnitBriefBytes
+// (8 KiB) before the decoder sees it, in a closed shape
+// (DisallowUnknownFields, one version), by the post hook of the first edit
+// in a unit: the file's object with its lines kept raw, then, for a file at
+// the index's commit, that lines value, a slice of the same capped bytes.
+// It decodes no payload and no tool_input span.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
 	"internal/verify.ReadCheckpoints": true, "internal/learn.decode": true, "internal/learn.decodeActive": true,
-	"cmd/rashomon.steerRows": true, "internal/receipt.decodeHead": true}
+	"cmd/rashomon.steerRows": true, "internal/receipt.decodeHead": true, "cmd/rashomon.decodeUnitBrief": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
@@ -106,7 +105,9 @@ func (p *Post) blast(env SteerEnv, ctx *steer.Context, ok bool) (blastDraft, boo
 	}
 	digest := callersDigest(callers)
 	lines, _, _ := p.st.ReadSteer(p.sessionID)
-	if lastGiven(lines, site.Package) == digest {
+	last := ""
+	Given(lines, pattern.BlastRadius, site.Package+"@", false, func(rest string) { last = rest })
+	if last == digest {
 		return blastDraft{}, false
 	}
 	m := blastMessage(callers)
@@ -198,29 +199,6 @@ func blastMessage(callers []BlastCaller) render.Message {
 	return m
 }
 
-// lastGiven is the caller digest of the last blast-radius line under pkg
-// that the session gave: delivered (a held-out line keeps that state), or
-// withheld by the off arm, whose decision gave it (as owedGiven reads a
-// claim). "" for none.
-// Lines are located with jsonscan, never decoded (RES-5).
-func lastGiven(lines [][]byte, pkg string) string {
-	var sp [4]jsonscan.Span
-	last := ""
-	for _, b := range lines {
-		if jsonscan.Top(b, blastKeys(), sp[:]) != nil || spanText(b, sp[0]) != string(pattern.BlastRadius) {
-			continue
-		}
-		state, by := spanText(b, sp[1]), spanText(b, sp[3])
-		if state != string(steer.LineStateDelivered) && by != string(steer.SuppressedByArmOff) {
-			continue
-		}
-		if d, ok := strings.CutPrefix(spanText(b, sp[2]), pkg+"@"); ok {
-			last = d
-		}
-	}
-	return last
-}
-
 // spanText is a string span's value, "" for any other span or an escape
 // that does not decode.
 func spanText(b []byte, sp jsonscan.Span) string {
@@ -232,16 +210,4 @@ func spanText(b []byte, sp jsonscan.Span) string {
 		return ""
 	}
 	return s
-}
-
-// blastKeys is the one KeySet lastGiven reads a line with, built on its
-// first call and never at init (RES-2).
-func blastKeys() *jsonscan.KeySet {
-	blastKeysOnce.Do(func() { blastKeysOnce.v = jsonscan.NewKeySet("pattern", "state", "key", "suppressed_by") })
-	return blastKeysOnce.v
-}
-
-var blastKeysOnce struct {
-	sync.Once
-	v *jsonscan.KeySet
 }

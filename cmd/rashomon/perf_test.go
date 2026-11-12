@@ -60,7 +60,7 @@ func TestK7_PromptPathOnRashomon(t *testing.T) {
 		}
 		last = gb
 	}
-	f, ok := graphFinding(last, 1, nil)
+	f, ok := graphFinding(last, keyGraph, 1, nil)
 	if !ok {
 		t.Fatal("the brief gave no finding")
 	}

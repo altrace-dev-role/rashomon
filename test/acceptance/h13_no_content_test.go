@@ -211,6 +211,13 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"landed_seq", "rule_ids", "named", "planned", "matched", "path_digests",
 	}
+	// unitBriefMissKeys are a unitbrief_miss's keys (card m2-unitbrief-hook1
+	// D7): the edit's seq, the unit as a keyed digest and the reason, never
+	// a path, a unit's name or a word of a brief.
+	unitBriefMissKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"landed_seq", "unit", "reason",
+	}
 	// outcomeJoinKeys are an outcome_join's keys (card BG-OUTCOME phase 1):
 	// a background call's id and how it ended, never the notification's text.
 	outcomeJoinKeys = []string{

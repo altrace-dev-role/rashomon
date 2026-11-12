@@ -26,8 +26,8 @@ m("GS-5 the brief is read after the early return", P,
   "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n",
   "TestGS5_")
 m("GS-5 the graph finding is not routed", P,
-  "\tif f, ok := graphFinding(gb, run.LastSeq(), digest); graphed && ok {\n",
-  "\tif f, ok := graphFinding(gb, run.LastSeq(), digest); false && graphed && ok {\n", "TestGS5_")
+  "\tif f, ok := graphFinding(gb, keyGraph, run.LastSeq(), digest); graphed && ok {\n",
+  "\tif f, ok := graphFinding(gb, keyGraph, run.LastSeq(), digest); false && graphed && ok {\n", "TestGS5_")
 m("GS-5 paths print from the index root", "cmd/rashomon/graph.go",
   "\t\tr, err := filepath.Rel(cwd, filepath.Join(root, filepath.FromSlash(p)))\n\t\tif err != nil {\n\t\t\treturn p\n\t\t}\n\t\treturn filepath.ToSlash(r)\n",
   "\t\treturn p\n", "TestGS5_")

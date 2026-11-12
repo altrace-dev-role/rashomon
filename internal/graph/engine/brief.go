@@ -198,6 +198,12 @@ func (b Brief) FirstKey() graph.ID {
 // binding is the graph template's binding over the first n lines, in their
 // record form when digest is set.
 func (b Brief) binding(n int, digest func(string) string) render.TaskPreflightGraphBinding {
+	return render.NewGraphBinding(slot.Revision(b.Rev.String()), slot.Count(len(b.Seeds)), slot.Count(b.Neighborhood), b.slots(n, digest))
+}
+
+// slots is the first n lines' slots, in their record form when digest is
+// set.
+func (b Brief) slots(n int, digest func(string) string) []slot.GraphLine {
 	lines := make([]slot.GraphLine, 0, n)
 	for _, l := range b.Lines[:n] {
 		if digest != nil {
@@ -206,7 +212,7 @@ func (b Brief) binding(n int, digest func(string) string) render.TaskPreflightGr
 			lines = append(lines, l.Slot)
 		}
 	}
-	return render.NewGraphBinding(slot.Revision(b.Rev.String()), slot.Count(len(b.Seeds)), slot.Count(b.Neighborhood), lines)
+	return lines
 }
 
 // Record is the message the steer line records at record scope v4: the
