@@ -45,6 +45,7 @@ func steerEnv(id harness.Identity, now time.Time, root string) hook.SteerEnv {
 		ProjectDir:   projectDir,
 		ManagedDir:   managedDir,
 		Blast:        blastPort(),
+		Plan:         planPort(),
 	}
 }
 
