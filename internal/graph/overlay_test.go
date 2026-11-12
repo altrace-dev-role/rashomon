@@ -22,7 +22,7 @@ func TestOverlay_ReaderMergesCommitAndOverlaysBySeq(t *testing.T) {
 	ov := s.ApplyOverlay(f, []byte("def f(x, y): pass"), []Record{
 		{Node: &Node{ID: fn, Kind: "sym", Attrs: map[string]string{"sig": "(x, y)"}, Tier: Algorithmic, Conf: 0.9}},
 		{Edge: &Edge{Src: f, Pred: Declares, Dst: fn, Tier: Algorithmic, Conf: 0.9}},
-	}, RevOverlay("C1", 12))
+	}, RevOverlay("C1", 12), Carried{Declares, Calls})
 	if ov.State != OverlayLive || ov.Seq != 12 || ov.File != f || ov.Records != 2 {
 		t.Fatalf("overlay = %+v", ov)
 	}
@@ -60,7 +60,7 @@ func TestOverlay_ReaderMergesCommitAndOverlaysBySeq(t *testing.T) {
 		t.Fatalf("overlay after a matching index = %s, want subsumed", got)
 	}
 	s2 := NewStore()
-	s2.ApplyOverlay(f, []byte("x"), nil, RevOverlay("C1", 3))
+	s2.ApplyOverlay(f, []byte("x"), nil, RevOverlay("C1", 3), Carried{Declares})
 	s2.Reconcile("C2", map[ID]string{f: ContentDigest([]byte("y"))})
 	if got := s2.Overlays()[0].State; got != OverlayStale {
 		t.Fatalf("overlay after a differing index = %s, want stale", got)
@@ -74,5 +74,72 @@ func TestOverlay_RevStringIsWhatALineCarries(t *testing.T) {
 	}
 	if got := RevOverlay("C1", 16).String(); got != "C1+ov16" {
 		t.Fatal(got)
+	}
+}
+
+// TestApplyOverlay_KeptSymbolKeepsUncarriedEdges: an overlay's silence on a
+// predicate its extractor does not carry is unknown, not absent. Base rev:
+// sym A has Calls (A->B), MayCall, References and ResolvesTo out-edges, and
+// the file also declares C. The overlay re-declares A and drops C.
+func TestApplyOverlay_KeptSymbolKeepsUncarriedEdges(t *testing.T) {
+	c1 := RevCommit("C1")
+	f := FileID("a.go")
+	a := SymID("go", "u", "func", "A")
+	b := SymID("go", "u", "func", "B")
+	c := SymID("go", "u", "func", "C")
+	x := SymID("go", "u", "func", "X")
+	build := func() *Store {
+		s := NewStore()
+		for _, n := range []ID{a, b, c, x} {
+			s.AssertNode(Node{ID: n, Kind: "sym", Tier: Algorithmic, Conf: 1, Rev: c1})
+		}
+		s.AssertNode(Node{ID: f, Kind: "file", Tier: Algorithmic, Conf: 1, Rev: c1})
+		for _, d := range []ID{a, c} {
+			s.AssertEdge(Edge{Src: f, Pred: Declares, Dst: d, Tier: Algorithmic, Conf: 1, Rev: c1})
+		}
+		s.AssertEdge(Edge{Src: f, Pred: Imports, Dst: x, Tier: Algorithmic, Conf: 1, Rev: c1})
+		for _, p := range []Pred{Calls, MayCall, References, ResolvesTo} {
+			s.AssertEdge(Edge{Src: a, Pred: p, Dst: b, Tier: Algorithmic, Conf: 1, Rev: c1})
+		}
+		s.AssertEdge(Edge{Src: c, Pred: Calls, Dst: b, Tier: Algorithmic, Conf: 1, Rev: c1})
+		return s
+	}
+	recs := []Record{
+		{Node: &Node{ID: f, Kind: "file", Tier: Algorithmic, Conf: 0.8}},
+		{Node: &Node{ID: a, Kind: "sym", Tier: Algorithmic, Conf: 0.8}},
+		{Edge: &Edge{Src: f, Pred: Declares, Dst: a, Tier: Algorithmic, Conf: 0.8}},
+	}
+	rev := RevOverlay("C1", 1)
+	standing := func(s *Store, p Pred) bool { return len(s.Out(a, rev, p)) == 1 }
+
+	s := build()
+	s.ApplyOverlay(f, []byte("src"), recs, rev, Carried{Declares})
+	for _, p := range []Pred{Calls, MayCall, References, ResolvesTo} {
+		if !standing(s, p) {
+			t.Errorf("(i) A's %s edge was retracted by an overlay whose extractor does not carry it", p)
+		}
+	}
+	if es := s.Out(f, rev, Imports); len(es) != 1 {
+		t.Errorf("(i) the file node's uncarried imports edge was retracted: %+v", es)
+	}
+	if _, ok := s.Node(c, rev); ok {
+		t.Error("(i) C was dropped by the edit and must be retracted")
+	}
+	if es := s.Out(c, rev); len(es) != 0 {
+		t.Errorf("(i) C's out-edges must go with it: %+v", es)
+	}
+
+	s = build()
+	s.ApplyOverlay(f, []byte("src"), recs, rev, Carried{Declares, Calls})
+	if standing(s, Calls) {
+		t.Error("(ii) A->B Calls is carried and not produced: it must be retracted")
+	}
+	for _, p := range []Pred{MayCall, References, ResolvesTo} {
+		if !standing(s, p) {
+			t.Errorf("(ii) A's %s edge must stand", p)
+		}
+	}
+	if es := s.Out(c, rev); len(es) != 0 {
+		t.Errorf("(ii) C's out-edges must go with it: %+v", es)
 	}
 }

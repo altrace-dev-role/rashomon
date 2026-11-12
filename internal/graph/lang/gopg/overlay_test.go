@@ -2,8 +2,10 @@ package gopg
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -257,7 +259,7 @@ func TestGopgOverlay_StoreReplacesNotDuplicates(t *testing.T) {
 	}
 	edited := strings.Replace(string(src), "const Max = 10", "", 1) + "\nfunc Extra() int { return 1 }\n"
 	rev := graph.RevOverlay("C1", 3)
-	s.ApplyOverlay(graph.FileID("shape/shape.go"), []byte(edited), overlayOf(t, "shape/shape.go", edited, 3), rev)
+	s.ApplyOverlay(graph.FileID("shape/shape.go"), []byte(edited), overlayOf(t, "shape/shape.go", edited, 3), rev, Resolver{}.OverlayCarried())
 	if _, ok := s.Node("sym:go:shape:func:Extra", rev); !ok {
 		t.Errorf("the new declaration is absent at the overlay")
 	}
@@ -291,4 +293,36 @@ func BenchmarkGopgOverlay(b *testing.B) {
 			b.Fatal("no records", err)
 		}
 	}
+}
+
+// TestOverlayCarried_EqualsEmittedPredicates: the predicates of the edges
+// Overlay emits from the file node and from the symbols the file declares
+// are exactly OverlayCarried, over a file whose bodies import and call. A
+// carried predicate the overlay never emits would retract the index's
+// edges of it; an emitted one it does not carry would leave stale index
+// edges standing.
+func TestOverlayCarried_EqualsEmittedPredicates(t *testing.T) {
+	recs := overlayOf(t, "shape/shape.go", overlaySrc, 1)
+	got, want := strings.Join(emittedPreds(recs, graph.FileID("shape/shape.go")), ","), Resolver{}.OverlayCarried().String()
+	if got != want {
+		t.Errorf("Overlay emits {%s} from the file and its symbols, OverlayCarried is {%s}", got, want)
+	}
+}
+
+// emittedPreds is the sorted set of predicates of the edges in recs whose
+// source is file or a symbol file declares.
+func emittedPreds(recs []graph.Record, file graph.ID) []string {
+	from := map[graph.ID]bool{file: true}
+	for _, r := range recs {
+		if r.Edge != nil && r.Edge.Src == file && r.Edge.Pred == graph.Declares {
+			from[r.Edge.Dst] = true
+		}
+	}
+	set := map[string]bool{}
+	for _, r := range recs {
+		if r.Edge != nil && from[r.Edge.Src] {
+			set[string(r.Edge.Pred)] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(set))
 }

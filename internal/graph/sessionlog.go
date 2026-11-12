@@ -125,8 +125,18 @@ func (l *SessionLog) prefix(f *os.File, enc *json.Encoder, buf *bytes.Buffer) er
 // line becomes a middle line of the file; failing on it, as Load does, would
 // fail every later load.
 func LoadSessionLog(s *Store, r io.Reader) (Header, int, error) {
+	h, skipped, _, err := LoadSessionLogGroups(s, r)
+	return h, skipped, err
+}
+
+// LoadSessionLogGroups is LoadSessionLog that also returns the complete
+// overlay groups the log holds (overlaylog.go). A record at an overlay
+// revision is never asserted into s here: it is held until its group's
+// marker closes it, and a group is applied by ReplayOverlays for one session.
+func LoadSessionLogGroups(s *Store, r io.Reader) (Header, int, []OverlayGroup, error) {
 	br := bufio.NewReaderSize(r, 1<<16)
 	var h Header
+	var oc overlayCollector
 	first, skipped := true, 0
 	for {
 		line, rerr := br.ReadBytes('\n')
@@ -139,12 +149,15 @@ func LoadSessionLog(s *Store, r io.Reader) (Header, int, error) {
 			switch {
 			case first:
 				if uerr != nil || l.Schema != Schema {
-					return h, skipped, fmt.Errorf("graph: session log header: schema %d, want %d (%v)", l.Schema, Schema, uerr)
+					return h, skipped, nil, fmt.Errorf("graph: session log header: schema %d, want %d (%v)", l.Schema, Schema, uerr)
 				}
 				h, first = l.Header, false
 			case uerr != nil:
 				skipped++
+				oc.reset()
 			case l.Schema != 0:
+				oc.reset()
+			case oc.take(l.Record):
 			case l.Node != nil:
 				s.AssertNode(*l.Node)
 			case l.Edge != nil:
@@ -153,9 +166,9 @@ func LoadSessionLog(s *Store, r io.Reader) (Header, int, error) {
 		}
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
-				return h, skipped, nil
+				return h, skipped, oc.groups, nil
 			}
-			return h, skipped, rerr
+			return h, skipped, oc.groups, rerr
 		}
 	}
 }
