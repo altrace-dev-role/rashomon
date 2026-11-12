@@ -309,6 +309,17 @@ func TestOverlayCarried_EqualsEmittedPredicates(t *testing.T) {
 	if got != want {
 		t.Errorf("Overlay emits {%s} from the file and its symbols, OverlayCarried is {%s}", got, want)
 	}
+	// With an ImportMap the overlay maps imports too (imports.go, D8).
+	r := Resolver{Imports: &ImportMap{Module: rootModule, IsDir: newDirSet("pgraph").isDir}}
+	src := "package hook\n\nimport _ \"" + rootModule + "/pgraph\"\n\nfunc F() {}\n"
+	recs, err := r.Overlay("internal/hook/x.go", []byte(src), overlayBase, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, want = strings.Join(emittedPreds(recs, graph.FileID("internal/hook/x.go")), ","), r.OverlayCarried().String()
+	if got != want {
+		t.Errorf("with imports: Overlay emits {%s}, OverlayCarried is {%s}", got, want)
+	}
 }
 
 // emittedPreds is the sorted set of predicates of the edges in recs whose

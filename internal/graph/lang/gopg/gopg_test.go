@@ -72,6 +72,8 @@ func TestGopg_UnitIsDirectory(t *testing.T) {
 // that row's digest, a sym node per symbols row (and one for the interface
 // method the facts name and no row places), and the edges of every fact
 // whose two ends are in the sync; the standard-library callee is dropped.
+// Import edges (W-M2 import edges): app imports shape, one edge from the
+// file to the imported directory's unit, at the overlay's key.
 func TestGopg_RecordsForFixture(t *testing.T) {
 	root := shapes(t)
 	s, err := platform.ReadSnapshot(context.Background(), root)
@@ -113,7 +115,10 @@ func TestGopg_RecordsForFixture(t *testing.T) {
 	for _, e := range edges {
 		preds[e.Pred]++
 	}
-	want := map[graph.Pred]int{graph.Contains: 2, graph.Declares: len(s.Places) + 2, graph.Calls: 2, graph.MayCall: 1, graph.ResolvesTo: 2, graph.References: 1}
+	want := map[graph.Pred]int{graph.Contains: 2, graph.Declares: len(s.Places) + 2, graph.Calls: 2, graph.MayCall: 1, graph.ResolvesTo: 2, graph.References: 1, graph.Imports: 1}
+	if e, ok := edges[key("file:app/app.go", graph.Imports, "unit:go:shape")]; !ok || e.Tier != graph.Algorithmic || e.Conf != 1.0 {
+		t.Errorf("app imports shape = %+v, %v; want one algorithmic edge at conf 1.0", e, ok)
+	}
 	for p, n := range want {
 		if preds[p] != n {
 			t.Errorf("%s edges = %d; want %d", p, preds[p], n)
@@ -225,6 +230,11 @@ func TestGopg_FilesRestrict(t *testing.T) {
 	}
 	// The other end: with app kept and shape not, app's edges into shape
 	// (Run calls Sum, Holder embeds and implements Shape) are dropped too.
+	// The one exception is app's import of shape: it names the unit by its
+	// directory and reads nothing of shape, and the overlay of app.go, which
+	// knows no kept set, emits it; dropping it here would make every edit of
+	// app.go add it, and a boundary into a directory no unit declares could
+	// never fire on a new import.
 	recs, err = Resolver{}.Extract(shapes(t), []string{"app/app.go"}, graph.RevCommit("c1"))
 	if err != nil {
 		t.Fatal(err)
@@ -233,9 +243,18 @@ func TestGopg_FilesRestrict(t *testing.T) {
 	if _, ok := nodes["sym:go:app:func:Run"]; !ok {
 		t.Errorf("Run missing from the kept package")
 	}
+	imp := key("file:app/app.go", graph.Imports, "unit:go:shape")
 	for k := range edges {
-		if strings.Contains(k, ":shape") {
+		if strings.Contains(k, ":shape") && k != imp {
 			t.Errorf("edge %q reaches into the unkept package", strings.ReplaceAll(k, "\x00", " "))
+		}
+	}
+	if _, ok := edges[imp]; !ok {
+		t.Errorf("app's import of the unkept shape missing")
+	}
+	for id := range nodes {
+		if strings.Contains(string(id), ":shape") {
+			t.Errorf("node %s from the unkept package", id)
 		}
 	}
 }

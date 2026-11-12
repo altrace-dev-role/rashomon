@@ -26,10 +26,13 @@ var overlayProv = graph.Prov{Extractor: "go/parser", Version: "v1"}
 // attribution and synopsis rules) and a func or method the short names its
 // body calls (calls attr); no body is kept, and a sig is the function's type
 // spelled by its tokens (sigtokens.go), nothing of its statements. The file node is contained by its
-// unit (one Contains edge, the index's key). Content that does not
-// parse yields nil records and a nil error; the overlay says less, never
-// wrong. It reads no file and starts no process.
-func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
+// unit (one Contains edge, the index's key). With an ImportMap the file
+// also imports each unit its import clause maps to (imports.go: one Imports
+// edge per unit, none from a _test.go file), the edges the index gives the
+// same file. Content that does not parse yields nil records and a nil
+// error; the overlay says less, never wrong. It reads no file and starts no
+// process: the map's directory check is its caller's.
+func (r Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, content, parser.SkipObjectResolution|parser.ParseComments)
 	if err != nil {
@@ -75,15 +78,29 @@ func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) (
 			genDecl(d, add)
 		}
 	}
+	if r.Imports != nil {
+		out = append(out, fileImports(f, rel, *r.Imports, func(dst graph.ID) graph.Record {
+			return graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Imports, Dst: dst, Tier: graph.Algorithmic, Conf: overlayConf, Rev: rev, Prov: overlayProv}}
+		})...)
+	}
 	return out, nil
 }
 
 // OverlayCarried is exactly the predicates Overlay emits: Declares, from the
-// file node to each declaration. Calls, imports and references are not read,
-// so an overlay is silent on them and the index's edges of those predicates
-// stand.
-func (Resolver) OverlayCarried() graph.Carried {
+// file node to each declaration, and Imports, from the file, when the
+// resolver maps imports (a usable ImportMap). Calls and references are not
+// read, nor imports without a map, so an overlay is silent on them and the
+// index's edges of those predicates stand.
+func (r Resolver) OverlayCarried() graph.Carried {
+	if r.mapsImports() {
+		return graph.Carried{graph.Declares, graph.Imports}
+	}
 	return graph.Carried{graph.Declares}
+}
+
+// mapsImports is whether the resolver's ImportMap can map an import.
+func (r Resolver) mapsImports() bool {
+	return r.Imports != nil && r.Imports.Module != "" && r.Imports.IsDir != nil
 }
 
 // funcDecl reports a function or a method. A method's qualified spelling is
