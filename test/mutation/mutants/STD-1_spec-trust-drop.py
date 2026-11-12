@@ -39,8 +39,8 @@ m("STD-1 the Stop names a spec after a store write", R,
 m("STD-1 the value line leaves the spec out", "internal/recap/value.go",
   "\tb.WriteString(unboundLines(v))\n", "", "TestSTD1c_")
 m("STD-1 the done flag leaves the spec out", "internal/recap/done.go",
-  "+ ruleLines(v) + unboundLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true",
-  "+ ruleLines(v) + platformLines(v, fromPlugin) + pointer(sessionID, fromPlugin), true",
+  "+ ruleLines(v) + unboundLines(v) + platformLines(v, fromPlugin)\n",
+  "+ ruleLines(v) + platformLines(v, fromPlugin)\n",
   "TestSTD1c_")
 m("STD-1 the line prints a path the slot refuses", "internal/recap/value.go",
   "if s := slot.Path(p); s.Validate() == nil {", "if s := slot.Path(p); true {", "TestSTD1c_")
