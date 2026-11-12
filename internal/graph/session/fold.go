@@ -388,9 +388,9 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 // I/O, no clock and no graph, so what it writes depends on f and ev alone,
 // and a fold over a prefix then the tail equals a fold over the whole. It
 // writes no element a Frontier copied before it can see: it appends, or
-// rebuilds a list it changes in place (touch, openedUnit, verdict), so the
-// copy keeps every field as it was (TestStep_LeavesCopies). Stepping both
-// copies is not supported, since they share arrays past their lengths;
+// rebuilds a list it changes in place (touch, require, openedUnit, verdict),
+// so the copy keeps every field as it was (TestStep_LeavesCopies). Stepping
+// both copies is not supported, since they share arrays past their lengths;
 // fork one with ParseFrontier(MarshalFrontier(f)).
 func Step(f *Frontier, ev Event) {
 	if ev.PromptID != "" {
@@ -398,9 +398,7 @@ func Step(f *Frontier, ev Event) {
 	}
 	if ev.State == string(steer.LineStateDelivered) { // only SteerEvent sets State
 		deliver(f, ev)
-		for _, r := range ev.Stated {
-			require(f, r.Pred, r.Arg, ev.Seq)
-		}
+		require(f, ev)
 	}
 	for _, p := range ev.Wrote {
 		touch(f, p)
@@ -484,49 +482,120 @@ func touch(f *Frontier, rel string) {
 	f.Touched = slices.Concat(f.Touched[:i], []string{id}, f.Touched[i:])
 }
 
-// require states a Req on a delivered line's subject at the line's
-// after_seq (D6): one ReqState per key pred:arg, the first kept, so a line
-// delivered again, or a second line naming the subject, leaves StatedAt as
-// it was. The key is not the line's: one steer line's slots hold up to five
-// graph lines (Frontier).
-func require(f *Frontier, pred, arg string, seq int64) {
-	id := pred + ":" + arg
-	for _, r := range f.Reqs {
-		if r.ID == id {
-			return
+// require applies the Reqs a delivered line states (D6), one ReqState per
+// key Pred:Arg, the line taken whole and never slot by slot, so any order of
+// its slots is the same line and folds to the same frontier (ruling 13:23
+// (3a)). In order: a key no Req holds becomes an open Req, StatedAt the
+// line's after_seq, kept from then on, so a line delivered again or a second
+// line naming the subject leaves it as it was; a superseded Req the line
+// names reopens, open with SupersededBy empty and StatedAt unchanged, the
+// only way back to open (13:23 (3c)); the line's prompt supersedes what it
+// moved past (supersede); and every Req the line names takes the line's
+// after_seq as LastStatedAt. supersede reads LastStatedAt before this line
+// writes it, so it sees the earlier lines only, and it spares the line's own
+// Reqs by name. The key is not the line's: one steer line's slots hold up to
+// five graph lines (Frontier). The list is cloned first, so a copy taken
+// before keeps its own.
+func require(f *Frontier, ev Event) {
+	if len(ev.Stated) == 0 {
+		return
+	}
+	f.Reqs = slices.Clone(f.Reqs)
+	named := make(map[string]bool, len(ev.Stated))
+	for _, r := range ev.Stated {
+		id := r.Pred + ":" + r.Arg
+		named[id] = true
+		i := slices.IndexFunc(f.Reqs, func(q ReqState) bool { return q.ID == id })
+		switch {
+		case i < 0:
+			f.Reqs = append(f.Reqs, ReqState{ID: id, Pred: r.Pred, Arg: r.Arg, Status: ReqOpen, StatedAt: ev.Seq})
+		case f.Reqs[i].Status == ReqSuperseded:
+			f.Reqs[i].Status, f.Reqs[i].SupersededBy = ReqOpen, ""
 		}
 	}
-	f.Reqs = append(f.Reqs, ReqState{ID: id, Pred: pred, Arg: arg, Status: ReqOpen, StatedAt: seq})
+	supersede(f, ev, named)
+	for i := range f.Reqs {
+		if named[f.Reqs[i].ID] {
+			f.Reqs[i].LastStatedAt = ev.Seq
+		}
+	}
 }
 
-// openedUnit marks met_once each open opened_unit Req whose unit a write of ev
-// is in, the path itself or under it (PLAN 1489: a Touch under the unit),
-// at ev's seq: the first such write, and met_once never goes back. A Req exists
-// only after its line, by the merged order (at one seq a record sorts
-// before a line), so a line is judged by the writes after it, as
-// steer.Compliance judges a line followed, and a write before it meets
-// nothing. Both sides are paths as the record holds them: the slot path
-// relative to the hook's working directory when the line was written
-// (relTo, cmd/rashomon/graph.go), and a written path relative to the
-// project (inProject). They agree when the hook ran at the project root, as
-// it did for 4205 of the 4280 fixture declarations that name both; the
-// steer line names no cwd, so a line written from a subdirectory is read
-// as if from the root, and a write to the same path there meets its Req (a
-// lookalike the record cannot tell apart). A path that climbs, ".", or a
-// keyed digest
-// (record scope v4) matches no written path, so its Req stays open: open is
-// "not seen met", never "unmet" (ruling 12:52). The list is cloned before
-// its first change, so a copy taken before keeps its own.
+// supersede marks superseded each open Req a delivered line's prompt moved
+// past (D6 (d), rulings 12:52 (4), 13:23 (3)): one of a predicate the line
+// states that the line does not name, so on another argument and never a
+// sibling slot's (a), and that no line at or after the prompt's StatedAt
+// named, its LastStatedAt before it (b). A Req a prompt names is that
+// prompt's own, so the order of the prompt's lines does not matter.
+// SupersededBy is the prompt's IntentRef.ID (e). Only a predicate a graph
+// line states (lineBrought) supersedes or is superseded, so a gate or test
+// Req never is; met_once is final and never superseded; a superseded Req
+// stays so, its SupersededBy the first, until a line names it again
+// (require) or evidence marks it met_once (openedUnit), either of which
+// empties it. A line with no prompt (a briefing) has no IntentRef and
+// supersedes nothing.
+func supersede(f *Frontier, ev Event, named map[string]bool) {
+	i := slices.IndexFunc(f.Intents, func(p IntentRef) bool { return p.Digest == ev.PromptID })
+	if i < 0 {
+		return
+	}
+	p := f.Intents[i]
+	for j, r := range f.Reqs {
+		if r.Status == ReqOpen && lineBrought(r.Pred) && !named[r.ID] && r.LastStatedAt < p.StatedAt && states(ev, r.Pred) {
+			f.Reqs[j].Status, f.Reqs[j].SupersededBy = ReqSuperseded, p.ID
+		}
+	}
+}
+
+// states reports whether ev states a Req of pred.
+func states(ev Event, pred string) bool {
+	return slices.ContainsFunc(ev.Stated, func(r StatedReq) bool { return r.Pred == pred })
+}
+
+// lineBrought reports whether pred is one a graph line states (stated):
+// opened_unit, called_symbol, edited_or_verified or paths_untouched. Only
+// these supersede or are superseded (ruling 12:52 (4)), so a gate or test
+// Req, which enters only from a stored line a later card copies (ruling
+// 13:23 (4)), is never retired by a prompt's graph line.
+func lineBrought(pred string) bool {
+	switch pred {
+	case steer.PredOpenedUnit, steer.PredCalledSymbol, steer.PredEditedOrVerified, steer.PredPathsUntouched:
+		return true
+	}
+	return false
+}
+
+// openedUnit marks met_once each open or superseded opened_unit Req whose
+// unit a write of ev is in, the path itself or under it (PLAN 1489: a Touch
+// under the unit), at ev's seq: the first such write, and met_once is final.
+// Evidence marks a superseded Req as it marks an open one (ruling 13:23
+// (3d)) and empties its SupersededBy, so SupersededBy is set exactly while
+// Status is superseded (ruling 13:43 (3)). dropped is not marked: no rule
+// writes it in v1, and its drop line's card owns it. A Req exists only after
+// its line, by the merged order (at one seq a record sorts before a line), so
+// a line is judged by the writes after it, as steer.Compliance judges a line
+// followed, and a write before it meets nothing. Both sides are paths as the
+// record holds them: the slot path relative to the hook's working directory
+// when the line was written (relTo, cmd/rashomon/graph.go), and a written
+// path relative to the project (inProject). They agree when the hook ran at
+// the project root, as it did for 4205 of the 4280 fixture declarations that
+// name both; the steer line names no cwd, so a line written from a
+// subdirectory is read as if from the root, and a write to the same path
+// there meets its Req (a lookalike the record cannot tell apart). A path that
+// climbs, ".", or a keyed digest (record scope v4) matches no written path,
+// so its Req stays open: open is "not seen met", never "unmet" (ruling
+// 12:52). The list is cloned before its first change, so a copy taken before
+// keeps its own.
 func openedUnit(f *Frontier, ev Event) {
 	cloned := false
 	for i, r := range f.Reqs {
-		if r.Pred != steer.PredOpenedUnit || r.Status != ReqOpen || !wroteUnder(ev.Wrote, r.Arg) {
+		if r.Pred != steer.PredOpenedUnit || r.Status != ReqOpen && r.Status != ReqSuperseded || !wroteUnder(ev.Wrote, r.Arg) {
 			continue
 		}
 		if !cloned {
 			f.Reqs, cloned = slices.Clone(f.Reqs), true
 		}
-		f.Reqs[i].Status, f.Reqs[i].MetAt = ReqMetOnce, ev.Seq
+		f.Reqs[i].Status, f.Reqs[i].MetAt, f.Reqs[i].SupersededBy = ReqMetOnce, ev.Seq, ""
 	}
 }
 

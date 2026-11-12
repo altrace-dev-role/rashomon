@@ -23,12 +23,13 @@ func sampleFrontier() Frontier {
 	f.Continues = frPrev
 	f.Intents = []IntentRef{
 		{ID: string(graph.PromptNodeID(frSID, 2)), Digest: strings.Repeat("b", 16), StatedAt: 40, Status: ReqOpen},
-		{ID: string(graph.PromptNodeID(frSID, 1)), Digest: strings.Repeat("a", 16), StatedAt: 3, Status: ReqMetOnce},
+		{ID: string(graph.PromptNodeID(frSID, 1)), Digest: strings.Repeat("a", 16), StatedAt: 3, Status: ReqOpen},
 	}
 	f.Reqs = []ReqState{
-		{ID: "opened_unit:b", Pred: "opened_unit", Arg: "b", Status: ReqOpen, StatedAt: 41},
-		{ID: "gate_green:go-test", Pred: "gate_green", Arg: "go-test", Status: ReqMetOnce, StatedAt: 4, MetAt: 9},
-		{ID: "opened_unit:a", Pred: "opened_unit", Arg: "a", Status: ReqSuperseded, StatedAt: 4, SupersededBy: "opened_unit:b"},
+		{ID: "opened_unit:b", Pred: "opened_unit", Arg: "b", Status: ReqOpen, StatedAt: 41, LastStatedAt: 41},
+		{ID: "gate_green:go-test", Pred: "gate_green", Arg: "go-test", Status: ReqMetOnce, StatedAt: 4, LastStatedAt: 4, MetAt: 9},
+		{ID: "opened_unit:a", Pred: "opened_unit", Arg: "a", Status: ReqSuperseded, StatedAt: 4, LastStatedAt: 6,
+			SupersededBy: string(graph.PromptNodeID(frSID, 2))},
 	}
 	f.Decisions = []DecisionRef{{IDs: []string{"n2", "n1"}, Action: "leave_alone"}, {IDs: []string{"n0"}, Action: "use"}}
 	f.Touched = []string{"file:z.go", "file:a.go"}
@@ -165,6 +166,21 @@ func TestFrontier_VerdictKeys(t *testing.T) {
 	}
 }
 
+// TestFrontier_ReqKeys (W-M4.2, ruling 13:23 (3b), (3e)): a Req's seqs are
+// under their own keys, last_stated_at between stated_at and met_at, and
+// superseded_by holds the superseding prompt's node id.
+func TestFrontier_ReqKeys(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"id":"opened_unit:a","pred":"opened_unit","arg":"a","status":"superseded","stated_at":4,"last_stated_at":6,"met_at":0,` +
+		`"superseded_by":"` + string(graph.PromptNodeID(frSID, 2)) + `"}`
+	if !bytes.Contains(b, []byte(want)) {
+		t.Errorf("frontier does not hold %s:\n%s", want, b)
+	}
+}
+
 // TestFrontier_SchemaIsOne (W-M4.2): the frontier says its schema first, and
 // a file of any other schema does not parse, so the cache misses and the
 // session folds in full.
@@ -223,12 +239,12 @@ var frontierStrings = map[string]string{
 	"Continues":           "session id",
 	"Intents[].ID":        "prompt node id, graph.PromptNodeID",
 	"Intents[].Digest":    "prompt digest",
-	"Intents[].Status":    "ReqStatus",
+	"Intents[].Status":    "ReqStatus, open only in v1",
 	"Reqs[].ID":           "a Req's key, Pred:Arg (D6)",
 	"Reqs[].Pred":         "compliance predicate name",
 	"Reqs[].Arg":          "a unit's path as its line holds it or its keyed digest (record scope v4), a symbol, a gate family or a test id",
 	"Reqs[].Status":       "ReqStatus",
-	"Reqs[].SupersededBy": "a Req's key",
+	"Reqs[].SupersededBy": "prompt node id, graph.PromptNodeID, of the prompt that superseded it",
 	"Decisions[].IDs[]":   "graph node id",
 	"Decisions[].Action":  "decision action name",
 	"Touched[]":           "file id, graph.FileID of a project-relative path",

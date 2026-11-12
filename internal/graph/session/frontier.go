@@ -12,15 +12,21 @@ import (
 // FrontierSchema is the frontier's own schema, written first as "schema".
 const FrontierSchema = 1
 
-// ReqStatus is where a requirement stands in the session's history.
-// Transitions are monotone: open to met_once or superseded, never back
-// (11-05 order, PLAN 1478). met_once is history and named for it (ruling
-// 13:11 (3)): satisfied at least once after StatedAt, MetAt the first such
-// seq, so a later red run or a removed call never undoes it. Whether a
-// requirement holds now is the Stop's verdict (W-M3.4's ledger row, bound
-// by checkpoint_seq as VerdictRef is), which the fold copies (W-M4.6) and
-// never computes; a reader never renders met_once as met, holds or
-// verified.
+// ReqStatus is where a requirement stands in the session's history. open
+// goes to met_once at evidence after StatedAt, or to superseded when a later
+// prompt's delivered line moves past it (supersede). superseded goes to
+// met_once at evidence as open does, or back to open only when a delivered
+// line states the same Pred and Arg again, never by evidence, a prompt alone
+// or time (require). met_once is final (ruling 13:23 (3c), (3d); PLAN 1491
+// amended with the M2 merge). dropped is written only by an explicit drop
+// line, which v1 has no writer for. met_once is history and named for it
+// (ruling 13:11 (3)): satisfied at least once after StatedAt, MetAt the
+// first such seq, so a later red run or a removed call never undoes it.
+// Whether a requirement holds now is the Stop's verdict (W-M3.4's ledger
+// row, bound by checkpoint_seq as VerdictRef is), which the fold copies
+// (W-M4.6) and never computes; a reader never renders met_once as met, holds
+// or verified. superseded is not met: a list or count of unfinished
+// requirements includes it, marked (AD18, ruling 12:52 (4)).
 type ReqStatus string
 
 const (
@@ -48,9 +54,11 @@ const (
 // Touched cannot place in the project (ruling 11:37); StopsWithoutVerdict,
 // the Stop checkpoints no verdict names (rulings 12:03, 12:12);
 // VerdictRef's DoneFlagged and Unmet for PLAN 1487's Done and Owed, named
-// for what the writer decides (ruling 12:12, VerdictRef's doc); and a
+// for what the writer decides (ruling 12:12, VerdictRef's doc); a
 // ReqState keyed Pred:Arg, not by its line's key (PLAN 1489), because one
-// steer line's slots hold up to five graph lines (D6).
+// steer line's slots hold up to five graph lines (D6); and ReqState's
+// LastStatedAt, which supersede reads (ruling 13:23 (3b)): a Catch from a
+// saved frontier must know it, and no other field holds it.
 type Frontier struct {
 	Schema    int    `json:"schema"`
 	Session   string `json:"session"`
@@ -64,9 +72,11 @@ type Frontier struct {
 	// opened_unit, called_symbol and edited_or_verified on a path as the
 	// line holds it, its keyed digest at record scope v4, and
 	// paths_untouched on a decision id. The fold marks only opened_unit,
-	// met_once at a later write under the unit (openedUnit); the rest stay
-	// open, and no Stop resolves them (ruling 13:11 (5)). Open
-	// is "not seen met", never "not done" or "unmet" (ruling 12:52): the
+	// met_once at a later write under the unit (openedUnit); it never marks
+	// the rest, and no Stop resolves them (ruling 13:11 (5)). A later
+	// prompt's line supersedes an earlier Req of a predicate it states on
+	// another argument, and a line stating a superseded Req again reopens it
+	// (supersede, require; ruling 13:23 (3)). Open is "not seen met", never "not done" or "unmet" (ruling 12:52): the
 	// record names no read, and a write it withheld or placed outside the
 	// project (TouchedWithheld, TouchedOutside) meets nothing. The ID is
 	// opaque: a reader takes Pred and Arg from their fields and never splits
@@ -141,7 +151,8 @@ type Frontier struct {
 	LastBoundary int64 `json:"last_boundary"`
 }
 
-// IntentRef is one prompt by reference.
+// IntentRef is one prompt by reference. Its Status is open and only open in
+// v1: no rule closes, meets or supersedes an intent (ruling 13:23 (2)).
 type IntentRef struct {
 	ID       string    `json:"id"`
 	Digest   string    `json:"digest"`
@@ -151,12 +162,21 @@ type IntentRef struct {
 
 // ReqState is a requirement by its predicate's name and argument, so a
 // frontier is printed, compared and re-delivered without the store (AD17).
+// StatedAt is the after_seq of the first delivered line that named it, kept
+// for good; LastStatedAt is the last such line's, which supersede reads
+// (ruling 13:23 (3b)); MetAt is the seq of the first evidence after
+// StatedAt, 0 until met_once. SupersededBy is the IntentRef.ID of the prompt
+// whose line superseded it (13:23 (3e)), set exactly while Status is
+// superseded: a line that states it again, or evidence that marks it
+// met_once, empties it, and after a reopen the next supersede sets it anew
+// (ruling 13:43 (3)).
 type ReqState struct {
 	ID           string    `json:"id"`
 	Pred         string    `json:"pred"`
 	Arg          string    `json:"arg"`
 	Status       ReqStatus `json:"status"`
 	StatedAt     int64     `json:"stated_at"`
+	LastStatedAt int64     `json:"last_stated_at"`
 	MetAt        int64     `json:"met_at"`
 	SupersededBy string    `json:"superseded_by"`
 }

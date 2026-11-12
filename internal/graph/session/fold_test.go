@@ -724,7 +724,8 @@ func TestEvent_DecodeStatedSynthetic(t *testing.T) {
 // TestStep_ReqsSynthetic (W-M4.2, D6, rulings 12:52 (2), (3), 13:04 (3)): a
 // delivered line states one opened_unit Req per unit, keyed Pred:Arg, at
 // its after_seq; a suppressed line states none, and a unit stated again
-// keeps its first StatedAt. A Req is marked met_once at the first write after its line
+// keeps its first StatedAt, its LastStatedAt the later line's. The lines
+// name no prompt, so none supersedes. A Req is marked met_once at the first write after its line
 // at its path or under it, and never again. The boundary in three cases,
 // the events put in the merged order by Before: a write before the line
 // (5) and a write at the line's own after_seq (10, a record sorts first)
@@ -761,10 +762,10 @@ func TestStep_ReqsSynthetic(t *testing.T) {
 	for _, ev := range evs {
 		Step(&f, ev)
 	}
-	unit := func(arg string, status ReqStatus, met int64) ReqState {
-		return ReqState{ID: steer.PredOpenedUnit + ":" + arg, Pred: steer.PredOpenedUnit, Arg: arg, Status: status, StatedAt: 10, MetAt: met}
+	unit := func(arg string, status ReqStatus, last, met int64) ReqState {
+		return ReqState{ID: steer.PredOpenedUnit + ":" + arg, Pred: steer.PredOpenedUnit, Arg: arg, Status: status, StatedAt: 10, LastStatedAt: last, MetAt: met}
 	}
-	want := []ReqState{other, unit("internal/platform", ReqMetOnce, 15), unit("cmd/x", ReqMetOnce, 14), unit("internal/early", ReqOpen, 0)}
+	want := []ReqState{other, unit("internal/platform", ReqMetOnce, 12, 15), unit("cmd/x", ReqMetOnce, 10, 14), unit("internal/early", ReqOpen, 10, 0)}
 	if !slices.Equal(f.Reqs, want) {
 		t.Errorf("Reqs:\n%+v\nwant\n%+v", f.Reqs, want)
 	}
@@ -773,7 +774,9 @@ func TestStep_ReqsSynthetic(t *testing.T) {
 // TestStep_LeavesCopies (W-M4.2): a Step leaves a Frontier copied before it
 // as it was, byte for byte, while the stepped one gains the write's file in
 // order and meets the Req. Touched has room past its length, so an insert
-// that shifts in place would write into the copy's array. SYNTHETIC events.
+// that shifts in place would write into the copy's array. Likewise a later
+// prompt's line supersedes a Req of a list with room past its length, and
+// the copy keeps it open. SYNTHETIC events.
 func TestStep_LeavesCopies(t *testing.T) {
 	f := newFrontier("s1")
 	f.Touched = append(make([]string, 0, 8), string(graph.FileID("a")), string(graph.FileID("c")))
@@ -790,6 +793,20 @@ func TestStep_LeavesCopies(t *testing.T) {
 	wantTouched := []string{string(graph.FileID("a")), string(graph.FileID("b")), string(graph.FileID("c"))}
 	if !slices.Equal(f.Touched, wantTouched) || f.Reqs[0].Status != ReqMetOnce || f.Reqs[0].MetAt != 2 {
 		t.Errorf("stepped: Touched %q, Req %+v; want %q and met at 2", f.Touched, f.Reqs[0], wantTouched)
+	}
+	h := stepAll(unitLine(2, "l1", "p1", "d"))
+	h.Reqs = append(make([]ReqState, 0, 8), h.Reqs...)
+	k := h
+	beforeK, err := MarshalFrontier(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Step(&h, unitLine(5, "l2", "p2", "e"))
+	if after, _ := MarshalFrontier(k); string(after) != string(beforeK) {
+		t.Errorf("copy changed by a supersede:\n%s\nwant\n%s", after, beforeK)
+	}
+	if d := unitReq(h, "d"); d.Status != ReqSuperseded {
+		t.Errorf("stepped: d %+v; want superseded", d)
 	}
 }
 
@@ -863,7 +880,7 @@ func TestStep_LineStatesEachPredSynthetic(t *testing.T) {
 		Step(&f, ev)
 	}
 	req := func(pred, arg string, status ReqStatus, met int64) ReqState {
-		return ReqState{ID: pred + ":" + arg, Pred: pred, Arg: arg, Status: status, StatedAt: 3, MetAt: met}
+		return ReqState{ID: pred + ":" + arg, Pred: pred, Arg: arg, Status: status, StatedAt: 3, LastStatedAt: 3, MetAt: met}
 	}
 	want := []ReqState{
 		req(steer.PredOpenedUnit, "internal/u", ReqMetOnce, 7),
@@ -873,5 +890,210 @@ func TestStep_LineStatesEachPredSynthetic(t *testing.T) {
 	}
 	if !slices.Equal(f.Reqs, want) {
 		t.Errorf("Reqs:\n%+v\nwant\n%+v", f.Reqs, want)
+	}
+}
+
+// unitLine is a delivered steer line of prompt p at after_seq seq, its graph
+// lines stating one opened_unit Req per unit, in slot order; p empty is a
+// line with no prompt (a briefing). SYNTHETIC.
+func unitLine(seq int64, id, p string, units ...string) Event {
+	ev := Event{Seq: seq, Steer: true, AtUnixMS: seq, ID: id, Type: steer.LineType, State: string(steer.LineStateDelivered), Key: "graph", PromptID: p}
+	for _, u := range units {
+		ev.Stated = append(ev.Stated, StatedReq{Pred: steer.PredOpenedUnit, Arg: u})
+	}
+	return ev
+}
+
+// stepAll steps a new frontier of session s1 through evs, in their order.
+func stepAll(evs ...Event) Frontier {
+	f := newFrontier("s1")
+	for _, ev := range evs {
+		Step(&f, ev)
+	}
+	return f
+}
+
+// unitReq is f's opened_unit Req on u, or the zero ReqState.
+func unitReq(f Frontier, u string) ReqState {
+	for _, r := range f.Reqs {
+		if r.ID == steer.PredOpenedUnit+":"+u {
+			return r
+		}
+	}
+	return ReqState{}
+}
+
+// promptID is the IntentRef.ID of session s1's n-th prompt.
+func promptID(n int) string { return string(graph.PromptNodeID("s1", n)) }
+
+// supersededByWhileSuperseded is ruling 13:43 (3)'s invariant on every Req
+// of f: SupersededBy is non-empty exactly when Status is superseded. It
+// names the first Req that breaks it, or returns "".
+func supersededByWhileSuperseded(f Frontier) string {
+	for _, r := range f.Reqs {
+		if (r.SupersededBy != "") != (r.Status == ReqSuperseded) {
+			return r.ID + " " + string(r.Status) + " superseded_by " + strconv.Quote(r.SupersededBy)
+		}
+	}
+	return ""
+}
+
+// TestStep_SupersedePerLineSynthetic (W-M4.2, ruling 13:23 (3a)): supersede
+// takes a line whole, never slot by slot. Prompt p1 states b and d; p2's
+// one line states a and b. b, named in the line beside a, stays open in
+// either slot order, and d, which the line does not name, is superseded, so
+// the line does supersede. The two slot orders fold to the same bytes.
+// SYNTHETIC lines.
+func TestStep_SupersedePerLineSynthetic(t *testing.T) {
+	var got []string
+	for _, units := range [][]string{{"a", "b"}, {"b", "a"}} {
+		f := stepAll(unitLine(2, "l1", "p1", "b", "d"), unitLine(5, "l2", "p2", units...))
+		if a, b, d := unitReq(f, "a"), unitReq(f, "b"), unitReq(f, "d"); a.Status != ReqOpen || b.Status != ReqOpen || b.SupersededBy != "" || d.Status != ReqSuperseded {
+			t.Errorf("slots %q: a %+v, b %+v, d %+v; want a and b open, d superseded", units, a, b, d)
+		}
+		bs, err := MarshalFrontier(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, string(bs))
+	}
+	if got[0] != got[1] {
+		t.Errorf("slot order changed the frontier:\n%s\n%s", got[0], got[1])
+	}
+}
+
+// TestStep_SupersedeSparesPromptsOwnSynthetic (W-M4.2, ruling 13:23 (3b)): a
+// Req a prompt names is that prompt's own. p1 states b and d; p2's first
+// line states b again and supersedes d, which no line of p2 names; p2's
+// second line states c and supersedes neither b, which p2's first line
+// named at p2's StatedAt, nor c. b keeps its first StatedAt, its
+// LastStatedAt p2's line. With (3c)'s case, a prompt's {b} then {c} and {c}
+// then {b} both end with b open. SYNTHETIC lines.
+func TestStep_SupersedeSparesPromptsOwnSynthetic(t *testing.T) {
+	f := stepAll(unitLine(2, "l1", "p1", "b", "d"), unitLine(5, "l2", "p2", "b"), unitLine(6, "l3", "p2", "c"))
+	b, c, d := unitReq(f, "b"), unitReq(f, "c"), unitReq(f, "d")
+	if b.Status != ReqOpen || b.StatedAt != 2 || b.LastStatedAt != 5 || c.Status != ReqOpen || d.Status != ReqSuperseded {
+		t.Errorf("b %+v, c %+v, d %+v; want b open, stated at 2, last at 5; c open; d superseded", b, c, d)
+	}
+}
+
+// TestStep_RestatementReopensSynthetic (W-M4.2, ruling 13:23 (3c)): a
+// superseded Req goes back to open only when a delivered line states the
+// same Pred and Arg again. p1 states b and d; p2's first line states c and
+// supersedes both. A suppressed line of p2 naming b and a delivered line of
+// p2 naming c again leave b superseded; p2's line naming b reopens it: open,
+// SupersededBy empty, StatedAt still p1's, LastStatedAt the reopening
+// line's. d stays superseded, and c, p2's own, stays open. SYNTHETIC lines.
+func TestStep_RestatementReopensSynthetic(t *testing.T) {
+	suppressed := unitLine(6, "l3", "p2", "b")
+	suppressed.State = string(steer.LineStateSuppressed)
+	f := stepAll(unitLine(2, "l1", "p1", "b", "d"), unitLine(5, "l2", "p2", "c"), suppressed, unitLine(7, "l4", "p2", "c"))
+	if b := unitReq(f, "b"); b.Status != ReqSuperseded || b.SupersededBy != promptID(2) {
+		t.Fatalf("before the restatement: b %+v; want superseded by %s", b, promptID(2))
+	}
+	Step(&f, unitLine(8, "l5", "p2", "b"))
+	b, c, d := unitReq(f, "b"), unitReq(f, "c"), unitReq(f, "d")
+	if b.Status != ReqOpen || b.SupersededBy != "" || b.StatedAt != 2 || b.LastStatedAt != 8 || c.Status != ReqOpen || d.Status != ReqSuperseded {
+		t.Errorf("b %+v, c %+v, d %+v; want b open, SupersededBy empty, stated at 2, last at 8; c open; d superseded", b, c, d)
+	}
+}
+
+// TestStep_SupersededMeetsOnceSynthetic (W-M4.2, rulings 13:23 (3d), 13:43
+// (3)): evidence marks a superseded Req as it marks an open one and empties
+// its SupersededBy: met_once is final and has one form. p1 states b; p2
+// states c and supersedes b; a write under b marks it met_once at the write.
+// p2 stating b again and a second write leave it met_once at the first
+// write. SYNTHETIC events.
+func TestStep_SupersededMeetsOnceSynthetic(t *testing.T) {
+	f := stepAll(unitLine(2, "l1", "p1", "b"), unitLine(5, "l2", "p2", "c"),
+		Event{Seq: 6, Type: store.TypeDeclaration, Wrote: []string{"b/x.go"}},
+		unitLine(7, "l3", "p2", "b"),
+		Event{Seq: 8, Type: store.TypeDeclaration, Wrote: []string{"b/y.go"}})
+	want := ReqState{ID: steer.PredOpenedUnit + ":b", Pred: steer.PredOpenedUnit, Arg: "b", Status: ReqMetOnce, StatedAt: 2, LastStatedAt: 7, MetAt: 6}
+	if b := unitReq(f, "b"); b != want {
+		t.Errorf("b %+v; want %+v", b, want)
+	}
+}
+
+// TestStep_SupersededByIsPromptSynthetic (W-M4.2, ruling 13:23 (3e)):
+// SupersededBy is the later prompt's IntentRef.ID, its prompt node id, never
+// a sibling Req's key or the prompt's digest. p1 states b; p2 states c and
+// supersedes b. A line with no prompt then states e and supersedes nothing:
+// c stays open. SYNTHETIC lines.
+func TestStep_SupersededByIsPromptSynthetic(t *testing.T) {
+	f := stepAll(unitLine(2, "l1", "p1", "b"), unitLine(5, "l2", "p2", "c"), unitLine(9, "l3", "", "e"))
+	b, c, e := unitReq(f, "b"), unitReq(f, "c"), unitReq(f, "e")
+	if b.Status != ReqSuperseded || b.SupersededBy != promptID(2) || c.Status != ReqOpen || e.Status != ReqOpen {
+		t.Errorf("b %+v, c %+v, e %+v; want b superseded by %s, c and e open", b, c, e, promptID(2))
+	}
+}
+
+// TestStep_SupersedeLineBroughtOnlySynthetic (W-M4.2, rulings 12:52 (4),
+// 13:23 (3)): only a predicate a graph line states supersedes or is
+// superseded, and only a Req of a predicate the line states. p1's line
+// states opened_unit b, called_symbol r.go and gate_green go-test; p2's
+// line states opened_unit c and gate_green go-build. b is superseded; r.go,
+// of a predicate p2's line does not state, stays open, and so do both
+// gate_green Reqs: a gate Req neither supersedes nor is superseded.
+// SYNTHETIC events: no SteerEvent states gate_green, which a later card
+// copies from a stored line (ruling 13:23 (4)).
+func TestStep_SupersedeLineBroughtOnlySynthetic(t *testing.T) {
+	const gate = "gate_green"
+	l1 := unitLine(2, "l1", "p1", "b")
+	l1.Stated = append(l1.Stated, StatedReq{Pred: steer.PredCalledSymbol, Arg: "r.go"}, StatedReq{Pred: gate, Arg: "go-test"})
+	l2 := unitLine(5, "l2", "p2", "c")
+	l2.Stated = append(l2.Stated, StatedReq{Pred: gate, Arg: "go-build"})
+	f := stepAll(l1, l2)
+	got := map[string]ReqStatus{}
+	for _, r := range f.Reqs {
+		got[r.ID] = r.Status
+	}
+	want := map[string]ReqStatus{
+		steer.PredOpenedUnit + ":b":      ReqSuperseded,
+		steer.PredOpenedUnit + ":c":      ReqOpen,
+		steer.PredCalledSymbol + ":r.go": ReqOpen,
+		gate + ":go-test":                ReqOpen,
+		gate + ":go-build":               ReqOpen,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("statuses %v; want %v", got, want)
+	}
+}
+
+// TestReq_MetOnceIsFinalSupersededReopensByLine (W-M4.2, ruling 13:23 (3);
+// PLAN 1491 as amended; PLAN 1493's TestReq_StatusTransitionsAreMonotone,
+// renamed for what it pins): one Req through every transition. b is open
+// at p1's line, superseded at p2's, open again when p2 states it,
+// superseded at p3's and met_once at a write, which empties its
+// SupersededBy; then p3 stating it again, p4's line moving past it and a
+// second write leave it met_once at the first write: met_once is final and
+// never superseded. After every step SupersededBy is set exactly while
+// Status is superseded (ruling 13:43 (3)). StatedAt stays p1's line
+// throughout. SYNTHETIC
+// events.
+func TestReq_MetOnceIsFinalSupersededReopensByLine(t *testing.T) {
+	f := newFrontier("s1")
+	for _, c := range []struct {
+		ev     Event
+		status ReqStatus
+		by     string
+		met    int64
+	}{
+		{unitLine(2, "l1", "p1", "b"), ReqOpen, "", 0},
+		{unitLine(4, "l2", "p2", "c"), ReqSuperseded, promptID(2), 0},
+		{unitLine(5, "l3", "p2", "b"), ReqOpen, "", 0},
+		{unitLine(7, "l4", "p3", "d"), ReqSuperseded, promptID(3), 0},
+		{Event{Seq: 8, Type: store.TypeDeclaration, Wrote: []string{"b/x.go"}}, ReqMetOnce, "", 8},
+		{unitLine(9, "l5", "p3", "b"), ReqMetOnce, "", 8},
+		{unitLine(11, "l6", "p4", "e"), ReqMetOnce, "", 8},
+		{Event{Seq: 12, Type: store.TypeDeclaration, Wrote: []string{"b/y.go"}}, ReqMetOnce, "", 8},
+	} {
+		Step(&f, c.ev)
+		if bad := supersededByWhileSuperseded(f); bad != "" {
+			t.Fatalf("after seq %d: %s", c.ev.Seq, bad)
+		}
+		if b := unitReq(f, "b"); b.Status != c.status || b.SupersededBy != c.by || b.MetAt != c.met || b.StatedAt != 2 {
+			t.Fatalf("after seq %d: b %+v; want %s, superseded by %q, met at %d, stated at 2", c.ev.Seq, b, c.status, c.by, c.met)
+		}
 	}
 }
