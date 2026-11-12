@@ -15,6 +15,11 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
+	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -257,21 +262,23 @@ func unitBriefDigest(data []byte) (string, error) {
 	return hex.EncodeToString(sum[:6]), nil
 }
 
-// readUnitBrief is the file at path decoded, reading at most one byte over
-// the cap, so an oversized file is refused without being read whole. A
-// missing, unreadable, over-cap, torn or stale file is an error the caller
-// counts as a miss.
-func readUnitBrief(path string) (storedUnitBrief, error) {
+// readUnitBrief is the file at path decoded, and its bytes, which name it
+// (unitBriefDigest), reading at most one byte over the cap, so an
+// oversized file is refused without being read whole. A missing,
+// unreadable, over-cap or torn file is an error the caller counts as a
+// miss.
+func readUnitBrief(path string) (storedUnitBrief, []byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return storedUnitBrief{}, err
+		return storedUnitBrief{}, nil, err
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	data, err := io.ReadAll(io.LimitReader(f, maxUnitBriefBytes+1))
 	if err != nil {
-		return storedUnitBrief{}, err
+		return storedUnitBrief{}, nil, err
 	}
-	return decodeUnitBrief(data)
+	b, err := decodeUnitBrief(data)
+	return b, data, err
 }
 
 // writeUnitBrief writes data to path, 0600, through a temporary file in
@@ -352,4 +359,64 @@ func writeUnitBriefs(storeRoot, sessionID, promptID, root, repo string, s *graph
 		}
 		_ = writeUnitBrief(filepath.Join(dir, graph.UnitBriefFileName(root, u)), data)
 	}
+}
+
+// unitBriefKeyPrefix opens a unit brief's steer key: the prefix, the
+// unit's global id, "@", and the brief's digest (format v2, ruling 03:58).
+const unitBriefKeyPrefix = "unitbrief:"
+
+// unitBriefJoin is the post's unit-brief finding (card m2-unitbrief-hook1
+// D4), nil for none: the first landed edit in a Go unit whose brief the
+// session holds, its file at the index's commit, not yet given. The checks
+// run cheapest first: the overlay writer's gate (Post.LandedGoEdit), the
+// unit's file by name (gopg's unit, the prompt side's local id, under
+// UnitBriefFileName), the index header (its repository names the unit as
+// the prompt side named it; its commit is the one a brief may be at), the
+// steer log (hook.Given: once per unit per session, whatever the digest,
+// arm_off counted at nudge only), then the bounded read. A brief of another
+// unit or commit is not said. The finding is graphFinding's under the key
+// unitbrief:<unit>@<digest>, after the edit's seq, its record form digests
+// where the record scope is not v5, as the prompt's graph brief.
+func unitBriefJoin(st *store.Store, p *hook.Post) []steer.Finding {
+	e, ok := p.LandedGoEdit()
+	if !ok {
+		return nil
+	}
+	unit, _ := gopg.Resolver{}.Unit("", e.Rel)
+	path := filepath.Join(graph.UnitBriefDir(st.Root(), e.Session), graph.UnitBriefFileName(e.Root, unit))
+	if _, err := os.Lstat(path); err != nil {
+		return nil
+	}
+	hdr, err := graph.ReadIndexHeader(filepath.Join(e.Root, filepath.FromSlash(graph.GraphFile)))
+	if err != nil || hdr.Rev.Commit == "" {
+		return nil
+	}
+	gid := graph.GlobalID(hdr.Repo, unit)
+	prefix := unitBriefKeyPrefix + string(gid) + "@"
+	lines, _, _ := st.ReadSteer(e.Session)
+	given := false
+	hook.Given(lines, pattern.TaskPreflight, prefix, true, func(string) { given = true })
+	if given {
+		return nil
+	}
+	sb, data, err := readUnitBrief(path)
+	if err != nil || sb.Unit != gid || sb.Rev.Commit != hdr.Rev.Commit {
+		return nil
+	}
+	digest, err := unitBriefDigest(data)
+	if err != nil {
+		return nil
+	}
+	var dg func(string) string
+	if !e.ScopeV5 {
+		key := st.Key()
+		dg = func(path string) string { return intent.PathDigest(key, path) }
+	}
+	f, ok := graphFinding(indexBrief{Brief: sb.Brief, Repo: hdr.Repo, First: sb.First, Tier: sb.Tier, Unit: sb.Unit},
+		prefix+digest, e.Seq, dg)
+	if !ok {
+		return nil
+	}
+	f.AgentID = e.AgentID
+	return []steer.Finding{f}
 }

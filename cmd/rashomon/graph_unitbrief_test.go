@@ -235,7 +235,7 @@ func TestUnitBrief_ReadIsBounded(t *testing.T) {
 	if err := os.WriteFile(ok, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readUnitBrief(ok); err != nil {
+	if _, _, err := readUnitBrief(ok); err != nil {
 		t.Errorf("a valid file: %v", err)
 	}
 	over := filepath.Join(dir, "over.json")
@@ -243,17 +243,17 @@ func TestUnitBrief_ReadIsBounded(t *testing.T) {
 	if err := os.WriteFile(over, padded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readUnitBrief(over); err == nil {
+	if _, _, err := readUnitBrief(over); err == nil {
 		t.Error("a file over the cap was read")
 	}
 	torn := filepath.Join(dir, "torn.json")
 	if err := os.WriteFile(torn, data[:len(data)/2], 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readUnitBrief(torn); err == nil {
+	if _, _, err := readUnitBrief(torn); err == nil {
 		t.Error("a torn file was read")
 	}
-	if _, err := readUnitBrief(filepath.Join(dir, "none.json")); err == nil {
+	if _, _, err := readUnitBrief(filepath.Join(dir, "none.json")); err == nil {
 		t.Error("a missing file was read")
 	}
 }
@@ -396,7 +396,7 @@ func TestGraphBrief_StoresEachUnitsBriefWhenConsented(t *testing.T) {
 		name := graph.UnitBriefFileName(root, u)
 		want[name] = u
 		path := filepath.Join(sessDir, name)
-		got, err := readUnitBrief(path)
+		got, _, err := readUnitBrief(path)
 		if err != nil {
 			t.Errorf("%s: %v", u, err)
 			continue

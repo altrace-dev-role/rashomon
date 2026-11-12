@@ -272,7 +272,7 @@ func TestGraphFinding_CarriesSourceAndUnit(t *testing.T) {
 	if !ok || gb.Repo != h.Repo || gb.Unit == "" {
 		t.Fatalf("graphBrief = repo %q unit %q, %v; want repo %q and a unit", gb.Repo, gb.Unit, ok, h.Repo)
 	}
-	f, ok := graphFinding(gb, 9, nil)
+	f, ok := graphFinding(gb, keyGraph, 9, nil)
 	if !ok {
 		t.Fatal("no finding")
 	}
@@ -308,7 +308,7 @@ func TestGraphFinding_ABriefThatClaimsNoUnitPassesCheck(t *testing.T) {
 		t.Errorf("unit %q first %q (key %q); want no unit and line 2's node", gb.Unit, gb.First, gb.FirstKey())
 	}
 	for _, digest := range []func(string) string{nil, func(string) string { return strings.Repeat("0", 64) }} {
-		f, ok := graphFinding(gb, 9, digest)
+		f, ok := graphFinding(gb, keyGraph, 9, digest)
 		if !ok {
 			t.Fatalf("no finding (record form %v)", digest != nil)
 		}

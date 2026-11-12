@@ -60,6 +60,9 @@ func TestUB12b_ScreenSaysEachUnitsBriefIsKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	const clause = "under unitbrief/<session>, the brief for the first edit in each unit the selection's lines lie in, up to eight units"
+	// The post hook reads a Go unit's brief after the first edit in it
+	// (card D4), and only a Go file's: the sentence says which.
+	const readsAfter = "which the hook reads after that edit when it is to a Go file"
 	said := 0
 	for _, p := range inv.Paragraphs {
 		i := strings.Index(p.Text, clause)
@@ -76,7 +79,7 @@ func TestUB12b_ScreenSaysEachUnitsBriefIsKept(t *testing.T) {
 			continue
 		}
 		after := p.Text[j:]
-		for _, also := range []string{"Where the session's content is kept", "the files of other units that use the unit",
+		for _, also := range []string{"Where the session's content is kept", readsAfter, "the files of other units that use the unit",
 			"the recorded decisions and lessons that apply to it", "offers for reuse there"} {
 			if !strings.Contains(after, also) {
 				t.Errorf("the unit brief's sentence does not say %q", also)

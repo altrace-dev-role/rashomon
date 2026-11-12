@@ -153,6 +153,9 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if pf, planned := p.plan(env, &ctx, ok); planned {
 		view.Findings, ok = append(view.Findings, pf), true
 	}
+	if joined := p.join(env, &ctx, ok); len(joined) > 0 {
+		view.Findings, ok = append(view.Findings, joined...), true
+	}
 	if !ok {
 		// A call that raised nothing still leaves its then_checks: the Stop
 		// reads a line that is no Then from its "no" (card ORDER-LIVE1). No
@@ -183,6 +186,24 @@ func (p *Post) Steer(env SteerEnv) []byte {
 		return nil
 	}
 	return b
+}
+
+// join is env.Join, the findings cmd read for the call (the unit brief),
+// under the gate blast and plan pass: ctx built from contextOf when the
+// judge built none (ok false), and nothing joined where the note could
+// reach no one (steering off, no consent, no prompt). A finding dropped here
+// leaves no line, so a once-per-key note is offered again at the next call.
+func (p *Post) join(env SteerEnv, ctx *steer.Context, ok bool) []steer.Finding {
+	if len(env.Join) == 0 {
+		return nil
+	}
+	if !ok {
+		*ctx = p.contextOf(env, verify.SteerView{ProjectRoot: blastRoot(p.cwd)})
+	}
+	if ctx.SteerOff || ctx.ConfigUnreadable || !ctx.Consent || ctx.PromptID == nil {
+		return nil
+	}
+	return env.Join
 }
 
 // keepHits appends each forbid_command rule the call matched to the run as a

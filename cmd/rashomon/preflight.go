@@ -125,7 +125,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		in = &resolved
 	}
 	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
-	if f, ok := graphFinding(gb, run.LastSeq(), digest); graphed && ok {
+	if f, ok := graphFinding(gb, keyGraph, run.LastSeq(), digest); graphed && ok {
 		found = append(found, f)
 	}
 	if f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {

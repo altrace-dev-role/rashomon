@@ -278,6 +278,30 @@ func overlayPath(tool string, input json.RawMessage, cwd string) string {
 	return filepath.Clean(path)
 }
 
+// keptGoEdit is the Go file a Write, Edit or MultiEdit that landed at seq
+// names, in a session whose content is kept: its absolute path, the index
+// root over cwd, and its slash path under that root. The checks run
+// cheapest first, so a session with no session-content marker pays one
+// marker read and decodes no input: the tool, the seq, the session, the
+// marker, the Go resolver's claim (overlayPath), an index (graph.FindIndex)
+// and the file under its root. The overlay writer and the unit-brief read
+// (Post.LandedGoEdit) both pass through it, so their gates cannot part.
+func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, cwd string, seq int64) (path, root, rel string, ok bool) {
+	if !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {
+		return "", "", "", false
+	}
+	if path = overlayPath(tool, input, cwd); path == "" {
+		return "", "", "", false
+	}
+	if root = graph.FindIndex(cwd); root == "" {
+		return "", "", "", false
+	}
+	if rel, ok = underRoot(root, path); !ok {
+		return "", "", "", false
+	}
+	return path, root, rel, true
+}
+
 // underRoot is path relative to root, slash separated, false for a path
 // outside it.
 func underRoot(root, path string) (string, bool) {
@@ -332,19 +356,7 @@ func (c overlayCall) content(path string) ([]byte, bool) {
 // (the hook's allocation budgets, test/perf/budgets.json).
 func (c overlayCall) write() {
 	defer func() { _ = recover() }()
-	if !overlayTool(c.tool) || c.seq <= 0 || c.session == store.UnattributedSession ||
-		!store.SessionContentMarker(c.st.Root()) {
-		return
-	}
-	path := overlayPath(c.tool, c.input, c.cwd)
-	if path == "" {
-		return
-	}
-	root := graph.FindIndex(c.cwd)
-	if root == "" {
-		return
-	}
-	rel, ok := underRoot(root, path)
+	path, root, rel, ok := keptGoEdit(c.st, c.session, c.tool, c.input, c.cwd, c.seq)
 	if !ok {
 		return
 	}

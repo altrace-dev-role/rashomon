@@ -317,18 +317,20 @@ func relTo(cwd, root string) func(string) string {
 // findings, beside the request's note (intent's note and brief keys).
 const keyGraph = "graph"
 
-// graphFinding is the brief as the prompt's task-preflight finding, routed
-// in preflightNote's one Route call beside the request's note: a nudge
-// with no stop form, its record form (Brief.Record) where the record scope
-// keeps digests (digest set), the message itself where it keeps paths; its
-// source the graph row its first keyed line is keyed on and its unit that
-// row's unit (AD19), none when the brief says its unit is not known.
-func graphFinding(b indexBrief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
+// graphFinding is a brief as a task-preflight finding under key: the
+// prompt's graph brief (keyGraph), routed in preflightNote's one Route call
+// beside the request's note, and a unit's brief at the post of the first
+// edit in it (unitBriefJoin). A nudge with no stop form, its record form
+// (Brief.Record) where the record scope keeps digests (digest set), the
+// message itself where it keeps paths; its source the graph row its first
+// keyed line is keyed on and its unit that row's unit (AD19), none when the
+// brief says its unit is not known.
+func graphFinding(b indexBrief, key string, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	if b.Empty() {
 		return steer.Finding{}, false
 	}
 	prio, _ := pattern.Priority(pattern.TaskPreflight)
-	f := steer.Finding{Pattern: pattern.TaskPreflight, Key: keyGraph, Priority: prio, MaxLevel: steer.LevelNudge,
+	f := steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
 		StopForm: steer.StopFormNone, Message: b.Message, AfterSeq: afterSeq, Unit: string(b.Unit),
 		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
 	if digest != nil {

@@ -9,7 +9,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
-	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -150,17 +149,9 @@ func planSets(items []PlanItem) (paths []string, planned int, rules []slot.RuleR
 }
 
 // planGiven reports a plan-check line of the session with this key that was
-// given: delivered (a held-out line keeps that state), or withheld by the off
-// arm, whose decision gave it (as lastGiven reads a blast-radius line).
+// given, by the one rule (Given): the key whole, so the rest is empty.
 func planGiven(lines [][]byte, key string) bool {
-	var sp [4]jsonscan.Span
-	for _, b := range lines {
-		if jsonscan.Top(b, blastKeys(), sp[:]) != nil || spanText(b, sp[0]) != string(pattern.PlanCheck) || spanText(b, sp[2]) != key {
-			continue
-		}
-		if spanText(b, sp[1]) == string(steer.LineStateDelivered) || spanText(b, sp[3]) == string(steer.SuppressedByArmOff) {
-			return true
-		}
-	}
-	return false
+	given := false
+	Given(lines, pattern.PlanCheck, key, false, func(rest string) { given = given || rest == "" })
+	return given
 }
