@@ -230,6 +230,10 @@ func onceSpec(st *store.Store, run *store.Run, cwd string) func() *spec.Compiled
 	}
 }
 
+// readPromptScope is promptScope's one read of the store's record scope, a
+// variable so a test counts the reads a prompt makes (TestPromptScope_*).
+var readPromptScope = hook.PromptRecordScope
+
 // promptScope is the store's record scope as the prompt path reads it,
 // hook.PromptRecordScope read on first use and kept (get), so the evidence
 // file's gate (writeGraphEvidence) and the note's record form read one
@@ -246,7 +250,7 @@ type promptScope struct {
 func (s *promptScope) get() string {
 	if !s.read {
 		if s.st != nil {
-			s.scope = hook.PromptRecordScope(s.st)
+			s.scope = readPromptScope(s.st)
 		}
 		s.read = true
 	}
