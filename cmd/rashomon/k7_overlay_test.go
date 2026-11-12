@@ -218,3 +218,49 @@ func TestK7_PreToolUsePathOverlay(t *testing.T) { k7Overlay(t, false) }
 // entry. It reports p50 and p95 and gates nothing: PLAN has no PostToolUse
 // p95.
 func TestK7_PostToolUsePathOverlay(t *testing.T) { k7Overlay(t, true) }
+
+// TestK7_OverlayGroupBytes (W-M2.5c, 5c-2, C6): the encoded bytes of one
+// declared group and one landed group for the two C4 files, as the session
+// log holds them (one run of each writer, marker present), and N, how many
+// such edits (one declared plus one landed) fit in store.MaxOverlayBytes.
+// A report, no gate.
+func TestK7_OverlayGroupBytes(t *testing.T) {
+	if os.Getenv("RASHOMON_K7") == "" {
+		t.Skip("RASHOMON_K7 not set")
+	}
+	repo, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph.FindIndex(repo) != repo {
+		t.Skip("no index at the module root: run rashomon graph index .")
+	}
+	files := k7Files(t, repo)
+	t.Setenv("CI", "")
+	t.Setenv("AI_AGENT", "")
+	t.Setenv(hook.EnvHoldout, "off")
+	rid, _ := baseline.RepoID(repo)
+	for _, c := range []struct {
+		label string
+		f     k7File
+	}{{"largest", files[len(files)-1]}, {"median", files[len(files)/2]}} {
+		in := k7Edit(t, repo, c.f)
+		var size [2]int64
+		for i, post := range []bool{false, true} {
+			root, installID := benchStarted(t)
+			if err := os.WriteFile(filepath.Join(root, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			k7Series(t, root, installID, repo, in, 1, post)
+			fi, err := os.Stat(graph.SessionLogPath(root, rid))
+			if err != nil {
+				t.Fatalf("%s: no session log: %v", c.label, err)
+			}
+			size[i] = fi.Size()
+		}
+		line := fmt.Sprintf("K7 overlay group bytes %s file %s (%d bytes): declared %d, landed %d, N = %d edits fill %d bytes",
+			c.label, c.f.rel, c.f.bytes, size[0], size[1], int64(store.MaxOverlayBytes)/(size[0]+size[1]), store.MaxOverlayBytes)
+		t.Log(line)
+		fmt.Fprintln(os.Stderr, line)
+	}
+}
