@@ -159,6 +159,55 @@ func TestConflicts_ImportCrossStandingNeverFires(t *testing.T) {
 	}
 }
 
+// TestConflicts_ImportCrossTestFileNeverFires (D5, a known limit): the index
+// holds no _test.go file (pgraph loads ./... without tests,
+// TestPL1_FilesKeyedByPathAndContentHash) and the overlay emits no Imports
+// edge from one (TestOverlay_TestFileEmitsNoImports), so a crossing import
+// written into a test file gives no boundary_cross. The witness writes the
+// same source into a non-test file of the same directory and gets one.
+func TestConflicts_ImportCrossTestFileNeverFires(t *testing.T) {
+	_, m, s := importCrossFixture(t, importCrossTree)
+	src := "package hook\n\nimport _ \"github.com/altrace-dev-role/rashomon/pgraph\"\n"
+	if got := crossOf(t, s, m, "internal/hook/hook_test.go", src, 1); len(got) != 0 {
+		t.Fatalf("a crossing import in a _test.go file: %s, want none (D5)", cstr(got))
+	}
+	if got := crossOf(t, s, m, "internal/hook/cross.go", src, 2); len(got) != 1 || got[0].RuleID != "to-pgraph" {
+		t.Fatalf("witness, the same import in a non-test file: %s, want one to-pgraph", cstr(got))
+	}
+}
+
+// TestConflicts_ImportCrossBuildExcludedRefires (D6, a known limit): the
+// index holds no build-tag-excluded file (pgraph loads under the sync's build
+// configuration, TestPL1_FilesKeyedByPathAndContentHash), and the overlay
+// cannot evaluate that configuration, so it emits such a file's imports. A
+// crossing import standing in an excluded file therefore reads as added on
+// every edit of the file. The witness puts the same file in the index, as a
+// built file would be, and an edit beside the import gives none
+// (TestConflicts_ImportCrossStandingNeverFires).
+func TestConflicts_ImportCrossBuildExcludedRefires(t *testing.T) {
+	rel := "internal/hook/never.go"
+	excluded := "//go:build never\n\npackage hook\n\nimport _ \"github.com/altrace-dev-role/rashomon/pgraph\"\n\nvar A = 1\n"
+	edits := []string{excluded, strings.Replace(excluded, "A = 1", "A = 2", 1), strings.Replace(excluded, "A = 1", "A = 3", 1)}
+
+	_, m, s := importCrossFixture(t, importCrossTree)
+	for i, src := range edits {
+		got := crossOf(t, s, m, rel, src, int64(i+1))
+		if len(got) != 1 || got[0].RuleID != "to-pgraph" || got[0].Subject != graph.FileID(rel) || got[0].Edge.Dst != "unit:go:pgraph" {
+			t.Fatalf("edit %d of a build-excluded file beside a standing import: %s, want one to-pgraph (D6 re-fire)", i+1, cstr(got))
+		}
+	}
+
+	tree := map[string]string{}
+	for k, v := range importCrossTree {
+		tree[k] = v
+	}
+	tree[rel] = excluded
+	_, m, s = importCrossFixture(t, tree)
+	if got := crossOf(t, s, m, rel, edits[1], 1); len(got) != 0 {
+		t.Fatalf("witness, the file in the index: %s, want none", cstr(got))
+	}
+}
+
 // TestConflicts_ImportCrossTestdataModuleMapsNothing (clarification 1): a
 // module whose path does not follow its directory (example.test/mod under
 // pgraph/testdata) maps to nothing, so an import of it, or of anything under
