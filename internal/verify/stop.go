@@ -58,6 +58,17 @@ type StopInput struct {
 	// reads no graph. nil for none, and then the ledger and the view are what
 	// they were without it.
 	Conflicts []ConflictSeen
+	// UnitOf maps a written path to its unit's global id (W-M3.1), for the
+	// turn rows about one unit; the Stop's caller fills it from the graph
+	// index. nil adds no unit row.
+	UnitOf UnitOf
+	// Reqs is each requirement the caller checked (W-M3.4), an
+	// expected_evidence row each; nil for none.
+	Reqs []ReqRow
+	// Produced is each row the graph's producers derived (W-M3.3); nil for
+	// none. Until those cards, EvaluateStop reads none of UnitOf, Reqs and
+	// Produced.
+	Produced []ProducedRow
 }
 
 // InferredGate is a test command read from the project's own files: its
@@ -133,6 +144,9 @@ type StopView struct {
 	// Platform pairs with platform rows (W-M2.4): recap names them. Nil for
 	// none; a resolved or withheld conflict has no entry.
 	Conflicts []ConflictRow
+	// UnitRowsCut is how many unit rows past MaxTurnUnitRows the ledger left
+	// out at this Stop (W-M3.1); 0 for none.
+	UnitRowsCut int
 }
 
 // UntrustedGate is a gate a spec declares while the spec reads untrusted:
