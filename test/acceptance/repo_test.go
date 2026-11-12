@@ -73,6 +73,7 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 		{"spec_event", specEventKeys},
 		{"after_hit", afterHitKeys},
 		{"then_check", thenCheckKeys},
+		{"plan_check", planCheckKeys},
 		{"outcome_join", outcomeJoinKeys},
 	} {
 		t.Run(c.def, func(t *testing.T) {
