@@ -66,8 +66,7 @@ type StopInput struct {
 	// expected_evidence row each; nil for none.
 	Reqs []ReqRow
 	// Produced is each row the graph's producers derived (W-M3.3); nil for
-	// none. Until those cards, EvaluateStop reads none of UnitOf, Reqs and
-	// Produced.
+	// none. Until those cards, EvaluateStop reads neither Reqs nor Produced.
 	Produced []ProducedRow
 }
 
@@ -113,8 +112,8 @@ type StopView struct {
 	// spec.EvidenceKinds order, never nil.
 	Expected []Expected
 	// Obligations is the ledger at the Stop point (PF-PG5): the gates' rows
-	// over the classification Snap came from, then Expected's rows, never
-	// nil.
+	// over the classification Snap came from, then Expected's rows, then the
+	// turn's rows (turnObligations, W-M3.1), never nil.
 	Obligations []Obligation
 	// Unbound is each repository spec, project-relative, the session edited
 	// after the user trusted it (SPEC-TRUST-DROP1): its binding names
@@ -201,6 +200,8 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		v.Platform = in.Platform(snap.ProjectRoot, written)
 		v.Obligations = append(v.Obligations, platformObligations(snap, &c, run, in.Key, v.Platform)...)
 	}
+	turnRows, cut := turnObligations(snap, &c, run, in.PromptID, in.UnitOf)
+	v.Obligations, v.UnitRowsCut = append(v.Obligations, turnRows...), cut
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims
 	}

@@ -53,13 +53,14 @@ func obSnap(gates ...GateState) Snapshot {
 	return Snapshot{Point: Point{Kind: PointStop, Seq: 100}, Recording: Complete, Gates: gates}
 }
 
-// rowOf is the one row of kind in obs; it fails the test unless there is
-// exactly one.
+// rowOf is the one session row of kind in obs; it fails the test unless
+// there is exactly one. A Stop also carries the turn's rows of the same
+// kinds; ledger_turn_test.go pins those.
 func rowOf(t *testing.T, obs []Obligation, kind ObligationKind) Obligation {
 	t.Helper()
 	var got []Obligation
 	for _, o := range obs {
-		if o.Kind == kind {
+		if o.Kind == kind && o.Scope == ScopeSession {
 			got = append(got, o)
 		}
 	}
