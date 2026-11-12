@@ -91,26 +91,31 @@ func TestTRU4_ConsentFollowsWatchsTerminalRule(t *testing.T) {
 // consent_tty record holding the hash of the screen shown -- the screen
 // --show prints, opening with what changed when the consent on file is for
 // an older scope -- and leaves every earlier line and every other file as it
-// was, but for the steer_disclosure marker, which follows the line it views;
+// was, but for the steer_disclosure and session_content markers, which follow
+// the line they view;
 // n appends nothing.
 func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("premise: watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	// The consent on file becomes a --yes one from before this build: the
-	// scope before this build's, at steer disclosure 0 (as watch --yes wrote
-	// it before STEER-DISCLOSE-YES1), with its marker.
-	older := strings.Replace(string(e.consentBytes()), `"scope_version":5`, `"scope_version":4`, 1)
+	// The consent on file becomes a --yes one from before this build: scope
+	// 4, at steer disclosure 0 (as watch --yes wrote it before
+	// STEER-DISCLOSE-YES1), with its steer marker and no session_content
+	// marker, which no consent before scope 6 covers.
+	older := strings.Replace(string(e.consentBytes()), `"scope_version":6`, `"scope_version":4`, 1)
 	older = strings.Replace(older, `"steer_disclosure":`+strconv.Itoa(steer.DisclosureVersion), `"steer_disclosure":0`, 1)
 	if !strings.Contains(older, `"scope_version":4`) || !strings.Contains(older, `"steer_disclosure":0`) {
-		t.Fatalf("premise: the watch record does not carry scope_version 5 and steer_disclosure %d", steer.DisclosureVersion)
+		t.Fatalf("premise: the watch record does not carry scope_version 6 and steer_disclosure %d", steer.DisclosureVersion)
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "steer_disclosure"), []byte("0\n"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(e.home, "session_content")); err != nil {
+		t.Fatalf("premise: watch --yes at scope 6 and record scope v5 wrote no session_content marker: %v", err)
 	}
 	before := e.machine()
 
@@ -140,9 +145,9 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	}
 	recs := e.consentRecords()
 	sum := sha256.Sum256([]byte(show.stdout))
-	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(5) ||
+	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(6) ||
 		recs[1]["steer_disclosure"] != float64(steer.DisclosureVersion) || recs[1]["text_sha256"] != hex.EncodeToString(sum[:]) {
-		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 5 hashing the screen shown", recs)
+		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 6 hashing the screen shown", recs)
 	}
 	after := e.machine()
 	// steer_disclosure is consent.json's view of the highest steer disclosure
@@ -151,6 +156,14 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	if want := strconv.Itoa(steer.DisclosureVersion) + "\n"; before[marker] != "0\n" || after[marker] != want {
 		t.Errorf("the steer marker went from %q to %q, want \"0\\n\" to %q", before[marker], after[marker], want)
 	}
+	// session_content is consent.json's view of whether the session's
+	// content is kept: absent beside the older consent, which does not cover
+	// it, and "1" after this one (W-M2.11 step 1d).
+	content := filepath.Join(e.home, "session_content")
+	if _, had := before[content]; had || after[content] != "1\n" {
+		t.Errorf("the session_content marker went from %q (present %v) to %q, want absent to \"1\\n\"", before[content], had, after[content])
+	}
+	delete(after, content)
 	delete(after, marker)
 	delete(before, marker)
 	delete(after, filepath.Join(e.home, "consent.json"))

@@ -40,8 +40,8 @@ import (
 // alpha.1 shipped 4, so 5 also covers the briefing after a compaction, which
 // quotes the person's earlier instructions to the agent while the record keeps
 // only each quote's length and keyed digest (COMPACT-SLOT1).
-// Unreleased, 5 covers the release, so a later card of the same release
-// names its content here and does not bump: the platform graph's facts the
+// Before 6, a later card of the same release named its content under 5
+// and did not bump: the platform graph's facts the
 // agent's note now gives, a named symbol's package and direct callers at a
 // prompt and the untested changed packages at the next one (PW1b-ON-230
 // step 3); after an edit, the packages that call the edited one, read in
@@ -53,8 +53,17 @@ import (
 // is kept, the brief for the first edit in each unit a prompt's selection
 // lies in, written under the store's graph directory with no word of the
 // prompt (W-M2.3 hook half, D12).
+// 6 adds the session's content kept under the store's graph directory
+// where the consent on file is at record scope v5 (ruling 15, W-M2.11 step
+// 1d): for each Write, Edit or MultiEdit of a Go file in an indexed
+// repository, what the file declares, in one session log per repository,
+// and at each prompt the conflict base each such edit is checked against,
+// beside the unit briefs. It is a capability class of its own, so a yes to
+// 5 does not cover it (SessionContentScope). Unreleased, 6 covers the
+// release, so a later card of the same release names its content here and
+// does not bump.
 // Pinned by TRU-8.
-const ScopeVersion = 5
+const ScopeVersion = 6
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
 var ErrNotImplemented = errors.New("disclose: not implemented in this build")

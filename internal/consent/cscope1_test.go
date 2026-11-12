@@ -32,7 +32,7 @@ func TestCSCOPE1b_AnAlpha1ConsentSeesTheChangedScreen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "CHANGED SINCE YOU LAST AGREED (test, scope 4): this build asks for scope 5.") {
+	if !strings.Contains(string(b), "CHANGED SINCE YOU LAST AGREED (test, scope 4): this build asks for scope 6.") {
 		t.Errorf("the screen after alpha.1's consent does not open with CHANGED SINCE:\n%s", b)
 	}
 }
