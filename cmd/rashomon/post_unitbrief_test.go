@@ -398,6 +398,39 @@ func TestUnitBrief_WithheldBriefStaysForTheNextEdit(t *testing.T) {
 	}
 }
 
+// TestUnitBrief_UnheardSessionReadsNoBrief (ruling 04:58 C, cause-first):
+// where the join would drop the note, the post reads no brief for it. With
+// steering off, the unit's held file, whose bytes read back as no brief,
+// leaves no miss, so it was not read, while an edit in a unit the session
+// holds no file for still leaves its absent miss; with steering back on,
+// the held file's next edit leaves the refused miss its read gives.
+func TestUnitBrief_UnheardSessionReadsNoBrief(t *testing.T) {
+	s := ubPostSession(t, store.RecordScopeV5)
+	s.addUnit(ubSecondFile)
+	if err := os.MkdirAll(filepath.Dir(s.briefPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.briefPath(), []byte("not a brief"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(s.root, store.FileConfig)
+	if err := os.WriteFile(cfg, []byte(`{"steer_user":"off"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.edit("toolu_ub_1")
+	s.editFile("toolu_ub_2", ubSecondFile)
+	if m := s.misses(); len(m) != 1 || m[0].Reason != store.UnitBriefAbsent {
+		t.Fatalf("with steering off: misses %+v, want the second unit's absent miss alone", m)
+	}
+	if err := os.Remove(cfg); err != nil {
+		t.Fatal(err)
+	}
+	s.edit("toolu_ub_3")
+	if m := s.misses(); len(m) != 2 || m[1].Reason != store.UnitBriefRefused {
+		t.Errorf("with steering on: misses %+v, want the held file's refused miss after the absent one", m)
+	}
+}
+
 // ubSecondFile is a file of a second unit, unit:go:asdfghjk.
 const ubSecondFile = "asdfghjk/other.go"
 

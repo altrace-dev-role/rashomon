@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
@@ -375,9 +374,11 @@ const unitBriefKeyPrefix = "unitbrief:"
 // index header (its repository names the unit as the prompt side named it;
 // its commit is the one a brief may be at; its first line only, no record
 // loaded), the unit's file by name (gopg's unit, the prompt side's local
-// id, under UnitBriefFileName), the steer log (hook.Given: once per unit
-// per session, whatever the digest, arm_off counted at nudge only), then
-// the bounded read. The finding is briefFinding's under the key
+// id, under UnitBriefFileName), the join's own gate (Post.Unheard: a
+// session whose notes reach no one reads no brief it would drop; ruling
+// 04:58 C, cause-first), the steer log (hook.Given: once per unit per
+// session, whatever the digest, arm_off counted at nudge only), then the
+// bounded read. The finding is briefFinding's under the key
 // unitbrief:<unit>@<digest>, after the edit's seq: the brief under the
 // unit's head (Brief.UnitSaid, ruling 04:58 B), which names the unit's
 // directory relative to the hook's working directory, and its record form,
@@ -386,13 +387,16 @@ const unitBriefKeyPrefix = "unitbrief:"
 // unit head, longer with a long unit path, may say fewer.
 //
 // An edit past the gate and the header whose unit is not given and whose
-// brief cannot be said leaves one unitbrief_miss (D7), stamped now: absent
-// where the session holds no file for the unit (no steer-log read: files
-// are never removed, so a unit with none was never given), stale where the
-// file is at another commit than the index's, refused where it does not
-// read back as a brief of the unit or does not render under the unit's
-// head. Like keepHits, it is kept whatever the steer context then decides.
-func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding {
+// brief cannot be said leaves one unitbrief_miss (D7), stamped at env.Now:
+// absent where the session holds no file for the unit (no steer-log read:
+// files are never removed, so a unit with none was never given), stale
+// where the file is at another commit than the index's, refused where it
+// does not read back as a brief of the unit or does not render under the
+// unit's head. Like keepHits, an absent miss is kept whatever the steer
+// context then decides; a held file is judged only where a note could
+// reach someone, so in a session no one hears it is neither read nor
+// counted, and the unit's first edit with the gate open judges it.
+func unitBriefJoin(st *store.Store, p *hook.Post, env hook.SteerEnv) []steer.Finding {
 	e, ok := p.LandedGoEdit()
 	if !ok {
 		return nil
@@ -408,7 +412,7 @@ func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding
 	gid := graph.GlobalID(hdr.Repo, unit)
 	miss := func(reason string) []steer.Finding {
 		_ = st.AppendRecord(e.Session, store.NewUnitBriefMiss(e.Session, e.Seq,
-			intent.PathDigest(st.Key(), string(gid)), reason, now.UnixMilli()))
+			intent.PathDigest(st.Key(), string(gid)), reason, env.Now.UnixMilli()))
 		return nil
 	}
 	file := filepath.Join(graph.UnitBriefDir(st.Root(), e.Session), graph.UnitBriefFileName(e.Root, unit))
@@ -416,6 +420,9 @@ func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding
 		return miss(store.UnitBriefAbsent)
 	} else if err != nil {
 		return miss(store.UnitBriefRefused)
+	}
+	if p.Unheard(env) {
+		return nil
 	}
 	prefix := unitBriefKeyPrefix + string(gid) + "@"
 	lines, _, _ := st.ReadSteer(e.Session)

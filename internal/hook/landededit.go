@@ -31,3 +31,11 @@ func (p *Post) LandedGoEdit() (LandedGoEdit, bool) {
 	}
 	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: root, Rel: rel, Cwd: p.cwd, Seq: p.landedSeq, ScopeV5: p.scopeV5}, true
 }
+
+// Unheard is whether a finding joined for the call under env would reach no
+// one: the join's own gate (steering off, a config that does not read, no
+// consent, no prompt), read from the fields contextOf takes (heard), before
+// any context is built. cmd's unit-brief read asks it before it reads its
+// file (ruling 04:58 C, cause-first), so a session whose notes reach no one
+// pays the switch's read, not the read, decode and render the join drops.
+func (p *Post) Unheard(env SteerEnv) bool { return unheard(p.heard(env)) }

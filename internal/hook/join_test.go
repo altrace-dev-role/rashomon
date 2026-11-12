@@ -151,6 +151,10 @@ func TestPost_JoinRoutesWithinThreeNotes(t *testing.T) {
 // prompt) it prints nothing and leaves no line, so no reader takes it as
 // given, and the unit's next edit with the gate open delivers it. A line
 // suppressed there would be a steer row for a note the session never met.
+// Post.Unheard, which cmd asks before it reads the brief, reads each shut
+// gate shut and the open one open: were it to read one open the join
+// shuts, cmd would read for nothing; shut where the join is open, the
+// brief would never be said.
 func TestPost_JoinWithheldWhereNoOneReads(t *testing.T) {
 	const key = "unitbrief:g:r#unit:go:a@0123456789ab"
 	for _, tc := range []struct {
@@ -168,6 +172,9 @@ func TestPost_JoinWithheldWhereNoOneReads(t *testing.T) {
 			edit := map[string]any{"file_path": filepath.Join(f.cwd, "a", "a.go"), "old_string": "1", "new_string": "2"}
 			p := f.call("toolu_w1", "Edit", edit, 0)
 			tc.shut(t, f, &env, p)
+			if !p.Unheard(env) {
+				t.Error("Post.Unheard reads the shut gate open")
+			}
 			env.Join = []steer.Finding{joinStandIn(t, p, key)}
 			if out := string(p.Steer(env)); strings.Contains(out, briefWords) {
 				t.Errorf("printed %q, want no unit brief", out)
@@ -180,6 +187,9 @@ func TestPost_JoinWithheldWhereNoOneReads(t *testing.T) {
 			}
 			env = stEnv(steer.DisclosureVersion)
 			p = f.call("toolu_w2", "Edit", edit, 0)
+			if p.Unheard(env) {
+				t.Error("Post.Unheard reads the open gate shut")
+			}
 			env.Join = []steer.Finding{joinStandIn(t, p, key)}
 			if out := string(p.Steer(env)); !strings.Contains(out, briefWords) {
 				t.Errorf("the unit's next edit with the gate open printed %q, want the brief", out)

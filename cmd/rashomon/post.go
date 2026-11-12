@@ -61,7 +61,7 @@ func cmdPost(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 		env := steerEnv(id, time.Now(), st.Root())
-		env.Join = unitBriefJoin(st, p, env.Now)
+		env.Join = unitBriefJoin(st, p, env)
 		if b := p.Steer(env); len(b) > 0 {
 			fmt.Fprintln(stdout, string(b))
 		}
