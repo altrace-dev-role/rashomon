@@ -82,8 +82,14 @@ func TestUB12b_ScreenSaysEachUnitsBriefIsKept(t *testing.T) {
 				t.Errorf("the unit brief's sentence does not say %q", also)
 			}
 		}
-		if !strings.HasSuffix(p.Text, "with no word of the prompt.") {
-			t.Errorf("the graph index paragraph does not end on the unit brief's no word of the prompt: %q", p.Text)
+		if !strings.Contains(after, "with no word of the prompt") {
+			t.Errorf("the unit brief's sentence does not say it keeps no word of the prompt: %q", p.Text)
+		}
+		// No prompt word is stored, yet the set of units with a brief is
+		// derived from the prompts: the screen says so (ruling 03:50 (i)).
+		const shows = "which units have a brief shows what the session's prompts pointed at."
+		if !strings.HasSuffix(p.Text, shows) {
+			t.Errorf("the graph index paragraph does not end on %q: %q", shows, p.Text)
 		}
 	}
 	if said != 1 {
