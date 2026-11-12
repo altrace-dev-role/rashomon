@@ -12,6 +12,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/events"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -41,12 +42,10 @@ type Event struct {
 	// PromptID is a steer line's prompt_id, an id the Intents rule reads;
 	// a line with no prompt (a briefing: prompt_id null) leaves it empty.
 	PromptID string
-	// Units are the subjects of a steer line's unit graph lines (slots
-	// line1..line5, kind steer.KindUnit), in slot order: each the unit's path
-	// as the line holds it, relative to the hook's working directory, or its
-	// keyed digest at record scope v4. The Reqs rule reads them on a
-	// delivered line (require). A record leaves it nil.
-	Units []string
+	// Stated are the requirements a steer line's graph lines state (slots
+	// line1..line5, graphSlot.stated), in slot order. The Reqs rule reads
+	// them on a delivered line (require). A record leaves it nil.
+	Stated []StatedReq
 	// Wrote are the project-relative paths a declaration names as written,
 	// which the Touched rule reads (wrote). Every other record and every
 	// steer line leave it nil.
@@ -271,12 +270,70 @@ func isASCIILetter(c byte) bool { return 'a' <= c|0x20 && c|0x20 <= 'z' }
 
 // graphSlot is the part of a graph line on a steer line (steer's
 // graphLineJSON, one per slot line1..line5) a Req is stated from: its kind,
-// and its subject as the path, or in the record form (record scope v4,
-// slot.GraphLine.Record) the path's keyed digest and no path.
+// a code line's role word, a knowledge line's id, and its subject as the
+// path, or in the record form (record scope v4, slot.GraphLine.Record) the
+// path's keyed digest and no path.
 type graphSlot struct {
 	Kind   string `json:"kind"`
 	Path   string `json:"path"`
 	Digest string `json:"digest"`
+	Role   string `json:"role"`
+	ID     string `json:"id"`
+}
+
+// codeKind is a code graph line's kind. slot.GraphLine.Kind returns it as
+// a literal; no package exports it.
+const codeKind = "code"
+
+// StatedReq is one requirement a graph line states: Pred, a compliance
+// predicate's name (steer.Compliance), and Arg, its subject as the line
+// holds it.
+type StatedReq struct {
+	Pred string
+	Arg  string
+}
+
+// stated is the Req g states, if any (D6 (b), ruling 12:52): a unit line
+// states opened_unit, a code line in role reuse called_symbol and in role
+// consumer edited_or_verified, each on its path or, at record scope v4,
+// its keyed digest; a decision line states paths_untouched on its
+// knowledge id (dec:D145), which the record form keeps. Each is the first
+// predicate steer.Compliance names for the kind. A code line with no role,
+// a table, a not-known line, any other knowledge kind and a line with no
+// subject state none.
+//
+// The fold marks only opened_unit (openedUnit). called_symbol,
+// edited_or_verified and paths_untouched stay open: a status changes only
+// by a record line a later card defines (ruling 12:52 (1)), and no Stop
+// resolves them, since the Stop's predicates (verify.Preds, W-M3.4) are
+// four other names (ruling 13:11 (5)). called_symbol's Arg is the code
+// line's path, not its symbol, because the record holds no symbol id: a
+// card that needs the symbol adds it to slot.Record under its own
+// disclosure ruling (debt (r), engine lane), and the fold never marks a
+// Req whose symbol the record cannot name (ruling 12:52 (3)).
+func (g graphSlot) stated() (StatedReq, bool) {
+	arg := g.Path
+	if arg == "" {
+		arg = g.Digest
+	}
+	var k steer.Kind
+	switch {
+	case g.Kind == string(steer.KindUnit):
+		k = steer.KindUnit
+	case g.Kind == codeKind && g.Role == slot.RoleReuse:
+		k = steer.KindReuse
+	case g.Kind == codeKind && g.Role == slot.RoleConsumer:
+		k = steer.KindConsumer
+	case g.Kind == string(steer.KindDecision):
+		k, arg = steer.KindDecision, g.ID
+	default:
+		return StatedReq{}, false
+	}
+	if arg == "" {
+		return StatedReq{}, false
+	}
+	preds, _ := steer.Compliance(k)
+	return StatedReq{Pred: preds[0], Arg: arg}, true
 }
 
 // SteerEvent decodes one steer.ndjson line. Only a steer.LineType line is an
@@ -317,15 +374,11 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 		ev.PromptID = *h.PromptID
 	}
 	for _, g := range [...]*graphSlot{h.Slots.Line1, h.Slots.Line2, h.Slots.Line3, h.Slots.Line4, h.Slots.Line5} {
-		if g == nil || g.Kind != string(steer.KindUnit) {
+		if g == nil {
 			continue
 		}
-		u := g.Path
-		if u == "" {
-			u = g.Digest
-		}
-		if u != "" {
-			ev.Units = append(ev.Units, u)
+		if r, ok := g.stated(); ok {
+			ev.Stated = append(ev.Stated, r)
 		}
 	}
 	return ev, true, nil
@@ -345,8 +398,8 @@ func Step(f *Frontier, ev Event) {
 	}
 	if ev.State == string(steer.LineStateDelivered) { // only SteerEvent sets State
 		deliver(f, ev)
-		for _, u := range ev.Units {
-			require(f, steer.PredOpenedUnit, u, ev.Seq)
+		for _, r := range ev.Stated {
+			require(f, r.Pred, r.Arg, ev.Seq)
 		}
 	}
 	for _, p := range ev.Wrote {
@@ -446,9 +499,9 @@ func require(f *Frontier, pred, arg string, seq int64) {
 	f.Reqs = append(f.Reqs, ReqState{ID: id, Pred: pred, Arg: arg, Status: ReqOpen, StatedAt: seq})
 }
 
-// openedUnit sets met each open opened_unit Req whose unit a write of ev
+// openedUnit marks met_once each open opened_unit Req whose unit a write of ev
 // is in, the path itself or under it (PLAN 1489: a Touch under the unit),
-// at ev's seq: the first such write, and met never goes back. A Req exists
+// at ev's seq: the first such write, and met_once never goes back. A Req exists
 // only after its line, by the merged order (at one seq a record sorts
 // before a line), so a line is judged by the writes after it, as
 // steer.Compliance judges a line followed, and a write before it meets
@@ -473,7 +526,7 @@ func openedUnit(f *Frontier, ev Event) {
 		if !cloned {
 			f.Reqs, cloned = slices.Clone(f.Reqs), true
 		}
-		f.Reqs[i].Status, f.Reqs[i].MetAt = ReqMet, ev.Seq
+		f.Reqs[i].Status, f.Reqs[i].MetAt = ReqMetOnce, ev.Seq
 	}
 }
 

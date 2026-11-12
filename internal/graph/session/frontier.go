@@ -12,13 +12,20 @@ import (
 // FrontierSchema is the frontier's own schema, written first as "schema".
 const FrontierSchema = 1
 
-// ReqStatus is where a requirement stands. Transitions are monotone: open to
-// met or superseded, never back (11-05 order, PLAN 1478).
+// ReqStatus is where a requirement stands in the session's history.
+// Transitions are monotone: open to met_once or superseded, never back
+// (11-05 order, PLAN 1478). met_once is history and named for it (ruling
+// 13:11 (3)): satisfied at least once after StatedAt, MetAt the first such
+// seq, so a later red run or a removed call never undoes it. Whether a
+// requirement holds now is the Stop's verdict (W-M3.4's ledger row, bound
+// by checkpoint_seq as VerdictRef is), which the fold copies (W-M4.6) and
+// never computes; a reader never renders met_once as met, holds or
+// verified.
 type ReqStatus string
 
 const (
 	ReqOpen       ReqStatus = "open"
-	ReqMet        ReqStatus = "met"
+	ReqMetOnce    ReqStatus = "met_once"
 	ReqDropped    ReqStatus = "dropped"
 	ReqSuperseded ReqStatus = "superseded"
 )
@@ -53,9 +60,12 @@ type Frontier struct {
 	Intents []IntentRef `json:"intents"`
 	// Reqs are the requirements the session's delivered lines stated (D6),
 	// one per key Pred:Arg, the first kept, StatedAt the stating line's
-	// after_seq (require). At this commit a unit graph line states
-	// opened_unit on the unit's path as the line holds it, its keyed digest
-	// at record scope v4, met by a later write under it (openedUnit). Open
+	// after_seq (require), each from one graph line (graphSlot.stated):
+	// opened_unit, called_symbol and edited_or_verified on a path as the
+	// line holds it, its keyed digest at record scope v4, and
+	// paths_untouched on a decision id. The fold marks only opened_unit,
+	// met_once at a later write under the unit (openedUnit); the rest stay
+	// open, and no Stop resolves them (ruling 13:11 (5)). Open
 	// is "not seen met", never "not done" or "unmet" (ruling 12:52): the
 	// record names no read, and a write it withheld or placed outside the
 	// project (TouchedWithheld, TouchedOutside) meets nothing. The ID is

@@ -373,7 +373,9 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 		"Kind":     "a closed steer.Kind name, or empty",
 		"PromptID": "a prompt id (a UUID), never the prompt's words",
 		"Wrote[]":  "a project-relative path a call named as written, never a file's contents",
-		"Units[]":  "a unit's path as a steer line's graph line holds it, or its keyed digest at record scope v4",
+
+		"Stated[].Pred": "a compliance predicate's name, from steer.Compliance's closed set",
+		"Stated[].Arg":  "a graph line's subject: a path as the line holds it, its keyed digest at record scope v4, or a decision id",
 
 		"Obligations[].ID":    "an obligation id, verify.ObligationID's digest",
 		"Obligations[].Kind":  "a closed verify.ObligationKind name",
@@ -682,28 +684,39 @@ func TestStep_TouchedOutside(t *testing.T) {
 // record scope v4: 64 lowercase hex, no path.
 const keyedUnit = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// TestEvent_DecodeUnitsSynthetic (W-M4.2, D6, ruling 12:52): a steer line's
-// unit graph lines, in slots line1..line5, decode as Units in slot order,
-// each its path, or its keyed digest when the record form left no path.
-// A code line, an empty line and a pattern's other slot keys are not
-// units, and a unit line with neither names none. SYNTHETIC lines.
-func TestEvent_DecodeUnitsSynthetic(t *testing.T) {
+// TestEvent_DecodeStatedSynthetic (W-M4.2, D6 (b), ruling 12:52): a steer
+// line's graph lines, in slots line1..line5, decode as Stated in slot
+// order: a unit line opened_unit, a code line in role reuse called_symbol
+// and in role consumer edited_or_verified, each on its path or its keyed
+// digest when the record form left no path, and a decision line
+// paths_untouched on its id. A code line with no role, a table, a lesson,
+// an empty line, a line with no subject and a pattern's other slot keys
+// state none. SYNTHETIC lines.
+func TestEvent_DecodeStatedSynthetic(t *testing.T) {
 	head := `{"type":"steer","id":"u1","at_unix_ms":5,"after_seq":7,"state":"delivered","key":"graph","kind":"","prompt_id":"p1"`
+	unit := func(arg string) StatedReq { return StatedReq{Pred: steer.PredOpenedUnit, Arg: arg} }
 	for _, c := range []struct {
 		name  string
 		slots string
-		want  []string
+		want  []StatedReq
 	}{
 		{"units in slot order", `,"slots":{"line1":{"kind":"unit","path":"internal/a","digest":""},"line2":{"kind":"code","path":"internal/b/x.go"},` +
-			`"line3":{"kind":"","path":""},"line5":{"kind":"unit","path":"internal/e"},"gate":"go test"}`, []string{"internal/a", "internal/e"}},
-		{"a keyed digest at v4", `,"slots":{"line4":{"kind":"unit","path":"","digest":"` + keyedUnit + `"}}`, []string{keyedUnit}},
+			`"line3":{"kind":"","path":""},"line5":{"kind":"unit","path":"internal/e"},"gate":"go test"}`, []StatedReq{unit("internal/a"), unit("internal/e")}},
+		{"a keyed digest at v4", `,"slots":{"line4":{"kind":"unit","path":"","digest":"` + keyedUnit + `"}}`, []StatedReq{unit(keyedUnit)}},
 		{"a unit line with neither", `,"slots":{"line1":{"kind":"unit","path":"","digest":""}}`, nil},
+		{"code lines by role", `,"slots":{"line1":{"kind":"code","path":"internal/r.go","role":"reuse"},` +
+			`"line2":{"kind":"code","path":"","digest":"` + keyedUnit + `","role":"consumer"},"line3":{"kind":"code","path":"internal/n.go","role":""},` +
+			`"line4":{"kind":"table","table":"users","path":""}}`,
+			[]StatedReq{{Pred: steer.PredCalledSymbol, Arg: "internal/r.go"}, {Pred: steer.PredEditedOrVerified, Arg: keyedUnit}}},
+		{"a decision line by its id", `,"slots":{"line1":{"kind":"lesson","id":"les:INC-1","path":"docs/l.md"},` +
+			`"line2":{"kind":"decision","id":"dec:D145","path":"docs/adr/145.md"},"line3":{"kind":"decision","id":"","path":"docs/adr/146.md"}}`,
+			[]StatedReq{{Pred: steer.PredPathsUntouched, Arg: "dec:D145"}}},
 		{"no slots", ``, nil},
 		{"null slots", `,"slots":null`, nil},
 	} {
 		ev, ok, err := SteerEvent([]byte(head + c.slots + "}"))
-		if err != nil || !ok || !slices.Equal(ev.Units, c.want) {
-			t.Errorf("%s: Units %q, %v, %v; want %q", c.name, ev.Units, ok, err, c.want)
+		if err != nil || !ok || !slices.Equal(ev.Stated, c.want) {
+			t.Errorf("%s: Stated %+v, %v, %v; want %+v", c.name, ev.Stated, ok, err, c.want)
 		}
 	}
 }
@@ -711,20 +724,24 @@ func TestEvent_DecodeUnitsSynthetic(t *testing.T) {
 // TestStep_ReqsSynthetic (W-M4.2, D6, rulings 12:52 (2), (3), 13:04 (3)): a
 // delivered line states one opened_unit Req per unit, keyed Pred:Arg, at
 // its after_seq; a suppressed line states none, and a unit stated again
-// keeps its first StatedAt. A Req is met at the first write after its line
+// keeps its first StatedAt. A Req is marked met_once at the first write after its line
 // at its path or under it, and never again. The boundary in three cases,
 // the events put in the merged order by Before: a write before the line
 // (5) and a write at the line's own after_seq (10, a record sorts first)
 // leave internal/early open; writes after it (14, 15) meet. A sibling that
 // only shares the prefix (13) meets nothing. A Req of another predicate on
-// the same path stays open: the fold sets met only what it can see.
+// the same path stays open: the fold marks only what it can see.
 // SYNTHETIC events.
 func TestStep_ReqsSynthetic(t *testing.T) {
 	f := newFrontier("s1")
 	other := ReqState{ID: steer.PredEditedOrVerified + ":internal/platform", Pred: steer.PredEditedOrVerified, Arg: "internal/platform", Status: ReqOpen, StatedAt: 3}
 	f.Reqs = []ReqState{other}
 	line := func(seq int64, id, state string, units ...string) Event {
-		return Event{Seq: seq, Steer: true, AtUnixMS: seq, ID: id, Type: steer.LineType, State: state, Key: "graph", Units: units}
+		ev := Event{Seq: seq, Steer: true, AtUnixMS: seq, ID: id, Type: steer.LineType, State: state, Key: "graph"}
+		for _, u := range units {
+			ev.Stated = append(ev.Stated, StatedReq{Pred: steer.PredOpenedUnit, Arg: u})
+		}
+		return ev
 	}
 	write := func(seq int64, p string) Event {
 		return Event{Seq: seq, Type: store.TypeDeclaration, Wrote: []string{p}}
@@ -747,7 +764,7 @@ func TestStep_ReqsSynthetic(t *testing.T) {
 	unit := func(arg string, status ReqStatus, met int64) ReqState {
 		return ReqState{ID: steer.PredOpenedUnit + ":" + arg, Pred: steer.PredOpenedUnit, Arg: arg, Status: status, StatedAt: 10, MetAt: met}
 	}
-	want := []ReqState{other, unit("internal/platform", ReqMet, 15), unit("cmd/x", ReqMet, 14), unit("internal/early", ReqOpen, 0)}
+	want := []ReqState{other, unit("internal/platform", ReqMetOnce, 15), unit("cmd/x", ReqMetOnce, 14), unit("internal/early", ReqOpen, 0)}
 	if !slices.Equal(f.Reqs, want) {
 		t.Errorf("Reqs:\n%+v\nwant\n%+v", f.Reqs, want)
 	}
@@ -771,7 +788,7 @@ func TestStep_LeavesCopies(t *testing.T) {
 		t.Errorf("copy changed:\n%s\nwant\n%s", after, before)
 	}
 	wantTouched := []string{string(graph.FileID("a")), string(graph.FileID("b")), string(graph.FileID("c"))}
-	if !slices.Equal(f.Touched, wantTouched) || f.Reqs[0].Status != ReqMet || f.Reqs[0].MetAt != 2 {
+	if !slices.Equal(f.Touched, wantTouched) || f.Reqs[0].Status != ReqMetOnce || f.Reqs[0].MetAt != 2 {
 		t.Errorf("stepped: Touched %q, Req %+v; want %q and met at 2", f.Touched, f.Reqs[0], wantTouched)
 	}
 }
@@ -796,7 +813,7 @@ func TestStep_KnownHoleT_SubdirLookalikeMeets(t *testing.T) {
 		{`{"type":"steer","id":"h1","at_unix_ms":1,"after_seq":2,"state":"delivered","key":"graph","kind":"","prompt_id":"p1","project":"/p",` +
 			`"slots":{"line1":{"kind":"unit","path":"pkg","digest":""}}}`, true, ReqOpen, 0},
 		{`{"type":"declaration","seq":3,"file_path":"/p/sub/pkg/b.go","project":"/p","cwd":"/p/sub"}`, false, ReqOpen, 0},
-		{`{"type":"declaration","seq":4,"file_path":"/p/pkg/a.go","project":"/p","cwd":"/p/sub"}`, false, ReqMet, 4},
+		{`{"type":"declaration","seq":4,"file_path":"/p/pkg/a.go","project":"/p","cwd":"/p/sub"}`, false, ReqMetOnce, 4},
 	} {
 		decode := RecordEvent
 		if c.steer {
@@ -810,5 +827,51 @@ func TestStep_KnownHoleT_SubdirLookalikeMeets(t *testing.T) {
 		if len(f.Reqs) != 1 || f.Reqs[0].Arg != "pkg" || f.Reqs[0].Status != c.status || f.Reqs[0].MetAt != c.met {
 			t.Fatalf("after seq %d: Reqs %+v; want one on pkg, %s at %d", ev.Seq, f.Reqs, c.status, c.met)
 		}
+	}
+}
+
+// TestStep_LineStatesEachPredSynthetic (W-M4.2, D6 (b), rulings 12:52 (1),
+// 13:11 (5)): one delivered line with a unit, a reuse, a consumer and a
+// decision graph line states four Reqs at its after_seq, keyed Pred:Arg,
+// in slot order. Writes after it to every subject mark only opened_unit,
+// met_once at the first; called_symbol, edited_or_verified and
+// paths_untouched stay open, since the fold resolves none of them.
+// SYNTHETIC lines.
+func TestStep_LineStatesEachPredSynthetic(t *testing.T) {
+	f := newFrontier("s1")
+	for _, c := range []struct {
+		line  string
+		steer bool
+	}{
+		{`{"type":"steer","id":"q1","at_unix_ms":1,"after_seq":3,"state":"delivered","key":"graph","kind":"","prompt_id":"p1","slots":{` +
+			`"line1":{"kind":"unit","path":"internal/u"},"line2":{"kind":"code","path":"internal/r.go","role":"reuse"},` +
+			`"line3":{"kind":"code","path":"internal/c.go","role":"consumer"},"line4":{"kind":"decision","id":"dec:D1","path":"internal/d"}}}`, true},
+		{`{"type":"declaration","seq":4,"file_path":"/p/internal/r.go","project":"/p","cwd":"/p"}`, false},
+		{`{"type":"declaration","seq":5,"file_path":"/p/internal/c.go","project":"/p","cwd":"/p"}`, false},
+		{`{"type":"declaration","seq":6,"file_path":"/p/internal/d/x.go","project":"/p","cwd":"/p"}`, false},
+		{`{"type":"declaration","seq":7,"file_path":"/p/internal/u/a.go","project":"/p","cwd":"/p"}`, false},
+		{`{"type":"declaration","seq":8,"file_path":"/p/internal/u/b.go","project":"/p","cwd":"/p"}`, false},
+	} {
+		decode := RecordEvent
+		if c.steer {
+			decode = SteerEvent
+		}
+		ev, ok, err := decode([]byte(c.line))
+		if err != nil || !ok {
+			t.Fatalf("%s: %v, %v", c.line, ok, err)
+		}
+		Step(&f, ev)
+	}
+	req := func(pred, arg string, status ReqStatus, met int64) ReqState {
+		return ReqState{ID: pred + ":" + arg, Pred: pred, Arg: arg, Status: status, StatedAt: 3, MetAt: met}
+	}
+	want := []ReqState{
+		req(steer.PredOpenedUnit, "internal/u", ReqMetOnce, 7),
+		req(steer.PredCalledSymbol, "internal/r.go", ReqOpen, 0),
+		req(steer.PredEditedOrVerified, "internal/c.go", ReqOpen, 0),
+		req(steer.PredPathsUntouched, "dec:D1", ReqOpen, 0),
+	}
+	if !slices.Equal(f.Reqs, want) {
+		t.Errorf("Reqs:\n%+v\nwant\n%+v", f.Reqs, want)
 	}
 }

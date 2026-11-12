@@ -23,11 +23,11 @@ func sampleFrontier() Frontier {
 	f.Continues = frPrev
 	f.Intents = []IntentRef{
 		{ID: string(graph.PromptNodeID(frSID, 2)), Digest: strings.Repeat("b", 16), StatedAt: 40, Status: ReqOpen},
-		{ID: string(graph.PromptNodeID(frSID, 1)), Digest: strings.Repeat("a", 16), StatedAt: 3, Status: ReqMet},
+		{ID: string(graph.PromptNodeID(frSID, 1)), Digest: strings.Repeat("a", 16), StatedAt: 3, Status: ReqMetOnce},
 	}
 	f.Reqs = []ReqState{
 		{ID: "opened_unit:b", Pred: "opened_unit", Arg: "b", Status: ReqOpen, StatedAt: 41},
-		{ID: "gate_green:go-test", Pred: "gate_green", Arg: "go-test", Status: ReqMet, StatedAt: 4, MetAt: 9},
+		{ID: "gate_green:go-test", Pred: "gate_green", Arg: "go-test", Status: ReqMetOnce, StatedAt: 4, MetAt: 9},
 		{ID: "opened_unit:a", Pred: "opened_unit", Arg: "a", Status: ReqSuperseded, StatedAt: 4, SupersededBy: "opened_unit:b"},
 	}
 	f.Decisions = []DecisionRef{{IDs: []string{"n2", "n1"}, Action: "leave_alone"}, {IDs: []string{"n0"}, Action: "use"}}
@@ -287,5 +287,15 @@ func TestFrontier_WordsByReference(t *testing.T) {
 	}
 	if want := []string{"ID", "Digest", "StatedAt", "Status"}; !reflect.DeepEqual(fields, want) {
 		t.Errorf("IntentRef fields = %v, want %v", fields, want)
+	}
+}
+
+// TestReqStatus_MetOnceIsHistory (W-M4.2, ruling 13:11 (3)): the fold's mark
+// is history and its stored form says so, met_once, never "met", which a
+// reader could take for a requirement that holds now.
+func TestReqStatus_MetOnceIsHistory(t *testing.T) {
+	b, err := json.Marshal(ReqState{Status: ReqMetOnce})
+	if err != nil || !strings.Contains(string(b), `"status":"met_once"`) {
+		t.Errorf("ReqState JSON %s, %v; want status met_once", b, err)
 	}
 }
