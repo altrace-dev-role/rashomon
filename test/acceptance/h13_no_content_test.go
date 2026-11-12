@@ -218,6 +218,13 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"landed_seq", "unit", "reason",
 	}
+	// conflictCheckKeys are a conflict_check's keys (card m2-seam1 D4): the
+	// edit's seq, the index commit, the file as a keyed digest and the rows,
+	// never a word of the prompt; a row's unit path is empty below scope v5.
+	conflictCheckKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"landed_seq", "commit", "file", "rows",
+	}
 	// outcomeJoinKeys are an outcome_join's keys (card BG-OUTCOME phase 1):
 	// a background call's id and how it ended, never the notification's text.
 	outcomeJoinKeys = []string{

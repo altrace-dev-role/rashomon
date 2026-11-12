@@ -84,6 +84,11 @@ func readTwoPass(run *Run, line []byte) {
 		if err = json.Unmarshal(line, &rec); err == nil {
 			run.UnitBriefMisses = append(run.UnitBriefMisses, rec)
 		}
+	case TypeConflictCheck:
+		var rec ConflictCheck
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.ConflictChecks = append(run.ConflictChecks, rec)
+		}
 	case TypeOutcomeJoin:
 		var rec OutcomeJoin
 		if err = json.Unmarshal(line, &rec); err == nil {
@@ -136,6 +141,11 @@ func writerRecord(kind string, version int) any {
 		return *e
 	case TypeUnitBriefMiss:
 		e := NewUnitBriefMiss(onePassSession, 6, "sha256:1p", UnitBriefStale, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypeConflictCheck:
+		e := NewConflictCheck(onePassSession, 6, "c1p", "sha256:f1p", []ConflictCheckRow{{Kind: "boundary_cross",
+			RuleID: "spec:b-1p", Unit: "sha256:u1p", Subject: "sha256:s1p", Key: "sha256:k1p"}}, at)
 		e.SchemaVersion, e.Seq = version, &seq
 		return *e
 	case TypeOutcomeJoin:

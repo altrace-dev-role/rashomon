@@ -171,7 +171,12 @@ type Post struct {
 	landedRed      bool
 	landedHidden   bool
 	landedStore    bool
-	landedWrite    writtenCall
+	// landed is the landed Go edit the overlay writer kept at this post, its
+	// index root, path and group (LandedOverlay); landedKept is whether it
+	// kept one.
+	landed      LandedGoEdit
+	landedKept  bool
+	landedWrite writtenCall
 	// toolName and toolInput are the call's, kept for the spec's rules
 	// (ruleCall), which read the input only when a discovered rule reads
 	// what it names.

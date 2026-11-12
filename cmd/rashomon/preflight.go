@@ -90,12 +90,13 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	if st != nil {
 		storeRoot = st.Root()
 	}
-	gb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)
+	specOf := onceSpec(st, run, p.CWD)
+	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf)
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
-	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
+	sp := specOf()
 	hook.NoteSpecFound(st, p.SessionID, p.PromptID, p.CWD, env.ProjectDir, env.ManagedDir, sp)
 	p.specNoted = true
 	lines, _, _ := st.ReadSteer(p.SessionID)
@@ -210,6 +211,21 @@ func noteTurnSpec(st *store.Store, run *store.Run, p *pendingPayload) {
 // binding gets no trusted repository spec on the prompt path either.
 func preflightSpec(st *store.Store, run *store.Run, cwd, projectDir, managedDir string) *spec.Compiled {
 	return hook.DiscoverSpec(cwd, projectDir, managedDir, hook.TrustRoot(run, st.Root(), run.LastSeq()))
+}
+
+// onceSpec is preflightSpec under specDirs (steerEnv's ProjectDir and
+// ManagedDir), read on first use and kept, so the conflict base and the
+// prompt's note read one discovery.
+func onceSpec(st *store.Store, run *store.Run, cwd string) func() *spec.Compiled {
+	var sp *spec.Compiled
+	read := false
+	return func() *spec.Compiled {
+		if !read {
+			projectDir, managedDir := specDirs()
+			sp, read = preflightSpec(st, run, cwd, projectDir, managedDir), true
+		}
+		return sp
+	}
 }
 
 // repoSpecSuffix ends the path of a repository spec source: the file sits at

@@ -1,6 +1,9 @@
 package hook
 
-import "github.com/altrace-dev-role/rashomon/internal/steer"
+import (
+	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
+)
 
 // LandedGoEdit is a success event's landed Go edit as cmd's unit-brief read
 // takes it (card m2-unitbrief-hook1 D4): the session and agent, the index
@@ -15,6 +18,8 @@ type LandedGoEdit struct {
 	Cwd              string
 	Seq              int64
 	ScopeV5          bool
+	// Group is the edit's landed overlay group, set by LandedOverlay only.
+	Group graph.OverlayGroup
 }
 
 // LandedGoEdit is the call's landed Go edit, false for any other call:
@@ -39,3 +44,17 @@ func (p *Post) LandedGoEdit() (LandedGoEdit, bool) {
 // file (ruling 04:58 C, cause-first), so a session whose notes reach no one
 // pays the switch's read, not the read, decode and render the join drops.
 func (p *Post) Unheard(env SteerEnv) bool { return unheard(p.heard(env)) }
+
+// LandedOverlay is LandedGoEdit as the overlay writer kept it at this post,
+// with the edit's landed group (card m2-seam1 D3): the writer passed the
+// same gate (keptGoEdit) and resolved the file once, so the conflict check
+// repeats neither the gate nor the parse. False for a call whose writer
+// kept no group, and for any event but PostToolUse.
+func (p *Post) LandedOverlay() (LandedGoEdit, bool) {
+	if !p.landedKept || p.event != string(steer.EventPostToolUse) {
+		return LandedGoEdit{}, false
+	}
+	e := p.landed
+	e.Session, e.AgentID, e.Cwd, e.Seq, e.ScopeV5 = p.sessionID, p.agentID, p.cwd, p.landedSeq, p.scopeV5
+	return e, true
+}

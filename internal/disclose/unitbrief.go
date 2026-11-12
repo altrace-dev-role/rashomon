@@ -2,8 +2,9 @@ package disclose
 
 // unitBriefFiles is the inventory's rows for the unit briefs the prompt
 // hook writes while the session's content is kept (cmd/rashomon's
-// writeUnitBriefs, W-M2.3 hook half, D12), apart from defaultFiles for Law
-// 10 as blastReadFiles is. The base and the temp pattern are graph's
+// writeUnitBriefs, W-M2.3 hook half, D12), and the conflict base beside
+// them (writeConflictBase, W-M2.4 hook seam, card m2-seam1 D2), apart
+// from defaultFiles for Law 10 as blastReadFiles is. The base and the temp pattern are graph's
 // (StoreDir, UnitBriefSubdir, UnitBriefTempPattern), written here as
 // literals since disclose does not import graph; TestUB12 holds them to the
 // names the writer makes.
@@ -16,11 +17,16 @@ func unitBriefFiles() []FileRule {
 			Pattern: "x-*.json",
 			Mode:    "0600",
 			Purpose: "the brief for the first edit in one unit a prompt's selection lies in, written at the prompt " +
-				"while the session's content is kept, at most eight a prompt; one file per unit, which a later prompt rewrites",
+				"while the session's content is kept, at most eight a prompt; one file per unit, which a later prompt rewrites; " +
+				"and one conflict base per index, what an edit's post is checked against, written at the prompt with the " +
+				"briefs and rewritten when the index's commit or the rules change",
 			Holds: "a version, the unit's id and its first line's key in the repository graph, that line's tier, the " +
 				"index's commit, the prompt's id, and for each line its key, its one fact (the files of other units that " +
 				"use the unit; a recorded decision's or lesson's id, title, source and the one sentence a brief may carry; " +
-				"or the existing files, functions and types offered for reuse) and the counts of what it leaves out",
+				"or the existing files, functions and types offered for reuse) and the counts of what it leaves out; the " +
+				"conflict base holds the index's commit and repository, the rules (ids, kinds, unit prefixes, path " +
+				"patterns and the ids they apply to), the repository graph's edges that cross a boundary a rule sets " +
+				"with the symbols and files they run through, and the content digests of the files a rule guards",
 			NeverHolds: never,
 			RemovedBy:  "purge",
 			Owner:      "cmd",

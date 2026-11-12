@@ -33,6 +33,9 @@ type Run struct {
 	// UnitBriefMisses are the run's unitbrief_miss records, in file order
 	// (card m2-unitbrief-hook1 D7).
 	UnitBriefMisses []UnitBriefMiss
+	// ConflictChecks are the run's conflict_check records, in file order
+	// (W-M2.4 hook seam, card m2-seam1 D4).
+	ConflictChecks []ConflictCheck
 	// OutcomeJoins are the run's outcome_join records, in file order: a
 	// call's outcome learned after its execution record, today a background
 	// command's end (card BG-OUTCOME phase 1).
@@ -311,6 +314,8 @@ func readAccepted(run *Run, line []byte, kind string, version int) error {
 		return readPlanCheck(run, line, kind, version)
 	case TypeUnitBriefMiss:
 		return readUnitBriefMiss(run, line, kind, version)
+	case TypeConflictCheck:
+		return readConflictCheck(run, line, kind, version)
 	case TypeOutcomeJoin:
 		return readOutcomeJoin(run, line, kind, version)
 	default:

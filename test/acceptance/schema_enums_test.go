@@ -90,6 +90,7 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/then_check/properties/type", "store.TypeThenCheck", []string{store.TypeThenCheck}, false},
 			{"/$defs/plan_check/properties/type", "store.TypePlanCheck", []string{store.TypePlanCheck}, false},
 			{"/$defs/unitbrief_miss/properties/type", "store.TypeUnitBriefMiss", []string{store.TypeUnitBriefMiss}, false},
+			{"/$defs/conflict_check/properties/type", "store.TypeConflictCheck", []string{store.TypeConflictCheck}, false},
 			{"/$defs/outcome_join/properties/type", "store.TypeOutcomeJoin", []string{store.TypeOutcomeJoin}, false},
 		}},
 		{"outcome", []enumRow{
@@ -129,6 +130,8 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 				eventVersions(t, store.TypePlanCheck), false},
 			{"/$defs/unitbrief_miss/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for unitbrief_miss",
 				eventVersions(t, store.TypeUnitBriefMiss), false},
+			{"/$defs/conflict_check/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for conflict_check",
+				eventVersions(t, store.TypeConflictCheck), false},
 			{"/$defs/outcome_join/properties/schema_version", "store.AcceptsKind's EventSchemaVersion for outcome_join",
 				eventVersions(t, store.TypeOutcomeJoin), false},
 		}},

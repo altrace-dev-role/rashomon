@@ -39,6 +39,15 @@ func UnitBriefFileName(root string, unit ID) string {
 	return store.Segment("\x00"+root+"\x00"+string(unit)) + unitBriefExt
 }
 
+// ConflictBaseFileName is the name of the session's conflict base for the
+// index at root (W-M2.4 hook seam, card m2-seam1 D2): UnitBriefFileName's
+// form under a key no unit's id takes (a unit's id opens "unit:"), so the
+// base is one more "x-<hex>.json" in the session's unit-brief directory,
+// under the purge rule and the disclosure row the briefs already have.
+func ConflictBaseFileName(root string) string {
+	return UnitBriefFileName(root, "conflictbase:")
+}
+
 // IsUnitBriefFileName is whether name is a value UnitBriefFileName can
 // return: "x-", 32 lowercase hex and ".json". store.IsSegment alone is not
 // the test, since it also admits a plain segment, which "x-" and 31 hex or

@@ -61,7 +61,8 @@ func cmdPost(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 		env := steerEnv(id, time.Now(), st.Root())
-		env.Join = unitBriefJoin(st, p, env)
+		// A conflict outranks the unit brief by priority (card m2-seam1 D6).
+		env.Join = append(conflictJoin(st, p, env), unitBriefJoin(st, p, env)...)
 		if b := p.Steer(env); len(b) > 0 {
 			fmt.Fprintln(stdout, string(b))
 		}

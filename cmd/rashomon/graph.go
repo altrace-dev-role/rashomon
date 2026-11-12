@@ -14,6 +14,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
@@ -238,6 +239,13 @@ func cmdBriefOrGraph(name string, args []string, stdout io.Writer) error {
 // whether a message rendered. Every run that found an index leaves its
 // explanation under the store root at graph/<session>-<prompt>.txt.
 func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (indexBrief, bool) {
+	return graphBriefWith(storeRoot, cwd, sessionID, promptID, prompt, nil)
+}
+
+// graphBriefWith is graphBrief with specOf, the prompt's spec read on first
+// use, whose rules the conflict base takes (writeConflictBase); nil writes
+// no base.
+func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, specOf func() *spec.Compiled) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
 		return indexBrief{}, false
 	}
@@ -255,6 +263,7 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 	b := engine.Build(s, rev, string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
 	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt)
+	writeConflictBase(storeRoot, sessionID, root, h.Repo, s, rev, specOf)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
 	if first := b.FirstKey(); first != "" {
 		n, _ := s.Node(first, rev)

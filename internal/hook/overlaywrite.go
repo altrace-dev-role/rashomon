@@ -348,40 +348,51 @@ func (c overlayCall) content(path string) ([]byte, bool) {
 	return spliceEdits(disk, edits)
 }
 
-// write appends the group, if every check holds. It never reports a failure:
-// the caller has nothing to do with one, and a panic is recovered here so the
-// hook's own work is untouched. The checks run cheapest first: a session with
-// no session-content marker, every session that never consented to it, pays
-// one marker read on an edit and decodes no input and walks no directory
-// (the hook's allocation budgets, test/perf/budgets.json).
-func (c overlayCall) write() {
-	defer func() { _ = recover() }()
-	path, root, rel, ok := keptGoEdit(c.st, c.session, c.tool, c.input, c.cwd, c.seq)
-	if !ok {
-		return
+// write appends the group, if every check holds, and returns it with the
+// index root and the file's path under it, ok false where a check stopped
+// it; a group whose append fails is still returned, since the post's
+// conflict check reads the edit, not the log (card m2-seam1 D3). It never
+// reports a failure: the caller has nothing to do with one, and a panic is
+// recovered here, as ok false, so the hook's own work is untouched. Every
+// stop returns its zero values in full, never a bare return, so no check's
+// local can leak into the results. The checks run cheapest first: a
+// session with no session-content marker, every session that never
+// consented to it, pays one marker read on an edit and decodes no input and
+// walks no directory (the hook's allocation budgets,
+// test/perf/budgets.json).
+func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) {
+	defer func() {
+		if recover() != nil {
+			og, root, rel, ok = graph.OverlayGroup{}, "", "", false
+		}
+	}()
+	path, at, under, kept := keptGoEdit(c.st, c.session, c.tool, c.input, c.cwd, c.seq)
+	if !kept {
+		return graph.OverlayGroup{}, "", "", false
 	}
-	content, ok := c.content(path)
-	if !ok {
-		return
+	content, has := c.content(path)
+	if !has {
+		return graph.OverlayGroup{}, "", "", false
 	}
-	hdr, err := overlayReadHeader(filepath.Join(root, filepath.FromSlash(graph.GraphFile)))
+	hdr, err := overlayReadHeader(filepath.Join(at, filepath.FromSlash(graph.GraphFile)))
 	if err != nil || hdr.Rev.Commit == "" {
-		return
+		return graph.OverlayGroup{}, "", "", false
 	}
-	imports := overlayImports(root)
-	recs, err := resolveOverlay(rel, content, graph.RevCommit(hdr.Rev.Commit), c.seq, imports)
+	imports := overlayImports(at)
+	recs, err := resolveOverlay(under, content, graph.RevCommit(hdr.Rev.Commit), c.seq, imports)
 	if err != nil || len(recs) == 0 {
-		return
+		return graph.OverlayGroup{}, "", "", false
 	}
-	rid, _ := baseline.RepoID(root)
+	rid, _ := baseline.RepoID(at)
 	if rid == "" {
-		return
+		return graph.OverlayGroup{}, "", "", false
 	}
-	group := graph.BuildOverlayGroup(graph.OverlayGroup{Session: c.session, ToolUseID: c.toolUseID, Kind: c.kind,
-		File: graph.FileID(rel), Digest: graph.ContentDigest(content), Commit: hdr.Rev.Commit, Seq: c.seq,
-		Carried: (gopg.Resolver{Imports: imports}).OverlayCarried(), Recs: recs})
+	group := graph.OverlayGroup{Session: c.session, ToolUseID: c.toolUseID, Kind: c.kind,
+		File: graph.FileID(under), Digest: graph.ContentDigest(content), Commit: hdr.Rev.Commit, Seq: c.seq,
+		Carried: (gopg.Resolver{Imports: imports}).OverlayCarried(), Recs: recs}
 	log := graph.OpenSessionLog(c.st.Root(), rid, graph.RevCommit(hdr.Rev.Commit), true)
-	_ = log.AppendOverlayGroup(group, func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
+	_ = log.AppendOverlayGroup(graph.BuildOverlayGroup(group), func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
+	return group, at, under, true
 }
 
 // writeOverlay is the PreToolUse writer: the declared group, at the seq the
@@ -394,10 +405,14 @@ func (h *Handler) writeOverlay(p *Payload) {
 // writeOverlay is the PostToolUse writer: the landed group, a full one, at
 // the seq the execution landed at. A failure event writes none (a
 // PostToolUseFailure writer is a later card's).
+// The group it builds is kept for the conflict check (LandedOverlay).
 func (p *Post) writeOverlay() {
 	if p.event == FailureEvent {
 		return
 	}
-	overlayCall{st: p.st, session: p.sessionID, toolUseID: p.toolUseID, cwd: p.cwd, tool: p.toolName, input: p.toolInput,
-		kind: graph.OverlayLanded, seq: p.landedSeq}.write()
+	og, root, rel, ok := overlayCall{st: p.st, session: p.sessionID, toolUseID: p.toolUseID, cwd: p.cwd, tool: p.toolName,
+		input: p.toolInput, kind: graph.OverlayLanded, seq: p.landedSeq}.write()
+	if ok {
+		p.landed, p.landedKept = LandedGoEdit{Root: root, Rel: rel, Group: og}, true
+	}
 }
