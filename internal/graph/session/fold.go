@@ -212,44 +212,52 @@ func clipped(f Frontier) Frontier {
 
 var errUnplaced = errors.New("session: a line the merge cannot place")
 
+// recordHead is the part of a records.ndjson line RecordEvent decodes: every
+// key the fold reads from a record, and no other, since a key with no tag
+// here is never decoded. Its tags are testdata/sessions/keys.txt's records
+// list, the keys the session fixtures were cut to, so a tag added here fails
+// TestFixtures_KeysAreTheDecodersTags until the fixtures are regenerated from
+// the raw set (testdata/sessions/PROVENANCE.txt).
+type recordHead struct {
+	Type         string   `json:"type"`
+	Seq          *int64   `json:"seq"`
+	FilePath     *string  `json:"file_path"`
+	WrittenPaths []string `json:"written_paths"`
+	Project      *string  `json:"project"`
+	CWD          *string  `json:"cwd"`
+	// FileWithheld and WrittenWithheld are the two write paths'
+	// withheld reasons; WroteWithheld reads only whether one is set.
+	FileWithheld    *string `json:"file_path_withheld"`
+	WrittenWithheld *string `json:"written_paths_withheld"`
+	// Obligations are a ledger line's rows by verify.Obligation's own
+	// keys, not ObligationRef's, so the frontier's names never decide
+	// what a ledger line reads. Scope, source and evidence are not read.
+	Obligations []struct {
+		ID    string `json:"id"`
+		Kind  string `json:"kind"`
+		Unit  string `json:"unit"`
+		State string `json:"state"`
+	} `json:"obligations"`
+	ObligationsOmitted int `json:"obligations_omitted"`
+	UnitRowsCut        int `json:"unit_rows_cut"`
+	// Source is a session record's SessionStart source.
+	Source *string `json:"source"`
+	// Point is a verify record's point kind.
+	Point *string `json:"point"`
+	// DoneFlagged, Unmet and CheckpointSeq are a ledger line's verdict,
+	// each a pointer so an absent or null key never reads as false or 0.
+	DoneFlagged   *bool  `json:"done_flagged"`
+	Unmet         *int   `json:"unmet"`
+	CheckpointSeq *int64 `json:"checkpoint_seq"`
+}
+
 // RecordEvent decodes one records.ndjson line. Every record with a type and
 // a seq is an event; a rule that has no use for its type passes it by. Only
 // a declaration's paths are writes: an instructions record carries a
 // file_path too, the instructions file it loaded. Only a session record's
 // source can be a boundary.
 func RecordEvent(line []byte) (ev Event, ok bool, err error) {
-	var h struct {
-		Type         string   `json:"type"`
-		Seq          *int64   `json:"seq"`
-		FilePath     *string  `json:"file_path"`
-		WrittenPaths []string `json:"written_paths"`
-		Project      *string  `json:"project"`
-		CWD          *string  `json:"cwd"`
-		// FileWithheld and WrittenWithheld are the two write paths'
-		// withheld reasons; WroteWithheld reads only whether one is set.
-		FileWithheld    *string `json:"file_path_withheld"`
-		WrittenWithheld *string `json:"written_paths_withheld"`
-		// Obligations are a ledger line's rows by verify.Obligation's own
-		// keys, not ObligationRef's, so the frontier's names never decide
-		// what a ledger line reads. Scope, source and evidence are not read.
-		Obligations []struct {
-			ID    string `json:"id"`
-			Kind  string `json:"kind"`
-			Unit  string `json:"unit"`
-			State string `json:"state"`
-		} `json:"obligations"`
-		ObligationsOmitted int `json:"obligations_omitted"`
-		UnitRowsCut        int `json:"unit_rows_cut"`
-		// Source is a session record's SessionStart source.
-		Source *string `json:"source"`
-		// Point is a verify record's point kind.
-		Point *string `json:"point"`
-		// DoneFlagged, Unmet and CheckpointSeq are a ledger line's verdict,
-		// each a pointer so an absent or null key never reads as false or 0.
-		DoneFlagged   *bool  `json:"done_flagged"`
-		Unmet         *int   `json:"unmet"`
-		CheckpointSeq *int64 `json:"checkpoint_seq"`
-	}
+	var h recordHead
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: record line: %w", err)
 	}
@@ -433,30 +441,35 @@ func (g graphSlot) stated() (StatedReq, bool) {
 	return StatedReq{Pred: preds[0], Arg: arg}, true
 }
 
+// steerHead is the part of a steer.ndjson line SteerEvent decodes: every key
+// the fold reads from a steer line, graphSlot's under each of the five slot
+// keys. Its tags are testdata/sessions/keys.txt's steer list (recordHead).
+type steerHead struct {
+	Type     string  `json:"type"`
+	ID       string  `json:"id"`
+	AtUnixMS int64   `json:"at_unix_ms"`
+	AfterSeq *int64  `json:"after_seq"`
+	State    string  `json:"state"`
+	Key      string  `json:"key"`
+	Kind     string  `json:"kind"`
+	PromptID *string `json:"prompt_id"`
+	// Slots are read only at the five graph line keys, each an object
+	// slot.GraphLine wrote; a pattern's other slot keys are not read.
+	Slots struct {
+		Line1 *graphSlot `json:"line1"`
+		Line2 *graphSlot `json:"line2"`
+		Line3 *graphSlot `json:"line3"`
+		Line4 *graphSlot `json:"line4"`
+		Line5 *graphSlot `json:"line5"`
+	} `json:"slots"`
+}
+
 // SteerEvent decodes one steer.ndjson line. Only a steer.LineType line is an
 // event: a steer_evidence line (steer.EvidenceLineType) carries no after_seq
 // and feeds no frontier field, so ok is false and err nil; its bytes still
 // move the steer cursor.
 func SteerEvent(line []byte) (ev Event, ok bool, err error) {
-	var h struct {
-		Type     string  `json:"type"`
-		ID       string  `json:"id"`
-		AtUnixMS int64   `json:"at_unix_ms"`
-		AfterSeq *int64  `json:"after_seq"`
-		State    string  `json:"state"`
-		Key      string  `json:"key"`
-		Kind     string  `json:"kind"`
-		PromptID *string `json:"prompt_id"`
-		// Slots are read only at the five graph line keys, each an object
-		// slot.GraphLine wrote; a pattern's other slot keys are not read.
-		Slots struct {
-			Line1 *graphSlot `json:"line1"`
-			Line2 *graphSlot `json:"line2"`
-			Line3 *graphSlot `json:"line3"`
-			Line4 *graphSlot `json:"line4"`
-			Line5 *graphSlot `json:"line5"`
-		} `json:"slots"`
-	}
+	var h steerHead
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: steer line: %w", err)
 	}

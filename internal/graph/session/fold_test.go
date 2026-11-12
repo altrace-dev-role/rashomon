@@ -2,10 +2,14 @@ package session
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
+	"maps"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -14,6 +18,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/events"
@@ -1173,13 +1178,13 @@ func inMergedOrder(t *testing.T, evs []Event) {
 }
 
 // TestFold_IncrementalEqualsFullSynthetic (W-M4.2, INV-11; PLAN 1493's
-// TestFold_IncrementalEqualsFull on synthetic events, the fixture form in its
-// own slice): for every cut j of one session's events and every cut k at or
-// after it, the fold to j, saved and read back, then caught up by the events
-// from j to k in a shuffled order, is byte-equal to the fold to k; and the
-// fold to k is its events stepped in the merged order. Every fold to k keeps
-// SupersededBy set exactly while Status is superseded (ruling 13:43 (3)).
-// SYNTHETIC events.
+// TestFold_IncrementalEqualsFull on synthetic events, whose fixture form
+// takes that name): for every cut j of one session's events and every cut k
+// at or after it, the fold to j, saved and read back, then caught up by the
+// events from j to k in a shuffled order, is byte-equal to the fold to k; and
+// the fold to k is its events stepped in the merged order. Every fold to k
+// keeps SupersededBy set exactly while Status is superseded
+// (ruling 13:43 (3)). SYNTHETIC events.
 func TestFold_IncrementalEqualsFullSynthetic(t *testing.T) {
 	evs := foldEventsSynthetic()
 	inMergedOrder(t, evs)
@@ -1405,18 +1410,24 @@ func goldenDir() string {
 	return filepath.Join("testdata", "sessions", "golden", "fold-v"+strconv.Itoa(foldVersion))
 }
 
-// TestFold_GoldenTiesFoldVersionSynthetic (W-M4.2, ruling 13:59 (3)): the
-// frontier the synthetic events fold to is the golden of this foldVersion,
-// byte for byte, so a change to what Step writes fails here until
-// foldVersion is bumped and the next set written; a frontier saved under the
-// old rules then misses. The golden root holds this version's set alone, and
-// the set holds no golden without a source. -update writes the set once,
-// into a directory that does not exist. The limit is foldVersion's: a Step
-// change these events do not exercise passes unbumped. SYNTHETIC events.
-func TestFold_GoldenTiesFoldVersionSynthetic(t *testing.T) {
+// TestFold_GoldenTiesFoldVersion (W-M4.2, ruling 13:59 (3)): the frontier
+// the synthetic events fold to, and each recorded session's of
+// testdata/sessions, is its golden of this foldVersion, byte for byte, so a
+// change to what Step writes fails here until foldVersion is bumped and the
+// next set written; a frontier saved under the old rules then misses. The
+// golden root holds this version's set alone, and the set holds no golden
+// without a source. -update writes the set once, into a directory that does
+// not exist. The limit is foldVersion's: a Step change that neither the
+// synthetic events nor the recorded sessions exercise passes unbumped, and
+// the recorded ones hold no ledger line or session record
+// (testdata/sessions/PROVENANCE.txt).
+func TestFold_GoldenTiesFoldVersion(t *testing.T) {
 	evs := foldEventsSynthetic()
 	inMergedOrder(t, evs)
 	sources := map[string]string{"synthetic.json": mustMarshal(t, Fold("s1", evs)) + "\n"}
+	for _, run := range loadFixtures(t) {
+		sources[run.Name+".json"] = mustMarshal(t, Fold(run.Session, run.Events)) + "\n"
+	}
 	dir := goldenDir()
 	if *updateGolden {
 		if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
@@ -1458,7 +1469,485 @@ func TestFold_GoldenTiesFoldVersionSynthetic(t *testing.T) {
 			continue
 		}
 		if !bytes.Equal([]byte(got), want) {
-			t.Errorf("%s changed while foldVersion stayed %d: bump foldVersion and write fold-v%d with -update\n got %s\nwant %s", name, foldVersion, foldVersion+1, got, want)
+			t.Errorf("%s changed while foldVersion stayed %d: bump foldVersion and write fold-v%d with -update; %s", name, foldVersion, foldVersion+1, firstDiff(got, string(want)))
+		}
+	}
+}
+
+// fixtureRun is one recorded session of testdata/sessions: the run's name,
+// its session id and its events as its two files hold them, records first.
+type fixtureRun struct {
+	Name, Session string
+	Events        []Event
+}
+
+// readFixtures reads the session fixtures under root: every file
+// SHA256SUMS.txt lists, each held to its digest, and no file under stores/
+// that it does not list, so a byte edited by hand or a file added fails until
+// the set is regenerated (PROVENANCE.txt). Every records.ndjson line decodes
+// to an event; a steer line may decode to none (steer_evidence). Runs come in
+// name order.
+func readFixtures(root string) ([]fixtureRun, error) {
+	sums, err := os.ReadFile(filepath.Join(root, "SHA256SUMS.txt"))
+	if err != nil {
+		return nil, err
+	}
+	listed := map[string]string{}
+	for _, ln := range strings.Split(strings.TrimSuffix(string(sums), "\n"), "\n") {
+		sum, rel, ok := strings.Cut(ln, "  ")
+		if !ok || len(sum) != 2*sha256.Size {
+			return nil, fmt.Errorf("SHA256SUMS.txt: %q is not \"<sha256>  <path>\"", ln)
+		}
+		listed[rel] = sum
+	}
+	err = filepath.WalkDir(filepath.Join(root, "stores"), func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err == nil && listed[filepath.ToSlash(rel)] == "" {
+			err = fmt.Errorf("%s: a file SHA256SUMS.txt does not list", filepath.ToSlash(rel))
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	byRun := map[string]*fixtureRun{}
+	for _, rel := range slices.Sorted(maps.Keys(listed)) {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			return nil, err
+		}
+		if sum := sha256.Sum256(b); hex.EncodeToString(sum[:]) != listed[rel] {
+			return nil, fmt.Errorf("%s: its sha256 is not SHA256SUMS.txt's; regenerate the set, never edit it by hand (PROVENANCE.txt)", rel)
+		}
+		part := strings.Split(rel, "/")
+		if len(part) != 5 || part[0] != "stores" || part[2] != "runs" || part[4] != "records.ndjson" && part[4] != "steer.ndjson" {
+			return nil, fmt.Errorf("%s: not stores/<run>/runs/<session>/{records,steer}.ndjson", rel)
+		}
+		r := byRun[part[1]]
+		if r == nil {
+			r = &fixtureRun{Name: part[1], Session: part[3]}
+			byRun[part[1]] = r
+		}
+		if r.Session != part[3] {
+			return nil, fmt.Errorf("%s: a second session in run %s", rel, part[1])
+		}
+		for i, ln := range bytes.Split(bytes.TrimSuffix(b, []byte("\n")), []byte("\n")) {
+			ev, ok, err := decodeLine(part[4], ln)
+			if err != nil {
+				return nil, fmt.Errorf("%s line %d: %w", rel, i+1, err)
+			}
+			if ok {
+				r.Events = append(r.Events, ev)
+			}
+		}
+	}
+	runs := make([]fixtureRun, 0, len(byRun))
+	for _, name := range slices.Sorted(maps.Keys(byRun)) {
+		runs = append(runs, *byRun[name])
+	}
+	return runs, nil
+}
+
+// decodeLine decodes one line of a run's file named file: records.ndjson by
+// RecordEvent, steer.ndjson by SteerEvent.
+func decodeLine(file string, line []byte) (Event, bool, error) {
+	if file == "records.ndjson" {
+		return RecordEvent(line)
+	}
+	return SteerEvent(line)
+}
+
+// loadFixtures is readFixtures over testdata/sessions, failing t on an error.
+func loadFixtures(t *testing.T) []fixtureRun {
+	t.Helper()
+	runs, err := readFixtures(filepath.Join("testdata", "sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runs
+}
+
+// inOrder is a copy of evs in the merged order, sorted by Event.Before alone:
+// the tests' own sort, so a fault in sortedCopy cannot hide in an oracle.
+func inOrder(evs []Event) []Event {
+	s := slices.Clone(evs)
+	sort.SliceStable(s, func(i, j int) bool { return s[i].Before(s[j]) })
+	return s
+}
+
+// steppedAs is foldByStep for session sid: a new frontier stepped through
+// evs as given, which the caller has put in the merged order, Through the
+// last one's place.
+func steppedAs(sid string, evs []Event) Frontier {
+	f := newFrontier(sid)
+	for _, ev := range evs {
+		Step(&f, ev)
+	}
+	if len(evs) > 0 {
+		last := evs[len(evs)-1]
+		f.Through = Mark{Seq: last.Seq, Steer: last.Steer, AtUnixMS: last.AtUnixMS, ID: last.ID}
+	}
+	return f
+}
+
+// firstDiff names the first byte where got and want part, with a little of
+// each from there.
+func firstDiff(got, want string) string {
+	i := 0
+	for i < len(got) && i < len(want) && got[i] == want[i] {
+		i++
+	}
+	lo := max(i-40, 0)
+	return fmt.Sprintf("first difference on byte %d:\n got ...%s\nwant ...%s", i, got[lo:min(i+80, len(got))], want[lo:min(i+80, len(want))])
+}
+
+// TestFixtures_SumsHold (W-M4.2, ruling 13:59 (1c)): the fixture set is the
+// files SHA256SUMS.txt lists, byte for byte, and nothing else under stores/:
+// 42 runs that decode to 12919 record events and 406 steer line events (their
+// 81 steer_evidence lines are none), so every fixture test reads the set
+// PROVENANCE.txt describes. On a set of one SYNTHETIC run, a byte edited by
+// hand fails, and so does a file the sums do not list.
+func TestFixtures_SumsHold(t *testing.T) {
+	runs := loadFixtures(t)
+	var recs, lines int
+	for _, r := range runs {
+		for _, ev := range r.Events {
+			if ev.Steer {
+				lines++
+			} else {
+				recs++
+			}
+		}
+	}
+	if len(runs) != 42 || recs != 12919 || lines != 406 {
+		t.Errorf("%d runs, %d record events, %d steer line events; want 42, 12919, 406", len(runs), recs, lines)
+	}
+	root := t.TempDir()
+	write := func(rel string, b []byte) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rel := "stores/r1/runs/s1/records.ndjson"
+	body := []byte(`{"type":"declaration","seq":1,"cwd":"/p","project":"/p","file_path":"/p/a.go"}` + "\n")
+	sum := sha256.Sum256(body)
+	write("SHA256SUMS.txt", []byte(hex.EncodeToString(sum[:])+"  "+rel+"\n"))
+	write(rel, body)
+	if got, err := readFixtures(root); err != nil || len(got) != 1 || len(got[0].Events) != 1 || !slices.Equal(got[0].Events[0].Wrote, []string{"a.go"}) {
+		t.Fatalf("a set its sums hold: %v, %+v", err, got)
+	}
+	write(rel, bytes.Replace(body, []byte("a.go"), []byte("b.go"), 1))
+	if _, err := readFixtures(root); err == nil || !strings.Contains(err.Error(), "sha256") {
+		t.Errorf("a byte edited by hand: %v; want its sha256 refused", err)
+	}
+	write(rel, body)
+	write("stores/r1/runs/s1/extra.ndjson", body)
+	if _, err := readFixtures(root); err == nil || !strings.Contains(err.Error(), "does not list") {
+		t.Errorf("a file the sums do not list: %v; want it refused", err)
+	}
+}
+
+// jsonTagPaths appends to out the path of every leaf key typ decodes, after
+// prefix, as keys.txt writes it: "." steps into an object's keys and "[]."
+// into a list's rows. A field with no json name fails t, since encoding/json
+// would then read a key named for the Go field.
+func jsonTagPaths(t *testing.T, typ reflect.Type, prefix string, out *[]string) {
+	t.Helper()
+	for i := 0; i < typ.NumField(); i++ {
+		fl := typ.Field(i)
+		name, _, _ := strings.Cut(fl.Tag.Get("json"), ",")
+		if name == "" || name == "-" || !fl.IsExported() {
+			t.Fatalf("%s%s: a field with no json name", prefix, fl.Name)
+		}
+		ft := fl.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		el := ft
+		if ft.Kind() == reflect.Slice {
+			for el = ft.Elem(); el.Kind() == reflect.Pointer; el = el.Elem() {
+			}
+		}
+		switch {
+		case ft.Kind() == reflect.Struct:
+			jsonTagPaths(t, ft, prefix+name+".", out)
+		case ft.Kind() == reflect.Slice && el.Kind() == reflect.Struct:
+			jsonTagPaths(t, el, prefix+name+"[].", out)
+		default:
+			*out = append(*out, prefix+name)
+		}
+	}
+}
+
+// TestFixtures_KeysAreTheDecodersTags (W-M4.2, rulings 13:59 (1b), 14:09
+// (8)): the keys the fixtures were cut to (testdata/sessions/keys.txt, also
+// the generator's input) are the json tags recordHead and steerHead decode,
+// both ways. A tag the decoders gain is a key the cut dropped from every
+// fixture line, so the fixtures would test the new rule on nothing: regenerate
+// testdata/sessions from the raw set (PROVENANCE.txt). A tag they lose is a
+// key the fixtures keep that the fold no longer reads.
+func TestFixtures_KeysAreTheDecodersTags(t *testing.T) {
+	var got []string
+	for _, h := range []struct {
+		file string
+		typ  reflect.Type
+	}{{"records", reflect.TypeOf(recordHead{})}, {"steer", reflect.TypeOf(steerHead{})}} {
+		var paths []string
+		jsonTagPaths(t, h.typ, "", &paths)
+		for _, p := range paths {
+			got = append(got, h.file+" "+p)
+		}
+	}
+	sort.Strings(got)
+	b, err := os.ReadFile(filepath.Join("testdata", "sessions", "keys.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, ln := range strings.Split(string(b), "\n") {
+		if ln != "" && !strings.HasPrefix(ln, "#") {
+			want = append(want, ln)
+		}
+	}
+	if !slices.IsSorted(want) {
+		t.Error("keys.txt is not sorted")
+	}
+	if !slices.Equal(got, want) {
+		var gained, lost []string
+		for _, k := range got {
+			if !slices.Contains(want, k) {
+				gained = append(gained, k)
+			}
+		}
+		for _, k := range want {
+			if !slices.Contains(got, k) {
+				lost = append(lost, k)
+			}
+		}
+		t.Errorf("the decoders' tags are not keys.txt's; regenerate testdata/sessions from the raw set (PROVENANCE.txt)\nonly the decoders: %q\nonly keys.txt: %q", gained, lost)
+	}
+}
+
+// TestFixtures_DecodeAsTheRawSet (W-M4.2, ruling 13:59 (1)), run where
+// RASHOMON_SESSIONS_RAW names the raw set, which never enters the
+// repository, and skipped elsewhere: the raw set is the one PROVENANCE.txt
+// names by its SHA256SUMS.txt digest, each raw file held to that list; every
+// fixture file has its raw twin and every raw file its fixture; and every
+// fixture line decodes as its raw line does, so the cut (keys.txt's keys,
+// paths outside the run's tree replaced) changed no event. It names lines by
+// number and prints no line and no event: a raw line holds words and home
+// paths.
+func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
+	raw := os.Getenv("RASHOMON_SESSIONS_RAW")
+	if raw == "" {
+		t.Skip("RASHOMON_SESSIONS_RAW is unset: the raw set lives outside the repository")
+	}
+	root := filepath.Join("testdata", "sessions")
+	prov, err := os.ReadFile(filepath.Join(root, "PROVENANCE.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, named := strings.Cut(string(prov), "Raw SHA256SUMS.txt sha256: ")
+	want, _, _ := strings.Cut(rest, "\n")
+	rawSums, err := os.ReadFile(filepath.Join(raw, "SHA256SUMS.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum := sha256.Sum256(rawSums); !named || hex.EncodeToString(sum[:]) != want {
+		t.Fatal("RASHOMON_SESSIONS_RAW is not the raw set PROVENANCE.txt names")
+	}
+	rawListed := map[string]string{}
+	for _, ln := range strings.Split(strings.TrimSuffix(string(rawSums), "\n"), "\n") {
+		sum, rel, _ := strings.Cut(ln, "  ")
+		rawListed[strings.TrimPrefix(rel, "./")] = sum
+	}
+	cutSums, err := os.ReadFile(filepath.Join(root, "SHA256SUMS.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, lines := 0, 0
+	for _, ln := range strings.Split(strings.TrimSuffix(string(cutSums), "\n"), "\n") {
+		_, rel, _ := strings.Cut(ln, "  ")
+		part := strings.Split(rel, "/")
+		if len(part) != 5 {
+			t.Fatalf("%s: not stores/<run>/runs/<session>/<file>", rel)
+		}
+		rawRel := part[1] + "/store/runs/" + part[3] + "/" + part[4]
+		rawSum, ok := rawListed[rawRel]
+		if !ok {
+			t.Errorf("%s: no raw twin", rel)
+			continue
+		}
+		delete(rawListed, rawRel)
+		rb, err := os.ReadFile(filepath.Join(raw, "runs", filepath.FromSlash(rawRel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sum := sha256.Sum256(rb); hex.EncodeToString(sum[:]) != rawSum {
+			t.Fatalf("%s: the raw file is not its SHA256SUMS.txt's", rawRel)
+		}
+		cb, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rl := bytes.Split(bytes.TrimSuffix(rb, []byte("\n")), []byte("\n"))
+		cl := bytes.Split(bytes.TrimSuffix(cb, []byte("\n")), []byte("\n"))
+		if len(cl) != len(rl) {
+			t.Errorf("%s: %d lines, its raw twin %d", rel, len(cl), len(rl))
+			continue
+		}
+		for i := range cl {
+			ce, cok, cerr := decodeLine(part[4], cl[i])
+			re, rok, rerr := decodeLine(part[4], rl[i])
+			if cok != rok || (cerr == nil) != (rerr == nil) || !reflect.DeepEqual(ce, re) {
+				t.Errorf("%s line %d decodes otherwise than its raw line", rel, i+1)
+			}
+		}
+		files, lines = files+1, lines+len(cl)
+	}
+	for _, rawRel := range slices.Sorted(maps.Keys(rawListed)) {
+		t.Errorf("%s: a raw file with no fixture", rawRel)
+	}
+	t.Logf("%d fixture files, %d lines, decode as the raw set's", files, lines)
+}
+
+// TestFixtures_KnownHoleT_AliasWritesDecodeOutside (W-M4.2, ruling 14:09
+// (2); debt (t)): run t1c-r6's project is under /private/tmp, and 29 of its
+// declarations, seq 154 to 422, each name one write through /tmp, that
+// directory's alias: a path inside the project once /private is put back.
+// inProject reads a path as text, as verify does, so today each of the 29
+// decodes outside: WroteOutside set, and the path not in Wrote. The test
+// finds the 29 by its own reading of each line, not the decoder's. The path
+// fix (debt (t)) turns them inside, and must change this test by name, never
+// a golden silently; the generator kept these paths verbatim for it.
+func TestFixtures_KnownHoleT_AliasWritesDecodeOutside(t *testing.T) {
+	dir := filepath.Join("testdata", "sessions", "stores", "t1c-r6", "runs")
+	sids, err := os.ReadDir(dir)
+	if err != nil || len(sids) != 1 {
+		t.Fatalf("t1c-r6: %v, %d sessions; want one", err, len(sids))
+	}
+	b, err := os.ReadFile(filepath.Join(dir, sids[0].Name(), "records.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seqs []int64
+	for i, ln := range bytes.Split(bytes.TrimSuffix(b, []byte("\n")), []byte("\n")) {
+		var h struct {
+			Type         string   `json:"type"`
+			Seq          int64    `json:"seq"`
+			Project      string   `json:"project"`
+			FilePath     *string  `json:"file_path"`
+			WrittenPaths []string `json:"written_paths"`
+		}
+		if err := json.Unmarshal(ln, &h); err != nil {
+			t.Fatalf("line %d: %v", i+1, err)
+		}
+		if h.Type != store.TypeDeclaration || !strings.HasPrefix(h.Project, "/private/tmp/") {
+			continue
+		}
+		paths := slices.Clone(h.WrittenPaths)
+		if h.FilePath != nil {
+			paths = append(paths, *h.FilePath)
+		}
+		var alias []string
+		for _, p := range paths {
+			if rel, ok := strings.CutPrefix("/private"+p, h.Project+"/"); ok && strings.HasPrefix(p, "/tmp/") {
+				alias = append(alias, rel)
+			}
+		}
+		if len(alias) == 0 {
+			continue
+		}
+		ev, _, err := RecordEvent(ln)
+		if err != nil {
+			t.Fatalf("seq %d: %v", h.Seq, err)
+		}
+		if !ev.WroteOutside {
+			t.Errorf("seq %d: a write through the /tmp alias left WroteOutside unset", h.Seq)
+		}
+		for _, rel := range alias {
+			if slices.Contains(ev.Wrote, rel) {
+				t.Errorf("seq %d: %s, written through the alias, is in Wrote", h.Seq, rel)
+			}
+		}
+		if len(alias) != 1 {
+			t.Errorf("seq %d: %d writes through the alias; want one", h.Seq, len(alias))
+		}
+		seqs = append(seqs, h.Seq)
+	}
+	if len(seqs) != 29 || seqs[0] != 154 || seqs[len(seqs)-1] != 422 {
+		t.Errorf("writes through the alias on seqs %v; want 29, from 154 to 422", seqs)
+	}
+}
+
+// TestFold_IncrementalEqualsFull (W-M4.2, INV-11; PLAN 1493, with Through
+// for its bound per ruling 14:09 (5)): for each recorded session of
+// testdata/sessions and every cut j of its events in the merged order, the
+// frontier stepped to j, saved and read back, then caught up by the events
+// after j in a shuffled order, is byte-equal to Fold over the whole log, and
+// Fold over the log as its files give it is its events stepped in the merged
+// order. Every frontier stepped to a cut keeps SupersededBy set exactly while
+// Status is superseded (ruling 13:43 (3)). The synthetic form, every pair of
+// cuts, is TestFold_IncrementalEqualsFullSynthetic.
+func TestFold_IncrementalEqualsFull(t *testing.T) {
+	r := rand.New(rand.NewSource(1))
+	for _, run := range loadFixtures(t) {
+		t.Run(run.Name, func(t *testing.T) {
+			evs := inOrder(run.Events)
+			full := mustMarshal(t, Fold(run.Session, run.Events))
+			if want := mustMarshal(t, steppedAs(run.Session, evs)); full != want {
+				t.Fatalf("the fold is not its events stepped in the merged order; %s", firstDiff(full, want))
+			}
+			f := newFrontier(run.Session)
+			for j := 0; j <= len(evs); j++ {
+				if j > 0 {
+					ev := evs[j-1]
+					Step(&f, ev)
+					f.Through = Mark{Seq: ev.Seq, Steer: ev.Steer, AtUnixMS: ev.AtUnixMS, ID: ev.ID}
+				}
+				if bad := supersededByWhileSuperseded(f); bad != "" {
+					t.Fatalf("stepped to %d: %s", j, bad)
+				}
+				saved, err := ParseFrontier([]byte(mustMarshal(t, f)))
+				if err != nil {
+					t.Fatalf("read back the frontier stepped to %d: %v", j, err)
+				}
+				tail := slices.Clone(evs[j:])
+				r.Shuffle(len(tail), func(a, b int) { tail[a], tail[b] = tail[b], tail[a] })
+				g, ok := Catch(saved, tail)
+				if !ok {
+					t.Fatalf("catch from %d of %d missed", j, len(evs))
+				}
+				if got := mustMarshal(t, g); got != full {
+					t.Fatalf("catch from %d of %d is not the fold over the whole log; %s", j, len(evs), firstDiff(got, full))
+				}
+			}
+		})
+	}
+}
+
+// TestFold_IsDeterministic (W-M4.2; PLAN 1493): each recorded session's
+// events, given in 5 shuffled orders, fold to the bytes of its events stepped
+// in the merged order. The synthetic form is TestFold_IsDeterministicSynthetic.
+func TestFold_IsDeterministic(t *testing.T) {
+	r := rand.New(rand.NewSource(1))
+	for _, run := range loadFixtures(t) {
+		want := mustMarshal(t, steppedAs(run.Session, inOrder(run.Events)))
+		in := slices.Clone(run.Events)
+		for round := 0; round < 5; round++ {
+			r.Shuffle(len(in), func(i, j int) { in[i], in[j] = in[j], in[i] })
+			if got := mustMarshal(t, Fold(run.Session, in)); got != want {
+				t.Errorf("%s, round %d: %s", run.Name, round, firstDiff(got, want))
+				break
+			}
 		}
 	}
 }
