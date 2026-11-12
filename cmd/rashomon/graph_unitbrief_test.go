@@ -21,7 +21,7 @@ var ubRev = graph.RevCommit("50942026abcd")
 
 // ubBrief is a unit brief as UnitBrief returns one: a consumer line cut at
 // its name cap, so its slot carries counts, a decision and a lesson.
-func ubBrief(t *testing.T) engine.Brief {
+func ubBrief(t testing.TB) engine.Brief {
 	t.Helper()
 	b := engine.Rebind(ubRev, []engine.Line{
 		{Key: "file:brief/brief.py", Slot: slot.NewCodeLine(slot.CodeFact{Path: "brief/brief.py", Role: slot.RoleConsumer,
@@ -37,6 +37,16 @@ func ubBrief(t *testing.T) engine.Brief {
 	return b
 }
 
+// unitBriefOf is data read as the post reads a file at the index's
+// commit: scanned, then its lines decoded and rebound.
+func unitBriefOf(data []byte) (storedUnitBrief, error) {
+	sc, err := scanUnitBrief(data)
+	if err != nil {
+		return storedUnitBrief{}, err
+	}
+	return sc.brief()
+}
+
 // TestUnitBrief_FileRoundTripsTheBrief (W-M2.3 hook half, D2): a unit
 // brief encoded to its file and decoded renders the same message and the
 // same record form, keeps its lines' keys in order, and carries the unit,
@@ -50,7 +60,7 @@ func TestUnitBrief_FileRoundTripsTheBrief(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := decodeUnitBrief(data)
+	got, err := unitBriefOf(data)
 	if err != nil {
 		t.Fatalf("decode: %v\n%s", err, data)
 	}
@@ -190,7 +200,7 @@ func TestUnitBrief_FileShapeIsClosed(t *testing.T) {
 		if bytes.Equal(bad, data) {
 			t.Fatalf("%s: the case did not change the file", name)
 		}
-		if _, err := decodeUnitBrief(bad); err == nil {
+		if _, err := unitBriefOf(bad); err == nil {
 			t.Errorf("%s: decoded", name)
 		}
 	}
@@ -235,8 +245,10 @@ func TestUnitBrief_ReadIsBounded(t *testing.T) {
 	if err := os.WriteFile(ok, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := readUnitBrief(ok); err != nil {
+	if sc, _, err := readUnitBrief(ok); err != nil {
 		t.Errorf("a valid file: %v", err)
+	} else if _, err := sc.brief(); err != nil {
+		t.Errorf("a valid file's lines: %v", err)
 	}
 	over := filepath.Join(dir, "over.json")
 	padded := append(slices.Clone(data), bytes.Repeat([]byte(" "), maxUnitBriefBytes+1-len(data))...)
@@ -396,9 +408,14 @@ func TestGraphBrief_StoresEachUnitsBriefWhenConsented(t *testing.T) {
 		name := graph.UnitBriefFileName(root, u)
 		want[name] = u
 		path := filepath.Join(sessDir, name)
-		got, _, err := readUnitBrief(path)
+		sc, _, err := readUnitBrief(path)
 		if err != nil {
 			t.Errorf("%s: %v", u, err)
+			continue
+		}
+		got, err := sc.brief()
+		if err != nil {
+			t.Errorf("%s: lines: %v", u, err)
 			continue
 		}
 		if got.Message.Text() != ub.Message.Text() {

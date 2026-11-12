@@ -43,18 +43,32 @@ const (
 	maxUnitBriefBytes = 8 << 10
 )
 
-// unitBriefFile is the file's closed shape at version 1. Rev is a commit:
+// unitBriefFile is the file's closed shape at version 1: its header, then
+// its lines, the last key, as unitBriefDigest reads them.
+type unitBriefFile struct {
+	unitBriefHead
+	Lines []unitBriefLine `json:"lines"`
+}
+
+// unitBriefHead is every field of the file but its lines. Rev is a commit:
 // graphBrief reads the index at its commit, never at an overlay. Prompt is
 // the prompt id the brief was written under, never the prompt's words:
 // UnitBrief takes none.
-type unitBriefFile struct {
-	V      int             `json:"v"`
-	Unit   graph.ID        `json:"unit"`
-	First  graph.ID        `json:"first"`
-	Tier   graph.Tier      `json:"tier"`
-	Rev    string          `json:"rev"`
-	Prompt string          `json:"prompt"`
-	Lines  []unitBriefLine `json:"lines"`
+type unitBriefHead struct {
+	V      int        `json:"v"`
+	Unit   graph.ID   `json:"unit"`
+	First  graph.ID   `json:"first"`
+	Tier   graph.Tier `json:"tier"`
+	Rev    string     `json:"rev"`
+	Prompt string     `json:"prompt"`
+}
+
+// unitBriefScan is a file read in the file's closed shape with its lines
+// value kept raw, unread: what the post judges a held brief by before it
+// decodes one it may not say (ruling 05:35 (3)). brief reads the lines.
+type unitBriefScan struct {
+	unitBriefHead
+	Lines json.RawMessage `json:"lines"`
 }
 
 // unitBriefLine is one kept line: its key, its one fact under the field of
@@ -169,7 +183,7 @@ func encodeUnitBrief(b engine.Brief, unit, first graph.ID, tier graph.Tier, prom
 	if err := checkUnitBriefHeader(unit, first, tier, b.FirstKey()); err != nil {
 		return nil, err
 	}
-	f := unitBriefFile{V: unitBriefVersion, Unit: unit, First: first, Tier: tier, Rev: b.Rev.Commit, Prompt: promptID}
+	f := unitBriefFile{unitBriefHead: unitBriefHead{V: unitBriefVersion, Unit: unit, First: first, Tier: tier, Rev: b.Rev.Commit, Prompt: promptID}}
 	for i, l := range b.Lines[:b.Kept] {
 		sl := unitBriefLineOf(l)
 		if _, n := sl.slot(); n != 1 {
@@ -187,32 +201,59 @@ func encodeUnitBrief(b engine.Brief, unit, first graph.ID, tier graph.Tier, prom
 	return data, nil
 }
 
-// decodeUnitBrief is the brief data holds, rendered by engine.Rebind. A
-// file over the cap, of another version, with a field the shape does not
-// name, with anything after its one object, with no line, with a line of
-// no fact or two, with a line that bind refuses, changes, or that deliver
-// no longer renders, or with a header that does not name the brief, is an
-// error: a miss, never a different brief. It is RES-5's named exception for this file (res5Allowed):
-// rashomon's own file under the store root, capped, in a closed shape.
-func decodeUnitBrief(data []byte) (storedUnitBrief, error) {
+// decodeUnitBrief decodes data into v in the file's closed shape: at most
+// maxUnitBriefBytes, checked before the decoder sees it, no field v does
+// not name, one value and nothing after it. It is the file's one JSON
+// decode, of the file's object (scanUnitBrief) and then of a fresh file's
+// lines value (unitBriefScan.brief), and RES-5's named exception for this
+// file (res5Allowed): rashomon's own file under the store root, capped, in
+// a closed shape.
+func decodeUnitBrief(data []byte, v any) error {
 	if len(data) > maxUnitBriefBytes {
-		return storedUnitBrief{}, fmt.Errorf("unit brief: %d B, over the cap %d", len(data), maxUnitBriefBytes)
+		return fmt.Errorf("unit brief: %d B, over the cap %d", len(data), maxUnitBriefBytes)
 	}
-	var f unitBriefFile
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&f); err != nil {
-		return storedUnitBrief{}, fmt.Errorf("unit brief: %w", err)
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("unit brief: %w", err)
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return storedUnitBrief{}, errors.New("unit brief: data after the file's object")
+		return errors.New("unit brief: data after the value")
 	}
-	if f.V != unitBriefVersion {
-		return storedUnitBrief{}, fmt.Errorf("unit brief: version %d", f.V)
+	return nil
+}
+
+// scanUnitBrief is the file data holds read to its header, its lines value
+// raw and unread. A file over the cap, with a field the shape does not
+// name, with anything after its one object, or of another version, is an
+// error.
+func scanUnitBrief(data []byte) (unitBriefScan, error) {
+	var sc unitBriefScan
+	if err := decodeUnitBrief(data, &sc); err != nil {
+		return unitBriefScan{}, err
 	}
-	if len(f.Lines) == 0 {
+	if sc.V != unitBriefVersion {
+		return unitBriefScan{}, fmt.Errorf("unit brief: version %d", sc.V)
+	}
+	return sc, nil
+}
+
+// brief is the brief the scanned file holds, rendered by engine.Rebind. A
+// file with no line, with a field no line names, with a line of no fact or
+// two, with a line that bind refuses, changes, or that deliver no longer
+// renders, or with a header that does not name the brief, is an error: a
+// miss, never a different brief.
+func (sc unitBriefScan) brief() (storedUnitBrief, error) {
+	var stored []unitBriefLine
+	if len(sc.Lines) != 0 {
+		if err := decodeUnitBrief(sc.Lines, &stored); err != nil {
+			return storedUnitBrief{}, err
+		}
+	}
+	if len(stored) == 0 {
 		return storedUnitBrief{}, errors.New("unit brief: no line")
 	}
+	f := unitBriefFile{unitBriefHead: sc.unitBriefHead, Lines: stored}
 	lines := make([]engine.Line, 0, len(f.Lines))
 	for i, sl := range f.Lines {
 		s, n := sl.slot()
@@ -264,23 +305,23 @@ func unitBriefDigest(data []byte) (string, error) {
 	return hex.EncodeToString(sum[:6]), nil
 }
 
-// readUnitBrief is the file at path decoded, and its bytes, which name it
-// (unitBriefDigest), reading at most one byte over the cap, so an
-// oversized file is refused without being read whole. A missing,
-// unreadable, over-cap or torn file is an error the caller counts as a
-// miss.
-func readUnitBrief(path string) (storedUnitBrief, []byte, error) {
+// readUnitBrief is the file at path scanned (scanUnitBrief), and its
+// bytes, which name it (unitBriefDigest), reading at most one byte over the
+// cap, so an oversized file is refused without being read whole. A
+// missing, unreadable, over-cap or torn file is an error the caller counts
+// as a miss; the scan's brief reads its lines.
+func readUnitBrief(path string) (unitBriefScan, []byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return storedUnitBrief{}, nil, err
+		return unitBriefScan{}, nil, err
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	data, err := io.ReadAll(io.LimitReader(f, maxUnitBriefBytes+1))
 	if err != nil {
-		return storedUnitBrief{}, nil, err
+		return unitBriefScan{}, nil, err
 	}
-	b, err := decodeUnitBrief(data)
-	return b, data, err
+	sc, err := scanUnitBrief(data)
+	return sc, data, err
 }
 
 // writeUnitBrief writes data to path, 0600, through a temporary file in
@@ -378,7 +419,10 @@ const unitBriefKeyPrefix = "unitbrief:"
 // session whose notes reach no one reads no brief it would drop; ruling
 // 04:58 C, cause-first), the steer log (hook.Given: once per unit per
 // session, whatever the digest, arm_off counted at nudge only), then the
-// bounded read. The finding is briefFinding's under the key
+// bounded read, header first (unitBriefScan): the unit and the commit are
+// judged before the lines are decoded and rebound, so a file the post
+// cannot say for its commit costs no rebind (ruling 05:35 (3), cause-first
+// on the stale bench row). The finding is briefFinding's under the key
 // unitbrief:<unit>@<digest>, after the edit's seq: the brief under the
 // unit's head (Brief.UnitSaid, ruling 04:58 B), which names the unit's
 // directory relative to the hook's working directory, and its record form,
@@ -392,7 +436,8 @@ const unitBriefKeyPrefix = "unitbrief:"
 // files are never removed, so a unit with none was never given), stale
 // where the file is at another commit than the index's, refused where it
 // does not read back as a brief of the unit or does not render under the
-// unit's head. Like keepHits, an absent miss is kept whatever the steer
+// unit's head; a file both stale and unreadable in its lines is stale, its
+// lines never read. Like keepHits, an absent miss is kept whatever the steer
 // context then decides; a held file is judged only where a note could
 // reach someone, so in a session no one hears it is neither read nor
 // counted, and the unit's first edit with the gate open judges it.
@@ -431,12 +476,16 @@ func unitBriefJoin(st *store.Store, p *hook.Post, env hook.SteerEnv) []steer.Fin
 	if given {
 		return nil
 	}
-	sb, data, err := readUnitBrief(file)
-	if err != nil || sb.Unit != gid {
+	sc, data, err := readUnitBrief(file)
+	if err != nil || sc.Unit != gid {
 		return miss(store.UnitBriefRefused)
 	}
-	if sb.Rev.Commit != hdr.Rev.Commit {
+	if sc.Rev != hdr.Rev.Commit {
 		return miss(store.UnitBriefStale)
+	}
+	sb, err := sc.brief()
+	if err != nil {
+		return miss(store.UnitBriefRefused)
 	}
 	digest, err := unitBriefDigest(data)
 	if err != nil {

@@ -264,14 +264,30 @@ func TestPost_UnitBriefNeedsTheKeptContentMarker(t *testing.T) {
 // brief cannot be said writes one unitbrief_miss, critical false, its unit
 // the unit's global id as a keyed digest and its landed_seq the edit's
 // execution seq: absent (no file), refused (a torn file, or the brief of
-// another unit under this unit's name) and stale (a file at c0 under an
-// index at c1). Not a miss: a store without the session-content marker, the
-// delivered first edit, and the given unit's next edit. Every case runs on
-// an index whose body no loader reads, so the read takes the index's
+// another unit under this unit's name, or lines that do not decode) and
+// stale (a file at c0 under an index at c1). A file is judged by its header
+// before its lines are read (ruling 05:35 (3)): the same undecodable lines
+// at c0 are stale, and at c1, the witness that they are undecodable,
+// refused. Break: decode the lines before the commit compare, and the stale
+// one is refused. Not a miss: a store without the session-content marker,
+// the delivered first edit, and the given unit's next edit. Every case runs
+// on an index whose body no loader reads, so the read takes the index's
 // header and loads no record; the delivered case is the witness that the
 // brief is still said through it.
 func TestUnitBrief_MissIsCountedNeverLoaded(t *testing.T) {
 	other := graph.GlobalID(planRID, graph.UnitID("go", "elsewhere"))
+	// badLines stores the brief at rev with a field no line names put into
+	// its first line: a header that scans, lines that do not decode.
+	badLines := func(s *planSession, rev string) {
+		data := s.writeBrief(rev)
+		bad := bytes.Replace(data, []byte(`"more":`), []byte(`"moar":0,"more":`), 1)
+		if bytes.Equal(bad, data) {
+			t.Fatal("the fixture file holds no line counts to put a field before")
+		}
+		if err := os.WriteFile(s.briefPath(), bad, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cases := []struct {
 		name, reason string
 		setup        func(s *planSession)
@@ -284,7 +300,9 @@ func TestUnitBrief_MissIsCountedNeverLoaded(t *testing.T) {
 			}
 		}},
 		{"another unit", store.UnitBriefRefused, func(s *planSession) { s.writeBriefFor(other, "c1") }},
+		{"lines that do not decode", store.UnitBriefRefused, func(s *planSession) { badLines(s, "c1") }},
 		{"stale", store.UnitBriefStale, func(s *planSession) { s.writeBrief("c0") }},
+		{"stale, lines unread", store.UnitBriefStale, func(s *planSession) { badLines(s, "c0") }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
