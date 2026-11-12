@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -356,8 +357,9 @@ func counted(t *testing.T) (read, header, resolve *int) {
 }
 
 // TestHook_NoConsentReadsNothing (C3): with the marker absent, the file read,
-// the index header read and the resolver call run zero times, and each writer
-// adds one to the no-consent tally; with it present, each runs.
+// the index header read and the resolver call run zero times, and no writer
+// leaves a file in the run directory (no group, no tally); with it present,
+// each runs. The control is the marker-present half.
 func TestHook_NoConsentReadsNothing(t *testing.T) {
 	read, header, resolve := counted(t)
 	f := newOvFix(t, "")
@@ -367,8 +369,8 @@ func TestHook_NoConsentReadsNothing(t *testing.T) {
 	if *read != 0 || *header != 0 || *resolve != 0 {
 		t.Errorf("marker absent: %d file reads, %d header reads, %d resolver calls; want none", *read, *header, *resolve)
 	}
-	if n := f.st.OverlayNoConsent(ovSess); n != 2 {
-		t.Errorf("no-consent count %d, want 1 per writer (2)", n)
+	if names := overlayRunFileNames(t, f); len(names) != 0 {
+		t.Errorf("marker absent: the writers left %v in the run directory", names)
 	}
 
 	read, header, resolve = counted(t)
@@ -378,14 +380,32 @@ func TestHook_NoConsentReadsNothing(t *testing.T) {
 	if *read < 2 || *header < 2 || *resolve < 2 {
 		t.Errorf("marker present: %d file reads, %d header reads, %d resolver calls; want each from both writers", *read, *header, *resolve)
 	}
-	if n := g.st.OverlayNoConsent(ovSess); n != 0 {
-		t.Errorf("no-consent count %d with consent", n)
+	if names := overlayRunFileNames(t, g); len(names) == 0 {
+		t.Errorf("marker present: no overlay file in the run directory; the control would pass for nothing")
 	}
+}
+
+// overlayRunFileNames lists the overlay's own files (overlay-*) in the
+// session's run directory.
+func overlayRunFileNames(t *testing.T, f *ovFix) []string {
+	t.Helper()
+	ents, err := os.ReadDir(f.st.RunDir(ovSess))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), "overlay-") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
 }
 
 // TestHook_NoOverlayOrSessionRecordBelowScope6 (ruling 2): with the marker
 // absent, and with it "0", Pre and Post of an Edit of a Go file with an index
-// present write no session log and count 2; with "1" the same calls write it.
+// present write no session log and no overlay file; with "1" the same calls
+// write them.
 func TestHook_NoOverlayOrSessionRecordBelowScope6(t *testing.T) {
 	for _, tc := range []struct {
 		marker  string
@@ -399,12 +419,8 @@ func TestHook_NoOverlayOrSessionRecordBelowScope6(t *testing.T) {
 		if (err == nil) != tc.written {
 			t.Errorf("marker %q: session log exists %v, want %v", tc.marker, err == nil, tc.written)
 		}
-		want := int64(2)
-		if tc.written {
-			want = 0
-		}
-		if n := f.st.OverlayNoConsent(ovSess); n != want {
-			t.Errorf("marker %q: no-consent count %d, want %d", tc.marker, n, want)
+		if names := overlayRunFileNames(t, f); (len(names) > 0) != tc.written {
+			t.Errorf("marker %q: overlay files %v, want some %v", tc.marker, names, tc.written)
 		}
 	}
 }
@@ -421,8 +437,8 @@ func TestHook_OverlayOnlyForGoWrites(t *testing.T) {
 	f.pre("toolu_b", "Bash", map[string]any{"command": "ls"})
 	f.pre("toolu_r", "Read", map[string]any{"file_path": f.file})
 	f.post("toolu_md", "Edit", map[string]any{"file_path": md, "old_string": "hello", "new_string": "bye"})
-	if n := f.st.OverlayNoConsent(ovSess); n != 0 {
-		t.Errorf("no-consent count %d for calls the overlay never concerns", n)
+	if names := overlayRunFileNames(t, f); len(names) != 0 {
+		t.Errorf("overlay files %v for calls the overlay never concerns", names)
 	}
 }
 

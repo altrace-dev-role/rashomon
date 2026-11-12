@@ -54,7 +54,7 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
 	spec.TrustFile,
 	spec.TrustKeyFile,
-	store.FileRecordScope, store.FileSteerDisclosure,
+	store.FileRecordScope, store.FileSteerDisclosure, store.FileSessionContent,
 	store.FileLab,
 	seed.KeptFile,
 	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}
@@ -71,7 +71,7 @@ var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.Di
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
 	store.FileNoticeHoldout, fold.FileName, fold.MidFileName, store.FileBriefingArmed,
-	store.FileOverlayBytes, store.FileOverlayFull, store.FileOverlayNoConsent}
+	store.FileOverlayBytes, store.FileOverlayFull}
 
 var runTempPrefixes = []string{fold.TempPrefix}
 

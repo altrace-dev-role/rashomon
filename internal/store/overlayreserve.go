@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// The overlay's per-run files, in the run directory beside FileSeq. All three
+// The overlay's per-run files, in the run directory beside FileSeq. Both
 // are notes about the run, like probe and seq, and not records.
 const (
 	// FileOverlayBytes holds, as decimal bytes, how much overlay the run has
@@ -18,10 +18,6 @@ const (
 	// FileOverlayFull is present once a reservation was refused for passing
 	// MaxOverlayBytes: overlay_journal_full, recorded once.
 	FileOverlayFull = "overlay-full"
-	// FileOverlayNoConsent is the no-consent tally: one byte per overlay a
-	// writer would have written and did not, because the session-content
-	// marker was absent. Its length is the count.
-	FileOverlayNoConsent = "overlay-no-consent"
 )
 
 // MaxOverlayBytes bounds the overlay bytes one run reserves. It equals
@@ -29,15 +25,21 @@ const (
 // imports graph.
 const MaxOverlayBytes = 4 << 20
 
+// overlayError is a constant error: a package-level errors.New would allocate
+// at init, which the init budget (RES-2) counts, and these cost none.
+type overlayError string
+
+func (e overlayError) Error() string { return string(e) }
+
 // ErrOverlayFull is the bound's answer: the reservation would pass
 // MaxOverlayBytes, nothing was reserved, and the run is marked full.
-var ErrOverlayFull = errors.New("store: the run's overlay bytes are at the bound (overlay_journal_full)")
+const ErrOverlayFull overlayError = "store: the run's overlay bytes are at the bound (overlay_journal_full)"
 
 // ErrOverlayCounter is the refusal for a counter file that cannot be trusted
 // (unreadable or malformed). It is not ErrOverlayFull and records nothing: a
 // corrupt counter is not a full journal, and saying "full" for it would be
 // false. The bound may be over-honoured, never passed.
-var ErrOverlayCounter = errors.New("store: the run's overlay counter is unreadable")
+const ErrOverlayCounter overlayError = "store: the run's overlay counter is unreadable"
 
 // ReserveOverlay adds n bytes to the run's overlay counter, or refuses and
 // changes nothing. It is a second hold of the lock the ordered append takes,
@@ -113,28 +115,4 @@ func markOverlayFull(dir string) {
 func (s *Store) OverlayFull(sessionID string) bool {
 	_, err := os.Stat(filepath.Join(s.RunDir(sessionID), FileOverlayFull))
 	return err == nil
-}
-
-// NoteOverlayNoConsent adds one to the run's no-consent tally: one open and
-// one one-byte append, no lock, no sync, no read. A lost byte on a crash
-// undercounts by one, which a count can bear. The run directory must exist:
-// a missing one drops the note rather than make a directory for it.
-func (s *Store) NoteOverlayNoConsent(sessionID string) {
-	f, err := os.OpenFile(filepath.Join(s.RunDir(sessionID), FileOverlayNoConsent), os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
-	if err != nil {
-		return
-	}
-	_, _ = f.Write([]byte{'.'})
-	_ = f.Close()
-}
-
-// OverlayNoConsent is the run's no-consent count: the tally file's length.
-// It is never on the Coverage record, which cannot represent a count by design
-// (record.go).
-func (s *Store) OverlayNoConsent(sessionID string) int64 {
-	fi, err := os.Stat(filepath.Join(s.RunDir(sessionID), FileOverlayNoConsent))
-	if err != nil {
-		return 0
-	}
-	return fi.Size()
 }

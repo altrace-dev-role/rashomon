@@ -181,24 +181,6 @@ func TestStore_ReserveOverlayMissingCounterReadsZero(t *testing.T) {
 	}
 }
 
-// TestStore_OverlayNoConsentIsAnAppendedByteTally (H4): the count is the
-// file's length, one byte per note, zero for a session never noted.
-func TestStore_OverlayNoConsentIsAnAppendedByteTally(t *testing.T) {
-	st, session, path := reserveStore(t)
-	if n := st.OverlayNoConsent(session); n != 0 {
-		t.Fatalf("count %d before any note", n)
-	}
-	for i := 1; i <= 3; i++ {
-		st.NoteOverlayNoConsent(session)
-		if n := st.OverlayNoConsent(session); n != int64(i) {
-			t.Fatalf("count %d after %d notes", n, i)
-		}
-	}
-	if fi, err := os.Stat(filepath.Join(filepath.Dir(path), FileOverlayNoConsent)); err != nil || fi.Size() != 3 {
-		t.Errorf("tally file: %v, %v", fi, err)
-	}
-}
-
 // TestStore_SessionContentMarker: only "1" is consent; absent, "0" and junk
 // are not.
 func TestStore_SessionContentMarker(t *testing.T) {

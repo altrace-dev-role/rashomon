@@ -3,7 +3,6 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -33,8 +32,8 @@ import (
 //  2. the seq the group would carry is positive (the declaration or the
 //     execution landed in the ordered stream);
 //  3. an index exists above the working directory, and the file is under it;
-//  4. the session-content marker is present. Absent, the writer adds one to
-//     the session's no-consent tally and stops.
+//  4. the session-content marker is present. Absent, the writer stops and
+//     writes nothing: no group, no tally, no file in the run directory.
 //
 // Only after (4) are the file's content read, the index header read and the
 // resolver called, each through a package-level func var so a test can count
@@ -76,7 +75,13 @@ var (
 	}
 )
 
-var errOverlayContent = errors.New("hook: overlay content unreadable or over the cap")
+// overlayContentError is a constant error, which costs no init allocation
+// (RES-2) as a package-level errors.New does.
+type overlayContentError string
+
+func (e overlayContentError) Error() string { return string(e) }
+
+const errOverlayContent overlayContentError = "hook: overlay content unreadable or over the cap"
 
 // readOverlayFile reads a regular file of at most MaxOverlayContentBytes.
 func readOverlayFile(path string) ([]byte, error) {
@@ -303,7 +308,6 @@ func (c overlayCall) write() {
 		return
 	}
 	if !store.SessionContentMarker(c.st.Root()) {
-		c.st.NoteOverlayNoConsent(c.session)
 		return
 	}
 	content, ok := c.content(path)

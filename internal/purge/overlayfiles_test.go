@@ -9,12 +9,11 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// TestPurge_RemovesOverlayRunFiles: the three files the overlay writers leave
-// in a run directory (the byte counter, the journal-full marker and the
-// no-consent tally) are rashomon's, so the plan lists them before their run
-// directory and nothing is foreign: the tally is written on every edit of an
-// install that has not consented, so a run file purge did not know would keep
-// every store root from being removed.
+// TestPurge_RemovesOverlayRunFiles: the two files the overlay writers leave
+// in a run directory (the byte counter and the journal-full marker) are
+// rashomon's, so the plan lists them before their run directory and nothing
+// is foreign: a run file purge did not know would keep the store root from
+// being removed.
 func TestPurge_RemovesOverlayRunFiles(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "rashomon")
 	var ours []string
@@ -27,7 +26,7 @@ func TestPurge_RemovesOverlayRunFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{store.FileRecords, store.FileOverlayBytes, store.FileOverlayFull, store.FileOverlayNoConsent} {
+	for _, f := range []string{store.FileRecords, store.FileOverlayBytes, store.FileOverlayFull} {
 		ours = append(ours, "runs/s1/"+f)
 	}
 	for _, f := range ours {

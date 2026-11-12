@@ -201,6 +201,7 @@ func Default() (Inventory, error) {
 			evidenceFiles(),
 			configFiles(),
 			continuityFiles(),
+			overlayRunFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),
