@@ -48,6 +48,10 @@ type Event struct {
 	// below record scope v5, oversize, switched_off), which TouchedWithheld
 	// counts. A withheld cwd or project alone is no write.
 	WroteWithheld bool
+	// WroteOutside is true for a declaration that names a path as written
+	// outside the project (inProject false), which TouchedOutside counts;
+	// the declaration's paths inside the project are still in Wrote.
+	WroteOutside bool
 }
 
 // Before reports whether e sorts before o in the merged order (seq, record
@@ -93,7 +97,7 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 	}
 	ev = Event{Seq: *h.Seq, Type: h.Type}
 	if h.Type == store.TypeDeclaration {
-		ev.Wrote = wrote(h.FilePath, h.WrittenPaths, h.Project, h.CWD)
+		ev.Wrote, ev.WroteOutside = wrote(h.FilePath, h.WrittenPaths, h.Project, h.CWD)
 		ev.WroteWithheld = h.FileWithheld != nil || h.WrittenWithheld != nil
 	}
 	return ev, true, nil
@@ -103,14 +107,17 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 // terms, as verify reads a write: file_path, which only a file-changing
 // tool's declaration carries (shape.DeclaredPath: Edit, Write, MultiEdit,
 // NotebookEdit; never Read), then each written_paths entry (a shell line's),
-// each through inProject, a path outside the project dropped. A withheld
-// path is null and names nothing.
-func wrote(file *string, shell []string, project, cwd *string) []string {
-	var out []string
+// each through inProject: a path in the project is in paths, and one
+// outside it is dropped and sets outside. A withheld path is null and names
+// nothing, inside or out.
+func wrote(file *string, shell []string, project, cwd *string) (paths []string, outside bool) {
 	add := func(p string) {
-		if rel, ok := inProject(p, project, cwd); ok {
-			out = append(out, rel)
+		rel, ok := inProject(p, project, cwd)
+		if !ok {
+			outside = true
+			return
 		}
+		paths = append(paths, rel)
 	}
 	if file != nil {
 		add(*file)
@@ -118,7 +125,7 @@ func wrote(file *string, shell []string, project, cwd *string) []string {
 	for _, p := range shell {
 		add(p)
 	}
-	return out
+	return paths, outside
 }
 
 // inProject is p relative to the project and whether it lies in it, by
@@ -217,6 +224,9 @@ func Step(f *Frontier, ev Event) {
 	}
 	if ev.WroteWithheld {
 		f.TouchedWithheld++
+	}
+	if ev.WroteOutside {
+		f.TouchedOutside++
 	}
 }
 

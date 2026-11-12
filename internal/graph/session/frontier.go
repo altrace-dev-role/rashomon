@@ -36,7 +36,8 @@ const (
 // W-M4.6, which adds it under a fold_version bump; ObligationsAt and
 // ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53); Touched
 // holds files, not units, for the same reason (its doc); TouchedWithheld,
-// condition 3's cut rule applied to Touched.
+// condition 3's cut rule applied to Touched, and TouchedOutside, the writes
+// Touched cannot place in the project (ruling 11:37).
 type Frontier struct {
 	Schema    int    `json:"schema"`
 	Session   string `json:"session"`
@@ -67,6 +68,18 @@ type Frontier struct {
 	// shell line that may write names no path when its written_paths list is
 	// incomplete (verify's unnamed writes).
 	TouchedWithheld int `json:"touched_withheld"`
+	// TouchedOutside counts write declarations, not files, that named a
+	// path outside the project: still absolute after the project and cwd
+	// prefixes are cut, climbing out, or on another drive (inProject). A
+	// declaration with paths on both sides adds its inside ones to Touched
+	// and counts once here. No symlink is resolved, so a path written
+	// through an alias of the project (/tmp for /private/tmp) is outside: a
+	// session launched by an alias has an empty Touched and every write
+	// here. Both counts at zero still do not make an empty Touched "wrote
+	// nothing": a shell line that may write names no path when its list is
+	// incomplete, so a reader says at most "named no written file" (ruling
+	// 11:46).
+	TouchedOutside int `json:"touched_outside"`
 	// Obligations are copied from the last ledger line, as of its seq
 	// (ObligationsAt); the fold never computes one. ObligationsOmitted is
 	// the ledger line's own cut count: when it is above zero the list is not

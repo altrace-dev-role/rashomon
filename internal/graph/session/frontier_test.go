@@ -33,6 +33,7 @@ func sampleFrontier() Frontier {
 	f.Decisions = []DecisionRef{{IDs: []string{"n2", "n1"}, Action: "leave_alone"}, {IDs: []string{"n0"}, Action: "use"}}
 	f.Touched = []string{"file:z.go", "file:a.go"}
 	f.TouchedWithheld = 3
+	f.TouchedOutside = 4
 	f.Obligations = []ObligationRef{{ID: "ob2", Kind: "gate", Unit: "unit:a", State: "owed"}, {ID: "ob1", Kind: "gate", Unit: "unit:z", State: "met"}}
 	f.ObligationsAt = 30
 	f.ObligationsOmitted = 2
@@ -104,6 +105,19 @@ func TestFrontier_JSONRoundTrip(t *testing.T) {
 	}
 	if bytes.Contains(empty, []byte("null")) {
 		t.Errorf("an empty frontier holds null, which a parsed one would read as []: %s", empty)
+	}
+}
+
+// TestFrontier_TouchedCountKeys (W-M4.2, ruling 11:37 3c): the two cut
+// counts follow Touched under their own keys, which a reader reads by name;
+// a renamed tag round-trips and passes the other frontier tests.
+func TestFrontier_TouchedCountKeys(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"touched":["file:a.go","file:z.go"],"touched_withheld":3,"touched_outside":4,`; !bytes.Contains(b, []byte(want)) {
+		t.Errorf("frontier does not hold %s:\n%s", want, b)
 	}
 }
 

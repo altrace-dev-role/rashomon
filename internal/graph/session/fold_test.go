@@ -84,35 +84,40 @@ func TestEvent_Decode(t *testing.T) {
 
 // TestEvent_DecodeWrites (W-M4.2, D1): a declaration's written paths decode
 // as verify reads a write: the project prefix first, else the cwd prefix,
-// cleaned, and nothing outside the project. Only a declaration names
-// writes (an instructions record's file_path is the file it loaded), and a
-// Read's declaration names no path.
+// cleaned, and nothing outside the project; a declaration that names a path
+// outside it is marked (WroteOutside), its inside paths kept. Only a
+// declaration names writes (an instructions record's file_path is the file
+// it loaded), and a Read's declaration names no path.
 func TestEvent_DecodeWrites(t *testing.T) {
 	for _, c := range []struct {
 		name, line string
 		want       []string
+		outside    bool
 	}{
-		{"edit under the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/internal/a/x.go","project":"/w/p","cwd":"/w/p"}`, []string{"internal/a/x.go"}},
-		{"project before cwd", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/sub/x.go","project":"/w/p","cwd":"/w/p/sub"}`, []string{"sub/x.go"}},
-		{"cwd without a project", `{"type":"declaration","seq":3,"tool_name":"Write","file_path":"/w/p/x.go","project":null,"cwd":"/w/p"}`, []string{"x.go"}},
-		{"relative, cleaned", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"./a/../b/c.go","project":"/w/p","cwd":"/w/p"}`, []string{"b/c.go"}},
-		{"climbs out", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"../q/x.go","project":"/w/p","cwd":"/w/p"}`, nil},
-		{"outside the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/etc/hosts","project":"/w/p","cwd":"/w/p"}`, nil},
-		{"an alias of the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/tmp/t/x.go","project":"/private/tmp/t","cwd":"/private/tmp/t"}`, nil},
-		{"a sibling is not below", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/pab/x.go","project":"/w/p","cwd":null}`, nil},
-		{"the project itself", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p","project":"/w/p","cwd":null}`, nil},
-		{"the project's parent", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/..","project":"/w/p","cwd":null}`, nil},
-		{"a project with a trailing slash", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/x.go","project":"/w/p/","cwd":null}`, []string{"x.go"}},
-		{"the root is no prefix", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/etc/hosts","project":"/","cwd":null}`, nil},
-		{"a drive letter without case", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"c:\\r\\a\\b.go","project":"C:\\r","cwd":null}`, []string{"a/b.go"}},
-		{"another drive", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"D:\\o\\x.go","project":"C:\\r","cwd":null}`, nil},
-		{"a shell line's paths", `{"type":"declaration","seq":3,"tool_name":"Bash","written_paths":["a.go","/w/p/sub/b.go","/etc/x"],"project":"/w/p","cwd":"/w/p"}`, []string{"a.go", "sub/b.go"}},
-		{"a withheld path", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":null,"file_path_withheld":"no_consent","project":"/w/p","cwd":"/w/p"}`, nil},
-		{"an instructions file is not a write", `{"type":"instructions","seq":3,"file_path":"/w/p/CLAUDE.md","project":"/w/p","cwd":"/w/p"}`, nil},
+		{"edit under the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/internal/a/x.go","project":"/w/p","cwd":"/w/p"}`, []string{"internal/a/x.go"}, false},
+		{"project before cwd", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/sub/x.go","project":"/w/p","cwd":"/w/p/sub"}`, []string{"sub/x.go"}, false},
+		{"cwd without a project", `{"type":"declaration","seq":3,"tool_name":"Write","file_path":"/w/p/x.go","project":null,"cwd":"/w/p"}`, []string{"x.go"}, false},
+		{"relative, cleaned", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"./a/../b/c.go","project":"/w/p","cwd":"/w/p"}`, []string{"b/c.go"}, false},
+		{"climbs out", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"../q/x.go","project":"/w/p","cwd":"/w/p"}`, nil, true},
+		{"outside the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/etc/hosts","project":"/w/p","cwd":"/w/p"}`, nil, true},
+		{"an alias of the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/tmp/t/x.go","project":"/private/tmp/t","cwd":"/private/tmp/t"}`, nil, true},
+		{"a sibling is not below", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/pab/x.go","project":"/w/p","cwd":null}`, nil, true},
+		{"the project itself", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p","project":"/w/p","cwd":null}`, nil, true},
+		{"the project's parent", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/..","project":"/w/p","cwd":null}`, nil, true},
+		{"a project with a trailing slash", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/x.go","project":"/w/p/","cwd":null}`, []string{"x.go"}, false},
+		{"the root is no prefix", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/etc/hosts","project":"/","cwd":null}`, nil, true},
+		{"a drive letter without case", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"c:\\r\\a\\b.go","project":"C:\\r","cwd":null}`, []string{"a/b.go"}, false},
+		{"another drive", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"D:\\o\\x.go","project":"C:\\r","cwd":null}`, nil, true},
+		{"a shell line's paths", `{"type":"declaration","seq":3,"tool_name":"Bash","written_paths":["a.go","/w/p/sub/b.go","/etc/x"],"project":"/w/p","cwd":"/w/p"}`, []string{"a.go", "sub/b.go"}, true},
+		{"a withheld path", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":null,"file_path_withheld":"no_consent","project":"/w/p","cwd":"/w/p"}`, nil, false},
+		{"an instructions file is not a write", `{"type":"instructions","seq":3,"file_path":"/w/p/CLAUDE.md","project":"/w/p","cwd":"/w/p"}`, nil, false},
+		{"a shell line inside only", `{"type":"declaration","seq":3,"tool_name":"Bash","written_paths":["a.go","/w/p/sub/b.go"],"project":"/w/p","cwd":"/w/p"}`, []string{"a.go", "sub/b.go"}, false},
+		{"a shell line outside only", `{"type":"declaration","seq":3,"tool_name":"Bash","written_paths":["/tmp/build.out"],"project":"/w/p","cwd":"/w/p"}`, nil, true},
+		{"an instructions file outside is not a write", `{"type":"instructions","seq":3,"file_path":"/etc/x.md","project":"/w/p","cwd":"/w/p"}`, nil, false},
 	} {
 		ev, ok, err := RecordEvent([]byte(c.line))
-		if err != nil || !ok || !reflect.DeepEqual(ev.Wrote, c.want) {
-			t.Errorf("%s: Wrote %q, %v, %v; want %q", c.name, ev.Wrote, ok, err, c.want)
+		if err != nil || !ok || !reflect.DeepEqual(ev.Wrote, c.want) || ev.WroteOutside != c.outside {
+			t.Errorf("%s: Wrote %q, outside %v, %v, %v; want %q, outside %v", c.name, ev.Wrote, ev.WroteOutside, ok, err, c.want, c.outside)
 		}
 	}
 }
@@ -268,5 +273,25 @@ func TestStep_TouchedWithheld(t *testing.T) {
 	}
 	if f.TouchedWithheld != 2 || !reflect.DeepEqual(f.Touched, []string{string(graph.FileID("a.go"))}) {
 		t.Fatalf("TouchedWithheld %d, Touched %q; want 2 and [file:a.go]", f.TouchedWithheld, f.Touched)
+	}
+}
+
+// TestStep_TouchedOutside (W-M4.2, ruling 11:37 3b): each declaration that
+// named a path outside the project counts once, beside the inside paths it
+// adds to Touched, and the two cut counts move apart.
+func TestStep_TouchedOutside(t *testing.T) {
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 1, Type: "declaration", WroteOutside: true},
+		{Seq: 2, Type: "declaration", Wrote: []string{"a.go"}, WroteOutside: true},
+		{Seq: 2, Steer: true, AtUnixMS: 1, ID: "d1", Type: "steer", State: "delivered", Key: "k"},
+		{Seq: 3, Type: "declaration", Wrote: []string{"b.go"}},
+		{Seq: 4, Type: "declaration", WroteWithheld: true},
+	} {
+		Step(&f, ev)
+	}
+	want := []string{string(graph.FileID("a.go")), string(graph.FileID("b.go"))}
+	if f.TouchedOutside != 2 || f.TouchedWithheld != 1 || !reflect.DeepEqual(f.Touched, want) {
+		t.Fatalf("TouchedOutside %d, TouchedWithheld %d, Touched %q; want 2, 1 and %q", f.TouchedOutside, f.TouchedWithheld, f.Touched, want)
 	}
 }
