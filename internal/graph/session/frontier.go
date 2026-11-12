@@ -39,16 +39,28 @@ const (
 // holds files, not units, for the same reason (its doc); TouchedWithheld,
 // condition 3's cut rule applied to Touched, and TouchedOutside, the writes
 // Touched cannot place in the project (ruling 11:37); StopsWithoutVerdict,
-// the Stop checkpoints no verdict names (rulings 12:03, 12:12); and
+// the Stop checkpoints no verdict names (rulings 12:03, 12:12);
 // VerdictRef's DoneFlagged and Unmet for PLAN 1487's Done and Owed, named
-// for what the writer decides (ruling 12:12, VerdictRef's doc).
+// for what the writer decides (ruling 12:12, VerdictRef's doc); and a
+// ReqState keyed Pred:Arg, not by its line's key (PLAN 1489), because one
+// steer line's slots hold up to five graph lines (D6).
 type Frontier struct {
 	Schema    int    `json:"schema"`
 	Session   string `json:"session"`
 	Continues string `json:"continues"`
 	// Intents are the session's prompts by reference: graph.PromptNodeID
 	// and the prompt digest.
-	Intents   []IntentRef   `json:"intents"`
+	Intents []IntentRef `json:"intents"`
+	// Reqs are the requirements the session's delivered lines stated (D6),
+	// one per key Pred:Arg, the first kept, StatedAt the stating line's
+	// after_seq (require). At this commit a unit graph line states
+	// opened_unit on the unit's path as the line holds it, its keyed digest
+	// at record scope v4, met by a later write under it (openedUnit). Open
+	// is "not seen met", never "not done" or "unmet" (ruling 12:52): the
+	// record names no read, and a write it withheld or placed outside the
+	// project (TouchedWithheld, TouchedOutside) meets nothing. The ID is
+	// opaque: a reader takes Pred and Arg from their fields and never splits
+	// the ID, since an Arg may hold a colon (ruling 13:04).
 	Reqs      []ReqState    `json:"reqs"`
 	Decisions []DecisionRef `json:"decisions"`
 	// Touched are file ids: the graph.FileID of each project-relative path
@@ -188,7 +200,7 @@ func newFrontier(sessionID string) Frontier {
 // canon returns f with every slice in its canonical order and every nil
 // slice empty, so one state has one encoding. It copies; f is not changed.
 // The order is total only while every sort key is unique, which the fold
-// keeps: one ReqState per line key, one VerdictRef per checkpoint seq, one
+// keeps: one ReqState per Pred:Arg, one VerdictRef per checkpoint seq, one
 // LineRef per steer line id. Two elements equal on the key and different
 // elsewhere would let two input orders encode differently.
 func canon(f Frontier) Frontier {

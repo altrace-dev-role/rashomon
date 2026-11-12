@@ -41,6 +41,12 @@ type Event struct {
 	// PromptID is a steer line's prompt_id, an id the Intents rule reads;
 	// a line with no prompt (a briefing: prompt_id null) leaves it empty.
 	PromptID string
+	// Units are the subjects of a steer line's unit graph lines (slots
+	// line1..line5, kind steer.KindUnit), in slot order: each the unit's path
+	// as the line holds it, relative to the hook's working directory, or its
+	// keyed digest at record scope v4. The Reqs rule reads them on a
+	// delivered line (require). A record leaves it nil.
+	Units []string
 	// Wrote are the project-relative paths a declaration names as written,
 	// which the Touched rule reads (wrote). Every other record and every
 	// steer line leave it nil.
@@ -263,6 +269,16 @@ func sameDir(a, b string) bool {
 
 func isASCIILetter(c byte) bool { return 'a' <= c|0x20 && c|0x20 <= 'z' }
 
+// graphSlot is the part of a graph line on a steer line (steer's
+// graphLineJSON, one per slot line1..line5) a Req is stated from: its kind,
+// and its subject as the path, or in the record form (record scope v4,
+// slot.GraphLine.Record) the path's keyed digest and no path.
+type graphSlot struct {
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Digest string `json:"digest"`
+}
+
 // SteerEvent decodes one steer.ndjson line. Only a steer.LineType line is an
 // event: a steer_evidence line (steer.EvidenceLineType) carries no after_seq
 // and feeds no frontier field, so ok is false and err nil; its bytes still
@@ -277,6 +293,15 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 		Key      string  `json:"key"`
 		Kind     string  `json:"kind"`
 		PromptID *string `json:"prompt_id"`
+		// Slots are read only at the five graph line keys, each an object
+		// slot.GraphLine wrote; a pattern's other slot keys are not read.
+		Slots struct {
+			Line1 *graphSlot `json:"line1"`
+			Line2 *graphSlot `json:"line2"`
+			Line3 *graphSlot `json:"line3"`
+			Line4 *graphSlot `json:"line4"`
+			Line5 *graphSlot `json:"line5"`
+		} `json:"slots"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: steer line: %w", err)
@@ -291,22 +316,43 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 	if h.PromptID != nil {
 		ev.PromptID = *h.PromptID
 	}
+	for _, g := range [...]*graphSlot{h.Slots.Line1, h.Slots.Line2, h.Slots.Line3, h.Slots.Line4, h.Slots.Line5} {
+		if g == nil || g.Kind != string(steer.KindUnit) {
+			continue
+		}
+		u := g.Path
+		if u == "" {
+			u = g.Digest
+		}
+		if u != "" {
+			ev.Units = append(ev.Units, u)
+		}
+	}
 	return ev, true, nil
 }
 
 // Step applies one event, taken in the merged order, to f. It is pure: no
 // I/O, no clock and no graph, so what it writes depends on f and ev alone,
-// and a fold over a prefix then the tail equals a fold over the whole.
+// and a fold over a prefix then the tail equals a fold over the whole. It
+// writes no element a Frontier copied before it can see: it appends, or
+// rebuilds a list it changes in place (touch, openedUnit, verdict), so the
+// copy keeps every field as it was (TestStep_LeavesCopies). Stepping both
+// copies is not supported, since they share arrays past their lengths;
+// fork one with ParseFrontier(MarshalFrontier(f)).
 func Step(f *Frontier, ev Event) {
 	if ev.PromptID != "" {
 		intent(f, ev)
 	}
 	if ev.State == string(steer.LineStateDelivered) { // only SteerEvent sets State
 		deliver(f, ev)
+		for _, u := range ev.Units {
+			require(f, steer.PredOpenedUnit, u, ev.Seq)
+		}
 	}
 	for _, p := range ev.Wrote {
 		touch(f, p)
 	}
+	openedUnit(f, ev)
 	if ev.WroteWithheld {
 		f.TouchedWithheld++
 	}
@@ -374,16 +420,66 @@ func ledger(f *Frontier, ev Event) {
 
 // touch adds the file a call wrote to Touched as its graph.FileID, kept
 // sorted and unique at every step, so Touched is a set: the same writes in
-// any order fold to the same list (D1: files, not units; see Frontier).
+// any order fold to the same list (D1: files, not units; see Frontier). An
+// insert builds a new list, so a copy taken before keeps its own.
 func touch(f *Frontier, rel string) {
 	id := string(graph.FileID(rel))
 	i := sort.SearchStrings(f.Touched, id)
 	if i < len(f.Touched) && f.Touched[i] == id {
 		return
 	}
-	f.Touched = append(f.Touched, "")
-	copy(f.Touched[i+1:], f.Touched[i:])
-	f.Touched[i] = id
+	f.Touched = slices.Concat(f.Touched[:i], []string{id}, f.Touched[i:])
+}
+
+// require states a Req on a delivered line's subject at the line's
+// after_seq (D6): one ReqState per key pred:arg, the first kept, so a line
+// delivered again, or a second line naming the subject, leaves StatedAt as
+// it was. The key is not the line's: one steer line's slots hold up to five
+// graph lines (Frontier).
+func require(f *Frontier, pred, arg string, seq int64) {
+	id := pred + ":" + arg
+	for _, r := range f.Reqs {
+		if r.ID == id {
+			return
+		}
+	}
+	f.Reqs = append(f.Reqs, ReqState{ID: id, Pred: pred, Arg: arg, Status: ReqOpen, StatedAt: seq})
+}
+
+// openedUnit sets met each open opened_unit Req whose unit a write of ev
+// is in, the path itself or under it (PLAN 1489: a Touch under the unit),
+// at ev's seq: the first such write, and met never goes back. A Req exists
+// only after its line, by the merged order (at one seq a record sorts
+// before a line), so a line is judged by the writes after it, as
+// steer.Compliance judges a line followed, and a write before it meets
+// nothing. Both sides are paths as the record holds them: the slot path
+// relative to the hook's working directory when the line was written
+// (relTo, cmd/rashomon/graph.go), and a written path relative to the
+// project (inProject). They agree when the hook ran at the project root, as
+// it did for 4205 of the 4280 fixture declarations that name both; the
+// steer line names no cwd, so a line written from a subdirectory is read
+// as if from the root, and a write to the same path there meets its Req (a
+// lookalike the record cannot tell apart). A path that climbs, ".", or a
+// keyed digest
+// (record scope v4) matches no written path, so its Req stays open: open is
+// "not seen met", never "unmet" (ruling 12:52). The list is cloned before
+// its first change, so a copy taken before keeps its own.
+func openedUnit(f *Frontier, ev Event) {
+	cloned := false
+	for i, r := range f.Reqs {
+		if r.Pred != steer.PredOpenedUnit || r.Status != ReqOpen || !wroteUnder(ev.Wrote, r.Arg) {
+			continue
+		}
+		if !cloned {
+			f.Reqs, cloned = slices.Clone(f.Reqs), true
+		}
+		f.Reqs[i].Status, f.Reqs[i].MetAt = ReqMet, ev.Seq
+	}
+}
+
+// wroteUnder reports whether a path in wrote is dir or lies under it.
+func wroteUnder(wrote []string, dir string) bool {
+	return slices.ContainsFunc(wrote, func(p string) bool { return p == dir || strings.HasPrefix(p, dir+"/") })
 }
 
 // deliver keeps a delivered steer line as a LineRef at its after_seq. Only

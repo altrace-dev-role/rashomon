@@ -26,9 +26,9 @@ func sampleFrontier() Frontier {
 		{ID: string(graph.PromptNodeID(frSID, 1)), Digest: strings.Repeat("a", 16), StatedAt: 3, Status: ReqMet},
 	}
 	f.Reqs = []ReqState{
-		{ID: "unit:b", Pred: "opened_unit", Arg: "b", Status: ReqOpen, StatedAt: 41},
-		{ID: "gate:go-test", Pred: "gate_green", Arg: "go-test", Status: ReqMet, StatedAt: 4, MetAt: 9},
-		{ID: "unit:a", Pred: "opened_unit", Arg: "a", Status: ReqSuperseded, StatedAt: 4, SupersededBy: "unit:b"},
+		{ID: "opened_unit:b", Pred: "opened_unit", Arg: "b", Status: ReqOpen, StatedAt: 41},
+		{ID: "gate_green:go-test", Pred: "gate_green", Arg: "go-test", Status: ReqMet, StatedAt: 4, MetAt: 9},
+		{ID: "opened_unit:a", Pred: "opened_unit", Arg: "a", Status: ReqSuperseded, StatedAt: 4, SupersededBy: "opened_unit:b"},
 	}
 	f.Decisions = []DecisionRef{{IDs: []string{"n2", "n1"}, Action: "leave_alone"}, {IDs: []string{"n0"}, Action: "use"}}
 	f.Touched = []string{"file:z.go", "file:a.go"}
@@ -224,11 +224,11 @@ var frontierStrings = map[string]string{
 	"Intents[].ID":        "prompt node id, graph.PromptNodeID",
 	"Intents[].Digest":    "prompt digest",
 	"Intents[].Status":    "ReqStatus",
-	"Reqs[].ID":           "line key",
+	"Reqs[].ID":           "a Req's key, Pred:Arg (D6)",
 	"Reqs[].Pred":         "compliance predicate name",
-	"Reqs[].Arg":          "unit, symbol, gate family or test id",
+	"Reqs[].Arg":          "a unit's path as its line holds it or its keyed digest (record scope v4), a symbol, a gate family or a test id",
 	"Reqs[].Status":       "ReqStatus",
-	"Reqs[].SupersededBy": "line key",
+	"Reqs[].SupersededBy": "a Req's key",
 	"Decisions[].IDs[]":   "graph node id",
 	"Decisions[].Action":  "decision action name",
 	"Touched[]":           "file id, graph.FileID of a project-relative path",

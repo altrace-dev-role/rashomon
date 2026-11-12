@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"testing"
@@ -372,6 +373,7 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 		"Kind":     "a closed steer.Kind name, or empty",
 		"PromptID": "a prompt id (a UUID), never the prompt's words",
 		"Wrote[]":  "a project-relative path a call named as written, never a file's contents",
+		"Units[]":  "a unit's path as a steer line's graph line holds it, or its keyed digest at record scope v4",
 
 		"Obligations[].ID":    "an obligation id, verify.ObligationID's digest",
 		"Obligations[].Kind":  "a closed verify.ObligationKind name",
@@ -673,5 +675,140 @@ func TestStep_TouchedOutside(t *testing.T) {
 	want := []string{string(graph.FileID("a.go")), string(graph.FileID("b.go"))}
 	if f.TouchedOutside != 2 || f.TouchedWithheld != 1 || !reflect.DeepEqual(f.Touched, want) {
 		t.Fatalf("TouchedOutside %d, TouchedWithheld %d, Touched %q; want 2, 1 and %q", f.TouchedOutside, f.TouchedWithheld, f.Touched, want)
+	}
+}
+
+// keyedUnit is a unit path's keyed digest as the record form holds it at
+// record scope v4: 64 lowercase hex, no path.
+const keyedUnit = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+// TestEvent_DecodeUnitsSynthetic (W-M4.2, D6, ruling 12:52): a steer line's
+// unit graph lines, in slots line1..line5, decode as Units in slot order,
+// each its path, or its keyed digest when the record form left no path.
+// A code line, an empty line and a pattern's other slot keys are not
+// units, and a unit line with neither names none. SYNTHETIC lines.
+func TestEvent_DecodeUnitsSynthetic(t *testing.T) {
+	head := `{"type":"steer","id":"u1","at_unix_ms":5,"after_seq":7,"state":"delivered","key":"graph","kind":"","prompt_id":"p1"`
+	for _, c := range []struct {
+		name  string
+		slots string
+		want  []string
+	}{
+		{"units in slot order", `,"slots":{"line1":{"kind":"unit","path":"internal/a","digest":""},"line2":{"kind":"code","path":"internal/b/x.go"},` +
+			`"line3":{"kind":"","path":""},"line5":{"kind":"unit","path":"internal/e"},"gate":"go test"}`, []string{"internal/a", "internal/e"}},
+		{"a keyed digest at v4", `,"slots":{"line4":{"kind":"unit","path":"","digest":"` + keyedUnit + `"}}`, []string{keyedUnit}},
+		{"a unit line with neither", `,"slots":{"line1":{"kind":"unit","path":"","digest":""}}`, nil},
+		{"no slots", ``, nil},
+		{"null slots", `,"slots":null`, nil},
+	} {
+		ev, ok, err := SteerEvent([]byte(head + c.slots + "}"))
+		if err != nil || !ok || !slices.Equal(ev.Units, c.want) {
+			t.Errorf("%s: Units %q, %v, %v; want %q", c.name, ev.Units, ok, err, c.want)
+		}
+	}
+}
+
+// TestStep_ReqsSynthetic (W-M4.2, D6, rulings 12:52 (2), (3), 13:04 (3)): a
+// delivered line states one opened_unit Req per unit, keyed Pred:Arg, at
+// its after_seq; a suppressed line states none, and a unit stated again
+// keeps its first StatedAt. A Req is met at the first write after its line
+// at its path or under it, and never again. The boundary in three cases,
+// the events put in the merged order by Before: a write before the line
+// (5) and a write at the line's own after_seq (10, a record sorts first)
+// leave internal/early open; writes after it (14, 15) meet. A sibling that
+// only shares the prefix (13) meets nothing. A Req of another predicate on
+// the same path stays open: the fold sets met only what it can see.
+// SYNTHETIC events.
+func TestStep_ReqsSynthetic(t *testing.T) {
+	f := newFrontier("s1")
+	other := ReqState{ID: steer.PredEditedOrVerified + ":internal/platform", Pred: steer.PredEditedOrVerified, Arg: "internal/platform", Status: ReqOpen, StatedAt: 3}
+	f.Reqs = []ReqState{other}
+	line := func(seq int64, id, state string, units ...string) Event {
+		return Event{Seq: seq, Steer: true, AtUnixMS: seq, ID: id, Type: steer.LineType, State: state, Key: "graph", Units: units}
+	}
+	write := func(seq int64, p string) Event {
+		return Event{Seq: seq, Type: store.TypeDeclaration, Wrote: []string{p}}
+	}
+	evs := []Event{
+		write(5, "internal/early/a.go"),
+		line(10, "l1", "delivered", "internal/platform", "cmd/x", "internal/early"),
+		write(10, "internal/early/b.go"),
+		line(11, "l2", "suppressed", "internal/other"),
+		line(12, "l3", "delivered", "internal/platform"),
+		write(13, "internal/platformer/x.go"),
+		write(14, "cmd/x"),
+		write(15, "internal/platform/b.go"),
+		write(16, "internal/platform/c.go"),
+	}
+	sort.SliceStable(evs, func(i, j int) bool { return evs[i].Before(evs[j]) })
+	for _, ev := range evs {
+		Step(&f, ev)
+	}
+	unit := func(arg string, status ReqStatus, met int64) ReqState {
+		return ReqState{ID: steer.PredOpenedUnit + ":" + arg, Pred: steer.PredOpenedUnit, Arg: arg, Status: status, StatedAt: 10, MetAt: met}
+	}
+	want := []ReqState{other, unit("internal/platform", ReqMet, 15), unit("cmd/x", ReqMet, 14), unit("internal/early", ReqOpen, 0)}
+	if !slices.Equal(f.Reqs, want) {
+		t.Errorf("Reqs:\n%+v\nwant\n%+v", f.Reqs, want)
+	}
+}
+
+// TestStep_LeavesCopies (W-M4.2): a Step leaves a Frontier copied before it
+// as it was, byte for byte, while the stepped one gains the write's file in
+// order and meets the Req. Touched has room past its length, so an insert
+// that shifts in place would write into the copy's array. SYNTHETIC events.
+func TestStep_LeavesCopies(t *testing.T) {
+	f := newFrontier("s1")
+	f.Touched = append(make([]string, 0, 8), string(graph.FileID("a")), string(graph.FileID("c")))
+	f.Reqs = []ReqState{{ID: steer.PredOpenedUnit + ":b", Pred: steer.PredOpenedUnit, Arg: "b", Status: ReqOpen, StatedAt: 1}}
+	g := f
+	before, err := MarshalFrontier(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Step(&f, Event{Seq: 2, Type: store.TypeDeclaration, Wrote: []string{"b"}})
+	if after, _ := MarshalFrontier(g); string(after) != string(before) {
+		t.Errorf("copy changed:\n%s\nwant\n%s", after, before)
+	}
+	wantTouched := []string{string(graph.FileID("a")), string(graph.FileID("b")), string(graph.FileID("c"))}
+	if !slices.Equal(f.Touched, wantTouched) || f.Reqs[0].Status != ReqMet || f.Reqs[0].MetAt != 2 {
+		t.Errorf("stepped: Touched %q, Req %+v; want %q and met at 2", f.Touched, f.Reqs[0], wantTouched)
+	}
+}
+
+// TestStep_KnownHoleT_SubdirLookalikeMeets (W-M4.2, debt (t), ruling 13:04
+// (4)): a KNOWN HOLE, pinned so that its fix must flip this test. A slot
+// path is relative to the hook's working directory, a written path to the
+// project, and the steer line names no cwd. A line written from /p/sub
+// names the unit /p/sub/pkg as "pkg": a write to the unit itself is
+// sub/pkg/b.go and leaves the Req open, and a write to the lookalike
+// /p/pkg/a.go meets it. Once the record keeps a project-relative path
+// (debt (t), engine lane), the first write meets and the second does not.
+// SYNTHETIC lines.
+func TestStep_KnownHoleT_SubdirLookalikeMeets(t *testing.T) {
+	f := newFrontier("s1")
+	for _, c := range []struct {
+		line   string
+		steer  bool
+		status ReqStatus
+		met    int64
+	}{
+		{`{"type":"steer","id":"h1","at_unix_ms":1,"after_seq":2,"state":"delivered","key":"graph","kind":"","prompt_id":"p1","project":"/p",` +
+			`"slots":{"line1":{"kind":"unit","path":"pkg","digest":""}}}`, true, ReqOpen, 0},
+		{`{"type":"declaration","seq":3,"file_path":"/p/sub/pkg/b.go","project":"/p","cwd":"/p/sub"}`, false, ReqOpen, 0},
+		{`{"type":"declaration","seq":4,"file_path":"/p/pkg/a.go","project":"/p","cwd":"/p/sub"}`, false, ReqMet, 4},
+	} {
+		decode := RecordEvent
+		if c.steer {
+			decode = SteerEvent
+		}
+		ev, ok, err := decode([]byte(c.line))
+		if err != nil || !ok {
+			t.Fatalf("%s: %v, %v", c.line, ok, err)
+		}
+		Step(&f, ev)
+		if len(f.Reqs) != 1 || f.Reqs[0].Arg != "pkg" || f.Reqs[0].Status != c.status || f.Reqs[0].MetAt != c.met {
+			t.Fatalf("after seq %d: Reqs %+v; want one on pkg, %s at %d", ev.Seq, f.Reqs, c.status, c.met)
+		}
 	}
 }
