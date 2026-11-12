@@ -126,7 +126,7 @@ func TestK7_ConflictBaseOnTheRepoIndex(t *testing.T) {
 		{"boundary, every Go unit into internal/graph", []engine.Rule{into}},
 	} {
 		cb := engine.ConflictBaseOf(g, rev, c.rules)
-		data, err := encodeConflictBase(head, c.rules, cb)
+		data, err := encodeConflictBase(head, storedRules(c.rules), cb)
 		if err != nil {
 			t.Fatal(err)
 		}

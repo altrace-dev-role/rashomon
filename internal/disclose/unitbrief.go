@@ -24,9 +24,14 @@ func unitBriefFiles() []FileRule {
 				"index's commit, the prompt's id, and for each line its key, its one fact (the files of other units that " +
 				"use the unit; a recorded decision's or lesson's id, title, source and the one sentence a brief may carry; " +
 				"or the existing files, functions and types offered for reuse) and the counts of what it leaves out; the " +
-				"conflict base holds the index's commit and repository, the rules (ids, kinds, unit prefixes, path " +
-				"patterns and the ids they apply to), the repository graph's edges that cross a boundary a rule sets " +
-				"with the symbols and files they run through, and the content digests of the files a rule guards",
+				"conflict base holds its format's version, the index's commit and repository, a digest of the rules, and " +
+				"the rules: each rule's id and kind, the unit prefixes a boundary runs from and into, its path patterns, " +
+				"the ids of the files, units and symbols it applies to and, for a recorded decision, which of its two " +
+				"checks it makes (paths_untouched or symbol_present), never a rule's source or other text; the " +
+				"repository graph's edges that cross a boundary a rule sets, with the symbols and files they run " +
+				"through, each by its ids, its kind or predicate, its tier, confidence and status, and the commit it " +
+				"belongs to, never an attribute the index keeps of it (such as a function's signature or the values " +
+				"a call passes) or where the index read it; and the content digests of the files a rule guards",
 			NeverHolds: never,
 			RemovedBy:  "purge",
 			Owner:      "cmd",

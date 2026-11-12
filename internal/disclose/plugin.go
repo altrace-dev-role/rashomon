@@ -26,7 +26,7 @@ const PluginDescription = "Records each Claude Code tool call on this machine, i
 	"to the agent's context, such as a test that passed earlier and fails now; you see each one, and they go " +
 	"to your model provider with the conversation. Never stores your prompts, command text, tool output, " +
 	"file contents or a spec file's text (of a spec, only its digest and its rules' ids, and, where Go " +
-	"edits are kept, the paths and patterns of the rules each edit is checked against), and sends nothing " +
+	"edits are kept, the paths, patterns and symbols named by the rules each edit is checked against), and sends nothing " +
 	"itself. Ships disabled: enabling it is your consent to the above, and " +
 	"disabling it in /plugin stops all of it. Full list of what it keeps: " +
 	"https://github.com/altrace-dev-role/rashomon#what-it-records-and-what-it-never-stores"

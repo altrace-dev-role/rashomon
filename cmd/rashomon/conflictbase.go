@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
@@ -23,11 +24,16 @@ import (
 // graph.ConflictBaseFileName, through writeUnitBrief: the unit briefs'
 // consent gate, writer, purge rule and disclosure row. Two lines: a head
 // (version, commit, repository, the rules' digest) a prompt reads alone to
-// see the file is current, then the rules as engine.RulesFor resolved them
-// and engine.ConflictBaseOf's slice. It holds no word of the prompt (D160).
+// see the file is current, then the rules as engine.RulesFor resolved them,
+// kept as storedRules keeps them, and engine.ConflictBaseOf's slice, whose
+// records are bare. It holds no word of the prompt (D160), and of a spec
+// rule or a file only what the unit-brief row's Holds names.
 
-// conflictBaseVersion is the base file's format.
-const conflictBaseVersion = 1
+// conflictBaseVersion is the base file's format: 2 since the base keeps its
+// records bare and its rules as storedRules keeps them. Both readers refuse
+// a base of another version, so the post checks nothing against a version
+// 1 base and the next prompt writes it again.
+const conflictBaseVersion = 2
 
 // maxConflictBaseBytes caps the base file (D2): a base over it is not
 // written, any older one is removed, and the post reads none.
@@ -75,7 +81,7 @@ func writeConflictBase(storeRoot, sessionID, root, repo string, s *graph.Store, 
 		return
 	}
 	rows, _ := knowledge.ReadDir(root)
-	rules := engine.RulesFor(specOf(), rows, s, repo, rev)
+	rules := storedRules(engine.RulesFor(specOf(), rows, s, repo, rev))
 	path := conflictBasePath(storeRoot, sessionID, root)
 	if len(rules) == 0 {
 		_ = os.Remove(path)
@@ -99,6 +105,24 @@ func writeConflictBase(storeRoot, sessionID, root, repo string, s *graph.Store, 
 		return
 	}
 	_ = writeUnitBrief(path, data)
+}
+
+// storedRules is rules as the base keeps them: with no Source, which no
+// reader of the base reads, and with a Predicate only on a decision rule
+// whose predicate is one of spec.RulePredicates, the only rule a detector
+// reads one of (engine's pathRule and decisionConflicts). A spec rule's
+// source and predicate are its author's plain text, which the base never
+// keeps. The rules given are not changed.
+func storedRules(rules []engine.Rule) []engine.Rule {
+	out := make([]engine.Rule, len(rules))
+	for i, r := range rules {
+		r.Source = ""
+		if spec.RuleKind(r.Kind) != spec.Decision || !slices.Contains(spec.RulePredicates, r.Predicate) {
+			r.Predicate = ""
+		}
+		out[i] = r
+	}
+	return out
 }
 
 // encodeConflictBase is the base file's bytes: the head line, then the

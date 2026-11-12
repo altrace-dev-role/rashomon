@@ -32,13 +32,21 @@ import (
 //   - symbol_present is silent at an overlay revision (P2 ruling 1),
 //     signature_mismatch needs an arity the Go index does not hold, and
 //     duplicate_abstraction is withheld; none reads a base record here.
+//   - No detector reads a base record's attribute to an effect at a Go
+//     edit: signature_mismatch and the arity check read a sig or an
+//     arity, which the Go index never holds, and a Go overlay carries no
+//     call. Nothing reads a record's Prov, and the store sets an edge's
+//     Certain again on Assert. So the slice keeps each record bare
+//     (bare): an index's attributes hold words of a file (a function's
+//     signature, a call's keyword values as the Python extractor spells
+//     them), which the base never keeps.
 // TestConflictBase_SliceEqualsFullLoad pins the slice against the whole
 // index over a case of each live kind, and
 // TestConflictBase_EveryLiveKindHasACase fails when a kind joins the live
 // set without one.
 
 // ConflictBase is the slice of an index for a rule set: Records, at the
-// index's commit, and Digests, the content digest at the commit of each file
+// index's commit and each bare, and Digests, the content digest at the commit of each file
 // a paths_untouched or protect_path rule reaches (an AppliesTo file, a file
 // of an AppliesTo unit, an index file a pattern of Paths matches).
 type ConflictBase struct {
@@ -64,7 +72,7 @@ func ConflictBaseOf(g *graph.Store, rev graph.Rev, rules []Rule) ConflictBase {
 	add := func(rec graph.Record) {
 		if k := recordKey(rec); !seen[k] {
 			seen[k] = true
-			b.Records = append(b.Records, rec)
+			b.Records = append(b.Records, bare(rec))
 		}
 	}
 	if len(bounds) > 0 {
@@ -212,4 +220,18 @@ func recordKey(rec graph.Record) string {
 		return "n\x00" + string(rec.Node.ID)
 	}
 	return "e\x00" + rec.Edge.Key()
+}
+
+// bare is rec without the fields the base never keeps (the slice's
+// comment above): its Attrs, its Prov and, for an edge, Certain, which
+// the store computes again on Assert.
+func bare(rec graph.Record) graph.Record {
+	if rec.Node != nil {
+		n := *rec.Node
+		n.Attrs, n.Prov = nil, graph.Prov{}
+		return graph.Record{Node: &n}
+	}
+	e := *rec.Edge
+	e.Attrs, e.Prov, e.Certain = nil, graph.Prov{}, false
+	return graph.Record{Edge: &e}
 }

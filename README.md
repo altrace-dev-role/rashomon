@@ -181,12 +181,13 @@ list of what it keeps, word for word as the install screen's full view
 
 It never stores your prompts, the agent's messages, tool output, file contents
 or a spec file's text (of a spec, only its digest and its rules' ids, and, where
-Go edits are kept, the paths and patterns of the rules each edit is checked
-against). It reads each prompt in memory to write the preflight note and keeps
-no word of it beyond the project paths the note names. `rashomon report` quotes
-the agent's final message from Claude Code's transcript without storing it. The
-one exception is opt-in: `rashomon bodies on` copies this project's transcripts
-into the store, and `rashomon forget --bodies` removes them.
+Go edits are kept, the paths, patterns and symbols named by the rules each edit
+is checked against). It reads each prompt in memory to write the preflight note
+and keeps no word of it beyond the project paths the note names.
+`rashomon report` quotes the agent's final message from Claude Code's transcript
+without storing it. The one exception is opt-in: `rashomon bodies on` copies
+this project's transcripts into the store, and `rashomon forget --bodies`
+removes them.
 
 In an indexed repository, once you have agreed to this build's screen, it also
 keeps what each Go edit declares: the names of the file's functions, types,

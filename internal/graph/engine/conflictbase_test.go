@@ -11,7 +11,8 @@ import (
 )
 
 // cbfx is the conflict-base fixture at C1: the boundary fixture, with a
-// call from E1 into hookio and an import of hookio by g.lx that stand at
+// call from E1 into hookio (with cbCallAttrs and cbCallProv, which the
+// slice drops) and an import of hookio by g.lx that stand at
 // the base, a protected file keep/p.lx, a decided file docs/d.lx and a
 // second file of its unit, docs/d2.lx; every file carries a content digest
 // as the index writes it.
@@ -25,7 +26,7 @@ func newConflictBaseFx(t *testing.T) cbfx {
 	t.Helper()
 	c := cbfx{bfx: newBoundaryFx()}
 	f := c.f
-	f.edge(c.e1, graph.Calls, c.h1, fxC1, nil)
+	f.s.AssertEdge(graph.Edge{Src: c.e1, Pred: graph.Calls, Dst: c.h1, Attrs: cbCallAttrs, Prov: cbCallProv, Rev: fxC1})
 	f.edge(c.fileG, graph.Imports, fxUnit("internal/hookio"), fxC1, nil)
 	c.fileP = f.file("keep", "keep/p.lx", fxC1)
 	c.p0 = f.sym(c.fileP, "keep", "func", "P0", fxC1, nil)
@@ -215,5 +216,47 @@ func TestConflictBase_EveryLiveKindHasACase(t *testing.T) {
 		if !slices.Contains(verify.WithheldConflictKinds, k) && !have[k] {
 			t.Errorf("live kind %s has no case in conflictBaseCases", k)
 		}
+	}
+}
+
+// cbCallAttrs and cbCallProv are what an extractor writes on the call from
+// E1 into hookio: an argument count and a keyword's value as the Python
+// extractor spells them, and where it read the call.
+var (
+	cbCallAttrs = map[string]string{"argc": "1", "kw.token": "zqxv-plinth"}
+	cbCallProv  = graph.Prov{Extractor: "pylite", Version: "v1", Evidence: []string{"e1.py:3"}}
+)
+
+// TestConflictBase_KeepsEachRecordBare: every record of the slice, read
+// back through JSON, has no Attrs, a zero Prov and Certain unset, while the
+// index's versions of them carry attributes (a sliced symbol's name and
+// kind, the call's argument count and keyword value) and the call its
+// provenance: the witness. Break: append rec unbared in ConflictBaseOf.
+func TestConflictBase_KeepsEachRecordBare(t *testing.T) {
+	c := newConflictBaseFx(t)
+	cb := roundTrip(t, ConflictBaseOf(c.f.s, fxC1, []Rule{boundaryRule("b1", graphU, hookU)}))
+	var nodes, edges int
+	for _, rec := range cb.Records {
+		if n := rec.Node; n != nil {
+			if n.Attrs != nil || !reflect.DeepEqual(n.Prov, graph.Prov{}) {
+				t.Errorf("the slice keeps node %s with attrs %v and prov %+v", n.ID, n.Attrs, n.Prov)
+			}
+			if x, ok := c.f.s.Node(n.ID, fxC1); ok && len(x.Attrs) > 0 {
+				nodes++
+			}
+			continue
+		}
+		e := rec.Edge
+		if e.Attrs != nil || !reflect.DeepEqual(e.Prov, graph.Prov{}) || e.Certain {
+			t.Errorf("the slice keeps edge %s %s %s with attrs %v, prov %+v, certain %v", e.Src, e.Pred, e.Dst, e.Attrs, e.Prov, e.Certain)
+		}
+		for _, x := range c.f.s.Out(e.Src, fxC1, e.Pred) {
+			if x.Dst == e.Dst && len(x.Attrs) > 0 && len(x.Prov.Evidence) > 0 {
+				edges++
+			}
+		}
+	}
+	if nodes == 0 || edges == 0 {
+		t.Errorf("witness: %d sliced nodes and %d sliced edges carry attributes in the index, want at least one of each", nodes, edges)
 	}
 }
