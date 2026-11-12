@@ -31,7 +31,7 @@ func sampleFrontier() Frontier {
 		{ID: "unit:a", Pred: "opened_unit", Arg: "a", Status: ReqSuperseded, StatedAt: 4, SupersededBy: "unit:b"},
 	}
 	f.Decisions = []DecisionRef{{IDs: []string{"n2", "n1"}, Action: "leave_alone"}, {IDs: []string{"n0"}, Action: "use"}}
-	f.Touched = []string{"unit:z", "unit:a"}
+	f.Touched = []string{"file:z.go", "file:a.go"}
 	f.Obligations = []ObligationRef{{ID: "ob2", Kind: "gate", Unit: "unit:a", State: "owed"}, {ID: "ob1", Kind: "gate", Unit: "unit:z", State: "met"}}
 	f.ObligationsAt = 30
 	f.ObligationsOmitted = 2
@@ -172,7 +172,7 @@ var frontierStrings = map[string]string{
 	"Reqs[].SupersededBy": "line key",
 	"Decisions[].IDs[]":   "graph node id",
 	"Decisions[].Action":  "decision action name",
-	"Touched[]":           "unit id",
+	"Touched[]":           "file id, graph.FileID of a project-relative path",
 	"Obligations[].ID":    "obligation id",
 	"Obligations[].Kind":  "obligation kind name",
 	"Obligations[].Unit":  "unit id",

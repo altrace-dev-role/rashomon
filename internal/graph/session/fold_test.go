@@ -49,12 +49,12 @@ func TestEvent_MergeOrder(t *testing.T) {
 func TestEvent_Decode(t *testing.T) {
 	rec := `{"type":"declaration","schema_version":10,"seq":7,"recorded_at_unix_ms":1793897985945,"tool_use_id":"toolu_1","session_id":"s1","tool_name":"Read"}`
 	ev, ok, err := RecordEvent([]byte(rec))
-	if err != nil || !ok || ev != (Event{Seq: 7, Type: "declaration"}) {
+	if err != nil || !ok || !reflect.DeepEqual(ev, Event{Seq: 7, Type: "declaration"}) {
 		t.Errorf("record: %+v, %v, %v", ev, ok, err)
 	}
 	line := `{"type":"steer","v":1,"id":"0a6742a0","at_unix_ms":1793897981372,"session_id":"s1","prompt_id":"6f1c2d3e-0000-4000-8000-00000000000a","kind":"unit","key":"example.com/m/internal/a@0a1b2c3d","after_seq":7,"model_text":"some words","user_text":"more words","state":"delivered"}`
 	ev, ok, err = SteerEvent([]byte(line))
-	if err != nil || !ok || ev != (Event{Seq: 7, Steer: true, AtUnixMS: 1793897981372, ID: "0a6742a0", Type: "steer", State: "delivered", Key: "example.com/m/internal/a@0a1b2c3d", Kind: "unit", PromptID: "6f1c2d3e-0000-4000-8000-00000000000a"}) {
+	if err != nil || !ok || !reflect.DeepEqual(ev, Event{Seq: 7, Steer: true, AtUnixMS: 1793897981372, ID: "0a6742a0", Type: "steer", State: "delivered", Key: "example.com/m/internal/a@0a1b2c3d", Kind: "unit", PromptID: "6f1c2d3e-0000-4000-8000-00000000000a"}) {
 		t.Errorf("steer line: %+v, %v, %v", ev, ok, err)
 	}
 	evidence := `{"type":"steer_evidence","v":1,"at_unix_ms":1793897981400,"session_id":"s1","steer_id":"0a6742a0","event":"UserPromptSubmit"}`
@@ -82,6 +82,41 @@ func TestEvent_Decode(t *testing.T) {
 	}
 }
 
+// TestEvent_DecodeWrites (W-M4.2, D1): a declaration's written paths decode
+// as verify reads a write: the project prefix first, else the cwd prefix,
+// cleaned, and nothing outside the project. Only a declaration names
+// writes (an instructions record's file_path is the file it loaded), and a
+// Read's declaration names no path.
+func TestEvent_DecodeWrites(t *testing.T) {
+	for _, c := range []struct {
+		name, line string
+		want       []string
+	}{
+		{"edit under the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/internal/a/x.go","project":"/w/p","cwd":"/w/p"}`, []string{"internal/a/x.go"}},
+		{"project before cwd", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/sub/x.go","project":"/w/p","cwd":"/w/p/sub"}`, []string{"sub/x.go"}},
+		{"cwd without a project", `{"type":"declaration","seq":3,"tool_name":"Write","file_path":"/w/p/x.go","project":null,"cwd":"/w/p"}`, []string{"x.go"}},
+		{"relative, cleaned", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"./a/../b/c.go","project":"/w/p","cwd":"/w/p"}`, []string{"b/c.go"}},
+		{"climbs out", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"../q/x.go","project":"/w/p","cwd":"/w/p"}`, nil},
+		{"outside the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/etc/hosts","project":"/w/p","cwd":"/w/p"}`, nil},
+		{"an alias of the project", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/tmp/t/x.go","project":"/private/tmp/t","cwd":"/private/tmp/t"}`, nil},
+		{"a sibling is not below", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/pab/x.go","project":"/w/p","cwd":null}`, nil},
+		{"the project itself", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p","project":"/w/p","cwd":null}`, nil},
+		{"the project's parent", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/..","project":"/w/p","cwd":null}`, nil},
+		{"a project with a trailing slash", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/w/p/x.go","project":"/w/p/","cwd":null}`, []string{"x.go"}},
+		{"the root is no prefix", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"/etc/hosts","project":"/","cwd":null}`, nil},
+		{"a drive letter without case", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"c:\\r\\a\\b.go","project":"C:\\r","cwd":null}`, []string{"a/b.go"}},
+		{"another drive", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":"D:\\o\\x.go","project":"C:\\r","cwd":null}`, nil},
+		{"a shell line's paths", `{"type":"declaration","seq":3,"tool_name":"Bash","written_paths":["a.go","/w/p/sub/b.go","/etc/x"],"project":"/w/p","cwd":"/w/p"}`, []string{"a.go", "sub/b.go"}},
+		{"a withheld path", `{"type":"declaration","seq":3,"tool_name":"Edit","file_path":null,"file_path_withheld":"no_consent","project":"/w/p","cwd":"/w/p"}`, nil},
+		{"an instructions file is not a write", `{"type":"instructions","seq":3,"file_path":"/w/p/CLAUDE.md","project":"/w/p","cwd":"/w/p"}`, nil},
+	} {
+		ev, ok, err := RecordEvent([]byte(c.line))
+		if err != nil || !ok || !reflect.DeepEqual(ev.Wrote, c.want) {
+			t.Errorf("%s: Wrote %q, %v, %v; want %q", c.name, ev.Wrote, ok, err, c.want)
+		}
+	}
+}
+
 // TestEvent_HoldsNoWords (W-M4.2, AC-M4.1): an event keeps the order key and
 // the fields a rule reads, never a line's words (model_text, user_text). A
 // string field not named here fails by name.
@@ -93,6 +128,7 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 		"Key":      "a finding's dedupe key: a unit id and a digest",
 		"Kind":     "a closed steer.Kind name, or empty",
 		"PromptID": "a prompt id (a UUID), never the prompt's words",
+		"Wrote[]":  "a project-relative path a call named as written, never a file's contents",
 	}
 	var got []string
 	stringLeaves(reflect.TypeOf(Event{}), "", &got)
@@ -160,5 +196,31 @@ func TestStep_Intents(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.Intents, want) {
 		t.Fatalf("Intents\n got %+v\nwant %+v", f.Intents, want)
+	}
+}
+
+// TestStep_Touched (W-M4.2, D1): every path a declaration wrote joins
+// Touched as its graph.FileID, sorted and unique, so the same writes in any
+// order fold to the same set; a steer line and a record without writes
+// leave it as it was.
+func TestStep_Touched(t *testing.T) {
+	evs := []Event{
+		{Seq: 1, Type: "declaration", Wrote: []string{"internal/b/y.go"}},
+		{Seq: 2, Type: "declaration", Wrote: []string{"a.go", "internal/b/y.go"}},
+		{Seq: 2, Steer: true, AtUnixMS: 1, ID: "d1", Type: "steer", State: "delivered", Key: "k"},
+		{Seq: 3, Type: "terminal"},
+		{Seq: 4, Type: "declaration", Wrote: []string{"cmd/m/main.go"}},
+	}
+	want := []string{string(graph.FileID("a.go")), string(graph.FileID("cmd/m/main.go")), string(graph.FileID("internal/b/y.go"))}
+	r := rand.New(rand.NewSource(1))
+	for round := 0; round < 20; round++ {
+		f := newFrontier("s1")
+		for _, ev := range evs {
+			Step(&f, ev)
+		}
+		if !reflect.DeepEqual(f.Touched, want) {
+			t.Fatalf("round %d: Touched\n got %q\nwant %q", round, f.Touched, want)
+		}
+		r.Shuffle(len(evs), func(i, j int) { evs[i], evs[j] = evs[j], evs[i] })
 	}
 }

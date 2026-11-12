@@ -34,7 +34,8 @@ const (
 // Commit, because no record line carries a repo id or the session's start
 // commit, and a field the record cannot give breaks C1; no Drift until
 // W-M4.6, which adds it under a fold_version bump; ObligationsAt and
-// ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53).
+// ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53); Touched
+// holds files, not units, for the same reason (its doc).
 type Frontier struct {
 	Schema    int    `json:"schema"`
 	Session   string `json:"session"`
@@ -44,7 +45,13 @@ type Frontier struct {
 	Intents   []IntentRef   `json:"intents"`
 	Reqs      []ReqState    `json:"reqs"`
 	Decisions []DecisionRef `json:"decisions"`
-	// Touched are the units the session opened or wrote, sorted, unique.
+	// Touched are the files the session's calls named as written, each the
+	// graph.FileID of its project-relative path, sorted, unique (D1). Files,
+	// not units: a unit id needs the language's resolver, and pylite's units
+	// come from the index, not the record (C1); a reader holding the
+	// lang.Registry maps a file to its unit, and with the repo id to the
+	// global form (graph.GlobalID). Written, not opened: the record names a
+	// path only for a file-changing call (shape.DeclaredPath).
 	Touched []string `json:"touched"`
 	// Obligations are copied from the last ledger line, as of its seq
 	// (ObligationsAt); the fold never computes one. ObligationsOmitted is

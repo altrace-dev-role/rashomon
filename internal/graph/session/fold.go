@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
+	"sort"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Event is one record line or steer line, decoded to its place in the
@@ -35,6 +39,10 @@ type Event struct {
 	// PromptID is a steer line's prompt_id, an id the Intents rule reads;
 	// a line with no prompt (a briefing: prompt_id null) leaves it empty.
 	PromptID string
+	// Wrote are the project-relative paths a declaration names as written,
+	// which the Touched rule reads (wrote). Every other record and every
+	// steer line leave it nil.
+	Wrote []string
 }
 
 // Before reports whether e sorts before o in the merged order (seq, record
@@ -56,11 +64,17 @@ func (e Event) Before(o Event) bool {
 var errUnplaced = errors.New("session: a line the merge cannot place")
 
 // RecordEvent decodes one records.ndjson line. Every record with a type and
-// a seq is an event; a rule that has no use for its type passes it by.
+// a seq is an event; a rule that has no use for its type passes it by. Only
+// a declaration's paths are writes: an instructions record carries a
+// file_path too, the instructions file it loaded.
 func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 	var h struct {
-		Type string `json:"type"`
-		Seq  *int64 `json:"seq"`
+		Type         string   `json:"type"`
+		Seq          *int64   `json:"seq"`
+		FilePath     *string  `json:"file_path"`
+		WrittenPaths []string `json:"written_paths"`
+		Project      *string  `json:"project"`
+		CWD          *string  `json:"cwd"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: record line: %w", err)
@@ -68,8 +82,84 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 	if h.Type == "" || h.Seq == nil {
 		return Event{}, false, fmt.Errorf("%w: record without type or seq", errUnplaced)
 	}
-	return Event{Seq: *h.Seq, Type: h.Type}, true, nil
+	ev = Event{Seq: *h.Seq, Type: h.Type}
+	if h.Type == store.TypeDeclaration {
+		ev.Wrote = wrote(h.FilePath, h.WrittenPaths, h.Project, h.CWD)
+	}
+	return ev, true, nil
 }
+
+// wrote is the paths a declaration names as written, in the project's
+// terms, as verify reads a write: file_path, which only a file-changing
+// tool's declaration carries (shape.DeclaredPath: Edit, Write, MultiEdit,
+// NotebookEdit; never Read), then each written_paths entry (a shell line's),
+// each through inProject, a path outside the project dropped. A withheld
+// path is null and names nothing.
+func wrote(file *string, shell []string, project, cwd *string) []string {
+	var out []string
+	add := func(p string) {
+		if rel, ok := inProject(p, project, cwd); ok {
+			out = append(out, rel)
+		}
+	}
+	if file != nil {
+		add(*file)
+	}
+	for _, p := range shell {
+		add(p)
+	}
+	return out
+}
+
+// inProject is p relative to the project and whether it lies in it, by
+// verify's two rules composed as its rule check composes them
+// (rules_raise.go: projectPath(relativise(p, project, cwd))): separators
+// slashed; the project prefix stripped, else the cwd prefix; cleaned; and
+// outside when still absolute, "..", climbing out or drive-lettered. It is
+// a copy because both rules are unexported in verify and this lane's file
+// list is closed; relativise's leading "./" loop is left out because Clean
+// removes the same prefix. Pure over its strings, as verify's are: no
+// symlink is resolved, so a path written through an alias of the project
+// (/tmp for /private/tmp) is outside here as it is there.
+func inProject(p string, project, cwd *string) (string, bool) {
+	p = strings.ReplaceAll(p, `\`, "/")
+	for _, dir := range [2]*string{project, cwd} {
+		if dir == nil {
+			continue
+		}
+		if rel, ok := cutDir(p, strings.ReplaceAll(*dir, `\`, "/")); ok {
+			p = rel
+			break
+		}
+	}
+	p = path.Clean(p)
+	if path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || len(p) > 1 && p[1] == ':' {
+		return "", false
+	}
+	return p, true
+}
+
+// cutDir is p below dir, without dir and the separator, and whether it is
+// (verify's under). A dir of "" or "/" alone is no prefix: it would make
+// every absolute path relative.
+func cutDir(p, dir string) (string, bool) {
+	dir = strings.TrimRight(dir, "/")
+	if dir == "" || len(p) <= len(dir) || p[len(dir)] != '/' || !sameDir(p[:len(dir)], dir) {
+		return p, false
+	}
+	return p[len(dir)+1:], true
+}
+
+// sameDir compares two directory strings exactly, except that a leading
+// drive letter (C: against c:) compares without case (verify's samePrefix).
+func sameDir(a, b string) bool {
+	if len(a) >= 2 && a[1] == ':' && b[1] == ':' && isASCIILetter(a[0]) && isASCIILetter(b[0]) {
+		return a[0]|0x20 == b[0]|0x20 && a[2:] == b[2:]
+	}
+	return a == b
+}
+
+func isASCIILetter(c byte) bool { return 'a' <= c|0x20 && c|0x20 <= 'z' }
 
 // SteerEvent decodes one steer.ndjson line. Only a steer.LineType line is an
 // event: a steer_evidence line (steer.EvidenceLineType) carries no after_seq
@@ -112,6 +202,23 @@ func Step(f *Frontier, ev Event) {
 	if ev.State == string(steer.LineStateDelivered) { // only SteerEvent sets State
 		deliver(f, ev)
 	}
+	for _, p := range ev.Wrote {
+		touch(f, p)
+	}
+}
+
+// touch adds the file a call wrote to Touched as its graph.FileID, kept
+// sorted and unique at every step, so Touched is a set: the same writes in
+// any order fold to the same list (D1: files, not units; see Frontier).
+func touch(f *Frontier, rel string) {
+	id := string(graph.FileID(rel))
+	i := sort.SearchStrings(f.Touched, id)
+	if i < len(f.Touched) && f.Touched[i] == id {
+		return
+	}
+	f.Touched = append(f.Touched, "")
+	copy(f.Touched[i+1:], f.Touched[i:])
+	f.Touched[i] = id
 }
 
 // deliver keeps a delivered steer line as a LineRef at its after_seq. Only
