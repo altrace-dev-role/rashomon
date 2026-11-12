@@ -76,6 +76,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"post.edit.pgraph3MiB": {"post", 3 << 20, "PW1b"},
 		// The order rule's Then call (SPEC-RULES1 1b, #216 ruling 5): post.540B's payload under a trusted spec of one order rule.
 		"post.540B.order": {"post", 540, "SR-1b"},
+		// The PreToolUse overlay writer (W-M2.5c, 5c-2): the real hook entry on a 40000 B Edit of a Go file under an index, marker present.
+		"hook.edit.overlay": {"hook", 40000, "W-M2.5"},
 	}
 	b := loadBudgets(t)
 	seen := map[string]bool{}

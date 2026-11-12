@@ -130,6 +130,13 @@ func BackgroundGate(id string) string { return "background " + id }
 // row is its own figure and its basis says where the figure came from.
 func OrderSpecCase(id string) bool { return id == "post.540B.order" }
 
+// OverlayCase reports the PreToolUse overlay writer's case (W-M2.5c, 5c-2):
+// the hook entry on an Edit of a Go file under an index with the session
+// content marker present. Like the order case it is not RES-28's line, which
+// says nothing of a file read and a resolver run, so its row is its own
+// figure and its basis says where the figure came from.
+func OverlayCase(id string) bool { return id == "hook.edit.overlay" }
+
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
 // 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
 // intake, both of which this tree carries.

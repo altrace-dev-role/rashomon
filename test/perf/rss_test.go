@@ -610,6 +610,11 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				r.env = append(r.env, blastEnv...)
 				mk, control = r.blastPost(t, c.PayloadBytes)
 			}
+			if c.ID == overlayCase {
+				// The PreToolUse overlay writer (W-M2.5c, 5c-2): an Edit of a
+				// Go file under an index, marker present.
+				mk, control = r.overlayHook(t, c.PayloadBytes)
+			}
 			if concurrentGCCases[c.ID] {
 				r.env = append(r.env, concurrentGCEnv)
 			}
