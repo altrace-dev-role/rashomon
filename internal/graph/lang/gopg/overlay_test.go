@@ -113,10 +113,10 @@ func TestGopgOverlay_DeclarationsOnly(t *testing.T) {
 			t.Errorf("edge %s %s %s: overlay edges are Declares from the file and one Contains from the unit", e.Src, e.Pred, e.Dst)
 		}
 	}
-	if n := nodes["sym:go:shape:func:Sum"]; n.Attrs["sig"] != "func(ss []Shape, extra ...int) (t int)" {
+	if n := nodes["sym:go:shape:func:Sum"]; n.Attrs["sig"] != "func ( ss [ ] Shape , extra ... int ) ( t int )" {
 		t.Errorf("Sum sig = %q", n.Attrs["sig"])
 	}
-	if n := nodes["sym:go:shape:method:Square.Area"]; n.Attrs["sig"] != "func() int" {
+	if n := nodes["sym:go:shape:method:Square.Area"]; n.Attrs["sig"] != "func ( ) int" {
 		t.Errorf("Area sig = %q", n.Attrs["sig"])
 	}
 	for _, n := range nodes {

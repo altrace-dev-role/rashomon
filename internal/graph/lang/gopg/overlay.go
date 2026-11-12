@@ -1,10 +1,8 @@
 package gopg
 
 import (
-	"bytes"
 	"go/ast"
 	"go/parser"
-	"go/printer"
 	"go/token"
 	"path"
 
@@ -27,7 +25,7 @@ var overlayProv = graph.Prov{Extractor: "go/parser", Version: "v1"}
 // duplicates it. A sym carries the index's doc (overlaydoc.go: pgraph's
 // attribution and synopsis rules) and a func or method the short names its
 // body calls (calls attr); no body is kept, and a sig is the function's type
-// printed, nothing of its statements. The file node is contained by its
+// spelled by its tokens (sigtokens.go), nothing of its statements. The file node is contained by its
 // unit (one Contains edge, the index's key). Content that does not
 // parse yields nil records and a nil error; the overlay says less, never
 // wrong. It reads no file and starts no process.
@@ -72,7 +70,7 @@ func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) (
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
-			funcDecl(fset, d, add)
+			funcDecl(fset, content, d, add)
 		case *ast.GenDecl:
 			genDecl(d, add)
 		}
@@ -91,18 +89,15 @@ func (Resolver) OverlayCarried() graph.Carried {
 // funcDecl reports a function or a method. A method's qualified spelling is
 // Recv.Name with the pointer and the type parameters of the receiver
 // dropped, as pgraph spells it.
-func funcDecl(fset *token.FileSet, d *ast.FuncDecl, add func(kind, qualified, name, sig, docText, calls string)) {
-	var sig bytes.Buffer
-	if printer.Fprint(&sig, fset, d.Type) != nil {
-		sig.Reset()
-	}
+func funcDecl(fset *token.FileSet, content []byte, d *ast.FuncDecl, add func(kind, qualified, name, sig, docText, calls string)) {
+	sig := sigSpelling(fset, content, d.Type)
 	name := d.Name.Name
 	if d.Recv == nil || len(d.Recv.List) == 0 {
-		add("func", name, name, sig.String(), declDoc(d.Doc, nil, 1), callNames(d.Body))
+		add("func", name, name, sig, declDoc(d.Doc, nil, 1), callNames(d.Body))
 		return
 	}
 	if recv := recvName(d.Recv.List[0].Type); recv != "" {
-		add("method", recv+"."+name, name, sig.String(), declDoc(d.Doc, nil, 1), callNames(d.Body))
+		add("method", recv+"."+name, name, sig, declDoc(d.Doc, nil, 1), callNames(d.Body))
 	}
 }
 
