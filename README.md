@@ -179,12 +179,14 @@ list of what it keeps, word for word as the install screen's full view
 > never your words. Your on and off switches (config.json), and for a project's
 > switch (summary_projects, steer_projects) the project's directory.
 
-It never stores your prompts, the agent's messages, tool output or file
-contents. It reads each prompt in memory to write the preflight note and keeps
-no word of it beyond the project paths the note names. `rashomon report`
-quotes the agent's final message from Claude Code's transcript without storing
-it. The one exception is opt-in: `rashomon bodies on` copies this project's
-transcripts into the store, and `rashomon forget --bodies` removes them.
+It never stores your prompts, the agent's messages, tool output, file contents
+or a spec file's text (of a spec, only its digest and its rules' ids, and, where
+Go edits are kept, the paths and patterns of the rules each edit is checked
+against). It reads each prompt in memory to write the preflight note and keeps
+no word of it beyond the project paths the note names. `rashomon report` quotes
+the agent's final message from Claude Code's transcript without storing it. The
+one exception is opt-in: `rashomon bodies on` copies this project's transcripts
+into the store, and `rashomon forget --bodies` removes them.
 
 In an indexed repository, once you have agreed to this build's screen, it also
 keeps what each Go edit declares: the names of the file's functions, types,
@@ -200,8 +202,9 @@ brief could not be given, when it could not (absent, stale or refused), with a
 keyed digest of the unit, and, where the edit is checked against the conflict
 base, the graph's commit, a keyed digest of the file and each conflict the edit
 leaves: its kind, its rule's id, a keyed digest of the conflict, and the unit
-and the symbol or file it is about, with the unit's path. The size cap does not
-cover `graph/`: what it holds stays until `rashomon purge`.
+and the symbol or file it is about, with the unit's path, or keyed digests of
+the two and no path where the record scope is v4. The size cap does not cover
+`graph/`: what it holds stays until `rashomon purge`.
 
 ## Repository specs: trust and declared gates
 
