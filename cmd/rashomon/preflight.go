@@ -91,7 +91,8 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		storeRoot = st.Root()
 	}
 	specOf := onceSpec(st, run, p.CWD)
-	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf)
+	scoped := promptScope{st: st}
+	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf, scoped.get)
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
@@ -102,11 +103,12 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	lines, _, _ := st.ReadSteer(p.SessionID)
 	var in *intent.Intent
 	var digest func(string) string
-	scope := hook.PromptRecordScope(st)
+	scope := scoped.get()
 	// At record scope v4 the steer line holds each named path as a keyed
 	// digest and the delivered set compares digests; the note that prints
 	// is the same at either scope. The graph brief's record form follows
-	// the same rule.
+	// the same rule, and at v4 the brief wrote no evidence file
+	// (writeGraphEvidence).
 	if scope != store.RecordScopeV5 && (named || graphed) {
 		key := st.Key()
 		digest = func(path string) string { return intent.PathDigest(key, path) }
@@ -226,6 +228,29 @@ func onceSpec(st *store.Store, run *store.Run, cwd string) func() *spec.Compiled
 		}
 		return sp
 	}
+}
+
+// promptScope is the store's record scope as the prompt path reads it,
+// hook.PromptRecordScope read on first use and kept (get), so the evidence
+// file's gate (writeGraphEvidence) and the note's record form read one
+// marker, and a prompt that finds no index reads it only if the note goes
+// on. preflightNote holds it as a value and hands its get down.
+type promptScope struct {
+	st    *store.Store
+	scope string
+	read  bool
+}
+
+// get is the record scope, read on the first call; "" with no store, which
+// is not v5.
+func (s *promptScope) get() string {
+	if !s.read {
+		if s.st != nil {
+			s.scope = hook.PromptRecordScope(s.st)
+		}
+		s.read = true
+	}
+	return s.scope
 }
 
 // repoSpecSuffix ends the path of a repository spec source: the file sits at

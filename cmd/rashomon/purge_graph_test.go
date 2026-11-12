@@ -64,7 +64,8 @@ func TestPurge_RemovesPromptTextFromSessionLog(t *testing.T) {
 }
 
 // TestPurge_EveryWriterFileIsOwned (W-M2.11 1d; the guard): a store built
-// through the real writers where one exists (the evidence file and, with
+// through the real writers where one exists (the evidence file at record
+// scope v5 and, with
 // session_content written first by name (no writer yet), each unit's brief
 // through graphBrief; the session log through OpenSessionLog; seed.json
 // through seed.WriteKept), and every row of disclose's file inventory
@@ -78,6 +79,9 @@ func TestPurge_EveryWriterFileIsOwned(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.WriteRecordScopeMarker(root, store.RecordScopeV5); err != nil {
+		t.Fatal(err)
+	}
 	proj := t.TempDir()
 	graphProject(t, proj)
 	const prompt = "make session expiry in sessions.py respect the org-level timeout override."
@@ -86,6 +90,9 @@ func TestPurge_EveryWriterFileIsOwned(t *testing.T) {
 	}
 	if briefs, _ := filepath.Glob(filepath.Join(root, graph.StoreDir, graph.UnitBriefSubdir, "*", "*.json")); len(briefs) == 0 {
 		t.Fatal("witness: the prompt wrote no unit brief, so the guard does not reach that writer")
+	}
+	if ev, _ := filepath.Glob(filepath.Join(root, graph.StoreDir, "*-*.txt")); len(ev) == 0 {
+		t.Fatal("witness: the prompt wrote no evidence file, so the guard does not reach that writer")
 	}
 	l := graph.OpenSessionLog(root, "github.com/x/y", graph.RevCommit("c1"), true)
 	if err := l.Append(l.Session("s1")); err != nil {

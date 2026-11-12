@@ -19,6 +19,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // graphUsage is the graph verb's lines on the usage screen (TRU2c: every
@@ -236,16 +237,22 @@ func cmdBriefOrGraph(name string, args []string, stdout io.Writer) error {
 // graphBrief is the hook path: the brief for the prompt over the graph
 // indexed under cwd, each path relative to cwd, read before the preflight
 // decides whether the prompt has anything to say (GRAPH-SLOT1). ok is
-// whether a message rendered. Every run that found an index leaves its
-// explanation under the store root at graph/<session>-<prompt>.txt.
+// whether a message rendered. Every run that found an index, in a store
+// whose record scope is v5, leaves its explanation under the store root at
+// graph/<session>-<prompt>.txt (writeGraphEvidence); here the scope is the
+// store's marker, read once a brief exists.
 func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (indexBrief, bool) {
-	return graphBriefWith(storeRoot, cwd, sessionID, promptID, prompt, nil)
+	return graphBriefWith(storeRoot, cwd, sessionID, promptID, prompt, nil, func() string {
+		scope, _ := store.RecordScopeMarker(storeRoot)
+		return scope
+	})
 }
 
 // graphBriefWith is graphBrief with specOf, the prompt's spec read on first
 // use, whose rules the conflict base takes (writeConflictBase); nil writes
-// no base.
-func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, specOf func() *spec.Compiled) (indexBrief, bool) {
+// no base. scopeOf is the store's record scope, read on first use, which
+// the evidence file waits on (writeGraphEvidence); nil writes none.
+func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, specOf func() *spec.Compiled, scopeOf func() string) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
 		return indexBrief{}, false
 	}
@@ -261,7 +268,7 @@ func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, s
 	opt.Rel = relTo(cwd, root)
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
-	writeGraphEvidence(storeRoot, sessionID, promptID, b)
+	writeGraphEvidence(storeRoot, sessionID, promptID, b, scopeOf)
 	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt)
 	writeConflictBase(storeRoot, sessionID, root, h.Repo, s, rev, specOf)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
@@ -360,8 +367,13 @@ func briefFinding(b indexBrief, m, rec render.Message, key string, afterSeq int6
 		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
 }
 
-func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
-	if storeRoot == "" {
+// writeGraphEvidence writes b's evidence and text under storeRoot at
+// graph/<session>-<prompt>.txt where the store's record scope is v5. The
+// file names the brief's ids and paths in clear; at v4 the steer line keeps
+// the same brief only as keyed digests and counts (Brief.Record), so at v4
+// nothing is written. scopeOf is read here alone, once a brief exists.
+func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief, scopeOf func() string) {
+	if storeRoot == "" || scopeOf == nil || scopeOf() != store.RecordScopeV5 {
 		return
 	}
 	dir := filepath.Join(storeRoot, graph.StoreDir)

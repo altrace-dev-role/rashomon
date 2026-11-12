@@ -370,6 +370,10 @@ func TestGraphBrief_EvidenceFileHoldsNoWordOfThePrompt(t *testing.T) {
 	dir := t.TempDir()
 	graphProject(t, dir)
 	storeRoot := t.TempDir()
+	// At v5, the scope the file waits on (writeGraphEvidence).
+	if err := store.WriteRecordScopeMarker(storeRoot, store.RecordScopeV5); err != nil {
+		t.Fatal(err)
+	}
 	gb, ok := graphBrief(storeRoot, filepath.Join(dir, "services", "auth"), "s1", "p1", []byte("purging the sessions"))
 	if !ok {
 		t.Fatal("no brief")

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestGraphBrief_EvidenceFileHoldsNoWordOfAnyShape (W-M2.11 1d, D160): a
@@ -29,6 +31,10 @@ func TestGraphBrief_EvidenceFileHoldsNoWordOfAnyShape(t *testing.T) {
 			dir := t.TempDir()
 			graphProject(t, dir)
 			storeRoot := t.TempDir()
+			// At v5, the scope the file waits on (writeGraphEvidence).
+			if err := store.WriteRecordScopeMarker(storeRoot, store.RecordScopeV5); err != nil {
+				t.Fatal(err)
+			}
 			prompt := "fix " + tc.word + " while purging the sessions"
 			gb, ok := graphBrief(storeRoot, filepath.Join(dir, "services", "auth"), "s1", "p1", []byte(prompt))
 			if !ok {

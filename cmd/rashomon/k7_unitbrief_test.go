@@ -330,6 +330,11 @@ func TestK7_PromptUnitBriefs(t *testing.T) {
 	} {
 		for _, marker := range []bool{false, true} {
 			root := t.TempDir()
+			// Both arms at record scope v5, which the evidence file waits on
+			// (writeGraphEvidence), so every run writes it as when pinned.
+			if err := store.WriteRecordScopeMarker(root, store.RecordScopeV5); err != nil {
+				t.Fatal(err)
+			}
 			if marker {
 				if err := os.WriteFile(filepath.Join(root, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
 					t.Fatal(err)
