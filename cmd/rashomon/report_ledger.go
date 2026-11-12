@@ -73,7 +73,7 @@ func ledgerText(r stopReplay) string {
 	if len(v.Obligations) == 0 {
 		fmt.Fprintf(&b, "no obligation rows at seq %d\n", seq)
 	}
-	families := ledgerFamilies(v)
+	families := ledgerFamilies(v, r.Turn)
 	for _, o := range v.Obligations {
 		b.WriteString(ledgerRow(o, families[o.ID]))
 	}
@@ -103,11 +103,12 @@ func specNow(sp *spec.Compiled) string {
 // over: a gate's Family, a declared gate's Gate id (every declared gate's
 // Family is "declared", so its rows digest the id instead, DECLARED-GATES1),
 // an expected row's evidence kind, a spec_rule row's rule id, or a
-// platform_impact row's package and hash. A row carries no such text (D-A1), so
-// it is recomputed over the view's gates and kinds, and the string printed is
-// whichever digests to the id. Cost: O(R x (2G + K)) digests, a verb's, never
-// a hook's.
-func ledgerFamilies(v verify.StopView) map[string]string {
+// platform_impact row's package and hash. A turn row's family is its gate's,
+// digested by TurnObligationID over turn, the window the replay read, and the
+// row's Unit (W-M3.1). A row carries no such text (D-A1), so it is recomputed
+// over the view's gates and kinds, and the string printed is whichever
+// digests to the id. Cost: O(R x (2G + K)) digests, a verb's, never a hook's.
+func ledgerFamilies(v verify.StopView, turn verify.Window) map[string]string {
 	out := make(map[string]string, len(v.Obligations))
 	for _, o := range v.Obligations {
 		if o.Kind == verify.ExpectedEvidence {
@@ -137,10 +138,16 @@ func ledgerFamilies(v verify.StopView) map[string]string {
 			}
 			continue
 		}
+		idOf := func(fam string) string { return verify.ObligationID(o.Scope, o.Kind, fam) }
+		if o.Scope == verify.ScopeTurn {
+			// A turn row digests its window's From, its gate's family and
+			// its unit (verify.TurnObligationID, W-M3.1).
+			idOf = func(fam string) string { return verify.TurnObligationID(o.Kind, fam, turn, o.Unit) }
+		}
 	gates:
 		for _, g := range v.Snap.Gates {
 			for _, fam := range []string{g.Family, g.Gate} {
-				if verify.ObligationID(o.Scope, o.Kind, fam) == o.ID {
+				if idOf(fam) == o.ID {
 					out[o.ID] = fam
 					break gates
 				}

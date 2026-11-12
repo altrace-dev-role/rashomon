@@ -15,6 +15,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -184,7 +185,9 @@ func (f *lwFixture) out() lwOut {
 // lwRows is v's ledger as the verb prints its rows: id, scope, kind, source,
 // state, the evidence seqs joined by commas ("-" for none) and the family the
 // id digests, recomputed here over v's gates (Family, or Gate for a declared
-// row) and expected kinds, one space apart, one row to a line.
+// row) and expected kinds, one space apart, one row to a line. A turn row's
+// family is found by trying every From up to the point, not the window the
+// verb reads, so the two derive it apart.
 func lwRows(v verify.StopView) string {
 	var b strings.Builder
 	for _, o := range v.Obligations {
@@ -201,6 +204,17 @@ func lwRows(v verify.StopView) string {
 			for _, fam := range []string{g.Family, g.Gate} {
 				if verify.ObligationID(o.Scope, o.Kind, fam) == o.ID {
 					family = fam
+				}
+			}
+		}
+		if o.Scope == verify.ScopeTurn {
+			for from := int64(0); from <= v.Snap.Point.Seq; from++ {
+				for _, g := range v.Snap.Gates {
+					for _, fam := range []string{g.Family, g.Gate} {
+						if verify.TurnObligationID(o.Kind, fam, verify.Window{From: from}, o.Unit) == o.ID {
+							family = fam
+						}
+					}
 				}
 			}
 		}
@@ -540,5 +554,89 @@ func TestLW1p_ReportLedgerNamesASpecRulesRule(t *testing.T) {
 	}
 	if n != len(ids) {
 		t.Errorf("%d of %d spec_rule rows printed: %q (stderr %q)", n, len(ids), o.all, o.stderr)
+	}
+}
+
+// TestReportLedger_NamesATurnRowsFamily: a turn row (W-M3.1) digests its
+// window's From, its gate's family and its unit, so the verb names the gate
+// on it from the window the replay read: spec:unit, never "-". Witness: the
+// verb prints turn rows, and its rows equal lwRows', which finds each turn
+// row's family by every From instead.
+func TestReportLedger_NamesATurnRowsFamily(t *testing.T) {
+	f := newLW(t)
+	f.bind(lwSpec("unit"))
+	f.land("toolu_e", "Edit", lwEdit(f.file("a.go", "package a\n")), nil)
+	f.land("toolu_g", "Bash", lwBash("go test ./..."), nil)
+	v := f.stop()
+	o := f.out()
+	n := 0
+	for _, line := range strings.Split(strings.TrimSuffix(o.rows, "\n"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 7 || fields[1] != verify.ScopeTurn {
+			continue
+		}
+		n++
+		if fields[6] != "spec:unit" {
+			t.Errorf("turn row %q, want its family column spec:unit", line)
+		}
+	}
+	if n == 0 {
+		t.Fatalf("witness: no turn row printed: %q (stderr %q); rows %+v", o.all, o.stderr, v.Obligations)
+	}
+	if want := lwRows(v); o.rows != want {
+		t.Errorf("the verb printed\n%s\nlwRows reads\n%s", o.rows, want)
+	}
+}
+
+// stopBytes is what the Stop prints and leaves the next prompt from s: the
+// decision line, whether it printed and its clause, the done verdict, the
+// rule lines and the owed note, with impact and owed read again from s.view
+// over lines, the session's steer lines, as stopView reads them (no inferred
+// gate, on both sides of a comparison).
+func stopBytes(s stopTurn, lines [][]byte) string {
+	s.impact = recap.ImpactOf(s.view, lines, nil)
+	s.owed = owedNote(s.view, nil)
+	l, ok, clause := s.line("s", true)
+	return fmt.Sprintf("line %q %v %q\nunverified %v\nrules %q\nowed %+v\n", l, ok, clause, s.unverified("s", true), s.rules(), s.owed)
+}
+
+// TestStop_TurnRowsLeaveTheHookBytesUnchanged: the turn rows (W-M3.1) add to
+// the Stop's ledger and nothing to what it prints or leaves the next prompt:
+// its bytes with them equal its bytes with them taken out. A declared gate
+// runs, then an edit lands, so the gate is stale and the turn's row unmet.
+// Witness: the Stop speaks and holds a turn row that is not met.
+func TestStop_TurnRowsLeaveTheHookBytesUnchanged(t *testing.T) {
+	f := newLW(t)
+	f.bind(lwSpec("unit"))
+	f.land("toolu_g", "Bash", lwBash("go test ./..."), nil)
+	f.land("toolu_e", "Edit", lwEdit(f.file("a.go", "package a\n")), nil)
+	run, err := digest.ReadRun(f.st, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := digest.BuildFrom(run, f.st, "s", "", "", f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := recapPayload{SessionID: "s", Harness: harnessSignal{HookEventName: install.EventStop}, OK: true, CWD: f.cwd}
+	s, err := stopView(f.st, run, d, p, false, f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines, _, _ := f.st.ReadSteer("s")
+	bare, held := s, false
+	bare.view.Obligations = nil
+	for _, o := range s.view.Obligations {
+		if o.Scope == verify.ScopeTurn {
+			held = held || o.State != verify.ObligationMet
+			continue
+		}
+		bare.view.Obligations = append(bare.view.Obligations, o)
+	}
+	if !s.speaks || !held {
+		t.Fatalf("witness: the Stop speaks %v, an unmet turn row %v; rows %+v", s.speaks, held, s.view.Obligations)
+	}
+	if got, want := stopBytes(s, lines), stopBytes(bare, lines); got != want {
+		t.Errorf("the turn rows moved the Stop's bytes:\nwith them:\n%s\nwithout them:\n%s", got, want)
 	}
 }

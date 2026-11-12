@@ -249,9 +249,9 @@ func TestLedger_NilUnitOfAddsNoUnitRow(t *testing.T) {
 // over the record's prefix at its seq (INV-11), read once in the prompt id
 // the Stop records, as the ledger verb's replay passes its checkpoint's, and
 // once with no prompt id, which resolves to the turn current at the seq
-// (Q4). Witness: in each pass, Stops in each of the three turns hold turn
-// rows; mutant TL-1 (the bound dropped) fails the unnamed pass at a seq
-// inside p1, where the whole record resolves to p3.
+// (card W-M3.1, Q4). Witness: in each pass, Stops in each of the three turns
+// hold turn rows; mutant TL-1 (the bound dropped) fails the unnamed pass at
+// a seq inside p1, where the whole record resolves to p3.
 func TestLedger_Replay(t *testing.T) {
 	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecFailed), edit(3, "pkg/b/y.go"),
 		gateCall(4, "go-test", store.ExecOK), edit(5, "pkg/a/x.go"), gateCall(6, "go-vet", store.ExecOK)),
@@ -279,9 +279,9 @@ func TestLedger_Replay(t *testing.T) {
 
 // TestCountTurn_EmptyIDReadsTheTurnAtThePoint: countTurn with no prompt id
 // counts the turn current at its seq, so over the whole record it counts
-// what it counts over the record's prefix at that seq (Q4, INV-11).
-// Witness: a seq inside p1 counts p1's write; mutant TL-1 counts nothing
-// there over the whole record, which resolves to p2.
+// what it counts over the record's prefix at that seq (card W-M3.1, Q4;
+// INV-11). Witness: a seq inside p1 counts p1's write; mutant TL-1 counts
+// nothing there over the whole record, which resolves to p2.
 func TestCountTurn_EmptyIDReadsTheTurnAtThePoint(t *testing.T) {
 	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK), edit(3, "pkg/b/y.go"),
 		edit(4, "pkg/c/z.go")), "p1", "p1", "p2", "p2")
@@ -323,5 +323,65 @@ func TestLedger_EmptyWindowAddsNoTurnRow(t *testing.T) {
 	}
 	if turn, _ := turnOf(turnView(r, at, "p1", dirUnit, nil).Obligations); len(turn) == 0 {
 		t.Error("witness: the turn that made the calls has no turn rows")
+	}
+}
+
+// TestLedger_RedInAnEarlierTurnOwesNoWatchedRow: a family's last red owes a
+// turn its watched_red_then_green row only where the red is a call of that
+// turn, its seq at or after From (ledger_turn.go): a red in p1 and its green
+// in p2, so p2's Stop owes its gate_after_write row alone. Witness: the
+// session owes the watched row.
+func TestLedger_RedInAnEarlierTurnOwesNoWatchedRow(t *testing.T) {
+	r := inTurns(runOf(t, edit(1, "pkg/a.go"), gateCall(2, "go-test", store.ExecFailed), edit(3, "pkg/a.go"),
+		gateCall(4, "go-test", store.ExecOK)), "p1", "p1", "p2", "p2")
+	v := turnView(r, lastSeqOf(r), "p2", nil, nil)
+	if turn, _ := turnOf(v.Obligations); len(turn) != 1 || turn[0].Kind != GateAfterWrite {
+		t.Errorf("p2's turn rows %+v, want its gate_after_write row alone", turn)
+	}
+	if !slices.ContainsFunc(v.Obligations, func(o Obligation) bool {
+		return o.Scope == ScopeSession && o.Kind == WatchedRedThenGreen
+	}) {
+		t.Errorf("witness: no session watched_red_then_green row in %+v", v.Obligations)
+	}
+}
+
+// TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo: a gate's turn rows,
+// its gate_after_write row and its unit row, read unknown where its session
+// rows do (ledger_turn.go, obligations): with the recording incomplete, with
+// a source outside the four names, and with a state outside Order. Each case
+// reads a fresh view's snapshot, the one EvaluateStop read, and keeps the
+// row count. Witness: the snapshot as read gives both turn rows, met. The
+// state case is the table's as well (fromTable reads unknown for a state it
+// lacks); the recording and source cases are the guard's alone.
+func TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo(t *testing.T) {
+	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK)), "p1", "p1")
+	at, c := lastSeqOf(r), classifiedOf(r)
+	rows := func(snap Snapshot) []Obligation {
+		turn, _ := turnObligations(snap, &c, r, "p1", dirUnit)
+		return turn
+	}
+	base := rows(turnView(r, at, "p1", dirUnit, nil).Snap)
+	if len(base) != 2 || base[0].State != ObligationMet || base[1].State != ObligationMet || base[1].Unit == "" {
+		t.Fatalf("witness: turn rows %+v, want the gate's and its unit's, met", base)
+	}
+	for _, k := range []struct {
+		name string
+		set  func(*Snapshot)
+	}{
+		{"recording incomplete", func(s *Snapshot) { s.Recording = Incomplete }},
+		{"source outside the four", func(s *Snapshot) { s.Gates[0].Source = "elsewhere" }},
+		{"state outside Order", func(s *Snapshot) { s.Gates[0].State = "unheard" }},
+	} {
+		snap := turnView(r, at, "p1", dirUnit, nil).Snap
+		k.set(&snap)
+		got, session := rows(snap), obligations(snap, c.runs, c.writes)
+		if len(got) != len(base) || len(session) == 0 {
+			t.Errorf("%s: %d turn rows and %d session rows, want %d and some", k.name, len(got), len(session), len(base))
+		}
+		for _, o := range append(got, session...) {
+			if o.State != ObligationUnknown {
+				t.Errorf("%s: %s row %s reads %s, want unknown", k.name, o.Scope, o.Kind, o.State)
+			}
+		}
 	}
 }

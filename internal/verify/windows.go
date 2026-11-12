@@ -31,12 +31,12 @@ func (w Window) Empty() bool { return w.From > w.To }
 // turn's first call, as countTurn reads it into TurnCounts.FirstSeq. An empty
 // promptID resolves as countTurn resolves it, to latestPrompt's id at at:
 // the turn current at the point, never one whose first call is after it
-// (Q4). A declaration whose prompt id is nil or "" is in no turn, so a run where no
-// declaration carries a prompt id has the empty window, as countTurn's is,
-// never the whole run. A turn with no call by at has the empty window, From
-// at+1, and owes no turn row. A turn is a prompt id, whatever sent the
-// prompt: a person, a peer session and a scheduled prompt each start one,
-// since the record does not say which.
+// (card W-M3.1, Q4). A declaration whose prompt id is nil or "" is in no
+// turn, so a run where no declaration carries a prompt id has the empty
+// window, as countTurn's is, never the whole run. A turn with no call by at
+// has the empty window, From at+1, and owes no turn row. A turn is a prompt
+// id, whatever sent the prompt: a person, a peer session and a scheduled
+// prompt each start one, since the record does not say which.
 func TurnWindow(run *store.Run, promptID string, at int64) Window {
 	if promptID == "" {
 		promptID = latestPrompt(run.Declarations, at)
