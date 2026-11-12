@@ -66,7 +66,11 @@ echo "$jobs" | while read -r _ _ name id conc; do
 done
 
 if [ "$report" = 1 ]; then
-	exec go run ./scripts/reanchor --run "$run" --dir "$dir" "$@"
+	# Not exec: exec replaces this shell, so the EXIT trap that removes $dir
+	# would never run. The report exits with go's status.
+	rc=0
+	go run ./scripts/reanchor --run "$run" --dir "$dir" "$@" || rc=$?
+	exit "$rc"
 fi
 
 cp "$budgets" "$dir/budgets.orig"
