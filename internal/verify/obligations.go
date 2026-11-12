@@ -126,11 +126,16 @@ type Obligation struct {
 // ledgerOf is the ledger at snap's point: the gates' rows over c, the
 // classification snap came from, then the expected_evidence rows of ex, in
 // the scope the point's kind owes in. EvaluateStop is its one caller, so the
-// ledger has one producer, on the path every Stop takes. Never nil.
-func ledgerOf(snap Snapshot, c *classified, ex []Expected) []Obligation {
-	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
+// ledger has one producer, on the path every Stop takes. The conflict groups
+// (conflictGroups, W-M2.4), if any, add their rows after the rest. Never nil.
+func ledgerOf(snap Snapshot, c *classified, ex []Expected, conflicts ...conflictGroup) []Obligation {
+	scope := pointScope(snap)
 	obs := append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
-	return append(obs, specObligations(scope, snap)...)
+	obs = append(obs, specObligations(scope, snap)...)
+	for _, g := range conflicts {
+		obs = append(obs, g.obligation(scope))
+	}
+	return obs
 }
 
 // specObligations is one spec_rule row per verdict of a trusted or managed

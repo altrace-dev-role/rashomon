@@ -303,7 +303,17 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// it names no rule (stopTurn.rules), so there the sentences name neither
 	// (tech 2.2.11 condition 4).
 	fromPlugin := recapFromPlugin(args)
-	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, stop.rules()+recap.PlatformLines(stop.view, fromPlugin))
+	lines := stop.rules() + recap.PlatformLines(stop.view, fromPlugin)
+	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, lines)
+	if wantSpeak && stop.speaks {
+		// The conflict lines come last of the lines and take what the
+		// message leaves under Claude Code's cap, so they are composed
+		// against the message as it stands (W-M2.4, B2).
+		// No conflict, no second composition: the common Stop pays nothing.
+		if cl := recap.ConflictLines(stop.view, fromPlugin, line); cl != "" {
+			line, _ = recap.LineWith(d, d.SessionID, fromPlugin, lines+cl)
+		}
+	}
 	clause := ""
 	if !wantSpeak {
 		line, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)
