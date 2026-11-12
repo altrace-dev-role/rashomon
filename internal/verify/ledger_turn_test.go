@@ -246,26 +246,57 @@ func TestLedger_NilUnitOfAddsNoUnitRow(t *testing.T) {
 }
 
 // TestLedger_Replay: each Stop's ledger, turn rows included, is the ledger
-// over the record's prefix at its seq (INV-11), each read in the prompt id
-// the Stop records, as the ledger verb's replay passes its checkpoint's.
-// Witness: Stops in each of the three turns hold turn rows.
+// over the record's prefix at its seq (INV-11), read once in the prompt id
+// the Stop records, as the ledger verb's replay passes its checkpoint's, and
+// once with no prompt id, which resolves to the turn current at the seq
+// (Q4). Witness: in each pass, Stops in each of the three turns hold turn
+// rows; mutant TL-1 (the bound dropped) fails the unnamed pass at a seq
+// inside p1, where the whole record resolves to p3.
 func TestLedger_Replay(t *testing.T) {
 	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecFailed), edit(3, "pkg/b/y.go"),
 		gateCall(4, "go-test", store.ExecOK), edit(5, "pkg/a/x.go"), gateCall(6, "go-vet", store.ExecOK)),
 		"p1", "p1", "p2", "p2", "p3", "p3")
-	turned := map[string]bool{}
-	for s := int64(0); s <= lastSeqOf(r); s++ {
-		p := promptAt(r, s)
-		a, b := turnView(r, s, p, dirUnit, nil), turnView(prefixOf(r, s), s, p, dirUnit, nil)
-		if ja, jb := encodeObs(t, a.Obligations), encodeObs(t, b.Obligations); !bytes.Equal(ja, jb) || a.UnitRowsCut != b.UnitRowsCut {
-			t.Fatalf("at %d the ledger differs from the prefix's:\n%s\n%s", s, ja, jb)
+	for _, named := range []bool{true, false} {
+		turned := map[string]bool{}
+		for s := int64(0); s <= lastSeqOf(r); s++ {
+			p, id := promptAt(r, s), ""
+			if named {
+				id = p
+			}
+			a, b := turnView(r, s, id, dirUnit, nil), turnView(prefixOf(r, s), s, id, dirUnit, nil)
+			if ja, jb := encodeObs(t, a.Obligations), encodeObs(t, b.Obligations); !bytes.Equal(ja, jb) || a.UnitRowsCut != b.UnitRowsCut {
+				t.Fatalf("named %v: at %d the ledger differs from the prefix's:\n%s\n%s", named, s, ja, jb)
+			}
+			if turn, _ := turnOf(a.Obligations); len(turn) > 0 {
+				turned[p] = true
+			}
 		}
-		if turn, _ := turnOf(a.Obligations); len(turn) > 0 {
-			turned[p] = true
+		if len(turned) != 3 {
+			t.Errorf("witness: named %v: turns with turn rows %v, want p1, p2 and p3", named, turned)
 		}
 	}
-	if len(turned) != 3 {
-		t.Errorf("witness: turns with turn rows %v, want p1, p2 and p3", turned)
+}
+
+// TestCountTurn_EmptyIDReadsTheTurnAtThePoint: countTurn with no prompt id
+// counts the turn current at its seq, so over the whole record it counts
+// what it counts over the record's prefix at that seq (Q4, INV-11).
+// Witness: a seq inside p1 counts p1's write; mutant TL-1 counts nothing
+// there over the whole record, which resolves to p2.
+func TestCountTurn_EmptyIDReadsTheTurnAtThePoint(t *testing.T) {
+	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK), edit(3, "pkg/b/y.go"),
+		edit(4, "pkg/c/z.go")), "p1", "p1", "p2", "p2")
+	c, first := classifiedOf(r), r.Declarations[0].Seq
+	inP1 := false
+	for s := int64(0); s <= lastSeqOf(r); s++ {
+		pre := prefixOf(r, s)
+		if got, want := countTurn(r, c, "", s, nil), countTurn(pre, classifiedOf(pre), "", s, nil); got != want {
+			t.Errorf("at %d: countTurn over the record %+v, over its prefix %+v", s, got, want)
+		} else if got.Writes > 0 && got.FirstSeq == first {
+			inP1 = true
+		}
+	}
+	if !inP1 {
+		t.Error("witness: no seq inside p1 counts p1's write")
 	}
 }
 

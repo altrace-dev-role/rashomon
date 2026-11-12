@@ -262,16 +262,16 @@ func inferredProgram(programs map[string]string, name string) {
 // window is the seq set of the prompt's declarations: gate runs and writes
 // carry no prompt id, so membership is by their declaration's seq. A
 // declaration whose prompt id is nil or "" is in no window. promptID ""
-// selects the prompt digest's selectTurn selects, the one whose first
-// declaration is latest (D72); a run with no prompt id has an empty window,
-// never the whole run. Writes are the relevant named writes, as gateStates
+// selects the turn current at at, the prompt whose first declaration at or
+// before at is latest (latestPrompt; D72, bounded at the point by Q4); a run
+// with no prompt id has an empty window, never the whole run. Writes are the relevant named writes, as gateStates
 // counts them: those a gate of roots covers (gateRoots; nil counts every
 // one), so a turn that wrote only outside its project edited nothing a gate
 // checks (card STALE-COVER1). Cost: one pass over the declarations, then one
 // over each classified slice, O(D + R + W x G + U).
 func countTurn(run *store.Run, c classified, promptID string, at int64, roots []string) TurnCounts {
 	if promptID == "" {
-		promptID = latestPrompt(run.Declarations)
+		promptID = latestPrompt(run.Declarations, at)
 	}
 	window := map[int64]bool{}
 	var t TurnCounts
@@ -375,12 +375,18 @@ func doneWindow(run *store.Run, c classified, turn TurnCounts, at int64, roots [
 	return t, true
 }
 
-// latestPrompt is the prompt id whose first declaration has the greatest
-// seq, digest.selectTurn's "current turn"; "" when no declaration names one.
-func latestPrompt(decls []store.Declaration) string {
+// latestPrompt is the prompt id whose first declaration at or before at has
+// the greatest seq, digest.selectTurn's "current turn" read at the point;
+// "" when no declaration by at names one. A declaration after at is never
+// read (Q4), so the turn at a point over the whole record is the turn over
+// the record's prefix at it (INV-11), as the ledger verb's replay needs. A
+// live Stop reads as before, its record ending at its point; it reads
+// otherwise only where a prompt's first declaration landed after the
+// point's seq, which the unbounded read took for the current turn.
+func latestPrompt(decls []store.Declaration, at int64) string {
 	first := map[string]int64{}
 	for _, d := range decls {
-		if d.PromptID == nil || *d.PromptID == "" {
+		if d.Seq > at || d.PromptID == nil || *d.PromptID == "" {
 			continue
 		}
 		if s, ok := first[*d.PromptID]; !ok || d.Seq < s {

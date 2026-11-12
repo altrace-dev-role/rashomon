@@ -29,8 +29,9 @@ func (w Window) Empty() bool { return w.From > w.To }
 // TurnWindow is the window of the point's own turn at seq at: To is at, and
 // From is the first declaration at or before at that carries promptID, the
 // turn's first call, as countTurn reads it into TurnCounts.FirstSeq. An empty
-// promptID resolves as countTurn resolves it, to latestPrompt's id. A
-// declaration whose prompt id is nil or "" is in no turn, so a run where no
+// promptID resolves as countTurn resolves it, to latestPrompt's id at at:
+// the turn current at the point, never one whose first call is after it
+// (Q4). A declaration whose prompt id is nil or "" is in no turn, so a run where no
 // declaration carries a prompt id has the empty window, as countTurn's is,
 // never the whole run. A turn with no call by at has the empty window, From
 // at+1, and owes no turn row. A turn is a prompt id, whatever sent the
@@ -38,7 +39,7 @@ func (w Window) Empty() bool { return w.From > w.To }
 // since the record does not say which.
 func TurnWindow(run *store.Run, promptID string, at int64) Window {
 	if promptID == "" {
-		promptID = latestPrompt(run.Declarations)
+		promptID = latestPrompt(run.Declarations, at)
 	}
 	w := Window{Scope: ScopeTurn, From: at + 1, To: at}
 	if promptID == "" {
