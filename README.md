@@ -183,14 +183,16 @@ quotes the agent's final message from Claude Code's transcript without storing
 it. The one exception is opt-in: `rashomon bodies on` copies this project's
 transcripts into the store, and `rashomon forget --bodies` removes them.
 
-In a repository you indexed with `rashomon graph index`, once you have agreed
-to this build's screen, it also keeps what each Go edit declares: the names of
-the file's functions, types, methods, constants and variables, the first
-sentence of each one's doc comment, the names a function calls and the
-packages the file imports, never the file's other text. It keeps them with the
-file's path and SHA-256 in one log per repository under the store's `graph/`
-directory, beside the briefs and the conflict base each prompt writes there.
-The size cap does not cover `graph/`: what it holds stays until
+In an indexed repository, once you have agreed to this build's screen, it also
+keeps what each Go edit declares: the names of the file's functions, types,
+methods, constants and variables, the first sentence of each one's doc comment,
+the names a function calls and the packages the file imports, never the file's
+other text. An indexed repository is one with `.rashomon/graph.jsonl` at or up
+to four directories above the working directory, whoever wrote it:
+`rashomon graph index` writes one, and a cloned repository may carry one. It
+keeps them with the file's path and SHA-256 in one log per repository under the
+store's `graph/` directory, beside the briefs and the conflict base each prompt
+writes there. The size cap does not cover `graph/`: what it holds stays until
 `rashomon purge`.
 
 ## Repository specs: trust and declared gates
