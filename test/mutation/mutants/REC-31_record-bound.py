@@ -55,8 +55,8 @@ m("REC-31 the derivation counts span rule ids unescaped", "internal/store/limits
 m("REC-31 the derivation leaves out a span's keys and offsets", "internal/store/limits.go",
   "const maskSpanFrameBytes = 38\n", "const maskSpanFrameBytes = 0\n", "TestREC31_WorstCaseRecordFits")
 m("REC-31 the hook takes a degraded declaration as a failed append", "internal/hook/handle.go",
-  "\tif err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {\n",
-  "\tif err := h.st.AppendDeclaration(decl); err != nil {\n", "TestREC31e_")
+  "\tseq, err := h.st.DeclareSeq(decl)\n\tif err := landed(err, &h.withheld); err != nil {\n",
+  "\tseq, err := h.st.DeclareSeq(decl)\n\tif err != nil {\n", "TestREC31e_")
 m("REC-31 the hook takes a degraded execution as a failed append", "internal/hook/post.go",
   "\treturn landed(err, &p.withheld)\n}\n",
   "\treturn err\n}\n", "TestREC31e_")

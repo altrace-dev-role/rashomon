@@ -2,6 +2,7 @@ package disclose
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -138,6 +139,14 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
+	}
+	// The overlay journal's two run files: the byte counter, and the marker
+	// a reservation past the bound leaves (card W-M2.5c, 5c-2).
+	if err := s.ReserveOverlay(sessionID, 1); err != nil {
+		t.Fatalf("ReserveOverlay: %v", err)
+	}
+	if err := s.ReserveOverlay(sessionID, store.MaxOverlayBytes); !errors.Is(err, store.ErrOverlayFull) {
+		t.Fatalf("ReserveOverlay past the bound: %v, want ErrOverlayFull", err)
 	}
 	if !s.TakeChannelEvidence("PostToolUse", "2.1.304") {
 		t.Fatal("TakeChannelEvidence refused")
@@ -412,7 +421,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// TakeBlastRead open, runs/<session>/blast-read-<16 hex>, the
 		// blast-radius read's marker per package and log (blastReadFiles in
 		// the inventory, IsBlastReadFile in purge's run files).
-		{"store", 35},
+		// Raised 35 to 38 for the overlay journal (card W-M2.5c, 5c-2;
+		// overlayRunFiles in the inventory, purge's run files):
+		// overlayreserve.go:65, the OpenFile of records.ndjson that takes its
+		// lock (writes nothing), :100 the writeSmall of overlay-bytes, and
+		// :107 the O_EXCL OpenFile of overlay-full.
+		{"store", 38},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -455,6 +469,32 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// writes no file: a second site here is a write with no inventory
 		// row.
 		{"regfile", 1},
+		// Pinned 2026-11-11 (W-M2.11 1d, store-writer-inventory.txt): the
+		// packages whose writes were outside this count, each recounted
+		// with this counter at the pinning head. cmd/rashomon: graph.go's
+		// writeGraphEvidence os.WriteFile (<store>/graph/<session>-<prompt>.txt,
+		// purge's graph tree), purge.go's two console and tty opens (no
+		// file), share.go's writeShareFile (the user's own path), watch.go's
+		// tty open and restorable's undo (the old bytes of install.json).
+		{"../cmd/rashomon", 6},
+		// graph: persist.go's index save (<repo>/.rashomon/graph.jsonl) and
+		// sessionlog.go's append open (<store>/graph/<16 hex>.jsonl).
+		{"graph", 2},
+		// graph/knowledge: schema.go's WriteFile (<repo>/.rashomon/knowledge).
+		{"graph/knowledge", 1},
+		// graph/graphtest: graphtest.go's write, test support with no
+		// non-test importer.
+		{"graph/graphtest", 1},
+		// seed: kept.go's WriteKept ReplaceFile (<store>/seed.json).
+		{"seed", 1},
+		// fold: write.go's Write, to the path its caller names.
+		{"fold", 1},
+		// settings: write.go's WriteFile of Claude Code's settings.json.
+		{"settings", 1},
+		// brief: brief.go's O_RDONLY OpenFile, a read.
+		{"brief", 1},
+		// fault: fault_on.go's two writes, built under rashomonfault only.
+		{"fault", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

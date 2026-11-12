@@ -226,15 +226,37 @@ const InitBudgetBytes = 64 << 10
 
 // initBudgetDarwinBytes is RES-2's bound on darwin since the hook path
 // parses Go in process (gopg's Overlay): go/token's keyword map (984 B at
-// init) and go/parser's stmtStart, declStart and exprEnd maps (464 B) come
-// with it, and no import can drop them. The Perf gates (macos) runner read
-// 65424 B over 54 packages before them (97fda320) and 66392 to 66712 B over
-// 56 packages with them (5b81eaec, five runs). internal/godebug's own init
-// moves in 160 B steps from run to run, so the bound is the highest of those
-// five readings, not the fewest: the gate keeps the fewest of five, and a
-// bound at the floor fails every set of five that misses it (one run in five
-// reached it). linux/amd64 reads 52456 B and keeps InitBudgetBytes.
-const initBudgetDarwinBytes = 66712
+// init) and go/parser's declStart and exprEnd maps (464 B, set inside
+// go/parser.init) come with it, and no import can drop them. The Perf gates
+// (macos) runner read 65424 B over 54 packages before them (97fda320) and
+// 66392 to 66712 B over 56 packages with them (5b81eaec, five runs).
+// internal/godebug's own init moves in 160 B steps from run to run, so the
+// bound is the highest of those five readings, not the fewest: the gate
+// keeps the fewest of five, and a bound at the floor fails every set of five
+// that misses it (one run in five reached it).
+//
+// The runner's fewest then moved from 66392 to 66768 B, still 56 packages,
+// exactly 376 B (run 43152585877, job 130965036473, head ff5cf627; runs
+// [66768 67088 66928 67088 66768]). That is go/parser's own init: under
+// go1.27.4 with release flags, inittrace reads it at 464 B on 5b81eaec and
+// 840 B on ff5cf627 in each of three runs per head, and the fewest of three
+// moves 55824 to 56200, the same 376 B; every other package that moves does
+// so in whole 160 B steps. The 376 B is go/parser's third map, stmtStart:
+// the compiler moves its initializer out of go/parser.init into
+// go/parser.map.init.0, and the linker keeps that function only when
+// something reaches stmtStart. parser.ParseFile does, and the overlay writer
+// (internal/hook/overlaywrite.go, through gopg's Overlay) put it on the hook
+// path between dd729aab and b43c1ecf. go tool nm -size on a linux/amd64
+// build of ./cmd/rashomon shows it: 5 go/parser symbols and no ParseFile,
+// stmtStart or map.init.0 at 5b81eaec and dd729aab; 237 symbols with all
+// three at b43c1ecf and ff5cf627. The bound is that run's highest, 67088,
+// under the rule above. Its five readings differ only in 160 B steps, and so
+// do the local runs of one binary (internal/godebug 1128 to 1608 B,
+// crypto/internal/fips140 320 or 480 B): those steps are run-to-run noise in
+// the runtime's own packages, not bytes any change here added. linux/amd64
+// reads 52992 B over 59 packages (job 130965036307) and keeps
+// InitBudgetBytes.
+const initBudgetDarwinBytes = 67088
 
 // InitBudget is RES-2's bound on process init for goos: initBudgetDarwinBytes
 // on darwin, InitBudgetBytes everywhere else.
@@ -483,4 +505,4 @@ func LineHolds(id string, measuredMiB, lineMiB float64) error {
 // landed names the PRs this tree carries: their rss cases are switched on,
 // and no budget basis may still read "until" one of them. gates_from stays
 // in budgets.json as the record of which PR switched each case on.
-var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "PW1b": true, "SR-1b": true, "W-M1.8": true}
+var landed = map[string]bool{"P-08": true, "P-10": true, "CE-1": true, "PW1b": true, "SR-1b": true, "W-M1.8": true, "W-M2.5": true}

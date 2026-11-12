@@ -99,11 +99,11 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 		// deadline is the test's own ceiling on an uninstrumented build, not
 		// a hard stop this binary enforces: 85.3.10 budgets a supervisor
 		// that kills the child at this mark, but it is not built before
-		// P-23 (test/perf/gate.go:246), and cmdHook has no timer of its
-		// own. 4 s is the installed PreToolUse entry's 5 s Claude Code
-		// timeout minus the 1 s margin 85.3.10 gives every 5 s entry
-		// (plugin/hooks/hooks.json), so a hook this slow would miss that
-		// external timeout too, not just this test.
+		// P-23 (test/perf/gate.go, footprintProblems), and cmdHook has no
+		// timer of its own. 4 s is the installed PreToolUse entry's 5 s
+		// Claude Code timeout minus the 1 s margin 85.3.10 gives every 5 s
+		// entry (plugin/hooks/hooks.json), so a hook this slow would miss
+		// that external timeout too, not just this test.
 		deadline = 4 * time.Second
 	)
 	// rssMiB is platform-specific, not one portable number: measured

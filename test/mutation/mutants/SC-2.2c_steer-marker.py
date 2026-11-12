@@ -69,7 +69,7 @@ m("SC-2.2c the consent command says nothing was written for an unwritten steer m
 m("SC-2.2c the binary hands the probe no steer reader", K,
   '\thook.ConsentSteerDisclosure = consent.SteerDisclosure\n', '', "TestSC6_")
 m("SC-2.2c purge does not list the steer marker", U,
-  '\tstore.FileRecordScope, store.FileSteerDisclosure,\n', '\tstore.FileRecordScope,\n', "TestTRU28_")
+  '\tstore.FileRecordScope, store.FileSteerDisclosure, store.FileSessionContent,\n', '\tstore.FileRecordScope, store.FileSessionContent,\n', "TestTRU28_")
 m("SC-2.2c purge does not list the steer marker's temporary file", U,
   '\t"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",\n',
   '\t"." + store.FileHarnesses + ".tmp-",\n', "TestTRU28_")

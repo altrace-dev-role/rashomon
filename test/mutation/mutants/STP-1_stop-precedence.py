@@ -7,8 +7,8 @@ RT = "cmd/rashomon/recap_turn.go"
 RS = "cmd/rashomon/recap_stop.go"
 RC = "internal/recap/recap.go"
 
-m("STP-1 the failure count drops the platform line", RT,
-  "stop.rules()+recap.PlatformLines(stop.view, fromPlugin))\n", "stop.rules())\n",
+m("STP-1 the failure count drops the platform line", "cmd/rashomon/recap_conflicts.go",
+  "stop.rules() + recap.PlatformLines(stop.view, fromPlugin)\n", "stop.rules()\n",
   "TestSTP1_AFailureCountCarriesThePlatformLine")
 m("STP-1 the platform line after the pointer", RC,
   "\".\\n\" + lines + pointer(sessionID, fromPlugin), true\n", "\".\\n\" + pointer(sessionID, fromPlugin) + lines, true\n",
