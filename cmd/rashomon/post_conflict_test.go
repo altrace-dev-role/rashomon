@@ -370,7 +370,7 @@ func TestPost_ConflictNudgesAndNeverBlocks(t *testing.T) {
 	// holds the Stop's phrase, the engine's kind word staying in the record's
 	// conflict_check row.
 	var lines []steer.Line
-	for _, l := range s.steerLines() {
+	for _, l := range s.steerLog() {
 		if strings.HasPrefix(l.Key, conflictKeyPrefix) {
 			lines = append(lines, l)
 		}
@@ -574,14 +574,16 @@ func TestConflictNote_SaysTheStopsBoundaryPhrase(t *testing.T) {
 // each live kind's phrase, renders whole, its record form too, within the
 // cap on a rendered note (render.MaxMessageBytes), so no conflict note is
 // dropped for its length; the premises pin both lengths as the slots'
-// longest. Break: a phrase or format long enough to pass the cap.
+// longest. Letters outside the hex digits, since the slots' screen refuses
+// a run of exactly 40 hex characters as a key. Break: a phrase or format
+// long enough to pass the cap.
 func TestConflictNote_LongestFitsTheCap(t *testing.T) {
-	rule := "r" + strings.Repeat("a", 47)
-	unit := strings.Repeat("../", 4) + strings.Repeat("a", 127) + "/" + strings.Repeat("b", 128)
-	if slot.RuleID(rule).Validate() != nil || slot.RuleID(rule+"a").Validate() == nil {
+	rule := "r" + strings.Repeat("x", 47)
+	unit := strings.Repeat("../", 4) + strings.Repeat("x", 127) + "/" + strings.Repeat("y", 128)
+	if slot.RuleID(rule).Validate() != nil || slot.RuleID(rule+"x").Validate() == nil {
 		t.Fatalf("premise: %d bytes is the longest rule id the slot takes", len(rule))
 	}
-	if slot.RelPath(unit).Validate() != nil || slot.RelPath(unit+"b").Validate() == nil || slot.RelPath("../"+unit).Validate() == nil {
+	if slot.RelPath(unit).Validate() != nil || slot.RelPath(unit+"y").Validate() == nil || slot.RelPath("../"+unit).Validate() == nil {
 		t.Fatalf("premise: %d bytes is the longest unit path the slot takes", len(unit))
 	}
 	longest := 0

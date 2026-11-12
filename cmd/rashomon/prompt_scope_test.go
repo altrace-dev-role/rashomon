@@ -9,6 +9,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -30,6 +31,7 @@ type scopeRun struct {
 	evidence bool
 	values   map[string]bool
 	key      []byte
+	lines    []string
 }
 
 // promptScopeRun runs text through the real prompt entry in a fresh
@@ -66,7 +68,8 @@ func promptScopeRun(t *testing.T, indexed bool, text string, mark func(t *testin
 	}
 	r.key = st.Key()
 	r.values = map[string]bool{}
-	for _, l := range s.steerLines() {
+	for _, l := range s.steerLog() {
+		r.lines = append(r.lines, l.Pattern+" "+l.Key)
 		if l.Key != keyGraph {
 			continue
 		}
@@ -79,6 +82,26 @@ func promptScopeRun(t *testing.T, indexed bool, text string, mark func(t *testin
 		}
 	}
 	return r
+}
+
+// steerLog is every line of the session's steer log, of any pattern
+// (steerLines keeps the plan check's alone).
+func (s *planSession) steerLog() []steer.Line {
+	s.t.Helper()
+	st, err := store.OpenExisting(s.root)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	raw, _, _ := st.ReadSteer(benchSessionID)
+	var out []steer.Line
+	for _, b := range raw {
+		var l steer.Line
+		if err := json.Unmarshal(b, &l); err != nil {
+			s.t.Fatal(err)
+		}
+		out = append(out, l)
+	}
+	return out
 }
 
 // slotStrings adds every string in a decoded slot value to into.
@@ -121,8 +144,8 @@ func digestsOf(r scopeRun, v5 map[string]bool) int {
 func TestPromptScope_OneReadDecidesTheFileAndTheLine(t *testing.T) {
 	v5 := promptScopeRun(t, true, scopePrompt, func(*testing.T, string) {})
 	if len(v5.reads) != 1 || v5.reads[0] != store.RecordScopeV5 || !v5.evidence || len(v5.values) == 0 {
-		t.Fatalf("v5: reads %q, evidence file %v, %d slot strings; want one read of v5, the file and a graph line",
-			v5.reads, v5.evidence, len(v5.values))
+		t.Fatalf("v5: reads %q, evidence file %v, %d slot strings (steer lines %q); want one read of v5, the file and a graph line",
+			v5.reads, v5.evidence, len(v5.values), v5.lines)
 	}
 	if n := digestsOf(v5, v5.values); n != 0 {
 		t.Errorf("v5: the graph line holds %d keyed digests of its own strings, want the message itself", n)
