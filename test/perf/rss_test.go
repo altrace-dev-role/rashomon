@@ -622,6 +622,14 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				r.env = append(r.env, blastEnv...)
 				mk, control = r.unitBriefPost(t, c.PayloadBytes)
 			}
+			if c.ID == conflictCase {
+				// The post's conflict check (W-M2.4 seam): a Write of a Go
+				// file a protect_path rule covers, the conflict base its
+				// session's prompt wrote held, in a session steering speaks
+				// to.
+				r.env = append(r.env, blastEnv...)
+				mk, control = r.conflictPost(t, c.PayloadBytes)
+			}
 			if concurrentGCCases[c.ID] {
 				r.env = append(r.env, concurrentGCEnv)
 			}

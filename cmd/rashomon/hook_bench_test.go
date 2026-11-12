@@ -462,6 +462,12 @@ func BenchmarkRunPost(b *testing.B) {
 	b.Run("unitbrief_none", func(b *testing.B) { benchUnitBriefPost(b, "", false) })
 	b.Run("unitbrief_off", func(b *testing.B) { benchUnitBriefPost(b, "c1", true) })
 	b.Run("unitbrief_stale", func(b *testing.B) { benchUnitBriefPost(b, "c0", false) })
+	// The post's conflict check (W-M2.4 seam, card m2-seam1): a consented
+	// Go edit under a bound spec, content kept, the same payload in each;
+	// none holds no base, check the base its prompt wrote, and its edit
+	// crosses nothing (benchConflictPost).
+	b.Run("conflict_none", func(b *testing.B) { benchConflictPost(b, false) })
+	b.Run("conflict_check", func(b *testing.B) { benchConflictPost(b, true) })
 }
 
 // postEntry is cmdPost with its stdout discarded, in the entry shape cmdHook

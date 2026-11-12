@@ -80,6 +80,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"hook.edit.overlay": {"hook", 40000, "W-M2.5"},
 		// The post's unit-brief read (W-M2.3 hook half): the real post entry on a 2048 B Edit post of a Go file in a unit the prompt named, its brief held.
 		"post.edit.unitbrief": {"post", 2048, "W-M2.3"},
+		// The post's conflict check (W-M2.4 seam): the real post entry on a 2048 B Write post of a Go file a protect_path rule covers, the session's conflict base held.
+		"post.edit.conflict": {"post", 2048, "W-M2.4"},
 	}
 	b := loadBudgets(t)
 	seen := map[string]bool{}

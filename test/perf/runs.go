@@ -145,6 +145,13 @@ func OverlayCase(id string) bool { return id == "hook.edit.overlay" }
 // and its basis says where the figure came from.
 func UnitBriefCase(id string) bool { return id == "post.edit.unitbrief" }
 
+// ConflictCase reports the post's conflict check case (W-M2.4 seam): the
+// post entry on a Write of a Go file a protect_path rule covers, the
+// session's conflict base held, the post payload padded to a fixed size.
+// Like the unit-brief case it is not RES-28's line, so its row is its own
+// figure and its basis says where the figure came from.
+func ConflictCase(id string) bool { return id == "post.edit.conflict" }
+
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
 // 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
 // intake, both of which this tree carries.
