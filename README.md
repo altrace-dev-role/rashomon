@@ -183,6 +183,16 @@ quotes the agent's final message from Claude Code's transcript without storing
 it. The one exception is opt-in: `rashomon bodies on` copies this project's
 transcripts into the store, and `rashomon forget --bodies` removes them.
 
+In a repository you indexed with `rashomon graph index`, once you have agreed
+to this build's screen, it also keeps what each Go edit declares: the names of
+the file's functions, types, methods, constants and variables, the first
+sentence of each one's doc comment, the names a function calls and the
+packages the file imports, never the file's other text. It keeps them with the
+file's path and SHA-256 in one log per repository under the store's `graph/`
+directory, beside the briefs and the conflict base each prompt writes there.
+The size cap does not cover `graph/`: what it holds stays until
+`rashomon purge`.
+
 ## Repository specs: trust and declared gates
 
 A repository can declare rules for its paths in `.claude/rashomon/spec.json`:
@@ -254,7 +264,8 @@ refused from an agent session. With the plugin, use `/plugin`.
 
 **How much disk does it use?** At most 512 MiB of runs by default; the oldest
 runs go first, each leaving a gap record. `RASHOMON_STORE_CAP_BYTES` sets the
-cap in bytes, and `0` keeps everything.
+cap in bytes, and `0` keeps everything. The store's `graph/` directory is not
+counted and stays until `rashomon purge`.
 
 ## Inside a sandbox
 
