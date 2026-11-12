@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,8 +13,11 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -37,8 +41,8 @@ const (
 		`{"id": "b1", "kind": "boundary", "from": ["unit:go:internal/graph"], "to": ["unit:go:internal/hookio"], "why": "w", "hard_control": "h"}, ` +
 		`{"id": "p1", "kind": "protect_path", "paths": ["keep/*.go"], "why": "w", "hard_control": "h"}]}`
 	cfCross   = "package graph\n\nimport _ \"" + cfModule + "/internal/hookio\"\n"
-	cfNote    = "this edit in unit 'internal/graph' raises boundary_cross under spec rule b1."
-	cfProtect = "this edit in unit 'keep' raises protected_path under spec rule p1."
+	cfNote    = "spec rule b1: this edit in unit 'internal/graph' adds a call, import or reference across a boundary a rule sets."
+	cfProtect = "spec rule p1: this edit in unit 'keep' edits a file a rule protects."
 )
 
 // cfBodies are the project's files at c1.
@@ -241,7 +245,7 @@ func TestPostConflicts_BoundaryFromSpecOnePerDirection(t *testing.T) {
 		t.Errorf("row %+v, want boundary_cross under b1 in internal/graph, the key a digest", r)
 	}
 
-	if out := s.land("toolu_cf2", cfHookio, "package hookio\n\nimport _ \""+cfModule+"/internal/graph\"\n"); strings.Contains(out, "raises") {
+	if out := s.land("toolu_cf2", cfHookio, "package hookio\n\nimport _ \""+cfModule+"/internal/graph\"\n"); cfSaysAConflict(out) {
 		t.Errorf("the reverse import: post output %q, want no conflict", out)
 	}
 	if n := len(s.run().ConflictChecks); n != 1 {
@@ -271,7 +275,7 @@ func TestPostConflicts_OutOfScopeEditWritesNoRecord(t *testing.T) {
 func TestPostConflicts_PreexistingCrossingIsNotNew(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV5, true)
 	s.prompt("fix " + cfGraph2)
-	if out := s.land("toolu_cf1", cfGraph2, cfCross+"\nfunc G2() {}\n"); strings.Contains(out, "raises") {
+	if out := s.land("toolu_cf1", cfGraph2, cfCross+"\nfunc G2() {}\n"); cfSaysAConflict(out) {
 		t.Errorf("post output %q, want no conflict for a crossing the base holds", out)
 	}
 	if cs := s.run().ConflictChecks; len(cs) != 1 || len(cs[0].Rows) != 0 {
@@ -289,7 +293,7 @@ func TestPostConflicts_RestoredFileRaisesNothing(t *testing.T) {
 	if out := s.land("toolu_cf1", cfKeep, "package keep\n\nfunc P() {}\n"); !strings.Contains(out, cfProtect) {
 		t.Errorf("post output %q lacks %q", out, cfProtect)
 	}
-	if out := s.land("toolu_cf2", cfKeep, cfBodies[cfKeep]); strings.Contains(out, "raises") {
+	if out := s.land("toolu_cf2", cfKeep, cfBodies[cfKeep]); cfSaysAConflict(out) {
 		t.Errorf("the restore: post output %q, want no conflict", out)
 	}
 	cs := s.run().ConflictChecks
@@ -309,7 +313,7 @@ func TestPostConflicts_RestoredFileRaisesNothing(t *testing.T) {
 // never loads the index.
 func TestPostConflicts_NoBaseIsAMissNeverALoad(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV5, true)
-	if out := s.land("toolu_cf1", cfGraph, cfCross); strings.Contains(out, "raises") {
+	if out := s.land("toolu_cf1", cfGraph, cfCross); cfSaysAConflict(out) {
 		t.Errorf("no base: post output %q, want nothing", out)
 	}
 	if n := len(s.run().ConflictChecks); n != 0 {
@@ -332,7 +336,7 @@ func TestPostConflicts_BaseAtAnotherCommitChecksNothing(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV5, true)
 	s.prompt("fix " + cfGraph)
 	cfIndex(t, s.project, "c2")
-	if out := s.land("toolu_cf1", cfGraph, cfCross); strings.Contains(out, "raises") {
+	if out := s.land("toolu_cf1", cfGraph, cfCross); cfSaysAConflict(out) {
 		t.Errorf("a base at c1 under an index at c2: post output %q, want nothing", out)
 	}
 	if n := len(s.run().ConflictChecks); n != 0 {
@@ -356,11 +360,28 @@ func TestPost_ConflictNudgesAndNeverBlocks(t *testing.T) {
 	if !strings.Contains(out, cfNote) || strings.Contains(out, `"decision"`) || strings.Contains(out, "block") {
 		t.Errorf("post output %q, want the note and no decision", out)
 	}
-	if again := s.land("toolu_cf2", cfGraph, cfCross+"\nfunc G() {}\n"); strings.Contains(again, "raises") {
+	if again := s.land("toolu_cf2", cfGraph, cfCross+"\nfunc G() {}\n"); cfSaysAConflict(again) {
 		t.Errorf("the same conflict again: post output %q, want it given once", again)
 	}
 	if cs := s.run().ConflictChecks; len(cs) != 2 || len(cs[1].Rows) != 1 || cs[1].Rows[0].Key != cs[0].Rows[0].Key {
 		t.Errorf("checks %+v, want the conflict recorded at both edits under one key", cs)
+	}
+	// The steer line keeps its pattern, kind and key form; its conflict slot
+	// holds the Stop's phrase, the engine's kind word staying in the record's
+	// conflict_check row.
+	var lines []steer.Line
+	for _, l := range s.steerLines() {
+		if strings.HasPrefix(l.Key, conflictKeyPrefix) {
+			lines = append(lines, l)
+		}
+	}
+	phrase, _ := recap.ConflictPhrase("boundary_cross")
+	if len(lines) != 1 || lines[0].Pattern != string(pattern.DeclaredFact) || lines[0].Kind != string(steer.KindConflict) {
+		t.Fatalf("conflict steer lines %+v, want one, pattern %s, kind %s", lines, pattern.DeclaredFact, steer.KindConflict)
+	}
+	var said string
+	if err := json.Unmarshal(lines[0].Slots["conflict"], &said); err != nil || said != phrase {
+		t.Errorf("the steer line's conflict slot %s (%v), want %q", lines[0].Slots["conflict"], err, phrase)
 	}
 }
 
@@ -480,28 +501,122 @@ func TestStop_ConflictFromARealPost(t *testing.T) {
 	}
 }
 
-// TestConflictMessages_EveryLiveKindRenders (D6): the kind slot's table is
-// the live kinds, a withheld kind refused; each live kind's note renders
-// with a rule the slot takes and with one it refuses (the unruled form),
-// and below v5 with its record form.
+// TestConflictMessages_EveryLiveKindRenders (D6): the conflict slot's table
+// is the Stop line's phrase for each live kind, which takes no engine kind
+// word, and a withheld kind has no phrase and no note; each live kind's note
+// renders with a rule the slot takes and with one it refuses (the unruled
+// form), and below v5 with its record form, each saying the kind's phrase.
 func TestConflictMessages_EveryLiveKindRenders(t *testing.T) {
 	for _, k := range verify.ConflictRowKinds {
-		live := !slices.Contains(verify.WithheldConflictKinds, k)
-		if err := slot.NewEnum(slot.EnumConflictKind, k).Validate(); (err == nil) != live {
-			t.Errorf("kind %s: Validate %v, live %v", k, err, live)
+		phrase, ok := recap.ConflictPhrase(k)
+		if !ok {
+			t.Errorf("live kind %s has no phrase", k)
+			continue
+		}
+		if err := slot.NewEnum(slot.EnumConflictPhrase, phrase).Validate(); err != nil {
+			t.Errorf("kind %s: the slot refuses its phrase %q: %v", k, phrase, err)
+		}
+		if slot.NewEnum(slot.EnumConflictPhrase, k).Validate() == nil {
+			t.Errorf("kind %s: the slot takes the engine's word", k)
 		}
 		for _, rule := range []string{"b1", "spec:b1", "rule.with_dots"} {
 			for _, v5 := range []bool{true, false} {
 				c := engine.Conflict{Kind: engine.ConflictKind(k), RuleID: rule}
-				if _, _, ok := conflictMessages(c, slot.RelPath("internal/graph"), v5); ok != live {
-					t.Errorf("kind %s rule %s v5 %v: ok %v, want %v", k, rule, v5, ok, live)
+				m, rec, ok := conflictMessages(c, slot.RelPath("internal/graph"), v5)
+				if !ok {
+					t.Errorf("kind %s rule %s v5 %v: no note", k, rule, v5)
+					continue
+				}
+				if !strings.Contains(m.Text(), phrase) || !v5 && !strings.Contains(rec.Text(), phrase) {
+					t.Errorf("kind %s rule %s v5 %v: note %q, record %q; want each to say %q", k, rule, v5, m.Text(), rec.Text(), phrase)
 				}
 			}
 		}
 	}
 	for _, k := range verify.WithheldConflictKinds {
-		if slot.NewEnum(slot.EnumConflictKind, k).Validate() == nil {
-			t.Errorf("withheld kind %s is in the slot's table", k)
+		if _, ok := recap.ConflictPhrase(k); ok {
+			t.Errorf("withheld kind %s has a phrase", k)
+		}
+		if _, _, ok := conflictMessages(engine.Conflict{Kind: engine.ConflictKind(k), RuleID: "b1"}, slot.RelPath("internal/graph"), true); ok {
+			t.Errorf("withheld kind %s renders a note", k)
 		}
 	}
+}
+
+// TestConflictNote_SaysTheStopsBoundaryPhrase: the post's note for a
+// boundary crossing says the Stop line's phrase for it verbatim
+// (internal/recap/conflicts.go), in the Stop line's order, the rule and then
+// what the edit did, so a reader matching the Stop's words on a session's
+// output finds the post's note too. Break: reword either side.
+func TestConflictNote_SaysTheStopsBoundaryPhrase(t *testing.T) {
+	const phrase = "adds a call, import or reference across a boundary a rule sets"
+	if p, ok := recap.ConflictPhrase("boundary_cross"); !ok || p != phrase {
+		t.Fatalf("the Stop's phrase is %q (%v), want %q", p, ok, phrase)
+	}
+	c := engine.Conflict{Kind: engine.ConflictKind("boundary_cross"), RuleID: "spec:b1"}
+	m, rec, ok := conflictMessages(c, slot.RelPath("internal/graph"), false)
+	if !ok {
+		t.Fatal("no note")
+	}
+	if want := "rashomon record: spec rule b1: this edit in unit 'internal/graph' " + phrase + "."; m.Text() != want {
+		t.Errorf("note %q, want %q", m.Text(), want)
+	}
+	if want := "rashomon record: spec rule b1: an edit " + phrase + "."; rec.Text() != want {
+		t.Errorf("record form %q, want %q", rec.Text(), want)
+	}
+	if !cfSaysAConflict(m.Text()) || !cfSaysAConflict(rec.Text()) || cfSaysAConflict(cfBodies[cfKeep]) {
+		t.Error("cfSaysAConflict, the no-note checks' probe, misses the note or matches a file")
+	}
+}
+
+// TestConflictNote_LongestFitsTheCap: the longest note the slots allow, a
+// 48-byte rule id and a 268-byte unit path (four "../" and 256 bytes), with
+// each live kind's phrase, renders whole, its record form too, within the
+// cap on a rendered note (render.MaxMessageBytes), so no conflict note is
+// dropped for its length; the premises pin both lengths as the slots'
+// longest. Break: a phrase or format long enough to pass the cap.
+func TestConflictNote_LongestFitsTheCap(t *testing.T) {
+	rule := "r" + strings.Repeat("a", 47)
+	unit := strings.Repeat("../", 4) + strings.Repeat("a", 127) + "/" + strings.Repeat("b", 128)
+	if slot.RuleID(rule).Validate() != nil || slot.RuleID(rule+"a").Validate() == nil {
+		t.Fatalf("premise: %d bytes is the longest rule id the slot takes", len(rule))
+	}
+	if slot.RelPath(unit).Validate() != nil || slot.RelPath(unit+"b").Validate() == nil || slot.RelPath("../"+unit).Validate() == nil {
+		t.Fatalf("premise: %d bytes is the longest unit path the slot takes", len(unit))
+	}
+	longest := 0
+	for _, k := range verify.ConflictRowKinds {
+		phrase, ok := recap.ConflictPhrase(k)
+		if !ok {
+			t.Fatalf("live kind %s has no phrase", k)
+		}
+		m, rec, ok := conflictMessages(engine.Conflict{Kind: engine.ConflictKind(k), RuleID: "spec:" + rule}, slot.RelPath(unit), false)
+		if !ok {
+			t.Errorf("kind %s: the longest note does not render", k)
+			continue
+		}
+		for _, s := range []string{m.Text(), rec.Text()} {
+			if err := render.Validate(s); err != nil || !strings.Contains(s, "spec rule "+rule+": ") || !strings.HasSuffix(s, " "+phrase+".") {
+				t.Errorf("kind %s: %q (%v), want it whole and valid", k, s, err)
+			}
+		}
+		if !strings.Contains(m.Text(), " unit '"+unit+"' ") {
+			t.Errorf("kind %s: %q does not hold the whole unit", k, m.Text())
+		}
+		longest = max(longest, len(m.Text()))
+	}
+	if longest == 0 || longest > render.MaxMessageBytes {
+		t.Errorf("the longest conflict note is %d bytes, the cap %d", longest, render.MaxMessageBytes)
+	}
+}
+
+// cfSaysAConflict reports whether out holds a conflict note: any live kind's
+// phrase, which every conflict note says (TestConflictNote_*).
+func cfSaysAConflict(out string) bool {
+	for _, k := range verify.ConflictRowKinds {
+		if p, ok := recap.ConflictPhrase(k); ok && strings.Contains(out, p) {
+			return true
+		}
+	}
+	return false
 }

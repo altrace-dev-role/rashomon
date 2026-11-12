@@ -30,8 +30,9 @@ const conflictCase = "post.edit.conflict"
 // files, so the base holds the rule and those files' digests.
 const conflictSpecDoc = `{"rashomon_spec": 1, "rules": [{"id": "keep", "kind": "protect_path", "paths": ["internal/p000/*.go"], "why": "perf row: the post's conflict check", "hard_control": "CI"}]}`
 
-// conflictCaseNote is the note the case's post gives.
-const conflictCaseNote = "raises protected_path under spec rule keep."
+// conflictCaseNote is the note the case's post gives, either side of its
+// unit: the rule as the Stop's line names it, then the kind's phrase.
+var conflictCaseNote = [2]string{"rashomon record: spec rule keep: this edit in unit ", " edits a file a rule protects."}
 
 // conflictPost returns the payload builder of the conflict case and its
 // control. The module is unitBriefPost's (countRowsTree with
@@ -181,7 +182,7 @@ func (r *rig) conflictPost(t *testing.T, size int) (mk func(i int) []byte, contr
 		}
 		return n
 	}
-	if out := run([]string{"post"}, mk(0x3f)); !bytes.Contains(out, []byte(conflictCaseNote)) {
+	if out := run([]string{"post"}, mk(0x3f)); !bytes.Contains(out, []byte(conflictCaseNote[0])) || !bytes.Contains(out, []byte(conflictCaseNote[1])) {
 		t.Fatalf("premise: the post printed %q, want the conflict's note; its checks' rows %v", out, rows(0x3f))
 	}
 	if info, err := os.Stat(base(session(0x3f))); err == nil {

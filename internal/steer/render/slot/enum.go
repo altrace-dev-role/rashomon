@@ -32,9 +32,12 @@ const (
 	// names, a pipe it does not ("other"), or the line where the record
 	// names no stage.
 	EnumMaskStage
-	// EnumConflictKind is a conflict note's kind (W-M2.4 hook seam): the
-	// engine's words for the live kinds, verify.ConflictRowKinds.
-	EnumConflictKind
+	// EnumConflictPhrase is a conflict note's conflict (W-M2.4 hook seam):
+	// the Stop line's phrase for each live kind of verify.ConflictRowKinds,
+	// in its order, as internal/recap's conflictPhrases holds it, so the
+	// post's note and the Stop's line say a conflict in the same words. A
+	// withheld kind has none, and the engine's own kind word is refused.
+	EnumConflictPhrase
 )
 
 // enumTables is every Enum table. Nothing writes to it after this
@@ -54,7 +57,12 @@ var enumTables = map[EnumTable][]string{
 		"the pipe to tail", "the pipe to tee", "the pipe to cat", "the pipe to head", "the pipe to grep",
 		"the pipe to wc", "the pipe to sort", "the pipe to cut", "a pipe", "its line",
 	},
-	EnumConflictKind: {"boundary_cross", "decision_contradicted", "signature_mismatch", "protected_path"},
+	EnumConflictPhrase: {
+		"adds a call, import or reference across a boundary a rule sets",
+		"goes against a decision a rule records",
+		"changes a signature that a caller no longer fits",
+		"edits a file a rule protects",
+	},
 }
 
 // Enum is one value of a closed table. It renders unquoted, so only a

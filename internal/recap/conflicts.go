@@ -141,3 +141,10 @@ func conflictLines(v verify.StopView, fromPlugin bool, rest string) string {
 func ConflictLines(v verify.StopView, fromPlugin bool, rest string) string {
 	return conflictLines(v, fromPlugin, rest)
 }
+
+// ConflictPhrase is kind's phrase as the Stop's line says it, for the post's
+// conflict note to say the same (cmd/rashomon conflictMessages); false for a
+// kind with none, a withheld kind among them.
+func ConflictPhrase(kind string) (string, bool) {
+	return conflictPhrase(kind)
+}

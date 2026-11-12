@@ -9,6 +9,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
@@ -132,11 +133,18 @@ func conflictFindings(st *store.Store, e hook.LandedGoEdit, repo, commit string,
 	return out
 }
 
-// conflictMessages is c's note naming unit and, unless v5, its record form.
-// A rule id the slot refuses is left out, the note saying "a spec rule" as
-// the Stop's line does; ok is false when no form renders.
+// conflictMessages is c's note naming unit and, unless v5, its record form,
+// the conflict said in the Stop line's words, the phrase internal/recap keeps
+// for c's kind (recap.ConflictPhrase), and in its order, the rule and then
+// what the edit did. A rule id the slot refuses is left out, the note saying
+// "a spec rule" as the Stop's line does; ok is false when no form renders,
+// as for a withheld kind, which has no phrase.
 func conflictMessages(c engine.Conflict, unit slot.RelPath, v5 bool) (m, rec render.Message, ok bool) {
-	kind := slot.NewEnum(slot.EnumConflictKind, string(c.Kind))
+	phrase, ok := recap.ConflictPhrase(string(c.Kind))
+	if !ok {
+		return render.Message{}, render.Message{}, false
+	}
+	kind := slot.NewEnum(slot.EnumConflictPhrase, phrase)
 	rule := slot.RuleID(strings.TrimPrefix(c.RuleID, "spec:"))
 	var err error
 	if rule.Validate() == nil {
