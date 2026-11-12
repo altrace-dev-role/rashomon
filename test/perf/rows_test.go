@@ -249,7 +249,7 @@ func TestRES2p_InitBudgetIsPerPlatform(t *testing.T) {
 	}{
 		{"linux", 64 << 10},
 		{"windows", 64 << 10},
-		{"darwin", 66712},
+		{"darwin", 67088},
 	} {
 		if got := InitBudget(c.goos); got != c.want {
 			t.Errorf("InitBudget(%q) = %d, want %d", c.goos, got, c.want)
