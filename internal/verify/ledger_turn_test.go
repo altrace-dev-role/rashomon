@@ -53,3 +53,10 @@ func TestLedger_NilUnitOfAddsNoUnitRow(t *testing.T) {
 func TestLedger_Replay(t *testing.T) {
 	t.Skip("W-M3.1 body: the ledger has no turn rows yet")
 }
+
+// TestLedger_EmptyWindowAddsNoTurnRow: a Stop whose turn has no call by its
+// seq, the empty window, adds no turn row: its From, past its To, may be a
+// later turn's first call, whose rows would then share its ids.
+func TestLedger_EmptyWindowAddsNoTurnRow(t *testing.T) {
+	t.Skip("W-M3.1 body: the ledger has no turn rows yet")
+}

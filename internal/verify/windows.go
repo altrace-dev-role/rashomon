@@ -29,20 +29,24 @@ func (w Window) Empty() bool { return w.From > w.To }
 // TurnWindow is the window of the point's own turn at seq at: To is at, and
 // From is the first declaration at or before at that carries promptID, the
 // turn's first call, as countTurn reads it into TurnCounts.FirstSeq. An empty
-// promptID resolves as countTurn resolves it, to latestPrompt's id; where no
-// declaration carries a prompt id at all the turn has no start, and From is
-// the run's first declaration at or before at. A turn with no call by at has
-// the empty window, From at+1, and owes no turn row. A turn is a prompt id,
-// whatever sent the prompt: a person, a peer session and a scheduled prompt
-// each start one, since the record does not say which.
+// promptID resolves as countTurn resolves it, to latestPrompt's id. A
+// declaration whose prompt id is nil or "" is in no turn, so a run where no
+// declaration carries a prompt id has the empty window, as countTurn's is,
+// never the whole run. A turn with no call by at has the empty window, From
+// at+1, and owes no turn row. A turn is a prompt id, whatever sent the
+// prompt: a person, a peer session and a scheduled prompt each start one,
+// since the record does not say which.
 func TurnWindow(run *store.Run, promptID string, at int64) Window {
 	if promptID == "" {
 		promptID = latestPrompt(run.Declarations)
 	}
 	w := Window{Scope: ScopeTurn, From: at + 1, To: at}
+	if promptID == "" {
+		return w
+	}
 	for i := range run.Declarations {
 		d := &run.Declarations[i]
-		if d.Seq < w.From && (promptID == "" || (d.PromptID != nil && *d.PromptID == promptID)) {
+		if d.Seq < w.From && d.PromptID != nil && *d.PromptID == promptID {
 			w.From = d.Seq
 		}
 	}
@@ -52,10 +56,12 @@ func TurnWindow(run *store.Run, promptID string, at int64) Window {
 // TurnObligationID is the id of a turn row: ObligationID in the turn scope
 // over a key of the window's From, then family with its length before it,
 // then unit, "" for a row about no one unit. Two Stops in one turn share From
-// and so their rows share ids; two turns never share a From, a declaration
-// carrying one prompt id, so their rows never do. To is not in the key. The
-// length keeps the key one to one: family "a1" with unit "" and family "a"
-// with unit "1" are two keys, as in the conflict family's key.
+// and so their rows share ids; two turns' non-empty windows never share a
+// From, a declaration carrying one prompt id, so their rows never do. An
+// empty window's From, at+1, may be a later turn's first call, so an empty
+// window owes no turn row (TestLedger_EmptyWindowAddsNoTurnRow). To is not
+// in the key. The length keeps the key one to one: family "a1" with unit ""
+// and family "a" with unit "1" are two keys, as in the conflict family's key.
 func TurnObligationID(kind ObligationKind, family string, w Window, unit string) string {
 	key := "t" + strconv.FormatInt(w.From, 10) + ":" + strconv.Itoa(len(family)) + ":" + family + unit
 	return ObligationID(ScopeTurn, kind, key)

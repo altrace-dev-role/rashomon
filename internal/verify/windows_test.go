@@ -71,16 +71,25 @@ func TestTurnWindow_StartsAtTheTurnsFirstCall(t *testing.T) {
 }
 
 // TestTurnWindow_EmptyPromptIDResolvesAsCountTurn: an empty prompt id is the
-// latest prompt's turn, as countTurn reads it; only where no declaration
-// carries a prompt id does the window start at the run's first call, and an
-// empty run's window is empty.
+// latest prompt's turn, as countTurn reads it. A run where no declaration
+// carries a prompt id, nil or "", has the empty window, and countTurn's
+// FirstSeq there is 0: never the whole run. An empty run's window is empty.
+// Witness: the same run with one prompt id has a window that is not empty.
 func TestTurnWindow_EmptyPromptIDResolvesAsCountTurn(t *testing.T) {
 	r := promptRun("p1", "p1", "p2", "p2")
 	if got, want := TurnWindow(r, "", 4), TurnWindow(r, "p2", 4); got != want || got.From != 3 {
 		t.Errorf("TurnWindow(\"\", 4) = %+v, want p2's %+v", got, want)
 	}
-	if got := TurnWindow(promptRun("", "", ""), "", 3); got != (Window{Scope: ScopeTurn, From: 1, To: 3}) {
-		t.Errorf("no prompt ids: %+v, want From 1 To 3", got)
+	none, blank := promptRun("", "", ""), ""
+	none.Declarations[1].PromptID = &blank
+	if got := TurnWindow(none, "", 3); !got.Empty() || got != (Window{Scope: ScopeTurn, From: 4, To: 3}) {
+		t.Errorf("no prompt ids: %+v, want the empty window From 4 To 3", got)
+	}
+	if first := countTurn(none, classified{}, "", 3, nil).FirstSeq; first != 0 {
+		t.Errorf("no prompt ids: countTurn's FirstSeq %d, want 0", first)
+	}
+	if got := TurnWindow(promptRun("", "p1", ""), "", 3); got != (Window{Scope: ScopeTurn, From: 2, To: 3}) {
+		t.Errorf("witness: one prompt id: %+v, want From 2 To 3", got)
 	}
 	if got := TurnWindow(&store.Run{}, "", 7); !got.Empty() {
 		t.Errorf("empty run: %+v, want the empty window", got)

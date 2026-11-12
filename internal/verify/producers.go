@@ -5,11 +5,13 @@ package verify
 // without reading a graph: the consumers of a changed unit to verify as
 // platform_impact, the tests covering it as proposed_check. Unit is the
 // unit's global id, in UnitOf's form; Subject is what the row is about and
-// Source its producer; Seqs are the record seqs it cites, ascending; Met is
-// whether the session did what the row asks.
+// Source its producer; Seqs are the record seqs it cites, ascending. Known
+// false is a row its producer could not decide, a row unknown and never met
+// (INV-2); Met, whether the session did what the row asks, is read only
+// where Known, as ReqRow's Holds is.
 type ProducedRow struct {
 	Kind                  ObligationKind
 	Unit, Source, Subject string
 	Seqs                  []int64
-	Met                   bool
+	Met, Known            bool
 }
