@@ -259,7 +259,11 @@ func (b Brief) roles(hits bool) string {
 		if p.Callable {
 			kind = "callable"
 		}
-		fmt.Fprintf(&sb, "  %-10s %5.2f of %5.2f  %-32s nodes %-3d %-8s prec %.2f mass %5.2f  %s\n", p.Class, p.Covered, p.Of, p.Path, len(p.Nodes), kind, p.Precision, p.Mass, p.Refused)
+		refused := p.Refused
+		if !hits {
+			refused = whyClass(refused)
+		}
+		fmt.Fprintf(&sb, "  %-10s %5.2f of %5.2f  %-32s nodes %-3d %-8s prec %.2f mass %5.2f  %s\n", p.Class, p.Covered, p.Of, p.Path, len(p.Nodes), kind, p.Precision, p.Mass, refused)
 	}
 	if n := len(r.ReuseClaims); n > 0 {
 		fmt.Fprintf(&sb, "reuse claims (%d; use, add, mass; via the addition's code; in unit; called outside):\n", n)
@@ -271,8 +275,12 @@ func (b Brief) roles(hits bool) string {
 		}
 		fmt.Fprintf(&sb, "  use %6.2f add %6.2f mass %6.2f  via %-5v in %-5v out %-5v nodes %-3d %s\n", cl.Use, cl.Add, cl.Mass, cl.ViaAdd, cl.In, cl.Reused, cl.Nodes, cl.File)
 	}
+	why := r.Why
+	if !hits {
+		why = whyClass(why)
+	}
 	fmt.Fprintf(&sb, "roles (%s): unit %s; basis %s; runner-up %s; file %s; targets %d; reuse %s; consumers %s; knowledge %s\n",
-		r.Why, r.Unit, r.Basis, r.RunnerUp, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
+		why, r.Unit, r.Basis, r.RunnerUp, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
 	return sb.String()
 }
 
