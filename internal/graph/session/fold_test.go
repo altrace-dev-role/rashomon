@@ -1,10 +1,12 @@
 package session
 
 import (
+	"encoding/json"
 	"math/rand"
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
@@ -174,6 +176,57 @@ func TestInProject_DecidesAsVerify(t *testing.T) {
 	}
 }
 
+// ledgerLineSynthetic is a ledger line built by a test, never recorded: no
+// ledger writer exists before the M2 merge (ledger condition 7), so every
+// ledger line in this file is SYNTHETIC (condition 6). Its rows are real
+// verify.Obligation values marshalled by encoding/json, so a decode reads
+// verify's own keys; tail adds keys after the rows.
+func ledgerLineSynthetic(t *testing.T, seq int64, rows []verify.Obligation, tail string) []byte {
+	t.Helper()
+	b, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []byte(`{"type":"ledger","seq":` + strconv.FormatInt(seq, 10) + `,"point":"stop","obligations":` + string(b) + tail + `}`)
+}
+
+// TestEvent_DecodeLedgerSynthetic (W-M4.2, D3): a ledger line decodes to its
+// rows' id, kind, unit and state by verify.Obligation's keys, with its two
+// cut counts, 0 when absent. Scope is opaque: a scope no list names decodes
+// as any other. Only a ledger line's rows are the ledger: a verify record or
+// a declaration carrying the same keys is not one. SYNTHETIC lines.
+func TestEvent_DecodeLedgerSynthetic(t *testing.T) {
+	rows := []verify.Obligation{
+		{ID: "ob-a", Scope: verify.ScopeSession, Kind: verify.GateAfterWrite, Source: "spec", State: verify.ObligationMet, Evidence: []int64{4, 9}},
+		{ID: "ob-b", Scope: "turn", Kind: verify.ExpectedEvidence, Source: "requirement", State: verify.ObligationUnknown, Evidence: []int64{}, Unit: "g:r1#unit:go:internal/a"},
+		{ID: "ob-c", Scope: "a scope no list names", Kind: verify.PlatformImpact, Source: "graph", State: verify.ObligationOpen, Unit: "g:r1#unit:go:internal/b"},
+		{ID: "ob-d", Scope: verify.ScopeSession, Kind: verify.ExitUnmasked, Source: "run", State: verify.ObligationUnmet},
+	}
+	var all []ObligationRef
+	for _, r := range rows {
+		all = append(all, ObligationRef{ID: r.ID, Kind: string(r.Kind), Unit: r.Unit, State: string(r.State)})
+	}
+	for _, c := range []struct {
+		name              string
+		line              []byte
+		ledger            bool
+		obs               []ObligationRef
+		omitted, unitsCut int
+	}{
+		{"a ledger line", ledgerLineSynthetic(t, 12, rows, `,"obligations_omitted":2,"unit_rows_cut":5`), true, all, 2, 5},
+		{"no cut keys", ledgerLineSynthetic(t, 12, rows[:1], ""), true, all[:1], 0, 0},
+		{"no rows", ledgerLineSynthetic(t, 12, []verify.Obligation{}, ""), true, []ObligationRef{}, 0, 0},
+		{"rows null", ledgerLineSynthetic(t, 12, nil, ""), true, []ObligationRef{}, 0, 0},
+		{"a verify record is no ledger line", []byte(`{"type":"verify","seq":12,"point":"stop","obligations":[{"id":"ob-a","state":"met"}],"unit_rows_cut":5}`), false, nil, 0, 0},
+		{"a declaration is no ledger line", []byte(`{"type":"declaration","seq":12,"obligations":[{"id":"ob-a","state":"met"}],"obligations_omitted":2}`), false, nil, 0, 0},
+	} {
+		ev, ok, err := RecordEvent(c.line)
+		if err != nil || !ok || ev.Ledger != c.ledger || !reflect.DeepEqual(ev.Obligations, c.obs) || ev.ObligationsOmitted != c.omitted || ev.UnitRowsCut != c.unitsCut {
+			t.Errorf("%s: Ledger %v, %+v, omitted %d, cut %d, %v, %v; want %v, %+v, %d, %d", c.name, ev.Ledger, ev.Obligations, ev.ObligationsOmitted, ev.UnitRowsCut, ok, err, c.ledger, c.obs, c.omitted, c.unitsCut)
+		}
+	}
+}
+
 // TestEvent_DecodeWithheld (W-M4.2, D1): a declaration whose write path the
 // record withheld is marked, whatever the reason, so the frontier can say
 // Touched is cut. A withheld cwd or project alone (a Read below record scope
@@ -213,6 +266,11 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 		"Kind":     "a closed steer.Kind name, or empty",
 		"PromptID": "a prompt id (a UUID), never the prompt's words",
 		"Wrote[]":  "a project-relative path a call named as written, never a file's contents",
+
+		"Obligations[].ID":    "an obligation id, verify.ObligationID's digest",
+		"Obligations[].Kind":  "a closed verify.ObligationKind name",
+		"Obligations[].Unit":  "a unit's global id, or its digest below record scope v5",
+		"Obligations[].State": "a closed verify.ObligationState name",
 	}
 	var got []string
 	stringLeaves(reflect.TypeOf(Event{}), "", &got)
@@ -325,6 +383,36 @@ func TestStep_TouchedWithheld(t *testing.T) {
 	}
 	if f.TouchedWithheld != 2 || !reflect.DeepEqual(f.Touched, []string{string(graph.FileID("a.go"))}) {
 		t.Fatalf("TouchedWithheld %d, Touched %q; want 2 and [file:a.go]", f.TouchedWithheld, f.Touched)
+	}
+}
+
+// TestStep_LedgerSynthetic (W-M4.2, D3): the last ledger line is the
+// frontier's obligations, as of its seq, with its own cut counts, each line
+// replacing the one before; one ref per id, the first kept; each state as
+// written, so unknown stays unknown and open stays open; and a record that
+// is no ledger line leaves them as they were (ledger condition 4).
+// SYNTHETIC events: no ledger writer exists before the M2 merge.
+func TestStep_LedgerSynthetic(t *testing.T) {
+	first := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "unmet"}}
+	second := []ObligationRef{
+		{ID: "ob-b", Kind: "expected_evidence", Unit: "g:r1#unit:go:internal/a", State: "unknown"},
+		{ID: "ob-a", Kind: "gate_after_write", State: "met"},
+		{ID: "ob-b", Kind: "expected_evidence", Unit: "g:r1#unit:go:internal/z", State: "met"},
+		{ID: "ob-c", Kind: "platform_impact", State: "open"},
+	}
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 3, Type: ledgerType, Ledger: true, Obligations: first, ObligationsOmitted: 1, UnitRowsCut: 4},
+		{Seq: 5, Type: ledgerType, Ledger: true, Obligations: second, UnitRowsCut: 3},
+		{Seq: 6, Type: "declaration", Wrote: []string{"a.go"}},
+		{Seq: 6, Steer: true, AtUnixMS: 1, ID: "d1", Type: "steer", State: "delivered", Key: "k"},
+		{Seq: 7, Type: "verify"},
+	} {
+		Step(&f, ev)
+	}
+	want := []ObligationRef{second[0], second[1], second[3]}
+	if !reflect.DeepEqual(f.Obligations, want) || f.ObligationsAt != 5 || f.ObligationsOmitted != 0 || f.UnitRowsCut != 3 {
+		t.Fatalf("Obligations %+v at %d, omitted %d, cut %d; want %+v at 5, 0, 3", f.Obligations, f.ObligationsAt, f.ObligationsOmitted, f.UnitRowsCut, want)
 	}
 }
 

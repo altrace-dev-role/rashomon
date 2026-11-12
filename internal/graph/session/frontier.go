@@ -34,7 +34,8 @@ const (
 // Commit, because no record line carries a repo id or the session's start
 // commit, and a field the record cannot give breaks C1; no Drift until
 // W-M4.6, which adds it under a fold_version bump; ObligationsAt and
-// ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53); Touched
+// ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53), and
+// UnitRowsCut, verify's own cut of unit rows (ruling 11:37); Touched
 // holds files, not units, for the same reason (its doc); TouchedWithheld,
 // condition 3's cut rule applied to Touched, and TouchedOutside, the writes
 // Touched cannot place in the project (ruling 11:37).
@@ -81,12 +82,19 @@ type Frontier struct {
 	// 11:46).
 	TouchedOutside int `json:"touched_outside"`
 	// Obligations are copied from the last ledger line, as of its seq
-	// (ObligationsAt); the fold never computes one. ObligationsOmitted is
-	// the ledger line's own cut count: when it is above zero the list is not
-	// every obligation, and nothing built from it may say every.
+	// (ObligationsAt); the fold never computes one and never cuts one.
+	// Each row's state is verify's as written (open, met, unmet, unknown):
+	// unknown never reads unmet (INV-2). ObligationsOmitted is the ledger
+	// line's own cut count, rows its writer left off the line; UnitRowsCut
+	// is the unit rows verify never made past its cap of 32 per Stop
+	// (verify.MaxTurnUnitRows at W-M3.1), 0 when the line has none. Two
+	// counts, not one, since the causes differ. When either is above zero
+	// the list is not every obligation, and nothing built from it may say
+	// every.
 	Obligations        []ObligationRef `json:"obligations"`
 	ObligationsAt      int64           `json:"obligations_at"`
 	ObligationsOmitted int             `json:"obligations_omitted"`
+	UnitRowsCut        int             `json:"unit_rows_cut"`
 	Delivered          []LineRef       `json:"delivered"`
 	Verdicts           []VerdictRef    `json:"verdicts"`
 	LastBoundary       int64           `json:"last_boundary"`

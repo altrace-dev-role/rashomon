@@ -52,7 +52,21 @@ type Event struct {
 	// outside the project (inProject false), which TouchedOutside counts;
 	// the declaration's paths inside the project are still in Wrote.
 	WroteOutside bool
+	// Ledger is true for a ledger line (ledgerType), whose rows and cut
+	// counts the Obligations rule copies (ledger). Every other record and
+	// every steer line leave all four empty.
+	Ledger             bool
+	Obligations        []ObligationRef
+	ObligationsOmitted int
+	UnitRowsCut        int
 }
+
+// ledgerType is the record type of a ledger line, the verify ledger at a
+// point (D3). No writer exists before the M2 merge (ledger condition 7) and
+// no store constant names the type yet, so the fold names it as the
+// contract does (11:34, msg 71635d33); the writer's constant replaces this
+// one when it lands.
+const ledgerType = "ledger"
 
 // Before reports whether e sorts before o in the merged order (seq, record
 // before line, at_unix_ms, id). Record seqs are unique (nextSeq allocates
@@ -88,6 +102,17 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 		// withheld reasons; WroteWithheld reads only whether one is set.
 		FileWithheld    *string `json:"file_path_withheld"`
 		WrittenWithheld *string `json:"written_paths_withheld"`
+		// Obligations are a ledger line's rows by verify.Obligation's own
+		// keys, not ObligationRef's, so the frontier's names never decide
+		// what a ledger line reads. Scope, source and evidence are not read.
+		Obligations []struct {
+			ID    string `json:"id"`
+			Kind  string `json:"kind"`
+			Unit  string `json:"unit"`
+			State string `json:"state"`
+		} `json:"obligations"`
+		ObligationsOmitted int `json:"obligations_omitted"`
+		UnitRowsCut        int `json:"unit_rows_cut"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: record line: %w", err)
@@ -99,6 +124,14 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 	if h.Type == store.TypeDeclaration {
 		ev.Wrote, ev.WroteOutside = wrote(h.FilePath, h.WrittenPaths, h.Project, h.CWD)
 		ev.WroteWithheld = h.FileWithheld != nil || h.WrittenWithheld != nil
+	}
+	if h.Type == ledgerType {
+		ev.Ledger = true
+		ev.Obligations = make([]ObligationRef, 0, len(h.Obligations))
+		for _, o := range h.Obligations {
+			ev.Obligations = append(ev.Obligations, ObligationRef{ID: o.ID, Kind: o.Kind, Unit: o.Unit, State: o.State})
+		}
+		ev.ObligationsOmitted, ev.UnitRowsCut = h.ObligationsOmitted, h.UnitRowsCut
 	}
 	return ev, true, nil
 }
@@ -236,6 +269,34 @@ func Step(f *Frontier, ev Event) {
 	if ev.WroteOutside {
 		f.TouchedOutside++
 	}
+	if ev.Ledger {
+		ledger(f, ev)
+	}
+}
+
+// ledger makes a ledger line's rows the frontier's obligations, as of the
+// line's seq (ObligationsAt), with its two cut counts: the last ledger line
+// is the session's ledger, and the fold copies it, never computing a row
+// (D3). A row is keyed by its id alone, one ref per id with the first kept,
+// since canon orders the rows by id. State is copied as the line wrote it,
+// so open, met, unmet and unknown stay four states and unknown never reads
+// unmet (INV-2); scope is opaque and not read. A record that is no ledger
+// line never reaches here, so it leaves the obligations as they were
+// (ledger condition 4).
+func ledger(f *Frontier, ev Event) {
+	obs := make([]ObligationRef, 0, len(ev.Obligations))
+	seen := make(map[string]bool, len(ev.Obligations))
+	for _, o := range ev.Obligations {
+		if seen[o.ID] {
+			continue
+		}
+		seen[o.ID] = true
+		obs = append(obs, o)
+	}
+	f.Obligations = obs
+	f.ObligationsAt = ev.Seq
+	f.ObligationsOmitted = ev.ObligationsOmitted
+	f.UnitRowsCut = ev.UnitRowsCut
 }
 
 // touch adds the file a call wrote to Touched as its graph.FileID, kept

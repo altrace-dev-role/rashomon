@@ -34,9 +34,14 @@ func sampleFrontier() Frontier {
 	f.Touched = []string{"file:z.go", "file:a.go"}
 	f.TouchedWithheld = 3
 	f.TouchedOutside = 4
-	f.Obligations = []ObligationRef{{ID: "ob2", Kind: "gate", Unit: "unit:a", State: "owed"}, {ID: "ob1", Kind: "gate", Unit: "unit:z", State: "met"}}
+	f.Obligations = []ObligationRef{
+		{ID: "ob3", Kind: "expected_evidence", State: "unknown"},
+		{ID: "ob2", Kind: "gate_after_write", Unit: "unit:a", State: "open"},
+		{ID: "ob1", Kind: "gate_after_write", Unit: "unit:z", State: "met"},
+	}
 	f.ObligationsAt = 30
 	f.ObligationsOmitted = 2
+	f.UnitRowsCut = 5
 	f.Delivered = []LineRef{{ID: "l2", Key: "unit:b", Kind: "unit", Unit: "b", Seq: 41}, {ID: "l1", Key: "unit:a", Kind: "unit", Unit: "a", Seq: 4}}
 	f.Verdicts = []VerdictRef{{Seq: 30, Done: false, Owed: 1}, {Seq: 12, Done: true}}
 	f.LastBoundary = 20
@@ -117,6 +122,19 @@ func TestFrontier_TouchedCountKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := `"touched":["file:a.go","file:z.go"],"touched_withheld":3,"touched_outside":4,`; !bytes.Contains(b, []byte(want)) {
+		t.Errorf("frontier does not hold %s:\n%s", want, b)
+	}
+}
+
+// TestFrontier_ObligationCountKeys (W-M4.2, D3; ruling 11:37 5c): the
+// ledger's seq and its two cut counts follow Obligations under their own
+// keys, unit_rows_cut beside obligations_omitted.
+func TestFrontier_ObligationCountKeys(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"obligations_at":30,"obligations_omitted":2,"unit_rows_cut":5,"delivered":`; !bytes.Contains(b, []byte(want)) {
 		t.Errorf("frontier does not hold %s:\n%s", want, b)
 	}
 }
