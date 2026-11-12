@@ -17,12 +17,20 @@ const MaxDocBytes = 160
 // order stay and a final "+N" token counts the names cut.
 const MaxOverlayCalls = 32
 
-// builtinCalls are Go's predeclared functions: a call to one names no
-// declaration of the program.
-var builtinCalls = map[string]bool{
-	"append": true, "cap": true, "clear": true, "close": true, "complex": true, "copy": true,
-	"delete": true, "imag": true, "len": true, "make": true, "max": true, "min": true,
-	"new": true, "panic": true, "print": true, "println": true, "real": true, "recover": true,
+// builtinCall reports whether name is one of Go's predeclared functions: a
+// call to one names no declaration of the program. A switch, not a map: a
+// package-level map literal is built by init code on every process start
+// (984 B in the hook binary once the overlay made gopg reachable, inittrace),
+// and the hook pays every byte of init (TestRES2_InitBudget).
+// TestGopg_BuiltinCallIsTheUniverse pins the set to go/types' Universe.
+func builtinCall(name string) bool {
+	switch name {
+	case "append", "cap", "clear", "close", "complex", "copy",
+		"delete", "imag", "len", "make", "max", "min",
+		"new", "panic", "print", "println", "real", "recover":
+		return true
+	}
+	return false
 }
 
 // declDoc is the doc comment text pgraph's docIndex attributes to a
@@ -76,7 +84,7 @@ func callNames(body *ast.BlockStmt) string {
 	set := map[string]bool{}
 	ast.Inspect(body, func(n ast.Node) bool {
 		if c, ok := n.(*ast.CallExpr); ok {
-			if name := calleeName(c.Fun); name != "" && !builtinCalls[name] {
+			if name := calleeName(c.Fun); name != "" && !builtinCall(name) {
 				set[name] = true
 			}
 		}
