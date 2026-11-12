@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,8 +42,11 @@ var ubPostUnit = graph.UnitID("go", "qwertyui")
 
 // briefPath is where the prompt side stores the fixture unit's brief for
 // this session.
-func (s *planSession) briefPath() string {
-	return filepath.Join(graph.UnitBriefDir(s.root, benchSessionID), graph.UnitBriefFileName(s.project, ubPostUnit))
+func (s *planSession) briefPath() string { return s.briefPathOf(ubPostUnit) }
+
+// briefPathOf is where the prompt side stores unit's brief for this session.
+func (s *planSession) briefPathOf(unit graph.ID) string {
+	return filepath.Join(graph.UnitBriefDir(s.root, benchSessionID), graph.UnitBriefFileName(s.project, unit))
 }
 
 // writeBrief stores ubBrief, rebound at rev, as the prompt side stores the
@@ -52,16 +58,48 @@ func (s *planSession) writeBrief(rev string) []byte {
 // writeBriefFor is writeBrief with the brief naming unit as its own, which
 // may be another unit than the one whose name the file is under.
 func (s *planSession) writeBriefFor(unit graph.ID, rev string) []byte {
+	return s.storeBrief(ubPostUnit, unit, rev)
+}
+
+// storeBrief stores ubBrief, rebound at rev and naming owner as its unit,
+// under the file name of the local unit under, and returns the file's bytes.
+func (s *planSession) storeBrief(under, owner graph.ID, rev string) []byte {
 	s.t.Helper()
 	b := engine.Rebind(graph.RevCommit(rev), ubBrief(s.t).Lines)
-	data, err := encodeUnitBrief(b, unit, graph.GlobalID(planRID, b.FirstKey()), graph.Algorithmic, "prompt-1")
+	data, err := encodeUnitBrief(b, owner, graph.GlobalID(planRID, b.FirstKey()), graph.Algorithmic, "prompt-1")
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	if err := writeUnitBrief(s.briefPath(), data); err != nil {
+	if err := writeUnitBrief(s.briefPathOf(under), data); err != nil {
 		s.t.Fatal(err)
 	}
 	return data
+}
+
+// addUnit puts the file rel, under the unit of its directory, into the
+// project's index at the index's own header, and writes it to disk, so a
+// session holds a second unit to edit in. It returns the unit's local id.
+func (s *planSession) addUnit(rel string) graph.ID {
+	s.t.Helper()
+	g, h, err := graph.LoadFile(s.project)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	rev := graph.RevCommit(h.Rev.Commit)
+	fid, unit := graph.FileID(rel), graph.UnitID("go", path.Dir(rel))
+	g.AssertNode(graph.Node{ID: fid, Kind: "file", Rev: rev})
+	g.AssertEdge(graph.Edge{Src: unit, Pred: graph.Contains, Dst: fid, Rev: rev})
+	if err := graph.SaveFile(s.project, g, h); err != nil {
+		s.t.Fatal(err)
+	}
+	file := filepath.Join(s.project, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		s.t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("package x\n"), 0o644); err != nil {
+		s.t.Fatal(err)
+	}
+	return unit
 }
 
 // misses is the session's unitbrief_miss records.
@@ -102,8 +140,11 @@ func (s *planSession) breakIndexBody() {
 }
 
 // edit runs the real post entry on an Edit of the fixture's file.
-func (s *planSession) edit(useID string) string {
-	return s.call(true, "Edit", useID, map[string]any{"file_path": filepath.Join(s.project, filepath.FromSlash(planHookHeld)),
+func (s *planSession) edit(useID string) string { return s.editFile(useID, planHookHeld) }
+
+// editFile runs the real post entry on an Edit of the project's file rel.
+func (s *planSession) editFile(useID, rel string) string {
+	return s.call(true, "Edit", useID, map[string]any{"file_path": filepath.Join(s.project, filepath.FromSlash(rel)),
 		"old_string": "package x", "new_string": "package x // " + useID})
 }
 
@@ -290,4 +331,230 @@ func TestUnitBrief_MissIsCountedNeverLoaded(t *testing.T) {
 			t.Errorf("the delivered edit and the given unit's next edit wrote %d misses, want 0", n)
 		}
 	})
+}
+
+// TestPost_UnitBriefReadIsBounded (card R, the post side of
+// TestUnitBrief_ReadIsBounded): the post reads a unit's file to the cap
+// and no further. A file at the cap is said; one byte over is refused,
+// one unitbrief_miss and no note. The file is the stored brief behind
+// leading spaces, which the decoder skips and the digest does not see, so
+// the cap is the one thing that refuses it. A torn file is
+// TestUnitBrief_MissIsCountedNeverLoaded's torn case.
+func TestPost_UnitBriefReadIsBounded(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		size int
+		said bool
+	}{
+		{"at the cap", maxUnitBriefBytes, true},
+		{"one over", maxUnitBriefBytes + 1, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := ubPostSession(t, store.RecordScopeV5)
+			data := s.writeBrief("c1")
+			if len(data) >= c.size {
+				t.Fatalf("premise: the brief is %d B, not under %d", len(data), c.size)
+			}
+			padded := append(bytes.Repeat([]byte{' '}, c.size-len(data)), data...)
+			if err := os.WriteFile(s.briefPath(), padded, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if out := s.edit("toolu_ub_1"); strings.Contains(out, ubPostTitle) != c.said {
+				t.Errorf("a %d B file printed %q, want the brief %v", c.size, out, c.said)
+			}
+			m := s.misses()
+			if c.said && len(m) != 0 || !c.said && (len(m) != 1 || m[0].Reason != store.UnitBriefRefused) {
+				t.Errorf("a %d B file left misses %+v, want refused %v", c.size, m, !c.said)
+			}
+		})
+	}
+}
+
+// TestUnitBrief_WithheldBriefStaysForTheNextEdit (D6): with steering off
+// the first edit in the unit gives no note, leaves no task-preflight line
+// and no miss, and the unit's file stays; with steering back on the next
+// edit gives the note.
+func TestUnitBrief_WithheldBriefStaysForTheNextEdit(t *testing.T) {
+	s := ubPostSession(t, store.RecordScopeV5)
+	s.writeBrief("c1")
+	cfg := filepath.Join(s.root, store.FileConfig)
+	if err := os.WriteFile(cfg, []byte(`{"steer_user":"off"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := s.edit("toolu_ub_1"); strings.Contains(out, ubPostTitle) {
+		t.Errorf("with steering off the edit printed %q, want no brief", out)
+	}
+	if n, m := len(s.briefLines()), len(s.misses()); n != 0 || m != 0 {
+		t.Errorf("with steering off: %d task-preflight lines and %d misses, want 0 and 0", n, m)
+	}
+	if _, err := os.Stat(s.briefPath()); err != nil {
+		t.Fatalf("the withheld brief's file: %v", err)
+	}
+	if err := os.Remove(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if out := s.edit("toolu_ub_2"); !strings.Contains(out, ubPostTitle) {
+		t.Errorf("with steering on the next edit printed %q, want the brief", out)
+	}
+}
+
+// ubSecondFile is a file of a second unit, unit:go:asdfghjk.
+const ubSecondFile = "asdfghjk/other.go"
+
+// TestUnitBrief_OncePerUnitPerSession (D6): the brief is said once per unit,
+// and one unit's once does not stand for another's. Edits in two units the
+// session holds briefs for, then in the first unit again, say each unit's
+// brief at its first edit only: two delivered lines, each keyed by its own
+// unit. The two files hold the same facts, so their keys differ by the unit
+// alone.
+func TestUnitBrief_OncePerUnitPerSession(t *testing.T) {
+	s := ubPostSession(t, store.RecordScopeV5)
+	second := s.addUnit(ubSecondFile)
+	s.writeBrief("c1")
+	s.storeBrief(second, graph.GlobalID(planRID, second), "c1")
+	for _, c := range []struct {
+		id, file string
+		said     bool
+	}{
+		{"toolu_ub_1", planHookHeld, true},
+		{"toolu_ub_2", ubSecondFile, true},
+		{"toolu_ub_3", planHookHeld, false},
+	} {
+		if out := s.editFile(c.id, c.file); strings.Contains(out, ubPostTitle) != c.said {
+			t.Errorf("the edit %s in %s printed %q, want the brief %v", c.id, c.file, out, c.said)
+		}
+	}
+	lines := s.briefLines()
+	if len(lines) != 2 {
+		t.Fatalf("%d task-preflight lines, want 2", len(lines))
+	}
+	var digests []string
+	for i, unit := range []graph.ID{ubPostUnit, second} {
+		l := lines[i]
+		rest, ok := strings.CutPrefix(l.Key, "unitbrief:"+string(graph.GlobalID(planRID, unit))+"@")
+		if !ok || l.State != steer.LineStateDelivered {
+			t.Errorf("line %d: key %q state %q, want delivered under %s", i+1, l.Key, l.State, unit)
+		}
+		digests = append(digests, rest)
+	}
+	if digests[0] != digests[1] {
+		t.Errorf("premise: digests %v differ, so the keys differ by more than the unit", digests)
+	}
+}
+
+// ubIndexTree is every entry under the project index's directory, by path,
+// with its mode and, for a file, its bytes.
+func ubIndexTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(graph.GraphFile)))
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		out[rel] = info.Mode().String()
+		if !d.IsDir() {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			out[rel] += " " + string(b)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// TestUnitBrief_NothingUnderTheRepoIndex (card R, 15(e)): the precompute
+// and the post read write nothing under the repository's index directory:
+// it is the same entries, modes and bytes before and after each. Witnesses:
+// the precompute stored a unit's brief, and the post said one.
+func TestUnitBrief_NothingUnderTheRepoIndex(t *testing.T) {
+	t.Run("precompute", func(t *testing.T) {
+		dir := t.TempDir()
+		graphProject(t, dir)
+		cwd := filepath.Join(dir, "services", "auth")
+		root := graph.FindIndex(cwd)
+		consented := t.TempDir()
+		if err := os.WriteFile(filepath.Join(consented, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		before := ubIndexTree(t, root)
+		if _, ok := graphBrief(consented, cwd, "s1", "p1", []byte("make session expiry in sessions.py respect the org-level timeout override.")); !ok {
+			t.Fatal("no brief")
+		}
+		if ents, _ := os.ReadDir(graph.UnitBriefDir(consented, "s1")); len(ents) == 0 {
+			t.Error("witness: the precompute stored no unit brief")
+		}
+		if after := ubIndexTree(t, root); !maps.Equal(before, after) {
+			t.Errorf("the index directory moved: %d entries before, %d after", len(before), len(after))
+		}
+	})
+	t.Run("post read", func(t *testing.T) {
+		s := ubPostSession(t, store.RecordScopeV5)
+		s.writeBrief("c1")
+		before := ubIndexTree(t, s.project)
+		if out := s.edit("toolu_ub_1"); !strings.Contains(out, ubPostTitle) {
+			t.Fatalf("witness: the edit printed %q, want the brief", out)
+		}
+		if after := ubIndexTree(t, s.project); !maps.Equal(before, after) {
+			t.Errorf("the index directory moved: %d entries before, %d after", len(before), len(after))
+		}
+	})
+}
+
+// TestPost_UnitBriefLineFollowsTheRecordScope (D4): the note is the same at
+// either record scope and only its steer line's form differs, as the
+// prompt's graph brief's does (slot Record). Under v5 the line holds the
+// brief's paths; under v4 each is a keyed digest, so no path the note
+// printed is in the steer log. The lesson's title, a record the repository
+// declared and never the request's words, is kept at both.
+func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
+	paths := []string{"brief/brief.py", "store/loader.py"}
+	for _, c := range []struct {
+		scope string
+		plain bool
+	}{
+		{store.RecordScopeV5, true},
+		{store.RecordScopeV4, false},
+	} {
+		t.Run(c.scope, func(t *testing.T) {
+			s := ubPostSession(t, c.scope)
+			s.writeBrief("c1")
+			out := s.edit("toolu_ub_1")
+			for _, want := range append([]string{ubPostTitle}, paths...) {
+				if !strings.Contains(out, want) {
+					t.Fatalf("premise: the note %q does not print %q", out, want)
+				}
+			}
+			st, err := store.OpenExisting(s.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _, err := st.ReadSteer(benchSessionID)
+			if err != nil || len(raw) == 0 {
+				t.Fatalf("steer log: %d lines, %v", len(raw), err)
+			}
+			log := bytes.Join(raw, nil)
+			for _, p := range paths {
+				if got := bytes.Contains(log, []byte(p)); got != c.plain {
+					t.Errorf("the steer log holds the path %s %v, want %v", p, got, c.plain)
+				}
+			}
+			if !bytes.Contains(log, []byte(ubPostTitle)) {
+				t.Errorf("the steer log lost the lesson's title, a declared record kept at every scope")
+			}
+		})
+	}
 }
