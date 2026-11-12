@@ -65,7 +65,13 @@ func (s *planSession) writeBriefFor(unit graph.ID, rev string) []byte {
 // under the file name of the local unit under, and returns the file's bytes.
 func (s *planSession) storeBrief(under, owner graph.ID, rev string) []byte {
 	s.t.Helper()
-	b := engine.Rebind(graph.RevCommit(rev), ubBrief(s.t).Lines)
+	return s.storeLines(under, owner, rev, ubBrief(s.t).Lines)
+}
+
+// storeLines is storeBrief with lines in ubBrief's place.
+func (s *planSession) storeLines(under, owner graph.ID, rev string, lines []engine.Line) []byte {
+	s.t.Helper()
+	b := engine.Rebind(graph.RevCommit(rev), lines)
 	data, err := encodeUnitBrief(b, owner, graph.GlobalID(planRID, b.FirstKey()), graph.Algorithmic, "prompt-1")
 	if err != nil {
 		s.t.Fatal(err)

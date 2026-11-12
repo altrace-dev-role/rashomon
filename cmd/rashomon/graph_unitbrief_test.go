@@ -282,6 +282,28 @@ func TestUnitBrief_ReadIsBounded(t *testing.T) {
 // failure, not a skip. The sizes are logged for the PR line. Break: lower
 // the cap to 2 KiB, and it fails.
 func TestUnitBrief_MaxShapedBriefIsUnderTheCap(t *testing.T) {
+	rid := strings.Repeat("r", 64)
+	unit := graph.GlobalID(rid, graph.ID("unit:py:"+strings.Repeat("u/", 60)))
+	for name, shape := range maxBriefShapes() {
+		widest, width := widestBrief(shape)
+		if widest.Kept != 5 {
+			t.Fatalf("%s: deliver keeps no five-line brief", name)
+		}
+		data, err := encodeUnitBrief(widest, unit, graph.GlobalID(rid, widest.FirstKey()), graph.Algorithmic, strings.Repeat("p", 64))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		t.Logf("%s: widest five-line brief at width %d, message %d B, file %d B of %d", name, width, len(widest.Message.Text()), len(data), maxUnitBriefBytes)
+		if len(data) > maxUnitBriefBytes {
+			t.Errorf("%s: a kept brief encodes to %d B, over the cap %d", name, len(data), maxUnitBriefBytes)
+		}
+	}
+}
+
+// maxBriefShapes is the widest briefs' line builders by kind
+// (TestUnitBrief_MaxShapedBriefIsUnderTheCap): each gives, for a width w,
+// five lines whose every item is w wide up to its slot's cap.
+func maxBriefShapes() map[string]func(int) []engine.Line {
 	word := func(c byte, w, max int) string { return string(c) + strings.Repeat("n", min(w, max)-1) }
 	id := func(i, w int) slot.KnowledgeID {
 		return slot.KnowledgeID("les:" + word(byte('A'+i), w, 60))
@@ -313,30 +335,23 @@ func TestUnitBrief_MaxShapedBriefIsUnderTheCap(t *testing.T) {
 		}
 		return lines
 	}
-	rid := strings.Repeat("r", 64)
-	unit := graph.GlobalID(rid, graph.ID("unit:py:"+strings.Repeat("u/", 60)))
-	for name, shape := range map[string]func(int) []engine.Line{"knowledge": know, "code": code} {
-		var widest engine.Brief
-		width := 0
-		for w := 1; w <= 160; w++ {
-			b := engine.Rebind(ubRev, shape(w))
-			if b.Kept < 5 {
-				break
-			}
-			widest, width = b, w
+	return map[string]func(int) []engine.Line{"knowledge": know, "code": code}
+}
+
+// widestBrief is shape's brief at the widest width deliver keeps all five
+// lines at, bound at ubRev, and that width; Kept is under five where no
+// width does.
+func widestBrief(shape func(int) []engine.Line) (engine.Brief, int) {
+	var widest engine.Brief
+	width := 0
+	for w := 1; w <= 160; w++ {
+		b := engine.Rebind(ubRev, shape(w))
+		if b.Kept < 5 {
+			break
 		}
-		if widest.Kept != 5 {
-			t.Fatalf("%s: deliver keeps no five-line brief", name)
-		}
-		data, err := encodeUnitBrief(widest, unit, graph.GlobalID(rid, widest.FirstKey()), graph.Algorithmic, strings.Repeat("p", 64))
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		t.Logf("%s: widest five-line brief at width %d, message %d B, file %d B of %d", name, width, len(widest.Message.Text()), len(data), maxUnitBriefBytes)
-		if len(data) > maxUnitBriefBytes {
-			t.Errorf("%s: a kept brief encodes to %d B, over the cap %d", name, len(data), maxUnitBriefBytes)
-		}
+		widest, width = b, w
 	}
+	return widest, width
 }
 
 // TestBriefUnits_EachUnitOnceInLineOrderAtMostEight (D1): the units a
