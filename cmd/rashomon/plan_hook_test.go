@@ -72,6 +72,13 @@ func newPlanSession(t *testing.T, scope string) *planSession {
 	t.Setenv("CI", "")
 	t.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", filepath.Join(t.TempDir(), "managed-settings.json"))
 	root, id := benchStarted(t)
+	// benchStarted's install consents at the session-content scope and its
+	// session start syncs the marker from that consent, so the store keeps
+	// the session's content; a plan session starts without the marker, and
+	// ubPostSession or the test writes it.
+	if err := store.RemoveSessionContentMarker(root); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.WriteRecordScopeMarker(root, scope); err != nil {
 		t.Fatal(err)
 	}

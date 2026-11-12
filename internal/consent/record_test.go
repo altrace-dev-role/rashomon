@@ -259,8 +259,8 @@ func TestTRU48_CompactionKeepsEveryReadersAnswer(t *testing.T) {
 	for _, e := range entries {
 		left = append(left, e.Name())
 	}
-	if !slices.Equal(left, []string{store.FileConsent, store.FileRecordScope, store.FileSteerDisclosure}) {
-		t.Errorf("store root after compaction holds %q, want consent.json and its two markers alone", left)
+	if !slices.Equal(left, []string{store.FileConsent, store.FileRecordScope, store.FileSessionContent, store.FileSteerDisclosure}) {
+		t.Errorf("store root after compaction holds %q, want consent.json and its three markers alone", left)
 	}
 }
 
