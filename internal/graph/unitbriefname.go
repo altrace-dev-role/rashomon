@@ -56,5 +56,13 @@ func IsUnitBriefFileName(name string) bool {
 	return err == nil
 }
 
+// IsUnitBriefTempName is whether name is one os.CreateTemp can make from
+// UnitBriefTempPattern: the writer's temp file, left in a session's
+// directory only when a write stops between its create and its rename.
+func IsUnitBriefTempName(name string) bool {
+	ok, err := filepath.Match(UnitBriefTempPattern, name)
+	return ok && err == nil
+}
+
 // IsUnitBriefSessionDir is whether name is a value UnitBriefDir can end in.
 func IsUnitBriefSessionDir(name string) bool { return isNameSegment(name) }

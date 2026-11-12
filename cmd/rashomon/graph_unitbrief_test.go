@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +14,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 var ubRev = graph.RevCommit("50942026abcd")
@@ -321,5 +324,109 @@ func TestUnitBrief_MaxShapedBriefIsUnderTheCap(t *testing.T) {
 		if len(data) > maxUnitBriefBytes {
 			t.Errorf("%s: a kept brief encodes to %d B, over the cap %d", name, len(data), maxUnitBriefBytes)
 		}
+	}
+}
+
+// TestBriefUnits_EachUnitOnceInLineOrderAtMostEight (D1): the units a
+// prompt stores briefs for are the units of its brief's keyed lines, each
+// once, in line order, at most maxUnitBriefs; a keyless line (the
+// not-known line) names none. Break: drop the dedup, and unit:a is listed
+// twice.
+func TestBriefUnits_EachUnitOnceInLineOrderAtMostEight(t *testing.T) {
+	var lines []engine.Line
+	for _, k := range []graph.ID{"unit:a", "unit:b", "unit:a", "", "unit:c", "unit:d", "unit:e", "unit:f", "unit:g", "unit:h", "unit:i", "unit:j"} {
+		lines = append(lines, engine.Line{Key: k})
+	}
+	got := briefUnits(graph.NewStore(), ubRev, engine.Brief{Lines: lines})
+	want := []graph.ID{"unit:a", "unit:b", "unit:c", "unit:d", "unit:e", "unit:f", "unit:g", "unit:h"}
+	if !slices.Equal(got, want) {
+		t.Errorf("units %v, want %v", got, want)
+	}
+}
+
+// TestGraphBrief_StoresEachUnitsBriefWhenConsented (D1, D2, D3): with the
+// session-content marker set, the prompt hook stores the brief UnitBrief
+// gives each unit of its brief's keyed lines, under the session's
+// unit-brief directory by the unit's file name, and no other file; each
+// reads back to that brief, names its unit and first row by global id and
+// the prompt id, and holds no word of the prompt. Without the marker the
+// prompt makes no unit-brief directory. Witness: the fixture's brief stores
+// at least one. Break: drop the marker check, and the unconsented store
+// has the directory.
+func TestGraphBrief_StoresEachUnitsBriefWhenConsented(t *testing.T) {
+	dir := t.TempDir()
+	graphProject(t, dir)
+	cwd := filepath.Join(dir, "services", "auth")
+	const prompt = "make session expiry in sessions.py respect the org-level timeout override."
+	consented, unconsented := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(consented, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gb, ok := graphBrief(consented, cwd, "s1", "p1", []byte(prompt))
+	if !ok {
+		t.Fatal("no brief")
+	}
+	if _, ok := graphBrief(unconsented, cwd, "s1", "p1", []byte(prompt)); !ok {
+		t.Fatal("no brief")
+	}
+	if _, err := os.Stat(filepath.Join(unconsented, graph.StoreDir, graph.UnitBriefSubdir)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("an unconsented prompt made the unit-brief directory (%v)", err)
+	}
+	root := graph.FindIndex(cwd)
+	s, h, err := graph.LoadFile(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := graph.RevCommit(h.Rev.Commit)
+	opt := hookScorer()
+	opt.Rel = relTo(cwd, root)
+	sessDir := graph.UnitBriefDir(consented, "s1")
+	want := map[string]graph.ID{}
+	var keys []graph.ID
+	for _, l := range gb.Lines {
+		keys = append(keys, l.Key)
+	}
+	t.Logf("prompt brief: %d lines %v, kept %d", len(gb.Lines), keys, gb.Kept)
+	for _, u := range briefUnits(s, rev, gb.Brief) {
+		ub := engine.UnitBrief(s, rev, u, gb.Brief, opt)
+		t.Logf("%s: unit brief %d lines, kept %d, decisions %v", u, len(ub.Lines), ub.Kept, ub.Decisions)
+		if ub.Empty() {
+			continue
+		}
+		name := graph.UnitBriefFileName(root, u)
+		want[name] = u
+		path := filepath.Join(sessDir, name)
+		got, err := readUnitBrief(path)
+		if err != nil {
+			t.Errorf("%s: %v", u, err)
+			continue
+		}
+		if got.Message.Text() != ub.Message.Text() {
+			t.Errorf("%s: stored\n%s\nwant\n%s", u, got.Message.Text(), ub.Message.Text())
+		}
+		if got.Unit != graph.GlobalID(h.Repo, u) || got.First != graph.GlobalID(h.Repo, ub.FirstKey()) || got.PromptID != "p1" {
+			t.Errorf("%s: header %q %q %q", u, got.Unit, got.First, got.PromptID)
+		}
+		if raw, _ := os.ReadFile(path); bytes.Contains(raw, []byte("respect")) {
+			t.Errorf("%s: the file holds a word of the prompt", u)
+		}
+		t.Logf("%s: %d lines, first %s", u, got.Kept, got.First)
+	}
+	if len(want) == 0 {
+		t.Fatal("witness: no unit of the brief has a unit brief, so this tests nothing")
+	}
+	ents, err := os.ReadDir(sessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range ents {
+		names = append(names, e.Name())
+		if _, ok := want[e.Name()]; !ok {
+			t.Errorf("the session directory holds %s, no unit's brief", e.Name())
+		}
+	}
+	if len(names) != len(want) {
+		t.Errorf("the session directory holds %v, want the %d unit briefs", names, len(want))
 	}
 }

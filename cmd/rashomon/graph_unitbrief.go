@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The unit-brief file (W-M2.3 hook half, card m2-unitbrief-hook1 D2, D3).
@@ -273,4 +275,56 @@ func writeUnitBrief(path string, data []byte) error {
 		os.Remove(tmp.Name()) //nolint:errcheck // best effort cleanup
 	}
 	return err
+}
+
+// maxUnitBriefs caps the unit briefs one prompt stores (D1).
+const maxUnitBriefs = 8
+
+// briefUnits is the units b's keyed lines lie in (unitOf), each once, in
+// line order, at most maxUnitBriefs. Every line counts, kept or cut at the
+// brief's cap, since each was selected for the prompt; a keyless line (the
+// not-known line) names no unit.
+func briefUnits(s *graph.Store, rev graph.Rev, b engine.Brief) []graph.ID {
+	var units []graph.ID
+	for _, l := range b.Lines {
+		if len(units) == maxUnitBriefs {
+			break
+		}
+		if l.Key == "" {
+			continue
+		}
+		if u := unitOf(s, rev, l.Key); u != "" && !slices.Contains(units, u) {
+			units = append(units, u)
+		}
+	}
+	return units
+}
+
+// writeUnitBriefs stores, for each unit of the prompt brief b (briefUnits),
+// the brief engine.UnitBrief gives the first write in it, for the post hook
+// of that write to read (D1, D4): under the session's unit-brief directory
+// by graph.UnitBriefFileName of the index root and the unit. Only when the
+// store holds the session-content marker, the post read's own gate, so an
+// unconsented prompt pays one marker read and no UnitBrief. An empty unit
+// brief writes no file, and a later prompt's brief for a unit replaces the
+// file. A write that fails is left: the post counts the absent file as a
+// miss.
+func writeUnitBriefs(storeRoot, sessionID, promptID, root, repo string, s *graph.Store, rev graph.Rev, b engine.Brief, opt engine.Options) {
+	if storeRoot == "" || !store.SessionContentMarker(storeRoot) {
+		return
+	}
+	dir := graph.UnitBriefDir(storeRoot, sessionID)
+	for _, u := range briefUnits(s, rev, b) {
+		ub := engine.UnitBrief(s, rev, u, b, opt)
+		first := ub.FirstKey()
+		if ub.Empty() || first == "" {
+			continue
+		}
+		n, _ := s.Node(first, rev)
+		data, err := encodeUnitBrief(ub, graph.GlobalID(repo, u), graph.GlobalID(repo, first), n.Tier, promptID)
+		if err != nil {
+			continue
+		}
+		_ = writeUnitBrief(filepath.Join(dir, graph.UnitBriefFileName(root, u)), data)
+	}
 }

@@ -253,6 +253,7 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
 	writeGraphEvidence(storeRoot, sessionID, promptID, b)
+	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
 	if first := b.FirstKey(); first != "" {
 		n, _ := s.Node(first, rev)
