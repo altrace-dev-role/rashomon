@@ -265,6 +265,9 @@ func scan(g *graph.Store, rev graph.Rev) corpus {
 		if n.Kind == "mod" || IsKnowledge(n.Kind) {
 			continue
 		}
+		if graph.IsSessionKind(n.Kind) {
+			continue // a session's words are not the code's corpus (W-M2.11, non-interference)
+		}
 		f := FieldsOf(n)
 		c.index[n.ID] = len(c.nodes)
 		u, uid := unitOf(g, rev, n)

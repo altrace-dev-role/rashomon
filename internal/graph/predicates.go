@@ -23,6 +23,22 @@ const (
 	Step        Pred = "step"
 )
 
+// The session predicates (ruling 15, W-M2.11): the edges a session's own
+// record writes into the install store's graph file. ReadsFile is named
+// apart from Reads on purpose: the engine's walks read Reads, and a shared
+// word would hand every session call node to them.
+const (
+	Asks        Pred = "asks"
+	Acts        Pred = "acts"
+	ReadsFile   Pred = "reads_file"
+	Edits       Pred = "edits"
+	Runs        Pred = "runs"
+	Claims      Pred = "claims"
+	EvidencedBy Pred = "evidenced_by"
+	Delivered   Pred = "delivered"
+	FollowedBy  Pred = "followed_by"
+)
+
 // Predicates is the closed vocabulary (AD15): every edge in every store
 // carries one of these, and a producer that needs another changes this
 // list and the test that pins it (TestPredicates_Closed). A fresh slice
@@ -32,6 +48,7 @@ func Predicates() []Pred {
 		Contains, Declares, Imports, Calls, MayCall, References, Reads, Writes, Exposes, Consumes,
 		ResolvesTo, MayResolveTo, CoChangedWith, DuplicatesValue, Crosses, AppliesTo,
 		Publishes, Subscribes, Schedules, Migrates, SameAs, Supersedes, Contradicts, Advances, Step,
+		Asks, Acts, ReadsFile, Edits, Runs, Claims, EvidencedBy, Delivered, FollowedBy,
 	}
 }
 
