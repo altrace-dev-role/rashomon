@@ -167,14 +167,17 @@ list of what it keeps, word for word as the install screen's full view
 > looked from, nothing else. At each turn end: the state of each test or build
 > check, a keyed digest of each claim sentence it checks in the agent's final
 > message (never the sentence), and the digest of the project spec
-> (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word
-> for word, except a request's preflight note at record scope v4, which keeps a
-> count of the paths it named and keyed digests of them, and except the briefing
-> after Claude Code compacts the conversation, which quotes your earlier
-> instructions to the agent word for word; the record keeps only each quote's
-> length and a keyed digest, never your words. Your on and off switches
-> (config.json), and for a project's switch (summary_projects, steer_projects)
-> the project's directory.
+> (.claude/rashomon/spec.json) whose rules it applied. For each call a project
+> spec rule matched or was checked against, and each accepted plan checked
+> against the spec's path rules, the rule's id in the clear; for such a plan,
+> three counts of what the check found and keyed digests of the paths it
+> covered, never a word of the plan. Each note it adds, word for word, except a
+> request's preflight note at record scope v4, which keeps a count of the paths
+> it named and keyed digests of them, and except the briefing after Claude Code
+> compacts the conversation, which quotes your earlier instructions to the agent
+> word for word; the record keeps only each quote's length and a keyed digest,
+> never your words. Your on and off switches (config.json), and for a project's
+> switch (summary_projects, steer_projects) the project's directory.
 
 It never stores your prompts, the agent's messages, tool output or file
 contents. It reads each prompt in memory to write the preflight note and keeps
@@ -192,8 +195,13 @@ to four directories above the working directory, whoever wrote it:
 `rashomon graph index` writes one, and a cloned repository may carry one. It
 keeps them with the file's path and SHA-256 in one log per repository under the
 store's `graph/` directory, beside the briefs and the conflict base each prompt
-writes there. The size cap does not cover `graph/`: what it holds stays until
-`rashomon purge`.
+writes there. For each such edit, the session's record also keeps why its unit's
+brief could not be given, when it could not (absent, stale or refused), with a
+keyed digest of the unit, and, where the edit is checked against the conflict
+base, the graph's commit, a keyed digest of the file and each conflict the edit
+leaves: its kind, its rule's id, a keyed digest of the conflict, and the unit
+and the symbol or file it is about, with the unit's path. The size cap does not
+cover `graph/`: what it holds stays until `rashomon purge`.
 
 ## Repository specs: trust and declared gates
 
