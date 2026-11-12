@@ -159,5 +159,5 @@ m("VER-40 no store-root named row", RD,
 m("VER-40 the preflight reads trust past a store write", "cmd/rashomon/preflight.go",
   "hook.TrustRoot(run, st.Root(), run.LastSeq())", "hook.NoRun(st.Root())", "TestST1m_TheStop")
 m("VER-40 the preflight note discovers its spec past preflightSpec", "cmd/rashomon/preflight.go",
-  "\tsp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)\n",
-  "\tsp := hook.DiscoverSpec(p.CWD, env.ProjectDir, env.ManagedDir, hook.NoRun(st.Root()))\n", "TestST1x_")
+  "\t\t\tsp, read = preflightSpec(st, run, cwd, projectDir, managedDir), true\n",
+  "\t\t\tsp, read = hook.DiscoverSpec(cwd, projectDir, managedDir, hook.NoRun(st.Root())), true\n", "TestST1x_")

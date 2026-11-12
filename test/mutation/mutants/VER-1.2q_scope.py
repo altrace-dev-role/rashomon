@@ -24,9 +24,9 @@ m("VER-1.2q the marker is not removed before the consent line", "internal/consen
   "\tif err := store.RemoveRecordScopeMarker(root); err != nil {\n\t\treturn err\n\t}\n", "",
   "TestRS8_")
 m("VER-1.2q the marker is written before the consent line", "internal/consent/record.go",
-  "\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n\tvar scopeErr, steerErr error\n"
+  "\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n\tvar scopeErr, steerErr, contentErr error\n"
   "\tif err := syncMarker(root); err != nil {\n\t\tscopeErr = fmt.Errorf(\"%w: %w\", ErrScopeMarker, err)\n\t}\n",
-  "\tvar scopeErr, steerErr error\n"
+  "\tvar scopeErr, steerErr, contentErr error\n"
   "\tif err := syncMarker(root); err != nil {\n\t\tscopeErr = fmt.Errorf(\"%w: %w\", ErrScopeMarker, err)\n\t}\n"
   "\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n",
   "TestRS3_|TestRS4_")

@@ -22,8 +22,8 @@ m("GS-4 the delivered set skips the graph lines", "internal/learn/deliver.go",
   "\t\t\tids = append(ids, graphKnowledge(b, sp[dkSlots])...)\n", "", "TestGS4_")
 P = "cmd/rashomon/preflight.go"
 m("GS-5 the brief is read after the early return", P,
-  "\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
-  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tgb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)\n",
+  "\tgb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf, scoped.get)\n\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
+  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tgb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf, scoped.get)\n",
   "TestGS5_")
 m("GS-5 the graph finding is not routed", P,
   "\tif f, ok := graphFinding(gb, keyGraph, run.LastSeq(), digest); graphed && ok {\n",
