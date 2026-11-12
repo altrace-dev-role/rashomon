@@ -82,7 +82,7 @@ func defaultParagraphs() []Paragraph {
 
 		{Owner: OwnerScreen, Cite: CiteChangedSince, Text: "CHANGED SINCE YOU LAST AGREED ({version}, scope {scope}): this build asks for scope {current}. Everything it now does is below."},
 
-		{Owner: OwnerRecord, Cite: CiteShort, Text: "RECORDED ON THIS MACHINE for each tool call, including: the tool, the program a command runs (never its text), the paths it edits or may write and an edited file's SHA-256, the hosts it names, the directory it ran in, and how it ended; at each turn end, the state of each test and build check. In a repository you indexed: what each Go edit declares, kept until `rashomon purge`."},
+		{Owner: OwnerRecord, Cite: CiteShort, Text: "RECORDED ON THIS MACHINE for each tool call, including: the tool, the program a command runs (never its text), the paths it edits or may write and an edited file's SHA-256, the hosts it names, the directory it ran in, and how it ended; at each turn end, the state of each test and build check. In an indexed repository: what each Go edit declares, kept until `rashomon purge`."},
 		{Owner: OwnerVerify, Cite: CiteShort, Text: "NEVER STORED: your prompts, command text, tool output, file contents or the agent's messages; rashomon reads some in memory and keeps what it concluded."},
 		{Owner: OwnerSteer, Cite: CiteShort, Text: "NOTES TO YOUR AGENT (on): short facts from the record, such as a test that passed earlier and fails now. You see each one as it is added; it goes to your model provider with the conversation. rashomon itself sends nothing."},
 		{Owner: OwnerScreen, Cite: CiteChangedSinceShort, Text: "CHANGED SINCE YOU LAST AGREED ({version}, scope {scope}): now scope {current}."},
