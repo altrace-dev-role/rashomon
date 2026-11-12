@@ -113,6 +113,103 @@ func (e Event) Before(o Event) bool {
 	return e.ID < o.ID
 }
 
+// markOf is ev's place in the merged order.
+func markOf(ev Event) Mark {
+	return Mark{Seq: ev.Seq, Steer: ev.Steer, AtUnixMS: ev.AtUnixMS, ID: ev.ID}
+}
+
+// before reports whether the event at m sorts before ev (Event.Before).
+func (m Mark) before(ev Event) bool {
+	return Event{Seq: m.Seq, Steer: m.Steer, AtUnixMS: m.AtUnixMS, ID: m.ID}.Before(ev)
+}
+
+// cmpEvents orders two events by Event.Before, for slices.SortStableFunc.
+func cmpEvents(a, b Event) int {
+	switch {
+	case a.Before(b):
+		return -1
+	case b.Before(a):
+		return 1
+	}
+	return 0
+}
+
+// sortedCopy is evs in the merged order, in a new slice: evs is not changed.
+// The sort is stable, so an event read twice keeps its two places in order.
+func sortedCopy(evs []Event) []Event {
+	s := slices.Clone(evs)
+	slices.SortStableFunc(s, cmpEvents)
+	return s
+}
+
+// stepIn steps f through sorted, in the merged order, and sets Through to the
+// last event's place; no event leaves Through as it was.
+func stepIn(f *Frontier, sorted []Event) {
+	for _, ev := range sorted {
+		Step(f, ev)
+	}
+	if len(sorted) > 0 {
+		f.Through = markOf(sorted[len(sorted)-1])
+	}
+}
+
+// Fold is session sessionID's frontier folded from evs, its record and steer
+// events in any order: a copy is put in the merged order (Event.Before) and
+// stepped from a new frontier, so one log in any order folds to one frontier
+// (TestFold_IsDeterministicSynthetic), and Through is the last event's place,
+// Mark{} for none. evs is not changed. It takes events, not lines, and no
+// bound: the caller decodes (RecordEvent, SteerEvent) and cuts, and PLAN
+// 1487's FoldOptions.Through is Frontier.Through instead (ruling 14:09 (5)).
+// It checks no order against a saved frontier: it starts from none.
+func Fold(sessionID string, evs []Event) Frontier {
+	f := newFrontier(sessionID)
+	stepIn(&f, sortedCopy(evs))
+	return f
+}
+
+// Catch continues f, a frontier Fold or Catch made or ParseFrontier read
+// back, by tail, the events after f.Through in any order, and equals Fold
+// over f's events and tail's (TestFold_IncrementalEqualsFullSynthetic). It
+// misses (false) when f was folded under another foldVersion or
+// ledgerVersion, or when tail's first event in the merged order is not after
+// Through: an event read again, or a steer line written late, its after_seq
+// at or below a seq the frontier has passed (a line's after_seq is the last
+// record its decision saw, and the line can land after later records). A
+// miss is answered by Fold over the whole log, never by a frontier continued
+// past an event it did not apply. f is not changed, and two Catches from one
+// f do not share a list: each is clipped before the first Step (clipped).
+func Catch(f Frontier, tail []Event) (Frontier, bool) {
+	if f.FoldVersion != foldVersion || f.LedgerVersion != ledgerVersion {
+		return Frontier{}, false
+	}
+	sorted := sortedCopy(tail)
+	if len(sorted) > 0 && !f.Through.before(sorted[0]) {
+		return Frontier{}, false
+	}
+	g := clipped(f)
+	stepIn(&g, sorted)
+	return g, true
+}
+
+// clipped is f with every list's capacity cut to its length, so the first
+// append a Step makes to any of them allocates. canon's copies keep room past
+// their lengths (an append rounds a capacity up), and intent, deliver, the
+// checkpoint rule and verdict append in place: without the clip two Catches
+// from one frontier would write one array. Decisions is clipped with the rest
+// though no rule writes it; its elements' IDs are not, since clipping one
+// would write f's array, and no rule writes them either.
+func clipped(f Frontier) Frontier {
+	f.Intents = slices.Clip(f.Intents)
+	f.Reqs = slices.Clip(f.Reqs)
+	f.Decisions = slices.Clip(f.Decisions)
+	f.Touched = slices.Clip(f.Touched)
+	f.Obligations = slices.Clip(f.Obligations)
+	f.Delivered = slices.Clip(f.Delivered)
+	f.Verdicts = slices.Clip(f.Verdicts)
+	f.StopsWithoutVerdict = slices.Clip(f.StopsWithoutVerdict)
+	return f
+}
+
 var errUnplaced = errors.New("session: a line the merge cannot place")
 
 // RecordEvent decodes one records.ndjson line. Every record with a type and
@@ -391,7 +488,9 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 // rebuilds a list it changes in place (touch, require, openedUnit, verdict),
 // so the copy keeps every field as it was (TestStep_LeavesCopies). Stepping
 // both copies is not supported, since they share arrays past their lengths;
-// fork one with ParseFrontier(MarshalFrontier(f)).
+// fork one with ParseFrontier(MarshalFrontier(f)). Catch may continue one
+// frontier twice: it clips every list before its first Step (clipped). Step
+// leaves Through to Fold and Catch, which set it once per run of events.
 func Step(f *Frontier, ev Event) {
 	if ev.PromptID != "" {
 		intent(f, ev)

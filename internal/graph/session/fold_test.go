@@ -1,8 +1,14 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"flag"
+	"io/fs"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -1094,6 +1100,365 @@ func TestReq_MetOnceIsFinalSupersededReopensByLine(t *testing.T) {
 		}
 		if b := unitReq(f, "b"); b.Status != c.status || b.SupersededBy != c.by || b.MetAt != c.met || b.StatedAt != 2 {
 			t.Fatalf("after seq %d: b %+v; want %s, superseded by %q, met at %d, stated at 2", c.ev.Seq, b, c.status, c.by, c.met)
+		}
+	}
+}
+
+// foldEventsSynthetic is one session's events in the merged order, at least
+// one for every rule Step applies: a briefing line, three prompts' unit lines
+// (a supersede, a restatement that reopens, met_once by writes), a suppressed
+// line, writes inside, withheld and outside the project, a startup and a
+// compact session record, three Stop checkpoints and three ledger lines, two
+// with a verdict and one with a repeated row id. SYNTHETIC events.
+func foldEventsSynthetic() []Event {
+	suppressed := unitLine(6, "l3", "p2", "internal/x")
+	suppressed.State, suppressed.AtUnixMS = string(steer.LineStateSuppressed), 7
+	return []Event{
+		unitLine(0, "b0", "", "internal/brief"),
+		{Seq: 1, Type: store.TypeSession},
+		unitLine(1, "l1", "p1", "internal/a", "internal/b"),
+		{Seq: 2, Type: store.TypeDeclaration, Wrote: []string{"internal/a/x.go"}},
+		{Seq: 3, Type: store.TypeDeclaration, WroteWithheld: true},
+		{Seq: 4, Type: store.TypeDeclaration, Wrote: []string{"c.go"}, WroteOutside: true},
+		{Seq: 5, Type: store.TypeVerify, Checkpoint: true},
+		{Seq: 6, Type: ledgerType, Ledger: true, Obligations: []ObligationRef{
+			{ID: "ob2", Kind: "expected_evidence", State: "unknown"},
+			{ID: "ob1", Kind: "gate_after_write", Unit: "unit:a", State: "met"},
+			{ID: "ob1", Kind: "gate_after_write", Unit: "unit:a", State: "open"},
+		}, ObligationsOmitted: 1, Verdict: true, DoneFlagged: true, CheckpointSeq: 5},
+		unitLine(6, "l2", "p2", "internal/c"),
+		suppressed,
+		{Seq: 7, Type: store.TypeSession, Boundary: true},
+		unitLine(7, "l4", "p2", "internal/b"),
+		{Seq: 8, Type: store.TypeDeclaration, Wrote: []string{"internal/c/y.go", "internal/b/z.go"}},
+		{Seq: 9, Type: store.TypeVerify, Checkpoint: true},
+		{Seq: 10, Type: ledgerType, Ledger: true, Obligations: []ObligationRef{{ID: "ob3", Kind: "gate_after_write", Unit: "unit:c", State: "open"}}, UnitRowsCut: 2},
+		unitLine(10, "l5", "p3", "internal/d"),
+		{Seq: 11, Type: store.TypeVerify, Checkpoint: true},
+		{Seq: 12, Type: ledgerType, Ledger: true, Obligations: []ObligationRef{
+			{ID: "ob4", Kind: "expected_evidence", State: "unmet"},
+			{ID: "ob3", Kind: "gate_after_write", Unit: "unit:c", State: "unmet"},
+		}, ObligationsOmitted: 3, UnitRowsCut: 1, Verdict: true, Unmet: 2, CheckpointSeq: 11},
+	}
+}
+
+// foldByStep is what Fold means, spelled out without it: a new frontier of
+// session s1 stepped through evs as given, which the caller has put in the
+// merged order, Through the last one's place.
+func foldByStep(evs []Event) Frontier {
+	f := stepAll(evs...)
+	if len(evs) > 0 {
+		last := evs[len(evs)-1]
+		f.Through = Mark{Seq: last.Seq, Steer: last.Steer, AtUnixMS: last.AtUnixMS, ID: last.ID}
+	}
+	return f
+}
+
+// mustMarshal is MarshalFrontier(f) as a string, failing t on an error.
+func mustMarshal(t *testing.T, f Frontier) string {
+	t.Helper()
+	b, err := MarshalFrontier(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// inMergedOrder fails t unless evs are in the merged order.
+func inMergedOrder(t *testing.T, evs []Event) {
+	t.Helper()
+	if !sort.SliceIsSorted(evs, func(i, j int) bool { return evs[i].Before(evs[j]) }) {
+		t.Fatal("the synthetic events are not in the merged order")
+	}
+}
+
+// TestFold_IncrementalEqualsFullSynthetic (W-M4.2, INV-11; PLAN 1493's
+// TestFold_IncrementalEqualsFull on synthetic events, the fixture form in its
+// own slice): for every cut j of one session's events and every cut k at or
+// after it, the fold to j, saved and read back, then caught up by the events
+// from j to k in a shuffled order, is byte-equal to the fold to k; and the
+// fold to k is its events stepped in the merged order. Every fold to k keeps
+// SupersededBy set exactly while Status is superseded (ruling 13:43 (3)).
+// SYNTHETIC events.
+func TestFold_IncrementalEqualsFullSynthetic(t *testing.T) {
+	evs := foldEventsSynthetic()
+	inMergedOrder(t, evs)
+	full := make([]string, len(evs)+1)
+	for k := range full {
+		f := Fold("s1", evs[:k])
+		if bad := supersededByWhileSuperseded(f); bad != "" {
+			t.Fatalf("fold to %d: %s", k, bad)
+		}
+		full[k] = mustMarshal(t, f)
+		if want := mustMarshal(t, foldByStep(evs[:k])); full[k] != want {
+			t.Fatalf("fold to %d is not its events stepped in order:\n got %s\nwant %s", k, full[k], want)
+		}
+	}
+	r := rand.New(rand.NewSource(1))
+	for j := range full {
+		saved, err := ParseFrontier([]byte(full[j]))
+		if err != nil {
+			t.Fatalf("read back the fold to %d: %v", j, err)
+		}
+		for k := j; k < len(full); k++ {
+			tail := slices.Clone(evs[j:k])
+			r.Shuffle(len(tail), func(a, b int) { tail[a], tail[b] = tail[b], tail[a] })
+			g, ok := Catch(saved, tail)
+			if !ok {
+				t.Fatalf("catch from %d to %d missed", j, k)
+			}
+			if got := mustMarshal(t, g); got != full[k] {
+				t.Fatalf("catch from %d to %d:\n got %s\nwant %s", j, k, got, full[k])
+			}
+		}
+	}
+}
+
+// TestFold_IsDeterministicSynthetic (W-M4.2; PLAN 1493's
+// TestFold_IsDeterministic on synthetic events): one session's events in 20
+// shuffled orders fold to the bytes of the events stepped in the merged
+// order, and Fold leaves the order it was given. SYNTHETIC events.
+func TestFold_IsDeterministicSynthetic(t *testing.T) {
+	evs := foldEventsSynthetic()
+	inMergedOrder(t, evs)
+	want := mustMarshal(t, foldByStep(evs))
+	in := slices.Clone(evs)
+	r := rand.New(rand.NewSource(1))
+	for round := 0; round < 20; round++ {
+		r.Shuffle(len(in), func(i, j int) { in[i], in[j] = in[j], in[i] })
+		was := slices.Clone(in)
+		if got := mustMarshal(t, Fold("s1", in)); got != want {
+			t.Fatalf("round %d:\n got %s\nwant %s", round, got, want)
+		}
+		if !reflect.DeepEqual(in, was) {
+			t.Fatalf("round %d: Fold reordered the events it was given", round)
+		}
+	}
+}
+
+// TestFold_ThroughIsLastAppliedSynthetic (W-M4.2, rulings 13:59 (3), 14:09
+// (5)): Through is the full place of the last event applied in the merged
+// order, not of the last one given, and an empty fold's is the zero Mark. A
+// line at a record's seq sorts after it, so a fold of the two ends at the
+// line. Catch with no tail keeps Through; with one, it ends at the tail's
+// last. SYNTHETIC events.
+func TestFold_ThroughIsLastAppliedSynthetic(t *testing.T) {
+	r3 := Event{Seq: 3, Type: store.TypeDeclaration}
+	line := Event{Seq: 3, Steer: true, AtUnixMS: 40, ID: "t1", Type: steer.LineType, State: string(steer.LineStateSuppressed), Key: "k"}
+	r7 := Event{Seq: 7, Type: store.TypeTerminal}
+	atLine := Mark{Seq: 3, Steer: true, AtUnixMS: 40, ID: "t1"}
+	for _, c := range []struct {
+		name string
+		evs  []Event
+		want Mark
+	}{
+		{"empty", nil, Mark{}},
+		{"a line given before its record", []Event{line, r3}, atLine},
+		{"a record given first", []Event{r7, line, r3}, Mark{Seq: 7}},
+	} {
+		if got := Fold("s1", c.evs).Through; got != c.want {
+			t.Errorf("%s: Through %+v, want %+v", c.name, got, c.want)
+		}
+	}
+	f := Fold("s1", []Event{r3, line})
+	if g, ok := Catch(f, nil); !ok || g.Through != atLine {
+		t.Errorf("catch with no tail: Through %+v, %v; want %+v", g.Through, ok, atLine)
+	}
+	if g, ok := Catch(f, []Event{r7}); !ok || g.Through != (Mark{Seq: 7}) {
+		t.Errorf("catch to seq 7: Through %+v, %v; want seq 7's record", g.Through, ok)
+	}
+}
+
+// TestFold_LateLineRefoldsSynthetic (W-M4.2, ruling 13:59 (3)): a frontier
+// is continued only by events after its Through. A steer line written late,
+// its after_seq below Through, misses even when it comes with a later
+// record, and so does an event read again; a line at Through's own seq,
+// after its record, continues and equals the fold over the whole log.
+// SYNTHETIC events.
+func TestFold_LateLineRefoldsSynthetic(t *testing.T) {
+	head := []Event{{Seq: 3, Type: store.TypeDeclaration}, {Seq: 7, Type: store.TypeDeclaration}}
+	f := Fold("s1", head)
+	r9 := Event{Seq: 9, Type: store.TypeDeclaration, Wrote: []string{"a/x.go"}}
+	if _, ok := Catch(f, []Event{r9, unitLine(5, "late", "p1", "a")}); ok {
+		t.Error("a line at after_seq 5 continued a frontier through seq 7")
+	}
+	if _, ok := Catch(f, []Event{{Seq: 7, Type: store.TypeDeclaration}}); ok {
+		t.Error("the record at Through, read again, continued the frontier")
+	}
+	at7 := unitLine(7, "on7", "p1", "a")
+	g, ok := Catch(f, []Event{r9, at7})
+	if !ok {
+		t.Fatal("a line at Through's seq, after its record, missed")
+	}
+	if got, want := mustMarshal(t, g), mustMarshal(t, foldByStep(append(slices.Clone(head), at7, r9))); got != want {
+		t.Errorf("caught up:\n got %s\nwant %s", got, want)
+	}
+}
+
+// TestCatch_FromOneFrontierTwiceSynthetic (W-M4.2): two Catches from one
+// frontier share no list. The saved frontier has room past every length, as
+// one read back does (canon's copies), and each tail appends an intent, a
+// delivered line, a checkpoint and a verdict, so a Step's in-place append
+// would write the other Catch's array. The first Catch's frontier is the same
+// after the second, and each is the fold over its whole log. SYNTHETIC
+// events.
+func TestCatch_FromOneFrontierTwiceSynthetic(t *testing.T) {
+	head := []Event{
+		unitLine(1, "l1", "p1", "a"),
+		{Seq: 2, Type: store.TypeVerify, Checkpoint: true},
+		{Seq: 3, Type: ledgerType, Ledger: true, Verdict: true, CheckpointSeq: 2},
+	}
+	tail := func(id, p, unit string, done bool, unmet int) []Event {
+		return []Event{
+			unitLine(4, id, p, unit),
+			{Seq: 5, Type: store.TypeVerify, Checkpoint: true},
+			{Seq: 6, Type: ledgerType, Ledger: true, Verdict: true, DoneFlagged: done, Unmet: unmet, CheckpointSeq: 5},
+		}
+	}
+	tailA, tailB := tail("la", "pa", "x", false, 1), tail("lb", "pb", "y", true, 0)
+	saved := Fold("s1", head)
+	saved.Intents = slices.Grow(saved.Intents, 8)
+	saved.Reqs = slices.Grow(saved.Reqs, 8)
+	saved.Delivered = slices.Grow(saved.Delivered, 8)
+	saved.Verdicts = slices.Grow(saved.Verdicts, 8)
+	saved.StopsWithoutVerdict = slices.Grow(saved.StopsWithoutVerdict, 8)
+	a, okA := Catch(saved, tailA)
+	first := mustMarshal(t, a)
+	b, okB := Catch(saved, tailB)
+	if !okA || !okB {
+		t.Fatalf("catches missed: %v, %v", okA, okB)
+	}
+	if again := mustMarshal(t, a); again != first {
+		t.Errorf("the second Catch changed the first's frontier:\n got %s\nwant %s", again, first)
+	}
+	if want := mustMarshal(t, foldByStep(append(slices.Clone(head), tailA...))); first != want {
+		t.Errorf("first catch:\n got %s\nwant %s", first, want)
+	}
+	if got, want := mustMarshal(t, b), mustMarshal(t, foldByStep(append(slices.Clone(head), tailB...))); got != want {
+		t.Errorf("second catch:\n got %s\nwant %s", got, want)
+	}
+}
+
+// TestCatch_ClipsEveryList (W-M4.2): every list of a caught-up frontier ends
+// at its length, so the next Step's append allocates, and the frontier Catch
+// was given keeps its room. The walk is over Frontier's fields by reflection,
+// so a list added later is held to it too.
+func TestCatch_ClipsEveryList(t *testing.T) {
+	f := newFrontier("s1")
+	v := reflect.ValueOf(&f).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		if fv := v.Field(i); fv.Kind() == reflect.Slice {
+			fv.Set(reflect.MakeSlice(fv.Type(), 1, 4))
+		}
+	}
+	g, ok := Catch(f, nil)
+	if !ok {
+		t.Fatal("an empty tail missed")
+	}
+	gv := reflect.ValueOf(g)
+	for i := 0; i < gv.NumField(); i++ {
+		name := gv.Type().Field(i).Name
+		if fv := gv.Field(i); fv.Kind() == reflect.Slice && fv.Cap() != fv.Len() {
+			t.Errorf("%s: cap %d, len %d; want no room past its length", name, fv.Cap(), fv.Len())
+		}
+		if fv := v.Field(i); fv.Kind() == reflect.Slice && fv.Cap() != 4 {
+			t.Errorf("%s of the frontier given: cap %d, want 4 as it was", name, fv.Cap())
+		}
+	}
+}
+
+// TestCatch_MissesOnAnotherKey (W-M4.2, ruling 13:59 (3)): Catch continues
+// only a frontier of this foldVersion and ledgerVersion. One of version 0, a
+// Frontier built by hand, or of the next version misses, so its state is
+// folded again under the current rules instead of continued.
+func TestCatch_MissesOnAnotherKey(t *testing.T) {
+	ev := []Event{{Seq: 1, Type: store.TypeDeclaration, Wrote: []string{"a.go"}}}
+	if _, ok := Catch(newFrontier("s1"), ev); !ok {
+		t.Fatal("a frontier of this key missed")
+	}
+	for _, c := range []struct {
+		name         string
+		fold, ledger int
+	}{
+		{"fold_version 0", 0, ledgerVersion},
+		{"the next fold_version", foldVersion + 1, ledgerVersion},
+		{"ledger_version 0", foldVersion, 0},
+		{"the next ledger_version", foldVersion, ledgerVersion + 1},
+	} {
+		f := newFrontier("s1")
+		f.FoldVersion, f.LedgerVersion = c.fold, c.ledger
+		if _, ok := Catch(f, ev); ok {
+			t.Errorf("%s: continued", c.name)
+		}
+	}
+	if _, ok := Catch(Frontier{}, ev); ok {
+		t.Error("a zero Frontier continued")
+	}
+}
+
+// updateGolden writes the fold golden of this foldVersion, once: it refuses
+// a set that exists, so a golden is never rewritten under its own version.
+var updateGolden = flag.Bool("update", false, "write testdata/sessions/golden/fold-v<foldVersion>; refuses an existing set")
+
+// goldenDir is the golden set of this foldVersion.
+func goldenDir() string {
+	return filepath.Join("testdata", "sessions", "golden", "fold-v"+strconv.Itoa(foldVersion))
+}
+
+// TestFold_GoldenTiesFoldVersionSynthetic (W-M4.2, ruling 13:59 (3)): the
+// frontier the synthetic events fold to is the golden of this foldVersion,
+// byte for byte, so a change to what Step writes fails here until
+// foldVersion is bumped and the next set written; a frontier saved under the
+// old rules then misses. The golden root holds this version's set alone, and
+// the set holds no golden without a source. -update writes the set once,
+// into a directory that does not exist. The limit is foldVersion's: a Step
+// change these events do not exercise passes unbumped. SYNTHETIC events.
+func TestFold_GoldenTiesFoldVersionSynthetic(t *testing.T) {
+	evs := foldEventsSynthetic()
+	inMergedOrder(t, evs)
+	sources := map[string]string{"synthetic.json": mustMarshal(t, Fold("s1", evs)) + "\n"}
+	dir := goldenDir()
+	if *updateGolden {
+		if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("-update: %s exists or cannot be read (%v); a set is written once, under a new foldVersion", dir, err)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, b := range sources {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(b), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Logf("wrote %s: read it by hand before it is committed", dir)
+		return
+	}
+	sets, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		t.Fatalf("golden root: %v; write the set with -update", err)
+	}
+	for _, s := range sets {
+		if s.Name() != filepath.Base(dir) {
+			t.Errorf("%s: a golden set beside foldVersion %d's; one set lives", s.Name(), foldVersion)
+		}
+	}
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("the golden set of foldVersion %d: %v", foldVersion, err)
+	}
+	for _, f := range files {
+		if _, ok := sources[f.Name()]; !ok {
+			t.Errorf("%s: a golden with no source", f.Name())
+		}
+	}
+	for name, got := range sources {
+		want, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if !bytes.Equal([]byte(got), want) {
+			t.Errorf("%s changed while foldVersion stayed %d: bump foldVersion and write fold-v%d with -update\n got %s\nwant %s", name, foldVersion, foldVersion+1, got, want)
 		}
 	}
 }

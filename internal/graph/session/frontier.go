@@ -12,6 +12,38 @@ import (
 // FrontierSchema is the frontier's own schema, written first as "schema".
 const FrontierSchema = 1
 
+// foldVersion is the version of the rules Step applies, written as
+// "fold_version" in every frontier it folds: with ledgerVersion and Through it
+// is a saved frontier's key, and a frontier of another version is a miss
+// (ParseFrontier, Catch), folded again in full and never continued. A change
+// to what Step writes for any input bumps it, and
+// TestFold_GoldenTiesFoldVersionSynthetic fails on a change that does not:
+// its golden is the frontier its events fold to under this version. The
+// limit is the golden's inputs: a Step change no golden input exercises
+// passes unbumped.
+const foldVersion = 1
+
+// ledgerVersion is the version of the ledger line the fold reads (ledgerType;
+// RecordEvent's ledger keys, ledger, verdict), written as "ledger_version":
+// it moves with W-M3.1's ObligationID scope, since a change in what an
+// obligation id names makes the ids a saved frontier holds another
+// ledger's. A ledger row's req key (W-M3.4) needs no bump: the ledger line
+// carries it from its first version.
+const ledgerVersion = 1
+
+// Mark is an event's place in the merged order (Event.Before): its seq,
+// whether it is a steer line, and a line's clock and id. Frontier.Through
+// holds the last applied event's. The zero Mark is an empty fold's and sorts
+// before every event a log holds: record seqs start at 1, and a record sorts
+// before a line at its seq, so only a line at after_seq 0 shares its seq, and
+// a line sorts after the zero Mark's record place.
+type Mark struct {
+	Seq      int64  `json:"seq"`
+	Steer    bool   `json:"steer"`
+	AtUnixMS int64  `json:"at_unix_ms"`
+	ID       string `json:"id"`
+}
+
 // ReqStatus is where a requirement stands in the session's history. open
 // goes to met_once at evidence after StatedAt, or to superseded when a later
 // prompt's delivered line moves past it (supersede). superseded goes to
@@ -58,11 +90,25 @@ const (
 // ReqState keyed Pred:Arg, not by its line's key (PLAN 1489), because one
 // steer line's slots hold up to five graph lines (D6); and ReqState's
 // LastStatedAt, which supersede reads (ruling 13:23 (3b)): a Catch from a
-// saved frontier must know it, and no other field holds it.
+// saved frontier must know it, and no other field holds it. FoldVersion,
+// LedgerVersion and Through, the saved frontier's key, which PLAN 1478 does
+// not name: the versions live here and nowhere else, the file's envelope
+// holding only its schema and cursors (ruling 13:59 (3)), and Through is the
+// last applied event's place in the merged order, not FoldOptions' seq bound
+// (PLAN 1487; ruling 14:09 (5)), because a steer line's after_seq can name a
+// seq a later line has passed.
 type Frontier struct {
-	Schema    int    `json:"schema"`
-	Session   string `json:"session"`
-	Continues string `json:"continues"`
+	Schema int `json:"schema"`
+	// FoldVersion and LedgerVersion are foldVersion and ledgerVersion as the
+	// frontier was folded, and Through is the place of the last event it
+	// applied, Mark{} for none: the three are its key. A frontier is continued
+	// only under its own versions and only by events after Through (Catch);
+	// they follow Schema so a file opens with its validity key.
+	FoldVersion   int    `json:"fold_version"`
+	LedgerVersion int    `json:"ledger_version"`
+	Through       Mark   `json:"through"`
+	Session       string `json:"session"`
+	Continues     string `json:"continues"`
 	// Intents are the session's prompts by reference: graph.PromptNodeID
 	// and the prompt digest.
 	Intents []IntentRef `json:"intents"`
@@ -224,7 +270,7 @@ type VerdictRef struct {
 }
 
 func newFrontier(sessionID string) Frontier {
-	return Frontier{Schema: FrontierSchema, Session: sessionID}
+	return Frontier{Schema: FrontierSchema, FoldVersion: foldVersion, LedgerVersion: ledgerVersion, Session: sessionID}
 }
 
 // canon returns f with every slice in its canonical order and every nil
@@ -277,9 +323,9 @@ func MarshalFrontier(f Frontier) ([]byte, error) {
 	return json.Marshal(canon(f))
 }
 
-// ParseFrontier decodes a frontier of FrontierSchema. Any other schema, an
-// unknown field or trailing data is an error, which a cache reader takes as
-// a miss.
+// ParseFrontier decodes a frontier of FrontierSchema, foldVersion and
+// ledgerVersion. Any other schema or version, an unknown field or trailing
+// data is an error, which a cache reader takes as a miss.
 func ParseFrontier(b []byte) (Frontier, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -294,6 +340,9 @@ func ParseFrontier(b []byte) (Frontier, error) {
 	}
 	if f.Schema != FrontierSchema {
 		return Frontier{}, fmt.Errorf("frontier: schema %d, want %d", f.Schema, FrontierSchema)
+	}
+	if f.FoldVersion != foldVersion || f.LedgerVersion != ledgerVersion {
+		return Frontier{}, fmt.Errorf("frontier: fold_version %d, ledger_version %d, want %d and %d", f.FoldVersion, f.LedgerVersion, foldVersion, ledgerVersion)
 	}
 	return canon(f), nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,6 +21,7 @@ const (
 // order, so a round trip and the shape walk see all of them.
 func sampleFrontier() Frontier {
 	f := newFrontier(frSID)
+	f.Through = Mark{Seq: 52, Steer: true, AtUnixMS: 1700, ID: "l9"}
 	f.Continues = frPrev
 	f.Intents = []IntentRef{
 		{ID: string(graph.PromptNodeID(frSID, 2)), Digest: strings.Repeat("b", 16), StatedAt: 40, Status: ReqOpen},
@@ -203,6 +205,58 @@ func TestFrontier_SchemaIsOne(t *testing.T) {
 	}
 }
 
+// TestFrontier_KeyOpensIt (W-M4.2, rulings 13:59 (3), 14:09 (5)): a frontier
+// opens with its key, schema then fold_version, ledger_version and through,
+// the last applied event's full place under Mark's own keys; an empty fold's
+// through is the zero Mark, never null.
+func TestFrontier_KeyOpensIt(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schema":1,"fold_version":` + strconv.Itoa(foldVersion) + `,"ledger_version":` + strconv.Itoa(ledgerVersion) +
+		`,"through":{"seq":52,"steer":true,"at_unix_ms":1700,"id":"l9"},"session":`
+	if !bytes.HasPrefix(b, []byte(want)) {
+		t.Errorf("frontier does not open with %s:\n%s", want, b)
+	}
+	empty, err := MarshalFrontier(newFrontier(frSID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"through":{"seq":0,"steer":false,"at_unix_ms":0,"id":""},`; !bytes.Contains(empty, []byte(want)) {
+		t.Errorf("an empty frontier does not hold %s:\n%s", want, empty)
+	}
+}
+
+// TestFrontier_KeyMismatchMisses (W-M4.2, ruling 13:59 (3)): a frontier of
+// another fold_version or ledger_version does not parse, so a cache reader
+// misses and folds in full instead of continuing state folded under other
+// rules or another ledger's ids.
+func TestFrontier_KeyMismatchMisses(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseFrontier(b); err != nil {
+		t.Fatalf("the frontier of this key did not parse: %v", err)
+	}
+	for _, c := range []struct {
+		key string
+		v   int
+	}{{"fold_version", foldVersion}, {"ledger_version", ledgerVersion}} {
+		this := `"` + c.key + `":` + strconv.Itoa(c.v) + `,`
+		for _, v := range []int{0, c.v + 1} {
+			other := bytes.Replace(b, []byte(this), []byte(`"`+c.key+`":`+strconv.Itoa(v)+`,`), 1)
+			if bytes.Equal(other, b) {
+				t.Fatalf("no %s in %s", this, b)
+			}
+			if _, err := ParseFrontier(other); err == nil {
+				t.Errorf("a frontier with %s %d parsed", c.key, v)
+			}
+		}
+	}
+}
+
 // TestFrontier_ParseRejectsMalformed (W-M4.2): a frontier file with a field
 // this schema does not name, or anything but space after its object, does not
 // parse, so a cache reader misses and folds in full instead of trusting a torn
@@ -235,6 +289,7 @@ func TestFrontier_ParseRejectsMalformed(t *testing.T) {
 // 2026-11-12 09:38 Q2: words by reference, kept as shape). A string field is
 // where prompt words would go; one not listed here fails by its path.
 var frontierStrings = map[string]string{
+	"Through.ID":          "steer line id of the last applied event, empty for a record",
 	"Session":             "session id",
 	"Continues":           "session id",
 	"Intents[].ID":        "prompt node id, graph.PromptNodeID",
