@@ -145,6 +145,7 @@ var v5Lists = []struct {
 	{reflect.TypeOf(AfterHit{}), withHeader("event string", "rule_id string", "source_digest string", "landed_seq int64",
 		"exit_code *int", "foreground bool", "cwd_digest string", "maybe bool")},
 	{reflect.TypeOf(ThenCheck{}), withHeader("rule_id string", "source_digest string", "landed_seq int64", "then string")},
+	{reflect.TypeOf(PlanCheck{}), withHeader("landed_seq int64", "rule_ids []string", "named int", "planned int", "matched int", "path_digests []string")},
 }
 
 // TestDEL22b_SchemaFiveKeyListsAreFrozen pins the schema-5 field list in
@@ -207,7 +208,7 @@ func TestDEL22b_SchemaFiveKeyListsAreFrozen(t *testing.T) {
 		TypeInstructions: reflect.TypeOf(Instructions{}), TypeModel: reflect.TypeOf(Model{}),
 		TypeOutcomeJoin: reflect.TypeOf(OutcomeJoin{}), TypeWriteObserved: reflect.TypeOf(WriteObserved{}),
 		TypeSpecEvent: reflect.TypeOf(SpecEvent{}), TypeAfterHit: reflect.TypeOf(AfterHit{}),
-		TypeThenCheck: reflect.TypeOf(ThenCheck{}),
+		TypeThenCheck: reflect.TypeOf(ThenCheck{}), TypePlanCheck: reflect.TypeOf(PlanCheck{}),
 	}
 	for kind := range kindVersion {
 		switch kind {

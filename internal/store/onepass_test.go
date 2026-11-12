@@ -74,6 +74,11 @@ func readTwoPass(run *Run, line []byte) {
 		if err = json.Unmarshal(line, &rec); err == nil {
 			run.ThenChecks = append(run.ThenChecks, rec)
 		}
+	case TypePlanCheck:
+		var rec PlanCheck
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.PlanChecks = append(run.PlanChecks, rec)
+		}
 	case TypeOutcomeJoin:
 		var rec OutcomeJoin
 		if err = json.Unmarshal(line, &rec); err == nil {
@@ -118,6 +123,10 @@ func writerRecord(kind string, version int) any {
 		return *e
 	case TypeThenCheck:
 		e := NewThenCheck(onePassSession, "spec:test-first", "sha256:1p", 6, ThenNo, at)
+		e.SchemaVersion, e.Seq = version, &seq
+		return *e
+	case TypePlanCheck:
+		e := NewPlanCheck(onePassSession, 6, []string{"spec:plan-1p"}, 1, 1, 1, []string{"sha256:1p"}, at)
 		e.SchemaVersion, e.Seq = version, &seq
 		return *e
 	case TypeOutcomeJoin:
