@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -230,6 +232,29 @@ func decodeUnitBrief(data []byte) (storedUnitBrief, error) {
 		return storedUnitBrief{}, err
 	}
 	return storedUnitBrief{Brief: b, Unit: f.Unit, First: f.First, Tier: f.Tier, PromptID: f.Prompt}, nil
+}
+
+// unitBriefLinesKey opens the lines value, the last key encodeUnitBrief
+// writes. No JSON string holds an unescaped quote, so its first match in a
+// file is the key and never a value before it.
+const unitBriefLinesKey = `,"lines":`
+
+// unitBriefDigest names a stored brief by its bound facts, as blast's key
+// names its callers (ruling 03:58 (2)): the first 12 hex of the SHA-256 of
+// the raw lines value, the bytes after the first unitBriefLinesKey up to,
+// not including, the closing brace that is the file's last byte. The header
+// (unit, first, tier, rev, prompt) is outside it, so a later prompt that
+// writes the same facts names the same brief; the steer line carries the
+// rev in its own slot. A reader holding only the file and SHA-256 computes
+// the same value. Bytes with no lines value, or not ending on the brace,
+// name no brief.
+func unitBriefDigest(data []byte) (string, error) {
+	i := bytes.Index(data, []byte(unitBriefLinesKey))
+	if i < 0 || data[len(data)-1] != '}' {
+		return "", errors.New("unit brief: no lines value to digest")
+	}
+	sum := sha256.Sum256(data[i+len(unitBriefLinesKey) : len(data)-1])
+	return hex.EncodeToString(sum[:6]), nil
 }
 
 // readUnitBrief is the file at path decoded, reading at most one byte over
