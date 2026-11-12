@@ -3,11 +3,13 @@ package session
 import (
 	"math/rand"
 	"reflect"
+	"runtime"
 	"sort"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
 // TestEvent_MergeOrder (W-M4.2): a session's records and steer lines merge
@@ -118,6 +120,56 @@ func TestEvent_DecodeWrites(t *testing.T) {
 		ev, ok, err := RecordEvent([]byte(c.line))
 		if err != nil || !ok || !reflect.DeepEqual(ev.Wrote, c.want) || ev.WroteOutside != c.outside {
 			t.Errorf("%s: Wrote %q, outside %v, %v, %v; want %q, outside %v", c.name, ev.Wrote, ev.WroteOutside, ok, err, c.want, c.outside)
+		}
+	}
+}
+
+// TestInProject_DecidesAsVerify (W-M4.2, ruling 11:37 4b): inProject is a
+// copy of verify's projectPath(relativise(...)) (its doc), so it must decide
+// inside or outside as verify does. Each row pins the copy's decision and
+// verify.RelevantUnder's, verify's exported reading of the same two rules,
+// on .go paths, a class RelevantUnder counts, so its answer is the
+// location's alone. Where the two differ the row says why: each is a
+// difference inside verify, RelevantUnder against projectPath, and the copy
+// follows projectPath, the reading verify's rule check uses. RelevantUnder
+// reads absoluteness by filepath.IsAbs, the OS's rule, so its column holds
+// off windows (the CI test job runs on linux); on windows only the copy's
+// decision is checked.
+func TestInProject_DecidesAsVerify(t *testing.T) {
+	for _, c := range []struct {
+		name, path, project, cwd string
+		inside                   bool
+		verifyDiffers            string // why RelevantUnder decides the other way; "" when it agrees
+	}{
+		{"the project prefix", "/w/p/internal/a/x.go", "/w/p", "/w/p", true, ""},
+		{"the cwd prefix", "/w/c/internal/x.go", "/w/p", "/w/c", true, ""},
+		{"the project before the cwd", "/w/p/sub/x.go", "/w/p", "/w/p/sub", true, ""},
+		{"a symlinked cwd", "/tmp/r/internal/x.go", "/private/tmp/r", "/tmp/r", true, ""},
+		{"an alias under a resolved cwd", "/tmp/r/internal/x.go", "/private/tmp/r", "/private/tmp/r", false, ""},
+		{"a leading ./", "./internal/x.go", "/w/p", "/w/p", true, ""},
+		{"./ then ..", "./../x.go", "/w/p", "/w/p", false, ""},
+		{"a leading ..", "../q/x.go", "/w/p", "/w/p", false, ""},
+		{"a climb that stays in", "internal/../x.go", "/w/p", "/w/p", true, ""},
+		{"a climb out mid-path", "internal/../../x.go", "/w/p", "/w/p", false, "RelevantUnder does not clean, so a .. past the first element reads inside"},
+		{"an absolute path outside", "/etc/x.go", "/w/p", "/w/p", false, ""},
+		{"a sibling is not below", "/w/pab/x.go", "/w/p", "/w/p", false, ""},
+		{"a root project is no prefix", "/etc/x.go", "/", "", false, ""},
+		{"the same drive without case", `c:\r\internal\x.go`, `C:\r`, "", true, ""},
+		{"another drive", `D:\o\x.go`, `C:\r`, "", false, "RelevantUnder has no drive-letter test, and off windows filepath.IsAbs reads D:/o/x.go as relative"},
+		{"backslash separators", `\w\p\internal\x.go`, "/w/p", "/w/p", true, ""},
+		{"a UNC share", `\\srv\share\p\internal\x.go`, `\\srv\share\p`, "", true, ""},
+		{"a relative path", "internal/x.go", "/w/p", "/w/p", true, ""},
+	} {
+		project, cwd := c.project, c.cwd
+		if _, got := inProject(c.path, &project, &cwd); got != c.inside {
+			t.Errorf("%s: inProject %v, want %v", c.name, got, c.inside)
+		}
+		if runtime.GOOS == "windows" {
+			continue
+		}
+		want := c.inside != (c.verifyDiffers != "")
+		if got := verify.RelevantUnder(c.path, c.project, c.cwd); got != want {
+			t.Errorf("%s: verify.RelevantUnder %v, want %v (%s)", c.name, got, want, c.verifyDiffers)
 		}
 	}
 }

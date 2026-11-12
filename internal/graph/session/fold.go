@@ -138,6 +138,14 @@ func wrote(file *string, shell []string, project, cwd *string) (paths []string, 
 // removes the same prefix. Pure over its strings, as verify's are: no
 // symlink is resolved, so a path written through an alias of the project
 // (/tmp for /private/tmp) is outside here as it is there.
+//
+// The copy's sources, at 20a64198 (verify is untouched on this branch):
+// internal/verify/classify.go (blob 88d9c2cbf2bf) relativise, under,
+// samePrefix and isLetter, which cutDir, sameDir and isASCIILetter copy;
+// internal/verify/rules.go (blob f5a820ddd857) projectPath. It is a debt:
+// the extraction into one package both read waits for the M2 merge (ruling
+// 11:37). Until then TestInProject_DecidesAsVerify holds the copy's
+// decision to verify.RelevantUnder's on a fixed table.
 func inProject(p string, project, cwd *string) (string, bool) {
 	p = strings.ReplaceAll(p, `\`, "/")
 	for _, dir := range [2]*string{project, cwd} {
