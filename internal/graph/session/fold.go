@@ -25,6 +25,12 @@ type Event struct {
 	ID       string
 	// Type is the record's type, or steer.LineType.
 	Type string
+	// State, Key and Kind are a steer line's state (steer.LineState), its
+	// finding's dedupe key and its kind, which the Delivered rule reads. A
+	// record leaves them empty.
+	State string
+	Key   string
+	Kind  string
 }
 
 // Before reports whether e sorts before o in the merged order (seq, record
@@ -71,6 +77,9 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 		ID       string `json:"id"`
 		AtUnixMS int64  `json:"at_unix_ms"`
 		AfterSeq *int64 `json:"after_seq"`
+		State    string `json:"state"`
+		Key      string `json:"key"`
+		Kind     string `json:"kind"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: steer line: %w", err)
@@ -81,5 +90,30 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 	if h.AfterSeq == nil || h.ID == "" {
 		return Event{}, false, fmt.Errorf("%w: steer line without after_seq or id", errUnplaced)
 	}
-	return Event{Seq: *h.AfterSeq, Steer: true, AtUnixMS: h.AtUnixMS, ID: h.ID, Type: h.Type}, true, nil
+	return Event{Seq: *h.AfterSeq, Steer: true, AtUnixMS: h.AtUnixMS, ID: h.ID, Type: h.Type, State: h.State, Key: h.Key, Kind: h.Kind}, true, nil
+}
+
+// Step applies one event, taken in the merged order, to f. It is pure: no
+// I/O, no clock and no graph, so what it writes depends on f and ev alone,
+// and a fold over a prefix then the tail equals a fold over the whole.
+func Step(f *Frontier, ev Event) {
+	if ev.State == string(steer.LineStateDelivered) { // only SteerEvent sets State
+		deliver(f, ev)
+	}
+}
+
+// deliver keeps a delivered steer line as a LineRef at its after_seq. Only
+// state delivered counts: suppressed, superseded, stale, expired and
+// unconfirmed lines never reached the model as a delivery. One LineRef per
+// line id (canon's order needs it): a line seen again keeps its first ref.
+// Unit stays empty: only a graph-kind line names one, and at this commit
+// no writer emits a graph-kind steer line (M1's brief is kind "", its
+// graph lines inside its slots).
+func deliver(f *Frontier, ev Event) {
+	for _, r := range f.Delivered {
+		if r.ID == ev.ID {
+			return
+		}
+	}
+	f.Delivered = append(f.Delivered, LineRef{ID: ev.ID, Key: ev.Key, Kind: ev.Kind, Seq: ev.Seq})
 }

@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
 // TestEvent_MergeOrder (W-M4.2): a session's records and steer lines merge
@@ -49,9 +51,9 @@ func TestEvent_Decode(t *testing.T) {
 	if err != nil || !ok || ev != (Event{Seq: 7, Type: "declaration"}) {
 		t.Errorf("record: %+v, %v, %v", ev, ok, err)
 	}
-	line := `{"type":"steer","v":1,"id":"0a6742a0","at_unix_ms":1793897981372,"session_id":"s1","after_seq":7,"model_text":"some words","user_text":"more words","state":"delivered"}`
+	line := `{"type":"steer","v":1,"id":"0a6742a0","at_unix_ms":1793897981372,"session_id":"s1","kind":"unit","key":"example.com/m/internal/a@0a1b2c3d","after_seq":7,"model_text":"some words","user_text":"more words","state":"delivered"}`
 	ev, ok, err = SteerEvent([]byte(line))
-	if err != nil || !ok || ev != (Event{Seq: 7, Steer: true, AtUnixMS: 1793897981372, ID: "0a6742a0", Type: "steer"}) {
+	if err != nil || !ok || ev != (Event{Seq: 7, Steer: true, AtUnixMS: 1793897981372, ID: "0a6742a0", Type: "steer", State: "delivered", Key: "example.com/m/internal/a@0a1b2c3d", Kind: "unit"}) {
 		t.Errorf("steer line: %+v, %v, %v", ev, ok, err)
 	}
 	evidence := `{"type":"steer_evidence","v":1,"at_unix_ms":1793897981400,"session_id":"s1","steer_id":"0a6742a0","event":"UserPromptSubmit"}`
@@ -84,8 +86,11 @@ func TestEvent_Decode(t *testing.T) {
 // string field not named here fails by name.
 func TestEvent_HoldsNoWords(t *testing.T) {
 	named := map[string]string{
-		"ID":   "steer line id",
-		"Type": "record type or steer.LineType",
+		"ID":    "steer line id",
+		"Type":  "record type or steer.LineType",
+		"State": "a closed steer.LineState name",
+		"Key":   "a finding's dedupe key: a unit id and a digest",
+		"Kind":  "a closed steer.Kind name, or empty",
 	}
 	var got []string
 	stringLeaves(reflect.TypeOf(Event{}), "", &got)
@@ -100,5 +105,35 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 		if !seen[p] {
 			t.Errorf("Event.%s: named but gone", p)
 		}
+	}
+}
+
+// TestStep_Delivered (W-M4.2): a steer line in state delivered becomes one
+// LineRef at its after_seq with its id, key and kind. A line in any other
+// state and a record leave Delivered as it was.
+func TestStep_Delivered(t *testing.T) {
+	f := newFrontier("s1")
+	Step(&f, Event{Seq: 1, Type: "declaration"})
+	Step(&f, Event{Seq: 1, Steer: true, AtUnixMS: 5, ID: "d1", Type: "steer", State: "delivered", Key: "k1"})
+	for i, st := range steer.AllLineStates() {
+		if st != steer.LineStateDelivered {
+			Step(&f, Event{Seq: 2, Steer: true, AtUnixMS: int64(10 + i), ID: "n-" + string(st), Type: "steer", State: string(st), Key: "kn"})
+		}
+	}
+	Step(&f, Event{Seq: 3, Steer: true, AtUnixMS: 30, ID: "d4", Type: "steer", State: "delivered", Key: "k4", Kind: "unit"})
+	want := []LineRef{{ID: "d1", Key: "k1", Seq: 1}, {ID: "d4", Key: "k4", Kind: "unit", Seq: 3}}
+	if !reflect.DeepEqual(f.Delivered, want) {
+		t.Fatalf("Delivered\n got %+v\nwant %+v", f.Delivered, want)
+	}
+}
+
+// TestStep_DeliveredOncePerID (W-M4.2): one LineRef per steer line id, the
+// uniqueness canon's order rests on; a line seen again keeps its first ref.
+func TestStep_DeliveredOncePerID(t *testing.T) {
+	f := newFrontier("s1")
+	Step(&f, Event{Seq: 4, Steer: true, AtUnixMS: 5, ID: "d1", Type: "steer", State: "delivered", Key: "k1"})
+	Step(&f, Event{Seq: 9, Steer: true, AtUnixMS: 9, ID: "d1", Type: "steer", State: "delivered", Key: "k1"})
+	if want := []LineRef{{ID: "d1", Key: "k1", Seq: 4}}; !reflect.DeepEqual(f.Delivered, want) {
+		t.Fatalf("Delivered\n got %+v\nwant %+v", f.Delivered, want)
 	}
 }
