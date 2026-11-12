@@ -139,6 +139,18 @@ func TestFrontier_ObligationCountKeys(t *testing.T) {
 	}
 }
 
+// TestFrontier_BoundaryKey (W-M4.2, ruling 12:03): the last boundary's seq
+// is under its own key, last in the frontier.
+func TestFrontier_BoundaryKey(t *testing.T) {
+	b, err := MarshalFrontier(sampleFrontier())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"last_boundary":20}`; !bytes.Contains(b, []byte(want)) {
+		t.Errorf("frontier does not hold %s:\n%s", want, b)
+	}
+}
+
 // TestFrontier_SchemaIsOne (W-M4.2): the frontier says its schema first, and
 // a file of any other schema does not parse, so the cache misses and the
 // session folds in full.

@@ -97,7 +97,12 @@ type Frontier struct {
 	UnitRowsCut        int             `json:"unit_rows_cut"`
 	Delivered          []LineRef       `json:"delivered"`
 	Verdicts           []VerdictRef    `json:"verdicts"`
-	LastBoundary       int64           `json:"last_boundary"`
+	// LastBoundary is the seq of the last session record whose SessionStart
+	// source is compact or resume, where the session's context was rebuilt
+	// (W-M4.3, W-M4.4); 0 for none. Startup is no boundary, and neither is
+	// clear: clear starts a new run, and that run's Continues carries the
+	// link (W-M4.1).
+	LastBoundary int64 `json:"last_boundary"`
 }
 
 // IntentRef is one prompt by reference.

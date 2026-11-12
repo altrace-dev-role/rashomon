@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/events"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
@@ -188,6 +190,45 @@ func ledgerLineSynthetic(t *testing.T, seq int64, rows []verify.Obligation, tail
 		t.Fatal(err)
 	}
 	return []byte(`{"type":"ledger","seq":` + strconv.FormatInt(seq, 10) + `,"point":"stop","obligations":` + string(b) + tail + `}`)
+}
+
+// sessionLineSynthetic is a session record built by a test, never recorded:
+// no SessionStart writer exists before W-M4.3 and W-M4.4, so every session
+// record in this file is SYNTHETIC. It is a real store.Session marshalled
+// by encoding/json, so a decode reads the store's own keys.
+func sessionLineSynthetic(t *testing.T, seq int64, source string) []byte {
+	t.Helper()
+	b, err := json.Marshal(store.Session{EventHeader: store.EventHeader{Type: store.TypeSession, Seq: &seq}, Source: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestEvent_DecodeBoundarySynthetic (W-M4.2, ruling 12:03): a session record
+// whose SessionStart source is compact or resume is a boundary; startup,
+// clear, no source, and any other record carrying the key are not.
+// SYNTHETIC session records.
+func TestEvent_DecodeBoundarySynthetic(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		line     []byte
+		boundary bool
+	}{
+		{"compact", sessionLineSynthetic(t, 4, events.Compact), true},
+		{"resume", sessionLineSynthetic(t, 4, events.Resume), true},
+		{"startup", sessionLineSynthetic(t, 4, "startup"), false},
+		{"clear", sessionLineSynthetic(t, 4, events.Clear), false},
+		{"no source", []byte(`{"type":"session","seq":4}`), false},
+		{"source null", []byte(`{"type":"session","seq":4,"source":null}`), false},
+		{"a compact record is no boundary", []byte(`{"type":"compact","seq":4,"trigger":"auto","source":"compact"}`), false},
+		{"a declaration is no boundary", []byte(`{"type":"declaration","seq":4,"source":"resume"}`), false},
+	} {
+		ev, ok, err := RecordEvent(c.line)
+		if err != nil || !ok || ev.Boundary != c.boundary || ev.Seq != 4 {
+			t.Errorf("%s: Boundary %v, seq %d, %v, %v; want %v, 4", c.name, ev.Boundary, ev.Seq, ok, err, c.boundary)
+		}
+	}
 }
 
 // TestEvent_DecodeLedgerSynthetic (W-M4.2, D3): a ledger line decodes to its
@@ -383,6 +424,26 @@ func TestStep_TouchedWithheld(t *testing.T) {
 	}
 	if f.TouchedWithheld != 2 || !reflect.DeepEqual(f.Touched, []string{string(graph.FileID("a.go"))}) {
 		t.Fatalf("TouchedWithheld %d, Touched %q; want 2 and [file:a.go]", f.TouchedWithheld, f.Touched)
+	}
+}
+
+// TestStep_BoundarySynthetic (W-M4.2, ruling 12:03): LastBoundary is the
+// seq of the last boundary; a session record that is none (startup, clear)
+// and any other record leave it as it was. SYNTHETIC events.
+func TestStep_BoundarySynthetic(t *testing.T) {
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 3, Type: store.TypeSession, Boundary: true},
+		{Seq: 4, Type: "declaration", Wrote: []string{"a.go"}},
+		{Seq: 5, Type: store.TypeSession},
+		{Seq: 8, Type: store.TypeSession, Boundary: true},
+		{Seq: 9, Type: store.TypeSession},
+		{Seq: 10, Type: "verify"},
+	} {
+		Step(&f, ev)
+	}
+	if f.LastBoundary != 8 {
+		t.Fatalf("LastBoundary %d, want 8", f.LastBoundary)
 	}
 }
 

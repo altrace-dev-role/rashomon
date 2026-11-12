@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/events"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -59,6 +60,11 @@ type Event struct {
 	Obligations        []ObligationRef
 	ObligationsOmitted int
 	UnitRowsCut        int
+	// Boundary is true for a session record whose SessionStart source is
+	// compact or resume, which sets LastBoundary (Step). Startup and clear
+	// are not boundaries (Frontier.LastBoundary). No writer exists before
+	// W-M4.3 and W-M4.4.
+	Boundary bool
 }
 
 // ledgerType is the record type of a ledger line, the verify ledger at a
@@ -89,7 +95,8 @@ var errUnplaced = errors.New("session: a line the merge cannot place")
 // RecordEvent decodes one records.ndjson line. Every record with a type and
 // a seq is an event; a rule that has no use for its type passes it by. Only
 // a declaration's paths are writes: an instructions record carries a
-// file_path too, the instructions file it loaded.
+// file_path too, the instructions file it loaded. Only a session record's
+// source can be a boundary.
 func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 	var h struct {
 		Type         string   `json:"type"`
@@ -113,6 +120,8 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 		} `json:"obligations"`
 		ObligationsOmitted int `json:"obligations_omitted"`
 		UnitRowsCut        int `json:"unit_rows_cut"`
+		// Source is a session record's SessionStart source.
+		Source *string `json:"source"`
 	}
 	if err := json.Unmarshal(line, &h); err != nil {
 		return Event{}, false, fmt.Errorf("session: record line: %w", err)
@@ -132,6 +141,9 @@ func RecordEvent(line []byte) (ev Event, ok bool, err error) {
 			ev.Obligations = append(ev.Obligations, ObligationRef{ID: o.ID, Kind: o.Kind, Unit: o.Unit, State: o.State})
 		}
 		ev.ObligationsOmitted, ev.UnitRowsCut = h.ObligationsOmitted, h.UnitRowsCut
+	}
+	if h.Type == store.TypeSession && h.Source != nil {
+		ev.Boundary = *h.Source == events.Compact || *h.Source == events.Resume
 	}
 	return ev, true, nil
 }
@@ -271,6 +283,9 @@ func Step(f *Frontier, ev Event) {
 	}
 	if ev.Ledger {
 		ledger(f, ev)
+	}
+	if ev.Boundary {
+		f.LastBoundary = ev.Seq
 	}
 }
 
