@@ -400,3 +400,79 @@ func TestSessionLog_TornFragmentThenHealedLoadsWithCountOne(t *testing.T) {
 		t.Errorf("the healed record did not load")
 	}
 }
+
+// TestOverlayLog_LoaderDropsAnOldLinesSigAndProv: a group an earlier build
+// wrote, its records with their Prov, its symbols with a sig and its marker
+// with a Prov, loads as the same group written now: no record keeps either.
+// BuildOverlayGroup keeps neither and leaves the group it is given as it
+// was. Witness: the old file holds the sig and the Prov.
+func TestOverlayLog_LoaderDropsAnOldLinesSigAndProv(t *testing.T) {
+	prov := Prov{Extractor: "go/parser", Version: "v1"}
+	g := ovGroup("s1", "toolu_old", OverlayLanded, 1, FileID("a/a.go"), "new", "f", "h")
+	for _, r := range g.Recs {
+		if r.Node != nil {
+			r.Node.Prov = prov
+			if r.Node.Kind == "sym" {
+				r.Node.Attrs["sig"] = "func ( oldsigword int )"
+			}
+		}
+		if r.Edge != nil {
+			r.Edge.Prov = prov
+		}
+	}
+	built := BuildOverlayGroup(g)
+	sigs := 0
+	for _, r := range g.Recs {
+		if r.Node != nil && r.Node.Attrs["sig"] != "" && reflect.DeepEqual(r.Node.Prov, prov) {
+			sigs++
+		}
+	}
+	if sigs != 2 {
+		t.Errorf("the group built from keeps %d symbols with a sig and a Prov, want 2", sigs)
+	}
+	for _, r := range built {
+		if r.Node != nil && (r.Node.Attrs["sig"] != "" || !reflect.DeepEqual(r.Node.Prov, Prov{})) {
+			t.Errorf("built node %s keeps attrs %v and prov %+v", r.Node.ID, r.Node.Attrs, r.Node.Prov)
+		}
+		if r.Edge != nil && !reflect.DeepEqual(r.Edge.Prov, Prov{}) {
+			t.Errorf("built edge %s %s %s keeps prov %+v", r.Edge.Src, r.Edge.Pred, r.Edge.Dst, r.Edge.Prov)
+		}
+	}
+
+	marker := *built[len(built)-1].Node
+	marker.Prov = Prov{Extractor: "session", Version: "v1"}
+	old := OpenSessionLog(t.TempDir(), "rid", RevCommit(ovCommit), true)
+	if err := old.Append(append(append([]Record(nil), g.Recs...), Record{Node: &marker})...); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(old.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{"oldsigword", "go/parser", `"Extractor":"session"`} {
+		if !bytes.Contains(b, []byte(w)) {
+			t.Errorf("witness: the old log holds no %q", w)
+		}
+	}
+	now := OpenSessionLog(t.TempDir(), "rid", RevCommit(ovCommit), true)
+	appendGroup(t, now, g)
+	oldGroups, oskip := loadGroups(t, old, NewStore())
+	nowGroups, nskip := loadGroups(t, now, NewStore())
+	if len(oldGroups) != 1 || oskip != 0 || nskip != 0 {
+		t.Fatalf("old log: %d groups, %d skipped; new log: %d skipped", len(oldGroups), oskip, nskip)
+	}
+	if !reflect.DeepEqual(oldGroups, nowGroups) {
+		t.Errorf("the old line loads as %+v, the new one as %+v", oldGroups, nowGroups)
+	}
+	if len(oldGroups[0].Recs) != len(g.Recs) {
+		t.Errorf("the old group loads %d records, want %d", len(oldGroups[0].Recs), len(g.Recs))
+	}
+	for _, r := range oldGroups[0].Recs {
+		if r.Node != nil && (r.Node.Attrs["sig"] != "" || !reflect.DeepEqual(r.Node.Prov, Prov{})) {
+			t.Errorf("loaded node %s keeps attrs %v and prov %+v", r.Node.ID, r.Node.Attrs, r.Node.Prov)
+		}
+		if r.Edge != nil && !reflect.DeepEqual(r.Edge.Prov, Prov{}) {
+			t.Errorf("loaded edge %s %s %s keeps prov %+v", r.Edge.Src, r.Edge.Pred, r.Edge.Dst, r.Edge.Prov)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package graph
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"sort"
 	"strconv"
 )
@@ -35,7 +36,8 @@ const (
 var ErrOverlayFull = errors.New("graph: the session's overlay bytes are at the bound (overlay_journal_full)")
 
 // OverlayGroup is one edit's overlay as the log holds it. Recs are the
-// resolver's records. A landed group with no Recs and an OfSeq promotes the
+// resolver's records; a group the loader returns has them as the log keeps
+// them (LogRecords). A landed group with no Recs and an OfSeq promotes the
 // declared group of that seq: the landed content had the declared digest.
 type OverlayGroup struct {
 	Session, ToolUseID, Kind string
@@ -49,11 +51,12 @@ type OverlayGroup struct {
 	Recs    []Record
 }
 
-// BuildOverlayGroup is g's records, capped at MaxOverlayRecords (the file
-// node then carries _cut=true and the declarations past the cap are left
-// out with their edges), then the closing marker.
+// BuildOverlayGroup is g's records as the log keeps them (LogRecords),
+// capped at MaxOverlayRecords (the file node then carries _cut=true and the
+// declarations past the cap are left out with their edges), then the
+// closing marker, which carries no Prov either. g is left as it was.
 func BuildOverlayGroup(g OverlayGroup) []Record {
-	recs := capOverlay(g.Recs)
+	recs := LogRecords(capOverlay(g.Recs))
 	rev := RevOverlay(g.Commit, g.Seq)
 	a := map[string]string{"session_id": g.Session, "file": string(g.File), "kind": g.Kind, "seq": strconv.FormatInt(g.Seq, 10),
 		"tool_use_id": g.ToolUseID, "digest": g.Digest, "count": strconv.Itoa(len(recs)), "carried": g.Carried.String()}
@@ -61,8 +64,69 @@ func BuildOverlayGroup(g OverlayGroup) []Record {
 		a["of_seq"] = strconv.FormatInt(g.OfSeq, 10)
 	}
 	m := Record{Node: &Node{ID: ID("ovgroup:" + g.Session + ":" + a["seq"] + ":" + g.Kind), Kind: KindOverlayGroup, Attrs: a,
-		Tier: Observed, Conf: 1, Status: Asserted, Rev: rev, Prov: Prov{Extractor: "session", Version: "v1"}}}
+		Tier: Observed, Conf: 1, Status: Asserted, Rev: rev}}
 	return append(recs, m)
+}
+
+// LogRecords is recs as the session log keeps them: no record's Prov (where
+// its reader read it), and no node's "sig" attribute (a function's signature
+// as the file spells it). BuildOverlayGroup writes a group so, and the
+// loader passes each overlay record it reads through the same rule
+// (logRecord), so a line an earlier build wrote with either loads as one
+// written now. recs is left as it was: a node's attributes are copied
+// before the delete, so the group the hook holds in memory keeps both.
+func LogRecords(recs []Record) []Record {
+	var nn, ne int
+	for _, r := range recs {
+		if r.Node != nil {
+			nn++
+		}
+		if r.Edge != nil {
+			ne++
+		}
+	}
+	out := make([]Record, len(recs), len(recs)+1) // room for the marker
+	nodes, edges := make([]Node, 0, nn), make([]Edge, 0, ne)
+	for i, r := range recs {
+		if r.Node != nil {
+			nodes = append(nodes, logNode(*r.Node))
+			out[i].Node = &nodes[len(nodes)-1]
+		}
+		if r.Edge != nil {
+			edges = append(edges, logEdge(*r.Edge))
+			out[i].Edge = &edges[len(edges)-1]
+		}
+	}
+	return out
+}
+
+// logRecord is r as LogRecords keeps it, for the loader's one record.
+func logRecord(r Record) Record {
+	if r.Node != nil {
+		n := logNode(*r.Node)
+		r.Node = &n
+	}
+	if r.Edge != nil {
+		e := logEdge(*r.Edge)
+		r.Edge = &e
+	}
+	return r
+}
+
+// logNode is n with no Prov and no "sig", its attributes copied when it has one.
+func logNode(n Node) Node {
+	n.Prov = Prov{}
+	if _, ok := n.Attrs["sig"]; ok {
+		n.Attrs = maps.Clone(n.Attrs)
+		delete(n.Attrs, "sig")
+	}
+	return n
+}
+
+// logEdge is e with no Prov.
+func logEdge(e Edge) Edge {
+	e.Prov = Prov{}
+	return e
 }
 
 // capOverlay keeps the first records of recs up to MaxOverlayRecords: every
@@ -145,7 +209,8 @@ func (l *SessionLog) AppendOverlayGroup(recs []Record, reserve func(n int64) err
 
 // overlayCollector holds the overlay-revision records read since the last
 // break in the file (an unreadable line, a header or a record at any other
-// revision) and closes them into a group at a marker.
+// revision), each as the log keeps it (logRecord), and closes them into a
+// group at a marker.
 type overlayCollector struct {
 	pending []Record
 	groups  []OverlayGroup
@@ -168,7 +233,7 @@ func (c *overlayCollector) take(r Record) bool {
 		return false
 	}
 	if r.Node == nil || r.Node.Kind != KindOverlayGroup {
-		c.pending = append(c.pending, r)
+		c.pending = append(c.pending, logRecord(r))
 		return true
 	}
 	a := r.Node.Attrs

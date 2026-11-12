@@ -498,7 +498,9 @@ func TestHook_OverlayOnlyForGoWrites(t *testing.T) {
 // TestOverlay_HookGroupsRoundTrip (H5): the groups Pre and Post wrote, loaded
 // and replayed, give the store ApplyOverlay gives live for the same content.
 // The declared group is dropped at replay as the landed one for the same call
-// supersedes it, so the live store is the landed content at the landed seq.
+// supersedes it, so the live store is the landed content at the landed seq,
+// from the records as the log keeps them (graph.LogRecords: no sig, no
+// Prov). Witness: the resolver's own records carry both.
 func TestOverlay_HookGroupsRoundTrip(t *testing.T) {
 	f := newOvFix(t, "1\n")
 	in := f.edit("func Old() {}", "func Old() {}\n\nfunc Added() {}")
@@ -535,7 +537,16 @@ func TestOverlay_HookGroupsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	live.ApplyOverlay(graph.FileID(ovRel), []byte(after), recs, rev, gopg.Resolver{}.OverlayCarried())
+	sigs := 0
+	for _, r := range recs {
+		if r.Node != nil && r.Node.Attrs["sig"] != "" && r.Node.Prov.Extractor != "" {
+			sigs++
+		}
+	}
+	if sigs == 0 {
+		t.Fatalf("witness: no record of the resolver's carries a sig and a Prov: %+v", recs)
+	}
+	live.ApplyOverlay(graph.FileID(ovRel), []byte(after), graph.LogRecords(recs), rev, gopg.Resolver{}.OverlayCarried())
 	if !reflect.DeepEqual(live.Nodes(rev), replayed.Nodes(rev)) || !reflect.DeepEqual(live.Edges(rev), replayed.Edges(rev)) {
 		t.Errorf("replayed store differs from the live one:\nlive %v\nreplayed %v", live.Nodes(rev), replayed.Nodes(rev))
 	}
