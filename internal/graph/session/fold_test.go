@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
@@ -51,9 +52,9 @@ func TestEvent_Decode(t *testing.T) {
 	if err != nil || !ok || ev != (Event{Seq: 7, Type: "declaration"}) {
 		t.Errorf("record: %+v, %v, %v", ev, ok, err)
 	}
-	line := `{"type":"steer","v":1,"id":"0a6742a0","at_unix_ms":1793897981372,"session_id":"s1","kind":"unit","key":"example.com/m/internal/a@0a1b2c3d","after_seq":7,"model_text":"some words","user_text":"more words","state":"delivered"}`
+	line := `{"type":"steer","v":1,"id":"0a6742a0","at_unix_ms":1793897981372,"session_id":"s1","prompt_id":"6f1c2d3e-0000-4000-8000-00000000000a","kind":"unit","key":"example.com/m/internal/a@0a1b2c3d","after_seq":7,"model_text":"some words","user_text":"more words","state":"delivered"}`
 	ev, ok, err = SteerEvent([]byte(line))
-	if err != nil || !ok || ev != (Event{Seq: 7, Steer: true, AtUnixMS: 1793897981372, ID: "0a6742a0", Type: "steer", State: "delivered", Key: "example.com/m/internal/a@0a1b2c3d", Kind: "unit"}) {
+	if err != nil || !ok || ev != (Event{Seq: 7, Steer: true, AtUnixMS: 1793897981372, ID: "0a6742a0", Type: "steer", State: "delivered", Key: "example.com/m/internal/a@0a1b2c3d", Kind: "unit", PromptID: "6f1c2d3e-0000-4000-8000-00000000000a"}) {
 		t.Errorf("steer line: %+v, %v, %v", ev, ok, err)
 	}
 	evidence := `{"type":"steer_evidence","v":1,"at_unix_ms":1793897981400,"session_id":"s1","steer_id":"0a6742a0","event":"UserPromptSubmit"}`
@@ -86,11 +87,12 @@ func TestEvent_Decode(t *testing.T) {
 // string field not named here fails by name.
 func TestEvent_HoldsNoWords(t *testing.T) {
 	named := map[string]string{
-		"ID":    "steer line id",
-		"Type":  "record type or steer.LineType",
-		"State": "a closed steer.LineState name",
-		"Key":   "a finding's dedupe key: a unit id and a digest",
-		"Kind":  "a closed steer.Kind name, or empty",
+		"ID":       "steer line id",
+		"Type":     "record type or steer.LineType",
+		"State":    "a closed steer.LineState name",
+		"Key":      "a finding's dedupe key: a unit id and a digest",
+		"Kind":     "a closed steer.Kind name, or empty",
+		"PromptID": "a prompt id (a UUID), never the prompt's words",
 	}
 	var got []string
 	stringLeaves(reflect.TypeOf(Event{}), "", &got)
@@ -135,5 +137,28 @@ func TestStep_DeliveredOncePerID(t *testing.T) {
 	Step(&f, Event{Seq: 9, Steer: true, AtUnixMS: 9, ID: "d1", Type: "steer", State: "delivered", Key: "k1"})
 	if want := []LineRef{{ID: "d1", Key: "k1", Seq: 4}}; !reflect.DeepEqual(f.Delivered, want) {
 		t.Fatalf("Delivered\n got %+v\nwant %+v", f.Delivered, want)
+	}
+}
+
+// TestStep_Intents (W-M4.2, D2): one IntentRef per prompt id in the steer
+// log, in order of first appearance from 1, at its first line's after_seq,
+// whatever that line's state; a briefing line (no prompt id) adds none.
+func TestStep_Intents(t *testing.T) {
+	f := newFrontier("s1")
+	for _, ev := range []Event{
+		{Seq: 0, Steer: true, AtUnixMS: 1, ID: "b0", Type: "steer", State: "delivered", Key: "graph"},
+		{Seq: 0, Steer: true, AtUnixMS: 2, ID: "a1", Type: "steer", State: "suppressed", Key: "k", PromptID: "p-one"},
+		{Seq: 2, Steer: true, AtUnixMS: 3, ID: "a2", Type: "steer", State: "delivered", Key: "k2", PromptID: "p-one"},
+		{Seq: 3, Type: "declaration"},
+		{Seq: 5, Steer: true, AtUnixMS: 4, ID: "a3", Type: "steer", State: "superseded", Key: "k3", PromptID: "p-two"},
+	} {
+		Step(&f, ev)
+	}
+	want := []IntentRef{
+		{ID: string(graph.PromptNodeID("s1", 1)), Digest: "p-one", StatedAt: 0, Status: ReqOpen},
+		{ID: string(graph.PromptNodeID("s1", 2)), Digest: "p-two", StatedAt: 5, Status: ReqOpen},
+	}
+	if !reflect.DeepEqual(f.Intents, want) {
+		t.Fatalf("Intents\n got %+v\nwant %+v", f.Intents, want)
 	}
 }
