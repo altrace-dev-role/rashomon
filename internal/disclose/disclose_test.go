@@ -469,6 +469,32 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// writes no file: a second site here is a write with no inventory
 		// row.
 		{"regfile", 1},
+		// Pinned 2026-11-11 (W-M2.11 1d, store-writer-inventory.txt): the
+		// packages whose writes were outside this count, each recounted
+		// with this counter at the pinning head. cmd/rashomon: graph.go's
+		// writeGraphEvidence os.WriteFile (<store>/graph/<session>-<prompt>.txt,
+		// purge's graph tree), purge.go's two console and tty opens (no
+		// file), share.go's writeShareFile (the user's own path), watch.go's
+		// tty open and restorable's undo (the old bytes of install.json).
+		{"../cmd/rashomon", 6},
+		// graph: persist.go's index save (<repo>/.rashomon/graph.jsonl) and
+		// sessionlog.go's append open (<store>/graph/<16 hex>.jsonl).
+		{"graph", 2},
+		// graph/knowledge: schema.go's WriteFile (<repo>/.rashomon/knowledge).
+		{"graph/knowledge", 1},
+		// graph/graphtest: graphtest.go's write, test support with no
+		// non-test importer.
+		{"graph/graphtest", 1},
+		// seed: kept.go's WriteKept ReplaceFile (<store>/seed.json).
+		{"seed", 1},
+		// fold: write.go's Write, to the path its caller names.
+		{"fold", 1},
+		// settings: write.go's WriteFile of Claude Code's settings.json.
+		{"settings", 1},
+		// brief: brief.go's O_RDONLY OpenFile, a read.
+		{"brief", 1},
+		// fault: fault_on.go's two writes, built under rashomonfault only.
+		{"fault", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))
