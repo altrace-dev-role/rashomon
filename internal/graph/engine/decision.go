@@ -22,13 +22,17 @@ func decisionConflicts(g Reader, d Diff, r Rule) []Conflict {
 
 // pathsTouched is paths_untouched: one decision_contradicted per id the
 // rule applies to that the diff touches, a file in Files or a unit in
-// Touched.
+// Touched, and one per file in Files that a pattern of the rule's Paths
+// matches and AppliesTo did not already name.
 func pathsTouched(g Reader, d Diff, r Rule) []Conflict {
 	var out []Conflict
 	for _, id := range r.AppliesTo {
 		if slices.Contains(d.Files, id) || slices.Contains(d.Touched, id) {
 			out = append(out, ruleConflict(g, d, r, ConflictDecisionContradicted, id))
 		}
+	}
+	for _, id := range filesUnderPaths(d, r) {
+		out = append(out, ruleConflict(g, d, r, ConflictDecisionContradicted, id))
 	}
 	return out
 }

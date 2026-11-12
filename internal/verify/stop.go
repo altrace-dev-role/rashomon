@@ -52,6 +52,12 @@ type StopInput struct {
 	// calls it once, after classifying, only where the session wrote a Go
 	// file; nil reads no log and owes no platform row.
 	Platform func(root string, written []string) PlatformRead
+	// Conflicts is each conflict the session was shown, with the seqs that
+	// named it and the edit that resolved it (ConflictSeen, W-M2.4): the
+	// Stop's caller fills it, as it fills StopView.Unbound, and EvaluateStop
+	// reads no graph. nil for none, and then the ledger and the view are what
+	// they were without it.
+	Conflicts []ConflictSeen
 }
 
 // InferredGate is a test command read from the project's own files: its
@@ -122,6 +128,11 @@ type StopView struct {
 	// names them, where Summary's k counts the session's and names none
 	// (D40; 1.8 Gate B F1; card RECALL-15). Nil for none.
 	Violations []RuleVerdict
+	// Conflicts is each unmet conflict group's row, in the ledger's order,
+	// paired one to one with the unmet conflict rows of Obligations as
+	// Platform pairs with platform rows (W-M2.4): recap names them. Nil for
+	// none; a resolved or withheld conflict has no entry.
+	Conflicts []ConflictRow
 }
 
 // UntrustedGate is a gate a spec declares while the spec reads untrusted:
@@ -166,7 +177,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	wrote := WroteRelevant(run, pt.Seq)
 	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
 	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})
-	v.Obligations = ledgerOf(snap, &c, v.Expected)
+	groups := conflictGroups(in.Conflicts)
+	v.Obligations = ledgerOf(snap, &c, v.Expected, groups...)
+	v.Conflicts = unmetConflictRows(groups)
 	if written := platformPaths(in.Platform, c.writes, pt.Seq); len(written) > 0 {
 		v.Platform = in.Platform(snap.ProjectRoot, written)
 		v.Obligations = append(v.Obligations, platformObligations(snap, &c, run, in.Key, v.Platform)...)

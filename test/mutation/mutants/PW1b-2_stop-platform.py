@@ -17,7 +17,7 @@ m("PW1b-2 met rows print too", PL,
 m("PW1b-2 no cap", PL,
   "const maxPlatformLines = 2", "const maxPlatformLines = 64", "TestPW1b2_TheStopNamesTwo")
 m("PW1b-2 the value line alone", "internal/recap/done.go",
-  "+ unboundLines(v) + platformLines(v, fromPlugin) + pointer", "+ unboundLines(v) + pointer", "TestPW1b2_TheDoneFlag")
+  "+ unboundLines(v) + platformLines(v, fromPlugin)\n", "+ unboundLines(v)\n", "TestPW1b2_TheDoneFlag")
 m("PW1b-2 the done flag alone", V,
   "\tb.WriteString(platformLines(v, fromPlugin))\n", "", "TestPW1b2_TheStopNamesAChanged|TestPW1b2_TheStopNamesTwo")
 m("PW1b-2 the log is not checked", "internal/platform/platform.go",

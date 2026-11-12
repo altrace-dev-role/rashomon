@@ -37,7 +37,7 @@ m("RC-15 a protected path reads as a command", RR,
 m("RC-15 no width rule", RR,
   "\tif columns(one) <= lineColumns {", "\tif true {", "TestRC15d_")
 m("RC-15 the rule line speaks for none", RR,
-  "\tif n == 0 {\n\t\treturn \"\"\n\t}\n\thead :=", "\thead :=", "TestRC15e_")
+  "\tif n == 0 && c == 0 {\n\t\treturn \"\"\n\t}\n\tvar parts", "\tvar parts", "TestRC15e_")
 
 # Where the turn speaks.
 m("RC-15 a turn that wrote nothing names no rule", RS,
@@ -47,5 +47,5 @@ m("RC-15 the summary switch off silences the rule", RS,
   "\t\treturn \"\", false, \"\"\n", "TestRC15g_")
 m("RC-15 StopFailure names the rule", RS,
   "\tif !s.speaks {\n\t\treturn \"\"\n\t}\n\treturn recap.RuleLines(s.view)", "\treturn recap.RuleLines(s.view)", "TestRC15g_")
-m("RC-15 recap.Line's sentence names no rule", RT,
-  "stop.rules()+recap.PlatformLines(", "recap.PlatformLines(", "TestRC15g_")
+m("RC-15 recap.Line's sentence names no rule", "cmd/rashomon/recap_conflicts.go",
+  "stop.rules() + recap.PlatformLines(", "recap.PlatformLines(", "TestRC15g_")

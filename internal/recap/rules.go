@@ -38,17 +38,31 @@ func RuleLines(v verify.StopView) string { return ruleLines(v) }
 // RuleLine is the line that names the turn's rules where no other line
 // speaks: a turn that matched a rule and wrote nothing and ran no gate has
 // no value line (RowNone), and a turn under a summary switch set off prints
-// none (card RECALL-15, B237). "" for a turn that matched none.
+// none (card RECALL-15, B237). It speaks too for an unresolved conflict
+// (verify.StopView.Conflicts, W-M2.4, B5: the person declared the rule), the
+// head then counting what it names. "" for a turn that matched none and
+// holds none.
 func RuleLine(v verify.StopView, sessionID string, fromPlugin bool) string {
-	n := len(v.Violations)
-	if n == 0 {
+	n, c := len(v.Violations), len(liveConflicts(v))
+	if n == 0 && c == 0 {
 		return ""
 	}
-	head := "a spec rule matched in this turn"
-	if n > 1 {
-		head = strconv.Itoa(n) + " spec rules matched in this turn"
+	var parts []string
+	if n > 0 {
+		head := "a spec rule matched in this turn"
+		if n > 1 {
+			head = strconv.Itoa(n) + " spec rules matched in this turn"
+		}
+		parts = append(parts, head)
 	}
-	return prefix + head + ".\n" + ruleLines(v) + pointer(sessionID, fromPlugin)
+	if c == 1 {
+		parts = append(parts, "a conflict is unresolved")
+	} else if c > 1 {
+		parts = append(parts, strconv.Itoa(c)+" conflicts are unresolved")
+	}
+	head := strings.Join(parts, " and ")
+	body, tail := prefix+head+".\n"+ruleLines(v), pointer(sessionID, fromPlugin)
+	return body + conflictLines(v, fromPlugin, body+tail) + tail
 }
 
 // ruleLine is one rule's line: "spec rule <id> <what>", the id without its

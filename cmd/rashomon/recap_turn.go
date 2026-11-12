@@ -303,7 +303,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// it names no rule (stopTurn.rules), so there the sentences name neither
 	// (tech 2.2.11 condition 4).
 	fromPlugin := recapFromPlugin(args)
-	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, stop.rules()+recap.PlatformLines(stop.view, fromPlugin))
+	line, wantSpeak := stopLineWith(d, stop, fromPlugin)
 	clause := ""
 	if !wantSpeak {
 		line, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)

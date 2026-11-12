@@ -17,11 +17,11 @@ LS = "cmd/rashomon/laststop.go"
 LR = "cmd/rashomon/report_ledger.go"
 
 # The live Stop path.
-m("LW-1 the ledger's scope lost", O,
-  'scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)\n',
-  'scope := cmp.Or(obligationScopes()[""], "")\n', "TestLW1b_")
+m("LW-1 the ledger's scope lost", "internal/verify/conflicts.go",
+  'return cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)\n',
+  'return cmp.Or(obligationScopes()[""], "")\n', "TestLW1b_")
 m("LW-1 the Stop's expected rows dropped from the ledger", S,
-  '\tv.Obligations = ledgerOf(snap, &c, v.Expected)\n', '\tv.Obligations = ledgerOf(snap, &c, nil)\n', "TestLW1b_")
+  '\tv.Obligations = ledgerOf(snap, &c, v.Expected, groups...)\n', '\tv.Obligations = ledgerOf(snap, &c, nil, groups...)\n', "TestLW1b_")
 m("LW-1 the pinned Required ignored", S,
   '\tpinRequired(&snap, in.Required)\n', '', "TestLW1l_")
 m("LW-1 the done clause reads v.Expected", DN,
