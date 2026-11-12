@@ -14,13 +14,14 @@ import (
 	"sync"
 )
 
-// ID names one of the nineteen frozen STEER patterns. The set is closed:
+// ID names one of the twenty frozen STEER patterns. The set is closed:
 // the review that gates this package checks the constants below against the
 // spec's list verbatim, so adding or renaming one is a contract change, not
 // a local edit. The spec's list froze sixteen; task-preflight (card
 // PREFLIGHT1) is the seventeenth, stale-evidence (card STALE-NUDGE1, D164)
-// the eighteenth and blast-radius (card ARCH-INLINE1, A6) the nineteenth,
-// each added by ruling after them in merge order, so their order holds.
+// the eighteenth, blast-radius (card ARCH-INLINE1, A6) the nineteenth and
+// plan-check (W-M2.6) the twentieth, each added by ruling after them in merge
+// order, so their order holds.
 type ID string
 
 // The frozen pattern IDs, in the order the frozen-set paragraph lists them
@@ -56,6 +57,9 @@ const (
 	// BlastRadius names the other packages the platform graph shows calling
 	// into the package a call edited, at the edit (card ARCH-INLINE1, PF-PL7).
 	BlastRadius ID = "blast-radius"
+	// PlanCheck names what an accepted plan's paths reach: the rules and
+	// cautions the engine holds for files the plan names (W-M2.6).
+	PlanCheck ID = "plan-check"
 )
 
 // Reserve is how many of the prompt's notes id leaves for others (card
@@ -81,7 +85,7 @@ func All() []ID {
 		LearnedFact, PlatformRule, Integrity, IdenticalRetry, CredSpray,
 		OrderingRule, AgentInterference, SubagentClaim, ModelSwitch,
 		ClaimVsRecord, MaskedStatus, SequenceRisk, TaskPreflight, StaleEvidence,
-		BlastRadius,
+		BlastRadius, PlanCheck,
 	}
 }
 
@@ -169,7 +173,7 @@ func classForm(s string) bool {
 	return true
 }
 
-// Valid reports whether id is one of the nineteen frozen patterns.
+// Valid reports whether id is one of the twenty frozen patterns.
 func Valid(id ID) bool {
 	for _, known := range All() {
 		if known == id {
@@ -190,7 +194,10 @@ func Valid(id ID) bool {
 // flag-only in Wave B, so on an egress call its secret-then-egress flag beats
 // identical-retry (40). task-preflight carries 72, above learned-fact (70):
 // the two meet only at UserPromptSubmit, and a prompt that carries a lesson
-// keeps its preflight note. stale-evidence takes 78, below
+// keeps its preflight note. plan-check takes 74, between declared-fact and
+// task-preflight: a rule the plan reaches is a fact of the project, and the two
+// never share a call (a plan lands at PostToolUse, a preflight at the prompt).
+// stale-evidence takes 78, below
 // regression-location: a red the call caused outranks a green it left behind
 // (card STALE-NUDGE1). blast-radius takes 25, the lowest: which packages call
 // into an edited one is context, never a finding against the agent, so every
@@ -206,6 +213,7 @@ func priority() map[ID]int {
 			RegressionLocation: 80,
 			StaleEvidence:      78,
 			DeclaredFact:       75,
+			PlanCheck:          74,
 			TaskPreflight:      72,
 			LearnedFact:        70,
 			CredSpray:          65,
