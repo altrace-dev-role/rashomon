@@ -204,6 +204,13 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"rule_id", "source_digest", "landed_seq", "then",
 	}
+	// planCheckKeys are a plan_check's keys (card W-M2.6 hook half): the
+	// covering rules' ids, three counts and the covered paths as keyed
+	// digests, never a path or a word of the plan.
+	planCheckKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"landed_seq", "rule_ids", "named", "planned", "matched", "path_digests",
+	}
 	// outcomeJoinKeys are an outcome_join's keys (card BG-OUTCOME phase 1):
 	// a background call's id and how it ended, never the notification's text.
 	outcomeJoinKeys = []string{

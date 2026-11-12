@@ -158,7 +158,8 @@ func TestSN1d_ForeignMoveIsNamedNotBlamed(t *testing.T) {
 
 // TestSN1e_PatternIsFrozen: stale-evidence is the eighteenth frozen id,
 // after the spec's sixteen and task-preflight (merge order; blast-radius,
-// the nineteenth, came after it, and pattern's TestDEL22 pins the count),
+// the nineteenth, and plan-check, the twentieth, came after it, and pattern's
+// TestDEL22 pins the count),
 // with priority 78
 // under regression-location and no kinds; the mapper takes it at a
 // PostToolUse as a nudge keyed by the gate and refuses it at any other event.
