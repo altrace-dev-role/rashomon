@@ -142,7 +142,7 @@ func TestStop_ConflictLinesInEveryComposer(t *testing.T) {
 	}
 }
 
-// TestStop_WithheldConflictKindSaysNothing (director 16:23, the M2 not-live
+// TestStop_WithheldConflictKindSaysNothing (ruling 16:23, the M2 not-live
 // pin): a duplicate_abstraction member, alone and beside live ones, owes no
 // Obligation, no StopView.Conflicts entry and no word in any composer's text,
 // and the counting line counts only the live kind. An arity member likewise.

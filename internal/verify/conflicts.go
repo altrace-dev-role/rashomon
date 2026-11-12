@@ -29,7 +29,7 @@ type ConflictRow struct{ Kind, Unit, UnitPath, RuleID, Subject string }
 var ConflictRowKinds = []string{"boundary_cross", "decision_contradicted", "signature_mismatch", "protected_path"}
 
 // WithheldConflictKinds are the kinds whose detector stays but whose finding
-// is withheld in M2: no row, no line, no count on any surface (director
+// is withheld in M2: no row, no line, no count on any surface (ruling
 // 2026-11-11 16:23: no k in 2..6 reached zero wrong flags in the replay).
 var WithheldConflictKinds = []string{"duplicate_abstraction"}
 

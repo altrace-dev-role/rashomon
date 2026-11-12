@@ -26,7 +26,7 @@ func writeAnchors(t *testing.T, root string) {
 	}
 }
 
-// TestPurge_RemovesPromptTextFromSessionLog (W-M2.11 1d, director 16:06
+// TestPurge_RemovesPromptTextFromSessionLog (W-M2.11 1d, ruling 16:06
 // item 4): the session log holds prompt text under consent; a purge plan
 // removes the file, and no file under the root holds the text afterwards.
 func TestPurge_RemovesPromptTextFromSessionLog(t *testing.T) {

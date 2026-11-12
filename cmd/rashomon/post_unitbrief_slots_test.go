@@ -13,7 +13,7 @@ import (
 )
 
 // TestPost_UnitBriefLineSlotsAreTheDeliveredLines (debt row (m), a merge
-// condition, director 07:09; PLAN's unit-brief clause): the note may say
+// condition, ruling 07:09; PLAN's unit-brief clause): the note may say
 // fewer lines than the file holds, and the steer line records what was
 // said. The widest five-line knowledge brief fills the briefing cap under
 // the graph head at c1, so at the first edit in a unit whose path is long

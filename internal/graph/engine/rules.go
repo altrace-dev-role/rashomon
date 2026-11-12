@@ -21,7 +21,7 @@ import (
 // are not mutated: knowledge.Records still reads their global ids. Paths
 // carry over. Pure: the caller reads the spec (hook.DiscoverSpec) and the
 // rows (knowledge.ReadDir). The plan check (cmd/rashomon/plan.go), the steer
-// of W-M2.4 and QA's J3 judge all take their rules from this one function.
+// of W-M2.4 and the J3 judge all take their rules from this one function.
 func RulesFor(sp *spec.Compiled, rows []knowledge.Row, g Reader, rid string, rev graph.Rev) []Rule {
 	var out []Rule
 	if sp != nil {

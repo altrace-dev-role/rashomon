@@ -121,7 +121,7 @@ func TestObligations_NewlineYieldsNoRow(t *testing.T) {
 	}
 }
 
-// TestStop_WithheldConflictKindLeavesNoLedgerRow (director 16:23): the ledger and
+// TestStop_WithheldConflictKindLeavesNoLedgerRow (ruling 16:23): the ledger and
 // the view half. A duplicate_abstraction or arity member alone, and beside a
 // live one, yields no Obligation and no StopView.Conflicts entry. The text
 // half is cmd/rashomon's.

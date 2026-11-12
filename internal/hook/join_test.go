@@ -71,7 +71,7 @@ const (
 // the unit brief, one note per call, and leaves blast's line superseded, not
 // given; the package's next edit, with nothing joined, delivers blast.
 // Witness: blast's port answered at the first write. Whether blast should
-// count a delivered unit brief as given for its package is the director's
+// count a delivered unit brief as given for its package is an open
 // question (R4), not built.
 func TestPost_UnitBriefOutranksBlast(t *testing.T) {
 	f := newST(t)

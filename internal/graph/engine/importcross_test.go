@@ -29,7 +29,7 @@ var importCrossTree = map[string]string{
 
 const importCrossCommit = "c-imports"
 
-// importCrossRules are QA's two S1 rules: internal or cmd into pgraph, and
+// importCrossRules are the two S1 rules: internal or cmd into pgraph, and
 // pgraph into internal or cmd.
 var importCrossRules = []Rule{
 	{ID: "to-pgraph", Kind: "boundary", From: []string{"unit:go:internal", "unit:go:cmd"}, To: []string{"unit:go:pgraph"}},

@@ -22,7 +22,7 @@ const ubGolden = `{"v":1,"unit":"g:r1#unit:py:store","first":"g:r1#file:brief/br
 // the first `,"lines":` up to the closing brace, first 12 hex.
 const ubGoldenDigest = "e1f17930f38e"
 
-// TestUnitBrief_V1FileBytes (W-M2.3 hook half; QA's J2 point 5, ruling
+// TestUnitBrief_V1FileBytes (W-M2.3 hook half; J2 point 5, ruling
 // 03:58 (2)): the v1 file's bytes and its brief digest are fixed. Break:
 // tag a fact field, rename one, or change the lines key, and this fails
 // before any reader meets a file it cannot read.

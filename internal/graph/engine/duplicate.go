@@ -8,9 +8,9 @@ import (
 )
 
 // DuplicateMinStems is the fewest distinct shared stems that make an added
-// callable a likely duplicate. PROVISIONAL; QA's replay over twenty merged
+// callable a likely duplicate. PROVISIONAL; a replay over twenty merged
 // diffs from this repository fits k, with the fit set and the false-positive
-// set disjoint and named before the replay; the director rules k before
+// set disjoint and named before the replay; a ruling sets k before
 // T2's pre-registration.
 const DuplicateMinStems = 3
 
