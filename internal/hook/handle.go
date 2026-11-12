@@ -86,6 +86,9 @@ type Handler struct {
 	toolUseID string
 	cwd       string
 	opened    bool
+	// declaredSeq is the seq the declaration landed at in the ordered stream
+	// (store.DeclareSeq), 0 until it does; the overlay writer cites it.
+	declaredSeq int64
 	// withheld is set when a payload value was over its cap and left out of
 	// the declaration (store.CapDeclaration); the call's coverage record
 	// then carries record_oversize.
@@ -248,12 +251,14 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 
 	fault.Inject(fault.PointStoreWrite)
 
-	if err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {
+	seq, err := h.st.DeclareSeq(decl)
+	if err := landed(err, &h.withheld); err != nil {
 		return err
 	}
-	h.opened = true
+	h.opened, h.declaredSeq = true, seq
 
 	fault.Inject(fault.PointHookAfterDeclaration)
+	h.writeOverlay(&p)
 	return nil
 }
 

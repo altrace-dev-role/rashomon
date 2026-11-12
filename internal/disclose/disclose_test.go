@@ -2,6 +2,7 @@ package disclose
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -138,6 +139,14 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
+	}
+	// The overlay journal's two run files: the byte counter, and the marker
+	// a reservation past the bound leaves (card W-M2.5c, 5c-2).
+	if err := s.ReserveOverlay(sessionID, 1); err != nil {
+		t.Fatalf("ReserveOverlay: %v", err)
+	}
+	if err := s.ReserveOverlay(sessionID, store.MaxOverlayBytes); !errors.Is(err, store.ErrOverlayFull) {
+		t.Fatalf("ReserveOverlay past the bound: %v, want ErrOverlayFull", err)
 	}
 	if !s.TakeChannelEvidence("PostToolUse", "2.1.304") {
 		t.Fatal("TakeChannelEvidence refused")
@@ -412,7 +421,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// TakeBlastRead open, runs/<session>/blast-read-<16 hex>, the
 		// blast-radius read's marker per package and log (blastReadFiles in
 		// the inventory, IsBlastReadFile in purge's run files).
-		{"store", 35},
+		// Raised 35 to 38 for the overlay journal (card W-M2.5c, 5c-2;
+		// overlayRunFiles in the inventory, purge's run files):
+		// overlayreserve.go:65, the OpenFile of records.ndjson that takes its
+		// lock (writes nothing), :100 the writeSmall of overlay-bytes, and
+		// :107 the O_EXCL OpenFile of overlay-full.
+		{"store", 38},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

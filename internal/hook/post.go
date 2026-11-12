@@ -380,6 +380,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	p.landedHidden = hiddenRun(&rec)
 	seq, err := p.st.LandExecution(rec)
 	p.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())
+	p.writeOverlay()
 	p.landedRed = redRead(&rec)
 	return landed(err, &p.withheld)
 }
