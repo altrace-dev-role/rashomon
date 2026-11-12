@@ -74,6 +74,7 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 		{"after_hit", afterHitKeys},
 		{"then_check", thenCheckKeys},
 		{"plan_check", planCheckKeys},
+		{"unitbrief_miss", unitBriefMissKeys},
 		{"outcome_join", outcomeJoinKeys},
 	} {
 		t.Run(c.def, func(t *testing.T) {
@@ -150,6 +151,8 @@ var reasonVocabularyPaths = map[string]bool{
 	"/$defs/gap/properties/reason":        true,
 	"/$defs/report_reason":                true,
 	"/$defs/spec_event/properties/reason": true,
+	// card m2-unitbrief-hook1 D7
+	"/$defs/unitbrief_miss/properties/reason": true,
 }
 
 // reservedReasonPaths are reason-named keys of schema 5 that are not reason

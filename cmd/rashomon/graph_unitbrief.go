@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
@@ -369,22 +371,29 @@ const unitBriefKeyPrefix = "unitbrief:"
 // D4), nil for none: the first landed edit in a Go unit whose brief the
 // session holds, its file at the index's commit, not yet given. The checks
 // run cheapest first: the overlay writer's gate (Post.LandedGoEdit), the
-// unit's file by name (gopg's unit, the prompt side's local id, under
-// UnitBriefFileName), the index header (its repository names the unit as
-// the prompt side named it; its commit is the one a brief may be at), the
-// steer log (hook.Given: once per unit per session, whatever the digest,
-// arm_off counted at nudge only), then the bounded read. A brief of another
-// unit or commit is not said. The finding is graphFinding's under the key
+// index header (its repository names the unit as the prompt side named it;
+// its commit is the one a brief may be at; its first line only, no record
+// loaded), the unit's file by name (gopg's unit, the prompt side's local
+// id, under UnitBriefFileName), the steer log (hook.Given: once per unit
+// per session, whatever the digest, arm_off counted at nudge only), then
+// the bounded read. The finding is graphFinding's under the key
 // unitbrief:<unit>@<digest>, after the edit's seq, its record form digests
 // where the record scope is not v5, as the prompt's graph brief.
-func unitBriefJoin(st *store.Store, p *hook.Post) []steer.Finding {
+//
+// An edit past the gate and the header whose unit is not given and whose
+// brief cannot be said leaves one unitbrief_miss (D7), stamped now: absent
+// where the session holds no file for the unit (no steer-log read: files
+// are never removed, so a unit with none was never given), stale where the
+// file is at another commit than the index's, refused where it does not
+// read back as a brief of the unit or does not render. Like keepHits, it
+// is kept whatever the steer context then decides.
+func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding {
 	e, ok := p.LandedGoEdit()
 	if !ok {
 		return nil
 	}
-	unit, _ := gopg.Resolver{}.Unit("", e.Rel)
-	path := filepath.Join(graph.UnitBriefDir(st.Root(), e.Session), graph.UnitBriefFileName(e.Root, unit))
-	if _, err := os.Lstat(path); err != nil {
+	unit, ok := gopg.Resolver{}.Unit("", e.Rel)
+	if !ok {
 		return nil
 	}
 	hdr, err := graph.ReadIndexHeader(filepath.Join(e.Root, filepath.FromSlash(graph.GraphFile)))
@@ -392,6 +401,17 @@ func unitBriefJoin(st *store.Store, p *hook.Post) []steer.Finding {
 		return nil
 	}
 	gid := graph.GlobalID(hdr.Repo, unit)
+	miss := func(reason string) []steer.Finding {
+		_ = st.AppendRecord(e.Session, store.NewUnitBriefMiss(e.Session, e.Seq,
+			intent.PathDigest(st.Key(), string(gid)), reason, now.UnixMilli()))
+		return nil
+	}
+	path := filepath.Join(graph.UnitBriefDir(st.Root(), e.Session), graph.UnitBriefFileName(e.Root, unit))
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		return miss(store.UnitBriefAbsent)
+	} else if err != nil {
+		return miss(store.UnitBriefRefused)
+	}
 	prefix := unitBriefKeyPrefix + string(gid) + "@"
 	lines, _, _ := st.ReadSteer(e.Session)
 	given := false
@@ -400,12 +420,15 @@ func unitBriefJoin(st *store.Store, p *hook.Post) []steer.Finding {
 		return nil
 	}
 	sb, data, err := readUnitBrief(path)
-	if err != nil || sb.Unit != gid || sb.Rev.Commit != hdr.Rev.Commit {
-		return nil
+	if err != nil || sb.Unit != gid {
+		return miss(store.UnitBriefRefused)
+	}
+	if sb.Rev.Commit != hdr.Rev.Commit {
+		return miss(store.UnitBriefStale)
 	}
 	digest, err := unitBriefDigest(data)
 	if err != nil {
-		return nil
+		return miss(store.UnitBriefRefused)
 	}
 	var dg func(string) string
 	if !e.ScopeV5 {
@@ -415,7 +438,7 @@ func unitBriefJoin(st *store.Store, p *hook.Post) []steer.Finding {
 	f, ok := graphFinding(indexBrief{Brief: sb.Brief, Repo: hdr.Repo, First: sb.First, Tier: sb.Tier, Unit: sb.Unit},
 		prefix+digest, e.Seq, dg)
 	if !ok {
-		return nil
+		return miss(store.UnitBriefRefused)
 	}
 	f.AgentID = e.AgentID
 	return []steer.Finding{f}

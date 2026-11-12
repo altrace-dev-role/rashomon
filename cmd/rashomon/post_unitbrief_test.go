@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
+	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -35,20 +37,68 @@ func ubPostSession(t *testing.T, scope string) *planSession {
 // ubPostUnit is the fixture file's unit, as the prompt side names it.
 var ubPostUnit = graph.UnitID("go", "qwertyui")
 
+// briefPath is where the prompt side stores the fixture unit's brief for
+// this session.
+func (s *planSession) briefPath() string {
+	return filepath.Join(graph.UnitBriefDir(s.root, benchSessionID), graph.UnitBriefFileName(s.project, ubPostUnit))
+}
+
 // writeBrief stores ubBrief, rebound at rev, as the prompt side stores the
 // unit's brief for this session, and returns the file's bytes.
 func (s *planSession) writeBrief(rev string) []byte {
+	return s.writeBriefFor(graph.GlobalID(planRID, ubPostUnit), rev)
+}
+
+// writeBriefFor is writeBrief with the brief naming unit as its own, which
+// may be another unit than the one whose name the file is under.
+func (s *planSession) writeBriefFor(unit graph.ID, rev string) []byte {
 	s.t.Helper()
 	b := engine.Rebind(graph.RevCommit(rev), ubBrief(s.t).Lines)
-	data, err := encodeUnitBrief(b, graph.GlobalID(planRID, ubPostUnit), graph.GlobalID(planRID, b.FirstKey()), graph.Algorithmic, "prompt-1")
+	data, err := encodeUnitBrief(b, unit, graph.GlobalID(planRID, b.FirstKey()), graph.Algorithmic, "prompt-1")
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	path := filepath.Join(graph.UnitBriefDir(s.root, benchSessionID), graph.UnitBriefFileName(s.project, ubPostUnit))
-	if err := writeUnitBrief(path, data); err != nil {
+	if err := writeUnitBrief(s.briefPath(), data); err != nil {
 		s.t.Fatal(err)
 	}
 	return data
+}
+
+// misses is the session's unitbrief_miss records.
+func (s *planSession) misses() []store.UnitBriefMiss {
+	s.t.Helper()
+	st, err := store.OpenExisting(s.root)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	run, err := st.ReadRun(benchSessionID)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return run.UnitBriefMisses
+}
+
+// breakIndexBody keeps the project index's header line and replaces its
+// records with a line no loader reads, so a read that loads the index fails
+// where one that reads its header alone does not. Witness: graph.LoadFile
+// refuses the file.
+func (s *planSession) breakIndexBody() {
+	s.t.Helper()
+	path := filepath.Join(s.project, filepath.FromSlash(graph.GraphFile))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	i := bytes.IndexByte(data, '\n')
+	if i < 0 {
+		s.t.Fatalf("%s has no header line", path)
+	}
+	if err := os.WriteFile(path, append(data[:i+1:i+1], "not a record\n"...), 0o644); err != nil {
+		s.t.Fatal(err)
+	}
+	if _, _, err := graph.LoadFile(s.project); err == nil {
+		s.t.Fatal("witness: graph.LoadFile read an index whose body is no record")
+	}
 }
 
 // edit runs the real post entry on an Edit of the fixture's file.
@@ -167,4 +217,77 @@ func TestPost_UnitBriefNeedsTheKeptContentMarker(t *testing.T) {
 	if out := s.edit("toolu_ub_2"); !strings.Contains(out, ubPostTitle) {
 		t.Errorf("witness: with the marker the edit printed %q, want the brief", out)
 	}
+}
+
+// TestUnitBrief_MissIsCountedNeverLoaded (D7): a landed edit whose unit's
+// brief cannot be said writes one unitbrief_miss, critical false, its unit
+// the unit's global id as a keyed digest and its landed_seq the edit's
+// execution seq: absent (no file), refused (a torn file, or the brief of
+// another unit under this unit's name) and stale (a file at c0 under an
+// index at c1). Not a miss: a store without the session-content marker, the
+// delivered first edit, and the given unit's next edit. Every case runs on
+// an index whose body no loader reads, so the read takes the index's
+// header and loads no record; the delivered case is the witness that the
+// brief is still said through it.
+func TestUnitBrief_MissIsCountedNeverLoaded(t *testing.T) {
+	other := graph.GlobalID(planRID, graph.UnitID("go", "elsewhere"))
+	cases := []struct {
+		name, reason string
+		setup        func(s *planSession)
+	}{
+		{"absent", store.UnitBriefAbsent, func(*planSession) {}},
+		{"torn", store.UnitBriefRefused, func(s *planSession) {
+			data := s.writeBrief("c1")
+			if err := os.WriteFile(s.briefPath(), data[:len(data)-1], 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"another unit", store.UnitBriefRefused, func(s *planSession) { s.writeBriefFor(other, "c1") }},
+		{"stale", store.UnitBriefStale, func(s *planSession) { s.writeBrief("c0") }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := ubPostSession(t, store.RecordScopeV5)
+			s.breakIndexBody()
+			c.setup(s)
+			if out := s.edit("toolu_ub_1"); strings.Contains(out, ubPostTitle) {
+				t.Errorf("printed %q, want no brief", out)
+			}
+			m := s.misses()
+			if len(m) != 1 {
+				t.Fatalf("%d unitbrief_miss records, want 1", len(m))
+			}
+			st, err := store.OpenExisting(s.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unit := intent.PathDigest(st.Key(), string(graph.GlobalID(planRID, ubPostUnit)))
+			if m[0].Reason != c.reason || m[0].Unit != unit || m[0].Critical {
+				t.Errorf("miss reason %q unit %q critical %v, want %q, %q, false", m[0].Reason, m[0].Unit, m[0].Critical, c.reason, unit)
+			}
+			if seq := s.execSeq("toolu_ub_1"); m[0].LandedSeq != seq {
+				t.Errorf("landed_seq %d, want the edit's execution seq %d", m[0].LandedSeq, seq)
+			}
+		})
+	}
+	t.Run("no marker", func(t *testing.T) {
+		s := newPlanSession(t, store.RecordScopeV5)
+		s.breakIndexBody()
+		s.edit("toolu_ub_1")
+		if n := len(s.misses()); n != 0 {
+			t.Errorf("a store keeping no session content wrote %d misses, want 0", n)
+		}
+	})
+	t.Run("given", func(t *testing.T) {
+		s := ubPostSession(t, store.RecordScopeV5)
+		s.breakIndexBody()
+		s.writeBrief("c1")
+		if out := s.edit("toolu_ub_1"); !strings.Contains(out, ubPostTitle) {
+			t.Fatalf("witness: the first edit printed %q, want the brief through a header-only read", out)
+		}
+		s.edit("toolu_ub_2")
+		if n := len(s.misses()); n != 0 {
+			t.Errorf("the delivered edit and the given unit's next edit wrote %d misses, want 0", n)
+		}
+	})
 }

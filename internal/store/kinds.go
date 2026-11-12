@@ -83,6 +83,7 @@ var kindVersion = map[string]int{
 	TypeAfterHit:      EventSchemaVersion,
 	TypeThenCheck:     EventSchemaVersion,
 	TypePlanCheck:     EventSchemaVersion,
+	TypeUnitBriefMiss: EventSchemaVersion,
 }
 
 // KindVersion returns the version a writer stamps on kind, and whether kind

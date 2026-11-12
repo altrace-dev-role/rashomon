@@ -209,6 +209,7 @@ func TestDEL22b_SchemaFiveKeyListsAreFrozen(t *testing.T) {
 		TypeOutcomeJoin: reflect.TypeOf(OutcomeJoin{}), TypeWriteObserved: reflect.TypeOf(WriteObserved{}),
 		TypeSpecEvent: reflect.TypeOf(SpecEvent{}), TypeAfterHit: reflect.TypeOf(AfterHit{}),
 		TypeThenCheck: reflect.TypeOf(ThenCheck{}), TypePlanCheck: reflect.TypeOf(PlanCheck{}),
+		TypeUnitBriefMiss: reflect.TypeOf(UnitBriefMiss{}),
 	}
 	for kind := range kindVersion {
 		switch kind {
