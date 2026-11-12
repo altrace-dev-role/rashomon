@@ -59,9 +59,11 @@ func TestGopg_UnitIsDirectory(t *testing.T) {
 		t.Errorf("Claims or Lang wrong")
 	}
 	// Overlay was nil, nil in M1; W-M2.5 reads declarations (overlay_test.go).
-	// Content with no declarations is still the file node alone.
-	if recs, err := r.Overlay("a/b.go", []byte("package b\n"), graph.RevCommit("c1"), 1); err != nil || len(recs) != 1 || recs[0].Node == nil || recs[0].Node.ID != "file:a/b.go" {
-		t.Errorf("Overlay = %v, %v; want the file node alone", recs, err)
+	// Content with no declarations is the file node and its unit's Contains
+	// edge (W-M2.5c R8(a)).
+	if recs, err := r.Overlay("a/b.go", []byte("package b\n"), graph.RevCommit("c1"), 1); err != nil || len(recs) != 2 || recs[0].Node == nil || recs[0].Node.ID != "file:a/b.go" ||
+		recs[1].Edge == nil || recs[1].Edge.Key() != key("unit:go:a", graph.Contains, "file:a/b.go") {
+		t.Errorf("Overlay = %v, %v; want the file node and its Contains edge", recs, err)
 	}
 }
 

@@ -1,10 +1,8 @@
 package gopg
 
 import (
-	"bytes"
 	"go/ast"
 	"go/parser"
-	"go/printer"
 	"go/token"
 	"path"
 
@@ -24,13 +22,16 @@ var overlayProv = graph.Prov{Extractor: "go/parser", Version: "v1"}
 // overlay revision with a Declares edge from the file node, whose digest
 // attr is the content's ContentDigest. The ids are the ones Extract gives
 // the same declaration, so an overlay replaces a symbol and never
-// duplicates it. Calls are not resolved and no body is kept: a sig is the
-// function's type printed, nothing of its statements. Content that does not
+// duplicates it. A sym carries the index's doc (overlaydoc.go: pgraph's
+// attribution and synopsis rules) and a func or method the short names its
+// body calls (calls attr); no body is kept, and a sig is the function's type
+// spelled by its tokens (sigtokens.go), nothing of its statements. The file node is contained by its
+// unit (one Contains edge, the index's key). Content that does not
 // parse yields nil records and a nil error; the overlay says less, never
 // wrong. It reads no file and starts no process.
 func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, rel, content, parser.SkipObjectResolution)
+	f, err := parser.ParseFile(fset, rel, content, parser.SkipObjectResolution|parser.ParseComments)
 	if err != nil {
 		return nil, nil
 	}
@@ -39,8 +40,11 @@ func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) (
 	file := graph.FileID(rel)
 	out := []graph.Record{{Node: &graph.Node{ID: file, Kind: "file", Tier: graph.Algorithmic, Conf: overlayConf, Rev: rev, Prov: overlayProv,
 		Attrs: map[string]string{"digest": graph.ContentDigest(content), "lang": Lang}}}}
+	if u, ok := (Resolver{}).Unit("", rel); ok {
+		out = append(out, graph.Record{Edge: &graph.Edge{Src: u, Pred: graph.Contains, Dst: file, Tier: graph.Algorithmic, Conf: overlayConf, Rev: rev, Prov: overlayProv}})
+	}
 	seen := map[graph.ID]bool{}
-	add := func(kind, qualified, name, sig string) {
+	add := func(kind, qualified, name, sig, docText, calls string) {
 		if name == "_" {
 			return
 		}
@@ -53,6 +57,12 @@ func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) (
 		if sig != "" {
 			attrs["sig"] = sig
 		}
+		if d := synopsis(docText); d != "" {
+			attrs["doc"] = d
+		}
+		if calls != "" {
+			attrs["calls"] = calls
+		}
 		out = append(out,
 			graph.Record{Node: &graph.Node{ID: id, Kind: "sym", Tier: graph.Algorithmic, Conf: overlayConf, Rev: rev, Prov: overlayProv, Attrs: attrs}},
 			graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Declares, Dst: id, Tier: graph.Algorithmic, Conf: overlayConf, Rev: rev, Prov: overlayProv}})
@@ -60,7 +70,7 @@ func (Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64) (
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
-			funcDecl(fset, d, add)
+			funcDecl(fset, content, d, add)
 		case *ast.GenDecl:
 			genDecl(d, add)
 		}
@@ -79,18 +89,15 @@ func (Resolver) OverlayCarried() graph.Carried {
 // funcDecl reports a function or a method. A method's qualified spelling is
 // Recv.Name with the pointer and the type parameters of the receiver
 // dropped, as pgraph spells it.
-func funcDecl(fset *token.FileSet, d *ast.FuncDecl, add func(kind, qualified, name, sig string)) {
-	var sig bytes.Buffer
-	if printer.Fprint(&sig, fset, d.Type) != nil {
-		sig.Reset()
-	}
+func funcDecl(fset *token.FileSet, content []byte, d *ast.FuncDecl, add func(kind, qualified, name, sig, docText, calls string)) {
+	sig := sigSpelling(fset, content, d.Type)
 	name := d.Name.Name
 	if d.Recv == nil || len(d.Recv.List) == 0 {
-		add("func", name, name, sig.String())
+		add("func", name, name, sig, declDoc(d.Doc, nil, 1), callNames(d.Body))
 		return
 	}
 	if recv := recvName(d.Recv.List[0].Type); recv != "" {
-		add("method", recv+"."+name, name, sig.String())
+		add("method", recv+"."+name, name, sig, declDoc(d.Doc, nil, 1), callNames(d.Body))
 	}
 }
 
@@ -115,18 +122,18 @@ func recvName(e ast.Expr) string {
 }
 
 // genDecl reports the types, constants and variables of one declaration.
-func genDecl(d *ast.GenDecl, add func(kind, qualified, name, sig string)) {
+func genDecl(d *ast.GenDecl, add func(kind, qualified, name, sig, docText, calls string)) {
 	for _, s := range d.Specs {
 		switch s := s.(type) {
 		case *ast.TypeSpec:
-			add("type", s.Name.Name, s.Name.Name, "")
+			add("type", s.Name.Name, s.Name.Name, "", declDoc(s.Doc, d.Doc, len(d.Specs)), "")
 		case *ast.ValueSpec:
 			kind := "var"
 			if d.Tok == token.CONST {
 				kind = "const"
 			}
 			for _, n := range s.Names {
-				add(kind, n.Name, n.Name, "")
+				add(kind, n.Name, n.Name, "", declDoc(s.Doc, d.Doc, len(d.Specs)), "")
 			}
 		}
 	}
