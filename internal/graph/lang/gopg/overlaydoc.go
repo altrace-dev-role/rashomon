@@ -2,7 +2,6 @@ package gopg
 
 import (
 	"go/ast"
-	"go/doc"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,14 +42,15 @@ func declDoc(own, group *ast.CommentGroup, nspecs int) string {
 }
 
 // synopsis is the index's doc from a doc comment's text (pgraph/symbols.go
-// synopsis, lines 138-157): go/doc's first sentence, runes 0x20..0x7e only,
-// trimmed, then cut to MaxDocBytes and back to the last space.
+// synopsis, lines 138-157): go/doc's first sentence (docSynopsis, which
+// mirrors it without the import), runes 0x20..0x7e only, trimmed, then cut to
+// MaxDocBytes and back to the last space.
 func synopsis(text string) string {
 	if text == "" {
 		return ""
 	}
 	var b strings.Builder
-	for _, r := range new(doc.Package).Synopsis(text) {
+	for _, r := range docSynopsis(text) {
 		if r >= 0x20 && r < 0x7f {
 			b.WriteRune(r)
 		}
