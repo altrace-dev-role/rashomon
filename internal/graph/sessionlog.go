@@ -3,8 +3,6 @@ package graph
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,8 +54,7 @@ type SessionLog struct {
 // SessionLogPath is <storeRoot>/graph/<16 hex of sha256(rid)>.jsonl: a rid
 // holds slashes and may hold dots, so it is hashed, never joined.
 func SessionLogPath(storeRoot, rid string) string {
-	sum := sha256.Sum256([]byte(rid))
-	return filepath.Join(storeRoot, "graph", hex.EncodeToString(sum[:8])+".jsonl")
+	return filepath.Join(storeRoot, StoreDir, sessionLogFile(rid))
 }
 
 // OpenSessionLog is the log for repository rid under storeRoot. Every record
