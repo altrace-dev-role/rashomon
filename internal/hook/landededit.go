@@ -4,12 +4,15 @@ import "github.com/altrace-dev-role/rashomon/internal/steer"
 
 // LandedGoEdit is a success event's landed Go edit as cmd's unit-brief read
 // takes it (card m2-unitbrief-hook1 D4): the session and agent, the index
-// root and the file's slash path under it, the seq the execution landed at,
-// and whether the call's record scope is v5 (else the finding's record form
-// holds digests, as the prompt's graph brief does).
+// root and the file's slash path under it, the hook's working directory
+// (the note names the unit relative to it, as the prompt's brief names its
+// paths), the seq the execution landed at, and whether the call's record
+// scope is v5 (else the finding's record form holds digests, as the
+// prompt's graph brief does).
 type LandedGoEdit struct {
 	Session, AgentID string
 	Root, Rel        string
+	Cwd              string
 	Seq              int64
 	ScopeV5          bool
 }
@@ -26,5 +29,5 @@ func (p *Post) LandedGoEdit() (LandedGoEdit, bool) {
 	if !ok {
 		return LandedGoEdit{}, false
 	}
-	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: root, Rel: rel, Seq: p.landedSeq, ScopeV5: p.scopeV5}, true
+	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: root, Rel: rel, Cwd: p.cwd, Seq: p.landedSeq, ScopeV5: p.scopeV5}, true
 }

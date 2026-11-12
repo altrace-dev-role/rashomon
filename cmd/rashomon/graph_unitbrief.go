@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -376,17 +377,21 @@ const unitBriefKeyPrefix = "unitbrief:"
 // loaded), the unit's file by name (gopg's unit, the prompt side's local
 // id, under UnitBriefFileName), the steer log (hook.Given: once per unit
 // per session, whatever the digest, arm_off counted at nudge only), then
-// the bounded read. The finding is graphFinding's under the key
-// unitbrief:<unit>@<digest>, after the edit's seq, its record form digests
-// where the record scope is not v5, as the prompt's graph brief.
+// the bounded read. The finding is briefFinding's under the key
+// unitbrief:<unit>@<digest>, after the edit's seq: the brief under the
+// unit's head (Brief.UnitSaid, ruling 04:58 B), which names the unit's
+// directory relative to the hook's working directory, and its record form,
+// with digests and no unit path, where the record scope is not v5. The
+// digest names the file's lines, all of which the graph head said; the
+// unit head, longer with a long unit path, may say fewer.
 //
 // An edit past the gate and the header whose unit is not given and whose
 // brief cannot be said leaves one unitbrief_miss (D7), stamped now: absent
 // where the session holds no file for the unit (no steer-log read: files
 // are never removed, so a unit with none was never given), stale where the
 // file is at another commit than the index's, refused where it does not
-// read back as a brief of the unit or does not render. Like keepHits, it
-// is kept whatever the steer context then decides.
+// read back as a brief of the unit or does not render under the unit's
+// head. Like keepHits, it is kept whatever the steer context then decides.
 func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding {
 	e, ok := p.LandedGoEdit()
 	if !ok {
@@ -406,8 +411,8 @@ func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding
 			intent.PathDigest(st.Key(), string(gid)), reason, now.UnixMilli()))
 		return nil
 	}
-	path := filepath.Join(graph.UnitBriefDir(st.Root(), e.Session), graph.UnitBriefFileName(e.Root, unit))
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+	file := filepath.Join(graph.UnitBriefDir(st.Root(), e.Session), graph.UnitBriefFileName(e.Root, unit))
+	if _, err := os.Lstat(file); errors.Is(err, fs.ErrNotExist) {
 		return miss(store.UnitBriefAbsent)
 	} else if err != nil {
 		return miss(store.UnitBriefRefused)
@@ -419,7 +424,7 @@ func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding
 	if given {
 		return nil
 	}
-	sb, data, err := readUnitBrief(path)
+	sb, data, err := readUnitBrief(file)
 	if err != nil || sb.Unit != gid {
 		return miss(store.UnitBriefRefused)
 	}
@@ -433,13 +438,14 @@ func unitBriefJoin(st *store.Store, p *hook.Post, now time.Time) []steer.Finding
 	var dg func(string) string
 	if !e.ScopeV5 {
 		key := st.Key()
-		dg = func(path string) string { return intent.PathDigest(key, path) }
+		dg = func(p string) string { return intent.PathDigest(key, p) }
 	}
-	f, ok := graphFinding(indexBrief{Brief: sb.Brief, Repo: hdr.Repo, First: sb.First, Tier: sb.Tier, Unit: sb.Unit},
-		prefix+digest, e.Seq, dg)
+	m, rec, ok := sb.UnitSaid(slot.RelPath(relTo(e.Cwd, e.Root)(path.Dir(e.Rel))), dg)
 	if !ok {
 		return miss(store.UnitBriefRefused)
 	}
+	f := briefFinding(indexBrief{Brief: sb.Brief, Repo: hdr.Repo, First: sb.First, Tier: sb.Tier, Unit: sb.Unit},
+		m, rec, prefix+digest, e.Seq)
 	f.AgentID = e.AgentID
 	return []steer.Finding{f}
 }

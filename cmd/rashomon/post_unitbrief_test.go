@@ -514,12 +514,22 @@ func TestUnitBrief_NothingUnderTheRepoIndex(t *testing.T) {
 	})
 }
 
+// ubPostHead and ubPostRecordHead open the fixture unit's note and its
+// record form (ruling 04:58 B), up to the head's line feed.
+const (
+	ubPostHead       = "rashomon record: an edit in unit 'qwertyui', noted once a session; the repository graph at rev c1 records for it:"
+	ubPostRecordHead = "rashomon record: an edit in a unit on record, noted once a session; the repository graph at rev c1 records for it:"
+)
+
 // TestPost_UnitBriefLineFollowsTheRecordScope (D4): the note is the same at
 // either record scope and only its steer line's form differs, as the
 // prompt's graph brief's does (slot Record). Under v5 the line holds the
 // brief's paths; under v4 each is a keyed digest, so no path the note
 // printed is in the steer log. The lesson's title, a record the repository
-// declared and never the request's words, is kept at both.
+// declared and never the request's words, is kept at both. The note's head
+// names the unit and neither the request nor any count (ruling 04:58 B);
+// the line keeps that head and the unit's slot under v5, and under v4 the
+// record head and no unit slot.
 func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
 	paths := []string{"brief/brief.py", "store/loader.py"}
 	for _, c := range []struct {
@@ -536,6 +546,23 @@ func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
 			for _, want := range append([]string{ubPostTitle}, paths...) {
 				if !strings.Contains(out, want) {
 					t.Fatalf("premise: the note %q does not print %q", out, want)
+				}
+			}
+			if !strings.Contains(out, ubPostHead) || strings.Contains(out, "request") || strings.Contains(out, "node(s)") {
+				t.Errorf("the note %q, want the unit's head %q and no request or count", out, ubPostHead)
+			}
+			if lines := s.briefLines(); len(lines) != 1 {
+				t.Errorf("%d task-preflight lines, want 1", len(lines))
+			} else {
+				l, head := lines[0], ubPostRecordHead
+				if c.plain {
+					head = ubPostHead
+				}
+				if !strings.HasPrefix(l.ModelText, head) {
+					t.Errorf("the line's model text %q, want the head %q", l.ModelText, head)
+				}
+				if u, ok := l.Slots["unit"]; ok != c.plain || ok && string(u) != `"qwertyui"` {
+					t.Errorf("the line's unit slot %s (held %v), want held %v", u, ok, c.plain)
 				}
 			}
 			st, err := store.OpenExisting(s.root)
@@ -556,5 +583,23 @@ func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
 				t.Errorf("the steer log lost the lesson's title, a declared record kept at every scope")
 			}
 		})
+	}
+}
+
+// TestPost_UnitBriefNamesTheUnitFromTheHooksDirectory (ruling 04:58 B): the
+// note names the unit's directory as the agent reaches it from where the
+// hook runs, as the prompt's brief names its paths (relTo): '.' from inside
+// the unit. TestPost_UnitBriefLineFollowsTheRecordScope is the witness from
+// the project root, where it is 'qwertyui'.
+func TestPost_UnitBriefNamesTheUnitFromTheHooksDirectory(t *testing.T) {
+	s := ubPostSession(t, store.RecordScopeV5)
+	s.writeBrief("c1")
+	s.cwd = filepath.Join(s.project, "qwertyui")
+	out := s.edit("toolu_ub_1")
+	if !strings.Contains(out, ubPostTitle) {
+		t.Fatalf("premise: the edit from inside the unit printed %q, want the brief", out)
+	}
+	if want := "rashomon record: an edit in unit '.', noted once a session;"; !strings.Contains(out, want) {
+		t.Errorf("the note %q, want %q", out, want)
 	}
 }

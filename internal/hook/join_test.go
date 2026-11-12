@@ -18,12 +18,12 @@ import (
 // card m2-unitbrief-hook1 D4): task-preflight at that pattern's priority, a
 // nudge with no stop form, from the graph, after the call's landed seq,
 // under key. Those are the fields Route ranks and charges a finding by, so
-// to the router the stand-in is the unit brief; its message is a graph
-// brief's, as Rebind makes the unit brief's.
+// to the router the stand-in is the unit brief; its message is the unit
+// brief's row (render NewUnitBriefBinding), as Brief.UnitSaid makes it.
 func joinStandIn(t *testing.T, p *Post, key string) steer.Finding {
 	t.Helper()
 	line := slot.NewUnitLine(slot.UnitFact{Path: slot.RelPath("a"), Basis: slot.BasisNamed})
-	m, err := render.New(pattern.TaskPreflight, render.NewGraphBinding("c1", 0, 0, []slot.GraphLine{line}))
+	m, err := render.New(pattern.TaskPreflight, render.NewUnitBriefBinding("a", "c1", []slot.GraphLine{line}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +59,11 @@ func joinGiven(t *testing.T, f *stFix, prefix string) bool {
 }
 
 // blastWords open every blast-radius note (render's blast template), and
-// briefWords every graph brief's head (render graphHead), the unit brief's
-// through Rebind.
+// briefWords the unit brief's head as the post says it (render
+// unitBriefHead, through Brief.UnitSaid).
 const (
 	blastWords = "names other packages with code calling into the package this call edited"
-	briefWords = "the code this request touches"
+	briefWords = "noted once a session; the repository graph at rev"
 )
 
 // TestPost_UnitBriefOutranksBlast (F13b; card R4, as built): a first write

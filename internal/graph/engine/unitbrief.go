@@ -5,6 +5,9 @@ import (
 	"sort"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
 )
 
 // The first-write moment (W-M2.3, engine half). The prompt brief reaches
@@ -87,6 +90,38 @@ func Rebind(rev graph.Rev, lines []Line) Brief {
 	b.bind()
 	b.deliver()
 	return b
+}
+
+// UnitSaid is b's kept lines as the post says them (ruling 04:58 B): under
+// the unit brief's head, which names unit where the graph head names the
+// request and its counts, stepped down from all kept lines to one as
+// deliver steps under the graph head, the first count that renders; and,
+// when digest is set, the same lines' record form under the record head.
+// The unit head is longer than the graph head when unit is, so a brief
+// that filled the cap under the graph head may say fewer lines here. ok is
+// false, and both messages empty, when no step renders with a line keyed on
+// the graph (a unit path the slot refuses renders at none) or the record
+// form of the step that rendered does not.
+func (b Brief) UnitSaid(unit slot.RelPath, digest func(string) string) (msg, rec render.Message, ok bool) {
+	rev := slot.Revision(b.Rev.String())
+	for n := b.Kept; n > 0; n-- {
+		if !slices.ContainsFunc(b.Lines[:n], keyed) {
+			break
+		}
+		m, err := render.New(pattern.TaskPreflight, render.NewUnitBriefBinding(unit, rev, b.slots(n, nil)))
+		if err != nil {
+			continue
+		}
+		if digest == nil {
+			return m, render.Message{}, true
+		}
+		r, err := render.New(pattern.TaskPreflight, render.NewUnitBriefRecordBinding(rev, b.slots(n, digest)))
+		if err != nil {
+			break
+		}
+		return m, r, true
+	}
+	return render.Message{}, render.Message{}, false
 }
 
 // Deltas is the lines of cur whose key is not a key of prev: the set

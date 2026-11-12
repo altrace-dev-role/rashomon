@@ -61,6 +61,8 @@ type planSession struct {
 	root    string
 	id      string
 	project string
+	// cwd is the hook's working directory, the project's when "".
+	cwd string
 }
 
 func newPlanSession(t *testing.T, scope string) *planSession {
@@ -104,6 +106,9 @@ func (s *planSession) call(post bool, tool, useID string, input map[string]any) 
 	}
 	head := newBenchHead(event)
 	head.CWD = s.project
+	if s.cwd != "" {
+		head.CWD = s.cwd
+	}
 	body := benchJSON(s.t, benchToolPayload{benchHead: head, PromptID: "prompt-1", ToolName: tool, ToolInput: in, ToolUseID: useID, ToolResponse: resp})
 	var out, errOut bytes.Buffer
 	args := []string{install.Marker, s.id}
