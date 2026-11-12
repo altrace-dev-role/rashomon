@@ -476,7 +476,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// purge's graph tree), purge.go's two console and tty opens (no
 		// file), share.go's writeShareFile (the user's own path), watch.go's
 		// tty open and restorable's undo (the old bytes of install.json).
-		{"../cmd/rashomon", 6},
+		// Moved 2026-11-12 (W-M2.3 hook half, D2) to 7: graph_unitbrief.go's
+		// writeUnitBrief CreateTemp (<store>/graph/unitbrief/<session>/
+		// .unitbrief-*.tmp, renamed over x-<32 hex>.json, purge's graph
+		// tree), the unit brief the post hook of a unit's first edit reads.
+		{"../cmd/rashomon", 7},
 		// graph: persist.go's index save (<repo>/.rashomon/graph.jsonl) and
 		// sessionlog.go's append open (<store>/graph/<16 hex>.jsonl).
 		{"graph", 2},

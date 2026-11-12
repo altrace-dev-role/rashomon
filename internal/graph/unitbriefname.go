@@ -20,6 +20,11 @@ const UnitBriefSubdir = "unitbrief"
 
 const unitBriefExt = ".json"
 
+// UnitBriefTempPattern is the os.CreateTemp pattern the writer makes a unit
+// brief under before renaming it over its name, so the names in a session's
+// directory are the writer's and purge's one list (D8).
+const UnitBriefTempPattern = ".unitbrief-*.tmp"
+
 // UnitBriefDir is the session's unit-brief directory under the store root,
 // the session id passed through the evidence files' segment rule so it
 // stays one name whatever the hook's id holds.
