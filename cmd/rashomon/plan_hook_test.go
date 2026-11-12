@@ -27,7 +27,7 @@ const (
 
 // planHookProject is a .git project with an index holding one file under one
 // unit, and the file the spec's rule covers.
-func planHookProject(t *testing.T) string {
+func planHookProject(t testing.TB) string {
 	t.Helper()
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -57,7 +57,7 @@ func planHookProject(t *testing.T) string {
 // planSession is one install, consented, with a project; each call runs the
 // real entry the harness calls.
 type planSession struct {
-	t       *testing.T
+	t       testing.TB
 	root    string
 	id      string
 	project string
