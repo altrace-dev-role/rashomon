@@ -18,6 +18,8 @@
 # finding elsewhere in budgets.json), budgets.json is put back as it was and
 # the exit status is 2. --report writes nothing and runs neither.
 set -eu
+# Where the shell has pipefail, a pipeline fails when any stage does.
+(set -o pipefail) 2>/dev/null && set -o pipefail
 
 [ $# -ge 1 ] || { echo "usage: $0 RUN_ID [--no-hygiene] [reanchor args...]" >&2; exit 2; }
 run=$1
@@ -54,15 +56,21 @@ jobs=$(gh run view "$run" --repo "$repo" --json jobs \
 echo "$jobs" | while read -r _ _ name id conc; do
 	os=${name#\(}
 	os=${os%\)}
-	# The log carries terminal colour codes, which gh refuses to emit unless
-	# told to; they are stripped so the Go tool reads plain text.
-	gh api --allow-escape-sequences "repos/$repo/actions/jobs/$id/logs" |
-		sed "s/$(printf '\033')\\[[0-9;]*[A-Za-z]//g" > "$dir/perf-$os.log"
+	# The log carries terminal colour codes, which gh passes through; they are
+	# stripped so the Go tool reads plain text. The fetch writes its own file
+	# rather than feed a pipe, so a failed fetch stops the wrapper under set -e
+	# instead of leaving sed an empty log.
+	gh api "repos/$repo/actions/jobs/$id/logs" > "$dir/perf-$os.raw"
+	sed "s/$(printf '\033')\\[[0-9;]*[A-Za-z]//g" "$dir/perf-$os.raw" > "$dir/perf-$os.log"
 	echo "$id $conc" > "$dir/perf-$os.job"
 done
 
 if [ "$report" = 1 ]; then
-	exec go run ./scripts/reanchor --run "$run" --dir "$dir" "$@"
+	# Not exec: exec replaces this shell, so the EXIT trap that removes $dir
+	# would never run. The report exits with go's status.
+	rc=0
+	go run ./scripts/reanchor --run "$run" --dir "$dir" "$@" || rc=$?
+	exit "$rc"
 fi
 
 cp "$budgets" "$dir/budgets.orig"
