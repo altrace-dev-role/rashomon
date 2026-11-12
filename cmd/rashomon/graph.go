@@ -344,16 +344,13 @@ func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
 	if storeRoot == "" {
 		return
 	}
-	dir := filepath.Join(storeRoot, "graph")
+	dir := filepath.Join(storeRoot, graph.StoreDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
-	name := sessionID + "-" + promptID
-	if promptID == "" {
-		name = sessionID + "-" + time.Now().UTC().Format("20060102T150405.000")
-	}
+	name := graph.EvidenceFileName(sessionID, promptID, time.Now())
 	text := b.Evidence() + "\nbrief:\n" + b.Text() + "\n"
-	_ = os.WriteFile(filepath.Join(dir, name+".txt"), []byte(text), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600)
 }
 
 // hookScorer is the scorer the hook path uses: the inverse-document-
