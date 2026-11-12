@@ -241,6 +241,55 @@ func TestHook_PostWritesLandedGroupAtTheExecutionSeq(t *testing.T) {
 	}
 }
 
+// TestHook_GroupCarriesImportsUnderARootModule (W-M2 import edges): with a
+// root go.mod, both groups of an edit that adds an import of a directory
+// under the root carry Imports and hold the file's edge to that directory's
+// unit. With no go.mod (the fixture as it stands) they carry Declares alone
+// and hold no Imports edge: an overlay that cannot map an import must not
+// carry the predicate, or it would retract the index's import edges of the
+// file.
+func TestHook_GroupCarriesImportsUnderARootModule(t *testing.T) {
+	edited := "package pkg\n\nimport _ \"example.test/ov/lib\"\n\nfunc Old() {}\n"
+	imp := graph.Edge{Src: graph.FileID(ovRel), Pred: graph.Imports, Dst: "unit:go:lib"}.Key()
+	for _, gomod := range []bool{true, false} {
+		t.Run("gomod="+strconv.FormatBool(gomod), func(t *testing.T) {
+			f := newOvFix(t, "1\n")
+			if err := os.MkdirAll(filepath.Join(f.repo, "lib"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if gomod {
+				if err := os.WriteFile(filepath.Join(f.repo, "go.mod"), []byte("module example.test/ov\n\ngo 1.25.0\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			in := f.edit("package pkg\n", "package pkg\n\nimport _ \"example.test/ov/lib\"\n")
+			f.pre("toolu_imp", "Edit", in)
+			if err := os.WriteFile(f.file, []byte(edited), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			f.post("toolu_imp", "Edit", in)
+			groups, _, _ := f.read()
+			if len(groups) != 2 {
+				t.Fatalf("%d groups, want the declared and the landed", len(groups))
+			}
+			for _, g := range groups {
+				held := 0
+				for _, r := range g.Recs {
+					if r.Edge != nil && r.Edge.Key() == imp {
+						held++
+					}
+				}
+				if want := map[bool]int{true: 1, false: 0}[gomod]; held != want || g.Carried.Has(graph.Imports) != gomod || !g.Carried.Has(graph.Declares) {
+					t.Errorf("%s group: %d import edges (want %d), carried %s", g.Kind, held, want, g.Carried)
+				}
+				if g.Digest != graph.ContentDigest([]byte(edited)) {
+					t.Errorf("%s group digest is not the edited content's", g.Kind)
+				}
+			}
+		})
+	}
+}
+
 // TestHook_EditSpliceNotExactWritesNoGroup: an old_string that is absent, and
 // one that occurs twice without replace_all, write no group, where the
 // declaration itself lands.
@@ -352,9 +401,9 @@ func counted(t *testing.T) (read, header, resolve *int) {
 	}
 	overlayReadFile = func(p string) ([]byte, error) { r++; return or(p) }
 	overlayReadHeader = func(p string) (graph.Header, error) { h++; return oh(p) }
-	overlayResolve = func(rel string, c []byte, b graph.Rev, q int64) ([]graph.Record, error) {
+	overlayResolve = func(rel string, c []byte, b graph.Rev, q int64, m *gopg.ImportMap) ([]graph.Record, error) {
 		s++
-		return inner(rel, c, b, q)
+		return inner(rel, c, b, q, m)
 	}
 	t.Cleanup(func() { overlayReadFile, overlayReadHeader, overlayResolve = or, oh, os_ })
 	return &r, &h, &s

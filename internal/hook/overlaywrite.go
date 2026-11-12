@@ -73,21 +73,33 @@ var (
 	// nil in the binary (resolveOverlay). It has no initialiser: RES-2's scan
 	// walks a var initialiser and every call it reaches, by name, and the name
 	// Overlay reaches pylite's regexps (TestRES2_NoPackageLevelRegexpCompile).
-	overlayResolve func(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error)
+	overlayResolve func(rel string, content []byte, base graph.Rev, seq int64, m *gopg.ImportMap) ([]graph.Record, error)
 )
 
 // resolveOverlay is a test's overlayResolve when one is set, else goOverlay.
-func resolveOverlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
+func resolveOverlay(rel string, content []byte, base graph.Rev, seq int64, m *gopg.ImportMap) ([]graph.Record, error) {
 	if overlayResolve != nil {
-		return overlayResolve(rel, content, base, seq)
+		return overlayResolve(rel, content, base, seq, m)
 	}
-	return goOverlay(rel, content, base, seq)
+	return goOverlay(rel, content, base, seq, m)
 }
 
-// goOverlay is the Go resolver's Overlay; a test's overlayResolve that wraps
-// the default calls it, since the seam itself is nil.
-func goOverlay(rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
-	return gopg.Resolver{}.Overlay(rel, content, base, seq)
+// goOverlay is the Go resolver's Overlay under m; a test's overlayResolve
+// that wraps the default calls it, since the seam itself is nil.
+func goOverlay(rel string, content []byte, base graph.Rev, seq int64, m *gopg.ImportMap) ([]graph.Record, error) {
+	return gopg.Resolver{Imports: m}.Overlay(rel, content, base, seq)
+}
+
+// overlayImports is the import map an overlay under root is built with: the
+// root go.mod's module path (one bounded read of that one file, never a walk)
+// and a directory check under root; nil with no module path, which maps no
+// import and leaves the index's Imports edges standing.
+func overlayImports(root string) *gopg.ImportMap {
+	mod := gopg.ReadModulePath(root)
+	if mod == "" {
+		return nil
+	}
+	return &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}
 }
 
 // overlayContentError is a constant error, which costs no init allocation
@@ -344,7 +356,8 @@ func (c overlayCall) write() {
 	if err != nil || hdr.Rev.Commit == "" {
 		return
 	}
-	recs, err := resolveOverlay(rel, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
+	imports := overlayImports(root)
+	recs, err := resolveOverlay(rel, content, graph.RevCommit(hdr.Rev.Commit), c.seq, imports)
 	if err != nil || len(recs) == 0 {
 		return
 	}
@@ -354,7 +367,7 @@ func (c overlayCall) write() {
 	}
 	group := graph.BuildOverlayGroup(graph.OverlayGroup{Session: c.session, ToolUseID: c.toolUseID, Kind: c.kind,
 		File: graph.FileID(rel), Digest: graph.ContentDigest(content), Commit: hdr.Rev.Commit, Seq: c.seq,
-		Carried: (gopg.Resolver{}).OverlayCarried(), Recs: recs})
+		Carried: (gopg.Resolver{Imports: imports}).OverlayCarried(), Recs: recs})
 	log := graph.OpenSessionLog(c.st.Root(), rid, graph.RevCommit(hdr.Rev.Commit), true)
 	_ = log.AppendOverlayGroup(group, func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
 }
