@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,53 @@ func TestNormalizeOrigin_Forms(t *testing.T) {
 		if got := NormalizeOrigin(in); got != want {
 			t.Errorf("NormalizeOrigin(%q) = %q; want %q", in, got, want)
 		}
+	}
+}
+
+// TestNormalizeOrigin_KeepsNoUserPart: a user name or password holding a
+// delimiter (/ ? # @ : or a space) leaves no byte of itself in the id, in the
+// scheme, scp-like and bare forms. A marker on each side of the delimiter,
+// inside the secret, appears neither in NormalizeOrigin's result nor in
+// RepoID's over a real .git/config, and no result holds an @; a refused url
+// ("") gives the path form. The control: each form with a plain secret,
+// which reads as its host and path where the secret follows a scheme or is
+// an scp-like user name alone, and is refused where an @ follows the host
+// part. Break: drop any of the three refusals.
+func TestNormalizeOrigin_KeepsNoUserPart(t *testing.T) {
+	const left, right = "lmark7", "rmark7" // lowercase, as the host is lowercased
+	forms := []struct{ name, url, plain string }{
+		{"scheme, user and password", "https://user:SECRET@host.example/org/repo.git", "host.example/org/repo"},
+		{"scheme, user", "https://SECRET@host.example/org/repo.git", "host.example/org/repo"},
+		{"scp-like, user", "SECRET@host.example:org/repo.git", "host.example/org/repo"},
+		{"scp-like, user and password", "user:SECRET@host.example:org/repo.git", ""},
+		{"bare", "//user:SECRET@host.example/org/repo.git", ""},
+	}
+	delims := []string{"/", "?", "#", "@", ":", " "}
+	n := 0
+	for _, f := range forms {
+		if got := NormalizeOrigin(strings.Replace(f.url, "SECRET", "s3cret", 1)); got != f.plain {
+			t.Errorf("control, %s: a plain secret reads %q; want %q", f.name, got, f.plain)
+		}
+		for _, d := range delims {
+			url := strings.Replace(f.url, "SECRET", left+d+right, 1)
+			dir := t.TempDir()
+			put(t, filepath.Join(dir, ".git", "config"), "[remote \"origin\"]\n\turl = "+url+"\n")
+			norm := NormalizeOrigin(url)
+			rid, eph := RepoID(dir)
+			for what, got := range map[string]string{"NormalizeOrigin": norm, "RepoID": rid} {
+				low := strings.ToLower(got)
+				if strings.Contains(low, left) || strings.Contains(low, right) || strings.Contains(got, "@") {
+					t.Errorf("%s, delimiter %q: %s of %q = %q keeps the user part", f.name, d, what, url, got)
+				}
+			}
+			if norm != "" && (rid != norm || eph) || norm == "" && (!eph || !strings.HasPrefix(rid, "path:")) {
+				t.Errorf("%s, delimiter %q: RepoID = %q, %v; want %q, false, or the path form where it is refused", f.name, d, rid, eph, norm)
+			}
+			n++
+		}
+	}
+	if want := len(forms) * len(delims); n != want {
+		t.Fatalf("the table ran %d urls; want %d", n, want)
 	}
 }
 

@@ -11,7 +11,8 @@ import (
 // RepoID is the repository's identity across machines and checkouts (HD11,
 // PLAN B2): the normalized url (NormalizeOrigin) of the git remote named
 // origin, read from the config of root's repository (Key) without running
-// git (H-17). Without such a remote, or outside any repository, it is path:
+// git (H-17). Without such a remote, with one whose url NormalizeOrigin
+// refuses (an @ after its host part), or outside any repository, it is path:
 // and the sha256 of the project key, and ephemeral is true: rows written
 // under it are re-keyed when the repository gains an origin (an aliases
 // entry, PLAN B2). The root-commit form the plan names for a repository
@@ -115,19 +116,36 @@ func configValue(text, section, key string) (string, bool) {
 // user name and password dropped, the host lowercased, an scp-like
 // destination ([user@]host:path) read as host/path, a query, a fragment, a
 // trailing slash and a trailing .git dropped, the path's case kept. A url
-// with no host (file:///x, a local path) is that path. "" is "".
+// with no host (file:///x, a local path) is that path. "" is "", and so is
+// a url with an @ after its host part, looked for in the whole url before
+// the query is cut: after the first /, ? or # past a scheme's ://, after
+// the first colon of an scp-like destination, anywhere in a url of neither
+// form. Such an @ may end a user name or password holding that delimiter,
+// which would otherwise be read as the host or the path. So the result
+// never holds an @, and in the two host forms no byte from before the url's
+// last @ (TestNormalizeOrigin_KeepsNoUserPart).
 func NormalizeOrigin(url string) string {
-	s := strings.TrimSpace(url)
+	whole := strings.TrimSpace(url)
+	s := whole
 	if i := strings.IndexAny(s, "?#"); i >= 0 {
 		s = s[:i]
 	}
 	var host, path string
 	switch i := strings.Index(s, "://"); {
 	case i >= 0:
+		if end := strings.IndexAny(whole[i+3:], "/?#"); end >= 0 && strings.Contains(whole[i+3+end:], "@") {
+			return ""
+		}
 		host, path, _ = strings.Cut(s[i+3:], "/")
 	case strings.Contains(s, ":") && !strings.Contains(s[:strings.Index(s, ":")], "/"):
+		if strings.Contains(whole[strings.Index(s, ":")+1:], "@") {
+			return ""
+		}
 		host, path, _ = strings.Cut(s, ":")
 	default:
+		if strings.Contains(whole, "@") {
+			return ""
+		}
 		return trimRepo(s)
 	}
 	if i := strings.LastIndex(host, "@"); i >= 0 {
