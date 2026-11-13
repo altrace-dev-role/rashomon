@@ -177,6 +177,9 @@ type Post struct {
 	landed      LandedGoEdit
 	landedKept  bool
 	landedWrite writtenCall
+	// gate is the overlay writer's gate at this post (keptGate), which the
+	// unit-brief read takes (LandedGoEdit); zero where the writer did not run.
+	gate keptGate
 	// toolName and toolInput are the call's, kept for the spec's rules
 	// (ruleCall), which read the input only when a discovered rule reads
 	// what it names.

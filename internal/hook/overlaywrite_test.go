@@ -15,6 +15,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -492,6 +493,79 @@ func TestHook_OverlayOnlyForGoWrites(t *testing.T) {
 	f.post("toolu_md", "Edit", map[string]any{"file_path": md, "old_string": "hello", "new_string": "bye"})
 	if names := overlayRunFileNames(t, f); len(names) != 0 {
 		t.Errorf("overlay files %v for calls the overlay never concerns", names)
+	}
+}
+
+// TestHook_LandedGoEditTakesTheWritersGate: a post's unit-brief read takes
+// the overlay writer's gate and evaluates none of its own, so the post reads
+// the marker and walks for the index once. A marker removed after the post
+// ran leaves the read naming the file; a marker set after a post that ran
+// without one leaves it naming none. A second evaluation would see the marker
+// as it stands at the read.
+func TestHook_LandedGoEditTakesTheWritersGate(t *testing.T) {
+	marker := func(f *ovFix) string { return filepath.Join(f.st.Root(), store.FileSessionContent) }
+	post := func(f *ovFix) *Post {
+		p := NewPost(f.st, time.Now)
+		in := f.edit("func Old() {}", "func Old() {}\n\nfunc Added() {}")
+		p.Close(&Signals{}, p.Capture(strings.NewReader(f.payload("PostToolUse", "toolu_g", "Edit", in))))
+		return p
+	}
+	f := newOvFix(t, "1\n")
+	p := post(f)
+	if err := os.Remove(marker(f)); err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := p.LandedGoEdit(); !ok || e.Root != f.repo || e.Rel != ovRel {
+		t.Errorf("marker set at the post, removed before the read: %+v %v; want root %s rel %s", e, ok, f.repo, ovRel)
+	}
+	g := newOvFix(t, "")
+	q := post(g)
+	if err := os.WriteFile(marker(g), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := q.LandedGoEdit(); ok {
+		t.Errorf("marker absent at the post, set before the read: %+v; want no edit", e)
+	}
+}
+
+// TestHook_TheHookGateTakesTheDeclaredPath: the hook passes the path its
+// declaration decoded, and the gate takes it rather than decoding the input
+// again, so with no input at all the gate still names the file. Break:
+// decode the input whatever the caller passed.
+func TestHook_TheHookGateTakesTheDeclaredPath(t *testing.T) {
+	f := newOvFix(t, "1\n")
+	path, root, rel, ok := keptGoEdit(f.st, ovSess, "Edit", nil, &f.file, f.repo, 1)
+	if !ok || path != f.file || root != f.repo || rel != ovRel {
+		t.Errorf("gate on the declared path, no input: %q %q %q %v; want %q %q %q true", path, root, rel, ok, f.file, f.repo, ovRel)
+	}
+}
+
+// TestHook_NoDecodeBeforeTheMarker: with no session-content marker the gate
+// stops at the marker read, before it decodes the input, so an Edit input
+// naming a Go file costs what no input costs. The controls: the decode
+// allocates, so the measure can see one, and with the marker set the two
+// costs part. Break: decode the input before the marker.
+func TestHook_NoDecodeBeforeTheMarker(t *testing.T) {
+	f := newOvFix(t, "")
+	in, err := json.Marshal(f.edit("func Old() {}", "func Old() {}\n\nfunc Added() {}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := func(input json.RawMessage) float64 {
+		return testing.AllocsPerRun(10, func() { keptGoEdit(f.st, ovSess, "Edit", input, nil, f.repo, 1) })
+	}
+	if named, none := cost(in), cost(nil); named != none {
+		t.Errorf("no marker: an input naming %s costs %.0f allocs, no input %.0f; want equal (no decode before the marker)", f.file, named, none)
+	}
+	var sink *string
+	if n := testing.AllocsPerRun(10, func() { sink = shape.DeclaredPath("Edit", in) }); n == 0 || sink == nil {
+		t.Errorf("control: the decode allocates %.0f and names %v, so the measure cannot see it", n, sink)
+	}
+	if err := os.WriteFile(filepath.Join(f.st.Root(), store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if named, none := cost(in), cost(nil); named == none {
+		t.Errorf("control, marker set: both cost %.0f allocs; want the decode and the walk to show", named)
 	}
 }
 

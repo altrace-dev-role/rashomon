@@ -24,17 +24,14 @@ type LandedGoEdit struct {
 
 // LandedGoEdit is the call's landed Go edit, false for any other call:
 // a PostToolUse whose Write, Edit or MultiEdit passed the overlay writer's
-// own gate (keptGoEdit), so a session whose content is not kept pays one
-// marker read here and nothing else.
+// own gate (keptGoEdit), as the writer took it at this post (Post.gate). It
+// evaluates no gate of its own, so it reads nothing and the two cannot part.
 func (p *Post) LandedGoEdit() (LandedGoEdit, bool) {
-	if p.event != string(steer.EventPostToolUse) {
+	g := p.gate
+	if p.event != string(steer.EventPostToolUse) || !g.ok {
 		return LandedGoEdit{}, false
 	}
-	_, root, rel, ok := keptGoEdit(p.st, p.sessionID, p.toolName, p.toolInput, p.cwd, p.landedSeq)
-	if !ok {
-		return LandedGoEdit{}, false
-	}
-	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: root, Rel: rel, Cwd: p.cwd, Seq: p.landedSeq, ScopeV5: p.scopeV5}, true
+	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: g.root, Rel: g.rel, Cwd: p.cwd, Seq: p.landedSeq, ScopeV5: p.scopeV5}, true
 }
 
 // Unheard is whether a finding joined for the call under env would reach no

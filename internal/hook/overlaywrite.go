@@ -243,10 +243,24 @@ type overlayCall struct {
 	cwd       string
 	tool      string
 	input     json.RawMessage
+	// path is the path the input names where the caller decoded it already
+	// (the declaration's DeclaredPath), nil for the gate to decode it after
+	// the marker (keptGoEdit).
+	path *string
 	// kind is graph.OverlayDeclared (Pre) or graph.OverlayLanded (Post), and
 	// seq the seq of the record the group is placed at.
 	kind string
 	seq  int64
+	// gate, when set, receives the writer's keptGoEdit, so a post's
+	// unit-brief read takes it rather than evaluating the gate again.
+	gate *keptGate
+}
+
+// keptGate is keptGoEdit's result as a writer took it: the index root and
+// the file's slash path under it, ok false where a check stopped it.
+type keptGate struct {
+	root, rel string
+	ok        bool
 }
 
 // overlayTool reports a tool whose input names a file the overlay may read.
@@ -258,13 +272,9 @@ func overlayTool(tool string) bool {
 	return false
 }
 
-// overlayPath is the absolute path of the file a Write, Edit or MultiEdit
-// names when the Go resolver takes it, else "".
-func overlayPath(tool string, input json.RawMessage, cwd string) string {
-	if !overlayTool(tool) {
-		return ""
-	}
-	p := shape.DeclaredPath(tool, input)
+// overlayPath is the absolute path of p, a path a Write, Edit or MultiEdit
+// names, when the Go resolver takes it, else "".
+func overlayPath(p *string, cwd string) string {
 	if p == nil || !(gopg.Resolver{}).Claims("", *p) {
 		return ""
 	}
@@ -283,14 +293,20 @@ func overlayPath(tool string, input json.RawMessage, cwd string) string {
 // root over cwd, and its slash path under that root. The checks run
 // cheapest first, so a session with no session-content marker pays one
 // marker read and decodes no input: the tool, the seq, the session, the
-// marker, the Go resolver's claim (overlayPath), an index (graph.FindIndex)
-// and the file under its root. The overlay writer and the unit-brief read
-// (Post.LandedGoEdit) both pass through it, so their gates cannot part.
-func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, cwd string, seq int64) (path, root, rel string, ok bool) {
+// marker, the Go resolver's claim (overlayPath) on the path the input names,
+// an index (graph.FindIndex) and the file under its root. declared is that
+// path where the caller decoded it already (the declaration's DeclaredPath),
+// nil to decode it here, after the marker. A post's unit-brief read
+// (Post.LandedGoEdit) takes the overlay writer's result (keptGate), so their
+// gates cannot part and a call evaluates the gate once.
+func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, declared *string, cwd string, seq int64) (path, root, rel string, ok bool) {
 	if !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {
 		return "", "", "", false
 	}
-	if path = overlayPath(tool, input, cwd); path == "" {
+	if declared == nil {
+		declared = shape.DeclaredPath(tool, input)
+	}
+	if path = overlayPath(declared, cwd); path == "" {
 		return "", "", "", false
 	}
 	if root = graph.FindIndex(cwd); root == "" {
@@ -366,7 +382,10 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 			og, root, rel, ok = graph.OverlayGroup{}, "", "", false
 		}
 	}()
-	path, at, under, kept := keptGoEdit(c.st, c.session, c.tool, c.input, c.cwd, c.seq)
+	path, at, under, kept := keptGoEdit(c.st, c.session, c.tool, c.input, c.path, c.cwd, c.seq)
+	if c.gate != nil {
+		*c.gate = keptGate{root: at, rel: under, ok: kept}
+	}
 	if !kept {
 		return graph.OverlayGroup{}, "", "", false
 	}
@@ -396,22 +415,24 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 }
 
 // writeOverlay is the PreToolUse writer: the declared group, at the seq the
-// declaration landed at (0 when it did not, which writes nothing).
-func (h *Handler) writeOverlay(p *Payload) {
+// declaration landed at (0 when it did not, which writes nothing), for
+// declared, the path the declaration decoded, so the input is decoded once.
+func (h *Handler) writeOverlay(p *Payload, declared *string) {
 	overlayCall{st: h.st, session: h.sessionID, toolUseID: h.toolUseID, cwd: p.CWD, tool: p.ToolName, input: p.ToolInput,
-		kind: graph.OverlayDeclared, seq: h.declaredSeq}.write()
+		path: declared, kind: graph.OverlayDeclared, seq: h.declaredSeq}.write()
 }
 
 // writeOverlay is the PostToolUse writer: the landed group, a full one, at
 // the seq the execution landed at. A failure event writes none (a
 // PostToolUseFailure writer is a later card's).
-// The group it builds is kept for the conflict check (LandedOverlay).
+// The group it builds is kept for the conflict check (LandedOverlay), and
+// its gate for the unit-brief read (LandedGoEdit).
 func (p *Post) writeOverlay() {
 	if p.event == FailureEvent {
 		return
 	}
 	og, root, rel, ok := overlayCall{st: p.st, session: p.sessionID, toolUseID: p.toolUseID, cwd: p.cwd, tool: p.toolName,
-		input: p.toolInput, kind: graph.OverlayLanded, seq: p.landedSeq}.write()
+		input: p.toolInput, kind: graph.OverlayLanded, seq: p.landedSeq, gate: &p.gate}.write()
 	if ok {
 		p.landed, p.landedKept = LandedGoEdit{Root: root, Rel: rel, Group: og}, true
 	}
