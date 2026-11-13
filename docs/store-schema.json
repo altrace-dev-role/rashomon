@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/altrace-dev-role/rashomon/docs/store-schema.json",
   "title": "rashomon store records",
-  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq, and spec_event, after_hit, then_check and outcome_join records among them; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. The exceptions are a declaration's location_unread (schema 9), and launch and probe_only (schema 10), bits that are present only when true: an absence is false, one spelling, as for a record before the key's schema. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
+  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq, and spec_event, after_hit, then_check, plan_check, unitbrief_miss, conflict_check and outcome_join records among them; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. The exceptions are a declaration's location_unread (schema 9), and launch and probe_only (schema 10), bits that are present only when true: an absence is false, one spelling, as for a record before the key's schema. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
   "oneOf": [
     {
       "$ref": "#/$defs/declaration"
@@ -33,6 +33,15 @@
     },
     {
       "$ref": "#/$defs/then_check"
+    },
+    {
+      "$ref": "#/$defs/plan_check"
+    },
+    {
+      "$ref": "#/$defs/unitbrief_miss"
+    },
+    {
+      "$ref": "#/$defs/conflict_check"
     }
   ],
   "$defs": {
@@ -2306,6 +2315,252 @@
             "no",
             "maybe"
           ]
+        }
+      }
+    },
+    "plan_check": {
+      "title": "plan_check",
+      "description": "The post's fact that an accepted plan was checked against the spec's path rules, in runs/<dir>/records.ndjson, ordered by seq among the call records, written at PostToolUse for an ExitPlanMode call that landed, when its steer context could reach someone (steering on, the config readable, consent given, a prompt on record), whether or not a rule covered a path the plan names and whether or not a note was delivered. It holds no path and no word of the plan: the covering rules' ids, three counts, and the covered paths as keyed digests. Written critical false: nothing a reader concludes about the session's rules depends on it, so a reader that does not know this kind counts the line ignored and still reads the session whole.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "critical",
+        "seq",
+        "recorded_at_unix_ms",
+        "session_id",
+        "landed_seq",
+        "rule_ids",
+        "named",
+        "planned",
+        "matched",
+        "path_digests"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "plan_check"
+          ]
+        },
+        "schema_version": {
+          "description": "The event kinds' version; the kind first exists at 5.",
+          "type": "integer",
+          "enum": [
+            5
+          ]
+        },
+        "critical": {
+          "description": "false on every record this build writes, so a reader that cannot read the record passes it over and still reads the session whole.",
+          "type": "boolean"
+        },
+        "seq": {
+          "description": "The record's place in the run's order, allocated under the run's lock.",
+          "type": "integer"
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "landed_seq": {
+          "description": "The seq of the ExitPlanMode call's execution record.",
+          "type": "integer"
+        },
+        "rule_ids": {
+          "description": "The ids of the rules that covered a path the plan names, as the spec declares them. The spec owner's words, never the plan's. Empty, never null, when no rule covered one.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "named": {
+          "description": "The distinct paths a rule covered.",
+          "type": "integer"
+        },
+        "planned": {
+          "description": "How many of those paths the project did not hold when the plan was checked.",
+          "type": "integer"
+        },
+        "matched": {
+          "description": "The (path, rule) pairs the check found.",
+          "type": "integer"
+        },
+        "path_digests": {
+          "description": "The covered paths as keyed digests: hex HMAC-SHA256 under the store's per-install key, the value a steer line holds in place of a path at record scope v4. Never a path. Empty, never null, when no rule covered one.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unitbrief_miss": {
+      "title": "unitbrief_miss",
+      "description": "The post's fact that a landed edit's read of its unit's brief found none it could say, in runs/<dir>/records.ndjson, ordered by seq among the call records, written at PostToolUse for a Write, Edit or MultiEdit of a Go file that landed, in a session whose content is kept, the call attributed and an index over the file, when the session has not been given that unit's brief. It does not wait on the steer context: whether a brief could be said is a fact about the file, whoever the note could reach. A given unit, a store without the session-content marker, a path in no Go unit and an unattributed session write none. It holds no path, no unit's name and no word of a brief: the edit's seq, the unit as a keyed digest, and the reason. Written critical false: nothing a reader concludes about the session's rules depends on it, so a reader that does not know this kind counts the line ignored and still reads the session whole.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "critical",
+        "seq",
+        "recorded_at_unix_ms",
+        "session_id",
+        "landed_seq",
+        "unit",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "unitbrief_miss"
+          ]
+        },
+        "schema_version": {
+          "description": "The event kinds' version; the kind first exists at 5.",
+          "type": "integer",
+          "enum": [
+            5
+          ]
+        },
+        "critical": {
+          "description": "false on every record this build writes, so a reader that cannot read the record passes it over and still reads the session whole.",
+          "type": "boolean"
+        },
+        "seq": {
+          "description": "The record's place in the run's order, allocated under the run's lock.",
+          "type": "integer"
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "landed_seq": {
+          "description": "The seq of the edit's execution record.",
+          "type": "integer"
+        },
+        "unit": {
+          "description": "The unit's global id as a keyed digest: hex HMAC-SHA256 under the store's per-install key, at every record scope. Never the unit's name or a path.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "absent: the session holds no brief file for the unit. stale: the file's brief is at a commit other than the index's. refused: the file did not read back as a brief of the unit (unreadable, over the cap, torn, another shape, another unit) or did not render.",
+          "type": "string",
+          "enum": [
+            "absent",
+            "stale",
+            "refused"
+          ]
+        }
+      }
+    },
+    "conflict_check": {
+      "title": "conflict_check",
+      "description": "The post's conflict check of a landed edit (W-M2.4 hook seam), in runs/<dir>/records.ndjson, ordered by seq among the call records, written at PostToolUse for a Write, Edit or MultiEdit of a Go file in a session whose content is kept, when the session holds the prompt's conflict base at the index's commit and the file is in a rule's scope: its unit under a boundary rule's From, or the file reached by a paths_untouched or protect_path rule. It holds the full set of conflicts the edit leaves in the file, possibly empty, whatever was delivered; the Stop reads a conflict as resolved when no file still shows it at its commit. No word of the prompt, and no path at record scope v4.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "critical",
+        "seq",
+        "recorded_at_unix_ms",
+        "session_id",
+        "landed_seq",
+        "commit",
+        "file",
+        "rows"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "conflict_check"
+          ]
+        },
+        "schema_version": {
+          "description": "The event kinds' version; the kind first exists at 5.",
+          "type": "integer",
+          "enum": [
+            5
+          ]
+        },
+        "critical": {
+          "description": "false on every record this build writes, so a reader that cannot read the record passes it over and still reads the session whole.",
+          "type": "boolean"
+        },
+        "seq": {
+          "description": "The record's place in the run's order, allocated under the run's lock.",
+          "type": "integer"
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "landed_seq": {
+          "description": "The seq of the edit's execution record.",
+          "type": "integer"
+        },
+        "commit": {
+          "description": "The index commit the conflict base was read at. A check at another commit than a conflict's never resolves it.",
+          "type": "string"
+        },
+        "file": {
+          "description": "The edited file's id as a keyed digest: hex HMAC-SHA256 under the store's per-install key, at every record scope. Never a path.",
+          "type": "string"
+        },
+        "rows": {
+          "description": "Every conflict of a live kind the edit leaves in its file, possibly none.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "rule_id",
+              "unit",
+              "unit_path",
+              "subject",
+              "key"
+            ],
+            "properties": {
+              "kind": {
+                "description": "The conflict's kind as the engine names it.",
+                "type": "string",
+                "enum": [
+                  "boundary_cross",
+                  "decision_contradicted",
+                  "signature_mismatch",
+                  "protected_path"
+                ]
+              },
+              "rule_id": {
+                "description": "The id of the rule that raised it, as its spec or knowledge row declares it.",
+                "type": "string"
+              },
+              "unit": {
+                "description": "At record scope v5 the unit's global id; at v4 a keyed digest of it.",
+                "type": "string"
+              },
+              "unit_path": {
+                "description": "At record scope v5 the unit's path in its repository, as the Stop's line prints it; at v4 empty.",
+                "type": "string"
+              },
+              "subject": {
+                "description": "What the conflict is about, a symbol's or a file's global id at v5, a keyed digest of it at v4.",
+                "type": "string"
+              },
+              "key": {
+                "description": "The conflict's identity as a keyed digest, at every record scope.",
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

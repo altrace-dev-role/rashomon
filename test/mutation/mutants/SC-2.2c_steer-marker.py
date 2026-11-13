@@ -25,10 +25,10 @@ m("SC-2.2c SteerDisclosure takes the latest record's value, not the highest", R,
 m("SC-2.2c a negative highest reaches the marker", R,
   '\treturn max(best, 0), nil\n', '\treturn best, nil\n', "TestSC2_")
 m("SC-2.2c the steer marker written before the append, leading the log", R,
-  '\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n\tvar scopeErr, steerErr error\n'
+  '\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n\tvar scopeErr, steerErr, contentErr error\n'
   '\tif err := syncMarker(root); err != nil {\n\t\tscopeErr = fmt.Errorf("%w: %w", ErrScopeMarker, err)\n\t}\n'
   '\tif err := syncSteerMarker(root); err != nil {\n\t\tsteerErr = fmt.Errorf("%w: %w", ErrSteerMarker, err)\n\t}\n',
-  '\tvar scopeErr, steerErr error\n'
+  '\tvar scopeErr, steerErr, contentErr error\n'
   '\tif err := syncSteerMarker(root); err != nil {\n\t\tsteerErr = fmt.Errorf("%w: %w", ErrSteerMarker, err)\n\t}\n'
   '\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n'
   '\tif err := syncMarker(root); err != nil {\n\t\tscopeErr = fmt.Errorf("%w: %w", ErrScopeMarker, err)\n\t}\n',
@@ -69,7 +69,7 @@ m("SC-2.2c the consent command says nothing was written for an unwritten steer m
 m("SC-2.2c the binary hands the probe no steer reader", K,
   '\thook.ConsentSteerDisclosure = consent.SteerDisclosure\n', '', "TestSC6_")
 m("SC-2.2c purge does not list the steer marker", U,
-  '\tstore.FileRecordScope, store.FileSteerDisclosure,\n', '\tstore.FileRecordScope,\n', "TestTRU28_")
+  '\tstore.FileRecordScope, store.FileSteerDisclosure, store.FileSessionContent,\n', '\tstore.FileRecordScope, store.FileSessionContent,\n', "TestTRU28_")
 m("SC-2.2c purge does not list the steer marker's temporary file", U,
-  '\t"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",\n',
-  '\t"." + store.FileHarnesses + ".tmp-",\n', "TestTRU28_")
+  '\t"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileSessionContent + ".tmp-",\n',
+  '\t"." + store.FileSessionContent + ".tmp-",\n', "TestTRU28_")

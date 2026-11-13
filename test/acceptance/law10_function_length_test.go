@@ -60,7 +60,7 @@ var overLimit = map[string]int{
 // writeChecked).
 var filesOverLimit = map[string]int{
 	"cmd/rashomon/main.go":    904,
-	"internal/store/store.go": 549,
+	"internal/store/store.go": 547,
 	"cmd/rashomon/watch.go":   530,
 }
 

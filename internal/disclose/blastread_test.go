@@ -63,24 +63,42 @@ func TestAI2_ScreenSaysPgraphWritesEachSymbolsPlace(t *testing.T) {
 
 // TestAI3_ScreenSaysGraphIndexReadsTheOrigin (W-M1.4): the screen names the
 // repository graph's reads and writes: `rashomon graph index` reads the
-// configuration, the units' files, the pgraph sidecars and the origin url
-// from .git/config, writes .rashomon/graph.jsonl headed by that url as the
-// repository's id; each prompt reads the graph in memory and the selection
-// lands under the store's graph directory. One paragraph says so.
+// configuration, the units' files, the pgraph sidecars and the origin url,
+// writes .rashomon/graph.jsonl headed by that url as the repository's id;
+// each prompt reads the graph in memory and the selection lands under the
+// store's graph directory. One paragraph says so. Every paragraph that names
+// the origin read names every file it reads (baseline.GitDirs and
+// originURL: the config, the .git pointer, the commondir file), what the id
+// drops (any user name and password) and the predicate that refuses a url
+// (baseline.NormalizeOrigin: an @ after the host part), in one wording.
 func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	const clause = "the url of the git remote named origin from .git/config"
-	said := 0
+	const clause = "the url of the git remote named origin"
+	every := []string{
+		"the url of the git remote named origin from the repository's git files (the config, and for a worktree the .git pointer and commondir files)",
+		"with its scheme and any user name and password removed",
+		"when it has no origin or when an @ follows its host part",
+	}
+	said, index := 0, 0
 	for _, p := range inv.Paragraphs {
 		if !strings.Contains(p.Text, clause) {
 			continue
 		}
 		said++
-		if p.Owner != OwnerRecord || p.Cite != CiteSection2 || !strings.HasPrefix(p.Text, "With `rashomon graph index") {
-			t.Errorf("the clause is in %s/%s %q, want the graph index paragraph (%s/%s)", p.Owner, p.Cite, p.Text, OwnerRecord, CiteSection2)
+		for _, w := range every {
+			if !strings.Contains(p.Text, w) {
+				t.Errorf("a paragraph names the origin read and does not say %q: %q", w, p.Text)
+			}
+		}
+		if !strings.HasPrefix(p.Text, "With `rashomon graph index") {
+			continue
+		}
+		index++
+		if p.Owner != OwnerRecord || p.Cite != CiteSection2 {
+			t.Errorf("the graph index paragraph is in %s/%s, want %s/%s", p.Owner, p.Cite, OwnerRecord, CiteSection2)
 		}
 		for _, also := range []string{".rashomon/graph.jsonl", "At each prompt", "with no word of the prompt", "rashomon graph knowledge import", ".rashomon/knowledge/"} {
 			if !strings.Contains(p.Text, also) {
@@ -88,7 +106,10 @@ func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
 			}
 		}
 	}
-	if said != 1 {
-		t.Errorf("%d paragraphs say the index reads the origin url, want 1", said)
+	if index != 1 {
+		t.Errorf("%d graph index paragraphs say the index reads the origin url, want 1", index)
+	}
+	if said < 2 {
+		t.Errorf("%d paragraphs name the origin read, want the graph index paragraph and the kept session log's", said)
 	}
 }

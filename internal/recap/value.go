@@ -61,6 +61,7 @@ func titles() map[string]string {
 			string(pattern.MaskedStatus):       "hidden-status note",
 			string(pattern.StaleEvidence):      "stale-gate note",
 			string(pattern.BlastRadius):        "callers note",
+			string(pattern.PlanCheck):          "plan check",
 		}
 	})
 	return titlesOnce.v
@@ -201,10 +202,12 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	b.WriteString(ruleLines(v))
 	b.WriteString(unboundLines(v))
 	b.WriteString(platformLines(v, fromPlugin))
+	tail := pointer(sessionID, fromPlugin)
 	if c := clause(im); c != "" {
-		b.WriteString(continuation() + c + "\n")
+		tail = continuation() + c + "\n" + tail
 	}
-	b.WriteString(pointer(sessionID, fromPlugin))
+	b.WriteString(conflictLines(v, fromPlugin, b.String()+tail))
+	b.WriteString(tail)
 	return b.String()
 }
 

@@ -141,10 +141,13 @@ func LoadFile(root string) (*Store, Header, error) {
 const MaxIndexDepth = 4
 
 // FindIndex is the nearest directory at or above dir holding an index, or
-// "" when none does within MaxIndexDepth.
+// "" when none does within MaxIndexDepth. Each level is one stat of the
+// index's path (indexAt), which on unix allocates only that path and its
+// NUL-terminated copy: a hook call on a Go file outside any index pays the
+// walk on every edit (the hook's allocation budgets, test/perf/budgets.json).
 func FindIndex(dir string) string {
 	for i := 0; i <= MaxIndexDepth && dir != ""; i++ {
-		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(GraphFile))); err == nil {
+		if indexAt(filepath.Join(dir, filepath.FromSlash(GraphFile))) {
 			return dir
 		}
 		parent := filepath.Dir(dir)

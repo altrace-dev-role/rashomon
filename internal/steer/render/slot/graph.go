@@ -272,6 +272,16 @@ func (l GraphLine) Kind() string {
 // More is the counts beyond the listed items.
 func (l GraphLine) More() Counts { return l.more }
 
+// WithMore is l with more as its counts, More's pair: a reader of a stored
+// bound line rebuilds it through its constructor and restores the counts
+// bind left, which the printed tail, the record form's counts and a record
+// claim's own check read (W-M2.3 hook half). bind and Validate check them
+// as they check every count.
+func (l GraphLine) WithMore(more Counts) GraphLine {
+	l.more = more
+	return l
+}
+
 // Keyed reports the record form; Digest and SourceDigest are its keyed
 // digests of the path and the source, "" where there was none.
 func (l GraphLine) Keyed() bool          { return l.keyed }

@@ -21,6 +21,13 @@ var frozenKindVersions = map[string]int{
 	"after_hit": 5,
 	// The third (card ORDER-LIVE1).
 	"then_check": 5,
+	// The fourth, and the first non-critical (card W-M2.6 hook half; the
+	// record type was ruled with the pattern id plan-check).
+	"plan_check": 5,
+	// The fifth, and the second non-critical (card m2-unitbrief-hook1 D7).
+	"unitbrief_miss": 5,
+	// The sixth, and the third non-critical (card m2-seam1 D4).
+	"conflict_check": 5,
 }
 
 func TestKindVersionsAreTheFrozenTable(t *testing.T) {
@@ -65,6 +72,9 @@ func TestAcceptsKindFollowsTheAcceptanceTable(t *testing.T) {
 		{"verify", 5, true}, {"write_observed", 5, true},
 		{"after_hit", 5, true}, {"after_hit", 4, false}, {"after_hit", 6, false},
 		{"then_check", 5, true}, {"then_check", 4, false}, {"then_check", 6, false},
+		{"plan_check", 5, true}, {"plan_check", 4, false}, {"plan_check", 6, false},
+		{"unitbrief_miss", 5, true}, {"unitbrief_miss", 4, false}, {"unitbrief_miss", 6, false},
+		{"conflict_check", 5, true}, {"conflict_check", 4, false}, {"conflict_check", 6, false},
 		{"steer", 1, false}, {"nothing", 5, false},
 	}
 	for _, c := range cases {

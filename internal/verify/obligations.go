@@ -110,7 +110,9 @@ var obligationScopesOnce struct {
 const obligationSourceSpec = "spec"
 
 // Obligation is one ledger row. ID is a stable digest (ObligationID);
-// Evidence is record seqs only, ascending, never null.
+// Evidence is record seqs only, ascending, never null. Unit is the row's
+// graph unit as a global id, a string so verify stays free of
+// internal/graph; empty, and omitted from the JSON, when the row has none.
 type Obligation struct {
 	ID       string          `json:"id"`
 	Scope    string          `json:"scope"`
@@ -118,16 +120,22 @@ type Obligation struct {
 	Source   string          `json:"source"`
 	State    ObligationState `json:"state"`
 	Evidence []int64         `json:"evidence"`
+	Unit     string          `json:"unit,omitempty"`
 }
 
 // ledgerOf is the ledger at snap's point: the gates' rows over c, the
 // classification snap came from, then the expected_evidence rows of ex, in
 // the scope the point's kind owes in. EvaluateStop is its one caller, so the
-// ledger has one producer, on the path every Stop takes. Never nil.
-func ledgerOf(snap Snapshot, c *classified, ex []Expected) []Obligation {
-	scope := cmp.Or(obligationScopes()[snap.Point.Kind], ScopeSession)
+// ledger has one producer, on the path every Stop takes. The conflict groups
+// (conflictGroups, W-M2.4), if any, add their rows after the rest. Never nil.
+func ledgerOf(snap Snapshot, c *classified, ex []Expected, conflicts ...conflictGroup) []Obligation {
+	scope := pointScope(snap)
 	obs := append(obligations(snap, c.runs, c.writes), expectedObligations(scope, snap, ex)...)
-	return append(obs, specObligations(scope, snap)...)
+	obs = append(obs, specObligations(scope, snap)...)
+	for _, g := range conflicts {
+		obs = append(obs, g.obligation(scope))
+	}
+	return obs
 }
 
 // specObligations is one spec_rule row per verdict of a trusted or managed

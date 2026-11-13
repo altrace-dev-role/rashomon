@@ -2,6 +2,7 @@ package disclose
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -51,7 +53,7 @@ func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 }
 
 func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
-	if ScopeVersion != 5 {
+	if ScopeVersion != 6 {
 		t.Errorf("ScopeVersion = %d; a bump re-asks consent and must be deliberate", ScopeVersion)
 	}
 	inv, err := Default()
@@ -139,6 +141,14 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := s.MarkFired(sessionID, "Stop", time.Now()); err != nil {
 		t.Fatalf("MarkFired: %v", err)
 	}
+	// The overlay journal's two run files: the byte counter, and the marker
+	// a reservation past the bound leaves (card W-M2.5c, 5c-2).
+	if err := s.ReserveOverlay(sessionID, 1); err != nil {
+		t.Fatalf("ReserveOverlay: %v", err)
+	}
+	if err := s.ReserveOverlay(sessionID, store.MaxOverlayBytes); !errors.Is(err, store.ErrOverlayFull) {
+		t.Fatalf("ReserveOverlay past the bound: %v, want ErrOverlayFull", err)
+	}
 	if !s.TakeChannelEvidence("PostToolUse", "2.1.304") {
 		t.Fatal("TakeChannelEvidence refused")
 	}
@@ -174,6 +184,23 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.WriteSteerDisclosureMarker(root, 2); err != nil {
 		t.Fatalf("store.WriteSteerDisclosureMarker: %v", err)
 	}
+	if err := store.WriteSessionContentMarker(root); err != nil {
+		t.Fatalf("store.WriteSessionContentMarker: %v", err)
+	}
+	// The session log and the evidence file at the top of the store's graph
+	// directory (sessionContentFiles): the log through its writer, the
+	// evidence file, which cmd/rashomon writes, by its name.
+	group := graph.BuildOverlayGroup(graph.OverlayGroup{Session: sessionID, ToolUseID: "tu-1", Kind: "post",
+		File: "file:a.go", Digest: "d", Commit: "c0ffee", Seq: 1})
+	if err := graph.OpenSessionLog(root, "tru23-repo", graph.RevCommit("c0ffee"), true).Append(group...); err != nil {
+		t.Fatalf("graph session log: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, graph.StoreDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, graph.StoreDir, graph.EvidenceFileName(sessionID, "prompt-1", time.Now())), []byte("x"), 0o600); err != nil {
+		t.Fatalf("evidence file: %v", err)
+	}
 	if err := store.WriteLab(root); err != nil {
 		t.Fatalf("store.WriteLab: %v", err)
 	}
@@ -183,7 +210,8 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
 	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
-		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*", recap.StateTempPrefix + "*",
+		"." + store.FileRecordScope + ".tmp-*", "." + store.FileSteerDisclosure + ".tmp-*",
+		"." + store.FileSessionContent + ".tmp-*", recap.StateTempPrefix + "*",
 		"." + spec.TrustFile + ".tmp-*", "." + spec.TrustKeyFile + ".tmp-*", "." + store.FileLab + ".tmp-*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
@@ -412,7 +440,16 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// TakeBlastRead open, runs/<session>/blast-read-<16 hex>, the
 		// blast-radius read's marker per package and log (blastReadFiles in
 		// the inventory, IsBlastReadFile in purge's run files).
-		{"store", 35},
+		// Raised 35 to 38 for the overlay journal (card W-M2.5c, 5c-2;
+		// overlayRunFiles in the inventory, purge's run files):
+		// overlayreserve.go:65, the OpenFile of records.ndjson that takes its
+		// lock (writes nothing), :100 the writeSmall of overlay-bytes, and
+		// :107 the O_EXCL OpenFile of overlay-full.
+		// Moved 2026-11-12 (W-M2.11 1d) to 39: sessioncontent.go's
+		// WriteSessionContentMarker ReplaceFile, session_content, the third
+		// view of consent.json (sessionContentFiles in the inventory, its
+		// temp prefix in purge).
+		{"store", 39},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -455,6 +492,36 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// writes no file: a second site here is a write with no inventory
 		// row.
 		{"regfile", 1},
+		// Pinned 2026-11-11 (W-M2.11 1d, store-writer-inventory.txt): the
+		// packages whose writes were outside this count, each recounted
+		// with this counter at the pinning head. cmd/rashomon: graph.go's
+		// writeGraphEvidence os.WriteFile (<store>/graph/<session>-<prompt>.txt,
+		// purge's graph tree), purge.go's two console and tty opens (no
+		// file), share.go's writeShareFile (the user's own path), watch.go's
+		// tty open and restorable's undo (the old bytes of install.json).
+		// Moved 2026-11-12 (W-M2.3 hook half, D2) to 7: graph_unitbrief.go's
+		// writeUnitBrief CreateTemp (<store>/graph/unitbrief/<session>/
+		// .unitbrief-*.tmp, renamed over x-<32 hex>.json, purge's graph
+		// tree), the unit brief the post hook of a unit's first edit reads.
+		{"../cmd/rashomon", 7},
+		// graph: persist.go's index save (<repo>/.rashomon/graph.jsonl) and
+		// sessionlog.go's append open (<store>/graph/<16 hex>.jsonl).
+		{"graph", 2},
+		// graph/knowledge: schema.go's WriteFile (<repo>/.rashomon/knowledge).
+		{"graph/knowledge", 1},
+		// graph/graphtest: graphtest.go's write, test support with no
+		// non-test importer.
+		{"graph/graphtest", 1},
+		// seed: kept.go's WriteKept ReplaceFile (<store>/seed.json).
+		{"seed", 1},
+		// fold: write.go's Write, to the path its caller names.
+		{"fold", 1},
+		// settings: write.go's WriteFile of Claude Code's settings.json.
+		{"settings", 1},
+		// brief: brief.go's O_RDONLY OpenFile, a read.
+		{"brief", 1},
+		// fault: fault_on.go's two writes, built under rashomonfault only.
+		{"fault", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

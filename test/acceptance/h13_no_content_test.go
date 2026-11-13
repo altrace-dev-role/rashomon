@@ -204,6 +204,27 @@ var (
 		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
 		"rule_id", "source_digest", "landed_seq", "then",
 	}
+	// planCheckKeys are a plan_check's keys (card W-M2.6 hook half): the
+	// covering rules' ids, three counts and the covered paths as keyed
+	// digests, never a path or a word of the plan.
+	planCheckKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"landed_seq", "rule_ids", "named", "planned", "matched", "path_digests",
+	}
+	// unitBriefMissKeys are a unitbrief_miss's keys (card m2-unitbrief-hook1
+	// D7): the edit's seq, the unit as a keyed digest and the reason, never
+	// a path, a unit's name or a word of a brief.
+	unitBriefMissKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"landed_seq", "unit", "reason",
+	}
+	// conflictCheckKeys are a conflict_check's keys (card m2-seam1 D4): the
+	// edit's seq, the index commit, the file as a keyed digest and the rows,
+	// never a word of the prompt; a row's unit path is empty below scope v5.
+	conflictCheckKeys = []string{
+		"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id",
+		"landed_seq", "commit", "file", "rows",
+	}
 	// outcomeJoinKeys are an outcome_join's keys (card BG-OUTCOME phase 1):
 	// a background call's id and how it ended, never the notification's text.
 	outcomeJoinKeys = []string{

@@ -24,9 +24,9 @@ m("VER-1.2q the marker is not removed before the consent line", "internal/consen
   "\tif err := store.RemoveRecordScopeMarker(root); err != nil {\n\t\treturn err\n\t}\n", "",
   "TestRS8_")
 m("VER-1.2q the marker is written before the consent line", "internal/consent/record.go",
-  "\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n\tvar scopeErr, steerErr error\n"
+  "\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n\tvar scopeErr, steerErr, contentErr error\n"
   "\tif err := syncMarker(root); err != nil {\n\t\tscopeErr = fmt.Errorf(\"%w: %w\", ErrScopeMarker, err)\n\t}\n",
-  "\tvar scopeErr, steerErr error\n"
+  "\tvar scopeErr, steerErr, contentErr error\n"
   "\tif err := syncMarker(root); err != nil {\n\t\tscopeErr = fmt.Errorf(\"%w: %w\", ErrScopeMarker, err)\n\t}\n"
   "\tif err := appendRecord(root, line); err != nil {\n\t\treturn err\n\t}\n",
   "TestRS3_|TestRS4_")
@@ -92,7 +92,7 @@ m("VER-1.2q status omits consent.json's answer", "cmd/rashomon/status_recording.
   "\t\tsource += \"; consent.json says \" + fold\n", "",
   "TestRS9_")
 m("VER-1.2q purge does not plan the record_scope marker", "internal/purge/purge.go",
-  "\tstore.FileRecordScope, store.FileSteerDisclosure,\n", "\tstore.FileSteerDisclosure,\n",
+  "\tstore.FileRecordScope, store.FileSteerDisclosure, store.FileSessionContent,\n", "\tstore.FileSteerDisclosure, store.FileSessionContent,\n",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast|TestTRU28_PurgeListsEveryNameItsWritersExport")
 m("VER-1.2q purge does not plan the record_scope marker's temporary file", "internal/purge/purge.go",
   " \".\" + store.FileRecordScope + \".tmp-\",", "",

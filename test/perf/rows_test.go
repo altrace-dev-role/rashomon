@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +76,12 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		"post.edit.pgraph3MiB": {"post", 3 << 20, "PW1b"},
 		// The order rule's Then call (SPEC-RULES1 1b, #216 ruling 5): post.540B's payload under a trusted spec of one order rule.
 		"post.540B.order": {"post", 540, "SR-1b"},
+		// The PreToolUse overlay writer (W-M2.5c, 5c-2): the real hook entry on a 40000 B Edit of a Go file under an index, marker present.
+		"hook.edit.overlay": {"hook", 40000, "W-M2.5"},
+		// The post's unit-brief read (W-M2.3 hook half): the real post entry on a 2048 B Edit post of a Go file in a unit the prompt named, its brief held.
+		"post.edit.unitbrief": {"post", 2048, "W-M2.3"},
+		// The post's conflict check (W-M2.4 seam): the real post entry on a 2048 B Write post of a Go file a protect_path rule covers, the session's conflict base held.
+		"post.edit.conflict": {"post", 2048, "W-M2.4"},
 	}
 	b := loadBudgets(t)
 	seen := map[string]bool{}
@@ -225,11 +232,31 @@ func TestRES36o_PerProcessColdAllocBytesIsTheSumNotEitherField(t *testing.T) {
 		want int64
 	}{
 		{"unmeasured reads as unmeasured, not as the init budget alone", 0, 0},
-		{"measured adds the init budget", 138320, 138320 + InitBudgetBytes},
+		{"measured adds the init budget", 138320, 138320 + InitBudget(runtime.GOOS)},
 	} {
 		got := PerProcessColdAllocBytes(budget.Entry{ColdAllocBytesMax: c.cold})
 		if got != c.want {
 			t.Errorf("%s: PerProcessColdAllocBytes(cold=%d) = %d, want %d", c.name, c.cold, got, c.want)
+		}
+	}
+}
+
+// TestRES2p_InitBudgetIsPerPlatform: RES-2's 64 KiB holds everywhere but
+// darwin, whose bound moved to the measured cost of parsing Go in process
+// (initBudgetDarwinBytes). Each platform's CI reads only its own bound, so
+// this pins both from either: a darwin move that leaked to linux, or a lost
+// darwin move, fails here on every runner.
+func TestRES2p_InitBudgetIsPerPlatform(t *testing.T) {
+	for _, c := range []struct {
+		goos string
+		want int64
+	}{
+		{"linux", 64 << 10},
+		{"windows", 64 << 10},
+		{"darwin", 67088},
+	} {
+		if got := InitBudget(c.goos); got != c.want {
+			t.Errorf("InitBudget(%q) = %d, want %d", c.goos, got, c.want)
 		}
 	}
 }

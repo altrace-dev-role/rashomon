@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestK7_PromptPathOnRashomon (W-M1.8, AC-M1.2) measures the hook's own
@@ -49,6 +50,10 @@ func TestK7_PromptPathOnRashomon(t *testing.T) {
 		runs = v
 	}
 	storeRoot := t.TempDir()
+	// At v5, so each run writes the evidence file too (writeGraphEvidence).
+	if err := store.WriteRecordScopeMarker(storeRoot, store.RecordScopeV5); err != nil {
+		t.Fatal(err)
+	}
 	var total []time.Duration
 	var last indexBrief
 	for i := 0; i < runs; i++ {
@@ -60,7 +65,7 @@ func TestK7_PromptPathOnRashomon(t *testing.T) {
 		}
 		last = gb
 	}
-	f, ok := graphFinding(last, 1, nil)
+	f, ok := graphFinding(last, keyGraph, 1, nil)
 	if !ok {
 		t.Fatal("the brief gave no finding")
 	}

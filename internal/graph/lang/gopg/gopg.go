@@ -8,7 +8,10 @@ package gopg
 import (
 	"context"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,9 +30,12 @@ const mayCallConf = 0.5
 // prov names pgraph's v0 sidecars as the source of every record.
 var prov = graph.Prov{Extractor: "pgraph", Version: "v0"}
 
-// Resolver is the language's lang.Resolver. It has no state: the sync under
-// the root is the state.
-type Resolver struct{}
+// Resolver is the language's lang.Resolver. Extract has no state: the sync
+// under the root is the state. Imports, when set, is what Overlay maps a
+// file's import clause under (imports.go); nil maps none.
+type Resolver struct {
+	Imports *ImportMap
+}
 
 // Lang is "go".
 func (Resolver) Lang() string { return Lang }
@@ -42,23 +48,57 @@ func (Resolver) Unit(_, rel string) (graph.ID, bool) {
 	return graph.UnitID(Lang, path.Dir(rel)), true
 }
 
-// Overlay is nil, nil: Go is admitted without overlays until W-M2.5 reads a
-// file's declarations with go/parser.
-func (Resolver) Overlay(string, []byte, graph.Rev, int64) ([]graph.Record, error) {
-	return nil, nil
-}
-
 // Extract reads the pgraph sync under root (platform.ReadSnapshot) and
 // returns its records at rev. With files non-empty, only those files, the
 // symbols placed in them and the edges between kept symbols are returned.
-// Without a sync the error wraps platform.ErrNotSynced and names the
-// remedy, pgraph sync.
+// The kept files' Imports edges come last (imports): pgraph records no
+// import, so they are read from the files' import clauses with the
+// overlay's mapping. Without a sync the error wraps platform.ErrNotSynced
+// and names the remedy, pgraph sync.
 func (Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.Record, error) {
 	s, err := platform.ReadSnapshot(context.Background(), root)
 	if err != nil {
 		return nil, fmt.Errorf("gopg: %w", err)
 	}
-	return newMapper(s, files, rev).records(), nil
+	m := newMapper(s, files, rev)
+	return append(m.records(), m.imports(root)...), nil
+}
+
+// imports is the Imports edges of every kept file the sync holds, its import
+// clause read from the file under root now and mapped by fileImports under
+// root's go.mod module path and DirUnder(root), the overlay's own mapping,
+// sorted by key. Each is ALGORITHMIC at 1.0 (a parse of the import clause,
+// no type check) under go/parser's provenance. A file that does not read
+// or parse gives none. They come after every pgraph record, so the first
+// record, and the header's producer with it, stays pgraph's.
+func (m *mapper) imports(root string) []graph.Record {
+	im := ImportMap{Module: ReadModulePath(root), IsDir: DirUnder(root)}
+	if im.Module == "" {
+		return nil
+	}
+	pkgs := make([]string, 0, len(m.s.Files))
+	for pkg := range m.s.Files {
+		pkgs = append(pkgs, pkg)
+	}
+	sort.Strings(pkgs)
+	var out []graph.Record
+	for _, pkg := range pkgs {
+		for _, rel := range m.s.Files[pkg] {
+			if !m.keepFile(rel) {
+				continue
+			}
+			f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, filepath.FromSlash(rel)), nil, parser.ImportsOnly|parser.SkipObjectResolution)
+			if err != nil {
+				continue
+			}
+			file := graph.FileID(rel)
+			out = append(out, fileImports(f, rel, im, func(dst graph.ID) graph.Record {
+				return graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Imports, Dst: dst, Tier: graph.Algorithmic, Conf: 1.0, Rev: m.rev, Prov: overlayProv}}
+			})...)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Edge.Key() < out[j].Edge.Key() })
+	return out
 }
 
 // sym is one Go symbol as the graph names it.

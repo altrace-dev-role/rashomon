@@ -86,6 +86,9 @@ type Handler struct {
 	toolUseID string
 	cwd       string
 	opened    bool
+	// declaredSeq is the seq the declaration landed at in the ordered stream
+	// (store.DeclareSeq), 0 until it does; the overlay writer cites it.
+	declaredSeq int64
 	// withheld is set when a payload value was over its cap and left out of
 	// the declaration (store.CapDeclaration); the call's coverage record
 	// then carries record_oversize.
@@ -206,6 +209,9 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	// three unless the consent on file says v5, and the caps bound them.
 	decl.CWD = nilIfEmpty(p.CWD)
 	decl.FilePath = shape.DeclaredPath(p.ToolName, p.ToolInput)
+	// declared is that path for the overlay writer, which the gate and the
+	// caps below may withhold from the record but never from the writer.
+	declared := decl.FilePath
 	decl.Project = nilIfEmpty(project(p.CWD, physical, own, decl.FilePath))
 	// The files a Bash call's line may write, and whether they are all of
 	// them (shape.WrittenPaths): null and complete for any other tool, which
@@ -248,12 +254,14 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 
 	fault.Inject(fault.PointStoreWrite)
 
-	if err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {
+	seq, err := h.st.DeclareSeq(decl)
+	if err := landed(err, &h.withheld); err != nil {
 		return err
 	}
-	h.opened = true
+	h.opened, h.declaredSeq = true, seq
 
 	fault.Inject(fault.PointHookAfterDeclaration)
+	h.writeOverlay(&p, declared)
 	return nil
 }
 

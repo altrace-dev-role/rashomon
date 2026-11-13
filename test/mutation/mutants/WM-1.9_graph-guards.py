@@ -1,8 +1,9 @@
 # WM-1.9: the M1 guards that W-M1.7, W-M1.8 and W-M1.9 added (PLAN.md
 # section 6.1). A finding's source and unit are checked before routing, a
 # finding's unit is the unit reached from its first node, a worktree's git
-# directories resolve through the pointer and the common directory, a
-# packed ref reads through a worktree, the hook's evidence file holds no
+# directories resolve through the pointer and the common directory, an
+# origin url with an @ after its host part gives no id (so no byte of its
+# user part is kept), a packed ref reads through a worktree, the hook's evidence file holds no
 # word of the prompt (D160), and an imported row keeps only a validating
 # clause and only the paths the index holds. Each break below is one of
 # those promises undone.
@@ -48,6 +49,15 @@ m("WM-1.9 a relative gitdir pointer is not joined to the root", R,
 m("WM-1.9 a relative commondir is not joined to the git directory", R,
   "\t\tif !filepath.IsAbs(common) {\n\t\t\tcommon = filepath.Join(dir, common)\n\t\t}\n", "",
   "TestGitDirs_ResolvesThePointerAndTheCommonDir")
+m("WM-1.9 a scheme url with an @ past its host part is read", R,
+  "\t\tif end := strings.IndexAny(whole[i+3:], \"/?#\"); end >= 0 && strings.Contains(whole[i+3+end:], \"@\") {\n\t\t\treturn \"\"\n\t\t}\n", "",
+  "TestNormalizeOrigin_KeepsNoUserPart")
+m("WM-1.9 an scp-like url with an @ after its first colon is read", R,
+  "\t\tif strings.Contains(whole[strings.Index(s, \":\")+1:], \"@\") {\n\t\t\treturn \"\"\n\t\t}\n", "",
+  "TestNormalizeOrigin_KeepsNoUserPart")
+m("WM-1.9 a bare url holding an @ is kept whole", R,
+  "\t\tif strings.Contains(whole, \"@\") {\n\t\t\treturn \"\"\n\t\t}\n", "",
+  "TestNormalizeOrigin_KeepsNoUserPart")
 K = "internal/graph/knowledge/import.go"
 m("WM-1.9 a refused clause is written as the row's clause", K,
   "\t\tr.Clause = c\n", "\t\tif c == \"\" {\n\t\t\tc = r.Clause\n\t\t}\n\t\tr.Clause = c\n",

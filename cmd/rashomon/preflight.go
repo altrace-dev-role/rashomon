@@ -90,22 +90,25 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	if st != nil {
 		storeRoot = st.Root()
 	}
-	gb, graphed := graphBrief(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt)
+	specOf := onceSpec(st, run, p.CWD)
+	scoped := promptScope{st: st}
+	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf, scoped.get)
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
 	env := steerEnv(id, now, st.Root())
-	sp := preflightSpec(st, run, p.CWD, env.ProjectDir, env.ManagedDir)
+	sp := specOf()
 	hook.NoteSpecFound(st, p.SessionID, p.PromptID, p.CWD, env.ProjectDir, env.ManagedDir, sp)
 	p.specNoted = true
 	lines, _, _ := st.ReadSteer(p.SessionID)
 	var in *intent.Intent
 	var digest func(string) string
-	scope := hook.PromptRecordScope(st)
+	scope := scoped.get()
 	// At record scope v4 the steer line holds each named path as a keyed
 	// digest and the delivered set compares digests; the note that prints
 	// is the same at either scope. The graph brief's record form follows
-	// the same rule.
+	// the same rule, and at v4 the brief wrote no evidence file
+	// (writeGraphEvidence).
 	if scope != store.RecordScopeV5 && (named || graphed) {
 		key := st.Key()
 		digest = func(path string) string { return intent.PathDigest(key, path) }
@@ -125,7 +128,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 		in = &resolved
 	}
 	found := promptFindings(in, proj.lessons, lines, run.LastSeq(), digest)
-	if f, ok := graphFinding(gb, run.LastSeq(), digest); graphed && ok {
+	if f, ok := graphFinding(gb, keyGraph, run.LastSeq(), digest); graphed && ok {
 		found = append(found, f)
 	}
 	if f, ok := owedFinding(p.owed, run.LastSeq(), lines); ok {
@@ -210,6 +213,48 @@ func noteTurnSpec(st *store.Store, run *store.Run, p *pendingPayload) {
 // binding gets no trusted repository spec on the prompt path either.
 func preflightSpec(st *store.Store, run *store.Run, cwd, projectDir, managedDir string) *spec.Compiled {
 	return hook.DiscoverSpec(cwd, projectDir, managedDir, hook.TrustRoot(run, st.Root(), run.LastSeq()))
+}
+
+// onceSpec is preflightSpec under specDirs (steerEnv's ProjectDir and
+// ManagedDir), read on first use and kept, so the conflict base and the
+// prompt's note read one discovery.
+func onceSpec(st *store.Store, run *store.Run, cwd string) func() *spec.Compiled {
+	var sp *spec.Compiled
+	read := false
+	return func() *spec.Compiled {
+		if !read {
+			projectDir, managedDir := specDirs()
+			sp, read = preflightSpec(st, run, cwd, projectDir, managedDir), true
+		}
+		return sp
+	}
+}
+
+// readPromptScope is promptScope's one read of the store's record scope, a
+// variable so a test counts the reads a prompt makes (TestPromptScope_*).
+var readPromptScope = hook.PromptRecordScope
+
+// promptScope is the store's record scope as the prompt path reads it,
+// hook.PromptRecordScope read on first use and kept (get), so the evidence
+// file's gate (writeGraphEvidence) and the note's record form read one
+// marker, and a prompt that finds no index reads it only if the note goes
+// on. preflightNote holds it as a value and hands its get down.
+type promptScope struct {
+	st    *store.Store
+	scope string
+	read  bool
+}
+
+// get is the record scope, read on the first call; "" with no store, which
+// is not v5.
+func (s *promptScope) get() string {
+	if !s.read {
+		if s.st != nil {
+			s.scope = readPromptScope(s.st)
+		}
+		s.read = true
+	}
+	return s.scope
 }
 
 // repoSpecSuffix ends the path of a repository spec source: the file sits at

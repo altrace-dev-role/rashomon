@@ -167,21 +167,45 @@ list of what it keeps, word for word as the install screen's full view
 > looked from, nothing else. At each turn end: the state of each test or build
 > check, a keyed digest of each claim sentence it checks in the agent's final
 > message (never the sentence), and the digest of the project spec
-> (.claude/rashomon/spec.json) whose rules it applied. Each note it adds, word
-> for word, except a request's preflight note at record scope v4, which keeps a
-> count of the paths it named and keyed digests of them, and except the briefing
-> after Claude Code compacts the conversation, which quotes your earlier
-> instructions to the agent word for word; the record keeps only each quote's
-> length and a keyed digest, never your words. Your on and off switches
-> (config.json), and for a project's switch (summary_projects, steer_projects)
-> the project's directory.
+> (.claude/rashomon/spec.json) whose rules it applied. For each call a project
+> spec rule matched or was checked against, and each accepted plan checked
+> against the spec's path rules, the rule's id in the clear; for such a plan,
+> three counts of what the check found and keyed digests of the paths it
+> covered, never a word of the plan. Each note it adds, word for word, except a
+> request's preflight note at record scope v4, which keeps a count of the paths
+> it named and keyed digests of them, and except the briefing after Claude Code
+> compacts the conversation, which quotes your earlier instructions to the agent
+> word for word; the record keeps only each quote's length and a keyed digest,
+> never your words. Your on and off switches (config.json), and for a project's
+> switch (summary_projects, steer_projects) the project's directory.
 
-It never stores your prompts, the agent's messages, tool output or file
-contents. It reads each prompt in memory to write the preflight note and keeps
-no word of it beyond the project paths the note names. `rashomon report`
-quotes the agent's final message from Claude Code's transcript without storing
-it. The one exception is opt-in: `rashomon bodies on` copies this project's
-transcripts into the store, and `rashomon forget --bodies` removes them.
+It never stores your prompts, the agent's messages, tool output, file contents
+or a spec file's text (of a spec, only its digest and its rules' ids, and, where
+Go edits are kept, the paths, patterns and symbols named by the rules each edit
+is checked against). It reads each prompt in memory to write the preflight note
+and keeps no word of it beyond the project paths the note names.
+`rashomon report` quotes the agent's final message from Claude Code's transcript
+without storing it. The one exception is opt-in: `rashomon bodies on` copies
+this project's transcripts into the store, and `rashomon forget --bodies`
+removes them.
+
+In an indexed repository, once you have agreed to this build's screen, it also
+keeps what each Go edit declares: the names of the file's functions, types,
+methods, constants and variables, the first sentence of each one's doc comment,
+the names a function calls and the packages the file imports, never the file's
+other text. An indexed repository is one with `.rashomon/graph.jsonl` at or up
+to four directories above the working directory, whoever wrote it:
+`rashomon graph index` writes one, and a cloned repository may carry one. It
+keeps them with the file's path and SHA-256 in one log per repository under the
+store's `graph/` directory, beside the briefs and the conflict base each prompt
+writes there. For each such edit, the session's record also keeps why its unit's
+brief could not be given, when it could not (absent, stale or refused), with a
+keyed digest of the unit, and, where the edit is checked against the conflict
+base, the graph's commit, a keyed digest of the file and each conflict the edit
+leaves: its kind, its rule's id, a keyed digest of the conflict, and the unit
+and the symbol or file it is about, with the unit's path, or keyed digests of
+the two and no path where the record scope is v4. The size cap does not cover
+`graph/`: what it holds stays until `rashomon purge`.
 
 ## Repository specs: trust and declared gates
 
@@ -254,7 +278,8 @@ refused from an agent session. With the plugin, use `/plugin`.
 
 **How much disk does it use?** At most 512 MiB of runs by default; the oldest
 runs go first, each leaving a gap record. `RASHOMON_STORE_CAP_BYTES` sets the
-cap in bytes, and `0` keeps everything.
+cap in bytes, and `0` keeps everything. The store's `graph/` directory is not
+counted and stays until `rashomon purge`.
 
 ## Inside a sandbox
 

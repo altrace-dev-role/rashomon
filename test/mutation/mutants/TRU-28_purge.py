@@ -116,7 +116,7 @@ m("TRU-28 purge does not plan consent.json's temporary file", "internal/purge/pu
   "\t\".\" + store.FileConsent + \".tmp-\", ", "\t",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
 m("TRU-28 purge does not plan harnesses.json's temporary file", "internal/purge/purge.go",
-  ", \".\" + store.FileHarnesses + \".tmp-\",\n", ",\n",
+  "\t\".\" + store.FileHarnesses + \".tmp-\",\n", "",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
 
 # A hook that stood down writes harness_counts.json at the root, under its

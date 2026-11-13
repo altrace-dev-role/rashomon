@@ -14,9 +14,12 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
+	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render/slot"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // graphUsage is the graph verb's lines on the usage screen (TRU2c: every
@@ -234,9 +237,22 @@ func cmdBriefOrGraph(name string, args []string, stdout io.Writer) error {
 // graphBrief is the hook path: the brief for the prompt over the graph
 // indexed under cwd, each path relative to cwd, read before the preflight
 // decides whether the prompt has anything to say (GRAPH-SLOT1). ok is
-// whether a message rendered. Every run that found an index leaves its
-// explanation under the store root at graph/<session>-<prompt>.txt.
+// whether a message rendered. Every run that found an index, in a store
+// whose record scope is v5, leaves its explanation under the store root at
+// graph/<session>-<prompt>.txt (writeGraphEvidence); here the scope is the
+// store's marker, read once a brief exists.
 func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (indexBrief, bool) {
+	return graphBriefWith(storeRoot, cwd, sessionID, promptID, prompt, nil, func() string {
+		scope, _ := store.RecordScopeMarker(storeRoot)
+		return scope
+	})
+}
+
+// graphBriefWith is graphBrief with specOf, the prompt's spec read on first
+// use, whose rules the conflict base takes (writeConflictBase); nil writes
+// no base. scopeOf is the store's record scope, read on first use, which
+// the evidence file waits on (writeGraphEvidence); nil writes none.
+func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, specOf func() *spec.Compiled, scopeOf func() string) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
 		return indexBrief{}, false
 	}
@@ -252,7 +268,9 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 	opt.Rel = relTo(cwd, root)
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
-	writeGraphEvidence(storeRoot, sessionID, promptID, b)
+	writeGraphEvidence(storeRoot, sessionID, promptID, b, scopeOf)
+	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt)
+	writeConflictBase(storeRoot, sessionID, root, h.Repo, s, rev, specOf)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
 	if first := b.FirstKey(); first != "" {
 		n, _ := s.Node(first, rev)
@@ -316,44 +334,55 @@ func relTo(cwd, root string) func(string) string {
 // findings, beside the request's note (intent's note and brief keys).
 const keyGraph = "graph"
 
-// graphFinding is the brief as the prompt's task-preflight finding, routed
-// in preflightNote's one Route call beside the request's note: a nudge
-// with no stop form, its record form (Brief.Record) where the record scope
-// keeps digests (digest set), the message itself where it keeps paths; its
-// source the graph row its first keyed line is keyed on and its unit that
-// row's unit (AD19), none when the brief says its unit is not known.
-func graphFinding(b indexBrief, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
+// graphFinding is the prompt's graph brief as a task-preflight finding
+// under key (keyGraph), routed in preflightNote's one Route call beside the
+// request's note: its message, and its record form (Brief.Record) where the
+// record scope keeps digests (digest set).
+func graphFinding(b indexBrief, key string, afterSeq int64, digest func(string) string) (steer.Finding, bool) {
 	if b.Empty() {
 		return steer.Finding{}, false
 	}
-	prio, _ := pattern.Priority(pattern.TaskPreflight)
-	f := steer.Finding{Pattern: pattern.TaskPreflight, Key: keyGraph, Priority: prio, MaxLevel: steer.LevelNudge,
-		StopForm: steer.StopFormNone, Message: b.Message, AfterSeq: afterSeq, Unit: string(b.Unit),
-		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
+	var rec render.Message
 	if digest != nil {
-		rec, err := b.Record(digest)
+		r, err := b.Record(digest)
 		if err != nil {
 			return steer.Finding{}, false
 		}
-		f.Record = rec
+		rec = r
 	}
-	return f, true
+	return briefFinding(b, b.Message, rec, key, afterSeq), true
 }
 
-func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief) {
-	if storeRoot == "" {
+// briefFinding is a brief's message as a task-preflight finding under key:
+// the prompt's graph brief (graphFinding) and a unit's brief at the post of
+// an edit in it (unitBriefJoin, under the unit's head). A nudge with no stop
+// form, rec its record form where the record scope keeps digests (the
+// message itself where rec is empty); its source the graph row its first
+// keyed line is keyed on and its unit that row's unit (AD19), none when the
+// brief says its unit is not known.
+func briefFinding(b indexBrief, m, rec render.Message, key string, afterSeq int64) steer.Finding {
+	prio, _ := pattern.Priority(pattern.TaskPreflight)
+	return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
+		StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq, Unit: string(b.Unit),
+		Source: steer.Source{Kind: steer.SourceGraph, ID: string(b.First), Tier: string(b.Tier)}}
+}
+
+// writeGraphEvidence writes b's evidence and text under storeRoot at
+// graph/<session>-<prompt>.txt where the store's record scope is v5. The
+// file names the brief's ids and paths in clear; at v4 the steer line keeps
+// the same brief only as keyed digests and counts (Brief.Record), so at v4
+// nothing is written. scopeOf is read here alone, once a brief exists.
+func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief, scopeOf func() string) {
+	if storeRoot == "" || scopeOf == nil || scopeOf() != store.RecordScopeV5 {
 		return
 	}
-	dir := filepath.Join(storeRoot, "graph")
+	dir := filepath.Join(storeRoot, graph.StoreDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
-	name := sessionID + "-" + promptID
-	if promptID == "" {
-		name = sessionID + "-" + time.Now().UTC().Format("20060102T150405.000")
-	}
+	name := graph.EvidenceFileName(sessionID, promptID, time.Now())
 	text := b.Evidence() + "\nbrief:\n" + b.Text() + "\n"
-	_ = os.WriteFile(filepath.Join(dir, name+".txt"), []byte(text), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600)
 }
 
 // hookScorer is the scorer the hook path uses: the inverse-document-

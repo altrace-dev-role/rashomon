@@ -12,10 +12,10 @@ var frozenOrder = []ID{
 	"learned-fact", "platform-rule", "integrity", "identical-retry", "cred-spray",
 	"ordering-rule", "agent-interference", "subagent-claim", "model-switch",
 	"claim-vs-record", "masked-status", "sequence-risk",
-	// The seventeenth, eighteenth and nineteenth, by ruling after the spec's
-	// sixteen, in merge order (cards PREFLIGHT1, STALE-NUDGE1 under D164, and
-	// ARCH-INLINE1's A6).
-	"task-preflight", "stale-evidence", "blast-radius",
+	// The seventeenth to twentieth, by ruling after the spec's sixteen, in
+	// merge order (cards PREFLIGHT1, STALE-NUDGE1 under D164, ARCH-INLINE1's
+	// A6, and W-M2.6's plan-check).
+	"task-preflight", "stale-evidence", "blast-radius", "plan-check",
 }
 
 func sameIDs(got, want []ID) bool {
@@ -42,7 +42,7 @@ func sameStrings(got, want []string) bool {
 	return true
 }
 
-// TestDEL22_PatternIDSetEqualsTheFrozenList pins the nineteen ids, their
+// TestDEL22_PatternIDSetEqualsTheFrozenList pins the twenty ids, their
 // order, and the closed kind list under each of the six that have one (the
 // frozen-set paragraph, decided 2026-10-13). A reorder, an addition, a
 // removal, a renamed id or a kind typo all fail here first.
@@ -123,6 +123,7 @@ func TestPriority_StepEightValues(t *testing.T) {
 		IdenticalRetry:     40,
 		OrderingRule:       30,
 		BlastRadius:        25,
+		PlanCheck:          74,
 	}
 	for id, wantP := range want {
 		gotP, ok := Priority(id)

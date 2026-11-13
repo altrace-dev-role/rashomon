@@ -610,6 +610,26 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				r.env = append(r.env, blastEnv...)
 				mk, control = r.blastPost(t, c.PayloadBytes)
 			}
+			if c.ID == overlayCase {
+				// The PreToolUse overlay writer (W-M2.5c, 5c-2): an Edit of a
+				// Go file under an index, marker present.
+				mk, control = r.overlayHook(t, c.PayloadBytes)
+			}
+			if c.ID == unitBriefCase {
+				// The post's unit-brief read (W-M2.3 hook half): an Edit of a
+				// Go file in a unit the session's prompt named, its brief
+				// held, in a session steering speaks to.
+				r.env = append(r.env, blastEnv...)
+				mk, control = r.unitBriefPost(t, c.PayloadBytes)
+			}
+			if c.ID == conflictCase {
+				// The post's conflict check (W-M2.4 seam): a Write of a Go
+				// file a protect_path rule covers, the conflict base its
+				// session's prompt wrote held, in a session steering speaks
+				// to.
+				r.env = append(r.env, blastEnv...)
+				mk, control = r.conflictPost(t, c.PayloadBytes)
+			}
 			if concurrentGCCases[c.ID] {
 				r.env = append(r.env, concurrentGCEnv)
 			}
@@ -914,23 +934,7 @@ func pgraphTree(t *testing.T, size int, src map[string]string, extra [][3]string
 // .pgraph away: the same prompt with nothing to read.
 func (r rig) pgraphPrompt(t *testing.T, size int) (mk func(i int) []byte, control func()) {
 	t.Helper()
-	src := map[string]string{
-		"go.mod":                  "module " + pgraphModule + "\n\ngo 1.25.0\n",
-		"internal/p000/f.go":      "package p000\n\nfunc CountRows() int { return 1 }\n",
-		"internal/p000/f_test.go": "package p000\n",
-	}
-	decl := "func:" + pgraphModule + "/internal/p000.CountRows"
-	extra := [][3]string{{"pkg:" + pgraphModule + "/internal/p000", "declares", decl}}
-	for i, caller := range []string{"SumRows", "Twice"} {
-		p := fmt.Sprintf("p%03d", i+1)
-		src["internal/"+p+"/f.go"] = "package " + p + "\n\nimport \"" + pgraphModule + "/internal/p000\"\n\nfunc " + caller + "() int { return p000.CountRows() }\n"
-		for _, f := range []string{"f_test.go", "g.go", "h.go"} {
-			src["internal/"+p+"/"+f] = "package " + p + "\n"
-		}
-		id := "func:" + pgraphModule + "/internal/" + p + "." + caller
-		extra = append(extra, [3]string{"pkg:" + pgraphModule + "/internal/" + p, "declares", id}, [3]string{id, "calls", decl})
-	}
-	mod, state := pgraphTree(t, size, src, extra)
+	mod, state := countRowsTree(t, size, []string{"SumRows", "Twice"})
 	var fields map[string]any
 	if err := json.Unmarshal(payload.Prompt("make CountRows return 2"), &fields); err != nil {
 		t.Fatal(err)
@@ -957,6 +961,33 @@ func (r rig) pgraphPrompt(t *testing.T, size int) (mk func(i int) []byte, contro
 			t.Fatal(err)
 		}
 	}
+}
+
+// countRowsTree is pgraphPrompt's module (pgraphTree): a log of exactly
+// size bytes in the Stop case's shape whose first records have p000
+// declare CountRows and each of callers, in p001 on, call it, those
+// packages' files on disk as the digests list them, so a read of the log
+// proves the symbol. pgraphPrompt's callers are SumRows and Twice;
+// unitBriefPost indexes the same module with more (unitBriefCallers).
+func countRowsTree(t *testing.T, size int, callers []string) (mod, state string) {
+	t.Helper()
+	src := map[string]string{
+		"go.mod":                  "module " + pgraphModule + "\n\ngo 1.25.0\n",
+		"internal/p000/f.go":      "package p000\n\nfunc CountRows() int { return 1 }\n",
+		"internal/p000/f_test.go": "package p000\n",
+	}
+	decl := "func:" + pgraphModule + "/internal/p000.CountRows"
+	extra := [][3]string{{"pkg:" + pgraphModule + "/internal/p000", "declares", decl}}
+	for i, caller := range callers {
+		p := fmt.Sprintf("p%03d", i+1)
+		src["internal/"+p+"/f.go"] = "package " + p + "\n\nimport \"" + pgraphModule + "/internal/p000\"\n\nfunc " + caller + "() int { return p000.CountRows() }\n"
+		for _, f := range []string{"f_test.go", "g.go", "h.go"} {
+			src["internal/"+p+"/"+f] = "package " + p + "\n"
+		}
+		id := "func:" + pgraphModule + "/internal/" + p + "." + caller
+		extra = append(extra, [3]string{"pkg:" + pgraphModule + "/internal/" + p, "declares", id}, [3]string{id, "calls", decl})
+	}
+	return pgraphTree(t, size, src, extra)
 }
 
 // pgraphFiles is a log of exactly size bytes and its digests, as a sync of a
@@ -1148,8 +1179,8 @@ func TestRES2_InitBudget(t *testing.T) {
 			low = tr
 		}
 	}
-	if low.Bytes > InitBudgetBytes {
-		t.Errorf("init allocated %d bytes over %d packages at the fewest of %d runs (runs %v), budget %d", low.Bytes, low.Packages, initRuns, all, InitBudgetBytes)
+	if bound := InitBudget(runtime.GOOS); low.Bytes > bound {
+		t.Errorf("init allocated %d bytes over %d packages at the fewest of %d runs (runs %v), budget %d", low.Bytes, low.Packages, initRuns, all, bound)
 	}
 	ran[InitGate] = true
 	t.Logf("init: %d packages, %d bytes at the fewest of %d runs (runs %v), %d allocs, %d gc lines", low.Packages, low.Bytes, initRuns, all, low.Allocs, low.GCLines)

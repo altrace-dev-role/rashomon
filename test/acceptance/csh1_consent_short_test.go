@@ -87,9 +87,9 @@ func TestCSH1_TheScreenAYesIsAskedUnderFitsOneTerminal(t *testing.T) {
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("premise: watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	older := strings.Replace(string(e.consentBytes()), `"scope_version":5`, `"scope_version":4`, 1)
+	older := strings.Replace(string(e.consentBytes()), `"scope_version":6`, `"scope_version":4`, 1)
 	if !strings.Contains(older, `"scope_version":4`) {
-		t.Fatal("premise: the watch record does not carry scope_version 5")
+		t.Fatal("premise: the watch record does not carry scope_version 6")
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 		t.Fatal(err)

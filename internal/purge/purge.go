@@ -22,6 +22,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/fold"
+	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/seed"
@@ -54,7 +55,7 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
 	spec.TrustFile,
 	spec.TrustKeyFile,
-	store.FileRecordScope, store.FileSteerDisclosure,
+	store.FileRecordScope, store.FileSteerDisclosure, store.FileSessionContent,
 	store.FileLab,
 	seed.KeptFile,
 	recap.StateFileName, recap.StateTempName, store.FileBodies, store.FileConfig, store.FileConfigLock}
@@ -63,25 +64,30 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 // into. Only the entries it writes there are planned for removal (see
 // ownedTree): the directory can be shared with the user's own files when
 // RASHOMON_HOME names a directory they already use, and "runs", "baseline",
-// "verify", "bodies" and "learn" are ordinary names for such a directory.
-var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies, learn.DirLearn}
+// "verify", "bodies", "learn" and "graph" are ordinary names for such a
+// directory. "graph" holds the session log and the hook path's evidence
+// files, each at its top level.
+var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies, learn.DirLearn, graph.StoreDir}
 
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
-	store.FileNoticeHoldout, fold.FileName, fold.MidFileName, store.FileBriefingArmed}
+	store.FileNoticeHoldout, fold.FileName, fold.MidFileName, store.FileBriefingArmed,
+	store.FileOverlayBytes, store.FileOverlayFull}
 
 var runTempPrefixes = []string{fold.TempPrefix}
 
 // tempPrefixes are the names of an anchor's, consent.json's, record_scope's,
-// steer_disclosure's, harnesses.json's, harness_counts.json's,
-// recap.json's, bodies.json's, spec-trust.json's, spec-trust.key's and lab's
+// steer_disclosure's, session_content's, harnesses.json's,
+// harness_counts.json's, recap.json's, bodies.json's, spec-trust.json's,
+// spec-trust.key's and lab's
 // temporary file, left by a process that died between writing and renaming
 // it.
 var tempPrefixes = []string{"." + InstallMeta + ".tmp-", "." + InstallKey + ".tmp-",
 	"." + store.FileConsent + ".tmp-", "." + store.FileRecordScope + ".tmp-",
-	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileHarnesses + ".tmp-",
+	"." + store.FileSteerDisclosure + ".tmp-", "." + store.FileSessionContent + ".tmp-",
+	"." + store.FileHarnesses + ".tmp-",
 	"." + spec.TrustFile + ".tmp-",
 	"." + spec.TrustKeyFile + ".tmp-",
 	"." + seed.KeptFile + ".tmp-",
@@ -251,8 +257,9 @@ func isTopDir(name string) bool {
 // rashomon wrote -- returned deepest first, a directory after what is in it
 // -- and the paths it did not, which are left, along with every directory
 // above one. name is top's own name, which says its shape:
-// runs/<session>/<file>, baseline/<file>, verify/projects/<file> or
-// verify/checkpoints/<file>. A symlink
+// runs/<session>/<file>, baseline/<file>, verify/projects/<file>,
+// verify/checkpoints/<file>, graph/<file> or
+// graph/unitbrief/<session>/<file>. A symlink
 // is never followed and never taken as rashomon's: a link, a device or a
 // directory where only a regular file rashomon writes can be, is foreign, and
 // so is a top that is not itself a directory.
@@ -305,7 +312,8 @@ func ownedTree(top, name string) (own, foreign []string, err error) {
 // ownTreeDir reports whether a directory of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: runs/<session>,
 // verify/projects, verify/checkpoints, bodies/<project> and learn/<project>
-// (any name not starting with a dot).
+// (any name not starting with a dot), and graph/unitbrief with the
+// sessions' directories in it (graph.UnitBriefDir, W-M2.3 hook half, D8).
 func ownTreeDir(top, name string, level int) bool {
 	switch top {
 	case store.DirRuns:
@@ -314,6 +322,8 @@ func ownTreeDir(top, name string, level int) bool {
 		return level == 0 && (name == verify.ProjectsDir || name == verify.CheckpointsDir)
 	case store.DirBodies, learn.DirLearn:
 		return level == 0 && !strings.HasPrefix(name, ".")
+	case graph.StoreDir:
+		return level == 0 && name == graph.UnitBriefSubdir || level == 1 && graph.IsUnitBriefSessionDir(name)
 	}
 	return false
 }
@@ -323,8 +333,16 @@ func ownTreeDir(top, name string, level int) bool {
 // in verify/projects and its checkpoint files, named as they are, in
 // verify/checkpoints, a project's transcript copies and the temporary files
 // their writes leave in bodies/<project>, the learner's key and state
-// (learn.Owns, card P6), and ownTreeFile's for runs and baseline.
+// (learn.Owns, card P6), the graph's session logs and evidence files at the
+// top of graph (neither writer leaves a temporary file), the unit briefs and
+// their writer's temp files in a session's directory under graph/unitbrief
+// (level 2, the only files ownTreeDir lets the walk reach there), and
+// ownTreeFile's for runs and baseline.
 func treeFile(top, name string, level int) bool {
+	if top == graph.StoreDir {
+		return level == 0 && (graph.IsSessionLogName(name) || graph.IsEvidenceFileName(name)) ||
+			level == 2 && (graph.IsUnitBriefFileName(name) || graph.IsUnitBriefTempName(name))
+	}
 	if top == verify.DirName {
 		return level == 1 && verify.IsIndexFile(name)
 	}

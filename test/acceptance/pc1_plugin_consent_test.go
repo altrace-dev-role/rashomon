@@ -208,7 +208,7 @@ func TestPC1_OnlyAPluginEnableIsConsent(t *testing.T) {
 		if res := e.watch(); res.exitCode != 0 {
 			t.Fatalf("premise: watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		older := strings.Replace(string(e.consentBytes()), `"scope_version":5`, `"scope_version":4`, 1)
+		older := strings.Replace(string(e.consentBytes()), `"scope_version":6`, `"scope_version":4`, 1)
 		if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 			t.Fatal(err)
 		}

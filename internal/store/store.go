@@ -368,10 +368,8 @@ func runGone(path string) bool {
 
 // AppendDeclaration records what the agent asked to run, allocating its seq.
 func (s *Store) AppendDeclaration(rec Declaration) error {
-	return s.appendOrdered(rec.SessionID, func(seq int64) any {
-		rec.Seq = seq
-		return rec
-	})
+	_, err := s.DeclareSeq(rec)
+	return err
 }
 
 // AppendTerminal closes a declaration. If the ordered stream's lock cannot be

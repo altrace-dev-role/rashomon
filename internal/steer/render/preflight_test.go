@@ -80,8 +80,10 @@ func TestPF1r_PreflightRowsRenderUnderTheBriefingCheck(t *testing.T) {
 // the later prompts' and the first prompt's, two that carry a lesson as
 // their last line (LEARN-RIDE1): the later note with its unknowns line and
 // without it, and four with the symbols line (PW1b-ON-230 step 3): later,
-// later without unknowns, later with a lesson, and the first prompt's. The
-// first prompt's six lines are the cap, so it carries no lesson.
+// later without unknowns, later with a lesson, and the first prompt's; then
+// the three graph rows: the prompt's graph brief and the unit brief's plain
+// and record rows. The first prompt's six lines are the cap, so it carries
+// no lesson.
 func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 	n := 0
 	for k, tmpl := range templates() {
@@ -92,14 +94,17 @@ func TestPF1r_PreflightRowsAreStatementsOfFact(t *testing.T) {
 		if err := CheckTemplate(tmpl.format); err != nil {
 			t.Errorf("%s: %v", tmpl.id, err)
 		}
-		// The graph row's lines are all the model's, so it has no aside
-		// (GRAPH-SLOT1); every preflight note has one.
-		if err := CheckTemplate(tmpl.aside); tmpl.aside == "" && tmpl.id != "task-preflight-graph/v1" || err != nil {
+		// The graph rows' lines are all the model's, so they have no aside
+		// (GRAPH-SLOT1): the prompt's graph brief and the unit brief's two
+		// rows (W-M2.3 hook half); every preflight note has one.
+		graphRow := tmpl.id == "task-preflight-graph/v1" || tmpl.id == "task-preflight-unitbrief/v1" ||
+			tmpl.id == "task-preflight-unitbrief-record/v1"
+		if err := CheckTemplate(tmpl.aside); tmpl.aside == "" && !graphRow || err != nil {
 			t.Errorf("%s: aside %q: %v", tmpl.id, tmpl.aside, err)
 		}
 	}
-	if n != 9 {
-		t.Errorf("task-preflight has %d rows, want 9", n)
+	if n != 11 {
+		t.Errorf("task-preflight has %d rows, want 11", n)
 	}
 	long := make([]slot.Path, 3)
 	for i := range long {
