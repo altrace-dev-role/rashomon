@@ -54,9 +54,23 @@ var res5Dirs = []string{
 // in a unit: the file's object with its lines kept raw, then, for a file at
 // the index's commit, that lines value, a slice of the same capped bytes.
 // It decodes no payload and no tool_input span.
+// cmd/rashomon.readConflictBaseHead and readConflictBase read the session's
+// conflict base, a file the prompt hook alone writes under the store root
+// (graphBriefWith, writeConflictBase, graph.UnitBriefDir): the same ground
+// as decodeUnitBrief, a file rashomon wrote. readConflictBaseHead reads at
+// most maxConflictBaseHead (512 bytes) and decodes the first line only
+// when it ends inside them; the prompt hook reads it to keep a base whose
+// head is current. readConflictBase reads at most maxConflictBaseBytes
+// (256 KiB) and refuses a file over it before the decoder sees it; the post
+// hook reads it to check a Go edit against its prompt's base
+// (conflictpost.go). Both refuse a head whose v is not conflictBaseVersion.
+// Neither is a closed shape: plain json.Unmarshal, no DisallowUnknownFields,
+// so a key the reader does not know is dropped, not refused. Neither
+// decodes a payload or a tool_input span.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
 	"internal/verify.ReadCheckpoints": true, "internal/learn.decode": true, "internal/learn.decodeActive": true,
-	"cmd/rashomon.steerRows": true, "internal/receipt.decodeHead": true, "cmd/rashomon.decodeUnitBrief": true}
+	"cmd/rashomon.steerRows": true, "internal/receipt.decodeHead": true, "cmd/rashomon.decodeUnitBrief": true,
+	"cmd/rashomon.readConflictBaseHead": true, "cmd/rashomon.readConflictBase": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding
