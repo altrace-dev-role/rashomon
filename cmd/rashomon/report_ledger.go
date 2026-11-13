@@ -22,8 +22,10 @@ import (
 // the tree read now and the final message the record does not keep. Then one
 // row to a line: id, scope, kind, source, state, the evidence seqs joined by
 // commas ("-" for none) and the family the id digests (a declared gate's id
-// for its rows; "-" where none of the view's gates or kinds gives it), one
-// space apart; or, with no row, a line naming the point.
+// for its rows; "-" where none of the view's gates or kinds gives it), and
+// for a turn row (W-M3.1) the From of the window the replay read and its
+// unit ("-" for a gate's row of the whole turn), one space apart; or, with
+// no row, a line naming the point.
 
 // reportLedger prints sessionID's ledger to stdout.
 func reportLedger(sessionID string, stdout io.Writer) error {
@@ -75,7 +77,7 @@ func ledgerText(r stopReplay) string {
 	}
 	families := ledgerFamilies(v, r.Turn)
 	for _, o := range v.Obligations {
-		b.WriteString(ledgerRow(o, families[o.ID]))
+		b.WriteString(ledgerRow(o, families[o.ID], r.Turn))
 	}
 	return b.String()
 }
@@ -157,8 +159,11 @@ func ledgerFamilies(v verify.StopView, turn verify.Window) map[string]string {
 	return out
 }
 
-// ledgerRow is o as one line, family "" printed as "-".
-func ledgerRow(o verify.Obligation, family string) string {
+// ledgerRow is o as one line, family "" printed as "-". A turn row's id
+// digests its window's From and its Unit, which the family names neither of,
+// so a turn row adds both: turn's From, turn being the window the replay
+// read its turn rows over, and the Unit, "" printed as "-" (W-M3.1).
+func ledgerRow(o verify.Obligation, family string, turn verify.Window) string {
 	ev := "-"
 	if len(o.Evidence) > 0 {
 		seqs := make([]string, len(o.Evidence))
@@ -170,5 +175,13 @@ func ledgerRow(o verify.Obligation, family string) string {
 	if family == "" {
 		family = "-"
 	}
-	return strings.Join([]string{o.ID, o.Scope, string(o.Kind), o.Source, string(o.State), ev, family}, " ") + "\n"
+	cols := []string{o.ID, o.Scope, string(o.Kind), o.Source, string(o.State), ev, family}
+	if o.Scope == verify.ScopeTurn {
+		unit := o.Unit
+		if unit == "" {
+			unit = "-"
+		}
+		cols = append(cols, strconv.FormatInt(turn.From, 10), unit)
+	}
+	return strings.Join(cols, " ") + "\n"
 }

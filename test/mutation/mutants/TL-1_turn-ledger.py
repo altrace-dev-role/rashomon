@@ -51,3 +51,9 @@ m("TL-1 the ledger verb names no turn row's family", "cmd/rashomon/report_ledger
   "\t\tif o.Scope == verify.ScopeTurn {\n",
   "\t\tif false {\n",
   "TestReportLedger_NamesATurnRowsFamily")
+# 14:54 item (a), its second half: a turn row's id digests its window's From
+# and its Unit, which the family names neither of, so the verb prints both.
+m("TL-1 the ledger verb prints no turn row's window or unit", "cmd/rashomon/report_ledger.go",
+  "\t\tcols = append(cols, strconv.FormatInt(turn.From, 10), unit)\n",
+  "\t\t_ = unit\n",
+  "TestReportLedger_NamesATurnRowsFamily")

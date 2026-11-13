@@ -187,7 +187,8 @@ func (f *lwFixture) out() lwOut {
 // id digests, recomputed here over v's gates (Family, or Gate for a declared
 // row) and expected kinds, one space apart, one row to a line. A turn row's
 // family is found by trying every From up to the point, not the window the
-// verb reads, so the two derive it apart.
+// verb reads, so the two derive it apart; the row then adds the From that
+// matched and its Unit ("-" for none), as the verb prints them.
 func lwRows(v verify.StopView) string {
 	var b strings.Builder
 	for _, o := range v.Obligations {
@@ -207,23 +208,31 @@ func lwRows(v verify.StopView) string {
 				}
 			}
 		}
+		turn := ""
 		if o.Scope == verify.ScopeTurn {
+			turn = " ?"
 			for from := int64(0); from <= v.Snap.Point.Seq; from++ {
 				for _, g := range v.Snap.Gates {
 					for _, fam := range []string{g.Family, g.Gate} {
 						if verify.TurnObligationID(o.Kind, fam, verify.Window{From: from}, o.Unit) == o.ID {
 							family = fam
+							turn = " " + strconv.FormatInt(from, 10)
 						}
 					}
 				}
 			}
+			unit := o.Unit
+			if unit == "" {
+				unit = "-"
+			}
+			turn += " " + unit
 		}
 		for _, e := range v.Expected {
 			if verify.ObligationID(o.Scope, o.Kind, e.Kind) == o.ID {
 				family = e.Kind
 			}
 		}
-		fmt.Fprintf(&b, "%s %s %s %s %s %s %s\n", o.ID, o.Scope, o.Kind, o.Source, o.State, ev, family)
+		fmt.Fprintf(&b, "%s %s %s %s %s %s %s%s\n", o.ID, o.Scope, o.Kind, o.Source, o.State, ev, family, turn)
 	}
 	return b.String()
 }
@@ -559,9 +568,11 @@ func TestLW1p_ReportLedgerNamesASpecRulesRule(t *testing.T) {
 
 // TestReportLedger_NamesATurnRowsFamily: a turn row (W-M3.1) digests its
 // window's From, its gate's family and its unit, so the verb names the gate
-// on it from the window the replay read: spec:unit, never "-". Witness: the
-// verb prints turn rows, and its rows equal lwRows', which finds each turn
-// row's family by every From instead.
+// on it from the window the replay read, spec:unit, never "-", and prints
+// that From and the unit, "-" here, since no caller fills UnitOf before
+// W-M3.3: nine fields. Witness: the verb prints turn rows, and its rows
+// equal lwRows', which finds each turn row's family and From by every From
+// instead.
 func TestReportLedger_NamesATurnRowsFamily(t *testing.T) {
 	f := newLW(t)
 	f.bind(lwSpec("unit"))
@@ -572,12 +583,12 @@ func TestReportLedger_NamesATurnRowsFamily(t *testing.T) {
 	n := 0
 	for _, line := range strings.Split(strings.TrimSuffix(o.rows, "\n"), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) != 7 || fields[1] != verify.ScopeTurn {
+		if len(fields) < 2 || fields[1] != verify.ScopeTurn {
 			continue
 		}
 		n++
-		if fields[6] != "spec:unit" {
-			t.Errorf("turn row %q, want its family column spec:unit", line)
+		if len(fields) != 9 || fields[6] != "spec:unit" || fields[8] != "-" {
+			t.Errorf("turn row %q, want nine fields: family spec:unit, its window's From, unit -", line)
 		}
 	}
 	if n == 0 {
