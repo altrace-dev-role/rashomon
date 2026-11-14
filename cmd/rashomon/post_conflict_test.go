@@ -408,21 +408,22 @@ func TestConflictFindings_CapAtNudgeWithNoStopForm(t *testing.T) {
 }
 
 // TestPostConflicts_RecordScopeV4HoldsNoPath (D4): at record scope v4 the
-// row's unit and subject are digests and its unit path is empty, and the
-// note still names the unit.
+// session keeps no content, so it holds no path: with the session-content
+// marker set and the spec bound, the prompt stores no conflict base, and the
+// edit across the rule's boundary prints no note and leaves no
+// conflict_check. Break: keep content below v5 on either side, and the base
+// or the note appears.
 func TestPostConflicts_RecordScopeV4HoldsNoPath(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV4, true)
 	s.prompt("fix " + cfGraph)
-	if out := s.land("toolu_cf1", cfGraph, cfCross); !strings.Contains(out, cfNote) {
-		t.Errorf("post output %q lacks %q", out, cfNote)
+	if _, err := os.Stat(s.basePath()); !os.IsNotExist(err) {
+		t.Errorf("a conflict base at v4 (stat %v); want none", err)
 	}
-	cs := s.run().ConflictChecks
-	if len(cs) != 1 || len(cs[0].Rows) != 1 {
-		t.Fatalf("checks %+v, want one row", cs)
+	if out := s.land("toolu_cf1", cfGraph, cfCross); strings.Contains(out, cfNote) {
+		t.Errorf("post output %q holds %q; want no note at v4", out, cfNote)
 	}
-	if r := cs[0].Rows[0]; r.UnitPath != "" || !cfIsDigest(r.Unit) || !cfIsDigest(r.Subject) ||
-		strings.Contains(r.Unit+r.Subject, "internal") {
-		t.Errorf("row %+v, want digests and no path", r)
+	if cs := s.run().ConflictChecks; len(cs) != 0 {
+		t.Errorf("checks %+v, want none at v4", cs)
 	}
 }
 

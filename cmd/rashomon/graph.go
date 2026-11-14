@@ -250,8 +250,10 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 
 // graphBriefWith is graphBrief with specOf, the prompt's spec read on first
 // use, whose rules the conflict base takes (writeConflictBase); nil writes
-// no base. scopeOf is the store's record scope, read on first use, which
-// the evidence file waits on (writeGraphEvidence); nil writes none.
+// no base. scopeOf is the store's record scope, read once a brief exists and
+// handed, as one answer, to the evidence file (writeGraphEvidence), the unit
+// briefs and the conflict base, each of which keeps content only at v5; nil
+// reads none and writes none of the three.
 func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, specOf func() *spec.Compiled, scopeOf func() string) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
 		return indexBrief{}, false
@@ -268,9 +270,10 @@ func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, s
 	opt.Rel = relTo(cwd, root)
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
-	writeGraphEvidence(storeRoot, sessionID, promptID, b, scopeOf)
-	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt)
-	writeConflictBase(storeRoot, sessionID, root, h.Repo, s, rev, specOf)
+	v5 := storeRoot != "" && scopeOf != nil && scopeOf() == store.RecordScopeV5
+	writeGraphEvidence(storeRoot, sessionID, promptID, b, v5)
+	writeUnitBriefs(storeRoot, sessionID, promptID, root, h.Repo, s, rev, b, opt, v5)
+	writeConflictBase(storeRoot, sessionID, root, h.Repo, s, rev, specOf, v5)
 	ib := indexBrief{Brief: b, Repo: h.Repo}
 	if first := b.FirstKey(); first != "" {
 		n, _ := s.Node(first, rev)
@@ -371,9 +374,10 @@ func briefFinding(b indexBrief, m, rec render.Message, key string, afterSeq int6
 // graph/<session>-<prompt>.txt where the store's record scope is v5. The
 // file names the brief's ids and paths in clear; at v4 the steer line keeps
 // the same brief only as keyed digests and counts (Brief.Record), so at v4
-// nothing is written. scopeOf is read here alone, once a brief exists.
-func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief, scopeOf func() string) {
-	if storeRoot == "" || scopeOf == nil || scopeOf() != store.RecordScopeV5 {
+// nothing is written. v5 is the store's record scope at v5, which
+// graphBriefWith reads once, a brief built, for the three writers.
+func writeGraphEvidence(storeRoot, sessionID, promptID string, b engine.Brief, v5 bool) {
+	if storeRoot == "" || !v5 {
 		return
 	}
 	dir := filepath.Join(storeRoot, graph.StoreDir)

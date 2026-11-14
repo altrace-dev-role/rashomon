@@ -243,8 +243,10 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	decl.StoreNamed = rootNamed(p.ToolInput, h.st.Root())
 	// The record-scope gate, after every field is filled and before the
 	// caps: a content field the consent on file does not cover is left out
-	// and reads no_consent (store.GateDeclaration), never oversize.
-	store.GateDeclaration(&decl, recordScope(h.st))
+	// and reads no_consent (store.GateDeclaration), never oversize. The
+	// overlay writer below takes the same read of the scope.
+	scope := recordScope(h.st)
+	store.GateDeclaration(&decl, scope)
 	// The caps: a value over its cap is left out of the record rather than
 	// cut, and said so on the coverage record (REC-52), so no payload inside
 	// the intake limit can make a record the store would refuse.
@@ -261,7 +263,7 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	h.opened, h.declaredSeq = true, seq
 
 	fault.Inject(fault.PointHookAfterDeclaration)
-	h.writeOverlay(&p, declared)
+	h.writeOverlay(&p, declared, scope == store.RecordScopeV5)
 	return nil
 }
 

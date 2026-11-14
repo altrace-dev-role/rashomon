@@ -97,3 +97,25 @@ func TestSessionContent_MarkerFailureKeepsTheLine(t *testing.T) {
 		t.Errorf("record_scope marker = %q (%v), want v5", scope, err)
 	}
 }
+
+// TestSessionContent_AFailedScopeWriteLeavesContentOnScopeAbsent: the three
+// markers are written independently, so a consent at scope 6 at v5 whose
+// record_scope marker write fails leaves the session-content marker on and
+// the record_scope marker absent, which the hook reads as v4. This is the
+// state the prompt and post tests of the v5 content rule start from
+// (cmd/rashomon TestPrompt_ContentKeptOnlyAtScopeV5 and
+// TestPost_MarkerOnScopeMarkerAbsentKeepsNothing): no reader may keep
+// content on the content marker alone. Break: write the content marker from
+// the scope marker's result, and the content marker is absent here.
+func TestSessionContent_AFailedScopeWriteLeavesContentOnScopeAbsent(t *testing.T) {
+	root := t.TempDir()
+	failMarkerWrites(t)
+	err := Append(root, record(ViaConsentYes, 6, 2, RecordScopeV5))
+	if !errors.Is(err, ErrScopeMarker) || errors.Is(err, ErrSessionContentMarker) {
+		t.Fatalf("Append = %v, want ErrScopeMarker and not ErrSessionContentMarker", err)
+	}
+	if got, ok := contentMarker(t, root); !ok || strings.TrimSpace(got) != "1" {
+		t.Errorf("content marker %q present %v, want \"1\"", got, ok)
+	}
+	wantNoMarker(t, root, "after a failed scope-marker write")
+}

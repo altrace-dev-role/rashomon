@@ -251,6 +251,10 @@ type overlayCall struct {
 	// seq the seq of the record the group is placed at.
 	kind string
 	seq  int64
+	// v5 is the call's record scope at v5, as the writer's own record read it
+	// (the declaration's or the execution's gate), so the overlay reads no
+	// scope of its own. Its zero value keeps nothing.
+	v5 bool
 	// gate, when set, receives the writer's keptGoEdit, so a post's
 	// unit-brief read takes it rather than evaluating the gate again.
 	gate *keptGate
@@ -290,17 +294,20 @@ func overlayPath(p *string, cwd string) string {
 
 // keptGoEdit is the Go file a Write, Edit or MultiEdit that landed at seq
 // names, in a session whose content is kept: its absolute path, the index
-// root over cwd, and its slash path under that root. The checks run
-// cheapest first, so a session with no session-content marker pays one
-// marker read and decodes no input: the tool, the seq, the session, the
-// marker, the Go resolver's claim (overlayPath) on the path the input names,
-// an index (graph.FindIndex) and the file under its root. declared is that
+// root over cwd, and its slash path under that root. Content is kept only
+// where the record scope is v5 (v5, as the caller's record read it) and the
+// session-content marker is set. The checks run cheapest first, so a call
+// below v5 reads nothing and allocates nothing, and a session with no
+// session-content marker pays one marker read and decodes no input: the
+// scope, the tool, the seq, the session, the marker, the Go resolver's claim
+// (overlayPath) on the path the input names, an index (graph.FindIndex) and
+// the file under its root. declared is that
 // path where the caller decoded it already (the declaration's DeclaredPath),
 // nil to decode it here, after the marker. A post's unit-brief read
 // (Post.LandedGoEdit) takes the overlay writer's result (keptGate), so their
 // gates cannot part and a call evaluates the gate once.
-func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, declared *string, cwd string, seq int64) (path, root, rel string, ok bool) {
-	if !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {
+func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, declared *string, cwd string, seq int64, v5 bool) (path, root, rel string, ok bool) {
+	if !v5 || !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {
 		return "", "", "", false
 	}
 	if declared == nil {
@@ -382,7 +389,7 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 			og, root, rel, ok = graph.OverlayGroup{}, "", "", false
 		}
 	}()
-	path, at, under, kept := keptGoEdit(c.st, c.session, c.tool, c.input, c.path, c.cwd, c.seq)
+	path, at, under, kept := keptGoEdit(c.st, c.session, c.tool, c.input, c.path, c.cwd, c.seq, c.v5)
 	if c.gate != nil {
 		*c.gate = keptGate{root: at, rel: under, ok: kept}
 	}
@@ -416,10 +423,11 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 
 // writeOverlay is the PreToolUse writer: the declared group, at the seq the
 // declaration landed at (0 when it did not, which writes nothing), for
-// declared, the path the declaration decoded, so the input is decoded once.
-func (h *Handler) writeOverlay(p *Payload, declared *string) {
+// declared, the path the declaration decoded, so the input is decoded once,
+// and v5, the declaration's record scope at v5.
+func (h *Handler) writeOverlay(p *Payload, declared *string, v5 bool) {
 	overlayCall{st: h.st, session: h.sessionID, toolUseID: h.toolUseID, cwd: p.CWD, tool: p.ToolName, input: p.ToolInput,
-		path: declared, kind: graph.OverlayDeclared, seq: h.declaredSeq}.write()
+		path: declared, kind: graph.OverlayDeclared, seq: h.declaredSeq, v5: v5}.write()
 }
 
 // writeOverlay is the PostToolUse writer: the landed group, a full one, at
@@ -432,7 +440,7 @@ func (p *Post) writeOverlay() {
 		return
 	}
 	og, root, rel, ok := overlayCall{st: p.st, session: p.sessionID, toolUseID: p.toolUseID, cwd: p.cwd, tool: p.toolName,
-		input: p.toolInput, kind: graph.OverlayLanded, seq: p.landedSeq, gate: &p.gate}.write()
+		input: p.toolInput, kind: graph.OverlayLanded, seq: p.landedSeq, v5: p.scopeV5, gate: &p.gate}.write()
 	if ok {
 		p.landed, p.landedKept = LandedGoEdit{Root: root, Rel: rel, Group: og}, true
 	}

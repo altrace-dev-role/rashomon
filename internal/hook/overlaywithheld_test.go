@@ -12,20 +12,21 @@ import (
 // TestHook_AWithheldPathReachesTheWriterWhole: the record-scope gate and the
 // caps withhold a declaration's file_path from the record, never from the
 // overlay writer, which takes the path the declaration decoded before either
-// ran (handle.go's declared). At v4 the record leaves the path out as
-// no_consent; at v5 a path over store.MaxPathBytes is left out as oversize (an
-// absolute path padded with "./" segments, which the writer cleans to the
-// file, so no file system refuses it for its length). Either way the
-// writer's one group names the file, at the declaration's seq. Break: cut the
-// path in place where the caps withhold it, or have the gate blank it; the
-// writer then names no Go file and writes no group.
+// ran (handle.go's declared). At v5 a path over store.MaxPathBytes is left
+// out as oversize (an absolute path padded with "./" segments, which the
+// writer cleans to the file, so no file system refuses it for its length),
+// and the writer's one group names the file, at the declaration's seq. At v4
+// the record leaves the path out as no_consent and the writer keeps nothing,
+// since only v5 keeps content: no log, no group. Break: cut the path in place
+// where the caps withhold it; the v5 row's writer then names no Go file and
+// writes no group. Break: keep content below v5; the v4 row finds a group.
 func TestHook_AWithheldPathReachesTheWriterWhole(t *testing.T) {
 	for _, tc := range []struct {
 		name, scope, reason string
-		pad                 bool
+		pad, kept           bool
 	}{
-		{"v4", store.RecordScopeV4, "no_consent", false},
-		{"v5 over MaxPathBytes", store.RecordScopeV5, "oversize", true},
+		{"v4", store.RecordScopeV4, "no_consent", false, false},
+		{"v5 over MaxPathBytes", store.RecordScopeV5, "oversize", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newOvFix(t, "1\n")
@@ -62,6 +63,12 @@ func TestHook_AWithheldPathReachesTheWriterWhole(t *testing.T) {
 				t.Fatal("no declaration of toolu_wh")
 			}
 			groups, _, ok := f.read()
+			if !tc.kept {
+				if ok || len(groups) != 0 {
+					t.Errorf("at %s the log exists %v with %d groups; want no log and no group", tc.scope, ok, len(groups))
+				}
+				return
+			}
 			if !ok || len(groups) != 1 {
 				t.Fatalf("log exists %v, %d groups; want the writer's one group", ok, len(groups))
 			}

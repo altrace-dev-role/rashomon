@@ -372,7 +372,8 @@ func TestBriefUnits_EachUnitOnceInLineOrderAtMostEight(t *testing.T) {
 }
 
 // TestGraphBrief_StoresEachUnitsBriefWhenConsented (D1, D2, D3): with the
-// session-content marker set, the prompt hook stores the brief UnitBrief
+// session-content marker set at record scope v5, the one scope that keeps
+// content, the prompt hook stores the brief UnitBrief
 // gives each unit of its brief's keyed lines, under the session's
 // unit-brief directory by the unit's file name, and no other file; each
 // reads back to that brief, names its unit and first row by global id and
@@ -387,6 +388,9 @@ func TestGraphBrief_StoresEachUnitsBriefWhenConsented(t *testing.T) {
 	const prompt = "make session expiry in sessions.py respect the org-level timeout override."
 	consented, unconsented := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(consented, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteRecordScopeMarker(consented, store.RecordScopeV5); err != nil {
 		t.Fatal(err)
 	}
 	gb, ok := graphBrief(consented, cwd, "s1", "p1", []byte(prompt))

@@ -71,13 +71,15 @@ func conflictBasePath(storeRoot, sessionID, root string) string {
 
 // writeConflictBase stores the conflict base for the index at root, loaded
 // as s at rev, under the rules the spec specOf reads and the index's
-// knowledge rows give, while the store keeps the session's content. A base
+// knowledge rows give, while the store keeps the session's content: record
+// scope v5 and the session-content marker. A base
 // whose head is the file's own (same commit, repository and rules) is not
 // rebuilt, so a session pays the slice once per commit and rule set. With
 // no rule, or a base over the cap, no base is left. A failed write is left:
-// the post reads no base and checks nothing.
-func writeConflictBase(storeRoot, sessionID, root, repo string, s *graph.Store, rev graph.Rev, specOf func() *spec.Compiled) {
-	if storeRoot == "" || specOf == nil || !store.SessionContentMarker(storeRoot) {
+// the post reads no base and checks nothing. v5 is the store's record scope
+// at v5, as graphBriefWith read it.
+func writeConflictBase(storeRoot, sessionID, root, repo string, s *graph.Store, rev graph.Rev, specOf func() *spec.Compiled, v5 bool) {
+	if storeRoot == "" || specOf == nil || !v5 || !store.SessionContentMarker(storeRoot) {
 		return
 	}
 	rows, _ := knowledge.ReadDir(root)
