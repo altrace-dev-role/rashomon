@@ -32,8 +32,9 @@ func rowKindCompiles(kind string) bool { return kind == KindDecision }
 
 // compiledControl is the HardControl of every compiled rule, on spec's task
 // rule precedent: one fixed sentence naming rashomon and the source row. A
-// decision is not enforced by any evaluator today
-// (spec.UnenforcedRuleKinds), so the sentence says it blocks nothing.
+// compiled decision raises a conflict finding, capped at nudge with no stop
+// form (cmd/rashomon TestConflictFindings_CapAtNudgeWithNoStopForm), so the
+// sentence says it blocks nothing.
 const compiledControl = "rashomon compiled this rule from approved knowledge row %s; it is a nudge and blocks nothing"
 
 // Rules compiles knowledge rows to spec rules. It admits a row whose status

@@ -43,26 +43,32 @@ var m2Kinds = []struct {
 	{store.TypeConflictCheck + " row", "", reflect.TypeFor[store.ConflictCheckRow](), m2RowFields},
 }
 
-// m2RowFields are a conflict_check row's fields and their Holds words; the
-// unit_path words carry the v4 form, which keeps no path.
+// m2RowFields are a conflict_check row's fields and their Holds words. A
+// conflict_check is written only where the session's content is kept,
+// record scope v5, so unit_path's words end at the path: no v4 form.
 var m2RowFields = map[string]string{
 	"kind":      "its kind and its rule's id in the clear",
 	"rule_id":   "its kind and its rule's id in the clear",
 	"key":       "a keyed digest of its identity",
 	"unit":      "its unit and its subject (a symbol or file) as global ids",
 	"subject":   "its unit and its subject (a symbol or file) as global ids",
-	"unit_path": "with the unit's path at record scope v5, or keyed digests of the two and no path at v4",
+	"unit_path": "as global ids with the unit's path;",
 }
 
 // m2StoredWords are what the STORED paragraph owes for a rule's id kept in
 // the clear, and m2KeptWords what KEPT owes for the record's rows about a
-// kept Go edit, the v4 conflict row included.
+// kept Go edit; the conflict row's words end at the unit's path.
 var (
 	m2StoredWords = []string{"the rule's id in the clear", "never a word of the plan"}
 	m2KeptWords   = []string{"why (absent, stale or refused) and a keyed digest of the unit",
 		"each conflict the edit leaves, with its kind, its rule's id",
-		"or keyed digests of the two and no path where the record scope is v4"}
+		"the symbol or file it is about, with the unit's path."}
 )
+
+// m2V4ConflictWords are the v4 form of a conflict row as the screen said
+// it before a conflict_check was kept at v5 only; neither the records row's
+// Holds nor KEPT may say them.
+var m2V4ConflictWords = []string{"no path at v4", "no path where the record scope is v4"}
 
 // m2SpecNever is what every never-stored sentence says of a spec file (the
 // screen's, README's and the plugin description's), and m2RecordNever what
@@ -203,6 +209,11 @@ func TestM2Records_TheScreenNamesEachKindM2Writes(t *testing.T) {
 	readme := strings.Join(strings.Fields(string(b)), " ")
 	for _, f := range m2RecordFaults(holds, stored, kept) {
 		t.Error(f)
+	}
+	for _, w := range m2V4ConflictWords {
+		if strings.Contains(holds, w) || strings.Contains(kept, w) {
+			t.Errorf("the records row's Holds or KEPT still says %q; a conflict_check is kept at record scope v5 only", w)
+		}
 	}
 	for _, f := range m2NeverFaults(never, readme, PluginDescription, neverHolds) {
 		t.Error(f)

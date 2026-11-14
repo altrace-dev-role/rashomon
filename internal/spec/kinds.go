@@ -11,13 +11,18 @@ const (
 // RulePredicates is the closed list of decision predicates.
 var RulePredicates = []string{PredicatePathsUntouched, PredicateSymbolPresent}
 
-// UnenforcedRuleKinds is a known limit: kinds Parse accepts that no
-// evaluator enforces yet. A rule of one of them changes no verdict, ledger
-// row or finding; the prompt reader names it only when its Paths cover the
-// prompt's file, as for any path rule. Each card that enforces a kind
-// deletes it here in the same commit, and the milestone's close reads this
-// list, so an accepted-but-inert kind is never silent.
-var UnenforcedRuleKinds = []RuleKind{Boundary, Decision, Reuse}
+// UnenforcedRuleKinds is a known limit, defined on one source: the kinds
+// Parse accepts whose rule, written in a spec file, changes no verdict,
+// ledger row or finding at any record scope. The prompt reader names such
+// a rule only when its Paths cover the prompt's file, as for any path rule.
+// A decision compiled from an approved knowledge row is outside the list:
+// it is not a spec file's rule, and the conflict and plan checks read it,
+// as docs/autosteer/PLAN.md's Known limit states. Each card that enforces a
+// kind for a spec file deletes it here in the same commit, and the
+// milestone's close reads this list, so an accepted-but-inert kind is
+// never silent (cmd/rashomon TestRuleKinds_EnforcedChangeAFinding holds
+// the list to its rows, both ways).
+var UnenforcedRuleKinds = []RuleKind{Decision, Reuse}
 
 // ruleKindNames is RuleKinds as the strings Parse checks a rule's kind
 // against. It converts on every call, not into a package variable, so
