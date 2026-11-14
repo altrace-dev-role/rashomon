@@ -13,6 +13,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -142,10 +143,11 @@ func encodeConflictBase(head conflictBaseHead, rules []engine.Rule, cb engine.Co
 	return append(append(append(hb, '\n'), bb...), '\n'), nil
 }
 
-// readConflictBaseHead is the head of the base at path, false for none or a
-// head that does not read back.
+// readConflictBaseHead is the head of the base at path, false for none, a
+// path that is not a regular file (regfile.Open: a named pipe is a miss at
+// once, never a wait), or a head that does not read back.
 func readConflictBaseHead(path string) (conflictBaseHead, bool) {
-	f, err := os.Open(path)
+	f, err := regfile.Open(path)
 	if err != nil {
 		return conflictBaseHead{}, false
 	}
@@ -160,11 +162,12 @@ func readConflictBaseHead(path string) (conflictBaseHead, bool) {
 	return h, true
 }
 
-// readConflictBase is the base at path, false for none, one over the cap, or
-// one that does not read back whole at this version (a torn or foreign file
-// is a miss, never a guess).
+// readConflictBase is the base at path, false for none, a path that is not
+// a regular file (regfile.Open: a named pipe is a miss at once, never a
+// wait), one over the cap, or one that does not read back whole at this
+// version (a torn or foreign file is a miss, never a guess).
 func readConflictBase(path string) (conflictBase, bool) {
-	f, err := os.Open(path)
+	f, err := regfile.Open(path)
 	if err != nil {
 		return conflictBase{}, false
 	}

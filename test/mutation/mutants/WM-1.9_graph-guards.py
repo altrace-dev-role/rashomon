@@ -28,8 +28,8 @@ m("WM-1.9 a packed ref is not read", G,
   "\t\t} else {\n\t\t\th = packedRef(filepath.Join(commonDir, \"packed-refs\"), ref)\n\t\t}\n", "\t\t}\n",
   "TestHeadCommit_ReadsThroughAWorktree")
 m("WM-1.9 refs are read under the worktree's own directory", G,
-  "\tgitDir, commonDir, ok := baseline.GitDirs(root)\n\tif !ok {\n\t\treturn \"C1\"\n\t}\n",
-  "\tgitDir, commonDir, ok := baseline.GitDirs(root)\n\tif !ok {\n\t\treturn \"C1\"\n\t}\n\tcommonDir = gitDir\n",
+  "\t\treturn \"\", err\n\t}\n\thead, err := os.ReadFile(filepath.Join(gitDir, \"HEAD\"))\n",
+  "\t\treturn \"\", err\n\t}\n\tcommonDir = gitDir\n\thead, err := os.ReadFile(filepath.Join(gitDir, \"HEAD\"))\n",
   "TestHeadCommit_ReadsThroughAWorktree")
 m("WM-1.9 the hook's evidence file holds the prompt", G,
   "\ttext := b.Evidence() + \"\\nbrief:\\n\" + b.Text() + \"\\n\"\n", "\ttext := b.Explain() + \"\\nbrief:\\n\" + b.Text() + \"\\n\"\n",
@@ -40,7 +40,7 @@ m("WM-1.9 Evidence names the matched words", "internal/graph/engine/brief.go",
   "TestEvidence_HoldsNoWordOfThePrompt")
 R = "internal/baseline/repoid.go"
 m("WM-1.9 a .git file that is no pointer is taken as one", R,
-  "\t\trest, ok := strings.CutPrefix(strings.TrimSpace(string(b)), \"gitdir: \")\n\t\tif !ok {\n\t\t\treturn \"\", \"\", false\n\t\t}\n",
+  "\t\trest, ok := strings.CutPrefix(strings.TrimSpace(string(b)), \"gitdir: \")\n\t\tif !ok {\n\t\t\treturn \"\", \"\", ErrNotRepository\n\t\t}\n",
   "\t\trest := strings.TrimSpace(string(b))\n",
   "TestGitDirs_ResolvesThePointerAndTheCommonDir")
 m("WM-1.9 a relative gitdir pointer is not joined to the root", R,

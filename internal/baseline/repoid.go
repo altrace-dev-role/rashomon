@@ -3,10 +3,30 @@ package baseline
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
+
+// MaxGitFileBytes is the most this package reads of each git file it
+// reads: the .git pointer file, commondir and config. It bounds a file git
+// or a person writes, not a size measured from one. Git sets no limit on a
+// config, and crossing the cap is a hard failure, so the cap sits far above
+// a working file. A file over it is refused, never read in part: a config
+// cut short could lose the origin's line and give another id.
+const MaxGitFileBytes = 1 << 20
+
+// ErrNotRepository is GitDirsErr's error when root is no repository: no
+// .git, or a .git file that is no gitdir: pointer. RepoID's path form and
+// headCommit's C1 are for it alone, never for a refused read.
+var ErrNotRepository = errors.New("not a git repository")
 
 // RepoID is the repository's identity across machines and checkouts (HD11,
 // PLAN B2): the normalized url (NormalizeOrigin) of the git remote named
@@ -18,19 +38,39 @@ import (
 // entry, PLAN B2). The root-commit form the plan names for a repository
 // with commits and no remote is not produced: the root commit sits behind
 // packed objects this program does not read, and a form that changed when
-// git packed them would be no identity. "" is "", ephemeral.
+// git packed them would be no identity. "" is "", ephemeral. A git file
+// that is there and refused (RepoIDErr's error: not a regular file, over
+// MaxGitFileBytes, or a read that failed) is "", ephemeral too: no id,
+// never the path form, which would key the repository's rows apart from
+// its origin's. The hook path reads "" as nothing to capture.
 func RepoID(root string) (rid string, ephemeral bool) {
-	if root == "" {
+	rid, ephemeral, err := RepoIDErr(root)
+	if err != nil {
 		return "", true
 	}
+	return rid, ephemeral
+}
+
+// RepoIDErr is RepoID with a refused git read as its error, naming the file
+// (GitDirsErr, and the config read through the same cap), for a caller off
+// the hook path that fails loud rather than key anything under no id: graph
+// index and graph knowledge import.
+func RepoIDErr(root string) (rid string, ephemeral bool, err error) {
+	if root == "" {
+		return "", true, nil
+	}
 	key := Key(root)
-	if url, ok := originURL(key); ok {
+	url, ok, err := originURL(key)
+	if err != nil {
+		return "", true, err
+	}
+	if ok {
 		if n := NormalizeOrigin(url); n != "" {
-			return n, false
+			return n, false, nil
 		}
 	}
 	sum := sha256.Sum256([]byte(key))
-	return "path:" + hex.EncodeToString(sum[:]), true
+	return "path:" + hex.EncodeToString(sum[:]), true, nil
 }
 
 // GitDirs is the git directory of the repository at root and its common
@@ -41,24 +81,41 @@ func RepoID(root string) (rid string, ephemeral bool) {
 // directory again when there is no commondir file. HEAD is read from the
 // git directory; config, the branch refs and packed-refs from the common
 // one, which is where git keeps them for every worktree. false with no
-// .git, or a .git file that is no pointer.
+// .git, a .git file that is no pointer, or a refused read (GitDirsErr).
 func GitDirs(root string) (gitDir, commonDir string, ok bool) {
+	gitDir, commonDir, err := GitDirsErr(root)
+	return gitDir, commonDir, err == nil
+}
+
+// GitDirsErr is GitDirs with its reason. ErrNotRepository is no .git, or a
+// .git file that is no pointer: GitDirs' false before reads were refused.
+// Any other error is a refusal naming the file: a .git that cannot be
+// stat'd, or a pointer or commondir file that is not a regular file (a
+// named pipe is refused at once, never waited on), is over MaxGitFileBytes,
+// or cannot be read. Only a commondir that is absent (absent: not found,
+// or a path through a regular file) gives the git directory as the common
+// one. A refused commondir is never that fall back, which would read the
+// worktree's own config, another file.
+func GitDirsErr(root string) (gitDir, commonDir string, err error) {
 	if root == "" {
-		return "", "", false
+		return "", "", ErrNotRepository
 	}
 	dir := filepath.Join(root, ".git")
 	st, err := os.Stat(dir)
-	if err != nil {
-		return "", "", false
+	switch {
+	case absent(err):
+		return "", "", ErrNotRepository
+	case err != nil:
+		return "", "", err
 	}
 	if !st.IsDir() {
-		b, err := os.ReadFile(dir)
+		b, err := readGitFile(dir)
 		if err != nil {
-			return "", "", false
+			return "", "", err
 		}
 		rest, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
 		if !ok {
-			return "", "", false
+			return "", "", ErrNotRepository
 		}
 		dir = rest
 		if !filepath.IsAbs(dir) {
@@ -66,29 +123,69 @@ func GitDirs(root string) (gitDir, commonDir string, ok bool) {
 		}
 	}
 	common := dir
-	if b, err := os.ReadFile(filepath.Join(dir, "commondir")); err == nil {
+	switch b, err := readGitFile(filepath.Join(dir, "commondir")); {
+	case err == nil:
 		common = strings.TrimSpace(string(b))
 		if !filepath.IsAbs(common) {
 			common = filepath.Join(dir, common)
 		}
+	case !absent(err):
+		return "", "", err
 	}
-	return dir, common, true
+	return dir, common, nil
+}
+
+// absent reports an error that says the path names no file: not found, or
+// (ENOTDIR, on unix) a path through a regular file, which windows reports
+// as not found. A pointer to a missing or plain-file git directory is so no
+// repository git would read, and RepoID gives it the path form, as before
+// reads were refused (TestRepoID_APathThroughAFileIsAbsent).
+func absent(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// readGitFile is the file at p, opened through regfile.Open (a named pipe,
+// a socket, a device or a directory is refused at once, never waited on)
+// and read up to MaxGitFileBytes; a file over the cap is an error naming it
+// and the cap, never read in part. A missing file is the open's own error.
+func readGitFile(p string) ([]byte, error) {
+	f, err := regfile.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, MaxGitFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > MaxGitFileBytes {
+		return nil, fmt.Errorf("%s: over %d bytes", p, MaxGitFileBytes)
+	}
+	return b, nil
 }
 
 // originURL is the url of the remote named origin in the config of the
-// repository at key (GitDirs' common directory); false with no repository,
-// no config or no such remote. include and includeIf directives are not
-// followed.
-func originURL(key string) (string, bool) {
-	_, common, ok := GitDirs(key)
-	if !ok {
-		return "", false
+// repository at key (GitDirsErr's common directory); false with no
+// repository, no config or no such remote; an error for a refused read of
+// the pointer, commondir or config (readGitFile). include and includeIf
+// directives are not followed.
+func originURL(key string) (string, bool, error) {
+	_, common, err := GitDirsErr(key)
+	switch {
+	case errors.Is(err, ErrNotRepository):
+		return "", false, nil
+	case err != nil:
+		return "", false, err
 	}
-	b, err := os.ReadFile(filepath.Join(common, "config"))
-	if err != nil {
-		return "", false
+	b, err := readGitFile(filepath.Join(common, "config"))
+	switch {
+	case absent(err):
+		return "", false, nil
+	case err != nil:
+		return "", false, err
 	}
-	return configValue(string(b), `[remote "origin"]`, "url")
+	url, ok := configValue(string(b), `[remote "origin"]`, "url")
+	return url, ok, nil
 }
 
 // configValue is key's last value under section in a git config text,

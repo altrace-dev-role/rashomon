@@ -64,6 +64,8 @@ var res5Dirs = []string{
 // (256 KiB) and refuses a file over it before the decoder sees it; the post
 // hook reads it to check a Go edit against its prompt's base
 // (conflictpost.go). Both refuse a head whose v is not conflictBaseVersion.
+// Both open through regfile.Open, so a named pipe at the path is a miss,
+// never a wait.
 // Neither is a closed shape: plain json.Unmarshal, no DisallowUnknownFields,
 // so a key the reader does not know is dropped, not refused. Neither
 // decodes a payload or a tool_input span.

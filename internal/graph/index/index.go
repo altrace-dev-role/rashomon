@@ -79,13 +79,16 @@ type Result struct {
 	Files  int
 }
 
-// Build indexes root at commit: the repository node (baseline.RepoID), a
-// declared node per unit, then for each language the configuration
+// Build indexes root at commit: the repository node (baseline.RepoIDErr),
+// a declared node per unit, then for each language the configuration
 // declares a unit of, that language's resolver over the files under its
 // units (a unit the resolver knows better takes the resolver's record),
 // then the knowledge records. A file outside every unit of its language,
 // and every file of an undeclared language, is not indexed. The header
 // names the repository, the commit, and each producer that wrote records.
+// A refused git read (a pointer, commondir or config that is not a regular
+// file or is over baseline.MaxGitFileBytes) is the error: no index is keyed
+// under no id, or under the path form a later build would not give.
 func Build(root, commit string, c Config) (Result, error) {
 	ps, err := producers(c)
 	if err != nil {
@@ -97,7 +100,10 @@ func Build(root, commit string, c Config) (Result, error) {
 	}
 	rev := graph.RevCommit(commit)
 	s := graph.NewStore()
-	rid, ephemeral := baseline.RepoID(root)
+	rid, ephemeral, err := baseline.RepoIDErr(root)
+	if err != nil {
+		return Result{}, err
+	}
 	s.AssertNode(repoNode(rid, ephemeral, rev))
 	for _, u := range c.Units {
 		s.AssertNode(graph.Node{ID: graph.UnitID(u.Lang, u.Path), Kind: "unit", Tier: graph.Declared, Conf: 1.0, Rev: rev,

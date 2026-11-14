@@ -40,10 +40,13 @@ func TestNormalizeOrigin_Forms(t *testing.T) {
 // scheme, scp-like and bare forms. A marker on each side of the delimiter,
 // inside the secret, appears neither in NormalizeOrigin's result nor in
 // RepoID's over a real .git/config, and no result holds an @; a refused url
-// ("") gives the path form. The control: each form with a plain secret,
-// which reads as its host and path where the secret follows a scheme or is
-// an scp-like user name alone, and is refused where an @ follows the host
-// part. Break: drop any of the three refusals.
+// ("") gives the path form. Each of the 30 results is one of two:
+// the host and path, host.example/org/repo, or "", so a result that holds
+// neither marker nor @ and is still not the host and path (a user name kept
+// with no marker in it, the host alone) fails too. The control: each form
+// with a plain secret, which reads as its host and path where the secret
+// follows a scheme or is an scp-like user name alone, and is refused where
+// an @ follows the host part. Break: drop any of the three refusals.
 func TestNormalizeOrigin_KeepsNoUserPart(t *testing.T) {
 	const left, right = "lmark7", "rmark7" // lowercase, as the host is lowercased
 	forms := []struct{ name, url, plain string }{
@@ -64,6 +67,9 @@ func TestNormalizeOrigin_KeepsNoUserPart(t *testing.T) {
 			dir := t.TempDir()
 			put(t, filepath.Join(dir, ".git", "config"), "[remote \"origin\"]\n\turl = "+url+"\n")
 			norm := NormalizeOrigin(url)
+			if norm != "" && norm != "host.example/org/repo" {
+				t.Errorf("%s, delimiter %q: NormalizeOrigin(%q) = %q; want host.example/org/repo or \"\"", f.name, d, url, norm)
+			}
 			rid, eph := RepoID(dir)
 			for what, got := range map[string]string{"NormalizeOrigin": norm, "RepoID": rid} {
 				low := strings.ToLower(got)

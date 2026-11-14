@@ -409,6 +409,8 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	if err != nil || len(recs) == 0 {
 		return graph.OverlayGroup{}, "", "", false
 	}
+	// "" is no id: a refused git read (baseline.RepoID) captures nothing,
+	// never a group under the path form, and says nothing to the user.
 	rid, _ := baseline.RepoID(at)
 	if rid == "" {
 		return graph.OverlayGroup{}, "", "", false

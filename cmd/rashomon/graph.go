@@ -80,7 +80,11 @@ func graphIndex(args []string, stdout io.Writer) error {
 		return err
 	}
 	start := time.Now()
-	r, err := index.Build(root, headCommit(root), cfg)
+	commit, err := headCommit(root)
+	if err != nil {
+		return err
+	}
+	r, err := index.Build(root, commit, cfg)
 	if err != nil {
 		return err
 	}
@@ -103,10 +107,11 @@ func graphIndex(args []string, stdout io.Writer) error {
 
 // graphKnowledge imports FILE... into the index at or above the working
 // directory: the rows are resolved against the saved graph, keyed to the
-// repository the graph is built under next (baseline.RepoID, as index.Build
-// keys it; the saved header's key is stale once a tree with no origin has
-// moved, W-M1.36), written under .rashomon/knowledge/, and the graph is
-// built again so they are in it.
+// repository the graph is built under next (baseline.RepoIDErr, as
+// index.Build keys it; the saved header's key is stale once a tree with no
+// origin has moved, W-M1.36), written under .rashomon/knowledge/, and the
+// graph is built again so they are in it. A refused git read is the error,
+// before any row is written: a row keyed under no id would match no index.
 func graphKnowledge(args []string, stdout io.Writer) error {
 	if len(args) < 2 || args[0] != "import" {
 		return errors.New("graph knowledge takes import FILE...")
@@ -123,7 +128,10 @@ func graphKnowledge(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	rid, _ := baseline.RepoID(root)
+	rid, _, err := baseline.RepoIDErr(root)
+	if err != nil {
+		return err
+	}
 	rep, err := knowledge.Import(root, args[1:], s, rid, graph.RevCommit(h.Rev.Commit))
 	if err != nil {
 		return err
@@ -187,15 +195,23 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 // headCommit is the repository's HEAD, short, read from .git without
 // running git: HEAD from the git directory, a branch ref from the common
 // directory's refs or packed-refs, so a worktree names its own branch's
-// commit (W-M1.8); C1 when root is not a repository.
-func headCommit(root string) string {
-	gitDir, commonDir, ok := baseline.GitDirs(root)
-	if !ok {
-		return "C1"
+// commit (W-M1.8); C1 when root is not a repository. A refused read of the
+// .git pointer or commondir (baseline.GitDirsErr: not a regular file, over
+// baseline.MaxGitFileBytes) is the error, so graph index fails loud rather
+// than index a repository at the commit of none. The HEAD and ref reads
+// below are not capped and are plain reads, so a named pipe at HEAD or at
+// its ref holds graph index.
+func headCommit(root string) (string, error) {
+	gitDir, commonDir, err := baseline.GitDirsErr(root)
+	switch {
+	case errors.Is(err, baseline.ErrNotRepository):
+		return "C1", nil
+	case err != nil:
+		return "", err
 	}
 	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
 	if err != nil {
-		return "C1"
+		return "C1", nil
 	}
 	h := strings.TrimSpace(string(head))
 	if ref, ok := strings.CutPrefix(h, "ref: "); ok {
@@ -206,9 +222,9 @@ func headCommit(root string) string {
 		}
 	}
 	if len(h) < 12 {
-		return "C1"
+		return "C1", nil
 	}
-	return h[:12]
+	return h[:12], nil
 }
 
 // packedRef is ref's hash in packed-refs, or "".
