@@ -3,8 +3,9 @@ package engine
 import (
 	"fmt"
 	"slices"
-	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/harness"
 )
 
 // The control rule (W-M1.42, PLAN 6.1). The hook briefs every request it
@@ -90,92 +91,8 @@ func (b Brief) unsent(rule, why string, start time.Time) Brief {
 	return b
 }
 
-// notice reads harness notices off a prompt by their envelope alone, as a
-// notice's own text is free text that matches code (a peer's summary of
-// its turn, a background command's description). A notice is a line that
-// opens with a bracketed label ending " notice", through the line that
-// closes a «summary» it opens; or an element whose tag ends
-// "-notification", from its opening tag through its closing one, text
-// after the closing tag on its line kept. It fails safe: an element never
-// closed is no envelope and is read as typed, and a summary never closed
-// takes only the label's line. It returns what is left and whether a
-// notice was read; a prompt with none is returned as it is.
+// notice reads harness frames off a prompt (harness.Cut): what is left
+// and whether a frame was read; a prompt with none is returned as it is.
 func notice(prompt string) (string, bool) {
-	lines := strings.Split(prompt, "\n")
-	var keep []string
-	held := false
-	for i := 0; i < len(lines); i++ {
-		s := strings.TrimSpace(lines[i])
-		if noticeLabel(s) {
-			held, i = true, summaryEnd(lines, i)
-			continue
-		}
-		if tag, ok := notificationTag(s); ok {
-			if end, after, ok := closing(lines, i, tag); ok {
-				held, i, keep = true, end, keepText(keep, after)
-				continue
-			}
-		}
-		keep = append(keep, lines[i])
-	}
-	if !held {
-		return prompt, false
-	}
-	return strings.Join(keep, "\n"), true
-}
-
-// noticeLabel is whether line s opens with a bracketed label ending
-// " notice" ("[Cross-session idle notice]").
-func noticeLabel(s string) bool {
-	if !strings.HasPrefix(s, "[") {
-		return false
-	}
-	label, _, ok := strings.Cut(s[1:], "]")
-	return ok && strings.HasSuffix(strings.ToLower(label), " notice")
-}
-
-// summaryEnd is the last line of the notice that opens at line i: the
-// line that closes the «summary» the label's line opens and leaves open,
-// else the label's line itself.
-func summaryEnd(lines []string, i int) int {
-	_, open, ok := strings.Cut(lines[i], "«")
-	if !ok || strings.Contains(open, "»") {
-		return i
-	}
-	for j := i + 1; j < len(lines); j++ {
-		if strings.Contains(lines[j], "»") {
-			return j
-		}
-	}
-	return i
-}
-
-// notificationTag is the tag line s opens with when it is one word ending
-// "-notification" ("<task-notification>"). A closing tag is none, as no
-// line closes "/task-notification".
-func notificationTag(s string) (string, bool) {
-	if !strings.HasPrefix(s, "<") {
-		return "", false
-	}
-	tag, _, ok := strings.Cut(s[1:], ">")
-	return tag, ok && strings.HasSuffix(tag, "-notification") && !strings.ContainsAny(tag, " \t")
-}
-
-// closing is the line from i on that closes tag and what follows the
-// closing tag there; false when no line does.
-func closing(lines []string, i int, tag string) (int, string, bool) {
-	for j := i; j < len(lines); j++ {
-		if _, after, ok := strings.Cut(lines[j], "</"+tag+">"); ok {
-			return j, after, true
-		}
-	}
-	return 0, "", false
-}
-
-// keepText is keep with s appended when s holds more than space.
-func keepText(keep []string, s string) []string {
-	if s = strings.TrimSpace(s); s != "" {
-		return append(keep, s)
-	}
-	return keep
+	return harness.Cut(prompt)
 }
