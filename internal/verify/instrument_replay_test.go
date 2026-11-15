@@ -12,8 +12,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/harness"
+	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
@@ -24,9 +26,79 @@ import (
 // beside it (instrument_truth_test.go), as counts with two baselines: every
 // claim read, as the build before the rule read them, and none read. It
 // reports the prompts by origin kind against the frame reader
-// (harness.Framed) for the task-preflight notes, and the notes whose model
-// lines list only paths. Counts and prompt ids only; nothing of the
-// transcript is copied out.
+// (harness.Framed) for the task-preflight notes, each read on what its
+// fire's hook received (rHookInput), and the notes whose model lines list
+// only paths. Counts and prompt ids only; nothing of the transcript is
+// copied out.
+
+// What a prompt hook receives, measured on Claude Code 2.1.322 for a
+// message from another session, idle and queued alike: the bare element,
+// its opening tag alone on the first line with the sender's from= key, the
+// body, and its closing tag alone on the last line. The transcript records
+// an idle message as the host's display, a lead line before the element and
+// a closing paragraph after it, and a queued one as an attachment holding
+// the bare element. The hook's reader keeps a prompt's first
+// intent.MaxPromptBytes, cut back to a character boundary, and says it cut.
+const (
+	rPeerOpen    = "<cross-session-message "
+	rPeerFrom    = ` from="`
+	rPeerClose   = "</cross-session-message>"
+	rMissDisplay = "peer display not one element"
+)
+
+// rHookInput is the prompt a fire of kind read in text, as its hook
+// received it: a peer message's element taken out of its display, then the
+// reader's head, cut set where the head is short of the whole. why is
+// rMissDisplay where a peer display holds no single element; no input is
+// given then.
+func rHookInput(kind, text string) (in string, cut bool, why string) {
+	if kind == "peer" {
+		el, ok := rPeerElement(text)
+		if !ok {
+			return "", false, rMissDisplay
+		}
+		text = el
+	}
+	in, cut = rHead(text)
+	return in, cut, ""
+}
+
+// rPeerElement takes the one peer element out of a display: from the one
+// line that, trimmed, is an opening tag with a from= key, through the one
+// line after it that, trimmed, is the closing tag alone. A bare element is
+// given back as it is. ok is false for any other display: no element, or
+// more than one opening or closing line.
+func rPeerElement(display string) (el string, ok bool) {
+	lines := strings.Split(display, "\n")
+	open, end, opens, ends := -1, -1, 0, 0
+	for i, l := range lines {
+		s := strings.TrimSpace(l)
+		switch {
+		case strings.HasPrefix(s, rPeerOpen) && strings.HasSuffix(s, ">") && strings.Contains(s, rPeerFrom):
+			open, opens = i, opens+1
+		case s == rPeerClose:
+			end, ends = i, ends+1
+		}
+	}
+	if opens != 1 || ends != 1 || end < open {
+		return "", false
+	}
+	return strings.Join(lines[open:end+1], "\n"), true
+}
+
+// rHead is what the hook's reader keeps of a prompt: all of it, or its
+// first intent.MaxPromptBytes cut back to a character boundary, with cut
+// set.
+func rHead(s string) (head string, cut bool) {
+	if len(s) <= intent.MaxPromptBytes {
+		return s, false
+	}
+	k := intent.MaxPromptBytes
+	for k > 0 && !utf8.RuneStart(s[k]) {
+		k--
+	}
+	return s[:k], true
+}
 
 // replayEnv names a directory holding a session's records.ndjson and
 // steer.ndjson and CUT.txt: the session id, the transcript's path, a line
@@ -157,13 +229,14 @@ type rTable struct {
 	mismatch, unplaced int
 	calledNoAct        int            // no-act turns, in the cells, that held any main-agent call
 	residual           map[string]int // notes left on a no-act turn, by what counted the turn
+	bashBy             map[string]int // notes on a Bash-only turn the rule acts on, by what counted the turn
 	droppedInWindow    int            // notes the rule drops on a no-act turn inside a background window
 	windows            int            // the windows those notes sit in
 }
 
 // rTabulate fills the table from the rows.
 func rTabulate(rows []rRow) rTable {
-	tb := rTable{residual: map[string]int{}}
+	tb := rTable{residual: map[string]int{}, bashBy: map[string]int{}}
 	for _, r := range rows {
 		switch {
 		case !r.placed || !r.stop:
@@ -178,6 +251,9 @@ func rTabulate(rows []rRow) rTable {
 			col = 0
 		}
 		tb.cells[r.class][col]++
+		if r.class == tBashOnly && r.acted {
+			tb.bashBy[r.by]++
+		}
 		if r.class != tNoAct {
 			continue
 		}
@@ -207,66 +283,145 @@ func rReport(t *testing.T, notes int, tb rTable) {
 	t.Logf("no act: %d of %d turns held a main-agent tool call", tb.calledNoAct, tb.cells[tNoAct][0]+tb.cells[tNoAct][1])
 	t.Logf("residual notes (truth no act, rule acted) %d; lost catches (truth a file tool, rule not acted) %d",
 		tb.cells[tNoAct][0], tb.cells[tFileTool][1])
-	keys := make([]string, 0, len(tb.residual))
-	for k := range tb.residual {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
+	for _, k := range rKeys(tb.residual) {
 		t.Logf("residual notes counted by %s: %d", k, tb.residual[k])
+	}
+	for _, k := range rKeys(tb.bashBy) {
+		t.Logf("Bash-only notes counted by %s: %d", k, tb.bashBy[k])
 	}
 	t.Logf("background windows (source: background_in_flight of the rule's Stop record): notes the rule drops on a no-act turn inside a window %d; windows %d", tb.droppedInWindow, tb.windows)
 }
 
-// rPreflight reports the task-preflight notes by their prompt's origin kind
-// against the frame reader, and the notes whose model lines list only paths
-// (no rule, gate or evidence line: a flag, which reaches the person and not
-// the agent), with how many of those carry an unknowns line.
-func rPreflight(t *testing.T, ls []tLine, notes []rNote) {
-	t.Helper()
-	kinds := tPromptKinds(ls)
-	type cnt struct{ notes, framed, typed int }
-	by := map[string]*cnt{}
-	var paths, pathsKept, unknown, unknownKept int
-	states := map[string]int{}
+// rKeys is a count map's keys, sorted.
+func rKeys(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// rCnt is one kind's row: its notes, and of them those the frame reader
+// reads framed and typed on the hook's input.
+type rCnt struct{ notes, framed, typed int }
+
+// rPre is the task-preflight count (rPreflightCount).
+type rPre struct {
+	by                   map[string]*rCnt
+	miss                 map[string]int // notes with no record or no hook input, by reason
+	early, late, lateOne int            // lateOne: late notes read on their one drained element
+	maxEarly, minLate    int64          // the largest early gap and the smallest late gap, ms; -1 where none
+	paths, pathsKept     int
+	unknown, unknownKept int
+	states               map[string]int
+}
+
+// rPreflightCount reads each task-preflight note on the record its fire
+// read (tFireOf), hands the frame reader what that fire's hook received
+// (rHookInput), and counts the notes whose model lines list only paths (no
+// rule, gate or evidence line: a flag, which reaches the person and not the
+// agent), with how many of those carry an unknowns line. A note with no
+// record is listed under its miss reason; a note with a record and no hook
+// input stays under its kind; neither is in a rule column, and both are in
+// miss.
+func rPreflightCount(ls []tLine, notes []rNote) rPre {
+	p := rPre{by: map[string]*rCnt{}, miss: map[string]int{}, maxEarly: -1, minLate: -1, states: map[string]int{}}
 	for _, n := range notes {
 		if n.Type != "steer" || n.Pattern != "task-preflight" {
 			continue
 		}
-		kind, text, ok := tPrompt(ls, n.PromptID)
-		if !ok {
-			kind = "no prompt record"
+		f := tFireOf(ls, n.PromptID, n.AtMS)
+		switch {
+		case f.miss == tMissNoPrompt:
+		case f.late:
+			p.late++
+			if f.miss == "" {
+				p.lateOne++
+			}
+			if f.gap >= 0 && (p.minLate < 0 || f.gap < p.minLate) {
+				p.minLate = f.gap
+			}
+		default:
+			p.early++
+			if f.gap > p.maxEarly {
+				p.maxEarly = f.gap
+			}
 		}
-		if by[kind] == nil {
-			by[kind] = &cnt{}
+		kind := f.kind
+		if f.miss != "" {
+			kind = f.miss
+			p.miss[f.miss]++
 		}
-		by[kind].notes++
-		framed, _ := harness.Framed(text, false)
-		if ok && framed {
-			by[kind].framed++
-		} else if ok {
-			by[kind].typed++
+		if p.by[kind] == nil {
+			p.by[kind] = &rCnt{}
+		}
+		p.by[kind].notes++
+		known, framed := f.miss == "", false
+		if known {
+			in, cut, why := rHookInput(f.kind, f.text)
+			if why != "" {
+				p.miss[why]++
+				known = false
+			} else if framed, _ = harness.Framed(in, cut); framed {
+				p.by[kind].framed++
+			} else {
+				p.by[kind].typed++
+			}
 		}
 		if len(n.Slots.Rules.IDs) == 0 && len(n.Slots.Gates.Gates) == 0 && len(n.Slots.Evidence) == 0 {
-			paths++
-			states[n.State]++
+			p.paths++
+			p.states[n.State]++
 			u := len(n.Slots.Unknown) > 0
 			if u {
-				unknown++
+				p.unknown++
 			}
-			if ok && !framed {
-				pathsKept++
+			if known && !framed {
+				p.pathsKept++
 				if u {
-					unknownKept++
+					p.unknownKept++
 				}
 			}
 		}
 	}
+	return p
+}
+
+// rTakers counts the last-turn claim notes by the kind of the fire that
+// took them, as the truth places it: typed (human), framed (a kind
+// tFramedKinds names), or a miss (no record, or any other kind).
+func rTakers(ls []tLine, notes []rNote) (typed, framed, miss int) {
+	for _, n := range notes {
+		if n.Type != "steer" || n.Pattern != "claim-vs-record" || n.Key != "last-turn" {
+			continue
+		}
+		f := tFireOf(ls, n.PromptID, n.AtMS)
+		switch {
+		case f.miss != "":
+			miss++
+		case f.kind == "human":
+			typed++
+		case tFramedKinds[f.kind]:
+			framed++
+		default:
+			miss++
+		}
+	}
+	return typed, framed, miss
+}
+
+// rPreflight reports rPreflightCount: the notes by their record's origin
+// kind against the frame reader, the early and late split with its gap
+// cross-check, the misses by reason, and the paths-only notes.
+func rPreflight(t *testing.T, ls []tLine, notes []rNote) rPre {
+	t.Helper()
+	kinds := tPromptKinds(ls)
+	p := rPreflightCount(ls, notes)
 	all := map[string]bool{}
 	for k := range kinds {
 		all[strings.TrimPrefix(k, "queued_command/")] = true
 	}
-	for k := range by {
+	for k := range p.by {
 		all[k] = true
 	}
 	names := make([]string, 0, len(all))
@@ -274,12 +429,12 @@ func rPreflight(t *testing.T, ls []tLine, notes []rNote) {
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	t.Logf("PROMPTS BY ORIGIN KIND (truth: framed where the kind is peer, task-notification, queued_command, cron or auto-continuation; typed where human; any other kind is a miss and in neither)")
+	t.Logf("PROMPTS BY ORIGIN KIND (truth: framed where the kind is peer, task-notification, queued_command, cron or auto-continuation; typed where human; any other kind is a miss and in neither). A note's kind is its fire's record's; the rule columns read what that fire's hook received.")
 	t.Logf("%-18s | %-8s | %-8s | %-14s | %-17s | %s", "kind", "prompts", "queued", "preflight notes", "rule framed (cut)", "rule typed (kept)")
 	for _, k := range names {
-		c := by[k]
+		c := p.by[k]
 		if c == nil {
-			c = &cnt{}
+			c = &rCnt{}
 		}
 		tag := ""
 		switch {
@@ -292,13 +447,23 @@ func rPreflight(t *testing.T, ls []tLine, notes []rNote) {
 		}
 		t.Logf("%-18s | %-8d | %-8d | %-15d | %-17d | %d", k+tag, kinds[k], kinds["queued_command/"+k], c.notes, c.framed, c.typed)
 	}
-	sk := make([]string, 0, len(states))
-	for k := range states {
-		sk = append(sk, k+" "+strconv.Itoa(states[k]))
+	t.Logf("fires: early %d (largest gap %d ms), late %d (smallest gap %d ms); the gaps are a cross-check, the rule is structural; late on one drained element %d",
+		p.early, p.maxEarly, p.late, p.minLate, p.lateOne)
+	var mk []string
+	for _, k := range rKeys(p.miss) {
+		mk = append(mk, k+" "+strconv.Itoa(p.miss[k]))
 	}
-	sort.Strings(sk)
+	if mk == nil {
+		mk = []string{"none"}
+	}
+	t.Logf("miss rows by reason: %s", strings.Join(mk, "; "))
+	sk := make([]string, 0, len(p.states))
+	for _, k := range rKeys(p.states) {
+		sk = append(sk, k+" "+strconv.Itoa(p.states[k]))
+	}
 	t.Logf("paths-only notes %d (%s), with an unknowns line %d; of them on prompts the frame reader keeps %d, with an unknowns line %d",
-		paths, strings.Join(sk, ", "), unknown, pathsKept, unknownKept)
+		p.paths, strings.Join(sk, ", "), p.unknown, p.pathsKept, p.unknownKept)
+	return p
 }
 
 // rLines decodes an ndjson file into one T per line.
@@ -390,5 +555,21 @@ func TestTurnReplay_RecordedSession(t *testing.T) {
 	if len(rows) > 0 && tb.unplaced+tb.mismatch == len(rows) {
 		t.Errorf("none of the %d last-turn notes was scored: the replay measured nothing", len(rows))
 	}
-	rPreflight(t, ls, notes)
+	typed, framed, miss := rTakers(ls, notes)
+	t.Logf("last-turn claim notes by the kind of the fire that took them: typed %d, framed %d, miss %d", typed, framed, miss)
+	p := rPreflight(t, ls, notes)
+	got := [5]int{p.early, p.late, p.lateOne, p.miss[tMissDrains], p.miss[tMissNoDrain]}
+	if want, ok := rPinned[sum]; !ok {
+		t.Logf("no split pinned for this cut")
+	} else if got != want {
+		t.Errorf("the pinned split (early, late, late on one element, on two or more, on none) is %v; want %v", got, want)
+	}
+}
+
+// rPinned is the task-preflight split a cut must give, keyed by the cut's
+// sha256: fires early, late, late on one drained element, on two or more,
+// and on none. It holds the one cut it was counted on, by a script that
+// shares no code with this file.
+var rPinned = map[string][5]int{
+	"32e04eb5f2474a5a2e24d433c35e8742b48f202fa41599f8f507c3e1abe22e94": {33, 17, 13, 4, 0},
 }

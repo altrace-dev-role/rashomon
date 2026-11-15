@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 )
 
 // The transcript's own account of a turn, for the turn replay
@@ -16,7 +17,8 @@ import (
 // library only and calls nothing it does not declare
 // (TestTurnTruth_SharesNoCode), and the five tool names below are its whole
 // table. Bash counts as acting whatever its line: telling a line that reads
-// from one that writes needs a program table, which is the rule's.
+// from one that writes needs a program table, which is the rule's. It also
+// places each prompt-hook fire on the record that fire read (tFireOf).
 
 // tFileTools are the tools that write a file by name.
 var tFileTools = map[string]bool{"Write": true, "Edit": true, "MultiEdit": true, "NotebookEdit": true}
@@ -50,14 +52,16 @@ type tLine struct {
 	Type        string   `json:"type"`
 	Subtype     string   `json:"subtype"`
 	PromptID    string   `json:"promptId"`
+	Timestamp   string   `json:"timestamp"`
 	IsSidechain bool     `json:"isSidechain"`
 	Origin      *tOrigin `json:"origin"`
 	Message     struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
 	Attachment *struct {
-		Type   string   `json:"type"`
-		Origin *tOrigin `json:"origin"`
+		Type   string          `json:"type"`
+		Origin *tOrigin        `json:"origin"`
+		Prompt json.RawMessage `json:"prompt"`
 	} `json:"attachment"`
 }
 
@@ -200,29 +204,118 @@ func tTurn(ls []tLine, notePrompt string) (turn string, class tClass, called, ok
 	return turn, class, called, true
 }
 
-// tPrompt is a prompt's own record: the first user record carrying id that
-// answers no tool call. kind is its origin's; text is its content, a string
-// or its text blocks joined by newlines. ok is false where the transcript
-// holds no such record.
-func tPrompt(ls []tLine, id string) (kind, text string, ok bool) {
+// tText is a record's content: a string, or its text blocks joined by
+// newlines.
+func tText(l *tLine) string {
+	var s string
+	if json.Unmarshal(l.Message.Content, &s) == nil {
+		return s
+	}
+	var parts [][]byte
+	for _, b := range tBlocks(l) {
+		if b.Type == "text" {
+			parts = append(parts, []byte(b.Text))
+		}
+	}
+	return string(bytes.Join(parts, []byte("\n")))
+}
+
+// tStamp is a record's timestamp in Unix milliseconds; ok is false where it
+// carries none or one that does not parse.
+func tStamp(l *tLine) (ms int64, ok bool) {
+	if l.Timestamp == "" {
+		return 0, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+	if err != nil {
+		return 0, false
+	}
+	return at.UnixMilli(), true
+}
+
+// tConversation is whether a record is the conversation's own: a user, an
+// assistant or a system record. An attachment, a queue operation or a
+// request record is not, and bounds no drain batch.
+func tConversation(l *tLine) bool {
+	return l.Type == "user" || l.Type == "assistant" || l.Type == "system"
+}
+
+// Why a fire has no record (tFire.miss).
+const (
+	tMissNoPrompt = "no prompt record"
+	tMissNoDrain  = "late, no drained element"
+	tMissDrains   = "late, two or more drained elements"
+	tMissNoText   = "late, drained element holds no text"
+)
+
+// tFire is the record a prompt-hook fire read, as the transcript places it.
+type tFire struct {
+	kind, text string // the record's origin kind and its text
+	late       bool   // an assistant record of the turn came before the fire
+	miss       string // why the fire has no record; "" where it has one
+	gap        int64  // ms from the opening record to the fire; -1 where either is unstamped
+}
+
+// tFireOf places a prompt-hook fire stamped atMS under prompt id. The
+// opening record is the first user record carrying id that answers no tool
+// call. A prompt hook returns before its turn's first request, so a fire
+// with no assistant record after the opening, in file order, stamped at or
+// before the fire, read the opening record (early). Any other fire (late)
+// read a message the host drained into the running turn, which keeps the
+// turn's prompt id: its drain batch is the queued_command attachments after
+// the last conversation record stamped at or before the fire, up to the
+// next conversation record. An attachment's stamp is its enqueue time and
+// bounds nothing. A batch of one element is the fire's record; none, or two
+// or more, is a miss and is never guessed.
+func tFireOf(ls []tLine, id string, atMS int64) tFire {
+	o := -1
 	for i := range ls {
-		l := &ls[i]
-		if l.Type != "user" || l.PromptID != id || tAnswers(l) {
+		if ls[i].Type == "user" && ls[i].PromptID == id && !tAnswers(&ls[i]) {
+			o = i
+			break
+		}
+	}
+	if o < 0 {
+		return tFire{miss: tMissNoPrompt, gap: -1}
+	}
+	f := tFire{gap: -1}
+	if at, ok := tStamp(&ls[o]); ok {
+		f.gap = atMS - at
+	}
+	k := o // the last conversation record stamped at or before the fire
+	for i := o + 1; i < len(ls); i++ {
+		if at, ok := tStamp(&ls[i]); !ok || at > atMS || !tConversation(&ls[i]) {
 			continue
 		}
-		var s string
-		if json.Unmarshal(l.Message.Content, &s) == nil {
-			return tKind(l.Origin), s, true
+		k = i
+		if ls[i].Type == "assistant" {
+			f.late = true
 		}
-		var parts [][]byte
-		for _, b := range tBlocks(l) {
-			if b.Type == "text" {
-				parts = append(parts, []byte(b.Text))
-			}
-		}
-		return tKind(l.Origin), string(bytes.Join(parts, []byte("\n"))), true
 	}
-	return "", "", false
+	if !f.late {
+		f.kind, f.text = tKind(ls[o].Origin), tText(&ls[o])
+		return f
+	}
+	var drained []int
+	for i := k + 1; i < len(ls) && !tConversation(&ls[i]); i++ {
+		if a := ls[i].Attachment; ls[i].Type == "attachment" && a != nil && a.Type == "queued_command" {
+			drained = append(drained, i)
+		}
+	}
+	switch len(drained) {
+	case 0:
+		f.miss = tMissNoDrain
+	case 1:
+		a := ls[drained[0]].Attachment
+		if len(a.Prompt) == 0 || a.Prompt[0] != '"' || json.Unmarshal(a.Prompt, &f.text) != nil {
+			f.miss = tMissNoText
+			break
+		}
+		f.kind = tKind(a.Origin)
+	default:
+		f.miss = tMissDrains
+	}
+	return f
 }
 
 // tPromptKinds counts the transcript's prompt-side records by origin kind:
