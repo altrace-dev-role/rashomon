@@ -64,9 +64,12 @@ func TestPF1d_PromptWordsNeverLand(t *testing.T) {
 	if res.stdout == "" || json.Unmarshal([]byte(res.stdout), &out) != nil {
 		t.Fatalf("stdout = %q, want the preflight note as one JSON object", res.stdout)
 	}
+	// The request names only a path, so the note is the user's flag: the
+	// model is sent nothing (card RV1, item 4) and the user's line names the
+	// file. The sentinel scan below reads stdout whole, both channels.
 	const named = "'internal/verify/stop.go'"
-	if !strings.Contains(out.HookSpecificOutput.AdditionalContext, named) || !strings.Contains(out.SystemMessage, named) {
-		t.Errorf("the note does not name the matched file in both channels: %s", res.stdout)
+	if out.HookSpecificOutput.AdditionalContext != "" || !strings.Contains(out.SystemMessage, named) {
+		t.Errorf("the note is not a flag naming the matched file: %s", res.stdout)
 	}
 
 	report := e.run("", nil, "report", "--json", "--session", testSession)

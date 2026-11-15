@@ -111,8 +111,9 @@ func TestPF1w_V4LineKeepsNoPath(t *testing.T) {
 		if res.exitCode != 0 {
 			t.Fatalf("exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		if !strings.Contains(out.HookSpecificOutput.AdditionalContext, "'"+pf1bPath+"'") || !strings.Contains(out.SystemMessage, "'"+pf1bPath+"'") {
-			t.Fatalf("the note on stdout does not name the path in both channels: %s", res.stdout)
+		// A note that lists only paths is the user's flag (card RV1, item 4).
+		if out.HookSpecificOutput.AdditionalContext != "" || !strings.Contains(out.SystemMessage, "'"+pf1bPath+"'") {
+			t.Fatalf("the note on stdout is not a flag naming the path: %s", res.stdout)
 		}
 		lines := e.steerLines()
 		if len(lines) != 1 {
@@ -126,8 +127,9 @@ func TestPF1w_V4LineKeepsNoPath(t *testing.T) {
 		if len(items) != 1 || !pf1bHex64.MatchString(items[0]) {
 			t.Errorf("path slot %q, want one 64-hex keyed digest", items)
 		}
-		if l.str("state") != "delivered" || !strings.Contains(l.str("model_text"), "\npaths named: 1") {
-			t.Errorf("line state %q, model_text %q, want delivered with the count form", l.str("state"), l.str("model_text"))
+		if l.str("state") != "delivered" || l.str("level") != "flag" || l.str("model_text") != "" || !strings.Contains(l.str("user_text"), "\npaths named: 1") {
+			t.Errorf("line state %q, level %q, model_text %q, user_text %q, want a delivered flag with the count form",
+				l.str("state"), l.str("level"), l.str("model_text"), l.str("user_text"))
 		}
 		cwds := []string{e.cwd}
 		if r, err := filepath.EvalSymlinks(e.cwd); err == nil {
@@ -151,7 +153,7 @@ func TestPF1w_V4LineKeepsNoPath(t *testing.T) {
 		e := newSteerEnv(t)
 		e.preflightProject()
 		_, out := e.prompt(e.cwd, "fix the nil check in "+pf1bPath, "prompt-2")
-		if !strings.Contains(out.HookSpecificOutput.AdditionalContext, "'"+pf1bPath+"'") {
+		if !strings.Contains(out.SystemMessage, "'"+pf1bPath+"'") {
 			t.Fatalf("no note: %+v", out)
 		}
 		lines := e.steerLines()
@@ -172,11 +174,13 @@ func TestPF1w_V4DeliveredSetDedupes(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.preflightProject()
-	if _, out := e.prompt(e.cwd, "look at "+pf1bPath, "prompt-2"); out.HookSpecificOutput.AdditionalContext == "" {
+	// Both notes list only paths, so each is the user's flag (card RV1, item
+	// 4); a delivered flag's paths count as given.
+	if _, out := e.prompt(e.cwd, "look at "+pf1bPath, "prompt-2"); out.SystemMessage == "" {
 		t.Fatal("premise: the first prompt printed no note")
 	}
 	_, out := e.prompt(e.cwd, "look at "+pf1bPath+" and internal/verify/index.go", "prompt-3")
-	got := out.HookSpecificOutput.AdditionalContext
+	got := out.SystemMessage
 	if !strings.Contains(got, "paths named: 'internal/verify/index.go'; 1 given earlier") {
 		t.Errorf("the second note does not say the first path was given earlier:\n%s", got)
 	}
@@ -192,13 +196,23 @@ func TestPF1y_StopViewErrorStillPrintsTheNote(t *testing.T) {
 		e.preflightProject()
 		e.greenTurn(t, "prompt-1")
 		_, out := e.prompt(e.cwd, "fix the nil check in "+pf1bPath, "prompt-2", extra...)
-		notes[i] = out.HookSpecificOutput.AdditionalContext
-		if notes[i] == "" {
+		if out.SystemMessage == "" {
 			t.Fatalf("run %d (%v): no note on stdout", i, extra)
 		}
+		// A note that lists only paths is the user's flag (card RV1, item 4):
+		// its line keeps it as user_text, and it prints as the systemMessage
+		// ahead of the previous turn's line, which the faulted view does not
+		// print.
 		lines := e.steerLines()
-		if len(lines) == 0 || lines[len(lines)-1].str("state") != "delivered" || lines[len(lines)-1].str("model_text") != notes[i] {
-			t.Errorf("run %d: the steer line and stdout disagree: stdout %q", i, notes[i])
+		if len(lines) > 0 && lines[len(lines)-1].str("state") == "delivered" {
+			notes[i] = lines[len(lines)-1].str("user_text")
+		}
+		rest, ok := strings.CutPrefix(out.SystemMessage, notes[i])
+		if notes[i] == "" || !ok {
+			t.Errorf("run %d: the steer line and stdout disagree: stdout %q", i, out.SystemMessage)
+		}
+		if prev := strings.HasPrefix(rest, "\n※ rashomon, previous turn: "); prev != (i == 0) || (!prev && rest != "") {
+			t.Errorf("run %d: after the note stdout holds %q, want the previous turn's line in the control alone", i, rest)
 		}
 	}
 	if notes[0] != notes[1] {
@@ -206,17 +220,50 @@ func TestPF1y_StopViewErrorStillPrintsTheNote(t *testing.T) {
 	}
 }
 
+// pf1bRuleSpec is a repository spec with one rule on pf1bPath, so a request
+// naming the path gets a note that lists the rule: a nudge, the level the
+// mirror rule reads. A note that lists only paths is the user's flag (card
+// RV1, item 4), which needs no mirror.
+const pf1bRuleSpec = `{"rashomon_spec": 1, "rules": [{"id": "r1", "kind": "protect_path", "paths": ["` + pf1bPath + `"], "why": "w", "hard_control": "h"}]}`
+
+// ruleProject is preflightProject as a git project whose spec, pf1bRuleSpec,
+// is trusted. The spec is looked for from the cwd's resolved path up to the
+// git root, so it is written and bound there.
+func (e *env) ruleProject() {
+	e.t.Helper()
+	e.preflightProject()
+	dir, err := filepath.EvalSymlinks(e.cwd)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".claude", "rashomon", "spec.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(pf1bRuleSpec), 0o600); err != nil {
+		e.t.Fatal(err)
+	}
+	e.trust(path)
+}
+
 // TestPF1z_AttendanceFollowsTheSurface: on the prompt path CI alone does not
 // silence the note, and an SDK surface does; each with its positive control.
+// The note lists a spec rule, so it is a nudge on every row.
 func TestPF1z_AttendanceFollowsTheSurface(t *testing.T) {
 	runWith := func(t *testing.T, envOf func(e *env) []string) (preflightOut, record) {
 		t.Helper()
 		e := newSteerEnv(t)
-		e.preflightProject()
+		e.ruleProject()
 		_, out := e.prompt(e.cwd, "fix the nil check in "+pf1bPath, "prompt-2", envOf(e)...)
 		lines := e.steerLines()
 		if len(lines) != 1 {
 			t.Fatalf("%d steer lines, want 1", len(lines))
+		}
+		if lines[0].str("level") != "nudge" {
+			t.Fatalf("premise: the note lists the spec rule and is a nudge; line level %q", lines[0].str("level"))
 		}
 		return out, lines[0]
 	}

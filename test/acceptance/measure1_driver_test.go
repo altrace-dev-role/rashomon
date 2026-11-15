@@ -29,9 +29,11 @@ import (
 // stubs cannot show, a real tmux server's environment, its default shell and
 // paste timing, is G1a's and G1c's to see on the real claude.
 //
-// G1c's positive control is a second probe per arm on a fixed prompt that
-// names go.mod (scripts/measure1_control_prompt.txt), whose task-preflight
-// note at UserPromptSubmit this binary delivers in the steer arm and withholds
+// G1c's positive control is a second probe per arm on a fixed prompt
+// (scripts/measure1_control_prompt.txt) that names the task file the driver
+// puts in each control workspace (scripts/measure1_control_task.json), whose
+// task-preflight note at UserPromptSubmit lists that file's builtin rule; this
+// binary delivers the note in the steer arm and withholds
 // in the off arm, whatever the model does. The stub's default run therefore
 // passes G1c and goes on through G6; the control_blind knob takes the note
 // from one arm to show G1c stopping.
@@ -743,6 +745,34 @@ func TestMS1zc_EnvdiffNormalisesOnlyPerProcessValues(t *testing.T) {
 	}
 }
 
+// m1TarFile returns the bytes of the first entry of the tar at path whose
+// name ends in suffix, and whether there was one.
+func m1TarFile(t *testing.T, path, suffix string) ([]byte, bool) {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	tr := tar.NewReader(f)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil, false
+		}
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		if strings.HasSuffix(h.Name, suffix) {
+			b, err := io.ReadAll(tr)
+			if err != nil {
+				t.Fatalf("reading %s in %s: %v", h.Name, path, err)
+			}
+			return b, true
+		}
+	}
+}
+
 // TestMS1zd_G1cControlPassesOnTheFixedPrompt: both control probes ran the
 // fixed prompt, not the task's prompt 1; the steer arm delivered the note
 // with its model text, the off arm logged its arm_off twin, and the run went
@@ -778,6 +808,51 @@ func TestMS1zd_G1cControlPassesOnTheFixedPrompt(t *testing.T) {
 	if !found {
 		t.Errorf("prereg.json's inputs %v do not name control-prompt.txt", prereg.SHA256)
 	}
+	task, err := os.ReadFile(filepath.Join(moduleRoot, "scripts", "measure1_control_task.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(r.m, "control-task.json")); err != nil || string(got) != string(task) {
+		t.Errorf("M/control-task.json is %q (%v), want the script's control task file %q", got, err, task)
+	}
+	found = false
+	for p := range prereg.SHA256 {
+		found = found || strings.HasSuffix(p, "/control-task.json")
+	}
+	if !found {
+		t.Errorf("prereg.json's inputs %v do not name control-task.json", prereg.SHA256)
+	}
+	// The task file reaches the control workspaces at run time and no other
+	// arm's: every arm is tarred whole into out/, so the tars that hold the
+	// task path are the two control probes' alone, with the script's bytes,
+	// and the template the arms are copied from holds no task directory.
+	tars, err := filepath.Glob(filepath.Join(r.m, "out", "*.tar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var holding []string
+	for _, p := range tars {
+		if b, ok := m1TarFile(t, p, "/.claude/rashomon/task/current.json"); ok {
+			holding = append(holding, filepath.Base(p))
+			if string(b) != string(task) {
+				t.Errorf("%s holds a task file %q, want the script's bytes", filepath.Base(p), b)
+			}
+		}
+	}
+	controls := map[string]bool{"g1c-control-off.tar": true, "g1c-control-steer.tar": true}
+	only := len(holding) == len(controls) && len(tars) > len(holding)
+	for _, h := range holding {
+		only = only && controls[h]
+	}
+	if !only {
+		t.Errorf("the task file is in %v of the arm tars %v, want the two control probes' alone", holding, tars)
+	}
+	_ = filepath.WalkDir(filepath.Join(r.m, "tpl"), func(p string, _ fs.DirEntry, err error) error {
+		if err == nil && strings.Contains(filepath.ToSlash(p), "/.claude/rashomon/task") {
+			t.Errorf("the arm template holds %s", p)
+		}
+		return nil
+	})
 	for _, arm := range []string{"off", "steer"} {
 		if got := r.out("g1c-control-" + arm + ".turns"); got != "prompt 1: stop\n" {
 			t.Errorf("the %s control probe's turns read %q, want one turn ended by its stop", arm, got)

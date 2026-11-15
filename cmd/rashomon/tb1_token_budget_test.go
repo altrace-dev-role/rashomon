@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -52,27 +54,41 @@ func TestTB1_ANoteWithNothingProvenAddsNothingToTheModel(t *testing.T) {
 	tb1Model(t, "nothing proven", out.context)
 }
 
+// tb1bSpec binds one rule to the file the requests name.
+const tb1bSpec = `{"rashomon_spec": 1, "rules": [{"id": "ra", "kind": "protect_path", "paths": ["internal/a.go"], "why": "w", "hard_control": "h"}]}`
+
 // TestTB1b_TheModelGetsOnlyTheProvenLines: a request naming a path the
 // project has sends the agent that path's line, and nothing that lists
 // nothing, no unknowns line, and no enum word, for each verb class that
 // carries an evidence kind; the person's systemMessage still mirrors what the
 // agent was told and adds the unknowns. Controls: the path line reaches the
-// model and the mirror holds it, today and after.
+// model and the mirror holds it, today and after. The path has a spec rule,
+// so the note lists something the request did not name: a note that lists
+// only paths is the user's flag (card RV1, item 4) and sends the agent
+// nothing.
 func TestTB1b_TheModelGetsOnlyTheProvenLines(t *testing.T) {
 	e := newLessonEnv(t)
 	goFilesIn(t, e.cwd, "internal/a.go")
+	project, err := filepath.EvalSymlinks(e.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(project, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfBindSpecText(t, e.root, project, tb1bSpec)
 	for _, c := range []struct{ session, prompt string }{
 		{"s-tb1b-fix", "fix internal/a.go"},
 		{"s-tb1b-deploy", "deploy internal/a.go"},
 	} {
 		out := e.prompt(c.session, "prompt-1", c.prompt)
-		if !strings.Contains(out.context, "internal/a.go") {
-			t.Fatalf("%s: premise: additionalContext %q, want the named path's line", c.prompt, out.context)
+		if !strings.Contains(out.context, "internal/a.go") || !strings.Contains(out.context, "\nspec rules that apply: ") {
+			t.Fatalf("%s: premise: additionalContext %q, want the named path's line and its rule", c.prompt, out.context)
 		}
 		if !strings.Contains(out.system, out.context) {
 			t.Errorf("%s: systemMessage %q does not mirror the agent's text %q", c.prompt, out.system, out.context)
 		}
-		if !strings.Contains(out.system, "no spec found") {
+		if !strings.Contains(out.system, "no gate history for this project") {
 			t.Errorf("%s: systemMessage %q, want the unknowns the person is told", c.prompt, out.system)
 		}
 		tb1Model(t, c.prompt, out.context)

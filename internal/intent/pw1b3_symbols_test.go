@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
 const symLine = "symbols named: 'CountRows' declared in 'internal/a', direct callers 2 in 2 packages"
@@ -49,6 +50,22 @@ func TestPW1b3_TheNoteGivesTheSymbolsBeforeItsUnknowns(t *testing.T) {
 	if !ok || !rode || f.Message.Template() != "task-preflight-symbols-lesson/v2" || len(got) != 4 || got[2] != symLine ||
 		!strings.HasPrefix(got[3], "lesson a-gen,") {
 		t.Errorf("with a lesson (%s, rode %v):\n%s\nwant the symbols line, then the lesson", f.Message.Template(), rode, f.Message.Text())
+	}
+}
+
+// TestRV1_4e_AProvenSymbolIsANudge (card RV1, item 4): a note whose model
+// lines list the paths the request named and a symbol the graph proved tells
+// the agent something the request did not, so it is a nudge. Control: the
+// same request with no symbol proven lists only its paths and is a flag.
+// Break: leave the symbols out of the note's level, and this fails.
+func TestRV1_4e_AProvenSymbolIsANudge(t *testing.T) {
+	in := symIntent()
+	if f, ok := intent.FindingKeyed(in, intent.Delivered{}, nil, 0, nil); !ok || f.MaxLevel != steer.LevelNudge {
+		t.Errorf("a proven symbol: note %v at level %v, want a nudge", ok, f.MaxLevel)
+	}
+	in.Symbols = nil
+	if f, ok := intent.FindingKeyed(in, intent.Delivered{}, nil, 0, nil); !ok || f.MaxLevel != steer.LevelFlag {
+		t.Errorf("control: no symbol: note %v at level %v, want a flag", ok, f.MaxLevel)
 	}
 }
 

@@ -23,8 +23,16 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/learn"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/render"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
+
+// flagNote is a flag's note text: its systemMessage with the aside cut off,
+// the text the model would have been sent had the note been a nudge.
+func flagNote(out promptOut) string {
+	text, _, _ := strings.Cut(out.system, "\n"+render.AsidePrefix)
+	return text
+}
 
 // lessonEnv is the prompt path's fixture (LEARN-DELIVER1): a started store
 // with the steer disclosure marker, a project directory the payloads name as
@@ -491,11 +499,18 @@ func heldOutSession(t *testing.T, root, prefix string) string {
 	return ""
 }
 
+// lrn17mSpec binds one rule to each of the two files, so each prompt's note
+// lists a rule not given before it.
+const lrn17mSpec = `{"rashomon_spec": 1, "rules": [` +
+	`{"id": "ra", "kind": "protect_path", "paths": ["internal/a.go"], "why": "w", "hard_control": "h"}, ` +
+	`{"id": "rb", "kind": "protect_path", "paths": ["internal/b.go"], "why": "w", "hard_control": "h"}]}`
+
 // TestLRN17m_SupersededAtPromptNArrivesAtNPlus1 (pins D170 L3): a
 // task-preflight note outranks the lesson, so on a prompt that carries one
 // the lesson's line is superseded (budget_batch) and not given; it arrives
 // on the first prompt with no preflight note, k prompts late after a run of
-// k preflight prompts.
+// k preflight prompts. Each note lists a spec rule: a note that lists only
+// paths is the user's flag (card RV1, item 4) and outranks no lesson.
 func TestLRN17m_SupersededAtPromptNArrivesAtNPlus1(t *testing.T) {
 	e := newLessonEnv(t)
 	for _, f := range []string{"internal/a.go", "internal/b.go"} {
@@ -507,13 +522,21 @@ func TestLRN17m_SupersededAtPromptNArrivesAtNPlus1(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	project, err := filepath.EvalSymlinks(e.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(project, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfBindSpecText(t, e.root, project, lrn17mSpec)
 	e.ledger([][2]string{{"go-test-cwd", cwdLesson}}, "go-test-cwd")
 	e.start("s-lrn17c2")
 	for i, prompt := range []string{"fix internal/a.go", "now fix internal/b.go"} {
 		id := fmt.Sprintf("prompt-%d", i+1)
 		out := e.prompt("s-lrn17c2", id, prompt)
-		if out.context == "" || strings.Contains(out.context, "go-test-cwd") {
-			t.Fatalf("%s names a new path: additionalContext %q, want the preflight note and no lesson", id, out.context)
+		if !strings.Contains(out.context, "\nspec rules that apply: ") || strings.Contains(out.context, "go-test-cwd") {
+			t.Fatalf("%s names a new path: additionalContext %q, want the preflight note listing its rule and no lesson", id, out.context)
 		}
 	}
 	out := e.prompt("s-lrn17c2", "prompt-3", "continue please")
@@ -598,9 +621,12 @@ func (e *lessonEnv) rodeLessons(sessionID string) []string {
 func TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout(t *testing.T) {
 	e := newLessonEnv(t)
 	goFilesIn(t, e.cwd, "internal/a.go", "internal/b.go")
-	plain := e.prompt("s-lrn17r-plain", "prompt-1", "fix internal/a.go").context
-	if !strings.HasSuffix(plain, "\npaths named: 'internal/a.go'") {
-		t.Fatalf("premise: a request naming a path gets a note that ends naming it, got %q", plain)
+	// With no lesson the note lists only the path, so it is the user's flag
+	// (card RV1, item 4); the lesson that rides it makes it a nudge.
+	po := e.prompt("s-lrn17r-plain", "prompt-1", "fix internal/a.go")
+	plain := flagNote(po)
+	if po.context != "" || !strings.HasSuffix(plain, "\npaths named: 'internal/a.go'") {
+		t.Fatalf("premise: a request naming only a path gets a flag whose note ends naming it, got context %q, system %q", po.context, po.system)
 	}
 	e.ledger([][2]string{{"a-gen", aGenLesson}}, "a-gen")
 	e.start("s-lrn17r")
@@ -608,8 +634,8 @@ func TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout(t *testing.T) {
 		t.Errorf("prompt-1: additionalContext %q,\nwant the note it gets with no lesson and the lesson as its last line", out.context)
 	}
 	out := e.prompt("s-lrn17r", "prompt-2", "now fix internal/a.go and internal/b.go")
-	if out.context == "" || strings.Contains(out.context, "a-gen") {
-		t.Errorf("prompt-2: additionalContext %q, want a note for internal/b.go and no lesson: a-gen rode prompt-1", out.context)
+	if out.context != "" || !strings.Contains(out.system, "'internal/b.go'") || strings.Contains(out.system, "a-gen") {
+		t.Errorf("prompt-2: additionalContext %q, systemMessage %q, want a flag for internal/b.go and no lesson: a-gen rode prompt-1", out.context, out.system)
 	}
 	if out := e.prompt("s-lrn17r", "prompt-3", "continue please"); strings.Contains(out.context, "a-gen") {
 		t.Errorf("prompt-3: additionalContext %q, want no lesson: a-gen was given on prompt-1", out.context)
@@ -628,18 +654,22 @@ func TestLRN17r_ALessonRidesTheNoteOnThePromptItIsAbout(t *testing.T) {
 // lesson, and the lesson is not spent, so it rides the prompt that names
 // cmd/domain.go. Break: match a path by substring, and the main.go prompt
 // carries a line about another file and spends the lesson's once a session.
+// The ledger holds more lessons than learn.Pick gives whatever the paths, so
+// a lesson goes only with a prompt that names its path whole, and the note
+// on main.go, listing only the path, is the user's flag (card RV1, item 4).
 func TestLRN17r_ALessonRidesNoPromptAboutAnotherFile(t *testing.T) {
 	const lesson = "cmd/domain.go is generated from gen/domain.tmpl"
 	e := newLessonEnv(t)
 	goFilesIn(t, e.cwd, "main.go", "cmd/domain.go")
-	plain := e.prompt("s-lrn17r-other-plain", "prompt-1", "fix main.go").context
-	if plain == "" {
-		t.Fatal("premise: a request naming main.go gets a note")
+	po := e.prompt("s-lrn17r-other-plain", "prompt-1", "fix main.go")
+	if po.context != "" || po.system == "" {
+		t.Fatalf("premise: a request naming only main.go gets a flag, got context %q, system %q", po.context, po.system)
 	}
-	e.ledger([][2]string{{"dom-gen", lesson}}, "dom-gen")
+	e.ledger([][2]string{{"dom-gen", lesson}, {"x1", "docs/one.md keeps its front matter"},
+		{"x2", "docs/two.md keeps its front matter"}, {"x3", "docs/three.md keeps its front matter"}}, "dom-gen", "x1", "x2", "x3")
 	e.start("s-lrn17r-other")
-	if out := e.prompt("s-lrn17r-other", "prompt-1", "fix main.go"); out.context != plain {
-		t.Errorf("prompt-1 names main.go: additionalContext %q,\nwant the note it gets with no lesson, %q", out.context, plain)
+	if out := e.prompt("s-lrn17r-other", "prompt-1", "fix main.go"); out.context != "" || out.system != po.system {
+		t.Errorf("prompt-1 names main.go: additionalContext %q, systemMessage %q,\nwant the flag it gets with no lesson, %q", out.context, out.system, po.system)
 	}
 	ride := "lesson dom-gen, approved for this project: '" + lesson + "'"
 	if out := e.prompt("s-lrn17r-other", "prompt-2", "fix cmd/domain.go"); !strings.HasSuffix(out.context, "\n"+ride) {

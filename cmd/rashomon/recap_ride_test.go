@@ -24,9 +24,10 @@ type rideStep struct {
 
 // rideSession runs five prompts in one session, with three lessons
 // approved: a-gen and b-tag name a path, log names none. a-gen rides
-// prompt-1's note; b-tag goes with prompt-2, which carries no note; log
-// waits behind the notes of prompt-3 and prompt-4, whose paths name no
-// lesson not yet given, and goes with prompt-5. It gives each step, the
+// prompt-1's note; b-tag goes with prompt-2, which carries no note; log goes
+// with prompt-3, whose note lists only paths and so is the user's flag,
+// which takes no nudge (card RV1, item 4); prompt-4's note is such a flag
+// too, and prompt-5 has no lesson left to give. It gives each step, the
 // ledger's active lessons and the digest the prompt path keys paths with.
 func rideSession(t *testing.T, sessionID string) ([]rideStep, learn.Active, func(string) string, *lessonEnv) {
 	t.Helper()
@@ -126,8 +127,8 @@ func TestLRN17r_TheNotesAtAPromptAreTheOnesOverTheLinesBeforeIt(t *testing.T) {
 		{"task-preflight note a-gen"},
 		{"learned-fact b-tag b-tag"},
 		{"learned-fact log log", "task-preflight note "},
-		{"learned-fact log log", "task-preflight note "},
-		{"learned-fact log log"},
+		{"task-preflight note "},
+		nil,
 	}
 	for i, s := range steps {
 		got := decided(promptFindings(intentOf(e, s.text), a, s.before, 0, digest))
@@ -141,7 +142,7 @@ func TestLRN17r_TheNotesAtAPromptAreTheOnesOverTheLinesBeforeIt(t *testing.T) {
 // prompt's notes are the same bytes in whatever order its steer lines are.
 func TestLRN17r_TheNotesReadTheLinesAsASet(t *testing.T) {
 	steps, a, digest, e := rideSession(t, "s-lrn17r-set")
-	s := steps[3]
+	s := steps[2]
 	encode := func(lines [][]byte) string {
 		var b strings.Builder
 		for _, f := range promptFindings(intentOf(e, s.text), a, lines, 0, digest) {
@@ -151,7 +152,7 @@ func TestLRN17r_TheNotesReadTheLinesAsASet(t *testing.T) {
 	}
 	want := encode(s.before)
 	if strings.Count(want, "|") != 6 || !strings.Contains(want, "; 1 given earlier") {
-		t.Fatalf("premise: prompt-4 over its lines gives a note that counts a path given earlier and a lesson:\n%s", want)
+		t.Fatalf("premise: prompt-3 over its lines gives a note that counts a path given earlier and a lesson:\n%s", want)
 	}
 	lines := slices.Clone(s.before)
 	rng := rand.New(rand.NewSource(1))
