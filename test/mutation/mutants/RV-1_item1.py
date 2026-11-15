@@ -23,6 +23,9 @@ m("RV-1 item 1 acts alone decides, with no class or project filter", C,
   GUARD + "\t\t\tcontinue\n\t\t}\n" + PLACE,
   GUARD.replace("!writesOrRuns(d)", "!acts(d)") + "\t\t\tcontinue\n\t\t}\n\t\treturn true\n",
   "TestRV1_1a_|TestRV1_1b_")
+m("RV-1 item 1 a call after the Stop's point acts for this turn", C,
+  GUARD, GUARD.replace(" || d.Seq > at", ""),
+  "TestRV1_1a_")
 m("RV-1 item 1 a call of another prompt acts for this turn", C,
   GUARD, GUARD.replace("d.PromptID == nil || *d.PromptID != promptID || ", ""),
   "TestRV1_1a_")

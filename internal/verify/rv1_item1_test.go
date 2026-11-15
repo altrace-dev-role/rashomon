@@ -71,10 +71,14 @@ func rv1Read(v StopView, class ClaimClass) bool {
 // (verb.go: vcs and package, classes that cannot say the line wrote nothing),
 // a read-class line that may write (a redirect), an edit whose project the
 // record does not say (fail closed) and a record before may_write (it cannot
-// say) do. The last row is the limit as ruled: a relay's tests-pass claim is
-// still read. Break (RV-1_item1.py): drop the AgentID filter (the subagent
-// row), read acts alone with no class or project filter (the coordinator,
-// search, ls and outside rows), drop the PromptID filter (the text-only row),
+// say) do. The table's last row is a known limit: only the done class is
+// narrowed, so a relay's tests-pass claim is still read. The row after the
+// table: an Edit of the prompt made after the Stop's point is not in the
+// turn the Stop closes. Break (RV-1_item1.py): drop the AgentID filter (the
+// subagent row), read acts alone with no class or project filter (the
+// coordinator, search, ls and outside rows), drop the PromptID filter (the
+// text-only row), count a call after the Stop's point (the row after the
+// table),
 // drop any one class (write, execute, test, or vcs and package: the Edit,
 // program, go test, git and go build rows), drop may_write (the redirect
 // row) or the record-before-may_write clause, count an act proven in no
@@ -131,6 +135,18 @@ func TestRV1_1a_ClaimsReadOnlyWhereTheMainAgentActed(t *testing.T) {
 			}
 		})
 	}
+	// The Stop's point sits just before p2's Edit, after p1's covered edit:
+	// the session wrote, and p2 made no call at or before the point. The
+	// "an Edit" row above is the same session with the point after the Edit.
+	t.Run("an Edit of the prompt after the Stop's point", func(t *testing.T) {
+		r := rv1Session(t, rv1Repo, edit(2, "/repo/internal/b.go"))
+		pt := Point{Kind: PointStop, Seq: r.Declarations[1].Seq - 1, SessionID: "s1", PromptID: ptr("p2")}
+		v := EvaluateStop(r, nil, nil, pt, time.Time{}, StopInput{PromptID: "p2", Key: dgKey, ProjectKey: "/repo",
+			Root: "/repo", Inferred: goTestAll, Head: []byte(rv1Said)})
+		if rv1Read(v, ClaimDone) {
+			t.Errorf("done claim read at a point before the turn's only call; claims %+v", v.Scan.Claims)
+		}
+	})
 }
 
 // TestRV1_1b_OwesNothingFollowsTheTurn (STALE-COVER1's fixture 1 under this
@@ -179,8 +195,8 @@ func TestRV1_1b_OwesNothingFollowsTheTurn(t *testing.T) {
 // only. On a text-only turn after an earlier turn's edit, under a task that
 // expects a stated mechanism, the done claim is not read, and the
 // expected-evidence row still reads the session's write (evidence.go,
-// mechanismRow): met, not open. Break (mutant M1-4): hand the narrowed input
-// to expected as well.
+// mechanismRow): met, not open. Break (RV-1_item1.py, "RV-1 item 1 expected
+// reads the narrowed flag"): hand the narrowed input to expected as well.
 func TestRV1_1c_ExpectedKeepsTheSessionsWrite(t *testing.T) {
 	r := rv1Session(t, rv1Repo)
 	sp := evSpec([]string{"mechanism_stated"}, "the cache key omits the locale")
