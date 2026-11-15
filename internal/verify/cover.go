@@ -152,6 +152,49 @@ func acts(d *store.Declaration) bool {
 	return d.SchemaVersion < 3 || d.Shape.VerbClass != shape.VerbRead || d.Shape.MayWrite
 }
 
+// turnActed reports whether the main agent acted in the turn of promptID
+// at or before at: a call of the turn (the window projectsOf reads) with no
+// AgentID, which writesOrRuns, and which the hook did not prove in no project
+// (projectOf: one whose project the record does not say counts, fail
+// closed). The Stop reads a done claim only on such a turn: one that only
+// relayed, delegated, searched or looked, or whose work a subagent did, did
+// none the claim could be about. An empty prompt id names no turn and reads
+// as acted, as before. Cost: O(D) over the declarations, no allocation.
+func turnActed(run *store.Run, promptID string, at int64) bool {
+	if promptID == "" {
+		return true
+	}
+	for i := range run.Declarations {
+		d := &run.Declarations[i]
+		if d.PromptID == nil || *d.PromptID != promptID || d.Seq > at || d.AgentID != nil || !writesOrRuns(d) {
+			continue
+		}
+		if p := projectOf(d); p == nil || *p != noProject {
+			return true
+		}
+	}
+	return false
+}
+
+// writesOrRuns is turnActed's class rule, an allowlist so that a class added
+// later counts as no action until it is named here: a line that may write; a
+// record before may_write (schema 3), which cannot say; or a class that
+// writes, runs a program (an unrecognised one is execute), runs tests, or is
+// version control or a package tool, classes that hold writing programs and
+// cannot say this line wrote nothing (git commit, go generate). Not counted:
+// read, network, agent, mcp and unknown (a relay, a search, a delegation, a
+// tool the table does not know).
+func writesOrRuns(d *store.Declaration) bool {
+	if d.SchemaVersion < 3 || d.Shape.MayWrite {
+		return true
+	}
+	switch d.Shape.VerbClass {
+	case shape.VerbWrite, shape.VerbExecute, shape.VerbTest, shape.VerbVCS, shape.VerbPackage:
+		return true
+	}
+	return false
+}
+
 // touches reports whether a call in one of projects may act on the files of
 // a gate whose root is root (card F2): the call's project is root, inside it,
 // or holds it (a session in the directory above its worktrees). Fail closed:

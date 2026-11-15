@@ -68,28 +68,30 @@ func f2Vet(t *testing.T, v StopView) GateState {
 // rv-se4-gi1w5-red, wrote one commit message under /tmp and said 8449's
 // first sentence. No call of turn 2 is in rv-se4-gi1w, so its done claim does
 // not answer to vet there, and the Stop names no call of turn 1. Controls,
-// each still flagged: turn 2 ran in the vetted worktree; no call of turn 2
-// is in a project (the session's gates, as before the card); a shell call of
+// each still flagged: turn 2 ran in the vetted worktree; a shell call of
 // turn 2 whose project the record does not say; the gate's own project not
 // known; a call in the directory that holds the worktree; a call in a
-// repository inside it. A Read whose project the record does not say acts on
-// nothing (F2c), so it reads no gate as the turn's. Break: read a gate in a
-// turn none of whose calls is in its project, or drop any of the fail-closed
-// arms.
+// repository inside it. Where no call of turn 2 is in a project, vet is
+// still the turn's (the session's gates, as before the card), and the done
+// claim is not read: the main agent acted in no repository (turnActed). A
+// Read whose project the record does not say acts on nothing (F2c), so it
+// reads no gate as the turn's. Break: read a gate in a turn none of whose
+// calls is in its project, or drop any of the fail-closed arms.
 func TestF2a_AMaskedRunInAnotherWorktreeIsNotThisTurns(t *testing.T) {
 	for _, c := range []struct {
 		name, project, cwd string
 		unkeyed            int64 // a call whose project the record does not say; 0 for none
-		flagged            bool
+		flagged            bool  // vet is the turn's, and the claim is flagged where read
+		read               bool
 	}{
-		{"turn 2 in another worktree", f2Other, f2Other, 0, false},
-		{"control: turn 2 in the vetted worktree", f2Vetted, f2Vetted, 0, true},
-		{"control: no call of turn 2 in a project", "", "/home/u", 0, true},
-		{"control: a call of turn 2 not keyed", f2Other, f2Other, 3, true},
-		{"a Read of turn 2 not keyed", f2Other, f2Other, 4, false},
-		{"control: the vet run's project not known", f2Other, f2Other, 2, true},
-		{"control: a call in the directory holding the worktree", "/wt", "/wt", 0, true},
-		{"control: a call in a repository inside the worktree", f2Vetted + "/third_party/x", f2Vetted + "/third_party/x", 0, true},
+		{"turn 2 in another worktree", f2Other, f2Other, 0, false, true},
+		{"control: turn 2 in the vetted worktree", f2Vetted, f2Vetted, 0, true, true},
+		{"control: no call of turn 2 in a project", "", "/home/u", 0, true, false},
+		{"control: a call of turn 2 not keyed", f2Other, f2Other, 3, true, true},
+		{"a Read of turn 2 not keyed", f2Other, f2Other, 4, false, true},
+		{"control: the vet run's project not known", f2Other, f2Other, 2, true, true},
+		{"control: a call in the directory holding the worktree", "/wt", "/wt", 0, true, true},
+		{"control: a call in a repository inside the worktree", f2Vetted + "/third_party/x", f2Vetted + "/third_party/x", 0, true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, scWrite(1, f2Vetted+"/internal/gateinfer/gateinfer.go"), f2MaskedVet(2),
@@ -104,7 +106,16 @@ func TestF2a_AMaskedRunInAnotherWorktreeIsNotThisTurns(t *testing.T) {
 			scPrompt(r, "p1", 1, 2)
 			scPrompt(r, "p2", 3, 4)
 			v := scStop(r, "p2", f2Said, f2Other, nil)
-			f2Vet(t, v)
+			g := f2Vet(t, v)
+			if read := rv1Read(v, ClaimDone); read != c.read {
+				t.Fatalf("done claim read %t, want %t (claims %+v)", read, c.read, v.Scan.Claims)
+			}
+			if !c.read {
+				if got := !g.offTurn; got != c.flagged {
+					t.Errorf("vet in rv-se4-gi1w is the turn's: %t; want %t", got, c.flagged)
+				}
+				return
+			}
 			if got := scFlagged(t, v); got != c.flagged {
 				t.Errorf("flagged %t (row %s, claims %+v); want %t", got, v.Summary.Row, v.Scan.Claims, c.flagged)
 			}

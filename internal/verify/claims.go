@@ -76,7 +76,8 @@ type ClaimScan struct {
 
 // Claims compares the claims of a message's head and tail windows with gates
 // (spec 20.2.5). wrote is whether the window holds a relevant write
-// (WroteRelevant): done fires only then. key is the install key the quotes
+// (WroteRelevant; at Stop, also on a turn the main agent acted in,
+// turnActed): done fires only then. key is the install key the quotes
 // are HMACed under; delivered are the steer lines delivered this session.
 func Claims(head, tail, key []byte, gates []GateState, wrote bool, source ClaimSource, delivered [][]byte) ClaimScan {
 	scan := ClaimScan{Claims: []ClaimVerdict{}, Cut: len(tail) > 0}
@@ -462,7 +463,8 @@ func mapGates(r *claimRule, gates []GateState) mapping {
 // cannot see. It has nothing to verify, so the claim is read against the
 // gates that do. Before the card no done claim met one: the claim is read
 // only where the session wrote a relevant file (WroteRelevant), which every
-// gate counted. A claim of a gate's own kind still reads it absent.
+// gate counted, and at Stop only on a turn the main agent acted in
+// (turnActed). A claim of a gate's own kind still reads it absent.
 func owesNothing(g *GateState) bool {
 	return g.State == Absent && g.LastRun == nil && g.WritesSinceGreen == 0 && g.UnknownTarget == 0
 }

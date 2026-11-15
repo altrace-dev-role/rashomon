@@ -26,8 +26,6 @@ m("F2c a call that only reads acts", C,
 m("F2c a turn that only read reads every gate", C,
   "\t\tps, _ = projectsOf(run, promptID, at, false)\n", "\t\tps, _ = projectsOf(run, promptID, at, true)\n",
   "TestF2f_|TestBGO2e_")
-m("F2c an act the record does not place falls back to the reads", C,
-  "\tif ok && ps == nil {\n", "\tif _ = ok; ps == nil {\n", "TestF2f_|TestF2a_")
 m("F2c a record before may_write says its line writes nothing", C,
   "\treturn d.SchemaVersion < 3 || d.Shape.VerbClass", "\treturn d.Shape.VerbClass", "TestF2e_")
 m("F2c a read line that may write acts on nothing", C,

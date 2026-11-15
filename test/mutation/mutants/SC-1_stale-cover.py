@@ -42,7 +42,7 @@ m("SC-1 an absent gate counts an uncovered write", D,
 m("SC-1 the turn counts every write", S,
   "window[w.Seq] && coveredByAny(roots, &w) {\n", "window[w.Seq] {\n", "TestSC1a_")
 m("SC-1 a done claim answers to a gate with nothing to verify", L,
-  " || r.class == ClaimDone && owesNothing(&g) {\n", " {\n", "TestSC1a_")
+  " || r.class == ClaimDone && owesNothing(&g) {\n", " {\n", "TestRV1_1b_")
 m("SC-1 a never-run gate with covered writes owes nothing", L,
   "g.LastRun == nil && g.WritesSinceGreen == 0 && g.UnknownTarget == 0\n", "g.LastRun == nil && g.UnknownTarget == 0\n",
   "TestSC1f_")
