@@ -93,6 +93,7 @@ func (b Brief) unsent(rule, why string, start time.Time) Brief {
 
 // notice reads harness frames off a prompt (harness.Cut): what is left
 // and whether a frame was read; a prompt with none is returned as it is.
-func notice(prompt string) (string, bool) {
-	return harness.Cut(prompt)
+// cut is whether the reader took only the prompt's head (Options.PromptCut).
+func notice(prompt string, cut bool) (string, bool) {
+	return harness.Cut(prompt, cut)
 }

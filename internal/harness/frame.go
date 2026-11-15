@@ -2,35 +2,48 @@ package harness
 
 import "strings"
 
-// The peer frame, as the host lays out a message from another session: the
-// lead line, the element's opening tag on the next line, the body, the
-// closing tag alone on its line, an empty line, then the closing paragraph
-// on one line.
+// A message from another session as the hook receives it, measured on
+// Claude Code 2.1.322, idle and queued alike: the bare element, its opening
+// tag alone on the first line with the sender's from= key, the body, and its
+// closing tag alone on the last line. The lead line and the closing
+// paragraph a transcript shows around it are the host's display and never
+// reach the hook.
 const (
-	peerLead    = "Another Claude session sent a message:"
-	peerTag     = "cross-session-message"
-	peerClose   = "</" + peerTag + ">"
-	peerTrailer = "This came from another Claude session"
+	peerTag   = "cross-session-message"
+	peerFrom  = ` from="`
+	peerClose = "</" + peerTag + ">"
 )
 
 // Cut reads off a prompt the frames the host wraps around text it injects
 // (a background job's notification, a message from another session, a
 // harness notice), and returns the text left and whether a frame was read.
-// A prompt with no frame is returned as it is.
+// A prompt with no frame is returned as it is. cut is whether the prompt is
+// only the head the hook's reader took (intent.MaxPromptBytes).
 //
 // A frame is read by its envelope alone, as the text inside one is free
 // text that can quote code, a tag or another frame. A notice is a line that
 // opens with a bracketed label ending " notice", through the line that
 // closes a «summary» it opens. A notification is an element whose tag ends
 // "-notification", from its opening tag through its closing one, text after
-// the closing tag on its line kept. A peer message is the lead line, the
-// opening tag on the next line, and the first closing tag alone on a line
-// that is followed by an empty line and the closing paragraph; its body is
-// never read for a frame. Each reading fails safe: an element never closed,
-// a peer element missing its lead line or its closing paragraph, is no
-// envelope and is read as typed; a summary never closed takes only the
-// label's line.
-func Cut(prompt string) (typed string, held bool) {
+// the closing tag on its line kept. A peer message is the whole prompt,
+// outer white space trimmed, as one element: its first line the opening tag
+// alone with the from= key, its last line the closing tag alone, and no
+// other line the closing tag alone; its body is never read for a frame.
+// Each reading fails safe: an element never closed, or a peer element with
+// text before or after it, is no envelope and is read as typed; a summary
+// never closed takes only the label's line. The one exception is a cut
+// prompt: its head is held as a peer message when its first line is the
+// opening tag alone with the from= key and no line of it is the closing tag
+// alone, though the close was never read, since the reader cut it off.
+//
+// A peer message is held here, nothing typed left of it, and not in Framed
+// alone: the graph brief reads Cut and nothing else (engine.Build), and a
+// peer message builds no task-preflight finding of any key at its own
+// prompt, the graph brief's included. Framed follows Cut.
+func Cut(prompt string, cut bool) (typed string, held bool) {
+	if peerElement(prompt, cut) {
+		return "", true
+	}
 	if !mayFrame(prompt) {
 		return prompt, false
 	}
@@ -48,10 +61,6 @@ func Cut(prompt string) (typed string, held bool) {
 				continue
 			}
 		}
-		if end, ok := peerFrame(lines, i); ok {
-			held, i = true, end
-			continue
-		}
 		keep = append(keep, lines[i])
 	}
 	if !held {
@@ -61,33 +70,41 @@ func Cut(prompt string) (typed string, held bool) {
 }
 
 // Framed is whether a prompt is frames only, nothing typed left once they
-// are cut, and the text left.
-func Framed(prompt string) (framed bool, typed string) {
-	typed, held := Cut(prompt)
+// are cut, and the text left. It follows Cut, which holds a message from
+// another session whole, so that what reads Cut alone builds nothing from
+// it either (Cut says why).
+func Framed(prompt string, cut bool) (framed bool, typed string) {
+	typed, held := Cut(prompt, cut)
 	return held && strings.TrimSpace(typed) == "", typed
 }
 
-// mayFrame is whether prompt holds what every frame needs: a notice's
-// opening bracket, a notification's tag end or the peer frame's lead line.
-// A prompt without any of them is typed, read without a split.
+// mayFrame is whether prompt holds what a notice or a notification needs: a
+// notice's opening bracket or a notification's tag end. A prompt without
+// either is typed, read without a split.
 func mayFrame(prompt string) bool {
-	return strings.Contains(prompt, "[") || strings.Contains(prompt, "-notification>") || strings.Contains(prompt, peerLead)
+	return strings.Contains(prompt, "[") || strings.Contains(prompt, "-notification>")
 }
 
-// peerFrame is the last line of the peer frame whose lead line is line i:
-// the closing paragraph's line. False when line i is not the lead line, the
-// next line is not the opening tag, or no closing tag alone on its line is
-// followed by an empty line and the closing paragraph.
-func peerFrame(lines []string, i int) (int, bool) {
-	if strings.TrimSpace(lines[i]) != peerLead || i+1 >= len(lines) || !peerOpen(strings.TrimSpace(lines[i+1])) {
-		return 0, false
+// peerElement is whether the whole prompt, outer white space trimmed, is
+// one message from another session: its first line the opening tag alone
+// with the from= key; then, read whole, exactly one line the closing tag
+// alone, and that line the last; read cut, no line the closing tag alone,
+// the close being past the head. A body line is compared trimmed.
+func peerElement(prompt string, cut bool) bool {
+	first, body, ok := strings.Cut(strings.TrimSpace(prompt), "\n")
+	if !ok || !peerOpen(first) || !strings.Contains(first, peerFrom) {
+		return false
 	}
-	for j := i + 2; j+2 < len(lines); j++ {
-		if lines[j] == peerClose && lines[j+1] == "" && strings.HasPrefix(lines[j+2], peerTrailer) {
-			return j + 2, true
+	closes, last := 0, ""
+	for l := range strings.SplitSeq(body, "\n") {
+		if last = strings.TrimSpace(l); last == peerClose {
+			closes++
 		}
 	}
-	return 0, false
+	if cut {
+		return closes == 0
+	}
+	return closes == 1 && last == peerClose
 }
 
 // peerOpen is whether s is the peer element's opening tag, with or without

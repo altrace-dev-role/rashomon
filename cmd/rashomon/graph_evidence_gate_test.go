@@ -51,10 +51,10 @@ func TestGraphEvidence_OnlyAtRecordScopeV5(t *testing.T) {
 		reads := 0
 		scopeOf := func() string { reads++; return store.RecordScopeV5 }
 		root := t.TempDir()
-		if _, ok := graphBriefWith(root, t.TempDir(), "s1", "p1", []byte(prompt), nil, scopeOf); ok || reads != 0 {
+		if _, ok := graphBriefWith(root, t.TempDir(), "s1", "p1", []byte(prompt), false, nil, scopeOf); ok || reads != 0 {
 			t.Errorf("a cwd with no index: brief %v, scope read %d times; want none, and no read", ok, reads)
 		}
-		if _, ok := graphBriefWith(root, cwd, "s1", "p2", []byte(prompt), nil, scopeOf); !ok || reads != 1 {
+		if _, ok := graphBriefWith(root, cwd, "s1", "p2", []byte(prompt), false, nil, scopeOf); !ok || reads != 1 {
 			t.Errorf("an indexed cwd: brief %v, scope read %d times; want a brief and one read", ok, reads)
 		}
 	})

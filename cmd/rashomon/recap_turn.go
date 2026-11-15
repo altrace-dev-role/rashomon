@@ -370,7 +370,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
 	unchecked, owed, flagged := recap.Turn(root, d.SessionID, d.PromptID)
 	pp.owed = owed
-	pp.framed, _ = harness.Framed(string(pp.Prompt))
+	pp.framed, _ = harness.Framed(string(pp.Prompt), pp.PromptCut)
 	pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID) && !pp.framed
 	note, client := preflightNote(st, run, pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
 	noteTurnSpec(st, run, pp)

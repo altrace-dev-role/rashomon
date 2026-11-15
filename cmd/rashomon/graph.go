@@ -258,19 +258,21 @@ func cmdBriefOrGraph(name string, args []string, stdout io.Writer) error {
 // graph/<session>-<prompt>.txt (writeGraphEvidence); here the scope is the
 // store's marker, read once a brief exists.
 func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (indexBrief, bool) {
-	return graphBriefWith(storeRoot, cwd, sessionID, promptID, prompt, nil, func() string {
+	return graphBriefWith(storeRoot, cwd, sessionID, promptID, prompt, false, nil, func() string {
 		scope, _ := store.RecordScopeMarker(storeRoot)
 		return scope
 	})
 }
 
-// graphBriefWith is graphBrief with specOf, the prompt's spec read on first
-// use, whose rules the conflict base takes (writeConflictBase); nil writes
-// no base. scopeOf is the store's record scope, read once a brief exists and
-// handed, as one answer, to the evidence file (writeGraphEvidence), the unit
-// briefs and the conflict base, each of which keeps content only at v5; nil
-// reads none and writes none of the three.
-func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, specOf func() *spec.Compiled, scopeOf func() string) (indexBrief, bool) {
+// graphBriefWith is graphBrief with cut, whether prompt is only the head
+// the hook's reader took (engine.Options.PromptCut), and specOf, the
+// prompt's spec read on first use, whose rules the conflict base takes
+// (writeConflictBase); nil writes no base. scopeOf is the store's record
+// scope, read once a brief exists and handed, as one answer, to the evidence
+// file (writeGraphEvidence), the unit briefs and the conflict base, each of
+// which keeps content only at v5; nil reads none and writes none of the
+// three.
+func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, cut bool, specOf func() *spec.Compiled, scopeOf func() string) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
 		return indexBrief{}, false
 	}
@@ -284,6 +286,7 @@ func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, s
 	}
 	opt := hookScorer()
 	opt.Rel = relTo(cwd, root)
+	opt.PromptCut = cut
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
 	v5 := storeRoot != "" && scopeOf != nil && scopeOf() == store.RecordScopeV5

@@ -64,6 +64,10 @@ type Options struct {
 	// (unnamed.go), the shipped one when nil; the measurement of the
 	// registered rules sets each in turn.
 	unitRule unitRule
+	// PromptCut is whether the prompt is only the head the hook's reader
+	// took (intent.MaxPromptBytes), so a harness frame whose close was cut
+	// off is still read as one (harness.Cut).
+	PromptCut bool
 }
 
 func (o Options) band() bandFunc {
@@ -99,7 +103,7 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 		return buildLessons(g, rev, prompt, opt)
 	}
 	start := time.Now()
-	req, held := notice(prompt)
+	req, held := notice(prompt, opt.PromptCut)
 	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(req)), Scorer: "tf"}
 	if opt.IDF {
 		b.Scorer = "idf"

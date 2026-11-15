@@ -97,7 +97,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	}
 	specOf := onceSpec(st, run, p.CWD)
 	scoped := promptScope{st: st}
-	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf, scoped.get)
+	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
