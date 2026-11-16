@@ -279,8 +279,19 @@ func TestRV1_5d_WatchRefusalCarriesTheClause(t *testing.T) {
 		if got := strings.Contains(strings.ToLower(err.Error()), rv5Off); got != tc.want {
 			t.Errorf("%s refusal %q: holds the clause %v, want %v", tc.verb, err, got, tc.want)
 		}
+		// The whole ruled text, typed here and built from no source
+		// constant, so a change of any word in the refusal is seen.
+		if tc.verb == "watch" && err.Error() != rv5WatchRefusal {
+			t.Errorf("watch refusal:\n got %q\nwant %q", err.Error(), rv5WatchRefusal)
+		}
 	}
 }
+
+// rv5WatchRefusal is watch's refusal inside an agent session, as ruled.
+const rv5WatchRefusal = "the screen above is yours to agree to, so only you can run it, in a terminal outside Claude Code: " +
+	"`rashomon watch`. Nothing was written. If rashomon is not recording this session, claim checks are off until " +
+	"rashomon's record of this session is complete. (CLAUDECODE is set here: Claude Code sets it for every command " +
+	"it runs, a `!` line included.)"
 
 // replay runs the session's Stop again for the prompt its last Stop claimed
 // (recap.json kept), so ClaimTurn refuses the line, and returns the

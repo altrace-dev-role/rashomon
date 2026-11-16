@@ -211,6 +211,16 @@ func ValueLine(v verify.StopView, im Impact, sessionID string, fromPlugin bool) 
 	return b.String()
 }
 
+// BareIncomplete is whether line, ValueLine's line for v, is the incomplete
+// record's sentence and the pointer with nothing between them, composed
+// from ValueLine's own prefix and pointer: any rider (the findings clause, a
+// rule, unbound, platform or conflict line, the AutoSteer clause) makes the
+// bytes differ, and a rider added later does the same.
+func BareIncomplete(v verify.StopView, line, sessionID string, fromPlugin bool) bool {
+	return v.Snap.Recording != verify.Complete && v.Summary.Row == verify.RowUnknown &&
+		line == prefix+v.Summary.Sentence+".\n"+pointer(sessionID, fromPlugin)
+}
+
 // unboundLines is two lines for each spec the session edited after the user
 // trusted it (verify.StopView.Unbound, SPEC-TRUST-DROP1): the spec, and the
 // verb that trusts it again, each within lineColumns. A repository names the

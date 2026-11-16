@@ -11,12 +11,10 @@ import (
 // closing tag alone on the last. The lead line and the closing paragraph the
 // transcript shows around it are the host's display and never reach the
 // hook. Measured against the hook reader's 16 KiB cap: an element 19 bytes
-// under it was read whole, where the lead line alone would have put it over
-// (docs-out/evidence-m3/step1/hook-shape/MANIFEST.txt, beside this
-// repository, not in it). The element's attribute names are a recorded
-// message's; the attribute values and the bodies are made up. The idle
-// notice and the task notification are the engine's own fixtures
-// (notask_test.go).
+// under it was read whole, where the lead line alone would have put it over.
+// The element's attribute names are a recorded message's; the attribute
+// values and the bodies are made up. The idle notice and the task
+// notification are the engine's own fixtures (notask_test.go).
 const (
 	testFrom        = ` from="uds:/tmp/cc-socks/1.sock"`
 	testPeerOpen    = `<cross-session-message` + testFrom + ` from-name="peer-a" from-mode="bypass">`

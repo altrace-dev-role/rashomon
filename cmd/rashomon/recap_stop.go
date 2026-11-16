@@ -48,6 +48,10 @@ type stopTurn struct {
 	// marker that says it was said (coverageNotice); both are empty except
 	// at a Stop event.
 	notice, marker string
+	// stands is whether the coverage notice stands (noticeStands), read at
+	// the Stop and at the catch-up alike: line then drops the bare
+	// incomplete line, which says nothing the notice did not.
+	stands bool
 }
 
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
@@ -132,13 +136,14 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 			_, _ = verify.WriteIndex(path, v.Index)
 		}
 	}
+	stands := noticeStands(st, p.SessionID, &v.Snap)
 	var notice, marker string
 	if event == install.EventStop {
 		notice, marker = coverageNotice(st, run, p.SessionID, &v.Snap)
 	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
 		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending,
-		notice: notice, marker: marker, owed: owedNote(v, in.Inferred)}, nil
+		notice: notice, marker: marker, stands: stands, owed: owedNote(v, in.Inferred)}, nil
 }
 
 // coverageNotice is the Stop's coverage notice and the marker that says it
@@ -166,6 +171,16 @@ func coverageNotice(st *store.Store, run *store.Run, sessionID string, snap *ver
 		return recap.ChecksOn, store.FileNoticeCoverageClear
 	}
 	return "", ""
+}
+
+// noticeStands is whether the coverage notice stands: the claim gate's
+// record reading, snap, keeps the checks off, the notice was said (its
+// marker taken), and no line has said since that they are back on (the
+// clear marker absent). The markers are only looked at, and with the
+// checks on none is.
+func noticeStands(st *store.Store, sessionID string, snap *verify.Snapshot) bool {
+	return verify.CoverageOff(snap.Notes) && st.NoticeTaken(sessionID, store.FileNoticeCoverage) &&
+		!st.NoticeTaken(sessionID, store.FileNoticeCoverageClear)
 }
 
 // noticeSaid takes the Stop's coverage marker once recapTurn has claimed the
@@ -281,7 +296,10 @@ func summaryOn(root, project string) bool {
 // which, like the done flag, speaks with the switch off: the person declared
 // the rule. clause is the fingerprint of the AutoSteer clause the line
 // carries, "" with none: the clause prints only when the counts differ from
-// the last one printed.
+// the last one printed. Under a standing coverage notice the value line is
+// dropped when it is the bare incomplete line (recap.BareIncomplete), and
+// the rule line gets its turn as for an empty value line; a line carrying
+// anything more prints.
 func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool, clause string) {
 	if !s.speaks {
 		return "", false, ""
@@ -300,6 +318,9 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 		clause = fp
 	}
 	l := recap.ValueLine(s.view, im, sessionID, fromPlugin)
+	if s.stands && recap.BareIncomplete(s.view, l, sessionID, fromPlugin) {
+		l = ""
+	}
 	if l == "" {
 		l, clause = recap.RuleLine(s.view, sessionID, fromPlugin), ""
 	}
