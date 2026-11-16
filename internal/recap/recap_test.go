@@ -36,17 +36,27 @@ func TestLineClean(t *testing.T) {
 	}
 }
 
+// TestLineCoverageUnverified: coverage that is not verified, with nothing
+// else fired, gives no line of its own; the Stop's coverage notice says what
+// it costs, once per session, and each of the three notices speaks alone as
+// its own sentence. A notice that is not one of the three is not printed.
+// Break: keep a per-turn coverage sentence, drop a notice, or print any
+// notice handed in.
 func TestLineCoverageUnverified(t *testing.T) {
 	d := cleanDigest()
 	d.Coverage.State = store.StateUnverified
 	d.Coverage.Reasons = []string{store.ReasonProbeAbsent}
 
-	line, ok := Line(d, d.SessionID, true)
-	if !ok {
-		t.Fatal("unverified coverage produced no line")
+	if line, ok := Line(d, d.SessionID, true); ok {
+		t.Errorf("unverified coverage alone spoke: %q", line)
 	}
-	if !strings.Contains(line, "coverage unverified") || !strings.Contains(line, store.ReasonProbeAbsent) {
-		t.Errorf("line = %q, want it to name coverage unverified and the reason", line)
+	for _, n := range []string{ChecksOff, ChecksOffRest, ChecksOn} {
+		if line, ok := LineWith(d, d.SessionID, true, n, ""); !ok || !strings.Contains(line, prefix+n+".\n") {
+			t.Errorf("notice %q: line %q, spoke %v; want the notice as the line's one sentence", n, line, ok)
+		}
+	}
+	if line, ok := LineWith(d, d.SessionID, true, "claim checks are anything else", ""); ok {
+		t.Errorf("a notice not of this package spoke: %q", line)
 	}
 }
 

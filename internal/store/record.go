@@ -181,6 +181,12 @@ const (
 	// session's channel notice or holdout notice has printed.
 	FileNoticeChannel = "notice-channel"
 	FileNoticeHoldout = "notice-holdout"
+	// FileNoticeCoverage and FileNoticeCoverageClear are the Stop's
+	// once-per-session coverage markers (TakeNotice): empty, present once the
+	// session's line that its claim checks are off has printed, and once the
+	// line that they are on again has.
+	FileNoticeCoverage      = "notice-coverage"
+	FileNoticeCoverageClear = "notice-coverage-clear"
 	// FileResolvedCap is at the store root: the size cap the last hook
 	// invocation resolved, written so status can show the value eviction
 	// actually runs with instead of reading EnvCapBytes in its own,

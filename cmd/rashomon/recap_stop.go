@@ -44,6 +44,10 @@ type stopTurn struct {
 	// owed is what the turn end leaves the session's next prompt (card
 	// GATE-INFER1, W5).
 	owed recap.Owed
+	// notice is the Stop's coverage notice, and marker the run-directory
+	// marker that says it was said (coverageNotice); both are empty except
+	// at a Stop event.
+	notice, marker string
 }
 
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
@@ -128,8 +132,49 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 			_, _ = verify.WriteIndex(path, v.Index)
 		}
 	}
+	var notice, marker string
+	if event == install.EventStop {
+		notice, marker = coverageNotice(st, run, p.SessionID, &v.Snap)
+	}
 	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
-		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending, owed: owedNote(v, in.Inferred)}, nil
+		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending,
+		notice: notice, marker: marker, owed: owedNote(v, in.Inferred)}, nil
+}
+
+// coverageNotice is the Stop's coverage notice and the marker that says it
+// was said, read from the claim gate's record reading, snap, and never from
+// the digest's coverage: the two can differ, and the notice says what the
+// claim checks do. While the gate reads the session's coverage as keeping
+// them off, the notice is said once per session: ChecksOffRest when no later
+// coverage record can clear it (verify.CoverageStuck), ChecksOff otherwise.
+// At the first complete Stop after that notice, ChecksOn is said once. Every
+// other Stop gets "", "". The markers are only looked at here; noticeSaid
+// takes one once the line has been claimed, so a line that never printed
+// leaves its notice for a later Stop.
+func coverageNotice(st *store.Store, run *store.Run, sessionID string, snap *verify.Snapshot) (string, string) {
+	switch {
+	case verify.CoverageOff(snap.Notes):
+		if st.NoticeTaken(sessionID, store.FileNoticeCoverage) {
+			return "", ""
+		}
+		if verify.CoverageStuck(run) {
+			return recap.ChecksOffRest, store.FileNoticeCoverage
+		}
+		return recap.ChecksOff, store.FileNoticeCoverage
+	case snap.Recording == verify.Complete && st.NoticeTaken(sessionID, store.FileNoticeCoverage) &&
+		!st.NoticeTaken(sessionID, store.FileNoticeCoverageClear):
+		return recap.ChecksOn, store.FileNoticeCoverageClear
+	}
+	return "", ""
+}
+
+// noticeSaid takes the Stop's coverage marker once recapTurn has claimed the
+// turn's line (speak), so the notice is not said again. A Stop that did not
+// speak takes nothing, and a later Stop says the notice.
+func (s stopTurn) noticeSaid(st *store.Store, sessionID string, speak bool) {
+	if speak && s.marker != "" {
+		_ = st.TakeNotice(sessionID, s.marker)
+	}
 }
 
 // unboundSpecs is each repository spec in sp, project-relative, that the

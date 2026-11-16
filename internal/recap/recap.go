@@ -18,7 +18,8 @@
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
 // digest.ReasonNoStore/ReasonRecordsSkipped/ReasonNoSessionID), or one of
 // two fixed test-bending sentences with the seqs of the pair the digest
-// found (see pairSentence) -- never a word this package invented and never
+// found (see pairSentence), or one of the three fixed coverage notices (see
+// LineWith) -- never a word this package invented and never
 // a byte handed to it by a tool call or a transcript. The
 // one caller-supplied value it prints, the session id, is sanitised before
 // it is, on the same rule internal/report/account.go's sanitizeMessage sets
@@ -73,11 +74,15 @@ var prefix = mark + " rashomon: "
 // run of the same command that did, under a message that claims a pass and
 // names no failure.
 //
-// Coverage-unverified and digest-unknown are rendered as ONE sentence, not
-// two: Unknown is defined as Recorded == 0 AND Coverage.State != verified
-// (digest.Digest's own doc), so whenever it is true the coverage reasons ARE
-// the explanation for the unknown count, and printing both would say the
-// same thing twice in the one place this package is required to stay short.
+// Coverage-unverified renders no sentence of its own. What it costs the
+// session, claim checks that are off, is said once per session by the Stop's
+// coverage notice (ChecksOff, ChecksOffRest, ChecksOn), which the caller reads
+// from the claim gate and passes to LineWith: a sentence at every turn of a
+// session whose cause stays would be the line that is the same on almost
+// every turn. Digest-unknown keeps its sentence, which names the coverage
+// reasons: Unknown is defined as Recorded == 0 AND Coverage.State != verified
+// (digest.Digest's own doc), so those reasons ARE the explanation for the
+// unknown count.
 //
 // fromPlugin picks the command the line points at. /rashomon:report is a
 // plugin skill and exists only where the plugin does; a settings install has
@@ -85,24 +90,42 @@ var prefix = mark + " rashomon: "
 // sits under the plugin's own directory rather than on PATH. Pointing either
 // user at the other's command sends them to one that is not there.
 func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
-	return LineWith(d, sessionID, fromPlugin, "")
+	return LineWith(d, sessionID, fromPlugin, "", "")
 }
 
-// LineWith is Line with lines, the Stop's rule lines (RuleLines) and platform
-// lines (PlatformLines), set after the sentences and before the pointer, so a
-// line whose sentence counts a failure also names the rule the turn matched
-// and the package it left unmet (STOP-PRECEDENCE1, mgr 11-02 ruling (a); card
-// RECALL-15). lines never speak alone: with no sentence there is no line, and
-// the done flag, the value line or RuleLine, which carry them themselves,
-// speak instead (card 2.4 R12).
-func LineWith(d *digest.Digest, sessionID string, fromPlugin bool, lines string) (string, bool) {
+// The Stop's coverage notice: what the claim checks do while the claim gate
+// reads the session's record as not complete for its coverage, said at one
+// Stop of the session, and the line said at the first complete Stop after it.
+const (
+	// ChecksOff is the notice when a later coverage record can complete the
+	// record.
+	ChecksOff = "claim checks are off until rashomon's record of this session is complete"
+	// ChecksOffRest is the notice when no later coverage record can.
+	ChecksOffRest = "claim checks are off for the rest of this session"
+	// ChecksOn follows ChecksOff once the record is complete.
+	ChecksOn = "claim checks are on again from this turn"
+)
+
+// LineWith is Line with notice, the Stop's coverage notice, and lines, the
+// Stop's rule lines (RuleLines) and platform lines (PlatformLines), set after
+// the sentences and before the pointer, so a line whose sentence counts a
+// failure also names the rule the turn matched and the package it left unmet
+// (STOP-PRECEDENCE1, mgr 11-02 ruling (a); card RECALL-15). lines never speak
+// alone: with no sentence there is no line, and the done flag, the value line
+// or RuleLine, which carry them themselves, speak instead (card 2.4 R12).
+//
+// notice is a sentence, and speaks alone. It is printed only if it is one of
+// ChecksOff, ChecksOffRest and ChecksOn, so every sentence stays one this
+// package wrote; any other value is ignored.
+func LineWith(d *digest.Digest, sessionID string, fromPlugin bool, notice, lines string) (string, bool) {
 	var sentences []string
 
-	switch {
-	case d.Fired(report.DetectorDigestUnknown):
+	if d.Fired(report.DetectorDigestUnknown) {
 		sentences = append(sentences, fmt.Sprintf("digest unknown (%s)", reasonList(d.Coverage.Reasons)))
-	case d.Fired(report.DetectorCoverageUnverified):
-		sentences = append(sentences, fmt.Sprintf("coverage unverified (%s)", reasonList(d.Coverage.Reasons)))
+	}
+	switch notice {
+	case ChecksOff, ChecksOffRest, ChecksOn:
+		sentences = append(sentences, notice)
 	}
 	if d.Fired(report.DetectorDigestTruncated) {
 		sentences = append(sentences, "digest truncated (some fields were cut to stay under the size ceiling)")

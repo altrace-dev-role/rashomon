@@ -83,12 +83,12 @@ func foldConflictChecks(run *store.Run, seq int64) []verify.ConflictSeen {
 // recapTurn to keep that function within Law 10.
 func stopLineWith(d *digest.Digest, stop stopTurn, fromPlugin bool) (string, bool) {
 	lines := stop.rules() + recap.PlatformLines(stop.view, fromPlugin)
-	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, lines)
+	line, wantSpeak := recap.LineWith(d, d.SessionID, fromPlugin, stop.notice, lines)
 	if !wantSpeak || !stop.speaks {
 		return line, wantSpeak
 	}
 	if cl := recap.ConflictLines(stop.view, fromPlugin, line); cl != "" {
-		line, _ = recap.LineWith(d, d.SessionID, fromPlugin, lines+cl)
+		line, _ = recap.LineWith(d, d.SessionID, fromPlugin, stop.notice, lines+cl)
 	}
 	return line, wantSpeak
 }
