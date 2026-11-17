@@ -29,10 +29,13 @@ m("DONE1 no consent does not withhold", D,
 
 # The Stop's side: only a Stop that raised the flag keeps it, and the prompt
 # takes it once.
+# flag is a named result of doneFlag, so the mutant assigns it (=): a := with
+# no new name on its left does not build.
 m("DONE1 every Stop is flagged", S,
-  "\t_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)\n\treturn ok\n", "\treturn true\n", "TestDONE1b_")
-m("DONE1 the Stop's verdict not kept", T,
-  "clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))", "clause, stop.owed, false)", "TestDONE1_")
+  "\tflag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)\n\tif !ok {\n\t\treturn \"\", \"\"\n\t}\n",
+  "\tflag, _ = recap.DoneFlag(s.view, sessionID, fromPlugin)\n", "TestDONE1b_")
+m("DONE1 the Stop's verdict not kept", S,
+  "\t\tm.Flagged = digest\n", "", "TestDONE1_")
 m("DONE1 the prompt takes nothing", T,
   "pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID)", "pp.unverified = flagged && false", "TestDONE1_")
 # The prompt's one read (#279): Turn says whether there is a flag to take, so
@@ -59,3 +62,18 @@ m("DONE1 the take reads another session's flag", R,
   "\tflagged := s.Unverified[sessionID]\n", "\tflagged := \"\"\n\tfor _, v := range s.Unverified {\n\t\tflagged = v\n\t}\n", "TestDONE1g_")
 m("DONE1 the unverified map not capped", R,
   "[]map[string]string{s.Spoken, s.Checked, s.Shown, s.Unverified, s.Noted}", "[]map[string]string{s.Spoken, s.Checked, s.Shown}", "TestDONE1i_")
+
+# Step 1b: the note and the flag once per evidence (verify.DoneEvidence, a
+# digest of what the flag judged). A Stop over the evidence whose note already
+# reached the agent keeps no flag; the digest does not depend on the gates'
+# order; only a prompt whose printed note is the done note marks it
+# delivered; the digests are capped with the other maps.
+V = "internal/verify/doneevidence.go"
+m("DONE-1j the delivered evidence flags again", R,
+  " && done.Flagged != s.DoneEvidence[sessionID].Delivered {\n", " {\n", "TestDONE1j_UnchangedEvidenceDeliversOnce|TestDONE1l_")
+m("DONE-1k the digest follows the gates' order", V,
+  "\tslices.Sort(parts)\n", "", "TestDONE1k_")
+m("DONE1q an outranked note counts as delivered", T,
+  "\tif pp.unverified && note.AdditionalContext != \"\" && note.AdditionalContext == doneText() {\n", "\tif pp.unverified {\n", "TestDONE1q_")
+m("DONE1 the done evidence not capped", R,
+  "\tcapSessions(s.DoneEvidence, current)\n", "", "TestDONE1i_")

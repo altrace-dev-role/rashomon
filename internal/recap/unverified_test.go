@@ -89,8 +89,12 @@ func TestDONE1i_UnverifiedIsCappedWithTheOtherMaps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Unverified) > maxTrackedSessions || len(s.Noted) > maxTrackedSessions {
-		t.Errorf("unverified %d, noted %d sessions, want at most %d", len(s.Unverified), len(s.Noted), maxTrackedSessions)
+	if len(s.DoneEvidence) == 0 {
+		t.Fatal("premise: no done evidence kept")
+	}
+	if len(s.Unverified) > maxTrackedSessions || len(s.Noted) > maxTrackedSessions || len(s.DoneEvidence) > maxTrackedSessions {
+		t.Errorf("unverified %d, noted %d, done evidence %d sessions, want at most %d",
+			len(s.Unverified), len(s.Noted), len(s.DoneEvidence), maxTrackedSessions)
 	}
 }
 
@@ -141,5 +145,30 @@ func TestDONE1j_TurnSeesTheFlagTheTakeWouldTake(t *testing.T) {
 	claim("s1", "p2", true)
 	if !flagged("s1") {
 		t.Error("a later flagged turn not seen")
+	}
+}
+
+// TestDONE1l_OwedSeqIsNotInTheDigest: the owed row's seq moves at every Stop
+// that owes; it is the Stop point's seq, which the digest does not read
+// (TestDONE1r, "point seq"). Two flagged Stops over one digest, owing at seq
+// 5 and then 9, give the done note once.
+func TestDONE1l_OwedSeqIsNotInTheDigest(t *testing.T) {
+	root := t.TempDir()
+	markInstalled(t, root)
+	now := time.Now()
+	stop := func(prompt string, seq int64) {
+		t.Helper()
+		if _, err := ClaimStop(root, "s1", prompt, now, true, "", Owed{Seq: seq, Gate: "pytest"}, DoneMarks{Flagged: "d1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stop("p1", 5)
+	if _, owed, flagged := Turn(root, "s1", "p2"); owed.Seq != 5 || !flagged || !TakeUnverified(root, "s1") {
+		t.Fatalf("premise: the first Stop owes seq %d, flagged %v; want 5, flagged and taken", owed.Seq, flagged)
+	}
+	NoteDelivered(root, "s1")
+	stop("p2", 9)
+	if _, owed, flagged := Turn(root, "s1", "p3"); owed.Seq != 9 || flagged {
+		t.Errorf("after a second Stop over d1 owing seq 9: owed seq %d, flagged %v; want 9 and no flag", owed.Seq, flagged)
 	}
 }

@@ -26,6 +26,13 @@ func doneFinding(afterSeq int64) (steer.Finding, bool) {
 		MaxLevel: steer.LevelNudge, StopForm: steer.StopFormNone, Message: m, AfterSeq: afterSeq}, true
 }
 
+// doneText is the done note as the model is given it, "" where it does not
+// render: a prompt whose note is this text delivered the done note.
+func doneText() string {
+	f, _ := doneFinding(0)
+	return f.Message.Text()
+}
+
 // withheld reports a context the router would clamp a note to a flag on:
 // steering off or no consent. A config.json that does not read is off
 // (hook.steerOff), so SteerOff covers it. A flag would print the note's text

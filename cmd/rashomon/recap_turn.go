@@ -303,10 +303,11 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// it names no rule (stopTurn.rules), so there the sentences name neither
 	// (tech 2.2.11 condition 4).
 	fromPlugin := recapFromPlugin(args)
+	flag, digest := stop.doneFlag(d.SessionID, fromPlugin)
 	line, wantSpeak := stopLineWith(d, stop, fromPlugin)
-	clause := ""
+	clause, shownDone := "", ""
 	if !wantSpeak {
-		line, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)
+		line, wantSpeak, clause, shownDone = stop.line(d.SessionID, fromPlugin, flag, digest)
 	}
 	// The barrier before stdout (REC-34), and before Claim (D93): a line
 	// printed over a checkpoint that is not durable would claim what the
@@ -322,7 +323,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// bookkeeping, not evidence, and a failure to persist it must cost at
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
-	speak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))
+	speak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))
 	stop.noticeSaid(st, d.SessionID, speak)
 	// The channel-evidence read, at a Stop only: the checkpoint is durable
 	// (the flush above returned), and the defer runs on every return below,
@@ -367,13 +368,17 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 // d.SessionID); a prompt with none pays no second read (#279). A prompt the
 // host framed (harness.Framed) takes the flagged Stop and is told nothing:
 // the take comes first, so the verdict is not held for a later turn, which
-// it would name as the wrong one.
+// it would name as the wrong one. The flagged evidence counts as delivered
+// only where the note printed is the done note (recap.NoteDelivered).
 func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
 	unchecked, owed, flagged := recap.Turn(root, d.SessionID, d.PromptID)
 	pp.owed = owed
 	pp.framed, _ = harness.Framed(string(pp.Prompt), pp.PromptCut)
 	pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID) && !pp.framed
 	note, client := preflightNote(st, run, pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
+	if pp.unverified && note.AdditionalContext != "" && note.AdditionalContext == doneText() {
+		recap.NoteDelivered(root, d.SessionID)
+	}
 	noteTurnSpec(st, run, pp)
 	return note, client, unchecked
 }
