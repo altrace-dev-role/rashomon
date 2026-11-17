@@ -37,6 +37,8 @@ RES2
 RES29
 RP2
 RS1
+# RV1: SC-1's row on a done claim that answers to a gate with nothing to verify is killed by TestRV1_1b_, which pins STALE-COVER1's fixture 1 on a turn that acted; a turn that did not act has its done claim not read, so TestSC1a_ no longer reaches it.
+RV1
 SC1
 # SEED2: AG-1's audit --keep refusal row is killed by TestSEED2c_, which pins that refusal's text (#184).
 SEED2

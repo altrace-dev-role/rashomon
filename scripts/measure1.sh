@@ -316,7 +316,7 @@ g0() {
 	check prereg "$M/out/prereg.json" "claude=$CLAUDE_V" "claude_path=$claude" "go=$GO_V" "rashomon_sha256=$BIN_SHA" \
 		"model=$model" "order=$order" "reps=$reps" "limit=$limit" "allowed=$allowed" "base=$base" "fix=$fix" "runner=$runner" ${PYKV[@]+"${PYKV[@]}"} \
 		"tree=$(git -C "$here/.." rev-parse HEAD 2>/dev/null || echo unknown)" "at=$(date '+%Y-%m-%dT%H:%M:%S%z')" \
-		-- "$task/issue.txt" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" "$M"/prompt-*.txt "$M/control-prompt.txt" "$M/out/arm-sites.txt"
+		-- "$task/issue.txt" "$task/FAIL_TO_PASS" "$task/PASS_TO_PASS" "$M"/prompt-*.txt "$M/control-prompt.txt" "$M/control-task.json" "$M/out/arm-sites.txt"
 	say "G0 claude $CLAUDE_V at $claude (pinned); $GO_V; rashomon $BIN_SHA; no managed policy"
 	if [ "$runner" = pytest ]; then say "G0 runner pytest: python $PY_V, pytest $PYT_V (from $M/bin/python3; the packages are the host's, not frozen)"; fi
 	local dropped
@@ -334,6 +334,7 @@ prompts() {
 		printf '%s%s' "$PREFIX" "Summarize what you changed." >"$M/prompt-3.txt"
 	fi
 	cp "$here/measure1_control_prompt.txt" "$M/control-prompt.txt"
+	cp "$here/measure1_control_task.json" "$M/control-task.json"
 	NPROMPTS=$(find "$M" -maxdepth 1 -name 'prompt-*.txt' | wc -l | tr -d ' ')
 }
 
@@ -344,15 +345,21 @@ prompts() {
 #
 # The control cannot ride on the task's prompt 1: whether that prompt makes
 # the binary say anything is the task's luck (on go-humanize #103 it did
-# not, and the gate failed with no steer line at all). So the control is
-# scripts/measure1_control_prompt.txt, a fixed prompt that names go.mod. A
-# prompt that names a path the project holds gets a task-preflight note at
-# UserPromptSubmit (cmd/rashomon/preflight.go preflightNote: intent.Names
-# finds go.mod, intent.Finding calls it fresh because the session has not
-# been given that path). The note is decided from the prompt alone, so it
-# needs nothing of the model, and UserPromptSubmit is the one channel row
-# that is exempt from a probed version (steer/finding.go outputKeys,
-# client.go shutBy), so it delivers on every pinned version.
+# not, and the gate failed with no steer line at all). So the control runs
+# under its own declared input, a task file: scripts/measure1_control_task.json
+# is copied to the control workspace's .claude/rashomon/task/current.json at
+# run time, in both arms alike and in no measured arm, and
+# scripts/measure1_control_prompt.txt names that path. At UserPromptSubmit the
+# task-preflight note (cmd/rashomon/preflight.go preflightNote) lists the task
+# file's builtin rule, and a note that lists a rule is a nudge the model is
+# given (internal/intent noteLevel). A note that lists only paths, as a prompt
+# naming go.mod alone would give, is the user's flag and gives the model
+# nothing, so it leaves no model channel to check. The note is decided from
+# the prompt and the task file, so it still needs nothing of the model, and
+# UserPromptSubmit is the one channel row that is exempt from a probed version
+# (steer/finding.go outputKeys, client.go shutBy), so it delivers on every
+# pinned version. TestRV1_4t_ in test/acceptance runs both files through the
+# real hooks and fails if the note stops being a nudge.
 #
 # Why not a note on a failing command, as the card first asked
 # (identical-retry run twice, or a red after a green)? identical-retry is a
@@ -396,6 +403,8 @@ g1() {
 	check envdiff "$M/out/g1a-off.env" "$P_off" "$PWS_off" "$PSID_off" "$M/out/g1a-steer.env" "$P_steer" "$PWS_steer" "$PSID_steer"
 	for arm in off steer; do
 		newarm
+		mkdir -p "$WS/.claude/rashomon/task"
+		cp "$M/control-task.json" "$WS/.claude/rashomon/task/current.json"
 		session "$A" "$arm" control "g1c-control-$arm"
 		put "PC_$arm" "$A"
 		put "PCSID_$arm" "$(cat "$M/out/g1c-control-$arm.session")"

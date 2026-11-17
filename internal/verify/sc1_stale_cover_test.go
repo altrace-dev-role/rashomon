@@ -94,28 +94,33 @@ func scLearned(t *testing.T, v StopView) GateState {
 // TestSC1a_ANoteOutsideEveryRepositoryOwesNoTest (fixture 1): eng-4's turn
 // 1988 wrote one verdict file in the evidence tree, outside every
 // repository, and said "QA-1's run is complete." The hook records that Write
-// with no project, so go test covers nothing the turn wrote: the claim
-// answers to no gate and the row counts no edit. Control: the same file in
-// the repository is an edit go test covers and never ran after, and the
-// claim is flagged. Break: count a write against a gate that does not cover
-// it, or read a gate that never ran and has nothing to verify as owed.
+// with no project, so go test covers nothing the turn wrote and the row
+// counts no edit; the turn acted in no repository, so its claim is not read
+// (turnActed). The claim answering to no gate (owesNothing) is pinned where
+// the turn also ran a program in the repository (TestRV1_1b). Control: the
+// same file in the repository is an edit go test covers and never ran after,
+// and the claim is flagged. Break: count a write against a gate that does not
+// cover it.
 func TestSC1a_ANoteOutsideEveryRepositoryOwesNoTest(t *testing.T) {
 	const said = "QA-1's run is complete."
 	for _, c := range []struct {
 		name, path, project string
-		flagged             bool
+		read, flagged       bool
 		writes              int
 	}{
-		{"outside every repository", "/ev/verdicts/PR-170.txt", "", false, 0},
-		{"control: in the repository", "/repo/verdicts/PR-170.txt", "/repo", true, 1},
+		{"outside every repository", "/ev/verdicts/PR-170.txt", "", false, false, 0},
+		{"control: in the repository", "/repo/verdicts/PR-170.txt", "/repo", true, true, 1},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, scRead(1), scWrite(2, c.path))
 			ranIn(r, "/repo", "")
 			scAt(t, r, 2, c.project, "/repo")
 			v := scStop(inPrompt(r, "p1"), "p1", said, "/repo", goTestAll)
-			if got := scFlagged(t, v); got != c.flagged || v.Turn.Writes != c.writes {
-				t.Errorf("flagged %t, turn writes %d (row %s, gates %+v); want %t, %d", got, v.Turn.Writes, v.Summary.Row, v.Snap.Gates, c.flagged, c.writes)
+			g, _ := gateNamed(v.Snap.Gates, InferredGateID)
+			read := rv1Read(v, ClaimDone)
+			if read != c.read || read && scFlagged(t, v) != c.flagged || v.Turn.Writes != c.writes || g.WritesSinceGreen != c.writes {
+				t.Errorf("done read %t, flagged %t, turn writes %d, go test writes %d (row %s, gates %+v); want %t, %t, %d, %[9]d",
+					read, read && scFlagged(t, v), v.Turn.Writes, g.WritesSinceGreen, v.Summary.Row, v.Snap.Gates, c.read, c.flagged, c.writes)
 			}
 		})
 	}
@@ -221,18 +226,19 @@ func TestSC1d_ASessionAboveItsWorktreesCountsTheWorktreesFiles(t *testing.T) {
 // wrote nothing and ran nothing, and said "The last job finished green and
 // the result is with the manager." The turn before edited a file, ran go
 // test green and then wrote its handoff file outside the repository: go test
-// covers nothing written after its pass, so the claim is backed. Control: a
-// covered edit after the pass in the turn before is owed still, and the
-// relay turn's claim is flagged, the one catch the card keeps (fixture 5's
-// shape over a green). Break: count the handoff file against go test.
+// covers nothing written after its pass. Control: a covered edit after the
+// pass in the turn before is owed still. The relay turn acted on nothing, so
+// its claim is not read in either case (turnActed): the catch STALE-COVER1
+// kept on this shape (fixture 5's over a green) is given up for relays.
+// Break: count the handoff file against go test.
 func TestSC1e_ARelayTurnAfterAGreenSaysNothing(t *testing.T) {
 	const said = "The last job finished green and the result is with the manager."
 	for _, c := range []struct {
 		name, path, project string
-		flagged             bool
+		writes              int // go test's writes since its pass
 	}{
-		{"a handoff file outside", "/ev/se2/HANDOFF-1820.txt", "", false},
-		{"control: an edit after the pass", "/repo/internal/seed/class.go", "/repo", true},
+		{"a handoff file outside", "/ev/se2/HANDOFF-1820.txt", "", 0},
+		{"control: an edit after the pass", "/repo/internal/seed/class.go", "/repo", 1},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, edit(1, "/repo/internal/seed/seed.go"), gateCall(2, "go-test", store.ExecOK), scWrite(3, c.path), scRead(4))
@@ -245,42 +251,58 @@ func TestSC1e_ARelayTurnAfterAGreenSaysNothing(t *testing.T) {
 			scPrompt(r, "p1", 1, 2, 3)
 			scPrompt(r, "p2", 4)
 			v := scStop(r, "p2", said, "/repo", goTestAll)
-			if got := scFlagged(t, v); got != c.flagged || v.Summary.Row != RowNone {
-				t.Errorf("flagged %t on row %s (gates %+v); want %t on none", got, v.Summary.Row, v.Snap.Gates, c.flagged)
+			g, _ := gateNamed(v.Snap.Gates, InferredGateID)
+			if read := rv1Read(v, ClaimDone); read || g.WritesSinceGreen != c.writes || v.Summary.Row != RowNone {
+				t.Errorf("done read %t, go test writes since green %d, row %s (gates %+v); want not read, %d, none", read,
+					g.WritesSinceGreen, v.Summary.Row, v.Snap.Gates, c.writes)
 			}
 		})
 	}
 }
 
 // TestSC1f_DoneAboutAnEarlierTurnsEditStillFires (fixture 5): a turn edits a
-// file go test covers and runs nothing; the next turn writes nothing and
-// says it is done. go test never ran after a covered write in the session,
-// so the claim is flagged, on either side of the card: the catch it keeps.
-// A write whose project the record withholds is covered by every gate, as
-// before the card (fail closed). Break: scope the never-run row to the turn,
-// or drop a write the record cannot place.
+// file go test covers and runs nothing; the next turn says it is done. go
+// test never ran after a covered write in the session, so where the next
+// turn acted (here, a program run in the repository) the claim is flagged:
+// the catch the card keeps. Where it only read, the main agent acted on
+// nothing and the claim is not read (turnActed); the gate still reads never
+// run. A write whose project the record withholds is covered by every gate,
+// as before the card (fail closed). Break: scope the never-run row to the
+// turn, or drop a write the record cannot place.
 func TestSC1f_DoneAboutAnEarlierTurnsEditStillFires(t *testing.T) {
 	for _, c := range []struct {
 		name, path, project string
-		withheld            bool
+		withheld, acted     bool
 	}{
-		{"a covered edit", "/repo/internal/a.go", "/repo", false},
-		{"a write whose project is withheld", "/ev/notes.txt", "", true},
+		{"a covered edit, then a read", "/repo/internal/a.go", "/repo", false, false},
+		{"a write whose project is withheld, then a read", "/ev/notes.txt", "", true, false},
+		{"a covered edit, then a program run", "/repo/internal/a.go", "/repo", false, true},
+		{"a write whose project is withheld, then a program run", "/ev/notes.txt", "", true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := runOf(t, scWrite(1, c.path), scRead(2))
+			calls := []call{scWrite(1, c.path), scRead(2)}
+			if c.acted {
+				calls = append(calls, call{seq: 3, tool: "Bash", prog: "frobnicate", class: shape.VerbExecute, outcome: store.ExecOK})
+			}
+			r := runOf(t, calls...)
 			ranIn(r, "/repo", "")
 			scAt(t, r, 1, c.project, "/repo")
 			scAt(t, r, 2, "/repo", "/repo")
+			scPrompt(r, "p1", 1)
+			scPrompt(r, "p2", 2)
+			if c.acted {
+				scAt(t, r, 3, "/repo", "/repo")
+				scPrompt(r, "p2", 3)
+			}
 			if c.withheld {
 				r.Declarations[0].ProjectWithheld = ptr("oversize")
 			}
-			scPrompt(r, "p1", 1)
-			scPrompt(r, "p2", 2)
 			v := scStop(r, "p2", "The fix is done.", "/repo", goTestAll)
 			g, _ := gateNamed(v.Snap.Gates, InferredGateID)
-			if !scFlagged(t, v) || g.State != Absent || g.Reason != NeverRunAfterWrite || g.WritesSinceGreen != 1 {
-				t.Errorf("flagged %t, %s %s with %d writes; want flagged, absent never_run_after_write with 1", scFlagged(t, v), g.State, g.Reason, g.WritesSinceGreen)
+			read := rv1Read(v, ClaimDone)
+			if read != c.acted || read && !scFlagged(t, v) || g.State != Absent || g.Reason != NeverRunAfterWrite || g.WritesSinceGreen != 1 {
+				t.Errorf("done read %t, flagged %t, %s %s with %d writes; want read %t and flagged where read, absent never_run_after_write with 1",
+					read, read && scFlagged(t, v), g.State, g.Reason, g.WritesSinceGreen, c.acted)
 			}
 		})
 	}

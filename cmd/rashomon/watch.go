@@ -168,7 +168,7 @@ func askConsent(verb string, screen []byte, yes, show bool, wt workTreeQuestion,
 		if _, err := stdout.Write(screen); err != nil {
 			return nil, err
 		}
-		return nil, selfguard.Refusal(signal, "the screen above is yours to agree to", verb, "written")
+		return nil, selfguard.Refusal(signal, "the screen above is yours to agree to", verb, "written"+refusalLeaves(verb))
 	}
 	viaYes, viaTTY := consent.ViaWatchYes, consent.ViaWatchTTY
 	if verb == "consent" {

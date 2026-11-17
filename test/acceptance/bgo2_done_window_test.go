@@ -52,25 +52,52 @@ func bgo2First(t *testing.T) (*env, string) {
 // the call may have run it, as the unread wrapper's hedge does.
 var bgo2Unknown = regexp.MustCompile(`'unit' unknown: background call \d+ may have run it`)
 
-// TestBGO2a_ALaterTurnsDoneClaimNamesTheBackgroundRun: turn p2 only reads the
-// background job's output file and claims done. The edit and the launch are
-// p1's, so the turn alone holds no edit and no run, and today the flag says
-// "no test or build run is recorded for this turn", though the claim rests on
-// the run p1 launched after the last edit. The done flag reads the evidence
-// since that edit: the gate is unknown, and the line names the background
-// call. The hook saw the read but cannot show what it held, so the line
-// claims no read clause.
-func TestBGO2a_ALaterTurnsDoneClaimNamesTheBackgroundRun(t *testing.T) {
-	e, dir := bgo2First(t)
-	e.bgo2Call(dir, "p2", "toolu_r", "Bash", bgo2Read, bgo2Quiet)
-	line := e.dghStop(dir)
-	if !bgo2Unknown.MatchString(line) {
-		t.Errorf("a later turn's done claim after a background run: Stop line %q, want %s", line, bgo2Unknown)
+// bgo2Prog is a program the shape tables do not name (an execute line, no
+// runner, no write): it makes p2 a turn that acted in the project without
+// editing it or running a gate.
+var bgo2Prog = map[string]any{"command": "frobnicate --check"}
+
+// bgo2Acted is p2's program run in dir, when acted: a done claim is read only
+// on a turn the main agent acted in, so a row that keeps a subject below
+// about a later turn's claim gives that turn an act.
+func (e *env) bgo2Acted(dir string, acted bool) {
+	e.t.Helper()
+	if acted {
+		e.bgo2Call(dir, "p2", "toolu_x", "Bash", bgo2Prog, bgo2Quiet)
 	}
-	for _, deny := range []string{"no test or build run", "not read", "not run"} {
-		if strings.Contains(line, deny) {
-			t.Errorf("Stop line %q says %q", line, deny)
-		}
+}
+
+// TestBGO2a_ALaterTurnsDoneClaimNamesTheBackgroundRun: turn p2 reads the
+// background job's output file and claims done. The edit and the launch are
+// p1's, so the turn alone holds no edit and no gate run, though the claim
+// rests on the run p1 launched after the last edit. Where p2 also ran a
+// program in the project, the done flag reads the evidence since that edit:
+// the gate is unknown, and the line names the background call. The hook saw
+// the read but cannot show what it held, so the line claims no read clause.
+// Where p2 only read, it acted on no repository and its done claim is not
+// read: no line.
+func TestBGO2a_ALaterTurnsDoneClaimNamesTheBackgroundRun(t *testing.T) {
+	for _, acted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the read only", true: "the read, then a program run"}[acted], func(t *testing.T) {
+			e, dir := bgo2First(t)
+			e.bgo2Call(dir, "p2", "toolu_r", "Bash", bgo2Read, bgo2Quiet)
+			e.bgo2Acted(dir, acted)
+			line := e.dghStop(dir)
+			if !acted {
+				if line != "" {
+					t.Errorf("a turn that only read after a background run: Stop line %q, want none", line)
+				}
+				return
+			}
+			if !bgo2Unknown.MatchString(line) {
+				t.Errorf("a later turn's done claim after a background run: Stop line %q, want %s", line, bgo2Unknown)
+			}
+			for _, deny := range []string{"no test or build run", "not read", "not run"} {
+				if strings.Contains(line, deny) {
+					t.Errorf("Stop line %q says %q", line, deny)
+				}
+			}
+		})
 	}
 }
 
@@ -91,41 +118,67 @@ func TestBGO2b_AnEarlierTurnsGreenAfterTheLastEditRaisesNoFlag(t *testing.T) {
 
 // TestBGO2c_AnEditInAnotherWorktreeOpensNoWindow: p1 edits the project and
 // launches its tests in the background; p2 edits a file in another
-// directory, which no gate of the project covers, and claims done. The last
-// edit in the gate's project is p1's, so the window opens there and the line
-// names the background call. Break: open the window at any edit (p2's turn
-// counts no covered write and reads "no test or build run").
+// directory, which no gate of the project covers, and claims done. Where p2
+// also ran a program in the project, the last edit in the gate's project is
+// p1's, so the window opens there and the line names the background call.
+// Where p2 only made that edit, it acted in no repository and its done claim
+// is not read: no line. Break: open the window at any edit (p2's turn counts
+// no covered write and reads "no test or build run").
 func TestBGO2c_AnEditInAnotherWorktreeOpensNoWindow(t *testing.T) {
-	e, dir := bgo2First(t)
-	other := filepath.Join(t.TempDir(), "elsewhere.go")
-	e.bgo2Call(dir, "p2", "toolu_o", "Edit", map[string]any{"file_path": other, "old_string": "a", "new_string": "b"},
-		map[string]any{"filePath": other})
-	line := e.dghStop(dir)
-	if !bgo2Unknown.MatchString(line) || strings.Contains(line, "no test or build run") {
-		t.Errorf("an edit outside the project after a background run: Stop line %q, want %s", line, bgo2Unknown)
+	for _, acted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the edit only", true: "the edit, then a program run"}[acted], func(t *testing.T) {
+			e, dir := bgo2First(t)
+			other := filepath.Join(t.TempDir(), "elsewhere.go")
+			e.bgo2Call(dir, "p2", "toolu_o", "Edit", map[string]any{"file_path": other, "old_string": "a", "new_string": "b"},
+				map[string]any{"filePath": other})
+			e.bgo2Acted(dir, acted)
+			line := e.dghStop(dir)
+			if !acted {
+				if line != "" {
+					t.Errorf("a turn that only edited outside the project: Stop line %q, want none", line)
+				}
+				return
+			}
+			if !bgo2Unknown.MatchString(line) || strings.Contains(line, "no test or build run") {
+				t.Errorf("an edit outside the project after a background run: Stop line %q, want %s", line, bgo2Unknown)
+			}
+		})
 	}
 }
 
 // TestBGO2d_ARedirectedOutputIsNoReadClause: p1 edits and launches the gate in
 // the background with its output sent to a file of the agent's choosing
-// (`go test ./... > x.log`); p2 reads that file and claims done. The agent may
-// have read the run's result there, so the line says nothing of the output at
+// (`go test ./... > x.log`); p2 reads that file and claims done. Where p2
+// also ran a program in the project, the claim is read. The agent may have
+// read the run's result there, so the line says nothing of the output at
 // either polarity: no "not read", no "read since". With no end on the record
 // the run is still in the background, and the done flag, reading the evidence
-// since the last edit, says so, never "no test or build run".
+// since the last edit, says so, never "no test or build run". Where p2 only
+// read, its done claim is not read: no line.
 func TestBGO2d_ARedirectedOutputIsNoReadClause(t *testing.T) {
-	e, dir := dghEnv(t, true)
-	e.bgo2Call(dir, "p1", "toolu_e", "Edit", dghEdit(dir), map[string]any{"filePath": filepath.Join(dir, "internal", "a.go")})
-	e.bgo2Call(dir, "p1", "toolu_bg", "Bash", map[string]any{"command": "go test ./... > x.log 2>&1", "run_in_background": true}, bgo2Bg)
-	e.dghStop(dir)
-	e.bgo2Call(dir, "p2", "toolu_r", "Bash", map[string]any{"command": "cat x.log"}, bgo2Quiet)
-	line := e.dghStop(dir)
-	if !strings.Contains(line, "moved to the background") {
-		t.Errorf("a later turn's done claim after a redirected background run: Stop line %q, want it moved to the background", line)
-	}
-	for _, deny := range []string{"no test or build run", "not read", "read since"} {
-		if strings.Contains(line, deny) {
-			t.Errorf("Stop line %q says %q", line, deny)
-		}
+	for _, acted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the read only", true: "the read, then a program run"}[acted], func(t *testing.T) {
+			e, dir := dghEnv(t, true)
+			e.bgo2Call(dir, "p1", "toolu_e", "Edit", dghEdit(dir), map[string]any{"filePath": filepath.Join(dir, "internal", "a.go")})
+			e.bgo2Call(dir, "p1", "toolu_bg", "Bash", map[string]any{"command": "go test ./... > x.log 2>&1", "run_in_background": true}, bgo2Bg)
+			e.dghStop(dir)
+			e.bgo2Call(dir, "p2", "toolu_r", "Bash", map[string]any{"command": "cat x.log"}, bgo2Quiet)
+			e.bgo2Acted(dir, acted)
+			line := e.dghStop(dir)
+			if !acted {
+				if line != "" {
+					t.Errorf("a turn that only read a redirected output: Stop line %q, want none", line)
+				}
+				return
+			}
+			if !strings.Contains(line, "moved to the background") {
+				t.Errorf("a later turn's done claim after a redirected background run: Stop line %q, want it moved to the background", line)
+			}
+			for _, deny := range []string{"no test or build run", "not read", "read since"} {
+				if strings.Contains(line, deny) {
+					t.Errorf("Stop line %q says %q", line, deny)
+				}
+			}
+		})
 	}
 }

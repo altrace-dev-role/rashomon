@@ -14,6 +14,9 @@ import (
 // speaks; a clean digest fires none and Line is silent. The precision harness
 // learns which detector fired from Fired and never from the sentence, so this
 // is what keeps the two from drifting apart without any wording being read.
+// coverage_unverified alone is the one that fires with Line silent: what it
+// costs is said once per session by the Stop's coverage notice (LineWith),
+// not at every turn.
 func TestLineSpeaksExactlyWhenADetectorFired(t *testing.T) {
 	digestLevel := map[report.DetectorID]func(*digest.Digest){
 		report.DetectorDigestUnknown: func(d *digest.Digest) {
@@ -50,7 +53,14 @@ func TestLineSpeaksExactlyWhenADetectorFired(t *testing.T) {
 				t.Errorf("setting %s: Fired(%s) = %v, want %v", id, other, got, want)
 			}
 		}
-		if line, ok := Line(d, d.SessionID, true); !ok || line == "" {
+		line, ok := Line(d, d.SessionID, true)
+		if id == report.DetectorCoverageUnverified {
+			if ok {
+				t.Errorf("%s fired alone and the line spoke at this turn: %q", id, line)
+			}
+			continue
+		}
+		if !ok || line == "" {
 			t.Errorf("%s fired and the line is silent", id)
 		}
 	}

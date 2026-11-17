@@ -457,34 +457,6 @@ func defaultFiles() []FileRule {
 	}, append(recordScopeFiles(), append(indexFiles(), append(bodiesFiles(), labFiles()...)...)...)...)...)
 }
 
-// noticeFiles is the run segment's two notice markers (store.TakeNotice)
-// under runSegment, apart from runSegmentFiles for Law 10 (card
-// VERSION-GATE1).
-func noticeFiles(runSegment string) []FileRule {
-	return []FileRule{
-		{
-			Base:       runSegment,
-			Pattern:    store.FileNoticeChannel,
-			Mode:       "0600",
-			Purpose:    "says the session has printed its one line that a note was built and not sent to the agent because the Claude Code version's channel is not verified",
-			Holds:      "nothing; present once that line has printed",
-			NeverHolds: "anything",
-			RemovedBy:  "size-cap eviction, with its run; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileNoticeHoldout,
-			Mode:       "0600",
-			Purpose:    "says the session has printed its one line that it is in the measurement holdout",
-			Holds:      "nothing; present once that line has printed",
-			NeverHolds: "anything",
-			RemovedBy:  "size-cap eviction, with its run; purge",
-			Owner:      "store",
-		},
-	}
-}
-
 // runSegmentFiles is defaultFiles' run segment, the files under
 // runs/<session>, in inventory order (split out under Law 10, card
 // STALE-NUDGE1, when the stale marker joined it).

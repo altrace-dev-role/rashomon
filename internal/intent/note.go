@@ -155,11 +155,25 @@ func FindingRiding(in Intent, d Delivered, b *Brief, afterSeq int64, digest func
 					}
 				}
 			}
-			return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: steer.LevelNudge,
+			return steer.Finding{Pattern: pattern.TaskPreflight, Key: key, Priority: prio, MaxLevel: noteLevel(pf, sf, rode),
 				StopForm: steer.StopFormNone, Message: m, Record: rec, AfterSeq: afterSeq}, true, rode
 		}
 	}
 	return steer.Finding{}, false, false
+}
+
+// noteLevel is the note's level (card RV1, item 4): a nudge where its model
+// lines tell the agent something the request did not, a spec rule or gate, a
+// symbol the graph proved or a lesson that rode; else a flag, so a note whose
+// model lines list only the paths the request itself named, or nothing,
+// reaches the person and never the agent. Each slot is read as the renderer
+// lists it (slot.Lister): a count given earlier, withheld or learned lists
+// nothing.
+func noteLevel(pf render.TaskPreflightBinding, sf *slot.SymbolFacts, rode bool) steer.Level {
+	if rode || pf.Rules.Lists() || pf.Gates.Lists() || (sf != nil && sf.Lists()) {
+		return steer.LevelNudge
+	}
+	return steer.LevelFlag
 }
 
 // symbolFacts is the symbols slot for in's proven symbols, the first n (every

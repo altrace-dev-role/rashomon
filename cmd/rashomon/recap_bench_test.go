@@ -247,13 +247,20 @@ func benchRecapPreflight(b *testing.B, stopped bool) {
 	} else {
 		benchCheckRecap(b, &stdout, &stderr, true, turn)
 	}
+	// The note lists only the path it names, so it is the user's flag (card
+	// RV1, item 4): rendered into systemMessage, nothing sent to the agent.
+	// The walk, the reads, the resolve, the render and the steer line are the
+	// same work a nudge does; only the field the note is printed in differs.
 	var out struct {
+		SystemMessage      string `json:"systemMessage"`
 		HookSpecificOutput struct {
 			AdditionalContext string `json:"additionalContext"`
 		} `json:"hookSpecificOutput"`
 	}
-	if err := json.Unmarshal(stdout.lastWrite(), &out); err != nil || !strings.Contains(out.HookSpecificOutput.AdditionalContext, "'internal/verify/stop.go'") {
-		b.Fatalf("the catch-up printed no preflight note: %s", stdout.lastWrite())
+	if err := json.Unmarshal(stdout.lastWrite(), &out); err != nil ||
+		out.HookSpecificOutput.AdditionalContext != "" ||
+		!strings.Contains(out.SystemMessage, "\npaths named: 'internal/verify/stop.go'") {
+		b.Fatalf("the catch-up printed no preflight flag: %s", stdout.lastWrite())
 	}
 }
 

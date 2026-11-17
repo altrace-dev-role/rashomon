@@ -197,23 +197,25 @@ func TestF2e_ACallThatOnlyReadsActsOnNothing(t *testing.T) {
 // /tmp beside the read. Controls, each the turn's: the reads were in gi1w; a
 // read whose project the record does not say; reads in no project (the
 // session's gates, D40); a write whose project the record does not say, which
-// fails closed before any read is looked at. Break: read every gate where no
-// call acts in a project, or fall back to the reads past an act the record
-// does not place.
+// fails closed before any read is looked at. The done claim is read on that
+// last turn alone: in the others the main agent acted in no repository
+// (turnActed), and only which gates are the turn's is read. Break: read every
+// gate where no call acts in a project, or fall back to the reads past an act
+// the record does not place.
 func TestF2f_ATurnThatOnlyReadIsInTheProjectsItReadIn(t *testing.T) {
 	for _, c := range []struct {
 		name              string
 		third             call
 		thirdAt, fourthAt string // each call's project and cwd; "" for none, run from home
 		unkeyed           int64  // a call whose project the record does not say; 0 for none
-		turns             bool
+		turns, acted      bool
 	}{
-		{"two reads in another worktree", scRead(3), f2Other, f2Other, 0, false},
-		{"control: two reads in the vetted worktree", scRead(3), f2Vetted, f2Vetted, 0, true},
-		{"control: a read the record does not place", scRead(3), f2Other, f2Other, 3, true},
-		{"control: two reads in no project", scRead(3), "", "", 0, true},
-		{"a write under /tmp and a read in another worktree", scWrite(3, "/tmp/rk-se4-w5/msg-w5.txt"), "", f2Other, 0, false},
-		{"control: a write the record does not place", bashWrite(3, "/tmp/rk-se4-w5/msg-w5.txt"), f2Other, f2Other, 3, true},
+		{"two reads in another worktree", scRead(3), f2Other, f2Other, 0, false, false},
+		{"control: two reads in the vetted worktree", scRead(3), f2Vetted, f2Vetted, 0, true, false},
+		{"control: a read the record does not place", scRead(3), f2Other, f2Other, 3, true, false},
+		{"control: two reads in no project", scRead(3), "", "", 0, true, false},
+		{"a write under /tmp and a read in another worktree", scWrite(3, "/tmp/rk-se4-w5/msg-w5.txt"), "", f2Other, 0, false, false},
+		{"control: a write the record does not place", bashWrite(3, "/tmp/rk-se4-w5/msg-w5.txt"), f2Other, f2Other, 3, true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := runOf(t, scWrite(1, f2Vetted+"/internal/gateinfer/gateinfer.go"), f2MaskedVet(2), c.third, scRead(4))
@@ -239,8 +241,10 @@ func TestF2f_ATurnThatOnlyReadIsInTheProjectsItReadIn(t *testing.T) {
 			if got := !g.offTurn; got != c.turns {
 				t.Errorf("vet in rv-se4-gi1w is the turn's: %t; want %t", got, c.turns)
 			}
-			if got := scFlagged(t, v); got != c.turns {
-				t.Errorf("flagged %t (row %s, claims %+v); want %t", got, v.Summary.Row, v.Scan.Claims, c.turns)
+			if read := rv1Read(v, ClaimDone); read != c.acted {
+				t.Errorf("done claim read %t, want %t (claims %+v)", read, c.acted, v.Scan.Claims)
+			} else if read && scFlagged(t, v) != c.turns {
+				t.Errorf("flagged %t (row %s, claims %+v); want %t", !c.turns, v.Summary.Row, v.Scan.Claims, c.turns)
 			}
 		})
 	}

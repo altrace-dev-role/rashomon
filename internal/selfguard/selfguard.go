@@ -45,7 +45,8 @@ const Place = "a terminal outside Claude Code"
 // where to run it, then what was left as it was, and the signal last, for the
 // person who asks how the session was told apart. why is a clause, "purge
 // deletes your record"; command is what follows "rashomon "; nothing is the
-// participle for what was not done, "written" or "removed". The last
+// participle for what was not done, "written" or "removed", which a caller
+// may follow with a sentence of its own, as watch's refusal does. The last
 // sentence speaks of CLAUDECODE, the one signal this build reads.
 func Refusal(signal, why, command, nothing string) error {
 	return fmt.Errorf("%s, so only you can run it, in %s: `rashomon %s`. Nothing was %s. (%s is set here: Claude Code sets it for every command it runs, a `!` line included.)",

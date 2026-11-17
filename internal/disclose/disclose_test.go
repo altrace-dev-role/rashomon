@@ -169,6 +169,14 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if !s.TakeBlastRead(sessionID, store.FileBlastReadPrefix+"0123456789abcdef") {
 		t.Fatal("TakeBlastRead took no marker")
 	}
+	// The once-per-session notice markers: the steer router's two, and the
+	// Stop's coverage notice and its cleared line.
+	for _, name := range []string{store.FileNoticeChannel, store.FileNoticeHoldout, store.FileNoticeCoverage,
+		store.FileNoticeCoverageClear} {
+		if !s.TakeNotice(sessionID, name) {
+			t.Fatalf("TakeNotice took no %s marker", name)
+		}
+	}
 	if _, err := store.RecordHarnessMismatch(root, "claude@cursor", sessionID, []string{"cursor_version"}, time.Now()); err != nil {
 		t.Fatalf("RecordHarnessMismatch: %v", err)
 	}

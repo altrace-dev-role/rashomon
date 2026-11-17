@@ -323,6 +323,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
 	speak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))
+	stop.noticeSaid(st, d.SessionID, speak)
 	// The channel-evidence read, at a Stop only: the checkpoint is durable
 	// (the flush above returned), and the defer runs on every return below,
 	// after the line has printed.
@@ -363,11 +364,15 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 // pending answer: no recap reached the turn d chose. Where Turn saw a flagged
 // Stop not yet taken, the take (recap.TakeUnverified) is written before the
 // preflight answers it, keyed as the Stop that flagged it (ClaimTurn's
-// d.SessionID); a prompt with none pays no second read (#279).
+// d.SessionID); a prompt with none pays no second read (#279). A prompt the
+// host framed (harness.Framed) takes the flagged Stop and is told nothing:
+// the take comes first, so the verdict is not held for a later turn, which
+// it would name as the wrong one.
 func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
 	unchecked, owed, flagged := recap.Turn(root, d.SessionID, d.PromptID)
 	pp.owed = owed
-	pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID)
+	pp.framed, _ = harness.Framed(string(pp.Prompt), pp.PromptCut)
+	pp.unverified = flagged && recap.TakeUnverified(root, d.SessionID) && !pp.framed
 	note, client := preflightNote(st, run, pp, readPromptProject(st.Root(), run, pp.CWD), id, now)
 	noteTurnSpec(st, run, pp)
 	return note, client, unchecked

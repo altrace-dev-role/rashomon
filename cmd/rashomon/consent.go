@@ -10,6 +10,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/consent"
 	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 )
 
 // cmdConsent is `rashomon consent [--yes] [--show] [--full]` (Technical
@@ -85,6 +86,20 @@ func consentFlags(args []string) (yes, show, full bool, err error) {
 		return false, false, false, errors.New("--full prints every detail and writes nothing, so it takes no --yes or --show")
 	}
 	return yes, show, full, nil
+}
+
+// refusalLeaves is what askConsent's refusal of verb inside an agent session
+// leaves of that session, for the agent that reads the refusal as its tool
+// result: the sentence that follows selfguard.Refusal's participle, so every
+// guard still returns the one Refusal. watch is how a session comes to be
+// recorded under the scope on file, so its refusal says what the claim checks
+// do while it is not; consent changes no recording, so its refusal says
+// nothing more.
+func refusalLeaves(verb string) string {
+	if verb != "watch" {
+		return ""
+	}
+	return ". If rashomon is not recording this session, " + recap.ChecksOff
 }
 
 // printFull is --full for watch and consent (CONSENT-SHORT1): the five

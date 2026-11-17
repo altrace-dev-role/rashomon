@@ -181,10 +181,12 @@ func TestDONE1e_NoVersionFloorAtThePrompt(t *testing.T) {
 // TestDONE1f_TheNoteOutranksButDoesNotConsumeThePreflight: a prompt that
 // names a path as well gets the one note, the done note (claim-vs-record
 // outranks task-preflight); the preflight is superseded and not counted as
-// given, so the next prompt carries it.
+// given, so the next prompt carries it. The preflight lists a spec rule: a
+// note that lists only paths is the user's flag (card RV1, item 4), which
+// never competes for the agent's note.
 func TestDONE1f_TheNoteOutranksButDoesNotConsumeThePreflight(t *testing.T) {
 	e := newSteerEnv(t)
-	e.preflightProject()
+	e.ruleProject()
 	e.flaggedStop(t)
 	res, out := e.prompt(e.cwd, "fix the nil check in "+pf1bPath, "prompt-2")
 	if res.exitCode != 0 || out.HookSpecificOutput.AdditionalContext != doneNote {

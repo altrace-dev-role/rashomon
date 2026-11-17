@@ -27,8 +27,8 @@ in the user entry wrapped in <pasted_content id> with its tabs as four
 spaces, and per-process hook variables: a messaging socket named for the
 pid, a token, CLAUDE_ENV_FILE, CLAUDE_PID), env_diff_for_arm (that arm's
 hooks see one more variable, a difference G1a must refuse), control_blind
-(arms whose hook sees G1c's control prompt with its go.mod struck out, so
-the binary has nothing to note there).
+(arms whose hook sees G1c's control prompt with the task file's path struck
+out, so the binary has nothing to note there).
 """
 
 import json
@@ -138,11 +138,11 @@ class Session:
             pid = uuid.uuid4().hex[:4]
             shown = '\n\n<pasted_content id="%s">\n%s\n</pasted_content id="%s">\n' % (pid, prompt.replace("\t", "    "), pid)
         self.write({"type": "user", "promptId": self.prompt_id, "message": {"role": "user", "content": shown}})
-        # control_blind: arms whose hook sees G1c's control prompt without its
-        # go.mod, so the binary has no path to note.
+        # control_blind: arms whose hook sees G1c's control prompt without the
+        # task file's path, so the binary has no path to note.
         seen = prompt
         if os.environ.get("RASHOMON_STEER_ARM") in KNOBS.get("control_blind", []):
-            seen = prompt.replace("go.mod", "it")
+            seen = prompt.replace(".claude/rashomon/task/current.json", "it")
         self.fire("UserPromptSubmit", prompt=seen)
         if KNOBS.get("die_at") == self.n:
             sys.exit(1)

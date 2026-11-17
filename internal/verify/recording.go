@@ -91,14 +91,7 @@ func recording(run *store.Run, at int64) (Recording, []string) {
 		fault[noteSpilled] = fault[noteSpilled] || s.due && s.spilled
 	}
 
-	var verified, unknown bool
-	for _, c := range run.Coverage {
-		if c.Phase != store.PhasePost {
-			continue
-		}
-		verified = verified || c.State == store.StateVerified && c.Reason == nil
-		unknown = unknown || c.HookEntry == store.EntryUnknown || c.Probe == store.ProbeUnknown
-	}
+	verified, unknown := coverageOf(run)
 	fault[noteUnverified] = len(run.Coverage) > 0 && (!verified || unknown)
 	fault[noteAbsent] = len(run.Coverage) == 0
 
@@ -113,6 +106,36 @@ func recording(run *store.Run, at int64) (Recording, []string) {
 		return Complete, nil
 	}
 	return Incomplete, slices.Clone(out)
+}
+
+// coverageOf is recording's reading of the run's post coverage records:
+// whether one is verified, and whether one resolved its hook entry or its
+// probe to unknown.
+func coverageOf(run *store.Run) (verified, unknown bool) {
+	for _, c := range run.Coverage {
+		if c.Phase != store.PhasePost {
+			continue
+		}
+		verified = verified || c.State == store.StateVerified && c.Reason == nil
+		unknown = unknown || c.HookEntry == store.EntryUnknown || c.Probe == store.ProbeUnknown
+	}
+	return verified, unknown
+}
+
+// CoverageOff reports whether got, recording's notes for an incomplete
+// record, hold coverage_unverified or coverage_absent: the session's coverage
+// records keep its claim checks off, whatever else the notes say.
+func CoverageOff(got []string) bool {
+	return slices.Contains(got, notes[noteUnverified]) || slices.Contains(got, notes[noteAbsent])
+}
+
+// CoverageStuck reports whether run's coverage keeps its claim checks off for
+// the rest of the session: a post record resolved its hook entry or its probe
+// to unknown, which recording reads as coverage_unverified whatever a later
+// record says, since the record is only appended to.
+func CoverageStuck(run *store.Run) bool {
+	_, unknown := coverageOf(run)
+	return unknown
 }
 
 // declState is what the record holds for one declared ToolUseID.

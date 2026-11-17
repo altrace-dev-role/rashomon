@@ -174,8 +174,11 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	if in.ProjectKey != "" {
 		v.Index.Observe(c.runs, pt.SessionID, now.UnixMilli())
 	}
+	// Done is read where the session wrote a relevant file and the main agent
+	// acted in this turn; expected's rows read the session's write alone.
 	wrote := WroteRelevant(run, pt.Seq)
-	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote, SourceFinalMessage, in.Delivered)
+	v.Scan = Claims(in.Head, in.Tail, in.Key, snap.Gates, wrote && turnActed(run, in.PromptID, pt.Seq), SourceFinalMessage,
+		in.Delivered)
 	v.Expected = expected(snap, evidenceIn{sp: sp, atStop: true, unread: in.MessageUnread, disclosed: v.Scan.Disclosed, wrote: wrote})
 	groups := conflictGroups(in.Conflicts)
 	v.Obligations = ledgerOf(snap, &c, v.Expected, groups...)

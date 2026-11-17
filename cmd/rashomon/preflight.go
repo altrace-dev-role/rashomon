@@ -34,6 +34,11 @@ type pendingPayload struct {
 	// flagged Stop of this session, so a prompt that routes nothing still
 	// consumes it, and the note is not read for at every prompt (card c4).
 	unverified bool
+	// framed is whether the host framed the prompt, nothing typed in it
+	// (harness.Framed), set by promptNotes: a peer's or a job's text is not
+	// the user's request, so such a prompt names no path and is told no
+	// done verdict, though it takes one.
+	framed bool
 	// owed is what the session's last turn end owes this prompt
 	// (recap.Turn), which preflightNote routes beside its note.
 	owed recap.Owed
@@ -83,7 +88,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	if run == nil || p.CWD == "" {
 		return steer.Output{}, steer.Client{}
 	}
-	named := intent.Names(p.Prompt, p.PromptCut)
+	named := !p.framed && intent.Names(p.Prompt, p.PromptCut)
 	done := p.unverified
 	brief, briefed := resumeBriefing(st, run, p.SessionID, p.Harness.TranscriptPath)
 	storeRoot := ""
@@ -92,7 +97,7 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	}
 	specOf := onceSpec(st, run, p.CWD)
 	scoped := promptScope{st: st}
-	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, specOf, scoped.get)
+	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
