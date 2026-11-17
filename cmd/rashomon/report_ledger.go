@@ -17,7 +17,8 @@ import (
 // replayed from the record (replayLastStop), so two derivations of one record
 // print the same bytes. A header of "name: value" lines comes first and names
 // what the replay read in place of what the record does not hold: the point
-// and where Required came from, any gates the checkpoint's cut omitted, the
+// and where Required came from, any gates the checkpoint's cut omitted, any
+// unit rows past verify.MaxTurnUnitRows the Stop left out (W-M3.1), the
 // spec (and the Stop's, where it differs), the task file outside spec_digest,
 // the tree read now and the final message the record does not keep. Then one
 // row to a line: id, scope, kind, source, state, the evidence seqs joined by
@@ -61,6 +62,9 @@ func ledgerText(r stopReplay) string {
 	}
 	if cp != nil && cp.GatesOmitted > 0 {
 		fmt.Fprintf(&b, "gates: %d cut from the checkpoint read required\n", cp.GatesOmitted)
+	}
+	if v.UnitRowsCut > 0 {
+		fmt.Fprintf(&b, "units: %d cut from the turn's unit rows past the first %d\n", v.UnitRowsCut, verify.MaxTurnUnitRows)
 	}
 	now := specNow(r.Spec)
 	if cp != nil && specText(cp.SpecDigest, cp.SpecTrust) != now {

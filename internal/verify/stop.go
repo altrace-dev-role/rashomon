@@ -200,7 +200,7 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 		v.Platform = in.Platform(snap.ProjectRoot, written)
 		v.Obligations = append(v.Obligations, platformObligations(snap, &c, run, in.Key, v.Platform)...)
 	}
-	turnRows, cut := turnObligations(snap, &c, run, in.PromptID, in.UnitOf)
+	turnRows, cut := turnObligations(snap, &c, run, in.PromptID, in.Root, in.UnitOf)
 	v.Obligations, v.UnitRowsCut = append(v.Obligations, turnRows...), cut
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims

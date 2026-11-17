@@ -180,9 +180,13 @@ func (f *rv5fTurn) runFiles() []string {
 // verdict and no platform read, so a rule or platform line cannot occur on
 // it, and the conflicts come from the run, through the seam the conflict
 // tests use. (vi) The catch-up, under the same standing notice, is quiet as
-// the Stop is; control: with a conflict line it prints. Break: quiet nothing
-// (ii and vi fail), or quiet every incomplete row (iii and iv fail), or quiet
-// a line with a rider (v and vi fail), or quiet only at the Stop (vi fails).
+// the Stop is; control: with a conflict line it prints. (vii) After the
+// notice, coverage back on and the record incomplete for another reason: the
+// sentence prints, and no cleared line rides it, since that line needs a
+// complete record. Break: quiet nothing (ii and vi fail), or quiet every
+// incomplete row (iii and iv fail), or quiet a line with a rider (v and vi
+// fail), or quiet only at the Stop (vi fails), or let the notice stand with
+// the checks back on (vii fails).
 func TestRV1_5f_AStandingNoticeQuietsTheBareIncompleteLine(t *testing.T) {
 	t.Run("i and ii: the notice, then nothing", func(t *testing.T) {
 		f := newRV5fTurn(t)
@@ -267,6 +271,30 @@ func TestRV1_5f_AStandingNoticeQuietsTheBareIncompleteLine(t *testing.T) {
 		t.Cleanup(func() { conflictsSeen = old })
 		if out := f.catchUp(); !strings.Contains(out, "spec rule no-ui-db:") || !strings.Contains(out, rv5Incomplete) {
 			t.Errorf("(vi) control, the catch-up with a conflict line: %q, want the conflict line and %q", out, rv5Incomplete)
+		}
+	})
+	t.Run("vii: the checks back on, incomplete for another reason, keeps its sentence", func(t *testing.T) {
+		f := newRV5fTurn(t)
+		f.setCoverage()
+		if msg := f.stop(); !strings.Contains(msg, rv5Off) {
+			t.Fatalf("fixture: Stop 1: %q, want the notice", msg)
+		}
+		f.add(f.cov(store.StateVerified, "", store.EntryPresentSettings, store.ProbeFresh))
+		rec, err := os.OpenFile(filepath.Join(f.st.RunDir(payload.Session), store.FileRecords), os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := rec.WriteString("{not a record\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := rec.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if r, notes := f.gate(); r == verify.Complete || verify.CoverageOff(notes) {
+			t.Fatalf("fixture: recording %v, notes %q; want incomplete with coverage on", r, notes)
+		}
+		if msg := f.stop(); !strings.Contains(msg, rv5Incomplete) || strings.Contains(msg, rv5Any) {
+			t.Errorf("(vii) Stop 2, the checks back on: %q, want %q and no notice", msg, rv5Incomplete)
 		}
 	})
 }

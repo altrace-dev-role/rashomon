@@ -208,7 +208,11 @@ func TestPC1_OnlyAPluginEnableIsConsent(t *testing.T) {
 		if res := e.watch(); res.exitCode != 0 {
 			t.Fatalf("premise: watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		older := strings.Replace(string(e.consentBytes()), `"scope_version":6`, `"scope_version":4`, 1)
+		current := `"scope_version":` + strconv.Itoa(disclose.ScopeVersion)
+		older := strings.Replace(string(e.consentBytes()), current, `"scope_version":4`, 1)
+		if !strings.Contains(older, `"scope_version":4`) {
+			t.Fatalf("premise: the watch record does not carry %s", current)
+		}
 		if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 			t.Fatal(err)
 		}

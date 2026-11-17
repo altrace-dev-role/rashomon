@@ -1,7 +1,9 @@
 package verify
 
 import (
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -28,10 +30,12 @@ import (
 
 // turnObligations is the turn rows of a Stop at snap's point in promptID's
 // turn (TurnWindow), and how many unit rows the cap cut; none at any other
-// point. c is the classification snap came from. Cost: one pass over the
-// declarations and one over the runs, then per required gate one over the
-// writes and a sort of its units: O(D + R + G x W log W).
-func turnObligations(snap Snapshot, c *classified, run *store.Run, promptID string, unitOf UnitOf) ([]Obligation, int) {
+// point. c is the classification snap came from; root is the Stop's project
+// (StopInput.Root), under which a write's path is placed before unitOf reads
+// it (placed). Cost: one pass over the declarations and one over the runs,
+// then per required gate one over the writes and a sort of its units:
+// O(D + R + G x W log W).
+func turnObligations(snap Snapshot, c *classified, run *store.Run, promptID, root string, unitOf UnitOf) ([]Obligation, int) {
 	if snap.Point.Kind != PointStop {
 		return nil, 0
 	}
@@ -49,7 +53,7 @@ func turnObligations(snap Snapshot, c *classified, run *store.Run, promptID stri
 		}
 		source, known := obligationSource(g.Source)
 		start := len(l.rows)
-		wrote, units, byUnit := turnWrites(g, c.writes, w, unitOf)
+		wrote, units, byUnit := turnWrites(g, c.writes, w, root, unitOf)
 		if wrote && (g.State != Absent || g.LastWrite != nil) {
 			l.fromTable(g, source, GateAfterWrite, gateAfterWriteTable)
 			l.turnRow(g, w, "")
@@ -84,9 +88,10 @@ func turnObligations(snap Snapshot, c *classified, run *store.Run, promptID stri
 // turnWrites reads the relevant named writes g covers at or before w.To:
 // whether one is in w; with unitOf set, the units one in w was made in,
 // ascending; and each such unit's writes at or before w.To, in seq order,
-// those before w included, which unitView reads. A path in no unit ("")
+// those before w included, which unitView reads. unitOf reads each path
+// placed under root (placed); a path placed nowhere, or in no unit (""),
 // makes no unit row.
-func turnWrites(g *GateState, writes []write, w Window, unitOf UnitOf) (bool, []string, map[string][]write) {
+func turnWrites(g *GateState, writes []write, w Window, root string, unitOf UnitOf) (bool, []string, map[string][]write) {
 	wrote := false
 	var units []string
 	var byUnit map[string][]write
@@ -101,7 +106,10 @@ func turnWrites(g *GateState, writes []write, w Window, unitOf UnitOf) (bool, []
 		if unitOf == nil {
 			continue
 		}
-		u := unitOf(*x.Path)
+		u := ""
+		if rel, ok := placed(root, x); ok {
+			u = unitOf(rel)
+		}
 		if u == "" {
 			continue
 		}
@@ -165,4 +173,40 @@ func unitView(g *GateState, mine []write, unnamed []int64, at int64, tree map[st
 func (l *ledger) turnRow(g *GateState, w Window, unit string) {
 	o := &l.rows[len(l.rows)-1]
 	o.ID, o.Unit = TurnObligationID(o.Kind, idFamily(g), w, unit), unit
+}
+
+// placed is w's path relative to root, the Stop's project, the form UnitOf
+// reads (W-M3.3). A path relativise left relative is in its call's project,
+// so it is placed by where that project sits against root, as covers reads
+// it: the path itself where the project is root; under the project's
+// directory where the project is inside root; with root's directory taken
+// off where root is inside the project and the path runs into it. An
+// absolute path is cut to root. false where no such place exists: an
+// absolute path outside root, a path that climbs out, a project the record
+// does not say or that is neither inside root nor holds it. With root "" the
+// path is read as recorded, as before W-M3.3.
+func placed(root string, w *write) (string, bool) {
+	p := *w.Path
+	if root == "" {
+		return p, true
+	}
+	root = slashed(root)
+	if filepath.IsAbs(p) {
+		return under(p, root)
+	}
+	project := w.project()
+	if project == nil || *project == "" || p == ".." || strings.HasPrefix(p, "../") {
+		return "", false
+	}
+	proj := slashed(*project)
+	if proj == root {
+		return p, true
+	}
+	if sub, in := under(proj, root); in {
+		return sub + "/" + p, true
+	}
+	if rel, in := under(root, proj); in && strings.HasPrefix(p, rel+"/") {
+		return p[len(rel)+1:], true
+	}
+	return "", false
 }

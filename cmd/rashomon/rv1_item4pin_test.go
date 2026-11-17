@@ -65,7 +65,7 @@ func sameNotes(a, b []recap.Note) bool {
 	return true
 }
 
-// TestRV1_4e_AFramedFireUnderATypedTurnReplacesNothing: one prompt id can
+// TestRV1_4pin_AFramedFireUnderATypedTurnReplacesNothing: one prompt id can
 // carry more than one prompt-hook fire, each classed from its own payload. A
 // typed fire naming a file, then a peer's message drained into the same turn
 // (a framed fire under the same prompt id): the framed fire prints nothing
@@ -80,7 +80,7 @@ func sameNotes(a, b []recap.Note) bool {
 // which note the edit prints is the typed turn's, not this test's, to say.
 // Break: let a later fire under an id replace what an earlier one wrote for
 // the turn.
-func TestRV1_4e_AFramedFireUnderATypedTurnReplacesNothing(t *testing.T) {
+func TestRV1_4pin_AFramedFireUnderATypedTurnReplacesNothing(t *testing.T) {
 	const promptID = "prompt-1" // planSession.prompt's id, the same for every fire
 	ask := "fix the reload in " + planHookHeld
 	typedTurn := func() *planSession {

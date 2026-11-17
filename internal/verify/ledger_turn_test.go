@@ -352,12 +352,16 @@ func TestLedger_RedInAnEarlierTurnOwesNoWatchedRow(t *testing.T) {
 // reads a fresh view's snapshot, the one EvaluateStop read, and keeps the
 // row count. Witness: the snapshot as read gives both turn rows, met. The
 // state case is the table's as well (fromTable reads unknown for a state it
-// lacks); the recording and source cases are the guard's alone.
+// lacks); the recording and source cases are the guard's alone. The fourth
+// case is a turn that went red, then green after a write: its
+// watched_red_then_green row takes its state from the watch (watchedRow),
+// never from a table, so for a state outside Order the guard alone reads it
+// unknown. Witness: as read, that row is met.
 func TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo(t *testing.T) {
 	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK)), "p1", "p1")
 	at, c := lastSeqOf(r), classifiedOf(r)
 	rows := func(snap Snapshot) []Obligation {
-		turn, _ := turnObligations(snap, &c, r, "p1", dirUnit)
+		turn, _ := turnObligations(snap, &c, r, "p1", "", dirUnit)
 		return turn
 	}
 	base := rows(turnView(r, at, "p1", dirUnit, nil).Snap)
@@ -383,5 +387,102 @@ func TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo(t *testing.T) {
 				t.Errorf("%s: %s row %s reads %s, want unknown", k.name, o.Scope, o.Kind, o.State)
 			}
 		}
+	}
+	rw := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecFailed),
+		edit(3, "pkg/a/x.go"), gateCall(4, "go-test", store.ExecOK)), "p1", "p1", "p1", "p1")
+	atw, cw := lastSeqOf(rw), classifiedOf(rw)
+	watched := func(state ObligationState) func(Obligation) bool {
+		return func(o Obligation) bool { return o.Kind == WatchedRedThenGreen && (state == "" || o.State == state) }
+	}
+	snap := turnView(rw, atw, "p1", dirUnit, nil).Snap
+	if before, _ := turnObligations(snap, &cw, rw, "p1", "", dirUnit); !slices.ContainsFunc(before, watched(ObligationMet)) {
+		t.Fatalf("witness: turn rows %+v, want a watched_red_then_green row, met", before)
+	}
+	snap.Gates[0].State = "unheard"
+	got, _ := turnObligations(snap, &cw, rw, "p1", "", dirUnit)
+	session := obligations(snap, cw.runs, cw.writes)
+	if !slices.ContainsFunc(got, watched("")) || len(session) == 0 {
+		t.Errorf("state outside Order, a watched turn: turn rows %+v and %d session rows, want the watched row and some", got, len(session))
+	}
+	for _, o := range append(got, session...) {
+		if o.State != ObligationUnknown {
+			t.Errorf("state outside Order, a watched turn: %s row %s reads %s, want unknown", o.Scope, o.Kind, o.State)
+		}
+	}
+}
+
+// TestTurnObligations_ATurnWithNoWriteCallsNoUnitOf (B2): UnitOf is asked
+// about a written path only, so a Stop whose turn wrote nothing asks it
+// nothing, and the Stop's UnitOf, which opens its files when first asked,
+// opens none. Witness: a turn with a write asks it.
+func TestTurnObligations_ATurnWithNoWriteCallsNoUnitOf(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		run   *store.Run
+		calls bool
+	}{
+		{"no write", inTurns(runOf(t, gateCall(1, "go-test", store.ExecOK)), "p1"), false},
+		{"a write", inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK)), "p1", "p1"), true},
+	} {
+		n := 0
+		count := func(rel string) string { n++; return dirUnit(rel) }
+		pt := Point{Kind: PointStop, Seq: lastSeqOf(c.run), SessionID: "s1"}
+		EvaluateStop(c.run, nil, nil, pt, stopNow, StopInput{PromptID: "p1", UnitOf: count})
+		if (n > 0) != c.calls {
+			t.Errorf("%s: UnitOf asked %d times; want asked %v", c.name, n, c.calls)
+		}
+	}
+}
+
+// TestPlaced_PutsAWriteUnderTheStopsRoot (W-M3.3): UnitOf reads a written
+// path relative to the Stop's project, so a path left relative to its own
+// call's project is placed by where that project sits against the root, an
+// absolute one is cut to the root, and one with no place under the root is
+// not placed.
+func TestPlaced_PutsAWriteUnderTheStopsRoot(t *testing.T) {
+	str := func(s string) *string { return &s }
+	for _, c := range []struct {
+		name, root string
+		project    *string
+		path, want string
+		ok         bool
+	}{
+		{"no root: the path as recorded", "", str("/q"), "a/x.go", "a/x.go", true},
+		{"the project is the root", "/r", str("/r"), "a/x.go", "a/x.go", true},
+		{"the project inside the root", "/r", str("/r/w"), "a/x.go", "w/a/x.go", true},
+		{"the root inside the project", "/r/wt", str("/r"), "wt/a/x.go", "a/x.go", true},
+		{"the root inside the project, the path elsewhere", "/r/wt", str("/r"), "o/x.go", "", false},
+		{"absolute under the root", "/r", str("/q"), "/r/a/x.go", "a/x.go", true},
+		{"absolute outside the root", "/r", str("/r"), "/q/a/x.go", "", false},
+		{"climbs out", "/r", str("/r"), "../x.go", "", false},
+		{"the project not said", "/r", nil, "a/x.go", "", false},
+		{"the project apart from the root", "/r", str("/q"), "a/x.go", "", false},
+	} {
+		w := write{Path: &c.path}
+		if c.project != nil {
+			w.decl = &store.Declaration{}
+			w.decl.Project = c.project
+		}
+		if got, ok := placed(c.root, &w); ok != c.ok || ok && got != c.want {
+			t.Errorf("%s: placed = %q, %v; want %q, %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// TestLedger_UnitRowReadsThePathUnderTheStopsRoot (W-M3.3): a turn's unit
+// row reads the written path placed under StopInput.Root, so a session whose
+// project is a directory inside the root names the unit by its path from
+// the root.
+func TestLedger_UnitRowReadsThePathUnderTheStopsRoot(t *testing.T) {
+	r := inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK)), "p1", "p1")
+	proj := "/r/w"
+	for i := range r.Declarations {
+		r.Declarations[i].Project = &proj
+	}
+	pt := Point{Kind: PointStop, Seq: lastSeqOf(r), SessionID: "s1"}
+	v := EvaluateStop(r, nil, nil, pt, stopNow, StopInput{PromptID: "p1", UnitOf: dirUnit, Root: "/r"})
+	_, units := turnOf(v.Obligations)
+	if len(units) != 1 || units[0].Unit != "g:r#w/pkg/a" {
+		t.Errorf("unit rows %+v, want one, its unit g:r#w/pkg/a", units)
 	}
 }

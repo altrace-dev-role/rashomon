@@ -57,3 +57,13 @@ m("TL-1 the ledger verb prints no turn row's window or unit", "cmd/rashomon/repo
   "\t\tcols = append(cols, strconv.FormatInt(turn.From, 10), unit)\n",
   "\t\t_ = unit\n",
   "TestReportLedger_NamesATurnRowsFamily")
+# The cut past MaxTurnUnitRows is counted (UnitRowsCut); the verb is its
+# reader. Breaks: the count is never printed, or a line prints at 0.
+m("TL-1 the ledger verb never says unit rows were cut", "cmd/rashomon/report_ledger.go",
+  "\tif v.UnitRowsCut > 0 {\n",
+  "\tif false {\n",
+  "TestReportLedger_SaysWhenUnitRowsAreCut")
+m("TL-1 the ledger verb says 0 unit rows were cut", "cmd/rashomon/report_ledger.go",
+  "\tif v.UnitRowsCut > 0 {\n",
+  "\tif v.UnitRowsCut >= 0 {\n",
+  "TestReportLedger_SaysWhenUnitRowsAreCut")

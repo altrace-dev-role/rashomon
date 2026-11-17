@@ -114,6 +114,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	in.Inferred = inferredGate(key, sp, idx)
 	in.Conflicts = conflictsSeen(run, seq)
+	in.UnitOf = stopUnitOf(key)
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
 	v.Unbound = unboundSpecs(run, &v.Snap, sp, st.Root(), seq)
 	v.Untrusted = untrustedGates(run, sp, st.Root(), seq)

@@ -492,6 +492,26 @@ func TestLW1m_ReportLedgerNamesGatesTheCutOmitted(t *testing.T) {
 	}
 }
 
+// TestReportLedger_SaysWhenUnitRowsAreCut: past MaxTurnUnitRows a Stop keeps
+// the first unit rows and StopView.UnitRowsCut counts the rest, so the header
+// says how many were cut, with no line at 0 and no noun after the count, so 1
+// and 2 read alike. The limit printed is the constant's.
+func TestReportLedger_SaysWhenUnitRowsAreCut(t *testing.T) {
+	for _, n := range []int{0, 1, 2} {
+		out := ledgerText(stopReplay{View: verify.StopView{UnitRowsCut: n}})
+		var got []string
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(line, "units:") {
+				got = append(got, line)
+			}
+		}
+		want := fmt.Sprintf("units: %d cut from the turn's unit rows past the first %d", n, verify.MaxTurnUnitRows)
+		if n == 0 && len(got) != 0 || n > 0 && (len(got) != 1 || got[0] != want) {
+			t.Errorf("UnitRowsCut %d: units lines %q, want %q (none at 0) in\n%s", n, got, want, out)
+		}
+	}
+}
+
 // TestLW1n_ReportLedgerKeepsATrustedSpecsDeclaredRows: the replay discovers
 // the spec trusted by the store's bindings, as the Stop does, so the rows a
 // trusted spec's declared gate owed at the Stop are in the verb's; discovered

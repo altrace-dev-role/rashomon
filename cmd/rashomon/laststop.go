@@ -101,6 +101,7 @@ func replayLastStop(st *store.Store, sessionID string, platform func(string, []s
 		root = cp.ProjectRoot
 	}
 	in.Root = root
+	in.UnitOf = stopUnitOf(root)
 	if root != "" {
 		if key := baseline.Key(root); cp == nil && key != "" {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
