@@ -474,12 +474,40 @@ func qualifiedForm(w string) (string, string, bool) {
 
 // resolveQualified reads unit.symbol or Type.method: the left part a
 // unit's last segment or a declared type, the right a name inside it.
+// A left part that is no unit segment is a type, and a type name is often
+// declared in several units (Tally in learn and seed, File in four): the
+// unit is the first declarer of l that also declares r, not the first
+// declarer of l, which named learn for Tally.Kept though only seed holds
+// Kept (QUAL-MEMBER1, NN17 and NN19). When r is in none of them, one
+// declarer keeps its unit, as r may be a field or an unexported member the
+// index does not list; several declarers name no unit, the word kept as a
+// qualified word with the reason. The cost: a request naming Type.member
+// for a member the index does not list, the type declared in several
+// units, now gets no unit from that word where it got the first
+// declarer's.
 func (c corpus) resolveQualified(word, l, r string) (NamedWord, bool) {
 	nw := NamedWord{Word: word, Kind: NamedQualified}
 	unit, ok := c.unitBySegment(l)
 	if !ok {
-		if syms := c.syms[l]; len(syms) > 0 {
-			unit, ok = c.units[c.index[syms[0]]], true
+		var declarers []string
+		for _, id := range c.syms[l] {
+			if u := c.units[c.index[id]]; !slices.Contains(declarers, u) {
+				declarers = append(declarers, u)
+			}
+		}
+		for _, u := range declarers {
+			if _, held := c.symIn(r, u); held {
+				unit, ok = u, true
+				break
+			}
+		}
+		switch {
+		case ok:
+		case len(declarers) == 1:
+			unit, ok = declarers[0], true
+		case len(declarers) > 1:
+			nw.Why = r + " is declared in none of the " + strconv.Itoa(len(declarers)) + " units that declare " + l
+			return nw, true
 		}
 	}
 	if !ok {
