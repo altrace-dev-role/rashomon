@@ -39,6 +39,14 @@ m("TL-1 turn rows keep their table where the session rows read unknown", "intern
   "\t\tif snap.Recording != Complete || Rank(g.State) < 0 || !known {\n",
   "\t\tif false && !known {\n",
   "TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo")
+# The Rank clause of that guard alone. A watched_red_then_green turn row takes
+# its state from the watch, never from a table, so for a gate state outside
+# Order only this clause reads it unknown; the gate's and the unit's rows read
+# unknown through fromTable either way. The break keeps the other two clauses.
+m("TL-1 the Rank clause is dropped: a watched turn row keeps its state outside Order", "internal/verify/ledger_turn.go",
+  "\t\tif snap.Recording != Complete || Rank(g.State) < 0 || !known {\n",
+  "\t\tif snap.Recording != Complete || !known {\n",
+  "TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo")
 m("TL-1 a point that is not a Stop owes turn rows", "internal/verify/ledger_turn.go",
   "\tif snap.Point.Kind != PointStop {\n",
   "\tif false {\n",
