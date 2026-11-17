@@ -29,6 +29,13 @@ m("UO-1 a write whose project the record does not say is placed as recorded", L,
   "\tif project == nil || *project == \"\" || p == \"..\" || strings.HasPrefix(p, \"../\") {\n",
   "\tif project == nil {\n\t\treturn p, true\n\t}\n\tif *project == \"\" || p == \"..\" || strings.HasPrefix(p, \"../\") {\n",
   "TestPlaced_PutsAWriteUnderTheStopsRoot")
+# The Stop asks UnitOf, whose first ask reads the configuration and the
+# repository id, only where its own turn holds a write a required gate
+# covers. The break maps an earlier turn's writes in a turn that wrote none.
+m("UO-1 a Stop whose turn wrote nothing asks UnitOf about an earlier turn", L,
+  "\tif !wrote || unitOf == nil {\n",
+  "\tif unitOf == nil {\n",
+  "TestTurnObligations_ATurnWithNoWriteCallsNoUnitOf")
 m("UO-1 the live Stop fills no UnitOf", "cmd/rashomon/recap_stop.go",
   "\tin.UnitOf = stopUnitOf(key)\n",
   "",

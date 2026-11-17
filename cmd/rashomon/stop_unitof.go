@@ -19,7 +19,10 @@ import (
 // no index is found at or above root or its configuration does not read: an
 // index below root is not found, so a write under it makes no unit row. It
 // loads no graph: the first path it maps reads the configuration and the
-// repository id, so a Stop that maps none reads nothing. nil for root "".
+// repository id, so a Stop that maps none reads nothing. The Stop asks it
+// about a path only where its own turn holds a relevant named write a
+// required gate covers (verify's turnWrites), so a Stop whose turn wrote
+// nothing reads nothing, though an earlier turn wrote. nil for root "".
 // One Stop calls it from one goroutine.
 func stopUnitOf(root string) verify.UnitOf {
 	if root == "" {

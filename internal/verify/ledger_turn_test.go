@@ -412,9 +412,11 @@ func TestLedger_TurnRowsReadUnknownWhereTheSessionRowsDo(t *testing.T) {
 }
 
 // TestTurnObligations_ATurnWithNoWriteCallsNoUnitOf (B2): UnitOf is asked
-// about a written path only, so a Stop whose turn wrote nothing asks it
-// nothing, and the Stop's UnitOf, which opens its files when first asked,
-// opens none. Witness: a turn with a write asks it.
+// only where the Stop's own turn holds a relevant named write a required gate
+// covers, so a Stop whose turn wrote nothing asks it nothing, in a session
+// that wrote nothing and in one whose earlier turn wrote, and the Stop's
+// UnitOf, which opens its files when first asked, opens none. Witness: a turn
+// with a write asks it. Premise: each Stop's turn holds a call.
 func TestTurnObligations_ATurnWithNoWriteCallsNoUnitOf(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -423,11 +425,16 @@ func TestTurnObligations_ATurnWithNoWriteCallsNoUnitOf(t *testing.T) {
 	}{
 		{"no write", inTurns(runOf(t, gateCall(1, "go-test", store.ExecOK)), "p1"), false},
 		{"a write", inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK)), "p1", "p1"), true},
+		{"a write in an earlier turn only", inTurns(runOf(t, edit(1, "pkg/a/x.go"), gateCall(2, "go-test", store.ExecOK)), "p1", "p2"), false},
 	} {
 		n := 0
 		count := func(rel string) string { n++; return dirUnit(rel) }
 		pt := Point{Kind: PointStop, Seq: lastSeqOf(c.run), SessionID: "s1"}
-		EvaluateStop(c.run, nil, nil, pt, stopNow, StopInput{PromptID: "p1", UnitOf: count})
+		p := promptAt(c.run, pt.Seq)
+		if TurnWindow(c.run, p, pt.Seq).Empty() {
+			t.Errorf("%s: premise: the Stop's turn %q holds no call", c.name, p)
+		}
+		EvaluateStop(c.run, nil, nil, pt, stopNow, StopInput{PromptID: p, UnitOf: count})
 		if (n > 0) != c.calls {
 			t.Errorf("%s: UnitOf asked %d times; want asked %v", c.name, n, c.calls)
 		}

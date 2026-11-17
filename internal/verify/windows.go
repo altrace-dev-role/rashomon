@@ -12,8 +12,9 @@ import (
 const ScopeTurn = "turn"
 
 // Scopes is the closed list of the scopes an obligation is owed in: the three
-// above in their order, then turn. A row about one unit is a turn row with
-// Unit set, never a scope of its own.
+// in obligations.go (ScopeSession, ScopeSubtask, ScopeCommit) in their order,
+// then turn. A row about one unit is a turn row with Unit set, never a scope
+// of its own.
 var Scopes = []string{ScopeSession, ScopeSubtask, ScopeCommit, ScopeTurn}
 
 // Window is a span of record seqs, From and To inclusive, owed in Scope.

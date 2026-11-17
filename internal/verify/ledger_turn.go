@@ -88,24 +88,32 @@ func turnObligations(snap Snapshot, c *classified, run *store.Run, promptID, roo
 // turnWrites reads the relevant named writes g covers at or before w.To:
 // whether one is in w; with unitOf set, the units one in w was made in,
 // ascending; and each such unit's writes at or before w.To, in seq order,
-// those before w included, which unitView reads. unitOf reads each path
-// placed under root (placed); a path placed nowhere, or in no unit (""),
-// makes no unit row.
+// those before w included, which unitView reads. unitOf is asked about no
+// path unless one is in w: a turn that wrote none maps none, though an
+// earlier turn wrote, so a Stop whose turn wrote nothing asks it nothing.
+// No row reads less: a unit row needs a write in w, and the writes before w
+// are read only for such a unit. unitOf reads each path placed under root
+// (placed); a path placed nowhere, or in no unit (""), makes no unit row.
 func turnWrites(g *GateState, writes []write, w Window, root string, unitOf UnitOf) (bool, []string, map[string][]write) {
 	wrote := false
+	for i := range writes {
+		if x := &writes[i]; x.Seq >= w.From && owedWrite(g, x, w) {
+			wrote = true
+			break
+		}
+	}
+	if !wrote || unitOf == nil {
+		return wrote, nil, nil
+	}
 	var units []string
 	var byUnit map[string][]write
 	var turned map[string]bool
 	for i := range writes {
 		x := &writes[i]
-		if x.Seq > w.To || x.Path == nil || !Relevant(x.Class) || !covers(g.root, x) {
+		if !owedWrite(g, x, w) {
 			continue
 		}
 		in := x.Seq >= w.From
-		wrote = wrote || in
-		if unitOf == nil {
-			continue
-		}
 		u := ""
 		if rel, ok := placed(root, x); ok {
 			u = unitOf(rel)
@@ -124,6 +132,12 @@ func turnWrites(g *GateState, writes []write, w Window, root string, unitOf Unit
 	}
 	slices.Sort(units)
 	return wrote, units, byUnit
+}
+
+// owedWrite reports whether x is a write turnWrites reads: a relevant named
+// write g covers, at or before w.To.
+func owedWrite(g *GateState, x *write, w Window) bool {
+	return x.Seq <= w.To && x.Path != nil && Relevant(x.Class) && covers(g.root, x)
 }
 
 // unitView is g as gateTable reads it with one unit's writes alone counted
