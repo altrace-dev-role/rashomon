@@ -11,7 +11,7 @@ L = "internal/hook/landededit.go"
 O = "internal/hook/overlaywrite.go"
 m("OVG-1 the unit-brief read evaluates its own gate", L,
   "\tg := p.gate\n",
-  "\tvar g keptGate\n\t_, g.root, g.rel, g.ok = keptGoEdit(p.st, p.sessionID, p.toolName, p.toolInput, nil, p.cwd, p.landedSeq)\n",
+  "\tvar g keptGate\n\t_, g.root, g.rel, g.ok = keptGoEdit(p.st, p.sessionID, p.toolName, p.toolInput, nil, p.cwd, p.landedSeq, p.scopeV5)\n",
   "TestHook_LandedGoEditTakesTheWritersGate")
 m("OVG-1 the writer keeps no gate for the read", O,
   "*c.gate = keptGate{root: at, rel: under, ok: kept}",
@@ -22,9 +22,9 @@ m("OVG-1 the gate decodes the input whatever path it was passed", O,
   "\tif true {\n",
   "TestHook_TheHookGateTakesTheDeclaredPath")
 m("OVG-1 the input is decoded before the marker", O,
-  "\tif !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {\n",
+  "\tif !v5 || !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {\n",
   "\tif declared == nil {\n\t\tdeclared = shape.DeclaredPath(tool, input)\n\t}\n"
-  "\tif !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {\n",
+  "\tif !v5 || !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {\n",
   "TestHook_NoDecodeBeforeTheMarker")
 m("OVG-1 the walk for an index probes with os.Stat", "internal/graph/persist.go",
   "\t\tif indexAt(filepath.Join(dir, filepath.FromSlash(GraphFile))) {\n",

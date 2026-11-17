@@ -281,7 +281,7 @@ func TestConflictBase_WrittenBaseKeepsNoTextOfARule(t *testing.T) {
 	rule := spec.Rule{ID: "b1", Kind: string(spec.Boundary), Why: "w", HardControl: "h",
 		From: []string{string(ua)}, To: []string{string(ub)}, Predicate: "cbw predicate words", Source: "cbw source words"}
 	sp := spec1(spec.Trusted, rule)
-	writeConflictBase(root, "s1", project, planRID, s, rev, func() *spec.Compiled { return sp })
+	writeConflictBase(root, "s1", project, planRID, s, rev, func() *spec.Compiled { return sp }, true)
 
 	path := conflictBasePath(root, "s1", project)
 	data, err := os.ReadFile(path)

@@ -27,8 +27,10 @@ const (
 )
 
 // ovFix is a repository with a code index (header and the file's own
-// declarations at commit c1), one Go file, and a store whose session-content
-// marker is whatever marker says ("" leaves it absent).
+// declarations at commit c1), one Go file, and a store whose record scope is
+// v5, the one scope that keeps content, and whose session-content marker is
+// whatever marker says ("" leaves it absent). A test of another scope writes
+// its own marker over it.
 type ovFix struct {
 	t    *testing.T
 	st   *store.Store
@@ -67,6 +69,9 @@ func newOvFix(t *testing.T, marker string) *ovFix {
 		}
 	}
 	if err := graph.SaveFile(repo, idx, graph.Header{Repo: "r", Rev: graph.HeaderRev{Commit: ovCommit}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteRecordScopeMarker(st.Root(), store.RecordScopeV5); err != nil {
 		t.Fatal(err)
 	}
 	if marker != "" {
@@ -480,17 +485,22 @@ func TestHook_NoOverlayOrSessionRecordBelowScope6(t *testing.T) {
 }
 
 // TestHook_OverlayOnlyForGoWrites: a Bash call, a Read, and an Edit of a file
-// the Go resolver does not take write nothing and count nothing.
+// the Go resolver does not take write nothing and count nothing, in a
+// session whose content is kept, so no earlier gate stops them first. The
+// README holds Go source, so its Edit is stopped by the path the Go resolver
+// claims and not by a parse that fails later (content that does not parse
+// yields no records).
 func TestHook_OverlayOnlyForGoWrites(t *testing.T) {
-	f := newOvFix(t, "")
+	f := newOvFix(t, "1\n")
 	md := filepath.Join(f.repo, "README.md")
-	if err := os.WriteFile(md, []byte("hello\n"), 0o644); err != nil {
+	if err := os.WriteFile(md, []byte("package readme\n\nfunc Hello() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.pre("toolu_md", "Edit", map[string]any{"file_path": md, "old_string": "hello", "new_string": "bye"})
+	in := map[string]any{"file_path": md, "old_string": "func Hello() {}", "new_string": "func Bye() {}"}
+	f.pre("toolu_md", "Edit", in)
 	f.pre("toolu_b", "Bash", map[string]any{"command": "ls"})
 	f.pre("toolu_r", "Read", map[string]any{"file_path": f.file})
-	f.post("toolu_md", "Edit", map[string]any{"file_path": md, "old_string": "hello", "new_string": "bye"})
+	f.post("toolu_md", "Edit", in)
 	if names := overlayRunFileNames(t, f); len(names) != 0 {
 		t.Errorf("overlay files %v for calls the overlay never concerns", names)
 	}
@@ -534,7 +544,7 @@ func TestHook_LandedGoEditTakesTheWritersGate(t *testing.T) {
 // decode the input whatever the caller passed.
 func TestHook_TheHookGateTakesTheDeclaredPath(t *testing.T) {
 	f := newOvFix(t, "1\n")
-	path, root, rel, ok := keptGoEdit(f.st, ovSess, "Edit", nil, &f.file, f.repo, 1)
+	path, root, rel, ok := keptGoEdit(f.st, ovSess, "Edit", nil, &f.file, f.repo, 1, true)
 	if !ok || path != f.file || root != f.repo || rel != ovRel {
 		t.Errorf("gate on the declared path, no input: %q %q %q %v; want %q %q %q true", path, root, rel, ok, f.file, f.repo, ovRel)
 	}
@@ -552,7 +562,7 @@ func TestHook_NoDecodeBeforeTheMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	cost := func(input json.RawMessage) float64 {
-		return testing.AllocsPerRun(10, func() { keptGoEdit(f.st, ovSess, "Edit", input, nil, f.repo, 1) })
+		return testing.AllocsPerRun(10, func() { keptGoEdit(f.st, ovSess, "Edit", input, nil, f.repo, 1, true) })
 	}
 	if named, none := cost(in), cost(nil); named != none {
 		t.Errorf("no marker: an input naming %s costs %.0f allocs, no input %.0f; want equal (no decode before the marker)", f.file, named, none)

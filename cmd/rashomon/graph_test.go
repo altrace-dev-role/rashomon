@@ -356,8 +356,8 @@ func TestHeadCommit_ReadsThroughAWorktree(t *testing.T) {
 		"detached HEAD":                          {detached, c[:12]},
 		"no repository":                          {t.TempDir(), "C1"},
 	} {
-		if got := headCommit(tc.dir); got != tc.want {
-			t.Errorf("%s: headCommit = %q, want %q", name, got, tc.want)
+		if got, err := headCommit(tc.dir); got != tc.want || err != nil {
+			t.Errorf("%s: headCommit = %q, %v; want %q, nil", name, got, err, tc.want)
 		}
 	}
 }

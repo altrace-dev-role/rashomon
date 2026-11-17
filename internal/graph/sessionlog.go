@@ -59,8 +59,10 @@ func SessionLogPath(storeRoot, rid string) string {
 
 // OpenSessionLog is the log for repository rid under storeRoot. Every record
 // it builds is at rev (the code index's commit, so a reader at that commit
-// sees both). allowed is store.SessionContentMarker(root), read by the
-// caller: false makes Append refuse and write nothing. It does no I/O.
+// sees both). allowed is the caller's keep decision: the hook's one
+// caller passes true only past keptGoEdit, which keeps content at record
+// scope v5 with the session-content marker set. false makes Append refuse
+// and write nothing. It does no I/O.
 func OpenSessionLog(storeRoot, rid string, rev Rev, allowed bool) *SessionLog {
 	return &SessionLog{Path: SessionLogPath(storeRoot, rid), repo: rid, rev: rev, allowed: allowed}
 }

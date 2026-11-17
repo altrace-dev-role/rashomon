@@ -48,9 +48,10 @@ func TestRules_ApprovedDecisionWithPredicateCompiles(t *testing.T) {
 	if len(f.Rules) != 1 || f.Rules[0].ID != r.ID {
 		t.Errorf("parsed back %+v", f.Rules)
 	}
-	if !slices.Contains(spec.UnenforcedRuleKinds, spec.Decision) {
-		t.Error("decision became enforced: the nudge-only statement in the card no longer holds")
-	}
+	// The HardControl's "a nudge and blocks nothing" holds because a
+	// decision's finding caps at nudge with no stop form; that cap is pinned
+	// where the finding is built (cmd/rashomon's
+	// TestConflictFindings_CapAtNudgeWithNoStopForm), not here.
 }
 
 // TestRules_CandidateRowCompilesToNothing: a candidate, an INFERRED row, a

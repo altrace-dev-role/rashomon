@@ -37,13 +37,13 @@ m("VER-1.2q compaction drops the record RecordScope reads", "internal/consent/re
   " || i == maxDisclosure || i == scoped {", " || i == maxDisclosure || scoped < -1 {",
   "TestRS10_")
 m("VER-1.2q the gate runs after the caps", "internal/hook/handle.go",
-  "\tstore.GateDeclaration(&decl, recordScope(h.st))\n"
+  "\tstore.GateDeclaration(&decl, scope)\n"
   "\t// The caps: a value over its cap is left out of the record rather than\n"
   "\t// cut, and said so on the coverage record (REC-52), so no payload inside\n"
   "\t// the intake limit can make a record the store would refuse.\n"
   "\tif h.capDecl(&decl) {\n\t\th.withheld = true\n\t}\n",
   "\tif h.capDecl(&decl) {\n\t\th.withheld = true\n\t}\n"
-  "\tstore.GateDeclaration(&decl, recordScope(h.st))\n",
+  "\tstore.GateDeclaration(&decl, scope)\n",
   "TestRS1b_")
 m("VER-1.2q the declaration gate is inverted", "internal/store/scope.go",
   "func GateDeclaration(d *Declaration, scope string) {\n\tif scope == RecordScopeV5 {",

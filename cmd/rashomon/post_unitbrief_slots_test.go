@@ -18,14 +18,14 @@ import (
 // said. The widest five-line knowledge brief fills the briefing cap under
 // the graph head at c1, so at the first edit in a unit whose path is long
 // the post says it stepped down, n of its five lines, n at least one. At
-// both record scopes the line's key names the stored file by its digest,
-// its model text says n lines (the note itself at v5), and its line slots
+// v5, the one record scope that keeps content, the line's key names the
+// stored file by its digest, its model text is the note, and its line slots
 // name what was said: line1 to line<n> hold the kind and the id of the
 // file's first n lines in order, and each slot past n is present with kind
 // "" and no id (the built behaviour: the binding has five line slots and
 // the steer line writes each). A reader that counts the slots with a kind
-// reads n. Break: bind all five lines to the slots, and they name five
-// where the note said n.
+// reads n. At v4 nothing is kept: no line. Break: bind all five lines to
+// the slots, and they name five where the note said n.
 func TestPost_UnitBriefLineSlotsAreTheDeliveredLines(t *testing.T) {
 	rev := graph.RevCommit("c1")
 	shape := maxBriefShapes()["knowledge"]
@@ -55,6 +55,12 @@ func TestPost_UnitBriefLineSlotsAreTheDeliveredLines(t *testing.T) {
 			}
 			out := s.editFile("toolu_ub_m", rel)
 			ls := s.briefLines()
+			if scope != store.RecordScopeV5 {
+				if len(ls) != 0 {
+					t.Errorf("at %s: %d task-preflight lines, post output %q; want none", scope, len(ls), out)
+				}
+				return
+			}
 			if len(ls) != 1 {
 				t.Fatalf("%d task-preflight lines, post output %q; want 1", len(ls), out)
 			}
@@ -62,7 +68,7 @@ func TestPost_UnitBriefLineSlotsAreTheDeliveredLines(t *testing.T) {
 			if !strings.HasSuffix(l.Key, "@"+digest) {
 				t.Errorf("key %q, want the stored file's digest %s", l.Key, digest)
 			}
-			if got := strings.Count(l.ModelText, "\n"); got != n || scope == store.RecordScopeV5 && l.ModelText != said.Text() {
+			if got := strings.Count(l.ModelText, "\n"); got != n || l.ModelText != said.Text() {
 				t.Errorf("the line's model text says %d lines, want %d (the note at v5):\n%s", got, n, l.ModelText)
 			}
 			for k := 1; k <= 5; k++ {

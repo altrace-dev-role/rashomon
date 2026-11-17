@@ -110,18 +110,21 @@ func cfSession(t *testing.T, scope string, kept bool) *planSession {
 	return s
 }
 
-// cfBindSpec writes cfSpec into project and binds it in the store at root,
-// as spec trust binds it, its digest as spec.Parse gives it.
-func cfBindSpec(t testing.TB, root, project string) {
+// cfBindSpec writes cfSpec into project and binds it in the store at root.
+func cfBindSpec(t testing.TB, root, project string) { cfBindSpecText(t, root, project, cfSpec) }
+
+// cfBindSpecText writes text into project as its spec and binds it in the
+// store at root, as spec trust binds it, its digest as spec.Parse gives it.
+func cfBindSpecText(t testing.TB, root, project, text string) {
 	t.Helper()
 	path := filepath.Join(project, ".claude", "rashomon", "spec.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(cfSpec), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, digest, err := spec.Parse([]byte(cfSpec))
+	_, digest, err := spec.Parse([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,9 +389,12 @@ func TestPost_ConflictNudgesAndNeverBlocks(t *testing.T) {
 }
 
 // TestConflictFindings_CapAtNudgeWithNoStopForm (R2): a conflict's finding
-// caps at nudge with no stop form. The router lowers a stop to a nudge while
-// no project stop setting exists (decide.go, STR-20), so no post output can
-// show this cap today; the finding is the pin that holds once one lands.
+// caps at nudge with no stop form, a boundary's and a decision's alike. The
+// router lowers a stop to a nudge while no project stop setting exists
+// (decide.go, STR-20), so no post output can show this cap today; the
+// finding is the pin that holds once one lands. It is also what makes true
+// the sentence a compiled knowledge rule carries ("it is a nudge and blocks
+// nothing", knowledge.compiledControl): every compiled rule is a decision.
 func TestConflictFindings_CapAtNudgeWithNoStopForm(t *testing.T) {
 	root := t.TempDir()
 	st, err := store.Open(root)
@@ -396,33 +402,39 @@ func TestConflictFindings_CapAtNudgeWithNoStopForm(t *testing.T) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	e := hook.LandedGoEdit{Session: "s-cap", Root: root, Cwd: root, Seq: 1, ScopeV5: true}
-	live := []engine.Conflict{{Kind: engine.ConflictBoundaryCross, Unit: "unit:go:internal/graph", RuleID: "b1"}}
-	rows := []store.ConflictCheckRow{{Key: strings.Repeat("a", 64)}}
-	fs := conflictFindings(st, e, cfModule, "c1c1c1c1c1c1c1", live, rows)
-	if len(fs) != 1 {
-		t.Fatalf("findings %+v, want one", fs)
+	live := []engine.Conflict{
+		{Kind: engine.ConflictBoundaryCross, Unit: "unit:go:internal/graph", RuleID: "b1"},
+		{Kind: engine.ConflictDecisionContradicted, Unit: "unit:go:keep", RuleID: "d1", Subject: graph.FileID(cfKeep)},
 	}
-	if f := fs[0]; f.MaxLevel != steer.LevelNudge || f.StopForm != steer.StopFormNone {
-		t.Errorf("finding max level %d, stop form %q, want nudge and none", f.MaxLevel, f.StopForm)
+	rows := []store.ConflictCheckRow{{Key: strings.Repeat("a", 64)}, {Key: strings.Repeat("b", 64)}}
+	fs := conflictFindings(st, e, cfModule, "c1c1c1c1c1c1c1", live, rows)
+	if len(fs) != 2 {
+		t.Fatalf("findings %+v, want two", fs)
+	}
+	for _, f := range fs {
+		if f.MaxLevel != steer.LevelNudge || f.StopForm != steer.StopFormNone {
+			t.Errorf("finding %s: max level %d, stop form %q, want nudge and none", f.Key, f.MaxLevel, f.StopForm)
+		}
 	}
 }
 
 // TestPostConflicts_RecordScopeV4HoldsNoPath (D4): at record scope v4 the
-// row's unit and subject are digests and its unit path is empty, and the
-// note still names the unit.
+// session keeps no content, so it holds no path: with the session-content
+// marker set and the spec bound, the prompt stores no conflict base, and the
+// edit across the rule's boundary prints no note and leaves no
+// conflict_check. Break: keep content below v5 on either side, and the base
+// or the note appears.
 func TestPostConflicts_RecordScopeV4HoldsNoPath(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV4, true)
 	s.prompt("fix " + cfGraph)
-	if out := s.land("toolu_cf1", cfGraph, cfCross); !strings.Contains(out, cfNote) {
-		t.Errorf("post output %q lacks %q", out, cfNote)
+	if _, err := os.Stat(s.basePath()); !os.IsNotExist(err) {
+		t.Errorf("a conflict base at v4 (stat %v); want none", err)
 	}
-	cs := s.run().ConflictChecks
-	if len(cs) != 1 || len(cs[0].Rows) != 1 {
-		t.Fatalf("checks %+v, want one row", cs)
+	if out := s.land("toolu_cf1", cfGraph, cfCross); strings.Contains(out, cfNote) {
+		t.Errorf("post output %q holds %q; want no note at v4", out, cfNote)
 	}
-	if r := cs[0].Rows[0]; r.UnitPath != "" || !cfIsDigest(r.Unit) || !cfIsDigest(r.Subject) ||
-		strings.Contains(r.Unit+r.Subject, "internal") {
-		t.Errorf("row %+v, want digests and no path", r)
+	if cs := s.run().ConflictChecks; len(cs) != 0 {
+		t.Errorf("checks %+v, want none at v4", cs)
 	}
 }
 

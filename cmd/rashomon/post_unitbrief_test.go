@@ -200,8 +200,9 @@ func (s *planSession) execSeq(useID string) int64 {
 // brief and leaves one task-preflight line keyed "unitbrief:" + the unit's
 // global id + "@" + the file's digest, delivered, after the edit's own
 // execution seq, its rev slot the file's commit; the second edit in the
-// unit prints nothing and adds no line. At either record scope: the note is
-// the same, only the record form differs.
+// unit prints nothing and adds no line. Only at record scope v5, the one
+// scope that keeps content: at v4 the edit prints no brief and leaves no
+// line, with the marker set and the brief on file.
 func TestPost_UnitBriefDeliversOnceAtTheFirstEditInTheUnit(t *testing.T) {
 	for _, scope := range []string{store.RecordScopeV4, store.RecordScopeV5} {
 		t.Run(scope, func(t *testing.T) {
@@ -211,6 +212,12 @@ func TestPost_UnitBriefDeliversOnceAtTheFirstEditInTheUnit(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := s.edit("toolu_ub_1")
+			if scope != store.RecordScopeV5 {
+				if strings.Contains(out, ubPostTitle) || len(s.briefLines()) != 0 {
+					t.Errorf("at %s the edit printed %q and left %d lines; want no brief and no line", scope, out, len(s.briefLines()))
+				}
+				return
+			}
 			if !strings.Contains(out, ubPostTitle) {
 				t.Fatalf("the first edit in the unit printed %q, want the unit's brief", out)
 			}
@@ -547,6 +554,9 @@ func TestUnitBrief_NothingUnderTheRepoIndex(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(consented, store.FileSessionContent), []byte("1\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := store.WriteRecordScopeMarker(consented, store.RecordScopeV5); err != nil {
+			t.Fatal(err)
+		}
 		before := ubIndexTree(t, root)
 		if _, ok := graphBrief(consented, cwd, "s1", "p1", []byte("make session expiry in sessions.py respect the org-level timeout override.")); !ok {
 			t.Fatal("no brief")
@@ -571,27 +581,22 @@ func TestUnitBrief_NothingUnderTheRepoIndex(t *testing.T) {
 	})
 }
 
-// ubPostHead and ubPostRecordHead open the fixture unit's note and its
-// record form (ruling 04:58 B), up to the head's line feed.
-const (
-	ubPostHead       = "rashomon record: an edit in unit 'qwertyui', noted once a session; the repository graph at rev c1 records for it:"
-	ubPostRecordHead = "rashomon record: an edit in a unit on record, noted once a session; the repository graph at rev c1 records for it:"
-)
+// ubPostHead opens the fixture unit's note (ruling 04:58 B), up to the
+// head's line feed.
+const ubPostHead = "rashomon record: an edit in unit 'qwertyui', noted once a session; the repository graph at rev c1 records for it:"
 
-// TestPost_UnitBriefLineFollowsTheRecordScope (D4): the note is the same at
-// either record scope and only its steer line's form differs, as the
-// prompt's graph brief's does (slot Record). Under v5 the line holds the
-// brief's paths; under v4 each is a keyed digest, so no path the note
-// printed is in the steer log. The lesson's title, a record the repository
-// declared and never the request's words, is kept at both. The note's head
-// names the unit and neither the request nor any count (ruling 04:58 B);
-// the line keeps that head and the unit's slot under v5, and under v4 the
-// record head and no unit slot.
+// TestPost_UnitBriefLineFollowsTheRecordScope (D4): under v5, the one record
+// scope that keeps content, the note prints the brief's paths and its steer
+// line holds them, with the note's head and the unit's slot. The lesson's
+// title, a record the repository declared and never the request's words, is
+// kept. The note's head names the unit and neither the request nor any count
+// (ruling 04:58 B). Under v4 nothing is kept: no note, no line, and no path
+// of the brief in the steer log.
 func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
 	paths := []string{"brief/brief.py", "store/loader.py"}
 	for _, c := range []struct {
 		scope string
-		plain bool
+		kept  bool
 	}{
 		{store.RecordScopeV5, true},
 		{store.RecordScopeV4, false},
@@ -600,6 +605,22 @@ func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
 			s := ubPostSession(t, c.scope)
 			s.writeBrief("c1")
 			out := s.edit("toolu_ub_1")
+			st, err := store.OpenExisting(s.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _, rerr := st.ReadSteer(benchSessionID)
+			log := bytes.Join(raw, nil)
+			if !c.kept {
+				held := false
+				for _, p := range paths {
+					held = held || bytes.Contains(log, []byte(p))
+				}
+				if strings.Contains(out, ubPostTitle) || len(s.briefLines()) != 0 || held {
+					t.Errorf("at %s: note %q, %d lines, a brief path in the steer log %v; want none", c.scope, out, len(s.briefLines()), held)
+				}
+				return
+			}
 			for _, want := range append([]string{ubPostTitle}, paths...) {
 				if !strings.Contains(out, want) {
 					t.Fatalf("premise: the note %q does not print %q", out, want)
@@ -611,33 +632,24 @@ func TestPost_UnitBriefLineFollowsTheRecordScope(t *testing.T) {
 			if lines := s.briefLines(); len(lines) != 1 {
 				t.Errorf("%d task-preflight lines, want 1", len(lines))
 			} else {
-				l, head := lines[0], ubPostRecordHead
-				if c.plain {
-					head = ubPostHead
+				l := lines[0]
+				if !strings.HasPrefix(l.ModelText, ubPostHead) {
+					t.Errorf("the line's model text %q, want the head %q", l.ModelText, ubPostHead)
 				}
-				if !strings.HasPrefix(l.ModelText, head) {
-					t.Errorf("the line's model text %q, want the head %q", l.ModelText, head)
-				}
-				if u, ok := l.Slots["unit"]; ok != c.plain || ok && string(u) != `"qwertyui"` {
-					t.Errorf("the line's unit slot %s (held %v), want held %v", u, ok, c.plain)
+				if u, ok := l.Slots["unit"]; !ok || string(u) != `"qwertyui"` {
+					t.Errorf("the line's unit slot %s (held %v), want held", u, ok)
 				}
 			}
-			st, err := store.OpenExisting(s.root)
-			if err != nil {
-				t.Fatal(err)
+			if rerr != nil || len(raw) == 0 {
+				t.Fatalf("steer log: %d lines, %v", len(raw), rerr)
 			}
-			raw, _, err := st.ReadSteer(benchSessionID)
-			if err != nil || len(raw) == 0 {
-				t.Fatalf("steer log: %d lines, %v", len(raw), err)
-			}
-			log := bytes.Join(raw, nil)
 			for _, p := range paths {
-				if got := bytes.Contains(log, []byte(p)); got != c.plain {
-					t.Errorf("the steer log holds the path %s %v, want %v", p, got, c.plain)
+				if !bytes.Contains(log, []byte(p)) {
+					t.Errorf("the steer log lacks the path %s", p)
 				}
 			}
 			if !bytes.Contains(log, []byte(ubPostTitle)) {
-				t.Errorf("the steer log lost the lesson's title, a declared record kept at every scope")
+				t.Errorf("the steer log lost the lesson's title, a declared record")
 			}
 		})
 	}

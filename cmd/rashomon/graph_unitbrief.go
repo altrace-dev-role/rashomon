@@ -378,14 +378,15 @@ func briefUnits(s *graph.Store, rev graph.Rev, b engine.Brief) []graph.ID {
 // writeUnitBriefs stores, for each unit of the prompt brief b (briefUnits),
 // the brief engine.UnitBrief gives the first write in it, for the post hook
 // of that write to read (D1, D4): under the session's unit-brief directory
-// by graph.UnitBriefFileName of the index root and the unit. Only when the
-// store holds the session-content marker, the post read's own gate, so an
-// unconsented prompt pays one marker read and no UnitBrief. An empty unit
+// by graph.UnitBriefFileName of the index root and the unit. Only where the
+// store's record scope is v5 and the store holds the session-content marker,
+// the post read's own gate, so a prompt below v5 reads no marker and an
+// unconsented one pays one marker read, and neither builds a UnitBrief. An empty unit
 // brief writes no file, and a later prompt's brief for a unit replaces the
 // file. A write that fails is left: the post counts the absent file as a
-// miss.
-func writeUnitBriefs(storeRoot, sessionID, promptID, root, repo string, s *graph.Store, rev graph.Rev, b engine.Brief, opt engine.Options) {
-	if storeRoot == "" || !store.SessionContentMarker(storeRoot) {
+// miss. v5 is the store's record scope at v5, as graphBriefWith read it.
+func writeUnitBriefs(storeRoot, sessionID, promptID, root, repo string, s *graph.Store, rev graph.Rev, b engine.Brief, opt engine.Options, v5 bool) {
+	if storeRoot == "" || !v5 || !store.SessionContentMarker(storeRoot) {
 		return
 	}
 	dir := graph.UnitBriefDir(storeRoot, sessionID)

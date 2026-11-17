@@ -13,6 +13,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -71,13 +72,15 @@ func conflictBasePath(storeRoot, sessionID, root string) string {
 
 // writeConflictBase stores the conflict base for the index at root, loaded
 // as s at rev, under the rules the spec specOf reads and the index's
-// knowledge rows give, while the store keeps the session's content. A base
+// knowledge rows give, while the store keeps the session's content: record
+// scope v5 and the session-content marker. A base
 // whose head is the file's own (same commit, repository and rules) is not
 // rebuilt, so a session pays the slice once per commit and rule set. With
 // no rule, or a base over the cap, no base is left. A failed write is left:
-// the post reads no base and checks nothing.
-func writeConflictBase(storeRoot, sessionID, root, repo string, s *graph.Store, rev graph.Rev, specOf func() *spec.Compiled) {
-	if storeRoot == "" || specOf == nil || !store.SessionContentMarker(storeRoot) {
+// the post reads no base and checks nothing. v5 is the store's record scope
+// at v5, as graphBriefWith read it.
+func writeConflictBase(storeRoot, sessionID, root, repo string, s *graph.Store, rev graph.Rev, specOf func() *spec.Compiled, v5 bool) {
+	if storeRoot == "" || specOf == nil || !v5 || !store.SessionContentMarker(storeRoot) {
 		return
 	}
 	rows, _ := knowledge.ReadDir(root)
@@ -140,10 +143,11 @@ func encodeConflictBase(head conflictBaseHead, rules []engine.Rule, cb engine.Co
 	return append(append(append(hb, '\n'), bb...), '\n'), nil
 }
 
-// readConflictBaseHead is the head of the base at path, false for none or a
-// head that does not read back.
+// readConflictBaseHead is the head of the base at path, false for none, a
+// path that is not a regular file (regfile.Open: a named pipe is a miss at
+// once, never a wait), or a head that does not read back.
 func readConflictBaseHead(path string) (conflictBaseHead, bool) {
-	f, err := os.Open(path)
+	f, err := regfile.Open(path)
 	if err != nil {
 		return conflictBaseHead{}, false
 	}
@@ -158,11 +162,12 @@ func readConflictBaseHead(path string) (conflictBaseHead, bool) {
 	return h, true
 }
 
-// readConflictBase is the base at path, false for none, one over the cap, or
-// one that does not read back whole at this version (a torn or foreign file
-// is a miss, never a guess).
+// readConflictBase is the base at path, false for none, a path that is not
+// a regular file (regfile.Open: a named pipe is a miss at once, never a
+// wait), one over the cap, or one that does not read back whole at this
+// version (a torn or foreign file is a miss, never a guess).
 func readConflictBase(path string) (conflictBase, bool) {
-	f, err := os.Open(path)
+	f, err := regfile.Open(path)
 	if err != nil {
 		return conflictBase{}, false
 	}
