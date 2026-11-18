@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // releaseYAMLLines reads a file of this repository and returns its lines
@@ -153,6 +154,70 @@ func TestREL1c_GoreleaserMakesADraftAndNoPrerelease(t *testing.T) {
 		if strings.Contains(l, "prerelease") {
 			t.Errorf(".goreleaser.yml sets prerelease (%q); the marketplace would stay on the last full release", strings.TrimSpace(l))
 		}
+	}
+}
+
+// releaseRootBlock returns the lines under one root key of a YAML file of
+// this repository, comments left out, up to the next root key.
+func releaseRootBlock(t *testing.T, rel, key string) []string {
+	t.Helper()
+	lines := releaseYAMLLines(t, rel)
+	start := slices.Index(lines, key)
+	if start < 0 {
+		t.Fatalf("%s has no root %s block", rel, key)
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		if lines[i] != "" && !strings.HasPrefix(lines[i], " ") {
+			end = i
+			break
+		}
+	}
+	return lines[start+1 : end]
+}
+
+// TestREL1e_TheReleaseBodyListsNoCommits: GitHub caps a release body at
+// 125,000 characters and a list of every commit since the previous tag grows
+// with each commit, so GoReleaser writes no changelog. The notes are set on
+// the release by hand after it is published.
+func TestREL1e_TheReleaseBodyListsNoCommits(t *testing.T) {
+	block := releaseRootBlock(t, ".goreleaser.yml", "changelog:")
+	if !slices.Contains(block, `  disable: "true"`) {
+		t.Errorf(".goreleaser.yml's changelog block does not disable the changelog: %q", block)
+	}
+}
+
+// TestREL1f_TheReleaseHeaderIsAShortFixedText: with no changelog the release
+// body is the header until the notes are set, and the header is rendered only
+// when the release is published, which no dry run reaches. So it is one
+// double-quoted line, not empty, under 400 characters, with no template
+// action, and the release has no footer.
+func TestREL1f_TheReleaseHeaderIsAShortFixedText(t *testing.T) {
+	var headers []string
+	for _, l := range releaseRootBlock(t, ".goreleaser.yml", "release:") {
+		switch {
+		case strings.HasPrefix(l, "  footer:"):
+			t.Errorf(".goreleaser.yml's release block has a footer: %q", strings.TrimSpace(l))
+		case strings.HasPrefix(l, "  header:"):
+			headers = append(headers, l)
+		}
+	}
+	if len(headers) != 1 {
+		t.Fatalf(".goreleaser.yml's release block has %d header lines, want 1", len(headers))
+	}
+	m := regexp.MustCompile(`^  header: "([^"\\]*)"$`).FindStringSubmatch(headers[0])
+	if m == nil {
+		t.Fatalf("the release header is not one double-quoted string on its line: %q", headers[0])
+	}
+	text := m[1]
+	if strings.TrimSpace(text) == "" {
+		t.Errorf("the release header is empty")
+	}
+	if n := utf8.RuneCountInString(text); n >= 400 {
+		t.Errorf("the release header is %d characters long, want under 400", n)
+	}
+	if strings.Contains(text, "{{") || strings.Contains(text, "}}") {
+		t.Errorf("the release header holds a template action: %q", text)
 	}
 }
 
