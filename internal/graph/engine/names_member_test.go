@@ -24,7 +24,27 @@ func memberFixture(t *testing.T) *graph.Store {
 		// Ledger is declared twice in one unit: one declaring unit, not two.
 		{"plan", "plan/plan.py", []synSym{{"type", "Ledger", ""}}},
 		{"plan", "plan/more.py", []synSym{{"type", "Ledger", ""}}},
+		// Gauge is declared in three units and Reset in two of them.
+		{"north", "north/gauge.py", []synSym{{"type", "Gauge", ""}, fn("Reset")}},
+		{"south", "south/gauge_reset.py", []synSym{{"type", "Gauge", ""}, fn("Reset")}},
+		{"east", "east/gauge.py", []synSym{{"type", "Gauge", ""}}},
+		// Meter is declared in two units; Spin is a free function beside
+		// the first, not a member of Meter.
+		{"gear", "gear/gear.py", []synSym{{"type", "Meter", ""}, fn("Spin")}},
+		{"cog", "cog/cog.py", []synSym{{"type", "Meter", ""}}},
 	}, nil, nil)
+}
+
+// wantNoUnitClaim is the line the brief finally states for the request:
+// no unit line and no unit claimed from a line kept, the brief saying the
+// unit is not known. The phrase stage may not claim a unit from the words
+// left over once the named word has named none.
+func wantNoUnitClaim(t *testing.T, g *graph.Store, b Brief) {
+	t.Helper()
+	c := claimOf(b, briefUnit(g, graph.RevCommit(graphtest.Commit), b))
+	if c.Unit != "" || c.Line || !strings.Contains(b.Text(), "not known: the unit to change") {
+		t.Errorf("brief %s, want no unit claimed and the unit stated as not known:\n%s", c, b.Text())
+	}
 }
 
 func memberWord(t *testing.T, g *graph.Store, w string) NamedWord {
@@ -54,10 +74,12 @@ func TestMember_ATypeInTwoUnitsWithoutTheMemberNamesNoUnit(t *testing.T) {
 	if nw.Unit != "" || nw.Node != "" || !strings.Contains(nw.Why, "Missing") || !strings.Contains(nw.Why, "none of") {
 		t.Errorf("word %+v, want no unit and Why naming Missing as declared in none of the units", nw)
 	}
-	n := Build(g, graph.RevCommit(graphtest.Commit), "Fix Tally.Missing so it counts every row.", Options{IDF: true}).Roles.Named
-	if n.Unit != "" {
+	// The stated line, for a request whose only name is that word.
+	b := Build(g, graph.RevCommit(graphtest.Commit), "Fix Tally.Missing so it counts every row.", Options{IDF: true})
+	if n := b.Roles.Named; n.Unit != "" {
 		t.Errorf("named unit %q, want none", n.Unit)
 	}
+	wantNoUnitClaim(t, g, b)
 }
 
 // (c) The type is in one unit and the member is not indexed (a field, an
@@ -91,4 +113,45 @@ func TestMember_APositiveTwinOfTheUndeclaredMember(t *testing.T) {
 	if nw := memberWord(t, g, "File.Prompts"); nw.Unit != "" {
 		t.Errorf("File.Prompts: word %+v, want no unit when no declarer of File holds Prompts", nw)
 	}
+}
+
+// (f) The type is in three units and the member in two. The rest of the
+// request's words name one holder's path: that holder is the unit, as
+// resolveIdent settles a bare name declared in several units.
+func TestMember_TwoHoldersAreSettledByTheRestOfTheRequest(t *testing.T) {
+	g := memberFixture(t)
+	wantStated(t, g, "Fix Gauge.Reset in south so it counts every row.", "Gauge.Reset", NamedQualified, "south", "sym:py:south:func:gauge_reset.Reset")
+	// The other holder, by its own word: the order of the index is not
+	// what decides.
+	wantStated(t, g, "Fix Gauge.Reset in north so it counts every row.", "Gauge.Reset", NamedQualified, "north", "sym:py:north:func:gauge.Reset")
+	// A word that names the declarer without the member does not count: east
+	// does not hold Reset.
+	if nw := memberWord(t, g, "Gauge.Reset"); nw.Unit != "" {
+		t.Errorf("word %+v, want no unit with nothing to tell the holders apart", nw)
+	}
+}
+
+// (g) The same type and member, the rest of the words telling the two
+// holders apart by nothing: no unit, the word still qualified, with the
+// reason, and no unit stated for a request whose only name it is.
+func TestMember_TwoHoldersTheWordsCannotSeparateNameNoUnit(t *testing.T) {
+	g := memberFixture(t)
+	nw := memberWord(t, g, "Gauge.Reset")
+	if nw.Unit != "" || nw.Node != "" || !strings.Contains(nw.Why, "Reset is declared in 2 of the units that declare Gauge") {
+		t.Errorf("word %+v, want no unit and Why naming Reset as declared in 2 of the units", nw)
+	}
+	b := Build(g, graph.RevCommit(graphtest.Commit), "Fix Gauge.Reset so it counts every row.", Options{IDF: true})
+	if n := b.Roles.Named; n.Unit != "" {
+		t.Errorf("named unit %q, want none", n.Unit)
+	}
+	wantNoUnitClaim(t, g, b)
+}
+
+// Known limit: a unit holds the member by a name match, not by the symbol
+// belonging to the type. Spin is a free function declared beside Meter in
+// gear; cog declares Meter and no Spin. Meter.Spin names gear, and the free
+// function is the node. A change that checks membership changes this test.
+func TestMember_KnownLimit_AFreeFunctionBesideTheTypeHoldsTheMember(t *testing.T) {
+	g := memberFixture(t)
+	wantStated(t, g, "Fix Meter.Spin so it counts every row.", "Meter.Spin", NamedQualified, "gear", "sym:py:gear:func:gear.Spin")
 }
