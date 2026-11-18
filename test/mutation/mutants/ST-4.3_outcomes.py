@@ -4,7 +4,7 @@
 # counted lines; the install digest has a domain of its own. Each guard is
 # broken once (R4).
 SO = "internal/share/outcomes.go"
-SG = "internal/store/gaps.go"
+SH = "internal/store/hostdigest.go"
 
 m("ST-4.3 a holdout line counts as fired", SO,
   '\treturn *l.Delivery == steer.DeliveryDelivered || *l.Delivery == steer.DeliveryFlagOnly\n',
@@ -34,7 +34,7 @@ m("ST-4.3 the bundle escapes < as HTML", SO,
   '\tenc.SetEscapeHTML(false)\n',
   '',
   "TestSH1_CountsFiredByDeliveryAndPattern")
-m("ST-4.3 the install digest reuses forget-host's domain", SG,
+m("ST-4.3 the install digest reuses forget-host's domain", SH,
   '\tm.Write([]byte("share-install\\x00"))\n',
   '\tm.Write([]byte("forget-host\\x00"))\n',
   "TestSH1c_EmptyStoreIsAnEmptyBundle")

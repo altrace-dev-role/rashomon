@@ -13,7 +13,7 @@ m("H-15 executions are not part of forget's doomed plan", "internal/store/gaps.g
   "\t\tvar h lineHead\n\t\tif json.Unmarshal(line, &h) != nil {\n\t\t\tcontinue\n\t\t}",
   "\t\tvar h lineHead\n\t\tif json.Unmarshal(line, &h) != nil || bytes.Contains(line, []byte(`\"type\":\"execution\"`)) {\n\t\t\tcontinue\n\t\t}",
   "TestH15_ForgetTakesTheExecutionWithThePair")
-IMPORTS["H-15 executions are not part of forget's doomed plan"] = ("internal/store/gaps.go", '\t"crypto/hmac"\n', '\t"bytes"\n\t"crypto/hmac"\n')
+IMPORTS["H-15 executions are not part of forget's doomed plan"] = ("internal/store/gaps.go", '\t"encoding/json"\n', '\t"bytes"\n\t"encoding/json"\n')
 m("H-15 forget --before writes no gap record", "internal/store/gaps.go",
   "\tg.RemovedRecords = removedRec + removedSpill\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}",
   "\tg.RemovedRecords = removedRec + removedSpill\n\tif !w.openBelow() {\n\t\tif err := s.AppendGap(g); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}",

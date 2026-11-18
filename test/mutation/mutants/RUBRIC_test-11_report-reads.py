@@ -11,9 +11,9 @@ m("test-11 the report's run read fails on a refusal", "internal/store/read.go",
 m("test-11 ReadRunDir counts a refusal as skipped", "internal/store/read.go",
   "\treturn s.readRunDir(name, neverRefused)\n", "\treturn s.readRunDir(name, s.refusal())\n",
   "TestRubricTEST11_TheReportReadCountsARefusalAsSkipped")
-m("test-11 the forgotten-host read does not wait for the gaps lock", "internal/store/gaps.go",
+m("test-11 the forgotten-host read does not wait for the gaps lock", "internal/store/hostdigest.go",
   "FileGaps), lockBudget, neverRefused, gapLines(", "FileGaps), 0, neverRefused, gapLines(",
   "TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock")
-m("test-11 the forgotten-host read does not wait for the forget records' lock", "internal/store/gaps.go",
+m("test-11 the forgotten-host read does not wait for the forget records' lock", "internal/store/hostdigest.go",
   "FileForgottenHosts), lockBudget, neverRefused, func(", "FileForgottenHosts), 0, neverRefused, func(",
   "TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock")

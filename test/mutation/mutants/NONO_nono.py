@@ -125,7 +125,7 @@ m("NONO a forget that removed nothing writes no store-level record", "internal/s
   "\tf, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts), appendFlags, fileMode)",
   "\tf, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts+\".off\"), appendFlags, fileMode)",
   "TestForgetHost_|TestSeam_AHostOnlyTheSandboxSaw")
-m("NONO the predicate does not read the store-level records", "internal/store/gaps.go",
+m("NONO the predicate does not read the store-level records", "internal/store/hostdigest.go",
   "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {",
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestForgetHost_AHost|TestSeam_AHostOnlyTheSandboxSaw")
@@ -215,7 +215,7 @@ m("NONO the store-level forget record lands after the runs", "internal/store/gap
   "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })",
   "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n\tif err != nil {\n\t\treturn gaps, err\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn gaps, nil",
   "TestForgetHost_AForgetThatFails")
-m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
+m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/hostdigest.go",
   "\ttimes, err := s.forgottenDigestTimes()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(times) == 0 {\n\t\t// A predicate",
   "\ttimes, err := s.forgottenDigestTimes()\n\t_ = err\n\tif len(times) == 0 {\n\t\t// A predicate",
   "TestForgetHost_AnUn")

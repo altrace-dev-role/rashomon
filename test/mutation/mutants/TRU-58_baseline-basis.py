@@ -53,7 +53,7 @@ m("TRU-58 forget matches the host inside another name", "internal/baseline/basel
 # TRU-58b through the store-level record: a host only the sandbox's trail held
 # leaves no gap when forgotten, so forgotten-hosts.ndjson is the only thing
 # that keeps it out of the report. Judged end to end, through the CLI.
-m("TRU-58 the report ignores the store-level forget record", "internal/store/gaps.go",
+m("TRU-58 the report ignores the store-level forget record", "internal/store/hostdigest.go",
   "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {",
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestTRU58b_AHostOnlyTheSandboxHeld")

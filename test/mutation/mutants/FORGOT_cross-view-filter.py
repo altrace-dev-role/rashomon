@@ -20,7 +20,7 @@ m("a chain link carries a forgotten host in its own lists", "internal/report/cha
 # declaration recorded after is a fresh, legitimate re-use of the name and
 # must still show up everywhere above: in destinations, in the family that
 # named it, and in its own chain link.
-m("a declaration recorded after the forget is suppressed like one from before it", "internal/store/gaps.go",
+m("a declaration recorded after the forget is suppressed like one from before it", "internal/store/hostdigest.go",
   "\t\tforgotMS, ok := times[s.HostDigest(host)]\n\t\treturn ok && declaredAtMS <= forgotMS",
   "\t\t_, ok := times[s.HostDigest(host)]\n\t\treturn ok",
   "TestTRU58b_ForgottenHostNeverReturnsToTheReport")
