@@ -300,20 +300,24 @@ func TestDONE1j_UnchangedEvidenceDeliversOnce(t *testing.T) {
 	}
 }
 
-// TestDONE1m_UnactedTurnBetweenKeepsTheDigest: a turn the main agent made no
-// call in prints no flag and leaves the marks as they were; the acted turn
-// after it, over the same evidence, brings no note. (A Read call is an act:
-// its Stop flags again, as the first RED showed.)
+// TestDONE1m_UnactedTurnBetweenKeepsTheDigest: a turn whose only call does
+// not act (a Read) prints no flag and keeps the flagged digest, though its
+// claim is of another class than the flagged one; the acted turn after it,
+// over the same evidence, brings no note. A turn with no call at all is not
+// covered here: its Stop is read as the turn before it.
 func TestDONE1m_UnactedTurnBetweenKeepsTheDigest(t *testing.T) {
 	e := newSteerEnv(t)
 	e.flaggedStop(t)
 	noteOf(t, e, "prompt-2")
 	before := e.doneState()
-	if line := e.claimDone(); strings.Contains(line, "done was claimed") {
-		t.Fatalf("premise: the Stop of a turn with no call printed %q, want no done flag", line)
+	e.turnCall(t, "prompt-2", "toolu_read_2", fixtureCall{
+		Tool: "Read", Input: map[string]any{"file_path": "/tmp/project/main.go"}, Outcome: "ok", Output: "package main\n",
+	})
+	if line, _ := e.recapLine(stopEvent("Stop", "Done.", e.cwd)); strings.Contains(line, "done was claimed") {
+		t.Errorf("the Stop of a turn whose only call is a Read printed %q, want no done flag", line)
 	}
 	if after := e.doneState(); after != before {
-		t.Errorf("done marks %+v after the turn with no call, want %+v unchanged", after, before)
+		t.Errorf("done marks %+v after the turn of one Read, want %+v unchanged", after, before)
 	}
 	if out := noteOf(t, e, "prompt-3"); out.HookSpecificOutput.AdditionalContext != "" {
 		t.Errorf("prompt-3 carried %q, want nothing", out.HookSpecificOutput.AdditionalContext)
