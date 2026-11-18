@@ -211,7 +211,7 @@ func judgeClassRow(t *testing.T, g *graph.Store, rev graph.Rev, r []string, labe
 	b := Build(g, rev, prompt, Options{IDF: true})
 	got := briefUnit(g, rev, b)
 	basis, _, has := unitDisclosure(b)
-	unitOK := slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
+	unitOK := unitOKOf(want, got, has)
 	consumers, knowledge = truthFor(consumers, got), truthFor(knowledge, got)
 	if !has && slices.Contains(want, "-") {
 		consumers, knowledge = "-", "-"
@@ -224,6 +224,14 @@ func judgeClassRow(t *testing.T, g *graph.Store, rev graph.Rev, r []string, labe
 		t.Logf("%s\n%s", b.Text(), b.Explain())
 	}
 	return rowVerdicts{UnitOK: unitOK, Reuse: vr, Consumers: vc, Knowledge: vk, Claim: claimOf(b, got)}
+}
+
+// unitOKOf is shape 2's unit verdict, the one judgeClassRow gives and the
+// candidate dump reads: the brief's unit got is one of the truth units want
+// (the third column split on ';'), or the truth is '-' and the brief holds
+// no unit line (has false).
+func unitOKOf(want []string, got string, has bool) bool {
+	return slices.Contains(want, got) && got != "" || slices.Contains(want, "-") && !has
 }
 
 // truthFor is the consumer or knowledge truth a brief on unit got is judged

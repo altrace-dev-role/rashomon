@@ -34,11 +34,30 @@ import (
 //	go test -count=1 -run TestACM_CandidateDump ./internal/graph/engine
 //
 // The brief is built exactly as judgeClassRow builds it (the same prompt
-// decoding, Options{IDF: true}). The output holds no prompt text (the label
-// file has it) and no machine path: units and ids are the graph's own,
-// relative to the index root. Struct fields, not maps, so the same index and
-// label file give the same bytes. The dump reads the Brief the product
-// already builds and changes no product behaviour.
+// decoding, Options{IDF: true}), and the truth is read as it reads it: the
+// third column split on ';', a row's unit being right by unitOKOf (shape 2,
+// judgeClassRow's own verdict, field unit_ok) or by unitRight3 (shape 3,
+// field unit_right3). So the count of rows with unit_ok true is the judged
+// table's unit-right count (the "unit" column of TestACM15_ClassesTable) on
+// the same index, row for row. The count of rows whose brief_unit is in
+// truth is smaller, and only by the rows where '-' is an alternative of the
+// truth (a no-unit row, or one like '-;test/perf'): the judge counts those
+// right when the brief holds no unit line, and brief_unit is in no truth
+// there. On the four development sets the judge's unit-right count is 96,
+// 60, 58 and 65; the rows whose brief_unit is in truth are 69, 35, 35 and
+// 40, and no row is in truth and not right, so the gap is those '-' rows,
+// 27, 25, 23 and 25, and not a difference in how the truth is read.
+//
+// The output holds no full prompt and no machine path, but it is not free of
+// prompt words: the request's own words appear in target (the phrase the
+// roles stage resolved), named_words and named_unknown (word, as the request
+// spelled it, and why, which quotes it), roles_why and picks[].refused
+// (both quote request words), and picks[].tokens (the request tokens a unit
+// matched). Do not point it at labels cut from real sessions and keep the
+// output. Everything else is the graph's own, relative to the index root.
+// Struct fields, not maps, so the same index and label file give the same
+// bytes. The dump reads the Brief the product already builds and changes no
+// product behaviour.
 func TestACM_CandidateDump(t *testing.T) {
 	root := os.Getenv("RASHOMON_ACM11_DIR")
 	labels := os.Getenv("RASHOMON_ACM_CANDIDATES_LABELS")
@@ -145,6 +164,8 @@ type dumpRow struct {
 	Kind  string   `json:"row_kind"`
 
 	BriefUnit      string `json:"brief_unit"`
+	UnitOK         bool   `json:"unit_ok"`
+	UnitRight3     bool   `json:"unit_right3"`
 	ClaimLine      bool   `json:"claim_line"`
 	ClaimCandidate bool   `json:"claim_candidate"`
 	ClaimRunner    string `json:"claim_runner_up"`
@@ -190,18 +211,20 @@ func candidateRow(g *graph.Store, rev graph.Rev, r []string, limit int) dumpRow 
 	prompt := strings.ReplaceAll(r[8], "\\n", "\n")
 	b := Build(g, rev, prompt, Options{IDF: true})
 	got := briefUnit(g, rev, b)
-	basis, _, _ := unitDisclosure(b)
+	basis, _, has := unitDisclosure(b)
 	claim := claimOf(b, got)
+	unitOK := unitOKOf(want, got, has)
 	ro := b.Roles
 	d := dumpRow{
 		ID: r[0], Class: r[1], Truth: want, Kind: rowKind(r),
-		BriefUnit: got, ClaimLine: claim.Line, ClaimCandidate: claim.Candidate, ClaimRunner: claim.Runner, Basis: basis,
+		BriefUnit: got, UnitOK: unitOK, ClaimLine: claim.Line, ClaimCandidate: claim.Candidate, ClaimRunner: claim.Runner, Basis: basis,
 		Why: ro.Why, RolesBasis: ro.Basis, Fallback: ro.Fallback, Unnamed: ro.Unnamed,
 		Target: append([]string{}, ro.Target...), NamedUnit: ro.Named.Unit,
 		NamedWords:    capList(dumpWords(ro.Named.Words), limit),
 		NamedUnknown:  capList(dumpWords(ro.Named.Unknown), limit),
 		DecisionCount: len(b.Decisions),
 	}
+	d.UnitRight3 = unitRight3(d.Kind, want, claim, unitOK)
 	picks := make([]dumpPick, 0, len(ro.Picks))
 	for i, p := range ro.Picks {
 		isTruth := slices.Contains(want, p.Path)
@@ -260,6 +283,36 @@ func TestACM_CandidateRowKeepsTheSubListLengths(t *testing.T) {
 	}
 	if !found {
 		t.Error("no candidate holds more than five knowledge ids; the fixture no longer exercises the cut")
+	}
+}
+
+// A dump row's unit verdicts are the judge's: unit_ok is judgeClassRow's
+// UnitOK on the same row, and unit_right3 is unitRight3 over it, so a count
+// over the dump is a count of the judged table.
+func TestACM_CandidateRowUnitVerdictsAreTheJudges(t *testing.T) {
+	g := synth(t, []synFile{
+		{"cmd", "cmd/main.py", []synSym{fn("continuity_state"), fn("resume_briefing")}},
+		{"pattern", "pattern/pattern.py", []synSym{{kind: "const", name: "CONTINUITY_BRIEFING"}}},
+	}, nil, nil)
+	rev := graph.RevCommit(graphtest.Commit)
+	const p = "the continuity briefing should name the open requirements"
+	rows := [][]string{
+		{"A", "prose", "cmd", "-", "-", "-", "-", "-", p},
+		{"B", "prose", "pattern", "-", "-", "-", "-", "-", p},
+		{"C", "prose", "cmd;pattern", "-", "-", "-", "-", "-", p},
+		{"D", "prose", "-", "-", "-", "-", "-", "-", p},
+		{"E", "named-path", "cmd", "-", "-", "-", "-", "-", "change cmd/main.py to log the continuity state"},
+		{"F", "no-unit", "-", "-", "-", "-", "-", "-", "what time is it"},
+	}
+	for _, r := range rows {
+		v := judgeClassRow(t, g, rev, r, "test")
+		d := candidateRow(g, rev, r, candCap)
+		if d.UnitOK != v.UnitOK {
+			t.Errorf("%s: dump unit_ok %v, judge %v (brief unit %q, truth %q)", r[0], d.UnitOK, v.UnitOK, d.BriefUnit, r[2])
+		}
+		if want := unitRight3(rowKind(r), strings.Split(r[2], ";"), v.Claim, v.UnitOK); d.UnitRight3 != want {
+			t.Errorf("%s: dump unit_right3 %v, judge's %v", r[0], d.UnitRight3, want)
+		}
 	}
 }
 
