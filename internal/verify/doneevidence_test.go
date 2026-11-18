@@ -105,3 +105,62 @@ func TestDONE1r_NewUnmetKindOverUnchangedGatesDelivers(t *testing.T) {
 		}
 	}
 }
+
+// TestDONE1s_LearnedRunWhereNoGateIsRequiredMovesTheDigest: where no gate is
+// required, the row and the flag's sentence read the learned gates (TurnGate
+// under Advisory), and a strict done claim is flagged on its unmet kind. A
+// new run or state of such a gate then moves the digest as a required gate's
+// does; a gate neither required nor learned, or a learned gate off the turn,
+// beside it does not.
+func TestDONE1s_LearnedRunWhereNoGateIsRequiredMovesTheDigest(t *testing.T) {
+	learned := func(id string, seq int64, st State) GateState {
+		g := doneGate(id, seq, st)
+		g.Required, g.Source = false, sourceLearned
+		return g
+	}
+	base := func(beside ...GateState) StopView {
+		v := doneView(append([]GateState{learned("learned:go-test", 4, Red)}, beside...)...)
+		v.Scan.Claims[0].Verdict = NoGateKnown
+		v.Expected = []Expected{{Kind: "run", Reason: "no gate declares it"}}
+		v.Obligations = []Obligation{{Kind: ExpectedEvidence, State: ObligationUnmet, ID: ObligationID("", ExpectedEvidence, "run")}}
+		return v
+	}
+	b := base()
+	if !Advisory(b.Snap.Gates) || !TurnGate(b.Snap.Gates[0], true) || len(UnmetExpected(b.Expected, b.Obligations)) != 1 {
+		t.Fatalf("premise: want no gate required, the learned gate a turn gate and one unmet kind; gates %+v", b.Snap.Gates)
+	}
+	want := DoneEvidence(b)
+	moves := []struct {
+		name string
+		edit func(*StopView)
+	}{
+		{"learned run at seq 9", func(v *StopView) { v.Snap.Gates[0].LastRun.Seq = 9 }},
+		{"learned state stale", func(v *StopView) { v.Snap.Gates[0].State = Stale }},
+	}
+	for _, m := range moves {
+		v := base()
+		m.edit(&v)
+		if got := DoneEvidence(v); got == want {
+			t.Errorf("%s: digest %q unchanged, want it moved", m.name, got)
+		}
+	}
+	neither := doneGate("spec:lint", 8, Red)
+	neither.Required, neither.Source = false, sourceDeclared
+	off := learned("learned:go-build", 6, Red)
+	off.offTurn = true
+	stays := []struct {
+		name string
+		v    StopView
+	}{
+		{"neither required nor learned beside it", base(neither)},
+		{"learned off the turn beside it", base(off)},
+	}
+	for _, s := range stays {
+		if !Advisory(s.v.Snap.Gates) {
+			t.Fatalf("%s: premise: a gate is required", s.name)
+		}
+		if got := DoneEvidence(s.v); got != want {
+			t.Errorf("%s: digest %q, want %q unchanged", s.name, got, want)
+		}
+	}
+}

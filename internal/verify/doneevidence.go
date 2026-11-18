@@ -10,15 +10,18 @@ import (
 
 // DoneEvidence is a digest of the evidence the done flag (recap.DoneFlag)
 // decides on at this Stop: the row and the last write seq of the window the
-// verdict judged (after the swap to Done, as DoneFlag reads it), each
-// required gate on the turn with its last run's seq and its state, each
-// strict claim with its verdict, and, under a strict claim of done, each
+// verdict judged (after the swap to Done, as DoneFlag reads it), each turn
+// gate (TurnGate under Advisory: a required gate on the turn, or, where no
+// gate is required, a learned one) with its last run's seq and its state,
+// each strict claim with its verdict, and, under a strict claim of done, each
 // unmet expected kind with its reason. Two Stops with one digest flagged the
 // same evidence, so the note to the agent and the flag on the person's line
 // are each given once per digest. The point's seq, the session's owed row, a
-// loose claim and a repeated claim are no input. The gate set is wider than
-// the done verdict's own (it keeps a gate that owes nothing): a wider set can
-// only say a note again, never swallow one.
+// loose claim and a repeated claim are no input. The gate set is as wide as
+// both sets the flag reads: the row's and its sentence's (TurnGate), and the
+// claim verdicts' (mapGates, the required gates on the turn, which it keeps
+// even where one owes nothing). A wider set can only say a note again, never
+// swallow one.
 //
 // It is 16 hex digits of a sha256, so no gate name is stored. Cost: one sort
 // and one sha256 over a short string; the Stop builds it only where the flag
@@ -29,9 +32,10 @@ func DoneEvidence(v StopView) string {
 	}
 	parts := []string{lenField("v1"), lenField("r") + lenField(string(v.Summary.Row)),
 		lenField("w") + lenField(strconv.FormatInt(v.Turn.LastWriteSeq, 10))}
+	advisory := Advisory(v.Snap.Gates)
 	for i := range v.Snap.Gates {
 		g := &v.Snap.Gates[i]
-		if !g.Required || g.offTurn {
+		if !TurnGate(*g, advisory) {
 			continue
 		}
 		var seq int64

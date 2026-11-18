@@ -73,6 +73,12 @@ m("DONE-1j the delivered evidence flags again", R,
   " && done.Flagged != s.DoneEvidence[sessionID].Delivered {\n", " {\n", "TestDONE1j_UnchangedEvidenceDeliversOnce|TestDONE1l_")
 m("DONE-1k the digest follows the gates' order", V,
   "\tslices.Sort(parts)\n", "", "TestDONE1k_")
+# Where no gate is required the row and the sentence read the learned gates,
+# so the digest takes the turn gates; the Required-only filter it replaced
+# keeps a learned gate's new run out of the digest.
+m("DONE-1s the digest reads the required gates alone", V,
+  "\tadvisory := Advisory(v.Snap.Gates)\n\tfor i := range v.Snap.Gates {\n\t\tg := &v.Snap.Gates[i]\n\t\tif !TurnGate(*g, advisory) {\n",
+  "\tfor i := range v.Snap.Gates {\n\t\tg := &v.Snap.Gates[i]\n\t\tif !g.Required || g.offTurn {\n", "TestDONE1s_")
 m("DONE1q an outranked note counts as delivered", T,
   "\tif pp.unverified && note.AdditionalContext != \"\" && note.AdditionalContext == doneText() {\n", "\tif pp.unverified {\n", "TestDONE1q_")
 m("DONE1 the done evidence not capped", R,
