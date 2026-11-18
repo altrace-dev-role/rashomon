@@ -221,6 +221,12 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	if removedRec+removedSpill == 0 {
 		return nil, nil
 	}
+	// The frontier goes before the gap and before any line: it was folded
+	// from these lines, so one left behind would keep what forget removes
+	// (removeFrontier).
+	if err := removeFrontier(dir); err != nil {
+		return nil, err
+	}
 	if sessionID == "" {
 		sessionID = filepath.Base(dir)
 	}
@@ -597,6 +603,12 @@ func (s *Store) forgetHostInRun(dir, name string, now time.Time) (*Gap, error) {
 	keptSpill, removedSpill := partition(spillLines, keep)
 	if removedRec+removedSpill == 0 {
 		return nil, nil
+	}
+	// The frontier goes before the gap and before any line: it was folded
+	// from these lines, so one left behind would keep what forget removes
+	// (removeFrontier).
+	if err := removeFrontier(dir); err != nil {
+		return nil, err
 	}
 	if sessionID == "" {
 		sessionID = filepath.Base(dir)

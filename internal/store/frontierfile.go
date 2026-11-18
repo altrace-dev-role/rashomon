@@ -4,7 +4,9 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
@@ -81,4 +83,34 @@ func (s *Store) LoadFrontier(sessionID string) ([]byte, bool, error) {
 		return nil, true, errFrontierOverCap
 	}
 	return b, true, nil
+}
+
+// removeFrontier removes a run's saved frontier, and any temporary file a
+// save left by dying between its write and its rename, for a forget about to
+// drop lines of the run. Both forgets call it under the records lock
+// openRunLines holds, before the gap and before any line goes. A frontier is
+// folded from the run's records, so one left behind would keep state the
+// forget removes; a run with no frontier costs only a fold from what forget
+// kept. An absent file is no error. Any other error fails the run before
+// anything else changes, so forget never reports a run forgotten with its
+// frontier left. Forget does not rewrite the steer log, so what a frontier
+// drew from it returns at the next fold; what it drew from the records does
+// not.
+func removeFrontier(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	tmp := "." + FileFrontier + ".tmp-"
+	for _, e := range entries {
+		if n := e.Name(); n == FileFrontier || strings.HasPrefix(n, tmp) {
+			if err := os.Remove(filepath.Join(dir, n)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	return nil
 }
