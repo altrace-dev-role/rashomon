@@ -37,14 +37,23 @@ var (
 )
 
 // bgo2First is turn p1 in a trusted project: an edit, then the project's
-// tests launched in the background through a script, and the turn's Stop.
+// tests launched in the background through a script, and the turn's Stop,
+// which claims nothing.
 func bgo2First(t *testing.T) (*env, string) {
 	t.Helper()
 	e, dir := dghEnv(t, true)
 	e.bgo2Call(dir, "p1", "toolu_e", "Edit", dghEdit(dir), map[string]any{"filePath": filepath.Join(dir, "internal", "a.go")})
 	e.bgo2Call(dir, "p1", "toolu_bg", "Bash", bgo2Script, bgo2Bg)
-	e.dghStop(dir)
+	e.bgo2Unclaimed(dir)
 	return e, dir
+}
+
+// bgo2Unclaimed is p1's Stop with a final message that claims nothing: the
+// done flag prints once per evidence (step 1b), so p2's line, over the
+// evidence p1 left, is the first to show it.
+func (e *env) bgo2Unclaimed(dir string) {
+	e.t.Helper()
+	e.recapLine(stopEvent("Stop", "I changed internal/a.go.", dir), stAgent, "CI=")
 }
 
 // bgo2Unknown is the background wrapper's sentence (the manager's ruling of
@@ -161,7 +170,7 @@ func TestBGO2d_ARedirectedOutputIsNoReadClause(t *testing.T) {
 			e, dir := dghEnv(t, true)
 			e.bgo2Call(dir, "p1", "toolu_e", "Edit", dghEdit(dir), map[string]any{"filePath": filepath.Join(dir, "internal", "a.go")})
 			e.bgo2Call(dir, "p1", "toolu_bg", "Bash", map[string]any{"command": "go test ./... > x.log 2>&1", "run_in_background": true}, bgo2Bg)
-			e.dghStop(dir)
+			e.bgo2Unclaimed(dir)
 			e.bgo2Call(dir, "p2", "toolu_r", "Bash", map[string]any{"command": "cat x.log"}, bgo2Quiet)
 			e.bgo2Acted(dir, acted)
 			line := e.dghStop(dir)

@@ -11,15 +11,14 @@ import (
 // scopeTextDigest's hex. A change to the words moves ScopeVersion and adds
 // that version's row here in the same commit; a row is never edited.
 var scopeTextPins = map[int]string{
-	// 6 is the words after the correction to the list of rule kinds a spec
-	// cannot make change a finding. The words main carried at 6 before that
-	// correction differ in that one sentence, so this row does not show that
-	// the words never changed under 6: the pin starts here.
-	6: "747a005dd9d4d2bfba2304e1b54617436c683f15797d4e0fb320719b367239f9",
+	// 6 is the words release v1.2.0-alpha.2 ships. Main changed the words
+	// under 6 more than once before that release, so this row does not show
+	// that the words never changed under 6: the pin starts here.
+	6: "a6d718c1610ab656f4cf78fc5273017ab950ea312ecc2167371dd82ba5c861e5",
 	// 7 adds the Stop's reads of a repository graph's configuration and
 	// origin url, at the end of a reply that wrote a file and when a
 	// session's ledger is printed.
-	7: "53deb8bcb93f4836a4f1850ecb6149c9c7af0b340ec206d95bf242958de5b56b",
+	7: "2e78aba87f99fd4efe291f31aef30449a0a68860980a6536327465d3e4e83d9b",
 }
 
 // scopeTextDigest is the sha256 of every screen paragraph and unit

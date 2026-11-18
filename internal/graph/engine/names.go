@@ -179,7 +179,7 @@ var tagWords = &lazySet[bool]{f: func() map[string]bool {
 // qualified, knowledge id, scope tag, identifier, test name, owner.
 func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map[string]float64) (NamedWord, bool) {
 	if c.programFile(w) {
-		return c.resolveProgram(w, at), true
+		return c.resolveProgram(w, at, toks, weights), true
 	}
 	if placeWords.get()[at.prev] && fileLike(w) {
 		nw := c.resolvePath(w)
@@ -190,7 +190,7 @@ func (c corpus) nameOf(g Reader, w string, at wordAt, toks []string, weights map
 		return c.resolvePath(w), true
 	}
 	if l, r, ok := qualifiedForm(w); ok {
-		if nw, ok := c.resolveQualified(w, l, r); ok {
+		if nw, ok := c.resolveQualified(w, l, r, toks, weights); ok {
 			return nw, true
 		}
 	}
@@ -233,9 +233,9 @@ func (c corpus) programFile(w string) bool {
 // resolveProgram reads a program file: unit.symbol when the unit declares
 // the symbol, else a file the index lacks, which names no unit by its stem
 // and refuses the ladder after a place word, as fileLike's file does.
-func (c corpus) resolveProgram(w string, at wordAt) NamedWord {
+func (c corpus) resolveProgram(w string, at wordAt, toks []string, weights map[string]float64) NamedWord {
 	if l, r, ok := qualifiedForm(w); ok {
-		if nw, ok := c.resolveQualified(w, l, r); ok && nw.Node != "" {
+		if nw, ok := c.resolveQualified(w, l, r, toks, weights); ok && nw.Node != "" {
 			return nw
 		}
 	}
@@ -474,12 +474,66 @@ func qualifiedForm(w string) (string, string, bool) {
 
 // resolveQualified reads unit.symbol or Type.method: the left part a
 // unit's last segment or a declared type, the right a name inside it.
-func (c corpus) resolveQualified(word, l, r string) (NamedWord, bool) {
+// A left part that is no unit segment is a type, and a type name is often
+// declared in several units (Tally in learn and seed, File in four): the
+// unit is the one that declares l and also holds r, not the first
+// declarer of l, which named learn for Tally.Kept though only seed holds
+// Kept (QUAL-MEMBER1, NN17 and NN19). To hold r is a name match: symIn
+// finds a symbol of that name in the unit, of any kind, and does not check
+// that it is a member of l, so a free function named like the member,
+// declared beside the type, holds it. One holder is the unit. Several
+// holders are settled as resolveIdent settles a bare name declared in
+// several units: the holder whose r symbol's path and summary the rest of
+// the request's words (the word's own tokens excluded) name most; a tie
+// names no unit, the word kept as a qualified word with the reason. When
+// no declarer holds r, one declarer keeps its unit, as r may be a field or
+// an unexported member the index does not list; several declarers name no
+// unit, with the reason. The cost: a request naming Type.member for a
+// member the index does not list, the type declared in several units, gets
+// no unit from that word where it got the first declarer's; and one whose
+// member is in several of them and whose other words do not tell them
+// apart gets none where it got the first holder's.
+func (c corpus) resolveQualified(word, l, r string, toks []string, weights map[string]float64) (NamedWord, bool) {
 	nw := NamedWord{Word: word, Kind: NamedQualified}
 	unit, ok := c.unitBySegment(l)
 	if !ok {
-		if syms := c.syms[l]; len(syms) > 0 {
-			unit, ok = c.units[c.index[syms[0]]], true
+		var declarers []string
+		for _, id := range c.syms[l] {
+			if u := c.units[c.index[id]]; !slices.Contains(declarers, u) {
+				declarers = append(declarers, u)
+			}
+		}
+		var holders []graph.ID
+		for _, u := range declarers {
+			if id, held := c.symIn(r, u); held {
+				holders = append(holders, id)
+			}
+		}
+		switch {
+		case len(holders) == 1:
+			unit, ok = c.units[c.index[holders[0]]], true
+		case len(holders) > 1:
+			rest := except(toks, Tokens(word))
+			best := -1.0
+			var tied []graph.ID
+			for _, id := range holders {
+				switch s := pathHits(rest, c.fields[c.index[id]], weights); {
+				case s > best:
+					best, tied = s, []graph.ID{id}
+				case s == best:
+					tied = append(tied, id)
+				}
+			}
+			if len(tied) > 1 {
+				nw.Why = r + " is declared in " + strconv.Itoa(len(holders)) + " of the units that declare " + l
+				return nw, true
+			}
+			unit, ok = c.units[c.index[tied[0]]], true
+		case len(declarers) == 1:
+			unit, ok = declarers[0], true
+		case len(declarers) > 1:
+			nw.Why = r + " is declared in none of the " + strconv.Itoa(len(declarers)) + " units that declare " + l
+			return nw, true
 		}
 	}
 	if !ok {
@@ -494,7 +548,8 @@ func (c corpus) resolveQualified(word, l, r string) (NamedWord, bool) {
 	return nw, true
 }
 
-// symIn is the first symbol named name inside unit.
+// symIn is the first symbol named name inside unit, of any kind: a name
+// match, not a check that the symbol belongs to a type of that unit.
 func (c corpus) symIn(name, unit string) (graph.ID, bool) {
 	for _, id := range c.syms[name] {
 		if c.units[c.index[id]] == unit {

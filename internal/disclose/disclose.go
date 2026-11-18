@@ -64,6 +64,10 @@ import (
 // spec's path rules (W-M2.6; any record scope, rule ids in the clear) and,
 // where the content is kept, unitbrief_miss and conflict_check for each such
 // edit (W-M2.3, W-M2.4).
+// 6 also says, before its release, that the go tool pgraph runs loads the
+// packages the code imports and that the names of their functions and types
+// a call or an embed reaches go to .pgraph: a correction of the words, with
+// no new read.
 // 7 adds two reads at the end of a reply that wrote a file and when a
 // session's ledger is printed: where a repository graph is in reach, its
 // configuration and the origin url from the repository's git files, read
@@ -312,8 +316,8 @@ func defaultFiles() []FileRule {
 			Base:       "",
 			Pattern:    recap.StateFileName,
 			Mode:       "0600",
-			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice; the prompt of a session's last turn end that raised the done flag, so the next prompt can tell the agent once; and, for a session whose last turn edited files without running the project's test command, what the next prompt's note says",
-			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids; for such a session, the turn end's record seq, the test runner's name and the name of the file the command was read from -- never a tool call's content",
+			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice; the counts behind the last AutoSteer clause a line printed, so the clause prints only when they change; the prompt of a session's last turn end that raised the done flag, and digests of the evidence that flag judged, so the next prompt tells the agent once and the note and the flag are each said once per evidence; and, for a session whose last turn edited files without running the project's test command, what the next prompt's note says",
+			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids; a short string of the last printed clause's counts and up to three 16-hex-digit digests per session; for such a session, the turn end's record seq, the test runner's name and the name of the file the command was read from -- never a tool call's content",
 			NeverHolds: "a tool call's content",
 			RemovedBy:  "purge",
 			Owner:      "recap",

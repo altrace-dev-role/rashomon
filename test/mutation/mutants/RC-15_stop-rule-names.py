@@ -43,8 +43,8 @@ m("RC-15 the rule line speaks for none", RR,
 m("RC-15 a turn that wrote nothing names no rule", RS,
   "l, clause = recap.RuleLine(s.view, sessionID, fromPlugin), \"\"", "clause = \"\"", "TestRC15_|TestRC15g_")
 m("RC-15 the summary switch off silences the rule", RS,
-  "\t\tl := recap.RuleLine(s.view, sessionID, fromPlugin)\n\t\treturn l, l != \"\", \"\"\n",
-  "\t\treturn \"\", false, \"\"\n", "TestRC15g_")
+  "\t\tl := recap.RuleLine(s.view, sessionID, fromPlugin)\n\t\treturn l, l != \"\", \"\", \"\"\n",
+  "\t\treturn \"\", false, \"\", \"\"\n", "TestRC15g_")
 m("RC-15 StopFailure names the rule", RS,
   "\tif !s.speaks {\n\t\treturn \"\"\n\t}\n\treturn recap.RuleLines(s.view)", "\treturn recap.RuleLines(s.view)", "TestRC15g_")
 m("RC-15 recap.Line's sentence names no rule", "cmd/rashomon/recap_conflicts.go",

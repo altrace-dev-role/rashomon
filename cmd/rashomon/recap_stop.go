@@ -52,6 +52,10 @@ type stopTurn struct {
 	// the Stop and at the catch-up alike: line then drops the bare
 	// incomplete line, which says nothing the notice did not.
 	stands bool
+	// doneShown is the digest of the done flag the person's line last
+	// printed for the session (recap.StopShown): line prints the flag again
+	// only over other evidence.
+	doneShown string
 }
 
 // stopView evaluates the turn at the Stop point (card 2.4 R3) over run, the
@@ -142,7 +146,8 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	if event == install.EventStop {
 		notice, marker = coverageNotice(st, run, p.SessionID, &v.Snap)
 	}
-	return stopTurn{view: v, notes: notes, impact: impact, shown: recap.ImpactShown(st.Root(), p.SessionID),
+	shown, doneShown := recap.StopShown(st.Root(), p.SessionID)
+	return stopTurn{view: v, notes: notes, impact: impact, shown: shown, doneShown: doneShown,
 		stops: event == install.EventStop, summary: summaryOn(st.Root(), key), speaks: event == install.EventStop || pending,
 		notice: notice, marker: marker, stands: stands, owed: owedNote(v, in.Inferred)}, nil
 }
@@ -292,7 +297,10 @@ func summaryOn(root, project string) bool {
 }
 
 // line is what speaks when recap.Line has no sentence (card 2.4 R12): the
-// done flag, else the value line while the summary switch is on, else the
+// done flag (flag, from doneFlag) where the line has not printed it over the
+// same evidence (digest, against doneShown), returning that digest as done,
+// "" for every other line; else the value line while the summary switch is
+// on, else the
 // line naming the spec rules the turn matched (recap.RuleLine, RECALL-15),
 // which, like the done flag, speaks with the switch off: the person declared
 // the rule. clause is the fingerprint of the AutoSteer clause the line
@@ -301,16 +309,16 @@ func summaryOn(root, project string) bool {
 // dropped when it is the bare incomplete line (recap.BareIncomplete), and
 // the rule line gets its turn as for an empty value line; a line carrying
 // anything more prints.
-func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool, clause string) {
+func (s stopTurn) line(sessionID string, fromPlugin bool, flag, digest string) (line string, ok bool, clause, done string) {
 	if !s.speaks {
-		return "", false, ""
+		return "", false, "", ""
 	}
-	if flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {
-		return flag, true, ""
+	if flag != "" && digest != s.doneShown {
+		return flag, true, "", digest
 	}
 	if !s.summary {
 		l := recap.RuleLine(s.view, sessionID, fromPlugin)
-		return l, l != "", ""
+		return l, l != "", "", ""
 	}
 	im := s.impact
 	if fp := im.Fingerprint(); fp == s.shown || im.Empty() {
@@ -325,18 +333,32 @@ func (s stopTurn) line(sessionID string, fromPlugin bool) (line string, ok bool,
 	if l == "" {
 		l, clause = recap.RuleLine(s.view, sessionID, fromPlugin), ""
 	}
-	return l, l != "", clause
+	return l, l != "", clause, ""
 }
 
-// unverified is the Stop's done verdict as the next prompt's note reads it
-// (card c4): the done flag fired, the same decision line prints, on a Stop
-// and not on the catch-up, whose turn a Stop did not reach.
-func (s stopTurn) unverified(sessionID string, fromPlugin bool) bool {
-	if !s.stops {
-		return false
+// doneFlag is the turn's done flag and the digest of its evidence
+// (verify.DoneEvidence), both "" where the turn does not speak or the flag
+// does not fire. The digest is built only where the flag fires.
+func (s stopTurn) doneFlag(sessionID string, fromPlugin bool) (flag, digest string) {
+	if !s.speaks {
+		return "", ""
 	}
-	_, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)
-	return ok
+	flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin)
+	if !ok {
+		return "", ""
+	}
+	return flag, verify.DoneEvidence(s.view)
+}
+
+// stopMarks is the done marks a Stop keeps: shown, the digest of the flag
+// its line printed, and digest as the next prompt's only on a Stop (the
+// catch-up's turn was not one a Stop reached), whichever line printed.
+func stopMarks(shown, digest string, stops bool) recap.DoneMarks {
+	m := recap.DoneMarks{Shown: shown}
+	if stops {
+		m.Flagged = digest
+	}
+	return m
 }
 
 // rules is the turn's rule lines for recap.Line's sentences to carry, where

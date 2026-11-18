@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,5 +219,131 @@ func (e *env) writeConfig(content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		e.t.Fatal(err)
+	}
+}
+
+// doneMarks is recap.json's done-evidence entry for the session: the digest
+// of the last flagged Stop's evidence, the one whose flag the person last
+// saw, and the one whose note last reached the agent.
+type doneMarks struct {
+	Flagged   string `json:"flagged"`
+	Shown     string `json:"shown"`
+	Delivered string `json:"delivered"`
+}
+
+// doneState is the session's done marks, the zero value for none.
+func (e *env) doneState() doneMarks {
+	e.t.Helper()
+	b, err := os.ReadFile(filepath.Join(e.home, "recap.json"))
+	if os.IsNotExist(err) {
+		return doneMarks{}
+	}
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var s struct {
+		Done map[string]doneMarks `json:"done_evidence"`
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		e.t.Fatalf("recap.json: %v\n%s", err, b)
+	}
+	return s.Done[testSession]
+}
+
+// actedTurn is a turn that acts (a shell call the record runs) but writes
+// nothing and runs no gate: its done window reaches back to the last turn
+// that wrote.
+func (e *env) actedTurn(t *testing.T, prompt string) {
+	t.Helper()
+	e.turnCall(t, prompt, "toolu_act_"+prompt, fixtureCall{
+		Tool: "Bash", Input: map[string]any{"command": "frobnicate --check"}, Outcome: "ok", Output: "ok\n",
+	})
+}
+
+// claimDone is a Stop whose final message claims the tests pass; it returns
+// the line printed, "" for none.
+func (e *env) claimDone() string {
+	e.t.Helper()
+	line, _ := e.recapLine(stopEvent("Stop", "All 42 tests pass.", e.cwd))
+	return line
+}
+
+// TestDONE1j_UnchangedEvidenceDeliversOnce: a second flagged Stop over the
+// same evidence (a later turn that acted but wrote nothing and ran no gate)
+// does not bring the note back; a Stop whose evidence moved (a failing run)
+// does.
+func TestDONE1j_UnchangedEvidenceDeliversOnce(t *testing.T) {
+	e := newSteerEnv(t)
+	e.flaggedStop(t)
+	first := e.doneState()
+	if out := noteOf(t, e, "prompt-2"); out.HookSpecificOutput.AdditionalContext != doneNote {
+		t.Fatalf("premise: prompt-2 carried %+v, want the note", out)
+	}
+	e.actedTurn(t, "prompt-2")
+	e.claimDone()
+	second := e.doneState()
+	if out := noteOf(t, e, "prompt-3"); out.HookSpecificOutput.AdditionalContext != "" {
+		t.Errorf("over unchanged evidence prompt-3 carried %q, want no second note", out.HookSpecificOutput.AdditionalContext)
+	}
+	if first.Flagged == "" || second.Flagged != first.Flagged || second.Delivered != first.Flagged {
+		t.Errorf("done marks after Stop 1 %+v and after Stop 2 %+v, want one non-empty digest, flagged and delivered", first, second)
+	}
+
+	e.turnCall(t, "prompt-3", "toolu_test_3", goTestRun("failed"))
+	e.claimDone()
+	third := e.doneState()
+	if out := noteOf(t, e, "prompt-4"); out.HookSpecificOutput.AdditionalContext != doneNote {
+		t.Errorf("after a failing run prompt-4 carried %q, want the note", out.HookSpecificOutput.AdditionalContext)
+	}
+	if third.Flagged == "" || third.Flagged == first.Flagged {
+		t.Errorf("done marks after the failing run %+v, want a digest other than %q", third, first.Flagged)
+	}
+}
+
+// TestDONE1m_UnactedTurnBetweenKeepsTheDigest: a turn whose only call does
+// not act (a Read) prints no flag and keeps the flagged digest, though its
+// claim is of another class than the flagged one; the acted turn after it,
+// over the same evidence, brings no note. A turn with no call at all is not
+// covered here: its Stop is read as the turn before it.
+func TestDONE1m_UnactedTurnBetweenKeepsTheDigest(t *testing.T) {
+	e := newSteerEnv(t)
+	e.flaggedStop(t)
+	noteOf(t, e, "prompt-2")
+	before := e.doneState()
+	e.turnCall(t, "prompt-2", "toolu_read_2", fixtureCall{
+		Tool: "Read", Input: map[string]any{"file_path": "/tmp/project/main.go"}, Outcome: "ok", Output: "package main\n",
+	})
+	if line, _ := e.recapLine(stopEvent("Stop", "Done.", e.cwd)); strings.Contains(line, "done was claimed") {
+		t.Errorf("the Stop of a turn whose only call is a Read printed %q, want no done flag", line)
+	}
+	if after := e.doneState(); after != before {
+		t.Errorf("done marks %+v after the turn of one Read, want %+v unchanged", after, before)
+	}
+	if out := noteOf(t, e, "prompt-3"); out.HookSpecificOutput.AdditionalContext != "" {
+		t.Errorf("prompt-3 carried %q, want nothing", out.HookSpecificOutput.AdditionalContext)
+	}
+	e.actedTurn(t, "prompt-3")
+	e.claimDone()
+	if out := noteOf(t, e, "prompt-4"); out.HookSpecificOutput.AdditionalContext != "" {
+		t.Errorf("prompt-4 carried %q, want no second note", out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// TestDONE1p_StopLineOncePerEvidence: the person's done flag is printed once
+// per evidence too: not at a second Stop over the same evidence, again once
+// the evidence moved (a new edit; a failing run would move it too, but its
+// failure sentence outranks the flag on the line, as the first RED showed).
+func TestDONE1p_StopLineOncePerEvidence(t *testing.T) {
+	e := newSteerEnv(t)
+	e.flaggedStop(t)
+	noteOf(t, e, "prompt-2")
+	e.actedTurn(t, "prompt-2")
+	if line := e.claimDone(); strings.Contains(line, "done was claimed") {
+		t.Errorf("Stop 2 over unchanged evidence printed %q, want no done flag", line)
+	}
+	noteOf(t, e, "prompt-3")
+	e.turnCall(t, "prompt-3", "toolu_edit_3", editOf("extra.go"))
+	if line := e.claimDone(); !strings.Contains(line, "done was claimed") {
+		t.Errorf("Stop 3 after a new edit printed %q, want the done flag", line)
 	}
 }

@@ -19,8 +19,9 @@ const PluginDescription = "Records each Claude Code tool call on this machine, i
 	"the tool, the program a command runs (never its text), the paths it edits or may write and an edited " +
 	"file's SHA-256, the hosts it names, the directory it ran in, the project's root and the transcript " +
 	"path, and how it ended. In a Git repository whose root holds go.mod, it also runs pgraph in the " +
-	"background at session start and each time Claude finishes a reply: the go tool, offline, loads the Go code, and the names of its " +
-	"packages, functions and calls, with each file's SHA-256, go to .pgraph/ there (git-ignored; delete it to " +
+	"background at session start and each time Claude finishes a reply: the go tool, offline, loads the Go code and the packages it " +
+	"imports, and the names of the code's packages and functions, of the functions they call or are called by and of the types " +
+	"they embed, imported ones included, with the SHA-256 of each of the code's files, go to .pgraph/ there (git-ignored; delete it to " +
 	"forget them). In a repository indexed with rashomon graph index, it also keeps what each Go edit " +
 	"declares (names, doc lines, calls and imports) in its store until purged. Adds short factual notes " +
 	"to the agent's context, such as a test that passed earlier and fails now; you see each one, and they go " +

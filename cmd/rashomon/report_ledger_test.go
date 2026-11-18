@@ -620,15 +620,17 @@ func TestReportLedger_NamesATurnRowsFamily(t *testing.T) {
 }
 
 // stopBytes is what the Stop prints and leaves the next prompt from s: the
-// decision line, whether it printed and its clause, the done verdict, the
-// rule lines and the owed note, with impact and owed read again from s.view
-// over lines, the session's steer lines, as stopView reads them (no inferred
-// gate, on both sides of a comparison).
+// decision line, whether it printed and its clause, the done marks it keeps
+// (the done flag and its evidence asked as the Stop asks them: doneFlag,
+// line, stopMarks), the rule lines and the owed note, with impact and owed
+// read again from s.view over lines, the session's steer lines, as stopView
+// reads them (no inferred gate, on both sides of a comparison).
 func stopBytes(s stopTurn, lines [][]byte) string {
 	s.impact = recap.ImpactOf(s.view, lines, nil)
 	s.owed = owedNote(s.view, nil)
-	l, ok, clause := s.line("s", true)
-	return fmt.Sprintf("line %q %v %q\nunverified %v\nrules %q\nowed %+v\n", l, ok, clause, s.unverified("s", true), s.rules(), s.owed)
+	flag, digest := s.doneFlag("s", true)
+	l, ok, clause, done := s.line("s", true, flag, digest)
+	return fmt.Sprintf("line %q %v %q\nmarks %+v\nrules %q\nowed %+v\n", l, ok, clause, stopMarks(done, digest, s.stops), s.rules(), s.owed)
 }
 
 // TestStop_TurnRowsLeaveTheHookBytesUnchanged: the turn rows (W-M3.1) add to

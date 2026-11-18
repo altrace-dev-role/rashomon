@@ -846,3 +846,68 @@ jobs:
             bench.txt
             linux_amd64_benchmarks.json
           retention-days: 14
+
+  # Run by hand before a tag (Actions > CI > Run workflow). A tag runs no CI,
+  # and a published tag cannot be cleanly re-cut, so this runs the release
+  # pipeline with nothing published and builds the plugin archive the way the
+  # release job does, then reads the archive's listing. A dispatch also starts
+  # the sweep jobs, which are wanted on the same commit anyway.
+  release-dry-run:
+    name: Release dry run
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # GoReleaser reads the previous tag to bound the changelog.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"  # The release job's pin; see the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # In the release job's order: the archive, then GoReleaser. Every file
+      # this job writes goes to the runner's temporary directory, so the
+      # checkout stays as committed.
+      - name: Build the plugin archive as the release job does
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^  "version": "\([^"]*\)",$/\1/p' plugin/.claude-plugin/plugin.json)
+          echo "build-plugin.sh is given $version and compares it with plugin.json's version"
+          scripts/build-plugin.sh "$version" "$RUNNER_TEMP/rashomon-plugin.zip"
+          listing="$RUNNER_TEMP/listing.txt"
+          unzip -Z1 "$RUNNER_TEMP/rashomon-plugin.zip" > "$listing"
+          cat "$listing"
+          test "$(grep -c '^bin/rashomon-' "$listing")" -eq 4
+          test "$(grep -c '^bin/pgraph-' "$listing")" -eq 4
+          for f in bin/rashomon bin/pgraph hooks/hooks.json .claude-plugin/plugin.json; do grep -qx "$f" "$listing"; done
+          unzip -p "$RUNNER_TEMP/rashomon-plugin.zip" .claude-plugin/plugin.json > "$RUNNER_TEMP/manifest.json"
+          grep -q "\"version\": \"$version\"" "$RUNNER_TEMP/manifest.json"
+
+      - name: Keep the plugin archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: rashomon-plugin-zip
+          path: ${{ runner.temp }}/rashomon-plugin.zip
+          if-no-files-found: error
+
+      # A real GoReleaser run refuses a tree with changes, and a snapshot run
+      # skips that check, so this step makes it where the release job's
+      # GoReleaser would.
+      - name: The checkout is as committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain | tee "$RUNNER_TEMP/porcelain.txt"
+          test ! -s "$RUNNER_TEMP/porcelain.txt"
+
+      - name: GoReleaser release pipeline, nothing published
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de  # v7.3.0
+        with:
+          version: "v2.18.2"  # The release job's pin.
+          args: release --snapshot --clean
