@@ -716,9 +716,6 @@ func wroteUnder(wrote []string, dir string) bool {
 // state delivered counts: suppressed, superseded, stale, expired and
 // unconfirmed lines never reached the model as a delivery. One LineRef per
 // line id (canon's order needs it): a line seen again keeps its first ref.
-// Unit stays empty: only a graph-kind line names one, and no writer emits a
-// graph-kind steer line yet (the brief is kind "", its graph lines inside
-// its slots).
 func deliver(f *Frontier, ev Event) {
 	for _, r := range f.Delivered {
 		if r.ID == ev.ID {

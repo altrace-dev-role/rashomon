@@ -382,7 +382,7 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 		"Wrote[]":  "a project-relative path a call named as written, never a file's contents",
 
 		"Stated[].Pred": "a compliance predicate's name, from steer.Compliance's closed set",
-		"Stated[].Arg":  "a graph line's subject: a path as the line holds it, its keyed digest at record scope v4, or a decision id",
+		"Stated[].Arg":  "a graph line's subject: the path its line holds (a code line's path, never a symbol), its keyed digest at record scope v4, or a decision's knowledge id",
 
 		"Obligations[].ID":    "an obligation id, verify.ObligationID's digest",
 		"Obligations[].Kind":  "a closed verify.ObligationKind name",

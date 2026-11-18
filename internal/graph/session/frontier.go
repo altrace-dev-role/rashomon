@@ -17,11 +17,11 @@ const FrontierSchema = 1
 // is a saved frontier's key, and a frontier of another version is a miss
 // (ParseFrontier, Catch), folded again in full and never continued. A change
 // to what Step writes for any input bumps it, and
-// TestFold_GoldenTiesFoldVersionSynthetic fails on a change that does not:
-// its golden is the frontier its events fold to under this version. The
-// limit is the golden's inputs: a Step change no golden input exercises
-// passes unbumped.
-const foldVersion = 1
+// TestFold_GoldenTiesFoldVersion fails on a change that does not: its
+// goldens are the frontiers the synthetic events and the recorded sessions
+// fold to under this version. The limit is the goldens' inputs: a Step
+// change no golden input exercises passes unbumped.
+const foldVersion = 2
 
 // ledgerVersion is the version of the ledger line the fold reads (ledgerType;
 // RecordEvent's ledger keys, ledger, verdict), written as "ledger_version":
@@ -238,12 +238,13 @@ type ObligationRef struct {
 	State string `json:"state"`
 }
 
-// LineRef is a steer line the session was delivered.
+// LineRef is a steer line the session was delivered: its id, key, kind and
+// after_seq (Seq). It holds no unit, since a steer line has no unit field;
+// the units a graph line names sit in its slots and become Reqs (stated).
 type LineRef struct {
 	ID   string `json:"id"`
 	Key  string `json:"key"`
 	Kind string `json:"kind"`
-	Unit string `json:"unit"`
 	Seq  int64  `json:"seq"`
 }
 
