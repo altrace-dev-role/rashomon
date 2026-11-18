@@ -97,6 +97,20 @@ type state struct {
 	// content. Absent in a file written before it, which reads as none; nil
 	// until a turn end owes one.
 	Owed map[string]Owed `json:"owed"`
+	// DoneEvidence maps a session id to the digests of its done flag's
+	// evidence (DoneMarks): what makes the note and the flag once per
+	// evidence, so a later Stop over the same evidence says neither again.
+	// Three 16-hex-digit digests, no content. Nil until a Stop flags one.
+	DoneEvidence map[string]DoneMarks `json:"done_evidence"`
+}
+
+// DoneMarks are a session's done-flag digests (verify.DoneEvidence): the
+// last flagged Stop's, the one whose flag the person's line last printed,
+// and the one whose note last reached the agent. "" for none.
+type DoneMarks struct {
+	Flagged   string `json:"flagged,omitempty"`
+	Shown     string `json:"shown,omitempty"`
+	Delivered string `json:"delivered,omitempty"`
 }
 
 func newState() state {
@@ -189,6 +203,7 @@ func writeState(path string, s state, current string) error {
 		capSessions(m, current)
 	}
 	capSessions(s.Owed, current)
+	capSessions(s.DoneEvidence, current)
 	removeStaleTemps(filepath.Dir(path))
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -296,8 +311,24 @@ func ClaimShown(root, sessionID, promptID string, now time.Time, wantSpeak bool,
 // ClaimTurn is ClaimShown for a Stop that also says whether its done flag
 // fired: unverified keeps promptID as the session's flagged Stop, whether or
 // not a line printed, for the next prompt's note (TakeUnverified). It is
-// written with the claim, so a Stop adds no write of its own.
+// ClaimStop with each flagged Stop taken as evidence of its own (its prompt
+// id for the digest), the rule before digests.
 func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed, unverified bool) (speak bool, err error) {
+	var done DoneMarks
+	if unverified {
+		done.Flagged = promptID
+	}
+	return ClaimStop(root, sessionID, promptID, now, wantSpeak, shown, owed, done)
+}
+
+// ClaimStop is ClaimShown for a Stop that also carries its done flag's
+// digests: done.Flagged, the digest of a Stop whose flag fired, "" for
+// none, keeps promptID as the session's flagged Stop for the next prompt's
+// note (TakeUnverified) unless that digest's note already reached the agent
+// (NoteDelivered), whether or not a line printed; done.Shown, the digest of
+// a flag the line printed, is kept only when the line printed. Both are
+// written with the claim, so a Stop adds no write of its own.
+func ClaimStop(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed, done DoneMarks) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
 	}
@@ -324,11 +355,24 @@ func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 	if speak && sessionID != "" && shown != "" {
 		s.Shown[sessionID] = shown
 	}
-	if unverified && sessionID != "" && promptID != "" {
+	if done.Flagged != "" && sessionID != "" && promptID != "" && done.Flagged != s.DoneEvidence[sessionID].Delivered {
 		if s.Unverified == nil {
 			s.Unverified = map[string]string{}
 		}
 		s.Unverified[sessionID] = promptID
+	}
+	if sessionID != "" && (done.Flagged != "" || speak && done.Shown != "") {
+		if s.DoneEvidence == nil {
+			s.DoneEvidence = map[string]DoneMarks{}
+		}
+		m := s.DoneEvidence[sessionID]
+		if done.Flagged != "" {
+			m.Flagged = done.Flagged
+		}
+		if speak && done.Shown != "" {
+			m.Shown = done.Shown
+		}
+		s.DoneEvidence[sessionID] = m
 	}
 	switch {
 	case sessionID == "":
@@ -371,6 +415,19 @@ func TakeUnverified(root, sessionID string) bool {
 	}
 	s.Noted[sessionID] = flagged
 	return writeState(path, s, sessionID) == nil
+}
+
+// NoteDelivered marks the session's flagged done evidence delivered: the
+// prompt calls it only when the note it printed is the done note, so a
+// prompt another note won leaves the evidence owed to the next flagged Stop.
+func NoteDelivered(root, sessionID string) {
+	path := statePath(root)
+	s, err := readState(path)
+	if m, ok := s.DoneEvidence[sessionID]; err == nil && ok && m.Flagged != m.Delivered {
+		m.Delivered = m.Flagged
+		s.DoneEvidence[sessionID] = m
+		_ = writeState(path, s, sessionID)
+	}
 }
 
 // RecordFailure marks this evaluation as unhealthy, for the one path where
@@ -444,14 +501,22 @@ func Turn(root, sessionID, promptID string) (pending bool, owed Owed, flagged bo
 // sessionID carried, "" when none was printed or the file does not read:
 // nothing known shown, so the clause prints.
 func ImpactShown(root, sessionID string) string {
+	impact, _ := StopShown(root, sessionID)
+	return impact
+}
+
+// StopShown is ImpactShown and the digest of the done flag the person's line
+// last printed for sessionID, in one read: "" for either when none was
+// printed or the file does not read, so the line prints.
+func StopShown(root, sessionID string) (impact, done string) {
 	if sessionID == "" || !storeExists(root) {
-		return ""
+		return "", ""
 	}
 	s, err := readState(statePath(root))
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return s.Shown[sessionID]
+	return s.Shown[sessionID], s.DoneEvidence[sessionID].Shown
 }
 
 // Owed is what a turn end leaves the session's next prompt (card

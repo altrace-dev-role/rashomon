@@ -3,9 +3,10 @@
 # Stop, with no AgentID, of a class that writes or runs (writesOrRuns, an
 # allowlist), and not proven in no project. Expected's rows keep the
 # session's write. Each break below either reads done on a turn that only
-# relayed, delegated, searched or looked (TestRV1_1a_, TestRV1_1b_), hands the
-# narrowed flag to expected (TestRV1_1c_), or drops a clause that makes a
-# turn act, so a turn that did act reads no claim (one row per clause).
+# relayed, delegated, searched or looked (TestRV1_1a_, TestRV1_1b_, and
+# TestDONE1m_ for a Read), hands the narrowed flag to expected (TestRV1_1c_),
+# or drops a clause that makes a turn act, so a turn that did act reads no
+# claim (one row per clause).
 C = "internal/verify/cover.go"
 S = "internal/verify/stop.go"
 GUARD = "\t\tif d.PromptID == nil || *d.PromptID != promptID || d.Seq > at || d.AgentID != nil || !writesOrRuns(d) {\n"
@@ -61,3 +62,6 @@ m("RV-1 item 1 an empty prompt id reads as no act", C,
   "\tif promptID == \"\" {\n\t\treturn true\n\t}\n",
   "\tif promptID == \"\" {\n\t\treturn false\n\t}\n",
   "TestRV1_1a_")
+m("RV-1 item 1 a read call acts", C,
+  CASE, CASE.replace("shape.VerbPackage:", "shape.VerbPackage, shape.VerbRead:"),
+  "TestDONE1m_")

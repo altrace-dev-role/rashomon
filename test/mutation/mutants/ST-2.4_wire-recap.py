@@ -80,11 +80,11 @@ m("ST-2.4 StopFailure prints the value line", RS,
 
 # Precedence, the switch, the barrier and the one key (R12, R2b).
 m("ST-2.4 the value line printed when a recap sentence speaks", RT,
-  '\tclause := ""\n\tif !wantSpeak {\n\t\tline, wantSpeak, clause = stop.line(d.SessionID, fromPlugin)\n\t}\n',
-  '\tclause := ""\n\tif l, ok, c := stop.line(d.SessionID, fromPlugin); ok {\n\t\tline, wantSpeak, clause = l, true, c\n\t}\n', "TestFUN14_")
+  '\tclause, shownDone := "", ""\n\tif !wantSpeak {\n\t\tline, wantSpeak, clause, shownDone = stop.line(d.SessionID, fromPlugin, flag, digest)\n\t}\n',
+  '\tclause, shownDone := "", ""\n\tif l, ok, c, sd := stop.line(d.SessionID, fromPlugin, flag, digest); ok {\n\t\tline, wantSpeak, clause, shownDone = l, true, c, sd\n\t}\n', "TestFUN14_")
 m("ST-2.4 the done flag loses to the value line", RS,
-  '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok {\n',
-  '\tif flag, ok := recap.DoneFlag(s.view, sessionID, fromPlugin); ok && recap.ValueLine(s.view, s.impact, sessionID, fromPlugin) == "" {\n',
+  '\tif flag != "" && digest != s.doneShown {\n',
+  '\tif flag != "" && digest != s.doneShown && recap.ValueLine(s.view, s.impact, sessionID, fromPlugin) == "" {\n',
   "TestFUN14b_")
 m("ST-2.4 the summary switch read as off", RS, '\treturn err != nil || c.SummaryOnFor(project)\n', "\treturn false && (err != nil || c.SummaryOnFor(project))\n", "TestFUN16_")
 m("ST-2.4 the Flush barrier dropped before print", RT,
@@ -94,8 +94,8 @@ m("ST-2.4 Claim before the Flush barrier", RT,
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n"
   "\t// Claim's own error is intentionally ignored: recap.json is\n\t// bookkeeping, not evidence, and a failure to persist it must cost at\n"
   "\t// most a future duplicate or a stale health timestamp, never a\n\t// missing line and never a hook error (see Claim's doc).\n"
-  "\tspeak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))\n",
-  "\tspeak, _ := recap.ClaimTurn(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, !pending && stop.unverified(d.SessionID, fromPlugin))\n"
+  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))\n",
+  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))\n"
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n",
   "TestSTOP_FlushFailurePrintsNothing")
 m("ST-2.4 a second systemMessage key", RT,
