@@ -82,3 +82,12 @@ changelog:
   filters:
     exclude:
       - "^Merge "
+
+# The release starts as a draft, and the release job publishes it only after
+# the plugin archive is attached (release.yaml), so releases/latest never
+# serves a release without the archive the marketplace installs. Never
+# `prerelease: auto`: releases/latest never points at a prerelease, so an
+# alpha tag marked as one would leave the marketplace on the last full
+# release.
+release:
+  draft: true
