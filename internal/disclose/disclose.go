@@ -65,6 +65,10 @@ import (
 // where the content is kept, unitbrief_miss and conflict_check for each such
 // edit (W-M2.3, W-M2.4). Unreleased, 6 covers the release, so a later card of
 // the same release names its content here and does not bump.
+// 6 also says, before its release, that the go tool pgraph runs loads the
+// packages the code imports and that the names of their functions and types
+// a call or an embed reaches go to .pgraph: a correction of the words, with
+// no new read.
 // Pinned by TRU-8.
 const ScopeVersion = 6
 

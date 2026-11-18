@@ -870,25 +870,24 @@ jobs:
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
-      - name: GoReleaser release pipeline, nothing published
-        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de  # v7.3.0
-        with:
-          version: "v2.18.2"  # The release job's pin.
-          args: release --snapshot --clean
-
+      # In the release job's order: the archive, then GoReleaser. Every file
+      # this job writes goes to the runner's temporary directory, so the
+      # checkout stays as committed.
       - name: Build the plugin archive as the release job does
         shell: bash
         run: |
           set -euo pipefail
           version=$(sed -n 's/^  "version": "\([^"]*\)",$/\1/p' plugin/.claude-plugin/plugin.json)
+          echo "build-plugin.sh is given $version and compares it with plugin.json's version"
           scripts/build-plugin.sh "$version" "$RUNNER_TEMP/rashomon-plugin.zip"
-          unzip -Z1 "$RUNNER_TEMP/rashomon-plugin.zip" > listing.txt
-          cat listing.txt
-          test "$(grep -c '^bin/rashomon-' listing.txt)" -eq 4
-          test "$(grep -c '^bin/pgraph-' listing.txt)" -eq 4
-          for f in bin/rashomon bin/pgraph hooks/hooks.json .claude-plugin/plugin.json; do grep -qx "$f" listing.txt; done
-          unzip -p "$RUNNER_TEMP/rashomon-plugin.zip" .claude-plugin/plugin.json > manifest.json
-          grep -q "\"version\": \"$version\"" manifest.json
+          listing="$RUNNER_TEMP/listing.txt"
+          unzip -Z1 "$RUNNER_TEMP/rashomon-plugin.zip" > "$listing"
+          cat "$listing"
+          test "$(grep -c '^bin/rashomon-' "$listing")" -eq 4
+          test "$(grep -c '^bin/pgraph-' "$listing")" -eq 4
+          for f in bin/rashomon bin/pgraph hooks/hooks.json .claude-plugin/plugin.json; do grep -qx "$f" "$listing"; done
+          unzip -p "$RUNNER_TEMP/rashomon-plugin.zip" .claude-plugin/plugin.json > "$RUNNER_TEMP/manifest.json"
+          grep -q "\"version\": \"$version\"" "$RUNNER_TEMP/manifest.json"
 
       - name: Keep the plugin archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -896,3 +895,19 @@ jobs:
           name: rashomon-plugin-zip
           path: ${{ runner.temp }}/rashomon-plugin.zip
           if-no-files-found: error
+
+      # A real GoReleaser run refuses a tree with changes, and a snapshot run
+      # skips that check, so this step makes it where the release job's
+      # GoReleaser would.
+      - name: The checkout is as committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain | tee "$RUNNER_TEMP/porcelain.txt"
+          test ! -s "$RUNNER_TEMP/porcelain.txt"
+
+      - name: GoReleaser release pipeline, nothing published
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de  # v7.3.0
+        with:
+          version: "v2.18.2"  # The release job's pin.
+          args: release --snapshot --clean
