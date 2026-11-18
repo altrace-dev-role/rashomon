@@ -1,0 +1,67 @@
+# A paired read of the peak-RSS entry rows for pull request 311: its base
+# (8e0d758a) and its head (58bd2d46) measured in one job on one runner, in
+# the order A B B A A B B A, so that the runner is held fixed and only the
+# trees differ. The rule that reads the eight legs is fixed in
+# .github/paired-rss/abba.sh before the run. A push to this branch is the
+# only event that starts it.
+name: Paired RSS read
+
+on:
+  push:
+    branches: [measure/paired-rss-pr311]
+
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    name: Paired RSS read (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASE_SHA: 8e0d758ac8818b03361ae56838e46a355cb1fde2
+      HEAD_SHA: 58bd2d46d9371942f141bd983e8e2137df3788d9
+    steps:
+      # The script comes from this branch; the two measured trees are checked
+      # out by sha into ta and tb, paths of equal length.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: ts
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: ta
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          path: tb
+          persist-credentials: false
+
+      # The toolchain of the perf jobs in ci.yaml; no cache, so neither tree
+      # starts from a build of the other's restored from elsewhere.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"
+          cache: false
+
+      - name: Toolchain, host and trees
+        run: bash ts/.github/paired-rss/abba.sh host
+
+      - name: Legs A B B A A B B A
+        run: |
+          for leg in 1-A 2-B 3-B 4-A 5-A 6-B 7-B 8-A; do
+            bash ts/.github/paired-rss/abba.sh leg "${leg#*-}" "${leg%-*}"
+          done
+
+      - name: Verdict
+        run: bash ts/.github/paired-rss/abba.sh verdict
+
+      # So that a difference carries its cause; this step cannot fail the job.
+      - name: Binary bytes, sha256 and sections per tree
+        if: always()
+        continue-on-error: true
+        run: |
+          bash ts/.github/paired-rss/abba.sh binsize A || true
+          bash ts/.github/paired-rss/abba.sh binsize B || true
