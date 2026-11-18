@@ -62,6 +62,24 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon
 
+      # The plugin cannot compile Go when a user installs it, so the archive
+      # .claude-plugin/marketplace.json installs has to carry prebuilt
+      # recorders. It is built before GoReleaser and outside dist/, which
+      # `release --clean` empties, and build-plugin.sh refuses a tag whose
+      # version plugin/.claude-plugin/plugin.json does not name.
+      - name: Build the plugin archive
+        run: scripts/build-plugin.sh "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/rashomon-plugin.zip"
+
+      # Kept as an artifact of this run, so a failed upload below loses
+      # nothing: the release stays a draft and the archive can be attached
+      # to it by hand.
+      - name: Keep the plugin archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: rashomon-plugin-zip
+          path: ${{ runner.temp }}/rashomon-plugin.zip
+          if-no-files-found: error
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de  # v7.3.0
         with:
@@ -80,15 +98,32 @@ jobs:
           # with contents:write on that product's distribution path. See the
           # note in .goreleaser.yml for what replaces it.
 
-      # The plugin cannot compile Go when a user installs it, so the archive
-      # .claude-plugin/marketplace.json installs has to carry prebuilt
-      # recorders. This runs after GoReleaser because `release --clean` empties
-      # dist/, and uploads to the release GoReleaser just created. The
-      # marketplace points at releases/latest/download/rashomon-plugin.zip, so
-      # the asset name is the contract and must not change.
-      - name: Build and attach the plugin archive
+      # GoReleaser leaves the release a draft (.goreleaser.yml), and
+      # releases/latest never names a draft, so the marketplace, which installs
+      # releases/latest/download/rashomon-plugin.zip, cannot reach a release
+      # without its archive. The asset name is the contract and must not
+      # change. Publishing comes after the upload, never before it.
+      - name: Attach the plugin archive and publish
+        shell: bash
         run: |
-          scripts/build-plugin.sh "${GITHUB_REF_NAME#v}"
-          gh release upload "$GITHUB_REF_NAME" dist/rashomon-plugin.zip --clobber
+          set -euo pipefail
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/rashomon-plugin.zip" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Read back what the marketplace reads: the archive releases/latest
+      # serves has the size of the one built above.
+      - name: Read the published archive back
+        shell: bash
+        run: |
+          set -euo pipefail
+          want=$(wc -c < "$RUNNER_TEMP/rashomon-plugin.zip" | tr -d ' ')
+          got=none
+          for try in 1 2 3 4 5 6; do
+            got=$(curl -sSfL -o /dev/null -w '%{size_download}' "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/rashomon-plugin.zip") || got=none
+            [ "$got" = "$want" ] && break
+            sleep 10
+          done
+          echo "built $want bytes; releases/latest serves $got"
+          test "$got" = "$want"

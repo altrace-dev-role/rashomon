@@ -45,13 +45,14 @@ type releaseMatrix struct {
 }
 
 // rootKeys are the top-level keys this reader allows. Only builds is read;
-// the others name the project, the archives, the checksums and the changelog,
-// none of which changes what a build links. Any other key is refused, not
-// read past: a root env reaches every build, and a before hook can write
-// code ahead of one, and neither would reach the listing.
+// the others name the project, the archives, the checksums, the changelog
+// and how the release is published, none of which changes what a build
+// links. Any other key is refused, not read past: a root env reaches every
+// build, and a before hook can write code ahead of one, and neither would
+// reach the listing.
 var rootKeys = map[string]bool{
 	"version": true, "project_name": true, "builds": true,
-	"archives": true, "checksum": true, "changelog": true,
+	"archives": true, "checksum": true, "changelog": true, "release": true,
 }
 
 // buildKeys are the keys of a build this reader models. Any other key --
