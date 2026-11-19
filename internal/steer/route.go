@@ -58,6 +58,11 @@ type Context struct {
 	// Arm is the lab arm: ArmLive on every install that is not a lab
 	// install, and none is yet; "" reads as ArmLive.
 	Arm Arm
+	// LevelOverride is the one held pair (HeldAtFlag) whose notes keep
+	// their own level on this call: the operator's switch on a lab arm, so
+	// a paired run can measure a held pattern. Every other clamp still
+	// applies, and the zero Pair names none.
+	LevelOverride Pair
 	// Attendance is who is at the keyboard (tech 4.2.8); "" reads as
 	// attended, the spec's default.
 	Attendance Attendance

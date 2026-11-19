@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -107,6 +108,9 @@ type Result struct {
 	Store  *graph.Store
 	Header graph.Header
 	Files  int
+	// Refused is every file a resolver was handed and refused, by path;
+	// the header names the first graph.MaxRefusedNamed.
+	Refused []graph.Refusal
 }
 
 // Build indexes root at commit: the repository node (baseline.RepoIDErr),
@@ -114,9 +118,14 @@ type Result struct {
 // declares a unit of, that language's resolver over the files under its
 // units (a unit the resolver knows better takes the resolver's record),
 // then the knowledge records. A file outside every unit of its language,
-// and every file of an undeclared language, is not indexed. The header
-// names the repository, the commit, and each producer that wrote records.
-// A refused git read (a pointer, commondir or config that is not a regular
+// and every file of an undeclared language, is not indexed. A file a
+// resolver refuses (graph.Refusals: it could not be read, or its extractor
+// cannot parse it) is a gap, not a failure: the index is written without
+// it, Result.Refused lists every such file by path, and the header counts
+// them and names the first graph.MaxRefusedNamed, so a reader of the index
+// knows an absence in it is not proven. The header names the repository,
+// the commit, and each producer that wrote records. Any other resolver
+// error is the error. A refused git read (a pointer, commondir or config that is not a regular
 // file or is over baseline.MaxGitFileBytes) is the error: no index is keyed
 // under no id, or under the path form a later build would not give.
 func Build(root, commit string, c Config) (Result, error) {
@@ -140,9 +149,14 @@ func Build(root, commit string, c Config) (Result, error) {
 			Attrs: map[string]string{"path": u.Path, "lang": u.Lang}})
 	}
 	wrote := map[string]string{}
+	var refused []graph.Refusal
 	for i, p := range ps {
 		recs, err := p.res.Extract(root, files[i], rev)
-		if err != nil {
+		var rf graph.Refusals
+		switch {
+		case errors.As(err, &rf):
+			refused = append(refused, rf...)
+		case err != nil:
 			return Result{}, err
 		}
 		if v, ok := producerOf(recs); ok {
@@ -156,8 +170,10 @@ func Build(root, commit string, c Config) (Result, error) {
 		return Result{}, err
 	}
 	apply(s, knowledge.Records(rows, rid, rev))
-	h := graph.Header{Schema: graph.Schema, Repo: rid, Rev: graph.HeaderRev{Commit: commit}, Producers: wrote}
-	return Result{Store: s, Header: h, Files: total}, nil
+	sort.SliceStable(refused, func(a, b int) bool { return refused[a].Path < refused[b].Path })
+	h := graph.Header{Schema: graph.Schema, Repo: rid, Rev: graph.HeaderRev{Commit: commit}, Producers: wrote,
+		Refused: len(refused), RefusedFiles: slices.Clone(refused[:min(len(refused), graph.MaxRefusedNamed)])}
+	return Result{Store: s, Header: h, Files: total, Refused: refused}, nil
 }
 
 // producer is one declared language's resolver and its units' paths.

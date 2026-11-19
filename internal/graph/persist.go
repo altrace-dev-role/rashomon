@@ -29,6 +29,40 @@ type Header struct {
 	Rev       HeaderRev         `json:"rev"`
 	Producers map[string]string `json:"producers"`
 	Records   int               `json:"records"`
+	// Refused is how many files a producer was handed and refused, and
+	// RefusedFiles the first MaxRefusedNamed of them by path: the index
+	// holds none of their records, so a name one of them declares reads
+	// as absent though it is not. Both are left out when nothing was
+	// refused, so such a header is byte-equal to one written before them;
+	// the writers before them failed the whole index on a refusal
+	// (pylite's Extract, pgraph's load), so a header without them reads
+	// as no file refused.
+	Refused      int       `json:"refused,omitempty"`
+	RefusedFiles []Refusal `json:"refused_files,omitempty"`
+}
+
+// MaxRefusedNamed is how many refused files a header names, so its line
+// stays bounded for a reader that reads the header alone.
+const MaxRefusedNamed = 20
+
+// Refusal is one file a resolver was handed and left out of the index:
+// its slash path relative to the index root, the line its reader stopped
+// at (0 when the refusal has none, as a read error has none), and why, in
+// the resolver's words.
+type Refusal struct {
+	Path   string `json:"path"`
+	Line   int    `json:"line,omitempty"`
+	Reason string `json:"reason"`
+}
+
+// Refusals is the error a resolver's Extract returns, or what that error
+// is to errors.As, beside the records of every file it read, when it
+// refused some: the index is written without them and names each one.
+// Any other error fails the index.
+type Refusals []Refusal
+
+func (r Refusals) Error() string {
+	return fmt.Sprintf("%d file(s) refused", len(r))
 }
 
 // HeaderRev is the committed revision a file's records are at.
@@ -36,20 +70,21 @@ type HeaderRev struct {
 	Commit string `json:"commit"`
 }
 
-// ErrNoGraph is Load's answer when the file is absent.
-var ErrNoGraph = errors.New("graph: no index")
+// ErrNoGraph is Load's answer when the file is absent. Its words say where
+// the index was looked for and what writes one.
+var ErrNoGraph = errors.New("graph: no index at " + GraphFile + "; run rashomon graph index at the repository root")
 
 // GraphFile is where a repository's index lives, under its root.
 const GraphFile = ".rashomon/graph.jsonl"
 
 // MaxGraphFileBytes caps GraphFile: 64 MiB. Its one home is here. LoadFile
-// refuses a file over it, pinned by its test; the writer is to hold the
-// same cap by this name (card WRITE-SAFE1), so that what is written can be
-// read. Every prompt decodes the whole index, so the cap bounds the memory
-// and the time of a hook. The cap does not grow with the repository: an
-// index over it is refused until a read path exists that does not decode
-// the whole file. Not verify.MaxIndexBytes, which caps another file, the
-// project index of verify.
+// refuses a file over it and SaveFile refuses to write one, each by this
+// name and pinned by its test (card WRITE-SAFE1), so that what is written
+// can be read. Every prompt decodes the whole index, so the cap bounds the
+// memory and the time of a hook. The cap does not grow with the
+// repository: an index over it is refused until a read path exists that
+// does not decode the whole file. Not verify.MaxIndexBytes, which caps
+// another file, the project index of verify.
 const MaxGraphFileBytes = 64 << 20
 
 // Save writes the store's records at h's commit to w under h, with the
@@ -116,14 +151,16 @@ func Load(r io.Reader) (*Store, Header, error) {
 // SaveFile writes the index under root, under h (Save), through a root
 // opened at root, so a link on the index's path cannot carry the write out
 // of the repository; a link at the index file itself is replaced. The file
-// is created with mode 0600, as the temporary file it replaces was.
+// is created with mode 0600, as the temporary file it replaces was. An
+// index over MaxGraphFileBytes is refused with an error matching
+// regfile.ErrOverCap, and the index already there is left as it was.
 func SaveFile(root string, s *Store, h Header) error {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return err
 	}
 	defer r.Close() //nolint:errcheck // the root holds only a directory handle
-	return rootio.ReplaceFile(r, filepath.FromSlash(GraphFile), 0o600, func(w io.Writer) error { return Save(w, s, h) })
+	return rootio.ReplaceFile(r, filepath.FromSlash(GraphFile), 0o600, MaxGraphFileBytes, func(w io.Writer) error { return Save(w, s, h) })
 }
 
 // LoadFile reads the index under root; ErrNoGraph when there is none. The

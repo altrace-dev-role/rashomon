@@ -7,7 +7,7 @@
 # The guard rows (I10, I10k, J4, J13) break the other way: they refuse a link
 # the fix must follow. The mode row mirrors SRR-1's: a named pipe opened
 # without blocking reads as empty, not as refused.
-GRAPH_RET = "\treturn rootio.ReplaceFile(r, filepath.FromSlash(GraphFile), 0o600, func(w io.Writer) error { return Save(w, s, h) })\n"
+GRAPH_RET = "\treturn rootio.ReplaceFile(r, filepath.FromSlash(GraphFile), 0o600, MaxGraphFileBytes, func(w io.Writer) error { return Save(w, s, h) })\n"
 m("WS-1 the index is saved by path through a linked directory", "internal/graph/persist.go",
   GRAPH_RET,
   "\tpath := filepath.Join(root, filepath.FromSlash(GraphFile))\n"
@@ -27,7 +27,7 @@ m("WS-1 every link at .rashomon is refused for the index", "internal/graph/persi
   GRAPH_RET,
   "\tif fi, err := os.Lstat(filepath.Join(root, \".rashomon\")); err == nil && fi.Mode()&os.ModeSymlink != 0 {\n\t\treturn os.ErrPermission\n\t}\n" + GRAPH_RET,
   "TestWS1_I10_")
-ROWS_RET = "\treturn filepath.Join(root, rel), rootio.ReplaceFile(r, rel, 0o644, func(w io.Writer) error {\n\t\t_, err := w.Write(b)\n\t\treturn err\n\t})\n"
+ROWS_RET = "\treturn filepath.Join(root, rel), rootio.ReplaceFile(r, rel, 0o644, MaxKnowledgeFileBytes, func(w io.Writer) error {\n\t\t_, err := w.Write(b)\n\t\treturn err\n\t})\n"
 m("WS-1 knowledge rows are written by path through a linked directory", "internal/graph/knowledge/schema.go",
   ROWS_RET,
   "\t_ = rootio.ReplaceFile\n\t_ = io.EOF\n\tp := filepath.Join(root, rel)\n"
@@ -88,7 +88,7 @@ m("WS-1 a failed rename leaves its temporary file beside name", "internal/rootio
   "\t\tr.Remove(tmp) //nolint:errcheck // best effort: the rename's error is the one to report\n", "",
   "TestWS1_RF6_")
 m("WS-1 a failed write's file is renamed over name", "internal/rootio/rootio.go",
-  "\tif err := write(f); err != nil {\n", "\tif err := write(f); false && err != nil {\n",
+  "\tif err := cw.end(write(cw)); err != nil {\n", "\tif err := cw.end(write(cw)); false && err != nil {\n",
   "TestWS1_RF6_")
 m("WS-1 a failed replace's error names name alone", "internal/rootio/rootio.go",
   "\t\treturn fmt.Errorf(\"%s: %w\", filepath.Join(r.Name(), name), err)\n",

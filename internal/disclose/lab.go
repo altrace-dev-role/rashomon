@@ -11,7 +11,7 @@ func labFiles() []FileRule {
 			Base:       "",
 			Pattern:    store.FileLab,
 			Mode:       "0600",
-			Purpose:    "marks the store as a measurement lab, the only kind of store whose hooks honour RASHOMON_STEER_ARM; absent on every store `measure --prepare` was not run on",
+			Purpose:    "marks the store as a measurement lab, the only kind of store whose hooks honour RASHOMON_STEER_ARM and RASHOMON_STEER_LEVEL; absent on every store `measure --prepare` was not run on",
 			Holds:      "one fixed sentence saying so; only the file's presence is read",
 			NeverHolds: "a session id, a path, or anything about a call",
 			RemovedBy:  "purge",

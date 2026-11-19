@@ -31,7 +31,7 @@ func TestWS1_RF5_ReplaceFileCreatesWithPermUnderTheUmask(t *testing.T) {
 		if err := os.Chmod(p, 0o640); err != nil {
 			t.Fatal(err)
 		}
-		err := ReplaceFile(r, "f", c.perm, func(w io.Writer) error {
+		err := ReplaceFile(r, "f", c.perm, roomy, func(w io.Writer) error {
 			_, err := w.Write([]byte("the new file\n"))
 			return err
 		})

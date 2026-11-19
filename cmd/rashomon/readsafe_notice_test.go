@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -158,6 +159,77 @@ func TestRS1a_C5_AnIndexOverItsCapIsSaidOncePerSession(t *testing.T) {
 	e.start("s-cap-c")
 	if out := e.prompt("s-cap-c", "prompt-1", "continue please"); strings.Contains(out.stdout, "size cap") || st.NoticeTaken("s-cap-c", store.FileNoticeIndexCap) {
 		t.Errorf("control, an index refused under the cap: stdout %q, want no cap line and no marker", out.stdout)
+	}
+}
+
+// TestRS1a_C5_D7_ArmOffSaysNoNoticeAndTakesNoMarker (c5, D7): the off arm
+// withholds every hook print (card MEASURE1), the turn's notices too, and
+// takes neither printed marker, so both stay owed. One session over an index
+// one byte past graph.MaxGraphFileBytes, with the manifest notice owed (not
+// a regular file). Prompt 1 alone runs under the off arm, on a lab store: it
+// says neither line, and the session holds the owed marker and neither
+// printed one. Witness, the arm unset again: prompt 2 says each line once,
+// so the setup owes both. Break: drop the off arm's return in
+// promptTurnNotes, and prompt 1 says both lines and takes both markers.
+func TestRS1a_C5_D7_ArmOffSaysNoNoticeAndTakesNoMarker(t *testing.T) {
+	e := newLessonEnv(t)
+	idx := filepath.Join(e.cwd, filepath.FromSlash(graph.GraphFile))
+	if err := os.MkdirAll(filepath.Dir(idx), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(graph.MaxGraphFileBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const session = "s-off-notes"
+	e.start(session)
+	if err := os.MkdirAll(st.RunDir(session), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	st.OweManifestNotice(session, false)
+	if !st.NoticeTaken(session, store.FileNoticeManifestOwed) {
+		t.Fatal("OweManifestNotice made no owed marker")
+	}
+	printed := []string{store.FileNoticeIndexCap, store.FileNoticeManifest}
+
+	// The variable names an arm only on a lab store (operatorArm).
+	if err := store.WriteLab(e.root); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(hook.EnvSteerArm, "off")
+	p1 := e.prompt(session, "prompt-1", "continue please")
+	if strings.Contains(p1.system, indexCapNotice) || strings.Contains(p1.system, manifestNoticeHead) {
+		t.Errorf("prompt 1, arm off: systemMessage %q, want neither notice", p1.system)
+	}
+	for _, name := range printed {
+		if st.NoticeTaken(session, name) {
+			t.Errorf("prompt 1, arm off: the session holds %s, want no notice taken", name)
+		}
+	}
+	if !st.NoticeTaken(session, store.FileNoticeManifestOwed) {
+		t.Error("prompt 1, arm off: the owed marker is gone")
+	}
+
+	t.Setenv(hook.EnvSteerArm, "")
+	e.call(session, "prompt-1", "toolu_x3_1")
+	p2 := e.prompt(session, "prompt-2", "continue please")
+	if strings.Count(p2.system, indexCapNotice) != 1 || strings.Count(p2.system, manifestNotRegular) != 1 {
+		t.Fatalf("witness, prompt 2 with the arm unset: systemMessage %q, want the cap line and the not regular line once each", p2.system)
+	}
+	for _, name := range printed {
+		if !st.NoticeTaken(session, name) {
+			t.Errorf("witness, prompt 2: the session has no %s after the line printed", name)
+		}
 	}
 }
 

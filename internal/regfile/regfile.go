@@ -83,9 +83,10 @@ type capError string
 
 func (e capError) Error() string { return string(e) }
 
-// OverCapError is a capped open or read refused for its size. Size is the
-// descriptor's size at the open, or, for a file that grew past Max while it
-// was read, the Max+1 bytes read when the read was refused: at least that.
+// OverCapError is a capped open, read or write refused for its size. Size
+// is the descriptor's size at the open, or, for a file that grew past Max
+// while it was read, the Max+1 bytes read when the read was refused, or, for
+// a write, the bytes asked of the writer when it refused: at least that.
 type OverCapError struct {
 	Size, Max int64
 }
@@ -144,9 +145,10 @@ func ReadCapped(path string, max int64) ([]byte, error) {
 // descriptor, and path is the name every refusal gives, so the caller's
 // errors and these name the file alike. Anything but a regular file is
 // refused before any read, as a *fs.PathError (Op "open") wrapping
-// ErrNotRegular, so a named pipe opened without O_NONBLOCK cannot hold a
-// read that waits for a writer: the check is the reader's own, not left to
-// each caller. A size over max is refused before any read, as a
+// ErrNotRegular, so a named pipe is never read here, whatever flags it was
+// opened with: the check is the reader's own, not left to each caller. It
+// guards the read only: an open without O_NONBLOCK waits for a writer
+// before this is reached. A size over max is refused before any read, as a
 // *fs.PathError (Op "open") wrapping an *OverCapError. The rest is read
 // through OpenCapped's reader into one buffer sized as os.ReadFile sizes its
 // own (size+1, so a file that has not grown ends on one read; 512 at least,
