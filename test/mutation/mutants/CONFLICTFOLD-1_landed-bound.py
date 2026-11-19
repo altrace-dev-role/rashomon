@@ -17,3 +17,7 @@ m("CONFLICTFOLD-1 a check landed at 0 or less is folded", F,
   "rec.LandedSeq <= 0 || (",
   "(",
   "TestConflictsSeen_ACheckLandedAtZeroIsSkipped")
+m("CONFLICTFOLD-1 a bound of 0 or less bounds the fold", F,
+  "(seq > 0 && rec.LandedSeq > seq)",
+  "(rec.LandedSeq > seq)",
+  "TestConflictsSeen_FoldFromRecord")
