@@ -49,8 +49,11 @@ m("AI-1 no read gate", H,
 m("AI-1 no print gate", H,
   "if last == digest {", "if last == digest && false {",
   "TestAI1_AReSyncSaysOnlyANewCallerSet")
-m("AI-1 no caller still speaks", H,
-  "if err != nil || len(callers) == 0 {", "if err != nil {", "TestAI1_SilenceWhereNothingIsProven")
+# Not registered, equivalent: "no caller still speaks" (dropping the
+# len(callers) == 0 test of blast). With no caller the read goes on to
+# blastMessage, whose path list has no directory left (slot.ErrNoPathsLeft),
+# so m.Text() is "" and the same return false, marker kept, follows two lines
+# later. The empty digest changes nothing the caller sees.
 m("AI-1 a yielded note keeps its marker", H,
   "\tp.st.ReturnBlastRead(p.sessionID, d.marker)\n", "", "TestAI1_AYieldedNoteComesWithTheNextEdit")
 # The given rule is hook.Given (internal/hook/given.go), the one walk blast,
