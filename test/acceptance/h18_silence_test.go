@@ -12,40 +12,54 @@ import (
 // TestMain. Every command except watch must leave the settings file absent, or
 // unchanged when it exists.
 func TestH18_NothingInstallsSilently(t *testing.T) {
-	exercise := func(e *env) {
-		e.run("", nil, "version")
-		e.hook(defaultPayload().build(t))
-		e.post(defaultPost().build(t))
-		e.probe("start", testSession)
-		e.probe("end", testSession)
-		e.run("", nil, "report")
-		e.run("", nil, "report", "--json")
-		e.status()
-		e.forget("1h")
-		e.forgetBefore("1h")
-		e.detach()
-		// The recovery forms too: they take the id rather than reading it, so
-		// nothing stops them running on a machine that never installed at all.
-		e.run("", nil, "detach", "--install", installA)
-		e.run("", nil, "detach", "--all")
+	// exercise runs every command but watch; after each, steady holds that
+	// the settings file is as it began. A check at the end alone would pass a
+	// command that installs and a later detach that takes the entries out
+	// again (H-18's mutants: the hook and the post path each ran watch).
+	exercise := func(e *env, steady func(after string)) {
+		for _, c := range []struct {
+			name string
+			run  func()
+		}{
+			{"version", func() { e.run("", nil, "version") }},
+			{"hook", func() { e.hook(defaultPayload().build(t)) }},
+			{"post", func() { e.post(defaultPost().build(t)) }},
+			{"probe start", func() { e.probe("start", testSession) }},
+			{"probe end", func() { e.probe("end", testSession) }},
+			{"report", func() { e.run("", nil, "report") }},
+			{"report --json", func() { e.run("", nil, "report", "--json") }},
+			{"status", func() { e.status() }},
+			{"forget", func() { e.forget("1h") }},
+			{"forget --before", func() { e.forgetBefore("1h") }},
+			{"detach", func() { e.detach() }},
+			// The recovery forms too: they take the id rather than reading it, so
+			// nothing stops them running on a machine that never installed at all.
+			{"detach --install", func() { e.run("", nil, "detach", "--install", installA) }},
+			{"detach --all", func() { e.run("", nil, "detach", "--all") }},
+		} {
+			c.run()
+			steady(c.name)
+		}
 	}
 
 	t.Run("absent stays absent", func(t *testing.T) {
 		e := newEnv(t)
-		exercise(e)
-		if _, err := os.Stat(e.settingsPath()); !os.IsNotExist(err) {
-			t.Fatalf("settings.json exists after running everything but watch (stat: %v)", err)
-		}
+		exercise(e, func(after string) {
+			if _, err := os.Stat(e.settingsPath()); !os.IsNotExist(err) {
+				t.Fatalf("settings.json exists after %s (stat: %v)", after, err)
+			}
+		})
 	})
 
 	t.Run("present stays unchanged", func(t *testing.T) {
 		e := newEnv(t)
 		seed := `{"permissions": {"allow": ["Bash(ls:*)"]}}` + "\n"
 		e.writeSettings(seed)
-		exercise(e)
-		if got := e.settingsBytes(); !bytes.Equal(got, []byte(seed)) {
-			t.Fatalf("settings.json changed without watch:\n%s", got)
-		}
+		exercise(e, func(after string) {
+			if got := e.settingsBytes(); !bytes.Equal(got, []byte(seed)) {
+				t.Fatalf("settings.json changed by %s, without watch:\n%s", after, got)
+			}
+		})
 	})
 
 	// The same rule pointed at the store, from TestH6_PlainDetachLeavesNoStoreBehind.
