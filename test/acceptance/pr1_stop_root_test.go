@@ -44,6 +44,15 @@ func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 		}
 	}
 	t.Logf("ledger:\n%s", res.stdout)
+	// Whole rows compare only while no turn row of this fixture names a unit:
+	// a unit and the id that digests it carry the repository's id, which for
+	// a repository with no origin is a hash of its path, so a unit here would
+	// differ with each run's temporary directory.
+	for _, r := range rows {
+		if f := strings.Fields(r); len(f) > 1 && f[1] == "turn" && (len(f) != 9 || f[8] != "-") {
+			t.Fatalf("premise: turn row %q names a unit; a unit carries the repository id, which for a repository with no origin hashes its path (internal/baseline/repoid.go:72-73), so whole rows would differ by temporary directory", r)
+		}
+	}
 	return line, rows
 }
 
