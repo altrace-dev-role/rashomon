@@ -71,4 +71,4 @@ test/perf/budgets.json 88d7a81a432d92e3 benchmark provenance prose the re-anchor
 internal/graph/session/testdata/sessions/PROVENANCE.txt 46a456a4e132bebe the SHA-256 of the raw set's sums file, quoted in the provenance prose: a digest, no credential and no account value
 internal/graph/session/testdata/sessions/PROVENANCE.txt 1356596c6c368347 the SHA-256 of the cut set's SHA256SUMS.txt, quoted in the provenance prose: a digest, no credential and no account value
 internal/graph/session/testdata/sessions/stores/t1c-g15/runs/00000000-0000-4000-8000-00000000002b/records.ndjson 321fd02aae4c5f3c a tool call's file_path on three lines: a test file of this repository in the eval run's temporary tree; no credential and no account value
-internal/graph/session/testdata/sessions/golden/fold-v1/t1c-g15.json cfcb286121985a2e the same test file in the fold's touched list: a path, no credential and no account value
+internal/graph/session/testdata/sessions/golden/fold-v2/t1c-g15.json 54754fa1adbb0b17 the same test file in the fold's touched list: a path, no credential and no account value

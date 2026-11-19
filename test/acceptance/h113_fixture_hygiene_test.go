@@ -86,9 +86,9 @@ var h113Typed = []h113Row{
 		"steer.Line.ID, a steer line's id: 16 bytes of crypto/rand in hex (steer.newID)"},
 	{h113Sessions + "stores/*/runs/*/steer.ndjson", "key", "a gate id",
 		"steer.Line.Key, the finding's dedupe key, which for a gate's finding is the gate id: learned:<kind>:<runner>@<location> or inferred:test@<digits>"},
-	{h113Sessions + "golden/fold-v1/*.json", "id", "32 lowercase hex digits",
+	{h113Sessions + "golden/fold-v2/*.json", "id", "32 lowercase hex digits",
 		"a steer line's id as the fold keeps it: a delivered line's LineRef.ID, and the through Mark's ID when the last event is a line"},
-	{h113Sessions + "golden/fold-v1/*.json", "key", "a gate id",
+	{h113Sessions + "golden/fold-v2/*.json", "key", "a gate id",
 		"a steer line's dedupe key as the fold keeps it: a delivered line's LineRef.Key, a gate id as in the steer file"},
 	{h113Sessions + "SHA256SUMS.txt", "", "a checksum line",
 		"the SHA-256 of each store file beside its path, as shasum -a 256 writes them; PROVENANCE.txt pins this file by its own sum"},
@@ -170,7 +170,7 @@ func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 	id := h112Stray[:32] // 32 lowercase hex digits, a steer line id's class
 	run := h113Sessions + "stores/r/runs/" + h112P1 + "/"
 	sums := h113Sessions + "SHA256SUMS.txt"
-	golden := h113Sessions + "golden/fold-v1/r.json"
+	golden := h113Sessions + "golden/fold-v2/r.json"
 	// A learned gate id from the steer fixtures, which the scan flags in the
 	// user:token@ form; split so no source line holds that form whole.
 	learned := "learned:build:" + "31f678efefe9" + "@" + "7af2a8b4a6a2"
