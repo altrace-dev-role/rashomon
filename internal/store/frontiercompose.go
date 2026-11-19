@@ -184,22 +184,31 @@ func gapsGeneration(root string) (int64, error) {
 // before it so the next read starts there. A line over maxLine comes back
 // nil, which parses as nothing, as every other reader counts it. An absent
 // file or run directory is no lines at 0; an offset past where the read
-// stops is an error.
+// stops is an error. It is RunRegionFrom without the bytes.
 func (s *Store) RunLinesFrom(sessionID, name string, offset, limit int64) (lines [][]byte, end, size int64, err error) {
+	lines, _, end, size, err = s.RunRegionFrom(sessionID, name, offset, limit)
+	return lines, end, size, err
+}
+
+// RunRegionFrom is RunLinesFrom with raw as well: the bytes from offset to
+// end as the file holds them, each line end, '\r' and empty line kept, so a
+// digest of a line taken from raw is a digest of the bytes on disk. raw is
+// empty when no whole line was read.
+func (s *Store) RunRegionFrom(sessionID, name string, offset, limit int64) (lines [][]byte, raw []byte, end, size int64, err error) {
 	if err := s.opened(); err != nil {
-		return nil, 0, 0, err
+		return nil, nil, 0, 0, err
 	}
 	f, err := regfile.Open(filepath.Join(s.RunDir(sessionID), name))
 	if errors.Is(err, fs.ErrNotExist) && offset == 0 {
-		return nil, 0, 0, nil
+		return nil, nil, 0, 0, nil
 	}
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, nil, 0, 0, err
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	info, err := f.Stat()
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, nil, 0, 0, err
 	}
 	size = info.Size()
 	stop := size
@@ -207,11 +216,11 @@ func (s *Store) RunLinesFrom(sessionID, name string, offset, limit int64) (lines
 		stop = limit
 	}
 	if offset < 0 || offset > stop {
-		return nil, 0, size, errOffsetPastEnd
+		return nil, nil, 0, size, errOffsetPastEnd
 	}
 	b, err := io.ReadAll(io.NewSectionReader(f, offset, stop-offset))
 	if err != nil {
-		return nil, 0, size, err
+		return nil, nil, 0, size, err
 	}
 	cut := bytes.LastIndexByte(b, '\n') + 1
 	for rest := b[:cut]; len(rest) > 0; {
@@ -225,5 +234,5 @@ func (s *Store) RunLinesFrom(sessionID, name string, offset, limit int64) (lines
 			lines = append(lines, line)
 		}
 	}
-	return lines, offset + int64(cut), size, nil
+	return lines, b[:cut], offset + int64(cut), size, nil
 }

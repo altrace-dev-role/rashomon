@@ -2,6 +2,8 @@ package session
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/fold"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -235,7 +238,8 @@ func TestCompose_MovedGenerationFoldsWhole(t *testing.T) {
 // bytes the frontier read with one path changed, where the save also saw a
 // torn line past them, so the records cursor is refused and the compose
 // folds the new bytes whole. A file regrown to at least the size seen, with
-// a line end at the cursor, is one these cursors do not tell from the old.
+// a line end at the cursor, is one these cursors do not tell from the old;
+// the mark does (TestCompose_RecreatedRecordsFoldWhole).
 func TestCompose_ReplacedRecordsFoldWhole(t *testing.T) {
 	t.Run("removed", func(t *testing.T) {
 		st := composeStore(t)
@@ -275,6 +279,82 @@ func TestCompose_ReplacedRecordsFoldWhole(t *testing.T) {
 			t.Errorf("a records file rewritten shorter was continued (%+v):\n got %s\nwant %s", stats, got, whole)
 		}
 	})
+}
+
+// TestCompose_MarksTheLastRecordsLine: the saved envelope's mark is the
+// length and SHA-256 of the records line that ends at its cursor, as the
+// file holds it, a '\r' counted. A compose that reads no new line keeps the
+// mark and continues; one that reads a line moves the mark to it. A
+// poisoned frontier under its own mark is continued (the control); with no
+// mark at a positive offset, or a mark of another line of the same length,
+// it is a miss, folded whole.
+func TestCompose_MarksTheLastRecordsLine(t *testing.T) {
+	st := composeStore(t)
+	declareEdit(t, st, "toolu_a", "a.go", 1000)
+	declareEdit(t, st, "toolu_b", "b.go", 5000)
+	rec := filepath.Join(st.RunDir(composeID), store.FileRecords)
+	// tail is the mark of the records file's last line as it is on disk, its
+	// '\r' kept, digested here and not through fold.MarkOf.
+	tail := func() fold.LineMark {
+		b, err := os.ReadFile(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := bytes.Split(bytes.TrimSuffix(b, []byte("\n")), []byte("\n"))
+		last := lines[len(lines)-1]
+		h := sha256.Sum256(last)
+		return fold.LineMark{Len: int64(len(last)), SHA256: hex.EncodeToString(h[:])}
+	}
+	crlf := func() {
+		declareEdit(t, st, "toolu_c", "c.go", 6000)
+		b, err := os.ReadFile(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(rec, append(b[:len(b)-1], '\r', '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, step := range []struct {
+		add  func()
+		want composeStats
+	}{
+		{nil, composeStats{tail: 2, full: true}},
+		{nil, composeStats{}},
+		{crlf, composeStats{tail: 1}},
+		{nil, composeStats{}},
+	} {
+		if step.add != nil {
+			step.add()
+		}
+		got, stats, saved := mustCompose(t, st)
+		if stats != step.want || !saved || got != wholeFold(t, st) {
+			t.Errorf("compose %d: %+v, saved %v; want %+v, saved, the whole fold", i+1, stats, saved, step.want)
+		}
+		if env, _ := savedEnvelope(t, st); env.Mark == nil || *env.Mark != tail() {
+			t.Errorf("compose %d: the saved mark is %+v, want %+v", i+1, env.Mark, tail())
+		}
+	}
+	poison(t, st, nil)
+	if got, stats, _ := mustCompose(t, st); stats.full || !strings.Contains(got, stalePath) {
+		t.Fatalf("the control: under its own mark the poisoned frontier was not continued (%+v)", stats)
+	}
+	for _, tc := range []struct {
+		name string
+		edit func(*envelope)
+	}{
+		{"no mark", func(e *envelope) { e.Mark = nil }},
+		{"another line's mark", func(e *envelope) {
+			m := *e.Mark
+			m.SHA256 = strings.Repeat("0", 64)
+			e.Mark = &m
+		}},
+	} {
+		poison(t, st, tc.edit)
+		if got, stats, _ := mustCompose(t, st); !stats.full || got != wholeFold(t, st) {
+			t.Errorf("%s: the saved frontier was continued (%+v)", tc.name, stats)
+		}
+	}
 }
 
 // TestParseEnvelope_RefusesAnyOtherFile: only the envelope marshalEnvelope

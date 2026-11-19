@@ -24,19 +24,27 @@ const envelopeSchema = 1
 // gaps generation the lines were read under (store.ComposeFrontier), and
 // Steer.Generation is 0. Each SizeSeen is the size the records lock's hold
 // read (store.Bounds), so the records cursor's is a line end, and Offset
-// equals it unless a crash left a torn line inside it.
+// equals it unless a crash left a torn line inside it. Mark is the records
+// line that ends at Records.Offset, by its length and SHA-256, never its
+// bytes (fold.LineMark), so a records file replaced under the cursor is
+// refused even where its size and the line end at the cursor are what the
+// cursor saw. It is absent when no records line was ever read; an envelope
+// with a positive records offset and no mark is a miss.
 type envelope struct {
 	Schema   int             `json:"schema"`
 	Records  fold.Cursor     `json:"records"`
 	Steer    fold.Cursor     `json:"steer"`
+	Mark     *fold.LineMark  `json:"records_tail,omitempty"`
 	Frontier json.RawMessage `json:"frontier"`
 }
 
 // runRead is one read of a run's two files: the events decoded from the
-// lines read, and the cursors just past them.
+// lines read, the cursors just past them, and the mark of the last records
+// line read, nil when the read had none.
 type runRead struct {
 	evs            []Event
 	records, steer fold.Cursor
+	mark           *fold.LineMark
 }
 
 // composeStats is what one compose did: tail, how many events it decoded,
@@ -51,7 +59,9 @@ type composeStats struct {
 // continued (Catch) by the lines after its cursors only when the file is an
 // envelope of envelopeSchema around a frontier ParseFrontier takes, it was
 // read under the store's G of now, both cursors are valid for their files,
-// and Catch does not miss; otherwise the frontier is Fold over every line.
+// the records line that ends at its cursor is the one the envelope's mark
+// names, and Catch does not miss; otherwise the frontier is Fold over every
+// line.
 // Either way it is Fold over the run's lines as they were read
 // (TestCompose_EqualsTheWholeFold). A line that does not decode is skipped
 // in both, so the two stay one fold. f is the frontier whenever the fold
@@ -97,6 +107,13 @@ func compose(st *store.Store, sessionID string) (Frontier, composeStats, bool, e
 // catchUp is the saved frontier continued by the lines after its cursors,
 // and whether it hit. Every failure on the way is a miss: the caller folds
 // the whole record, and a read that fails there too is its error.
+//
+// The records cursor is checked with its mark (fold.CursorTailValid), the
+// steer cursor by fold.CursorValid alone. The mark's limit is the limit of
+// this check: a records file replaced by one whose line ending at the cursor
+// is byte for byte the marked line, at the same offset, is continued as if
+// it were the file the frontier was folded from. Every records line carries
+// its own tool use id, so two runs' files do not share one by chance.
 func catchUp(st *store.Store, sessionID string, b store.Bounds) (Frontier, runRead, bool) {
 	data, ok, err := st.LoadFrontier(sessionID)
 	if err != nil || !ok {
@@ -107,17 +124,20 @@ func catchUp(st *store.Store, sessionID string, b store.Bounds) (Frontier, runRe
 		return Frontier{}, runRead{}, false
 	}
 	dir := st.RunDir(sessionID)
-	for _, c := range []struct {
-		name   string
-		cursor fold.Cursor
-	}{{store.FileRecords, env.Records}, {store.FileSteer, env.Steer}} {
-		if valid, err := fold.CursorValid(filepath.Join(dir, c.name), c.cursor); err != nil || !valid {
-			return Frontier{}, runRead{}, false
-		}
+	if valid, err := fold.CursorTailValid(filepath.Join(dir, store.FileRecords), env.Records, env.Mark); err != nil || !valid {
+		return Frontier{}, runRead{}, false
+	}
+	if valid, err := fold.CursorValid(filepath.Join(dir, store.FileSteer), env.Steer); err != nil || !valid {
+		return Frontier{}, runRead{}, false
 	}
 	r, err := readRun(st, sessionID, env.Records.Offset, env.Steer.Offset, b)
 	if err != nil {
 		return Frontier{}, runRead{}, false
+	}
+	// A catch-up that read no records line ends at the saved cursor, so the
+	// saved mark is still the mark of the line that ends there.
+	if r.mark == nil {
+		r.mark = env.Mark
 	}
 	f, hit := Catch(f, r.evs)
 	return f, r, hit
@@ -126,9 +146,11 @@ func catchUp(st *store.Store, sessionID string, b store.Bounds) (Frontier, runRe
 // readRun reads sessionID's records file from records and its steer file
 // from steer, each to the size b holds for it, and the cursors' SizeSeen are
 // those sizes. A line appended after the hold is the next compose's tail,
-// and no steer line read names a record the read stops before.
+// and no steer line read names a record the read stops before. The mark is
+// taken from the records bytes as the file holds them (store.RunRegionFrom),
+// not from the lines, which drop a '\r' and empty lines.
 func readRun(st *store.Store, sessionID string, records, steer int64, b store.Bounds) (runRead, error) {
-	rl, rend, _, err := st.RunLinesFrom(sessionID, store.FileRecords, records, b.RecordsSize)
+	rl, raw, rend, _, err := st.RunRegionFrom(sessionID, store.FileRecords, records, b.RecordsSize)
 	if err != nil {
 		return runRead{}, err
 	}
@@ -139,6 +161,10 @@ func readRun(st *store.Store, sessionID string, records, steer int64, b store.Bo
 	r := runRead{
 		records: fold.Cursor{Offset: rend, SizeSeen: b.RecordsSize, Generation: b.Generation},
 		steer:   fold.Cursor{Offset: send, SizeSeen: b.SteerSize},
+	}
+	if len(raw) > 0 {
+		body := raw[:len(raw)-1]
+		r.mark = fold.MarkOf(body[bytes.LastIndexByte(body, '\n')+1:])
 	}
 	for _, line := range rl {
 		if ev, ok, err := RecordEvent(line); err == nil && ok {
@@ -159,7 +185,7 @@ func marshalEnvelope(f Frontier, r runRead) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(envelope{Schema: envelopeSchema, Records: r.records, Steer: r.steer, Frontier: fb})
+	return json.Marshal(envelope{Schema: envelopeSchema, Records: r.records, Steer: r.steer, Mark: r.mark, Frontier: fb})
 }
 
 // parseEnvelope decodes a frontier file: an envelope of envelopeSchema with

@@ -11,13 +11,16 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
-// FileFrontier is the session graph's frontier (W-M4.2): the fold of a run's
+// FileFrontier is the session graph's frontier: the fold of a run's
 // records.ndjson and steer.ndjson through a mark, kept so a later hook steps
 // the lines after the mark instead of folding the run again. It sits in the
-// run directory beside its two sources, at the store's one file mode, holds
-// no string they do not (ruling 15:29 (1)), and goes when the run does. The
-// store owns its name, its path and its write; the bytes are the session
-// package's encoding, and the store never decodes them.
+// run directory beside its two sources, at the store's one file mode, and
+// goes when the run does. A string it holds is one that records.ndjson or
+// steer.ndjson of the same run holds, or a SHA-256 digest, with a length in
+// bytes, computed from bytes of those two files alone and named as such in
+// the Holds text of its rule in the disclosure inventory. The store owns its
+// name, its path and its write; the bytes are the session package's
+// encoding, and the store never decodes them.
 const FileFrontier = "frontier.json"
 
 // MaxFrontierBytes bounds a frontier, both ways: 1 MiB, a literal of its own

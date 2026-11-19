@@ -237,6 +237,7 @@ func Default() (Inventory, error) {
 			configFiles(),
 			continuityFiles(),
 			overlayRunFiles(),
+			frontierRunFiles(),
 			unitBriefFiles(),
 			sessionContentFiles(),
 			clearFiles(),

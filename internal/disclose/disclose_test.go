@@ -250,6 +250,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The session graph's frontier, saved in the run directory, and the
+	// temporary file a save that died before its rename leaves beside it.
+	if err := s.SaveFrontier(sessionID, []byte("{}")); err != nil {
+		t.Fatalf("SaveFrontier: %v", err)
+	}
+	if tmp, err := os.CreateTemp(s.RunDir(sessionID), "."+store.FileFrontier+".tmp-*"); err != nil {
+		t.Fatal(err)
+	} else if err := tmp.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := recap.Claim(root, sessionID, "prompt-1", time.Now(), true); err != nil {
 		t.Fatalf("recap.Claim: %v", err)
 	}
@@ -499,7 +509,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// of an arm, clear/<digest>/end-<id> or start-<id>, the /clear
 		// rendezvous (clearFiles in the inventory, purge's clear tree); its
 		// link is createExclusive's, already counted.
-		{"store", 40},
+		// Moved 2026-11-20 to 41: frontierfile.go's SaveFrontier ReplaceFile,
+		// runs/<session>/frontier.json and its .frontier.json.tmp-* (the
+		// session graph's frontier; frontierRunFiles in the inventory, purge's
+		// run files and temp prefixes).
+		{"store", 41},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
