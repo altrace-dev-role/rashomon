@@ -322,7 +322,7 @@ func realPayloads(t *testing.T) map[string][]byte {
 	return map[string][]byte{
 		"SessionStart": payload.SessionStart(),
 		"SessionEnd":   payload.SessionEnd(),
-		"Stop":         payload.Stop("done"),
+		"Stop":         payload.Stop(payload.PromptID(payload.Prompts-1), "done"),
 		"Prompt":       payload.Prompt("do the thing"),
 		"Pre":          pre,
 		"Post":         post,
