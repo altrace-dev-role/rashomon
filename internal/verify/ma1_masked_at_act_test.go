@@ -104,7 +104,11 @@ func TestMA1b_ControlsRaiseNothing(t *testing.T) {
 	}{
 		{"a run with its status in view", []call{edit(1, "internal/a.go"), plain}, 2, string(steer.EventPostToolUse)},
 		{"a run read from its output", []call{edit(1, "internal/a.py"), tailedPytest(2, "tail", "summary_pass")}, 2, string(steer.EventPostToolUse)},
-		{"the call after the masked run", []call{edit(1, "internal/a.go"), headedVet(2, "head"), edit(3, "internal/b.go")}, 3, string(steer.EventPostToolUse)},
+		// A read, not a write: a covered write after the run makes the gate
+		// stale, and the state test would skip it before the call's id is
+		// read. After a read the gate is still masked, and only the id
+		// tells call 3 from the run at call 2.
+		{"the call after the masked run", []call{edit(1, "internal/a.go"), headedVet(2, "head"), scRead(3)}, 3, string(steer.EventPostToolUse)},
 		{"a masked line that failed, at its failure event", []call{edit(1, "internal/a.go"), failed}, 2, string(steer.EventPostToolUseFailure)},
 		{"a backgrounded run", []call{edit(1, "internal/a.go"), bg}, 2, string(steer.EventPostToolUse)},
 	} {

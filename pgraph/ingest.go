@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -333,8 +334,35 @@ func normaliseUnder(realRoot, abs string) (string, error) {
 	return filepath.ToSlash(rel), nil
 }
 
+// openRegular opens path to read and refuses anything but a regular file.
+// The open does not wait (O_NONBLOCK: a named pipe with no writer opens at
+// once, and a regular file reads as it would without the flag; Windows
+// ignores the bit), and the descriptor's own fstat decides, so a pipe that
+// takes the name after a caller's check (walk's d.Type, say) is refused,
+// never read. A link is followed, as os.Open follows it: Load has resolved
+// every path inside the scan root. It is the one open of a file in package
+// pgraph; its twin in cmd/pgraph is readCappedAt, which also refuses links.
+func openRegular(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := f.Stat()
+	if err == nil && !fi.Mode().IsRegular() {
+		err = fmt.Errorf("pgraph: %s is not a regular file", path)
+	}
+	if err != nil {
+		f.Close() //nolint:errcheck // read-only; the error above is the one to report
+		return nil, err
+	}
+	return f, nil
+}
+
+// hashFile is the hex SHA-256 of the regular file at path, refused over
+// MaxSourceFileBytes. Its open is openRegular's, so a named pipe at a
+// source name (go.sum, say) is refused at once and never holds a sync.
 func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
+	f, err := openRegular(path)
 	if err != nil {
 		return "", err
 	}

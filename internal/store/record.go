@@ -187,6 +187,20 @@ const (
 	// line that they are on again has.
 	FileNoticeCoverage      = "notice-coverage"
 	FileNoticeCoverageClear = "notice-coverage-clear"
+	// FileNoticeIndexCap is the prompt's once-per-session marker
+	// (TakeNotice): empty, present once the session's line that the
+	// repository index is over its size cap has printed.
+	FileNoticeIndexCap = "notice-index-cap"
+	// FileNoticeManifestOwed, FileNoticeManifestReadFailed and
+	// FileNoticeManifest are the manifest notice's markers, each empty:
+	// the first is made when an edit's overlay could not read the
+	// project's manifest file (OweManifestNotice), the second beside it
+	// when that refusal was a failed read and not a file that is not
+	// regular, and the third once the session's line saying so has
+	// printed (TakeNotice).
+	FileNoticeManifestOwed       = "notice-manifest-owed"
+	FileNoticeManifestReadFailed = "notice-manifest-read-failed"
+	FileNoticeManifest           = "notice-manifest"
 	// FileResolvedCap is at the store root: the size cap the last hook
 	// invocation resolved, written so status can show the value eviction
 	// actually runs with instead of reading EnvCapBytes in its own,

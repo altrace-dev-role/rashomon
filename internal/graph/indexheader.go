@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // maxHeaderBytes bounds the read of an index's first line: a header names a
@@ -15,9 +16,11 @@ const maxHeaderBytes = 64 << 10
 // line only: no record is read, and none is loaded. A hook that needs the
 // index's commit and nothing else (the overlay writers) uses it so the cost
 // is one small read, never the graph. A file of another schema is an error.
+// The open is regfile.Open's, so a named pipe at the path is refused at once
+// and never waited on (a hook would wait with it).
 func ReadIndexHeader(path string) (Header, error) {
 	var h Header
-	f, err := os.Open(path)
+	f, err := regfile.Open(path)
 	if err != nil {
 		return h, err
 	}

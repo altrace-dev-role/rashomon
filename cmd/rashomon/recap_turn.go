@@ -270,9 +270,10 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// them.
 	var note steer.Output
 	var client steer.Client
+	var notes turnNotes
 	unchecked := false
 	if pending {
-		note, client, unchecked = promptNotes(st, run, &pp, root, d, id, now)
+		note, client, unchecked, notes = promptNotes(st, run, &pp, root, d, id, now)
 		// A prompt taken into the running turn (a peer message, a task
 		// notification, text typed while busy) fires UserPromptSubmit with
 		// that turn's prompt_id: the newest turn has not ended, and its own
@@ -282,15 +283,15 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		unchecked = unchecked && pp.PromptID != d.PromptID
 	}
 	if pending && !unchecked {
-		return printTurn(st, stdout, note, client, "")
+		return printTurn(st, stdout, note, client, "", notes)
 	}
 	stop, serr := stopView(st, run, d, payload, pending, now)
 	if serr != nil {
 		// Route logged the note as delivered above: print it before the
 		// error returns, or it never reaches the model and the next prompt
 		// counts its paths as given earlier. A failed flush prints nothing.
-		if note != (steer.Output{}) {
-			_ = printTurn(st, stdout, note, client, "")
+		if note != (steer.Output{}) || notes.due() {
+			_ = printTurn(st, stdout, note, client, "", notes)
 		}
 		return serr
 	}
@@ -336,8 +337,8 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	} else if pending {
 		line = recap.PreviousTurn(line)
 	}
-	if note != (steer.Output{}) {
-		return printTurn(nil, stdout, note, client, line)
+	if note != (steer.Output{}) || notes.due() {
+		return printTurn(nil, stdout, note, client, line, notes)
 	}
 	if line == "" {
 		return nil
@@ -369,8 +370,10 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 // host framed (harness.Framed) takes the flagged Stop and is told nothing:
 // the take comes first, so the verdict is not held for a later turn, which
 // it would name as the wrong one. The flagged evidence counts as delivered
-// only where the note printed is the done note (recap.NoteDelivered).
-func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
+// only where the note printed is the done note (recap.NoteDelivered). The
+// turn's once-per-session notices (promptTurnNotes) are read last: they read
+// the index-over-cap flag the preflight note sets.
+func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool, turnNotes) {
 	unchecked, owed, flagged := recap.Turn(root, d.SessionID, d.PromptID)
 	pp.owed = owed
 	pp.framed, _ = harness.Framed(string(pp.Prompt), pp.PromptCut)
@@ -380,7 +383,7 @@ func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root strin
 		recap.NoteDelivered(root, d.SessionID)
 	}
 	noteTurnSpec(st, run, pp)
-	return note, client, unchecked
+	return note, client, unchecked, promptTurnNotes(st, pp, root)
 }
 
 // recapFromPlugin reports whether this recap runs as the plugin's entry.

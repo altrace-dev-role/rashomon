@@ -10,9 +10,12 @@ import (
 
 // TestH18_NothingInstallsSilently: the package was installed -- built -- by
 // TestMain. Every command except watch must leave the settings file absent, or
-// unchanged when it exists.
+// unchanged when it exists. The file is read before the detach forms as well
+// as after them: detach takes out the install it finds, byte for byte, so an
+// install made by any earlier command would be gone by the end.
+// Break: install from any command but watch, and the first read sees it.
 func TestH18_NothingInstallsSilently(t *testing.T) {
-	exercise := func(e *env) {
+	exercise := func(e *env, check func(when string)) {
 		e.run("", nil, "version")
 		e.hook(defaultPayload().build(t))
 		e.post(defaultPost().build(t))
@@ -23,29 +26,33 @@ func TestH18_NothingInstallsSilently(t *testing.T) {
 		e.status()
 		e.forget("1h")
 		e.forgetBefore("1h")
+		check("before detach")
 		e.detach()
 		// The recovery forms too: they take the id rather than reading it, so
 		// nothing stops them running on a machine that never installed at all.
 		e.run("", nil, "detach", "--install", installA)
 		e.run("", nil, "detach", "--all")
+		check("after detach")
 	}
 
 	t.Run("absent stays absent", func(t *testing.T) {
 		e := newEnv(t)
-		exercise(e)
-		if _, err := os.Stat(e.settingsPath()); !os.IsNotExist(err) {
-			t.Fatalf("settings.json exists after running everything but watch (stat: %v)", err)
-		}
+		exercise(e, func(when string) {
+			if _, err := os.Stat(e.settingsPath()); !os.IsNotExist(err) {
+				t.Fatalf("settings.json exists %s, everything but watch run (stat: %v)", when, err)
+			}
+		})
 	})
 
 	t.Run("present stays unchanged", func(t *testing.T) {
 		e := newEnv(t)
 		seed := `{"permissions": {"allow": ["Bash(ls:*)"]}}` + "\n"
 		e.writeSettings(seed)
-		exercise(e)
-		if got := e.settingsBytes(); !bytes.Equal(got, []byte(seed)) {
-			t.Fatalf("settings.json changed without watch:\n%s", got)
-		}
+		exercise(e, func(when string) {
+			if got := e.settingsBytes(); !bytes.Equal(got, []byte(seed)) {
+				t.Fatalf("settings.json changed %s, without watch:\n%s", when, got)
+			}
+		})
 	})
 
 	// The same rule pointed at the store, from TestH6_PlainDetachLeavesNoStoreBehind.
