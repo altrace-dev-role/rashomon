@@ -630,7 +630,7 @@ func stopBytes(s stopTurn, lines [][]byte) string {
 	s.owed = owedNote(s.view, nil)
 	flag, digest := s.doneFlag("s", true)
 	l, ok, clause, done := s.line("s", true, flag, digest)
-	return fmt.Sprintf("line %q %v %q\nmarks %+v\nrules %q\nowed %+v\n", l, ok, clause, stopMarks(done, digest, s.stops), s.rules(), s.owed)
+	return fmt.Sprintf("line %q %v %q\nmarks %+v\nrules %q\nowed %+v\n", l, ok, clause, stopMarks(done, digest, s.stops, s.backed()), s.rules(), s.owed)
 }
 
 // TestStop_TurnRowsLeaveTheHookBytesUnchanged: the turn rows (W-M3.1) add to

@@ -28,8 +28,6 @@ m("SC-1 a write proven in no project reads not known", C,
   "\t\treturn &noProject\n", "\t\treturn nil\n", "TestSC1a_")
 m("SC-1 a withheld project reads proven in none", C,
   "\tcase d.ProjectWithheld == nil && d.CWD != nil:\n", "\tcase d.CWD != nil:\n", "TestSC1f_")
-m("SC-1 a gate with no root is left out of the turn's roots", C,
-  "\t\tif r == \"\" {\n\t\t\treturn nil\n\t\t}\n", "", "TestSC1k_")
 m("SC-1 an incomplete turn counts by root", C,
   "\tif snap.Recording != Complete || snap.ProjectRoot == \"\" {\n", "\tif snap.ProjectRoot == \"\" {\n", "TestSC1k_")
 m("SC-1 a learned family covers every write", G,

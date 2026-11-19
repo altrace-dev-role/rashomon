@@ -23,15 +23,8 @@ const noRunSentence = "no test or build run is recorded for this turn"
 // claim with an expected evidence kind unmet fires it too, on any row (card
 // 3.3, Gate B 1), and each unmet kind's sentence follows the row's.
 func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, bool) {
-	if v.Done != nil {
-		// A done claim answers to the evidence since the last edit in the
-		// gates' projects, whichever turn holds it, on every branch below
-		// (BG-OUTCOME phase 2a): a turn that only read a background job's
-		// log is judged with the edit and the run it rests on.
-		v.Summary, v.Turn = v.Done.Summary, v.Done.Turn
-	}
-	unmet := unmetExpected(v)
-	if (v.Summary.Row == verify.RowVerified || !unbacked(v.Scan.Claims)) && len(unmet) == 0 {
+	v, unmet, quiet := doneRead(v)
+	if quiet {
 		return "", false
 	}
 	s := noRunSentence
@@ -46,6 +39,42 @@ func DoneFlag(v verify.StopView, sessionID string, fromPlugin bool) (string, boo
 	head := prefix + doneLead + s + "." + expectedClause(unmet) + "\n" + ruleLines(v) + unboundLines(v) + platformLines(v, fromPlugin)
 	tail := pointer(sessionID, fromPlugin)
 	return head + conflictLines(v, fromPlugin, head+tail) + tail, true
+}
+
+// DoneBacked reports whether the final message makes a strict claim and the
+// record backs it, by DoneFlag's own reading: a verified row or no strict
+// verdict other than green, and no expected kind unmet. A claim the flag
+// leaves silent only because its row's sentence is silent is not backed. A
+// strict claim no gate speaks to (no_gate_known) reads as backed, as it
+// fires no flag (D79). A claim the Stop did not read is in no scan.
+func DoneBacked(v verify.StopView) bool {
+	v, _, quiet := doneRead(v)
+	if !quiet {
+		return false
+	}
+	for _, c := range v.Scan.Claims {
+		if c.Strict {
+			return true
+		}
+	}
+	return false
+}
+
+// doneRead is the view the done flag judges, the expected kinds unmet, and
+// whether the flag stays quiet on the row, the claims and those kinds.
+func doneRead(v verify.StopView) (verify.StopView, []verify.Expected, bool) {
+	if v.Done != nil {
+		// A done claim answers to the evidence since the last edit in the
+		// gates' projects, whichever turn holds it, on every branch of
+		// DoneFlag (BG-OUTCOME phase 2a): a turn that only read a background
+		// job's log is judged with the edit and the run it rests on.
+		v.Summary, v.Turn = v.Done.Summary, v.Done.Turn
+	}
+	unmet := unmetExpected(v)
+	if (v.Summary.Row == verify.RowVerified || !unbacked(v.Scan.Claims)) && len(unmet) == 0 {
+		return v, unmet, true
+	}
+	return v, unmet, false
 }
 
 // unbacked reports whether a strict claim's verdict is a state other than

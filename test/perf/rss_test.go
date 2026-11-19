@@ -1119,7 +1119,7 @@ func entryPayload(t *testing.T, e budget.Entry) func(i int) []byte {
 		case "edit_314k":
 			p, err = payload.EditPost(e.PayloadBytes, id)
 		case "stop_100":
-			p = payload.Stop(payload.FinalMessage)
+			p = payload.Stop(payload.PromptID(payload.Prompts-1), payload.FinalMessage)
 		case "prompt":
 			p = payload.Prompt("continue")
 		case "session_start":
