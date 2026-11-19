@@ -544,8 +544,8 @@ func TestStop_FoldsTheConflictOfTheTurnsLastEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cs := run.ConflictChecks; len(cs) != 1 || len(cs[0].Rows) != 1 || cs[0].LandedSeq != run.LastSeq() {
-		t.Fatalf("checks %+v at last seq %d, want one check with one row, landed at the last seq", cs, run.LastSeq())
+	if cs := run.ConflictChecks; run.LastSeq() <= 0 || len(cs) != 1 || len(cs[0].Rows) != 1 || cs[0].LandedSeq != run.LastSeq() {
+		t.Fatalf("checks %+v at last seq %d, want one check with one row, landed at the last seq, above 0", cs, run.LastSeq())
 	}
 	now := time.UnixMilli(1_800_000_000_000)
 	d, err := digest.BuildFrom(run, st, benchSessionID, "", "", now)
@@ -559,6 +559,38 @@ func TestStop_FoldsTheConflictOfTheTurnsLastEdit(t *testing.T) {
 	}
 	if got := turn.view.Conflicts; len(got) != 1 || got[0].Kind != "boundary_cross" {
 		t.Errorf("the Stop's conflicts %+v, want the one boundary_cross row", got)
+	}
+}
+
+// TestConflictsSeen_InterleavedCallsFoldAtTheirLandedSeqs: two calls in
+// parallel both land (19, 20) before either post appends its check (21,
+// 22), so a check's own record seq is not always one above its landed seq.
+// At 20, the Stop's bound after both, both conflicts are in the fold.
+// Break: bound on the record seq (neither folds), or on the record seq less
+// one (the first only).
+func TestConflictsSeen_InterleavedCallsFoldAtTheirLandedSeqs(t *testing.T) {
+	run := &store.Run{ConflictChecks: []store.ConflictCheck{
+		cfCheck(21, 19, "c1", "fA", "k1"),
+		cfCheck(22, 20, "c1", "fB", "k2"),
+	}}
+	got := foldConflictChecks(run, 20)
+	if len(got) != 2 || got[0].Row.Subject != "s-k1" || !slices.Equal(got[0].Seqs, []int64{19}) ||
+		got[1].Row.Subject != "s-k2" || !slices.Equal(got[1].Seqs, []int64{20}) {
+		t.Errorf("at 20, after both calls landed: %+v, want k1 raised at 19 and k2 at 20", got)
+	}
+}
+
+// TestConflictsSeen_ACheckLandedAtZeroIsSkipped: a check whose landed seq
+// is 0 or less is in no fold, at bound 0 (no bound) or any other. No post
+// writes one (keptGoEdit refuses a seq of 0 or less), so the row holds the
+// fold's own rule. Break: bound on the record seq (the check folds at 0 and
+// at 5), or drop the skip (it folds at every bound, with 0 in its Seqs).
+func TestConflictsSeen_ACheckLandedAtZeroIsSkipped(t *testing.T) {
+	run := &store.Run{ConflictChecks: []store.ConflictCheck{cfCheck(5, 0, "c1", "fA", "k1")}}
+	for _, bound := range []int64{0, 4, 5} {
+		if got := foldConflictChecks(run, bound); got != nil {
+			t.Errorf("at %d: %+v, want nil", bound, got)
+		}
 	}
 }
 
