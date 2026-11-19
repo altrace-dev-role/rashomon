@@ -77,8 +77,9 @@ type promptProject struct {
 // code has a note whatever else it names; it routes as a task-preflight
 // finding of its own (graphFinding). A request that names no path and no
 // identifier, with no lesson to give, nothing owed and no graph under its
-// cwd, stops after that one index lookup, before any other read and before
-// the steer environment is built.
+// cwd, stops after that one index lookup (none for a fire that holds only
+// host frames), before any other read and before the steer environment is
+// built.
 // proj is the caller's read (readPromptProject). A session's first prompt
 // finds its run empty, so the note decides at after_seq 0, which CheckOn
 // admits at UserPromptSubmit and SessionStart only. The first prompt after
@@ -97,7 +98,14 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	}
 	specOf := onceSpec(st, run, p.CWD)
 	scoped := promptScope{st: st}
-	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)
+	// A fire that holds only host frames (p.framed) reads no graph: it loads
+	// no index and writes no evidence file, unit brief or conflict base over
+	// what the turn's typed fire wrote. Build's notice refuses the same
+	// fires under the idf and tf scorers, so no brief they would send is lost.
+	gb, graphed := indexBrief{}, false
+	if !p.framed {
+		gb, graphed = graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)
+	}
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}

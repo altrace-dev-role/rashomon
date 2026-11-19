@@ -110,7 +110,7 @@ func gateRoots(snap *Snapshot) []string {
 // before the card, D40).
 func turnProjects(run *store.Run, promptID string, at int64) []string {
 	if promptID == "" {
-		promptID = latestPrompt(run.Declarations)
+		promptID = latestPrompt(run.Declarations, at)
 	}
 	ps, ok := projectsOf(run, promptID, at, true)
 	if ok && ps == nil {

@@ -43,7 +43,8 @@ import (
 // card 3.3) and platform_impact rows from the pgraph log internal/platform
 // reads, judged against the record's runs (platform.go, card PL-WIRE1),
 // which EvaluateStop appends after ledgerOf's; no proposed_check row is
-// emitted yet.
+// emitted yet. Every row so far is the session's; a Stop then adds its own
+// turn's rows after all of them (ledger_turn.go, W-M3.1).
 
 // ObligationKind is what an obligation owes (PRD section 5).
 type ObligationKind string

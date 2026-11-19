@@ -1,6 +1,7 @@
 package consent
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestCSCOPE1b_AnAlpha1ConsentSeesTheChangedScreen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "CHANGED SINCE YOU LAST AGREED (test, scope 4): this build asks for scope 6.") {
+	if want := "CHANGED SINCE YOU LAST AGREED (test, scope 4): this build asks for scope " + strconv.Itoa(disclose.ScopeVersion) + "."; !strings.Contains(string(b), want) {
 		t.Errorf("the screen after alpha.1's consent does not open with CHANGED SINCE:\n%s", b)
 	}
 }
