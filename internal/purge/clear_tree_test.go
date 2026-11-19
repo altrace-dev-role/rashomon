@@ -18,13 +18,15 @@ import (
 // every folder above it, while a folder holding only rashomon's names still
 // goes: a person's file in a digest folder, a folder whose name is not a
 // lowercase digest, a file at the top of clear/ and a symlink named like an
-// arm. Purge has no session scope. The names are written here as literals,
-// not taken from the store's helpers. Break: leave clear out of the walk,
-// take a foreign name or folder, follow a link, or keep a clean folder
-// because another holds a foreign name.
+// arm. The uppercase folder is a digest no other folder here has: a disk
+// that folds case, as macOS and Windows do by default, opens the uppercase
+// of f1 as f1's own folder. Purge has no session scope. The names are written
+// here as literals, not taken from the store's helpers. Break: leave clear
+// out of the walk, take a foreign name or folder, follow a link, or keep a
+// clean folder because another holds a foreign name.
 func TestPurge_OwnsClearTree(t *testing.T) {
-	d1, d2 := sha256.Sum256([]byte("/w/p")), sha256.Sum256([]byte("/w/q"))
-	f1, f2 := hex.EncodeToString(d1[:]), hex.EncodeToString(d2[:])
+	d1, d2, d3 := sha256.Sum256([]byte("/w/p")), sha256.Sum256([]byte("/w/q")), sha256.Sum256([]byte("/w/r"))
+	f1, f2, f3 := hex.EncodeToString(d1[:]), hex.EncodeToString(d2[:]), hex.EncodeToString(d3[:])
 	const (
 		oldID  = "0b6a9c52-1111-4222-8333-444455556666"
 		newID  = "7c1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff"
@@ -77,7 +79,7 @@ func TestPurge_OwnsClearTree(t *testing.T) {
 	for name, put := range map[string]func(c string){
 		"a user's notes.txt in a digest folder": func(c string) { file(filepath.Join(c, f1), "notes.txt") },
 		"a folder whose name is not a digest":   func(c string) { file(filepath.Join(c, "proj"), "end-"+oldID) },
-		"an uppercase digest folder":            func(c string) { file(filepath.Join(c, strings.ToUpper(f1)), "end-"+oldID) },
+		"an uppercase digest folder":            func(c string) { file(filepath.Join(c, strings.ToUpper(f3)), "end-"+oldID) },
 		"a file at the top of clear":            func(c string) { file(c, "end-"+oldID) },
 		"a symlink named like an arm": func(c string) {
 			_ = os.Symlink(filepath.Join(c, f2, "end-"+loneID), filepath.Join(c, f1, "start-"+loneID))
