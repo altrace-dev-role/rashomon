@@ -221,6 +221,53 @@ func module(u Unit, rel string) string {
 	return strings.ReplaceAll(m, "/", ".")
 }
 
+// absolute is name, a from-import's module with leading dots, as the module
+// it names from the file whose module is mod (PEP 328): the package is mod
+// itself for an __init__.py and mod less its last part otherwise, and each
+// dot past the first goes one package up. It is false when the dots go
+// past the top package, an import Python refuses.
+func absolute(name, mod string, init bool) (string, bool) {
+	rest := strings.TrimLeft(name, ".")
+	dots := len(name) - len(rest)
+	pkg := mod
+	if !init {
+		pkg = ""
+		if i := strings.LastIndex(mod, "."); i >= 0 {
+			pkg = mod[:i]
+		}
+	}
+	var parts []string
+	if pkg != "" {
+		parts = strings.Split(pkg, ".")
+	}
+	if dots > len(parts) {
+		return "", false
+	}
+	base := strings.Join(parts[:len(parts)-dots+1], ".")
+	if rest == "" {
+		return base, true
+	}
+	return base + "." + rest, true
+}
+
+// resolveRelative rewrites each relative import of f as the absolute
+// module it names, and drops one whose dots go past the top package, so
+// no edge is written for it and no call resolves through it.
+func (f fileScan) resolveRelative(mod string, init bool) {
+	for name, im := range f.imports {
+		if !strings.HasPrefix(im.module, ".") {
+			continue
+		}
+		abs, ok := absolute(im.module, mod, init)
+		if !ok {
+			delete(f.imports, name)
+			continue
+		}
+		im.module = abs
+		f.imports[name] = im
+	}
+}
+
 // parse is the one parser behind Extract and Overlay. Unit membership
 // (the contains edge) is index-time structure an edit cannot change, so
 // only a committed parse writes it; an overlay that re-wrote it would turn
@@ -239,6 +286,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 	if err != nil {
 		return nil, err
 	}
+	f.resolveRelative(mod, strings.HasSuffix("/"+rel, "/__init__.py"))
 	file := graph.FileID(rel)
 	algo := graph.Prov{Extractor: "pylite", Version: "1"}
 	recs := []graph.Record{{Node: &graph.Node{ID: file, Kind: "file", Tier: graph.Algorithmic, Conf: 1.0, Rev: rev, Prov: algo,
