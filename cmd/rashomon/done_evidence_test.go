@@ -69,7 +69,7 @@ func TestDONE1q_SupersededNoteLeavesNoDigest(t *testing.T) {
 		t.Fatal("premise: the resume start did not arm the briefing")
 	}
 	now := time.Now()
-	recap.ClaimStop(e.root, session, "p0", now, true, "", recap.Owed{}, recap.DoneMarks{Flagged: "d1"})
+	recap.ClaimStop(e.root, session, "p0", now, true, "", recap.Owed{}, recap.DoneMarks{Flagged: "d1"}, true)
 
 	p := e.promptAt(session, "p1", "carry on", tr)
 	if !strings.HasPrefix(p.context, "rashomon record: the person's words") {
@@ -79,7 +79,7 @@ func TestDONE1q_SupersededNoteLeavesNoDigest(t *testing.T) {
 		t.Errorf("done marks after the superseded note = %+v; want d1 flagged and nothing delivered", m)
 	}
 
-	recap.ClaimStop(e.root, session, "p1", now, true, "", recap.Owed{}, recap.DoneMarks{Flagged: "d1"})
+	recap.ClaimStop(e.root, session, "p1", now, true, "", recap.Owed{}, recap.DoneMarks{Flagged: "d1"}, true)
 	f, ok := doneFinding(0)
 	want := f.Message.Text()
 	if p := e.promptAt(session, "p2", "and then", tr); !ok || want == "" || p.context != want {

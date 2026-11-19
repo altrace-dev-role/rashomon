@@ -48,7 +48,9 @@ func (w turnWindow) contains(ms int64) bool {
 // That is the only sense "current" can have from records alone -- there is
 // no separate marker for "the turn in progress", and none is needed, since a
 // turn only starts by a declaration naming a prompt_id nothing before it
-// carried.
+// carried. So a prompt that made no call is never the current turn: a caller
+// that knows its id (a Stop's payload names it) names it, and gets the empty
+// window below.
 //
 // Two passes (card 2.3c): the first finds the turn from each prompt's first
 // seq and declaration count, copying nothing; the second copies that turn's
