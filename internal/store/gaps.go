@@ -224,6 +224,9 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	if err := removeFrontier(dir); err != nil {
 		return nil, err
 	}
+	if afterFrontierRemoved != nil {
+		afterFrontierRemoved()
+	}
 	if sessionID == "" {
 		sessionID = filepath.Base(dir)
 	}
@@ -606,6 +609,9 @@ func (s *Store) forgetHostInRun(dir, name string, now time.Time) (*Gap, error) {
 	// (removeFrontier).
 	if err := removeFrontier(dir); err != nil {
 		return nil, err
+	}
+	if afterFrontierRemoved != nil {
+		afterFrontierRemoved()
 	}
 	if sessionID == "" {
 		sessionID = filepath.Base(dir)
