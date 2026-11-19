@@ -42,6 +42,12 @@ func KindKey(rel string) string {
 	return base
 }
 
+// NonSourceKinds is the kinds table's rows in order, for a caller outside
+// lang that ranges over every row. It returns the array, which is copied
+// on return: the caller cannot change the table, and a read allocates
+// nothing and costs no init.
+func NonSourceKinds() [len(nonSourceKinds)]string { return nonSourceKinds }
+
 // NonSource reports whether rel's kind is a row of the kinds table.
 func NonSource(rel string) bool {
 	k := KindKey(rel)

@@ -17,6 +17,15 @@ func TestKinds_TheRowsAreTheRuledRows(t *testing.T) {
 	}
 }
 
+// TestKinds_TheCopyIsTheTable: NonSourceKinds is the table row for row, so
+// a test outside lang that ranges over it ranges over every row. Break:
+// return an empty or a partial copy.
+func TestKinds_TheCopyIsTheTable(t *testing.T) {
+	if got := NonSourceKinds(); got != nonSourceKinds {
+		t.Errorf("NonSourceKinds() = %q\nwant %q", got, nonSourceKinds)
+	}
+}
+
 // TestKinds_ARowIsNonSource: a path of each row's kind is non-source,
 // wherever it sits: an extension row by its extension, a name row by the
 // path's base name. go.mod and go.work are rows (so an edit of go.mod

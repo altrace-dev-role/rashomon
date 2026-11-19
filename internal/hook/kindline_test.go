@@ -30,11 +30,19 @@ func kindLineOf(key string) string {
 // kindOtherLine is the line naming no kind, spelled out as kindLineOf is.
 const kindOtherLine = "rashomon: no reader here for some other kinds of file, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
 
-// kindPost is an Edit of rel under the fixture's repository in session, as
-// the hook runs it: the PreToolUse, then the PostToolUse with the same id,
-// its Close and Flush, then the steer step's bytes (cmd/rashomon/post.go). A
-// rel holding a control byte is never created; the gate reads no file.
+// kindPost is kindEdit's steer bytes.
 func (f *ovFix) kindPost(session, id, rel string) []byte {
+	f.t.Helper()
+	_, b := f.kindEdit(session, id, rel)
+	return b
+}
+
+// kindEdit is an Edit of rel under the fixture's repository in session, as
+// the hook runs it: the PreToolUse, then the PostToolUse with the same id,
+// its Close and Flush, then the steer step's bytes (cmd/rashomon/post.go),
+// returned with the post. A rel holding a control byte is never created;
+// the gate reads no file.
+func (f *ovFix) kindEdit(session, id, rel string) (*Post, []byte) {
 	f.t.Helper()
 	file := filepath.Join(f.repo, filepath.FromSlash(rel))
 	if strings.IndexFunc(rel, unicode.IsControl) < 0 {
@@ -65,7 +73,7 @@ func (f *ovFix) kindPost(session, id, rel string) []byte {
 	if err := p.Flush(); err != nil {
 		f.t.Fatal(err)
 	}
-	return p.Steer(stEnv(0))
+	return p, p.Steer(stEnv(0))
 }
 
 // kindSaid is the system message b carries, failing unless b is one JSON
@@ -179,6 +187,40 @@ func TestLANGREG1_TheKindLineFollowsTheOverlayGate(t *testing.T) {
 	on := newOvFix(t, "1\n")
 	if got := kindSaid(t, on.kindPost(ovSess, "toolu_on", "web/a.ts")); got != kindLineOf(".ts") {
 		t.Errorf("a session with the marker said %q; want %q", got, kindLineOf(".ts"))
+	}
+}
+
+// TestLANGREG1_EachRowOfTheKindsTableIsSilent: the acceptance control
+// TestLANGREG1_ANonSourceKindIsSilent over every row of the kinds table,
+// read from the table, in this build's registry. An edit of a path of a
+// row's kind prints nothing and is no landed edit, so the unit-brief step
+// counts no miss for it, and after every row no session log exists. The
+// gate asks the registry before the table, so a reader that claims a row's
+// kind fails here. Each row has a session of its own, so the sixteen-kind
+// limit cannot hide a row that speaks, and there web/a.ts then says its
+// line, so the session is one that would speak. Break: say the unclaimed
+// line before asking the table, or let a wired reader claim a row's kind.
+func TestLANGREG1_EachRowOfTheKindsTableIsSilent(t *testing.T) {
+	f := newOvFix(t, "1\n")
+	for i, row := range lang.NonSourceKinds() {
+		rel := "docs/" + row
+		if strings.HasPrefix(row, ".") {
+			rel = "docs/a" + row
+		}
+		s := "sess-row-" + strconv.Itoa(i)
+		p, b := f.kindEdit(s, "toolu_row_"+strconv.Itoa(i), rel)
+		if b != nil {
+			t.Errorf("an edit of %s printed %q; want nothing", rel, b)
+		}
+		if _, ok := p.LandedGoEdit(); ok {
+			t.Errorf("an edit of %s is a landed edit; want none, so no unit-brief miss", rel)
+		}
+		if got := kindSaid(t, f.kindPost(s, "toolu_ts_"+strconv.Itoa(i), "web/a.ts")); got != kindLineOf(".ts") {
+			t.Errorf("session %s then said %q for web/a.ts; want %q", s, got, kindLineOf(".ts"))
+		}
+	}
+	if _, _, exists := f.read(); exists {
+		t.Error("an edit of a kinds-table row made a session log; want none")
 	}
 }
 
