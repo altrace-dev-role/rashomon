@@ -14,6 +14,12 @@ var conflictsSeen = foldConflictChecks
 
 // foldConflictChecks folds run's conflict_check records at or below seq, in
 // seq order, into the conflicts the session was shown (card m2-seam1 D5).
+// The bound is a check's landed seq, the seq its call's execution landed
+// at, not the check's own record seq: the post appends the check after the
+// execution, and calls in parallel can all land before any of their checks
+// is appended, so the record seq is one or more above the landed seq. A
+// seq of 0 or less bounds nothing, and a check landed at 0 or less is in
+// no fold at any seq.
 // A conflict's identity is its key and the commit it was checked at; its
 // row is the one it was first raised with. Seqs gain a check's landed seq
 // when the conflict is first raised and when it is raised again after it
@@ -35,7 +41,7 @@ func foldConflictChecks(run *store.Run, seq int64) []verify.ConflictSeen {
 	var order []id
 	byID := map[id]*state{}
 	for _, rec := range run.ConflictChecks {
-		if seq > 0 && rec.Seq != nil && *rec.Seq > seq {
+		if rec.LandedSeq <= 0 || (seq > 0 && rec.LandedSeq > seq) {
 			continue
 		}
 		here := map[string]bool{}

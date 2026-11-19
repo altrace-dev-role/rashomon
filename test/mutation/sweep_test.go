@@ -2157,11 +2157,95 @@ func TestFixtureSays_(t *testing.T) {
 
 // SWEEP-TIMEOUT1. The race step names its -timeout: go test's 10m default
 // ends any one package's binary at 600 s while the whole step has taken up
-// to 712 s, and 15m still prints its alarm before the job's 30 minutes.
+// to 712 s, and 15m still prints its alarm before the job's 30 minutes. The
+// release job runs the same command on the same runner under the same
+// 30-minute bound, and a tag runs no other test.
+// cmd/go's backup kill of a 15m -timeout comes at 16m30s, so each job that
+// holds the step is bounded at 17 minutes or more: under that the runner
+// cuts the step first, with no alarm and no kill line in its log.
 func TestSWT1_TheRaceStepCarriesItsOwnTimeout(t *testing.T) {
-	doc := readFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yaml"))
-	if !strings.Contains(ciJob(t, doc, "test"), "\n        run: go test ./... -count=1 -race -timeout 15m\n") {
+	const line = "\n        run: go test ./... -count=1 -race -timeout 15m\n"
+	wf := filepath.Join(moduleRoot(t), ".github", "workflows")
+	testJob := ciJob(t, readFile(t, filepath.Join(wf, "ci.yaml")), "test")
+	if !strings.Contains(testJob, line) {
 		t.Error("the Test job's race step does not run under -timeout 15m")
+	}
+	release := readFile(t, filepath.Join(wf, "release.yaml"))
+	if !strings.Contains(release, line) {
+		t.Error("release.yaml's Test step does not run under -timeout 15m")
+	}
+	bound := regexp.MustCompile(`\n    timeout-minutes: (\d+)\n`)
+	for _, j := range []struct{ name, job string }{
+		{"ci.yaml's test job", testJob},
+		{"release.yaml's release job", ciJob(t, release, "release")},
+	} {
+		n := 0
+		if m := bound.FindStringSubmatch(j.job); m != nil {
+			n, _ = strconv.Atoi(m[1])
+		}
+		if n < 17 {
+			t.Errorf("%s is bounded at %d minutes; cmd/go's backup kill of the 15m -timeout comes at 16m30s, want 17 or more", j.name, n)
+		}
+	}
+}
+
+// SWEEP-TIMEOUT1. The second marker of TIMED_OUT is
+// cmd/go's backup kill: when the test binary's own alarm never starts (a
+// TestMain that hangs before m.Run), go test kills the binary at the
+// -timeout plus a minute, or plus a tenth of it when that is longer
+// (testKillTimeout, cmd/go/internal/test/test.go), prints the kill line and
+// then the package's FAIL line with a time, which test_failed reads as red.
+// On unix the kill sends SIGQUIT first and its line says "with quit", also
+// when the binary outlives the signal; cmd/go prints the plain line only
+// where it has no quit signal to send (plan9, windows), so the plain case
+// pins the prefix both lines share. A real run of
+// that path takes eleven minutes, so a fake go prints what cmd/go prints:
+// 11m0s for a mutant's 10m, 22m0s for the baseline's 20m. A mutant run so
+// ended is TIMEOUT, never a kill; a red baseline so ended names the kill
+// line among its failing lines, not only the package's FAIL line.
+func TestSWT1_TheBackupKillLineIsReadAsATimeout(t *testing.T) {
+	const timeout = "TIMEOUT        <- T-1 alpha goes   (go test's -timeout ended the run after 0 \"--- FAIL\" lines"
+	for _, c := range []struct {
+		mode string
+		exit int
+		want []string
+	}{
+		{"quit", 0, []string{timeout, "\n      *** Test killed with quit: ran too long (11m0s).\n"}},
+		{"plain", 0, []string{timeout, "\n      *** Test killed: ran too long (11m0s).\n"}},
+		{"baseline", 1, []string{"BASELINE NOT GREEN", "failing on the unmutated tree:\n",
+			"\n    *** Test killed with quit: ran too long (22m0s).\n"}},
+	} {
+		t.Run(c.mode, func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+			mutants := filepath.Join(dir, "mutants")
+			bin := filepath.Join(dir, "bin")
+			for _, d := range []string{mutants, bin} {
+				if err := os.Mkdir(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+			fake := filepath.Join(bin, "go")
+			write(t, fake, "#!/bin/sh\ncase \"$FAKE_GO_MODE:$*\" in\n"+
+				"quit:*-run*) printf '=== RUN   TestT1_x\\nSIGQUIT: quit\\n\\ngoroutine 1 [running]:\\n*** Test killed with quit: ran too long (11m0s).\\nFAIL\\texample/pkg\\t660.004s\\n'; exit 1;;\n"+
+				"plain:*-run*) printf '=== RUN   TestT1_x\\n*** Test killed: ran too long (11m0s).\\nsignal: killed\\nFAIL\\texample/pkg\\t660.004s\\n'; exit 1;;\n"+
+				"baseline:test*) printf 'ok  \\texample/a\\t0.010s\\nSIGQUIT: quit\\n\\ngoroutine 1 [running]:\\n*** Test killed with quit: ran too long (22m0s).\\nFAIL\\texample/pkg\\t1320.004s\\n'; exit 1;;\n"+
+				"esac\necho ok\n")
+			if err := os.Chmod(fake, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GO_MODE=" + c.mode}
+			out, code := sweepEnv(t, dir, env, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+			if code != c.exit || strings.Contains(out, "went red") {
+				t.Errorf("exit %d, want %d, and no \"went red\":\n%s", code, c.exit, out)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("the sweep's output does not hold %q:\n%s", w, out)
+				}
+			}
+		})
 	}
 }
 

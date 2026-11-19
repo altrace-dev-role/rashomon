@@ -109,8 +109,8 @@ func TestModulePath_ReadsTheModuleDirective(t *testing.T) {
 // cap; a directive past it, and a root with no go.mod, give "".
 func TestReadModulePath_RootGoModCapped(t *testing.T) {
 	root := t.TempDir()
-	if got := ReadModulePath(root); got != "" {
-		t.Fatalf("no go.mod: %q", got)
+	if got, err := ReadModulePath(root); got != "" || err != nil {
+		t.Fatalf("no go.mod: %q, %v; want \"\" and no error", got, err)
 	}
 	write := func(s string) {
 		t.Helper()
@@ -119,17 +119,17 @@ func TestReadModulePath_RootGoModCapped(t *testing.T) {
 		}
 	}
 	write("module example.com/root\n\ngo 1.25.0\n")
-	if got := ReadModulePath(root); got != "example.com/root" {
-		t.Fatalf("go.mod: %q", got)
+	if got, err := ReadModulePath(root); got != "example.com/root" || err != nil {
+		t.Fatalf("go.mod: %q, %v", got, err)
 	}
 	write("// " + strings.Repeat("x", MaxGoModBytes) + "\nmodule example.com/late\n")
-	if got := ReadModulePath(root); got != "" {
-		t.Fatalf("directive past the cap read: %q", got)
+	if got, err := ReadModulePath(root); got != "" || err != nil {
+		t.Fatalf("directive past the cap read: %q, %v", got, err)
 	}
 	line := "module example.com/straddle\n"
 	write("// " + strings.Repeat("x", MaxGoModBytes-len(line)/2-4) + "\n" + line)
-	if got := ReadModulePath(root); got != "" {
-		t.Fatalf("a directive cut by the cap read as %q", got)
+	if got, err := ReadModulePath(root); got != "" || err != nil {
+		t.Fatalf("a directive cut by the cap read as %q, %v", got, err)
 	}
 }
 
@@ -331,7 +331,11 @@ func TestExtract_ImportEdgesMatchTheOverlays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &ImportMap{Module: ReadModulePath(root), IsDir: DirUnder(root)}
+	mod, err := ReadModulePath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &ImportMap{Module: mod, IsDir: DirUnder(root)}
 	ov := importsOf(overlayWith(t, m, "app/app.go", string(src)))
 	if a, b := slices.Sorted(maps.Keys(ov)), slices.Sorted(maps.Keys(idx)); !slices.Equal(a, b) {
 		t.Fatalf("overlay Imports keys %q; index %q", a, b)

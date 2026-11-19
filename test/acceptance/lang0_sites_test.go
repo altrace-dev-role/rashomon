@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,7 +17,7 @@ import (
 
 // The ratchet of the standing rule LANG-0: no new non-test line in cmd/ or
 // internal/ may name a language, outside internal/graph/lang,
-// internal/platform and the one wiring function of the index. A line names
+// internal/platform and the wiring functions of the index. A line names
 // a language when it holds one of these shapes, printed by the test as it
 // runs:
 //
@@ -66,11 +67,17 @@ var lang0OtherSuffixes = []string{
 
 const lang0Pkg = "github.com/altrace-dev-role/rashomon/internal/graph/lang/"
 
-// lang0Wiring is the one wiring function of the index, keyed as the ledger
-// keys a function. Every language package it names must have a row in
-// lang0Rows, so a language cannot join the registry without joining this
-// ratchet. LANG-REG1 replaces it with Wire, and this key moves with it.
-const lang0Wiring = "internal/graph/index/index.go:resolverFor"
+// lang0Wirings are the wiring functions of the index, keyed as the ledger
+// keys a function: Wire, the registry a hook reads a file through, and
+// resolverFor, the resolver Build wires for a unit's language. Every language
+// package one of them names must have a row in lang0Rows, so a language
+// cannot join either without joining this ratchet. Each must be found and
+// hold its exempt row. The change that has Build read through Wire removes
+// resolverFor from this list together with its exempt row.
+var lang0Wirings = []string{
+	"internal/graph/index/index.go:Wire",
+	"internal/graph/index/index.go:resolverFor",
+}
 
 // lang0ExemptDirs are the places LANG-0 allows outright, each with its reason.
 var lang0ExemptDirs = []struct{ dir, reason string }{
@@ -87,9 +94,10 @@ const lang0Act = "move the line into the package of a registered language under 
 // lang0Exempt are the named exempt rows, each with its reason. A row that
 // matches no line fails the test, so an exemption cannot outlive its site.
 var lang0Exempt = map[string]string{
-	"internal/graph/index/index.go:resolverFor":       "the one wiring function of the index",
-	"internal/graph/index/index.go:python":            "builds the pylite resolver for resolverFor and nothing else",
-	"internal/graph/index/index.go:import":            "the gopg and pylite imports of the wiring function",
+	"internal/graph/index/index.go:Wire":              "a wiring function: the registry a hook reads a file through",
+	"internal/graph/index/index.go:resolverFor":       "a wiring function: the resolver Build wires for a unit's language, until Build reads through Wire",
+	"internal/graph/index/index.go:python":            "builds the pylite resolver for resolverFor and Wire and nothing else",
+	"internal/graph/index/index.go:import":            "the gopg and pylite imports of resolverFor and Wire",
 	"internal/graph/graphtest/graphtest.go:import":    "test support: graph tests build their fake resolver from pylite",
 	"internal/graph/graphtest/graphtest.go:Resolver":  "test support: the fake resolver graph tests register",
 	"internal/graph/graphtest/graphtest.go:Specimen":  "test support: the fake resolver's fixture type",
@@ -199,11 +207,11 @@ func lang0Shape(v string) string {
 }
 
 // lang0Scan returns, for every key in scope, the set of its lines that name
-// a language; every declaration key it saw, matched or not; and the language
-// packages the wiring function names.
-func lang0Scan(t *testing.T) (sites map[string]map[int]bool, seen, wired map[string]bool) {
+// a language; every declaration key it saw, matched or not; and, for each
+// wiring function, the language packages it names.
+func lang0Scan(t *testing.T) (sites map[string]map[int]bool, seen map[string]bool, wired map[string]map[string]bool) {
 	t.Helper()
-	sites, seen, wired = map[string]map[int]bool{}, map[string]bool{}, map[string]bool{}
+	sites, seen, wired = map[string]map[int]bool{}, map[string]bool{}, map[string]map[string]bool{}
 	fset := token.NewFileSet()
 	for _, top := range []string{"cmd", "internal"} {
 		err := filepath.WalkDir(filepath.Join(moduleRoot, top), func(p string, d fs.DirEntry, err error) error {
@@ -239,7 +247,7 @@ func lang0Scan(t *testing.T) (sites map[string]map[int]bool, seen, wired map[str
 }
 
 // lang0File adds one parsed file's matches to sites, keyed by declaration.
-func lang0File(fset *token.FileSet, rel string, f *ast.File, sites map[string]map[int]bool, seen, wired map[string]bool) {
+func lang0File(fset *token.FileSet, rel string, f *ast.File, sites map[string]map[int]bool, seen map[string]bool, wired map[string]map[string]bool) {
 	add := func(key string, pos token.Pos) {
 		if sites[key] == nil {
 			sites[key] = map[int]bool{}
@@ -269,8 +277,11 @@ func lang0File(fset *token.FileSet, rel string, f *ast.File, sites map[string]ma
 				if id, ok := x.X.(*ast.Ident); ok {
 					if pkg, ok := local[id.Name]; ok {
 						add(key, id.Pos())
-						if key == lang0Wiring {
-							wired[pkg] = true
+						if slices.Contains(lang0Wirings, key) {
+							if wired[key] == nil {
+								wired[key] = map[string]bool{}
+							}
+							wired[key][pkg] = true
 						}
 					}
 				}
@@ -373,15 +384,17 @@ func TestRubricLANG0_NoNewLanguageNamingLine(t *testing.T) {
 	lang0LogLedger(t)
 	sites, seen, wired := lang0Scan(t)
 
-	if !seen[lang0Wiring] {
-		t.Errorf("wiring function %s not found: if it moved, move lang0Wiring and its exempt row with it", lang0Wiring)
-	}
-	if _, ok := lang0Exempt[lang0Wiring]; !ok {
-		t.Errorf("wiring function %s has no exempt row", lang0Wiring)
-	}
-	for pkg := range wired {
-		if _, ok := lang0Rows[pkg]; !ok {
-			t.Errorf("the wiring function registers the resolver of %s, which has no row in lang0Rows: add its suffix, bare extension, manifests and toolchain commands", pkg)
+	for _, w := range lang0Wirings {
+		if !seen[w] {
+			t.Errorf("wiring function %s not found: if it moved, move its entry in lang0Wirings and its exempt row with it", w)
+		}
+		if _, ok := lang0Exempt[w]; !ok {
+			t.Errorf("wiring function %s has no exempt row", w)
+		}
+		for _, pkg := range sortedKeys(wired[w]) {
+			if _, ok := lang0Rows[pkg]; !ok {
+				t.Errorf("wiring function %s names the resolver of %s, which has no row in lang0Rows: add its suffix, bare extension, manifests and toolchain commands", w, pkg)
+			}
 		}
 	}
 
