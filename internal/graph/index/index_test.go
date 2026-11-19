@@ -177,6 +177,37 @@ func TestIdentity_TwoRepos(t *testing.T) {
 	}
 }
 
+// TestIdentity_OneRepoAcrossOriginForms (W-M4.1, HD11, PLAN 1809; ruling
+// 2026-11-12 09:38 C5): one repository cloned over ssh, over https, and with
+// or without a trailing .git, read from each clone's .git/config, has one
+// repository id and one repo: node. TestNormalizeOrigin_Forms checks each
+// form alone; this checks that the forms agree end to end.
+func TestIdentity_OneRepoAcrossOriginForms(t *testing.T) {
+	const want = "github.com/Org/Repo"
+	for _, url := range []string{
+		"git@github.com:Org/Repo.git",
+		"ssh://git@github.com/Org/Repo.git",
+		"https://github.com/Org/Repo",
+		"https://github.com/Org/Repo.git",
+	} {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := "[remote \"origin\"]\n\turl = " + url + "\n"
+		if err := os.WriteFile(filepath.Join(root, ".git", "config"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rid, ephemeral := baseline.RepoID(root)
+		if rid != want || ephemeral {
+			t.Errorf("origin %s: RepoID = %q, ephemeral %v; want %q, false", url, rid, ephemeral, want)
+		}
+		if got := graph.RepoNodeID(rid); got != graph.ID("repo:"+want) {
+			t.Errorf("origin %s: RepoNodeID = %s", url, got)
+		}
+	}
+}
+
 // TestBuild_ReadsKnowledgeDir (W-M1.6, AD14): the rows under
 // .rashomon/knowledge/ are in the store as nodes at their tier, with an
 // applies_to edge for every global id under this repository's rid and none

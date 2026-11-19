@@ -26,6 +26,7 @@ var passListPins = map[int]string{
 	11: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 11 named the runner and the stage that hid its status; the pass words are unchanged
 	12: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 12 added the lint, typecheck and scan runner lists and reads a hidden runner's printed exit status (STATUS-PROBE); the pass words are unchanged
 	13: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); the pass words are unchanged
+	14: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place (inPlaceEditors, RH-11); the pass words are unchanged
 }
 
 // TestRulesVersion_PassList: the pass words cannot change without a

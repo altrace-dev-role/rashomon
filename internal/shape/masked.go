@@ -67,7 +67,12 @@ const (
 // 12 was never released, so both changes ride it (D232's reasoning);
 // version 13 reads a later pipeline or list stage whose program only prints
 // (printOnly: echo, date) as one that writes nothing of itself, so a line
-// that reads and prints (`cat a; echo ---; date`) has may_write false --
+// that reads and prints (`cat a; echo ---; date`) has may_write false;
+// version 14 reads ruff check's --fix and --fix-only as writing in place
+// (inPlaceEditors), so `ruff check --fix a.py` has may_write true and names
+// a.py as its written path: ruff's first operand, its subcommand check or
+// format, names no file, a later operand of either name does, and --diff
+// beside either flag writes nothing back and reads as no write --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines
@@ -79,7 +84,7 @@ const (
 // pins stay as history of what each version decided, and a version that
 // changed no table repeats the digest above it, as versions 3 to 5 do for the
 // runner lists.
-const RulesVersion = 13
+const RulesVersion = 14
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {

@@ -25,7 +25,8 @@ type constDef struct {
 }
 
 // importRef is one imported name: from module import attr, or import
-// module (attr "").
+// module (attr ""). A relative module keeps its leading dots until parse
+// resolves it against the file's package.
 type importRef struct {
 	module string
 	attr   string
@@ -77,7 +78,7 @@ func pats() *patternSet {
 		patterns.def = regexp.MustCompile(`^(\s*)(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
 		patterns.cnst = regexp.MustCompile(`^([A-Z_][A-Z0-9_]*)\s*(?::[^=]+)?=\s*(.+?)\s*$`)
 		patterns.call = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_.]*)\s*\(`)
-		patterns.from = regexp.MustCompile(`^from\s+([A-Za-z_][A-Za-z0-9_.]*)\s+import\s+(.+)$`)
+		patterns.from = regexp.MustCompile(`^from\s+(\.+(?:[A-Za-z_][A-Za-z0-9_.]*)?|[A-Za-z_][A-Za-z0-9_.]*)\s+import\s+(.+)$`)
 		patterns.imp = regexp.MustCompile(`^import\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$`)
 	})
 	return &patterns
