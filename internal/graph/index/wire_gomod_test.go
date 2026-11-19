@@ -1,9 +1,14 @@
 package index
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // wireGo is the Go resolver Wire configures under root for a .go path.
@@ -47,5 +52,35 @@ func TestWire_GoMapsUnderItsOwnModuleAndRoot(t *testing.T) {
 				t.Errorf("under the root of %s, IsDir(%q) = %v, want %v", c.module, dir, got, want)
 			}
 		}
+	}
+}
+
+// TestWire_AGoModOverTheBoundReadsItsCompleteLines: a go.mod longer than
+// gopg.MaxGoModBytes is not refused; its complete lines under the bound are
+// read, so a module line at the top still gives the map, with no error.
+// Break: refuse a go.mod over the bound.
+func TestWire_AGoModOverTheBoundReadsItsCompleteLines(t *testing.T) {
+	gomod := "module example.com/m\n\n" + strings.Repeat("// a line that pads go.mod past the bound\n", gopg.MaxGoModBytes/40+1)
+	if len(gomod) <= gopg.MaxGoModBytes {
+		t.Fatalf("the fixture is %d bytes, not over the bound %d", len(gomod), gopg.MaxGoModBytes)
+	}
+	g := wireGo(t, wireRoot(t, map[string]string{"go.mod": gomod}))
+	if g.Imports == nil || g.Imports.Module != "example.com/m" {
+		t.Errorf("Imports = %+v; want module example.com/m", g.Imports)
+	}
+}
+
+// TestWire_AGoModDirectoryRefusesGo: a go.mod that is a directory is there
+// and is not a regular file, refused as a named pipe is, on every platform:
+// Go under that root is refused with an error naming go.mod, with
+// regfile.ErrNotRegular kept. Break: let the Go step drop the error.
+func TestWire_AGoModDirectoryRefusesGo(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "go.mod"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, ok, err := Wire().Claim(root, "a/a.go")
+	if !ok || r != nil || !errors.Is(err, regfile.ErrNotRegular) || !strings.Contains(err.Error(), "go.mod") {
+		t.Errorf("Claim(a/a.go) = %v, %v, %v; want nil and an error naming go.mod, ErrNotRegular kept", r, ok, err)
 	}
 }
