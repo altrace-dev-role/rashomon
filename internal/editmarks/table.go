@@ -1,5 +1,7 @@
 package editmarks
 
+import glang "github.com/altrace-dev-role/rashomon/internal/graph/lang"
+
 // Version is the version of the pattern table below, the Version every mark
 // this package produces carries. A change to a row, or an added row, is a new
 // version; the fold reads marks of any version alike (verify.MarkerTableVersion).
@@ -13,11 +15,11 @@ const Version = 1
 const Basis = "edit_delta"
 
 // lang is the language a row's patterns are read in, by the file's extension.
-type lang uint8
+type lang = glang.Marked
 
 const (
-	langGo lang = iota + 1
-	langPy
+	langGo = glang.MarkedGo
+	langPy = glang.MarkedPython
 )
 
 // boundary is what must follow a prefix for a line to match it.

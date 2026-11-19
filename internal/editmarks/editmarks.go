@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	glang "github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -149,23 +150,14 @@ func body(in []byte, s jsonscan.Span) []byte {
 // for a path that is not a test-like Go or Python path.
 func langOf(path jsonscan.Span, in []byte) (lang, bool) {
 	p := body(in, path)
-	var l lang
-	switch {
-	case hasSuffixFold(p, ".go"):
-		l = langGo
-	case hasSuffixFold(p, ".py"):
-		l = langPy
-	default:
+	l := glang.MarkedOf(p)
+	if l == glang.NotMarked {
 		return 0, false
 	}
 	if !containsFold(p, "test") && !containsFold(p, "spec") && !containsFold(p, "e2e") {
 		return 0, false
 	}
 	return l, true
-}
-
-func hasSuffixFold(b []byte, suffix string) bool {
-	return len(b) >= len(suffix) && strings.EqualFold(string(b[len(b)-len(suffix):]), suffix)
 }
 
 // containsFold reports whether b holds the lower case word w, in any case.
