@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"math"
 	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
@@ -15,12 +16,12 @@ import (
 // A prompt's lines are expected under 64 KiB, so one read is the usual cost.
 const budgetChunk = 64 << 10
 
-// budgetKeys are the ten keys the scan reads from a line, in one walk
+// budgetKeys are the eleven keys the scan reads from a line, in one walk
 // that allocates nothing per value (jsonscan.Top); RES-5 bans a decode on
 // the hook path.
 func budgetKeys() *jsonscan.KeySet {
 	budgetKeysOnce.Do(func() {
-		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key", "type", "suppressed_by")
+		budgetKeysOnce.v = jsonscan.NewKeySet("session_id", "prompt_id", "at_unix_ms", "state", "level", "pattern", "kind", "key", "type", "suppressed_by", "after_seq")
 	})
 	return budgetKeysOnce.v
 }
@@ -44,6 +45,7 @@ const (
 	bkKey
 	bkType
 	bkSuppressedBy
+	bkAfterSeq
 	bkCount
 )
 
@@ -53,12 +55,87 @@ const (
 type findingKey struct{ pattern, kind, key string }
 
 // counts is what the current prompt has already delivered: notes at nudge
-// or stop, flags at flag, and the keys of its delivered notes. A line arm off
-// withheld counts as delivered, so the off arm's budget runs as the steer
-// arm's would.
+// or stop, flags at flag, the keys of its delivered notes, and the notes the
+// window reads. A line arm off withheld counts as delivered, so the off arm's
+// budget runs as the steer arm's would.
 type counts struct {
 	notes, flags int
 	keys         map[findingKey]bool
+	// window holds the prompt's notes with the largest after_seq, largest
+	// first, kept of them; the briefing is not among them (tech 4.2.5).
+	window [maxNotes]recent
+	kept   int
+}
+
+// recent is one delivered note as the window reads it.
+type recent struct {
+	seq     int64
+	pattern string
+}
+
+// keep adds a delivered note to the window's state, which holds the three
+// largest after_seq values and not the last three written: the calls of one
+// reply run in parallel, so a later seq can be written first
+// (NOTE-BUDGET). Three are enough: the notes above any threshold are a prefix of
+// the largest-first order, so up to three of them are exactly the first
+// ones kept, and past three the window is full either way.
+func (c *counts) keep(seq int64, pat string) {
+	i := c.kept
+	if i == len(c.window) {
+		if seq <= c.window[i-1].seq {
+			return
+		}
+		i--
+	} else {
+		c.kept++
+	}
+	for ; i > 0 && c.window[i-1].seq < seq; i-- {
+		c.window[i] = c.window[i-1]
+	}
+	c.window[i] = recent{seq, pat}
+}
+
+// spent is the window a note at after_seq s would join: n, the prompt's
+// delivered notes with after_seq above s - windowSeqs, with no upper bound,
+// and repeat, whether one of them is of pattern pat (NOTE-BUDGET).
+// No upper bound, because a note written earlier can carry a later seq: take
+// any window of windowSeqs seqs and the note written last in it, at s; every
+// other note of that window is above s - windowSeqs, so the router counted
+// them all before it let that one through.
+func (c *counts) spent(s int64, pat string) (n int, repeat bool) {
+	for _, r := range c.window[:c.kept] {
+		if r.seq > s-windowSeqs {
+			n++
+			repeat = repeat || r.pattern == pat
+		}
+	}
+	return n, repeat
+}
+
+// seqOf is a line's after_seq: the digits of a JSON number, read with no
+// allocation. Anything else -- a fraction, a sign, a string, null, absent,
+// a value past int64 -- is math.MaxInt64, inside every window, so a note
+// whose seq cannot be read counts as spent (tech 4.2.5).
+func seqOf(b []byte, sp jsonscan.Span) int64 {
+	if sp.Kind != jsonscan.Number {
+		return math.MaxInt64
+	}
+	raw := sp.Raw(b)
+	if len(raw) == 0 {
+		return math.MaxInt64
+	}
+	var n int64
+	for _, c := range raw {
+		if c < '0' || c > '9' {
+			return math.MaxInt64
+		}
+		d := int64(c - '0')
+		if n > (math.MaxInt64-d)/10 {
+			return math.MaxInt64
+		}
+		n = n*10 + d
+	}
+	return n
 }
 
 // errNoSize: the log's reader cannot say how long the log is.
@@ -199,11 +276,13 @@ func (s *budgetScan) line(b []byte) {
 	case s.is(b, s.out[bkLevel], LevelNudge.String()), s.is(b, s.out[bkLevel], LevelStop.String()):
 		// The briefing is outside the prompt budget (tech 4.2.5): given at a
 		// resumed session's first prompt (D-c), it charges none of the
-		// prompt's notes, and its key still answers a second one.
-		if !s.is(b, s.out[bkPattern], string(pattern.ContinuityBriefing)) {
-			s.c.notes++
-		}
+		// prompt's notes nor any window, and its key still answers a second
+		// one.
 		k := findingKey{s.text(b, s.out[bkPattern]), s.text(b, s.out[bkKind]), s.text(b, s.out[bkKey])}
+		if k.pattern != string(pattern.ContinuityBriefing) {
+			s.c.notes++
+			s.c.keep(seqOf(b, s.out[bkAfterSeq]), k.pattern)
+		}
 		if s.c.keys == nil {
 			s.c.keys = make(map[findingKey]bool, 3)
 		}

@@ -66,11 +66,11 @@ var lang0OtherSuffixes = []string{
 
 const lang0Pkg = "github.com/altrace-dev-role/rashomon/internal/graph/lang/"
 
-// lang0Wiring is the one wiring function of the index, keyed as the ledger
-// keys a function. Every language package it names must have a row in
-// lang0Rows, so a language cannot join the registry without joining this
-// ratchet. LANG-REG1 replaces it with Wire, and this key moves with it.
-const lang0Wiring = "internal/graph/index/index.go:resolverFor"
+// lang0Wiring is the one wiring function of the index, Wire, the registry a
+// hook reads a file through, keyed as the ledger keys a function. Every
+// language package it names must have a row in lang0Rows, so a language
+// cannot join the registry without joining this ratchet.
+const lang0Wiring = "internal/graph/index/index.go:Wire"
 
 // lang0ExemptDirs are the places LANG-0 allows outright, each with its reason.
 var lang0ExemptDirs = []struct{ dir, reason string }{
@@ -87,9 +87,10 @@ const lang0Act = "move the line into the package of a registered language under 
 // lang0Exempt are the named exempt rows, each with its reason. A row that
 // matches no line fails the test, so an exemption cannot outlive its site.
 var lang0Exempt = map[string]string{
-	"internal/graph/index/index.go:resolverFor":       "the one wiring function of the index",
-	"internal/graph/index/index.go:python":            "builds the pylite resolver for resolverFor and nothing else",
-	"internal/graph/index/index.go:import":            "the gopg and pylite imports of the wiring function",
+	"internal/graph/index/index.go:Wire":              "the one wiring function of the index",
+	"internal/graph/index/index.go:resolverFor":       "the resolver Build wires for a unit's language, until Build reads through Wire",
+	"internal/graph/index/index.go:python":            "builds the pylite resolver for resolverFor and Wire and nothing else",
+	"internal/graph/index/index.go:import":            "the gopg and pylite imports of resolverFor and Wire",
 	"internal/graph/graphtest/graphtest.go:import":    "test support: graph tests build their fake resolver from pylite",
 	"internal/graph/graphtest/graphtest.go:Resolver":  "test support: the fake resolver graph tests register",
 	"internal/graph/graphtest/graphtest.go:Specimen":  "test support: the fake resolver's fixture type",

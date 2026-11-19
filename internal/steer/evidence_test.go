@@ -57,10 +57,18 @@ func writeTranscript(t *testing.T, lines ...string) string {
 }
 
 // deliver routes one nudge at the context's event and returns the note's text
-// as the model got it.
+// as the model got it. Each call's note sits one window past every line the
+// log already holds, so a test that delivers several regression notes in one
+// prompt is never held by the window or by the repeat reserve
+// (NOTE-BUDGET): these tests are about evidence, not the budget.
 func deliver(t *testing.T, ctx *Context, key string) string {
 	t.Helper()
-	out := Route(ctx, []Finding{regressionNote(t, "go test", 5, key, LevelNudge)})
+	raw, _, err := ctx.Store.ReadSteer(ctx.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := 5 + int64(windowSeqs+1)*int64(len(raw))
+	out := Route(ctx, []Finding{regressionNote(t, "go test", seq, key, LevelNudge)})
 	if out.AdditionalContext == "" {
 		t.Fatalf("nothing delivered for %s on %s: %+v", ctx.Client.Version, ctx.Event, out)
 	}
@@ -382,14 +390,17 @@ func TestCE1d_ASubagentsNoteIsNotJudged(t *testing.T) {
 }
 
 // TestCE1d_EvidenceLinesAreNotNotes: an evidence line carries the note's
-// prompt and no state, so the router's budget still counts the prompt's
-// notes alone: with three delivered and judged, a fourth is held back as
-// before.
+// prompt and no state, so the router's budget still counts the window's
+// notes alone: with three delivered and judged, a fourth is held back by the
+// window as before. The three are of three patterns, so the repeat reserve
+// (NOTE-BUDGET) holds none of them.
 func TestCE1d_EvidenceLinesAreNotNotes(t *testing.T) {
 	ctx := routerContext(t)
-	for i, key := range []string{"a", "b", "c"} {
-		if out := Route(ctx, []Finding{regressionNote(t, "go test", int64(5+i), key, LevelNudge)}); out.AdditionalContext == "" {
-			t.Fatalf("note %s was not delivered", key)
+	for _, f := range []Finding{
+		regressionNote(t, "go test", 5, "a", LevelNudge), staleNote(t, "go vet", 6), maskedNote(t, "c", 7),
+	} {
+		if out := Route(ctx, []Finding{f}); out.AdditionalContext == "" {
+			t.Fatalf("note %s/%s was not delivered", f.Pattern, f.Key)
 		}
 	}
 	if got := CheckEvidence(ctx.Store, ctx.SessionID, writeTranscript(t, userLine), evNow(ctx), bigLimits(evNow(ctx))); len(got) != 3 {
@@ -398,8 +409,8 @@ func TestCE1d_EvidenceLinesAreNotNotes(t *testing.T) {
 	if out := Route(ctx, []Finding{regressionNote(t, "go vet", 9, "d", LevelNudge)}); out.AdditionalContext != "" {
 		t.Errorf("a fourth note in the prompt was delivered after the evidence lines: %+v", out)
 	}
-	if last := lastLines(t, ctx, 1)[0]; last.State == LineStateDelivered {
-		t.Errorf("the fourth note's line is %q, want it held back", last.State)
+	if last := lastLines(t, ctx, 1)[0]; last.State != LineStateSuppressed || byOf(last) != SuppressedByBudgetWindow {
+		t.Errorf("the fourth note's line is %q %q, want it held back by the window", last.State, byOf(last))
 	}
 }
 

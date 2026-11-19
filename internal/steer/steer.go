@@ -252,16 +252,25 @@ func AllLineStates() []LineState {
 }
 
 // SuppressedBy is the closed list of reasons a candidate line did not
-// reach delivered or flag_only (Technical spec 4.2.3) -- exactly 23
-// values, pinned by TestSuppressedBy_ExactlyTwentyThreeValues so that
-// adding a 24th without updating this comment and that test is
+// reach delivered or flag_only (Technical spec 4.2.3) -- exactly 25
+// values, pinned by TestSuppressedBy_ExactlyTwentyFiveValues so that
+// adding a 26th without updating this comment and that test is
 // impossible to do quietly.
 type SuppressedBy string
 
 const (
-	SuppressedByBudgetPrompt      SuppressedBy = "budget_prompt"
-	SuppressedByBudgetPattern     SuppressedBy = "budget_pattern"
-	SuppressedByBudgetBatch       SuppressedBy = "budget_batch"
+	SuppressedByBudgetPrompt  SuppressedBy = "budget_prompt"
+	SuppressedByBudgetPattern SuppressedBy = "budget_pattern"
+	SuppressedByBudgetBatch   SuppressedBy = "budget_batch"
+	// SuppressedByBudgetWindow: three notes were already in the window of
+	// work the note's after_seq closes (NOTE-BUDGET), less its
+	// pattern's reserve. budget_prompt is the shipped rule's reason, still
+	// written when there is no prompt to charge.
+	SuppressedByBudgetWindow SuppressedBy = "budget_window"
+	// SuppressedByBudgetRepeat: the window had room, but not the one more
+	// slot a pattern with a note already in the window reserves
+	// (NOTE-BUDGET).
+	SuppressedByBudgetRepeat      SuppressedBy = "budget_repeat"
 	SuppressedByStopHookActive    SuppressedBy = "stop_hook_active"
 	SuppressedByBackgroundRunning SuppressedBy = "background_running"
 	SuppressedByHostForeign       SuppressedBy = "host_foreign"
@@ -287,11 +296,13 @@ const (
 	SuppressedByConfigUnreadable SuppressedBy = "config_unreadable"
 )
 
-// AllSuppressedBy returns the 23 reasons in the order Technical spec
-// 4.2.3 lists them, config_unreadable (STEER-CLI1) last.
+// AllSuppressedBy returns the 25 reasons in the order Technical spec
+// 4.2.3 lists them, budget_window and budget_repeat (NOTE-BUDGET) after
+// the other budgets, config_unreadable (STEER-CLI1) last.
 func AllSuppressedBy() []SuppressedBy {
 	return []SuppressedBy{
 		SuppressedByBudgetPrompt, SuppressedByBudgetPattern, SuppressedByBudgetBatch,
+		SuppressedByBudgetWindow, SuppressedByBudgetRepeat,
 		SuppressedByStopHookActive, SuppressedByBackgroundRunning, SuppressedByHostForeign,
 		SuppressedBySteerOff, SuppressedByConsentMissing, SuppressedByArmOff,
 		SuppressedByDemoted, SuppressedByLockTimeout, SuppressedByRenderRefused,

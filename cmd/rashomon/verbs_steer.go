@@ -436,6 +436,8 @@ var reasonMeaning = sync.OnceValue(func() map[steer.SuppressedBy]string {
 		steer.SuppressedByBudgetPrompt:      "this prompt had already had its three notes",
 		steer.SuppressedByBudgetPattern:     "this prompt had already been told the same thing",
 		steer.SuppressedByBudgetBatch:       "another note in the same call went first",
+		steer.SuppressedByBudgetWindow:      "the notes already given in the last 75 or so tool calls of this prompt left no slot for it",
+		steer.SuppressedByBudgetRepeat:      "a note of the same kind was already given in the last 75 or so tool calls of this prompt, and the slots left were kept for other kinds",
 		steer.SuppressedByStopHookActive:    "the turn was already being continued by a stop hook",
 		steer.SuppressedByBackgroundRunning: "a background task was still running",
 		steer.SuppressedByHostForeign:       "the call came from a host rashomon is not installed for",

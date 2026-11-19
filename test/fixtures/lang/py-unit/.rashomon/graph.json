@@ -1,0 +1,6 @@
+{
+  "units": [
+    {"path": ".", "lang": "go"},
+    {"path": "inv", "mod_root": "", "modules": ["inv"], "lang": "py"}
+  ]
+}

@@ -38,14 +38,14 @@ func staleNote(t *testing.T, gate string, afterSeq int64) Finding {
 		Message: m, AfterSeq: afterSeq}
 }
 
-// TestAI1_BlastRadiusLeavesTheLastNoteToACorrection: the prompt's cap is
+// TestAI1_BlastRadiusLeavesTheLastNoteToACorrection: the window's cap is
 // three notes, spent in delivery order across calls, so a priority alone
 // cannot keep a context note from spending the slot a later correction needs
 // (A8). With one note given (the prompt's preflight, here any note), a
 // blast-radius note delivers; a second, for another package, is
-// budget_prompt, since it would leave no slot; and a stale-evidence note
-// later in the prompt still delivers, the third. Break: drop the reserve
-// from charge's budget_prompt case, and the second blast-radius note
+// budget_window, since it would leave no slot; and a stale-evidence note
+// later in the window still delivers, the third. Break: drop the reserve
+// from charge's budget_window case, and the second blast-radius note
 // delivers and the stale-evidence note is refused.
 func TestAI1_BlastRadiusLeavesTheLastNoteToACorrection(t *testing.T) {
 	ctx := routerContext(t)
@@ -60,24 +60,25 @@ func TestAI1_BlastRadiusLeavesTheLastNoteToACorrection(t *testing.T) {
 	if out := Route(ctx, []Finding{blastNote(t, "example.com/m/b@0123456789ab", 7)}); out != (Output{}) {
 		t.Errorf("a second blast-radius note, at two notes given, printed %+v", out)
 	}
-	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByBudgetPrompt, DeliverySuppressedBudget)
+	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByBudgetWindow, DeliverySuppressedBudget)
 	stale := staleNote(t, "go test", 8)
 	if out := Route(ctx, []Finding{stale}); out.AdditionalContext != stale.Message.Text() {
 		t.Errorf("the stale-evidence note after them printed %+v, want its text", out)
 	}
 }
 
-// TestAI1_WithNoBlastRadiusTheCapIsAsBefore: the control. A prompt with no
-// blast-radius note spends its three notes on stale-evidence and
-// regression-location as on main, and the fourth is budget_prompt: the
-// reserve of every other id is 0. Break: give the reserve to every pattern,
-// and the third note here is refused.
+// TestAI1_WithNoBlastRadiusTheCapIsAsBefore: the control. A window with no
+// blast-radius note spends its three notes on three patterns with no
+// reserve, and the fourth is budget_window: the reserve of every other id is
+// 0. Three patterns, since a second note of one pattern in the window
+// reserves one more (TestNoteBudget_RepeatReserve). Break: give the reserve
+// to every pattern, and the third note here is refused.
 func TestAI1_WithNoBlastRadiusTheCapIsAsBefore(t *testing.T) {
 	ctx := routerContext(t)
 	notes := []Finding{
 		staleNote(t, "go test", 5),
 		regressionNote(t, "go vet", 6, "r1", LevelNudge),
-		staleNote(t, "go build", 7),
+		maskedNote(t, "m1", 7),
 	}
 	for i, f := range notes {
 		if out := Route(ctx, []Finding{f}); out.AdditionalContext != f.Message.Text() {
@@ -87,7 +88,7 @@ func TestAI1_WithNoBlastRadiusTheCapIsAsBefore(t *testing.T) {
 	if out := Route(ctx, []Finding{regressionNote(t, "go test", 8, "r2", LevelNudge)}); out != (Output{}) {
 		t.Errorf("the fourth note printed %+v", out)
 	}
-	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByBudgetPrompt, DeliverySuppressedBudget)
+	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByBudgetWindow, DeliverySuppressedBudget)
 }
 
 // TestAI1_InOneCallTheCorrectionWins: a write that raises stale-evidence and
