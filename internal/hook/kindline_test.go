@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -308,5 +310,86 @@ func TestUnindexedLanguage_AnUnprintableKindNamesTheLanguage(t *testing.T) {
 	}
 	if want := store.UnindexedNoticeName("fake"); marker != want {
 		t.Errorf("the marker taken is %q; want the language's %q", marker, want)
+	}
+}
+
+// unreadLineOf is the unread configuration's line for file, the reason's
+// words why and the words what, spelled out as kindLineOf is.
+func unreadLineOf(file, why, what string) string {
+	return "rashomon: " + file + " was not read (" + why + "), so edits to " + what +
+		" files carry no unit, caller or conflict facts this session."
+}
+
+// TestUnreadConfig_IsSaidOncePerSessionAndFile: under the fixture's index,
+// with go.mod a directory, an edit of a .go file says go.mod was not read,
+// not being a regular file, as a system message alone, and keeps no
+// overlay group; a second .go file in the session says nothing, and a
+// second session says the line again. Break: key the marker by the edited
+// file (the second file repeats), keep it store-wide (the second session
+// is silent), or say the step's error (the line names the path).
+func TestUnreadConfig_IsSaidOncePerSessionAndFile(t *testing.T) {
+	f := newOvFix(t, "1\n")
+	if err := os.Mkdir(filepath.Join(f.repo, gopg.ManifestFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := unreadLineOf(gopg.ManifestFile, "not a regular file", ".go")
+	if got := kindSaid(t, f.kindPost(ovSess, "toolu_gm1", "pkg/a.go")); got != want {
+		t.Errorf("the first .go edit said %q; want %q", got, want)
+	}
+	if b := f.kindPost(ovSess, "toolu_gm2", "pkg/b.go"); b != nil {
+		t.Errorf("a second .go file in the session printed %q; want nothing", b)
+	}
+	if got := kindSaid(t, f.kindPost("sess-ov-2", "toolu_gm3", "pkg/a.go")); got != want {
+		t.Errorf("a second session said %q; want %q", got, want)
+	}
+	if groups, _, _ := f.read(); len(groups) != 0 {
+		t.Errorf("the refused .go edits kept %d overlay groups; want none", len(groups))
+	}
+}
+
+// TestUnreadConfig_EachReasonSaysItsOwnWords: the line for each reason of
+// the closed set names the refused file and the reason's own words, five
+// different phrases, and a reason past the set reads as a failed read; the
+// words are the class alone, never the step's error, whose text names a
+// path. The marker is the file's. Where the edited file's kind does not
+// print, the line names the files of the reader's language. Break: one
+// phrase for two reasons, say the error's text, or print the key raw.
+func TestUnreadConfig_EachReasonSaysItsOwnWords(t *testing.T) {
+	st := mustOpen(t)
+	var reg lang.Registry
+	stepErr := errors.New("/r/x.cfg: open /r/x.cfg: permission denied")
+	take := func(sess, rel string, r lang.Reason) (string, string) {
+		if err := os.MkdirAll(st.RunDir(sess), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		p := &Post{st: st, sessionID: sess, event: "PostToolUse", gate: keptGate{rel: rel, reg: &reg,
+			unread: &lang.Refusal{File: "x.cfg", Reason: r, Err: stepErr}, unreadLang: "fake"}}
+		return p.takeKindLine()
+	}
+	phrases := map[string]bool{}
+	for i, c := range []struct {
+		r   lang.Reason
+		why string
+	}{
+		{lang.ReadFailed, "read failed"}, {lang.NotRegular, "not a regular file"}, {lang.OverCap, "over the size cap"},
+		{lang.NotJSON, "not JSON"}, {lang.WrongShape, "JSON of the wrong shape"}, {lang.WrongShape + 1, "read failed"},
+	} {
+		line, marker := take("s"+strconv.Itoa(i), "a/b.cfgx", c.r)
+		if want := unreadLineOf("x.cfg", c.why, ".cfgx"); line != want {
+			t.Errorf("reason %d: the line reads %q; want %q", c.r, line, want)
+		}
+		if marker != store.UnreadNoticeName("x.cfg") {
+			t.Errorf("reason %d: the marker taken is %q; want the file's", c.r, marker)
+		}
+		if strings.Contains(line, "/r/") || strings.Contains(line, "denied") {
+			t.Errorf("reason %d: the line %q carries the step's error", c.r, line)
+		}
+		phrases[reasonWords(c.r)] = true
+	}
+	if len(phrases) != 5 {
+		t.Errorf("the reasons say %d phrases, want 5: %v", len(phrases), phrases)
+	}
+	if line, _ := take("s-raw", "a/b.f\x01k", lang.NotJSON); line != unreadLineOf("x.cfg", "not JSON", "fake") {
+		t.Errorf("an unprintable kind's line reads %q; want the language's files named", line)
 	}
 }

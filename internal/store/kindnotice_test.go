@@ -184,3 +184,45 @@ func TestUnindexedNotice_IsADigestOfTheLanguageApartFromTheKinds(t *testing.T) {
 		t.Error("a returned unindexed marker is not taken again")
 	}
 }
+
+// TestUnreadNotice_IsADigestOfTheFileApartFromTheOthers: the unread
+// configuration's marker is its prefix and the first 16 hex digits of the
+// refused file's sha256; it reads as neither a kind marker nor an unindexed
+// one, and neither of those reads as it, so it is never counted toward the
+// kinds' limit. It is taken once per session and file, and a returned one
+// is taken again. Break: share another family's prefix, leave the family
+// out of the notice markers (never taken), or put the file in the name.
+func TestUnreadNotice_IsADigestOfTheFileApartFromTheOthers(t *testing.T) {
+	if got, want := UnreadNoticeName(".rashomon/graph.json"), FileNoticeUnreadPrefix+"6a99901b23723ba6"; got != want {
+		t.Errorf("UnreadNoticeName(.rashomon/graph.json) = %q, want %q", got, want)
+	}
+	if got, want := UnreadNoticeName("go.mod"), FileNoticeUnreadPrefix+"33ef32bf6c23acb9"; got != want {
+		t.Errorf("UnreadNoticeName(go.mod) = %q, want %q", got, want)
+	}
+	for _, f := range []string{"go.mod", ".rashomon/graph.json", ""} {
+		if name := UnreadNoticeName(f); !IsUnreadNoticeFile(name) || IsKindNoticeFile(name) || IsUnindexedNoticeFile(name) {
+			t.Errorf("UnreadNoticeName(%q) = %q reads as another family's marker, or not as its own", f, name)
+		}
+		if IsUnreadNoticeFile(KindNoticeName(f)) || IsUnreadNoticeFile(UnindexedNoticeName(f)) {
+			t.Errorf("another family's marker for %q reads as an unread one", f)
+		}
+	}
+	for _, bad := range []string{FileNoticeUnreadPrefix + "go.mod", FileNoticeUnreadPrefix + "0123456789ABCDEF",
+		FileNoticeUnreadPrefix + "0123", FileNoticeOtherKinds} {
+		if IsUnreadNoticeFile(bad) {
+			t.Errorf("%q reads as an unread marker", bad)
+		}
+	}
+	s := kindStore(t)
+	name := UnreadNoticeName("go.mod")
+	if !s.TakeNotice("s1", name) || s.TakeNotice("s1", name) {
+		t.Fatal("the unread marker is not taken exactly once")
+	}
+	if n, ok := s.kindNotices("s1"); !ok || n != 0 {
+		t.Errorf("the session counts %d kind markers (%v); want 0", n, ok)
+	}
+	s.ReturnNotice("s1", name)
+	if !s.TakeNotice("s1", name) {
+		t.Error("a returned unread marker is not taken again")
+	}
+}

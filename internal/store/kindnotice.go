@@ -42,6 +42,16 @@ const kindNoticeLimit = 16
 // is never counted among them.
 const FileNoticeUnindexedPrefix = "notice-unindexed-"
 
+// The unread configuration's notice markers: the first time a session edits
+// a file whose reader's configuration step refused its file under the root
+// (lang.Refusal), the post hook says once to the person which file was not
+// read and why. Each is an empty file like the kind markers, named
+// FileNoticeUnreadPrefix and the same 16 hex digits of the refused file's
+// slash path. The files are the registry's steps', never an edited file's,
+// so a session keeps at most one per configuration file and no limit is
+// needed; the family is apart from the kind markers.
+const FileNoticeUnreadPrefix = "notice-unread-"
+
 // KindNoticeName returns the marker name for the kind key: the prefix and the
 // first 16 lower-case hex digits of the key's sha256.
 func KindNoticeName(key string) string { return digestName(FileNoticeKindPrefix, key) }
@@ -57,6 +67,15 @@ func UnindexedNoticeName(lang string) string { return digestName(FileNoticeUnind
 // IsUnindexedNoticeFile reports whether name is one of the unindexed
 // language markers' file names: the prefix and 16 lower-case hex digits.
 func IsUnindexedNoticeFile(name string) bool { return isDigestName(FileNoticeUnindexedPrefix, name) }
+
+// UnreadNoticeName returns the marker name for the refused configuration
+// file, a slash path: the prefix and the first 16 lower-case hex digits of
+// its sha256.
+func UnreadNoticeName(file string) string { return digestName(FileNoticeUnreadPrefix, file) }
+
+// IsUnreadNoticeFile reports whether name is one of the unread
+// configuration markers' file names: the prefix and 16 lower-case hex digits.
+func IsUnreadNoticeFile(name string) bool { return isDigestName(FileNoticeUnreadPrefix, name) }
 
 // digestName is prefix and the first 16 lower-case hex digits of key's
 // sha256.

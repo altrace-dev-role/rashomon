@@ -65,17 +65,52 @@ func unindexedLine(l, what string) string {
 		" carry no unit, caller or conflict facts until rashomon graph index runs."
 }
 
+// The unread configuration's line: an edit the overlay writer stopped at
+// its reader's Claim, the reader's configuration step having refused its
+// file under the root (keptGate.unread), is said to the person once per
+// session and file: the file as the step names it, and why, the class of
+// the step's error alone (lang.Reason), never its path or text. The words
+// before "files" are as the unindexed line's.
+
+// unreadLine is the line for file, the configuration not read, why, its
+// reason's words, and what, the files whose edits carry no facts.
+func unreadLine(file, why, what string) string {
+	return "rashomon: " + file + " was not read (" + why + "), so edits to " + what +
+		" carry no unit, caller or conflict facts this session."
+}
+
+// reasonWords is the words of the reason r, one phrase for each reason of
+// the closed set; a reason past it reads as a failed read.
+func reasonWords(r lang.Reason) string {
+	switch r {
+	case lang.NotRegular:
+		return "not a regular file"
+	case lang.OverCap:
+		return "over the size cap"
+	case lang.NotJSON:
+		return "not JSON"
+	case lang.WrongShape:
+		return "JSON of the wrong shape"
+	}
+	return "read failed"
+}
+
 // takeKindLine is the line this post owes about the edited file's kind and
 // the marker it took for it, or "" and "" when none is owed: the overlay
 // writer's gate stopped neither at its last check alone (keptGate.unclaimed)
-// nor at the index's header for the file's language (keptGate.unindexed),
-// or the session has had the line. The gate is the writer's own result
-// (Post.writeOverlay), so the line and the overlay cannot part. The two
-// states never meet: an unclaimed file has no reader to be unindexed.
+// nor at the index's header for the file's language (keptGate.unindexed)
+// nor at a refused configuration (keptGate.unread), or the session has had
+// the line. The gate is the writer's own result (Post.writeOverlay), so the
+// line and the overlay cannot part. The states never meet: an unclaimed
+// file has no reader to be unindexed or configured, and the writer stops
+// an unindexed one before its reader's configuration step.
 func (p *Post) takeKindLine() (line, marker string) {
 	g := p.gate
-	if g.unindexed != "" {
+	switch {
+	case g.unindexed != "":
 		return p.takeUnindexedLine(g)
+	case g.unread != nil:
+		return p.takeUnreadLine(g)
 	}
 	if !g.unclaimed || g.reg == nil {
 		return "", ""
@@ -103,11 +138,27 @@ func (p *Post) takeUnindexedLine(g keptGate) (line, marker string) {
 	if !p.st.TakeNotice(p.sessionID, marker) {
 		return "", ""
 	}
-	what := g.unindexed + " files"
-	if key := lang.KindKey(g.rel); printableKind(key) {
-		what = key + " files"
+	return unindexedLine(g.unindexed, kindWhat(g.rel, g.unindexed)), marker
+}
+
+// takeUnreadLine is takeKindLine for a gate the writer stopped at a refused
+// configuration: the file's line and its marker, or "" and "" when the
+// session has had it or the marker could not be made.
+func (p *Post) takeUnreadLine(g keptGate) (line, marker string) {
+	marker = store.UnreadNoticeName(g.unread.File)
+	if !p.st.TakeNotice(p.sessionID, marker) {
+		return "", ""
 	}
-	return unindexedLine(g.unindexed, what), marker
+	return unreadLine(g.unread.File, reasonWords(g.unread.Reason), kindWhat(g.rel, g.unreadLang)), marker
+}
+
+// kindWhat is the words for the files like rel: its kind where the kind
+// passes printableKind, else the files of l, the language that claims rel.
+func kindWhat(rel, l string) string {
+	if key := lang.KindKey(rel); printableKind(key) {
+		return key + " files"
+	}
+	return l + " files"
 }
 
 // returnKindLine gives back the marker takeKindLine took, for a line that

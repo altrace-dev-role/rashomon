@@ -69,6 +69,14 @@ type Knowledge struct {
 // naming the file and the cap, and the Stop names no unit.
 const MaxConfigBytes = 64 << 10
 
+// errConfigOverCap is ReadConfig's error, under the file's path, for a
+// configuration over MaxConfigBytes. It is an errors.New value, which the
+// compiler lays out statically, so process init allocates nothing for it
+// (RES-2; regfile.ErrOverCap says what the init trace shows for such a
+// value); a fmt call here would run at init. The number in its words is
+// MaxConfigBytes, which TestWire_ARefusedConfigurationIsTheError checks.
+var errConfigOverCap = errors.New("over 65536 bytes")
+
 // ReadConfig reads root's configuration, for `rashomon graph index` and for
 // the Stop (the unit a write is in) alike, so the two cannot disagree on
 // whether it reads. It opens through regfile.Open, so a named pipe at the
@@ -85,7 +93,7 @@ func ReadConfig(root string) (Config, error) {
 	defer f.Close() //nolint:errcheck // read-only
 	b, err := io.ReadAll(io.LimitReader(f, MaxConfigBytes+1))
 	if err == nil && len(b) > MaxConfigBytes {
-		err = fmt.Errorf("%s: over %d bytes", p, MaxConfigBytes)
+		err = fmt.Errorf("%s: %w", p, errConfigOverCap)
 	}
 	if err != nil {
 		return c, err
@@ -223,7 +231,10 @@ func python(c Config) pylite.Resolver {
 // by: the configuration's py units and the module names each owns, none
 // where the root has no configuration file (fs.ErrNotExist), and the error,
 // naming the file, where the file is refused (not a regular file, over
-// MaxConfigBytes, not JSON). Python is registered indexed
+// MaxConfigBytes, not JSON, JSON of another shape). Each step's refusal is
+// a *lang.Refusal naming the file it refused and why (refusal), so a hook
+// says which file was not read without naming the language whose step read
+// it. Python is registered indexed
 // (lang.Registry.RegisterIndexed): where the index header's producers name
 // no py producer, a hook builds no overlay of a .py file and reads no
 // configuration, and says so. Go is not, so a Go edit under an index with
@@ -234,7 +245,7 @@ func Wire() *lang.Registry {
 		mod, err := gopg.ReadModulePath(root)
 		switch {
 		case err != nil:
-			return nil, err
+			return nil, refusal(gopg.ManifestFile, err)
 		case mod == "":
 			return gopg.Resolver{}, nil
 		}
@@ -246,11 +257,33 @@ func Wire() *lang.Registry {
 		case errors.Is(err, fs.ErrNotExist):
 			return python(Config{}), nil
 		case err != nil:
-			return nil, fmt.Errorf("%s: %w", ConfigFile, err)
+			return nil, refusal(ConfigFile, fmt.Errorf("%s: %w", ConfigFile, err))
 		}
 		return python(c), nil
 	})
 	return &reg
+}
+
+// refusal is a configuration step's refusal of file, a slash path under
+// the root, for err, the step's error: the reason is err's class, tested
+// in this order. A syntax error is tested before a type error because a
+// type error can wrap one (json.UnmarshalTypeError's Err, under go1.27's
+// JSON v2), and that file does not parse as JSON at all.
+func refusal(file string, err error) error {
+	var syntax *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	r := lang.ReadFailed
+	switch {
+	case errors.Is(err, regfile.ErrNotRegular):
+		r = lang.NotRegular
+	case errors.Is(err, errConfigOverCap):
+		r = lang.OverCap
+	case errors.As(err, &syntax):
+		r = lang.NotJSON
+	case errors.As(err, &typ):
+		r = lang.WrongShape
+	}
+	return &lang.Refusal{File: file, Reason: r, Err: err}
 }
 
 // claimed lists, per producer, the repository's files its resolver claims

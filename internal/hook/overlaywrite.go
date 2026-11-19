@@ -259,13 +259,18 @@ type overlayCall struct {
 // registered indexed and the header names no producer of its language
 // (lang.Registry.Unindexed). The writer clears ok there, so the post reads
 // no unit for the edit and runs no configuration step, and says that to the
-// person once per language (takeKindLine).
+// person once per language (takeKindLine). unread is the refusal of the
+// claiming reader's configuration step under the root, where the writer
+// stopped at the reader's Claim, and unreadLang that reader's language: the
+// post says which file was not read and why once per file (takeKindLine).
 type keptGate struct {
-	root, rel string
-	reg       *lang.Registry
-	ok        bool
-	unclaimed bool
-	unindexed string
+	root, rel  string
+	reg        *lang.Registry
+	ok         bool
+	unclaimed  bool
+	unindexed  string
+	unread     *lang.Refusal
+	unreadLang string
 }
 
 // overlayTool reports a tool whose input names a file the overlay may read.
@@ -433,12 +438,13 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	r, _, cerr := g.reg.Claim(at, under)
 	if cerr != nil {
 		// The claiming reader's configuration under this root is refused,
-		// so the reader reads no file there and the edit writes no group.
-		// Until the go.mod line replaces it, a refused go.mod still leaves
-		// the manifest notice owed (READ-SAFE1a D7): PostToolUse has no
-		// channel to the person, so the session's next prompt says it once;
-		// the class is the only part of the error kept, never its path or
+		// so the reader reads no file there and the edit writes no group;
+		// the post says which file was not read and why (keepUnread). A
+		// refused go.mod still leaves the manifest notice owed as well
+		// (READ-SAFE1a D7), which the session's next prompt says once; the
+		// class is the only part of the error kept, never its path or
 		// text. Another reader's refusal owes nothing here.
+		c.keepUnread(g, at, under, cerr)
 		if reader, _ := g.reg.For(at, under); reader.Lang() == gopg.Lang && c.st != nil {
 			c.st.OweManifestNotice(c.session, !errors.Is(cerr, regfile.ErrNotRegular))
 		}
@@ -460,6 +466,20 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	log := graph.OpenSessionLog(c.st.Root(), rid, graph.RevCommit(hdr.Rev.Commit), true)
 	_ = log.AppendOverlayGroup(graph.BuildOverlayGroup(group), func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
 	return group, at, under, true
+}
+
+// keepUnread keeps cerr, the claiming reader's refused configuration under
+// at, on the writer's gate, where one is set, for the post's line: the file
+// and why (lang.Refusal) and the reader's language, the words for a kind
+// that does not print. An error that is no Refusal names no file, and the
+// gate keeps nothing of it.
+func (c overlayCall) keepUnread(g keptGate, at, under string, cerr error) {
+	var rf *lang.Refusal
+	if c.gate == nil || !errors.As(cerr, &rf) {
+		return
+	}
+	reader, _ := g.reg.For(at, under)
+	c.gate.unread, c.gate.unreadLang = rf, reader.Lang()
 }
 
 // writeOverlay is the PreToolUse writer: the declared group, at the seq the

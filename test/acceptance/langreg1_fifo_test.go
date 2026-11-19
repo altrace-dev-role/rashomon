@@ -76,8 +76,8 @@ func lrFIFO(t *testing.T, dir, file string) {
 	}
 }
 
-// TestLANGREG1_AFIFOConfigSaysWhy (s6, FIFO): a configuration that turns
-// into a FIFO after the index is refused, not opened, and an edit says it
+// TestLANGREG1_AFIFOConfigSaysWhy: a configuration that turns into a FIFO
+// after the index is refused, not opened, and an edit says it
 // was not read and why, once in the session for the file: the py unit's
 // .rashomon/graph.json under two .py edits, and go.mod under a .go edit.
 // Every hook and post is bounded by lrBound. Base: no line, and the Go
