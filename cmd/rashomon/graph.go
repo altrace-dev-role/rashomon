@@ -6,8 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
@@ -93,12 +96,11 @@ func graphIndex(args []string, stdout io.Writer) error {
 		return err
 	}
 	rev := graph.RevCommit(r.Header.Rev.Commit)
-	for _, f := range r.Refused {
-		if f.Line > 0 {
-			fmt.Fprintf(stdout, "warning: %s:%d not indexed: %s\n", f.Path, f.Line, f.Reason)
-		} else {
-			fmt.Fprintf(stdout, "warning: %s not indexed: %s\n", f.Path, f.Reason)
-		}
+	for _, f := range r.Refused[:min(len(r.Refused), graph.MaxRefusedNamed)] {
+		fmt.Fprint(stdout, refusalLine(f))
+	}
+	if n := len(r.Refused) - graph.MaxRefusedNamed; n > 0 {
+		fmt.Fprintf(stdout, "warning: %d more file(s) not indexed\n", n)
 	}
 	for _, k := range cfg.Knowledge {
 		switch err := slot.Approved(k.Clause).Validate(); {
@@ -115,6 +117,29 @@ func graphIndex(args []string, stdout io.Writer) error {
 	_, err = fmt.Fprintf(stdout, "indexed %d file(s)%s: %d node(s), %d edge(s) at %s in %s -> %s; repo %s\n",
 		r.Files, refused, len(r.Store.Nodes(rev)), len(r.Store.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile, r.Header.Repo)
 	return err
+}
+
+// refusalLine is the warning line graph index prints for one refused file:
+// its path, its line when it has one, and why, the path and the reason
+// each as shown prints it.
+func refusalLine(f graph.Refusal) string {
+	if f.Line > 0 {
+		return fmt.Sprintf("warning: %s:%d not indexed: %s\n", shown(f.Path), f.Line, shown(f.Reason))
+	}
+	return fmt.Sprintf("warning: %s not indexed: %s\n", shown(f.Path), shown(f.Reason))
+}
+
+// shown is s as it is, or s as a Go quoted string when s is not valid
+// UTF-8 or holds a rune unicode.IsPrint refuses, a control rune such as a
+// newline or a format rune such as the right-to-left override: a file
+// name then cannot write a line of its own or turn the rest of its line
+// around on a terminal. Both tests are needed, for ranging over s reads a
+// bad byte as U+FFFD, which is printable.
+func shown(s string) string {
+	if utf8.ValidString(s) && !strings.ContainsFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) {
+		return s
+	}
+	return strconv.Quote(s)
 }
 
 // graphKnowledge imports FILE... into the index at or above the working
