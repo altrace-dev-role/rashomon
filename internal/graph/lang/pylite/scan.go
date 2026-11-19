@@ -84,9 +84,9 @@ func pats() *patternSet {
 	return &patterns
 }
 
-// scan reads src line by line. A def's body is every following line more
-// indented than the def, or inside an open bracket; calls are read from
-// bodies only.
+// scan reads src line by line, an import split by backslashes as one
+// statement. A def's body is every following line more indented than the
+// def, or inside an open bracket; calls are read from bodies only.
 func scan(src string) (fileScan, error) {
 	f := fileScan{imports: map[string]importRef{}}
 	lines := strings.Split(src, "\n")
@@ -117,14 +117,24 @@ func scan(src string) (fileScan, error) {
 			i = end
 			continue
 		}
-		if m := pats().from.FindStringSubmatch(trim); m != nil {
+		// A backslash that ends a line joins the next line to it (Python's
+		// explicit line joining). An import read from the joined lines takes
+		// them all; any other statement is read line by line as before.
+		stmt, end := trim, i
+		for strings.HasSuffix(stmt, `\`) && end+1 < len(lines) {
+			end++
+			stmt = strings.TrimSpace(stmt[:len(stmt)-1] + " " + lines[end])
+		}
+		if m := pats().from.FindStringSubmatch(stmt); m != nil {
 			readFrom(f.imports, m[1], m[2])
-		} else if m := pats().imp.FindStringSubmatch(trim); m != nil {
+			i = end
+		} else if m := pats().imp.FindStringSubmatch(stmt); m != nil {
 			name := m[1]
 			if m[2] != "" {
 				name = m[2]
 			}
 			f.imports[name] = importRef{module: m[1]}
+			i = end
 		} else if m := pats().cnst.FindStringSubmatch(line); m != nil {
 			f.consts = append(f.consts, constDef{name: m[1], value: m[2], line: i + 1})
 		}
