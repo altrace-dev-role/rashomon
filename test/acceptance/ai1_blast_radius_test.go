@@ -99,8 +99,11 @@ func ai1Walk(t *testing.T, dir string) string {
 // a lower bound; the next edit of the package says nothing. The log is read
 // once per package until the next sync (A2's read gate): c's file changed
 // since leaves the set the sync gave standing, so a third edit says nothing
-// either. Break: drop the read marker, and the third edit reads again and
-// names b alone (the print gate alone keeps the second edit silent).
+// either, nor a fourth in the next prompt with no sync between. Break: drop
+// the read marker, and the fourth edit reads again and names b alone (the
+// print gate alone keeps the second edit silent; within one prompt the note
+// budget holds the third edit's note, so only the fourth, in a prompt of
+// its own, tells the read gate from the budget).
 func TestAI1_AGoEditTellsTheCallersOnce(t *testing.T) {
 	e := newSteerEnv(t)
 	dir := gi1Project(t, ai1Files)
@@ -114,6 +117,9 @@ func TestAI1_AGoEditTellsTheCallersOnce(t *testing.T) {
 	ai1Write(t, dir, "c/c.go", "package c\n\nvar V = 3\n")
 	if got := e.ai1Edit(dir, "toolu_e3", "a/a.go"); got != "" {
 		t.Errorf("an edit after c changed, with no sync, gave %q, want nothing: the log was read again", got)
+	}
+	if got := e.ai1EditIn(dir, "toolu_e4", "a/a.go", "p2"); got != "" {
+		t.Errorf("an edit in the next prompt, with no sync, gave %q, want nothing: the log was read again", got)
 	}
 }
 
