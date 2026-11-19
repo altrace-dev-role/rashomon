@@ -51,12 +51,17 @@ type Config struct {
 	// SteerProjects holds SwitchOff for each project (baseline.Key) whose
 	// notes are off.
 	SteerProjects map[string]string `json:"steer_projects,omitempty"`
+	// EditMarks is SwitchOff when the user has turned the edit marks off: the
+	// post hook then writes no marks on an execution and says so in its
+	// edit_marks_withheld (switched_off). "" is on. It is set by hand in
+	// config.json; no verb writes it.
+	EditMarks string `json:"edit_marks,omitempty"`
 
 	extra map[string]json.RawMessage
 }
 
 // configKeys are the keys Config names, which extra never holds.
-var configKeys = []string{"summary", "summary_projects", "steer_user", "steer_projects"}
+var configKeys = []string{"summary", "summary_projects", "steer_user", "steer_projects", "edit_marks"}
 
 // SummaryOn is the summary switch for the user's account, with its default
 // applied: on unless the file says false.
@@ -82,6 +87,14 @@ func (c Config) SteerOffUser() bool { return steerSwitchOff(c.SteerUser) }
 func (c Config) SteerOffFor(project string) bool {
 	return c.SteerOffUser() || steerSwitchOff(c.SteerProjects[project])
 }
+
+// EditMarksOff reports the edit-marks switch off, read as the steer switches
+// are: absent or exactly "on" is on, and any other value is off.
+func (c Config) EditMarksOff() bool { return steerSwitchOff(c.EditMarks) }
+
+// WithheldSwitchedOff is the reason a *_withheld key gives for a field a
+// switch of config.json turned off (record_v5.go: switched_off).
+const WithheldSwitchedOff = "switched_off"
 
 // ErrConfigUnreadable is what a config.json that is there but does not read
 // (it cannot be opened, does not parse, or is over its size) matches under errors.Is. The hook

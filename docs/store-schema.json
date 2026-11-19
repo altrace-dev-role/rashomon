@@ -1139,7 +1139,7 @@
           "additionalProperties": true
         },
         "edit_marks": {
-          "description": "Schema 5. The deltas per closed integrity-mark id in an edit, from the shared 1 MiB pre-read: added and removed, each a count per mark id; basis (edit_delta, write_vs_before, write_before_unread or notebook_added_only); and version.",
+          "description": "Schema 5. The deltas per closed integrity-mark id in an edit: added and removed, each a count of lines per mark id; basis (edit_delta, write_vs_before, write_before_unread or notebook_added_only); and version. The post hook writes it for an Edit or MultiEdit that ended ok, on the edit_delta basis and net over the call's edits, so an id is in one of added and removed; the pattern table is version 1 (Go and Python, line-anchored; internal/editmarks), and the other bases are not written yet. It holds ids from a fixed table and counts and never text of the edit. null for a call that moves no id, for any other call, and where edit_marks_withheld says why.",
           "type": [
             "object",
             "null"
@@ -1198,7 +1198,7 @@
           ]
         },
         "edit_marks_withheld": {
-          "description": "Schema 5. Why edit_marks is null when it is null by rule: switched_off, under the edit_marks switch of config.json. Null when edit_marks is present or simply not applicable. One of: switched_off; or null.",
+          "description": "Schema 5. Why edit_marks is null when it is null by rule: switched_off, under the edit_marks switch of config.json (\"edit_marks\": \"off\"), or oversize, over the caps of internal/store/limits.go. Null when edit_marks is present or simply not applicable. One of: switched_off; oversize; or null.",
           "type": [
             "string",
             "null"
