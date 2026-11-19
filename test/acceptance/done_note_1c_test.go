@@ -255,7 +255,8 @@ func TestDONE1u_TextOnlyDoneClaimAfterAnUnflaggedStop(t *testing.T) {
 // Stop, a passing run in the same prompt, and a Stop of that prompt whose
 // claim is read and backed. The entry is deleted and the next prompt carries
 // no note. Stop 2 prints nothing: the person's last line for the prompt stays
-// the flag (a stated limit; debt row 1c-D1).
+// the flag. This is a known limit: the note to the agent is cleared, but
+// nothing tells the person that the claim was backed later.
 func TestDONE1v_ASecondStopThatBacksTheClaimClearsTheEntry(t *testing.T) {
 	e := newSteerEnv(t)
 	e.flaggedStopIn(t)
