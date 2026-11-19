@@ -50,7 +50,10 @@ m("VER-1.4 a verified record with a reason is verified", R,
   'c.State == store.StateVerified && c.Reason == nil', 'c.State == store.StateVerified', "TestVER34_")
 m("VER-1.4 an unknown probe is ignored", R, ' || c.Probe == store.ProbeUnknown', '', "TestVER34_")
 m("VER-1.4 an unknown hook entry is ignored", R, 'c.HookEntry == store.EntryUnknown || ', '', "TestVER34_")
-m("VER-1.4 an unknown is outweighed by a verified record", R, '(!verified || unknown)', '!verified', "TestVER34_")
+# Rewritten (stale): the plain '!verified' left `unknown` declared and unused,
+# which does not build, and a break that does not build is no kill. This one
+# reads the same as '!verified' and keeps `unknown` in use.
+m("VER-1.4 an unknown is outweighed by a verified record", R, '(!verified || unknown)', '(!verified || unknown && !verified)', "TestVER34_")
 m("VER-1.4 a start record is a post record", R,
   '\t\tif c.Phase != store.PhasePost {\n\t\t\tcontinue\n\t\t}\n', '', "TestVER34_")
 m("VER-1.4 coverage absent is unverified too", R,
