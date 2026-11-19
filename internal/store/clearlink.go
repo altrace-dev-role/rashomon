@@ -177,3 +177,9 @@ func isClearName(name string) bool {
 	}
 	return strings.HasPrefix(name, "."+clearLinkName) && strings.Contains(name, ".tmp-")
 }
+
+// MeetClear is meetClear in root's rendezvous folder for the working
+// directory cwd. Stub until its GREEN: it links nothing and writes nothing.
+func MeetClear(root, cwd string, side ClearSide, self string, now time.Time) (ClearLink, bool, error) {
+	return ClearLink{}, false, nil
+}
