@@ -109,11 +109,15 @@ func (e *lessonEnv) rv3Listed(t *testing.T, sessionID, promptID string) int {
 // framed as one; one byte more arrives cut to the cap, and its head is
 // framed only as cut; neither builds a line. Over a graph index a peer
 // message, whole or cut, builds no line of any key, the graph brief's
-// included. Controls: the same request typed builds a line that lists the
-// file, and over the index the graph brief's line; the cut message without
-// its from= key is typed and builds both. Break: read the request's names
-// off a framed prompt, count a framed prompt's paths as given, or drop the
-// cut on its way to Framed or to the graph brief.
+// included. A peer message of exactly the cap with typed text after it
+// arrives cut, its head the whole element with the closing tag last: read
+// as cut that is an element with text after it, typed, and over the index
+// it builds the graph brief's line; read as uncut it is held, and the brief
+// sends nothing. Controls: the same request typed builds a line that lists
+// the file, and over the index the graph brief's line; the cut message
+// without its from= key is typed and builds both. Break: read the request's
+// names off a framed prompt, count a framed prompt's paths as given, or drop
+// the cut on its way to Framed or to the graph brief.
 func TestRV1_3b_FramedPromptBuildsNoPreflight(t *testing.T) {
 	ask := rv1PlainAsks[1].text
 	t.Run("control_typed_first", func(t *testing.T) {
@@ -197,6 +201,25 @@ func TestRV1_3b_FramedPromptBuildsNoPreflight(t *testing.T) {
 		e.prompt("s1", "p2", strings.Replace(rv3Sized(t, gask, intent.MaxPromptBytes+500), rv3From, "", 1))
 		if _, g := e.rv1Lines("s1", "p2"); g == nil {
 			t.Errorf("control: the cut message without from= logged no graph line, so the cut case cannot fail")
+		}
+		// The reader keeps the whole element and marks it cut: under the cut
+		// it is typed and reaches the graph brief; without it, it is held.
+		whole := rv3Sized(t, gask, intent.MaxPromptBytes)
+		after := whole + "\nthanks"
+		p := readPendingPayload(strings.NewReader(promptPayload(t, after)), time.Second)
+		if !p.PromptCut || string(p.Prompt) != whole {
+			t.Fatalf("premise: an element of the cap with text after it: cut %v, %d bytes; want cut, the element's %d", p.PromptCut, len(p.Prompt), len(whole))
+		}
+		if framed, _ := harness.Framed(whole, true); framed {
+			t.Fatalf("premise: the cut head that ends in the closing tag is framed; want typed")
+		}
+		if framed, _ := harness.Framed(whole, false); !framed {
+			t.Fatalf("premise: the head read as uncut is not framed, so the case cannot fail")
+		}
+		e = rv1Graphed(t, "", nil)
+		e.prompt("s1", "p2", after)
+		if _, g := e.rv1Lines("s1", "p2"); g == nil {
+			t.Errorf("an element of the cap with text after it logged no graph line: the cut did not reach the graph brief")
 		}
 	})
 }
