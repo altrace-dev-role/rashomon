@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/rootio"
 )
 
 // Lang is the language namespace pylite writes under.
@@ -67,12 +68,30 @@ func (r Resolver) unit(rel string) (Unit, bool) {
 	return best, found
 }
 
+// maxSourceBytes bounds one source file Extract reads: eight times the
+// largest tracked Python file in the repositories indexed on the reference
+// machine when it was set (73294 bytes), rounded up to a power of two. A file over it is refused,
+// not parsed.
+const maxSourceBytes = 1 << 20
+
 // Extract reads each file under root and parses it at rev with the
-// committed confidences: definitions and imports 1.0, calls 0.9.
+// committed confidences: definitions and imports 1.0, calls 0.9. The reads
+// go through one root opened at root, so a source that is a link leaving
+// the repository is refused, not read; a link inside it is followed. A
+// source that is not a regular file, or is over maxSourceBytes, is refused
+// too.
 func (r Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.Record, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	rt, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer rt.Close() //nolint:errcheck // the root holds only a directory handle
 	var out []graph.Record
 	for _, rel := range files {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		b, err := rootio.ReadRegular(rt, filepath.FromSlash(rel), maxSourceBytes)
 		if err != nil {
 			return nil, err
 		}
