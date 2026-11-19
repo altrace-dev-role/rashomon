@@ -1184,4 +1184,5 @@ func TestRES2_InitBudget(t *testing.T) {
 	}
 	ran[InitGate] = true
 	t.Logf("init: %d packages, %d bytes at the fewest of %d runs (runs %v), %d allocs, %d gc lines", low.Packages, low.Bytes, initRuns, all, low.Allocs, low.GCLines)
+	t.Logf("init: %d environment variables in the measured process", len(env))
 }
