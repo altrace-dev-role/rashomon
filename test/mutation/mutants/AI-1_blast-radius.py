@@ -74,6 +74,11 @@ m("AI-1 no caller and no text still reach the decision", H,
   NO_CALLER_GUARD + BETWEEN_GUARDS + TEXT_GUARD,
   "\tif err != nil {\n" + BETWEEN_GUARDS + "\tif m.Text() == \"\" && false {\n",
   "TestAI1_SilenceWhereNothingIsProven")
+# The text guard alone: where the one fresh caller is the module's root, the
+# callers are there but no directory is left to list, so blastMessage is the
+# zero Message and only this guard holds the finding back.
+m("AI-1 a note naming no package still reaches the decision", H,
+  TEXT_GUARD, "\tif m.Text() == \"\" && false {\n", "TestAI1_SilenceWhereNothingIsProven")
 m("AI-1 a yielded note keeps its marker", H,
   "\tp.st.ReturnBlastRead(p.sessionID, d.marker)\n", "", "TestAI1_AYieldedNoteComesWithTheNextEdit")
 # The given rule is hook.Given (internal/hook/given.go), the one walk blast,

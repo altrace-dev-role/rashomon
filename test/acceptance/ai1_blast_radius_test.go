@@ -206,12 +206,14 @@ func TestAI1_ANoteNamingNoPackageIsNotSaid(t *testing.T) {
 // TestAI1_SilenceWhereNothingIsProven: each case says nothing to the model,
 // never "no dependents": no sync; an edit of a test file; an edit of a
 // package nothing calls into; a walk file that vouches for another log (a
-// read mid-sync); record scope v4, which keeps no directory in the clear.
-// Break: drop any one guard, and its case speaks. Nor does any case log a
-// blast-radius steer line: a finding that reaches the decision is logged
-// even when its note is refused, so with both no-caller guards dropped the
-// no-caller case prints nothing yet logs one suppressed line, which only
-// the steer log shows.
+// read mid-sync); record scope v4, which keeps no directory in the clear; a
+// package whose one fresh caller is the module's root, so that its note
+// would name no package. Break: drop any one guard, and its case speaks.
+// Nor does any case log a blast-radius steer line: a finding that reaches
+// the decision is logged even when its note is refused, so with both
+// no-caller guards dropped the no-caller case prints nothing yet logs one
+// suppressed line, which only the steer log shows; with the text guard
+// alone dropped, so does the root-caller case.
 func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 	cases := map[string]struct {
 		file  string
@@ -231,6 +233,12 @@ func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(e.home, "record_scope"), []byte("v4\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
+		}},
+		"root caller alone": {"a/a.go", func(t *testing.T, _ *env, dir string) {
+			ai1Write(t, dir, "main.go", "package main\n\nimport \"example.com/m/a\"\n\nfunc main() { _ = a.F() }\n")
+			h156Sync(t, dir)
+			ai1Write(t, dir, "b/b.go", "package b\n")
+			ai1Write(t, dir, "c/c.go", "package c\n\nvar V = 3\n")
 		}},
 	}
 	for name, c := range cases {
