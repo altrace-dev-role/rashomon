@@ -39,15 +39,24 @@ type Resolver interface {
 
 // Registry is an ordered set of resolvers; the first that claims a file
 // resolves it. It is built by the caller that wires languages (the index
-// command, index.Wire for a hook), never at init. Its entries are held by
-// pointer, so a Registry copied by value shares each entry's configured
-// resolvers and the lock that guards them.
-type Registry struct{ es []*entry }
+// command, index.Wire for a hook), never at init. Its entries are values,
+// so Register allocates nothing past the growth of the list: a Go Stop
+// builds a registry from its producers (index.UnitOf), and the Stop's
+// allocation budget counts every allocation it makes. A configured entry's
+// step is held by pointer, so a Registry copied by value shares each
+// configured resolver and the lock that guards it.
+type Registry struct{ es []entry }
 
-// entry is one registered resolver, its configuration step (nil for none),
-// and what that step returned for each root it ran under.
+// entry is one registered resolver and its configuration step, nil for a
+// resolver with none.
 type entry struct {
-	r         Resolver
+	r  Resolver
+	st *step
+}
+
+// step is an entry's configuration step and what it returned for each root
+// it ran under.
+type step struct {
 	configure func(root string) (Resolver, error)
 	mu        sync.Mutex
 	by        map[string]configured
@@ -60,20 +69,20 @@ type configured struct {
 }
 
 // Register appends r, which needs no configuration: Claim returns r itself.
-func (g *Registry) Register(r Resolver) { g.es = append(g.es, &entry{r: r}) }
+func (g *Registry) Register(r Resolver) { g.es = append(g.es, entry{r: r}) }
 
 // RegisterConfigured appends r with its configuration step. r answers
 // Claims and Lang; configure(root) returns the resolver that reads files
 // under root, or the error that refused root's configuration. It runs at
 // most once per root, on the first Claim of a path r claims under it.
 func (g *Registry) RegisterConfigured(r Resolver, configure func(root string) (Resolver, error)) {
-	g.es = append(g.es, &entry{r: r, configure: configure})
+	g.es = append(g.es, entry{r: r, st: &step{configure: configure}})
 }
 
 // For is the resolver that claims rel, false when none does. It runs no
 // configuration step: the resolver is the one registered.
 func (g *Registry) For(root, rel string) (Resolver, bool) {
-	if e := g.claimant(root, rel); e != nil {
+	if e, ok := g.claimant(root, rel); ok {
 		return e.r, true
 	}
 	return nil, false
@@ -86,14 +95,14 @@ func (g *Registry) For(root, rel string) (Resolver, bool) {
 // error, the same on every Claim under that root. false, with no error and
 // no step run, when no resolver claims rel.
 func (g *Registry) Claim(root, rel string) (Resolver, bool, error) {
-	e := g.claimant(root, rel)
-	if e == nil {
+	e, ok := g.claimant(root, rel)
+	if !ok {
 		return nil, false, nil
 	}
-	if e.configure == nil {
+	if e.st == nil {
 		return e.r, true, nil
 	}
-	c := e.at(root)
+	c := e.st.at(root)
 	if c.err != nil {
 		return nil, true, c.err
 	}
@@ -112,31 +121,31 @@ func (g *Registry) Langs() []string {
 	return out
 }
 
-// claimant is the first entry whose resolver claims rel, nil for none.
-func (g *Registry) claimant(root, rel string) *entry {
+// claimant is the first entry whose resolver claims rel, false for none.
+func (g *Registry) claimant(root, rel string) (entry, bool) {
 	for _, e := range g.es {
 		if e.r.Claims(root, rel) {
-			return e
+			return e, true
 		}
 	}
-	return nil
+	return entry{}, false
 }
 
-// at is the entry's configuration under root, running the step the first
-// time root is asked for and keeping its result, error included, for every
-// later ask. The lock is held across the step, so two Claims under one root
-// cannot both run it.
-func (e *entry) at(root string) configured {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if c, ok := e.by[root]; ok {
+// at is the step's result under root, running the step the first time
+// root is asked for and keeping its result, error included, for every
+// later ask. The lock is held across the step, so two Claims under one
+// root cannot both run it.
+func (s *step) at(root string) configured {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.by[root]; ok {
 		return c
 	}
-	r, err := e.configure(root)
+	r, err := s.configure(root)
 	c := configured{r: r, err: err}
-	if e.by == nil {
-		e.by = map[string]configured{}
+	if s.by == nil {
+		s.by = map[string]configured{}
 	}
-	e.by[root] = c
+	s.by[root] = c
 	return c
 }
