@@ -1016,6 +1016,9 @@ jobs:
           [ "${records:-0}" -gt 1000 ] && [ "$lines" -eq $((records + 1)) ]; step graph-not-vacuous $?
           same "$J/index-main.masked" "$J/index-branch.masked" index-stdout-equal
           grep -q -E ' in T -> \.rashomon/graph\.jsonl; repo ' "$J/index-main.masked"; step index-not-vacuous $?
+          WH='withheld: the index refused '
+          grep -q -a -F "$WH" "$J/bin-branch/rashomon"; step withheld-line-in-branch $?
+          grep -q -a -F "$WH" "$J/bin-main/rashomon"; [ $? -eq 1 ]; step withheld-line-not-in-main $?
           PROMPTS=(
             "where does writeGraphEvidence write the evidence file"
             "rename frobnicateWidget to frobnicateGadget everywhere"
@@ -1036,7 +1039,7 @@ jobs:
               same "$J/brief-$i-$sc-main.masked" "$J/brief-$i-$sc-branch.masked" "brief-$i-$sc-equal"
               b=$J/brief-$i-$sc-branch.out
               if grep -q -E " is not in the index| is in no unit|no unit is named|' names no unit|no unit names the target|no unit names the head '|' stands for a thing no clause names| is not declared in | is declared in none of the |no one unit has the segment " "$b"; then absent=$((absent + 1)); fi
-              if grep -q "withheld:" "$b"; then withheld=$((withheld + 1)); fi
+              if grep -q -F "$WH" "$b"; then withheld=$((withheld + 1)); fi
               first=$(awk 'p { print; exit } /^brief:$/ { p = 1 }' "$b")
               if [ -n "$first" ] && [ "$first" != "(empty)" ]; then texts=$((texts + 1)); fi
             done
