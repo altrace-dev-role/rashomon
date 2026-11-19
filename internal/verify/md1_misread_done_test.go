@@ -73,6 +73,8 @@ func TestMD1b_ANameInCapitalsIsNoClaim(t *testing.T) {
 		{msg: "The manager gets FIX BRANCH READY for #197 once the re-check passes.", why: "eng-1 7705: the message's name"},
 		{msg: "GATE-BIND1 and INSTALL-NOTOOLCHAIN1 get their READY or RED as their checks land.", why: "eng-1 7705: two tokens"},
 		{msg: "FIX BRANCH READY has gone to the manager.", why: "eng-2 5617: the message's name"},
+		{msg: "Send FIX BRANCH READY Now", why: "a name in a sentence of title-case words: a word's case is read " +
+			"from any of its letters, so Send and Now are lower, the sentence is not in capitals throughout"},
 		{msg: "I'll put that in the FIX BRANCH READY message.", why: "eng-4 3262: the message's name"},
 
 		{msg: "DONE.", class: ClaimDone, strict: true, why: "control: capitals throughout"},
