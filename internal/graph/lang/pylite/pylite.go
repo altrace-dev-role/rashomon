@@ -295,6 +295,10 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: graph.UnitID(Lang, u.Path), Pred: graph.Contains, Dst: file,
 			Tier: graph.Algorithmic, Conf: 1.0, Rev: rev, Prov: algo}})
 	}
+	// The file declares its module's id, the id an import of the module ends
+	// at, so an importer reaches the file at depth 2. No node carries it.
+	recs = append(recs, graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Declares, Dst: graph.SymID(Lang, u.Path, "mod", mod),
+		Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 	local := map[string]graph.ID{}
 	for _, d := range f.defs {
 		local[d.name] = graph.SymID(Lang, u.Path, "func", mod+"."+d.name)
