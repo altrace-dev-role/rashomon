@@ -161,7 +161,7 @@ m("MS a masked line is a run with a result", "internal/report/testbending.go",
 m("MS a masked line is no edit", "internal/report/testbending.go",
   "\tif d.Shape.MayWrite || statusMasked(d) {", "\tif d.Shape.MayWrite {", RP)
 m("MS the test runs line does not say how many were masked", "internal/report/text.go",
-  "\tif t.Masked != nil && *t.Masked > 0 {", "\tif false {", RP)
+  "\tif t.Masked != nil && *t.Masked > read {", "\tif false {", RP)
 m("MS the session report does not print masked runs", "internal/report/text.go",
   "\t\twriteMaskedRuns(b, *sess.MaskedRuns)\n", "", RP)
 m("MS masking is measured before schema 4", "internal/report/testbending.go",
