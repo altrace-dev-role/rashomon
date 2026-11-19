@@ -206,8 +206,12 @@ jobs:
           GOOS=darwin "$staticcheck" -checks U1000 -tags rashomonfault ./...
           GOOS=darwin "$staticcheck" -checks U1000 -tags perf ./...
 
+      # -timeout 15m, written out: go test's 10m default ends any one
+      # package's binary at 600 s, and this whole step has taken 538 to
+      # 712 s. An alarm at 15m still prints before this job's 30-minute
+      # bound, where a 20m one could be cut by it.
       - name: Test with race detector
-        run: go test ./... -count=1 -race
+        run: go test ./... -count=1 -race -timeout 15m
 
       # H-17's runtime evidence must actually run here, not merely not-fail.
       # The race step above already executed these tests; this step exists to
@@ -763,9 +767,12 @@ jobs:
   rec34-darwin:
     name: REC-34 group commit mutants (darwin)
     runs-on: macos-latest
-    # 15 to 18 minutes and more at 665 test files, with room for the tree's
-    # growth on a 3-core runner; the bound is DEL-17's.
-    timeout-minutes: 40
+    # On 16 recent runs the sweep step took 935 to 2017 s on the 14 green
+    # ones, and the job up to 2058 s. A mutant whose run hangs adds up to its
+    # 600 s -timeout before its TIMEOUT line prints, and 2058 + 600 s is past
+    # 40 minutes; 60 leaves room for the tree's growth on a 3-core runner.
+    # The bound is DEL-17's.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
