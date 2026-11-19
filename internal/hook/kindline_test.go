@@ -44,6 +44,14 @@ func (f *ovFix) kindPost(session, id, rel string) []byte {
 // the gate reads no file.
 func (f *ovFix) kindEdit(session, id, rel string) (*Post, []byte) {
 	f.t.Helper()
+	p := f.kindFlushed(session, id, rel, "")
+	return p, p.Steer(stEnv(0))
+}
+
+// kindFlushed is kindEdit's post before the steer step, its payloads
+// carrying prompt as their prompt id where prompt is not empty.
+func (f *ovFix) kindFlushed(session, id, rel, prompt string) *Post {
+	f.t.Helper()
 	file := filepath.Join(f.repo, filepath.FromSlash(rel))
 	if strings.IndexFunc(rel, unicode.IsControl) < 0 {
 		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
@@ -60,6 +68,9 @@ func (f *ovFix) kindEdit(session, id, rel string) (*Post, []byte) {
 		if event == "PostToolUse" {
 			p["tool_response"] = map[string]any{"stdout": "ok"}
 		}
+		if prompt != "" {
+			p["prompt_id"] = prompt
+		}
 		b, err := json.Marshal(p)
 		if err != nil {
 			f.t.Fatal(err)
@@ -73,7 +84,7 @@ func (f *ovFix) kindEdit(session, id, rel string) (*Post, []byte) {
 	if err := p.Flush(); err != nil {
 		f.t.Fatal(err)
 	}
-	return p, p.Steer(stEnv(0))
+	return p
 }
 
 // kindSaid is the system message b carries, failing unless b is one JSON
