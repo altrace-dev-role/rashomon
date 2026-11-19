@@ -68,3 +68,57 @@ m("pylite balanced records the line at every opening bracket", "internal/graph/l
   "\t\t\tif depth == 0 {\n\t\t\t\topened = line\n\t\t\t}\n",
   "\t\t\topened = line\n",
   "TestBalanced_AnUnclosedBracketIsReportedWhereTheOutermostOpened")
+
+# Extract's error is the refusals to errors.As, keeps each refusal's cause
+# to errors.Is, and its words name the first graph.MaxRefusedNamed refused
+# files and count the rest. Returning the bare refusals loses the causes
+# and the names; each row below drops one of these pieces.
+m("pylite Extract returns the bare refusals", "internal/graph/lang/pylite/pylite.go",
+  "\t\treturn out, refusedError{refused: refused, causes: causes}\n",
+  "\t\treturn out, refused\n",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite keeps no cause for a read refusal", "internal/graph/lang/pylite/pylite.go",
+  "\t\t\tcauses = append(causes, err)\n\t\t\trefused = append(refused, graph.Refusal{Path: rel, Reason: readReason(err)})\n",
+  "\t\t\trefused = append(refused, graph.Refusal{Path: rel, Reason: readReason(err)})\n",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite keeps no cause for a parse refusal", "internal/graph/lang/pylite/pylite.go",
+  "\t\t\tcauses = append(causes, err)\n\t\t\trefused = append(refused, graph.Refusal{Path: rel, Line: pe.line, Reason: pe.why})\n",
+  "\t\t\trefused = append(refused, graph.Refusal{Path: rel, Line: pe.line, Reason: pe.why})\n",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite refusal error unwraps to no cause", "internal/graph/lang/pylite/pylite.go",
+  "func (e refusedError) Unwrap() []error { return e.causes }\n",
+  "func (e refusedError) Unwrap() []error { return nil }\n",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite refusal error is not the refusals to errors.As", "internal/graph/lang/pylite/pylite.go",
+  "\tp, ok := target.(*graph.Refusals)\n\tif ok {\n\t\t*p = e.refused\n\t}\n\treturn ok\n",
+  "\treturn false\n",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite refusal error names no file", "internal/graph/lang/pylite/pylite.go",
+  "\t\tb.WriteString(sep)\n\t\tb.WriteString(f.Path)\n",
+  "\t\tb.WriteString(sep)\n",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite refusal error drops a parse refusal's line", "internal/graph/lang/pylite/pylite.go",
+  "\t\tif f.Line > 0 {\n\t\t\tb.WriteString(\":\" + strconv.Itoa(f.Line))\n\t\t}\n",
+  "",
+  "TestExtract_GoesOnPastARefusedFile")
+m("pylite refusal error names every refused file", "internal/graph/lang/pylite/pylite.go",
+  "\tfor _, f := range e.refused[:min(len(e.refused), graph.MaxRefusedNamed)] {\n",
+  "\tfor _, f := range e.refused {\n",
+  "TestExtract_ErrorWordsNameAtMostMaxRefusedNamed")
+m("pylite refusal error does not count the files past the named ones", "internal/graph/lang/pylite/pylite.go",
+  "\tif n := len(e.refused) - graph.MaxRefusedNamed; n > 0 {\n\t\tb.WriteString(\"; and \" + strconv.Itoa(n) + \" more\")\n\t}\n",
+  "",
+  "TestExtract_ErrorWordsNameAtMostMaxRefusedNamed")
+
+# The count follows the named files only when there are more: at exactly
+# graph.MaxRefusedNamed refused files every one is named and nothing is
+# counted, and one over is counted as one more. Moving the guard by one
+# either way counts "0 more" at the bound or leaves the one over uncounted.
+m("pylite refusal error counts 0 more at the bound", "internal/graph/lang/pylite/pylite.go",
+  "\tif n := len(e.refused) - graph.MaxRefusedNamed; n > 0 {\n",
+  "\tif n := len(e.refused) - graph.MaxRefusedNamed; n >= 0 {\n",
+  "TestExtract_ErrorWordsNameAtMostMaxRefusedNamed")
+m("pylite refusal error leaves one file over the bound uncounted", "internal/graph/lang/pylite/pylite.go",
+  "\tif n := len(e.refused) - graph.MaxRefusedNamed; n > 0 {\n",
+  "\tif n := len(e.refused) - graph.MaxRefusedNamed; n > 1 {\n",
+  "TestExtract_ErrorWordsNameAtMostMaxRefusedNamed")

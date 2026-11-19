@@ -55,9 +55,10 @@ type Refusal struct {
 	Reason string `json:"reason"`
 }
 
-// Refusals is the error a resolver's Extract returns, beside the records
-// of every file it read, when it refused some: the index is written
-// without them and names each one. Any other error fails the index.
+// Refusals is the error a resolver's Extract returns, or what that error
+// is to errors.As, beside the records of every file it read, when it
+// refused some: the index is written without them and names each one.
+// Any other error fails the index.
 type Refusals []Refusal
 
 func (r Refusals) Error() string {
