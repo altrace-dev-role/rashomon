@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/rootio"
 )
 
 // Lang is the language namespace pylite writes under.
@@ -83,18 +84,35 @@ func (r Resolver) unit(rel string) (Unit, bool) {
 	return best, found
 }
 
+// maxSourceBytes bounds one source file Extract reads: eight times the
+// largest tracked Python file in the repositories indexed on the reference
+// machine when it was set (73294 bytes), rounded up to a power of two. A file over it is refused,
+// not parsed.
+const maxSourceBytes = 1 << 20
+
 // Extract reads each file under root and parses it at rev with the
-// committed confidences: definitions and imports 1.0, calls 0.9. A file it
-// cannot read, or whose content it refuses, is a gap and not the end of the
-// index: Extract goes on, and returns the records of every other file with
-// graph.Refusals as its error, one per such file in the order given (a read
-// refusal has no line, and its reason is the read error's words without the
-// path; a parse refusal has the line and the reason).
+// committed confidences: definitions and imports 1.0, calls 0.9. The reads
+// go through one root opened at root: a link inside the repository is
+// followed, and a source that is a link leaving it, is not a regular file,
+// or is over maxSourceBytes is refused, not read. A file it cannot read,
+// or whose content it refuses, is a gap and not the end of the index:
+// Extract goes on, and returns the records of every other file with
+// graph.Refusals as its error, one per such file in the order given (a
+// read refusal has no line, and its reason is the read error's words
+// without the path; a parse refusal has the line and the reason).
 func (r Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.Record, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	rt, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer rt.Close() //nolint:errcheck // the root holds only a directory handle
 	var out []graph.Record
 	var refused graph.Refusals
 	for _, rel := range files {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		b, err := rootio.ReadRegular(rt, filepath.FromSlash(rel), maxSourceBytes)
 		if err != nil {
 			refused = append(refused, graph.Refusal{Path: rel, Reason: readReason(err)})
 			continue

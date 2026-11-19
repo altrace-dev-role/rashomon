@@ -14,6 +14,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/knowledge"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -283,7 +284,9 @@ func graphBrief(storeRoot, cwd, sessionID, promptID string, prompt []byte) (inde
 // scope, read once a brief exists and handed, as one answer, to the evidence
 // file (writeGraphEvidence), the unit briefs and the conflict base, each of
 // which keeps content only at v5; nil reads none and writes none of the
-// three.
+// three. An index the load refuses is no brief; one refused over its size
+// cap (graph.MaxGraphFileBytes) says so in OverCap, for the prompt's once
+// per session notice (READ-SAFE1a c5).
 func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, cut bool, specOf func() *spec.Compiled, scopeOf func() string) (indexBrief, bool) {
 	if cwd == "" || len(prompt) == 0 {
 		return indexBrief{}, false
@@ -294,7 +297,7 @@ func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, c
 	}
 	s, h, err := graph.LoadFile(root)
 	if err != nil {
-		return indexBrief{}, false
+		return indexBrief{OverCap: errors.Is(err, regfile.ErrOverCap)}, false
 	}
 	opt := hookScorer()
 	opt.Rel = relTo(cwd, root)
@@ -322,13 +325,15 @@ func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, c
 // node the brief's first keyed line is keyed on (Brief.FirstKey), and the
 // global id of the unit that contains that node, "" when none does or
 // when the brief opens with the not-known line (W-M1.38), which claims no
-// unit.
+// unit. OverCap is set, on the zero brief, when the index was refused for
+// its size (graphBriefWith).
 type indexBrief struct {
 	engine.Brief
-	Repo  string
-	First graph.ID
-	Tier  graph.Tier
-	Unit  graph.ID
+	Repo    string
+	First   graph.ID
+	Tier    graph.Tier
+	Unit    graph.ID
+	OverCap bool
 }
 
 // unitOf is the unit that contains id, found by walking up the containing

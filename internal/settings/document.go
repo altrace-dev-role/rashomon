@@ -16,11 +16,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // member is one key of a JSON object, with its value held raw.
@@ -51,6 +51,11 @@ type Document struct {
 	canonical bool
 }
 
+// maxFileBytes bounds the settings file Load reads: eight times the largest
+// found on the reference machine when it was set (5719 bytes), rounded up to
+// a power of two.
+const maxFileBytes = 64 << 10
+
 // Load reads a settings file. An absent file and an empty one are both an
 // empty document, because a machine that has never run Claude Code has
 // neither, and refusing to install on such a machine would be refusing the
@@ -63,7 +68,15 @@ func Load(path string) (*Document, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	// regfile's read: a named pipe or a device at path is refused at once
+	// rather than waited on (a hook would wait every turn), and a target over
+	// maxFileBytes is refused before a byte of it is read. It follows a link,
+	// as writeTarget does when it writes.
+	data, err := regfile.ReadCapped(path, maxFileBytes)
+	var oc *regfile.OverCapError
+	if errors.As(err, &oc) {
+		return nil, &Error{Path: path, Err: oc}
+	}
 	if errors.Is(err, fs.ErrNotExist) {
 		// A dangling symlink's open fails with the same ErrNotExist a path
 		// with nothing at it gives, and the two are not the same fact: one
@@ -84,7 +97,7 @@ func Load(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	// data is os.ReadFile's own buffer, which nothing else holds, so the
+	// data is the read's own buffer, which nothing else holds, so the
 	// document takes it rather than copying it: ParseNamed's copy, on every
 	// hook call's Load, was the size of the settings file again.
 	return parseOwned(path, data)
