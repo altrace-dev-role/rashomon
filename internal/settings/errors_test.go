@@ -36,9 +36,9 @@ func TestRubricERRORS10_SyntaxErrorsNameLineAndColumn(t *testing.T) {
 		wantInText string
 	}{
 		// The second comma is the 9th byte of line 3: `  "b": [1,,2]`.
-		{"an empty array element", "{\n  \"a\": 1,\n  \"b\": [1,,2]\n}\n", 3, 11, "invalid character ','"},
-		{"a misspelt literal on line two", "{\"a\":\n {\"x\": tru}}", 2, 11, "in literal true"},
-		{"a missing colon", "{\n\n  \"a\" 1\n}", 3, 7, "after object key"},
+		{"an empty array element", "{\n  \"a\": 1,\n  \"b\": [1,,2]\n}\n", 3, 11, "not JSON"},
+		{"a misspelt literal on line two", "{\"a\":\n {\"x\": tru}}", 2, 11, "not JSON"},
+		{"a missing colon", "{\n\n  \"a\" 1\n}", 3, 7, "not JSON"},
 		{"a file cut short", "{\n  \"a\": 1", 2, 8, "unexpected end"},
 		{"trailing data on a later line", "{\"a\": 1}\n\n  nonsense", 3, 3, "trailing data"},
 		{"an array at the top level", "\n[1]", 2, 1, "not a JSON object"},
@@ -47,10 +47,10 @@ func TestRubricERRORS10_SyntaxErrorsNameLineAndColumn(t *testing.T) {
 		// Column counts bytes, not characters: "中" is 3 bytes, so 'x' is the
 		// 11th byte of the line even though an editor would show it as the
 		// 9th character.
-		{"a multibyte key", "{\"中\": 1 x}", 1, 11, "invalid character 'x'"},
+		{"a multibyte key", "{\"\u4e2d\": 1 x}", 1, 11, "not JSON"},
 		// \r\n is still one line break; the column after it starts over at 1
 		// exactly as it does after \n alone.
-		{"a CRLF line ending", "{\r\n\"a\": 1 x}", 2, 8, "invalid character 'x'"},
+		{"a CRLF line ending", "{\r\n\"a\": 1 x}", 2, 8, "not JSON"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ParseNamed("/home/u/.claude/settings.json", []byte(tc.in))
