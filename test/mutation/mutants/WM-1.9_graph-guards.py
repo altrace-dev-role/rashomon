@@ -56,7 +56,8 @@ m("WM-1.9 an scp-like url with an @ after its first colon is read", R,
   "\t\tif strings.Contains(whole[strings.Index(s, \":\")+1:], \"@\") {\n\t\t\treturn \"\"\n\t\t}\n", "",
   "TestNormalizeOrigin_KeepsNoUserPart")
 m("WM-1.9 a bare url holding an @ is kept whole", R,
-  "\t\tif strings.Contains(whole, \"@\") {\n\t\t\treturn \"\"\n\t\t}\n", "",
+  "\t\tif strings.Contains(whole, \"@\") || !strings.HasPrefix(s, \"/\") {\n\t\t\treturn \"\"\n\t\t}\n",
+  "\t\tif !strings.HasPrefix(s, \"/\") {\n\t\t\treturn \"\"\n\t\t}\n",
   "TestNormalizeOrigin_KeepsNoUserPart")
 K = "internal/graph/knowledge/import.go"
 m("WM-1.9 a refused clause is written as the row's clause", K,

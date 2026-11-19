@@ -1,4 +1,4 @@
 # TRU-8: the disclosure scope version is pinned; a bump without the review the
 # consent screen rests on is the whole regression.
 m("TRU-8 the disclosure scope version moves without a review", "internal/disclose/disclose.go",
-  "const ScopeVersion = 7", "const ScopeVersion = 8", "TestTRU8b_")
+  "const ScopeVersion = 8", "const ScopeVersion = 9", "TestTRU8b_")

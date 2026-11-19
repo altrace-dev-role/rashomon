@@ -19,6 +19,11 @@ var scopeTextPins = map[int]string{
 	// origin url, at the end of a reply that wrote a file and when a
 	// session's ledger is printed.
 	7: "2e78aba87f99fd4efe291f31aef30449a0a68860980a6536327465d3e4e83d9b",
+	// 8 corrects the repository id's words (an empty or default port, a
+	// relative origin), says when graph index writes .rashomon/graph.json
+	// and what a /clear keeps, and adds the consent-file limit
+	// (CONSENT-GATE1).
+	8: "de69ee193c572b2b5db9bb9a63af89a7182c0ebc9b79524dc2ba37c164a29096",
 }
 
 // scopeTextDigest is the sha256 of every screen paragraph and unit
