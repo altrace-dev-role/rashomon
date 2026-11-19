@@ -32,7 +32,14 @@ const graphUsage = `  rashomon graph index [DIR]     build DIR/.rashomon/graph.j
                                working directory) from DIR/.rashomon/graph.json:
                                the units' files through each language's
                                producer, the declared knowledge, and the rows
-                               under DIR/.rashomon/knowledge/
+                               under DIR/.rashomon/knowledge/. When nothing is
+                               at DIR/.rashomon/graph.json, first write there,
+                               as a new file, the configuration inferred from
+                               the repository's manifest files; write nothing
+                               there when a file, a directory or a link is
+                               already at that name, when DIR/.rashomon is a
+                               link, when no unit is inferred, or when the
+                               configuration would be over 64 KiB
   rashomon graph brief --prompt TEXT [--tf|--idf|--lessons] [DIR]
                                print the brief the prompt hook would deliver
                                for TEXT from DIR, with its explanation; the

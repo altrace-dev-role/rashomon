@@ -120,8 +120,9 @@ func TestSETUP1_PY3_AModuleFileAndANamespacePackageAreNamed(t *testing.T) {
 // modules start at its src directory, each directory at the project's
 // directory holding .py files, at any depth, and each .py file there but the
 // setup.py manifest, is left out and named once, as the flat layout names
-// them; a directory of no .py file is not named, and a project inside this
-// one is named as that, not as this project's files.
+// them; a directory of no .py file, one of .pyi stubs alone among them, is
+// not named, and a project inside this one is named as that, not as this
+// project's files.
 func TestSETUP1_PY4_InASrcLayoutWhatLiesOutsideSrcIsNamed(t *testing.T) {
 	files := []string{
 		"docs/index.rst",
@@ -132,6 +133,7 @@ func TestSETUP1_PY4_InASrcLayoutWhatLiesOutsideSrcIsNamed(t *testing.T) {
 		"scripts/tool/run.py",
 		"setup.py",
 		"src/pkg/__init__.py",
+		"stubs/pkg.pyi",
 		"tests/test_a.py",
 		"tests/unit/test_b.py",
 	}
