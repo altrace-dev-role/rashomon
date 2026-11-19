@@ -34,3 +34,19 @@ m("RV-1 item 5b the catch-up says the coverage notice", RS,
 m("RV-1 item 5b watch's refusal leaves its ruled lead-in", "cmd/rashomon/watch.go",
   "\"the screen above is yours to agree to\"", "\"the screen above is yours to approve\"",
   "TestRV1_5d_")
+# The notice stands only while the checks are off: with them back on and the
+# record incomplete for another reason, the sentence prints (TestRV1_5f_ vii).
+m("RV-1 item 5b the notice stands with the checks back on", RS,
+  "\treturn verify.CoverageOff(snap.Notes) && st.NoticeTaken(sessionID, store.FileNoticeCoverage) &&\n",
+  "\treturn st.NoticeTaken(sessionID, store.FileNoticeCoverage) &&\n",
+  "TestRV1_5f_")
+# BareIncomplete holds only for an incomplete record whose row is unknown;
+# each break drops one of the two terms (TestBareIncomplete_).
+m("RV-1 item 5b a complete record's line reads as bare", RV,
+  "\treturn v.Snap.Recording != verify.Complete && v.Summary.Row == verify.RowUnknown &&\n",
+  "\treturn v.Summary.Row == verify.RowUnknown &&\n",
+  "TestBareIncomplete_")
+m("RV-1 item 5b a line of another row reads as bare", RV,
+  "\treturn v.Snap.Recording != verify.Complete && v.Summary.Row == verify.RowUnknown &&\n",
+  "\treturn v.Snap.Recording != verify.Complete &&\n",
+  "TestBareIncomplete_")

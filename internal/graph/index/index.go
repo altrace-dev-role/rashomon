@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -20,6 +20,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // ConfigFile is the repository's graph configuration.
@@ -61,10 +62,31 @@ type Knowledge struct {
 	Source string `json:"source"`
 }
 
-// ReadConfig reads root's configuration.
+// MaxConfigBytes bounds ReadConfig's read of a repository's configuration.
+// Nothing in rashomon writes the file; a person does, and nothing but this
+// cap bounds its size: it is a bound on a file written by hand, not a size
+// measured from one. Over it, `rashomon graph index` fails with an error
+// naming the file and the cap, and the Stop names no unit.
+const MaxConfigBytes = 64 << 10
+
+// ReadConfig reads root's configuration, for `rashomon graph index` and for
+// the Stop (the unit a write is in) alike, so the two cannot disagree on
+// whether it reads. It opens through regfile.Open, so a named pipe at the
+// path cannot hold the hook (STORE-READ-REGULAR1), and reads at most
+// MaxConfigBytes, a file over that being an error that names the file and
+// the cap. A missing file is the open's own error, matching fs.ErrNotExist.
 func ReadConfig(root string) (Config, error) {
 	var c Config
-	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(ConfigFile)))
+	p := filepath.Join(root, filepath.FromSlash(ConfigFile))
+	f, err := regfile.Open(p)
+	if err != nil {
+		return c, err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	b, err := io.ReadAll(io.LimitReader(f, MaxConfigBytes+1))
+	if err == nil && len(b) > MaxConfigBytes {
+		err = fmt.Errorf("%s: over %d bytes", p, MaxConfigBytes)
+	}
 	if err != nil {
 		return c, err
 	}
@@ -190,13 +212,10 @@ func python(c Config) pylite.Resolver {
 
 // claimed lists, per producer, the repository's files its resolver claims
 // under its units, as slash paths relative to root, sorted; and the count.
+// The walk skips the directories skipDir names, and claims.producer picks a
+// file's producer: the one rule UnitOf files a single path by.
 func claimed(root string, ps []producer) ([][]string, int, error) {
-	reg := lang.Registry{}
-	at := map[string]int{}
-	for i, p := range ps {
-		reg.Register(p.res)
-		at[p.res.Lang()] = i
-	}
+	cl := claimsOf(ps)
 	files, total := make([][]string, len(ps)), 0
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -205,16 +224,12 @@ func claimed(root string, ps []producer) ([][]string, int, error) {
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel != "." && (strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules" || d.Name() == "__pycache__") {
+			if rel != "." && skipDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		res, ok := reg.For(root, rel)
-		if !ok {
-			return nil
-		}
-		if i := at[res.Lang()]; under(rel, ps[i].paths) {
+		if i, ok := cl.producer(root, rel); ok {
 			files[i] = append(files[i], rel)
 			total++
 		}
@@ -224,6 +239,69 @@ func claimed(root string, ps []producer) ([][]string, int, error) {
 		sort.Strings(files[i])
 	}
 	return files, total, err
+}
+
+// claims is the rule Build claims a file by: the producers' resolvers in a
+// registry, in configuration order, and each language's producer.
+type claims struct {
+	ps  []producer
+	reg lang.Registry
+	at  map[string]int
+}
+
+func claimsOf(ps []producer) claims {
+	c := claims{ps: ps, at: map[string]int{}}
+	for i, p := range ps {
+		c.reg.Register(p.res)
+		c.at[p.res.Lang()] = i
+	}
+	return c
+}
+
+// producer is the index in ps of the producer whose resolver claims rel, a
+// slash path relative to root, false where no resolver claims it or rel is
+// under none of that producer's units.
+func (c *claims) producer(root, rel string) (int, bool) {
+	res, ok := c.reg.For(root, rel)
+	if !ok {
+		return 0, false
+	}
+	i := c.at[res.Lang()]
+	return i, under(rel, c.ps[i].paths)
+}
+
+// skipDir reports whether Build's walk skips a directory named name: a dot
+// directory, node_modules or __pycache__ (W-DEBT.6).
+func skipDir(name string) bool {
+	return strings.HasPrefix(name, ".") || name == "node_modules" || name == "__pycache__"
+}
+
+// UnitOf is the unit an index built under c files a path in, by the rule
+// Build claims files by: rel, a slash path relative to the index root, is
+// under no directory Build's walk skips, a resolver claims it, and it is
+// under one of that resolver's language's units; the resolver's Unit then
+// names it. false for a path Build would not index. It reads no file, so
+// the Stop maps the paths a session wrote with it without loading the
+// graph (W-M3.3); the error is the configuration's, as Build's would be.
+func UnitOf(c Config) (func(root, rel string) (graph.ID, bool), error) {
+	ps, err := producers(c)
+	if err != nil {
+		return nil, err
+	}
+	cl := claimsOf(ps)
+	return func(root, rel string) (graph.ID, bool) {
+		dirs := strings.Split(rel, "/")
+		for _, d := range dirs[:len(dirs)-1] {
+			if skipDir(d) {
+				return "", false
+			}
+		}
+		i, ok := cl.producer(root, rel)
+		if !ok {
+			return "", false
+		}
+		return cl.ps[i].res.Unit(root, rel)
+	}, nil
 }
 
 // under reports whether rel is at or below one of paths ("." is the root).

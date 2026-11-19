@@ -36,6 +36,13 @@ m("RV-1 item 4 a lesson that rode makes no nudge", N,
 m("RV-1 item 4 a proven symbol makes no nudge", N,
   CLAUSE, CLAUSE.replace(" || (sf != nil && sf.Lists())", ""),
   "TestRV1_4e_")
+# A fire that holds only host frames reads no graph: the break below builds
+# the graph brief on it again, and the refused brief's evidence file is
+# written over the one the turn's typed fire wrote.
+m("RV-1 item 4 a frames-only fire builds the graph brief", P,
+  "\tif !p.framed {\n\t\tgb, graphed = graphBriefWith(",
+  "\tif true {\n\t\tgb, graphed = graphBriefWith(",
+  "TestRV1_4pin_")
 # measure1's channel control rides on its own task file, whose builtin rule
 # makes the control's note a nudge: each break below leaves the control
 # workspaces without it, puts it in every arm, or drops it from the

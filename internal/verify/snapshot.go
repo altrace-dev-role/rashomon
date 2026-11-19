@@ -38,6 +38,11 @@ type Point struct {
 	// it, and the raise of one names the store. "" names no store. Not
 	// encoded, as Tree is not.
 	StoreRoot string `json:"-"`
+	// Content reads a project-relative file's content at the point (W-M3.2):
+	// the bytes and true, or false for a file it could not read. nil without
+	// the session-content marker, and then a forbid_code rule stays
+	// undecided for the reason rules.go gives. Not encoded, as Tree is not.
+	Content func(rel string) ([]byte, bool) `json:"-"`
 }
 
 // Point kinds (archive 20.2.4: stop|subagent_stop|subtask|commit|push|pr|query).
