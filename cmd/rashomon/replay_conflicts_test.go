@@ -63,10 +63,14 @@ func TestLedger_ReplayCarriesRuleConflicts(t *testing.T) {
 // last Stop's checkpoint is not among the replayed rows. The replay folds
 // the conflict_check records at the checkpoint's point_seq, the seq the live
 // Stop folded at, so an edit of the next turn that raises protected_path
-// under rule p1 stays out of the rows the Stop was shown. The control is the
-// fold of the whole record: both conflicts, or the test would pass with the
-// later one never recorded. Break: fold at the record's last seq, or at 0,
-// in place of the point's seq.
+// under rule p1 stays out of the rows the Stop was shown. The controls are
+// the record: the second conflict_check holds the one protected_path row
+// under p1, and the fold of the whole record holds both conflicts, or the
+// test would pass with the later one never recorded. The later edit's note
+// is not read: the fixture's prompts share one prompt_id, so the note
+// budget may withhold it, and the check is recorded before any delivery.
+// Break: fold at the record's last seq, or at 0, in place of the point's
+// seq.
 func TestLedger_ReplayFoldsConflictsAtThePoint(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV5, true)
 	s.prompt("fix " + cfGraph)
@@ -98,10 +102,11 @@ func TestLedger_ReplayFoldsConflictsAtThePoint(t *testing.T) {
 	}
 
 	s.prompt("fix " + cfKeep)
-	if out := s.land("toolu_cf2", cfKeep, "package keep\n\nfunc P() {}\n"); !strings.Contains(out, cfProtect) {
-		t.Fatalf("post output %q lacks %q: the later edit raised no conflict", out, cfProtect)
-	}
+	s.land("toolu_cf2", cfKeep, "package keep\n\nfunc P() {}\n")
 	after := s.run()
+	if cs := after.ConflictChecks; len(cs) != 2 || len(cs[1].Rows) != 1 || cs[1].Rows[0].Kind != "protected_path" || cs[1].Rows[0].RuleID != "p1" {
+		t.Fatalf("checks %+v, want a second check with the one protected_path row under p1: the later edit raised no conflict", cs)
+	}
 	if all := foldConflictChecks(after, 0); len(all) != 2 {
 		t.Fatalf("fold of the whole record %+v, want the two conflicts", all)
 	}
