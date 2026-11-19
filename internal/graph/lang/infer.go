@@ -35,6 +35,17 @@ type Unit struct {
 // add by hand if it is a unit.
 type Left struct{ Path, Why string }
 
+// Leaver is the optional half of a language that names a directory its
+// tools made, not the project's source, so the walks of `rashomon graph
+// index` (Build's and Infer's) leave it out and name it: LeftOut is asked
+// of each directory a walk enters below the root, rel its slash path
+// relative to root, and is why, one of the kinds below then what the rule
+// checked, and true for a directory to leave out. Unlike Claims and Unit
+// it may stat one name in the directory, so no hook asks it.
+type Leaver interface {
+	LeftOut(root, rel string) (why string, ok bool)
+}
+
 // The kinds of reason a rule leaves a path out for, in words that name no
 // language, so a person reads one set of reasons whatever the language: a
 // rule's Why is one of them, then, where it adds something, what the rule
@@ -53,6 +64,9 @@ const (
 	// LeftOutsideRoot is source in a project but outside the directory its
 	// modules start at.
 	LeftOutsideRoot = "source outside the modules' root"
+	// LeftEnvironment is a directory a language's tool installed packages
+	// into: its files are other projects' modules, not this one's source.
+	LeftEnvironment = "an environment a tool installed packages into"
 )
 
 // Inferrers is the registered resolvers that are Inferrers, in the order

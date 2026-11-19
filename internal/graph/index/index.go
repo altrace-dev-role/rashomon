@@ -104,7 +104,21 @@ type Result struct {
 	// Refused is every file a resolver was handed and refused, by path;
 	// the header names the first graph.MaxRefusedNamed.
 	Refused []graph.Refusal
+	// Left is every directory a configured language's rule left out of
+	// the walk (lang.Leaver), by path; the header names the first
+	// graph.MaxRefusedNamed.
+	Left []graph.LeftDir
+	// Skipped counts the directories the walk skipped by name (skipDir).
+	Skipped Skipped
 }
+
+// Skipped is how many directories Build's walk skipped by name, by kind: a
+// directory whose name starts with a dot, but not one named .git,
+// .rashomon or .pgraph, at any depth, which hold version control's or
+// rashomon's own state and never a project's source, and of which every
+// index root holds one or more; node_modules; __pycache__. A skipped
+// directory's own subdirectories are not walked, so not counted.
+type Skipped struct{ Dot, NodeModules, PyCache int }
 
 // Build indexes root at commit: the repository node (baseline.RepoIDErr),
 // a declared node per unit, then for each language the configuration
