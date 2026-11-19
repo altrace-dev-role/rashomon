@@ -152,9 +152,20 @@ m("MO-1 a gate read from output is not named in the clause", "internal/recap/val
 
 # hook: a piped runner whose output read red steps at PostToolUse, so
 # regression-location fires where the pipe hid the exit (card c3).
+# Re-anchored (stale): since MASKED-AT-ACT1 a piped runner whose status the
+# line hid (hidden, status_masked test or build) steps at PostToolUse by its
+# own trigger, and a masked-outcome run is always one of those, so dropping the
+# redRead trigger alone changes nothing a runner call can show (the wrapper
+# branch of redRead is held by RS-1's rows). Each break drops both triggers
+# that step a piped red runner, and the test fails only where neither does.
 m("MO-1 a piped red runner does not step at PostToolUse", "internal/hook/steerstep.go",
-  " || redRead && (failure || post)", "",
+  " || redRead && (failure || post) ||\n\t\thidden && post", "",
   "TestPR_APipedRedRunnerStepsAtPostToolUse")
 m("MO-1 the landed call is never read for a red output", "internal/hook/post.go",
-  "\tp.landedRed = redRead(&rec)\n", "",
+  "\tp.landedHidden = hiddenRun(&rec)\n\tseq, err := p.st.LandExecution(rec)\n"
+  "\tp.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())\n"
+  "\tp.writeOverlay()\n\tp.landedRed = redRead(&rec)\n",
+  "\tseq, err := p.st.LandExecution(rec)\n"
+  "\tp.landedSeq, p.landedRunner, p.landedStore = seq, rec.RunnerDigest != nil, storeNamed(pl.ToolInput, p.st.Root())\n"
+  "\tp.writeOverlay()\n",
   "TestPR_APipedRedRunnerStepsAtPostToolUse")
