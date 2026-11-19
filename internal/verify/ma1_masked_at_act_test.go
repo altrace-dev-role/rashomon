@@ -105,6 +105,10 @@ func TestMA1b_ControlsRaiseNothing(t *testing.T) {
 		{"a run with its status in view", []call{edit(1, "internal/a.go"), plain}, 2, string(steer.EventPostToolUse)},
 		{"a run read from its output", []call{edit(1, "internal/a.py"), tailedPytest(2, "tail", "summary_pass")}, 2, string(steer.EventPostToolUse)},
 		{"the call after the masked run", []call{edit(1, "internal/a.go"), headedVet(2, "head"), edit(3, "internal/b.go")}, 3, string(steer.EventPostToolUse)},
+		// No write between: the gate still reads masked_inconclusive, so only the
+		// call's own id keeps the note from riding the next call's post.
+		{"a read after the masked run", []call{edit(1, "internal/a.go"), headedVet(2, "head"),
+			{seq: 3, tool: "Read", class: shape.VerbRead, outcome: store.ExecOK}}, 3, string(steer.EventPostToolUse)},
 		{"a masked line that failed, at its failure event", []call{edit(1, "internal/a.go"), failed}, 2, string(steer.EventPostToolUseFailure)},
 		{"a backgrounded run", []call{edit(1, "internal/a.go"), bg}, 2, string(steer.EventPostToolUse)},
 	} {
