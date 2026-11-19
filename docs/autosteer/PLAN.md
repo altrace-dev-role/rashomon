@@ -421,10 +421,10 @@ Effort assumptions for every range below: one principal session; Go cycles throu
 - Files: `internal/verify/obligations.go`, `evaluate.go`, `producers.go` (new), `rules.go` (new); `internal/platform/boundary.go` (new), `config.go` (new); `internal/graph/session/req.go`; `internal/shape/runner.go`, `masked.go`; `internal/verify/integrity.go`; `internal/graph/knowledge/flow.go` (new; no `internal/process` package, withdrawn in Part C5); `cmd/rashomon/stop.go`.
 - Interfaces: `verify.Producer func(g, rev, touched) []Obligation`; `platform.Boundaries(snapshot, unit) []Boundary`; `knowledge.FlowsTouching(g, rev, touched) []FlowHit{FlowID, Step, State}` over the `step` edges.
 - Dependencies: M2 (Conflicts, Diff, unit scope on obligations).
-- Integration: Stop verdict lines in order: contradictions, unmet obligations by unit, rule conflicts, open requirements, flows touched.
-- Acceptance: AC-M3.1 to AC-M3.6.
+- Integration: Stop verdict lines in order: contradictions, unmet obligations by unit, rule conflicts, open requirements with status, flows touched, drift last.
+- Acceptance: AC-M3.1, AC-M3.1b, AC-M3.2, AC-M3.3, AC-M3.4 to AC-M3.6.
 - Risks: R7 (predicates), the content read under consent (PF-TR rows).
-- Effort: 40 to 60 hours.
+- Effort: 47 to 69 hours.
 - Demonstration gate: T3 at n=10: a signature change in `internal/platform` with consumers in `internal/verify` and `cmd/rashomon`; steered arm's Stop verdict names unverified consumers; the "consumer updated before Stop" rate per arm; the done-flag precision sample.
 
 #### M4 Continuous session graph
@@ -435,9 +435,9 @@ Effort assumptions for every range below: one principal session; Go cycles throu
 - Interfaces: `session.Frontier{SessionID, Repo, Commit, Intents []IntentRef, Reqs []ReqState, Decisions, Touched []unit, Obligations []ObligationRef, Delivered []LineRef, LastBoundary seq}`; `session.Fold(run store.Run, lines []steer.Line, g graph.Store) Frontier`; `session.Boundary{Kind: compact|resume|clear|subagent_start|subagent_stop, Seq}`.
 - Dependencies: M1 (unit ids for Touched); the hook-channel facts (verify SubagentStart and SubagentStop payloads at task open).
 - Integration: at a boundary, the brief delivers open requirements by id and the touched set; at Stop the verdict names requirements still open.
-- Acceptance: AC-M4.1 to AC-M4.4.
+- Acceptance: AC-M4.1, AC-M4.1b, AC-M4.2 to AC-M4.5.
 - Risks: R6.
-- Effort: 30 to 45 hours.
+- Effort: 34 to 52 hours.
 - Demonstration gate: T4 at n=10: a two-requirement task run under a forced compaction (context pressure in the harness); the rate at which the second requirement is met after compaction, steered against baseline; the mistakes-against-intent count per arm.
 
 #### M5 Validated knowledge and learning
@@ -1283,19 +1283,19 @@ The earlier mutant rows run again at 450b9db1: 171 rows in eleven jobs. One job 
 | W-M3.1 | Unit and turn scope on obligations (PG13 first windows; PG3, PG5, PG7) | `internal/verify/obligations.go`, `evaluate.go` | PG3, PG5, PG7, PG13 | AC-M3.1 | W-M2.4 | 6-8 | low |
 | W-M3.2 | forbid_code over content under consent | `internal/verify/evaluate.go` | PG8 | AC-M3.2 | W-M3.1 | 3-4 | PF-TR |
 | W-M3.3 | Structure-derived producers and detectors (consumers, tests-covering, PL11, PL12, PL8) | `internal/verify/producers.go`, `internal/platform/boundary.go`, `config.go` | PL8, PL11, PL12, C8 | AC-M3.3 | W-M3.1 | 8-12 | low |
-| W-M3.4 | Requirement predicates at Stop | `internal/graph/session/req.go`, `cmd/rashomon/stop.go` | C8, S6 | AC-M3.1 | W-M3.1 | 4-6 | low |
+| W-M3.4 | Requirement predicates at Stop | `internal/graph/session/req.go`, `cmd/rashomon/stop.go` | C8, S6 | AC-M3.1b | W-M3.1 | 4-6 | low |
 | W-M3.5 | Wrapper-hidden gate families (PG1, PG4; #281 step 1) | `internal/shape/runner.go`, `masked.go` | PG1, PG2, PG4 | AC-M3.4 | #281 | 4-6 | low |
 | W-M3.6 | Done-flag precision measurement (W1) | `test/live/autosteer/judge/done.py` | PG9, PF-MS | AC-M3.5 | W-M1.0 | 2-3 | low |
 | W-M3.7 | Edit-marks writer | `internal/verify/integrity.go` | PG12 | AC-M3.6 | none | 3-4 | low |
 | W-M3.8 | Commit, push, PR windows; one-way-door list | `internal/verify/windows.go` | PG13, PF-IV | AC-M3.1 | W-M3.1 | 5-8 | low |
 | W-M3.9 | Process templates as `flow` knowledge rows and the flow line (Part B4) | `internal/graph/knowledge/flow.go`, `flow_test.go` on the acme fixtures | S5, AD15 | AC-M3.3 | W-M3.3 | 4-6 | low (no new store) |
-| W-M3.10 | Slice T3 | `test/live/autosteer/t3/*` | C8 | AC-M3.x | all M3 | 8-12 | R9 |
+| W-M3.10 | Slice T3 | `test/live/autosteer/t3/*` | C8 | AC-M3.x | W-M3.1, W-M3.3, W-M3.4, W-M3.6 | 8-12 | R9 |
 | W-M4.1 | Repo and session identity | `internal/graph/ids.go`, `session/session.go` | HD11, S7 | AC-M4.1 | M1 | 2-3 | one-way door |
 | W-M4.2 | `session.Fold` over the record and the steer log (frontier v1 of Part B6 derived at every event; a cache file only if the fold exceeds the hook budget, Part C5) | `session/fold.go`, `fold_test.go` on 20 recorded sessions | C7, S6, AD17 | AC-M4.1, AC-M4.1b | W-M4.1 | 8-12 | low |
 | W-M4.3 | Boundary subscription and fallback | `internal/install/install.go`, `plugin/hooks/hooks.json`, `cmd/rashomon/start.go` | C7, S6 | AC-M4.2 | W-M4.2 | 4-6 | R6 |
 | W-M4.4 | Boundary delivery by extending ST12 `resumeBriefing` in `cmd/rashomon/preflight.go` (no new pattern, Part C5), words by reference | `cmd/rashomon/preflight.go`, `session/brief.go` | C7, PF-ST12 | AC-M4.2 | W-M4.3 | 3-5 | low |
 | W-M4.5 | Subagent frontier | `cmd/rashomon/subagent.go` | S7 | AC-M4.3 | W-M4.3 | 4-6 | payload unverified |
-| W-M4.6 | Requirement status and the drift line | `session/req.go`, `cmd/rashomon/stop.go` | C7, objective drift | AC-M4.4 | W-M4.2 | 3-5 | low |
+| W-M4.6 | Requirement status and the drift line | `session/req.go`, `cmd/rashomon/stop.go`, `internal/graph/session/drift.go` | C7, objective drift | AC-M4.4, AC-M4.5 (signals) | W-M4.2 | 5-8 | low |
 | W-M4.7 | Slice T4 | `test/live/autosteer/t4/*` | C7 | AC-M4.x | all M4 | 8-12 | R6, R9 |
 | W-M5.1 | Label writer in the runtime | `internal/learn/writer.go`, `cmd/rashomon/end.go`, `preflight.go` | HD1, C9 | AC-M5.1 | M2, M3 | 6-8 | R7 |
 | W-M5.2 | Miner, deltas, refusals, corrections, seed, backtest | `internal/learn/miner.go`, `cmd/rashomon/backtest.go`, `seed.go` | HD3, HD4, HD8, HD15, HD16, HD17 | AC-M5.2 | W-M5.1 | 12-16 | R7 |
@@ -1481,7 +1481,7 @@ Owed to the owner at M2 open: (1) lanes P and S (W-M2.5 then W-M6.1 for P; W-M4.
 
 What M2 does not do: tune Scope for the "blast" seed collision T1b's engine reading found (ruling 11 holds until the read; if the read confirms it, the fix is an M1 engine item reopened with its own row, not an M2 item); call a model anywhere; block any tool call; store a plan word or an edit body.
 
-**W-M4.1, W-M4.2 and W-M4.6 work order (written 2026-11-05 21:4x at the owner's word, before M4 opens; intentional change (owner's word, 2026-11-05 21:2x) from this section's rule, so lane S's model can be decided from a bounded order; W-M4.3, W-M4.4, W-M4.5 and W-M4.7 keep their rows and are written when M4 opens; the drift thresholds stay AC-M4.5's pre-registered values and are calibrated by the principal with the owner's labels, never by the lane).**
+**W-M4.1, W-M4.2 and W-M4.6 work order (written 2026-11-05 21:4x at the owner's word, before M4 opens; intentional change (owner's word, 2026-11-05 21:2x) from this section's rule, so lane S's model can be decided from a bounded order; W-M4.3, W-M4.4, W-M4.5 and W-M4.7 keep their rows and are written when M4 opens; the drift thresholds stay AC-M4.5's pre-registered values and are calibrated by QA's judge with the owner's labels, the thresholds ruled at review, never by the implementing lane).**
 
 Facts read at da9e55c8:
 
@@ -1502,7 +1502,7 @@ Interfaces (fixed here; a lane patch that changes one names the reason in its st
 
 Tests by name (every one before its code; package-scoped through the slot): `TestFold_IncrementalEqualsFull` (for each fixture session and every seq that carries an event, Fold with Through equals Fold over the inputs cut at that seq, byte-equal frontier JSON; INV-11), `TestFold_IsDeterministic` (inputs shuffled before the sort; equal bytes), `TestFold_HoldsNoPromptBytes` (no T1 prompt content word in any fixture frontier; AC-M4.1), `TestFold_NoTranscript` (transcript unreadable and Intent off: every open Req id with its predicate, every decision by ids, the touched units and the owed obligations survive; AC-M4.1b), `TestFold_BoundaryFromSteerLog`, `TestFold_ReqFromDeliveredLines`, `TestFold_GateGreenMetByLaterPassedRun`, `TestFold_GateGreenOpenWhenRedAfterWrite`, `TestReq_NarrowingLeavesEarlierOpen`, `TestReq_StatusTransitionsAreMonotone`, `TestFrontier_JSONRoundTrip`, `TestFrontier_SchemaIsOne`, `TestDrift_ScopeDivergenceAfterThreeTurns`, `TestDrift_StagnationCountsTurnsAndCalls`, `TestDrift_DisplacementNeedsOpenReqs`, `TestDrift_ComponentWithoutConsumer`, `TestDrift_GateSubstitutionShare`, `TestDrift_NoInputReadsZeroAndSaysSo`, `TestDriftLine_ValidatesAsBriefing`, `TestFold_NoHookioImport` (session imports store, steer, graph and events, never hookio or cmd), and `TestCore_NoAgentKeys` unchanged. Budget: the fold over the largest fixture session under 50 ms (the perf row is the principal's at W-M4.4, when the hook path first reads a frontier; Part C5: a cache file only if the fold exceeds the hook budget).
 
-Files the lane may touch: `internal/graph/session/{fold.go, frontier.go, drift.go, fold_test.go, frontier_test.go, drift_test.go, testdata/sessions/**}`; nothing else. The principal keeps: the record's boundary event and the matchers (W-M4.3), the ST12 delivery (W-M4.4), the subagent frontier (W-M4.5), the calibration (AC-M4.5), the disclosure paragraph for any new write, and the merge. Not decided here: the intent levels local and share (consent; W-M4.4 and the principal), the cache file, the objective rows' importer. What this order buys: W-M4.2 becomes bounded (fixed interfaces, named tests, fixtures we own); the judgment left is the met rule per predicate, which the tests pin. Lane S's model follows lane P's first patch under the rule recorded with the lane P yes (paste-ready orders outside git: `docs-out/plans/LANE-P-WORKORDER-2026-11-05.txt`, `docs-out/plans/LANE-S-WORKORDER-2026-11-05.txt`).
+Files the lane may touch: `internal/graph/session/{fold.go, frontier.go, drift.go, fold_test.go, frontier_test.go, drift_test.go, testdata/sessions/**}`; nothing else. The principal keeps: the record's boundary event and the matchers (W-M4.3), the ST12 delivery (W-M4.4), the subagent frontier (W-M4.5), the disclosure paragraph for any new write, and the merge. The calibration (AC-M4.5) is made by QA's judge with the owner's labels, the thresholds ruled at review, never by the implementing lane. Not decided here: the intent levels local and share (consent; W-M4.4 and the principal), the cache file, the objective rows' importer. What this order buys: W-M4.2 becomes bounded (fixed interfaces, named tests, fixtures we own); the judgment left is the met rule per predicate, which the tests pin. Lane S's model follows lane P's first patch under the rule recorded with the lane P yes (paste-ready orders outside git: `docs-out/plans/LANE-P-WORKORDER-2026-11-05.txt`, `docs-out/plans/LANE-S-WORKORDER-2026-11-05.txt`).
 
 ### 6.3 Debt (tracked; opened only when it unblocks a critical-path task)
 
@@ -1627,6 +1627,7 @@ Every acceptance id names the readiness category of the vision's section 10 (A s
 | AC-M2.3 | B | the unit brief appears once per unit per session (dedupe) within the three-note budget in ten live runs | live |
 | AC-M2.4 | A, H | declarations in an unsaved edit appear at `commit+ov1`; K7 PreToolUse path p95 at or under 150 ms | `TestOverlay_*`, K7 |
 | AC-M3.1 | E | obligations evaluated per unit and per turn window; the ledger replays from the record to the same state (`TestLedger_Replay`) | fixtures |
+| AC-M3.1b | E | the requirement predicates file_exists, symbol_exists, gate_green and test_named are each decided at Stop on fixtures; symbol_exists reads "undecided for Go" until symbol_present is live at Stop (`TestACM31b_ReqPredicates`) | fixtures |
 | AC-M3.2 | E, I | forbid_code decided under consent and undecided without, both stated in the verdict | fixtures |
 | AC-M3.3 | E, A | after a signature change the consumers-to-verify list equals the In-edge callers; the PL11 detector flags reflect, cgo, linkname and plugin boundaries in a fixture; the PL12 detector flags a file outside every tracked config | fixtures |
 | AC-M3.4 | E | the wrapper-hidden gate fixture set (from #281) classified; PG4 claims for lint, typecheck, scan compared | fixtures |

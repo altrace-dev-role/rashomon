@@ -21,16 +21,16 @@ m("WDEBT-6 a unit of an unknown lang resolves as Python", I,
   "\treturn python(c), nil\n",
   "TestBuild_UnitLangRequired")
 m("WDEBT-6 a dot directory is walked", I,
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
-  "(d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\" || name == \"__pycache__\"\n",
+  "\treturn name == \"node_modules\" || name == \"__pycache__\"\n",
   "TestBuild_SkipsDotAndVendorDirs")
 m("WDEBT-6 node_modules is walked", I,
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"__pycache__\")",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\" || name == \"__pycache__\"\n",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"__pycache__\"\n",
   "TestBuild_SkipsDotAndVendorDirs")
 m("WDEBT-6 __pycache__ is walked", I,
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\")",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\" || name == \"__pycache__\"\n",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\"\n",
   "TestBuild_SkipsDotAndVendorDirs")
 G = "internal/graph/lang/gopg/gopg.go"
 m("WDEBT-6 a may-call is certain", G,

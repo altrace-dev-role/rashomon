@@ -3,9 +3,12 @@ package acceptance
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/altrace-dev-role/rashomon/internal/disclose"
 )
 
 // CONSENT-SHORT1: the screen a yes is asked under is the first thing a
@@ -87,9 +90,10 @@ func TestCSH1_TheScreenAYesIsAskedUnderFitsOneTerminal(t *testing.T) {
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("premise: watch --yes: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	older := strings.Replace(string(e.consentBytes()), `"scope_version":6`, `"scope_version":4`, 1)
+	current := `"scope_version":` + strconv.Itoa(disclose.ScopeVersion)
+	older := strings.Replace(string(e.consentBytes()), current, `"scope_version":4`, 1)
 	if !strings.Contains(older, `"scope_version":4`) {
-		t.Fatal("premise: the watch record does not carry scope_version 6")
+		t.Fatalf("premise: the watch record does not carry %s", current)
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 		t.Fatal(err)

@@ -53,7 +53,7 @@ func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 }
 
 func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
-	if ScopeVersion != 6 {
+	if ScopeVersion != 7 {
 		t.Errorf("ScopeVersion = %d; a bump re-asks consent and must be deliberate", ScopeVersion)
 	}
 	inv, err := Default()

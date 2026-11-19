@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
@@ -103,10 +104,10 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	// 4, at steer disclosure 0 (as watch --yes wrote it before
 	// STEER-DISCLOSE-YES1), with its steer marker and no session_content
 	// marker, which no consent before scope 6 covers.
-	older := strings.Replace(string(e.consentBytes()), `"scope_version":6`, `"scope_version":4`, 1)
+	older := strings.Replace(string(e.consentBytes()), `"scope_version":`+strconv.Itoa(disclose.ScopeVersion), `"scope_version":4`, 1)
 	older = strings.Replace(older, `"steer_disclosure":`+strconv.Itoa(steer.DisclosureVersion), `"steer_disclosure":0`, 1)
 	if !strings.Contains(older, `"scope_version":4`) || !strings.Contains(older, `"steer_disclosure":0`) {
-		t.Fatalf("premise: the watch record does not carry scope_version 6 and steer_disclosure %d", steer.DisclosureVersion)
+		t.Fatalf("premise: the watch record does not carry scope_version %d and steer_disclosure %d", disclose.ScopeVersion, steer.DisclosureVersion)
 	}
 	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(older), 0o600); err != nil {
 		t.Fatal(err)
@@ -145,9 +146,9 @@ func TestTRU5_ConsentAppendsAndHashesItsScreen(t *testing.T) {
 	}
 	recs := e.consentRecords()
 	sum := sha256.Sum256([]byte(show.stdout))
-	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(6) ||
+	if len(recs) != 2 || recs[1]["via"] != "consent_tty" || recs[1]["scope_version"] != float64(disclose.ScopeVersion) ||
 		recs[1]["steer_disclosure"] != float64(steer.DisclosureVersion) || recs[1]["text_sha256"] != hex.EncodeToString(sum[:]) {
-		t.Errorf("consent.json after y = %v, want a consent_tty record for scope 6 hashing the screen shown", recs)
+		t.Errorf("consent.json after y = %v, want a consent_tty record for scope %d hashing the screen shown", recs, disclose.ScopeVersion)
 	}
 	after := e.machine()
 	// steer_disclosure is consent.json's view of the highest steer disclosure
