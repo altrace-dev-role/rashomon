@@ -158,7 +158,7 @@ func TestDONE1l_OwedSeqIsNotInTheDigest(t *testing.T) {
 	now := time.Now()
 	stop := func(prompt string, seq int64) {
 		t.Helper()
-		if _, err := ClaimStop(root, "s1", prompt, now, true, "", Owed{Seq: seq, Gate: "pytest"}, DoneMarks{Flagged: "d1"}); err != nil {
+		if _, err := ClaimStop(root, "s1", prompt, now, true, "", Owed{Seq: seq, Gate: "pytest"}, DoneMarks{Flagged: "d1"}, true); err != nil {
 			t.Fatal(err)
 		}
 	}

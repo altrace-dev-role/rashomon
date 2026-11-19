@@ -106,11 +106,14 @@ type state struct {
 
 // DoneMarks are a session's done-flag digests (verify.DoneEvidence): the
 // last flagged Stop's, the one whose flag the person's line last printed,
-// and the one whose note last reached the agent. "" for none.
+// and the one whose note last reached the agent. "" for none. Backed is a
+// Stop's fact and never stored: its done claim was read and the record
+// backs it (DoneBacked).
 type DoneMarks struct {
 	Flagged   string `json:"flagged,omitempty"`
 	Shown     string `json:"shown,omitempty"`
 	Delivered string `json:"delivered,omitempty"`
+	Backed    bool   `json:"-"`
 }
 
 func newState() state {
@@ -318,7 +321,7 @@ func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 	if unverified {
 		done.Flagged = promptID
 	}
-	return ClaimStop(root, sessionID, promptID, now, wantSpeak, shown, owed, done)
+	return ClaimStop(root, sessionID, promptID, now, wantSpeak, shown, owed, done, true)
 }
 
 // ClaimStop is ClaimShown for a Stop that also carries its done flag's
@@ -327,8 +330,16 @@ func ClaimTurn(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 // note (TakeUnverified) unless that digest's note already reached the agent
 // (NoteDelivered), whether or not a line printed; done.Shown, the digest of
 // a flag the line printed, is kept only when the line printed. Both are
-// written with the claim, so a Stop adds no write of its own.
-func ClaimStop(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed, done DoneMarks) (speak bool, err error) {
+// written with the claim, so a Stop adds no write of its own. done.Backed,
+// a Stop whose done claim was read and backed, clears the session's flagged
+// Stop where that is this prompt's: the claim it flagged is now met, and the
+// note would tell the agent otherwise. The marks of the evidence stay.
+//
+// declared is whether promptID's turn holds a declaration. Only such a turn
+// is checked: the catch-up selects only a prompt that holds one, so a turn
+// with none, checked, could never match a selection (Turn), and every later
+// catch-up would read the turn before it as unreached and run it again.
+func ClaimStop(root, sessionID, promptID string, now time.Time, wantSpeak bool, shown string, owed Owed, done DoneMarks, declared bool) (speak bool, err error) {
 	if !storeExists(root) {
 		return wantSpeak, nil
 	}
@@ -349,7 +360,7 @@ func ClaimStop(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 	if speak && sessionID != "" && promptID != "" {
 		s.Spoken[sessionID] = promptID
 	}
-	if sessionID != "" && promptID != "" {
+	if declared && sessionID != "" && promptID != "" {
 		s.Checked[sessionID] = promptID
 	}
 	if speak && sessionID != "" && shown != "" {
@@ -360,6 +371,9 @@ func ClaimStop(root, sessionID, promptID string, now time.Time, wantSpeak bool, 
 			s.Unverified = map[string]string{}
 		}
 		s.Unverified[sessionID] = promptID
+	}
+	if done.Backed && sessionID != "" && promptID != "" && s.Unverified[sessionID] == promptID {
+		delete(s.Unverified, sessionID)
 	}
 	if sessionID != "" && (done.Flagged != "" || speak && done.Shown != "") {
 		if s.DoneEvidence == nil {
