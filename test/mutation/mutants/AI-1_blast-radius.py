@@ -77,7 +77,7 @@ m("AI-1 the inventory lacks the read markers", "internal/disclose/disclose.go",
 # The id (A6, A8): priority 25 under every correction, and a reserve of one
 # note for the corrections, blast-radius's alone (F4).
 m("AI-1 no reserve", "internal/steer/decide.go",
-  "case have.notes+pattern.Reserve(p.f.Pattern) >= maxNotes:", "case have.notes >= maxNotes:",
+  "case n+reserve >= maxNotes:", "case n >= maxNotes:",
   "TestAI1_BlastRadiusLeavesTheLastNoteToACorrection")
 m("AI-1 every id reserves a note", "internal/steer/pattern/pattern.go",
   "\tif id == BlastRadius {\n\t\treturn 1\n", "\tif true {\n\t\treturn 1\n", "TestAI1_WithNoBlastRadiusTheCapIsAsBefore")

@@ -39,3 +39,14 @@ m("SWEEP-TIMEOUT1 the REC-34 job keeps a bound a TIMEOUT cannot print under", ".
 m("SWEEP-TIMEOUT1 the race step runs under go test's default timeout", ".github/workflows/ci.yaml",
   "        run: go test ./... -count=1 -race -timeout 15m\n", "        run: go test ./... -count=1 -race\n",
   "TestSWT1_TheRaceStepCarriesItsOwnTimeout")
+# cmd/go's backup kill line is a timeout marker and is named on a red
+# baseline, and the race step of release.yaml carries -timeout 15m.
+m("SWEEP-TIMEOUT1 the backup kill line is no timeout marker", "test/mutation/sweep.py",
+  "TIMED_OUT = (\"panic: test timed out after\", \"*** Test killed\")", "TIMED_OUT = (\"panic: test timed out after\",)",
+  "TestSWT1_TheBackupKillLineIsReadAsATimeout")
+m("SWEEP-TIMEOUT1 a red baseline names no backup kill line", "test/mutation/sweep.py",
+  "if ln.startswith((\"panic:\",) + TIMED_OUT) or", "if ln.startswith(\"panic:\") or",
+  "TestSWT1_TheBackupKillLineIsReadAsATimeout")
+m("D-release-race-timeout the release race step runs under go test's default timeout", ".github/workflows/release.yaml",
+  "        run: go test ./... -count=1 -race -timeout 15m\n", "        run: go test ./... -count=1 -race\n",
+  "TestSWT1_TheRaceStepCarriesItsOwnTimeout")

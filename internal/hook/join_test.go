@@ -117,10 +117,12 @@ func TestPost_UnitBriefOutranksBlast(t *testing.T) {
 }
 
 // TestPost_JoinRoutesWithinThreeNotes (PLAN 1425): a joined unit brief
-// spends the prompt's note budget as any task-preflight note does. Three
-// edits under one prompt deliver their units' briefs; the fourth unit's is
-// suppressed for the prompt's budget, prints nothing, and is not given, so
-// it is offered again at that unit's next edit.
+// spends the note budget as any task-preflight note does. The first two edits
+// under one prompt deliver their units' briefs; the third and fourth, inside
+// the same window (NOTE-BUDGET) and of the pattern already given, are held by
+// the repeat reserve, which keeps the window's last slot
+// for another kind. A held brief prints nothing and is not given, so it is
+// offered again at that unit's next edit.
 func TestPost_JoinRoutesWithinThreeNotes(t *testing.T) {
 	f := newST(t)
 	env := stEnv(steer.DisclosureVersion)
@@ -129,13 +131,13 @@ func TestPost_JoinRoutesWithinThreeNotes(t *testing.T) {
 		p := f.call("toolu_j"+u, "Edit", edit, 0)
 		env.Join = []steer.Finding{joinStandIn(t, p, "unitbrief:g:r#unit:go:"+u+"@0123456789ab")}
 		out := string(p.Steer(env))
-		if said := strings.Contains(out, briefWords); said != (i < 3) {
-			t.Errorf("edit %d in unit %s printed %q, want a note %v", i+1, u, out, i < 3)
+		if said := strings.Contains(out, briefWords); said != (i < 2) {
+			t.Errorf("edit %d in unit %s printed %q, want a note %v", i+1, u, out, i < 2)
 		}
 	}
 	l := joinLine(t, f, pattern.TaskPreflight)
-	if l == nil || l.SuppressedBy == nil || *l.SuppressedBy != steer.SuppressedByBudgetPrompt {
-		t.Fatalf("the fourth unit's line %+v, want suppressed for the prompt's budget", l)
+	if l == nil || l.SuppressedBy == nil || *l.SuppressedBy != steer.SuppressedByBudgetRepeat {
+		t.Fatalf("the fourth unit's line %+v, want held by the repeat reserve (budget_repeat)", l)
 	}
 	if joinGiven(t, f, "unitbrief:g:r#unit:go:d@") {
 		t.Error("the fourth unit's brief reads as given, so it would never be offered again")

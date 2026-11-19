@@ -62,9 +62,11 @@ const (
 	PlanCheck ID = "plan-check"
 )
 
-// Reserve is how many of the prompt's notes id leaves for others (card
-// ARCH-INLINE1, A8, a rule under tech 4.2.5's cap): a note of id is charged
-// only while the prompt has spent fewer than the cap less its reserve. The
+// Reserve is how many of the window's notes id leaves for others (card
+// ARCH-INLINE1, A8, a rule under tech 4.2.5's cap;
+// NOTE-BUDGET): a note of id is charged only while its window holds fewer than
+// the cap less its reserve, and one fewer again when a note of id is
+// already in the window (the repeat reserve, budget_repeat). The
 // cap is spent in delivery order across calls, where priority orders only
 // the notes of one call, so a context note given early could otherwise take
 // the slot a later correction needs. blast-radius reserves one; every other
