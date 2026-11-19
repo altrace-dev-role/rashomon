@@ -16,7 +16,11 @@ import (
 // pr1Stop is the Stop line of a session in repository a, inferred gate go
 // test: an edit, a green go test ./..., then last (nil for none), whose calls
 // name b, another repository; and its `report --ledger` rows, the kind,
-// state and evidence of each, which the replay (laststop) derives.
+// family, state and, of the platform row, the package it names, which the
+// replay (laststop) derives. The family is "inferred" where the replay took a's
+// root and "learned" where it took b's; a learned gate's evidence is a digest
+// of the directory, which differs between two runs, so only the platform
+// row's evidence, a package of module a or b, is kept.
 func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 	t.Helper()
 	e := newSteerEnv(t)
@@ -37,7 +41,11 @@ func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 	for _, l := range strings.Split(res.stdout, "\n") {
 		// A row's kind has an underscore; no header word of seven does.
 		if f := strings.Fields(l); len(f) == 7 && strings.Contains(f[2], "_") {
-			rows = append(rows, f[2]+" "+f[4]+" "+f[5])
+			row := f[2] + " " + f[3] + " " + f[4] + " " + f[5]
+			if f[2] == "platform_impact" {
+				row += " " + f[6]
+			}
+			rows = append(rows, row)
 		}
 	}
 	t.Logf("ledger:\n%s", res.stdout)
@@ -54,7 +62,7 @@ func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 // declarations, at the Stop or in the replay.
 func TestPR1e_TheStopJudgesTheProjectItsSpecCameFrom(t *testing.T) {
 	want, wantRows := pr1Stop(t, nil)
-	met := func(r string) bool { return strings.HasPrefix(r, "gate_after_write met ") }
+	met := func(r string) bool { return strings.HasPrefix(r, "gate_after_write inferred met ") }
 	if !strings.Contains(want, "verified") || !slices.ContainsFunc(wantRows, met) {
 		t.Fatalf("premise: the control's Stop line %q is not verified, or its ledger %q has no met gate_after_write", want, wantRows)
 	}
