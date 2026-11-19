@@ -29,7 +29,7 @@ m("SWEEP-MODULE1 a module row runs in the root", S,
 m("SWEEP-MODULE1 only the root's baseline runs", S,
   '    for module in sorted({MODULE_OF.get(x[0], ".") for x in M}) or ["."]:\n', '    for module in ["."]:\n', R)
 m("SWEEP-MODULE1 a module's baseline runs in the root", S,
-  '    _baseline = run_go_test(["go", "test", "./...", "-count=1"], cwd=module)\n',
-  '    _baseline = run_go_test(["go", "test", "./...", "-count=1"], cwd=".")\n', R)
+  '"-timeout", f"{BASELINE_TIMEOUT_MIN}m"], cwd=module)\n',
+  '"-timeout", f"{BASELINE_TIMEOUT_MIN}m"], cwd=".")\n', R)
 m("SWEEP-MODULE1 go test runs in the sweep's own directory whatever cwd it is given", S,
   "    r = subprocess.run(argv, capture_output=True, cwd=cwd)\n", "    r = subprocess.run(argv, capture_output=True)\n", R)

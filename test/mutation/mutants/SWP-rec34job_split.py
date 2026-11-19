@@ -1,6 +1,7 @@
 # CI-PERF-SPLIT1 (R26): the REC-34 group commit mutants run in a macOS job
 # of their own beside Perf gates (macos), on every push and pull request,
-# with no needs: and a bound of 40 minutes; as a step of that job they
+# with no needs: and a bound of its own (60 minutes since SWEEP-TIMEOUT1,
+# 40 before); as a step of that job they
 # pushed it past its 25 and skipped the H-16 and TRU steps after them.
 m("the REC-34 mutants step is back inside perf-macos", ".github/workflows/ci.yaml",
   "        run: go test -race -count=1 -run 'TestTRU(1|3|4|5)_' ./test/acceptance\n",
@@ -15,5 +16,5 @@ m("the REC-34 mutants run on a manual dispatch only", ".github/workflows/ci.yaml
   "  rec34-darwin:\n    name: REC-34 group commit mutants (darwin)\n    if: github.event_name == 'workflow_dispatch'\n    runs-on: macos-latest\n",
   "TestSweepJobRunsTheREC34RowsBesidePerfGates")
 m("the REC-34 mutants job keeps perf-macos's 25 minutes", ".github/workflows/ci.yaml",
-  "    timeout-minutes: 40\n", "    timeout-minutes: 25\n",
+  "    # The bound is DEL-17's.\n    timeout-minutes: 60\n", "    # The bound is DEL-17's.\n    timeout-minutes: 25\n",
   "TestSweepJobRunsTheREC34RowsBesidePerfGates")
