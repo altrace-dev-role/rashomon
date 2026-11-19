@@ -29,6 +29,40 @@ type Header struct {
 	Rev       HeaderRev         `json:"rev"`
 	Producers map[string]string `json:"producers"`
 	Records   int               `json:"records"`
+	// Refused is how many files a producer was handed and refused, and
+	// RefusedFiles the first MaxRefusedNamed of them by path: the index
+	// holds none of their records, so a name one of them declares reads
+	// as absent though it is not. Both are left out when nothing was
+	// refused, so such a header is byte-equal to one written before them;
+	// the writers before them failed the whole index on a refusal
+	// (pylite's Extract, pgraph's load), so a header without them reads
+	// as no file refused.
+	Refused      int       `json:"refused,omitempty"`
+	RefusedFiles []Refusal `json:"refused_files,omitempty"`
+}
+
+// MaxRefusedNamed is how many refused files a header names, so its line
+// stays bounded for a reader that reads the header alone.
+const MaxRefusedNamed = 20
+
+// Refusal is one file a resolver was handed and left out of the index:
+// its slash path relative to the index root, the line its reader stopped
+// at (0 when the refusal has none, as a read error has none), and why, in
+// the resolver's words.
+type Refusal struct {
+	Path   string `json:"path"`
+	Line   int    `json:"line,omitempty"`
+	Reason string `json:"reason"`
+}
+
+// Refusals is the error a resolver's Extract returns, or what that error
+// is to errors.As, beside the records of every file it read, when it
+// refused some: the index is written without them and names each one.
+// Any other error fails the index.
+type Refusals []Refusal
+
+func (r Refusals) Error() string {
+	return fmt.Sprintf("%d file(s) refused", len(r))
 }
 
 // HeaderRev is the committed revision a file's records are at.
@@ -36,8 +70,9 @@ type HeaderRev struct {
 	Commit string `json:"commit"`
 }
 
-// ErrNoGraph is Load's answer when the file is absent.
-var ErrNoGraph = errors.New("graph: no index")
+// ErrNoGraph is Load's answer when the file is absent. Its words say where
+// the index was looked for and what writes one.
+var ErrNoGraph = errors.New("graph: no index at " + GraphFile + "; run rashomon graph index at the repository root")
 
 // GraphFile is where a repository's index lives, under its root.
 const GraphFile = ".rashomon/graph.jsonl"
