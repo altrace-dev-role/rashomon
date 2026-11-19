@@ -359,8 +359,11 @@ func cmdProbe(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // evictionLine is what probe says when eviction could not finish (REC-32): a
 // store that cannot evict grows past its cap, and no session's coverage can
-// say so. Fixed text, like flushLostLine, because hook stderr reaches Claude
-// Code's debug log; `rashomon report` shows the gaps eviction did write.
+// say so. Fixed text, like flushLostLine: the stderr of a hook that exits 0
+// never reaches the model, and Claude Code writes it to its debug log and,
+// as "stderr", to the hook_success record in the session's transcript; what
+// its interactive view shows of it is not observed. `rashomon report` shows
+// the gaps eviction did write.
 const evictionLine = "rashomon: store eviction incomplete"
 
 // standDownLine is the whole of what an entry from another install says.
