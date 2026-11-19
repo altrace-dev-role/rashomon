@@ -131,21 +131,21 @@ func TestST4d_ModelVisibleNoteIsMirrored(t *testing.T) {
 	wantLine(t, l, LineStateDelivered, "", DeliveryDelivered)
 }
 
-// TestST7_FourthNoteIsSuppressedByThePromptBudget: three calls in one prompt
-// deliver; the fourth prints nothing and its line says budget_prompt (tech
-// 4.2.5; REC-43). A fourth note cannot be delivered later in the prompt, so
-// it is not deferred.
-func TestST7_FourthNoteIsSuppressedByThePromptBudget(t *testing.T) {
+// TestST7_FourthNoteIsSuppressedByTheWindow: three calls in one prompt, of
+// three patterns, deliver; the fourth, inside their window, prints nothing
+// and its line says budget_window (tech 4.2.5 as NOTE-BUDGET amends it;
+// REC-43). A held note is not deferred: the line is its record.
+func TestST7_FourthNoteIsSuppressedByTheWindow(t *testing.T) {
 	ctx := routerContext(t)
-	for i := range 3 {
-		if out := Route(ctx, []Finding{regressionNote(t, "go test", int64(5+i), fmt.Sprint("k", i), LevelNudge)}); out.AdditionalContext == "" {
+	for i, f := range []Finding{regressionNote(t, "go test", 5, "k0", LevelNudge), staleNote(t, "go test", 6), maskedNote(t, "k2", 7)} {
+		if out := Route(ctx, []Finding{f}); out.AdditionalContext == "" {
 			t.Fatalf("note %d did not print", i+1)
 		}
 	}
 	if out := Route(ctx, []Finding{regressionNote(t, "go test", 9, "k3", LevelNudge)}); out != (Output{}) {
 		t.Errorf("the fourth note printed %+v", out)
 	}
-	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByBudgetPrompt, DeliverySuppressedBudget)
+	wantLine(t, lastLines(t, ctx, 1)[0], LineStateSuppressed, SuppressedByBudgetWindow, DeliverySuppressedBudget)
 	ctx.PromptID = ptr("p2")
 	if out := Route(ctx, []Finding{regressionNote(t, "go test", 10, "k4", LevelNudge)}); out.AdditionalContext == "" {
 		t.Error("the next prompt's first note did not print")

@@ -51,7 +51,8 @@ func DeriveDelivery(state LineState, level Level, by *SuppressedBy, printed bool
 // by its spelling alone.
 func budgetReason(by SuppressedBy) bool {
 	switch by {
-	case SuppressedByBudgetPrompt, SuppressedByBudgetPattern, SuppressedByBudgetBatch:
+	case SuppressedByBudgetPrompt, SuppressedByBudgetPattern, SuppressedByBudgetBatch,
+		SuppressedByBudgetWindow, SuppressedByBudgetRepeat:
 		return true
 	}
 	return false
