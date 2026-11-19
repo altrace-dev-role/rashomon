@@ -71,15 +71,16 @@ m("WS-1 every Python source that is a link is refused", "internal/graph/lang/pyl
   "TestWS1_J13_")
 m("WS-1 the rooted read waits on a named pipe for a writer", "internal/rootio/rootio.go",
   "os.O_RDONLY|syscall.O_NONBLOCK, 0)", "os.O_RDONLY|syscall.O_NONBLOCK&0, 0)", "TestWS1_J11_")
-m("WS-1 the rooted read reads what is not a regular file", "internal/rootio/rootio.go",
+m("WS-1 the rooted read reads what is not a regular file", "internal/regfile/regfile.go",
   "\tif !fi.Mode().IsRegular() {\n", "\tif fi == nil {\n", "TestWS1_J11_")
 
 # The direct rows: ReplaceFile's failure path, its error and the mode it
-# creates with; ReadRegular's error names and the links it refuses on a read;
-# ReadCappedFrom's two checks one at a time, the stated size and the capped
-# reader past it, each with a file whose stated size the other cannot see
-# past; and the modes the index and a row file are created with under umask
-# 022. One row per test's "Break:" clause.
+# creates with; ReadRegular's error names, its refusals returned as they
+# are, and the links it refuses on a read; ReadCappedFrom's checks one at a
+# time, the mode, the stated size and the capped reader past it, each size
+# check with a file whose stated size the other cannot see past, and the
+# bytes the capped reader takes; and the modes the index and a row file are
+# created with under umask 022. One row per test's "Break:" clause.
 m("WS-1 a failed write leaves its temporary file beside name", "internal/rootio/rootio.go",
   "\t\tr.Remove(tmp) //nolint:errcheck // best effort: the write's error is the one to report\n", "",
   "TestWS1_RF6_")
@@ -107,6 +108,23 @@ m("WS-1 a stated size over the cap is read before it is refused", "internal/regf
 m("WS-1 a file longer than its stated size is read around the cap", "internal/regfile/regfile.go",
   "\t\tk, err := c.Read(data[len(data):cap(data)])\n", "\t\tk, err := c.f.Read(data[len(data):cap(data)])\n",
   "TestWS1_RB5_")
+m("WS-1 a stated size over the cap is refused as a read", "internal/regfile/regfile.go",
+  "Op: \"open\", Path: path, Err: &OverCapError{Size: size, Max: max}}",
+  "Op: \"read\", Path: path, Err: &OverCapError{Size: size, Max: max}}", "TestWS1_RB3_")
+m("WS-1 a file grown past the cap is read on past byte max+1", "internal/regfile/regfile.go",
+  "\tif room := c.max - c.n; room < int64(len(p)) {\n\t\tp = p[:room+1]\n\t}\n", "", "TestWS1_RB5_")
+m("WS-1 a file grown past the cap is refused as an open", "internal/regfile/regfile.go",
+  "Op: \"read\", Path: c.path, Err: &OverCapError{Size: c.max + 1, Max: c.max}}",
+  "Op: \"open\", Path: c.path, Err: &OverCapError{Size: c.max + 1, Max: c.max}}", "TestWS1_RB5_")
+m("WS-1 the capped read from a caller's file reads what is not a regular file", "internal/regfile/regfile.go",
+  "\tif !fi.Mode().IsRegular() {\n\t\treturn nil, &fs.PathError{Op: \"open\", Path: path, Err: ErrNotRegular}\n\t}\n",
+  "", "TestWS1_RB7_")
+m("WS-1 a rooted read wraps the not-regular refusal again", "internal/rootio/rootio.go",
+  "\tif errors.Is(err, regfile.ErrNotRegular) || errors.Is(err, regfile.ErrOverCap) {\n",
+  "\tif errors.Is(err, regfile.ErrOverCap) {\n", "TestWS1_RR5_")
+m("WS-1 a rooted read wraps the over-limit refusal again", "internal/rootio/rootio.go",
+  "\tif errors.Is(err, regfile.ErrNotRegular) || errors.Is(err, regfile.ErrOverCap) {\n",
+  "\tif errors.Is(err, regfile.ErrNotRegular) {\n", "TestWS1_RR5_")
 m("WS-1 the index is saved 0644", "internal/graph/persist.go",
   GRAPH_RET, GRAPH_RET.replace("0o600", "0o644"), "TestWS1_SF4_")
 m("WS-1 a knowledge row file is written 0600", "internal/graph/knowledge/schema.go",

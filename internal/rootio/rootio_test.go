@@ -133,11 +133,13 @@ func TestWS1_RF7_ReplaceFileErrorNamesTheWholeTarget(t *testing.T) {
 // TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName: a missing source,
 // a directory where a source was named and a source over the limit each
 // return no byte and an error naming the root's path joined with name, not
-// the base name alone; the directory's is a *fs.PathError wrapping
-// regfile.ErrNotRegular, and the over-limit one is a *fs.PathError of that
-// path wrapping a *regfile.OverCapError of the size and the limit, the form
-// a caller records by its class without the path. Break: name the error by
-// name alone.
+// the base name alone; the directory's is the reader's own *fs.PathError of
+// that path wrapping regfile.ErrNotRegular, and the over-limit one is the
+// reader's own *fs.PathError of that path wrapping a *regfile.OverCapError
+// of the size and the limit, the form a caller records by its class without
+// the path; both are returned as they are. Break: name the error by name
+// alone; or wrap the not-regular refusal again, or the over-limit refusal,
+// so its text names the path twice.
 func TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName(t *testing.T) {
 	root := t.TempDir()
 	app := filepath.Join(root, "app")
@@ -166,14 +168,15 @@ func TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName(t *testing.T) {
 		if b != nil {
 			t.Errorf("ReadRegular(%s) returned %d bytes with its error", c.name, len(b))
 		}
-		var pe *fs.PathError
-		if c.dir && (!errors.As(err, &pe) || !errors.Is(err, regfile.ErrNotRegular)) {
-			t.Errorf("ReadRegular(%s) = %#v; want a *fs.PathError wrapping regfile.ErrNotRegular", c.name, err)
+		pe, ok := err.(*fs.PathError)
+		if c.dir && (!ok || pe.Path != want || !errors.Is(err, regfile.ErrNotRegular)) {
+			t.Errorf("ReadRegular(%s) = %#v; want the reader's *fs.PathError of %s wrapping regfile.ErrNotRegular, as it is",
+				c.name, err, want)
 		}
 		var oc *regfile.OverCapError
-		if c.over && (!errors.As(err, &pe) || pe.Path != want || !errors.As(err, &oc) || oc.Size != 65 || oc.Max != 64 ||
+		if c.over && (!ok || pe.Path != want || !errors.As(err, &oc) || oc.Size != 65 || oc.Max != 64 ||
 			!errors.Is(err, regfile.ErrOverCap)) {
-			t.Errorf("ReadRegular(%s) = %#v; want a *fs.PathError of %s wrapping a *regfile.OverCapError of 65 bytes over 64",
+			t.Errorf("ReadRegular(%s) = %#v; want the reader's *fs.PathError of %s wrapping a *regfile.OverCapError of 65 bytes over 64, as it is",
 				c.name, err, want)
 		}
 	}
