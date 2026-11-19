@@ -15,7 +15,11 @@ import (
 // lines each, every line the shape Route writes (slots, versions, and text
 // on the delivered ones), the last prompt, p119, the one a call counts.
 // Each prompt delivers two notes and three flags; the rest are suppressed.
-func benchRouteLog(tb testing.TB) []byte {
+// dense makes p119's 50 lines all delivered notes, 80 seqs apart in three
+// patterns in turn: a log the router could write under the window
+// (NOTE-BUDGET), since no window of windowSeqs seqs holds more than three
+// of them and none is a repeat of a note in its window.
+func benchRouteLog(tb testing.TB, dense bool) []byte {
 	tb.Helper()
 	m, err := render.New(pattern.RegressionLocation, render.RegressionLocationBinding{
 		Gate: "go test", Minutes: 6, Exit: 1,
@@ -52,6 +56,11 @@ func benchRouteLog(tb testing.TB) []byte {
 			case i < 5:
 				l.State, l.SuppressedBy, l.Level, l.UserText, l.Mirror = LineStateDelivered, nil, "flag", m.Text(), MirrorSystemMessage
 			}
+			if dense && p == 119 {
+				pat := [...]pattern.ID{pattern.RegressionLocation, pattern.StaleEvidence, pattern.MaskedStatus}[i%3]
+				l.Pattern, l.Level, l.AfterSeq = string(pat), "nudge", int64(2+80*i)
+				l.State, l.SuppressedBy, l.ModelText, l.UserText, l.Mirror = LineStateDelivered, nil, m.Text(), mirror, MirrorSystemMessage
+			}
 			l.Delivery = DeriveDelivery(l.State, LevelNudge, l.SuppressedBy, false)
 			b, err := json.Marshal(l)
 			if err != nil {
@@ -67,11 +76,14 @@ func benchRouteLog(tb testing.TB) []byte {
 // BenchmarkRoute measures the router's two pure costs per routed call (card
 // 2.2 premise 11): count_6000 is the reverse scan of a 6,000-line log whose
 // current prompt holds the last 50 lines (it reads those 50 and the line
-// before them, never the log); decide_3 is the decision over three admitted
+// before them, never the log); count_window_6000 is that scan where the
+// current prompt's 50 lines are all delivered notes (benchRouteLog's dense),
+// so it keeps the window's three largest seqs, NOTE-BUDGET's witness row;
+// decide_3 is the decision over three admitted
 // findings, a note, a lower note and a flag, with ids minted outside. The
 // lock, the append and the sync are the store's own rows.
 func BenchmarkRoute(b *testing.B) {
-	log := benchRouteLog(b)
+	log, dense := benchRouteLog(b, false), benchRouteLog(b, true)
 	b.Run("count_6000", func(b *testing.B) {
 		ctx := &Context{SessionID: "s1", PromptID: ptr("p119")}
 		r := bytes.NewReader(log)
@@ -80,6 +92,18 @@ func BenchmarkRoute(b *testing.B) {
 		for range b.N {
 			c, err := countBudget(r, ctx)
 			if err != nil || c.notes != 2 || c.flags != 3 {
+				b.Fatalf("counts = %+v, %v", c, err)
+			}
+		}
+	})
+	b.Run("count_window_6000", func(b *testing.B) {
+		ctx := &Context{SessionID: "s1", PromptID: ptr("p119")}
+		r := bytes.NewReader(dense)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for range b.N {
+			c, err := countBudget(r, ctx)
+			if err != nil || c.notes != 50 || c.kept != maxNotes || c.window[0].seq != 2+80*49 {
 				b.Fatalf("counts = %+v, %v", c, err)
 			}
 		}

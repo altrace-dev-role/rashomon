@@ -9,8 +9,8 @@ import (
 // with no reason too, at every level and both values of printed, against
 // tech 4.2.3's derivation written out here by hand: delivered gives
 // delivered at nudge or stop and flag_only at flag; suppressed gives
-// suppressed_budget for budget_prompt, budget_pattern or budget_batch (a
-// list, as production keeps one, not a prefix match) and shadow for every
+// suppressed_budget for budget_prompt, budget_pattern, budget_batch,
+// budget_window or budget_repeat (a list, as production keeps one, not a prefix match) and shadow for every
 // other; superseded gives suppressed_budget; stale gives shadow; expired
 // gives flag_only when it printed as a turn-end flag, else shadow;
 // candidate, deferred and unconfirmed carry null (card 2.2 R11).
@@ -48,7 +48,7 @@ func wantDelivery(state LineState, level Level, by *SuppressedBy, printed bool) 
 		}
 		return DeliveryDelivered
 	case LineStateSuppressed:
-		if by != nil && slices.Contains([]SuppressedBy{SuppressedByBudgetPrompt, SuppressedByBudgetPattern, SuppressedByBudgetBatch}, *by) {
+		if by != nil && slices.Contains([]SuppressedBy{SuppressedByBudgetPrompt, SuppressedByBudgetPattern, SuppressedByBudgetBatch, SuppressedByBudgetWindow, SuppressedByBudgetRepeat}, *by) {
 			return DeliverySuppressedBudget
 		}
 		return DeliveryShadow

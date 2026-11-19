@@ -7,16 +7,18 @@ import (
 // TestMS1o_ArmOffDecidesAsSteer: arm off runs the steer arm's decision and
 // withholds only its effect. Over one prompt, five calls under each arm on
 // its own store: two notes on one call, then three calls of one note with a
-// new key each, then a note on a key already given. Steer delivers the first
-// three calls' winners and refuses the rest by budget. Off prints nothing,
-// and each of its lines is steer's, but for arm_off where steer delivered:
-// so the per-prompt budget counts a withheld note as given.
+// new key each, then a note on a key already given. The first three calls'
+// winners are of three patterns, so the repeat reserve (NOTE-BUDGET)
+// holds none of them. Steer delivers those three and refuses the rest by
+// budget. Off prints nothing, and each of its lines is steer's, but for
+// arm_off where steer delivered: so the window counts a withheld note as
+// given.
 func TestMS1o_ArmOffDecidesAsSteer(t *testing.T) {
 	calls := func() [][]Finding {
 		return [][]Finding{
 			{regressionNote(t, "go test", 5, "a", LevelNudge), regressionNote(t, "go vet", 6, "b", LevelNudge)},
-			{regressionNote(t, "make", 7, "c", LevelNudge)},
-			{regressionNote(t, "npm test", 8, "d", LevelNudge)},
+			{staleNote(t, "make", 7)},
+			{maskedNote(t, "d", 8)},
 			{regressionNote(t, "cargo test", 9, "e", LevelNudge)},
 			{regressionNote(t, "go test", 10, "a", LevelNudge)},
 		}
@@ -40,7 +42,7 @@ func TestMS1o_ArmOffDecidesAsSteer(t *testing.T) {
 	}{
 		{LineStateDelivered, ""}, {LineStateSuperseded, SuppressedByBudgetBatch},
 		{LineStateDelivered, ""}, {LineStateDelivered, ""},
-		{LineStateSuppressed, SuppressedByBudgetPrompt}, {LineStateSuppressed, SuppressedByBudgetPattern},
+		{LineStateSuppressed, SuppressedByBudgetWindow}, {LineStateSuppressed, SuppressedByBudgetPattern},
 	}
 	if len(steerLog) != len(wantSteer) || len(offLog) != len(wantSteer) {
 		t.Fatalf("steer logged %d lines and off %d, want %d each", len(steerLog), len(offLog), len(wantSteer))
@@ -72,7 +74,7 @@ func TestMS1o_ArmOffDecidesAsSteer(t *testing.T) {
 		}
 	}
 	if withheld != maxNotes {
-		t.Errorf("off withheld %d notes, want the prompt's budget, %d", withheld, maxNotes)
+		t.Errorf("off withheld %d notes, want the window's cap, %d", withheld, maxNotes)
 	}
 }
 

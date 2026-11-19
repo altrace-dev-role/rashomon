@@ -116,6 +116,9 @@ func TestCSL1_TheBriefingIsDirectOutsideThePromptBudget(t *testing.T) {
 	n := 0
 	mint := func() string { n++; return strings.Repeat("0", 31) + string(rune('0'+n%10)) }
 	spent := counts{notes: maxNotes, flags: maxFlags}
+	for s := int64(1); s <= maxNotes; s++ {
+		spent.keep(s, string(pattern.StaleEvidence)) // the window full too, so the premise holds
+	}
 
 	out, lines := decide(start(), c, []Finding{brief}, spent, mint)
 	if out.AdditionalContext != m.Text() || len(lines) != 1 || lines[0].State != LineStateDelivered || lines[0].Level != LevelNudge.String() {
