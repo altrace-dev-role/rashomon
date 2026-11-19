@@ -110,7 +110,7 @@ func Build(g *graph.Store, rev graph.Rev, prompt string, opt Options) Brief {
 	}
 	start := time.Now()
 	req, held := notice(prompt, opt.PromptCut)
-	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(req)), Scorer: "tf"}
+	b := Brief{Rev: rev, Prompt: prompt, Tokens: uniq(Tokens(req)), Scorer: "tf", Refused: opt.Refused}
 	if opt.IDF {
 		b.Scorer = "idf"
 	}
@@ -260,7 +260,7 @@ func (b Brief) roles(hits bool) string {
 	r := b.Roles
 	var sb strings.Builder
 	if hits {
-		fmt.Fprintf(&sb, "\nnames: %s\n", namedWords(r.Named))
+		fmt.Fprintf(&sb, "\nnames: %s\n", namedWords(r.Named, b.Refused))
 		if len(r.Derived) > 0 {
 			fmt.Fprintf(&sb, "derived: %s\n", derivedWords(r.Derived))
 		}
@@ -275,10 +275,7 @@ func (b Brief) roles(hits bool) string {
 		if p.Callable {
 			kind = "callable"
 		}
-		refused := p.Refused
-		if !hits {
-			refused = whyClass(refused)
-		}
+		refused := b.why(p.Refused, hits)
 		fmt.Fprintf(&sb, "  %-10s %5.2f of %5.2f  %-32s nodes %-3d %-8s prec %.2f mass %5.2f  %s\n", p.Class, p.Covered, p.Of, p.Path, len(p.Nodes), kind, p.Precision, p.Mass, refused)
 	}
 	if n := len(r.ReuseClaims); n > 0 {
@@ -291,18 +288,16 @@ func (b Brief) roles(hits bool) string {
 		}
 		fmt.Fprintf(&sb, "  use %6.2f add %6.2f mass %6.2f  via %-5v in %-5v out %-5v nodes %-3d %s\n", cl.Use, cl.Add, cl.Mass, cl.ViaAdd, cl.In, cl.Reused, cl.Nodes, cl.File)
 	}
-	why := r.Why
-	if !hits {
-		why = whyClass(why)
-	}
+	why := b.why(r.Why, hits)
 	fmt.Fprintf(&sb, "roles (%s): unit %s; basis %s; runner-up %s; file %s; targets %d; reuse %s; consumers %s; knowledge %s\n",
 		why, r.Unit, r.Basis, r.RunnerUp, r.File, len(r.Targets), roleFiles(r.Reuse), roleFiles(r.Consumers), joinIDs(r.Knowledge))
 	return sb.String()
 }
 
 // namedWords is R0's reading for Explain: each word, its kind and what
-// it resolved to or why not.
-func namedWords(n Named) string {
+// it resolved to or why not; a why that is an absence over an index that
+// refused files (refused above 0) is withheld.
+func namedWords(n Named, refused int) string {
 	if len(n.Words) == 0 {
 		return "none"
 	}
@@ -315,12 +310,58 @@ func namedWords(n Named) string {
 		if w.Node != "" {
 			s += " " + string(w.Node)
 		}
-		if w.Why != "" {
-			s += ": " + w.Why
+		if why := w.Why; why != "" {
+			if refused > 0 && absent(why) {
+				why = withheld(refused)
+			}
+			s += ": " + why
 		}
 		out[i] = s
 	}
 	return strings.Join(out, "; ")
+}
+
+// absentWhys is the closed table of the fragments by which a reason says
+// the index holds no such thing: a named word that resolves to nothing,
+// a target or head no unit names, a pronoun no clause names. Over an index
+// that refused a file such a reason is not proven, since the refused file
+// may hold the thing, so the tables print withheld in its place. A
+// fragment is matched anywhere in the reason, so a refusal that wraps a
+// named word's reason ("named 'w': ...") is caught too. Limit: the table
+// fails open; an absence reason the engine builds later is printed as
+// before until its fragment is added here.
+var absentWhys = []string{
+	" is not in the index", " is in no unit", " is not declared in ", " is declared in none of the ",
+	"no one unit has the segment ", "no unit is named", "' names no unit", "no unit names the target",
+	"no unit names the head '", "' stands for a thing no clause names",
+}
+
+// absent is whether reason s holds a fragment of absentWhys.
+func absent(s string) bool {
+	for _, f := range absentWhys {
+		if strings.Contains(s, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// withheld is what the tables print in place of an absence over an index
+// that refused n files: a count, and no word of the request or the index,
+// so the evidence file may keep it.
+func withheld(n int) string { return fmt.Sprintf("withheld: the index refused %d file(s)", n) }
+
+// why is a reason as the tables print it: withheld when it is an absence
+// and the index refused files, its class when hits is unset (whyClass),
+// and the reason itself otherwise.
+func (b Brief) why(s string, hits bool) string {
+	switch {
+	case b.Refused > 0 && absent(s):
+		return withheld(b.Refused)
+	case !hits:
+		return whyClass(s)
+	}
+	return s
 }
 
 // derivedWords is the S2 readings for Explain, token>name, in order.
