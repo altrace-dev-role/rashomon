@@ -5,7 +5,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -34,6 +36,10 @@ import (
 // and the value is recorded in test/tools/hygiene/reviewed.txt by a
 // fingerprint that excuses it in that file and nothing else.
 //
+// The session fixtures of internal/graph/session carry rashomon's own steer
+// line ids, dedupe keys and SHA-256 sums, which the entropy test reads as
+// tokens; h113Typed excuses those by kind of file, member and class of value.
+//
 // Break: skip the .ndjson captures, and a credential planted in a captured
 // transcript passes CI.
 
@@ -59,6 +65,76 @@ var h113Contracts = map[string]string{
 	"internal/graph/lang/gopg/testdata/shapes/.pgraph/pgraph.walk":    "the sidecar the real pgraph wrote for the shapes fixture (W-M1.3): the SHA-256 of each Go file and of the sibling sidecars is the vouch chain TestGopg_RecordsForFixture reads whole, so a scrubbed digest is a refused fixture, not a cleaner one",
 }
 
+// h113Sessions holds internal/graph/session's fixtures: stores cut from
+// recorded eval runs (PROVENANCE.txt), the goldens folded from them, and the
+// SHA-256 sums that pin the stores.
+const h113Sessions = "internal/graph/session/testdata/sessions/"
+
+// h113Typed excuses the secret shapes a store format puts in those fixtures,
+// by place: a kind of file, as a path.Match pattern; the JSON member the
+// value is read under, "" for a line of text; the class of value allowed
+// there (hygiene.Finding.Class), "" for any; and the reason. A steer line's
+// id is 16 bytes of crypto/rand in hex (steer.newID), a token by design, so
+// the entropy test cannot tell it from a credential and only its place can.
+// As h113Contracts, an allow list and not a skip: only a secret shape is
+// excused, the same value under another member, of another class or in
+// another kind of file still fails, and a row that excuses nothing fails as
+// stale.
+var h113Typed = []struct{ kind, member, class, why string }{
+	{h113Sessions + "stores/*/runs/*/steer.ndjson", "id", "32 lowercase hex digits",
+		"steer.Line.ID, a steer line's id: 16 bytes of crypto/rand in hex (steer.newID)"},
+	{h113Sessions + "stores/*/runs/*/steer.ndjson", "key", "",
+		"steer.Line.Key, the finding's dedupe key: a learned gate's learned:<kind>:<runner>@<location> and the like"},
+	{h113Sessions + "golden/fold-v1/*.json", "id", "32 lowercase hex digits",
+		"a steer line's id as the fold keeps it: a delivered line's LineRef.ID, and the through Mark's ID when the last event is a line"},
+	{h113Sessions + "golden/fold-v1/*.json", "key", "",
+		"a steer line's dedupe key as the fold keeps it: a delivered line's LineRef.Key"},
+	{h113Sessions + "SHA256SUMS.txt", "", "a checksum line",
+		"the SHA-256 of each store file beside its path, as shasum -a 256 writes them; PROVENANCE.txt pins this file by its own sum"},
+}
+
+// h113TypedRow is the index of the h113Typed row that excuses f, or -1.
+func h113TypedRow(f hygiene.Finding) int {
+	if f.What != "a secret shape" {
+		return -1
+	}
+	for i, r := range h113Typed {
+		if ok, _ := path.Match(r.kind, f.Path); ok && f.Member == r.member && (r.class == "" || f.Class == r.class) {
+			return i
+		}
+	}
+	return -1
+}
+
+// h113Problems is what H-113 fails on, given what the scan read and found:
+// each finding neither allow list excuses, and each entry of either list
+// that excuses nothing.
+func h113Problems(scanned []string, found []hygiene.Finding) []string {
+	var problems []string
+	for name := range h113Contracts {
+		if !slices.Contains(scanned, name) {
+			problems = append(problems, fmt.Sprintf("h113Contracts names %s, which the scan did not read: a stale entry", name))
+		}
+	}
+	used := make([]bool, len(h113Typed))
+	for _, f := range found {
+		if _, ok := h113Contracts[f.Path]; ok && f.What == "a secret shape" {
+			continue
+		}
+		if i := h113TypedRow(f); i >= 0 {
+			used[i] = true
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("%s -- run go run ./test/tools/scrub -w on it, read the result, and commit that", f))
+	}
+	for i, r := range h113Typed {
+		if !used[i] {
+			problems = append(problems, fmt.Sprintf("h113Typed row %s, member %q, class %q excuses nothing: a stale row", r.kind, r.member, r.class))
+		}
+	}
+	return problems
+}
+
 func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 	scanned, found, err := hygiene.Walk(moduleRoot)
 	if err != nil {
@@ -71,16 +147,67 @@ func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 			t.Fatalf("premise: the scan did not read %s; it read %v", want, scanned)
 		}
 	}
-	for path := range h113Contracts {
-		if !slices.Contains(scanned, path) {
-			t.Errorf("h113Contracts names %s, which the scan did not read: a stale entry", path)
-		}
+	for _, p := range h113Problems(scanned, found) {
+		t.Error(p)
 	}
-	for _, f := range found {
-		if _, ok := h113Contracts[f.Path]; ok && f.What == "a secret shape" {
+}
+
+// TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile: a typed row
+// excuses a secret shape under its member, of its class, in its kind of file,
+// and nothing else: the value under another member fails, beside itself
+// under its own member too; a token or a longer hex run under the member
+// fails; the value in another kind of file fails; another shape under a
+// member whose row takes any value fails; and a row nothing matches is
+// reported as stale.
+func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
+	id := h112Stray[:32] // 32 lowercase hex digits, a steer line id's class
+	run := h113Sessions + "stores/r/runs/" + h112P1 + "/"
+	sums := h113Sessions + "SHA256SUMS.txt"
+	for _, tc := range []struct {
+		name, file, body string
+		excused          bool
+	}{
+		{"a steer line's id", run + "steer.ndjson", `{"id":"` + id + `"}`, true},
+		{"a checksum line", sums, h112Leaf + "  stores/r/runs/" + h112P1 + "/steer.ndjson", true},
+		{"the id under another member", run + "steer.ndjson", `{"note":"` + id + `"}`, false},
+		{"the id under its member and another", run + "steer.ndjson", `{"id":"` + id + `","note":"` + id + `"}`, false},
+		{"a token under the member", run + "steer.ndjson", `{"id":"` + h112Bearer + `"}`, false},
+		{"64 hex digits under the member", run + "steer.ndjson", `{"id":"` + h112Stray + `"}`, false},
+		{"the id in another kind of file", run + "records.ndjson", `{"id":"` + id + `"}`, false},
+		{"an email address under a member any value passes", run + "steer.ndjson", `{"key":"mail alice.liddell@acme-corp.io"}`, false},
+		{"a checksum line with one space", sums, h112Leaf + " stores/r/runs/" + h112P1 + "/steer.ndjson", false},
+	} {
+		found := hygiene.Scan(tc.file, []byte(tc.body+"\n"))
+		if len(found) == 0 {
+			t.Errorf("%s: premise: the scan finds nothing", tc.name)
 			continue
 		}
-		t.Errorf("%s -- run go run ./test/tools/scrub -w on it, read the result, and commit that", f)
+		excused := true
+		for _, f := range found {
+			excused = excused && h113TypedRow(f) >= 0
+		}
+		if excused != tc.excused {
+			t.Errorf("%s: excused = %v, want %v (%v)", tc.name, excused, tc.excused, found)
+		}
+	}
+
+	var contracts []string
+	for name := range h113Contracts {
+		contracts = append(contracts, name)
+	}
+	// The steer id uses row 0 alone, so every other row is stale and row 0
+	// is not.
+	found := hygiene.Scan(run+"steer.ndjson", []byte(`{"id":"`+id+`"}`+"\n"))
+	problems := h113Problems(contracts, found)
+	if len(problems) != len(h113Typed)-1 {
+		t.Errorf("one row used: %d problems, want the %d unused rows as stale: %v", len(problems), len(h113Typed)-1, problems)
+	}
+	r := h113Typed[0]
+	usedRow := fmt.Sprintf("h113Typed row %s, member %q, class %q excuses nothing: a stale row", r.kind, r.member, r.class)
+	for _, p := range problems {
+		if p == usedRow || !strings.HasSuffix(p, "excuses nothing: a stale row") {
+			t.Errorf("not an unused row's stale report: %s", p)
+		}
 	}
 }
 

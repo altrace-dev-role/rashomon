@@ -53,6 +53,24 @@ func digests(text string) map[string]bool {
 	return set
 }
 
+// checksumLine is a line of a SHA256SUMS file as shasum -a 256 writes it: a
+// lowercase SHA-256, two spaces and a path.
+var checksumLine = regexp.MustCompile(`^[0-9a-f]{64}  \S+$`)
+
+// class says what a value is made of and nothing more, so an allow list can
+// excuse a shape by its place and its kind without the value, which no
+// finding prints: "N lowercase hex digits" for a value that is those alone,
+// "a checksum line" for a checksumLine, and "" for anything else.
+func class(v string) string {
+	switch {
+	case checksumLine.MatchString(v):
+		return "a checksum line"
+	case v != "" && strings.Trim(v, "0123456789abcdef") == "":
+		return fmt.Sprintf("%d lowercase hex digits", len(v))
+	}
+	return ""
+}
+
 var uuidRE = regexp.MustCompile(`[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}`)
 
 // placeholderUUID begins every UUID Scrub writes: the version and variant

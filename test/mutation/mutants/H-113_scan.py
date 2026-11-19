@@ -28,14 +28,14 @@ m("H-113 an inventory list in a document passes", SCAN,
 m("H-113 email addresses pass", SCAN,
   "\tif len(emailSpans(v)) > 0 {", "\tif false {", H113)
 m("H-113 a UUID inside a path passes", SCAN,
-  "\tcase uuidInPath(v):\n\t\ts.add(line, \"an account-style UUID inside a path\", v)\n\tcase len(accountUUIDs(v)) > 0:\n",
-  "\tcase false:\n\t\ts.add(line, \"an account-style UUID inside a path\", v)\n\tcase false:\n", H113)
+  "\tcase uuidInPath(v):\n\t\ts.add(line, member, \"an account-style UUID inside a path\", v)\n\tcase len(accountUUIDs(v)) > 0:\n",
+  "\tcase false:\n\t\ts.add(line, member, \"an account-style UUID inside a path\", v)\n\tcase false:\n", H113)
 m("H-113 home directories pass", SCAN,
   "\tif homeIn(v) {", "\tif false {", H113)
 m("H-113 a fingerprint ignores the value", SCAN,
   "what + \"\\x00\" + value))", "what))", H113)
 m("H-113 an entry that excuses nothing is not reported", SCAN,
-  "\t\t\tkept = append(kept, Finding{Reviewed, entries[key], \"an entry that excuses nothing: delete it\", \"\"})",
+  "\t\t\tkept = append(kept, Finding{Path: Reviewed, Line: entries[key], What: \"an entry that excuses nothing: delete it\"})",
   "\t\t\t_ = key", H113)
 m("H-113 any member name makes a hex run a digest", SHAPES,
   "(?i:[a-z0-9_]*(?:hash|digest|checksum|sha|sha1|sha256))", "(?i:[a-z0-9_]*)", H113)
@@ -84,3 +84,32 @@ m("H-113 a quoted value ends at its first blank", "internal/secretshape/redact.g
   "\tif q := line[i]; q == '\"' || q == '\\'' {\n", "\tif q := line[i]; q == 0 {\n", "TestRedact_ASecretNamedKeyTakesItsValue")
 m("H-113 an account UUID is flagged only inside a path", "test/tools/hygiene/scan.go",
   "\tcase len(accountUUIDs(v)) > 0:\n", "\tcase false:\n", "TestH113_")
+
+# The typed rows of H-113 (test/acceptance/h113_fixture_hygiene_test.go's
+# h113Typed): a secret shape in internal/graph/session's fixtures is excused
+# only under its row's member, of its row's class, in its row's kind of file,
+# and a row that excuses nothing is stale. A finding carries the member it
+# was read under and its value's class, and one value under two members is two
+# findings, so the row cannot excuse the second by the first. Each break below
+# undoes one of those promises; the typed test's cases kill each.
+A = "test/acceptance/h113_fixture_hygiene_test.go"
+TYPED = "TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile"
+m("H-113 a typed row excuses its kind of file under any member", A,
+  "ok && f.Member == r.member && (", "ok && (", TYPED)
+m("H-113 a typed row excuses its member in any class", A,
+  "(r.class == \"\" || f.Class == r.class)", "true", TYPED)
+m("H-113 a typed row excuses its member in any kind of file", A,
+  "path.Match(r.kind, f.Path); ok && ", "path.Match(r.kind, f.Path); ok || true && ", TYPED)
+m("H-113 a typed row excuses any shape", A,
+  "\tif f.What != \"a secret shape\" {\n\t\treturn -1\n", "\tif false {\n\t\treturn -1\n", TYPED)
+m("H-113 a typed row that excuses nothing passes", A,
+  "\t\tif !used[i] {\n", "\t\tif !used[i] && false {\n", TYPED)
+m("H-113 a finding does not carry its member", SCAN,
+  ", Member: member, ", ", ", H113)
+m("H-113 one value under two members is one finding", SCAN,
+  "\tif !s.seen[f] {\n\t\ts.seen[f] = true\n",
+  "\tif k := (Finding{Path: f.Path, Line: f.Line, What: f.What, Fingerprint: f.Fingerprint}); !s.seen[k] {\n\t\ts.seen[k] = true\n", H113)
+m("H-113 a checksum line takes any spacing", SHAPES,
+  "`^[0-9a-f]{64}  \\S+$`", "`^[0-9a-f]{64} +\\S+$`", H113)
+m("H-113 every lowercase hex run is one class", SHAPES,
+  "fmt.Sprintf(\"%d lowercase hex digits\", len(v))", "fmt.Sprintf(\"%d lowercase hex digits\", 32)", H113)
