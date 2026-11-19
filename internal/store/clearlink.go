@@ -137,7 +137,7 @@ func tallyClear(dir, ownArm, mine, theirs string, now time.Time) (clearTally, er
 	var t clearTally
 	for _, e := range entries {
 		name := e.Name()
-		if !isClearName(name) {
+		if !IsClearName(name) {
 			continue
 		}
 		info, err := e.Info()
@@ -167,19 +167,14 @@ func tallyClear(dir, ownArm, mine, theirs string, now time.Time) (clearTally, er
 	return t, nil
 }
 
-// isClearName reports whether name is one meetClear makes: an arm, a link,
-// or createExclusive's temporary for a link.
-func isClearName(name string) bool {
+// IsClearName reports whether name is one meetClear makes: an arm, a link,
+// or createExclusive's temporary for a link. A visit sweeps only such names,
+// and purge owns only such files in a rendezvous folder.
+func IsClearName(name string) bool {
 	for _, p := range []string{clearEndArm, clearStartArm, clearLinkName} {
 		if strings.HasPrefix(name, p) {
 			return true
 		}
 	}
 	return strings.HasPrefix(name, "."+clearLinkName) && strings.Contains(name, ".tmp-")
-}
-
-// MeetClear is meetClear in root's rendezvous folder for the working
-// directory cwd. Stub until its GREEN: it links nothing and writes nothing.
-func MeetClear(root, cwd string, side ClearSide, self string, now time.Time) (ClearLink, bool, error) {
-	return ClearLink{}, false, nil
 }

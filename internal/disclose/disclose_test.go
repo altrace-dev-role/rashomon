@@ -479,7 +479,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// WriteSessionContentMarker ReplaceFile, session_content, the third
 		// view of consent.json (sessionContentFiles in the inventory, its
 		// temp prefix in purge).
-		{"store", 39},
+		// Moved 2026-11-19 (M4-PR1) to 40: clearlink.go's meetClear OpenFile
+		// of an arm, clear/<digest>/end-<id> or start-<id>, the /clear
+		// rendezvous (clearFiles in the inventory, purge's clear tree); its
+		// link is createExclusive's, already counted.
+		{"store", 40},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
