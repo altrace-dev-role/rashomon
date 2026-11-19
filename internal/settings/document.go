@@ -72,9 +72,10 @@ func Load(path string) (*Document, error) {
 	// rather than waited on (a hook would wait every turn), and a target over
 	// maxFileBytes is refused before a byte of it is read. It follows a link,
 	// as writeTarget does when it writes.
-	data, err := regfile.ReadFile(path, maxFileBytes)
-	if errors.Is(err, regfile.ErrOverBound) {
-		return nil, &Error{Path: path, Err: fmt.Errorf("over the %d-byte bound", maxFileBytes)}
+	data, err := regfile.ReadCapped(path, maxFileBytes)
+	var oc *regfile.OverCapError
+	if errors.As(err, &oc) {
+		return nil, &Error{Path: path, Err: oc}
 	}
 	if errors.Is(err, fs.ErrNotExist) {
 		// A dangling symlink's open fails with the same ErrNotExist a path

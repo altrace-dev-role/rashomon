@@ -44,7 +44,7 @@ m("WS-1 every link at the knowledge directory is refused", "internal/graph/knowl
   ROWS_RET,
   "\tif fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(Dir))); err == nil && fi.Mode()&os.ModeSymlink != 0 {\n\t\treturn \"\", os.ErrPermission\n\t}\n" + ROWS_RET,
   "TestWS1_I10k_")
-LOAD = "\tdata, err := regfile.ReadFile(path, maxFileBytes)\n"
+LOAD = "\tdata, err := regfile.ReadCapped(path, maxFileBytes)\n"
 SETTINGS_IMPORTS = ("internal/settings/document.go", "\t\"io/fs\"\n\t\"strings\"\n", "\t\"io/fs\"\n\t\"os\"\n\t\"strings\"\n")
 m("WS-1 a settings file that is a link is refused", "internal/settings/document.go",
   LOAD,
@@ -52,7 +52,7 @@ m("WS-1 a settings file that is a link is refused", "internal/settings/document.
   "TestWS1_J4_")
 IMPORTS["WS-1 a settings file that is a link is refused"] = SETTINGS_IMPORTS
 m("WS-1 a settings file is read whole whatever its size", "internal/settings/document.go",
-  LOAD, "\tdata, err := regfile.ReadFile(path, 1<<62)\n", "TestWS1_J5_")
+  LOAD, "\tdata, err := regfile.ReadCapped(path, 1<<62)\n", "TestWS1_J5_")
 m("WS-1 settings opens by path with a blocking open", "internal/settings/document.go",
   LOAD, "\tdata, err := os.ReadFile(path)\n", "TestWS1_J3_")
 IMPORTS["WS-1 settings opens by path with a blocking open"] = SETTINGS_IMPORTS
@@ -76,10 +76,10 @@ m("WS-1 the rooted read reads what is not a regular file", "internal/rootio/root
 
 # The direct rows: ReplaceFile's failure path, its error and the mode it
 # creates with; ReadRegular's error names and the links it refuses on a read;
-# ReadBounded's two bound checks one at a time, each with a reader whose
-# stated size the other check cannot see past; and the modes the index and a
-# row file are created with under umask 022. One row per test's "Break:"
-# clause.
+# ReadCappedFrom's two checks one at a time, the stated size and the capped
+# reader past it, each with a file whose stated size the other cannot see
+# past; and the modes the index and a row file are created with under umask
+# 022. One row per test's "Break:" clause.
 m("WS-1 a failed write leaves its temporary file beside name", "internal/rootio/rootio.go",
   "\t\tr.Remove(tmp) //nolint:errcheck // best effort: the write's error is the one to report\n", "",
   "TestWS1_RF6_")
@@ -101,10 +101,12 @@ m("WS-1 a rooted read's error names name alone", "internal/rootio/rootio.go",
 m("WS-1 a rooted read opens by the joined path", "internal/rootio/rootio.go",
   "\tf, err := r.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)\n",
   "\tf, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)\n", "TestWS1_PK1_")
-m("WS-1 a stated size over the bound is read before it is refused", "internal/regfile/regfile.go",
-  "\tif size > limit {\n\t\treturn nil, ErrOverBound\n\t}\n", "", "TestWS1_RB3_")
-m("WS-1 a reader longer than its stated size is read to its end", "internal/regfile/regfile.go",
-  "\t\tif int64(len(data)) > limit {\n\t\t\treturn nil, ErrOverBound\n\t\t}\n", "", "TestWS1_RB5_")
+m("WS-1 a stated size over the cap is read before it is refused", "internal/regfile/regfile.go",
+  "\tif size > max {\n\t\treturn nil, &fs.PathError{Op: \"open\", Path: path, Err: &OverCapError{Size: size, Max: max}}\n\t}\n",
+  "", "TestWS1_RB3_")
+m("WS-1 a file longer than its stated size is read around the cap", "internal/regfile/regfile.go",
+  "\t\tk, err := c.Read(data[len(data):cap(data)])\n", "\t\tk, err := c.f.Read(data[len(data):cap(data)])\n",
+  "TestWS1_RB5_")
 m("WS-1 the index is saved 0644", "internal/graph/persist.go",
   GRAPH_RET, GRAPH_RET.replace("0o600", "0o644"), "TestWS1_SF4_")
 m("WS-1 a knowledge row file is written 0600", "internal/graph/knowledge/schema.go",

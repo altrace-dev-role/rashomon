@@ -91,8 +91,10 @@ func createTemp(r *os.Root, dir, base string, perm fs.FileMode) (*os.File, strin
 // descriptor it opened, as regfile.Open does, so a named pipe cannot hold
 // the read; anything but a regular file is a *fs.PathError wrapping
 // regfile.ErrNotRegular. A file over limit is refused, and no byte of it is
-// returned, by an error naming the path and the bound. Every error names
-// the root's path joined with name.
+// returned, by regfile.ReadCappedFrom's *fs.PathError wrapping a
+// *regfile.OverCapError: it matches regfile.ErrOverCap and holds the size
+// and the limit, so a caller can record the refusal by its class without
+// the path. Every error names the root's path joined with name.
 func ReadRegular(r *os.Root, name string, limit int64) ([]byte, error) {
 	path := filepath.Join(r.Name(), name)
 	f, err := r.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -107,9 +109,9 @@ func ReadRegular(r *os.Root, name string, limit int64) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, &fs.PathError{Op: "open", Path: path, Err: regfile.ErrNotRegular}
 	}
-	b, err := regfile.ReadBounded(f, fi.Size(), limit)
-	if errors.Is(err, regfile.ErrOverBound) {
-		return nil, fmt.Errorf("%s: over the %d-byte bound", path, limit)
+	b, err := regfile.ReadCappedFrom(f, path, fi.Size(), limit)
+	if errors.Is(err, regfile.ErrOverCap) {
+		return nil, err
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)

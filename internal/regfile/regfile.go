@@ -23,63 +23,6 @@ var ErrNotRegular = errors.New("not a regular file")
 // is there and is not a directory.
 var ErrNotDir = errors.New("not a directory")
 
-// ErrOverBound is what ReadFile's and ReadBounded's error matches under
-// errors.Is for a file holding more bytes than the bound its caller set.
-var ErrOverBound = errors.New("over the bound")
-
-// ReadFile is os.ReadFile for a regular file of at most limit bytes: Open's
-// refusals, then ReadBounded on the size the open's own fstat reported, so
-// it costs what os.ReadFile cost (an open, one fstat, one buffer) and a hook
-// that reads through it allocates no more than it did (BenchmarkRunHook). A
-// file over limit is a *fs.PathError wrapping ErrOverBound, and no byte of it
-// is returned.
-func ReadFile(path string, limit int64) ([]byte, error) {
-	f, fi, err := openRegular(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close() //nolint:errcheck // read-only
-	b, err := ReadBounded(f, fi.Size(), limit)
-	if err != nil {
-		return nil, &fs.PathError{Op: "read", Path: path, Err: err}
-	}
-	return b, nil
-}
-
-// ReadBounded reads r to its end when that is at most limit bytes, and
-// otherwise returns ErrOverBound and nothing it read. size is what the
-// file's own fstat reported: a size over limit is refused before any read,
-// and the buffer is sized as os.ReadFile sizes its own (size+1, so a file
-// that has not grown ends on one read; 512 at least, since a file under
-// /proc reports 0), so it is one allocation. The bound is checked again on
-// every read, so a file that grew past limit after its fstat is refused too.
-func ReadBounded(r io.Reader, size, limit int64) ([]byte, error) {
-	if size > limit {
-		return nil, ErrOverBound
-	}
-	n := int(size) + 1
-	if n < 512 {
-		n = 512
-	}
-	data := make([]byte, 0, n)
-	for {
-		k, err := r.Read(data[len(data):cap(data)])
-		data = data[:len(data)+k]
-		if int64(len(data)) > limit {
-			return nil, ErrOverBound
-		}
-		if err == io.EOF {
-			return data, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if len(data) == cap(data) {
-			data = append(data, 0)[:len(data)]
-		}
-	}
-}
-
 // Open opens path for reading when it is a regular file, and otherwise
 // closes what it opened and returns a *fs.PathError wrapping ErrNotRegular.
 // It opens with O_NONBLOCK, so a named pipe cannot hold the open until a
@@ -98,8 +41,8 @@ func Open(path string) (*os.File, error) {
 }
 
 // openRegular is Open's open and check, returning the mode it read too, so
-// ReadFile sizes its buffer from the same fstat; Open and ReadFile share the
-// one check.
+// ReadCapped sizes its buffer from the same fstat; Open and ReadCapped share
+// the one check.
 func openRegular(path string) (*os.File, fs.FileInfo, error) {
 	f, fi, err := openNonblocking(path)
 	if err == nil && !fi.Mode().IsRegular() {
@@ -122,14 +65,17 @@ func OpenDir(path string) (*os.File, error) {
 	return unlessRefused(f, err)
 }
 
-// ErrOverCap is what OpenCapped's and ReadCapped's error matches under
-// errors.Is for a regular file over the cap: by its size at the open, or
-// grown past the cap while it was read. The error is a *fs.PathError whose
-// Err is an *OverCapError, which holds the size and the cap, so a caller
-// can say how large the file is and never call it corrupt (a read cut at
-// the cap would decode as a truncated file). It is a constant: a
-// package-level errors.New would allocate at init, which the init budget
-// (RES-2) counts on every hook process, and this costs none.
+// ErrOverCap is what the error of OpenCapped, ReadCapped and ReadCappedFrom
+// matches under errors.Is for a regular file over the cap: by its size at
+// the open, or grown past the cap while it was read. The error is a
+// *fs.PathError whose Err is an *OverCapError, which holds the size and the
+// cap, so a caller can say how large the file is and never call it corrupt
+// (a read cut at the cap would decode as a truncated file), and can record
+// the refusal by its class without the path. It is a constant of its own
+// type; that is its form, not a saving at init: ErrNotRegular and ErrNotDir
+// are package-level errors.New values, and the init trace TestRES2_InitBudget
+// logs under go1.27.4 shows no line for this package, since the compiler
+// lays such a value out statically.
 const ErrOverCap capError = "over the cap"
 
 // capError is ErrOverCap's type, a constant error.
@@ -178,22 +124,58 @@ func OpenCapped(path string, max int64) (io.ReadCloser, error) {
 }
 
 // ReadCapped is the whole of the regular file at path, refused over max
-// bytes as OpenCapped refuses it; no bytes come with a refusal.
+// bytes as OpenCapped refuses it; no bytes come with a refusal. It is Open's
+// open and check, then ReadCappedFrom on the size that open's own fstat
+// reported, so it costs what os.ReadFile cost (an open, one fstat, one
+// buffer) and a hook that reads through it allocates no more than it did
+// (BenchmarkRunHook).
 func ReadCapped(path string, max int64) ([]byte, error) {
-	rc, err := OpenCapped(path, max)
+	f, fi, err := openRegular(path)
 	if err != nil {
 		return nil, err
 	}
-	defer rc.Close() //nolint:errcheck // read-only
-	b, err := io.ReadAll(rc)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
+	defer f.Close() //nolint:errcheck // read-only
+	return ReadCappedFrom(f, path, fi.Size(), max)
 }
 
-// capped is OpenCapped's reader: n bytes handed out so far, never more
-// than max; the read that would pass max is refused and stays refused.
+// ReadCappedFrom is ReadCapped over f, a regular file its caller opened and
+// checked, for a caller that opens by another route than a path (an
+// *os.Root). size is the size f's own fstat reported, and path is the name
+// every refusal gives, so the caller's errors and these name the file alike.
+// A size over max is refused before any read, as a *fs.PathError (Op "open")
+// wrapping an *OverCapError. The rest is read through OpenCapped's reader
+// into one buffer sized as os.ReadFile sizes its own (size+1, so a file that
+// has not grown ends on one read; 512 at least, since a file under /proc
+// reports 0), so a file that grew past max after its fstat is refused at
+// byte max+1 (Op "read"). No byte comes with a refusal. It does not close f.
+func ReadCappedFrom(f *os.File, path string, size, max int64) ([]byte, error) {
+	if size > max {
+		return nil, &fs.PathError{Op: "open", Path: path, Err: &OverCapError{Size: size, Max: max}}
+	}
+	n := int(size) + 1
+	if n < 512 {
+		n = 512
+	}
+	data := make([]byte, 0, n)
+	c := capped{f: f, path: path, max: max}
+	for {
+		k, err := c.Read(data[len(data):cap(data)])
+		data = data[:len(data)+k]
+		if err == io.EOF {
+			return data, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(data) == cap(data) {
+			data = append(data, 0)[:len(data)]
+		}
+	}
+}
+
+// capped is the reader of OpenCapped and ReadCappedFrom: n bytes handed out
+// so far, never more than max; the read that would pass max is refused and
+// stays refused.
 type capped struct {
 	f    *os.File
 	path string

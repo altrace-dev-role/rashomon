@@ -131,11 +131,13 @@ func TestWS1_RF7_ReplaceFileErrorNamesTheWholeTarget(t *testing.T) {
 }
 
 // TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName: a missing source,
-// a directory where a source was named and a source over the bound each
+// a directory where a source was named and a source over the limit each
 // return no byte and an error naming the root's path joined with name, not
 // the base name alone; the directory's is a *fs.PathError wrapping
-// regfile.ErrNotRegular, and the over-bound one names the bound. Break: name
-// the error by name alone.
+// regfile.ErrNotRegular, and the over-limit one is a *fs.PathError of that
+// path wrapping a *regfile.OverCapError of the size and the limit, the form
+// a caller records by its class without the path. Break: name the error by
+// name alone.
 func TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName(t *testing.T) {
 	root := t.TempDir()
 	app := filepath.Join(root, "app")
@@ -150,10 +152,11 @@ func TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName(t *testing.T) {
 		name string
 		also string // a further text the error must hold
 		dir  bool   // a *fs.PathError wrapping regfile.ErrNotRegular
+		over bool   // a *fs.PathError of the joined path wrapping a *regfile.OverCapError
 	}{
-		{filepath.Join("app", "none.py"), "", false},
-		{filepath.Join("app", "pkg"), "", true},
-		{filepath.Join("app", "big.py"), "64-byte bound", false},
+		{filepath.Join("app", "none.py"), "", false, false},
+		{filepath.Join("app", "pkg"), "", true, false},
+		{filepath.Join("app", "big.py"), "65 bytes, over the 64 byte cap", false, true},
 	} {
 		b, err := ReadRegular(r, c.name, 64)
 		want := filepath.Join(root, c.name)
@@ -166,6 +169,12 @@ func TestWS1_RR5_ReadRegularErrorsNameTheRootJoinedWithName(t *testing.T) {
 		var pe *fs.PathError
 		if c.dir && (!errors.As(err, &pe) || !errors.Is(err, regfile.ErrNotRegular)) {
 			t.Errorf("ReadRegular(%s) = %#v; want a *fs.PathError wrapping regfile.ErrNotRegular", c.name, err)
+		}
+		var oc *regfile.OverCapError
+		if c.over && (!errors.As(err, &pe) || pe.Path != want || !errors.As(err, &oc) || oc.Size != 65 || oc.Max != 64 ||
+			!errors.Is(err, regfile.ErrOverCap)) {
+			t.Errorf("ReadRegular(%s) = %#v; want a *fs.PathError of %s wrapping a *regfile.OverCapError of 65 bytes over 64",
+				c.name, err, want)
 		}
 	}
 }

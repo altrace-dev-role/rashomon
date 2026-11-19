@@ -57,7 +57,7 @@ func TestWS1_J4_LoadReadsASettingsFileLinkedOutsideItsFolder(t *testing.T) {
 func TestWS1_J5_LoadRefusesATargetOverTheBound(t *testing.T) {
 	p := writeSafeLinkedSettings(t, writeSafeJSONOf(maxFileBytes+1))
 	_, err := Load(p)
-	want := p + ": over the 65536-byte bound"
+	want := p + ": 65537 bytes, over the 65536 byte cap"
 	if err == nil || err.Error() != want {
 		t.Errorf("Load of a target one byte over the bound = %v; want %q", err, want)
 	}
