@@ -89,6 +89,10 @@ var slHolds = map[string]string{
 	"rev.commit":             "the graph's commit",
 	"producers":              "its writer's name and version",
 	"records":                "",
+	"refused":                "",
+	"refused_files.path":     "",
+	"refused_files.line":     "",
+	"refused_files.reason":   "",
 	"Node.ID":                "each record by its ids",
 	"Node.Kind":              "its kind or predicate",
 	"Node.Attrs.session_id":  "the session",
@@ -125,9 +129,10 @@ var slHolds = map[string]string{
 }
 
 // slEmpty is the leaves the log keeps empty, sorted: a function's signature,
-// where a reader read a record, an edge's attributes and Certain, and the
-// header's record count.
-var slEmpty = []string{"Edge.Attrs", "Edge.Certain", "Edge.Prov", "Node.Attrs.sig", "Node.Prov", "records"}
+// where a reader read a record, an edge's attributes and Certain, the
+// header's record count, and its refused files (an overlay refuses none).
+var slEmpty = []string{"Edge.Attrs", "Edge.Certain", "Edge.Prov", "Node.Attrs.sig", "Node.Prov", "records",
+	"refused", "refused_files.line", "refused_files.path", "refused_files.reason"}
 
 // slRow is the session log's inventory row.
 func slRow(t *testing.T) FileRule {

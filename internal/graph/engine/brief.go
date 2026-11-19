@@ -38,6 +38,8 @@ type Brief struct {
 	// Kept is how many lines Message carries, in Lines' order.
 	Kept    int
 	Elapsed time.Duration
+	// Refused is Options.Refused, the files the index refused.
+	Refused int
 }
 
 // Options selects the scorer and the path form. IDF weights each prompt
@@ -68,6 +70,10 @@ type Options struct {
 	// took (intent.MaxPromptBytes), so a harness frame whose close was cut
 	// off is still read as one (harness.Cut).
 	PromptCut bool
+	// Refused is how many files the index refused (its header's
+	// Refused): above 0, a reason that says the index holds no such
+	// thing is not proven, since a refused file may declare it.
+	Refused int
 }
 
 func (o Options) band() bandFunc {

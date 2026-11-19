@@ -99,6 +99,9 @@ type Result struct {
 	Store  *graph.Store
 	Header graph.Header
 	Files  int
+	// Refused is every file a resolver was handed and refused, by path;
+	// the header names the first graph.MaxRefusedNamed.
+	Refused []graph.Refusal
 }
 
 // Build indexes root at commit: the repository node (baseline.RepoIDErr),
