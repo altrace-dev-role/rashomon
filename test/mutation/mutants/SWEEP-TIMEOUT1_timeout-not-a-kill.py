@@ -47,6 +47,6 @@ m("SWEEP-TIMEOUT1 the backup kill line is no timeout marker", "test/mutation/swe
 m("SWEEP-TIMEOUT1 a red baseline names no backup kill line", "test/mutation/sweep.py",
   "if ln.startswith((\"panic:\",) + TIMED_OUT) or", "if ln.startswith(\"panic:\") or",
   "TestSWT1_TheBackupKillLineIsReadAsATimeout")
-m("D-release-race-timeout the release race step runs under go test's default timeout", ".github/workflows/release.yaml",
+m("SWEEP-TIMEOUT1 the release race step runs under go test's default timeout", ".github/workflows/release.yaml",
   "        run: go test ./... -count=1 -race -timeout 15m\n", "        run: go test ./... -count=1 -race\n",
   "TestSWT1_TheRaceStepCarriesItsOwnTimeout")
