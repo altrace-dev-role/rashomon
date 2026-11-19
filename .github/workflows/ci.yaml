@@ -955,6 +955,7 @@ jobs:
           MAIN_SHA: f470a77011aaf9fef6c2162b708c695cfa9f80af
           BRANCH_SHA: cfe2fed2d92af08a06ccbccca01d7919e3e79776
         run: |
+          set +e
           set -uo pipefail
           J="$RUNNER_TEMP/job4"
           mkdir -p "$J"
