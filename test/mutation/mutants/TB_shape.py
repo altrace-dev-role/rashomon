@@ -96,10 +96,10 @@ m("TB the timeline annotates the earlier row", "internal/report/timeline.go",
 m("TB the timeline drops the flaky annotation", "internal/report/timeline_text.go",
   "\treturn fmt.Sprintf(\"↳ same command had the other outcome at %d, no recorded file edit between\", t.Since)",
   "\treturn \"\"", "TestTimeline_")
-# Re-anchored after the masked-status refactor: the masked count is built between
-# the guard and the line it prints.
+# Anchored on the guard alone, which occurs once in text.go: the lines after it
+# change with how the test runs are counted (masked status, then RH-6).
 m("TB the session block renders with no test run", "internal/report/text.go",
-  "\tif t == nil || t.Runs == 0 {\n\t\treturn\n\t}\n\tmasked := \"\"", "\tif t == nil {\n\t\treturn\n\t}\n\tmasked := \"\"",
+  "\tif t == nil || t.Runs == 0 {\n\t\treturn\n\t}\n", "\tif t == nil {\n\t\treturn\n\t}\n",
   "TestTestRuns_")
 m("TB the session block drops the limit", "internal/report/text.go",
   "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintf(b, \"    the numbers are call seqs",
