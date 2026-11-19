@@ -18,8 +18,10 @@ func (Resolver) Manifests() []string { return []string{"pyproject.toml", "setup.
 // start at its src directory when that holds a package (a directory with an
 // __init__.py), else at the project's own directory; each package there is
 // a unit owning the module of its name. A top-level module file and a
-// namespace package (a directory of .py files with no __init__.py) there are
-// left out, named, for a person to add by hand.
+// directory of .py files with no __init__.py there are left out, named, for
+// a person to add by hand, and so, when the modules start at src, is each
+// .py file and each directory of them outside it. Each reason is one of
+// package lang's kinds, then what this rule checked.
 func (r Resolver) Infer(files []string) lang.Inferred {
 	ms := r.Manifests()
 	from := map[string]string{} // a project's directory: its first manifest
@@ -38,7 +40,7 @@ func (r Resolver) Infer(files []string) lang.Inferred {
 	var got lang.Inferred
 	for p, m := range from {
 		if _, ok := projectAt(path.Dir(p), from); ok && p != "." {
-			got.Left = append(got.Left, lang.Left{Path: p, Why: "a project inside another project"})
+			got.Left = append(got.Left, lang.Left{Path: p, Why: lang.LeftNested})
 			continue
 		}
 		inferProject(p, m, owned[p], &got)
@@ -65,10 +67,19 @@ func projectAt(dir string, from map[string]string) (string, bool) {
 	}
 }
 
+// What this rule checked, in Python's terms, for the reasons whose kind
+// alone would not say it.
+const (
+	notPackageChecked  = " (.py files under it and no __init__.py directly in it)"
+	outsideDirChecked  = " (.py files in it, and the project's modules start at src)"
+	outsideFileChecked = " (a .py file, and the project's modules start at src)"
+)
+
 // inferProject adds to got the units of the project at p, whose first
 // manifest is from, out of files, the files it owns: each package directly
-// under its modules' root is a unit; a module file and a namespace package
-// there are left out.
+// under its modules' root is a unit; a module file and a directory of .py
+// files that is no package there are left out, and so, when the modules
+// start at src, is each .py file and each directory of them outside it.
 func inferProject(p, from string, files []string, got *lang.Inferred) {
 	rels := make([]string, 0, len(files))
 	src := false
@@ -86,18 +97,22 @@ func inferProject(p, from string, files []string, got *lang.Inferred) {
 		modRoot, rule = path.Join(p, "src"), "a package (a directory holding __init__.py) in the project's src directory"
 	}
 	pkgs, pyDirs := map[string]bool{}, map[string]bool{}
+	outside := map[string]bool{} // the first name of each .py path outside src: true for a directory
 	for _, rel := range rels {
+		py := strings.HasSuffix(rel, ".py")
 		if src {
 			var ok bool
 			if rel, ok = strings.CutPrefix(rel, "src/"); !ok {
+				if first, _, dir := strings.Cut(rel, "/"); py && rel != "setup.py" {
+					outside[first] = dir
+				}
 				continue
 			}
 		}
 		parts := strings.Split(rel, "/")
-		py := strings.HasSuffix(rel, ".py")
 		switch {
 		case len(parts) == 1 && py && (src || rel != "setup.py"):
-			got.Left = append(got.Left, lang.Left{Path: path.Join(modRoot, rel), Why: "a module file at the modules' root, not in a package"})
+			got.Left = append(got.Left, lang.Left{Path: path.Join(modRoot, rel), Why: lang.LeftLooseModule})
 		case len(parts) == 2 && parts[1] == "__init__.py":
 			pkgs[parts[0]] = true
 		case len(parts) >= 2 && py:
@@ -109,7 +124,14 @@ func inferProject(p, from string, files []string, got *lang.Inferred) {
 	}
 	for d := range pyDirs {
 		if !pkgs[d] {
-			got.Left = append(got.Left, lang.Left{Path: path.Join(modRoot, d), Why: "a directory of .py files with no __init__.py, a namespace package"})
+			got.Left = append(got.Left, lang.Left{Path: path.Join(modRoot, d), Why: lang.LeftNotPackage + notPackageChecked})
 		}
+	}
+	for name, dir := range outside {
+		why := outsideFileChecked
+		if dir {
+			why = outsideDirChecked
+		}
+		got.Left = append(got.Left, lang.Left{Path: path.Join(p, name), Why: lang.LeftOutsideRoot + why})
 	}
 }
