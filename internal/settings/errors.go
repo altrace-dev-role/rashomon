@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Error is a problem found in a settings file, with where it was found.
@@ -81,6 +82,15 @@ type offsetError struct {
 func (e *offsetError) Error() string { return e.err.Error() }
 func (e *offsetError) Unwrap() error { return e.err }
 
+// notJSON is a JSON syntax error whose own text quotes a byte of the file
+// ("invalid character 'Q' looking for beginning of value"). It says "not
+// JSON" instead, and unwraps to the scanner's error, so errors.As still
+// finds the *json.SyntaxError and its offset.
+type notJSON struct{ syn *json.SyntaxError }
+
+func (e *notJSON) Error() string { return "not JSON" }
+func (e *notJSON) Unwrap() error { return e.syn }
+
 // refusal locates a parseObject failure in data, the bytes it was parsing.
 //
 // A JSON syntax error is placed by the scanner json.Unmarshal runs over the
@@ -100,9 +110,15 @@ func refusal(data []byte, decoded int64, closed bool, err error) error {
 		if errors.As(json.Unmarshal(data, new(json.RawMessage)), &syn) {
 			at = posAt(max(int(syn.Offset)-1, 0))
 			if syntactic {
-				// The scanner's text names the byte it placed; a bare EOF
-				// from the decoder names nothing.
+				// The scanner's error is the one placed; a bare EOF from the
+				// decoder names nothing. Where its text quotes the byte it
+				// stopped at, the text says only "not JSON": the path can be
+				// a link to a file that was never settings, and no byte of
+				// that file belongs in an error. The place stays.
 				err = syn
+				if strings.HasPrefix(syn.Error(), "invalid character") {
+					err = &notJSON{syn: syn}
+				}
 			}
 		}
 	}

@@ -210,6 +210,40 @@ func python(c Config) pylite.Resolver {
 	return r
 }
 
+// Wire is the registry a hook reads a file through (LANG-REG1): each
+// language this build reads, go then py, with the step that reads its
+// configuration under a root, run once per root on the first Claim of a
+// path there. Go's step is the import map an overlay maps imports by: the
+// root go.mod's module path (gopg.ReadModulePath, one bounded read of that
+// one file) and a directory check under root, no map where there is no
+// module path; it refuses nothing, as the hook's overlay reads it today.
+// Python's step is ReadConfig and python, the rule Build's resolver is made
+// by: the configuration's py units and the module names each owns, none
+// where the root has no configuration file (fs.ErrNotExist), and the error,
+// naming the file, where the file is refused (not a regular file, over
+// MaxConfigBytes, not JSON). Build still wires through resolverFor.
+func Wire() *lang.Registry {
+	var reg lang.Registry
+	reg.RegisterConfigured(gopg.Resolver{}, func(root string) (lang.Resolver, error) {
+		mod, _ := gopg.ReadModulePath(root)
+		if mod == "" {
+			return gopg.Resolver{}, nil
+		}
+		return gopg.Resolver{Imports: &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}}, nil
+	})
+	reg.RegisterConfigured(pylite.Resolver{}, func(root string) (lang.Resolver, error) {
+		c, err := ReadConfig(root)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return python(Config{}), nil
+		case err != nil:
+			return nil, fmt.Errorf("%s: %w", ConfigFile, err)
+		}
+		return python(c), nil
+	})
+	return &reg
+}
+
 // claimed lists, per producer, the repository's files its resolver claims
 // under its units, as slash paths relative to root, sorted; and the count.
 // The walk skips the directories skipDir names, and claims.producer picks a

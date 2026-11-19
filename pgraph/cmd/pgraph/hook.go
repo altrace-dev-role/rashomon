@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -83,10 +84,33 @@ func hookSync(ctx context.Context, start string) (root string, err error) {
 	}
 	if _, err = syncLocked(ctx, root, walk); err != nil {
 		if fi, serr := os.Lstat(dir); serr == nil && fi.IsDir() {
-			_ = writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, nil, nil, nil))
+			if sd, serr := stateDir(root, false); serr == nil {
+				_ = writeAtomic(sd, walkFile, encodeWalk(walk, nil, nil, nil))
+				sd.Close()
+			}
 		}
 	}
 	return root, err
+}
+
+// hookLine is the one stderr line of a hook sync that failed: fixed words
+// and one class of five, never a path and never the error's own text, since
+// the line lands in a session a person may share. The CLI form, pgraph sync
+// <root>, prints the detail. The longest line is 78 bytes. The locked class
+// keeps the words "another sync", which TestPW1b pins on the hook's line.
+func hookLine(ctx context.Context, err error) string {
+	class := "sync failed"
+	switch {
+	case errors.Is(err, errLocked):
+		class = "another sync runs"
+	case errors.Is(err, context.DeadlineExceeded), ctx.Err() != nil:
+		class = "timed out"
+	case errors.Is(err, errNotRegular):
+		class = "not a regular file"
+	case errors.Is(err, errOverCap):
+		class = "over the size cap"
+	}
+	return "pgraph: not synced (" + class + "); run pgraph sync <root> for the detail"
 }
 
 // projectRoot is the nearest directory at or above start that holds a .git
@@ -151,18 +175,6 @@ func current(dir, walk string) bool {
 		}
 	}
 	return true
-}
-
-// readCapped is the regular file at path, refused over max bytes.
-func readCapped(path string, max int64) ([]byte, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() || fi.Size() > max {
-		return nil, os.ErrInvalid
-	}
-	return os.ReadFile(path)
 }
 
 // sum is the hex SHA-256 of b.

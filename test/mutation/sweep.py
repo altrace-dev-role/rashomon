@@ -66,8 +66,10 @@ BASELINE_TIMEOUT_MIN = 20
 MUTANT_TIMEOUT_MIN = 10
 
 # The first words of the two lines that say a timeout ended a go test run:
-# the test binary's own alarm, and cmd/go's backup kill a minute after it
-# (the alarm never starts when a TestMain hangs before m.Run).
+# the test binary's own alarm, and cmd/go's backup kill a minute after it,
+# or a tenth of the -timeout when that is longer: 11m0s for a mutant's 10m,
+# 22m0s for the baseline's 20m (the alarm never starts when a TestMain hangs
+# before m.Run).
 TIMED_OUT = ("panic: test timed out after", "*** Test killed")
 
 # The requirement prefixes of the 1.2.0 specification. A mutant file named
@@ -939,7 +941,7 @@ def green_baseline(module):
                 _named.append(ln)
                 continue
             _running = ln.startswith("panic: test timed out")
-            if ln.startswith("panic:") or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
+            if ln.startswith(("panic:",) + TIMED_OUT) or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
                 _named.append(ln)
         if _named:
             print("failing on the unmutated tree:")
