@@ -1,0 +1,46 @@
+{
+ "schema": 1,
+ "rows": [
+  {
+   "schema": 1,
+   "id": "HOOKPATH-1",
+   "kind": "decision",
+   "title": "Hook path files have one owner, the principal",
+   "clause": "Every file on the hook path has one owner, the principal; steerstep.go, preflight.go and install.go stay untouched.",
+   "text": "PLAN.md line 1436: every file on the hook path (`steerstep.go`, `preflight.go`, `hooks.json`, `install.go`) has one owner, the principal. applies_to names the three Go files; hooks.json is left out.",
+   "source": {
+    "file": "PLAN.md",
+    "row": "1436",
+    "digest": "71cded082b8173c48ce327989ef56a80d393d0d1ec0956a0bb7a2e9b5b129da4"
+   },
+   "applies_to": [
+    "file:internal/hook/steerstep.go",
+    "file:cmd/rashomon/preflight.go",
+    "file:internal/install/install.go"
+   ],
+   "scope": {
+    "paths": [],
+    "languages": []
+   },
+   "status": "approved",
+   "supersedes": [],
+   "contradicts": [],
+   "evidence": [],
+   "tier": "DECLARED",
+   "tally": {
+    "k": 0,
+    "n": 0
+   },
+   "valid_from": "",
+   "invalid_at": "",
+   "steps": [],
+   "invariants": [],
+   "predicates": [
+    {
+     "kind": "paths_untouched",
+     "arg": ""
+    }
+   ]
+  }
+ ]
+}

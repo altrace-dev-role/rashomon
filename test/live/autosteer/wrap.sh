@@ -14,7 +14,7 @@ install)
   env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT CLAUDE_CONFIG_DIR=$RK_CONFIG_DIR "$RK_BIN" watch --yes > "$RK_RUN_DIR/watch.txt" 2>&1 || { echo "wrap.sh: watch --yes failed:"; cat "$RK_RUN_DIR/watch.txt"; exit 1; }
   env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT CLAUDE_CONFIG_DIR=$RK_CONFIG_DIR "$RK_BIN" consent --yes > "$RK_RUN_DIR/consent.txt" 2>&1 || { echo "wrap.sh: consent --yes failed:"; cat "$RK_RUN_DIR/consent.txt"; exit 1; }
   cp "$S" "$RK_RUN_DIR/settings.installed.json"
-  python3 - "$S" "$RK_BIN" "$HERE/hook.sh" <<'PY'
+  python3 -B - "$S" "$RK_BIN" "$HERE/hook.sh" <<'PY'
 import json, sys
 import os
 path, binary, hook = sys.argv[1:4]
