@@ -301,7 +301,9 @@
         "checks": [],
         "lessons": null,
         "unknown": [],
-        "mistakes": null
+        "mistakes": null,
+        "flagged": null,
+        "claims_omitted": 0
       },
       "knowledge": null
     }

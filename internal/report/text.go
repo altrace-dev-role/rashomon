@@ -136,7 +136,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeTestRuns(b, sess.TestRuns, sess.SessionID)
 	writeAutosteer(b, sess.Autosteer)
 	writeKnowledge(b, sess.Knowledge)
-	writeDestinations(b, sess.Destinations)
+	writeDestinations(b, sess.Destinations, cfg.ids)
 	writeFamilies(b, sess.Families)
 	writeNono(b, sess.Nono)
 	writeChains(b, sess.Chains, cfg.chain)
@@ -162,7 +162,13 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "  by label: %s\n", byName(d.ByLabel))
 	fmt.Fprintf(b, "  unterminated: %s\n", list(d.Unterminated))
 	fmt.Fprintf(b, "  dropped: %s\n  possibly not durable: %s\n", list(d.Dropped), list(d.NotDurable))
-	fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
+	// One id per call, which a reader of the text does not read: without
+	// --ids the line says the count and how to list them (report.md :231).
+	if !cfg.ids && len(d.WithoutExecution) > 0 {
+		fmt.Fprintf(b, "  without execution: %d; ids with --ids\n", len(d.WithoutExecution))
+	} else {
+		fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
+	}
 	fmt.Fprintf(b, "  executions recorded: %d\n", sess.Executions.Recorded)
 
 	for _, t := range sess.Transcripts {
@@ -479,7 +485,11 @@ func writeSubagents(b *bytes.Buffer, subs []SubagentSummary) {
 		return
 	}
 	fmt.Fprintf(b, "  subagents: %d\n", len(subs))
-	for _, s := range subs {
+	for i, s := range subs {
+		if i == maxListedSubagents {
+			fmt.Fprintf(b, "    and %d more; --json lists them all\n", len(subs)-maxListedSubagents)
+			break
+		}
 		fmt.Fprintf(b, "    %s (%s): %d declarations, %d executions, %d Bash\n",
 			s.AgentID, orUnknown(s.AgentType), s.Declarations, s.Executions, s.BashCalls)
 	}

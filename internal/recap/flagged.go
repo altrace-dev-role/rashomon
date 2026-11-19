@@ -8,5 +8,5 @@ import "github.com/altrace-dev-role/rashomon/internal/verify"
 // the line and the flag cannot disagree; TestRH8j pins the two equal on every
 // verdict.
 func ClaimUnbacked(c verify.ClaimVerdict) bool {
-	return false
+	return c.Strict && verify.Rank(verify.State(c.Verdict)) >= 0 && c.Verdict != verify.Verdict(verify.Green)
 }

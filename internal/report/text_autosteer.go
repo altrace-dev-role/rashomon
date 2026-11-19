@@ -25,6 +25,10 @@ const maxStoryGates = 4
 // lists them all.
 const maxListedSeqs = 6
 
+// maxListedSubagents is how many subagents the text names before `and <k>
+// more`; --json lists them all (report.md :231).
+const maxListedSubagents = 6
+
 // writeStory is the session's first screen: what it says of the last Stop,
 // the record of calls, the AutoSteer counts, the gates, and the one finding
 // of the account when the report sets the final message against a failure.
@@ -34,6 +38,13 @@ func writeStory(b *bytes.Buffer, sess Session) {
 	}
 	fmt.Fprintln(b, "  story")
 	a := sess.Autosteer
+	// The answer first (report.md :225 to :230): what the last Stop flagged,
+	// the notes by pattern, when checks were off, and how far to trust the
+	// record. Then the story as it was.
+	fmt.Fprintf(b, "    flagged claims%s\n", flaggedText(a))
+	fmt.Fprintf(b, "    notes delivered by pattern: %s; acted on: not measured; ignored: not measured\n", notesByPattern(a))
+	fmt.Fprintf(b, "    checks off: %s; steering off: not read\n", checksOff(sess))
+	fmt.Fprintf(b, "    trust: %s\n", trustText(sess))
 	switch {
 	case a == nil:
 		fmt.Fprintf(b, "    last Stop: not read; `rashomon report --session %s` reads it\n", pasteArg(sess.SessionID))
@@ -169,6 +180,129 @@ func pluralTitle(title string, n int) string {
 		return title + "es"
 	}
 	return title + "s"
+}
+
+// flaggedText is the flagged-claims line after its first two words: `: not
+// read`, `: no Stop recorded`, or `, last Stop only: ` and the claims the
+// done flag reads as unbacked, maxStoryGates of them and then `and <k>
+// more`, or none. The checkpoint keeps the last Stop's verdicts only, so the
+// line says so. A claim is its class and verdict, never its words, with the
+// seqs its gates rest on and which window the done flag judged it against.
+func flaggedText(a *Autosteer) string {
+	switch {
+	case a == nil:
+		return ": not read"
+	case a.Stop == nil:
+		return ": no Stop recorded"
+	}
+	var parts []string
+	for i, c := range a.Flagged {
+		if i == maxStoryGates {
+			parts = append(parts, fmt.Sprintf("and %d more", len(a.Flagged)-maxStoryGates))
+			break
+		}
+		parts = append(parts, claimText(c))
+	}
+	s := strings.Join(parts, "; ")
+	if len(parts) == 0 {
+		s = "none"
+	}
+	if a.ClaimsOmitted > 0 {
+		s += fmt.Sprintf("; %d more not kept", a.ClaimsOmitted)
+	}
+	return ", last Stop only: " + s
+}
+
+// claimText is `tests_pass stale (evidence #3, #5; no gate for 1; judged on
+// its own turn)`.
+func claimText(c AutosteerClaim) string {
+	evidence := "no evidence seq"
+	if len(c.Evidence) > 0 {
+		evidence = "evidence " + seqList(c.Evidence)
+	}
+	if c.NoGate > 0 {
+		evidence += fmt.Sprintf("; no gate for %d", c.NoGate)
+	}
+	window := "judged on its own turn"
+	if c.EarlierWindow {
+		window = "judged on an earlier turn's window"
+	}
+	return fmt.Sprintf("%s %s (%s; %s)", c.Class, strings.ReplaceAll(c.Verdict, "_", " "), evidence, window)
+}
+
+// notesByPattern is the notes the last Stop's replay counts as delivered, by
+// title in first-seen order: `2 task checks, 1 known fix`. Whether the agent
+// acted on a note or ignored it is not measured: no record labels either.
+func notesByPattern(a *Autosteer) string {
+	switch {
+	case a == nil:
+		return "not read"
+	case a.Stop == nil:
+		return "no Stop recorded"
+	case len(a.Delivered) == 0:
+		return "none"
+	}
+	var titles []string
+	by := map[string]int{}
+	for _, n := range a.Delivered {
+		if by[n.Title] == 0 {
+			titles = append(titles, n.Title)
+		}
+		by[n.Title]++
+	}
+	kinds := make([]string, len(titles))
+	for i, t := range titles {
+		kinds[i] = strconv.Itoa(by[t]) + " " + pluralTitle(t, by[t])
+	}
+	return strings.Join(kinds, ", ")
+}
+
+// checksOff is when the record holds no checks: before its first record when
+// the start was not recorded, each gap, and after its last record when the
+// end was not recorded. Steering off is not read: no record says when the
+// notes were turned off.
+func checksOff(sess Session) string {
+	var parts []string
+	if !sess.Coverage.StartRecorded {
+		parts = append(parts, "before the first record (its start was not recorded)")
+	}
+	for _, g := range sess.Gaps {
+		if g.Reason == store.GapPaused {
+			parts = append(parts, fmt.Sprintf("paused %s to %s", stamp(g.FromUnixMS), stamp(g.ToUnixMS)))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s, records removed %s to %s", g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS)))
+		}
+	}
+	if !sess.Coverage.EndRecorded {
+		parts = append(parts, "after the last record (its end was not recorded)")
+	}
+	if len(parts) == 0 {
+		return "none in the record"
+	}
+	return strings.Join(parts, "; ")
+}
+
+// trustText is how far to trust the record, in four clauses the details
+// below hold: the coverage state, the gaps, the records skipped as
+// unreadable, and where the claims were read.
+func trustText(sess Session) string {
+	claims := "claims not read"
+	if a := sess.Autosteer; a != nil && a.Stop != nil {
+		claims = "claims read at the last Stop only"
+	}
+	return fmt.Sprintf("coverage %s; %s; %s; %s", orUnknown(sess.Coverage.State),
+		countOf(len(sess.Gaps), "gap"), countOf(sess.SkippedRecords, "skipped record"), claims)
+}
+
+// countOf is `no gaps`, `1 gap` or `3 gaps`.
+func countOf(n int, noun string) string {
+	switch n {
+	case 0:
+		return "no " + noun + "s"
+	case 1:
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // seqList is `#3, #9` and `and 2 more` past maxListedSeqs.
