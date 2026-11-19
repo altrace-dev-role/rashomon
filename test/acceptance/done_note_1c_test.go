@@ -256,7 +256,7 @@ func TestDONE1u_TextOnlyDoneClaimAfterAnUnflaggedStop(t *testing.T) {
 // claim is read and backed. The entry is deleted and the next prompt carries
 // no note. Stop 2 prints nothing: the person's last line for the prompt stays
 // the flag. This is a known limit: the note to the agent is cleared, but
-// nothing tells the person that the claim was backed later.
+// Stop 2 prints no line that says the claim was backed.
 func TestDONE1v_ASecondStopThatBacksTheClaimClearsTheEntry(t *testing.T) {
 	e := newSteerEnv(t)
 	e.flaggedStopIn(t)
