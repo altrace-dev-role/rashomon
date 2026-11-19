@@ -98,6 +98,23 @@ func TestNormalizeOrigin_RelativePathIsNoID(t *testing.T) {
 	}
 }
 
+// TestNormalizeOrigin_DriveLetterReadsAsAHost (x35.7): a pin of a limit,
+// not a want. A Windows drive-letter path as the origin reads as an
+// scp-like destination whose host is the drive letter: C:/r/x.git is
+// c//r/x and C:\r\x.git is c/\r\x, so one directory spelled with either
+// slash gets two ids, a split rather than a merge. A fix changes these rows
+// on purpose.
+func TestNormalizeOrigin_DriveLetterReadsAsAHost(t *testing.T) {
+	for in, want := range map[string]string{
+		"C:/r/x.git": "c//r/x",
+		`C:\r\x.git`: `c/\r\x`,
+	} {
+		if got := NormalizeOrigin(in); got != want {
+			t.Errorf("NormalizeOrigin(%q) = %q; want %q, the pinned limit", in, got, want)
+		}
+	}
+}
+
 // TestNormalizeOrigin_KeepsNoUserPart: a user name or password holding a
 // delimiter (/ ? # @ : or a space) leaves no byte of itself in the id, in the
 // scheme, scp-like and bare forms. A marker on each side of the delimiter,
