@@ -24,11 +24,12 @@ const (
 type boundary uint8
 
 const (
-	// boundNone: the prefix is the whole anchor (it ends in "(" or ".").
-	boundNone boundary = iota
+	// The zero boundary is no boundary: the prefix is the whole anchor (it
+	// ends in "(" or ".").
+	//
 	// boundWord: the next byte, if any, is not an identifier byte, so
 	// "@pytest.mark.skip" is not "@pytest.mark.skipped".
-	boundWord
+	boundWord boundary = iota + 1
 	// boundGoTest: a Go test's name after "func Test" does not start with a
 	// lower case letter, and is not TestMain, which is no test.
 	boundGoTest

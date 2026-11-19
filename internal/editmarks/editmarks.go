@@ -13,6 +13,7 @@ package editmarks
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -24,10 +25,26 @@ const headBytes = 48
 
 // The keys read of an Edit's input and of one of a MultiEdit's edits; the file
 // path and the edits array are read of the first alone.
-var (
-	inputKeys = jsonscan.NewKeySet("file_path", "edits", "old_string", "new_string")
-	editKeys  = jsonscan.NewKeySet("old_string", "new_string")
-)
+func inputKeys() *jsonscan.KeySet {
+	keysOnce.Do(func() {
+		keysOnce.input = jsonscan.NewKeySet("file_path", "edits", "old_string", "new_string")
+		keysOnce.edit = jsonscan.NewKeySet("old_string", "new_string")
+	})
+	return keysOnce.input
+}
+
+// editKeys is the key set of one edit of a MultiEdit.
+func editKeys() *jsonscan.KeySet {
+	inputKeys()
+	return keysOnce.edit
+}
+
+// keysOnce holds the two key sets, built on the first call and never at init
+// (RES-2).
+var keysOnce struct {
+	sync.Once
+	input, edit *jsonscan.KeySet
+}
 
 // The slots of inputKeys' spans.
 const (
@@ -57,7 +74,7 @@ func Of(tool string, input []byte) *store.EditMarks {
 	}
 	root := jsonscan.ValueSpan(input)
 	var top [4]jsonscan.Span
-	if jsonscan.Field(input, root, inputKeys, top[:]) != nil {
+	if jsonscan.Field(input, root, inputKeys(), top[:]) != nil {
 		return nil
 	}
 	l, ok := langOf(top[keyPath], input)
@@ -70,7 +87,7 @@ func Of(tool string, input []byte) *store.EditMarks {
 		if top[keyEdits].Kind == jsonscan.Array {
 			_ = jsonscan.Elements(input, top[keyEdits], func(el jsonscan.Span) bool {
 				var e [2]jsonscan.Span
-				readable = jsonscan.Field(input, el, editKeys, e[:]) == nil && pair(input, e[0], e[1], l, &net)
+				readable = jsonscan.Field(input, el, editKeys(), e[:]) == nil && pair(input, e[0], e[1], l, &net)
 				return readable
 			})
 		}
