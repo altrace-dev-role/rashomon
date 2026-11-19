@@ -7,7 +7,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 )
 
-// NoOverlay is a resolver admitted without overlays (state s5 of LANG-REG1),
+// NoOverlay is a resolver admitted without overlays (LANG-REG1),
 // the witness a hook test registers: it claims every .fake file, units each
 // by its directory, extracts nothing, and its Overlay returns nil, nil, so
 // its OverlayCarried is nil and its overlays replace no index edge.

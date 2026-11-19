@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestKinds_TheRowsAreTheRuledRows (B7; L3 of record line 1944, n4 of line
-// 1997): the table holds exactly the rows of note r2 and the four of n4,
+// TestKinds_TheRowsAreTheRuledRows: the table holds exactly the rows the
+// rule in kinds.go names, .mod, .work, .cfg and .gitignore among them,
 // in the order of the rule's classes, so a row cannot be added without
 // this list and the rule in kinds.go changing with it.
 func TestKinds_TheRowsAreTheRuledRows(t *testing.T) {
@@ -17,10 +17,10 @@ func TestKinds_TheRowsAreTheRuledRows(t *testing.T) {
 	}
 }
 
-// TestKinds_ARowIsNonSource (B7): a path of each row's kind is non-source,
+// TestKinds_ARowIsNonSource: a path of each row's kind is non-source,
 // wherever it sits: an extension row by its extension, a name row by the
-// path's base name. go.mod and go.work are rows (n4: an edit of go.mod
-// prints nothing in a Go session). Break: invert the answer (m5).
+// path's base name. go.mod and go.work are rows (so an edit of go.mod
+// prints nothing in a Go session). Break: invert the answer.
 func TestKinds_ARowIsNonSource(t *testing.T) {
 	for _, rel := range []string{"README.md", "docs/a.rst", "LICENSE.txt", "x/y.json", "ci.yaml", "ci.yml", "pyproject.toml",
 		"tox.ini", "setup.cfg", "d.csv", "poetry.lock", "go.sum", "go.mod", "go.work", "a.png", "a.jpg", "a.gif", "a.svg",
@@ -31,10 +31,10 @@ func TestKinds_ARowIsNonSource(t *testing.T) {
 	}
 }
 
-// TestKinds_AProgramKindIsNotNonSource (B7): a kind whose files are a
+// TestKinds_AProgramKindIsNotNonSource: a kind whose files are a
 // program, read here or not, is not a row, so an edit of one that no
 // resolver claims is disclosed; so is a kind the table has never heard of.
-// Break: invert the answer (m5).
+// Break: invert the answer.
 func TestKinds_AProgramKindIsNotNonSource(t *testing.T) {
 	for _, rel := range []string{"a.go", "a.py", "web/a.ts", "run.sh", "q.sql", "Makefile", "build/Dockerfile", "README",
 		"a.MD", "x.unknownkind"} {
@@ -44,9 +44,9 @@ func TestKinds_AProgramKindIsNotNonSource(t *testing.T) {
 	}
 }
 
-// TestKinds_KeyIsTheExtensionElseTheBaseName (B7): the key is the final
+// TestKinds_KeyIsTheExtensionElseTheBaseName: the key is the final
 // element's extension with its dot, else its base name, whatever the
-// directories hold. Break: key every path by its base name (m6).
+// directories hold. Break: key every path by its base name.
 func TestKinds_KeyIsTheExtensionElseTheBaseName(t *testing.T) {
 	for rel, want := range map[string]string{
 		"a/b/c.tar.gz": ".gz", "go.mod": ".mod", "notes.md": ".md", ".gitignore": ".gitignore",

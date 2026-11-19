@@ -1,10 +1,10 @@
 package acceptance
 
 // LANG-REG1: the hook reaches a file's reader through the language registry
-// (lang.Registry, index.Wire), not through the Go resolver by name. Part A
-// adds the registry, the kinds table and the wiring and calls none of them
-// from a hook, so a Go session's bytes cannot move (freeze o4). These two
-// tests are the controls part B, which rewires the hook, must keep: an
+// (lang.Registry, index.Wire), not through the Go resolver by name. The
+// registry, the kinds table and the wiring exist before any hook calls
+// them, so a Go session's bytes cannot move yet. These two tests are the
+// controls the change that rewires the hook must keep: an
 // edit of a file no language reads (a kinds-table row) says nothing and
 // keeps nothing, and a Go edit writes the same overlay group, the same
 // unit-brief miss and the same stdout as the base binary did.
@@ -157,11 +157,11 @@ func (e *env) lrMisses() []string {
 	return out
 }
 
-// TestLANGREG1_ANonSourceKindIsSilent (s1): in an indexed project whose
+// TestLANGREG1_ANonSourceKindIsSilent: in an indexed project whose
 // readers are go and py, an edit of a file of a kinds-table row prints
 // nothing, keeps no overlay and counts no unit-brief miss: a Markdown file,
-// and go.mod in a Go session (ruling n4, record line 1997). Break: a hook
-// that discloses every unclaimed kind (part B's s2 line with no kinds
+// and go.mod in a Go session. Break: a hook
+// that discloses every unclaimed kind (the no-reader line with no kinds
 // table) prints a line for each.
 func TestLANGREG1_ANonSourceKindIsSilent(t *testing.T) {
 	e := newSteerEnv(t)
@@ -183,7 +183,7 @@ func TestLANGREG1_ANonSourceKindIsSilent(t *testing.T) {
 // lrMS is a record's stamp, the one field of the Go control the clock sets.
 var lrMS = regexp.MustCompile(`"recorded_at_unix_ms":\d{13}`)
 
-// lrGoWant is what the base binary (main aa5fd4ae, before part A) wrote for
+// lrGoWant is what main's binary at aa5fd4ae, before the registry, wrote for
 // TestLANGREG1_AGoEditIsByteEqual's edit, normalized by lrNormal.
 const lrGoWant = `stdout:
 
@@ -277,7 +277,7 @@ const (
 // lrBriefTitle opens the note a post prints when it delivers a unit brief.
 const lrBriefTitle = "rashomon record: an edit in unit"
 
-// TestLANGREG1_AGoEditIsByteEqual (s3, Go): an edit of svc/svc.go in the
+// TestLANGREG1_AGoEditIsByteEqual: an edit of svc/svc.go in the
 // indexed py-unit project gives the base binary's bytes: what the session
 // printed, the session graph log (its header, the overlay's records and its
 // groups) and the unit-brief misses the edit counts. The project declares a

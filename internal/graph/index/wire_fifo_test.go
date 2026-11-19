@@ -17,8 +17,8 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
-// TestWire_ANamedPipeConfigurationIsRefusedAtOnce (B5, state s6;
-// STORE-READ-REGULAR1): a named pipe at the configuration file, with no
+// TestWire_ANamedPipeConfigurationIsRefusedAtOnce (STORE-READ-REGULAR1):
+// a named pipe at the configuration file, with no
 // writer, refuses Python under that root at once, the error naming the
 // file with regfile.ErrNotRegular kept; Go under the same root is refused
 // nothing. A configuration step that opened the pipe to wait for a writer

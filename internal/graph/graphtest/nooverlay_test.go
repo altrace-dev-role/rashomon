@@ -10,7 +10,7 @@ import (
 // NoOverlay is a lang.Resolver: the sixth method is part of the contract.
 var _ lang.Resolver = NoOverlay{}
 
-// TestNoOverlay_ClaimsFakeFilesAndHasNoOverlay: the s5 witness claims .fake
+// TestNoOverlay_ClaimsFakeFilesAndHasNoOverlay: the witness claims .fake
 // files alone, and its Overlay and OverlayCarried are nil.
 func TestNoOverlay_ClaimsFakeFilesAndHasNoOverlay(t *testing.T) {
 	var r NoOverlay

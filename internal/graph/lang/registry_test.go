@@ -40,12 +40,12 @@ func counted(f fake, runs map[string]int, refuse ...string) func(string) (Resolv
 	}
 }
 
-// TestRegistry_ClaimConfiguresOncePerRoot (B3; L1 of record line 1944):
+// TestRegistry_ClaimConfiguresOncePerRoot (once per entry and root):
 // two Claims under one root run the step once and return the same
 // resolver; a Claim under a second root runs it again, for that root, and
 // gets that root's resolver, not the first's. A copy of the registry by
-// value shares the runs. Break: run the step on every Claim (m1), or keep
-// one result per entry whatever the root (m2).
+// value shares the runs. Break: run the step on every Claim, or keep
+// one result per entry whatever the root.
 func TestRegistry_ClaimConfiguresOncePerRoot(t *testing.T) {
 	runs := map[string]int{}
 	var g Registry
@@ -68,11 +68,11 @@ func TestRegistry_ClaimConfiguresOncePerRoot(t *testing.T) {
 	}
 }
 
-// TestRegistry_TwoRootsOneReadOneRefused (B3; L1's witness): in one
+// TestRegistry_TwoRootsOneReadOneRefused (once per entry and root): in one
 // process one root's configuration reads and the other's is refused; each
 // Claim returns its own root's resolver or error, every time, and the order
 // of the two roots changes neither. Break: return the refusal on the first
-// Claim only (m4), or share one result across roots (m2).
+// Claim only, or share one result across roots.
 func TestRegistry_TwoRootsOneReadOneRefused(t *testing.T) {
 	for _, order := range [][]string{{"/read", "/refused"}, {"/refused", "/read"}} {
 		runs := map[string]int{}
@@ -97,10 +97,10 @@ func TestRegistry_TwoRootsOneReadOneRefused(t *testing.T) {
 	}
 }
 
-// TestRegistry_UnclaimedRunsNoStep (B4): a path no resolver claims is
+// TestRegistry_UnclaimedRunsNoStep: a path no resolver claims is
 // false with no error, and no step runs, before or after it; nor does
 // registering run one. Break: run the steps when registered or when any
-// path is asked for (m3).
+// path is asked for.
 func TestRegistry_UnclaimedRunsNoStep(t *testing.T) {
 	runs := map[string]int{}
 	var g Registry
@@ -139,9 +139,8 @@ func TestRegistry_ClaimWithNoStepIsTheRegisteredResolver(t *testing.T) {
 	}
 }
 
-// TestRegistry_LangsInRegistrationOrder (N10): the languages as registered,
-// each once, in the order of their first registration. Break: sort them
-// (m11).
+// TestRegistry_LangsInRegistrationOrder: the languages as registered,
+// each once, in the order of their first registration. Break: sort them.
 func TestRegistry_LangsInRegistrationOrder(t *testing.T) {
 	var g Registry
 	g.Register(fake{l: "py", ext: ".py"})

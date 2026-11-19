@@ -48,7 +48,7 @@ func wireRefused(t *testing.T) string {
 	return root
 }
 
-// TestWire_RegistersGoThenPython (N10): the hook's registry reads go, then
+// TestWire_RegistersGoThenPython: the hook's registry reads go, then
 // py, the order the disclosed line names them in.
 func TestWire_RegistersGoThenPython(t *testing.T) {
 	if got, want := Wire().Langs(), []string{gopg.Lang, pylite.Lang}; !slices.Equal(got, want) {
@@ -56,10 +56,10 @@ func TestWire_RegistersGoThenPython(t *testing.T) {
 	}
 }
 
-// TestWire_PythonReadsThePythonUnits (B5): under a root whose
+// TestWire_PythonReadsThePythonUnits: under a root whose
 // configuration declares a Go unit at the root and a py unit inv, a .py
 // file under inv is unit:py:inv, and one outside inv is under no unit: the
-// Go unit is not a Python unit. Break: keep every language's units (m9).
+// Go unit is not a Python unit. Break: keep every language's units.
 func TestWire_PythonReadsThePythonUnits(t *testing.T) {
 	root := wireRoot(t, map[string]string{ConfigFile: wireConfig})
 	r, ok, err := Wire().Claim(root, "inv/core/calc.py")
@@ -74,9 +74,9 @@ func TestWire_PythonReadsThePythonUnits(t *testing.T) {
 	}
 }
 
-// TestWire_NoConfigurationIsNoPythonUnit (B5, state s4): a root with no
+// TestWire_NoConfigurationIsNoPythonUnit: a root with no
 // configuration file claims .py paths with no error and no unit. Break:
-// read a missing file as a refusal (m7).
+// read a missing file as a refusal.
 func TestWire_NoConfigurationIsNoPythonUnit(t *testing.T) {
 	root := t.TempDir()
 	r, ok, err := Wire().Claim(root, "inv/core/calc.py")
@@ -88,10 +88,10 @@ func TestWire_NoConfigurationIsNoPythonUnit(t *testing.T) {
 	}
 }
 
-// TestWire_ARefusedConfigurationIsTheError (B5, state s6): a configuration
+// TestWire_ARefusedConfigurationIsTheError: a configuration
 // that is not a regular file, over MaxConfigBytes or not JSON refuses the
 // root: the Claim of a .py path is nil and an error naming the file, its
-// cause kept. Break: swallow the error (m8).
+// cause kept. Break: swallow the error.
 func TestWire_ARefusedConfigurationIsTheError(t *testing.T) {
 	for name, c := range map[string]struct {
 		root  string
@@ -118,10 +118,10 @@ func TestWire_ARefusedConfigurationIsTheError(t *testing.T) {
 	}
 }
 
-// TestWire_TwoRootsOneReadOneRefused (B3, L1's witness on real files): in
+// TestWire_TwoRootsOneReadOneRefused (once per entry and root, on real files): in
 // one registry one root's configuration reads and the other's is refused;
 // each root's Claim gives its own answer, in either order, asked twice.
-// Break: keep one result per language whatever the root (m2).
+// Break: keep one result per language whatever the root.
 func TestWire_TwoRootsOneReadOneRefused(t *testing.T) {
 	read, refused := wireRoot(t, map[string]string{ConfigFile: wireConfig}), wireRefused(t)
 	for _, order := range [][]string{{read, refused}, {refused, read}} {
@@ -145,12 +145,12 @@ func TestWire_TwoRootsOneReadOneRefused(t *testing.T) {
 	}
 }
 
-// TestWire_GoCarriesImportsWhereThereIsAModule (B6, N5): under a root whose
+// TestWire_GoCarriesImportsWhereThereIsAModule: under a root whose
 // go.mod names a module, the Go resolver's overlay carries Declares and
 // Imports; under a root with no go.mod, Declares alone, and no error: as
 // the hook's overlay import map gives today. A refused configuration file
 // refuses nothing for Go. Break: give the resolver no import map where
-// there is a module (m10).
+// there is a module.
 func TestWire_GoCarriesImportsWhereThereIsAModule(t *testing.T) {
 	for name, c := range map[string]struct {
 		root string
@@ -170,7 +170,7 @@ func TestWire_GoCarriesImportsWhereThereIsAModule(t *testing.T) {
 	}
 }
 
-// TestWire_AnUnclaimedPathReadsNothing (B4): a path no language claims is
+// TestWire_AnUnclaimedPathReadsNothing: a path no language claims is
 // false with no error, even under a root whose configuration is refused.
 func TestWire_AnUnclaimedPathReadsNothing(t *testing.T) {
 	if r, ok, err := Wire().Claim(wireRefused(t), "notes.md"); r != nil || ok || err != nil {

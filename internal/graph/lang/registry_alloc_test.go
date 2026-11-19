@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestRegistry_RegisterAllocatesNothing (q6 of record line 2029): a Go Stop
+// TestRegistry_RegisterAllocatesNothing: a Go Stop
 // builds a registry of its producers' resolvers (index.UnitOf), so Register
 // allocates nothing of its own: into a list with room for them, two
 // Registers allocate nothing. The room is made first, so the growth of the
