@@ -226,3 +226,51 @@ func TestUnreadNotice_IsADigestOfTheFileApartFromTheOthers(t *testing.T) {
 		t.Error("a returned unread marker is not taken again")
 	}
 }
+
+// TestLastIndexNotice_IsADigestOfTheLanguageApartFromTheOthers: the last
+// index's marker is its prefix and the first 16 hex digits of the language's
+// sha256; it reads as no kind, unindexed or unread marker, and none of those
+// reads as it, so a session that has had the unindexed line for a language
+// still has this one, and it is never counted toward the kinds' limit. It
+// is taken once per session and language, and a returned one is taken
+// again. Break: share the unindexed prefix (one line silences the other),
+// leave the family out of the notice markers (never taken), or put the
+// language in the name.
+func TestLastIndexNotice_IsADigestOfTheLanguageApartFromTheOthers(t *testing.T) {
+	if got, want := LastIndexNoticeName("fake"), FileNoticeLastIndexPrefix+"b5d54c39e66671c9"; got != want {
+		t.Errorf("LastIndexNoticeName(fake) = %q, want %q", got, want)
+	}
+	if got, want := LastIndexNoticeName("py"), FileNoticeLastIndexPrefix+"6e491c02882ac36e"; got != want {
+		t.Errorf("LastIndexNoticeName(py) = %q, want %q", got, want)
+	}
+	for _, l := range []string{"fake", "py", ""} {
+		name := LastIndexNoticeName(l)
+		if !IsLastIndexNoticeFile(name) || IsKindNoticeFile(name) || IsUnindexedNoticeFile(name) || IsUnreadNoticeFile(name) {
+			t.Errorf("LastIndexNoticeName(%q) = %q reads as another family's marker, or not as its own", l, name)
+		}
+		if IsLastIndexNoticeFile(KindNoticeName(l)) || IsLastIndexNoticeFile(UnindexedNoticeName(l)) || IsLastIndexNoticeFile(UnreadNoticeName(l)) {
+			t.Errorf("another family's marker for %q reads as a last index one", l)
+		}
+	}
+	for _, bad := range []string{FileNoticeLastIndexPrefix + "fake", FileNoticeLastIndexPrefix + "0123456789ABCDEF",
+		FileNoticeLastIndexPrefix + "0123", FileNoticeOtherKinds} {
+		if IsLastIndexNoticeFile(bad) {
+			t.Errorf("%q reads as a last index marker", bad)
+		}
+	}
+	s := kindStore(t)
+	name := LastIndexNoticeName("fake")
+	if !s.TakeNotice("s1", UnindexedNoticeName("fake")) {
+		t.Fatal("the unindexed marker is not taken")
+	}
+	if !s.TakeNotice("s1", name) || s.TakeNotice("s1", name) {
+		t.Fatal("the last index marker is not taken exactly once beside the language's unindexed one")
+	}
+	if n, ok := s.kindNotices("s1"); !ok || n != 0 {
+		t.Errorf("the session counts %d kind markers (%v); want 0", n, ok)
+	}
+	s.ReturnNotice("s1", name)
+	if !s.TakeNotice("s1", name) {
+		t.Error("a returned last index marker is not taken again")
+	}
+}

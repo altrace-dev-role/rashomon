@@ -578,7 +578,7 @@ func TestTRU28_PurgeListsEveryNameItsWritersExport(t *testing.T) {
 	}
 	families := map[string][]string{"FileFiredPrefix": store.FiredEvents(), "FileBlastReadPrefix": {"0123456789abcdef"},
 		"FileNoticeKindPrefix": {"0123456789abcdef"}, "FileNoticeUnindexedPrefix": {"0123456789abcdef"},
-		"FileNoticeUnreadPrefix": {"0123456789abcdef"}}
+		"FileNoticeUnreadPrefix": {"0123456789abcdef"}, "FileNoticeLastIndexPrefix": {"0123456789abcdef"}}
 	for name, v := range consts {
 		if suffixes, ok := families[name]; ok {
 			for _, s := range suffixes {

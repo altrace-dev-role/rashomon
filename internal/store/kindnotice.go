@@ -52,6 +52,19 @@ const FileNoticeUnindexedPrefix = "notice-unindexed-"
 // needed; the family is apart from the kind markers.
 const FileNoticeUnreadPrefix = "notice-unread-"
 
+// The last index's notice markers: the first time a session edits a file
+// whose claiming reader is admitted without overlays (lang.Resolver: its
+// OverlayCarried is empty), under an index that holds records of the
+// reader's language, the post hook says once to the person that the file's
+// facts are those of the last index. Each is an empty file like the kind
+// markers, named FileNoticeLastIndexPrefix and the same 16 hex digits of the
+// language's name. The languages are the registry's, never a file's, so a
+// session keeps at most one per registered language and no limit is needed;
+// the family is apart from the kind markers, and from the unindexed ones,
+// whose key is a language too, so a session that has had one line for a
+// language still has the other.
+const FileNoticeLastIndexPrefix = "notice-lastindex-"
+
 // KindNoticeName returns the marker name for the kind key: the prefix and the
 // first 16 lower-case hex digits of the key's sha256.
 func KindNoticeName(key string) string { return digestName(FileNoticeKindPrefix, key) }
@@ -76,6 +89,15 @@ func UnreadNoticeName(file string) string { return digestName(FileNoticeUnreadPr
 // IsUnreadNoticeFile reports whether name is one of the unread
 // configuration markers' file names: the prefix and 16 lower-case hex digits.
 func IsUnreadNoticeFile(name string) bool { return isDigestName(FileNoticeUnreadPrefix, name) }
+
+// LastIndexNoticeName returns the marker name for the language lang, whose
+// reader is admitted without overlays: the prefix and the first 16
+// lower-case hex digits of its sha256.
+func LastIndexNoticeName(lang string) string { return digestName(FileNoticeLastIndexPrefix, lang) }
+
+// IsLastIndexNoticeFile reports whether name is one of the last index
+// markers' file names: the prefix and 16 lower-case hex digits.
+func IsLastIndexNoticeFile(name string) bool { return isDigestName(FileNoticeLastIndexPrefix, name) }
 
 // digestName is prefix and the first 16 lower-case hex digits of key's
 // sha256.

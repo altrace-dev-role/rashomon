@@ -194,6 +194,10 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if !s.TakeNotice(sessionID, store.UnreadNoticeName("zz.cfg")) {
 		t.Fatal("TakeNotice took no unread-configuration marker")
 	}
+	// The post's marker for a language whose reader builds no overlay.
+	if !s.TakeNotice(sessionID, store.LastIndexNoticeName("zz")) {
+		t.Fatal("TakeNotice took no last-index marker")
+	}
 	// The manifest notice owed, by the post's own writer, with its class.
 	s.OweManifestNotice(sessionID, true)
 	if !s.NoticeTaken(sessionID, store.FileNoticeManifestOwed) || !s.NoticeTaken(sessionID, store.FileNoticeManifestReadFailed) {

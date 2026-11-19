@@ -46,7 +46,9 @@ import (
 // one capped read, once per root for the call) and its Overlay called; the
 // content read, the header read and the Overlay call each go through a
 // package-level func var so a test can count them. A reader whose
-// configuration under the root is refused reads no file there: no group.
+// configuration under the root is refused reads no file there: no group. A
+// reader admitted without overlays (an empty OverlayCarried) is not called:
+// no group, and the index's facts stand for the file.
 //
 // The edit's content. A Write's is its content field. An Edit's or a
 // MultiEdit's is the file's bytes read once from disk with each new_string
@@ -277,6 +279,11 @@ type overlayCall struct {
 // claiming reader's configuration step under the root, where the writer
 // stopped at the reader's Claim, and unreadLang that reader's language: the
 // post says which file was not read and why once per file (takeKindLine).
+// lastIndex is the language of the configured reader where it is admitted
+// without overlays (its OverlayCarried is empty), and lastRev the index
+// header's commit: the writer keeps no group, ok stays set, so the post's
+// unit-brief read takes the index's facts for the file, and the post says
+// once per language that those are the facts at lastRev (takeKindLine).
 type keptGate struct {
 	root, rel  string
 	reg        *lang.Registry
@@ -285,6 +292,8 @@ type keptGate struct {
 	unindexed  string
 	unread     *lang.Refusal
 	unreadLang string
+	lastIndex  string
+	lastRev    string
 }
 
 // overlayTool reports a tool whose input names a file the overlay may read.
@@ -461,6 +470,17 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 		c.keepUnread(g, at, under, cerr)
 		if reader, _ := g.reg.For(at, under); reader.Lang() == gopg.Lang && c.st != nil {
 			c.st.OweManifestNotice(c.session, !errors.Is(cerr, regfile.ErrNotRegular))
+		}
+		return graph.OverlayGroup{}, "", "", false
+	}
+	if len(r.OverlayCarried()) == 0 {
+		// The reader is admitted without overlays (lang.Resolver): its
+		// Overlay returns nothing, so no group is kept, and the facts that
+		// stand for the file are the index's at the header's commit. The
+		// gate stays ok for the unit-brief read; the post says so once per
+		// language (takeKindLine).
+		if c.gate != nil {
+			c.gate.lastIndex, c.gate.lastRev = r.Lang(), hdr.Rev.Commit
 		}
 		return graph.OverlayGroup{}, "", "", false
 	}

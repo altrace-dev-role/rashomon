@@ -95,15 +95,31 @@ func reasonWords(r lang.Reason) string {
 	return "read failed"
 }
 
+// The last index's line: an edit the overlay writer kept no group for, its
+// configured reader admitted without overlays (keptGate.lastIndex), is said
+// to the person once per session and language, naming the commit of the
+// index whose facts stand (the header's, keptGate.lastRev). The language is
+// the registry's, never the file's. The words before "build" are as the
+// unindexed line's.
+
+// lastIndexLine is the line for what, the files whose edits build no
+// overlay, and rev, the commit of the index whose facts stand for them.
+func lastIndexLine(what, rev string) string {
+	return "rashomon: edits to " + what + " build no new facts here; their unit, caller and conflict facts are those of the last index (" +
+		rev + ")."
+}
+
 // takeKindLine is the line this post owes about the edited file's kind and
 // the marker it took for it, or "" and "" when none is owed: the overlay
 // writer's gate stopped neither at its last check alone (keptGate.unclaimed)
 // nor at the index's header for the file's language (keptGate.unindexed)
-// nor at a refused configuration (keptGate.unread), or the session has had
+// nor at a refused configuration (keptGate.unread), nor reached a reader
+// admitted without overlays (keptGate.lastIndex), or the session has had
 // the line. The gate is the writer's own result (Post.writeOverlay), so the
 // line and the overlay cannot part. The states never meet: an unclaimed
-// file has no reader to be unindexed or configured, and the writer stops
-// an unindexed one before its reader's configuration step.
+// file has no reader to be unindexed or configured, the writer stops an
+// unindexed one before its reader's configuration step, and a reader
+// reaches the overlay check only once that step has passed.
 func (p *Post) takeKindLine() (line, marker string) {
 	g := p.gate
 	switch {
@@ -111,6 +127,8 @@ func (p *Post) takeKindLine() (line, marker string) {
 		return p.takeUnindexedLine(g)
 	case g.unread != nil:
 		return p.takeUnreadLine(g)
+	case g.lastIndex != "":
+		return p.takeLastIndexLine(g)
 	}
 	if !g.unclaimed || g.reg == nil {
 		return "", ""
@@ -150,6 +168,17 @@ func (p *Post) takeUnreadLine(g keptGate) (line, marker string) {
 		return "", ""
 	}
 	return unreadLine(g.unread.File, reasonWords(g.unread.Reason), kindWhat(g.rel, g.unreadLang)), marker
+}
+
+// takeLastIndexLine is takeKindLine for a gate whose reader builds no
+// overlay: the language's line and its marker, or "" and "" when the
+// session has had it or the marker could not be made.
+func (p *Post) takeLastIndexLine(g keptGate) (line, marker string) {
+	marker = store.LastIndexNoticeName(g.lastIndex)
+	if !p.st.TakeNotice(p.sessionID, marker) {
+		return "", ""
+	}
+	return lastIndexLine(kindWhat(g.rel, g.lastIndex), g.lastRev), marker
 }
 
 // kindWhat is the words for the files like rel: its kind where the kind

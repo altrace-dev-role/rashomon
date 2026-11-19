@@ -22,7 +22,9 @@ import (
 // (kindnotice.go: IsKindNoticeFile, FileNoticeOtherKinds), and its line that
 // the index holds no records of a language one marker per language
 // (IsUnindexedNoticeFile), and its line that a reader's configuration was
-// not read one marker per configuration file (IsUnreadNoticeFile).
+// not read one marker per configuration file (IsUnreadNoticeFile), and its
+// line that a language with no overlays keeps the last index's facts one
+// marker per language (IsLastIndexNoticeFile).
 
 // isNotice reports whether name is one of the session's notice markers.
 func isNotice(name string) bool {
@@ -31,7 +33,7 @@ func isNotice(name string) bool {
 		FileNoticeManifestOwed, FileNoticeManifestReadFailed, FileNoticeManifest, FileNoticeOtherKinds:
 		return true
 	}
-	return IsKindNoticeFile(name) || IsUnindexedNoticeFile(name) || IsUnreadNoticeFile(name)
+	return IsKindNoticeFile(name) || IsUnindexedNoticeFile(name) || IsUnreadNoticeFile(name) || IsLastIndexNoticeFile(name)
 }
 
 // TakeNotice creates the session's marker name, one of the notice markers

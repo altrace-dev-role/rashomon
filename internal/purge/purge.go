@@ -368,7 +368,8 @@ func ownTreeFile(name string, isRuns bool, level int) bool {
 	if slices.Contains(runFiles, name) || store.IsFiredFile(name) || store.IsBlastReadFile(name) {
 		return true
 	}
-	if store.IsKindNoticeFile(name) || store.IsUnindexedNoticeFile(name) || store.IsUnreadNoticeFile(name) {
+	if store.IsKindNoticeFile(name) || store.IsUnindexedNoticeFile(name) || store.IsUnreadNoticeFile(name) ||
+		store.IsLastIndexNoticeFile(name) {
 		return true
 	}
 	for _, p := range runTempPrefixes {
