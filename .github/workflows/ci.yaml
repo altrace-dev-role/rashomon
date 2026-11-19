@@ -996,6 +996,11 @@ jobs:
           }
           T=$J/tree
           git worktree add -q --detach "$T" "$MAIN_SHA"; step tree $?
+          mkdir -p "$J/bin-pgraph"
+          (cd "$T/pgraph" && go build -o "$J/bin-pgraph/pgraph" ./cmd/pgraph); step build-pgraph $?
+          "$J/bin-pgraph/pgraph" sync "$T" > "$J/pgraph-sync.out" 2>&1; step pgraph-sync $?
+          cat "$J/pgraph-sync.out"
+          grep -q -E '^pgraph: synced [1-9][0-9]* packages? in [1-9][0-9]* modules? into ' "$J/pgraph-sync.out"; step pgraph-sync-not-vacuous $?
           for name in main branch; do
             (cd "$T" && "$J/bin-$name/rashomon" graph index) > "$J/index-$name.out" 2>&1; step "index-$name" $?
             cat "$J/index-$name.out"
