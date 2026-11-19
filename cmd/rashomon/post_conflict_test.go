@@ -8,7 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
@@ -451,7 +453,10 @@ func cfCheck(seq, landed int64, commit, file string, keys ...string) store.Confl
 
 // TestConflictsSeen_FoldFromRecord (D5): a conflict shown in two files
 // resolves only when neither shows it; raised again it gains a seq and is
-// unresolved; the bound seq reads the fold as of then; no check is nil.
+// unresolved; the bound seq reads the fold as of then; no check is nil. Each
+// bound is a landed seq, as a Stop's is (run.LastSeq), and each check's own
+// record seq is one above its landed seq, as the post appends it after the
+// execution: at a call's landed seq, that call's check is in the fold.
 func TestConflictsSeen_FoldFromRecord(t *testing.T) {
 	if got := foldConflictChecks(&store.Run{}, 0); got != nil {
 		t.Errorf("no check: %+v, want nil", got)
@@ -463,13 +468,17 @@ func TestConflictsSeen_FoldFromRecord(t *testing.T) {
 		cfCheck(16, 15, "c1", "fB"),
 		cfCheck(18, 17, "c1", "fA", "k1", "k2"),
 	}}
-	at := foldConflictChecks(run, 14)
+	at := foldConflictChecks(run, 9)
 	if len(at) != 1 || at[0].ResolvedSeq != 0 || !slices.Equal(at[0].Seqs, []int64{9}) {
-		t.Errorf("at 14, fB still showing k1: %+v, want k1 raised at 9, unresolved", at)
+		t.Errorf("at 9, the check of the call landed at 9: %+v, want k1 raised at 9, unresolved", at)
 	}
-	at = foldConflictChecks(run, 16)
+	at = foldConflictChecks(run, 13)
+	if len(at) != 1 || at[0].ResolvedSeq != 0 || !slices.Equal(at[0].Seqs, []int64{9}) {
+		t.Errorf("at 13, fB still showing k1: %+v, want k1 raised at 9, unresolved", at)
+	}
+	at = foldConflictChecks(run, 15)
 	if len(at) != 1 || at[0].ResolvedSeq != 15 {
-		t.Errorf("at 16: %+v, want k1 resolved at 15", at)
+		t.Errorf("at 15: %+v, want k1 resolved at 15", at)
 	}
 	all := foldConflictChecks(run, 0)
 	if len(all) != 2 || all[0].Row.Subject != "s-k1" || all[1].Row.Subject != "s-k2" {
@@ -510,6 +519,78 @@ func TestStop_ConflictFromARealPost(t *testing.T) {
 	code, out, _ := runStopWith(t, seen)
 	if msg := systemMessage(t, out); code != exitOK || !strings.Contains(msg, "internal/graph") {
 		t.Errorf("Stop exit %d, message %q; want exit 0 and the unit named", code, msg)
+	}
+}
+
+// TestStop_FoldsTheConflictOfTheTurnsLastEdit (STOP-FOLD1): a real post
+// raises the conflict as the turn's last call, and the Stop folds the run at
+// its own bound, run.LastSeq, the seq that call's execution landed at, with
+// no stub: the Stop's view holds the one boundary_cross row. The post
+// appends the conflict_check after the execution (the flush, then the
+// conflict join), so the check's own record seq is above the bound. The run
+// is read, digested and viewed as recapTurn does. Break: bound the fold on
+// the check's own record seq.
+func TestStop_FoldsTheConflictOfTheTurnsLastEdit(t *testing.T) {
+	s := cfSession(t, store.RecordScopeV5, true)
+	s.prompt("fix " + cfGraph)
+	if out := s.land("toolu_cf1", cfGraph, cfCross); !strings.Contains(out, cfNote) {
+		t.Fatalf("post output %q lacks %q: the fixture raised no conflict", out, cfNote)
+	}
+	st, err := store.OpenExisting(s.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := digest.ReadRun(st, benchSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs := run.ConflictChecks; run.LastSeq() <= 0 || len(cs) != 1 || len(cs[0].Rows) != 1 || cs[0].LandedSeq != run.LastSeq() {
+		t.Fatalf("checks %+v at last seq %d, want one check with one row, landed at the last seq, above 0", cs, run.LastSeq())
+	}
+	now := time.UnixMilli(1_800_000_000_000)
+	d, err := digest.BuildFrom(run, st, benchSessionID, "", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := recapPayload{SessionID: benchSessionID, Harness: harnessSignal{HookEventName: install.EventStop}, OK: true, CWD: s.project}
+	turn, err := stopView(st, run, d, p, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := turn.view.Conflicts; len(got) != 1 || got[0].Kind != "boundary_cross" {
+		t.Errorf("the Stop's conflicts %+v, want the one boundary_cross row", got)
+	}
+}
+
+// TestConflictsSeen_InterleavedCallsFoldAtTheirLandedSeqs: two calls in
+// parallel both land (19, 20) before either post appends its check (21,
+// 22), so a check's own record seq is not always one above its landed seq.
+// At 20, the Stop's bound after both, both conflicts are in the fold.
+// Break: bound on the record seq (neither folds), or on the record seq less
+// one (the first only).
+func TestConflictsSeen_InterleavedCallsFoldAtTheirLandedSeqs(t *testing.T) {
+	run := &store.Run{ConflictChecks: []store.ConflictCheck{
+		cfCheck(21, 19, "c1", "fA", "k1"),
+		cfCheck(22, 20, "c1", "fB", "k2"),
+	}}
+	got := foldConflictChecks(run, 20)
+	if len(got) != 2 || got[0].Row.Subject != "s-k1" || !slices.Equal(got[0].Seqs, []int64{19}) ||
+		got[1].Row.Subject != "s-k2" || !slices.Equal(got[1].Seqs, []int64{20}) {
+		t.Errorf("at 20, after both calls landed: %+v, want k1 raised at 19 and k2 at 20", got)
+	}
+}
+
+// TestConflictsSeen_ACheckLandedAtZeroIsSkipped: a check whose landed seq
+// is 0 or less is in no fold, at bound 0 (no bound) or any other. No post
+// writes one (keptGoEdit refuses a seq of 0 or less), so the row holds the
+// fold's own rule. Break: bound on the record seq (the check folds at 0 and
+// at 5), or drop the skip (it folds at every bound, with 0 in its Seqs).
+func TestConflictsSeen_ACheckLandedAtZeroIsSkipped(t *testing.T) {
+	run := &store.Run{ConflictChecks: []store.ConflictCheck{cfCheck(5, 0, "c1", "fA", "k1")}}
+	for _, bound := range []int64{0, 4, 5} {
+		if got := foldConflictChecks(run, bound); got != nil {
+			t.Errorf("at %d: %+v, want nil", bound, got)
+		}
 	}
 }
 

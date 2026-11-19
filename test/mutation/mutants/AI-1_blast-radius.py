@@ -51,6 +51,34 @@ m("AI-1 no print gate", H,
   "TestAI1_AReSyncSaysOnlyANewCallerSet")
 m("AI-1 no caller still speaks", H,
   "if err != nil || len(callers) == 0 {", "if err != nil {", "TestAI1_SilenceWhereNothingIsProven")
+# The row above alone changes nothing: with no callers blastMessage returns
+# the zero Message (render refuses an empty path list and the error is
+# dropped), so the text guard holds it back. Past both guards the finding
+# reaches the decision, is refused there and is still logged as suppressed;
+# the judge reads the steer log for it.
+NO_CALLER_GUARD = "\tif err != nil || len(callers) == 0 {\n"
+BETWEEN_GUARDS = (
+    "\t\treturn blastDraft{}, false\n"
+    "\t}\n"
+    "\tdigest := callersDigest(callers)\n"
+    "\tlines, _, _ := p.st.ReadSteer(p.sessionID)\n"
+    "\tlast := \"\"\n"
+    "\tGiven(lines, pattern.BlastRadius, site.Package+\"@\", false, func(rest string) { last = rest })\n"
+    "\tif last == digest {\n"
+    "\t\treturn blastDraft{}, false\n"
+    "\t}\n"
+    "\tm := blastMessage(callers)\n"
+)
+TEXT_GUARD = "\tif m.Text() == \"\" {\n"
+m("AI-1 no caller and no text still reach the decision", H,
+  NO_CALLER_GUARD + BETWEEN_GUARDS + TEXT_GUARD,
+  "\tif err != nil {\n" + BETWEEN_GUARDS + "\tif m.Text() == \"\" && false {\n",
+  "TestAI1_SilenceWhereNothingIsProven")
+# The text guard alone: where the one fresh caller is the module's root, the
+# callers are there but no directory is left to list, so blastMessage is the
+# zero Message and only this guard holds the finding back.
+m("AI-1 a note naming no package still reaches the decision", H,
+  TEXT_GUARD, "\tif m.Text() == \"\" && false {\n", "TestAI1_SilenceWhereNothingIsProven")
 m("AI-1 a yielded note keeps its marker", H,
   "\tp.st.ReturnBlastRead(p.sessionID, d.marker)\n", "", "TestAI1_AYieldedNoteComesWithTheNextEdit")
 # The given rule is hook.Given (internal/hook/given.go), the one walk blast,

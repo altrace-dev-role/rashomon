@@ -34,10 +34,11 @@ const SteerReadBudget = 10 * time.Millisecond
 // Consent is the steer_disclosure marker's reader (store.SteerDisclosureMarker,
 // D84); a nil reader reads as no consent. HoldoutOff and HoldoutOn are
 // EnvHoldout as HoldoutOff and HoldoutOn read it, and Arm is EnvSteerArm as
-// SteerArm reads it (cmd lets it count on a lab store only). ProjectDir is
-// CLAUDE_PROJECT_DIR and ManagedDir the managed-settings directory
-// (settings.ManagedDir), DiscoverSpec's two inputs beside the call's cwd
-// (card 3.1 (c)).
+// SteerArm reads it (cmd lets it count on a lab store only). Level is
+// EnvSteerLevel as SteerLevel reads it (cmd reads it under a forced arm
+// only). ProjectDir is CLAUDE_PROJECT_DIR and ManagedDir the
+// managed-settings directory (settings.ManagedDir), DiscoverSpec's two
+// inputs beside the call's cwd (card 3.1 (c)).
 type SteerEnv struct {
 	HarnessID, Surface string
 	MirrorInBand       bool
@@ -46,6 +47,7 @@ type SteerEnv struct {
 	HoldoutOff         bool
 	HoldoutOn          bool
 	Arm                steer.Arm
+	Level              steer.Pair
 	Consent            func(root string) (int, error)
 	Now                time.Time
 	ProjectDir         string
@@ -510,7 +512,8 @@ func ruleReads(sp *spec.Compiled) (command, path bool) {
 // at or over the disclosure this build shows. The project is the view's
 // root only: under record scope v4 the record holds none and the line
 // follows the record, so the payload's cwd is never a fallback. Arm is
-// armOf's, and Holdout is the session's draw (heldOut).
+// armOf's, LevelOverride is env's Level, and Holdout is the session's draw
+// (heldOut).
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := attendanceOf(p.event, env, p.permissionMode)
@@ -532,6 +535,7 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		SteerOff:         h.SteerOff,
 		ConfigUnreadable: h.ConfigUnreadable,
 		Arm:              armOf(env),
+		LevelOverride:    env.Level,
 		Attendance:       attendance,
 		Holdout:          p.heldOut(env),
 	}
@@ -614,6 +618,26 @@ func SteerArm(v string) steer.Arm {
 		return steer.ArmSteer
 	}
 	return ""
+}
+
+// EnvSteerLevel names the operator's level override for a paired run: one
+// held pattern and kind, "<pattern>/<kind>", whose notes keep their own
+// level under either arm, so the steer arm delivers them and the off arm
+// withholds them as it withholds any note (W-M3.4). A pattern with no kind
+// is "<pattern>/".
+const EnvSteerLevel = "RASHOMON_STEER_LEVEL"
+
+// SteerLevel reads EnvSteerLevel's value: the pair it names when that pair
+// is held at flag (steer.HeldAtFlag), else the zero Pair (no override). Any
+// other value, a pair no row holds and a pattern with no "/" among them, is
+// ignored, with no error and no log.
+func SteerLevel(v string) steer.Pair {
+	pat, kind, ok := strings.Cut(v, "/")
+	p := steer.Pair{Pattern: steer.PatternID(pat), Kind: steer.Kind(kind)}
+	if !ok || !steer.HeldAtFlag(p) {
+		return steer.Pair{}
+	}
+	return p
 }
 
 // heldOut is the session's draw into the field holdout (card 2.5, D109):
