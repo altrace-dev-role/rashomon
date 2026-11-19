@@ -6,9 +6,10 @@ import "github.com/altrace-dev-role/rashomon/internal/store"
 // runSegment, apart from runSegmentFiles for Law 10 (card VERSION-GATE1): the
 // steer router's two, then the Stop's coverage notice and its cleared line,
 // then the prompt's index cap notice and the manifest notice's three
-// (READ-SAFE1a).
+// (READ-SAFE1a), then the post's markers for a kind of file no reader here
+// claims (kindNoticeFiles, LANG-REG1).
 func noticeFiles(runSegment string) []FileRule {
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       runSegment,
 			Pattern:    store.FileNoticeChannel,
@@ -89,5 +90,5 @@ func noticeFiles(runSegment string) []FileRule {
 			RemovedBy:  "size-cap eviction, with its run; purge",
 			Owner:      "store",
 		},
-	}
+	}, kindNoticeFiles(runSegment)...)
 }

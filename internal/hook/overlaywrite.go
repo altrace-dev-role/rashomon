@@ -250,11 +250,16 @@ type overlayCall struct {
 // ok false where a check stopped it. The registry is the one the writer
 // configures the reader through (Claim), so a later Claim of the same file
 // in this call, by the post's unit-brief read or conflict check, reads no
-// configuration again.
+// configuration again. unclaimed is the gate stopped by its last check
+// alone: every check before it passed, no reader of reg claims rel, and
+// rel's kind is no row of the kinds table (lang.NonSource); rel and reg are
+// set and ok is false. The post says that to the person once per kind
+// (Post.Steer, takeKindLine).
 type keptGate struct {
 	root, rel string
 	reg       *lang.Registry
 	ok        bool
+	unclaimed bool
 }
 
 // overlayTool reports a tool whose input names a file the overlay may read.
@@ -297,6 +302,8 @@ func overlayPath(p *string, cwd string) string {
 // file under its root, and a reader's claim on it (lang.Registry.For on the
 // registry index.Wire builds, which reads nothing; the registry is built
 // here, per call and past every check before it, never at init: RES-2).
+// A file no reader claims returns the gate unclaimed (keptGate) when its
+// kind is not a kinds-table row, and the zero gate when it is.
 // declared is that path where the caller decoded it already (the
 // declaration's DeclaredPath), nil to decode it here, after the marker. A
 // post's unit-brief read (Post.LandedGoEdit) takes the overlay writer's
@@ -323,7 +330,10 @@ func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, de
 	}
 	reg := index.Wire()
 	if _, ok := reg.For(root, rel); !ok {
-		return "", keptGate{}
+		if lang.NonSource(rel) {
+			return "", keptGate{}
+		}
+		return "", keptGate{rel: rel, reg: reg, unclaimed: true}
 	}
 	return path, keptGate{root: root, rel: rel, reg: reg, ok: true}
 }

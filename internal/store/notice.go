@@ -17,16 +17,18 @@ import (
 // The manifest notice is owed by one hook and said by another: an edit's
 // overlay that could not read the project's manifest file leaves its owed
 // marker (OweManifestNotice), and the next prompt says it once
-// (FileNoticeManifest).
+// (FileNoticeManifest). The post's line that no reader here claims a kind
+// of file keeps one marker per kind and one for the kinds past its limit
+// (kindnotice.go: IsKindNoticeFile, FileNoticeOtherKinds).
 
 // isNotice reports whether name is one of the session's notice markers.
 func isNotice(name string) bool {
 	switch name {
 	case FileNoticeChannel, FileNoticeHoldout, FileNoticeCoverage, FileNoticeCoverageClear, FileNoticeIndexCap,
-		FileNoticeManifestOwed, FileNoticeManifestReadFailed, FileNoticeManifest:
+		FileNoticeManifestOwed, FileNoticeManifestReadFailed, FileNoticeManifest, FileNoticeOtherKinds:
 		return true
 	}
-	return false
+	return IsKindNoticeFile(name)
 }
 
 // TakeNotice creates the session's marker name, one of the notice markers

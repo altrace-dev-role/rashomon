@@ -360,7 +360,9 @@ func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 // The lines of states s2, s4 and s6, from the LANG-REG1 note (r2), item 3:
 // its template T filled with each state's A, B and C. lrSaySH is lrSayTS
 // for .sh, the note keying that line by extension; lrSayUnread keeps the
-// note's <file>, <reason> and <ext>.
+// note's <file>, <reason> and <ext>. The readers lrSayTS and lrSaySH name,
+// go and py, are this build's registry (index.Wire) in its order, which the
+// line is composed from and never holds as a constant.
 const (
 	lrSayTS     = "rashomon: no reader here for .ts files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
 	lrSaySH     = "rashomon: no reader here for .sh files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
@@ -419,10 +421,10 @@ func lrGroup(t *testing.T, log string, file graph.ID, kind string) (map[string]s
 // TestLANGREG1_AnUnclaimedKindSaysSoOnce (s2): in the indexed py-unit
 // project, an edit of a file that no reader here claims and the kinds table
 // does not list says so, once in the session for its extension, naming the
-// readers the project has: two .ts files edited three times print the .ts
-// line once, and a .sh file prints a line of its own. Base: no line. Break:
-// key the line by the file, and the second .ts file prints it again; print
-// it once per session, and the .sh file prints none.
+// readers of this build's registry: two .ts files edited three times print
+// the .ts line once, and a .sh file prints a line of its own. Base: no line.
+// Break: key the line by the file, and the second .ts file prints it again;
+// print it once per session, and the .sh file prints none.
 func TestLANGREG1_AnUnclaimedKindSaysSoOnce(t *testing.T) {
 	e := newSteerEnv(t)
 	dir, _ := e.lrProject()
@@ -438,6 +440,25 @@ func TestLANGREG1_AnUnclaimedKindSaysSoOnce(t *testing.T) {
 	}
 	lrOnce(t, said.String(), lrSayTS)
 	lrOnce(t, said.String(), lrSaySH)
+}
+
+// TestLANGREG1_TheKindLineIsForThePersonAlone: the unclaimed kind's line is
+// the post's whole output, one JSON object whose only key is systemMessage,
+// equal to the line; the PreToolUse prints nothing (lrEdit), and no
+// hookSpecificOutput carries it to the model. Base: the post prints 0 bytes.
+// Break: say the line as additionalContext.
+func TestLANGREG1_TheKindLineIsForThePersonAlone(t *testing.T) {
+	e := newSteerEnv(t)
+	dir, _ := e.lrProject()
+	ai1Write(t, dir, "web/app.ts", "export const a = 1;\n")
+	post := e.lrEdit(dir, "toolu_c1", "web/app.ts", "export")
+	var out map[string]any
+	if err := json.Unmarshal([]byte(post), &out); err != nil {
+		t.Fatalf("the post printed %q, not one JSON object: %v", post, err)
+	}
+	if msg, _ := out["systemMessage"].(string); msg != lrSayTS || len(out) != 1 {
+		t.Errorf("the post printed %q; want one object whose only key is systemMessage, equal to %q", post, lrSayTS)
+	}
 }
 
 // TestLANGREG1_APythonEditWritesAnOverlayGroup (s3, py): an edit of a .py

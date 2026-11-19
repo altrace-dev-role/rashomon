@@ -178,6 +178,14 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 			t.Fatalf("TakeNotice took no %s marker", name)
 		}
 	}
+	// The post's kind notice: one kind's own marker, then the marker for the
+	// kinds past the limit (LANG-REG1).
+	if name := s.TakeKindNotice(sessionID, ".zig"); name != store.KindNoticeName(".zig") {
+		t.Fatalf("TakeKindNotice took %q, want the kind's own marker", name)
+	}
+	if !s.TakeNotice(sessionID, store.FileNoticeOtherKinds) {
+		t.Fatal("TakeNotice took no other-kinds marker")
+	}
 	// The manifest notice owed, by the post's own writer, with its class.
 	s.OweManifestNotice(sessionID, true)
 	if !s.NoticeTaken(sessionID, store.FileNoticeManifestOwed) || !s.NoticeTaken(sessionID, store.FileNoticeManifestReadFailed) {
