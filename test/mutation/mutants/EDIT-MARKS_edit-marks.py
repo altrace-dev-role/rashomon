@@ -26,7 +26,7 @@ m("EDIT-MARKS the old text counts as added", E,
   "	scan(body(in, from), l, 1, net)\n	scan(body(in, to), l, -1, net)\n", "TestEM1_|TestEM2_|TestACM36_")
 m("EDIT-MARKS a net gain is a removal", E, "		if n > 0 {\n			m.Added[table[i].id] = n", "		if n < 0 {\n			m.Added[table[i].id] = n", "TestEM2_")
 m("EDIT-MARKS a MultiEdit's later edits are not read", E, "				return readable\n			})", "				return false\n			})", "TestEM5_")
-m("EDIT-MARKS Python is not read", E, '	case hasSuffixFold(p, ".py"):', "	case false:", "TestEM1_|TestEM2_")
+m("EDIT-MARKS Python is not read", "internal/graph/lang/marked.go", '	case hasSuffixFold(path, ".py"):', "	case false:", "TestEM1_|TestEM2_|TestMarkedOf")
 m("EDIT-MARKS a source path is read", E,
   '	if !containsFold(p, "test") && !containsFold(p, "spec") && !containsFold(p, "e2e") {', "	if false {", "TestEM6_")
 m("EDIT-MARKS a Write is read as an Edit", E,
