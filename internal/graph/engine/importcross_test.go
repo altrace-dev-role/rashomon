@@ -53,7 +53,11 @@ func importCrossFixture(t *testing.T, tree map[string]string) (string, *gopg.Imp
 			t.Fatal(err)
 		}
 	}
-	m := &gopg.ImportMap{Module: gopg.ReadModulePath(root), IsDir: gopg.DirUnder(root)}
+	mod, err := gopg.ReadModulePath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}
 	if m.Module != "github.com/altrace-dev-role/rashomon" {
 		t.Fatalf("module path %q", m.Module)
 	}

@@ -68,14 +68,14 @@ m("RV-1 item 5 the watch refusal drops what it leaves", "cmd/rashomon/watch.go",
   "verb, \"written\")\n",
   "TestRV1_5d_")
 m("RV-1 item 5 the store takes no coverage marker", "internal/store/notice.go",
-  "\tcase FileNoticeChannel, FileNoticeHoldout, FileNoticeCoverage, FileNoticeCoverageClear:\n",
-  "\tcase FileNoticeChannel, FileNoticeHoldout:\n",
+  "\tcase FileNoticeChannel, FileNoticeHoldout, FileNoticeCoverage, FileNoticeCoverageClear, FileNoticeIndexCap,\n",
+  "\tcase FileNoticeChannel, FileNoticeHoldout, FileNoticeIndexCap,\n",
   "TestRV1_5a_|TestTRU23_EveryWrittenPathIsInTheInventory")
 m("RV-1 item 5 a taken marker reads as untaken", "internal/store/notice.go",
   "\t_, err := os.Lstat(filepath.Join(s.RunDir(sessionID), name))\n\treturn err == nil\n",
   "\t_, err := os.Lstat(filepath.Join(s.RunDir(sessionID), name))\n\treturn err != nil && false\n",
   "TestRV1_5a_|TestRV1_5c_")
 m("RV-1 item 5 purge leaves the coverage markers", "internal/purge/purge.go",
-  "store.FileNoticeHoldout, store.FileNoticeCoverage, store.FileNoticeCoverageClear, fold.FileName,",
-  "store.FileNoticeHoldout, fold.FileName,",
+  "store.FileNoticeHoldout, store.FileNoticeCoverage, store.FileNoticeCoverageClear, store.FileNoticeIndexCap,",
+  "store.FileNoticeHoldout, store.FileNoticeIndexCap,",
   "TestTRU28_PurgeListsEveryNameItsWritersExport")
