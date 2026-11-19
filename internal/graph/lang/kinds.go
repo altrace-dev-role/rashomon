@@ -11,19 +11,35 @@ import "path"
 // (.gitignore LICENSE CODEOWNERS). A kind whose files are a program in some
 // language (.sh, .ts, .sql, Makefile, Dockerfile) is never a row: a reader
 // of it may exist, and where none is here an edit of one says so, so an
-// unknown kind is disclosed and never silent. A row is keyed as KindKey
-// keys a path, case and all. The table is unexported and static, like
-// programKinds, so reading it allocates nothing and costs no init.
+// unknown kind is disclosed and never silent. A program whose name ends in
+// a row's extension is keyed by its name (namedPrograms), so it is no row
+// either. A row is keyed as KindKey keys a path, case and all. The table is
+// unexported and static, like programKinds, so reading it allocates nothing
+// and costs no init.
 var nonSourceKinds = [...]string{".md", ".rst", ".txt", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".csv",
 	".mod", ".work", ".sum", ".lock", ".png", ".jpg", ".gif", ".svg", ".gitignore", "LICENSE", "CODEOWNERS"}
 
+// namedPrograms are the base names whose files are a program though their
+// extension is a row's: CMakeLists.txt is CMake's build program. KindKey
+// keys one by its name, which is no row, so an edit of it is disclosed
+// under that name like any program kind, never passed over as .txt. Static,
+// like the table, so a read allocates nothing and costs no init.
+var namedPrograms = [...]string{"CMakeLists.txt"}
+
 // KindKey is the key the kinds table files rel under, rel a slash path:
-// its extension with the dot, else its base name.
+// its base name when that is a named program, else its extension with the
+// dot, else its base name.
 func KindKey(rel string) string {
+	base := path.Base(rel)
+	for _, n := range namedPrograms {
+		if base == n {
+			return n
+		}
+	}
 	if ext := path.Ext(rel); ext != "" {
 		return ext
 	}
-	return path.Base(rel)
+	return base
 }
 
 // NonSource reports whether rel's kind is a row of the kinds table.
