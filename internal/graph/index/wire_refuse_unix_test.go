@@ -51,3 +51,18 @@ func TestWire_AnUnreadableFileIsAFailedRead(t *testing.T) {
 		}
 	}
 }
+
+// TestWire_AGoModLinkLoopIsAFailedRead: a go.mod that is a link to itself
+// fails at the open with ELOOP, since Open follows a link, and Go under
+// that root is refused as a failed read naming go.mod, not as a file that
+// is not regular. Root fails that open too, so the test runs as root.
+// Break: read a link loop as a file that is not regular.
+func TestWire_AGoModLinkLoopIsAFailedRead(t *testing.T) {
+	root := wireRoot(t, nil)
+	if err := os.Symlink(gopg.ManifestFile, filepath.Join(root, gopg.ManifestFile)); err != nil {
+		t.Fatal(err)
+	}
+	if rf := wireRefusal(t, root, "a/a.go"); rf.File != gopg.ManifestFile || rf.Reason != lang.ReadFailed {
+		t.Errorf("go.mod a link to itself: the refusal names %q, reason %d; want %q, a failed read", rf.File, rf.Reason, gopg.ManifestFile)
+	}
+}

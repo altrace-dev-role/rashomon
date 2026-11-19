@@ -11,7 +11,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
-	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -462,15 +461,8 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	if cerr != nil {
 		// The claiming reader's configuration under this root is refused,
 		// so the reader reads no file there and the edit writes no group;
-		// the post says which file was not read and why (keepUnread). A
-		// refused go.mod still leaves the manifest notice owed as well
-		// (READ-SAFE1a D7), which the session's next prompt says once; the
-		// class is the only part of the error kept, never its path or
-		// text. Another reader's refusal owes nothing here.
+		// the post says which file was not read and why (keepUnread).
 		c.keepUnread(g, at, under, cerr)
-		if reader, _ := g.reg.For(at, under); reader.Lang() == gopg.Lang && c.st != nil {
-			c.st.OweManifestNotice(c.session, !errors.Is(cerr, regfile.ErrNotRegular))
-		}
 		return graph.OverlayGroup{}, "", "", false
 	}
 	if len(r.OverlayCarried()) == 0 {

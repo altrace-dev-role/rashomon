@@ -191,16 +191,6 @@ const (
 	// (TakeNotice): empty, present once the session's line that the
 	// repository index is over its size cap has printed.
 	FileNoticeIndexCap = "notice-index-cap"
-	// FileNoticeManifestOwed, FileNoticeManifestReadFailed and
-	// FileNoticeManifest are the manifest notice's markers, each empty:
-	// the first is made when an edit's overlay could not read the
-	// project's manifest file (OweManifestNotice), the second beside it
-	// when that refusal was a failed read and not a file that is not
-	// regular, and the third once the session's line saying so has
-	// printed (TakeNotice).
-	FileNoticeManifestOwed       = "notice-manifest-owed"
-	FileNoticeManifestReadFailed = "notice-manifest-read-failed"
-	FileNoticeManifest           = "notice-manifest"
 	// FileNoticeOtherKinds is the post's once-per-session marker for the
 	// kinds of file past the kind markers' limit (TakeKindNotice): empty,
 	// present once the line that some other kinds have no reader here has

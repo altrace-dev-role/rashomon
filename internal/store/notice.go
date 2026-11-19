@@ -14,10 +14,7 @@ import (
 // notice, and the line that says it has cleared, keep markers of the same
 // kind (FileNoticeCoverage, FileNoticeCoverageClear), as does the prompt's
 // line that the repository index is over its size cap (FileNoticeIndexCap).
-// The manifest notice is owed by one hook and said by another: an edit's
-// overlay that could not read the project's manifest file leaves its owed
-// marker (OweManifestNotice), and the next prompt says it once
-// (FileNoticeManifest). The post's line that no reader here claims a kind
+// The post's line that no reader here claims a kind
 // of file keeps one marker per kind and one for the kinds past its limit
 // (kindnotice.go: IsKindNoticeFile, FileNoticeOtherKinds), and its line that
 // the index holds no records of a language one marker per language
@@ -30,7 +27,7 @@ import (
 func isNotice(name string) bool {
 	switch name {
 	case FileNoticeChannel, FileNoticeHoldout, FileNoticeCoverage, FileNoticeCoverageClear, FileNoticeIndexCap,
-		FileNoticeManifestOwed, FileNoticeManifestReadFailed, FileNoticeManifest, FileNoticeOtherKinds:
+		FileNoticeOtherKinds:
 		return true
 	}
 	return IsKindNoticeFile(name) || IsUnindexedNoticeFile(name) || IsUnreadNoticeFile(name) || IsLastIndexNoticeFile(name)
@@ -45,25 +42,6 @@ func (s *Store) TakeNotice(sessionID, name string) bool {
 		return false
 	}
 	return s.createMarker(sessionID, name)
-}
-
-// OweManifestNotice leaves the session's owed manifest notice: an edit's
-// overlay could not read the project's manifest file, readFailed when the
-// read failed and not because the file is not a regular one. The class
-// marker is made before the owed one, so a prompt that sees the owed marker
-// sees its class too; the line names the failed read when any refusal of the
-// session was one. Each marker is an empty file made once; an error makes
-// none and leaves the session without the line. The overlay writer calls it
-// with its own store handle and session (internal/hook overlayCall), never an
-// os call of its own.
-func (s *Store) OweManifestNotice(sessionID string, readFailed bool) {
-	if s == nil || s.opened() != nil {
-		return
-	}
-	if readFailed {
-		s.createMarker(sessionID, FileNoticeManifestReadFailed)
-	}
-	s.createMarker(sessionID, FileNoticeManifestOwed)
 }
 
 // createMarker creates the session's empty marker name with an exclusive
