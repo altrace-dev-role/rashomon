@@ -377,6 +377,7 @@ func (p *Post) capture(payload *hookio.Payload) error {
 	if scope == store.RecordScopeV5 {
 		rec.ContentSHA256 = writtenSHA(&pl)
 	}
+	fillEditMarks(&rec, p.st, pl.HookEventName, pl.ToolName, pl.ToolInput)
 	// The record-scope gate, then the caps, as on the declaration path
 	// (store.GateExecution; REC-52).
 	store.GateExecution(&rec, scope)
