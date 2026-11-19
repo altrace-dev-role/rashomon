@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
+	"github.com/altrace-dev-role/rashomon/internal/rootio"
 )
 
 // Schema is the store file's format this package writes and reads.
@@ -112,26 +113,17 @@ func Load(r io.Reader) (*Store, Header, error) {
 	return s, h, nil
 }
 
-// SaveFile writes the index under root, under h (Save).
+// SaveFile writes the index under root, under h (Save), through a root
+// opened at root, so a link on the index's path cannot carry the write out
+// of the repository; a link at the index file itself is replaced. The file
+// is created with mode 0600, as the temporary file it replaces was.
 func SaveFile(root string, s *Store, h Header) error {
-	path := filepath.Join(root, filepath.FromSlash(GraphFile))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), "graph-*.tmp")
+	r, err := os.OpenRoot(root)
 	if err != nil {
 		return err
 	}
-	if err := Save(f, s, h); err != nil {
-		f.Close()
-		os.Remove(f.Name())
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(f.Name())
-		return err
-	}
-	return os.Rename(f.Name(), path)
+	defer r.Close() //nolint:errcheck // the root holds only a directory handle
+	return rootio.ReplaceFile(r, filepath.FromSlash(GraphFile), 0o600, func(w io.Writer) error { return Save(w, s, h) })
 }
 
 // LoadFile reads the index under root; ErrNoGraph when there is none. The
