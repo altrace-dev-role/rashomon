@@ -6,7 +6,6 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
-	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -50,7 +49,7 @@ func conflictJoin(st *store.Store, p *hook.Post, env hook.SteerEnv) []steer.Find
 	if !ok || cb.Commit != e.Group.Commit || e.Group.File != graph.FileID(e.Rel) {
 		return nil
 	}
-	unit, ok := gopg.Resolver{}.Unit("", e.Rel)
+	unit, ok := e.Unit()
 	base := engine.ConflictBase{Records: cb.Records, Digests: cb.Digests}
 	if !ok || !base.InScope(cb.Rules, e.Group.File, unit) {
 		return nil

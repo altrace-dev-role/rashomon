@@ -65,7 +65,8 @@ func writeStory(b *bytes.Buffer, sess Session) {
 func callOutcomes(sess Session) string {
 	s := strconv.Itoa(sess.SilentFailures.Failed) + " failed call" + plural(sess.SilentFailures.Failed)
 	if t := sess.TestRuns; t != nil && t.Runs > 0 {
-		s += fmt.Sprintf("; %d test run%s (%d ok, %d failed)", t.Runs, plural(t.Runs), t.OK, t.Failed)
+		ok, failed, _, _ := t.totals()
+		s += fmt.Sprintf("; %d test run%s (%d ok, %d failed)", t.Runs, plural(t.Runs), ok, failed)
 	}
 	return s
 }

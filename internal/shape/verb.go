@@ -721,19 +721,23 @@ func verbForProgram(prog string) string {
 
 // inPlaceEditors are programs that rewrite files in place, with the words
 // that make them do so: a flag (`sed -i`, `perl -pi`, `gofmt -w`,
-// `prettier --write`, `clang-format -i`, `eslint --fix`), a subcommand
-// (`go fmt`, `cargo fmt`, `ruff format`), or nothing, for a formatter that
-// writes unless told to check (black, isort, rustfmt). A trailing `*` matches
-// a prefix, as onList reads it, so `-i.bak` and `-pie` count. BSD sed's -I
-// edits in place as -i does (its man page's SYNOPSIS: `[-I extension] [-i
-// extension]`); GNU sed has no -I, so the prefix reads nothing else.
+// `prettier --write`, `clang-format -i`, `eslint --fix`, and ruff check's
+// `--fix` and `--fix-only`), a subcommand (`go fmt`, `cargo fmt`, `ruff
+// format`), or nothing, for a formatter that writes unless told to check
+// (black, isort, rustfmt). ruff's --unsafe-fixes is not one: alone it widens
+// the fixes --fix would apply and applies none. A ruff config that sets fix =
+// true writes on a plain `ruff check`, which the line's words cannot show. A
+// trailing `*` matches a prefix, as onList reads it, so `-i.bak` and `-pie`
+// count. BSD sed's -I edits in place as -i does (its man page's SYNOPSIS:
+// `[-I extension] [-i extension]`); GNU sed has no -I, so the prefix reads
+// nothing else.
 var inPlaceEditors = map[string][]string{
 	"sed":          {"-i*", "-I*", "--in-place*"},
 	"perl":         {"-i*", "-pi*", "-ni*", "-0pi*"},
 	"gofmt":        {"-w"},
 	"go":           {"fmt"},
 	"cargo":        {"fmt"},
-	"ruff":         {"format"},
+	"ruff":         {"format", "--fix", "--fix-only"},
 	"prettier":     {"--write", "-w"},
 	"clang-format": {"-i"},
 	"eslint":       {"--fix"},

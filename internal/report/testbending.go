@@ -293,16 +293,23 @@ type TestRuns struct {
 	// the calls whose line masked a test runner's exit status (Masked). A
 	// session with no schema 3 declaration has no TestRuns at all
 	// (buildTestRuns), so a 0 here was measured.
-	Runs   int `json:"runs"`
+	Runs int `json:"runs"`
+	// OK and Failed count by the call's exit status, but for the Wrapped runs
+	// among them, which count by a runner's summary line in a script's
+	// output. A masked run read from its output is never here: it is in
+	// ReadFromSummary or ReadFromPrinted, and the text adds the three
+	// (totals).
 	OK     int `json:"ok"`
 	Failed int `json:"failed"`
 	// Masked counts the calls whose shape says a test runner ran with its
 	// exit status masked by its line (status_masked test) and which ended
 	// ok or failed: `make test 2>&1 | tail -40`. Neither in OK nor in
-	// Failed, whatever the line recorded, and never part of a pair. Null
-	// when the session never measured masking (measuresMasking): a record
-	// before schema 4 could not say, so 0 there would be a measured zero it
-	// never was.
+	// Failed, whatever the line recorded, and never part of a pair. Those
+	// whose outcome was read from their output are among them and also in
+	// ReadFromSummary or ReadFromPrinted; the rest are neither ok nor
+	// failed. Null when the session never measured masking
+	// (measuresMasking): a record before schema 4 could not say, so 0 there
+	// would be a measured zero it never was.
 	Masked *int `json:"status_masked"`
 	// Undeclared counts the calls whose declaration was lost
 	// (undeclaredCalls). When it is not 0 no pair is looked for, and the two
@@ -314,7 +321,37 @@ type TestRuns struct {
 	// call ended ok (in OK). One whose summary said passed beside a failed
 	// call is no run here, so Runs stays OK, Failed and Masked (WRAPPER-RUN1).
 	Wrapped int `json:"wrapped"`
+	// ReadFromSummary and ReadFromPrinted count the Masked runs whose
+	// outcome was read from their output, as verify reads it: the runner's
+	// summary line (readFromSummary) or the exit status the line printed
+	// (readFromPrinted), on a call that ended ok. Each run here stays in
+	// Masked and in neither OK nor Failed, so ok, failed and status_masked
+	// keep their meaning (report version 2: keys added, none changed). Null
+	// where Masked is null.
+	ReadFromSummary *ReadOutcomes `json:"read_from_summary"`
+	ReadFromPrinted *ReadOutcomes `json:"read_from_printed"`
 	TestBending
+}
+
+// ReadOutcomes counts masked test runs by an outcome read from their output:
+// those it said passed, those it said failed.
+type ReadOutcomes struct {
+	OK     int `json:"ok"`
+	Failed int `json:"failed"`
+}
+
+// totals is t's ok and failed over every source: the exit status (OK and
+// Failed) plus the outcomes read from masked runs' output, with those two
+// read pairs by value, a nil one as 0 and 0 (masking never measured). The
+// text's totals and its breakdown come from here, so the two cannot differ.
+func (t *TestRuns) totals() (ok, failed int, summary, printed ReadOutcomes) {
+	if t.ReadFromSummary != nil {
+		summary = *t.ReadFromSummary
+	}
+	if t.ReadFromPrinted != nil {
+		printed = *t.ReadFromPrinted
+	}
+	return t.OK + summary.OK + printed.OK, t.Failed + summary.Failed + printed.Failed, summary, printed
 }
 
 // buildTestRuns counts run's test runs by the outcomes in executed (run's
@@ -335,13 +372,33 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 	out := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: tb}
 	if measuresMasking(run) {
 		out.Masked = new(int)
+		out.ReadFromSummary, out.ReadFromPrinted = new(ReadOutcomes), new(ReadOutcomes)
 	}
 	for _, d := range run.Declarations {
 		if m := d.Shape.StatusMasked; m != nil && *m == shape.MaskedTest {
-			switch testOutcome(d, executed, denied) {
+			switch o := testOutcome(d, executed, denied); o {
 			case store.ExecOK, store.ExecFailed:
 				out.Runs++
 				*out.Masked++
+				// Counted by its output where that was read, and only on a
+				// call that ended ok, as verify.readsOutput and
+				// BuildMaskedRuns read it.
+				rec := outcomeRecord(executed[d.ToolUseID])
+				var r *ReadOutcomes
+				switch {
+				case o != store.ExecOK:
+				case readFromSummary(rec):
+					r = out.ReadFromSummary
+				case readFromPrinted(rec):
+					r = out.ReadFromPrinted
+				}
+				switch {
+				case r == nil:
+				case rec.GateOutput.Kind == "summary_pass" || rec.GateOutput.Kind == gateout.KindPrintedPass:
+					r.OK++
+				default:
+					r.Failed++
+				}
 			}
 			continue
 		}
