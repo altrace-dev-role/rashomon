@@ -262,7 +262,7 @@ func TestLANGREG1_AKindLineThatDoesNotPrintIsGivenBack(t *testing.T) {
 	var reg lang.Registry
 	reg.Register(kindFake{l: "go\xff"})
 	p := &Post{st: st, sessionID: "s1", event: "PostToolUse", gate: keptGate{rel: "web/a.ts", reg: &reg, unclaimed: true}}
-	if b := p.kindLineAlone(steer.Client{}); b != nil {
+	if b := p.kindLineAlone(steer.Client{}, steer.ArmLive); b != nil {
 		t.Fatalf("a line that is not UTF-8 printed %q; want nothing", b)
 	}
 	if got, want := st.TakeKindNotice("s1", ".ts"), store.KindNoticeName(".ts"); got != want {
@@ -357,7 +357,7 @@ func TestUnindexedLanguage_AnUnprintableKindNamesTheLanguage(t *testing.T) {
 	}
 	var reg lang.Registry
 	p := &Post{st: st, sessionID: "s1", event: "PostToolUse", gate: keptGate{rel: "a/b.f\x01k", reg: &reg, unindexed: "fake"}}
-	line, marker := p.takeKindLine()
+	line, marker := p.takeKindLine(steer.ArmLive)
 	if want := unindexedLineOf("fake", "fake"); line != want {
 		t.Errorf("the line reads %q; want %q", line, want)
 	}
@@ -417,7 +417,7 @@ func TestUnreadConfig_EachReasonSaysItsOwnWords(t *testing.T) {
 		}
 		p := &Post{st: st, sessionID: sess, event: "PostToolUse", gate: keptGate{rel: rel, reg: &reg,
 			unread: &lang.Refusal{File: "x.cfg", Reason: r, Err: stepErr}, unreadLang: "fake"}}
-		return p.takeKindLine()
+		return p.takeKindLine(steer.ArmLive)
 	}
 	phrases := map[string]bool{}
 	for i, c := range []struct {

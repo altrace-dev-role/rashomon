@@ -170,7 +170,7 @@ func (p *Post) Steer(env SteerEnv) []byte {
 		if len(view.ThenChecks) > 0 {
 			p.keepHits(nil, nil, view.ThenChecks, env.Now)
 		}
-		return p.kindLineAlone(ctx.Client)
+		return p.kindLineAlone(ctx.Client, armOf(env))
 	}
 	p.keepHits(view.Hits, view.AfterHits, view.ThenChecks, env.Now)
 	out := steer.Route(&ctx, view.Findings)
@@ -186,7 +186,7 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	}
 	// The kind's line is taken here, after the Flush, and given back when
 	// the Output does not marshal, so the next edit of the kind says it.
-	line, marker := p.takeKindLine()
+	line, marker := p.takeKindLine(armOf(env))
 	out.SystemMessage = withKindLine(out.SystemMessage, line)
 	// Route withheld any channel the client cannot carry, so an error here
 	// is a contract break: print nothing.

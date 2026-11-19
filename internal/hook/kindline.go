@@ -119,8 +119,15 @@ func lastIndexLine(what, rev string) string {
 // line and the overlay cannot part. The states never meet: an unclaimed
 // file has no reader to be unindexed or configured, the writer stops an
 // unindexed one before its reader's configuration step, and a reader
-// reaches the overlay check only once that step has passed.
-func (p *Post) takeKindLine() (line, marker string) {
+// reaches the overlay check only once that step has passed. Under arm off
+// none is owed and no marker is taken, so the next edit with the arm unset
+// says the line: the off arm withholds every hook print (card MEASURE1),
+// and both exits of the steer step take their line here (Post.Steer), so
+// the arm is read in one place.
+func (p *Post) takeKindLine(arm steer.Arm) (line, marker string) {
+	if arm == steer.ArmOff {
+		return "", ""
+	}
 	g := p.gate
 	switch {
 	case g.unindexed != "":
@@ -211,11 +218,12 @@ func withKindLine(msg, line string) string {
 }
 
 // kindLineAlone is the bytes of a post whose call raised nothing else: the
-// unclaimed kind's line alone, as one system message, or nil. The run is
-// made durable before the line prints (REC-34), and the marker is given back
-// when the flush or the marshal fails, so the next edit of the kind says it.
-func (p *Post) kindLineAlone(c steer.Client) []byte {
-	line, marker := p.takeKindLine()
+// unclaimed kind's line alone, as one system message, or nil, and nil under
+// arm off (takeKindLine). The run is made durable before the line prints
+// (REC-34), and the marker is given back when the flush or the marshal
+// fails, so the next edit of the kind says it.
+func (p *Post) kindLineAlone(c steer.Client, arm steer.Arm) []byte {
+	line, marker := p.takeKindLine(arm)
 	if line == "" {
 		return nil
 	}

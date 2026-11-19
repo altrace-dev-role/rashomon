@@ -11,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/graphtest"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -127,7 +128,7 @@ func TestOverlayNil_AnUnprintableKindNamesTheLanguage(t *testing.T) {
 	var reg lang.Registry
 	p := &Post{st: st, sessionID: "s1", event: "PostToolUse",
 		gate: keptGate{rel: "a/b.f\x01k", reg: &reg, ok: true, lastIndex: "fake", lastRev: "c9"}}
-	line, marker := p.takeKindLine()
+	line, marker := p.takeKindLine(steer.ArmLive)
 	if want := lastIndexLineOf("fake", "c9"); line != want {
 		t.Errorf("the line reads %q; want %q", line, want)
 	}
