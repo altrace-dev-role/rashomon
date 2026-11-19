@@ -223,7 +223,11 @@ func python(c Config) pylite.Resolver {
 // by: the configuration's py units and the module names each owns, none
 // where the root has no configuration file (fs.ErrNotExist), and the error,
 // naming the file, where the file is refused (not a regular file, over
-// MaxConfigBytes, not JSON). Build still wires through resolverFor.
+// MaxConfigBytes, not JSON). Python is registered indexed
+// (lang.Registry.RegisterIndexed): where the index header's producers name
+// no py producer, a hook builds no overlay of a .py file and reads no
+// configuration, and says so. Go is not, so a Go edit under an index with
+// no go records is read as it was before. Build still wires through resolverFor.
 func Wire() *lang.Registry {
 	var reg lang.Registry
 	reg.RegisterConfigured(gopg.Resolver{}, func(root string) (lang.Resolver, error) {
@@ -236,7 +240,7 @@ func Wire() *lang.Registry {
 		}
 		return gopg.Resolver{Imports: &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}}, nil
 	})
-	reg.RegisterConfigured(pylite.Resolver{}, func(root string) (lang.Resolver, error) {
+	reg.RegisterIndexed(pylite.Resolver{}, func(root string) (lang.Resolver, error) {
 		c, err := ReadConfig(root)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):

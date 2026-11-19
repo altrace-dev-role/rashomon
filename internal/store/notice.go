@@ -19,7 +19,9 @@ import (
 // marker (OweManifestNotice), and the next prompt says it once
 // (FileNoticeManifest). The post's line that no reader here claims a kind
 // of file keeps one marker per kind and one for the kinds past its limit
-// (kindnotice.go: IsKindNoticeFile, FileNoticeOtherKinds).
+// (kindnotice.go: IsKindNoticeFile, FileNoticeOtherKinds), and its line that
+// the index holds no records of a language one marker per language
+// (IsUnindexedNoticeFile).
 
 // isNotice reports whether name is one of the session's notice markers.
 func isNotice(name string) bool {
@@ -28,7 +30,7 @@ func isNotice(name string) bool {
 		FileNoticeManifestOwed, FileNoticeManifestReadFailed, FileNoticeManifest, FileNoticeOtherKinds:
 		return true
 	}
-	return IsKindNoticeFile(name)
+	return IsKindNoticeFile(name) || IsUnindexedNoticeFile(name)
 }
 
 // TakeNotice creates the session's marker name, one of the notice markers

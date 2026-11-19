@@ -141,3 +141,46 @@ func TestLANGREG1_RacingKindsNeverPassTheLimit(t *testing.T) {
 			n, ok, own, other, kindNoticeLimit)
 	}
 }
+
+// TestUnindexedNotice_IsADigestOfTheLanguageApartFromTheKinds: the unindexed
+// language's marker is its prefix and the first 16 hex digits of the
+// language's sha256; no kind marker reads as one, and none of them reads as
+// a kind marker, so they are never counted toward the kinds' limit. It is
+// taken once per session and language, and a returned one is taken again.
+// Break: share the kind prefix (counted among the kinds), leave the family
+// out of the notice markers (never taken), or put the language in the name.
+func TestUnindexedNotice_IsADigestOfTheLanguageApartFromTheKinds(t *testing.T) {
+	if got, want := UnindexedNoticeName("py"), FileNoticeUnindexedPrefix+"6e491c02882ac36e"; got != want {
+		t.Errorf("UnindexedNoticeName(py) = %q, want %q", got, want)
+	}
+	if got, want := UnindexedNoticeName("go"), FileNoticeUnindexedPrefix+"4cd0e21a9a0795a1"; got != want {
+		t.Errorf("UnindexedNoticeName(go) = %q, want %q", got, want)
+	}
+	for _, l := range []string{"py", "go", ""} {
+		if name := UnindexedNoticeName(l); !IsUnindexedNoticeFile(name) || IsKindNoticeFile(name) {
+			t.Errorf("UnindexedNoticeName(%q) = %q: unindexed %v, kind %v; want only unindexed", l, name,
+				IsUnindexedNoticeFile(name), IsKindNoticeFile(name))
+		}
+		if name := KindNoticeName(l); IsUnindexedNoticeFile(name) {
+			t.Errorf("the kind marker %q reads as an unindexed one", name)
+		}
+	}
+	for _, bad := range []string{FileNoticeUnindexedPrefix + "py", FileNoticeUnindexedPrefix + "0123456789ABCDEF",
+		FileNoticeUnindexedPrefix + "0123", FileNoticeOtherKinds} {
+		if IsUnindexedNoticeFile(bad) {
+			t.Errorf("%q reads as an unindexed marker", bad)
+		}
+	}
+	s := kindStore(t)
+	name := UnindexedNoticeName("py")
+	if !s.TakeNotice("s1", name) || s.TakeNotice("s1", name) {
+		t.Fatal("the unindexed marker is not taken exactly once")
+	}
+	if n, ok := s.kindNotices("s1"); !ok || n != 0 {
+		t.Errorf("the session counts %d kind markers (%v); want 0", n, ok)
+	}
+	s.ReturnNotice("s1", name)
+	if !s.TakeNotice("s1", name) {
+		t.Error("a returned unindexed marker is not taken again")
+	}
+}

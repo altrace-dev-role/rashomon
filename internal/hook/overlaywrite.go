@@ -254,12 +254,18 @@ type overlayCall struct {
 // alone: every check before it passed, no reader of reg claims rel, and
 // rel's kind is no row of the kinds table (lang.NonSource); rel and reg are
 // set and ok is false. The post says that to the person once per kind
-// (Post.Steer, takeKindLine).
+// (Post.Steer, takeKindLine). unindexed is the language of the reader that
+// claims rel where the writer stopped at the index's header: the reader is
+// registered indexed and the header names no producer of its language
+// (lang.Registry.Unindexed). The writer clears ok there, so the post reads
+// no unit for the edit and runs no configuration step, and says that to the
+// person once per language (takeKindLine).
 type keptGate struct {
 	root, rel string
 	reg       *lang.Registry
 	ok        bool
 	unclaimed bool
+	unindexed string
 }
 
 // overlayTool reports a tool whose input names a file the overlay may read.
@@ -416,6 +422,12 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	}
 	hdr, err := overlayReadHeader(filepath.Join(at, filepath.FromSlash(graph.GraphFile)))
 	if err != nil || hdr.Rev.Commit == "" {
+		return graph.OverlayGroup{}, "", "", false
+	}
+	if l, un := g.reg.Unindexed(at, under, hdr.Producers); un {
+		if c.gate != nil {
+			c.gate.ok, c.gate.unindexed = false, l
+		}
 		return graph.OverlayGroup{}, "", "", false
 	}
 	r, _, cerr := g.reg.Claim(at, under)

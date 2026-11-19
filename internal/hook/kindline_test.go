@@ -13,6 +13,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -252,5 +253,60 @@ func TestLANGREG1_APrintableKindIsShortASCII(t *testing.T) {
 		if got := printableKind(key); got != want {
 			t.Errorf("printableKind(%q) = %v; want %v", key, got, want)
 		}
+	}
+}
+
+// unindexedLineOf is the unindexed language's line for the language l and
+// the words what, spelled out as kindLineOf is.
+func unindexedLineOf(l, what string) string {
+	return "rashomon: the index here holds no " + l + " records, so edits to " + what +
+		" files carry no unit, caller or conflict facts until rashomon graph index runs."
+}
+
+// TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage: under the fixture's
+// index, whose header names no producer, with a configuration that declares
+// a py unit, an edit of a .py file says the language's line as a system
+// message alone and keeps no overlay group; a second .py file in the session
+// says nothing, and a second session says the line again. Break: key the
+// marker by the file (the second file repeats), keep it store-wide (the
+// second session is silent), or go on to the reader's configuration and
+// overlay (a group is kept).
+func TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage(t *testing.T) {
+	f := newOvFix(t, "1\n")
+	cfg := filepath.Join(f.repo, filepath.FromSlash(index.ConfigFile))
+	if err := os.WriteFile(cfg, []byte(`{"units": [{"path": "inv", "modules": ["inv"], "lang": "py"}]}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := unindexedLineOf(pylite.Lang, ".py")
+	if got := kindSaid(t, f.kindPost(ovSess, "toolu_py1", "inv/a.py")); got != want {
+		t.Errorf("the first .py edit said %q; want %q", got, want)
+	}
+	if b := f.kindPost(ovSess, "toolu_py2", "inv/b.py"); b != nil {
+		t.Errorf("a second .py file in the session printed %q; want nothing", b)
+	}
+	if got := kindSaid(t, f.kindPost("sess-ov-2", "toolu_py3", "inv/a.py")); got != want {
+		t.Errorf("a second session said %q; want %q", got, want)
+	}
+	if groups, _, _ := f.read(); len(groups) != 0 {
+		t.Errorf("the unindexed .py edits kept %d overlay groups; want none", len(groups))
+	}
+}
+
+// TestUnindexedLanguage_AnUnprintableKindNamesTheLanguage: where the edited
+// file's kind does not print (printableKind), the line names the language's
+// files, and the marker is the language's. Break: print the key raw.
+func TestUnindexedLanguage_AnUnprintableKindNamesTheLanguage(t *testing.T) {
+	st := mustOpen(t)
+	if err := os.MkdirAll(st.RunDir("s1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var reg lang.Registry
+	p := &Post{st: st, sessionID: "s1", event: "PostToolUse", gate: keptGate{rel: "a/b.f\x01k", reg: &reg, unindexed: "fake"}}
+	line, marker := p.takeKindLine()
+	if want := unindexedLineOf("fake", "fake"); line != want {
+		t.Errorf("the line reads %q; want %q", line, want)
+	}
+	if want := store.UnindexedNoticeName("fake"); marker != want {
+		t.Errorf("the marker taken is %q; want the language's %q", marker, want)
 	}
 }

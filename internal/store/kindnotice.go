@@ -31,17 +31,43 @@ const kindDigestLen = 16
 // kindNoticeLimit is the most kind markers a session keeps.
 const kindNoticeLimit = 16
 
+// The unindexed language's notice markers: the first time a session edits a
+// file whose reader is registered indexed (lang.Registry.RegisterIndexed)
+// under an index that holds no records of the reader's language, the post
+// hook says so once to the person, naming the language. Each is an empty
+// file like the kind markers, named FileNoticeUnindexedPrefix and the same
+// 16 hex digits of the language's name. The languages are the registry's,
+// never a file's, so a session keeps at most one per registered language
+// and no limit is needed; the family is apart from the kind markers, so it
+// is never counted among them.
+const FileNoticeUnindexedPrefix = "notice-unindexed-"
+
 // KindNoticeName returns the marker name for the kind key: the prefix and the
 // first 16 lower-case hex digits of the key's sha256.
-func KindNoticeName(key string) string {
-	sum := sha256.Sum256([]byte(key))
-	return FileNoticeKindPrefix + hex.EncodeToString(sum[:kindDigestLen/2])
-}
+func KindNoticeName(key string) string { return digestName(FileNoticeKindPrefix, key) }
 
 // IsKindNoticeFile reports whether name is one of the kind markers' file
 // names: the prefix and 16 lower-case hex digits.
-func IsKindNoticeFile(name string) bool {
-	d, ok := strings.CutPrefix(name, FileNoticeKindPrefix)
+func IsKindNoticeFile(name string) bool { return isDigestName(FileNoticeKindPrefix, name) }
+
+// UnindexedNoticeName returns the marker name for the language lang: the
+// prefix and the first 16 lower-case hex digits of its sha256.
+func UnindexedNoticeName(lang string) string { return digestName(FileNoticeUnindexedPrefix, lang) }
+
+// IsUnindexedNoticeFile reports whether name is one of the unindexed
+// language markers' file names: the prefix and 16 lower-case hex digits.
+func IsUnindexedNoticeFile(name string) bool { return isDigestName(FileNoticeUnindexedPrefix, name) }
+
+// digestName is prefix and the first 16 lower-case hex digits of key's
+// sha256.
+func digestName(prefix, key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return prefix + hex.EncodeToString(sum[:kindDigestLen/2])
+}
+
+// isDigestName reports whether name is prefix and 16 lower-case hex digits.
+func isDigestName(prefix, name string) bool {
+	d, ok := strings.CutPrefix(name, prefix)
 	if !ok || len(d) != kindDigestLen {
 		return false
 	}

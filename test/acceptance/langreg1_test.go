@@ -130,11 +130,10 @@ func (e *env) lrPrompt(dir, id, prompt string) string {
 }
 
 // lrSaid runs the Edit lrCall builds through the hook and the post and
-// returns what both printed, the hook's first. A disclosed line (states s2,
-// s4, s5 and s6 of the LANG-REG1 note) is read from either, so these tests
-// fix its text and leave its channel to the change that prints it; the
-// lines hold no character a JSON encoder rewrites, so a line inside a JSON
-// envelope reads the same.
+// returns what both printed, the hook's first. A line the session discloses
+// to the person is read from either, so these tests fix its text and leave
+// its channel to the code that prints it; the lines hold no character a
+// JSON encoder rewrites, so a line inside a JSON envelope reads the same.
 func (e *env) lrSaid(dir, id, file, old string) string {
 	e.t.Helper()
 	pre, post := e.lrCall(dir, id, file, old)
@@ -281,6 +280,10 @@ misses:
 `
 )
 
+// lrPyOnly is a configuration that declares the py-unit fixture's Python
+// unit and not its Go one.
+const lrPyOnly = `{"units": [{"path": "inv", "mod_root": "", "modules": ["inv"], "lang": "py"}]}` + "\n"
+
 // lrConsumer is a Go package of the py-unit project's module that calls
 // svc.Name, so the go:svc unit has a consumer. A prompt that names Name
 // reaches it (Name, then Run, then app/app.go), so the prompt brief says
@@ -304,7 +307,7 @@ const lrBriefTitle = "rashomon record: an edit in unit"
 // printed, the session graph log (its header, the overlay's records and its
 // groups) and the unit-brief misses the edit counts. The project declares a
 // Python unit beside the Go one, so a registry that let the py unit's
-// configuration reach a Go file would show here. Three cases:
+// configuration reach a Go file would show here. Four cases:
 //   - "refused splice": old_string "package", which svc.go holds twice (its
 //     doc comment and its clause), so the PreToolUse writer's splice
 //     (internal/hook/overlaywrite.go spliceEdits) refuses it and writes no
@@ -317,18 +320,26 @@ const lrBriefTitle = "rashomon record: an edit in unit"
 //     that leaves app out and names app2 (lrConsumer2, which calls
 //     svc.Other in svc/other.go); the edit's post delivers that brief. What
 //     the session printed is the prompt's output, then the post's.
+//   - "no go producer": the project is indexed while its configuration
+//     declares the py unit only (lrPyOnly), so the index holds py records
+//     and no go ones; then the whole configuration is written back and the
+//     refused splice runs. Go is not a language the index must hold records
+//     of (index.Wire registers it plain), so the bytes are the first case's.
 //
-// Break: build the Go overlay with no import map, and every landed group's
-// carried set loses Imports.
+// Breaks: build the Go overlay with no import map, and every landed group's
+// carried set loses Imports; say the unindexed-language line for every
+// language the producers lack, and the fourth case prints it for go and
+// writes no group.
 func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 	for _, c := range []struct {
-		name, old, prompt, want string
-		extra                   map[string]string
+		name, old, prompt, want, config string
+		extra                           map[string]string
 	}{
-		{"refused splice", "package", "", lrGoWant, nil},
-		{"declared and landed", "ToUpper", "", lrGoWantSplice, nil},
-		{"brief delivered", "ToUpper", "make Name in svc/svc.go trim the spaces around s before it upper-cases it", lrGoWantBrief,
+		{"refused splice", "package", "", lrGoWant, "", nil},
+		{"declared and landed", "ToUpper", "", lrGoWantSplice, "", nil},
+		{"brief delivered", "ToUpper", "make Name in svc/svc.go trim the spaces around s before it upper-cases it", lrGoWantBrief, "",
 			map[string]string{"app/app.go": lrConsumer, "svc/other.go": lrOther, "app2/app2.go": lrConsumer2}},
+		{"no go producer", "package", "", lrGoWant, lrPyOnly, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			e := newSteerEnv(t)
@@ -336,7 +347,18 @@ func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 			for k, v := range c.extra {
 				files[k] = v
 			}
+			full := files[index.ConfigFile]
+			if c.config != "" {
+				files[index.ConfigFile] = c.config
+			}
 			dir, hdr := e.lrIndexed(files)
+			if c.config != "" {
+				_, py := hdr.Producers[pylite.Lang]
+				if _, gol := hdr.Producers["go"]; gol || !py {
+					t.Fatalf("premise: the index's producers are %v, want %s and not go", hdr.Producers, pylite.Lang)
+				}
+				ai1Write(t, dir, index.ConfigFile, full)
+			}
 			said := ""
 			if c.prompt != "" {
 				said = "prompt:\n" + e.lrPrompt(dir, "prompt-1", c.prompt) + "post:\n"
@@ -357,12 +379,13 @@ func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 	}
 }
 
-// The lines of states s2, s4 and s6, from the LANG-REG1 note (r2), item 3:
-// its template T filled with each state's A, B and C. lrSaySH is lrSayTS
-// for .sh, the note keying that line by extension; lrSayUnread keeps the
-// note's <file>, <reason> and <ext>. The readers lrSayTS and lrSaySH name,
-// go and py, are this build's registry (index.Wire) in its order, which the
-// line is composed from and never holds as a constant.
+// The lines the session discloses: a file kind no reader here claims
+// (lrSayTS, and lrSaySH for .sh, the line being keyed by extension), a
+// language the index holds no records of (lrSayPy), and a configuration
+// that was not read (lrSayUnread, which keeps its <file>, <reason> and
+// <ext> to be filled). The readers lrSayTS and lrSaySH name, go and py, are
+// this build's registry (index.Wire) in its order, which the line is
+// composed from and never holds as a constant.
 const (
 	lrSayTS     = "rashomon: no reader here for .ts files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
 	lrSaySH     = "rashomon: no reader here for .sh files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
@@ -371,7 +394,7 @@ const (
 )
 
 // lrUnread is lrSayUnread for file and ext as a pattern, its one group the
-// reason, which the note leaves to the change that prints the line.
+// reason, whose words these tests leave to the code that prints the line.
 func lrUnread(file, ext string) *regexp.Regexp {
 	q := regexp.QuoteMeta(strings.NewReplacer("<file>", file, "<ext>", ext).Replace(lrSayUnread))
 	return regexp.MustCompile(strings.Replace(q, "<reason>", `([^()]+)`, 1))
@@ -418,7 +441,7 @@ func lrGroup(t *testing.T, log string, file graph.ID, kind string) (map[string]s
 	return nil, false
 }
 
-// TestLANGREG1_AnUnclaimedKindSaysSoOnce (s2): in the indexed py-unit
+// TestLANGREG1_AnUnclaimedKindSaysSoOnce: in the indexed py-unit
 // project, an edit of a file that no reader here claims and the kinds table
 // does not list says so, once in the session for its extension, naming the
 // readers of this build's registry: two .ts files edited three times print
@@ -461,7 +484,7 @@ func TestLANGREG1_TheKindLineIsForThePersonAlone(t *testing.T) {
 	}
 }
 
-// TestLANGREG1_APythonEditWritesAnOverlayGroup (s3, py): an edit of a .py
+// TestLANGREG1_APythonEditWritesAnOverlayGroup: an edit of a .py
 // file of the indexed py unit writes a landed overlay group for the file in
 // the session graph log, carrying pylite's set of predicates, and prints
 // nothing. Base: the hook reads a .py file through no resolver, so no group.
@@ -493,13 +516,18 @@ func TestLANGREG1_APythonEditWritesAnOverlayGroup(t *testing.T) {
 // and not its Python one.
 const lrGoOnly = `{"units": [{"path": ".", "lang": "go"}]}` + "\n"
 
-// TestLANGREG1_AnUnindexedLanguageSaysSoOnce (s4): a .py edit where the
-// index holds no py records says so, once in the session for the language.
-// The project is indexed while its configuration declares the Go unit only;
-// then the py unit is declared (two .py files are edited), or the
-// configuration is removed, which is zero py units and so this line, not
-// the unreadable-configuration one. Base: no line. Break: key the line by
-// the file, and the second .py file prints it again.
+// TestLANGREG1_AnUnindexedLanguageSaysSoOnce: a .py edit where the index
+// holds no py records says so, once in the session for the language, and
+// does nothing more: no line that the configuration was not read, no
+// overlay group for the file and no unit-brief miss. The project is indexed
+// while its configuration declares the Go unit only; then the py unit is
+// declared (two .py files are edited), or the configuration is removed,
+// which is zero py units and so this line, not the unreadable-configuration
+// one. Base: no line. Breaks: key the line by the file, and the second .py
+// file prints it again; say that a missing configuration was not read, and
+// the case with none prints that line too; say the line and go on to build
+// the overlay, and the log holds the file's group; leave the edit's gate
+// open, and the post counts a unit-brief miss for the py unit.
 func TestLANGREG1_AnUnindexedLanguageSaysSoOnce(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -533,11 +561,26 @@ func TestLANGREG1_AnUnindexedLanguageSaysSoOnce(t *testing.T) {
 				said.WriteString(e.lrSaid(dir, ed[0], ed[1], ed[2]))
 			}
 			lrOnce(t, said.String(), lrSayPy)
+			if m := lrUnread(index.ConfigFile, ".py").FindAllString(said.String(), -1); len(m) != 0 {
+				t.Errorf("the session also said the configuration was not read: %q", m)
+			}
+			if got := e.lrMisses(); len(got) != 0 {
+				t.Errorf("an edit of a py file the index holds no records of counted a unit-brief miss: %q", got)
+			}
+			if log, ok := e.lrLog(hdr); ok {
+				for _, ed := range c.edits {
+					for _, kind := range []string{"declared", "landed"} {
+						if _, has := lrGroup(t, log, graph.FileID(ed[1]), kind); has {
+							t.Errorf("the session graph log holds a %s group for %s:\n%s", kind, ed[1], log)
+						}
+					}
+				}
+			}
 		})
 	}
 }
 
-// TestLANGREG1_AnUnreadableConfigSaysWhy (s6): when the configuration
+// TestLANGREG1_AnUnreadableConfigSaysWhy: when the configuration
 // turns unreadable after the index, a .py edit says the file was not read
 // and why, once in the session for the file: a configuration over
 // index.MaxConfigBytes and one that is not JSON, each in a session of its

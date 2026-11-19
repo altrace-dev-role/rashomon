@@ -577,7 +577,7 @@ func TestTRU28_PurgeListsEveryNameItsWritersExport(t *testing.T) {
 		t.Fatalf("found %d File constants in internal/store, fewer than the 17 it had: the scan is broken: %v", len(consts), consts)
 	}
 	families := map[string][]string{"FileFiredPrefix": store.FiredEvents(), "FileBlastReadPrefix": {"0123456789abcdef"},
-		"FileNoticeKindPrefix": {"0123456789abcdef"}}
+		"FileNoticeKindPrefix": {"0123456789abcdef"}, "FileNoticeUnindexedPrefix": {"0123456789abcdef"}}
 	for name, v := range consts {
 		if suffixes, ok := families[name]; ok {
 			for _, s := range suffixes {

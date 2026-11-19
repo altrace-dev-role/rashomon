@@ -51,13 +51,32 @@ func noReaderLine(what string, reg *lang.Registry) string {
 // otherKindsWhat is the fallback line's words for the kinds it does not name.
 const otherKindsWhat = "some other kinds of file"
 
-// takeKindLine is the unclaimed kind's line this post owes and the marker it
-// took for it, or "" and "" when none is owed: the overlay writer's gate did
-// not stop at its last check alone (keptGate.unclaimed), or the session has
-// had the line. The gate is the writer's own result (Post.writeOverlay), so
-// the line and the overlay cannot part.
+// The unindexed language's line: an edit the overlay writer stopped at the
+// index's header, its reader registered indexed and the header naming no
+// producer of the reader's language (keptGate.unindexed), is said to the
+// person once per session and language. The language is the registry's,
+// never the file's. The words before "files" are the edited file's kind
+// where it passes printableKind, else the language's name.
+
+// unindexedLine is the line for l, the language the index holds no records
+// of, and what, the files whose edits carry no facts.
+func unindexedLine(l, what string) string {
+	return "rashomon: the index here holds no " + l + " records, so edits to " + what +
+		" carry no unit, caller or conflict facts until rashomon graph index runs."
+}
+
+// takeKindLine is the line this post owes about the edited file's kind and
+// the marker it took for it, or "" and "" when none is owed: the overlay
+// writer's gate stopped neither at its last check alone (keptGate.unclaimed)
+// nor at the index's header for the file's language (keptGate.unindexed),
+// or the session has had the line. The gate is the writer's own result
+// (Post.writeOverlay), so the line and the overlay cannot part. The two
+// states never meet: an unclaimed file has no reader to be unindexed.
 func (p *Post) takeKindLine() (line, marker string) {
 	g := p.gate
+	if g.unindexed != "" {
+		return p.takeUnindexedLine(g)
+	}
 	if !g.unclaimed || g.reg == nil {
 		return "", ""
 	}
@@ -74,6 +93,21 @@ func (p *Post) takeKindLine() (line, marker string) {
 		return noReaderLine(otherKindsWhat, g.reg), marker
 	}
 	return noReaderLine(key+" files", g.reg), marker
+}
+
+// takeUnindexedLine is takeKindLine for a gate the writer stopped for its
+// language: the language's line and its marker, or "" and "" when the
+// session has had it or the marker could not be made.
+func (p *Post) takeUnindexedLine(g keptGate) (line, marker string) {
+	marker = store.UnindexedNoticeName(g.unindexed)
+	if !p.st.TakeNotice(p.sessionID, marker) {
+		return "", ""
+	}
+	what := g.unindexed + " files"
+	if key := lang.KindKey(g.rel); printableKind(key) {
+		what = key + " files"
+	}
+	return unindexedLine(g.unindexed, what), marker
 }
 
 // returnKindLine gives back the marker takeKindLine took, for a line that
