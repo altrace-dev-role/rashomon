@@ -64,8 +64,9 @@ type Knowledge struct {
 }
 
 // MaxConfigBytes bounds ReadConfig's read of a repository's configuration.
-// Nothing in rashomon writes the file; a person does, and nothing but this
-// cap bounds its size: it is a bound on a file written by hand, not a size
+// A person writes the file, or `rashomon graph index` writes the one Infer
+// made where there is none, under this same cap; nothing but this cap
+// bounds its size: it is a bound on a file written by hand, not a size
 // measured from one. Over it, `rashomon graph index` fails with an error
 // naming the file and the cap, and the Stop names no unit.
 const MaxConfigBytes = 64 << 10

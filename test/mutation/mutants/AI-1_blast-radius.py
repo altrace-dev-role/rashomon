@@ -49,13 +49,11 @@ m("AI-1 no read gate", H,
 m("AI-1 no print gate", H,
   "if last == digest {", "if last == digest && false {",
   "TestAI1_AReSyncSaysOnlyANewCallerSet")
-m("AI-1 no caller still speaks", H,
-  "if err != nil || len(callers) == 0 {", "if err != nil {", "TestAI1_SilenceWhereNothingIsProven")
-# The row above alone changes nothing: with no callers blastMessage returns
-# the zero Message (render refuses an empty path list and the error is
-# dropped), so the text guard holds it back. Past both guards the finding
-# reaches the decision, is refused there and is still logged as suppressed;
-# the judge reads the steer log for it.
+# A row that drops the no-caller guard alone changes nothing: with no
+# callers blastMessage returns the zero Message (render refuses an empty
+# path list and the error is dropped), so the text guard holds it back.
+# Past both guards the finding reaches the decision, is refused there and
+# is still logged as suppressed; the judge reads the steer log for it.
 NO_CALLER_GUARD = "\tif err != nil || len(callers) == 0 {\n"
 BETWEEN_GUARDS = (
     "\t\treturn blastDraft{}, false\n"
