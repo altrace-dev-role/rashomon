@@ -73,3 +73,39 @@ m("WS-1 the rooted read waits on a named pipe for a writer", "internal/rootio/ro
   "os.O_RDONLY|syscall.O_NONBLOCK, 0)", "os.O_RDONLY|syscall.O_NONBLOCK&0, 0)", "TestWS1_J11_")
 m("WS-1 the rooted read reads what is not a regular file", "internal/rootio/rootio.go",
   "\tif !fi.Mode().IsRegular() {\n", "\tif fi == nil {\n", "TestWS1_J11_")
+
+# The direct rows: ReplaceFile's failure path, its error and the mode it
+# creates with; ReadRegular's error names and the links it refuses on a read;
+# ReadBounded's two bound checks one at a time, each with a reader whose
+# stated size the other check cannot see past; and the modes the index and a
+# row file are created with under umask 022. One row per test's "Break:"
+# clause.
+m("WS-1 a failed write leaves its temporary file beside name", "internal/rootio/rootio.go",
+  "\t\tr.Remove(tmp) //nolint:errcheck // best effort: the write's error is the one to report\n", "",
+  "TestWS1_RF6_")
+m("WS-1 a failed rename leaves its temporary file beside name", "internal/rootio/rootio.go",
+  "\t\tr.Remove(tmp) //nolint:errcheck // best effort: the rename's error is the one to report\n", "",
+  "TestWS1_RF6_")
+m("WS-1 a failed write's file is renamed over name", "internal/rootio/rootio.go",
+  "\tif err := write(f); err != nil {\n", "\tif err := write(f); false && err != nil {\n",
+  "TestWS1_RF6_")
+m("WS-1 a failed replace's error names name alone", "internal/rootio/rootio.go",
+  "\t\treturn fmt.Errorf(\"%s: %w\", filepath.Join(r.Name(), name), err)\n",
+  "\t\treturn fmt.Errorf(\"%s: %w\", name, err)\n", "TestWS1_RF7_")
+m("WS-1 the temporary file is created 0600 whatever perm says", "internal/rootio/rootio.go",
+  "os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)", "os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)", "TestWS1_RF5_")
+m("WS-1 the temporary file is created 0666 whatever perm says", "internal/rootio/rootio.go",
+  "os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)", "os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)", "TestWS1_RF5_")
+m("WS-1 a rooted read's error names name alone", "internal/rootio/rootio.go",
+  "\tpath := filepath.Join(r.Name(), name)\n", "\tpath := name\n", "TestWS1_RR5_")
+m("WS-1 a rooted read opens by the joined path", "internal/rootio/rootio.go",
+  "\tf, err := r.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)\n",
+  "\tf, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)\n", "TestWS1_PK1_")
+m("WS-1 a stated size over the bound is read before it is refused", "internal/regfile/regfile.go",
+  "\tif size > limit {\n\t\treturn nil, ErrOverBound\n\t}\n", "", "TestWS1_RB3_")
+m("WS-1 a reader longer than its stated size is read to its end", "internal/regfile/regfile.go",
+  "\t\tif int64(len(data)) > limit {\n\t\t\treturn nil, ErrOverBound\n\t\t}\n", "", "TestWS1_RB5_")
+m("WS-1 the index is saved 0644", "internal/graph/persist.go",
+  GRAPH_RET, GRAPH_RET.replace("0o600", "0o644"), "TestWS1_SF4_")
+m("WS-1 a knowledge row file is written 0600", "internal/graph/knowledge/schema.go",
+  ROWS_RET, ROWS_RET.replace("0o644", "0o600"), "TestWS1_RF5k_")
