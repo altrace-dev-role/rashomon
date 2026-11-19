@@ -155,8 +155,8 @@ func ModulePath(gomod []byte) string {
 
 // ManifestFile is the module's manifest file under a root, the one file
 // ReadModulePath reads. Its name lives here, in the language's package: the
-// hook and the prompt's manifest notice never name it, and code outside this
-// package that must (a configure step) takes it from here (READ-SAFE1a D7).
+// hook never names it, and code outside this package that must (a configure
+// step) takes it from here.
 const ManifestFile = "go.mod"
 
 // ReadModulePath is the module path of root's go.mod, read through

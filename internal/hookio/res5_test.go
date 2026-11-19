@@ -16,7 +16,7 @@ import (
 var res5Dirs = []string{
 	"internal/hook", "internal/shape", "internal/verify", "internal/steer",
 	"internal/harness", "internal/learn", "cmd/rashomon", "internal/intent", "internal/receipt",
-	"internal/directive",
+	"internal/directive", "internal/graph/index",
 }
 
 // res5Allowed are the decodes a hook path may still make, named by package
@@ -69,10 +69,19 @@ var res5Dirs = []string{
 // Neither is a closed shape: plain json.Unmarshal, no DisallowUnknownFields,
 // so a key the reader does not know is dropped, not refused. Neither
 // decodes a payload or a tool_input span.
+// internal/graph/index.ReadConfig reads a repository's .rashomon/graph.json,
+// a file a person writes, not rashomon: it opens through regfile.Open, so a
+// named pipe at the path is a miss, never a wait, and refuses a file over
+// MaxConfigBytes (64 KiB) before the decoder sees it. A hook reaches it
+// through index.Wire's Python step, which runs when a Python file is first
+// claimed under a root; the registry keeps the step's result by root, so a
+// hook process reads the file at most once per root (LANG-REG1). It decodes
+// no payload and no tool_input span.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true, "internal/verify.ReadIndex": true,
 	"internal/verify.ReadCheckpoints": true, "internal/learn.decode": true, "internal/learn.decodeActive": true,
 	"cmd/rashomon.steerRows": true, "internal/receipt.decodeHead": true, "cmd/rashomon.decodeUnitBrief": true,
-	"cmd/rashomon.readConflictBaseHead": true, "cmd/rashomon.readConflictBase": true}
+	"cmd/rashomon.readConflictBaseHead": true, "cmd/rashomon.readConflictBase": true,
+	"internal/graph/index.ReadConfig": true}
 
 // TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
 // hookio.Intake or IntakeStream, and locates fields rather than decoding

@@ -147,10 +147,10 @@ func TestWire_TwoRootsOneReadOneRefused(t *testing.T) {
 
 // TestWire_GoCarriesImportsWhereThereIsAModule: under a root whose
 // go.mod names a module, the Go resolver's overlay carries Declares and
-// Imports; under a root with no go.mod, Declares alone, and no error: as
-// the hook's overlay import map gives today. A refused configuration file
-// refuses nothing for Go. Break: give the resolver no import map where
-// there is a module.
+// Imports; under a root with no go.mod, or a go.mod with no module line,
+// Declares alone, and no error: as the hook's overlay import map gives
+// today. A refused configuration file refuses nothing for Go. Break: give
+// the resolver no import map where there is a module.
 func TestWire_GoCarriesImportsWhereThereIsAModule(t *testing.T) {
 	for name, c := range map[string]struct {
 		root string
@@ -158,6 +158,7 @@ func TestWire_GoCarriesImportsWhereThereIsAModule(t *testing.T) {
 	}{
 		"a module":                {wireRoot(t, map[string]string{"go.mod": "module example.com/m\n\ngo 1.25.0\n"}), graph.Carried{graph.Declares, graph.Imports}},
 		"no go.mod":               {t.TempDir(), graph.Carried{graph.Declares}},
+		"no module line":          {wireRoot(t, map[string]string{"go.mod": "go 1.25.0\n"}), graph.Carried{graph.Declares}},
 		"a refused configuration": {wireRefused(t), graph.Carried{graph.Declares}},
 	} {
 		r, ok, err := Wire().Claim(c.root, "a/a.go")

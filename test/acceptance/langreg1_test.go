@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/index"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -125,6 +127,25 @@ func (e *env) lrPrompt(dir, id, prompt string) string {
 		e.t.Fatalf("recap pending %s: exit %d, stdout %q, stderr %q", id, res.exitCode, res.stdout, res.stderr)
 	}
 	return res.stdout
+}
+
+// lrSaid runs the Edit lrCall builds through the hook and the post and
+// returns what both printed, the hook's first. A line the session discloses
+// to the person is read from either, so these tests fix its text and leave
+// its channel to the code that prints it; the lines hold no character a
+// JSON encoder rewrites, so a line inside a JSON envelope reads the same.
+func (e *env) lrSaid(dir, id, file, old string) string {
+	e.t.Helper()
+	pre, post := e.lrCall(dir, id, file, old)
+	h := e.hook(pre, lrEnv...)
+	if h.exitCode != 0 {
+		e.t.Fatalf("hook %s: exit %d, stdout %q, stderr %q", id, h.exitCode, h.stdout, h.stderr)
+	}
+	p := e.post(post, lrEnv...)
+	if p.exitCode != 0 {
+		e.t.Fatalf("post %s: exit %d, stdout %q, stderr %q", id, p.exitCode, p.stdout, p.stderr)
+	}
+	return h.stdout + p.stdout
 }
 
 // lrLog is the store's session graph log for the index's repository,
@@ -240,8 +261,8 @@ misses:
 `
 	lrGoWantBrief = `stdout:
 prompt:
-{"hookSpecificOutput":{"additionalContext":"rashomon record: the code this request touches, read from the repository graph at rev C1: 2 node(s) matched, 4 reached.\nunit 'svc' (named in the request) is consumed by 'app/app.go', 'app2/app2.go'\n'svc/svc.go'\nconsumer 'app/app.go' declares 'Run'; calls 'Name'","hookEventName":"UserPromptSubmit"},"systemMessage":"※ rashomon told the agent: \"rashomon record: the code this request touches, read from the repository graph at rev C1: 2 node(s) matched, 4 reached.\nunit 'svc' (named in the request) is consumed by 'app/app.go', 'app2/app2.go'\n'svc/svc.go'\nconsumer 'app/app.go' declares 'Run'; calls 'Name'\""}post:
-{"hookSpecificOutput":{"additionalContext":"rashomon record: an edit in unit 'svc', noted once a session; the repository graph at rev C1 records for it:\nconsumer 'app2/app2.go' declares 'Tag'; calls 'Other'","hookEventName":"PostToolUse"},"systemMessage":"※ rashomon told the agent: \"rashomon record: an edit in unit 'svc', noted once a session; the repository graph at rev C1 records for it:\nconsumer 'app2/app2.go' declares 'Tag'; calls 'Other'\""}
+{"hookSpecificOutput":{"additionalContext":"rashomon record: the code this request touches, read from the repository graph at rev C1: 2 node(s) matched, 4 reached.\nunit 'svc' (named in the request) is consumed by 'app/app.go', 'app2/app2.go'\n'svc/svc.go'\nconsumer 'app/app.go' declares 'Run'; calls 'Name'","hookEventName":"UserPromptSubmit"},"systemMessage":"` + "\u203b" + ` rashomon told the agent: \"rashomon record: the code this request touches, read from the repository graph at rev C1: 2 node(s) matched, 4 reached.\nunit 'svc' (named in the request) is consumed by 'app/app.go', 'app2/app2.go'\n'svc/svc.go'\nconsumer 'app/app.go' declares 'Run'; calls 'Name'\""}post:
+{"hookSpecificOutput":{"additionalContext":"rashomon record: an edit in unit 'svc', noted once a session; the repository graph at rev C1 records for it:\nconsumer 'app2/app2.go' declares 'Tag'; calls 'Other'","hookEventName":"PostToolUse"},"systemMessage":"` + "\u203b" + ` rashomon told the agent: \"rashomon record: an edit in unit 'svc', noted once a session; the repository graph at rev C1 records for it:\nconsumer 'app2/app2.go' declares 'Tag'; calls 'Other'\""}
 
 log:
 {"schema":1,"repo":"<RID>","rev":{"commit":"C1"},"producers":{"session":"session/v1"},"records":0}
@@ -258,6 +279,10 @@ log:
 misses:
 `
 )
+
+// lrPyOnly is a configuration that declares the py-unit fixture's Python
+// unit and not its Go one.
+const lrPyOnly = `{"units": [{"path": "inv", "mod_root": "", "modules": ["inv"], "lang": "py"}]}` + "\n"
 
 // lrConsumer is a Go package of the py-unit project's module that calls
 // svc.Name, so the go:svc unit has a consumer. A prompt that names Name
@@ -282,7 +307,7 @@ const lrBriefTitle = "rashomon record: an edit in unit"
 // printed, the session graph log (its header, the overlay's records and its
 // groups) and the unit-brief misses the edit counts. The project declares a
 // Python unit beside the Go one, so a registry that let the py unit's
-// configuration reach a Go file would show here. Three cases:
+// configuration reach a Go file would show here. Four cases:
 //   - "refused splice": old_string "package", which svc.go holds twice (its
 //     doc comment and its clause), so the PreToolUse writer's splice
 //     (internal/hook/overlaywrite.go spliceEdits) refuses it and writes no
@@ -295,18 +320,26 @@ const lrBriefTitle = "rashomon record: an edit in unit"
 //     that leaves app out and names app2 (lrConsumer2, which calls
 //     svc.Other in svc/other.go); the edit's post delivers that brief. What
 //     the session printed is the prompt's output, then the post's.
+//   - "no go producer": the project is indexed while its configuration
+//     declares the py unit only (lrPyOnly), so the index holds py records
+//     and no go ones; then the whole configuration is written back and the
+//     refused splice runs. Go is not a language the index must hold records
+//     of (index.Wire registers it plain), so the bytes are the first case's.
 //
-// Break: build the Go overlay with no import map, and every landed group's
-// carried set loses Imports.
+// Breaks: build the Go overlay with no import map, and every landed group's
+// carried set loses Imports; say the unindexed-language line for every
+// language the producers lack, and the fourth case prints it for go and
+// writes no group.
 func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 	for _, c := range []struct {
-		name, old, prompt, want string
-		extra                   map[string]string
+		name, old, prompt, want, config string
+		extra                           map[string]string
 	}{
-		{"refused splice", "package", "", lrGoWant, nil},
-		{"declared and landed", "ToUpper", "", lrGoWantSplice, nil},
-		{"brief delivered", "ToUpper", "make Name in svc/svc.go trim the spaces around s before it upper-cases it", lrGoWantBrief,
+		{"refused splice", "package", "", lrGoWant, "", nil},
+		{"declared and landed", "ToUpper", "", lrGoWantSplice, "", nil},
+		{"brief delivered", "ToUpper", "make Name in svc/svc.go trim the spaces around s before it upper-cases it", lrGoWantBrief, "",
 			map[string]string{"app/app.go": lrConsumer, "svc/other.go": lrOther, "app2/app2.go": lrConsumer2}},
+		{"no go producer", "package", "", lrGoWant, lrPyOnly, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			e := newSteerEnv(t)
@@ -314,7 +347,18 @@ func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 			for k, v := range c.extra {
 				files[k] = v
 			}
+			full := files[index.ConfigFile]
+			if c.config != "" {
+				files[index.ConfigFile] = c.config
+			}
 			dir, hdr := e.lrIndexed(files)
+			if c.config != "" {
+				_, py := hdr.Producers[pylite.Lang]
+				if _, gol := hdr.Producers["go"]; gol || !py {
+					t.Fatalf("premise: the index's producers are %v, want %s and not go", hdr.Producers, pylite.Lang)
+				}
+				ai1Write(t, dir, index.ConfigFile, full)
+			}
 			said := ""
 			if c.prompt != "" {
 				said = "prompt:\n" + e.lrPrompt(dir, "prompt-1", c.prompt) + "post:\n"
@@ -332,5 +376,240 @@ func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 				t.Errorf("the Go edit's bytes differ from the base binary's\ngot:\n%s\nwant:\n%s", got, c.want)
 			}
 		})
+	}
+}
+
+// The lines the session discloses: a file kind no reader here claims
+// (lrSayTS, and lrSaySH for .sh, the line being keyed by extension), a
+// language the index holds no records of (lrSayPy), and a configuration
+// that was not read (lrSayUnread, which keeps its <file>, <reason> and
+// <ext> to be filled). The readers lrSayTS and lrSaySH name, go and py, are
+// this build's registry (index.Wire) in its order, which the line is
+// composed from and never holds as a constant.
+const (
+	lrSayTS     = "rashomon: no reader here for .ts files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
+	lrSaySH     = "rashomon: no reader here for .sh files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
+	lrSayPy     = "rashomon: the index here holds no py records, so edits to .py files carry no unit, caller or conflict facts until rashomon graph index runs."
+	lrSayUnread = "rashomon: <file> was not read (<reason>), so edits to <ext> files carry no unit, caller or conflict facts this session."
+)
+
+// lrUnread is lrSayUnread for file and ext as a pattern, its one group the
+// reason, whose words these tests leave to the code that prints the line.
+func lrUnread(file, ext string) *regexp.Regexp {
+	q := regexp.QuoteMeta(strings.NewReplacer("<file>", file, "<ext>", ext).Replace(lrSayUnread))
+	return regexp.MustCompile(strings.Replace(q, "<reason>", `([^()]+)`, 1))
+}
+
+// lrOnce fails unless said holds want exactly once.
+func lrOnce(t *testing.T, said, want string) {
+	t.Helper()
+	if n := strings.Count(said, want); n != 1 {
+		t.Errorf("the session printed %q %d times, want once; it printed %q", want, n, said)
+	}
+}
+
+// lrReason is the reason of the one line re matches in said, failing unless
+// there is exactly one and its reason is not blank.
+func lrReason(t *testing.T, said string, re *regexp.Regexp) string {
+	t.Helper()
+	m := re.FindAllStringSubmatch(said, -1)
+	if len(m) != 1 || strings.TrimSpace(m[0][1]) == "" {
+		t.Errorf("the session printed %d lines matching %s, want one with a reason; it printed %q", len(m), re, said)
+		return ""
+	}
+	return m[0][1]
+}
+
+// lrGroup is the attributes of the overlay group of kind for file in the
+// session graph log, false when there is none.
+func lrGroup(t *testing.T, log string, file graph.ID, kind string) (map[string]string, bool) {
+	t.Helper()
+	for _, l := range strings.Split(strings.TrimSpace(log), "\n") {
+		var r struct {
+			Node *struct {
+				Kind  string
+				Attrs map[string]string
+			}
+		}
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatalf("a session graph log line is not JSON: %v: %q", err, l)
+		}
+		if r.Node != nil && r.Node.Kind == "overlay_group" && r.Node.Attrs["file"] == string(file) && r.Node.Attrs["kind"] == kind {
+			return r.Node.Attrs, true
+		}
+	}
+	return nil, false
+}
+
+// TestLANGREG1_AnUnclaimedKindSaysSoOnce: in the indexed py-unit
+// project, an edit of a file that no reader here claims and the kinds table
+// does not list says so, once in the session for its extension, naming the
+// readers of this build's registry: two .ts files edited three times print
+// the .ts line once, and a .sh file prints a line of its own. Base: no line.
+// Break: key the line by the file, and the second .ts file prints it again;
+// print it once per session, and the .sh file prints none.
+func TestLANGREG1_AnUnclaimedKindSaysSoOnce(t *testing.T) {
+	e := newSteerEnv(t)
+	dir, _ := e.lrProject()
+	ai1Write(t, dir, "web/app.ts", "export const a = 1;\n")
+	ai1Write(t, dir, "web/util.ts", "export const u = 2;\n")
+	ai1Write(t, dir, "run.sh", "echo run\n")
+	var said strings.Builder
+	for _, c := range []struct{ id, file, old string }{
+		{"toolu_t1", "web/app.ts", "export"}, {"toolu_t2", "web/util.ts", "export"},
+		{"toolu_t3", "web/app.ts", "const"}, {"toolu_t4", "run.sh", "echo"},
+	} {
+		said.WriteString(e.lrSaid(dir, c.id, c.file, c.old))
+	}
+	lrOnce(t, said.String(), lrSayTS)
+	lrOnce(t, said.String(), lrSaySH)
+}
+
+// TestLANGREG1_TheKindLineIsForThePersonAlone: the unclaimed kind's line is
+// the post's whole output, one JSON object whose only key is systemMessage,
+// equal to the line; the PreToolUse prints nothing (lrEdit), and no
+// hookSpecificOutput carries it to the model. Base: the post prints 0 bytes.
+// Break: say the line as additionalContext.
+func TestLANGREG1_TheKindLineIsForThePersonAlone(t *testing.T) {
+	e := newSteerEnv(t)
+	dir, _ := e.lrProject()
+	ai1Write(t, dir, "web/app.ts", "export const a = 1;\n")
+	post := e.lrEdit(dir, "toolu_c1", "web/app.ts", "export")
+	var out map[string]any
+	if err := json.Unmarshal([]byte(post), &out); err != nil {
+		t.Fatalf("the post printed %q, not one JSON object: %v", post, err)
+	}
+	if msg, _ := out["systemMessage"].(string); msg != lrSayTS || len(out) != 1 {
+		t.Errorf("the post printed %q; want one object whose only key is systemMessage, equal to %q", post, lrSayTS)
+	}
+}
+
+// TestLANGREG1_APythonEditWritesAnOverlayGroup: an edit of a .py
+// file of the indexed py unit writes a landed overlay group for the file in
+// the session graph log, carrying pylite's set of predicates, and prints
+// nothing. Base: the hook reads a .py file through no resolver, so no group.
+// Break: carry the Go resolver's set for every language, and the group's
+// set is Go's.
+func TestLANGREG1_APythonEditWritesAnOverlayGroup(t *testing.T) {
+	e := newSteerEnv(t)
+	dir, hdr := e.lrProject()
+	if _, ok := hdr.Producers[pylite.Lang]; !ok {
+		t.Fatalf("premise: the index's producers are %v, want %s among them", hdr.Producers, pylite.Lang)
+	}
+	if got := e.lrEdit(dir, "toolu_p1", "inv/core/calc.py", "sum"); got != "" {
+		t.Errorf("the py edit printed %q, want 0 bytes", got)
+	}
+	log, ok := e.lrLog(hdr)
+	if !ok {
+		t.Fatal("the py edit kept no session graph log")
+	}
+	g, ok := lrGroup(t, log, graph.FileID("inv/core/calc.py"), "landed")
+	if !ok {
+		t.Fatalf("the session graph log holds no landed group for inv/core/calc.py:\n%s", log)
+	}
+	if want := (pylite.Resolver{}).OverlayCarried().String(); g["carried"] != want {
+		t.Errorf("the py group carries %q, want pylite's %q", g["carried"], want)
+	}
+}
+
+// lrGoOnly is a configuration that declares the py-unit fixture's Go unit
+// and not its Python one.
+const lrGoOnly = `{"units": [{"path": ".", "lang": "go"}]}` + "\n"
+
+// TestLANGREG1_AnUnindexedLanguageSaysSoOnce: a .py edit where the index
+// holds no py records says so, once in the session for the language, and
+// does nothing more: no line that the configuration was not read, no
+// overlay group for the file and no unit-brief miss. The project is indexed
+// while its configuration declares the Go unit only; then the py unit is
+// declared (two .py files are edited), or the configuration is removed,
+// which is zero py units and so this line, not the unreadable-configuration
+// one. Base: no line. Breaks: key the line by the file, and the second .py
+// file prints it again; say that a missing configuration was not read, and
+// the case with none prints that line too; say the line and go on to build
+// the overlay, and the log holds the file's group; leave the edit's gate
+// open, and the post counts a unit-brief miss for the py unit.
+func TestLANGREG1_AnUnindexedLanguageSaysSoOnce(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		edits [][3]string
+	}{
+		{"declared after the index", [][3]string{{"toolu_u1", "inv/core/calc.py", "sum"}, {"toolu_u2", "inv/app/main.py", "run"}}},
+		{"no configuration", [][3]string{{"toolu_u3", "inv/core/calc.py", "sum"}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newSteerEnv(t)
+			files := e.lrFiles()
+			full := files[index.ConfigFile]
+			files[index.ConfigFile] = lrGoOnly
+			dir, hdr := e.lrIndexed(files)
+			_, py := hdr.Producers[pylite.Lang]
+			if _, gol := hdr.Producers["go"]; py || !gol {
+				t.Fatalf("premise: the index's producers are %v, want go and not %s", hdr.Producers, pylite.Lang)
+			}
+			cfg := filepath.Join(dir, filepath.FromSlash(index.ConfigFile))
+			var err error
+			if c.name == "no configuration" {
+				err = os.Remove(cfg)
+			} else {
+				err = os.WriteFile(cfg, []byte(full), 0o600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var said strings.Builder
+			for _, ed := range c.edits {
+				said.WriteString(e.lrSaid(dir, ed[0], ed[1], ed[2]))
+			}
+			lrOnce(t, said.String(), lrSayPy)
+			if m := lrUnread(index.ConfigFile, ".py").FindAllString(said.String(), -1); len(m) != 0 {
+				t.Errorf("the session also said the configuration was not read: %q", m)
+			}
+			if got := e.lrMisses(); len(got) != 0 {
+				t.Errorf("an edit of a py file the index holds no records of counted a unit-brief miss: %q", got)
+			}
+			if log, ok := e.lrLog(hdr); ok {
+				for _, ed := range c.edits {
+					for _, kind := range []string{"declared", "landed"} {
+						if _, has := lrGroup(t, log, graph.FileID(ed[1]), kind); has {
+							t.Errorf("the session graph log holds a %s group for %s:\n%s", kind, ed[1], log)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestLANGREG1_AnUnreadableConfigSaysWhy: when the configuration
+// turns unreadable after the index, a .py edit says the file was not read
+// and why, once in the session for the file: a configuration over
+// index.MaxConfigBytes and one that is not JSON, each in a session of its
+// own, print one line each with two different reasons. The FIFO cases, the
+// configuration and go.mod, are TestLANGREG1_AFIFOConfigSaysWhy (unix).
+// Base: no line. Break: one reason for every refusal, and the two match.
+func TestLANGREG1_AnUnreadableConfigSaysWhy(t *testing.T) {
+	re := lrUnread(index.ConfigFile, ".py")
+	reasons := map[string]string{}
+	for _, c := range []struct{ name, body string }{
+		{"over the cap", ""},
+		{"not JSON", "units: [inv]\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newSteerEnv(t)
+			dir, _ := e.lrProject()
+			body := c.body
+			if body == "" {
+				full := e.lrFiles()[index.ConfigFile]
+				body = full + strings.Repeat(" ", index.MaxConfigBytes+1-len(full))
+			}
+			ai1Write(t, dir, index.ConfigFile, body)
+			var said strings.Builder
+			said.WriteString(e.lrSaid(dir, "toolu_r1", "inv/core/calc.py", "sum"))
+			said.WriteString(e.lrSaid(dir, "toolu_r2", "inv/app/main.py", "run"))
+			reasons[c.name] = lrReason(t, said.String(), re)
+		})
+	}
+	if a, b := reasons["over the cap"], reasons["not JSON"]; a != "" && a == b {
+		t.Errorf("a configuration over the cap and one that is not JSON give the same reason %q", a)
 	}
 }
