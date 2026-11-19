@@ -188,3 +188,26 @@ func TestInfer_AnEnvironmentIsLeftOutAndNamed(t *testing.T) {
 		t.Errorf("left out %+v; want %+v", inf.Left, want)
 	}
 }
+
+// TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit (L2):
+// a known limit, pinned on purpose. UnitOf reads paths alone, so a path
+// under a directory holding pyvenv.cfg inside a Python unit still maps to
+// that unit, while Build's walk leaves the directory out and holds no file
+// under it. The two disagree on such paths until the card that makes the
+// Stop ask the language's rule; that card flips this test on purpose.
+// Break: a UnitOf that reads pyvenv.cfg, which this card does not make.
+func TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit(t *testing.T) {
+	root := wireRoot(t, map[string]string{
+		"py/app/__init__.py": "",
+		"py/venv/pyvenv.cfg": "home = /usr/bin\n",
+		"py/venv/lib/m.py":   "x = 1\n",
+	})
+	unitOf, err := UnitOf(pyUnit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := graph.UnitID(pylite.Lang, "py")
+	if got, ok := unitOf(root, "py/venv/lib/m.py"); got != want || !ok {
+		t.Errorf("UnitOf(py/venv/lib/m.py) = %q, %v; want %q, true: the known limit moved", got, ok, want)
+	}
+}
