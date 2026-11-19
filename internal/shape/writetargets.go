@@ -434,6 +434,9 @@ func (o *operands) word(j int) {
 	if o.rule == ruleEvery && onList(text, inPlaceEditors[o.name]) {
 		return // an arming word that is no option: ruff's format
 	}
+	if o.name == "ruff" && text == "check" {
+		return // ruff's check subcommand, which its --fix arms, names no file
+	}
 	o.target(t, text)
 }
 
