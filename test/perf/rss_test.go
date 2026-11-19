@@ -1188,6 +1188,7 @@ func TestRES2_InitBudget(t *testing.T) {
 	t.Logf("init: %d packages, %d bytes at the fewest of %d runs (runs %v), %d allocs, %d gc lines", low.Packages, low.Bytes, initRuns, all, low.Allocs, low.GCLines)
 	// The size of the environment and the whole trace of the fewest run go
 	// to the log, so two runs' figures can be compared package by package.
-	t.Logf("init: %d environment variables handed to the process", len(env))
+	t.Logf("init: %d environment variables handed to the process, %d CPUs, a binary path of %d bytes",
+		len(env), runtime.NumCPU(), len(rashomonBin))
 	t.Logf("init: the lowest run's trace, as the runtime printed it:\n%s", lowStderr)
 }
