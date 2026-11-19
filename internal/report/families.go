@@ -32,7 +32,7 @@ func families() map[string]string {
 			"curl": "curl", "wget": "curl",
 
 			"python3": "python", "python": "python", "pip": "python", "pip3": "python",
-			"uv": "python", "poetry": "python",
+			"uv": "python", "poetry": "python", "pytest": "python",
 
 			"node": "node", "npm": "node", "npx": "node", "yarn": "node",
 			"pnpm": "node", "bun": "node",
