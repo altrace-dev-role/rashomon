@@ -75,8 +75,8 @@ var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.Di
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
 	store.FileNoticeHoldout, store.FileNoticeCoverage, store.FileNoticeCoverageClear, store.FileNoticeIndexCap,
-	store.FileNoticeManifestOwed, store.FileNoticeManifestReadFailed, store.FileNoticeManifest, fold.FileName, fold.MidFileName,
-	store.FileBriefingArmed, store.FileOverlayBytes, store.FileOverlayFull}
+	fold.FileName, fold.MidFileName,
+	store.FileBriefingArmed, store.FileOverlayBytes, store.FileOverlayFull, store.FileNoticeOtherKinds}
 
 var runTempPrefixes = []string{fold.TempPrefix}
 
@@ -374,6 +374,10 @@ func ownTreeFile(name string, isRuns bool, level int) bool {
 		return false
 	}
 	if slices.Contains(runFiles, name) || store.IsFiredFile(name) || store.IsBlastReadFile(name) {
+		return true
+	}
+	if store.IsKindNoticeFile(name) || store.IsUnindexedNoticeFile(name) || store.IsUnreadNoticeFile(name) ||
+		store.IsLastIndexNoticeFile(name) {
 		return true
 	}
 	for _, p := range runTempPrefixes {

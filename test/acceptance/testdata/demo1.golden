@@ -85,7 +85,7 @@ session demo-1
       record check at #16, no gate named, so no run settles it
     mistakes against intent: 1 caught at the act (at #7), 0 reached the person, 0 missed; found later unknown (no trace is recorded); 1 not settled (at #16)
     checks: none expected
-    lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session
+    lessons: 0 approved, 0 demoted (this project); no lesson miner exists; none fired this session
     unknown: none
   knowledge (project <tmp>/proj)
     baseline: no earlier checkpoint of this project

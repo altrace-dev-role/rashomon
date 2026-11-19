@@ -171,17 +171,32 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	// The once-per-session notice markers: the steer router's two, the
 	// Stop's coverage notice and its cleared line, and the prompt's index
-	// and manifest notices as printed (READ-SAFE1a c5, D7).
+	// cap notice as printed (READ-SAFE1a c5).
 	for _, name := range []string{store.FileNoticeChannel, store.FileNoticeHoldout, store.FileNoticeCoverage,
-		store.FileNoticeCoverageClear, store.FileNoticeIndexCap, store.FileNoticeManifest} {
+		store.FileNoticeCoverageClear, store.FileNoticeIndexCap} {
 		if !s.TakeNotice(sessionID, name) {
 			t.Fatalf("TakeNotice took no %s marker", name)
 		}
 	}
-	// The manifest notice owed, by the post's own writer, with its class.
-	s.OweManifestNotice(sessionID, true)
-	if !s.NoticeTaken(sessionID, store.FileNoticeManifestOwed) || !s.NoticeTaken(sessionID, store.FileNoticeManifestReadFailed) {
-		t.Fatal("OweManifestNotice made no owed marker or no class marker")
+	// The post's kind notice: one kind's own marker, then the marker for the
+	// kinds past the limit (LANG-REG1).
+	if name := s.TakeKindNotice(sessionID, ".zig"); name != store.KindNoticeName(".zig") {
+		t.Fatalf("TakeKindNotice took %q, want the kind's own marker", name)
+	}
+	if !s.TakeNotice(sessionID, store.FileNoticeOtherKinds) {
+		t.Fatal("TakeNotice took no other-kinds marker")
+	}
+	// The post's marker for a language the index holds no records of.
+	if !s.TakeNotice(sessionID, store.UnindexedNoticeName("zz")) {
+		t.Fatal("TakeNotice took no unindexed-language marker")
+	}
+	// The post's marker for a configuration file a reader's step refused.
+	if !s.TakeNotice(sessionID, store.UnreadNoticeName("zz.cfg")) {
+		t.Fatal("TakeNotice took no unread-configuration marker")
+	}
+	// The post's marker for a language whose reader builds no overlay.
+	if !s.TakeNotice(sessionID, store.LastIndexNoticeName("zz")) {
+		t.Fatal("TakeNotice took no last-index marker")
 	}
 	if _, err := store.RecordHarnessMismatch(root, "claude@cursor", sessionID, []string{"cursor_version"}, time.Now()); err != nil {
 		t.Fatalf("RecordHarnessMismatch: %v", err)

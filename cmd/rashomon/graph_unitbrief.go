@@ -17,7 +17,6 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/engine"
-	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
@@ -409,14 +408,15 @@ func writeUnitBriefs(storeRoot, sessionID, promptID, root, repo string, s *graph
 // unit's global id, "@", and the brief's digest (format v2, ruling 03:58).
 const unitBriefKeyPrefix = "unitbrief:"
 
-// unitBriefJoin is the post's unit-brief finding (card m2-unitbrief-hook1
-// D4), nil for none: the first landed edit in a Go unit whose brief the
+// unitBriefJoin is the post's unit-brief finding (card m2-unitbrief-hook1),
+// nil for none: the first landed edit in a unit whose brief the
 // session holds, its file at the index's commit, not yet given. The checks
 // run cheapest first: the overlay writer's gate (Post.LandedGoEdit), the
 // index header (its repository names the unit as the prompt side named it;
 // its commit is the one a brief may be at; its first line only, no record
-// loaded), the unit's file by name (gopg's unit, the prompt side's local
-// id, under UnitBriefFileName), the join's own gate (Post.Unheard: a
+// loaded), the unit's file by name (the unit the claiming reader places the
+// file in, LandedGoEdit.Unit, the prompt side's local id, under
+// UnitBriefFileName), the join's own gate (Post.Unheard: a
 // session whose notes reach no one reads no brief it would drop; ruling
 // 04:58 C, cause-first), the steer log (hook.Given: once per unit per
 // session, whatever the digest, arm_off counted at nudge only), then the
@@ -447,7 +447,7 @@ func unitBriefJoin(st *store.Store, p *hook.Post, env hook.SteerEnv) []steer.Fin
 	if !ok {
 		return nil
 	}
-	unit, ok := gopg.Resolver{}.Unit("", e.Rel)
+	unit, ok := e.Unit()
 	if !ok {
 		return nil
 	}

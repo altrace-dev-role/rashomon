@@ -415,6 +415,12 @@ func checksText(cs []AutosteerCheck) string {
 // lessonsText is the ledger's counts by tier and the lessons delivered this
 // session, or not read when the report opened no ledger. The ledger is opened
 // read-only, so one that does not check is named, not quarantined.
+//
+// No code proposes a lesson from a session: learn.Candidate, the gate a miner
+// would feed, has no caller, and every lesson comes in by `rashomon learn
+// import` (Ledger.Import). So a proposed count of 0 is no measurement, and the
+// line says that no lesson miner exists in its place; a count above 0 names
+// learn import as where those lessons came from.
 func lessonsText(a *Autosteer) string {
 	if a.Lessons == nil {
 		return "not read here"
@@ -422,7 +428,10 @@ func lessonsText(a *Autosteer) string {
 	if a.Lessons.Unchecked {
 		return fmt.Sprintf("the ledger did not check, so all %d read proposed (this project)", a.Lessons.Proposed)
 	}
-	s := fmt.Sprintf("%d approved, %d proposed, %d demoted (this project)", a.Lessons.Approved, a.Lessons.Proposed, a.Lessons.Demoted)
+	s := fmt.Sprintf("%d approved, %d demoted (this project); no lesson miner exists", a.Lessons.Approved, a.Lessons.Demoted)
+	if a.Lessons.Proposed > 0 {
+		s = fmt.Sprintf("%d approved, %d proposed by learn import, %d demoted (this project)", a.Lessons.Approved, a.Lessons.Proposed, a.Lessons.Demoted)
+	}
 	var fired []int64
 	for _, n := range a.Delivered {
 		if n.Pattern == "learned-fact" {
