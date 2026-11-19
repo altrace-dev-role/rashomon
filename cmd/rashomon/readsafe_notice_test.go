@@ -9,15 +9,15 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// The turn's once-per-session notices (READ-SAFE1a c5 and D7), through the
-// real prompt and post entries. The rows that need a named pipe or a link
-// loop at the manifest are in readsafe_notice_unix_test.go.
+// The turn's once-per-session notice (READ-SAFE1a c5), through the real
+// prompt and post entries.
 
 // rsPromptBody is the prompt entry's payload for text under promptID, in
 // the plan session's project.
@@ -61,13 +61,15 @@ func rsPrompt(t *testing.T, s *planSession, promptID, text string) string {
 	return rsSystem(t, out.String())
 }
 
-// rsLand runs the real post entry on a Write of body to rel.
-func rsLand(t *testing.T, s *planSession, promptID, useID, rel, body string) {
+// rsLand runs the real post entry on a Write of body to rel and returns its
+// systemMessage, "" when it printed none.
+func rsLand(t *testing.T, s *planSession, promptID, useID, rel, body string) string {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	if code := cmdPost([]string{install.Marker, s.id}, bytes.NewReader(rsPostBody(t, s, promptID, useID, rel, body)), &out, &errOut); code != exitOK || errOut.Len() != 0 {
 		t.Fatalf("post %s exited %d, stderr %q", useID, code, errOut.String())
 	}
+	return rsSystem(t, out.String())
 }
 
 // rsSystem is the systemMessage of one entry's stdout, "" for none.
@@ -85,8 +87,9 @@ func rsSystem(t testing.TB, stdout string) string {
 	return o.SystemMessage
 }
 
-// rsMarkers are the four markers of the turn's notices.
-var rsMarkers = []string{store.FileNoticeIndexCap, store.FileNoticeManifestOwed, store.FileNoticeManifestReadFailed, store.FileNoticeManifest}
+// rsMarkers are the turn's notice marker and the post's marker for its line
+// that the project's manifest file was not read.
+var rsMarkers = []string{store.FileNoticeIndexCap, store.UnreadNoticeName(gopg.ManifestFile)}
 
 // rsHas reports whether the session's run directory under root holds name.
 func rsHas(t testing.TB, root, name string) bool {
@@ -162,16 +165,15 @@ func TestRS1a_C5_AnIndexOverItsCapIsSaidOncePerSession(t *testing.T) {
 	}
 }
 
-// TestRS1a_C5_D7_ArmOffSaysNoNoticeAndTakesNoMarker (c5, D7): the off arm
-// withholds every hook print (card MEASURE1), the turn's notices too, and
-// takes neither printed marker, so both stay owed. One session over an index
-// one byte past graph.MaxGraphFileBytes, with the manifest notice owed (not
-// a regular file). Prompt 1 alone runs under the off arm, on a lab store: it
-// says neither line, and the session holds the owed marker and neither
-// printed one. Witness, the arm unset again: prompt 2 says each line once,
-// so the setup owes both. Break: drop the off arm's return in
-// promptTurnNotes, and prompt 1 says both lines and takes both markers.
-func TestRS1a_C5_D7_ArmOffSaysNoNoticeAndTakesNoMarker(t *testing.T) {
+// TestRS1a_C5_ArmOffSaysNoNoticeAndTakesNoMarker (c5): the off arm
+// withholds every hook print (card MEASURE1), the turn's notice too, and
+// takes no printed marker, so the session still owes it. One session over an
+// index one byte past graph.MaxGraphFileBytes. Prompt 1 alone runs under the
+// off arm, on a lab store: it says no cap line, and the session holds no cap
+// marker. Witness, the arm unset again: prompt 2 says the line once, so the
+// setup owes it. Break: drop the off arm's return in promptTurnNotes, and
+// prompt 1 says the line and takes the marker.
+func TestRS1a_C5_ArmOffSaysNoNoticeAndTakesNoMarker(t *testing.T) {
 	e := newLessonEnv(t)
 	idx := filepath.Join(e.cwd, filepath.FromSlash(graph.GraphFile))
 	if err := os.MkdirAll(filepath.Dir(idx), 0o755); err != nil {
@@ -193,14 +195,6 @@ func TestRS1a_C5_D7_ArmOffSaysNoNoticeAndTakesNoMarker(t *testing.T) {
 	}
 	const session = "s-off-notes"
 	e.start(session)
-	if err := os.MkdirAll(st.RunDir(session), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	st.OweManifestNotice(session, false)
-	if !st.NoticeTaken(session, store.FileNoticeManifestOwed) {
-		t.Fatal("OweManifestNotice made no owed marker")
-	}
-	printed := []string{store.FileNoticeIndexCap, store.FileNoticeManifest}
 
 	// The variable names an arm only on a lab store (operatorArm).
 	if err := store.WriteLab(e.root); err != nil {
@@ -208,41 +202,35 @@ func TestRS1a_C5_D7_ArmOffSaysNoNoticeAndTakesNoMarker(t *testing.T) {
 	}
 	t.Setenv(hook.EnvSteerArm, "off")
 	p1 := e.prompt(session, "prompt-1", "continue please")
-	if strings.Contains(p1.system, indexCapNotice) || strings.Contains(p1.system, manifestNoticeHead) {
-		t.Errorf("prompt 1, arm off: systemMessage %q, want neither notice", p1.system)
+	if strings.Contains(p1.system, indexCapNotice) {
+		t.Errorf("prompt 1, arm off: systemMessage %q, want no cap line", p1.system)
 	}
-	for _, name := range printed {
-		if st.NoticeTaken(session, name) {
-			t.Errorf("prompt 1, arm off: the session holds %s, want no notice taken", name)
-		}
-	}
-	if !st.NoticeTaken(session, store.FileNoticeManifestOwed) {
-		t.Error("prompt 1, arm off: the owed marker is gone")
+	if st.NoticeTaken(session, store.FileNoticeIndexCap) {
+		t.Error("prompt 1, arm off: the session holds the cap marker, want no notice taken")
 	}
 
 	t.Setenv(hook.EnvSteerArm, "")
 	e.call(session, "prompt-1", "toolu_x3_1")
 	p2 := e.prompt(session, "prompt-2", "continue please")
-	if strings.Count(p2.system, indexCapNotice) != 1 || strings.Count(p2.system, manifestNotRegular) != 1 {
-		t.Fatalf("witness, prompt 2 with the arm unset: systemMessage %q, want the cap line and the not regular line once each", p2.system)
+	if strings.Count(p2.system, indexCapNotice) != 1 {
+		t.Fatalf("witness, prompt 2 with the arm unset: systemMessage %q, want the cap line once", p2.system)
 	}
-	for _, name := range printed {
-		if !st.NoticeTaken(session, name) {
-			t.Errorf("witness, prompt 2: the session has no %s after the line printed", name)
-		}
+	if !st.NoticeTaken(session, store.FileNoticeIndexCap) {
+		t.Error("witness, prompt 2: the session has no cap marker after the line printed")
 	}
 }
 
-// TestRS1a_D7_W3_ARefusedPrintGivesTheMarkerBack (u5): with the manifest
-// notice owed, a print the marshal refuses (a systemMessage that is not
-// UTF-8) prints nothing and gives the printed marker back, so the next
-// prompt, through the real entry, says the line, in the class the owed
-// markers name (a failed read), and the one after does not. Break: drop
-// the giveBack after a refused marshal, and the next prompt says nothing.
-func TestRS1a_D7_W3_ARefusedPrintGivesTheMarkerBack(t *testing.T) {
+// TestRS1a_C5_ARefusedPrintGivesTheMarkerBack (c5): a print the marshal
+// refuses (a systemMessage that is not UTF-8) prints nothing and gives the
+// cap marker back, so the next prompt over an index past its cap, through
+// the real entry, says the line, and the one after does not. Prompt 2's
+// marker is the witness that a take works in this run directory. Break: drop
+// the giveBack after a refused marshal, and the refused print keeps the
+// marker, so the next prompt says nothing.
+func TestRS1a_C5_ARefusedPrintGivesTheMarkerBack(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV5, true)
-	if got := rsPrompt(t, s, "prompt-1", "fix "+cfGraph); strings.Contains(got, manifestNoticeHead) {
-		t.Fatalf("prompt 1, nothing owed: systemMessage %q, want no manifest line", got)
+	if got := rsPrompt(t, s, "prompt-1", "fix "+cfGraph); strings.Contains(got, indexCapNotice) {
+		t.Fatalf("prompt 1, the index under its cap: systemMessage %q, want no cap line", got)
 	}
 	st, err := store.OpenExisting(s.root)
 	if err != nil {
@@ -251,46 +239,46 @@ func TestRS1a_D7_W3_ARefusedPrintGivesTheMarkerBack(t *testing.T) {
 	if err := os.MkdirAll(st.RunDir(benchSessionID), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	st.OweManifestNotice(benchSessionID, true)
-	if !st.NoticeTaken(benchSessionID, store.FileNoticeManifestOwed) || !st.NoticeTaken(benchSessionID, store.FileNoticeManifestReadFailed) {
-		t.Fatal("OweManifestNotice(readFailed) made no owed marker or no class marker")
-	}
-	tn := turnNotes{st: st, session: benchSessionID, manifest: true}
+	tn := turnNotes{st: st, session: benchSessionID, indexCap: true}
 	var out bytes.Buffer
 	if err := printTurn(nil, &out, steer.Output{SystemMessage: "\xff"}, steer.Client{}, "", tn); err != nil || out.Len() != 0 {
 		t.Fatalf("a refused print: err %v, stdout %q, want nil and nothing", err, out.String())
 	}
-	if st.NoticeTaken(benchSessionID, store.FileNoticeManifest) {
-		t.Fatal("the refused print kept the printed marker")
+	if st.NoticeTaken(benchSessionID, store.FileNoticeIndexCap) {
+		t.Fatal("the refused print kept the cap marker")
 	}
-	if got := rsPrompt(t, s, "prompt-2", "continue"); !strings.HasSuffix(got, manifestReadFailed) || strings.Count(got, manifestNoticeHead) != 1 {
-		t.Fatalf("prompt 2: systemMessage %q, want the read failed line once, last", got)
+	// Sparse: the size the load reads is one byte past the cap.
+	if err := os.Truncate(filepath.Join(s.project, filepath.FromSlash(graph.GraphFile)), graph.MaxGraphFileBytes+1); err != nil {
+		t.Fatal(err)
 	}
-	if !st.NoticeTaken(benchSessionID, store.FileNoticeManifest) {
-		t.Error("after the line printed the session has no printed marker")
+	if got := rsPrompt(t, s, "prompt-2", "continue"); !strings.HasSuffix(got, indexCapNotice) || strings.Count(got, indexCapNotice) != 1 {
+		t.Fatalf("prompt 2: systemMessage %q, want the cap line once, last", got)
 	}
-	if got := rsPrompt(t, s, "prompt-3", "continue"); strings.Contains(got, manifestNoticeHead) {
+	if !st.NoticeTaken(benchSessionID, store.FileNoticeIndexCap) {
+		t.Error("after the line printed the session has no cap marker")
+	}
+	if got := rsPrompt(t, s, "prompt-3", "continue"); strings.Contains(got, indexCapNotice) {
 		t.Errorf("prompt 3: systemMessage %q, want the line said once", got)
 	}
 }
 
-// TestRS1a_D7_W4_NoRefusalMakesNoMarkerAndNoLine (u5): a session whose
-// manifest reads, one Go edit landed through the post entry and three
-// prompts, makes none of the four markers and prints neither line. The
-// witness that the edit's overlay ran, the step that reads the manifest:
-// the run holds the overlay's byte count (store.FileOverlayBytes).
-func TestRS1a_D7_W4_NoRefusalMakesNoMarkerAndNoLine(t *testing.T) {
+// TestRS1a_AManifestThatReadsSaysNothing: a session whose manifest reads,
+// one Go edit landed through the post entry and three prompts, prints no cap
+// line and no line that a file was not read, and makes neither marker
+// (rsMarkers). The witness that the edit's overlay ran, the step that reads
+// the manifest: the run holds the overlay's byte count
+// (store.FileOverlayBytes).
+func TestRS1a_AManifestThatReadsSaysNothing(t *testing.T) {
 	s := cfSession(t, store.RecordScopeV5, true)
-	var said []string
-	said = append(said, rsPrompt(t, s, "prompt-1", "fix "+cfGraph))
-	rsLand(t, s, "prompt-1", "toolu_rs_w4", cfGraph, "package graph\n\nfunc W4() {}\n")
-	said = append(said, rsPrompt(t, s, "prompt-2", "continue"), rsPrompt(t, s, "prompt-3", "continue"))
+	said := [][2]string{{"prompt 1", rsPrompt(t, s, "prompt-1", "fix "+cfGraph)}}
+	said = append(said, [2]string{"the post", rsLand(t, s, "prompt-1", "toolu_rs_w4", cfGraph, "package graph\n\nfunc W4() {}\n")})
+	said = append(said, [2]string{"prompt 2", rsPrompt(t, s, "prompt-2", "continue")}, [2]string{"prompt 3", rsPrompt(t, s, "prompt-3", "continue")})
 	if !rsHas(t, s.root, store.FileOverlayBytes) {
 		t.Fatal("witness: the run has no overlay byte count, so the edit's overlay did not run")
 	}
-	for i, got := range said {
-		if strings.Contains(got, manifestNoticeHead) || strings.Contains(got, indexCapNotice) {
-			t.Errorf("prompt %d: systemMessage %q, want neither notice", i+1, got)
+	for _, p := range said {
+		if strings.Contains(p[1], " was not read (") || strings.Contains(p[1], indexCapNotice) {
+			t.Errorf("%s: systemMessage %q, want no cap line and no unread line", p[0], p[1])
 		}
 	}
 	for _, m := range rsMarkers {

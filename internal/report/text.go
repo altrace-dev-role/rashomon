@@ -579,11 +579,23 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 	if t == nil || t.Runs == 0 {
 		return
 	}
+	// A masked run whose outcome was read from its output is counted by that
+	// read, and the line under the totals says where each outcome was read.
+	ok, failed, s, p := t.totals()
+	read := s.OK + s.Failed + p.OK + p.Failed
 	masked := ""
-	if t.Masked != nil && *t.Masked > 0 {
-		masked = fmt.Sprintf(", %d whose line did not return the test run's exit status, so neither", *t.Masked)
+	if t.Masked != nil && *t.Masked > read {
+		masked = fmt.Sprintf(", %d whose line did not return the test run's exit status, so neither", *t.Masked-read)
 	}
-	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed%s)\n", t.Runs, t.OK, t.Failed, masked)
+	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed%s)\n", t.Runs, ok, failed, masked)
+	if read > 0 {
+		wrapped := ""
+		if t.Wrapped > 0 {
+			wrapped = fmt.Sprintf(" (%d of them run by a script or a shell, and read from the runner's summary line in its output)", t.Wrapped)
+		}
+		fmt.Fprintf(b, "    where each outcome was read: the exit status, %d ok and %d failed%s; the runner's summary line, %d ok and %d failed; the status the line printed, %d ok and %d failed\n",
+			t.OK, t.Failed, wrapped, s.OK, s.Failed, p.OK, p.Failed)
+	}
 	if t.Undeclared > 0 {
 		fmt.Fprintf(b, "    no pair is looked for: %d call%s ran with no declaration recorded, and may have edited a file between any two runs\n",
 			t.Undeclared, plural(t.Undeclared))

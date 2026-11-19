@@ -111,9 +111,10 @@ func TestPurge_EveryWriterFileIsOwned(t *testing.T) {
 		t.Fatalf("the inventory has %d rows, fewer than expected: the read is broken", len(inv.Files))
 	}
 	// A "*" stands for a name its writer chooses: a hex id, a fired event, a
-	// baseline key and digest, a learner file, a unit brief's 32-hex digest.
+	// baseline key and digest, a learner file, a unit brief's 32-hex digest,
+	// a /clear folder's 64-hex digest of a working directory's path.
 	// One fill per kind of name.
-	fills := append([]string{"0123456789abcdef", "x1", "proj-0123456789ab", learn.FileKey, learn.FileSum, "0123456789abcdef0123456789abcdef"}, store.FiredEvents()...)
+	fills := append([]string{"0123456789abcdef", "x1", "proj-0123456789ab", learn.FileKey, learn.FileSum, "0123456789abcdef0123456789abcdef", strings.Repeat("0123456789abcdef", 4)}, store.FiredEvents()...)
 	for _, r := range inv.Files {
 		rel := r.Pattern
 		if r.Base != "" {

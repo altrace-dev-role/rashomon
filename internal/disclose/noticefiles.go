@@ -5,10 +5,11 @@ import "github.com/altrace-dev-role/rashomon/internal/store"
 // noticeFiles is the run segment's notice markers (store.TakeNotice) under
 // runSegment, apart from runSegmentFiles for Law 10 (card VERSION-GATE1): the
 // steer router's two, then the Stop's coverage notice and its cleared line,
-// then the prompt's index cap notice and the manifest notice's three
-// (READ-SAFE1a).
+// then the prompt's index cap notice (READ-SAFE1a c5), then the post's
+// markers for a kind of file no reader here claims (kindNoticeFiles,
+// LANG-REG1).
 func noticeFiles(runSegment string) []FileRule {
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       runSegment,
 			Pattern:    store.FileNoticeChannel,
@@ -59,35 +60,5 @@ func noticeFiles(runSegment string) []FileRule {
 			RemovedBy:  "size-cap eviction, with its run; purge",
 			Owner:      "store",
 		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileNoticeManifestOwed,
-			Mode:       "0600",
-			Purpose:    "says an edit's overlay could not read the project's manifest file, so the session's next prompt prints one line saying so",
-			Holds:      "nothing; present from that refusal on",
-			NeverHolds: "anything",
-			RemovedBy:  "size-cap eviction, with its run; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileNoticeManifestReadFailed,
-			Mode:       "0600",
-			Purpose:    "says the refusal of the project's manifest file was a failed read, not a file that is not regular, the class that line names",
-			Holds:      "nothing; present from such a refusal on",
-			NeverHolds: "anything",
-			RemovedBy:  "size-cap eviction, with its run; purge",
-			Owner:      "store",
-		},
-		{
-			Base:       runSegment,
-			Pattern:    store.FileNoticeManifest,
-			Mode:       "0600",
-			Purpose:    "says the session has printed its one line that the project's manifest file was not read",
-			Holds:      "nothing; present once that line has printed",
-			NeverHolds: "anything",
-			RemovedBy:  "size-cap eviction, with its run; purge",
-			Owner:      "store",
-		},
-	}
+	}, kindNoticeFiles(runSegment)...)
 }
