@@ -214,9 +214,11 @@ func python(c Config) pylite.Resolver {
 // language this build reads, go then py, with the step that reads its
 // configuration under a root, run once per root on the first Claim of a
 // path there. Go's step is the import map an overlay maps imports by: the
-// root go.mod's module path (gopg.ReadModulePath, one bounded read of that
-// one file) and a directory check under root, no map where there is no
-// module path; it refuses nothing, as the hook's overlay reads it today.
+// root go.mod's module path (gopg.ReadModulePath, one read of that one
+// file, bounded in bytes, through an open that never waits) and a directory
+// check under root, no map where there is no go.mod or no module path, and
+// the error, naming go.mod, where go.mod is there and is refused (not a
+// regular file, or a failed read), so a named pipe there cannot hold it.
 // Python's step is ReadConfig and python, the rule Build's resolver is made
 // by: the configuration's py units and the module names each owns, none
 // where the root has no configuration file (fs.ErrNotExist), and the error,
@@ -225,8 +227,11 @@ func python(c Config) pylite.Resolver {
 func Wire() *lang.Registry {
 	var reg lang.Registry
 	reg.RegisterConfigured(gopg.Resolver{}, func(root string) (lang.Resolver, error) {
-		mod, _ := gopg.ReadModulePath(root)
-		if mod == "" {
+		mod, err := gopg.ReadModulePath(root)
+		switch {
+		case err != nil:
+			return nil, err
+		case mod == "":
 			return gopg.Resolver{}, nil
 		}
 		return gopg.Resolver{Imports: &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}}, nil
