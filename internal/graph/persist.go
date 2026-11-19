@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // Schema is the store file's format this package writes and reads.
@@ -38,6 +40,16 @@ var ErrNoGraph = errors.New("graph: no index")
 
 // GraphFile is where a repository's index lives, under its root.
 const GraphFile = ".rashomon/graph.jsonl"
+
+// MaxGraphFileBytes caps GraphFile: 64 MiB. Its one home is here. LoadFile
+// refuses a file over it, pinned by its test; the writer is to hold the
+// same cap by this name (card WRITE-SAFE1), so that what is written can be
+// read. Every prompt decodes the whole index, so the cap bounds the memory
+// and the time of a hook. The cap does not grow with the repository: an
+// index over it is refused until a read path exists that does not decode
+// the whole file. Not verify.MaxIndexBytes, which caps another file, the
+// project index of verify.
+const MaxGraphFileBytes = 64 << 20
 
 // Save writes the store's records at h's commit to w under h, with the
 // schema and the record count filled here. A header naming no repository
@@ -122,17 +134,34 @@ func SaveFile(root string, s *Store, h Header) error {
 	return os.Rename(f.Name(), path)
 }
 
-// LoadFile reads the index under root; ErrNoGraph when there is none.
+// LoadFile reads the index under root; ErrNoGraph when there is none. The
+// file is opened by regfile.OpenCapped, so a named pipe or a device at the
+// name is refused at once and never waited on, and an index over
+// MaxGraphFileBytes, by its size at the open or grown past it while it is
+// read, is refused with a line that names its size, the cap and the act
+// that writes it again (overCap); the error still matches
+// regfile.ErrOverCap.
 func LoadFile(root string) (*Store, Header, error) {
-	f, err := os.Open(filepath.Join(root, filepath.FromSlash(GraphFile)))
+	rc, err := regfile.OpenCapped(filepath.Join(root, filepath.FromSlash(GraphFile)), MaxGraphFileBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, Header{}, ErrNoGraph
 		}
-		return nil, Header{}, err
+		return nil, Header{}, overCap(err)
 	}
-	defer f.Close()
-	return Load(f)
+	defer rc.Close() //nolint:errcheck // read only
+	s, h, err := Load(rc)
+	return s, h, overCap(err)
+}
+
+// overCap is err, or, where err refused the index over its cap, the line a
+// person reads for it, wrapping the refusal.
+func overCap(err error) error {
+	var oc *regfile.OverCapError
+	if errors.As(err, &oc) {
+		return fmt.Errorf("graph: the index %s is %w; run rashomon graph index to write it again", GraphFile, oc)
+	}
+	return err
 }
 
 // MaxIndexDepth is how many parent directories FindIndex climbs: a

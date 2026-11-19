@@ -3,8 +3,7 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
-	"io"
-	"os"
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -93,13 +93,15 @@ func goOverlay(rel string, content []byte, base graph.Rev, seq int64, m *gopg.Im
 // overlayImports is the import map an overlay under root is built with: the
 // root go.mod's module path (one bounded read of that one file, never a walk)
 // and a directory check under root; nil with no module path, which maps no
-// import and leaves the index's Imports edges standing.
-func overlayImports(root string) *gopg.ImportMap {
-	mod := gopg.ReadModulePath(root)
+// import and leaves the index's Imports edges standing. The error is
+// ReadModulePath's refusal of the file (READ-SAFE1a D7): the map is nil then
+// too, and the caller owes the session the manifest notice.
+func overlayImports(root string) (*gopg.ImportMap, error) {
+	mod, err := gopg.ReadModulePath(root)
 	if mod == "" {
-		return nil
+		return nil, err
 	}
-	return &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}
+	return &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}, nil
 }
 
 // overlayContentError is a constant error, which costs no init allocation
@@ -111,27 +113,17 @@ func (e overlayContentError) Error() string { return string(e) }
 const errOverlayContent overlayContentError = "hook: overlay content unreadable or over the cap"
 
 // readOverlayFile reads a regular file of at most MaxOverlayContentBytes.
+// The path is one an edit names, so a clone controls it: regfile opens it
+// without blocking and checks the descriptor, so a named pipe with no
+// writer, or a link to a device, is refused at once (READ-SAFE1a R9, R10)
+// rather than holding the hook, and a file over the cap, or one that grows
+// past it while it is read, is refused (R11).
 func readOverlayFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close() //nolint:errcheck // read only
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() || fi.Size() > MaxOverlayContentBytes {
+	b, err := regfile.ReadCapped(path, MaxOverlayContentBytes)
+	if errors.Is(err, regfile.ErrNotRegular) || errors.Is(err, regfile.ErrOverCap) {
 		return nil, errOverlayContent
 	}
-	b, err := io.ReadAll(io.LimitReader(f, MaxOverlayContentBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(b) > MaxOverlayContentBytes {
-		return nil, errOverlayContent
-	}
-	return b, nil
+	return b, err
 }
 
 // overlayEdit is one old_string to new_string pair of an Edit or MultiEdit.
@@ -404,7 +396,14 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	if err != nil || hdr.Rev.Commit == "" {
 		return graph.OverlayGroup{}, "", "", false
 	}
-	imports := overlayImports(at)
+	imports, ierr := overlayImports(at)
+	if ierr != nil && c.st != nil {
+		// The edit's file still maps, with no import records. PostToolUse
+		// has no channel to the person, so the store keeps the notice owed
+		// and the session's next prompt says it once (READ-SAFE1a D7); the
+		// class is the only part of the error kept, never its path or text.
+		c.st.OweManifestNotice(c.session, !errors.Is(ierr, regfile.ErrNotRegular))
+	}
 	recs, err := resolveOverlay(under, content, graph.RevCommit(hdr.Rev.Commit), c.seq, imports)
 	if err != nil || len(recs) == 0 {
 		return graph.OverlayGroup{}, "", "", false

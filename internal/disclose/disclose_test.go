@@ -169,13 +169,19 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if !s.TakeBlastRead(sessionID, store.FileBlastReadPrefix+"0123456789abcdef") {
 		t.Fatal("TakeBlastRead took no marker")
 	}
-	// The once-per-session notice markers: the steer router's two, and the
-	// Stop's coverage notice and its cleared line.
+	// The once-per-session notice markers: the steer router's two, the
+	// Stop's coverage notice and its cleared line, and the prompt's index
+	// and manifest notices as printed (READ-SAFE1a c5, D7).
 	for _, name := range []string{store.FileNoticeChannel, store.FileNoticeHoldout, store.FileNoticeCoverage,
-		store.FileNoticeCoverageClear} {
+		store.FileNoticeCoverageClear, store.FileNoticeIndexCap, store.FileNoticeManifest} {
 		if !s.TakeNotice(sessionID, name) {
 			t.Fatalf("TakeNotice took no %s marker", name)
 		}
+	}
+	// The manifest notice owed, by the post's own writer, with its class.
+	s.OweManifestNotice(sessionID, true)
+	if !s.NoticeTaken(sessionID, store.FileNoticeManifestOwed) || !s.NoticeTaken(sessionID, store.FileNoticeManifestReadFailed) {
+		t.Fatal("OweManifestNotice made no owed marker or no class marker")
 	}
 	if _, err := store.RecordHarnessMismatch(root, "claude@cursor", sessionID, []string{"cursor_version"}, time.Now()); err != nil {
 		t.Fatalf("RecordHarnessMismatch: %v", err)
