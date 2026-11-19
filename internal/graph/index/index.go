@@ -138,8 +138,15 @@ type Skipped struct{ Dot, NodeModules, PyCache int }
 // cannot parse it) is a gap, not a failure: the index is written without
 // it, Result.Refused lists every such file by path, and the header counts
 // them and names the first graph.MaxRefusedNamed, so a reader of the index
-// knows an absence in it is not proven. The header names the repository,
-// the commit, and each producer that wrote records. Any other resolver
+// knows an absence in it is not proven. A directory a configured language's
+// rule leaves out (lang.Leaver: an environment its tools installed packages
+// into) is not walked: Result.Left lists each by path, and the header
+// counts them and names the first graph.MaxRefusedNamed, so a module one of
+// them holds reads as absent by a named cause. Only the configured
+// languages' rules are asked, so an index of no such language asks none and
+// its header is as before. Result.Skipped counts the directories the walk
+// skipped by name. The header names the repository, the commit, and each
+// producer that wrote records. Any other resolver
 // error is the error. A refused git read (a pointer, commondir or config that is not a regular
 // file or is over baseline.MaxGitFileBytes) is the error: no index is keyed
 // under no id, or under the path form a later build would not give.
@@ -148,7 +155,7 @@ func Build(root, commit string, c Config) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	files, total, err := claimed(root, ps)
+	w, err := claimed(root, ps)
 	if err != nil {
 		return Result{}, err
 	}
@@ -166,7 +173,7 @@ func Build(root, commit string, c Config) (Result, error) {
 	wrote := map[string]string{}
 	var refused []graph.Refusal
 	for i, p := range ps {
-		recs, err := p.res.Extract(root, files[i], rev)
+		recs, err := p.res.Extract(root, w.files[i], rev)
 		var rf graph.Refusals
 		switch {
 		case errors.As(err, &rf):
@@ -187,8 +194,9 @@ func Build(root, commit string, c Config) (Result, error) {
 	apply(s, knowledge.Records(rows, rid, rev))
 	sort.SliceStable(refused, func(a, b int) bool { return refused[a].Path < refused[b].Path })
 	h := graph.Header{Schema: graph.Schema, Repo: rid, Rev: graph.HeaderRev{Commit: commit}, Producers: wrote,
-		Refused: len(refused), RefusedFiles: slices.Clone(refused[:min(len(refused), graph.MaxRefusedNamed)])}
-	return Result{Store: s, Header: h, Files: total, Refused: refused}, nil
+		Refused: len(refused), RefusedFiles: slices.Clone(refused[:min(len(refused), graph.MaxRefusedNamed)]),
+		LeftOut: len(w.left), LeftOutDirs: slices.Clone(w.left[:min(len(w.left), graph.MaxRefusedNamed)])}
+	return Result{Store: s, Header: h, Files: w.total, Refused: refused, Left: w.left, Skipped: w.skipped}, nil
 }
 
 // producer is one declared language's resolver and its units' paths.
@@ -317,13 +325,26 @@ func refusal(file string, err error) error {
 	return &lang.Refusal{File: file, Reason: r, Err: err}
 }
 
-// claimed lists, per producer, the repository's files its resolver claims
-// under its units, as slash paths relative to root, sorted; and the count.
-// The walk skips the directories skipDir names, and claims.producer picks a
-// file's producer: the one rule UnitOf files a single path by.
-func claimed(root string, ps []producer) ([][]string, int, error) {
+// walked is what Build's walk found: per producer, the repository's files
+// its resolver claims under its units, as slash paths relative to root,
+// sorted, and their count; each directory a producer's rule left out, by
+// path, sorted; and the directories skipped by name, by kind.
+type walked struct {
+	files   [][]string
+	total   int
+	left    []graph.LeftDir
+	skipped Skipped
+}
+
+// claimed is Build's walk of root for ps. It skips the directories skipDir
+// names and counts them (Skipped), then leaves out each directory a
+// producer's resolver leaves out (lang.Leaver) and names it; a directory
+// below either is not walked. claims.producer picks a file's producer: the
+// one rule UnitOf files a single path by, though UnitOf asks no Leaver.
+func claimed(root string, ps []producer) (walked, error) {
 	cl := claimsOf(ps)
-	files, total := make([][]string, len(ps)), 0
+	leavers := cl.reg.Leavers()
+	w := walked{files: make([][]string, len(ps))}
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -331,21 +352,56 @@ func claimed(root string, ps []producer) ([][]string, int, error) {
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel != "." && skipDir(d.Name()) {
+			if rel == "." {
+				return nil
+			}
+			if skipDir(d.Name()) {
+				w.skipped.count(d.Name())
+				return filepath.SkipDir
+			}
+			if why, ok := leftOut(leavers, root, rel); ok {
+				w.left = append(w.left, graph.LeftDir{Path: rel, Why: why})
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if i, ok := cl.producer(root, rel); ok {
-			files[i] = append(files[i], rel)
-			total++
+			w.files[i] = append(w.files[i], rel)
+			w.total++
 		}
 		return nil
 	})
-	for i := range files {
-		sort.Strings(files[i])
+	for i := range w.files {
+		sort.Strings(w.files[i])
 	}
-	return files, total, err
+	slices.SortFunc(w.left, func(a, b graph.LeftDir) int { return strings.Compare(a.Path, b.Path) })
+	return w, err
+}
+
+// leftOut is the reason of the first of leavers that leaves rel, a
+// directory's slash path relative to root, out of a walk; false where none
+// does.
+func leftOut(leavers []lang.Leaver, root, rel string) (string, bool) {
+	for _, l := range leavers {
+		if why, ok := l.LeftOut(root, rel); ok {
+			return why, true
+		}
+	}
+	return "", false
+}
+
+// count adds one directory skipDir names, named name, to its kind; .git,
+// .rashomon and .pgraph are not counted (Skipped).
+func (s *Skipped) count(name string) {
+	switch name {
+	case ".git", ".rashomon", ".pgraph":
+	case "node_modules":
+		s.NodeModules++
+	case "__pycache__":
+		s.PyCache++
+	default:
+		s.Dot++
+	}
 }
 
 // claims is the rule Build claims a file by: the producers' resolvers in a
@@ -385,11 +441,17 @@ func skipDir(name string) bool {
 
 // UnitOf is the unit an index built under c files a path in, by the rule
 // Build claims files by: rel, a slash path relative to the index root, is
-// under no directory Build's walk skips, a resolver claims it, and it is
-// under one of that resolver's language's units; the resolver's Unit then
-// names it. false for a path Build would not index. It reads no file, so
-// the Stop maps the paths a session wrote with it without loading the
-// graph (W-M3.3); the error is the configuration's, as Build's would be.
+// under no directory Build's walk skips by name, a resolver claims it, and
+// it is under one of that resolver's language's units; the resolver's Unit
+// then names it. false for a path Build would not index, with one known
+// exception: a directory a language's rule leaves out of Build's walk by a
+// stat (lang.Leaver; a Python environment, which holds pyvenv.cfg) is not
+// seen here, so a path under one inside a unit is filed in that unit though
+// Build holds no file there, until the Stop asks the language's rule
+// (TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit).
+// It reads no file, so the Stop maps the paths a session wrote with it
+// without loading the graph (W-M3.3); the error is the configuration's, as
+// Build's would be.
 func UnitOf(c Config) (func(root, rel string) (graph.ID, bool), error) {
 	ps, err := producers(c)
 	if err != nil {

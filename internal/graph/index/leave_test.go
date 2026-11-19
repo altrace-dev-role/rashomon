@@ -193,9 +193,10 @@ func TestInfer_AnEnvironmentIsLeftOutAndNamed(t *testing.T) {
 // a known limit, pinned on purpose. UnitOf reads paths alone, so a path
 // under a directory holding pyvenv.cfg inside a Python unit still maps to
 // that unit, while Build's walk leaves the directory out and holds no file
-// under it. The two disagree on such paths until the card that makes the
-// Stop ask the language's rule; that card flips this test on purpose.
-// Break: a UnitOf that reads pyvenv.cfg, which this card does not make.
+// under it; the test reads both halves. The two disagree on such paths
+// until the card that makes the Stop ask the language's rule; that card
+// flips this test on purpose. Break: a UnitOf that reads pyvenv.cfg, which
+// this card does not make; a Build that walks the environment.
 func TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit(t *testing.T) {
 	root := wireRoot(t, map[string]string{
 		"py/app/__init__.py": "",
@@ -209,5 +210,15 @@ func TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit(t *test
 	want := graph.UnitID(pylite.Lang, "py")
 	if got, ok := unitOf(root, "py/venv/lib/m.py"); got != want || !ok {
 		t.Errorf("UnitOf(py/venv/lib/m.py) = %q, %v; want %q, true: the known limit moved", got, ok, want)
+	}
+	r, err := Build(root, "c1", pyUnit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left := []graph.LeftDir{{Path: "py/venv", Why: envWhy}}; !reflect.DeepEqual(r.Left, left) {
+		t.Errorf("Build's half: Result.Left = %+v; want %+v", r.Left, left)
+	}
+	if _, ok := r.Store.Node("file:py/venv/lib/m.py", graph.RevCommit("c1")); ok {
+		t.Errorf("Build's half: file:py/venv/lib/m.py is held")
 	}
 }

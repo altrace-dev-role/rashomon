@@ -34,19 +34,24 @@ type InferredUnit struct {
 
 // Infer is the configuration of root inferred by each language Wire
 // registers that is a lang.Inferrer, in Wire's order, over one walk of root
-// that skips what Build's walk skips and every directory below root that
-// holds a configuration of its own (another index's root, left out and
-// named). Its file is encoded as the configuration file is read, one unit
-// to a line. No unit is ErrNoConfig, the error naming the manifests looked
-// for; a file over MaxConfigBytes is an error naming the cap.
+// that skips what Build's walk skips by name, every directory below root
+// that holds a configuration of its own (another index's root), and every
+// directory a language Wire registers leaves out (lang.Leaver), each of the
+// last two left out and named. With no configuration there is no
+// configured language to ask, so every registered rule is asked; Build
+// asks only the configured ones. Its file is encoded as the configuration
+// file is read, one unit to a line. No unit is ErrNoConfig, the error
+// naming the manifests looked for; a file over MaxConfigBytes is an error
+// naming the cap.
 func Infer(root string) (Inferred, error) {
-	files, left, err := inferWalk(root)
+	reg := Wire()
+	files, left, err := inferWalk(root, reg.Leavers())
 	inf := Inferred{Left: left}
 	if err != nil {
 		return inf, err
 	}
 	var manifests []string
-	for _, i := range Wire().Inferrers() {
+	for _, i := range reg.Inferrers() {
 		l := i.(lang.Resolver).Lang()
 		manifests = append(manifests, i.Manifests()...)
 		got := i.Infer(files)
@@ -78,9 +83,10 @@ func Infer(root string) (Inferred, error) {
 
 // inferWalk is every regular file under root, as sorted slash paths
 // relative to it: a link is listed as no file, so no rule takes a manifest
-// that is a link. It skips what Build's walk skips, and each directory below
-// root holding a configuration of its own, which it names as left out.
-func inferWalk(root string) ([]string, []lang.Left, error) {
+// that is a link. It skips what Build's walk skips by name, and leaves out
+// and names each directory below root holding a configuration of its own,
+// then each that one of leavers leaves out, with that rule's reason.
+func inferWalk(root string, leavers []lang.Leaver) ([]string, []lang.Left, error) {
 	var files []string
 	var left []lang.Left
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -100,6 +106,10 @@ func inferWalk(root string) ([]string, []lang.Left, error) {
 		default:
 			if _, err := os.Lstat(filepath.Join(p, filepath.FromSlash(ConfigFile))); err == nil {
 				left = append(left, lang.Left{Path: rel, Why: "holds its own " + ConfigFile + ", another index's root"})
+				return filepath.SkipDir
+			}
+			if why, ok := leftOut(leavers, root, rel); ok {
+				left = append(left, lang.Left{Path: rel, Why: why})
 				return filepath.SkipDir
 			}
 		}

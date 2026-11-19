@@ -83,3 +83,19 @@ func (g *Registry) Inferrers() []Inferrer {
 	}
 	return out
 }
+
+// Leavers is the registered resolvers that are Leavers, in the order they
+// were registered, each language once: what a walk of `rashomon graph
+// index` asks of each directory it enters.
+func (g *Registry) Leavers() []Leaver {
+	var out []Leaver
+	var seen []string
+	for _, e := range g.es {
+		v, ok := e.r.(Leaver)
+		if l := e.r.Lang(); ok && !slices.Contains(seen, l) {
+			out = append(out, v)
+			seen = append(seen, l)
+		}
+	}
+	return out
+}
