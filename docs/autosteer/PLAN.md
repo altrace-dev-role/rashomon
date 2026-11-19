@@ -1479,54 +1479,7 @@ Note (2026-11-18): from NOTE-BUDGET on, the budget is three notes in any window 
 
 Note (C11, ruling of 2026-11-11): T2 at n=10 is expected over section 13 ruling 12's 2.50 USD ceiling, so it needs the owner's word through a ruling 11 proposal. T1c's arm means at a 150-turn cap were 4.58, 5.97 and 5.91 USD per run (6.1, "AC-M1.4 read", its cost row and limitation 1), and T1c's n=10 was costed beforehand at about 149 USD per 30 runs from T1b's arm means (6.1, W-M1.20). The T2 proposal states this when W-M2.8 opens; ruling 7's third cut (n=3) is the fallback already registered.
 
-Note (2026-11-19): the T2 harness enters main as the files of the table below, brought from a working branch. A row gives the path under `test/live/autosteer/`, the first 16 hex digits of the sha256 of the file as committed, and its source.
-
-| path | sha16 | source |
-|---|---|---|
-| judge/done.py | 96372150145b9c0f | the done-flag judge draft kept under docs-out (not in git), byte for byte |
-| judge/test_done.py | a3f82acdfda6d770 | the done-flag judge draft kept under docs-out (not in git), byte for byte |
-| memsample.sh | 4d67d89a325512d2 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| run.sh | edd0f09597c965f3 | branch as/m2-t2 at b59948dc, edited there and not committed, byte for byte |
-| t2/batch.sh | 6fabe73f89c3b824 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/cachemanifest.py | cb7cc1149de93d5f | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/consentscope.py | a971b959ed423427 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/flags.py | ffed2b31835793ad | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/graph.json | f5681815397cf20e | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/claude-tmux.sh | bda8f526f3f78b73 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/drive.py | e3246de2ae0d5c13 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/j1live.sh | 999ed79b4734c070 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/prompt.txt | 6111b53a29e8ded2 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/read.py | 29746c1af1495c4f | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/selftest/fake-claude.py | 9e76471414c9b0c5 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/j1live/selftest/selftest.sh | d97de3d1585ef8dc | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/dectruth.py | 2465e84504f859dc | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/j2.py | 4fb7134b6471a679 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/j3.sh | b3b0375530cd1c4b | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/j3_conflicts_test.go | a5dacd44bbcd88ca | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/j3_test.go | 0ef90104bda40f74 | branch as/m2-t2 at b59948dc, untracked there (sha16 e64421e904df7579); this file adds two comment lines above loadStop |
-| t2/judge/j4.sh | 12c2f2bda118dd19 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/j5.sh | 35c6b1901742e962 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/judge.sh | 5769fff30488d63b | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/row.py | e7aeee96795d62ca | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/judge/s1cross.sh | 3a3da4f07c090338 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/managed/rashomon/spec.json | b8a58ba97fcd1153 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/meter.py | a5cead74e792721b | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/hookctx.py | 1abb05444ad8cc10 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/hooklog.py | b137c04b7511d743 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/j2probe.sh | 0e2e1f734a0d9ecc | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/plan-probe.sh | cb4f144bc8019c69 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/probe-prompt.txt | 8358f9585c9863d3 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/probe-read.py | a7d5663161d8908d | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/probe2-prompt.txt | caa9b9cc2cb842ab | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/probe2-read.py | a2e1f259d7d1e202 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/probe/probe2.sh | 10c7c43f645c103c | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/prompt.txt | 998ca1fb5efb4256 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/s1b.py | c22207d822633516 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/s2kinds.py | 8b4c2355646f563d | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/s3pin.sh | 67baca1fa8575a7d | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/seed.json | 5603ad93ffba0b92 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| t2/smoke.sh | e45377988fe189d0 | branch as/m2-t2 at b59948dc, untracked there, byte for byte |
-| wrap.sh | a8122ba83045d599 | branch as/m2-t2 at b59948dc, edited there and not committed, byte for byte |
+Note (2026-11-19): the T2 harness came into this repository on this date, as files under `test/live/autosteer/`; the entry of that date in `docs/autosteer/TRACE.md` lists each file with its sha16 and its source.
 
 Owed to the owner at M2 open: (1) lanes P and S (W-M2.5 then W-M6.1 for P; W-M4.1, W-M4.2 and W-M4.6 against recorded sessions then W-M5.5 for S), proposed in the session at 20:5x with count two, model Sonnet, about 30 to 60 USD per lane-day at list, the meter at 22 percent (ts 1793939910 and 1793939912), launch after the T1b read; ruling 2026-11-05 21:2x: lane P yes on Sonnet; lane S held until the W-M4.2 work order below exists, its model decided by lane P's first frozen patch (merges with minor review changes: Sonnet; a redo: Opus, recorded with the patch as the reason); (2) W-M2.7's owner (Luis, by section 10.2) and its carrier, ruled 2026-11-05 21:5x: not Luis for now, the principal; (3) the T2 prompt wording when W-M2.8 opens. Parallel work that is safe now, by Part C3's independent sets: M4's fold and M6's producers (no shared files); M3's W-M3.5, W-M3.7 and W-M3.8 (Luis's PG rows); M5's W-M5.5. Not safe before W-M2.0 lands: anything on `internal/verify/obligations.go`, `internal/spec`, `internal/graph/engine`; not safe before M2 and M3 close: W-M5.1 (labels need line kinds and predicates) and W-M7.3 (the report needs labels); and every file on the hook path (`steerstep.go`, `preflight.go`, `hooks.json`, `install.go`) has one owner, the principal.
 
