@@ -110,3 +110,35 @@ func TestGraphIndex_ARefusalLineQuotesAFormatRune(t *testing.T) {
 		t.Errorf("header names %#v; want the one path as it is, %q", h.RefusedFiles, name)
 	}
 }
+
+// TestRefusalLine_QuotesWhatIsNotPrintable: refusalLine names the path and
+// the reason of a refused file as they are when each is printable UTF-8,
+// a letter outside ASCII included, and each as a Go quoted string when it
+// is not: a newline in a reason cannot start a line of its own, a bad byte
+// in a reason is escaped, and the path of a refusal with no line is
+// quoted as the path of one with a line is. Break: print the reason as it
+// is; print the path of a refusal with no line as it is; drop the UTF-8
+// test; print the reason of a refusal with no line as it is.
+func TestRefusalLine_QuotesWhatIsNotPrintable(t *testing.T) {
+	for _, c := range []struct {
+		f    graph.Refusal
+		want string
+	}{
+		{graph.Refusal{Path: "app/x.py", Line: 3, Reason: "a def with no colon after its parameters"},
+			"warning: app/x.py:3 not indexed: a def with no colon after its parameters\n"},
+		{graph.Refusal{Path: "app/caf\u00e9.py", Reason: "permission denied"},
+			"warning: app/caf\u00e9.py not indexed: permission denied\n"},
+		{graph.Refusal{Path: "app/x.py", Line: 3, Reason: "bad\nindexed 9 file(s)"},
+			`warning: app/x.py:3 not indexed: "bad\nindexed 9 file(s)"` + "\n"},
+		{graph.Refusal{Path: "app/x.py", Line: 3, Reason: "bad \xff byte"},
+			`warning: app/x.py:3 not indexed: "bad \xff byte"` + "\n"},
+		{graph.Refusal{Path: "app/x\ty.py", Reason: "permission denied"},
+			`warning: "app/x\ty.py" not indexed: permission denied` + "\n"},
+		{graph.Refusal{Path: "app/x.py", Reason: "bad\nindexed 9 file(s)"},
+			`warning: app/x.py not indexed: "bad\nindexed 9 file(s)"` + "\n"},
+	} {
+		if got := refusalLine(c.f); got != c.want {
+			t.Errorf("refusalLine(%#v) = %q; want %q", c.f, got, c.want)
+		}
+	}
+}
