@@ -9,6 +9,8 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/index"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
@@ -17,7 +19,8 @@ import (
 )
 
 // The overlay writers (W-M2.5c, 5c-2) append one overlay group to the session
-// log for a Go file a Write, Edit or MultiEdit names: at PreToolUse a group
+// log for a file a Write, Edit or MultiEdit names that a reader of the
+// language registry claims (index.Wire, LANG-REG1): at PreToolUse a group
 // of the content the edit would leave (kind declared, at the declaration's
 // seq), at PostToolUse a group of the bytes on disk after the tool (kind
 // landed, at the execution's seq). A reader sees them in the next request,
@@ -28,16 +31,22 @@ import (
 // The checks run in this order and stop at the first that fails, so the work
 // that costs something waits for the answer that makes it worth doing:
 //
-//  1. the tool is Write, Edit or MultiEdit on a path the Go resolver takes;
-//  2. the seq the group would carry is positive (the declaration or the
-//     execution landed in the ordered stream);
-//  3. an index exists above the working directory, and the file is under it;
-//  4. the session-content marker is present. Absent, the writer stops and
-//     writes nothing: no group, no tally, no file in the run directory.
+//  1. the record scope is v5, the tool is Write, Edit or MultiEdit, the seq
+//     the group would carry is positive (the declaration or the execution
+//     landed in the ordered stream) and the session is attributed;
+//  2. the session-content marker is present. Absent, the writer stops and
+//     writes nothing: no group, no tally, no file in the run directory;
+//  3. the input names a path, an index exists above the working directory,
+//     and the file is under it;
+//  4. a reader of the registry claims the file under that root
+//     (lang.Registry.For, which reads nothing).
 //
-// Only after (4) are the file's content read, the index header read and the
-// resolver called, each through a package-level func var so a test can count
-// them.
+// Only after (4) are the file's content read, the index header read, the
+// claiming reader's configuration read under the root (lang.Registry.Claim,
+// one capped read, once per root for the call) and its Overlay called; the
+// content read, the header read and the Overlay call each go through a
+// package-level func var so a test can count them. A reader whose
+// configuration under the root is refused reads no file there: no group.
 //
 // The edit's content. A Write's is its content field. An Edit's or a
 // MultiEdit's is the file's bytes read once from disk with each new_string
@@ -69,39 +78,22 @@ var (
 	overlayReadFile = readOverlayFile
 	// overlayReadHeader reads the index file's header line.
 	overlayReadHeader = graph.ReadIndexHeader
-	// overlayResolve stands in for the Go resolver's Overlay in a test and is
-	// nil in the binary (resolveOverlay). It has no initialiser: RES-2's scan
-	// walks a var initialiser and every call it reaches, by name, and the name
-	// Overlay reaches pylite's regexps (TestRES2_NoPackageLevelRegexpCompile).
-	overlayResolve func(rel string, content []byte, base graph.Rev, seq int64, m *gopg.ImportMap) ([]graph.Record, error)
+	// overlayResolve stands in for the claimed reader's Overlay in a test and
+	// is nil in the binary (resolveOverlay). It has no initialiser: RES-2's
+	// scan walks a var initialiser and every call it reaches, by name, and the
+	// name Overlay reaches pylite's regexps (TestRES2_NoPackageLevelRegexpCompile).
+	overlayResolve func(r lang.Resolver, rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error)
 )
 
-// resolveOverlay is a test's overlayResolve when one is set, else goOverlay.
-func resolveOverlay(rel string, content []byte, base graph.Rev, seq int64, m *gopg.ImportMap) ([]graph.Record, error) {
+// resolveOverlay is a test's overlayResolve when one is set, else r's own
+// Overlay: r is the reader the registry configured for the edit's root
+// (lang.Registry.Claim), so a Go file maps its imports by that root's
+// go.mod, as the index does.
+func resolveOverlay(r lang.Resolver, rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
 	if overlayResolve != nil {
-		return overlayResolve(rel, content, base, seq, m)
+		return overlayResolve(r, rel, content, base, seq)
 	}
-	return goOverlay(rel, content, base, seq, m)
-}
-
-// goOverlay is the Go resolver's Overlay under m; a test's overlayResolve
-// that wraps the default calls it, since the seam itself is nil.
-func goOverlay(rel string, content []byte, base graph.Rev, seq int64, m *gopg.ImportMap) ([]graph.Record, error) {
-	return gopg.Resolver{Imports: m}.Overlay(rel, content, base, seq)
-}
-
-// overlayImports is the import map an overlay under root is built with: the
-// root go.mod's module path (one bounded read of that one file, never a walk)
-// and a directory check under root; nil with no module path, which maps no
-// import and leaves the index's Imports edges standing. The error is
-// ReadModulePath's refusal of the file (READ-SAFE1a D7): the map is nil then
-// too, and the caller owes the session the manifest notice.
-func overlayImports(root string) (*gopg.ImportMap, error) {
-	mod, err := gopg.ReadModulePath(root)
-	if mod == "" {
-		return nil, err
-	}
-	return &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}, nil
+	return r.Overlay(rel, content, base, seq)
 }
 
 // overlayContentError is a constant error, which costs no init allocation
@@ -247,15 +239,21 @@ type overlayCall struct {
 	// (the declaration's or the execution's gate), so the overlay reads no
 	// scope of its own. Its zero value keeps nothing.
 	v5 bool
-	// gate, when set, receives the writer's keptGoEdit, so a post's
-	// unit-brief read takes it rather than evaluating the gate again.
+	// gate, when set, receives the writer's keptGoEdit, registry included,
+	// so a post's unit-brief read and conflict check take it rather than
+	// evaluating the gate or a reader's configuration step again.
 	gate *keptGate
 }
 
-// keptGate is keptGoEdit's result as a writer took it: the index root and
-// the file's slash path under it, ok false where a check stopped it.
+// keptGate is keptGoEdit's result as a writer took it: the index root, the
+// file's slash path under it and the registry a reader of which claims it,
+// ok false where a check stopped it. The registry is the one the writer
+// configures the reader through (Claim), so a later Claim of the same file
+// in this call, by the post's unit-brief read or conflict check, reads no
+// configuration again.
 type keptGate struct {
 	root, rel string
+	reg       *lang.Registry
 	ok        bool
 }
 
@@ -268,10 +266,12 @@ func overlayTool(tool string) bool {
 	return false
 }
 
-// overlayPath is the absolute path of p, a path a Write, Edit or MultiEdit
-// names, when the Go resolver takes it, else "".
+// overlayPath is the absolute, clean path of p, a path a Write, Edit or
+// MultiEdit names, else "" (no path, or a relative one with no working
+// directory). Whether a reader takes it is the registry's to say, under the
+// index root (keptGoEdit).
 func overlayPath(p *string, cwd string) string {
-	if p == nil || !(gopg.Resolver{}).Claims("", *p) {
+	if p == nil || *p == "" {
 		return ""
 	}
 	path := *p
@@ -284,37 +284,48 @@ func overlayPath(p *string, cwd string) string {
 	return filepath.Clean(path)
 }
 
-// keptGoEdit is the Go file a Write, Edit or MultiEdit that landed at seq
-// names, in a session whose content is kept: its absolute path, the index
-// root over cwd, and its slash path under that root. Content is kept only
-// where the record scope is v5 (v5, as the caller's record read it) and the
-// session-content marker is set. The checks run cheapest first, so a call
-// below v5 reads nothing and allocates nothing, and a session with no
-// session-content marker pays one marker read and decodes no input: the
-// scope, the tool, the seq, the session, the marker, the Go resolver's claim
-// (overlayPath) on the path the input names, an index (graph.FindIndex) and
-// the file under its root. declared is that
-// path where the caller decoded it already (the declaration's DeclaredPath),
-// nil to decode it here, after the marker. A post's unit-brief read
-// (Post.LandedGoEdit) takes the overlay writer's result (keptGate), so their
-// gates cannot part and a call evaluates the gate once.
-func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, declared *string, cwd string, seq int64, v5 bool) (path, root, rel string, ok bool) {
+// keptGoEdit is the file a Write, Edit or MultiEdit that landed at seq
+// names, in a session whose content is kept, where a reader of the language
+// registry claims it: its absolute path, and the gate (keptGate) holding the
+// index root over cwd, its slash path under that root and the registry.
+// Content is kept only where the record scope is v5 (v5, as the caller's
+// record read it) and the session-content marker is set. The checks run
+// cheapest first, so a call below v5 reads nothing and allocates nothing,
+// and a session with no session-content marker pays one marker read and
+// decodes no input: the scope, the tool, the seq, the session, the marker,
+// the path the input names (overlayPath), an index (graph.FindIndex), the
+// file under its root, and a reader's claim on it (lang.Registry.For on the
+// registry index.Wire builds, which reads nothing; the registry is built
+// here, per call and past every check before it, never at init: RES-2).
+// declared is that path where the caller decoded it already (the
+// declaration's DeclaredPath), nil to decode it here, after the marker. A
+// post's unit-brief read (Post.LandedGoEdit) takes the overlay writer's
+// result (keptGate), so their gates cannot part and a call evaluates the
+// gate once.
+func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, declared *string, cwd string, seq int64, v5 bool) (string, keptGate) {
 	if !v5 || !overlayTool(tool) || seq <= 0 || session == store.UnattributedSession || !store.SessionContentMarker(st.Root()) {
-		return "", "", "", false
+		return "", keptGate{}
 	}
 	if declared == nil {
 		declared = shape.DeclaredPath(tool, input)
 	}
-	if path = overlayPath(declared, cwd); path == "" {
-		return "", "", "", false
+	path := overlayPath(declared, cwd)
+	if path == "" {
+		return "", keptGate{}
 	}
-	if root = graph.FindIndex(cwd); root == "" {
-		return "", "", "", false
+	root := graph.FindIndex(cwd)
+	if root == "" {
+		return "", keptGate{}
 	}
-	if rel, ok = underRoot(root, path); !ok {
-		return "", "", "", false
+	rel, ok := underRoot(root, path)
+	if !ok {
+		return "", keptGate{}
 	}
-	return path, root, rel, true
+	reg := index.Wire()
+	if _, ok := reg.For(root, rel); !ok {
+		return "", keptGate{}
+	}
+	return path, keptGate{root: root, rel: rel, reg: reg, ok: true}
 }
 
 // underRoot is path relative to root, slash separated, false for a path
@@ -381,13 +392,14 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 			og, root, rel, ok = graph.OverlayGroup{}, "", "", false
 		}
 	}()
-	path, at, under, kept := keptGoEdit(c.st, c.session, c.tool, c.input, c.path, c.cwd, c.seq, c.v5)
+	path, g := keptGoEdit(c.st, c.session, c.tool, c.input, c.path, c.cwd, c.seq, c.v5)
 	if c.gate != nil {
-		*c.gate = keptGate{root: at, rel: under, ok: kept}
+		*c.gate = g
 	}
-	if !kept {
+	if !g.ok {
 		return graph.OverlayGroup{}, "", "", false
 	}
+	at, under := g.root, g.rel
 	content, has := c.content(path)
 	if !has {
 		return graph.OverlayGroup{}, "", "", false
@@ -396,15 +408,21 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	if err != nil || hdr.Rev.Commit == "" {
 		return graph.OverlayGroup{}, "", "", false
 	}
-	imports, ierr := overlayImports(at)
-	if ierr != nil && c.st != nil {
-		// The edit's file still maps, with no import records. PostToolUse
-		// has no channel to the person, so the store keeps the notice owed
-		// and the session's next prompt says it once (READ-SAFE1a D7); the
-		// class is the only part of the error kept, never its path or text.
-		c.st.OweManifestNotice(c.session, !errors.Is(ierr, regfile.ErrNotRegular))
+	r, _, cerr := g.reg.Claim(at, under)
+	if cerr != nil {
+		// The claiming reader's configuration under this root is refused,
+		// so the reader reads no file there and the edit writes no group.
+		// Until the go.mod line replaces it, a refused go.mod still leaves
+		// the manifest notice owed (READ-SAFE1a D7): PostToolUse has no
+		// channel to the person, so the session's next prompt says it once;
+		// the class is the only part of the error kept, never its path or
+		// text. Another reader's refusal owes nothing here.
+		if reader, _ := g.reg.For(at, under); reader.Lang() == gopg.Lang && c.st != nil {
+			c.st.OweManifestNotice(c.session, !errors.Is(cerr, regfile.ErrNotRegular))
+		}
+		return graph.OverlayGroup{}, "", "", false
 	}
-	recs, err := resolveOverlay(under, content, graph.RevCommit(hdr.Rev.Commit), c.seq, imports)
+	recs, err := resolveOverlay(r, under, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
 	if err != nil || len(recs) == 0 {
 		return graph.OverlayGroup{}, "", "", false
 	}
@@ -416,7 +434,7 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	}
 	group := graph.OverlayGroup{Session: c.session, ToolUseID: c.toolUseID, Kind: c.kind,
 		File: graph.FileID(under), Digest: graph.ContentDigest(content), Commit: hdr.Rev.Commit, Seq: c.seq,
-		Carried: (gopg.Resolver{Imports: imports}).OverlayCarried(), Recs: recs}
+		Carried: r.OverlayCarried(), Recs: recs}
 	log := graph.OpenSessionLog(c.st.Root(), rid, graph.RevCommit(hdr.Rev.Commit), true)
 	_ = log.AppendOverlayGroup(graph.BuildOverlayGroup(group), func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
 	return group, at, under, true
@@ -443,6 +461,6 @@ func (p *Post) writeOverlay() {
 	og, root, rel, ok := overlayCall{st: p.st, session: p.sessionID, toolUseID: p.toolUseID, cwd: p.cwd, tool: p.toolName,
 		input: p.toolInput, kind: graph.OverlayLanded, seq: p.landedSeq, v5: p.scopeV5, gate: &p.gate}.write()
 	if ok {
-		p.landed, p.landedKept = LandedGoEdit{Root: root, Rel: rel, Group: og}, true
+		p.landed, p.landedKept = LandedGoEdit{Root: root, Rel: rel, Group: og, reg: p.gate.reg}, true
 	}
 }

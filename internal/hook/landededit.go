@@ -2,16 +2,19 @@ package hook
 
 import (
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 )
 
-// LandedGoEdit is a success event's landed Go edit as cmd's unit-brief read
+// LandedGoEdit is a success event's landed edit of a file a reader of the
+// language registry claims, as cmd's unit-brief read (and conflict check)
 // takes it (card m2-unitbrief-hook1 D4): the session and agent, the index
 // root and the file's slash path under it, the hook's working directory
 // (the note names the unit relative to it, as the prompt's brief names its
 // paths), the seq the execution landed at, and whether the call's record
 // scope is v5 (else the finding's record form holds digests, as the
-// prompt's graph brief does).
+// prompt's graph brief does). Its unit is the claiming reader's to say
+// (Unit).
 type LandedGoEdit struct {
 	Session, AgentID string
 	Root, Rel        string
@@ -20,10 +23,31 @@ type LandedGoEdit struct {
 	ScopeV5          bool
 	// Group is the edit's landed overlay group, set by LandedOverlay only.
 	Group graph.OverlayGroup
+	// reg is the registry the overlay writer's gate claimed the file
+	// through (keptGate), nil for an edit no gate passed.
+	reg *lang.Registry
 }
 
-// LandedGoEdit is the call's landed Go edit, false for any other call:
-// a PostToolUse whose Write, Edit or MultiEdit passed the overlay writer's
+// Unit is the unit the edit's file is in, as the reader that claims it says
+// under the edit's root: the reader the overlay writer's registry
+// configured for that root (lang.Registry.Claim, whose step ran at most once
+// for the call, by the writer where it got that far). False where no gate
+// passed, where that reader's configuration under the root is refused (it
+// reads no file there, so it places none), and where the reader places the
+// file in no unit.
+func (e LandedGoEdit) Unit() (graph.ID, bool) {
+	if e.reg == nil {
+		return "", false
+	}
+	r, ok, err := e.reg.Claim(e.Root, e.Rel)
+	if !ok || err != nil {
+		return "", false
+	}
+	return r.Unit(e.Root, e.Rel)
+}
+
+// LandedGoEdit is the call's landed edit, false for any other call: a
+// PostToolUse whose Write, Edit or MultiEdit passed the overlay writer's
 // own gate (keptGoEdit), as the writer took it at this post (Post.gate). It
 // evaluates no gate of its own, so it reads nothing and the two cannot part.
 func (p *Post) LandedGoEdit() (LandedGoEdit, bool) {
@@ -31,7 +55,7 @@ func (p *Post) LandedGoEdit() (LandedGoEdit, bool) {
 	if p.event != string(steer.EventPostToolUse) || !g.ok {
 		return LandedGoEdit{}, false
 	}
-	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: g.root, Rel: g.rel, Cwd: p.cwd, Seq: p.landedSeq, ScopeV5: p.scopeV5}, true
+	return LandedGoEdit{Session: p.sessionID, AgentID: p.agentID, Root: g.root, Rel: g.rel, Cwd: p.cwd, Seq: p.landedSeq, ScopeV5: p.scopeV5, reg: g.reg}, true
 }
 
 // Unheard is whether a finding joined for the call under env would reach no

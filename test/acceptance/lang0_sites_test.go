@@ -116,20 +116,11 @@ var lang0Exempt = map[string]string{
 // place of asking the registry. LANG-REG1 routes each through the wiring
 // function and lowers this class to nothing.
 var lang0Finding = map[string]int{
-	"cmd/rashomon/conflictpost.go:conflictJoin":       1,
-	"cmd/rashomon/conflictpost.go:import":             1,
-	"cmd/rashomon/graph_unitbrief.go:import":          1,
-	"cmd/rashomon/graph_unitbrief.go:unitBriefJoin":   1,
 	"cmd/rashomon/plan.go:import":                     1,
 	"cmd/rashomon/plan.go:planNamesOf":                1,
 	"internal/hook/blastradius.go:Post.blast":         1,
-	"internal/hook/overlaywrite.go:goOverlay":         2,
 	"internal/hook/overlaywrite.go:import":            1,
 	"internal/hook/overlaywrite.go:overlayCall.write": 1,
-	"internal/hook/overlaywrite.go:overlayImports":    3,
-	"internal/hook/overlaywrite.go:overlayPath":       1,
-	"internal/hook/overlaywrite.go:overlayResolve":    1,
-	"internal/hook/overlaywrite.go:resolveOverlay":    1,
 	"internal/verify/platform.go:isGoWrite":           1,
 }
 
