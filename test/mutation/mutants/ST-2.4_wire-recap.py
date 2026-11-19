@@ -94,8 +94,8 @@ m("ST-2.4 Claim before the Flush barrier", RT,
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n"
   "\t// Claim's own error is intentionally ignored: recap.json is\n\t// bookkeeping, not evidence, and a failure to persist it must cost at\n"
   "\t// most a future duplicate or a stale health timestamp, never a\n\t// missing line and never a hook error (see Claim's doc).\n"
-  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))\n",
-  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))\n"
+  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops, stop.backed()), d.Declarations.Recorded > 0)\n",
+  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops, stop.backed()), d.Declarations.Recorded > 0)\n"
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n",
   "TestSTOP_FlushFailurePrintsNothing")
 m("ST-2.4 a second systemMessage key", RT,

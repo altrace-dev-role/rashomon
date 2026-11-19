@@ -147,13 +147,17 @@ func BashPostExactAt(total int, toolUseID, dir string) ([]byte, error) {
 	})
 }
 
-// Stop is the Stop payload for a turn that ended with lastAssistantMessage.
-func Stop(lastAssistantMessage string) []byte {
+// Stop is the Stop payload for the turn of promptID that ended with
+// lastAssistantMessage. promptID names the turn the Stop ends, as Claude
+// Code's Stop does: pass the id the session's declarations carry
+// (PromptID(Prompts-1) for the last turn WriteSession writes).
+func Stop(promptID, lastAssistantMessage string) []byte {
 	return must(struct {
 		envelope
+		PromptID             string `json:"prompt_id"`
 		StopHookActive       bool   `json:"stop_hook_active"`
 		LastAssistantMessage string `json:"last_assistant_message"`
-	}{head("Stop"), false, lastAssistantMessage})
+	}{head("Stop"), promptID, false, lastAssistantMessage})
 }
 
 // Prompt is the UserPromptSubmit payload for prompt.

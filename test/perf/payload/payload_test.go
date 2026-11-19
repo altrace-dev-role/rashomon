@@ -55,7 +55,7 @@ func TestRES28f_PayloadSizesAreExact(t *testing.T) {
 	if err := json.Unmarshal(BashPost("git status --short", "toolu_01", " M README.md\n"), &doc); err != nil || doc["hook_event_name"] != "PostToolUse" || doc["tool_response"] == nil {
 		t.Errorf("BashPost: %v %v", err, doc)
 	}
-	for _, p := range [][]byte{BashPre("git status", "t"), Stop("done"), Prompt("next"), SessionStart(), SessionEnd()} {
+	for _, p := range [][]byte{BashPre("git status", "t"), Stop(PromptID(Prompts-1), "done"), Prompt("next"), SessionStart(), SessionEnd()} {
 		if !json.Valid(p) {
 			t.Errorf("invalid payload %s", p)
 		}
