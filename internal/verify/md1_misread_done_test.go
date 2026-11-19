@@ -92,6 +92,8 @@ func TestMD1b_ANameInCapitalsIsNoClaim(t *testing.T) {
 		{msg: "All TESTS PASS now.", class: ClaimTestsPass, strict: true, why: "control: a run of capitals that holds the predicate's subject"},
 		{msg: "ALL DONE.", class: ClaimDone, strict: true, why: "control: a run in a sentence in capitals throughout"},
 		{msg: "Race Fixed.", class: ClaimDone, strict: true, why: "control: title case is no run of capitals"},
+		{msg: "Fixed Unicode handling in the parser.", class: ClaimDone, strict: true,
+			why: "control: a title-case predicate beside a title-case word, in a sentence with lower case; a word's case is read from all its letters, so neither is in capitals"},
 	})
 }
 
