@@ -93,6 +93,13 @@ func graphIndex(args []string, stdout io.Writer) error {
 		return err
 	}
 	rev := graph.RevCommit(r.Header.Rev.Commit)
+	for _, f := range r.Refused {
+		if f.Line > 0 {
+			fmt.Fprintf(stdout, "warning: %s:%d not indexed: %s\n", f.Path, f.Line, f.Reason)
+		} else {
+			fmt.Fprintf(stdout, "warning: %s not indexed: %s\n", f.Path, f.Reason)
+		}
+	}
 	for _, k := range cfg.Knowledge {
 		switch err := slot.Approved(k.Clause).Validate(); {
 		case k.Clause == "":
@@ -101,8 +108,12 @@ func graphIndex(args []string, stdout io.Writer) error {
 			fmt.Fprintf(stdout, "warning: %s clause refused, its line carries none: %v\n", k.ID, err)
 		}
 	}
-	_, err = fmt.Fprintf(stdout, "indexed %d file(s): %d node(s), %d edge(s) at %s in %s -> %s; repo %s\n",
-		r.Files, len(r.Store.Nodes(rev)), len(r.Store.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile, r.Header.Repo)
+	refused := ""
+	if len(r.Refused) > 0 {
+		refused = fmt.Sprintf(", %d refused", len(r.Refused))
+	}
+	_, err = fmt.Fprintf(stdout, "indexed %d file(s)%s: %d node(s), %d edge(s) at %s in %s -> %s; repo %s\n",
+		r.Files, refused, len(r.Store.Nodes(rev)), len(r.Store.Edges(rev)), rev, time.Since(start).Round(time.Millisecond), graph.GraphFile, r.Header.Repo)
 	return err
 }
 
@@ -181,6 +192,7 @@ func graphBriefCmd(args []string, stdout io.Writer) error {
 	}
 	loaded := time.Since(start)
 	opt.Rel = relTo(cwd, root)
+	opt.Refused = h.Refused
 	b := engine.Build(s, graph.RevCommit(h.Rev.Commit), prompt, opt)
 	fmt.Fprintf(stdout, "load: %d record(s) in %s; pipeline: %s\n\n", h.Records, loaded, b.Elapsed)
 	fmt.Fprintln(stdout, b.Explain())
@@ -290,6 +302,7 @@ func graphBriefWith(storeRoot, cwd, sessionID, promptID string, prompt []byte, c
 	opt := hookScorer()
 	opt.Rel = relTo(cwd, root)
 	opt.PromptCut = cut
+	opt.Refused = h.Refused
 	rev := graph.RevCommit(h.Rev.Commit)
 	b := engine.Build(s, rev, string(prompt), opt)
 	v5 := storeRoot != "" && scopeOf != nil && scopeOf() == store.RecordScopeV5

@@ -9,6 +9,8 @@ package pylite
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,9 +24,23 @@ import (
 const Lang = "py"
 
 // ErrParse is the refusal for content the reduced extractor cannot read:
-// unbalanced brackets at end of file, or a def with no colon. No records
-// are written for the file; the caller records a gap.
+// a bracket that does not balance, or a def with no colon. No records are
+// written for the file. Overlay returns the refusal as an error that is
+// ErrParse to errors.Is and carries the line it stopped at; Extract goes
+// on past the file and names it among the graph.Refusals it returns.
 var ErrParse = errors.New("pylite: content not parsed")
+
+// parseError is one parse refusal: the 1-based line the reader stopped at
+// and why, in words a person can act on. It is ErrParse to errors.Is.
+type parseError struct {
+	line int
+	why  string
+}
+
+func (e parseError) Error() string { return fmt.Sprintf("%v: line %d: %s", ErrParse, e.line, e.why) }
+
+// Is makes a parse refusal match ErrParse.
+func (e parseError) Is(target error) bool { return target == ErrParse }
 
 // Unit is one Python unit: the directory that holds it, and the prefix
 // stripped from a file's path before it is read as a dotted module name.
@@ -76,10 +92,14 @@ const maxSourceBytes = 1 << 20
 
 // Extract reads each file under root and parses it at rev with the
 // committed confidences: definitions and imports 1.0, calls 0.9. The reads
-// go through one root opened at root, so a source that is a link leaving
-// the repository is refused, not read; a link inside it is followed. A
-// source that is not a regular file, or is over maxSourceBytes, is refused
-// too.
+// go through one root opened at root: a link inside the repository is
+// followed, and a source that is a link leaving it, is not a regular file,
+// or is over maxSourceBytes is refused, not read. A file it cannot read,
+// or whose content it refuses, is a gap and not the end of the index:
+// Extract goes on, and returns the records of every other file with a
+// refusedError as its error, one refusal per such file in the order given
+// (a read refusal has no line, and its reason is the read error's words
+// without the path; a parse refusal has the line and the reason).
 func (r Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.Record, error) {
 	if len(files) == 0 {
 		return nil, nil
@@ -90,19 +110,92 @@ func (r Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.R
 	}
 	defer rt.Close() //nolint:errcheck // the root holds only a directory handle
 	var out []graph.Record
+	var refused graph.Refusals
+	var causes []error
 	for _, rel := range files {
 		b, err := rootio.ReadRegular(rt, filepath.FromSlash(rel), maxSourceBytes)
 		if err != nil {
-			return nil, err
+			causes = append(causes, err)
+			refused = append(refused, graph.Refusal{Path: rel, Reason: readReason(err)})
+			continue
 		}
 		recs, err := r.parse(rel, b, rev, 1.0, 0.9, true)
-		if err != nil {
+		var pe parseError
+		switch {
+		case errors.As(err, &pe):
+			causes = append(causes, err)
+			refused = append(refused, graph.Refusal{Path: rel, Line: pe.line, Reason: pe.why})
+			continue
+		case err != nil:
 			return nil, err
 		}
 		out = append(out, recs...)
 	}
+	if len(refused) > 0 {
+		return out, refusedError{refused: refused, causes: causes}
+	}
 	return out, nil
 }
+
+// readReason is a read error's words without the path, which the refusal
+// already names.
+func readReason(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// refusedError is Extract's error when it refused some files. To
+// errors.As it is the graph.Refusals, so the index writes the store
+// without those files as it does for any resolver; to errors.Is it is
+// each refusal's cause, the read error or the parse refusal (a missing
+// file is fs.ErrNotExist, refused content ErrParse); and its words name
+// the first graph.MaxRefusedNamed refused files, as an index header
+// does, and then say how many more. causes[i] is the cause of
+// refused[i].
+type refusedError struct {
+	refused graph.Refusals
+	causes  []error
+}
+
+// Error is the count, then each of the first graph.MaxRefusedNamed
+// refused files with its line when it has one and its reason, then how
+// many more when there are more, as in "22 file(s) refused: u/a.py:3: a
+// bracket opened at this line is not closed; u/b.py: no such file or
+// directory; ...; and 2 more". A tree can refuse thousands of files: the
+// words stay bounded, and every refusal is still in the graph.Refusals.
+func (e refusedError) Error() string {
+	var b strings.Builder
+	b.WriteString(e.refused.Error())
+	sep := ": "
+	for _, f := range e.refused[:min(len(e.refused), graph.MaxRefusedNamed)] {
+		b.WriteString(sep)
+		b.WriteString(f.Path)
+		if f.Line > 0 {
+			b.WriteString(":" + strconv.Itoa(f.Line))
+		}
+		b.WriteString(": " + f.Reason)
+		sep = "; "
+	}
+	if n := len(e.refused) - graph.MaxRefusedNamed; n > 0 {
+		b.WriteString("; and " + strconv.Itoa(n) + " more")
+	}
+	return b.String()
+}
+
+// As gives the refusals to a *graph.Refusals target.
+func (e refusedError) As(target any) bool {
+	p, ok := target.(*graph.Refusals)
+	if ok {
+		*p = e.refused
+	}
+	return ok
+}
+
+// Unwrap is each refusal's cause, in the refusals' order.
+func (e refusedError) Unwrap() []error { return e.causes }
 
 // Overlay parses one file's post-edit content at the overlay revision with
 // the reduced confidences: definitions and imports 0.9, calls 0.7 (no
@@ -138,8 +231,8 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 		return nil, nil
 	}
 	src := string(content)
-	if !balanced(src) {
-		return nil, ErrParse
+	if err := balanced(src); err != nil {
+		return nil, err
 	}
 	mod := module(u, rel)
 	f, err := scan(src)
@@ -222,36 +315,50 @@ func (r Resolver) symIn(mod, attr string) (graph.ID, bool) {
 	return graph.SymID(Lang, up, "func", mod+"."+attr), true
 }
 
-// balanced reports whether brackets balance over src outside string
-// literals.
-func balanced(src string) bool {
-	depth := 0
+// balanced is nil when brackets balance over src outside string literals,
+// and otherwise the parse refusal: a closer with no opener at the line it
+// is on, or, at the end of the file, the outermost opener still open at
+// the line it opened (the last line depth rose from zero).
+func balanced(src string) error {
+	depth, line, opened := 0, 1, 0
 	var quote byte
 	for i := 0; i < len(src); i++ {
 		c := src[i]
+		if c == '\n' {
+			line++
+		}
 		switch {
 		case quote != 0:
 			if c == '\\' {
 				i++
+				if i < len(src) && src[i] == '\n' {
+					line++
+				}
 			} else if c == quote {
 				quote = 0
 			}
 		case c == '\'' || c == '"':
 			quote = c
 		case c == '#':
-			for i < len(src) && src[i] != '\n' {
+			for i+1 < len(src) && src[i+1] != '\n' {
 				i++
 			}
 		case c == '(' || c == '[' || c == '{':
+			if depth == 0 {
+				opened = line
+			}
 			depth++
 		case c == ')' || c == ']' || c == '}':
 			depth--
 			if depth < 0 {
-				return false
+				return parseError{line: line, why: "a bracket closed at this line was not opened"}
 			}
 		}
 	}
-	return depth == 0
+	if depth > 0 {
+		return parseError{line: opened, why: "a bracket opened at this line is not closed"}
+	}
+	return nil
 }
 
 // extras are the records beyond defs, consts, imports and calls: a
