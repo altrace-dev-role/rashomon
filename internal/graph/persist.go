@@ -46,9 +46,10 @@ const GraphFile = ".rashomon/graph.jsonl"
 // refuses a file over it, pinned by its test; the writer is to hold the
 // same cap by this name (card WRITE-SAFE1), so that what is written can be
 // read. Every prompt decodes the whole index, so the cap bounds the memory
-// and the time of a hook; an index over it needs a read path that does not
-// decode the whole file (debt D-index-cap-scale). Not verify.MaxIndexBytes,
-// which caps another file, the project index of verify.
+// and the time of a hook. The cap does not grow with the repository: an
+// index over it is refused until a read path exists that does not decode
+// the whole file. Not verify.MaxIndexBytes, which caps another file, the
+// project index of verify.
 const MaxGraphFileBytes = 64 << 20
 
 // Save writes the store's records at h's commit to w under h, with the
