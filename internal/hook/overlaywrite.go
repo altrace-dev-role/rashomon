@@ -83,7 +83,21 @@ var (
 	// scan walks a var initialiser and every call it reaches, by name, and the
 	// name Overlay reaches pylite's regexps (TestRES2_NoPackageLevelRegexpCompile).
 	overlayResolve func(r lang.Resolver, rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error)
+	// overlayWire stands in for index.Wire in a test, so a test can register a
+	// reader this build does not wire, and is nil in the binary
+	// (wiredRegistry). It has no initialiser, for overlayResolve's reason:
+	// index.Wire reaches pylite's regexps by name.
+	overlayWire func() *lang.Registry
 )
+
+// wiredRegistry is a test's overlayWire when one is set, else the registry
+// index.Wire builds, per call (keptGoEdit).
+func wiredRegistry() *lang.Registry {
+	if overlayWire != nil {
+		return overlayWire()
+	}
+	return index.Wire()
+}
 
 // resolveOverlay is a test's overlayResolve when one is set, else r's own
 // Overlay: r is the reader the registry configured for the edit's root
@@ -339,7 +353,7 @@ func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, de
 	if !ok {
 		return "", keptGate{}
 	}
-	reg := index.Wire()
+	reg := wiredRegistry()
 	if _, ok := reg.For(root, rel); !ok {
 		if lang.NonSource(rel) {
 			return "", keptGate{}
