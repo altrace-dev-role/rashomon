@@ -1,5 +1,7 @@
 package lang
 
+import "slices"
+
 // Inferrer is the optional half of a language that lets `rashomon graph
 // index` write a configuration for a repository that has none: the names of
 // the manifest files that mark one of its projects, and the rule that reads
@@ -36,5 +38,14 @@ type Left struct{ Path, Why string }
 // Inferrers is the registered resolvers that are Inferrers, in the order
 // they were registered, each language once.
 func (g *Registry) Inferrers() []Inferrer {
-	return nil
+	var out []Inferrer
+	var seen []string
+	for _, e := range g.es {
+		i, ok := e.r.(Inferrer)
+		if l := e.r.Lang(); ok && !slices.Contains(seen, l) {
+			out = append(out, i)
+			seen = append(seen, l)
+		}
+	}
+	return out
 }
