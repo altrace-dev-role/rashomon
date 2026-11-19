@@ -393,3 +393,83 @@ func TestUnreadConfig_EachReasonSaysItsOwnWords(t *testing.T) {
 		t.Errorf("an unprintable kind's line reads %q; want the language's files named", line)
 	}
 }
+
+// goEditOut is a Go edit of the fixture's file as the hook runs it: the
+// PreToolUse, the file as the tool left it, the PostToolUse with its Close
+// and Flush, then the steer step. It returns the steer step's bytes and the
+// session log's bytes, the repository's path in the one and its id in the
+// other (the log header's repo) each written as a word of its own: those
+// are the only bytes that name the fixture's directory.
+func goEditOut(f *ovFix) (steerOut, logged []byte) {
+	f.t.Helper()
+	in := f.edit("func Old() {}", "func Old() {}\n\nfunc Added() {}")
+	f.pre("toolu_cfg", "Edit", in)
+	after := "package pkg\n\nfunc Old() {}\n\nfunc Added() {}\n\nfunc OnDisk() {}\n"
+	if err := os.WriteFile(f.file, []byte(after), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	p := NewPost(f.st, time.Now)
+	p.Close(&Signals{}, p.Capture(strings.NewReader(f.payload("PostToolUse", "toolu_cfg", "Edit", in))))
+	if err := p.Flush(); err != nil {
+		f.t.Fatal(err)
+	}
+	steerOut = bytes.ReplaceAll(p.Steer(stEnv(0)), []byte(f.repo), []byte("repo"))
+	b, err := os.ReadFile(f.logPath())
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return steerOut, bytes.ReplaceAll(b, []byte(f.rid), []byte("rid"))
+}
+
+// TestUnreadConfig_AGoEditIsByteEqualWhilePythonsConfigIsUnread: under the
+// fixture's index, a Go edit prints the same bytes and writes the same
+// session log, its declared and its landed group, whether the Python
+// configuration (index.ConfigFile) is absent or refused for four reasons of
+// the closed set: a directory, past the limit, a stray word, units a
+// string. Each refusal is real: the wired registry's Claim of a .py file
+// under the same root returns it. The configuration is the Python reader's
+// alone, and a Claim runs only the claiming reader's step. Break: run every
+// reader's step on a Claim (the Go edit is refused for the Python file and
+// keeps no landed group), or keep another reader's refusal on the gate
+// (the Go edit says the Python file was not read).
+func TestUnreadConfig_AGoEditIsByteEqualWhilePythonsConfigIsUnread(t *testing.T) {
+	base := newOvFix(t, "1\n")
+	if _, ok, err := index.Wire().Claim(base.repo, "inv/a.py"); !ok || err != nil {
+		t.Fatalf("premise: with no configuration the .py Claim = %v, %v; want it claimed", ok, err)
+	}
+	baseSteer, baseLog := goEditOut(base)
+	if groups, _, _ := base.read(); len(groups) != 2 {
+		t.Fatalf("premise: with no configuration the Go edit kept %d groups; want the declared and the landed", len(groups))
+	}
+	for _, c := range []struct {
+		name  string
+		write func(cfg string) error
+		want  lang.Reason
+	}{
+		{"a directory", func(cfg string) error { return os.Mkdir(cfg, 0o755) }, lang.NotRegular},
+		{"past the limit", func(cfg string) error {
+			return os.WriteFile(cfg, []byte(`{"units":[]}`+strings.Repeat(" ", index.MaxConfigBytes)), 0o644)
+		}, lang.OverCap},
+		{"a stray word", func(cfg string) error { return os.WriteFile(cfg, []byte("units: [inv]\n"), 0o644) }, lang.NotJSON},
+		{"units a string", func(cfg string) error { return os.WriteFile(cfg, []byte(`{"units":"inv"}`), 0o644) }, lang.WrongShape},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newOvFix(t, "1\n")
+			if err := c.write(filepath.Join(f.repo, filepath.FromSlash(index.ConfigFile))); err != nil {
+				t.Fatal(err)
+			}
+			_, _, err := index.Wire().Claim(f.repo, "inv/a.py")
+			var rf *lang.Refusal
+			if !errors.As(err, &rf) || rf.File != index.ConfigFile || rf.Reason != c.want {
+				t.Fatalf("premise: the .py Claim's error is %v; want a refusal of %s, reason %d", err, index.ConfigFile, c.want)
+			}
+			gotSteer, gotLog := goEditOut(f)
+			if !bytes.Equal(gotSteer, baseSteer) {
+				t.Errorf("the Go edit printed %q; with no configuration it printed %q", gotSteer, baseSteer)
+			}
+			if !bytes.Equal(gotLog, baseLog) {
+				t.Errorf("the Go edit's session log differs from the one with no configuration:\n%s\nwant:\n%s", gotLog, baseLog)
+			}
+		})
+	}
+}
