@@ -33,11 +33,12 @@ func TestKinds_ARowIsNonSource(t *testing.T) {
 
 // TestKinds_AProgramKindIsNotNonSource: a kind whose files are a
 // program, read here or not, is not a row, so an edit of one that no
-// resolver claims is disclosed; so is a kind the table has never heard of.
-// Break: invert the answer.
+// resolver claims is disclosed; so is a kind the table has never heard of,
+// and a build program whose name ends in a row's extension
+// (CMakeLists.txt). Break: invert the answer, or key CMakeLists.txt by .txt.
 func TestKinds_AProgramKindIsNotNonSource(t *testing.T) {
 	for _, rel := range []string{"a.go", "a.py", "web/a.ts", "run.sh", "q.sql", "Makefile", "build/Dockerfile", "README",
-		"a.MD", "x.unknownkind"} {
+		"a.MD", "x.unknownkind", "build/CMakeLists.txt"} {
 		if NonSource(rel) {
 			t.Errorf("NonSource(%q) = true, want false", rel)
 		}
@@ -46,11 +47,14 @@ func TestKinds_AProgramKindIsNotNonSource(t *testing.T) {
 
 // TestKinds_KeyIsTheExtensionElseTheBaseName: the key is the final
 // element's extension with its dot, else its base name, whatever the
-// directories hold. Break: key every path by its base name.
+// directories hold; a named program (namedPrograms) keys as its name, so a
+// line that names the kind names CMakeLists.txt, not .txt. Break: key every
+// path by its base name, or check the name after the extension.
 func TestKinds_KeyIsTheExtensionElseTheBaseName(t *testing.T) {
 	for rel, want := range map[string]string{
 		"a/b/c.tar.gz": ".gz", "go.mod": ".mod", "notes.md": ".md", ".gitignore": ".gitignore",
 		"x/Makefile": "Makefile", "dir.v2/LICENSE": "LICENSE", "LICENSE": "LICENSE", "docs/md": "md",
+		"build/CMakeLists.txt": "CMakeLists.txt",
 	} {
 		if got := KindKey(rel); got != want {
 			t.Errorf("KindKey(%q) = %q, want %q", rel, got, want)
