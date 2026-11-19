@@ -497,11 +497,12 @@ jobs:
   # this is the only job that runs it (test-11). The tests are the store's
   # that build on Windows and do not skip there: the one about reading past
   # a held lock (TestReadRunConsistent_RespectsAHeldLock) is left out,
-  # because Windows' mandatory locks refuse that read and it skips.
+  # because Windows' mandatory locks refuse that read and it skips. The job
+  # also runs rootio's CreateFile tests (SETUP1), a write path of its own.
   lock-windows:
     name: Lock contract (windows)
     runs-on: windows-latest
-    # Thirteen store tests; the bound is DEL-17's.
+    # Fifteen store tests and nine rootio tests; the bound is DEL-17's.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -541,6 +542,31 @@ jobs:
           for t in $TESTS; do
             grep -q -- "--- PASS: $t " lock-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
           done
+
+      # rootio's CreateFile tests (SETUP1): the create by hard link that graph
+      # index writes its inferred configuration through ships on Windows, and
+      # no other job runs it there. The same check, every name PASS, and no
+      # SKIP line at all: CF7's link cases are subtests, and a subtest that
+      # skips leaves its parent's PASS line standing.
+      - name: CreateFile tests
+        shell: bash
+        env:
+          TESTS: >-
+            TestSETUP1_CF1_CreateFileWritesWhereNothingIs
+            TestSETUP1_CF2_CreateFileLeavesAFileThereAndNoTemporary
+            TestSETUP1_CF3_CreateFileLeavesADirectoryThere
+            TestSETUP1_CF4_ALinkThatFailsWritesNothing
+            TestSETUP1_CF5_CreateFileRefusesAWriteOverMax
+            TestSETUP1_CF6_AFailedWriteLeavesNothing
+            TestSETUP1_CF7_CreateFileLeavesALinkAsItIs
+            TestSETUP1_CF8_ARemovalThatFailsAfterTheLinkNamesTheLeftover
+            TestSETUP1_CF9_AParentThatIsALinkRefusesTheCreate
+        run: |
+          go test ./internal/rootio -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee create-windows.txt
+          for t in $TESTS; do
+            grep -q -- "--- PASS: $t " create-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
+          done
+          if grep -- "--- SKIP" create-windows.txt; then echo "::error::a CreateFile test skipped on Windows"; exit 1; fi
 
   # pgraph/ is a module of its own (pgraph/go.mod), so the `./...` of the test
   # job and of every other job stops at its directory: without this job its

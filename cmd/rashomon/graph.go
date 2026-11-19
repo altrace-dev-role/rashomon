@@ -79,7 +79,7 @@ func graphIndex(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := index.ReadConfig(root)
+	cfg, err := graphConfig(root, stdout)
 	if err != nil {
 		return err
 	}
