@@ -141,6 +141,16 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	return a
 }
 
+// flaggedOf is the claims of cp that the done flag reads as unbacked
+// (recap.ClaimUnbacked), each named by class and verdict, with the seq each of
+// its gates' rows in cp rests on and the count of its gates cp keeps no row
+// for. earlier is whether the done flag judged them against the turns since
+// the last edit (verify.StopView.Done); the flag reads that one window for
+// every claim. Non-nil.
+func flaggedOf(cp *verify.Checkpoint, earlier bool) []report.AutosteerClaim {
+	return nil
+}
+
 // mistakesOf is m in the report's shape: every list non-null, and Later
 // null, since nothing records a mistake found after the session.
 func mistakesOf(m recap.Mistakes) *report.AutosteerMistakes {

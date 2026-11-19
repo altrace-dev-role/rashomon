@@ -86,6 +86,10 @@ var hostBearing = map[string]bool{
 	"autosteer.mistakes.reached[].why":          false,
 	"autosteer.mistakes.unsettled[].id":         false,
 	"autosteer.mistakes.unsettled[].why":        false,
+	// The flagged claims (item 8): a claim class and a verdict, both closed
+	// words; the claim's gates are held as seqs, never by name.
+	"autosteer.flagged[].class":   false,
+	"autosteer.flagged[].verdict": false,
 	// The knowledge block (REPORT1b): the project root and each bound spec's
 	// path are the two names it holds (true, above). The rest are session
 	// ids, gate names, lesson ids and tiers, trust words, digests, the

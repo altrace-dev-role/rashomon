@@ -35,6 +35,7 @@ type TextOption func(*textOptions)
 type textOptions struct {
 	chain    bool
 	timeline bool
+	ids      bool
 }
 
 // WithChain expands the causal view from a count into the per-call listing.
@@ -54,6 +55,15 @@ func WithChain() TextOption {
 // line per call. JSON always carries it.
 func WithTimeline() TextOption {
 	return func(o *textOptions) { o.timeline = true }
+}
+
+// WithIDs lists the tool-use ids of the calls declared without an execution
+// and of the calls run differently from how they were declared. Off by
+// default: each list is one id per call, which a reader of the text does not
+// read, so without it each says its count and that --ids lists them. The
+// chain view lists ids under WithChain alone. JSON always carries them.
+func WithIDs() TextOption {
+	return func(o *textOptions) { o.ids = true }
 }
 
 // Text renders a report for a terminal.
