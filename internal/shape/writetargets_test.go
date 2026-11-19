@@ -57,9 +57,10 @@ func TestWT1_RedirectionOperand(t *testing.T) {
 // TestWT2_InPlaceEditorOperands: an editor its stage arms names its files, one
 // row per inPlaceEditors key: sed's after the script, whether -e, -f or the
 // first operand gives it; perl's after -e or the program file; a formatter's
-// every operand but its arming word. go fmt and cargo fmt take packages and
-// name nothing. Break: report sed's script or perl's program file, or ruff's
-// format, as a target.
+// every operand but ruff's subcommand, and after -- a word spelled like the
+// arming flag too. go fmt and cargo fmt take packages and name nothing.
+// Break: report sed's script or perl's program file, or ruff's format, as a
+// target.
 func TestWT2_InPlaceEditorOperands(t *testing.T) {
 	checkWT(t, []wtRow{
 		{"sed -i -e s/x/y/ a.go", []string{"a.go"}, true},
@@ -75,6 +76,7 @@ func TestWT2_InPlaceEditorOperands(t *testing.T) {
 		{"cargo fmt", nil, false},
 		{"ruff format a.py", []string{"a.py"}, true},
 		{"prettier --write a.ts", []string{"a.ts"}, true},
+		{"prettier --write -- -w", []string{"-w"}, true},
 		{"clang-format -i a.cc", []string{"a.cc"}, true},
 		{"eslint --fix a.js", []string{"a.js"}, true},
 		{"black a.py", []string{"a.py"}, true},
