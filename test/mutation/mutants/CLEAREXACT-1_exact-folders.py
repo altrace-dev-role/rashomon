@@ -10,8 +10,11 @@
 X = "internal/store/exactdir.go"
 C = "internal/store/clearfolder.go"
 
+# The type check is kept and made never true, so fi stays read and the
+# package still compiles.
 m("CLEAREXACT-1 a link or a file at a level is taken as a folder", X,
-  "\t\tif fi.Mode().Type() != fs.ModeDir {\n", "\t\tif false {\n",
+  "\t\tif fi.Mode().Type() != fs.ModeDir {\n",
+  "\t\tif fi.Mode().Type() != fs.ModeDir && false {\n",
   "TestMkdirExact_RefusesALinkOrAFileAtAnyLevel")
 
 m("CLEAREXACT-1 another case of a name at an exact level is taken", X,
