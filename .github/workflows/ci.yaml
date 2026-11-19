@@ -918,3 +918,133 @@ jobs:
         with:
           version: "v2.18.2"  # The release job's pin.
           args: release --snapshot --clean
+
+  # PY-REFUSED1 job 4, evidence only. This job rides a scratch pull request
+  # whose base is as/py-refused1 and which is never merged; the if: below
+  # keeps it to that one branch. On a Go tree, where no file is refused, the
+  # binary built from PR 324's head writes the same index and prints the same
+  # briefs as the binary built from the tree PR 324 lands on, byte for byte
+  # once durations are masked. MAIN_SHA is the head of PR 331, whose tree main
+  # has when PR 324 lands; BRANCH_SHA is PR 324's head; between them lie PR
+  # 324's own fourteen files, checked below before anything is compared.
+  graph-control:
+    name: Graph control (PY-REFUSED1 job 4, evidence only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.head_ref == 'as/py-refused1-job4'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Both pinned commits must be in the clone.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # Every step prints its rc; the job fails when any step failed. Each
+      # equality has a line that shows it compares content: the header's
+      # record count, the masked duration in the index line, an absence
+      # reason, and a brief with a text.
+      - name: Two binaries over one Go tree
+        shell: bash
+        env:
+          MAIN_SHA: f470a77011aaf9fef6c2162b708c695cfa9f80af
+          BRANCH_SHA: cfe2fed2d92af08a06ccbccca01d7919e3e79776
+        run: |
+          set -uo pipefail
+          J="$RUNNER_TEMP/job4"
+          mkdir -p "$J"
+          failed=0
+          step() { echo "job-4: step $1 rc $2"; [ "$2" -eq 0 ] || failed=1; }
+          same() { if cmp -s "$1" "$2"; then step "$3" 0; else diff "$1" "$2" | head -20; step "$3" 1; fi; }
+          go version | tee "$J/go-version.txt"
+          grep -q ' go1\.27\.4 ' "$J/go-version.txt"; step go-pin $?
+          git cat-file -e "$MAIN_SHA^{commit}"; step main-commit-present $?
+          git cat-file -e "$BRANCH_SHA^{commit}"; step branch-commit-present $?
+          git diff --name-only "$MAIN_SHA" "$BRANCH_SHA" > "$J/between.txt"
+          cat "$J/between.txt"
+          test "$(wc -l < "$J/between.txt")" -eq 14; step fourteen-files $?
+          build() { # build NAME FULLSHA
+            local name=$1 sha=$2 src=$J/src-$1 out=$J/bin-$1 rev mod brc
+            git worktree add -q --detach "$src" "$sha" || return 1
+            mkdir -p "$out"
+            (cd "$src" && go build -o "$out/rashomon" ./cmd/rashomon); brc=$?
+            if [ "$brc" -ne 0 ]; then git worktree remove --force "$src"; return 1; fi
+            rev=$(go version -m "$out/rashomon" | awk '$1 == "build" && $2 ~ /^vcs.revision=/ { sub(/^vcs.revision=/, "", $2); print $2 }')
+            mod=$(go version -m "$out/rashomon" | awk '$1 == "build" && $2 ~ /^vcs.modified=/ { sub(/^vcs.modified=/, "", $2); print $2 }')
+            git worktree remove --force "$src"
+            printf '%s %s vcs.revision=%s vcs.modified=%s\n' "$name" "$(sha256sum "$out/rashomon" | cut -c1-16)" "$rev" "$mod"
+            [ "$rev" = "$sha" ] && [ "$mod" = "false" ]
+          }
+          build main "$MAIN_SHA"; step build-main $?
+          build branch "$BRANCH_SHA"; step build-branch $?
+          if [ "$failed" -ne 0 ]; then echo "job-4: end, no binary pair"; exit 1; fi
+          # mask FILE: the same text with each duration replaced by T.
+          mask() {
+            python3 -I -c '
+          import re, sys
+          s = open(sys.argv[1], encoding="utf-8").read()
+          s = re.sub(r"(record\(s\) in )\S+(; pipeline: )\S+", r"\1T\2T", s)
+          s = re.sub(r"(elapsed: )\S+", r"\1T", s)
+          s = re.sub(r"( in )[0-9][0-9.a-z]*( -> )", r"\1T\2", s)
+          sys.stdout.write(s)' "$1"
+          }
+          T=$J/tree
+          git worktree add -q --detach "$T" "$MAIN_SHA"; step tree $?
+          for name in main branch; do
+            (cd "$T" && "$J/bin-$name/rashomon" graph index) > "$J/index-$name.out" 2>&1; step "index-$name" $?
+            cat "$J/index-$name.out"
+            cp "$T/.rashomon/graph.jsonl" "$J/graph-$name.jsonl"
+            mask "$J/index-$name.out" > "$J/index-$name.masked"
+          done
+          sha256sum "$J/graph-main.jsonl" "$J/graph-branch.jsonl"
+          head -c 400 "$J/graph-main.jsonl"; echo
+          same "$J/graph-main.jsonl" "$J/graph-branch.jsonl" graph-jsonl-equal
+          records=$(head -1 "$J/graph-main.jsonl" | python3 -I -c 'import json, sys; print(json.loads(sys.stdin.readline())["records"])')
+          lines=$(wc -l < "$J/graph-main.jsonl")
+          echo "job-4: header records $records; lines $lines"
+          [ "${records:-0}" -gt 1000 ] && [ "$lines" -eq $((records + 1)) ]; step graph-not-vacuous $?
+          same "$J/index-main.masked" "$J/index-branch.masked" index-stdout-equal
+          grep -q -E ' in T -> \.rashomon/graph\.jsonl; repo ' "$J/index-main.masked"; step index-not-vacuous $?
+          PROMPTS=(
+            "where does writeGraphEvidence write the evidence file"
+            "rename frobnicateWidget to frobnicateGadget everywhere"
+            "add a refund handler to internal/billing/refund.go"
+            "make it return an error instead of panicking"
+            "change index.Build so that a file the extractor cannot parse is skipped"
+          )
+          absent=0
+          withheld=0
+          texts=0
+          for i in "${!PROMPTS[@]}"; do
+            for sc in idf tf; do
+              for name in main branch; do
+                "$J/bin-$name/rashomon" graph brief "$T" --prompt "${PROMPTS[$i]}" "--$sc" > "$J/brief-$i-$sc-$name.out" 2>&1
+                step "brief-$i-$sc-$name" $?
+                mask "$J/brief-$i-$sc-$name.out" > "$J/brief-$i-$sc-$name.masked"
+              done
+              same "$J/brief-$i-$sc-main.masked" "$J/brief-$i-$sc-branch.masked" "brief-$i-$sc-equal"
+              b=$J/brief-$i-$sc-branch.out
+              if grep -q -E " is not in the index| is in no unit|no unit is named|' names no unit|no unit names the target|no unit names the head '|' stands for a thing no clause names| is not declared in | is declared in none of the |no one unit has the segment " "$b"; then absent=$((absent + 1)); fi
+              if grep -q "withheld:" "$b"; then withheld=$((withheld + 1)); fi
+              first=$(awk 'p { print; exit } /^brief:$/ { p = 1 }' "$b")
+              if [ -n "$first" ] && [ "$first" != "(empty)" ]; then texts=$((texts + 1)); fi
+            done
+          done
+          echo "job-4: of 10 briefs: an absence reason $absent; withheld $withheld; a brief text $texts"
+          [ "$absent" -gt 0 ]; step not-vacuous $?
+          [ "$withheld" -eq 0 ]; step none-withheld $?
+          [ "$texts" -gt 0 ]; step brief-text-not-vacuous $?
+          sed -n '1,40p' "$J/brief-1-idf-branch.out"
+          E0=$(mktemp -d)
+          for name in main branch; do
+            printf 'job-4: no index, %s: ' "$name"; "$J/bin-$name/rashomon" graph brief "$E0" --prompt x 2>&1 | head -2; echo "rc ${PIPESTATUS[0]}"
+          done
+          rmdir "$E0"
+          git worktree remove --force "$T"; step tree-removed $?
+          echo "job-4: end; failed $failed"
+          exit $failed
