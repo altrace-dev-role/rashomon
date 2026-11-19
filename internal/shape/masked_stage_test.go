@@ -34,15 +34,16 @@ func TestMO1_RulesVersionIsEleven(t *testing.T) {
 	}
 }
 
-// TestMO1_RulesVersionIsThirteen: the build's rules version, a literal and
+// TestMO1_RulesVersionIsFourteen: the build's rules version, a literal and
 // not a comparison with the pins' own key, so a bump is made here by hand.
 // Eleven named the runner and the masking stage (MASKED-OUTCOME1: runner_name
 // and masked_by; OutputOutcomeRulesVersion), twelve added the lint, typecheck
-// and scan lists (C8), and thirteen reads a stage that only prints as writing
-// nothing (card F2c: printOnly), keeping C8's lists.
-func TestMO1_RulesVersionIsThirteen(t *testing.T) {
-	if RulesVersion != 13 {
-		t.Errorf("RulesVersion = %d, want 13 (F2c: a stage that only prints writes nothing)", RulesVersion)
+// and scan lists (C8), thirteen reads a stage that only prints as writing
+// nothing (card F2c: printOnly), keeping C8's lists, and fourteen reads ruff
+// check's --fix and --fix-only as writing in place (RH-11).
+func TestMO1_RulesVersionIsFourteen(t *testing.T) {
+	if RulesVersion != 14 {
+		t.Errorf("RulesVersion = %d, want 14 (RH-11: ruff check --fix and --fix-only write)", RulesVersion)
 	}
 	if OutputOutcomeRulesVersion != 11 {
 		t.Errorf("OutputOutcomeRulesVersion = %d, want 11: records written at 11 already carry masked_by", OutputOutcomeRulesVersion)
