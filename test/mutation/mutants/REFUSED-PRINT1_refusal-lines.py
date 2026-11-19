@@ -45,3 +45,7 @@ m("refusalLine prints the reason of a refusal with no line as it is", "cmd/rasho
   "\treturn fmt.Sprintf(\"warning: %s not indexed: %s\\n\", shown(f.Path), shown(f.Reason))\n",
   "\treturn fmt.Sprintf(\"warning: %s not indexed: %s\\n\", shown(f.Path), f.Reason)\n",
   "TestRefusalLine_QuotesWhatIsNotPrintable")
+m("refusalLine prints the path as it is", "cmd/rashomon/graph.go",
+  "\t\treturn fmt.Sprintf(\"warning: %s:%d not indexed: %s\\n\", shown(f.Path), f.Line, shown(f.Reason))\n",
+  "\t\treturn fmt.Sprintf(\"warning: %s:%d not indexed: %s\\n\", f.Path, f.Line, shown(f.Reason))\n",
+  "TestGraphIndex_ARefusalLineQuotesAFormatRune")
