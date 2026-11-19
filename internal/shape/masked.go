@@ -70,8 +70,9 @@ const (
 // that reads and prints (`cat a; echo ---; date`) has may_write false;
 // version 14 reads ruff check's --fix and --fix-only as writing in place
 // (inPlaceEditors), so `ruff check --fix a.py` has may_write true and names
-// a.py, not ruff's check word, as its written path, while --diff beside
-// either still reads --
+// a.py as its written path: ruff's first operand, its subcommand check or
+// format, names no file, a later operand of either name does, and --diff
+// beside either flag writes nothing back and reads as no write --
 // and add the new pins to the tests that hold one (rules_version_test.go here,
 // in report and in hook): a table's pin fails when the table changes without
 // a bump, the matcher pin when a field moves on one of its corpus lines

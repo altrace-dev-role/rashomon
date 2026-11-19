@@ -319,14 +319,15 @@ var writeTargetPins = map[int]string{
 	11: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 	12: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); this table or corpus is unchanged
 	13: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); no write target moves on a corpus line
-	14: "a847794ecc4fea75eb3bb3a771e320a51f5a671d0740a450e10945105887016a", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place and names no file for ruff's check word (RH-11); the corpus gains ruff check --fix a.py and --fix --diff a.py
+	14: "b1d9cc5f26344d614ac11a09134db7c054a63b002d3343ce51be7970207f8639", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place and names no file for ruff's subcommand, its first operand, while a later check or format and a word after -- are named (RH-11); the corpus gains ruff check --fix a.py and --fix --diff a.py and six rows for a path that spells the subcommand or follows --
 }
 
 // writeTargetCorpus is the lines writeTargetPins digests, a frozen copy of the
 // rows TestWT1 to TestWT13 held when version 10 was made, one or more per
 // rule, then the rows a bump's tests added (14: TestRH11's ruff check --fix
-// and --fix --diff). A row a test gains later is not copied here without a
-// bump.
+// and --fix --diff and its rows for a path that spells the subcommand, and
+// TestWT2_'s prettier --write -- -w). A row a test gains later is not copied
+// here without a bump.
 var writeTargetCorpus = []string{
 	"cat a.txt > b.log", "cat a.txt >| b.log", "cat a.txt &> b.log", "cat a.txt 2> err.log", "cat <> a.log",
 	"cat a.txt >&2", "cat < a.txt", "cat a.txt > $out", "echo x > a.log", "make > build.log",
@@ -342,6 +343,8 @@ var writeTargetCorpus = []string{
 	"touch a && cd sub && touch b", "cat curl | cat -o",
 
 	"ruff check --fix a.py", "ruff check --fix --diff a.py",
+	"ruff check --fix check", "ruff format check", "ruff check --fix format", "ruff format format",
+	"ruff check --fix -- --fix", "prettier --write -- -w",
 }
 
 // writeTargetDigest digests, for each line of writeTargetCorpus in order, the
