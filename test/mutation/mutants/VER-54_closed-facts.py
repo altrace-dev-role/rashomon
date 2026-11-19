@@ -130,11 +130,16 @@ m("VER-54 a closed reason has no state", "internal/verify/tosteer_vocab.go",
 m("VER-54 a quote HMAC is valid without its prefix", "internal/verify/finding.go",
   "\tif !strings.HasPrefix(s, QuoteHMACPrefix) {\n\t\treturn false\n\t}\n\treturn Digest(s[len(QuoteHMACPrefix):]).Valid()\n",
   "\treturn Digest(s).Valid()\n", "TestVER54d_")
-# The break types the field as any: GateOutput's one writer assigns a
-# *store.GateOutput, so a bare string would not build there (a mutant is one file).
-m("VER-54 a gate run's output classification is a free string again", "internal/verify/snapshot.go",
-  "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n", "\tGateOutput any               `json:\"gate_output\"`\n", "TestVER11b_")
-IMPORTS["VER-54 a gate run's output classification is a free string again"] = ("internal/verify/snapshot.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '')
+# RETIRED, did not compile: "VER-54 a gate run's output classification is a
+# free string again", which typed RunRef.GateOutput as any. Its readers
+# (steer.go reads .Parser; gates.go assigns the *store.GateOutput the
+# execution holds) are in other files, and a mutant is one file, so no retyping
+# of the field alone builds. The break below keeps the field and adds a bare
+# string twin of the classification beside it, as the first row of this file
+# does for the gate id; the test's key list and field type hold it.
+m("VER-54 a gate run carries its output classification as free text", "internal/verify/snapshot.go",
+  "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n",
+  "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n\tOutputKind string            `json:\"output_kind\"`\n", "TestVER11b_")
 m("VER-54 a path segment with a leading '-' is valid", "internal/verify/finding.go",
   '\t\tif el == "" || el == "." || el == ".." || el[0] == \'-\' {\n',
   '\t\tif el == "" || el == "." || el == ".." {\n', "TestVER54d_")
