@@ -42,11 +42,12 @@ func TestBuild_ARefusedFileIsAGapNotAFailure(t *testing.T) {
 }
 
 // TestBuild_AnUnreadableFileIsAGap (e1): a claimed file that cannot be
-// read (here a link to nothing) is a gap of the same kind, its reason the
-// read error's words. Break: a read error fails the index.
+// read (here a relative link to nothing inside the repository) is a gap
+// of the same kind, its reason the read error's words. Break: a read
+// error fails the index.
 func TestBuild_AnUnreadableFileIsAGap(t *testing.T) {
 	root := shapes(t)
-	if err := os.Symlink(filepath.Join(root, "py", "nowhere.py"), filepath.Join(root, "py", "gone.py")); err != nil {
+	if err := os.Symlink("nowhere.py", filepath.Join(root, "py", "gone.py")); err != nil {
 		t.Fatal(err)
 	}
 	r, err := Build(root, "c1", twoLangs)
