@@ -225,7 +225,7 @@ func python(c Config) pylite.Resolver {
 func Wire() *lang.Registry {
 	var reg lang.Registry
 	reg.RegisterConfigured(gopg.Resolver{}, func(root string) (lang.Resolver, error) {
-		mod := gopg.ReadModulePath(root)
+		mod, _ := gopg.ReadModulePath(root)
 		if mod == "" {
 			return gopg.Resolver{}, nil
 		}

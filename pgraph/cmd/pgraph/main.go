@@ -35,9 +35,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,9 +97,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	if *hook {
-		if root, err := hookSync(ctx, hookStart(hookInput)); err != nil {
-			line, _, _ := strings.Cut(fitted(sanitize(err.Error(), root, root)), "\n")
-			fmt.Fprintln(stderr, line)
+		if _, err := hookSync(ctx, hookStart(hookInput)); err != nil {
+			fmt.Fprintln(stderr, hookLine(ctx, err))
 		}
 		return 0
 	}
@@ -250,7 +251,7 @@ func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
 	}
 	enc := l.Encode()
 	if len(enc) > pgraph.MaxLogBytes {
-		return synced{}, fmt.Errorf("the log would be %d bytes, over the %d byte cap; nothing was written", len(enc), pgraph.MaxLogBytes)
+		return synced{}, fmt.Errorf("the log would be %w; nothing was written", &overCapError{Size: int64(len(enc)), Max: pgraph.MaxLogBytes})
 	}
 	digests, err := pgraph.EncodeDigests(abs, progs)
 	if err != nil {
@@ -260,39 +261,69 @@ func syncLocked(ctx context.Context, abs, walk string) (synced, error) {
 	if err != nil {
 		return synced{}, err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	sd, err := stateDir(abs, true)
+	if err != nil {
 		return synced{}, err
 	}
-	if err := ignoreAll(dir); err != nil {
+	defer sd.Close()
+	if err := ignoreAll(sd); err != nil {
 		return synced{}, err
 	}
-	removeCut(dir)
-	if err := writeAtomic(logPath, enc); err != nil {
+	removeCut(sd)
+	if err := writeAtomic(sd, pgraph.LogFile, enc); err != nil {
 		return synced{}, err
 	}
-	if err := writeAtomic(filepath.Join(dir, pgraph.DigestsFile), digests); err != nil {
+	if err := writeAtomic(sd, pgraph.DigestsFile, digests); err != nil {
 		return synced{}, err
 	}
-	if err := writeAtomic(filepath.Join(dir, pgraph.SymbolsFile), symbols); err != nil {
+	if err := writeAtomic(sd, pgraph.SymbolsFile, symbols); err != nil {
 		return synced{}, err
 	}
-	return s, writeAtomic(filepath.Join(dir, walkFile), encodeWalk(walk, enc, digests, symbols))
+	return s, writeAtomic(sd, walkFile, encodeWalk(walk, enc, digests, symbols))
 }
 
-// removeCut removes from dir the temp files of a sync cut off inside
+// stateDir is abs's .pgraph held as a root, made first when create is set
+// and it is not there. Every write of a sync goes through it: an os.Root
+// resolves each name under the directory it holds, a step at a time with
+// O_NOFOLLOW, and follows a link only while it stays inside, so a .pgraph
+// committed as a link out of the tree is refused, not written through, and
+// no name is checked first and opened after. A link that stays inside abs
+// is followed. Mkdir never follows its last name, so a link there is left
+// for OpenRoot to refuse. WRITE-SAFE1 gives the root module's writes under
+// a clone root the same form; a change to one is a change to both.
+func stateDir(abs string, create bool) (*os.Root, error) {
+	r, err := os.OpenRoot(abs)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	if create {
+		if err := r.Mkdir(pgraph.StateDir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+			return nil, err
+		}
+	}
+	return r.OpenRoot(pgraph.StateDir)
+}
+
+// removeCut removes from sd the temp files of a sync cut off inside
 // writeAtomic, which Claude Code does to a background hook still running
 // when the session exits: regular files named ".<name>.tmp-*" for each file
 // writeAtomic writes. The caller holds the root lock, so no live sync has
 // one open. A file it cannot remove stays for the next sync.
-func removeCut(dir string) {
-	ents, err := os.ReadDir(dir)
+func removeCut(sd *os.Root) {
+	d, err := sd.Open(".")
+	if err != nil {
+		return
+	}
+	ents, err := d.ReadDir(-1)
+	d.Close()
 	if err != nil {
 		return
 	}
 	for _, e := range ents {
 		for _, name := range []string{pgraph.LogFile, pgraph.DigestsFile, pgraph.SymbolsFile, walkFile} {
 			if e.Type().IsRegular() && strings.HasPrefix(e.Name(), "."+name+".tmp-") {
-				_ = os.Remove(filepath.Join(dir, e.Name()))
+				_ = sd.Remove(e.Name())
 			}
 		}
 	}
@@ -301,20 +332,21 @@ func removeCut(dir string) {
 // readLog is the log at path, named name in an error, or an empty one where
 // there is none. A log that does not decode is an error and is left as it
 // is: its history is the record of what was retracted, and a sync does not
-// start one over silently.
+// start one over silently. The log is read by readCapped, so a named pipe
+// or a link at the name is refused and never opened (a pipe would hold the
+// sync in its open, a link to a device could read without end), and a log
+// over the cap is refused on its size before any read.
 func readLog(path, name string) (*pgraph.Log, error) {
-	fi, err := os.Stat(path)
-	if errors.Is(err, fs.ErrNotExist) {
+	b, err := readCapped(path, pgraph.MaxLogBytes)
+	var oc *overCapError
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return &pgraph.Log{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if fi.Size() > pgraph.MaxLogBytes {
-		return nil, fmt.Errorf("%s is %d bytes, over the %d byte cap", name, fi.Size(), pgraph.MaxLogBytes)
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
+	case errors.As(err, &oc):
+		return nil, fmt.Errorf("%s is %w", name, oc)
+	case errors.Is(err, errNotRegular), errors.Is(err, errReplaced):
+		return nil, fmt.Errorf("%s is %w; move it aside to start a new log", name, errNotRegular)
+	case err != nil:
 		return nil, err
 	}
 	l, err := pgraph.DecodeLog(b)
@@ -337,11 +369,11 @@ func snapshot(root string, mods []string, progs []*pgraph.Program) string {
 	return "tree:" + hex.EncodeToString(h.Sum(nil))[:16]
 }
 
-// ignoreAll writes dir/.gitignore as "*" when there is none, so git leaves
+// ignoreAll writes sd's .gitignore as "*" when there is none, so git leaves
 // the directory out of a commit; one already there is the person's and is
 // left alone.
-func ignoreAll(dir string) error {
-	f, err := os.OpenFile(filepath.Join(dir, ".gitignore"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+func ignoreAll(sd *os.Root) error {
+	f, err := sd.OpenFile(".gitignore", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if errors.Is(err, fs.ErrExist) {
 		return nil
 	}
@@ -355,16 +387,21 @@ func ignoreAll(dir string) error {
 	return err
 }
 
-// writeAtomic replaces path with b through a temporary file in the same
-// directory and a rename, so a reader sees the old file or the new one,
-// never a torn one.
-func writeAtomic(path string, b []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+// writeAtomic replaces name in sd with b through a temporary file beside it
+// and a rename, so a reader sees the old file or the new one, never a torn
+// one. The rename replaces a link at name, never what it names.
+func writeAtomic(sd *os.Root, name string, b []byte) error {
+	f, tmp, err := createTemp(sd, name)
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
 	_, err = f.Write(b)
+	// The mode is set on the open file, never by its name: a change by name
+	// after the Close would change whatever file holds the name by then.
+	// createTemp makes the file 0600; pgraph's files are read as 0644.
+	if err == nil {
+		err = f.Chmod(0o644)
+	}
 	if err == nil {
 		err = f.Sync()
 	}
@@ -372,13 +409,25 @@ func writeAtomic(path string, b []byte) error {
 		err = cerr
 	}
 	if err == nil {
-		err = os.Chmod(tmp, 0o644)
-	}
-	if err == nil {
-		err = os.Rename(tmp, path)
+		err = sd.Rename(tmp, name)
 	}
 	if err != nil {
-		os.Remove(tmp)
+		sd.Remove(tmp)
 	}
 	return err
+}
+
+// createTemp is os.CreateTemp in sd, which an os.Root does not offer: a new
+// file ".<name>.tmp-" and a random number, made 0600 by an exclusive create
+// and made again under another number if one holds that name. removeCut
+// matches the same form.
+func createTemp(sd *os.Root, name string) (*os.File, string, error) {
+	for try := 0; ; try++ {
+		tmp := "." + name + ".tmp-" + strconv.FormatUint(uint64(rand.Uint32()), 10)
+		f, err := sd.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) && try < 10000 {
+			continue
+		}
+		return f, tmp, err
+	}
 }

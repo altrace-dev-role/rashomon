@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 const (
@@ -23,6 +24,17 @@ const (
 	// Schema is the row schema this package writes and reads.
 	Schema = 1
 )
+
+// MaxKnowledgeFileBytes caps each knowledge file ReadDir reads. The files
+// are an import's output inside a clone, so the clone controls them, and a
+// file over the cap is refused before its parse, never read in part: a
+// file cut short would decode as a broken one. The cap bounds what one
+// read may cost; it is not a size measured from one. A real ledger import
+// of 242 rows measured 382,982 bytes, and the cap holds 43.8 times that.
+// The same form as baseline.MaxGitFileBytes,
+// hook.MaxOverlayContentBytes and hook.MaxHashBytes. WriteFile does not
+// hold to it yet, so an import can write a file ReadDir refuses.
+const MaxKnowledgeFileBytes = 16 << 20
 
 // The row kinds (Part B6).
 const (
@@ -137,7 +149,11 @@ var prefixes = map[string]string{KindDecision: "dec", KindLesson: "les", KindInc
 func NodeID(kind, id string) graph.ID { return graph.ID(prefixes[kind] + ":" + id) }
 
 // ReadDir reads every .json file under root/Dir in name order; a missing
-// directory is no rows; a file under another schema is an error.
+// directory is no rows; a file under another schema is an error. Each file
+// is opened without blocking and read only if it is a regular file of at
+// most MaxKnowledgeFileBytes, so a named pipe or a link to a device never
+// holds the read (READ-SAFE1a R15) and a file over the cap is refused
+// before its parse (R21); either refusal names the file by its base name.
 func ReadDir(root string) ([]Row, error) {
 	es, err := os.ReadDir(filepath.Join(root, Dir))
 	if errors.Is(err, os.ErrNotExist) {
@@ -151,8 +167,13 @@ func ReadDir(root string) ([]Row, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(root, Dir, e.Name()))
-		if err != nil {
+		b, err := regfile.ReadCapped(filepath.Join(root, Dir, e.Name()), MaxKnowledgeFileBytes)
+		switch {
+		case errors.Is(err, regfile.ErrOverCap):
+			return nil, fmt.Errorf("knowledge: %s: over the %d byte cap", e.Name(), MaxKnowledgeFileBytes)
+		case errors.Is(err, regfile.ErrNotRegular):
+			return nil, fmt.Errorf("knowledge: %s: %w", e.Name(), regfile.ErrNotRegular)
+		case err != nil:
 			return nil, err
 		}
 		var f File
