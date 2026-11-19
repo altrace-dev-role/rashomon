@@ -10,9 +10,10 @@ import (
 )
 
 // Item 8 of the outside review (report.md :225 to :231): each session's
-// report starts with four lines, flagged claims, notes by pattern, when
-// checks were off, and how far to trust the record; the subagent list is
-// capped; the tool-id lists print under --ids.
+// report starts with four lines, the last Stop's strict claims not green
+// (the spec's flagged claims, whose decision no record keeps), notes by
+// pattern, when checks were off, and how far to trust the record; the
+// subagent list is capped; the tool-id lists print under --ids.
 
 // rh8Render is sess rendered alone through Text with opts.
 func rh8Render(t *testing.T, sess Session, opts ...TextOption) string {
@@ -67,7 +68,7 @@ func rh8Autosteer() *Autosteer {
 
 // TestRH8_LeadLinesFirst (item 8, report.md :225): the story opens with the
 // four lead lines in their order, before the last Stop's line, and the
-// flagged-claims and checks-off lines say what the record holds in their
+// strict-claims and checks-off lines say what the record holds in their
 // own words: a claim by class and verdict with its evidence seqs, "no gate"
 // where its gate has no row, which window judged it, and "last Stop only";
 // the gaps and an unrecorded start or end. Break: print the lead lines after
@@ -79,7 +80,7 @@ func TestRH8_LeadLinesFirst(t *testing.T) {
 	if len(story) < 5 {
 		t.Fatalf("story has %d lines, want the four lead lines and the last Stop's:\n%s", len(story), strings.Join(story, "\n"))
 	}
-	for i, prefix := range []string{"    flagged claims", "    notes delivered by pattern: ", "    checks off: ", "    trust: ", "    last Stop: "} {
+	for i, prefix := range []string{"    strict claims not green", "    notes delivered by pattern: ", "    checks off: ", "    trust: ", "    last Stop: "} {
 		if !strings.HasPrefix(story[i], prefix) {
 			t.Errorf("story line %d is %q, want it to start %q", i+1, story[i], prefix)
 		}
@@ -91,25 +92,25 @@ func TestRH8_LeadLinesFirst(t *testing.T) {
 		a    *Autosteer
 		want string
 	}{
-		{"not read", nil, "    flagged claims: not read"},
-		{"no Stop", &Autosteer{}, "    flagged claims: no Stop recorded"},
-		{"none flagged", stop(), "    flagged claims, last Stop only: none"},
+		{"not read", nil, "    strict claims not green: not read"},
+		{"no Stop", &Autosteer{}, "    strict claims not green: no Stop recorded"},
+		{"none listed", stop(), "    strict claims not green, last Stop only: none"},
 		{"one with its seqs, own turn", stop(AutosteerClaim{Class: "tests_pass", Verdict: "stale", Evidence: []int64{3, 5}}),
-			"    flagged claims, last Stop only: tests_pass stale (evidence #3, #5; judged on its own turn)"},
+			"    strict claims not green, last Stop only: tests_pass stale (evidence #3, #5; judged on its own turn)"},
 		{"no gate row, earlier window", stop(AutosteerClaim{Class: "done", Verdict: "red", NoGate: 1, EarlierWindow: true}),
-			"    flagged claims, last Stop only: done red (no evidence seq; no gate for 1; judged on an earlier turn's window)"},
+			"    strict claims not green, last Stop only: done red (no evidence seq; no gate for 1; judged on an earlier turn's window)"},
 		{"verdict words", stop(AutosteerClaim{Class: "build_ok", Verdict: "masked_inconclusive", Evidence: []int64{9}, NoGate: 2}),
-			"    flagged claims, last Stop only: build_ok masked inconclusive (evidence #9; no gate for 2; judged on its own turn)"},
+			"    strict claims not green, last Stop only: build_ok masked inconclusive (evidence #9; no gate for 2; judged on its own turn)"},
 		{"capped at four", stop(
 			AutosteerClaim{Class: "a", Verdict: "red", Evidence: []int64{1}}, AutosteerClaim{Class: "b", Verdict: "red", Evidence: []int64{2}},
 			AutosteerClaim{Class: "c", Verdict: "red", Evidence: []int64{3}}, AutosteerClaim{Class: "d", Verdict: "red", Evidence: []int64{4}},
 			AutosteerClaim{Class: "e", Verdict: "red", Evidence: []int64{5}}),
-			"    flagged claims, last Stop only: a red (evidence #1; judged on its own turn); b red (evidence #2; judged on its own turn); " +
+			"    strict claims not green, last Stop only: a red (evidence #1; judged on its own turn); b red (evidence #2; judged on its own turn); " +
 				"c red (evidence #3; judged on its own turn); d red (evidence #4; judged on its own turn); and 1 more"},
 	} {
 		s := sess
 		s.Autosteer = c.a
-		if got := rh8Line(t, rh8Story(t, rh8Render(t, s)), "    flagged claims"); got != c.want {
+		if got := rh8Line(t, rh8Story(t, rh8Render(t, s)), "    strict claims not green"); got != c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
 		}
 	}
@@ -117,8 +118,8 @@ func TestRH8_LeadLinesFirst(t *testing.T) {
 	omitted.ClaimsOmitted = 3
 	s := sess
 	s.Autosteer = omitted
-	if got, want := rh8Line(t, rh8Story(t, rh8Render(t, s)), "    flagged claims"),
-		"    flagged claims, last Stop only: none; 3 more not kept"; got != want {
+	if got, want := rh8Line(t, rh8Story(t, rh8Render(t, s)), "    strict claims not green"),
+		"    strict claims not green, last Stop only: none; 3 more not kept"; got != want {
 		t.Errorf("claims the checkpoint did not keep:\n got %q\nwant %q", got, want)
 	}
 
@@ -190,7 +191,7 @@ func TestRH8c_TrustLineOnlyPinnedClauses(t *testing.T) {
 		{"counts, not read", Coverage{State: "partial"}, []store.Gap{gap, gap}, 3, nil,
 			"    trust: coverage partial; 2 gaps; 3 skipped records; claims not read"},
 		{"no Stop", Coverage{}, nil, 0, &Autosteer{},
-			"    trust: coverage " + orUnknown("") + "; no gaps; no skipped records; claims not read"},
+			"    trust: coverage unknown; no gaps; no skipped records; claims not read"},
 	} {
 		sess := Session{SessionID: "s1", Coverage: c.cov, Gaps: c.gaps, SkippedRecords: c.skipped, Autosteer: c.a}
 		if got := rh8Line(t, rh8Story(t, rh8Render(t, sess)), "    trust: "); got != c.want {
@@ -276,5 +277,8 @@ func TestRH8f_ToolIdsBehindIdsFlag(t *testing.T) {
 	alone, both := rh8Render(t, chained, WithChain()), rh8Render(t, chained, WithChain(), WithIDs())
 	if !strings.Contains(alone, "toolu_c1") || alone != both {
 		t.Errorf("the chain view lists its ids under --chain alone, and --ids moves nothing in it:\n--chain:\n%s\n--chain --ids:\n%s", alone, both)
+	}
+	if !strings.Contains(alone, "\n      1  Bash (read)") || strings.Contains(alone, "toolu_c0") {
+		t.Errorf("the chain view names the declared call by its seq and never by its id toolu_c0:\n%s", alone)
 	}
 }

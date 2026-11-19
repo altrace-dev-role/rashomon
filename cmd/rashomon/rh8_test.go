@@ -12,6 +12,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/report/gather"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -115,11 +116,12 @@ func TestRH8d_BlockOnOneSessionReport(t *testing.T) {
 }
 
 // TestRH8g_FlaggedOfJoinsTheCheckpointGates (item 8): flaggedOf keeps the
-// claims the done flag reads as unbacked, in the checkpoint's order, each
-// with the seq its gate's row rests on (the last green run of a green gate,
-// the last run otherwise), ascending and once, "no gate" counted for a gate
-// the checkpoint keeps no row for, and the window mark on each. Break: keep a
-// backed claim, take the other seq of a row, or drop the count.
+// strict claims whose verdict is a gate state other than green, in the
+// checkpoint's order, each with the seq its gate's row rests on (the last
+// green run of a green gate, the last run otherwise), ascending and once, "no
+// gate" counted for a gate the checkpoint keeps no row for, and the window
+// mark on each. Break: keep a green claim, take the other seq of a row, or
+// drop the count.
 func TestRH8g_FlaggedOfJoinsTheCheckpointGates(t *testing.T) {
 	seq := func(n int64) *int64 { return &n }
 	cp := &verify.Checkpoint{
@@ -154,12 +156,12 @@ func TestRH8g_FlaggedOfJoinsTheCheckpointGates(t *testing.T) {
 }
 
 // TestRH8h_FlaggedClaimsFromTheCheckpoint (item 8): the replay reads no
-// final message, so the report's flagged claims are the checkpoint's, which
-// the live Stop wrote. "All tests pass." after a green go test and a later
-// edit is a strict tests_pass claim on a stale gate: flagged, its evidence
-// the go test call's seq, judged on its own turn; with a later turn that only
-// reads, judged on an earlier turn's window. Break: read v.Scan.Claims, or
-// drop the window mark.
+// final message, so the report's strict claims not green are the
+// checkpoint's, which the live Stop wrote. "All tests pass." after a green go
+// test and a later edit is a strict tests_pass claim on a stale gate: listed,
+// its evidence the go test call's seq, judged on its own turn; with a later
+// turn that only reads, judged on an earlier turn's window. Break: read
+// v.Scan.Claims, or drop the window mark.
 func TestRH8h_FlaggedClaimsFromTheCheckpoint(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -225,7 +227,107 @@ func TestRH8h_FlaggedClaimsFromTheCheckpoint(t *testing.T) {
 			got := autosteerOf(f.st, "s")
 			want := []report.AutosteerClaim{{Class: "tests_pass", Verdict: "stale", Evidence: []int64{*row.LastRunSeq}, EarlierWindow: c.earlier}}
 			if got == nil || fmt.Sprintf("%+v", got.Flagged) != fmt.Sprintf("%+v", want) {
-				t.Errorf("flagged:\n got %+v\nwant %+v", got, want)
+				t.Errorf("strict claims not green:\n got %+v\nwant %+v", got, want)
+			}
+		})
+	}
+}
+
+// TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag (item 8): the lead
+// line and its key list the last Stop's strict claims whose verdict is a gate
+// state other than green (recap.ClaimUnbacked). That is one term of the done
+// flag's decision: the flag also reads the row, the row's sentence and the
+// unmet expected kinds, and no record keeps what it decided. Three Stops, each
+// the view the done flag reads and the checkpoint the same Stop writes, where
+// the two differ: E1 a verified row with a strict stale claim and E2 a row
+// whose sentence is silent, the flag quiet and the claim listed; E3 an unmet
+// expected kind with every claim green, the flag firing and no claim listed.
+// The line and the key name what they read and never say flagged. Break: name
+// the line or the key "flagged".
+func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
+	seq := func(n int64) *int64 { return &n }
+	unit := verify.GateState{Gate: "spec:unit", Kind: "test", Family: "r:spec:unit@d:repo", Source: "spec", Required: true,
+		State: verify.Green, Reason: verify.OK, LastRun: &verify.RunRef{Seq: 5}, LastGreen: &verify.RunRef{Seq: 5}}
+	lint := verify.GateState{Gate: "spec:lint", Kind: "lint", Family: "r:spec:lint@d:repo", Source: "spec",
+		State: verify.Stale, Reason: verify.WritesAfterGreen, LastRun: &verify.RunRef{Seq: 2}, LastGreen: &verify.RunRef{Seq: 2}}
+	e1 := verify.StopView{Snap: verify.Snapshot{Recording: verify.Complete, Gates: []verify.GateState{unit, lint}},
+		Summary: verify.Summary{Row: verify.RowVerified}, Turn: verify.TurnCounts{Writes: 1, PathsWritten: 1, GateRuns: 1, LastWriteSeq: 4, FirstSeq: 1},
+		Programs: map[string]string{"spec:unit": "go", "spec:lint": "golangci-lint"},
+		Scan: verify.ClaimScan{Claims: []verify.ClaimVerdict{
+			{Class: verify.ClaimLintClean, Strict: true, Verdict: verify.Verdict(verify.Stale), Gates: []verify.SlotID{"spec:lint"}}}}}
+	e1cp := &verify.Checkpoint{Claims: e1.Scan.Claims, Gates: []verify.CheckpointGate{
+		{Gate: "spec:unit", State: verify.Green, LastRunSeq: seq(5), LastGreenSeq: seq(5)},
+		{Gate: "spec:lint", State: verify.Stale, LastRunSeq: seq(2), LastGreenSeq: seq(2)}}}
+
+	// E2 is recap's TestIF1 view: the inferred pytest gate bound no run, so
+	// its row's sentence is silent and so is the flag.
+	pytest := verify.GateState{Gate: "pytest:test", Kind: "test", Family: "r:pytest:test@d:repo", Source: "learned", Required: true,
+		State: verify.Absent, Reason: verify.EmptyRun}
+	e2 := verify.StopView{Snap: verify.Snapshot{Recording: verify.Complete, Gates: []verify.GateState{pytest}},
+		Summary: verify.Summary{Row: verify.RowUnverified}, Turn: verify.TurnCounts{GateRuns: 1, FirstSeq: 1},
+		Programs: map[string]string{"pytest:test": "pytest"},
+		Scan:     verify.ClaimScan{Claims: []verify.ClaimVerdict{{Class: verify.ClaimDone, Strict: true, Verdict: verify.Verdict(verify.Absent)}}}}
+	e2cp := &verify.Checkpoint{Claims: e2.Scan.Claims, Gates: []verify.CheckpointGate{{Gate: "pytest:test", State: verify.Absent}}}
+
+	// E3 is recap's TestEV6 view with one unmet kind: a green done claim on a
+	// verified row, its expected evidence projected into a ledger row.
+	goTest := verify.GateState{Gate: "go:test", Kind: "test", Family: "r:go:test@d:repo", Source: "learned", Required: true,
+		State: verify.Green, Reason: verify.OK, LastRun: &verify.RunRef{Seq: 3}, LastGreen: &verify.RunRef{Seq: 3}}
+	e3 := verify.StopView{Snap: verify.Snapshot{Recording: verify.Complete, Gates: []verify.GateState{goTest}},
+		Summary: verify.Summary{Row: verify.RowVerified}, Turn: verify.TurnCounts{Writes: 2, PathsWritten: 2, GateRuns: 1, LastWriteSeq: 5},
+		Programs: map[string]string{"go:test": "go"},
+		Scan:     verify.ClaimScan{Claims: []verify.ClaimVerdict{{Class: verify.ClaimDone, Strict: true, Verdict: verify.Verdict(verify.Green)}}},
+		Expected: []verify.Expected{{Kind: "real_data_run", State: verify.ObligationUnmet, Reason: "no gate declares it"}},
+		Obligations: []verify.Obligation{{ID: verify.ObligationID(verify.ScopeSession, verify.ExpectedEvidence, "real_data_run"),
+			Scope: verify.ScopeSession, Kind: verify.ExpectedEvidence, Source: verify.SourceTask, State: verify.ObligationUnmet, Evidence: []int64{}}}}
+	e3cp := &verify.Checkpoint{Claims: e3.Scan.Claims, Gates: []verify.CheckpointGate{
+		{Gate: "go:test", State: verify.Green, LastRunSeq: seq(3), LastGreenSeq: seq(3)}}}
+
+	for _, c := range []struct {
+		name  string
+		v     verify.StopView
+		cp    *verify.Checkpoint
+		fires bool
+		list  []report.AutosteerClaim
+		line  string
+		key   string
+	}{
+		{"E1 a verified row with a strict stale claim", e1, e1cp, false,
+			[]report.AutosteerClaim{{Class: "lint_clean", Verdict: "stale", Evidence: []int64{2}}},
+			"    strict claims not green, last Stop only: lint_clean stale (evidence #2; judged on its own turn)",
+			`"strict_claims_not_green":[{"class":"lint_clean","verdict":"stale","evidence":[2],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
+		{"E2 a row whose sentence is silent", e2, e2cp, false,
+			[]report.AutosteerClaim{{Class: "done", Verdict: "absent", Evidence: []int64{}}},
+			"    strict claims not green, last Stop only: done absent (no evidence seq; judged on its own turn)",
+			`"strict_claims_not_green":[{"class":"done","verdict":"absent","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
+		{"E3 an unmet expected kind with every claim green", e3, e3cp, true,
+			[]report.AutosteerClaim{},
+			"    strict claims not green, last Stop only: none",
+			`"strict_claims_not_green":[],"claims_omitted":0`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if _, fires := recap.DoneFlag(c.v, "s", false); fires != c.fires {
+				t.Fatalf("premise: the done flag fires %v on this Stop, want %v", fires, c.fires)
+			}
+			list := flaggedOf(c.cp, c.v.Done != nil)
+			if fmt.Sprintf("%+v", list) != fmt.Sprintf("%+v", c.list) {
+				t.Errorf("claims:\n got %+v\nwant %+v", list, c.list)
+			}
+			a := &report.Autosteer{Stop: &report.AutosteerStop{Seq: 9, Row: string(c.v.Summary.Row)}, Flagged: list}
+			var b bytes.Buffer
+			if err := report.Text(&b, &report.Report{Sessions: []report.Session{{SessionID: "s", Autosteer: a}}}); err != nil {
+				t.Fatal(err)
+			}
+			_, story, _ := strings.Cut(b.String(), "\n  story\n")
+			if first, _, _ := strings.Cut(story, "\n"); first != c.line {
+				t.Errorf("lead line:\n got %q\nwant %q", first, c.line)
+			}
+			body, err := json.Marshal(a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(body), c.key) || strings.Contains(string(body), `"flagged"`) {
+				t.Errorf("--json:\n got %s\nwant it to hold %s and no key \"flagged\"", body, c.key)
 			}
 		})
 	}

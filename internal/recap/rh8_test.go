@@ -7,10 +7,12 @@ import (
 )
 
 // TestRH8j_ClaimUnbackedIsTheDoneFlagsPredicate (item 8): the report's
-// flagged-claims line reads ClaimUnbacked, and the done flag reads unbacked;
-// on every verdict, a state of verify.Order, no_gate_known and a word outside
-// the vocabulary, strict and loose, the two agree on one claim, so the line
-// and the flag cannot disagree. Break: flag a loose claim, a green one or a
+// strict-claims line reads ClaimUnbacked, and the done flag's claim term reads
+// unbacked; on every verdict, a state of verify.Order, no_gate_known and a
+// word outside the vocabulary, strict and loose, the two agree on one claim.
+// That is one term of four: the flag also reads the row, the row's sentence
+// and the unmet expected kinds, so the line is not what the Stop flagged
+// (cmd/rashomon's TestRH8k). Break: flag a loose claim, a green one or a
 // no_gate_known one, or none.
 func TestRH8j_ClaimUnbackedIsTheDoneFlagsPredicate(t *testing.T) {
 	verdicts := []verify.Verdict{verify.NoGateKnown, "not_a_state"}
