@@ -386,6 +386,7 @@ type operands struct {
 	ended bool // past `--`, or past perl's first operand
 	value bool // the next word is an option's value
 	first bool // the first operand is sed's script or perl's program file
+	sub   bool // ruff: the next operand is its subcommand
 	dest  int  // ruleLast: the destination's token, -1 for none
 	off   int  // ruleLast: where in that token's text the path starts
 	named bool
@@ -402,6 +403,7 @@ func (o *operands) start(at int, edit bool) {
 	case rulePerl:
 		o.first = true
 	}
+	o.sub = o.name == "ruff"
 }
 
 // word reads the argument word at j.
@@ -431,8 +433,14 @@ func (o *operands) word(j int) {
 		o.first = false
 		return
 	}
-	if o.rule == ruleEvery && onList(text, inPlaceEditors[o.name]) {
-		return // an arming word that is no option: ruff's format
+	if o.sub {
+		o.sub = false // ruff's first operand is its subcommand
+		if o.rule == ruleEvery && onList(text, inPlaceEditors[o.name]) {
+			return // an arming word that is no option: ruff's format
+		}
+		if o.name == "ruff" && text == "check" {
+			return // ruff's check subcommand, which its --fix arms, names no file
+		}
 	}
 	o.target(t, text)
 }

@@ -616,10 +616,42 @@
         {
           "file": "test/acceptance/done_note_test.go",
           "symbol": "TestDONE1d_OffArmDecidesAndWithholds"
+        },
+        {
+          "file": "internal/recap/done.go",
+          "symbol": "DoneBacked"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_test.go",
+          "symbol": "TestDONE1t_TextOnlyStopAndTheCatchUp"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_test.go",
+          "symbol": "TestDONE1t_TestsPassClaimOnATextOnlyStop"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_test.go",
+          "symbol": "TestDONE1u_TextOnlyDoneClaimAfterAnUnflaggedStop"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_test.go",
+          "symbol": "TestDONE1v_ASecondStopThatBacksTheClaimClearsTheEntry"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_test.go",
+          "symbol": "TestDONE1x_TheEntryIsDeletedInOneCell"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_test.go",
+          "symbol": "TestDONE1w_AFrameThenABackedStopThenATypedPrompt"
+        },
+        {
+          "file": "test/acceptance/done_note_1c_state_test.go",
+          "symbol": "TestDONE1t_CatchUpControlATurnWithCallsAndNoStop"
         }
       ],
       "id": "PF-PG9",
-      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit. The same decision is kept in recap.json at the Stop, and the session's next prompt carries one claim-vs-record/done-unverified note to the agent, once per flagged Stop, through the prompt's own Route call (steer off, no consent and the off arm withhold it; a prompt that also carries a preflight note gets this one and the preflight waits for the next).",
+      "implementation": "At Stop an unbacked strict claim, or a strict done claim with unmet expected evidence, read from the ledger's expected_evidence rows, prints one user flag in place of the value line and never blocks, and an expected-evidence row a trusted or managed spec's declared gate supplies reads met once that gate's run is green after the last edit. The same decision is kept in recap.json at the Stop, and the session's next prompt carries one claim-vs-record/done-unverified note to the agent, once per flagged Stop, through the prompt's own Route call (steer off, no consent and the off arm withhold it; a prompt that also carries a preflight note gets this one and the preflight waits for the next). A Stop whose named prompt made no call of the main agent reads no done claim and keeps the stored done marks, and a later Stop of the same prompt whose claim is read and backed deletes the flagged entry, so the next prompt carries no note (that Stop prints nothing, so the flag stays the user's last line for that prompt).",
       "integration": [
         {
           "event": "Stop",

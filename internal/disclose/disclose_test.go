@@ -53,7 +53,7 @@ func TestInventoryCarriesTheSpecsKeys(t *testing.T) {
 }
 
 func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
-	if ScopeVersion != 7 {
+	if ScopeVersion != 8 {
 		t.Errorf("ScopeVersion = %d; a bump re-asks consent and must be deliberate", ScopeVersion)
 	}
 	inv, err := Default()
@@ -290,6 +290,22 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 		t.Fatalf("store.ReplaceFile: %v", err)
 	}
 
+	// The /clear rendezvous (x35.5): a pair in one cwd leaves its link, a lone
+	// start in that cwd its arm, and a lone end in a second cwd its arm.
+	clearCwd := filepath.Join(root, "w")
+	if _, _, err := store.MeetClear(root, clearCwd, store.ClearEnd, "old0", time.Now()); err != nil {
+		t.Fatalf("store.MeetClear: %v", err)
+	}
+	if l, _, err := store.MeetClear(root, clearCwd, store.ClearStart, "new0", time.Now()); err != nil || !l.Wrote {
+		t.Fatalf("store.MeetClear did not link new0 to old0: %+v, %v", l, err)
+	}
+	if _, _, err := store.MeetClear(root, clearCwd, store.ClearStart, "new1", time.Now()); err != nil {
+		t.Fatalf("store.MeetClear: %v", err)
+	}
+	if _, _, err := store.MeetClear(root, clearCwd+"2", store.ClearEnd, "old2", time.Now()); err != nil {
+		t.Fatalf("store.MeetClear: %v", err)
+	}
+
 	inv, err := Default()
 	if err != nil {
 		t.Fatalf("Default: %v", err)
@@ -343,13 +359,14 @@ func matchesAFileRule(rel string, rules []FileRule) bool {
 // writeCallSite matches a line that can create or overwrite a file: the four
 // stdlib calls that put new bytes on disk, and store's own writeSmall and
 // ReplaceFile, which wrap them (ReplaceFile also where another package calls
-// it, as store.ReplaceFile). It deliberately does not match the line defining
-// writeSmall itself (TestTRU23_WriteCallSitesArePinned excludes lines that
+// it, as store.ReplaceFile), and rootio's CreateFile, which creates a file
+// only where nothing is (SETUP1). It deliberately does not match the line
+// defining writeSmall itself (TestTRU23_WriteCallSitesArePinned excludes lines that
 // start the way a top-level function declaration does), so the primitive's
 // one real OpenFile call is counted once, at writeSmall's definition, and
 // every caller that reaches a NEW path through it is counted again at the
 // call site -- which is what lets a new call site change the count at all.
-var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|ReplaceFile\(`)
+var writeCallSite = regexp.MustCompile(`os\.OpenFile\(|os\.WriteFile\(|os\.Create\(|os\.CreateTemp\(|writeSmall\(|ReplaceFile\(|CreateFile\(`)
 
 // countWriteCallSites counts writeCallSite matches in dir's non-test .go
 // files, one count per line so a multi-call line is not undercounted.
@@ -478,7 +495,11 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// WriteSessionContentMarker ReplaceFile, session_content, the third
 		// view of consent.json (sessionContentFiles in the inventory, its
 		// temp prefix in purge).
-		{"store", 39},
+		// Moved 2026-11-19 (M4-PR1) to 40: clearlink.go's meetClear OpenFile
+		// of an arm, clear/<digest>/end-<id> or start-<id>, the /clear
+		// rendezvous (clearFiles in the inventory, purge's clear tree); its
+		// link is createExclusive's, already counted.
+		{"store", 40},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
@@ -532,7 +553,12 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// writeUnitBrief CreateTemp (<store>/graph/unitbrief/<session>/
 		// .unitbrief-*.tmp, renamed over x-<32 hex>.json, purge's graph
 		// tree), the unit brief the post hook of a unit's first edit reads.
-		{"../cmd/rashomon", 7},
+		// Moved 2026-11-19 (SETUP1) to 8: CreateFile joined the pattern, and
+		// graph_setup.go's graphConfig is its one caller, the inferred
+		// <repo>/.rashomon/graph.json `rashomon graph index` creates where
+		// none is (a repository file, as graph's index save is; its words go
+		// with card CONSENT-V8).
+		{"../cmd/rashomon", 8},
 		// graph: persist.go's index save (<repo>/.rashomon/graph.jsonl) and
 		// sessionlog.go's append open (<store>/graph/<16 hex>.jsonl).
 		{"graph", 2},
