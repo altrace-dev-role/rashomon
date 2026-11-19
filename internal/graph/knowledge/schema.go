@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/rootio"
 )
 
 const (
@@ -168,7 +170,10 @@ func ReadDir(root string) ([]Row, error) {
 }
 
 // WriteFile writes rows as name.json under root/Dir, every list present,
-// and returns the path. The bytes depend on the rows alone.
+// and returns the path. The bytes depend on the rows alone. The write goes
+// through a root opened at root, so a link on the path cannot carry it out
+// of the repository, and a link at the row file itself is replaced, not
+// written through.
 func WriteFile(root, name string, rows []Row) (string, error) {
 	if rows == nil {
 		rows = []Row{}
@@ -180,12 +185,17 @@ func WriteFile(root, name string, rows []Row) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(root, Dir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	r, err := os.OpenRoot(root)
+	if err != nil {
 		return "", err
 	}
-	p := filepath.Join(dir, name+".json")
-	return p, os.WriteFile(p, append(b, '\n'), 0o644)
+	defer r.Close() //nolint:errcheck // the root holds only a directory handle
+	rel := filepath.Join(filepath.FromSlash(Dir), name+".json")
+	b = append(b, '\n')
+	return filepath.Join(root, rel), rootio.ReplaceFile(r, rel, 0o644, func(w io.Writer) error {
+		_, err := w.Write(b)
+		return err
+	})
 }
 
 // fill makes every list of r present, so a reader of the file sees the

@@ -20,7 +20,7 @@ func TestRubricERRORS10_WatchSaysWhereTheSettingsFileIsBroken(t *testing.T) {
 			name:    "a syntax error",
 			content: "{\n  \"permissions\": {\"allow\": []},\n}\n",
 			at:      ":3:1: ",
-			says:    []string{"invalid character '}'"},
+			says:    []string{"not JSON"},
 		},
 		{
 			// Valid JSON that watch cannot edit: the event it installs into

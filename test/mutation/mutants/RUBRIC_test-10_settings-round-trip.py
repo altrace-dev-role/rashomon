@@ -4,7 +4,7 @@ m("test-10  keys are written with Go quoting, not JSON's", "internal/settings/do
   "\t\tkey, _ := json.Marshal(m.key)\n",
   "\t\tkey := []byte(strconv.Quote(m.key))\n", "TestRubricTEST10_")
 IMPORTS["test-10  keys are written with Go quoting, not JSON's"] = ("internal/settings/document.go",
-  "\t\"os\"\n\t\"strings\"\n", "\t\"os\"\n\t\"strconv\"\n\t\"strings\"\n")
+  "\t\"io/fs\"\n\t\"strings\"\n", "\t\"io/fs\"\n\t\"strconv\"\n\t\"strings\"\n")
 m("test-10  replacing an event appends a second one", "internal/settings/document.go",
   "\t\tif events[i].key == event {\n\t\t\tei = i",
   "\t\tif false && events[i].key == event {\n\t\t\tei = i", "TestRubricTEST10_RoundTripSeeds")

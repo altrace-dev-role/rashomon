@@ -7,6 +7,7 @@ package regfile
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"syscall"
@@ -21,6 +22,63 @@ var ErrNotRegular = errors.New("not a regular file")
 // is there and is not a directory.
 var ErrNotDir = errors.New("not a directory")
 
+// ErrOverBound is what ReadFile's and ReadBounded's error matches under
+// errors.Is for a file holding more bytes than the bound its caller set.
+var ErrOverBound = errors.New("over the bound")
+
+// ReadFile is os.ReadFile for a regular file of at most limit bytes: Open's
+// refusals, then ReadBounded on the size the open's own fstat reported, so
+// it costs what os.ReadFile cost (an open, one fstat, one buffer) and a hook
+// that reads through it allocates no more than it did (BenchmarkRunHook). A
+// file over limit is a *fs.PathError wrapping ErrOverBound, and no byte of it
+// is returned.
+func ReadFile(path string, limit int64) ([]byte, error) {
+	f, fi, err := openRegular(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	b, err := ReadBounded(f, fi.Size(), limit)
+	if err != nil {
+		return nil, &fs.PathError{Op: "read", Path: path, Err: err}
+	}
+	return b, nil
+}
+
+// ReadBounded reads r to its end when that is at most limit bytes, and
+// otherwise returns ErrOverBound and nothing it read. size is what the
+// file's own fstat reported: a size over limit is refused before any read,
+// and the buffer is sized as os.ReadFile sizes its own (size+1, so a file
+// that has not grown ends on one read; 512 at least, since a file under
+// /proc reports 0), so it is one allocation. The bound is checked again on
+// every read, so a file that grew past limit after its fstat is refused too.
+func ReadBounded(r io.Reader, size, limit int64) ([]byte, error) {
+	if size > limit {
+		return nil, ErrOverBound
+	}
+	n := int(size) + 1
+	if n < 512 {
+		n = 512
+	}
+	data := make([]byte, 0, n)
+	for {
+		k, err := r.Read(data[len(data):cap(data)])
+		data = data[:len(data)+k]
+		if int64(len(data)) > limit {
+			return nil, ErrOverBound
+		}
+		if err == io.EOF {
+			return data, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(data) == cap(data) {
+			data = append(data, 0)[:len(data)]
+		}
+	}
+}
+
 // Open opens path for reading when it is a regular file, and otherwise
 // closes what it opened and returns a *fs.PathError wrapping ErrNotRegular.
 // It opens with O_NONBLOCK, so a named pipe cannot hold the open until a
@@ -34,11 +92,20 @@ var ErrNotDir = errors.New("not a directory")
 //
 // Cost: the open and one fstat, the syscalls an Lstat then an Open made.
 func Open(path string) (*os.File, error) {
+	f, _, err := openRegular(path)
+	return f, err
+}
+
+// openRegular is Open's open and check, returning the mode it read too, so
+// ReadFile sizes its buffer from the same fstat; Open and ReadFile share the
+// one check.
+func openRegular(path string) (*os.File, fs.FileInfo, error) {
 	f, fi, err := openNonblocking(path)
 	if err == nil && !fi.Mode().IsRegular() {
 		err = &fs.PathError{Op: "open", Path: path, Err: ErrNotRegular}
 	}
-	return unlessRefused(f, err)
+	f, err = unlessRefused(f, err)
+	return f, fi, err
 }
 
 // OpenDir is Open for a directory a caller lists (card PL-WIRE1: the ledger
