@@ -51,3 +51,20 @@ m("the hook path does not pass the refused count", "cmd/rashomon/graph.go",
   "\topt.PromptCut = cut\n\topt.Refused = h.Refused\n",
   "\topt.PromptCut = cut\n",
   "TestGraphBrief_TheHookPathWithholdsOverARefusedFile")
+
+# A comment stops before its newline, so the newline is counted and a
+# refusal after a comment names its own line. Stopping on the newline lets
+# the scan step past it uncounted, and the refusal names an earlier line.
+m("pylite balanced skips a comment through its newline", "internal/graph/lang/pylite/pylite.go",
+  "\t\t\tfor i+1 < len(src) && src[i+1] != '\\n' {\n",
+  "\t\t\tfor i < len(src) && src[i] != '\\n' {\n",
+  "TestBalanced_ACommentLineCountsTowardTheRefusalLine")
+
+# An unclosed bracket is refused at the line the outermost one opened at,
+# where the unfinished statement starts. Recording the line at every
+# opening bracket names the last one opened instead, a nested bracket that
+# may have closed.
+m("pylite balanced records the line at every opening bracket", "internal/graph/lang/pylite/pylite.go",
+  "\t\t\tif depth == 0 {\n\t\t\t\topened = line\n\t\t\t}\n",
+  "\t\t\topened = line\n",
+  "TestBalanced_AnUnclosedBracketIsReportedWhereTheOutermostOpened")

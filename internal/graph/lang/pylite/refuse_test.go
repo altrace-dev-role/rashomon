@@ -74,3 +74,50 @@ func TestOverlay_ARefusalIsStillErrParse(t *testing.T) {
 		}
 	}
 }
+
+// TestBalanced_ACommentLineCountsTowardTheRefusalLine: a comment runs to
+// the end of its line and stops before the newline, so that newline is
+// still counted and a bracket refused after a comment, a whole-line one
+// or a trailing one, is named at its own line. Break: let the comment
+// loop stop on the newline instead of before it, and the scan's next step
+// passes that newline uncounted: a refusal after a comment names an
+// earlier line.
+func TestBalanced_ACommentLineCountsTowardTheRefusalLine(t *testing.T) {
+	for _, c := range []struct {
+		src  string
+		line int
+		why  string
+	}{
+		{"# a comment\nx = (1\n", 2, "a bracket opened at this line is not closed"},
+		{"x = 1  # a trailing comment\ny = 2)\n", 2, "a bracket closed at this line was not opened"},
+		{"# one\n# two\nz = [\n", 3, "a bracket opened at this line is not closed"},
+	} {
+		var pe parseError
+		if err := balanced(c.src); !errors.As(err, &pe) || pe.line != c.line || pe.why != c.why {
+			t.Errorf("balanced(%q) = %v; want line %d: %s", c.src, err, c.line, c.why)
+		}
+	}
+}
+
+// TestBalanced_AnUnclosedBracketIsReportedWhereTheOutermostOpened: a
+// bracket that never closes is refused at the line the outermost open
+// bracket opened at, where the unfinished statement starts: not the line
+// of a bracket opened inside it, closed or not, and not a bracket that
+// opened and closed on an earlier line. Break: record the line at every
+// opening bracket, and the refusal names the last bracket opened.
+func TestBalanced_AnUnclosedBracketIsReportedWhereTheOutermostOpened(t *testing.T) {
+	const why = "a bracket opened at this line is not closed"
+	for _, c := range []struct {
+		src  string
+		line int
+	}{
+		{"x = (1,\n     [2, 3],\n", 1},
+		{"call(a,\n  f(b,\n", 1},
+		{"x = (1)\ny = [2,\n  (3),\n", 2},
+	} {
+		var pe parseError
+		if err := balanced(c.src); !errors.As(err, &pe) || pe.line != c.line || pe.why != why {
+			t.Errorf("balanced(%q) = %v; want line %d: %s", c.src, err, c.line, why)
+		}
+	}
+}
