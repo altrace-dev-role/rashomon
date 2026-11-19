@@ -62,7 +62,6 @@ P = "internal/graph/persist.go"
 m("WDEBT-6 a store under another schema loads", P,
   "\tif h.Schema != Schema {\n\t\treturn nil, h, fmt.Errorf(\"graph: index schema %d, want %d; run rashomon graph index\", h.Schema, Schema)\n\t}\n", "",
   "TestLoad_RefusesOtherSchema")
-IMPORTS["WDEBT-6 a store under another schema loads"] = (P, '\t"fmt"\n', "")
 m("WDEBT-6 a header with no repository or commit saves", P,
   "\tif h.Repo == \"\" || h.Rev.Commit == \"\" {\n\t\treturn errors.New(\"graph: the header needs a repo and a rev commit\")\n\t}\n", "",
   "TestHeader_RoundTrip")

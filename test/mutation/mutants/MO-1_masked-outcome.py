@@ -152,9 +152,12 @@ m("MO-1 a gate read from output is not named in the clause", "internal/recap/val
 
 # hook: a piped runner whose output read red steps at PostToolUse, so
 # regression-location fires where the pipe hid the exit (card c3).
+# The piped fixture's line also hides its runner's status, so hidden steps
+# it without the red read: TestST_ reads the trigger itself, and TestRS1_'s
+# wrapper red (no runner digest, never hidden) steps on the red read alone.
 m("MO-1 a piped red runner does not step at PostToolUse", "internal/hook/steerstep.go",
   " || redRead && (failure || post)", "",
-  "TestPR_APipedRedRunnerStepsAtPostToolUse")
+  "TestPR_APipedRedRunnerStepsAtPostToolUse|TestST_StepsIsTheTriggerTable")
 m("MO-1 the landed call is never read for a red output", "internal/hook/post.go",
   "\tp.landedRed = redRead(&rec)\n", "",
-  "TestPR_APipedRedRunnerStepsAtPostToolUse")
+  "TestPR_APipedRedRunnerStepsAtPostToolUse|TestRS1_AWrappedRedRaisesRegressionLocation")

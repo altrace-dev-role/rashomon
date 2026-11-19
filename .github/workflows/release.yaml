@@ -46,8 +46,11 @@ jobs:
       # requests, neither of which fires for `git push --tags`, so without
       # these steps the first thing a release proves is that it compiles.
       # A published tag cannot be cleanly re-cut, so the gates run here too.
+      # -timeout 15m, for the reason at ci.yaml's race step: same command, same
+      # runner, same 30-minute job bound, only checkout and setup-go before it.
+      # The alarm prints at 15m and cmd/go's backup kill at 16m30s, under 30m.
       - name: Test
-        run: go test ./... -count=1 -race
+        run: go test ./... -count=1 -race -timeout 15m
 
       - name: Vet
         run: go vet ./...

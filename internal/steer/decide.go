@@ -314,6 +314,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if level == LevelStop {
 			level = LevelNudge // stop needs a project stop setting, and no config exists (STR-20)
 		}
+		level = heldLevel(ctx, f, level) // after the stop clamp, so a held stop is a flag too
 		p := plan{f: f, key: findingKey{string(f.Pattern), string(f.Kind), f.Key}, level: level, decide: true,
 			direct: ownChannel(f.Pattern, ctx.Event)}
 		if p.level == LevelNudge {

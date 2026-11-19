@@ -37,7 +37,7 @@ m("PF-1 a path named from the cwd is not tried from the cwd", "internal/intent/i
   "ok && cwdRel != \"\" {\n", "ok && cwdRel != \"\" && false {\n",
   "TestPF1x_")
 m("PF-1 the note does not print before a stopView error returns", "cmd/rashomon/recap_turn.go",
-  "\t\tif note != (steer.Output{}) {\n\t\t\t_ = printTurn(st, stdout, note, client, \"\")\n\t\t}\n\t\treturn serr\n",
+  "\t\tif note != (steer.Output{}) || notes.due() {\n\t\t\t_ = printTurn(st, stdout, note, client, \"\", notes)\n\t\t}\n\t\treturn serr\n",
   "\t\treturn serr\n",
   "TestPF1y_")
 m("PF-1 the screen drops the v4 clause", "internal/disclose/paragraphs.go",
