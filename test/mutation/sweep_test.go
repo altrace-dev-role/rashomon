@@ -2159,26 +2159,46 @@ func TestFixtureSays_(t *testing.T) {
 // ends any one package's binary at 600 s while the whole step has taken up
 // to 712 s, and 15m still prints its alarm before the job's 30 minutes. The
 // release job runs the same command on the same runner under the same
-// 30-minute bound, and a tag runs no other test (D-release-race-timeout).
+// 30-minute bound, and a tag runs no other test.
+// cmd/go's backup kill of a 15m -timeout comes at 16m30s, so each job that
+// holds the step is bounded at 17 minutes or more: under that the runner
+// cuts the step first, with no alarm and no kill line in its log.
 func TestSWT1_TheRaceStepCarriesItsOwnTimeout(t *testing.T) {
 	const line = "\n        run: go test ./... -count=1 -race -timeout 15m\n"
 	wf := filepath.Join(moduleRoot(t), ".github", "workflows")
-	if !strings.Contains(ciJob(t, readFile(t, filepath.Join(wf, "ci.yaml")), "test"), line) {
+	testJob := ciJob(t, readFile(t, filepath.Join(wf, "ci.yaml")), "test")
+	if !strings.Contains(testJob, line) {
 		t.Error("the Test job's race step does not run under -timeout 15m")
 	}
-	if !strings.Contains(readFile(t, filepath.Join(wf, "release.yaml")), line) {
+	release := readFile(t, filepath.Join(wf, "release.yaml"))
+	if !strings.Contains(release, line) {
 		t.Error("release.yaml's Test step does not run under -timeout 15m")
+	}
+	bound := regexp.MustCompile(`\n    timeout-minutes: (\d+)\n`)
+	for _, j := range []struct{ name, job string }{
+		{"ci.yaml's test job", testJob},
+		{"release.yaml's release job", ciJob(t, release, "release")},
+	} {
+		n := 0
+		if m := bound.FindStringSubmatch(j.job); m != nil {
+			n, _ = strconv.Atoi(m[1])
+		}
+		if n < 17 {
+			t.Errorf("%s is bounded at %d minutes; cmd/go's backup kill of the 15m -timeout comes at 16m30s, want 17 or more", j.name, n)
+		}
 	}
 }
 
-// SWEEP-TIMEOUT1, D-sweep-backup-kill-row. The second marker of TIMED_OUT is
+// SWEEP-TIMEOUT1. The second marker of TIMED_OUT is
 // cmd/go's backup kill: when the test binary's own alarm never starts (a
 // TestMain that hangs before m.Run), go test kills the binary at the
 // -timeout plus a minute, or plus a tenth of it when that is longer
 // (testKillTimeout, cmd/go/internal/test/test.go), prints the kill line and
 // then the package's FAIL line with a time, which test_failed reads as red.
-// On unix the kill sends SIGQUIT first and its line says "with quit"; the
-// plain line is printed when the binary outlives the signal. A real run of
+// On unix the kill sends SIGQUIT first and its line says "with quit", also
+// when the binary outlives the signal; cmd/go prints the plain line only
+// where it has no quit signal to send (plan9, windows), so the plain case
+// pins the prefix both lines share. A real run of
 // that path takes eleven minutes, so a fake go prints what cmd/go prints:
 // 11m0s for a mutant's 10m, 22m0s for the baseline's 20m. A mutant run so
 // ended is TIMEOUT, never a kill; a red baseline so ended names the kill

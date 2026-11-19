@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// modeByPath names the functions that change a file's mode, owner or times
+// modeByPath names the functions that change a file's mode, ownership or times
 // by its path, as os, syscall and golang.org/x/sys/unix spell them.
 var modeByPath = map[string]bool{"Chmod": true, "Lchmod": true, "Chown": true, "Lchown": true, "Chtimes": true}
 
@@ -63,8 +63,8 @@ func modeByPathCalls(t *testing.T, dir string, tests bool) []string {
 }
 
 // TestRS1a_R22_NoModeChangeByPath: the pgraph module's non-test files change
-// no file's mode, owner or times by path; a sync sets its files' mode on the
-// open handle, so the mode lands on the file the sync wrote and not on
+// no file's mode, ownership or times by path; a sync sets its files' mode
+// on the open handle, so the mode lands on the file the sync wrote and not on
 // whatever the name points at by then. R20 reads the mode and cannot tell
 // how it was set; this row pins that. The control: the same scan over the
 // module's test files finds such a call, so the scan can see one. Break:
