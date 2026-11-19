@@ -66,8 +66,9 @@ type HeaderRev struct {
 	Commit string `json:"commit"`
 }
 
-// ErrNoGraph is Load's answer when the file is absent.
-var ErrNoGraph = errors.New("graph: no index")
+// ErrNoGraph is Load's answer when the file is absent. Its words say where
+// the index was looked for and what writes one.
+var ErrNoGraph = errors.New("graph: no index at " + GraphFile + "; run rashomon graph index at the repository root")
 
 // GraphFile is where a repository's index lives, under its root.
 const GraphFile = ".rashomon/graph.jsonl"

@@ -150,16 +150,16 @@ func readFrom(imports map[string]importRef, module, names string) {
 
 // readDef reads a def starting at lines[i] with its parameter list opening
 // at column open, possibly over several lines, and returns the def and the
-// index of the line the list closes on. A missing colon after the close is
-// ErrParse.
+// index of the line the list closes on. A list that does not close, or a
+// missing colon after the close, is a parse refusal at the def's line.
 func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	text, end, closeAt, ok := group(lines, i, open)
 	if !ok {
-		return def{}, 0, ErrParse
+		return def{}, 0, parseError{line: i + 1, why: "a def's parameters do not close"}
 	}
 	rest := lines[end][closeAt+1:]
 	if !strings.Contains(rest, ":") {
-		return def{}, 0, ErrParse
+		return def{}, 0, parseError{line: i + 1, why: "a def with no colon after its parameters"}
 	}
 	params := splitTop(text)
 	d := def{name: name, line: i + 1, max: "0"}

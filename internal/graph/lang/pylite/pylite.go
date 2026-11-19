@@ -9,6 +9,8 @@ package pylite
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,9 +23,23 @@ import (
 const Lang = "py"
 
 // ErrParse is the refusal for content the reduced extractor cannot read:
-// unbalanced brackets at end of file, or a def with no colon. No records
-// are written for the file; the caller records a gap.
+// a bracket that does not balance, or a def with no colon. No records are
+// written for the file. Overlay returns the refusal as an error that is
+// ErrParse to errors.Is and carries the line it stopped at; Extract goes
+// on past the file and names it among the graph.Refusals it returns.
 var ErrParse = errors.New("pylite: content not parsed")
+
+// parseError is one parse refusal: the 1-based line the reader stopped at
+// and why, in words a person can act on. It is ErrParse to errors.Is.
+type parseError struct {
+	line int
+	why  string
+}
+
+func (e parseError) Error() string { return fmt.Sprintf("%v: line %d: %s", ErrParse, e.line, e.why) }
+
+// Is makes a parse refusal match ErrParse.
+func (e parseError) Is(target error) bool { return target == ErrParse }
 
 // Unit is one Python unit: the directory that holds it, and the prefix
 // stripped from a file's path before it is read as a dotted module name.
@@ -68,21 +84,46 @@ func (r Resolver) unit(rel string) (Unit, bool) {
 }
 
 // Extract reads each file under root and parses it at rev with the
-// committed confidences: definitions and imports 1.0, calls 0.9.
+// committed confidences: definitions and imports 1.0, calls 0.9. A file it
+// cannot read, or whose content it refuses, is a gap and not the end of the
+// index: Extract goes on, and returns the records of every other file with
+// graph.Refusals as its error, one per such file in the order given (a read
+// refusal has no line, and its reason is the read error's words without the
+// path; a parse refusal has the line and the reason).
 func (r Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.Record, error) {
 	var out []graph.Record
+	var refused graph.Refusals
 	for _, rel := range files {
 		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
-			return nil, err
+			refused = append(refused, graph.Refusal{Path: rel, Reason: readReason(err)})
+			continue
 		}
 		recs, err := r.parse(rel, b, rev, 1.0, 0.9, true)
-		if err != nil {
+		var pe parseError
+		switch {
+		case errors.As(err, &pe):
+			refused = append(refused, graph.Refusal{Path: rel, Line: pe.line, Reason: pe.why})
+			continue
+		case err != nil:
 			return nil, err
 		}
 		out = append(out, recs...)
 	}
+	if len(refused) > 0 {
+		return out, refused
+	}
 	return out, nil
+}
+
+// readReason is a read error's words without the path, which the refusal
+// already names.
+func readReason(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // Overlay parses one file's post-edit content at the overlay revision with
@@ -119,8 +160,8 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 		return nil, nil
 	}
 	src := string(content)
-	if !balanced(src) {
-		return nil, ErrParse
+	if err := balanced(src); err != nil {
+		return nil, err
 	}
 	mod := module(u, rel)
 	f, err := scan(src)
@@ -203,36 +244,50 @@ func (r Resolver) symIn(mod, attr string) (graph.ID, bool) {
 	return graph.SymID(Lang, up, "func", mod+"."+attr), true
 }
 
-// balanced reports whether brackets balance over src outside string
-// literals.
-func balanced(src string) bool {
-	depth := 0
+// balanced is nil when brackets balance over src outside string literals,
+// and otherwise the parse refusal: a closer with no opener at the line it
+// is on, or, at the end of the file, the outermost opener still open at
+// the line it opened (the last line depth rose from zero).
+func balanced(src string) error {
+	depth, line, opened := 0, 1, 0
 	var quote byte
 	for i := 0; i < len(src); i++ {
 		c := src[i]
+		if c == '\n' {
+			line++
+		}
 		switch {
 		case quote != 0:
 			if c == '\\' {
 				i++
+				if i < len(src) && src[i] == '\n' {
+					line++
+				}
 			} else if c == quote {
 				quote = 0
 			}
 		case c == '\'' || c == '"':
 			quote = c
 		case c == '#':
-			for i < len(src) && src[i] != '\n' {
+			for i+1 < len(src) && src[i+1] != '\n' {
 				i++
 			}
 		case c == '(' || c == '[' || c == '{':
+			if depth == 0 {
+				opened = line
+			}
 			depth++
 		case c == ')' || c == ']' || c == '}':
 			depth--
 			if depth < 0 {
-				return false
+				return parseError{line: line, why: "a bracket closed at this line was not opened"}
 			}
 		}
 	}
-	return depth == 0
+	if depth > 0 {
+		return parseError{line: opened, why: "a bracket opened at this line is not closed"}
+	}
+	return nil
 }
 
 // extras are the records beyond defs, consts, imports and calls: a
