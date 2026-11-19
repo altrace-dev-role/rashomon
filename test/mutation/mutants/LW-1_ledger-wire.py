@@ -3,14 +3,16 @@
 # expected rows reaching it, the pinned Required, the done clause reading the
 # rows; and in the verb's replay, the checkpoint's point_seq, the unread final
 # message, the spec mismatch line, the spec's trust (the store root discovery
-# reads the bindings under), a declared row's family (its gate id) and the
-# conflicts the session was shown (the run's conflict_check fold). The kill
-# row is the named test's.
+# reads the bindings under), a declared row's family (its gate id), the
+# conflicts the session was shown (the run's conflict_check fold) and that
+# fold's bound, the point's seq. The kill row is the named test's.
 #
 # "Scope lost" is the empty scope: every point kind maps to the session scope
 # and cmp.Or falls back to it (obligations.go:92-93), so a lost lookup alone
 # is equivalent. "Ledger from counted" was equivalent too (R12) and is
-# replaced by the verb evaluating at the last seq.
+# replaced by the verb evaluating at the last seq. The fold bounded at 0
+# bounds nothing, and no check lands above the record's last seq, so a fold
+# at 0 and a fold at the last seq are one mutant: one row stands for both.
 O = "internal/verify/obligations.go"
 S = "internal/verify/stop.go"
 DN = "internal/recap/done.go"
@@ -43,5 +45,8 @@ m("LW-1 the replay discovers the spec with no store root", LS,
   'hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustRoot(run, st.Root(), pt.Seq))', 'hook.DiscoverSpec(root, projectDir, managedDir, hook.TrustedRoot{})', "TestLW1n_")
 m("LW-1 the replay drops the conflicts the session was shown", LS,
   '\tin.Conflicts = conflictsSeen(run, pt.Seq)\n', '', "TestLedger_ReplayCarriesRuleConflicts")
+m("LW-1 the replay folds the conflicts at the record's last seq, past the point", LS,
+  '\tin.Conflicts = conflictsSeen(run, pt.Seq)\n', '\tin.Conflicts = conflictsSeen(run, run.LastSeq())\n',
+  "TestLedger_ReplayFoldsConflictsAtThePoint")
 m("LW-1 a declared row's family matched over Family alone", LR,
   'for _, fam := range []string{g.Family, g.Gate} {', 'for _, fam := range []string{g.Family} {', "TestLW1o_")
