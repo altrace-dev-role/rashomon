@@ -135,6 +135,42 @@ func TestRS1a_C3_OpenCappedRefusesAFileThatGrowsPastTheCap(t *testing.T) {
 	wantOverCap(t, err, p, 10, 11)
 }
 
+// TestRS1a_C3_OpenCappedReadAfterTheRefusalGivesZero: the reader of a file
+// grown past max after its open stays refused once it refused (capped's
+// doc): each read after the refusal is the same refusal with a count of 0,
+// never a byte and never a negative count. Break: drop the top check of
+// capped.Read, and the next read asks the file for no bytes and returns -1
+// with the refusal, a count io.Reader forbids.
+func TestRS1a_C3_OpenCappedReadAfterTheRefusalGivesZero(t *testing.T) {
+	p := readCappedFile(t, 10)
+	rc, err := OpenCapped(p, 10)
+	if err != nil {
+		t.Fatalf("OpenCapped of a file at the cap: %v", err)
+	}
+	defer rc.Close() //nolint:errcheck // read-only
+	w, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("yz"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadAll(rc); !errors.Is(err, ErrOverCap) {
+		t.Fatalf("ReadAll of a file grown past the cap: %v, want the refusal", err)
+	}
+	buf := make([]byte, 64)
+	for i := 1; i <= 2; i++ {
+		n, err := rc.Read(buf)
+		if n != 0 {
+			t.Errorf("read %d after the refusal = %d bytes, want 0", i, n)
+		}
+		wantOverCap(t, err, p, 10, 11)
+	}
+}
+
 // TestRS1a_C3_OpenCappedReadsAFileAtTheCap: the reader of a file at max
 // gives every byte and then io.EOF, so a decoder sees a whole file.
 func TestRS1a_C3_OpenCappedReadsAFileAtTheCap(t *testing.T) {
