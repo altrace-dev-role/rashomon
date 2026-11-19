@@ -37,17 +37,24 @@ const tempTries = 100
 // file or the new one, never a part of either, and a link at name is
 // replaced, not written through. Each missing parent of name is made with
 // mode 0755; the file is created with perm under the umask, as
-// the create it replaces was, and nothing changes its mode after. A failure
-// at any step removes the temporary file and leaves name as it was. The
-// error names the target, the root's path joined with name, on one line.
-func ReplaceFile(r *os.Root, name string, perm fs.FileMode, write func(io.Writer) error) error {
-	if err := replace(r, name, perm, write); err != nil {
+// the create it replaces was, and nothing changes its mode after. The file
+// holds max bytes at most, so a caller writes under the cap its reader
+// holds: a Write that takes the bytes asked of the writer over max puts
+// none of its bytes and returns a *regfile.OverCapError of the bytes asked
+// and max, which matches regfile.ErrOverCap, and the replace is refused
+// with that error even when write drops it and returns nil. No value of max
+// is unlimited: max 0 permits an empty file, and a negative max refuses
+// every replace. A failure or a refusal at any step removes the temporary
+// file and leaves name as it was. The error names the target, the root's
+// path joined with name, on one line.
+func ReplaceFile(r *os.Root, name string, perm fs.FileMode, max int64, write func(io.Writer) error) error {
+	if err := replace(r, name, perm, max, write); err != nil {
 		return fmt.Errorf("%s: %w", filepath.Join(r.Name(), name), err)
 	}
 	return nil
 }
 
-func replace(r *os.Root, name string, perm fs.FileMode, write func(io.Writer) error) error {
+func replace(r *os.Root, name string, perm fs.FileMode, max int64, write func(io.Writer) error) error {
 	dir := filepath.Dir(name)
 	if err := r.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -56,7 +63,8 @@ func replace(r *os.Root, name string, perm fs.FileMode, write func(io.Writer) er
 	if err != nil {
 		return err
 	}
-	if err := write(f); err != nil {
+	cw := &capWriter{f: f, max: max}
+	if err := cw.end(write(cw)); err != nil {
 		f.Close()     //nolint:errcheck // the write failed; the temp is removed
 		r.Remove(tmp) //nolint:errcheck // best effort: the write's error is the one to report
 		return err
@@ -68,6 +76,44 @@ func replace(r *os.Root, name string, perm fs.FileMode, write func(io.Writer) er
 	if err := r.Rename(tmp, name); err != nil {
 		r.Remove(tmp) //nolint:errcheck // best effort: the rename's error is the one to report
 		return err
+	}
+	return nil
+}
+
+// capWriter is the writer replace hands write: the temporary file, held to
+// max bytes. asked counts every byte asked of it, a refused Write's
+// included, so it never falls, and a refusal once made stands.
+type capWriter struct {
+	f          *os.File
+	asked, max int64
+}
+
+// Write puts p in the file unless the bytes asked, p's included, are over
+// max; then it puts none of p and returns the refusal.
+func (w *capWriter) Write(p []byte) (int, error) {
+	w.asked += int64(len(p))
+	if err := w.over(); err != nil {
+		return 0, err
+	}
+	return w.f.Write(p)
+}
+
+// end is the check made once write has returned: the refusal when the
+// bytes asked are over max, whatever write returned, so a write func that
+// drops a Write's refusal and returns nil is refused all the same; else
+// write's own error.
+func (w *capWriter) end(err error) error {
+	if over := w.over(); over != nil {
+		return over
+	}
+	return err
+}
+
+// over holds the only comparison the writer makes: the bytes asked over
+// max. It is the refusal, of the bytes asked and max, or nil.
+func (w *capWriter) over() error {
+	if w.asked > w.max {
+		return &regfile.OverCapError{Size: w.asked, Max: w.max}
 	}
 	return nil
 }

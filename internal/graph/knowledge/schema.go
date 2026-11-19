@@ -34,8 +34,8 @@ const (
 // read may cost; it is not a size measured from one. A real ledger import
 // of 242 rows measured 382,982 bytes, and the cap holds 43.8 times that.
 // The same form as baseline.MaxGitFileBytes,
-// hook.MaxOverlayContentBytes and hook.MaxHashBytes. WriteFile does not
-// hold to it yet, so an import can write a file ReadDir refuses.
+// hook.MaxOverlayContentBytes and hook.MaxHashBytes. WriteFile holds to it
+// too (card WRITE-SAFE1), so no import writes a file ReadDir refuses.
 const MaxKnowledgeFileBytes = 16 << 20
 
 // The row kinds (Part B6).
@@ -194,7 +194,9 @@ func ReadDir(root string) ([]Row, error) {
 // and returns the path. The bytes depend on the rows alone. The write goes
 // through a root opened at root, so a link on the path cannot carry it out
 // of the repository, and a link at the row file itself is replaced, not
-// written through.
+// written through. A file over MaxKnowledgeFileBytes is refused with an
+// error matching regfile.ErrOverCap, and the file already there is left as
+// it was.
 func WriteFile(root, name string, rows []Row) (string, error) {
 	if rows == nil {
 		rows = []Row{}
@@ -213,7 +215,7 @@ func WriteFile(root, name string, rows []Row) (string, error) {
 	defer r.Close() //nolint:errcheck // the root holds only a directory handle
 	rel := filepath.Join(filepath.FromSlash(Dir), name+".json")
 	b = append(b, '\n')
-	return filepath.Join(root, rel), rootio.ReplaceFile(r, rel, 0o644, func(w io.Writer) error {
+	return filepath.Join(root, rel), rootio.ReplaceFile(r, rel, 0o644, MaxKnowledgeFileBytes, func(w io.Writer) error {
 		_, err := w.Write(b)
 		return err
 	})

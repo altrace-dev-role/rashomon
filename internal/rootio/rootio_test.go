@@ -19,6 +19,10 @@ var oldBytes = []byte("the file as it was before the replace\n")
 // errWrite is the failure a test's write function returns.
 var errWrite = errors.New("the write failed part way")
 
+// roomy is a max no write of a test of another step than the cap comes
+// near.
+const roomy = 1 << 20
+
 // openRoot opens dir as a root, closed when the test ends.
 func openRoot(t *testing.T, dir string) *os.Root {
 	t.Helper()
@@ -71,7 +75,7 @@ func TestWS1_RF6_ReplaceFileLeavesNameAsItWasWhenAStepFails(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(sub, "f"), oldBytes, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		err := ReplaceFile(openRoot(t, root), filepath.Join("sub", "f"), 0o644, func(w io.Writer) error {
+		err := ReplaceFile(openRoot(t, root), filepath.Join("sub", "f"), 0o644, roomy, func(w io.Writer) error {
 			if _, err := w.Write([]byte("the new file's first half")); err != nil {
 				return err
 			}
@@ -96,7 +100,7 @@ func TestWS1_RF6_ReplaceFileLeavesNameAsItWasWhenAStepFails(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(sub, "d", "keep"), oldBytes, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		err := ReplaceFile(openRoot(t, root), filepath.Join("sub", "d"), 0o644, func(w io.Writer) error {
+		err := ReplaceFile(openRoot(t, root), filepath.Join("sub", "d"), 0o644, roomy, func(w io.Writer) error {
 			_, err := w.Write([]byte("a file no rename can put in a directory's place"))
 			return err
 		})
@@ -118,7 +122,7 @@ func TestWS1_RF6_ReplaceFileLeavesNameAsItWasWhenAStepFails(t *testing.T) {
 func TestWS1_RF7_ReplaceFileErrorNamesTheWholeTarget(t *testing.T) {
 	root := t.TempDir()
 	name := filepath.Join("a", "b", "f.json")
-	err := ReplaceFile(openRoot(t, root), name, 0o644, func(io.Writer) error { return errWrite })
+	err := ReplaceFile(openRoot(t, root), name, 0o644, roomy, func(io.Writer) error { return errWrite })
 	want := filepath.Join(root, name) + ": "
 	switch {
 	case err == nil:
@@ -127,6 +131,173 @@ func TestWS1_RF7_ReplaceFileErrorNamesTheWholeTarget(t *testing.T) {
 		t.Errorf("ReplaceFile = %q; want it to begin %q", err, want)
 	case strings.Contains(err.Error(), "\n"):
 		t.Errorf("ReplaceFile = %q; want one line", err)
+	}
+}
+
+// overCap checks err is a refused replace of target: one line that begins
+// with target, matching regfile.ErrOverCap, whose *regfile.OverCapError
+// holds size and max.
+func overCap(t *testing.T, err error, target string, size, max int64) {
+	t.Helper()
+	var oc *regfile.OverCapError
+	switch {
+	case err == nil:
+		t.Fatalf("ReplaceFile of %d bytes under max %d returned no error; want it refused", size, max)
+	case !strings.HasPrefix(err.Error(), target+": ") || strings.Contains(err.Error(), "\n"):
+		t.Errorf("ReplaceFile = %q; want one line that begins %q", err, target+": ")
+	case !errors.Is(err, regfile.ErrOverCap):
+		t.Errorf("ReplaceFile = %v; want an error matching regfile.ErrOverCap", err)
+	case !errors.As(err, &oc):
+		t.Errorf("ReplaceFile = %v; want a *regfile.OverCapError in its chain", err)
+	case oc.Size != size || oc.Max != max:
+		t.Errorf("the refusal holds size %d and max %d; want %d and %d", oc.Size, oc.Max, size, max)
+	}
+}
+
+// TestWS1_RF8_ReplaceFileRefusesAWriteOverMax: under max 10 a file of 10
+// bytes is written; a write func whose second Write takes the bytes asked
+// to 11 is refused (overCap: size 11, max 10), the old file byte-equal and
+// nothing left beside it. Break: compare the bytes asked at or over max,
+// or count the last Write's bytes alone, or hold max as the refusal's
+// size.
+func TestWS1_RF8_ReplaceFileRefusesAWriteOverMax(t *testing.T) {
+	t.Run("at max is written", func(t *testing.T) {
+		root := t.TempDir()
+		want := []byte("0123456789")
+		err := ReplaceFile(openRoot(t, root), "f", 0o644, 10, func(w io.Writer) error {
+			_, err := w.Write(want)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("ReplaceFile of %d bytes under max 10: %v; want it written", len(want), err)
+		}
+		if got, err := os.ReadFile(filepath.Join(root, "f")); err != nil || !bytes.Equal(got, want) {
+			t.Errorf("f reads %q (err %v); want %q", got, err, want)
+		}
+	})
+	t.Run("over max across two writes is refused", func(t *testing.T) {
+		root := t.TempDir()
+		p := filepath.Join(root, "f")
+		if err := os.WriteFile(p, oldBytes, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := ReplaceFile(openRoot(t, root), "f", 0o644, 10, func(w io.Writer) error {
+			if _, err := w.Write([]byte("012345")); err != nil {
+				return err
+			}
+			_, err := w.Write([]byte("6789x"))
+			return err
+		})
+		overCap(t, err, p, 11, 10)
+		if got, err := os.ReadFile(p); err != nil || !bytes.Equal(got, oldBytes) {
+			t.Errorf("f after the refusal reads %q (err %v); want %q", got, err, oldBytes)
+		}
+		if got := entries(t, root); len(got) != 1 || got[0] != "f" {
+			t.Errorf("the root holds %v after the refusal; want only f", got)
+		}
+	})
+}
+
+// TestWS1_RF9_ReplaceFileRefusesWhenTheWriteFuncDropsTheError: under max
+// 10, a write func whose first Write, of 6 bytes, is taken and whose
+// second, of 5, is refused with no byte of it written (the one temporary
+// file holds 6 bytes while the func runs) drops the refusal and returns
+// nil; the replace is refused all the same (overCap: size 11, max 10), the
+// old file byte-equal and nothing left beside it. A write func that drops
+// the refusal and returns an error of its own gets the refusal, which a
+// caller classifies by regfile.ErrOverCap. Break: take write's nil as the
+// last word, with no check after write returns; or count the last Write's
+// bytes alone, or take a refused Write's bytes back out of the count; or
+// put a refused Write's bytes in the file, or say a refused Write wrote
+// them; or return write's own error over the refusal; or keep the
+// temporary file on a refusal; or make the check after write returns only
+// once the file is renamed over name.
+func TestWS1_RF9_ReplaceFileRefusesWhenTheWriteFuncDropsTheError(t *testing.T) {
+	t.Run("a dropped refusal and nil", func(t *testing.T) {
+		root := t.TempDir()
+		p := filepath.Join(root, "f")
+		if err := os.WriteFile(p, oldBytes, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := ReplaceFile(openRoot(t, root), "f", 0o644, 10, func(w io.Writer) error {
+			if n, err := w.Write([]byte("012345")); n != 6 || err != nil {
+				t.Errorf("the first Write, of 6 bytes under max 10 = %d, %v; want 6 and nil", n, err)
+			}
+			if n, err := w.Write([]byte("6789x")); n != 0 || !errors.Is(err, regfile.ErrOverCap) {
+				t.Errorf("the Write that takes the bytes asked to 11 = %d, %v; want 0 and an error matching regfile.ErrOverCap", n, err)
+			}
+			var tmps []string
+			for _, e := range entries(t, root) {
+				if strings.HasPrefix(e, ".f.tmp-") {
+					tmps = append(tmps, e)
+				}
+			}
+			if len(tmps) != 1 {
+				t.Errorf("the temporary files beside f while write runs: %v; want one", tmps)
+			} else if fi, err := os.Stat(filepath.Join(root, tmps[0])); err != nil || fi.Size() != 6 {
+				t.Errorf("the temporary file while write runs: %v (err %v); want the 6 bytes taken", fi, err)
+			}
+			return nil
+		})
+		overCap(t, err, p, 11, 10)
+		if got, err := os.ReadFile(p); err != nil || !bytes.Equal(got, oldBytes) {
+			t.Errorf("f after the refusal reads %q (err %v); want %q", got, err, oldBytes)
+		}
+		if got := entries(t, root); len(got) != 1 || got[0] != "f" {
+			t.Errorf("the root holds %v after the refusal; want only f", got)
+		}
+	})
+	t.Run("a dropped refusal and an error of its own", func(t *testing.T) {
+		root := t.TempDir()
+		err := ReplaceFile(openRoot(t, root), "f", 0o644, 10, func(w io.Writer) error {
+			_, _ = w.Write([]byte("0123456789x")) // the refusal dropped, as a careless write func would
+			return errWrite
+		})
+		overCap(t, err, filepath.Join(root, "f"), 11, 10)
+	})
+}
+
+// TestWS1_RF10_ReplaceFileMaxZeroAndNegative: no max is unlimited. Max 0
+// writes an empty file and refuses a single byte (overCap: size 1, max 0);
+// max -1 refuses a write func that writes nothing (overCap: size 0, max
+// -1). A refused replace leaves no file. Break: compare the bytes asked at
+// or over max, or take write's nil as the last word.
+func TestWS1_RF10_ReplaceFileMaxZeroAndNegative(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		max      int64
+		put      string
+		refused  bool
+		wantSize int64
+	}{
+		{"max 0 writes an empty file", 0, "", false, 0},
+		{"max 0 refuses a byte", 0, "x", true, 1},
+		{"max -1 refuses an empty file", -1, "", true, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			p := filepath.Join(root, "f")
+			err := ReplaceFile(openRoot(t, root), "f", 0o644, c.max, func(w io.Writer) error {
+				if c.put == "" {
+					return nil
+				}
+				_, err := w.Write([]byte(c.put))
+				return err
+			})
+			if c.refused {
+				overCap(t, err, p, c.wantSize, c.max)
+				if got := entries(t, root); len(got) != 0 {
+					t.Errorf("the root holds %v after the refusal; want nothing", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReplaceFile of an empty file under max %d: %v; want it written", c.max, err)
+			}
+			if fi, err := os.Stat(p); err != nil || fi.Size() != 0 {
+				t.Errorf("f: %v (err %v); want an empty file", fi, err)
+			}
+		})
 	}
 }
 
