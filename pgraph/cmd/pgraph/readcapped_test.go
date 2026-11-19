@@ -67,6 +67,27 @@ func TestRS1a_C3_PgraphReadCappedRefusesOneByteOver(t *testing.T) {
 	wantOverCap(t, err, p, 4096, 4097)
 }
 
+// TestRS1a_C3_PgraphReadCappedRefusesBySizeBeforeAnyRead: a file far over
+// max is refused by the descriptor's size, before a byte is read. One byte
+// over cannot tell the two refusals apart, since the read's own refusal also
+// gives Size max+1 there. At 4096 bytes and a max of 10 they differ: the size
+// refusal is an open with Size 4096, the read's would be a read with Size 11.
+// Break: drop the fi.Size() > max case of readCappedAt, and the refusal
+// comes from readAllCapped as a read with Size 11.
+func TestRS1a_C3_PgraphReadCappedRefusesBySizeBeforeAnyRead(t *testing.T) {
+	const limit, size = 10, 4096
+	p := readCappedFile(t, size)
+	b, err := readCapped(p, limit)
+	if b != nil {
+		t.Errorf("readCapped returned %d bytes with the refusal", len(b))
+	}
+	var pe *fs.PathError
+	if !errors.As(err, &pe) || pe.Op != "open" {
+		t.Fatalf("error %v, want an fs.PathError with Op \"open\": the size refuses before any read", err)
+	}
+	wantOverCap(t, err, p, limit, size)
+}
+
 // TestRS1a_C3_PgraphReadCappedAtTheLargestCap: max+1 must not overflow; see
 // the twin row of regfile.
 func TestRS1a_C3_PgraphReadCappedAtTheLargestCap(t *testing.T) {
