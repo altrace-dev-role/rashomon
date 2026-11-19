@@ -50,7 +50,12 @@ m("VER-1.4 a verified record with a reason is verified", R,
   'c.State == store.StateVerified && c.Reason == nil', 'c.State == store.StateVerified', "TestVER34_")
 m("VER-1.4 an unknown probe is ignored", R, ' || c.Probe == store.ProbeUnknown', '', "TestVER34_")
 m("VER-1.4 an unknown hook entry is ignored", R, 'c.HookEntry == store.EntryUnknown || ', '', "TestVER34_")
-m("VER-1.4 an unknown is outweighed by a verified record", R, '(!verified || unknown)', '!verified', "TestVER34_")
+# unknown is bound on the line above and read only here, so the break binds it
+# to the blank identifier: dropping the term alone leaves it unused, which
+# does not compile.
+m("VER-1.4 an unknown is outweighed by a verified record", R,
+  'verified, unknown := coverageOf(run)\n\tfault[noteUnverified] = len(run.Coverage) > 0 && (!verified || unknown)',
+  'verified, _ := coverageOf(run)\n\tfault[noteUnverified] = len(run.Coverage) > 0 && !verified', "TestVER34_")
 m("VER-1.4 a start record is a post record", R,
   '\t\tif c.Phase != store.PhasePost {\n\t\t\tcontinue\n\t\t}\n', '', "TestVER34_")
 m("VER-1.4 coverage absent is unverified too", R,
