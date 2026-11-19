@@ -61,7 +61,8 @@ func clickFiles() map[string]string {
 // configuration infers one unit, src/click with mod_root src owning the
 // module click. The truth is not this rule's: the installed click-8.4.1
 // wheel's RECORD lists one top-level name, click. The ten example projects
-// are left out and named, and the file decodes to the configuration.
+// are left out and named, and so are docs and tests, which hold .py files
+// outside src; the file decodes to the configuration.
 func TestSETUP1_R1_AClickCopyGivesItsRecordTruth(t *testing.T) {
 	inf, err := Infer(wireRoot(t, clickFiles()))
 	if err != nil {
@@ -70,10 +71,11 @@ func TestSETUP1_R1_AClickCopyGivesItsRecordTruth(t *testing.T) {
 	if got, want := declaredRows(inf.Config.Units), []string{"py|src/click|src|click"}; !slices.Equal(got, want) {
 		t.Errorf("units %v; want %v (RECORD: one top-level name, click)", got, want)
 	}
-	var want []string
+	want := []string{"docs"}
 	for _, ex := range []string{"aliases", "colors", "completion", "complex", "imagepipe", "inout", "naval", "repo", "termui", "validation"} {
 		want = append(want, "examples/"+ex)
 	}
+	want = append(want, "tests")
 	if got := inferredLeft(inf); !slices.Equal(got, want) {
 		t.Errorf("left out %v; want %v", got, want)
 	}

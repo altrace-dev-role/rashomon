@@ -35,6 +35,26 @@ type Unit struct {
 // add by hand if it is a unit.
 type Left struct{ Path, Why string }
 
+// The kinds of reason a rule leaves a path out for, in words that name no
+// language, so a person reads one set of reasons whatever the language: a
+// rule's Why is one of them, then, where it adds something, what the rule
+// checked in its own language's terms, in parentheses.
+const (
+	// LeftNested is a project whose manifest lies inside another project's
+	// directory; a workspace file's list of members is not read.
+	LeftNested = "a project inside another project"
+	// LeftLooseModule is a source file directly at the modules' root, in no
+	// package.
+	LeftLooseModule = "a module file at the modules' root, not in a package"
+	// LeftNotPackage is a directory at the modules' root that holds source
+	// but not what makes a directory a package in its language; the rule
+	// reads no manifest, so it does not say why.
+	LeftNotPackage = "a directory of source that is not a package"
+	// LeftOutsideRoot is source in a project but outside the directory its
+	// modules start at.
+	LeftOutsideRoot = "source outside the modules' root"
+)
+
 // Inferrers is the registered resolvers that are Inferrers, in the order
 // they were registered, each language once.
 func (g *Registry) Inferrers() []Inferrer {
