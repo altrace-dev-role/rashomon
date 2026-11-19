@@ -4,10 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
@@ -82,5 +84,28 @@ func TestWire_AGoModDirectoryRefusesGo(t *testing.T) {
 	r, ok, err := Wire().Claim(root, "a/a.go")
 	if !ok || r != nil || !errors.Is(err, regfile.ErrNotRegular) || !strings.Contains(err.Error(), "go.mod") {
 		t.Errorf("Claim(a/a.go) = %v, %v, %v; want nil and an error naming go.mod, ErrNotRegular kept", r, ok, err)
+	}
+}
+
+// TestWire_PythonIsTheResolverBuildWires: under one root, the Python
+// resolver Wire configures equals the one resolverFor gives Build from the
+// same configuration, its units and module names alike. Break: build Wire's
+// Python resolver by a rule other than python.
+func TestWire_PythonIsTheResolverBuildWires(t *testing.T) {
+	root := wireRoot(t, map[string]string{ConfigFile: wireConfig})
+	c, err := ReadConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := resolverFor(pylite.Lang, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := Wire().Claim(root, "inv/core/calc.py")
+	if !ok || err != nil {
+		t.Fatalf("Claim(inv/core/calc.py) = %v, %v, %v; want the Python resolver", got, ok, err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Wire's Python resolver = %+v, Build's = %+v; want them equal", got, want)
 	}
 }
