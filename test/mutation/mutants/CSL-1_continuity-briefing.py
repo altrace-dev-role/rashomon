@@ -202,8 +202,8 @@ m("CSL-1 the briefing ranked by its priority", DC,
 m("CSL-1 own-channel findings ranked last", DC,
   "\t\tcase own:\n\t\t\treturn -1\n", "\t\tcase own:\n\t\t\treturn 1\n", "TestCSL1_AfterAResumeTheBriefingTakesThePromptsNote")
 m("CSL-1 the briefing charged to the prompt's notes", BU,
-  "\t\tif !s.is(b, s.out[bkPattern], string(pattern.ContinuityBriefing)) {\n",
-  "\t\tif true || !s.is(b, s.out[bkPattern], string(pattern.ContinuityBriefing)) {\n",
+  "\t\tif k.pattern != string(pattern.ContinuityBriefing) {\n",
+  "\t\tif true || k.pattern != string(pattern.ContinuityBriefing) {\n",
   "TestCSL1_AfterAResumeTheBriefingTakesThePromptsNote")
 m("CSL-1 the screen keeps the briefing's words unsaid", PG,
   ", and except the briefing after Claude Code compacts the conversation, which quotes your earlier instructions to the agent word for word; the record keeps only each quote's length and a keyed digest, never your words.",

@@ -11,9 +11,9 @@ m("MS-1 pair counts a withheld note as given", "internal/measure/record.go",
 m("MS-1 pair reads a session of two arms as its first", "internal/measure/record.go",
   "\t\tcase a != s.RecordedArm:\n",
   "\t\tcase false:\n", "TestMS1f_")
-m("MS-1 pair passes a prompt over the router's note cap", "internal/measure/record.go",
-  "perPrompt[prompt] > steer.NotesPerPrompt {\n",
-  "perPrompt[prompt] > steer.NotesPerPrompt+1 {\n", "TestMS1f_")
+m("MS-1 pair passes a window over the router's note cap", "internal/measure/record.go",
+  "\t\t\tif n >= steer.NotesPerWindow {\n",
+  "\t\t\tif n >= steer.NotesPerWindow+1 {\n", "TestMS1f_")
 m("MS-1 the n = 1 sentence dropped", "internal/measure/text.go",
   "\tout.WriteString(\"  \" + Hypothesis + \"\\n\")\n",
   "", "TestMS1g_")

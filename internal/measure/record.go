@@ -139,25 +139,34 @@ func (s *Side) arm(lines []line, ask Ask) error {
 // notes counts the lines given to the agent (delivery delivered), the notes
 // arm off withheld (a nudge suppressed arm_off: what the steer arm gave), and
 // every line not given by why: its suppressed_by, else its delivery
-// (flag_only, holdout), else its state. A prompt whose given and withheld
-// notes pass the router's per-prompt cap is an error: the log contradicts
-// the router that wrote it.
+// (flag_only, holdout), else its state. A note given or withheld while
+// steer.NotesPerWindow notes of its prompt written before it are above its
+// after_seq less steer.NoteWindowSeqs is an error: the log contradicts the
+// router that wrote it (NOTE-BUDGET). The briefing counts in
+// no window, as the router counts it in none.
 func (s *Side) notes(lines []line) error {
 	counts := map[string]int{}
-	perPrompt := map[string]int{}
+	window := map[string][]int64{}
 	for i := range lines {
 		l := &lines[i]
 		given := l.Delivery != nil && *l.Delivery == steer.DeliveryDelivered
 		withheld := l.SuppressedBy != nil && *l.SuppressedBy == steer.SuppressedByArmOff && l.Level == steer.LevelNudge.String()
-		if given || withheld {
+		if (given || withheld) && l.Pattern != string(pattern.ContinuityBriefing) {
 			prompt := ""
 			if l.PromptID != nil {
 				prompt = *l.PromptID
 			}
-			if perPrompt[prompt]++; perPrompt[prompt] > steer.NotesPerPrompt {
-				return fmt.Errorf("session %s gives or withholds %d notes on prompt %q, over the router's cap of %d",
-					s.SessionID, perPrompt[prompt], prompt, steer.NotesPerPrompt)
+			n := 0
+			for _, a := range window[prompt] {
+				if a > l.AfterSeq-steer.NoteWindowSeqs {
+					n++
+				}
 			}
+			if n >= steer.NotesPerWindow {
+				return fmt.Errorf("session %s gives or withholds a note at after_seq %d on prompt %q with %d of its notes in the window of %d seqs before it, over the router's cap of %d",
+					s.SessionID, l.AfterSeq, prompt, n, steer.NoteWindowSeqs, steer.NotesPerWindow)
+			}
+			window[prompt] = append(window[prompt], l.AfterSeq)
 		}
 		if withheld {
 			s.NotesWithheld++
