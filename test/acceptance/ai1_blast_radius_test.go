@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 )
 
 // ai1Files is a module whose package a is called by b (a function) and c (a
@@ -205,7 +207,11 @@ func TestAI1_ANoteNamingNoPackageIsNotSaid(t *testing.T) {
 // never "no dependents": no sync; an edit of a test file; an edit of a
 // package nothing calls into; a walk file that vouches for another log (a
 // read mid-sync); record scope v4, which keeps no directory in the clear.
-// Break: drop any one guard, and its case speaks.
+// Break: drop any one guard, and its case speaks. Nor does any case log a
+// blast-radius steer line: a finding that reaches the decision is logged
+// even when its note is refused, so with both no-caller guards dropped the
+// no-caller case prints nothing yet logs one suppressed line, which only
+// the steer log shows.
 func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 	cases := map[string]struct {
 		file  string
@@ -234,6 +240,12 @@ func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 			c.setup(t, e, dir)
 			if got := e.ai1Edit(dir, "toolu_e1", c.file); strings.HasPrefix(got, ai1Prefix) {
 				t.Errorf("an edit of %s gave %q, want no blast-radius note", c.file, got)
+			}
+			for _, l := range e.steerLines() {
+				if l.str("pattern") == string(pattern.BlastRadius) {
+					t.Errorf("an edit of %s logged a %s steer line (state %q, suppressed_by %q), want none",
+						c.file, pattern.BlastRadius, l.str("state"), l.str("suppressed_by"))
+				}
 			}
 		})
 	}
