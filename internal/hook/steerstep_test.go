@@ -110,10 +110,17 @@ func (f *stFix) red(redID string) *Post {
 	return f.call(redID, "Bash", goTest, 1)
 }
 
-// steerLines is the session's steer log, decoded.
+// steerLines is stSession's steer log, decoded.
 func steerLines(t *testing.T, st *store.Store) []steer.Line {
 	t.Helper()
-	raw, skipped, err := st.ReadSteer(stSession)
+	return steerLinesOf(t, st, stSession)
+}
+
+// steerLinesOf is session's steer log in st, decoded, for a fixture whose
+// calls run under a session other than stSession.
+func steerLinesOf(t *testing.T, st *store.Store, session string) []steer.Line {
+	t.Helper()
+	raw, skipped, err := st.ReadSteer(session)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}

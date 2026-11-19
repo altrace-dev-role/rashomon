@@ -48,7 +48,7 @@ func postLineRows() []postLineRow {
 			env.Arm = arm
 			env.Join = []steer.Finding{joinStandIn(f.t, p, "unitbrief:g:r#unit:go:a@0123456789ab")}
 			b := p.Steer(env)
-			if ls := steerLines(f.t, f.st); len(ls) != 1 || ls[0].Pattern != string(pattern.TaskPreflight) {
+			if ls := steerLinesOf(f.t, f.st, ovSess); len(ls) != 1 || ls[0].Pattern != string(pattern.TaskPreflight) {
 				f.t.Fatalf("premise: the post left %d steer lines; want one, the joined finding's, so the step took its exit after the route step", len(ls))
 			}
 			return b
