@@ -69,8 +69,11 @@ func TestAI2_ScreenSaysPgraphWritesEachSymbolsPlace(t *testing.T) {
 // store's graph directory. One paragraph says so. Every paragraph that names
 // the origin read names every file it reads (baseline.GitDirs and
 // originURL: the config, the .git pointer, the commondir file), what the id
-// drops (any user name and password) and the predicate that refuses a url
-// (baseline.NormalizeOrigin: an @ after the host part), in one wording.
+// drops (any user name and password, and an empty or default port) and the
+// states that give the path's hash instead (no origin, a relative origin, an
+// @ after the host part: baseline.NormalizeOrigin), in one wording; no
+// paragraph keeps the wording of scope 7, which named neither the port nor a
+// relative origin.
 func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
 	inv, err := Default()
 	if err != nil {
@@ -79,11 +82,20 @@ func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
 	const clause = "the url of the git remote named origin"
 	every := []string{
 		"the url of the git remote named origin from the repository's git files (the config, and for a worktree the .git pointer and commondir files)",
+		"with its scheme, any user name and password, and an empty or default port removed",
+		"when it has no origin, when its origin is a relative path, or when an @ follows its host part",
+	}
+	gone := []string{
 		"with its scheme and any user name and password removed",
 		"when it has no origin or when an @ follows its host part",
 	}
 	said, index := 0, 0
 	for _, p := range inv.Paragraphs {
+		for _, w := range gone {
+			if strings.Contains(p.Text, w) {
+				t.Errorf("a paragraph still says %q", w)
+			}
+		}
 		if !strings.Contains(p.Text, clause) {
 			continue
 		}
@@ -111,5 +123,32 @@ func TestAI3_ScreenSaysGraphIndexReadsTheOrigin(t *testing.T) {
 	}
 	if said < 2 {
 		t.Errorf("%d paragraphs name the origin read, want the graph index paragraph and the kept session log's", said)
+	}
+}
+
+// TestAI3b_ScreenSaysWhenGraphIndexWritesTheConfiguration (x42.6, SETUP1):
+// the graph index paragraph, and no other, says that `rashomon graph index`
+// writes the configuration it inferred to .rashomon/graph.json only when
+// nothing is at that name, and each state in which it writes nothing. The
+// behaviour's tests are SETUP1's. Break: drop the sentence, change a state,
+// or say it in another paragraph or a second one.
+func TestAI3b_ScreenSaysWhenGraphIndexWritesTheConfiguration(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const absent = "When nothing is at .rashomon/graph.json in the repository, rashomon graph index writes there, as a new file, the configuration it inferred from the repository's manifest files; it writes nothing when a file, a directory or a link is already at that name, when .rashomon is a link, when it infers no unit, or when that configuration would be over 64 KiB."
+	said := 0
+	for _, p := range inv.Paragraphs {
+		if !strings.Contains(p.Text, absent) {
+			continue
+		}
+		said++
+		if p.Owner != OwnerRecord || p.Cite != CiteSection2 || !strings.HasPrefix(p.Text, "With `rashomon graph index") {
+			t.Errorf("the graph.json sentence is in %s/%s, not the graph index paragraph", p.Owner, p.Cite)
+		}
+	}
+	if said != 1 {
+		t.Errorf("%d paragraphs say when graph index writes .rashomon/graph.json, want 1", said)
 	}
 }

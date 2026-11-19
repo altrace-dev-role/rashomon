@@ -267,18 +267,34 @@ func NormalizeOrigin(url string) string {
 	return host + "/" + path
 }
 
-// defaultPorts is the port each scheme git fetches over uses when a url
+// defaultPort is the port each scheme git fetches over uses when a url
 // names none: ssh and its aliases git+ssh and ssh+git, git, http, https,
-// ftp and ftps.
-var defaultPorts = map[string]uint64{
-	"ssh": 22, "git+ssh": 22, "ssh+git": 22, "git": 9418,
-	"http": 80, "https": 443, "ftp": 21, "ftps": 990,
+// ftp and ftps; ok is false for any other scheme. It is a switch and not a
+// package-level map: a map is built when its package initializes, in every
+// process that links it, and process init has a byte budget
+// (TestRES2_InitBudget) that this lookup has no need to spend.
+func defaultPort(scheme string) (port uint64, ok bool) {
+	switch scheme {
+	case "ssh", "git+ssh", "ssh+git":
+		return 22, true
+	case "git":
+		return 9418, true
+	case "http":
+		return 80, true
+	case "https":
+		return 443, true
+	case "ftp":
+		return 21, true
+	case "ftps":
+		return 990, true
+	}
+	return 0, false
 }
 
 // dropDefaultPort is host without its port when the port is empty, or is
-// scheme's default in defaultPorts read as a number (RFC 3986, section
+// scheme's default (defaultPort) read as a number (RFC 3986, section
 // 6.2.3): such a url names the same server as one with no port. Any other
-// port stays, and so does every port of a scheme outside defaultPorts. The
+// port stays, and so does every port of a scheme without a default. The
 // port follows the host's last colon, and in a bracketed IPv6 host only a
 // colon past the closing bracket.
 func dropDefaultPort(host, scheme string) string {
@@ -287,7 +303,7 @@ func dropDefaultPort(host, scheme string) string {
 		return host
 	}
 	if port := host[i+1:]; port != "" {
-		def, ok := defaultPorts[scheme]
+		def, ok := defaultPort(scheme)
 		if n, err := strconv.ParseUint(port, 10, 16); !ok || err != nil || n != def {
 			return host
 		}

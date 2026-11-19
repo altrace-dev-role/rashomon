@@ -77,8 +77,16 @@ import (
 // from main are installed and consented to between tags, so an unreleased
 // version is not private. Each version's words are pinned by their digest
 // (TestScopeText_PinnedToItsVersion).
+// 8 changes the words: the repository's id drops an empty or default port
+// too, and a relative origin gives the path's hash
+// (baseline.NormalizeOrigin); the graph index paragraph says when
+// `rashomon graph index` writes .rashomon/graph.json; the paragraph for a
+// session that starts or is cleared says what a /clear keeps in the store's
+// clear directory and when it is removed; and a paragraph of its own says
+// the answers on file are kept unsigned, where a program that runs as the
+// user can change them (CONSENT-GATE1).
 // Pinned by TRU-8.
-const ScopeVersion = 7
+const ScopeVersion = 8
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
 var ErrNotImplemented = errors.New("disclose: not implemented in this build")

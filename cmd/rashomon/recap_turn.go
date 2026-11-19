@@ -61,6 +61,11 @@ type recapPayload struct {
 	// StopHookActive is carried unread (readFinalMessage's fields).
 	CWD            string
 	StopHookActive bool
+	// StopPromptID is a Stop's or StopFailure's prompt_id, the prompt whose
+	// turn the event ends, which the digest builds; "" where the payload
+	// names none, and on the catch-up's read, whose prompt_id is the new
+	// prompt's (pendingPayload.PromptID), not the turn's.
+	StopPromptID string
 }
 
 // readRecapPayload reads and parses stdin within a fixed budget, whatever
@@ -87,7 +92,8 @@ func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 }
 
 // readPayload is readRecapPayload's read, with the catch-up's prompt paths
-// when withPrompt (readPendingPayload).
+// when withPrompt (readPendingPayload). The payload's prompt_id names the
+// turn (StopPromptID) only without them.
 func readPayload(in io.Reader, timeout time.Duration, withPrompt bool) pendingPayload {
 	ch := make(chan pendingPayload, 1)
 	safe.Go(func() {
@@ -96,11 +102,15 @@ func readPayload(in io.Reader, timeout time.Duration, withPrompt bool) pendingPa
 			ch <- pendingPayload{}
 			return
 		}
-		ch <- pendingPayload{
+		p := pendingPayload{
 			recapPayload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail,
 				Harness: fm.Harness, OK: true, CWD: fm.CWD, StopHookActive: fm.StopHookActive},
 			Prompt: fm.Prompt, PromptCut: fm.PromptCut, PromptID: fm.PromptID, PermissionMode: fm.PermissionMode,
 		}
+		if !withPrompt {
+			p.StopPromptID = fm.PromptID
+		}
+		ch <- p
 	}, nil)
 
 	select {
@@ -258,7 +268,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		if rerr != nil {
 			return recap.RecordFailure(root, now)
 		}
-		built, derr := digest.BuildFrom(r, st, payload.SessionID, "", payload.LastAssistantMessage, now)
+		built, derr := digest.BuildFrom(r, st, payload.SessionID, payload.StopPromptID, payload.LastAssistantMessage, now)
 		if derr != nil {
 			return recap.RecordFailure(root, now)
 		}
@@ -324,7 +334,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// bookkeeping, not evidence, and a failure to persist it must cost at
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
-	speak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))
+	speak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops, stop.backed()), d.Declarations.Recorded > 0)
 	stop.noticeSaid(st, d.SessionID, speak)
 	// The channel-evidence read, at a Stop only: the checkpoint is durable
 	// (the flush above returned), and the defer runs on every return below,
