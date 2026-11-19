@@ -15,8 +15,8 @@ import (
 
 // pr1Stop is the Stop line of a session in repository a, inferred gate go
 // test: an edit, a green go test ./..., then last (nil for none), whose calls
-// name b, another repository; and its `report --ledger` rows, the kind,
-// state and evidence of each, which the replay (laststop) derives.
+// name b, another repository; and its `report --ledger` rows, each whole,
+// which the replay (laststop) derives.
 func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 	t.Helper()
 	e := newSteerEnv(t)
@@ -35,9 +35,12 @@ func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 	}
 	var rows []string
 	for _, l := range strings.Split(res.stdout, "\n") {
-		// A row's kind has an underscore; no header word of seven does.
-		if f := strings.Fields(l); len(f) == 7 && strings.Contains(f[2], "_") {
-			rows = append(rows, f[2]+" "+f[4]+" "+f[5])
+		// Each row whole, a turn's row too: a row's id digests its family,
+		// and a platform row's family is read under the replay's root
+		// (EvaluateStop's in.Platform(snap.ProjectRoot, ...)), where kind,
+		// state and evidence count need not change with the root.
+		if l = strings.TrimSpace(l); strings.HasPrefix(l, "ob:") {
+			rows = append(rows, l)
 		}
 	}
 	t.Logf("ledger:\n%s", res.stdout)
@@ -51,12 +54,24 @@ func pr1Stop(t *testing.T, last func(e *env, a, b string)) (string, []string) {
 // it; the replay takes the root the Stop's checkpoint recorded. Today the
 // root is the last declaration's Project, b, the gate is placed under b, and
 // the line says go test was not run. Break: take the root from the
-// declarations, at the Stop or in the replay.
+// declarations, at the Stop or in the replay; in the replay the root also
+// names the platform row's family, so the rows are compared whole.
 func TestPR1e_TheStopJudgesTheProjectItsSpecCameFrom(t *testing.T) {
 	want, wantRows := pr1Stop(t, nil)
-	met := func(r string) bool { return strings.HasPrefix(r, "gate_after_write met ") }
+	met := func(r string) bool {
+		f := strings.Fields(r)
+		return len(f) > 4 && f[2] == "gate_after_write" && f[4] == "met"
+	}
 	if !strings.Contains(want, "verified") || !slices.ContainsFunc(wantRows, met) {
 		t.Fatalf("premise: the control's Stop line %q is not verified, or its ledger %q has no met gate_after_write", want, wantRows)
+	}
+	// The root's truth is the fixture's own: a's go.mod says module a.
+	ofA := func(r string) bool {
+		f := strings.Fields(r)
+		return len(f) == 7 && f[2] == "platform_impact" && strings.HasPrefix(f[6], "a/")
+	}
+	if !slices.ContainsFunc(wantRows, ofA) {
+		t.Fatalf("premise: the control's ledger %q has no platform_impact row of module a, so its rows cannot name the root", wantRows)
 	}
 	for _, c := range []struct {
 		name string
