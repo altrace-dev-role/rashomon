@@ -310,7 +310,7 @@
         "lessons": null,
         "unknown": [],
         "mistakes": null,
-        "flagged": null,
+        "strict_claims_not_green": null,
         "claims_omitted": 0
       },
       "knowledge": null

@@ -122,7 +122,7 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	a.Clause = recap.ClauseBody(im)
 	// The replay reads no final message (MessageUnread), so v.Scan holds no
 	// claim: the live Stop's verdicts are the checkpoint's.
-	a.Flagged = flaggedOf(r.Checkpoint, v.Done != nil)
+	a.NotGreen = notGreenOf(r.Checkpoint, v.Done != nil)
 	a.ClaimsOmitted = r.Checkpoint.ClaimsOmitted
 	for _, g := range v.Snap.Gates {
 		ag := report.AutosteerGate{Name: recap.GateName(v, g), Kind: g.Kind, State: string(g.State)}
@@ -156,13 +156,16 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	return a
 }
 
-// flaggedOf is the claims of cp that the done flag reads as unbacked
-// (recap.ClaimUnbacked), each named by class and verdict, with the seq each of
-// its gates' rows in cp rests on and the count of its gates cp keeps no row
-// for. earlier is whether the done flag judged them against the turns since
-// the last edit (verify.StopView.Done); the flag reads that one window for
-// every claim. Non-nil.
-func flaggedOf(cp *verify.Checkpoint, earlier bool) []report.AutosteerClaim {
+// notGreenOf is the strict claims of cp whose verdict is a gate state other
+// than green (recap.ClaimUnbacked), each named by class and verdict, with the
+// seq each of its gates' rows in cp rests on and the count of its gates cp
+// keeps no row for. It is one term of the done flag's decision, not the
+// decision: the flag also reads the row, its sentence and the unmet expected
+// kinds, and no record keeps what it decided. earlier is whether the done
+// flag judged them against the turns since the last edit
+// (verify.StopView.Done); the flag reads that one window for every claim.
+// Non-nil.
+func notGreenOf(cp *verify.Checkpoint, earlier bool) []report.AutosteerClaim {
 	out := []report.AutosteerClaim{}
 	for _, c := range cp.Claims {
 		if !recap.ClaimUnbacked(c) {

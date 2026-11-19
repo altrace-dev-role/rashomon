@@ -62,7 +62,7 @@ harness unknown: none
 session demo-1
   install: <install>
   story
-    flagged claims, last Stop only: none
+    strict claims not green, last Stop only: none
     notes delivered by pattern: 1 regression location; acted on: not measured; ignored: not measured
     checks off: none in the record; steering off: not read
     trust: coverage verified; no gaps; no skipped records; claims read at the last Stop only

@@ -63,7 +63,7 @@ func rh8Line(t *testing.T, story []string, prefix string) string {
 func rh8Autosteer() *Autosteer {
 	return &Autosteer{Stop: &AutosteerStop{Seq: 40, Row: "verified"}, Gates: []AutosteerGate{},
 		Delivered: []AutosteerNote{}, Findings: []AutosteerFinding{}, Checks: []AutosteerCheck{},
-		Unknown: []AutosteerUnknown{}, Flagged: []AutosteerClaim{}}
+		Unknown: []AutosteerUnknown{}, NotGreen: []AutosteerClaim{}}
 }
 
 // TestRH8_LeadLinesFirst (item 8, report.md :225): the story opens with the
@@ -86,7 +86,7 @@ func TestRH8_LeadLinesFirst(t *testing.T) {
 		}
 	}
 
-	stop := func(f ...AutosteerClaim) *Autosteer { a := rh8Autosteer(); a.Flagged = f; return a }
+	stop := func(f ...AutosteerClaim) *Autosteer { a := rh8Autosteer(); a.NotGreen = f; return a }
 	for _, c := range []struct {
 		name string
 		a    *Autosteer

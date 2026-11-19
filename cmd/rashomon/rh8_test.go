@@ -115,14 +115,14 @@ func TestRH8d_BlockOnOneSessionReport(t *testing.T) {
 	}
 }
 
-// TestRH8g_FlaggedOfJoinsTheCheckpointGates (item 8): flaggedOf keeps the
+// TestRH8g_NotGreenOfJoinsTheCheckpointGates (item 8): notGreenOf keeps the
 // strict claims whose verdict is a gate state other than green, in the
 // checkpoint's order, each with the seq its gate's row rests on (the last
 // green run of a green gate, the last run otherwise), ascending and once, "no
 // gate" counted for a gate the checkpoint keeps no row for, and the window
 // mark on each. Break: keep a green claim, take the other seq of a row, or
 // drop the count.
-func TestRH8g_FlaggedOfJoinsTheCheckpointGates(t *testing.T) {
+func TestRH8g_NotGreenOfJoinsTheCheckpointGates(t *testing.T) {
 	seq := func(n int64) *int64 { return &n }
 	cp := &verify.Checkpoint{
 		Gates: []verify.CheckpointGate{
@@ -141,7 +141,7 @@ func TestRH8g_FlaggedOfJoinsTheCheckpointGates(t *testing.T) {
 		},
 	}
 	for _, earlier := range []bool{false, true} {
-		got := flaggedOf(cp, earlier)
+		got := notGreenOf(cp, earlier)
 		want := []report.AutosteerClaim{
 			{Class: "tests_pass", Verdict: "stale", Evidence: []int64{7}, EarlierWindow: earlier},
 			{Class: "done", Verdict: "red", Evidence: []int64{5, 7, 8}, NoGate: 1, EarlierWindow: earlier},
@@ -150,19 +150,19 @@ func TestRH8g_FlaggedOfJoinsTheCheckpointGates(t *testing.T) {
 			t.Errorf("earlier %v:\n got %+v\nwant %+v", earlier, got, want)
 		}
 	}
-	if got := flaggedOf(&verify.Checkpoint{}, false); got == nil || len(got) != 0 {
+	if got := notGreenOf(&verify.Checkpoint{}, false); got == nil || len(got) != 0 {
 		t.Errorf("a checkpoint with no claim gives %#v, want an empty non-nil list", got)
 	}
 }
 
-// TestRH8h_FlaggedClaimsFromTheCheckpoint (item 8): the replay reads no
+// TestRH8h_ClaimsNotGreenFromTheCheckpoint (item 8): the replay reads no
 // final message, so the report's strict claims not green are the
 // checkpoint's, which the live Stop wrote. "All tests pass." after a green go
 // test and a later edit is a strict tests_pass claim on a stale gate: listed,
 // its evidence the go test call's seq, judged on its own turn; with a later
 // turn that only reads, judged on an earlier turn's window. Break: read
 // v.Scan.Claims, or drop the window mark.
-func TestRH8h_FlaggedClaimsFromTheCheckpoint(t *testing.T) {
+func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		later   bool
@@ -226,7 +226,7 @@ func TestRH8h_FlaggedClaimsFromTheCheckpoint(t *testing.T) {
 
 			got := autosteerOf(f.st, "s")
 			want := []report.AutosteerClaim{{Class: "tests_pass", Verdict: "stale", Evidence: []int64{*row.LastRunSeq}, EarlierWindow: c.earlier}}
-			if got == nil || fmt.Sprintf("%+v", got.Flagged) != fmt.Sprintf("%+v", want) {
+			if got == nil || fmt.Sprintf("%+v", got.NotGreen) != fmt.Sprintf("%+v", want) {
 				t.Errorf("strict claims not green:\n got %+v\nwant %+v", got, want)
 			}
 		})
@@ -309,11 +309,11 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 			if _, fires := recap.DoneFlag(c.v, "s", false); fires != c.fires {
 				t.Fatalf("premise: the done flag fires %v on this Stop, want %v", fires, c.fires)
 			}
-			list := flaggedOf(c.cp, c.v.Done != nil)
+			list := notGreenOf(c.cp, c.v.Done != nil)
 			if fmt.Sprintf("%+v", list) != fmt.Sprintf("%+v", c.list) {
 				t.Errorf("claims:\n got %+v\nwant %+v", list, c.list)
 			}
-			a := &report.Autosteer{Stop: &report.AutosteerStop{Seq: 9, Row: string(c.v.Summary.Row)}, Flagged: list}
+			a := &report.Autosteer{Stop: &report.AutosteerStop{Seq: 9, Row: string(c.v.Summary.Row)}, NotGreen: list}
 			var b bytes.Buffer
 			if err := report.Text(&b, &report.Report{Sessions: []report.Session{{SessionID: "s", Autosteer: a}}}); err != nil {
 				t.Fatal(err)
