@@ -157,12 +157,14 @@ func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 // and nothing else: the value under another member fails, beside itself
 // under its own member too; a token or a longer hex run under the member
 // fails; the value in another kind of file fails; another shape under a
-// member whose row takes any value fails; and a row nothing matches is
-// reported as stale.
+// member whose row takes any value fails; a token under key fails, in a
+// steer file and in a golden; and a row nothing matches is reported as
+// stale.
 func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 	id := h112Stray[:32] // 32 lowercase hex digits, a steer line id's class
 	run := h113Sessions + "stores/r/runs/" + h112P1 + "/"
 	sums := h113Sessions + "SHA256SUMS.txt"
+	golden := h113Sessions + "golden/fold-v1/r.json"
 	for _, tc := range []struct {
 		name, file, body string
 		excused          bool
@@ -176,6 +178,8 @@ func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 		{"the id in another kind of file", run + "records.ndjson", `{"id":"` + id + `"}`, false},
 		{"an email address under a member any value passes", run + "steer.ndjson", `{"key":"mail alice.liddell@acme-corp.io"}`, false},
 		{"a checksum line with one space", sums, h112Leaf + " stores/r/runs/" + h112P1 + "/steer.ndjson", false},
+		{"a token under key in a steer file", run + "steer.ndjson", `{"key":"` + h112Bearer + `"}`, false},
+		{"a token under key in a golden", golden, `{"key":"` + h112Bearer + `"}`, false},
 	} {
 		found := hygiene.Scan(tc.file, []byte(tc.body+"\n"))
 		if len(found) == 0 {
