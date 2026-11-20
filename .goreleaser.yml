@@ -95,7 +95,8 @@ changelog:
 # With no changelog, the release body is the header alone until the notes are
 # set. The header is rendered only when a release is published, which no dry
 # run reaches, so it is fixed text with no template action, and there is no
-# footer. Change it before the first release that is not an alpha.
+# footer. Change it before the first release that is not an early beta.
 release:
   draft: true
-  header: "This is an alpha release of rashomon. The notes for this version are added to this page once the release build has finished. The README in the repository has the install steps."
+  name_template: "AutoSteer-1.0"
+  header: "This is an early beta release of rashomon. The notes for this version are added to this page once the release build has finished. The README in the repository has the install steps."
