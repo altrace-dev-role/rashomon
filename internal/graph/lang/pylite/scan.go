@@ -26,8 +26,9 @@ type constDef struct {
 }
 
 // importRef is one imported name: from module import attr, or import
-// module (attr ""). A relative module keeps its leading dots until parse
-// resolves it against the file's package.
+// module (attr ""), or a star import (attr "", see readFrom). A relative
+// module keeps its leading dots until parse resolves it against the file's
+// package.
 type importRef struct {
 	module string
 	attr   string
@@ -193,12 +194,19 @@ func notName(r rune) bool {
 	return !nameRune(r) && r != ',' && r != '\\' && r != ')' && !unicode.IsSpace(r)
 }
 
-// readFrom records from module import a, b as c.
+// readFrom records from module import a, b as c. A star import binds no one
+// name the scan can list, so it is kept under * and its module, a key no
+// name can take, with no attribute: it writes its module's imports edge, no
+// references edge, and no call resolves through it.
 func readFrom(imports map[string]importRef, module, names string) {
 	names = strings.Trim(strings.TrimSpace(names), "()")
 	for _, part := range strings.Split(names, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
+			continue
+		}
+		if part == "*" {
+			imports["*"+module] = importRef{module: module}
 			continue
 		}
 		attr, alias, has := strings.Cut(part, " as ")
