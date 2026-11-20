@@ -85,7 +85,7 @@ func TestExecutedNotAsDeclared_UnknownDigestIsNotADifference(t *testing.T) {
 // renderDestinations renders just the destinations section.
 func renderDestinations(d Destinations) string {
 	var b bytes.Buffer
-	writeDestinations(&b, d)
+	writeDestinations(&b, d, true)
 	return b.String()
 }
 

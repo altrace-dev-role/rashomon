@@ -26,6 +26,39 @@ type Autosteer struct {
 	// Mistakes is the findings as mistakes against intent (card
 	// REPORT-REQS1), null with no Stop replayed.
 	Mistakes *AutosteerMistakes `json:"mistakes"`
+	// NotGreen is each strict claim of the last Stop's final message whose
+	// verdict is not green, in the checkpoint's order: a gate state other
+	// than green (recap.ClaimUnbacked, the done flag's claim term), or
+	// no_gate_known, a claim no gate checked. A replay reads no message, so
+	// they are the checkpoint's, which keeps the live Stop's verdicts; the
+	// session's earlier Stops are not read. It is not what the Stop flagged:
+	// the done flag also reads the row, the row's sentence and the unmet
+	// expected kinds, and it reads a claim no gate checked as backed (D79), so
+	// a verified row, a silent sentence or a claim no gate checked lists a
+	// claim the Stop said nothing of, and an unmet kind flags a Stop that
+	// lists none. No record keeps the flag's decision. Null with no Stop
+	// replayed.
+	// ClaimsOmitted is the verdicts the checkpoint did not keep (past
+	// verify.MaxClaims), which no list here holds.
+	NotGreen      []AutosteerClaim `json:"strict_claims_not_green"`
+	ClaimsOmitted int              `json:"claims_omitted"`
+}
+
+// AutosteerClaim is one strict claim not green, named by its class and
+// verdict and never by its words: the checkpoint keeps an HMAC of the
+// sentence, never the sentence. Evidence is the seq each of its gates' states rests on at the
+// Stop (the last green run of a green gate, the last run otherwise),
+// ascending; NoGate counts its gates the checkpoint keeps no row for (its cut,
+// GatesOmitted). EarlierWindow is the Stop's mark, the same on every claim:
+// the done flag at this Stop read the turns since the last edit
+// (verify.StopView.Done) and not the Stop's own turn. The claim's verdict does
+// not depend on it: a verdict is its gates' states at the Stop.
+type AutosteerClaim struct {
+	Class         string  `json:"class"`
+	Verdict       string  `json:"verdict"`
+	Evidence      []int64 `json:"evidence"`
+	NoGate        int     `json:"no_gate"`
+	EarlierWindow bool    `json:"earlier_window"`
 }
 
 // AutosteerStop is the last Stop: its point seq, the row of verify's table it

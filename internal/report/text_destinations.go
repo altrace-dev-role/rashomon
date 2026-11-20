@@ -17,9 +17,17 @@ import (
 // The host lines are an inventory and say so: these are the hosts the calls
 // named, and the legend under them says nothing here observed whether any was
 // reached. "none" is a fact about the record, not a verdict about the session.
-func writeDestinations(b *bytes.Buffer, d Destinations) {
+//
+// The rows of the calls that ran differently name each call's tool-use id,
+// which a reader of the text does not read: without ids the count stands and
+// one line says --ids lists them (report.md :231).
+func writeDestinations(b *bytes.Buffer, d Destinations, ids bool) {
 	fmt.Fprintf(b, "  executed differently from declared: %d\n", d.ExecutedNotAsDeclared)
-	writeRewritten(b, d.Rewritten)
+	if !ids && len(d.Rewritten) > 0 {
+		fmt.Fprintln(b, "    ids with --ids")
+	} else {
+		writeRewritten(b, d.Rewritten)
+	}
 	if len(d.DeclaredHosts) == 0 {
 		fmt.Fprintln(b, "  hosts named by tool calls: none")
 	} else {
