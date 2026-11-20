@@ -216,40 +216,33 @@ func printTurn(st *store.Store, stdout io.Writer, note steer.Output, c steer.Cli
 	return nil
 }
 
-// The turn's once-per-session notices (READ-SAFE1a c5 and D7): user-only
-// lines of fixed words, with no path and no text of an error. The manifest
-// line names one class of its refusal.
+// The turn's once-per-session notice (READ-SAFE1a c5): a user-only line of
+// fixed words, with no path and no text of an error. A configuration an
+// edit could not read is said by that edit's post (internal/hook,
+// takeUnreadLine), not here.
 const (
 	indexCapNotice = "rashomon: this repository's index is over its size cap, so prompts get no brief from it; " +
 		"run rashomon graph index to write it again. Shown once per session."
-	manifestNoticeHead = "rashomon: the project's manifest file was not read ("
-	manifestNoticeTail = "), so imports in the files edited are not mapped. Shown once per session."
-	manifestNotRegular = manifestNoticeHead + "not a regular file" + manifestNoticeTail
-	manifestReadFailed = manifestNoticeHead + "read failed" + manifestNoticeTail
 )
 
 // turnNotes is the turn's once-per-session notices, which printTurn joins
-// after the catch-up line in this order: the repository index over its size
-// cap, as the prompt's graph brief found it (pendingPayload.indexOverCap),
-// then the manifest notice an edit's overlay left owed
-// (store.OweManifestNotice). The zero value has none.
+// after the catch-up line: the repository index over its size cap, as the
+// prompt's graph brief found it (pendingPayload.indexOverCap). The zero
+// value has none.
 type turnNotes struct {
 	st       *store.Store
 	session  string
 	indexCap bool
-	manifest bool
 }
 
 // promptTurnNotes is the notices p's prompt may print: the index cap as the
-// preflight found it, and the manifest notice when its owed marker is
-// present, a stat of that one marker on every prompt. The off arm withholds
-// every hook print (armOff), these lines too, and takes no marker.
+// preflight found it. The off arm withholds every hook print (armOff), this
+// line too, and takes no marker.
 func promptTurnNotes(st *store.Store, p *pendingPayload, root string) turnNotes {
 	if st == nil || p.SessionID == "" {
 		return turnNotes{}
 	}
-	t := turnNotes{st: st, session: p.SessionID, indexCap: p.indexOverCap,
-		manifest: st.NoticeTaken(p.SessionID, store.FileNoticeManifestOwed)}
+	t := turnNotes{st: st, session: p.SessionID, indexCap: p.indexOverCap}
 	if t.due() && armOff(root) {
 		return turnNotes{}
 	}
@@ -257,23 +250,15 @@ func promptTurnNotes(st *store.Store, p *pendingPayload, root string) turnNotes 
 }
 
 // due reports whether t has a notice to try.
-func (t turnNotes) due() bool { return t.indexCap || t.manifest }
+func (t turnNotes) due() bool { return t.indexCap }
 
 // take takes the printed marker of each notice t has that the session has
 // not had (store.TakeNotice), and returns their lines, one per line, and the
-// markers it took. The manifest line names the failed read when the class
-// marker is present, else the file that is not regular.
+// markers it took.
 func (t turnNotes) take() (string, []string) {
 	var lines, taken []string
 	if t.indexCap && t.st.TakeNotice(t.session, store.FileNoticeIndexCap) {
 		lines, taken = append(lines, indexCapNotice), append(taken, store.FileNoticeIndexCap)
-	}
-	if t.manifest && t.st.TakeNotice(t.session, store.FileNoticeManifest) {
-		line := manifestNotRegular
-		if t.st.NoticeTaken(t.session, store.FileNoticeManifestReadFailed) {
-			line = manifestReadFailed
-		}
-		lines, taken = append(lines, line), append(taken, store.FileNoticeManifest)
 	}
 	return strings.Join(lines, "\n"), taken
 }
