@@ -156,19 +156,23 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	return a
 }
 
-// notGreenOf is the strict claims of cp whose verdict is a gate state other
-// than green (recap.ClaimUnbacked), each named by class and verdict, with the
-// seq each of its gates' rows in cp rests on and the count of its gates cp
-// keeps no row for. It is one term of the done flag's decision, not the
-// decision: the flag also reads the row, its sentence and the unmet expected
-// kinds, and no record keeps what it decided. earlier is whether the done
-// flag judged them against the turns since the last edit
-// (verify.StopView.Done); the flag reads that one window for every claim.
-// Non-nil.
+// notGreenOf is the strict claims of cp whose verdict is not green, each named
+// by class and verdict, with the seq each of its gates' rows in cp rests on
+// and the count of its gates cp keeps no row for. Not green is either of two
+// verdicts: a gate state other than green (recap.ClaimUnbacked, the done
+// flag's claim term), or no_gate_known, a claim no gate checked, which the
+// flag reads as backed (D79). So the list is not the flag's decision: the
+// flag also reads the row, its sentence and the unmet expected kinds, it
+// reads a claim no gate checked as backed, and no record keeps what it
+// decided. earlier is whether the done flag at this Stop read the turns since
+// the last edit (verify.StopView.Done) and not the Stop's own turn: one mark
+// for the Stop, the same on every claim. No verdict depends on it, as a
+// verdict is its gates' states at the Stop. Non-nil.
 func notGreenOf(cp *verify.Checkpoint, earlier bool) []report.AutosteerClaim {
 	out := []report.AutosteerClaim{}
 	for _, c := range cp.Claims {
-		if !recap.ClaimUnbacked(c) {
+		unchecked := c.Strict && c.Verdict == verify.NoGateKnown
+		if !recap.ClaimUnbacked(c) && !unchecked {
 			continue
 		}
 		f := report.AutosteerClaim{Class: string(c.Class), Verdict: string(c.Verdict), Evidence: []int64{}, EarlierWindow: earlier}

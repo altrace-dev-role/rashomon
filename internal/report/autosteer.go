@@ -27,15 +27,17 @@ type Autosteer struct {
 	// REPORT-REQS1), null with no Stop replayed.
 	Mistakes *AutosteerMistakes `json:"mistakes"`
 	// NotGreen is each strict claim of the last Stop's final message whose
-	// verdict is a gate state other than green (recap.ClaimUnbacked), in the
-	// checkpoint's order; a claim no gate speaks to (no_gate_known) has no
-	// gate state and is not one. A replay reads no message, so they are the
-	// checkpoint's, which keeps the live Stop's verdicts; the session's
-	// earlier Stops are not read. It is not what the Stop flagged: the done
-	// flag also reads the row, the row's sentence and the unmet expected
-	// kinds, so a verified row or a silent sentence lists a claim the Stop
-	// said nothing of, and an unmet kind flags a Stop that lists none. No
-	// record keeps the flag's decision. Null with no Stop replayed.
+	// verdict is not green, in the checkpoint's order: a gate state other
+	// than green (recap.ClaimUnbacked, the done flag's claim term), or
+	// no_gate_known, a claim no gate checked. A replay reads no message, so
+	// they are the checkpoint's, which keeps the live Stop's verdicts; the
+	// session's earlier Stops are not read. It is not what the Stop flagged:
+	// the done flag also reads the row, the row's sentence and the unmet
+	// expected kinds, and it reads a claim no gate checked as backed (D79), so
+	// a verified row, a silent sentence or a claim no gate checked lists a
+	// claim the Stop said nothing of, and an unmet kind flags a Stop that
+	// lists none. No record keeps the flag's decision. Null with no Stop
+	// replayed.
 	// ClaimsOmitted is the verdicts the checkpoint did not keep (past
 	// verify.MaxClaims), which no list here holds.
 	NotGreen      []AutosteerClaim `json:"strict_claims_not_green"`
@@ -47,8 +49,10 @@ type Autosteer struct {
 // sentence, never the sentence. Evidence is the seq each of its gates' states rests on at the
 // Stop (the last green run of a green gate, the last run otherwise),
 // ascending; NoGate counts its gates the checkpoint keeps no row for (its cut,
-// GatesOmitted). EarlierWindow says the done flag judged it against the turns
-// since the last edit and not the Stop's own turn (verify.StopView.Done).
+// GatesOmitted). EarlierWindow is the Stop's mark, the same on every claim:
+// the done flag at this Stop read the turns since the last edit
+// (verify.StopView.Done) and not the Stop's own turn. The claim's verdict does
+// not depend on it: a verdict is its gates' states at the Stop.
 type AutosteerClaim struct {
 	Class         string  `json:"class"`
 	Verdict       string  `json:"verdict"`

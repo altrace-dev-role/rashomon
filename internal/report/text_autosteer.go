@@ -39,10 +39,10 @@ func writeStory(b *bytes.Buffer, sess Session) {
 	fmt.Fprintln(b, "  story")
 	a := sess.Autosteer
 	// The answer first (report.md :225 to :230): the last Stop's strict
-	// claims not green (one term of the done flag's decision, which no
-	// record keeps, so not what the Stop flagged), the notes by pattern,
-	// when checks were off, and how far to trust the record. Then the story
-	// as it was.
+	// claims not green (a gate state other than green, or no gate known;
+	// not the done flag's decision, which no record keeps, so not what the
+	// Stop flagged), the notes by pattern, when checks were off, and how far
+	// to trust the record. Then the story as it was.
 	fmt.Fprintf(b, "    strict claims not green%s\n", notGreenText(a))
 	fmt.Fprintf(b, "    notes delivered by pattern: %s; acted on: not measured; ignored: not measured\n", notesByPattern(a))
 	fmt.Fprintf(b, "    checks off: %s; steering off: not read\n", checksOff(sess))
@@ -187,11 +187,11 @@ func pluralTitle(title string, n int) string {
 
 // notGreenText is the strict-claims line after its first four words: `: not
 // read`, `: no Stop recorded`, or `, last Stop only: ` and the strict claims
-// whose verdict is a gate state other than green, maxStoryGates of them and
-// then `and <k> more`, or none. The checkpoint keeps the last Stop's
-// verdicts only, so the line says so. A claim is its class and verdict,
-// never its words, with the seqs its gates rest on and which window the done
-// flag judged it against.
+// whose verdict is not green (a gate state other than green, or no gate
+// known), maxStoryGates of them and then `and <k> more`, or none. The
+// checkpoint keeps the last Stop's verdicts only, so the line says so. A
+// claim is its class and verdict, never its words, with the seqs its gates
+// rest on and the Stop's window mark (AutosteerClaim.EarlierWindow).
 func notGreenText(a *Autosteer) string {
 	switch {
 	case a == nil:
