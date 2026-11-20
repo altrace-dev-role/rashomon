@@ -132,9 +132,9 @@ func rh7cProject(t *testing.T, doc string) (st *store.Store, project, dir string
 // backtest refuses (TestRH7b_): a declared required gate, green, then an
 // edit, which fires stale-evidence live under a trusted spec (internal/hook
 // TestDG2d_), replayed: the replay judges the gate and the write, so the red
-// after them fires regression-location, but its scratch store binds no
-// repository spec, so the spec reads as untrusted and stale-evidence fires 0
-// times (TestDG2e_'s untrusted case).
+// after them fires regression-location, but its scratch store holds no
+// project index and binds no repository spec, so the spec reads as
+// untrusted and stale-evidence fires 0 times (TestDG2e_'s untrusted case).
 func TestRH7c_ReplayFixtures(t *testing.T) {
 	for _, c := range []struct {
 		sensor pattern.ID

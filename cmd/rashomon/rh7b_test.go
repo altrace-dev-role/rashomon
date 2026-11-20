@@ -14,7 +14,7 @@ import (
 // The three reasons a backtest gives when it refuses a pattern.
 const (
 	rh7bReplayNever = "the replay of this project's tool calls never fires it"
-	rh7bNoGate      = "a replay holds no project index and no trusted or managed spec, so no gate is required in it"
+	rh7bStale       = "it is raised only for a gate that a learned project index or a trusted or managed spec requires, and a replay holds neither"
 	rh7bReserved    = "it is reserved and not built: no code raises it, live or replayed"
 )
 
@@ -26,26 +26,27 @@ const (
 // refused id and the five a backtest measures, and no count. The line gives
 // one of three reasons. Ten ids are raised live, at an event or through a
 // port the replay does not run: their line says the replay never fires them.
-// stale-evidence is raised only where a project index or a trusted or
-// managed spec makes a gate required, and a replay holds neither: its line
+// stale-evidence is raised only for a gate that a learned project index or
+// a trusted or managed spec requires, and a replay holds neither: its line
 // says so. Four ids are reserved and no code raises them, live or replayed:
 // their line says so, and never that the replay is the reason. The unknown
 // sensor line and the usage screen's backtest entry name the five and no
 // other id. The four lists are literal and must equal pattern.All() with no
 // overlap, so a new id fails here until it is placed.
-// Of the five, only regression-location is proved by a run here, in
+// Each of the five is proved by a run elsewhere: regression-location in
 // TestP6_BacktestReproducesTheLiveFires (a replay of three sessions that
-// fires it 1, 0 and 1 times); this test shows only that each of the five
-// passes the refusal and reaches the store open.
+// fires it 1, 0 and 1 times), and the other four in TestRH7c_ReplayFixtures,
+// each fired once through `rashomon backtest --sensor ID`; this test shows
+// only that each of the five passes the refusal and reaches the store open.
 func TestRH7b_BacktestRefusesPatternNoReplayFires(t *testing.T) {
 	measured := []string{"regression-location", "platform-rule", "integrity",
 		"ordering-rule", "masked-status"}
 	replayNever := []string{"subtask-gate", "continuity-briefing", "declared-fact",
 		"learned-fact", "subagent-claim", "claim-vs-record", "sequence-risk",
 		"task-preflight", "blast-radius", "plan-check"}
-	noGate := []string{"stale-evidence"}
+	stale := []string{"stale-evidence"}
 	reserved := []string{"identical-retry", "cred-spray", "agent-interference", "model-switch"}
-	notMeasured := slices.Concat(replayNever, noGate, reserved)
+	notMeasured := slices.Concat(replayNever, stale, reserved)
 
 	t.Run("split", func(t *testing.T) {
 		var all []string
@@ -55,10 +56,10 @@ func TestRH7b_BacktestRefusesPatternNoReplayFires(t *testing.T) {
 		union := append(slices.Clone(measured), notMeasured...)
 		slices.Sort(union)
 		slices.Sort(all)
-		if len(measured) != 5 || len(replayNever) != 10 || len(noGate) != 1 || len(reserved) != 4 ||
+		if len(measured) != 5 || len(replayNever) != 10 || len(stale) != 1 || len(reserved) != 4 ||
 			len(slices.Compact(slices.Clone(union))) != len(union) || !slices.Equal(union, all) {
-			t.Errorf("measured %d, replay-never %d, no-gate %d, reserved %d, union %v; want 5, 10, 1 and 4, "+
-				"no overlap, union pattern.All() %v", len(measured), len(replayNever), len(noGate), len(reserved), union, all)
+			t.Errorf("measured %d, replay-never %d, stale %d, reserved %d, union %v; want 5, 10, 1 and 4, "+
+				"no overlap, union pattern.All() %v", len(measured), len(replayNever), len(stale), len(reserved), union, all)
 		}
 	})
 
@@ -118,9 +119,9 @@ func TestRH7b_BacktestRefusesPatternNoReplayFires(t *testing.T) {
 			t.Run(id, func(t *testing.T) { refusedBy(t, id, rh7bReplayNever, "reserved") })
 		}
 	})
-	t.Run("no-gate", func(t *testing.T) {
-		for _, id := range noGate {
-			t.Run(id, func(t *testing.T) { refusedBy(t, id, rh7bNoGate, rh7bReplayNever) })
+	t.Run("stale", func(t *testing.T) {
+		for _, id := range stale {
+			t.Run(id, func(t *testing.T) { refusedBy(t, id, rh7bStale, rh7bReplayNever) })
 		}
 	})
 	t.Run("reserved", func(t *testing.T) {

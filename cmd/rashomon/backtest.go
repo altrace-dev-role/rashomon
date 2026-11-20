@@ -62,8 +62,9 @@ func cmdBacktest(args []string, stdout io.Writer) error {
 	// its count would be 0 by construction, and a 0 nothing measured reads
 	// as a measurement (backtest.Measurable). A reserved one is refused in
 	// its own words, since nothing raises it live either (backtest.Reserved),
-	// and so is stale-evidence, which a live session raises only where a
-	// gate is required and a replay requires none.
+	// and so is stale-evidence, which is raised only for a gate that a
+	// learned project index or a trusted or managed spec requires (the post's
+	// stale trigger, then verify.SteerAt), and a replay holds neither.
 	var ids []string
 	for _, id := range pattern.All() {
 		if backtest.Measurable(id) {
@@ -80,7 +81,7 @@ func cmdBacktest(args []string, stdout io.Writer) error {
 			why = "it is reserved and not built: no code raises it, live or replayed"
 		}
 		if pattern.ID(sensor) == pattern.StaleEvidence {
-			why = "a replay holds no project index and no trusted or managed spec, so no gate is required in it"
+			why = "it is raised only for a gate that a learned project index or a trusted or managed spec requires, and a replay holds neither"
 		}
 		return fmt.Errorf("a backtest cannot measure %q: %s; a backtest measures %s", sensor, why, measured)
 	}

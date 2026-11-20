@@ -16,24 +16,27 @@ import (
 // learnPath is this package's import path, as other packages import it.
 const learnPath = "github.com/altrace-dev-role/rashomon/internal/learn"
 
-// TestRH7c_OnlyLearnImportAddsALesson guards the report's words "no lesson
-// miner exists": every lesson in a ledger came in by `rashomon learn
-// import`. It parses every non-test Go file under cmd and internal and fails
-// when production code could add a lesson another way:
-//   - a ledger's lesson list is written only in (*Ledger).Import, by its
-//     append (an edit of a field of one row, such as its tier, is not a
-//     write of the list);
-//   - a method named Import is reached only from importLessons, the learn
-//     import verb (a package's own Import function, such as knowledge's, is
-//     not counted);
-//   - Candidate, the check a miner would run before it proposed a lesson,
-//     has no caller.
+// TestRH7c_OnlyLearnImportAddsALesson is a screen for the report's words "no
+// lesson miner exists", not a proof of them. It parses every non-test Go
+// file under cmd and internal and fails on three shapes only:
+//   - an assignment whose target is a ledger's lesson list (x.file.Lessons),
+//     one row of it (x.file.Lessons[i]) or, in this package, the whole
+//     lessons file (x.file), anywhere but (*Ledger).Import (an edit of a
+//     field of one row, such as its tier, is not such a target);
+//   - a selector named Import on anything but a package name, anywhere but
+//     importLessons, the learn import verb (a package's own Import
+//     function, such as knowledge's, is not counted);
+//   - a reference to Candidate, the check a miner would run before it
+//     proposed a lesson: learn.Candidate by its import name, or Candidate
+//     in this package other than its declaration's name.
 //
-// What it cannot see: a lessons.json written by path, or by hand, outside
-// the ledger (the ledger reads such a file as unsigned and quarantined, and
-// the report says the ledger is unchecked); reflection; a package that
-// shadows a package name with a variable; and code that is not Go source
-// under cmd or internal.
+// What it cannot see: a dot-import of this package; a write through a
+// pointer or an alias of the list; copy into the list; a miner under
+// another name that reaches neither Import nor Candidate; Go source outside
+// cmd and internal; a lessons.json written by path, or by hand, outside the
+// ledger (the ledger reads such a file as unsigned and quarantined, and the
+// report says the ledger is unchecked); reflection; and a package that
+// shadows a package name with a variable.
 func TestRH7c_OnlyLearnImportAddsALesson(t *testing.T) {
 	root := filepath.Join("..", "..")
 	fset := token.NewFileSet()
