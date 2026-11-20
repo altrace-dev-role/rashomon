@@ -88,16 +88,21 @@ m("H-113 an account UUID is flagged only inside a path", "test/tools/hygiene/sca
 # The typed rows of H-113 (test/acceptance/h113_fixture_hygiene_test.go's
 # h113Typed): a secret shape in internal/graph/session's fixtures is excused
 # only under its row's member, of its row's class, in its row's kind of file,
-# and a row that excuses nothing is stale. A finding carries the member it
-# was read under and its value's class, and one value under two members is two
-# findings, so the row cannot excuse the second by the first. Each break below
-# undoes one of those promises; the typed test's cases kill each.
+# and a row that excuses nothing is stale. A row with no class excuses
+# nothing, and a value is a gate id only in its closed form: a kind gateout
+# names and 12 hex digits on each side of the at sign, or the inferred gate's
+# digits. A finding carries the member it was read under and its value's
+# class, and one value under two members is two findings, so the row cannot
+# excuse the second by the first. Each break below undoes one of those
+# promises; the typed test's cases kill each.
 A = "test/acceptance/h113_fixture_hygiene_test.go"
 TYPED = "TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile"
 m("H-113 a typed row excuses its kind of file under any member", A,
-  "ok && f.Member == r.member && (", "ok && (", TYPED)
+  "ok && f.Member == r.member && r.class", "ok && r.class", TYPED)
 m("H-113 a typed row excuses its member in any class", A,
-  "(r.class == \"\" || f.Class == r.class)", "true", TYPED)
+  "r.class != \"\" && f.Class == r.class {", "true {", TYPED)
+m("H-113 a typed row with no class excuses any value", A,
+  "r.class != \"\" && f.Class", "f.Class", TYPED)
 m("H-113 a typed row excuses its member in any kind of file", A,
   "path.Match(r.kind, f.Path); ok && ", "path.Match(r.kind, f.Path); ok || true && ", TYPED)
 m("H-113 a typed row excuses any shape", A,
@@ -113,3 +118,11 @@ m("H-113 a checksum line takes any spacing", SHAPES,
   "`^[0-9a-f]{64}  \\S+$`", "`^[0-9a-f]{64} +\\S+$`", H113)
 m("H-113 every lowercase hex run is one class", SHAPES,
   "fmt.Sprintf(\"%d lowercase hex digits\", len(v))", "fmt.Sprintf(\"%d lowercase hex digits\", 32)", H113)
+m("H-113 a gate id is no class", SHAPES,
+  "\tcase gateID.MatchString(v):\n\t\treturn \"a gate id\"\n", "", TYPED)
+m("H-113 a gate id takes any runner", SHAPES,
+  "[0-9a-f]{12}@[0-9a-f]{12}|", "[^@]+@[0-9a-f]{12}|", TYPED)
+m("H-113 a gate id takes any kind", SHAPES,
+  "learned:(?:build|lint|scan|test|typecheck):", "learned:[a-z]+:", TYPED)
+m("H-113 the inferred gate id takes any suffix", SHAPES,
+  "inferred:test@[0-9]+)$", "inferred:test@\\S+)$", TYPED)

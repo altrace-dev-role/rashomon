@@ -73,33 +73,39 @@ const h113Sessions = "internal/graph/session/testdata/sessions/"
 // h113Typed excuses the secret shapes a store format puts in those fixtures,
 // by place: a kind of file, as a path.Match pattern; the JSON member the
 // value is read under, "" for a line of text; the class of value allowed
-// there (hygiene.Finding.Class), "" for any; and the reason. A steer line's
+// there (hygiene.Finding.Class), never empty, since a row that took any value
+// would excuse a token under its member; and the reason. A steer line's
 // id is 16 bytes of crypto/rand in hex (steer.newID), a token by design, so
 // the entropy test cannot tell it from a credential and only its place can.
 // As h113Contracts, an allow list and not a skip: only a secret shape is
 // excused, the same value under another member, of another class or in
 // another kind of file still fails, and a row that excuses nothing fails as
 // stale.
-var h113Typed = []struct{ kind, member, class, why string }{
+var h113Typed = []h113Row{
 	{h113Sessions + "stores/*/runs/*/steer.ndjson", "id", "32 lowercase hex digits",
 		"steer.Line.ID, a steer line's id: 16 bytes of crypto/rand in hex (steer.newID)"},
-	{h113Sessions + "stores/*/runs/*/steer.ndjson", "key", "",
-		"steer.Line.Key, the finding's dedupe key: a learned gate's learned:<kind>:<runner>@<location> and the like"},
+	{h113Sessions + "stores/*/runs/*/steer.ndjson", "key", "a gate id",
+		"steer.Line.Key, the finding's dedupe key, which for a gate's finding is the gate id: learned:<kind>:<runner>@<location> or inferred:test@<digits>"},
 	{h113Sessions + "golden/fold-v1/*.json", "id", "32 lowercase hex digits",
 		"a steer line's id as the fold keeps it: a delivered line's LineRef.ID, and the through Mark's ID when the last event is a line"},
-	{h113Sessions + "golden/fold-v1/*.json", "key", "",
-		"a steer line's dedupe key as the fold keeps it: a delivered line's LineRef.Key"},
+	{h113Sessions + "golden/fold-v1/*.json", "key", "a gate id",
+		"a steer line's dedupe key as the fold keeps it: a delivered line's LineRef.Key, a gate id as in the steer file"},
 	{h113Sessions + "SHA256SUMS.txt", "", "a checksum line",
 		"the SHA-256 of each store file beside its path, as shasum -a 256 writes them; PROVENANCE.txt pins this file by its own sum"},
 }
 
-// h113TypedRow is the index of the h113Typed row that excuses f, or -1.
-func h113TypedRow(f hygiene.Finding) int {
+// h113Row is one allow-list row of h113Typed.
+type h113Row struct{ kind, member, class, why string }
+
+// h113TypedRow is the index of the row of rows that excuses f, or -1. A row
+// with no class excuses nothing, so it is reported stale and never takes any
+// value under its member.
+func h113TypedRow(rows []h113Row, f hygiene.Finding) int {
 	if f.What != "a secret shape" {
 		return -1
 	}
-	for i, r := range h113Typed {
-		if ok, _ := path.Match(r.kind, f.Path); ok && f.Member == r.member && (r.class == "" || f.Class == r.class) {
+	for i, r := range rows {
+		if ok, _ := path.Match(r.kind, f.Path); ok && f.Member == r.member && r.class != "" && f.Class == r.class {
 			return i
 		}
 	}
@@ -121,7 +127,7 @@ func h113Problems(scanned []string, found []hygiene.Finding) []string {
 		if _, ok := h113Contracts[f.Path]; ok && f.What == "a secret shape" {
 			continue
 		}
-		if i := h113TypedRow(f); i >= 0 {
+		if i := h113TypedRow(h113Typed, f); i >= 0 {
 			used[i] = true
 			continue
 		}
@@ -156,15 +162,18 @@ func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 // excuses a secret shape under its member, of its class, in its kind of file,
 // and nothing else: the value under another member fails, beside itself
 // under its own member too; a token or a longer hex run under the member
-// fails; the value in another kind of file fails; another shape under a
-// member whose row takes any value fails; a token under key fails, in a
-// steer file and in a golden; and a row nothing matches is reported as
-// stale.
+// fails; the value in another kind of file fails; another shape under key
+// fails; a gate id under key passes, in a steer file and in a golden, and a
+// token under key or inside a gate id's form fails; a row with no class
+// excuses nothing; and a row nothing matches is reported as stale.
 func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 	id := h112Stray[:32] // 32 lowercase hex digits, a steer line id's class
 	run := h113Sessions + "stores/r/runs/" + h112P1 + "/"
 	sums := h113Sessions + "SHA256SUMS.txt"
 	golden := h113Sessions + "golden/fold-v1/r.json"
+	// A learned gate id from the steer fixtures, which the scan flags in the
+	// user:token@ form; split so no source line holds that form whole.
+	learned := "learned:build:" + "31f678efefe9" + "@" + "7af2a8b4a6a2"
 	for _, tc := range []struct {
 		name, file, body string
 		excused          bool
@@ -176,10 +185,16 @@ func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 		{"a token under the member", run + "steer.ndjson", `{"id":"` + h112Bearer + `"}`, false},
 		{"64 hex digits under the member", run + "steer.ndjson", `{"id":"` + h112Stray + `"}`, false},
 		{"the id in another kind of file", run + "records.ndjson", `{"id":"` + id + `"}`, false},
-		{"an email address under a member any value passes", run + "steer.ndjson", `{"key":"mail alice.liddell@acme-corp.io"}`, false},
+		{"an email address under key", run + "steer.ndjson", `{"key":"mail alice.liddell@acme-corp.io"}`, false},
 		{"a checksum line with one space", sums, h112Leaf + " stores/r/runs/" + h112P1 + "/steer.ndjson", false},
 		{"a token under key in a steer file", run + "steer.ndjson", `{"key":"` + h112Bearer + `"}`, false},
 		{"a token under key in a golden", golden, `{"key":"` + h112Bearer + `"}`, false},
+		{"a learned gate id under key in a steer file", run + "steer.ndjson", `{"key":"` + learned + `"}`, true},
+		{"a learned gate id under key in a golden", golden, `{"key":"` + learned + `"}`, true},
+		{"the inferred gate id under key in a steer file", run + "steer.ndjson", `{"key":"inferred:test` + `@285"}`, true},
+		{"a token as a learned gate id's runner", run + "steer.ndjson", `{"key":"learned:build:` + h112Bearer + `@` + learned[len(learned)-12:] + `"}`, false},
+		{"a learned gate id of a kind no gate has", run + "steer.ndjson", `{"key":"learned:token` + learned[len("learned:build"):] + `"}`, false},
+		{"a token after the inferred gate id's at sign", run + "steer.ndjson", `{"key":"inferred:test` + `@` + h112Bearer + `"}`, false},
 	} {
 		found := hygiene.Scan(tc.file, []byte(tc.body+"\n"))
 		if len(found) == 0 {
@@ -188,10 +203,22 @@ func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 		}
 		excused := true
 		for _, f := range found {
-			excused = excused && h113TypedRow(f) >= 0
+			excused = excused && h113TypedRow(h113Typed, f) >= 0
 		}
 		if excused != tc.excused {
 			t.Errorf("%s: excused = %v, want %v (%v)", tc.name, excused, tc.excused, found)
+		}
+	}
+
+	// A row with no class excuses nothing, not even a token under its member.
+	noClass := []h113Row{{h113Sessions + "stores/*/runs/*/steer.ndjson", "key", "", "a row with no class"}}
+	tokens := hygiene.Scan(run+"steer.ndjson", []byte(`{"key":"`+h112Bearer+`"}`+"\n"))
+	if len(tokens) == 0 {
+		t.Error("a row with no class: premise: the scan finds nothing")
+	}
+	for _, f := range tokens {
+		if h113TypedRow(noClass, f) >= 0 {
+			t.Errorf("a row with no class excuses %v", f)
 		}
 	}
 

@@ -57,14 +57,27 @@ func digests(text string) map[string]bool {
 // lowercase SHA-256, two spaces and a path.
 var checksumLine = regexp.MustCompile(`^[0-9a-f]{64}  \S+$`)
 
+// gateID is a gate's id as a steer line keys a finding by it: a learned
+// gate's learned:<kind>:<runner>@<location>, the kind one gateout.Classify
+// takes and the runner and location 12 hex digits each (verify's
+// learnedGateID), or the inferred test gate's inferred:test with decimal
+// digits after an at sign, as the recorded steer lines hold it. A colon
+// before the at sign is the user:token@ form the deny list reads as a
+// credential; the closed kind and the fixed hex and digit parts leave no room
+// for one.
+var gateID = regexp.MustCompile(`^(?:learned:(?:build|lint|scan|test|typecheck):[0-9a-f]{12}@[0-9a-f]{12}|inferred:test@[0-9]+)$`)
+
 // class says what a value is made of and nothing more, so an allow list can
 // excuse a shape by its place and its kind without the value, which no
 // finding prints: "N lowercase hex digits" for a value that is those alone,
-// "a checksum line" for a checksumLine, and "" for anything else.
+// "a checksum line" for a checksumLine, "a gate id" for a gateID, and "" for
+// anything else.
 func class(v string) string {
 	switch {
 	case checksumLine.MatchString(v):
 		return "a checksum line"
+	case gateID.MatchString(v):
+		return "a gate id"
 	case v != "" && strings.Trim(v, "0123456789abcdef") == "":
 		return fmt.Sprintf("%d lowercase hex digits", len(v))
 	}
