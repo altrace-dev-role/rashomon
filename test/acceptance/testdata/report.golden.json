@@ -309,7 +309,9 @@
         "checks": [],
         "lessons": null,
         "unknown": [],
-        "mistakes": null
+        "mistakes": null,
+        "strict_claims_not_green": null,
+        "claims_omitted": 0
       },
       "knowledge": null
     }

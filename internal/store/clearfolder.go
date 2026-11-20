@@ -18,13 +18,23 @@ const DirClear = "clear"
 // store holds the cwd, and a /clear in one cwd neither pairs with nor sweeps
 // another's. The digest is of cwd as the hook gives it, so the two hooks of
 // one /clear meet only when they carry an equal cwd. A cwd that is empty or
-// not absolute pairs nothing and writes nothing.
+// not absolute, a self that is not a plain name, or an unknown side pairs
+// nothing and writes nothing, checked before any folder is made.
+//
+// Both folders are made by MkdirExact with two exact levels: purge removes
+// only DirClear and its lowercase digest folders, so a link at either level,
+// or on a disk that folds case a folder there under another case of its
+// name, is refused with ErrNotExactDir before any arm is written.
 func MeetClear(root, cwd string, side ClearSide, self string, now time.Time) (ClearLink, bool, error) {
-	if !filepath.IsAbs(cwd) {
+	if !filepath.IsAbs(cwd) || !isPlainSegment(self) || (side != ClearEnd && side != ClearStart) {
 		return ClearLink{}, false, nil
 	}
 	sum := sha256.Sum256([]byte(cwd))
-	return meetClear(filepath.Join(root, DirClear, hex.EncodeToString(sum[:])), side, self, now)
+	dir, err := MkdirExact(root, 2, DirClear, hex.EncodeToString(sum[:]))
+	if err != nil {
+		return ClearLink{}, false, err
+	}
+	return meetClear(dir, side, self, now)
 }
 
 // IsClearDirName reports whether name is a rendezvous folder's as MeetClear

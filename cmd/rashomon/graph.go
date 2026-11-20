@@ -109,6 +109,13 @@ func graphIndex(args []string, stdout io.Writer) error {
 	if n := len(r.Refused) - graph.MaxRefusedNamed; n > 0 {
 		fmt.Fprintf(stdout, "warning: %d more file(s) not indexed\n", n)
 	}
+	for _, d := range r.Left[:min(len(r.Left), graph.MaxRefusedNamed)] {
+		fmt.Fprintf(stdout, "warning: %s/ not indexed: %s\n", shown(d.Path), shown(d.Why))
+	}
+	if n := len(r.Left) - graph.MaxRefusedNamed; n > 0 {
+		fmt.Fprintf(stdout, "warning: %d more dir(s) not indexed\n", n)
+	}
+	skippedLines(stdout, r.Skipped)
 	for _, k := range cfg.Knowledge {
 		switch err := slot.Approved(k.Clause).Validate(); {
 		case k.Clause == "":
@@ -134,6 +141,25 @@ func refusalLine(f graph.Refusal) string {
 		return fmt.Sprintf("warning: %s:%d not indexed: %s\n", shown(f.Path), f.Line, shown(f.Reason))
 	}
 	return fmt.Sprintf("warning: %s not indexed: %s\n", shown(f.Path), shown(f.Reason))
+}
+
+// skippedLines prints one line for each kind of directory Build's walk
+// skipped by name, dot directories, node_modules and __pycache__ in that
+// order, and none for a kind it skipped none of (index.Skipped says which
+// dot directories are not counted).
+func skippedLines(w io.Writer, s index.Skipped) {
+	for _, k := range []struct {
+		n    int
+		what string
+	}{
+		{s.Dot, "dir(s) whose name starts with a dot"},
+		{s.NodeModules, "node_modules dir(s)"},
+		{s.PyCache, "__pycache__ dir(s)"},
+	} {
+		if k.n > 0 {
+			fmt.Fprintf(w, "skipped %d %s\n", k.n, k.what)
+		}
+	}
 }
 
 // shown is s as it is, or s as a Go quoted string when s is not valid
