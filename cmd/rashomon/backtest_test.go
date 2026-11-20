@@ -171,6 +171,12 @@ func TestP6_BacktestArguments(t *testing.T) {
 		if code := run(append([]string{"backtest"}, args...), nil, &out, &errOut); code != 1 || out.Len() != 0 {
 			t.Errorf("backtest %v: exit %d, stdout %q; want refused", args, code, out.String())
 		}
+		// An id no pattern has is named unknown, not refused as a pattern the
+		// replay never fires: both exit 1 with no stdout, so only the words
+		// tell the two checks apart.
+		if len(args) == 2 && args[1] == "no-such-pattern" && !strings.Contains(errOut.String(), `unknown sensor "no-such-pattern"`) {
+			t.Errorf("backtest %v: stderr %q; want it named an unknown sensor", args, errOut.String())
+		}
 	}
 }
 

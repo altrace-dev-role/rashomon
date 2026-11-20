@@ -39,6 +39,14 @@ type Header struct {
 	// as no file refused.
 	Refused      int       `json:"refused,omitempty"`
 	RefusedFiles []Refusal `json:"refused_files,omitempty"`
+	// LeftOut is how many directories a language's rule left out of the
+	// walk (lang.Leaver: an environment its tools installed packages
+	// into), and LeftOutDirs the first MaxRefusedNamed of them by path: a
+	// module one of them holds reads as absent though the project imports
+	// it. Both are left out when no directory was, so such a header is
+	// byte-equal to one written before them.
+	LeftOut     int       `json:"left_out,omitempty"`
+	LeftOutDirs []LeftDir `json:"left_out_dirs,omitempty"`
 }
 
 // MaxRefusedNamed is how many refused files a header names, so its line
@@ -53,6 +61,13 @@ type Refusal struct {
 	Path   string `json:"path"`
 	Line   int    `json:"line,omitempty"`
 	Reason string `json:"reason"`
+}
+
+// LeftDir is one directory a language's rule left out of the index's walk:
+// its slash path relative to the index root, and why, in the rule's words.
+type LeftDir struct {
+	Path string `json:"path"`
+	Why  string `json:"why"`
 }
 
 // Refusals is the error a resolver's Extract returns, or what that error

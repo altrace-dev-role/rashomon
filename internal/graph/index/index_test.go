@@ -278,7 +278,11 @@ func TestBuild_SkipsDotAndVendorDirs(t *testing.T) {
 // is its package directory's unit, a file under no unit of its language, of
 // no declared language or under a skipped directory is none. Over the
 // fixture Build indexes, every file it holds is filed in the unit whose
-// Contains edge holds it, and no file it left out is filed at all.
+// Contains edge holds it, and no file it left out is filed at all. One
+// exception is outside this fixture, which holds no environment: a
+// directory a language's rule leaves out by a stat (lang.Leaver), which
+// UnitOf does not see; leave_test.go pins it as a known limit
+// (TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit).
 func TestUnitOf_FilesAPathAsBuildDoes(t *testing.T) {
 	root := shapes(t)
 	for _, p := range []string{"shape/.gen/g.go", "py/node_modules/y.py", "py/__pycache__/z.py"} {

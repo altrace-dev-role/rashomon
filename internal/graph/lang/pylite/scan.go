@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // def is one function definition. class is the dotted path of the classes
@@ -49,8 +50,9 @@ type constDef struct {
 }
 
 // importRef is one imported name: from module import attr, or import
-// module (attr ""). A relative module keeps its leading dots until parse
-// resolves it against the file's package.
+// module (attr ""), or a star import (attr "", see readFrom). A relative
+// module keeps its leading dots until parse resolves it against the file's
+// package.
 type importRef struct {
 	module string
 	attr   string
@@ -109,16 +111,17 @@ func pats() *patternSet {
 	return &patterns
 }
 
-// scan reads src line by line. A def's body is every following line more
-// indented than the def, or inside an open bracket; calls are read from
-// bodies only. The body rule comes before the test for a def: a def nested
-// in a body is part of that body, so it is no symbol, the calls in it and
-// after it are the outer def's, and an import indented in it is not the
-// module's. Of a nested def's own line only the parameters are read for
-// calls (a default is evaluated when the outer body runs). A class's body is
-// every following line more indented than its class line, its bases read
-// past when they span lines; a def in it is a method of the innermost class
-// open at its line, and a class in a def's body is part of that body.
+// scan reads src line by line, a module-level import as one logical line
+// (importLine). A def's body is every following line more indented than the
+// def, or inside an open bracket; calls are read from bodies only. The body
+// rule comes before the test for a def: a def nested in a body is part of
+// that body, so it is no symbol, the calls in it and after it are the outer
+// def's, and an import indented in it is not the module's. Of a nested def's
+// own line only the parameters are read for calls (a default is evaluated
+// when the outer body runs). A class's body is every following line more
+// indented than its class line, its bases read past when they span lines; a
+// def in it is a method of the innermost class open at its line, and a class
+// in a def's body is part of that body.
 func scan(src string) (fileScan, error) {
 	f := fileScan{imports: map[string]importRef{}}
 	lines := strings.Split(src, "\n")
@@ -168,27 +171,94 @@ func scan(src string) (fileScan, error) {
 			}
 			continue
 		}
-		if m := pats().from.FindStringSubmatch(trim); m != nil {
-			readFrom(f.imports, m[1], m[2])
-		} else if m := pats().imp.FindStringSubmatch(trim); m != nil {
-			name := m[1]
-			if m[2] != "" {
-				name = m[2]
+		if importStart(trim) {
+			stmt, end := importLine(lines, i)
+			if m := pats().from.FindStringSubmatch(stmt); m != nil {
+				readFrom(f.imports, m[1], m[2])
+			} else if m := pats().imp.FindStringSubmatch(stmt); m != nil {
+				name := m[1]
+				if m[2] != "" {
+					name = m[2]
+				}
+				f.imports[name] = importRef{module: m[1]}
 			}
-			f.imports[name] = importRef{module: m[1]}
-		} else if m := pats().cnst.FindStringSubmatch(line); m != nil {
+			i = end
+			continue
+		}
+		if m := pats().cnst.FindStringSubmatch(line); m != nil {
 			f.consts = append(f.consts, constDef{name: m[1], value: m[2], line: i + 1})
 		}
 	}
 	return f, nil
 }
 
-// readFrom records from module import a, b as c.
+// importStart reports whether a statement's first word is from or import.
+func importStart(s string) bool {
+	if k := strings.IndexFunc(s, func(r rune) bool { return !nameRune(r) }); k >= 0 {
+		s = s[:k]
+	}
+	return s == "from" || s == "import"
+}
+
+// importLine is the import statement that starts at lines[i], read as
+// Python reads it, one logical line, with the index of the last physical
+// line it takes. A comment ends its physical line, so a backslash inside a
+// comment joins nothing; a backslash that ends the code joins the next line,
+// and so does a bracket still open. Inside the bracket an import holds only
+// names, commas, as, backslashes and the closing bracket, so a line with any
+// other character ends the statement before that line: an import-like line
+// inside a string joins no line past the string's closing quote. The lines
+// read are taken whether or not they make an import, so no line is read
+// twice and the scan stays linear in the lines.
+func importLine(lines []string, i int) (string, int) {
+	var b strings.Builder
+	depth, j := 0, i
+	for ; j < len(lines); j++ {
+		c := code(lines[j])
+		if depth > 0 && strings.IndexFunc(c, notName) >= 0 {
+			break
+		}
+		depth += strings.Count(c, "(") - strings.Count(c, ")")
+		joined := strings.HasSuffix(c, `\`)
+		b.WriteString(strings.TrimSuffix(c, `\`))
+		b.WriteByte(' ')
+		if !joined && depth <= 0 {
+			return strings.TrimSpace(b.String()), j
+		}
+	}
+	return strings.TrimSpace(b.String()), j - 1
+}
+
+// code is a physical line of an import without its comment, trimmed.
+func code(line string) string {
+	c, _, _ := strings.Cut(line, "#")
+	return strings.TrimSpace(c)
+}
+
+// nameRune is a rune a Python name holds.
+func nameRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// notName is a rune no import holds inside its bracket: anything but a
+// name's runes, a comma, a backslash, the closing bracket and white space.
+func notName(r rune) bool {
+	return !nameRune(r) && r != ',' && r != '\\' && r != ')' && !unicode.IsSpace(r)
+}
+
+// readFrom records from module import a, b as c. A star import binds no one
+// name the scan can list, so it is kept under * and its module, a key no
+// name can take, with no attribute: it writes its module's imports edge, no
+// references edge, and no call resolves through it.
 func readFrom(imports map[string]importRef, module, names string) {
 	names = strings.Trim(strings.TrimSpace(names), "()")
 	for _, part := range strings.Split(names, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
+			continue
+		}
+		if part == "*" {
+			imports["*"+module] = importRef{module: module}
 			continue
 		}
 		attr, alias, has := strings.Cut(part, " as ")

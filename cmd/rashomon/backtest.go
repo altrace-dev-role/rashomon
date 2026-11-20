@@ -56,12 +56,21 @@ func cmdBacktest(args []string, stdout io.Writer) error {
 		return errors.New("backtest needs --sensor ID")
 	}
 	sensor := args[1]
-	if !pattern.Valid(pattern.ID(sensor)) {
-		var ids []string
-		for _, id := range pattern.All() {
+	// A pattern the replay never fires is refused before the store is read:
+	// its count would be 0 by construction, and a 0 nothing measured reads
+	// as a measurement (backtest.Measurable).
+	var ids []string
+	for _, id := range pattern.All() {
+		if backtest.Measurable(id) {
 			ids = append(ids, string(id))
 		}
-		return fmt.Errorf("unknown sensor %q; a sensor is a steer pattern: %s", sensor, strings.Join(ids, ", "))
+	}
+	measured := strings.Join(ids, ", ")
+	if !pattern.Valid(pattern.ID(sensor)) {
+		return fmt.Errorf("unknown sensor %q; a backtest measures %s", sensor, measured)
+	}
+	if !backtest.Measurable(pattern.ID(sensor)) {
+		return fmt.Errorf("a backtest cannot measure %q: the replay of this project's tool calls never fires it; a backtest measures %s", sensor, measured)
 	}
 	st, err := openStoreForRead()
 	if err != nil {
