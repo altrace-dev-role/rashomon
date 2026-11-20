@@ -90,14 +90,14 @@ func parseSQL(p *sqlPatterns, lit string) (sqlRef, bool) {
 	return ref, true
 }
 
-// enclosing is the name of the last def starting at or above line, or ""
+// enclosing is the key of the last def starting at or above line, or ""
 // for module level.
 func enclosing(defs []def, line int) string {
-	name := ""
+	key := ""
 	for _, d := range defs {
 		if d.line <= line {
-			name = d.name
+			key = d.key()
 		}
 	}
-	return name
+	return key
 }

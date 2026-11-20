@@ -288,7 +288,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 	}
 	f.resolveRelative(mod, strings.HasSuffix("/"+rel, "/__init__.py"))
 	file := graph.FileID(rel)
-	algo := graph.Prov{Extractor: "pylite", Version: "1"}
+	algo := graph.Prov{Extractor: "pylite", Version: "2"}
 	recs := []graph.Record{{Node: &graph.Node{ID: file, Kind: "file", Tier: graph.Algorithmic, Conf: 1.0, Rev: rev, Prov: algo,
 		Attrs: map[string]string{"digest": graph.ContentDigest(content), "module": mod}}}}
 	if committed {
@@ -299,15 +299,15 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 	// at, so an importer reaches the file at depth 2. No node carries it.
 	recs = append(recs, graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Declares, Dst: graph.SymID(Lang, u.Path, "mod", mod),
 		Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
-	local := map[string]graph.ID{}
+	local, byKey := symbols(f.defs, u.Path, mod)
 	for _, d := range f.defs {
-		local[d.name] = graph.SymID(Lang, u.Path, "func", mod+"."+d.name)
-	}
-	for _, d := range f.defs {
-		id := local[d.name]
+		id, kind := byKey[d.key()], "func"
+		if d.class != "" {
+			kind = "method"
+		}
 		recs = append(recs,
 			graph.Record{Node: &graph.Node{ID: id, Kind: "sym", Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo,
-				Attrs: map[string]string{"symkind": "func", "sig": d.sig, "arity_min": strconv.Itoa(d.min), "arity_max": d.max, "line": strconv.Itoa(d.line)}}},
+				Attrs: map[string]string{"symkind": kind, "sig": d.sig, "arity_min": strconv.Itoa(d.min), "arity_max": d.max, "line": strconv.Itoa(d.line)}}},
 			graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Declares, Dst: id, Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 	}
 	for _, c := range f.consts {
@@ -323,9 +323,9 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 				Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 		}
 	}
-	recs = append(recs, r.extras(f, src, file, local, rev, defConf, algo)...)
+	recs = append(recs, r.extras(f, src, file, byKey, rev, defConf, algo)...)
 	for _, c := range f.calls {
-		callee, ok := r.callee(c.name, local, f.imports)
+		callee, ok := r.calleeOf(c, local, byKey, f.imports)
 		if !ok {
 			continue
 		}
@@ -333,7 +333,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 		for k, v := range c.kw {
 			attrs["kw."+k] = v
 		}
-		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: local[c.caller], Pred: graph.Calls, Dst: callee,
+		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: byKey[c.caller], Pred: graph.Calls, Dst: callee,
 			Tier: graph.Algorithmic, Conf: callConf, Rev: rev, Prov: algo, Attrs: attrs}})
 	}
 	return recs, nil
@@ -358,13 +358,18 @@ func (r Resolver) callee(name string, local map[string]graph.ID, imports map[str
 	return "", false
 }
 
-// symIn is the func symbol attr of module mod, when mod's unit is known.
+// symIn is the symbol attr of module mod, when mod's unit is known: a class
+// when attr is CapWords and a func otherwise (a name called is no const).
 func (r Resolver) symIn(mod, attr string) (graph.ID, bool) {
 	up, known := r.Modules[strings.SplitN(mod, ".", 2)[0]]
 	if !known {
 		return "", false
 	}
-	return graph.SymID(Lang, up, "func", mod+"."+attr), true
+	kind := "func"
+	if capWords(attr) {
+		kind = "class"
+	}
+	return graph.SymID(Lang, up, kind, mod+"."+attr), true
 }
 
 // balanced is nil when brackets balance over src outside string literals,
@@ -415,10 +420,11 @@ func balanced(src string) error {
 
 // extras are the records beyond defs, consts, imports and calls: a
 // references edge from the file to every name a from-import brings in
-// from a known unit (a const when the name is upper case, a function
-// otherwise: the lite extractor's one guess), and the table nodes with
-// the reads and writes edges of the SQL literals in the file.
-func (r Resolver) extras(f fileScan, src string, file graph.ID, local map[string]graph.ID, rev graph.Rev, conf float64, algo graph.Prov) []graph.Record {
+// from a known unit (a const when the name is upper case, a class when it
+// is CapWords, a function otherwise: the lite extractor's one guess), and
+// the table nodes with the reads and writes edges of the SQL literals in
+// the file, each from the def whose key byKey holds when one encloses it.
+func (r Resolver) extras(f fileScan, src string, file graph.ID, byKey map[string]graph.ID, rev graph.Rev, conf float64, algo graph.Prov) []graph.Record {
 	var recs []graph.Record
 	for _, im := range f.imports {
 		if im.attr == "" {
@@ -431,6 +437,8 @@ func (r Resolver) extras(f fileScan, src string, file graph.ID, local map[string
 		kind := "func"
 		if strings.ToUpper(im.attr) == im.attr {
 			kind = "const"
+		} else if capWords(im.attr) {
+			kind = "class"
 		}
 		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.References, Dst: graph.SymID(Lang, up, kind, im.module+"."+im.attr),
 			Tier: graph.Algorithmic, Conf: conf, Rev: rev, Prov: algo}})
@@ -439,7 +447,7 @@ func (r Resolver) extras(f fileScan, src string, file graph.ID, local map[string
 		tbl := graph.TableID(q.table)
 		src := file
 		if q.caller != "" {
-			src = local[q.caller]
+			src = byKey[q.caller]
 		}
 		pred := graph.Reads
 		if q.write {
