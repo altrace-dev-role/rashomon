@@ -215,7 +215,7 @@ Three epistemic classes, three physical stores, one logical graph, one identity 
 | Structure (re-derivable from code) | `.rashomon/graph.jsonl` (engine store, on the branch) fed by producer sidecars (`.pgraph/*` for Go; `tools/index/py_extract.py` for Python today) | extractors, out of band (`rashomon graph index`, `pgraph sync`) and in-process overlays at edits | content hash per file and unit; refuse when unvouched | PROVEN, ALGORITHMIC |
 | Evidence (observed, never re-derivable) | `records.ndjson`, `steer.ndjson`, fold and checkpoint under the install store | hooks, append-only | never; retention and purge | OBSERVED |
 | Judgment (asserted) | `.rashomon/knowledge/*.json` (imported decisions, lessons, incidents, conventions), `spec.json` (rules), `learn/` ledger (lessons, labels, tallies) | humans, importer, approval, earned tallies, offline proposers | scope gone, spec digest changed, tally refutes, superseded | DECLARED, INFERRED, EARNED |
-| Session (judgment with session retention) | `sessions/<id>/frontier.json` under the install store, plus the record | hook fold at every event; rebuilt from the record at any boundary | session end plus retention window | OBSERVED (acts), DECLARED (intents from prompts, content-free) |
+| Session (judgment with session retention) | `runs/<session>/frontier.json` under the install store, plus the record | hook fold at every event; rebuilt from the record at any boundary | session end plus retention window | OBSERVED (acts), DECLARED (intents from prompts, content-free) |
 
 The "four graphs" of the vision are responsibilities over these stores; the session graph is a fourth node family (intent) with its own survival rules, not a fourth database.
 
