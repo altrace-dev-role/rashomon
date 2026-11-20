@@ -5,6 +5,6 @@
 # the module .mm names. Without the join the scan reads every split import
 # that way.
 m("pylite reads a backslash-continued import line by line", "internal/graph/lang/pylite/scan.go",
-  "\t\tfor strings.HasSuffix(stmt, `\\`) && end+1 < len(lines) {\n\t\t\tend++\n\t\t\tstmt = strings.TrimSpace(stmt[:len(stmt)-1] + \" \" + lines[end])\n\t\t}\n",
-  "",
+  "\t\tjoined := strings.HasSuffix(c, `\\`)\n",
+  "\t\tjoined := false\n",
   "TestContImport_ABackslashContinuedImportReadsAsOneStatement")

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // def is one function definition.
@@ -84,8 +85,8 @@ func pats() *patternSet {
 	return &patterns
 }
 
-// scan reads src line by line, an import split by backslashes as one
-// statement. A def's body is every following line more indented than the
+// scan reads src line by line, a module-level import as one logical line
+// (importLine). A def's body is every following line more indented than the
 // def, or inside an open bracket; calls are read from bodies only.
 func scan(src string) (fileScan, error) {
 	f := fileScan{imports: map[string]importRef{}}
@@ -117,29 +118,79 @@ func scan(src string) (fileScan, error) {
 			i = end
 			continue
 		}
-		// A backslash that ends a line joins the next line to it (Python's
-		// explicit line joining). An import read from the joined lines takes
-		// them all; any other statement is read line by line as before.
-		stmt, end := trim, i
-		for strings.HasSuffix(stmt, `\`) && end+1 < len(lines) {
-			end++
-			stmt = strings.TrimSpace(stmt[:len(stmt)-1] + " " + lines[end])
-		}
-		if m := pats().from.FindStringSubmatch(stmt); m != nil {
-			readFrom(f.imports, m[1], m[2])
-			i = end
-		} else if m := pats().imp.FindStringSubmatch(stmt); m != nil {
-			name := m[1]
-			if m[2] != "" {
-				name = m[2]
+		if importStart(trim) {
+			stmt, end := importLine(lines, i)
+			if m := pats().from.FindStringSubmatch(stmt); m != nil {
+				readFrom(f.imports, m[1], m[2])
+			} else if m := pats().imp.FindStringSubmatch(stmt); m != nil {
+				name := m[1]
+				if m[2] != "" {
+					name = m[2]
+				}
+				f.imports[name] = importRef{module: m[1]}
 			}
-			f.imports[name] = importRef{module: m[1]}
 			i = end
-		} else if m := pats().cnst.FindStringSubmatch(line); m != nil {
+			continue
+		}
+		if m := pats().cnst.FindStringSubmatch(line); m != nil {
 			f.consts = append(f.consts, constDef{name: m[1], value: m[2], line: i + 1})
 		}
 	}
 	return f, nil
+}
+
+// importStart reports whether a statement's first word is from or import.
+func importStart(s string) bool {
+	if k := strings.IndexFunc(s, func(r rune) bool { return !nameRune(r) }); k >= 0 {
+		s = s[:k]
+	}
+	return s == "from" || s == "import"
+}
+
+// importLine is the import statement that starts at lines[i], read as
+// Python reads it, one logical line, with the index of the last physical
+// line it takes. A comment ends its physical line, so a backslash inside a
+// comment joins nothing; a backslash that ends the code joins the next line,
+// and so does a bracket still open. Inside the bracket an import holds only
+// names, commas, as, backslashes and the closing bracket, so a line with any
+// other character ends the statement before that line: an import-like line
+// inside a string joins no line past the string's closing quote. The lines
+// read are taken whether or not they make an import, so no line is read
+// twice and the scan stays linear in the lines.
+func importLine(lines []string, i int) (string, int) {
+	var b strings.Builder
+	depth, j := 0, i
+	for ; j < len(lines); j++ {
+		c := code(lines[j])
+		if depth > 0 && strings.IndexFunc(c, notName) >= 0 {
+			break
+		}
+		depth += strings.Count(c, "(") - strings.Count(c, ")")
+		joined := strings.HasSuffix(c, `\`)
+		b.WriteString(strings.TrimSuffix(c, `\`))
+		b.WriteByte(' ')
+		if !joined && depth <= 0 {
+			return strings.TrimSpace(b.String()), j
+		}
+	}
+	return strings.TrimSpace(b.String()), j - 1
+}
+
+// code is a physical line of an import without its comment, trimmed.
+func code(line string) string {
+	c, _, _ := strings.Cut(line, "#")
+	return strings.TrimSpace(c)
+}
+
+// nameRune is a rune a Python name holds.
+func nameRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// notName is a rune no import holds inside its bracket: anything but a
+// name's runes, a comma, a backslash, the closing bracket and white space.
+func notName(r rune) bool {
+	return !nameRune(r) && r != ',' && r != '\\' && r != ')' && !unicode.IsSpace(r)
 }
 
 // readFrom records from module import a, b as c.
