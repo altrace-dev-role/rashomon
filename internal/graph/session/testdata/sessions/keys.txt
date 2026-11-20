@@ -1,0 +1,59 @@
+# The keys the session fixtures under stores/ were cut to: every json tag
+# the session decoder reads (recordHead for records.ndjson, steerHead for
+# steer.ndjson), one per line as "<file> <path>", where "[]." steps into a
+# list's rows and "." into an object's keys. Lines are sorted (C locale).
+# TestFixtures_KeysAreTheDecodersTags compares this list with the decoder's
+# tags, so a tag the decoder gains fails until the fixtures are regenerated
+# from the raw set (PROVENANCE.txt).
+records checkpoint_seq
+records cwd
+records done_flagged
+records file_path
+records file_path_withheld
+records obligations[].id
+records obligations[].kind
+records obligations[].state
+records obligations[].unit
+records obligations_omitted
+records point
+records project
+records seq
+records source
+records type
+records unit_rows_cut
+records unmet
+records written_paths
+records written_paths_withheld
+steer after_seq
+steer at_unix_ms
+steer id
+steer key
+steer kind
+steer prompt_id
+steer slots.line1.digest
+steer slots.line1.id
+steer slots.line1.kind
+steer slots.line1.path
+steer slots.line1.role
+steer slots.line2.digest
+steer slots.line2.id
+steer slots.line2.kind
+steer slots.line2.path
+steer slots.line2.role
+steer slots.line3.digest
+steer slots.line3.id
+steer slots.line3.kind
+steer slots.line3.path
+steer slots.line3.role
+steer slots.line4.digest
+steer slots.line4.id
+steer slots.line4.kind
+steer slots.line4.path
+steer slots.line4.role
+steer slots.line5.digest
+steer slots.line5.id
+steer slots.line5.kind
+steer slots.line5.path
+steer slots.line5.role
+steer state
+steer type

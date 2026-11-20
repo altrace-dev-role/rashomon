@@ -21,7 +21,9 @@ const backtestUsage = `  rashomon backtest --sensor ID  replay this project's tr
                                hooks and print, as backtest/1 JSON lines,
                                each session's fires of steer pattern ID
                                beside the live steer log's; the store is
-                               only read
+                               only read. ID is a pattern a replay can
+                               fire: regression-location, platform-rule,
+                               integrity, ordering-rule or masked-status
 
 `
 
@@ -56,12 +58,32 @@ func cmdBacktest(args []string, stdout io.Writer) error {
 		return errors.New("backtest needs --sensor ID")
 	}
 	sensor := args[1]
-	if !pattern.Valid(pattern.ID(sensor)) {
-		var ids []string
-		for _, id := range pattern.All() {
+	// A pattern the replay never fires is refused before the store is read:
+	// its count would be 0 by construction, and a 0 nothing measured reads
+	// as a measurement (backtest.Measurable). A reserved one is refused in
+	// its own words, since nothing raises it live either (backtest.Reserved),
+	// and so is stale-evidence, which is raised only for a gate that a
+	// learned project index or a trusted or managed spec requires (the post's
+	// stale trigger, then verify.SteerAt), and a replay holds neither.
+	var ids []string
+	for _, id := range pattern.All() {
+		if backtest.Measurable(id) {
 			ids = append(ids, string(id))
 		}
-		return fmt.Errorf("unknown sensor %q; a sensor is a steer pattern: %s", sensor, strings.Join(ids, ", "))
+	}
+	measured := strings.Join(ids, ", ")
+	if !pattern.Valid(pattern.ID(sensor)) {
+		return fmt.Errorf("unknown sensor %q; a backtest measures %s", sensor, measured)
+	}
+	if !backtest.Measurable(pattern.ID(sensor)) {
+		why := "the replay of this project's tool calls never fires it"
+		if backtest.Reserved(pattern.ID(sensor)) {
+			why = "it is reserved and not built: no code raises it, live or replayed"
+		}
+		if pattern.ID(sensor) == pattern.StaleEvidence {
+			why = "it is raised only for a gate that a learned project index or a trusted or managed spec requires, and a replay holds neither"
+		}
+		return fmt.Errorf("a backtest cannot measure %q: %s; a backtest measures %s", sensor, why, measured)
 	}
 	st, err := openStoreForRead()
 	if err != nil {

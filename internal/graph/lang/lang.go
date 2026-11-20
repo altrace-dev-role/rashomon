@@ -48,10 +48,11 @@ type Resolver interface {
 type Registry struct{ es []entry }
 
 // entry is one registered resolver and its configuration step, nil for a
-// resolver with none.
+// resolver with none. indexed is a resolver registered by RegisterIndexed.
 type entry struct {
-	r  Resolver
-	st *step
+	r       Resolver
+	st      *step
+	indexed bool
 }
 
 // step is an entry's configuration step and what it returned for each root
@@ -77,6 +78,30 @@ func (g *Registry) Register(r Resolver) { g.es = append(g.es, entry{r: r}) }
 // most once per root, on the first Claim of a path r claims under it.
 func (g *Registry) RegisterConfigured(r Resolver, configure func(root string) (Resolver, error)) {
 	g.es = append(g.es, entry{r: r, st: &step{configure: configure}})
+}
+
+// RegisterIndexed is RegisterConfigured for a resolver whose files a hook
+// reads only where the index holds records of its language: where an index
+// header's producers name none, Unindexed reports the language, and the
+// hook builds no overlay of its files there and runs no configuration step.
+func (g *Registry) RegisterIndexed(r Resolver, configure func(root string) (Resolver, error)) {
+	g.es = append(g.es, entry{r: r, st: &step{configure: configure}, indexed: true})
+}
+
+// Unindexed is the language of the resolver that claims rel, true where it
+// was registered by RegisterIndexed and producers, an index header's, names
+// no producer of that language. Any other claimant, and a path none claims,
+// is "" and false. It runs no configuration step.
+func (g *Registry) Unindexed(root, rel string, producers map[string]string) (string, bool) {
+	e, ok := g.claimant(root, rel)
+	if !ok || !e.indexed {
+		return "", false
+	}
+	l := e.r.Lang()
+	if _, has := producers[l]; has {
+		return "", false
+	}
+	return l, true
 }
 
 // For is the resolver that claims rel, false when none does. It runs no

@@ -289,6 +289,14 @@
         "status_masked": 0,
         "undeclared": 0,
         "wrapped": 0,
+        "read_from_summary": {
+          "ok": 0,
+          "failed": 0
+        },
+        "read_from_printed": {
+          "ok": 0,
+          "failed": 0
+        },
         "tests_only_then_green": [],
         "flaky": []
       },
@@ -301,7 +309,9 @@
         "checks": [],
         "lessons": null,
         "unknown": [],
-        "mistakes": null
+        "mistakes": null,
+        "strict_claims_not_green": null,
+        "claims_omitted": 0
       },
       "knowledge": null
     }

@@ -30,8 +30,8 @@ func TestKeptGoEdit_ContentKeptOnlyAtScopeV5(t *testing.T) {
 			t.Fatal(err)
 		}
 		gate := func(v5 bool) bool {
-			_, _, _, ok := keptGoEdit(f.st, ovSess, "Edit", in, nil, f.repo, 1, v5)
-			return ok
+			_, g := keptGoEdit(f.st, ovSess, "Edit", in, nil, f.repo, 1, v5)
+			return g.ok
 		}
 		cost := func(v5 bool) float64 { return testing.AllocsPerRun(10, func() { gate(v5) }) }
 		if gate(false) {
