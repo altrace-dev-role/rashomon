@@ -25,10 +25,10 @@ const foldVersion = 1
 
 // ledgerVersion is the version of the ledger line the fold reads (ledgerType;
 // RecordEvent's ledger keys, ledger, verdict), written as "ledger_version":
-// it moves with W-M3.1's ObligationID scope, since a change in what an
-// obligation id names makes the ids a saved frontier holds another
-// ledger's. A ledger row's req key (W-M3.4) needs no bump: the ledger line
-// carries it from its first version.
+// it moves with what an obligation id names (verify's ObligationID), since a
+// change there makes the ids a saved frontier holds another ledger's. A
+// ledger row's req key needs no bump: the ledger line carries it from its
+// first version.
 const ledgerVersion = 1
 
 // Mark is an event's place in the merged order (Event.Before): its seq,
@@ -49,16 +49,15 @@ type Mark struct {
 // prompt's delivered line moves past it (supersede). superseded goes to
 // met_once at evidence as open does, or back to open only when a delivered
 // line states the same Pred and Arg again, never by evidence, a prompt alone
-// or time (require). met_once is final (ruling 13:23 (3c), (3d); PLAN 1491
-// amended with the M2 merge). dropped is written only by an explicit drop
-// line, which v1 has no writer for. met_once is history and named for it
-// (ruling 13:11 (3)): satisfied at least once after StatedAt, MetAt the
-// first such seq, so a later red run or a removed call never undoes it.
-// Whether a requirement holds now is the Stop's verdict (W-M3.4's ledger
-// row, bound by checkpoint_seq as VerdictRef is), which the fold copies
-// (W-M4.6) and never computes; a reader never renders met_once as met, holds
-// or verified. superseded is not met: a list or count of unfinished
-// requirements includes it, marked (AD18, ruling 12:52 (4)).
+// or time (require). met_once is final. dropped is written only by an
+// explicit drop line, which v1 has no writer for. met_once is history and
+// named for it: satisfied at least once after StatedAt, MetAt the first such
+// seq, so a later red run or a removed call never undoes it. Whether a
+// requirement holds now is the Stop's verdict (its ledger row, bound by
+// checkpoint_seq as VerdictRef is), which the fold copies and never
+// computes; a reader never renders met_once as met, holds or verified.
+// superseded is not met: a list or count of unfinished requirements
+// includes it, marked.
 type ReqStatus string
 
 const (
@@ -70,33 +69,30 @@ const (
 
 // Frontier is a session's state folded from its record and steer log: a
 // pure function of them, so deleting a saved one changes no answer, only its
-// cost (proposal 2026-11-12 section 0; ruling Q1). Every string in it is an
-// id, a digest or a closed name, never prompt or file words
-// (TestFrontier_WordsByReference). It holds no map, so its JSON is its
-// canonical order (MarshalFrontier).
+// cost. Every string in it is an id, a digest or a closed name, never prompt
+// or file words (TestFrontier_WordsByReference). It holds no map, so its
+// JSON is its canonical order (MarshalFrontier).
 //
-// Differences from PLAN 1478's interface, each for a reason: no Repo and no
-// Commit, because no record line carries a repo id or the session's start
-// commit, and a field the record cannot give breaks C1; no Drift until
-// W-M4.6, which adds it under a fold_version bump; ObligationsAt and
-// ObligationsOmitted, ledger conditions 4 and 3 (ruling 09:53), and
-// UnitRowsCut, verify's own cut of unit rows (ruling 11:37); Touched
-// holds files, not units, for the same reason (its doc); TouchedWithheld,
-// condition 3's cut rule applied to Touched, and TouchedOutside, the writes
-// Touched cannot place in the project (ruling 11:37); StopsWithoutVerdict,
-// the Stop checkpoints no verdict names (rulings 12:03, 12:12);
-// VerdictRef's DoneFlagged and Unmet for PLAN 1487's Done and Owed, named
-// for what the writer decides (ruling 12:12, VerdictRef's doc); a
-// ReqState keyed Pred:Arg, not by its line's key (PLAN 1489), because one
-// steer line's slots hold up to five graph lines (D6); and ReqState's
-// LastStatedAt, which supersede reads (ruling 13:23 (3b)): a Catch from a
-// saved frontier must know it, and no other field holds it. FoldVersion,
-// LedgerVersion and Through, the saved frontier's key, which PLAN 1478 does
-// not name: the versions live here and nowhere else, the file's envelope
-// holding only its schema and cursors (ruling 13:59 (3)), and Through is the
-// last applied event's place in the merged order, not FoldOptions' seq bound
-// (PLAN 1487; ruling 14:09 (5)), because a steer line's after_seq can name a
-// seq a later line has passed.
+// What it holds and leaves out, each for a reason: no Repo and no Commit,
+// because no record line carries a repo id or the session's start commit,
+// and a field the record cannot give would make the frontier more than a
+// function of its logs; no Drift yet, which a later fold_version adds;
+// ObligationsAt, because obligations carry over from one Stop to the next
+// and a reader must know which ledger line they are from; ObligationsOmitted
+// and UnitRowsCut, the rows the ledger line cut, so a short list is never
+// read as a complete one; Touched holds files, not units, for the same
+// reason (its doc); TouchedWithheld and TouchedOutside, the writes Touched
+// cannot place in the project, counted for the same reason;
+// StopsWithoutVerdict, the Stop checkpoints no verdict names; VerdictRef's
+// DoneFlagged and Unmet, named for what the writer decides (VerdictRef's
+// doc); a ReqState keyed Pred:Arg, not by its line's key, because one steer
+// line's slots hold up to five graph lines; and ReqState's LastStatedAt,
+// which supersede reads: a Catch from a saved frontier must know it, and no
+// other field holds it. FoldVersion, LedgerVersion and Through are the saved
+// frontier's key: the versions live here and nowhere else, the file's
+// envelope holding only its schema and cursors, and Through is the last
+// applied event's place in the merged order, not a seq bound, because a
+// steer line's after_seq can name a seq a later line has passed.
 type Frontier struct {
 	Schema int `json:"schema"`
 	// FoldVersion and LedgerVersion are foldVersion and ledgerVersion as the
@@ -112,31 +108,33 @@ type Frontier struct {
 	// Intents are the session's prompts by reference: graph.PromptNodeID
 	// and the prompt digest.
 	Intents []IntentRef `json:"intents"`
-	// Reqs are the requirements the session's delivered lines stated (D6),
-	// one per key Pred:Arg, the first kept, StatedAt the stating line's
+	// Reqs are the requirements the session's delivered lines stated, one
+	// per key Pred:Arg, the first kept, StatedAt the stating line's
 	// after_seq (require), each from one graph line (graphSlot.stated):
 	// opened_unit, called_symbol and edited_or_verified on a path as the
 	// line holds it, its keyed digest at record scope v4, and
 	// paths_untouched on a decision id. The fold marks only opened_unit,
 	// met_once at a later write under the unit (openedUnit); it never marks
-	// the rest, and no Stop resolves them (ruling 13:11 (5)). A later
-	// prompt's line supersedes an earlier Req of a predicate it states on
-	// another argument, and a line stating a superseded Req again reopens it
-	// (supersede, require; ruling 13:23 (3)). Open is "not seen met", never "not done" or "unmet" (ruling 12:52): the
-	// record names no read, and a write it withheld or placed outside the
-	// project (TouchedWithheld, TouchedOutside) meets nothing. The ID is
-	// opaque: a reader takes Pred and Arg from their fields and never splits
-	// the ID, since an Arg may hold a colon (ruling 13:04).
+	// the rest, and no Stop resolves them. A later prompt's line supersedes
+	// an earlier Req of a predicate it states on another argument, and a
+	// line stating a superseded Req again reopens it (supersede, require).
+	// Open is "not seen met", never "not done" or "unmet": the record names
+	// no read, and a write it withheld or placed outside the project
+	// (TouchedWithheld, TouchedOutside) meets nothing. The ID is opaque: a
+	// reader takes Pred and Arg from their fields and never splits the ID,
+	// since an Arg may hold a colon.
 	Reqs      []ReqState    `json:"reqs"`
 	Decisions []DecisionRef `json:"decisions"`
 	// Touched are file ids: the graph.FileID of each project-relative path
-	// the session's calls named as written, sorted, unique (D1). Written
-	// only, never a read: the record names a path only for a file-changing
-	// call (shape.DeclaredPath) or a shell line's written_paths. Files, not
-	// units: a unit id needs the language's resolver, and pylite's units
-	// come from the index, not the record (C1). The unit form and the global
-	// form are the reader's, made at read time: lang.Registry maps a file to
-	// its unit, and the repo id makes the global id (graph.GlobalID).
+	// the session's calls named as written, sorted and unique, so one log
+	// always folds to one list. Written only, never a read: the record names
+	// a path only for a file-changing call (shape.DeclaredPath) or a shell
+	// line's written_paths. Files, not units: a unit id needs the language's
+	// resolver, and pylite's units come from the index, not the record, so a
+	// unit here would make the frontier more than a function of its logs. The
+	// unit form and the global form are the reader's, made at read time:
+	// lang.Registry maps a file to its unit, and the repo id makes the global
+	// id (graph.GlobalID).
 	Touched []string `json:"touched"`
 	// TouchedWithheld counts write declarations, not files: each declaration
 	// whose write path the record withheld counts once (Event.WroteWithheld),
@@ -159,16 +157,16 @@ type Frontier struct {
 	// session launched by an alias has an empty Touched and every write
 	// here. Both counts at zero still do not make an empty Touched "wrote
 	// nothing": a shell line that may write names no path when its list is
-	// incomplete, so a reader says at most "named no written file" (ruling
-	// 11:46).
+	// incomplete, so a reader says at most "named no written file".
 	TouchedOutside int `json:"touched_outside"`
 	// Obligations are copied from the last ledger line, as of its seq
 	// (ObligationsAt); the fold never computes one and never cuts one.
 	// Each row's state is verify's as written (open, met, unmet, unknown):
-	// unknown never reads unmet (INV-2). ObligationsOmitted is the ledger
-	// line's own cut count, rows its writer left off the line; UnitRowsCut
-	// is the unit rows verify never made past its cap of 32 per Stop
-	// (verify.MaxTurnUnitRows at W-M3.1), 0 when the line has none. Two
+	// unknown never reads unmet, which would claim a failure nobody saw.
+	// ObligationsOmitted is the ledger line's own cut count, rows its writer
+	// left off the line; UnitRowsCut is the unit rows verify never made past
+	// its cap of 32 per Stop (verify.MaxTurnUnitRows), 0 when the line has
+	// none. Two
 	// counts, not one, since the causes differ. When either is above zero
 	// the list is not every obligation, and nothing built from it may say
 	// every.
@@ -182,7 +180,7 @@ type Frontier struct {
 	// holds that Verdicts has no entry for: no ledger line followed (a kill,
 	// a lock timeout), or its line carried no verdict keys (an older line).
 	// The Stop was judged; its verdict was not logged, and nothing may read
-	// it as not done (ruling 12:12). A list, not a count: a ledger line binds
+	// it as not done. A list, not a count: a ledger line binds
 	// by seq to a checkpoint read before it, and a Catch continuing a saved
 	// frontier must still know those checkpoints; the count is its length.
 	// Each checkpoint is in Verdicts or here, never both, so len(Verdicts) +
@@ -190,15 +188,14 @@ type Frontier struct {
 	// Catch reads between its two appends is here until its line lands.
 	StopsWithoutVerdict []int64 `json:"stops_without_verdict"`
 	// LastBoundary is the seq of the last session record whose SessionStart
-	// source is compact or resume, where the session's context was rebuilt
-	// (W-M4.3, W-M4.4); 0 for none. Startup is no boundary, and neither is
-	// clear: clear starts a new run, and that run's Continues carries the
-	// link (W-M4.1).
+	// source is compact or resume, where the session's context was rebuilt;
+	// 0 for none. Startup is no boundary, and neither is clear: clear starts
+	// a new run, and that run's Continues carries the link.
 	LastBoundary int64 `json:"last_boundary"`
 }
 
 // IntentRef is one prompt by reference. Its Status is open and only open in
-// v1: no rule closes, meets or supersedes an intent (ruling 13:23 (2)).
+// v1: no rule closes, meets or supersedes an intent.
 type IntentRef struct {
 	ID       string    `json:"id"`
 	Digest   string    `json:"digest"`
@@ -207,15 +204,14 @@ type IntentRef struct {
 }
 
 // ReqState is a requirement by its predicate's name and argument, so a
-// frontier is printed, compared and re-delivered without the store (AD17).
+// frontier is printed, compared and re-delivered without the store.
 // StatedAt is the after_seq of the first delivered line that named it, kept
-// for good; LastStatedAt is the last such line's, which supersede reads
-// (ruling 13:23 (3b)); MetAt is the seq of the first evidence after
-// StatedAt, 0 until met_once. SupersededBy is the IntentRef.ID of the prompt
-// whose line superseded it (13:23 (3e)), set exactly while Status is
-// superseded: a line that states it again, or evidence that marks it
-// met_once, empties it, and after a reopen the next supersede sets it anew
-// (ruling 13:43 (3)).
+// for good; LastStatedAt is the last such line's, which supersede reads;
+// MetAt is the seq of the first evidence after StatedAt, 0 until met_once.
+// SupersededBy is the IntentRef.ID of the prompt whose line superseded it,
+// set exactly while Status is superseded: a line that states it again, or
+// evidence that marks it met_once, empties it, and after a reopen the next
+// supersede sets it anew.
 type ReqState struct {
 	ID           string    `json:"id"`
 	Pred         string    `json:"pred"`
@@ -254,15 +250,16 @@ type LineRef struct {
 // VerdictRef is a Stop's verdict, by the seq of its checkpoint record: the
 // verify record at point stop, whose point_seq, the last call record it
 // judged, stays on that record. Both values are the ledger line's, copied,
-// never computed (rulings 12:03, 12:12); its writer evaluates each once.
+// never computed: its writer evaluates each once.
 // DoneFlagged is recap.DoneFlag's second return at that Stop, the decision
 // the next prompt's note is given: true when the flag fired (a strict claim
 // the record does not back, or a strict done claim with an expected kind
 // unmet); false when it did not, which includes a Stop with no claim, so
 // false is never read as done or verified. Unmet counts the Stop's ledger
 // rows of scope session in state unmet, before any cut the line applies;
-// open and unknown rows are not counted (INV-2). PLAN 1487 names the two
-// Done and Owed; its names change with the M2 merge (ruling 12:12).
+// open and unknown rows are not counted, since neither is a failure seen.
+// The names say what the writer decided, not "done" and "owed": a false
+// DoneFlagged is not done, and Unmet is not every row still owed.
 type VerdictRef struct {
 	Seq         int64 `json:"seq"`
 	DoneFlagged bool  `json:"done_flagged"`

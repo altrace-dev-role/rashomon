@@ -28,10 +28,10 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/verify"
 )
 
-// TestEvent_MergeOrder (W-M4.2): a session's records and steer lines merge
-// by (seq, record before line, at_unix_ms, id). A line's seq is its
-// after_seq, the last record seq its decision saw, so it sorts after that
-// record and before the next one, whatever the two clocks say.
+// TestEvent_MergeOrder: a session's records and steer lines merge by (seq,
+// record before line, at_unix_ms, id). A line's seq is its after_seq, the
+// last record seq its decision saw, so it sorts after that record and before
+// the next one, whatever the two clocks say.
 func TestEvent_MergeOrder(t *testing.T) {
 	want := []Event{
 		{Seq: 0, Steer: true, AtUnixMS: 900, ID: "a0", Type: "steer"}, // the first prompt's line: no record yet
@@ -60,10 +60,10 @@ func TestEvent_MergeOrder(t *testing.T) {
 	}
 }
 
-// TestEvent_Decode (W-M4.2): a record line decodes to its seq and type, a
-// steer line to its after_seq, clock and id. A steer_evidence line has no
-// after_seq and feeds no frontier field: not an event and not an error. A
-// line the merge cannot place is an error.
+// TestEvent_Decode: a record line decodes to its seq and type, a steer line
+// to its after_seq, clock and id. A steer_evidence line has no after_seq and
+// feeds no frontier field: not an event and not an error. A line the merge
+// cannot place is an error.
 func TestEvent_Decode(t *testing.T) {
 	rec := `{"type":"declaration","schema_version":10,"seq":7,"recorded_at_unix_ms":1793897985945,"tool_use_id":"toolu_1","session_id":"s1","tool_name":"Read"}`
 	ev, ok, err := RecordEvent([]byte(rec))
@@ -100,12 +100,12 @@ func TestEvent_Decode(t *testing.T) {
 	}
 }
 
-// TestEvent_DecodeWrites (W-M4.2, D1): a declaration's written paths decode
-// as verify reads a write: the project prefix first, else the cwd prefix,
-// cleaned, and nothing outside the project; a declaration that names a path
-// outside it is marked (WroteOutside), its inside paths kept. Only a
-// declaration names writes (an instructions record's file_path is the file
-// it loaded), and a Read's declaration names no path.
+// TestEvent_DecodeWrites: a declaration's written paths decode as verify
+// reads a write: the project prefix first, else the cwd prefix, cleaned, and
+// nothing outside the project; a declaration that names a path outside it is
+// marked (WroteOutside), its inside paths kept. Only a declaration names
+// writes (an instructions record's file_path is the file it loaded), and a
+// Read's declaration names no path.
 func TestEvent_DecodeWrites(t *testing.T) {
 	for _, c := range []struct {
 		name, line string
@@ -140,16 +140,16 @@ func TestEvent_DecodeWrites(t *testing.T) {
 	}
 }
 
-// TestInProject_DecidesAsVerify (W-M4.2, ruling 11:37 4b): inProject is a
-// copy of verify's projectPath(relativise(...)) (its doc), so it must decide
-// inside or outside as verify does. Each row pins the copy's decision and
-// verify.RelevantUnder's, verify's exported reading of the same two rules,
-// on .go paths, a class RelevantUnder counts, so its answer is the
-// location's alone. Where the two differ the row says why: each is a
-// difference inside verify, RelevantUnder against projectPath, and the copy
-// follows projectPath, the reading verify's rule check uses. RelevantUnder
-// reads absoluteness by filepath.IsAbs, the OS's rule, so its column holds
-// off windows (the CI test job runs on linux); on windows only the copy's
+// TestInProject_DecidesAsVerify: inProject is a copy of verify's
+// projectPath(relativise(...)) (its doc), so it must decide inside or outside
+// as verify does. Each row pins the copy's decision and
+// verify.RelevantUnder's, verify's exported reading of the same two rules, on
+// .go paths, a class RelevantUnder counts, so its answer is the location's
+// alone. Where the two differ the row says why: each is a difference inside
+// verify, RelevantUnder against projectPath, and the copy follows
+// projectPath, the reading verify's rule check uses. RelevantUnder reads
+// absoluteness by filepath.IsAbs, the OS's rule, so its column holds off
+// windows (the CI test job runs on linux); on windows only the copy's
 // decision is checked.
 func TestInProject_DecidesAsVerify(t *testing.T) {
 	for _, c := range []struct {
@@ -191,10 +191,9 @@ func TestInProject_DecidesAsVerify(t *testing.T) {
 }
 
 // ledgerLineSynthetic is a ledger line built by a test, never recorded: no
-// ledger writer exists before the M2 merge (ledger condition 7), so every
-// ledger line in this file is SYNTHETIC (condition 6). Its rows are real
-// verify.Obligation values marshalled by encoding/json, so a decode reads
-// verify's own keys; tail adds keys after the rows.
+// ledger writer exists yet, so every ledger line in this file is SYNTHETIC.
+// Its rows are real verify.Obligation values marshalled by encoding/json, so
+// a decode reads verify's own keys; tail adds keys after the rows.
 func ledgerLineSynthetic(t *testing.T, seq int64, rows []verify.Obligation, tail string) []byte {
 	t.Helper()
 	b, err := json.Marshal(rows)
@@ -204,18 +203,17 @@ func ledgerLineSynthetic(t *testing.T, seq int64, rows []verify.Obligation, tail
 	return []byte(`{"type":"ledger","seq":` + strconv.FormatInt(seq, 10) + `,"point":"stop","obligations":` + string(b) + tail + `}`)
 }
 
-// TestCheckpoint_PointIsVerifys (W-M4.2, ruling 12:03): the fold's Stop
-// point is verify's, named in the fold because it imports no verify
-// outside its tests.
+// TestCheckpoint_PointIsVerifys: the fold's Stop point is verify's, named in
+// the fold because it imports no verify outside its tests.
 func TestCheckpoint_PointIsVerifys(t *testing.T) {
 	if stopPoint != verify.PointStop {
 		t.Fatalf("stopPoint %q, verify.PointStop %q", stopPoint, verify.PointStop)
 	}
 }
 
-// TestEvent_DecodeCheckpoint (W-M4.2, ruling 12:03): a verify record at
-// point stop is a Stop's checkpoint; a verify record at another point or
-// with none, and any other record carrying the key, are not.
+// TestEvent_DecodeCheckpoint: a verify record at point stop is a Stop's
+// checkpoint; a verify record at another point or with none, and any other
+// record carrying the key, are not.
 func TestEvent_DecodeCheckpoint(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -235,11 +233,10 @@ func TestEvent_DecodeCheckpoint(t *testing.T) {
 	}
 }
 
-// TestEvent_DecodeVerdictSynthetic (W-M4.2, rulings 12:03, 12:12): a ledger
-// line's done_flagged, unmet and checkpoint_seq decode as its verdict, a
-// present false or 0 as a value; a line without any one of the three, or
-// with one null, has no verdict, never false or 0. Only a ledger line
-// carries one. SYNTHETIC lines.
+// TestEvent_DecodeVerdictSynthetic: a ledger line's done_flagged, unmet and
+// checkpoint_seq decode as its verdict, a present false or 0 as a value; a
+// line without any one of the three, or with one null, has no verdict, never
+// false or 0. Only a ledger line carries one. SYNTHETIC lines.
 func TestEvent_DecodeVerdictSynthetic(t *testing.T) {
 	rows := []verify.Obligation{{ID: "ob-a", Scope: verify.ScopeSession, Kind: verify.GateAfterWrite, Source: "spec", State: verify.ObligationOpen, Evidence: []int64{}}}
 	type verdictOf struct {
@@ -270,9 +267,9 @@ func TestEvent_DecodeVerdictSynthetic(t *testing.T) {
 }
 
 // sessionLineSynthetic is a session record built by a test, never recorded:
-// no SessionStart writer exists before W-M4.3 and W-M4.4, so every session
-// record in this file is SYNTHETIC. It is a real store.Session marshalled
-// by encoding/json, so a decode reads the store's own keys.
+// no writer records a session record yet, so every session record in this
+// file is SYNTHETIC. It is a real store.Session marshalled by encoding/json,
+// so a decode reads the store's own keys.
 func sessionLineSynthetic(t *testing.T, seq int64, source string) []byte {
 	t.Helper()
 	b, err := json.Marshal(store.Session{EventHeader: store.EventHeader{Type: store.TypeSession, Seq: &seq}, Source: source})
@@ -282,10 +279,9 @@ func sessionLineSynthetic(t *testing.T, seq int64, source string) []byte {
 	return b
 }
 
-// TestEvent_DecodeBoundarySynthetic (W-M4.2, ruling 12:03): a session record
-// whose SessionStart source is compact or resume is a boundary; startup,
-// clear, no source, and any other record carrying the key are not.
-// SYNTHETIC session records.
+// TestEvent_DecodeBoundarySynthetic: a session record whose SessionStart
+// source is compact or resume is a boundary; startup, clear, no source, and
+// any other record carrying the key are not. SYNTHETIC session records.
 func TestEvent_DecodeBoundarySynthetic(t *testing.T) {
 	for _, c := range []struct {
 		name     string
@@ -308,11 +304,11 @@ func TestEvent_DecodeBoundarySynthetic(t *testing.T) {
 	}
 }
 
-// TestEvent_DecodeLedgerSynthetic (W-M4.2, D3): a ledger line decodes to its
-// rows' id, kind, unit and state by verify.Obligation's keys, with its two
-// cut counts, 0 when absent. Scope is opaque: a scope no list names decodes
-// as any other. Only a ledger line's rows are the ledger: a verify record or
-// a declaration carrying the same keys is not one. SYNTHETIC lines.
+// TestEvent_DecodeLedgerSynthetic: a ledger line decodes to its rows' id,
+// kind, unit and state by verify.Obligation's keys, with its two cut counts,
+// 0 when absent. Scope is opaque: a scope no list names decodes as any other.
+// Only a ledger line's rows are the ledger: a verify record or a declaration
+// carrying the same keys is not one. SYNTHETIC lines.
 func TestEvent_DecodeLedgerSynthetic(t *testing.T) {
 	rows := []verify.Obligation{
 		{ID: "ob-a", Scope: verify.ScopeSession, Kind: verify.GateAfterWrite, Source: "spec", State: verify.ObligationMet, Evidence: []int64{4, 9}},
@@ -345,12 +341,12 @@ func TestEvent_DecodeLedgerSynthetic(t *testing.T) {
 	}
 }
 
-// TestEvent_DecodeWithheld (W-M4.2, D1): a declaration whose write path the
-// record withheld is marked, whatever the reason, so the frontier can say
-// Touched is cut. A withheld cwd or project alone (a Read below record scope
-// v5) is no write, and only a declaration's paths are writes. Below v5 a
-// shell line's list is keyed withheld only when it named a path
-// (store.GateDeclaration), so one that named none is not marked.
+// TestEvent_DecodeWithheld: a declaration whose write path the record
+// withheld is marked, whatever the reason, so the frontier can say Touched is
+// cut. A withheld cwd or project alone (a Read below record scope v5) is no
+// write, and only a declaration's paths are writes. Below v5 a shell line's
+// list is keyed withheld only when it named a path (store.GateDeclaration),
+// so one that named none is not marked.
 func TestEvent_DecodeWithheld(t *testing.T) {
 	for _, c := range []struct {
 		name, line string
@@ -372,9 +368,9 @@ func TestEvent_DecodeWithheld(t *testing.T) {
 	}
 }
 
-// TestEvent_HoldsNoWords (W-M4.2, AC-M4.1): an event keeps the order key and
-// the fields a rule reads, never a line's words (model_text, user_text). A
-// string field not named here fails by name.
+// TestEvent_HoldsNoWords: an event keeps the order key and the fields a rule
+// reads, never a line's words (model_text, user_text). A string field not
+// named here fails by name.
 func TestEvent_HoldsNoWords(t *testing.T) {
 	named := map[string]string{
 		"ID":       "steer line id",
@@ -409,9 +405,9 @@ func TestEvent_HoldsNoWords(t *testing.T) {
 	}
 }
 
-// TestStep_Delivered (W-M4.2): a steer line in state delivered becomes one
-// LineRef at its after_seq with its id, key and kind. A line in any other
-// state and a record leave Delivered as it was.
+// TestStep_Delivered: a steer line in state delivered becomes one LineRef at
+// its after_seq with its id, key and kind. A line in any other state and a
+// record leave Delivered as it was.
 func TestStep_Delivered(t *testing.T) {
 	f := newFrontier("s1")
 	Step(&f, Event{Seq: 1, Type: "declaration"})
@@ -428,8 +424,8 @@ func TestStep_Delivered(t *testing.T) {
 	}
 }
 
-// TestStep_DeliveredOncePerID (W-M4.2): one LineRef per steer line id, the
-// uniqueness canon's order rests on; a line seen again keeps its first ref.
+// TestStep_DeliveredOncePerID: one LineRef per steer line id, the uniqueness
+// canon's order rests on; a line seen again keeps its first ref.
 func TestStep_DeliveredOncePerID(t *testing.T) {
 	f := newFrontier("s1")
 	Step(&f, Event{Seq: 4, Steer: true, AtUnixMS: 5, ID: "d1", Type: "steer", State: "delivered", Key: "k1"})
@@ -439,9 +435,9 @@ func TestStep_DeliveredOncePerID(t *testing.T) {
 	}
 }
 
-// TestStep_Intents (W-M4.2, D2): one IntentRef per prompt id in the steer
-// log, in order of first appearance from 1, at its first line's after_seq,
-// whatever that line's state; a briefing line (no prompt id) adds none.
+// TestStep_Intents: one IntentRef per prompt id in the steer log, in order of
+// first appearance from 1, at its first line's after_seq, whatever that
+// line's state; a briefing line (no prompt id) adds none.
 func TestStep_Intents(t *testing.T) {
 	f := newFrontier("s1")
 	for _, ev := range []Event{
@@ -462,10 +458,9 @@ func TestStep_Intents(t *testing.T) {
 	}
 }
 
-// TestStep_Touched (W-M4.2, D1): every path a declaration wrote joins
-// Touched as its graph.FileID, sorted and unique, so the same writes in any
-// order fold to the same set; a steer line and a record without writes
-// leave it as it was.
+// TestStep_Touched: every path a declaration wrote joins Touched as its
+// graph.FileID, sorted and unique, so the same writes in any order fold to
+// the same set; a steer line and a record without writes leave it as it was.
 func TestStep_Touched(t *testing.T) {
 	evs := []Event{
 		{Seq: 1, Type: "declaration", Wrote: []string{"internal/b/y.go"}},
@@ -488,9 +483,9 @@ func TestStep_Touched(t *testing.T) {
 	}
 }
 
-// TestStep_TouchedWithheld (W-M4.2, D1): each declaration whose write path
-// was withheld counts once, so a frontier below record scope v5 says its
-// empty Touched is cut, not that the session wrote nothing.
+// TestStep_TouchedWithheld: each declaration whose write path was withheld
+// counts once, so a frontier below record scope v5 says its empty Touched is
+// cut, not that the session wrote nothing.
 func TestStep_TouchedWithheld(t *testing.T) {
 	f := newFrontier("s1")
 	for _, ev := range []Event{
@@ -507,9 +502,9 @@ func TestStep_TouchedWithheld(t *testing.T) {
 	}
 }
 
-// TestStep_BoundarySynthetic (W-M4.2, ruling 12:03): LastBoundary is the
-// seq of the last boundary; a session record that is none (startup, clear)
-// and any other record leave it as it was. SYNTHETIC events.
+// TestStep_BoundarySynthetic: LastBoundary is the seq of the last boundary; a
+// session record that is none (startup, clear) and any other record leave it
+// as it was. SYNTHETIC events.
 func TestStep_BoundarySynthetic(t *testing.T) {
 	f := newFrontier("s1")
 	for _, ev := range []Event{
@@ -527,12 +522,11 @@ func TestStep_BoundarySynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_VerdictSynthetic (W-M4.2, rulings 12:03, 12:12): each Stop
-// checkpoint is in StopsWithoutVerdict until a ledger line's verdict names
-// it; a verdict is copied as its checkpoint's VerdictRef, one per
-// checkpoint, the first kept; a ledger line with no verdict adds none; and
-// each checkpoint is in Verdicts or StopsWithoutVerdict (conservation).
-// SYNTHETIC events.
+// TestStep_VerdictSynthetic: each Stop checkpoint is in StopsWithoutVerdict
+// until a ledger line's verdict names it; a verdict is copied as its
+// checkpoint's VerdictRef, one per checkpoint, the first kept; a ledger line
+// with no verdict adds none; and each checkpoint is in Verdicts or
+// StopsWithoutVerdict (conservation). SYNTHETIC events.
 func TestStep_VerdictSynthetic(t *testing.T) {
 	rows := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "open"}}
 	f := newFrontier("s1")
@@ -561,10 +555,10 @@ func TestStep_VerdictSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_VerdictBindsBySeqSynthetic (W-M4.2, ruling 12:12 3): a ledger
-// line binds to the checkpoint its checkpoint_seq names, not to the record
-// before it, since a record can land between a Stop's two appends: here a
-// write declaration and a subagent_stop checkpoint. SYNTHETIC events.
+// TestStep_VerdictBindsBySeqSynthetic: a ledger line binds to the checkpoint
+// its checkpoint_seq names, not to the record before it, since a record can
+// land between a Stop's two appends: here a write declaration and a
+// subagent_stop checkpoint. SYNTHETIC events.
 func TestStep_VerdictBindsBySeqSynthetic(t *testing.T) {
 	f := newFrontier("s1")
 	for _, ev := range []Event{
@@ -580,10 +574,10 @@ func TestStep_VerdictBindsBySeqSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_VerdictWithoutCheckpointSynthetic (W-M4.2, ruling 12:12 3): a
-// ledger line whose checkpoint_seq names no stop checkpoint read before it,
-// a verify record at another point or one at a later seq, adds no verdict,
-// and its rows still apply. SYNTHETIC events.
+// TestStep_VerdictWithoutCheckpointSynthetic: a ledger line whose
+// checkpoint_seq names no stop checkpoint read before it, a verify record at
+// another point or one at a later seq, adds no verdict, and its rows still
+// apply. SYNTHETIC events.
 func TestStep_VerdictWithoutCheckpointSynthetic(t *testing.T) {
 	rows := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "unmet"}}
 	f := newFrontier("s1")
@@ -603,7 +597,7 @@ func TestStep_VerdictWithoutCheckpointSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_VerdictLeavesCopies (W-M4.2): a verdict cuts its checkpoint from
+// TestStep_VerdictLeavesCopies: a verdict cuts its checkpoint from
 // StopsWithoutVerdict without writing into the list that a Frontier copied
 // before the Step still holds. SYNTHETIC events.
 func TestStep_VerdictLeavesCopies(t *testing.T) {
@@ -617,12 +611,11 @@ func TestStep_VerdictLeavesCopies(t *testing.T) {
 	}
 }
 
-// TestStep_CheckpointWithoutLedgerSynthetic (W-M4.2, rulings 12:03 3, 12:12
-// 5): a Stop whose checkpoint no ledger line follows (a kill, a lock
-// timeout) keeps the obligations of the Stop before, as of that line's seq
-// (ledger condition 4), but gets no verdict: a verdict belongs to one Stop,
-// and the Stop is in StopsWithoutVerdict, never read as not done.
-// SYNTHETIC events.
+// TestStep_CheckpointWithoutLedgerSynthetic: a Stop whose checkpoint no
+// ledger line follows (a kill, a lock timeout) keeps the obligations of the
+// Stop before, as of that line's seq, but gets no verdict: a verdict belongs
+// to one Stop, and the Stop is in StopsWithoutVerdict, never read as not
+// done. SYNTHETIC events.
 func TestStep_CheckpointWithoutLedgerSynthetic(t *testing.T) {
 	rows := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "unmet"}}
 	f := newFrontier("s1")
@@ -641,12 +634,12 @@ func TestStep_CheckpointWithoutLedgerSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_LedgerSynthetic (W-M4.2, D3): the last ledger line is the
-// frontier's obligations, as of its seq, with its own cut counts, each line
-// replacing the one before; one ref per id, the first kept; each state as
-// written, so unknown stays unknown and open stays open; and a record that
-// is no ledger line leaves them as they were (ledger condition 4).
-// SYNTHETIC events: no ledger writer exists before the M2 merge.
+// TestStep_LedgerSynthetic: the last ledger line is the frontier's
+// obligations, as of its seq, with its own cut counts, each line replacing
+// the one before; one ref per id, the first kept; each state as written, so
+// unknown stays unknown and open stays open; and a record that is no ledger
+// line leaves them as they were. SYNTHETIC events: no ledger writer exists
+// yet.
 func TestStep_LedgerSynthetic(t *testing.T) {
 	first := []ObligationRef{{ID: "ob-a", Kind: "gate_after_write", State: "unmet"}}
 	second := []ObligationRef{
@@ -671,9 +664,9 @@ func TestStep_LedgerSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_TouchedOutside (W-M4.2, ruling 11:37 3b): each declaration that
-// named a path outside the project counts once, beside the inside paths it
-// adds to Touched, and the two cut counts move apart.
+// TestStep_TouchedOutside: each declaration that named a path outside the
+// project counts once, beside the inside paths it adds to Touched, and the
+// two cut counts move apart.
 func TestStep_TouchedOutside(t *testing.T) {
 	f := newFrontier("s1")
 	for _, ev := range []Event{
@@ -695,14 +688,13 @@ func TestStep_TouchedOutside(t *testing.T) {
 // record scope v4: 64 lowercase hex, no path.
 const keyedUnit = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// TestEvent_DecodeStatedSynthetic (W-M4.2, D6 (b), ruling 12:52): a steer
-// line's graph lines, in slots line1..line5, decode as Stated in slot
-// order: a unit line opened_unit, a code line in role reuse called_symbol
-// and in role consumer edited_or_verified, each on its path or its keyed
-// digest when the record form left no path, and a decision line
-// paths_untouched on its id. A code line with no role, a table, a lesson,
-// an empty line, a line with no subject and a pattern's other slot keys
-// state none. SYNTHETIC lines.
+// TestEvent_DecodeStatedSynthetic: a steer line's graph lines, in slots
+// line1..line5, decode as Stated in slot order: a unit line opened_unit, a
+// code line in role reuse called_symbol and in role consumer
+// edited_or_verified, each on its path or its keyed digest when the record
+// form left no path, and a decision line paths_untouched on its id. A code
+// line with no role, a table, a lesson, an empty line, a line with no subject
+// and a pattern's other slot keys state none. SYNTHETIC lines.
 func TestEvent_DecodeStatedSynthetic(t *testing.T) {
 	head := `{"type":"steer","id":"u1","at_unix_ms":5,"after_seq":7,"state":"delivered","key":"graph","kind":"","prompt_id":"p1"`
 	unit := func(arg string) StatedReq { return StatedReq{Pred: steer.PredOpenedUnit, Arg: arg} }
@@ -732,18 +724,17 @@ func TestEvent_DecodeStatedSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_ReqsSynthetic (W-M4.2, D6, rulings 12:52 (2), (3), 13:04 (3)): a
-// delivered line states one opened_unit Req per unit, keyed Pred:Arg, at
-// its after_seq; a suppressed line states none, and a unit stated again
-// keeps its first StatedAt, its LastStatedAt the later line's. The lines
-// name no prompt, so none supersedes. A Req is marked met_once at the first write after its line
-// at its path or under it, and never again. The boundary in three cases,
-// the events put in the merged order by Before: a write before the line
-// (5) and a write at the line's own after_seq (10, a record sorts first)
-// leave internal/early open; writes after it (14, 15) meet. A sibling that
-// only shares the prefix (13) meets nothing. A Req of another predicate on
-// the same path stays open: the fold marks only what it can see.
-// SYNTHETIC events.
+// TestStep_ReqsSynthetic: a delivered line states one opened_unit Req per
+// unit, keyed Pred:Arg, at its after_seq; a suppressed line states none, and
+// a unit stated again keeps its first StatedAt, its LastStatedAt the later
+// line's. The lines name no prompt, so none supersedes. A Req is marked
+// met_once at the first write after its line at its path or under it, and
+// never again. The boundary in three cases, the events put in the merged
+// order by Before: a write before the line (5) and a write at the line's own
+// after_seq (10, a record sorts first) leave internal/early open; writes
+// after it (14, 15) meet. A sibling that only shares the prefix (13) meets
+// nothing. A Req of another predicate on the same path stays open: the fold
+// marks only what it can see. SYNTHETIC events.
 func TestStep_ReqsSynthetic(t *testing.T) {
 	f := newFrontier("s1")
 	other := ReqState{ID: steer.PredEditedOrVerified + ":internal/platform", Pred: steer.PredEditedOrVerified, Arg: "internal/platform", Status: ReqOpen, StatedAt: 3}
@@ -782,12 +773,12 @@ func TestStep_ReqsSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_LeavesCopies (W-M4.2): a Step leaves a Frontier copied before it
-// as it was, byte for byte, while the stepped one gains the write's file in
-// order and meets the Req. Touched has room past its length, so an insert
-// that shifts in place would write into the copy's array. Likewise a later
-// prompt's line supersedes a Req of a list with room past its length, and
-// the copy keeps it open. SYNTHETIC events.
+// TestStep_LeavesCopies: a Step leaves a Frontier copied before it as it was,
+// byte for byte, while the stepped one gains the write's file in order and
+// meets the Req. Touched has room past its length, so an insert that shifts
+// in place would write into the copy's array. Likewise a later prompt's line
+// supersedes a Req of a list with room past its length, and the copy keeps it
+// open. SYNTHETIC events.
 func TestStep_LeavesCopies(t *testing.T) {
 	f := newFrontier("s1")
 	f.Touched = append(make([]string, 0, 8), string(graph.FileID("a")), string(graph.FileID("c")))
@@ -821,16 +812,14 @@ func TestStep_LeavesCopies(t *testing.T) {
 	}
 }
 
-// TestStep_KnownHoleT_SubdirLookalikeMeets (W-M4.2, debt (t), ruling 13:04
-// (4)): a KNOWN HOLE, pinned so that its fix must flip this test. A slot
-// path is relative to the hook's working directory, a written path to the
-// project, and the steer line names no cwd. A line written from /p/sub
-// names the unit /p/sub/pkg as "pkg": a write to the unit itself is
-// sub/pkg/b.go and leaves the Req open, and a write to the lookalike
-// /p/pkg/a.go meets it. Once the record keeps a project-relative path
-// (debt (t), engine lane), the first write meets and the second does not.
-// SYNTHETIC lines.
-func TestStep_KnownHoleT_SubdirLookalikeMeets(t *testing.T) {
+// TestStep_KnownHole_SubdirLookalikeMeets: a KNOWN HOLE, pinned so that its
+// fix must flip this test. A slot path is relative to the hook's working
+// directory, a written path to the project, and the steer line names no cwd.
+// A line written from /p/sub names the unit /p/sub/pkg as "pkg": a write to
+// the unit itself is sub/pkg/b.go and leaves the Req open, and a write to the
+// lookalike /p/pkg/a.go meets it. Once the record keeps a project-relative
+// path, the first write meets and the second does not. SYNTHETIC lines.
+func TestStep_KnownHole_SubdirLookalikeMeets(t *testing.T) {
 	f := newFrontier("s1")
 	for _, c := range []struct {
 		line   string
@@ -858,13 +847,12 @@ func TestStep_KnownHoleT_SubdirLookalikeMeets(t *testing.T) {
 	}
 }
 
-// TestStep_LineStatesEachPredSynthetic (W-M4.2, D6 (b), rulings 12:52 (1),
-// 13:11 (5)): one delivered line with a unit, a reuse, a consumer and a
-// decision graph line states four Reqs at its after_seq, keyed Pred:Arg,
-// in slot order. Writes after it to every subject mark only opened_unit,
-// met_once at the first; called_symbol, edited_or_verified and
-// paths_untouched stay open, since the fold resolves none of them.
-// SYNTHETIC lines.
+// TestStep_LineStatesEachPredSynthetic: one delivered line with a unit, a
+// reuse, a consumer and a decision graph line states four Reqs at its
+// after_seq, keyed Pred:Arg, in slot order. Writes after it to every subject
+// mark only opened_unit, met_once at the first; called_symbol,
+// edited_or_verified and paths_untouched stay open, since the fold resolves
+// none of them. SYNTHETIC lines.
 func TestStep_LineStatesEachPredSynthetic(t *testing.T) {
 	f := newFrontier("s1")
 	for _, c := range []struct {
@@ -937,9 +925,9 @@ func unitReq(f Frontier, u string) ReqState {
 // promptID is the IntentRef.ID of session s1's n-th prompt.
 func promptID(n int) string { return string(graph.PromptNodeID("s1", n)) }
 
-// supersededByWhileSuperseded is ruling 13:43 (3)'s invariant on every Req
-// of f: SupersededBy is non-empty exactly when Status is superseded. It
-// names the first Req that breaks it, or returns "".
+// supersededByWhileSuperseded is the invariant on every Req of f:
+// SupersededBy is non-empty exactly when Status is superseded. It names the
+// first Req that breaks it, or returns "".
 func supersededByWhileSuperseded(f Frontier) string {
 	for _, r := range f.Reqs {
 		if (r.SupersededBy != "") != (r.Status == ReqSuperseded) {
@@ -949,12 +937,11 @@ func supersededByWhileSuperseded(f Frontier) string {
 	return ""
 }
 
-// TestStep_SupersedePerLineSynthetic (W-M4.2, ruling 13:23 (3a)): supersede
-// takes a line whole, never slot by slot. Prompt p1 states b and d; p2's
-// one line states a and b. b, named in the line beside a, stays open in
-// either slot order, and d, which the line does not name, is superseded, so
-// the line does supersede. The two slot orders fold to the same bytes.
-// SYNTHETIC lines.
+// TestStep_SupersedePerLineSynthetic: supersede takes a line whole, never
+// slot by slot. Prompt p1 states b and d; p2's one line states a and b. b,
+// named in the line beside a, stays open in either slot order, and d, which
+// the line does not name, is superseded, so the line does supersede. The two
+// slot orders fold to the same bytes. SYNTHETIC lines.
 func TestStep_SupersedePerLineSynthetic(t *testing.T) {
 	var got []string
 	for _, units := range [][]string{{"a", "b"}, {"b", "a"}} {
@@ -973,13 +960,13 @@ func TestStep_SupersedePerLineSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_SupersedeSparesPromptsOwnSynthetic (W-M4.2, ruling 13:23 (3b)): a
-// Req a prompt names is that prompt's own. p1 states b and d; p2's first
-// line states b again and supersedes d, which no line of p2 names; p2's
-// second line states c and supersedes neither b, which p2's first line
-// named at p2's StatedAt, nor c. b keeps its first StatedAt, its
-// LastStatedAt p2's line. With (3c)'s case, a prompt's {b} then {c} and {c}
-// then {b} both end with b open. SYNTHETIC lines.
+// TestStep_SupersedeSparesPromptsOwnSynthetic: a Req a prompt names is that
+// prompt's own. p1 states b and d; p2's first line states b again and
+// supersedes d, which no line of p2 names; p2's second line states c and
+// supersedes neither b, which p2's first line named at p2's StatedAt, nor c.
+// b keeps its first StatedAt, its LastStatedAt p2's line. With
+// TestStep_RestatementReopensSynthetic's case, a prompt's {b} then {c} and
+// {c} then {b} both end with b open. SYNTHETIC lines.
 func TestStep_SupersedeSparesPromptsOwnSynthetic(t *testing.T) {
 	f := stepAll(unitLine(2, "l1", "p1", "b", "d"), unitLine(5, "l2", "p2", "b"), unitLine(6, "l3", "p2", "c"))
 	b, c, d := unitReq(f, "b"), unitReq(f, "c"), unitReq(f, "d")
@@ -988,13 +975,13 @@ func TestStep_SupersedeSparesPromptsOwnSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_RestatementReopensSynthetic (W-M4.2, ruling 13:23 (3c)): a
-// superseded Req goes back to open only when a delivered line states the
-// same Pred and Arg again. p1 states b and d; p2's first line states c and
-// supersedes both. A suppressed line of p2 naming b and a delivered line of
-// p2 naming c again leave b superseded; p2's line naming b reopens it: open,
-// SupersededBy empty, StatedAt still p1's, LastStatedAt the reopening
-// line's. d stays superseded, and c, p2's own, stays open. SYNTHETIC lines.
+// TestStep_RestatementReopensSynthetic: a superseded Req goes back to open
+// only when a delivered line states the same Pred and Arg again. p1 states b
+// and d; p2's first line states c and supersedes both. A suppressed line of
+// p2 naming b and a delivered line of p2 naming c again leave b superseded;
+// p2's line naming b reopens it: open, SupersededBy empty, StatedAt still
+// p1's, LastStatedAt the reopening line's. d stays superseded, and c, p2's
+// own, stays open. SYNTHETIC lines.
 func TestStep_RestatementReopensSynthetic(t *testing.T) {
 	suppressed := unitLine(6, "l3", "p2", "b")
 	suppressed.State = string(steer.LineStateSuppressed)
@@ -1009,12 +996,11 @@ func TestStep_RestatementReopensSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_SupersededMeetsOnceSynthetic (W-M4.2, rulings 13:23 (3d), 13:43
-// (3)): evidence marks a superseded Req as it marks an open one and empties
-// its SupersededBy: met_once is final and has one form. p1 states b; p2
-// states c and supersedes b; a write under b marks it met_once at the write.
-// p2 stating b again and a second write leave it met_once at the first
-// write. SYNTHETIC events.
+// TestStep_SupersededMeetsOnceSynthetic: evidence marks a superseded Req as
+// it marks an open one and empties its SupersededBy: met_once is final and
+// has one form. p1 states b; p2 states c and supersedes b; a write under b
+// marks it met_once at the write. p2 stating b again and a second write leave
+// it met_once at the first write. SYNTHETIC events.
 func TestStep_SupersededMeetsOnceSynthetic(t *testing.T) {
 	f := stepAll(unitLine(2, "l1", "p1", "b"), unitLine(5, "l2", "p2", "c"),
 		Event{Seq: 6, Type: store.TypeDeclaration, Wrote: []string{"b/x.go"}},
@@ -1026,11 +1012,10 @@ func TestStep_SupersededMeetsOnceSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_SupersededByIsPromptSynthetic (W-M4.2, ruling 13:23 (3e)):
-// SupersededBy is the later prompt's IntentRef.ID, its prompt node id, never
-// a sibling Req's key or the prompt's digest. p1 states b; p2 states c and
-// supersedes b. A line with no prompt then states e and supersedes nothing:
-// c stays open. SYNTHETIC lines.
+// TestStep_SupersededByIsPromptSynthetic: SupersededBy is the later prompt's
+// IntentRef.ID, its prompt node id, never a sibling Req's key or the prompt's
+// digest. p1 states b; p2 states c and supersedes b. A line with no prompt
+// then states e and supersedes nothing: c stays open. SYNTHETIC lines.
 func TestStep_SupersededByIsPromptSynthetic(t *testing.T) {
 	f := stepAll(unitLine(2, "l1", "p1", "b"), unitLine(5, "l2", "p2", "c"), unitLine(9, "l3", "", "e"))
 	b, c, e := unitReq(f, "b"), unitReq(f, "c"), unitReq(f, "e")
@@ -1039,15 +1024,14 @@ func TestStep_SupersededByIsPromptSynthetic(t *testing.T) {
 	}
 }
 
-// TestStep_SupersedeLineBroughtOnlySynthetic (W-M4.2, rulings 12:52 (4),
-// 13:23 (3)): only a predicate a graph line states supersedes or is
-// superseded, and only a Req of a predicate the line states. p1's line
-// states opened_unit b, called_symbol r.go and gate_green go-test; p2's
-// line states opened_unit c and gate_green go-build. b is superseded; r.go,
-// of a predicate p2's line does not state, stays open, and so do both
-// gate_green Reqs: a gate Req neither supersedes nor is superseded.
-// SYNTHETIC events: no SteerEvent states gate_green, which a later card
-// copies from a stored line (ruling 13:23 (4)).
+// TestStep_SupersedeLineBroughtOnlySynthetic: only a predicate a graph line
+// states supersedes or is superseded, and only a Req of a predicate the line
+// states. p1's line states opened_unit b, called_symbol r.go and gate_green
+// go-test; p2's line states opened_unit c and gate_green go-build. b is
+// superseded; r.go, of a predicate p2's line does not state, stays open, and
+// so do both gate_green Reqs: a gate Req neither supersedes nor is
+// superseded. SYNTHETIC events: no SteerEvent states gate_green, which a
+// later change copies from a stored line.
 func TestStep_SupersedeLineBroughtOnlySynthetic(t *testing.T) {
 	const gate = "gate_green"
 	l1 := unitLine(2, "l1", "p1", "b")
@@ -1071,17 +1055,13 @@ func TestStep_SupersedeLineBroughtOnlySynthetic(t *testing.T) {
 	}
 }
 
-// TestReq_MetOnceIsFinalSupersededReopensByLine (W-M4.2, ruling 13:23 (3);
-// PLAN 1491 as amended; PLAN 1493's TestReq_StatusTransitionsAreMonotone,
-// renamed for what it pins): one Req through every transition. b is open
-// at p1's line, superseded at p2's, open again when p2 states it,
-// superseded at p3's and met_once at a write, which empties its
+// TestReq_MetOnceIsFinalSupersededReopensByLine: one Req through every
+// transition. b is open at p1's line, superseded at p2's, open again when p2
+// states it, superseded at p3's and met_once at a write, which empties its
 // SupersededBy; then p3 stating it again, p4's line moving past it and a
 // second write leave it met_once at the first write: met_once is final and
-// never superseded. After every step SupersededBy is set exactly while
-// Status is superseded (ruling 13:43 (3)). StatedAt stays p1's line
-// throughout. SYNTHETIC
-// events.
+// never superseded. After every step SupersededBy is set exactly while Status
+// is superseded. StatedAt stays p1's line throughout. SYNTHETIC events.
 func TestReq_MetOnceIsFinalSupersededReopensByLine(t *testing.T) {
 	f := newFrontier("s1")
 	for _, c := range []struct {
@@ -1177,14 +1157,12 @@ func inMergedOrder(t *testing.T, evs []Event) {
 	}
 }
 
-// TestFold_IncrementalEqualsFullSynthetic (W-M4.2, INV-11; PLAN 1493's
-// TestFold_IncrementalEqualsFull on synthetic events, whose fixture form
-// takes that name): for every cut j of one session's events and every cut k
-// at or after it, the fold to j, saved and read back, then caught up by the
-// events from j to k in a shuffled order, is byte-equal to the fold to k; and
-// the fold to k is its events stepped in the merged order. Every fold to k
-// keeps SupersededBy set exactly while Status is superseded
-// (ruling 13:43 (3)). SYNTHETIC events.
+// TestFold_IncrementalEqualsFullSynthetic: for every cut j of one session's
+// events and every cut k at or after it, the fold to j, saved and read back,
+// then caught up by the events from j to k in a shuffled order, is byte-equal
+// to the fold to k; and the fold to k is its events stepped in the merged
+// order. Every fold to k keeps SupersededBy set exactly while Status is
+// superseded. SYNTHETIC events.
 func TestFold_IncrementalEqualsFullSynthetic(t *testing.T) {
 	evs := foldEventsSynthetic()
 	inMergedOrder(t, evs)
@@ -1219,10 +1197,9 @@ func TestFold_IncrementalEqualsFullSynthetic(t *testing.T) {
 	}
 }
 
-// TestFold_IsDeterministicSynthetic (W-M4.2; PLAN 1493's
-// TestFold_IsDeterministic on synthetic events): one session's events in 20
-// shuffled orders fold to the bytes of the events stepped in the merged
-// order, and Fold leaves the order it was given. SYNTHETIC events.
+// TestFold_IsDeterministicSynthetic: one session's events in 20 shuffled
+// orders fold to the bytes of the events stepped in the merged order, and
+// Fold leaves the order it was given. SYNTHETIC events.
 func TestFold_IsDeterministicSynthetic(t *testing.T) {
 	evs := foldEventsSynthetic()
 	inMergedOrder(t, evs)
@@ -1241,12 +1218,11 @@ func TestFold_IsDeterministicSynthetic(t *testing.T) {
 	}
 }
 
-// TestFold_ThroughIsLastAppliedSynthetic (W-M4.2, rulings 13:59 (3), 14:09
-// (5)): Through is the full place of the last event applied in the merged
-// order, not of the last one given, and an empty fold's is the zero Mark. A
-// line at a record's seq sorts after it, so a fold of the two ends at the
-// line. Catch with no tail keeps Through; with one, it ends at the tail's
-// last. SYNTHETIC events.
+// TestFold_ThroughIsLastAppliedSynthetic: Through is the full place of the
+// last event applied in the merged order, not of the last one given, and an
+// empty fold's is the zero Mark. A line at a record's seq sorts after it, so
+// a fold of the two ends at the line. Catch with no tail keeps Through; with
+// one, it ends at the tail's last. SYNTHETIC events.
 func TestFold_ThroughIsLastAppliedSynthetic(t *testing.T) {
 	r3 := Event{Seq: 3, Type: store.TypeDeclaration}
 	line := Event{Seq: 3, Steer: true, AtUnixMS: 40, ID: "t1", Type: steer.LineType, State: string(steer.LineStateSuppressed), Key: "k"}
@@ -1274,12 +1250,11 @@ func TestFold_ThroughIsLastAppliedSynthetic(t *testing.T) {
 	}
 }
 
-// TestFold_LateLineRefoldsSynthetic (W-M4.2, ruling 13:59 (3)): a frontier
-// is continued only by events after its Through. A steer line written late,
-// its after_seq below Through, misses even when it comes with a later
-// record, and so does an event read again; a line at Through's own seq,
-// after its record, continues and equals the fold over the whole log.
-// SYNTHETIC events.
+// TestFold_LateLineRefoldsSynthetic: a frontier is continued only by events
+// after its Through. A steer line written late, its after_seq below Through,
+// misses even when it comes with a later record, and so does an event read
+// again; a line at Through's own seq, after its record, continues and equals
+// the fold over the whole log. SYNTHETIC events.
 func TestFold_LateLineRefoldsSynthetic(t *testing.T) {
 	head := []Event{{Seq: 3, Type: store.TypeDeclaration}, {Seq: 7, Type: store.TypeDeclaration}}
 	f := Fold("s1", head)
@@ -1300,13 +1275,12 @@ func TestFold_LateLineRefoldsSynthetic(t *testing.T) {
 	}
 }
 
-// TestCatch_FromOneFrontierTwiceSynthetic (W-M4.2): two Catches from one
-// frontier share no list. The saved frontier has room past every length, as
-// one read back does (canon's copies), and each tail appends an intent, a
-// delivered line, a checkpoint and a verdict, so a Step's in-place append
-// would write the other Catch's array. The first Catch's frontier is the same
-// after the second, and each is the fold over its whole log. SYNTHETIC
-// events.
+// TestCatch_FromOneFrontierTwiceSynthetic: two Catches from one frontier
+// share no list. The saved frontier has room past every length, as one read
+// back does (canon's copies), and each tail appends an intent, a delivered
+// line, a checkpoint and a verdict, so a Step's in-place append would write
+// the other Catch's array. The first Catch's frontier is the same after the
+// second, and each is the fold over its whole log. SYNTHETIC events.
 func TestCatch_FromOneFrontierTwiceSynthetic(t *testing.T) {
 	head := []Event{
 		unitLine(1, "l1", "p1", "a"),
@@ -1344,10 +1318,10 @@ func TestCatch_FromOneFrontierTwiceSynthetic(t *testing.T) {
 	}
 }
 
-// TestCatch_ClipsEveryList (W-M4.2): every list of a caught-up frontier ends
-// at its length, so the next Step's append allocates, and the frontier Catch
-// was given keeps its room. The walk is over Frontier's fields by reflection,
-// so a list added later is held to it too.
+// TestCatch_ClipsEveryList: every list of a caught-up frontier ends at its
+// length, so the next Step's append allocates, and the frontier Catch was
+// given keeps its room. The walk is over Frontier's fields by reflection, so
+// a list added later is held to it too.
 func TestCatch_ClipsEveryList(t *testing.T) {
 	f := newFrontier("s1")
 	v := reflect.ValueOf(&f).Elem()
@@ -1372,10 +1346,10 @@ func TestCatch_ClipsEveryList(t *testing.T) {
 	}
 }
 
-// TestCatch_MissesOnAnotherKey (W-M4.2, ruling 13:59 (3)): Catch continues
-// only a frontier of this foldVersion and ledgerVersion. One of version 0, a
-// Frontier built by hand, or of the next version misses, so its state is
-// folded again under the current rules instead of continued.
+// TestCatch_MissesOnAnotherKey: Catch continues only a frontier of this
+// foldVersion and ledgerVersion. One of version 0, a Frontier built by hand,
+// or of the next version misses, so its state is folded again under the
+// current rules instead of continued.
 func TestCatch_MissesOnAnotherKey(t *testing.T) {
 	ev := []Event{{Seq: 1, Type: store.TypeDeclaration, Wrote: []string{"a.go"}}}
 	if _, ok := Catch(newFrontier("s1"), ev); !ok {
@@ -1410,17 +1384,16 @@ func goldenDir() string {
 	return filepath.Join("testdata", "sessions", "golden", "fold-v"+strconv.Itoa(foldVersion))
 }
 
-// TestFold_GoldenTiesFoldVersion (W-M4.2, ruling 13:59 (3)): the frontier
-// the synthetic events fold to, and each recorded session's of
-// testdata/sessions, is its golden of this foldVersion, byte for byte, so a
-// change to what Step writes fails here until foldVersion is bumped and the
-// next set written; a frontier saved under the old rules then misses. The
-// golden root holds this version's set alone, and the set holds no golden
-// without a source. -update writes the set once, into a directory that does
-// not exist. The limit is foldVersion's: a Step change that neither the
-// synthetic events nor the recorded sessions exercise passes unbumped, and
-// the recorded ones hold no ledger line or session record
-// (testdata/sessions/PROVENANCE.txt).
+// TestFold_GoldenTiesFoldVersion: the frontier the synthetic events fold to,
+// and each recorded session's of testdata/sessions, is its golden of this
+// foldVersion, byte for byte, so a change to what Step writes fails here
+// until foldVersion is bumped and the next set written; a frontier saved
+// under the old rules then misses. The golden root holds this version's set
+// alone, and the set holds no golden without a source. -update writes the set
+// once, into a directory that does not exist. The limit is foldVersion's: a
+// Step change that neither the synthetic events nor the recorded sessions
+// exercise passes unbumped, and the recorded ones hold no ledger line or
+// session record (testdata/sessions/PROVENANCE.txt).
 func TestFold_GoldenTiesFoldVersion(t *testing.T) {
 	evs := foldEventsSynthetic()
 	inMergedOrder(t, evs)
@@ -1604,12 +1577,12 @@ func firstDiff(got, want string) string {
 	return fmt.Sprintf("first difference on byte %d:\n got ...%s\nwant ...%s", i, got[lo:min(i+80, len(got))], want[lo:min(i+80, len(want))])
 }
 
-// TestFixtures_SumsHold (W-M4.2, ruling 13:59 (1c)): the fixture set is the
-// files SHA256SUMS.txt lists, byte for byte, and nothing else under stores/:
-// 42 runs that decode to 12919 record events and 406 steer line events (their
-// 81 steer_evidence lines are none), so every fixture test reads the set
-// PROVENANCE.txt describes. On a set of one SYNTHETIC run, a byte edited by
-// hand fails, and so does a file the sums do not list.
+// TestFixtures_SumsHold: the fixture set is the files SHA256SUMS.txt lists,
+// byte for byte, and nothing else under stores/: 42 runs that decode to 12919
+// record events and 406 steer line events (their 81 steer_evidence lines are
+// none), so every fixture test reads the set PROVENANCE.txt describes. On a
+// set of one SYNTHETIC run, a byte edited by hand fails, and so does a file
+// the sums do not list.
 func TestFixtures_SumsHold(t *testing.T) {
 	runs := loadFixtures(t)
 	var recs, lines int
@@ -1687,13 +1660,13 @@ func jsonTagPaths(t *testing.T, typ reflect.Type, prefix string, out *[]string) 
 	}
 }
 
-// TestFixtures_KeysAreTheDecodersTags (W-M4.2, rulings 13:59 (1b), 14:09
-// (8)): the keys the fixtures were cut to (testdata/sessions/keys.txt, also
-// the generator's input) are the json tags recordHead and steerHead decode,
-// both ways. A tag the decoders gain is a key the cut dropped from every
-// fixture line, so the fixtures would test the new rule on nothing: regenerate
-// testdata/sessions from the raw set (PROVENANCE.txt). A tag they lose is a
-// key the fixtures keep that the fold no longer reads.
+// TestFixtures_KeysAreTheDecodersTags: the keys the fixtures were cut to
+// (testdata/sessions/keys.txt, also the generator's input) are the json tags
+// recordHead and steerHead decode, both ways. A tag the decoders gain is a
+// key the cut dropped from every fixture line, so the fixtures would test the
+// new rule on nothing: regenerate testdata/sessions from the raw set
+// (PROVENANCE.txt). A tag they lose is a key the fixtures keep that the fold
+// no longer reads.
 func TestFixtures_KeysAreTheDecodersTags(t *testing.T) {
 	var got []string
 	for _, h := range []struct {
@@ -1736,15 +1709,14 @@ func TestFixtures_KeysAreTheDecodersTags(t *testing.T) {
 	}
 }
 
-// TestFixtures_DecodeAsTheRawSet (W-M4.2, ruling 13:59 (1)), run where
-// RASHOMON_SESSIONS_RAW names the raw set, which never enters the
-// repository, and skipped elsewhere: the raw set is the one PROVENANCE.txt
-// names by its SHA256SUMS.txt digest, each raw file held to that list; every
-// fixture file has its raw twin and every raw file its fixture; and every
-// fixture line decodes as its raw line does, so the cut (keys.txt's keys,
-// paths outside the run's tree replaced) changed no event. It names lines by
-// number and prints no line and no event: a raw line holds words and home
-// paths.
+// TestFixtures_DecodeAsTheRawSet, run where RASHOMON_SESSIONS_RAW names the
+// raw set, which never enters the repository, and skipped elsewhere: the raw
+// set is the one PROVENANCE.txt names by its SHA256SUMS.txt digest, each raw
+// file held to that list; every fixture file has its raw twin and every raw
+// file its fixture; and every fixture line decodes as its raw line does, so
+// the cut (keys.txt's keys, paths outside the run's tree replaced) changed no
+// event. It names lines by number and prints no line and no event: a raw line
+// holds words and home paths.
 func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
 	raw := os.Getenv("RASHOMON_SESSIONS_RAW")
 	if raw == "" {
@@ -1819,16 +1791,16 @@ func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
 	t.Logf("%d fixture files, %d lines, decode as the raw set's", files, lines)
 }
 
-// TestFixtures_KnownHoleT_AliasWritesDecodeOutside (W-M4.2, ruling 14:09
-// (2); debt (t)): run t1c-r6's project is under /private/tmp, and 29 of its
-// declarations, seq 154 to 422, each name one write through /tmp, that
-// directory's alias: a path inside the project once /private is put back.
-// inProject reads a path as text, as verify does, so today each of the 29
-// decodes outside: WroteOutside set, and the path not in Wrote. The test
-// finds the 29 by its own reading of each line, not the decoder's. The path
-// fix (debt (t)) turns them inside, and must change this test by name, never
-// a golden silently; the generator kept these paths verbatim for it.
-func TestFixtures_KnownHoleT_AliasWritesDecodeOutside(t *testing.T) {
+// TestFixtures_KnownHole_AliasWritesDecodeOutside: run t1c-r6's project is
+// under /private/tmp, and 29 of its declarations, seq 154 to 422, each name
+// one write through /tmp, that directory's alias: a path inside the project
+// once /private is put back. inProject reads a path as text, as verify does,
+// so today each of the 29 decodes outside: WroteOutside set, and the path not
+// in Wrote. The test finds the 29 by its own reading of each line, not the
+// decoder's. A fix that resolves the /tmp alias turns them inside, and must
+// change this test by name, never a golden silently; the generator kept these
+// paths verbatim for it.
+func TestFixtures_KnownHole_AliasWritesDecodeOutside(t *testing.T) {
 	dir := filepath.Join("testdata", "sessions", "stores", "t1c-r6", "runs")
 	sids, err := os.ReadDir(dir)
 	if err != nil || len(sids) != 1 {
@@ -1888,15 +1860,15 @@ func TestFixtures_KnownHoleT_AliasWritesDecodeOutside(t *testing.T) {
 	}
 }
 
-// TestFold_IncrementalEqualsFull (W-M4.2, INV-11; PLAN 1493, with Through
-// for its bound per ruling 14:09 (5)): for each recorded session of
+// TestFold_IncrementalEqualsFull: for each recorded session of
 // testdata/sessions and every cut j of its events in the merged order, the
-// frontier stepped to j, saved and read back, then caught up by the events
-// after j in a shuffled order, is byte-equal to Fold over the whole log, and
-// Fold over the log as its files give it is its events stepped in the merged
-// order. Every frontier stepped to a cut keeps SupersededBy set exactly while
-// Status is superseded (ruling 13:43 (3)). The synthetic form, every pair of
-// cuts, is TestFold_IncrementalEqualsFullSynthetic.
+// frontier stepped to j, with Through at the last event stepped as its bound,
+// saved and read back, then caught up by the events after j in a shuffled
+// order, is byte-equal to Fold over the whole log, and Fold over the log as
+// its files give it is its events stepped in the merged order. Every frontier
+// stepped to a cut keeps SupersededBy set exactly while Status is superseded.
+// The synthetic form, every pair of cuts, is
+// TestFold_IncrementalEqualsFullSynthetic.
 func TestFold_IncrementalEqualsFull(t *testing.T) {
 	r := rand.New(rand.NewSource(1))
 	for _, run := range loadFixtures(t) {
@@ -1934,9 +1906,9 @@ func TestFold_IncrementalEqualsFull(t *testing.T) {
 	}
 }
 
-// TestFold_IsDeterministic (W-M4.2; PLAN 1493): each recorded session's
-// events, given in 5 shuffled orders, fold to the bytes of its events stepped
-// in the merged order. The synthetic form is TestFold_IsDeterministicSynthetic.
+// TestFold_IsDeterministic: each recorded session's events, given in 5
+// shuffled orders, fold to the bytes of its events stepped in the merged
+// order. The synthetic form is TestFold_IsDeterministicSynthetic.
 func TestFold_IsDeterministic(t *testing.T) {
 	r := rand.New(rand.NewSource(1))
 	for _, run := range loadFixtures(t) {

@@ -81,9 +81,9 @@ func shuffled(f Frontier) Frontier {
 	return g
 }
 
-// TestFrontier_JSONRoundTrip (W-M4.2): a frontier parses back to the state
-// it was marshalled from, and two orders of the same state marshal to the
-// same bytes, which TestFold_IncrementalEqualsFull's byte equality needs.
+// TestFrontier_JSONRoundTrip: a frontier parses back to the state it was
+// marshalled from, and two orders of the same state marshal to the same
+// bytes, which TestFold_IncrementalEqualsFull's byte equality needs.
 func TestFrontier_JSONRoundTrip(t *testing.T) {
 	f := sampleFrontier()
 	b, err := MarshalFrontier(f)
@@ -117,9 +117,9 @@ func TestFrontier_JSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestFrontier_TouchedCountKeys (W-M4.2, ruling 11:37 3c): the two cut
-// counts follow Touched under their own keys, which a reader reads by name;
-// a renamed tag round-trips and passes the other frontier tests.
+// TestFrontier_TouchedCountKeys: the two cut counts follow Touched under
+// their own keys, which a reader reads by name; a renamed tag round-trips and
+// passes the other frontier tests.
 func TestFrontier_TouchedCountKeys(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -130,9 +130,9 @@ func TestFrontier_TouchedCountKeys(t *testing.T) {
 	}
 }
 
-// TestFrontier_ObligationCountKeys (W-M4.2, D3; ruling 11:37 5c): the
-// ledger's seq and its two cut counts follow Obligations under their own
-// keys, unit_rows_cut beside obligations_omitted.
+// TestFrontier_ObligationCountKeys: the ledger's seq and its two cut counts
+// follow Obligations under their own keys, unit_rows_cut beside
+// obligations_omitted.
 func TestFrontier_ObligationCountKeys(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -143,8 +143,8 @@ func TestFrontier_ObligationCountKeys(t *testing.T) {
 	}
 }
 
-// TestFrontier_BoundaryKey (W-M4.2, ruling 12:03): the last boundary's seq
-// is under its own key, last in the frontier.
+// TestFrontier_BoundaryKey: the last boundary's seq is under its own key,
+// last in the frontier.
 func TestFrontier_BoundaryKey(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -155,9 +155,9 @@ func TestFrontier_BoundaryKey(t *testing.T) {
 	}
 }
 
-// TestFrontier_VerdictKeys (W-M4.2, rulings 12:03, 12:12): the verdicts, in
-// checkpoint order, under done_flagged and unmet, are followed by the Stop
-// checkpoints no verdict names, in seq order, under their own key.
+// TestFrontier_VerdictKeys: the verdicts, in checkpoint order, under
+// done_flagged and unmet, are followed by the Stop checkpoints no verdict
+// names, in seq order, under their own key.
 func TestFrontier_VerdictKeys(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -168,9 +168,9 @@ func TestFrontier_VerdictKeys(t *testing.T) {
 	}
 }
 
-// TestFrontier_ReqKeys (W-M4.2, ruling 13:23 (3b), (3e)): a Req's seqs are
-// under their own keys, last_stated_at between stated_at and met_at, and
-// superseded_by holds the superseding prompt's node id.
+// TestFrontier_ReqKeys: a Req's seqs are under their own keys, last_stated_at
+// between stated_at and met_at, and superseded_by holds the superseding
+// prompt's node id.
 func TestFrontier_ReqKeys(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -183,9 +183,9 @@ func TestFrontier_ReqKeys(t *testing.T) {
 	}
 }
 
-// TestFrontier_SchemaIsOne (W-M4.2): the frontier says its schema first, and
-// a file of any other schema does not parse, so the cache misses and the
-// session folds in full.
+// TestFrontier_SchemaIsOne: the frontier says its schema first, and a file of
+// any other schema does not parse, so the cache misses and the session folds
+// in full.
 func TestFrontier_SchemaIsOne(t *testing.T) {
 	if FrontierSchema != 1 {
 		t.Fatalf("FrontierSchema = %d, want 1", FrontierSchema)
@@ -205,10 +205,10 @@ func TestFrontier_SchemaIsOne(t *testing.T) {
 	}
 }
 
-// TestFrontier_KeyOpensIt (W-M4.2, rulings 13:59 (3), 14:09 (5)): a frontier
-// opens with its key, schema then fold_version, ledger_version and through,
-// the last applied event's full place under Mark's own keys; an empty fold's
-// through is the zero Mark, never null.
+// TestFrontier_KeyOpensIt: a frontier opens with its key, schema then
+// fold_version, ledger_version and through, the last applied event's full
+// place under Mark's own keys; an empty fold's through is the zero Mark,
+// never null.
 func TestFrontier_KeyOpensIt(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -228,10 +228,10 @@ func TestFrontier_KeyOpensIt(t *testing.T) {
 	}
 }
 
-// TestFrontier_KeyMismatchMisses (W-M4.2, ruling 13:59 (3)): a frontier of
-// another fold_version or ledger_version does not parse, so a cache reader
-// misses and folds in full instead of continuing state folded under other
-// rules or another ledger's ids.
+// TestFrontier_KeyMismatchMisses: a frontier of another fold_version or
+// ledger_version does not parse, so a cache reader misses and folds in full
+// instead of continuing state folded under other rules or another ledger's
+// ids.
 func TestFrontier_KeyMismatchMisses(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -257,10 +257,10 @@ func TestFrontier_KeyMismatchMisses(t *testing.T) {
 	}
 }
 
-// TestFrontier_ParseRejectsMalformed (W-M4.2): a frontier file with a field
-// this schema does not name, or anything but space after its object, does not
-// parse, so a cache reader misses and folds in full instead of trusting a torn
-// or foreign file. A trailing newline is space and parses.
+// TestFrontier_ParseRejectsMalformed: a frontier file with a field this
+// schema does not name, or anything but space after its object, does not
+// parse, so a cache reader misses and folds in full instead of trusting a
+// torn or foreign file. A trailing newline is space and parses.
 func TestFrontier_ParseRejectsMalformed(t *testing.T) {
 	b, err := MarshalFrontier(sampleFrontier())
 	if err != nil {
@@ -285,9 +285,10 @@ func TestFrontier_ParseRejectsMalformed(t *testing.T) {
 	}
 }
 
-// frontierStrings names what every string in a frontier refers to (ruling
-// 2026-11-12 09:38 Q2: words by reference, kept as shape). A string field is
-// where prompt words would go; one not listed here fails by its path.
+// frontierStrings names what every string in a frontier refers to, so the
+// frontier keeps prompt words by reference and shape, never as text. A string
+// field is where prompt words would go; one not listed here fails by its
+// path.
 var frontierStrings = map[string]string{
 	"Through.ID":          "steer line id of the last applied event, empty for a record",
 	"Session":             "session id",
@@ -295,7 +296,7 @@ var frontierStrings = map[string]string{
 	"Intents[].ID":        "prompt node id, graph.PromptNodeID",
 	"Intents[].Digest":    "prompt digest",
 	"Intents[].Status":    "ReqStatus, open only in v1",
-	"Reqs[].ID":           "a Req's key, Pred:Arg (D6)",
+	"Reqs[].ID":           "a Req's key, Pred:Arg",
 	"Reqs[].Pred":         "compliance predicate name",
 	"Reqs[].Arg":          "a unit's path as its line holds it or its keyed digest (record scope v4), a symbol, a gate family or a test id",
 	"Reqs[].Status":       "ReqStatus",
@@ -332,10 +333,10 @@ func stringLeaves(t reflect.Type, path string, out *[]string) {
 	}
 }
 
-// TestFrontier_WordsByReference (W-M4.2, AC-M4.1): every string a frontier
-// holds is an id, a digest or a closed name; an intent is the prompt's node
-// id and digest, never its text. The frontier holds no map, interface or
-// pointer, so its marshalled order is its sorted order.
+// TestFrontier_WordsByReference: every string a frontier holds is an id, a
+// digest or a closed name; an intent is the prompt's node id and digest,
+// never its text. The frontier holds no map, interface or pointer, so its
+// marshalled order is its sorted order.
 func TestFrontier_WordsByReference(t *testing.T) {
 	var got []string
 	stringLeaves(reflect.TypeOf(Frontier{}), "", &got)
@@ -361,9 +362,9 @@ func TestFrontier_WordsByReference(t *testing.T) {
 	}
 }
 
-// TestReqStatus_MetOnceIsHistory (W-M4.2, ruling 13:11 (3)): the fold's mark
-// is history and its stored form says so, met_once, never "met", which a
-// reader could take for a requirement that holds now.
+// TestReqStatus_MetOnceIsHistory: the fold's mark is history and its stored
+// form says so, met_once, never "met", which a reader could take for a
+// requirement that holds now.
 func TestReqStatus_MetOnceIsHistory(t *testing.T) {
 	b, err := json.Marshal(ReqState{Status: ReqMetOnce})
 	if err != nil || !strings.Contains(string(b), `"status":"met_once"`) {

@@ -68,8 +68,8 @@ type Event struct {
 	UnitRowsCut        int
 	// Boundary is true for a session record whose SessionStart source is
 	// compact or resume, which sets LastBoundary (Step). Startup and clear
-	// are not boundaries (Frontier.LastBoundary). No writer exists before
-	// W-M4.3 and W-M4.4.
+	// are not boundaries (Frontier.LastBoundary). No writer records a
+	// session record yet.
 	Boundary bool
 	// Checkpoint is true for a Stop's verify checkpoint record (type verify,
 	// point stop), which StopsWithoutVerdict holds until a ledger line's
@@ -86,10 +86,9 @@ type Event struct {
 }
 
 // ledgerType is the record type of a ledger line, the verify ledger at a
-// point (D3). No writer exists before the M2 merge (ledger condition 7) and
-// no store constant names the type yet, so the fold names it as the
-// contract does (11:34, msg 71635d33); the writer's constant replaces this
-// one when it lands.
+// point. No ledger writer exists yet and no store constant names the type,
+// so the fold names it as the agreed record format does; the writer's
+// constant replaces this one when it lands.
 const ledgerType = "ledger"
 
 // stopPoint is the point of a Stop's verify checkpoint record
@@ -158,9 +157,9 @@ func stepIn(f *Frontier, sorted []Event) {
 // stepped from a new frontier, so one log in any order folds to one frontier
 // (TestFold_IsDeterministicSynthetic), and Through is the last event's place,
 // Mark{} for none. evs is not changed. It takes events, not lines, and no
-// bound: the caller decodes (RecordEvent, SteerEvent) and cuts, and PLAN
-// 1487's FoldOptions.Through is Frontier.Through instead (ruling 14:09 (5)).
-// It checks no order against a saved frontier: it starts from none.
+// bound: the caller decodes (RecordEvent, SteerEvent) and cuts, so the fold
+// takes no options, and where it stopped is Frontier.Through. It checks no
+// order against a saved frontier: it starts from none.
 func Fold(sessionID string, evs []Event) Frontier {
 	f := newFrontier(sessionID)
 	stepIn(&f, sortedCopy(evs))
@@ -320,19 +319,18 @@ func wrote(file *string, shell []string, project, cwd *string) (paths []string, 
 // (rules_raise.go: projectPath(relativise(p, project, cwd))): separators
 // slashed; the project prefix stripped, else the cwd prefix; cleaned; and
 // outside when still absolute, "..", climbing out or drive-lettered. It is
-// a copy because both rules are unexported in verify and this lane's file
-// list is closed; relativise's leading "./" loop is left out because Clean
+// a copy because both rules are unexported in verify, which this change
+// leaves as it is; relativise's leading "./" loop is left out because Clean
 // removes the same prefix. Pure over its strings, as verify's are: no
 // symlink is resolved, so a path written through an alias of the project
 // (/tmp for /private/tmp) is outside here as it is there.
 //
-// The copy's sources, at 20a64198 (verify is untouched on this branch):
-// internal/verify/classify.go (blob 88d9c2cbf2bf) relativise, under,
-// samePrefix and isLetter, which cutDir, sameDir and isASCIILetter copy;
-// internal/verify/rules.go (blob f5a820ddd857) projectPath. It is a debt:
-// the extraction into one package both read waits for the M2 merge (ruling
-// 11:37). Until then TestInProject_DecidesAsVerify holds the copy's
-// decision to verify.RelevantUnder's on a fixed table.
+// The copy's sources: internal/verify/classify.go's relativise, under,
+// samePrefix and isLetter, which cutDir, sameDir and isASCIILetter copy, and
+// internal/verify/rules.go's projectPath. Two copies of one rule can drift
+// apart, so moving the rule into one package both read is still to do; until
+// then TestInProject_DecidesAsVerify holds the copy's decision to
+// verify.RelevantUnder's on a fixed table.
 func inProject(p string, project, cwd *string) (string, bool) {
 	p = strings.ReplaceAll(p, `\`, "/")
 	for _, dir := range [2]*string{project, cwd} {
@@ -398,24 +396,23 @@ type StatedReq struct {
 	Arg  string
 }
 
-// stated is the Req g states, if any (D6 (b), ruling 12:52): a unit line
-// states opened_unit, a code line in role reuse called_symbol and in role
-// consumer edited_or_verified, each on its path or, at record scope v4,
-// its keyed digest; a decision line states paths_untouched on its
-// knowledge id (dec:D145), which the record form keeps. Each is the first
-// predicate steer.Compliance names for the kind. A code line with no role,
-// a table, a not-known line, any other knowledge kind and a line with no
-// subject state none.
+// stated is the Req g states, if any: a unit line states opened_unit, a
+// code line in role reuse called_symbol and in role consumer
+// edited_or_verified, each on its path or, at record scope v4, its keyed
+// digest; a decision line states paths_untouched on its knowledge id
+// (dec:<id>), which the record form keeps. Each is the first predicate
+// steer.Compliance names for the kind. A code line with no role, a table, a
+// not-known line, any other knowledge kind and a line with no subject state
+// none.
 //
 // The fold marks only opened_unit (openedUnit). called_symbol,
 // edited_or_verified and paths_untouched stay open: a status changes only
-// by a record line a later card defines (ruling 12:52 (1)), and no Stop
-// resolves them, since the Stop's predicates (verify.Preds, W-M3.4) are
-// four other names (ruling 13:11 (5)). called_symbol's Arg is the code
-// line's path, not its symbol, because the record holds no symbol id: a
-// card that needs the symbol adds it to slot.Record under its own
-// disclosure ruling (debt (r), engine lane), and the fold never marks a
-// Req whose symbol the record cannot name (ruling 12:52 (3)).
+// by a record line, no record line marks these three yet, and no Stop
+// resolves them, since the Stop's predicates (verify.Preds) are four other
+// names. called_symbol's Arg is the code line's path, not its symbol,
+// because the record holds no symbol id: adding one to slot.Record would
+// write more of the user's code to disk, which needs its own decision, and
+// the fold never marks a Req whose symbol the record cannot name.
 func (g graphSlot) stated() (StatedReq, bool) {
 	arg := g.Path
 	if arg == "" {
@@ -537,16 +534,16 @@ func Step(f *Frontier, ev Event) {
 }
 
 // verdict copies a ledger line's verdict as the VerdictRef of the checkpoint
-// its checkpoint_seq names, never computing one (rulings 12:03, 12:12). The
-// line binds by that seq, never by adjacency: a record can land between a
-// Stop's two appends. It binds only to a stop checkpoint read before it and
-// still in StopsWithoutVerdict, which the checkpoint then leaves. A line
-// naming none (no checkpoint at that seq, one not yet read, or one already
-// judged) adds no verdict, so of two lines naming one checkpoint the first
-// is kept; its rows apply either way (ledger). A checkpoint with no ledger
-// line gets none: obligations carry over to the next Stop (ledger condition
-// 4), a verdict belongs to one Stop. The list is cloned before the cut, so a
-// Frontier copied before the Step keeps its own.
+// its checkpoint_seq names, never computing one: the Stop decided it from
+// evidence the fold does not hold. The line binds by that seq, never by
+// adjacency: a record can land between a Stop's two appends. It binds only
+// to a stop checkpoint read before it and still in StopsWithoutVerdict,
+// which the checkpoint then leaves. A line naming none (no checkpoint at
+// that seq, one not yet read, or one already judged) adds no verdict, so of
+// two lines naming one checkpoint the first is kept; its rows apply either
+// way (ledger). A checkpoint with no ledger line gets none: obligations
+// carry over to the next Stop, a verdict belongs to one Stop. The list is
+// cloned before the cut, so a Frontier copied before the Step keeps its own.
 func verdict(f *Frontier, ev Event) {
 	i := slices.Index(f.StopsWithoutVerdict, ev.CheckpointSeq)
 	if i < 0 {
@@ -558,13 +555,13 @@ func verdict(f *Frontier, ev Event) {
 
 // ledger makes a ledger line's rows the frontier's obligations, as of the
 // line's seq (ObligationsAt), with its two cut counts: the last ledger line
-// is the session's ledger, and the fold copies it, never computing a row
-// (D3). A row is keyed by its id alone, one ref per id with the first kept,
-// since canon orders the rows by id. State is copied as the line wrote it,
-// so open, met, unmet and unknown stay four states and unknown never reads
-// unmet (INV-2); scope is opaque and not read. A record that is no ledger
-// line never reaches here, so it leaves the obligations as they were
-// (ledger condition 4).
+// is the session's ledger, and the fold copies it, never computing a row:
+// the Stop that wrote it decided each row. A row is keyed by its id alone,
+// one ref per id with the first kept, since canon orders the rows by id.
+// State is copied as the line wrote it, so open, met, unmet and unknown stay
+// four states and unknown never reads unmet, which would claim a failure
+// nobody saw; scope is opaque and not read. A record that is no ledger line
+// never reaches here, so it leaves the obligations as they were.
 func ledger(f *Frontier, ev Event) {
 	obs := make([]ObligationRef, 0, len(ev.Obligations))
 	seen := make(map[string]bool, len(ev.Obligations))
@@ -583,7 +580,7 @@ func ledger(f *Frontier, ev Event) {
 
 // touch adds the file a call wrote to Touched as its graph.FileID, kept
 // sorted and unique at every step, so Touched is a set: the same writes in
-// any order fold to the same list (D1: files, not units; see Frontier). An
+// any order fold to the same list (files, not units; see Frontier). An
 // insert builds a new list, so a copy taken before keeps its own.
 func touch(f *Frontier, rel string) {
 	id := string(graph.FileID(rel))
@@ -594,15 +591,15 @@ func touch(f *Frontier, rel string) {
 	f.Touched = slices.Concat(f.Touched[:i], []string{id}, f.Touched[i:])
 }
 
-// require applies the Reqs a delivered line states (D6), one ReqState per
-// key Pred:Arg, the line taken whole and never slot by slot, so any order of
-// its slots is the same line and folds to the same frontier (ruling 13:23
-// (3a)). In order: a key no Req holds becomes an open Req, StatedAt the
-// line's after_seq, kept from then on, so a line delivered again or a second
-// line naming the subject leaves it as it was; a superseded Req the line
-// names reopens, open with SupersededBy empty and StatedAt unchanged, the
-// only way back to open (13:23 (3c)); the line's prompt supersedes what it
-// moved past (supersede); and every Req the line names takes the line's
+// require applies the Reqs a delivered line states, one ReqState per key
+// Pred:Arg, the line taken whole and never slot by slot, so any order of its
+// slots is the same line and folds to the same frontier. In order: a key no
+// Req holds becomes an open Req, StatedAt the line's after_seq, kept from
+// then on, so a line delivered again or a second line naming the subject
+// leaves it as it was; a superseded Req the line names reopens, open with
+// SupersededBy empty and StatedAt unchanged, the only way back to open; the
+// line's prompt supersedes what it moved past (supersede); and every Req the
+// line names takes the line's
 // after_seq as LastStatedAt. supersede reads LastStatedAt before this line
 // writes it, so it sees the earlier lines only, and it spares the line's own
 // Reqs by name. The key is not the line's: one steer line's slots hold up to
@@ -634,12 +631,12 @@ func require(f *Frontier, ev Event) {
 }
 
 // supersede marks superseded each open Req a delivered line's prompt moved
-// past (D6 (d), rulings 12:52 (4), 13:23 (3)): one of a predicate the line
-// states that the line does not name, so on another argument and never a
-// sibling slot's (a), and that no line at or after the prompt's StatedAt
-// named, its LastStatedAt before it (b). A Req a prompt names is that
-// prompt's own, so the order of the prompt's lines does not matter.
-// SupersededBy is the prompt's IntentRef.ID (e). Only a predicate a graph
+// past: one of a predicate the line states that the line does not name, so
+// on another argument and never a sibling slot's, and that no line at or
+// after the prompt's StatedAt named, its LastStatedAt before it. A Req a
+// prompt names is that prompt's own, so the order of the prompt's lines does
+// not matter. SupersededBy is the prompt's IntentRef.ID. Only a predicate a
+// graph
 // line states (lineBrought) supersedes or is superseded, so a gate or test
 // Req never is; met_once is final and never superseded; a superseded Req
 // stays so, its SupersededBy the first, until a line names it again
@@ -666,9 +663,9 @@ func states(ev Event, pred string) bool {
 
 // lineBrought reports whether pred is one a graph line states (stated):
 // opened_unit, called_symbol, edited_or_verified or paths_untouched. Only
-// these supersede or are superseded (ruling 12:52 (4)), so a gate or test
-// Req, which enters only from a stored line a later card copies (ruling
-// 13:23 (4)), is never retired by a prompt's graph line.
+// these supersede or are superseded, so a gate or test Req, which enters
+// only from a stored line and not from the graph, is never retired by a
+// prompt's graph line.
 func lineBrought(pred string) bool {
 	switch pred {
 	case steer.PredOpenedUnit, steer.PredCalledSymbol, steer.PredEditedOrVerified, steer.PredPathsUntouched:
@@ -678,12 +675,12 @@ func lineBrought(pred string) bool {
 }
 
 // openedUnit marks met_once each open or superseded opened_unit Req whose
-// unit a write of ev is in, the path itself or under it (PLAN 1489: a Touch
-// under the unit), at ev's seq: the first such write, and met_once is final.
-// Evidence marks a superseded Req as it marks an open one (ruling 13:23
-// (3d)) and empties its SupersededBy, so SupersededBy is set exactly while
-// Status is superseded (ruling 13:43 (3)). dropped is not marked: no rule
-// writes it in v1, and its drop line's card owns it. A Req exists only after
+// unit a write of ev is in, the path itself or under it, at ev's seq: the
+// first such write, and met_once is final. Evidence marks a superseded Req as
+// it marks an open one and empties its SupersededBy, so SupersededBy is set
+// exactly while Status is superseded. dropped is not marked: no rule writes
+// it in v1, and only an explicit drop line, which does not exist yet, will.
+// A Req exists only after
 // its line, by the merged order (at one seq a record sorts before a line), so
 // a line is judged by the writes after it, as steer.Compliance judges a line
 // followed, and a write before it meets nothing. Both sides are paths as the
@@ -695,9 +692,8 @@ func lineBrought(pred string) bool {
 // subdirectory is read as if from the root, and a write to the same path
 // there meets its Req (a lookalike the record cannot tell apart). A path that
 // climbs, ".", or a keyed digest (record scope v4) matches no written path,
-// so its Req stays open: open is "not seen met", never "unmet" (ruling
-// 12:52). The list is cloned before its first change, so a copy taken before
-// keeps its own.
+// so its Req stays open: open is "not seen met", never "unmet". The list is
+// cloned before its first change, so a copy taken before keeps its own.
 func openedUnit(f *Frontier, ev Event) {
 	cloned := false
 	for i, r := range f.Reqs {
@@ -720,9 +716,9 @@ func wroteUnder(wrote []string, dir string) bool {
 // state delivered counts: suppressed, superseded, stale, expired and
 // unconfirmed lines never reached the model as a delivery. One LineRef per
 // line id (canon's order needs it): a line seen again keeps its first ref.
-// Unit stays empty: only a graph-kind line names one, and at this commit
-// no writer emits a graph-kind steer line (M1's brief is kind "", its
-// graph lines inside its slots).
+// Unit stays empty: only a graph-kind line names one, and no writer emits a
+// graph-kind steer line yet (the brief is kind "", its graph lines inside
+// its slots).
 func deliver(f *Frontier, ev Event) {
 	for _, r := range f.Delivered {
 		if r.ID == ev.ID {
@@ -733,7 +729,7 @@ func deliver(f *Frontier, ev Event) {
 }
 
 // intent keeps each prompt's first steer line, in any state, as an
-// IntentRef (D2). n is the prompt's order of first appearance in the merged
+// IntentRef. n is the prompt's order of first appearance in the merged
 // order, counted from 1 as the graph's prompt nodes are, so ID is that
 // node's id; Digest is the prompt id, because no line carries a prompt
 // digest; StatedAt is the line's after_seq; Status is open (v1 closes no
