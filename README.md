@@ -43,7 +43,7 @@ terminal, not inside a Claude Code session:
     curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
     rashomon watch
 
-That installs the latest release, v1.2.0-alpha.1. To build `main` instead,
+That installs the latest release, v1.2.0-alpha.2. To build `main` instead,
 which is ahead of the release and has everything this README describes:
 
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
@@ -338,7 +338,7 @@ under the call if the command named it.
 
 ## Status
 
-Alpha. The latest release is v1.2.0-alpha.1, and `main` may be ahead of it. Release
+Alpha. The latest release is v1.2.0-alpha.2, and `main` may be ahead of it. Release
 binaries are not signed, and there is no Homebrew formula. **Windows is not
 usable yet**: the release publishes Windows binaries, but `watch` quotes the
 installed command for a POSIX shell.
