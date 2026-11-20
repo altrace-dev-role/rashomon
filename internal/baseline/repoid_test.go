@@ -41,8 +41,10 @@ func TestNormalizeOrigin_Forms(t *testing.T) {
 // the port read as a number. So the ssh, scp-like and https forms of one
 // repository are one id, and two checkouts of it by two of those forms share
 // it. Any other port, or a port on a scheme outside that list, is kept, and
-// a bracketed IPv6 host keeps its colons. Break: keep the default port, drop
-// every port, or cut the host at its last colon without the bracket check.
+// a bracketed IPv6 host keeps its colons. A scheme outside the list keeps
+// each port the list names, and port 0. Break: keep the default port, drop
+// every port, cut the host at its last colon without the bracket check, or
+// give a scheme outside the list a default port, any of the list's or 0.
 func TestNormalizeOrigin_DropsADefaultPort(t *testing.T) {
 	for in, want := range map[string]string{
 		"git@github.com:org/repo.git":            "github.com/org/repo",
@@ -62,10 +64,15 @@ func TestNormalizeOrigin_DropsADefaultPort(t *testing.T) {
 		"ssh://git@GitHub.com:2222/x/y":          "github.com:2222/x/y",
 		"https://host.example:22/org/repo":       "host.example:22/org/repo",
 		"ssh://host.example:443/org/repo":        "host.example:443/org/repo",
-		"web+x://host.example:443/org/repo":      "host.example:443/org/repo",
 	} {
 		if got := NormalizeOrigin(in); got != want {
 			t.Errorf("NormalizeOrigin(%q) = %q; want %q", in, got, want)
+		}
+	}
+	for _, port := range []string{"0", "21", "22", "80", "443", "990", "9418"} {
+		in, want := "web+x://host.example:"+port+"/org/repo", "host.example:"+port+"/org/repo"
+		if got := NormalizeOrigin(in); got != want {
+			t.Errorf("NormalizeOrigin(%q) = %q; want %q: a scheme outside the list has no default port", in, got, want)
 		}
 	}
 	a, b := t.TempDir(), t.TempDir()
