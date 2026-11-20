@@ -271,7 +271,8 @@ type overlayCall struct {
 // set and ok is false. The post says that to the person once per kind
 // (Post.Steer, takeKindLine). unindexed is the language of the reader that
 // claims rel where the writer stopped at the index's header: the reader is
-// registered indexed and the header names no producer of its language
+// registered indexed and the header names no producer of its language, or
+// one other than the string this version of the reader states
 // (lang.Registry.Unindexed). The writer clears ok there, so the post reads
 // no unit for the edit and runs no configuration step, and says that to the
 // person once per language (takeKindLine). unread is the refusal of the

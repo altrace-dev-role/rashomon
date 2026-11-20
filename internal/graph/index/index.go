@@ -275,7 +275,8 @@ func python(c Config) pylite.Resolver {
 // says which file was not read without naming the language whose step read
 // it. Python is registered indexed
 // (lang.Registry.RegisterIndexed): where the index header's producers name
-// no py producer, a hook builds no overlay of a .py file and reads no
+// no py producer, or one other than the string pylite states
+// (lang.Versioned), a hook builds no overlay of a .py file and reads no
 // configuration, and says so. Go is not, so a Go edit under an index with
 // no go records is read as it was before. Build still wires through resolverFor.
 func Wire() *lang.Registry {

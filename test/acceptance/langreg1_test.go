@@ -389,7 +389,7 @@ func TestLANGREG1_AGoEditIsByteEqual(t *testing.T) {
 const (
 	lrSayTS     = "rashomon: no reader here for .ts files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
 	lrSaySH     = "rashomon: no reader here for .sh files, so edits to them carry no unit, caller or conflict facts this session (readers here: go, py)."
-	lrSayPy     = "rashomon: the index here holds no py records, so edits to .py files carry no unit, caller or conflict facts until rashomon graph index runs."
+	lrSayPy     = "rashomon: the index here holds no py records written by this version of the py reader, so edits to .py files carry no unit, caller or conflict facts until rashomon graph index runs."
 	lrSayUnread = "rashomon: <file> was not read (<reason>), so edits to <ext> files carry no unit, caller or conflict facts this session."
 )
 

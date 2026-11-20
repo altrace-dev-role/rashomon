@@ -82,8 +82,8 @@ func TestBuild_TwoLanguages(t *testing.T) {
 	}
 	rid, _ := baseline.RepoID(root)
 	h := r.Header
-	if h.Schema != graph.Schema || h.Repo != rid || h.Rev.Commit != "c1" || !reflect.DeepEqual(h.Producers, map[string]string{"go": "pgraph/v0", "py": "pylite/1"}) {
-		t.Errorf("header = %+v; want schema %d, repo %q, commit c1, producers go pgraph/v0 and py pylite/1", h, graph.Schema, rid)
+	if h.Schema != graph.Schema || h.Repo != rid || h.Rev.Commit != "c1" || !reflect.DeepEqual(h.Producers, map[string]string{"go": "pgraph/v0", "py": "pylite/2"}) {
+		t.Errorf("header = %+v; want schema %d, repo %q, commit c1, producers go pgraph/v0 and py pylite/2", h, graph.Schema, rid)
 	}
 	if n, ok := r.Store.Node(graph.RepoNodeID(rid), rev); !ok || n.Kind != "repo" || n.Attrs["rid"] != rid || n.Attrs["ephemeral"] != "true" {
 		t.Errorf("repo node = %+v, %v; want kind repo with the ephemeral id", n, ok)

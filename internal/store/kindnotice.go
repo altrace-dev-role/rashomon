@@ -33,13 +33,13 @@ const kindNoticeLimit = 16
 
 // The unindexed language's notice markers: the first time a session edits a
 // file whose reader is registered indexed (lang.Registry.RegisterIndexed)
-// under an index that holds no records of the reader's language, the post
-// hook says so once to the person, naming the language. Each is an empty
-// file like the kind markers, named FileNoticeUnindexedPrefix and the same
-// 16 hex digits of the language's name. The languages are the registry's,
-// never a file's, so a session keeps at most one per registered language
-// and no limit is needed; the family is apart from the kind markers, so it
-// is never counted among them.
+// under an index that holds no records of the reader's language written by
+// this version of the reader, the post hook says so once to the person,
+// naming the language. Each is an empty file like the kind markers, named
+// FileNoticeUnindexedPrefix and the same 16 hex digits of the language's
+// name. The languages are the registry's, never a file's, so a session
+// keeps at most one per registered language and no limit is needed; the
+// family is apart from the kind markers, so it is never counted among them.
 const FileNoticeUnindexedPrefix = "notice-unindexed-"
 
 // The unread configuration's notice markers: the first time a session edits

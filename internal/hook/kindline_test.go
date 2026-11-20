@@ -314,8 +314,8 @@ func TestLANGREG1_APrintableKindIsShortASCII(t *testing.T) {
 // unindexedLineOf is the unindexed language's line for the language l and
 // the words what, spelled out as kindLineOf is.
 func unindexedLineOf(l, what string) string {
-	return "rashomon: the index here holds no " + l + " records, so edits to " + what +
-		" files carry no unit, caller or conflict facts until rashomon graph index runs."
+	return "rashomon: the index here holds no " + l + " records written by this version of the " + l +
+		" reader, so edits to " + what + " files carry no unit, caller or conflict facts until rashomon graph index runs."
 }
 
 // TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage: under the fixture's
@@ -377,26 +377,41 @@ func unreadLineOf(file, why, what string) string {
 // with go.mod a directory, an edit of a .go file says go.mod was not read,
 // not being a regular file, as a system message alone, and keeps no
 // overlay group; a second .go file in the session says nothing, and a
-// second session says the line again. Break: key the marker by the edited
-// file (the second file repeats), keep it store-wide (the second session
-// is silent), or say the step's error (the line names the path).
+// second session says the line again. With go.mod a link to itself, whose
+// open fails, the same holds in the words of a failed read: that reason is
+// lang.ReadFailed, the zero Reason, which the directory's NotRegular never
+// reaches. Each row has a fixture of its own. Break: key the marker by the
+// edited file (the second file repeats), keep it store-wide (the second
+// session is silent), say the step's error (the line names the path), or
+// keep no refusal whose reason is the zero value (the link's edit says
+// nothing while the directory's row still passes).
 func TestUnreadConfig_IsSaidOncePerSessionAndFile(t *testing.T) {
-	f := newOvFix(t, "1\n")
-	if err := os.Mkdir(filepath.Join(f.repo, gopg.ManifestFile), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	want := unreadLineOf(gopg.ManifestFile, "not a regular file", ".go")
-	if got := kindSaid(t, f.kindPost(ovSess, "toolu_gm1", "pkg/a.go")); got != want {
-		t.Errorf("the first .go edit said %q; want %q", got, want)
-	}
-	if b := f.kindPost(ovSess, "toolu_gm2", "pkg/b.go"); b != nil {
-		t.Errorf("a second .go file in the session printed %q; want nothing", b)
-	}
-	if got := kindSaid(t, f.kindPost("sess-ov-2", "toolu_gm3", "pkg/a.go")); got != want {
-		t.Errorf("a second session said %q; want %q", got, want)
-	}
-	if groups, _, _ := f.read(); len(groups) != 0 {
-		t.Errorf("the refused .go edits kept %d overlay groups; want none", len(groups))
+	for _, c := range []struct {
+		name, why string
+		put       func(manifest string) error
+	}{
+		{"directory", "not a regular file", func(m string) error { return os.Mkdir(m, 0o755) }},
+		{"link_to_itself", "read failed", func(m string) error { return os.Symlink(gopg.ManifestFile, m) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newOvFix(t, "1\n")
+			if err := c.put(filepath.Join(f.repo, gopg.ManifestFile)); err != nil {
+				t.Fatal(err)
+			}
+			want := unreadLineOf(gopg.ManifestFile, c.why, ".go")
+			if got := kindSaid(t, f.kindPost(ovSess, "toolu_gm1", "pkg/a.go")); got != want {
+				t.Errorf("the first .go edit said %q; want %q", got, want)
+			}
+			if b := f.kindPost(ovSess, "toolu_gm2", "pkg/b.go"); b != nil {
+				t.Errorf("a second .go file in the session printed %q; want nothing", b)
+			}
+			if got := kindSaid(t, f.kindPost("sess-ov-2", "toolu_gm3", "pkg/a.go")); got != want {
+				t.Errorf("a second session said %q; want %q", got, want)
+			}
+			if groups, _, _ := f.read(); len(groups) != 0 {
+				t.Errorf("the refused .go edits kept %d overlay groups; want none", len(groups))
+			}
+		})
 	}
 }
 

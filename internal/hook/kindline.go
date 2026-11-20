@@ -53,16 +53,18 @@ const otherKindsWhat = "some other kinds of file"
 
 // The unindexed language's line: an edit the overlay writer stopped at the
 // index's header, its reader registered indexed and the header naming no
-// producer of the reader's language (keptGate.unindexed), is said to the
-// person once per session and language. The language is the registry's,
-// never the file's. The words before "files" are the edited file's kind
-// where it passes printableKind, else the language's name.
+// producer of the reader's language, or one other than the string the
+// reader states (keptGate.unindexed), is said to the person once per
+// session and language. The language is the registry's, never the file's.
+// The words before "files" are the edited file's kind where it passes
+// printableKind, else the language's name.
 
 // unindexedLine is the line for l, the language the index holds no records
-// of, and what, the files whose edits carry no facts.
+// of written by this version of its reader, and what, the files whose edits
+// carry no facts.
 func unindexedLine(l, what string) string {
-	return "rashomon: the index here holds no " + l + " records, so edits to " + what +
-		" carry no unit, caller or conflict facts until rashomon graph index runs."
+	return "rashomon: the index here holds no " + l + " records written by this version of the " + l +
+		" reader, so edits to " + what + " carry no unit, caller or conflict facts until rashomon graph index runs."
 }
 
 // The unread configuration's line: an edit the overlay writer stopped at
