@@ -163,9 +163,9 @@ func TestRH8g_NotGreenOfJoinsTheCheckpointGates(t *testing.T) {
 // final message, so the report's strict claims not green are the
 // checkpoint's, which the live Stop wrote. "All tests pass." after a green go
 // test and a later edit is a strict tests_pass claim on a stale gate: listed,
-// its evidence the go test call's seq, judged on its own turn; with a later
-// turn that only reads, judged on an earlier turn's window. Break: read
-// v.Scan.Claims, or drop the window mark.
+// its evidence the go test call's seq, "done flag read the Stop's turn";
+// with a later turn that only reads, "done flag read the turns since the last
+// edit". Break: read v.Scan.Claims, or drop the window mark.
 func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -237,7 +237,7 @@ func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 	}
 }
 
-// TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag (item 8): the lead
+// TestRH8k_ClaimsNotGreenNameWhatTheDoneFlagReadNotItsDecision (item 8): the lead
 // line and its key list the last Stop's strict claims whose verdict is not
 // green: a gate state other than green (recap.ClaimUnbacked, the done flag's
 // claim term), or no_gate_known, a claim no gate checked, which the flag reads
@@ -248,10 +248,13 @@ func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 // writes, where the two differ: E1 a verified row with a strict stale claim,
 // E2 a row whose sentence is silent and E4 a strict claim no gate checked, the
 // flag quiet and the claim listed; E3 an unmet expected kind with every claim
-// green, the flag firing and no claim listed. The line and the key name what
-// they read and never say flagged. Break: name the line or the key "flagged",
-// or drop the no_gate_known claim.
-func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
+// green, the flag firing and no claim listed. E5 and E6 are E4 through a live
+// Stop and the report's replay of its checkpoint, E6 with the done window set
+// (a later turn only reads) beside the quiet flag (card 8b). The line and the
+// key name what they read and never say flagged. Break: name the line or the
+// key "flagged", drop the no_gate_known claim, or lose the window mark between
+// the Stop and the replay.
+func TestRH8k_ClaimsNotGreenNameWhatTheDoneFlagReadNotItsDecision(t *testing.T) {
 	seq := func(n int64) *int64 { return &n }
 	unit := verify.GateState{Gate: "spec:unit", Kind: "test", Family: "r:spec:unit@d:repo", Source: "spec", Required: true,
 		State: verify.Green, Reason: verify.OK, LastRun: &verify.RunRef{Seq: 5}, LastGreen: &verify.RunRef{Seq: 5}}
@@ -309,11 +312,11 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 	}{
 		{"E1 a verified row with a strict stale claim", e1, e1cp, false,
 			[]report.AutosteerClaim{{Class: "lint_clean", Verdict: "stale", Evidence: []int64{2}}},
-			"    strict claims not green, last Stop only: lint_clean stale (evidence #2; judged on its own turn)",
+			"    strict claims not green, last Stop only: lint_clean stale (evidence #2; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"lint_clean","verdict":"stale","evidence":[2],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 		{"E2 a row whose sentence is silent", e2, e2cp, false,
 			[]report.AutosteerClaim{{Class: "done", Verdict: "absent", Evidence: []int64{}}},
-			"    strict claims not green, last Stop only: done absent (no evidence seq; judged on its own turn)",
+			"    strict claims not green, last Stop only: done absent (no evidence seq; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"done","verdict":"absent","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 		{"E3 an unmet expected kind with every claim green", e3, e3cp, true,
 			[]report.AutosteerClaim{},
@@ -321,7 +324,7 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 			`"strict_claims_not_green":[],"claims_omitted":0`},
 		{"E4 a strict claim no gate checked", e4, e4cp, false,
 			[]report.AutosteerClaim{{Class: "tests_pass", Verdict: "no_gate_known", Evidence: []int64{}}},
-			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; judged on its own turn)",
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -332,23 +335,76 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 			if fmt.Sprintf("%+v", list) != fmt.Sprintf("%+v", c.list) {
 				t.Errorf("claims:\n got %+v\nwant %+v", list, c.list)
 			}
-			a := &report.Autosteer{Stop: &report.AutosteerStop{Seq: 9, Row: string(c.v.Summary.Row)}, NotGreen: list}
-			var b bytes.Buffer
-			if err := report.Text(&b, &report.Report{Sessions: []report.Session{{SessionID: "s", Autosteer: a}}}); err != nil {
-				t.Fatal(err)
-			}
-			_, story, _ := strings.Cut(b.String(), "\n  story\n")
-			if first, _, _ := strings.Cut(story, "\n"); first != c.line {
-				t.Errorf("lead line:\n got %q\nwant %q", first, c.line)
-			}
-			body, err := json.Marshal(a)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(string(body), c.key) || strings.Contains(string(body), `"flagged"`) {
-				t.Errorf("--json:\n got %s\nwant it to hold %s and no key \"flagged\"", body, c.key)
-			}
+			rh8LineAndKey(t, &report.Autosteer{Stop: &report.AutosteerStop{Seq: 9, Row: string(c.v.Summary.Row)}, NotGreen: list}, c.line, c.key)
 		})
+	}
+
+	// E5 and E6 are E4 through a live Stop: a spec that declares a lint gate
+	// and no test gate, an edit, and the final message "All tests pass.", a
+	// strict tests_pass claim no gate checked (no file of the work tree names
+	// a test command, so none is inferred). In E6 a later turn only reads, so
+	// the Stop's done window (verify.StopView.Done) is the turns since the
+	// edit, and the flag is quiet beside it. The list is the report's own:
+	// the checkpoint the Stop wrote, through autosteerOf's replay.
+	for _, c := range []struct {
+		name  string
+		later bool
+		line  string
+		key   string
+	}{
+		{"E5 a live Stop with a strict claim no gate checked", false,
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; done flag read the Stop's turn)",
+			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
+		{"E6 the same claim after a turn that only reads, the done window set beside a quiet flag", true,
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; done flag read the turns since the last edit)",
+			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":true}],"claims_omitted":0`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newLW(t)
+			f.bind(`{"rashomon_spec": 1, "gates": [{"id": "lint", "kind": "lint", "argv": ["golangci-lint", "run"]}]}`)
+			f.rh8Land("p1", "toolu_e", "Edit", lwEdit(f.file("a.go", "package a\n")), false)
+			if c.later {
+				f.rh8Land("p2", "toolu_r", "Bash", lwBash("ls"), false)
+			}
+			v := f.rh8StopSaying("All tests pass.")
+			if len(v.Scan.Claims) != 1 || v.Scan.Claims[0].Class != verify.ClaimTestsPass || !v.Scan.Claims[0].Strict ||
+				v.Scan.Claims[0].Verdict != verify.NoGateKnown {
+				t.Fatalf("premise: the Stop reads one strict tests_pass claim no gate checked: %+v", v.Scan.Claims)
+			}
+			if (v.Done != nil) != c.later {
+				t.Fatalf("premise: the Stop's done window is set %v, want %v", v.Done != nil, c.later)
+			}
+			if _, fires := recap.DoneFlag(v, "s", false); fires {
+				t.Fatal("premise: the done flag fires on this Stop, want it quiet")
+			}
+			a := autosteerOf(f.st, "s")
+			want := []report.AutosteerClaim{{Class: "tests_pass", Verdict: "no_gate_known", Evidence: []int64{}, EarlierWindow: c.later}}
+			if a == nil || fmt.Sprintf("%+v", a.NotGreen) != fmt.Sprintf("%+v", want) {
+				t.Fatalf("claims:\n got %+v\nwant %+v", a, want)
+			}
+			rh8LineAndKey(t, a, c.line, c.key)
+		})
+	}
+}
+
+// rh8LineAndKey checks a's strict-claims line in the text, the story's first,
+// against line, and its --json against key, with no key "flagged".
+func rh8LineAndKey(t *testing.T, a *report.Autosteer, line, key string) {
+	t.Helper()
+	var b bytes.Buffer
+	if err := report.Text(&b, &report.Report{Sessions: []report.Session{{SessionID: "s", Autosteer: a}}}); err != nil {
+		t.Fatal(err)
+	}
+	_, story, _ := strings.Cut(b.String(), "\n  story\n")
+	if first, _, _ := strings.Cut(story, "\n"); first != line {
+		t.Errorf("lead line:\n got %q\nwant %q", first, line)
+	}
+	body, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), key) || strings.Contains(string(body), `"flagged"`) {
+		t.Errorf("--json:\n got %s\nwant it to hold %s and no key \"flagged\"", body, key)
 	}
 }
 

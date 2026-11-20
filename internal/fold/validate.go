@@ -66,7 +66,7 @@ func Validate(f *File, recordsPath, spillPath, coveragePath, gapsPath string) (b
 		{coveragePath, f.Coverage},
 		{gapsPath, f.Gaps},
 	} {
-		ok, err := cursorValid(c.path, c.cursor)
+		ok, err := CursorValid(c.path, c.cursor)
 		if err != nil {
 			return false, err
 		}
@@ -77,14 +77,16 @@ func Validate(f *File, recordsPath, spillPath, coveragePath, gapsPath string) (b
 	return true, nil
 }
 
-// cursorValid checks one cursor against the file it was taken from, stat'd
+// CursorValid checks one cursor against the file it was taken from, stat'd
 // and read fresh: its offset must be no greater than the file's current
 // size or the size the cursor itself saw (SizeSeen), and, when the offset
 // is positive, the byte immediately before it must be a line terminator. A
 // zero offset is always valid -- it names the start of the file, never a
 // position inside a line -- even when the file does not exist yet (a run
-// with no spill or no gaps at all).
-func cursorValid(path string, c Cursor) (bool, error) {
+// with no spill or no gaps at all). It is exported so the session graph's
+// catch-up (internal/graph/session) checks a frontier's records cursor by
+// this same rule rather than a copy of it.
+func CursorValid(path string, c Cursor) (bool, error) {
 	if c.Offset == 0 {
 		return true, nil
 	}
