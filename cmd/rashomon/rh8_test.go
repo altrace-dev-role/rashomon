@@ -116,12 +116,14 @@ func TestRH8d_BlockOnOneSessionReport(t *testing.T) {
 }
 
 // TestRH8g_NotGreenOfJoinsTheCheckpointGates (item 8): notGreenOf keeps the
-// strict claims whose verdict is a gate state other than green, in the
-// checkpoint's order, each with the seq its gate's row rests on (the last
-// green run of a green gate, the last run otherwise), ascending and once, "no
-// gate" counted for a gate the checkpoint keeps no row for, and the window
-// mark on each. Break: keep a green claim, take the other seq of a row, or
-// drop the count.
+// strict claims whose verdict is not green, in the checkpoint's order: a gate
+// state other than green, or no_gate_known, a claim no gate checked. Each
+// carries the seq its gate's row rests on (the last green run of a green
+// gate, the last run otherwise), ascending and once, "no gate" counted for a
+// gate the checkpoint keeps no row for, and the window mark. A loose claim is
+// not kept, whatever its verdict. Break: keep a green claim or a loose
+// no_gate_known one, drop the strict no_gate_known one, take the other seq of
+// a row, or drop the count.
 func TestRH8g_NotGreenOfJoinsTheCheckpointGates(t *testing.T) {
 	seq := func(n int64) *int64 { return &n }
 	cp := &verify.Checkpoint{
@@ -136,6 +138,7 @@ func TestRH8g_NotGreenOfJoinsTheCheckpointGates(t *testing.T) {
 			{Class: verify.ClaimLintClean, Strict: true, Verdict: verify.Verdict(verify.Green), Gates: []verify.SlotID{"spec:lint"}},
 			{Class: verify.ClaimBuildOK, Strict: false, Verdict: verify.Verdict(verify.Red), Gates: []verify.SlotID{"spec:build"}},
 			{Class: verify.ClaimScanClean, Strict: true, Verdict: verify.NoGateKnown},
+			{Class: verify.ClaimTypecheckClean, Strict: false, Verdict: verify.NoGateKnown},
 			{Class: verify.ClaimDone, Strict: true, Verdict: verify.Verdict(verify.Red),
 				Gates: []verify.SlotID{"spec:build", "spec:unit", "spec:lint", "spec:gone", "spec:new", "spec:build"}},
 		},
@@ -144,6 +147,7 @@ func TestRH8g_NotGreenOfJoinsTheCheckpointGates(t *testing.T) {
 		got := notGreenOf(cp, earlier)
 		want := []report.AutosteerClaim{
 			{Class: "tests_pass", Verdict: "stale", Evidence: []int64{7}, EarlierWindow: earlier},
+			{Class: "scan_clean", Verdict: "no_gate_known", Evidence: []int64{}, EarlierWindow: earlier},
 			{Class: "done", Verdict: "red", Evidence: []int64{5, 7, 8}, NoGate: 1, EarlierWindow: earlier},
 		}
 		if fmt.Sprintf("%+v", got) != fmt.Sprintf("%+v", want) {
@@ -234,16 +238,19 @@ func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 }
 
 // TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag (item 8): the lead
-// line and its key list the last Stop's strict claims whose verdict is a gate
-// state other than green (recap.ClaimUnbacked). That is one term of the done
-// flag's decision: the flag also reads the row, the row's sentence and the
-// unmet expected kinds, and no record keeps what it decided. Three Stops, each
-// the view the done flag reads and the checkpoint the same Stop writes, where
-// the two differ: E1 a verified row with a strict stale claim and E2 a row
-// whose sentence is silent, the flag quiet and the claim listed; E3 an unmet
-// expected kind with every claim green, the flag firing and no claim listed.
-// The line and the key name what they read and never say flagged. Break: name
-// the line or the key "flagged".
+// line and its key list the last Stop's strict claims whose verdict is not
+// green: a gate state other than green (recap.ClaimUnbacked, the done flag's
+// claim term), or no_gate_known, a claim no gate checked, which the flag reads
+// as backed (D79). So the list is not the flag's decision: the flag also reads
+// the row, the row's sentence and the unmet expected kinds, it reads a
+// no_gate_known claim as backed, and no record keeps what it decided. Four
+// Stops, each the view the done flag reads and the checkpoint the same Stop
+// writes, where the two differ: E1 a verified row with a strict stale claim,
+// E2 a row whose sentence is silent and E4 a strict claim no gate checked, the
+// flag quiet and the claim listed; E3 an unmet expected kind with every claim
+// green, the flag firing and no claim listed. The line and the key name what
+// they read and never say flagged. Break: name the line or the key "flagged",
+// or drop the no_gate_known claim.
 func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 	seq := func(n int64) *int64 { return &n }
 	unit := verify.GateState{Gate: "spec:unit", Kind: "test", Family: "r:spec:unit@d:repo", Source: "spec", Required: true,
@@ -283,6 +290,14 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 	e3cp := &verify.Checkpoint{Claims: e3.Scan.Claims, Gates: []verify.CheckpointGate{
 		{Gate: "go:test", State: verify.Green, LastRunSeq: seq(3), LastGreenSeq: seq(3)}}}
 
+	// E4 is a strict claim no gate checked: no gate of its kind exists, so its
+	// verdict is no_gate_known, and on a row that is not verified the flag is
+	// quiet only because it reads that verdict as backed (D79).
+	e4 := verify.StopView{Snap: verify.Snapshot{Recording: verify.Complete},
+		Summary: verify.Summary{Row: verify.RowNoGate}, Turn: verify.TurnCounts{Writes: 1, PathsWritten: 1, LastWriteSeq: 2, FirstSeq: 1},
+		Scan: verify.ClaimScan{Claims: []verify.ClaimVerdict{{Class: verify.ClaimTestsPass, Strict: true, Verdict: verify.NoGateKnown}}}}
+	e4cp := &verify.Checkpoint{Claims: e4.Scan.Claims, Gates: []verify.CheckpointGate{}}
+
 	for _, c := range []struct {
 		name  string
 		v     verify.StopView
@@ -304,6 +319,10 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 			[]report.AutosteerClaim{},
 			"    strict claims not green, last Stop only: none",
 			`"strict_claims_not_green":[],"claims_omitted":0`},
+		{"E4 a strict claim no gate checked", e4, e4cp, false,
+			[]report.AutosteerClaim{{Class: "tests_pass", Verdict: "no_gate_known", Evidence: []int64{}}},
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; judged on its own turn)",
+			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if _, fires := recap.DoneFlag(c.v, "s", false); fires != c.fires {
