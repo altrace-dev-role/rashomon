@@ -86,7 +86,11 @@ func pats() *patternSet {
 
 // scan reads src line by line. A def's body is every following line more
 // indented than the def, or inside an open bracket; calls are read from
-// bodies only.
+// bodies only. The body rule comes before the test for a def: a def nested
+// in a body is part of that body, so it is no symbol, the calls in it and
+// after it are the outer def's, and an import indented in it is not the
+// module's. Of a nested def's own line only the parameters are read for
+// calls (a default is evaluated when the outer body runs).
 func scan(src string) (fileScan, error) {
 	f := fileScan{imports: map[string]importRef{}}
 	lines := strings.Split(src, "\n")
@@ -98,6 +102,16 @@ func scan(src string) (fileScan, error) {
 		if trim == "" || strings.HasPrefix(trim, "#") {
 			continue
 		}
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if cur != "" && indent > curIndent {
+			from := 0
+			if m := pats().def.FindStringIndex(line); m != nil {
+				from = m[1] - 1
+			}
+			i = readCalls(&f, lines, i, from, cur)
+			continue
+		}
+		cur = ""
 		if m := pats().def.FindStringSubmatch(line); m != nil {
 			d, end, err := readDef(lines, i, m[2], len(m[0])-1)
 			if err != nil {
@@ -105,15 +119,6 @@ func scan(src string) (fileScan, error) {
 			}
 			f.defs = append(f.defs, d)
 			cur, curIndent = d.name, len(m[1])
-			i = end
-			continue
-		}
-		indent := len(line) - len(strings.TrimLeft(line, " \t"))
-		if cur != "" && indent <= curIndent {
-			cur = ""
-		}
-		if cur != "" {
-			end := readCalls(&f, lines, i, cur)
 			i = end
 			continue
 		}
@@ -190,17 +195,18 @@ func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	return d, end, nil
 }
 
-// readCalls records every call on lines[i] (and the lines a call's
-// arguments span) inside caller, and returns the last line index read.
-func readCalls(f *fileScan, lines []string, i int, caller string) int {
+// readCalls records every call on lines[i] from column from on (and the
+// lines a call's arguments span) inside caller, and returns the last line
+// index read.
+func readCalls(f *fileScan, lines []string, i, from int, caller string) int {
 	line := lines[i]
 	end := i
-	for _, m := range pats().call.FindAllStringSubmatchIndex(line, -1) {
-		name := line[m[2]:m[3]]
+	for _, m := range pats().call.FindAllStringSubmatchIndex(line[from:], -1) {
+		name := line[from+m[2] : from+m[3]]
 		if reserved(name) {
 			continue
 		}
-		text, e, _, ok := group(lines, i, m[1]-1)
+		text, e, _, ok := group(lines, i, from+m[1]-1)
 		if !ok {
 			continue
 		}
