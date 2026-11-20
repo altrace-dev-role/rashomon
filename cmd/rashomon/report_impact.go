@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -71,11 +72,21 @@ var sessionKeyOnce struct {
 }
 
 // attachImpact fills the report's Autosteer for the one session it was built
-// for. A report of every session reads none: each is a replay, and the
-// listing is what a person scrolls.
+// for: the one named, or with none named the one session the report covers
+// (report.md :231), where the calls without a session id are not a session.
+// A report of more sessions reads none: each is a replay, and the listing is
+// what a person scrolls.
 func attachImpact(st *store.Store, rep *report.Report, sessionID string) {
 	if sessionID == "" {
-		return
+		n := 0
+		for _, s := range rep.Sessions {
+			if s.SessionID != store.UnattributedSession {
+				n, sessionID = n+1, s.SessionID
+			}
+		}
+		if n != 1 || sessionID == "" {
+			return
+		}
 	}
 	for i := range rep.Sessions {
 		if rep.Sessions[i].SessionID == sessionID {
@@ -109,6 +120,10 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 	}
 	a.Stop = &report.AutosteerStop{Seq: v.Snap.Point.Seq, Row: string(v.Summary.Row), Sentence: recap.StateSentence(v)}
 	a.Clause = recap.ClauseBody(im)
+	// The replay reads no final message (MessageUnread), so v.Scan holds no
+	// claim: the live Stop's verdicts are the checkpoint's.
+	a.NotGreen = notGreenOf(r.Checkpoint, v.Done != nil)
+	a.ClaimsOmitted = r.Checkpoint.ClaimsOmitted
 	for _, g := range v.Snap.Gates {
 		ag := report.AutosteerGate{Name: recap.GateName(v, g), Kind: g.Kind, State: string(g.State)}
 		if g.LastRun != nil {
@@ -139,6 +154,47 @@ func autosteerOf(st *store.Store, sessionID string) *report.Autosteer {
 		a.Unknown = append(a.Unknown, report.AutosteerUnknown{Kind: u.Kind, Seq: u.Seq})
 	}
 	return a
+}
+
+// notGreenOf is the strict claims of cp whose verdict is not green, each named
+// by class and verdict, with the seq each of its gates' rows in cp rests on
+// and the count of its gates cp keeps no row for. Not green is either of two
+// verdicts: a gate state other than green (recap.ClaimUnbacked, the done
+// flag's claim term), or no_gate_known, a claim no gate checked, which the
+// flag reads as backed (D79). So the list is not the flag's decision: the
+// flag also reads the row, its sentence and the unmet expected kinds, it
+// reads a claim no gate checked as backed, and no record keeps what it
+// decided. earlier is whether the done flag at this Stop read the turns since
+// the last edit (verify.StopView.Done) and not the Stop's own turn: one mark
+// for the Stop, the same on every claim. No verdict depends on it, as a
+// verdict is its gates' states at the Stop. Non-nil.
+func notGreenOf(cp *verify.Checkpoint, earlier bool) []report.AutosteerClaim {
+	out := []report.AutosteerClaim{}
+	for _, c := range cp.Claims {
+		unchecked := c.Strict && c.Verdict == verify.NoGateKnown
+		if !recap.ClaimUnbacked(c) && !unchecked {
+			continue
+		}
+		f := report.AutosteerClaim{Class: string(c.Class), Verdict: string(c.Verdict), Evidence: []int64{}, EarlierWindow: earlier}
+		for _, id := range c.Gates {
+			i := slices.IndexFunc(cp.Gates, func(g verify.CheckpointGate) bool { return g.Gate == string(id) })
+			if i < 0 {
+				f.NoGate++
+				continue
+			}
+			at := cp.Gates[i].LastRunSeq
+			if cp.Gates[i].State == verify.Green {
+				at = cp.Gates[i].LastGreenSeq
+			}
+			if at != nil {
+				f.Evidence = append(f.Evidence, *at)
+			}
+		}
+		slices.Sort(f.Evidence)
+		f.Evidence = slices.Compact(f.Evidence)
+		out = append(out, f)
+	}
+	return out
 }
 
 // mistakesOf is m in the report's shape: every list non-null, and Later

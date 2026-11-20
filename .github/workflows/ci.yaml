@@ -758,6 +758,29 @@ jobs:
       - name: REC-34 group commit (darwin)
         run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
 
+      # MkdirExact and MeetClear refuse, at the levels purge judges by exact
+      # name, a folder made under another case of that name (CLEAR-EXACT1).
+      # Only a disk that folds case can hold one, and the test job's ext4 does
+      # not: there these tests take their other branch. This runner's APFS
+      # folds, so the four run here by name. Each must run and pass, as in the
+      # Windows lock step, and both case tests must log that the disk folds:
+      # on a runner whose disk does not fold the step fails, not passes having
+      # shown nothing about the case.
+      - name: Exact store folders on a disk that folds case (darwin)
+        shell: bash
+        env:
+          TESTS: >-
+            TestMkdirExact_RefusesALinkOrAFileAtAnyLevel
+            TestMkdirExact_RefusesAnotherCaseAtAnExactLevel
+            TestMeetClear_RefusesALinkOrAnotherCase
+            TestMkdirExact_MakesTheFolderOnce
+        run: |
+          go test ./internal/store -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee exact-folders.txt
+          for t in $TESTS; do
+            grep -q -- "--- PASS: $t " exact-folders.txt || { echo "::error::$t did not run and pass on macOS"; exit 1; }
+          done
+          [ "$(grep -c 'the test disk folds case: true' exact-folders.txt)" = 2 ] || { echo "::error::the disk under this runner's temp folder does not fold case; the case tests checked nothing"; exit 1; }
+
       # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
       # budgets are derived from its holds (internal/store/lockbudget.go,
       # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not

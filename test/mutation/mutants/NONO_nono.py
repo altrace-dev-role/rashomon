@@ -30,7 +30,7 @@ m("NONO an unknown mode is not counted without a proxy store", "internal/report/
   "\t\tif e.Mode != \"reverse\" && e.Mode != \"connect\" {\n\t\t\tn.UnknownModes++\n\t\t}\n",
   "",
   "TestNono_AnUnknownMode")
-m("NONO the text never reports an unknown mode", "internal/report/text.go",
+m("NONO the text never reports an unknown mode", "internal/report/text_nono.go",
   "\tif n.UnknownModes > 0 {", "\tif false {",
   "TestNono_AnUnknownModeIsCountedWithout")
 
@@ -54,10 +54,10 @@ m("NONO window_open is set before the read can fail", "internal/nono/nono.go",
   "\tobs := Observation{Trail: path, Events: []Event{}}\n",
   "\tobs := Observation{Trail: path, Events: []Event{}, WindowOpen: w.End.IsZero()}\n",
   "TestRead_WindowOpenIsFalseWhenNotObserved")
-m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
+m("NONO the sandbox line does not say the window has no end", "internal/report/text_nono.go",
   "\t\tif n.WindowOpen {", "\t\tif false {",
   "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
-m("NONO a bounded window is said to have no end", "internal/report/text.go",
+m("NONO a bounded window is said to have no end", "internal/report/text_nono.go",
   "\t\tif n.WindowOpen {", "\t\tif true {",
   "TestNono_AWindowWithNoEnd")
 # Re-anchored: NetworkEventsInTrail's addition made gofmt realign the struct
@@ -72,24 +72,24 @@ m("NONO an open window does not reach the report", "internal/report/nono.go",
 # n.Reason == nono.NotObservedNoRecords, because that is the only reason the
 # whole file was read -- on nono_audit_unreadable the scan stopped at the
 # line that broke it, so Skipped there undercounts.
-m("NONO a not-observed trail does not say how much it could not read", "internal/report/text.go",
+m("NONO a not-observed trail does not say how much it could not read", "internal/report/text_nono.go",
   "\t\tif n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {\n\t\t\tskipped = ",
   "\t\t_ = nono.NotObservedNoRecords\n\t\tif false {\n\t\t\tskipped = ",
   "TestNono_AnUnreadableTrail")
-m("NONO a read that stopped partway says how much it could not read", "internal/report/text.go",
+m("NONO a read that stopped partway says how much it could not read", "internal/report/text_nono.go",
   "\t\tif n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {",
   "\t\t_ = nono.NotObservedNoRecords\n\t\tif n.Skipped > 0 {",
   "TestNono_AReadThatStopsPartwayDoesNotClaimAnUndercount")
-m("NONO the unreadable count on a not-observed trail ignores the singular", "internal/report/text.go",
+m("NONO the unreadable count on a not-observed trail ignores the singular", "internal/report/text_nono.go",
   "\"; %d trail record%s could not be read\", n.Skipped, plural(n.Skipped))",
   "\"; %d trail records could not be read\", n.Skipped)",
   "TestNono_AnUnreadableTrail")
 
 # The unknown-decision line said "1 sandbox event ... were counted".
-m("NONO the unknown-decision line says were for one event", "internal/report/text.go",
+m("NONO the unknown-decision line says were for one event", "internal/report/text_nono.go",
   "\t\tif n.UnknownDecisions == 1 {\n\t\t\tverb = \"was\"", "\t\tif false {\n\t\t\tverb = \"was\"",
   "TestNono_TheUnknownDecisionLine")
-m("NONO the unknown-decision line is never printed", "internal/report/text.go",
+m("NONO the unknown-decision line is never printed", "internal/report/text_nono.go",
   "\tif n.UnknownDecisions > 0 {", "\tif false {",
   "TestNono_TheUnknownDecisionLine")
 
@@ -112,7 +112,7 @@ m("NONO the session's MCP calls never reach the sandbox section", "internal/repo
 m("NONO the client's log intake is not on the client-plane list", "internal/report/destinations.go",
   "\t\"http-intake.logs.us5.datadoghq.com\",\n", "",
   "TestNono_TheClientsOwnTraffic")
-m("NONO the text never names the client's own traffic", "internal/report/text.go",
+m("NONO the text never names the client's own traffic", "internal/report/text_nono.go",
   "\t\tif len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {", "\t\tif false {",
   "TestNono_TheClientsOwnTraffic")
 m("NONO --redact passes the client's own allowed hosts through", "internal/report/redact.go",
@@ -172,7 +172,7 @@ m("NONO the session's named hosts never reach the sandbox section", "internal/re
   "TestSeam_AClientPlaneHostAToolCallNamed")
 # The client-traffic line says which hosts the sandbox allowed and which it
 # refused (review of #53): one list of both hid the refused log upload.
-m("NONO the client-traffic line does not say what the sandbox refused", "internal/report/text.go",
+m("NONO the client-traffic line does not say what the sandbox refused", "internal/report/text_nono.go",
   "\t\t\tif len(n.ClientPlaneDenied) > 0 {\n\t\t\t\tsaid = append(said, \"refused \"", "\t\t\tif false {\n\t\t\t\tsaid = append(said, \"refused \"",
   "TestSeam_TheClientsOwnTrafficSaysWhat|TestNono_TheClientsOwn")
 m("NONO the client's refused hosts are listed as allowed", "internal/report/nono.go",
@@ -247,7 +247,7 @@ m("NONO network records are never counted toward the whole-file total", "interna
 m("NONO the whole-file network count never reaches the report", "internal/report/nono.go",
   "\t\tNetworkEventsInTrail: obs.NetworkEventsInTrail,\n", "",
   "TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero")
-m("NONO a trail with no network events renders as a filtered, quiet session", "internal/report/text.go",
+m("NONO a trail with no network events renders as a filtered, quiet session", "internal/report/text_nono.go",
   "\tif n.NetworkEventsInTrail == 0 {", "\tif false {",
   "TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero|TestH31_ASilentTrailLeavesTheNamedHostInTheChain")
 
@@ -266,7 +266,7 @@ m("NONO the whole-file network count only counts in-window parseable records",
 # after printing its line, hiding the skipped/unparseable and sessions lines
 # below on exactly the trails where schema drift or torn lines matter most.
 m("NONO the no-network-events branch still returns before the shared lines",
-  "internal/report/text.go",
+  "internal/report/text_nono.go",
   "\t\tfmt.Fprintf(b, \"  sandbox (nono): the trail holds no network events (%s; this is \"+\n\t\t\t\"not the same as a filtered session that saw nothing)\\n\", cause)\n\t} else {",
   "\t\tfmt.Fprintf(b, \"  sandbox (nono): the trail holds no network events (%s; this is \"+\n\t\t\t\"not the same as a filtered session that saw nothing)\\n\", cause)\n\t\treturn\n\t} else {",
   "TestNono_ZeroNetworkEventsStillReportsSkippedRecords")
