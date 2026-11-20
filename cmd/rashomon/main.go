@@ -1258,8 +1258,7 @@ usage:
                                terminal or as JSON for a consumer; --chain
                                lists the calls under each prompt, --timeline
                                every call across agents in order, --ids the
-                               tool-use ids the text counts, and JSON always
-                               carries all three
+                               tool-use ids counted; JSON always has all three
   rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
                   [--stdin]
                                render one turn's projection as JSON: what one
