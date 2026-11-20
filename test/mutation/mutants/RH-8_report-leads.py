@@ -41,6 +41,9 @@ m("RH-8 notGreenOf keeps a green claim", I,
 m("RH-8 notGreenOf drops a strict claim no gate checked", I,
   "\t\tunchecked := c.Strict && c.Verdict == verify.NoGateKnown\n",
   "\t\tunchecked := false && c.Strict && c.Verdict == verify.NoGateKnown\n", "TestRH8g_")
+m("RH-8 notGreenOf keeps a loose claim no gate checked", I,
+  "\t\tunchecked := c.Strict && c.Verdict == verify.NoGateKnown\n",
+  "\t\tunchecked := c.Verdict == verify.NoGateKnown\n", "TestRH8g_")
 m("RH-8 notGreenOf drops the no-gate count", I,
   "\t\t\t\tf.NoGate++\n",
   "\t\t\t\t_ = f.NoGate\n", "TestRH8g_")
