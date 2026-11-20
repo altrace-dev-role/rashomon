@@ -237,7 +237,7 @@ func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 	}
 }
 
-// TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag (item 8): the lead
+// TestRH8k_ClaimsNotGreenNameWhatTheDoneFlagReadNotItsDecision (item 8): the lead
 // line and its key list the last Stop's strict claims whose verdict is not
 // green: a gate state other than green (recap.ClaimUnbacked, the done flag's
 // claim term), or no_gate_known, a claim no gate checked, which the flag reads
@@ -254,7 +254,7 @@ func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 // key name what they read and never say flagged. Break: name the line or the
 // key "flagged", drop the no_gate_known claim, or lose the window mark between
 // the Stop and the replay.
-func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
+func TestRH8k_ClaimsNotGreenNameWhatTheDoneFlagReadNotItsDecision(t *testing.T) {
 	seq := func(n int64) *int64 { return &n }
 	unit := verify.GateState{Gate: "spec:unit", Kind: "test", Family: "r:spec:unit@d:repo", Source: "spec", Required: true,
 		State: verify.Green, Reason: verify.OK, LastRun: &verify.RunRef{Seq: 5}, LastGreen: &verify.RunRef{Seq: 5}}
