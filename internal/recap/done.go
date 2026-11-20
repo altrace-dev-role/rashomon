@@ -1,6 +1,7 @@
 package recap
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/verify"
@@ -77,15 +78,11 @@ func doneRead(v verify.StopView) (verify.StopView, []verify.Expected, bool) {
 	return v, unmet, false
 }
 
-// unbacked reports whether a strict claim's verdict is a state other than
-// green.
+// unbacked reports whether a claim of claims is unbacked by ClaimUnbacked, the
+// one predicate the report's strict-claims line also reads: strict, with a
+// gate state other than green as its verdict.
 func unbacked(claims []verify.ClaimVerdict) bool {
-	for _, c := range claims {
-		if c.Strict && verify.Rank(verify.State(c.Verdict)) >= 0 && c.Verdict != verify.Verdict(verify.Green) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(claims, ClaimUnbacked)
 }
 
 // unmetExpected is the expected evidence rows the ledger holds unmet when the

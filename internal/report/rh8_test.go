@@ -96,17 +96,17 @@ func TestRH8_LeadLinesFirst(t *testing.T) {
 		{"no Stop", &Autosteer{}, "    strict claims not green: no Stop recorded"},
 		{"none listed", stop(), "    strict claims not green, last Stop only: none"},
 		{"one with its seqs, own turn", stop(AutosteerClaim{Class: "tests_pass", Verdict: "stale", Evidence: []int64{3, 5}}),
-			"    strict claims not green, last Stop only: tests_pass stale (evidence #3, #5; judged on its own turn)"},
+			"    strict claims not green, last Stop only: tests_pass stale (evidence #3, #5; done flag read the Stop's turn)"},
 		{"no gate row, earlier window", stop(AutosteerClaim{Class: "done", Verdict: "red", NoGate: 1, EarlierWindow: true}),
-			"    strict claims not green, last Stop only: done red (no evidence seq; no gate for 1; judged on an earlier turn's window)"},
+			"    strict claims not green, last Stop only: done red (no evidence seq; no gate for 1; done flag read the turns since the last edit)"},
 		{"verdict words", stop(AutosteerClaim{Class: "build_ok", Verdict: "masked_inconclusive", Evidence: []int64{9}, NoGate: 2}),
-			"    strict claims not green, last Stop only: build_ok masked inconclusive (evidence #9; no gate for 2; judged on its own turn)"},
+			"    strict claims not green, last Stop only: build_ok masked inconclusive (evidence #9; no gate for 2; done flag read the Stop's turn)"},
 		{"capped at four", stop(
 			AutosteerClaim{Class: "a", Verdict: "red", Evidence: []int64{1}}, AutosteerClaim{Class: "b", Verdict: "red", Evidence: []int64{2}},
 			AutosteerClaim{Class: "c", Verdict: "red", Evidence: []int64{3}}, AutosteerClaim{Class: "d", Verdict: "red", Evidence: []int64{4}},
 			AutosteerClaim{Class: "e", Verdict: "red", Evidence: []int64{5}}),
-			"    strict claims not green, last Stop only: a red (evidence #1; judged on its own turn); b red (evidence #2; judged on its own turn); " +
-				"c red (evidence #3; judged on its own turn); d red (evidence #4; judged on its own turn); and 1 more"},
+			"    strict claims not green, last Stop only: a red (evidence #1; done flag read the Stop's turn); b red (evidence #2; done flag read the Stop's turn); " +
+				"c red (evidence #3; done flag read the Stop's turn); d red (evidence #4; done flag read the Stop's turn); and 1 more"},
 	} {
 		s := sess
 		s.Autosteer = c.a

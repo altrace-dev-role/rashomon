@@ -90,7 +90,7 @@ func Fold(path string, offset int64, fn func(line []byte)) (newOffset, size int6
 	// never be reported smaller than the offset it comes back paired with
 	// -- a caller saving (folded, size) as a cursor's Offset and SizeSeen
 	// needs SizeSeen >= Offset, or the very check it exists for (Validate's
-	// cursorValid, internal/fold/validate.go) would reject its own cursor.
+	// CursorValid, internal/fold/validate.go) would reject its own cursor.
 	if folded > size {
 		size = folded
 	}
