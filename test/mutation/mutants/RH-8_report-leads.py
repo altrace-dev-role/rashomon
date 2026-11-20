@@ -1,9 +1,10 @@
 # RH-8: the report leads with the answer (report.md :225 to :231). The story
 # opens with the last Stop's strict claims not green, the notes by pattern,
 # when checks were off and how far to trust the record. The claims are the
-# checkpoint's, read by one term of the done flag's decision
-# (recap.ClaimUnbacked); no record keeps the decision itself, so the line and
-# its key never say flagged. Tool-use ids and long subagent lists stay behind
+# checkpoint's strict claims not green: a gate state other than green
+# (recap.ClaimUnbacked, the done flag's claim term), or no_gate_known, which
+# the flag reads as backed (D79). No record keeps the flag's decision, so the
+# line and its key never say flagged. Tool-use ids and long subagent lists stay behind
 # --ids and --json. Each row is killed by the TestRH8 test its last argument
 # names, whose doc comment states the break.
 
@@ -35,8 +36,11 @@ m("RH-8 the strict claims not green lose the window mark", I,
   "\ta.NotGreen = notGreenOf(r.Checkpoint, v.Done != nil)\n",
   "\ta.NotGreen = notGreenOf(r.Checkpoint, false)\n", "TestRH8h_")
 m("RH-8 notGreenOf keeps a green claim", I,
-  "\t\tif !recap.ClaimUnbacked(c) {\n",
-  "\t\tif false && !recap.ClaimUnbacked(c) {\n", "TestRH8g_")
+  "\t\tif !recap.ClaimUnbacked(c) && !unchecked {\n",
+  "\t\tif false && !recap.ClaimUnbacked(c) && !unchecked {\n", "TestRH8g_")
+m("RH-8 notGreenOf drops a strict claim no gate checked", I,
+  "\t\tunchecked := c.Strict && c.Verdict == verify.NoGateKnown\n",
+  "\t\tunchecked := false && c.Strict && c.Verdict == verify.NoGateKnown\n", "TestRH8g_")
 m("RH-8 notGreenOf drops the no-gate count", I,
   "\t\t\t\tf.NoGate++\n",
   "\t\t\t\t_ = f.NoGate\n", "TestRH8g_")
