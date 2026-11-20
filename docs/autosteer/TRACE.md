@@ -7,8 +7,8 @@ the live evidence seq. The plan's prose does not change when a row moves; this f
 
 Status log (newest first):
 - 2026-11-19 11:2x: the T2 harness enters main in local commits as the files below, brought from a working branch; each line gives the path under `test/live/autosteer/`, the first 16 hex digits of the sha256 of the file as committed, and its source.
-  - judge/done.py 96372150145b9c0f, the done-flag judge draft kept under docs-out (not in git), byte for byte
-  - judge/test_done.py a3f82acdfda6d770, the done-flag judge draft kept under docs-out (not in git), byte for byte
+  - judge/done.py 4d947add84de90c5, the done-flag judge draft kept under docs-out (not in git), with an eligible-folder allow-list and parameters for the skip prefix and the role pattern added
+  - judge/test_done.py 919631a320219b1b, the tests for the draft above, with synthetic folder names and role codes and a test for each refusal
   - memsample.sh 4d67d89a325512d2, branch as/m2-t2 at b59948dc, untracked there, byte for byte
   - run.sh edd0f09597c965f3, branch as/m2-t2 at b59948dc, edited there and not committed, byte for byte
   - t2/batch.sh 6fabe73f89c3b824, branch as/m2-t2 at b59948dc, untracked there, byte for byte

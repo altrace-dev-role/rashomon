@@ -11,8 +11,19 @@ The turn a firing judges runs from the last prompt before it (a user record that
 firing. The claim is the turn's last assistant text. The evidence window is the turn's tool calls, reaching back to the
 last edit when that edit was in an earlier turn (the flag judges the evidence since the last edit, done.go).
 
+Scope. A transcript's project is the name of the folder that holds it. --eligible-prefix (required, repeatable) names
+the folders this judge may read: a matched file whose folder starts with none of them refuses the whole run before any
+transcript is opened (exit 2, nothing written). --skip-prefix names folders inside that set to leave out; they are
+counted and never opened, and a skip prefix wins over an eligible one. A prefix matches by plain startswith, so end it
+with a dash to stop at a folder boundary; an empty prefix matches every folder and is refused. --role-pattern (required)
+is a regular expression for the codes that name a person, an employer or a client: a turn whose prompt, claim or
+actions match it is dropped from the frame and counted. No flag has a default; the pattern (?!) matches nothing and is
+the explicit opt-out. A value that starts with a dash has to be joined to its flag with an equals sign
+(--eligible-prefix=-name), or argparse reads it as a flag and the run stops with exit 2.
+
 Modes (run from this directory; stdlib only):
   frame  --glob G [--glob G ...] --since ISO --until ISO [--exclude X.tsv]
+         --eligible-prefix PREFIX [--eligible-prefix PREFIX ...] [--skip-prefix PREFIX ...] --role-pattern REGEX
          Counts only: firings per session and per reason class, and the exclusions. Prints no transcript text.
   draw   (frame flags) --reg REG.txt --out DIR [--n 30]
          REG.txt must be mode 444 and name this file's sha256 ("done.py sha256: <hex>"). The seed is the first 16 hex
@@ -47,8 +58,6 @@ import common  # noqa: E402  (the judges' shared parsers: load_jsonl, EDIT_TOOLS
 
 LEAD = "done was claimed; the record shows"
 MARK = "\u203b rashomon"  # AutoSteer's line marker; lines holding it are removed from what readers see
-WORK_PROJECT_PREFIX = "-Users-karthik-work"
-ROLE = re.compile(r"(?<![\w@])@(?:M|A|S[0-9]+|T[0-9]+|C[0-9]+)(?![\w])|(?<![\w])EMP(?![\w])|(?<![\w])CL[0-9]+(?![\w])")
 ANSWERS = ("UNBACKED", "BACKED", "NO-CLAIM", "UNSURE")
 PROMPT_SHOW = 400
 CLAIM_SHOW = 1200
@@ -213,19 +222,59 @@ def load_excludes(path):
     return rows
 
 
-def build_frame(globs, since, until, exclude_path):
+class Refused(Exception):
+    """A run that stopped before it read or wrote anything; faults holds the reasons."""
+
+    def __init__(self, faults):
+        super().__init__("; ".join(faults))
+        self.faults = faults
+
+
+def compile_role(src):
+    """The role pattern as a regex. An empty pattern matches every turn and is refused; (?!) matches none."""
+    if not src:
+        raise Refused(["role pattern is empty (it would match every turn); give (?!) to match nothing"])
+    try:
+        return re.compile(src)
+    except re.error as err:
+        raise Refused(["role pattern does not compile: %s" % err])
+
+
+def project_of(path):
+    """A transcript's project: the name of the folder that holds it."""
+    return os.path.basename(os.path.dirname(path))
+
+
+def scope_faults(paths, eligible, skip):
+    """Why a scope is refused: an empty prefix, or matched files in folders no eligible prefix names."""
+    faults = ["an empty %s prefix matches every folder" % kind
+              for kind, prefixes in (("eligible", eligible), ("skip", skip)) if "" in prefixes]
+    if faults:
+        return faults
+    outside = [p for p in paths if not project_of(p).startswith(tuple(eligible))]
+    if outside:
+        folders = sorted({project_of(p) for p in outside})
+        shown = ", ".join(folders[:10]) + (", ..." if len(folders) > 10 else "")
+        faults.append("%d file(s) in %d folder(s) lie outside the eligible prefixes: %s" % (
+            len(outside), len(folders), shown))
+    return faults
+
+
+def build_frame(globs, since, until, exclude_path, eligible, skip, role):
     lo, hi = parse_ts(since), parse_ts(until)
     if lo is None or hi is None:
         raise SystemExit("--since and --until must be ISO times, e.g. 2026-11-01T08:00:00Z")
-    excludes = load_excludes(exclude_path)
     paths = sorted({p for g in globs for p in glob.glob(os.path.expanduser(g), recursive=True)})
-    counts = {"files": len(paths), "files_work_project": 0, "firings_in_window": 0, "excluded_by_list": 0,
+    faults = scope_faults(paths, eligible, skip)
+    if faults:
+        raise Refused(faults)
+    excludes = load_excludes(exclude_path)
+    counts = {"files": len(paths), "files_skipped_prefix": 0, "firings_in_window": 0, "excluded_by_list": 0,
               "excluded_role_code": 0, "frame": 0}
     frame = []
     for p in paths:
-        proj = os.path.basename(os.path.dirname(p))
-        if proj.startswith(WORK_PROJECT_PREFIX):
-            counts["files_work_project"] += 1
+        if project_of(p).startswith(tuple(skip)):
+            counts["files_skipped_prefix"] += 1
             continue
         recs = common.load_jsonl(p)
         for i, r in enumerate(recs):
@@ -242,7 +291,7 @@ def build_frame(globs, since, until, exclude_path):
                 counts["excluded_by_list"] += 1
                 continue
             turn = turn_of(recs, i)
-            if ROLE.search("\n".join([turn["prompt"], turn["claim"]] + turn["actions"])):
+            if role.search("\n".join([turn["prompt"], turn["claim"]] + turn["actions"])):
                 counts["excluded_role_code"] += 1
                 continue
             counts["frame"] += 1
@@ -313,8 +362,13 @@ def sheet(n, total_frame, f):
     return "\n".join(lines) + "\n"
 
 
+def scope_of(args):
+    """The eligible prefixes, the skip prefixes and the compiled role pattern a command was given."""
+    return args.eligible_prefix, args.skip_prefix, compile_role(args.role_pattern)
+
+
 def cmd_frame(a):
-    counts, frame = build_frame(a.glob, a.since, a.until, a.exclude)
+    counts, frame = build_frame(a.glob, a.since, a.until, a.exclude, *scope_of(a))
     per_session, per_class = {}, {}
     for f in frame:
         per_session[f["session"][:8]] = per_session.get(f["session"][:8], 0) + 1
@@ -346,7 +400,7 @@ def cmd_draw(a):
         return 2
     reg_sha = sha_file(a.reg)
     seed = int(reg_sha[:16], 16)
-    counts, frame = build_frame(a.glob, a.since, a.until, a.exclude)
+    counts, frame = build_frame(a.glob, a.since, a.until, a.exclude, *scope_of(a))
     order = interleave(frame, seed, key=lambda f: f["session"])
     drawn = order[:a.n]
     os.makedirs(os.path.join(a.out, "sheets"))
@@ -477,6 +531,9 @@ def main(argv=None):
         s.add_argument("--since", required=True)
         s.add_argument("--until", required=True)
         s.add_argument("--exclude")
+        s.add_argument("--eligible-prefix", action="append", required=True)
+        s.add_argument("--skip-prefix", action="append", default=[])
+        s.add_argument("--role-pattern", required=True)
         if name == "draw":
             s.add_argument("--reg", required=True)
             s.add_argument("--out", required=True)
@@ -487,7 +544,13 @@ def main(argv=None):
     s.add_argument("--target", type=float, default=0.9)
     s.add_argument("--n", type=int, default=30)
     a = ap.parse_args(argv)
-    return {"frame": cmd_frame, "draw": cmd_draw, "score": cmd_score}[a.mode](a)
+    try:
+        return {"frame": cmd_frame, "draw": cmd_draw, "score": cmd_score}[a.mode](a)
+    except Refused as refusal:
+        print("REFUSED (nothing written):")
+        for fault in refusal.faults:
+            print("  " + fault)
+        return 2
 
 
 if __name__ == "__main__":
