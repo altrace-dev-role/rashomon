@@ -163,9 +163,9 @@ func TestRH8g_NotGreenOfJoinsTheCheckpointGates(t *testing.T) {
 // final message, so the report's strict claims not green are the
 // checkpoint's, which the live Stop wrote. "All tests pass." after a green go
 // test and a later edit is a strict tests_pass claim on a stale gate: listed,
-// its evidence the go test call's seq, judged on its own turn; with a later
-// turn that only reads, judged on an earlier turn's window. Break: read
-// v.Scan.Claims, or drop the window mark.
+// its evidence the go test call's seq, "done flag read the Stop's turn";
+// with a later turn that only reads, "done flag read the turns since the last
+// edit". Break: read v.Scan.Claims, or drop the window mark.
 func TestRH8h_ClaimsNotGreenFromTheCheckpoint(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -312,11 +312,11 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 	}{
 		{"E1 a verified row with a strict stale claim", e1, e1cp, false,
 			[]report.AutosteerClaim{{Class: "lint_clean", Verdict: "stale", Evidence: []int64{2}}},
-			"    strict claims not green, last Stop only: lint_clean stale (evidence #2; judged on its own turn)",
+			"    strict claims not green, last Stop only: lint_clean stale (evidence #2; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"lint_clean","verdict":"stale","evidence":[2],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 		{"E2 a row whose sentence is silent", e2, e2cp, false,
 			[]report.AutosteerClaim{{Class: "done", Verdict: "absent", Evidence: []int64{}}},
-			"    strict claims not green, last Stop only: done absent (no evidence seq; judged on its own turn)",
+			"    strict claims not green, last Stop only: done absent (no evidence seq; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"done","verdict":"absent","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 		{"E3 an unmet expected kind with every claim green", e3, e3cp, true,
 			[]report.AutosteerClaim{},
@@ -324,7 +324,7 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 			`"strict_claims_not_green":[],"claims_omitted":0`},
 		{"E4 a strict claim no gate checked", e4, e4cp, false,
 			[]report.AutosteerClaim{{Class: "tests_pass", Verdict: "no_gate_known", Evidence: []int64{}}},
-			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; judged on its own turn)",
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -353,10 +353,10 @@ func TestRH8k_ClaimsNotGreenSayNothingOfTheDoneFlag(t *testing.T) {
 		key   string
 	}{
 		{"E5 a live Stop with a strict claim no gate checked", false,
-			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; judged on its own turn)",
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; done flag read the Stop's turn)",
 			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":false}],"claims_omitted":0`},
 		{"E6 the same claim after a turn that only reads, the done window set beside a quiet flag", true,
-			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; judged on an earlier turn's window)",
+			"    strict claims not green, last Stop only: tests_pass no gate known (no evidence seq; done flag read the turns since the last edit)",
 			`"strict_claims_not_green":[{"class":"tests_pass","verdict":"no_gate_known","evidence":[],"no_gate":0,"earlier_window":true}],"claims_omitted":0`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
