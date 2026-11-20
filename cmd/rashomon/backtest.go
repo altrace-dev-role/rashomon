@@ -21,7 +21,9 @@ const backtestUsage = `  rashomon backtest --sensor ID  replay this project's tr
                                hooks and print, as backtest/1 JSON lines,
                                each session's fires of steer pattern ID
                                beside the live steer log's; the store is
-                               only read
+                               only read. ID is a pattern a replay can
+                               fire: regression-location, platform-rule,
+                               integrity, ordering-rule or masked-status
 
 `
 
@@ -58,7 +60,10 @@ func cmdBacktest(args []string, stdout io.Writer) error {
 	sensor := args[1]
 	// A pattern the replay never fires is refused before the store is read:
 	// its count would be 0 by construction, and a 0 nothing measured reads
-	// as a measurement (backtest.Measurable).
+	// as a measurement (backtest.Measurable). A reserved one is refused in
+	// its own words, since nothing raises it live either (backtest.Reserved),
+	// and so is stale-evidence, which a live session raises only where a
+	// gate is required and a replay requires none.
 	var ids []string
 	for _, id := range pattern.All() {
 		if backtest.Measurable(id) {
@@ -70,7 +75,14 @@ func cmdBacktest(args []string, stdout io.Writer) error {
 		return fmt.Errorf("unknown sensor %q; a backtest measures %s", sensor, measured)
 	}
 	if !backtest.Measurable(pattern.ID(sensor)) {
-		return fmt.Errorf("a backtest cannot measure %q: the replay of this project's tool calls never fires it; a backtest measures %s", sensor, measured)
+		why := "the replay of this project's tool calls never fires it"
+		if backtest.Reserved(pattern.ID(sensor)) {
+			why = "it is reserved and not built: no code raises it, live or replayed"
+		}
+		if pattern.ID(sensor) == pattern.StaleEvidence {
+			why = "a replay holds no project index and no trusted or managed spec, so no gate is required in it"
+		}
+		return fmt.Errorf("a backtest cannot measure %q: %s; a backtest measures %s", sensor, why, measured)
 	}
 	st, err := openStoreForRead()
 	if err != nil {
