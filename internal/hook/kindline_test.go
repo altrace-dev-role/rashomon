@@ -314,8 +314,8 @@ func TestLANGREG1_APrintableKindIsShortASCII(t *testing.T) {
 // unindexedLineOf is the unindexed language's line for the language l and
 // the words what, spelled out as kindLineOf is.
 func unindexedLineOf(l, what string) string {
-	return "rashomon: the index here holds no " + l + " records, so edits to " + what +
-		" files carry no unit, caller or conflict facts until rashomon graph index runs."
+	return "rashomon: the index here holds no " + l + " records written by this version of the " + l +
+		" reader, so edits to " + what + " files carry no unit, caller or conflict facts until rashomon graph index runs."
 }
 
 // TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage: under the fixture's
