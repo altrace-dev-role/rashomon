@@ -477,6 +477,14 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 		}
 		return graph.OverlayGroup{}, "", "", false
 	}
+	if !g.reg.SessionKept(at, under) {
+		// The claiming reader does not state that a session's edits of its
+		// files are kept (lang.Kept): the consent text names no file of its
+		// language among what a yes keeps, so no group is kept. The gate is
+		// left as it stands, so the unit-brief read and every line are as
+		// they were.
+		return graph.OverlayGroup{}, "", "", false
+	}
 	recs, err := resolveOverlay(r, under, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
 	if err != nil || len(recs) == 0 {
 		return graph.OverlayGroup{}, "", "", false

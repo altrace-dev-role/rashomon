@@ -73,6 +73,11 @@ func (Resolver) Lang() string { return Lang }
 // header names any other is read as holding no py records.
 func (Resolver) Producer() string { return provExtractor + "/" + provVersion }
 
+// SessionKept is false: the consent text names no Python file among what a
+// yes keeps of a session's edits, so a .py edit keeps nothing in the
+// session graph log (lang.Kept).
+func (Resolver) SessionKept() bool { return false }
+
 // Claims is every .py file.
 func (Resolver) Claims(_, rel string) bool { return strings.HasSuffix(rel, ".py") }
 

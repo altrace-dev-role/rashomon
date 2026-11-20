@@ -47,6 +47,16 @@ type Versioned interface {
 	Producer() string
 }
 
+// Kept is a Resolver that states whether a session's edits of the files it
+// claims may be kept in the store's session graph log: true only where the
+// consent text names files of its language among what a yes keeps of a
+// session. A resolver that states none keeps nothing there
+// (Registry.SessionKept), so a new reader keeps nothing until it states so,
+// and a test holds each statement to the consent text.
+type Kept interface {
+	SessionKept() bool
+}
+
 // Registry is an ordered set of resolvers; the first that claims a file
 // resolves it. It is built by the caller that wires languages (the index
 // command, index.Wire for a hook), never at init. Its entries are values,
@@ -120,6 +130,19 @@ func (g *Registry) Unindexed(root, rel string, producers map[string]string) (str
 		return l, true
 	}
 	return "", false
+}
+
+// SessionKept is whether the resolver that claims rel states that a
+// session's edits of its files may be kept (Kept), false for a resolver
+// that states none and for a path none claims. It runs no configuration
+// step: the statement read is the registered resolver's.
+func (g *Registry) SessionKept(root, rel string) bool {
+	e, ok := g.claimant(root, rel)
+	if !ok {
+		return false
+	}
+	k, ok := e.r.(Kept)
+	return ok && k.SessionKept()
 }
 
 // For is the resolver that claims rel, false when none does. It runs no

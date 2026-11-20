@@ -484,13 +484,16 @@ func TestLANGREG1_TheKindLineIsForThePersonAlone(t *testing.T) {
 	}
 }
 
-// TestLANGREG1_APythonEditWritesAnOverlayGroup: an edit of a .py
-// file of the indexed py unit writes a landed overlay group for the file in
-// the session graph log, carrying pylite's set of predicates, and prints
-// nothing. Base: the hook reads a .py file through no resolver, so no group.
-// Break: carry the Go resolver's set for every language, and the group's
-// set is Go's.
-func TestLANGREG1_APythonEditWritesAnOverlayGroup(t *testing.T) {
+// TestLANGREG1_APythonEditKeepsNoOverlayGroup: an edit of a .py file of
+// the indexed py unit keeps no overlay group of the file in the session
+// graph log and prints nothing, while a .go edit in the same session keeps
+// its landed group: what a yes keeps of a session's edits is named for Go
+// files alone, and pylite states its edits are not kept (lang.Kept; card
+// x315). Base (LANG-REG1): a landed group of the .py file carrying pylite's
+// set. Break: state pylite kept, and the log holds the file's group. That a
+// kept reader's group carries its own set is
+// TestConsentGate2_AKeptReaderOtherThanGoCarriesItsOwnSet's.
+func TestLANGREG1_APythonEditKeepsNoOverlayGroup(t *testing.T) {
 	e := newSteerEnv(t)
 	dir, hdr := e.lrProject()
 	if _, ok := hdr.Producers[pylite.Lang]; !ok {
@@ -499,16 +502,18 @@ func TestLANGREG1_APythonEditWritesAnOverlayGroup(t *testing.T) {
 	if got := e.lrEdit(dir, "toolu_p1", "inv/core/calc.py", "sum"); got != "" {
 		t.Errorf("the py edit printed %q, want 0 bytes", got)
 	}
+	e.lrEdit(dir, "toolu_p2", "svc/svc.go", "package")
 	log, ok := e.lrLog(hdr)
 	if !ok {
-		t.Fatal("the py edit kept no session graph log")
+		t.Fatal("premise: the go edit kept no session graph log")
 	}
-	g, ok := lrGroup(t, log, graph.FileID("inv/core/calc.py"), "landed")
-	if !ok {
-		t.Fatalf("the session graph log holds no landed group for inv/core/calc.py:\n%s", log)
+	if _, ok := lrGroup(t, log, graph.FileID("svc/svc.go"), "landed"); !ok {
+		t.Fatalf("premise: the session graph log holds no landed group for svc/svc.go:\n%s", log)
 	}
-	if want := (pylite.Resolver{}).OverlayCarried().String(); g["carried"] != want {
-		t.Errorf("the py group carries %q, want pylite's %q", g["carried"], want)
+	for _, kind := range []string{"declared", "landed"} {
+		if _, has := lrGroup(t, log, graph.FileID("inv/core/calc.py"), kind); has {
+			t.Errorf("the session graph log holds a %s group for inv/core/calc.py:\n%s", kind, log)
+		}
 	}
 }
 
