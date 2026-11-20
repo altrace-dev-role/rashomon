@@ -1,0 +1,41 @@
+Session fixtures for internal/graph/session. Generated; never edited by hand.
+
+Source: a raw set of 42 recorded AutoSteer eval runs from 2026-11-12, from three task sets whose run
+names start t1-, t1b- and t1c-, one session each, 77 files of store/runs/<sid>/records.ndjson and
+steer.ndjson. The raw set and the generator, the script that cuts it, live outside the repository. The
+raw set holds prompt words, model words and home paths, and it never enters the repository.
+Raw SHA256SUMS.txt sha256: d4967c26349beb83bad1c29c4ad1e866be6ef41b7fa2416215361c11454c4afe
+
+Cut: each line is cut to the decoders' keys, with paths outside the run's tree replaced. The keys are
+keys.txt, every json tag recordHead and steerHead read, the one list both the generator and
+TestFixtures_KeysAreTheDecodersTags read. A key the decoders do not read is dropped from every line,
+whatever its record type.
+
+Replacement rule: an absolute file_path or written_paths entry becomes the marker "/outside" when it
+lies under neither the line's project nor its cwd, compared as text both as written and after a
+leading /private is removed from all three. No filesystem is read. A path either comparison keeps is
+verbatim. The decoder (inProject) places every replaced path outside the project, as it placed the
+original, so each line decodes to the same Event. Writes through the /tmp alias of a /private/tmp
+project are kept verbatim (29 paths, all in t1c-r6). They decode as outside today, and
+TestFixtures_KnownHole_AliasWritesDecodeOutside pins that by name, so a fix that resolves the /tmp
+alias turns them inside and must change that test.
+Replaced per run (38 in all): t1c-g1 3, t1c-g12 1, t1c-g13 1, t1c-g15 2, t1c-g18 3, t1c-g19 4, t1c-g20 1, t1c-g3 1, t1c-r6 22
+
+Lines: records 12919, steer 487. Bytes: raw 13725008, cut 1445228.
+Layout: stores/<run>/runs/<sid>/records.ndjson and steer.ndjson. SHA256SUMS.txt lists each with its
+sha256, paths relative to this directory.
+Cut SHA256SUMS.txt sha256: 88d4ca402b29f2fb2d3aff428a0d9d92410a4ded229a00145a02cba48ae9f345
+
+Ids: the raw set holds 90 session and prompt ids, and the cut keeps 88: the 42 session ids of the
+paths and the 46 prompt_id values of steer lines. Each of the 88 is replaced, in the cut lines and in
+their paths, by 00000000-0000-4000-8000-<n in 12 hex digits>, n counted from 1 in the byte order of
+the real ids, so a sort over ids keeps its order and every id keeps its length. The other 2 occur only
+in records lines, where the cut keeps no prompt_id key, so they are dropped with their key and not
+replaced. The table from real id to placeholder is a file kept outside the repository beside the
+generator, not with the raw set; the rule above rebuilds it from the raw set, as
+TestFixtures_DecodeAsTheRawSet does.
+
+Limit: the recorded runs hold no session record and no ledger line. They exercise writes, Stop
+checkpoints, steer lines and prompts only. Verdict, obligations, met_once by ledger and boundaries are
+covered by synthetic tests only, until a session is recorded with the ledger writer in place; a
+refresh of this set is owed then.
