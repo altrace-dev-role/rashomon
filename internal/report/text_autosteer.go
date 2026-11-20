@@ -217,8 +217,10 @@ func notGreenText(a *Autosteer) string {
 	return ", last Stop only: " + s
 }
 
-// claimText is `tests_pass stale (evidence #3, #5; no gate for 1; judged on
-// its own turn)`.
+// claimText is `tests_pass stale (evidence #3, #5; no gate for 1; done flag
+// read the Stop's turn)`. The window mark names the turns the done flag read
+// at the Stop, the turns since the last edit where EarlierWindow is set; no
+// verdict depends on it.
 func claimText(c AutosteerClaim) string {
 	evidence := "no evidence seq"
 	if len(c.Evidence) > 0 {
@@ -227,9 +229,9 @@ func claimText(c AutosteerClaim) string {
 	if c.NoGate > 0 {
 		evidence += fmt.Sprintf("; no gate for %d", c.NoGate)
 	}
-	window := "judged on its own turn"
+	window := "done flag read the Stop's turn"
 	if c.EarlierWindow {
-		window = "judged on an earlier turn's window"
+		window = "done flag read the turns since the last edit"
 	}
 	return fmt.Sprintf("%s %s (%s; %s)", c.Class, strings.ReplaceAll(c.Verdict, "_", " "), evidence, window)
 }
