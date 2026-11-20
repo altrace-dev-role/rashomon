@@ -71,6 +71,14 @@ type Knowledge struct {
 // naming the file and the cap, and the Stop names no unit.
 const MaxConfigBytes = 64 << 10
 
+// errConfigOverCap is ReadConfig's error, under the file's path, for a
+// configuration over MaxConfigBytes. It is an errors.New value, which the
+// compiler lays out statically, so process init allocates nothing for it
+// (RES-2; regfile.ErrOverCap says what the init trace shows for such a
+// value); a fmt call here would run at init. The number in its words is
+// MaxConfigBytes, which TestWire_ARefusedConfigurationIsTheError checks.
+var errConfigOverCap = errors.New("over 65536 bytes")
+
 // ReadConfig reads root's configuration, for `rashomon graph index` and for
 // the Stop (the unit a write is in) alike, so the two cannot disagree on
 // whether it reads. It opens through regfile.Open, so a named pipe at the
@@ -87,7 +95,7 @@ func ReadConfig(root string) (Config, error) {
 	defer f.Close() //nolint:errcheck // read-only
 	b, err := io.ReadAll(io.LimitReader(f, MaxConfigBytes+1))
 	if err == nil && len(b) > MaxConfigBytes {
-		err = fmt.Errorf("%s: over %d bytes", p, MaxConfigBytes)
+		err = fmt.Errorf("%s: %w", p, errConfigOverCap)
 	}
 	if err != nil {
 		return c, err
@@ -104,7 +112,21 @@ type Result struct {
 	// Refused is every file a resolver was handed and refused, by path;
 	// the header names the first graph.MaxRefusedNamed.
 	Refused []graph.Refusal
+	// Left is every directory a configured language's rule left out of
+	// the walk (lang.Leaver), by path; the header names the first
+	// graph.MaxRefusedNamed.
+	Left []graph.LeftDir
+	// Skipped counts the directories the walk skipped by name (skipDir).
+	Skipped Skipped
 }
+
+// Skipped is how many directories Build's walk skipped by name, by kind: a
+// directory whose name starts with a dot, but not one named .git,
+// .rashomon or .pgraph, at any depth, which hold version control's or
+// rashomon's own state and never a project's source, and of which every
+// index root holds one or more; node_modules; __pycache__. A skipped
+// directory's own subdirectories are not walked, so not counted.
+type Skipped struct{ Dot, NodeModules, PyCache int }
 
 // Build indexes root at commit: the repository node (baseline.RepoIDErr),
 // a declared node per unit, then for each language the configuration
@@ -116,8 +138,15 @@ type Result struct {
 // cannot parse it) is a gap, not a failure: the index is written without
 // it, Result.Refused lists every such file by path, and the header counts
 // them and names the first graph.MaxRefusedNamed, so a reader of the index
-// knows an absence in it is not proven. The header names the repository,
-// the commit, and each producer that wrote records. Any other resolver
+// knows an absence in it is not proven. A directory a configured language's
+// rule leaves out (lang.Leaver: an environment its tools installed packages
+// into) is not walked: Result.Left lists each by path, and the header
+// counts them and names the first graph.MaxRefusedNamed, so a module one of
+// them holds reads as absent by a named cause. Only the configured
+// languages' rules are asked, so an index of no such language asks none and
+// its header is as before. Result.Skipped counts the directories the walk
+// skipped by name. The header names the repository, the commit, and each
+// producer that wrote records. Any other resolver
 // error is the error. A refused git read (a pointer, commondir or config that is not a regular
 // file or is over baseline.MaxGitFileBytes) is the error: no index is keyed
 // under no id, or under the path form a later build would not give.
@@ -126,7 +155,7 @@ func Build(root, commit string, c Config) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	files, total, err := claimed(root, ps)
+	w, err := claimed(root, ps)
 	if err != nil {
 		return Result{}, err
 	}
@@ -144,7 +173,7 @@ func Build(root, commit string, c Config) (Result, error) {
 	wrote := map[string]string{}
 	var refused []graph.Refusal
 	for i, p := range ps {
-		recs, err := p.res.Extract(root, files[i], rev)
+		recs, err := p.res.Extract(root, w.files[i], rev)
 		var rf graph.Refusals
 		switch {
 		case errors.As(err, &rf):
@@ -165,8 +194,9 @@ func Build(root, commit string, c Config) (Result, error) {
 	apply(s, knowledge.Records(rows, rid, rev))
 	sort.SliceStable(refused, func(a, b int) bool { return refused[a].Path < refused[b].Path })
 	h := graph.Header{Schema: graph.Schema, Repo: rid, Rev: graph.HeaderRev{Commit: commit}, Producers: wrote,
-		Refused: len(refused), RefusedFiles: slices.Clone(refused[:min(len(refused), graph.MaxRefusedNamed)])}
-	return Result{Store: s, Header: h, Files: total, Refused: refused}, nil
+		Refused: len(refused), RefusedFiles: slices.Clone(refused[:min(len(refused), graph.MaxRefusedNamed)]),
+		LeftOut: len(w.left), LeftOutDirs: slices.Clone(w.left[:min(len(w.left), graph.MaxRefusedNamed)])}
+	return Result{Store: s, Header: h, Files: w.total, Refused: refused, Left: w.left, Skipped: w.skipped}, nil
 }
 
 // producer is one declared language's resolver and its units' paths.
@@ -231,43 +261,90 @@ func python(c Config) pylite.Resolver {
 // language this build reads, go then py, with the step that reads its
 // configuration under a root, run once per root on the first Claim of a
 // path there. Go's step is the import map an overlay maps imports by: the
-// root go.mod's module path (gopg.ReadModulePath, one bounded read of that
-// one file) and a directory check under root, no map where there is no
-// module path; it refuses nothing, as the hook's overlay reads it today.
+// root go.mod's module path (gopg.ReadModulePath, one read of that one
+// file, bounded in bytes, through an open that never waits) and a directory
+// check under root, no map where there is no go.mod or no module path, and
+// the error, naming go.mod, where go.mod is there and is refused (not a
+// regular file, or a failed read), so a named pipe there cannot hold it.
 // Python's step is ReadConfig and python, the rule Build's resolver is made
 // by: the configuration's py units and the module names each owns, none
 // where the root has no configuration file (fs.ErrNotExist), and the error,
 // naming the file, where the file is refused (not a regular file, over
-// MaxConfigBytes, not JSON). Build still wires through resolverFor.
+// MaxConfigBytes, not JSON, JSON of another shape). Each step's refusal is
+// a *lang.Refusal naming the file it refused and why (refusal), so a hook
+// says which file was not read without naming the language whose step read
+// it. Python is registered indexed
+// (lang.Registry.RegisterIndexed): where the index header's producers name
+// no py producer, a hook builds no overlay of a .py file and reads no
+// configuration, and says so. Go is not, so a Go edit under an index with
+// no go records is read as it was before. Build still wires through resolverFor.
 func Wire() *lang.Registry {
 	var reg lang.Registry
 	reg.RegisterConfigured(gopg.Resolver{}, func(root string) (lang.Resolver, error) {
-		mod, _ := gopg.ReadModulePath(root)
-		if mod == "" {
+		mod, err := gopg.ReadModulePath(root)
+		switch {
+		case err != nil:
+			return nil, refusal(gopg.ManifestFile, err)
+		case mod == "":
 			return gopg.Resolver{}, nil
 		}
 		return gopg.Resolver{Imports: &gopg.ImportMap{Module: mod, IsDir: gopg.DirUnder(root)}}, nil
 	})
-	reg.RegisterConfigured(pylite.Resolver{}, func(root string) (lang.Resolver, error) {
+	reg.RegisterIndexed(pylite.Resolver{}, func(root string) (lang.Resolver, error) {
 		c, err := ReadConfig(root)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			return python(Config{}), nil
 		case err != nil:
-			return nil, fmt.Errorf("%s: %w", ConfigFile, err)
+			return nil, refusal(ConfigFile, fmt.Errorf("%s: %w", ConfigFile, err))
 		}
 		return python(c), nil
 	})
 	return &reg
 }
 
-// claimed lists, per producer, the repository's files its resolver claims
-// under its units, as slash paths relative to root, sorted; and the count.
-// The walk skips the directories skipDir names, and claims.producer picks a
-// file's producer: the one rule UnitOf files a single path by.
-func claimed(root string, ps []producer) ([][]string, int, error) {
+// refusal is a configuration step's refusal of file, a slash path under
+// the root, for err, the step's error: the reason is err's class, tested
+// in this order. A syntax error is tested before a type error because a
+// type error can wrap one (json.UnmarshalTypeError's Err, under go1.27's
+// JSON v2), and that file does not parse as JSON at all.
+func refusal(file string, err error) error {
+	var syntax *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	r := lang.ReadFailed
+	switch {
+	case errors.Is(err, regfile.ErrNotRegular):
+		r = lang.NotRegular
+	case errors.Is(err, errConfigOverCap):
+		r = lang.OverCap
+	case errors.As(err, &syntax):
+		r = lang.NotJSON
+	case errors.As(err, &typ):
+		r = lang.WrongShape
+	}
+	return &lang.Refusal{File: file, Reason: r, Err: err}
+}
+
+// walked is what Build's walk found: per producer, the repository's files
+// its resolver claims under its units, as slash paths relative to root,
+// sorted, and their count; each directory a producer's rule left out, by
+// path, sorted; and the directories skipped by name, by kind.
+type walked struct {
+	files   [][]string
+	total   int
+	left    []graph.LeftDir
+	skipped Skipped
+}
+
+// claimed is Build's walk of root for ps. It skips the directories skipDir
+// names and counts them (Skipped), then leaves out each directory a
+// producer's resolver leaves out (lang.Leaver) and names it; a directory
+// below either is not walked. claims.producer picks a file's producer: the
+// one rule UnitOf files a single path by, though UnitOf asks no Leaver.
+func claimed(root string, ps []producer) (walked, error) {
 	cl := claimsOf(ps)
-	files, total := make([][]string, len(ps)), 0
+	leavers := cl.reg.Leavers()
+	w := walked{files: make([][]string, len(ps))}
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -275,21 +352,56 @@ func claimed(root string, ps []producer) ([][]string, int, error) {
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel != "." && skipDir(d.Name()) {
+			if rel == "." {
+				return nil
+			}
+			if skipDir(d.Name()) {
+				w.skipped.count(d.Name())
+				return filepath.SkipDir
+			}
+			if why, ok := leftOut(leavers, root, rel); ok {
+				w.left = append(w.left, graph.LeftDir{Path: rel, Why: why})
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if i, ok := cl.producer(root, rel); ok {
-			files[i] = append(files[i], rel)
-			total++
+			w.files[i] = append(w.files[i], rel)
+			w.total++
 		}
 		return nil
 	})
-	for i := range files {
-		sort.Strings(files[i])
+	for i := range w.files {
+		sort.Strings(w.files[i])
 	}
-	return files, total, err
+	slices.SortFunc(w.left, func(a, b graph.LeftDir) int { return strings.Compare(a.Path, b.Path) })
+	return w, err
+}
+
+// leftOut is the reason of the first of leavers that leaves rel, a
+// directory's slash path relative to root, out of a walk; false where none
+// does.
+func leftOut(leavers []lang.Leaver, root, rel string) (string, bool) {
+	for _, l := range leavers {
+		if why, ok := l.LeftOut(root, rel); ok {
+			return why, true
+		}
+	}
+	return "", false
+}
+
+// count adds one directory skipDir names, named name, to its kind; .git,
+// .rashomon and .pgraph are not counted (Skipped).
+func (s *Skipped) count(name string) {
+	switch name {
+	case ".git", ".rashomon", ".pgraph":
+	case "node_modules":
+		s.NodeModules++
+	case "__pycache__":
+		s.PyCache++
+	default:
+		s.Dot++
+	}
 }
 
 // claims is the rule Build claims a file by: the producers' resolvers in a
@@ -329,11 +441,17 @@ func skipDir(name string) bool {
 
 // UnitOf is the unit an index built under c files a path in, by the rule
 // Build claims files by: rel, a slash path relative to the index root, is
-// under no directory Build's walk skips, a resolver claims it, and it is
-// under one of that resolver's language's units; the resolver's Unit then
-// names it. false for a path Build would not index. It reads no file, so
-// the Stop maps the paths a session wrote with it without loading the
-// graph (W-M3.3); the error is the configuration's, as Build's would be.
+// under no directory Build's walk skips by name, a resolver claims it, and
+// it is under one of that resolver's language's units; the resolver's Unit
+// then names it. false for a path Build would not index, with one known
+// exception: a directory a language's rule leaves out of Build's walk by a
+// stat (lang.Leaver; a Python environment, which holds pyvenv.cfg) is not
+// seen here, so a path under one inside a unit is filed in that unit though
+// Build holds no file there, until the Stop asks the language's rule
+// (TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit).
+// It reads no file, so the Stop maps the paths a session wrote with it
+// without loading the graph (W-M3.3); the error is the configuration's, as
+// Build's would be.
 func UnitOf(c Config) (func(root, rel string) (graph.ID, bool), error) {
 	ps, err := producers(c)
 	if err != nil {

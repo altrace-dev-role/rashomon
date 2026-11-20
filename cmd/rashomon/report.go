@@ -19,6 +19,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 	chain := false
 	timeline := false
 	ledger := false
+	ids := false
 	nonoTrail := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -38,6 +39,8 @@ func cmdReport(args []string, stdout io.Writer) error {
 			timeline = true
 		case "--ledger":
 			ledger = true
+		case "--ids":
+			ids = true
 		case "--nono-audit":
 			// An empty path is refused like a missing one: "" is what not
 			// naming a trail means, so `--nono-audit "$NONO_TRAIL"` with the
@@ -59,7 +62,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 		for _, f := range []struct {
 			on   bool
 			name string
-		}{{asJSON, "--json"}, {redact, "--redact"}, {chain, "--chain"}, {timeline, "--timeline"}, {nonoTrail != "", "--nono-audit"}} {
+		}{{asJSON, "--json"}, {redact, "--redact"}, {chain, "--chain"}, {timeline, "--timeline"}, {ids, "--ids"}, {nonoTrail != "", "--nono-audit"}} {
 			if f.on {
 				return fmt.Errorf("--ledger prints alone: drop %s", f.name)
 			}
@@ -83,7 +86,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 		rep = report.Redact(rep, key)
 	}
 	if !asJSON {
-		// --chain and --timeline expand the text listing only. The JSON
+		// --chain, --timeline and --ids expand the text listing only. The JSON
 		// carries the whole structure either way: that reader is a program
 		// selecting fields, not a person scrolling, and making it pass a flag
 		// to receive a section would mean a consumer could parse a report and
@@ -94,6 +97,9 @@ func cmdReport(args []string, stdout io.Writer) error {
 		}
 		if timeline {
 			opts = append(opts, report.WithTimeline())
+		}
+		if ids {
+			opts = append(opts, report.WithIDs())
 		}
 		return report.Text(stdout, rep, opts...)
 	}

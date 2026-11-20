@@ -14,6 +14,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -403,13 +404,13 @@ func counted(t *testing.T) (read, header, resolve *int) {
 	or, oh, os_ := overlayReadFile, overlayReadHeader, overlayResolve
 	inner := os_
 	if inner == nil {
-		inner = goOverlay
+		inner = lang.Resolver.Overlay
 	}
 	overlayReadFile = func(p string) ([]byte, error) { r++; return or(p) }
 	overlayReadHeader = func(p string) (graph.Header, error) { h++; return oh(p) }
-	overlayResolve = func(rel string, c []byte, b graph.Rev, q int64, m *gopg.ImportMap) ([]graph.Record, error) {
+	overlayResolve = func(res lang.Resolver, rel string, c []byte, b graph.Rev, q int64) ([]graph.Record, error) {
 		s++
-		return inner(rel, c, b, q, m)
+		return inner(res, rel, c, b, q)
 	}
 	t.Cleanup(func() { overlayReadFile, overlayReadHeader, overlayResolve = or, oh, os_ })
 	return &r, &h, &s
@@ -544,9 +545,9 @@ func TestHook_LandedGoEditTakesTheWritersGate(t *testing.T) {
 // decode the input whatever the caller passed.
 func TestHook_TheHookGateTakesTheDeclaredPath(t *testing.T) {
 	f := newOvFix(t, "1\n")
-	path, root, rel, ok := keptGoEdit(f.st, ovSess, "Edit", nil, &f.file, f.repo, 1, true)
-	if !ok || path != f.file || root != f.repo || rel != ovRel {
-		t.Errorf("gate on the declared path, no input: %q %q %q %v; want %q %q %q true", path, root, rel, ok, f.file, f.repo, ovRel)
+	path, g := keptGoEdit(f.st, ovSess, "Edit", nil, &f.file, f.repo, 1, true)
+	if !g.ok || path != f.file || g.root != f.repo || g.rel != ovRel || g.reg == nil {
+		t.Errorf("gate on the declared path, no input: %q %q %q %v (registry %v); want %q %q %q true with one", path, g.root, g.rel, g.ok, g.reg != nil, f.file, f.repo, ovRel)
 	}
 }
 

@@ -154,3 +154,39 @@ func TestRegistry_LangsInRegistrationOrder(t *testing.T) {
 		t.Errorf("an empty registry's Langs() = %v, want none", got)
 	}
 }
+
+// TestRegistry_UnindexedIsAnIndexedClaimantTheProducersLack: Unindexed is
+// the language of the claimant registered indexed where the producers name
+// none of it, nil producers included; false where they name it, where the
+// claimant was registered otherwise, whatever the producers lack, and where
+// none claims the path. It runs no step, and an indexed claimant's Claim
+// runs its step as a configured one's does. Break: ignore the flag, and the
+// .go path reads as unindexed under producers that lack go.
+func TestRegistry_UnindexedIsAnIndexedClaimantTheProducersLack(t *testing.T) {
+	runs := map[string]int{}
+	var g Registry
+	g.RegisterConfigured(fake{l: "go", ext: ".go"}, counted(fake{l: "go", ext: ".go"}, runs))
+	g.RegisterIndexed(fake{l: "py", ext: ".py"}, counted(fake{l: "py", ext: ".py"}, runs))
+	for _, c := range []struct {
+		rel       string
+		producers map[string]string
+		want      string
+	}{
+		{"m.py", map[string]string{"go": "v1"}, "py"},
+		{"m.py", nil, "py"},
+		{"m.py", map[string]string{"go": "v1", "py": "v1"}, ""},
+		{"m.go", map[string]string{"py": "v1"}, ""},
+		{"m.go", nil, ""},
+		{"notes.md", nil, ""},
+	} {
+		if l, ok := g.Unindexed("/a", c.rel, c.producers); l != c.want || ok != (c.want != "") {
+			t.Errorf("Unindexed(%q, %v) = %q, %v; want %q", c.rel, c.producers, l, ok, c.want)
+		}
+	}
+	if len(runs) != 0 {
+		t.Errorf("Unindexed ran the steps: %v", runs)
+	}
+	if r, ok, err := g.Claim("/a", "m.py"); !ok || err != nil || r.(fake).at != "/a" {
+		t.Errorf("Claim of the indexed reader = %v, %v, %v; want its step's resolver for /a", r, ok, err)
+	}
+}
