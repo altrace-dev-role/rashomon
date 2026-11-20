@@ -75,7 +75,7 @@ func TestGraphIndex_EnvironmentLinesStopAtMaxRefusedNamed(t *testing.T) {
 	}
 }
 
-// TestGraphIndex_SkippedDirectoriesPrintOneCountLinePerKind (L2, e4):
+// TestGraphIndex_SkippedDirectoriesPrintOneCountLinePerKind (L2):
 // `graph index` prints one count line for each kind of directory its walk
 // skipped by name, dot directories (not the root's .rashomon), node_modules
 // and __pycache__, in that order, after the environment lines and before

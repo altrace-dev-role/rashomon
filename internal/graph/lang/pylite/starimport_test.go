@@ -14,23 +14,30 @@ import (
 // scan cannot list from the importing file alone. So it writes the imports
 // edge to the module and no references edge, where a from-import of one
 // name writes both. It binds no name called *, so two star imports in one
-// file import both modules. Each form runs beside a twin that imports one
+// file import both modules. Nor is it kept under its module's name, so a
+// star import of the top-level module mm in a file that binds mm (from x
+// import mm), before it or after it, keeps both imports edges and the
+// references edge to x.mm. Each form runs beside a twin that imports one
 // name from the same module, and both must give the edges written out here.
 //
 // What the scan still cannot read: a name a star import brings in, so a
 // call through it resolves to nothing.
 func TestStarImport_ImportsItsModuleAndBindsNoName(t *testing.T) {
 	res := pylite.Resolver{
-		Units:   []pylite.Unit{{Path: "src/pkg", ModRoot: "src"}},
-		Modules: map[string]string{"pkg": "src/pkg"},
+		Units:   []pylite.Unit{{Path: "src/pkg", ModRoot: "src"}, {Path: "top", ModRoot: "top"}},
+		Modules: map[string]string{"pkg": "src/pkg", "x": "top", "mm": "top"},
 	}
 	const rel = "src/pkg/a.py"
 	const (
-		modMM = "sym:py:src/pkg:mod:pkg.mm"
-		modNN = "sym:py:src/pkg:mod:pkg.nn"
-		mmXX  = "sym:py:src/pkg:func:pkg.mm.xx"
-		mmYY  = "sym:py:src/pkg:func:pkg.mm.yy"
-		nnXX  = "sym:py:src/pkg:func:pkg.nn.xx"
+		modMM    = "sym:py:src/pkg:mod:pkg.mm"
+		modNN    = "sym:py:src/pkg:mod:pkg.nn"
+		mmXX     = "sym:py:src/pkg:func:pkg.mm.xx"
+		mmYY     = "sym:py:src/pkg:func:pkg.mm.yy"
+		nnXX     = "sym:py:src/pkg:func:pkg.nn.xx"
+		modX     = "sym:py:top:mod:x"
+		modTopMM = "sym:py:top:mod:mm"
+		xMM      = "sym:py:top:func:x.mm"
+		topMMYY  = "sym:py:top:func:mm.yy"
 	)
 	type edges struct{ imports, refs []string } // destinations from file:src/pkg/a.py
 	for _, c := range []struct {
@@ -45,6 +52,10 @@ func TestStarImport_ImportsItsModuleAndBindsNoName(t *testing.T) {
 			edges{[]string{modMM}, nil}, edges{[]string{modMM}, []string{mmXX}}},
 		{"two star imports in one file", "from .mm import *\nfrom .nn import *\n", "from .mm import yy\nfrom .nn import xx\n",
 			edges{[]string{modMM, modNN}, nil}, edges{[]string{modMM, modNN}, []string{mmYY, nnXX}}},
+		{"a star import of a module named like a name bound before it", "from x import mm\nfrom mm import *\n", "from x import mm\nfrom mm import yy\n",
+			edges{[]string{modTopMM, modX}, []string{xMM}}, edges{[]string{modTopMM, modX}, []string{topMMYY, xMM}}},
+		{"a star import of a module named like a name bound after it", "from mm import *\nfrom x import mm\n", "from mm import yy\nfrom x import mm\n",
+			edges{[]string{modTopMM, modX}, []string{xMM}}, edges{[]string{modTopMM, modX}, []string{topMMYY, xMM}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			want := func(pred graph.Pred, dsts []string) []string {

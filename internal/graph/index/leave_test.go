@@ -91,7 +91,7 @@ func TestBuild_TheHeaderNamesTheFirstLeftOutDirs(t *testing.T) {
 	}
 }
 
-// TestBuild_ASkippedDirectoryIsCountedByKind (L2, e4): the walk counts the
+// TestBuild_ASkippedDirectoryIsCountedByKind (L2): the walk counts the
 // directories it skips by name, by kind: dot directories but not .git,
 // .rashomon or .pgraph at any depth; node_modules; __pycache__; never a
 // directory inside a skipped one. An environment under a dot name (.venv)

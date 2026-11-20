@@ -450,7 +450,7 @@ func skipDir(name string) bool {
 // Build holds no file there, until the Stop asks the language's rule
 // (TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit).
 // It reads no file, so the Stop maps the paths a session wrote with it
-// without loading the graph (W-M3.3); the error is the configuration's, as
+// without loading the graph; the error is the configuration's, as
 // Build's would be.
 func UnitOf(c Config) (func(root, rel string) (graph.ID, bool), error) {
 	ps, err := producers(c)
