@@ -40,6 +40,10 @@ type Resolver struct {
 // Lang is "go".
 func (Resolver) Lang() string { return Lang }
 
+// SessionKept is true: the consent text names Go files among what a yes
+// keeps of a session's edits (lang.Kept).
+func (Resolver) SessionKept() bool { return true }
+
 // Claims is every .go file.
 func (Resolver) Claims(_, rel string) bool { return strings.HasSuffix(rel, ".go") }
 

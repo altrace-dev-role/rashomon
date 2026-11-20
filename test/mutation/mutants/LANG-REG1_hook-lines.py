@@ -35,17 +35,8 @@ unreaderror = "\treturn unreadLine(g.unread.File, g.unread.Error(), kindWhat(g.r
 lastrev = "\t\t\tc.gate.lastIndex, c.gate.lastRev = r.Lang(), hdr.Rev.Commit\n"
 lastmark = "\tmarker = store.LastIndexNoticeName(g.lastIndex)\n"
 
-# TestLANGREG1_APythonEditWritesAnOverlayGroup. Break: carry the Go
-# resolver's set for every language, and the group's set is Go's.
-goset = "LANG-REG1 every group carries the Go reader's set"
-IMPORTS[goset] = (overlay,
-                  "\t\"github.com/altrace-dev-role/rashomon/internal/graph/lang\"\n",
-                  "\t\"github.com/altrace-dev-role/rashomon/internal/graph/lang\"\n"
-                  "\t\"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg\"\n")
-m(goset, overlay,
-  "\t\tCarried: r.OverlayCarried(), Recs: recs}\n",
-  "\t\tCarried: gopg.Resolver{}.OverlayCarried(), Recs: recs}\n",
-  "^TestLANGREG1_APythonEditWritesAnOverlayGroup$")
+# The Go-set row moved to CONSENT-GATE2_kept-readers.py (card x315): a .py
+# edit keeps no group now, so its killer is the kept-reader witness's test.
 
 # TestLANGREG1_TheLineNamingNoKindIsNotOneOfTheSixteen. Break: count
 # notice-other-kinds among the kind markers (the sixteenth named kind is
