@@ -148,7 +148,8 @@ def close():
 // keyed by its class path: symkind method, qualified name the module, the
 // classes and its own name, so it shares no id with a module def of its
 // name. The file declares each method, and the SQL in a method's body is
-// the method's read; a class is no node yet. Break: key a method as a
+// the method's read. A class is no node yet: no node of kind class is
+// written, the limit a card of class nodes turns. Break: key a method as a
 // module def (func ids for load, make and size, one id for the method get
 // and the module get), or end a class at the close of bases that span
 // lines.
@@ -173,6 +174,11 @@ func TestLANGREG1_AMethodIsKeyedByItsClass(t *testing.T) {
 	for _, name := range []string{"load", "make", "size"} {
 		if id := symID("func", "auth.store."+name); hasNode(recs, id) {
 			t.Errorf("%s is a node; want none, %s is a method", id, name)
+		}
+	}
+	for _, r := range recs {
+		if r.Node != nil && r.Node.Attrs["symkind"] == "class" {
+			t.Errorf("%s is a node of kind class; want none, a class is no node yet", r.Node.ID)
 		}
 	}
 	if !hasEdge(recs, symID("method", "auth.store.Store.load"), graph.Reads, graph.TableID("accounts")) {
