@@ -37,6 +37,16 @@ type Resolver interface {
 	OverlayCarried() graph.Carried
 }
 
+// Versioned is a Resolver that states the producer of the records it
+// writes, the string index.Build names for its language among an index
+// header's producers: its extractor and version, joined by a slash. A
+// Versioned resolver registered indexed is unindexed under a header whose
+// producers name any other string for its language, so the records an
+// older version of the reader wrote count as none (Registry.Unindexed).
+type Versioned interface {
+	Producer() string
+}
+
 // Registry is an ordered set of resolvers; the first that claims a file
 // resolves it. It is built by the caller that wires languages (the index
 // command, index.Wire for a hook), never at init. Its entries are values,
@@ -81,27 +91,35 @@ func (g *Registry) RegisterConfigured(r Resolver, configure func(root string) (R
 }
 
 // RegisterIndexed is RegisterConfigured for a resolver whose files a hook
-// reads only where the index holds records of its language: where an index
-// header's producers name none, Unindexed reports the language, and the
-// hook builds no overlay of its files there and runs no configuration step.
+// reads only where the index holds records of its language written by this
+// version of it: where an index header's producers name none, or, for a
+// Versioned resolver, a string other than its own, Unindexed reports the
+// language, and the hook builds no overlay of its files there and runs no
+// configuration step.
 func (g *Registry) RegisterIndexed(r Resolver, configure func(root string) (Resolver, error)) {
 	g.es = append(g.es, entry{r: r, st: &step{configure: configure}, indexed: true})
 }
 
 // Unindexed is the language of the resolver that claims rel, true where it
 // was registered by RegisterIndexed and producers, an index header's, names
-// no producer of that language. Any other claimant, and a path none claims,
-// is "" and false. It runs no configuration step.
+// no producer of that language or, for a Versioned resolver, one other than
+// the string it states, compared for equality alone, never by prefix or
+// order. Any other claimant, and a path none claims, is "" and false. It
+// runs no configuration step: the string compared is the registered
+// resolver's.
 func (g *Registry) Unindexed(root, rel string, producers map[string]string) (string, bool) {
 	e, ok := g.claimant(root, rel)
 	if !ok || !e.indexed {
 		return "", false
 	}
 	l := e.r.Lang()
-	if _, has := producers[l]; has {
-		return "", false
+	if _, has := producers[l]; !has {
+		return l, true
 	}
-	return l, true
+	if v, ok := e.r.(Versioned); ok && producers[l] != v.Producer() {
+		return l, true
+	}
+	return "", false
 }
 
 // For is the resolver that claims rel, false when none does. It runs no

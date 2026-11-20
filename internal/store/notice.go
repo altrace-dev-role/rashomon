@@ -17,11 +17,11 @@ import (
 // The post's line that no reader here claims a kind
 // of file keeps one marker per kind and one for the kinds past its limit
 // (kindnotice.go: IsKindNoticeFile, FileNoticeOtherKinds), and its line that
-// the index holds no records of a language one marker per language
-// (IsUnindexedNoticeFile), and its line that a reader's configuration was
-// not read one marker per configuration file (IsUnreadNoticeFile), and its
-// line that a language with no overlays keeps the last index's facts one
-// marker per language (IsLastIndexNoticeFile).
+// the index holds no records of a language written by this version of its
+// reader one marker per language (IsUnindexedNoticeFile), and its line that
+// a reader's configuration was not read one marker per configuration file
+// (IsUnreadNoticeFile), and its line that a language with no overlays keeps
+// the last index's facts one marker per language (IsLastIndexNoticeFile).
 
 // isNotice reports whether name is one of the session's notice markers.
 func isNotice(name string) bool {

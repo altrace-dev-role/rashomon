@@ -71,5 +71,5 @@ m("LANG-REG1c a call of an imported CapWords name is keyed a function", pylite,
   "TestLANGREG1_ACapWordsNameGuessesAClass")
 
 m("LANG-REG1c the reader stays pylite/1", pylite,
-  'Version: "2"}', 'Version: "1"}',
+  '\tprovVersion   = "2"\n', '\tprovVersion   = "1"\n',
   "TestLANGREG1_TheReaderIsPyliteTwo")

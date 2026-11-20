@@ -23,6 +23,14 @@ import (
 // Lang is the language namespace pylite writes under.
 const Lang = "py"
 
+// provExtractor and provVersion are the provenance of every record pylite
+// writes and the one source of the string Producer states: an index header
+// names the producer of its py records as the two joined by a slash.
+const (
+	provExtractor = "pylite"
+	provVersion   = "2"
+)
+
 // ErrParse is the refusal for content the reduced extractor cannot read:
 // a bracket that does not balance, or a def with no colon. No records are
 // written for the file. Overlay returns the refusal as an error that is
@@ -59,6 +67,11 @@ type Resolver struct {
 
 // Lang is "py".
 func (Resolver) Lang() string { return Lang }
+
+// Producer is the string this version of the reader writes into an index
+// header as the producer of its py records (lang.Versioned): an index whose
+// header names any other is read as holding no py records.
+func (Resolver) Producer() string { return provExtractor + "/" + provVersion }
 
 // Claims is every .py file.
 func (Resolver) Claims(_, rel string) bool { return strings.HasSuffix(rel, ".py") }
@@ -288,7 +301,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 	}
 	f.resolveRelative(mod, strings.HasSuffix("/"+rel, "/__init__.py"))
 	file := graph.FileID(rel)
-	algo := graph.Prov{Extractor: "pylite", Version: "2"}
+	algo := graph.Prov{Extractor: provExtractor, Version: provVersion}
 	recs := []graph.Record{{Node: &graph.Node{ID: file, Kind: "file", Tier: graph.Algorithmic, Conf: 1.0, Rev: rev, Prov: algo,
 		Attrs: map[string]string{"digest": graph.ContentDigest(content), "module": mod}}}}
 	if committed {
