@@ -26,10 +26,14 @@ Layout: stores/<run>/runs/<sid>/records.ndjson and steer.ndjson. SHA256SUMS.txt 
 sha256, paths relative to this directory.
 Cut SHA256SUMS.txt sha256: 88d4ca402b29f2fb2d3aff428a0d9d92410a4ded229a00145a02cba48ae9f345
 
-Ids: each of the 88 session and prompt ids of the raw set is replaced, in the cut lines and in their
-paths, by 00000000-0000-4000-8000-<n in 12 hex digits>, n counted from 1 in the byte order of the real
-ids, so a sort over ids keeps its order and every id keeps its length. The table from real id to
-placeholder stays outside the repository with the raw set.
+Ids: the raw set holds 90 session and prompt ids, and the cut keeps 88: the 42 session ids of the
+paths and the 46 prompt_id values of steer lines. Each of the 88 is replaced, in the cut lines and in
+their paths, by 00000000-0000-4000-8000-<n in 12 hex digits>, n counted from 1 in the byte order of
+the real ids, so a sort over ids keeps its order and every id keeps its length. The other 2 occur only
+in records lines, where the cut keeps no prompt_id key, so they are dropped with their key and not
+replaced. The table from real id to placeholder is a file kept outside the repository beside the
+generator, not with the raw set; the rule above rebuilds it from the raw set, as
+TestFixtures_DecodeAsTheRawSet does.
 
 Limit: the recorded runs hold no session record and no ledger line. They exercise writes, Stop
 checkpoints, steer lines and prompts only. Verdict, obligations, met_once by ledger and boundaries are

@@ -1714,9 +1714,17 @@ func TestFixtures_KeysAreTheDecodersTags(t *testing.T) {
 // set is the one PROVENANCE.txt names by its SHA256SUMS.txt digest, each raw
 // file held to that list; every fixture file has its raw twin and every raw
 // file its fixture; and every fixture line decodes as its raw line does, so
-// the cut (keys.txt's keys, paths outside the run's tree replaced) changed no
-// event. It names lines by number and prints no line and no event: a raw line
-// holds words and home paths.
+// the cut (keys.txt's keys, paths outside the run's tree replaced, ids
+// replaced) changed no event. The id map is rebuilt from the raw set by
+// PROVENANCE.txt's rule (Ids): the ids the cut keeps are the session id of
+// each raw path and the prompt_id of each raw steer line, their count is the
+// one PROVENANCE.txt states, and the nth of them in byte order becomes
+// 00000000-0000-4000-8000-<n in 12 hex digits>, n counted from 1. A fixture
+// finds its raw twin through the map, and each raw line has its ids mapped
+// before it is decoded, so the two events compare like with like. It names
+// files by their fixture path and lines by number, and prints no line, no
+// event and no real id: a raw line holds words and home paths, and a raw
+// path a real id.
 func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
 	raw := os.Getenv("RASHOMON_SESSIONS_RAW")
 	if raw == "" {
@@ -1741,6 +1749,49 @@ func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
 		sum, rel, _ := strings.Cut(ln, "  ")
 		rawListed[strings.TrimPrefix(rel, "./")] = sum
 	}
+	// Each raw file is read once and held to its sum, and the ids the cut
+	// keeps are gathered from it. A message names a raw file by its place in
+	// the sorted list, since its path holds a real id.
+	rawData, kept := map[string][]byte{}, map[string]bool{}
+	for n, rawRel := range slices.Sorted(maps.Keys(rawListed)) {
+		part := strings.Split(rawRel, "/")
+		if len(part) != 5 || part[1] != "store" || part[2] != "runs" {
+			t.Fatalf("raw file %d: not <run>/store/runs/<session>/<file>", n+1)
+		}
+		rb, err := os.ReadFile(filepath.Join(raw, "runs", filepath.FromSlash(rawRel)))
+		if err != nil {
+			t.Fatalf("raw file %d: %v", n+1, errors.Unwrap(err))
+		}
+		if sum := sha256.Sum256(rb); hex.EncodeToString(sum[:]) != rawListed[rawRel] {
+			t.Fatalf("raw file %d is not its SHA256SUMS.txt's", n+1)
+		}
+		rawData[rawRel] = rb
+		kept[part[3]] = true
+		if part[4] != "steer.ndjson" {
+			continue
+		}
+		for i, ln := range bytes.Split(bytes.TrimSuffix(rb, []byte("\n")), []byte("\n")) {
+			var h struct {
+				PromptID *string `json:"prompt_id"`
+			}
+			if err := json.Unmarshal(ln, &h); err != nil {
+				t.Fatalf("raw file %d line %d: %v", n+1, i+1, err)
+			}
+			if h.PromptID != nil {
+				kept[*h.PromptID] = true
+			}
+		}
+	}
+	if !strings.Contains(strings.Join(strings.Fields(string(prov)), " "), fmt.Sprintf("the cut keeps %d:", len(kept))) {
+		t.Fatalf("the raw set has %d ids the cut keeps, and PROVENANCE.txt states another count", len(kept))
+	}
+	realID, pairs := map[string]string{}, []string{}
+	for n, id := range slices.Sorted(maps.Keys(kept)) {
+		ph := fmt.Sprintf("00000000-0000-4000-8000-%012x", n+1)
+		realID[ph] = id
+		pairs = append(pairs, id, ph)
+	}
+	toPlaceholders := strings.NewReplacer(pairs...)
 	cutSums, err := os.ReadFile(filepath.Join(root, "SHA256SUMS.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -1752,20 +1803,13 @@ func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
 		if len(part) != 5 {
 			t.Fatalf("%s: not stores/<run>/runs/<session>/<file>", rel)
 		}
-		rawRel := part[1] + "/store/runs/" + part[3] + "/" + part[4]
-		rawSum, ok := rawListed[rawRel]
+		rawRel := part[1] + "/store/runs/" + realID[part[3]] + "/" + part[4]
+		rb, ok := rawData[rawRel]
 		if !ok {
 			t.Errorf("%s: no raw twin", rel)
 			continue
 		}
-		delete(rawListed, rawRel)
-		rb, err := os.ReadFile(filepath.Join(raw, "runs", filepath.FromSlash(rawRel)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if sum := sha256.Sum256(rb); hex.EncodeToString(sum[:]) != rawSum {
-			t.Fatalf("%s: the raw file is not its SHA256SUMS.txt's", rawRel)
-		}
+		delete(rawData, rawRel)
 		cb, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatal(err)
@@ -1778,15 +1822,16 @@ func TestFixtures_DecodeAsTheRawSet(t *testing.T) {
 		}
 		for i := range cl {
 			ce, cok, cerr := decodeLine(part[4], cl[i])
-			re, rok, rerr := decodeLine(part[4], rl[i])
+			re, rok, rerr := decodeLine(part[4], []byte(toPlaceholders.Replace(string(rl[i]))))
 			if cok != rok || (cerr == nil) != (rerr == nil) || !reflect.DeepEqual(ce, re) {
 				t.Errorf("%s line %d decodes otherwise than its raw line", rel, i+1)
 			}
 		}
 		files, lines = files+1, lines+len(cl)
 	}
-	for _, rawRel := range slices.Sorted(maps.Keys(rawListed)) {
-		t.Errorf("%s: a raw file with no fixture", rawRel)
+	for _, rawRel := range slices.Sorted(maps.Keys(rawData)) {
+		run, inStore, _ := strings.Cut(rawRel, "/store/")
+		t.Errorf("stores/%s/%s: a raw file with no fixture", run, toPlaceholders.Replace(inStore))
 	}
 	t.Logf("%d fixture files, %d lines, decode as the raw set's", files, lines)
 }
