@@ -43,7 +43,8 @@ const (
 	clearLinkName = "link-"
 )
 
-// meetClear is one side of the /clear rendezvous in dir. The two hooks of a
+// meetClear is one side of the /clear rendezvous in dir, a folder that
+// already exists (MeetClear makes it with MkdirExact). The two hooks of a
 // /clear share no id (SessionEnd carries the old session's, SessionStart the
 // new one's) and the hooks docs do not order them. So each side leaves an
 // arm, <kind>-<its id>, then lists dir, and links only on an unambiguous
@@ -74,9 +75,6 @@ func meetClear(dir string, side ClearSide, self string, now time.Time) (ClearLin
 		mine, theirs = clearStartArm, clearEndArm
 	default:
 		return ClearLink{}, false, nil
-	}
-	if err := os.MkdirAll(dir, dirMode); err != nil {
-		return ClearLink{}, false, err
 	}
 	arm := filepath.Join(dir, mine+self)
 	f, err := os.OpenFile(arm, os.O_CREATE|os.O_WRONLY, fileMode)
