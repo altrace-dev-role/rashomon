@@ -10,6 +10,16 @@ import "github.com/altrace-dev-role/rashomon/internal/store"
 // sets it.
 var ConsentSessionContent func(root string) (bool, error)
 
+// ConsentScopeOnFile is consent.ScopeOnFile, the highest scope_version on
+// file, which cmd/rashomon sets before any hook runs, beside
+// ConsentSessionContent and for its reason: importing internal/consent here
+// would be a cycle. The overlay writer asks it once per call, and only for
+// a reader that states the first scope its edits are kept from
+// (lang.KeptFrom); a Go edit never asks. Nil, in a test that builds a probe
+// without it, keeps nothing of such a reader's files; the binary always
+// sets it.
+var ConsentScopeOnFile func(root string) (int, error)
+
 // syncSessionContent sets root's session-content marker
 // (store.FileSessionContent) to consent.json's answer, and reports whether it
 // could. The SessionStart probe calls it, once per session, beside

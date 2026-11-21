@@ -38,7 +38,9 @@ var ubPyUnit = graph.UnitID(pylite.Lang, ubPyDir)
 // ubPySession is ubPostSession at record scope v5 over planHookProject with
 // a py unit added: the configuration declares ubPyDir, the index holds
 // ubPyHeld under it at the index's own commit, the header names producer as
-// its py producer ("" for none), and both .py files are on disk.
+// its py producer ("" for none), both .py files are on disk, and a yes on
+// file of 9 (ubPyYes), the scope pylite states its files kept from
+// (lang.KeptFrom), so a .py edit passes the gate (PY-K).
 func ubPySession(t *testing.T, producer string) *planSession {
 	t.Helper()
 	s := ubPostSession(t, store.RecordScopeV5)
@@ -69,6 +71,7 @@ func ubPySession(t *testing.T, producer string) *planSession {
 			t.Fatal(err)
 		}
 	}
+	ubPyYes(t, s, 9)
 	return s
 }
 

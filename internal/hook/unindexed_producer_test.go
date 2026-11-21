@@ -12,14 +12,17 @@ import (
 
 // TestUnindexedLanguage_AnOlderReadersIndexIsUnindexed: under an index
 // whose header names a py producer other than this build's reader's
-// (pylite/1), with a configuration that declares a py unit, an edit of a
-// .py file says the language's line as a system message alone, once in the
-// session, and keeps no overlay group: that index's py records are another
-// reader's, and an overlay over them would mix the two readers' ids. The
-// line holds no byte of the header. Break: test only that the header names
-// py (the edit is overlaid, a group is kept, and nothing is said), or print
-// the header's string.
+// (pylite/1), with a configuration that declares a py unit, and a yes on
+// file of 9 (the scope pylite states its files kept from, lang.KeptFrom, so
+// the edit passes the gate: keptGoEdit, PY-K), an edit of a .py file
+// says the language's line as a system message alone, once in the session,
+// and keeps no overlay group: that index's py records are another reader's,
+// and an overlay over them would mix the two readers' ids. The line holds
+// no byte of the header. Break: test only that the header names py (the
+// edit is overlaid, a group is kept, and nothing is said), or print the
+// header's string.
 func TestUnindexedLanguage_AnOlderReadersIndexIsUnindexed(t *testing.T) {
+	cg2Scope(t, 9, nil)
 	f := newOvFix(t, "1\n")
 	cfg := filepath.Join(f.repo, filepath.FromSlash(index.ConfigFile))
 	if err := os.WriteFile(cfg, []byte(`{"units": [{"path": "inv", "modules": ["inv"], "lang": "py"}]}`+"\n"), 0o644); err != nil {

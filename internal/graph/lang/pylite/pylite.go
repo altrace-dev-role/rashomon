@@ -85,10 +85,31 @@ func (Resolver) Lang() string { return Lang }
 // header names any other is read as holding no py records.
 func (Resolver) Producer() string { return provExtractor + "/" + provVersion }
 
-// SessionKept is false: the consent text names no Python file among what a
-// yes keeps of a session's edits, so a .py edit keeps nothing in the
-// session graph log (lang.Kept).
-func (Resolver) SessionKept() bool { return false }
+// SessionKeptScope is the first consent scope whose screen names a .py file
+// among what a yes keeps of a session's edits ("for each Write, Edit or
+// MultiEdit there of a file in a language the index of that repository was
+// built to read"): under a yes below it a .py edit keeps nothing in the
+// session graph log, whatever a later screen says.
+const SessionKeptScope = 9
+
+// sessionKeptAttrs is what the session graph log holds of a .py group's
+// records (lang.KeptFrom), each a name the screen of SessionKeptScope
+// states: the file's SHA-256 and module, each declaration's kind and line,
+// each call's line. The counts it names, of a declaration's parameters and
+// of a call's arguments, are not kept in 1.0, and no doc text is written.
+// Read only; a package slice, so no call allocates it.
+var sessionKeptAttrs = []string{"node file digest", "node file module", "node sym symkind", "node sym line", "edge calls line"}
+
+// SessionKept is true: the consent text from SessionKeptScope on names the
+// files of each language an index was built to read, .py among them
+// (lang.Kept).
+func (Resolver) SessionKept() bool { return true }
+
+// SessionKeptFrom is SessionKeptScope (lang.KeptFrom).
+func (Resolver) SessionKeptFrom() int { return SessionKeptScope }
+
+// SessionKeptAttrs is sessionKeptAttrs (lang.KeptFrom).
+func (Resolver) SessionKeptAttrs() []string { return sessionKeptAttrs }
 
 // Claims is every .py file.
 func (Resolver) Claims(_, rel string) bool { return strings.HasSuffix(rel, ".py") }

@@ -239,6 +239,19 @@ func ScopeCovered(root string) (bool, error) {
 	return ok && best >= disclose.ScopeVersion, nil
 }
 
+// ScopeOnFile is the highest scope_version on file, the reading
+// SessionContent and ScopeCovered take: 0 with no record, and 0 with the
+// error for a file that cannot be read. A later record of a lower scope
+// never takes it back.
+func ScopeOnFile(root string) (int, error) {
+	recs, err := Read(root)
+	if err != nil {
+		return 0, err
+	}
+	best, _ := maxBy(recs, func(r Record) int { return r.ScopeVersion })
+	return best, nil
+}
+
 // LastAccepted is the latest record written by an act of consent -- watch,
 // consent or a plugin enable -- the record the consent screen's CHANGED SINCE
 // block compares this build against. ok is false when there is none.

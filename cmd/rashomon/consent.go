@@ -124,16 +124,19 @@ func printFull(stdout io.Writer) error {
 	return err
 }
 
-// wireConsentViews hands the hook package consent.json's four readers,
+// wireConsentViews hands the hook package consent.json's five readers,
 // which it cannot import without a cycle: the SessionStart probe syncs the
 // record_scope, steer_disclosure and session_content markers through three,
-// and SessionEnd asks the fourth whether the bodies unit is granted. main
-// calls it before any hook runs.
+// SessionEnd asks the fourth whether the bodies unit is granted, and the
+// overlay writer asks the fifth for the highest scope on file when the
+// reader of an edited file states the first scope its files are kept from
+// (lang.KeptFrom). main calls it before any hook runs.
 func wireConsentViews() {
 	hook.ConsentRecordScope = consent.RecordScope
 	hook.ConsentSteerDisclosure = consent.SteerDisclosure
 	hook.ConsentSessionContent = consent.SessionContent
 	hook.ConsentHas = consent.Has
+	hook.ConsentScopeOnFile = consent.ScopeOnFile
 }
 
 // consentAppendError is the consent command's message for an Append error.
