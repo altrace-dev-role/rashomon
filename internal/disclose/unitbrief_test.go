@@ -60,9 +60,10 @@ func TestUB12b_ScreenSaysEachUnitsBriefIsKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	const clause = "under unitbrief/<session>, the brief for the first edit in each unit the selection's lines lie in, up to eight units"
-	// The post hook reads a Go unit's brief after the first edit in it
-	// (card D4), and only a Go file's: the sentence says which.
-	const readsAfter = "which the hook reads after that edit when it is to a Go file"
+	// The post hook reads a unit's brief after the first edit in it (card
+	// D4), when the edited file is in a language the index reads: the
+	// sentence says which.
+	const readsAfter = "which the hook reads after that edit when it is to a file in a language the index reads"
 	said := 0
 	for _, p := range inv.Paragraphs {
 		i := strings.Index(p.Text, clause)

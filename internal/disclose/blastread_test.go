@@ -33,6 +33,39 @@ func TestAI1_ScreenSaysTheGraphIsReadAfterAnEdit(t *testing.T) {
 	}
 }
 
+// TestAI1_ScreenSaysTheRepositoryGraphIsReadAfterAnEdit: beside the platform
+// graph read, the read-in-memory list names the read after an edit of the
+// repository graph and the edited file (up to 1 MiB), which names the
+// functions that call the edited one, and the blast-read marker row names
+// that read's markers. Break: drop the clause, and the hook reads two files
+// the screen does not name.
+func TestAI1_ScreenSaysTheRepositoryGraphIsReadAfterAnEdit(t *testing.T) {
+	inv, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const clause = "to name the packages that call the edited one, or the repository graph and the edited file (up to 1 MiB), " +
+		"to name the functions that call the edited one."
+	said := 0
+	for _, p := range inv.Paragraphs {
+		if !strings.Contains(p.Text, clause) {
+			continue
+		}
+		said++
+		if p.Owner != OwnerVerify || p.Cite != CiteSection2 || !strings.HasPrefix(p.Text, "READ IN MEMORY, NEVER STORED:") {
+			t.Errorf("the clause is in %s/%s %q, want the read-in-memory list (%s/%s)", p.Owner, p.Cite, p.Text, OwnerVerify, CiteSection2)
+		}
+	}
+	if said != 1 {
+		t.Errorf("%d paragraphs name the repository graph read after an edit, want 1", said)
+	}
+	rows := blastReadFiles()
+	if len(rows) != 1 || !strings.Contains(rows[0].Purpose, "or per function or method and repository graph") ||
+		!strings.Contains(rows[0].Holds, "or of the function or method and the repository graph's commit and record count") {
+		t.Errorf("the blast-read marker row does not name the repository graph read's markers: %+v", rows)
+	}
+}
+
 // TestAI2_ScreenSaysPgraphWritesEachSymbolsPlace (W-M1.2): pgraph writes a
 // third file under .pgraph, each declared symbol's file, line and doc
 // sentence, that rashomon reads with the log and the digests

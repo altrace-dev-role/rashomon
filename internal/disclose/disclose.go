@@ -85,8 +85,20 @@ import (
 // clear directory and when it is removed; and a paragraph of its own says
 // the answers on file are kept unsigned, where a program that runs as the
 // user can change them (CONSENT-GATE1).
+// 9 changes the words: the KEPT paragraph names, for each edit in an
+// indexed repository of a file in a language the index of that repository
+// was built to read (6 to 8 named a Go file alone), each declaration with
+// its kind (a class among them), its line and the number of parameters it
+// takes, the line and number of arguments of each call, the names the file
+// takes from each import, and the module of the file; the read-in-memory
+// list adds, after an edit, the repository graph and the edited file (up
+// to 1 MiB), to name the functions that call the edited one; the
+// never-stored paragraph says edits for Go edits and symbols for Go
+// symbols; the unit brief is read after an edit of a file in a language
+// the index reads; the short screen says each edit for each Go edit; and
+// the plugin's description names such an edit.
 // Pinned by TRU-8.
-const ScopeVersion = 8
+const ScopeVersion = 9
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
 var ErrNotImplemented = errors.New("disclose: not implemented in this build")
