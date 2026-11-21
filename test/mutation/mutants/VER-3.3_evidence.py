@@ -61,8 +61,11 @@ m("VER-3.3 Gate B: the gate fires on an unmet kind with no done claim", F,
   '\t\tif c.Strict && c.Class == verify.ClaimDone {\n', '\t\tif c.Strict || c.Class == verify.ClaimDone {\n', "TestEV6_")
 m("VER-3.3 Gate B: the clause lists one kind when two are unmet", F,
   '\tfor _, e := range unmet {\n', '\tfor _, e := range unmet[:min(1, len(unmet))] {\n', "TestEV6_")
+# The clause is emptied through unmet[:0], not cut out: unmet is bound at the
+# top of DoneFlag and the clause is its only use, so a break that removed the
+# call would leave it declared and not used, and the build would fail.
 m("VER-3.3 the clause dropped", F,
-  ' + "." + expectedClause(unmet) + "\\n" + ', ' + "." + "\\n" + ', "TestEV6_")
+  ' + "." + expectedClause(unmet) + "\\n" + ', ' + "." + expectedClause(unmet[:0]) + "\\n" + ', "TestEV6_")
 
 # 3.3b: a met run row cites its supplying gate's green run (D143).
 m("VER-3.3 a met run row cites nothing", E, "Evidence: expectedCites(snap, e)})", "Evidence: []int64{}})",
