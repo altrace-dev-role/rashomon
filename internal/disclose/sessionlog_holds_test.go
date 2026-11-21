@@ -13,12 +13,13 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 )
 
 // What the session log keeps (W-M2.11 step 1d): the graph/*.jsonl row's
-// Holds names each field a line of the log stores, a node's attributes by
-// key, and the fields the log keeps empty are empty in a log the real chain
-// writes.
+// Holds names each field a line of the log stores, the attributes of a node
+// and of an edge by key, and the fields the log keeps empty are empty in the
+// logs the real chains write.
 
 // slLine is a line of the session log as the loader reads it.
 type slLine struct {
@@ -30,24 +31,34 @@ type slLine struct {
 var slLeafTypes = []reflect.Type{reflect.TypeFor[graph.Rev](), reflect.TypeFor[graph.Prov]()}
 
 // slAttrKeys is each key a node's attributes take in the log: the group
-// marker's, the Go overlay's file and symbol nodes', and the mark of a group
-// cut at the cap.
+// marker's, the Go overlay's file and symbol nodes', the Python overlay's
+// module of a file and line of a declaration, and the mark of a group cut at
+// the cap. Typed from the row's Holds, never read from a reader's list.
 var slAttrKeys = []string{"session_id", "file", "kind", "seq", "tool_use_id", "digest", "count", "carried", "of_seq",
-	"lang", "name", "symkind", "sig", "doc", "calls", "_cut"}
+	"lang", "name", "symkind", "sig", "doc", "calls", "_cut", "module", "line"}
+
+// slEdgeAttrKeys is each key an edge's attributes take in the log: the line
+// of a call, which the Python overlay's log keeps. Typed from the row's
+// Holds, never read from a reader's list.
+var slEdgeAttrKeys = []string{"line"}
 
 // slLeaves is each leaf of typ as its JSON spells it, under prefix, as
 // cbLeaves in cmd/rashomon walks the conflict base: an embedded struct with
 // no name adds none, a pointer or a slice is its element, a struct is its
 // fields unless slLeafTypes keeps it whole, a node's attributes are one leaf
-// per slAttrKeys key, and anything else (a string, a number, a map) is one
-// leaf.
+// per slAttrKeys key and an edge's one per slEdgeAttrKeys key, and anything
+// else (a string, a number, a map) is one leaf.
 func slLeaves(typ reflect.Type, prefix string) []string {
 	for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice {
 		typ = typ.Elem()
 	}
-	if prefix == "Node.Attrs" {
+	if prefix == "Node.Attrs" || prefix == "Edge.Attrs" {
+		keys := slAttrKeys
+		if prefix == "Edge.Attrs" {
+			keys = slEdgeAttrKeys
+		}
 		var out []string
-		for _, k := range slAttrKeys {
+		for _, k := range keys {
 			out = append(out, prefix+"."+k)
 		}
 		return out
@@ -114,6 +125,8 @@ var slHolds = map[string]string{
 	"Node.Attrs.doc":         "the first sentence of its doc comment",
 	"Node.Attrs.calls":       "the names a function or method calls",
 	"Node.Attrs._cut":        "whether its declarations were cut at the cap",
+	"Node.Attrs.module":      "the module of the file",
+	"Node.Attrs.line":        "the line of each declaration",
 	"Node.Tier":              "its tier, confidence and status",
 	"Node.Conf":              "its tier, confidence and status",
 	"Node.Status":            "its tier, confidence and status",
@@ -122,7 +135,7 @@ var slHolds = map[string]string{
 	"Edge.Src":               "each record by its ids",
 	"Edge.Pred":              "its kind or predicate",
 	"Edge.Dst":               "each record by its ids",
-	"Edge.Attrs":             "",
+	"Edge.Attrs.line":        "the line of each declaration and of each call",
 	"Edge.Tier":              "its tier, confidence and status",
 	"Edge.Conf":              "its tier, confidence and status",
 	"Edge.Status":            "its tier, confidence and status",
@@ -132,10 +145,10 @@ var slHolds = map[string]string{
 }
 
 // slEmpty is the leaves the log keeps empty, sorted: a function's signature,
-// where a reader read a record, an edge's attributes and Certain, the
-// header's record count, its refused files (an overlay refuses none) and
-// its directories left out (an overlay walks none).
-var slEmpty = []string{"Edge.Attrs", "Edge.Certain", "Edge.Prov", "Node.Attrs.sig", "Node.Prov", "left_out",
+// where a reader read a record, an edge's Certain, the header's record
+// count, its refused files (an overlay refuses none) and its directories
+// left out (an overlay walks none).
+var slEmpty = []string{"Edge.Certain", "Edge.Prov", "Node.Attrs.sig", "Node.Prov", "left_out",
 	"left_out_dirs.path", "left_out_dirs.why", "records", "refused", "refused_files.line", "refused_files.path",
 	"refused_files.reason"}
 
@@ -181,8 +194,8 @@ type slWitnessLine struct {
 }
 
 // TestSessionLog_HoldsNamesEachStoredField: every leaf of a session log line
-// (graph.Header, and graph.Record's Node and Edge with Rev, Prov and an
-// edge's attributes taken whole and a node's by key) has its words in the
+// (graph.Header, and graph.Record's Node and Edge with Rev and Prov taken
+// whole and the attributes of each by key) has its words in the
 // row's Holds, or is one the log keeps empty, and the row's NeverHolds names
 // the signature. Witnesses: with no Holds text every named leaf faults, and
 // one field more gives exactly one fault, naming it.
@@ -292,12 +305,127 @@ func slSource() []byte {
 	return []byte(b.String())
 }
 
-// TestSessionLog_WrittenLogKeepsNoSignatureOrProvenance: the real chain
-// (gopg's Overlay, BuildOverlayGroup, AppendOverlayGroup) writes a log in
-// which every key path is one slHolds names, every leaf it names with words
-// is written, every leaf kept empty is empty, and the planted signature and
-// the reader's name reach no line. Witness: the resolver's records carry a
-// sig with the planted word and a Prov, and keep both after the build.
+// slPySource is a Python file with a function whose parameter names are a
+// planted word and which calls another function of the file.
+func slPySource() []byte {
+	return []byte("def joined(slsigword, sep):\n    return helper(slsigword)\n\n\ndef helper(words):\n    return words\n")
+}
+
+// slKeep is a copy of recs whose every node and edge holds only the
+// attributes kept names for its kind, each entry "<record> <kind> <name>"
+// (lang.KeptFrom): the rule the hook's writer applies to a stating reader's
+// records before the build (keepAttrs in internal/hook, not exported). recs
+// is not written.
+func slKeep(recs []graph.Record, kept []string) []graph.Record {
+	cut := func(part, kind string, attrs map[string]string) map[string]string {
+		var out map[string]string
+		for name, val := range attrs {
+			if !slices.Contains(kept, part+" "+kind+" "+name) {
+				continue
+			}
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[name] = val
+		}
+		return out
+	}
+	out := make([]graph.Record, 0, len(recs))
+	for _, rec := range recs {
+		switch {
+		case rec.Node != nil:
+			node := *rec.Node
+			node.Attrs = cut("node", node.Kind, node.Attrs)
+			out = append(out, graph.Record{Node: &node})
+		case rec.Edge != nil:
+			edge := *rec.Edge
+			edge.Attrs = cut("edge", string(edge.Pred), edge.Attrs)
+			out = append(out, graph.Record{Edge: &edge})
+		default:
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+// slPyLog is the log the Python chain writes of slPySource with kept as the
+// reader's list: pylite's Overlay, slKeep, BuildOverlayGroup and
+// AppendOverlayGroup. Premise: one of the reader's records carries a sig
+// with the planted word.
+func slPyLog(t *testing.T, kept []string) []byte {
+	t.Helper()
+	const rel = "app/a.py"
+	src := slPySource()
+	reader := pylite.Resolver{Units: []pylite.Unit{{Path: "app"}}}
+	recs, err := reader.Overlay(rel, src, graph.RevCommit("c1"), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigs := 0
+	for _, rec := range recs {
+		if rec.Node != nil && strings.Contains(rec.Node.Attrs["sig"], "slsigword") {
+			sigs++
+		}
+	}
+	if sigs != 1 {
+		t.Fatalf("premise: %d of the Python reader's records carry the planted sig, want 1", sigs)
+	}
+	group := graph.OverlayGroup{Session: "s1", ToolUseID: "toolu_slpy", Kind: graph.OverlayLanded, File: graph.FileID(rel),
+		Digest: graph.ContentDigest(src), Commit: "c1", Seq: 3, OfSeq: 2, Carried: reader.OverlayCarried(), Recs: slKeep(recs, kept)}
+	sessLog := graph.OpenSessionLog(t.TempDir(), "github.com/x/y", graph.RevCommit("c1"), true)
+	if err := sessLog.AppendOverlayGroup(graph.BuildOverlayGroup(group), nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(sessLog.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// slLogFaults is each fault of the lines of logs, read as one, against
+// slHolds, sorted: a leaf kept empty that holds a value, a key path slHolds
+// does not name, and a leaf it names with words that no line writes.
+func slLogFaults(t *testing.T, logs ...[]byte) []string {
+	t.Helper()
+	paths := map[string]bool{}
+	var held, faults []string
+	for _, data := range logs {
+		for _, line := range bytes.Split(bytes.TrimSuffix(data, []byte{'\n'}), []byte{'\n'}) {
+			var v any
+			if err := json.Unmarshal(line, &v); err != nil {
+				t.Fatalf("a log line does not read back: %v", err)
+			}
+			slJSONPaths(v, "", paths, &held)
+		}
+	}
+	for _, f := range held {
+		faults = append(faults, "the written log keeps a field it keeps empty: "+f)
+	}
+	for p := range paths {
+		if _, ok := slHolds[p]; !ok {
+			faults = append(faults, "the written log stores "+p+", which slHolds does not name")
+		}
+	}
+	for leaf, words := range slHolds {
+		if words != "" && !paths[leaf] {
+			faults = append(faults, "witness: the written log has no "+leaf)
+		}
+	}
+	slices.Sort(faults)
+	return faults
+}
+
+// TestSessionLog_WrittenLogKeepsNoSignatureOrProvenance: the real chains,
+// Go's (gopg's Overlay, BuildOverlayGroup, AppendOverlayGroup) and Python's
+// (pylite's Overlay, its records cut to the reader's list of the attributes
+// kept as the hook's writer cuts them, then the same two), write logs in
+// which, read as one, every key path is one slHolds names, every leaf it
+// names with words is written, every leaf kept empty is empty, and in each
+// the planted signature and the reader's name reach no line. Witnesses: the
+// Go resolver's records carry a sig with the planted word and a Prov, and
+// keep both after the build; the reader's list with one entry more, the
+// argc of a call, gives exactly one fault, naming it.
 func TestSessionLog_WrittenLogKeepsNoSignatureOrProvenance(t *testing.T) {
 	const rel = "pkg/a.go"
 	src := slSource()
@@ -337,30 +465,20 @@ func TestSessionLog_WrittenLogKeepsNoSignatureOrProvenance(t *testing.T) {
 			t.Errorf("the log holds %q", w)
 		}
 	}
-	paths := map[string]bool{}
-	var faults []string
-	lines := bytes.Split(bytes.TrimSuffix(data, []byte{'\n'}), []byte{'\n'})
-	for _, line := range lines {
-		var v any
-		if err := json.Unmarshal(line, &v); err != nil {
-			t.Fatalf("a log line does not read back: %v", err)
-		}
-		slJSONPaths(v, "", paths, &faults)
-	}
-	for _, f := range faults {
-		t.Errorf("the written log keeps a field it keeps empty: %s", f)
-	}
-	for p := range paths {
-		if _, ok := slHolds[p]; !ok {
-			t.Errorf("the written log stores %s, which slHolds does not name", p)
+	pyData := slPyLog(t, pylite.Resolver{}.SessionKeptAttrs())
+	for _, w := range []string{"slsigword", "pylite"} {
+		if bytes.Contains(pyData, []byte(w)) {
+			t.Errorf("the Python log holds %q", w)
 		}
 	}
-	for leaf, words := range slHolds {
-		if words != "" && !paths[leaf] {
-			t.Errorf("witness: the written log has no %s", leaf)
-		}
+	for _, f := range slLogFaults(t, data, pyData) {
+		t.Error(f)
 	}
-	if len(lines) < graph.MaxOverlayRecords {
-		t.Errorf("witness: %d lines, want the cut group's %d and more", len(lines), graph.MaxOverlayRecords)
+	argc := append(slices.Clone(pylite.Resolver{}.SessionKeptAttrs()), "edge calls argc")
+	if f := slLogFaults(t, data, slPyLog(t, argc)); len(f) != 1 || f[0] != "the written log stores Edge.Attrs.argc, which slHolds does not name" {
+		t.Errorf("witness: the reader's list with the argc of a call gives faults %q, want exactly one naming Edge.Attrs.argc", f)
+	}
+	if n := len(bytes.Split(bytes.TrimSuffix(data, []byte{'\n'}), []byte{'\n'})); n < graph.MaxOverlayRecords {
+		t.Errorf("witness: %d lines, want the cut group's %d and more", n, graph.MaxOverlayRecords)
 	}
 }
