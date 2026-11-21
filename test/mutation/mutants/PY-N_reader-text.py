@@ -1,7 +1,7 @@
 # PY-N, the Python reader keeps no source text: a constant is its name and
 # its line, a signature names its parameters only, a call keeps its argument
 # count and its line and no keyword text, no record comes from a string
-# literal, the reader is pylite/3 so an edit under an index of pylite/2 says
+# literal, the reader is pylite/4 so an edit under an index of pylite/2 says
 # the unindexed line, rashomon graph index writes the index whole, and the
 # inside of each string and comment is blanked before any line is read, a
 # string in one quote that never closes ending at its line end. One row per
@@ -22,7 +22,7 @@ m("PY-N a signature keeps defaults and annotations", scan,
   "shown = append(shown, paramName(p))", "shown = append(shown, p)",
   "TestPYN_ASignatureNamesItsParametersOnly")
 m("PY-N the reader stays pylite/2", pylite,
-  '\tprovVersion   = "3"\n', '\tprovVersion   = "2"\n',
+  '\tprovVersion   = "4"\n', '\tprovVersion   = "2"\n',
   "TestPYN_AnIndexOfTheSecondPyliteSaysTheUnindexedLine")
 m("PY-N the SQL loop is put back, a table read from a string", pylite,
   "\trecs = append(recs, r.extras(f, file, rev, defConf, algo)...)\n",

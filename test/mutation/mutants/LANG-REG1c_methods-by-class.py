@@ -4,7 +4,7 @@
 # or cls.name() call in a method resolves in the caller's own class and
 # nowhere else; a bare name in a method resolves among the module's defs
 # only; a name imported from a known unit is guessed a class by its CapWords
-# case; a def nested in a def's body is that body; the reader is pylite/3. A
+# case; a def nested in a def's body is that body; the reader is pylite/4. A
 # class is no node yet. One row per Break clause of the tests in
 # internal/graph/lang/pylite/scope_test.go and one per other place a rule is
 # written, each killed by the test it names. Written, not run: for the end
@@ -64,5 +64,5 @@ m("LANG-REG1c a call of an imported CapWords name is keyed a function", pylite,
   "TestLANGREG1_ACapWordsNameGuessesAClass")
 
 m("LANG-REG1c the reader stays pylite/1", pylite,
-  '\tprovVersion   = "3"\n', '\tprovVersion   = "1"\n',
+  '\tprovVersion   = "4"\n', '\tprovVersion   = "1"\n',
   "TestLANGREG1_TheReaderIsPyliteThree")

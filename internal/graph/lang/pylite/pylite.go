@@ -33,10 +33,13 @@ const Lang = "py"
 // names the producer of its py records as the two joined by a slash. The
 // third version writes no text of a value, a default, an annotation, a
 // keyword argument or a string literal, and no record from a string
-// literal; an index an earlier version wrote may hold such text.
+// literal; an index an earlier version wrote may hold such text. The fourth
+// version writes the line each def's body ends on, and reads a lambda's
+// commas as its own, so a sig, a def's bounds and a call's argc count a
+// lambda once; an index the third version wrote split it.
 const (
 	provExtractor = "pylite"
-	provVersion   = "3"
+	provVersion   = "4"
 )
 
 // ErrParse is the refusal for content the reduced extractor cannot read:
@@ -335,7 +338,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 		}
 		recs = append(recs,
 			graph.Record{Node: &graph.Node{ID: id, Kind: "sym", Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo,
-				Attrs: map[string]string{"symkind": kind, "sig": d.sig, "arity_min": strconv.Itoa(d.min), "arity_max": d.max, "line": strconv.Itoa(d.line)}}},
+				Attrs: map[string]string{"symkind": kind, "sig": d.sig, "arity_min": strconv.Itoa(d.min), "arity_max": d.max, "line": strconv.Itoa(d.line), "end": strconv.Itoa(d.end)}}},
 			graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Declares, Dst: id, Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 	}
 	for _, c := range f.consts {
