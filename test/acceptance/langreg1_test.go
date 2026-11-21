@@ -651,8 +651,11 @@ func lrCallGroups(t *testing.T, log, id string) int {
 // kept (consent.SessionContent), and a .py edit after it keeps no group: a
 // yes of 9 keeps a Python file's edits only while the answer that keeps the
 // session's content stands. Base: the scope-9 case of
-// TestLANGREG1_APythonEditIsKeptFromAYesOfNine. Break: keep a .py edit on
-// the scope on file alone, past the session-content marker.
+// TestLANGREG1_APythonEditIsKeptFromAYesOfNine. The v4 record sets the
+// record-scope marker to v4 and removes the session-content marker, so two
+// terms of the overlay gate close it and no single one turns this test: it
+// claims no Break of its own.
+// TestLANGREG1_APythonEditUnderALaggingMarkerKeepsNothing judges the marker.
 func TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing(t *testing.T) {
 	e := newSteerEnv(t)
 	dir, hdr := e.lrProject()
@@ -681,6 +684,50 @@ func TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing(t *testing.T) {
 	log, _ = e.lrLog(hdr)
 	if n := lrCallGroups(t, log, "toolu_w2"); n != 0 {
 		t.Errorf("the session graph log keeps %d groups of the .py edit after the v4 record; want none:\n%s", n, log)
+	}
+}
+
+// TestLANGREG1_APythonEditUnderALaggingMarkerKeepsNothing: in the indexed
+// py-unit project, a yes of 9 at record scope v5, appended through the
+// consent package's Append, keeps a .py edit's declared and landed groups;
+// then the session-content marker is removed through
+// store.RemoveSessionContentMarker, the removal Append starts with, which is
+// the state a failed marker write leaves (ErrSessionContentMarker: the line
+// on file, the marker not). The consent on file still keeps the session's
+// content (consent.SessionContent) and the record-scope marker still reads
+// v5, so the marker is the one term of the overlay gate that closes it, and
+// a .py edit after the removal, under a new tool-use id, keeps no group: a
+// Python file's edits are kept only while the session-content marker is on
+// file. No SessionStart runs between the edits, so nothing writes the
+// marker again. Base: the first edit, with the marker, keeps the declared
+// and landed groups. Break: keep a .py edit's group without the
+// session-content marker, and the edit after the removal keeps its declared
+// and landed groups.
+func TestLANGREG1_APythonEditUnderALaggingMarkerKeepsNothing(t *testing.T) {
+	e := newSteerEnv(t)
+	dir, hdr := e.lrProject()
+	e.lrAppend(9, consent.RecordScopeV5)
+	e.lrEdit(dir, "toolu_lag1", "inv/core/calc.py", "sum")
+	log, ok := e.lrLog(hdr)
+	if !ok || lrCallGroups(t, log, "toolu_lag1") != 2 {
+		t.Fatalf("base: the .py edit with the session-content marker kept no declared and landed group:\n%s", log)
+	}
+	if err := store.RemoveSessionContentMarker(e.home); err != nil {
+		t.Fatal(err)
+	}
+	if store.SessionContentMarker(e.home) {
+		t.Fatal("premise: the session-content marker still reads on after its removal")
+	}
+	if on, err := consent.SessionContent(e.home); !on || err != nil {
+		t.Fatalf("premise: after the marker's removal the consent on file no longer keeps the session's content: %v (%v)", on, err)
+	}
+	if scope, err := store.RecordScopeMarker(e.home); scope != store.RecordScopeV5 || err != nil {
+		t.Fatalf("premise: the record-scope marker reads %q (%v) after the session-content marker's removal; want %s", scope, err, store.RecordScopeV5)
+	}
+	e.lrEdit(dir, "toolu_lag2", "inv/core/calc.py", "sum")
+	log, _ = e.lrLog(hdr)
+	if n := lrCallGroups(t, log, "toolu_lag2"); n != 0 {
+		t.Errorf("the session graph log keeps %d groups of the .py edit under a removed session-content marker; want none:\n%s", n, log)
 	}
 }
 
