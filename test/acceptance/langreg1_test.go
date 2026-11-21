@@ -529,10 +529,12 @@ const lrGoOnly = `{"units": [{"path": ".", "lang": "go"}]}` + "\n"
 // declared (two .py files are edited), or the configuration is removed,
 // which is zero py units and so this line, not the unreadable-configuration
 // one. Base: no line. Breaks: key the line by the file, and the second .py
-// file prints it again; say that a missing configuration was not read, and
-// the case with none prints that line too; say the line and go on to build
-// the overlay, and the log holds the file's group; leave the edit's gate
-// open, and the post counts a unit-brief miss for the py unit.
+// file prints it again; say the line and go on to build the overlay, and the
+// log holds the file's group; leave the edit's gate open, and the post counts
+// a unit-brief miss for the py unit. (A missing configuration read as a
+// refusal is not a Break of this test: an unindexed language stops at its
+// line before the configuration is read. TestWire_NoConfigurationIsNoPythonUnit
+// judges that one.)
 func TestLANGREG1_AnUnindexedLanguageSaysSoOnce(t *testing.T) {
 	for _, c := range []struct {
 		name  string
