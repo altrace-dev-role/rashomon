@@ -268,22 +268,22 @@ const InitBudgetBytes = 64 << 10
 // packages, go1.27.4, none left out), plus two steps of 160 B:
 //
 //	run         head      event     fewest of five (the five readings)
-//	44395980442 8e0d758a  push      66832 [66992 66992 66992 67312 66832]
-//	44395373141 3cdf8f25  push      67152 [67632 67152 67152 67152 67152]
-//	44370773878 adc86fa5  dispatch  66832 [67312 67152 66832 67312 66832]
-//	44363993949 adc86fa5  push      66832 [67312 67152 66832 66832 66992]
-//	44228145319 8fd554ae  push      66832 [66992 66992 66832 66992 66992]
-//	44138516359 837d01b8  push      66832 [67152 66992 66992 66832 66832]
-//	44124261311 16dfa122  push      66832 [67152 66832 66992 66992 66992]
+//	44866986895 c32ac95e  dispatch  67024 [67360 67024 67344 67344 67504]
+//	44863922631 c32ac95e  push      67024 [67184 67184 67184 67024 67344]
+//	44804167633 9a6e359c  push      66864 [67024 67184 67184 66864 67024]
+//	44761672169 bef6cedb  dispatch  66864 [67184 66864 67184 67184 67024]
+//	44736822687 bef6cedb  push      67024 [67024 67024 67184 67184 67024]
+//	44691656668 7dae4f4a  push      66704 [67024 67024 66864 66864 66704]
+//	44685297902 b908ad49  push      67024 [67024 67072 67024 67184 67024]
 //
-// The highest of the seven is 67152. If readings are exchangeable, the next
+// The highest of the seven is 67024. If readings are exchangeable, the next
 // one is the highest of eight with chance 1 in 8, so the highest of seven
 // alone still fails up to one honest run in eight; two steps of 160 B
-// (67152 + 320 = 67472) is a judgement on top of that, not a measurement.
+// (67024 + 320 = 67344) is a judgement on top of that, not a measurement.
 // A change that adds bytes to every process lifts the fewest by as much and
 // still shows. The next move of this bound is a new set of seven runs under
 // the same rule, not one more step.
-const initBudgetDarwinBytes = 67472
+const initBudgetDarwinBytes = 67344
 
 // InitBudget is RES-2's bound on process init for goos: initBudgetDarwinBytes
 // on darwin, InitBudgetBytes everywhere else.
