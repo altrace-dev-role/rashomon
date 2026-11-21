@@ -7,9 +7,9 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// The focused cases of the overview (card RPT-1, ruling x390). Each expected
-// string is a hand-written sentence laid out by the same separate script as
-// the goldens in overview_test.go; none comes from the renderer.
+// The focused cases of the overview (card RPT-1). Each expected string is a
+// hand-written sentence laid out by the same separate script as the goldens
+// in overview_test.go; none comes from the renderer.
 
 // ovHas fails the test for each want that out does not hold.
 func ovHas(t *testing.T, name, out string, wants ...string) {
@@ -102,9 +102,9 @@ func TestRPT1f_FailureItemRows(t *testing.T) {
 }
 
 // TestRPT1g_RecordingHeadingTruthTable: the recording heading is a check only
-// when every clause of ruling x390 holds, and each row below makes one clause
-// false. A row that leaves State verified while a list is not empty pins the
-// overview to read the list itself, not the state alone.
+// when every clause of ovRecordingOf holds, and each row below makes one
+// clause false. A row that leaves State verified while a list is not empty
+// pins the overview to read the list itself, not the state alone.
 func TestRPT1g_RecordingHeadingTruthTable(t *testing.T) {
 	const (
 		ok       = "│ ✓ RECORDING COMPLETE "
@@ -135,6 +135,8 @@ func TestRPT1g_RecordingHeadingTruthTable(t *testing.T) {
 			func(s *Session) {
 				s.Coverage.State, s.Coverage.Reasons = store.StateUnverified, []string{"brand_new_code"}
 			}},
+		{"unverified with no reason", bang, "The record is not verified complete.",
+			func(s *Session) { s.Coverage.State = store.StateUnverified }},
 		{"no transcript", unk, noneRd, func(s *Session) { s.Transcripts = []Transcript{} }},
 		{"transcript missing", unk, noneRd, missing},
 		{"missing from store", bang, disagree,
@@ -371,11 +373,12 @@ func TestRPT1n_KnowledgeBranches(t *testing.T) {
 }
 
 // TestRPT1p_KnownNowCountsWhatIsKnownNow: the Known now row prints the counts
-// the index and the network baseline hold when the report runs (ruling x399
-// item 3). A gate family first seen in this session is listed under Newly
-// observed and may also be counted under Known now; the hosts the session
-// named do not hide the baseline's count; a baseline not read never reads as
-// zero hosts.
+// the index and the network baseline hold when the report runs. A gate family
+// first seen in this session is listed under Newly observed and may also be
+// counted under Known now; the hosts the session named do not hide the
+// baseline's count; where Novelty is not available, for a baseline read and
+// its update refused as for one never located, one fixed sentence says the
+// count is not known, with no Reason and never zero hosts.
 func TestRPT1p_KnownNowCountsWhatIsKnownNow(t *testing.T) {
 	const known = "\nKnown now          2 gate families required (index) and 19 hosts in this project's network baseline.\n"
 	out := ovRender(t, ovA5())
@@ -388,11 +391,70 @@ func TestRPT1p_KnownNowCountsWhatIsKnownNow(t *testing.T) {
 	rep.Sessions[0].Destinations.SSHHosts = []string{"git.example.test"}
 	ovHas(t, "hosts named", ovRender(t, rep), known, "\nHosts              2 named by the calls\n")
 
+	// The second reason is gather's for baseline.ErrTooManyHosts
+	// (baselineErrorReason): the baseline was read and its update refused.
+	for _, reason := range []string{
+		"no store root, so the baseline could not be located",
+		"this session named more hosts than a project baseline can hold, so novelty could not be updated this time",
+	} {
+		rep = ovA5()
+		rep.Sessions[0].Destinations.Novelty = Novelty{Available: false, Reason: reason}
+		out = ovRender(t, rep)
+		ovHas(t, reason, out,
+			"\nKnown now          2 gate families required (index). The host count of the network baseline is not\n"+
+				"                   known. Newest earlier checkpoint: session c7ba1d62, 11-08 13:32. Nothing known\n"+
+				"                   was invalidated.\n")
+		ovLacks(t, reason, out, reason, "hosts in this project's network baseline", "0 hosts", "was not read")
+	}
+}
+
+// TestRPT1t_BranchesNoGoldenReaches: a project with no gate family established
+// still counts the hosts its baseline holds, in the singular for one; one
+// finding that names no gate reads in the singular; a finding in a state recap
+// does not write is named and never counted as resolved; a lesson delivered
+// this session is counted as sent.
+func TestRPT1t_BranchesNoGoldenReaches(t *testing.T) {
+	for _, c := range []struct {
+		hosts int
+		want  string
+	}{
+		{19, "\nKnown now          No gate family established, so every gate is required (index). 19 hosts are in\n" +
+			"                   this project's network baseline. Newest earlier checkpoint: session c7ba1d62,\n" +
+			"                   11-08 13:32. Nothing known was invalidated.\n"},
+		{1, "\nKnown now          No gate family established, so every gate is required (index). 1 host is in this\n" +
+			"                   project's network baseline. Newest earlier checkpoint: session c7ba1d62, 11-08\n" +
+			"                   13:32. Nothing known was invalidated.\n"},
+	} {
+		rep := ovA5()
+		rep.Sessions[0].Knowledge.Retained.Prior = true
+		rep.Sessions[0].Destinations.Novelty.KnownHosts = c.hosts
+		ovHas(t, "no family, baseline read", ovRender(t, rep), c.want)
+	}
+
+	rep := ovA5()
+	a := rep.Sessions[0].Autosteer
+	a.Findings = a.Findings[:1]
+	out := ovRender(t, rep)
+	ovHas(t, "one finding, no gate", out,
+		"\nOutcome verified           !  0 of 1. The 1 finding names no gate, so no run settles it.\n")
+	ovLacks(t, "one finding, no gate", out, "None of the 1 findings")
+
 	rep = ovA5()
-	rep.Sessions[0].Destinations.Novelty = Novelty{Available: false, Reason: "no store root, so the baseline could not be located"}
+	a = rep.Sessions[0].Autosteer
+	a.Findings[0].State, a.Findings[0].ResolvedBy, a.Findings[0].Gate = "resolved", 70, "go test"
+	a.Findings[1].State = "withdrawn"
+	flat := strings.Join(strings.Fields(ovRender(t, rep)), " ")
+	ovHas(t, "a state recap does not write", flat, "Outcome verified ! 1 of 4 resolved by a green run of its gate; "+
+		"2 name no gate, so no run settles them; 1 in a state this build does not read.")
+	ovLacks(t, "a state recap does not write", flat, "2 of 4 resolved")
+
+	rep = ovA5()
+	a = rep.Sessions[0].Autosteer
+	a.Lessons = &AutosteerLessons{Approved: 1}
+	a.Delivered = append(a.Delivered, ovNote("learned-fact", "lesson", 70))
 	out = ovRender(t, rep)
-	ovHas(t, "baseline not read", out,
-		"\nKnown now          2 gate families required (index). The network baseline was not read. Newest\n"+
-			"                   earlier checkpoint: session c7ba1d62, 11-08 13:32. Nothing known was invalidated.\n")
-	ovLacks(t, "baseline not read", out, "hosts in this project's network baseline", "0 hosts")
+	ovHas(t, "lesson sent", out,
+		"\nLessons            1 approved, 0 proposed, 0 demoted (this project). 1 was sent to the agent this\n"+
+			"                   session.\n")
+	ovLacks(t, "lesson sent", out, "None was sent", "No lesson was sent")
 }

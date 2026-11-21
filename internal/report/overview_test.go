@@ -9,8 +9,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// The owner's layout of `rashomon report` (card RPT-1, the layout of
-// 2026-11-21, with the director's ruling x390). Every expected text below is
+// The overview of `rashomon report` (card RPT-1). Every expected text below is
 // written by hand, sentence by sentence, and laid out by a separate script
 // that only wraps, pads and boxes those sentences; none is produced by the
 // renderer: a test whose expected value comes from the function under test
@@ -66,7 +65,7 @@ func ovPrior(project string) *Knowledge {
 		Discovered: []Change{}, Invalidated: []Change{}}
 }
 
-// ovA5 is the session of the owner's image (a5ae68a1, 118 calls, 13
+// ovA5 is the session of the layout's image (a5ae68a1, 118 calls, 13
 // prompts, 5 notes, 4 findings that name no gate, 7 failed calls, 3 inputs
 // changed), redacted as the image was.
 func ovA5() *Report {
@@ -187,9 +186,9 @@ func ovPassed() *Report {
 }
 
 // ovNoTranscript is a session whose coverage reads verified with no
-// transcript read (ruling x390 item 2: report.go adds a transcript reason
-// only inside the loop over the paths), whose one failed call was a lookup,
-// and whose Stop printed the no-gate row.
+// transcript read (report.go adds a transcript reason only inside the loop
+// over the paths), whose one failed call was a lookup, and whose Stop printed
+// the no-gate row.
 func ovNoTranscript() *Report {
 	sess := Session{
 		SessionID:    "d4e5f6a7-0000-4000-8000-000000000003",
@@ -336,9 +335,9 @@ None: no unresolved finding, no failed call, no changed input.
 
 PROJECT KNOWLEDGE & LEARNING
 
-Known now          No gate family established, so every gate is required (index). The network
-                   baseline was not read. No earlier checkpoint of this project. Nothing known was
-                   invalidated.
+Known now          No gate family established, so every gate is required (index). The host count of
+                   the network baseline is not known. No earlier checkpoint of this project. Nothing
+                   known was invalidated.
 Newly observed     Nothing was discovered in this session.
 Lessons            None proposed, approved or demoted. No lesson was sent to the agent, because none
                    is approved for this project.
@@ -473,9 +472,9 @@ NEEDS ATTENTION
 
 PROJECT KNOWLEDGE & LEARNING
 
-Known now          No gate family established, so every gate is required (index). The network
-                   baseline was not read. No earlier checkpoint of this project. Nothing known was
-                   invalidated.
+Known now          No gate family established, so every gate is required (index). The host count of
+                   the network baseline is not known. No earlier checkpoint of this project. Nothing
+                   known was invalidated.
 Newly observed     Nothing was discovered in this session.
 Lessons            None proposed, approved or demoted. No lesson was sent to the agent, because none
                    is approved for this project.
@@ -537,7 +536,7 @@ func ovDiff(t *testing.T, name, got, want string) {
 	}
 }
 
-func TestRPT1a_OwnerLayoutOfTheImageSession(t *testing.T) {
+func TestRPT1a_LayoutOfTheImageSession(t *testing.T) {
 	ovDiff(t, "a5ae68a1", ovRender(t, ovA5()), ovA5Want)
 }
 
