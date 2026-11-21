@@ -19,10 +19,12 @@ m("pylite ends a bracketed import on its opening line", "internal/graph/lang/pyl
 
 # Inside an import's bracket only names, commas, as, backslashes and the
 # closing bracket occur, so a line with any other character ends the import
-# before it. Without the stop, an import-like line with an open bracket
-# inside a string joins every line up to the next closing bracket, the real
-# import after the string among them, and that import is lost.
+# before it. Strings are blanked before the scan (blank.go), so the stop
+# guards a bracket that balances but holds a line no import can hold, a file
+# Python rejects that an edit in progress can leave. Without the stop that
+# line and every line after it up to the closing bracket join the import, and
+# the real import among them is lost.
 m("pylite joins past a string's close into the code after it", "internal/graph/lang/pylite/scan.go",
   "\t\tif depth > 0 && strings.IndexFunc(c, notName) >= 0 {\n\t\t\tbreak\n\t\t}\n",
   "",
-  "TestLogicalLine_BracketsJoinLinesAndACommentEndsItsLine")
+  "TestLogicalLine_AnImportEndsBeforeALineNoImportHolds")
