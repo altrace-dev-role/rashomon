@@ -57,8 +57,8 @@ it does, verify the result, update what is known.
 - A Python class as an entry of its own; its methods are indexed.
 - Guessing a Python test command with no pytest file, CI line, Makefile or spec.
 - A module name for Python on the brief's build line; go.mod alone gives one.
-- A Python call written on a later line of the arguments of another call; a call
-  on the line that opens them is read.
+- A Python call written outside a function or method, or on a later line of the
+  arguments of another call.
 - Windows.
 
 ## Get started
