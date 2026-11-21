@@ -199,11 +199,13 @@ m("LANG-REG1 an unindexed marker's name holds the language", kindnotice,
   "func UnindexedNoticeName(lang string) string { return FileNoticeUnindexedPrefix + lang }\n",
   "^TestUnindexedNotice_IsADigestOfTheLanguageApartFromTheKinds$")
 
-# TestLANGREG1_AnUnindexedLanguageSaysSoOnce, three Breaks of four (the
-# registry rows file holds the missing configuration's): key the line by
+# TestLANGREG1_AnUnindexedLanguageSaysSoOnce, three Breaks: key the line by
 # the file (the second .py file prints it again), say the line and go on to
 # build the overlay (the log holds the file's group), or leave the edit's
-# gate open (the post counts a unit-brief miss).
+# gate open (the post counts a unit-brief miss). A missing configuration
+# read as a refusal is not one of them: an unindexed language stops at its
+# line before the configuration is read, so the registry rows file judges
+# that row by TestWire_NoConfigurationIsNoPythonUnit.
 m("LANG-REG1 the unindexed marker is keyed by the file, end to end", kindline,
   unindexedmark, unindexedbyfile,
   "^TestLANGREG1_AnUnindexedLanguageSaysSoOnce$")

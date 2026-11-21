@@ -87,7 +87,11 @@ func TestRH8d_BlockOnOneSessionReport(t *testing.T) {
 		{"no session", nil, nil},
 		{"one session", []string{"s"}, []bool{true}},
 		{"one session and the calls without a session id", []string{"s", store.UnattributedSession}, []bool{true, false}},
-		{"two sessions", []string{"s", "s2"}, []bool{false, false}},
+		// The session with records is listed last. The count loop leaves the
+		// last session's id behind, and a replay of a session with no records
+		// reads as nil: with "s" first, a report that attached over two
+		// sessions would attach nil to "s2" and still look like none.
+		{"two sessions", []string{"s2", "s"}, []bool{false, false}},
 	} {
 		rep := &report.Report{}
 		for _, id := range c.ids {

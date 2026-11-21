@@ -163,9 +163,12 @@ func TestH113_NoCommittedFixtureCarriesASecretOrAnAccountShape(t *testing.T) {
 // and nothing else: the value under another member fails, beside itself
 // under its own member too; a token or a longer hex run under the member
 // fails; the value in another kind of file fails; another shape under key
-// fails; a gate id under key passes, in a steer file and in a golden, and a
-// token under key or inside a gate id's form fails; a row with no class
-// excuses nothing; and a row nothing matches is reported as stale.
+// fails; a checksum line whose path is a home directory fails, for the row
+// excuses the line's secret shape and not the home directory in it, which the
+// scan reports as a finding of its own kind with the class of the whole line;
+// a gate id under key passes, in a steer file and in a golden, and a token
+// under key or inside a gate id's form fails; a row with no class excuses
+// nothing; and a row nothing matches is reported as stale.
 func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 	id := h112Stray[:32] // 32 lowercase hex digits, a steer line id's class
 	run := h113Sessions + "stores/r/runs/" + h112P1 + "/"
@@ -174,6 +177,10 @@ func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 	// A learned gate id from the steer fixtures, which the scan flags in the
 	// user:token@ form; split so no source line holds that form whole.
 	learned := "learned:build:" + "31f678efefe9" + "@" + "7af2a8b4a6a2"
+	// A home directory in the form the scan names, split so no source line
+	// holds it whole: shasum -a 256 given an absolute path writes a checksum
+	// line whose path begins with one.
+	home := "/Users" + "/alice/"
 	for _, tc := range []struct {
 		name, file, body string
 		excused          bool
@@ -187,6 +194,7 @@ func TestH113_ATypedRowExcusesItsMemberAndClassInItsKindOfFile(t *testing.T) {
 		{"the id in another kind of file", run + "records.ndjson", `{"id":"` + id + `"}`, false},
 		{"an email address under key", run + "steer.ndjson", `{"key":"mail alice.liddell@acme-corp.io"}`, false},
 		{"a checksum line with one space", sums, h112Leaf + " stores/r/runs/" + h112P1 + "/steer.ndjson", false},
+		{"a checksum line whose path is a home directory", sums, h112Leaf + "  " + home + "stores/r/runs/" + h112P1 + "/steer.ndjson", false},
 		{"a token under key in a steer file", run + "steer.ndjson", `{"key":"` + h112Bearer + `"}`, false},
 		{"a token under key in a golden", golden, `{"key":"` + h112Bearer + `"}`, false},
 		{"a learned gate id under key in a steer file", run + "steer.ndjson", `{"key":"` + learned + `"}`, true},

@@ -173,12 +173,14 @@ m("LANG-REG1 the Go step gives no import map where there is a module", wire,
   goimports, "\t\treturn gopg.Resolver{}, nil\n",
   "^TestWire_GoCarriesImportsWhereThereIsAModule$")
 
-# TestLANGREG1_AnUnindexedLanguageSaysSoOnce, one Break of four (the hook
-# rows file holds the other three): say that a missing configuration was
-# not read.
+# TestWire_NoConfigurationIsNoPythonUnit. Break: read a missing
+# configuration as a refusal. The acceptance test of the unindexed-language
+# line (TestLANGREG1_AnUnindexedLanguageSaysSoOnce) cannot judge this row: a
+# language the index holds no records of stops at its line, before any
+# configuration is read, so the removed branch is never reached from there.
 m("LANG-REG1 a missing Python configuration reads as not read", wire,
   "\t\tcase errors.Is(err, fs.ErrNotExist):\n\t\t\treturn python(Config{}), nil\n", "",
-  "^TestLANGREG1_AnUnindexedLanguageSaysSoOnce$")
+  "^TestWire_NoConfigurationIsNoPythonUnit$")
 
 # TestWire_AGoModLinkLoopIsAFailedRead. Break: read a link loop as a file
 # that is not regular.
