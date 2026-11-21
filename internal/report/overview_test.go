@@ -172,7 +172,8 @@ Spec               No spec is bound in spec-trust.json, so no spec's rules were 
 SESSION ACTIVITY
 
 118 calls          execute 57 · read 34 · version control 12 · write 9 · unclassified 6
-Tools              Bash 102 · Write 7 · SendMessage 3 · Read 2 · ToolSearch 2 · Edit 1 · ListAgents 1
+Tools              Bash 102 · Write 7 · SendMessage 3 · Read 2 · ToolSearch 2 · Edit 1 ·
+                   ListAgents 1
 Families           python 11 · git 8 · gh 4
 Hosts              none named by any call
 Observed           The last Stop (call 366) printed no state line. Its significance is not
