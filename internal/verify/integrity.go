@@ -142,7 +142,9 @@ var markerTableOnce struct {
 // not in the record; and test_removed's second clause, a test file deleted by
 // rm or git rm, which no record names. The gate_weakened producer is to
 // record notARun's refusal reason (shape/verb.go), not to lex a second list.
-// No writer fills edit marks yet (1.8p): until one does, only the pairs speak.
+// The post hook fills edit marks for an Edit and a MultiEdit (editmarks, table
+// version 1: Go and Python); a Write's are not written yet, so a Write speaks
+// through the pairs alone.
 //
 // v0 deviation (D40): window = the run until 1.8w; a skip added and never
 // removed holds RecordGreen false for the session. Every caller passes from
