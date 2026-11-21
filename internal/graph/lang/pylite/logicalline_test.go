@@ -16,14 +16,14 @@ import (
 // several lines (the form black writes) is one from-import, a comment on an
 // import line is no part of the import, and a backslash inside a comment
 // joins nothing. Each form is checked beside its one-line twin, and both
-// must give the edges written out here. The last row is a guard: a bracket
-// opened on an import-like line inside a string joins no line past the
-// string's closing line, so the import after the string is still read.
+// must give the edges written out here. The last row is a guard: an
+// import-like line inside a string is blanked (blank.go) before the scan,
+// so its bracket opens nothing and the import after the string is read.
 //
 // What the scan still cannot read: an import inside a def's body (only
 // calls are read there); a plain import of several modules on one line
-// (import a, b); two statements on one line joined by a semicolon; and an
-// import-like line inside a string, which is read as an import, as before.
+// (import a, b); and two statements on one line joined by a semicolon. An
+// import-like line inside a string is blanked (blank.go) and read as nothing.
 func TestLogicalLine_BracketsJoinLinesAndACommentEndsItsLine(t *testing.T) {
 	res := pylite.Resolver{
 		Units:   []pylite.Unit{{Path: "src/pkg", ModRoot: "src"}, {Path: "top", ModRoot: "top"}},
@@ -92,5 +92,45 @@ func TestLogicalLine_BracketsJoinLinesAndACommentEndsItsLine(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLogicalLine_AnImportEndsBeforeALineNoImportHolds: inside an import's
+// bracket Python allows only names, commas, as, backslashes and the closing
+// bracket, so a bracket that balances but holds a line no import can hold
+// (xx = 1 here) is a file Python rejects, the state an edit in progress can
+// leave. The scan ends the import before that line (the stop in importLine),
+// so the lines after it are read as their own statements and the import of
+// nn on the third line is kept; the broken first statement binds no name and
+// writes no edge. A file Python rejects has no one-line twin that Python reads
+// the same, so this is a test of its own beside the table: the extract must
+// give the edges written out here, and the overlay the extract's.
+func TestLogicalLine_AnImportEndsBeforeALineNoImportHolds(t *testing.T) {
+	res := pylite.Resolver{
+		Units:   []pylite.Unit{{Path: "src/pkg", ModRoot: "src"}, {Path: "top", ModRoot: "top"}},
+		Modules: map[string]string{"pkg": "src/pkg", "xx": "top", "yy": "top"},
+	}
+	const rel = "src/pkg/a.py"
+	const src = "from .mm import (\nxx = 1\nfrom .nn import xx\n)\n"
+	recs, _ := extractFiles(t, res, map[string]string{rel: src})
+	for _, chk := range []struct {
+		pred graph.Pred
+		want []string
+	}{
+		{graph.Imports, []string{"file:src/pkg/a.py -imports-> sym:py:src/pkg:mod:pkg.nn"}},
+		{graph.References, []string{"file:src/pkg/a.py -references-> sym:py:src/pkg:func:pkg.nn.xx"}},
+	} {
+		if got := edgesOf(recs, chk.pred); !slices.Equal(got, chk.want) {
+			t.Errorf("%s edges %q; want %q", chk.pred, got, chk.want)
+		}
+	}
+	ov, err := res.Overlay(rel, []byte(src), relRev, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []graph.Pred{graph.Imports, graph.References} {
+		if got, want := edgesOf(ov, p), edgesOf(recs, p); !slices.Equal(got, want) {
+			t.Errorf("overlay %s edges %q; extract %q", p, got, want)
+		}
 	}
 }
