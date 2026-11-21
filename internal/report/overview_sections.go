@@ -135,12 +135,16 @@ func ovSpec(k *Knowledge) string {
 	return s
 }
 
-// ovVerbNames are the verb classes whose code is not a word a reader knows.
-var ovVerbNames = map[string]string{"vcs": "version control", "unknown": "unclassified"}
-
+// ovVerb is a verb class in words: the two classes whose code is not a word a
+// reader knows get one, any other is its code with spaces. A switch and not a
+// package-level map: a map is built at start in every process of the binary,
+// hooks included, and only a report reads these names.
 func ovVerb(c string) string {
-	if n, ok := ovVerbNames[c]; ok {
-		return n
+	switch c {
+	case "vcs":
+		return "version control"
+	case "unknown":
+		return "unclassified"
 	}
 	return printable(strings.ReplaceAll(c, "_", " "))
 }
