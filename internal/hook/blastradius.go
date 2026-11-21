@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"path/filepath"
-	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
@@ -19,7 +18,8 @@ import (
 )
 
 // The blast-radius note (card ARCH-INLINE1, PF-PL7): after an Edit, Write or
-// MultiEdit of a non-test Go file, the model is told which other packages
+// MultiEdit of a non-test file that the port's language's reader claims (the
+// route is readCallers'), the model is told which other packages
 // the platform graph shows calling into the edited file's package, so it
 // learns what the edit may break while it can still act. The graph's facts
 // are read through BlastPort, which cmd wires to internal/platform: the hook
@@ -51,8 +51,12 @@ type BlastCaller struct {
 // BlastPort is the read's port. Locate is the site of an edit of file under
 // root, false where no sync vouches for a log or the file is in no package;
 // Callers reads the site's callers, fresh ones only, sorted by package. A
-// port with either func nil reads nothing.
+// port with either func nil reads nothing. Lang is the language whose files
+// the port reads, as a reader of the language registry states it: an edited
+// file that language's reader claims takes the port, and a file another
+// reader claims takes the repository graph's callers (readCallers).
 type BlastPort struct {
+	Lang    string
 	Locate  func(root, file string) (BlastSite, bool)
 	Callers func(site BlastSite) ([]BlastCaller, error)
 }
@@ -63,26 +67,39 @@ type blastDraft struct {
 	marker string
 }
 
-// blast is the call's blast-radius finding, or false: a success event's
-// Edit, Write or MultiEdit that landed, of a .go file under a Git root, at
-// record scope v5 (the note names directories in the clear, which v4
-// withholds), with a port wired. ctx is the call's steer context, built here
-// from contextOf when the judge built none (ok false). A context whose note
-// could reach no one (steering off, no consent, no prompt) reads nothing.
-// The read marker is kept when the read answers nothing new (an error, no
-// caller, none it can name, the callers last given): that log's answer
-// stands until the next sync.
+// blast is the call's blast-radius finding, or false. The callers read
+// (readCallers) routes it: a file the port's language's reader claims takes
+// the package path (blastPackage), a read that names callers in another
+// language takes the callers note (callersDraft), and every other case says
+// nothing. ctx is the call's steer context, built where a read needs it from
+// contextOf when the judge built none (ok false).
 func (p *Post) blast(env SteerEnv, ctx *steer.Context, ok bool) (blastDraft, bool) {
-	if env.Blast.Locate == nil || env.Blast.Callers == nil || !p.scopeV5 || p.landedSeq <= 0 ||
-		p.event != string(steer.EventPostToolUse) || !editTool(p.toolName) {
+	r := p.readCallers(env, ctx, ok)
+	switch r.Case {
+	case callersNote, callersStale:
+		return p.callersDraft(r)
+	case callersPort:
+		return p.blastPackage(env, ctx, ok, r.Root)
+	}
+	return blastDraft{}, false
+}
+
+// blastPackage is the package note for an edit the route gave the port: a
+// success event's Edit, Write or MultiEdit that landed, of a file under the
+// Git root root, at record scope v5 (the note names directories in the
+// clear, which v4 withholds), with a port wired. A context whose note could
+// reach no one (steering off, no consent, no prompt) reads nothing. The read
+// marker is kept when the read answers nothing new (an error, no caller,
+// none it can name, the callers last given): that log's answer stands until
+// the next sync. The route (callersRoute) checks the event, the tool, the
+// landed seq and the record scope; blastPackage checks none of them again,
+// and blast is its one caller.
+func (p *Post) blastPackage(env SteerEnv, ctx *steer.Context, ok bool, root string) (blastDraft, bool) {
+	if env.Blast.Locate == nil || env.Blast.Callers == nil {
 		return blastDraft{}, false
 	}
 	file := shape.DeclaredPath(p.toolName, p.toolInput)
-	if file == nil || !strings.HasSuffix(*file, ".go") {
-		return blastDraft{}, false
-	}
-	root := blastRoot(p.cwd)
-	if root == "" {
+	if file == nil {
 		return blastDraft{}, false
 	}
 	site, found := env.Blast.Locate(root, filepath.Join(resolved(filepath.Dir(*file)), filepath.Base(*file)))

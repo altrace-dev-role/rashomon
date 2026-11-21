@@ -26,6 +26,12 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 )
 
+// Lang is the language of the packages the fact log records: pgraph writes
+// a log of this one language's packages, so every site Locate gives and
+// every caller Callers reads is in it, and a port built on the two serves
+// this language's files and no other.
+const Lang = "go"
+
 // deadline is a crash guard on one Read's decode of the log, not a budget:
 // the answer must be the same for the same files (INV-11), and a decode
 // within MaxLogBytes is milliseconds (11 to 17 ms for this repository's 3 MB

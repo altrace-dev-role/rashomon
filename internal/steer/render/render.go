@@ -493,6 +493,7 @@ func templates() map[templateKey]template {
 		maps.Copy(templatesOnce.v, templatesPlanCheck())
 		maps.Copy(templatesOnce.v, templatesConflict())
 		maps.Copy(templatesOnce.v, templatesContinuity())
+		maps.Copy(templatesOnce.v, templatesBlastCallers())
 	})
 	return templatesOnce.v
 }

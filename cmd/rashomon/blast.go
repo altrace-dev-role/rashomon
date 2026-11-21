@@ -16,9 +16,12 @@ const blastGuard = time.Second
 
 // blastPort is the post's blast-radius port: internal/platform's Locate and
 // Callers, which the hook package does not link, as the Stop's platform read
-// is cmd's (platformReadWithin).
+// is cmd's (platformReadWithin). Its Lang is platform.Lang, the language of
+// the packages the fact log records, so the hook routes to it the files that
+// language's reader claims.
 func blastPort() hook.BlastPort {
 	return hook.BlastPort{
+		Lang: platform.Lang,
 		Locate: func(root, file string) (hook.BlastSite, bool) {
 			s, ok := platform.Locate(root, file)
 			return hook.BlastSite(s), ok
