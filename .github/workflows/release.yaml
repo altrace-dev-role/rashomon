@@ -101,6 +101,13 @@ jobs:
           # with contents:write on that product's distribution path. See the
           # note in .goreleaser.yml for what replaces it.
 
+      # The draft is published below only if every archive GoReleaser wrote
+      # carries rashomon, pgraph, the licence and the notices, and the plugin
+      # archive built above carries both binaries for its platforms. A
+      # release that fails this stays a draft.
+      - name: Check what the archives carry
+        run: scripts/check-release-archives.sh dist "$RUNNER_TEMP/rashomon-plugin.zip"
+
       # GoReleaser leaves the release a draft (.goreleaser.yml), and
       # releases/latest never names a draft, so the marketplace, which installs
       # releases/latest/download/rashomon-plugin.zip, cannot reach a release
