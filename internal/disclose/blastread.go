@@ -10,9 +10,10 @@ func blastReadFiles() []FileRule {
 		Base:    store.DirRuns + "/<session>",
 		Pattern: store.FileBlastReadPrefix + "*",
 		Mode:    "0600",
-		Purpose: "one per Go package and platform-graph log the session read the callers of after an edit, " +
-			"so the log is read once per package each time pgraph syncs",
-		Holds:      "nothing; its name is a keyed digest of the package and the log",
+		Purpose: "one per Go package and platform-graph log, or per function or method and repository graph, " +
+			"the session read the callers of after an edit, so the log is read once per package each time pgraph syncs " +
+			"and the repository graph once per function or method for each commit and record count it is written with",
+		Holds:      "nothing; its name is a keyed digest of the package and the log, or of the function or method and the repository graph's commit and record count",
 		NeverHolds: "anything",
 		RemovedBy:  "size-cap eviction, with its run; purge",
 		Owner:      "store",

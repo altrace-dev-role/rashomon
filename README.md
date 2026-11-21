@@ -53,6 +53,10 @@ it does, verify the result, update what is known.
   Go has the fuller path.
 - Keeping the thread of a long session across a compaction or a restart.
 - A map of a codebase in languages other than Go and Python.
+- Python docstrings: a request finds Python code by its names and paths.
+- A Python class as an entry of its own; its methods are indexed.
+- Guessing a Python test command with no pytest file, CI line, Makefile or spec.
+- A module name for Python on the brief's build line; go.mod alone gives one.
 - Windows.
 
 ## Get started
@@ -263,9 +267,9 @@ list of what it keeps, word for word as the install screen's full view
 
 It never stores your prompts, the agent's messages, tool output, file contents
 or a spec file's text (of a spec, only its digest and its rules' ids, and, where
-Go edits are kept, the paths, patterns and symbols named by the rules each edit
+edits are kept, the paths, patterns and symbols named by the rules each edit
 is checked against). It reads each prompt in memory to write the preflight note
-and keeps no word of it beyond the project paths the note names.
+and keeps no word of it beyond the project paths and symbols the note names.
 `rashomon report` quotes the agent's final message from Claude Code's transcript
 without storing it. The one exception is opt-in: `rashomon bodies on` copies
 this project's transcripts into the store, and `rashomon forget --bodies`
