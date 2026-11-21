@@ -1,0 +1,347 @@
+{
+  "bash write": {
+    "expected": [],
+    "obligations": []
+  },
+  "declared green": {
+    "expected": [],
+    "obligations": [
+      {
+        "id": "ob:c279971ed3db8143",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "spec",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:47c826ee6b8584b4",
+        "scope": "session",
+        "kind": "exit_unmasked",
+        "source": "spec",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:a1199200da1db450",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "spec",
+        "state": "unknown",
+        "evidence": []
+      }
+    ]
+  },
+  "declared never run": {
+    "expected": [],
+    "obligations": [
+      {
+        "id": "ob:c279971ed3db8143",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "spec",
+        "state": "open",
+        "evidence": [
+          1
+        ]
+      },
+      {
+        "id": "ob:a1199200da1db450",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "spec",
+        "state": "unknown",
+        "evidence": []
+      }
+    ]
+  },
+  "done claim": {
+    "expected": [],
+    "obligations": [
+      {
+        "id": "ob:c98bf08ab0bd81d7",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "learned",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:6b7baf7f0ce64459",
+        "scope": "session",
+        "kind": "exit_unmasked",
+        "source": "learned",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:36c9f6491c502aec",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "learned",
+        "state": "unknown",
+        "evidence": []
+      }
+    ]
+  },
+  "edit, no gate": {
+    "expected": [],
+    "obligations": []
+  },
+  "red": {
+    "expected": [],
+    "obligations": [
+      {
+        "id": "ob:c98bf08ab0bd81d7",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "learned",
+        "state": "unmet",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:11e31c0d7bf7bbd2",
+        "scope": "session",
+        "kind": "watched_red_then_green",
+        "source": "learned",
+        "state": "open",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:6b7baf7f0ce64459",
+        "scope": "session",
+        "kind": "exit_unmasked",
+        "source": "learned",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:36c9f6491c502aec",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "learned",
+        "state": "unknown",
+        "evidence": []
+      }
+    ]
+  },
+  "task, green, claim": {
+    "expected": [
+      {
+        "Kind": "real_data_run",
+        "State": "met",
+        "Gate": "spec:unit",
+        "Reason": ""
+      },
+      {
+        "Kind": "cross_check",
+        "State": "unmet",
+        "Gate": "",
+        "Reason": "no gate declares it"
+      },
+      {
+        "Kind": "judgment_disclosed",
+        "State": "unmet",
+        "Gate": "",
+        "Reason": "the final message discloses no judgment"
+      },
+      {
+        "Kind": "mechanism_stated",
+        "State": "met",
+        "Gate": "",
+        "Reason": ""
+      }
+    ],
+    "obligations": [
+      {
+        "id": "ob:c279971ed3db8143",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "spec",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:47c826ee6b8584b4",
+        "scope": "session",
+        "kind": "exit_unmasked",
+        "source": "spec",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:a1199200da1db450",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "spec",
+        "state": "unknown",
+        "evidence": []
+      },
+      {
+        "id": "ob:e89c2777d38acb0b",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:3e1d3a87547fafb3",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "unmet",
+        "evidence": []
+      },
+      {
+        "id": "ob:707cf37f0c88a45c",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "unmet",
+        "evidence": []
+      },
+      {
+        "id": "ob:fe24cab5cb2b3f67",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "met",
+        "evidence": []
+      }
+    ]
+  },
+  "task, never run": {
+    "expected": [
+      {
+        "Kind": "real_data_run",
+        "State": "unmet",
+        "Gate": "spec:unit",
+        "Reason": "no green run of spec:unit since the last edit"
+      },
+      {
+        "Kind": "cross_check",
+        "State": "unmet",
+        "Gate": "",
+        "Reason": "no gate declares it"
+      },
+      {
+        "Kind": "judgment_disclosed",
+        "State": "unmet",
+        "Gate": "",
+        "Reason": "the final message discloses no judgment"
+      },
+      {
+        "Kind": "mechanism_stated",
+        "State": "met",
+        "Gate": "",
+        "Reason": ""
+      }
+    ],
+    "obligations": [
+      {
+        "id": "ob:c279971ed3db8143",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "spec",
+        "state": "open",
+        "evidence": [
+          1
+        ]
+      },
+      {
+        "id": "ob:a1199200da1db450",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "spec",
+        "state": "unknown",
+        "evidence": []
+      },
+      {
+        "id": "ob:e89c2777d38acb0b",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "unmet",
+        "evidence": []
+      },
+      {
+        "id": "ob:3e1d3a87547fafb3",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "unmet",
+        "evidence": []
+      },
+      {
+        "id": "ob:707cf37f0c88a45c",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "unmet",
+        "evidence": []
+      },
+      {
+        "id": "ob:fe24cab5cb2b3f67",
+        "scope": "session",
+        "kind": "expected_evidence",
+        "source": "task",
+        "state": "met",
+        "evidence": []
+      }
+    ]
+  },
+  "verified": {
+    "expected": [],
+    "obligations": [
+      {
+        "id": "ob:c98bf08ab0bd81d7",
+        "scope": "session",
+        "kind": "gate_after_write",
+        "source": "learned",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:6b7baf7f0ce64459",
+        "scope": "session",
+        "kind": "exit_unmasked",
+        "source": "learned",
+        "state": "met",
+        "evidence": [
+          3
+        ]
+      },
+      {
+        "id": "ob:36c9f6491c502aec",
+        "scope": "session",
+        "kind": "evidence_bound",
+        "source": "learned",
+        "state": "unknown",
+        "evidence": []
+      }
+    ]
+  }
+}
