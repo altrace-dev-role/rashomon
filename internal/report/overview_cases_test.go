@@ -240,7 +240,7 @@ func TestRPT1j_SourcesNotRead(t *testing.T) {
 	out = ovRender(t, rep)
 	ovHas(t, "knowledge", out,
 		"\n118 tool calls across 13 prompts · no subagents\n",
-		"\nAlready known      Not read here.\n",
+		"\nKnown now          Not read here.\n",
 		"\nNewly observed     Not read here.\n",
 		"\nSpec               Not read here.\n")
 	ovLacks(t, "knowledge", out, "project ")
@@ -336,7 +336,7 @@ func TestRPT1n_KnowledgeBranches(t *testing.T) {
 	k.Baseline, k.BaselineWalkCap = nil, 50
 	out := ovRender(t, rep)
 	ovHas(t, "walk limited, no baseline", out,
-		"\nAlready known      2 gate families required (index) and 19 hosts in this project's network baseline.\n"+
+		"\nKnown now          2 gate families required (index) and 19 hosts in this project's network baseline.\n"+
 			"                   No earlier checkpoint was found in the first 50 session directories walked.\n"+
 			"                   Nothing known was invalidated.\n")
 	ovLacks(t, "walk limited, no baseline", out, "No earlier checkpoint of this project")
@@ -344,7 +344,7 @@ func TestRPT1n_KnowledgeBranches(t *testing.T) {
 	rep = ovA5()
 	rep.Sessions[0].Knowledge.BaselineWalkCap = 50
 	ovHas(t, "walk limited, baseline found", ovRender(t, rep),
-		"\nAlready known      2 gate families required (index) and 19 hosts in this project's network baseline.\n"+
+		"\nKnown now          2 gate families required (index) and 19 hosts in this project's network baseline.\n"+
 			"                   Newest earlier checkpoint among the first 50 session directories walked: session\n"+
 			"                   c7ba1d62, 11-08 13:32; a newer one may exist. Nothing known was invalidated.\n")
 
@@ -368,4 +368,31 @@ func TestRPT1n_KnowledgeBranches(t *testing.T) {
 		"\nLessons            The ledger did not check, so all 2 read proposed (this project). None was sent to\n"+
 			"                   the agent this session.\n")
 	ovLacks(t, "ledger unchecked", out, "because none is approved")
+}
+
+// TestRPT1p_KnownNowCountsWhatIsKnownNow: the Known now row prints the counts
+// the index and the network baseline hold when the report runs (ruling x399
+// item 3). A gate family first seen in this session is listed under Newly
+// observed and may also be counted under Known now; the hosts the session
+// named do not hide the baseline's count; a baseline not read never reads as
+// zero hosts.
+func TestRPT1p_KnownNowCountsWhatIsKnownNow(t *testing.T) {
+	const known = "\nKnown now          2 gate families required (index) and 19 hosts in this project's network baseline.\n"
+	out := ovRender(t, ovA5())
+	ovHas(t, "family in both", out, known,
+		"\nNewly observed     Gate family first seen in the project: lint (index).\n")
+	ovLacks(t, "family in both", out, "Already known")
+
+	rep := ovA5()
+	rep.Sessions[0].Destinations.DeclaredHosts = []string{"example.test"}
+	rep.Sessions[0].Destinations.SSHHosts = []string{"git.example.test"}
+	ovHas(t, "hosts named", ovRender(t, rep), known, "\nHosts              2 named by the calls\n")
+
+	rep = ovA5()
+	rep.Sessions[0].Destinations.Novelty = Novelty{Available: false, Reason: "no store root, so the baseline could not be located"}
+	out = ovRender(t, rep)
+	ovHas(t, "baseline not read", out,
+		"\nKnown now          2 gate families required (index). The network baseline was not read. Newest\n"+
+			"                   earlier checkpoint: session c7ba1d62, 11-08 13:32. Nothing known was invalidated.\n")
+	ovLacks(t, "baseline not read", out, "hosts in this project's network baseline", "0 hosts")
 }

@@ -272,7 +272,7 @@ NEEDS ATTENTION
 
 PROJECT KNOWLEDGE & LEARNING
 
-Already known      2 gate families required (index) and 19 hosts in this project's network baseline.
+Known now          2 gate families required (index) and 19 hosts in this project's network baseline.
                    Newest earlier checkpoint: session c7ba1d62, 11-08 13:32. Nothing known was
                    invalidated.
 Newly observed     Gate family first seen in the project: lint (index).
@@ -336,8 +336,9 @@ None: no unresolved finding, no failed call, no changed input.
 
 PROJECT KNOWLEDGE & LEARNING
 
-Already known      No gate family established, so every gate is required (index). No earlier
-                   checkpoint of this project. Nothing known was invalidated.
+Known now          No gate family established, so every gate is required (index). The network
+                   baseline was not read. No earlier checkpoint of this project. Nothing known was
+                   invalidated.
 Newly observed     Nothing was discovered in this session.
 Lessons            None proposed, approved or demoted. No lesson was sent to the agent, because none
                    is approved for this project.
@@ -404,8 +405,9 @@ None: no unresolved finding, no failed call, no changed input.
 
 PROJECT KNOWLEDGE & LEARNING
 
-Already known      1 gate family required (index). Newest earlier checkpoint: session c7ba1d62,
-                   11-08 13:32. Nothing known was invalidated.
+Known now          1 gate family required (index) and 1 host in this project's network baseline.
+                   Newest earlier checkpoint: session c7ba1d62, 11-08 13:32. Nothing known was
+                   invalidated.
 Newly observed     Nothing was discovered in this session.
 Lessons            1 approved, 0 proposed, 0 demoted (this project). None was sent to the agent this
                    session.
@@ -471,8 +473,9 @@ NEEDS ATTENTION
 
 PROJECT KNOWLEDGE & LEARNING
 
-Already known      No gate family established, so every gate is required (index). No earlier
-                   checkpoint of this project. Nothing known was invalidated.
+Known now          No gate family established, so every gate is required (index). The network
+                   baseline was not read. No earlier checkpoint of this project. Nothing known was
+                   invalidated.
 Newly observed     Nothing was discovered in this session.
 Lessons            None proposed, approved or demoted. No lesson was sent to the agent, because none
                    is approved for this project.
