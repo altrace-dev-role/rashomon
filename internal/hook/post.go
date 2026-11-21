@@ -171,9 +171,10 @@ type Post struct {
 	landedRed      bool
 	landedHidden   bool
 	landedStore    bool
-	// landed is the landed Go edit the overlay writer kept at this post, its
-	// index root, path and group (LandedOverlay); landedKept is whether it
-	// kept one.
+	// landed is the landed edit the overlay writer kept at this post, of a
+	// .go file or of a file whose reader states its edits kept (lang.Kept),
+	// its index root, path and group (LandedOverlay); landedKept is whether
+	// it kept one.
 	landed      LandedGoEdit
 	landedKept  bool
 	landedWrite writtenCall

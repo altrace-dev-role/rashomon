@@ -4,10 +4,12 @@ package store
 // m2-seam1 D4): the post's reading of a landed edit against the session's
 // conflict base, the full set of conflicts the edit leaves in its file,
 // possibly empty, kept beside unitbrief_miss, the third non-critical kind.
-// It is written for a Go edit the overlay writer kept (a session keeping its
-// content, the call attributed, an index over the file) when the session
-// holds the prompt's conflict base at the index's commit and the file is in
-// a rule's scope; an out-of-scope edit can raise nothing and writes none.
+// It is written for an edit the overlay writer kept (a session keeping its
+// content, the call attributed, an index over the file; a .go file, or a
+// .py file under a yes whose scope reaches the one its reader states) when
+// the session holds the prompt's conflict base at the index's commit and the
+// file is in a rule's scope; an out-of-scope edit can raise nothing and
+// writes none.
 // It is independent of delivery: a note the cap or the once-a-session key
 // withholds still counts as seen, and the Stop folds these records into
 // its conflicts (conflictsSeen): a conflict is resolved when no file still

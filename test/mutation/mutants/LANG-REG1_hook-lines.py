@@ -310,13 +310,13 @@ m("LANG-REG1 the last-index line names HEAD for the header's commit", overlay,
 m("LANG-REG1 a reader with no overlay clears the gate", overlay,
   lastrev, "\t\t\tc.gate.ok, c.gate.lastIndex, c.gate.lastRev = false, r.Lang(), hdr.Rev.Commit\n",
   "^TestOverlayNilKeepsTheIndexFacts$")
+# The group is kept at the no-overlay block's own return. With that return
+# removed alone, the edit falls to the writer's SessionKept check, which
+# graphtest.NoOverlay, stating nothing, does not pass, so no group would be
+# kept either way: that mutant is equivalent (card x381).
 m("LANG-REG1 a reader with no overlay keeps a group", overlay,
-  "\t\treturn graph.OverlayGroup{}, \"\", \"\", false\n\t}\n"
-  "\trecs, err := resolveOverlay(r, under, content, graph.RevCommit(hdr.Rev.Commit), c.seq)\n"
-  "\tif err != nil || len(recs) == 0 {\n",
-  "\t}\n\tvar recs []graph.Record\n\tif len(r.OverlayCarried()) != 0 {\n"
-  "\t\trecs, err = resolveOverlay(r, under, content, graph.RevCommit(hdr.Rev.Commit), c.seq)\n"
-  "\t}\n\tif err != nil {\n",
+  lastrev + "\t\t}\n\t\treturn graph.OverlayGroup{}, \"\", \"\", false\n",
+  lastrev + "\t\t}\n\t\treturn graph.OverlayGroup{File: graph.FileID(under), Commit: hdr.Rev.Commit, Seq: c.seq}, at, under, true\n",
   "^TestOverlayNilKeepsTheIndexFacts$")
 m("LANG-REG1 a reader with no overlay has its Overlay called first", overlay,
   "\tif len(r.OverlayCarried()) == 0 {\n",

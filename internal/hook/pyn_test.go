@@ -17,11 +17,14 @@ const pynUnindexedPy = "rashomon: the index here holds no py records written by 
 // TestPYN_AnIndexOfTheSecondPyliteSaysTheUnindexedLine: an index whose
 // header names pylite/2 as the producer of its py records holds the source
 // text that reader wrote (constant values, parameter defaults, keyword
-// arguments), so under it the first edit of a .py file says the unindexed
+// arguments), so under it, with a yes on file of 9 (the scope pylite states
+// its files kept from, lang.KeptFrom, so the edit passes the gate:
+// keptGoEdit, card x381), the first edit of a .py file says the unindexed
 // line, a second .py file says nothing, and no overlay group is kept, as for
 // any older reader. Break: leave the reader's version at 2, so that index
 // reads as current and nothing tells the user to build it again.
 func TestPYN_AnIndexOfTheSecondPyliteSaysTheUnindexedLine(t *testing.T) {
+	cg2Scope(t, 9, nil)
 	f := newOvFix(t, "1\n")
 	cfg := filepath.Join(f.repo, filepath.FromSlash(index.ConfigFile))
 	if err := os.WriteFile(cfg, []byte(`{"units": [{"path": "inv", "modules": ["inv"], "lang": "py"}]}`+"\n"), 0o644); err != nil {

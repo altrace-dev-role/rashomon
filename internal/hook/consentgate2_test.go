@@ -371,20 +371,120 @@ func TestConsentGate2_APythonEditWithNoScopeReadKeepsNothing(t *testing.T) {
 }
 
 // TestConsentGate2_AGoEditNeverReadsTheScope: a .go edit keeps its two
-// groups and asks ConsentScopeOnFile nothing. Go's reader states no scope
-// of its own, so its edits are kept under the session-content marker alone,
-// as before, and the read of consent.json a .py edit makes stays off the Go
-// path the hook's allocation budgets measure (test/perf/budgets.json).
-// Break: read the scope on file for every reader.
+// groups and asks ConsentScopeOnFile nothing, under a yes of 6, the first
+// scope whose consent sets the session-content marker, as under a yes of 9.
+// Go's reader states no scope of its own, so its edits are kept under the
+// session-content marker alone, as before, and the read of consent.json a
+// .py edit makes stays off the Go path the hook's allocation budgets measure
+// (test/perf/budgets.json). Breaks: read the scope on file for every reader;
+// ask the gate's scope check of a reader that states none (card x381).
 func TestConsentGate2_AGoEditNeverReadsTheScope(t *testing.T) {
-	asked := cg2Scope(t, 9, nil)
-	f := newOvFix(t, "1\n")
-	f.cg2GoEdit("toolu_cg2o")
-	if _, goGroups := f.cg2Groups(); goGroups != 2 {
-		t.Fatalf("premise: the .go edit kept %d groups; want the declared and the landed", goGroups)
+	for _, scope := range []int{6, 9} {
+		t.Run("a yes of "+strconv.Itoa(scope), func(t *testing.T) {
+			asked := cg2Scope(t, scope, nil)
+			f := newOvFix(t, "1\n")
+			f.cg2GoEdit("toolu_cg2o")
+			if _, goGroups := f.cg2Groups(); goGroups != 2 {
+				t.Fatalf("premise: the .go edit kept %d groups; want the declared and the landed", goGroups)
+			}
+			if len(asked.roots) != 0 {
+				t.Errorf("the .go edit asked ConsentScopeOnFile %d times; want none", len(asked.roots))
+			}
+		})
 	}
-	if len(asked.roots) != 0 {
-		t.Errorf("the .go edit asked ConsentScopeOnFile %d times; want none", len(asked.roots))
+}
+
+// TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate (card x381): the
+// .py edit under a yes whose highest scope_version on file is 8 passes no
+// gate: its post holds the zero gate, so it has no landed edit for the
+// unit-brief read (Post.LandedGoEdit) and no landed group for the conflict
+// check (Post.LandedOverlay). Under a yes of 9 the same edit has both, the
+// landed edit naming the file. pylite states its files kept from 9
+// (lang.KeptFrom), so the scope is a check of the gate (keptGoEdit), not of
+// the writer past it. Base (x371): the writer alone read the scope, so under
+// 8 the gate stood open and the unit-brief read went on. Breaks: leave the
+// check out of the gate; turn its comparison.
+func TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		scope int
+		open  bool
+	}{
+		{"a yes of 8", 8, false},
+		{"a yes of 9", 9, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cg2Scope(t, c.scope, nil)
+			f, py := cg2PyFix(t)
+			p := f.pyEdit("toolu_cg2z", py)
+			e, ok := p.LandedGoEdit()
+			if ok != c.open || ok && e.Rel != cg2PyRel {
+				t.Errorf("the post has a landed edit %v (rel %q); want %v (rel %q)", ok, e.Rel, c.open, cg2PyRel)
+			}
+			if _, kept := p.LandedOverlay(); kept != c.open {
+				t.Errorf("the post has a landed group %v; want %v", kept, c.open)
+			}
+			if !c.open && p.gate != (keptGate{}) {
+				t.Errorf("the post holds the gate %+v; want the zero gate", p.gate)
+			}
+		})
+	}
+}
+
+// TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine (card x381): under
+// the fixture's index, whose header names no producer, with a configuration
+// that declares a py unit, a .py edit under a yes of 8 prints nothing, while
+// under a yes of 9 it says the unindexed language's line, as
+// TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage reads it: each line
+// about the facts of an edited file is said only inside the gate. Base
+// (x371): under 8 the gate stood open and the line was said. Breaks: leave
+// the check out of the gate; turn its comparison.
+func TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		scope int
+		said  bool
+	}{
+		{"a yes of 8", 8, false},
+		{"a yes of 9", 9, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cg2Scope(t, c.scope, nil)
+			f := newOvFix(t, "1\n")
+			cfg := filepath.Join(f.repo, filepath.FromSlash(index.ConfigFile))
+			if err := os.WriteFile(cfg, []byte(`{"units": [{"path": "inv", "modules": ["inv"], "lang": "py"}]}`+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			b := f.kindPost(ovSess, "toolu_cg2l", cg2PyRel)
+			if !c.said {
+				if b != nil {
+					t.Errorf("the .py edit under a yes of %d printed %q; want nothing", c.scope, b)
+				}
+				return
+			}
+			if got, want := kindSaid(t, b), unindexedLineOf(pylite.Lang, ".py"); got != want {
+				t.Errorf("the .py edit under a yes of %d said %q; want %q", c.scope, got, want)
+			}
+		})
+	}
+}
+
+// TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce (card x381): a .py
+// edit under a yes of 9 keeps its two groups and asks ConsentScopeOnFile
+// twice, once at its PreToolUse and once at its PostToolUse: the gate reads
+// the scope, and the writer takes the gate's answer, so no call reads
+// consent.json twice. A guard: the count is the same where the writer alone
+// read it (x371). Break: read the scope in the writer as well as in the
+// gate.
+func TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce(t *testing.T) {
+	asked := cg2Scope(t, 9, nil)
+	f, py := cg2PyFix(t)
+	f.pyEdit("toolu_cg2r", py)
+	if kinds, _ := f.cg2Groups(); !slices.Equal(kinds, []string{"declared", "landed"}) {
+		t.Fatalf("premise: the session graph log holds groups %v of %s; want the declared and the landed", kinds, cg2PyRel)
+	}
+	if len(asked.roots) != 2 {
+		t.Errorf("the .py edit's two calls asked ConsentScopeOnFile %d times (%q); want once each", len(asked.roots), asked.roots)
 	}
 }
 

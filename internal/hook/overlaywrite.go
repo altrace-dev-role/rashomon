@@ -333,9 +333,15 @@ func overlayPath(p *string, cwd string) string {
 // and a session with no session-content marker pays one marker read and
 // decodes no input: the scope, the tool, the seq, the session, the marker,
 // the path the input names (overlayPath), an index (graph.FindIndex), the
-// file under its root, and a reader's claim on it (lang.Registry.For on the
+// file under its root, a reader's claim on it (lang.Registry.For on the
 // registry index.Wire builds, which reads nothing; the registry is built
-// here, per call and past every check before it, never at init: RES-2).
+// here, per call and past every check before it, never at init: RES-2),
+// and last, where the claiming reader states the first consent scope whose
+// screen names its files (lang.KeptFrom), a yes on file that reaches it
+// (scopeAtLeast). That is the call's one read of consent.json, made for a
+// stating reader alone, so the Go path, whose reader states none, reads no
+// consent file; a stating reader no yes reaches returns the zero gate: no
+// landed edit for the unit-brief read, no line, no group (card x381).
 // A file no reader claims returns the gate unclaimed (keptGate) when its
 // kind is not a kinds-table row, and the zero gate when it is.
 // declared is that path where the caller decoded it already (the
@@ -368,6 +374,9 @@ func keptGoEdit(st *store.Store, session, tool string, input json.RawMessage, de
 			return "", keptGate{}
 		}
 		return "", keptGate{rel: rel, reg: reg, unclaimed: true}
+	}
+	if from, _ := reg.SessionKeptFrom(root, rel); from > 0 && !scopeAtLeast(st.Root(), from) {
+		return "", keptGate{}
 	}
 	return path, keptGate{root: root, rel: rel, reg: reg, ok: true}
 }
@@ -485,14 +494,11 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 		// they were.
 		return graph.OverlayGroup{}, "", "", false
 	}
+	// A claiming reader that states the first consent scope whose screen
+	// names its files (lang.KeptFrom) passed the gate only under a yes on
+	// file that reaches it (keptGoEdit), so the writer reads no consent file
+	// of its own; here it takes that reader's list of the attributes kept.
 	from, kept := g.reg.SessionKeptFrom(at, under)
-	if from > 0 && !scopeAtLeast(c.st.Root(), from) {
-		// The claiming reader states the first consent scope whose screen
-		// names its files (lang.KeptFrom), and no yes on file reaches it:
-		// no group is kept. Only a reader that states one reads
-		// consent.json, once per call; the gate is left as it stands.
-		return graph.OverlayGroup{}, "", "", false
-	}
 	recs, err := resolveOverlay(r, under, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
 	if err != nil || len(recs) == 0 {
 		return graph.OverlayGroup{}, "", "", false
@@ -521,8 +527,9 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 
 // scopeAtLeast is whether the highest consent scope on file under root
 // reaches from: false with no reader wired and false for a file that cannot
-// be read. Its own func, so a reader left unwired is a false, never a panic
-// the writer's recover would turn into the same no group.
+// be read. The gate asks it (keptGoEdit). Its own func, so a reader left
+// unwired is a false, never a panic the writer's recover would turn into the
+// same zero gate.
 func scopeAtLeast(root string, from int) bool {
 	if ConsentScopeOnFile == nil {
 		return false
