@@ -23,10 +23,13 @@ func kindStore(t *testing.T) *Store {
 // marker (card LANG-REG1) is taken once per session and kind for 16
 // kinds; the 17th kind takes the one marker that names no kind, and the 18th
 // takes nothing. Break: take without O_EXCL, drop the limit, or count the
-// other-kinds marker among the kinds, and this fails.
+// other-kinds marker among the kinds, and this fails. The 16 is written out
+// here and not read from kindNoticeLimit: a bound taken from the constant
+// under test moves with it, so a limit raised to a million would loop a
+// million times and never fail the 17th-kind check below.
 func TestLANGREG1_AKindNoticeIsOncePerKindUpToSixteen(t *testing.T) {
 	s := kindStore(t)
-	for i := 0; i < kindNoticeLimit; i++ {
+	for i := 0; i < 16; i++ {
 		key := fmt.Sprintf(".k%d", i)
 		if got := s.TakeKindNotice("s1", key); got != KindNoticeName(key) {
 			t.Fatalf("kind %d's first take = %q, want its own marker %q", i, got, KindNoticeName(key))
@@ -47,8 +50,8 @@ func TestLANGREG1_AKindNoticeIsOncePerKindUpToSixteen(t *testing.T) {
 	if got := s.TakeKindNotice("s1", ".k0"); got != "" {
 		t.Errorf("the first kind's take after the limit = %q, want none", got)
 	}
-	if n, ok := s.kindNotices("s1"); !ok || n != kindNoticeLimit {
-		t.Errorf("kind markers = %d (read %v), want %d", n, ok, kindNoticeLimit)
+	if n, ok := s.kindNotices("s1"); !ok || n != 16 {
+		t.Errorf("kind markers = %d (read %v), want 16", n, ok)
 	}
 }
 
@@ -112,7 +115,7 @@ func TestLANGREG1_AKindMarkerNameIsADigestOfTheKey(t *testing.T) {
 // create, or the removal of a marker past the limit, and this fails.
 func TestLANGREG1_RacingKindsNeverPassTheLimit(t *testing.T) {
 	s := kindStore(t)
-	const kinds = 2 * kindNoticeLimit
+	const kinds = 32 // twice the 16, written out: see the first test above
 	got := make([]string, kinds)
 	var wg sync.WaitGroup
 	for i := 0; i < kinds; i++ {
@@ -136,9 +139,9 @@ func TestLANGREG1_RacingKindsNeverPassTheLimit(t *testing.T) {
 		}
 	}
 	n, ok := s.kindNotices("s1")
-	if !ok || n != own || own > kindNoticeLimit || other != 1 {
-		t.Errorf("markers %d (read %v), own takes %d, other-kinds takes %d; want markers equal to own takes, at most %d, and one other-kinds take",
-			n, ok, own, other, kindNoticeLimit)
+	if !ok || n != own || own > 16 || other != 1 {
+		t.Errorf("markers %d (read %v), own takes %d, other-kinds takes %d; want markers equal to own takes, at most 16, and one other-kinds take",
+			n, ok, own, other)
 	}
 }
 
