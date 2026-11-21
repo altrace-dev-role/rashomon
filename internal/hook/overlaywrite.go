@@ -485,6 +485,14 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 		// they were.
 		return graph.OverlayGroup{}, "", "", false
 	}
+	from, kept := g.reg.SessionKeptFrom(at, under)
+	if from > 0 && !scopeAtLeast(c.st.Root(), from) {
+		// The claiming reader states the first consent scope whose screen
+		// names its files (lang.KeptFrom), and no yes on file reaches it:
+		// no group is kept. Only a reader that states one reads
+		// consent.json, once per call; the gate is left as it stands.
+		return graph.OverlayGroup{}, "", "", false
+	}
 	recs, err := resolveOverlay(r, under, content, graph.RevCommit(hdr.Rev.Commit), c.seq)
 	if err != nil || len(recs) == 0 {
 		return graph.OverlayGroup{}, "", "", false
@@ -498,9 +506,81 @@ func (c overlayCall) write() (og graph.OverlayGroup, root, rel string, ok bool) 
 	group := graph.OverlayGroup{Session: c.session, ToolUseID: c.toolUseID, Kind: c.kind,
 		File: graph.FileID(under), Digest: graph.ContentDigest(content), Commit: hdr.Rev.Commit, Seq: c.seq,
 		Carried: r.OverlayCarried(), Recs: recs}
+	// The log holds of a stating reader's records only the attributes its
+	// list names (keepAttrs), filtered before the group is built, so the cut
+	// and the marker are the build's own; the group returned keeps every
+	// attribute.
+	logged := group
+	if from > 0 {
+		logged.Recs = keepAttrs(recs, kept)
+	}
 	log := graph.OpenSessionLog(c.st.Root(), rid, graph.RevCommit(hdr.Rev.Commit), true)
-	_ = log.AppendOverlayGroup(graph.BuildOverlayGroup(group), func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
+	_ = log.AppendOverlayGroup(graph.BuildOverlayGroup(logged), func(n int64) error { return c.st.ReserveOverlay(c.session, n) })
 	return group, at, under, true
+}
+
+// scopeAtLeast is whether the highest consent scope on file under root
+// reaches from: false with no reader wired and false for a file that cannot
+// be read. Its own func, so a reader left unwired is a false, never a panic
+// the writer's recover would turn into the same no group.
+func scopeAtLeast(root string, from int) bool {
+	if ConsentScopeOnFile == nil {
+		return false
+	}
+	scope, err := ConsentScopeOnFile(root)
+	return err == nil && scope >= from
+}
+
+// keepAttrs is a copy of recs whose every node and edge holds only the
+// attributes kept names for its kind (keptAttr); recs is not written.
+func keepAttrs(recs []graph.Record, kept []string) []graph.Record {
+	out := make([]graph.Record, 0, len(recs))
+	for _, rec := range recs {
+		switch {
+		case rec.Node != nil:
+			node := *rec.Node
+			node.Attrs = keptAttrs("node", node.Kind, node.Attrs, kept)
+			out = append(out, graph.Record{Node: &node})
+		case rec.Edge != nil:
+			edge := *rec.Edge
+			edge.Attrs = keptAttrs("edge", string(edge.Pred), edge.Attrs, kept)
+			out = append(out, graph.Record{Edge: &edge})
+		default:
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+// keptAttrs is a new map of the attributes of attrs that kept names for a
+// record of part ("node" or "edge") and kind, nil when it names none.
+func keptAttrs(part, kind string, attrs map[string]string, kept []string) map[string]string {
+	var out map[string]string
+	for name, val := range attrs {
+		if !keptAttr(part, kind, name, kept) {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(attrs))
+		}
+		out[name] = val
+	}
+	return out
+}
+
+// keptAttr is whether kept holds the entry "<part> <kind> <name>".
+func keptAttr(part, kind, name string, kept []string) bool {
+	for _, entry := range kept {
+		head, rest, ok := strings.Cut(entry, " ")
+		if !ok || head != part {
+			continue
+		}
+		mid, last, ok := strings.Cut(rest, " ")
+		if ok && mid == kind && last == name {
+			return true
+		}
+	}
+	return false
 }
 
 // keepUnread keeps cerr, the claiming reader's refused configuration under

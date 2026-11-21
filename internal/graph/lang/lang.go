@@ -57,6 +57,21 @@ type Kept interface {
 	SessionKept() bool
 }
 
+// KeptFrom is a Kept resolver that states the first consent scope from
+// which a session's edits of its files may be kept, the scope whose screen
+// first names files of its language among what a yes keeps, and what the
+// session graph log may hold of its records: SessionKeptAttrs is a closed
+// list of entries "<record> <kind> <name>", a node's kind ("node file
+// digest") or an edge's predicate ("edge calls line") before the attribute
+// name, and a record whose kind the list does not name keeps no attribute.
+// The list is the resolver's own and the caller only reads it. A resolver
+// that states none is kept from the session-content consent alone, every
+// attribute it writes kept (Go, whose language the first screen named).
+type KeptFrom interface {
+	SessionKeptFrom() int
+	SessionKeptAttrs() []string
+}
+
 // Registry is an ordered set of resolvers; the first that claims a file
 // resolves it. It is built by the caller that wires languages (the index
 // command, index.Wire for a hook), never at init. Its entries are values,
@@ -143,6 +158,23 @@ func (g *Registry) SessionKept(root, rel string) bool {
 	}
 	k, ok := e.r.(Kept)
 	return ok && k.SessionKept()
+}
+
+// SessionKeptFrom is the first consent scope from which the resolver that
+// claims rel states a session's edits of its files are kept, and its list of
+// the attributes kept (KeptFrom): 0 and nil for a resolver that states none
+// and for a path none claims. It runs no configuration step: the statement
+// read is the registered resolver's.
+func (g *Registry) SessionKeptFrom(root, rel string) (int, []string) {
+	e, ok := g.claimant(root, rel)
+	if !ok {
+		return 0, nil
+	}
+	k, ok := e.r.(KeptFrom)
+	if !ok {
+		return 0, nil
+	}
+	return k.SessionKeptFrom(), k.SessionKeptAttrs()
 }
 
 // For is the resolver that claims rel, false when none does. It runs no
