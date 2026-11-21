@@ -91,7 +91,8 @@ func OpenReqsLines(reqs []ReqState) []string {
 // path slot's rule (slot.Path.Validate) and nothing else: the rule the Stop
 // line prints a unit by and a unit line binds by. A unit whose path the rule
 // refuses is neither named nor counted. The rule refuses an empty path, a
-// "." or ".." segment, a leading '/', a segment with a leading '-', any byte
+// path over 256 bytes, a "." or ".." segment, a leading '/', a segment
+// with a leading '-', an empty segment or one over 128 characters, any byte
 // outside its segment charset (a newline among them), a secret shape and a
 // segment the entropy test refuses; the keyed digest that stands for a path
 // at record scope v4 is one such form. Leaving such a unit out is a miss,
