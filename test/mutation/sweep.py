@@ -72,6 +72,12 @@ MUTANT_TIMEOUT_MIN = 10
 # before m.Run).
 TIMED_OUT = ("panic: test timed out after", "*** Test killed")
 
+# The most lines of go test's output that a TIMEOUT row prints from the alarm
+# line on (SWEEP-TIMEOUT1). The alarm's panic is followed by a trace of every
+# goroutine, which can run to thousands of lines; the limit keeps one hung row
+# from burying the rest of the log, and the row says how many lines it cut.
+TIMEOUT_STACK_LINES = 300
+
 # The requirement prefixes of the 1.2.0 specification. A mutant file named
 # <PREFIX>-<n>_<slug>.py claims that row, and every test it names must pin the
 # same row -- a suffix letter, TestREC56b_, pins its parent -- unless
@@ -470,6 +476,32 @@ def timeout_lines(r):
             found.append(ln)
             running = True
     return found
+
+
+def timeout_stack(r):
+    """The stack text of a run its -timeout ended and the number of lines cut
+    from it, or None when the run holds no alarm line (SWEEP-TIMEOUT1).
+
+    timeout_lines names the tests the alarm found running and nothing about
+    where they waited, so a hang in an end sweep could not be read from its
+    log. The test binary's alarm panics, and with tracebacks set to all the
+    panic is followed by the trace of every goroutine. The text starts at the
+    alarm line and ends at the first FAIL<TAB> line after it, the package's,
+    or at the last line of the run when none follows. At most
+    TIMEOUT_STACK_LINES lines are returned and the count of the rest comes
+    with them, so a reader knows whether the FAIL line is among those shown.
+    A run that only cmd/go's backup kill ended has no alarm line: None, and
+    the caller says so rather than claim a dump that was not read.
+    """
+    lines = (r.stdout + r.stderr).splitlines()
+    for start, ln in enumerate(lines):
+        if ln.startswith(TIMED_OUT[0]):
+            break
+    else:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("FAIL\t")), len(lines) - 1)
+    block = lines[start:end + 1]
+    return block[:TIMEOUT_STACK_LINES], max(0, len(block) - TIMEOUT_STACK_LINES)
 
 
 def own_cache():
@@ -1077,6 +1109,18 @@ def run_sweep(strict=False, trim_root=None):
                       f"\"--- FAIL\" lines: not judged, never a kill)")
                 for ln in _timeout:
                     print("     ", ln)
+                # Where the tests waited: go test's output from the alarm line
+                # to the package's FAIL line, behind a margin, with the limit
+                # and the count of lines cut stated. No verdict depends on it.
+                _stack = timeout_stack(r)
+                if _stack is None:
+                    print(f"  STACK          <- {name}   (no alarm line in the run, so no stack text is printed)")
+                else:
+                    _shown, _cut = _stack
+                    print(f"  STACK          <- {name}   (the alarm line and the lines after it, "
+                          f"{TIMEOUT_STACK_LINES} at most: {len(_shown)} shown, {_cut} cut)")
+                    for ln in _shown:
+                        print("      |", ln)
                 timed_out.append(name)
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
             # `go test ./... -run <regex>`, so every package without a matching
