@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 	"github.com/altrace-dev-role/rashomon/internal/steer/render"
@@ -86,6 +87,7 @@ func TestPost_UnitBriefOutranksBlast(t *testing.T) {
 	env := stEnv(steer.DisclosureVersion)
 	reads := 0
 	env.Blast = BlastPort{
+		Lang: gopg.Lang,
 		Locate: func(root, _ string) (BlastSite, bool) {
 			return BlastSite{Root: root, Package: "example.com/m/a", Log: "log-1"}, true
 		},

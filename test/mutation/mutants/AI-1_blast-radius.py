@@ -32,14 +32,15 @@ m("AI-1 Locate needs no walk file", C,
   "\tif err != nil || !v.on {\n\t\treturn Site{}, false\n", "\tif err != nil && false {\n\t\treturn Site{}, false\n",
   "TestAI1_LocateNamesNoSiteWhereNoSyncVouches")
 
-# The hook (internal/hook/blastradius.go): record scope v5 only; a context of
+# The hook (internal/hook/blastradius.go): a context of
 # its own where the judge built none; two gates (A2), the read marker taken
 # before the read and the print gate on the caller set's digest; silence on
 # no caller; a yielded note returns its marker, and only a delivered (or
 # arm_off) line counts as given.
 H = "internal/hook/blastradius.go"
 
-m("AI-1 a v4 record names directories", H,
+# Record scope v5 only: the callers route's check, which stops both notes.
+m("AI-1 a v4 record names directories", "internal/hook/blastcallers.go",
   "!p.scopeV5 || ", "", "TestAI1_SilenceWhereNothingIsProven")
 m("AI-1 no context of its own", H,
   "\tif !ok {\n\t\t*ctx = p.contextOf(", "\tif !ok && false {\n\t\t*ctx = p.contextOf(", "TestAI1_AGoEditTellsTheCallersOnce")

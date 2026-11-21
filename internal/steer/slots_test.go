@@ -2,6 +2,7 @@ package steer
 
 import (
 	"encoding/json"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -47,10 +48,12 @@ func TestSlotsOf_MatchesTheSpecExample(t *testing.T) {
 }
 
 // TestSlotsOf_EverySlotTypeHasARow: every type in package slot that
-// implements its sealed Value (a bind method) has a sample here, and every
-// sample writes valid JSON under its own name, so a slot type the table
-// does not know fails this test instead of reaching a line as a silent
-// string. Two slots that would write one key refuse the set.
+// implements its sealed Value (a bind method) stands in exactly one of two
+// tables: a sample that writes valid JSON under its own name, or a type a
+// steer line refuses, with its reason, for which slotsFrom gives errSlot.
+// So a slot type neither table knows fails this test instead of reaching a
+// line as a silent string. Two slots that would write one key refuse the
+// set.
 func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 	samples := map[string]slot.Value{
 		"Program":   slot.Program("aws"),
@@ -110,10 +113,27 @@ func TestSlotsOf_EverySlotTypeHasARow(t *testing.T) {
 		"GraphLine": `{"calls":[],"clause":"","consumers":[],"counts":{"calls":0,"consts":0,"consumers":0,"imports":0,"lessons":0,"names":0,"readers":0,"reads":0,"records":0,"writers":0,"writes":0},` +
 			`"digest":"","id":"","imports":[],"kind":"table","lessons":["les:INC-212"],"names":[],"path":"","readers":[],"reads":[],"records":[],"role":"","source":"","source_digest":"","table":"public.sessions","writers":["purge.run"],"writes":[]}`,
 	}
+	// The slot types a steer line refuses, each with its reason: slotsFrom
+	// gives errSlot, so a line that would hold one is refused whole.
+	refused := map[string]slot.Value{
+		// The caller note's names. Its record form binds the two counts
+		// alone (BlastCallersRecordBinding), so no steer line holds them.
+		"IdentList": slot.NewIdentList([]slot.Ident{"purge.run"}, 2),
+	}
 	for _, name := range slotTypes(t) {
-		v, ok := samples[name]
-		if !ok {
-			t.Errorf("slot.%s implements Value and has no row in slotsOf's test: add its sample and its JSON form", name)
+		v, sampled := samples[name]
+		rv, isRefused := refused[name]
+		switch {
+		case sampled && isRefused:
+			t.Errorf("slot.%s has a sample and a row in the refused table: keep one", name)
+			continue
+		case !sampled && !isRefused:
+			t.Errorf("slot.%s implements Value and has no row in slotsOf's test: add its sample and its JSON form, or a row in the refused table with its reason", name)
+			continue
+		case isRefused:
+			if _, err := slotsFrom([]render.Slot{{Name: "s", Value: rv}}); !errors.Is(err, errSlot) {
+				t.Errorf("slot.%s is in the refused table and slotsFrom gives %v, want errSlot", name, err)
+			}
 			continue
 		}
 		got, err := slotsFrom([]render.Slot{{Name: "s", Value: v}})

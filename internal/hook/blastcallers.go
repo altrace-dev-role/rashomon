@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/graph/lang"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/regfile"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -28,7 +29,9 @@ import (
 // The route is the language registry's claim on the file, never its name:
 // the claimant whose language the port serves keeps the package path
 // (blast), and any other claimant's files are read here. Each way the read
-// ends is a named case, so every silence is one a test can tell apart.
+// ends is a named case, so every silence is one a test can tell apart. A
+// read that names callers (note or stale) prints as the callers note
+// (callersDraft); every other case prints nothing.
 
 // callersCase is how a call's callers read ended.
 type callersCase uint8
@@ -85,16 +88,16 @@ func (c callersCase) String() string {
 
 // callersRead is a call's callers read: its case, the function or method
 // whose body holds the edit, and that function's callers by the index's
-// calls edges, distinct and sorted.
+// calls edges, distinct and sorted. Root is the Git root the route found,
+// set on the port's case for the package path; Marker is the read marker
+// the read took, set on a note or stale read alone, the cases that print.
 type callersRead struct {
 	Case    callersCase
 	Func    graph.ID
 	Callers []graph.ID
+	Root    string
+	Marker  string
 }
-
-// maxCallersNamed is how many callers a note names; past it the note says
-// how many more.
-const maxCallersNamed = 5
 
 // blastIndexOpen opens the index file for the callers pass, capped at
 // graph.MaxGraphFileBytes; a test counts the passes through it.
@@ -105,13 +108,82 @@ func openBlastIndex(path string) (io.ReadCloser, error) {
 	return regfile.OpenCapped(path, int64(graph.MaxGraphFileBytes))
 }
 
+// callersRoute is the read's route: the edited file's path, resolved through
+// its directory's links, the Git root over the working directory, the
+// registry the read asks, and callersUnset where the read goes on. Its
+// refusals each give none, and run in this order, cheapest first:
+//   - no port wired, the contract the blast-radius read states ("with a
+//     port wired"), or a call the note does not follow (not a success
+//     event's Edit, Write or MultiEdit that landed, at record scope v5):
+//     these read no file system, so they run ahead of the rest;
+//   - no declared path;
+//   - no Git root over the working directory, found by a walk up for .git;
+//   - a file not under that root once its directory's links are resolved;
+//   - a file no reader of the registry claims;
+//   - a file whose claimant keeps edits from a consent scope on that the
+//     overlay writer's gate did not find on file in this call (gatePassed).
+//
+// Past them it gives port, with the root, for a file the port's language's
+// reader claims. The registry is the overlay writer's where that writer ran
+// in this call, so the call builds it once, else wiredRegistry's.
+func (p *Post) callersRoute(env SteerEnv) (path, root string, reg *lang.Registry, c callersCase) {
+	if env.Blast.Locate == nil || env.Blast.Callers == nil || !p.scopeV5 || p.landedSeq <= 0 ||
+		p.event != string(steer.EventPostToolUse) || !editTool(p.toolName) {
+		return "", "", nil, callersNone
+	}
+	path = overlayPath(shape.DeclaredPath(p.toolName, p.toolInput), p.cwd)
+	if path == "" {
+		return "", "", nil, callersNone
+	}
+	root = blastRoot(p.cwd)
+	if root == "" {
+		return "", "", nil, callersNone
+	}
+	path = filepath.Join(resolved(filepath.Dir(path)), filepath.Base(path))
+	rel, under := underRoot(root, path)
+	if !under {
+		return "", "", nil, callersNone
+	}
+	reg = p.gate.reg
+	if reg == nil {
+		reg = wiredRegistry()
+	}
+	// Before the consent check the read touches names and metadata only: it
+	// resolves the working directory and the edited file's directory through
+	// their links and walks up for the repository's .git, and the registry's
+	// For asks each registered reader whether it claims the path; the readers
+	// registered today decide by the path's name alone, so no file is opened
+	// and no configuration step runs.
+	claimant, claimed := reg.For(root, rel)
+	if !claimed {
+		return "", "", nil, callersNone
+	}
+	if from, _ := reg.SessionKeptFrom(root, rel); from > 0 && !p.gatePassed(from) {
+		return "", "", nil, callersNone
+	}
+	if claimant.Lang() == env.Blast.Lang {
+		return path, root, reg, callersPort
+	}
+	return path, root, reg, callersUnset
+}
+
+// gatePassed reports whether the overlay writer's gate passed in this call
+// at a consent scope of from or above: the gate passed only where the scope
+// on file was at least the one its own file's claimant keeps edits from.
+func (p *Post) gatePassed(from int) bool {
+	if p.gate.root == "" || p.gate.reg == nil {
+		return false
+	}
+	gf, _ := p.gate.reg.SessionKeptFrom(p.gate.root, p.gate.rel)
+	return gf >= from
+}
+
 // readCallers is the call's callers read. The checks run cheapest first, and
 // the first that stops the read names its case:
-//   - the route: a success event's Edit, Write or MultiEdit that landed, at
-//     record scope v5, of a file under a Git root that a reader of the
-//     language registry claims (none), in a language other than the port's
-//     (port). The registry is the overlay writer's where that writer ran in
-//     this call, so the call builds it once, else wiredRegistry's;
+//   - the route (callersRoute): a port wired and a call the note follows,
+//     of a file under a Git root that a reader of the language registry
+//     claims, under a consent scope the overlay writer's gate found (none),
+//     in a language other than the port's (port);
 //   - the input alone: a Write, a replace_all, an empty new_string, or edits
 //     that cannot be read (unplaced);
 //   - the call's steer context, built here from contextOf when the judge
@@ -135,32 +207,9 @@ func openBlastIndex(path string) (io.ReadCloser, error) {
 // A pass that fails reads as no index and keeps the marker: that index's
 // answer stands until it is written again.
 func (p *Post) readCallers(env SteerEnv, ctx *steer.Context, ok bool) callersRead {
-	if !p.scopeV5 || p.landedSeq <= 0 || p.event != string(steer.EventPostToolUse) || !editTool(p.toolName) {
-		return callersRead{Case: callersNone}
-	}
-	path := overlayPath(shape.DeclaredPath(p.toolName, p.toolInput), p.cwd)
-	if path == "" {
-		return callersRead{Case: callersNone}
-	}
-	root := blastRoot(p.cwd)
-	if root == "" {
-		return callersRead{Case: callersNone}
-	}
-	path = filepath.Join(resolved(filepath.Dir(path)), filepath.Base(path))
-	rel, under := underRoot(root, path)
-	if !under {
-		return callersRead{Case: callersNone}
-	}
-	reg := p.gate.reg
-	if reg == nil {
-		reg = wiredRegistry()
-	}
-	claimant, claimed := reg.For(root, rel)
-	if !claimed {
-		return callersRead{Case: callersNone}
-	}
-	if claimant.Lang() == env.Blast.Lang {
-		return callersRead{Case: callersPort}
+	path, root, reg, c := p.callersRoute(env)
+	if c != callersUnset {
+		return callersRead{Case: c, Root: root}
 	}
 	edits, placeable := placeableEdits(p.toolName, p.toolInput)
 	if !placeable {
@@ -176,7 +225,8 @@ func (p *Post) readCallers(env SteerEnv, ctx *steer.Context, ok bool) callersRea
 	if idxRoot == "" {
 		return callersRead{Case: callersNoIndex}
 	}
-	if rel, under = underRoot(idxRoot, path); !under {
+	rel, under := underRoot(idxRoot, path)
+	if !under {
 		return callersRead{Case: callersNoIndex}
 	}
 	idxFile := filepath.Join(idxRoot, filepath.FromSlash(graph.GraphFile))
@@ -221,7 +271,8 @@ func (p *Post) readCallers(env SteerEnv, ctx *steer.Context, ok bool) callersRea
 	if !inBody {
 		return callersRead{Case: callersOutside}
 	}
-	if !p.st.TakeBlastRead(p.sessionID, callersMarker(p.st.Key(), fn, hdr.Rev.Commit, hdr.Records)) {
+	marker := callersMarker(p.st.Key(), fn, hdr.Rev.Commit, hdr.Records)
+	if !p.st.TakeBlastRead(p.sessionID, marker) {
 		return callersRead{Case: callersMarked, Func: fn}
 	}
 	callers, digest, err := indexCallers(idxFile, fn, graph.FileID(rel))
@@ -231,9 +282,9 @@ func (p *Post) readCallers(env SteerEnv, ctx *steer.Context, ok bool) callersRea
 	case len(callers) == 0:
 		return callersRead{Case: callersZero, Func: fn}
 	case digest != graph.ContentDigest(content):
-		return callersRead{Case: callersStale, Func: fn, Callers: callers}
+		return callersRead{Case: callersStale, Func: fn, Callers: callers, Marker: marker}
 	}
-	return callersRead{Case: callersNote, Func: fn, Callers: callers}
+	return callersRead{Case: callersNote, Func: fn, Callers: callers, Marker: marker}
 }
 
 // placeableEdits is the edits of an Edit's or MultiEdit's input, false for a
@@ -336,13 +387,28 @@ func callersMarker(key []byte, fn graph.ID, commit string, records int) string {
 	return store.FileBlastReadPrefix + hex.EncodeToString(m.Sum(nil))[:16]
 }
 
+// callersError is an error of the callers pass, a constant so the package
+// builds no error value at init.
+type callersError string
+
+func (e callersError) Error() string { return string(e) }
+
+// errLongLine is the pass's refusal of an index line longer than its read
+// bound that could hold the read's answer: the edited file's node, or a
+// calls edge into the function.
+const errLongLine callersError = "hook: an index line past the callers read's bound may hold its answer"
+
+// callersLineBound is the callers pass's read bound: a longer index line is
+// read on in pieces of this size and not kept (skipLong).
+const callersLineBound = 64 << 10
+
 // indexCallers is one pass over the index file at path, opened through
 // blastIndexOpen: the distinct sources of its calls edges into fn, sorted,
 // and the digest its node of file states, "" where it holds none. The first
 // line, the header, is skipped. A line is matched first by the bytes the
 // index writer's encoder spells for the field, and only a match is read
-// field by field (jsonscan), so no record is decoded. A line is read whole,
-// however long.
+// field by field (jsonscan), so no record is decoded. A line past
+// callersLineBound is read on in pieces and not kept (skipLong).
 func indexCallers(path string, fn, file graph.ID) ([]graph.ID, string, error) {
 	rc, err := blastIndexOpen(path)
 	if err != nil {
@@ -351,21 +417,15 @@ func indexCallers(path string, fn, file graph.ID) ([]graph.ID, string, error) {
 	defer rc.Close() //nolint:errcheck // read only
 	callNeedle := append([]byte(`"Pred":"calls","Dst":`), jsonText(string(fn))...)
 	fileHead := append([]byte(`{"Node":{"ID":`), jsonText(string(file))...)
-	br := bufio.NewReaderSize(rc, 64<<10)
+	br := bufio.NewReaderSize(rc, callersLineBound)
 	var (
 		callers []graph.ID
 		digest  string
-		long    []byte
 	)
 	for n := 0; ; n++ {
 		line, err := br.ReadSlice('\n')
 		if errors.Is(err, bufio.ErrBufferFull) {
-			long = append(long[:0], line...)
-			for errors.Is(err, bufio.ErrBufferFull) {
-				line, err = br.ReadSlice('\n')
-				long = append(long, line...)
-			}
-			line = long
+			line, err = nil, skipLong(br, line, fileHead, callNeedle)
 		}
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, "", err
@@ -377,7 +437,7 @@ func indexCallers(path string, fn, file graph.ID) ([]graph.ID, string, error) {
 				digest = d
 			}
 		case bytes.Contains(line, callNeedle):
-			if src, ok := callerOf(line, fn); ok {
+			if src, ok := callerOf(line, fn); ok && src != fn {
 				callers = append(callers, src)
 			}
 		}
@@ -387,6 +447,31 @@ func indexCallers(path string, fn, file graph.ID) ([]graph.ID, string, error) {
 	}
 	slices.Sort(callers)
 	return slices.Compact(callers), digest, nil
+}
+
+// skipLong reads on past an index line longer than the pass's read bound,
+// whose first piece is first, to the line's end. It refuses the pass
+// (errLongLine) where the line is the edited file's node (its first piece
+// starts with head) or holds needle, and gives io.EOF where the file ends
+// inside the line, else nil. Each later piece is searched whole and again
+// after the last len(needle)-1 bytes of the piece before it, so a needle
+// split between two pieces is found.
+func skipLong(br *bufio.Reader, first, head, needle []byte) error {
+	if bytes.HasPrefix(first, head) || bytes.Contains(first, needle) {
+		return errLongLine
+	}
+	keep := len(needle) - 1
+	carry := append(make([]byte, 0, 2*keep), first[max(0, len(first)-keep):]...)
+	for {
+		piece, err := br.ReadSlice('\n')
+		if bytes.Contains(append(carry, piece[:min(keep, len(piece))]...), needle) || bytes.Contains(piece, needle) {
+			return errLongLine
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return err
+		}
+		carry = append(carry[:0], piece[max(0, len(piece)-keep):]...)
+	}
 }
 
 // jsonText is s as a JSON string, spelled as the index writer's encoder
@@ -442,13 +527,4 @@ func stringAt(buf []byte, obj jsonscan.Span, key string) string {
 		return ""
 	}
 	return s
-}
-
-// callersShown is the callers a note names, the first maxCallersNamed, and
-// how many more there are.
-func callersShown(c []graph.ID) ([]graph.ID, int) {
-	if len(c) <= maxCallersNamed {
-		return c, 0
-	}
-	return c[:maxCallersNamed], len(c) - maxCallersNamed
 }

@@ -116,10 +116,9 @@ var lang0Exempt = map[string]string{
 // place of asking the registry. LANG-REG1 routes each through the wiring
 // function and lowers this class to nothing.
 var lang0Finding = map[string]int{
-	"cmd/rashomon/plan.go:import":             1,
-	"cmd/rashomon/plan.go:planNamesOf":        1,
-	"internal/hook/blastradius.go:Post.blast": 1,
-	"internal/verify/platform.go:isGoWrite":   1,
+	"cmd/rashomon/plan.go:import":           1,
+	"cmd/rashomon/plan.go:planNamesOf":      1,
+	"internal/verify/platform.go:isGoWrite": 1,
 }
 
 // lang0SingleLanguage is behaviour written for one or two languages by name,

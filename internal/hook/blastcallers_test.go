@@ -1,6 +1,8 @@
 package hook
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"maps"
@@ -17,13 +19,18 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/gopg"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/steer"
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // These tests drive the callers read through a real post: the specimen
 // repository at its commit, with shapes.py added, indexed by pylite into
 // .rashomon/graph.jsonl, then an Edit or MultiEdit landed through Handler and
-// Post. Each test names the case it wants; a message that starts "fixture:"
-// means the test's own setup is wrong, not the read.
+// Post. The store holds the session-content marker and the consent scope on
+// file answers pylite's kept scope, so the overlay writer's gate passes for a
+// pylite file as it does in a session that consented to keep its edits. Each
+// test names the case it wants; a message that starts "fixture:" means the
+// test's own setup is wrong, not the read.
 
 const (
 	cacheRel    = "services/auth/auth/cache.py"
@@ -197,7 +204,8 @@ func pyRegistry(res pylite.Resolver) *lang.Registry {
 
 // pyFix is a post fixture over the specimen repository: its files on disk
 // under a Git root that is the payloads' cwd, the hook's registry and overlay
-// seams set for the test, and the index opens counted.
+// seams set for the test, and the index opens, the file reads and the
+// consent scope's asks counted.
 type pyFix struct {
 	*stFix
 	root string
@@ -210,11 +218,18 @@ type pyFix struct {
 	// portReads how many times the Go port's Callers ran.
 	opens     int
 	portReads int
+	// asked is what the consent scope on file was asked, and files how many
+	// times the hook read a file or an index header through its seams
+	// (overlayReadFile, overlayReadHeader).
+	asked *cg2Asked
+	files int
 }
 
 // newPyFix writes the specimen, shapes.py and extra under a fresh Git root
-// and wires reg's registry (pyRegistry when nil) as the hook's. Nothing is
-// indexed until the test calls index.
+// and wires reg's registry (pyRegistry when nil) as the hook's. The store
+// holds the session-content marker, and the consent scope on file answers
+// pylite.SessionKeptScope, the first scope whose screen names pylite's
+// files. Nothing is indexed until the test calls index.
 func newPyFix(t *testing.T, extra map[string]string, reg func(pylite.Resolver) *lang.Registry) *pyFix {
 	t.Helper()
 	sp := graphtest.New(t)
@@ -227,6 +242,10 @@ func newPyFix(t *testing.T, extra map[string]string, reg func(pylite.Resolver) *
 	}
 	f := &pyFix{stFix: newST(t), root: root, res: sp.Res}
 	f.cwd = root
+	if err := store.WriteSessionContentMarker(f.st.Root()); err != nil {
+		t.Fatal(err)
+	}
+	f.asked = cg2Scope(t, pylite.SessionKeptScope, nil)
 	files := map[string]string{shapesRel: shapesPy}
 	maps.Copy(files, extra)
 	for rel, body := range files {
@@ -251,7 +270,13 @@ func newPyFix(t *testing.T, extra map[string]string, reg func(pylite.Resolver) *
 	r := reg(sp.Res)
 	ends := pyEnds()
 	wire0, resolve0, open0 := overlayWire, overlayResolve, blastIndexOpen
-	t.Cleanup(func() { overlayWire, overlayResolve, blastIndexOpen = wire0, resolve0, open0 })
+	file0, header0 := overlayReadFile, overlayReadHeader
+	t.Cleanup(func() {
+		overlayWire, overlayResolve, blastIndexOpen = wire0, resolve0, open0
+		overlayReadFile, overlayReadHeader = file0, header0
+	})
+	overlayReadFile = func(p string) ([]byte, error) { f.files++; return file0(p) }
+	overlayReadHeader = func(p string) (graph.Header, error) { f.files++; return header0(p) }
 	overlayWire = func() *lang.Registry { return r }
 	overlayResolve = func(lr lang.Resolver, rel string, content []byte, base graph.Rev, seq int64) ([]graph.Record, error) {
 		recs, err := lr.Overlay(rel, content, base, seq)
@@ -374,6 +399,37 @@ func (f *pyFix) edit(id, rel, old, new string) callersRead {
 	return f.read(id, "Edit", map[string]any{"file_path": f.abs(rel), "old_string": old, "new_string": new})
 }
 
+// land applies an Edit of rel on disk and lands it, and returns its post
+// unread, so a test can count what the read itself does.
+func (f *pyFix) land(id, rel, old, new string) *Post {
+	f.t.Helper()
+	f.apply(rel, old, new)
+	return f.call(id, "Edit", map[string]any{"file_path": f.abs(rel), "old_string": old, "new_string": new}, 0)
+}
+
+// insertLine writes rec, encoded as one JSON line, into the index file
+// right after its header line.
+func (f *pyFix) insertLine(rec graph.Record) {
+	f.t.Helper()
+	path := filepath.Join(f.root, filepath.FromSlash(graph.GraphFile))
+	b, err := os.ReadFile(path)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	line, err := json.Marshal(rec)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	i := bytes.IndexByte(b, '\n')
+	if i < 0 {
+		f.t.Fatalf("fixture: the index file holds no header line")
+	}
+	out := append(append(append(slices.Clone(b[:i+1]), line...), '\n'), b[i+1:]...)
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 // wantOpens fails the test unless the callers pass opened the index n times.
 func (f *pyFix) wantOpens(what string, n int) {
 	f.t.Helper()
@@ -471,7 +527,7 @@ func TestBlastCallers_OneCallerLine(t *testing.T) {
 
 // TestBlastCallers_ManyCallersCapAtFive: connection has three callers in the
 // files and four synthetic ones; the read holds all seven, distinct and
-// sorted, and a note names the first five and says two more.
+// sorted, and its note lists the first five and says two more.
 func TestBlastCallers_ManyCallersCapAtFive(t *testing.T) {
 	f := newPyFix(t, nil, nil)
 	conn := authSym("func", "auth.conn.connection")
@@ -488,9 +544,9 @@ func TestBlastCallers_ManyCallersCapAtFive(t *testing.T) {
 	f.fixtureCallers(conn, want...)
 	r := f.edit("toolu_m", connRel, "return None", "return 0")
 	wantRead(t, "connection's body", r, callersRead{Case: callersStale, Func: conn, Callers: want})
-	shown, more := callersShown(r.Callers)
-	if !slices.Equal(shown, want[:maxCallersNamed]) || more != len(want)-maxCallersNamed {
-		t.Fatalf("callersShown named %q and %d more, want %q and %d more", shown, more, want[:maxCallersNamed], len(want)-maxCallersNamed)
+	m, _, listed, ok := callersMessage(r.Func, r.Callers, true)
+	if !ok || !slices.Equal(listed, want[:maxCallersListed]) || !strings.Contains(m.Text(), "' and 2 more as calling ") {
+		t.Fatalf("the note listed %q (ok %v) in %q, want %q and 2 more", listed, ok, m.Text(), want[:maxCallersListed])
 	}
 }
 
@@ -664,11 +720,12 @@ func TestBlastCallers_MultiEditNamesTheFirstEditInsideABody(t *testing.T) {
 	wantRead(t, "the MultiEdit", r, callersRead{Case: callersStale, Func: mint, Callers: []graph.ID{issue}})
 }
 
-// TestBlastCallers_NoIndexIsSilent: a repository with no index reads as no
-// index.
+// TestBlastCallers_NoIndexIsSilent: in a repository with no index the
+// overlay writer's gate finds none and so passes no consent scope, and the
+// read stops at its scope check (none) before it opens anything.
 func TestBlastCallers_NoIndexIsSilent(t *testing.T) {
 	f := newPyFix(t, nil, nil)
-	wantCase(t, "no index", f.edit("toolu_ni", cacheRel, "ex=3600", "ex=7200"), callersNoIndex)
+	wantCase(t, "no index", f.edit("toolu_ni", cacheRel, "ex=3600", "ex=7200"), callersNone)
 	f.wantOpens("no index", 0)
 }
 
@@ -682,6 +739,31 @@ func TestBlastCallers_NoNoteWithoutConsent(t *testing.T) {
 	f.env = env
 	wantCase(t, "no consent", f.edit("toolu_nc", cacheRel, "ex=3600", "ex=7200"), callersNoNote)
 	f.wantOpens("no consent", 0)
+}
+
+// TestBlastCallers_RecordScopeV4IsSilent: the route stops below record
+// scope v5, for the callers note as for the package note. An edit of
+// put_session at record scope v4 reads as none and opens no index.
+func TestBlastCallers_RecordScopeV4IsSilent(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	if err := store.WriteRecordScopeMarker(f.st.Root(), store.RecordScopeV4); err != nil {
+		t.Fatal(err)
+	}
+	wantCase(t, "record scope v4", f.edit("toolu_v4", cacheRel, "ex=3600", "ex=7200"), callersNone)
+	f.wantOpens("record scope v4", 0)
+}
+
+// TestBlastCallers_NoPortWiredReadsNothing: the route stops first where no
+// port is wired, ahead of the path and the Git root walk. An edit of
+// put_session at record scope v5 with no port reads as none and opens no
+// index.
+func TestBlastCallers_NoPortWiredReadsNothing(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	f.env.Blast = BlastPort{}
+	wantCase(t, "no port wired", f.edit("toolu_np", cacheRel, "ex=3600", "ex=7200"), callersNone)
+	f.wantOpens("no port wired", 0)
 }
 
 // TestBlastCallers_OnePassPerFunctionAndCommit: a function is read once per
@@ -723,4 +805,226 @@ func TestBlastCallers_GoPackagePathUnchanged(t *testing.T) {
 		t.Fatalf("a Go edit printed %q with the port read %d times, want the package note", out, f.portReads)
 	}
 	f.wantOpens("a Go edit", 0)
+}
+
+// TestBlastCallers_AScopeBelowTheReadersReadsNothing: pylite keeps a
+// session's edits from pylite.SessionKeptScope on. Under a yes one below it
+// the overlay writer's gate does not pass, so the read stops at its scope
+// check (none): it opens no index, reads no file and asks the consent scope
+// nothing of its own. The landed call asks it at least once, in the gate.
+func TestBlastCallers_AScopeBelowTheReadersReadsNothing(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.asked = cg2Scope(t, pylite.SessionKeptScope-1, nil)
+	f.index(nil)
+	p := f.land("toolu_y8", cacheRel, "ex=3600", "ex=7200")
+	asked := len(f.asked.roots)
+	if asked == 0 {
+		t.Fatalf("fixture: the landed call asked no consent scope, so the overlay writer's gate never ran")
+	}
+	f.files = 0
+	var ctx steer.Context
+	wantCase(t, "a scope below the reader's", p.readCallers(f.env, &ctx, false), callersNone)
+	f.wantOpens("a scope below the reader's", 0)
+	if f.files != 0 || len(f.asked.roots) != asked {
+		t.Errorf("a scope below the reader's: the read read %d files and asked the scope %d times, want 0 and 0",
+			f.files, len(f.asked.roots)-asked)
+	}
+}
+
+// TestBlastCallers_TheReadersScopeReadsAndAsksNothingMore: under a yes of
+// pylite.SessionKeptScope the gate passes and the read names put_session's
+// caller. It takes the gate's answer, so it asks the consent scope nothing.
+func TestBlastCallers_TheReadersScopeReadsAndAsksNothingMore(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	put, create := authSym("func", "auth.cache.put_session"), authSym("func", "auth.sessions.create_session")
+	p := f.land("toolu_y9", cacheRel, "ex=3600", "ex=7200")
+	asked := len(f.asked.roots)
+	var ctx steer.Context
+	wantRead(t, "the reader's scope", p.readCallers(f.env, &ctx, false),
+		callersRead{Case: callersStale, Func: put, Callers: []graph.ID{create}})
+	if len(f.asked.roots) != asked {
+		t.Errorf("the read asked the consent scope %d times, want 0", len(f.asked.roots)-asked)
+	}
+}
+
+// TestBlastCallers_AGoEditAsksNoScope: the port's reader states no kept
+// scope, so neither the overlay writer's gate nor the read asks the consent
+// scope, and the read keeps the package path (port).
+func TestBlastCallers_AGoEditAsksNoScope(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	edit := map[string]any{"file_path": filepath.Join(f.root, "a", "a.go"), "old_string": "1", "new_string": "2"}
+	wantCase(t, "a Go file", f.read("toolu_ga", "Edit", edit), callersPort)
+	if len(f.asked.roots) != 0 {
+		t.Errorf("a Go edit asked the consent scope %d times (%q), want none", len(f.asked.roots), f.asked.roots)
+	}
+}
+
+// TestBlastCallers_SteerPrintsTheNoteAndRecordsCountsOnly: an edit of
+// put_session prints the stale note naming create_session as its caller.
+// Its steer line is keyed "callers-" and records the counts alone, no line
+// of the steer log holds either name, and the step asks the consent scope
+// nothing.
+func TestBlastCallers_SteerPrintsTheNoteAndRecordsCountsOnly(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	p := f.land("toolu_se", cacheRel, "ex=3600", "ex=7200")
+	asked := len(f.asked.roots)
+	out := string(p.Steer(f.env))
+	const note = "rashomon record: the repository graph names 'auth.sessions.create_session' as calling " +
+		"'auth.cache.put_session', which this call edited; the graph does not hold the present content of the edited file."
+	if !strings.Contains(out, note) {
+		t.Fatalf("the step printed %q, want it to hold %q", out, note)
+	}
+	if len(f.asked.roots) != asked {
+		t.Errorf("the step asked the consent scope %d times, want 0", len(f.asked.roots)-asked)
+	}
+	const rec = "rashomon record: the repository graph names callers of the function this call edited: 1 listed, 0 more; " +
+		"the graph does not hold the present content of the edited file."
+	n := 0
+	for _, l := range steerLines(t, f.st) {
+		if l.Pattern != string(pattern.BlastRadius) || !strings.HasPrefix(l.Key, "callers-") {
+			continue
+		}
+		n++
+		if l.ModelText != rec {
+			t.Errorf("the note's line records %q, want %q", l.ModelText, rec)
+		}
+	}
+	if n != 1 {
+		t.Errorf("the steer log holds %d callers lines, want 1", n)
+	}
+	raw, _, err := f.st.ReadSteer(stSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range raw {
+		if bytes.Contains(b, []byte("create_session")) || bytes.Contains(b, []byte("put_session")) {
+			t.Errorf("a steer line holds a name: %s", b)
+		}
+	}
+}
+
+// TestBlastCallers_AFunctionCallingItselfIsNotItsCaller: an index edge from
+// a function into itself names no caller. put_session, called by itself and
+// by create_session, reads create_session alone; is_expired, called by
+// itself alone, reads as zero.
+func TestBlastCallers_AFunctionCallingItselfIsNotItsCaller(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	put, create := authSym("func", "auth.cache.put_session"), authSym("func", "auth.sessions.create_session")
+	isExpired := authSym("func", "auth.sessions.is_expired")
+	f.index(nil, syntheticCall(put, put), syntheticCall(isExpired, isExpired))
+	f.fixtureCallers(put, create, put)
+	f.fixtureCallers(isExpired, isExpired)
+	wantRead(t, "put_session", f.edit("toolu_sc1", cacheRel, "ex=3600", "ex=7200"),
+		callersRead{Case: callersStale, Func: put, Callers: []graph.ID{create}})
+	wantRead(t, "is_expired", f.edit("toolu_sc2", sessionsRel, "< datetime.utcnow()", "<= datetime.utcnow()"),
+		callersRead{Case: callersZero, Func: isExpired})
+}
+
+// TestBlastCallers_ANoNoteReadConfiguresNothing: the route names the
+// claimant by the path alone (lang.Registry.For) and the scope check reads
+// the gate's answer, so a read that stops at no note (no consent to steer)
+// has run no configuration step, opened no index and read no file. The
+// post's registry is swapped for one whose configuration step counts.
+func TestBlastCallers_ANoNoteReadConfiguresNothing(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	p := f.land("toolu_cf", cacheRel, "ex=3600", "ex=7200")
+	if p.gate.reg == nil || p.gate.root == "" {
+		t.Fatalf("fixture: the overlay writer's gate did not pass for %s", cacheRel)
+	}
+	configs := 0
+	reg := &lang.Registry{}
+	reg.Register(gopg.Resolver{})
+	reg.RegisterIndexed(f.res, func(string) (lang.Resolver, error) { configs++; return f.res, nil })
+	p.gate.reg = reg
+	f.opens, f.files = 0, 0
+	env := stEnv(0)
+	env.Blast = f.env.Blast
+	var ctx steer.Context
+	wantCase(t, "no consent to steer", p.readCallers(env, &ctx, false), callersNoNote)
+	if configs != 0 || f.opens != 0 || f.files != 0 {
+		t.Errorf("the read ran %d configuration steps, opened the index %d times and read %d files, want 0, 0 and 0",
+			configs, f.opens, f.files)
+	}
+}
+
+// longText is n copies of one letter; at 70 KiB it is past the callers
+// pass's 64 KiB read bound.
+func longText(n int) string { return strings.Repeat("y", n) }
+
+// TestBlastCallers_ALongLineOfAnotherRecordIsPassedOver: an index line past
+// the pass's read bound that is neither the edited file's node nor a calls
+// edge into the function leaves the read's answer as it was.
+func TestBlastCallers_ALongLineOfAnotherRecordIsPassedOver(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	f.insertLine(graph.Record{Node: &graph.Node{ID: "decision:long", Kind: "decision",
+		Attrs: map[string]string{"text": longText(70 << 10)}}})
+	put, create := authSym("func", "auth.cache.put_session"), authSym("func", "auth.sessions.create_session")
+	wantRead(t, "a long decision node", f.edit("toolu_ll", cacheRel, "ex=3600", "ex=7200"),
+		callersRead{Case: callersStale, Func: put, Callers: []graph.ID{create}})
+}
+
+// TestBlastCallers_ALongCallsEdgeRefusesThePass: a calls edge into the
+// function on an index line past the pass's read bound, its needle inside
+// the bound's first piece (long attributes) or past it (a long source),
+// refuses the pass, which reads as no index: the pass does not read that
+// edge's source, and an answer without it could be short.
+func TestBlastCallers_ALongCallsEdgeRefusesThePass(t *testing.T) {
+	put := authSym("func", "auth.cache.put_session")
+	for _, c := range []struct {
+		name string
+		edge graph.Edge
+	}{
+		{"long attributes", graph.Edge{Src: syntheticCaller(9), Pred: graph.Calls, Dst: put,
+			Attrs: map[string]string{"pad": longText(70 << 10)}}},
+		{"a long source", graph.Edge{Src: graph.SymID(pylite.Lang, "jobs", "func", "jobs."+longText(70<<10)),
+			Pred: graph.Calls, Dst: put}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newPyFix(t, nil, nil)
+			f.index(nil)
+			e := c.edge
+			f.insertLine(graph.Record{Edge: &e})
+			wantCase(t, c.name, f.edit("toolu_lc", cacheRel, "ex=3600", "ex=7200"), callersNoIndex)
+		})
+	}
+}
+
+// TestBlastCallers_ALongNodeOfTheEditedFileRefusesThePass: the edited file's
+// node on an index line past the pass's read bound refuses the pass, which
+// reads as no index: the pass does not read that node's digest, so it could
+// not tell whether the file changed after the index was written.
+func TestBlastCallers_ALongNodeOfTheEditedFileRefusesThePass(t *testing.T) {
+	f := newPyFix(t, nil, nil)
+	f.index(nil)
+	f.insertLine(graph.Record{Node: &graph.Node{ID: graph.FileID(cacheRel), Kind: "file",
+		Attrs: map[string]string{"pad": longText(70 << 10)}}})
+	wantCase(t, "a long node of the edited file", f.edit("toolu_lf", cacheRel, "ex=3600", "ex=7200"), callersNoIndex)
+}
+
+// TestBlastCallers_ANeedleAcrossThePieceBoundaryRefuses: the pass reads a
+// line past its 64 KiB bound in pieces. A calls needle into the function
+// that ends in the first piece, starts in the next, or is split between the
+// two refuses the pass (errLongLine). The first piece is the line's first
+// 65536 bytes: the reader's buffer slides the line to its start before it
+// fills, and reports a full buffer only then.
+func TestBlastCallers_ANeedleAcrossThePieceBoundaryRefuses(t *testing.T) {
+	fn := authSym("func", "auth.cache.put_session")
+	needle := append([]byte(`"Pred":"calls","Dst":`), jsonText(string(fn))...)
+	dir := t.TempDir()
+	for s := 0; s <= len(needle); s++ {
+		line := bytes.Repeat([]byte{'x'}, 70000)
+		copy(line[64<<10-s:], needle)
+		path := filepath.Join(dir, "g"+strconv.Itoa(s)+".jsonl")
+		if err := os.WriteFile(path, append(append([]byte("hdr\n"), line...), '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := indexCallers(path, fn, graph.FileID("x.py")); !errors.Is(err, errLongLine) {
+			t.Errorf("the needle starting %d bytes before the bound: err %v, want errLongLine", s, err)
+		}
+	}
 }
