@@ -67,6 +67,16 @@ func FuzzTranscriptLines(f *testing.F) {
 	}
 	f.Add([]byte(lines[len(lines)/2] + "\n{\"message\":\n" + lines[len(lines)/2+1]))
 	f.Add([]byte(sidechainSeed))
+	// A CI fuzz run found this input on 2026-11-21: the run of three from
+	// lines[34], the middle line's isSidechain set to a number. That line is valid
+	// JSON that FinalAssistantText cannot place, as its isSidechain does not
+	// decode as a boolean. The fuzzer also renamed the line's message key;
+	// the number alone fails the same way.
+	mid := strings.Replace(lines[35], `"isSidechain":false,"message":{`, `"isSidechain":421,"oumessage":{`, 1)
+	if mid == lines[35] {
+		f.Fatal("lines[35] of the real transcript no longer holds the keys the 2026-11-21 seed edits")
+	}
+	f.Add([]byte(lines[34] + "\n" + mid + "\n" + lines[36]))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > maxFuzzBytes {
 			return
@@ -77,6 +87,21 @@ func FuzzTranscriptLines(f *testing.F) {
 
 // maxFuzzLines bounds the per-line comparison, which writes one file a line.
 const maxFuzzLines = 128
+
+// finalTextLine is the shape FinalAssistantText decodes a line into
+// (transcript.go), field for field. Whether DecodeHeader places a line depends
+// on that shape, since a value of the wrong type fails the decode, so the
+// oracle asks with the reader's shape. An empty struct decodes any JSON
+// object: a line whose isSidechain was a number was placed by the oracle and
+// not by the reader. A change to the reader's shape that this one does not
+// follow fails FuzzTranscriptLines on an input that reaches the difference.
+type finalTextLine struct {
+	IsSidechain bool `json:"isSidechain"`
+	Message     struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
+}
 
 func checkTranscriptLines(t *testing.T, data []byte) {
 	t.Helper()
@@ -104,7 +129,11 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 	lastOK := false
 	for i, l := range lines {
 		checkSidechain(t, l)
-		p := write("line"+strconv.Itoa(i)+".jsonl", append(l, '\n'))
+		// The last piece bytes.Split returns keeps data's spare capacity, so
+		// a plain append would write past the input into the engine's buffer
+		// (TestCheckTranscriptLinesLeavesItsInput). The three-index slice
+		// makes append copy.
+		p := write("line"+strconv.Itoa(i)+".jsonl", append(l[:len(l):len(l)], '\n'))
 		a, b, c, d, _, _, err := transcriptIDsAt(p)
 		if err != nil {
 			t.Fatal(err)
@@ -116,7 +145,7 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 		}
 		if text, ok := FinalAssistantText(openT(t, p)); ok {
 			last, lastOK = text, true
-		} else if DecodeHeader(l, &struct{}{}) == LineUndecodable {
+		} else if DecodeHeader(l, &finalTextLine{}) == LineUndecodable {
 			// A line that cannot be placed may be the real final message,
 			// so read whole, the file has no last word before it either.
 			last, lastOK = "", false
@@ -129,6 +158,23 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 	}
 	if final != last || finalOK != lastOK {
 		t.Fatalf("FinalAssistantText of the file %q (%v), of its last line with text %q (%v)", final, finalOK, last, lastOK)
+	}
+}
+
+// TestCheckTranscriptLinesLeavesItsInput holds the fuzz body to the testing
+// package's rule that it must not modify the bytes the fuzzing engine passes
+// it. The engine's minimizer cuts an input by re-slicing one buffer, so a byte
+// written just past the end lands in the input it tries next and saves: on
+// 2026-11-21 CI saved a failing input with a newline written into it at each
+// cut, and that input no longer failed.
+func TestCheckTranscriptLinesLeavesItsInput(t *testing.T) {
+	line := realLines(t)[34]
+	buf := make([]byte, len(line)+1)
+	copy(buf, line)
+	buf[len(line)] = 'x'
+	checkTranscriptLines(t, buf[:len(line)])
+	if string(buf[:len(line)]) != line || buf[len(line)] != 'x' {
+		t.Fatalf("checkTranscriptLines wrote into the bytes it was given: the byte past them is now %q", buf[len(line)])
 	}
 }
 
