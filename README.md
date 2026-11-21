@@ -1,11 +1,11 @@
 # rashomon
 
-**Your Claude Code agent says it's done. rashomon checks.**
+**AutoSteer for Claude Code: brief the agent before it writes, check the result
+after.**
 
-rashomon keeps its own record of what your Claude Code agent runs and edits,
-tells you and the agent what the repository says about the files a request
-names, and tells you at the end of a turn whether a test or build passed after
-the last edit.
+AutoSteer hands your Claude Code agent what your repository already knows about
+the files a request touches, and tells you at the end of a turn whether a test
+or build passed after the last edit.
 
 It never blocks the agent. The record is a folder on your machine; rashomon
 sends it nowhere and makes no network connection. The notes it gives the agent
@@ -45,19 +45,12 @@ it does, verify the result, update what is known.
   each edit against that graph.
 - A lesson you import and approve at a terminal can be sent to the agent.
 
-**Not in this release**
+**Coming next**
 
-- Finding lessons in past sessions. Nothing here learns your conventions by
-  itself yet: you declare them in a spec, or import them.
-- Keeping the thread of a long session across a compaction or a restart.
-- A map of a codebase in languages other than Go and Python.
-- Python docstrings: a request finds Python code by its names and paths.
-- A Python class as an entry of its own; its methods are indexed.
-- Guessing a Python test command with no pytest file, CI line, Makefile or spec.
-- A module name for Python on the brief's build line; go.mod alone gives one.
-- A Python call written outside the indented body of a function or method, or on
-  a later line of the arguments of another call.
-- Windows.
+- Learning your conventions from past sessions. Today you declare or import
+  them.
+- Keeping a long session's thread across a compaction or a restart.
+- More languages and Windows. Go and Python, macOS and Linux today.
 
 ## Get started
 
@@ -157,6 +150,9 @@ file: at a terminal, a yes to this build's screen, which `rashomon watch` and
 `rashomon consent` show again; with the plugin, its first session on this build,
 which records that consent with a notice. Consent given to an earlier build
 alone never brings them to a Python edit.
+
+The Python reader is a first version; the release notes list what it does not
+read yet.
 
 Indexing changes what rashomon keeps for that repository. Read
 [What it records, and what it never stores](#what-it-records-and-what-it-never-stores)
