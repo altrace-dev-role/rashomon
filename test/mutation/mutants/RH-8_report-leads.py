@@ -58,8 +58,8 @@ m("RH-8 report --ids does not pass the option", C,
   "\t\tif ids {\n\t\t\topts = append(opts, report.WithIDs())\n",
   "\t\tif false && ids {\n\t\t\topts = append(opts, report.WithIDs())\n", "TestRH8i_")
 m("RH-8 --ledger does not refuse --ids", C,
-  "{timeline, \"--timeline\"}, {ids, \"--ids\"}, ",
-  "{timeline, \"--timeline\"}, {false, \"--ids\"}, ", "TestRH8i_")
+  "{redact, \"--redact\"}, {chain, \"--chain\"}, {timeline, \"--timeline\"}, {ids, \"--ids\"}, ",
+  "{redact, \"--redact\"}, {chain, \"--chain\"}, {timeline, \"--timeline\"}, {false, \"--ids\"}, ", "TestRH8i_")
 
 m("RH-8 the text lists the ids without execution without --ids", T,
   "\tif !cfg.ids && len(d.WithoutExecution) > 0 {\n",

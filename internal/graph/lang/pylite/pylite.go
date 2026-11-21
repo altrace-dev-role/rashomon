@@ -34,7 +34,8 @@ const Lang = "py"
 // third version writes no text of a value, a default, an annotation, a
 // keyword argument or a string literal, and no record from a string
 // literal; an index an earlier version wrote may hold such text. The fourth
-// version writes the line each def's body ends on, and reads a lambda's
+// version reads a call that directly follows the open paren of another
+// call, writes the line each def's body ends on, and reads a lambda's
 // commas as its own, so a sig, a def's bounds and a call's argc count a
 // lambda once; an index the third version wrote split it.
 const (

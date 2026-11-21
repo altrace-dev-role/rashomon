@@ -57,9 +57,10 @@ var overLimit = map[string]int{
 // detach.go beside detach's self-check, with pause's guard added; watch.go
 // 531 to 530, its agent refusal now selfguard.Refusal. DETACH-BYTE-EXACT,
 // merged onto that: main.go 905 to 904 (editSettings writes through
-// writeChecked).
+// writeChecked). RPT-1: main.go 904 to 897, usage's report entry to
+// reportUsage beside cmdReport.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":    904,
+	"cmd/rashomon/main.go":    897,
 	"internal/store/store.go": 547,
 	"cmd/rashomon/watch.go":   530,
 }

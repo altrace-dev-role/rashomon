@@ -328,16 +328,25 @@ func paramName(p string) string {
 
 // readCalls records every call on lines[i] from column from on (and the
 // lines a call's arguments span) inside caller, and returns the last line
-// index read.
+// index read. A call's pattern takes one byte before the name, and the open
+// paren of the call before may be that byte, as in print(add(2, 3)); one
+// pass over the line has consumed it, so each search runs on its own from
+// that paren.
 func readCalls(f *fileScan, lines []string, i, from int, caller string) int {
 	line := lines[i]
 	end := i
-	for _, m := range pats().call.FindAllStringSubmatchIndex(line[from:], -1) {
-		name := line[from+m[2] : from+m[3]]
+	for pos := from; ; {
+		m := pats().call.FindStringSubmatchIndex(line[pos:])
+		if m == nil {
+			break
+		}
+		name := line[pos+m[2] : pos+m[3]]
+		open := pos + m[1] - 1
+		pos = open
 		if reserved(name) {
 			continue
 		}
-		text, e, _, ok := group(lines, i, from+m[1]-1)
+		text, e, _, ok := group(lines, i, open)
 		if !ok {
 			continue
 		}

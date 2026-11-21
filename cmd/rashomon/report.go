@@ -20,6 +20,8 @@ func cmdReport(args []string, stdout io.Writer) error {
 	timeline := false
 	ledger := false
 	ids := false
+	overview := false
+	full := false
 	nonoTrail := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -41,6 +43,10 @@ func cmdReport(args []string, stdout io.Writer) error {
 			ledger = true
 		case "--ids":
 			ids = true
+		case "--overview":
+			overview = true
+		case "--full":
+			full = true
 		case "--nono-audit":
 			// An empty path is refused like a missing one: "" is what not
 			// naming a trail means, so `--nono-audit "$NONO_TRAIL"` with the
@@ -62,7 +68,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 		for _, f := range []struct {
 			on   bool
 			name string
-		}{{asJSON, "--json"}, {redact, "--redact"}, {chain, "--chain"}, {timeline, "--timeline"}, {ids, "--ids"}, {nonoTrail != "", "--nono-audit"}} {
+		}{{asJSON, "--json"}, {redact, "--redact"}, {chain, "--chain"}, {timeline, "--timeline"}, {ids, "--ids"}, {nonoTrail != "", "--nono-audit"}, {overview, "--overview"}, {full, "--full"}} {
 			if f.on {
 				return fmt.Errorf("--ledger prints alone: drop %s", f.name)
 			}
@@ -71,6 +77,14 @@ func cmdReport(args []string, stdout io.Writer) error {
 			return errors.New("--ledger needs --session")
 		}
 		return reportLedger(sessionID, stdout)
+	}
+	view, err := overviewTarget(sessionID, overview, []reportFlag{{full, "--full"}, {asJSON, "--json"},
+		{chain, "--chain"}, {timeline, "--timeline"}, {ids, "--ids"}, {nonoTrail != "", "--nono-audit"}})
+	if err != nil {
+		return err
+	}
+	if view != "" {
+		return reportOverview(view, redact, stdout)
 	}
 	// Opened WITHOUT creating: a command that only asks a question must not mint
 	// an install identity and an HMAC key as a side effect of being asked. The
@@ -107,6 +121,27 @@ func cmdReport(args []string, stdout io.Writer) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(rep)
 }
+
+// reportUsage is the usage screen's report entry, joined in place between
+// the status and digest entries, so usage keeps its order and its size under
+// Law 10 as the entry grows (card RPT-1 added --overview and --full; card
+// 4.1b began the extraction with hookUsage).
+const reportUsage = `  rashomon report [--session S] [--overview | --full] [--json] [--redact]
+                  [--chain] [--timeline] [--ids] [--nono-audit PATH]
+                               render declarations and coverage, as text for a
+                               terminal or as JSON for a consumer. With no
+                               flag but --redact: the overview of the newest
+                               session of this directory's project that holds
+                               a checkpoint, or the full text if none does.
+                               --overview: that overview, or the one of S; it
+                               takes no flag but --session and --redact.
+                               --full, --session without --overview, --chain,
+                               --timeline, --ids and --nono-audit: the full
+                               text. --chain lists the calls under each
+                               prompt, --timeline every call across agents in
+                               order, --ids the tool-use ids counted; JSON
+                               always has all three
+`
 
 // reportOrEmpty builds the report, or the empty one when nothing has ever been
 // recorded here.
