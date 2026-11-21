@@ -22,13 +22,16 @@ pyfrom = "const SessionKeptScope = 9\n"
 gate = "\tif from > 0 && !scopeAtLeast(c.st.Root(), from) {\n"
 
 # TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords. Breaks: leave
-# pylite unkept; ask the consent of a root other than the store's; keep a
-# name the text states off the list.
+# pylite unkept; ask the consent of a root other than the store's; keep an
+# attribute past the test's list, or drop one it names.
 m("CONSENT-GATE2 pylite left unkept", pylite, pykept,
   "func (Resolver) SessionKept() bool { return !true }\n",
   "^TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords$")
 m("CONSENT-GATE2 the scope asked of the repository, not the store", overlay, gate,
   "\tif from > 0 && !scopeAtLeast(at, from) {\n",
+  "^TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords$")
+m("CONSENT-GATE2 a parameter count kept past the list", pylite,
+  "\"node sym line\", \"edge calls line\"}", "\"node sym line\", \"node sym arity_min\", \"edge calls line\"}",
   "^TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords$")
 m("CONSENT-GATE2 a declaration's line left off the list", pylite,
   "\"node sym symkind\", \"node sym line\", ", "\"node sym symkind\", ",
@@ -80,8 +83,8 @@ m("CONSENT-GATE2 the post holds the filtered records", overlay,
 # TestConsentGate2_ANameKeptForOneKindOfRecordIsLeftOutOnAnother. Break:
 # keep a name any kind lists on every kind.
 m("CONSENT-GATE2 a listed name kept on every kind", overlay,
-  "\t\tif ok && mid == kind && last == name {\n",
-  "\t\tif ok && last == name {\n",
+  "\t\tmid, last, ok := strings.Cut(rest, \" \")\n\t\tif ok && mid == kind && last == name {\n",
+  "\t\t_, last, ok := strings.Cut(rest, \" \")\n\t\tif ok && last == name {\n",
   "^TestConsentGate2_ANameKeptForOneKindOfRecordIsLeftOutOnAnother$")
 
 # TestConsentGate2_APythonEditPastTheBoundKeepsTheCutAndAWholeMarker. Break:
@@ -102,11 +105,19 @@ m("CONSENT-GATE2 the writer keeps a group whatever the reader states", overlay,
   "\tif !g.reg.SessionKept(at, under) && under == \"\" {\n",
   "^TestConsentGate2_AReaderThatStatesNotKeptKeepsNothing$")
 
-# TestScopeOnFile_TheHighestScopeOnFile. Break: take the last record's scope,
-# so a later record of a lower scope takes a yes back.
+# TestScopeOnFile_TheHighestScopeOnFile. Breaks: read the last record's
+# scope; answer true or false in place of the number; answer a scope past
+# the error.
+scopemax = "\tbest, _ := maxBy(recs, func(r Record) int { return r.ScopeVersion })\n"
 m("CONSENT-GATE2 the scope on file is the last record's", record,
-  "\tbest, _ := maxBy(recs, func(r Record) int { return r.ScopeVersion })\n\treturn best, nil\n",
+  scopemax + "\treturn best, nil\n",
   "\tbest := 0\n\tif len(recs) > 0 {\n\t\tbest = recs[len(recs)-1].ScopeVersion\n\t}\n\treturn best, nil\n",
+  "^TestScopeOnFile_TheHighestScopeOnFile$")
+m("CONSENT-GATE2 the scope on file answered as yes or no", record,
+  scopemax + "\treturn best, nil\n", scopemax + "\treturn min(best, 1), nil\n",
+  "^TestScopeOnFile_TheHighestScopeOnFile$")
+m("CONSENT-GATE2 the scope on file answered past its read error", record,
+  "\t\treturn 0, err\n\t}\n" + scopemax, "\t\treturn 0, nil\n\t}\n" + scopemax,
   "^TestScopeOnFile_TheHighestScopeOnFile$")
 
 # TestLANGREG1_APythonEditIsKeptFromAYesOfNine. Breaks: leave the scope
