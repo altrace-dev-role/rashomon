@@ -321,7 +321,7 @@ func unindexedLineOf(l, what string) string {
 // TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage: under the fixture's
 // index, whose header names no producer, with a configuration that declares
 // a py unit, and a yes on file of 9 (the scope pylite states its files kept
-// from, lang.KeptFrom, so the edit passes the gate: keptGoEdit, card x381),
+// from, lang.KeptFrom, so the edit passes the gate: keptGoEdit, PY-K),
 // an edit of a .py file says the language's line as a system message alone
 // and keeps no overlay group; a second .py file in the session says nothing,
 // and a second session says the line again. Break: key the marker by the

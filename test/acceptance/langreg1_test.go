@@ -533,12 +533,12 @@ func lrNodes(t *testing.T, log, id string) []map[string]string {
 // of a .py file of the indexed py unit prints nothing and keeps its
 // declared and landed groups in the session graph log, in which the file's
 // def total keeps its kind and its line and nothing more (no parameter
-// count: ruling x371 item 5), and the file its module and SHA-256 and
+// count in this release), and the file its module and SHA-256 and
 // nothing more;
 // rewritten to 8, the screen that names Go files alone, it keeps no group
 // of the file. A .go edit in the same session keeps its landed group either
 // way. The expected attributes are written out from inv/core/calc.py. Base
-// (card x315): no group under either. Breaks: leave the hook's read of the
+// (before PY-K): no group under either. Breaks: leave the hook's read of the
 // scope on file unset in the binary (cmd/rashomon), and the 9 keeps
 // nothing; state pylite kept from 8, and the 8 keeps the group. That a kept
 // reader's group carries its own set is
@@ -650,7 +650,7 @@ func lrCallGroups(t *testing.T, log, id string) int {
 // highest scope_version on file at 9 and the session's content no longer
 // kept (consent.SessionContent), and a .py edit after it keeps no group: a
 // yes of 9 keeps a Python file's edits only while the answer that keeps the
-// session's content stands (ruling x371 item 8a). Base: the scope-9 case of
+// session's content stands. Base: the scope-9 case of
 // TestLANGREG1_APythonEditIsKeptFromAYesOfNine. Break: keep a .py edit on
 // the scope on file alone, past the session-content marker.
 func TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing(t *testing.T) {

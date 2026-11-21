@@ -14,7 +14,7 @@ import (
 // whose header names a py producer other than this build's reader's
 // (pylite/1), with a configuration that declares a py unit, and a yes on
 // file of 9 (the scope pylite states its files kept from, lang.KeptFrom, so
-// the edit passes the gate: keptGoEdit, card x381), an edit of a .py file
+// the edit passes the gate: keptGoEdit, PY-K), an edit of a .py file
 // says the language's line as a system message alone, once in the session,
 // and keeps no overlay group: that index's py records are another reader's,
 // and an overlay over them would mix the two readers' ids. The line holds

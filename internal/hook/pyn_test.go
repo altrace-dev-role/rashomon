@@ -19,7 +19,7 @@ const pynUnindexedPy = "rashomon: the index here holds no py records written by 
 // text that reader wrote (constant values, parameter defaults, keyword
 // arguments), so under it, with a yes on file of 9 (the scope pylite states
 // its files kept from, lang.KeptFrom, so the edit passes the gate:
-// keptGoEdit, card x381), the first edit of a .py file says the unindexed
+// keptGoEdit, PY-K), the first edit of a .py file says the unindexed
 // line, a second .py file says nothing, and no overlay group is kept, as for
 // any older reader. Break: leave the reader's version at 2, so that index
 // reads as current and nothing tells the user to build it again.

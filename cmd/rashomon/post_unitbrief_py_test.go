@@ -40,7 +40,7 @@ var ubPyUnit = graph.UnitID(pylite.Lang, ubPyDir)
 // ubPyHeld under it at the index's own commit, the header names producer as
 // its py producer ("" for none), both .py files are on disk, and a yes on
 // file of 9 (ubPyYes), the scope pylite states its files kept from
-// (lang.KeptFrom), so a .py edit passes the gate (card x381).
+// (lang.KeptFrom), so a .py edit passes the gate (PY-K).
 func ubPySession(t *testing.T, producer string) *planSession {
 	t.Helper()
 	s := ubPostSession(t, store.RecordScopeV5)

@@ -341,7 +341,7 @@ func overlayPath(p *string, cwd string) string {
 // (scopeAtLeast). That is the call's one read of consent.json, made for a
 // stating reader alone, so the Go path, whose reader states none, reads no
 // consent file; a stating reader no yes reaches returns the zero gate: no
-// landed edit for the unit-brief read, no line, no group (card x381).
+// landed edit for the unit-brief read, no line, no group (PY-K).
 // A file no reader claims returns the gate unclaimed (keptGate) when its
 // kind is not a kinds-table row, and the zero gate when it is.
 // declared is that path where the caller decoded it already (the
