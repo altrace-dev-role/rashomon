@@ -106,3 +106,14 @@ m('WM-4.2 a run adds a file Touched already holds', 'internal/graph/session/fold
   'slices.BinarySearch(f.Touched, id)',
   'slices.BinarySearch(f.Touched[:0], id)',
   'TestStepIn_LeavesACopyTakenBeforeTheRun')
+# The frontier's limit (internal/store/frontierfile.go, internal/store/frontiercompose.go): a frontier past
+# MaxFrontierBytes is a soft miss. SaveFrontier refuses it before it writes, the compose reports that refusal,
+# and the caller keeps the frontier it folded, which is the whole fold of the record.
+m('WM-4.2 a save past the limit writes', 'internal/store/frontierfile.go',
+  '\tif len(data) > MaxFrontierBytes {\n\t\treturn errFrontierOverCap\n\t}\n',
+  '',
+  'TestCompose_PastTheLimitIsASoftMiss')
+m('WM-4.2 a frontier past the limit is missed in silence', 'internal/store/frontiercompose.go',
+  'errors.Is(err, ErrLockTimeout) || ',
+  'errors.Is(err, errFrontierOverCap) || errors.Is(err, ErrLockTimeout) || ',
+  'TestCompose_PastTheLimitIsASoftMiss')

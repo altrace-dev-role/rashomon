@@ -60,17 +60,23 @@ func appendBytes(t *testing.T, path string, b []byte) {
 	}
 }
 
-// wholeFold is Fold over every whole line of composeID's two run files as
+// wholeFold is wholeFoldOf composeID.
+func wholeFold(t *testing.T, st *store.Store) string {
+	t.Helper()
+	return wholeFoldOf(t, st, composeID)
+}
+
+// wholeFoldOf is Fold over every whole line of session id's two run files as
 // they are now: read with os.ReadFile and split at line ends, not through
 // RunLinesFrom, and decoded as Compose decodes them.
-func wholeFold(t *testing.T, st *store.Store) string {
+func wholeFoldOf(t *testing.T, st *store.Store, id string) string {
 	t.Helper()
 	var evs []Event
 	for _, file := range []struct {
 		name   string
 		decode func([]byte) (Event, bool, error)
 	}{{store.FileRecords, RecordEvent}, {store.FileSteer, SteerEvent}} {
-		b, err := os.ReadFile(filepath.Join(st.RunDir(composeID), file.name))
+		b, err := os.ReadFile(filepath.Join(st.RunDir(id), file.name))
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -83,7 +89,7 @@ func wholeFold(t *testing.T, st *store.Store) string {
 			}
 		}
 	}
-	return mustMarshal(t, Fold(composeID, evs))
+	return mustMarshal(t, Fold(id, evs))
 }
 
 // mustCompose is one compose of composeID, its frontier marshalled.
@@ -386,5 +392,34 @@ func TestParseEnvelope_RefusesAnyOtherFile(t *testing.T) {
 		if _, _, err := parseEnvelope([]byte(b)); err == nil {
 			t.Errorf("%s was taken: %s", name, b)
 		}
+	}
+}
+
+// TestCompose_PastTheLimitIsASoftMiss: a frontier past store.MaxFrontierBytes
+// is a soft miss. SaveFrontier refuses it and writes nothing, Compose returns
+// the frontier it folded with that refusal and saved false, and the frontier
+// is the whole fold of the record, so a caller still has every answer. The
+// fixture gets past the limit with its own data and the limit as it is: 600
+// calls, each writing a file under a 2,000-byte directory (every path under
+// store.MaxPathBytes), so Touched alone holds about 1.2 MB.
+func TestCompose_PastTheLimitIsASoftMiss(t *testing.T) {
+	const calls = 600
+	st := composeStore(t)
+	writeCalls(t, st, 0, calls, strings.Repeat("d", 2000)+"/")
+	f, saved, err := Compose(st, catchID)
+	got := mustMarshal(t, f)
+	t.Logf("%d calls: the frontier marshals to %d bytes against the limit of %d", calls, len(got), store.MaxFrontierBytes)
+	if len(got) <= store.MaxFrontierBytes || len(f.Touched) != calls {
+		t.Fatalf("the fixture is not past the limit: %d bytes, %d files in Touched; want over %d and %d",
+			len(got), len(f.Touched), store.MaxFrontierBytes, calls)
+	}
+	if saved || err == nil || !strings.Contains(err.Error(), "frontier over its cap") {
+		t.Fatalf("Compose past the limit: saved %v, err %v; want not saved, with the save's refusal", saved, err)
+	}
+	if _, ok, err := st.LoadFrontier(catchID); ok || err != nil {
+		t.Fatalf("a frontier file after the refused save: ok %v, err %v", ok, err)
+	}
+	if got != wholeFoldOf(t, st, catchID) {
+		t.Error("the frontier Compose returned is not the whole fold of the record")
 	}
 }
