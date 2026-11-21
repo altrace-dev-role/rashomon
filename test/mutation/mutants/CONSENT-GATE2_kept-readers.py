@@ -6,10 +6,14 @@
 # Registry.SessionKeptFrom), only where the highest scope on file
 # (consent.ScopeOnFile, wired as hook.ConsentScopeOnFile) reaches it; the log
 # then holds of that reader's records only the attributes its list names,
-# filtered from a copy before the group is built. Go states no scope and is
-# kept whole; pylite states 9 and five names. One row per Break clause of
-# each test, killed by that test alone. The Go-set row moved here from
-# LANG-REG1_hook-lines.py; its killer is the kept-reader witness's test.
+# filtered from a copy before the group is built. The scope is a check of
+# the gate (keptGoEdit, card x381): a stating reader no yes reaches passes
+# no gate, so its post has no landed edit, says no line and keeps no group,
+# and the writer past the gate reads no consent file of its own. Go states
+# no scope and is kept whole; pylite states 9 and five names. One row per
+# Break clause of each test, killed by that test alone. The Go-set row moved
+# here from LANG-REG1_hook-lines.py; its killer is the kept-reader witness's
+# test.
 pylite = "internal/graph/lang/pylite/pylite.go"
 gopg = "internal/graph/lang/gopg/gopg.go"
 langgo = "internal/graph/lang/lang.go"
@@ -19,7 +23,7 @@ wiring = "cmd/rashomon/consent.go"
 
 pykept = "func (Resolver) SessionKept() bool { return true }\n"
 pyfrom = "const SessionKeptScope = 9\n"
-gate = "\tif from > 0 && !scopeAtLeast(c.st.Root(), from) {\n"
+gate = "\tif from, _ := reg.SessionKeptFrom(root, rel); from > 0 && !scopeAtLeast(st.Root(), from) {\n"
 
 # TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords. Breaks: leave
 # pylite unkept; ask the consent of a root other than the store's; keep an
@@ -28,7 +32,7 @@ m("CONSENT-GATE2 pylite left unkept", pylite, pykept,
   "func (Resolver) SessionKept() bool { return !true }\n",
   "^TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords$")
 m("CONSENT-GATE2 the scope asked of the repository, not the store", overlay, gate,
-  "\tif from > 0 && !scopeAtLeast(at, from) {\n",
+  "\tif from, _ := reg.SessionKeptFrom(root, rel); from > 0 && !scopeAtLeast(root, from) {\n",
   "^TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords$")
 m("CONSENT-GATE2 a parameter count kept past the list", pylite,
   "\"node sym line\", \"edge calls line\"}", "\"node sym line\", \"node sym arity_min\", \"edge calls line\"}",
@@ -62,11 +66,40 @@ m("CONSENT-GATE2 the scope taken past its read error", overlay,
   "\t_ = err\n\treturn scope >= from\n",
   "^TestConsentGate2_APythonEditWithNoScopeReadKeepsNothing$")
 
-# TestConsentGate2_AGoEditNeverReadsTheScope. Break: read the scope on file
-# for every reader.
+# TestConsentGate2_AGoEditNeverReadsTheScope. Breaks: read the scope on file
+# for every reader; ask the gate's scope check of a reader that states none.
 m("CONSENT-GATE2 the scope read for every reader", overlay, gate,
-  "\tif !scopeAtLeast(c.st.Root(), from) && from > 0 {\n",
+  "\tif from, _ := reg.SessionKeptFrom(root, rel); !scopeAtLeast(st.Root(), from) && from > 0 {\n",
   "^TestConsentGate2_AGoEditNeverReadsTheScope$")
+m("CONSENT-GATE2 the gate's check asked of a reader that states no scope", overlay, gate,
+  "\tif from, _ := reg.SessionKeptFrom(root, rel); from >= 0 && !scopeAtLeast(st.Root(), from) {\n",
+  "^TestConsentGate2_AGoEditNeverReadsTheScope$")
+
+# TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate and
+# TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine (card x381).
+# Breaks: leave the check out of the gate; turn its comparison. The cmd
+# test TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss. Break: leave the
+# scope check out of the gate.
+gatecheck = gate + "\t\treturn \"\", keptGate{}\n\t}\n"
+turned = ("\treturn err == nil && scope >= from\n", "\treturn err == nil && scope > from\n")
+m("CONSENT-GATE2 the scope left out of the gate, for the gate", overlay, gatecheck, "",
+  "^TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate$")
+m("CONSENT-GATE2 the gate's comparison turned, for the gate", overlay, *turned,
+  "^TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate$")
+m("CONSENT-GATE2 the scope left out of the gate, for the line", overlay, gatecheck, "",
+  "^TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine$")
+m("CONSENT-GATE2 the gate's comparison turned, for the line", overlay, *turned,
+  "^TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine$")
+m("CONSENT-GATE2 the scope left out of the gate, for the unit brief", overlay, gatecheck, "",
+  "^TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss$")
+
+# TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce (card x381).
+# Break: read the scope in the writer as well as in the gate.
+writerfrom = "\tfrom, kept := g.reg.SessionKeptFrom(at, under)\n"
+m("CONSENT-GATE2 the writer reads the scope as well as the gate", overlay, writerfrom,
+  writerfrom + "\tif from > 0 && !scopeAtLeast(c.st.Root(), from) {\n"
+  "\t\treturn graph.OverlayGroup{}, \"\", \"\", false\n\t}\n",
+  "^TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce$")
 
 # TestConsentGate2_TheLogKeepsNoAttributeTheTextDoesNotName. Breaks: keep
 # every attribute the reader writes (no list); filter the records the post
