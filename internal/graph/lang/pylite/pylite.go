@@ -1,10 +1,15 @@
 // Package pylite is the reduced Python extractor: one file, read in
 // process, no interpreter. It sees definitions and their signatures,
-// module constants, imports, and calls by name with their argument count
-// and literal keyword arguments. It resolves a callee to a symbol only
-// when the name is defined in the same module or imported from a module in
-// a known unit; anything else is left out rather than guessed. It is the
-// Overlay half of lang.Resolver and, in this slice, also the Extract half.
+// module constants, imports, and calls by name with their argument count.
+// It copies no text of a value, a default, an annotation, a keyword
+// argument or a string literal into a record: a signature names its
+// parameters only, and a constant is its name and its line. The inside of
+// every string and every comment is blanked before any line is read
+// (blank.go), so what a string or a comment holds reaches no record. It
+// resolves a callee to a symbol only when the name is defined in the same
+// module or imported from a module in a known unit; anything else is left
+// out rather than guessed. It is the Overlay half of lang.Resolver and, in
+// this slice, also the Extract half.
 package pylite
 
 import (
@@ -25,10 +30,13 @@ const Lang = "py"
 
 // provExtractor and provVersion are the provenance of every record pylite
 // writes and the one source of the string Producer states: an index header
-// names the producer of its py records as the two joined by a slash.
+// names the producer of its py records as the two joined by a slash. The
+// third version writes no text of a value, a default, an annotation, a
+// keyword argument or a string literal, and no record from a string
+// literal; an index an earlier version wrote may hold such text.
 const (
 	provExtractor = "pylite"
-	provVersion   = "2"
+	provVersion   = "3"
 )
 
 // ErrParse is the refusal for content the reduced extractor cannot read:
@@ -223,10 +231,10 @@ func (r Resolver) Overlay(rel string, content []byte, base graph.Rev, seq int64)
 }
 
 // OverlayCarried is exactly the predicates Overlay emits: declarations,
-// imports, calls, the references of from-imports, and the reads and writes of
-// SQL literals. Contains is index-time structure and is not among them.
+// imports, calls and the references of from-imports. Contains is
+// index-time structure and is not among them.
 func (Resolver) OverlayCarried() graph.Carried {
-	return graph.Carried{graph.Declares, graph.Imports, graph.Calls, graph.References, graph.Reads, graph.Writes}
+	return graph.Carried{graph.Declares, graph.Imports, graph.Calls, graph.References}
 }
 
 // module is rel's dotted module name within its unit.
@@ -295,7 +303,9 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 	if !ok {
 		return nil, nil
 	}
-	src := string(content)
+	// Strings and comments are blanked before any line is read (blank.go);
+	// the digest below is of the bytes as written.
+	src := blank(string(content))
 	if err := balanced(src); err != nil {
 		return nil, err
 	}
@@ -332,7 +342,7 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 		id := graph.SymID(Lang, u.Path, "const", mod+"."+c.name)
 		recs = append(recs,
 			graph.Record{Node: &graph.Node{ID: id, Kind: "sym", Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo,
-				Attrs: map[string]string{"symkind": "const", "value": c.value, "line": strconv.Itoa(c.line)}}},
+				Attrs: map[string]string{"symkind": "const", "line": strconv.Itoa(c.line)}}},
 			graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.Declares, Dst: id, Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 	}
 	for _, m := range f.importedModules() {
@@ -341,16 +351,13 @@ func (r Resolver) parse(rel string, content []byte, rev graph.Rev, defConf, call
 				Tier: graph.Algorithmic, Conf: defConf, Rev: rev, Prov: algo}})
 		}
 	}
-	recs = append(recs, r.extras(f, src, file, byKey, rev, defConf, algo)...)
+	recs = append(recs, r.extras(f, file, rev, defConf, algo)...)
 	for _, c := range f.calls {
 		callee, ok := r.calleeOf(c, local, byKey, f.imports)
 		if !ok {
 			continue
 		}
 		attrs := map[string]string{"argc": strconv.Itoa(c.argc), "line": strconv.Itoa(c.line)}
-		for k, v := range c.kw {
-			attrs["kw."+k] = v
-		}
 		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: byKey[c.caller], Pred: graph.Calls, Dst: callee,
 			Tier: graph.Algorithmic, Conf: callConf, Rev: rev, Prov: algo, Attrs: attrs}})
 	}
@@ -439,10 +446,9 @@ func balanced(src string) error {
 // extras are the records beyond defs, consts, imports and calls: a
 // references edge from the file to every name a from-import brings in
 // from a known unit (a const when the name is upper case, a class when it
-// is CapWords, a function otherwise: the lite extractor's one guess), and
-// the table nodes with the reads and writes edges of the SQL literals in
-// the file, each from the def whose key byKey holds when one encloses it.
-func (r Resolver) extras(f fileScan, src string, file graph.ID, byKey map[string]graph.ID, rev graph.Rev, conf float64, algo graph.Prov) []graph.Record {
+// is CapWords, a function otherwise: the lite extractor's one guess).
+// Nothing inside a string literal becomes a record.
+func (r Resolver) extras(f fileScan, file graph.ID, rev graph.Rev, conf float64, algo graph.Prov) []graph.Record {
 	var recs []graph.Record
 	for _, im := range f.imports {
 		if im.attr == "" {
@@ -460,22 +466,6 @@ func (r Resolver) extras(f fileScan, src string, file graph.ID, byKey map[string
 		}
 		recs = append(recs, graph.Record{Edge: &graph.Edge{Src: file, Pred: graph.References, Dst: graph.SymID(Lang, up, kind, im.module+"."+im.attr),
 			Tier: graph.Algorithmic, Conf: conf, Rev: rev, Prov: algo}})
-	}
-	for _, q := range scanSQL(src, f.defs) {
-		tbl := graph.TableID(q.table)
-		src := file
-		if q.caller != "" {
-			src = byKey[q.caller]
-		}
-		pred := graph.Reads
-		if q.write {
-			pred = graph.Writes
-		}
-		recs = append(recs,
-			graph.Record{Node: &graph.Node{ID: tbl, Kind: "table", Tier: graph.Algorithmic, Conf: 0.9, Rev: rev, Prov: algo,
-				Attrs: map[string]string{"name": q.table}}},
-			graph.Record{Edge: &graph.Edge{Src: src, Pred: pred, Dst: tbl, Tier: graph.Algorithmic, Conf: 0.9, Rev: rev, Prov: algo,
-				Attrs: map[string]string{"line": strconv.Itoa(q.line), "cols": strings.Join(q.cols, ",")}}})
 	}
 	return recs
 }

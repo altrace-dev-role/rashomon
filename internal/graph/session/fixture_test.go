@@ -120,8 +120,8 @@ func newFixture(t *testing.T, r retention) *fixture {
 		{ID: "R2", Tier: graph.Inferred, Conf: 0.5,
 			Text: "SESSION_TTL_SECONDS in services/auth/auth/sessions.py unchanged from C1",
 			Pred: func(st *graph.Store, rev graph.Rev) bool {
-				n, ok := st.Node(ttl, rev)
-				return ok && n.Attrs["value"] == "3600"
+				_, ok := st.Edge(graph.FileID(sessionsPy), graph.Declares, ttl, rev)
+				return ok
 			}},
 	}
 	for _, q := range s.Reqs {

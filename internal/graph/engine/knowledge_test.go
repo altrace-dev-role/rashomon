@@ -32,9 +32,10 @@ func TestKnowledge_AConsumersRecordNeverExpandsOnAUnitWithNone(t *testing.T) {
 }
 
 // TestKnowledge_TheUnitsOwnRecordIsTheLine: on Task A the unit's own
-// record is the lesson its db module reaches through the table it writes
-// (public.sessions), found through that file; the decision on the reuse
-// (orgs.settings) is the reuse line's to show and no knowledge line.
+// record is the lesson on the unit itself (services/auth), found through
+// its target file (auth/sessions.py); the decision on the reuse
+// (orgs.settings) is the reuse line's to show and no knowledge line. The
+// unit line says the lesson applies; the whole line is pinned by hand.
 // No unit rule applies here: the shipped one (W-M1.40) withholds a unit
 // the request does not name.
 func TestKnowledge_TheUnitsOwnRecordIsTheLine(t *testing.T) {
@@ -46,11 +47,14 @@ func TestKnowledge_TheUnitsOwnRecordIsTheLine(t *testing.T) {
 	if len(r.Knowledge) != 1 || r.Knowledge[0] != "les:INC-212" {
 		t.Errorf("knowledge %v, want the unit's own lesson alone", r.Knowledge)
 	}
-	if via := r.KnowledgeVia["les:INC-212"]; via != graph.FileID("services/auth/auth/db.py") {
-		t.Errorf("INC-212 found through %s, want the unit's db module", via)
+	if via := r.KnowledgeVia["les:INC-212"]; via != graph.FileID("services/auth/auth/sessions.py") {
+		t.Errorf("INC-212 found through %s, want the unit's target file", via)
 	}
 	if !strings.Contains(b.Text(), "reuse 'services/orgs/orgs/settings.py' (named to use) declares 'get_org_settings'; imports 'orgs.models'; ADR-0007 applies") {
 		t.Errorf("the reuse line does not carry its record:\n%s", b.Text())
+	}
+	if !strings.Contains(b.Text(), "\nunit 'services/auth' (by word coverage; runner-up 'jobs') declares 'is_expired', 'create_session', 'SESSION_TTL_SECONDS'; is consumed by 'jobs/purge_sessions.py', 'tests/unit/test_sessions.py' and 1 more; INC-212 applies\n") {
+		t.Errorf("the unit line does not carry the unit's own lesson:\n%s", b.Text())
 	}
 	if strings.Contains(b.Text(), "decision ADR-0007") {
 		t.Errorf("the reuse's record became a knowledge line:\n%s", b.Text())
@@ -72,5 +76,34 @@ func TestKnowledge_ALessonLineNamesTheFailureAndTheRule(t *testing.T) {
 	want := "lesson INC-212 applies to 'jobs/purge_sessions.py': failure 'INC-212 session purge raced the TTL'; rule 'the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too'; source 'incidents/INC-212.md'"
 	if !strings.Contains(b.Text(), want) {
 		t.Errorf("brief lacks the lesson's polarity line\nwant %q\n%s", want, b.Text())
+	}
+}
+
+// TestKnowledge_ARecordOnADeclaredSymbolIsFoundThroughItsFile: the second
+// step of roleKnowledge reads the unit's other files and the symbols each
+// declares, each through its file. On Task A, auth/db.py is such a file
+// and declares insert_session, which is no target (the targets are symbols
+// auth/sessions.py declares), so a lesson on insert_session is found
+// through auth/db.py. withKnowledge is unchanged; this test adds the one
+// record, and the expected file is written by hand. Break: drop the
+// declared symbols from the second step, so the record is never found.
+// No unit rule applies here: the shipped one withholds a unit the
+// request does not name.
+func TestKnowledge_ARecordOnADeclaredSymbolIsFoundThroughItsFile(t *testing.T) {
+	sp := graphtest.New(t)
+	withKnowledge(sp)
+	rev := graph.RevCommit(graphtest.Commit)
+	les := graph.ID("les:INC-DB1")
+	sp.Store.AssertNode(graph.Node{ID: les, Kind: "lesson", Tier: graph.Declared, Conf: 1.0, Rev: rev, Attrs: map[string]string{
+		"title":  "INC-DB1 a session row written twice",
+		"text":   "INC-DB1: insert_session wrote one session row twice when a caller retried.",
+		"clause": "insert_session writes one session row per call",
+		"source": "incidents/INC-DB1.md"}})
+	sp.Store.AssertEdge(graph.Edge{Src: les, Pred: graph.AppliesTo, Dst: graphtest.Sym("services/auth", "auth.db.insert_session"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
+	b := Build(sp.Store, rev, "make session expiry respect the org-level timeout override.", Options{IDF: true, bands: stateAll, unitRule: noUnitRule})
+	t.Logf("\n%s\nbrief:\n%s", b.Explain(), b.Text())
+	via, found := b.Roles.KnowledgeVia[les]
+	if !found || via != graph.FileID("services/auth/auth/db.py") {
+		t.Errorf("INC-DB1 found %v through %q, want found through services/auth/auth/db.py; knowledge %v", found, via, b.Roles.Knowledge)
 	}
 }

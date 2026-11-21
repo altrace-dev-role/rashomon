@@ -147,12 +147,11 @@ def close():
 // TestLANGREG1_AMethodIsKeyedByItsClass: a def in a class body is a method,
 // keyed by its class path: symkind method, qualified name the module, the
 // classes and its own name, so it shares no id with a module def of its
-// name. The file declares each method, and the SQL in a method's body is
-// the method's read. A class is no node yet: no node of kind class is
-// written, the limit a card of class nodes turns. Break: key a method as a
-// module def (func ids for load, make and size, one id for the method get
-// and the module get), or end a class at the close of bases that span
-// lines.
+// name. The file declares each method. A class is no node yet: no node of
+// kind class is written, the limit a card of class nodes turns. Break: key
+// a method as a module def (func ids for load, make and size, one id for
+// the method get and the module get), or end a class at the close of bases
+// that span lines.
 func TestLANGREG1_AMethodIsKeyedByItsClass(t *testing.T) {
 	rel := "services/auth/auth/store.py"
 	recs := scopeOverlay(t, rel, classSrc)
@@ -180,9 +179,6 @@ func TestLANGREG1_AMethodIsKeyedByItsClass(t *testing.T) {
 		if r.Node != nil && r.Node.Attrs["symkind"] == "class" {
 			t.Errorf("%s is a node of kind class; want none, a class is no node yet", r.Node.ID)
 		}
-	}
-	if !hasEdge(recs, symID("method", "auth.store.Store.load"), graph.Reads, graph.TableID("accounts")) {
-		t.Errorf("Store.load does not read accounts; want the read of the SQL in its body")
 	}
 }
 
@@ -262,15 +258,16 @@ func TestLANGREG1_ACapWordsNameGuessesAClass(t *testing.T) {
 	}
 }
 
-// TestLANGREG1_TheReaderIsPyliteTwo: the reader that keys a method by its
-// class and guesses a CapWords name a class is pylite version 2, the
-// version an index names as the producer of its py records. An index an
-// older reader made keeps its old ids until it is built again. Break:
-// leave the version at 1.
-func TestLANGREG1_TheReaderIsPyliteTwo(t *testing.T) {
+// TestLANGREG1_TheReaderIsPyliteThree: the reader that keys a method by
+// its class, guesses a CapWords name a class and writes no text of a value,
+// a default, an annotation, a keyword argument or a string literal is
+// pylite version 3, the version an index names as the producer of its py
+// records. An index an older reader made keeps its old ids and its old text
+// until it is built again. Break: write version 1 or 2.
+func TestLANGREG1_TheReaderIsPyliteThree(t *testing.T) {
 	rel := "services/auth/auth/use.py"
 	n, ok := nodeOf(scopeOverlay(t, rel, capWordsSrc), graph.FileID(rel))
-	if !ok || n.Prov.Extractor != "pylite" || n.Prov.Version != "2" {
-		t.Errorf("file node %v, reader %s/%s; want pylite/2", ok, n.Prov.Extractor, n.Prov.Version)
+	if !ok || n.Prov.Extractor != "pylite" || n.Prov.Version != "3" {
+		t.Errorf("file node %v, reader %s/%s; want pylite/3", ok, n.Prov.Extractor, n.Prov.Version)
 	}
 }

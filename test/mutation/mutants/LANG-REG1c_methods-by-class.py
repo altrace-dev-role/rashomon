@@ -4,7 +4,7 @@
 # or cls.name() call in a method resolves in the caller's own class and
 # nowhere else; a bare name in a method resolves among the module's defs
 # only; a name imported from a known unit is guessed a class by its CapWords
-# case; a def nested in a def's body is that body; the reader is pylite/2. A
+# case; a def nested in a def's body is that body; the reader is pylite/3. A
 # class is no node yet. One row per Break clause of the tests in
 # internal/graph/lang/pylite/scope_test.go and one per other place a rule is
 # written, each killed by the test it names. Written, not run: for the end
@@ -12,7 +12,6 @@
 pylite = "internal/graph/lang/pylite/pylite.go"
 names = "internal/graph/lang/pylite/names.go"
 scan = "internal/graph/lang/pylite/scan.go"
-sql = "internal/graph/lang/pylite/sql.go"
 
 m("LANG-REG1c a def nested in a body is tested as a def first", scan,
   '\t\tif cur != "" && indent > curIndent {\n',
@@ -30,12 +29,6 @@ m("LANG-REG1c a method's node says symkind func", pylite,
   "TestLANGREG1_AMethodIsKeyedByItsClass")
 m("LANG-REG1c a class ends at the close of bases that span lines", scan,
   "len(m[0])-1); ok {\n\t\t\t\t\ti = end\n", "len(m[0])-1); ok {\n\t\t\t\t\t_ = end\n",
-  "TestLANGREG1_AMethodIsKeyedByItsClass")
-m("LANG-REG1c a SQL literal's enclosing def is named without its class", sql,
-  "\t\t\tkey = d.key()\n", "\t\t\tkey = d.name\n",
-  "TestLANGREG1_AMethodIsKeyedByItsClass")
-m("LANG-REG1c the SQL in a def's body is the file's read", pylite,
-  "\t\t\tsrc = byKey[q.caller]\n", "\t\t\tsrc = file\n",
   "TestLANGREG1_AMethodIsKeyedByItsClass")
 
 m("LANG-REG1c a self call is left unresolved", names,
@@ -71,5 +64,5 @@ m("LANG-REG1c a call of an imported CapWords name is keyed a function", pylite,
   "TestLANGREG1_ACapWordsNameGuessesAClass")
 
 m("LANG-REG1c the reader stays pylite/1", pylite,
-  '\tprovVersion   = "2"\n', '\tprovVersion   = "1"\n',
-  "TestLANGREG1_TheReaderIsPyliteTwo")
+  '\tprovVersion   = "3"\n', '\tprovVersion   = "1"\n',
+  "TestLANGREG1_TheReaderIsPyliteThree")

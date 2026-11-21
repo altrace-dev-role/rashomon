@@ -15,7 +15,8 @@ import (
 // declares refund_ledger, void_invoices and faster_checkout, is refused
 // (its bracket at line 5 never closes): the store holds none of its
 // names, and the header counts it. host/host.py reads the invoices table,
-// a name that no unit's claim holds.
+// a name that no unit's claim holds. No reader writes a table from a
+// string since pylite/3, so refusedTree declares that table and the read.
 func refusedTree(t *testing.T) (*graph.Store, graph.Header) {
 	t.Helper()
 	root := t.TempDir()
@@ -43,6 +44,10 @@ func refusedTree(t *testing.T) (*graph.Store, graph.Header) {
 	if r.Header.Refused != 1 || len(r.Header.RefusedFiles) != 1 || r.Header.RefusedFiles[0].Path != "host/billing.py" {
 		t.Fatalf("header refused %d %+v; want host/billing.py alone", r.Header.Refused, r.Header.RefusedFiles)
 	}
+	rev := graph.RevCommit(r.Header.Rev.Commit)
+	tbl := graph.TableID("invoices")
+	r.Store.AssertNode(graph.Node{ID: tbl, Kind: "table", Tier: graph.Declared, Conf: 1.0, Rev: rev, Attrs: map[string]string{"name": "invoices"}})
+	r.Store.AssertEdge(graph.Edge{Src: graph.SymID("py", "host", "func", "host.load_rows"), Pred: graph.Reads, Dst: tbl, Tier: graph.Declared, Conf: 1.0, Rev: rev})
 	return r.Store, r.Header
 }
 

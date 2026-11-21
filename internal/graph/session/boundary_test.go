@@ -95,7 +95,7 @@ func TestBoundary_RecoveryRetentionByRef_BriefHasGoalWordsWhenDigestMatches(t *t
 // no longer holds says so at the boundary.
 func TestBoundary_RequirementFailureIsNamed(t *testing.T) {
 	f := newFixture(t, retention{})
-	f.edit(t, 12, sessionsPy, "SESSION_TTL_SECONDS = 3600", "SESSION_TTL_SECONDS = 7200")
+	f.edit(t, 12, sessionsPy, "SESSION_TTL_SECONDS = 3600", "SESSION_TTL = 3600")
 	f.MarkBoundary(13)
 	if brief := f.BoundaryBrief(); !strings.Contains(brief, "unchanged from C1. Fails at C1+ov12.") {
 		t.Fatalf("R2 failure not named:\n%s", brief)

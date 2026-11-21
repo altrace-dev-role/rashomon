@@ -84,7 +84,7 @@ m("WDEBT-6 a file outside the reader's root is in reach", R,
   "TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead")
 m("WDEBT-6 a symbol's reach ignores its declaring file", R,
   "\t\t\tfor _, e := range g.In(id, rev, graph.Declares) {\n\t\t\t\treturn outside(e.Src)\n\t\t\t}\n", "",
-  "TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead")
+  "TestGR1_OutsideJudgesEachKindByItsOwnRule")
 m("WDEBT-6 a table's reach ignores the symbols that touch it", R,
   "\t\t\tfor _, e := range g.In(id, rev, graph.Writes, graph.Reads) {\n\t\t\t\tif outside(e.Src) {\n\t\t\t\t\treturn true\n\t\t\t\t}\n\t\t\t}\n", "",
-  "TestGR1_OutOfReachCodeRanksAboveWhatTheAgentCanRead")
+  "TestGR1_OutsideJudgesEachKindByItsOwnRule")
