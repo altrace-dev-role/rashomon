@@ -10,34 +10,36 @@ import (
 )
 
 // TestRES28i_ToleranceScheduleIsTheSpecs: the platform tolerances are
-// RES-28's schedule and nothing looser: 15% on darwin/arm64 until 2026-11-06
-// and 10% from that day, 10% on linux/amd64 always, and no other platform.
+// RES-28's schedule and nothing looser: 15% on darwin/arm64 and on
+// linux/amd64 until 2026-11-28 and 10% from that day, and no other platform.
+// The date is a UTC midnight and the day it names is not inside, so the 15%
+// ends at 2026-11-28 00:00 UTC, which is 16:00 PST on 2026-11-27.
 func TestRES28i_ToleranceScheduleIsTheSpecs(t *testing.T) {
 	b := loadBudgets(t)
 	if len(b.Platforms) != 2 {
 		t.Errorf("platforms %v, want darwin/arm64 and linux/amd64 only", len(b.Platforms))
 	}
-	darwin, ok := b.Platforms["darwin/arm64"]
-	if !ok || darwin.Tolerance != 0.15 || darwin.ToleranceUntil != "2026-11-06" || darwin.ToleranceAfter != 0.10 {
-		t.Errorf("darwin/arm64 schedule %v %q %v, want 0.15 until 2026-11-06 then 0.10", darwin.Tolerance, darwin.ToleranceUntil, darwin.ToleranceAfter)
+	for _, name := range []string{"darwin/arm64", "linux/amd64"} {
+		p, ok := b.Platforms[name]
+		if !ok || p.Tolerance != 0.15 || p.ToleranceUntil != "2026-11-28" || p.ToleranceAfter != 0.10 {
+			t.Errorf("%s schedule %v %q %v, want 0.15 until 2026-11-28 then 0.10", name, p.Tolerance, p.ToleranceUntil, p.ToleranceAfter)
+		}
 	}
-	linux, ok := b.Platforms["linux/amd64"]
-	if !ok || linux.Tolerance != 0.10 || linux.ToleranceUntil != "" || linux.ToleranceAfter != 0.10 {
-		t.Errorf("linux/amd64 schedule %v %q %v, want 0.10 always", linux.Tolerance, linux.ToleranceUntil, linux.ToleranceAfter)
-	}
-	eve := time.Date(2026, 11, 5, 23, 59, 0, 0, time.UTC)
-	day := time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
+	eve := time.Date(2026, 11, 27, 23, 59, 0, 0, time.UTC)
+	day := time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC)
+	next := time.Date(2026, 11, 29, 0, 0, 0, 0, time.UTC)
+	pst := time.Date(2026, 11, 27, 16, 0, 0, 0, time.FixedZone("PST", -8*3600))
 	for _, c := range []struct {
 		platform string
 		at       time.Time
 		want     float64
 	}{
-		{"darwin/arm64", eve, 0.15}, {"darwin/arm64", day, 0.10},
-		{"linux/amd64", eve, 0.10}, {"linux/amd64", day, 0.10},
+		{"darwin/arm64", eve, 0.15}, {"darwin/arm64", day, 0.10}, {"darwin/arm64", next, 0.10}, {"darwin/arm64", pst, 0.10},
+		{"linux/amd64", eve, 0.15}, {"linux/amd64", day, 0.10}, {"linux/amd64", next, 0.10}, {"linux/amd64", pst, 0.10},
 	} {
 		p := b.Platforms[c.platform]
 		if got := Tolerance(p.Tolerance, p.ToleranceUntil, p.ToleranceAfter, c.at); got != c.want {
-			t.Errorf("%s at %s: tolerance %v, want %v", c.platform, c.at.Format(time.DateTime), got, c.want)
+			t.Errorf("%s at %s: tolerance %v, want %v", c.platform, c.at.Format(time.RFC3339), got, c.want)
 		}
 	}
 }
