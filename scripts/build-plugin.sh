@@ -2,8 +2,9 @@
 # Builds the plugin's recorders -- one per platform, named the way
 # plugin/bin/rashomon looks for them -- and the platform graph's writer the same
 # way for plugin/bin/pgraph (from the pgraph module, which rashomon never
-# imports), and packs plugin/ into dist/rashomon-plugin.zip, the archive
-# .claude-plugin/marketplace.json installs.
+# imports), and packs plugin/, with the licence and the third-party notices,
+# into dist/rashomon-plugin.zip, the archive .claude-plugin/marketplace.json
+# installs.
 #
 #   scripts/build-plugin.sh [version [zip path]]
 #
@@ -48,4 +49,7 @@ case $out in /*) abs=$out ;; *) abs=$PWD/$out ;; esac
 # extractor that honours them keeps the launcher and recorders executable.
 # The launcher also restores the recorder's bit itself, for one that does not.
 (cd plugin && zip -qrX "$abs" . -x 'bin/.gitkeep')
+# The recorders and pgraph are statically linked, so the licence and the
+# third-party notices travel beside them, as in the release archives.
+zip -qX "$abs" LICENSE THIRD_PARTY_NOTICES
 echo "wrote $out"

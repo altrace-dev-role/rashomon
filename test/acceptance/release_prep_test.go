@@ -250,3 +250,40 @@ func TestREL1d_TheDryRunJobKeepsTheArchive(t *testing.T) {
 		}
 	}
 }
+
+// TestRelease_PgraphShipsInEveryArchive: .goreleaser.yml builds pgraph from
+// its own module with cgo off (the matrix reader refuses any other pgraph
+// build), for the same six pairs as rashomon, and the archive takes both
+// builds, so every archive a release publishes carries pgraph beside
+// rashomon. Break: take pgraph out of the archive's ids, or build it with cgo
+// on.
+func TestRelease_PgraphShipsInEveryArchive(t *testing.T) {
+	builds, err := readReleaseBuilds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pgraph, ok := builds["pgraph"]
+	if !ok {
+		t.Fatal(".goreleaser.yml builds no pgraph, so no archive carries it")
+	}
+	rashomon := builds["rashomon"].targets
+	if len(rashomon) != 6 || !slices.Equal(pgraph.targets, rashomon) {
+		t.Errorf("pgraph is built for %v and rashomon for %v; want the same six pairs", pgraph.targets, rashomon)
+	}
+	var ids []string
+	inIDs := false
+	for _, l := range releaseRootBlock(t, ".goreleaser.yml", "archives:") {
+		switch {
+		case l == "    ids:":
+			inIDs = true
+		case inIDs && strings.HasPrefix(l, "      - "):
+			ids = append(ids, strings.TrimPrefix(l, "      - "))
+		default:
+			inIDs = false
+		}
+	}
+	slices.Sort(ids)
+	if !slices.Equal(ids, []string{"pgraph", "rashomon"}) {
+		t.Errorf("the archive takes the builds %v, want pgraph and rashomon", ids)
+	}
+}

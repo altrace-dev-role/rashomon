@@ -5,7 +5,9 @@
 #   goreleaser build --snapshot --clean        # local build, all targets
 #   goreleaser release --snapshot --clean      # full pipeline without publishing
 #
-# One pure-Go binary, no cgo, so all six targets cross-compile natively.
+# Two pure-Go binaries, no cgo, so all six targets cross-compile natively:
+# rashomon, and pgraph from its own module under pgraph/. Each target's
+# archive carries both.
 
 version: 2
 
@@ -31,11 +33,31 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}}
+  # pgraph is its own Go module under pgraph/, so it builds from there. It
+  # has no version variable, so its ldflags set none.
+  - id: pgraph
+    dir: pgraph
+    main: ./cmd/pgraph
+    binary: pgraph
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
 
 archives:
   - id: rashomon
     ids:
       - rashomon
+      - pgraph
     name_template: "rashomon_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
