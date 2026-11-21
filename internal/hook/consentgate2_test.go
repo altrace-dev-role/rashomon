@@ -234,13 +234,16 @@ func cg2Stated(t *testing.T, recs []graph.Record) {
 // out here from the edited file: each def's kind and line, the constant's
 // kind and line, the call's line, the file's module and SHA-256; never a
 // signature, a parameter or argument count, the constant's value, or an
-// attribute cg2PyKept does not name. Base (card x315): the .py edit keeps
-// nothing. Breaks: leave pylite unkept; ask the consent of a root other
-// than the store's; keep an attribute past cg2PyKept, or drop one it names.
+// attribute cg2PyKept does not name. Premise: the post's landed group in
+// memory holds the "end" this build's reader writes on each def (pylite/4),
+// so the log's two def nodes without it are the list leaving it out. Base
+// (card x315): the .py edit keeps nothing. Breaks: leave pylite unkept; ask
+// the consent of a root other than the store's; keep an attribute past
+// cg2PyKept, or drop one it names.
 func TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords(t *testing.T) {
 	asked := cg2Scope(t, 9, nil)
 	f, py := cg2PyFix(t)
-	f.pyEdit("toolu_cg2n", py)
+	p := f.pyEdit("toolu_cg2n", py)
 	if kinds, _ := f.cg2Groups(); !slices.Equal(kinds, []string{"declared", "landed"}) {
 		t.Fatalf("the session graph log holds groups %v of %s; want the declared and the landed", kinds, cg2PyRel)
 	}
@@ -251,6 +254,15 @@ func TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords(t *testing.T) {
 		if root != f.st.Root() {
 			t.Errorf("ConsentScopeOnFile was asked of %q; want the store's root %q", root, f.st.Root())
 		}
+	}
+	ends := 0
+	for _, r := range p.landed.Group.Recs {
+		if r.Node != nil && (string(r.Node.ID) == cg2RunID || string(r.Node.ID) == cg2ProbeID) && r.Node.Attrs["end"] != "" {
+			ends++
+		}
+	}
+	if ends != 2 {
+		t.Fatalf("premise: the post's landed group holds \"end\" on %d of run and probe; want both, as this build's py reader writes it on each def", ends)
 	}
 	sum := sha256.Sum256([]byte(cg2PyOrig + cg2PyAdd))
 	want := map[string]map[string]string{
