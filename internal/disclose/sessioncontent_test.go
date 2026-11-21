@@ -43,7 +43,7 @@ func TestSessionContent_EveryTextNamesTheIndexedRepository(t *testing.T) {
 	}
 	var readme []string
 	for _, p := range strings.Split(string(b), "\n\n") {
-		if p = strings.Join(strings.Fields(p), " "); strings.Contains(p, "what each Go edit declares") {
+		if p = strings.Join(strings.Fields(p), " "); strings.Contains(p, "what each edit declares") {
 			readme = append(readme, p)
 		}
 	}
@@ -57,7 +57,7 @@ func TestSessionContent_EveryTextNamesTheIndexedRepository(t *testing.T) {
 		}
 	}
 	if len(readme) != 1 || len(kept) != 1 || len(short) != 1 {
-		t.Fatalf("%d README paragraphs name what each Go edit declares, %d KEPT and %d short RECORDED paragraphs, want one of each", len(readme), len(kept), len(short))
+		t.Fatalf("%d README paragraphs name what each edit declares, %d KEPT and %d short RECORDED paragraphs, want one of each", len(readme), len(kept), len(short))
 	}
 	var faults []string
 	faults = append(faults, indexedConditionFaults("the README", readme[0], true)...)
