@@ -117,3 +117,7 @@ m('WM-4.2 a frontier past the limit is missed in silence', 'internal/store/front
   'errors.Is(err, ErrLockTimeout) || ',
   'errors.Is(err, errFrontierOverCap) || errors.Is(err, ErrLockTimeout) || ',
   'TestCompose_PastTheLimitIsASoftMiss')
+m('WM-4.2 an eviction pass takes only runs that hold records', 'internal/store/evict.go',
+  '\t\tif !e.IsDir() {\n\t\t\tcontinue\n\t\t}\n\t\tc, err := sizeRun(',
+  '\t\tif _, serr := os.Stat(filepath.Join(runsDir, e.Name(), FileRecords)); !e.IsDir() || serr != nil {\n\t\t\tcontinue\n\t\t}\n\t\tc, err := sizeRun(',
+  'TestEvict_ARunThatHoldsOnlyItsFrontierGoesOnTheNextPass')

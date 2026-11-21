@@ -62,7 +62,23 @@ var errOffsetPastEnd = errors.New("store: offset past the end of the file")
 // forget wholly before the first hold leaves lines the fold reads, one
 // between the holds moves G and nothing is saved, and one after the save
 // removes the frontier: no frontier of forgotten lines outlives a forget.
-// L alone is taken, never the gaps lock; evict's window is a stated limit.
+// L alone is taken, never the gaps lock, and eviction takes no records lock
+// (doc.go), so two orders with an eviction of the run are a stated limit.
+// In the first, the second hold compares G before eviction's gap lands and
+// saves into the directory while eviction removes it. In the second, the
+// first hold comes after that gap, both holds read the same G, and the
+// fold reads a records file that is being removed, which the save can
+// follow. Neither frontier is continued: the first carries a G the gap has
+// moved past (TestCompose_MovedGenerationFoldsWhole), the second a records
+// mark that a file made again after it refuses
+// (TestCompose_RecreatedRecordsFoldWhole); with no records file there is
+// no lock to take and nothing is loaded
+// (TestCompose_ReplacedRecordsFoldWhole). A directory left holding only the
+// frontier, at most MaxFrontierBytes, is a run like any other to later
+// eviction passes: the first that still needs room when it reaches the
+// directory, an hour or more after the save (evictGrace), removes it whole
+// (TestEvict_ARunThatHoldsOnlyItsFrontierGoesOnTheNextPass); in a store
+// that stays under its limit it stays.
 //
 // When the first take fails -- its lock budget ran out (ErrLockTimeout), the
 // run has no records file, or the bounds could not be read -- fold runs with
