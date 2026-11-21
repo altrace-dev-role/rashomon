@@ -23,10 +23,13 @@ func kindStore(t *testing.T) *Store {
 // marker (card LANG-REG1) is taken once per session and kind for 16
 // kinds; the 17th kind takes the one marker that names no kind, and the 18th
 // takes nothing. Break: take without O_EXCL, drop the limit, or count the
-// other-kinds marker among the kinds, and this fails.
+// other-kinds marker among the kinds, and this fails. The 16 is written out
+// here and not read from kindNoticeLimit: a bound taken from the constant
+// under test moves with it, so a limit raised to a million would loop a
+// million times and never fail the 17th-kind check below.
 func TestLANGREG1_AKindNoticeIsOncePerKindUpToSixteen(t *testing.T) {
 	s := kindStore(t)
-	for i := 0; i < kindNoticeLimit; i++ {
+	for i := 0; i < 16; i++ {
 		key := fmt.Sprintf(".k%d", i)
 		if got := s.TakeKindNotice("s1", key); got != KindNoticeName(key) {
 			t.Fatalf("kind %d's first take = %q, want its own marker %q", i, got, KindNoticeName(key))
@@ -47,8 +50,8 @@ func TestLANGREG1_AKindNoticeIsOncePerKindUpToSixteen(t *testing.T) {
 	if got := s.TakeKindNotice("s1", ".k0"); got != "" {
 		t.Errorf("the first kind's take after the limit = %q, want none", got)
 	}
-	if n, ok := s.kindNotices("s1"); !ok || n != kindNoticeLimit {
-		t.Errorf("kind markers = %d (read %v), want %d", n, ok, kindNoticeLimit)
+	if n, ok := s.kindNotices("s1"); !ok || n != 16 {
+		t.Errorf("kind markers = %d (read %v), want 16", n, ok)
 	}
 }
 
@@ -110,35 +113,52 @@ func TestLANGREG1_AKindMarkerNameIsADigestOfTheKey(t *testing.T) {
 // once leave at most 16 kind markers, each one a kind that took its own, and
 // the line naming no kind is taken once. Break: drop the count after the
 // create, or the removal of a marker past the limit, and this fails.
+//
+// One round of this race is not a reliable judge. With either break in place,
+// a single round passed in 6 to 18 percent of runs (300 runs per break, one
+// machine), because the takes only overlap when the scheduler lets them. So
+// the round is played 12 times, each on a session of its own with no marker
+// left from an earlier round. In 300 runs of each break on one machine every
+// run failed, and the fewest failing rounds in any run were 2 of 12 for the
+// first break and 5 of 12 for the second. The rounds share the machine's
+// load, so they are not fully independent: no odds are claimed beyond those
+// runs.
 func TestLANGREG1_RacingKindsNeverPassTheLimit(t *testing.T) {
 	s := kindStore(t)
-	const kinds = 2 * kindNoticeLimit
-	got := make([]string, kinds)
-	var wg sync.WaitGroup
-	for i := 0; i < kinds; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			got[i] = s.TakeKindNotice("s1", fmt.Sprintf(".k%d", i))
-		}(i)
-	}
-	wg.Wait()
-	own, other := 0, 0
-	for i, g := range got {
-		switch g {
-		case "":
-		case FileNoticeOtherKinds:
-			other++
-		case KindNoticeName(fmt.Sprintf(".k%d", i)):
-			own++
-		default:
-			t.Errorf("kind %d took %q", i, g)
+	const kinds = 32 // twice the 16, written out: see the first test above
+	const rounds = 12
+	for r := 0; r < rounds; r++ {
+		sid := fmt.Sprintf("race%d", r)
+		if err := os.MkdirAll(s.RunDir(sid), 0o700); err != nil {
+			t.Fatal(err)
 		}
-	}
-	n, ok := s.kindNotices("s1")
-	if !ok || n != own || own > kindNoticeLimit || other != 1 {
-		t.Errorf("markers %d (read %v), own takes %d, other-kinds takes %d; want markers equal to own takes, at most %d, and one other-kinds take",
-			n, ok, own, other, kindNoticeLimit)
+		got := make([]string, kinds)
+		var wg sync.WaitGroup
+		for i := 0; i < kinds; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				got[i] = s.TakeKindNotice(sid, fmt.Sprintf(".k%d", i))
+			}(i)
+		}
+		wg.Wait()
+		own, other := 0, 0
+		for i, g := range got {
+			switch g {
+			case "":
+			case FileNoticeOtherKinds:
+				other++
+			case KindNoticeName(fmt.Sprintf(".k%d", i)):
+				own++
+			default:
+				t.Errorf("round %d: kind %d took %q", r, i, g)
+			}
+		}
+		n, ok := s.kindNotices(sid)
+		if !ok || n != own || own > 16 || other != 1 {
+			t.Errorf("round %d: markers %d (read %v), own takes %d, other-kinds takes %d; want markers equal to own takes, at most 16, and one other-kinds take",
+				r, n, ok, own, other)
+		}
 	}
 }
 
