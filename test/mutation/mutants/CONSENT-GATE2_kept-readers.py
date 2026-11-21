@@ -162,12 +162,15 @@ m("CONSENT-GATE2 pylite kept from 8, end to end", pylite, pyfrom,
   "const SessionKeptScope = 8\n",
   "^TestLANGREG1_APythonEditIsKeptFromAYesOfNine$")
 
-# TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing. Break: keep an
-# edit's group without the session-content marker, so a withdrawn answer
-# whose scope stays on file still keeps.
+# TestLANGREG1_APythonEditUnderALaggingMarkerKeepsNothing. Break: keep a .py
+# edit's group without the session-content marker, and the edit after the
+# removal keeps its declared and landed groups.
+# TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing judges no single
+# term: its v4 record sets the record-scope marker to v4 and removes the
+# session-content marker, so two terms of the gate close it.
 m("CONSENT-GATE2 the session-content marker not read", overlay,
   " || !store.SessionContentMarker(st.Root()) {\n", " {\n",
-  "^TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing$")
+  "^TestLANGREG1_APythonEditUnderALaggingMarkerKeepsNothing$")
 
 # TestConsentGate2_AKeptReaderOtherThanGoCarriesItsOwnSet. Break: carry the
 # Go resolver's set for every language, and the group's set is Go's.
