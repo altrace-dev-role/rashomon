@@ -29,32 +29,48 @@ import (
 const lastSessionWord = "last"
 
 // lastSession is the session `--session last` names: the one that cut the
-// newest checkpoint for the working directory's project (receipt.Latest, the
-// same pick the commit trailer makes). No checkpoint for the project is an
-// error saying so, never another project's session.
+// newest checkpoint for the working directory's project (latestSession). No
+// checkpoint for the project is an error saying so, never another project's
+// session.
 func lastSession() (string, error) {
-	st, err := openStoreForRead()
-	if errors.Is(err, store.ErrNoStore) {
+	id, ok, err := latestSession()
+	switch {
+	case errors.Is(err, store.ErrNoStore):
 		return "", errors.New("--session last: nothing has been recorded here")
-	}
-	if err != nil {
+	case err != nil:
 		return "", err
+	case !ok:
+		return "", errors.New("--session last: no session of this project holds a checkpoint; name one with --session <id>")
+	}
+	return id, nil
+}
+
+// latestSession is the session that cut the newest checkpoint for the
+// working directory's project (receipt.Latest, the same pick the commit
+// trailer makes), with ok false when no session of the project holds one.
+// No store here is store.ErrNoStore, so a caller can tell nothing recorded
+// from no checkpoint: `--session last` refuses both, in words of its own,
+// and a bare report prints today's text for both (card RPT-1).
+func latestSession() (id string, ok bool, err error) {
+	st, err := openStoreForRead()
+	if err != nil {
+		return "", false, err
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	record, ok, err := receipt.Latest(st, baseline.Key(cwd))
+	record, found, err := receipt.Latest(st, baseline.Key(cwd))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	var out [1]jsonscan.Span
-	if ok && jsonscan.Top(record, sessionKey(), out[:]) == nil && out[0].Kind == jsonscan.String {
+	if found && jsonscan.Top(record, sessionKey(), out[:]) == nil && out[0].Kind == jsonscan.String {
 		if id, err := jsonscan.DecodeString(record, out[0]); err == nil && id != "" {
-			return id, nil
+			return id, true, nil
 		}
 	}
-	return "", errors.New("--session last: no session of this project holds a checkpoint; name one with --session <id>")
+	return "", false, nil
 }
 
 // sessionKey reads a checkpoint's session id by span, as the hook paths read
