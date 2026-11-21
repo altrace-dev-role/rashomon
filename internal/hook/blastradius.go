@@ -51,8 +51,12 @@ type BlastCaller struct {
 // BlastPort is the read's port. Locate is the site of an edit of file under
 // root, false where no sync vouches for a log or the file is in no package;
 // Callers reads the site's callers, fresh ones only, sorted by package. A
-// port with either func nil reads nothing.
+// port with either func nil reads nothing. Lang is the language whose files
+// the port reads, as a reader of the language registry states it: an edited
+// file that language's reader claims takes the port, and a file another
+// reader claims takes the repository graph's callers (readCallers).
 type BlastPort struct {
+	Lang    string
 	Locate  func(root, file string) (BlastSite, bool)
 	Callers func(site BlastSite) ([]BlastCaller, error)
 }
