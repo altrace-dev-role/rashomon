@@ -3,11 +3,11 @@ package store
 // TypeUnitBriefMiss is the unit-brief miss record (W-M2.3 hook half, card
 // m2-unitbrief-hook1 D7): the post's fact that a landed edit's read of its
 // unit's brief found none it could say, kept beside plan_check, the
-// second non-critical kind. The edit is a Go edit the overlay writer would
-// keep (a session keeping its content, the call attributed, an index over
+// second non-critical kind. The edit is an edit the overlay writer's gate
+// passes (a session keeping its content, the call attributed, an index over
 // the file), its unit not yet given the brief; any other edit writes none,
 // so a given unit, a store without the session-content marker, a path in
-// no Go unit and an unattributed session are not misses. Like rule_hit and
+// no unit and an unattributed session are not misses. Like rule_hit and
 // unlike plan_check it does not wait on the steer context: whether a brief
 // could be said is a fact about the file, whoever the note could reach.
 // Nothing a reader concludes about the session's rules depends on it, so

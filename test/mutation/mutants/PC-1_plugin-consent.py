@@ -29,3 +29,10 @@ m("PC-1 a quoted path takes a ~", P,
   "err == nil && shown == bin && strings.HasPrefix", "err == nil && strings.HasPrefix", "TestPC1b_")
 m("PC-1 plugin.json says less than the disclosure", J,
   "disabling it in /plugin stops all of it.", "disabling it in /plugin stops recording.", "TestPC1c_")
+
+# TestPC1_OnlyAPluginEnableIsConsent, the update case: the record an update
+# writes carries this build's scope, not the scope of the record on file.
+m("PC-1 an update is written at the scope on file", P,
+  "\t\tScopeVersion:    disclose.ScopeVersion,\n",
+  "\t\tScopeVersion:    func() int { if last, ok := consent.LastAccepted(recs); ok && via == consent.ViaUpgradeNotice { return last.ScopeVersion }; return disclose.ScopeVersion }(),\n",
+  "^TestPC1_OnlyAPluginEnableIsConsent$")

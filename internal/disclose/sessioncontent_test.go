@@ -13,7 +13,9 @@ import (
 // 6 is the session's content, and each text a yes is given on says so: the
 // full screen's KEPT paragraph names what an edit's log keeps, the conflict
 // base, and that the size cap does not cover the store's graph directory; the
-// short screen and the plugin's description name what each Go edit declares.
+// plugin's description names what each edit of a file in a language its index
+// reads declares, and the short screen, at its 24 rows (TestCSH1), what each
+// edit in an indexed repository declares.
 // No paragraph puts the size cap beside the graph directory without saying it
 // does not cover it. The marker, its temp, the session log and the evidence
 // file each match a row, none of them removed by the size cap.
@@ -41,7 +43,7 @@ func TestSessionContent_EveryTextNamesTheIndexedRepository(t *testing.T) {
 	}
 	var readme []string
 	for _, p := range strings.Split(string(b), "\n\n") {
-		if p = strings.Join(strings.Fields(p), " "); strings.Contains(p, "what each Go edit declares") {
+		if p = strings.Join(strings.Fields(p), " "); strings.Contains(p, "what each edit declares") {
 			readme = append(readme, p)
 		}
 	}
@@ -55,7 +57,7 @@ func TestSessionContent_EveryTextNamesTheIndexedRepository(t *testing.T) {
 		}
 	}
 	if len(readme) != 1 || len(kept) != 1 || len(short) != 1 {
-		t.Fatalf("%d README paragraphs, %d KEPT and %d short RECORDED name what each Go edit declares, want one of each", len(readme), len(kept), len(short))
+		t.Fatalf("%d README paragraphs name what each edit declares, %d KEPT and %d short RECORDED paragraphs, want one of each", len(readme), len(kept), len(short))
 	}
 	var faults []string
 	faults = append(faults, indexedConditionFaults("the README", readme[0], true)...)
@@ -102,7 +104,8 @@ func TestSessionContent_TheScreensSayWhatASessionKeeps(t *testing.T) {
 			if p.Owner != OwnerRecord || p.Cite != CiteSection2 {
 				t.Errorf("the KEPT paragraph is %s/%s, want %s/%s", p.Owner, p.Cite, OwnerRecord, CiteSection2)
 			}
-			for _, want := range []string{"Write, Edit or MultiEdit of a Go file", "never the file's other text", "conflict base",
+			for _, want := range []string{"Write, Edit or MultiEdit there of a file in a language the index of that repository was built to read",
+				"never any other text of the file", "conflict base",
 				"does not cover the store's graph directory", "`rashomon purge`"} {
 				if !strings.Contains(p.Text, want) {
 					t.Errorf("the KEPT paragraph does not say %q", want)
@@ -110,16 +113,16 @@ func TestSessionContent_TheScreensSayWhatASessionKeeps(t *testing.T) {
 			}
 		case p.Cite == CiteShort && strings.HasPrefix(p.Text, "RECORDED ON THIS MACHINE"):
 			short++
-			if !strings.Contains(p.Text, "what each Go edit declares") {
-				t.Errorf("the short screen's RECORDED paragraph does not name what each Go edit declares: %q", p.Text)
+			if !strings.Contains(p.Text, "In an indexed repository: what each edit declares") {
+				t.Errorf("the short screen's RECORDED paragraph does not name what each edit in an indexed repository declares: %q", p.Text)
 			}
 		}
 	}
 	if kept != 1 || short != 1 {
 		t.Errorf("%d KEPT paragraphs and %d short RECORDED paragraphs, want one of each", kept, short)
 	}
-	if !strings.Contains(PluginDescription, "what each Go edit declares") {
-		t.Errorf("the plugin's description does not name what each Go edit declares: %q", PluginDescription)
+	if !strings.Contains(PluginDescription, "what each edit of a file in a language its index reads declares") {
+		t.Errorf("the plugin's description does not name what each edit of a file in a language its index reads declares: %q", PluginDescription)
 	}
 
 	inv, err := Default()
@@ -135,6 +138,41 @@ func TestSessionContent_TheScreensSayWhatASessionKeeps(t *testing.T) {
 	for _, r := range sessionContentFiles() {
 		if r.Mode != "0600" || !strings.Contains(r.RemovedBy, "purge") || strings.Contains(r.RemovedBy, "cap") {
 			t.Errorf("%s/%s's row is mode %q, removed by %q; want 0600, purge, and no size cap", r.Base, r.Pattern, r.Mode, r.RemovedBy)
+		}
+	}
+}
+
+// TestSessionContent_TheLogRowNamesEachLanguageTheIndexReads: the session
+// log's inventory row says the log is appended at an edit of a file in any
+// language the index of the repository reads, in the KEPT paragraph's words,
+// and its Holds names what a reader other than Go's records of such a file,
+// each a thing that paragraph names: a class among the declarations, the
+// line of each declaration and of each call, and the module of the file.
+// Break: the row as it was at scope 8, which named a Go file alone.
+func TestSessionContent_TheLogRowNamesEachLanguageTheIndexReads(t *testing.T) {
+	const files = "Write, Edit or MultiEdit there of a file in a language the index of that repository was built to read"
+	var kept []string
+	for _, p := range defaultParagraphs() {
+		if strings.HasPrefix(p.Text, "KEPT FROM YOUR SESSIONS") {
+			kept = append(kept, p.Text)
+		}
+	}
+	if len(kept) != 1 {
+		t.Fatalf("%d KEPT paragraphs, want one", len(kept))
+	}
+	for _, w := range []string{files, "class", "its line", "the line and number of arguments of each call", "module of the file"} {
+		if !strings.Contains(kept[0], w) {
+			t.Fatalf("premise: the KEPT paragraph does not say %q", w)
+		}
+	}
+	row := slRow(t)
+	if !strings.Contains(row.Purpose, files) || strings.Contains(row.Purpose, "Go file") {
+		t.Errorf("the session log row's Purpose does not name the files the KEPT paragraph names (%q): %q", files, row.Purpose)
+	}
+	for _, w := range []string{"each function, class, type, method, constant and variable by name and kind",
+		"the line of each declaration and of each call", "the module of the file"} {
+		if !strings.Contains(row.Holds, w) {
+			t.Errorf("the session log row's Holds does not say %q", w)
 		}
 	}
 }

@@ -53,14 +53,16 @@ func sessionContentFiles() []FileRule {
 			Pattern: "*.jsonl",
 			Mode:    "0600",
 			Purpose: "the session log of one repository indexed with `rashomon graph index`, named by 16 hex of the SHA-256 of its id, " +
-				"appended at each Write, Edit or MultiEdit of a Go file there while the session's content is kept; never rewritten, " +
-				"and the size cap does not cover it",
+				"appended at each Write, Edit or MultiEdit there of a file in a language the index of that repository was built to read " +
+				"while the session's content is kept; never rewritten, and the size cap does not cover it",
 			Holds: "a header with its format's version, the repository's id, the graph's commit and its writer's name and version; " +
 				"then, for each such call, once from its input before it runs and once from the file after it: the session, the " +
 				"call's id, the file's path in the repository, which of the two it is, the call's sequence number, the file's " +
-				"SHA-256 and language (go), and what the file then declares (each function, type, method, constant and variable " +
-				"by name and kind, the first sentence of its doc comment, the names a function or method calls, and the packages " +
-				"the file imports), with the count of its records, the kinds of link its reader records, whether its declarations " +
+				"SHA-256 and, as its reader records one, its language (go) or the module of the file, and what the file then " +
+				"declares (each function, class, type, method, constant and variable by name and kind, the first sentence of its " +
+				"doc comment, the names a function or method calls, the modules or packages the file imports and, where its " +
+				"reader records them, the line of each declaration and of each call), with the count of its records, the kinds of " +
+				"link its reader records, whether its declarations " +
 				"were cut at the cap and, when the file after the call has the content its input gave, the sequence number of the " +
 				"one from its input; each record by its ids, its kind or predicate, its tier, confidence and status, and the " +
 				"commit and sequence number it belongs to",

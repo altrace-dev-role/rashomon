@@ -161,7 +161,7 @@ func TestPW1b3_TheReadIsDisclosed(t *testing.T) {
 		"When your prompt names a Go function, type or method, rashomon reads .pgraph for it",
 		"the package that declares it and how many direct callers it has",
 		"only while the files pgraph read are unchanged",
-		"the project paths and Go symbols it names at record scope v5",
+		"the project paths and symbols it names at record scope v5",
 	} {
 		if !strings.Contains(all, w) {
 			t.Errorf("the full screen does not say %q", w)

@@ -1,4 +1,4 @@
-# CONSENT-GATE2 (cards x315, x370/x371): the overlay writer keeps a session's
+# CONSENT-GATE2: the overlay writer keeps a session's
 # edit of a file in the session graph log only where the reader that claims
 # the file states its session edits are kept (lang.Kept, read through
 # Registry.SessionKept), and, for a reader that states the first consent
@@ -7,7 +7,7 @@
 # (consent.ScopeOnFile, wired as hook.ConsentScopeOnFile) reaches it; the log
 # then holds of that reader's records only the attributes its list names,
 # filtered from a copy before the group is built. The scope is a check of
-# the gate (keptGoEdit, card x381): a stating reader no yes reaches passes
+# the gate (keptGoEdit, PY-K): a stating reader no yes reaches passes
 # no gate, so its post has no landed edit, says no line and keeps no group,
 # and the writer past the gate reads no consent file of its own. Go states
 # no scope and is kept whole; pylite states 9 and five names. One row per
@@ -76,7 +76,7 @@ m("CONSENT-GATE2 the gate's check asked of a reader that states no scope", overl
   "^TestConsentGate2_AGoEditNeverReadsTheScope$")
 
 # TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate and
-# TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine (card x381).
+# TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine (PY-K).
 # Breaks: leave the check out of the gate; turn its comparison. The cmd
 # test TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss. Break: leave the
 # scope check out of the gate.
@@ -93,7 +93,7 @@ m("CONSENT-GATE2 the gate's comparison turned, for the line", overlay, *turned,
 m("CONSENT-GATE2 the scope left out of the gate, for the unit brief", overlay, gatecheck, "",
   "^TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss$")
 
-# TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce (card x381).
+# TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce (PY-K).
 # Break: read the scope in the writer as well as in the gate.
 writerfrom = "\tfrom, kept := g.reg.SessionKeptFrom(at, under)\n"
 m("CONSENT-GATE2 the writer reads the scope as well as the gate", overlay, writerfrom,
@@ -180,3 +180,17 @@ m(goset, overlay,
   "\t\tCarried: r.OverlayCarried(), Recs: recs}\n",
   "\t\tCarried: gopg.Resolver{}.OverlayCarried(), Recs: recs}\n",
   "^TestConsentGate2_AKeptReaderOtherThanGoCarriesItsOwnSet$")
+
+# TestConsentGate2_APluginEnableReachesThePythonReadersScope (PY-K).
+# Breaks: write the plugin's record at the scope before this
+# build's; take a file whose scope is older as covering this build.
+plugin = "cmd/rashomon/plugin_consent.go"
+short = "internal/consent/short.go"
+m("CONSENT-GATE2 the plugin's record one scope behind the build", plugin,
+  "\t\tScopeVersion:    disclose.ScopeVersion,\n",
+  "\t\tScopeVersion:    disclose.ScopeVersion - 1,\n",
+  "^TestConsentGate2_APluginEnableReachesThePythonReadersScope$")
+m("CONSENT-GATE2 an older scope on file covers the build", short,
+  "\treturn ok && scope >= disclose.ScopeVersion && disclosure >= steer.DisclosureVersion\n",
+  "\treturn ok && scope >= 0 && disclosure >= steer.DisclosureVersion\n",
+  "^TestConsentGate2_APluginEnableReachesThePythonReadersScope$")

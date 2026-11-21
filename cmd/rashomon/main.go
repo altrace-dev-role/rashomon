@@ -1252,14 +1252,7 @@ usage:
                                window with a record of how long it lasted
   rashomon status [--json]       say what is installed and what the store holds,
                                writing nothing and creating no store
-  rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]
-                  [--ids] [--nono-audit PATH]
-                               render declarations and coverage, as text for a
-                               terminal or as JSON for a consumer; --chain
-                               lists the calls under each prompt, --timeline
-                               every call across agents in order, --ids the
-                               tool-use ids counted; JSON always has all three
-  rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
+`+reportUsage+`  rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
                   [--stdin]
                                render one turn's projection as JSON: what one
                                prompt_id recorded, read-only and never larger

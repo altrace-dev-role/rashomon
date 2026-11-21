@@ -187,7 +187,7 @@ func (f *ovFix) cg2Raw() []graph.Record {
 // declaration's kind and line ("with its kind, its line"), a call's line
 // ("with the line and number of arguments of each call"). The sentence also
 // names a declaration's parameter count and a call's argument count; this
-// release keeps neither (ruling x371 item 5), so a later card adds them
+// release keeps neither, so a later card adds them
 // under the same screen. Every other kind of record keeps none: a declares,
 // imports or references edge is its two names alone. The list is closed
 // and per kind of record, so an attribute a later version of the reader
@@ -237,7 +237,7 @@ func cg2Stated(t *testing.T, recs []graph.Record) {
 // attribute cg2PyKept does not name. Premise: the post's landed group in
 // memory holds the "end" this build's reader writes on each def (pylite/4),
 // so the log's two def nodes without it are the list leaving it out. Base
-// (card x315): the .py edit keeps nothing. Breaks: leave pylite unkept; ask
+// (before PY-K): the .py edit keeps nothing. Breaks: leave pylite unkept; ask
 // the consent of a root other than the store's; keep an attribute past
 // cg2PyKept, or drop one it names.
 func TestConsentGate2_APythonEditUnderAYesOfNineKeepsItsRecords(t *testing.T) {
@@ -377,7 +377,7 @@ func TestConsentGate2_APythonEditWithNoScopeReadKeepsNothing(t *testing.T) {
 // session-content marker alone, as before, and the read of consent.json a
 // .py edit makes stays off the Go path the hook's allocation budgets measure
 // (test/perf/budgets.json). Breaks: read the scope on file for every reader;
-// ask the gate's scope check of a reader that states none (card x381).
+// ask the gate's scope check of a reader that states none (PY-K).
 func TestConsentGate2_AGoEditNeverReadsTheScope(t *testing.T) {
 	for _, scope := range []int{6, 9} {
 		t.Run("a yes of "+strconv.Itoa(scope), func(t *testing.T) {
@@ -394,14 +394,14 @@ func TestConsentGate2_AGoEditNeverReadsTheScope(t *testing.T) {
 	}
 }
 
-// TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate (card x381): the
+// TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate (PY-K): the
 // .py edit under a yes whose highest scope_version on file is 8 passes no
 // gate: its post holds the zero gate, so it has no landed edit for the
 // unit-brief read (Post.LandedGoEdit) and no landed group for the conflict
 // check (Post.LandedOverlay). Under a yes of 9 the same edit has both, the
 // landed edit naming the file. pylite states its files kept from 9
 // (lang.KeptFrom), so the scope is a check of the gate (keptGoEdit), not of
-// the writer past it. Base (x371): the writer alone read the scope, so under
+// the writer past it. Base: the writer alone read the scope, so under
 // 8 the gate stood open and the unit-brief read went on. Breaks: leave the
 // check out of the gate; turn its comparison.
 func TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate(t *testing.T) {
@@ -431,13 +431,13 @@ func TestConsentGate2_APythonEditUnderAYesOfEightOpensNoGate(t *testing.T) {
 	}
 }
 
-// TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine (card x381): under
+// TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine (PY-K): under
 // the fixture's index, whose header names no producer, with a configuration
 // that declares a py unit, a .py edit under a yes of 8 prints nothing, while
 // under a yes of 9 it says the unindexed language's line, as
 // TestUnindexedLanguage_IsSaidOncePerSessionAndLanguage reads it: each line
-// about the facts of an edited file is said only inside the gate. Base
-// (x371): under 8 the gate stood open and the line was said. Breaks: leave
+// about the facts of an edited file is said only inside the gate. Base:
+// under 8 the gate stood open and the line was said. Breaks: leave
 // the check out of the gate; turn its comparison.
 func TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine(t *testing.T) {
 	for _, c := range []struct {
@@ -469,12 +469,12 @@ func TestConsentGate2_APythonEditUnderAYesOfEightSaysNoLine(t *testing.T) {
 	}
 }
 
-// TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce (card x381): a .py
+// TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce (PY-K): a .py
 // edit under a yes of 9 keeps its two groups and asks ConsentScopeOnFile
 // twice, once at its PreToolUse and once at its PostToolUse: the gate reads
 // the scope, and the writer takes the gate's answer, so no call reads
 // consent.json twice. A guard: the count is the same where the writer alone
-// read it (x371). Break: read the scope in the writer as well as in the
+// read it. Break: read the scope in the writer as well as in the
 // gate.
 func TestConsentGate2_EachCallOfAPythonEditReadsTheScopeOnce(t *testing.T) {
 	asked := cg2Scope(t, 9, nil)
@@ -625,7 +625,7 @@ func TestConsentGate2_TheLogKeepsNoAttributeTheTextDoesNotName(t *testing.T) {
 // post's landed group carries one on every kind of record it holds: a file
 // node's "line" and "symkind", a sym node's "digest" and "module", a calls
 // edge's "symkind", a declares edge's every listed name. The list is closed
-// per kind of record (ruling x371 item 8c), never one set of names for all.
+// per kind of record, never one set of names for all.
 // Break: keep a name any kind lists on every kind.
 func TestConsentGate2_ANameKeptForOneKindOfRecordIsLeftOutOnAnother(t *testing.T) {
 	cg2WirePlanted(t)
@@ -679,7 +679,7 @@ func cg2Many(n int) string {
 // marker carries (session_id, tool_use_id, file, digest, kind, seq, count,
 // carried), its count the number of records the group wrote: the list
 // applies to the reader's records before graph.BuildOverlayGroup, which
-// adds both (ruling x371 items 6 and 8d). Break: filter the built group,
+// adds both. Break: filter the built group,
 // and the cut and the marker's attributes are dropped.
 func TestConsentGate2_APythonEditPastTheBoundKeepsTheCutAndAWholeMarker(t *testing.T) {
 	cg2Scope(t, 9, nil)
@@ -734,7 +734,7 @@ func TestConsentGate2_APythonEditPastTheBoundKeepsTheCutAndAWholeMarker(t *testi
 // 9, a .py edit keeps a landed group of the file carrying pylite's set of
 // predicates, the claiming reader's, not Go's. It holds the property
 // TestLANGREG1_APythonEditWritesAnOverlayGroup held before a .py edit kept
-// nothing (card x315). Break: carry the Go resolver's set for every
+// nothing (CONSENT-GATE2). Break: carry the Go resolver's set for every
 // language.
 func TestConsentGate2_AKeptReaderOtherThanGoCarriesItsOwnSet(t *testing.T) {
 	cg2Scope(t, 9, nil)

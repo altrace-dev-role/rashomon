@@ -24,6 +24,11 @@ var scopeTextPins = map[int]string{
 	// and what a /clear keeps, and adds the consent-file limit
 	// (CONSENT-GATE1).
 	8: "de69ee193c572b2b5db9bb9a63af89a7182c0ebc9b79524dc2ba37c164a29096",
+	// 9 names in the KEPT paragraph the edits of a file in any language
+	// the index of a repository reads, each declaration's and each call's
+	// line and count, and the module of the file; adds the repository
+	// graph read after an edit; and says symbols for Go symbols.
+	9: "e9d177c98ccf5f549049d480d71529cd3a4c8252e42bcefe2991a4a3c646aac8",
 }
 
 // scopeTextDigest is the sha256 of every screen paragraph and unit

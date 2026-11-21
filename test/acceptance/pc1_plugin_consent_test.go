@@ -190,8 +190,10 @@ func TestPC1_EnablingThePluginIsConsentAndItsFirstSessionSteers(t *testing.T) {
 // earlier plugin enable at an older scope is an update, upgrade_notice, and
 // says so; alpha.1's watch consent, under a plugin enabled since, is the
 // enable's own act, plugin_enable. Every record written reads under alpha.1:
-// its Vias hold both values. Break: write on every SessionStart, or from a
-// settings entry, and a row here fails.
+// its Vias hold both values. Either record carries this build's scope and
+// the hash of disclose.PluginDescription, never the older scope on file.
+// Break: write on every SessionStart, or from a settings entry, or write an
+// update at the scope on file, and a row here fails.
 func TestPC1_OnlyAPluginEnableIsConsent(t *testing.T) {
 	t.Run("not the plugin's binary", func(t *testing.T) {
 		e, _ := pcEnv(t)
@@ -247,6 +249,12 @@ func TestPC1_OnlyAPluginEnableIsConsent(t *testing.T) {
 			recs := e.consentRecords()
 			if len(recs) != 2 || recs[1]["via"] != tc.via || recs[1]["steer_disclosure"] != float64(steer.DisclosureVersion) {
 				t.Fatalf("consent.json = %v; want the prior record, then %s at steer disclosure %d", recs, tc.via, steer.DisclosureVersion)
+			}
+			if got, want := recs[1]["scope_version"], float64(disclose.ScopeVersion); got != want {
+				t.Errorf("%s carries scope_version %v; want this build's, %v", tc.via, got, want)
+			}
+			if got, want := recs[1]["text_sha256"], sha256Hex([]byte(disclose.PluginDescription)); got != want {
+				t.Errorf("%s carries text_sha256 %v; want the hash of disclose.PluginDescription, %s", tc.via, got, want)
 			}
 			if !strings.HasPrefix(string(e.consentBytes()), tc.prior) {
 				t.Error("the plugin's consent rewrote the record before its own")

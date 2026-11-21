@@ -73,11 +73,11 @@ var m2V4ConflictWords = []string{"no path at v4", "no path where the record scop
 // m2SpecNever is what every never-stored sentence says of a spec file (the
 // screen's, README's and the plugin description's), and m2RecordNever what
 // the records and spill rows' NeverHolds say. A rule's id is a word of the
-// spec kept in the clear; where Go edits are kept the conflict base also
+// spec kept in the clear; where edits are kept the conflict base also
 // holds the paths, patterns and symbols its rules name
 // (cmd/rashomon/conflictbase.go).
 const (
-	m2SpecNever = "a spec file's text (of a spec, only its digest and its rules' ids, and, where Go edits are kept, " +
+	m2SpecNever = "a spec file's text (of a spec, only its digest and its rules' ids, and, where edits are kept, " +
 		"the paths, patterns and symbols named by the rules each edit is checked against)"
 	m2RecordNever = "or a spec file's text, paths or patterns (of a spec, only its digest and its rules' ids)"
 )

@@ -50,14 +50,14 @@ func ubPyYes(t *testing.T, s *planSession, scope int) {
 	}
 }
 
-// TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss (card x381): over
+// TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss (PY-K): over
 // ubPySession, the header naming this build's py producer and no brief
 // stored, a landed edit of the py unit's file under a yes of 8, the
 // session-content marker set, writes no unitbrief_miss and prints nothing:
 // pylite states its files kept from 9 (lang.KeptFrom) and no yes on file
 // reaches it, so the edit passes no gate and the post has no landed edit to
 // read a unit for (hook.Post.LandedGoEdit). Under a yes of 9 the same edit
-// writes the one miss TestUnitBrief_PyUnitMissIsCounted reads. Base (x371):
+// writes the one miss TestUnitBrief_PyUnitMissIsCounted reads. Base:
 // the scope was read past the gate, so under 8 the miss was written. Break:
 // leave the scope check out of the gate.
 func TestConsentGate2_APyEditUnderAYesOfEightWritesNoMiss(t *testing.T) {

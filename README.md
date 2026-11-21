@@ -41,18 +41,22 @@ it does, verify the result, update what is known.
   and whether done was claimed without one.
 - In a repository you have indexed
   ([Index your repository](#index-your-repository)): a brief drawn from the
-  repository's own graph with each request, and for Go a check of each edit
-  against that graph.
+  repository's own graph with each request, and for Go and Python a check of
+  each edit against that graph.
 - A lesson you import and approve at a terminal can be sent to the agent.
 
 **Not in this release**
 
 - Finding lessons in past sessions. Nothing here learns your conventions by
   itself yet: you declare them in a spec, or import them.
-- The check after an edit for Python. Python has a reduced index and the brief;
-  Go has the fuller path.
 - Keeping the thread of a long session across a compaction or a restart.
 - A map of a codebase in languages other than Go and Python.
+- Python docstrings: a request finds Python code by its names and paths.
+- A Python class as an entry of its own; its methods are indexed.
+- Guessing a Python test command with no pytest file, CI line, Makefile or spec.
+- A module name for Python on the brief's build line; go.mod alone gives one.
+- A Python call written outside the indented body of a function or method, or on
+  a later line of the arguments of another call.
 - Windows.
 
 ## Get started
@@ -146,9 +150,13 @@ forgets it. Without the sync, `rashomon graph index` stops and says
 `no pgraph sync with a symbols file under this root; run pgraph sync`.
 
 A Python repository is indexed by `rashomon graph index` alone, by a reduced
-reader: definitions, imports and calls by name. A Python edit is not yet
-checked after it lands, and the names a Python file declares are not kept from
-an edit.
+reader: definitions, imports and calls by name. In a Python repository, the
+brief of a unit at the first edit in it, the check after an edit and the keeping
+of the names each edit declares begin only once consent to this build is on
+file: at a terminal, a yes to this build's screen, which `rashomon watch` and
+`rashomon consent` show again; with the plugin, its first session on this build,
+which records that consent with a notice. Consent given to an earlier build
+alone never brings them to a Python edit.
 
 Indexing changes what rashomon keeps for that repository. Read
 [What it records, and what it never stores](#what-it-records-and-what-it-never-stores)
@@ -263,31 +271,38 @@ list of what it keeps, word for word as the install screen's full view
 
 It never stores your prompts, the agent's messages, tool output, file contents
 or a spec file's text (of a spec, only its digest and its rules' ids, and, where
-Go edits are kept, the paths, patterns and symbols named by the rules each edit
+edits are kept, the paths, patterns and symbols named by the rules each edit
 is checked against). It reads each prompt in memory to write the preflight note
-and keeps no word of it beyond the project paths the note names.
+and keeps no word of it beyond the project paths and symbols the note names.
 `rashomon report` quotes the agent's final message from Claude Code's transcript
 without storing it. The one exception is opt-in: `rashomon bodies on` copies
 this project's transcripts into the store, and `rashomon forget --bodies`
 removes them.
 
-In an indexed repository, once you have agreed to this build's screen, it also
-keeps what each Go edit declares: the names of the file's functions, types,
-methods, constants and variables, the first sentence of each one's doc comment,
-the names a function calls and the packages the file imports, never the file's
-other text. An indexed repository is one with `.rashomon/graph.jsonl` at or up
-to four directories above the working directory, whoever wrote it:
-`rashomon graph index` writes one, and a cloned repository may carry one. It
-keeps them with the file's path and SHA-256 in one log per repository under the
-store's `graph/` directory, beside the briefs and the conflict base each prompt
-writes there. For each such edit, the session's record also keeps why its unit's
-brief could not be given, when it could not (absent, stale or refused), with a
-keyed digest of the unit, and, where the edit is checked against the conflict
-base, the graph's commit, a keyed digest of the file and each conflict the edit
-leaves: its kind, its rule's id, a keyed digest of the conflict, and the unit
-and the symbol or file it is about, with the unit's path, or keyed digests of
-the two and no path where the record scope is v4. The size cap does not cover
-`graph/`: what it holds stays until `rashomon purge`.
+In an indexed repository, once consent to this build is on file (at a terminal,
+a yes to its screen; with the plugin, its first session on this build), it also
+keeps what each edit declares, never the file's other text. Of a Go file: the
+names of the file's functions, types, methods, constants and variables, the
+first sentence of each one's doc comment, the names a function calls and the
+packages the file imports. Of a Python file: the names of the file's functions,
+methods and module constants, each with its kind and line; the names its code
+calls that the file defines or imports from the repository, with the line of
+each call; the repository's modules the file imports and the names it takes from
+them; and the file's module. Consent given to an earlier build alone keeps none
+of it for a Python file. An indexed repository is one with
+`.rashomon/graph.jsonl` at or up to four directories above the working
+directory, whoever wrote it: `rashomon graph index` writes one, and a cloned
+repository may carry one. It keeps them with the file's path and SHA-256 in one
+log per repository under the store's `graph/` directory, beside the briefs and
+the conflict base each prompt writes there. For each such edit, the session's
+record also keeps why its unit's brief could not be given, when it could not
+(absent, stale or refused), with a keyed digest of the unit, and, where the edit
+is checked against the conflict base, the graph's commit, a keyed digest of the
+file and each conflict the edit leaves: its kind, its rule's id, a keyed digest
+of the conflict, and the unit and the symbol or file it is about, with the
+unit's path, or keyed digests of the two and no path where the record scope is
+v4. The size cap does not cover `graph/`: what it holds stays until
+`rashomon purge`.
 
 ## Repository specs: trust and declared gates
 
