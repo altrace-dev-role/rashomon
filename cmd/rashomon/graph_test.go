@@ -38,7 +38,7 @@ func graphProject(t *testing.T, dir string) {
 		"service_map": map[string]string{"auth": "services/auth", "orgs": "services/orgs", "api": "services/api"},
 		"knowledge": []map[string]any{{
 			"id": "les:INC-212", "kind": "lesson", "title": "INC-212 session purge raced the TTL",
-			"applies_to": []string{"tbl:public.sessions", "file:jobs/purge_sessions.py"},
+			"applies_to": []string{"unit:py:services/auth", "file:jobs/purge_sessions.py"},
 			"text":       "INC-212: the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS; any change to session lifetime must change the purge predicate too, or live sessions are deleted (2025-08).",
 			"clause":     "the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too",
 			"source":     "incidents/INC-212.md",

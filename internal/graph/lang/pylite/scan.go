@@ -22,8 +22,8 @@ type def struct {
 }
 
 // key is the def's name inside its class path, as Store.get or get: the
-// name a call's caller and an SQL literal's def carry, so a method shares no
-// key with a module def of its name.
+// name a call's caller carries, so a method shares no key with a module def
+// of its name.
 func (d def) key() string { return qualify(d.class, d.name) }
 
 // qualify is name inside the dotted class path outer, or name alone when
@@ -42,11 +42,11 @@ type scope struct {
 	indent int
 }
 
-// constDef is one module-level constant: NAME = literal.
+// constDef is one module-level constant, NAME = something, by its name and
+// its line: what it is set to is not kept.
 type constDef struct {
-	name  string
-	value string
-	line  int
+	name string
+	line int
 }
 
 // importRef is one imported name: from module import attr, or import
@@ -63,7 +63,6 @@ type call struct {
 	caller string
 	name   string
 	argc   int
-	kw     map[string]string
 	line   int
 }
 
@@ -186,7 +185,7 @@ func scan(src string) (fileScan, error) {
 			continue
 		}
 		if m := pats().cnst.FindStringSubmatch(line); m != nil {
-			f.consts = append(f.consts, constDef{name: m[1], value: m[2], line: i + 1})
+			f.consts = append(f.consts, constDef{name: m[1], line: i + 1})
 		}
 	}
 	return f, nil
@@ -206,10 +205,10 @@ func importStart(s string) bool {
 // comment joins nothing; a backslash that ends the code joins the next line,
 // and so does a bracket still open. Inside the bracket an import holds only
 // names, commas, as, backslashes and the closing bracket, so a line with any
-// other character ends the statement before that line: an import-like line
-// inside a string joins no line past the string's closing quote. The lines
-// read are taken whether or not they make an import, so no line is read
-// twice and the scan stays linear in the lines.
+// other character ends the statement before that line. The lines are read
+// after blank (blank.go), so an import-like line inside a string is spaces
+// here and starts nothing. The lines read are taken whether or not they make
+// an import, so no line is read twice and the scan stays linear in the lines.
 func importLine(lines []string, i int) (string, int) {
 	var b strings.Builder
 	depth, j := 0, i
@@ -294,7 +293,7 @@ func readDef(lines []string, i int, name string, open int) (def, int, error) {
 		case strings.HasPrefix(p, "*"):
 			d.max = "*"
 		default:
-			shown = append(shown, p)
+			shown = append(shown, paramName(p))
 			if p == "self" || p == "cls" {
 				continue
 			}
@@ -309,6 +308,16 @@ func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	}
 	d.sig = "(" + strings.Join(shown, ", ") + ")"
 	return d, end, nil
+}
+
+// paramName is one parameter's name as a def writes it: the text before the
+// first colon or equals sign, so neither an annotation nor a default reaches
+// a signature.
+func paramName(p string) string {
+	if k := strings.IndexAny(p, ":="); k >= 0 {
+		p = p[:k]
+	}
+	return strings.TrimSpace(p)
 }
 
 // readCalls records every call on lines[i] from column from on (and the
@@ -329,16 +338,13 @@ func readCalls(f *fileScan, lines []string, i, from int, caller string) int {
 		if e > end {
 			end = e
 		}
-		c := call{caller: caller, name: name, line: i + 1, kw: map[string]string{}}
+		c := call{caller: caller, name: name, line: i + 1}
 		for _, a := range splitTop(text) {
 			a = strings.TrimSpace(a)
 			if a == "" {
 				continue
 			}
 			c.argc++
-			if k, v, has := strings.Cut(a, "="); has && !strings.ContainsAny(k, "=<>!") && literal(strings.TrimSpace(v)) {
-				c.kw[strings.TrimSpace(k)] = strings.TrimSpace(v)
-			}
 		}
 		f.calls = append(f.calls, c)
 	}
@@ -395,22 +401,6 @@ func splitTop(text string) []string {
 		}
 	}
 	return append(out, text[start:])
-}
-
-// literal reports whether v is a number or a quoted string.
-func literal(v string) bool {
-	if v == "" {
-		return false
-	}
-	if (v[0] == '\'' || v[0] == '"') && len(v) > 1 && v[len(v)-1] == v[0] {
-		return true
-	}
-	for _, c := range v {
-		if (c < '0' || c > '9') && c != '.' && c != '_' {
-			return false
-		}
-	}
-	return true
 }
 
 // reserved is a keyword or statement word that precedes a parenthesis.

@@ -120,7 +120,7 @@ func TestPredicates_EveryStoreEdgeListed(t *testing.T) {
 			t.Errorf("edge %s -%s-> %s: predicate outside graph.Predicates", e.Src, e.Pred, e.Dst)
 		}
 	}
-	for _, p := range []graph.Pred{graph.Calls, graph.MayCall, graph.Reads, graph.AppliesTo} {
+	for _, p := range []graph.Pred{graph.Calls, graph.MayCall, graph.AppliesTo} {
 		if seen[p] == 0 {
 			t.Errorf("no %s edge among the producers' records", p)
 		}

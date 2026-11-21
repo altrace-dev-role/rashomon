@@ -131,9 +131,8 @@ func TestOverlay_RequirementPredicateHoldsAcrossEdits(t *testing.T) {
 	sp := graphtest.New(t)
 	ttl := graphtest.Const("services/auth", "auth.sessions.SESSION_TTL_SECONDS")
 	c1 := graph.RevCommit(graphtest.Commit)
-	before, _ := sp.Store.Node(ttl, c1)
-	if before.Attrs["value"] != "3600" {
-		t.Fatalf("C1 constant = %+v", before)
+	if _, ok := sp.Store.Edge(graph.FileID(sessionsPy), graph.Declares, ttl, c1); !ok {
+		t.Fatalf("C1: %s does not declare %s", sessionsPy, ttl)
 	}
 	if calls(sp.Store, createSession, getOrg, c1) {
 		t.Fatal("R1's condition held at C1; the fixture is wrong")
@@ -151,9 +150,8 @@ func TestOverlay_RequirementPredicateHoldsAcrossEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	ov12 := graph.RevOverlay(graphtest.Commit, 12)
-	after, ok := sp.Store.Node(ttl, ov12)
-	if !ok || after.Attrs["value"] != before.Attrs["value"] {
-		t.Fatalf("R2 at ov12: constant = %+v ok=%v", after, ok)
+	if _, ok := sp.Store.Edge(graph.FileID(sessionsPy), graph.Declares, ttl, ov12); !ok {
+		t.Fatalf("R2 at ov12: %s does not declare %s", sessionsPy, ttl)
 	}
 	if !calls(sp.Store, createSession, getOrg, ov12) {
 		t.Fatalf("R1's condition does not hold at ov12: %+v", sp.Store.Out(createSession, ov12, graph.Calls))

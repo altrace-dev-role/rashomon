@@ -8,8 +8,8 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/graph/graphtest"
 )
 
-// The specimen's knowledge: one incident on the sessions table, one
-// decision on how auth reads org settings.
+// The specimen's knowledge: one incident on the auth unit and the purge
+// job, one decision on how auth reads org settings.
 func withKnowledge(sp *graphtest.Specimen) {
 	rev := graph.RevCommit(graphtest.Commit)
 	les := graph.ID("les:INC-212")
@@ -18,7 +18,7 @@ func withKnowledge(sp *graphtest.Specimen) {
 		"text":   "INC-212: the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS; any change to session lifetime must change the purge predicate too, or live sessions are deleted (2025-08).",
 		"clause": "the nightly purge deletes public.sessions by created_at + SESSION_TTL_SECONDS, so a session-lifetime change changes the purge predicate too",
 		"source": "incidents/INC-212.md"}})
-	sp.Store.AssertEdge(graph.Edge{Src: les, Pred: graph.AppliesTo, Dst: graph.TableID("public.sessions"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
+	sp.Store.AssertEdge(graph.Edge{Src: les, Pred: graph.AppliesTo, Dst: graph.UnitID("py", "services/auth"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
 	sp.Store.AssertEdge(graph.Edge{Src: les, Pred: graph.AppliesTo, Dst: graph.FileID("jobs/purge_sessions.py"), Tier: graph.Declared, Conf: 1.0, Rev: rev})
 	dec := graph.ID("dec:ADR-0007")
 	sp.Store.AssertNode(graph.Node{ID: dec, Kind: "decision", Tier: graph.Declared, Conf: 1.0, Rev: rev, Attrs: map[string]string{
