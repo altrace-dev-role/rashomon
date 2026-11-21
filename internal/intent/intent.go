@@ -98,8 +98,12 @@ type Rule struct {
 	Why   string
 }
 
-// Gate is a gate the request's class runs before done.
+// Gate is a gate the request's class runs before done. ID is the declared
+// gate's id, "spec:" and its spec id, the string the Stop's row for that gate
+// is keyed by (verify's idFamily of a declared row), so a requirement that
+// names the gate by ID reaches the Stop's gate_green unchanged.
 type Gate struct {
+	ID    string
 	Words string
 	Trust spec.Trust
 }
@@ -212,7 +216,7 @@ func Resolve(prompt []byte, cut bool, p Project) Intent {
 			if !trusted(t) || !test && !supplies || w == "" || slices.ContainsFunc(in.Gates, func(x Gate) bool { return x.Words == w }) {
 				continue
 			}
-			in.Gates = append(in.Gates, Gate{Words: w, Trust: t})
+			in.Gates = append(in.Gates, Gate{ID: d.ID, Words: w, Trust: t})
 		}
 	}
 	in.Learned = -1

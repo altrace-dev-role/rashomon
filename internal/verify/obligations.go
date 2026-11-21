@@ -114,6 +114,8 @@ const obligationSourceSpec = "spec"
 // Evidence is record seqs only, ascending, never null. Unit is the row's
 // graph unit as a global id, a string so verify stays free of
 // internal/graph; empty, and omitted from the JSON, when the row has none.
+// Req is the requirement's id (steer.ReqID) on a row of SourceRequirement,
+// and empty, omitted from the JSON, on every other row (W-M3.4).
 type Obligation struct {
 	ID       string          `json:"id"`
 	Scope    string          `json:"scope"`
@@ -122,6 +124,7 @@ type Obligation struct {
 	State    ObligationState `json:"state"`
 	Evidence []int64         `json:"evidence"`
 	Unit     string          `json:"unit,omitempty"`
+	Req      string          `json:"req,omitempty"`
 }
 
 // ledgerOf is the ledger at snap's point: the gates' rows over c, the

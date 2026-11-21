@@ -63,10 +63,12 @@ type StopInput struct {
 	// index. nil adds no unit row.
 	UnitOf UnitOf
 	// Reqs is each requirement the caller checked (W-M3.4), an
-	// expected_evidence row each; nil for none.
+	// expected_evidence row each, appended after the whole ledger
+	// (reqObligations); nil for none, and then the ledger and the view are
+	// what they were without it. No caller fills it yet.
 	Reqs []ReqRow
 	// Produced is each row the graph's producers derived (W-M3.3); nil for
-	// none. Until those cards, EvaluateStop reads neither Reqs nor Produced.
+	// none. Until those cards, EvaluateStop does not read it.
 	Produced []ProducedRow
 }
 
@@ -202,6 +204,9 @@ func EvaluateStop(run *store.Run, idx *ProjectIndex, sp *spec.Compiled, pt Point
 	}
 	turnRows, cut := turnObligations(snap, &c, run, in.PromptID, in.Root, in.UnitOf)
 	v.Obligations, v.UnitRowsCut = append(v.Obligations, turnRows...), cut
+	if len(in.Reqs) > 0 {
+		v.Obligations = append(v.Obligations, reqObligations(pointScope(snap), &snap, in.Reqs)...)
+	}
 	if snap.Recording == Complete {
 		v.Snap.Claims = v.Scan.Claims
 	}
