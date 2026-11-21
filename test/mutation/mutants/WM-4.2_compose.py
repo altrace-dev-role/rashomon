@@ -90,3 +90,19 @@ m('WM-4.2 the envelope is saved without its mark', 'internal/graph/session/compo
   ' Mark: r.mark,',
   '',
   'TestCompose_EqualsTheWholeFold')
+# The fold's Touched list (internal/graph/session/fold.go): a run of events gathers the files it wrote that Touched
+# does not hold and merges them into Touched once, at the run's end: each kept once, sorted, in a new list, so a
+# Frontier copied before the run keeps its own. A merge into the list's own array still gives the stepped frontier
+# the right list, so only the copy taken before the run can see that break.
+m('WM-4.2 a run merges its files into Touched in place', 'internal/graph/session/fold.go',
+  'out := make([]string, len(touched)+len(ids))',
+  'out := slices.Grow(touched, len(ids))[:len(touched)+len(ids)]',
+  'TestStepIn_LeavesACopyTakenBeforeTheRun')
+m('WM-4.2 a file a run wrote twice is kept twice', 'internal/graph/session/fold.go',
+  'slices.Compact(ids)',
+  'ids',
+  'TestStepIn_LeavesACopyTakenBeforeTheRun')
+m('WM-4.2 a run adds a file Touched already holds', 'internal/graph/session/fold.go',
+  'slices.BinarySearch(f.Touched, id)',
+  'slices.BinarySearch(f.Touched[:0], id)',
+  'TestStepIn_LeavesACopyTakenBeforeTheRun')

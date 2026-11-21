@@ -812,6 +812,65 @@ func TestStep_LeavesCopies(t *testing.T) {
 	}
 }
 
+// TestStepIn_LeavesACopyTakenBeforeTheRun: stepping a run of events leaves a
+// Frontier copied before the run as it was, byte for byte, while the stepped
+// one gains each file the run wrote once and in order: a file written twice
+// in the run and a file Touched already held add nothing. Touched has room
+// past its length and the run's files sort on both sides of the ones it
+// holds, so a merge into the list's own array would write the copy's
+// elements. SYNTHETIC events.
+func TestStepIn_LeavesACopyTakenBeforeTheRun(t *testing.T) {
+	id := func(rel string) string { return string(graph.FileID(rel)) }
+	f := newFrontier("s1")
+	f.Touched = append(make([]string, 0, 16), id("m"), id("n"))
+	g := f
+	before, err := MarshalFrontier(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stepIn(&f, sortedCopy([]Event{
+		{Seq: 2, Type: store.TypeDeclaration, Wrote: []string{"b"}},
+		{Seq: 3, Type: store.TypeDeclaration, Wrote: []string{"a", "z"}},
+		{Seq: 4, Type: store.TypeDeclaration, Wrote: []string{"a"}},
+		{Seq: 5, Type: store.TypeDeclaration, Wrote: []string{"n"}},
+	}))
+	if after, _ := MarshalFrontier(g); string(after) != string(before) {
+		t.Errorf("copy changed:\n%s\nwant\n%s", after, before)
+	}
+	if want := []string{id("a"), id("b"), id("m"), id("n"), id("z")}; !slices.Equal(f.Touched, want) {
+		t.Errorf("stepped: Touched %q; want %q", f.Touched, want)
+	}
+}
+
+// TestFold_SixThousandDistinctWritesAllocateUnderEightMiB: a fold over 6000
+// declarations, each writing a file no earlier one wrote, allocates under
+// 8 MiB. The bound was written before the measure. Touched is a sorted set,
+// and each new file used to build a new list, so the k-th new file copied k
+// entries: 16 B x n(n+1)/2, about 288 MB at n=6000 to end with a 96 KB list.
+// Most of what is left is the fold's own sorted copy of the events. The test
+// runs serially (no test in this package is parallel), so the allocation
+// counter moves for the fold alone. SYNTHETIC events.
+func TestFold_SixThousandDistinctWritesAllocateUnderEightMiB(t *testing.T) {
+	const n, bound = 6000, 8 << 20
+	evs := make([]Event, n)
+	for i := range evs {
+		evs[i] = Event{Seq: int64(i + 1), Type: store.TypeDeclaration, Wrote: []string{fmt.Sprintf("internal/p%04d/f.go", i)}}
+	}
+	var a, b runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&a)
+	f := Fold("s1", evs)
+	runtime.ReadMemStats(&b)
+	used := b.TotalAlloc - a.TotalAlloc
+	t.Logf("%d files: %d B allocated, %d B per file; an Event is %d B", len(f.Touched), used, used/n, reflect.TypeFor[Event]().Size())
+	if len(f.Touched) != n {
+		t.Fatalf("Touched holds %d files; want %d", len(f.Touched), n)
+	}
+	if used >= bound {
+		t.Errorf("the fold allocated %d B for %d files; want under %d", used, n, bound)
+	}
+}
+
 // TestStep_KnownHole_SubdirLookalikeMeets: a KNOWN HOLE, pinned so that its
 // fix must flip this test. A slot path is relative to the hook's working
 // directory, a written path to the project, and the steer line names no cwd.

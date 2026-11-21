@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/events"
@@ -142,11 +141,16 @@ func sortedCopy(evs []Event) []Event {
 }
 
 // stepIn steps f through sorted, in the merged order, and sets Through to the
-// last event's place; no event leaves Through as it was.
+// last event's place; no event leaves Through as it was. The files the run
+// wrote join Touched once, at its end (addTouched), and equal what a merge
+// per event would make: no rule reads Touched but touch, whose filter against
+// it is finished by addTouched's dedupe.
 func stepIn(f *Frontier, sorted []Event) {
+	var wrote []string
 	for _, ev := range sorted {
-		Step(f, ev)
+		step(f, ev, &wrote)
 	}
+	addTouched(f, wrote)
 	if len(sorted) > 0 {
 		f.Through = markOf(sorted[len(sorted)-1])
 	}
@@ -495,13 +499,23 @@ func SteerEvent(line []byte) (ev Event, ok bool, err error) {
 // I/O, no clock and no graph, so what it writes depends on f and ev alone,
 // and a fold over a prefix then the tail equals a fold over the whole. It
 // writes no element a Frontier copied before it can see: it appends, or
-// rebuilds a list it changes in place (touch, require, openedUnit, verdict),
-// so the copy keeps every field as it was (TestStep_LeavesCopies). Stepping
-// both copies is not supported, since they share arrays past their lengths;
-// fork one with ParseFrontier(MarshalFrontier(f)). Catch may continue one
-// frontier twice: it clips every list before its first Step (clipped). Step
-// leaves Through to Fold and Catch, which set it once per run of events.
+// rebuilds a list it changes in place (addTouched, require, openedUnit,
+// verdict), so the copy keeps every field as it was (TestStep_LeavesCopies).
+// Stepping both copies is not supported, since they share arrays past their
+// lengths; fork one with ParseFrontier(MarshalFrontier(f)). Catch may
+// continue one frontier twice: it clips every list before its first Step
+// (clipped). Step leaves Through to Fold and Catch, which set it once per run
+// of events, and so step a run with one Touched merge at its end (stepIn).
 func Step(f *Frontier, ev Event) {
+	var wrote []string
+	step(f, ev, &wrote)
+	addTouched(f, wrote)
+}
+
+// step is Step without its Touched merge: the files ev wrote that Touched
+// does not hold are added to *wrote (touch), for the caller to merge once
+// it has stepped every event of its run (addTouched).
+func step(f *Frontier, ev Event, wrote *[]string) {
 	if ev.PromptID != "" {
 		intent(f, ev)
 	}
@@ -510,7 +524,7 @@ func Step(f *Frontier, ev Event) {
 		require(f, ev)
 	}
 	for _, p := range ev.Wrote {
-		touch(f, p)
+		touch(f, p, wrote)
 	}
 	openedUnit(f, ev)
 	if ev.WroteWithheld {
@@ -578,17 +592,46 @@ func ledger(f *Frontier, ev Event) {
 	f.UnitRowsCut = ev.UnitRowsCut
 }
 
-// touch adds the file a call wrote to Touched as its graph.FileID, kept
-// sorted and unique at every step, so Touched is a set: the same writes in
-// any order fold to the same list (files, not units; see Frontier). An
-// insert builds a new list, so a copy taken before keeps its own.
-func touch(f *Frontier, rel string) {
+// touch adds the file a call wrote, as its graph.FileID, to *wrote unless
+// Touched holds it already. Touched is left as it is until the run's end,
+// when addTouched merges the run's files into it in a new list, so a copy of
+// the frontier taken before the run keeps its own Touched, byte for byte
+// (TestStepIn_LeavesACopyTakenBeforeTheRun).
+func touch(f *Frontier, rel string, wrote *[]string) {
 	id := string(graph.FileID(rel))
-	i := sort.SearchStrings(f.Touched, id)
-	if i < len(f.Touched) && f.Touched[i] == id {
+	if _, ok := slices.BinarySearch(f.Touched, id); !ok {
+		*wrote = append(*wrote, id)
+	}
+}
+
+// addTouched merges ids, the files a run wrote that Touched did not hold
+// (touch), into Touched, kept sorted and unique, so Touched is a set: the
+// same writes in any order fold to the same list (files, not units; see
+// Frontier). A file the run wrote twice is kept once. A run takes one merge,
+// never a new list per file: one per file copies k entries for the k-th new
+// file, so 6000 new files copied about 288 MB to end with a 96 KB list. The
+// merge builds a new list, so a copy taken before the run keeps its own.
+func addTouched(f *Frontier, ids []string) {
+	if len(ids) == 0 {
 		return
 	}
-	f.Touched = slices.Concat(f.Touched[:i], []string{id}, f.Touched[i:])
+	slices.Sort(ids)
+	f.Touched = mergeTouched(f.Touched, slices.Compact(ids))
+}
+
+// mergeTouched is the sorted union, in a new list, of touched and ids: two
+// sorted lists with no id in common. It fills the list from its end.
+func mergeTouched(touched, ids []string) []string {
+	out := make([]string, len(touched)+len(ids))
+	i, j := len(touched)-1, len(ids)-1
+	for k := len(out) - 1; k >= 0; k-- {
+		if j < 0 || (i >= 0 && touched[i] > ids[j]) {
+			out[k], i = touched[i], i-1
+		} else {
+			out[k], j = ids[j], j-1
+		}
+	}
+	return out
 }
 
 // require applies the Reqs a delivered line states, one ReqState per key
