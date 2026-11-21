@@ -67,8 +67,9 @@ type Background struct {
 
 // Platform is one gated platform: what the figures were measured on, how a
 // platform without its own measurements derives them, and the fraction over
-// budget its runner is still allowed (archive 85.3.13: 10%, and 15% on the
-// macOS runner until 2026-11-06 while its variance is learned).
+// budget its runner is still allowed (archive 85.3.13). The schedule of that
+// fraction has one source: this platform's tolerance, tolerance_until and
+// tolerance_after fields in test/perf/budgets.json.
 //
 // Entries and CaseBudgets hold this platform's OWN readings, taken through
 // the reaper on this platform's own runner. Both are empty for the reference
