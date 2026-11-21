@@ -1,0 +1,1 @@
+Warn when an edit changes a file that no tracked build configuration covers. The warning must never report zero obligations. Show it wherever the verify package's platform obligations already appear and add tests for the untracked case.

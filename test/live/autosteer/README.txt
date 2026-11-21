@@ -24,9 +24,24 @@ Layout.
   wrap.sh     installs the arm's hooks into RK_CONFIG_DIR/settings.json for the run and restores the file
   hook.sh     the hook entry the installed commands are prefixed with: logs verb, exit code, stdout, ms
   cleanup.sh  removes a run's scratch worktree by exact path (git worktree remove), never rm -rf a glob
+  memsample.sh the run's memory series: a row of tree RSS, process count, swap, compressor and free memory at a set interval
   judge/common.py   the transcript, result and hook-log parsers every judge shares
+  judge/done.py     the done-flag precision judge: frame, draw and score a blinded read of Stop firings that claim done (test_done.py beside it). It does not yet say where each prompt came from (typed in, a peer message, a task notification, a compaction summary or other), so no result sheet is read with it until a later change adds that label
   t1/         slice T1: prompt.txt (frozen), pins.txt (tree and binary shas, caps, sourced by the scripts), consumers.txt, graph.json
               (the G arm's index config), judge/ (the pre-registered checks A1 to A8 and judge.sh)
+  t2/         slice T2: smoke.sh and batch.sh (a smoke, then replicates per arm, one run at a time), prompt.txt, graph.json,
+              seed.json, meter.py (the one meter read and gate), flags.py (per-run flags) and the helpers s1b.py, s2kinds.py,
+              consentscope.py, cachemanifest.py and s3pin.sh. pins.txt and keys.txt (T2's store and log keys) are not here yet:
+              smoke.sh, batch.sh, judge.sh, j3.sh, j4.sh, j5.sh, j1live.sh and j2probe.sh source pins.txt and stop on that line
+              until a later change adds it; keys.txt comes with it, and judge.sh, j2probe.sh, flags.py and judge/j2.py cannot
+              run without it.
+  t2/judge/   the T2 judges: judge.sh runs J3 (j3.sh), J4 (j4.sh), J5 (j5.sh), J2 (j2.py) and the flags, then row.py writes the
+              row; s1cross.sh reads a run's final tree; j3_test.go and j3_conflicts_test.go are Go tests for J3
+  t2/j1live/  J1-LIVE: one interactive plan-mode session on the G binary, driven through tmux; selftest/ runs its driver and
+              reader against a fake claude (no network, no model)
+  t2/managed/ the managed spec directory (rashomon/spec.json) that the input arms read
+  t2/probe/   plan-probe.sh and probe2.sh (plan-mode and hook-channel probes, each with its hook script and reader) and
+              j2probe.sh (the J2 probes)
 
 What a run directory holds. tree/ (the worktree at the pinned sha, kept until judged), store/ (R and G: the
 install store, RASHOMON_HOME), result.json, transcript.jsonl (a copy of Claude Code's own), diff.patch,

@@ -1,0 +1,1 @@
+In calc.go, add a function Double(x int) int that returns x times two. Write a short plan first, then exit plan mode and make the edit.
