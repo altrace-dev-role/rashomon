@@ -50,7 +50,7 @@ const pgraphModulePath = modulePath + "/pgraph"
 // releaseBuildShapes are the builds this reader models, by id: the folder
 // each is built from (empty for the repository root) and its main package.
 // The whole-binary checks list rashomon's build alone; pgraph ships in the
-// same archives.
+// same archives, and only the notices check lists it.
 var releaseBuildShapes = map[string]struct{ dir, main string }{
 	"rashomon": {"", "./cmd/rashomon"},
 	"pgraph":   {"pgraph", "./cmd/pgraph"},

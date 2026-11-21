@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,8 +25,9 @@ import (
 // for those would overstate what is in the binary, which is its own kind of
 // wrong.
 
-// linkedModules is what ends up in the binaries: the union over every target
-// the release builds, from the listings release_targets_test.go takes.
+// linkedModules is what ends up in the rashomon binaries: the union over
+// every target the release builds, from the listings release_targets_test.go
+// takes. pgraphLinkedModules is the same for pgraph.
 //
 // THE UNION IS THE WHOLE POINT, and it was learned from this check failing in
 // CI after passing locally. The linked set is platform-dependent -- when the
@@ -39,14 +41,40 @@ func linkedModules(t *testing.T) map[string]string {
 	return modulesIn(releaseListing(t))
 }
 
+// pgraphLinkedModules is what ends up in the pgraph binaries: the union over
+// every target the release builds pgraph for, from pgraph's own listings.
+func pgraphLinkedModules(t *testing.T) map[string]string {
+	t.Helper()
+	return modulesIn(pgraphListed.get(t, listPgraphReleases))
+}
+
+var pgraphListed listingCache
+
+// listPgraphReleases lists pgraph's build as .goreleaser.yml makes it: its
+// main package from its own module's folder, for each of its targets, held to
+// that module's two packages.
+func listPgraphReleases() (map[releaseTarget][]listedPackage, error) {
+	builds, err := readReleaseBuilds()
+	if err != nil {
+		return nil, err
+	}
+	m, ok := builds["pgraph"]
+	if !ok {
+		return nil, errors.New(".goreleaser.yml builds no pgraph")
+	}
+	shape := releaseBuildShapes["pgraph"]
+	return listBuild(m, filepath.Join(moduleRoot, shape.dir), shape.main, pgraphModulePath, 2)
+}
+
 // modulesIn is every third-party module any target links, at the version it
-// links. This module's own packages and the standard library's carry no
-// third-party module, so they are not in it.
+// links. This repository's own packages, of rashomon's module and of
+// pgraph's, and the standard library's carry no third-party module, so they
+// are not in it.
 func modulesIn(byTarget map[releaseTarget][]listedPackage) map[string]string {
 	mods := map[string]string{}
 	for _, pkgs := range byTarget {
 		for _, p := range pkgs {
-			if p.module == "" || p.module == modulePath {
+			if p.module == "" || p.module == modulePath || p.module == pgraphModulePath {
 				continue
 			}
 			mods[p.module] = p.version
@@ -56,27 +84,29 @@ func modulesIn(byTarget map[releaseTarget][]listedPackage) map[string]string {
 }
 
 // TestThirdPartyNotices_ReadsEveryLinkedModuleOffTheListings feeds the reader
-// listings of its own, because the tree links no third-party module and a
-// reader that dropped every line would read exactly as a correct one does.
+// listings of its own, because rashomon links no third-party module and a
+// reader that dropped every line would read its listings exactly as a correct
+// one does.
 func TestThirdPartyNotices_ReadsEveryLinkedModuleOffTheListings(t *testing.T) {
 	ours := listedPackage{path: modulePath + "/internal/report", module: modulePath}
+	pgraphs := listedPackage{path: pgraphModulePath + "/cmd/pgraph", module: pgraphModulePath}
 	got := modulesIn(map[releaseTarget][]listedPackage{
-		{"linux", "amd64"}: {{path: "os"}, ours, {path: "example.com/x/a", module: "example.com/x", version: "v1.2.3"}},
+		{"linux", "amd64"}: {{path: "os"}, ours, pgraphs, {path: "example.com/x/a", module: "example.com/x", version: "v1.2.3"}},
 		{"windows", "amd64"}: {{path: "os"}, ours, {path: "example.com/x/b", module: "example.com/x", version: "v1.2.3"},
 			{path: "example.com/w", module: "example.com/w", version: "v0.1.0"}},
 	})
 	want := map[string]string{"example.com/x": "v1.2.3", "example.com/w": "v0.1.0"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("modules = %v, want %v: every module any target links, the windows-only one too, "+
-			"and neither this module nor the standard library", got, want)
+			"and neither this repository's two modules nor the standard library", got, want)
 	}
 }
 
-// noticesProblems is the whole check as a function of the file's text and the
-// linked modules, so that fixtures can run it against a dependency list of
-// their own: with nothing linked in this tree, the clauses that need a module
-// would otherwise never execute, and a clause that never executes cannot be
-// shown to catch anything.
+// noticesProblems is the whole check as a function of a part's text and its
+// binary's linked modules, so that fixtures can run it against a dependency
+// list of their own: with nothing linked into rashomon, the clauses that need
+// a module never execute on its part, and a clause that never executes cannot
+// be shown to catch anything.
 //
 // It fails in BOTH directions. A missing module is the licence gap; a stale
 // one is a notice for code that does not ship, a false statement about the
@@ -134,7 +164,8 @@ func noticesProblems(text string, mods map[string]string) []string {
 	return problems
 }
 
-// noNoticesSentence is what the file says when nothing third-party ships.
+// noNoticesSentence is what rashomon's part says: nothing third-party is
+// linked into it.
 const noNoticesSentence = "No third-party module is linked into ./cmd/rashomon"
 
 func noticesText(t *testing.T) string {
@@ -147,17 +178,68 @@ func noticesText(t *testing.T) string {
 	return string(body)
 }
 
+// pgraphNoticesHeader is the line that starts pgraph's part of the file.
+const pgraphNoticesHeader = "pgraph"
+
+// noticesParts splits the file at pgraph's header, a line that is exactly
+// pgraphNoticesHeader: rashomon's part above it, pgraph's from it on. Each
+// binary's part is checked against its own linked modules, so a file with no
+// such line, or two, is an error rather than one part read as the whole.
+func noticesParts(text string) (rashomon, pgraph string, err error) {
+	lines := strings.Split(text, "\n")
+	at := -1
+	for i, l := range lines {
+		if l != pgraphNoticesHeader {
+			continue
+		}
+		if at >= 0 {
+			return "", "", fmt.Errorf("the line %q is there twice; pgraph's part starts once", pgraphNoticesHeader)
+		}
+		at = i
+	}
+	if at < 0 {
+		return "", "", fmt.Errorf("no line is %q, so pgraph, which ships in every archive, has no notices", pgraphNoticesHeader)
+	}
+	return strings.Join(lines[:at], "\n"), strings.Join(lines[at:], "\n"), nil
+}
+
 // TestThirdPartyNotices_CoversEveryLinkedModule runs the check against the
-// real file and the real union of linked modules.
+// real file and the real union of linked modules, each binary's part against
+// its own: rashomon's part above pgraph's header, pgraph's from it on.
 func TestThirdPartyNotices_CoversEveryLinkedModule(t *testing.T) {
-	for _, p := range noticesProblems(noticesText(t), linkedModules(t)) {
-		t.Error("THIRD_PARTY_NOTICES: " + p)
+	rashomon, pgraph, err := noticesParts(noticesText(t))
+	if err != nil {
+		t.Fatal("THIRD_PARTY_NOTICES: " + err.Error())
+	}
+	for _, p := range noticesProblems(rashomon, linkedModules(t)) {
+		t.Error("THIRD_PARTY_NOTICES, rashomon's part: " + p)
+	}
+	for _, p := range noticesProblems(pgraph, pgraphLinkedModules(t)) {
+		t.Error("THIRD_PARTY_NOTICES, pgraph's part: " + p)
+	}
+}
+
+// TestThirdPartyNotices_SplitsAtPgraphsHeaderOnce: the file splits at the line
+// that is exactly pgraph's header and nowhere else, and a file with no such
+// line, or two, is refused rather than read as one part.
+func TestThirdPartyNotices_SplitsAtPgraphsHeaderOnce(t *testing.T) {
+	rashomon, pgraph, err := noticesParts("pgraph named in prose\n  (none)\npgraph\n------\n  example.com/x v1.2.3\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rashomon != "pgraph named in prose\n  (none)" || pgraph != "pgraph\n------\n  example.com/x v1.2.3\n" {
+		t.Errorf("parts = %q and %q, want the split at the header line", rashomon, pgraph)
+	}
+	for _, text := range []string{"  (none)\n", " pgraph\n", "pgraph\n------\npgraph\n"} {
+		if _, _, err := noticesParts(text); err == nil {
+			t.Errorf("%q split without an error; it has no header line, or two", text)
+		}
 	}
 }
 
 // TestThirdPartyNotices_CheckerFailsClosed is the check against dependency
-// lists of its own, which is the only way its module clauses run in a tree
-// that links nothing.
+// lists of its own: the real file shows each clause passing, and only lists
+// like these show each one turning red.
 func TestThirdPartyNotices_CheckerFailsClosed(t *testing.T) {
 	const bsd = "Redistribution and use in source and binary forms, with or without modification"
 	const mit = "Permission is hereby granted, free of charge, to any person"

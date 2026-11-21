@@ -1,9 +1,11 @@
 THIRD-PARTY NOTICES
 ===================
 
-rashomon is Apache-2.0 (see LICENSE). The released binaries are statically
-linked and PURE GO -- CGO_ENABLED=0 -- so every third-party module would be
-compiled INTO the artifact you download, and its licence would travel with it.
+rashomon and pgraph, the two binaries the release archives and the plugin
+archive carry, are both Apache-2.0 (see LICENSE). They are statically linked
+and PURE GO -- CGO_ENABLED=0 -- so every third-party module is compiled INTO
+the artifact you download, and its licence has to travel with it. This file
+has a part for each binary: rashomon's first, then pgraph's.
 
 No third-party module is linked into ./cmd/rashomon on any platform the
 release ships. The binary is the Go standard library and this repository's
@@ -11,16 +13,59 @@ own packages. The one dependency it carried, a pure-Go SQLite driver and the
 libc translation beneath it, read a proxy's store that no longer exists in
 this project; both went with it.
 
-This file stays, because it is where the next dependency's notice is written
-before its code ships. TestThirdPartyNotices_CoversEveryLinkedModule checks it
-against `go list -deps ./cmd/rashomon` for every target the release builds,
-and fails if a module is linked and not listed here at its version, or listed
-here and not linked, or, once any module is linked, if this file carries no
-licence text at all. The check finds licence text anywhere in the file, not
-beside each module, so each module's licence is written here by whoever adds
-the module. TestThirdPartyNotices_CheckerFailsClosed runs the same check
-against dependency lists of its own.
+This file is where the next dependency's notice is written before its code
+ships. TestThirdPartyNotices_CoversEveryLinkedModule checks each part
+against `go list -deps` of its own binary for every target the release
+builds: rashomon's part against ./cmd/rashomon, pgraph's against
+./cmd/pgraph in pgraph's own module under pgraph/. It fails if a module is
+linked and not listed in its binary's part at its version, or listed there
+and not linked, or, once any module is linked, if that part carries no
+licence text at all. The check finds licence text anywhere in a part, not
+beside each module, so each module's licence is written here by whoever
+adds the module. TestThirdPartyNotices_CheckerFailsClosed runs the same
+check against dependency lists of its own.
 
-Modules, in the order `go list` reports them:
+Modules linked into rashomon, in the order `go list` reports them:
 
   (none)
+
+pgraph
+------
+
+pgraph is built from its own module under pgraph/. Modules linked into
+pgraph, by path:
+
+  golang.org/x/mod v0.42.0
+  golang.org/x/sync v0.24.0
+  golang.org/x/tools v0.52.0
+
+The three are modules of the Go project, and the LICENSE file of each holds
+the same text, reproduced once here for all three:
+
+Copyright 2009 The Go Authors.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
