@@ -17,16 +17,22 @@ package acceptance
 import (
 	"encoding/json"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/consent"
+	"github.com/altrace-dev-role/rashomon/internal/disclose"
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/graph/index"
 	"github.com/altrace-dev-role/rashomon/internal/graph/lang/pylite"
 	"github.com/altrace-dev-role/rashomon/internal/intent"
+	"github.com/altrace-dev-role/rashomon/internal/steer"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -484,36 +490,197 @@ func TestLANGREG1_TheKindLineIsForThePersonAlone(t *testing.T) {
 	}
 }
 
-// TestLANGREG1_APythonEditKeepsNoOverlayGroup: an edit of a .py file of
-// the indexed py unit keeps no overlay group of the file in the session
-// graph log and prints nothing, while a .go edit in the same session keeps
-// its landed group: what a yes keeps of a session's edits is named for Go
-// files alone, and pylite states its edits are not kept (lang.Kept; card
-// x315). Base (LANG-REG1): a landed group of the .py file carrying pylite's
-// set. Break: state pylite kept, and the log holds the file's group. That a
-// kept reader's group carries its own set is
+// lrScope rewrites the consent on file so that every record of it that
+// carries this build's scope_version carries scope instead, the form
+// TestCSH1_TheScreenAYesIsAskedUnderFitsOneTerminal rewrites it by.
+func (e *env) lrScope(scope int) {
+	e.t.Helper()
+	current := `"scope_version":` + strconv.Itoa(disclose.ScopeVersion)
+	b := string(e.consentBytes())
+	if !strings.Contains(b, current) {
+		e.t.Fatalf("premise: the watch record does not carry %s", current)
+	}
+	b = strings.ReplaceAll(b, current, `"scope_version":`+strconv.Itoa(scope))
+	if err := os.WriteFile(filepath.Join(e.home, "consent.json"), []byte(b), 0o600); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// lrNodes is the attributes of each node of the session graph log whose id
+// is id, in the order the log holds them.
+func lrNodes(t *testing.T, log, id string) []map[string]string {
+	t.Helper()
+	var out []map[string]string
+	for _, l := range strings.Split(strings.TrimSpace(log), "\n") {
+		var r struct {
+			Node *struct {
+				ID    string
+				Attrs map[string]string
+			}
+		}
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatalf("a session graph log line is not JSON: %v: %q", err, l)
+		}
+		if r.Node != nil && r.Node.ID == id {
+			out = append(out, r.Node.Attrs)
+		}
+	}
+	return out
+}
+
+// TestLANGREG1_APythonEditIsKeptFromAYesOfNine: in the indexed py-unit
+// project, with the consent on file rewritten to scope_version 9, an edit
+// of a .py file of the indexed py unit prints nothing and keeps its
+// declared and landed groups in the session graph log, in which the file's
+// def total keeps its kind and its line and nothing more (no parameter
+// count: ruling x371 item 5), and the file its module and SHA-256 and
+// nothing more;
+// rewritten to 8, the screen that names Go files alone, it keeps no group
+// of the file. A .go edit in the same session keeps its landed group either
+// way. The expected attributes are written out from inv/core/calc.py. Base
+// (card x315): no group under either. Breaks: leave the hook's read of the
+// scope on file unset in the binary (cmd/rashomon), and the 9 keeps
+// nothing; state pylite kept from 8, and the 8 keeps the group. That a kept
+// reader's group carries its own set is
 // TestConsentGate2_AKeptReaderOtherThanGoCarriesItsOwnSet's.
-func TestLANGREG1_APythonEditKeepsNoOverlayGroup(t *testing.T) {
+func TestLANGREG1_APythonEditIsKeptFromAYesOfNine(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		scope int
+		kept  bool
+	}{
+		{"a yes of 9", 9, true},
+		{"a yes of 8", 8, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newSteerEnv(t)
+			dir, hdr := e.lrProject()
+			if _, ok := hdr.Producers[pylite.Lang]; !ok {
+				t.Fatalf("premise: the index's producers are %v, want %s among them", hdr.Producers, pylite.Lang)
+			}
+			e.lrScope(c.scope)
+			if got := e.lrEdit(dir, "toolu_p1", "inv/core/calc.py", "sum"); got != "" {
+				t.Errorf("the py edit printed %q, want 0 bytes", got)
+			}
+			e.lrEdit(dir, "toolu_p2", "svc/svc.go", "package")
+			log, ok := e.lrLog(hdr)
+			if !ok {
+				t.Fatal("premise: the go edit kept no session graph log")
+			}
+			if _, ok := lrGroup(t, log, graph.FileID("svc/svc.go"), "landed"); !ok {
+				t.Fatalf("premise: the session graph log holds no landed group for svc/svc.go:\n%s", log)
+			}
+			for _, kind := range []string{"declared", "landed"} {
+				if _, has := lrGroup(t, log, graph.FileID("inv/core/calc.py"), kind); has != c.kept {
+					t.Errorf("the session graph log holds a %s group for inv/core/calc.py: %v, want %v:\n%s", kind, has, c.kept, log)
+				}
+			}
+			if !c.kept {
+				return
+			}
+			total := map[string]string{"symkind": "func", "line": "1"}
+			nodes := lrNodes(t, log, "sym:py:inv:func:inv.core.calc.total")
+			if len(nodes) != 2 {
+				t.Errorf("the session graph log keeps total %d times; want once in each group", len(nodes))
+			}
+			for _, got := range nodes {
+				if !maps.Equal(got, total) {
+					t.Errorf("the session graph log keeps total with %v; want %v", got, total)
+				}
+			}
+			files := lrNodes(t, log, "file:inv/core/calc.py")
+			if len(files) != 2 {
+				t.Errorf("the session graph log keeps inv/core/calc.py %d times; want once in each group", len(files))
+			}
+			for _, got := range files {
+				if len(got) != 2 || got["module"] != "inv.core.calc" || len(got["digest"]) != 64 {
+					t.Errorf("the session graph log keeps inv/core/calc.py with %v; want its module inv.core.calc and SHA-256 alone", got)
+				}
+			}
+		})
+	}
+}
+
+// lrAppend appends to the consent on file, through the consent package's
+// Append (the markers synced after it, as a consent command writes one), a
+// yes of scope at record scope recordScope under this build's steer
+// disclosure.
+func (e *env) lrAppend(scope int, recordScope string) {
+	e.t.Helper()
+	id, err := consent.NewInvocationID()
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	rec := consent.Record{V: consent.RecordVersion, ScopeVersion: scope, RecordScope: recordScope,
+		SteerDisclosure: steer.DisclosureVersion, Steer: consent.SteerOn, TextSHA256: strings.Repeat("a", 64),
+		BinaryVersion: "test", BinarySHA256: strings.Repeat("b", 64), Via: consent.ViaConsentYes,
+		InvocationID: id, At: time.Now().UnixMilli()}
+	if err := consent.Append(e.home, rec); err != nil {
+		e.t.Fatalf("consent Append of scope %d at record scope %s: %v", scope, recordScope, err)
+	}
+}
+
+// lrCallGroups is the number of groups of inv/core/calc.py in the session
+// graph log whose marker names the call id.
+func lrCallGroups(t *testing.T, log, id string) int {
+	t.Helper()
+	n := 0
+	for _, l := range strings.Split(strings.TrimSpace(log), "\n") {
+		var r struct {
+			Node *struct {
+				Kind  string
+				Attrs map[string]string
+			}
+		}
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatalf("a session graph log line is not JSON: %v: %q", err, l)
+		}
+		if r.Node != nil && r.Node.Kind == graph.KindOverlayGroup && r.Node.Attrs["tool_use_id"] == id &&
+			r.Node.Attrs["file"] == string(graph.FileID("inv/core/calc.py")) {
+			n++
+		}
+	}
+	return n
+}
+
+// TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing: in the indexed
+// py-unit project, a yes of 9 at record scope v5, appended through the
+// consent package's Append, keeps a .py edit's declared and landed groups;
+// a later record at record scope v4, appended the same way, leaves the
+// highest scope_version on file at 9 and the session's content no longer
+// kept (consent.SessionContent), and a .py edit after it keeps no group: a
+// yes of 9 keeps a Python file's edits only while the answer that keeps the
+// session's content stands (ruling x371 item 8a). Base: the scope-9 case of
+// TestLANGREG1_APythonEditIsKeptFromAYesOfNine. Break: keep a .py edit on
+// the scope on file alone, past the session-content marker.
+func TestLANGREG1_APythonEditAfterAWithdrawnAnswerKeepsNothing(t *testing.T) {
 	e := newSteerEnv(t)
 	dir, hdr := e.lrProject()
-	if _, ok := hdr.Producers[pylite.Lang]; !ok {
-		t.Fatalf("premise: the index's producers are %v, want %s among them", hdr.Producers, pylite.Lang)
-	}
-	if got := e.lrEdit(dir, "toolu_p1", "inv/core/calc.py", "sum"); got != "" {
-		t.Errorf("the py edit printed %q, want 0 bytes", got)
-	}
-	e.lrEdit(dir, "toolu_p2", "svc/svc.go", "package")
+	e.lrAppend(9, consent.RecordScopeV5)
+	e.lrEdit(dir, "toolu_w1", "inv/core/calc.py", "sum")
 	log, ok := e.lrLog(hdr)
-	if !ok {
-		t.Fatal("premise: the go edit kept no session graph log")
+	if !ok || lrCallGroups(t, log, "toolu_w1") != 2 {
+		t.Fatalf("premise: the .py edit under a yes of 9 kept no declared and landed group:\n%s", log)
 	}
-	if _, ok := lrGroup(t, log, graph.FileID("svc/svc.go"), "landed"); !ok {
-		t.Fatalf("premise: the session graph log holds no landed group for svc/svc.go:\n%s", log)
+	e.lrAppend(9, consent.RecordScopeV4)
+	if on, err := consent.SessionContent(e.home); on || err != nil {
+		t.Fatalf("premise: after the v4 record the consent on file keeps the session's content: %v (%v)", on, err)
 	}
-	for _, kind := range []string{"declared", "landed"} {
-		if _, has := lrGroup(t, log, graph.FileID("inv/core/calc.py"), kind); has {
-			t.Errorf("the session graph log holds a %s group for inv/core/calc.py:\n%s", kind, log)
-		}
+	recs, err := consent.Read(e.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	highest := 0
+	for _, r := range recs {
+		highest = max(highest, r.ScopeVersion)
+	}
+	if highest != 9 {
+		t.Fatalf("premise: the highest scope_version on file is %d after the v4 record; want 9", highest)
+	}
+	e.lrEdit(dir, "toolu_w2", "inv/core/calc.py", "sum")
+	log, _ = e.lrLog(hdr)
+	if n := lrCallGroups(t, log, "toolu_w2"); n != 0 {
+		t.Errorf("the session graph log keeps %d groups of the .py edit after the v4 record; want none:\n%s", n, log)
 	}
 }
 
