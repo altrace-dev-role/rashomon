@@ -130,8 +130,10 @@ func conflictBaseCases() []cbCase {
 		}, 0},
 		// signature_mismatch reads an arity: the Go index writes no sig and
 		// a Go group carries none, so at the post it raises nothing on
-		// either side. A language with arity would need its callers in the
-		// base; the post checks Go edits only (keptGoEdit).
+		// either side. A language with arity would need its sig and its
+		// callers in the base, which keeps no record's Attrs (bare); the
+		// post checks every edit a wired reader claims (keptGoEdit gates on
+		// reg.For), a .py edit in a configured unit included.
 		{"a callee changed in place, no arity", ConflictSignatureMismatch, every, func(c cbfx) graph.OverlayGroup {
 			return cbEdit("internal/hookio", c.fileH, cbDigest(c.fileH, "new"), []graph.ID{c.h1}, nil)
 		}, 0},
