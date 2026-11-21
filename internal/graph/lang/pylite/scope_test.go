@@ -261,13 +261,14 @@ func TestLANGREG1_ACapWordsNameGuessesAClass(t *testing.T) {
 // TestLANGREG1_TheReaderIsPyliteThree: the reader that keys a method by
 // its class, guesses a CapWords name a class and writes no text of a value,
 // a default, an annotation, a keyword argument or a string literal is
-// pylite version 3, the version an index names as the producer of its py
-// records. An index an older reader made keeps its old ids and its old text
-// until it is built again. Break: write version 1 or 2.
+// pylite version 4 (since card PY-R; the name is kept, a mutant row names
+// it), the version an index names as the producer of its py records. An
+// index an older reader made keeps its old ids and its old text until it is
+// built again. Break: write version 1, 2 or 3.
 func TestLANGREG1_TheReaderIsPyliteThree(t *testing.T) {
 	rel := "services/auth/auth/use.py"
 	n, ok := nodeOf(scopeOverlay(t, rel, capWordsSrc), graph.FileID(rel))
-	if !ok || n.Prov.Extractor != "pylite" || n.Prov.Version != "3" {
-		t.Errorf("file node %v, reader %s/%s; want pylite/3", ok, n.Prov.Extractor, n.Prov.Version)
+	if !ok || n.Prov.Extractor != "pylite" || n.Prov.Version != "4" {
+		t.Errorf("file node %v, reader %s/%s; want pylite/4", ok, n.Prov.Extractor, n.Prov.Version)
 	}
 }

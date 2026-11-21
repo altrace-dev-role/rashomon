@@ -94,8 +94,8 @@ func TestPYN_TheReaderWritesOnlyTheseAttributeKeys(t *testing.T) {
 	want := map[string]string{
 		"node file":       "digest,module",
 		"node sym const":  "line,symkind",
-		"node sym func":   "arity_max,arity_min,line,sig,symkind",
-		"node sym method": "arity_max,arity_min,line,sig,symkind",
+		"node sym func":   "arity_max,arity_min,end,line,sig,symkind",
+		"node sym method": "arity_max,arity_min,end,line,sig,symkind",
 		"edge contains":   "",
 		"edge declares":   "",
 		"edge imports":    "",
