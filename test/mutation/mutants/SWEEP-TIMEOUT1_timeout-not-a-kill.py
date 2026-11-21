@@ -3,8 +3,9 @@
 # test that prints the sentence is still judged, and fails only under
 # --strict (SWEEP-TIMEOUT1). The baseline runs under 20m and each mutant
 # under 10m, both written out so GOFLAGS cannot move them; a green baseline
-# prints each package's time; stdout is line-buffered into a pipe. Each row
-# drops one of these.
+# prints each package's time; stdout is line-buffered into a pipe; a TIMEOUT
+# row prints go test's output from the alarm line to the package's FAIL line,
+# at most 300 lines, and says how many it cut. Each row drops one of these.
 m("SWEEP-TIMEOUT1 a timed-out mutant run is judged by its exit", "test/mutation/sweep.py",
   "            if _timeout:\n", "            if False:\n",
   "TestSWT1_ATimedOutMutantIsNotJudged")
@@ -50,3 +51,33 @@ m("SWEEP-TIMEOUT1 a red baseline names no backup kill line", "test/mutation/swee
 m("SWEEP-TIMEOUT1 the release race step runs under go test's default timeout", ".github/workflows/release.yaml",
   "        run: go test ./... -count=1 -race -timeout 15m\n", "        run: go test ./... -count=1 -race\n",
   "TestSWT1_TheRaceStepCarriesItsOwnTimeout")
+# The stack text of a TIMEOUT row: where the tests waited, from the alarm line
+# to the package's FAIL line, cut at a stated limit with the cut counted, and
+# a run with no alarm line says so instead of printing a dump it never read.
+m("SWEEP-TIMEOUT1 a TIMEOUT row prints no stack text", "test/mutation/sweep.py",
+  "                        print(\"      |\", ln)\n", "                        pass\n",
+  "TestSWT1_ATimedOutMutantPrintsItsStackFromTheAlarmLine")
+m("SWEEP-TIMEOUT1 the stack text starts at the first line of the run", "test/mutation/sweep.py",
+  "    block = lines[start:end + 1]\n", "    block = lines[:end + 1]\n",
+  "TestSWT1_ATimedOutMutantPrintsItsStackFromTheAlarmLine|TestSWT1_TheStackTextIsCutAtTheLimitAndSaysSo")
+m("SWEEP-TIMEOUT1 the stack text runs past the package's FAIL line", "test/mutation/sweep.py",
+  "    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith(",
+  "    end = next((i for i in range(start + 1, len(lines)) if False and lines[i].startswith(",
+  "TestSWT1_ATimedOutMutantPrintsItsStackFromTheAlarmLine")
+m("SWEEP-TIMEOUT1 the stack limit is one line too many", "test/mutation/sweep.py",
+  "TIMEOUT_STACK_LINES = 300\n", "TIMEOUT_STACK_LINES = 301\n",
+  "TestSWT1_TheStackTextIsCutAtTheLimitAndSaysSo")
+m("SWEEP-TIMEOUT1 the stack limit is one line too few", "test/mutation/sweep.py",
+  "TIMEOUT_STACK_LINES = 300\n", "TIMEOUT_STACK_LINES = 299\n",
+  "TestSWT1_TheStackTextIsCutAtTheLimitAndSaysSo")
+m("SWEEP-TIMEOUT1 the stack row counts no cut lines", "test/mutation/sweep.py",
+  "    return block[:TIMEOUT_STACK_LINES], max(0, len(block) - TIMEOUT_STACK_LINES)\n",
+  "    return block[:TIMEOUT_STACK_LINES], 0\n",
+  "TestSWT1_TheStackTextIsCutAtTheLimitAndSaysSo")
+m("SWEEP-TIMEOUT1 a run with no alarm line is silent about its stack", "test/mutation/sweep.py",
+  "                    print(f\"  STACK          <- {name}   (no alarm line in the run, so no stack text is printed)\")\n",
+  "                    pass\n",
+  "TestSWT1_TheBackupKillLineIsReadAsATimeout")
+m("SWEEP-TIMEOUT1 a backup kill line starts the stack text", "test/mutation/sweep.py",
+  "        if ln.startswith(TIMED_OUT[0]):\n", "        if ln.startswith(TIMED_OUT):\n",
+  "TestSWT1_TheBackupKillLineIsReadAsATimeout")
