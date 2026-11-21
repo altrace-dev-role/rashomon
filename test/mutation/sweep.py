@@ -51,6 +51,33 @@ MUTANT_GLOB = "mutants/*.py"
 SHARED_TESTS = HERE / "shared-tests.txt"
 TRIM_MARKER = "sweep-trim-marker"
 
+# go test's -timeout, in minutes, for each run the sweep builds. An alarm has
+# to sit well above the run it bounds and fire before the CI job's own bound,
+# so its "running tests:" list reaches the log. The baseline runs every
+# package: on the darwin runner test/acceptance took 609.224 s, and
+# TestMS1w_DriverEndsATurnByOffset's subtests wait by design (never_submitted
+# passes in 254.86 to 260.58 s, resent in 216.54 to 221.61 s, over six saved
+# runs). Under go test's 10m default two darwin baselines of 2026-11-18 were
+# killed with never_submitted 259 s and 260 s old (jobs 134752037230 and
+# 135268143828), about a second from its pass. A mutant run selects 19
+# acceptance tests at most, the slowest TestMS1w at about 261 s, so it keeps
+# the 10m default, written out so that a -timeout in GOFLAGS cannot move it.
+BASELINE_TIMEOUT_MIN = 20
+MUTANT_TIMEOUT_MIN = 10
+
+# The first words of the two lines that say a timeout ended a go test run:
+# the test binary's own alarm, and cmd/go's backup kill a minute after it,
+# or a tenth of the -timeout when that is longer: 11m0s for a mutant's 10m,
+# 22m0s for the baseline's 20m (the alarm never starts when a TestMain hangs
+# before m.Run).
+TIMED_OUT = ("panic: test timed out after", "*** Test killed")
+
+# The most lines of go test's output that a TIMEOUT row prints from the alarm
+# line on (SWEEP-TIMEOUT1). The alarm's panic is followed by a trace of every
+# goroutine, which can run to thousands of lines; the limit keeps one hung row
+# from burying the rest of the log, and the row says how many lines it cut.
+TIMEOUT_STACK_LINES = 300
+
 # The requirement prefixes of the 1.2.0 specification. A mutant file named
 # <PREFIX>-<n>_<slug>.py claims that row, and every test it names must pin the
 # same row -- a suffix letter, TestREC56b_, pins its parent -- unless
@@ -426,6 +453,55 @@ def test_failed(r):
         if ln.startswith("--- FAIL") or (ln.startswith("FAIL\t") and ln.count("\t") >= 2):
             return True
     return False
+
+
+def timeout_lines(r):
+    """The lines of a go test run that say a timeout ended it, empty if none
+    did (SWEEP-TIMEOUT1).
+
+    A run its -timeout ended prints FAIL<TAB>pkg<TAB>time, which test_failed
+    reads as a red test, so a mutant that only hung was scored caught. A hang
+    is no verdict, whatever else the run printed. Matched at the start of a
+    line, as build_broken matches its markers: a test may print the sentence
+    it checks, and t.Log indents what it prints. Returned with the indented
+    "running tests:" block under the alarm's line, which names the test.
+    """
+    found, running = [], False
+    for ln in (r.stdout + r.stderr).splitlines():
+        if running and ln.startswith("\t"):
+            found.append(ln)
+            continue
+        running = False
+        if ln.startswith(TIMED_OUT):
+            found.append(ln)
+            running = True
+    return found
+
+
+def timeout_stack(r):
+    """The stack text of a run its -timeout ended and the number of lines cut
+    from it, or None when the run holds no alarm line (SWEEP-TIMEOUT1).
+
+    timeout_lines names the tests the alarm found running and nothing about
+    where they waited, so a hang in an end sweep could not be read from its
+    log. The test binary's alarm panics, and with tracebacks set to all the
+    panic is followed by the trace of every goroutine. The text starts at the
+    alarm line and ends at the first FAIL<TAB> line after it, the package's,
+    or at the last line of the run when none follows. At most
+    TIMEOUT_STACK_LINES lines are returned and the count of the rest comes
+    with them, so a reader knows whether the FAIL line is among those shown.
+    A run that only cmd/go's backup kill ended has no alarm line: None, and
+    the caller says so rather than claim a dump that was not read.
+    """
+    lines = (r.stdout + r.stderr).splitlines()
+    for start, ln in enumerate(lines):
+        if ln.startswith(TIMED_OUT[0]):
+            break
+    else:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("FAIL\t")), len(lines) - 1)
+    block = lines[start:end + 1]
+    return block[:TIMEOUT_STACK_LINES], max(0, len(block) - TIMEOUT_STACK_LINES)
 
 
 def own_cache():
@@ -881,7 +957,7 @@ def green_baseline(module):
     """
     where = "" if module == "." else f" in {module}"
     print(f"baseline{where}: the suite must be green before anything is mutated")
-    _baseline = run_go_test(["go", "test", "./...", "-count=1"], cwd=module)
+    _baseline = run_go_test(["go", "test", "./...", "-count=1", "-timeout", f"{BASELINE_TIMEOUT_MIN}m"], cwd=module)
     if _baseline.returncode != 0:
         print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
               "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
@@ -897,7 +973,7 @@ def green_baseline(module):
                 _named.append(ln)
                 continue
             _running = ln.startswith("panic: test timed out")
-            if ln.startswith("panic:") or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
+            if ln.startswith(("panic:",) + TIMED_OUT) or ln.lstrip().startswith("--- FAIL") or ln.startswith("FAIL\t"):
                 _named.append(ln)
         if _named:
             print("failing on the unmutated tree:")
@@ -920,7 +996,20 @@ def green_baseline(module):
             print("\nthe last 2000 bytes of go test's stderr:")
         print(_baseline.stderr[-2000:])
         return False
-    print(f"baseline{where}: green\n")
+    print(f"baseline{where}: green")
+    # Each package's time, so the margin under the alarm is read on every
+    # run, not only on the one that crosses it (SWEEP-TIMEOUT1).
+    _times = []
+    for ln in _baseline.stdout.splitlines():
+        _ok = re.match(r"ok\s+(\S+)\s+([0-9.]+)s\b", ln)
+        if _ok:
+            print("   ", ln)
+            _times.append((float(_ok.group(2)), _ok.group(1)))
+    if _times:
+        _secs, _pkg = max(_times)
+        print(f"baseline{where}: slowest {_pkg} {_secs:.1f} s, "
+              f"{100 * _secs / (60 * BASELINE_TIMEOUT_MIN):.0f}% of the {BASELINE_TIMEOUT_MIN}m -timeout")
+    print()
     return True
 
 
@@ -964,6 +1053,7 @@ def run_sweep(strict=False, trim_root=None):
 
     undetected = []
     skipped = []  # the judging test skipped here; --strict fails on these
+    timed_out = []  # go test's -timeout ended the run: no verdict; --strict fails on these
     platform = []  # the target is not built for this GOOS, or the mutant
                     # declares a GOOS of its own that this run is not; never
                     # a failure, strict or not
@@ -1003,8 +1093,35 @@ def run_sweep(strict=False, trim_root=None):
                     # way a missing anchor on the main mutation is.
                     print(f"  IMPORT ANCHOR MISSING <- {name}"); undetected.append(name); restore(); continue
                 pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
-            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"], cwd=MODULE_OF.get(name, "."))
+            r = run_go_test(["go", "test", "./...", "-run", test, "-timeout", f"{MUTANT_TIMEOUT_MIN}m",
+                             "-count=1", "-v"], cwd=MODULE_OF.get(name, "."))
             judged = r.stdout + r.stderr
+            # Before any verdict: a run its -timeout ended is not judged, even
+            # when a "--- FAIL" printed before the alarm. Read as red it made a
+            # mutant that only hung count as caught (SWEEP-TIMEOUT1).
+            _timeout = timeout_lines(r)
+            if _timeout:
+                # How many tests failed before the alarm, subtests included:
+                # a reader tells a hang alone from a kill and then a hang. No
+                # verdict depends on it.
+                _fails = sum(1 for ln in judged.splitlines() if ln.lstrip().startswith("--- FAIL"))
+                print(f"  TIMEOUT        <- {name}   (go test's -timeout ended the run after {_fails} "
+                      f"\"--- FAIL\" lines: not judged, never a kill)")
+                for ln in _timeout:
+                    print("     ", ln)
+                # Where the tests waited: go test's output from the alarm line
+                # to the package's FAIL line, behind a margin, with the limit
+                # and the count of lines cut stated. No verdict depends on it.
+                _stack = timeout_stack(r)
+                if _stack is None:
+                    print(f"  STACK          <- {name}   (no alarm line in the run, so no stack text is printed)")
+                else:
+                    _shown, _cut = _stack
+                    print(f"  STACK          <- {name}   (the alarm line and the lines after it, "
+                          f"{TIMEOUT_STACK_LINES} at most: {len(_shown)} shown, {_cut} cut)")
+                    for ln in _shown:
+                        print("      |", ln)
+                timed_out.append(name)
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
             # `go test ./... -run <regex>`, so every package without a matching
             # test prints "no tests to run" -- which made any mutation whose tests
@@ -1013,7 +1130,7 @@ def run_sweep(strict=False, trim_root=None):
             # judged here" instead of as the gap it was. A check that cannot tell
             # "nothing ran" from "nothing matched in this package" is worse than no
             # check, because it converts findings into reassurance.
-            if r.returncode == 0 and "--- SKIP" in judged:
+            elif r.returncode == 0 and "--- SKIP" in judged:
                 # The judging test did not RUN, so this mutation was not judged.
                 # Reporting it as "the test cannot be made to fail" would name a
                 # spec defect that may not exist: the socket half of H-17 needs
@@ -1049,8 +1166,9 @@ def run_sweep(strict=False, trim_root=None):
 
     print()
     print("undetected:", undetected if undetected else "none")
+    if skipped or platform or timed_out:
+        print("not judged here:", skipped + platform + timed_out)
     if skipped or platform:
-        print("not judged here:", skipped + platform)
         print("  These were not checked: either the judging test skipped in this")
         print("  environment, or the mutant's target is not built under this GOOS at")
         print("  all. They are not passes. Run the sweep where that coverage runs --")
@@ -1058,6 +1176,13 @@ def run_sweep(strict=False, trim_root=None):
         print("  darwin-only target's own job on macos-latest.")
         if strict and skipped:
             print("  --strict is set: treating the skipped ones as failures.")
+    if timed_out:
+        print(f"  TIMEOUT: go test's -timeout ({MUTANT_TIMEOUT_MIN}m) ended the run of {timed_out}")
+        print("  before its tests finished, so the mutant was neither caught nor missed.")
+        print("  A hang is not a red test. The lines under each TIMEOUT above name the")
+        print("  test that was still running; make it finish or narrow the mutant's -run.")
+        if strict:
+            print("  --strict is set: treating the timed-out ones as failures.")
     # Without --strict, a NOT JUDGED mutant exits 0: that is correct for a
     # laptop that cannot run the socket half of H-17, where skipping is
     # expected. In CI, where the tooling that lets them run is installed on
@@ -1065,8 +1190,10 @@ def run_sweep(strict=False, trim_root=None):
     # turns a green sweep back into the red one that silence would hide.
     # A target this GOOS does not build is never counted, strict or not: no
     # tooling installed here can make it build, so it is a fact about the
-    # platform, not a broken environment (DEL-18).
-    return 1 if undetected or (strict and skipped) else 0
+    # platform, not a broken environment (DEL-18). A timed-out mutant is
+    # counted the way a skipped one is: no verdict, so a failure only under
+    # --strict (SWEEP-TIMEOUT1).
+    return 1 if undetected or (strict and (skipped or timed_out)) else 0
 
 
 def parse_shard(spec):
@@ -1100,6 +1227,11 @@ def keep_platform(goos):
 
 
 def main(argv):
+    # Each verdict line reaches a log when it is printed. Into a pipe -- a CI
+    # step's log is one -- Python buffers stdout in blocks, so a whole sweep's
+    # lines arrived at once when it ended, and a job cancelled at its bound
+    # showed none of the mutants it had judged (SWEEP-TIMEOUT1).
+    sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(description="the mutation sweep; run from the module root")
     ap.add_argument("--list", action="store_true", help="print every mutant name in load order and exit")
     ap.add_argument("--check", action="store_true", help="run the static checks and exit")

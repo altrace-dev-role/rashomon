@@ -62,6 +62,10 @@ harness unknown: none
 session demo-1
   install: <install>
   story
+    strict claims not green, last Stop only: none
+    notes delivered by pattern: 1 regression location; acted on: not measured; ignored: not measured
+    checks off: none in the record; steering off: not read
+    trust: coverage verified; no gaps; no skipped records; claims read at the last Stop only
     last Stop: verified - go test passed after the last edit (call 23)
     record: 7 executions; 1 failed call; 3 test runs (2 ok, 1 failed)
     autosteer: 1 regression location given at the failure; 2 findings, 1 resolved at #21
@@ -81,7 +85,7 @@ session demo-1
       record check at #16, no gate named, so no run settles it
     mistakes against intent: 1 caught at the act (at #7), 0 reached the person, 0 missed; found later unknown (no trace is recorded); 1 not settled (at #16)
     checks: none expected
-    lessons: 0 approved, 0 proposed, 0 demoted (this project); none fired this session
+    lessons: 0 approved, 0 demoted (this project); no lesson miner exists; none fired this session
     unknown: none
   knowledge (project <tmp>/proj)
     baseline: no earlier checkpoint of this project

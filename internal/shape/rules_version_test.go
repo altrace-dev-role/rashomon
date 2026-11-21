@@ -29,6 +29,7 @@ var runnerListPins = map[int]string{
 	11: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 	12: "515df41c5e471108d67e5000c1997a8a371311eeb4918fd943a7d703416ea234", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and moved go vet and cargo clippy to lint and cargo check to typecheck, and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); the in-place tables, flag tables and corpora are unchanged except the runner lists
 	13: "515df41c5e471108d67e5000c1997a8a371311eeb4918fd943a7d703416ea234", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); the runner lists are unchanged
+	14: "515df41c5e471108d67e5000c1997a8a371311eeb4918fd943a7d703416ea234", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place (inPlaceEditors, RH-11); the runner lists are unchanged
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
@@ -78,6 +79,7 @@ var writeTablePins = map[int]string{
 	11: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 	12: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); this table or corpus is unchanged
 	13: "dfb8010e06386af079d0761108eb40c292869806f9321f297ed7ae10a115528b", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); the in-place tables are unchanged
+	14: "bafb7701719dee2131c292e76ae529de3862156210b7d6d6db7c75bccb25baaa", // RulesVersion 14 adds --fix and --fix-only to ruff's words in inPlaceEditors (RH-11); checkOnly and shortClusters are unchanged
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -137,6 +139,7 @@ var matcherPins = map[int]string{
 	11: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 	12: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); this table or corpus is unchanged
 	13: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); no matcher field moves on a corpus line
+	14: "287971f971e93b09a7f1cd5f2a2cf7368d907bd9d4b788eaa5e625668d689a30", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place (inPlaceEditors, RH-11); no matcher field moves on a corpus line
 }
 
 // matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
@@ -240,6 +243,7 @@ var flagTablePins = map[int]string{
 	11: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 	12: "653466313cb604b05497c12430594ce777ba4507d3e4417640fd0836e5572427", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); this table or corpus is unchanged
 	13: "526577e11c1e601bd81093d9d3275385e2c5147cc68ba08eb49d3866e9bbd899", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c), a list of the writer words' pin (2026-11-03)
+	14: "526577e11c1e601bd81093d9d3275385e2c5147cc68ba08eb49d3866e9bbd899", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place (inPlaceEditors, RH-11); the flag tables and writer words are unchanged
 }
 
 // flagTablesDigest digests notARun (each runner in sorted order, then its
@@ -315,11 +319,15 @@ var writeTargetPins = map[int]string{
 	11: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 11 names the runner and the stage that hid it (RunnerName, MaskedBy; D229), which no pinned table or corpus field holds; unchanged
 	12: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); this table or corpus is unchanged
 	13: "eb0c049a1042ccd3443eb5d9ca7ca264639037081132ac604b25f4da717ecc2b", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); no write target moves on a corpus line
+	14: "b1d9cc5f26344d614ac11a09134db7c054a63b002d3343ce51be7970207f8639", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place and names no file for ruff's subcommand, its first operand, while a later check or format and a word after -- are named (RH-11); the corpus gains ruff check --fix a.py and --fix --diff a.py and six rows for a path that spells the subcommand or follows --
 }
 
 // writeTargetCorpus is the lines writeTargetPins digests, a frozen copy of the
 // rows TestWT1 to TestWT13 held when version 10 was made, one or more per
-// rule. A row a test gains later is not copied here without a bump.
+// rule, then the rows a bump's tests added (14: TestRH11's ruff check --fix
+// and --fix --diff and its rows for a path that spells the subcommand, and
+// TestWT2_'s prettier --write -- -w). A row a test gains later is not copied
+// here without a bump.
 var writeTargetCorpus = []string{
 	"cat a.txt > b.log", "cat a.txt >| b.log", "cat a.txt &> b.log", "cat a.txt 2> err.log", "cat <> a.log",
 	"cat a.txt >&2", "cat < a.txt", "cat a.txt > $out", "echo x > a.log", "make > build.log",
@@ -333,6 +341,10 @@ var writeTargetCorpus = []string{
 	"touch a.go; sed -i s/x/y/ b.go", "touch a.go\nrm b.go", "cp a b 2> err.log", "echo $(touch a.go) > b.log",
 	"cd sub && go run gen.go > out.go", "cd a && cd /b && touch x", "cd sub; touch x", "cd ~ && touch x",
 	"touch a && cd sub && touch b", "cat curl | cat -o",
+
+	"ruff check --fix a.py", "ruff check --fix --diff a.py",
+	"ruff check --fix check", "ruff format check", "ruff check --fix format", "ruff format format",
+	"ruff check --fix -- --fix", "prettier --write -- -w",
 }
 
 // writeTargetDigest digests, for each line of writeTargetCorpus in order, the
@@ -376,6 +388,7 @@ var maskedStagePins = map[int]string{
 	11: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c",
 	12: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c", // RulesVersion 12 added the lint, typecheck and scan runner lists (C8) and reads a hidden runner's printed exit status (PrintedStatus, STATUS-PROBE); this table or corpus is unchanged
 	13: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c", // RulesVersion 13 reads a later echo or date stage as one that prints (printOnly, card F2c); no runner name or masking stage moves
+	14: "0a1f0da24fa3a09fcf11622524c130234015e595a0652d269af0480928c50f0c", // RulesVersion 14 reads ruff check's --fix and --fix-only as writing in place (inPlaceEditors, RH-11); no runner name or masking stage moves
 }
 
 // maskedStageCorpus is the lines maskedStagePins digests, a frozen copy of the

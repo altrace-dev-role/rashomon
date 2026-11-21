@@ -34,10 +34,11 @@ const SteerReadBudget = 10 * time.Millisecond
 // Consent is the steer_disclosure marker's reader (store.SteerDisclosureMarker,
 // D84); a nil reader reads as no consent. HoldoutOff and HoldoutOn are
 // EnvHoldout as HoldoutOff and HoldoutOn read it, and Arm is EnvSteerArm as
-// SteerArm reads it (cmd lets it count on a lab store only). ProjectDir is
-// CLAUDE_PROJECT_DIR and ManagedDir the managed-settings directory
-// (settings.ManagedDir), DiscoverSpec's two inputs beside the call's cwd
-// (card 3.1 (c)).
+// SteerArm reads it (cmd lets it count on a lab store only). Level is
+// EnvSteerLevel as SteerLevel reads it (cmd reads it under a forced arm
+// only). ProjectDir is CLAUDE_PROJECT_DIR and ManagedDir the
+// managed-settings directory (settings.ManagedDir), DiscoverSpec's two
+// inputs beside the call's cwd (card 3.1 (c)).
 type SteerEnv struct {
 	HarnessID, Surface string
 	MirrorInBand       bool
@@ -46,6 +47,7 @@ type SteerEnv struct {
 	HoldoutOff         bool
 	HoldoutOn          bool
 	Arm                steer.Arm
+	Level              steer.Pair
 	Consent            func(root string) (int, error)
 	Now                time.Time
 	ProjectDir         string
@@ -137,12 +139,15 @@ type writtenCall struct {
 }
 
 // Steer runs the step after the record's Flush succeeded and returns the
-// bytes to print, or nil. It returns no error: each exit before Route prints
-// nothing (no trigger, an unreadable run with no rule raised), and every
-// exit after Route has its line in the steer log. A gate run's post arms the
-// stale trigger first (armStale), whatever the step then does. A Go edit's
-// blast-radius note joins the judged findings (blast), and its read marker is
-// settled once Route has decided (settleBlast).
+// bytes to print, or nil. It returns no error. The exit before Route, a call
+// that raised nothing (no trigger, an unreadable run with no rule raised),
+// prints at most the unclaimed kind's line (card LANG-REG1), a system
+// message for the person alone, after a Flush (kindLineAlone). Every exit
+// after Route has its line in the steer log, and the kind's line, where it
+// is owed, follows Route's system message on a line of its own. A gate run's
+// post arms the stale trigger first (armStale), whatever the step then does.
+// A Go edit's blast-radius note joins the judged findings (blast), and its
+// read marker is settled once Route has decided (settleBlast).
 func (p *Post) Steer(env SteerEnv) []byte {
 	p.armStale()
 	ctx, view, ok := p.judge(env)
@@ -159,13 +164,13 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if !ok {
 		// A call that raised nothing still leaves its then_checks: the Stop
 		// reads a line that is no Then from its "no" (card ORDER-LIVE1). No
-		// Flush: no note prints (REC-34 asks none), and the next sync of the
-		// file, the next call's own, carries the line; one a crash loses
-		// first reads maybe, never no.
+		// Flush unless the kind's line prints (REC-34 asks none for no note),
+		// and the next sync of the file, the next call's own, carries the
+		// line; one a crash loses first reads maybe, never no.
 		if len(view.ThenChecks) > 0 {
 			p.keepHits(nil, nil, view.ThenChecks, env.Now)
 		}
-		return nil
+		return p.kindLineAlone(ctx.Client, armOf(env))
 	}
 	p.keepHits(view.Hits, view.AfterHits, view.ThenChecks, env.Now)
 	out := steer.Route(&ctx, view.Findings)
@@ -179,10 +184,15 @@ func (p *Post) Steer(env SteerEnv) []byte {
 	if err := p.st.Flush(); err != nil {
 		return nil
 	}
+	// The kind's line is taken here, after the Flush, and given back when
+	// the Output does not marshal, so the next edit of the kind says it.
+	line, marker := p.takeKindLine(armOf(env))
+	out.SystemMessage = withKindLine(out.SystemMessage, line)
 	// Route withheld any channel the client cannot carry, so an error here
 	// is a contract break: print nothing.
 	b, err := out.MarshalFor(p.event, ctx.Client)
 	if err != nil {
+		p.returnKindLine(marker)
 		return nil
 	}
 	return b
@@ -510,7 +520,8 @@ func ruleReads(sp *spec.Compiled) (command, path bool) {
 // at or over the disclosure this build shows. The project is the view's
 // root only: under record scope v4 the record holds none and the line
 // follows the record, so the payload's cwd is never a fallback. Arm is
-// armOf's, and Holdout is the session's draw (heldOut).
+// armOf's, LevelOverride is env's Level, and Holdout is the session's draw
+// (heldOut).
 func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 	version, source := steer.ClientVersion(env.AIAgent)
 	attendance := attendanceOf(p.event, env, p.permissionMode)
@@ -532,6 +543,7 @@ func (p *Post) contextOf(env SteerEnv, view verify.SteerView) steer.Context {
 		SteerOff:         h.SteerOff,
 		ConfigUnreadable: h.ConfigUnreadable,
 		Arm:              armOf(env),
+		LevelOverride:    env.Level,
 		Attendance:       attendance,
 		Holdout:          p.heldOut(env),
 	}
@@ -614,6 +626,26 @@ func SteerArm(v string) steer.Arm {
 		return steer.ArmSteer
 	}
 	return ""
+}
+
+// EnvSteerLevel names the operator's level override for a paired run: one
+// held pattern and kind, "<pattern>/<kind>", whose notes keep their own
+// level under either arm, so the steer arm delivers them and the off arm
+// withholds them as it withholds any note (W-M3.4). A pattern with no kind
+// is "<pattern>/".
+const EnvSteerLevel = "RASHOMON_STEER_LEVEL"
+
+// SteerLevel reads EnvSteerLevel's value: the pair it names when that pair
+// is held at flag (steer.HeldAtFlag), else the zero Pair (no override). Any
+// other value, a pair no row holds and a pattern with no "/" among them, is
+// ignored, with no error and no log.
+func SteerLevel(v string) steer.Pair {
+	pat, kind, ok := strings.Cut(v, "/")
+	p := steer.Pair{Pattern: steer.PatternID(pat), Kind: steer.Kind(kind)}
+	if !ok || !steer.HeldAtFlag(p) {
+		return steer.Pair{}
+	}
+	return p
 }
 
 // heldOut is the session's draw into the field holdout (card 2.5, D109):

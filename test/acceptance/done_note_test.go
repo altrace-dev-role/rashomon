@@ -87,13 +87,31 @@ func TestDONE1_FlaggedStopIsNotedOnceAtTheNextPrompt(t *testing.T) {
 }
 
 // TestDONE1b_CleanStopAndOtherSessionsGetNothing: a verified turn leaves no
-// note, and a flagged Stop in one session leaves none for another's prompt.
+// note, and a flagged Stop in one session leaves none for another's prompt. A
+// Stop that raised no flag keeps no digest as the flagged one: not after a
+// claim the record backs, where the entry the digest would raise is deleted
+// by the same Stop and only the done mark shows it, and not after a message
+// that claims nothing, where nothing backs the entry and the next prompt
+// would carry the note. Break: flag every Stop.
 func TestDONE1b_CleanStopAndOtherSessionsGetNothing(t *testing.T) {
 	e := newSteerEnv(t)
 	e.greenTurn(t, "prompt-1")
 	e.mustSpeak(stopEvent("Stop", "All 42 tests pass.", e.cwd))
+	if got := e.doneState().Flagged; got != "" {
+		t.Errorf("after a verified Stop the flagged digest = %q, want none: no flag was raised", got)
+	}
 	if out := noteOf(t, e, "prompt-2"); out != (preflightOut{}) {
 		t.Errorf("after a verified Stop the prompt printed %+v, want nothing", out)
+	}
+
+	g := newSteerEnv(t)
+	g.greenTurn(t, "prompt-1")
+	g.recapLine(stopEvent("Stop", "I made the change.", g.cwd))
+	if got := g.doneState().Flagged; got != "" {
+		t.Errorf("after a Stop that claimed nothing the flagged digest = %q, want none", got)
+	}
+	if out := noteOf(t, g, "prompt-2"); out != (preflightOut{}) {
+		t.Errorf("after a Stop that claimed nothing the prompt printed %+v, want nothing", out)
 	}
 
 	f := newSteerEnv(t)

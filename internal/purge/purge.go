@@ -64,17 +64,19 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 // into. Only the entries it writes there are planned for removal (see
 // ownedTree): the directory can be shared with the user's own files when
 // RASHOMON_HOME names a directory they already use, and "runs", "baseline",
-// "verify", "bodies", "learn" and "graph" are ordinary names for such a
-// directory. "graph" holds the session log and the hook path's evidence
-// files, each at its top level.
-var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies, learn.DirLearn, graph.StoreDir}
+// "verify", "bodies", "learn", "graph" and "clear" are ordinary names for
+// such a directory. "graph" holds the session log and the hook path's
+// evidence files, each at its top level; "clear" holds the /clear
+// rendezvous's folders, one per working directory.
+var topDirs = []string{store.DirRuns, baseline.DirName, verify.DirName, store.DirBodies, learn.DirLearn, graph.StoreDir, store.DirClear}
 
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
-	store.FileNoticeHoldout, store.FileNoticeCoverage, store.FileNoticeCoverageClear, fold.FileName, fold.MidFileName,
-	store.FileBriefingArmed, store.FileOverlayBytes, store.FileOverlayFull}
+	store.FileNoticeHoldout, store.FileNoticeCoverage, store.FileNoticeCoverageClear, store.FileNoticeIndexCap,
+	fold.FileName, fold.MidFileName,
+	store.FileBriefingArmed, store.FileOverlayBytes, store.FileOverlayFull, store.FileNoticeOtherKinds}
 
 var runTempPrefixes = []string{fold.TempPrefix}
 
@@ -258,8 +260,8 @@ func isTopDir(name string) bool {
 // -- and the paths it did not, which are left, along with every directory
 // above one. name is top's own name, which says its shape:
 // runs/<session>/<file>, baseline/<file>, verify/projects/<file>,
-// verify/checkpoints/<file>, graph/<file> or
-// graph/unitbrief/<session>/<file>. A symlink
+// verify/checkpoints/<file>, graph/<file>,
+// graph/unitbrief/<session>/<file> or clear/<digest>/<file>. A symlink
 // is never followed and never taken as rashomon's: a link, a device or a
 // directory where only a regular file rashomon writes can be, is foreign, and
 // so is a top that is not itself a directory.
@@ -312,10 +314,13 @@ func ownedTree(top, name string) (own, foreign []string, err error) {
 // ownTreeDir reports whether a directory of this name, at this level below
 // top (one of topDirs, by name), is one rashomon writes: runs/<session>,
 // verify/projects, verify/checkpoints, bodies/<project> and learn/<project>
-// (any name not starting with a dot), and graph/unitbrief with the
-// sessions' directories in it (graph.UnitBriefDir, W-M2.3 hook half, D8).
+// (any name not starting with a dot), graph/unitbrief with the sessions'
+// directories in it (graph.UnitBriefDir, W-M2.3 hook half, D8), and
+// clear/<digest>, a folder named as MeetClear names one (store.IsClearDirName).
 func ownTreeDir(top, name string, level int) bool {
 	switch top {
+	case store.DirClear:
+		return level == 0 && store.IsClearDirName(name)
 	case store.DirRuns:
 		return level == 0
 	case verify.DirName:
@@ -336,9 +341,13 @@ func ownTreeDir(top, name string, level int) bool {
 // (learn.Owns, card P6), the graph's session logs and evidence files at the
 // top of graph (neither writer leaves a temporary file), the unit briefs and
 // their writer's temp files in a session's directory under graph/unitbrief
-// (level 2, the only files ownTreeDir lets the walk reach there), and
-// ownTreeFile's for runs and baseline.
+// (level 2, the only files ownTreeDir lets the walk reach there), the
+// /clear rendezvous's arms, links and link temporaries in a clear/<digest>
+// folder (store.IsClearName), and ownTreeFile's for runs and baseline.
 func treeFile(top, name string, level int) bool {
+	if top == store.DirClear {
+		return level == 1 && store.IsClearName(name)
+	}
 	if top == graph.StoreDir {
 		return level == 0 && (graph.IsSessionLogName(name) || graph.IsEvidenceFileName(name)) ||
 			level == 2 && (graph.IsUnitBriefFileName(name) || graph.IsUnitBriefTempName(name))
@@ -365,6 +374,10 @@ func ownTreeFile(name string, isRuns bool, level int) bool {
 		return false
 	}
 	if slices.Contains(runFiles, name) || store.IsFiredFile(name) || store.IsBlastReadFile(name) {
+		return true
+	}
+	if store.IsKindNoticeFile(name) || store.IsUnindexedNoticeFile(name) || store.IsUnreadNoticeFile(name) ||
+		store.IsLastIndexNoticeFile(name) {
 		return true
 	}
 	for _, p := range runTempPrefixes {

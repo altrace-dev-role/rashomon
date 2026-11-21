@@ -61,6 +61,11 @@ type recapPayload struct {
 	// StopHookActive is carried unread (readFinalMessage's fields).
 	CWD            string
 	StopHookActive bool
+	// StopPromptID is a Stop's or StopFailure's prompt_id, the prompt whose
+	// turn the event ends, which the digest builds; "" where the payload
+	// names none, and on the catch-up's read, whose prompt_id is the new
+	// prompt's (pendingPayload.PromptID), not the turn's.
+	StopPromptID string
 }
 
 // readRecapPayload reads and parses stdin within a fixed budget, whatever
@@ -87,7 +92,8 @@ func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 }
 
 // readPayload is readRecapPayload's read, with the catch-up's prompt paths
-// when withPrompt (readPendingPayload).
+// when withPrompt (readPendingPayload). The payload's prompt_id names the
+// turn (StopPromptID) only without them.
 func readPayload(in io.Reader, timeout time.Duration, withPrompt bool) pendingPayload {
 	ch := make(chan pendingPayload, 1)
 	safe.Go(func() {
@@ -96,11 +102,15 @@ func readPayload(in io.Reader, timeout time.Duration, withPrompt bool) pendingPa
 			ch <- pendingPayload{}
 			return
 		}
-		ch <- pendingPayload{
+		p := pendingPayload{
 			recapPayload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail,
 				Harness: fm.Harness, OK: true, CWD: fm.CWD, StopHookActive: fm.StopHookActive},
 			Prompt: fm.Prompt, PromptCut: fm.PromptCut, PromptID: fm.PromptID, PermissionMode: fm.PermissionMode,
 		}
+		if !withPrompt {
+			p.StopPromptID = fm.PromptID
+		}
+		ch <- p
 	}, nil)
 
 	select {
@@ -258,7 +268,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		if rerr != nil {
 			return recap.RecordFailure(root, now)
 		}
-		built, derr := digest.BuildFrom(r, st, payload.SessionID, "", payload.LastAssistantMessage, now)
+		built, derr := digest.BuildFrom(r, st, payload.SessionID, payload.StopPromptID, payload.LastAssistantMessage, now)
 		if derr != nil {
 			return recap.RecordFailure(root, now)
 		}
@@ -270,9 +280,10 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// them.
 	var note steer.Output
 	var client steer.Client
+	var notes turnNotes
 	unchecked := false
 	if pending {
-		note, client, unchecked = promptNotes(st, run, &pp, root, d, id, now)
+		note, client, unchecked, notes = promptNotes(st, run, &pp, root, d, id, now)
 		// A prompt taken into the running turn (a peer message, a task
 		// notification, text typed while busy) fires UserPromptSubmit with
 		// that turn's prompt_id: the newest turn has not ended, and its own
@@ -282,15 +293,15 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		unchecked = unchecked && pp.PromptID != d.PromptID
 	}
 	if pending && !unchecked {
-		return printTurn(st, stdout, note, client, "")
+		return printTurn(st, stdout, note, client, "", notes)
 	}
 	stop, serr := stopView(st, run, d, payload, pending, now)
 	if serr != nil {
 		// Route logged the note as delivered above: print it before the
 		// error returns, or it never reaches the model and the next prompt
 		// counts its paths as given earlier. A failed flush prints nothing.
-		if note != (steer.Output{}) {
-			_ = printTurn(st, stdout, note, client, "")
+		if note != (steer.Output{}) || notes.due() {
+			_ = printTurn(st, stdout, note, client, "", notes)
 		}
 		return serr
 	}
@@ -323,7 +334,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// bookkeeping, not evidence, and a failure to persist it must cost at
 	// most a future duplicate or a stale health timestamp, never a
 	// missing line and never a hook error (see Claim's doc).
-	speak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))
+	speak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops, stop.backed()), d.Declarations.Recorded > 0)
 	stop.noticeSaid(st, d.SessionID, speak)
 	// The channel-evidence read, at a Stop only: the checkpoint is durable
 	// (the flush above returned), and the defer runs on every return below,
@@ -336,8 +347,8 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	} else if pending {
 		line = recap.PreviousTurn(line)
 	}
-	if note != (steer.Output{}) {
-		return printTurn(nil, stdout, note, client, line)
+	if note != (steer.Output{}) || notes.due() {
+		return printTurn(nil, stdout, note, client, line, notes)
 	}
 	if line == "" {
 		return nil
@@ -369,8 +380,10 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 // host framed (harness.Framed) takes the flagged Stop and is told nothing:
 // the take comes first, so the verdict is not held for a later turn, which
 // it would name as the wrong one. The flagged evidence counts as delivered
-// only where the note printed is the done note (recap.NoteDelivered).
-func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool) {
+// only where the note printed is the done note (recap.NoteDelivered). The
+// turn's once-per-session notices (promptTurnNotes) are read last: they read
+// the index-over-cap flag the preflight note sets.
+func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root string, d *digest.Digest, id harness.Identity, now time.Time) (steer.Output, steer.Client, bool, turnNotes) {
 	unchecked, owed, flagged := recap.Turn(root, d.SessionID, d.PromptID)
 	pp.owed = owed
 	pp.framed, _ = harness.Framed(string(pp.Prompt), pp.PromptCut)
@@ -380,7 +393,7 @@ func promptNotes(st *store.Store, run *store.Run, pp *pendingPayload, root strin
 		recap.NoteDelivered(root, d.SessionID)
 	}
 	noteTurnSpec(st, run, pp)
-	return note, client, unchecked
+	return note, client, unchecked, promptTurnNotes(st, pp, root)
 }
 
 // recapFromPlugin reports whether this recap runs as the plugin's entry.

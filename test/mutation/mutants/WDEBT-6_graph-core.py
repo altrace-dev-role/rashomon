@@ -21,16 +21,16 @@ m("WDEBT-6 a unit of an unknown lang resolves as Python", I,
   "\treturn python(c), nil\n",
   "TestBuild_UnitLangRequired")
 m("WDEBT-6 a dot directory is walked", I,
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
-  "(d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\" || name == \"__pycache__\"\n",
+  "\treturn name == \"node_modules\" || name == \"__pycache__\"\n",
   "TestBuild_SkipsDotAndVendorDirs")
 m("WDEBT-6 node_modules is walked", I,
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"__pycache__\")",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\" || name == \"__pycache__\"\n",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"__pycache__\"\n",
   "TestBuild_SkipsDotAndVendorDirs")
 m("WDEBT-6 __pycache__ is walked", I,
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\" || d.Name() == \"__pycache__\")",
-  "(strings.HasPrefix(d.Name(), \".\") || d.Name() == \"node_modules\")",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\" || name == \"__pycache__\"\n",
+  "\treturn strings.HasPrefix(name, \".\") || name == \"node_modules\"\n",
   "TestBuild_SkipsDotAndVendorDirs")
 G = "internal/graph/lang/gopg/gopg.go"
 m("WDEBT-6 a may-call is certain", G,
@@ -62,7 +62,6 @@ P = "internal/graph/persist.go"
 m("WDEBT-6 a store under another schema loads", P,
   "\tif h.Schema != Schema {\n\t\treturn nil, h, fmt.Errorf(\"graph: index schema %d, want %d; run rashomon graph index\", h.Schema, Schema)\n\t}\n", "",
   "TestLoad_RefusesOtherSchema")
-IMPORTS["WDEBT-6 a store under another schema loads"] = (P, '\t"fmt"\n', "")
 m("WDEBT-6 a header with no repository or commit saves", P,
   "\tif h.Repo == \"\" || h.Rev.Commit == \"\" {\n\t\treturn errors.New(\"graph: the header needs a repo and a rev commit\")\n\t}\n", "",
   "TestHeader_RoundTrip")

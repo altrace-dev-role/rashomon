@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
@@ -30,24 +31,63 @@ func (s *planSession) deliveredUnder(promptID string) []recap.Note {
 	return recap.DeliveredNotes(lines, promptID)
 }
 
-// promptFiles is every file the prompt side keeps for the session, by name:
-// the unit briefs and the conflict base, all in the session's unit-brief
-// directory.
+// promptFiles is every regular file under the store's graph directory
+// (graph.StoreDir), walked whole, by its slash path relative to that
+// directory. An entry that is neither a directory nor a regular file fails
+// the test.
 func (s *planSession) promptFiles() map[string][]byte {
 	s.t.Helper()
-	dir := graph.UnitBriefDir(s.root, benchSessionID)
-	ents, err := os.ReadDir(dir)
+	dir := s.graphDir()
+	out := map[string][]byte{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return errors.New(path + ": not a regular file")
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		out[s.graphRel(path)] = b
+		return nil
+	})
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	out := make(map[string][]byte, len(ents))
-	for _, e := range ents {
-		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			s.t.Fatal(err)
-		}
-		out[e.Name()] = b
+	return out
+}
+
+// graphDir is the store's graph directory.
+func (s *planSession) graphDir() string { return filepath.Join(s.root, graph.StoreDir) }
+
+// graphRel is path's slash path relative to the store's graph directory,
+// the key promptFiles gives it.
+func (s *planSession) graphRel(path string) string {
+	s.t.Helper()
+	rel, err := filepath.Rel(s.graphDir(), path)
+	if err != nil {
+		s.t.Fatal(err)
 	}
+	return filepath.ToSlash(rel)
+}
+
+// changedFiles is every key whose bytes differ between a and b or that one
+// of them lacks, sorted.
+func changedFiles(a, b map[string][]byte) []string {
+	var out []string
+	for k, v := range a {
+		if w, ok := b[k]; !ok || !bytes.Equal(v, w) {
+			out = append(out, k)
+		}
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	slices.Sort(out)
 	return out
 }
 
@@ -65,13 +105,14 @@ func sameNotes(a, b []recap.Note) bool {
 	return true
 }
 
-// TestRV1_4e_AFramedFireUnderATypedTurnReplacesNothing: one prompt id can
+// TestRV1_4pin_AFramedFireUnderATypedTurnReplacesNothing: one prompt id can
 // carry more than one prompt-hook fire, each classed from its own payload. A
 // typed fire naming a file, then a peer's message drained into the same turn
 // (a framed fire under the same prompt id): the framed fire prints nothing
-// and adds no steer line, every file the prompt side keeps for the session
-// (the unit brief and the conflict base the typed fire wrote) is byte-equal
-// after it, and the turn reads as typed at the edit and at the Stop: the
+// and adds no steer line, every file under the store's graph directory (the
+// turn's evidence file, and the unit brief and the conflict base the typed
+// fire wrote, among them) is byte-equal after it, and the turn reads as
+// typed at the edit and at the Stop: the
 // turn's first edit in the unit prints what a twin session given the typed
 // fire alone prints, and the notes read as delivered under the prompt id are
 // the twin's, the typed fire's first. The twin carries the comparison: a
@@ -80,7 +121,7 @@ func sameNotes(a, b []recap.Note) bool {
 // which note the edit prints is the typed turn's, not this test's, to say.
 // Break: let a later fire under an id replace what an earlier one wrote for
 // the turn.
-func TestRV1_4e_AFramedFireUnderATypedTurnReplacesNothing(t *testing.T) {
+func TestRV1_4pin_AFramedFireUnderATypedTurnReplacesNothing(t *testing.T) {
 	const promptID = "prompt-1" // planSession.prompt's id, the same for every fire
 	ask := "fix the reload in " + planHookHeld
 	typedTurn := func() *planSession {
@@ -102,15 +143,19 @@ func TestRV1_4e_AFramedFireUnderATypedTurnReplacesNothing(t *testing.T) {
 	typed := s.deliveredUnder(promptID)
 	lines := len(s.briefLines())
 	files := s.promptFiles()
-	t.Logf("the typed fire: %d delivered notes, %d task-preflight lines, %d prompt-side files", len(typed), lines, len(files))
+	t.Logf("the typed fire: %d delivered notes, %d task-preflight lines, %d files under the graph directory", len(typed), lines, len(files))
 	if len(typed) == 0 {
 		t.Fatalf("premise: the typed fire delivered no note under %s, so a replacement could not be seen", promptID)
 	}
-	if _, err := os.Stat(conflictBasePath(s.root, benchSessionID, s.project)); err != nil {
-		t.Fatalf("premise: the typed fire left no conflict base: %v", err)
+	if _, ok := files[s.graphRel(conflictBasePath(s.root, benchSessionID, s.project))]; !ok {
+		t.Fatalf("premise: the typed fire left no conflict base among the %d files read", len(files))
 	}
-	if _, ok := files[filepath.Base(s.briefPath())]; !ok {
-		t.Fatalf("premise: the unit brief is not among the prompt side's files")
+	if _, ok := files[s.graphRel(s.briefPath())]; !ok {
+		t.Fatalf("premise: the unit brief is not among the %d files read", len(files))
+	}
+	evidence := graph.EvidenceFileName(benchSessionID, promptID, time.Time{})
+	if _, ok := files[evidence]; !ok {
+		t.Fatalf("premise: the typed fire's evidence file %s is not among the %d files read", evidence, len(files))
 	}
 
 	if out := s.prompt(rv3Bare(ask)); out != "" {
@@ -119,8 +164,8 @@ func TestRV1_4e_AFramedFireUnderATypedTurnReplacesNothing(t *testing.T) {
 	if n := len(s.briefLines()); n != lines {
 		t.Errorf("%d task-preflight lines after the framed fire, want the typed fire's %d", n, lines)
 	}
-	if got := s.promptFiles(); !maps.EqualFunc(got, files, bytes.Equal) {
-		t.Errorf("the prompt side's files after the framed fire differ from the typed fire's (%d files, want %d), want them byte-equal", len(got), len(files))
+	if changed := changedFiles(s.promptFiles(), files); len(changed) != 0 {
+		t.Errorf("after the framed fire %d of the graph directory's files differ from the typed fire's, want none: %q", len(changed), changed)
 	}
 	if out := s.edit("toolu_pin_1"); out != want {
 		t.Errorf("the turn's first edit in the unit printed %q, want the typed-only twin's %q", out, want)

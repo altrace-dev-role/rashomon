@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 )
 
 // ai1Files is a module whose package a is called by b (a function) and c (a
@@ -99,8 +101,11 @@ func ai1Walk(t *testing.T, dir string) string {
 // a lower bound; the next edit of the package says nothing. The log is read
 // once per package until the next sync (A2's read gate): c's file changed
 // since leaves the set the sync gave standing, so a third edit says nothing
-// either. Break: drop the read marker, and the third edit reads again and
-// names b alone (the print gate alone keeps the second edit silent).
+// either, nor a fourth in the next prompt with no sync between. Break: drop
+// the read marker, and the fourth edit reads again and names b alone (the
+// print gate alone keeps the second edit silent; within one prompt the note
+// budget holds the third edit's note, so only the fourth, in a prompt of
+// its own, tells the read gate from the budget).
 func TestAI1_AGoEditTellsTheCallersOnce(t *testing.T) {
 	e := newSteerEnv(t)
 	dir := gi1Project(t, ai1Files)
@@ -114,6 +119,9 @@ func TestAI1_AGoEditTellsTheCallersOnce(t *testing.T) {
 	ai1Write(t, dir, "c/c.go", "package c\n\nvar V = 3\n")
 	if got := e.ai1Edit(dir, "toolu_e3", "a/a.go"); got != "" {
 		t.Errorf("an edit after c changed, with no sync, gave %q, want nothing: the log was read again", got)
+	}
+	if got := e.ai1EditIn(dir, "toolu_e4", "a/a.go", "p2"); got != "" {
+		t.Errorf("an edit in the next prompt, with no sync, gave %q, want nothing: the log was read again", got)
 	}
 }
 
@@ -198,8 +206,14 @@ func TestAI1_ANoteNamingNoPackageIsNotSaid(t *testing.T) {
 // TestAI1_SilenceWhereNothingIsProven: each case says nothing to the model,
 // never "no dependents": no sync; an edit of a test file; an edit of a
 // package nothing calls into; a walk file that vouches for another log (a
-// read mid-sync); record scope v4, which keeps no directory in the clear.
-// Break: drop any one guard, and its case speaks.
+// read mid-sync); record scope v4, which keeps no directory in the clear; a
+// package whose one fresh caller is the module's root, so that its note
+// would name no package. Break: drop any one guard, and its case speaks.
+// Nor does any case log a blast-radius steer line: a finding that reaches
+// the decision is logged even when its note is refused, so with both
+// no-caller guards dropped the no-caller case prints nothing yet logs one
+// suppressed line, which only the steer log shows; with the text guard
+// alone dropped, so does the root-caller case.
 func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 	cases := map[string]struct {
 		file  string
@@ -220,6 +234,12 @@ func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
+		"root caller alone": {"a/a.go", func(t *testing.T, _ *env, dir string) {
+			ai1Write(t, dir, "main.go", "package main\n\nimport \"example.com/m/a\"\n\nfunc main() { _ = a.F() }\n")
+			h156Sync(t, dir)
+			ai1Write(t, dir, "b/b.go", "package b\n")
+			ai1Write(t, dir, "c/c.go", "package c\n\nvar V = 3\n")
+		}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -228,6 +248,12 @@ func TestAI1_SilenceWhereNothingIsProven(t *testing.T) {
 			c.setup(t, e, dir)
 			if got := e.ai1Edit(dir, "toolu_e1", c.file); strings.HasPrefix(got, ai1Prefix) {
 				t.Errorf("an edit of %s gave %q, want no blast-radius note", c.file, got)
+			}
+			for _, l := range e.steerLines() {
+				if l.str("pattern") == string(pattern.BlastRadius) {
+					t.Errorf("an edit of %s logged a %s steer line (state %q, suppressed_by %q), want none",
+						c.file, pattern.BlastRadius, l.str("state"), l.str("suppressed_by"))
+				}
 			}
 		})
 	}

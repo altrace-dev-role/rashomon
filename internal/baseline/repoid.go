@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -32,7 +33,9 @@ var ErrNotRepository = errors.New("not a git repository")
 // PLAN B2): the normalized url (NormalizeOrigin) of the git remote named
 // origin, read from the config of root's repository (Key) without running
 // git (H-17). Without such a remote, with one whose url NormalizeOrigin
-// refuses (an @ after its host part), or outside any repository, it is path:
+// refuses (an @ after its host part, or a relative local path, which names
+// another repository from each directory it is read in), or outside any
+// repository, it is path:
 // and the sha256 of the project key, and ephemeral is true: rows written
 // under it are re-keyed when the repository gains an origin (an aliases
 // entry, PLAN B2). The root-commit form the plan names for a repository
@@ -210,11 +213,16 @@ func configValue(text, section, key string) (string, bool) {
 }
 
 // NormalizeOrigin is url as a repository id (PLAN B2): the scheme and any
-// user name and password dropped, the host lowercased, an scp-like
+// user name and password dropped, the host lowercased, a port that is empty
+// or its scheme's default dropped (dropDefaultPort), an scp-like
 // destination ([user@]host:path) read as host/path, a query, a fragment, a
 // trailing slash and a trailing .git dropped, the path's case kept. A url
-// with no host (file:///x, a local path) is that path. "" is "", and so is
-// a url with an @ after its host part, looked for in the whole url before
+// with no host (file:///x, an absolute local path) is that path. "" is "",
+// and so is a relative local path (../x, ./x, x): it names another
+// repository from each directory it is read in, so it is no id, and two
+// checkouts of one repository by a relative url get two ids, a split
+// rather than a merge of two repositories. So is a url with an @ after its
+// host part, looked for in the whole url before
 // the query is cut: after the first /, ? or # past a scheme's ://, after
 // the first colon of an scp-like destination, anywhere in a url of neither
 // form. Such an @ may end a user name or password holding that delimiter,
@@ -227,12 +235,13 @@ func NormalizeOrigin(url string) string {
 	if i := strings.IndexAny(s, "?#"); i >= 0 {
 		s = s[:i]
 	}
-	var host, path string
+	var scheme, host, path string
 	switch i := strings.Index(s, "://"); {
 	case i >= 0:
 		if end := strings.IndexAny(whole[i+3:], "/?#"); end >= 0 && strings.Contains(whole[i+3+end:], "@") {
 			return ""
 		}
+		scheme = strings.ToLower(s[:i])
 		host, path, _ = strings.Cut(s[i+3:], "/")
 	case strings.Contains(s, ":") && !strings.Contains(s[:strings.Index(s, ":")], "/"):
 		if strings.Contains(whole[strings.Index(s, ":")+1:], "@") {
@@ -240,7 +249,7 @@ func NormalizeOrigin(url string) string {
 		}
 		host, path, _ = strings.Cut(s, ":")
 	default:
-		if strings.Contains(whole, "@") {
+		if strings.Contains(whole, "@") || !strings.HasPrefix(s, "/") {
 			return ""
 		}
 		return trimRepo(s)
@@ -248,7 +257,7 @@ func NormalizeOrigin(url string) string {
 	if i := strings.LastIndex(host, "@"); i >= 0 {
 		host = host[i+1:]
 	}
-	host, path = strings.ToLower(host), trimRepo(path)
+	host, path = dropDefaultPort(strings.ToLower(host), scheme), trimRepo(path)
 	switch {
 	case host == "" && path == "":
 		return ""
@@ -256,6 +265,50 @@ func NormalizeOrigin(url string) string {
 		return "/" + path
 	}
 	return host + "/" + path
+}
+
+// defaultPort is the port each scheme git fetches over uses when a url
+// names none: ssh and its aliases git+ssh and ssh+git, git, http, https,
+// ftp and ftps; ok is false for any other scheme. It is a switch and not a
+// package-level map: a map is built when its package initializes, in every
+// process that links it, and process init has a byte budget
+// (TestRES2_InitBudget) that this lookup has no need to spend.
+func defaultPort(scheme string) (port uint64, ok bool) {
+	switch scheme {
+	case "ssh", "git+ssh", "ssh+git":
+		return 22, true
+	case "git":
+		return 9418, true
+	case "http":
+		return 80, true
+	case "https":
+		return 443, true
+	case "ftp":
+		return 21, true
+	case "ftps":
+		return 990, true
+	}
+	return 0, false
+}
+
+// dropDefaultPort is host without its port when the port is empty, or is
+// scheme's default (defaultPort) read as a number (RFC 3986, section
+// 6.2.3): such a url names the same server as one with no port. Any other
+// port stays, and so does every port of a scheme without a default. The
+// port follows the host's last colon, and in a bracketed IPv6 host only a
+// colon past the closing bracket.
+func dropDefaultPort(host, scheme string) string {
+	i := strings.LastIndex(host, ":")
+	if i < 0 || i < strings.LastIndex(host, "]") {
+		return host
+	}
+	if port := host[i+1:]; port != "" {
+		def, ok := defaultPort(scheme)
+		if n, err := strconv.ParseUint(port, 10, 16); !ok || err != nil || n != def {
+			return host
+		}
+	}
+	return host[:i]
 }
 
 // trimRepo drops a trailing slash and a trailing .git from a repository path.

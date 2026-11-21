@@ -42,6 +42,10 @@ type pendingPayload struct {
 	// owed is what the session's last turn end owes this prompt
 	// (recap.Turn), which preflightNote routes beside its note.
 	owed recap.Owed
+	// indexOverCap is set by preflightNote when the graph brief found the
+	// repository index over its size cap (graphBriefWith), for the turn's
+	// once-per-session notice (promptTurnNotes).
+	indexOverCap bool
 }
 
 // readPendingPayload is readRecapPayload for `recap pending`.
@@ -77,8 +81,9 @@ type promptProject struct {
 // code has a note whatever else it names; it routes as a task-preflight
 // finding of its own (graphFinding). A request that names no path and no
 // identifier, with no lesson to give, nothing owed and no graph under its
-// cwd, stops after that one index lookup, before any other read and before
-// the steer environment is built.
+// cwd, stops after that one index lookup (none for a fire that holds only
+// host frames), before any other read and before the steer environment is
+// built.
 // proj is the caller's read (readPromptProject). A session's first prompt
 // finds its run empty, so the note decides at after_seq 0, which CheckOn
 // admits at UserPromptSubmit and SessionStart only. The first prompt after
@@ -97,7 +102,15 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 	}
 	specOf := onceSpec(st, run, p.CWD)
 	scoped := promptScope{st: st}
-	gb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)
+	// A fire that holds only host frames (p.framed) reads no graph: it loads
+	// no index and writes no evidence file, unit brief or conflict base over
+	// what the turn's typed fire wrote. Build's notice refuses the same
+	// fires under the idf and tf scorers, so no brief they would send is lost.
+	gb, graphed := indexBrief{}, false
+	if !p.framed {
+		gb, graphed = graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)
+		p.indexOverCap = gb.OverCap
+	}
 	if !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {
 		return steer.Output{}, steer.Client{}
 	}
@@ -165,34 +178,96 @@ func preflightNote(st *store.Store, run *store.Run, p *pendingPayload, proj prom
 }
 
 // printTurn prints the catch-up's one stdout object: the preflight note's
-// Output with the catch-up line, when there is one, joined to its
-// systemMessage. st, when not nil, is flushed first, so the note's steer
-// line is durable before the note prints (REC-34); a caller that already
-// flushed passes nil. A failed flush prints nothing.
-func printTurn(st *store.Store, stdout io.Writer, note steer.Output, c steer.Client, line string) error {
-	if note == (steer.Output{}) && line == "" {
+// Output with the catch-up line, when there is one, and then the turn's
+// once-per-session notices (tn), each joined to its systemMessage in that
+// order. st, when not nil, is flushed first, so the note's steer line is
+// durable before the note prints (REC-34); a caller that already flushed
+// passes nil. A failed flush prints nothing. A notice's marker is taken
+// before the print and given back when nothing prints, on a failed flush or
+// a refused Output, so the next prompt says it.
+func printTurn(st *store.Store, stdout io.Writer, note steer.Output, c steer.Client, line string, tn turnNotes) error {
+	notices, taken := tn.take()
+	if note == (steer.Output{}) && line == "" && notices == "" {
 		return nil
 	}
 	if st != nil {
 		if err := st.Flush(); err != nil {
+			tn.giveBack(taken)
 			return err
 		}
 	}
-	switch {
-	case line == "":
-	case note.SystemMessage == "":
-		note.SystemMessage = line
-	default:
-		note.SystemMessage += "\n" + line
+	for _, l := range [...]string{line, notices} {
+		switch {
+		case l == "":
+		case note.SystemMessage == "":
+			note.SystemMessage = l
+		default:
+			note.SystemMessage += "\n" + l
+		}
 	}
 	// Route withheld any channel the client cannot carry, so an error here
 	// is a contract break: print nothing.
 	b, err := note.MarshalFor(string(steer.EventUserPromptSubmit), c)
 	if err != nil || b == nil {
+		tn.giveBack(taken)
 		return nil
 	}
 	_, _ = stdout.Write(b)
 	return nil
+}
+
+// The turn's once-per-session notice (READ-SAFE1a c5): a user-only line of
+// fixed words, with no path and no text of an error. A configuration an
+// edit could not read is said by that edit's post (internal/hook,
+// takeUnreadLine), not here.
+const (
+	indexCapNotice = "rashomon: this repository's index is over its size cap, so prompts get no brief from it; " +
+		"run rashomon graph index to write it again. Shown once per session."
+)
+
+// turnNotes is the turn's once-per-session notices, which printTurn joins
+// after the catch-up line: the repository index over its size cap, as the
+// prompt's graph brief found it (pendingPayload.indexOverCap). The zero
+// value has none.
+type turnNotes struct {
+	st       *store.Store
+	session  string
+	indexCap bool
+}
+
+// promptTurnNotes is the notices p's prompt may print: the index cap as the
+// preflight found it. The off arm withholds every hook print (armOff), this
+// line too, and takes no marker.
+func promptTurnNotes(st *store.Store, p *pendingPayload, root string) turnNotes {
+	if st == nil || p.SessionID == "" {
+		return turnNotes{}
+	}
+	t := turnNotes{st: st, session: p.SessionID, indexCap: p.indexOverCap}
+	if t.due() && armOff(root) {
+		return turnNotes{}
+	}
+	return t
+}
+
+// due reports whether t has a notice to try.
+func (t turnNotes) due() bool { return t.indexCap }
+
+// take takes the printed marker of each notice t has that the session has
+// not had (store.TakeNotice), and returns their lines, one per line, and the
+// markers it took.
+func (t turnNotes) take() (string, []string) {
+	var lines, taken []string
+	if t.indexCap && t.st.TakeNotice(t.session, store.FileNoticeIndexCap) {
+		lines, taken = append(lines, indexCapNotice), append(taken, store.FileNoticeIndexCap)
+	}
+	return strings.Join(lines, "\n"), taken
+}
+
+// giveBack returns the markers take took, for a print that did not happen.
+func (t turnNotes) giveBack(taken []string) {
+	for _, m := range taken {
+		t.st.ReturnNotice(t.session, m)
+	}
 }
 
 // noteTurnSpec is the one spec discovery every prompt makes for the turn's

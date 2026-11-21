@@ -2,8 +2,10 @@ package gopg
 
 import (
 	"bytes"
+	"errors"
 	"go/ast"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/graph"
+	"github.com/altrace-dev-role/rashomon/internal/regfile"
 )
 
 // MaxOverlayImports bounds the import specs one file's mapping reads, on the
@@ -150,30 +153,44 @@ func ModulePath(gomod []byte) string {
 	return ""
 }
 
+// ManifestFile is the module's manifest file under a root, the one file
+// ReadModulePath reads. Its name lives here, in the language's package: the
+// hook never names it, and code outside this package that must (a configure
+// step) takes it from here.
+const ManifestFile = "go.mod"
+
 // ReadModulePath is the module path of root's go.mod, read through
-// MaxGoModBytes, complete lines only; "" without one. The hook calls it on
-// the overlay path and Extract on the index: one read of one known file,
-// never a walk.
-func ReadModulePath(root string) string {
-	f, err := os.Open(filepath.Join(root, "go.mod"))
+// MaxGoModBytes, complete lines only. No go.mod is no module: "" and a nil
+// error. The go.mod is a file a clone controls, so it is opened without
+// blocking and read only if it is a regular file: a named pipe or a link
+// to a device is refused at once (READ-SAFE1a R16), as is a read that
+// fails, with "" and the error. A go.mod over the cap is not refused; its
+// complete lines under the cap are read (R17). The hook calls it on the
+// overlay path and Extract on the index: one read of one known file, never
+// a walk.
+func ReadModulePath(root string) (string, error) {
+	f, err := regfile.Open(filepath.Join(root, ManifestFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
 	if err != nil {
-		return ""
+		return "", err
 	}
 	defer f.Close()
 	buf := make([]byte, MaxGoModBytes)
 	n, err := io.ReadFull(f, buf)
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return ""
+		return "", err
 	}
 	b := buf[:n]
 	if n == MaxGoModBytes {
 		i := bytes.LastIndexByte(b, '\n')
 		if i < 0 {
-			return ""
+			return "", nil
 		}
 		b = b[:i+1]
 	}
-	return ModulePath(b)
+	return ModulePath(b), nil
 }
 
 // DirUnder is the existence check both sides give ImportUnit: dir, a slash

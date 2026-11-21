@@ -4,9 +4,12 @@ import "github.com/altrace-dev-role/rashomon/internal/store"
 
 // noticeFiles is the run segment's notice markers (store.TakeNotice) under
 // runSegment, apart from runSegmentFiles for Law 10 (card VERSION-GATE1): the
-// steer router's two, then the Stop's coverage notice and its cleared line.
+// steer router's two, then the Stop's coverage notice and its cleared line,
+// then the prompt's index cap notice (READ-SAFE1a c5), then the post's
+// markers for a kind of file no reader here claims (kindNoticeFiles,
+// LANG-REG1).
 func noticeFiles(runSegment string) []FileRule {
-	return []FileRule{
+	return append([]FileRule{
 		{
 			Base:       runSegment,
 			Pattern:    store.FileNoticeChannel,
@@ -47,5 +50,15 @@ func noticeFiles(runSegment string) []FileRule {
 			RemovedBy:  "size-cap eviction, with its run; purge",
 			Owner:      "store",
 		},
-	}
+		{
+			Base:       runSegment,
+			Pattern:    store.FileNoticeIndexCap,
+			Mode:       "0600",
+			Purpose:    "says the session has printed its one line that the repository index is over its size cap, so its prompts get no brief from it",
+			Holds:      "nothing; present once that line has printed",
+			NeverHolds: "anything",
+			RemovedBy:  "size-cap eviction, with its run; purge",
+			Owner:      "store",
+		},
+	}, kindNoticeFiles(runSegment)...)
 }

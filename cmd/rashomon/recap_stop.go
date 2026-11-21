@@ -118,6 +118,7 @@ func stopView(st *store.Store, run *store.Run, d *digest.Digest, p recapPayload,
 	sp := hook.DiscoverSpec(p.CWD, projectDir, managedDir, hook.TrustRoot(run, st.Root(), seq))
 	in.Inferred = inferredGate(key, sp, idx)
 	in.Conflicts = conflictsSeen(run, seq)
+	in.UnitOf = stopUnitOf(key)
 	v := verify.EvaluateStop(run, idx, sp, pt, now, in)
 	v.Unbound = unboundSpecs(run, &v.Snap, sp, st.Root(), seq)
 	v.Untrusted = untrustedGates(run, sp, st.Root(), seq)
@@ -349,13 +350,21 @@ func (s stopTurn) doneFlag(sessionID string, fromPlugin bool) (flag, digest stri
 	return flag, verify.DoneEvidence(s.view)
 }
 
+// backed is whether the turn speaks and its done claim was read and backed
+// (recap.DoneBacked).
+func (s stopTurn) backed() bool {
+	return s.speaks && recap.DoneBacked(s.view)
+}
+
 // stopMarks is the done marks a Stop keeps: shown, the digest of the flag
-// its line printed, and digest as the next prompt's only on a Stop (the
-// catch-up's turn was not one a Stop reached), whichever line printed.
-func stopMarks(shown, digest string, stops bool) recap.DoneMarks {
+// its line printed, and digest as the next prompt's and backed only on a
+// Stop (the catch-up's turn was not one a Stop reached), whichever line
+// printed.
+func stopMarks(shown, digest string, stops, backed bool) recap.DoneMarks {
 	m := recap.DoneMarks{Shown: shown}
 	if stops {
 		m.Flagged = digest
+		m.Backed = backed
 	}
 	return m
 }

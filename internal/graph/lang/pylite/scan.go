@@ -6,15 +6,40 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 )
 
-// def is one function definition.
+// def is one function definition. class is the dotted path of the classes
+// whose bodies hold it, innermost last, and empty for a module def: a def in
+// a class body is a method of that class.
 type def struct {
-	name string
-	sig  string
-	min  int
-	max  string
-	line int
+	name  string
+	class string
+	sig   string
+	min   int
+	max   string
+	line  int
+}
+
+// key is the def's name inside its class path, as Store.get or get: the
+// name a call's caller and an SQL literal's def carry, so a method shares no
+// key with a module def of its name.
+func (d def) key() string { return qualify(d.class, d.name) }
+
+// qualify is name inside the dotted class path outer, or name alone when
+// outer is empty.
+func qualify(outer, name string) string {
+	if outer == "" {
+		return name
+	}
+	return outer + "." + name
+}
+
+// scope is one class whose body is open: its dotted path and the indent of
+// its class line.
+type scope struct {
+	path   string
+	indent int
 }
 
 // constDef is one module-level constant: NAME = literal.
@@ -25,13 +50,15 @@ type constDef struct {
 }
 
 // importRef is one imported name: from module import attr, or import
-// module (attr "").
+// module (attr ""), or a star import (attr "", see readFrom). A relative
+// module keeps its leading dots until parse resolves it against the file's
+// package.
 type importRef struct {
 	module string
 	attr   string
 }
 
-// call is one call by name inside a def.
+// call is one call by name inside a def; caller is that def's key.
 type call struct {
 	caller string
 	name   string
@@ -65,8 +92,8 @@ func (f fileScan) importedModules() []string {
 // patternSet is the line patterns, built on first use and never at init
 // (RES-2).
 type patternSet struct {
-	once                       sync.Once
-	def, cnst, call, from, imp *regexp.Regexp
+	once                              sync.Once
+	def, class, cnst, call, from, imp *regexp.Regexp
 }
 
 var patterns patternSet
@@ -75,68 +102,163 @@ var patterns patternSet
 func pats() *patternSet {
 	patterns.once.Do(func() {
 		patterns.def = regexp.MustCompile(`^(\s*)(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
+		patterns.class = regexp.MustCompile(`^(\s*)class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[(:]`)
 		patterns.cnst = regexp.MustCompile(`^([A-Z_][A-Z0-9_]*)\s*(?::[^=]+)?=\s*(.+?)\s*$`)
 		patterns.call = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_.]*)\s*\(`)
-		patterns.from = regexp.MustCompile(`^from\s+([A-Za-z_][A-Za-z0-9_.]*)\s+import\s+(.+)$`)
+		patterns.from = regexp.MustCompile(`^from\s+(\.+(?:[A-Za-z_][A-Za-z0-9_.]*)?|[A-Za-z_][A-Za-z0-9_.]*)\s+import\s+(.+)$`)
 		patterns.imp = regexp.MustCompile(`^import\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$`)
 	})
 	return &patterns
 }
 
-// scan reads src line by line. A def's body is every following line more
-// indented than the def, or inside an open bracket; calls are read from
-// bodies only.
+// scan reads src line by line, a module-level import as one logical line
+// (importLine). A def's body is every following line more indented than the
+// def, or inside an open bracket; calls are read from bodies only. The body
+// rule comes before the test for a def: a def nested in a body is part of
+// that body, so it is no symbol, the calls in it and after it are the outer
+// def's, and an import indented in it is not the module's. Of a nested def's
+// own line only the parameters are read for calls (a default is evaluated
+// when the outer body runs). A class's body is every following line more
+// indented than its class line, its bases read past when they span lines; a
+// def in it is a method of the innermost class open at its line, and a class
+// in a def's body is part of that body.
 func scan(src string) (fileScan, error) {
 	f := fileScan{imports: map[string]importRef{}}
 	lines := strings.Split(src, "\n")
 	cur := ""
 	curIndent := -1
+	var classes []scope
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 		trim := strings.TrimSpace(line)
 		if trim == "" || strings.HasPrefix(trim, "#") {
 			continue
 		}
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if cur != "" && indent > curIndent {
+			from := 0
+			if m := pats().def.FindStringIndex(line); m != nil {
+				from = m[1] - 1
+			}
+			i = readCalls(&f, lines, i, from, cur)
+			continue
+		}
+		cur = ""
+		for len(classes) > 0 && indent <= classes[len(classes)-1].indent {
+			classes = classes[:len(classes)-1]
+		}
+		outer := ""
+		if len(classes) > 0 {
+			outer = classes[len(classes)-1].path
+		}
 		if m := pats().def.FindStringSubmatch(line); m != nil {
 			d, end, err := readDef(lines, i, m[2], len(m[0])-1)
 			if err != nil {
 				return fileScan{}, err
 			}
+			d.class = outer
 			f.defs = append(f.defs, d)
-			cur, curIndent = d.name, len(m[1])
+			cur, curIndent = d.key(), len(m[1])
 			i = end
 			continue
 		}
-		indent := len(line) - len(strings.TrimLeft(line, " \t"))
-		if cur != "" && indent <= curIndent {
-			cur = ""
-		}
-		if cur != "" {
-			end := readCalls(&f, lines, i, cur)
-			i = end
-			continue
-		}
-		if m := pats().from.FindStringSubmatch(trim); m != nil {
-			readFrom(f.imports, m[1], m[2])
-		} else if m := pats().imp.FindStringSubmatch(trim); m != nil {
-			name := m[1]
-			if m[2] != "" {
-				name = m[2]
+		if m := pats().class.FindStringSubmatch(line); m != nil {
+			classes = append(classes, scope{path: qualify(outer, m[2]), indent: len(m[1])})
+			if strings.HasSuffix(m[0], "(") {
+				if _, end, _, ok := group(lines, i, len(m[0])-1); ok {
+					i = end
+				}
 			}
-			f.imports[name] = importRef{module: m[1]}
-		} else if m := pats().cnst.FindStringSubmatch(line); m != nil {
+			continue
+		}
+		if importStart(trim) {
+			stmt, end := importLine(lines, i)
+			if m := pats().from.FindStringSubmatch(stmt); m != nil {
+				readFrom(f.imports, m[1], m[2])
+			} else if m := pats().imp.FindStringSubmatch(stmt); m != nil {
+				name := m[1]
+				if m[2] != "" {
+					name = m[2]
+				}
+				f.imports[name] = importRef{module: m[1]}
+			}
+			i = end
+			continue
+		}
+		if m := pats().cnst.FindStringSubmatch(line); m != nil {
 			f.consts = append(f.consts, constDef{name: m[1], value: m[2], line: i + 1})
 		}
 	}
 	return f, nil
 }
 
-// readFrom records from module import a, b as c.
+// importStart reports whether a statement's first word is from or import.
+func importStart(s string) bool {
+	if k := strings.IndexFunc(s, func(r rune) bool { return !nameRune(r) }); k >= 0 {
+		s = s[:k]
+	}
+	return s == "from" || s == "import"
+}
+
+// importLine is the import statement that starts at lines[i], read as
+// Python reads it, one logical line, with the index of the last physical
+// line it takes. A comment ends its physical line, so a backslash inside a
+// comment joins nothing; a backslash that ends the code joins the next line,
+// and so does a bracket still open. Inside the bracket an import holds only
+// names, commas, as, backslashes and the closing bracket, so a line with any
+// other character ends the statement before that line: an import-like line
+// inside a string joins no line past the string's closing quote. The lines
+// read are taken whether or not they make an import, so no line is read
+// twice and the scan stays linear in the lines.
+func importLine(lines []string, i int) (string, int) {
+	var b strings.Builder
+	depth, j := 0, i
+	for ; j < len(lines); j++ {
+		c := code(lines[j])
+		if depth > 0 && strings.IndexFunc(c, notName) >= 0 {
+			break
+		}
+		depth += strings.Count(c, "(") - strings.Count(c, ")")
+		joined := strings.HasSuffix(c, `\`)
+		b.WriteString(strings.TrimSuffix(c, `\`))
+		b.WriteByte(' ')
+		if !joined && depth <= 0 {
+			return strings.TrimSpace(b.String()), j
+		}
+	}
+	return strings.TrimSpace(b.String()), j - 1
+}
+
+// code is a physical line of an import without its comment, trimmed.
+func code(line string) string {
+	c, _, _ := strings.Cut(line, "#")
+	return strings.TrimSpace(c)
+}
+
+// nameRune is a rune a Python name holds.
+func nameRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// notName is a rune no import holds inside its bracket: anything but a
+// name's runes, a comma, a backslash, the closing bracket and white space.
+func notName(r rune) bool {
+	return !nameRune(r) && r != ',' && r != '\\' && r != ')' && !unicode.IsSpace(r)
+}
+
+// readFrom records from module import a, b as c. A star import binds no one
+// name the scan can list, so it is kept under * and its module, a key no
+// name can take, with no attribute: it writes its module's imports edge, no
+// references edge, and no call resolves through it.
 func readFrom(imports map[string]importRef, module, names string) {
 	names = strings.Trim(strings.TrimSpace(names), "()")
 	for _, part := range strings.Split(names, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
+			continue
+		}
+		if part == "*" {
+			imports["*"+module] = importRef{module: module}
 			continue
 		}
 		attr, alias, has := strings.Cut(part, " as ")
@@ -150,16 +272,16 @@ func readFrom(imports map[string]importRef, module, names string) {
 
 // readDef reads a def starting at lines[i] with its parameter list opening
 // at column open, possibly over several lines, and returns the def and the
-// index of the line the list closes on. A missing colon after the close is
-// ErrParse.
+// index of the line the list closes on. A list that does not close, or a
+// missing colon after the close, is a parse refusal at the def's line.
 func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	text, end, closeAt, ok := group(lines, i, open)
 	if !ok {
-		return def{}, 0, ErrParse
+		return def{}, 0, parseError{line: i + 1, why: "a def's parameters do not close"}
 	}
 	rest := lines[end][closeAt+1:]
 	if !strings.Contains(rest, ":") {
-		return def{}, 0, ErrParse
+		return def{}, 0, parseError{line: i + 1, why: "a def with no colon after its parameters"}
 	}
 	params := splitTop(text)
 	d := def{name: name, line: i + 1, max: "0"}
@@ -189,17 +311,18 @@ func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	return d, end, nil
 }
 
-// readCalls records every call on lines[i] (and the lines a call's
-// arguments span) inside caller, and returns the last line index read.
-func readCalls(f *fileScan, lines []string, i int, caller string) int {
+// readCalls records every call on lines[i] from column from on (and the
+// lines a call's arguments span) inside caller, and returns the last line
+// index read.
+func readCalls(f *fileScan, lines []string, i, from int, caller string) int {
 	line := lines[i]
 	end := i
-	for _, m := range pats().call.FindAllStringSubmatchIndex(line, -1) {
-		name := line[m[2]:m[3]]
+	for _, m := range pats().call.FindAllStringSubmatchIndex(line[from:], -1) {
+		name := line[from+m[2] : from+m[3]]
 		if reserved(name) {
 			continue
 		}
-		text, e, _, ok := group(lines, i, m[1]-1)
+		text, e, _, ok := group(lines, i, from+m[1]-1)
 		if !ok {
 			continue
 		}

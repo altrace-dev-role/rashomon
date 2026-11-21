@@ -44,6 +44,21 @@ func (o *ptyOutput) String() string {
 	return lineEnd.ReplaceAllLiteralString(o.buf.String(), "\n")
 }
 
+const (
+	// ptyBound is how long wait gives a child to exit before it kills it.
+	ptyBound = 30 * time.Second
+	// ptyReapBound is how long the cleanup gives a killed child to be reaped.
+	ptyReapBound = 30 * time.Second
+	// ptyWaitDelay is the second guard of the one Wait: once the child has
+	// exited, Wait stops waiting for the copies of its stdout and stderr after
+	// this long and closes the pipes, so a descendant that kept a pipe open
+	// cannot hold the reap. It stays under ptyBound and ptyReapBound, so the
+	// guard resolves before either gives up. It is only a guard: the one Wait
+	// is the repair, because after the delay os/exec receives from the same
+	// channel again, which a second Wait would never get a value from.
+	ptyWaitDelay = 5 * time.Second
+)
+
 // ptySession is one child process whose controlling terminal is a fresh
 // pseudo-terminal.
 type ptySession struct {
@@ -54,13 +69,39 @@ type ptySession struct {
 	read   chan struct{}
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
+	// exited is closed by reap, the one goroutine that calls cmd.Wait, after
+	// Wait has returned; cmd.ProcessState is read only once it is closed. A
+	// second Wait is never safe: os/exec sends the result of the copies of
+	// stdout and stderr once, on a channel that holds one value, and every
+	// Wait receives from it, so with two Waits one blocks for good, and both
+	// write ProcessState. The cleanup used to call a second Wait.
+	exited chan struct{}
+	// bound is how long wait gives the child to exit. The pin of the kill path
+	// shortens it; every other caller keeps ptyBound.
+	bound time.Duration
 }
 
-// startOnPTY starts cmd in a new session whose controlling terminal is a new
+// startOnPTY starts cmd on a pseudo-terminal, as openOnPTY does, and when the
+// test ends kills the child if it is still running and waits for it to be
+// reaped.
+func startOnPTY(t *testing.T, cmd *exec.Cmd) *ptySession {
+	t.Helper()
+	s := openOnPTY(t, cmd)
+	t.Cleanup(func() {
+		if !s.kill() {
+			t.Errorf("the killed child was not reaped within %v", ptyReapBound)
+		}
+		s.master.Close()
+	})
+	return s
+}
+
+// openOnPTY starts cmd in a new session whose controlling terminal is a new
 // pseudo-terminal. The terminal is not the child's stdin, stdout or stderr:
 // stdin is left as cmd sets it, and stdout and stderr are captured apart, so
-// an answer that arrives is one read from /dev/tty.
-func startOnPTY(t *testing.T, cmd *exec.Cmd) *ptySession {
+// an answer that arrives is one read from /dev/tty. It registers no cleanup:
+// the caller owns the child and the master.
+func openOnPTY(t *testing.T, cmd *exec.Cmd) *ptySession {
 	t.Helper()
 	// Opened by syscall and wrapped, not by os.OpenFile: os.OpenFile puts
 	// the descriptor under the runtime's poller, and on darwin kqueue never
@@ -82,8 +123,9 @@ func startOnPTY(t *testing.T, cmd *exec.Cmd) *ptySession {
 		t.Fatalf("opening %s: %v", name, err)
 	}
 	s := &ptySession{t: t, cmd: cmd, master: master, out: &ptyOutput{}, read: make(chan struct{}),
-		stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+		stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, exited: make(chan struct{}), bound: ptyBound}
 	cmd.Stdout, cmd.Stderr = s.stdout, s.stderr
+	cmd.WaitDelay = ptyWaitDelay
 	// The slave is the child's fd 3, made its controlling terminal in a
 	// session of its own; the parent's copy is closed once it has started.
 	cmd.ExtraFiles = []*os.File{slave}
@@ -109,14 +151,48 @@ func startOnPTY(t *testing.T, cmd *exec.Cmd) *ptySession {
 			}
 		}
 	}()
-	t.Cleanup(func() {
-		if s.cmd.ProcessState == nil {
-			s.cmd.Process.Kill() //nolint:errcheck // the test has already failed
-			s.cmd.Wait()         //nolint:errcheck // reaping only
-		}
-		master.Close()
-	})
+	go s.reap()
 	return s
+}
+
+// reap is the only caller of cmd.Wait for the session: it starts after Start
+// and closes exited once Wait has returned. wait, the cleanup and the pin all
+// learn that the child has exited from that channel, never from a Wait of
+// their own.
+func (s *ptySession) reap() {
+	defer close(s.exited)
+	s.cmd.Wait() //nolint:errcheck // the exit status is read from ProcessState
+}
+
+// exit waits for the child to exit and reports whether it did within the
+// bound. A child that has not is killed first, so the caller can fail the
+// test without leaving it running.
+func (s *ptySession) exit() bool {
+	select {
+	case <-s.exited:
+		return true
+	case <-time.After(s.bound):
+		s.cmd.Process.Kill() //nolint:errcheck // the test fails after this
+		return false
+	}
+}
+
+// kill is the cleanup of a session: it kills the child if it is still running
+// and reports whether it was reaped within ptyReapBound. It does not call
+// cmd.Wait; reap does.
+func (s *ptySession) kill() bool {
+	select {
+	case <-s.exited:
+		return true
+	default:
+	}
+	s.cmd.Process.Kill() //nolint:errcheck // the test has already failed
+	select {
+	case <-s.exited:
+		return true
+	case <-time.After(ptyReapBound):
+		return false
+	}
 }
 
 // waitFor waits until the terminal has shown want, and fails the test with
@@ -164,12 +240,7 @@ func (s *ptySession) eof() {
 // wait waits for the child to exit and returns its exit code.
 func (s *ptySession) wait() result {
 	s.t.Helper()
-	done := make(chan error, 1)
-	go func() { done <- s.cmd.Wait() }()
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		s.cmd.Process.Kill() //nolint:errcheck // the test fails below
+	if !s.exit() {
 		s.t.Fatalf("the child did not exit; the terminal showed:\n%s", s.out.String())
 	}
 	return result{exitCode: s.cmd.ProcessState.ExitCode(), stdout: s.stdout.String(), stderr: s.stderr.String()}

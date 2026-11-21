@@ -206,8 +206,12 @@ jobs:
           GOOS=darwin "$staticcheck" -checks U1000 -tags rashomonfault ./...
           GOOS=darwin "$staticcheck" -checks U1000 -tags perf ./...
 
+      # -timeout 15m, written out: go test's 10m default ends any one
+      # package's binary at 600 s, and this whole step has taken 538 to
+      # 712 s. An alarm at 15m still prints before this job's 30-minute
+      # bound, where a 20m one could be cut by it.
       - name: Test with race detector
-        run: go test ./... -count=1 -race
+        run: go test ./... -count=1 -race -timeout 15m
 
       # H-17's runtime evidence must actually run here, not merely not-fail.
       # The race step above already executed these tests; this step exists to
@@ -493,11 +497,12 @@ jobs:
   # this is the only job that runs it (test-11). The tests are the store's
   # that build on Windows and do not skip there: the one about reading past
   # a held lock (TestReadRunConsistent_RespectsAHeldLock) is left out,
-  # because Windows' mandatory locks refuse that read and it skips.
+  # because Windows' mandatory locks refuse that read and it skips. The job
+  # also runs rootio's CreateFile tests (SETUP1), a write path of its own.
   lock-windows:
     name: Lock contract (windows)
     runs-on: windows-latest
-    # Thirteen store tests; the bound is DEL-17's.
+    # Fifteen store tests and nine rootio tests; the bound is DEL-17's.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -537,6 +542,31 @@ jobs:
           for t in $TESTS; do
             grep -q -- "--- PASS: $t " lock-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
           done
+
+      # rootio's CreateFile tests (SETUP1): the create by hard link that graph
+      # index writes its inferred configuration through ships on Windows, and
+      # no other job runs it there. The same check, every name PASS, and no
+      # SKIP line at all: CF7's link cases are subtests, and a subtest that
+      # skips leaves its parent's PASS line standing.
+      - name: CreateFile tests
+        shell: bash
+        env:
+          TESTS: >-
+            TestSETUP1_CF1_CreateFileWritesWhereNothingIs
+            TestSETUP1_CF2_CreateFileLeavesAFileThereAndNoTemporary
+            TestSETUP1_CF3_CreateFileLeavesADirectoryThere
+            TestSETUP1_CF4_ALinkThatFailsWritesNothing
+            TestSETUP1_CF5_CreateFileRefusesAWriteOverMax
+            TestSETUP1_CF6_AFailedWriteLeavesNothing
+            TestSETUP1_CF7_CreateFileLeavesALinkAsItIs
+            TestSETUP1_CF8_ARemovalThatFailsAfterTheLinkNamesTheLeftover
+            TestSETUP1_CF9_AParentThatIsALinkRefusesTheCreate
+        run: |
+          go test ./internal/rootio -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee create-windows.txt
+          for t in $TESTS; do
+            grep -q -- "--- PASS: $t " create-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
+          done
+          if grep -- "--- SKIP" create-windows.txt; then echo "::error::a CreateFile test skipped on Windows"; exit 1; fi
 
   # pgraph/ is a module of its own (pgraph/go.mod), so the `./...` of the test
   # job and of every other job stops at its directory: without this job its
@@ -728,6 +758,29 @@ jobs:
       - name: REC-34 group commit (darwin)
         run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
 
+      # MkdirExact and MeetClear refuse, at the levels purge judges by exact
+      # name, a folder made under another case of that name (CLEAR-EXACT1).
+      # Only a disk that folds case can hold one, and the test job's ext4 does
+      # not: there these tests take their other branch. This runner's APFS
+      # folds, so the four run here by name. Each must run and pass, as in the
+      # Windows lock step, and both case tests must log that the disk folds:
+      # on a runner whose disk does not fold the step fails, not passes having
+      # shown nothing about the case.
+      - name: Exact store folders on a disk that folds case (darwin)
+        shell: bash
+        env:
+          TESTS: >-
+            TestMkdirExact_RefusesALinkOrAFileAtAnyLevel
+            TestMkdirExact_RefusesAnotherCaseAtAnExactLevel
+            TestMeetClear_RefusesALinkOrAnotherCase
+            TestMkdirExact_MakesTheFolderOnce
+        run: |
+          go test ./internal/store -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee exact-folders.txt
+          for t in $TESTS; do
+            grep -q -- "--- PASS: $t " exact-folders.txt || { echo "::error::$t did not run and pass on macOS"; exit 1; }
+          done
+          [ "$(grep -c 'the test disk folds case: true' exact-folders.txt)" = 2 ] || { echo "::error::the disk under this runner's temp folder does not fold case; the case tests checked nothing"; exit 1; }
+
       # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
       # budgets are derived from its holds (internal/store/lockbudget.go,
       # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not
@@ -763,9 +816,12 @@ jobs:
   rec34-darwin:
     name: REC-34 group commit mutants (darwin)
     runs-on: macos-latest
-    # 15 to 18 minutes and more at 665 test files, with room for the tree's
-    # growth on a 3-core runner; the bound is DEL-17's.
-    timeout-minutes: 40
+    # On 16 recent runs the sweep step took 935 to 2017 s on the 14 green
+    # ones, and the job up to 2058 s. A mutant whose run hangs adds up to its
+    # 600 s -timeout before its TIMEOUT line prints, and 2058 + 600 s is past
+    # 40 minutes; 60 leaves room for the tree's growth on a 3-core runner.
+    # The bound is DEL-17's.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 

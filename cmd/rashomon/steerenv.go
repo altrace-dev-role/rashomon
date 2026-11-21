@@ -24,6 +24,9 @@ import (
 //     the paired run's arm (card MEASURE1). It is honoured on a lab store
 //     only (operatorArm), so it can never take the holdout's place on a
 //     normal install.
+//   - RASHOMON_STEER_LEVEL (hook.EnvSteerLevel) names one held pattern and
+//     kind whose notes keep their own level (W-M3.4). It is read under a
+//     forced arm only (operatorLevel), so it counts where the arm does.
 //   - Consent is the steer_disclosure marker, never consent.json: the marker
 //     is the hook path's view of it (D49, D84), which the SessionStart probe
 //     keeps in step.
@@ -31,6 +34,7 @@ import (
 //   - Blast is the blast-radius read's port (blastPort, card ARCH-INLINE1).
 func steerEnv(id harness.Identity, now time.Time, root string) hook.SteerEnv {
 	projectDir, managedDir := specDirs()
+	arm := operatorArm(root)
 	return hook.SteerEnv{
 		HarnessID:    string(id.ID),
 		Surface:      string(id.Surface),
@@ -39,7 +43,8 @@ func steerEnv(id harness.Identity, now time.Time, root string) hook.SteerEnv {
 		CI:           os.Getenv("CI") != "",
 		HoldoutOff:   hook.HoldoutOff(os.Getenv(hook.EnvHoldout)),
 		HoldoutOn:    hook.HoldoutOn(os.Getenv(hook.EnvHoldout)),
-		Arm:          operatorArm(root),
+		Arm:          arm,
+		Level:        hook.SteerLevel(operatorLevel(arm)),
 		Consent:      store.SteerDisclosureMarker,
 		Now:          now,
 		ProjectDir:   projectDir,
@@ -64,6 +69,21 @@ func operatorArm(root string) steer.Arm {
 		return arm
 	}
 	return ""
+}
+
+// operatorLevel is RASHOMON_STEER_LEVEL's value as arm lets it count: read
+// under a forced arm only, which operatorArm gives on a lab store alone, so
+// a repository's settings cannot let a held note through on a normal
+// install, and an install with no forced arm makes no read. Both arms read
+// it: the off arm makes the steer arm's decision and withholds only its
+// effect, and a pair let through under one arm and held under the other
+// would leave the paired run no control for that pair. Elsewhere it reads
+// as unset, with no print and no error.
+func operatorLevel(arm steer.Arm) string {
+	if arm == "" {
+		return ""
+	}
+	return os.Getenv(hook.EnvSteerLevel)
 }
 
 // armOff reports operatorArm as off for the store at root: every hook print

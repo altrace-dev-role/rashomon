@@ -4,11 +4,16 @@
 # summary switch; the Flush barrier, then Claim (D93), then one systemMessage.
 # The kill row is the named test's. "The done flag on a failure report" is the
 # loose-claim mutant: a failure word loosens the claim in verify
-# (claimDisclosures), and done.go's one Strict test serves both rows of TestPG9.
+# (claimDisclosures), and ClaimUnbacked's one Strict test serves both rows of
+# TestPG9. Since card 8b, unbacked in done.go calls recap.ClaimUnbacked, so the
+# done flag's two rows (R7) anchor on its one line in flagged.go. RH-8 holds the
+# same two breaks, killed by TestRH8j_'s truth table; these two stay with
+# TestPG9_, the done flag's own test, so a change that takes unbacked off
+# ClaimUnbacked leaves them alive in the sweep.
 # "stopView before the pending gate" (g26) is equivalent here, since the
 # catch-up's view writes nothing (deviation (a)); its place is taken by the
 # catch-up writing.
-DN = "internal/recap/done.go"
+FL = "internal/recap/flagged.go"
 VL = "internal/recap/value.go"
 CT = "internal/verify/claimtext.go"
 VS = "internal/verify/stop.go"
@@ -20,11 +25,13 @@ IN = "cmd/rashomon/intake.go"
 PU = "internal/purge/purge.go"
 DI = "internal/disclose/disclose.go"
 
-# The done flag (R7).
-m("ST-2.4 the done flag on a loose claim", DN,
-  '\t\tif c.Strict && verify.Rank(', '\t\tif verify.Rank(', "TestPG9_")
-m("ST-2.4 the done flag on a green verdict", DN,
-  ' >= 0 && c.Verdict != verify.Verdict(verify.Green) {\n', ' >= 0 {\n', "TestPG9_")
+# The done flag (R7), through unbacked: ClaimUnbacked's line, RH-8's breaks.
+m("ST-2.4 the done flag on a loose claim", FL,
+  '\treturn c.Strict && verify.Rank(verify.State(c.Verdict)) >= 0 && c.Verdict != verify.Verdict(verify.Green)\n',
+  '\treturn verify.Rank(verify.State(c.Verdict)) >= 0 && c.Verdict != verify.Verdict(verify.Green)\n', "TestPG9_")
+m("ST-2.4 the done flag on a green verdict", FL,
+  '\treturn c.Strict && verify.Rank(verify.State(c.Verdict)) >= 0 && c.Verdict != verify.Verdict(verify.Green)\n',
+  '\treturn c.Strict && verify.Rank(verify.State(c.Verdict)) >= 0\n', "TestPG9_")
 
 # The value line and the clause (R6, R8).
 m("ST-2.4 and <k> more at four", VL, 'const maxGateNames = 3\n', 'const maxGateNames = 4\n', "TestVER65_ValueLineRowsRender")
@@ -94,8 +101,8 @@ m("ST-2.4 Claim before the Flush barrier", RT,
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n"
   "\t// Claim's own error is intentionally ignored: recap.json is\n\t// bookkeeping, not evidence, and a failure to persist it must cost at\n"
   "\t// most a future duplicate or a stale health timestamp, never a\n\t// missing line and never a hook error (see Claim's doc).\n"
-  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))\n",
-  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops))\n"
+  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops, stop.backed()), d.Declarations.Recorded > 0)\n",
+  "\tspeak, _ := recap.ClaimStop(root, d.SessionID, d.PromptID, now, wantSpeak, clause, stop.owed, stopMarks(shownDone, digest, !pending && stop.stops, stop.backed()), d.Declarations.Recorded > 0)\n"
   "\tif err := fault.Fail(fault.PointRecapFlush); err != nil {\n\t\treturn err\n\t}\n\tif err := st.Flush(); err != nil {\n\t\treturn err\n\t}\n",
   "TestSTOP_FlushFailurePrintsNothing")
 m("ST-2.4 a second systemMessage key", RT,

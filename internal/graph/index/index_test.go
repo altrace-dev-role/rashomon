@@ -2,6 +2,7 @@ package index
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -81,8 +82,8 @@ func TestBuild_TwoLanguages(t *testing.T) {
 	}
 	rid, _ := baseline.RepoID(root)
 	h := r.Header
-	if h.Schema != graph.Schema || h.Repo != rid || h.Rev.Commit != "c1" || !reflect.DeepEqual(h.Producers, map[string]string{"go": "pgraph/v0", "py": "pylite/1"}) {
-		t.Errorf("header = %+v; want schema %d, repo %q, commit c1, producers go pgraph/v0 and py pylite/1", h, graph.Schema, rid)
+	if h.Schema != graph.Schema || h.Repo != rid || h.Rev.Commit != "c1" || !reflect.DeepEqual(h.Producers, map[string]string{"go": "pgraph/v0", "py": "pylite/2"}) {
+		t.Errorf("header = %+v; want schema %d, repo %q, commit c1, producers go pgraph/v0 and py pylite/2", h, graph.Schema, rid)
 	}
 	if n, ok := r.Store.Node(graph.RepoNodeID(rid), rev); !ok || n.Kind != "repo" || n.Attrs["rid"] != rid || n.Attrs["ephemeral"] != "true" {
 		t.Errorf("repo node = %+v, %v; want kind repo with the ephemeral id", n, ok)
@@ -176,6 +177,37 @@ func TestIdentity_TwoRepos(t *testing.T) {
 	}
 }
 
+// TestIdentity_OneRepoAcrossOriginForms (W-M4.1, HD11, PLAN 1809; ruling
+// 2026-11-12 09:38 C5): one repository cloned over ssh, over https, and with
+// or without a trailing .git, read from each clone's .git/config, has one
+// repository id and one repo: node. TestNormalizeOrigin_Forms checks each
+// form alone; this checks that the forms agree end to end.
+func TestIdentity_OneRepoAcrossOriginForms(t *testing.T) {
+	const want = "github.com/Org/Repo"
+	for _, url := range []string{
+		"git@github.com:Org/Repo.git",
+		"ssh://git@github.com/Org/Repo.git",
+		"https://github.com/Org/Repo",
+		"https://github.com/Org/Repo.git",
+	} {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := "[remote \"origin\"]\n\turl = " + url + "\n"
+		if err := os.WriteFile(filepath.Join(root, ".git", "config"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rid, ephemeral := baseline.RepoID(root)
+		if rid != want || ephemeral {
+			t.Errorf("origin %s: RepoID = %q, ephemeral %v; want %q, false", url, rid, ephemeral, want)
+		}
+		if got := graph.RepoNodeID(rid); got != graph.ID("repo:"+want) {
+			t.Errorf("origin %s: RepoNodeID = %s", url, got)
+		}
+	}
+}
+
 // TestBuild_ReadsKnowledgeDir (W-M1.6, AD14): the rows under
 // .rashomon/knowledge/ are in the store as nodes at their tier, with an
 // applies_to edge for every global id under this repository's rid and none
@@ -237,6 +269,112 @@ func TestBuild_SkipsDotAndVendorDirs(t *testing.T) {
 			if strings.Contains(string(n.ID), bad) {
 				t.Errorf("node %s is under a skipped directory", n.ID)
 			}
+		}
+	}
+}
+
+// TestUnitOf_FilesAPathAsBuildDoes (W-M3.3): UnitOf files a path by the
+// rule Build claims files by, read on paths alone: a Go file under a Go unit
+// is its package directory's unit, a file under no unit of its language, of
+// no declared language or under a skipped directory is none. Over the
+// fixture Build indexes, every file it holds is filed in the unit whose
+// Contains edge holds it, and no file it left out is filed at all. One
+// exception is outside this fixture, which holds no environment: a
+// directory a language's rule leaves out by a stat (lang.Leaver), which
+// UnitOf does not see; leave_test.go pins it as a known limit
+// (TestUnitOf_KnownLimit_APathUnderANamedEnvironmentStillMapsToItsUnit).
+func TestUnitOf_FilesAPathAsBuildDoes(t *testing.T) {
+	root := shapes(t)
+	for _, p := range []string{"shape/.gen/g.go", "py/node_modules/y.py", "py/__pycache__/z.py"} {
+		put(t, filepath.Join(root, filepath.FromSlash(p)), "x\n")
+	}
+	c := Config{Units: []Unit{
+		{Path: "shape", Lang: gopg.Lang},
+		{Path: "py", ModRoot: "py", Modules: []string{"app"}, Lang: pylite.Lang},
+	}}
+	unitOf, err := UnitOf(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rel, want := range map[string]graph.ID{
+		"shape/new.go": "unit:go:shape", "shape/deep/new.go": "unit:go:shape/deep",
+		"app/new.go": "", "shape/.gen/g.go": "", "shape/new.txt": "",
+	} {
+		if got, ok := unitOf(root, rel); got != want || ok != (want != "") {
+			t.Errorf("UnitOf(%s) = %q, %v; want %q", rel, got, ok, want)
+		}
+	}
+	r, err := Build(root, "c1", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, held := graph.RevCommit("c1"), 0
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		got, ok := unitOf(root, rel)
+		_, in := r.Store.Node(graph.FileID(rel), rev)
+		if in {
+			held++
+		}
+		if want := containing(r.Store, rev, graph.FileID(rel)); ok != in || in && got != want {
+			t.Errorf("%s: UnitOf %q, %v; Build holds it %v, in %q", rel, got, ok, in, want)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held < 2 {
+		t.Errorf("witness: Build holds %d files; want the Go file and the Python file", held)
+	}
+}
+
+// containing is the unit that holds id in s at rev over Contains edges, ""
+// for none.
+func containing(s *graph.Store, rev graph.Rev, id graph.ID) graph.ID {
+	for step := 0; step < 4 && id != ""; step++ {
+		if strings.HasPrefix(string(id), "unit:") {
+			return id
+		}
+		in := s.In(id, rev, graph.Contains)
+		if len(in) == 0 {
+			return ""
+		}
+		id = in[0].Src
+	}
+	return ""
+}
+
+// TestReadConfig_RefusesAConfigOverItsCap: ReadConfig reads a configuration
+// of exactly MaxConfigBytes and refuses one a byte longer, though its bytes
+// parse, with an error naming the file and the cap: the text `rashomon graph
+// index` prints.
+func TestReadConfig_RefusesAConfigOverItsCap(t *testing.T) {
+	for _, c := range []struct {
+		size int
+		over bool
+	}{{MaxConfigBytes, false}, {MaxConfigBytes + 1, true}} {
+		root := t.TempDir()
+		at := filepath.Join(root, filepath.FromSlash(ConfigFile))
+		if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(at, []byte("{}"+strings.Repeat(" ", c.size-2)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, want := "", ""
+		if _, err := ReadConfig(root); err != nil {
+			got = err.Error()
+		}
+		if c.over {
+			want = at + ": over 65536 bytes"
+		}
+		if got != want {
+			t.Errorf("ReadConfig of %d bytes: error %q, want %q", c.size, got, want)
 		}
 	}
 }

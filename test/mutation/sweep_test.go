@@ -9,6 +9,7 @@
 package mutation
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -1671,9 +1672,9 @@ func TestSWEEP1_TrimsOwnCacheAfterEachMutant(t *testing.T) {
 		{"own cache", own, 0, []string{
 			own + "|env GOCACHE",
 			"|env GOCACHE",
-			own + "|test ./... -count=1",
-			own + "|test ./... -run TestT1_ -count=1 -v",
-			own + "|test ./... -run TestT2_ -count=1 -v",
+			own + "|test ./... -count=1 -timeout 20m",
+			own + "|test ./... -run TestT1_ -timeout 10m -count=1 -v",
+			own + "|test ./... -run TestT2_ -timeout 10m -count=1 -v",
 		}},
 		{"unset", "", 2, []string{"|env GOCACHE", "|env GOCACHE"}},
 		{"shared via link", filepath.Join(dir, "link"), 2, []string{filepath.Join(dir, "link") + "|env GOCACHE", "|env GOCACHE"}},
@@ -1884,8 +1885,11 @@ func TestSweepJobRunsTheREC34RowsBesidePerfGates(t *testing.T) {
 	if m == nil {
 		t.Fatal("the rec34-darwin job has no timeout-minutes")
 	}
-	if n, _ := strconv.Atoi(m[1]); n < 40 {
-		t.Errorf("the rec34-darwin job's bound is %d minutes; its rows took 15 to 18 at 665 test files, want 40 or more", n)
+	// The job has taken up to 2058 s, and a mutant whose run hangs adds up
+	// to its 600 s -timeout before its TIMEOUT line prints: 2658 s, so 45
+	// minutes at the least (SWEEP-TIMEOUT1).
+	if n, _ := strconv.Atoi(m[1]); n < 45 {
+		t.Errorf("the rec34-darwin job's bound is %d minutes; the job has taken 2058 s and one hung mutant adds 600 s before it prints, want 45 or more", n)
 	}
 }
 
@@ -2030,5 +2034,520 @@ func TestPU1e_ADeclaredStemIsAllowed(t *testing.T) {
 	out, code := sweep(t, dir, "--check", "--files", first, "--files", second)
 	if code != 0 {
 		t.Errorf("--check exited %d for TRU23, a declared stem:\n%s", code, out)
+	}
+}
+
+// fixtureModule writes go.mod and files, each path relative to a new
+// TempDir, and returns that directory: a throwaway module the real sweep
+// can run against, never this tree.
+func fixtureModule(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	files["go.mod"] = "module fixture\n\ngo 1.21\n"
+	for rel, content := range files {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, path, content)
+	}
+	return root
+}
+
+// SWEEP-TIMEOUT1. A mutant run that go test's -timeout ended prints
+// FAIL<TAB>pkg<TAB>time, which the sweep read as a red test: a mutant that
+// only made a test hang was scored caught. The fixture's TestMain shortens
+// its own -test.timeout to 2s, so the sweep's go test command stays as it
+// is. Mutant hang makes its one test sleep; mutant failThenHang makes one
+// test fail and the next one sleep, so its run holds a "--- FAIL" before the
+// alarm. Neither is judged, each names the test the alarm found running and
+// how many tests failed before it, and only --strict fails on them.
+func TestSWT1_ATimedOutMutantIsNotJudged(t *testing.T) {
+	root := fixtureModule(t, map[string]string{
+		"target.go": "package fixture\n\nfunc Hang() bool { return false }\n\nfunc FailThenHang() bool { return false }\n",
+		"fixture_test.go": `package fixture
+
+import (
+	"flag"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	flag.Set("test.timeout", "2s")
+	os.Exit(m.Run())
+}
+
+func TestFixtureHang_(t *testing.T) {
+	if Hang() {
+		time.Sleep(time.Minute)
+	}
+}
+
+func TestFixtureB_1(t *testing.T) {
+	if FailThenHang() {
+		t.Error("caught before the hang")
+	}
+}
+
+func TestFixtureB_2(t *testing.T) {
+	if FailThenHang() {
+		time.Sleep(time.Minute)
+	}
+}
+`,
+		"mutants/a.py": mutant("hang", "target.go",
+			"func Hang() bool { return false }", "func Hang() bool { return true }", "TestFixtureHang_") +
+			mutant("failThenHang", "target.go",
+				"func FailThenHang() bool { return false }", "func FailThenHang() bool { return true }", "TestFixtureB_"),
+	})
+
+	const bound = 90 * time.Second
+	out, code := sweepTimeout(t, root, bound)
+	if code != 0 {
+		t.Errorf("without --strict, a run whose mutants only timed out exited %d:\n%s", code, out)
+	}
+	if strings.Contains(out, "went red") {
+		t.Errorf("a mutant run its -timeout ended was scored as a red test:\n%s", out)
+	}
+	for _, want := range []string{
+		"TIMEOUT        <- hang   (go test's -timeout ended the run after 0 \"--- FAIL\" lines", "\t\tTestFixtureHang_ (",
+		"TIMEOUT        <- failThenHang   (go test's -timeout ended the run after 1 \"--- FAIL\" lines", "\t\tTestFixtureB_2 (",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the sweep's output does not hold %q:\n%s", want, out)
+		}
+	}
+	out, code = sweepTimeout(t, root, bound, "--strict")
+	if code == 0 {
+		t.Errorf("--strict exited 0 with two timed-out mutants:\n%s", out)
+	}
+	if !strings.Contains(out, "--strict is set: treating the timed-out ones as failures.") {
+		t.Errorf("--strict does not say it fails on the timed-out mutants:\n%s", out)
+	}
+}
+
+// stackBlock reads what the sweep printed for one timed-out mutant: the three
+// numbers on its STACK line, and the lines under it, each without the margin
+// the sweep puts before it. It stops the test when the output has no STACK
+// line for name.
+func stackBlock(t *testing.T, out, name string) (limit, shown, cut int, lines []string) {
+	t.Helper()
+	head := regexp.MustCompile(`^  STACK          <- ` + regexp.QuoteMeta(name) +
+		`   \(the alarm line and the lines after it, (\d+) at most: (\d+) shown, (\d+) cut\)$`)
+	all := strings.Split(out, "\n")
+	for i, ln := range all {
+		m := head.FindStringSubmatch(ln)
+		if m == nil {
+			continue
+		}
+		limit, _ = strconv.Atoi(m[1])
+		shown, _ = strconv.Atoi(m[2])
+		cut, _ = strconv.Atoi(m[3])
+		for _, under := range all[i+1:] {
+			if !strings.HasPrefix(under, "      |") {
+				break
+			}
+			lines = append(lines, strings.TrimPrefix(strings.TrimPrefix(under, "      |"), " "))
+		}
+		return limit, shown, cut, lines
+	}
+	t.Fatalf("the sweep's output has no STACK line for %q:\n%s", name, out)
+	return 0, 0, 0, nil
+}
+
+// SWEEP-TIMEOUT1. A TIMEOUT row named the tests the alarm found running and
+// nothing about where they waited, so a hang in the end sweep could not be
+// read from its log. It now also prints go test's output from the alarm line
+// on, up to the package's FAIL line, each line behind a margin, and says how
+// many lines that is. A real go test hangs one test inside a function of its
+// own under its 2s alarm, so the dump read here is the toolchain's, not a
+// copy of one. The row stays unjudged.
+func TestSWT1_ATimedOutMutantPrintsItsStackFromTheAlarmLine(t *testing.T) {
+	root := fixtureModule(t, map[string]string{
+		"target.go": "package fixture\n\nfunc Park() bool { return false }\n",
+		"fixture_test.go": `package fixture
+
+import (
+	"flag"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	flag.Set("test.timeout", "2s")
+	os.Exit(m.Run())
+}
+
+//go:noinline
+func parkedHere() {
+	time.Sleep(time.Minute)
+}
+
+func TestFixturePark_(t *testing.T) {
+	if Park() {
+		parkedHere()
+	}
+}
+`,
+		"mutants/a.py": mutant("park", "target.go",
+			"func Park() bool { return false }", "func Park() bool { return true }", "TestFixturePark_"),
+	})
+
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code != 0 || strings.Contains(out, "went red") {
+		t.Errorf("a run its -timeout ended exited %d, or was scored red:\n%s", code, out)
+	}
+	limit, shown, cut, lines := stackBlock(t, out, "park")
+	if limit != 300 {
+		t.Errorf("the STACK line states a limit of %d lines, want 300", limit)
+	}
+	if shown != len(lines) {
+		t.Errorf("the STACK line says %d lines are shown, %d are printed under it", shown, len(lines))
+	}
+	if len(lines) == 0 || !strings.HasPrefix(lines[0], "panic: test timed out after 2s") {
+		t.Fatalf("the stack text does not start at the alarm line; it starts with %q", lines)
+	}
+	found := false
+	for _, ln := range lines {
+		if strings.Contains(ln, "fixture.parkedHere(") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no printed line shows the function the test waited in, fixture.parkedHere:\n%s", strings.Join(lines, "\n"))
+	}
+	if cut == 0 && !strings.HasPrefix(lines[len(lines)-1], "FAIL\tfixture\t") {
+		t.Errorf("nothing was cut, so the text must end at the package's FAIL line; it ends with %q", lines[len(lines)-1])
+	}
+}
+
+// SWEEP-TIMEOUT1. The stack text is cut at 300 lines, and the STACK line
+// states that limit, the lines shown and the lines cut, so a reader knows
+// whether the package's FAIL line is among them. A fake go prints a dump of
+// a size this test chooses, so none of the expected numbers comes from the
+// sweep: a dump of exactly the limit is shown whole with nothing cut, one
+// line over cuts the FAIL line alone, and a long dump cuts the rest.
+func TestSWT1_TheStackTextIsCutAtTheLimitAndSaysSo(t *testing.T) {
+	const limit = 300
+	for _, c := range []struct {
+		name  string
+		total int
+	}{
+		{"exactly the limit", limit},
+		{"one over the limit", limit + 1},
+		{"a long dump", 1000},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dump := []string{"panic: test timed out after 10m0s", "\trunning tests:", "\t\tTestT1_x (10m0s)", ""}
+			for i := 0; len(dump) < c.total-2; i++ {
+				dump = append(dump, fmt.Sprintf("goroutine %d [sleep]:", i))
+			}
+			dump = append(dump, "exit status 2", "FAIL\texample/pkg\t600.100s")
+			if len(dump) != c.total {
+				t.Fatalf("the fake dump has %d lines, want %d", len(dump), c.total)
+			}
+
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+			mutants := filepath.Join(dir, "mutants")
+			bin := filepath.Join(dir, "bin")
+			for _, d := range []string{mutants, bin} {
+				if err := os.Mkdir(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+			dumpFile := filepath.Join(dir, "dump.txt")
+			write(t, dumpFile, "=== RUN   TestT1_x\n"+strings.Join(dump, "\n")+"\n")
+			fake := filepath.Join(bin, "go")
+			write(t, fake, "#!/bin/sh\ncase \"$*\" in\n*-run*) cat \"$FAKE_GO_DUMP\"; exit 1;;\nesac\necho ok\n")
+			if err := os.Chmod(fake, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GO_DUMP=" + dumpFile}
+
+			out, code := sweepEnv(t, dir, env, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+			if code != 0 || strings.Contains(out, "went red") {
+				t.Errorf("exit %d, want 0, and no \"went red\":\n%s", code, out)
+			}
+			want := dump
+			if len(want) > limit {
+				want = want[:limit]
+			}
+			gotLimit, shown, cut, lines := stackBlock(t, out, "T-1 alpha goes")
+			if gotLimit != limit || shown != len(want) || cut != len(dump)-len(want) {
+				t.Errorf("the STACK line says limit %d, %d shown, %d cut; want %d, %d, %d",
+					gotLimit, shown, cut, limit, len(want), len(dump)-len(want))
+			}
+			if len(lines) != len(want) {
+				t.Fatalf("%d lines are printed under the STACK line, want the dump's first %d", len(lines), len(want))
+			}
+			for i := range want {
+				if lines[i] != want[i] {
+					t.Fatalf("line %d under the STACK line is %q, want %q", i+1, lines[i], want[i])
+				}
+			}
+		})
+	}
+}
+
+// SWEEP-TIMEOUT1. A test may print the very lines a timeout prints; t.Log
+// indents them, so a red test that does is judged red, never TIMEOUT. Run
+// under --strict, so a TIMEOUT here would also exit non-zero.
+func TestSWT1_ATestThatPrintsTheTimeoutLinesIsJudged(t *testing.T) {
+	root := fixtureModule(t, map[string]string{
+		"target.go": "package fixture\n\nfunc Bad() bool { return false }\n",
+		"fixture_test.go": `package fixture
+
+import "testing"
+
+func TestFixtureSays_(t *testing.T) {
+	if Bad() {
+		t.Log("panic: test timed out after 1s")
+		t.Log("*** Test killed: ran too long (1s).")
+		t.Error("caught")
+	}
+}
+`,
+		"mutants/a.py": mutant("says", "target.go", "return false", "return true", "TestFixtureSays_"),
+	})
+	out, code := sweepTimeout(t, root, 90*time.Second, "--strict")
+	if code != 0 || !strings.Contains(out, "went red       <- says") || strings.Contains(out, "TIMEOUT") {
+		t.Errorf("a red test that logs the timeout's lines was not judged red (exit %d):\n%s", code, out)
+	}
+}
+
+// SWEEP-TIMEOUT1. The race step names its -timeout: go test's 10m default
+// ends any one package's binary at 600 s while the whole step has taken up
+// to 712 s, and 15m still prints its alarm before the job's 30 minutes. The
+// release job runs the same command on the same runner under the same
+// 30-minute bound, and a tag runs no other test.
+// cmd/go's backup kill of a 15m -timeout comes at 16m30s, so each job that
+// holds the step is bounded at 17 minutes or more: under that the runner
+// cuts the step first, with no alarm and no kill line in its log.
+func TestSWT1_TheRaceStepCarriesItsOwnTimeout(t *testing.T) {
+	const line = "\n        run: go test ./... -count=1 -race -timeout 15m\n"
+	wf := filepath.Join(moduleRoot(t), ".github", "workflows")
+	testJob := ciJob(t, readFile(t, filepath.Join(wf, "ci.yaml")), "test")
+	if !strings.Contains(testJob, line) {
+		t.Error("the Test job's race step does not run under -timeout 15m")
+	}
+	release := readFile(t, filepath.Join(wf, "release.yaml"))
+	if !strings.Contains(release, line) {
+		t.Error("release.yaml's Test step does not run under -timeout 15m")
+	}
+	bound := regexp.MustCompile(`\n    timeout-minutes: (\d+)\n`)
+	for _, j := range []struct{ name, job string }{
+		{"ci.yaml's test job", testJob},
+		{"release.yaml's release job", ciJob(t, release, "release")},
+	} {
+		n := 0
+		if m := bound.FindStringSubmatch(j.job); m != nil {
+			n, _ = strconv.Atoi(m[1])
+		}
+		if n < 17 {
+			t.Errorf("%s is bounded at %d minutes; cmd/go's backup kill of the 15m -timeout comes at 16m30s, want 17 or more", j.name, n)
+		}
+	}
+}
+
+// SWEEP-TIMEOUT1. The second marker of TIMED_OUT is
+// cmd/go's backup kill: when the test binary's own alarm never starts (a
+// TestMain that hangs before m.Run), go test kills the binary at the
+// -timeout plus a minute, or plus a tenth of it when that is longer
+// (testKillTimeout, cmd/go/internal/test/test.go), prints the kill line and
+// then the package's FAIL line with a time, which test_failed reads as red.
+// On unix the kill sends SIGQUIT first and its line says "with quit", also
+// when the binary outlives the signal; cmd/go prints the plain line only
+// where it has no quit signal to send (plan9, windows), so the plain case
+// pins the prefix both lines share. A real run of
+// that path takes eleven minutes, so a fake go prints what cmd/go prints:
+// 11m0s for a mutant's 10m, 22m0s for the baseline's 20m. A mutant run so
+// ended is TIMEOUT, never a kill; a red baseline so ended names the kill
+// line among its failing lines, not only the package's FAIL line.
+func TestSWT1_TheBackupKillLineIsReadAsATimeout(t *testing.T) {
+	const timeout = "TIMEOUT        <- T-1 alpha goes   (go test's -timeout ended the run after 0 \"--- FAIL\" lines"
+	// The stack text starts at the alarm line, and a killed run has none: the
+	// row says so, so that a missing dump is never read as a dropped one.
+	const noStack = "\n  STACK          <- T-1 alpha goes   (no alarm line in the run, so no stack text is printed)\n"
+	for _, c := range []struct {
+		mode string
+		exit int
+		want []string
+	}{
+		{"quit", 0, []string{timeout, "\n      *** Test killed with quit: ran too long (11m0s).\n", noStack}},
+		{"plain", 0, []string{timeout, "\n      *** Test killed: ran too long (11m0s).\n", noStack}},
+		{"baseline", 1, []string{"BASELINE NOT GREEN", "failing on the unmutated tree:\n",
+			"\n    *** Test killed with quit: ran too long (22m0s).\n"}},
+	} {
+		t.Run(c.mode, func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+			mutants := filepath.Join(dir, "mutants")
+			bin := filepath.Join(dir, "bin")
+			for _, d := range []string{mutants, bin} {
+				if err := os.Mkdir(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+			fake := filepath.Join(bin, "go")
+			write(t, fake, "#!/bin/sh\ncase \"$FAKE_GO_MODE:$*\" in\n"+
+				"quit:*-run*) printf '=== RUN   TestT1_x\\nSIGQUIT: quit\\n\\ngoroutine 1 [running]:\\n*** Test killed with quit: ran too long (11m0s).\\nFAIL\\texample/pkg\\t660.004s\\n'; exit 1;;\n"+
+				"plain:*-run*) printf '=== RUN   TestT1_x\\n*** Test killed: ran too long (11m0s).\\nsignal: killed\\nFAIL\\texample/pkg\\t660.004s\\n'; exit 1;;\n"+
+				"baseline:test*) printf 'ok  \\texample/a\\t0.010s\\nSIGQUIT: quit\\n\\ngoroutine 1 [running]:\\n*** Test killed with quit: ran too long (22m0s).\\nFAIL\\texample/pkg\\t1320.004s\\n'; exit 1;;\n"+
+				"esac\necho ok\n")
+			if err := os.Chmod(fake, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GO_MODE=" + c.mode}
+			out, code := sweepEnv(t, dir, env, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+			if code != c.exit || strings.Contains(out, "went red") {
+				t.Errorf("exit %d, want %d, and no \"went red\":\n%s", code, c.exit, out)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("the sweep's output does not hold %q:\n%s", w, out)
+				}
+			}
+		})
+	}
+}
+
+// SWEEP-TIMEOUT1. A green baseline prints each package's time and the
+// slowest one's share of the -timeout, so the margin under the alarm is on
+// record on every run, not only on the one that crosses it.
+func TestSWT1_AGreenBaselinePrintsEachPackageTime(t *testing.T) {
+	root := fixtureModule(t, map[string]string{
+		"a/a.go":       "package a\n\nfunc A() int { return 1 }\n",
+		"a/a_test.go":  "package a\n\nimport \"testing\"\n\nfunc TestFixtureA_(t *testing.T) {\n\tif A() != 1 {\n\t\tt.Error(\"changed\")\n\t}\n}\n",
+		"b/b_test.go":  "package b\n\nimport \"testing\"\n\nfunc TestFixtureB_(t *testing.T) {}\n",
+		"mutants/a.py": mutant("a changes", "a/a.go", "return 1", "return 2", "TestFixtureA_"),
+	})
+	out, code := sweepTimeout(t, root, 90*time.Second)
+	if code != 0 {
+		t.Fatalf("the fixture's sweep exited %d:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`(?m)^    ok\s+fixture/a\s+[0-9.]+s$`,
+		`(?m)^    ok\s+fixture/b\s+[0-9.]+s$`,
+		`(?m)^baseline: slowest fixture/[ab] [0-9]+\.[0-9] s, [0-9]+% of the 20m -timeout$`,
+	} {
+		if !regexp.MustCompile(want).MatchString(out) {
+			t.Errorf("the green baseline's output has no line matching %s:\n%s", want, out)
+		}
+	}
+}
+
+// SWEEP-TIMEOUT1. The baseline runs under -timeout 20m, since one package of
+// this tree alone has taken over ten minutes, and each mutant run under
+// -timeout 10m, so a hang ends inside the CI job's bound. Both are on the
+// command line, where a -timeout in GOFLAGS cannot move them: GOFLAGS sets
+// 7m here. The judging test reads the alarm it runs under: unmutated it
+// fails unless that is 20m0s, and mutated it fails only when it is 10m0s.
+func TestSWT1_EachRunCarriesItsOwnTimeout(t *testing.T) {
+	root := fixtureModule(t, map[string]string{
+		"target.go": "package fixture\n\nfunc Mutated() bool { return false }\n",
+		"fixture_test.go": `package fixture
+
+import (
+	"flag"
+	"testing"
+)
+
+func TestFixtureAlarm_(t *testing.T) {
+	got := flag.Lookup("test.timeout").Value.String()
+	if Mutated() {
+		if got == "10m0s" {
+			t.Errorf("a mutant run under -timeout %s", got)
+		}
+	} else if got != "20m0s" {
+		t.Errorf("the baseline ran under -timeout %s, want 20m0s", got)
+	}
+}
+`,
+		"mutants/a.py": mutant("mutated", "target.go", "return false", "return true", "TestFixtureAlarm_"),
+	})
+	out, code := sweepRun(t, root, 90*time.Second, []string{"GOFLAGS=-timeout=7m"})
+	if code != 0 || !strings.Contains(out, "baseline: green") || !strings.Contains(out, "went red       <- mutated") {
+		t.Errorf("the baseline did not run under 20m, or the mutant not under 10m (exit %d):\n%s", code, out)
+	}
+}
+
+// SWEEP-TIMEOUT1. Into a pipe Python buffers stdout in blocks, so a CI log
+// showed a whole sweep's lines at once when it ended, and none when the job
+// was cancelled at its bound. Here stdout is a pipe and the baseline's one
+// test sleeps 20s: the sweep's first line must arrive while that go test
+// still runs. PYTHONUNBUFFERED is dropped from the environment, since it
+// would pass this test with the fix or without it.
+func TestSWT1_EachLineReachesAPipeWhenPrinted(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH; the sweep cannot run here")
+	}
+	script, err := filepath.Abs("sweep.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := fixtureModule(t, map[string]string{
+		"target.go":       "package fixture\n\nfunc A() int { return 1 }\n",
+		"fixture_test.go": "package fixture\n\nimport (\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestFixtureSlow_(t *testing.T) { time.Sleep(20 * time.Second) }\n",
+		"mutants/a.py":    mutant("never judged", "target.go", "return 1", "return 2", "TestFixtureSlow_"),
+	})
+	cmd := exec.Command(python, script)
+	cmd.Dir = root
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "PYTHONUNBUFFERED=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	// SIGTERM to the whole group, never SIGKILL, as in sweepRunStderr: the
+	// baseline's go test must not outlive the sweep.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.WaitDelay = 5 * time.Second
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	lines := make(chan string)
+	done := make(chan struct{})
+	defer func() {
+		close(done)
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		cmd.Wait()
+	}()
+	go func() {
+		defer close(lines)
+		sc := bufio.NewScanner(stdout)
+		for sc.Scan() {
+			select {
+			case lines <- sc.Text():
+			case <-done:
+				return
+			}
+		}
+	}()
+	const want = "baseline: the suite must be green before anything is mutated"
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case ln, ok := <-lines:
+			if !ok {
+				t.Fatalf("the sweep's stdout closed before %q arrived", want)
+			}
+			if ln == want {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("%q did not reach the pipe within 10s while the baseline's 20s go test ran: stdout is block-buffered", want)
+		}
 	}
 }

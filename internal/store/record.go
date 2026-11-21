@@ -187,6 +187,16 @@ const (
 	// line that they are on again has.
 	FileNoticeCoverage      = "notice-coverage"
 	FileNoticeCoverageClear = "notice-coverage-clear"
+	// FileNoticeIndexCap is the prompt's once-per-session marker
+	// (TakeNotice): empty, present once the session's line that the
+	// repository index is over its size cap has printed.
+	FileNoticeIndexCap = "notice-index-cap"
+	// FileNoticeOtherKinds is the post's once-per-session marker for the
+	// kinds of file past the kind markers' limit (TakeKindNotice): empty,
+	// present once the line that some other kinds have no reader here has
+	// printed. Its name is outside the kind markers' FileNoticeKindPrefix,
+	// so it is never counted among them.
+	FileNoticeOtherKinds = "notice-other-kinds"
 	// FileResolvedCap is at the store root: the size cap the last hook
 	// invocation resolved, written so status can show the value eviction
 	// actually runs with instead of reading EnvCapBytes in its own,

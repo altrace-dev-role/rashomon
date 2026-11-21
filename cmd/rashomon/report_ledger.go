@@ -17,13 +17,16 @@ import (
 // replayed from the record (replayLastStop), so two derivations of one record
 // print the same bytes. A header of "name: value" lines comes first and names
 // what the replay read in place of what the record does not hold: the point
-// and where Required came from, any gates the checkpoint's cut omitted, the
+// and where Required came from, any gates the checkpoint's cut omitted, any
+// unit rows past verify.MaxTurnUnitRows the Stop left out (W-M3.1), the
 // spec (and the Stop's, where it differs), the task file outside spec_digest,
 // the tree read now and the final message the record does not keep. Then one
 // row to a line: id, scope, kind, source, state, the evidence seqs joined by
 // commas ("-" for none) and the family the id digests (a declared gate's id
-// for its rows; "-" where none of the view's gates or kinds gives it), one
-// space apart; or, with no row, a line naming the point.
+// for its rows; "-" where none of the view's gates or kinds gives it), and
+// for a turn row (W-M3.1) the From of the window the replay read and its
+// unit ("-" for a gate's row of the whole turn), one space apart; or, with
+// no row, a line naming the point.
 
 // reportLedger prints sessionID's ledger to stdout.
 func reportLedger(sessionID string, stdout io.Writer) error {
@@ -60,6 +63,9 @@ func ledgerText(r stopReplay) string {
 	if cp != nil && cp.GatesOmitted > 0 {
 		fmt.Fprintf(&b, "gates: %d cut from the checkpoint read required\n", cp.GatesOmitted)
 	}
+	if v.UnitRowsCut > 0 {
+		fmt.Fprintf(&b, "units: %d cut from the turn's unit rows past the first %d\n", v.UnitRowsCut, verify.MaxTurnUnitRows)
+	}
 	now := specNow(r.Spec)
 	if cp != nil && specText(cp.SpecDigest, cp.SpecTrust) != now {
 		fmt.Fprintf(&b, "spec: %s; the Stop judged against %s; the rows read the spec now\n", now, specText(cp.SpecDigest, cp.SpecTrust))
@@ -73,9 +79,9 @@ func ledgerText(r stopReplay) string {
 	if len(v.Obligations) == 0 {
 		fmt.Fprintf(&b, "no obligation rows at seq %d\n", seq)
 	}
-	families := ledgerFamilies(v)
+	families := ledgerFamilies(v, r.Turn)
 	for _, o := range v.Obligations {
-		b.WriteString(ledgerRow(o, families[o.ID]))
+		b.WriteString(ledgerRow(o, families[o.ID], r.Turn))
 	}
 	return b.String()
 }
@@ -103,11 +109,12 @@ func specNow(sp *spec.Compiled) string {
 // over: a gate's Family, a declared gate's Gate id (every declared gate's
 // Family is "declared", so its rows digest the id instead, DECLARED-GATES1),
 // an expected row's evidence kind, a spec_rule row's rule id, or a
-// platform_impact row's package and hash. A row carries no such text (D-A1), so
-// it is recomputed over the view's gates and kinds, and the string printed is
-// whichever digests to the id. Cost: O(R x (2G + K)) digests, a verb's, never
-// a hook's.
-func ledgerFamilies(v verify.StopView) map[string]string {
+// platform_impact row's package and hash. A turn row's family is its gate's,
+// digested by TurnObligationID over turn, the window the replay read, and the
+// row's Unit (W-M3.1). A row carries no such text (D-A1), so it is recomputed
+// over the view's gates and kinds, and the string printed is whichever
+// digests to the id. Cost: O(R x (2G + K)) digests, a verb's, never a hook's.
+func ledgerFamilies(v verify.StopView, turn verify.Window) map[string]string {
 	out := make(map[string]string, len(v.Obligations))
 	for _, o := range v.Obligations {
 		if o.Kind == verify.ExpectedEvidence {
@@ -137,10 +144,16 @@ func ledgerFamilies(v verify.StopView) map[string]string {
 			}
 			continue
 		}
+		idOf := func(fam string) string { return verify.ObligationID(o.Scope, o.Kind, fam) }
+		if o.Scope == verify.ScopeTurn {
+			// A turn row digests its window's From, its gate's family and
+			// its unit (verify.TurnObligationID, W-M3.1).
+			idOf = func(fam string) string { return verify.TurnObligationID(o.Kind, fam, turn, o.Unit) }
+		}
 	gates:
 		for _, g := range v.Snap.Gates {
 			for _, fam := range []string{g.Family, g.Gate} {
-				if verify.ObligationID(o.Scope, o.Kind, fam) == o.ID {
+				if idOf(fam) == o.ID {
 					out[o.ID] = fam
 					break gates
 				}
@@ -150,8 +163,11 @@ func ledgerFamilies(v verify.StopView) map[string]string {
 	return out
 }
 
-// ledgerRow is o as one line, family "" printed as "-".
-func ledgerRow(o verify.Obligation, family string) string {
+// ledgerRow is o as one line, family "" printed as "-". A turn row's id
+// digests its window's From and its Unit, which the family names neither of,
+// so a turn row adds both: turn's From, turn being the window the replay
+// read its turn rows over, and the Unit, "" printed as "-" (W-M3.1).
+func ledgerRow(o verify.Obligation, family string, turn verify.Window) string {
 	ev := "-"
 	if len(o.Evidence) > 0 {
 		seqs := make([]string, len(o.Evidence))
@@ -163,5 +179,13 @@ func ledgerRow(o verify.Obligation, family string) string {
 	if family == "" {
 		family = "-"
 	}
-	return strings.Join([]string{o.ID, o.Scope, string(o.Kind), o.Source, string(o.State), ev, family}, " ") + "\n"
+	cols := []string{o.ID, o.Scope, string(o.Kind), o.Source, string(o.State), ev, family}
+	if o.Scope == verify.ScopeTurn {
+		unit := o.Unit
+		if unit == "" {
+			unit = "-"
+		}
+		cols = append(cols, strconv.FormatInt(turn.From, 10), unit)
+	}
+	return strings.Join(cols, " ") + "\n"
 }

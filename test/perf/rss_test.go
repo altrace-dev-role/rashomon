@@ -1119,7 +1119,7 @@ func entryPayload(t *testing.T, e budget.Entry) func(i int) []byte {
 		case "edit_314k":
 			p, err = payload.EditPost(e.PayloadBytes, id)
 		case "stop_100":
-			p = payload.Stop(payload.FinalMessage)
+			p = payload.Stop(payload.PromptID(payload.Prompts-1), payload.FinalMessage)
 		case "prompt":
 			p = payload.Prompt("continue")
 		case "session_start":
@@ -1156,6 +1156,7 @@ func TestRES2_InitBudget(t *testing.T) {
 	env := append(newRig(t).env, "GODEBUG=inittrace=1,gctrace=1")
 	all := make([]int64, initRuns)
 	var low InitTrace
+	var lowStderr string
 	for i := range all {
 		cmd := exec.Command(rashomonBin, "version")
 		cmd.Env = env
@@ -1177,6 +1178,7 @@ func TestRES2_InitBudget(t *testing.T) {
 		all[i] = tr.Bytes
 		if i == 0 || tr.Bytes < low.Bytes {
 			low = tr
+			lowStderr = stderr.String()
 		}
 	}
 	if bound := InitBudget(runtime.GOOS); low.Bytes > bound {
@@ -1184,5 +1186,9 @@ func TestRES2_InitBudget(t *testing.T) {
 	}
 	ran[InitGate] = true
 	t.Logf("init: %d packages, %d bytes at the fewest of %d runs (runs %v), %d allocs, %d gc lines", low.Packages, low.Bytes, initRuns, all, low.Allocs, low.GCLines)
-	t.Logf("init: %d environment variables in the measured process", len(env))
+	// The size of the environment and the whole trace of the fewest run go
+	// to the log, so two runs' figures can be compared package by package.
+	t.Logf("init: %d environment variables handed to the process, %d CPUs, a binary path of %d bytes",
+		len(env), runtime.NumCPU(), len(rashomonBin))
+	t.Logf("init: the lowest run's trace, as the runtime printed it:\n%s", lowStderr)
 }

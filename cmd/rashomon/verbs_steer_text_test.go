@@ -12,8 +12,7 @@ import (
 // each command the card adds is on the consent screen, in the paragraph that
 // belongs to it, and TestTRU2c_ holds that each is a dispatched verb with
 // words its usage lines carry. The closing table's stop-the-notes line is the
-// steer switch. The disclosure's ScopeVersion is untouched: the screen names
-// controls and collects nothing new.
+// steer switch. The screen names controls and collects nothing new.
 func TestSTC1l_ScreenNamesTheControlsOnceTheyDispatch(t *testing.T) {
 	inv, err := disclose.Default()
 	if err != nil {
@@ -53,8 +52,5 @@ func TestSTC1l_ScreenNamesTheControlsOnceTheyDispatch(t *testing.T) {
 	}
 	if !stop {
 		t.Errorf("the closing table's stop-the-notes line is not the steer switch: %v", consent.Commands)
-	}
-	if got := disclose.ScopeVersion; got != disclose.SessionContentScope {
-		t.Errorf("ScopeVersion = %d, want %d: this card changes the text only; the release's one bump is the session content's scope", got, disclose.SessionContentScope)
 	}
 }

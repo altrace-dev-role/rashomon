@@ -21,6 +21,11 @@ import (
 // since have moved past; with no readable checkpoint it is the record's last
 // seq, the clock now and the index on disk.
 //
+// The conflicts the session was shown are in the record: the replay folds
+// the run's conflict_check records at the point's seq through conflictsSeen,
+// the reader the live Stop uses, so with a checkpoint its unmet conflict rows
+// are the Stop's.
+//
 // The record does not hold everything the Stop read, so a replay reads each
 // missing input the way that can make a row stricter than the Stop's, never
 // more favourable, and carries what it read for the caller to name:
@@ -55,6 +60,11 @@ type stopReplay struct {
 	View       verify.StopView
 	Checkpoint *verify.Checkpoint
 	Spec       *spec.Compiled
+
+	// Turn is the window the replay's turn rows were read over:
+	// verify.TurnWindow at the point for the prompt id the replay passed (the
+	// checkpoint's, "" with none), so the verb can name a turn row's family.
+	Turn verify.Window
 }
 
 // replayLastStop replays sessionID's last Stop from st, reading the platform
@@ -86,6 +96,7 @@ func replayLastStop(st *store.Store, sessionID string, platform func(string, []s
 			in.Required[g.Gate] = g.Required
 		}
 	}
+	in.Conflicts = conflictsSeen(run, pt.Seq)
 	pt.Tree = hook.TreeShas(verify.TreeTargets(run))
 	r := stopReplay{Checkpoint: cp}
 	var idx *verify.ProjectIndex
@@ -96,6 +107,7 @@ func replayLastStop(st *store.Store, sessionID string, platform func(string, []s
 		root = cp.ProjectRoot
 	}
 	in.Root = root
+	in.UnitOf = stopUnitOf(root)
 	if root != "" {
 		if key := baseline.Key(root); cp == nil && key != "" {
 			idx, _ = verify.ReadIndex(verify.IndexPath(st.Root(), key))
@@ -105,5 +117,6 @@ func replayLastStop(st *store.Store, sessionID string, platform func(string, []s
 		in.Inferred = replayInferred(root, r.Spec, idx, in.Required)
 	}
 	r.View = verify.EvaluateStop(run, idx, r.Spec, pt, now, in)
+	r.Turn = verify.TurnWindow(run, in.PromptID, pt.Seq)
 	return r, nil
 }

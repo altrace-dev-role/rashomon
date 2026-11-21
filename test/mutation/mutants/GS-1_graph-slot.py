@@ -21,9 +21,10 @@ m("GS-3 the slot's lessons are recorded under another key", "internal/steer/slot
 m("GS-4 the delivered set skips the graph lines", "internal/learn/deliver.go",
   "\t\t\tids = append(ids, graphKnowledge(b, sp[dkSlots])...)\n", "", "TestGS4_")
 P = "cmd/rashomon/preflight.go"
+GB = "\tgb, graphed := indexBrief{}, false\n\tif !p.framed {\n\t\tgb, graphed = graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)\n\t\tp.indexOverCap = gb.OverCap\n\t}\n"
 m("GS-5 the brief is read after the early return", P,
-  "\tgb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)\n\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
-  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n\tgb, graphed := graphBriefWith(storeRoot, p.CWD, p.SessionID, p.PromptID, p.Prompt, p.PromptCut, specOf, scoped.get)\n",
+  GB + "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed && !graphed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n",
+  "\tif !named && !proj.lessons.Any() && !done && p.owed.Seq <= 0 && !briefed {\n\t\treturn steer.Output{}, steer.Client{}\n\t}\n" + GB,
   "TestGS5_")
 m("GS-5 the graph finding is not routed", P,
   "\tif f, ok := graphFinding(gb, keyGraph, run.LastSeq(), digest); graphed && ok {\n",

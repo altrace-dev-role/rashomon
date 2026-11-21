@@ -67,15 +67,26 @@ func BenchmarkRecapStop(b *testing.B) {
 	}
 }
 
-// benchCheckStop is the work-done check: the view classified the run's gates
-// and read the final message's claim, every op appended its checkpoint, and
-// the index holds the run's families.
+// benchCheckStop is the work-done check: the view classified the run's gates,
+// read the final message's claim and held the last turn's rows (W-M3.1, their
+// count logged), every op appended its checkpoint, and the index holds the
+// run's families.
 func benchCheckStop(b *testing.B, st *store.Store, view stopTurn) {
 	b.Helper()
 	if !view.speaks || len(view.view.Snap.Gates) == 0 || len(view.view.Scan.Claims) == 0 {
 		b.Fatalf("the view spoke %v over %d gates and %d claims, want both read", view.speaks,
 			len(view.view.Snap.Gates), len(view.view.Scan.Claims))
 	}
+	turn := 0
+	for _, o := range view.view.Obligations {
+		if o.Scope == verify.ScopeTurn {
+			turn++
+		}
+	}
+	if turn == 0 {
+		b.Fatalf("no turn row among the Stop's %d rows, want the last turn's", len(view.view.Obligations))
+	}
+	b.Logf("%d turn rows of %d", turn, len(view.view.Obligations))
 	idx, err := verify.ReadIndex(verify.IndexPath(st.Root(), view.view.Index.ProjectKey))
 	if err != nil || idx == nil || len(idx.Entries) == 0 {
 		b.Fatalf("index %+v (%v), want the run's families", idx, err)

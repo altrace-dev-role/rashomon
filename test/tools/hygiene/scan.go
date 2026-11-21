@@ -32,6 +32,13 @@ type Finding struct {
 	// over the path, the shape and the value. reviewed.txt excuses a finding
 	// by it, and scrub -review prints it for the person deciding.
 	Fingerprint string
+	// Member is the JSON member the value was read under: "" for a line of
+	// text, a member name, an array element or the file as a whole. Class
+	// says what the value is made of without the value (class, in
+	// shapes.go). Neither is printed; together they let an allow list
+	// excuse a shape only where a store format puts it.
+	Member string
+	Class  string
 }
 
 func (f Finding) String() string { return fmt.Sprintf("%s:%d: %s", f.Path, f.Line, f.What) }
@@ -76,7 +83,7 @@ func Walk(root string) (scanned []string, found []Finding, err error) {
 		}
 		if !d.Type().IsRegular() {
 			what := "not a regular file, so not read: commit the fixture itself"
-			all = append(all, Finding{rel, 0, what, fingerprint(rel, what, "")})
+			all = append(all, Finding{Path: rel, What: what, Fingerprint: fingerprint(rel, what, "")})
 			return nil
 		}
 		data, err := os.ReadFile(p)
@@ -110,7 +117,7 @@ func excuse(root string, all []Finding) []Finding {
 			continue
 		}
 		if len(f) < 3 {
-			all = append(all, Finding{Reviewed, i + 1, "an entry that is not <path> <fingerprint> <why>", ""})
+			all = append(all, Finding{Path: Reviewed, Line: i + 1, What: "an entry that is not <path> <fingerprint> <why>"})
 			continue
 		}
 		entries[f[0]+" "+f[1]] = i + 1
@@ -127,7 +134,7 @@ func excuse(root string, all []Finding) []Finding {
 	}
 	for _, key := range order {
 		if !used[key] {
-			kept = append(kept, Finding{Reviewed, entries[key], "an entry that excuses nothing: delete it", ""})
+			kept = append(kept, Finding{Path: Reviewed, Line: entries[key], What: "an entry that excuses nothing: delete it"})
 		}
 	}
 	return kept
@@ -175,11 +182,11 @@ func Scan(name string, data []byte) []Finding {
 	}
 	if environmentFile(name) {
 		what := "an environment file, which no fixture needs: delete it"
-		return []Finding{{name, 0, what, fingerprint(name, what, "")}}
+		return []Finding{{Path: name, What: what, Fingerprint: fingerprint(name, what, "")}}
 	}
 	if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
 		what := "not text, so not read: commit a fixture as text"
-		return []Finding{{name, 0, what, fingerprint(name, what, "")}}
+		return []Finding{{Path: name, What: what, Fingerprint: fingerprint(name, what, "")}}
 	}
 	text := string(data)
 	s := &scanner{path: name, digests: digests(text), seen: map[Finding]bool{}}
@@ -201,10 +208,13 @@ type scanner struct {
 	found   []Finding
 }
 
-// add records a finding about value. Two findings of one shape on one line
-// stay two when their values differ, so excusing one cannot excuse the other.
-func (s *scanner) add(line int, what, value string) {
-	f := Finding{s.path, line, what, fingerprint(s.path, what, value)}
+// add records a finding about value, read under member. Two findings of one
+// shape on one line stay two when their values differ, so excusing one
+// cannot excuse the other, and when one value sits under two members, so an
+// allow list by member that excuses it under one cannot under the other: the
+// member kept would otherwise be whichever the walk met first.
+func (s *scanner) add(line int, member, what, value string) {
+	f := Finding{Path: s.path, Line: line, What: what, Fingerprint: fingerprint(s.path, what, value), Member: member, Class: class(value)}
 	if !s.seen[f] {
 		s.seen[f] = true
 		s.found = append(s.found, f)
@@ -229,7 +239,7 @@ func (s *scanner) document(doc string, lineAt func(int) int) {
 		return v
 	}, func(member string, n, at int) bool {
 		if n > 0 {
-			s.add(lineAt(at), fmt.Sprintf("an account inventory: the %s list, %d entries, which scrub replaces with its count", member, n), member)
+			s.add(lineAt(at), member, fmt.Sprintf("an account inventory: the %s list, %d entries, which scrub replaces with its count", member, n), member)
 		}
 		return false
 	})
@@ -244,39 +254,39 @@ func (s *scanner) value(member, v string, line int) {
 		return
 	}
 	if member != "" && v != "" && v != secretshape.Redacted && secretshape.SecretNamed(member) {
-		s.add(line, fmt.Sprintf("a value under %q, a member the deny list names secret", member), v)
+		s.add(line, member, fmt.Sprintf("a value under %q, a member the deny list names secret", member), v)
 	}
 	if !s.digests[v] && secretshape.Secretish(v) {
-		s.add(line, "a secret shape", v)
+		s.add(line, member, "a secret shape", v)
 	}
-	s.shapes(v, line)
+	s.shapes(member, v, line)
 }
 
 func (s *scanner) text(line string, n int) {
 	if secretshape.Secretish(line) {
-		s.add(n, "a secret shape", line)
+		s.add(n, "", "a secret shape", line)
 	}
-	s.shapes(line, n)
+	s.shapes("", line, n)
 }
 
 // shapes are the ones that name an account rather than open it.
-func (s *scanner) shapes(v string, line int) {
+func (s *scanner) shapes(member, v string, line int) {
 	if m := inventoryInText.FindStringSubmatch(v); m != nil {
-		s.add(line, "an account inventory: the "+m[1]+" list, inside text scrub cannot rewrite", v)
+		s.add(line, member, "an account inventory: the "+m[1]+" list, inside text scrub cannot rewrite", v)
 	}
 	if len(emailSpans(v)) > 0 {
-		s.add(line, "an email address", v)
+		s.add(line, member, "an email address", v)
 	}
 	switch {
 	case uuidInPath(v):
-		s.add(line, "an account-style UUID inside a path", v)
+		s.add(line, member, "an account-style UUID inside a path", v)
 	case len(accountUUIDs(v)) > 0:
 		// A config file holds an account's and an organisation's ids as
 		// plain values, and the path check alone passed both.
-		s.add(line, "an account-style UUID", v)
+		s.add(line, member, "an account-style UUID", v)
 	}
 	if homeIn(v) {
-		s.add(line, "a home directory, or a project directory named after one", v)
+		s.add(line, member, "a home directory, or a project directory named after one", v)
 	}
 }
 
@@ -304,7 +314,7 @@ func scanArchive(name string, data []byte) []Finding {
 	})
 	if err != nil {
 		what := fmt.Sprintf("an archive that does not read to the end (%v), so what it holds is not vouched for", err)
-		found = append(found, Finding{name, 0, what, fingerprint(name, what, "")})
+		found = append(found, Finding{Path: name, What: what, Fingerprint: fingerprint(name, what, "")})
 	}
 	return found
 }

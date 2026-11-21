@@ -12,17 +12,29 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// The per-prompt caps (tech 4.2.5): 3 notes per (session_id, prompt_id),
-// subagents included, and 5 user flags printed per prompt, the rest on the
-// turn-end line.
+// The caps (tech 4.2.5, NOTE-BUDGET): 3 notes in any window of
+// windowSeqs record seqs of one (session_id, prompt_id), subagents included,
+// and 5 user flags printed per prompt, the rest on the turn-end line.
 const (
 	maxNotes = 3
 	maxFlags = 5
 )
 
-// NotesPerPrompt is the per-prompt note cap, for a reader that checks a
+// NotesPerWindow is the note cap of one window, for a reader that checks a
 // steer log against the router that wrote it.
-const NotesPerPrompt = maxNotes
+const NotesPerWindow = maxNotes
+
+// windowSeqs is the note window W, in record seqs (NOTE-BUDGET):
+// 75 tool calls of three records each by construction
+// (declaration, execution, terminal). The figure comes from the record
+// format, not from any run's data. A fourth record on a call, and rows with
+// no call id, shorten the window in calls; that is a stated limit. The clock
+// is the agent's work, read from the log, never time.
+const windowSeqs = 225
+
+// NoteWindowSeqs is the note window in record seqs, for a reader that checks
+// a steer log against the router that wrote it.
+const NoteWindowSeqs = windowSeqs
 
 // patternVersion is every line's pattern_version: the spec example's value,
 // with no per-pattern version table yet (card 2.2 R8, D52).
@@ -302,6 +314,7 @@ func decide(ctx *Context, c Client, admitted []Finding, have counts, mint func()
 		if level == LevelStop {
 			level = LevelNudge // stop needs a project stop setting, and no config exists (STR-20)
 		}
+		level = heldLevel(ctx, f, level) // after the stop clamp, so a held stop is a flag too
 		p := plan{f: f, key: findingKey{string(f.Pattern), string(f.Kind), f.Key}, level: level, decide: true,
 			direct: ownChannel(f.Pattern, ctx.Event)}
 		if p.level == LevelNudge {
@@ -399,9 +412,13 @@ func armOff(plans []plan) (note, flag int) {
 // charge is the budget's two passes over the plans still to decide, in rank
 // order (card 2.2 R6): a note whose key the prompt already delivered is
 // budget_pattern, a direct note (the briefing, outside the prompt budget)
-// or else the first note the prompt can afford delivers (affording its
-// pattern's reserve, pattern.Reserve), and a later one in the same call
-// is superseded (budget_batch); a flag delivers only in a call where no
+// or else the first note the window can afford delivers, and a later one
+// in the same call is superseded (budget_batch). The window is the
+// prompt's notes with after_seq above the note's own less windowSeqs
+// (counts.spent): a note that would make it hold maxNotes, counting its
+// pattern's reserve (pattern.Reserve), is budget_window; one whose pattern
+// is already in the window must leave one more note free, or it is
+// budget_repeat. The window's reason wins where both bite. A flag delivers only in a call where no
 // note did, one per call under the prompt's cap, and every other flag is
 // a candidate for the turn-end line. It returns the indexes that print, -1
 // for none.
@@ -412,6 +429,8 @@ func charge(plans []plan, have counts) (note, flag int) {
 		if !p.decide || p.level != LevelNudge {
 			continue
 		}
+		n, repeat := have.spent(p.f.AfterSeq, string(p.f.Pattern))
+		reserve := pattern.Reserve(p.f.Pattern)
 		switch {
 		case have.keys[p.key]:
 			p.suppress(SuppressedByBudgetPattern)
@@ -419,8 +438,10 @@ func charge(plans []plan, have counts) (note, flag int) {
 			p.state, p.decide, note = LineStateDelivered, false, i
 		case note >= 0:
 			p.state, p.by, p.decide = LineStateSuperseded, reason(SuppressedByBudgetBatch), false
-		case have.notes+pattern.Reserve(p.f.Pattern) >= maxNotes:
-			p.suppress(SuppressedByBudgetPrompt)
+		case n+reserve >= maxNotes:
+			p.suppress(SuppressedByBudgetWindow)
+		case repeat && n+reserve+1 >= maxNotes:
+			p.suppress(SuppressedByBudgetRepeat)
 		default:
 			p.state, p.decide, note = LineStateDelivered, false, i
 		}

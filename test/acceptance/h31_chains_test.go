@@ -327,7 +327,7 @@ func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 //
 // The second claim names the v1.1.0 rendering ("0 allowed, 0 denied") and
 // says so, as the README does; the third names what v1.2.0-alpha.1 and main
-// print (see writeNono in internal/report/text.go), which the test above
+// print (see writeNono in internal/report/text_nono.go), which the test above
 // asserts. The README scopes each reading to its version, so a claim that
 // drops the scope would pin a sentence true only of v1.1.0. When a release
 // changes the wording again, the README and these claims change together.

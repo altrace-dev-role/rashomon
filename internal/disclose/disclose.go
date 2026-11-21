@@ -63,14 +63,30 @@ import (
 // the session's record: plan_check for an accepted plan checked against the
 // spec's path rules (W-M2.6; any record scope, rule ids in the clear) and,
 // where the content is kept, unitbrief_miss and conflict_check for each such
-// edit (W-M2.3, W-M2.4). Unreleased, 6 covers the release, so a later card of
-// the same release names its content here and does not bump.
+// edit (W-M2.3, W-M2.4).
 // 6 also says, before its release, that the go tool pgraph runs loads the
 // packages the code imports and that the names of their functions and types
 // a call or an embed reaches go to .pgraph: a correction of the words, with
 // no new read.
+// 7 adds two reads at the end of a reply that wrote a file and when a
+// session's ledger is printed: where a repository graph is in reach, its
+// configuration and the origin url from the repository's git files, read
+// in memory to name the unit each written file lies in, storing neither
+// (W-M3.1).
+// From 7 on, every change to the screen's words moves the version: builds
+// from main are installed and consented to between tags, so an unreleased
+// version is not private. Each version's words are pinned by their digest
+// (TestScopeText_PinnedToItsVersion).
+// 8 changes the words: the repository's id drops an empty or default port
+// too, and a relative origin gives the path's hash
+// (baseline.NormalizeOrigin); the graph index paragraph says when
+// `rashomon graph index` writes .rashomon/graph.json; the paragraph for a
+// session that starts or is cleared says what a /clear keeps in the store's
+// clear directory and when it is removed; and a paragraph of its own says
+// the answers on file are kept unsigned, where a program that runs as the
+// user can change them (CONSENT-GATE1).
 // Pinned by TRU-8.
-const ScopeVersion = 6
+const ScopeVersion = 8
 
 // ErrNotImplemented is returned by stubs that a later PR fills.
 var ErrNotImplemented = errors.New("disclose: not implemented in this build")
@@ -223,6 +239,7 @@ func Default() (Inventory, error) {
 			overlayRunFiles(),
 			unitBriefFiles(),
 			sessionContentFiles(),
+			clearFiles(),
 		),
 		Paragraphs: defaultParagraphs(),
 		Units:      defaultUnits(),

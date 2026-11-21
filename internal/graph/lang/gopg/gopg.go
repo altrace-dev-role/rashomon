@@ -40,6 +40,10 @@ type Resolver struct {
 // Lang is "go".
 func (Resolver) Lang() string { return Lang }
 
+// SessionKept is true: the consent text names Go files among what a yes
+// keeps of a session's edits (lang.Kept).
+func (Resolver) SessionKept() bool { return true }
+
 // Claims is every .go file.
 func (Resolver) Claims(_, rel string) bool { return strings.HasSuffix(rel, ".go") }
 
@@ -72,7 +76,11 @@ func (Resolver) Extract(root string, files []string, rev graph.Rev) ([]graph.Rec
 // or parse gives none. They come after every pgraph record, so the first
 // record, and the header's producer with it, stays pgraph's.
 func (m *mapper) imports(root string) []graph.Record {
-	im := ImportMap{Module: ReadModulePath(root), IsDir: DirUnder(root)}
+	// A go.mod refused here maps no import, as a missing one does: an index
+	// build has no session to tell, and the overlay path is where a refusal
+	// reaches the person.
+	mod, _ := ReadModulePath(root)
+	im := ImportMap{Module: mod, IsDir: DirUnder(root)}
 	if im.Module == "" {
 		return nil
 	}
