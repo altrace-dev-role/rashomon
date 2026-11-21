@@ -256,7 +256,34 @@ const InitBudgetBytes = 64 << 10
 // the runtime's own packages, not bytes any change here added. linux/amd64
 // reads 52992 B over 59 packages (job 130965036307) and keeps
 // InitBudgetBytes.
-const initBudgetDarwinBytes = 67088
+//
+// 67088 then failed on main itself: the push run of 3cdf8f25 read 67152 B
+// at the fewest of five (runs [67632 67152 67152 67152 67152], run
+// 44395373141), where 8e0d758a's own run read 66832 (run 44395980442, runs
+// [66992 66992 66992 67312 66832]). Same code, same 56 packages, same go1.27.4:
+// the fewest of five itself moves in 160 B steps from one run to the next, so
+// a bound at the highest of five readings is exceeded by about one honest run
+// in several. The bound is now taken over the fewest-of-five of seven runs of
+// the macos Perf job on main (the seven latest push and dispatch runs, all 56
+// packages, go1.27.4, none left out), plus two steps of 160 B:
+//
+//	run         head      event     fewest of five (the five readings)
+//	44866986895 c32ac95e  dispatch  67024 [67360 67024 67344 67344 67504]
+//	44863922631 c32ac95e  push      67024 [67184 67184 67184 67024 67344]
+//	44804167633 9a6e359c  push      66864 [67024 67184 67184 66864 67024]
+//	44761672169 bef6cedb  dispatch  66864 [67184 66864 67184 67184 67024]
+//	44736822687 bef6cedb  push      67024 [67024 67024 67184 67184 67024]
+//	44691656668 7dae4f4a  push      66704 [67024 67024 66864 66864 66704]
+//	44685297902 b908ad49  push      67024 [67024 67072 67024 67184 67024]
+//
+// The highest of the seven is 67024. If readings are exchangeable, the next
+// one is the highest of eight with chance 1 in 8, so the highest of seven
+// alone still fails up to one honest run in eight; two steps of 160 B
+// (67024 + 320 = 67344) is a judgement on top of that, not a measurement.
+// A change that adds bytes to every process lifts the fewest by as much and
+// still shows. The next move of this bound is a new set of seven runs under
+// the same rule, not one more step.
+const initBudgetDarwinBytes = 67344
 
 // InitBudget is RES-2's bound on process init for goos: initBudgetDarwinBytes
 // on darwin, InitBudgetBytes everywhere else.
