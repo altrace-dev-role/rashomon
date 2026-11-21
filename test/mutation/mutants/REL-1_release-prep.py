@@ -14,7 +14,7 @@ m("REL-1 the dry run publishes nothing it can check", ".github/workflows/ci.yaml
 
 # The release body is a fixed header until the notes are set by hand: no
 # changelog, and one short header with no template action and no footer.
-_HEADER = ('  header: "This is an alpha release of rashomon. The notes for this version are added to this page'
+_HEADER = ('  header: "This is an early beta release of rashomon. The notes for this version are added to this page'
            ' once the release build has finished. The README in the repository has the install steps."\n')
 m("REL-1 the release body lists every commit", ".goreleaser.yml",
   '  disable: "true"\n', '  disable: "false"\n', "TestREL1e_")
@@ -25,6 +25,6 @@ m("REL-1 the release header is empty", ".goreleaser.yml",
 m("REL-1 the release header is long", ".goreleaser.yml",
   _HEADER, '  header: "' + "x" * 400 + '"\n', "TestREL1f_")
 m("REL-1 the release header renders a template", ".goreleaser.yml",
-  "an alpha release of rashomon.", "an alpha release of {{ .ProjectName }}.", "TestREL1f_")
+  "an early beta release of rashomon.", "an early beta release of {{ .ProjectName }}.", "TestREL1f_")
 m("REL-1 the release has a footer", ".goreleaser.yml",
   "  draft: true\n", '  draft: true\n  footer: "x"\n', "TestREL1f_")

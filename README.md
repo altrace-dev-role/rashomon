@@ -1,39 +1,59 @@
 # rashomon
 
+**Your Claude Code agent says it's done. rashomon checks.**
+
 rashomon keeps its own record of what your Claude Code agent runs and edits,
 tells you and the agent what the repository says about the files a request
 names, and tells you at the end of a turn whether a test or build passed after
 the last edit.
 
-What this build does today: it records every tool call the agent makes. Before
-the agent starts on a request, it tells the agent what the repository declares
-about the files the request names: the rules a spec you have trusted sets for
-them, and the checks to run before done. At the end of a turn it tells you
-whether a test or build passed after the last edit, and when done was claimed
-without one. It never blocks a call. The notes and the end-of-turn checks are
-its steering layer, AutoSteer. The note before the agent starts reaches it on
-every supported version; a note after a call that succeeded on Claude Code
-2.1.280 and later; and a note after a failed call on Claude Code 2.1.304 and
-later. Where a note is not sent (an older version, a version that failed the
-delivery check or could not be read, a subagent's call, an SDK session, or a
-session whose surface could not be read, or an event whose notes are withheld as
-described next), one line per session tells you a note was built and not sent,
-such as:
+It never blocks the agent. The record is a folder on your machine; rashomon
+sends it nowhere and makes no network connection. The notes it gives the agent
+become part of the conversation, like anything else the agent reads.
 
-    rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
+## AutoSteer
 
-At a turn end it also reads Claude Code's transcript in memory, and stores none
-of it, to check that each note it sent appears there. If a note is missing at
-two turn ends, it stores one small file, `channel-evidence-<event>`, holding
-only the Claude Code version, and stops sending notes for that hook event until
-a delivery check passes or Claude Code is newer; the line above then tells you.
+AutoSteer is rashomon's steering layer, and the direction the project is
+heading. Coding agents read and write code well, but in a large codebase they
+miss things: a caller in another package, a helper they should have reused, a
+convention the team settled last year.
 
-What it does not do yet: learn your architecture or conventions by itself. A
-lesson you import and approve at a terminal is sent with a prompt that carries
-no preflight note, at most one per prompt and each lesson once a session; it
-waits while a preflight note is sent, and with steering off or no agreement to
-steering notes it is shown to you and not sent. Finding lessons in past sessions is the next layer, and it is
-not in this build.
+AutoSteer's goal is to know those things and hand the agent the ones that
+matter for the task in front of it:
+
+- **Architecture and dependencies:** which parts of the code a change touches,
+  and what depends on them.
+- **Conventions and past decisions:** the rules your repository and your team
+  have already set.
+- **Independent verification:** after the work, rashomon reads its own record,
+  not the agent's account of it.
+- **Learning:** over time, keeping the guidance that helped and dropping what
+  did not.
+
+The loop: know the project, understand the task, brief the agent, record what
+it does, verify the result, update what is known.
+
+**What works today**
+
+- A note before the agent starts: the paths your request names, the rules a
+  spec you have trusted sets for them, and the checks to run before done.
+- The end-of-turn check: whether a test or build passed after the last edit,
+  and whether done was claimed without one.
+- In a repository you have indexed
+  ([Index your repository](#index-your-repository)): a brief drawn from the
+  repository's own graph with each request, and for Go a check of each edit
+  against that graph.
+- A lesson you import and approve at a terminal can be sent to the agent.
+
+**Not in this release**
+
+- Finding lessons in past sessions. Nothing here learns your conventions by
+  itself yet: you declare them in a spec, or import them.
+- The check after an edit for Python. Python has a reduced index and the brief;
+  Go has the fuller path.
+- Keeping the thread of a long session across a compaction or a restart.
+- A map of a codebase in languages other than Go and Python.
+- Windows.
 
 ## Get started
 
@@ -43,8 +63,8 @@ terminal, not inside a Claude Code session:
     curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
     rashomon watch
 
-That installs the latest release, v1.2.0-alpha.1. To build `main` instead,
-which is ahead of the release and has everything this README describes:
+That installs the latest release, v1.0-AutoSteer. To build `main` instead,
+which may be ahead of the release:
 
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
     rashomon watch
@@ -101,13 +121,43 @@ and only on a lab store (one `rashomon measure --prepare` marked); on any
 other store it reads as unset, so a repository's settings cannot switch the
 holdout off with it.
 
+## Index your repository
+
+The notes above need no setup. To also give the agent a brief drawn from your
+repository's own dependency graph, index the repository once:
+
+    rashomon graph index
+
+That writes `.rashomon/graph.jsonl` in the repository, and `.rashomon/graph.json`,
+the configuration it inferred from your manifest files, when none is there.
+
+A Go repository needs one step first. Its graph comes from `pgraph`, a second
+tool in this repository. The plugin carries `pgraph` and runs it in the
+background in a Git repository whose root holds `go.mod`. The install script
+and the `go install` route do not bring it: there, install it yourself. It is
+a Go module of its own and needs Go 1.26 or later:
+
+    go install github.com/altrace-dev-role/rashomon/pgraph/cmd/pgraph@main
+    pgraph sync .
+    rashomon graph index
+
+`pgraph sync` writes `.pgraph` under the repository; deleting that directory
+forgets it. Without the sync, `rashomon graph index` stops and says
+`no pgraph sync with a symbols file under this root; run pgraph sync`.
+
+A Python repository is indexed by `rashomon graph index` alone, by a reduced
+reader: definitions, imports and calls by name. A Python edit is not yet
+checked after it lands, and the names a Python file declares are not kept from
+an edit.
+
+Indexing changes what rashomon keeps for that repository. Read
+[What it records, and what it never stores](#what-it-records-and-what-it-never-stores)
+before you index one.
+
 ## Other install routes
 
-These install the v1.2.0-alpha.1 release: `rashomon version` prints
-`1.2.0-alpha.1`. Use one route: `watch` refuses beside an enabled plugin.
-This README describes `main`, which is ahead of that release: `rashomon steer`,
-`summary`, `scorecard`, `why`, `lessons`, `brief` and `measure` are in `main`
-only, until the next release.
+These install the v1.0-AutoSteer release: `rashomon version` prints
+`1.0-AutoSteer`. Use one route: `watch` refuses beside an enabled plugin.
 
     claude plugin marketplace add altrace-dev-role/rashomon
     claude plugin install rashomon@rashomon
@@ -135,6 +185,38 @@ excerpt is `rashomon report` exactly as it renders that session:
 The first line quotes the agent; the rest is rashomon's own record. `--chain`
 shows which call failed. The report lists the failure words the summary does
 not use; it does not guess why.
+
+## How the notes reach the agent, and when they do not
+
+What this build does today: it records every tool call the agent makes. Before
+the agent starts on a request, it tells the agent what the repository declares
+about the files the request names: the rules a spec you have trusted sets for
+them, and the checks to run before done. At the end of a turn it tells you
+whether a test or build passed after the last edit, and when done was claimed
+without one. It never blocks a call. The notes and the end-of-turn checks are
+its steering layer, AutoSteer. The note before the agent starts reaches it on
+every supported version; a note after a call that succeeded on Claude Code
+2.1.280 and later; and a note after a failed call on Claude Code 2.1.304 and
+later. Where a note is not sent (an older version, a version that failed the
+delivery check or could not be read, a subagent's call, an SDK session, or a
+session whose surface could not be read, or an event whose notes are withheld as
+described next), one line per session tells you a note was built and not sent,
+such as:
+
+    rashomon: a note was built and not sent to the agent (Claude Code 2.1.280, PostToolUseFailure; delivery verified from 2.1.304): this version is older. Shown once per session.
+
+At a turn end it also reads Claude Code's transcript in memory, and stores none
+of it, to check that each note it sent appears there. If a note is missing at
+two turn ends, it stores one small file, `channel-evidence-<event>`, holding
+only the Claude Code version, and stops sending notes for that hook event until
+a delivery check passes or Claude Code is newer; the line above then tells you.
+
+What it does not do yet: learn your architecture or conventions by itself. A
+lesson you import and approve at a terminal is sent with a prompt that carries
+no preflight note, at most one per prompt and each lesson once a session; it
+waits while a preflight note is sent, and with steering off or no agreement to
+steering notes it is shown to you and not sent. Finding lessons in past sessions is the next layer, and it is
+not in this build.
 
 ## What it records, and what it never stores
 
@@ -311,6 +393,7 @@ under the call if the command named it.
 | `rashomon backtest --sensor ID` | Replay this project's transcript copies (`rashomon bodies on`) through this build's hooks and print each session's fires of steer pattern ID beside the live steer log's; only reads the store |
 | `rashomon summary [on \| off] [--user \| --project]` | Say, or set, whether the end-of-turn line prints its value line, for you (`--user`, the default) or for this project; on unless set off; refused from an agent session |
 | `rashomon brief [DIR]` | Print the brief a session starting in DIR (the working directory by default) is shown: instruction files, manifests, the test command, the spec, the task and the Go package directories, each line naming the file it came from; writes nothing |
+| `rashomon graph index [DIR]` | Build `DIR/.rashomon/graph.jsonl` (DIR is the working directory by default) from `DIR/.rashomon/graph.json`, first writing that configuration from the repository's manifest files when it is not there; a Go repository needs `pgraph sync DIR` first |
 | `rashomon why [--session S\|last] [--json] [--redact] ID-PREFIX` | Say why one note fired: its pattern and key, the state it ended in, the calls it cites and the gate or rule it came from; reads, writes nothing |
 | `rashomon steer [off \| on] [--user \| --project]` | Say whether the notes to your agent are on, or turn them off or on; off sends the agent no note and shows you what it would have said, while recording goes on; refused from an agent session |
 | `rashomon steer on --repair` | Replace a `config.json` that does not read, after asking on your terminal; until then the notes are off |
@@ -332,13 +415,13 @@ under the call if the command named it.
 | `rashomon share build outcomes --out FILE` | Write counts of the notes given to the agent, by pattern; needs `rashomon consent share.outcomes` |
 | `rashomon detach` | Remove the hook entries, leaving everything else as found; refused from an agent session |
 | `rashomon purge [--yes] [--binary]` | Detach, then remove the store and the directories `watch` created; refused from an agent session |
-| `rashomon version` | Print the version: the module version for a `go install` build (for example `1.2.0-alpha.1`), the release version for a release binary, `dev` for a local `go build` |
+| `rashomon version` | Print the version: the module version for a `go install` build (for example `1.2.0-alpha.2.0.<time>-<commit>`: Go reads no semantic version from the tag `v1.0-AutoSteer`), the release version for a release binary; a local `go build` in a clone prints the version Go derives from the last tag and the commit, and `dev` only when the build carries none |
 
 `rashomon --help` lists the commands and their main flags.
 
 ## Status
 
-Alpha. The latest release is v1.2.0-alpha.1, and `main` may be ahead of it. Release
+Early beta. The latest release is v1.0-AutoSteer, and `main` may be ahead of it. Release
 binaries are not signed, and there is no Homebrew formula. **Windows is not
 usable yet**: the release publishes Windows binaries, but `watch` quotes the
 installed command for a POSIX shell.

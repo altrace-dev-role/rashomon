@@ -11,7 +11,9 @@ import (
 
 // def is one function definition. class is the dotted path of the classes
 // whose bodies hold it, innermost last, and empty for a module def: a def in
-// a class body is a method of that class.
+// a class body is a method of that class. end is the 1-based last line of
+// its body (scan): the last line a body line or a call in it reaches, or the
+// line its parameters close on when no line follows in its body.
 type def struct {
 	name  string
 	class string
@@ -19,6 +21,7 @@ type def struct {
 	min   int
 	max   string
 	line  int
+	end   int
 }
 
 // key is the def's name inside its class path, as Store.get or get: the
@@ -120,7 +123,9 @@ func pats() *patternSet {
 // when the outer body runs). A class's body is every following line more
 // indented than its class line, its bases read past when they span lines; a
 // def in it is a method of the innermost class open at its line, and a class
-// in a def's body is part of that body.
+// in a def's body is part of that body. A def's end is the last line its
+// body takes, the lines of a call in it and of a def nested in it included;
+// a blank or comment line is no body line, so it moves no end.
 func scan(src string) (fileScan, error) {
 	f := fileScan{imports: map[string]importRef{}}
 	lines := strings.Split(src, "\n")
@@ -140,6 +145,7 @@ func scan(src string) (fileScan, error) {
 				from = m[1] - 1
 			}
 			i = readCalls(&f, lines, i, from, cur)
+			f.defs[len(f.defs)-1].end = i + 1
 			continue
 		}
 		cur = ""
@@ -283,7 +289,7 @@ func readDef(lines []string, i int, name string, open int) (def, int, error) {
 		return def{}, 0, parseError{line: i + 1, why: "a def with no colon after its parameters"}
 	}
 	params := splitTop(text)
-	d := def{name: name, line: i + 1, max: "0"}
+	d := def{name: name, line: i + 1, end: end + 1, max: "0"}
 	var shown []string
 	total := 0
 	for _, p := range params {
@@ -382,10 +388,16 @@ func group(lines []string, i, open int) (text string, end, closeAt int, ok bool)
 	return "", 0, 0, false
 }
 
-// splitTop splits text on commas at bracket depth zero.
+// splitTop splits text on commas at bracket depth zero that no lambda holds.
+// A lambda at depth zero is open from its word to the first colon at depth
+// zero after it, and a comma while one is open is that lambda's own, between
+// its parameters: so a lambda as a default or as an argument is one part. A
+// lambda in a lambda's parameters opens inside it and closes at its own
+// colon first, so open counts the lambdas not yet closed. A comma after a
+// lambda's colon, in its body, splits as any other.
 func splitTop(text string) []string {
 	var out []string
-	depth := 0
+	depth, open := 0, 0
 	start := 0
 	for i := 0; i < len(text); i++ {
 		switch text[i] {
@@ -393,14 +405,42 @@ func splitTop(text string) []string {
 			depth++
 		case ')', ']', '}':
 			depth--
+		case 'l':
+			if depth == 0 && lambdaAt(text, i) {
+				open++
+				i += len("lambda") - 1
+			}
+		case ':':
+			if depth == 0 && open > 0 {
+				open--
+			}
 		case ',':
-			if depth == 0 {
+			if depth == 0 && open == 0 {
 				out = append(out, text[start:i])
 				start = i + 1
 			}
 		}
 	}
 	return append(out, text[start:])
+}
+
+// lambdaAt reports whether the word lambda starts at text[i]: the six
+// letters, with no byte of a name right before them or right after.
+func lambdaAt(text string, i int) bool {
+	if !strings.HasPrefix(text[i:], "lambda") {
+		return false
+	}
+	if i > 0 && nameByte(text[i-1]) {
+		return false
+	}
+	k := i + len("lambda")
+	return k >= len(text) || !nameByte(text[k])
+}
+
+// nameByte is a byte a Python name may hold: a letter, a digit, an
+// underscore, or any byte of a character past ASCII.
+func nameByte(b byte) bool {
+	return b == '_' || b >= 0x80 || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
 }
 
 // reserved is a keyword or statement word that precedes a parenthesis.
