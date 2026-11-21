@@ -180,3 +180,17 @@ m(goset, overlay,
   "\t\tCarried: r.OverlayCarried(), Recs: recs}\n",
   "\t\tCarried: gopg.Resolver{}.OverlayCarried(), Recs: recs}\n",
   "^TestConsentGate2_AKeptReaderOtherThanGoCarriesItsOwnSet$")
+
+# TestConsentGate2_APluginEnableReachesThePythonReadersScope (PY-K).
+# Breaks: write the plugin's record at the scope before this
+# build's; take a file whose scope is older as covering this build.
+plugin = "cmd/rashomon/plugin_consent.go"
+short = "internal/consent/short.go"
+m("CONSENT-GATE2 the plugin's record one scope behind the build", plugin,
+  "\t\tScopeVersion:    disclose.ScopeVersion,\n",
+  "\t\tScopeVersion:    disclose.ScopeVersion - 1,\n",
+  "^TestConsentGate2_APluginEnableReachesThePythonReadersScope$")
+m("CONSENT-GATE2 an older scope on file covers the build", short,
+  "\treturn ok && scope >= disclose.ScopeVersion && disclosure >= steer.DisclosureVersion\n",
+  "\treturn ok && scope >= 0 && disclosure >= steer.DisclosureVersion\n",
+  "^TestConsentGate2_APluginEnableReachesThePythonReadersScope$")
