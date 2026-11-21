@@ -37,11 +37,29 @@ type releaseTarget struct{ goos, goarch string }
 
 func (r releaseTarget) String() string { return r.goos + "/" + r.goarch }
 
-// releaseMatrix is what .goreleaser.yml builds: the pairs, and the
-// environment every one of them is built with.
+// releaseMatrix is what one build of .goreleaser.yml makes: the pairs, and
+// the environment every one of them is built with.
 type releaseMatrix struct {
 	targets []releaseTarget
 	env     []string
+}
+
+// pgraphModulePath is the module pgraph is built from, under pgraph/.
+const pgraphModulePath = modulePath + "/pgraph"
+
+// releaseBuildShapes are the builds this reader models, by id: the folder
+// each is built from (empty for the repository root) and its main package.
+// The whole-binary checks list rashomon's build alone; pgraph ships in the
+// same archives.
+var releaseBuildShapes = map[string]struct{ dir, main string }{
+	"rashomon": {"", "./cmd/rashomon"},
+	"pgraph":   {"pgraph", "./cmd/pgraph"},
+}
+
+// releaseBuild is one build as the reader finds it, before it is checked.
+type releaseBuild struct {
+	id, dir, main string
+	lists         map[string][]string
 }
 
 // rootKeys are the top-level keys this reader allows. Only builds is read;
@@ -56,11 +74,12 @@ var rootKeys = map[string]bool{
 }
 
 // buildKeys are the keys of a build this reader models. Any other key --
-// tags, overrides, dir, builder, ignore, targets -- can change which targets
-// ship or what each one links, in a way the listing would not see, so it is
-// refused rather than read past. The values marked true are lists.
+// tags, overrides, builder, ignore, targets -- can change which targets ship
+// or what each one links, in a way the listing would not see, so it is
+// refused rather than read past. dir is read, and held to the build's shape.
+// The values marked true are lists.
 var buildKeys = map[string]bool{
-	"id": false, "main": false, "binary": false,
+	"id": false, "dir": false, "main": false, "binary": false,
 	"env": true, "goos": true, "goarch": true, "flags": true, "ldflags": true,
 }
 
@@ -69,19 +88,27 @@ var buildKeys = map[string]bool{
 // flag outside the set is refused.
 var buildFlags = map[string]bool{"-trimpath": true}
 
-// parseReleaseMatrix reads the one build in the builds block: its main must be
-// ./cmd/rashomon, its env must carry CGO_ENABLED=0, and its pairs are every
-// goos against every goarch, each a pair `go tool dist list` names (known).
-// It reads a key only at the build's own indent and a list item only two
-// spaces under its key, and refuses everything else: a key it does not model,
-// at the root or in the build, a quoted value or a YAML alias it would read
-// differently from goreleaser, a second build, an empty or repeated list
-// entry. A reader that read past a shape would list a build the release does
-// not make.
+// parseReleaseMatrix is the rashomon build's matrix, the one every
+// whole-binary check lists.
 func parseReleaseMatrix(yml string, known map[releaseTarget]bool) (releaseMatrix, error) {
-	var m releaseMatrix
-	lists := map[string][]string{}
-	inBuilds, builds, key, main := false, 0, "", ""
+	builds, err := parseReleaseBuilds(yml, known)
+	return builds["rashomon"], err
+}
+
+// parseReleaseBuilds reads the builds block, one matrix per build id. Each
+// build must be one releaseBuildShapes names, built from that build's dir and
+// of its main, at most once, and rashomon must be there. Each build's env
+// must carry CGO_ENABLED=0, and its pairs are every goos against every goarch
+// of its own lists, each a pair `go tool dist list` names (known). It reads a
+// key only at a build's own indent and a list item only two spaces under its
+// key, and refuses everything else: a key it does not model, at the root or
+// in a build, a quoted value or a YAML alias it would read differently from
+// goreleaser, a build it does not model, an empty or repeated list entry. A
+// reader that read past a shape would list a build the release does not make.
+func parseReleaseBuilds(yml string, known map[releaseTarget]bool) (map[string]releaseMatrix, error) {
+	var builds []*releaseBuild
+	var lists map[string][]string
+	inBuilds, key := false, ""
 	for n, line := range strings.Split(yml, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
@@ -91,7 +118,7 @@ func parseReleaseMatrix(yml string, known map[releaseTarget]bool) (releaseMatrix
 		if indent == 0 {
 			name, _, _ := strings.Cut(trimmed, ":")
 			if !rootKeys[name] {
-				return m, fmt.Errorf("line %d: the file has %q at its root, which this reader does not model", n+1, name)
+				return nil, fmt.Errorf("line %d: the file has %q at its root, which this reader does not model", n+1, name)
 			}
 			inBuilds = trimmed == "builds:"
 			continue
@@ -100,45 +127,71 @@ func parseReleaseMatrix(yml string, known map[releaseTarget]bool) (releaseMatrix
 			continue
 		}
 		if strings.ContainsAny(trimmed, "\"'\t") {
-			return m, fmt.Errorf("line %d: %q is quoted, and this reader does not unquote", n+1, trimmed)
+			return nil, fmt.Errorf("line %d: %q is quoted, and this reader does not unquote", n+1, trimmed)
 		}
 		switch {
 		case indent == 6 && key != "" && strings.HasPrefix(trimmed, "- "):
 			item := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
 			if yamlSyntax(item) {
-				return m, fmt.Errorf("line %d: %q is YAML this reader would not read as goreleaser does", n+1, item)
+				return nil, fmt.Errorf("line %d: %q is YAML this reader would not read as goreleaser does", n+1, item)
 			}
 			lists[key] = append(lists[key], item)
 			continue
 		case indent == 2 && strings.HasPrefix(trimmed, "- "):
-			builds++
+			lists = map[string][]string{}
+			builds = append(builds, &releaseBuild{lists: lists})
 			trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
 		case indent != 4:
-			return m, fmt.Errorf("line %d: %q is at an indent this reader does not model", n+1, trimmed)
+			return nil, fmt.Errorf("line %d: %q is at an indent this reader does not model", n+1, trimmed)
+		case len(builds) == 0:
+			return nil, fmt.Errorf("line %d: %q comes before the first build", n+1, trimmed)
 		}
+		b := builds[len(builds)-1]
 		name, value, ok := strings.Cut(trimmed, ":")
 		value = strings.TrimSpace(value)
 		isList, modelled := buildKeys[name]
 		switch {
 		case yamlSyntax(value):
-			return m, fmt.Errorf("line %d: %q is YAML this reader would not read as goreleaser does", n+1, value)
+			return nil, fmt.Errorf("line %d: %q is YAML this reader would not read as goreleaser does", n+1, value)
 		case !ok || !modelled:
-			return m, fmt.Errorf("line %d: the build has %q, which this reader does not model", n+1, trimmed)
+			return nil, fmt.Errorf("line %d: the build has %q, which this reader does not model", n+1, trimmed)
 		case isList && value != "":
-			return m, fmt.Errorf("line %d: %s is written inline, and this reader reads a list only one item to a line", n+1, name)
+			return nil, fmt.Errorf("line %d: %s is written inline, and this reader reads a list only one item to a line", n+1, name)
 		case isList:
 			key = name
 		default:
 			key = ""
-			if name == "main" {
-				main = value
+			switch name {
+			case "id":
+				b.id = value
+			case "dir":
+				b.dir = value
+			case "main":
+				b.main = value
 			}
 		}
 	}
-	if err := checkMatrix(builds, main, lists); err != nil {
-		return m, err
+	out := map[string]releaseMatrix{}
+	for _, b := range builds {
+		if err := checkMatrix(*b, out); err != nil {
+			return nil, err
+		}
+		m, err := matrixOf(b.lists, known)
+		if err != nil {
+			return nil, err
+		}
+		out[b.id] = m
 	}
-	m.env = lists["env"]
+	if _, ok := out["rashomon"]; !ok {
+		return nil, errors.New("the builds block has no rashomon build")
+	}
+	return out, nil
+}
+
+// matrixOf is one build's matrix: every goos against every goarch of its
+// lists, each a pair `go tool dist list` names (known), and its env.
+func matrixOf(lists map[string][]string, known map[releaseTarget]bool) (releaseMatrix, error) {
+	m := releaseMatrix{env: lists["env"]}
 	for _, goos := range lists["goos"] {
 		for _, goarch := range lists["goarch"] {
 			t := releaseTarget{goos, goarch}
@@ -157,15 +210,23 @@ func yamlSyntax(v string) bool {
 	return v != "" && strings.ContainsAny(v[:1], "&*!|>[{%@`")
 }
 
-// checkMatrix is what the build's lists must say for the listing to be the
-// release's: one build, of ./cmd/rashomon, with CGO_ENABLED=0, only flags
-// this reader models, and every list entry present once.
-func checkMatrix(builds int, main string, lists map[string][]string) error {
+// checkMatrix is what one build must say for its listing to be the
+// release's: an id releaseBuildShapes names, not read before, built from that
+// id's dir and of its main; CGO_ENABLED=0; only flags this reader models; and
+// every list entry present once.
+func checkMatrix(b releaseBuild, read map[string]releaseMatrix) error {
+	shape, ok := releaseBuildShapes[b.id]
+	_, twice := read[b.id]
+	lists := b.lists
 	switch {
-	case builds != 1:
-		return fmt.Errorf("%d builds, and this reader reads exactly one", builds)
-	case main != "./cmd/rashomon":
-		return fmt.Errorf("the build's main is %q, not ./cmd/rashomon", main)
+	case !ok:
+		return fmt.Errorf("a build with id %q, and this reader models only rashomon and pgraph", b.id)
+	case twice:
+		return fmt.Errorf("the %s build is there twice", b.id)
+	case b.main != shape.main:
+		return fmt.Errorf("the %s build's main is %q, not %s", b.id, b.main, shape.main)
+	case b.dir != shape.dir:
+		return fmt.Errorf("the %s build's dir is %q, not %q", b.id, b.dir, shape.dir)
 	case len(lists["goos"]) == 0 || len(lists["goarch"]) == 0:
 		return errors.New("the build lists no goos or no goarch")
 	}
@@ -248,15 +309,16 @@ func parseListing(out string, want releaseTarget) ([]listedPackage, error) {
 	return pkgs, nil
 }
 
-// listingPremises are what show a listing is the build it names: this
-// module's own packages are in it, with this module's path in the module
-// column, and it links the one syscall package its GOOS does. A windows build
-// links internal/syscall/windows, a unix one internal/syscall/unix, and no
-// build links both; a GOOS that is no build at all links neither.
-func listingPremises(target releaseTarget, pkgs []listedPackage) error {
+// listingPremises are what show a listing is the build it names: at least
+// minOurs packages of the build's own module are in it, with that module's
+// path in the module column, and it links the one syscall package its GOOS
+// does. A windows build links internal/syscall/windows, a unix one
+// internal/syscall/unix, and no build links both; a GOOS that is no build at
+// all links neither.
+func listingPremises(target releaseTarget, pkgs []listedPackage, module string, minOurs int) error {
 	ours, windows, unix := 0, false, false
 	for _, p := range pkgs {
-		if strings.HasPrefix(p.path, modulePath+"/") && p.module == modulePath {
+		if (p.path == module || strings.HasPrefix(p.path, module+"/")) && p.module == module {
 			ours++
 		}
 		switch p.path {
@@ -266,9 +328,9 @@ func listingPremises(target releaseTarget, pkgs []listedPackage) error {
 			unix = true
 		}
 	}
-	if ours < 5 {
-		return fmt.Errorf("the listing for %s names only %d of this module's packages; it is not looking at the build",
-			target, ours)
+	if ours < minOurs {
+		return fmt.Errorf("the listing for %s names only %d of %s's packages; it is not looking at the build",
+			target, ours, module)
 	}
 	isWindows := target.goos == "windows"
 	if windows != isWindows || unix == isWindows {
@@ -283,17 +345,26 @@ func listingPremises(target releaseTarget, pkgs []listedPackage) error {
 // listing it again would be the same answer at six times the load.
 func releaseListing(t *testing.T) map[releaseTarget][]listedPackage {
 	t.Helper()
-	listed.once.Do(func() { listed.byTarget, listed.err = listReleases() })
-	if listed.err != nil {
-		t.Fatal(listed.err)
-	}
-	return listed.byTarget
+	return listed.get(t, listReleases)
 }
 
-var listed struct {
+var listed listingCache
+
+// listingCache holds one build's listing for the test process.
+type listingCache struct {
 	once     sync.Once
 	byTarget map[releaseTarget][]listedPackage
 	err      error
+}
+
+// get lists once, by list, and fails t on the error every caller then sees.
+func (c *listingCache) get(t *testing.T, list func() (map[releaseTarget][]listedPackage, error)) map[releaseTarget][]listedPackage {
+	t.Helper()
+	c.once.Do(func() { c.byTarget, c.err = list() })
+	if c.err != nil {
+		t.Fatal(c.err)
+	}
+	return c.byTarget
 }
 
 // releaseListEnv is the environment `go list` runs the release listing
@@ -314,6 +385,15 @@ func releaseListEnv(target releaseTarget, extra []string) []string {
 }
 
 func listReleases() (map[releaseTarget][]listedPackage, error) {
+	builds, err := readReleaseBuilds()
+	if err != nil {
+		return nil, err
+	}
+	return listBuild(builds["rashomon"], moduleRoot, "./cmd/rashomon", modulePath, 5)
+}
+
+// readReleaseBuilds reads the builds of this repository's .goreleaser.yml.
+func readReleaseBuilds() (map[string]releaseMatrix, error) {
 	body, err := os.ReadFile(filepath.Join(moduleRoot, ".goreleaser.yml"))
 	if err != nil {
 		return nil, err
@@ -322,24 +402,32 @@ func listReleases() (map[releaseTarget][]listedPackage, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, err := parseReleaseMatrix(string(body), known)
+	builds, err := parseReleaseBuilds(string(body), known)
 	if err != nil {
 		return nil, fmt.Errorf(".goreleaser.yml: %w", err)
 	}
+	return builds, nil
+}
+
+// listBuild lists one build's main package, from dir, for every target of
+// its matrix under the release's environment, and holds each listing to the
+// premises for module: rashomon lists ./cmd/rashomon from the repository
+// root, and pgraph ./cmd/pgraph from its own module.
+func listBuild(m releaseMatrix, dir, main, module string, minOurs int) (map[releaseTarget][]listedPackage, error) {
 	out := map[releaseTarget][]listedPackage{}
 	for _, target := range m.targets {
-		cmd := exec.Command("go", "list", "-deps", "-f", listFormat, "./cmd/rashomon")
-		cmd.Dir = moduleRoot
+		cmd := exec.Command("go", "list", "-deps", "-f", listFormat, main)
+		cmd.Dir = dir
 		cmd.Env = releaseListEnv(target, m.env)
 		listing, err := cmd.Output()
 		if err != nil {
-			return nil, fmt.Errorf("listing %s: %w", target, err)
+			return nil, fmt.Errorf("listing %s for %s: %w", main, target, err)
 		}
 		pkgs, err := parseListing(string(listing), target)
 		if err != nil {
-			return nil, fmt.Errorf("listing %s: %w", target, err)
+			return nil, fmt.Errorf("listing %s for %s: %w", main, target, err)
 		}
-		if err := listingPremises(target, pkgs); err != nil {
+		if err := listingPremises(target, pkgs, module, minOurs); err != nil {
 			return nil, err
 		}
 		out[target] = pkgs
@@ -376,9 +464,10 @@ func unionImports(byTarget map[releaseTarget][]listedPackage) []string {
 }
 
 // TestTRU40_ReleaseTargetsAreReadFromGoreleaser: the reader takes every goos
-// against every goarch of the one build, and nothing from elsewhere in the
-// file; and it refuses every shape it was not written for rather than reading
-// fewer targets than ship, or targets that are not builds.
+// against every goarch of each build, from that build's own lists, and
+// nothing from elsewhere in the file; and it refuses every shape it was not
+// written for rather than reading fewer targets than ship, or targets that
+// are not builds.
 func TestTRU40_ReleaseTargetsAreReadFromGoreleaser(t *testing.T) {
 	known := map[releaseTarget]bool{}
 	for _, goos := range []string{"linux", "darwin", "freebsd", "windows"} {
@@ -401,6 +490,22 @@ func TestTRU40_ReleaseTargetsAreReadFromGoreleaser(t *testing.T) {
 	}
 	if !reflect.DeepEqual(m.env, []string{"CGO_ENABLED=0"}) {
 		t.Errorf("env = %v, want the build's own", m.env)
+	}
+
+	// A pgraph build reads beside rashomon's, each from its own lists:
+	// pgraph's pairs are its own, and rashomon's are unchanged by a second
+	// build.
+	pgraph := "  - id: pgraph\n    dir: pgraph\n    main: ./cmd/pgraph\n    binary: pgraph\n    env:\n      - CGO_ENABLED=0\n" +
+		"    goos:\n      - linux\n      - darwin\n    goarch:\n      - arm64\n    flags:\n      - -trimpath\n    ldflags:\n      - -s -w\n"
+	builds, err := parseReleaseBuilds(root+build+pgraph+archives+rest, known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(builds["rashomon"].targets, want) {
+		t.Errorf("rashomon targets beside a pgraph build = %v, want %v", builds["rashomon"].targets, want)
+	}
+	if got, own := builds["pgraph"].targets, []releaseTarget{{"linux", "arm64"}, {"darwin", "arm64"}}; !reflect.DeepEqual(got, own) {
+		t.Errorf("pgraph targets = %v, want %v: its own lists, not rashomon's", got, own)
 	}
 
 	for _, tc := range []struct{ name, yml string }{
@@ -428,6 +533,15 @@ func TestTRU40_ReleaseTargetsAreReadFromGoreleaser(t *testing.T) {
 		{"a goos twice", strings.Replace(build, "      - freebsd\n", "      - linux\n", 1)},
 		{"a root env", "env:\n  - GOFLAGS=-tags=withnet\n" + build},
 		{"a root before hook", "before:\n  hooks:\n    - go generate ./...\n" + build},
+		{"a key before the first build", "builds:\n    id: rashomon\n" + strings.TrimPrefix(build, "builds:\n")},
+		{"rashomon twice", build + strings.TrimPrefix(build, "builds:\n")},
+		{"pgraph alone", "builds:\n" + pgraph},
+		{"pgraph twice", build + pgraph + pgraph},
+		{"pgraph from the root", build + strings.Replace(pgraph, "    dir: pgraph\n", "", 1)},
+		{"pgraph from another folder", build + strings.Replace(pgraph, "dir: pgraph", "dir: ./other", 1)},
+		{"pgraph of another main", build + strings.Replace(pgraph, "./cmd/pgraph", "./cmd/rashomon", 1)},
+		{"pgraph with cgo on", build + strings.Replace(pgraph, "CGO_ENABLED=0", "CGO_ENABLED=1", 1)},
+		{"pgraph with a -tags flag", build + strings.Replace(pgraph, "      - -trimpath\n", "      - -tags=withnet\n", 1)},
 	} {
 		if _, err := parseReleaseMatrix(tc.yml, known); err == nil {
 			t.Errorf("%s: read without an error; the reader must refuse a shape it does not model", tc.name)
@@ -498,7 +612,25 @@ func TestTRU40_EveryTargetIsListedAsItShips(t *testing.T) {
 		{"too few of ours", linux, with(five[:4], "unix"), false},
 		{"ours without the module column", linux, with(unmoduled, "unix"), false},
 	} {
-		if err := listingPremises(tc.target, tc.pkgs); (err == nil) != tc.ok {
+		if err := listingPremises(tc.target, tc.pkgs, modulePath, 5); (err == nil) != tc.ok {
+			t.Errorf("%s: premises error = %v, want ok = %v", tc.name, err, tc.ok)
+		}
+	}
+
+	// pgraph's own module has two packages, its root and its command, and a
+	// pgraph listing is held to both, by pgraph's module path.
+	pgraphOwn := []listedPackage{{path: pgraphModulePath, module: pgraphModulePath},
+		{path: pgraphModulePath + "/cmd/pgraph", module: pgraphModulePath}}
+	for _, tc := range []struct {
+		name string
+		pkgs []listedPackage
+		ok   bool
+	}{
+		{"pgraph, its root and its command", with(pgraphOwn, "unix"), true},
+		{"pgraph, its command alone", with(pgraphOwn[1:], "unix"), false},
+		{"rashomon's packages, held to pgraph's module", with(five, "unix"), false},
+	} {
+		if err := listingPremises(linux, tc.pkgs, pgraphModulePath, 2); (err == nil) != tc.ok {
 			t.Errorf("%s: premises error = %v, want ok = %v", tc.name, err, tc.ok)
 		}
 	}
