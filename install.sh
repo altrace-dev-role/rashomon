@@ -7,8 +7,9 @@
 # pipe into a shell deserves to say so:
 #
 #   IT WILL   download a released archive, verify its SHA-256 against the
-#             release's own checksums file, and place one binary in a directory
-#             you own.
+#             release's own checksums file, and place the binaries it holds in
+#             a directory you own: rashomon, and pgraph from a release that
+#             carries it.
 #   IT WILL   refuse to install anything it could not verify. There is no
 #             --skip-checksum and no fallback path that installs unverified
 #             bytes. A tool whose product is "say what you actually observed"
@@ -108,8 +109,10 @@ say "  from ${ARCHIVE_URL}"
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t rashomon)
 # Clean up on every exit path, including an interrupt part-way through a
-# download, so a failed install never leaves a half-written archive behind.
-trap 'rm -rf "$TMP"' EXIT INT TERM HUP
+# download, so a failed install never leaves a half-written archive behind,
+# nor a staged binary under a temporary name in the install directory. After
+# a rename the temporary name no longer exists and rm -f passes over it.
+trap 'rm -rf "$TMP"; rm -f "$INSTALL_DIR/.rashomon.incoming" "$INSTALL_DIR/.pgraph.incoming"' EXIT INT TERM HUP
 
 fetch "$ARCHIVE_URL" "$TMP/$ARCHIVE" || die "download failed: $ARCHIVE_URL"
 fetch "$SUMS_URL"    "$TMP/checksums.txt" || die "could not fetch checksums.txt; refusing to install unverified bytes"
@@ -134,21 +137,42 @@ say "  sha256 verified (${got})"
 
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP" || die "could not extract $ARCHIVE"
 [ -f "$TMP/rashomon" ] || die "archive did not contain a rashomon binary"
+# A release before pgraph joined the archive carries rashomon alone. That is
+# not an error: rashomon is placed, and the note below says how to get pgraph.
+if [ -f "$TMP/pgraph" ]; then PGRAPH=yes; else PGRAPH=no; fi
 
 mkdir -p "$INSTALL_DIR" || die "could not create $INSTALL_DIR"
 
-# Install via a temporary name and rename, so an interrupted copy cannot leave a
-# truncated binary at a path Claude Code may already be configured to execute.
+# Install via temporary names and renames, so an interrupted copy cannot leave
+# a truncated binary at a path Claude Code may already be configured to
+# execute. Both copies are made before either rename, so a failed copy leaves
+# the directory as it was.
 cp "$TMP/rashomon" "$INSTALL_DIR/.rashomon.incoming" || die "could not write to $INSTALL_DIR"
 chmod 0755 "$INSTALL_DIR/.rashomon.incoming"
+if [ "$PGRAPH" = yes ]; then
+  cp "$TMP/pgraph" "$INSTALL_DIR/.pgraph.incoming" || die "could not write to $INSTALL_DIR"
+  chmod 0755 "$INSTALL_DIR/.pgraph.incoming"
+fi
 mv "$INSTALL_DIR/.rashomon.incoming" "$INSTALL_DIR/rashomon"
 
 say "  installed ${INSTALL_DIR}/rashomon"
+if [ "$PGRAPH" = yes ]; then
+  mv "$INSTALL_DIR/.pgraph.incoming" "$INSTALL_DIR/pgraph" \
+    || die "rashomon was placed but pgraph could not be.
+  The pgraph beside it, if any, is the older one."
+  say "  installed ${INSTALL_DIR}/pgraph"
+else
+  say "  this release carries no pgraph; a Go repository needs it (Go 1.26 or later):"
+  say "    go install github.com/altrace-dev-role/rashomon/pgraph/cmd/pgraph@main"
+fi
 
-# One binary, whatever else the release carries. Nothing here fetches a second
-# program: a release asset this script does not know about is not one it
-# installs, so what gets placed on this machine is decided by this file and
-# not by what happens to be attached to a tag.
+# The binaries the verified archive holds, and nothing else. Nothing here
+# fetches a second program: a release asset this script does not know about is
+# not one it installs, so what gets placed on this machine is decided by this
+# file and not by what happens to be attached to a tag. pgraph runs nothing
+# until you run it; `pgraph sync` then runs your go tool over your module with
+# GOPROXY=off, GOTOOLCHAIN=local and GOSUMDB=off, so it fetches no module,
+# toolchain or checksum (pgraph/ingest.go, LoaderEnv and its packages.Load).
 
 # ----------------------------------------------------------------- next ------
 

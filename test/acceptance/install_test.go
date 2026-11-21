@@ -1,6 +1,8 @@
 package acceptance
 
-// The installer places the CLI and nothing else, whatever the release carries.
+// The installer places the binaries the CLI archive holds -- rashomon, and
+// pgraph from a release that carries it -- and nothing else, whatever the
+// release carries.
 //
 // install.sh is the first thing a stranger runs, and until this test nothing in
 // the repository executed it: its behaviour was checked by `bash -n` and by
@@ -22,6 +24,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
@@ -83,7 +86,22 @@ var installerTools = []string{"uname", "mktemp", "rm", "grep", "cut", "head", "s
 // alphaClosing is the installer's last word on what the alpha does not do.
 const alphaClosing = "Network traffic is not observed. The report lists the hosts each command"
 
-func TestInstall_PlacesOnlyTheCLI(t *testing.T) {
+// noPgraphNote and pgraphGoInstall are the two lines install.sh prints when
+// the archive carries no pgraph, as every release up to v1.0-AutoSteer does.
+// The second is README's own install line for pgraph, indented as there.
+const (
+	noPgraphNote    = "  this release carries no pgraph; a Go repository needs it (Go 1.26 or later):"
+	pgraphGoInstall = "    go install github.com/altrace-dev-role/rashomon/pgraph/cmd/pgraph@main"
+)
+
+// cliWithPgraph is the CLI archive as a release with pgraph builds it.
+var cliWithPgraph = map[string]int64{"rashomon": 0o755, "pgraph": 0o755}
+
+// TestInstall_PlacesRashomonAndPgraph: from a release whose archive holds
+// both binaries, the installer places rashomon and pgraph and nothing else,
+// never fetches the proxy's archive, and does not say pgraph is missing.
+// Break: leave the pgraph copy out of install.sh.
+func TestInstall_PlacesRashomonAndPgraph(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("install.sh supports macOS and Linux only")
 	}
@@ -95,16 +113,13 @@ func TestInstall_PlacesOnlyTheCLI(t *testing.T) {
 	}
 
 	const version = "0.0.1"
-	release := t.TempDir()
-	cli := fmt.Sprintf("rashomon_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
-	proxy := fmt.Sprintf("altrace_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
-	var sums strings.Builder
-	for name, member := range map[string]string{cli: "rashomon", proxy: "altrace"} {
-		sum := writeArchive(t, filepath.Join(release, name), member)
-		fmt.Fprintf(&sums, "%s  %s\n", sum, name)
-	}
-	if err := os.WriteFile(filepath.Join(release, "checksums.txt"), []byte(sums.String()), 0o600); err != nil {
-		t.Fatal(err)
+	release, cli, proxy := installRelease(t, version, cliWithPgraph)
+	check := func(t *testing.T, run installRun) {
+		t.Helper()
+		assertPlaced(t, run, cli, proxy, "pgraph", "rashomon")
+		if strings.Contains(run.out, noPgraphNote) {
+			t.Errorf("the installer says the release carries no pgraph although it placed one:\n%s", run.out)
+		}
 	}
 
 	t.Run("curl", func(t *testing.T) {
@@ -112,8 +127,8 @@ func TestInstall_PlacesOnlyTheCLI(t *testing.T) {
 		writeShim(t, shims, "curl", curlShim)
 		// The stand-in first, then the real PATH: everything else the
 		// installer runs is the machine's own.
-		assertOnlyTheCLI(t, runInstaller(t, release, version,
-			shims+string(os.PathListSeparator)+os.Getenv("PATH")), cli, proxy)
+		check(t, runInstaller(t, release, version,
+			shims+string(os.PathListSeparator)+os.Getenv("PATH")))
 	})
 
 	t.Run("wget, with no curl on PATH", func(t *testing.T) {
@@ -132,21 +147,81 @@ func TestInstall_PlacesOnlyTheCLI(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(farm, "curl")); err == nil {
 			t.Fatal("premise broken: the wget-only PATH carries a curl")
 		}
-		assertOnlyTheCLI(t, runInstaller(t, release, version, farm), cli, proxy)
+		check(t, runInstaller(t, release, version, farm))
 	})
 }
 
+// TestInstall_AnOlderReleaseWithoutPgraph: v1.0-AutoSteer and every release
+// before it carry rashomon alone, and RASHOMON_VERSION can still name them.
+// The installer places rashomon, exits 0, and says in two lines of at most 80
+// columns that this release has no pgraph and how to install it, in README's
+// words ("A Go repository needs one step first", Go 1.26 or later, the
+// go install line). Break: die on a missing pgraph, copy pgraph without
+// looking for it, or drop the go install line.
+func TestInstall_AnOlderReleaseWithoutPgraph(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh installs on macOS and Linux, amd64 and arm64")
+	}
+	const version = "0.0.3"
+	release, cli, proxy := installRelease(t, version, map[string]int64{"rashomon": 0o755})
+	shims := t.TempDir()
+	writeShim(t, shims, "curl", curlShim)
+	run := runInstaller(t, release, version, shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+	assertPlaced(t, run, cli, proxy, "rashomon")
+	lines := strings.Split(run.out, "\n")
+	for _, want := range []string{noPgraphNote, pgraphGoInstall} {
+		if !slices.Contains(lines, want) {
+			t.Errorf("the installer does not print the line %q:\n%s", want, run.out)
+		}
+	}
+	for _, l := range lines {
+		if n := len([]rune(l)); strings.Contains(l, "pgraph") && n > 80 {
+			t.Errorf("a line about pgraph is %d columns, want at most 80: %q", n, l)
+		}
+	}
+}
+
+// TestInstall_AFailedCopyLeavesNothingStaged: when the pgraph copy fails,
+// after rashomon was staged under its temporary name, the installer exits
+// non-zero and the install directory holds nothing -- neither binary and
+// neither temporary name -- because install.sh's exit trap removes both
+// temporary names. The archive's pgraph has mode 000, so cp cannot read it.
+// Break: let the trap remove the download folder alone, as it did before
+// pgraph joined the archive.
+func TestInstall_AFailedCopyLeavesNothingStaged(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh installs on macOS and Linux, amd64 and arm64")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode 000 file, so the copy this test needs to fail would not")
+	}
+	const version = "0.0.4"
+	release, _, _ := installRelease(t, version, map[string]int64{"rashomon": 0o755, "pgraph": 0})
+	shims := t.TempDir()
+	writeShim(t, shims, "curl", curlShim)
+	run, err := installer(t, release, version, shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err == nil {
+		t.Fatalf("install.sh succeeded although pgraph could not be copied:\n%s", run.out)
+	}
+	if !strings.Contains(run.out, "could not write to") {
+		t.Fatalf("premise broken: the installer failed before the copies:\n%s", run.out)
+	}
+	if len(run.placed) != 0 {
+		t.Errorf("after a failed copy the install directory holds %v, want nothing:\n%s", run.placed, run.out)
+	}
+}
+
 // installRelease writes a release of version for this machine into a new
-// directory, as TestInstall_PlacesOnlyTheCLI's: the CLI's archive, a proxy
+// directory: the CLI's archive holding members (name to file mode), a proxy
 // archive the installer must never ask for, and checksums.txt naming both.
-func installRelease(t *testing.T, version string) (release, cli, proxy string) {
+func installRelease(t *testing.T, version string, members map[string]int64) (release, cli, proxy string) {
 	t.Helper()
 	release = t.TempDir()
 	cli = fmt.Sprintf("rashomon_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
 	proxy = fmt.Sprintf("altrace_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
 	var sums strings.Builder
-	for name, member := range map[string]string{cli: "rashomon", proxy: "altrace"} {
-		sum := writeArchive(t, filepath.Join(release, name), member)
+	for name, files := range map[string]map[string]int64{cli: members, proxy: {"altrace": 0o755}} {
+		sum := writeArchive(t, filepath.Join(release, name), files)
 		fmt.Fprintf(&sums, "%s  %s\n", sum, name)
 	}
 	if err := os.WriteFile(filepath.Join(release, "checksums.txt"), []byte(sums.String()), 0o600); err != nil {
@@ -166,11 +241,11 @@ func TestInstall_TheLatestReleaseNeedsNoAPI(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Skip("install.sh installs on macOS and Linux, amd64 and arm64")
 	}
-	release, cli, proxy := installRelease(t, "0.0.2")
+	release, cli, proxy := installRelease(t, "0.0.2", cliWithPgraph)
 	shims := t.TempDir()
 	writeShim(t, shims, "curl", curlShim)
 	run := runInstaller(t, release, "", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
-	assertOnlyTheCLI(t, run, cli, proxy)
+	assertPlaced(t, run, cli, proxy, "pgraph", "rashomon")
 	want := []string{"https://github.com/altrace-dev-role/rashomon/releases/latest/download/checksums.txt",
 		"https://release.invalid/download/v0.0.2/" + cli}
 	for _, w := range want {
@@ -272,17 +347,20 @@ func installer(t *testing.T, release, version, pathEnv string) (installRun, erro
 	if version != "" {
 		cmd.Env = append(cmd.Env, "RASHOMON_VERSION=v"+version)
 	}
-	out, err := cmd.CombinedOutput()
+	out, runErr := cmd.CombinedOutput()
 	run := installRun{out: string(out)}
-	if err != nil {
-		return run, err
-	}
+	// Read even after a failure: what a failed install leaves is the point
+	// of TestInstall_AFailedCopyLeavesNothingStaged. A failure before mkdir
+	// leaves no directory, which reads as nothing placed.
 	entries, err := os.ReadDir(installDir)
-	if err != nil {
+	if err != nil && (runErr == nil || !os.IsNotExist(err)) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
 		run.placed = append(run.placed, e.Name())
+	}
+	if runErr != nil {
+		return run, runErr
 	}
 	requested, err := os.ReadFile(log)
 	if err != nil {
@@ -292,11 +370,13 @@ func installer(t *testing.T, release, version, pathEnv string) (installRun, erro
 	return run, nil
 }
 
-// assertOnlyTheCLI holds one run to the alpha's installer contract.
-func assertOnlyTheCLI(t *testing.T, run installRun, cli, proxy string) {
+// assertPlaced holds one run to the alpha's installer contract: the install
+// directory holds exactly want, in name order (a temporary name left behind
+// is caught too), and only the CLI archive and checksums.txt were fetched.
+func assertPlaced(t *testing.T, run installRun, cli, proxy string, want ...string) {
 	t.Helper()
-	if len(run.placed) != 1 || run.placed[0] != "rashomon" {
-		t.Errorf("install dir holds %v, want only rashomon", run.placed)
+	if !slices.Equal(run.placed, want) {
+		t.Errorf("install dir holds %v, want %v", run.placed, want)
 	}
 
 	// By NAME, never by the substring "altrace": the release repository's own
@@ -340,9 +420,10 @@ func writeShim(t *testing.T, dir, name, body string) {
 	}
 }
 
-// writeArchive writes a .tar.gz holding one executable file named member and
-// returns the archive's SHA-256, as a release's checksums.txt lists it.
-func writeArchive(t *testing.T, dest, member string) string {
+// writeArchive writes a .tar.gz holding one small script per member, each
+// with its mode, in name order, and returns the archive's SHA-256, as a
+// release's checksums.txt lists it.
+func writeArchive(t *testing.T, dest string, members map[string]int64) string {
 	t.Helper()
 	f, err := os.Create(dest)
 	if err != nil {
@@ -351,11 +432,13 @@ func writeArchive(t *testing.T, dest, member string) string {
 	gz := gzip.NewWriter(f)
 	tw := tar.NewWriter(gz)
 	body := []byte("#!/bin/sh\nexit 0\n")
-	if err := tw.WriteHeader(&tar.Header{Name: member, Mode: 0o755, Size: int64(len(body))}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
+	for _, name := range slices.Sorted(maps.Keys(members)) {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: members[name], Size: int64(len(body))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(body); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, c := range []interface{ Close() error }{tw, gz, f} {
 		if err := c.Close(); err != nil {
