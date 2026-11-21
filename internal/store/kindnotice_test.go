@@ -113,35 +113,52 @@ func TestLANGREG1_AKindMarkerNameIsADigestOfTheKey(t *testing.T) {
 // once leave at most 16 kind markers, each one a kind that took its own, and
 // the line naming no kind is taken once. Break: drop the count after the
 // create, or the removal of a marker past the limit, and this fails.
+//
+// One round of this race is not a reliable judge. With either break in place,
+// a single round passed in 6 to 18 percent of runs (300 runs per break, one
+// machine), because the takes only overlap when the scheduler lets them. So
+// the round is played 12 times, each on a session of its own with no marker
+// left from an earlier round. In 300 runs of each break on one machine every
+// run failed, and the fewest failing rounds in any run were 2 of 12 for the
+// first break and 5 of 12 for the second. The rounds share the machine's
+// load, so they are not fully independent: no odds are claimed beyond those
+// runs.
 func TestLANGREG1_RacingKindsNeverPassTheLimit(t *testing.T) {
 	s := kindStore(t)
 	const kinds = 32 // twice the 16, written out: see the first test above
-	got := make([]string, kinds)
-	var wg sync.WaitGroup
-	for i := 0; i < kinds; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			got[i] = s.TakeKindNotice("s1", fmt.Sprintf(".k%d", i))
-		}(i)
-	}
-	wg.Wait()
-	own, other := 0, 0
-	for i, g := range got {
-		switch g {
-		case "":
-		case FileNoticeOtherKinds:
-			other++
-		case KindNoticeName(fmt.Sprintf(".k%d", i)):
-			own++
-		default:
-			t.Errorf("kind %d took %q", i, g)
+	const rounds = 12
+	for r := 0; r < rounds; r++ {
+		sid := fmt.Sprintf("race%d", r)
+		if err := os.MkdirAll(s.RunDir(sid), 0o700); err != nil {
+			t.Fatal(err)
 		}
-	}
-	n, ok := s.kindNotices("s1")
-	if !ok || n != own || own > 16 || other != 1 {
-		t.Errorf("markers %d (read %v), own takes %d, other-kinds takes %d; want markers equal to own takes, at most 16, and one other-kinds take",
-			n, ok, own, other)
+		got := make([]string, kinds)
+		var wg sync.WaitGroup
+		for i := 0; i < kinds; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				got[i] = s.TakeKindNotice(sid, fmt.Sprintf(".k%d", i))
+			}(i)
+		}
+		wg.Wait()
+		own, other := 0, 0
+		for i, g := range got {
+			switch g {
+			case "":
+			case FileNoticeOtherKinds:
+				other++
+			case KindNoticeName(fmt.Sprintf(".k%d", i)):
+				own++
+			default:
+				t.Errorf("round %d: kind %d took %q", r, i, g)
+			}
+		}
+		n, ok := s.kindNotices(sid)
+		if !ok || n != own || own > 16 || other != 1 {
+			t.Errorf("round %d: markers %d (read %v), own takes %d, other-kinds takes %d; want markers equal to own takes, at most 16, and one other-kinds take",
+				r, n, ok, own, other)
+		}
 	}
 }
 
