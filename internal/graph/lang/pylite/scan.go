@@ -13,7 +13,7 @@ import (
 // whose bodies hold it, innermost last, and empty for a module def: a def in
 // a class body is a method of that class. end is the 1-based last line of
 // its body (scan): the last line a body line or a call in it reaches, or the
-// line its parameters close on when no line follows in its body.
+// line its header ends on when no line follows in its body.
 type def struct {
 	name  string
 	class string
@@ -277,15 +277,21 @@ func readFrom(imports map[string]importRef, module, names string) {
 
 // readDef reads a def starting at lines[i] with its parameter list opening
 // at column open, possibly over several lines, and returns the def and the
-// index of the line the list closes on. A list that does not close, or a
-// missing colon after the close, is a parse refusal at the def's line.
+// index of the line its header ends on. A colon on the line the list closes
+// on ends the header there, as it always has, so a file read before gives
+// the same records. Without one the header goes on as Python joins it
+// (headerEnd): a return annotation's bracket still open, or a backslash
+// ending the code, carries it to the next line. A list that does not close,
+// or no colon after the close, is a parse refusal at the def's line.
 func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	text, end, closeAt, ok := group(lines, i, open)
 	if !ok {
 		return def{}, 0, parseError{line: i + 1, why: "a def's parameters do not close"}
 	}
-	rest := lines[end][closeAt+1:]
-	if !strings.Contains(rest, ":") {
+	if !strings.Contains(lines[end][closeAt+1:], ":") {
+		end, ok = headerEnd(lines, end, closeAt+1)
+	}
+	if !ok {
 		return def{}, 0, parseError{line: i + 1, why: "a def with no colon after its parameters"}
 	}
 	params := splitTop(text)
@@ -314,6 +320,39 @@ func readDef(lines []string, i int, name string, open int) (def, int, error) {
 	}
 	d.sig = "(" + strings.Join(shown, ", ") + ")"
 	return d, end, nil
+}
+
+// headerEnd is the index of the line a def's header ends on when no colon
+// follows its parameters on the line they close on: from lines[j][from:]
+// on, brackets are counted, and the first colon outside a bracket ends the
+// header, so a colon inside an annotation's bracket ends nothing. A line end
+// joins the next line while a bracket is open or the code ends in a
+// backslash, as Python joins a logical line; any other line end that comes
+// first is a header with no colon. Strings and comments are blanked before
+// the scan (blank.go), so a colon or a bracket in one is a space here and a
+// backslash in a comment joins nothing; the file's brackets balance
+// (balanced), so the count never goes below zero.
+func headerEnd(lines []string, j, from int) (int, bool) {
+	depth := 0
+	for ; j < len(lines); j, from = j+1, 0 {
+		line := lines[j]
+		for k := from; k < len(line); k++ {
+			switch line[k] {
+			case '(', '[', '{':
+				depth++
+			case ')', ']', '}':
+				depth--
+			case ':':
+				if depth == 0 {
+					return j, true
+				}
+			}
+		}
+		if depth == 0 && !strings.HasSuffix(strings.TrimRight(line[from:], " \t\r"), `\`) {
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 // paramName is one parameter's name as a def writes it: the text before the
