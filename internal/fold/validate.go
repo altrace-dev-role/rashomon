@@ -90,22 +90,11 @@ func CursorValid(path string, c Cursor) (bool, error) {
 	if c.Offset == 0 {
 		return true, nil
 	}
-	f, err := os.Open(path)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	if err != nil {
+	f, ok, err := openCursor(path, c)
+	if !ok {
 		return false, err
 	}
 	defer f.Close() //nolint:errcheck // read-only
-
-	info, err := f.Stat()
-	if err != nil {
-		return false, err
-	}
-	if c.Offset < 0 || c.Offset > info.Size() || info.Size() < c.SizeSeen {
-		return false, nil
-	}
 
 	var b [1]byte
 	n, err := f.ReadAt(b[:], c.Offset-1)
@@ -113,4 +102,29 @@ func CursorValid(path string, c Cursor) (bool, error) {
 		return false, err
 	}
 	return b[0] == '\n', nil
+}
+
+// openCursor opens path for a check of c by CursorValid's size rules, the
+// one copy of them CursorValid and CursorTailValid share: ok is false when
+// the file is absent, or its size is below c.SizeSeen or below c.Offset, or
+// c.Offset is negative, and then no file is left open. An open or stat error
+// is returned with ok false.
+func openCursor(path string, c Cursor) (*os.File, bool, error) {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close() //nolint:errcheck // read-only
+		return nil, false, err
+	}
+	if c.Offset < 0 || c.Offset > info.Size() || info.Size() < c.SizeSeen {
+		f.Close() //nolint:errcheck // read-only
+		return nil, false, nil
+	}
+	return f, true, nil
 }

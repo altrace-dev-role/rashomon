@@ -76,9 +76,10 @@ var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, 
 	store.FileProbe, store.FileSeq, store.FileLockWait, store.FileStaleArmed, store.FileSpecNone, store.FileNoticeChannel,
 	store.FileNoticeHoldout, store.FileNoticeCoverage, store.FileNoticeCoverageClear, store.FileNoticeIndexCap,
 	fold.FileName, fold.MidFileName,
-	store.FileBriefingArmed, store.FileOverlayBytes, store.FileOverlayFull, store.FileNoticeOtherKinds}
+	store.FileBriefingArmed, store.FileOverlayBytes, store.FileOverlayFull, store.FileNoticeOtherKinds,
+	store.FileFrontier}
 
-var runTempPrefixes = []string{fold.TempPrefix}
+var runTempPrefixes = []string{fold.TempPrefix, "." + store.FileFrontier + ".tmp-"}
 
 // tempPrefixes are the names of an anchor's, consent.json's, record_scope's,
 // steer_disclosure's, session_content's, harnesses.json's,

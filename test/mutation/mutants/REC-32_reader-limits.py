@@ -27,6 +27,8 @@ m("REC-32 the probe swallows eviction's error", "internal/hook/probe.go",
   "\t\t_, err := st.Evict(capSetting.Bytes, sessionID, now())\n\t\t_ = err\n\t\treturn nil\n", "TestREC32d_")
 m("REC-32 probe is silent when eviction fails", "cmd/rashomon/main.go",
   "\t\t\tfmt.Fprintln(stderr, evictionLine)\n", "", "TestREC32d_")
+m("REC-32 probe names the store in its eviction line", "cmd/rashomon/main.go",
+  "\t\t\tfmt.Fprintln(stderr, evictionLine)\n", "\t\t\tfmt.Fprintln(stderr, evictionLine, st.Root())\n", "TestREC32d_")
 m("REC-32 the report prints an unknown count as -1", "internal/report/text.go",
   "\t\t\tif g.RemovedRecords < 0 {\n", "\t\t\tif false {\n", "TestREC32c_")
 m("REC-32 forget --host prints nothing when one run fails", "cmd/rashomon/main.go",

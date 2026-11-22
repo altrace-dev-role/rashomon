@@ -114,8 +114,8 @@ func schemaVocabularies(t *testing.T) []vocabulary {
 			{"/$defs/declaration/properties/schema_version", callRange, acceptedVersions(t, store.TypeDeclaration), false},
 			{"/$defs/execution/properties/schema_version", callRange, acceptedVersions(t, store.TypeExecution), false},
 			// Not read through AcceptsKind: its readers take any version
-			// (internal/store/gaps.go:536 and :764), so its one writer's stamp
-			// bounds it (gaps.go:507).
+			// (internal/store/gaps.go:533 and hostdigest.go:118), so its one
+			// writer's stamp bounds it (gaps.go:504).
 			{"/$defs/forgotten_host/properties/schema_version", "the forgotten_host writer's SessionSchemaVersion",
 				[]string{strconv.Itoa(store.SessionSchemaVersion)}, false},
 			{"/$defs/gap/properties/schema_version", sessionRange, acceptedVersions(t, store.TypeGap), false},

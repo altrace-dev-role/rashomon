@@ -17,9 +17,10 @@ import (
 
 // bodyOverCapLine is what probe says when a session's transcript was not
 // copied because it is larger than the whole bodies cap (card 4.1b, D111).
-// Fixed text, like evictionLine: hook stderr reaches Claude Code's debug
-// log, so nothing from the invocation goes into it; `rashomon bodies status`
-// names the cap.
+// Fixed text, like evictionLine: Claude Code keeps the stderr of a hook that
+// exits 0 in its debug log and in the transcript's hook_success record, and
+// never gives it to the model, so nothing from the invocation goes into it;
+// `rashomon bodies status` names the cap.
 const bodyOverCapLine = "rashomon: transcript copy skipped: over the bodies cap"
 
 // cmdBodies is `rashomon bodies on [--max-bytes N] | off | status`, the

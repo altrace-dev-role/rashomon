@@ -45,7 +45,7 @@ func sampleFrontier() Frontier {
 	f.ObligationsAt = 30
 	f.ObligationsOmitted = 2
 	f.UnitRowsCut = 5
-	f.Delivered = []LineRef{{ID: "l2", Key: "unit:b", Kind: "unit", Unit: "b", Seq: 41}, {ID: "l1", Key: "unit:a", Kind: "unit", Unit: "a", Seq: 4}}
+	f.Delivered = []LineRef{{ID: "l2", Key: "unit:b", Kind: "unit", Seq: 41}, {ID: "l1", Key: "unit:a", Kind: "unit", Seq: 4}}
 	f.Verdicts = []VerdictRef{{Seq: 30, DoneFlagged: false, Unmet: 1}, {Seq: 12, DoneFlagged: true}}
 	f.StopsWithoutVerdict = []int64{50, 40}
 	f.LastBoundary = 20
@@ -298,7 +298,7 @@ var frontierStrings = map[string]string{
 	"Intents[].Status":    "ReqStatus, open only in v1",
 	"Reqs[].ID":           "a Req's key, Pred:Arg",
 	"Reqs[].Pred":         "compliance predicate name",
-	"Reqs[].Arg":          "a unit's path as its line holds it or its keyed digest (record scope v4), a symbol, a gate family or a test id",
+	"Reqs[].Arg":          "a graph line's subject: the path its line holds (a code line's path, never a symbol), its keyed digest at record scope v4, or a decision's knowledge id",
 	"Reqs[].Status":       "ReqStatus",
 	"Reqs[].SupersededBy": "prompt node id, graph.PromptNodeID, of the prompt that superseded it",
 	"Decisions[].IDs[]":   "graph node id",
@@ -311,7 +311,6 @@ var frontierStrings = map[string]string{
 	"Delivered[].ID":      "steer line id",
 	"Delivered[].Key":     "line key",
 	"Delivered[].Kind":    "line kind name",
-	"Delivered[].Unit":    "unit id",
 }
 
 func stringLeaves(t reflect.Type, path string, out *[]string) {

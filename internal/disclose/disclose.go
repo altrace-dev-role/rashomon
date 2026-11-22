@@ -249,6 +249,7 @@ func Default() (Inventory, error) {
 			configFiles(),
 			continuityFiles(),
 			overlayRunFiles(),
+			frontierRunFiles(),
 			unitBriefFiles(),
 			sessionContentFiles(),
 			clearFiles(),
@@ -270,7 +271,7 @@ func Default() (Inventory, error) {
 // to show it to be useful, but forgetting a host must make the hostname
 // LEAVE the store's bytes while still letting later forgets and the report's
 // suppression recognise it again -- which is what the keyed digest in
-// gaps.ndjson and forgotten-hosts.ndjson is for (store/gaps.go, HostDigest).
+// gaps.ndjson and forgotten-hosts.ndjson is for (store/hostdigest.go, HostDigest).
 // baseline/<key>.json is the exception that proves the rule rather than a
 // fourth instance of it: it is the one file here that holds hostnames in the
 // clear, by design, because a novelty baseline has no later-forget path to
