@@ -31,7 +31,7 @@ jobs:
           # credential it has no reason to hold. Nothing here pushes.
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           # BUILD TOOLCHAIN, pinned here and NOT read from go.mod, for the
           # same reason and at the same version as the test job in ci.yaml:
