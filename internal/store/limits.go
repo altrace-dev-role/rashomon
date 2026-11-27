@@ -52,6 +52,14 @@ const (
 	// MaxHarnessToolNameBytes caps harness_tool_name, the harness's own
 	// tool name, null over it (tech 6.2.1).
 	MaxHarnessToolNameBytes = 128
+	// MaxEditMarkIDs and MaxEditMarkIDBytes cap an execution's edit_marks:
+	// 16 ids in each of added and removed, of at most 32 bytes each, and
+	// MaxEditMarkBasisBytes the basis word. The ids are a closed table's
+	// (internal/editmarks) and the table holds 8, so a mark over a cap is a
+	// writer that left its table, and it is withheld whole.
+	MaxEditMarkIDs        = 16
+	MaxEditMarkIDBytes    = 32
+	MaxEditMarkBasisBytes = 32
 	// MaxMaskSpans caps a command's marker spans, and MaxMaskRuleBytes the
 	// rule id each names. A span is a rule id and two offsets into the
 	// stored command, which is at most MaxCommandBytes, so each offset is at
@@ -79,6 +87,19 @@ const cappedPaths = 4
 // jsonEscapeFactor is the most bytes json.Marshal writes for one input
 // byte: `<`, `>`, `&` and control bytes go out as six, `<` as \u003c.
 const jsonEscapeFactor = 6
+
+// editMarksFrameBytes is the part of edit_marks no cap governs: its four keys
+// and braces, and the version's digits.
+const editMarksFrameBytes = 80
+
+// editMarksBytes bounds an execution's edit_marks at its caps, every id and
+// the basis escaped to six bytes a byte, each entry with its quotes, colon,
+// comma and a count of up to 20 characters. It is no part of
+// worstCaseRecordBytes: the declaration is the widest record, and the
+// execution that fills every field it can, marks included, is held under that
+// bound by TestEM_WorstCaseExecutionWithMarksFits.
+const editMarksBytes = 2*MaxEditMarkIDs*(jsonEscapeFactor*MaxEditMarkIDBytes+24) +
+	jsonEscapeFactor*MaxEditMarkBasisBytes + editMarksFrameBytes
 
 // fixedRecordBytes bounds everything in a declaration no cap governs: the
 // keys, the punctuation around every list entry, the integers, three hex
@@ -128,7 +149,8 @@ var ErrRecordDegraded = errors.New("store: record was over MaxRecordBytes and wa
 // target's source and dropped lists, harness_id, declared_via and the keys
 // of edit_marks_before. A change that fills one caps it here and counts it
 // above; until it does, a record made long by one is refused whole
-// (ErrRecordOversize), not degraded.
+// (ErrRecordOversize), not degraded. An execution's edit_marks is filled and
+// capped (editMarksBytes).
 func worstCaseRecordBytes() int {
 	capped := cappedIDs*MaxIDBytes + cappedPaths*MaxPathBytes + MaxProgramBytes +
 		2*MaxHosts*MaxHostBytes + MaxCommandBytes + MaxWrittenPathsBytes +
@@ -197,7 +219,27 @@ func CapExecution(x *Execution) bool {
 		x.HeadAfter.Root = w.ptr(x.HeadAfter.Root, MaxPathBytes, &x.HeadAfter.RootWithheld)
 	}
 	x.HarnessToolName = w.ptr(x.HarnessToolName, MaxHarnessToolNameBytes, nil)
+	if x.EditMarks != nil && !editMarksFit(x.EditMarks) {
+		x.EditMarks, x.EditMarksWithheld = nil, w.oversize()
+	}
 	return w.withheld
+}
+
+// editMarksFit reports whether m is within the edit-mark caps: at most
+// MaxEditMarkIDs ids in each map, each at most MaxEditMarkIDBytes, and a basis
+// of at most MaxEditMarkBasisBytes.
+func editMarksFit(m *EditMarks) bool {
+	if len(m.Added) > MaxEditMarkIDs || len(m.Removed) > MaxEditMarkIDs || len(m.Basis) > MaxEditMarkBasisBytes {
+		return false
+	}
+	for _, side := range [2]map[string]int{m.Added, m.Removed} {
+		for id := range side {
+			if len(id) > MaxEditMarkIDBytes {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // degrader is a record that can withhold its capped fields to fit under
