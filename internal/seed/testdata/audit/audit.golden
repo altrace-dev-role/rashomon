@@ -1,0 +1,736 @@
+=== pass plain
+--- summary
+{Sessions:7 Projects:4 Calls:140 Interrupted:2 Rejected:72 Blocked:3 PushedBack:4 FailedAgain:18 Stale:0 Unread:0 Rows:[]}
+ 10   4  you said no to a version-control command
+  4   3  an edit whose text was not in the file, then tried again
+  4   2  you said no to another tool call
+  2   2  you pushed back after a file read
+  2   2  you pushed back after a test run
+  2   2  your rules blocked a write to a secrets file
+  6   1  you said no to a shell command
+  4   1  you said no to a build run
+  4   1  you said no to a file read
+  4   1  you said no to a file search
+  4   1  you said no to a subagent
+  4   1  you said no to a web fetch or search
+  4   1  you said no to an edit
+  4   1  you said no to an edit to a test file
+  2   1  a call on a file that does not exist, then tried again
+  2   1  a call the tool refused as malformed, then tried again
+  2   1  a read of a file too large to read whole, then tried again
+  2   1  a write to a file changed since it was read, then tried again
+  2   1  a write to a file it had not read, then tried again
+  2   1  an edit that changed nothing, then tried again
+  2   1  an edit whose text matched more than once, then tried again
+  2   1  you said no to a file write
+  2   1  you said no to a network command
+  2   1  you said no to a package or toolchain command
+  2   1  you said no to a question to you
+  2   1  you said no to a shell read
+  2   1  you said no to a shell write
+  2   1  you said no to a test run
+  2   1  you said no to a write to a secrets file
+  2   1  you said no to a write to a test file
+  2   1  you said no to an MCP tool call
+  2   1  you said no to an edit to a secrets file
+  2   1  you said no to its plan
+  1   1  you stopped it after a write to a secrets file
+  1   1  you stopped it after an edit
+  1   1  your rules blocked a shell write
+--- card
+rashomon audit: the last 14 days of Claude Code on this machine
+  7 sessions in 4 projects, 140 tool calls
+
+  You stopped or overruled your agent 78 times:
+       2  stopped it mid-turn
+      72  said no to a tool call
+       4  pushed back in a reply
+  Your own rules blocked it 3 times.
+  It hit a tool error and tried the same tool again 18 times.
+
+  What keeps coming back (times, sessions):
+      10     4  you said no to a version-control command
+       4     3  an edit whose text was not in the file, then tried again
+       4     2  you said no to another tool call
+       2     2  you pushed back after a file read
+       2     2  you pushed back after a test run
+       2     2  your rules blocked a write to a secrets file
+
+  Counted here: nothing was sent or stored, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon
+--- kept card (kept)
+rashomon audit: the 14 days before AutoSteer, on this machine
+  7 sessions in 4 projects, 140 tool calls
+
+  You stopped or overruled your agent 78 times:
+       2  stopped it mid-turn
+      72  said no to a tool call
+       4  pushed back in a reply
+  Your own rules blocked it 3 times.
+  It hit a tool error and tried the same tool again 18 times.
+
+  What keeps coming back (times, sessions):
+      10     4  you said no to a version-control command
+       4     3  an edit whose text was not in the file, then tried again
+       4     2  you said no to another tool call
+       2     2  you pushed back after a file read
+       2     2  you pushed back after a test run
+       2     2  your rules blocked a write to a secrets file
+
+  Kept as your before count; nothing was sent, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon
+--- kept card (not kept)
+rashomon audit: the 14 days before AutoSteer, on this machine
+  7 sessions in 4 projects, 140 tool calls
+
+  You stopped or overruled your agent 78 times:
+       2  stopped it mid-turn
+      72  said no to a tool call
+       4  pushed back in a reply
+  Your own rules blocked it 3 times.
+  It hit a tool error and tried the same tool again 18 times.
+
+  What keeps coming back (times, sessions):
+      10     4  you said no to a version-control command
+       4     3  an edit whose text was not in the file, then tried again
+       4     2  you said no to another tool call
+       2     2  you pushed back after a file read
+       2     2  you pushed back after a test run
+       2     2  your rules blocked a write to a secrets file
+
+  Your kept count covers more sessions, so it stays as it was.
+  Counted here: nothing was sent or stored, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon
+--- kept
+{
+ "seed_kept": 1,
+ "kept_at": "2026-11-10T11:30:00Z",
+ "since": "2026-10-27T10:30:00Z",
+ "until": "2026-11-10T10:30:00Z",
+ "days": 14,
+ "all": {
+  "sessions": 7,
+  "calls": 140,
+  "kinds": {
+   "blocked": 3,
+   "failed-again": 18,
+   "interrupted": 2,
+   "pushed-back": 4,
+   "rejected": 72
+  },
+  "rows": [
+   {
+    "kind": "rejected",
+    "class": "vcs",
+    "times": 10,
+    "sessions": 4
+   },
+   {
+    "kind": "failed-again",
+    "class": "edit-not-found",
+    "times": 4,
+    "sessions": 3
+   },
+   {
+    "kind": "rejected",
+    "class": "other",
+    "times": 4,
+    "sessions": 2
+   },
+   {
+    "kind": "pushed-back",
+    "class": "read",
+    "times": 2,
+    "sessions": 2
+   },
+   {
+    "kind": "pushed-back",
+    "class": "test-run",
+    "times": 2,
+    "sessions": 2
+   },
+   {
+    "kind": "blocked",
+    "class": "write-secret",
+    "times": 2,
+    "sessions": 2
+   },
+   {
+    "kind": "rejected",
+    "class": "shell",
+    "times": 6,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "build-run",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "read",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "search",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "agent",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "web",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "edit",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "edit-test",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "no-file",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "bad-input",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "too-large",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "stale",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "unread",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "edit-same",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "edit-many",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "write",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "network",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "package",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "question",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "shell-read",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "shell-write",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "test-run",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "write-secret",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "write-test",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "mcp",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "edit-secret",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "plan",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "interrupted",
+    "class": "write-secret",
+    "times": 1,
+    "sessions": 1
+   },
+   {
+    "kind": "interrupted",
+    "class": "edit",
+    "times": 1,
+    "sessions": 1
+   },
+   {
+    "kind": "blocked",
+    "class": "shell-write",
+    "times": 1,
+    "sessions": 1
+   }
+  ]
+ }
+}
+=== pass until and key
+--- summary
+{Sessions:5 Projects:2 Calls:123 Interrupted:1 Rejected:66 Blocked:1 PushedBack:1 FailedAgain:16 Stale:0 Unread:0 Rows:[]}
+  4   2  you said no to a version-control command
+  4   2  you said no to another tool call
+  6   1  you said no to a shell command
+  4   1  you said no to a build run
+  4   1  you said no to a file read
+  4   1  you said no to a file search
+  4   1  you said no to a subagent
+  4   1  you said no to a web fetch or search
+  4   1  you said no to an edit
+  4   1  you said no to an edit to a test file
+  2   1  a call on a file that does not exist, then tried again
+  2   1  a call the tool refused as malformed, then tried again
+  2   1  a read of a file too large to read whole, then tried again
+  2   1  a write to a file changed since it was read, then tried again
+  2   1  a write to a file it had not read, then tried again
+  2   1  an edit that changed nothing, then tried again
+  2   1  an edit whose text matched more than once, then tried again
+  2   1  an edit whose text was not in the file, then tried again
+  2   1  you said no to a file write
+  2   1  you said no to a network command
+  2   1  you said no to a package or toolchain command
+  2   1  you said no to a question to you
+  2   1  you said no to a shell read
+  2   1  you said no to a shell write
+  2   1  you said no to a test run
+  2   1  you said no to a write to a secrets file
+  2   1  you said no to a write to a test file
+  2   1  you said no to an MCP tool call
+  2   1  you said no to an edit to a secrets file
+  2   1  you said no to its plan
+  1   1  you pushed back after a file read
+  1   1  you stopped it after an edit
+  1   1  your rules blocked a shell write
+--- card
+rashomon audit: the last 14 days of Claude Code on this machine
+  5 sessions in 2 projects, 123 tool calls
+
+  You stopped or overruled your agent 68 times:
+       1  stopped it mid-turn
+      66  said no to a tool call
+       1  pushed back in a reply
+  Your own rules blocked it 1 time.
+  It hit a tool error and tried the same tool again 16 times.
+
+  What keeps coming back (times, sessions):
+       4     2  you said no to a version-control command
+       4     2  you said no to another tool call
+
+  Counted here: nothing was sent or stored, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon
+--- kept card (kept)
+rashomon audit: the 14 days before AutoSteer, on this machine
+  5 sessions in 2 projects, 123 tool calls
+
+  You stopped or overruled your agent 68 times:
+       1  stopped it mid-turn
+      66  said no to a tool call
+       1  pushed back in a reply
+  Your own rules blocked it 1 time.
+  It hit a tool error and tried the same tool again 16 times.
+
+  What keeps coming back (times, sessions):
+       4     2  you said no to a version-control command
+       4     2  you said no to another tool call
+
+  Kept as your before count; nothing was sent, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon
+--- kept card (not kept)
+rashomon audit: the 14 days before AutoSteer, on this machine
+  5 sessions in 2 projects, 123 tool calls
+
+  You stopped or overruled your agent 68 times:
+       1  stopped it mid-turn
+      66  said no to a tool call
+       1  pushed back in a reply
+  Your own rules blocked it 1 time.
+  It hit a tool error and tried the same tool again 16 times.
+
+  What keeps coming back (times, sessions):
+       4     2  you said no to a version-control command
+       4     2  you said no to another tool call
+
+  Your kept count covers more sessions, so it stays as it was.
+  Counted here: nothing was sent or stored, and it cost 0 tokens.
+  github.com/altrace-dev-role/rashomon
+--- kept
+{
+ "seed_kept": 1,
+ "kept_at": "2026-11-10T11:30:00Z",
+ "since": "2026-10-27T10:30:00Z",
+ "until": "2026-11-10T10:30:00Z",
+ "days": 14,
+ "all": {
+  "sessions": 5,
+  "calls": 123,
+  "kinds": {
+   "blocked": 1,
+   "failed-again": 16,
+   "interrupted": 1,
+   "pushed-back": 1,
+   "rejected": 66
+  },
+  "rows": [
+   {
+    "kind": "rejected",
+    "class": "vcs",
+    "times": 4,
+    "sessions": 2
+   },
+   {
+    "kind": "rejected",
+    "class": "other",
+    "times": 4,
+    "sessions": 2
+   },
+   {
+    "kind": "rejected",
+    "class": "shell",
+    "times": 6,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "build-run",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "read",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "search",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "agent",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "web",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "edit",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "edit-test",
+    "times": 4,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "no-file",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "bad-input",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "too-large",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "stale",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "unread",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "edit-same",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "edit-many",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "failed-again",
+    "class": "edit-not-found",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "write",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "network",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "package",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "question",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "shell-read",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "shell-write",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "test-run",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "write-secret",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "write-test",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "mcp",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "edit-secret",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "rejected",
+    "class": "plan",
+    "times": 2,
+    "sessions": 1
+   },
+   {
+    "kind": "pushed-back",
+    "class": "read",
+    "times": 1,
+    "sessions": 1
+   },
+   {
+    "kind": "interrupted",
+    "class": "edit",
+    "times": 1,
+    "sessions": 1
+   },
+   {
+    "kind": "blocked",
+    "class": "shell-write",
+    "times": 1,
+    "sessions": 1
+   }
+  ]
+ },
+ "projects": {
+  "key:$TMPDIR/rashomon-fixture/wd": {
+   "sessions": 1,
+   "calls": 11,
+   "kinds": {
+    "blocked": 1
+   },
+   "rows": [
+    {
+     "kind": "blocked",
+     "class": "shell-write",
+     "times": 1,
+     "sessions": 1
+    }
+   ]
+  },
+  "key:/work/alpha": {
+   "sessions": 4,
+   "calls": 112,
+   "kinds": {
+    "failed-again": 16,
+    "interrupted": 1,
+    "pushed-back": 1,
+    "rejected": 66
+   },
+   "rows": [
+    {
+     "kind": "rejected",
+     "class": "vcs",
+     "times": 4,
+     "sessions": 2
+    },
+    {
+     "kind": "rejected",
+     "class": "other",
+     "times": 4,
+     "sessions": 2
+    },
+    {
+     "kind": "rejected",
+     "class": "shell",
+     "times": 6,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "build-run",
+     "times": 4,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "read",
+     "times": 4,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "search",
+     "times": 4,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "agent",
+     "times": 4,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "web",
+     "times": 4,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "edit",
+     "times": 4,
+     "sessions": 1
+    },
+    {
+     "kind": "rejected",
+     "class": "edit-test",
+     "times": 4,
+     "sessions": 1
+    }
+   ]
+  }
+ }
+}
