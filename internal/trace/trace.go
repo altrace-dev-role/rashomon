@@ -91,6 +91,21 @@ type CallStep struct {
 	Class ActClass
 	// Input is the agent's own payload for the call, kept as data.
 	Input json.RawMessage
+
+	// The fields below are filled when the adapter is asked for content.
+
+	// Command is the command an ActExec call runs, as the agent wrote it.
+	Command string
+	// Paths are the files or directories the call names, as written.
+	Paths []string
+	// Changes are what an ActEdit or ActWrite call puts in place of what.
+	Changes []Change
+}
+
+// Change is one replacement an edit makes in a file: Old is "" for a whole
+// file written.
+type Change struct {
+	Path, Old, New string
 }
 
 // ResultStep is a tool's answer to a call.
@@ -108,6 +123,9 @@ type ResultStep struct {
 	Error ToolError
 	// Text is the answer's text, kept for a failed call only.
 	Text string
+	// Output is the answer's text for every call, filled when the adapter
+	// is asked for content.
+	Output string
 }
 
 // Origin is who wrote a Said step's words.

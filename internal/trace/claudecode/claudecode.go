@@ -55,8 +55,19 @@ type block struct {
 // and returns how many records it stepped over for being longer than
 // report.TranscriptMaxLine. A record that does not parse is passed over, and
 // so are Claude Code's own context records (isMeta) and every record that is
-// neither the person's nor the agent's.
+// neither the person's nor the agent's. It fills no content field: a call's
+// Command, Paths and Changes and a result's Output stay empty.
 func Read(r io.Reader, fn func(trace.Step)) (skipped int, err error) {
+	return read(r, fn, false)
+}
+
+// ReadContent is Read with the content fields filled: each call's command,
+// paths and changes, and each result's output.
+func ReadContent(r io.Reader, fn func(trace.Step)) (skipped int, err error) {
+	return read(r, fn, true)
+}
+
+func read(r io.Reader, fn func(trace.Step), content bool) (skipped int, err error) {
 	sc := linescan.New(r, report.TranscriptInitialBuffer, report.TranscriptMaxLine)
 	for sc.Scan() {
 		b := sc.Bytes()
@@ -76,9 +87,9 @@ func Read(r io.Reader, fn func(trace.Step)) (skipped int, err error) {
 		fn(entry)
 		switch l.Type {
 		case "assistant":
-			assistant(&l, base, fn)
+			assistant(&l, base, fn, content)
 		case "user":
-			user(&l, base, fn)
+			user(&l, base, fn, content)
 		}
 	}
 	return sc.Skipped(), sc.Err()
@@ -92,7 +103,7 @@ func stamp(ts string) time.Time {
 	return at
 }
 
-func assistant(l *line, base trace.Step, fn func(trace.Step)) {
+func assistant(l *line, base trace.Step, fn func(trace.Step), content bool) {
 	var blocks []block
 	if json.Unmarshal(l.Message.Content, &blocks) != nil {
 		return
@@ -107,6 +118,9 @@ func assistant(l *line, base trace.Step, fn func(trace.Step)) {
 			s := base
 			s.Kind = trace.Call
 			s.Call = &trace.CallStep{ID: b.ID, Tool: b.Name, Class: ActClass(b.Name), Input: b.Input}
+			if content {
+				fill(s.Call)
+			}
 			fn(s)
 		case "text":
 			s := base
@@ -116,7 +130,7 @@ func assistant(l *line, base trace.Step, fn func(trace.Step)) {
 	}
 }
 
-func user(l *line, base trace.Step, fn func(trace.Step)) {
+func user(l *line, base trace.Step, fn func(trace.Step), content bool) {
 	if l.IsMeta {
 		return
 	}
@@ -134,7 +148,7 @@ func user(l *line, base trace.Step, fn func(trace.Step)) {
 	}
 	for i := range blocks {
 		if blocks[i].Type == "tool_result" {
-			fn(result(l, base, &blocks[i]))
+			fn(result(l, base, &blocks[i], content))
 		}
 	}
 	for i := range blocks {
@@ -173,11 +187,14 @@ func said(l *line, base trace.Step, text string) trace.Step {
 	return s
 }
 
-func result(l *line, base trace.Step, b *block) trace.Step {
+func result(l *line, base trace.Step, b *block, content bool) trace.Step {
 	s := base
 	s.Kind = trace.Result
 	r := &trace.ResultStep{CallID: b.ToolUseID, Failed: b.IsError}
 	s.Result = r
+	if content {
+		r.Output, _, _ = report.ResultClass(b.IsError, b.Content)
+	}
 	if !b.IsError {
 		return s
 	}
