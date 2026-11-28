@@ -1,576 +1,518 @@
-# Transcript learning: design
+# Transcript learning: design, second version
 
-Owner: Luis. Status: proposed, for review. Date: 2026-11-28.
-Answers issue 204 (what confirms or refutes a lesson) in section 6.
+Owner: Luis. Status: v2, for review. Date: 2026-11-28.
+v1 is commit 30238061 on this branch. Review: Karthik's comment on #379.
+Issue 204 is answered in section 7.
 
-## 0. The question and the answer this design is built to give
+Built so far: PR 1 #381 (`internal/trace`, Claude Code adapter, `audit` byte-identical) and PR 2
+#382 (`internal/episode`).
 
-**Question.** Can AutoSteer measurably reduce repeated mistakes for developers who already have
-sophisticated hooks and workflows?
+## 0. The question, and how the design answers it
 
-**How the design answers it.** Every lesson is a hypothesis about one recurring mistake. For each
-session and each lesson, a keyed coin decides whether the lesson is shown or held back. In both
-arms the same rule then scores the same outcome: did the mistake happen again when the session had
-the chance to make it? The answer to the question is the pooled difference in recurrence between
-the two arms, with an interval. A user's own hooks are present in both arms, so the difference is
-AutoSteer's effect on top of their setup.
+**Can AutoSteer measurably reduce repeated mistakes for developers who already have sophisticated
+hooks and workflows, without making the agent worse overall?**
 
-A green test after a lesson is never evidence (section 6.1). A falling recurrence count on its own
-is not evidence either, because a mistake seen three times often does not show a fourth time with no
-lesson at all (regression to the mean). Only the comparison with held-back sessions is evidence.
+- Every lesson is a hypothesis about one recurring mistake.
+- For every (lesson, session) pair where the lesson's trigger fires, a keyed coin decides whether the
+  lesson is shown or held back. The trigger fires the same way in both arms.
+- One rule scores both arms the same way, over the same window: did the mistake recur?
+- The answer is the difference between the arms, pooled across lessons, with an interval that
+  respects clustering by developer and repository.
+- It is reported beside guardrails: task completion, time, tokens and human corrections. A
+  reduction bought by making sessions worse is not a yes.
+- A user's own hooks run in both arms, so the difference is AutoSteer's effect on top of their
+  setup.
 
-## 1. What exists, and what this design keeps or replaces
+What is never evidence:
+- **A green test after a lesson.** It scores the task, not the lesson.
+- **A falling count.** A mistake seen three times often does not show a fourth with no lesson
+  at all (regression to the mean).
+- **A treated share on its own.** Only the comparison with held-back pairs counts.
 
-| Piece on main | Keep, extend or replace |
-|---|---|
-| `internal/events.Event`, the agent-neutral event kinds (`events/event.go`), mapped from Claude Code only in `hookio.EventKind` | Keep. It is the vocabulary of the trace (section 2). |
-| `graph.SessionLog` (`internal/graph/sessionlog.go`): the `Call`, `Prompt`, `Note`, `Claim` and `Verdict` builders under session-content consent (scope 6), with caps. Only overlay groups are appended today. | Extend: wire the call, prompt and note writers on the hook path. This is the live content source. |
-| `internal/seed`: the Claude Code JSONL parser and five correction kinds (`seed/class.go`), used by `rashomon audit` | Replace the parser with a `trace` adapter (section 2). Its correction kinds become episode detectors (section 3). |
-| `internal/learn`: `Lesson`, the ledger with an HMAC manifest, `approve`/`withdraw` with a terminal code, `Pick`/`PickRide` delivery at the prompt, `Delivered`, `Tier.Next` with Wilson95, `Candidate` (no caller) | Keep the ledger, approval and signatures. Extend `Lesson` and the label row. Replace `Tier.Next`'s treated-only bound with the arm comparison (section 7). `Candidate` gets its first caller, the miner. |
-| `learn.Judge` (confirm by written path) | Not used for lessons. It is risk R7; a red test pins that the lesson rule never confirms by a written path. |
-| `internal/arm` (keyed per-session draw per feature) | Keep. The lesson holdout is one feature per lesson (section 7.1). |
-| The steer router, pattern `learned-fact` (nudge, delivered only at UserPromptSubmit today) | Extend: trigger-time delivery at PostToolUse, PostToolUseFailure and prompt, plus quiet-point deferral (section 5). |
+## 1. What changed from v1, and why
 
-## 2. The trace: one agent-neutral model of a session
+| v1 | v2 | Reason |
+|---|---|---|
+| The effect is computed only over sessions with an opportunity | The effect counts every pair where the trigger fired (intention to treat); the opportunity rate per arm is reported beside it | A lesson can change whether the opportunity happens (point 2) |
+| Label written once, at the Stop of the delivering turn | The label only moves up over the whole session and is appended where it moves. A lesson is given again after each compaction. Tier decisions read only closed sessions | A session has many Stops and can run for days (point 7) |
+| 25% holdout; looks counted in treated outcomes; a futility rule | 50% holdout while on probation, 10% once proven; looks counted by the smaller arm. "Inert" parks a lesson and never retires it. An offline pooled fit | Power is about 4 in 10 at the last look; futility as written almost never fires (points 3, 4 and goal 4) |
+| Newcombe and Mantel–Haenszel intervals | A cluster bootstrap over developers, stratified by repository. Below 8 developers, the interval is reported as unavailable, not narrow | Sessions of one developer are not independent (point 4) |
+| Drain templates | A digest of the fixed words of one line under a versioned masking rule, computed at mining time | Drain depends on order and widens over time (point 6). Built in PR 2 |
+| `learn propose --model` inside the binary | The binary writes request files; a plugin skill calls the model and writes response files | No network code in the binary (point 8, hard line) |
+| Content under `learn/` not on the consent screen | Every kept item is named, purged and secret-checked (section 10) | Point 9, hard line |
+| PR 4 described as "no behaviour change" | PR 4 is the one release-level consent change, with a version Karthik assigns | Point 10, hard line |
+| Mining at SessionEnd from the first line | Mining resumes from a mark, under a time budget | Transcripts reach 270 MB (point 11) |
+| Sessions only | Team history (git, reviews, tickets, wiki), arriving as files, plus one brief that gathers everything known | Point 1 and goal 1: part of the loop |
+| Lessons only | Every note we ship is measured the same way, with guardrails | Goal 2 and question E |
+| Budget fix PR 3 | Dropped: the charge does not happen (`decide.go:340`, `budget.go:270`) | Karthik's read was right |
 
-The miner, the label rule and the measurement read one type and never an agent's file format.
+## 2. The loop, end to end
 
-```go
-// package trace (new, imports only events)
-type Trace struct {
-    Session string
-    Agent   events.Agent  // {Name, Version}
-    Repo    string        // repository id (baseline.RepoID), "" when unknown
-    Steps   []Step        // in seq order
-}
-
-type Step struct {
-    Seq     int64
-    At      time.Time
-    Kind    events.Kind   // prompt, act_declared, act_landed, act_failed, stop, boundary, ...
-    Actor   Actor         // agent, subagent(id), human
-    Act     *Act          // for act_* kinds
-    Text    string        // a prompt, or the agent's closing message; content scope only
-    Human   *HumanSignal  // interrupt, reject, block, pushback
-    Note    *NoteRef      // a note AutoSteer delivered or held back at this point
-}
-
-type Act struct {
-    Class   ActClass   // exec, edit, write, read, search, fetch, plan, delegate, other
-    Tool    string     // the agent's own tool name, kept as data, never matched in core code
-    Program string     // exec only: the basename of the first word after env and wrappers
-    Argv    []string   // exec only: the masked command, split
-    Paths   []string   // repository-relative paths the act names or writes
-    Status  Status     // ok, failed, interrupted, unknown
-    Exit    *int
-    Output  string     // the tail kept by the session log (8 KiB; runner output whole)
-    Diff    string     // edits only
-}
-
-type Source interface {
-    // Sessions lists the sessions in the window, newest first, for one repository or all.
-    Sessions(ctx context.Context, w Window) ([]Ref, error)
-    Read(ctx context.Context, ref Ref) (Trace, error)
-}
+```
+ sources ──► trace ──► episodes ──► candidates ──► lessons (approved) ──► brief / trigger ──► agent
+   │  (sessions,         (pure        (gate:          (knowledge rows,        (one ranked     │
+   │   git, reviews,      detectors,   3 episodes,     tiers, keys,            brief; trigger │
+   │   tickets, wiki)     keys)        3 sessions,     test)                   notes; arms)   │
+   │                                   2 days)                                                ▼
+   └──────────────◄── effects.json (offline fit) ◄── labels (both arms) ◄── record + trace ◄──┘
 ```
 
-**Two sources, one type.**
-- `trace/record`: the store's own record plus the session log. This is the live source. It is
-  agent-neutral already, because the hooks write it through `events.Event`.
-- `trace/claudecode`: Claude Code's JSONL transcripts. It is used for backfill (sessions before
-  install, which makes lessons available on day one) and for what a hook cannot see: interrupts and
-  the human's words. The parser in `internal/seed` moves here, and `seed` becomes a user of it.
+Every arrow but the last is offline or at index time. The hook path does three things only: read
+`active.json` and `effects.json`, match triggers, and route notes. No model runs in a hook.
 
-A second agent is a new adapter package. `TestCore_NoAgentKeys` is extended to `internal/trace`
-(outside its adapters), `internal/episode` and `internal/learn`: they may not import an adapter or
-hold a Claude Code key.
+## 3. Sources
 
-**ActClass mapping** is the adapter's job and lives in a data table per adapter, not in core code.
-For example, Claude Code's Edit, MultiEdit and NotebookEdit map to `edit`. Core code reasons only
-about classes.
+### 3.1 Session sources (built)
 
-## 3. How a mistake is found: episodes
+`internal/trace` is the agent-neutral step model. Its adapter, `trace/claudecode`, reads Claude Code
+transcripts: `Read` is lean, for `audit`; `ReadContent` adds commands, paths, changes and outputs. A
+second source, `trace/record`, reads our own record plus the session log, and arrives with PR 4.
 
-An **episode** is one observed occurrence of a mistake: a short span of steps with a negative signal
-and, when it exists, what resolved it. Detectors are pure functions over a `Trace`.
+`Step.Origin` says who wrote a line in the person's slot: the person (typed), a peer (another
+session), the machine (the client, a hook or a command) or unknown. This is point 12. Pushback
+counts only `OriginPerson`.
 
-### 3.1 Six episode kinds (structural, not a pattern list)
+**One reader.** Karthik's compaction-instruction reader should be built on `trace/claudecode`, not
+beside it. The census of record shapes then sets the adapter's Origin rules, including for versions
+older than the `origin` mark, in one place.
 
-The kinds are fixed, because each one needs its own opportunity rule (section 6). What a kind
-matches is learned from data: programs, paths, error shapes. Nothing in a detector names a
-language, a runner or an error string.
+### 3.2 Team-history sources (new)
 
-| Kind | Negative signal | Resolution captured |
+These are part of the loop. A separate program, outside the binary (hard line), writes each source
+as files the binary reads:
+
+```
+.rashomon/sources/<source>/<id>.json      (in the repository, if the team commits them)
+<store>/sources/<project>/<source>/<id>.json   (or local only)
+```
+
+One neutral record shape for every source:
+
+```json
+{"v":1,"source":"review","id":"pr-412#c9","at":"2026-10-02T11:04:00Z",
+ "paths":["services/auth/auth/sessions.py"],"commit":"9f2c…",
+ "text":"…","links":["ticket:AUTH-88"],"author_role":"reviewer"}
+```
+
+| Source | Written by | What becomes an episode |
 |---|---|---|
-| `act_failure` | An act fails (status failed, nonzero exit or tool error), and the same act class and program run again later in the session. One-off failures are not episodes. | The first later success of the same act class and program: the argv delta and the edits between the failure and the success. |
-| `gate_regression` | A gate (any exec the record already classes as test, build, lint or typecheck) goes green, then edits happen, then it goes red. | The edits between red and the next green. |
-| `human_correction` | Interrupt, reject or block (structural signals from the adapter). Pushback text is a per-locale lexicon file, data, off unless present. | The act that follows the correction. |
-| `unbacked_claim` | The turn ends with a done claim, and no gate ran after the last edit (`claim-vs-record` already computes this). | None. The lesson is the gate. |
-| `self_revert` | An edit restores a file to a content hash it had earlier in the session. | None. |
-| `retry_loop` | The same act (same digest) repeats after an identical failure, k ≥ 2. | The act that breaks the loop. |
+| `git` | an exporter over `git log` | A commit, and a later commit within 7 days that reverts it (git's own `Revert` trailer or an inverse diff) or touches the same lines again. Kind `history_revert` |
+| `review` | an exporter over the forge's API | A review comment that asked for a change, on paths. Kind `review_finding`, fingerprinted like an output line, scoped by paths |
+| `ticket` | an exporter over the tracker | A bug ticket that links a commit or names paths. Kind `incident` |
+| `wiki` | an exporter over pages | No episodes. Decisions and conventions become knowledge rows (kind decision or convention), with applies_to from the paths they name |
 
-### 3.2 The failure key
+`Episode.Source` gains `git`, `review`, `ticket` and `wiki`.
 
-Episodes group by a key. The key is also what a lesson carries, which is ruling Q1(c) of issue 204.
+### 3.3 How a lesson from a review or a ticket gets tested
+
+In v1, a lesson with no key could only ever be `unresolved`. In v2 every lesson declares one `Test`:
+
+| Test | Meaning | Scored where |
+|---|---|---|
+| `session_key` | An episode key, as in section 4 | Inside the session (section 7) |
+| `source_recurrence` | A key whose recurrence shows up in a source: the same review-finding fingerprint, in scope, on the pull request the treated session's commits went into | When that pull request's review file arrives. The session is linked to the pull request by the commits its record holds (`head_after` in record v5) |
+| `predicate` | A spec rule the lesson names (the existing rule kinds) | Inside the session, by the rule's check |
+| `none` | Written by hand with nothing testable | Always `unresolved`, and it never moves a tier, as v1 said |
+
+So a lesson that comes from a review is tested where reviews happen: on the next pull request.
+
+## 4. Episodes
+
+### 4.1 Kinds (built in PR 2, extensible)
+
+| Kind | Source | Signal |
+|---|---|---|
+| `act_failure` | session | An act failed, and the session ran the same kind of act again |
+| `check_regression` | session | A command passed, a file was edited, and the same command failed |
+| `correction` | session | A refusal, a rule block, an interrupt after an act, or typed pushback (with a lexicon passed in as data) |
+| `self_revert` | session | An edit put back an earlier edit's text |
+| `retry_loop` | session | An identical call retried after an identical failure, twice or more |
+| `unbacked_claim` | record | A done claim with no check after the last edit (the verifier's existing reading); arrives with `trace/record` |
+| `history_revert`, `review_finding`, `incident` | sources | Section 3.2 |
+| `conflict` | graph | The engine's Check Conflicts (boundary crossed, decision contradicted, protected path, duplicate abstraction), keyed by rule id and scope |
+
+### 4.2 Beyond operational failures (question A)
+
+The core treats a kind as a plug-in with three functions:
 
 ```go
 // package episode
-type Key struct {
-    V     int      // key schema version, 1
-    Kind  Kind     // one of the six above
-    Act   ActSig   // {Class, Program, Verb}; Verb is the first non-flag argv word, "" otherwise
-    Scope Scope    // where it happens
-    FP    string   // failure fingerprint: template id, "" for kinds without output
-    FPV   int      // fingerprinter version
+type KindRule interface {
+    Kind() Kind
+    // Opportunity: the step gives the session the chance to make this mistake.
+    Opportunity(k Key, s StepView) bool
+    // Recurrence: the step is this mistake again.
+    Recurrence(k Key, s StepView) bool
 }
-
-type Scope struct {
-    Unit string // a global unit id when the repo is indexed (graph), else ""
-    Dir  string // else the deepest common directory of the episode's paths, at most 3 levels
-    Ext  string // the dominant file extension, as data (".py", ".tf", ".proto", ...)
-}
+func Register(r KindRule)
 ```
 
-- **Fingerprint (FP), without patterns.** The output tail of a failed act is reduced to a
-  template by an online log-template miner. This is Drain (He et al., ICWS 2017): a fixed-depth
-  parse tree that masks variable tokens (numbers, hex, paths, quoted strings, identifiers that vary
-  across occurrences) and clusters lines by similarity. The FP is the id of the template of the
-  most specific failing line. That line is chosen generically, as the line in the tail whose
-  template is rarest among templates seen in successful outputs of the same program. So "error
-  wording" is learned per repository from its own output, in any language or tool. Templates are
-  stored as data (`templates.json`), versioned, and stable once assigned.
-- **Scope** uses the code map's unit when the repository is indexed. Otherwise it uses a directory
-  and an extension, which works in any repository.
-- **Key equality** is exact on Kind, Act and FP. On Scope it means the same unit, or the same
-  directory prefix.
+The miner groups episodes by key, the label rule dispatches on the kind's rule, and the brief ranks
+lessons by key. None of them change when a kind is added.
 
-### 3.3 Episode record
+Semantic mistakes enter as new kinds whose detector reads a richer source:
+
+| Semantic mistake | Kind | Detector reads | Opportunity and recurrence |
+|---|---|---|---|
+| Architectural violation | `conflict` | The engine's conflicts against the Platform graph | An edit in the rule's scope; the same rule's conflict raised after delivery |
+| Disregard for a convention | `review_finding` with a convention row | Reviews, plus the Knowledge DAG | An edit in scope; the same finding on the next pull request |
+| An incorrect assumption | `assumption` (later) | The agent's stated fact (text) against the record or graph, e.g. "X has no callers" when the graph has some | Text that names the same fact; the record contradicting it |
+
+### 4.3 Keys and fingerprints (built)
+
+A key is `{V, Kind, Act{Class, Program, Verb}, Scope{Dir, Ext}, Detail, FP, FPV}`.
+
+The fingerprint is a digest of one line's fixed words under a versioned masking rule. That line is
+the most specific one (the most fixed words) that no passing run of the same act printed; ties go to
+the later line. With no baseline, which is a program's first run, no line is excluded.
+
+It is stateless and order-free, and it means the same thing on any machine. Keys are computed when
+mining and never frozen into storage. The baseline is rebuilt at mining time from the session log,
+fed oldest first.
+
+## 5. Lessons
+
+### 5.1 Mining (offline)
+
+`rashomon learn mine` reads sources, runs the detectors, groups by key and applies the existing
+`learn.Candidate` gate: 3 episodes, 3 sessions, 2 days, consistency at least 0.75, no contradiction.
+It writes proposed lessons.
+
+**At SessionEnd (point 11)**, mining resumes from a mark per source file: path, size, mtime and the
+byte offset reached. It stops at a 2-second budget and leaves the rest for the next end or for
+`learn mine`. A file whose size shrank or whose mtime went back starts again from its beginning;
+that is the only case of starting over.
+
+### 5.2 A lesson is a knowledge row
+
+Lessons stay in the signed ledger (tiers, approval, quarantine), and each one is mirrored as a
+knowledge row (kind lesson) in the judgment store. That way the brief and the graph traverse them
+like decisions (section 12). Lesson v2 gains:
 
 ```go
-type Episode struct {
-    ID         string    // keyed digest of (session, first seq, key)
-    Key        Key
-    Session    string
-    From, To   int64     // seq span
-    At         time.Time
-    Evidence   []int64   // seqs that show the negative signal
-    Resolution *Resolution
-    Source     string    // "record" or "transcript:<agent>"
-}
-
-type Resolution struct {
-    ArgvDelta []string  // tokens added to or removed from the failing command
-    Before    []ActSig  // acts run before the successful retry that were not run before the failure
-    Edited    []string  // paths edited between failure and success
-    Diff      string    // the combined diff, capped, content scope only
-}
+Key        *episode.Key   // nil only when Test is predicate or none
+Test       Test           // session_key | source_recurrence | predicate | none
+Mode       Mode           // preventive | corrective
+Episodes   []string
+Sources    []string       // ids of source records, when mined from one
+TextSource string         // template | model | human
+Parked, Retired …          // section 8
 ```
 
-## 4. How a lesson is formed
+### 5.3 Wording
 
-### 4.1 Mining (offline, no model)
+The default is a statement-of-fact template filled from the key and the resolution, inside the render
+rules (no imperatives, no "you").
 
-`rashomon learn mine` runs outside any hook, at a terminal or on a schedule. It also runs
-incrementally from `SessionEnd`, bounded to that session.
+A model can reword it outside the binary (hard line, point 8):
+1. `rashomon learn propose` writes `requests/<lesson>.json` (the episodes and template text, already
+   secret-checked).
+2. A plugin skill (`/autosteer:propose`) has the person's own agent write `responses/<lesson>.json`.
+3. `rashomon learn ingest` reads the response and runs it through `learn.Message`'s checks. The
+   result still needs a person's approval.
 
-1. It reads traces from `trace/record`, plus `trace/claudecode` with `--backfill`, and runs the
-   detectors. It appends to `learn/<project>/episodes.ndjson`.
-2. It groups episodes by key and computes the existing `learn.Evidence` (episodes, sessions, days,
-   consistency, contradictions).
-3. **Candidate gate.** It feeds the existing `learn.Candidate`: at least 3 episodes, 3 sessions and
-   2 days, consistency at least 0.75, and no contradictions. Consistency is the share of episodes
-   whose resolution agrees with the modal resolution (the same `Before` act, the same `ArgvDelta`
-   or the same edited unit). A contradiction is a session where the modal resolution was applied and
-   the failure happened anyway.
-4. It writes a **proposed** lesson (section 4.3). Proposed lessons are never delivered; a person
-   approves with the existing `learn approve`.
+## 6. Delivery
 
-### 4.2 Lesson text without a model
+### 6.1 Moments, triggers and modes
 
-Text comes from a template filled with data from the episodes. It is a statement of fact, because
-the render rules ban imperatives and "you":
+As in v1:
 
-```
-rashomon record: lesson L7, from 5 sessions since 2026-11-10: 'npm test' under 'web/src'
-failed with 'Cannot find module <*> from <*>'; in 4 of 5 the run passed after
-'npm run build' ran first.
-```
+- **Moments.** Notes reach the model mid-turn only through additionalContext after PostToolUse,
+  after PostToolUseFailure (from 2.1.304), and with a prompt typed into a running turn.
+- **Modes.** A preventive lesson is delivered at the first opportunity signal; a corrective one at
+  the first matching failure.
+- **Matching** is a pure `learn.Trigger`, and delivery goes through `steer.Route`.
 
-Every value comes from the key and the resolution. The template set is one per kind (six), and
-there is no per-language wording.
+New in v2:
 
-### 4.3 Lesson v2
+- **Re-delivery after compaction.** A compaction boundary (`events.Boundary` with form `compact`)
+  re-arms every lesson given earlier in the session. It is delivered again at its next trigger, and
+  the arm stays fixed for the session.
+- **A held-back lesson charges the window like a delivered one** (point 5). The held-back line is
+  written with `suppressed_by: arm_off`, which `countBudget` already counts (`budget.go:270`). So
+  both arms get the same later notes, and the arms differ in the lesson alone.
+- **At most 5 lessons on probation per repository at a time**, ranked by expected effect from the
+  offline fit. That bounds what unproven lessons spend of the note budget.
 
-`Lesson` gains fields. The JSON schema becomes `lessons/2`, and `lessons/1` rows read as keyless.
+### 6.2 How a note can break the agent's train of thought
 
-```go
-type Lesson struct {
-    ID             string
-    Tier           Tier
-    Text           string
-    TextSource     string        // "template", "model", "human"
-    SinceUnixMS    int64
-    ApprovedUnixMS int64
-    // v2
-    Key        *episode.Key     // nil for hand-written lessons: those can only ever be unresolved
-    Mode       Mode             // preventive or corrective (section 5.2)
-    Episodes   []string         // ids of the episodes that justify it
-    HoldoutBP  int              // per-lesson holdout share, default 2500 (section 7.1)
-    RetiredUnixMS int64
-    RetiredWhy    string        // "harm", "futile", "scope_gone", "superseded", "person"
-}
-```
+The v1 list stands, minus item 8 (the budget charge does not happen). Two of its rules change notes
+that ship today: the quiet point (item 1) and the test-first exclusion (item 4). They land on the
+harness side as their own changes, measured before and after.
 
-### 4.4 Optional model at index time (opt-in)
+## 7. Labels (issue 204)
 
-`rashomon learn propose --model` reads the episodes of proposed lessons and asks a model for two
-things: clearer wording, and, when the modal resolution is a diff, a one-line summary of it. The
-output is stored as data on the proposed lesson (`TextSource: "model"`) and needs the same human
-approval. No model runs in a hook. It is off unless the person runs the command, and the command
-says what it sends.
+### 7.1 The pair and its window
 
-## 5. When and how a lesson is delivered
+The unit is a **(lesson, session) pair where the trigger fired**. The trigger fires the same way in
+both arms, because it reads only what happened before the lesson could act. That gives equal groups
+regardless of what the lesson does afterwards (point 2).
 
-### 5.1 The moments a note can reach the agent
+The window runs from the first trigger to the end of the session. A session is **closed** when its
+SessionEnd is recorded, or when it has been idle for 24 hours. Only closed pairs move tiers.
 
-Facts from the code on main:
+### 7.2 The label rule `learned-fact/2`
 
-| Moment | Channel | Today |
-|---|---|---|
-| UserPromptSubmit at turn start | additionalContext | Preflight and graph brief; the one learned-fact lesson rides here |
-| UserPromptSubmit taken into a running turn | additionalContext | Same path; the note lands next to the human's new words |
-| PostToolUse (after a successful act) | additionalContext | Blast callers, unit brief at first edit, conflicts, platform rules |
-| PostToolUseFailure (from 2.1.304) | additionalContext | Regression notes |
-| SessionStart at compact | additionalContext | The continuity briefing |
-| PreToolUse | none (the router has no channel) | Prints nothing |
-| Stop | person only (flag) | The end-of-turn line |
-| Subagent calls | shadowed (`unverified_channel`) | Not shown, but charged to the budget |
+Over the window:
 
-### 5.2 Trigger-time delivery
+- **Recurrence** (the kind's `Recurrence` holds): `refuted`.
+- **Else an opportunity** (the kind's `Opportunity` holds after a trigger): `confirmed`.
+- **Else:** `unresolved`.
 
-A lesson is delivered at the moment its key says the mistake is about to be possible, not at
-every prompt. There are two modes:
+The label **only moves up**: unresolved, then confirmed, then refuted. A row is appended at each Stop
+where it moves, and the latest row per pair is the label. So a mistake in turn 9 refutes a lesson
+given in turn 3, and a lesson given again after a compaction keeps its pair.
 
-- **Preventive** (default for every kind except `retry_loop`). The lesson is delivered at the
-  first **opportunity signal** in the session, before the risky act:
-  - the prompt (or its graph brief) names a path in the key's scope;
-  - or the first act in scope lands (a read or search in scope is the preferred point, before any
-    edit);
-  - or for `unbacked_claim`, the first edit of the turn.
-- **Corrective** (for `retry_loop`, and a fallback for the others). The lesson is delivered at the
-  first PostToolUseFailure whose key matches, which is the point where the agent already stops to
-  handle a failure. It is labelled separately, because the first occurrence has already happened.
+For the **effect**, a pair is scored as recurred or not recurred whatever its opportunity, so an
+unresolved pair counts as "did not recur". Opportunity is reported separately (section 8.2). Tier
+rules read the effect, never the treated confirmed share.
 
-Matching is a pure function in `internal/learn`. It is data-driven from the approved lessons'
-keys and reads only the current step and the record:
+R7 holds as before: the rule never reads written paths in order to confirm.
 
-```go
-// Trigger returns the lessons this step opens, in rank order, at most one.
-func Trigger(active Active, step trace.Step, given func(id string) bool, scope ScopeOf) []Match
-```
-
-The hook calls it from the PostToolUse and PostToolUseFailure steps and from the prompt path. The
-result is a `steer.Finding` with pattern `learned-fact` and a kind of `preventive` or
-`corrective`, and it goes through `steer.Route` like every other note. So budgets, consent, channel
-gates, holdout and logging all apply unchanged.
-
-### 5.3 How notes interrupt a session's thinking
-
-Notes reach the agent while it is still working at three points: after any act (PostToolUse),
-after a failed act (PostToolUseFailure), and with a prompt typed into a running turn. Each can
-break the agent's train of thought instead of correcting it. These are the ways, from the code
-and the runs on record, with the rule this design adopts for each.
-
-1. **Mid-burst interruption.** The agent is making a planned series of edits (A, then B, then C).
-   A note after edit A (blast callers, unit brief) pulls it to the callers before B and C, and the
-   change is left half done. *Rule:* a note that is not about a failure waits for a quiet point.
-   A quiet point is a read or search act, a failed act, or the turn boundary. "During a burst"
-   means the last two acts were edits or writes. The router already has a `deferred` state, and
-   this uses it.
-2. **The note lands on the human's words.** On a prompt taken into a running turn, the note sits
-   next to the person's new message and reads as part of it. A lesson there can outrank what the
-   person just asked. *Rule:* no lesson is delivered with a mid-turn prompt unless the prompt
-   itself names the lesson's scope.
-3. **A stale fact triggers repair of a non-problem.** The blast note already says when "the graph
-   does not hold the present content of the edited file". A lesson whose scope has moved does the
-   same thing. *Rule:* a lesson whose scope no longer resolves (unit gone, directory gone) is
-   retired as `scope_gone`, never delivered.
-4. **A deliberate red read as a regression.** In a test-first workflow, the agent writes a failing
-   test on purpose. A regression note or a corrective lesson then tells it something "broke", and
-   it reverts the test. *Rule:* a red run whose failing output names only files written in this
-   turn (a new test) is not a regression and not a corrective trigger. This is recorded as an
-   episode-kind exclusion, and it applies to the existing regression note too.
-5. **Duplication with the user's own hooks.** Users with sophisticated hooks already inject their
-   own context. Two notes on the same fact, from two hooks, make the agent respond twice or argue
-   with one. *Rule:* the design measures this rather than guessing (section 8). The adapter records
-   which other hooks were installed at session start (names only), as a covariate.
-6. **Meta-talk.** The agent quotes the note to the person ("rashomon says…") or explains itself
-   to the hook instead of working. *Signal:* the closing message quotes note words; this is
-   counted.
-7. **Note storms.** Up to 3 notes in a window is the budget today, but a failure followed by a
-   lesson, a regression note and a blast note in three consecutive acts is still a storm. *Rule:* a
-   lesson counts against the same window, and at most one lesson is delivered per prompt.
-8. **Budget spent on what no one saw.** Subagent calls are shadowed but charged
-   (`budget.go:163-164`). A burst of subagent activity can exhaust the parent's window, so a
-   lesson that matters never prints. *Rule:* shadowed notes stop counting against the budget. This
-   is a small fix to the existing router, and it gets its own PR.
-9. **Forced continuation.** The Stop channel can carry `stopContinue`, which would force the agent
-   to keep going. It is never used, and this design keeps it that way: a lesson never blocks or
-   extends a turn.
-10. **Imperative wording read as a new instruction.** The render rules already ban imperatives,
-    "you", "must" and "should", so a note reads as a record and not as an order. Lesson templates
-    stay inside those rules (section 4.2).
-
-Each of these is measured, not assumed (section 8.2).
-
-## 6. How we tell a lesson helped (issue 204)
-
-### 6.1 The label rule `learned-fact/1`
-
-This is ruling Q1: option (a) as the mechanism, with (c) as the content of its row. The rule enters
-the repository as the one row of the `label_rule` table, and the writer is its only evaluator
-(MSR 13).
-
-For a lesson L with key K, delivered (or held back) at seq d in session S:
-
-- **Opportunity:** a step after d at which K's opportunity predicate holds.
-- **Recurrence:** a step after d at which K's recurrence predicate holds.
-- **Label:** if a recurrence happens, `refuted`; else, if an opportunity happens, `confirmed`;
-  else `unresolved`.
-- **A lesson with no key** is always `unresolved`. Nothing in the record can test it, so the rule
-  never promotes it.
-
-What counts as an opportunity and a recurrence for each kind of key:
-
-| Kind | Opportunity (after d) | Recurrence (after d) |
-|---|---|---|
-| `act_failure` | An act with K.Act (class, program, verb) in K.Scope | That act fails and its output's fingerprint is K.FP |
-| `gate_regression` | An edit in K.Scope followed by a run of the gate | Green, then edit in scope, then red with fingerprint K.FP |
-| `human_correction` | An act of K.Act's class in K.Scope | The same correction kind follows such an act |
-| `unbacked_claim` | A turn that edits files and ends | That turn ends with a done claim and no gate after the last edit |
-| `self_revert` | An edit in K.Scope | An edit in scope restores an earlier content hash |
-| `retry_loop` | A failure of K.Act | The identical act repeats after an identical failure |
-
-For **corrective** lessons, delivered at the first occurrence, the opportunity is the next act of
-K.Act after d, and the recurrence is the same failure again. Corrective labels are a separate
-stratum and never pool with preventive ones.
-
-**Why R7 cannot happen here.** The rule never reads which paths were written in order to confirm.
-A red test pins it: a lesson whose text names a path, in a session that writes that path and has
-no opportunity, labels `unresolved`, not `confirmed`.
-
-### 6.2 When it is written
-
-This is ruling Q2. The label is written at the Stop of the session that delivered (or held back)
-the lesson: one label per (lesson_id, session_id), written once. A second Stop rewrites nothing,
-and a test pins that.
-
-The rule is a pure function in `internal/learn`:
-
-```go
-func Evaluate(l Lesson, t trace.Trace, at int64) Outcome
-type Outcome struct {
-    Label         steer.Label
-    Rule          string // "learned-fact/1"
-    EvidenceSeq   int64  // the recurrence, else the first opportunity, else 0
-    Opportunities int
-}
-```
-
-The call from the Stop belongs to Karthik's hook path, as he said on the issue.
-
-### 6.3 The label row v2
-
-This is ruling Q4. The pin test `TestP6_LabelRowIsLabelWriter1sContract` changes in the same pull
-request, red first.
+### 7.3 The label row v3
 
 ```json
-{"v":2,"lesson_id":"L7","session_id":"…","at_unix_ms":0,
- "label":"refuted","rule":"learned-fact/1","evidence_seq":412,
- "arm":"treatment","mode":"preventive","delivered_seq":398,"opportunities":2}
+{"v":3,"lesson_id":"L7","session_id":"…","at_unix_ms":0,"seq":412,
+ "label":"refuted","rule":"learned-fact/2","evidence_seq":412,
+ "arm":"holdout","mode":"preventive","trigger_seq":398,
+ "given":[398,1210],"opportunities":2,"closed":false}
 ```
 
-`arm` is `treatment`, `holdout` or `steer_holdout`. A session the whole-steer holdout already holds
-back gets `steer_holdout`.
+`given` lists the seqs where the lesson was shown, or would have been, including after compactions.
 
-### 6.4 Holdout outcomes
+The pin test changes in the same PR, red first. Karthik will amend the issue-204 answer to Q2 to
+match.
 
-This is ruling Q3. When a lesson's arm says holdout, the trigger still fires and the router logs the
-line with delivery `holdout`, at the same seq the lesson would have been shown. That gives the
-holdout outcome the same `d`, so treated and held-back sessions are scored from the same moment.
-Their labels are stored with `arm`, and `Tier.Next` never counts them.
+## 8. Statistics
 
-## 7. Statistics: from labels to "it helped"
+### 8.1 Allocation and looks (points 3 and 4)
 
-### 7.1 Randomisation
+| Lesson state | Holdout share | Why |
+|---|---|---|
+| probation | 50% | Equal arms. About 81 pairs per arm detect 0.4 → 0.2 at 80% power and α 0.05 (two-sided); 25% would need about 217 pairs in all |
+| proven | 10% | Keeps watching for decay at a small cost |
+| parked | 100% (not delivered) | Section 8.3 |
 
-- **Unit:** the (lesson, session) pair. The arm is `arm.Assign("lesson/"+L.ID, session,
-  L.HoldoutBP)`, so lessons draw independently, and one session can be treatment for L1 and
-  holdout for L2.
-- **Share:** 25% holdout per lesson by default. That is more than the steer-wide 10%, because the
-  per-lesson comparison needs it (section 7.3).
-- Sessions in the whole-steer holdout are labelled `steer_holdout` and excluded from per-lesson
-  effects.
+**Looks** happen at 20, 40 and 80 pairs in the **smaller arm**, at α 0.05/3 each.
 
-### 7.2 Effect
+### 8.2 Effect, with clustering
 
-For a lesson, over sessions with an opportunity (confirmed or refuted labels):
+For one lesson:
 
-- p_T is the recurrence share in treatment, and p_H the recurrence share in holdout.
-- **The effect is p_H − p_T**, with a Newcombe hybrid-score 95% interval.
+- **Effect** = recurrence(holdout) − recurrence(treated), over closed pairs (intention to treat).
+- **Opportunity rate** is reported per arm beside it. If the treated opportunity rate is lower and
+  the key's act is a check (a command the repository runs with pass/fail, as `check_regression`
+  defines it), that is flagged as **avoidance harm**: the agent stopped running the check.
 
-The feature-level answer to the question in section 0 is the **Mantel–Haenszel pooled risk
-difference** across all lessons, stratified by lesson, reported with its interval. Preventive and
-corrective are reported separately.
+**Intervals** come from a cluster bootstrap that resamples developers (install keys), with
+repository strata kept. With fewer than 8 developers, the per-lesson interval is reported as "too
+few developers for an interval" rather than as a narrow one.
 
-Pre/post counts (the audit baseline in `seed.json` against counts after install) are shown as
-description only and never as the effect.
+**Pooled across lessons** (the feature-level answer), the estimate is the stratified difference,
+with the same bootstrap.
 
-### 7.3 Tier policy (replaces the treated-only bound)
+### 8.3 Decisions
 
-| Transition | Condition |
+| Transition | Rule |
 |---|---|
-| proposed → probation | A person approves (exists). |
-| probation → proven | At a planned look, the lower bound of the effect is above 0. Looks happen at 20, 40 and 80 treated outcomes, each at a Bonferroni-corrected level (98.3% intervals), so peeking does not inflate false promotions. |
-| any → demoted (harm) | At any look, the upper bound of the effect is below 0: the lesson makes recurrence more likely. It stops being delivered at once. |
-| probation → retired (futile) | At 80 treated and 25 holdout outcomes, the upper bound is below 0.05. |
-| any → retired | The scope is gone, the lesson is superseded, or a person retires it. |
+| probation → proven | At a look, the lower bound of the effect is above 0 and the avoidance flag is off |
+| any → demoted | At any look, the upper bound is below 0 (harm), or the avoidance flag is on |
+| probation → parked | The interval sits inside (−0.10, +0.10), which needs about 160 pairs per arm, or there is no lower bound above 0 after 160 pairs in the smaller arm |
+| any → retired | The scope is gone, the lesson is superseded, or a person retires it |
 
-**Sample size, stated honestly.** With a baseline recurrence of 0.4 per opportunity and a true
-lesson effect bringing it to 0.2, a two-sided test at 0.05 with 80% power needs about 80 outcomes
-per arm. A single lesson reaches that slowly. The feature-level pooled estimate across ten lessons
-reaches it in weeks for a team. So the claim "AutoSteer reduces repeated mistakes" comes first,
-pooled, and per-lesson promotion comes later. Futility and harm rules keep bad lessons from waiting
-that long.
+**Parked is not retired** (point 4: leakage pushes effects to zero, so a zero does not prove a lesson
+failed). A parked lesson stops costing note budget, stays in the ledger, and can be re-armed by a
+person or when its key's recurrence rate rises.
 
-### 7.4 Invalidation
+**Leakage** is measured as well as possible. At session start the adapter reads whether a lesson's
+fixed words appear in the session's instruction files (CLAUDE.md, AGENTS.md, memory). It keeps a
+yes/no per lesson, never the text. Held-back pairs with leakage are reported separately.
 
-- A lesson is retired as `scope_gone` when its scope no longer resolves at index time.
-- It becomes dormant when its key's opportunity has not occurred in 60 days of sessions.
-- It is superseded when the miner mines a new lesson with the same key and a different modal
-  resolution: the new one starts at proposed, and the old one is retired only on approval of the
-  new one.
+### 8.4 Small samples: the offline pooled fit (goal 4)
 
-## 8. Measuring the cost of interrupting
+`rashomon learn fit` runs offline and writes `effects.json`. Each lesson's effect is shrunk toward
+the pooled effect of its kind with an empirical-Bayes beta-binomial (one prior per kind, fitted on
+all lessons). The posterior lets the system:
 
-### 8.1 Why
+- **promote early**, when P(effect > 0) ≥ 0.975 with at least 20 pairs in the smaller arm;
+- **park early**, when P(|effect| < 0.10) ≥ 0.9.
 
-A lesson can lower recurrence and still make sessions worse, by derailing them. The question is
-about developers with sophisticated workflows, who will notice derailment first.
+The hook reads only the file. The fit's rule, version and thresholds are pre-registered.
 
-### 8.2 Interruption metrics
+### 8.5 Base rates first
 
-These are computed per delivered note and per held-back note at the same seq, in the next k = 5
-steps, from the trace:
+The replay benchmark (section 9) gives each kind's recurrence base rate and how many candidates
+pass the gate, from real history. The experiment in section 14 is sized from those numbers, not
+from an assumed 0.4.
 
-- **Scope jump:** the share of the next k acts outside the scope of the previous k acts.
-- **Self-revert:** a revert within k acts after the note.
-- **Human interrupt or reject** within k acts after the note.
-- **Acts to next green gate**, in a turn where a gate ran.
-- **Meta-talk:** the closing message quotes the note's words.
+## 9. The replay benchmark (early, before live delivery)
 
-Each is reported as treatment minus holdout, like the effect. A lesson with a positive effect and
-a significant interruption cost is flagged to the person in `rashomon learn report`, not silently
-promoted.
+`rashomon learn replay [--days N]` reads transcripts the way `audit` does: in memory, through
+`trace/claudecode`, with nothing stored and no consent change. It prints:
 
-## 9. Code design
+- episodes per kind;
+- keys seen in 1, 2 and 3 or more sessions;
+- the candidates that pass the gate;
+- each candidate's lesson text;
+- the base rate at which a key recurs in a later session, given that it occurred.
 
-### 9.1 Packages
+`--label FILE` writes a blind sample of episodes and candidates to a file the person names. The file
+holds no lesson id and no arm, and people mark each one: real mistake or not, useful lesson or not.
+`--score FILE` reads the marks back. That gives precision before anything reaches an agent.
 
-| Package | New or changed | Holds | Imports |
+The benchmark runs on our own transcripts first, then on design partners' with their consent. It
+replaces the dropped PR 3.
+
+## 10. What is kept, and where (hard line, point 9)
+
+Every kept item is named on the consent screen, removed by `rashomon purge`, and passed through the
+same secret check as a note (`secretshape`) before it is stored or shown.
+
+| Item | Where | Holds | Cap |
 |---|---|---|---|
-| `internal/trace` | new | `Trace`, `Step`, `Act`, `Source` | `events` |
-| `internal/trace/record` | new | `Source` over the store record and the session log | `trace`, `store`, `graph` (session log reader only) |
-| `internal/trace/claudecode` | new | `Source` over Claude Code JSONL; the ActClass table; the parser moved out of `seed` | `trace`, `spend` (discovery) |
-| `internal/episode` | new | the six detectors, `Key`, `Scope`, the Drain fingerprinter | `trace` |
-| `internal/learn` | changed | `miner.go`, `trigger.go`, `rule.go` (the label_rule table and `Evaluate`), `effect.go` (Newcombe, MH, tier policy), `lessons/2`, label row v2 | `trace`, `episode`, `arm`, `steer` (labels only) |
-| `internal/seed` | changed | `audit`'s cards, now over `trace/claudecode` | `trace/claudecode` |
-| `internal/hook` | changed | wires `SessionLog.Call`, `Prompt` and `Note` under session consent; calls `learn.Trigger` at Post and PostFailure | `learn`, `graph` |
-| `internal/steer` | changed | `learned-fact` kinds preventive and corrective; quiet-point deferral; shadowed notes not charged | none new |
-| `internal/disclose` | changed | the consent wording (section 9.4) | none new |
-| `cmd/rashomon` | changed | `learn mine`, `learn propose`, `learn report`, `learn retire` | `learn` |
+| Session log: commands, output tails, diffs, prompts, notes | `graph/<rid>.jsonl` (exists) | Content | Existing caps |
+| Episodes | `learn/<project>/episodes.ndjson` | Keys, seqs, the masked template, resolution words and paths, the resolution diff (capped at 8 KiB) | 16 MiB |
+| Lessons | `learn/<project>/lessons.json`, `active.json` | Lesson text (command words, template words) | As today |
+| Labels | `learn/<project>/labels.ndjson` | Ids, seqs, arms | 16 MiB |
+| Effects | `learn/<project>/effects.json` | Numbers | 1 MiB |
+| Mining marks | `learn/<project>/marks.json` | Paths, sizes, offsets | 256 KiB |
+| Source files | `sources/<project>/…` (if local) | Review, ticket and wiki text | 64 MiB |
+| Propose requests and responses | `learn/<project>/requests/`, `responses/` | Episode text for the model step | 4 MiB |
+| Other hooks (covariate) | In the session's record | The count of non-rashomon hook entries per event, and a keyed digest of each command, never its text | — |
+| Leakage flag | In the label row | Yes/no per lesson | — |
 
-`TestCore_NoAgentKeys` covers `trace` (outside its adapters), `episode` and `learn`. A new test
-fails if any of them imports a `trace/<agent>` package.
+Drain state is gone: the fingerprint is stateless (PR 2).
 
-### 9.2 Files in the store
+## 11. Measuring every note, and the guardrails (goal 2 and question E)
 
-All files are under `learn/<project>/` and signed by the existing `state.sum` manifest:
+The analysis is mine; the harness and the screens stay with the team.
 
-- `episodes.ndjson` (append only, capped at 16 MiB; oldest first out)
-- `templates.json` (Drain state, versioned)
-- `lessons.json` (`lessons/2`), `active.json` (as today, plus keys)
-- `labels.ndjson` (row v2)
+- **Every note pattern** gets the lessons' method. Each eligible note is held back at the same step
+  on a keyed share, logged with delivery `holdout`, and charged like a delivered note.
+- **Per pattern, measured on what the agent does next:**
+  - did the agent's next k = 5 acts touch the note's named target, against holdout;
+  - the interruption metrics of v1 section 8.2.
+- **Guardrails** (non-inferiority, per session, treatment against holdout, every report):
 
-Content (outputs, diffs, prompts) stays in the session log under `graph/`. Episodes hold seqs that
-point into it, plus the capped resolution diff.
+| Guardrail | Definition | Margin |
+|---|---|---|
+| Task completion | The session's last turn ends with no human correction in its last 3 turns, and every check run after its last edit passed | −5 points |
+| Wall time per turn | From prompt to Stop | +10% |
+| Tokens per session | From the transcript's usage fields (the adapter gains `Step.Usage`) | +10% |
+| Tool calls per turn | — | +10% |
+| Human corrections per session | Correction episodes | +0 (no increase) |
 
-### 9.3 Hook-path budget
+A lesson or a note pattern whose effect is positive but breaks a guardrail is flagged, never
+promoted silently.
 
-`Trigger` is a map lookup on (ActClass, Program) followed by a scope test, with no I/O beyond
-`active.json`, which the prompt path already reads. It must stay inside the existing K7 PostToolUse
-budget, and a benchmark pins it.
+## 12. One brief, and the graphs (goal 1 and question D)
 
-### 9.4 Consent text
+### 12.1 The four graphs
 
-Ruled: session content is allowed. The 1.0 screen says prompts, command text, tool output and
-file contents are never stored. The pull request that wires `SessionLog.Call`, `Prompt` and `Note`
-on the hook path changes that wording in the same diff and bumps `disclose.ScopeVersion`. The new
-paragraph says what is kept (command text, output tails of 8 KiB, runner output, diffs and prompts,
-all capped), where it is kept (`graph/` in the store), that it stays until `rashomon purge`, and
-that `learn mine` reads it. Our side writes the wording.
+| Graph | What learning puts there | What learning reads |
+|---|---|---|
+| Platform | nothing | Scope resolution: a key's scope as a unit; the callers and consumers of what a lesson is about |
+| Process | Checks (a command a repository runs with pass/fail) as process steps; `check_regression` edges | Which checks cover a scope (opportunity for `unbacked_claim`) |
+| Knowledge DAG | Lessons as rows (applies_to its scope, `derived_from` its episodes, supersedes, contradicts); source records as decisions, conventions and incidents | Approved knowledge for the brief |
+| Session | Lessons given, labels, re-delivery after compaction | The window, and the trigger state |
 
-## 10. Pull requests
+Lesson tiers map to knowledge tiers: proposed is INFERRED, approved is DECLARED, proven is EARNED.
 
-Each PR is mergeable alone, red tests first, with no behaviour change before PR 6.
+### 12.2 One brief for a session's dependencies
 
-1. **trace: the agent-neutral model and the Claude Code adapter.** Move `seed`'s parser into
-   `trace/claudecode`. `audit` output is byte-identical (a golden test). Extend the no-agent-keys
-   test.
-2. **episode: detectors, keys and the fingerprinter.** Pure functions and fixtures in three
-   ecosystems that share no code (a Python project, a TypeScript project, Terraform), to show that
-   nothing is language-bound. No storage.
-3. **Router fix: shadowed notes stop charging the budget** (section 5.3, item 8). Small and
-   independent.
-4. **Capture: wire the session log's call, prompt and note writers on the hook path**, with the
-   consent wording and the scope bump in the same diff.
-5. **Miner and `rashomon learn mine` (with `--backfill`).** Writes episodes and proposed v2
-   lessons with template text. `learn` lists them.
-6. **Issue 204 rule: `label_rule` table, `Evaluate`, label row v2.** The pin test turns red first,
-   and the R7 false-confirm test lands. Pure functions in `internal/learn`.
-7. **Trigger-time delivery.** `learn.Trigger`, per-lesson arms, holdout logging at the same seq,
-   quiet-point deferral, and the TDD-red and mid-turn-prompt exclusions.
-8. **Stop label writer call.** Karthik's hook path, idempotent per (lesson, session).
-9. **Effect and tier policy.** Newcombe, Mantel–Haenszel, planned looks, harm, futility, and
-   `rashomon learn report`.
-10. **Interruption metrics** in `learn report` and in `measure`.
-11. **Optional `learn propose --model`**, opt-in.
-12. **Live slice T5:** the repeated-mistake experiment (section 11).
+This is a retrieval problem:
 
-PRs 1 to 3 can go in parallel. PR 6 depends on 2. PR 7 depends on 5 and 6. PR 8 depends on 6 and 7.
+1. **Candidates:** graph traversal from the request's scope seeds, plus lessons whose key scope
+   meets those units, plus source records whose applies_to meets them.
+2. **Ranking:** a learned linear ranker fitted offline (weights in a data file). Its features are
+   graph distance, recency, evidence strength (the posterior from `effects.json`), source authority
+   (declared, earned, inferred) and past usefulness.
+3. **Selection:** the existing budget, 6 lines and 1.6 KB.
 
-## 11. The experiment that answers the question
+**Evaluation protocol:**
+- *Offline*, on replayed sessions: recall@k of the facts that the session later needed (facts tied
+  to an episode that later occurred in the session, or to files it later edited), and precision
+  from a blinded sample.
+- *Online*: the brief's lines are notes, so section 11 measures them with the same holdout.
 
-- **Who:** 5 to 10 developers with existing hooks and workflows, on their own repositories, in any
-  languages.
-- **Day 0:** install, then `learn mine --backfill` over their past transcripts. Lessons are
-  proposed on day one from history, and they approve the ones they agree with.
-- **Weeks 1 to 4:** normal work. Per-lesson 25% holdout, the label writer at every Stop.
-- **Primary endpoint:** the pooled MH risk difference in recurrence per opportunity, preventive
-  lessons, with its 95% interval. The question's answer is yes if the lower bound is above 0.
-- **Secondary endpoints:** interruption cost (section 8.2); the effect stratified by whether the
-  user had their own hooks touching the same events.
+## 13. The session graph across compactions (goal 3)
+
+The session graph is one fold over the trace, `Fold(steps) Frontier`, and the existing
+`session.Frontier` type is its output. At the root is the person's intent: the first line with
+`OriginPerson`. Under it:
+
+- the person's standing instructions;
+- open tasks (the adapter maps an agent's plan or todo tool to neutral plan items);
+- decisions;
+- checks and their state;
+- lessons given.
+
+It is re-emitted as the continuity briefing after a compaction. The team's first version is fixed
+rules behind that one function, with a labelled set and a measured rate of false lines; mine is
+measured against it on the same set.
+
+## 14. The experiment (sized from the replay benchmark)
+
+- **Who:** 5 to 10 developers with their own hooks, on their own repositories.
+- **Day 0:** replay and mining over their history; they approve the lessons they agree with.
+- **Arms:** per pair, as in section 8.
+- **Primary endpoint:** the pooled ITT difference in recurrence, with the cluster-bootstrap interval.
+- **Secondary endpoints:** the guardrails, avoidance, interruption, and the effect by whether the
+  developer's own hooks touch the same events.
 - **Pre-registered** before the first session: the rule version, the looks, the thresholds and the
-  endpoints. Changing any of them after a session opens a new slice id, as the existing harness
-  rules require.
+  endpoints. A change opens a new slice id.
 
-## 12. Open points for review
+With 5 to 10 developers, a per-lesson interval will often be unavailable (section 8.2). The pooled
+answer and the offline fit carry the question.
 
-1. **PreToolUse context.** Some Claude Code versions accept `additionalContext` on PreToolUse.
-   If verified, it is the best preventive moment, before the act rather than after the previous
-   one. The router keeps PreToolUse closed until a version floor and the channel evidence check
-   cover it.
-2. **The pushback lexicon** is English in `seed` today. As data it can grow per locale; structural
-   signals (interrupt, reject) carry the design without it.
-3. **The 25% holdout share** delays help for one session in four. Teams may want it lower once the
-   pooled effect is established. That is a measured decision, not a default.
+## 15. Code design
+
+| Package | State | Holds |
+|---|---|---|
+| `internal/trace` | built (#381) | Steps, origin, signals, denials, tool errors, content fields (#382); gains `Usage` |
+| `internal/trace/claudecode` | built | The one Claude Code reader; `Read`, `ReadContent` |
+| `internal/trace/record` | PR 4 | Steps from the record and the session log |
+| `internal/episode` | built (#382) | Detectors, keys, fingerprints; gains `KindRule` and the registry |
+| `internal/source` | new | The source record shape and readers for each source's files; no network |
+| `internal/learn` | extended | Miner with marks, lesson v2, `Trigger`, `learned-fact/2`, label row v3, effects, tier rules, propose and ingest |
+| `internal/learn/fit` | new | The offline pooled fit and the ranker fit, written as data files |
+| `internal/steer` | unchanged by learning | Patterns gain the learned-fact kinds preventive and corrective |
+| `cmd/rashomon` | extended | `learn replay`, `mine`, `fit`, `propose`, `ingest`, `report`, `retire` |
+| `plugin/skills/propose` | new | The model step, outside the binary |
+
+The tripwires stay:
+- `TestCore_NoAgentKeys` covers `trace` outside its adapters, and `episode`, `learn` and `source`.
+- `TestNoEcosystemWords` covers `episode`, `learn` and `source`.
+- `TestTRU40_*` holds: no networking package and no `os/exec`.
+
+## 16. Pull requests, v2
+
+| # | PR | State | Behaviour |
+|---|---|---|---|
+| 1 | trace and the Claude Code adapter | #381, open | none |
+| 2 | episode: detectors, keys, fingerprints | #382, open | none |
+| 3 | `learn replay` (benchmark, labelling export and scoring) | next | A new read-only command, like `audit`; no consent change |
+| 4 | **The release-level consent PR**: session-log wiring, `trace/record`, every learning file of section 10, source readers, the hooks covariate, purge rows, the secret check, the consent text | Needs the version number from Karthik | Stores content; asks for consent once |
+| 5 | Miner with marks; `learn mine` | after 3 and 4 | Offline |
+| 6 | `learned-fact/2`, label row v3, `KindRule` registry | after 2 | Pure; pin test red first |
+| 7 | Trigger delivery, per-pair arms, held-back charging, compaction re-delivery | after 5 and 6 | Notes change |
+| 8 | Stop and SessionEnd writer call | Karthik's | — |
+| 9 | Effects, cluster bootstrap, the offline fit, tier rules, `learn report` | after 6 | Offline |
+| 10 | Guardrails and every-note analysis in `measure` | after 9 | Offline |
+| 11 | Sources (git, review, ticket, wiki) and the source-recurrence test | after 4 | Offline |
+| 12 | One brief: retrieval, the ranker fit, the evaluation protocol | after 11 | Brief changes, measured |
+| 13 | Session graph fold, against the team's labelled set | with the team's v1 | Briefing changes, measured |
+| 14 | Propose and ingest, plus the plugin skill | any time after 5 | Opt-in |
+| 15 | Live slice T5 | last | Experiment |
+
+The order follows Karthik's priority: the complete loop first (3, 4, 5, 6, 7, 8, 9), with sources
+inside it (11), and the more advanced pieces after.
+
+## 17. Open points
+
+1. **The consent version for PR 4** (Karthik).
+2. **Which forge and tracker exporters come first**, for PR 11. The binary reads files only; the
+   exporters are separate programs, and their home is open (a plugin skill, a CI job, or a separate
+   tool).
+3. **PreToolUse additionalContext.** If a version floor and the channel evidence check cover it, it
+   is the best preventive moment. Not assumed.
