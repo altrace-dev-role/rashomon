@@ -1,5 +1,6 @@
 // Package seed counts the corrections a person made to their coding agent,
-// read from the Claude Code transcripts already on their disk (card SEED1;
+// read through the trace adapter from the Claude Code transcripts already on
+// their disk (card SEED1;
 // PRD PF-AU1, PF-AU2, PF-HD8 and PF-HD17's read path). It reads, folds and
 // renders, and writes one file when asked, the kept before count (WriteKept,
 // card SEED1-KEEP); it has no transport. The brief reads that file at session
@@ -9,16 +10,14 @@
 package seed
 
 import (
-	"bytes"
 	"cmp"
-	"encoding/json"
 	"io"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/altrace-dev-role/rashomon/internal/linescan"
-	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/trace"
+	"github.com/altrace-dev-role/rashomon/internal/trace/claudecode"
 )
 
 // Summary is a fold's counts: the sessions, projects and tool calls read,
@@ -77,41 +76,13 @@ func New() *Tally {
 	return &Tally{sessions: map[string]struct{}{}, projects: map[string]struct{}{}, rows: map[sig]*recurrence{}}
 }
 
-// line is the part of a transcript line the fold reads.
-type line struct {
-	Type        string `json:"type"`
-	SessionID   string `json:"sessionId"`
-	IsSidechain bool   `json:"isSidechain"`
-	IsMeta      bool   `json:"isMeta"`
-	Timestamp   string `json:"timestamp"`
-	Cwd         string `json:"cwd"`
-	// DenialKind is Claude Code's own word for a refused call (2.1.280):
-	// "user-rejected" when the person said no at the prompt,
-	// "permission-rule" when a hook or a settings rule refused it. A line
-	// without it is read from the result's text (report.UserRejected).
-	DenialKind string `json:"toolDenialKind"`
-	Message    struct {
-		Content json.RawMessage `json:"content"`
-	} `json:"message"`
-}
-
-type block struct {
-	Type      string          `json:"type"`
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Input     json.RawMessage `json:"input"`
-	ToolUseID string          `json:"tool_use_id"`
-	IsError   bool            `json:"is_error"`
-	Content   json.RawMessage `json:"content"`
-	Text      string          `json:"text"`
-}
-
 // file is one transcript's state: the calls it has seen, by id, the turn
 // since the person last spoke, and its project's tally once Key has named it.
 type file struct {
 	t       *Tally
 	pt      *Tally
 	keyed   bool
+	skip    bool
 	project string
 	sub     bool
 	calls   map[string]call
@@ -138,41 +109,43 @@ type turn struct {
 // Unread, as the report's reader counts one.
 func (t *Tally) Read(r io.Reader, project string, sub bool) error {
 	f := &file{t: t, project: project, sub: sub, calls: map[string]call{}}
-	sc := linescan.New(r, report.TranscriptInitialBuffer, report.TranscriptMaxLine)
-	for sc.Scan() {
-		b := sc.Bytes()
-		// Only user and assistant lines carry what is counted; progress,
-		// snapshot and summary lines, most of a transcript's bytes, are
-		// passed over before any decode.
-		if !bytes.Contains(b, []byte(`"type":"user"`)) && !bytes.Contains(b, []byte(`"type":"assistant"`)) {
-			continue
-		}
-		var l line
-		if json.Unmarshal(b, &l) != nil {
-			continue
-		}
-		if !t.Until.IsZero() && !before(l.Timestamp, t.Until) {
-			continue
-		}
-		if t.Key != nil && !f.keyed && l.Cwd != "" {
-			f.pt, f.keyed = t.project(t.Key(l.Cwd)), true
-		}
-		switch l.Type {
-		case "assistant":
-			f.assistant(&l)
-		case "user":
-			f.user(&l)
-		}
-	}
-	t.unread += sc.Skipped()
-	return sc.Err()
+	skipped, err := claudecode.Read(r, f.step)
+	t.unread += skipped
+	return err
 }
 
-// before is whether a line's timestamp is before until; a line with none, or
-// one that does not parse, cannot be shown to be.
-func before(ts string, until time.Time) bool {
-	at, err := time.Parse(time.RFC3339Nano, ts)
-	return err == nil && at.Before(until)
+// step folds one step. An Entry opens a record: one stamped at or after
+// Until leaves out every step of its record, and the first record with a
+// working directory names the project when Key is set.
+func (f *file) step(s trace.Step) {
+	if s.Kind == trace.Entry {
+		f.skip = !f.t.Until.IsZero() && !(!s.At.IsZero() && s.At.Before(f.t.Until))
+		if !f.skip && f.t.Key != nil && !f.keyed && s.Cwd != "" {
+			f.pt, f.keyed = f.t.project(f.t.Key(s.Cwd)), true
+		}
+		return
+	}
+	if f.skip {
+		return
+	}
+	switch s.Kind {
+	case trace.Message:
+		f.t.saw(s.Session, f.project)
+		if f.pt != nil {
+			f.pt.saw(s.Session, f.project)
+		}
+		f.turn.acted = true
+	case trace.Call:
+		f.called(s.Call, s.Session)
+	case trace.Text:
+		if t := strings.TrimSpace(s.Text); t != "" {
+			f.turn.question = strings.HasSuffix(t, "?")
+		}
+	case trace.Result:
+		f.result(&s)
+	case trace.Said:
+		f.said(&s)
+	}
 }
 
 // project is key's tally, made on first use; nil for "".
@@ -191,34 +164,15 @@ func (t *Tally) project(key string) *Tally {
 	return p
 }
 
-func (f *file) assistant(l *line) {
-	var blocks []block
-	if json.Unmarshal(l.Message.Content, &blocks) != nil {
-		return
-	}
-	f.t.saw(l.SessionID, f.project)
+func (f *file) called(c *trace.CallStep, session string) {
+	k := call{c.Tool, classOf(c)}
+	f.calls[c.ID] = k
+	f.t.calls++
 	if f.pt != nil {
-		f.pt.saw(l.SessionID, f.project)
+		f.pt.calls++
 	}
-	f.turn.acted = true
-	for i := range blocks {
-		b := &blocks[i]
-		switch b.Type {
-		case "tool_use":
-			c := call{b.Name, classOf(b.Name, b.Input)}
-			f.calls[b.ID] = c
-			f.t.calls++
-			if f.pt != nil {
-				f.pt.calls++
-			}
-			f.turn.last, f.turn.hasCall, f.turn.question = c.c, true, false
-			f.retried(b.Name, l.SessionID)
-		case "text":
-			if s := strings.TrimSpace(b.Text); s != "" {
-				f.turn.question = strings.HasSuffix(s, "?")
-			}
-		}
-	}
+	f.turn.last, f.turn.hasCall, f.turn.question = k.c, true, false
+	f.retried(c.Tool, session)
 }
 
 // retried counts each failure of the turn that this call to the same tool
@@ -235,101 +189,55 @@ func (f *file) retried(name, session string) {
 	f.turn.pending = kept
 }
 
-func (f *file) user(l *line) {
-	if l.IsMeta {
-		return
-	}
-	c := bytes.TrimSpace(l.Message.Content)
-	if len(c) > 0 && c[0] == '"' {
-		var s string
-		if json.Unmarshal(c, &s) == nil {
-			f.said(l, s)
-		}
-		return
-	}
-	var blocks []block
-	if json.Unmarshal(c, &blocks) != nil {
-		return
-	}
-	for i := range blocks {
-		if blocks[i].Type == "tool_result" {
-			f.result(l, &blocks[i])
-		}
-	}
-	for i := range blocks {
-		if blocks[i].Type == "text" {
-			f.said(l, blocks[i].Text)
-			return
-		}
-	}
-}
-
-// result reads one tool_result: a rejection is the person's act and ends the
+// result reads one tool result: a rejection is the person's act and ends the
 // turn; a rule's refusal is counted; a tool error of a known kind waits for
 // the agent to try the same tool again.
-func (f *file) result(l *line, b *block) {
-	if !b.IsError {
+func (f *file) result(s *trace.Step) {
+	r := s.Result
+	if !r.Failed {
 		return
 	}
-	c, ok := f.calls[b.ToolUseID]
+	c, ok := f.calls[r.CallID]
 	if !ok {
 		c = call{c: cOther}
 	}
-	switch l.DenialKind {
-	case "user-rejected":
-		f.add(rejected, c.c, l.SessionID)
+	switch r.Denied {
+	case trace.DeniedByPerson:
+		f.add(rejected, c.c, s.Session)
 		f.turn = turn{}
-		return
-	case "permission-rule":
-		f.add(blocked, c.c, l.SessionID)
-		return
-	case "":
-		// A version before the field: the text says which, below.
-	default:
-		// A kind this reader does not know is not counted.
-		return
-	}
-	text, denied, _ := report.ResultClass(true, b.Content)
-	switch {
-	case denied && report.UserRejected(text):
-		f.add(rejected, c.c, l.SessionID)
-		f.turn = turn{}
-	case denied:
-	default:
-		if e, ok := errorClass(text); ok {
+	case trace.DeniedByRule:
+		f.add(blocked, c.c, s.Session)
+	case trace.DeniedNone:
+		if e, ok := errorClass(r.Error); ok {
 			f.turn.pending = append(f.turn.pending, call{c.name, e})
 		}
 	}
 }
 
-// said reads a line the person typed (or a marker Claude Code writes as
-// theirs) and ends the turn. Only a main session's lines count: a
-// subagent's transcript echoes the interrupt that stopped its parent.
-func (f *file) said(l *line, text string) {
-	text = strings.TrimSpace(text)
+// said reads a line in the person's slot and ends the turn. Only a main
+// session's lines count: a subagent's transcript echoes the interrupt that
+// stopped its parent.
+func (f *file) said(s *trace.Step) {
+	text := strings.TrimSpace(s.Text)
 	if text == "" {
 		return
 	}
-	if !f.sub && !l.IsSidechain && f.turn.acted && !strings.HasPrefix(text, "<") {
+	if !f.sub && !s.Sidechain && f.turn.acted && s.Origin != trace.OriginMachine {
 		last := cReply
 		if f.turn.hasCall {
 			last = f.turn.last
 		}
 		switch {
-		case text == interruptMark:
-			f.add(interrupted, last, l.SessionID)
-		case strings.HasPrefix(text, "[Request interrupted"):
-			// "... for tool use": the rejection before it was the act.
+		case s.Signal == trace.SignalInterrupt:
+			f.add(interrupted, last, s.Session)
+		case s.Signal == trace.SignalInterruptForTool:
+			// The rejection before it was the act.
 		case pushback(text) && !(f.turn.question && startsNo(text)):
-			f.add(pushedBack, last, l.SessionID)
+			f.add(pushedBack, last, s.Session)
 		}
 	}
 	f.turn = turn{}
 }
-
-// interruptMark is the line Claude Code writes when the person stops the
-// agent mid-turn.
-const interruptMark = "[Request interrupted by user]"
 
 func (f *file) add(k kind, c class, session string) {
 	f.t.add(k, c, session)

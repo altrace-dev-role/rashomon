@@ -10,21 +10,21 @@ G = "internal/purge/purge.go"
 
 # The window.
 m("SEED-2 a line after the install counts", S,
-  "\t\tif !t.Until.IsZero() && !before(l.Timestamp, t.Until) {\n",
-  "\t\tif false && !before(l.Timestamp, t.Until) {\n", "TestSEED2a_")
+  "\t\tf.skip = !f.t.Until.IsZero() && !(!s.At.IsZero() && s.At.Before(f.t.Until))\n",
+  "\t\tf.skip = false && !(!s.At.IsZero() && s.At.Before(f.t.Until))\n", "TestSEED2a_")
 m("SEED-2 a line with no timestamp counts as before", S,
-  "\treturn err == nil && at.Before(until)\n", "\treturn err != nil || at.Before(until)\n", "TestSEED2a_")
+  "!(!s.At.IsZero() && s.At.Before(f.t.Until))", "!(s.At.IsZero() || s.At.Before(f.t.Until))", "TestSEED2a_")
 m("SEED-2 --keep counts after the install", A,
   "\tt.Until, t.Key = until, baseline.Key\n", "\tt.Key = baseline.Key\n", "TestSEED2c_")
 
 # The projects.
 m("SEED-2 every transcript is one project", S,
-  "\t\t\tf.pt, f.keyed = t.project(t.Key(l.Cwd)), true\n",
-  "\t\t\tf.pt, f.keyed = t.project(\"one\"), true\n", "TestSEED2a_")
+  "\t\t\tf.pt, f.keyed = f.t.project(f.t.Key(s.Cwd)), true\n",
+  "\t\t\tf.pt, f.keyed = f.t.project(\"one\"), true\n", "TestSEED2a_")
 m("SEED-2 a project's corrections are not counted", S,
   "\tif f.pt != nil {\n\t\tf.pt.add(k, c, session)\n\t}\n", "", "TestSEED2a_")
 m("SEED-2 a project's sessions are not counted", S,
-  "\tif f.pt != nil {\n\t\tf.pt.saw(l.SessionID, f.project)\n\t}\n", "", "TestSEED2a_")
+  "\t\tif f.pt != nil {\n\t\t\tf.pt.saw(s.Session, f.project)\n\t\t}\n", "", "TestSEED2a_")
 
 # The record.
 m("SEED-2 kept rows are not in the card's order", P,
