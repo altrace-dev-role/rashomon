@@ -49,7 +49,7 @@ m("SEED-1 a denial kind the reader does not know is read from its text", T,
 m("SEED-1 a shell call is not read for its runner", C,
   "\tcase trace.ActExec:\n\t\treturn shellClass(c.Input)\n", "\tcase trace.ActExec:\n\t\treturn cShell\n", "TestSEED1a_")
 m("SEED-1 a shell call is not a command", T,
-  "\t\"Bash\":            trace.ActExec,\n", "\t\"Bash\":            trace.ActOther,\n", "TestSEED1a_|TestActClass_")
+  "\tcase \"Bash\":\n\t\treturn trace.ActExec\n", "\tcase \"Bash\":\n\t\treturn trace.ActOther\n", "TestSEED1a_|TestActClass_")
 m("SEED-1 a check runner is a test run", C,
   "\t\tif *s.RunnerKind == shape.RunnerTest {\n", "\t\tif *s.RunnerKind != shape.RunnerBuild {\n",
   "TestSEED1a_OnlyATestRunnerIsATestRun")

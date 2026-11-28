@@ -224,34 +224,37 @@ func result(l *line, base trace.Step, b *block, content bool) trace.Step {
 	return s
 }
 
-// ActClass is the class of a call by Claude Code's tool name.
+// ActClass is the class of a call by Claude Code's tool name: its built-in
+// tools by name, an MCP tool by its prefix, anything else trace.ActOther. A
+// switch, not a map: a package-level map is built at process init, which
+// every hook process pays (RES-2's init budget).
 func ActClass(name string) trace.ActClass {
 	if strings.HasPrefix(name, "mcp__") {
 		return trace.ActExternal
 	}
-	return toolClass[name]
-}
-
-// toolClass maps Claude Code's built-in tools onto act classes; a name not
-// here is trace.ActOther.
-var toolClass = map[string]trace.ActClass{
-	"Bash":            trace.ActExec,
-	"BashOutput":      trace.ActExecControl,
-	"KillShell":       trace.ActExecControl,
-	"Edit":            trace.ActEdit,
-	"MultiEdit":       trace.ActEdit,
-	"NotebookEdit":    trace.ActEdit,
-	"Write":           trace.ActWrite,
-	"Read":            trace.ActRead,
-	"NotebookRead":    trace.ActRead,
-	"Glob":            trace.ActSearch,
-	"Grep":            trace.ActSearch,
-	"WebFetch":        trace.ActFetch,
-	"WebSearch":       trace.ActFetch,
-	"Task":            trace.ActDelegate,
-	"Agent":           trace.ActDelegate,
-	"ExitPlanMode":    trace.ActPlan,
-	"AskUserQuestion": trace.ActAsk,
+	switch name {
+	case "Bash":
+		return trace.ActExec
+	case "BashOutput", "KillShell":
+		return trace.ActExecControl
+	case "Edit", "MultiEdit", "NotebookEdit":
+		return trace.ActEdit
+	case "Write":
+		return trace.ActWrite
+	case "Read", "NotebookRead":
+		return trace.ActRead
+	case "Glob", "Grep":
+		return trace.ActSearch
+	case "WebFetch", "WebSearch":
+		return trace.ActFetch
+	case "Task", "Agent":
+		return trace.ActDelegate
+	case "ExitPlanMode":
+		return trace.ActPlan
+	case "AskUserQuestion":
+		return trace.ActAsk
+	}
+	return trace.ActOther
 }
 
 // ToolError is the kind of tool error by the opening Claude Code writes for
