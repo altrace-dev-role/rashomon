@@ -1,0 +1,21 @@
+{
+ "rashomon_spec": 1,
+ "rules": [
+  {
+   "id": "pgraph-out",
+   "kind": "boundary",
+   "why": "pgraph imports nothing from the rashomon module, so it can move to its own repository unchanged (pgraph/doc.go).",
+   "hard_control": "This rule comes from the managed spec; it is a nudge and blocks nothing.",
+   "from": ["unit:go:pgraph"],
+   "to": ["unit:go:internal", "unit:go:cmd"]
+  },
+  {
+   "id": "pgraph-in",
+   "kind": "boundary",
+   "why": "The rashomon module imports nothing from pgraph, so pgraph can move to its own repository unchanged (pgraph/doc.go).",
+   "hard_control": "This rule comes from the managed spec; it is a nudge and blocks nothing.",
+   "from": ["unit:go:internal", "unit:go:cmd"],
+   "to": ["unit:go:pgraph"]
+  }
+ ]
+}

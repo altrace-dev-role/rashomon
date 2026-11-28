@@ -6,6 +6,51 @@ It is updated at every task close with the task id, the acceptance id, the code 
 the live evidence seq. The plan's prose does not change when a row moves; this file does.
 
 Status log (newest first):
+- 2026-11-19 11:2x: the T2 harness enters main in local commits as the files below, brought from a working branch; each line gives the path under `test/live/autosteer/`, the first 16 hex digits of the sha256 of the file as committed, and its source.
+  - judge/done.py 4d947add84de90c5, the done-flag judge draft kept under docs-out (not in git), with an eligible-folder allow-list and parameters for the skip prefix and the role pattern added
+  - judge/test_done.py 919631a320219b1b, the tests for the draft above, with synthetic folder names and role codes and a test for each refusal
+  - memsample.sh 4d67d89a325512d2, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - run.sh edd0f09597c965f3, branch as/m2-t2 at b59948dc, edited there and not committed, byte for byte
+  - t2/batch.sh 6fabe73f89c3b824, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/cachemanifest.py cb7cc1149de93d5f, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/consentscope.py a971b959ed423427, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/flags.py ffed2b31835793ad, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/graph.json f5681815397cf20e, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/claude-tmux.sh bda8f526f3f78b73, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/drive.py e3246de2ae0d5c13, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/j1live.sh 999ed79b4734c070, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/prompt.txt 6111b53a29e8ded2, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/read.py 29746c1af1495c4f, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/selftest/fake-claude.py 9e76471414c9b0c5, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/j1live/selftest/selftest.sh d97de3d1585ef8dc, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/dectruth.py 2465e84504f859dc, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/j2.py 4fb7134b6471a679, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/j3.sh b3b0375530cd1c4b, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/j3_conflicts_test.go a5dacd44bbcd88ca, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/j3_test.go 0ef90104bda40f74, branch as/m2-t2 at b59948dc, untracked there (sha16 e64421e904df7579); this file adds two comment lines above loadStop
+  - t2/judge/j4.sh 12c2f2bda118dd19, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/j5.sh 35c6b1901742e962, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/judge.sh 5769fff30488d63b, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/row.py e7aeee96795d62ca, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/judge/s1cross.sh 3a3da4f07c090338, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/managed/rashomon/spec.json b8a58ba97fcd1153, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/meter.py a5cead74e792721b, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/hookctx.py 1abb05444ad8cc10, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/hooklog.py b137c04b7511d743, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/j2probe.sh 0e2e1f734a0d9ecc, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/plan-probe.sh cb4f144bc8019c69, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/probe-prompt.txt 8358f9585c9863d3, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/probe-read.py a7d5663161d8908d, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/probe2-prompt.txt caa9b9cc2cb842ab, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/probe2-read.py a2e1f259d7d1e202, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/probe/probe2.sh 10c7c43f645c103c, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/prompt.txt 998ca1fb5efb4256, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/s1b.py c22207d822633516, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/s2kinds.py 8b4c2355646f563d, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/s3pin.sh 67baca1fa8575a7d, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/seed.json 5603ad93ffba0b92, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - t2/smoke.sh e45377988fe189d0, branch as/m2-t2 at b59948dc, untracked there, byte for byte
+  - wrap.sh a8122ba83045d599, branch as/m2-t2 at b59948dc, edited there and not committed, byte for byte
 - 2026-11-11 07:3x: M2 opened at 072e3e36 (PLAN 6.2, "M2 opened at 072e3e36") on the owner's word of 07:26 PST ("merge, and get M2 moving") and the rulings of 07:39 PST (box Wed 2026-11-18 17:00 PST; first cards W-DEBT.14 then W-DEBT.13, inner box Fri 2026-11-13 23:59 PST) and 08:30 PST (the ported 2026-11-05 block and the debts' gate); integration branch `autosteer/m2` from 072e3e36 (PR #283 not merged); W-M2.11 and W-DEBT.23 added; W-DEBT.13 has no change entering the inner box (`bands.go` lines 66 to 68 at 23fc0483).
 - 2026-11-10 14:2x: M1 closed on its time box, AC-M1.5 not met (PLAN 6.1, "M1 closed on its time box"): the director's reading of the owner's word of 14:27:59 PST, recorded as one; engine 23fc0483; the one `classes4.tsv` read at 1a530c17 (close5.out d051055f74789b42, dump 4fb5fa6dfdf1a3c3).
   - Read at 1a530c17 (engine 23fc0483): AC-M1.0 met (TestACM10_ PASS); AC-M1.1 met (prompts 10 of 10, edge 47 of 54; replay 64 of 513, a guard); AC-M1.2 met (K7 prompt path max of 30 104 ms; the macos graph8MiB row passes on its tolerance); AC-M1.3 met as re-specified (W-M1.30; ledger titles 89.2, notes 96.1 percent, second import byte-identical), the literal clause reading not met (ledger 61.0 percent); T1's context 589 bytes, 7641dab9cde93040, clause 4 holds. AC-M1.4 met on its terms, no lift claim (G 4, R 2, U 1 of 10; Fisher p 0.3034 and 0.6285).

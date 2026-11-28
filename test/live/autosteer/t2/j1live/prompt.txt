@@ -1,0 +1,1 @@
+Plan only, do not edit yet: add a one-line doc comment above the function in internal/install/install.go that writes the hook entries, saying which settings file it writes. Read the file, then present a short plan that names internal/install/install.go and the function.

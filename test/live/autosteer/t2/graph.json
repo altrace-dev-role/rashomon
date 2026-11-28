@@ -1,0 +1,8 @@
+{
+  "units": [
+    {"path": ".", "mod_root": ".", "modules": [], "lang": "go"},
+    {"path": "pgraph", "mod_root": "pgraph", "modules": [], "lang": "go"}
+  ],
+  "service_map": {},
+  "knowledge": []
+}
