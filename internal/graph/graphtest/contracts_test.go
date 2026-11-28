@@ -21,12 +21,17 @@ import (
 var agentKeys = []string{"tool_input", "transcript_path", "hook_event_name"}
 
 // corePackages are the trees the tripwire covers, relative to the module
-// root.
-var corePackages = []string{"internal/graph", "internal/verify", "internal/learn"}
+// root. internal/trace is covered without its subdirectories: each one is an
+// agent's adapter (trace/claudecode), the one place that agent's words may
+// appear.
+var corePackages = []string{"internal/graph", "internal/verify", "internal/learn", "internal/trace"}
+
+// traceAdapters is the directory whose subdirectories are agent adapters.
+const traceAdapters = "internal/trace"
 
 // TestCore_NoAgentKeys (W-M1.7, R12, AC-X.2): no non-test Go file under the
-// core trees imports internal/hookio or holds an agent key in a string
-// literal. The baseline at 8593061d was zero on all three trees, so the
+// core trees imports internal/hookio or a trace adapter, or holds an agent
+// key in a string literal. The baseline at 8593061d was zero on all three trees, so the
 // test is strict, not a ratchet.
 func TestCore_NoAgentKeys(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
@@ -44,6 +49,9 @@ func TestCore_NoAgentKeys(t *testing.T) {
 				if d.Name() == "testdata" || d.Name() == "specimen" {
 					return filepath.SkipDir
 				}
+				if filepath.Dir(p) == filepath.Join(root, filepath.FromSlash(traceAdapters)) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
@@ -56,7 +64,8 @@ func TestCore_NoAgentKeys(t *testing.T) {
 			checked++
 			rel, _ := filepath.Rel(root, p)
 			for _, im := range af.Imports {
-				if path, _ := strconv.Unquote(im.Path.Value); strings.HasSuffix(path, "/internal/hookio") {
+				path, _ := strconv.Unquote(im.Path.Value)
+				if strings.HasSuffix(path, "/internal/hookio") || strings.Contains(path, "/"+traceAdapters+"/") {
 					t.Errorf("%s imports the agent adapter %s", rel, path)
 				}
 			}

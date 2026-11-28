@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/trace"
 )
 
 // kind is a correction episode's kind: the person stopped the agent, said no
@@ -146,33 +147,32 @@ func rowText(k kind, c class) string {
 	return c.text() + ", then tried again"
 }
 
-// classOf is a call's class from its tool's name and, for a shell or a file
+// classOf is a call's class from its act class and, for a command or a file
 // tool, its input as shape reads it: the runner or the verb class of the
 // command, the label of the file's name. Nothing of the input is kept.
-func classOf(name string, input json.RawMessage) class {
-	if strings.HasPrefix(name, "mcp__") {
+func classOf(c *trace.CallStep) class {
+	switch c.Class {
+	case trace.ActExternal:
 		return cMCP
-	}
-	switch name {
-	case "Bash":
-		return shellClass(input)
-	case "BashOutput", "KillShell":
+	case trace.ActExec:
+		return shellClass(c.Input)
+	case trace.ActExecControl:
 		return cShell
-	case "Edit", "MultiEdit", "NotebookEdit":
-		return fileClass(name, input, cEdit)
-	case "Write":
-		return fileClass(name, input, cWrite)
-	case "Read", "NotebookRead":
+	case trace.ActEdit:
+		return fileClass(c.Tool, c.Input, cEdit)
+	case trace.ActWrite:
+		return fileClass(c.Tool, c.Input, cWrite)
+	case trace.ActRead:
 		return cRead
-	case "Glob", "Grep":
+	case trace.ActSearch:
 		return cSearch
-	case "WebFetch", "WebSearch":
+	case trace.ActFetch:
 		return cWeb
-	case "Task", "Agent":
+	case trace.ActDelegate:
 		return cAgent
-	case "ExitPlanMode":
+	case trace.ActPlan:
 		return cPlan
-	case "AskUserQuestion":
+	case trace.ActAsk:
 		return cQuestion
 	}
 	return cOther
@@ -215,31 +215,26 @@ func fileClass(name string, input json.RawMessage, plain class) class {
 	return plain
 }
 
-// errorClass is the class of a tool error by the opening Claude Code writes
-// for it, those measured on real transcripts (SEED1 approach note), and
-// whether it is one. A command's own failure (Exit code N) is not: a failing
-// test run is often the work, not a mistake.
-func errorClass(text string) (class, bool) {
-	t := strings.TrimPrefix(text, "<tool_use_error>")
-	if len(t) > 160 {
-		t = t[:160]
-	}
-	switch {
-	case strings.HasPrefix(t, "String to replace not found in file"):
+// errorClass is the class of a tool error, and whether it is one. A
+// command's own failure (Exit code N) is not: a failing test run is often
+// the work, not a mistake.
+func errorClass(e trace.ToolError) (class, bool) {
+	switch e {
+	case trace.ErrorEditNotFound:
 		return eEditNotFound, true
-	case strings.HasPrefix(t, "Found ") && strings.Contains(t, " matches of the string to replace"):
+	case trace.ErrorEditAmbiguous:
 		return eEditMany, true
-	case strings.HasPrefix(t, "No changes to make: old_string and new_string are exactly the same"):
+	case trace.ErrorEditNoChange:
 		return eEditSame, true
-	case strings.HasPrefix(t, "File has been modified since read"):
+	case trace.ErrorStaleWrite:
 		return eStale, true
-	case strings.HasPrefix(t, "File has not been read yet"):
+	case trace.ErrorUnreadWrite:
 		return eUnread, true
-	case strings.HasPrefix(t, "File content (") && strings.Contains(t, "exceeds maximum"):
+	case trace.ErrorTooLarge:
 		return eTooLarge, true
-	case strings.HasPrefix(t, "File does not exist"):
+	case trace.ErrorNoSuchFile:
 		return eNoFile, true
-	case strings.HasPrefix(t, "InputValidationError: "):
+	case trace.ErrorBadInput:
 		return eBadInput, true
 	}
 	return 0, false

@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/trace"
 )
 
 // tx builds one transcript, line by line, in the shape Claude Code 2.1.280
@@ -227,7 +229,7 @@ func TestSEED1a_OnlyATestRunnerIsATestRun(t *testing.T) {
 		"golangci-lint run": cBuildRun, "mypy .": cBuildRun, "pip-audit": cBuildRun,
 	} {
 		in, _ := json.Marshal(map[string]any{"command": cmd})
-		if got := classOf("Bash", in); got != want {
+		if got := classOf(&trace.CallStep{Tool: "Bash", Class: trace.ActExec, Input: in}); got != want {
 			t.Errorf("%q is %q, want %q", cmd, got.text(), want.text())
 		}
 	}
