@@ -6,19 +6,26 @@ import (
 	"unicode"
 )
 
-// wrappers are words that run the command after them: the program is the
-// word they wrap. Each is a POSIX or near-universal shell utility, not a
-// language's tool.
-var wrappers = map[string]bool{
-	"env": true, "sudo": true, "time": true, "nice": true, "nohup": true,
-	"command": true, "exec": true, "timeout": true, "stdbuf": true, "xargs": true,
+// wrapper is whether a word runs the command after it, so the program is the
+// word it wraps. Each is a POSIX or near-universal shell utility, not a
+// language's tool. Switches rather than maps: a package-level map is built at
+// process init, which every hook process would pay once this is linked.
+func wrapper(w string) bool {
+	switch w {
+	case "env", "sudo", "time", "nice", "nohup", "command", "exec", "timeout", "stdbuf", "xargs":
+		return true
+	}
+	return false
 }
 
-// setup words open a shell segment that prepares the next one rather than
-// doing the work.
-var setup = map[string]bool{
-	"cd": true, "pushd": true, "popd": true, "export": true, "source": true, ".": true,
-	"set": true, "true": true, "unset": true, "ulimit": true, "umask": true,
+// setup is whether a word opens a shell segment that prepares the next one
+// rather than doing the work.
+func setup(w string) bool {
+	switch w {
+	case "cd", "pushd", "popd", "export", "source", ".", "set", "true", "unset", "ulimit", "umask":
+		return true
+	}
+	return false
 }
 
 // commandSig is a command's program and verb: the program is the base name of
@@ -34,7 +41,7 @@ var setup = map[string]bool{
 func commandSig(cmd string) (program, verb string) {
 	for _, seg := range segments(cmd) {
 		words := unwrap(fields(seg))
-		if len(words) == 0 || setup[words[0]] {
+		if len(words) == 0 || setup(words[0]) {
 			continue
 		}
 		program = path.Base(words[0])
@@ -127,7 +134,7 @@ func unwrap(words []string) []string {
 		switch {
 		case isAssignment(words[0]):
 			words = words[1:]
-		case wrappers[path.Base(words[0])]:
+		case wrapper(path.Base(words[0])):
 			words = skipWrapperArgs(words[1:])
 		default:
 			return words

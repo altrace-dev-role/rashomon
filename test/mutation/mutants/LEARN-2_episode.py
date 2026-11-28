@@ -17,7 +17,7 @@ m("LEARN-2 a one-off failure is an episode", D,
 m("LEARN-2 a subagent's failure is the session's", D,
   "\t\tif !a.failed() || a.side || open[a.sig] {\n", "\t\tif !a.failed() || open[a.sig] {\n", "TestDetect_NoEpisodeForAOneOff")
 m("LEARN-2 an interrupt with no act since counts", D,
-  "\t\tif l.after < 0 || !acted {\n", "\t\tif l.after < 0 {\n", "TestTerraform_")
+  "\t\tif l.after < 0 || !acted {\n", "\t\tif l.after < 0 || !acted && false {\n", "TestTerraform_")
 m("LEARN-2 a machine's line counts as pushback", D,
   "l.orig == trace.OriginPerson && pushback != nil", "l.orig != trace.OriginMachine && pushback != nil", "TestTerraform_")
 m("LEARN-2 an edit in another file reads as a revert", D,
@@ -27,7 +27,7 @@ m("LEARN-2 one identical retry is a loop", D,
 
 # The fingerprint.
 m("LEARN-2 a line a passing run prints is picked", F,
-  "\t\tif _, ok := seen[t]; ok {\n\t\t\tcontinue\n\t\t}\n", "", "TestFingerprint_BaselineAndTies")
+  "\t\tif _, ok := seen[t]; ok {\n", "\t\tif _, ok := seen[t]; ok && false {\n", "TestFingerprint_BaselineAndTies")
 m("LEARN-2 a tie goes to the earlier line", F,
   "\t\tif n < minFixed || n < most {\n", "\t\tif n < minFixed || n <= most {\n", "TestFingerprint_BaselineAndTies")
 m("LEARN-2 a hex id is a fixed word", F,
@@ -38,9 +38,9 @@ m("LEARN-2 decoration is a word", F,
 
 # The command, the scope and the paths.
 m("LEARN-2 a wrapper is the program", C,
-  "\t\tcase wrappers[path.Base(words[0])]:\n", "\t\tcase false:\n", "TestCommandSig")
+  "\t\tcase wrapper(path.Base(words[0])):\n", "\t\tcase false:\n", "TestCommandSig")
 m("LEARN-2 a setup segment is the program", C,
-  "\t\tif len(words) == 0 || setup[words[0]] {\n", "\t\tif len(words) == 0 {\n", "TestCommandSig")
+  "\t\tif len(words) == 0 || setup(words[0]) {\n", "\t\tif len(words) == 0 {\n", "TestCommandSig")
 m("LEARN-2 a scope runs deeper than three levels", S,
   "const maxScopeDepth = 3\n", "const maxScopeDepth = 4\n", "TestScopeOf")
 m("LEARN-2 the root itself is a path in scope", S,
