@@ -54,21 +54,39 @@ it does, verify the result, update what is known.
 
 ## Get started
 
-Needs Claude Code 2.1.280 or later, macOS or Linux, and Go 1.25 or later. In a
-terminal, not inside a Claude Code session:
+Needs Claude Code 2.1.280 or later, on macOS or Linux. Installing needs no
+Go. In a terminal, not inside a Claude Code session:
 
     curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
     rashomon watch
 
-That installs the latest release, v1.0-AutoSteer. To build `main` instead,
-which may be ahead of the release:
+`watch` shows what installing does and asks `Install? [y/N]`; answer `y`,
+then use `claude` as usual. This installs the latest release, v1.0-AutoSteer:
+`rashomon version` prints `1.0-AutoSteer`.
+
+Or install it as a Claude Code plugin, in a terminal:
+
+    claude plugin marketplace add altrace-dev-role/rashomon
+    claude plugin install rashomon@rashomon
+    claude plugin enable rashomon@rashomon
+
+Then use `claude` as usual. Enabling the plugin is your yes to what it
+records, so read [What it records, and what it never stores](#what-it-records-and-what-it-never-stores)
+first; the plugin stores that yes at its first session. `claude plugin list`
+shows `Version: 1.0-AutoSteer`. The plugin puts no `rashomon` on your `PATH`;
+where this README runs `rashomon` in a terminal, use
+`~/.claude/plugins/cache/rashomon/rashomon/1.0-AutoSteer/bin/rashomon`, the
+path its first session prints. Use one route: `watch` refuses beside an
+enabled plugin.
+
+Go 1.25 or later is needed only to build `main` yourself; a Go repository's
+graph has steps of its own ([Index your repository](#index-your-repository)):
 
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
     rashomon watch
 
 `go install` puts `rashomon` in `$(go env GOPATH)/bin`, which must be on your
-`PATH`. `watch` shows what installing does and asks `Install? [y/N]`; answer `y`,
-then use `claude` as usual.
+`PATH`.
 
 ## What you'll see
 
@@ -157,17 +175,6 @@ read yet.
 Indexing changes what rashomon keeps for that repository. Read
 [What it records, and what it never stores](#what-it-records-and-what-it-never-stores)
 before you index one.
-
-## Other install routes
-
-These install the v1.0-AutoSteer release: `rashomon version` prints
-`1.0-AutoSteer`. Use one route: `watch` refuses beside an enabled plugin.
-
-    claude plugin marketplace add altrace-dev-role/rashomon
-    claude plugin install rashomon@rashomon
-    claude plugin enable rashomon@rashomon
-
-or `curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh`, then `rashomon watch`.
 
 ## What a disagreement looks like
 
